@@ -1,5 +1,4 @@
 #include "runtime/graph_compiler.h"
-#include "runtime/domain.h"
 #include "runtime/crash_guard.h"
 #include "runtime/shared_handle_registry.h"
 #include "common/topo_sort.h"
@@ -363,14 +362,12 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             cn.instance = loader->create_instance();
 
             // Determine cadence from descriptor + per-node override.
-            // Fixed-domain operators (GPU, audio-native) ignore overrides.
-            if (desc->execution_env == VIVID_ENV_GPU || desc->has_process_gpu ||
-                desc->domain == 2u /*GPU*/) {
+            // Fixed-env operators (GPU, audio-native) ignore overrides.
+            if (desc->execution_env == VIVID_ENV_GPU || desc->has_process_gpu) {
                 cn.active_cadence = Cadence::Frame;
                 cn.is_gpu = true;
             } else if (desc->execution_env == VIVID_ENV_AUDIO ||
-                       (desc->has_process_audio && !desc->has_process_frame) ||
-                       desc->domain == 1u /*AUDIO*/) {
+                       (desc->has_process_audio && !desc->has_process_frame)) {
                 cn.active_cadence = Cadence::Audio;
             } else if (ndef.cadence_override == 2 &&
                        desc->cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE) {

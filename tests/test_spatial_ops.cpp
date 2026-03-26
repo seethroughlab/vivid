@@ -3,8 +3,6 @@
 // cross-feed, DC stability, and extreme params.
 
 #include "runtime/operator_loader.h"
-#include "runtime/domain.h"
-
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -106,7 +104,7 @@ static void test_stereo_pan_width(const std::string& staging) {
     if (!desc) return;
 
     check(std::strcmp(desc->name, "StereoPanWidth") == 0, "name matches");
-    check(desc->domain == VIVID_DOMAIN_AUDIO, "domain = AUDIO");
+    check(desc->execution_env == VIVID_ENV_AUDIO, "env = AUDIO");
     check(static_cast<int>(desc->param_count) == 3, "param_count = 3");
     check(static_cast<int>(desc->port_count) == 4, "port_count = 4");
 
@@ -372,7 +370,7 @@ static void test_ping_pong_delay(const std::string& staging) {
     if (!desc) return;
 
     check(std::strcmp(desc->name, "PingPongDelay") == 0, "name matches");
-    check(desc->domain == VIVID_DOMAIN_AUDIO, "domain = AUDIO");
+    check(desc->execution_env == VIVID_ENV_AUDIO, "env = AUDIO");
     check(static_cast<int>(desc->param_count) == 6, "param_count = 6");
     check(static_cast<int>(desc->port_count) == 4, "port_count = 4");
 

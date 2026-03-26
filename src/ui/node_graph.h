@@ -330,6 +330,7 @@ private:
                                          float px, float& py, uint32_t pi);
     void draw_section_separator(Renderer2D& tr, float px, float& py, float panel_w, const char* label);
     void draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
+    void draw_inspector_cadence(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_custom_inspector(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_state_presets(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);

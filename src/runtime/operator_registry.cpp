@@ -328,7 +328,7 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
 
     // Build the owned descriptor
     entry.desc.name = nullptr;  // set after emplace (points to stable map key)
-    entry.desc.domain = src->domain;
+    entry.desc.execution_env = src->execution_env;
     entry.desc.param_count = param_count;
     entry.desc.params = entry.params.empty() ? nullptr : entry.params.data();
     entry.desc.port_count = port_count;

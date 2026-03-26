@@ -190,7 +190,7 @@ struct PortTypeEntry {
     VividPortType type;
 };
 
-inline const std::vector<PortTypeEntry>& port_types_for_domain(int domain_sel) {
+inline const std::vector<PortTypeEntry>& port_types_for_env(int env_sel) {
     static const std::vector<PortTypeEntry> control_types = {
         {"float",         VIVID_PORT_SIGNAL},
         {"spread",        VIVID_PORT_SPREAD},
@@ -203,7 +203,7 @@ inline const std::vector<PortTypeEntry>& port_types_for_domain(int domain_sel) {
     static const std::vector<PortTypeEntry> gpu_types = {
         {"texture", VIVID_PORT_TEXTURE},
     };
-    switch (domain_sel) {
+    switch (env_sel) {
         case 1:  return audio_types;
         case 2:  return gpu_types;
         default: return control_types;

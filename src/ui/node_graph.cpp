@@ -291,7 +291,7 @@ uint32_t NodeGraphUI::count_visible_output_ports(const NodeSnapshot& ns, bool sh
 // -----------------------------------------------------------------------
 void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
     bool has_ct = custom_thumb_nodes_.count(rect.node_id) > 0;
-    float body_h = domain_body_height(rect.domain, has_ct);
+    float body_h = env_body_height(rect.env, has_ct);
 
     rect.inputs.clear();
     rect.outputs.clear();
@@ -482,7 +482,7 @@ void NodeGraphUI::layout_nodes(bool force) {
             const auto& ns = nodes[ni];
 
             bool has_ct = custom_thumb_nodes_.count(ns.node_id) > 0;
-            float body_h = domain_body_height(ns.domain, has_ct);
+            float body_h = env_body_height(ns.env, has_ct);
 
             uint32_t n_inputs = count_visible_input_ports(ns, show_param_wires_);
             uint32_t n_outputs = count_visible_output_ports(ns, show_param_wires_);
@@ -504,7 +504,7 @@ void NodeGraphUI::layout_nodes(bool force) {
             auto& rect = node_rects_[ni];
             rect.node_id = ns.node_id;
             rect.type_name = ns.type_name;
-            rect.domain = ns.domain;
+            rect.env = ns.env;
             rect.x = col_x;
             rect.y = cur_y;
             rect.w = kNodeW;
@@ -562,7 +562,7 @@ void NodeGraphUI::place_new_nodes() {
     auto compute_height = [&](size_t ni) -> float {
         const auto& ns = nodes[ni];
         bool has_ct = custom_thumb_nodes_.count(ns.node_id) > 0;
-        float body_h = domain_body_height(ns.domain, has_ct);
+        float body_h = env_body_height(ns.env, has_ct);
         uint32_t n_inputs = count_visible_input_ports(ns, show_param_wires_);
         uint32_t n_outputs = count_visible_output_ports(ns, show_param_wires_);
         uint32_t port_rows = std::max(n_inputs, n_outputs);
@@ -577,7 +577,7 @@ void NodeGraphUI::place_new_nodes() {
         auto& rect = node_rects_[ni];
         rect.node_id = ns.node_id;
         rect.type_name = ns.type_name;
-        rect.domain = ns.domain;
+        rect.env = ns.env;
         rect.w = kNodeW;
         rect.h = h;
         rect.target_h = h;
@@ -1099,7 +1099,7 @@ void NodeGraphUI::confirm_chooser_selection_idx(int idx) {
     // Handle "New Operator" sentinel
     if (type == "+ New Operator...") {
         create_popup_open_ = true;
-        create_domain_sel_ = 0;
+        create_env_sel_ = 0;
         create_name_buf_.clear();
         text_edit_.reset(0);
         create_error_.clear();
@@ -1644,10 +1644,10 @@ void NodeGraphUI::check_relayout() {
             auto it = rect_by_id.find(ns.node_id);
             if (it == rect_by_id.end()) continue;
             auto& rect = node_rects_[it->second];
-            rect.domain = ns.domain;
+            rect.env = ns.env;
             rect.type_name = ns.type_name;
             bool has_ct = custom_thumb_nodes_.count(ns.node_id) > 0;
-            float body_h = domain_body_height(ns.domain, has_ct);
+            float body_h = env_body_height(ns.env, has_ct);
             uint32_t n_inputs = count_visible_input_ports(ns, show_param_wires_);
             uint32_t n_outputs = count_visible_output_ports(ns, show_param_wires_);
             uint32_t port_rows = std::max(n_inputs, n_outputs);

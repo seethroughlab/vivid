@@ -1,7 +1,6 @@
 #include "runtime/control_server.h"
 #include "runtime/capture_coordinator.h"
 #include "runtime/compiled_graph.h"
-#include "runtime/domain.h"
 #include "runtime/runtime_api.h"
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
@@ -57,11 +56,11 @@ static constexpr int kTestPackageTimeoutSec        = 60;
 // Enum → string helpers
 // ---------------------------------------------------------------------------
 
-static const char* domain_str(VividDomain d) {
-    switch (d) {
-        case VIVID_DOMAIN_CONTROL: return "control";
-        case VIVID_DOMAIN_AUDIO:   return "audio";
-        case VIVID_DOMAIN_GPU:     return "gpu";
+static const char* env_str(VividExecutionEnv e) {
+    switch (e) {
+        case VIVID_ENV_FRAME: return "control";
+        case VIVID_ENV_AUDIO: return "audio";
+        case VIVID_ENV_GPU:   return "gpu";
         default: return "unknown";
     }
 }
@@ -598,7 +597,7 @@ static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
         node["domain"] = ns.is_gpu ? "gpu" : (ns.active_cadence == vivid::Cadence::Audio ? "audio" : "control");
         node["cadence_capability"] = (ns.cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE) ? "audio_capable" : "frame_only";
         {
-            const auto* ndef = graph_.find_node(ns.node_id);
+            const auto* ndef = graph.find_node(ns.node_id);
             node["cadence_override"] = ndef ? static_cast<int>(ndef->cadence_override) : 0;
         }
         node["incoming_wires"] = static_cast<int64_t>(incoming_wires[ns.node_id]);
@@ -1487,7 +1486,7 @@ static std::string handle_list_types(OperatorRegistry& registry) {
 
         nlohmann::json t = nlohmann::json::object();
         t["name"] = desc->name;
-        t["domain"] = domain_str(desc->domain);
+        t["domain"] = env_str(desc->execution_env);
 
         // Params
         nlohmann::json params_arr = nlohmann::json::array();
@@ -2134,18 +2133,21 @@ static std::string dispatch(const std::string& method, const std::string& body,
             if (!root_valid)
                 return json_err("invalid JSON body");
 
-            if (!root.contains("name") || !root["name"].is_string() ||
-                !root.contains("domain") || !root["domain"].is_string())
-                return json_err("missing 'name' or 'domain'");
+            if (!root.contains("name") || !root["name"].is_string())
+                return json_err("missing 'name'");
+            // Accept both "env" (preferred) and "domain" (legacy) keys
+            std::string env_key = root.contains("env") ? "env" : "domain";
+            if (!root.contains(env_key) || !root[env_key].is_string())
+                return json_err("missing 'env' (or 'domain')");
 
             std::string name = root["name"].get<std::string>();
-            std::string domain_str_val = root["domain"].get<std::string>();
+            std::string env_str_val = root[env_key].get<std::string>();
 
-            VividDomain domain;
-            if (domain_str_val == "control")      domain = VIVID_DOMAIN_CONTROL;
-            else if (domain_str_val == "audio")    domain = VIVID_DOMAIN_AUDIO;
-            else if (domain_str_val == "gpu")      domain = VIVID_DOMAIN_GPU;
-            else return json_err("domain must be 'control', 'audio', or 'gpu'");
+            VividExecutionEnv env;
+            if (env_str_val == "control")      env = VIVID_ENV_FRAME;
+            else if (env_str_val == "audio")   env = VIVID_ENV_AUDIO;
+            else if (env_str_val == "gpu")     env = VIVID_ENV_GPU;
+            else return json_err("env must be 'control', 'audio', or 'gpu'");
 
             // Optional variant (e.g. "composite")
             std::string variant;
@@ -2173,12 +2175,12 @@ static std::string dispatch(const std::string& method, const std::string& body,
 
             VividCreateOperatorRequest req;
             req.name = name;
-            req.domain = domain;
+            req.env = env;
             req.variant = variant;
             req.destination = destination;
 
-            auto parse_port_type = [&](const std::string& type_str, VividDomain d, VividPortType& out) -> std::string {
-                if (d == VIVID_DOMAIN_CONTROL) {
+            auto parse_port_type = [&](const std::string& type_str, VividExecutionEnv e, VividPortType& out) -> std::string {
+                if (e == VIVID_ENV_FRAME) {
                     if      (type_str == "float")         out = VIVID_PORT_SIGNAL;
                     else if (type_str == "int")           out = VIVID_PORT_SIGNAL;
                     else if (type_str == "bool")          out = VIVID_PORT_SIGNAL;
@@ -2186,10 +2188,10 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     else if (type_str == "string")        out = VIVID_PORT_STRING;
                     else if (type_str == "string_spread") out = VIVID_PORT_STRING_SPREAD;
                     else return "unknown control port type '" + type_str + "'";
-                } else if (d == VIVID_DOMAIN_AUDIO) {
+                } else if (e == VIVID_ENV_AUDIO) {
                     if (type_str == "float") out = VIVID_PORT_AUDIO;
                     else return "unknown audio port type '" + type_str + "'";
-                } else if (d == VIVID_DOMAIN_GPU) {
+                } else if (e == VIVID_ENV_GPU) {
                     if (type_str == "texture") out = VIVID_PORT_TEXTURE;
                     else return "unknown GPU port type '" + type_str + "'";
                 }
@@ -2207,7 +2209,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     std::string ptype = "float";
                     if (elem.contains("type") && elem["type"].is_string()) ptype = elem["type"].get<std::string>();
                     VividPortType vt;
-                    std::string err = parse_port_type(ptype, domain, vt);
+                    std::string err = parse_port_type(ptype, env, vt);
                     if (!err.empty()) return err;
                     req.ports.push_back({elem["name"].get<std::string>(), vt, dir});
                 }
@@ -2589,7 +2591,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
 
                         nlohmann::json op = nlohmann::json::object();
                         op["name"] = desc->name;
-                        op["domain"] = domain_str(desc->domain);
+                        op["domain"] = env_str(desc->execution_env);
                         op["time_dependent"] = (desc->time_dependent != 0);
 
                         nlohmann::json params_arr = nlohmann::json::array();

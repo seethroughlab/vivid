@@ -1,5 +1,4 @@
 #include "runtime/builtin_operators.h"
-#include "runtime/domain.h"
 #include "runtime/operator_registry.h"
 #include "operator_api/types.h"
 #include "operator_api/midi_types.h"
@@ -23,12 +22,18 @@ static VividParamDescriptor audio_out_params[] = {
 
 static const VividOperatorDescriptor audio_out_desc = {
     "audio_out",
-    VIVID_DOMAIN_AUDIO,
-    1,                  // param_count
+    1,                      // domain (deprecated, kept for ABI)
+    1,                      // param_count
     audio_out_params,
-    1,                  // port_count
+    1,                      // port_count
     audio_out_ports,
-    1,                  // time_dependent
+    1,                      // time_dependent
+    1,                      // has_process_audio
+    0,                      // has_process_gpu
+    0, nullptr,             // embedded_op_slots
+    VIVID_ENV_AUDIO,        // execution_env
+    VIVID_CADENCE_FRAME_ONLY, // cadence_capability
+    0,                      // has_process_frame
 };
 
 static const VividOperatorDescriptor* audio_out_descriptor() { return &audio_out_desc; }
@@ -58,12 +63,18 @@ static VividParamDescriptor video_out_params[] = {
 
 static const VividOperatorDescriptor video_out_desc = {
     "video_out",
-    VIVID_DOMAIN_GPU,
-    3,                  // param_count
+    2,                      // domain (deprecated, kept for ABI)
+    3,                      // param_count
     video_out_params,
-    1,                  // port_count
+    1,                      // port_count
     video_out_ports,
-    1,                  // time_dependent
+    1,                      // time_dependent
+    0,                      // has_process_audio
+    1,                      // has_process_gpu
+    0, nullptr,             // embedded_op_slots
+    VIVID_ENV_GPU,          // execution_env
+    VIVID_CADENCE_FRAME_ONLY, // cadence_capability
+    0,                      // has_process_frame
 };
 
 static const VividOperatorDescriptor* video_out_descriptor() { return &video_out_desc; }

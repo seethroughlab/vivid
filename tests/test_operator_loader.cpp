@@ -1,5 +1,4 @@
 #include "runtime/operator_loader.h"
-#include "runtime/domain.h"
 #include "runtime/operator_registry.h"
 #include "operator_api/data_driven_filter.h"
 #include "operator_api/type_id.h"
@@ -28,7 +27,7 @@ static VividParamDescriptor s_builtin_param =
 static VividPortDescriptor s_builtin_port =
     {"out", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT};
 static VividOperatorDescriptor s_builtin_desc =
-    {"BuiltinTestOp", VIVID_DOMAIN_CONTROL, 1, &s_builtin_param, 1, &s_builtin_port, 0};
+    {"BuiltinTestOp", VIVID_ENV_FRAME, 1, &s_builtin_param, 1, &s_builtin_port, 0};
 
 static const VividOperatorDescriptor* builtin_descriptor() { return &s_builtin_desc; }
 static void* builtin_create() { return new int(42); }
@@ -95,7 +94,7 @@ int main() {
         check(desc != nullptr, "descriptor not null");
         if (desc) {
             check(std::strcmp(desc->name, "TestOp") == 0, "descriptor name = TestOp");
-            check(desc->domain == VIVID_DOMAIN_CONTROL, "domain = CONTROL");
+            check(desc->execution_env == VIVID_ENV_FRAME, "env = CONTROL");
             check(desc->param_count == 1, "param_count = 1");
             check(desc->port_count == 1, "port_count = 1");
             check(std::strcmp(desc->params[0].name, "scale") == 0, "param[0] = scale");

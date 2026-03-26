@@ -10,7 +10,7 @@
 
 namespace vivid {
 
-// Generic shared-handle registry for cross-domain opaque resources.
+// Generic shared-handle registry for cross-environment opaque resources.
 // This is intentionally media-agnostic and can be reused by package operators.
 class SharedHandleRegistry {
 public:

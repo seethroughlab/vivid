@@ -1435,7 +1435,7 @@ void NodeGraphUI::update_create_popup() {
     // Title
     cy += 24.0f;
 
-    // Domain buttons
+    // Env buttons
     float btn_gap = 8.0f;
     float total_btn_w = 3 * kCreateEnvBtnW + 2 * btn_gap;
     float bx = layout.px + (layout.pw - total_btn_w) * 0.5f;
@@ -2480,16 +2480,18 @@ bool NodeGraphUI::handle_inspector_click() {
     }
 
     // Check cadence selector click — cycle through auto/frame/audio
-    int ci = hit_test_rect(cadence_rects_, mouse_.x, mouse_.y);
-    if (ci >= 0 && command_sink_) {
-        const auto& cr = cadence_rects_[ci];
-        const auto* ns = snap_.find_node(cr.node_id);
-        if (ns) {
-            // Cycle: auto(0) → frame(1) → audio(2) → auto(0)
-            uint8_t next = (ns->cadence_override + 1) % 3;
-            command_sink_->set_cadence_override(cr.node_id, next);
+    {
+        int cad_i = hit_test_rect(cadence_rects_, mouse_.x, mouse_.y);
+        if (cad_i >= 0) {
+            const auto& cr = cadence_rects_[cad_i];
+            const auto* ns = snap_.find_node(cr.node_id);
+            if (ns) {
+                // Cycle: auto(0) → frame(1) → audio(2) → auto(0)
+                uint8_t next = (ns->cadence_override + 1) % 3;
+                commands_.set_cadence_override(cr.node_id, next);
+            }
+            return true;
         }
-        return true;
     }
 
     // Check value text click-to-edit

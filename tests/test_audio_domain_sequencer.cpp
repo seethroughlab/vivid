@@ -2,7 +2,6 @@
 // Verifies AudioFloatPortWire routing with core CMake-built operators.
 
 #include "runtime/operator_registry.h"
-#include "runtime/domain.h"
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
 #include "runtime/audio_engine.h"
@@ -59,7 +58,7 @@ int main(int argc, char* argv[]) {
         auto* clock_loader = registry.find("Clock");
         if (clock_loader) {
             const auto* desc = clock_loader->descriptor();
-            check(desc->domain == VIVID_DOMAIN_AUDIO, "Clock is audio domain");
+            check(desc->execution_env == VIVID_ENV_AUDIO, "Clock is audio domain");
             check(desc->has_process_audio == 1, "Clock has process_audio");
         }
     }
@@ -69,7 +68,7 @@ int main(int argc, char* argv[]) {
         auto* osc_loader = registry.find("Oscillator");
         if (osc_loader) {
             const auto* desc = osc_loader->descriptor();
-            check(desc->domain == VIVID_DOMAIN_AUDIO, "Oscillator is audio domain");
+            check(desc->execution_env == VIVID_ENV_AUDIO, "Oscillator is audio domain");
             check(desc->has_process_audio == 1, "Oscillator has process_audio");
             bool has_freq_cv = false;
             for (uint32_t i = 0; i < desc->port_count; ++i) {

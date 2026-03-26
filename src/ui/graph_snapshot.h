@@ -1,7 +1,6 @@
 #pragma once
 
 #include "operator_api/types.h"
-#include "runtime/domain.h"
 #include <string>
 #include <vector>
 #include <array>
@@ -49,7 +48,7 @@ struct PortInfo {
 // Owned copy of operator metadata
 struct OperatorInfo {
     std::string name;
-    VividDomain domain = VIVID_DOMAIN_CONTROL;
+    VividExecutionEnv env = VIVID_ENV_FRAME;
     bool has_shader = false;
     bool is_user = false;
     bool has_custom_inspector = false;
@@ -63,7 +62,7 @@ struct OperatorInfo {
 struct NodeSnapshot {
     std::string node_id;
     std::string type_name;
-    VividDomain domain = VIVID_DOMAIN_CONTROL;
+    VividExecutionEnv env = VIVID_ENV_FRAME;
 
     bool is_gpu = false;
     bool is_audio = false;

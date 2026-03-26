@@ -1,6 +1,5 @@
 // Test: PackageCompiler — compile a test operator from a mock package directory
 #include "runtime/package_compiler.h"
-#include "runtime/domain.h"
 #include "runtime/operator_registry.h"
 #include <cstdio>
 #include <filesystem>
@@ -117,7 +116,7 @@ VIVID_REGISTER(TestPkgOp)
         auto* desc = registry.probe_descriptor("TestPkgOp");
         check(desc != nullptr, "probe_descriptor returns non-null");
         if (desc) {
-            check(desc->domain == VIVID_DOMAIN_CONTROL, "domain is control");
+            check(desc->execution_env == VIVID_ENV_FRAME, "env is control");
             check(desc->param_count == 1, "has 1 param");
         }
     } else {

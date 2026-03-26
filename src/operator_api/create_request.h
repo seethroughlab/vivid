@@ -1,7 +1,6 @@
 #pragma once
 
 #include "operator_api/types.h"
-#include "runtime/domain.h"
 #include <string>
 #include <vector>
 
@@ -27,9 +26,9 @@ struct VividParamSpec {
 
 struct VividCreateOperatorRequest {
     std::string name;
-    VividDomain domain = VIVID_DOMAIN_CONTROL;
+    VividExecutionEnv env = VIVID_ENV_FRAME;
     std::string variant;          // "", "composite", "empty"
     std::string destination;      // "auto", "project", "core"
-    std::vector<VividPortSpec> ports;   // full port list (inputs + outputs); empty = domain defaults
+    std::vector<VividPortSpec> ports;   // full port list (inputs + outputs); empty = env defaults
     std::vector<VividParamSpec> params; // empty = use template defaults
 };

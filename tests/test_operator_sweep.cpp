@@ -6,7 +6,6 @@
 // otherwise they are gracefully skipped.
 
 #include "runtime/operator_loader.h"
-#include "runtime/domain.h"
 #include "operator_api/gpu_operator.h"
 #include "common/gpu_util.h"
 #include <webgpu/webgpu.h>
@@ -60,12 +59,12 @@ static bool is_finite_buf(const float* buf, int n) {
     return true;
 }
 
-static const char* domain_label(uint32_t d) {
+static const char* env_label(uint32_t d) {
     switch (d) {
-        case VIVID_DOMAIN_CONTROL: return "control";
-        case VIVID_DOMAIN_AUDIO:   return "audio";
-        case VIVID_DOMAIN_GPU:     return "gpu";
-        default:                   return "unknown";
+        case VIVID_ENV_FRAME: return "control";
+        case VIVID_ENV_AUDIO: return "audio";
+        case VIVID_ENV_GPU:   return "gpu";
+        default:              return "unknown";
     }
 }
 
@@ -481,7 +480,7 @@ static bool test_param_boundary(vivid::OperatorLoader& loader, void* inst,
         params[i] = desc->params[i].default_value;
 
     auto run_one_tick = [&]() -> bool {
-        if (desc->domain == VIVID_DOMAIN_CONTROL) {
+        if (desc->execution_env == VIVID_ENV_FRAME) {
             uint32_t ni = 0, no = 0, nsi = 0, nso = 0;
             for (uint32_t pi = 0; pi < desc->port_count; pi++) {
                 if (desc->ports[pi].direction == VIVID_PORT_INPUT) {
@@ -505,7 +504,7 @@ static bool test_param_boundary(vivid::OperatorLoader& loader, void* inst,
             for (uint32_t i = 0; i < no; i++)
                 if (!std::isfinite(outs[i])) return false;
             return true;
-        } else if (desc->domain == VIVID_DOMAIN_AUDIO) {
+        } else if (desc->execution_env == VIVID_ENV_AUDIO) {
             constexpr int kF = 512;
             // Mirror smoke_audio port counting.
             uint32_t nbi = 0, nbo = 0, nfi = 0, nfo = 0;
@@ -598,7 +597,7 @@ static void sweep_operator(const fs::path& path, HeadlessGpu* gpu) {
 
     // --- Descriptor sanity ---
     const auto* desc = loader.descriptor();
-    if (!desc || !desc->name || desc->name[0] == '\0' || desc->domain > VIVID_DOMAIN_GPU) {
+    if (!desc || !desc->name || desc->name[0] == '\0' || desc->execution_env > VIVID_ENV_GPU) {
         result.fail_reason = "bad descriptor";
         g_failed++;
         g_results.push_back(result);
@@ -621,7 +620,7 @@ static void sweep_operator(const fs::path& path, HeadlessGpu* gpu) {
         return;
     }
     result.desc_ok = true;
-    result.domain_str = domain_label(desc->domain);
+    result.domain_str = env_label(desc->execution_env);
 
     // --- Instance lifecycle ---
     void* inst = loader.create_instance();
@@ -637,11 +636,11 @@ static void sweep_operator(const fs::path& path, HeadlessGpu* gpu) {
     // --- Domain smoke ---
     bool smoke = false;
     try {
-        if (desc->domain == VIVID_DOMAIN_CONTROL) {
+        if (desc->execution_env == VIVID_ENV_FRAME) {
             smoke = smoke_control(loader, inst, desc);
-        } else if (desc->domain == VIVID_DOMAIN_AUDIO) {
+        } else if (desc->execution_env == VIVID_ENV_AUDIO) {
             smoke = smoke_audio(loader, inst, desc);
-        } else if (desc->domain == VIVID_DOMAIN_GPU) {
+        } else if (desc->execution_env == VIVID_ENV_GPU) {
             // GPU operators manage their own shaders, pipelines, and internal
             // textures. Calling process_gpu with a minimal context (no scheduler,
             // no proper texture setup) causes wgpu validation errors and aborts.

@@ -26,13 +26,13 @@ static void write_full_cmake(const std::string& dir) {
         << "# --- Operators meta-target ---\n";
 }
 
-static vivid::CreateOperatorResult create_op(const std::string& name, VividDomain domain,
+static vivid::CreateOperatorResult create_op(const std::string& name, VividExecutionEnv env,
                                               const std::string& src_dir,
                                               const std::string& variant = "",
                                               bool package_layout = false) {
     VividCreateOperatorRequest req;
     req.name = name;
-    req.domain = domain;
+    req.env = env;
     req.variant = variant;
     return vivid::OperatorCreator::create(req, src_dir, package_layout);
 }
@@ -80,7 +80,7 @@ int main() {
         fs::create_directories(tmp);
         write_full_cmake(tmp);
 
-        auto result = create_op("my_op", VIVID_DOMAIN_CONTROL, tmp);
+        auto result = create_op("my_op", VIVID_ENV_FRAME, tmp);
         check(result.success, "create control op succeeds");
         check(result.error.empty(), "no error");
         check(result.target_name == "my_op", "target_name = my_op");
@@ -127,7 +127,7 @@ int main() {
                 << "# --- Operators meta-target ---\n";
         }
 
-        auto result = create_op("my_synth", VIVID_DOMAIN_AUDIO, tmp);
+        auto result = create_op("my_synth", VIVID_ENV_AUDIO, tmp);
         check(result.success, "create audio op succeeds");
 
         std::string cpp_path = tmp + "/operators/audio/my_synth/my_synth.cpp";
@@ -161,7 +161,7 @@ int main() {
                 << "# --- SyphonOut operator ---\n";
         }
 
-        auto result = create_op("cool_fx", VIVID_DOMAIN_GPU, tmp);
+        auto result = create_op("cool_fx", VIVID_ENV_GPU, tmp);
         check(result.success, "create gpu op succeeds");
 
         std::string cpp_path = tmp + "/operators/gpu/cool_fx/cool_fx.cpp";
@@ -203,7 +203,7 @@ int main() {
             ofs << "# --- GPU operator plugins ---\n";
         }
 
-        auto result = create_op("foo", VIVID_DOMAIN_CONTROL, tmp);
+        auto result = create_op("foo", VIVID_ENV_FRAME, tmp);
         check(!result.success, "collision detected");
         check(result.error.find("already exists") != std::string::npos,
               "error mentions 'already exists'");
@@ -225,7 +225,7 @@ int main() {
             ofs << "# nothing relevant here\n";
         }
 
-        auto result = create_op("bar", VIVID_DOMAIN_CONTROL, tmp);
+        auto result = create_op("bar", VIVID_ENV_FRAME, tmp);
         check(!result.success, "fails when marker missing");
         check(result.error.find("insertion marker") != std::string::npos,
               "error mentions insertion marker");
@@ -247,7 +247,7 @@ int main() {
             ofs << "# --- GPU operator plugins ---\n";
         }
 
-        auto result = create_op("lo_fi_delay", VIVID_DOMAIN_CONTROL, tmp);
+        auto result = create_op("lo_fi_delay", VIVID_ENV_FRAME, tmp);
         check(result.success, "create lo_fi_delay succeeds");
 
         std::string src = read_file(tmp + "/operators/control/lo_fi_delay/lo_fi_delay.cpp");
@@ -273,7 +273,7 @@ int main() {
                 << "# --- GPU operator plugins ---\n";
         }
 
-        auto result = create_op("mod_filter", VIVID_DOMAIN_CONTROL, tmp, "composite");
+        auto result = create_op("mod_filter", VIVID_ENV_FRAME, tmp, "composite");
         check(result.success, "create composite op succeeds");
         check(result.error.empty(), "no error");
 
@@ -322,10 +322,10 @@ int main() {
                 << "# --- SyphonOut operator ---\n";
         }
 
-        auto result = create_op("bad_comp", VIVID_DOMAIN_GPU, tmp, "composite");
+        auto result = create_op("bad_comp", VIVID_ENV_GPU, tmp, "composite");
         check(!result.success, "composite GPU rejected");
-        check(result.error.find("control domain") != std::string::npos,
-              "error mentions 'control domain'");
+        check(result.error.find("frame execution environment") != std::string::npos,
+              "error mentions 'frame execution environment'");
 
         fs::remove_all(tmp);
     }
@@ -350,7 +350,7 @@ int main() {
                 << ")\n";
         }
 
-        auto result = create_op("team_gain", VIVID_DOMAIN_AUDIO, tmp, "", true);
+        auto result = create_op("team_gain", VIVID_ENV_AUDIO, tmp, "", true);
         check(result.success, "create package-layout op succeeds");
 
         std::string cpp_path = tmp + "/src/team_gain.cpp";
@@ -373,7 +373,7 @@ int main() {
         fs::create_directories(tmp);
         write_full_cmake(tmp);
 
-        auto result = create_op("bare_ctrl", VIVID_DOMAIN_CONTROL, tmp, "empty");
+        auto result = create_op("bare_ctrl", VIVID_ENV_FRAME, tmp, "empty");
         check(result.success, "create empty control succeeds");
 
         std::string src = read_file(result.cpp_path);
@@ -398,7 +398,7 @@ int main() {
         fs::create_directories(tmp);
         write_full_cmake(tmp);
 
-        auto result = create_op("bare_audio", VIVID_DOMAIN_AUDIO, tmp, "empty");
+        auto result = create_op("bare_audio", VIVID_ENV_AUDIO, tmp, "empty");
         check(result.success, "create empty audio succeeds");
 
         std::string src = read_file(result.cpp_path);
@@ -421,7 +421,7 @@ int main() {
         fs::create_directories(tmp);
         write_full_cmake(tmp);
 
-        auto result = create_op("bare_gpu", VIVID_DOMAIN_GPU, tmp, "empty");
+        auto result = create_op("bare_gpu", VIVID_ENV_GPU, tmp, "empty");
         check(result.success, "create empty gpu succeeds");
 
         std::string src = read_file(result.cpp_path);
@@ -448,7 +448,7 @@ int main() {
 
         VividCreateOperatorRequest req;
         req.name = "multi_port";
-        req.domain = VIVID_DOMAIN_CONTROL;
+        req.env = VIVID_ENV_FRAME;
         req.ports = {
             {"signal",    VIVID_PORT_SIGNAL, VIVID_PORT_INPUT},
             {"modulator", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT},
@@ -483,7 +483,7 @@ int main() {
 
         VividCreateOperatorRequest req;
         req.name = "typed_port";
-        req.domain = VIVID_DOMAIN_CONTROL;
+        req.env = VIVID_ENV_FRAME;
         req.ports = {
             {"stream_in", 0, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_CUSTOM_REF,
                 32, "TestStreamToken", "tests.vivid.test_stream_token_v1", true},
@@ -519,7 +519,7 @@ int main() {
 
         VividCreateOperatorRequest req;
         req.name = "param_test";
-        req.domain = VIVID_DOMAIN_CONTROL;
+        req.env = VIVID_ENV_FRAME;
         req.params = {
             {"speed",  VIVID_PARAM_FLOAT, 1.0f, 0.0f, 10.0f},
             {"count",  VIVID_PARAM_INT,   4.0f, 1.0f, 8.0f},
@@ -562,7 +562,7 @@ int main() {
 
         VividCreateOperatorRequest req;
         req.name = "typed_port_invalid";
-        req.domain = VIVID_DOMAIN_CONTROL;
+        req.env = VIVID_ENV_FRAME;
         req.ports = {
             {"stream_in", 0, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_CUSTOM_REF,
                 0, "TestStreamToken", "tests.vivid.test_stream_token_v1", true},
@@ -588,7 +588,7 @@ int main() {
 
         VividCreateOperatorRequest req;
         req.name = "typed_port_bad_stable_id";
-        req.domain = VIVID_DOMAIN_CONTROL;
+        req.env = VIVID_ENV_FRAME;
         req.ports = {
             {"stream_in", 0, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_CUSTOM_REF,
                 16, "TestStreamToken", "Tests.Vivid.BadId", true},
@@ -614,7 +614,7 @@ int main() {
 
         VividCreateOperatorRequest req;
         req.name = "typed_port_bad_type_name";
-        req.domain = VIVID_DOMAIN_CONTROL;
+        req.env = VIVID_ENV_FRAME;
         req.ports = {
             {"stream_in", 0, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_CUSTOM_REF,
                 16, "bad-type-name", "tests.vivid.test_stream_token_v1", true},
@@ -640,7 +640,7 @@ int main() {
 
         VividCreateOperatorRequest req;
         req.name = "typed_port_conflict";
-        req.domain = VIVID_DOMAIN_CONTROL;
+        req.env = VIVID_ENV_FRAME;
         req.ports = {
             {"stream_in", 0, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_CUSTOM_REF,
                 16, "TestStreamToken", "tests.vivid.test_stream_token_v1", true},
@@ -668,7 +668,7 @@ int main() {
 
         VividCreateOperatorRequest req;
         req.name = "builtin_port_bad_metadata";
-        req.domain = VIVID_DOMAIN_CONTROL;
+        req.env = VIVID_ENV_FRAME;
         req.ports = {
             {"value_in", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_CUSTOM_REF,
                 16, "IgnoredType", "", true},
@@ -694,7 +694,7 @@ int main() {
 
         VividCreateOperatorRequest req;
         req.name = "mixed_op";
-        req.domain = VIVID_DOMAIN_CONTROL;
+        req.env = VIVID_ENV_FRAME;
         req.ports = {
             {"in_a", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT},
             {"in_b", VIVID_PORT_SPREAD, VIVID_PORT_INPUT},
@@ -730,7 +730,7 @@ int main() {
 
         VividCreateOperatorRequest req;
         req.name = "dup_port_op";
-        req.domain = VIVID_DOMAIN_CONTROL;
+        req.env = VIVID_ENV_FRAME;
         req.ports = {
             {"input", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT},
             {"input", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT},  // duplicate name
@@ -755,7 +755,7 @@ int main() {
 
         VividCreateOperatorRequest req;
         req.name = "empty_name_op";
-        req.domain = VIVID_DOMAIN_CONTROL;
+        req.env = VIVID_ENV_FRAME;
         req.ports = {
             {"", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT},
         };
@@ -779,7 +779,7 @@ int main() {
 
         VividCreateOperatorRequest req;
         req.name = "gpu_mixer";
-        req.domain = VIVID_DOMAIN_GPU;
+        req.env = VIVID_ENV_GPU;
         req.ports = {
             {"texture_in", VIVID_PORT_TEXTURE, VIVID_PORT_INPUT},
             {"texture_out", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT},

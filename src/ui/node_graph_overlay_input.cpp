@@ -155,13 +155,13 @@ void NodeGraphUI::update_example_browser() {
     }
 
     float cy = py + kPkgBrowserPadY + kPkgBrowserHeaderH + kPkgBrowserSearchH + 6;
-    static const char* domain_tabs[] = { "All", "GPU", "Audio", "Control", "I/O" };
+    static const char* env_tabs[] = { "All", "GPU", "Audio", "Control", "I/O" };
     float tx = cx;
     for (int i = 0; i < 5; ++i) {
-        float tw = example_domain_tab_widths_[i] > 0 ? example_domain_tab_widths_[i]
-                 : static_cast<float>(std::strlen(domain_tabs[i])) * 8.0f + 16.0f;
+        float tw = example_env_tab_widths_[i] > 0 ? example_env_tab_widths_[i]
+                 : static_cast<float>(std::strlen(env_tabs[i])) * 8.0f + 16.0f;
         if (mouse_.x >= tx && mouse_.x <= tx + tw && mouse_.y >= cy && mouse_.y <= cy + kPkgBrowserTabH) {
-            example_browser_domain_ = i;
+            example_browser_env_ = i;
             example_browser_scroll_ = 0;
             example_browser_sel_ = 0;
             rebuild_example_items();

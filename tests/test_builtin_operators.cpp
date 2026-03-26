@@ -1,5 +1,4 @@
 #include "runtime/builtin_operators.h"
-#include "runtime/domain.h"
 #include "runtime/operator_registry.h"
 #include "operator_api/types.h"
 #include <cstdio>
@@ -35,8 +34,8 @@ int main() {
         const auto* desc = audio_loader->descriptor();
         check(desc != nullptr, "audio_out descriptor is non-null");
         if (desc) {
-            check(desc->domain == VIVID_DOMAIN_AUDIO,
-                  "audio_out domain is VIVID_DOMAIN_AUDIO");
+            check(desc->execution_env == VIVID_ENV_AUDIO,
+                  "audio_out env is VIVID_ENV_AUDIO");
             check(desc->port_count == 1,
                   "audio_out has 1 port (input)");
             if (desc->port_count >= 1) {
@@ -57,8 +56,8 @@ int main() {
         const auto* desc = video_loader->descriptor();
         check(desc != nullptr, "video_out descriptor is non-null");
         if (desc) {
-            check(desc->domain == VIVID_DOMAIN_GPU,
-                  "video_out domain is VIVID_DOMAIN_GPU");
+            check(desc->execution_env == VIVID_ENV_GPU,
+                  "video_out env is VIVID_ENV_GPU");
             check(desc->port_count == 1, "video_out has 1 port (input)");
             if (desc->port_count >= 1) {
                 check(std::strcmp(desc->ports[0].name, "input") == 0,

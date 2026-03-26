@@ -176,7 +176,7 @@ struct CompiledNode {
     std::vector<uint8_t> descriptor_output_channels;
     bool is_mono_autodup = false;
 
-    // Float CV inputs (cross-domain bridge for audio nodes).
+    // Float CV inputs (cross-cadence bridge for audio nodes).
     std::vector<float> float_input_defaults;
     std::vector<float> float_input_values;
     uint32_t float_input_count = 0;

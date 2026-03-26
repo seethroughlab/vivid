@@ -1,5 +1,4 @@
 #include "runtime/operator_info_cache.h"
-#include "runtime/domain.h"
 #include "runtime/builtin_operators.h"
 #include "runtime/operator_registry.h"
 #include "operator_api/types.h"
@@ -52,8 +51,8 @@ int main() {
 
     // 6. Returned OperatorInfo has correct domain, port count, param count
     if (a_info_new) {
-        check(a_info_new->domain == VIVID_DOMAIN_AUDIO,
-              "audio_out info has domain VIVID_DOMAIN_AUDIO");
+        check(a_info_new->env == VIVID_ENV_AUDIO,
+              "audio_out info has env VIVID_ENV_AUDIO");
         check(a_info_new->ports.size() == 1,
               "audio_out info has 1 port");
         check(a_info_new->params.size() == 1,
@@ -62,8 +61,8 @@ int main() {
               "audio_out info param[0] name is 'device'");
     }
     if (v_info_new) {
-        check(v_info_new->domain == VIVID_DOMAIN_GPU,
-              "video_out info has domain VIVID_DOMAIN_GPU");
+        check(v_info_new->env == VIVID_ENV_GPU,
+              "video_out info has env VIVID_ENV_GPU");
         check(v_info_new->ports.size() == 1,
               "video_out info has 1 port");
         check(v_info_new->params.size() == 3,

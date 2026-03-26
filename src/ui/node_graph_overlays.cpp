@@ -81,7 +81,7 @@ void NodeGraphUI::toggle_example_browser() {
         example_browser_filter_.clear();
         example_browser_sel_ = 0;
         example_browser_scroll_ = 0;
-        example_browser_domain_ = 0;
+        example_browser_env_ = 0;
         example_browser_difficulty_ = 0;
         example_browser_sort_ = 0;
         example_browser_core_only_ = true;
@@ -199,9 +199,9 @@ void NodeGraphUI::rebuild_example_items() {
         if (example_browser_core_only_ && !e.requires_packages.empty()) continue;
         if (example_browser_package_only_ && e.requires_packages.empty()) continue;
 
-        if (example_browser_domain_ != 0) {
-            static const char* kDomainNames[] = {"", "gpu", "audio", "control", "io"};
-            const std::string target = kDomainNames[example_browser_domain_];
+        if (example_browser_env_ != 0) {
+            static const char* kEnvNames[] = {"", "gpu", "audio", "control", "io"};
+            const std::string target = kEnvNames[example_browser_env_];
             bool found = false;
             for (const auto& d : e.domains) {
                 if (icontains(d, target)) { found = true; break; }

@@ -12,12 +12,12 @@ OverlayPanelLayout compute_create_operator_layout(uint32_t win_w, uint32_t win_h
     l.pw = kCreateModalW;
 
     // Calculate content height:
-    //   pad_y + title(24) + domain_btns(22+10) + [composite_row(24+8)] + name_field(24+8)
+    //   pad_y + title(24) + env_btns(22+10) + [composite_row(24+8)] + name_field(24+8)
     //   + hint_line(18+8) + destination_row(22+8)
     //   + error_area(18+8) + button_row(26) + pad_y
     float h = kCreateModalPadY;
     h += 24.0f;  // title
-    h += kCreateDomainBtnH + 10.0f;  // domain buttons
+    h += kCreateEnvBtnH + 10.0f;  // env buttons
     if (show_composite) h += 24.0f + kCreateModalRowGap;  // composite checkbox row
     h += kCreateModalFieldH + kCreateModalRowGap;  // name field
     h += kCreateModalSectionGap + 18.0f + kCreateModalRowGap;  // MCP hint line

@@ -3,8 +3,6 @@
 // and DC stability (flanger).
 
 #include "runtime/operator_loader.h"
-#include "runtime/domain.h"
-
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -101,7 +99,7 @@ static void test_operator(const std::string& staging, const OpInfo& info) {
     if (!desc) return;
 
     check(std::strcmp(desc->name, info.name) == 0, "descriptor name matches");
-    check(desc->domain == VIVID_DOMAIN_AUDIO, "domain = AUDIO");
+    check(desc->execution_env == VIVID_ENV_AUDIO, "env = AUDIO");
     check(desc->has_process_audio == 1, "has_process_audio");
     check(static_cast<int>(desc->param_count) == info.expected_param_count,
           "param_count matches");

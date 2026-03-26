@@ -319,12 +319,12 @@ void NodeGraphUI::draw_example_browser(Renderer2D& tr) {
     }
     cy += kPkgBrowserSearchH + 6;
 
-    static const char* domain_tabs[] = { "All", "GPU", "Audio", "Control", "I/O" };
+    static const char* env_tabs[] = { "All", "GPU", "Audio", "Control", "I/O" };
     float tx = cx;
     for (int i = 0; i < 5; ++i) {
-        bool sel = (i == example_browser_domain_);
-        float tw = draw_tab_button(tr, style_, tx, cy, kPkgBrowserTabH, domain_tabs[i], sel, false);
-        example_domain_tab_widths_[i] = tw;
+        bool sel = (i == example_browser_env_);
+        float tw = draw_tab_button(tr, style_, tx, cy, kPkgBrowserTabH, env_tabs[i], sel, false);
+        example_env_tab_widths_[i] = tw;
         tx += tw + 4.0f;
     }
     cy += kPkgBrowserTabH + 8;

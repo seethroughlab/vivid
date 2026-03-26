@@ -1,5 +1,4 @@
 #include "runtime/operator_creator.h"
-#include "runtime/domain.h"
 #include "runtime/operator_registry.h"
 #include <algorithm>
 #include <cctype>
@@ -158,11 +157,11 @@ static void emit_custom_type_support(std::ostringstream& s,
     s << "}\n\n";
 }
 
-static const char* domain_subdir(VividDomain d) {
-    switch (d) {
-        case VIVID_DOMAIN_CONTROL: return "control";
-        case VIVID_DOMAIN_AUDIO:   return "audio";
-        case VIVID_DOMAIN_GPU:     return "gpu";
+static const char* env_subdir(VividExecutionEnv e) {
+    switch (e) {
+        case VIVID_ENV_FRAME: return "control";
+        case VIVID_ENV_AUDIO: return "audio";
+        case VIVID_ENV_GPU:   return "gpu";
         default: return nullptr;
     }
 }
@@ -621,17 +620,17 @@ static std::string gpu_shader_template() {
 // GPU     → before "# --- SyphonOut operator"
 // Audio   → before "# --- Operators meta-target"
 
-static std::string cmake_insertion_marker(VividDomain domain) {
-    switch (domain) {
-        case VIVID_DOMAIN_CONTROL: return "# --- GPU operator plugins";
-        case VIVID_DOMAIN_GPU:     return "# --- SyphonOut operator";
-        case VIVID_DOMAIN_AUDIO:   return "# --- Operators meta-target";
+static std::string cmake_insertion_marker(VividExecutionEnv env) {
+    switch (env) {
+        case VIVID_ENV_FRAME: return "# --- GPU operator plugins";
+        case VIVID_ENV_GPU:   return "# --- SyphonOut operator";
+        case VIVID_ENV_AUDIO: return "# --- Operators meta-target";
         default: return "";
     }
 }
 
 static bool patch_cmake(const std::string& src_dir, const std::string& name,
-                         VividDomain domain, const std::string& extra_libs,
+                         VividExecutionEnv env, const std::string& extra_libs,
                          std::string& error) {
     std::string cmake_path = src_dir + "/CMakeLists.txt";
     std::ifstream ifs(cmake_path);
@@ -644,18 +643,18 @@ static bool patch_cmake(const std::string& src_dir, const std::string& name,
                          std::istreambuf_iterator<char>());
     ifs.close();
 
-    std::string marker = cmake_insertion_marker(domain);
+    std::string marker = cmake_insertion_marker(env);
     auto pos = content.find(marker);
     if (pos == std::string::npos) {
         error = "cannot find insertion marker '" + marker + "' in CMakeLists.txt";
         return false;
     }
 
-    const char* dsub = domain_subdir(domain);
+    const char* dsub = env_subdir(env);
     std::ostringstream block;
     block << "add_vivid_operator(" << name << std::string(std::max(0, 16 - static_cast<int>(name.size())), ' ')
           << " operators/" << dsub << "/" << name << "/" << name << ".cpp";
-    if (domain == VIVID_DOMAIN_GPU)
+    if (env == VIVID_ENV_GPU)
         block << "  EXTRA_LIBS webgpu";
     else if (!extra_libs.empty())
         block << "  EXTRA_LIBS " << extra_libs;
@@ -735,9 +734,9 @@ CreateOperatorResult OperatorCreator::create(const VividCreateOperatorRequest& r
                                               const std::string& src_dir,
                                               bool package_layout) {
     CreateOperatorResult result{};
-    const char* dsub = domain_subdir(request.domain);
+    const char* dsub = env_subdir(request.env);
     if (!dsub) {
-        result.error = "invalid domain";
+        result.error = "invalid execution environment";
         return result;
     }
 
@@ -746,8 +745,8 @@ CreateOperatorResult OperatorCreator::create(const VividCreateOperatorRequest& r
         result.error = "unknown variant '" + request.variant + "' (supported: composite, empty)";
         return result;
     }
-    if (request.variant == "composite" && request.domain != VIVID_DOMAIN_CONTROL) {
-        result.error = "composite variant is only supported for control domain";
+    if (request.variant == "composite" && request.env != VIVID_ENV_FRAME) {
+        result.error = "composite variant is only supported for frame execution environment";
         return result;
     }
 
@@ -851,19 +850,19 @@ CreateOperatorResult OperatorCreator::create(const VividCreateOperatorRequest& r
     // Generate source from template
     std::string source;
     if (request.variant == "empty") {
-        switch (request.domain) {
-            case VIVID_DOMAIN_CONTROL: source = empty_control_template(struct_name); break;
-            case VIVID_DOMAIN_AUDIO:   source = empty_audio_template(struct_name);   break;
-            case VIVID_DOMAIN_GPU:     source = empty_gpu_template(request.name, struct_name); break;
+        switch (request.env) {
+            case VIVID_ENV_FRAME: source = empty_control_template(struct_name); break;
+            case VIVID_ENV_AUDIO: source = empty_audio_template(struct_name);   break;
+            case VIVID_ENV_GPU:   source = empty_gpu_template(request.name, struct_name); break;
             default: break;
         }
     } else if (request.variant == "composite") {
         source = composite_control_template(request.name, struct_name);
     } else {
-        switch (request.domain) {
-            case VIVID_DOMAIN_CONTROL: source = control_template(request.name, struct_name, request.ports, request.params); break;
-            case VIVID_DOMAIN_AUDIO:   source = audio_template(request.name, struct_name, request.ports, request.params);   break;
-            case VIVID_DOMAIN_GPU:     source = gpu_template(request.name, struct_name, request.ports, request.params);     break;
+        switch (request.env) {
+            case VIVID_ENV_FRAME: source = control_template(request.name, struct_name, request.ports, request.params); break;
+            case VIVID_ENV_AUDIO: source = audio_template(request.name, struct_name, request.ports, request.params);   break;
+            case VIVID_ENV_GPU:   source = gpu_template(request.name, struct_name, request.ports, request.params);     break;
             default: break;
         }
     }
@@ -878,7 +877,7 @@ CreateOperatorResult OperatorCreator::create(const VividCreateOperatorRequest& r
     }
 
     // GPU operators also need a .wgsl shader file
-    if (request.domain == VIVID_DOMAIN_GPU) {
+    if (request.env == VIVID_ENV_GPU) {
         std::string wgsl_path = op_dir + "/" + request.name + ".wgsl";
         std::ofstream ofs(wgsl_path);
         if (!ofs) {
@@ -898,7 +897,7 @@ CreateOperatorResult OperatorCreator::create(const VividCreateOperatorRequest& r
     if (package_layout)
         patch_ok = patch_package_cmake(src_dir, request.name, cmake_err);
     else
-        patch_ok = patch_cmake(src_dir, request.name, request.domain, extra_libs, cmake_err);
+        patch_ok = patch_cmake(src_dir, request.name, request.env, extra_libs, cmake_err);
     if (!patch_ok) {
         result.error = cmake_err;
         return result;

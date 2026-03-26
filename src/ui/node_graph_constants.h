@@ -1,7 +1,6 @@
 #pragma once
 
 #include "operator_api/types.h"
-#include "runtime/domain.h"
 #include <array>
 
 namespace vivid::ui {
@@ -95,7 +94,7 @@ static constexpr float kGridLineAlpha = 0.06f;
 // Wire rendering
 static constexpr float kWireHoverBright = 1.3f;
 
-// Cross-domain wire dashing
+// Cross-cadence wire dashing
 static constexpr float kDashOn = 8.0f;
 static constexpr float kDashOff = 6.0f;
 
@@ -118,8 +117,8 @@ static constexpr float kCreateModalRowGap = 8.0f;
 static constexpr float kCreateModalSectionGap = 14.0f;
 static constexpr float kCreateModalBtnW = 100.0f;
 static constexpr float kCreateModalBtnH = 26.0f;
-static constexpr float kCreateDomainBtnW = 100.0f;
-static constexpr float kCreateDomainBtnH = 22.0f;
+static constexpr float kCreateEnvBtnW = 100.0f;
+static constexpr float kCreateEnvBtnH = 22.0f;
 // Legacy alias
 static constexpr float kCreatePopupW = kCreateModalW;
 static constexpr float kCreatePopupH = 130.0f;  // kept for any remaining references
@@ -134,24 +133,24 @@ static constexpr float kInspScrollbarW = 6.0f;
 static constexpr float kInspScrollSpeed = 40.0f;     // px per scroll tick
 static constexpr float kInspScrollbarMinThumb = 20.0f;
 
-// Shared domain helpers (inline so they can live in the header)
+// Shared execution-env helpers (inline so they can live in the header)
 
-inline const float* domain_color(VividDomain domain) {
-    switch (domain) {
-        case VIVID_DOMAIN_GPU:     return kGpuAccent.data();
-        case VIVID_DOMAIN_AUDIO:   return kAudioAccent.data();
-        case VIVID_DOMAIN_CONTROL: return kControlAccent.data();
-        default:                   return kControlAccent.data();
+inline const float* env_color(VividExecutionEnv env) {
+    switch (env) {
+        case VIVID_ENV_GPU:   return kGpuAccent.data();
+        case VIVID_ENV_AUDIO: return kAudioAccent.data();
+        case VIVID_ENV_FRAME: return kControlAccent.data();
+        default:              return kControlAccent.data();
     }
 }
 
-inline float domain_body_height(VividDomain domain, bool has_custom_thumb = false) {
-    if (has_custom_thumb && domain != VIVID_DOMAIN_GPU) return kGpuThumbH;
-    switch (domain) {
-        case VIVID_DOMAIN_GPU:     return kGpuThumbH;
-        case VIVID_DOMAIN_AUDIO:   return kAudioWaveH;
-        case VIVID_DOMAIN_CONTROL: return kControlSparkH;
-        default:                   return kControlSparkH;
+inline float env_body_height(VividExecutionEnv env, bool has_custom_thumb = false) {
+    if (has_custom_thumb && env != VIVID_ENV_GPU) return kGpuThumbH;
+    switch (env) {
+        case VIVID_ENV_GPU:   return kGpuThumbH;
+        case VIVID_ENV_AUDIO: return kAudioWaveH;
+        case VIVID_ENV_FRAME: return kControlSparkH;
+        default:              return kControlSparkH;
     }
 }
 

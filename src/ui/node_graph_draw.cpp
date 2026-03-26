@@ -231,7 +231,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         float s_accent_h = g_to_s(kAccentBarH);
         tr.draw_rect(sx, sy, sw, s_accent_h, dcol[0], dcol[1], dcol[2]);
 
-        // --- Domain body region ---
+        // --- Env body region ---
         float s_body_y = sy + s_accent_h;
         bool has_ct = custom_thumb_nodes_.count(r.node_id) > 0;
         float body_h = env_body_height(r.env, has_ct);
@@ -379,7 +379,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
                 }
             }
         }
-        // GPU domain: body region left blank (thumbnails drawn in separate pass)
+        // GPU env: body region left blank (thumbnails drawn in separate pass)
 
         // Type name (centered, below accent bar + body)
         float text_y = sy + s_accent_h + s_body_h + g_to_s(kNodePadY);
@@ -393,7 +393,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         tr.draw_text(ix, text_y + g_to_s(kLineH), r.node_id.c_str(),
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, zoom_);
 
-        // Input port dots and labels (use domain color)
+        // Input port dots and labels (use env color)
         float s_dot = kPortDotSize * zoom_;
         float s_line_h = tr.line_height() * zoom_;
         for (const auto& p : r.inputs) {
@@ -412,7 +412,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
                          style_.dim_text[0], style_.dim_text[1], style_.dim_text[2],
                          port_hov ? 1.0f : (p.is_param ? kParamDotAlpha : 1.0f), zoom_);
         }
-        // Output port dots and labels (use domain color)
+        // Output port dots and labels (use env color)
         for (const auto& p : r.outputs) {
             if (p.is_param && !show_param_wires_) continue;
             float spx = gx_to_sx(p.x), spy = gy_to_sy(p.y);
@@ -490,7 +490,7 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
         float ssx = gx_to_sx(gsx), ssy = gy_to_sy(gsy);
         float sex = gx_to_sx(gex), sey = gy_to_sy(gey);
 
-        // Domain-colored wires (source node's accent color)
+        // Env-colored wires (source node's accent color)
         const float* dcol = env_color(from_rect.env);
         bool sel = selected_node_ids_.count(c.from_node) > 0 || selected_node_ids_.count(c.to_node) > 0;
         bool wire_sel = (ci == selected_wire_idx_);
@@ -633,7 +633,7 @@ void NodeGraphUI::draw_wire_tooltip(Renderer2D& tr) {
     if (px + popup_w > graph_right()) px = mouse_.x - popup_w - kTooltipClampMargin;
     if (py + popup_h > static_cast<float>(win_h_)) py = mouse_.y - popup_h - kTooltipClampMargin;
 
-    // Find domain color for accent from source node rect
+    // Find env color for accent from source node rect
     const float* dcol = nullptr;
     for (const auto& r : node_rects_) {
         if (r.node_id == c.from_node) { dcol = env_color(r.env); break; }
@@ -867,7 +867,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
             float px = insp_x + kInspPadX;
             float py = viewport_top + 8 - insp_scroll_y_;
 
-            // Header: both node names with domain colors
+            // Header: both node names with env colors
             const float* clr_a = env_color(node_a->env);
             const float* clr_b = env_color(node_b->env);
             tr.draw_text(px, py, node_a->op_info->name.c_str(), clr_a[0], clr_a[1], clr_a[2]);
@@ -2691,7 +2691,7 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
             wx0 = dst_x; wy0 = dst_y; wx1 = src_x; wy1 = src_y;
         }
 
-        // Wire color from source node's domain
+        // Wire color from source node's env
         const float* wire_clr = ab ? clr_a : clr_b;
         float wire_alpha = c.has_remap() ? 0.7f : 1.0f;
 
@@ -2857,7 +2857,7 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
             idx < static_cast<int>(chooser_subtitles_.size()) ? chooser_subtitles_[idx] : "";
 
         if (chooser_mode_ == ChooserMode::Operators && name == "+ New Operator...") {
-            // Sentinel: accent-colored text, no domain dot
+            // Sentinel: accent-colored text, no env dot
             tr.draw_text(px + 10, item_y + 3, name.c_str(),
                          style_.accent[0], style_.accent[1], style_.accent[2]);
         } else if (chooser_mode_ == ChooserMode::FileDrop) {
@@ -2867,7 +2867,7 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
                              style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
             }
         } else {
-            // Domain color dot
+            // Env color dot
             const float* dcol = kControlAccent.data(); // default
             auto cat_it = snap_.operator_catalog.find(name);
             if (cat_it != snap_.operator_catalog.end()) {
@@ -2877,7 +2877,7 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
             float dot_y = item_y + (kChooserItemH - 6) * 0.5f;
             tr.draw_rect(dot_x, dot_y, 6, 6, dcol[0], dcol[1], dcol[2]);
 
-            // Domain tag
+            // Env tag
             const char* tag = "[C]";
             if (cat_it != snap_.operator_catalog.end()) {
                 switch (cat_it->second->env) {
@@ -3592,7 +3592,7 @@ void NodeGraphUI::draw_create_popup(Renderer2D& tr) {
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
     cy += 24.0f;
 
-    // 2. Domain selector buttons
+    // 2. Env selector buttons
     const char* env_labels[] = { "control", "audio", "gpu" };
     const std::array<float, 3>* env_colors[] = { &kControlAccent, &kAudioAccent, &kGpuAccent };
     float btn_gap = 8.0f;
@@ -3614,7 +3614,7 @@ void NodeGraphUI::draw_create_popup(Renderer2D& tr) {
     }
     cy += kCreateEnvBtnH + 10.0f;
 
-    // 3. Composite checkbox (control domain only)
+    // 3. Composite checkbox (control env only)
     if (show_composite) {
         draw_checkbox(tr, style_, cx, cy + 2, 16.0f, create_composite_);
         tr.draw_text(cx + 22, cy + 2, T("composite_template", "Composite (ChildOp template)"),

@@ -9,7 +9,6 @@
 #include "runtime/audio_engine.h"
 #include "runtime/cadence_bridge.h"
 #include "runtime/compiled_graph.h"
-#include "runtime/domain.h"
 #include "runtime/file_watcher.h"
 #include "runtime/hot_reload.h"
 #include "runtime/runtime_api.h"
@@ -1160,9 +1159,9 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         auto& sn = snap.nodes[i];
         sn.node_id = cn.node_id;
         sn.type_name = scheduler.type_name(static_cast<uint32_t>(i));
-        if (cn.is_gpu) sn.domain = VIVID_DOMAIN_GPU;
-        else if (cn.active_cadence == vivid::Cadence::Audio) sn.domain = VIVID_DOMAIN_AUDIO;
-        else sn.domain = VIVID_DOMAIN_CONTROL;
+        if (cn.is_gpu) sn.env = VIVID_ENV_GPU;
+        else if (cn.active_cadence == vivid::Cadence::Audio) sn.env = VIVID_ENV_AUDIO;
+        else sn.env = VIVID_ENV_FRAME;
         sn.is_gpu = cn.is_gpu;
         sn.is_audio = (cn.active_cadence == vivid::Cadence::Audio);
         sn.is_audio_capable = (cn.cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE);
@@ -2210,14 +2209,14 @@ int main(int argc, char* argv[]) {
                                "Overwrite destination if it already exists");
 
     std::string scaffold_op_name;
-    std::string scaffold_op_domain = "control";
+    std::string scaffold_op_env = "control";
     std::string scaffold_op_variant;
     std::string scaffold_op_dest = "auto";
     auto* scaffold_op_cmd = app.add_subcommand("scaffold-operator",
         "Scaffold a starter operator source file");
     scaffold_op_cmd->add_option("name", scaffold_op_name, "Operator name (snake_case)")->required();
-    scaffold_op_cmd->add_option("--domain", scaffold_op_domain,
-                                "Operator domain: control|audio|gpu")
+    scaffold_op_cmd->add_option("--env,--domain", scaffold_op_env,
+                                "Execution environment: control|audio|gpu")
         ->check(CLI::IsMember({"control", "audio", "gpu"}))
         ->default_val("control");
     scaffold_op_cmd->add_option("--variant", scaffold_op_variant,
@@ -2351,11 +2350,11 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
 
-            VividDomain domain = VIVID_DOMAIN_CONTROL;
-            if (scaffold_op_domain == "audio")
-                domain = VIVID_DOMAIN_AUDIO;
-            else if (scaffold_op_domain == "gpu")
-                domain = VIVID_DOMAIN_GPU;
+            VividExecutionEnv env = VIVID_ENV_FRAME;
+            if (scaffold_op_env == "audio")
+                env = VIVID_ENV_AUDIO;
+            else if (scaffold_op_env == "gpu")
+                env = VIVID_ENV_GPU;
 
             ScaffoldDestination destination;
             std::string dest_error;
@@ -2370,7 +2369,7 @@ int main(int argc, char* argv[]) {
 
             VividCreateOperatorRequest req;
             req.name = scaffold_op_name;
-            req.domain = domain;
+            req.env = env;
             req.variant = scaffold_op_variant;
             auto result = vivid::OperatorCreator::create(req, destination.root,
                                                          destination.package_layout);

@@ -410,13 +410,6 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
             desc.cadence_capability = VIVID_CADENCE_AUDIO_CAPABLE;            \
         else                                                                  \
             desc.cadence_capability = VIVID_CADENCE_FRAME_ONLY;               \
-        /* Set deprecated domain field (numeric — VividDomain moved to internal header) */ \
-        if (desc.has_process_audio && !desc.has_process_frame)                \
-            desc.domain = 1u;  /* AUDIO */                                    \
-        else if (desc.has_process_gpu)                                        \
-            desc.domain = 2u;  /* GPU */                                      \
-        else                                                                  \
-            desc.domain = 0u;  /* CONTROL */                                  \
         desc.param_count    = static_cast<uint32_t>(s_params.size());         \
         desc.params         = s_params.data();                                \
         desc.port_count     = static_cast<uint32_t>(s_ports.size());          \

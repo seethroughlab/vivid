@@ -2,7 +2,6 @@
 
 #include "ui/ui_command_sink.h"
 #include "runtime/runtime_api.h"
-#include "runtime/domain.h"
 #include "runtime/operator_registry.h"
 #include "runtime/operator_creator.h"
 #include "runtime/hot_reload.h"
@@ -706,11 +705,11 @@ private:
         const auto* desc = loader->descriptor();
         if (!desc) return;
 
-        // Map domain → subdirectory
-        const char* domain_dir = "control";
-        switch (desc->domain) {
-            case VIVID_DOMAIN_AUDIO: domain_dir = "audio"; break;
-            case VIVID_DOMAIN_GPU:   domain_dir = "gpu"; break;
+        // Map execution env → subdirectory
+        const char* env_dir = "control";
+        switch (desc->execution_env) {
+            case VIVID_ENV_AUDIO: env_dir = "audio"; break;
+            case VIVID_ENV_GPU:   env_dir = "gpu"; break;
             default: break;
         }
 
@@ -719,7 +718,7 @@ private:
         for (auto& c : stem) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 
         // Read source .cpp
-        std::string src_dir = operators_dir_ + "/" + domain_dir + "/" + stem;
+        std::string src_dir = operators_dir_ + "/" + env_dir + "/" + stem;
         std::string cpp_path = src_dir + "/" + stem + ".cpp";
         std::string cpp_source;
         {
@@ -770,7 +769,7 @@ private:
         if (use_project_package) {
             new_dir = (std::filesystem::path(dest.root) / "src").string();
         } else {
-            new_dir = operators_dir_ + "/" + domain_dir + "/" + new_stem;
+            new_dir = operators_dir_ + "/" + env_dir + "/" + new_stem;
             std::filesystem::create_directories(new_dir);
         }
 
@@ -828,10 +827,10 @@ private:
                 return;
             }
             ofs << "\nadd_library(" << new_stem << " MODULE operators/"
-                << domain_dir << "/" << new_stem << "/" << new_stem << ".cpp)\n";
+                << env_dir << "/" << new_stem << "/" << new_stem << ".cpp)\n";
             ofs << "set_target_properties(" << new_stem
                 << " PROPERTIES PREFIX \"\" SUFFIX \"${VIVID_PLUGIN_SUFFIX}\")\n";
-            if (desc->domain == VIVID_DOMAIN_GPU)
+            if (desc->execution_env == VIVID_ENV_GPU)
                 ofs << "target_link_libraries(" << new_stem << " PRIVATE vivid_operator_api webgpu)\n";
             else
                 ofs << "target_link_libraries(" << new_stem << " PRIVATE vivid_operator_api)\n";

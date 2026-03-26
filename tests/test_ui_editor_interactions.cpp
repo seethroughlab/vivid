@@ -96,7 +96,7 @@ static std::shared_ptr<OperatorInfo> make_op(
     const std::vector<PortInfo>& ports) {
     auto op = std::make_shared<OperatorInfo>();
     op->name = name;
-    op->domain = VIVID_DOMAIN_CONTROL;
+    op->env = VIVID_ENV_FRAME;
     op->params = params;
     op->ports = ports;
     return op;
@@ -109,7 +109,7 @@ static void add_node(GraphSnapshot& snap, const std::shared_ptr<OperatorInfo>& o
     NodeSnapshot node;
     node.node_id = node_id;
     node.type_name = op->name;
-    node.domain = VIVID_DOMAIN_CONTROL;
+    node.env = VIVID_ENV_FRAME;
     node.has_layout = true;
     node.layout_x = x;
     node.layout_y = y;
