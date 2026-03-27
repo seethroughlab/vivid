@@ -76,7 +76,7 @@ VIVID_CUSTOM_PORT("media_stream", VIVID_PORT_INPUT, vivid::MediaStreamV1, VIVID_
 
 Operator dylibs register their custom types by exporting `vivid_describe_custom_types()`, which returns a static array of `VividPortTypeInfo` records. The `VIVID_DESCRIBE_REF_TYPE(T)` convenience macro handles this for single-type `CUSTOM_REF` operators. The runtime calls this export after `dlopen` and registers each type in the global port type registry. Re-registering the same type with identical fields is idempotent; mismatched fields trigger a fatal error.
 
-When the user draws a connection in the graph editor, the scheduler compares custom type IDs on both ends. Mismatched IDs (e.g. connecting a `MediaStreamV1` output to a `MeshBufferV1` input) are rejected — the connection is never created. This prevents silent `void*` misinterpretation.
+When the user draws a connection in the graph editor, the runtime compares custom type IDs on both ends. Mismatched IDs (e.g. connecting a `MediaStreamV1` output to a `MeshBufferV1` input) are rejected — the connection is never created. This prevents silent `void*` misinterpretation.
 
 ### Semantic Tags (Advisory)
 Port types can carry optional semantic tags: normalized (0–1), bipolar (-1 to 1), frequency_hz, decibels, midi_note, etc. **Tags are advisory hints, not enforced by the runtime.** When connecting ports with mismatched ranges, the graph editor suggests inserting a visible Remap node with the mapping pre-configured. No silent auto-mapping.
@@ -370,7 +370,7 @@ vivid/
 │   ├── runtime/                # Core engine
 │   │   ├── main.cpp            # Entry point, window, main loop
 │   │   ├── graph.cpp/.h        # JSON graph loading, node management, serialization
-│   │   ├── scheduler.cpp/.h    # Frame scheduling, domain dispatch, wire resolution
+│   │   ├── runtime_core.cpp/.h # Graph compilation, frame-rate execution, cadence bridge
 │   │   ├── audio_engine.cpp/.h # miniaudio device, audio callback, ParamSnapshot bridge
 │   │   ├── gpu_context.cpp/.h  # WebGPU device, queue, surface
 │   │   ├── hot_reload.cpp/.h   # File watch, compile, dlclose/dlopen swap
@@ -625,7 +625,7 @@ Vivid exposes its full runtime API through two integration surfaces:
 
 **Python MCP Server** (`mcp/vivid_mcp.py`) — a Python wrapper that connects to the control server and re-exposes its tools as a standard MCP stdio server. This allows any MCP client (Claude Desktop, custom agents) to interact with a running Vivid instance without direct HTTP calls. The running Vivid app owns the live graph and the HTTP port; the Python process owns the MCP stdio layer.
 
-**Runtime API** (`src/runtime/runtime_api.cpp/.h`) — the internal C++ API that both the control server and the built-in chat interface call into. All graph mutations, operator creation, capture, and analysis operations are implemented here. The Runtime API operates on the same in-process data structures as the scheduler and graph — no serialization overhead.
+**Runtime API** (`src/runtime/runtime_api.cpp/.h`) — the internal C++ API that both the control server and the built-in chat interface call into. All graph mutations, operator creation, capture, and analysis operations are implemented here. The Runtime API operates on the same in-process data structures as the runtime and graph — no serialization overhead.
 
 ## 5.23 Media Pipeline
 

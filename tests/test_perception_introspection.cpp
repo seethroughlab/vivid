@@ -95,14 +95,14 @@ int main(int argc, char* argv[]) {
     check(graph.add_node("gpu1", "Shape"), "add gpu node");
     check(graph.add_node("missing1", "DefinitelyMissingOp"), "add missing-operator node");
 
-    vivid::RuntimeCore scheduler;
-    check(scheduler.build(graph, registry), "scheduler.build()");
-    scheduler.tick(0.0, 0.016, 0, nullptr);
+    vivid::RuntimeCore runtime;
+    check(runtime.build(graph, registry), "runtime.build()");
+    runtime.tick(0.0, 0.016, 0, nullptr);
 
     vivid::AudioEngine audio_engine;
     bool has_gpu_ops = false;
     bool has_audio = false;
-    vivid::RuntimeAPI api(graph, scheduler, audio_engine, registry);
+    vivid::RuntimeAPI api(graph, runtime, audio_engine, registry);
 
     vivid::ControlServer server;
     check(server.start(kPort), "server.start()");
@@ -110,7 +110,7 @@ int main(int argc, char* argv[]) {
     std::atomic<bool> done{false};
     std::thread pump([&]() {
         while (!done.load()) {
-            server.process_requests(api, graph, scheduler, registry, has_gpu_ops, has_audio);
+            server.process_requests(api, graph, runtime, registry, has_gpu_ops, has_audio);
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     });
@@ -195,7 +195,7 @@ int main(int argc, char* argv[]) {
     done.store(true);
     pump.join();
     server.stop();
-    scheduler.shutdown();
+    runtime.shutdown();
     std::filesystem::remove_all(staging);
     std::filesystem::remove_all(test_home);
 

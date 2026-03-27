@@ -80,15 +80,15 @@ static void scenario_param_responsiveness(vivid::OperatorRegistry& registry) {
     vivid::Graph graph;
     graph.add_node("a", "TestOp");
 
-    vivid::RuntimeCore scheduler;
-    check(scheduler.build(graph, registry), "s1: scheduler.build()");
+    vivid::RuntimeCore runtime;
+    check(runtime.build(graph, registry), "s1: runtime.build()");
 
     // Warm-up tick
-    scheduler.tick(0.0, 0.016, 0);
+    runtime.tick(0.0, 0.016, 0);
 
     auto t0 = std::chrono::high_resolution_clock::now();
 
-    auto* a_node = scheduler.compiled_graph()->find_node("a");
+    auto* a_node = runtime.compiled_graph()->find_node("a");
     check(a_node != nullptr, "s1: find node a");
     if (a_node) {
         auto pi = a_node->param_indices.find("scale");
@@ -97,7 +97,7 @@ static void scenario_param_responsiveness(vivid::OperatorRegistry& registry) {
             a_node->param_values[pi->second] = 42.0f;
         }
     }
-    scheduler.tick(0.0, 0.016, 1);
+    runtime.tick(0.0, 0.016, 1);
 
     auto t1 = std::chrono::high_resolution_clock::now();
     auto us = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
@@ -107,7 +107,7 @@ static void scenario_param_responsiveness(vivid::OperatorRegistry& registry) {
     }
 
     check_latency("param_responsiveness", us, 50000);
-    scheduler.shutdown();
+    runtime.shutdown();
 }
 
 // =========================================================================
@@ -120,13 +120,13 @@ static void scenario_routing_responsiveness(vivid::OperatorRegistry& registry) {
     graph.add_node("a", "TestOp", {{"scale", 5.0f}});
     graph.add_node("b", "TestOp");
 
-    vivid::RuntimeCore scheduler;
-    check(scheduler.build(graph, registry), "s2: scheduler.build()");
+    vivid::RuntimeCore runtime;
+    check(runtime.build(graph, registry), "s2: runtime.build()");
     vivid::AudioEngine audio_engine;
-    vivid::RuntimeAPI api(graph, scheduler, audio_engine, registry);
+    vivid::RuntimeAPI api(graph, runtime, audio_engine, registry);
 
     // Initial tick: a outputs 5*2=10
-    scheduler.tick(0.0, 0.016, 0);
+    runtime.tick(0.0, 0.016, 0);
 
     auto t0 = std::chrono::high_resolution_clock::now();
 
@@ -134,20 +134,20 @@ static void scenario_routing_responsiveness(vivid::OperatorRegistry& registry) {
     check(r.ok, "s2: connect a/out -> b/scale");
     bool has_gpu = false, has_audio = false;
     api.apply_pending(has_gpu, has_audio);
-    scheduler.tick(0.0, 0.016, 1);
+    runtime.tick(0.0, 0.016, 1);
 
     auto t1 = std::chrono::high_resolution_clock::now();
     auto us = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
 
     // b receives a's output (10.0) as scale, outputs 10*2=20
-    const vivid::CompiledNode* b_node = scheduler.compiled_graph()->find_node("b");
+    const vivid::CompiledNode* b_node = runtime.compiled_graph()->find_node("b");
     check(b_node != nullptr, "s2: node b exists after rebuild");
     if (b_node) {
         check_float(b_node->output_values[0], 20.0f, "s2: b output = 10 * 2 = 20");
     }
 
     check_latency("routing_responsiveness", us, 100000);
-    scheduler.shutdown();
+    runtime.shutdown();
 }
 
 // =========================================================================
@@ -174,11 +174,11 @@ static void scenario_hot_reload(const std::string& build_dir) {
     check(graph.add_node("out", "audio_out"), "s3: add audio_out");
     check(graph.add_connection("audio", "out", "out", "input"), "s3: connect audio -> out");
 
-    vivid::RuntimeCore scheduler;
-    check(scheduler.build(graph, audio_registry), "s3: scheduler.build()");
+    vivid::RuntimeCore runtime;
+    check(runtime.build(graph, audio_registry), "s3: runtime.build()");
 
     vivid::AudioEngine audio_engine;
-    check(audio_engine.build(scheduler), "s3: audio_engine.build()");
+    check(audio_engine.build(runtime), "s3: audio_engine.build()");
 
     // Verify v1 output
     {
@@ -195,8 +195,8 @@ static void scenario_hot_reload(const std::string& build_dir) {
     auto t0 = std::chrono::high_resolution_clock::now();
 
     audio_engine.pre_reload_operator("AudioReloadOp");
-    check(scheduler.reload_operator("AudioReloadOp", audio_registry, staged_v2),
-          "s3: scheduler reload");
+    check(runtime.reload_operator("AudioReloadOp", audio_registry, staged_v2),
+          "s3: runtime reload");
     check(audio_engine.post_reload_operator("AudioReloadOp", audio_registry),
           "s3: audio engine reload");
 
@@ -210,7 +210,7 @@ static void scenario_hot_reload(const std::string& build_dir) {
     check_latency("hot_reload", us, 200000, /*advisory=*/true);
 
     audio_engine.shutdown();
-    scheduler.shutdown();
+    runtime.shutdown();
     std::filesystem::remove_all(audio_staging);
 }
 
@@ -224,12 +224,12 @@ static void scenario_introspection_refresh(vivid::OperatorRegistry& registry) {
     graph.add_node("a", "TestOp", {{"scale", 5.0f}});
     graph.add_node("b", "TestOp");
 
-    vivid::RuntimeCore scheduler;
-    check(scheduler.build(graph, registry), "s4: scheduler.build()");
+    vivid::RuntimeCore runtime;
+    check(runtime.build(graph, registry), "s4: runtime.build()");
     vivid::AudioEngine audio_engine;
-    vivid::RuntimeAPI api(graph, scheduler, audio_engine, registry);
+    vivid::RuntimeAPI api(graph, runtime, audio_engine, registry);
 
-    scheduler.tick(0.0, 0.016, 0);
+    runtime.tick(0.0, 0.016, 0);
 
     auto t0 = std::chrono::high_resolution_clock::now();
 
@@ -239,7 +239,7 @@ static void scenario_introspection_refresh(vivid::OperatorRegistry& registry) {
     check(r2.ok, "s4: connect a/out -> c/scale");
     bool has_gpu = false, has_audio = false;
     api.apply_pending(has_gpu, has_audio);
-    scheduler.tick(0.0, 0.016, 1);
+    runtime.tick(0.0, 0.016, 1);
 
     auto inspect_r = api.inspect("c");
     auto list_r = api.list_nodes();
@@ -253,7 +253,7 @@ static void scenario_introspection_refresh(vivid::OperatorRegistry& registry) {
     check(list_r.message.find("c (TestOp)") != std::string::npos, "s4: list shows c");
 
     check_latency("introspection_refresh", us, 100000);
-    scheduler.shutdown();
+    runtime.shutdown();
 }
 
 int main(int argc, char* argv[]) {

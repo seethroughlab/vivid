@@ -368,7 +368,7 @@ static void test_audio_engine_integration(const std::string& build_dir) {
     check(registry.scan(staging.c_str()), "registry.scan()");
 
     // Build graph: LFO (SIGNAL output) → AudioFloatCvOp (SIGNAL input, AUDIO output)
-    // Also: TestOp (control, for scheduler to have a non-audio node)
+    // Also: TestOp (control, for runtime to have a non-audio node)
     vivid::Graph graph;
     graph.add_node("lfo", "LFO", {{"frequency", 10.0f}, {"amplitude", 1.0f},
                                     {"waveform", 0.0f}});
@@ -376,18 +376,18 @@ static void test_audio_engine_integration(const std::string& build_dir) {
     graph.add_node("ctrl", "TestOp", {{"scale", 1.0f}});
     graph.add_connection("lfo", "value", "cv_dest", "cv");
 
-    vivid::RuntimeCore scheduler;
-    check(scheduler.build(graph, registry), "scheduler.build()");
+    vivid::RuntimeCore runtime;
+    check(runtime.build(graph, registry), "runtime.build()");
 
     vivid::AudioEngine audio_engine;
-    check(audio_engine.build(scheduler), "audio_engine.build()");
+    check(audio_engine.build(runtime), "audio_engine.build()");
 
     // --- Test 5: LFO SIGNAL → AudioFloatCvOp SIGNAL input ---
     // LFO writes a per-sample buffer. The wire should deliver the last sample
     // (via auto-extraction + AudioFloatPortWire or AudioWire) to AudioFloatCvOp's
     // input_float_values. AudioFloatCvOp then fills its AUDIO output with that CV value.
-    scheduler.tick(0.0, 1.0 / 60.0, 0, nullptr);
-    scheduler.cadence_bridge().push_to_audio(*scheduler.compiled_graph());
+    runtime.tick(0.0, 1.0 / 60.0, 0, nullptr);
+    runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
 
     float output[vivid::AudioEngine::kBufferSize * 2] = {};
     audio_engine.process_audio_for_test(output, vivid::AudioEngine::kBufferSize);
@@ -397,19 +397,19 @@ static void test_audio_engine_integration(const std::string& build_dir) {
     int cv_dest_idx = audio_engine.audio_node_index("cv_dest");
     check(cv_dest_idx >= 0, "cv_dest found in audio engine");
 
-    // --- Test 7: pull_from_audio delivers LFO scalar back to scheduler ---
-    scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
+    // --- Test 7: pull_from_audio delivers LFO scalar back to runtime ---
+    runtime.cadence_bridge().pull_from_audio(*runtime.compiled_graph());
 
     int lfo_sched_idx = -1;
-    for (size_t i = 0; i < scheduler.compiled_graph()->nodes.size(); ++i) {
-        if (scheduler.compiled_graph()->nodes[i].node_id == "lfo") {
+    for (size_t i = 0; i < runtime.compiled_graph()->nodes.size(); ++i) {
+        if (runtime.compiled_graph()->nodes[i].node_id == "lfo") {
             lfo_sched_idx = static_cast<int>(i);
             break;
         }
     }
-    check(lfo_sched_idx >= 0, "LFO found in scheduler");
+    check(lfo_sched_idx >= 0, "LFO found in runtime");
     if (lfo_sched_idx >= 0) {
-        const auto& lfo_ns = scheduler.compiled_graph()->nodes[lfo_sched_idx];
+        const auto& lfo_ns = runtime.compiled_graph()->nodes[lfo_sched_idx];
         auto val_it = lfo_ns.output_port_indices.find("value");
         if (val_it != lfo_ns.output_port_indices.end()) {
             float injected = lfo_ns.output_values[val_it->second];
@@ -417,9 +417,9 @@ static void test_audio_engine_integration(const std::string& build_dir) {
             // LFO is 10Hz sine. After one buffer it has advanced ~5ms into 100ms cycle.
             // The last sample should be non-zero (sine is non-zero except at exact zero crossings)
             check(std::fabs(injected) > 0.001f || true,
-                  "LFO value injected to scheduler (may be near zero at crossing)");
+                  "LFO value injected to runtime (may be near zero at crossing)");
         } else {
-            check(false, "LFO 'value' port found in scheduler");
+            check(false, "LFO 'value' port found in runtime");
         }
     }
 

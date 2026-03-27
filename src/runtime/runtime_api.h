@@ -36,7 +36,7 @@ public:
     RuntimeAPI(Graph& graph, RuntimeCore& core, AudioEngine& audio_engine,
                OperatorRegistry& registry, SystemMidiListener* system_midi = nullptr);
 
-    // Immediate: modify param on live scheduler node
+    // Immediate: modify param on live runtime node
     CommandResult set_param(const std::string& node_id, const std::string& param, float value);
     CommandResult set_string_param(const std::string& node_id, const std::string& param,
                                    const std::string& value);

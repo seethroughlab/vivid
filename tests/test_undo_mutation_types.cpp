@@ -63,11 +63,11 @@ int main(int argc, char* argv[]) {
     vivid::Graph graph;
     check(graph.load((build_dir + "/test_runtime_api.json").c_str()), "graph.load()");
 
-    vivid::RuntimeCore scheduler;
-    check(scheduler.build(graph, registry), "scheduler.build()");
+    vivid::RuntimeCore runtime;
+    check(runtime.build(graph, registry), "runtime.build()");
 
     vivid::AudioEngine audio_engine;
-    vivid::RuntimeAPI api(graph, scheduler, audio_engine, registry);
+    vivid::RuntimeAPI api(graph, runtime, audio_engine, registry);
     bool has_gpu_ops = false;
     bool has_audio = false;
 
@@ -247,7 +247,7 @@ int main(int argc, char* argv[]) {
     { "from": "a/out", "to": "b/scale" }
   ]
 })"), "load graph for uninstall undo test");
-        check(scheduler.build(graph, registry), "rebuild scheduler for uninstall undo test");
+        check(runtime.build(graph, registry), "rebuild runtime for uninstall undo test");
         sink.reset_undo_history();
         sink.set_param("a", "scale", 12.0f);
         check(graph.find_node("a")->params["scale"] == 12.0f, "post-reset mutation applied");

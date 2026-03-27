@@ -57,14 +57,14 @@ int main(int argc, char* argv[]) {
     vivid::Graph graph;
     check(graph.load(graph_path.c_str()), "graph.load()");
 
-    vivid::RuntimeCore scheduler;
-    check(scheduler.build(graph, registry), "scheduler.build()");
+    vivid::RuntimeCore runtime;
+    check(runtime.build(graph, registry), "runtime.build()");
 
     vivid::AudioEngine audio_engine;
 
     // --- Test 1: Build succeeds ---
     std::fprintf(stderr, "\n--- build ---\n");
-    check(audio_engine.build(scheduler), "audio_engine.build()");
+    check(audio_engine.build(runtime), "audio_engine.build()");
 
     int audio_idx = audio_engine.audio_node_index("audio");
     check(audio_idx >= 0, "audio node found in engine");
@@ -73,15 +73,15 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- spread arrives at audio cadence ---\n");
     check(audio_engine.start(true), "audio_engine.start(null)");
 
-    // Tick scheduler so SpreadSourceOp produces spread [1,2,3]
-    scheduler.tick(0.0, 0.016, 0);
-    scheduler.cadence_bridge().push_to_audio(*scheduler.compiled_graph());
+    // Tick runtime so SpreadSourceOp produces spread [1,2,3]
+    runtime.tick(0.0, 0.016, 0);
+    runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
 
     // Poll for audio signal: RMS should be ~6.0 (sum of [1,2,3])
     bool got_signal = false;
     for (int i = 0; i < 200; ++i) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
+        runtime.cadence_bridge().pull_from_audio(*runtime.compiled_graph());
             const auto& snap = audio_engine.analysis_read();
             if (audio_idx >= 0 && snap.rms[audio_idx] > 5.0f) {
             got_signal = true;
@@ -97,9 +97,9 @@ int main(int argc, char* argv[]) {
     // --- Test 3: Spread echoed back to frame cadence ---
     std::fprintf(stderr, "\n--- spread echoed back ---\n");
     {
-        // Find the scheduler node for "audio" and check its "echo" output spread
-        const vivid::CompiledNode* audio_ns = scheduler.compiled_graph()->find_node("audio");
-        check(audio_ns != nullptr, "audio node found in scheduler");
+        // Find the runtime node for "audio" and check its "echo" output spread
+        const vivid::CompiledNode* audio_ns = runtime.compiled_graph()->find_node("audio");
+        check(audio_ns != nullptr, "audio node found in runtime");
 
         if (audio_ns) {
             auto echo_it = audio_ns->output_port_indices.find("echo");
@@ -122,7 +122,7 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- spread update propagates ---\n");
     {
         // Change base to 2.0 → spread should become [2,4,6], sum=12
-        auto* src_ns = scheduler.compiled_graph()->find_node("src");
+        auto* src_ns = runtime.compiled_graph()->find_node("src");
         check(src_ns != nullptr, "find src node");
         if (src_ns) {
             auto pi = src_ns->param_indices.find("base");
@@ -130,14 +130,14 @@ int main(int argc, char* argv[]) {
                 src_ns->param_values[pi->second] = 2.0f;
             }
         }
-        scheduler.tick(0.0, 0.016, 1);
-        scheduler.cadence_bridge().push_to_audio(*scheduler.compiled_graph());
+        runtime.tick(0.0, 0.016, 1);
+        runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
 
         // Poll for updated RMS
         bool updated = false;
         for (int i = 0; i < 200; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
+            runtime.cadence_bridge().pull_from_audio(*runtime.compiled_graph());
             const auto& snap = audio_engine.analysis_read();
             if (audio_idx >= 0 && snap.rms[audio_idx] > 11.0f) {
                 updated = true;
@@ -150,7 +150,7 @@ int main(int argc, char* argv[]) {
         check_float(snap.rms[audio_idx], 12.0f, 1.0f, "RMS ≈ 12.0 (sum of [2,4,6])");
 
         // Check echo spread updated
-        const vivid::CompiledNode* audio_ns = scheduler.compiled_graph()->find_node("audio");
+        const vivid::CompiledNode* audio_ns = runtime.compiled_graph()->find_node("audio");
         if (audio_ns) {
             auto echo_it = audio_ns->output_port_indices.find("echo");
             if (echo_it != audio_ns->output_port_indices.end()) {
@@ -169,21 +169,21 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- empty spread ---\n");
     {
         // Set count to 0 → empty spread, sum=0
-        auto* src_ns = scheduler.compiled_graph()->find_node("src");
+        auto* src_ns = runtime.compiled_graph()->find_node("src");
         if (src_ns) {
             auto pi = src_ns->param_indices.find("count");
             if (pi != src_ns->param_indices.end()) {
                 src_ns->param_values[pi->second] = 0.0f;
             }
         }
-        scheduler.tick(0.0, 0.016, 2);
-        scheduler.cadence_bridge().push_to_audio(*scheduler.compiled_graph());
+        runtime.tick(0.0, 0.016, 2);
+        runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
 
         // Poll for RMS to drop to ~0
         bool zeroed = false;
         for (int i = 0; i < 200; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
+            runtime.cadence_bridge().pull_from_audio(*runtime.compiled_graph());
             const auto& snap = audio_engine.analysis_read();
             if (audio_idx >= 0 && snap.rms[audio_idx] < 0.5f) {
                 zeroed = true;
@@ -200,7 +200,7 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- shutdown ---\n");
     audio_engine.shutdown();
     check(true, "shutdown() no crash");
-    scheduler.shutdown();
+    runtime.shutdown();
     std::filesystem::remove_all(staging);
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",

@@ -57,14 +57,14 @@ int main(int argc, char* argv[]) {
     vivid::Graph graph;
     check(graph.load(graph_path.c_str()), "graph.load()");
 
-    vivid::RuntimeCore scheduler;
-    check(scheduler.build(graph, registry), "scheduler.build()");
+    vivid::RuntimeCore runtime;
+    check(runtime.build(graph, registry), "runtime.build()");
 
     vivid::AudioEngine audio_engine;
 
     // --- Test 1: build() ---
     std::fprintf(stderr, "\n--- build ---\n");
-    check(audio_engine.build(scheduler), "audio_engine.build()");
+    check(audio_engine.build(runtime), "audio_engine.build()");
 
     int src_idx = audio_engine.audio_node_index("src");
     int dst_idx = audio_engine.audio_node_index("dst");
@@ -79,15 +79,15 @@ int main(int argc, char* argv[]) {
     // --- Test 3: Initial audio processing ---
     std::fprintf(stderr, "\n--- initial processing ---\n");
     {
-        // Tick the scheduler so ctrl produces output (scale=0.8 → output=1.6)
-        scheduler.tick(0.0, 0.016, 0);
-        scheduler.cadence_bridge().push_to_audio(*scheduler.compiled_graph());
+        // Tick the runtime so ctrl produces output (scale=0.8 → output=1.6)
+        runtime.tick(0.0, 0.016, 0);
+        runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
 
         // Poll for analysis results
         bool got_signal = false;
         for (int i = 0; i < 200; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
+            runtime.cadence_bridge().pull_from_audio(*runtime.compiled_graph());
             const auto& snap = audio_engine.analysis_read();
             if (src_idx >= 0 && snap.rms[src_idx] > 0.01f) {
                 got_signal = true;
@@ -112,7 +112,7 @@ int main(int argc, char* argv[]) {
     {
         // Change ctrl/scale to 2.0 → output = 2.0 * 2.0 = 4.0
         // dst output = src(0.5) + ctrl(4.0) = 4.5
-        auto* ctrl_ns = scheduler.compiled_graph()->find_node("ctrl");
+        auto* ctrl_ns = runtime.compiled_graph()->find_node("ctrl");
         check(ctrl_ns != nullptr, "find ctrl node");
         if (ctrl_ns) {
             auto pi = ctrl_ns->param_indices.find("scale");
@@ -120,14 +120,14 @@ int main(int argc, char* argv[]) {
                 ctrl_ns->param_values[pi->second] = 2.0f;
             }
         }
-        scheduler.tick(0.0, 0.016, 1);
-        scheduler.cadence_bridge().push_to_audio(*scheduler.compiled_graph());
+        runtime.tick(0.0, 0.016, 1);
+        runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
 
         // Poll for updated analysis
         bool updated = false;
         for (int i = 0; i < 200; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
+            runtime.cadence_bridge().pull_from_audio(*runtime.compiled_graph());
             const auto& snap = audio_engine.analysis_read();
             if (dst_idx >= 0 && snap.rms[dst_idx] > 4.0f) {
                 updated = true;
@@ -154,7 +154,7 @@ int main(int argc, char* argv[]) {
         bool resumed = false;
         for (int i = 0; i < 200; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
+            runtime.cadence_bridge().pull_from_audio(*runtime.compiled_graph());
             const auto& snap = audio_engine.analysis_read();
             if (src_idx >= 0 && snap.rms[src_idx] > 0.01f) {
                 resumed = true;
@@ -179,7 +179,7 @@ int main(int argc, char* argv[]) {
     check(true, "shutdown() no crash");
 
     // --- Cleanup ---
-    scheduler.shutdown();
+    runtime.shutdown();
     std::filesystem::remove_all(staging);
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",

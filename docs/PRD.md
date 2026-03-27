@@ -482,7 +482,7 @@ vivid/
 │  ├─ runtime/                   # Core engine (C++)
 │  │  ├─ main.cpp                # Entry point, window, main loop
 │  │  ├─ graph.cpp/.h            # JSON graph loading, node management
-│  │  ├─ scheduler.cpp/.h        # Frame scheduling, domain threads
+│  │  ├─ runtime_core.cpp/.h     # Graph compilation, frame-rate execution
 │  │  ├─ spreads.cpp/.h          # Spread type, broadcasting
 │  │  ├─ simulation.cpp/.h       # Simulation Zone state
 │  │  ├─ bridges.cpp/.h          # Control↔GPU, Control↔Audio

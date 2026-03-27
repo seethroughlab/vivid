@@ -477,10 +477,10 @@ bool RuntimeAPI::apply_pending(bool& has_gpu_ops, bool& has_audio) {
         has_audio = false;
     }
 
-    // 3. Shutdown scheduler
+    // 3. Shutdown runtime
     core_.shutdown();
 
-    // 4. Rebuild scheduler from (mutated) graph
+    // 4. Rebuild runtime from (mutated) graph
     if (!core_.build(graph_, registry_)) {
         std::fprintf(stderr, "[vivid] RuntimeAPI: rebuild failed\n");
         has_gpu_ops = false;
@@ -1563,7 +1563,7 @@ CommandResult RuntimeAPI::new_graph(bool& has_gpu_ops, bool& has_audio) {
     }
     if (!core_.build(graph_, registry_)) {
         has_gpu_ops = false;
-        return {false, "scheduler build failed for new graph"};
+        return {false, "runtime build failed for new graph"};
     }
 
     has_gpu_ops = core_.has_gpu_operators();

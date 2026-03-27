@@ -102,49 +102,49 @@ static SingleTestResult run_graph_test(const std::string& graph_path,
     // Load operators the graph needs
     registry.load_for_graph(graph);
 
-    // Build scheduler
-    RuntimeCore sched;
-    if (!sched.build(graph, registry)) {
+    // Build runtime
+    RuntimeCore runtime;
+    if (!runtime.build(graph, registry)) {
         r.status = "failed";
         r.code = "graph_build_failed";
-        r.reason = "Failed to build scheduler for graph";
-        sched.shutdown();
+        r.reason = "Failed to build runtime for graph";
+        runtime.shutdown();
         return r;
     }
 
     // Skip GPU/audio tests — no device available in this context
-    if (sched.has_gpu_operators()) {
+    if (runtime.has_gpu_operators()) {
         r.status = "skipped";
         r.code = "graph_needs_gpu";
         r.reason = "needs GPU (no device available in test context)";
-        sched.shutdown();
+        runtime.shutdown();
         return r;
     }
-    if (sched.has_audio_operators()) {
+    if (runtime.has_audio_operators()) {
         r.status = "skipped";
         r.code = "graph_needs_audio";
         r.reason = "needs audio (no audio engine in test context)";
-        sched.shutdown();
+        runtime.shutdown();
         return r;
     }
 
     // Tick 10 frames
     for (int frame = 0; frame < 10; frame++) {
-        sched.tick(frame * 0.016, 0.016, frame);
+        runtime.tick(frame * 0.016, 0.016, frame);
     }
 
     // Check for errored nodes
-    for (const auto& node : sched.compiled_graph()->nodes) {
+    for (const auto& node : runtime.compiled_graph()->nodes) {
         if (node.errored) {
             r.status = "failed";
             r.code = "graph_node_error";
             r.reason = "Node '" + node.node_id + "' errored: " + node.error_message;
-            sched.shutdown();
+            runtime.shutdown();
             return r;
         }
     }
 
-    sched.shutdown();
+    runtime.shutdown();
     r.status = "passed";
     r.code = "graph_passed";
     return r;

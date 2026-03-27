@@ -5,7 +5,7 @@
 Vivid uses WebGPU via Dawn for all GPU rendering. The GPU domain consists of:
 
 - **`GpuContext`** — owns the WebGPU device, adapter, surface, queue
-- **`Scheduler`** — owns per-node `WGPUTexture`/`WGPUTextureView` allocations and runs GPU operator `process_gpu()` calls
+- **`RuntimeCore`** — owns per-node `WGPUTexture`/`WGPUTextureView` allocations and runs GPU operator `process_gpu()` calls
 - **`NodeState`** — holds GPU resource handles per node
 
 ## `GpuContext`
@@ -43,7 +43,7 @@ void discard_frame(const FrameState& frame); // drop without presenting (window 
 ```
 
 `begin_frame()` acquires the current surface texture. The `FrameState::encoder` is the
-command encoder for this frame — passed through `gpu_state` to `Scheduler::tick()`.
+command encoder for this frame — passed through `gpu_state` to `RuntimeCore::tick()`.
 
 ## Per-Node Textures in `NodeState`
 
@@ -79,7 +79,7 @@ std::vector<WGPUTextureView> aux_gpu_texture_views;
 ## Texture Allocation
 
 ```cpp
-// Scheduler:
+// RuntimeCore:
 void allocate_gpu_textures(WGPUDevice device, uint32_t default_w, uint32_t default_h,
                            WGPUTextureFormat format,
                            WGPUTextureUsage extra_usage = 0);
@@ -89,7 +89,7 @@ Resolution per node: `NodeDef::tex_width/height` if non-zero, otherwise `default
 `extra_usage` is OR'd into `WGPUTextureUsage` — used by the main app to request `CopySrc` for screenshot.
 
 `needs_gpu_realloc_` is set when a topology change adds/removes GPU nodes or resolution changes.
-The main loop checks `scheduler.needs_gpu_realloc()` and calls `allocate_gpu_textures()` again.
+The main loop checks `runtime.needs_gpu_realloc()` and calls `allocate_gpu_textures()` again.
 
 ## GPU Sink
 
@@ -106,7 +106,7 @@ The main loop uses `find_effective_gpu_sink()` to locate the texture to blit to 
 
 ## GPU Operator Process Call
 
-In `Scheduler::tick()`, GPU nodes receive `VividGpuContext*` with:
+In `RuntimeCore::tick()`, GPU nodes receive `VividGpuContext*` with:
 - `device`, `queue`, `encoder` — WebGPU objects
 - Input `WGPUTextureView`s (resolved from upstream nodes)
 - Output `WGPUTextureView` (the node's own `gpu_texture_view`)
@@ -138,7 +138,7 @@ Known transition sources:
 
 The main loop handles all of these via `surface_settle_frames`: when a transition
 is detected, surface presentation is suppressed for a small number of frames.
-During suppression the app continues ticking offscreen (scheduler, audio, compute
+During suppression the app continues ticking offscreen (runtime, audio, compute
 operators) using a standalone command encoder, and resumes surface presentation
 once the settle window expires.
 

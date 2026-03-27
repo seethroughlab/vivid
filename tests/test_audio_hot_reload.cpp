@@ -64,11 +64,11 @@ int main(int argc, char* argv[]) {
     check(graph.add_connection("audio", "out", "out", "input"),
           "graph.add_connection(audio/out -> out/input)");
 
-    vivid::RuntimeCore scheduler;
-    check(scheduler.build(graph, registry), "scheduler.build()");
+    vivid::RuntimeCore runtime;
+    check(runtime.build(graph, registry), "runtime.build()");
 
     vivid::AudioEngine audio_engine;
-    check(audio_engine.build(scheduler), "audio_engine.build()");
+    check(audio_engine.build(runtime), "audio_engine.build()");
 
     std::fprintf(stderr, "\n--- initial v1 processing ---\n");
     check_float(first_sample_after_process(audio_engine), 4.0f, 1e-4f,
@@ -79,8 +79,8 @@ int main(int argc, char* argv[]) {
     std::filesystem::copy_file(v2_path, staged_v2,
                                std::filesystem::copy_options::overwrite_existing);
     audio_engine.pre_reload_operator("AudioReloadOp");
-    check(scheduler.reload_operator("AudioReloadOp", registry, staged_v2),
-          "scheduler reload succeeds for compatible audio operator");
+    check(runtime.reload_operator("AudioReloadOp", registry, staged_v2),
+          "runtime reload succeeds for compatible audio operator");
     check(audio_engine.post_reload_operator("AudioReloadOp", registry),
           "audio engine reload succeeds for compatible audio operator");
     check_float(first_sample_after_process(audio_engine), 7.0f, 1e-4f,
@@ -91,8 +91,8 @@ int main(int argc, char* argv[]) {
     std::filesystem::copy_file(bad_path, staged_bad,
                                std::filesystem::copy_options::overwrite_existing);
     audio_engine.pre_reload_operator("AudioReloadOp");
-    check(!scheduler.reload_operator("AudioReloadOp", registry, staged_bad),
-          "scheduler rejects incompatible audio operator reload");
+    check(!runtime.reload_operator("AudioReloadOp", registry, staged_bad),
+          "runtime rejects incompatible audio operator reload");
     // Recreate instances from old (still-loaded) dylib after rejected reload
     check(audio_engine.post_reload_operator("AudioReloadOp", registry),
           "audio engine recovers after rejected reload");
@@ -100,7 +100,7 @@ int main(int argc, char* argv[]) {
                 "previous audio operator remains active after rejected reload");
 
     audio_engine.shutdown();
-    scheduler.shutdown();
+    runtime.shutdown();
     std::filesystem::remove_all(staging);
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",

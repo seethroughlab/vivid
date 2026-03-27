@@ -7,37 +7,42 @@ main.cpp
  ├── GpuContext          — WebGPU/Dawn init, surface, FrameState
  ├── OperatorRegistry    — type name → OperatorLoader, deferred probe
  ├── Graph               — serializable scene description (NodeDef/ConnectionDef)
- ├── Scheduler           — live execution graph (NodeState/Wire), control+GPU tick
- ├── AudioEngine         — audio thread, ParamSnapshot bridge
- ├── RuntimeAPI          — high-level commands over graph+scheduler+audio
+ ├── RuntimeCore         — graph compilation, frame-rate execution, cadence bridge
+ │    ├── GraphCompiler  — 7-pass pipeline: Graph → CompiledGraph
+ │    ├── CompiledGraph  — unified node/edge representation, shared by both executors
+ │    ├── FrameExecutor  — frame-rate + GPU node processing (~60 Hz)
+ │    └── CadenceBridge  — double-buffered snapshot bridge (frame ↔ audio)
+ ├── AudioEngine         — audio device lifecycle (thin facade over AudioExecutor)
+ │    └── AudioExecutor  — audio-rate node processing (~48 kHz)
+ ├── RuntimeAPI          — high-level commands over graph+runtime+audio
  ├── ControlServer       — HTTP JSON-RPC server, drains requests each frame
  ├── HotReloader         — background compile thread, staged dylib swap
  ├── PackageManager      — install/link/rebuild packages
  └── PackageCompiler     — clang++/cmake compile drivers
 ```
 
-## Three Domains
+## Two Cadences
 
-| Domain   | Thread       | Rate             | Executor           |
-|----------|-------------|------------------|--------------------|
-| Control  | Main         | ~60 Hz           | `Scheduler::tick()`|
-| Audio    | Audio (miniaudio) | 48 kHz / 256 frames | `AudioEngine::audio_callback()` |
-| GPU      | Main         | ~60 Hz           | `Scheduler::tick()` + `GpuContext` |
+| Cadence | Thread            | Rate                       | Executor                       |
+|---------|-------------------|----------------------------|--------------------------------|
+| Frame   | Main              | ~60 Hz                     | `FrameExecutor::tick()`        |
+| Audio   | Audio (miniaudio) | 48 kHz / 256-sample buffer | `AudioExecutor::audio_callback()` |
 
-All three domains run operators from the same `OperatorRegistry`/`OperatorLoader` system.
-Audio operators run on a dedicated thread and must never allocate or block.
+GPU nodes run at frame cadence on the main thread, with `GpuContext` providing the command encoder.
+
+All operators come from the same `OperatorRegistry`/`OperatorLoader` system.
+Audio-cadence operators must never allocate or block.
 
 ## Main Loop (main.cpp)
 
 Each frame:
-1. `control_server.process_requests(api, graph, scheduler, registry, ...)` — drain HTTP queue, apply topology changes
-2. `api.apply_midi_mappings()` — map CC values to params
-3. `api.tick_quantized_switch()` — fire pending variation switches on beat/bar boundaries
-4. `api.tick_state_presets()` — apply state machine → preset transitions
-5. `audio_engine.push_params(scheduler)` — snapshot control params into audio double-buffer
-6. `audio_engine.update_sources(time, scheduler)` — push cross-domain wire values
-7. `gpu_context.begin_frame()` → `scheduler.tick(time, delta, frame, gpu_state)` → `gpu_context.end_frame()`
-8. `audio_engine.inject_analysis(scheduler)` — push RMS/peak/waveform back to control domain
+1. `control_server.process_requests(runtime_api, graph, runtime, registry, ...)` — drain HTTP queue, apply topology changes
+2. `runtime_api.apply_midi_mappings()` — map CC values to params
+3. `runtime_api.tick_quantized_switch()` — fire pending variation switches on beat/bar boundaries
+4. `runtime_api.tick_state_presets()` — apply state machine → preset transitions
+5. `runtime.pre_tick_audio_sync(time)` — pull audio analysis into frame-rate nodes, push display params
+6. `gpu_context.begin_frame()` → `runtime.tick(time, delta, frame, gpu_state)` → `gpu_context.end_frame()`
+7. `runtime.post_tick_audio_sync()` — snapshot frame-rate outputs into ParamSnapshot for audio consumption
 
 ## Startup Sequence
 
@@ -47,9 +52,9 @@ Each frame:
 4. `registry.scan_wgsl_presets(presets_dir)` — register data-driven WGSL filters
 5. `pm.scan_installed()` — probe user packages
 6. `graph.load(path)` — parse JSON graph
-7. `scheduler.build(graph, registry)` — instantiate all operators, resolve wires
-8. `scheduler.allocate_gpu_textures(device, w, h, format)` — allocate per-node textures
-9. `audio_engine.build(graph, registry, scheduler)` — build audio subgraph
+7. `runtime.build(graph, registry)` — compile graph, instantiate operators, resolve edges
+8. `runtime.allocate_gpu_textures(device, w, h, format)` — allocate per-node textures
+9. `audio_engine.build(runtime)` — build AudioExecutor from CompiledGraph
 10. `audio_engine.start()` — start miniaudio device
 11. `control_server.start(9876)` — start HTTP server
 12. Enter main loop
@@ -60,7 +65,7 @@ Topology changes (`add_node`, `remove_node`, `connect`, `disconnect`) are buffer
 via a `pending_topology_change_` flag. They are only applied between frames via
 `RuntimeAPI::apply_pending()` (called inside `ControlServer::process_requests()`).
 
-This ensures the scheduler and audio engine are never mutated while `tick()` is running.
+This ensures the compiled graph and audio engine are never mutated while `tick()` is running.
 
 The same transactional expectation now applies to graph-wide rebuild flows:
 
@@ -73,20 +78,20 @@ The same transactional expectation now applies to graph-wide rebuild flows:
 1. File watcher (or MCP `rebuild_package`) triggers `hot_reloader.queue_rebuild(target_name)`
 2. Background compile thread: `cmake --build --target <name>` → staged .dylib in `/tmp/vivid_staging/`
 3. `hot_reloader.poll_ready()` returns `ReloadResult` with `staged_dylib_path`
-4. Main thread: `scheduler.reload_operator(type_name, registry, new_path)` — swap dylib, preserve params
-5. `audio_engine.reload_operator(type_name, registry)` — same for audio nodes
+4. Main thread: `runtime.reload_operator(type_name, registry, new_path)` — swap dylib, preserve params
+5. `audio_engine.pre_reload_operator(type_name)` / `audio_engine.post_reload_operator(type_name, registry)` — same for audio nodes
 
 Hot reload is intentionally conservative after the audit hardening work:
 
-- success requires both scheduler-side and audio-side reload to succeed
+- success requires both runtime-side and audio-side reload to succeed
 - incompatible descriptor changes are rejected rather than partially reusing stale runtime metadata
 - malformed plugins and custom-type registration failures are surfaced through registry diagnostics
 
 ## Key Invariants
 
-- `Scheduler::nodes_` and `AudioEngine::nodes_` are **parallel but independent** builds from the same `Graph`.
-- Audio thread reads `ParamSnapshot` atomically; never touches `Scheduler::nodes_` directly.
+- One `CompiledGraph` is shared (read) by both `FrameExecutor` and `AudioExecutor`. No parallel independent builds.
+- Audio thread reads `ParamSnapshot` atomically via `CadenceBridge`; never touches `CompiledNode` state directly.
 - GPU textures are allocated once at build time and reallocated on window resize or node addition via `needs_gpu_realloc_`.
 - `OperatorRegistry::find()` may trigger a lazy dlopen for deferred entries.
 - UI-facing graph views should remain faithful to graph truth, including broken connections, rather
-  than silently dropping unresolved edges from snapshots
+  than silently dropping unresolved edges from snapshots.

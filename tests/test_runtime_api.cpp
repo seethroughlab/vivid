@@ -56,23 +56,23 @@ int main(int argc, char* argv[]) {
     vivid::Graph graph;
     check(graph.load(graph_path.c_str()), "graph.load()");
 
-    vivid::RuntimeCore scheduler;
-    check(scheduler.build(graph, registry), "scheduler.build()");
+    vivid::RuntimeCore runtime;
+    check(runtime.build(graph, registry), "runtime.build()");
 
     vivid::AudioEngine audio_engine;
     bool has_gpu_ops = false;
     bool has_audio = false;
 
-    vivid::RuntimeAPI api(graph, scheduler, audio_engine, registry);
+    vivid::RuntimeAPI api(graph, runtime, audio_engine, registry);
 
     // --- Test set_param ---
     std::fprintf(stderr, "\n--- set_param ---\n");
     {
         auto r = api.set_param("a", "scale", 7.0f);
         check(r.ok, "set a/scale = 7.0");
-        scheduler.tick(0.0, 0.016, 0);
+        runtime.tick(0.0, 0.016, 0);
         // a: output = scale * 2.0 = 7.0 * 2.0 = 14.0
-        check_float(scheduler.compiled_graph()->nodes[0].output_values[0], 14.0f, "a output = 14.0");
+        check_float(runtime.compiled_graph()->nodes[0].output_values[0], 14.0f, "a output = 14.0");
     }
 
     // --- Test get_param ---
@@ -134,11 +134,11 @@ int main(int argc, char* argv[]) {
         api.apply_pending(has_gpu_ops, has_audio);
 
         // Now tick: a has scale=7 (preserved), output=14. c gets a's output=14 as scale, output=14*2=28
-        scheduler.tick(0.0, 0.016, 1);
+        runtime.tick(0.0, 0.016, 1);
 
-        // Find node c in rebuilt scheduler
+        // Find node c in rebuilt runtime
         const vivid::CompiledNode* c_node = nullptr;
-        for (const auto& ns : scheduler.compiled_graph()->nodes) {
+        for (const auto& ns : runtime.compiled_graph()->nodes) {
             if (ns.node_id == "c") { c_node = &ns; break; }
         }
         check(c_node != nullptr, "node c exists after rebuild");
@@ -147,7 +147,7 @@ int main(int argc, char* argv[]) {
         }
 
         // Verify a's param was preserved across rebuild
-        for (const auto& ns : scheduler.compiled_graph()->nodes) {
+        for (const auto& ns : runtime.compiled_graph()->nodes) {
             if (ns.node_id == "a") {
                 auto pi = ns.param_indices.find("scale");
                 check(pi != ns.param_indices.end(), "a still has scale param");
@@ -165,7 +165,7 @@ int main(int argc, char* argv[]) {
         auto r = api.remove_node("c");
         check(r.ok, "remove c");
         api.apply_pending(has_gpu_ops, has_audio);
-        check(scheduler.compiled_graph()->nodes.size() == 2, "back to 2 nodes");
+        check(runtime.compiled_graph()->nodes.size() == 2, "back to 2 nodes");
     }
 
     // --- Test disconnect ---
@@ -175,7 +175,7 @@ int main(int argc, char* argv[]) {
         check(r.ok, "disconnect a/out -> b/scale");
         api.apply_pending(has_gpu_ops, has_audio);
         // b is now standalone with scale=2.0 (its original JSON value)
-        scheduler.tick(0.0, 0.016, 2);
+        runtime.tick(0.0, 0.016, 2);
     }
 
     // --- Test save + reload ---
@@ -238,7 +238,7 @@ int main(int argc, char* argv[]) {
             check(ndef->tex_width == 1920, "NodeDef tex_width = 1920");
             check(ndef->tex_height == 1080, "NodeDef tex_height = 1080");
         }
-        auto* cn = scheduler.compiled_graph()->find_node("a");
+        auto* cn = runtime.compiled_graph()->find_node("a");
         check(cn != nullptr, "CompiledNode a exists");
         if (cn) {
             // TestOp is not a GPU operator, so gpu sub-struct is not present.
@@ -311,7 +311,7 @@ int main(int argc, char* argv[]) {
         vivid::Graph g2;
         check(g2.load(tmp_path.c_str()), "save test: load graph");
         vivid::RuntimeCore s2;
-        check(s2.build(g2, registry), "save test: build scheduler");
+        check(s2.build(g2, registry), "save test: build runtime");
         vivid::AudioEngine ae2;
         vivid::RuntimeAPI api2(g2, s2, ae2, registry);
 
@@ -359,7 +359,7 @@ int main(int argc, char* argv[]) {
         vivid::Graph g2;
         check(g2.load(tmp_path.c_str()), "reload test: load graph");
         vivid::RuntimeCore s2;
-        check(s2.build(g2, registry), "reload test: build scheduler");
+        check(s2.build(g2, registry), "reload test: build runtime");
         vivid::AudioEngine ae2;
         vivid::RuntimeAPI api2(g2, s2, ae2, registry);
 
@@ -398,7 +398,7 @@ int main(int argc, char* argv[]) {
         check(api.save_as(tmp_path).ok, "reload failure regression: save current graph");
         check(api.set_param("a", "scale", 33.0f).ok,
               "reload failure regression: mutate live param before failure");
-        scheduler.tick(0.0, 0.016, 3);
+        runtime.tick(0.0, 0.016, 3);
 
         {
             std::ofstream ofs(tmp_path, std::ios::trunc);
@@ -412,11 +412,11 @@ int main(int argc, char* argv[]) {
               "reload failure regression: graph source_path preserved after failure");
         check(graph.nodes().size() == 2,
               "reload failure regression: graph restored after failed reload");
-        check(scheduler.compiled_graph()->nodes.size() == 2,
-              "reload failure regression: scheduler restored after failed reload");
+        check(runtime.compiled_graph()->nodes.size() == 2,
+              "reload failure regression: runtime restored after failed reload");
 
         const vivid::CompiledNode* a_node = nullptr;
-        for (const auto& ns : scheduler.compiled_graph()->nodes) {
+        for (const auto& ns : runtime.compiled_graph()->nodes) {
             if (ns.node_id == "a") {
                 a_node = &ns;
                 break;
@@ -531,13 +531,13 @@ int main(int argc, char* argv[]) {
               "snapshot malformed regression: source_path preserved");
         check(graph.nodes().size() == 2,
               "snapshot malformed regression: graph restored after failed apply");
-        check(scheduler.compiled_graph()->nodes.size() == 2,
-              "snapshot malformed regression: scheduler restored after failed apply");
+        check(runtime.compiled_graph()->nodes.size() == 2,
+              "snapshot malformed regression: runtime restored after failed apply");
         check(api.graph_dirty(),
               "snapshot malformed regression: dirty state preserved after failed apply");
 
         const vivid::CompiledNode* a_node = nullptr;
-        for (const auto& ns : scheduler.compiled_graph()->nodes) {
+        for (const auto& ns : runtime.compiled_graph()->nodes) {
             if (ns.node_id == "a") {
                 a_node = &ns;
                 break;
@@ -562,7 +562,7 @@ int main(int argc, char* argv[]) {
         vivid::Graph g_dirty;
         check(g_dirty.add_node("a", "TestOp"), "undo-style snapshot regression: add node a");
         vivid::RuntimeCore s_dirty;
-        check(s_dirty.build(g_dirty, registry), "undo-style snapshot regression: build scheduler");
+        check(s_dirty.build(g_dirty, registry), "undo-style snapshot regression: build runtime");
         vivid::AudioEngine ae_dirty;
         vivid::RuntimeAPI api_dirty(g_dirty, s_dirty, ae_dirty, registry);
 
@@ -600,7 +600,7 @@ int main(int argc, char* argv[]) {
         vivid::Graph g_saved;
         check(g_saved.add_node("a", "TestOp"), "snapshot source_path regression: add node a");
         vivid::RuntimeCore s_saved;
-        check(s_saved.build(g_saved, registry), "snapshot source_path regression: build saved scheduler");
+        check(s_saved.build(g_saved, registry), "snapshot source_path regression: build saved runtime");
         vivid::AudioEngine ae_saved;
         vivid::RuntimeAPI api_saved(g_saved, s_saved, ae_saved, registry);
 
@@ -625,7 +625,7 @@ int main(int argc, char* argv[]) {
         vivid::Graph g_unsaved;
         check(g_unsaved.add_node("a", "TestOp"), "snapshot source_path regression: add node a to unsaved graph");
         vivid::RuntimeCore s_unsaved;
-        check(s_unsaved.build(g_unsaved, registry), "snapshot source_path regression: build unsaved scheduler");
+        check(s_unsaved.build(g_unsaved, registry), "snapshot source_path regression: build unsaved runtime");
         vivid::AudioEngine ae_unsaved;
         vivid::RuntimeAPI api_unsaved(g_unsaved, s_unsaved, ae_unsaved, registry);
 
@@ -894,7 +894,7 @@ int main(int argc, char* argv[]) {
     }
 
     // --- Cleanup ---
-    scheduler.shutdown();
+    runtime.shutdown();
     std::filesystem::remove_all(staging);
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",

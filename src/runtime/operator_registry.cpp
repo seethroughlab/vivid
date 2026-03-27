@@ -559,7 +559,7 @@ bool OperatorRegistry::scan_wgsl_presets(const std::string& directory) {
     closedir(dir);
 
     // Register a single WGSLFilter type with a minimal factory descriptor.
-    // Actual instances get per-instance descriptors from the scheduler.
+    // Actual instances get per-instance descriptors from the runtime.
     if (!wgsl_configs_.empty() && !loaders_.count("WGSLFilter")) {
         auto factory = std::make_shared<DataDrivenFilterConfig>();
         factory->name = "WGSLFilter";
@@ -587,7 +587,7 @@ bool OperatorRegistry::load_for_graph(const Graph& graph) {
     for (const auto& ndef : graph.nodes()) {
         const std::string resolved = resolve_alias_once(aliases_, ndef.type);
         if (loaders_.count(resolved)) continue;      // already loaded
-        if (wgsl_configs_.count(resolved)) continue;  // handled by scheduler
+        if (wgsl_configs_.count(resolved)) continue;  // handled by runtime
         auto dit = deferred_.find(resolved);
         if (dit == deferred_.end()) continue;          // builtin or unknown
 

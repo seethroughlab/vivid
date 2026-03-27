@@ -27,7 +27,7 @@ Those two arrays have different ownership boundaries:
 - `tests.graphs`
   - graph smoke / graph contract coverage
   - package-relative `.json` graph files
-  - run through the core graph loader and scheduler
+  - run through the core graph loader and runtime
 - `tests.cpp`
   - lightweight package tests that fit the generic core runner
   - package-relative `.cpp` entrypoints only
@@ -148,7 +148,7 @@ bool uninstall(const std::string& name);
 `InstallResult` fields: `success`, `error`, `info`, `compile_results`, `installed_deps`.
 
 If a package mutation affects the active graph, the runtime now rebuilds through transactional
-snapshot-apply paths instead of mutating the live scheduler or audio engine in place. This keeps
+snapshot-apply paths instead of mutating the live runtime or audio engine in place. This keeps
 install/link/rebuild/unlink flows consistent with the same restore-on-failure guarantees used by
 `RuntimeAPI`.
 

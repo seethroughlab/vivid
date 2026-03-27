@@ -281,7 +281,7 @@ static std::string handle_inspect_graph(Graph& graph, RuntimeCore& core) {
         const VividOperatorDescriptor* desc =
             (ns && ns->loader) ? ns->loader->descriptor() : nullptr;
 
-        // Params (with live values from scheduler)
+        // Params (with live values from runtime)
         nlohmann::json params_arr = nlohmann::json::array();
         if (desc) {
             for (uint32_t i = 0; i < desc->param_count; ++i) {

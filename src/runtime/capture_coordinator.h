@@ -91,7 +91,7 @@ public:
     std::string handle_start_recording_tap();
     std::string handle_stop_recording_tap();
 
-    // Called from main thread after scheduler.tick()
+    // Called from main thread after runtime.tick()
     bool has_pending() const;
     void process_pending(WGPUDevice device, WGPUQueue queue,
                          WGPUTexture capture_tex,

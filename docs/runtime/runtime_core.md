@@ -1,8 +1,8 @@
-# Scheduler — Graph Compilation and Frame-Rate Execution
+# RuntimeCore — Graph Compilation and Frame-Rate Execution
 
 ## Overview
 
-`Scheduler` (scheduler.h/cpp) takes a `Graph` and `OperatorRegistry`, compiles them into a
+`RuntimeCore` (runtime_core.h/cpp) takes a `Graph` and `OperatorRegistry`, compiles them into a
 `CompiledGraph`, and coordinates frame-rate execution. It delegates actual processing to
 `FrameExecutor` and cross-cadence communication to `CadenceBridge`.
 
@@ -63,7 +63,7 @@ bool reload_operator(const std::string& type_name, OperatorRegistry& registry,
 2. Destroys old instances
 3. Reloads dylib via `OperatorRegistry`
 4. Recreates instances with param reconciliation via `GraphCompiler::init_frame_state()`
-5. Bumps `generation` to force downstream recompute
+5. Marks affected nodes dirty to force downstream recompute
 
 On dylib reload failure, recreates instances from the old loader so nodes keep running.
 

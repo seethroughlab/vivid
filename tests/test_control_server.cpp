@@ -164,14 +164,14 @@ int main(int argc, char* argv[]) {
     vivid::Graph graph;
     check(graph.load(graph_path.c_str()), "graph.load()");
 
-    vivid::RuntimeCore scheduler;
-    check(scheduler.build(graph, registry), "scheduler.build()");
+    vivid::RuntimeCore runtime;
+    check(runtime.build(graph, registry), "runtime.build()");
 
     vivid::AudioEngine audio_engine;
     bool has_gpu_ops = false;
     bool has_audio = false;
 
-    vivid::RuntimeAPI api(graph, scheduler, audio_engine, registry);
+    vivid::RuntimeAPI api(graph, runtime, audio_engine, registry);
 
     // --- Package manager + catalog setup for MCP/API coverage ---
     {
@@ -320,7 +320,7 @@ int main(int argc, char* argv[]) {
     write_live_pkg_source(3.0f);
 
     // Tick once so nodes have output values
-    scheduler.tick(0.0, 0.016, 0);
+    runtime.tick(0.0, 0.016, 0);
 
     // --- Start ControlServer ---
     vivid::Settings settings;
@@ -1744,50 +1744,50 @@ int main(int argc, char* argv[]) {
 
     // --- Main thread: pump loop ---
     while (!done.load()) {
-        server.process_requests(api, graph, scheduler, registry,
+        server.process_requests(api, graph, runtime, registry,
                                 has_gpu_ops, has_audio);
 
         // Apply pending topology when client signals
         int p = phase.load();
         if (p == 1) {
             api.apply_pending(has_gpu_ops, has_audio);
-            scheduler.tick(0.0, 0.016, 1);
+            runtime.tick(0.0, 0.016, 1);
             phase.store(2);
         } else if (p == 3) {
             api.apply_pending(has_gpu_ops, has_audio);
-            scheduler.tick(0.0, 0.016, 2);
+            runtime.tick(0.0, 0.016, 2);
             phase.store(4);
         } else if (p == 5) {
             api.apply_pending(has_gpu_ops, has_audio);
-            scheduler.tick(0.0, 0.016, 3);
+            runtime.tick(0.0, 0.016, 3);
             phase.store(6);
         } else if (p == 7) {
             api.apply_pending(has_gpu_ops, has_audio);
-            scheduler.tick(0.0, 0.016, 4);
+            runtime.tick(0.0, 0.016, 4);
             phase.store(8);
         } else if (p == 9) {
             api.apply_pending(has_gpu_ops, has_audio);
-            scheduler.tick(0.0, 0.016, 5);
+            runtime.tick(0.0, 0.016, 5);
             phase.store(10);
         } else if (p == 11) {
             api.apply_pending(has_gpu_ops, has_audio);
-            scheduler.tick(0.0, 0.016, 6);
+            runtime.tick(0.0, 0.016, 6);
             phase.store(12);
         } else if (p == 13) {
             api.apply_pending(has_gpu_ops, has_audio);
-            scheduler.tick(0.0, 0.016, 7);
+            runtime.tick(0.0, 0.016, 7);
             phase.store(14);
         } else if (p == 15) {
             api.apply_pending(has_gpu_ops, has_audio);
-            scheduler.tick(0.0, 0.016, 8);
+            runtime.tick(0.0, 0.016, 8);
             phase.store(16);
         } else if (p == 17) {
             api.apply_pending(has_gpu_ops, has_audio);
-            scheduler.tick(0.0, 0.016, 9);
+            runtime.tick(0.0, 0.016, 9);
             phase.store(18);
         } else if (p == 19) {
             api.apply_pending(has_gpu_ops, has_audio);
-            scheduler.tick(0.0, 0.016, 10);
+            runtime.tick(0.0, 0.016, 10);
             phase.store(20);
         }
 
@@ -1795,12 +1795,12 @@ int main(int argc, char* argv[]) {
     }
 
     // Drain any final requests
-    server.process_requests(api, graph, scheduler, registry,
+    server.process_requests(api, graph, runtime, registry,
                             has_gpu_ops, has_audio);
 
     client_thread.join();
     server.stop();
-    scheduler.shutdown();
+    runtime.shutdown();
     std::filesystem::current_path(original_cwd);
     std::filesystem::remove_all(isolated_cwd);
     std::filesystem::remove_all(staging);

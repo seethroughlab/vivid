@@ -653,7 +653,7 @@ int main() {
 
         // Unload the dylib while the instance is still live.  After unload(),
         // destroy_fn_ is cleared to nullptr — so destroy_instance() becomes a
-        // no-op, leaking the instance.  This is intentional: the scheduler must
+        // no-op, leaking the instance.  This is intentional: the runtime must
         // destroy instances BEFORE reloading operators to avoid the leak.
         loader.unload();
         check(!loader.is_loaded(), "loader unloaded while instance lives");

@@ -9,7 +9,7 @@ Design: **pimpl with a threadsafe queue**. The HTTP server thread enqueues reque
 `PendingRequest { method, body, promise<string> }`. Each frame, `process_requests()` drains
 the queue on the main thread, dispatches commands, and fulfills promises.
 
-This ensures all runtime mutations happen on the main thread — no locking on `Scheduler` or `Graph`.
+This ensures all runtime mutations happen on the main thread — no locking on `RuntimeCore` or `Graph`.
 
 ## Ownership
 

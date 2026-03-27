@@ -95,7 +95,7 @@ struct HeadlessGpu {
     }
 };
 
-static void tick_with_gpu(vivid::RuntimeCore& scheduler, HeadlessGpu& gpu,
+static void tick_with_gpu(vivid::RuntimeCore& runtime, HeadlessGpu& gpu,
                           uint64_t frame, double time, double delta,
                           WGPUTextureFormat format) {
     WGPUCommandEncoderDescriptor enc_desc{};
@@ -108,7 +108,7 @@ static void tick_with_gpu(vivid::RuntimeCore& scheduler, HeadlessGpu& gpu,
     gpu_state.command_encoder = encoder;
     gpu_state.output_format = format;
 
-    scheduler.tick(time, delta, frame, &gpu_state);
+    runtime.tick(time, delta, frame, &gpu_state);
 
     WGPUCommandBufferDescriptor cmd_desc{};
     cmd_desc.label = vivid::to_sv("Phase6 Tick Commands");
@@ -152,35 +152,35 @@ int main(int argc, char* argv[]) {
     check(graph.load((build_dir + "/test_mixed_runtime_stability.json").c_str()),
           "graph.load(test_mixed_runtime_stability.json)");
 
-    vivid::RuntimeCore scheduler;
-    check(scheduler.build(graph, registry), "scheduler.build()");
-    scheduler.allocate_gpu_textures(gpu.device, 64, 64, WGPUTextureFormat_RGBA8Unorm);
+    vivid::RuntimeCore runtime;
+    check(runtime.build(graph, registry), "runtime.build()");
+    runtime.allocate_gpu_textures(gpu.device, 64, 64, WGPUTextureFormat_RGBA8Unorm);
 
     vivid::AudioEngine audio_engine;
-    check(audio_engine.build(scheduler), "audio_engine.build()");
+    check(audio_engine.build(runtime), "audio_engine.build()");
 
     const int iterations = soak ? 1200 : 240;
     const uint32_t underruns_before = audio_engine.underrun_count();
     double time = 0.0;
 
     for (int i = 0; i < iterations; ++i) {
-        scheduler.post_tick_audio_sync();
-        scheduler.pre_tick_audio_sync(time);
-        tick_with_gpu(scheduler, gpu, static_cast<uint64_t>(i), time, 1.0 / 60.0,
+        runtime.post_tick_audio_sync();
+        runtime.pre_tick_audio_sync(time);
+        tick_with_gpu(runtime, gpu, static_cast<uint64_t>(i), time, 1.0 / 60.0,
                       WGPUTextureFormat_RGBA8Unorm);
         float output[vivid::AudioEngine::kBufferSize * 2] = {};
         audio_engine.process_audio_for_test(output, vivid::AudioEngine::kBufferSize);
 
-        for (const auto& node : scheduler.compiled_graph()->nodes) {
+        for (const auto& node : runtime.compiled_graph()->nodes) {
             if (node.errored) {
-                std::string msg = "scheduler node errored during mixed-runtime loop: " + node.node_id;
+                std::string msg = "runtime node errored during mixed-runtime loop: " + node.node_id;
                 check(false, msg.c_str());
                 break;
             }
         }
 
         if ((i % 40) == 0) {
-            const auto* fill = scheduler.compiled_graph()->find_node("fill");
+            const auto* fill = runtime.compiled_graph()->find_node("fill");
             check(fill != nullptr, "fill node present during mixed-runtime loop");
             if (fill) check(fill->gpu && fill->gpu->texture != nullptr, "fill node keeps an allocated gpu texture");
         }
@@ -192,7 +192,7 @@ int main(int argc, char* argv[]) {
           "headless mixed-runtime stability run does not grow underrun count");
 
     audio_engine.shutdown();
-    scheduler.shutdown();
+    runtime.shutdown();
     gpu.shutdown();
     std::filesystem::remove_all(staging);
 

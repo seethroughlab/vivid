@@ -28,9 +28,9 @@ static void check_float(float actual, float expected, const char* msg) {
     }
 }
 
-// Helper: find node index by id in a scheduler
-static int find_idx(const vivid::RuntimeCore& sched, const std::string& id) {
-    const auto& nodes = sched.compiled_graph()->nodes;
+// Helper: find node index by id in a runtime
+static int find_idx(const vivid::RuntimeCore& runtime, const std::string& id) {
+    const auto& nodes = runtime.compiled_graph()->nodes;
     for (size_t i = 0; i < nodes.size(); ++i) {
         if (nodes[i].node_id == id) return static_cast<int>(i);
     }
@@ -72,18 +72,18 @@ int main() {
         g.add_connection("a", "out", "b", "in");
         g.add_connection("b", "out", "c", "in");
 
-        vivid::RuntimeCore sched;
-        check(sched.build(g, registry), "build succeeds");
-        sched.tick(0.0, 0.016, 0);
+        vivid::RuntimeCore runtime;
+        check(runtime.build(g, registry), "build succeeds");
+        runtime.tick(0.0, 0.016, 0);
 
-        auto* na = sched.compiled_graph()->find_node("a");
-        auto* nb = sched.compiled_graph()->find_node("b");
-        auto* nc = sched.compiled_graph()->find_node("c");
+        auto* na = runtime.compiled_graph()->find_node("a");
+        auto* nb = runtime.compiled_graph()->find_node("b");
+        auto* nc = runtime.compiled_graph()->find_node("c");
         check(na && nb && nc, "all nodes found");
         check_float(na->output_values[0], 2.0f, "a output = 2.0");
         check_float(nb->output_values[0], 4.0f, "b output = 4.0");
         check_float(nc->output_values[0], 12.0f, "c output = 12.0");
-        sched.shutdown();
+        runtime.shutdown();
     }
 
     // =====================================================================
@@ -106,29 +106,29 @@ int main() {
         g.add_connection("b", "out", "d", "in");
         g.add_connection("c", "out", "d", "gain");  // param wire
 
-        vivid::RuntimeCore sched;
-        check(sched.build(g, registry), "build succeeds");
+        vivid::RuntimeCore runtime;
+        check(runtime.build(g, registry), "build succeeds");
 
         // Verify evaluation order: a before b,c; b,c before d
-        int ia = find_idx(sched, "a");
-        int ib = find_idx(sched, "b");
-        int ic = find_idx(sched, "c");
-        int id = find_idx(sched, "d");
+        int ia = find_idx(runtime, "a");
+        int ib = find_idx(runtime, "b");
+        int ic = find_idx(runtime, "c");
+        int id = find_idx(runtime, "d");
         check(ia >= 0 && ib >= 0 && ic >= 0 && id >= 0, "all nodes have indices");
         check(ia < ib && ia < ic, "a before b and c");
         check(ib < id && ic < id, "b and c before d");
 
-        sched.tick(0.0, 0.016, 0);
+        runtime.tick(0.0, 0.016, 0);
 
-        auto* na = sched.compiled_graph()->find_node("a");
-        auto* nb = sched.compiled_graph()->find_node("b");
-        auto* nc = sched.compiled_graph()->find_node("c");
-        auto* nd = sched.compiled_graph()->find_node("d");
+        auto* na = runtime.compiled_graph()->find_node("a");
+        auto* nb = runtime.compiled_graph()->find_node("b");
+        auto* nc = runtime.compiled_graph()->find_node("c");
+        auto* nd = runtime.compiled_graph()->find_node("d");
         check_float(na->output_values[0], 6.0f, "a output = 6.0");
         check_float(nb->output_values[0], 12.0f, "b output = 12.0");
         check_float(nc->output_values[0], 30.0f, "c output = 30.0");
         check_float(nd->output_values[0], 360.0f, "d output = 360.0");
-        sched.shutdown();
+        runtime.shutdown();
     }
 
     // =====================================================================
@@ -143,8 +143,8 @@ int main() {
         g.add_connection("a", "out", "b", "in");
         g.add_connection("b", "out", "a", "in");
 
-        vivid::RuntimeCore sched;
-        check(!sched.build(g, registry), "build returns false for cycle");
+        vivid::RuntimeCore runtime;
+        check(!runtime.build(g, registry), "build returns false for cycle");
     }
 
     // =====================================================================
@@ -163,32 +163,32 @@ int main() {
         g.add_connection("a", "out", "b", "in");
         g.add_connection("b", "out", "c", "in");
 
-        vivid::RuntimeCore sched;
-        check(sched.build(g, registry), "build succeeds");
+        vivid::RuntimeCore runtime;
+        check(runtime.build(g, registry), "build succeeds");
 
         // Tick 1: first evaluation, all outputs compute from defaults
-        sched.tick(0.0, 0.016, 0);
-        auto* na = sched.compiled_graph()->find_node("a");
-        auto* nb = sched.compiled_graph()->find_node("b");
-        auto* nc = sched.compiled_graph()->find_node("c");
+        runtime.tick(0.0, 0.016, 0);
+        auto* na = runtime.compiled_graph()->find_node("a");
+        auto* nb = runtime.compiled_graph()->find_node("b");
+        auto* nc = runtime.compiled_graph()->find_node("c");
 
         check(na->processed_this_tick, "tick 1: a processed");
         check(nb->processed_this_tick, "tick 1: b processed");
         check(nc->processed_this_tick, "tick 1: c processed");
 
         // Tick 2: nothing changed — nodes should still process (time-dependent or root)
-        sched.tick(0.0, 0.016, 1);
+        runtime.tick(0.0, 0.016, 1);
 
         // Tick 3: change a's scale param → mark dirty, all downstream should reprocess
         na->param_values[0] = 5.0f;  // scale = 5
         na->dirty = true;
-        sched.tick(0.0, 0.016, 2);
+        runtime.tick(0.0, 0.016, 2);
 
         // Verify new values: a=5*2=10, b=10*2=20, c=20*3=60
         check_float(na->output_values[0], 10.0f, "tick 3: a output = 10.0");
         check_float(nb->output_values[0], 20.0f, "tick 3: b output = 20.0");
         check_float(nc->output_values[0], 60.0f, "tick 3: c output = 60.0");
-        sched.shutdown();
+        runtime.shutdown();
     }
 
     // =====================================================================
@@ -207,19 +207,19 @@ int main() {
         g.add_connection("src", "out", "dst", "in");
         g.add_connection("mod", "out", "dst", "gain");  // param wire
 
-        vivid::RuntimeCore sched;
-        check(sched.build(g, registry), "build succeeds");
-        sched.tick(0.0, 0.016, 0);
+        vivid::RuntimeCore runtime;
+        check(runtime.build(g, registry), "build succeeds");
+        runtime.tick(0.0, 0.016, 0);
 
-        auto* nsrc = sched.compiled_graph()->find_node("src");
-        auto* nmod = sched.compiled_graph()->find_node("mod");
-        auto* ndst = sched.compiled_graph()->find_node("dst");
+        auto* nsrc = runtime.compiled_graph()->find_node("src");
+        auto* nmod = runtime.compiled_graph()->find_node("mod");
+        auto* ndst = runtime.compiled_graph()->find_node("dst");
         check_float(nsrc->output_values[0], 4.0f, "src output = 4.0");
         check_float(nmod->output_values[0], 6.0f, "mod output = 6.0");
         check_float(ndst->input_values[0], 4.0f, "dst input = 4.0");
         check_float(ndst->param_values[0], 6.0f, "dst gain overridden to 6.0");
         check_float(ndst->output_values[0], 24.0f, "dst output = 24.0");
-        sched.shutdown();
+        runtime.shutdown();
     }
 
     // =====================================================================
@@ -235,12 +235,12 @@ int main() {
         g.add_node("pass", "ControlPassOp", {{"gain", 2.0f}});
         g.add_connection("src", "out", "pass", "in");
 
-        vivid::RuntimeCore sched;
-        check(sched.build(g, registry), "build succeeds");
-        sched.tick(0.0, 0.016, 0);
+        vivid::RuntimeCore runtime;
+        check(runtime.build(g, registry), "build succeeds");
+        runtime.tick(0.0, 0.016, 0);
 
-        auto* nsrc = sched.compiled_graph()->find_node("src");
-        auto* npass = sched.compiled_graph()->find_node("pass");
+        auto* nsrc = runtime.compiled_graph()->find_node("src");
+        auto* npass = runtime.compiled_graph()->find_node("pass");
 
         check_float(nsrc->output_values[0], 1.0f, "src scalar = 1.0");
         check(nsrc->output_spreads[0].size() == 4, "src spread has 4 elements");
@@ -254,7 +254,7 @@ int main() {
             check_float(npass->output_spreads[0][2], 6.0f, "spread[2] = 6.0");
             check_float(npass->output_spreads[0][3], 8.0f, "spread[3] = 8.0");
         }
-        sched.shutdown();
+        runtime.shutdown();
     }
 
     // =====================================================================
@@ -270,23 +270,23 @@ int main() {
         g.add_node("audio", "AudioTestOp", {{"level", 0.5f}});
         g.add_connection("ctrl", "out", "audio", "level");  // param wire
 
-        vivid::RuntimeCore sched;
-        check(sched.build(g, registry), "build succeeds");
+        vivid::RuntimeCore runtime;
+        check(runtime.build(g, registry), "build succeeds");
 
         // AudioTestOp gets 3 implicit analysis ports: rms, peak, waveform
-        auto* naudio = sched.compiled_graph()->find_node("audio");
+        auto* naudio = runtime.compiled_graph()->find_node("audio");
         check(naudio != nullptr, "audio node found");
         check(naudio->output_port_count == 4, "audio has 4 output ports (1 declared + 3 implicit)");
         check(naudio->active_cadence == vivid::Cadence::Audio, "audio node flagged as audio");
 
-        sched.tick(0.0, 0.016, 0);
+        runtime.tick(0.0, 0.016, 0);
 
         // Audio skipped in main loop → output stays 0
         check_float(naudio->output_values[0], 0.0f, "audio output = 0 (skipped)");
 
         // Post-loop param propagation: ctrl output = 0.8*2 = 1.6 → audio level
         check_float(naudio->param_values[0], 1.6f, "audio level param = 1.6 (from ctrl)");
-        sched.shutdown();
+        runtime.shutdown();
     }
 
     // =====================================================================
@@ -299,28 +299,28 @@ int main() {
         g.add_node("ctrl", "TestOp", {{"scale", 1.0f}});
         g.add_node("audio", "AudioTestOp", {{"level", 0.5f}});
 
-        vivid::RuntimeCore sched;
-        check(sched.build(g, registry), "build succeeds");
+        vivid::RuntimeCore runtime;
+        check(runtime.build(g, registry), "build succeeds");
 
-        check(!sched.has_gpu_operators(), "has_gpu = false");
-        check(sched.has_audio_operators(), "has_audio = true");
+        check(!runtime.has_gpu_operators(), "has_gpu = false");
+        check(runtime.has_audio_operators(), "has_audio = true");
 
         // type_name
-        int ctrl_idx = find_idx(sched, "ctrl");
-        int audio_idx = find_idx(sched, "audio");
+        int ctrl_idx = find_idx(runtime, "ctrl");
+        int audio_idx = find_idx(runtime, "audio");
         check(ctrl_idx >= 0 && audio_idx >= 0, "node indices found");
-        check(sched.type_name(static_cast<uint32_t>(ctrl_idx)) == "TestOp", "type_name(ctrl) = TestOp");
-        check(sched.type_name(static_cast<uint32_t>(audio_idx)) == "AudioTestOp", "type_name(audio) = AudioTestOp");
+        check(runtime.type_name(static_cast<uint32_t>(ctrl_idx)) == "TestOp", "type_name(ctrl) = TestOp");
+        check(runtime.type_name(static_cast<uint32_t>(audio_idx)) == "AudioTestOp", "type_name(audio) = AudioTestOp");
 
         // find_node_mut
-        check(sched.compiled_graph()->find_node("ctrl") != nullptr, "find_node_mut(ctrl) works");
-        check(sched.compiled_graph()->find_node("nonexistent") == nullptr, "find_node_mut(nonexistent) = nullptr");
+        check(runtime.compiled_graph()->find_node("ctrl") != nullptr, "find_node_mut(ctrl) works");
+        check(runtime.compiled_graph()->find_node("nonexistent") == nullptr, "find_node_mut(nonexistent) = nullptr");
 
         // is_audio_type
-        check(sched.has_audio_cadence_type("AudioTestOp"), "is_audio_type(AudioTestOp) = true");
-        check(!sched.has_audio_cadence_type("TestOp"), "is_audio_type(TestOp) = false");
+        check(runtime.has_audio_cadence_type("AudioTestOp"), "is_audio_type(AudioTestOp) = true");
+        check(!runtime.has_audio_cadence_type("TestOp"), "is_audio_type(TestOp) = false");
 
-        sched.shutdown();
+        runtime.shutdown();
     }
 
     // --- Cleanup ---

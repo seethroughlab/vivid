@@ -1330,7 +1330,7 @@ target_link_libraries(test_runtime_core PRIVATE vivid_operator_api nlohmann_json
 add_dependencies(test_runtime_core test_op_v1 control_pass_op spread_source_op audio_test_op)
 add_test(NAME test_runtime_core COMMAND test_runtime_core WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-# Graph data-model unit test (no operators, no scheduler, no GPU)
+# Graph data-model unit test (no operators, no runtime, no GPU)
 add_executable(test_graph
     tests/test_graph.cpp
     src/runtime/graph.cpp
@@ -1539,7 +1539,7 @@ add_executable(test_audio_dsp_api tests/test_audio_dsp_api.cpp)
 target_include_directories(test_audio_dsp_api PRIVATE src)
 add_test(NAME test_audio_dsp_api COMMAND test_audio_dsp_api WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-# OperatorLoader + OperatorRegistry unit tests (no GPU, no scheduler, no graph)
+# OperatorLoader + OperatorRegistry unit tests (no GPU, no runtime, no graph)
 add_executable(test_operator_loader
     tests/test_operator_loader.cpp
     src/runtime/operator_loader.cpp
@@ -1811,7 +1811,7 @@ add_dependencies(test_audio_spread_wire spread_source_op audio_spread_op spread_
 add_test(NAME test_audio_spread_wire COMMAND test_audio_spread_wire
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-# ChildOp<T> composition unit test (no plugins, no scheduler, logic only).
+# ChildOp<T> composition unit test (no plugins, no runtime, logic only).
 # Non-header-only embeddables have separate loader regressions in
 # test_operator_loader; this test uses stubs so it stays focused on ChildOp
 # call semantics and persistent state behavior.
@@ -1870,7 +1870,7 @@ add_custom_target(phase6_soak
     DEPENDS test_mixed_runtime_stability
 )
 
-# Demo graph smoke test (loads every demo graph, builds scheduler, ticks 5 frames)
+# Demo graph smoke test (loads every demo graph, builds runtime, ticks 5 frames)
 add_executable(test_demo_graphs
     tests/test_demo_graphs.cpp
     src/runtime/operator_loader.cpp
@@ -2199,7 +2199,7 @@ target_include_directories(test_midi PRIVATE src)
 target_link_libraries(test_midi PRIVATE rtmidi)
 add_test(NAME test_midi COMMAND test_midi WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-# FileWatcher unit tests (kqueue, no scheduler, no GPU)
+# FileWatcher unit tests (kqueue, no runtime, no GPU)
 add_executable(test_file_watcher
     tests/test_file_watcher.cpp
     src/runtime/file_watcher.cpp

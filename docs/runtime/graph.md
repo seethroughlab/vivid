@@ -5,7 +5,7 @@
 `Graph` (graph.h/cpp) is a pure data model — it does **not** hold operator instances or execute anything.
 It is the serialized representation of the scene: what nodes exist, how they connect, and their stored parameter values.
 
-The `Scheduler` and `AudioEngine` are built **from** a `Graph` at load time, and written back to a `Graph`
+The `RuntimeCore` and `AudioEngine` are built **from** a `Graph` at load time, and written back to a `Graph`
 on save. The `Graph` is the source of truth for persistence.
 
 ## Core Structs

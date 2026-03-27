@@ -60,14 +60,14 @@ int main(int argc, char* argv[]) {
     vivid::Graph graph;
     check(graph.load(graph_path.c_str()), "graph.load()");
 
-    vivid::RuntimeCore scheduler;
-    check(scheduler.build(graph, registry), "scheduler.build()");
+    vivid::RuntimeCore runtime;
+    check(runtime.build(graph, registry), "runtime.build()");
 
     vivid::AudioEngine audio_engine;
 
     // --- Test 1: Build succeeds (audio spread wire created) ---
     std::fprintf(stderr, "\n--- build ---\n");
-    check(audio_engine.build(scheduler), "audio_engine.build()");
+    check(audio_engine.build(runtime), "audio_engine.build()");
 
     int recv_idx = audio_engine.audio_node_index("recv");
     check(recv_idx >= 0, "recv node found in engine");
@@ -79,15 +79,15 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- envelopes reach sustain ---\n");
     check(audio_engine.start(true), "audio_engine.start(null)");
 
-    // Tick scheduler so SpreadSourceOp produces spread [1,2,3] (all > 0.5 = gate on)
-    scheduler.tick(0.0, 0.016, 0);
-    scheduler.cadence_bridge().push_to_audio(*scheduler.compiled_graph());
+    // Tick runtime so SpreadSourceOp produces spread [1,2,3] (all > 0.5 = gate on)
+    runtime.tick(0.0, 0.016, 0);
+    runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
 
     // Poll for audio signal: RMS should be ~2.4 (3 * 0.8 sustain)
     bool got_signal = false;
     for (int i = 0; i < 400; ++i) {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
+        runtime.cadence_bridge().pull_from_audio(*runtime.compiled_graph());
             const auto& snap = audio_engine.analysis_read();
             if (recv_idx >= 0 && snap.rms[recv_idx] > 2.0f) {
             got_signal = true;
@@ -105,7 +105,7 @@ int main(int argc, char* argv[]) {
     // --- Test 3: Set count=0 → gates disappear, envelopes release ---
     std::fprintf(stderr, "\n--- gates disappear → release ---\n");
     {
-        auto* src_ns = scheduler.compiled_graph()->find_node("src");
+        auto* src_ns = runtime.compiled_graph()->find_node("src");
         check(src_ns != nullptr, "find src node");
         if (src_ns) {
             auto pi = src_ns->param_indices.find("count");
@@ -113,14 +113,14 @@ int main(int argc, char* argv[]) {
                 src_ns->param_values[pi->second] = 0.0f;
             }
         }
-        scheduler.tick(0.1, 0.016, 1);
-        scheduler.cadence_bridge().push_to_audio(*scheduler.compiled_graph());
+        runtime.tick(0.1, 0.016, 1);
+        runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
 
         // Poll for RMS to drop to ~0
         bool zeroed = false;
         for (int i = 0; i < 400; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
-            scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
+            runtime.cadence_bridge().pull_from_audio(*runtime.compiled_graph());
             const auto& snap = audio_engine.analysis_read();
             if (recv_idx >= 0 && snap.rms[recv_idx] < 0.3f) {
                 zeroed = true;
@@ -133,21 +133,21 @@ int main(int argc, char* argv[]) {
     // --- Test 4: Set count=3 again → envelopes re-attack ---
     std::fprintf(stderr, "\n--- re-attack ---\n");
     {
-        auto* src_ns = scheduler.compiled_graph()->find_node("src");
+        auto* src_ns = runtime.compiled_graph()->find_node("src");
         if (src_ns) {
             auto pi = src_ns->param_indices.find("count");
             if (pi != src_ns->param_indices.end()) {
                 src_ns->param_values[pi->second] = 3.0f;
             }
         }
-        scheduler.tick(0.5, 0.016, 2);
-        scheduler.cadence_bridge().push_to_audio(*scheduler.compiled_graph());
+        runtime.tick(0.5, 0.016, 2);
+        runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
 
         // Poll for RMS to recover
         bool recovered = false;
         for (int i = 0; i < 400; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
-            scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
+            runtime.cadence_bridge().pull_from_audio(*runtime.compiled_graph());
             const auto& snap = audio_engine.analysis_read();
             if (recv_idx >= 0 && snap.rms[recv_idx] > 2.0f) {
                 recovered = true;
@@ -166,7 +166,7 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- shutdown ---\n");
     audio_engine.shutdown();
     check(true, "shutdown() no crash");
-    scheduler.shutdown();
+    runtime.shutdown();
     std::filesystem::remove_all(staging);
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",

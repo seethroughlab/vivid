@@ -142,7 +142,7 @@ bool is_user_operator(name) const;
 bool reload_operator(const std::string& type_name, const std::string& new_dylib_path);
 ```
 Replaces the `OperatorLoader` for `type_name` with a new one loaded from `new_dylib_path`.
-Called by `Scheduler::reload_operator()` and `AudioEngine::reload_operator()`.
+Called by `RuntimeCore::reload_operator()` and `AudioEngine::reload_operator()`.
 
 Hot reload is intentionally shape-conservative. The reload path preserves the previous loader when
 the replacement dylib fails to load, and it rejects descriptor-incompatible edits rather than

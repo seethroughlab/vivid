@@ -49,24 +49,24 @@ int main(int argc, char* argv[]) {
     vivid::Graph graph;
     check(graph.load(graph_path.c_str()), "graph.load()");
 
-    vivid::RuntimeCore scheduler;
-    check(scheduler.build(graph, registry), "scheduler.build()");
+    vivid::RuntimeCore runtime;
+    check(runtime.build(graph, registry), "runtime.build()");
 
     vivid::AudioEngine audio_engine;
-    check(audio_engine.build(scheduler), "audio_engine.build()");
+    check(audio_engine.build(runtime), "audio_engine.build()");
 
     // --- Test 1: Engine starts without crashing despite throwing operator ---
     std::fprintf(stderr, "\n--- start with throwing operator ---\n");
     check(audio_engine.start(true), "audio_engine.start(null device)");
 
     // Let the audio thread run a few buffers to trigger the exception
-    scheduler.tick(0.0, 1.0 / 60.0, 0);
-    scheduler.cadence_bridge().push_to_audio(*scheduler.compiled_graph());
+    runtime.tick(0.0, 1.0 / 60.0, 0);
+    runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     // --- Test 2: Error state is propagated ---
     std::fprintf(stderr, "\n--- error state propagation ---\n");
-    scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
+    runtime.cadence_bridge().pull_from_audio(*runtime.compiled_graph());
 
     int bad_idx = audio_engine.audio_node_index("bad");
     int good_idx = audio_engine.audio_node_index("good");
@@ -104,20 +104,20 @@ int main(int argc, char* argv[]) {
         check(rms < 0.01f, "throwing node RMS ≈ 0 (silence)");
     }
 
-    // --- Test 5: Error state reaches scheduler nodes ---
-    std::fprintf(stderr, "\n--- error propagated to scheduler ---\n");
+    // --- Test 5: Error state reaches runtime nodes ---
+    std::fprintf(stderr, "\n--- error propagated to runtime ---\n");
     bool found_bad_sched = false;
-    for (const auto& ns : scheduler.compiled_graph()->nodes) {
+    for (const auto& ns : runtime.compiled_graph()->nodes) {
         if (ns.node_id == "bad") {
-            check(ns.errored, "scheduler 'bad' node errored");
-            check(!ns.error_message.empty(), "scheduler 'bad' node has error message");
+            check(ns.errored, "runtime 'bad' node errored");
+            check(!ns.error_message.empty(), "runtime 'bad' node has error message");
             found_bad_sched = true;
         }
         if (ns.node_id == "good") {
-            check(!ns.errored, "scheduler 'good' node not errored");
+            check(!ns.errored, "runtime 'good' node not errored");
         }
     }
-    check(found_bad_sched, "found 'bad' node in scheduler");
+    check(found_bad_sched, "found 'bad' node in runtime");
 
     audio_engine.shutdown();
 

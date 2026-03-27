@@ -41,11 +41,11 @@ int main() {
         g.add_connection("src", "out", "sink", "in");
         g.add_connection("src", "list", "sink", "in_list");
 
-        vivid::RuntimeCore sched;
-        check(sched.build(g, registry), "build string graph succeeds");
-        sched.tick(0.0, 0.016, 0);
+        vivid::RuntimeCore runtime;
+        check(runtime.build(g, registry), "build string graph succeeds");
+        runtime.tick(0.0, 0.016, 0);
 
-        auto* sink = sched.compiled_graph()->find_node("sink");
+        auto* sink = runtime.compiled_graph()->find_node("sink");
         check(sink != nullptr, "sink found");
         if (sink) {
             auto out_it = sink->output_port_indices.find("out");
@@ -69,7 +69,7 @@ int main() {
                 check(static_cast<int>(sink->output_values[count_it->second]) == 3, "count output is 3");
             }
         }
-        sched.shutdown();
+        runtime.shutdown();
     }
 
     // Mixed type rejection: numeric -> string input should fail build.
@@ -78,8 +78,8 @@ int main() {
         g.add_node("num", "TestOp", {});
         g.add_node("sink", "StringSinkOp", {});
         g.add_connection("num", "out", "sink", "in");
-        vivid::RuntimeCore sched;
-        check(!sched.build(g, registry), "mixed numeric->string wire rejected");
+        vivid::RuntimeCore runtime;
+        check(!runtime.build(g, registry), "mixed numeric->string wire rejected");
     }
 
     // String fan-in rejection.
@@ -90,8 +90,8 @@ int main() {
         g.add_node("sink", "StringSinkOp", {});
         g.add_connection("a", "out", "sink", "in");
         g.add_connection("b", "out", "sink", "in");
-        vivid::RuntimeCore sched;
-        check(!sched.build(g, registry), "string scalar fan-in >1 rejected");
+        vivid::RuntimeCore runtime;
+        check(!runtime.build(g, registry), "string scalar fan-in >1 rejected");
     }
 
     return failures == 0 ? 0 : 1;

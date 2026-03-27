@@ -12,7 +12,7 @@ namespace vivid {
 ///
 /// `tick` is called from a CFRunLoopTimer registered in default, tracking,
 /// and modal modes, so it fires continuously even during resize/menus.
-/// It should render, tick the scheduler, and push audio. Return false to exit.
+/// It should render, tick the runtime, and push audio. Return false to exit.
 void macos_run_frame_loop(std::function<bool()> poll_events,
                           std::function<bool()> tick);
 

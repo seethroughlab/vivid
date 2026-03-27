@@ -68,11 +68,11 @@ int main(int argc, char* argv[]) {
     check(graph.add_node("out", "audio_out"), "graph.add_node(out)");
     check(graph.add_connection("audio", "out", "out", "input"), "graph.add_connection(audio->out)");
 
-    vivid::RuntimeCore scheduler;
-    check(scheduler.build(graph, registry), "scheduler.build()");
+    vivid::RuntimeCore runtime;
+    check(runtime.build(graph, registry), "runtime.build()");
 
     vivid::AudioEngine audio_engine;
-    check(audio_engine.build(scheduler), "audio_engine.build()");
+    check(audio_engine.build(runtime), "audio_engine.build()");
 
     bool active_is_v2_family = false;
     float expected_sample = 4.0f;
@@ -86,7 +86,7 @@ int main(int argc, char* argv[]) {
             std::filesystem::copy_file(bad_path, staged_bad,
                                        std::filesystem::copy_options::overwrite_existing);
             audio_engine.pre_reload_operator("AudioReloadOp");
-            check(!scheduler.reload_operator("AudioReloadOp", registry, staged_bad),
+            check(!runtime.reload_operator("AudioReloadOp", registry, staged_bad),
                   "incompatible reload rejected");
             audio_engine.post_reload_operator("AudioReloadOp", registry);
             check_float(first_sample_after_process(audio_engine), expected_sample, 1e-4f,
@@ -109,8 +109,8 @@ int main(int argc, char* argv[]) {
         const std::string staged_ok = staging + "/audio_reload_ok_" + std::to_string(i) + ".dylib";
         std::filesystem::copy_file(src, staged_ok, std::filesystem::copy_options::overwrite_existing);
         audio_engine.pre_reload_operator("AudioReloadOp");
-        check(scheduler.reload_operator("AudioReloadOp", registry, staged_ok),
-              "scheduler compatible reload succeeds");
+        check(runtime.reload_operator("AudioReloadOp", registry, staged_ok),
+              "runtime compatible reload succeeds");
         check(audio_engine.post_reload_operator("AudioReloadOp", registry),
               "audio engine compatible reload succeeds");
 
@@ -119,8 +119,8 @@ int main(int argc, char* argv[]) {
         check_float(first_sample_after_process(audio_engine), expected_sample, 1e-4f,
                     "compatible reload updates active audio behavior");
 
-        const auto* audio_node = scheduler.compiled_graph()->find_node("audio");
-        check(audio_node != nullptr, "scheduler retains audio node after reload");
+        const auto* audio_node = runtime.compiled_graph()->find_node("audio");
+        check(audio_node != nullptr, "runtime retains audio node after reload");
         if (audio_node) {
             auto pi = audio_node->param_indices.find("level");
             check(pi != audio_node->param_indices.end(), "level param still present after reload");
@@ -137,7 +137,7 @@ int main(int argc, char* argv[]) {
     }
 
     audio_engine.shutdown();
-    scheduler.shutdown();
+    runtime.shutdown();
     std::filesystem::remove_all(staging);
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",

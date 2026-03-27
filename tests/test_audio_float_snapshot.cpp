@@ -55,14 +55,14 @@ int main(int argc, char* argv[]) {
     check(graph.add_node("audio", "AudioFloatCvOp"), "graph.add_node(audio)");
     check(graph.add_connection("ctrl", "out", "audio", "cv"), "graph.add_connection(ctrl/out -> audio/cv)");
 
-    vivid::RuntimeCore scheduler;
-    check(scheduler.build(graph, registry), "scheduler.build()");
+    vivid::RuntimeCore runtime;
+    check(runtime.build(graph, registry), "runtime.build()");
 
     vivid::AudioEngine audio_engine;
-    check(audio_engine.build(scheduler), "audio_engine.build()");
+    check(audio_engine.build(runtime), "audio_engine.build()");
 
-    scheduler.tick(0.0, 0.016, 0);
-    scheduler.cadence_bridge().push_to_audio(*scheduler.compiled_graph());
+    runtime.tick(0.0, 0.016, 0);
+    runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
 
     const int audio_idx = audio_engine.audio_node_index("audio");
     check(audio_idx >= 0, "audio node exists");
@@ -79,7 +79,7 @@ int main(int argc, char* argv[]) {
         check_float(audio_engine.analysis_read().rms[audio_idx], 2.0f, 0.1f,
                     "audio analysis reflects snapshotted cv");
 
-        auto* ctrl_ns = scheduler.compiled_graph()->find_node("ctrl");
+        auto* ctrl_ns = runtime.compiled_graph()->find_node("ctrl");
         check(ctrl_ns != nullptr, "find ctrl node");
         if (ctrl_ns) {
             ctrl_ns->output_values[0] = 9.0f;
@@ -90,7 +90,7 @@ int main(int argc, char* argv[]) {
         check_float(audio_engine.analysis_read().rms[audio_idx], 2.0f, 0.1f,
                     "audio analysis remains at previous snapshot without push_to_audio");
 
-        scheduler.cadence_bridge().push_to_audio(*scheduler.compiled_graph());
+        runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
         check_float(audio_engine.float_input_value_for_test(audio_idx, 0), 2.0f, 1e-5f,
                     "push_to_audio still leaves live float state untouched until callback");
 
@@ -101,7 +101,7 @@ int main(int argc, char* argv[]) {
     }
 
     audio_engine.shutdown();
-    scheduler.shutdown();
+    runtime.shutdown();
     std::filesystem::remove_all(staging);
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",

@@ -90,15 +90,15 @@ int main(int argc, char* argv[]) {
     check(graph.load((build_dir + "/test_runtime_api.json").c_str()), "graph.load(test_runtime_api.json)");
     std::fprintf(stderr, "[runtime_stress] graph loaded\n");
 
-    vivid::RuntimeCore scheduler;
-    check(scheduler.build(graph, registry), "scheduler.build()");
-    std::fprintf(stderr, "[runtime_stress] scheduler built\n");
+    vivid::RuntimeCore runtime;
+    check(runtime.build(graph, registry), "runtime.build()");
+    std::fprintf(stderr, "[runtime_stress] runtime built\n");
 
     vivid::AudioEngine audio_engine;
     bool has_gpu_ops = false;
     bool has_audio = false;
 
-    vivid::RuntimeAPI api(graph, scheduler, audio_engine, registry);
+    vivid::RuntimeAPI api(graph, runtime, audio_engine, registry);
     std::fprintf(stderr, "[runtime_stress] runtime api constructed\n");
 
     auto save_result = api.save_as(save_path);
@@ -112,7 +112,7 @@ int main(int argc, char* argv[]) {
 
         const float new_scale = 10.0f + static_cast<float>(i);
         check(api.set_param("a", "scale", new_scale).ok, "set_param(a/scale)");
-        scheduler.tick(0.0, 0.016, static_cast<uint64_t>(i));
+        runtime.tick(0.0, 0.016, static_cast<uint64_t>(i));
 
         std::string live_snapshot;
         check(graph.save_to_string(live_snapshot), "save_to_string(live snapshot)");
@@ -162,7 +162,7 @@ int main(int argc, char* argv[]) {
         serial = api.reload_serial();
     }
 
-    scheduler.shutdown();
+    runtime.shutdown();
     std::filesystem::remove_all(staging);
     std::filesystem::remove_all(test_home);
     std::filesystem::remove(save_path);

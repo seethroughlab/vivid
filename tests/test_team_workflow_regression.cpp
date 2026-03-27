@@ -219,9 +219,9 @@ int main(int argc, char* argv[]) {
 
                 // Set up runtime and command sink
                 vivid::Graph graph;
-                vivid::RuntimeCore scheduler;
+                vivid::RuntimeCore runtime;
                 vivid::AudioEngine audio_engine;
-                vivid::RuntimeAPI api(graph, scheduler, audio_engine, registry);
+                vivid::RuntimeAPI api(graph, runtime, audio_engine, registry);
                 RuntimeCommandSink sink(api);
                 sink.set_registry(&registry);
                 sink.set_operators_dir((core_root / "operators").string());

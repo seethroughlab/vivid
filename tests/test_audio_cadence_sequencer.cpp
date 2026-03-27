@@ -109,14 +109,14 @@ int main(int argc, char* argv[]) {
 
     registry.load_for_graph(graph);
 
-    // Build scheduler
-    vivid::RuntimeCore sched;
-    bool sched_ok = sched.build(graph, registry);
-    check(sched_ok, "Scheduler built");
+    // Build runtime
+    vivid::RuntimeCore runtime;
+    bool build_ok = runtime.build(graph, registry);
+    check(build_ok, "Runtime built");
 
     // Build audio engine
     vivid::AudioEngine audio;
-    bool audio_ok = audio.build(sched);
+    bool audio_ok = audio.build(runtime);
     check(audio_ok, "Audio engine built");
 
     // Start audio with null device (no real audio output)
@@ -127,14 +127,14 @@ int main(int argc, char* argv[]) {
     float audio_buf[vivid::AudioEngine::kBufferSize * 2] = {};
     for (uint64_t frame = 0; frame < 30; ++frame) {
         double time = frame * 0.016;
-        sched.pre_tick_audio_sync(time);
-        sched.tick(time, 0.016, frame);
-        sched.post_tick_audio_sync();
+        runtime.pre_tick_audio_sync(time);
+        runtime.tick(time, 0.016, frame);
+        runtime.post_tick_audio_sync();
         audio.process_audio_for_test(audio_buf, vivid::AudioEngine::kBufferSize);
     }
 
     // Pull final audio results into CompiledNode for assertions below
-    sched.cadence_bridge().pull_from_audio(*sched.compiled_graph());
+    runtime.cadence_bridge().pull_from_audio(*runtime.compiled_graph());
 
     // Check that audio output has non-zero RMS (the gain node should pass through sound)
     const auto& analysis = audio.analysis_read();
@@ -158,8 +158,8 @@ int main(int argc, char* argv[]) {
         check(osc_peak > 0.001f, "Oscillator produced non-zero audio output");
     }
 
-    auto* clock_cn = sched.compiled_graph()->find_node("clock1");
-    check(clock_cn != nullptr, "Clock node found in scheduler");
+    auto* clock_cn = runtime.compiled_graph()->find_node("clock1");
+    check(clock_cn != nullptr, "Clock node found in runtime");
     if (clock_cn) {
         auto beat_phase_it = clock_cn->output_port_indices.find("beat_phase");
         auto beat_ms_it = clock_cn->output_port_indices.find("beat_ms");
@@ -194,7 +194,7 @@ int main(int argc, char* argv[]) {
 
     // Cleanup
     audio.shutdown();
-    sched.shutdown();
+    runtime.shutdown();
     std::filesystem::remove_all(staging);
 
     std::fprintf(stderr, "\n========================================\n");

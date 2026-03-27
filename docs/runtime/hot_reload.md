@@ -65,17 +65,17 @@ Called from main loop after `poll_ready()` returns results:
 if (r.success) {
     std::string type_name = registry.type_name_for_target(r.target_name);
     audio_engine.pause();
-    bool scheduler_ok = scheduler.reload_operator(type_name, registry, r.staged_dylib_path);
-    bool audio_ok = scheduler_ok ? audio_engine.reload_operator(type_name, registry) : false;
+    bool reload_ok = runtime.reload_operator(type_name, registry, r.staged_dylib_path);
+    bool audio_ok = reload_ok ? audio_engine.reload_operator(type_name, registry) : false;
     audio_engine.resume();
 }
 ```
 
-Success is only treated as real success when both scheduler-side and audio-side reloads succeed.
+Success is only treated as real success when both runtime-side and audio-side reloads succeed.
 Failed reloads leave the previous loader active when possible and surface diagnostics through
 `OperatorRegistry`.
 
-## `Scheduler::reload_operator()`
+## `RuntimeCore::reload_operator()`
 
 For all `NodeState` entries with matching `type_name`:
 1. Snapshot current `param_values` and string params

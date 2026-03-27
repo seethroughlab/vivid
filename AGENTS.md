@@ -53,7 +53,7 @@ When working on `src/runtime/`, read the architecture doc first, then the releva
 |-----------|-----|-----------------|
 | Overall architecture | `docs/runtime/architecture.md` | `src/runtime/main.cpp` |
 | Graph data model | `docs/runtime/graph.md` | `graph.h/cpp` |
-| Scheduler / execution | `docs/runtime/scheduler.md` | `scheduler.h/cpp` |
+| RuntimeCore / execution | `docs/runtime/runtime_core.md` | `runtime_core.h/cpp` |
 | Audio engine | `docs/runtime/audio_engine.md` | `audio_engine.h/cpp` |
 | HTTP control server | `docs/runtime/control_server.md` | `control_server.h/cpp` |
 | Operator loading / ABI | `docs/runtime/operator_loader.md` | `operator_loader.h/cpp`, `operator_registry.h/cpp` |

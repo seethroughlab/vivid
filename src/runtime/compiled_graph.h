@@ -42,7 +42,7 @@ enum class EdgeTransport : uint8_t {
 // ---------------------------------------------------------------------------
 // CompiledEdge — unified wire representation.
 //
-// Replaces Wire (scheduler), AudioWire, AudioFloatPortWire, AudioCustomWire,
+// Replaces Wire, AudioWire, AudioFloatPortWire, AudioCustomWire,
 // AudioSpreadWire, and all five CrossCadence*Wire types.
 // ---------------------------------------------------------------------------
 

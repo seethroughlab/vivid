@@ -3,7 +3,7 @@
 ## Overview
 
 `RuntimeAPI` (runtime_api.h/cpp) is the central command layer used by `ControlServer` to drive
-all runtime mutations. It owns references to `Graph`, `Scheduler`, `AudioEngine`, and
+all runtime mutations. It owns references to `Graph`, `RuntimeCore`, `AudioEngine`, and
 `OperatorRegistry`, and provides a single `CommandResult`-returning API over all of them.
 
 It also owns cross-cutting state that doesn't belong in any single subsystem:
@@ -12,7 +12,7 @@ undo/redo, quantized variation switching, state-preset machine, crossfade state,
 ## Construction
 
 ```cpp
-RuntimeAPI(Graph& graph, Scheduler& scheduler, AudioEngine& audio_engine,
+RuntimeAPI(Graph& graph, RuntimeCore& runtime, AudioEngine& audio_engine,
            OperatorRegistry& registry, SystemMidiListener* system_midi = nullptr);
 ```
 All parameters are references — `RuntimeAPI` does not own any of them.
@@ -28,14 +28,14 @@ struct CommandResult {
 
 ## Immediate vs. Buffered
 
-**Immediate** (apply to live scheduler in-place, no rebuild needed):
+**Immediate** (apply to live runtime in-place, no rebuild needed):
 - `set_param()`, `set_string_param()` — update `NodeState::param_values` directly
 - `set_node_layout()` — update `NodeDef::layout_x/y`
 - `set_resolution()` — update `NodeDef::tex_width/height`, sets `needs_gpu_realloc_`
 
 **Buffered topology** (sets `pending_topology_change_ = true`):
 - `add_node()`, `remove_node()`, `connect()`, `disconnect()`
-- Applied by `apply_pending()` which calls `Scheduler::build()` + `AudioEngine::build()`
+- Applied by `apply_pending()` which calls `RuntimeCore::build()` + `AudioEngine::build()`
 
 ```cpp
 bool apply_pending(bool& has_gpu_ops, bool& has_audio);
@@ -96,8 +96,8 @@ Recent hardening guarantees in this area:
 ## Variations
 
 ```cpp
-CommandResult save_variation(name);      // snapshot all params from live scheduler
-CommandResult recall_variation(name);    // apply variation params to scheduler nodes
+CommandResult save_variation(name);      // snapshot all params from live runtime
+CommandResult recall_variation(name);    // apply variation params to runtime nodes
 CommandResult recall_variation_idx(idx);
 CommandResult update_variation(name);    // overwrite with current params
 CommandResult queue_variation(name, quantize);  // schedule for next beat/bar
@@ -145,7 +145,7 @@ CommandResult set_solo(const std::string& node_id);  // empty = clear
 std::string solo_node_id() const;
 ```
 
-Delegates to `Scheduler::set_solo()`. Session-only, not serialized.
+Delegates to `RuntimeCore::set_solo()`. Session-only, not serialized.
 
 ## MIDI
 

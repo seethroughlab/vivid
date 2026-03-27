@@ -133,7 +133,7 @@ add_executable(standalone
     ${VIVID_SRC}/src/runtime/operator_registry.cpp
     ${VIVID_SRC}/src/runtime/wgsl_header_parser.cpp
     ${VIVID_SRC}/src/runtime/graph.cpp
-    ${VIVID_SRC}/src/runtime/scheduler.cpp
+    ${VIVID_SRC}/src/runtime/runtime_core.cpp
     ${VIVID_SRC}/src/runtime/audio_engine.cpp
     ${VIVID_SRC}/src/runtime/builtin_operators.cpp
     ${VIVID_SRC}/src/runtime/runtime_api.cpp

@@ -174,25 +174,25 @@ int main(int argc, char* argv[]) {
     }
 
     // --- Build Runtime ---
-    vivid::RuntimeCore scheduler;
-    if (!scheduler.build(graph, registry)) {
-        std::fprintf(stderr, "[standalone] Failed to build scheduler\n");
+    vivid::RuntimeCore runtime;
+    if (!runtime.build(graph, registry)) {
+        std::fprintf(stderr, "[standalone] Failed to build runtime\n");
         glfwDestroyWindow(window);
         glfwTerminate();
         return 1;
     }
 
-    bool has_gpu_ops = scheduler.has_gpu_operators();
+    bool has_gpu_ops = runtime.has_gpu_operators();
     if (has_gpu_ops) {
-        scheduler.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
+        runtime.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
     }
-    int video_out_idx = has_gpu_ops ? scheduler.find_gpu_sink() : -1;
+    int video_out_idx = has_gpu_ops ? runtime.find_gpu_sink() : -1;
 
     // --- Audio Engine ---
     vivid::AudioEngine audio_engine;
     bool has_audio = false;
-    if (scheduler.has_audio_operators()) {
-        if (audio_engine.build(scheduler)) {
+    if (runtime.has_audio_operators()) {
+        if (audio_engine.build(runtime)) {
             if (audio_engine.start()) {
                 has_audio = true;
                 std::fprintf(stderr, "[standalone] Audio engine started\n");
@@ -205,7 +205,7 @@ int main(int argc, char* argv[]) {
     system_midi.open_all();
 
     // --- RuntimeAPI (for MIDI mappings, variations) ---
-    vivid::RuntimeAPI runtime_api(graph, scheduler, audio_engine, registry, &system_midi);
+    vivid::RuntimeAPI runtime_api(graph, runtime, audio_engine, registry, &system_midi);
 
 #ifdef VIVID_STANDALONE_CONTROL_SERVER
     vivid::ControlServer control_server;
@@ -230,18 +230,18 @@ int main(int argc, char* argv[]) {
         }
 
 #ifdef VIVID_STANDALONE_CONTROL_SERVER
-        control_server.process_requests(runtime_api, graph, scheduler, registry,
+        control_server.process_requests(runtime_api, graph, runtime, registry,
                                         has_gpu_ops, has_audio);
         if (runtime_api.has_pending()) {
             runtime_api.apply_pending(has_gpu_ops, has_audio);
             if (has_gpu_ops)
-                scheduler.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
+                runtime.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
         }
 #endif
 
-        if (scheduler.needs_gpu_realloc()) {
-            scheduler.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
-            scheduler.clear_gpu_realloc();
+        if (runtime.needs_gpu_realloc()) {
+            runtime.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
+            runtime.clear_gpu_realloc();
         }
 
         double now = glfwGetTime();
@@ -272,28 +272,28 @@ int main(int argc, char* argv[]) {
 
         // Inject audio analysis
         if (has_audio)
-            scheduler.pre_tick_audio_sync(now);
+            runtime.pre_tick_audio_sync(now);
 
-        // Tick scheduler
-        scheduler.tick(now, dt, frame_count, &gpu_state, nullptr);
+        // Tick runtime
+        runtime.tick(now, dt, frame_count, &gpu_state, nullptr);
 
         // Tick state presets
         runtime_api.tick_state_presets();
 
         // Push params to audio thread
         if (has_audio)
-            scheduler.post_tick_audio_sync();
+            runtime.post_tick_audio_sync();
 
         // Present
         if (have_surface) {
-            if (has_gpu_ops && video_out_idx >= 0 && scheduler.compiled_graph()) {
-                const auto& vo_cn = scheduler.compiled_graph()->nodes[video_out_idx];
+            if (has_gpu_ops && video_out_idx >= 0 && runtime.compiled_graph()) {
+                const auto& vo_cn = runtime.compiled_graph()->nodes[video_out_idx];
                 WGPUTextureView display_tex = nullptr;
                 uint32_t src_w = 0, src_h = 0;
 
                 if (!vo_cn.resolved_tex_inputs.empty()) {
                     display_tex = vo_cn.resolved_tex_inputs[0];
-                    scheduler.gpu_sink_source_size(video_out_idx, src_w, src_h);
+                    runtime.gpu_sink_source_size(video_out_idx, src_w, src_h);
                 }
 
                 if (display_tex && src_w > 0 && src_h > 0) {
@@ -341,7 +341,7 @@ int main(int argc, char* argv[]) {
 
     // Cleanup
     if (has_audio) audio_engine.shutdown();
-    scheduler.shutdown();
+    runtime.shutdown();
     blit.shutdown();
     gpu.shutdown();
     glfwDestroyWindow(window);

@@ -1132,7 +1132,7 @@ int main() {
 
         // The Graph data model is permissive — it stores connections without
         // validating that the referenced node IDs exist.  Cycle detection and
-        // port-type validation are the scheduler's responsibility, not the
+        // port-type validation are the runtime's responsibility, not the
         // data model's.
         vivid::Graph g;
         // No nodes added — add_connection stores the wire anyway
@@ -1162,7 +1162,7 @@ int main() {
         std::fprintf(stderr, "\n=== Test 29: Cycle in data model ===\n");
 
         // The Graph data model allows cycles — they are detected and handled
-        // at the scheduler level (kahn_sort / topo_sort).
+        // at the runtime level (kahn_sort / topo_sort).
         vivid::Graph g;
         g.add_node("a", "Foo");
         g.add_node("b", "Bar");
@@ -1199,7 +1199,7 @@ int main() {
 
         // The Graph data model has no concept of port types — it stores
         // arbitrary string identifiers.  Type compatibility is validated by
-        // the scheduler when it resolves operator descriptors.
+        // the runtime when it resolves operator descriptors.
         vivid::Graph g;
         g.add_node("audio_src", "AudioOsc");
         g.add_node("vis_node", "ColorRamp");

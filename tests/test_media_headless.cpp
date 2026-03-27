@@ -125,8 +125,8 @@ struct HeadlessGpu {
     }
 };
 
-// Helper: run one scheduler tick with a GPU command encoder, then submit + wait.
-static void tick_gpu(vivid::RuntimeCore& sched, HeadlessGpu& gpu,
+// Helper: run one runtime tick with a GPU command encoder, then submit + wait.
+static void tick_gpu(vivid::RuntimeCore& runtime, HeadlessGpu& gpu,
                      WGPUTextureFormat format, double time, uint64_t frame) {
     WGPUCommandEncoderDescriptor enc_desc{};
     enc_desc.label = vivid::to_sv("Tick Encoder");
@@ -138,7 +138,7 @@ static void tick_gpu(vivid::RuntimeCore& sched, HeadlessGpu& gpu,
     gpu_state.command_encoder = encoder;
     gpu_state.output_format   = format;
 
-    sched.tick(time, 0.016, frame, &gpu_state);
+    runtime.tick(time, 0.016, frame, &gpu_state);
 
     WGPUCommandBufferDescriptor cmd_desc{};
     cmd_desc.label = vivid::to_sv("Tick Commands");
@@ -208,7 +208,7 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
     // Watchdog alarm — if AVFoundation hangs instead of aborting.
     alarm(kTimeoutSeconds);
 
-    static constexpr WGPUTextureFormat kFormat = WGPUTextureFormat_RGBA16Float;
+    static constexpr WGPUTextureFormat kFormat = WGPUTextureFormat_RGBA8Unorm;
 
     HeadlessGpu gpu;
     bool have_gpu = gpu.init();
@@ -236,28 +236,28 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
     CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.01, false);
 #endif
 
-    vivid::RuntimeCore sched;
-    if (!sched.build(graph, registry)) {
-        std::fprintf(stderr, "scheduler.build() failed\n");
+    vivid::RuntimeCore runtime;
+    if (!runtime.build(graph, registry)) {
+        std::fprintf(stderr, "runtime.build() failed\n");
         return 1;
     }
 
-    bool use_gpu = sched.has_gpu_operators();
-    bool use_audio = sched.has_audio_operators();
+    bool use_gpu = runtime.has_gpu_operators();
+    bool use_audio = runtime.has_audio_operators();
 
     if (use_gpu && !have_gpu) {
         std::fprintf(stderr, "needs GPU\n");
-        sched.shutdown();
+        runtime.shutdown();
         return 2;
     }
     if (use_gpu) {
-        sched.allocate_gpu_textures(gpu.device, 64, 64, kFormat);
+        runtime.allocate_gpu_textures(gpu.device, 64, 64, kFormat);
     }
 
     vivid::AudioEngine* audio = nullptr;
     if (use_audio) {
         audio = new vivid::AudioEngine();
-        audio->build(sched);
+        audio->build(runtime);
         audio->start(true);  // null device
     }
 
@@ -268,15 +268,15 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
     for (uint64_t frame = 0; frame < 60; ++frame) {
         double time = frame * 0.016;
         if (audio) {
-            sched.pre_tick_audio_sync(time);
+            runtime.pre_tick_audio_sync(time);
         }
         if (use_gpu) {
-            tick_gpu(sched, gpu, kFormat, time, frame);
+            tick_gpu(runtime, gpu, kFormat, time, frame);
         } else {
-            sched.tick(time, 0.016, frame);
+            runtime.tick(time, 0.016, frame);
         }
         if (audio) {
-            sched.cadence_bridge().push_to_audio(*sched.compiled_graph());
+            runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
             audio->process_audio_for_test(audio_buf, vivid::AudioEngine::kBufferSize);
         }
 #ifdef __APPLE__
@@ -288,7 +288,7 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
     int result = 0;
 
     if (audio) {
-        sched.cadence_bridge().pull_from_audio(*sched.compiled_graph());
+        runtime.cadence_bridge().pull_from_audio(*runtime.compiled_graph());
         const auto& analysis = audio->analysis_read();
         for (size_t i = 0; i < analysis.errored.size(); ++i) {
             if (analysis.errored[i]) {
@@ -304,7 +304,7 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
     }
 
     if (audio) { audio->shutdown(); delete audio; }
-    sched.shutdown();
+    runtime.shutdown();
     gpu.shutdown();
 
     return result;

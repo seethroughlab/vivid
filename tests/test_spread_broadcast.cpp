@@ -54,16 +54,16 @@ int main(int argc, char* argv[]) {
     vivid::Graph graph;
     check(graph.load(graph_path.c_str()), "graph.load()");
 
-    vivid::RuntimeCore scheduler;
-    check(scheduler.build(graph, registry), "scheduler.build()");
+    vivid::RuntimeCore runtime;
+    check(runtime.build(graph, registry), "runtime.build()");
 
     // --- Test 1: Single source spread passthrough ---
     std::fprintf(stderr, "\n--- single source spread ---\n");
-    scheduler.tick(0.0, 1.0 / 60.0, 0);
+    runtime.tick(0.0, 1.0 / 60.0, 0);
 
     // Find single_sink node
     const vivid::CompiledNode* single_sink = nullptr;
-    for (const auto& ns : scheduler.compiled_graph()->nodes) {
+    for (const auto& ns : runtime.compiled_graph()->nodes) {
         if (ns.node_id == "single_sink") { single_sink = &ns; break; }
     }
     check(single_sink != nullptr, "found single_sink node");
@@ -83,7 +83,7 @@ int main(int argc, char* argv[]) {
     // --- Test 2: Broadcast (two different-length spreads) ---
     std::fprintf(stderr, "\n--- broadcast two spreads ---\n");
     const vivid::CompiledNode* sink = nullptr;
-    for (const auto& ns : scheduler.compiled_graph()->nodes) {
+    for (const auto& ns : runtime.compiled_graph()->nodes) {
         if (ns.node_id == "sink") { sink = &ns; break; }
     }
     check(sink != nullptr, "found sink node");

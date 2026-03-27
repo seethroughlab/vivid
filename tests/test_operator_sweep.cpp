@@ -641,10 +641,10 @@ static void sweep_operator(const fs::path& path, HeadlessGpu* gpu) {
             smoke = smoke_audio(loader, inst, desc);
         } else if (desc->execution_env == VIVID_ENV_GPU) {
             // GPU operators manage their own shaders, pipelines, and internal
-            // textures. Calling process_gpu with a minimal context (no scheduler,
+            // textures. Calling process_gpu with a minimal context (no runtime,
             // no proper texture setup) causes wgpu validation errors and aborts.
             // GPU operator process smoke is covered by test_demo_graphs (Phase B)
-            // which runs full graphs through the scheduler. Here we only validate
+            // which runs full graphs through the runtime. Here we only validate
             // load + descriptor + lifecycle for GPU ops.
             smoke = true;  // skip process, pass through to boundary (also skipped for GPU)
         }

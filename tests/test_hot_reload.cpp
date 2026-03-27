@@ -64,22 +64,22 @@ int main(int argc, char* argv[]) {
         check(*type_ptr == "TestOp", "target maps to TestOp");
     }
 
-    // --- Step 3: Build graph and scheduler ---
+    // --- Step 3: Build graph and runtime ---
     std::fprintf(stderr, "\n--- Building graph ---\n");
     vivid::Graph graph;
     check(graph.load(graph_path.c_str()), "graph.load() succeeds");
 
-    vivid::RuntimeCore scheduler;
-    check(scheduler.build(graph, registry), "scheduler.build() succeeds");
-    check(scheduler.compiled_graph()->nodes.size() == 1, "scheduler has 1 node");
+    vivid::RuntimeCore runtime;
+    check(runtime.build(graph, registry), "runtime.build() succeeds");
+    check(runtime.compiled_graph()->nodes.size() == 1, "runtime has 1 node");
 
     // Verify initial param: scale=5.0 (from JSON)
-    const auto& nodes = scheduler.compiled_graph()->nodes;
+    const auto& nodes = runtime.compiled_graph()->nodes;
     check_float(nodes[0].param_values[0], 5.0f, "scale param initialized to 5.0");
 
     // --- Step 4: Tick v1 and verify output ---
     std::fprintf(stderr, "\n--- Tick with v1 ---\n");
-    scheduler.tick(0.0, 0.016, 0);
+    runtime.tick(0.0, 0.016, 0);
     // v1: output = scale * 2.0 = 5.0 * 2.0 = 10.0
     check_float(nodes[0].output_values[0], 10.0f, "v1 output = scale * 2.0 = 10.0");
 
@@ -91,7 +91,7 @@ int main(int argc, char* argv[]) {
     std::filesystem::copy_file(v2_path, staged_v2,
         std::filesystem::copy_options::overwrite_existing);
 
-    check(scheduler.reload_operator("TestOp", registry, staged_v2),
+    check(runtime.reload_operator("TestOp", registry, staged_v2),
           "reload_operator() succeeds");
 
     // --- Step 6: Verify param reconciliation ---
@@ -102,12 +102,12 @@ int main(int argc, char* argv[]) {
     check(nodes[0].dirty, "dirty flag set after reload");
 
     // Verify type_name accessor
-    std::string tn = scheduler.type_name(0);
+    std::string tn = runtime.type_name(0);
     check(tn == "TestOp", "type_name() returns TestOp after reload");
 
     // --- Step 7: Tick v2 and verify new output ---
     std::fprintf(stderr, "\n--- Tick with v2 ---\n");
-    scheduler.tick(0.0, 0.016, 1);
+    runtime.tick(0.0, 0.016, 1);
     // v2: output = scale * 3.0 + offset = 5.0 * 3.0 + 10.0 = 25.0
     check_float(nodes[0].output_values[0], 25.0f, "v2 output = scale * 3.0 + offset = 25.0");
 
@@ -116,11 +116,11 @@ int main(int argc, char* argv[]) {
     std::string staged_v2b = staging + "/test_op_v2_reload_1.dylib";
     std::filesystem::copy_file(v2_path, staged_v2b,
         std::filesystem::copy_options::overwrite_existing);
-    check(scheduler.reload_operator("TestOp", registry, staged_v2b),
+    check(runtime.reload_operator("TestOp", registry, staged_v2b),
           "re-reload with same version succeeds");
     check_float(nodes[0].param_values[0], 5.0f, "scale still preserved");
     check_float(nodes[0].param_values[1], 10.0f, "offset still preserved");
-    scheduler.tick(0.0, 0.016, 2);
+    runtime.tick(0.0, 0.016, 2);
     check_float(nodes[0].output_values[0], 25.0f, "output unchanged after re-reload");
 
     // --- Step 9: Incompatible port layout change is rejected ---
@@ -128,16 +128,16 @@ int main(int argc, char* argv[]) {
     std::string staged_bad = staging + "/test_op_bad_reload_0.dylib";
     std::filesystem::copy_file(bad_port_path, staged_bad,
         std::filesystem::copy_options::overwrite_existing);
-    check(!scheduler.reload_operator("TestOp", registry, staged_bad),
+    check(!runtime.reload_operator("TestOp", registry, staged_bad),
           "reload rejects incompatible port layout");
     check_float(nodes[0].param_values[0], 5.0f, "scale preserved after rejected reload");
     check_float(nodes[0].param_values[1], 10.0f, "offset preserved after rejected reload");
-    scheduler.tick(0.0, 0.016, 3);
+    runtime.tick(0.0, 0.016, 3);
     check_float(nodes[0].output_values[0], 25.0f,
                 "previous operator remains active after rejected reload");
 
     // --- Cleanup ---
-    scheduler.shutdown();
+    runtime.shutdown();
     std::filesystem::remove_all(staging);
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",

@@ -33,7 +33,7 @@ struct VividGpuContext {
     uint32_t           output_width;
     uint32_t           output_height;
     WGPUTextureFormat  output_format;
-    // Auxiliary texture outputs (2nd, 3rd... GPU_TEXTURE output ports), scheduler-allocated.
+    // Auxiliary texture outputs (2nd, 3rd... GPU_TEXTURE output ports), runtime-allocated.
     WGPUTextureView*   aux_output_texture_views;
     uint32_t           aux_output_texture_count;
 
