@@ -1,5 +1,4 @@
 #include "operator_api/operator.h"
-#include "operator_api/audio_operator.h"
 #include "operator_api/thumbnail.h"
 
 struct Mixer : vivid::OperatorBase, vivid::AudioProcessable {

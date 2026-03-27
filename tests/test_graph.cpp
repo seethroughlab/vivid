@@ -709,7 +709,7 @@ int main() {
                 "gain": { "type": "Gain", "params": { "level": 0.8 } }
             },
             "connections": [
-                { "from": "osc/output", "to": "gain/input", "scale": 0.5 }
+                { "from": "osc/output", "to": "gain/input", "to_max": 0.5 }
             ]
         })";
 
@@ -732,7 +732,7 @@ int main() {
         const auto& conn = g.connections()[0];
         check(conn.from_node == "osc" && conn.from_port == "output", "connection from osc/output");
         check(conn.to_node == "gain" && conn.to_port == "input", "connection to gain/input");
-        check_float(conn.to_max, 0.5f, "connection to_max = 0.5 (backward compat from scale)");
+        check_float(conn.to_max, 0.5f, "connection to_max = 0.5");
 
         // Also test with explicit length
         vivid::Graph g2;

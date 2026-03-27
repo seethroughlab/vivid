@@ -24,10 +24,11 @@ typedef uint32_t VividExecutionEnv;
 #define VIVID_ENV_AUDIO  1u   // audio thread, audio-rate (~48 kHz)
 #define VIVID_ENV_GPU    2u   // main thread, GPU command submission
 
-// Cadence capability — whether a frame-env operator can be promoted to audio-rate.
+// Cadence capability — classifies an operator's supported execution cadences.
 typedef uint32_t VividCadenceCapability;
 #define VIVID_CADENCE_FRAME_ONLY     0u  // can only run at frame rate
-#define VIVID_CADENCE_AUDIO_CAPABLE  1u  // satisfies audio-safe contract, can be promoted
+#define VIVID_CADENCE_AUDIO_CAPABLE  1u  // implements both process_frame and process_audio; can be promoted
+#define VIVID_CADENCE_AUDIO_ONLY     2u  // implements only process_audio; always runs at audio rate
 
 typedef uint32_t VividParamType;
 #define VIVID_PARAM_FLOAT  0u
@@ -123,7 +124,7 @@ typedef struct VividOperatorDescriptor {
     const struct VividEmbeddedOpSlot* embedded_op_slots;
 
     // Cadence-aware execution model (v15+)
-    VividCadenceCapability    cadence_capability;    // FRAME_ONLY or AUDIO_CAPABLE
+    VividCadenceCapability    cadence_capability;    // FRAME_ONLY, AUDIO_CAPABLE, or AUDIO_ONLY
     int                       has_process_frame;     // 1 if operator implements FrameProcessable
 } VividOperatorDescriptor;
 

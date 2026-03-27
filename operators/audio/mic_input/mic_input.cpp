@@ -9,7 +9,6 @@
 #include "miniaudio.h"
 
 #include "operator_api/operator.h"
-#include "operator_api/audio_operator.h"
 #include <atomic>
 #include <cmath>
 #include <cstring>

@@ -10,7 +10,6 @@
 //     Output as control floats for downstream visual/control operators.
 
 #include "operator_api/operator.h"
-#include "operator_api/audio_operator.h"
 #include <cmath>
 #include <vector>
 #include <algorithm>

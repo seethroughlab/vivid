@@ -327,7 +327,7 @@ An operator opts into execution environments by inheriting capability interfaces
 | `AudioProcessable` | `process_audio(VividAudioContext*)` | Audio thread, 48 kHz |
 | `GpuProcessable` | `process_gpu(VividGpuContext*)` | Main thread, WebGPU |
 
-An operator may implement multiple interfaces. The `cadence_capability` flag (`FRAME_ONLY` or `AUDIO_CAPABLE`) determines whether the operator can be promoted to audio-rate execution.
+An operator may implement multiple interfaces. The `cadence_capability` flag classifies cadence support: `FRAME_ONLY` (frame-rate only), `AUDIO_CAPABLE` (implements both `process_frame` and `process_audio`, can be promoted to audio-rate), or `AUDIO_ONLY` (implements only `process_audio`, always runs at audio-rate).
 
 ### The VIVID_REGISTER Macro
 
@@ -348,7 +348,7 @@ param_count, params[]   — parameter descriptors (name, type, range, defaults)
 port_count, ports[]     — port descriptors (name, type, direction, transport)
 time_dependent          — whether the operator reads ctx->time
 has_process_frame/audio/gpu — capability flags (which process methods exist)
-cadence_capability      — FRAME_ONLY or AUDIO_CAPABLE
+cadence_capability      — FRAME_ONLY, AUDIO_CAPABLE, or AUDIO_ONLY
 embedded_op_slots[]     — modulation sub-operator slots
 ```
 

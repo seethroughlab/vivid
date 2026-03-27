@@ -1,5 +1,4 @@
 #include "operator_api/operator.h"
-#include "operator_api/audio_operator.h"
 
 struct Gain : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Gain";

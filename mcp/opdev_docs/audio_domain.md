@@ -6,7 +6,6 @@ Audio operators run on the audio thread, processing sample buffers at audio rate
 
 ```cpp
 #include "operator_api/operator.h"
-#include "operator_api/audio_operator.h"
 
 struct MyAudioOp : vivid::OperatorBase, vivid::AudioProcessable {
     void process_audio(const VividAudioContext* ctx) override;
@@ -66,7 +65,6 @@ void collect_ports(std::vector<VividPortDescriptor>& out) override {
 
 ```cpp
 #include "operator_api/operator.h"
-#include "operator_api/audio_operator.h"
 
 struct Gain : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName = "Gain";

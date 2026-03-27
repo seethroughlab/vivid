@@ -595,7 +595,9 @@ static std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core) {
         }
         node["type"] = type_name;
         node["env"] = ns.is_gpu() ? "gpu" : (ns.active_cadence == vivid::Cadence::Audio ? "audio" : "control");
-        node["cadence_capability"] = (ns.cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE) ? "audio_capable" : "frame_only";
+        node["cadence_capability"] = (ns.cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE) ? "audio_capable"
+                                   : (ns.cadence_capability == VIVID_CADENCE_AUDIO_ONLY) ? "audio_only"
+                                   : "frame_only";
         {
             const auto* ndef = graph.find_node(ns.node_id);
             node["cadence_override"] = ndef ? static_cast<int>(static_cast<uint8_t>(ndef->cadence_override)) : 0;

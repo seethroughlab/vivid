@@ -20,15 +20,15 @@ C++ was chosen over Zig and Rust for one overriding reason: library integration.
 
 ## 5.3 Three Domains
 
-The system has three execution domains, each with distinct timing and resource characteristics:
+The system has three operator domains — conceptual groupings that describe what kind of data an operator works with and where it appears in the UI. These are distinct from the runtime's two **cadences** (frame-rate ~60 Hz, audio-rate ~48 kHz), which determine *when* an operator executes. See the [runtime architecture](vivid-runtime-architecture.md) for the cadence model.
 
-- **Control** — floats, ints, bools, events, strings, buffers. Updated at arbitrary rates. Runs on the main thread or a dedicated control thread. No fixed timing — values propagate immediately on change.
-- **Audio** — sample buffers at a fixed rate (48kHz typical). Runs on a real-time audio thread managed by miniaudio. Operators produce a buffer every callback, even if silence.
-- **GPU** — textures, shaders, meshes, compute buffers. Runs at display refresh rate. Operators execute as Dawn/WebGPU render/compute passes.
+- **Control** — floats, ints, bools, events, strings, spreads. Runs at frame cadence on the main thread. Some control operators are audio-capable and can be promoted to audio cadence for sample-accurate modulation.
+- **Audio** — sample buffers at audio cadence (48 kHz typical). Runs on a real-time audio thread managed by miniaudio. Operators produce a buffer every callback, even if silence.
+- **GPU** — textures, shaders, meshes, compute buffers. Runs at frame cadence on the main thread. Operators execute as Dawn/WebGPU render/compute passes.
 
-## 5.4 Execution Model: Hybrid Push/Pull
+## 5.4 Execution Model: Dual-Cadence Pull
 
-Control is push-based — events propagate forward immediately. Audio and GPU are pull-based — driven by their respective hardware clocks. When a Control change reaches the boundary of an Audio or GPU subgraph, it updates the parameter store. The next pull cycle picks it up. No domain ever waits on another.
+Both cadences are pull-based — frame-rate is driven by the display refresh, audio-rate by the audio device callback. Frame and audio executors process their respective nodes in topological order each tick/buffer. Cross-cadence data flows through the `CadenceBridge` using lock-free double-buffered snapshots, so neither cadence ever waits on the other.
 
 ## 5.5 Domain Bridges: Control as Hub
 
@@ -400,7 +400,7 @@ vivid/
 │   ├── operator_api/           # Public headers for operator contract
 │   │   ├── operator.h          # Base classes, Param<T>, VIVID_REGISTER macro
 │   │   ├── types.h             # C ABI: enums, descriptors, contexts
-│   │   ├── audio_operator.h    # AudioProcessable, VividAudioContext
+│   │   ├── audio_operator.h    # Compat shim (includes types.h; prefer operator.h directly)
 │   │   ├── gpu_operator.h      # GpuProcessable, VividGpuContext, VividGpuState
 │   │   ├── gpu_types.h         # VividGpuBuffer, VividMesh, VividComputeBuffer
 │   │   ├── child_op.h          # ChildOp<T> for operator composition

@@ -354,11 +354,12 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
             std::is_base_of_v<vivid::GpuProcessable, ClassName> ? 1 : 0;      \
         desc.has_process_frame =                                              \
             std::is_base_of_v<vivid::FrameProcessable, ClassName> ? 1 : 0;    \
-        /* Cadence capability: frame operators that also implement              \
-           AudioProcessable are audio-capable (can be promoted). */           \
+        /* Cadence capability: classify operator cadence support. */            \
         if (!desc.has_process_gpu && desc.has_process_frame &&                \
             desc.has_process_audio)                                           \
             desc.cadence_capability = VIVID_CADENCE_AUDIO_CAPABLE;            \
+        else if (desc.has_process_audio && !desc.has_process_frame)           \
+            desc.cadence_capability = VIVID_CADENCE_AUDIO_ONLY;               \
         else                                                                  \
             desc.cadence_capability = VIVID_CADENCE_FRAME_ONLY;               \
         desc.param_count    = static_cast<uint32_t>(s_params.size());         \
