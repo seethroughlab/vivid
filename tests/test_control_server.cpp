@@ -1734,6 +1734,232 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        // =============================================================
+        // Re-add a test node for the remaining endpoint tests
+        // (the unlink phase reloaded the graph, so node "a" is gone)
+        // =============================================================
+        {
+            auto re_add = post(client, base_url, "add_node",
+                R"({"type":"TestOp","node_id":"test_ep"})");
+            check(re_add.ok, "re-add TestOp node for endpoint tests");
+            phase.store(21);
+            while (phase.load() < 22) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+
+        // =============================================================
+        // Solo set/get
+        // =============================================================
+        {
+            std::fprintf(stderr, "\n  solo set/get\n");
+
+            auto get1 = post(client, base_url, "get_solo");
+            check(get1.ok, "get_solo ok");
+            if (!get1.j.is_null()) {
+                check(get1.j.contains("active") && !get1.j["active"].get<bool>(),
+                      "solo not active initially");
+            }
+
+            auto set1 = post(client, base_url, "set_solo",
+                R"({"node_id":"test_ep"})");
+            check(set1.ok, "set_solo on node test_ep ok");
+
+            auto get2 = post(client, base_url, "get_solo");
+            check(get2.ok, "get_solo after set ok");
+            if (!get2.j.is_null()) {
+                check(get2.j["active"].get<bool>(), "solo active after set");
+                check(get2.j["node_id"].get<std::string>() == "test_ep", "solo node_id is test_ep");
+            }
+
+            // Clear solo
+            auto clear = post(client, base_url, "set_solo",
+                R"({"node_id":""})");
+            check(clear.ok, "clear solo ok");
+
+            auto get3 = post(client, base_url, "get_solo");
+            check(get3.ok, "get_solo after clear ok");
+            if (!get3.j.is_null()) {
+                check(!get3.j["active"].get<bool>(), "solo cleared");
+            }
+        }
+
+        // =============================================================
+        // Param lock set/get
+        // =============================================================
+        {
+            std::fprintf(stderr, "\n  param lock set/get\n");
+
+            auto set_lock = post(client, base_url, "set_param_lock",
+                R"({"node_id":"test_ep","param":"scale","flags":1})");
+            check(set_lock.ok, "set_param_lock ok");
+
+            auto get_lock = post(client, base_url, "get_param_lock",
+                R"({"node_id":"test_ep","param":"scale"})");
+            check(get_lock.ok, "get_param_lock ok");
+            if (!get_lock.j.is_null() && get_lock.j.contains("result")) {
+                auto& res = get_lock.j["result"];
+                check(res.contains("flags") && res["flags"].get<int>() == 1,
+                      "param lock flags == 1");
+            }
+
+            // Clear lock
+            auto clear_lock = post(client, base_url, "set_param_lock",
+                R"({"node_id":"test_ep","param":"scale","flags":0})");
+            check(clear_lock.ok, "clear param lock ok");
+
+            auto get_lock2 = post(client, base_url, "get_param_lock",
+                R"({"node_id":"test_ep","param":"scale"})");
+            check(get_lock2.ok, "get_param_lock after clear ok");
+            if (!get_lock2.j.is_null() && get_lock2.j.contains("result")) {
+                auto& res = get_lock2.j["result"];
+                check(res.contains("flags") && res["flags"].get<int>() == 0,
+                      "param lock flags cleared to 0");
+            }
+        }
+
+        // =============================================================
+        // Preset lifecycle: save, list, recall, rename, remove
+        // =============================================================
+        {
+            std::fprintf(stderr, "\n  preset lifecycle\n");
+
+            // Set param to known value before saving
+            post(client, base_url, "set_param",
+                R"({"node_id":"test_ep","param":"scale","value":7.5})");
+
+            auto save = post(client, base_url, "save_preset",
+                R"({"node_id":"test_ep","name":"test_preset"})");
+            check(save.ok, "save_preset ok");
+
+            auto list1 = post(client, base_url, "list_presets",
+                R"({"node_id":"test_ep"})");
+            check(list1.ok, "list_presets ok");
+            if (!list1.j.is_null() && list1.j.contains("result")) {
+                auto& res = list1.j["result"];
+                bool found = false;
+                if (res.contains("presets") && res["presets"].is_array()) {
+                    for (const auto& p : res["presets"]) {
+                        if (p.is_string() && p.get<std::string>() == "test_preset")
+                            found = true;
+                    }
+                }
+                check(found, "test_preset in preset list");
+            }
+
+            // Change param, then recall preset
+            post(client, base_url, "set_param",
+                R"({"node_id":"test_ep","param":"scale","value":0.0})");
+
+            auto recall = post(client, base_url, "recall_preset",
+                R"({"node_id":"test_ep","name":"test_preset"})");
+            check(recall.ok, "recall_preset ok");
+
+            // Verify param restored
+            auto get_p = post(client, base_url, "get_param",
+                R"({"node_id":"test_ep","param":"scale"})");
+            check(get_p.ok, "get_param after recall ok");
+            if (!get_p.j.is_null() && get_p.j.contains("result")) {
+                float val = get_p.j["result"]["value"].get<float>();
+                check(std::fabs(val - 7.5f) < 0.01f,
+                      "param restored to 7.5 after recall");
+            }
+
+            // Rename preset
+            auto rename = post(client, base_url, "rename_preset",
+                R"({"node_id":"test_ep","old_name":"test_preset","new_name":"renamed_preset"})");
+            check(rename.ok, "rename_preset ok");
+
+            auto list2 = post(client, base_url, "list_presets",
+                R"({"node_id":"test_ep"})");
+            if (!list2.j.is_null() && list2.j.contains("result")) {
+                auto& res = list2.j["result"];
+                bool found_old = false, found_new = false;
+                if (res.contains("presets") && res["presets"].is_array()) {
+                    for (const auto& p : res["presets"]) {
+                        if (p.is_string()) {
+                            if (p.get<std::string>() == "test_preset") found_old = true;
+                            if (p.get<std::string>() == "renamed_preset") found_new = true;
+                        }
+                    }
+                }
+                check(!found_old, "old preset name gone");
+                check(found_new, "new preset name present");
+            }
+
+            // Update preset
+            post(client, base_url, "set_param",
+                R"({"node_id":"test_ep","param":"scale","value":9.9})");
+            auto update = post(client, base_url, "update_preset",
+                R"({"node_id":"test_ep","name":"renamed_preset"})");
+            check(update.ok, "update_preset ok");
+
+            // Remove preset
+            auto remove = post(client, base_url, "remove_preset",
+                R"({"node_id":"test_ep","name":"renamed_preset"})");
+            check(remove.ok, "remove_preset ok");
+
+            auto list3 = post(client, base_url, "list_presets",
+                R"({"node_id":"test_ep"})");
+            if (!list3.j.is_null() && list3.j.contains("result")) {
+                auto& res = list3.j["result"];
+                bool found = false;
+                if (res.contains("presets") && res["presets"].is_array()) {
+                    for (const auto& p : res["presets"]) {
+                        if (p.is_string() && p.get<std::string>() == "renamed_preset")
+                            found = true;
+                    }
+                }
+                check(!found, "preset removed from list");
+            }
+        }
+
+        // =============================================================
+        // Factory presets
+        // =============================================================
+        {
+            std::fprintf(stderr, "\n  factory presets\n");
+
+            auto fp = post(client, base_url, "list_factory_presets",
+                R"({"node_id":"test_ep"})");
+            check(fp.ok, "list_factory_presets ok");
+            if (!fp.j.is_null() && fp.j.contains("result")) {
+                check(fp.j["result"].contains("presets"),
+                      "factory presets response has presets field");
+            }
+        }
+
+        // =============================================================
+        // Set node layout
+        // =============================================================
+        {
+            std::fprintf(stderr, "\n  set_node_layout\n");
+
+            auto layout = post(client, base_url, "set_node_layout",
+                R"({"node_id":"test_ep","x":100,"y":200})");
+            check(layout.ok, "set_node_layout ok");
+        }
+
+        // =============================================================
+        // Set resolution
+        // =============================================================
+        {
+            std::fprintf(stderr, "\n  set_resolution\n");
+
+            auto res = post(client, base_url, "set_resolution",
+                R"({"node_id":"test_ep","width":1920,"height":1080})");
+            check(res.ok, "set_resolution ok");
+        }
+
+        // =============================================================
+        // Set cadence override
+        // =============================================================
+        {
+            std::fprintf(stderr, "\n  set_cadence_override\n");
+
+            auto cad = post(client, base_url, "set_cadence_override",
+                R"({"node_id":"test_ep","cadence":1})");
+            check(cad.ok, "set_cadence_override ok");
+        }
+
         done.store(true);
     });
 
@@ -1784,6 +2010,10 @@ int main(int argc, char* argv[]) {
             api.apply_pending(has_gpu_ops, has_audio);
             runtime.tick(0.0, 0.016, 10);
             phase.store(20);
+        } else if (p == 21) {
+            api.apply_pending(has_gpu_ops, has_audio);
+            runtime.tick(0.0, 0.016, 11);
+            phase.store(22);
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
