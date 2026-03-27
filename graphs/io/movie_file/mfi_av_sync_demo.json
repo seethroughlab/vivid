@@ -3,41 +3,41 @@
   "vivid_version": "0.1.0",
   "nodes": {
     "vid": {
-      "type": "MovieLoaded",
+      "type": "MovieFileIn",
       "params": {
         "file": "../../../assets/camera.mp4"
       },
       "layout": {
-        "x": 29.746726989746094,
-        "y": 408.754638671875
+        "x": 30.0,
+        "y": 409.0
       }
     },
     "audio": {
-      "type": "MovieAudioOut",
+      "type": "MovieFileAudio",
       "params": {
         "file": "../../../assets/camera.mp4"
       },
       "layout": {
         "x": 230.0,
-        "y": 512.3734130859375
+        "y": 512.0
       }
     },
     "rev": {
       "type": "Reverb",
       "params": {
-        "damping": 0.4000000059604645,
+        "damping": 0.4,
         "room_size": 0.5
       },
       "layout": {
         "x": 430.0,
-        "y": 450.8733825683594
+        "y": 451.0
       }
     },
     "vout": {
       "type": "video_out",
       "layout": {
         "x": 230.0,
-        "y": 335.3733825683594
+        "y": 335.0
       }
     },
     "aout": {
@@ -50,8 +50,8 @@
       "to": "vout/input"
     },
     {
-      "from": "vid/media_clock",
-      "to": "audio/media_stream"
+      "from": "audio/time",
+      "to": "vid/audio_time"
     },
     {
       "from": "audio/output",
@@ -62,15 +62,10 @@
       "to": "aout/input"
     }
   ],
-  "viewport": {
-    "pan_x": 6.698161602020264,
-    "pan_y": 8.960257530212402,
-    "zoom": 0.9870792627334595
-  },
   "meta": {
-    "id": "mfi_av_sync_demo",
+    "id": "mfi_av_sync",
     "title": "Movie File: AV Sync",
-    "description": "Loads a movie file and plays video and audio in sync, with reverb applied to the audio track.",
+    "description": "AV sync using cadence-native MovieFileIn + MovieFileAudio operators. Audio time crosses the cadence bridge to sync video.",
     "tags": [
       "movie",
       "audio-visual",
@@ -82,7 +77,6 @@
       "io",
       "audio",
       "gpu"
-    ],
-    "featured_rank": 39
+    ]
   }
 }

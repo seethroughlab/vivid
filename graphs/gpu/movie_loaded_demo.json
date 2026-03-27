@@ -21,7 +21,7 @@
   },
     "nodes": {
         "mfi1": {
-            "type": "MovieLoaded",
+            "type": "MovieFileIn",
             "params": {
                 "file": "../../assets/sword.mp4"
             },

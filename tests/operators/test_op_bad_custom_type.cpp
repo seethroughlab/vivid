@@ -1,5 +1,4 @@
 // Test operator that declares a conflicting custom port type registration.
-#include "operator_api/media_stream.h"
 #include "operator_api/operator.h"
 #include "operator_api/port_type_registry.h"
 

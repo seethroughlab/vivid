@@ -30,7 +30,7 @@
       "type": "StringSelect"
     },
     "movie": {
-      "type": "MovieLoaded",
+      "type": "MovieFileIn",
       "params": {
         "speed": 1.0,
         "play_mode": 0.0,
@@ -38,13 +38,11 @@
       }
     },
     "movie_audio": {
-      "type": "MovieAudioOut",
+      "type": "MovieFileAudio",
       "params": {
-        "volume": 1.0
+        "volume": 1.0,
+        "file": ""
       }
-    },
-    "movie_video": {
-      "type": "MovieVideoOut"
     },
     "aout": {
       "type": "audio_out"
@@ -89,12 +87,12 @@
       "to": "movie/file"
     },
     {
-      "from": "movie/media_clock",
-      "to": "movie_audio/media_stream"
+      "from": "pick/file",
+      "to": "movie_audio/file"
     },
     {
-      "from": "movie/media_clock",
-      "to": "movie_video/media_stream"
+      "from": "movie_audio/time",
+      "to": "movie/audio_time"
     },
     {
       "from": "movie_audio/output",
@@ -113,7 +111,7 @@
       "to": "comp/a"
     },
     {
-      "from": "movie_video/texture",
+      "from": "movie/texture",
       "to": "comp/b"
     },
     {

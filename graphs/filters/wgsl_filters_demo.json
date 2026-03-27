@@ -18,7 +18,7 @@
   },
   "nodes": {
     "vid": {
-      "type": "MovieLoaded",
+      "type": "MovieFileIn",
       "params": {
         "speed": 1.0,
         "play_mode": 0.0,
@@ -30,7 +30,7 @@
       }
     },
     "audio": {
-      "type": "MovieAudioOut",
+      "type": "MovieFileAudio",
       "params": {
         "file": "../../assets/camera.mp4"
       }
@@ -257,8 +257,8 @@
       "to": "pixelate/size_y"
     },
     {
-      "from": "vid/media_clock",
-      "to": "audio/media_stream"
+      "from": "audio/time",
+      "to": "vid/audio_time"
     },
     {
       "from": "audio/output",

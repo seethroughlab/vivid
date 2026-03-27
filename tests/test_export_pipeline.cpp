@@ -4,7 +4,18 @@
 
 #include "runtime/graph.h"
 #include "runtime/operator_registry.h"
-#include "operator_api/media_stream.h"
+#include "operator_api/port_type_registry.h"
+
+namespace test {
+struct TestCustomRef {
+    uint64_t handle_id = 0;
+    uint64_t generation = 0;
+};
+} // namespace test
+VIVID_DECLARE_CUSTOM_REF_TYPE(test::TestCustomRef,
+                              "seethroughlab.vivid.test_custom_ref",
+                              "TestCustomRef",
+                              false);
 
 #include <cstdio>
 #include <cstdlib>
@@ -97,10 +108,10 @@ int main(int argc, char* argv[]) {
           "resolve_operators records required custom type");
     if (!pipeline.required_custom_types_.empty()) {
         const auto& info = pipeline.required_custom_types_[0];
-        check(info.type_id == vivid_port_type<vivid::MediaStreamV1>(),
-              "required custom type matches MediaStreamV1 id");
+        check(info.type_id == vivid_port_type<test::TestCustomRef>(),
+              "required custom type matches TestCustomRef id");
         check(std::string(info.stable_type_id ? info.stable_type_id : "") ==
-                  "seethroughlab.vivid.media_stream_v1",
+                  "seethroughlab.vivid.test_custom_ref",
               "required custom type keeps stable type id");
     }
 

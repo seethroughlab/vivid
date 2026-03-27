@@ -21,7 +21,7 @@
   },
   "nodes": {
     "img": {
-      "type": "MovieLoaded",
+      "type": "MovieFileIn",
       "params": {
         "file": "../../../assets/nature.jpg"
       }

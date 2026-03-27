@@ -752,12 +752,12 @@ int main(int argc, char* argv[]) {
                               "list_types custom port exposes transport");
                         check(!p0_val.is_null() && p0_val.contains("type_name") &&
                                   p0_val["type_name"].is_string() &&
-                                  p0_val["type_name"].get<std::string>() == "MediaStreamV1",
+                                  p0_val["type_name"].get<std::string>() == "TestCustomRef",
                               "list_types custom port exposes type_name");
                         check(!p0_val.is_null() && p0_val.contains("stable_type_id") &&
                                   p0_val["stable_type_id"].is_string() &&
                                   p0_val["stable_type_id"].get<std::string>() ==
-                                      "seethroughlab.vivid.media_stream_v1",
+                                      "seethroughlab.vivid.test_custom_ref",
                               "list_types custom port exposes stable_type_id");
                         check(!p0_val.is_null() && p0_val.contains("payload_size") &&
                                   p0_val["payload_size"].is_number_unsigned() &&
@@ -796,12 +796,12 @@ int main(int argc, char* argv[]) {
                 check(loader_failures.is_array() && loader_failures.size() > 0,
                       "registry diagnostics exposes loader failure diagnostics");
                 if (custom_types.is_array()) {
-                    bool found_media_stream = false;
+                    bool found_test_custom_ref = false;
                     for (const auto& item : custom_types) {
                         if (!item.contains("stable_type_id") || !item["stable_type_id"].is_string()) continue;
                         if (item["stable_type_id"].get<std::string>() !=
-                                "seethroughlab.vivid.media_stream_v1") continue;
-                        found_media_stream = true;
+                                "seethroughlab.vivid.test_custom_ref") continue;
+                        found_test_custom_ref = true;
                         check(item.contains("transport") && item["transport"].is_string() &&
                                   item["transport"].get<std::string>() == "custom_ref",
                               "registry diagnostics preserves custom port transport");
@@ -810,7 +810,7 @@ int main(int argc, char* argv[]) {
                               "registry diagnostics preserves audio_safe");
                         break;
                     }
-                    check(found_media_stream, "registry diagnostics includes MediaStreamV1");
+                    check(found_test_custom_ref, "registry diagnostics includes TestCustomRef");
                 }
                 if (abi_mismatches.is_array() && abi_mismatches.size() > 0) {
                     auto& first = abi_mismatches[0];

@@ -447,17 +447,17 @@ int main() {
             check(desc->port_count == 1, "custom port probe preserves port count");
             if (desc->port_count == 1) {
                 const auto& port = desc->ports[0];
-                check(port.type == VIVID_CUSTOM_TYPE_ID("seethroughlab.vivid.media_stream_v1"),
+                check(port.type == VIVID_CUSTOM_TYPE_ID("seethroughlab.vivid.test_custom_ref"),
                       "probe preserves custom port type id");
                 check(port.transport == VIVID_PORT_TRANSPORT_CUSTOM_REF,
                       "probe preserves custom port transport");
                 check(port.payload_size > 0,
                       "probe preserves custom port payload_size");
                 check(port.type_name != nullptr &&
-                          std::strcmp(port.type_name, "MediaStreamV1") == 0,
+                          std::strcmp(port.type_name, "TestCustomRef") == 0,
                       "probe preserves custom port type_name");
                 check(port.stable_type_id != nullptr &&
-                          std::strcmp(port.stable_type_id, "seethroughlab.vivid.media_stream_v1") == 0,
+                          std::strcmp(port.stable_type_id, "seethroughlab.vivid.test_custom_ref") == 0,
                       "probe preserves custom port stable_type_id");
             }
         }

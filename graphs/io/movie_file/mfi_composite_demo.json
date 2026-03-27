@@ -21,7 +21,7 @@
   },
   "nodes": {
     "vid1": {
-      "type": "MovieLoaded",
+      "type": "MovieFileIn",
       "params": {
         "file": "../../../assets/camera.mp4",
         "play_mode": 0,
@@ -29,7 +29,7 @@
       }
     },
     "vid2": {
-      "type": "MovieLoaded",
+      "type": "MovieFileIn",
       "params": {
         "file": "../../../assets/kitchen.mp4",
         "play_mode": 0,
@@ -37,7 +37,7 @@
       }
     },
     "audio": {
-      "type": "MovieAudioOut",
+      "type": "MovieFileAudio",
       "params": {
         "file": "../../../assets/camera.mp4"
       }
@@ -93,8 +93,8 @@
       "to": "vout/input"
     },
     {
-      "from": "vid1/media_clock",
-      "to": "audio/media_stream"
+      "from": "audio/time",
+      "to": "vid1/audio_time"
     },
     {
       "from": "audio/output",
