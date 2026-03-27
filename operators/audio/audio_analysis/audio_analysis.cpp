@@ -41,6 +41,7 @@ struct AudioAnalysis : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"spectral_centroid", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         out.push_back({"spectral_flux",     VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         out.push_back({"zero_crossing_rate", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
+        vivid::append_analysis_ports(out);
     }
 
     void process_audio(const VividAudioContext* ctx) override {

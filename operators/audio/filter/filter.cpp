@@ -81,6 +81,7 @@ struct Filter : vivid::OperatorBase, vivid::AudioProcessable {
         // Spread inputs for per-voice modulation (used via channel_index in auto-dup)
         out.push_back({"cutoff_mod",   VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
         out.push_back({"frequencies",  VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
+        vivid::append_analysis_ports(out);
     }
 
     void process_audio(const VividAudioContext* ctx) override {

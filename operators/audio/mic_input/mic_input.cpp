@@ -119,6 +119,7 @@ struct MicInput : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"rms",     VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         out.push_back({"peak",    VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         out.push_back({"gain_cv", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 1.0f});
+        vivid::append_analysis_ports(out);
     }
 
     // -----------------------------------------------------------------------

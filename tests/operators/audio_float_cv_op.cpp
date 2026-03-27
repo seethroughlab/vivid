@@ -11,6 +11,7 @@ struct AudioFloatCvOp : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"cv", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT,
                        VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         out.push_back({"out", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT});
+        vivid::append_analysis_ports(out);
     }
 
     void process_audio(const VividAudioContext* ctx) override {

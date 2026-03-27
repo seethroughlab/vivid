@@ -55,6 +55,7 @@ struct Vocoder : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"carrier",   VIVID_PORT_AUDIO, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
         out.push_back({"output",    VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
         out.push_back({"speed_cv",  VIVID_PORT_SIGNAL, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
+        vivid::append_analysis_ports(out);
     }
 
     void process_audio(const VividAudioContext* ctx) override {

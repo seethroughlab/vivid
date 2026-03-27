@@ -56,11 +56,11 @@ static constexpr int kTestPackageTimeoutSec        = 60;
 // Enum → string helpers
 // ---------------------------------------------------------------------------
 
-static const char* env_str(VividExecutionEnv e) {
-    switch (e) {
-        case VIVID_ENV_FRAME: return "control";
-        case VIVID_ENV_AUDIO: return "audio";
-        case VIVID_ENV_GPU:   return "gpu";
+static const char* kind_str(VividOperatorKind k) {
+    switch (k) {
+        case VIVID_OP_CONTROL: return "control";
+        case VIVID_OP_AUDIO:   return "audio";
+        case VIVID_OP_GPU:     return "gpu";
         default: return "unknown";
     }
 }
@@ -522,7 +522,7 @@ static std::string handle_sample_node_outputs(Graph& graph, RuntimeCore& core,
     nlohmann::json result = nlohmann::json::object();
     result["node_id"] = node_id;
     result["type"] = initial->type_name;
-    result["env"] = initial->is_gpu() ? "gpu" : (initial->active_cadence == vivid::Cadence::Audio ? "audio" : "control");
+    result["kind"] = initial->is_gpu() ? "gpu" : (initial->active_cadence == vivid::Cadence::Audio ? "audio" : "control");
     result["duration_seconds"] = duration_seconds;
     result["interval_ms"] = interval_ms;
     result["include_spreads"] = include_spreads;
@@ -594,7 +594,7 @@ static std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core) {
                 type_name = dit->second->type;
         }
         node["type"] = type_name;
-        node["env"] = ns.is_gpu() ? "gpu" : (ns.active_cadence == vivid::Cadence::Audio ? "audio" : "control");
+        node["kind"] = ns.is_gpu() ? "gpu" : (ns.active_cadence == vivid::Cadence::Audio ? "audio" : "control");
         node["cadence_capability"] = (ns.cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE) ? "audio_capable"
                                    : (ns.cadence_capability == VIVID_CADENCE_AUDIO_ONLY) ? "audio_only"
                                    : "frame_only";
@@ -1106,7 +1106,7 @@ static bool resolve_state_path(Graph& graph, RuntimeCore& core,
     const CompiledNode* node = cg->find_node(node_id);
     if (!node) return false;
 
-    if (rest == "env") {
+    if (rest == "kind") {
         out = cv_string(node->is_gpu() ? "gpu" : (node->active_cadence == vivid::Cadence::Audio ? "audio" : "control"));
         return true;
     }
@@ -1488,7 +1488,7 @@ static std::string handle_list_types(OperatorRegistry& registry) {
 
         nlohmann::json t = nlohmann::json::object();
         t["name"] = desc->name;
-        t["env"] = env_str(vivid_execution_env(desc));
+        t["kind"] = kind_str(vivid_operator_kind(desc));
 
         // Params
         nlohmann::json params_arr = nlohmann::json::array();
@@ -2137,17 +2137,17 @@ static std::string dispatch(const std::string& method, const std::string& body,
 
             if (!root.contains("name") || !root["name"].is_string())
                 return json_err("missing 'name'");
-            if (!root.contains("env") || !root["env"].is_string())
-                return json_err("missing 'env'");
+            if (!root.contains("kind") || !root["kind"].is_string())
+                return json_err("missing 'kind'");
 
             std::string name = root["name"].get<std::string>();
-            std::string env_str_val = root["env"].get<std::string>();
+            std::string kind_str_val = root["kind"].get<std::string>();
 
-            VividExecutionEnv env;
-            if (env_str_val == "control")      env = VIVID_ENV_FRAME;
-            else if (env_str_val == "audio")   env = VIVID_ENV_AUDIO;
-            else if (env_str_val == "gpu")     env = VIVID_ENV_GPU;
-            else return json_err("env must be 'control', 'audio', or 'gpu'");
+            VividOperatorKind kind;
+            if (kind_str_val == "control")      kind = VIVID_OP_CONTROL;
+            else if (kind_str_val == "audio")   kind = VIVID_OP_AUDIO;
+            else if (kind_str_val == "gpu")     kind = VIVID_OP_GPU;
+            else return json_err("kind must be 'control', 'audio', or 'gpu'");
 
             // Optional variant (e.g. "composite")
             std::string variant;
@@ -2175,12 +2175,12 @@ static std::string dispatch(const std::string& method, const std::string& body,
 
             VividCreateOperatorRequest req;
             req.name = name;
-            req.env = env;
+            req.kind = kind;
             req.variant = variant;
             req.destination = destination;
 
-            auto parse_port_type = [&](const std::string& type_str, VividExecutionEnv e, VividPortType& out) -> std::string {
-                if (e == VIVID_ENV_FRAME) {
+            auto parse_port_type = [&](const std::string& type_str, VividOperatorKind k, VividPortType& out) -> std::string {
+                if (k == VIVID_OP_CONTROL) {
                     if      (type_str == "float")         out = VIVID_PORT_SIGNAL;
                     else if (type_str == "int")           out = VIVID_PORT_SIGNAL;
                     else if (type_str == "bool")          out = VIVID_PORT_SIGNAL;
@@ -2188,10 +2188,10 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     else if (type_str == "string")        out = VIVID_PORT_STRING;
                     else if (type_str == "string_spread") out = VIVID_PORT_STRING_SPREAD;
                     else return "unknown control port type '" + type_str + "'";
-                } else if (e == VIVID_ENV_AUDIO) {
+                } else if (k == VIVID_OP_AUDIO) {
                     if (type_str == "float") out = VIVID_PORT_AUDIO;
                     else return "unknown audio port type '" + type_str + "'";
-                } else if (e == VIVID_ENV_GPU) {
+                } else if (k == VIVID_OP_GPU) {
                     if (type_str == "texture") out = VIVID_PORT_TEXTURE;
                     else return "unknown GPU port type '" + type_str + "'";
                 }
@@ -2209,7 +2209,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     std::string ptype = "float";
                     if (elem.contains("type") && elem["type"].is_string()) ptype = elem["type"].get<std::string>();
                     VividPortType vt;
-                    std::string err = parse_port_type(ptype, env, vt);
+                    std::string err = parse_port_type(ptype, kind, vt);
                     if (!err.empty()) return err;
                     req.ports.push_back({elem["name"].get<std::string>(), vt, dir});
                 }
@@ -2591,7 +2591,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
 
                         nlohmann::json op = nlohmann::json::object();
                         op["name"] = desc->name;
-                        op["env"] = env_str(vivid_execution_env(desc));
+                        op["kind"] = kind_str(vivid_operator_kind(desc));
                         op["time_dependent"] = (desc->time_dependent != 0);
 
                         nlohmann::json params_arr = nlohmann::json::array();

@@ -273,11 +273,17 @@ int main() {
         vivid::RuntimeCore runtime;
         check(runtime.build(g, registry), "build succeeds");
 
-        // AudioTestOp gets 3 implicit analysis ports: rms, peak, waveform
+        // AudioTestOp declares 3 analysis ports via append_analysis_ports()
         auto* naudio = runtime.compiled_graph()->find_node("audio");
         check(naudio != nullptr, "audio node found");
-        check(naudio->output_port_count == 4, "audio has 4 output ports (1 declared + 3 implicit)");
+        check(naudio->output_port_count == 4, "audio has 4 output ports (1 declared + 3 analysis)");
         check(naudio->active_cadence == vivid::Cadence::Audio, "audio node flagged as audio");
+        check(naudio->output_port_indices.count("rms") == 1, "rms in output_port_indices");
+        check(naudio->output_port_indices.count("peak") == 1, "peak in output_port_indices");
+        check(naudio->output_port_indices.count("waveform") == 1, "waveform in output_port_indices");
+        check(naudio->audio->analysis_output_port_indices.count("rms") == 1, "rms in analysis map");
+        check(naudio->audio->analysis_output_port_indices.count("peak") == 1, "peak in analysis map");
+        check(naudio->audio->analysis_output_port_indices.count("waveform") == 1, "waveform in analysis map");
 
         runtime.tick(0.0, 0.016, 0);
 

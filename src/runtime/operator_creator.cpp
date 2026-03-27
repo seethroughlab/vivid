@@ -157,11 +157,11 @@ static void emit_custom_type_support(std::ostringstream& s,
     s << "}\n\n";
 }
 
-static const char* env_subdir(VividExecutionEnv e) {
-    switch (e) {
-        case VIVID_ENV_FRAME: return "control";
-        case VIVID_ENV_AUDIO: return "audio";
-        case VIVID_ENV_GPU:   return "gpu";
+static const char* kind_subdir(VividOperatorKind k) {
+    switch (k) {
+        case VIVID_OP_CONTROL: return "control";
+        case VIVID_OP_AUDIO: return "audio";
+        case VIVID_OP_GPU:   return "gpu";
         default: return nullptr;
     }
 }
@@ -535,7 +535,7 @@ static std::string composite_control_template(const std::string& name, const std
 }
 
 // ---------------------------------------------------------------------------
-// Empty templates — minimal skeleton with env-default ports, no params
+// Empty templates — minimal skeleton with kind-default ports, no params
 // ---------------------------------------------------------------------------
 
 static std::string empty_control_template(const std::string& struct_name) {
@@ -615,22 +615,22 @@ static std::string gpu_shader_template() {
 // CMakeLists.txt patching
 // ---------------------------------------------------------------------------
 
-// Insertion markers: each env's operators are added before the next section's comment.
+// Insertion markers: each kind's operators are added before the next section's comment.
 // Control → before "# --- GPU operator plugins"
 // GPU     → before "# --- SyphonOut operator"
 // Audio   → before "# --- Operators meta-target"
 
-static std::string cmake_insertion_marker(VividExecutionEnv env) {
-    switch (env) {
-        case VIVID_ENV_FRAME: return "# --- GPU operator plugins";
-        case VIVID_ENV_GPU:   return "# --- SyphonOut operator";
-        case VIVID_ENV_AUDIO: return "# --- Operators meta-target";
+static std::string cmake_insertion_marker(VividOperatorKind kind) {
+    switch (kind) {
+        case VIVID_OP_CONTROL: return "# --- GPU operator plugins";
+        case VIVID_OP_GPU:   return "# --- SyphonOut operator";
+        case VIVID_OP_AUDIO: return "# --- Operators meta-target";
         default: return "";
     }
 }
 
 static bool patch_cmake(const std::string& src_dir, const std::string& name,
-                         VividExecutionEnv env, const std::string& extra_libs,
+                         VividOperatorKind kind, const std::string& extra_libs,
                          std::string& error) {
     std::string cmake_path = src_dir + "/CMakeLists.txt";
     std::ifstream ifs(cmake_path);
@@ -643,18 +643,18 @@ static bool patch_cmake(const std::string& src_dir, const std::string& name,
                          std::istreambuf_iterator<char>());
     ifs.close();
 
-    std::string marker = cmake_insertion_marker(env);
+    std::string marker = cmake_insertion_marker(kind);
     auto pos = content.find(marker);
     if (pos == std::string::npos) {
         error = "cannot find insertion marker '" + marker + "' in CMakeLists.txt";
         return false;
     }
 
-    const char* dsub = env_subdir(env);
+    const char* dsub = kind_subdir(kind);
     std::ostringstream block;
     block << "add_vivid_operator(" << name << std::string(std::max(0, 16 - static_cast<int>(name.size())), ' ')
           << " operators/" << dsub << "/" << name << "/" << name << ".cpp";
-    if (env == VIVID_ENV_GPU)
+    if (kind == VIVID_OP_GPU)
         block << "  EXTRA_LIBS webgpu";
     else if (!extra_libs.empty())
         block << "  EXTRA_LIBS " << extra_libs;
@@ -734,9 +734,9 @@ CreateOperatorResult OperatorCreator::create(const VividCreateOperatorRequest& r
                                               const std::string& src_dir,
                                               bool package_layout) {
     CreateOperatorResult result{};
-    const char* dsub = env_subdir(request.env);
+    const char* dsub = kind_subdir(request.kind);
     if (!dsub) {
-        result.error = "invalid execution environment";
+        result.error = "invalid operator kind";
         return result;
     }
 
@@ -745,8 +745,8 @@ CreateOperatorResult OperatorCreator::create(const VividCreateOperatorRequest& r
         result.error = "unknown variant '" + request.variant + "' (supported: composite, empty)";
         return result;
     }
-    if (request.variant == "composite" && request.env != VIVID_ENV_FRAME) {
-        result.error = "composite variant is only supported for frame execution environment";
+    if (request.variant == "composite" && request.kind != VIVID_OP_CONTROL) {
+        result.error = "composite variant is only supported for control operators";
         return result;
     }
 
@@ -850,19 +850,19 @@ CreateOperatorResult OperatorCreator::create(const VividCreateOperatorRequest& r
     // Generate source from template
     std::string source;
     if (request.variant == "empty") {
-        switch (request.env) {
-            case VIVID_ENV_FRAME: source = empty_control_template(struct_name); break;
-            case VIVID_ENV_AUDIO: source = empty_audio_template(struct_name);   break;
-            case VIVID_ENV_GPU:   source = empty_gpu_template(request.name, struct_name); break;
+        switch (request.kind) {
+            case VIVID_OP_CONTROL: source = empty_control_template(struct_name); break;
+            case VIVID_OP_AUDIO: source = empty_audio_template(struct_name);   break;
+            case VIVID_OP_GPU:   source = empty_gpu_template(request.name, struct_name); break;
             default: break;
         }
     } else if (request.variant == "composite") {
         source = composite_control_template(request.name, struct_name);
     } else {
-        switch (request.env) {
-            case VIVID_ENV_FRAME: source = control_template(request.name, struct_name, request.ports, request.params); break;
-            case VIVID_ENV_AUDIO: source = audio_template(request.name, struct_name, request.ports, request.params);   break;
-            case VIVID_ENV_GPU:   source = gpu_template(request.name, struct_name, request.ports, request.params);     break;
+        switch (request.kind) {
+            case VIVID_OP_CONTROL: source = control_template(request.name, struct_name, request.ports, request.params); break;
+            case VIVID_OP_AUDIO: source = audio_template(request.name, struct_name, request.ports, request.params);   break;
+            case VIVID_OP_GPU:   source = gpu_template(request.name, struct_name, request.ports, request.params);     break;
             default: break;
         }
     }
@@ -877,7 +877,7 @@ CreateOperatorResult OperatorCreator::create(const VividCreateOperatorRequest& r
     }
 
     // GPU operators also need a .wgsl shader file
-    if (request.env == VIVID_ENV_GPU) {
+    if (request.kind == VIVID_OP_GPU) {
         std::string wgsl_path = op_dir + "/" + request.name + ".wgsl";
         std::ofstream ofs(wgsl_path);
         if (!ofs) {
@@ -897,7 +897,7 @@ CreateOperatorResult OperatorCreator::create(const VividCreateOperatorRequest& r
     if (package_layout)
         patch_ok = patch_package_cmake(src_dir, request.name, cmake_err);
     else
-        patch_ok = patch_cmake(src_dir, request.name, request.env, extra_libs, cmake_err);
+        patch_ok = patch_cmake(src_dir, request.name, request.kind, extra_libs, cmake_err);
     if (!patch_ok) {
         result.error = cmake_err;
         return result;

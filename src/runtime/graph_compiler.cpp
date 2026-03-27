@@ -79,14 +79,17 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
     cn.time_dependent = desc->time_dependent != 0;
     bool node_is_gpu = (desc->has_process_gpu != 0);
 
-    // Implicit analysis ports for audio-cadence nodes
+    // Discover analysis ports from descriptor (tagged with semantic_tag "analysis")
     if (cn.active_cadence == Cadence::Audio) {
-        // audio sub-struct must already be allocated
-        cn.audio->analysis_output_port_indices["rms"]      = cn.output_port_count++;
-        cn.audio->analysis_output_port_indices["peak"]     = cn.output_port_count++;
-        cn.audio->analysis_output_port_indices["waveform"] = cn.output_port_count++;
-        cn.output_values.resize(cn.output_port_count, 0.0f);
-        cn.output_spreads.resize(cn.output_port_count);
+        for (uint32_t i = 0; i < desc->port_count; ++i) {
+            const auto& p = desc->ports[i];
+            if (p.direction == VIVID_PORT_OUTPUT && p.semantic_tag &&
+                std::strcmp(p.semantic_tag, "analysis") == 0) {
+                auto it = cn.output_port_indices.find(p.name);
+                if (it != cn.output_port_indices.end())
+                    cn.audio->analysis_output_port_indices[p.name] = it->second;
+            }
+        }
     }
 
     // Spread port staging buffers
@@ -502,6 +505,8 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
 
         // Determine source port
         VividPortType from_port_type = VIVID_PORT_SIGNAL;
+        VividPortTransport from_port_transport = VIVID_PORT_TRANSPORT_SIGNAL;
+        uint32_t from_payload_size = 0;
         bool source_is_param = false;
         uint32_t from_port_idx = 0;
         auto fp_it = from_cn.output_port_indices.find(conn.from_port);
@@ -514,6 +519,8 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                     if (from_desc->ports[pi].direction == VIVID_PORT_OUTPUT) {
                         if (oi == fp_it->second) {
                             from_port_type = from_desc->ports[pi].type;
+                            from_port_transport = from_desc->ports[pi].transport;
+                            from_payload_size = from_desc->ports[pi].payload_size;
                             break;
                         }
                         oi++;
@@ -590,6 +597,8 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                            from_port_type == to_port_type) {
                     e.data_type = from_port_type;
                     e.custom_type_id = from_port_type;
+                    e.port_transport = from_port_transport;
+                    e.custom_payload_size = from_payload_size;
                 } else if ((from_port_type == VIVID_PORT_SIGNAL || from_port_type == VIVID_PORT_AUDIO) &&
                            (to_port_type == VIVID_PORT_SIGNAL || to_port_type == VIVID_PORT_AUDIO)) {
                     // SIGNAL/AUDIO interop

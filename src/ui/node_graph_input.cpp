@@ -1390,7 +1390,7 @@ void NodeGraphUI::update_save_confirm() {
 void NodeGraphUI::submit_create_operator(bool empty_variant) {
     VividCreateOperatorRequest req;
     req.name = create_name_buf_;
-    req.env = static_cast<VividExecutionEnv>(create_env_sel_);
+    req.kind = static_cast<VividOperatorKind>(create_env_sel_);
 
     if (empty_variant) {
         req.variant = "empty";

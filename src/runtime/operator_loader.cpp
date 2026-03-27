@@ -63,7 +63,7 @@ bool hot_reload_port_layout_compatible(const VividOperatorDescriptor* old_desc,
 bool hot_reload_descriptor_compatible(const VividOperatorDescriptor* old_desc,
                                       const VividOperatorDescriptor* new_desc) {
     if (!old_desc || !new_desc) return true;
-    if (vivid_execution_env(old_desc) != vivid_execution_env(new_desc)) return false;
+    if (old_desc->has_process_gpu != new_desc->has_process_gpu) return false;
     if (!hot_reload_param_layout_compatible(old_desc, new_desc)) return false;
     if (!hot_reload_port_layout_compatible(old_desc, new_desc)) return false;
     return true;

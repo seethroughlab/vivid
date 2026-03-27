@@ -2348,11 +2348,11 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
 
-            VividExecutionEnv env = VIVID_ENV_FRAME;
+            VividOperatorKind kind = VIVID_OP_CONTROL;
             if (scaffold_op_env == "audio")
-                env = VIVID_ENV_AUDIO;
+                kind = VIVID_OP_AUDIO;
             else if (scaffold_op_env == "gpu")
-                env = VIVID_ENV_GPU;
+                kind = VIVID_OP_GPU;
 
             ScaffoldDestination destination;
             std::string dest_error;
@@ -2367,7 +2367,7 @@ int main(int argc, char* argv[]) {
 
             VividCreateOperatorRequest req;
             req.name = scaffold_op_name;
-            req.env = env;
+            req.kind = kind;
             req.variant = scaffold_op_variant;
             auto result = vivid::OperatorCreator::create(req, destination.root,
                                                          destination.package_layout);

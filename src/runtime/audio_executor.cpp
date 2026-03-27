@@ -231,6 +231,19 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             for (size_t p = 0; p < cn.input_string_values.size() && p < cn.c_input_string_values.size(); ++p)
                 cn.c_input_string_values[p] = cn.input_string_values[p].c_str();
         }
+        // Apply custom port snapshots (e.g. media_stream from MovieLoaded → MovieAudioOut).
+        // The snapshot bytes[] array in ParamSnapshot persists until the next push_to_audio,
+        // so we can point resolved_custom_inputs directly at it.
+        if (a.has_custom_input_ports && i < snap.custom_inputs.size()) {
+            for (size_t ci = 0; ci < cn.custom_input_port_indices.size(); ++ci) {
+                uint32_t port_idx = cn.custom_input_port_indices[ci];
+                if (port_idx < snap.custom_inputs[i].size() &&
+                    snap.custom_inputs[i][port_idx].valid) {
+                    cn.resolved_custom_inputs[ci] =
+                        const_cast<uint8_t*>(snap.custom_inputs[i][port_idx].bytes);
+                }
+            }
+        }
     }
 
     // Process in chunks of kBufferSize

@@ -34,8 +34,8 @@ int main() {
         const auto* desc = audio_loader->descriptor();
         check(desc != nullptr, "audio_out descriptor is non-null");
         if (desc) {
-            check(vivid_execution_env(desc) == VIVID_ENV_AUDIO,
-                  "audio_out env is VIVID_ENV_AUDIO");
+            check(vivid_operator_kind(desc) == VIVID_OP_AUDIO,
+                  "audio_out env is VIVID_OP_AUDIO");
             check(desc->port_count == 1,
                   "audio_out has 1 port (input)");
             if (desc->port_count >= 1) {
@@ -56,8 +56,8 @@ int main() {
         const auto* desc = video_loader->descriptor();
         check(desc != nullptr, "video_out descriptor is non-null");
         if (desc) {
-            check(vivid_execution_env(desc) == VIVID_ENV_GPU,
-                  "video_out env is VIVID_ENV_GPU");
+            check(vivid_operator_kind(desc) == VIVID_OP_GPU,
+                  "video_out env is VIVID_OP_GPU");
             check(desc->port_count == 1, "video_out has 1 port (input)");
             if (desc->port_count >= 1) {
                 check(std::strcmp(desc->ports[0].name, "input") == 0,

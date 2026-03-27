@@ -75,6 +75,7 @@ struct Delay : vivid::OperatorBase, vivid::AudioProcessable {
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"input",  VIVID_PORT_AUDIO, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
         out.push_back({"output", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
+        vivid::append_analysis_ports(out);
     }
 
     void lazy_init(uint32_t sr) {

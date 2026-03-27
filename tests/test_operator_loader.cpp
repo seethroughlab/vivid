@@ -94,7 +94,7 @@ int main() {
         check(desc != nullptr, "descriptor not null");
         if (desc) {
             check(std::strcmp(desc->name, "TestOp") == 0, "descriptor name = TestOp");
-            check(vivid_execution_env(desc) == VIVID_ENV_FRAME, "env = CONTROL");
+            check(vivid_operator_kind(desc) == VIVID_OP_CONTROL, "env = CONTROL");
             check(desc->param_count == 1, "param_count = 1");
             check(desc->port_count == 1, "port_count = 1");
             check(std::strcmp(desc->params[0].name, "scale") == 0, "param[0] = scale");
@@ -425,7 +425,7 @@ int main() {
         if (desc) {
             check(desc->has_process_audio == 1, "probe preserves has_process_audio");
             check(desc->has_process_gpu == 0, "probe preserves has_process_gpu");
-            check(desc->port_count == 2, "probe preserves audio port count");
+            check(desc->port_count == 5, "probe preserves audio port count (2 + 3 analysis)");
             if (desc->port_count >= 2) {
                 check(desc->ports[0].semantic_tag != nullptr &&
                           std::strcmp(desc->ports[0].semantic_tag, "audio_signal_in") == 0,

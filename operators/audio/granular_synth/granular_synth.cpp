@@ -144,6 +144,7 @@ struct GranularSynth : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"position_cv", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         out.push_back({"pitch_cv",    VIVID_PORT_SIGNAL, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         out.push_back({"density_cv",  VIVID_PORT_SIGNAL, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
+        vivid::append_analysis_ports(out);
     }
 
     void lazy_init(uint32_t sr) {

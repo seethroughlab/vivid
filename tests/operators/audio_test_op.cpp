@@ -20,6 +20,7 @@ struct AudioTestOp : vivid::OperatorBase, vivid::AudioProcessable {
         VividPortDescriptor out_port{"out", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT};
         out_port.semantic_tag = "audio_signal_out";
         out.push_back(out_port);
+        vivid::append_analysis_ports(out);
     }
 
     void process_audio(const VividAudioContext* ctx) override {

@@ -26,7 +26,7 @@ struct VividParamSpec {
 
 struct VividCreateOperatorRequest {
     std::string name;
-    VividExecutionEnv env = VIVID_ENV_FRAME;
+    VividOperatorKind kind = VIVID_OP_CONTROL;
     std::string variant;          // "", "composite", "empty"
     std::string destination;      // "auto", "project", "core"
     std::vector<VividPortSpec> ports;   // full port list (inputs + outputs); empty = env defaults

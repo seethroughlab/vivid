@@ -116,7 +116,7 @@ VIVID_REGISTER(TestPkgOp)
         auto* desc = registry.probe_descriptor("TestPkgOp");
         check(desc != nullptr, "probe_descriptor returns non-null");
         if (desc) {
-            check(vivid_execution_env(desc) == VIVID_ENV_FRAME, "env is control");
+            check(vivid_operator_kind(desc) == VIVID_OP_CONTROL, "env is control");
             check(desc->param_count == 1, "has 1 param");
         }
     } else {

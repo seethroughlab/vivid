@@ -99,7 +99,7 @@ static void test_operator(const std::string& staging, const OpInfo& info) {
     if (!desc) return;
 
     check(std::strcmp(desc->name, info.name) == 0, "descriptor name matches");
-    check(vivid_execution_env(desc) == VIVID_ENV_AUDIO, "env = AUDIO");
+    check(vivid_operator_kind(desc) == VIVID_OP_AUDIO, "env = AUDIO");
     check(desc->has_process_audio == 1, "has_process_audio");
     check(static_cast<int>(desc->param_count) == info.expected_param_count,
           "param_count matches");
@@ -319,9 +319,9 @@ int main() {
 
     std::fprintf(stderr, "\n=== Test: Modulation Operators ===\n");
 
-    test_operator(staging, {"Flanger", "flanger.dylib", 4, 3});
-    test_operator(staging, {"Chorus",  "chorus.dylib",  4, 3});
-    test_operator(staging, {"Phaser",  "phaser.dylib",  5, 3});
+    test_operator(staging, {"Flanger", "flanger.dylib", 4, 6});
+    test_operator(staging, {"Chorus",  "chorus.dylib",  4, 6});
+    test_operator(staging, {"Phaser",  "phaser.dylib",  5, 6});
     test_flanger_dc_stability(staging);
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",

@@ -14,6 +14,7 @@ struct AudioSpreadOp : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"values", VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
         out.push_back({"out",    VIVID_PORT_AUDIO,    VIVID_PORT_OUTPUT});
         out.push_back({"echo",   VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});
+        vivid::append_analysis_ports(out);
     }
 
     void process_audio(const VividAudioContext* ctx) override {

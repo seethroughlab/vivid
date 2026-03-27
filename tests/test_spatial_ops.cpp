@@ -104,9 +104,9 @@ static void test_stereo_pan_width(const std::string& staging) {
     if (!desc) return;
 
     check(std::strcmp(desc->name, "StereoPanWidth") == 0, "name matches");
-    check(vivid_execution_env(desc) == VIVID_ENV_AUDIO, "env = AUDIO");
+    check(vivid_operator_kind(desc) == VIVID_OP_AUDIO, "env = AUDIO");
     check(static_cast<int>(desc->param_count) == 3, "param_count = 3");
-    check(static_cast<int>(desc->port_count) == 4, "port_count = 4");
+    check(static_cast<int>(desc->port_count) == 7, "port_count = 7 (4 + 3 analysis)");
 
     // Verify stereo channels on audio ports
     for (uint32_t p = 0; p < desc->port_count; p++) {
@@ -370,9 +370,9 @@ static void test_ping_pong_delay(const std::string& staging) {
     if (!desc) return;
 
     check(std::strcmp(desc->name, "PingPongDelay") == 0, "name matches");
-    check(vivid_execution_env(desc) == VIVID_ENV_AUDIO, "env = AUDIO");
+    check(vivid_operator_kind(desc) == VIVID_OP_AUDIO, "env = AUDIO");
     check(static_cast<int>(desc->param_count) == 6, "param_count = 6");
-    check(static_cast<int>(desc->port_count) == 4, "port_count = 4");
+    check(static_cast<int>(desc->port_count) == 7, "port_count = 7 (4 + 3 analysis)");
 
     // Verify stereo channels on audio ports
     for (uint32_t p = 0; p < desc->port_count; p++) {

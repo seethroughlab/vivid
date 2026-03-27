@@ -73,7 +73,7 @@ int main(int argc, char* argv[]) {
         // Scaffold team_op into project package (package_layout = true)
         VividCreateOperatorRequest req_a;
         req_a.name = "team_op";
-        req_a.env = VIVID_ENV_FRAME;
+        req_a.kind = VIVID_OP_CONTROL;
         auto result = vivid::OperatorCreator::create(req_a, proj_root.string(), /*package_layout=*/true);
 
         check(result.success, "Case A: scaffold to project package succeeds");
@@ -125,7 +125,7 @@ int main(int argc, char* argv[]) {
         // Scaffold solo_op into the resolved core destination
         VividCreateOperatorRequest req_c;
         req_c.name = "solo_op";
-        req_c.env = VIVID_ENV_FRAME;
+        req_c.kind = VIVID_OP_CONTROL;
         auto result = vivid::OperatorCreator::create(req_c, dest.root);
 
         check(result.success, "Case C: scaffold into core succeeds");

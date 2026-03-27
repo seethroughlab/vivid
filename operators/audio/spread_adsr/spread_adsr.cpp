@@ -57,6 +57,7 @@ struct SpreadADSR : vivid::OperatorBase, vivid::AudioProcessable {
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"gates",     VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
         out.push_back({"envelopes", VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});
+        vivid::append_analysis_ports(out);
     }
 
     void process_audio(const VividAudioContext* ctx) override {

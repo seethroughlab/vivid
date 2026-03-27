@@ -69,7 +69,7 @@ int main(int argc, char* argv[]) {
         auto* osc_loader = registry.find("Oscillator");
         if (osc_loader) {
             const auto* desc = osc_loader->descriptor();
-            check(vivid_execution_env(desc) == VIVID_ENV_AUDIO, "Oscillator is audio cadence");
+            check(vivid_operator_kind(desc) == VIVID_OP_AUDIO, "Oscillator is audio cadence");
             check(desc->has_process_audio == 1, "Oscillator has process_audio");
             bool has_freq_cv = false;
             for (uint32_t i = 0; i < desc->port_count; ++i) {

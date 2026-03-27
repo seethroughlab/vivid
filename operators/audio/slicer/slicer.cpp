@@ -60,6 +60,7 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"velocities", VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_in", VIVID_PORT_INPUT, VividMidiBuffer));
         out.push_back({"output",     VIVID_PORT_AUDIO,  VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2});
+        vivid::append_analysis_ports(out);
     }
 
     void main_thread_update(double /*time*/) override {

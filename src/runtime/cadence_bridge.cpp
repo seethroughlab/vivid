@@ -182,15 +182,14 @@ void CadenceBridge::push_to_audio(const CompiledGraph& cg) {
             if (e.to_signal_ordinal < snap.float_input_values[si].size())
                 snap.float_input_values[si][e.to_signal_ordinal] = val;
         } else if (vivid_is_custom_port_type(e.data_type) && !e.targets_param) {
-            // Custom type snapshot
-            if (e.from_port < from_cn.custom_output_port_indices.size()) {
-                // Find the custom output buffer
-                uint32_t custom_ord = 0;
-                for (uint32_t p = 0; p < from_cn.custom_output_port_indices.size(); ++p) {
-                    if (from_cn.custom_output_port_indices[p] == e.from_port) {
-                        custom_ord = p; break;
-                    }
+            // Custom type snapshot — find which custom output ordinal this port maps to
+            uint32_t custom_ord = UINT32_MAX;
+            for (uint32_t p = 0; p < from_cn.custom_output_port_indices.size(); ++p) {
+                if (from_cn.custom_output_port_indices[p] == e.from_port) {
+                    custom_ord = p; break;
                 }
+            }
+            if (custom_ord < from_cn.custom_outputs.size()) {
                 void* data = from_cn.custom_outputs[custom_ord];
                 if (data && e.to_port < snap.custom_inputs[si].size()) {
                     auto& dst = snap.custom_inputs[si][e.to_port];

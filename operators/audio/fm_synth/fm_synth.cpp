@@ -86,6 +86,7 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"gates",      VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
         out.push_back({"notes",      VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
         out.push_back({"velocities", VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
+        vivid::append_analysis_ports(out);
     }
 
     void process_audio(const VividAudioContext* ctx) override {

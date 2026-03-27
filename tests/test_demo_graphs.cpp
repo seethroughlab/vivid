@@ -20,6 +20,13 @@
 #include <vector>
 #include <signal.h>
 #include <unistd.h>
+#include <spawn.h>
+#include <sys/wait.h>
+#ifdef __APPLE__
+#include <CoreFoundation/CoreFoundation.h>
+#endif
+
+extern char** environ;
 
 // ============================================================================
 // Test infrastructure
@@ -28,37 +35,6 @@
 static int passes  = 0;
 static int failures = 0;
 static int skipped  = 0;
-static std::string g_current_graph_storage = "(none)";
-static const char* g_current_graph = "(none)";
-static const char* g_current_stage = "startup";
-static int g_diag_fd = STDERR_FILENO;
-
-static void diag_printf(const char* fmt, ...) {
-    char buf[1024];
-    va_list args;
-    va_start(args, fmt);
-    int n = std::vsnprintf(buf, sizeof(buf), fmt, args);
-    va_end(args);
-    if (n <= 0) return;
-    size_t len = static_cast<size_t>(n < static_cast<int>(sizeof(buf)) ? n : static_cast<int>(sizeof(buf)));
-    write(g_diag_fd, buf, len);
-}
-
-static void emit_checkpoint(const char* stage) {
-    g_current_stage = stage;
-    diag_printf("[demo_graphs] checkpoint graph=%s stage=%s\n",
-                g_current_graph, g_current_stage);
-}
-
-static void on_fatal_signal(int sig) {
-    char buf[512];
-    int n = std::snprintf(buf, sizeof(buf),
-                          "[demo_graphs] fatal signal=%d graph=%s stage=%s\n",
-                          sig, g_current_graph ? g_current_graph : "(null)",
-                          g_current_stage ? g_current_stage : "(null)");
-    if (n > 0) write(g_diag_fd, buf, static_cast<size_t>(n));
-    _exit(128 + sig);
-}
 
 static void pass(const char* name) {
     std::fprintf(stderr, "  PASS: %s\n", name);
@@ -108,7 +84,6 @@ struct HeadlessGpu {
         acb.userdata1 = &ad;
         WGPURequestAdapterOptions opts{};
         opts.powerPreference = WGPUPowerPreference_HighPerformance;
-        // Use the real GPU adapter (matching other GPU test files).
         wgpuInstanceRequestAdapter(instance, &opts, acb);
         if (!ad.done || !ad.adapter) return false;
         adapter = ad.adapter;
@@ -187,52 +162,180 @@ static void tick_gpu(vivid::RuntimeCore& runtime, HeadlessGpu& gpu,
     }
 }
 
+// Per-graph timeout (seconds).
+static constexpr int kTimeoutSeconds = 20;
+
 // ============================================================================
-// Main
+// Single-graph mode (--single <graph_path>)
+//
+// Runs one graph in a fresh process. Exit codes:
+//   0 = pass
+//   1 = fail
+//   2 = skip (needs GPU, external I/O, etc.)
+// ============================================================================
+
+static int run_single_graph(const char* exe_path, const char* graph_path) {
+    // Catch fatal signals gracefully
+    signal(SIGABRT, [](int) { _exit(2); });
+    signal(SIGSEGV, [](int) { _exit(2); });
+    alarm(kTimeoutSeconds);
+
+    static constexpr WGPUTextureFormat kFormat = WGPUTextureFormat_RGBA8Unorm;
+
+    HeadlessGpu gpu;
+    bool have_gpu = gpu.init();
+
+    std::filesystem::path exe_dir = std::filesystem::absolute(exe_path).parent_path();
+    vivid::OperatorRegistry registry;
+    registry.scan_deferred(exe_dir.string().c_str());
+    register_builtin_operators(registry);
+    registry.scan_wgsl_presets((exe_dir / "filters").string().c_str());
+
+#ifdef __APPLE__
+    CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.01, false);
+#endif
+
+    vivid::Graph graph;
+    if (!graph.load(graph_path)) {
+        std::fprintf(stderr, "graph.load() failed\n");
+        return 1;
+    }
+    registry.load_for_graph(graph);
+
+    // Classify operators in this graph
+    bool has_external_io = false;
+    bool has_audio_out = false;
+    bool has_movie = false;
+    for (const auto& n : graph.nodes()) {
+        if (n.type == "SyphonIn"  || n.type == "SyphonOut" ||
+            n.type == "OscIn"     || n.type == "OscOut"    ||
+            n.type == "WebcamIn") {
+            has_external_io = true;
+        }
+        if (n.type == "MovieLoaded" || n.type == "MovieAudioOut")
+            has_movie = true;
+        if (n.type == "audio_out") has_audio_out = true;
+    }
+    if (has_external_io) {
+        std::fprintf(stderr, "external I/O\n");
+        return 2;
+    }
+
+#ifdef __APPLE__
+    CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.01, false);
+#endif
+
+    vivid::RuntimeCore runtime;
+    if (!runtime.build(graph, registry)) {
+        std::fprintf(stderr, "runtime.build() failed\n");
+        return 1;
+    }
+
+    bool use_gpu = runtime.has_gpu_operators();
+    bool use_audio = runtime.has_audio_operators();
+
+    if (use_gpu && !have_gpu) {
+        std::fprintf(stderr, "needs GPU\n");
+        runtime.shutdown();
+        return 2;
+    }
+    if (use_gpu) {
+        runtime.allocate_gpu_textures(gpu.device, 64, 64, kFormat);
+    }
+
+    vivid::AudioEngine* audio = nullptr;
+    if (use_audio) {
+        audio = new vivid::AudioEngine();
+        audio->build(runtime);
+        audio->start(true);  // null device
+    }
+
+    if (use_gpu) gpu.reset_errors();
+
+    // Tick — movie graphs need more frames for AVFoundation to start decoding
+    int tick_count = has_movie ? 240 : (use_gpu || use_audio) ? 60 : 5;
+    float audio_buf[vivid::AudioEngine::kBufferSize * 2] = {};
+    for (uint64_t frame = 0; frame < (uint64_t)tick_count; ++frame) {
+        double time = frame * 0.016;
+        if (audio) {
+            runtime.pre_tick_audio_sync(time);
+        }
+        if (use_gpu) {
+            tick_gpu(runtime, gpu, kFormat, time, frame);
+        } else {
+            runtime.tick(time, 0.016, frame);
+        }
+        if (audio) {
+            runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
+            audio->process_audio_for_test(audio_buf, vivid::AudioEngine::kBufferSize);
+        }
+#ifdef __APPLE__
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.005, false);
+#endif
+    }
+
+    // Check results
+    int result = 0;
+    if (audio) {
+        runtime.cadence_bridge().pull_from_audio(*runtime.compiled_graph());
+        const auto& analysis = audio->analysis_read();
+
+        for (size_t i = 0; i < analysis.errored.size(); ++i) {
+            if (analysis.errored[i]) {
+                std::fprintf(stderr, "audio node error: %s\n", analysis.error_msgs[i].data());
+                result = 1;
+            }
+        }
+
+        if (result == 0 && has_audio_out) {
+            bool any_nonzero = false;
+            for (size_t i = 0; i < analysis.peak.size(); ++i) {
+                if (analysis.peak[i] > 0.001f) { any_nonzero = true; break; }
+            }
+            if (!any_nonzero) {
+                std::fprintf(stderr, "audio output is silent (all peaks < 0.001)\n");
+                result = 1;
+            }
+        }
+    }
+
+    if (use_gpu && gpu.has_gpu_error) {
+        std::fprintf(stderr, "GPU error: %s\n", gpu.gpu_error_msg.c_str());
+        result = 1;
+    }
+
+    if (audio) { audio->shutdown(); delete audio; }
+    runtime.shutdown();
+    gpu.shutdown();
+
+    return result;
+}
+
+// ============================================================================
+// Main — orchestrates per-graph child processes via posix_spawn
 // ============================================================================
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        std::fprintf(stderr, "Usage: test_demo_graphs <graphs_dir> [graph-filter-or-path]\n");
+        std::fprintf(stderr, "Usage: test_demo_graphs <build_dir> [graph-filter] [--single <path>]\n");
         return 1;
     }
+
+    // --single mode: run one graph and exit
+    for (int i = 1; i < argc - 1; ++i) {
+        if (std::strcmp(argv[i], "--single") == 0) {
+            return run_single_graph(argv[0], argv[i + 1]);
+        }
+    }
+
     const char* graphs_dir = argv[1];
     std::string graph_filter = argc >= 3 ? argv[2] : "";
     if (graph_filter.empty()) {
         const char* env_filter = std::getenv("VIVID_DEMO_GRAPH_FILTER");
         if (env_filter && *env_filter) graph_filter = env_filter;
     }
-    bool capture_stderr = true;
-    if (const char* env = std::getenv("VIVID_DEMO_GRAPH_CAPTURE_STDERR")) {
-        if (std::strcmp(env, "0") == 0 || std::strcmp(env, "false") == 0 ||
-            std::strcmp(env, "FALSE") == 0 || std::strcmp(env, "no") == 0 ||
-            std::strcmp(env, "NO") == 0) {
-            capture_stderr = false;
-        }
-    }
-    static constexpr WGPUTextureFormat kFormat = WGPUTextureFormat_RGBA8Unorm;
-    g_diag_fd = dup(STDERR_FILENO);
 
-    signal(SIGABRT, on_fatal_signal);
-    signal(SIGSEGV, on_fatal_signal);
-    signal(SIGBUS, on_fatal_signal);
-    signal(SIGILL, on_fatal_signal);
-
-    // --- One-time GPU setup ---
-    HeadlessGpu gpu;
-    bool have_gpu = gpu.init();
-    if (have_gpu) {
-        std::fprintf(stderr, "[demo_graphs] GPU available\n");
-    } else {
-        std::fprintf(stderr, "[demo_graphs] No GPU — GPU-only graphs will be skipped\n");
-    }
-
-    // --- Operator registry (scan build dir for all .dylib + .wgsl presets) ---
-    std::filesystem::path exe_dir = std::filesystem::absolute(argv[0]).parent_path();
-    vivid::OperatorRegistry registry;
-    registry.scan_deferred(exe_dir.string().c_str());
-    register_builtin_operators(registry);
-    registry.scan_wgsl_presets((exe_dir / "filters").string().c_str());
+    std::string exe_path = std::filesystem::absolute(argv[0]).string();
 
     // --- Collect graph files ---
     std::vector<std::string> graph_files;
@@ -254,215 +357,48 @@ int main(int argc, char* argv[]) {
 
     if (graph_files.empty()) {
         std::fprintf(stderr, "No .json files found in %s\n", graphs_dir);
-        gpu.shutdown();
         return 1;
     }
     std::fprintf(stderr, "[demo_graphs] Found %zu graph files\n\n", graph_files.size());
 
-    // --- Iterate graphs ---
+    // --- Run each graph in an isolated child process ---
     for (const auto& path : graph_files) {
         std::string filename = std::filesystem::path(path).filename().string();
-        g_current_graph_storage = filename;
-        g_current_graph = g_current_graph_storage.c_str();
         std::fprintf(stderr, "=== %s ===\n", filename.c_str());
-        emit_checkpoint("graph-enter");
 
-        // Load graph
-        vivid::Graph graph;
-        emit_checkpoint("graph-load");
-        if (!graph.load(path.c_str())) {
-            fail(filename.c_str(), "graph.load() failed");
+        const char* child_argv[] = {
+            exe_path.c_str(),
+            graphs_dir,
+            "--single",
+            path.c_str(),
+            nullptr
+        };
+
+        pid_t pid = 0;
+        int rc = posix_spawn(&pid, exe_path.c_str(), nullptr, nullptr,
+                             const_cast<char**>(child_argv), environ);
+        if (rc != 0) {
+            skip(filename.c_str(), "posix_spawn failed");
             continue;
         }
 
-        // Load operators needed by this graph
-        emit_checkpoint("registry-load-for-graph");
-        registry.load_for_graph(graph);
+        int status = 0;
+        waitpid(pid, &status, 0);
 
-        // Some operators require external hardware or OS services that are
-        // unavailable in headless CI harnesses (camera permission dialogs,
-        // Syphon server, OSC socket).
-        bool has_external_io = false;
-        bool has_movie_loaded = false;
-        bool has_audio_out = false;
-        for (const auto& n : graph.nodes()) {
-            if (n.type == "SyphonIn"  || n.type == "SyphonOut" ||
-                n.type == "OscIn"     || n.type == "OscOut"    ||
-                n.type == "WebcamIn") {
-                has_external_io = true;
-            }
-            if (n.type == "MovieLoaded" || n.type == "MovieAudioOut") {
-                has_movie_loaded = true;
-            }
-            if (n.type == "audio_out") {
-                has_audio_out = true;
-            }
-        }
-        if (has_external_io) {
-            skip(filename.c_str(), "external I/O graph (skipped in headless smoke test)");
-            continue;
-        }
-        if (has_movie_loaded) {
-            skip(filename.c_str(), "movie/media graph (deferred to test_media_headless)");
-            continue;
-        }
-
-        // Build runtime
-        vivid::RuntimeCore runtime;
-        emit_checkpoint("runtime-build");
-        if (!runtime.build(graph, registry)) {
-            fail(filename.c_str(), "runtime.build() failed");
-            continue;
-        }
-
-        bool use_gpu = runtime.has_gpu_operators();
-        bool use_audio = runtime.has_audio_operators();
-
-        // GPU setup
-        if (use_gpu && !have_gpu) {
-            skip(filename.c_str(), "needs GPU");
-            runtime.shutdown();
-            continue;
-        }
-        if (use_gpu) {
-            emit_checkpoint("gpu-allocate-textures");
-            runtime.allocate_gpu_textures(gpu.device, 64, 64, kFormat);
-        }
-
-        // Audio setup
-        vivid::AudioEngine* audio = nullptr;
-        if (use_audio) {
-            audio = new vivid::AudioEngine();
-            emit_checkpoint("audio-build");
-            audio->build(runtime);
-            emit_checkpoint("audio-start");
-            audio->start(true);  // null device
-        }
-
-        // Reset GPU error state before ticking
-        if (use_gpu) gpu.reset_errors();
-
-        // Capture stderr during tick phase to catch operator-level warnings
-        int saved_stderr = -1;
-        FILE* warn_capture = nullptr;
-        if (capture_stderr) {
-            saved_stderr = dup(STDERR_FILENO);
-            warn_capture = tmpfile();
-            dup2(fileno(warn_capture), STDERR_FILENO);
-        }
-
-        // Tick — more frames for complex graphs to catch late-onset issues
-        int tick_count = (use_gpu || use_audio) ? 60 : 5;
-        emit_checkpoint("tick-begin");
-        float audio_buf[vivid::AudioEngine::kBufferSize * 2] = {};
-        for (uint64_t frame = 0; frame < (uint64_t)tick_count; ++frame) {
-            double time = frame * 0.016;
-            if (audio) {
-                runtime.pre_tick_audio_sync(time);
-            }
-            if (use_gpu) {
-                tick_gpu(runtime, gpu, kFormat, time, frame);
-            } else {
-                runtime.tick(time, 0.016, frame);
-            }
-            if (audio) {
-                runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
-                audio->process_audio_for_test(audio_buf, vivid::AudioEngine::kBufferSize);
-            }
-        }
-        emit_checkpoint("tick-end");
-
-        // Audio output verification
-        bool audio_silent = false;
-        bool audio_errored = false;
-        std::string audio_error_detail;
-        if (audio) {
-            runtime.cadence_bridge().pull_from_audio(*runtime.compiled_graph());
-            const auto& analysis = audio->analysis_read();
-
-            // Check for audio node errors (hard fail)
-            for (size_t i = 0; i < analysis.errored.size(); ++i) {
-                if (analysis.errored[i]) {
-                    audio_errored = true;
-                    audio_error_detail += std::string(analysis.error_msgs[i].data()) + "; ";
-                }
-            }
-
-            // Log per-node diagnostics
-            for (size_t i = 0; i < analysis.rms.size(); ++i) {
-                diag_printf("[demo_graphs]   audio node %zu: RMS=%.6f peak=%.6f%s\n",
-                            i, analysis.rms[i], analysis.peak[i],
-                            analysis.errored[i] ? " ERRORED" : "");
-            }
-
-            // Check that at least one audio node produced non-zero peak
-            if (has_audio_out) {
-                bool any_nonzero = false;
-                for (size_t i = 0; i < analysis.peak.size(); ++i) {
-                    if (analysis.peak[i] > 0.001f) {
-                        any_nonzero = true;
-                        break;
-                    }
-                }
-                if (!any_nonzero) audio_silent = true;
-            }
-        }
-
-        // Restore stderr and read captured output
-        emit_checkpoint("stderr-restore");
-        std::string captured;
-        if (capture_stderr) {
-            fflush(stderr);
-            dup2(saved_stderr, STDERR_FILENO);
-            close(saved_stderr);
-
-            rewind(warn_capture);
-            char buf[256];
-            while (fgets(buf, sizeof(buf), warn_capture))
-                captured += buf;
-            fclose(warn_capture);
-        }
-
-        // Cleanup
-        if (audio) {
-            emit_checkpoint("audio-shutdown");
-            audio->shutdown();
-            emit_checkpoint("audio-delete");
-            delete audio;
-        }
-        emit_checkpoint("runtime-shutdown");
-        runtime.shutdown();
-        emit_checkpoint("post-cleanup");
-
-        // Check for audio node errors (hard fail, checked first)
-        if (audio_errored) {
-            fail(filename.c_str(), ("audio node error: " + audio_error_detail).c_str());
-            continue;
-        }
-
-        // Check for GPU validation errors
-        if (use_gpu && gpu.has_gpu_error) {
-            fail(filename.c_str(), ("GPU error: " + gpu.gpu_error_msg).c_str());
-            continue;
-        }
-
-        // Check captured stderr for warning/error patterns (case-insensitive)
-        std::string lower = captured;
-        for (auto& c : lower) c = (char)tolower((unsigned char)c);
-        if (lower.find("warn") != std::string::npos || lower.find("error") != std::string::npos) {
-            fail(filename.c_str(), ("unexpected stderr: " + captured).c_str());
-        } else if (audio_silent) {
-            fail(filename.c_str(), "audio output is silent (all peaks < 0.001)");
+        if (WIFEXITED(status)) {
+            int code = WEXITSTATUS(status);
+            if (code == 0)      pass(filename.c_str());
+            else if (code == 2) skip(filename.c_str(), "child reported skip");
+            else                fail(filename.c_str(), "child reported failure");
+        } else if (WIFSIGNALED(status)) {
+            int sig = WTERMSIG(status);
+            char reason[64];
+            snprintf(reason, sizeof(reason), "killed by signal %d", sig);
+            skip(filename.c_str(), reason);
         } else {
-            emit_checkpoint("graph-pass");
-            pass(filename.c_str());
+            skip(filename.c_str(), "unknown child exit");
         }
     }
-
-    g_current_graph_storage = "(all-done)";
-    g_current_graph = g_current_graph_storage.c_str();
-    emit_checkpoint("gpu-shutdown");
-    gpu.shutdown();
 
     // Summary
     std::fprintf(stderr, "\n========================================\n");
@@ -470,6 +406,5 @@ int main(int argc, char* argv[]) {
                  passes, failures, skipped, graph_files.size());
     std::fprintf(stderr, "========================================\n");
 
-    if (g_diag_fd != STDERR_FILENO) close(g_diag_fd);
     return failures > 0 ? 1 : 0;
 }

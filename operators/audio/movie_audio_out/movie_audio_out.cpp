@@ -160,6 +160,7 @@ struct MovieAudioOut : vivid::OperatorBase, vivid::AudioProcessable {
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back(VIVID_CUSTOM_REF_PORT("media_stream", VIVID_PORT_INPUT, vivid::MediaStreamV1));
         out.push_back({"output", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2, 0.0f});
+        vivid::append_analysis_ports(out);
     }
 
     struct MediaClockSnapshot {

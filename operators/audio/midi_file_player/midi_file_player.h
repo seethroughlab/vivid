@@ -42,6 +42,7 @@ struct MidiFilePlayer : vivid::OperatorBase, vivid::AudioProcessable {
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
+        vivid::append_analysis_ports(out);
     }
 
     void main_thread_update(double /*time*/) override {

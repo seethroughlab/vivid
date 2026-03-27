@@ -258,12 +258,14 @@ uint32_t NodeGraphUI::count_visible_input_ports(const NodeSnapshot& ns, bool sho
 }
 
 uint32_t NodeGraphUI::count_visible_output_ports(const NodeSnapshot& ns, bool show_params) const {
-    bool few_outputs = ns.output_port_indices.size() <= 3;
+    size_t regular_count = ns.output_port_indices.size() - ns.analysis_output_port_indices.size();
+    bool few_outputs = regular_count <= 3;
     bool expanded    = outputs_expanded_.count(ns.node_id) > 0;
     bool show_all    = few_outputs || expanded;
 
     uint32_t count = 0;
     for (const auto& [name, idx] : ns.output_port_indices) {
+        if (ns.analysis_output_port_indices.count(name)) continue;
         if (show_all || port_has_connection(snap_.connections, ns.node_id, name, true))
             count++;
     }
@@ -298,7 +300,8 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
 
     auto sorted_inputs = sorted_ports(ns.input_port_indices);
     auto sorted_outputs_vec = sorted_ports(ns.output_port_indices);
-    bool few_outputs = ns.output_port_indices.size() <= 3;
+    size_t regular_output_count = ns.output_port_indices.size() - ns.analysis_output_port_indices.size();
+    bool few_outputs = regular_output_count <= 3;
     bool expanded    = outputs_expanded_.count(ns.node_id) > 0;
     bool show_all    = few_outputs || expanded;
 
@@ -329,6 +332,7 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
     // Output ports — show all when few or expanded, otherwise only connected
     size_t oi = 0;
     for (const auto& [idx, name] : sorted_outputs_vec) {
+        if (ns.analysis_output_port_indices.count(name)) continue;
         bool connected = port_has_connection(snap_.connections, ns.node_id, name, true);
         if (!show_all && !connected)
             continue;
@@ -343,7 +347,7 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
     rect.hidden_output_count = 0;
     rect.affordance_gy       = 0;
     if (!few_outputs) {
-        uint32_t total = static_cast<uint32_t>(ns.output_port_indices.size());
+        uint32_t total = static_cast<uint32_t>(regular_output_count);
         rect.hidden_output_count = expanded ? 0 : total - static_cast<uint32_t>(oi);
         rect.affordance_gy = port_start_y + oi * kLineH + kLineH * 0.5f;
         ++oi; // reserve the row so param sources appear below

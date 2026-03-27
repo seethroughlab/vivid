@@ -8,21 +8,21 @@ extern "C" {
 
 /* Bump when operator-facing C ABI changes in incompatible ways. */
 #define VIVID_OPERATOR_ABI_VERSION 18u
-// v18: Removed execution_env field — use vivid_execution_env() to derive from has_process_* flags.
+// v18: Removed execution_env field — use vivid_operator_kind() to derive from has_process_* flags.
 // v17: Renamed vivid_process entry point to vivid_process_frame.
 // v16: Removed deprecated `domain` field from VividOperatorDescriptor.
-// v15: Cadence-aware execution model — replaced VividDomain with VividExecutionEnv + VividCadenceCapability.
+// v15: Cadence-aware execution model — replaced VividDomain with VividOperatorKind + VividCadenceCapability.
 // The ABI version catches stale dylibs during hot-reload — it is not a cross-version compatibility promise.
 
 // ---------------------------------------------------------------------------
 // Enums
 // ---------------------------------------------------------------------------
 
-// Execution environment — which executor owns the node.
-typedef uint32_t VividExecutionEnv;
-#define VIVID_ENV_FRAME  0u   // main thread, frame-rate (~60 Hz)
-#define VIVID_ENV_AUDIO  1u   // audio thread, audio-rate (~48 kHz)
-#define VIVID_ENV_GPU    2u   // main thread, GPU command submission
+// Operator kind — classifies an operator by its primary execution context.
+typedef uint32_t VividOperatorKind;
+#define VIVID_OP_CONTROL 0u   // main thread, frame-rate (~60 Hz)
+#define VIVID_OP_AUDIO   1u   // audio thread, audio-rate (~48 kHz)
+#define VIVID_OP_GPU     2u   // main thread, GPU command submission
 
 // Cadence capability — classifies an operator's supported execution cadences.
 typedef uint32_t VividCadenceCapability;
@@ -128,11 +128,11 @@ typedef struct VividOperatorDescriptor {
     int                       has_process_frame;     // 1 if operator implements FrameProcessable
 } VividOperatorDescriptor;
 
-// Derive execution environment from capability flags (replaces stored field, v18+).
-static inline VividExecutionEnv vivid_execution_env(const VividOperatorDescriptor* d) {
-    if (d->has_process_gpu)                              return VIVID_ENV_GPU;
-    if (d->has_process_audio && !d->has_process_frame)   return VIVID_ENV_AUDIO;
-    return VIVID_ENV_FRAME;
+// Derive operator kind from capability flags (replaces stored field, v18+).
+static inline VividOperatorKind vivid_operator_kind(const VividOperatorDescriptor* d) {
+    if (d->has_process_gpu)                              return VIVID_OP_GPU;
+    if (d->has_process_audio && !d->has_process_frame)   return VIVID_OP_AUDIO;
+    return VIVID_OP_CONTROL;
 }
 
 // Embedded operator slot metadata — declares which owned modulation slots

@@ -137,13 +137,13 @@ int main(int argc, char* argv[]) {
               "all fixture nodes introspected");
 
         if (!ctrl.is_null()) {
-            check(get_str(ctrl["env"]) == "control", "control node env");
+            check(get_str(ctrl["kind"]) == "control", "control node kind");
             json dm = ctrl.value("env_metrics", json{});
             json c = dm.value("control", json{});
             check(c.is_object(), "control node has control env_metrics");
         }
         if (!aud.is_null()) {
-            check(get_str(aud["env"]) == "audio", "audio node env");
+            check(get_str(aud["kind"]) == "audio", "audio node kind");
             json dm = aud.value("env_metrics", json{});
             json a = dm.value("audio", json{});
             check(a.is_object(), "audio node has audio env_metrics");
@@ -153,7 +153,7 @@ int main(int argc, char* argv[]) {
             check(has_opc, "audio metrics has output_port_count");
         }
         if (!gpu.is_null()) {
-            check(get_str(gpu["env"]) == "gpu", "gpu node env");
+            check(get_str(gpu["kind"]) == "gpu", "gpu node kind");
             json dm = gpu.value("env_metrics", json{});
             json g = dm.value("gpu", json{});
             check(g.is_object(), "gpu node has gpu env_metrics");

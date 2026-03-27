@@ -35,7 +35,7 @@ static int g_skipped = 0;
 
 struct OpResult {
     std::string name;
-    std::string env_str;
+    std::string kind_str;
     bool load_ok    = false;
     bool desc_ok    = false;
     bool life_ok    = false;
@@ -59,11 +59,11 @@ static bool is_finite_buf(const float* buf, int n) {
     return true;
 }
 
-static const char* env_label(uint32_t d) {
+static const char* kind_label(uint32_t d) {
     switch (d) {
-        case VIVID_ENV_FRAME: return "control";
-        case VIVID_ENV_AUDIO: return "audio";
-        case VIVID_ENV_GPU:   return "gpu";
+        case VIVID_OP_CONTROL: return "control";
+        case VIVID_OP_AUDIO: return "audio";
+        case VIVID_OP_GPU:   return "gpu";
         default:              return "unknown";
     }
 }
@@ -479,7 +479,7 @@ static bool test_param_boundary(vivid::OperatorLoader& loader, void* inst,
         params[i] = desc->params[i].default_value;
 
     auto run_one_tick = [&]() -> bool {
-        if (vivid_execution_env(desc) == VIVID_ENV_FRAME) {
+        if (vivid_operator_kind(desc) == VIVID_OP_CONTROL) {
             uint32_t ni = 0, no = 0, nsi = 0, nso = 0;
             for (uint32_t pi = 0; pi < desc->port_count; pi++) {
                 if (desc->ports[pi].direction == VIVID_PORT_INPUT) {
@@ -503,7 +503,7 @@ static bool test_param_boundary(vivid::OperatorLoader& loader, void* inst,
             for (uint32_t i = 0; i < no; i++)
                 if (!std::isfinite(outs[i])) return false;
             return true;
-        } else if (vivid_execution_env(desc) == VIVID_ENV_AUDIO) {
+        } else if (vivid_operator_kind(desc) == VIVID_OP_AUDIO) {
             constexpr int kF = 512;
             // Mirror smoke_audio port counting.
             uint32_t nbi = 0, nbo = 0, nfi = 0, nfo = 0;
@@ -596,7 +596,7 @@ static void sweep_operator(const fs::path& path, HeadlessGpu* gpu) {
 
     // --- Descriptor sanity ---
     const auto* desc = loader.descriptor();
-    if (!desc || !desc->name || desc->name[0] == '\0' || vivid_execution_env(desc) > VIVID_ENV_GPU) {
+    if (!desc || !desc->name || desc->name[0] == '\0' || vivid_operator_kind(desc) > VIVID_OP_GPU) {
         result.fail_reason = "bad descriptor";
         g_failed++;
         g_results.push_back(result);
@@ -619,7 +619,7 @@ static void sweep_operator(const fs::path& path, HeadlessGpu* gpu) {
         return;
     }
     result.desc_ok = true;
-    result.env_str = env_label(vivid_execution_env(desc));
+    result.kind_str = kind_label(vivid_operator_kind(desc));
 
     // --- Instance lifecycle ---
     void* inst = loader.create_instance();
@@ -635,11 +635,11 @@ static void sweep_operator(const fs::path& path, HeadlessGpu* gpu) {
     // --- Domain smoke ---
     bool smoke = false;
     try {
-        if (vivid_execution_env(desc) == VIVID_ENV_FRAME) {
+        if (vivid_operator_kind(desc) == VIVID_OP_CONTROL) {
             smoke = smoke_control(loader, inst, desc);
-        } else if (vivid_execution_env(desc) == VIVID_ENV_AUDIO) {
+        } else if (vivid_operator_kind(desc) == VIVID_OP_AUDIO) {
             smoke = smoke_audio(loader, inst, desc);
-        } else if (vivid_execution_env(desc) == VIVID_ENV_GPU) {
+        } else if (vivid_operator_kind(desc) == VIVID_OP_GPU) {
             // GPU operators manage their own shaders, pipelines, and internal
             // textures. Calling process_gpu with a minimal context (no runtime,
             // no proper texture setup) causes wgpu validation errors and aborts.
@@ -654,7 +654,7 @@ static void sweep_operator(const fs::path& path, HeadlessGpu* gpu) {
         g_failed++;
         g_results.push_back(result);
         std::fprintf(stderr, "  [FAIL] %-30s %-8s smoke threw: %s\n",
-                     stem.c_str(), result.env_str.c_str(), e.what());
+                     stem.c_str(), result.kind_str.c_str(), e.what());
         return;
     } catch (...) {
         result.fail_reason = "smoke threw unknown exception";
@@ -662,7 +662,7 @@ static void sweep_operator(const fs::path& path, HeadlessGpu* gpu) {
         g_failed++;
         g_results.push_back(result);
         std::fprintf(stderr, "  [FAIL] %-30s %-8s smoke threw unknown exception\n",
-                     stem.c_str(), result.env_str.c_str());
+                     stem.c_str(), result.kind_str.c_str());
         return;
     }
     result.smoke_ok = smoke;
@@ -673,7 +673,7 @@ static void sweep_operator(const fs::path& path, HeadlessGpu* gpu) {
         g_failed++;
         g_results.push_back(result);
         std::fprintf(stderr, "  [FAIL] %-30s %-8s smoke failed\n",
-                     stem.c_str(), result.env_str.c_str());
+                     stem.c_str(), result.kind_str.c_str());
         return;
     }
 
@@ -693,7 +693,7 @@ static void sweep_operator(const fs::path& path, HeadlessGpu* gpu) {
         g_failed++;
         g_results.push_back(result);
         std::fprintf(stderr, "  [FAIL] %-30s %-8s bounds failed\n",
-                     stem.c_str(), result.env_str.c_str());
+                     stem.c_str(), result.kind_str.c_str());
         return;
     }
 
@@ -745,10 +745,10 @@ int main() {
     for (const auto& r : g_results) {
         if (r.skipped) {
             std::fprintf(stderr, "[SKIP]  %-30s %-8s reason=%s\n",
-                         r.name.c_str(), r.env_str.c_str(), r.skip_reason.c_str());
+                         r.name.c_str(), r.kind_str.c_str(), r.skip_reason.c_str());
         } else if (!r.fail_reason.empty()) {
             std::fprintf(stderr, "[FAIL]  %-30s %-8s load=%s desc=%s life=%s smoke=%s bounds=%s  %s\n",
-                         r.name.c_str(), r.env_str.c_str(),
+                         r.name.c_str(), r.kind_str.c_str(),
                          r.load_ok  ? "ok" : "FAIL",
                          r.desc_ok  ? "ok" : "FAIL",
                          r.life_ok  ? "ok" : "FAIL",
@@ -757,7 +757,7 @@ int main() {
                          r.fail_reason.c_str());
         } else {
             std::fprintf(stderr, "[PASS]  %-30s %-8s load=ok desc=ok life=ok smoke=ok bounds=ok\n",
-                         r.name.c_str(), r.env_str.c_str());
+                         r.name.c_str(), r.kind_str.c_str());
         }
     }
 

@@ -394,7 +394,7 @@ int main(int argc, char* argv[]) {
                 auto& first_node = nodes[0];
                 check(first_node.contains("node_id") && first_node["node_id"].is_string(), "introspection node has node_id");
                 check(first_node.contains("type") && first_node["type"].is_string(), "introspection node has type");
-                check(first_node.contains("env") && first_node["env"].is_string(), "introspection node has env");
+                check(first_node.contains("kind") && first_node["kind"].is_string(), "introspection node has kind");
                 check(first_node.contains("health") && first_node["health"].is_object(), "introspection node has health object");
                 check(first_node.contains("params") && first_node["params"].is_object(), "introspection node has params object");
                 check(first_node.contains("param_meta") && first_node["param_meta"].is_array(), "introspection node has param_meta array");
@@ -1370,7 +1370,7 @@ int main(int argc, char* argv[]) {
         std::fprintf(stderr, "\n--- scaffold_operator destination ---\n");
         {
             auto rp = post(client, base_url, "scaffold_operator",
-                R"({"name":"mcp_pkg_e2e","env":"control","destination":"package:vivid-scaffold-e2e"})");
+                R"({"name":"mcp_pkg_e2e","kind":"control","destination":"package:vivid-scaffold-e2e"})");
             check(rp.ok, "scaffold_operator project destination ok");
             if (!rp.ok && !rp.j.is_null()) {
                 if (rp.j.contains("error") && rp.j["error"].is_string()) {
@@ -1406,7 +1406,7 @@ int main(int argc, char* argv[]) {
             check(!ec, "removed linked project package for fallback test");
 
             auto rc = post(client, base_url, "scaffold_operator",
-                R"({"name":"mcp_core_fallback","env":"control","destination":"auto"})");
+                R"({"name":"mcp_core_fallback","kind":"control","destination":"auto"})");
             check(rc.ok, "scaffold_operator auto fallback ok");
             if (!rc.ok && !rc.j.is_null()) {
                 if (rc.j.contains("error") && rc.j["error"].is_string()) {
