@@ -38,11 +38,6 @@ struct DeferredEntry {
     std::vector<std::string> file_drop_descriptions;
     std::vector<std::vector<std::string>> file_drop_extensions;
     std::vector<std::vector<const char*>> file_drop_extension_ptrs;
-    // Embedded operator slot metadata
-    std::vector<VividEmbeddedOpSlot> embedded_op_slots;
-    std::vector<std::string> embedded_op_role_ids;       // stable strings for role_id pointers
-    std::vector<std::string> embedded_op_default_types;  // stable strings for default_type pointers
-    std::vector<std::string> embedded_op_prefixes;       // stable strings for param_prefix pointers
 };
 
 struct AbiMismatchDiagnostic {
@@ -87,9 +82,6 @@ public:
     OperatorLoader* find(const std::string& type_name);
     OperatorLoader* find_loaded(const std::string& type_name);
     const VividOperatorDescriptor* probe_descriptor(const std::string& type_name) const;
-
-    // Embedded operator slot metadata (for serialization)
-    const std::vector<VividEmbeddedOpSlot>* embedded_op_slots(const std::string& type_name) const;
 
     // User-defined filter management
     void register_user_filter(const std::string& name,

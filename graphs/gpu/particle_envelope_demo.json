@@ -29,18 +29,11 @@
         "color_b": 1.0,
         "glow": 0.8,
         "envelope_enabled": 1,
-        "envelope_amount": 1.0
-      },
-      "embedded_ops": {
-        "envelope": {
-          "type": "Envelope",
-          "params": {
-            "attack": 0.05,
-            "decay": 0.3,
-            "sustain": 0.0,
-            "release": 0.5
-          }
-        }
+        "envelope_amount": 1.0,
+        "envelope_attack": 0.05,
+        "envelope_decay": 0.3,
+        "envelope_sustain": 0.0,
+        "envelope_release": 0.5
       },
       "tex_width": 512,
       "tex_height": 512

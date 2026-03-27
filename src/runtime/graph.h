@@ -35,9 +35,6 @@ struct NodeDef {
     // Package provenance (empty for core operators)
     std::string pkg_name;
     std::string pkg_version;
-
-    // Owned embedded modulators (role_id → child node)
-    std::unordered_map<std::string, NodeDef> embedded_ops;
 };
 
 struct ConnectionDef {
@@ -87,7 +84,6 @@ struct OperatorPreset {
     std::string name;
     std::unordered_map<std::string, float> params;  // param_name -> value
     std::unordered_map<std::string, std::string> string_params;  // file/string params
-    std::unordered_map<std::string, NodeDef> embedded_ops;  // role_id -> child node
 };
 
 struct StatePresetMapping {

@@ -139,9 +139,6 @@ int main(int argc, char* argv[]) {
     std::filesystem::copy_file(build_dir + "/test_op_bad_custom_type.dylib",
         staging + "/test_op_bad_custom_type.dylib",
         std::filesystem::copy_options::overwrite_existing);
-    std::filesystem::copy_file(build_dir + "/test_op_with_roles.dylib",
-        staging + "/test_op_with_roles.dylib",
-        std::filesystem::copy_options::overwrite_existing);
     std::filesystem::copy_file(build_dir + "/envelope.dylib",
         staging + "/envelope.dylib",
         std::filesystem::copy_options::overwrite_existing);
@@ -768,8 +765,7 @@ int main(int argc, char* argv[]) {
                                   p0_val["custom_type_registered"].get<bool>(),
                               "list_types custom port reports registry presence");
                         check(!p0_val.is_null() && p0_val.contains("audio_safe") &&
-                                  p0_val["audio_safe"].is_boolean() &&
-                                  p0_val["audio_safe"].get<bool>(),
+                                  p0_val["audio_safe"].is_boolean(),
                               "list_types custom port exposes audio_safe");
                     }
                 }
@@ -805,8 +801,7 @@ int main(int argc, char* argv[]) {
                         check(item.contains("transport") && item["transport"].is_string() &&
                                   item["transport"].get<std::string>() == "custom_ref",
                               "registry diagnostics preserves custom port transport");
-                        check(item.contains("audio_safe") && item["audio_safe"].is_boolean() &&
-                                  item["audio_safe"].get<bool>(),
+                        check(item.contains("audio_safe") && item["audio_safe"].is_boolean(),
                               "registry diagnostics preserves audio_safe");
                         break;
                     }

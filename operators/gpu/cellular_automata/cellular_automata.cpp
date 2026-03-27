@@ -288,11 +288,6 @@ struct CellularAutomata : vivid::OperatorBase, vivid::GpuProcessable {
         out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void collect_embedded_op_slots(std::vector<VividEmbeddedOpSlot>& out) override {
-        out.push_back({"birth_threshold", "LFO", "birth_threshold_"});
-        out.push_back({"survive_threshold", "LFO", "survive_threshold_"});
-    }
-
     void process_gpu(const VividGpuContext* ctx) override {
         if (!sim_pipeline_ && !lazy_init(ctx)) return;
 

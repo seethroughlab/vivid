@@ -250,11 +250,7 @@ struct InstancedShapes : vivid::OperatorBase, vivid::GpuProcessable {
         out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void collect_embedded_op_slots(std::vector<VividEmbeddedOpSlot>& out) override {
-        out.push_back({"scale", "LFO", "scale_"});
-        out.push_back({"rotation", "LFO", "rotation_"});
-        out.push_back({"color_mod", "LFO", "color_mod_"});
-    }
+
 
     void process_gpu(const VividGpuContext* ctx) override {
         if (!pipeline_ && !lazy_init(ctx)) return;

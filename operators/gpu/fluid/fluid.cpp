@@ -290,11 +290,7 @@ struct Fluid : vivid::OperatorBase, vivid::GpuProcessable {
         out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void collect_embedded_op_slots(std::vector<VividEmbeddedOpSlot>& out) override {
-        out.push_back({"viscosity_mod", "LFO", "viscosity_mod_"});
-        out.push_back({"buoyancy_mod", "LFO", "buoyancy_mod_"});
-        out.push_back({"force_mod", "LFO", "force_mod_"});
-    }
+
 
     // ── Per-frame GPU processing ────────────────────────────────────
 

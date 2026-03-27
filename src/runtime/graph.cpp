@@ -61,7 +61,6 @@ bool Graph::load_from_string(const char* json, size_t len, bool preserve_source_
 }
 
 // Parse common NodeDef fields from a JSON object. Does NOT set node.id (caller's job).
-// Recursively parses embedded_ops.
 static bool parse_node_fields(const nlohmann::json& val, NodeDef& node) {
     // type
     auto type_it = val.find("type");
@@ -128,27 +127,6 @@ static bool parse_node_fields(const nlohmann::json& val, NodeDef& node) {
             if (lval.is_number_integer())
                 node.param_lock_flags[lkey] = static_cast<uint8_t>(lval.get<int64_t>());
         }
-    }
-
-    // embedded_ops (recursive)
-    auto eo_it = val.find("embedded_ops");
-    if (eo_it != val.end() && eo_it->is_object()) {
-        for (auto& [role_id, eo_val] : eo_it->items()) {
-            if (!eo_val.is_object()) continue;
-            NodeDef child;
-            parse_node_fields(eo_val, child);
-            node.embedded_ops[role_id] = std::move(child);
-        }
-    }
-
-    // Inject embedded op params as flat prefixed params on the host
-    // (bridge to flat runtime Param<> members)
-    for (const auto& [role_id, child] : node.embedded_ops) {
-        std::string prefix = role_id + "_";
-        for (const auto& [pn, pv] : child.params)
-            node.params[prefix + pn] = pv;
-        for (const auto& [pn, pv] : child.string_params)
-            node.string_params[prefix + pn] = pv;
     }
 
     return true;
@@ -405,16 +383,6 @@ bool Graph::parse_doc(const nlohmann::json& root) {
                                 op.params[ppkey] = static_cast<float>(ppv.get<double>());
                             else if (ppv.is_string())
                                 op.string_params[ppkey] = ppv.get<std::string>();
-                        }
-                    }
-                    // Parse embedded_ops in preset
-                    auto peo_it = pentry.find("embedded_ops");
-                    if (peo_it != pentry.end() && peo_it->is_object()) {
-                        for (auto& [role_id, peo_val] : peo_it->items()) {
-                            if (!peo_val.is_object()) continue;
-                            NodeDef child;
-                            parse_node_fields(peo_val, child);
-                            op.embedded_ops[role_id] = std::move(child);
                         }
                     }
                     presets.push_back(std::move(op));
@@ -922,27 +890,12 @@ static void serialize_node_fields(nlohmann::ordered_json& node_obj, const NodeDe
         node_obj["pkg"] = nlohmann::ordered_json{{"name", node.pkg_name}, {"version", node.pkg_version}};
     }
 
-    // Build set of embedded_ops prefixes to skip from flat params
-    std::vector<std::string> eo_prefixes;
-    for (const auto& [role_id, child] : node.embedded_ops)
-        eo_prefixes.push_back(role_id + "_");
-
-    auto is_embedded_param = [&](const std::string& pname) {
-        for (const auto& pfx : eo_prefixes) {
-            if (pname.size() >= pfx.size() && pname.compare(0, pfx.size(), pfx) == 0)
-                return true;
-        }
-        return false;
-    };
-
     if (!node.params.empty() || !node.string_params.empty()) {
         nlohmann::ordered_json params_obj = nlohmann::ordered_json::object();
         for (const auto& [pname, pval] : node.params) {
-            if (is_embedded_param(pname)) continue;
             params_obj[pname] = static_cast<double>(pval);
         }
         for (const auto& [pname, pval] : node.string_params) {
-            if (is_embedded_param(pname)) continue;
             params_obj[pname] = pval;
         }
         node_obj["params"] = std::move(params_obj);
@@ -967,16 +920,6 @@ static void serialize_node_fields(nlohmann::ordered_json& node_obj, const NodeDe
         node_obj["locks"] = std::move(locks_obj);
     }
 
-    // Write embedded_ops — recursive, uses child NodeDef directly
-    if (!node.embedded_ops.empty()) {
-        nlohmann::ordered_json eo_obj = nlohmann::ordered_json::object();
-        for (const auto& [role_id, child] : node.embedded_ops) {
-            nlohmann::ordered_json child_obj = nlohmann::ordered_json::object();
-            serialize_node_fields(child_obj, child);
-            eo_obj[role_id] = std::move(child_obj);
-        }
-        node_obj["embedded_ops"] = std::move(eo_obj);
-    }
 }
 
 static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
@@ -1120,16 +1063,6 @@ static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
                     pp_obj[pname] = pval;
                 }
                 pr_obj["params"] = std::move(pp_obj);
-                // Write embedded_ops in preset
-                if (!p.embedded_ops.empty()) {
-                    nlohmann::ordered_json peo_obj = nlohmann::ordered_json::object();
-                    for (const auto& [role_id, child] : p.embedded_ops) {
-                        nlohmann::ordered_json child_obj = nlohmann::ordered_json::object();
-                        serialize_node_fields(child_obj, child);
-                        peo_obj[role_id] = std::move(child_obj);
-                    }
-                    pr_obj["embedded_ops"] = std::move(peo_obj);
-                }
                 pr_arr.push_back(std::move(pr_obj));
             }
             presets_obj[node_id] = std::move(pr_arr);

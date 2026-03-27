@@ -207,7 +207,6 @@ struct OperatorBase {
     virtual void draw_thumbnail(const VividThumbnailContext*) {}  // optional override
     virtual void draw_inspector(VividInspectorContext*) {}        // optional override
     virtual void main_thread_update(double time) {}               // optional override
-    virtual void collect_embedded_op_slots(std::vector<VividEmbeddedOpSlot>&) {} // optional override
 };
 
 // ---------------------------------------------------------------------------
@@ -378,14 +377,6 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
         desc.port_count     = static_cast<uint32_t>(s_ports.size());          \
         desc.ports          = s_ports.data();                                 \
         desc.time_dependent = ClassName::kTimeDependent ? 1 : 0;              \
-        static std::vector<VividEmbeddedOpSlot> s_embedded_slots;             \
-        if (s_embedded_slots.empty()) {                                       \
-            tmp.collect_embedded_op_slots(s_embedded_slots);                  \
-        }                                                                     \
-        desc.embedded_op_slot_count =                                         \
-            static_cast<uint32_t>(s_embedded_slots.size());                   \
-        desc.embedded_op_slots = s_embedded_slots.empty()                     \
-            ? nullptr : s_embedded_slots.data();                              \
     }                                                                         \
     return &desc;                                                             \
 }                                                                             \

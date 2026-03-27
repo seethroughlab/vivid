@@ -1032,6 +1032,7 @@ add_vivid_operator(semantic_unknown_source_op tests/operators/semantic_unknown_s
 add_vivid_operator(untagged_dest_op          tests/operators/untagged_dest_op.cpp)
 
 
+
 # Hot-reload integration test (no GPU, no audio, no window)
 add_executable(test_hot_reload
     tests/test_hot_reload.cpp

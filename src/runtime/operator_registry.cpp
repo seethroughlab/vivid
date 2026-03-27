@@ -376,29 +376,6 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
         }
     }
 
-    // Deep-copy embedded operator slots
-    const uint32_t eo_count = std::min(src->embedded_op_slot_count, 32u);
-    if (eo_count > 0 && src->embedded_op_slots) {
-        entry.embedded_op_slots.resize(eo_count);
-        entry.embedded_op_role_ids.resize(eo_count);
-        entry.embedded_op_default_types.resize(eo_count);
-        entry.embedded_op_prefixes.resize(eo_count);
-        for (uint32_t i = 0; i < eo_count; ++i) {
-            const auto& s = src->embedded_op_slots[i];
-            entry.embedded_op_role_ids[i] = s.role_id ? s.role_id : "";
-            entry.embedded_op_default_types[i] = s.default_type ? s.default_type : "";
-            entry.embedded_op_prefixes[i] = s.param_prefix ? s.param_prefix : "";
-            entry.embedded_op_slots[i].role_id = entry.embedded_op_role_ids[i].c_str();
-            entry.embedded_op_slots[i].default_type = entry.embedded_op_default_types[i].c_str();
-            entry.embedded_op_slots[i].param_prefix = entry.embedded_op_prefixes[i].c_str();
-        }
-        entry.desc.embedded_op_slot_count = eo_count;
-        entry.desc.embedded_op_slots = entry.embedded_op_slots.data();
-    } else {
-        entry.desc.embedded_op_slot_count = 0;
-        entry.desc.embedded_op_slots = nullptr;
-    }
-
     return entry;
 }
 
@@ -621,15 +598,6 @@ const VividOperatorDescriptor* OperatorRegistry::probe_descriptor(const std::str
     auto dit = deferred_.find(resolved);
     if (dit == deferred_.end()) return nullptr;
     return &dit->second.desc;
-}
-
-const std::vector<VividEmbeddedOpSlot>* OperatorRegistry::embedded_op_slots(
-        const std::string& type_name) const {
-    const std::string resolved = resolve_alias_once(aliases_, type_name);
-    auto dit = deferred_.find(resolved);
-    if (dit != deferred_.end() && !dit->second.embedded_op_slots.empty())
-        return &dit->second.embedded_op_slots;
-    return nullptr;
 }
 
 void OperatorRegistry::register_builtin(const std::string& type_name,
@@ -1058,34 +1026,6 @@ bool OperatorRegistry::scan_factory_presets(const std::string& directory) {
                 for (const auto& [sk, sv] : sparams_it->items()) {
                     if (sv.is_string())
                         op.string_params[sk] = sv.get<std::string>();
-                }
-            }
-
-            // Embedded ops (optional)
-            auto eo_it = preset_val.find("embedded_ops");
-            if (eo_it != preset_val.end() && eo_it->is_object()) {
-                for (const auto& [role_id, eo_val] : eo_it->items()) {
-                    if (!eo_val.is_object()) continue;
-                    NodeDef child;
-                    auto type_it = eo_val.find("type");
-                    if (type_it != eo_val.end() && type_it->is_string())
-                        child.type = type_it->get<std::string>();
-                    auto cp_it = eo_val.find("params");
-                    if (cp_it != eo_val.end() && cp_it->is_object()) {
-                        for (const auto& [pn, pv] : cp_it->items()) {
-                            if (pv.is_number())
-                                child.params[pn] = static_cast<float>(pv.get<double>());
-                        }
-                    }
-                    op.embedded_ops[role_id] = std::move(child);
-                }
-                // Flatten embedded op params onto preset params
-                for (const auto& [role_id, child] : op.embedded_ops) {
-                    std::string prefix = role_id + "_";
-                    for (const auto& [pn, pv] : child.params)
-                        op.params[prefix + pn] = pv;
-                    for (const auto& [pn, pv] : child.string_params)
-                        op.string_params[prefix + pn] = pv;
                 }
             }
 

@@ -190,15 +190,6 @@ CommandResult RuntimeAPI::set_param(const std::string& node_id, const std::strin
     NodeDef* ndef = graph_.find_node(node_id);
     if (ndef) {
         ndef->params[param] = value;
-        // Sync to child NodeDef if this param belongs to an embedded op
-        for (auto& [role_id, child] : ndef->embedded_ops) {
-            std::string prefix = role_id + "_";
-            if (param.size() > prefix.size() &&
-                param.compare(0, prefix.size(), prefix) == 0) {
-                child.params[param.substr(prefix.size())] = value;
-                break;
-            }
-        }
     }
 
     // Mark variation dirty if we have an active variation
@@ -998,11 +989,6 @@ CommandResult RuntimeAPI::save_preset(const std::string& node_id, const std::str
     }
     for (const auto& [pname, idx] : cn->file_param_indices) {
         preset.string_params[pname] = to_persisted_string_value(*cn, pname, cn->file_param_storage[idx]);
-    }
-    // Copy embedded_ops metadata from NodeDef (type info); values come from flat params above
-    const NodeDef* ndef = graph_.find_node(node_id);
-    if (ndef) {
-        preset.embedded_ops = ndef->embedded_ops;
     }
     graph_.save_preset(node_id, preset);
     active_presets_[node_id] = name;

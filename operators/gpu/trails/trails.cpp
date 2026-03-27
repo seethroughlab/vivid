@@ -251,11 +251,7 @@ struct Trails : vivid::OperatorBase, vivid::GpuProcessable {
         out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void collect_embedded_op_slots(std::vector<VividEmbeddedOpSlot>& out) override {
-        out.push_back({"width_mod", "LFO", "width_mod_"});
-        out.push_back({"opacity_mod", "LFO", "opacity_mod_"});
-        out.push_back({"color_shift", "LFO", "color_shift_"});
-    }
+
 
     void process_gpu(const VividGpuContext* ctx) override {
         if (!pipeline_ && !lazy_init(ctx)) return;

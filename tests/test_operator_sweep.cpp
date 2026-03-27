@@ -136,7 +136,6 @@ static const std::unordered_set<std::string>& always_skip() {
         "test_op_incompatible_port",
         // Test fixtures with custom ports/special setup.
         "export_custom_port_op",
-        "test_op_with_roles",
         "test_op_with_slots",
         "test_multi_output_bindable",
         "test_state_carry_op",

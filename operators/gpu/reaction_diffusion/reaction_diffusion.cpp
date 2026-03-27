@@ -244,11 +244,7 @@ struct ReactionDiffusion : vivid::OperatorBase, vivid::GpuProcessable {
         out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void collect_embedded_op_slots(std::vector<VividEmbeddedOpSlot>& out) override {
-        out.push_back({"feed_mod", "LFO", "feed_mod_"});
-        out.push_back({"kill_mod", "LFO", "kill_mod_"});
-        out.push_back({"diffusion_mod", "LFO", "diffusion_mod_"});
-    }
+
 
     void process_gpu(const VividGpuContext* ctx) override {
         if (!sim_pipeline_ && !lazy_init(ctx)) return;

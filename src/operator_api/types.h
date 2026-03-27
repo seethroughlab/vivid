@@ -8,7 +8,7 @@ extern "C" {
 
 /* Bump when operator-facing C ABI changes in incompatible ways.
    Catches stale dylibs during hot-reload — not a cross-version compatibility promise. */
-#define VIVID_OPERATOR_ABI_VERSION 18u
+#define VIVID_OPERATOR_ABI_VERSION 19u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -116,8 +116,6 @@ typedef struct VividOperatorDescriptor {
     int                       time_dependent;    // 1 if operator reads ctx->time, 0 otherwise
     int                       has_process_audio; // 1 if operator implements AudioProcessable
     int                       has_process_gpu;   // 1 if operator implements GpuProcessable
-    uint32_t                  embedded_op_slot_count;
-    const struct VividEmbeddedOpSlot* embedded_op_slots;
 
     // Cadence-aware execution model (v15+)
     VividCadenceCapability    cadence_capability;    // FRAME_ONLY, AUDIO_CAPABLE, or AUDIO_ONLY
@@ -130,14 +128,6 @@ static inline VividOperatorKind vivid_operator_kind(const VividOperatorDescripto
     if (d->has_process_audio && !d->has_process_frame)   return VIVID_OP_AUDIO;
     return VIVID_OP_CONTROL;
 }
-
-// Embedded operator slot metadata — declares which owned modulation slots
-// an operator supports, and how their params map to the host's flat param namespace.
-typedef struct VividEmbeddedOpSlot {
-    const char* role_id;        // e.g. "envelope", "viscosity_mod"
-    const char* default_type;   // e.g. "Envelope", "LFO"
-    const char* param_prefix;   // e.g. "envelope_", "viscosity_mod_"
-} VividEmbeddedOpSlot;
 
 // ---------------------------------------------------------------------------
 // Input events — mouse, keyboard, scroll for interactive operators

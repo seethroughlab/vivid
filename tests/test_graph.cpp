@@ -1738,50 +1738,6 @@ int main() {
         check(g2.load_from_string(json.c_str(), json.size()), "reload schema v2 graph");
     }
 
-    // =====================================================================
-    // Test: embedded_ops parsed and injected as flat params
-    // =====================================================================
-    {
-        std::fprintf(stderr, "\n=== Test: embedded_ops round-trip ===\n");
-        const char* json = R"({
-            "nodes": {
-                "p1": {
-                    "type": "Particles",
-                    "params": { "count": 8, "envelope_enabled": 1, "envelope_amount": 0.75 },
-                    "embedded_ops": {
-                        "envelope": {
-                            "type": "Envelope",
-                            "params": { "attack": 0.1, "decay": 0.5 }
-                        }
-                    }
-                }
-            },
-            "connections": []
-        })";
-        vivid::Graph g;
-        check(g.load_from_string(json), "graph with embedded_ops loads");
-        const auto* ndef = g.find_node("p1");
-        check(ndef != nullptr, "node p1 found");
-        if (ndef) {
-            // Check embedded_ops stored as child NodeDef
-            check(ndef->embedded_ops.count("envelope") == 1,
-                  "embedded_ops contains envelope");
-            const auto& child = ndef->embedded_ops.at("envelope");
-            check(child.type == "Envelope", "child type is Envelope");
-            auto atk_it = child.params.find("attack");
-            check(atk_it != child.params.end() && atk_it->second == 0.1f,
-                  "child has attack param");
-            // Check flat params were injected from child
-            auto it_atk = ndef->params.find("envelope_attack");
-            check(it_atk != ndef->params.end() && it_atk->second == 0.1f,
-                  "envelope_attack injected as flat param");
-            // enabled and amount are host params, not embedded op fields
-            auto it_en = ndef->params.find("envelope_enabled");
-            check(it_en != ndef->params.end() && it_en->second == 1.0f,
-                  "envelope_enabled is a host param");
-        }
-    }
-
     // --- Cleanup temp files ---
     std::remove("/tmp/vivid_test_valid.json");
     std::remove("/tmp/vivid_test_layout.json");

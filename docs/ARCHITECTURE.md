@@ -168,28 +168,7 @@ struct MyOp : vivid::OperatorBase, vivid::FrameProcessable {
 
 **Domain restriction:** ChildOp is for control-domain composition only. Audio operators need per-sample buffer processing on the audio thread, and GPU operators run as shader pipelines — neither maps to the `ChildOp` call-and-read pattern.
 
-#### Embedded Operator Slots
-
-Hosts that use `ChildOp<T>` internally can declare **embedded operator slots** — named modulation roles with curated allowed types. This metadata is declared via `collect_embedded_op_slots()` and stored in the operator descriptor as `VividEmbeddedOpSlot` records (defined in `src/operator_api/types.h`):
-
-```cpp
-VividEmbeddedOpSlot{
-    .role_id       = "envelope",       // semantic name
-    .default_type  = "Envelope",       // default operator type
-    .param_prefix  = "envelope_"       // namespace for flattened host params
-};
-```
-
-The **curated slot model** restricts each slot to a small approved set of operator types (e.g., an envelope slot allows `Envelope` or `MSEG`, not arbitrary control operators). This keeps UX simple and avoids rebuilding the complexity of the earlier role-bindings experiment.
-
-**Slot editing is inspector-first:** embedded slots appear as cards in the host's inspector panel with inline param editing. Embedded operators are never exposed as separate graph nodes — they remain owned host-local state.
-
-All 7 GPU operators (Particles, InstancedShapes, Flocking, Trails, Fluid, ReactionDiffusion, CellularAutomata) use this pattern for internal modulation — typically LFO or Envelope instances driven by `<role>_`-prefixed host params.
-
-The architecture uses three mechanisms for three purposes (see also `ARCHITECTURE-GUARDRAILS.md`):
-- **Ports** — generic transport between graph nodes
-- **Embedded slots** — owned host-local composition using reusable operator code
-- **Explicit outputs** — sharing host-local results back into the graph
+All 7 GPU operators (Particles, InstancedShapes, Flocking, Trails, Fluid, ReactionDiffusion, CellularAutomata) use `ChildOp<T>` for internal modulation — typically LFO or Envelope instances driven by `<role>_`-prefixed host params (e.g., `envelope_attack`, `scale_rate`). These child operators are private implementation details with no separate metadata layer.
 
 ### 5.7.2 Audio DSP Utilities (Public Operator API)
 

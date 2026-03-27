@@ -265,11 +265,7 @@ struct Flocking : vivid::OperatorBase, vivid::GpuProcessable {
         out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void collect_embedded_op_slots(std::vector<VividEmbeddedOpSlot>& out) override {
-        out.push_back({"speed_mod", "LFO", "speed_mod_"});
-        out.push_back({"separation_mod", "LFO", "separation_mod_"});
-        out.push_back({"alignment_mod", "LFO", "alignment_mod_"});
-    }
+
 
     void process_gpu(const VividGpuContext* ctx) override {
         if (!pipeline_ && !lazy_init(ctx)) return;

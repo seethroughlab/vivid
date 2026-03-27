@@ -349,7 +349,6 @@ port_count, ports[]     — port descriptors (name, type, direction, transport)
 time_dependent          — whether the operator reads ctx->time
 has_process_frame/audio/gpu — capability flags (which process methods exist)
 cadence_capability      — FRAME_ONLY, AUDIO_CAPABLE, or AUDIO_ONLY
-embedded_op_slots[]     — modulation sub-operator slots
 ```
 
 ### OperatorRegistry

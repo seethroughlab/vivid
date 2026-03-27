@@ -90,17 +90,6 @@ static void compare_nodes(const vivid::NodeDef& a, const vivid::NodeDef& b,
     check(a.param_lock_flags.size() == b.param_lock_flags.size(),
           (ctx + " lock_flags count").c_str());
 
-    // Embedded ops (recursive)
-    check(a.embedded_ops.size() == b.embedded_ops.size(),
-          (ctx + " embedded_ops count").c_str());
-    for (auto& [role, child] : a.embedded_ops) {
-        auto it = b.embedded_ops.find(role);
-        if (it == b.embedded_ops.end()) {
-            check(false, (ctx + " embedded_op " + role + " missing").c_str());
-        } else {
-            compare_nodes(child, it->second, ctx + "/embedded/" + role);
-        }
-    }
 }
 
 static void compare_graphs(const vivid::Graph& a, const vivid::Graph& b,

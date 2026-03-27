@@ -30,36 +30,19 @@
         "speed": 0.8,
         "scale_enabled": 1,
         "scale_amount": 0.8,
+        "scale_rate": 0.5,
+        "scale_waveform": 0,
+        "scale_offset": 0.0,
         "rotation_enabled": 1,
         "rotation_amount": 1.0,
+        "rotation_rate": 0.3,
+        "rotation_waveform": 0,
+        "rotation_offset": 0.0,
         "color_mod_enabled": 0,
-        "color_mod_amount": 1.0
-      },
-      "embedded_ops": {
-        "scale": {
-          "type": "LFO",
-          "params": {
-            "rate": 0.5,
-            "waveform": 0,
-            "offset": 0.0
-          }
-        },
-        "rotation": {
-          "type": "LFO",
-          "params": {
-            "rate": 0.3,
-            "waveform": 0,
-            "offset": 0.0
-          }
-        },
-        "color_mod": {
-          "type": "LFO",
-          "params": {
-            "rate": 0.2,
-            "waveform": 0,
-            "offset": 0.0
-          }
-        }
+        "color_mod_amount": 1.0,
+        "color_mod_rate": 0.2,
+        "color_mod_waveform": 0,
+        "color_mod_offset": 0.0
       }
     },
     "bloom": {
