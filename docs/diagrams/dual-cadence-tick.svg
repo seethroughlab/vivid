@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 500" font-family="system-ui, -apple-system, sans-serif" font-size="12">
+  <defs>
+    <marker id="a" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#444"/>
+    </marker>
+    <marker id="ab" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#2563eb"/>
+    </marker>
+    <marker id="ao" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#ea580c"/>
+    </marker>
+  </defs>
+
+  <text x="360" y="28" text-anchor="middle" font-size="18" font-weight="bold" fill="#111">Dual-Cadence Tick Sequence</text>
+
+  <!-- Timeline labels -->
+  <text x="200" y="58" text-anchor="middle" font-size="14" font-weight="bold" fill="#2563eb">Main Thread</text>
+  <text x="560" y="58" text-anchor="middle" font-size="14" font-weight="bold" fill="#ea580c">Audio Thread</text>
+
+  <!-- Lifelines -->
+  <line x1="200" y1="68" x2="200" y2="480" stroke="#2563eb" stroke-width="2"/>
+  <line x1="560" y1="68" x2="560" y2="480" stroke="#ea580c" stroke-width="2"/>
+
+  <!-- Time arrow on left -->
+  <line x1="30" y1="70" x2="30" y2="470" stroke="#aaa" stroke-width="1" marker-end="url(#a)"/>
+  <text x="28" y="64" font-size="10" fill="#888" text-anchor="end">time</text>
+
+  <!-- Frame boundary markers -->
+  <text x="44" y="88" font-size="10" fill="#888">Frame N</text>
+  <line x1="40" y1="92" x2="470" y2="92" stroke="#ddd" stroke-width="1" stroke-dasharray="3,3"/>
+
+  <!-- Audio running continuously (background bar) -->
+  <rect x="546" y="72" width="28" height="400" rx="4" fill="#fff7ed" stroke="#ea580c" stroke-width="1" stroke-dasharray="3,3"/>
+  <text x="560" y="84" text-anchor="middle" font-size="8" fill="#ea580c">continuous</text>
+
+  <!-- Step 1: pre_tick_audio_sync -->
+  <rect x="100" y="100" width="200" height="36" rx="4" fill="#e8f0fe" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="200" y="115" text-anchor="middle" font-weight="600" fill="#1d4ed8">pre_tick_audio_sync()</text>
+  <text x="200" y="129" text-anchor="middle" font-size="10" fill="#3b6fcc">pull audio analysis</text>
+
+  <!-- Arrow: audio → main (analysis) -->
+  <line x1="546" y1="118" x2="300" y2="118" stroke="#ea580c" stroke-width="1.5" stroke-dasharray="6,3" marker-end="url(#ao)"/>
+  <text x="420" y="112" text-anchor="middle" font-size="10" fill="#ea580c">AnalysisSnapshot</text>
+
+  <!-- Step 2: frame tick -->
+  <rect x="100" y="152" width="200" height="76" rx="4" fill="#fff" stroke="#2563eb" stroke-width="2"/>
+  <text x="200" y="170" text-anchor="middle" font-weight="bold" fill="#2563eb">FrameExecutor::tick()</text>
+  <text x="110" y="190" font-size="10" fill="#555">for node in frame_order:</text>
+  <text x="120" y="204" font-size="10" fill="#555">wire propagation (direct)</text>
+  <text x="120" y="218" font-size="10" fill="#555">process_frame() / process_gpu()</text>
+
+  <!-- Step 3: post_tick_audio_sync -->
+  <rect x="100" y="244" width="200" height="36" rx="4" fill="#e8f0fe" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="200" y="259" text-anchor="middle" font-weight="600" fill="#1d4ed8">post_tick_audio_sync()</text>
+  <text x="200" y="273" text-anchor="middle" font-size="10" fill="#3b6fcc">push frame outputs</text>
+
+  <!-- Arrow: main → audio (params) -->
+  <line x1="300" y1="262" x2="546" y2="262" stroke="#2563eb" stroke-width="1.5" stroke-dasharray="6,3" marker-end="url(#ab)"/>
+  <text x="420" y="256" text-anchor="middle" font-size="10" fill="#2563eb">ParamSnapshot</text>
+
+  <!-- Audio callbacks happening in parallel -->
+  <rect x="490" y="148" width="140" height="36" rx="4" fill="#fff" stroke="#ea580c" stroke-width="1.5"/>
+  <text x="560" y="163" text-anchor="middle" font-weight="600" fill="#ea580c">audio_callback()</text>
+  <text x="560" y="177" text-anchor="middle" font-size="10" fill="#9a4a0a">256 samples</text>
+
+  <rect x="490" y="196" width="140" height="36" rx="4" fill="#fff" stroke="#ea580c" stroke-width="1.5"/>
+  <text x="560" y="211" text-anchor="middle" font-weight="600" fill="#ea580c">audio_callback()</text>
+  <text x="560" y="225" text-anchor="middle" font-size="10" fill="#9a4a0a">256 samples</text>
+
+  <rect x="490" y="288" width="140" height="36" rx="4" fill="#fff" stroke="#ea580c" stroke-width="1.5"/>
+  <text x="560" y="303" text-anchor="middle" font-weight="600" fill="#ea580c">audio_callback()</text>
+  <text x="560" y="317" text-anchor="middle" font-size="10" fill="#9a4a0a">256 samples</text>
+
+  <!-- Frame N+1 -->
+  <text x="44" y="350" font-size="10" fill="#888">Frame N+1</text>
+  <line x1="40" y1="354" x2="470" y2="354" stroke="#ddd" stroke-width="1" stroke-dasharray="3,3"/>
+
+  <rect x="100" y="362" width="200" height="36" rx="4" fill="#e8f0fe" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="200" y="377" text-anchor="middle" font-weight="600" fill="#1d4ed8">pre_tick_audio_sync()</text>
+  <text x="200" y="391" text-anchor="middle" font-size="10" fill="#3b6fcc">pull updated analysis</text>
+
+  <rect x="100" y="408" width="200" height="40" rx="4" fill="#fff" stroke="#2563eb" stroke-width="2"/>
+  <text x="200" y="428" text-anchor="middle" font-weight="bold" fill="#2563eb">FrameExecutor::tick()</text>
+  <text x="200" y="442" text-anchor="middle" font-size="10" fill="#555">...</text>
+
+  <rect x="490" y="338" width="140" height="36" rx="4" fill="#fff" stroke="#ea580c" stroke-width="1.5"/>
+  <text x="560" y="353" text-anchor="middle" font-weight="600" fill="#ea580c">audio_callback()</text>
+  <text x="560" y="367" text-anchor="middle" font-size="10" fill="#9a4a0a">256 samples</text>
+
+  <rect x="490" y="386" width="140" height="36" rx="4" fill="#fff" stroke="#ea580c" stroke-width="1.5"/>
+  <text x="560" y="401" text-anchor="middle" font-weight="600" fill="#ea580c">audio_callback()</text>
+  <text x="560" y="415" text-anchor="middle" font-size="10" fill="#9a4a0a">256 samples</text>
+
+  <!-- Timing annotations -->
+  <line x1="60" y1="92" x2="60" y2="354" stroke="#bbb" stroke-width="1"/>
+  <line x1="55" y1="92" x2="65" y2="92" stroke="#bbb" stroke-width="1"/>
+  <line x1="55" y1="354" x2="65" y2="354" stroke="#bbb" stroke-width="1"/>
+  <text x="62" y="228" font-size="9" fill="#888" transform="rotate(-90,62,228)">~16.7 ms</text>
+
+  <line x1="660" y1="148" x2="660" y2="184" stroke="#c4956a" stroke-width="1"/>
+  <line x1="655" y1="148" x2="665" y2="148" stroke="#c4956a" stroke-width="1"/>
+  <line x1="655" y1="184" x2="665" y2="184" stroke="#c4956a" stroke-width="1"/>
+  <text x="680" y="170" font-size="9" fill="#9a6b3a">5.3 ms</text>
+
+  <!-- Legend -->
+  <rect x="20" y="458" width="690" height="32" rx="4" fill="#f8f8f8" stroke="#ddd" stroke-width="1"/>
+  <line x1="40" y1="476" x2="70" y2="476" stroke="#2563eb" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <text x="76" y="480" font-size="10" fill="#555">ParamSnapshot (frame → audio)</text>
+  <line x1="260" y1="476" x2="290" y2="476" stroke="#ea580c" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <text x="296" y="480" font-size="10" fill="#555">AnalysisSnapshot (audio → frame)</text>
+  <text x="520" y="480" font-size="10" fill="#555">Audio callbacks fire ~3x per frame</text>
+</svg>

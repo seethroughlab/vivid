@@ -45,7 +45,7 @@ typedef uint32_t VividDisplayHint;
 // Channel kinds — reflect the logical data type on a port.
 typedef uint32_t VividPortType;
 
-#define VIVID_PORT_SIGNAL         0u  // continuous numeric value (scalar or buffer depending on execution environment)
+#define VIVID_PORT_SIGNAL         0u  // continuous numeric value (scalar at frame cadence, per-sample buffer at audio cadence)
 #define VIVID_PORT_AUDIO          1u  // audio sample buffer
 #define VIVID_PORT_SPREAD         2u  // variable-length float array
 #define VIVID_PORT_STRING         3u  // UTF-8 string

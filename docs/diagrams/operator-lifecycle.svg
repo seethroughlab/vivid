@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 440" font-family="system-ui, -apple-system, sans-serif" font-size="12">
+  <defs>
+    <marker id="ar" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#444"/>
+    </marker>
+    <marker id="ar-g" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#16a34a"/>
+    </marker>
+  </defs>
+
+  <text x="360" y="28" text-anchor="middle" font-size="18" font-weight="bold" fill="#111">Operator Lifecycle</text>
+
+  <!-- Row 1: Source → dylib -->
+  <rect x="20" y="54" width="140" height="56" rx="6" fill="#f8f8f8" stroke="#666" stroke-width="1.5"/>
+  <text x="90" y="76" text-anchor="middle" font-weight="600" fill="#333">Operator Source</text>
+  <text x="90" y="94" text-anchor="middle" font-size="10" fill="#666">struct MyOp : OperatorBase</text>
+  <text x="90" y="106" text-anchor="middle" font-size="10" fill="#666">VIVID_REGISTER(MyOp)</text>
+
+  <line x1="160" y1="82" x2="190" y2="82" stroke="#444" stroke-width="1.5" marker-end="url(#ar)"/>
+  <text x="175" y="76" text-anchor="middle" font-size="9" fill="#888">compile</text>
+
+  <rect x="198" y="54" width="120" height="56" rx="6" fill="#f8f8f8" stroke="#666" stroke-width="1.5"/>
+  <text x="258" y="76" text-anchor="middle" font-weight="600" fill="#333">.dylib / .so</text>
+  <text x="258" y="94" text-anchor="middle" font-size="10" fill="#666">vivid_descriptor()</text>
+  <text x="258" y="106" text-anchor="middle" font-size="10" fill="#666">vivid_create() ...</text>
+
+  <line x1="318" y1="82" x2="350" y2="82" stroke="#444" stroke-width="1.5" marker-end="url(#ar)"/>
+  <text x="334" y="76" text-anchor="middle" font-size="9" fill="#888">dlopen</text>
+
+  <!-- OperatorLoader -->
+  <rect x="358" y="48" width="160" height="68" rx="6" fill="#e8f0fe" stroke="#2563eb" stroke-width="2"/>
+  <text x="438" y="72" text-anchor="middle" font-weight="bold" fill="#1d4ed8">OperatorLoader</text>
+  <text x="438" y="88" text-anchor="middle" font-size="10" fill="#555">desc_fn_, create_fn_</text>
+  <text x="438" y="102" text-anchor="middle" font-size="10" fill="#555">destroy_fn_, process_*_fn_</text>
+
+  <line x1="518" y1="82" x2="548" y2="82" stroke="#444" stroke-width="1.5" marker-end="url(#ar)"/>
+
+  <!-- OperatorRegistry -->
+  <rect x="556" y="48" width="150" height="68" rx="6" fill="#fff" stroke="#444" stroke-width="2"/>
+  <text x="631" y="72" text-anchor="middle" font-weight="bold" fill="#333">OperatorRegistry</text>
+  <text x="631" y="88" text-anchor="middle" font-size="10" fill="#666">type_name → loader</text>
+  <text x="631" y="102" text-anchor="middle" font-size="10" fill="#666">scan(), find()</text>
+
+  <!-- Row 2: Registration flow -->
+  <rect x="20" y="140" width="690" height="80" rx="6" fill="#f0f4ff" stroke="#93a3c0" stroke-width="1"/>
+  <text x="30" y="158" font-size="11" font-weight="bold" fill="#1d4ed8">Registration &amp; Discovery</text>
+
+  <text x="40" y="178" font-size="11" fill="#444">1. scan_deferred(dir)</text>
+  <text x="50" y="194" font-size="10" fill="#666">Probe each .dylib for vivid_descriptor() — store metadata without full load</text>
+
+  <text x="360" y="178" font-size="11" fill="#444">2. load_for_graph(graph)</text>
+  <text x="370" y="194" font-size="10" fill="#666">Lazy-load only operators referenced by graph nodes</text>
+
+  <text x="40" y="212" font-size="11" fill="#444">3. register_builtin(name, ...)</text>
+  <text x="50" y="212" font-size="10" fill="#666"/>
+
+  <text x="360" y="212" font-size="11" fill="#444">4. register_alias(alias, canonical)</text>
+
+  <!-- Row 3: Instantiation -->
+  <rect x="20" y="240" width="340" height="80" rx="6" fill="#fff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="30" y="260" font-size="11" font-weight="bold" fill="#1d4ed8">Instantiation (GraphCompiler)</text>
+  <text x="40" y="280" font-size="10" fill="#555">For each node in graph:</text>
+  <text x="50" y="296" font-size="10" fill="#555">loader = registry.find(type_name)</text>
+  <text x="50" y="312" font-size="10" fill="#555">instance = loader→create_instance()</text>
+
+  <!-- Row 3: Execution -->
+  <rect x="380" y="240" width="330" height="80" rx="6" fill="#fff" stroke="#444" stroke-width="1.5"/>
+  <text x="390" y="260" font-size="11" font-weight="bold" fill="#333">Execution (per tick)</text>
+  <text x="400" y="280" font-size="10" fill="#555">Frame: loader→process_frame(instance, ctx)</text>
+  <text x="400" y="296" font-size="10" fill="#555">Audio: loader→process_audio(instance, ctx)</text>
+  <text x="400" y="312" font-size="10" fill="#555">GPU:   loader→process_gpu(instance, ctx)</text>
+
+  <!-- Row 4: Hot Reload -->
+  <rect x="20" y="340" width="690" height="86" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+  <text x="30" y="360" font-size="11" font-weight="bold" fill="#b45309">Hot Reload</text>
+
+  <rect x="40" y="370" width="130" height="40" rx="4" fill="#fff" stroke="#666" stroke-width="1"/>
+  <text x="105" y="386" text-anchor="middle" font-size="10" font-weight="600" fill="#333">FileWatcher</text>
+  <text x="105" y="400" text-anchor="middle" font-size="9" fill="#666">detects .cpp change</text>
+
+  <line x1="170" y1="390" x2="195" y2="390" stroke="#444" stroke-width="1.5" marker-end="url(#ar)"/>
+
+  <rect x="200" y="370" width="140" height="40" rx="4" fill="#fff" stroke="#666" stroke-width="1"/>
+  <text x="270" y="386" text-anchor="middle" font-size="10" font-weight="600" fill="#333">HotReloader</text>
+  <text x="270" y="400" text-anchor="middle" font-size="9" fill="#666">bg cmake --build</text>
+
+  <line x1="340" y1="390" x2="365" y2="390" stroke="#444" stroke-width="1.5" marker-end="url(#ar)"/>
+
+  <rect x="370" y="370" width="150" height="40" rx="4" fill="#fff" stroke="#d97706" stroke-width="1.5"/>
+  <text x="445" y="386" text-anchor="middle" font-size="10" font-weight="600" fill="#b45309">destroy old instances</text>
+  <text x="445" y="400" text-anchor="middle" font-size="9" fill="#666">save param state</text>
+
+  <line x1="520" y1="390" x2="545" y2="390" stroke="#444" stroke-width="1.5" marker-end="url(#ar)"/>
+
+  <rect x="550" y="370" width="150" height="40" rx="4" fill="#fff" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="625" y="386" text-anchor="middle" font-size="10" font-weight="600" fill="#15803d">swap dylib, recreate</text>
+  <text x="625" y="400" text-anchor="middle" font-size="9" fill="#666">reconcile params</text>
+</svg>

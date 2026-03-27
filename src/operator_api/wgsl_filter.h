@@ -381,7 +381,7 @@ private:
         // Bind group layout: uniform(0) + sampler(1) + N textures(2..)
         std::vector<WGPUBindGroupLayoutEntry> bgl_entries(2 + tex_input_count_, WGPUBindGroupLayoutEntry{});
         bgl_entries[0].binding = 0;
-        bgl_entries[0].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
+        bgl_entries[0].visibility = WGPUShaderStage_Fragment;
         bgl_entries[0].buffer.type = WGPUBufferBindingType_Uniform;
         bgl_entries[0].buffer.minBindingSize = uniform_size_;
 
@@ -411,8 +411,33 @@ private:
         pl_desc.bindGroupLayouts = &raw_layout;
         pipe_layout_.reset(wgpuDeviceCreatePipelineLayout(ctx->device, &pl_desc));
 
-        // Render pipeline
+        // Render pipeline — use error scope to detect validation failures that
+        // wgpu-native reports as "error pipeline" objects (non-null but invalid).
+        wgpuDevicePushErrorScope(ctx->device, WGPUErrorFilter_Validation);
         WGPURenderPipeline rp = create_pipeline(ctx->device, shader_.get(), ctx->output_format);
+        {
+            struct ErrData { bool has_error = false; std::string msg; };
+            ErrData err;
+            WGPUPopErrorScopeCallbackInfo pop_cb{};
+            pop_cb.mode = WGPUCallbackMode_AllowSpontaneous;
+            pop_cb.callback = [](WGPUPopErrorScopeStatus, WGPUErrorType type,
+                                  WGPUStringView msg, void* ud1, void*) {
+                if (type != WGPUErrorType_NoError) {
+                    auto* e = static_cast<ErrData*>(ud1);
+                    e->has_error = true;
+                    e->msg = msg.data ? std::string(msg.data, msg.length) : "unknown error";
+                }
+            };
+            pop_cb.userdata1 = &err;
+            wgpuDevicePopErrorScope(ctx->device, pop_cb);
+            if (err.has_error) {
+                std::fprintf(stderr, "[wgsl_filter] Pipeline validation error: %s\n  shader: %s\n",
+                             err.msg.c_str(), shader_path_.c_str());
+                shader_error_ = true;
+                shader_error_msg_ = err.msg;
+                return false;
+            }
+        }
         if (!rp) {
             std::fprintf(stderr, "[wgsl_filter] Pipeline creation failed: %s\n", shader_path_.c_str());
             return false;

@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 500" font-family="system-ui, -apple-system, sans-serif" font-size="12">
+  <defs>
+    <marker id="da" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#444"/>
+    </marker>
+    <marker id="db" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#2563eb"/>
+    </marker>
+    <marker id="do" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#ea580c"/>
+    </marker>
+    <marker id="dg" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#16a34a"/>
+    </marker>
+  </defs>
+
+  <text x="360" y="28" text-anchor="middle" font-size="18" font-weight="bold" fill="#111">Data Flow &amp; Edge Types</text>
+
+  <!-- Section 1: Direct Edges -->
+  <rect x="20" y="48" width="330" height="190" rx="6" fill="#f0f4ff" stroke="#93a3c0" stroke-width="1.5"/>
+  <text x="185" y="68" text-anchor="middle" font-size="14" font-weight="bold" fill="#2563eb">Direct Edges (same cadence)</text>
+
+  <!-- Frame direct example -->
+  <rect x="40" y="82" width="100" height="44" rx="5" fill="#fff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="90" y="100" text-anchor="middle" font-weight="600" fill="#1d4ed8">Node A</text>
+  <text x="90" y="114" text-anchor="middle" font-size="9" fill="#555">Frame</text>
+
+  <line x1="140" y1="104" x2="190" y2="104" stroke="#2563eb" stroke-width="2" marker-end="url(#db)"/>
+  <text x="165" y="98" text-anchor="middle" font-size="9" fill="#2563eb">copy</text>
+
+  <rect x="198" y="82" width="100" height="44" rx="5" fill="#fff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="248" y="100" text-anchor="middle" font-weight="600" fill="#1d4ed8">Node B</text>
+  <text x="248" y="114" text-anchor="middle" font-size="9" fill="#555">Frame</text>
+
+  <text x="40" y="148" font-size="11" fill="#444" font-weight="600">Supported transports:</text>
+  <text x="50" y="166" font-size="10" fill="#555">SIGNAL — scalar float value</text>
+  <text x="50" y="180" font-size="10" fill="#555">SPREAD — variable-length float[]</text>
+  <text x="50" y="194" font-size="10" fill="#555">STRING — UTF-8 text</text>
+  <text x="50" y="208" font-size="10" fill="#555">TEXTURE — WGPUTextureView</text>
+  <text x="50" y="222" font-size="10" fill="#555">AUDIO — sample buffer (audio cadence)</text>
+
+  <!-- Section 2: Snapshot Edges -->
+  <rect x="370" y="48" width="330" height="190" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+  <text x="535" y="68" text-anchor="middle" font-size="14" font-weight="bold" fill="#b45309">Snapshot Edges (cross cadence)</text>
+
+  <rect x="390" y="82" width="100" height="44" rx="5" fill="#fff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="440" y="100" text-anchor="middle" font-weight="600" fill="#1d4ed8">Frame Op</text>
+  <text x="440" y="114" text-anchor="middle" font-size="9" fill="#2563eb">~60 Hz</text>
+
+  <line x1="490" y1="104" x2="550" y2="104" stroke="#d97706" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#da)"/>
+  <text x="520" y="96" text-anchor="middle" font-size="9" fill="#b45309">snapshot</text>
+
+  <rect x="558" y="82" width="100" height="44" rx="5" fill="#fff" stroke="#ea580c" stroke-width="1.5"/>
+  <text x="608" y="100" text-anchor="middle" font-weight="600" fill="#ea580c">Audio Op</text>
+  <text x="608" y="114" text-anchor="middle" font-size="9" fill="#ea580c">~48 kHz</text>
+
+  <text x="390" y="148" font-size="11" fill="#444" font-weight="600">Via CadenceBridge:</text>
+  <text x="400" y="166" font-size="10" fill="#555">Frame → Audio: ParamSnapshot</text>
+  <text x="410" y="182" font-size="10" fill="#555">params, CV floats, spreads, strings</text>
+  <text x="400" y="200" font-size="10" fill="#555">Audio → Frame: AnalysisSnapshot</text>
+  <text x="410" y="216" font-size="10" fill="#555">rms, peak, waveform, float outputs</text>
+
+  <!-- Section 3: Value Remap -->
+  <rect x="20" y="258" width="330" height="110" rx="6" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="185" y="278" text-anchor="middle" font-size="14" font-weight="bold" fill="#15803d">Value Remap (on any edge)</text>
+
+  <rect x="40" y="292" width="80" height="36" rx="4" fill="#fff" stroke="#666" stroke-width="1"/>
+  <text x="80" y="310" text-anchor="middle" font-size="10" fill="#333">out: 0.0–1.0</text>
+  <text x="80" y="322" text-anchor="middle" font-size="9" fill="#666">from_min/max</text>
+
+  <line x1="120" y1="310" x2="195" y2="310" stroke="#16a34a" stroke-width="2" marker-end="url(#dg)"/>
+
+  <rect x="140" y="298" width="60" height="24" rx="3" fill="#dcfce7" stroke="#16a34a" stroke-width="1"/>
+  <text x="170" y="314" text-anchor="middle" font-size="9" font-weight="600" fill="#15803d">remap</text>
+
+  <rect x="203" y="292" width="80" height="36" rx="4" fill="#fff" stroke="#666" stroke-width="1"/>
+  <text x="243" y="310" text-anchor="middle" font-size="10" fill="#333">in: 20–2000</text>
+  <text x="243" y="322" text-anchor="middle" font-size="9" fill="#666">to_min/max</text>
+
+  <text x="40" y="352" font-size="10" fill="#555">normalized = (value - from_min) / (from_max - from_min)</text>
+  <text x="40" y="364" font-size="10" fill="#555">result = to_min + normalized * (to_max - to_min)  [± clamp]</text>
+
+  <!-- Section 4: Auto-Duplication -->
+  <rect x="370" y="258" width="330" height="230" rx="6" fill="#fff7ed" stroke="#c4956a" stroke-width="1.5"/>
+  <text x="535" y="278" text-anchor="middle" font-size="14" font-weight="bold" fill="#ea580c">Auto-Duplication (Audio)</text>
+
+  <text x="380" y="298" font-size="10" fill="#555">Mono operator in stereo chain:</text>
+
+  <!-- Stereo input -->
+  <rect x="390" y="308" width="90" height="44" rx="4" fill="#fff" stroke="#ea580c" stroke-width="1.5"/>
+  <text x="435" y="326" text-anchor="middle" font-weight="600" font-size="10" fill="#ea580c">Stereo Src</text>
+  <text x="435" y="340" text-anchor="middle" font-size="9" fill="#555">2ch output</text>
+
+  <!-- Split -->
+  <line x1="480" y1="320" x2="510" y2="310" stroke="#444" stroke-width="1.5" marker-end="url(#da)"/>
+  <line x1="480" y1="340" x2="510" y2="350" stroke="#444" stroke-width="1.5" marker-end="url(#da)"/>
+  <text x="497" y="325" font-size="8" fill="#888">split</text>
+
+  <!-- Duplicated mono instances -->
+  <rect x="518" y="296" width="80" height="30" rx="4" fill="#e8f0fe" stroke="#2563eb" stroke-width="1"/>
+  <text x="558" y="316" text-anchor="middle" font-size="9" fill="#1d4ed8">instance[0] L</text>
+
+  <rect x="518" y="336" width="80" height="30" rx="4" fill="#e8f0fe" stroke="#2563eb" stroke-width="1"/>
+  <text x="558" y="356" text-anchor="middle" font-size="9" fill="#1d4ed8">instance[1] R</text>
+
+  <!-- Merge -->
+  <line x1="598" y1="311" x2="628" y2="320" stroke="#444" stroke-width="1.5" marker-end="url(#da)"/>
+  <line x1="598" y1="351" x2="628" y2="340" stroke="#444" stroke-width="1.5" marker-end="url(#da)"/>
+  <text x="615" y="325" font-size="8" fill="#888">merge</text>
+
+  <!-- Stereo output -->
+  <rect x="636" y="316" width="50" height="30" rx="4" fill="#fff" stroke="#ea580c" stroke-width="1.5"/>
+  <text x="661" y="336" text-anchor="middle" font-size="9" fill="#ea580c">2ch</text>
+
+  <text x="390" y="390" font-size="10" fill="#555">Each channel processed independently by</text>
+  <text x="390" y="404" font-size="10" fill="#555">a cloned mono operator instance.</text>
+
+  <text x="390" y="426" font-size="11" fill="#444" font-weight="600">AutoDupGroup stores:</text>
+  <text x="400" y="442" font-size="10" fill="#555">instances[ch], per_ch_inputs[ch][port][sample]</text>
+  <text x="400" y="456" font-size="10" fill="#555">per_ch_outputs[ch][port][sample]</text>
+  <text x="400" y="470" font-size="10" fill="#555">Transparent to operator code</text>
+
+  <!-- Port types legend -->
+  <rect x="20" y="382" width="330" height="106" rx="6" fill="#f8f8f8" stroke="#ddd" stroke-width="1"/>
+  <text x="185" y="402" text-anchor="middle" font-size="12" font-weight="bold" fill="#333">Port Type Compatibility</text>
+  <text x="40" y="422" font-size="10" fill="#555">SIGNAL ↔ AUDIO: compatible (1ch buffer ↔ scalar)</text>
+  <text x="40" y="438" font-size="10" fill="#555">SIGNAL ↔ SPREAD: compatible (control types)</text>
+  <text x="40" y="454" font-size="10" fill="#555">TEXTURE ↔ TEXTURE: only GPU-to-GPU</text>
+  <text x="40" y="470" font-size="10" fill="#555">CUSTOM: matched by stable_type_id</text>
+</svg>
