@@ -30,8 +30,8 @@ static const VividOperatorDescriptor audio_out_desc = {
     1,                      // has_process_audio
     0,                      // has_process_gpu
     0, nullptr,             // embedded_op_slots
-    VIVID_CADENCE_FRAME_ONLY, // cadence_capability
-    0,                      // has_process_frame
+    VIVID_CADENCE_AUDIO_ONLY, // cadence_capability (has_process_audio && !has_process_frame)
+    0,                        // has_process_frame
 };
 
 static const VividOperatorDescriptor* audio_out_descriptor() { return &audio_out_desc; }

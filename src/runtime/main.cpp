@@ -1161,7 +1161,7 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         sn.type_name = runtime.type_name(static_cast<uint32_t>(i));
         sn.active_cadence = cn.active_cadence;
         sn.is_gpu = cn.is_gpu();
-        sn.is_audio_capable = (cn.cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE);
+        sn.cadence_capability = cn.cadence_capability;
         {
             const auto* ndef = graph.find_node(cn.node_id);
             sn.cadence_override = ndef ? ndef->cadence_override : vivid::CadenceOverride::Auto;

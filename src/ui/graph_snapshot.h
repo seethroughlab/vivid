@@ -50,7 +50,7 @@ struct PortInfo {
 struct OperatorInfo {
     std::string name;
     bool is_gpu = false;
-    bool is_audio_native = false;  // has_process_audio && !has_process_frame
+    VividCadenceCapability cadence_capability = VIVID_CADENCE_FRAME_ONLY;
     bool has_shader = false;
     bool is_user = false;
     bool has_custom_inspector = false;
@@ -66,7 +66,7 @@ struct NodeSnapshot {
     std::string type_name;
     Cadence active_cadence = Cadence::Frame;
     bool is_gpu = false;
-    bool is_audio_capable = false;  // true if operator supports both frame and audio cadence
+    VividCadenceCapability cadence_capability = VIVID_CADENCE_FRAME_ONLY;
     CadenceOverride cadence_override = CadenceOverride::Auto;
     bool is_gpu_sink = false;
     bool is_generator = false;  // GPU node with no texture inputs and not a sink

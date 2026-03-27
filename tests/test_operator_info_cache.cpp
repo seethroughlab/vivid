@@ -51,8 +51,8 @@ int main() {
 
     // 6. Returned OperatorInfo has correct cadence flags, port count, param count
     if (a_info_new) {
-        check(a_info_new->is_audio_native,
-              "audio_out info is_audio_native");
+        check(a_info_new->cadence_capability == VIVID_CADENCE_AUDIO_ONLY,
+              "audio_out info cadence is AUDIO_ONLY");
         check(a_info_new->ports.size() == 1,
               "audio_out info has 1 port");
         check(a_info_new->params.size() == 1,
