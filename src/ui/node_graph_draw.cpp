@@ -28,13 +28,15 @@ using vivid::format_float;
 using vivid::format_int;
 using vivid::format_uint;
 
-// Shared dashed-wire drawing: traverse wire segments and draw dash-on/off pattern
-static void draw_dashed_wire(Renderer2D& tr,
-                             float ssx, float ssy, float sex, float sey,
-                             bool bezier, float thickness,
-                             float r, float g, float b, float a) {
+// Shared dashed-wire drawing: traverse wire segments and draw dash-on/off pattern.
+// dash_on/dash_off control dash geometry; flow_offset scrolls the pattern (animation).
+static void draw_dashed_wire_ex(Renderer2D& tr,
+                                float ssx, float ssy, float sex, float sey,
+                                bool bezier, float thickness,
+                                float dash_on, float dash_off, float flow_offset,
+                                float r, float g, float b, float a) {
     float cumulative = 0.0f;
-    float dash_cycle = kDashOn + kDashOff;
+    float dash_cycle = dash_on + dash_off;
     traverse_wire(ssx, ssy, sex, sey, bezier,
         [&](float x0, float y0, float x1, float y1) {
             float dx = x1 - x0, dy = y1 - y0;
@@ -43,9 +45,10 @@ static void draw_dashed_wire(Renderer2D& tr,
             float nx = dx / seg_len, ny = dy / seg_len;
             float consumed = 0.0f;
             while (consumed < seg_len) {
-                float phase = std::fmod(cumulative + consumed, dash_cycle);
-                bool on = (phase < kDashOn);
-                float remain_in_state = on ? (kDashOn - phase) : (dash_cycle - phase);
+                float phase = std::fmod(cumulative + consumed + flow_offset, dash_cycle);
+                if (phase < 0.0f) phase += dash_cycle;
+                bool on = (phase < dash_on);
+                float remain_in_state = on ? (dash_on - phase) : (dash_cycle - phase);
                 float chunk = std::min(remain_in_state, seg_len - consumed);
                 if (on) {
                     float cx0 = x0 + nx * consumed;
@@ -58,6 +61,15 @@ static void draw_dashed_wire(Renderer2D& tr,
             }
             cumulative += seg_len;
         });
+}
+
+// Convenience: static dashed wire (no animation) using the original constants
+static void draw_dashed_wire(Renderer2D& tr,
+                             float ssx, float ssy, float sex, float sey,
+                             bool bezier, float thickness,
+                             float r, float g, float b, float a) {
+    draw_dashed_wire_ex(tr, ssx, ssy, sex, sey, bezier, thickness,
+                        kDashOn, kDashOff, 0.0f, r, g, b, a);
 }
 
 static std::string build_semantic_hint(const ParamInfo& pd) {
@@ -311,9 +323,21 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
                         float bh = std::max(1.0f, t * spark_h);
                         float bx = spark_x + si * bar_w;
                         float by = spark_y + spark_h - bh;
-                        tr.draw_rect(bx, by, std::max(1.0f, bar_w - 0.5f), bh,
+                        tr.draw_rect(bx, by, std::max(1.0f, bar_w * 0.55f), bh,
                                      dcol[0], dcol[1], dcol[2], kSparklineBarAlpha);
                     }
+                }
+            }
+
+            // Sparse tick strip at bottom — "discrete events" visual
+            {
+                float tick_y = s_body_y + s_body_h - g_to_s(6);
+                float tick_x0 = sx + g_to_s(4);
+                float tick_w = sw - g_to_s(8);
+                for (int ti = 0; ti < kDensityTickCount; ++ti) {
+                    float tx = tick_x0 + ti * (tick_w / (kDensityTickCount - 1));
+                    tr.draw_rect(tx, tick_y, 1.0f, g_to_s(2),
+                                 dcol[0], dcol[1], dcol[2], kDensityTickAlpha);
                 }
             }
         } else if (!r.is_gpu && r.active_cadence == Cadence::Audio && !has_ct) {
@@ -367,7 +391,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
                         bh = std::max(0.5f, bh);
                         float bx = wave_x + bi * bar_w;
                         float by = (amp >= 0) ? center_y - bh : center_y;
-                        tr.draw_rect(bx, by, std::max(0.5f, bar_w - 0.3f), bh,
+                        tr.draw_rect(bx, by, std::max(0.5f, bar_w), bh,
                                      dcol[0], dcol[1], dcol[2], kWaveformBarAlpha);
                     }
 
@@ -518,11 +542,24 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
             float a_param = (hov || sel) ? 0.6f : 0.35f;
             if (c.invalid) a_param = a;
             draw_dashed_wire(tr, ssx, ssy, sex, sey, bezier_wires_, wire_th, cr, cg, cb, a_param);
-        } else {
+        } else if (from_rect.is_gpu) {
+            // GPU wires: solid (no flow animation)
             traverse_wire(ssx, ssy, sex, sey, bezier_wires_,
                 [&](float x0, float y0, float x1, float y1) {
                     tr.draw_line(x0, y0, x1, y1, wire_th, cr, cg, cb, a);
                 });
+        } else if (from_rect.active_cadence == Cadence::Audio) {
+            // Audio wires: fast dense marching dashes
+            float offset = wire_flow_time_ * kAudioFlowSpeed;
+            draw_dashed_wire_ex(tr, ssx, ssy, sex, sey, bezier_wires_, wire_th,
+                                kAudioFlowDashOn, kAudioFlowDashOff, offset,
+                                cr, cg, cb, a);
+        } else {
+            // Frame wires: slow sparse marching dashes
+            float offset = wire_flow_time_ * kFrameFlowSpeed;
+            draw_dashed_wire_ex(tr, ssx, ssy, sex, sey, bezier_wires_, wire_th,
+                                kFrameFlowDashOn, kFrameFlowDashOff, offset,
+                                cr, cg, cb, a);
         }
 
         // Spread cardinality badge: show "×N" at wire midpoint for spread wires
@@ -969,7 +1006,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     // --- Technical section ---
     {
         bool has_resolution = sel_node->is_gpu && sel_node->gpu_tex_width > 0;
-        bool has_cadence = sel_node->is_audio_capable;
+        bool has_cadence = sel_node->cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE;
         bool has_state_presets = sel_node->param_indices.count("states") > 0;
         bool has_outputs = !sel_node->output_port_indices.empty();
         if (has_resolution || has_cadence || has_state_presets || has_outputs)
@@ -2226,7 +2263,7 @@ void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& 
 
 void NodeGraphUI::draw_inspector_cadence(Renderer2D& tr, const NodeSnapshot& node,
                                          float px, float& py) {
-    if (!node.is_audio_capable) return;
+    if (node.cadence_capability != VIVID_CADENCE_AUDIO_CAPABLE) return;
 
     tr.draw_text(px, py, T("cadence", "Cadence"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
 
@@ -2872,7 +2909,7 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
             auto cat_it = snap_.operator_catalog.find(name);
             if (cat_it != snap_.operator_catalog.end()) {
                 dcol = node_accent_color(cat_it->second->is_gpu,
-                    cat_it->second->is_audio_native ? Cadence::Audio : Cadence::Frame);
+                    cat_it->second->cadence_capability == VIVID_CADENCE_AUDIO_ONLY ? Cadence::Audio : Cadence::Frame);
             }
             float dot_x = px + 10;
             float dot_y = item_y + (kChooserItemH - 6) * 0.5f;
@@ -2882,7 +2919,7 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
             const char* tag = "[C]";
             if (cat_it != snap_.operator_catalog.end()) {
                 tag = cat_it->second->is_gpu ? "[G]" :
-                      cat_it->second->is_audio_native ? "[A]" : "[C]";
+                      cat_it->second->cadence_capability == VIVID_CADENCE_AUDIO_ONLY ? "[A]" : "[C]";
             }
             tr.draw_text(px + 20, item_y + 3, tag, dcol[0], dcol[1], dcol[2]);
 

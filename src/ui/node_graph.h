@@ -201,7 +201,7 @@ public:
     bool midi_map_mode() const { return midi_map_mode_; }
 
     // Called by main loop each frame with delta time
-    void set_dt(float dt) { dt_ = dt; cursor_blink_time_ += dt; }
+    void set_dt(float dt) { dt_ = dt; cursor_blink_time_ += dt; wire_flow_time_ += dt; }
 
     // Per-frame
     void update(const GraphSnapshot& snapshot);
@@ -1005,6 +1005,7 @@ private:
 
     float dt_ = 0.0f;
     float cursor_blink_time_ = 0.0f;  // accumulated time for cursor blink
+    float wire_flow_time_ = 0.0f;     // accumulated time for animated wire flow
     float smoothed_fps_ = 0.0f;
     float smoothed_ms_ = 0.0f;
     float display_fps_ = 0.0f;

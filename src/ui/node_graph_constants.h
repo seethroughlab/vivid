@@ -95,9 +95,22 @@ static constexpr float kGridLineAlpha = 0.06f;
 // Wire rendering
 static constexpr float kWireHoverBright = 1.3f;
 
-// Cross-cadence wire dashing
+// Cross-cadence wire dashing (param wires / invalid wires)
 static constexpr float kDashOn = 8.0f;
 static constexpr float kDashOff = 6.0f;
+
+// Animated wire flow — cadence-specific dash patterns
+static constexpr float kAudioFlowDashOn  = 4.0f;   // short dense dashes
+static constexpr float kAudioFlowDashOff = 2.0f;
+static constexpr float kAudioFlowSpeed   = 120.0f;  // px/s — fast stream
+
+static constexpr float kFrameFlowDashOn  = 3.0f;    // sparse pulses
+static constexpr float kFrameFlowDashOff = 10.0f;
+static constexpr float kFrameFlowSpeed   = 20.0f;   // px/s — slow trickle
+
+// Sparse tick strip for frame-rate nodes
+static constexpr int   kDensityTickCount = 10;
+static constexpr float kDensityTickAlpha = 0.35f;
 
 // Bezier wire rendering
 static constexpr int kBezierSegments = 30;
