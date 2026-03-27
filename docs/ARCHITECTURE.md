@@ -71,12 +71,12 @@ Each custom type has an associated `VividPortTransport` that describes how the p
 The `VIVID_CUSTOM_PORT` macro declares a custom port in a single line:
 
 ```cpp
-VIVID_CUSTOM_PORT("media_stream", VIVID_PORT_INPUT, vivid::MediaStreamV1, VIVID_PORT_TRANSPORT_CUSTOM_REF)
+VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer)
 ```
 
 Operator dylibs register their custom types by exporting `vivid_describe_custom_types()`, which returns a static array of `VividPortTypeInfo` records. The `VIVID_DESCRIBE_REF_TYPE(T)` convenience macro handles this for single-type `CUSTOM_REF` operators. The runtime calls this export after `dlopen` and registers each type in the global port type registry. Re-registering the same type with identical fields is idempotent; mismatched fields trigger a fatal error.
 
-When the user draws a connection in the graph editor, the runtime compares custom type IDs on both ends. Mismatched IDs (e.g. connecting a `MediaStreamV1` output to a `MeshBufferV1` input) are rejected — the connection is never created. This prevents silent `void*` misinterpretation.
+When the user draws a connection in the graph editor, the runtime compares custom type IDs on both ends. Mismatched IDs (e.g. connecting a `VividMidiBuffer` output to a `MeshBufferV1` input) are rejected — the connection is never created. This prevents silent `void*` misinterpretation.
 
 ### Semantic Tags (Advisory)
 Port types can carry optional semantic tags: normalized (0–1), bipolar (-1 to 1), frequency_hz, decibels, midi_note, etc. **Tags are advisory hints, not enforced by the runtime.** When connecting ports with mismatched ranges, the graph editor suggests inserting a visible Remap node with the mapping pre-configured. No silent auto-mapping.
@@ -407,8 +407,6 @@ vivid/
 │   │   ├── wgsl_filter.h       # WgslFilterBase for data-driven GPU filters
 │   │   ├── data_driven_filter.h # DataDrivenFilter with dynamic param/port collection
 │   │   ├── audio_dsp.h         # WhiteNoise, PinkNoise, waveform(), detect_trigger()
-│   │   ├── media_stream.h      # MediaStreamV1 cross-domain media type
-│   │   ├── media_clock.h       # MediaClockV1 synchronization type
 │   │   └── midi_types.h        # VividMidiBuffer type (reserved)
 │   ├── cli/                    # CLI tooling
 │   │   └── mcp_server.cpp      # MCP tool handlers (~4000 lines)
@@ -416,10 +414,10 @@ vivid/
 │       └── standalone_main.cpp
 ├── operators/                  # Built-in operators (each a directory)
 │   ├── gpu/                    # noise, shape, text, bloom, composite, feedback,
-│   │                           # movie_loaded, movie_video_out, webcam_in,
-│   │                           # syphon_in, syphon_out, texture_analysis, time_machine, ...
+│   │                           # movie_file_in, webcam_in, syphon_in, syphon_out,
+│   │                           # texture_analysis, time_machine, ...
 │   ├── audio/                  # oscillator, gain, delay, reverb, distortion, bitcrush,
-│   │                           # spread_adsr, spread_lfo, movie_audio_out, ...
+│   │                           # spread_adsr, spread_lfo, movie_file_audio, ...
 │   └── control/                # lfo, clock, envelope, math, smooth, gate,
 │                               # keyboard, mouse, midi_input, osc_in, osc_out,
 │                               # fft_analysis, stack, alternate, step_counter,
@@ -629,12 +627,10 @@ Vivid exposes its full runtime API through two integration surfaces:
 
 ## 5.23 Media Pipeline
 
-Vivid's media pipeline handles video file playback with synchronized audio through a trio of operators:
+Vivid's media pipeline handles video file playback with synchronized audio through two cadence-native operators that communicate exclusively through normal graph edges and the cadence bridge — no side channels or shared state:
 
-- **`MovieLoaded`** (`operators/gpu/movie_loaded/`) — decodes video frames from a file using AVFoundation (macOS). Supports HAP (via Snappy decompression + BC GPU upload), HAPQ (YCoCg color space), HAP-alpha, H.264, and HEVC codecs. Outputs a `VIVID_PORT_TEXTURE` (decoded frames) and a custom `CUSTOM_REF` port carrying `MediaStreamV1` for audio sync. Playback modes include loop, ping-pong, and one-shot. Frame decoding runs on a dedicated dispatch queue; the GPU operator receives textures via a double-buffered handoff.
+- **`MovieFileIn`** (`operators/gpu/movie_file_in/`) — decodes video frames from a file using AVFoundation (macOS). Supports HAP (via Snappy decompression + BC GPU upload), HAPQ (YCoCg color space), HAP-alpha, H.264, HEVC codecs, and static images (via stb_image). Outputs a `VIVID_PORT_TEXTURE` (decoded frames) plus `SIGNAL` outputs for playback time and duration. Accepts an optional `audio_time` SIGNAL input for AV sync. A background loader thread handles async video decoder creation with generation tracking (`MovieLoadCoordinator`). Playback modes: Loop, Once, Hold Last.
 
-- **`MovieAudioOut`** (`operators/audio/movie_audio_out/`) — receives a `CUSTOM_REF` media stream input from MovieLoaded and outputs decoded audio as `VIVID_PORT_AUDIO` left/right channels. Audio decoding uses AVFoundation's `AVAssetReader` with a lock-free ring buffer bridging the decode thread to the real-time audio callback. Sync is maintained via media clock timestamps — the audio operator tracks the video operator's playback position and resyncs on loop boundaries.
+- **`MovieFileAudio`** (`operators/audio/movie_file_audio/`) — decodes audio from a movie file and outputs stereo `VIVID_PORT_AUDIO`. Uses a private lock-free ring buffer (~5s @ 48kHz) fed by a dedicated fill thread. Publishes monotonic playback time as a `SIGNAL` output, which crosses the cadence bridge to `MovieFileIn` for AV sync. Includes a preroll gate (~0.5s) to prevent startup clicks, volume ramping, and pitch-preserving time stretch via AVFoundation.
 
-- **`MovieVideoOut`** (`operators/gpu/movie_video_out/`) — the reverse path: encodes GPU textures + audio buffers into a video file via `AVAssetWriter`. Used for recording/export.
-
-The media stream type carries a `MediaStreamV1*` pointer through the graph's custom port (`CUSTOM_REF` transport) plumbing, enabling cross-domain media synchronization without special-case runtime code.
+**AV sync model:** `MovieFileAudio` is the time master. Its `time` SIGNAL output crosses the cadence bridge at ~60Hz to `MovieFileIn`'s `audio_time` input. The video operator seeks only when drift exceeds two frame durations, absorbing bridge latency cleanly. Each operator declares its own `file`, `speed`, and `play_mode` params, so either can be used independently (video-only or audio-only).

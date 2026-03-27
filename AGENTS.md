@@ -114,19 +114,19 @@ vivid/
 │   │   └── standalone.cmake.in
 │   └── operator_api/         # Public operator contract headers (operator.h, types.h, gpu/audio bases, DSP utils, MIDI/media types)
 ├── operators/                # Seed operators (each a single-file directory)
-│   ├── gpu/                  # 15 operators: noise, shape, composite, bloom, feedback,
+│   ├── gpu/                  # noise, shape, composite, bloom, feedback,
 │   │                         #   metaball, texture_loader, time_machine, text,
-│   │                         #   texture_analysis, movie_loaded, movie_video_out,
+│   │                         #   texture_analysis, movie_file_in,
 │   │                         #   webcam_in, syphon_in, syphon_out
-│   ├── audio/                # 12 operators: oscillator, gain, delay, reverb,
+│   ├── audio/                # oscillator, gain, delay, reverb,
 │   │                         #   bitcrush, distortion, filter, mixer, noise,
-│   │                         #   spread_adsr, spread_lfo, movie_audio_out
+│   │                         #   spread_adsr, spread_lfo, movie_file_audio
 │   ├── control/              # 20 operators: lfo, clock, math, envelope, midi_input,
 │   │                         #   fft_analysis, stack, alternate, gate, logic,
 │   │                         #   random, smooth, modulated_gain, spread_noise,
 │   │                         #   mouse, keyboard, basename, folder_list,
 │   │                         #   osc_in, osc_out, step_counter, string_select
-│   └── shared/               # Shared operator modules (media_session, movie_audio, movie_decode)
+│   └── shared/               # Shared operator modules (movie_audio, movie_decode)
 ├── filters/                  # 25 self-describing WGSL shader presets
 ├── graphs/                   # 47 demo/example graph JSON files
 ├── mcp/                      # MCP server (Python bridge to control server)
