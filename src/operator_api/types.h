@@ -6,13 +6,9 @@
 extern "C" {
 #endif
 
-/* Bump when operator-facing C ABI changes in incompatible ways. */
+/* Bump when operator-facing C ABI changes in incompatible ways.
+   Catches stale dylibs during hot-reload — not a cross-version compatibility promise. */
 #define VIVID_OPERATOR_ABI_VERSION 18u
-// v18: Removed execution_env field — use vivid_operator_kind() to derive from has_process_* flags.
-// v17: Renamed vivid_process entry point to vivid_process_frame.
-// v16: Removed deprecated `domain` field from VividOperatorDescriptor.
-// v15: Cadence-aware execution model — replaced VividDomain with VividOperatorKind + VividCadenceCapability.
-// The ABI version catches stale dylibs during hot-reload — it is not a cross-version compatibility promise.
 
 // ---------------------------------------------------------------------------
 // Enums

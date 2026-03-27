@@ -1,5 +1,5 @@
 // Integration test: Clock → Oscillator → Gain → audio_out, all audio cadence.
-// Verifies AudioFloatPortWire routing with core CMake-built operators.
+// Verifies audio-direct edge routing with core CMake-built operators.
 
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
