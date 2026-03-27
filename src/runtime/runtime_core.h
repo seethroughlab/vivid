@@ -25,7 +25,8 @@ class RuntimeCore {
 public:
     // ── Build / lifecycle ───────────────────────────────────────────────────
 
-    bool build(const Graph& graph, OperatorRegistry& registry);
+    bool build(const Graph& graph, OperatorRegistry& registry,
+               std::vector<GraphCompiler::InferredCadence>* inferred_out = nullptr);
     void tick(double time, double delta_time, uint64_t frame, void* gpu_state = nullptr,
               PostNodeFn on_gpu_node = nullptr,
               const VividInputState* input = nullptr);

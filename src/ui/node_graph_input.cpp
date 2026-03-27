@@ -2486,8 +2486,9 @@ bool NodeGraphUI::handle_inspector_click() {
             const auto& cr = cadence_rects_[cad_i];
             const auto* ns = snap_.find_node(cr.node_id);
             if (ns) {
-                // Cycle: Auto → Frame → Audio → Auto
+                // Cycle: Auto → Frame → Audio → Auto (InferredAudio treated as Auto)
                 uint8_t cur = static_cast<uint8_t>(ns->cadence_override);
+                if (cur == static_cast<uint8_t>(CadenceOverride::InferredAudio)) cur = 0;
                 uint8_t next = (cur + 1) % 3;
                 commands_.set_cadence_override(cr.node_id, next);
             }

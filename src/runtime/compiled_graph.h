@@ -210,6 +210,7 @@ struct CompiledNode {
     // ── Cadence ─────────────────────────────────────────────────────────────
     Cadence active_cadence = Cadence::Frame;
     VividCadenceCapability cadence_capability = VIVID_CADENCE_FRAME_ONLY;
+    CadenceOverride original_cadence_override = CadenceOverride::Auto;
 
     // ── Port configuration (set once at compile time) ───────────────────────
     uint32_t input_port_count = 0;

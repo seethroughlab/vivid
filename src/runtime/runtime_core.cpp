@@ -9,7 +9,8 @@ namespace vivid {
 // build
 // ---------------------------------------------------------------------------
 
-bool RuntimeCore::build(const Graph& graph, OperatorRegistry& registry) {
+bool RuntimeCore::build(const Graph& graph, OperatorRegistry& registry,
+                        std::vector<GraphCompiler::InferredCadence>* inferred_out) {
     solo_node_idx_ = -1;
     solo_active_set_.clear();
 
@@ -20,7 +21,7 @@ bool RuntimeCore::build(const Graph& graph, OperatorRegistry& registry) {
     GraphCompiler::Options opts;
     opts.graph_base_dir = graph_base_dir_;
     opts.operators_src_dir = operators_src_dir_;
-    compiled_graph_ = GraphCompiler::compile(graph, registry, opts);
+    compiled_graph_ = GraphCompiler::compile(graph, registry, opts, inferred_out);
     if (!compiled_graph_) {
         std::fprintf(stderr, "[vivid] CompiledGraph: compile failed\n");
         return false;

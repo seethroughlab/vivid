@@ -481,11 +481,18 @@ bool RuntimeAPI::apply_pending(bool& has_gpu_ops, bool& has_audio) {
     core_.shutdown();
 
     // 4. Rebuild runtime from (mutated) graph
-    if (!core_.build(graph_, registry_)) {
+    std::vector<GraphCompiler::InferredCadence> inferred;
+    if (!core_.build(graph_, registry_, &inferred)) {
         std::fprintf(stderr, "[vivid] RuntimeAPI: rebuild failed\n");
         has_gpu_ops = false;
         has_audio = false;
         return true;
+    }
+
+    // Write back inferred cadence overrides (stability rule: promotes persist)
+    for (const auto& ic : inferred) {
+        NodeDef* ndef = graph_.find_node(ic.node_id);
+        if (ndef) ndef->cadence_override = ic.new_override;
     }
 
     // 5. Restore saved params

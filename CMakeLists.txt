@@ -1965,6 +1965,34 @@ add_test(NAME test_audio_cadence_sequencer
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_audio_cadence_sequencer PROPERTIES LABELS "STABILITY")
 
+# Cadence inference integration test
+add_executable(test_cadence_inference
+    tests/test_cadence_inference.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/runtime_core.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
+    src/runtime/port_type_registry.cpp
+    src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
+    src/runtime/runtime_api.cpp
+    src/runtime/package_manager.cpp
+    src/runtime/operator_creator.cpp
+    src/runtime/capture_coordinator.cpp
+)
+target_include_directories(test_cadence_inference PRIVATE src)
+target_link_libraries(test_cadence_inference PRIVATE
+    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
+add_dependencies(test_cadence_inference clock oscillator lfo gain audio_test_op)
+add_test(NAME test_cadence_inference
+    COMMAND test_cadence_inference ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_cadence_inference PROPERTIES LABELS "STABILITY")
+
 # PackageCompiler unit test (compiles a mock package operator)
 add_executable(test_package_compiler
     tests/test_package_compiler.cpp

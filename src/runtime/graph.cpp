@@ -118,7 +118,7 @@ static bool parse_node_fields(const nlohmann::json& val, NodeDef& node) {
     auto cadence_it = val.find("cadence");
     if (cadence_it != val.end() && cadence_it->is_number_integer()) {
         int c = cadence_it->get<int>();
-        if (c >= 0 && c <= 2) node.cadence_override = static_cast<CadenceOverride>(c);
+        if (c >= 0 && c <= 3) node.cadence_override = static_cast<CadenceOverride>(c);
     }
 
     // locks
