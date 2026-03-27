@@ -10,7 +10,7 @@
 
 namespace vivid {
 
-struct RuntimeCore;
+class RuntimeCore;
 struct CompiledGraph;
 class CadenceBridge;
 class AudioExecutor;
@@ -41,7 +41,7 @@ public:
     void resume();
     // Two-phase hot reload: destroy old instances while old dylib is still loaded,
     // then create new instances after the dylib swap.
-    // Call sequence: pre_reload → scheduler.reload_operator → post_reload
+    // Call sequence: pre_reload → core.reload_operator → post_reload
     void pre_reload_operator(const std::string& type_name);
     bool post_reload_operator(const std::string& type_name, OperatorRegistry& registry);
 

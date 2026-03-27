@@ -5,7 +5,7 @@
 #include "runtime/package_compiler.h"
 #include "runtime/package_manager.h"
 #include "runtime/runtime_api.h"
-#include "runtime/scheduler.h"
+#include "runtime/runtime_core.h"
 #include "runtime/audio_engine.h"
 #include <cmath>
 #include <cstdio>
@@ -65,13 +65,13 @@ static void write_live_pkg_manifest(const std::string& root, const std::string& 
            "}\n";
 }
 
-static float node_scalar_output(const vivid::Scheduler& scheduler, const std::string& node_id) {
+static float node_scalar_output(const vivid::RuntimeCore& scheduler, const std::string& node_id) {
     const auto* node = scheduler.compiled_graph()->find_node(node_id);
     if (!node || node->output_values.empty()) return std::nanf("");
     return node->output_values[0];
 }
 
-static void check_finite_output(const vivid::Scheduler& scheduler,
+static void check_finite_output(const vivid::RuntimeCore& scheduler,
                                 const std::string& node_id,
                                 const char* msg) {
     const float value = node_scalar_output(scheduler, node_id);
@@ -120,7 +120,7 @@ int main(int argc, char* argv[]) {
     vivid::Graph graph;
     check(graph.add_node("pkg_live", type_name), "graph.add_node(pkg_live)");
 
-    vivid::Scheduler scheduler;
+    vivid::RuntimeCore scheduler;
     check(scheduler.build(graph, registry), "scheduler.build() with linked package");
     vivid::AudioEngine audio_engine;
     bool has_gpu_ops = false;

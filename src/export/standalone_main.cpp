@@ -5,7 +5,7 @@
 #include "runtime/fullscreen_blit.h"
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
-#include "runtime/scheduler.h"
+#include "runtime/runtime_core.h"
 #include "runtime/audio_engine.h"
 #include "runtime/cadence_bridge.h"
 #include "runtime/compiled_graph.h"
@@ -173,8 +173,8 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // --- Build Scheduler ---
-    vivid::Scheduler scheduler;
+    // --- Build Runtime ---
+    vivid::RuntimeCore scheduler;
     if (!scheduler.build(graph, registry)) {
         std::fprintf(stderr, "[standalone] Failed to build scheduler\n");
         glfwDestroyWindow(window);
@@ -192,7 +192,7 @@ int main(int argc, char* argv[]) {
     vivid::AudioEngine audio_engine;
     bool has_audio = false;
     if (scheduler.has_audio_operators()) {
-        if (audio_engine.build(scheduler.core())) {
+        if (audio_engine.build(scheduler)) {
             if (audio_engine.start()) {
                 has_audio = true;
                 std::fprintf(stderr, "[standalone] Audio engine started\n");

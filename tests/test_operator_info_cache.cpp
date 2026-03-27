@@ -49,10 +49,10 @@ int main() {
     auto unknown = cache.get("does_not_exist", registry);
     check(unknown == nullptr, "get() for unknown type returns null");
 
-    // 6. Returned OperatorInfo has correct env, port count, param count
+    // 6. Returned OperatorInfo has correct cadence flags, port count, param count
     if (a_info_new) {
-        check(a_info_new->env == VIVID_ENV_AUDIO,
-              "audio_out info has env VIVID_ENV_AUDIO");
+        check(a_info_new->is_audio_native,
+              "audio_out info is_audio_native");
         check(a_info_new->ports.size() == 1,
               "audio_out info has 1 port");
         check(a_info_new->params.size() == 1,
@@ -61,8 +61,8 @@ int main() {
               "audio_out info param[0] name is 'device'");
     }
     if (v_info_new) {
-        check(v_info_new->env == VIVID_ENV_GPU,
-              "video_out info has env VIVID_ENV_GPU");
+        check(v_info_new->is_gpu,
+              "video_out info is_gpu");
         check(v_info_new->ports.size() == 1,
               "video_out info has 1 port");
         check(v_info_new->params.size() == 3,

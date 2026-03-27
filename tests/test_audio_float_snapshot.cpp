@@ -4,7 +4,7 @@
 
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
-#include "runtime/scheduler.h"
+#include "runtime/runtime_core.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -55,11 +55,11 @@ int main(int argc, char* argv[]) {
     check(graph.add_node("audio", "AudioFloatCvOp"), "graph.add_node(audio)");
     check(graph.add_connection("ctrl", "out", "audio", "cv"), "graph.add_connection(ctrl/out -> audio/cv)");
 
-    vivid::Scheduler scheduler;
+    vivid::RuntimeCore scheduler;
     check(scheduler.build(graph, registry), "scheduler.build()");
 
     vivid::AudioEngine audio_engine;
-    check(audio_engine.build(scheduler.core()), "audio_engine.build()");
+    check(audio_engine.build(scheduler), "audio_engine.build()");
 
     scheduler.tick(0.0, 0.016, 0);
     scheduler.cadence_bridge().push_to_audio(*scheduler.compiled_graph());

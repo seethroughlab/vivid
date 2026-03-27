@@ -1,7 +1,7 @@
 #include "runtime/compiled_graph.h"
 #include "runtime/graph.h"
 #include "runtime/operator_registry.h"
-#include "runtime/scheduler.h"
+#include "runtime/runtime_core.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -41,7 +41,7 @@ int main() {
         g.add_connection("src", "out", "sink", "in");
         g.add_connection("src", "list", "sink", "in_list");
 
-        vivid::Scheduler sched;
+        vivid::RuntimeCore sched;
         check(sched.build(g, registry), "build string graph succeeds");
         sched.tick(0.0, 0.016, 0);
 
@@ -78,7 +78,7 @@ int main() {
         g.add_node("num", "TestOp", {});
         g.add_node("sink", "StringSinkOp", {});
         g.add_connection("num", "out", "sink", "in");
-        vivid::Scheduler sched;
+        vivid::RuntimeCore sched;
         check(!sched.build(g, registry), "mixed numeric->string wire rejected");
     }
 
@@ -90,7 +90,7 @@ int main() {
         g.add_node("sink", "StringSinkOp", {});
         g.add_connection("a", "out", "sink", "in");
         g.add_connection("b", "out", "sink", "in");
-        vivid::Scheduler sched;
+        vivid::RuntimeCore sched;
         check(!sched.build(g, registry), "string scalar fan-in >1 rejected");
     }
 

@@ -3,7 +3,7 @@
 // wraps to match the longer and values are additively mixed.
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
-#include "runtime/scheduler.h"
+#include "runtime/runtime_core.h"
 #include "runtime/compiled_graph.h"
 #include <cstdio>
 #include <cmath>
@@ -54,7 +54,7 @@ int main(int argc, char* argv[]) {
     vivid::Graph graph;
     check(graph.load(graph_path.c_str()), "graph.load()");
 
-    vivid::Scheduler scheduler;
+    vivid::RuntimeCore scheduler;
     check(scheduler.build(graph, registry), "scheduler.build()");
 
     // --- Test 1: Single source spread passthrough ---

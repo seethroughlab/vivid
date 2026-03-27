@@ -2,7 +2,7 @@
 #include "runtime/graph.h"
 #include "runtime/operator_registry.h"
 #include "runtime/runtime_api.h"
-#include "runtime/scheduler.h"
+#include "runtime/runtime_core.h"
 #include "runtime/audio_engine.h"
 #include <cstdio>
 #include <cstdlib>
@@ -90,7 +90,7 @@ int main(int argc, char* argv[]) {
     check(graph.load((build_dir + "/test_runtime_api.json").c_str()), "graph.load(test_runtime_api.json)");
     std::fprintf(stderr, "[runtime_stress] graph loaded\n");
 
-    vivid::Scheduler scheduler;
+    vivid::RuntimeCore scheduler;
     check(scheduler.build(graph, registry), "scheduler.build()");
     std::fprintf(stderr, "[runtime_stress] scheduler built\n");
 

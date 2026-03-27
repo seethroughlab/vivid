@@ -175,7 +175,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         bool node_errored = sn && sn->errored;
         bool node_missing = sn && sn->missing_operator;
         bool node_bad     = node_errored || node_missing || (sn && !sn->error_message.empty());
-        const float* dcol = node_bad ? kErrorAccent.data() : env_color(r.env);
+        const float* dcol = node_bad ? kErrorAccent.data() : node_accent_color(r.is_gpu, r.active_cadence);
 
         // Transform graph-space rect to screen space
         float sx = gx_to_sx(r.x), sy = gy_to_sy(r.y);
@@ -234,7 +234,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         // --- Env body region ---
         float s_body_y = sy + s_accent_h;
         bool has_ct = custom_thumb_nodes_.count(r.node_id) > 0;
-        float body_h = env_body_height(r.env, has_ct);
+        float body_h = node_body_height(r.is_gpu, r.active_cadence, has_ct);
         float s_body_h = g_to_s(body_h);
 
         if (node_missing) {
@@ -259,7 +259,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
                 float sub_y = ly + tr.line_height() * zoom_ + g_to_s(2);
                 tr.draw_text(sub_x, sub_y, sub, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.5f, sub_scale);
             }
-        } else if (r.env == VIVID_ENV_FRAME && !has_ct) {
+        } else if (!r.is_gpu && r.active_cadence == Cadence::Frame && !has_ct) {
             // Sparkline
             tr.draw_rect(sx + g_to_s(2), s_body_y + g_to_s(2),
                          sw - g_to_s(4), s_body_h - g_to_s(4),
@@ -316,7 +316,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
                     }
                 }
             }
-        } else if (r.env == VIVID_ENV_AUDIO && !has_ct) {
+        } else if (!r.is_gpu && r.active_cadence == Cadence::Audio && !has_ct) {
             // Waveform
             tr.draw_rect(sx + g_to_s(2), s_body_y + g_to_s(2),
                          sw - g_to_s(4), s_body_h - g_to_s(4),
@@ -491,7 +491,7 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
         float sex = gx_to_sx(gex), sey = gy_to_sy(gey);
 
         // Env-colored wires (source node's accent color)
-        const float* dcol = env_color(from_rect.env);
+        const float* dcol = node_accent_color(from_rect.is_gpu, from_rect.active_cadence);
         bool sel = selected_node_ids_.count(c.from_node) > 0 || selected_node_ids_.count(c.to_node) > 0;
         bool wire_sel = (ci == selected_wire_idx_);
         bool hov = (ci == hovered_wire_idx_) || wire_sel;
@@ -633,10 +633,10 @@ void NodeGraphUI::draw_wire_tooltip(Renderer2D& tr) {
     if (px + popup_w > graph_right()) px = mouse_.x - popup_w - kTooltipClampMargin;
     if (py + popup_h > static_cast<float>(win_h_)) py = mouse_.y - popup_h - kTooltipClampMargin;
 
-    // Find env color for accent from source node rect
+    // Find accent color from source node rect
     const float* dcol = nullptr;
     for (const auto& r : node_rects_) {
-        if (r.node_id == c.from_node) { dcol = env_color(r.env); break; }
+        if (r.node_id == c.from_node) { dcol = node_accent_color(r.is_gpu, r.active_cadence); break; }
     }
 
     // Shadow + Background
@@ -868,8 +868,8 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
             float py = viewport_top + 8 - insp_scroll_y_;
 
             // Header: both node names with env colors
-            const float* clr_a = env_color(node_a->env);
-            const float* clr_b = env_color(node_b->env);
+            const float* clr_a = node_accent_color(node_a->is_gpu, node_a->active_cadence);
+            const float* clr_b = node_accent_color(node_b->is_gpu, node_b->active_cadence);
             tr.draw_text(px, py, node_a->op_info->name.c_str(), clr_a[0], clr_a[1], clr_a[2]);
             float name_w = tr.text_width(node_a->op_info->name.c_str());
             tr.draw_text(px + name_w + 4, py, " + ", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
@@ -1544,7 +1544,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
 
     if (is_connected) {
         const auto* src_ns = snap_.find_node(conn.from_node);
-        const float* dot_clr = src_ns ? env_color(src_ns->env) : style_.accent.data();
+        const float* dot_clr = src_ns ? node_accent_color(src_ns->is_gpu, src_ns->active_cadence) : style_.accent.data();
         float dot_sz = 5.0f;
         float dot_x = px - dot_sz - 2.0f;
         float dot_y = py + (kLineH - dot_sz) * 0.5f;
@@ -1701,7 +1701,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         float range = pd.max_value - pd.min_value;
         float t = (range > 0) ? (val - pd.min_value) / range : 0.5f;
         t = std::max(0.0f, std::min(1.0f, t));
-        const float* sc = env_color(node.env);
+        const float* sc = node_accent_color(node.is_gpu, node.active_cadence);
         if (is_connected) {
             tr.draw_rect(px, py, panel_w * t, sh, sc[0], sc[1], sc[2], 0.3f);
             if (!conn.from_node.empty()) {
@@ -2234,7 +2234,7 @@ void NodeGraphUI::draw_inspector_cadence(Renderer2D& tr, const NodeSnapshot& nod
     const char* label;
     if (node.cadence_override == CadenceOverride::Frame) label = "Frame";
     else if (node.cadence_override == CadenceOverride::Audio) label = "Audio";
-    else label = (node.env == VIVID_ENV_AUDIO) ? "Audio (auto)" : "Frame (auto)";
+    else label = (node.active_cadence == Cadence::Audio) ? "Audio (auto)" : "Frame (auto)";
 
     float val_x = px + 4;
     tr.draw_text(val_x + 80, py, label, 0.8f, 0.82f, 0.85f);
@@ -2453,8 +2453,8 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
     auto right_ports = flatten(right_pl);
 
     // --- Column headers ---
-    const float* clr_a = env_color(node_a.env);
-    const float* clr_b = env_color(node_b.env);
+    const float* clr_a = node_accent_color(node_a.is_gpu, node_a.active_cadence);
+    const float* clr_b = node_accent_color(node_b.is_gpu, node_b.active_cadence);
 
     // Left header: node A name, left-aligned
     tr.draw_text(px, py, node_a.op_info->name.c_str(), clr_a[0], clr_a[1], clr_a[2]);
@@ -2867,24 +2867,22 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
                              style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
             }
         } else {
-            // Env color dot
+            // Cadence color dot
             const float* dcol = kControlAccent.data(); // default
             auto cat_it = snap_.operator_catalog.find(name);
             if (cat_it != snap_.operator_catalog.end()) {
-                dcol = env_color(cat_it->second->env);
+                dcol = node_accent_color(cat_it->second->is_gpu,
+                    cat_it->second->is_audio_native ? Cadence::Audio : Cadence::Frame);
             }
             float dot_x = px + 10;
             float dot_y = item_y + (kChooserItemH - 6) * 0.5f;
             tr.draw_rect(dot_x, dot_y, 6, 6, dcol[0], dcol[1], dcol[2]);
 
-            // Env tag
+            // Cadence tag
             const char* tag = "[C]";
             if (cat_it != snap_.operator_catalog.end()) {
-                switch (cat_it->second->env) {
-                    case VIVID_ENV_AUDIO:   tag = "[A]"; break;
-                    case VIVID_ENV_GPU:     tag = "[G]"; break;
-                    default:                   tag = "[C]"; break;
-                }
+                tag = cat_it->second->is_gpu ? "[G]" :
+                      cat_it->second->is_audio_native ? "[A]" : "[C]";
             }
             tr.draw_text(px + 20, item_y + 3, tag, dcol[0], dcol[1], dcol[2]);
 
@@ -4822,7 +4820,7 @@ void NodeGraphUI::draw_thumbnails(ThumbnailRenderer& renderer, const ThumbnailCa
                                   uint32_t w, uint32_t h) {
     renderer.begin(encoder, surface, w, h);
     for (const auto& r : node_rects_) {
-        bool should_draw_thumb = (r.env == VIVID_ENV_GPU) ||
+        bool should_draw_thumb = (r.is_gpu) ||
                                  (custom_thumb_nodes_.count(r.node_id) > 0);
         if (!should_draw_thumb) continue;
         WGPUTextureView thumb_view = cache.get_view(r.node_id);

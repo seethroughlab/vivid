@@ -11,8 +11,7 @@ namespace vivid {
 // ---------------------------------------------------------------------------
 // GraphCompiler — builds a CompiledGraph from a Graph + OperatorRegistry.
 //
-// Single compile pass that replaces both Scheduler::build() and
-// AudioEngine::build().  Determines cadence per node, classifies edges
+// Single compile pass that determines cadence per node, classifies edges
 // as Direct or Snapshot, builds independent topological orders for each
 // cadence, and pre-allocates all execution state.
 // ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
-#include "runtime/scheduler.h"
+#include "runtime/runtime_core.h"
 #include "runtime/compiled_graph.h"
 #include <cstdio>
 #include <cstdlib>
@@ -69,7 +69,7 @@ int main(int argc, char* argv[]) {
     vivid::Graph graph;
     check(graph.load(graph_path.c_str()), "graph.load() succeeds");
 
-    vivid::Scheduler scheduler;
+    vivid::RuntimeCore scheduler;
     check(scheduler.build(graph, registry), "scheduler.build() succeeds");
     check(scheduler.compiled_graph()->nodes.size() == 1, "scheduler has 1 node");
 

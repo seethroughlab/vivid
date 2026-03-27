@@ -2,63 +2,96 @@
 
 #include "runtime/compiled_graph.h"
 #include "runtime/cadence_bridge.h"
+#include "runtime/frame_executor.h"
+#include "runtime/graph_compiler.h"
+#include <filesystem>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace vivid {
 
+class Graph;
+class OperatorRegistry;
+
 // ---------------------------------------------------------------------------
 // RuntimeCore — shared runtime state accessed by both frame and audio sides.
 //
-// Owns the CompiledGraph (the compiled, ready-to-execute graph), the
-// CadenceBridge (double-buffered frame↔audio snapshot bridge), and solo state.
-// Both Scheduler (frame-side) and AudioEngine (audio-side) hold references
-// to a single RuntimeCore instance.
+// Owns the CompiledGraph, CadenceBridge, FrameExecutor, and solo state.
+// Provides build/tick/shutdown lifecycle and runtime queries.
 // ---------------------------------------------------------------------------
 
-struct RuntimeCore {
-    std::unique_ptr<CompiledGraph> compiled_graph;
-    CadenceBridge cadence_bridge;
+class RuntimeCore {
+public:
+    // ── Build / lifecycle ───────────────────────────────────────────────────
 
-    // Solo mode (session-only, not serialized).
-    // The active set marks the solo node and all its transitive upstream
-    // dependencies as active; non-active nodes are muted/skipped.
-    int solo_node_idx = -1;
-    std::vector<bool> solo_active_set;
+    bool build(const Graph& graph, OperatorRegistry& registry);
+    void tick(double time, double delta_time, uint64_t frame, void* gpu_state = nullptr,
+              PostNodeFn on_gpu_node = nullptr,
+              const VividInputState* input = nullptr);
 
-    void set_solo(int node_idx) {
-        if (!compiled_graph) return;
-        if (node_idx == solo_node_idx) return;
-        uint32_t n = static_cast<uint32_t>(compiled_graph->nodes.size());
-        if (node_idx < 0 || node_idx >= static_cast<int>(n)) {
-            solo_node_idx = -1;
-            solo_active_set.clear();
-            cadence_bridge.set_solo_active_set({});
-            return;
-        }
-        solo_node_idx = node_idx;
-        solo_active_set.assign(n, false);
+    // Audio synchronization — call around tick() to bridge cadence worlds.
+    void pre_tick_audio_sync(double time);
+    void post_tick_audio_sync();
 
-        // BFS: mark solo node and all transitive upstream dependencies
-        std::vector<uint32_t> queue;
-        queue.push_back(static_cast<uint32_t>(node_idx));
-        solo_active_set[node_idx] = true;
-        while (!queue.empty()) {
-            uint32_t cur = queue.back();
-            queue.pop_back();
-            for (uint32_t up : compiled_graph->nodes[cur].upstream_nodes) {
-                if (!solo_active_set[up]) {
-                    solo_active_set[up] = true;
-                    queue.push_back(up);
-                }
-            }
-        }
+    void shutdown();
 
-        // Sync to audio side via snapshot bridge
-        cadence_bridge.set_solo_active_set(solo_active_set);
-    }
+    // Hot-reload: destroy old instances, swap dylib, recreate with param reconciliation.
+    bool reload_operator(const std::string& type_name, OperatorRegistry& registry,
+                         const std::string& new_dylib_path);
 
-    bool is_solo_active() const { return solo_node_idx >= 0; }
+    // ── Solo mode (session-only, not serialized) ────────────────────────────
+
+    void set_solo(int node_idx);
+    int solo_node_idx() const { return solo_node_idx_; }
+    bool is_solo_active() const { return solo_node_idx_ >= 0; }
+    const std::vector<bool>& solo_active_set() const { return solo_active_set_; }
+
+    // ── Queries ─────────────────────────────────────────────────────────────
+
+    bool has_gpu_operators() const;
+    bool has_audio_operators() const;
+    int find_gpu_sink() const;
+    int find_effective_gpu_sink() const;
+    bool gpu_sink_source_size(int sink_idx, uint32_t& w, uint32_t& h) const;
+    WGPUTexture gpu_sink_source_texture(int sink_idx) const;
+    void allocate_gpu_textures(WGPUDevice device, uint32_t default_w, uint32_t default_h,
+                               WGPUTextureFormat format,
+                               WGPUTextureUsage extra_usage = 0);
+    std::string type_name(uint32_t node_idx) const;
+    bool has_audio_cadence_type(const std::string& type_name) const;
+
+    // ── Config ──────────────────────────────────────────────────────────────
+
+    void set_operators_src_dir(const std::string& dir) { operators_src_dir_ = dir; }
+    const std::string& operators_src_dir() const { return operators_src_dir_; }
+    bool needs_gpu_realloc() const { return needs_gpu_realloc_; }
+    void clear_gpu_realloc() { needs_gpu_realloc_ = false; }
+
+    // ── Direct access to owned state ────────────────────────────────────────
+
+    CompiledGraph* compiled_graph() { return compiled_graph_.get(); }
+    const CompiledGraph* compiled_graph() const { return compiled_graph_.get(); }
+    CadenceBridge& cadence_bridge() { return cadence_bridge_; }
+    const CadenceBridge& cadence_bridge() const { return cadence_bridge_; }
+    FrameExecutor& frame_executor() { return frame_executor_; }
+    const FrameExecutor& frame_executor() const { return frame_executor_; }
+
+private:
+    std::unique_ptr<CompiledGraph> compiled_graph_;
+    CadenceBridge cadence_bridge_;
+    FrameExecutor frame_executor_;
+
+    std::string operators_src_dir_;
+    std::filesystem::path graph_base_dir_;
+    bool needs_gpu_realloc_ = false;
+
+    int solo_node_idx_ = -1;
+    std::vector<bool> solo_active_set_;
+
+    // Main-thread update hook for audio-cadence operators that need it
+    // (e.g. media decoding, file I/O). Called during pre_tick_audio_sync.
+    void update_audio_sources(double time);
 };
 
 } // namespace vivid

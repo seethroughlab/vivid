@@ -1,6 +1,6 @@
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
-#include "runtime/scheduler.h"
+#include "runtime/runtime_core.h"
 #include "runtime/compiled_graph.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/thumbnail.h"
@@ -239,7 +239,7 @@ static std::vector<uint8_t> readback_texture(WGPUDevice device, WGPUQueue queue,
 // Helper: run one scheduler tick with a GPU command encoder, then submit.
 // Returns the encoder so the caller can record additional commands (like readback)
 // before finishing.
-static void tick_and_submit(vivid::Scheduler& sched, HeadlessGpu& gpu,
+static void tick_and_submit(vivid::RuntimeCore& sched, HeadlessGpu& gpu,
                             WGPUTextureFormat format) {
     WGPUCommandEncoderDescriptor enc_desc{};
     enc_desc.label = vivid::to_sv("Tick Encoder");
@@ -425,7 +425,7 @@ int main() {
         vivid::Graph g;
         g.add_node("fill", "GpuFillOp", {{"r", 1.0f}, {"g", 0.0f}, {"b", 0.0f}});
 
-        vivid::Scheduler sched;
+        vivid::RuntimeCore sched;
         check(sched.build(g, registry), "build succeeds");
         sched.allocate_gpu_textures(gpu.device, W, H, kFormat, WGPUTextureUsage_CopySrc);
 
@@ -433,7 +433,7 @@ int main() {
 
         // Readback
         auto& ns = sched.compiled_graph()->nodes[0];
-        auto pixels = readback_texture(gpu.device, gpu.queue, ns.gpu_texture, W, H);
+        auto pixels = readback_texture(gpu.device, gpu.queue, ns.gpu->texture, W, H);
         check(!pixels.empty(), "readback returned pixels");
 
         if (!pixels.empty()) {
@@ -458,7 +458,7 @@ int main() {
         vivid::Graph g;
         g.add_node("fill", "GpuFillOp", {{"r", 1.0f}, {"g", 0.0f}, {"b", 0.0f}});
 
-        vivid::Scheduler sched;
+        vivid::RuntimeCore sched;
         check(sched.build(g, registry), "build succeeds");
         sched.allocate_gpu_textures(gpu.device, W, H, kFormat, WGPUTextureUsage_CopySrc);
 
@@ -481,7 +481,7 @@ int main() {
         tick_and_submit(sched, gpu, kFormat);
 
         auto pixels = readback_texture(gpu.device, gpu.queue,
-                                        sched.compiled_graph()->nodes[0].gpu_texture, W, H);
+                                        sched.compiled_graph()->nodes[0].gpu->texture, W, H);
         check(!pixels.empty(), "readback returned pixels");
 
         if (!pixels.empty()) {
@@ -505,14 +505,14 @@ int main() {
         vivid::Graph g;
         g.add_node("shape", "Shape", {});
 
-        vivid::Scheduler sched;
+        vivid::RuntimeCore sched;
         check(sched.build(g, registry), "build succeeds");
         sched.allocate_gpu_textures(gpu.device, W, H, kFormat, WGPUTextureUsage_CopySrc);
 
         tick_and_submit(sched, gpu, kFormat);
 
         auto pixels = readback_texture(gpu.device, gpu.queue,
-                                        sched.compiled_graph()->nodes[0].gpu_texture, W, H);
+                                        sched.compiled_graph()->nodes[0].gpu->texture, W, H);
         check(!pixels.empty(), "readback returned pixels");
 
         if (!pixels.empty()) {
@@ -598,18 +598,18 @@ int main() {
             }
         }
 
-        vivid::Scheduler sched;
+        vivid::RuntimeCore sched;
         check(sched.build(g, registry), "build succeeds");
         sched.allocate_gpu_textures(gpu.device, 64, 64, kFormat, WGPUTextureUsage_CopySrc);
 
         // Verify the node got 128×128, not the 64×64 default
         auto& ns = sched.compiled_graph()->nodes[0];
-        check(ns.gpu_tex_width == W, "texture width is 128");
-        check(ns.gpu_tex_height == H, "texture height is 128");
+        check(ns.gpu->tex_width == W, "texture width is 128");
+        check(ns.gpu->tex_height == H, "texture height is 128");
 
         tick_and_submit(sched, gpu, kFormat);
 
-        auto pixels = readback_texture(gpu.device, gpu.queue, ns.gpu_texture, W, H);
+        auto pixels = readback_texture(gpu.device, gpu.queue, ns.gpu->texture, W, H);
         check(!pixels.empty(), "readback returned pixels");
 
         if (!pixels.empty()) {

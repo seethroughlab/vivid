@@ -5,7 +5,7 @@
 #include "ui/thumbnail_renderer.h"
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
-#include "runtime/scheduler.h"
+#include "runtime/runtime_core.h"
 #include "runtime/audio_engine.h"
 #include "runtime/cadence_bridge.h"
 #include "runtime/compiled_graph.h"
@@ -1137,7 +1137,7 @@ static void clamp_window_rect_to_monitor(GLFWmonitor* monitor, int* x, int* y, i
 // ---------------------------------------------------------------------------
 static vivid::ui::GraphSnapshot build_graph_snapshot(
         const vivid::Graph& graph,
-        const vivid::Scheduler& scheduler,
+        const vivid::RuntimeCore& scheduler,
         vivid::AudioEngine* audio_engine,
         vivid::OperatorRegistry& registry,
         OperatorInfoCache& op_cache,
@@ -1159,20 +1159,19 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         auto& sn = snap.nodes[i];
         sn.node_id = cn.node_id;
         sn.type_name = scheduler.type_name(static_cast<uint32_t>(i));
-        if (cn.is_gpu) sn.env = VIVID_ENV_GPU;
-        else if (cn.active_cadence == vivid::Cadence::Audio) sn.env = VIVID_ENV_AUDIO;
-        else sn.env = VIVID_ENV_FRAME;
-        sn.is_gpu = cn.is_gpu;
+        sn.active_cadence = cn.active_cadence;
+        sn.is_gpu = cn.is_gpu();
         sn.is_audio_capable = (cn.cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE);
         {
             const auto* ndef = graph.find_node(cn.node_id);
             sn.cadence_override = ndef ? ndef->cadence_override : vivid::CadenceOverride::Auto;
         }
-        sn.is_gpu_sink = cn.is_gpu_sink;
-        sn.is_generator = cn.texture_input_port_indices.empty() && !cn.is_gpu_sink;
+        sn.is_gpu_sink = cn.is_gpu_sink();
+        sn.is_generator = cn.gpu ? cn.gpu->texture_input_port_indices.empty() && !cn.is_gpu_sink() : true;
         sn.input_port_indices = cn.input_port_indices;
         sn.output_port_indices = cn.output_port_indices;
-        sn.analysis_output_port_indices = cn.analysis_output_port_indices;
+        sn.analysis_output_port_indices = cn.audio ? cn.audio->analysis_output_port_indices
+                                                   : std::unordered_map<std::string, uint32_t>{};
         sn.param_indices = cn.param_indices;
         sn.param_values = cn.param_values;
         sn.param_lock_flags = cn.param_lock_flags;
@@ -1182,12 +1181,12 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         sn.output_string_spreads = cn.output_string_spreads;
         for (const auto& [name, idx] : cn.file_param_indices)
             sn.file_param_values[name] = cn.file_param_storage[idx];
-        sn.gpu_tex_width = cn.gpu_tex_width;
-        sn.gpu_tex_height = cn.gpu_tex_height;
-        sn.gpu_tex_inherited = cn.gpu_tex_inherited;
-        sn.errored       = cn.errored || cn.gpu_shader_error;
-        sn.error_message = cn.errored          ? cn.error_message
-                         : cn.gpu_shader_error ? cn.gpu_shader_error_msg
+        sn.gpu_tex_width = cn.gpu ? cn.gpu->tex_width : 0;
+        sn.gpu_tex_height = cn.gpu ? cn.gpu->tex_height : 0;
+        sn.gpu_tex_inherited = cn.gpu ? cn.gpu->tex_inherited : false;
+        sn.errored       = cn.errored || (cn.gpu && cn.gpu->shader_error);
+        sn.error_message = cn.errored                        ? cn.error_message
+                         : (cn.gpu && cn.gpu->shader_error) ? cn.gpu->shader_error_msg
                          : cn.error_message;   // compile/build error (node still running)
         sn.missing_operator = cn.missing_operator;
         if (cn.missing_operator) {
@@ -1469,7 +1468,7 @@ static void emit_clear_pass(WGPUCommandEncoder encoder, WGPUTextureView view, co
 }
 
 static void poll_hot_reload(vivid::FileWatcher& fw, vivid::HotReloader& hr,
-                            vivid::Scheduler& scheduler, vivid::OperatorRegistry& registry,
+                            vivid::RuntimeCore& scheduler, vivid::OperatorRegistry& registry,
                             vivid::AudioEngine& audio_engine, bool has_audio,
                             OperatorInfoCache* op_cache = nullptr,
                             const std::string& operators_dir = {}) {
@@ -1525,7 +1524,7 @@ static void poll_hot_reload(vivid::FileWatcher& fw, vivid::HotReloader& hr,
 
         std::fprintf(stderr, "[vivid] Hot-reload: reloading %s...\n", tn.c_str());
 
-        bool is_audio_op = scheduler.is_audio_type(tn);
+        bool is_audio_op = scheduler.has_audio_cadence_type(tn);
 
         // Two-phase audio reload: destroy old instances BEFORE the dylib swap
         // so we can safely call the old dylib's destroy function.
@@ -1605,7 +1604,7 @@ static int add_watch_for_resolved_package(vivid::FileWatcher& fw, const vivid::P
     return count;
 }
 
-static void draw_custom_thumbnails(const vivid::Scheduler& scheduler,
+static void draw_custom_thumbnails(const vivid::RuntimeCore& scheduler,
                                    vivid::ui::ThumbnailCache& cache,
                                    vivid::ui::NodeGraphUI& graph_ui,
                                    WGPUDevice device,
@@ -1657,15 +1656,15 @@ static void draw_custom_thumbnails(const vivid::Scheduler& scheduler,
         tctx.thumbnail_width = thumb_w;
         tctx.thumbnail_height = thumb_h;
         tctx.thumbnail_format = thumb_format;
-        tctx.source_output_texture = cn.gpu_texture;
-        tctx.source_output_texture_view = cn.gpu_texture_view;
-        tctx.source_output_width = cn.gpu_tex_width;
-        tctx.source_output_height = cn.gpu_tex_height;
+        tctx.source_output_texture = cn.gpu ? cn.gpu->texture : nullptr;
+        tctx.source_output_texture_view = cn.gpu ? cn.gpu->texture_view : nullptr;
+        tctx.source_output_width = cn.gpu ? cn.gpu->tex_width : 0;
+        tctx.source_output_height = cn.gpu ? cn.gpu->tex_height : 0;
         tctx.source_output_format = thumb_format;
         tctx.input_texture_views =
-            cn.resolved_tex_inputs.empty() ? nullptr
-                                           : const_cast<WGPUTextureView*>(cn.resolved_tex_inputs.data());
-        tctx.input_texture_count = static_cast<uint32_t>(cn.resolved_tex_inputs.size());
+            (cn.gpu && !cn.gpu->resolved_tex_inputs.empty()) ? const_cast<WGPUTextureView*>(cn.gpu->resolved_tex_inputs.data())
+                                                             : nullptr;
+        tctx.input_texture_count = cn.gpu ? static_cast<uint32_t>(cn.gpu->resolved_tex_inputs.size()) : 0;
         tctx.operator_errored = 0;
         tctx.operator_error_msg = nullptr;
 
@@ -2824,7 +2823,7 @@ int main(int argc, char* argv[]) {
 
     // --- Load graph ---
     vivid::Graph graph;
-    vivid::Scheduler scheduler;
+    vivid::RuntimeCore scheduler;
     bool graph_loaded = false;
 
     // Working directory for user filter shaders: {graph_dir}/{graph_stem}_filters/
@@ -2892,7 +2891,7 @@ int main(int argc, char* argv[]) {
         if (scheduler.build(graph, registry)) {
             graph_loaded = true;
         } else {
-            std::fprintf(stderr, "[vivid] Scheduler build failed (non-fatal, continuing)\n");
+            std::fprintf(stderr, "[vivid] Runtime build failed (non-fatal, continuing)\n");
         }
     }
 
@@ -2908,7 +2907,7 @@ int main(int argc, char* argv[]) {
     vivid::AudioEngine audio_engine;
     bool has_audio = false;
     if (graph_loaded && scheduler.has_audio_operators()) {
-        if (audio_engine.build(scheduler.core())) {
+        if (audio_engine.build(scheduler)) {
             if (audio_engine.start()) {
                 has_audio = true;
             }
@@ -2967,7 +2966,7 @@ int main(int argc, char* argv[]) {
         }
 
         if (scheduler.has_audio_operators()) {
-            if (audio_engine.build(scheduler.core()) && audio_engine.start()) {
+            if (audio_engine.build(scheduler) && audio_engine.start()) {
                 has_audio = true;
             }
         }
@@ -4487,8 +4486,8 @@ int main(int argc, char* argv[]) {
                 const auto& vo_cn = scheduler.compiled_graph()->nodes[video_out_idx];
                 WGPUTextureView display_tex = nullptr;
                 uint32_t src_w = 0, src_h = 0;
-                if (!vo_cn.resolved_tex_inputs.empty()) {
-                    display_tex = vo_cn.resolved_tex_inputs[0];
+                if (vo_cn.gpu && !vo_cn.gpu->resolved_tex_inputs.empty()) {
+                    display_tex = vo_cn.gpu->resolved_tex_inputs[0];
                     scheduler.gpu_sink_source_size(video_out_idx, src_w, src_h);
                 }
 

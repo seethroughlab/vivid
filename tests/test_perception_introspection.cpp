@@ -1,6 +1,6 @@
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
-#include "runtime/scheduler.h"
+#include "runtime/runtime_core.h"
 #include "runtime/audio_engine.h"
 #include "runtime/runtime_api.h"
 #include "runtime/control_server.h"
@@ -95,7 +95,7 @@ int main(int argc, char* argv[]) {
     check(graph.add_node("gpu1", "Shape"), "add gpu node");
     check(graph.add_node("missing1", "DefinitelyMissingOp"), "add missing-operator node");
 
-    vivid::Scheduler scheduler;
+    vivid::RuntimeCore scheduler;
     check(scheduler.build(graph, registry), "scheduler.build()");
     scheduler.tick(0.0, 0.016, 0, nullptr);
 

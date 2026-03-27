@@ -3,7 +3,7 @@
 #include "runtime/compiled_graph.h"
 #include "runtime/graph.h"
 #include "runtime/operator_registry.h"
-#include "runtime/scheduler.h"
+#include "runtime/runtime_core.h"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -68,11 +68,11 @@ int main(int argc, char* argv[]) {
     check(graph.add_node("out", "audio_out"), "graph.add_node(out)");
     check(graph.add_connection("audio", "out", "out", "input"), "graph.add_connection(audio->out)");
 
-    vivid::Scheduler scheduler;
+    vivid::RuntimeCore scheduler;
     check(scheduler.build(graph, registry), "scheduler.build()");
 
     vivid::AudioEngine audio_engine;
-    check(audio_engine.build(scheduler.core()), "audio_engine.build()");
+    check(audio_engine.build(scheduler), "audio_engine.build()");
 
     bool active_is_v2_family = false;
     float expected_sample = 4.0f;

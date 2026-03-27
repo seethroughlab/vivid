@@ -1,6 +1,6 @@
 #include "runtime/runtime_api.h"
 #include "runtime/graph.h"
-#include "runtime/scheduler.h"
+#include "runtime/runtime_core.h"
 #include "runtime/compiled_graph.h"
 #include "runtime/audio_engine.h"
 #include "runtime/operator_registry.h"
@@ -14,9 +14,9 @@
 
 namespace vivid {
 
-RuntimeAPI::RuntimeAPI(Graph& graph, Scheduler& scheduler, AudioEngine& audio_engine,
+RuntimeAPI::RuntimeAPI(Graph& graph, RuntimeCore& core, AudioEngine& audio_engine,
                        OperatorRegistry& registry, SystemMidiListener* system_midi)
-    : graph_(graph), scheduler_(scheduler), audio_engine_(audio_engine),
+    : graph_(graph), core_(core), audio_engine_(audio_engine),
       registry_(registry), system_midi_(system_midi) {
     if (!graph_.source_path().empty()) {
         active_graph_source_path_ =
@@ -153,7 +153,7 @@ std::string node_display_name(const CompiledNode& cn,
 // --- Immediate param changes ---
 
 CommandResult RuntimeAPI::set_param(const std::string& node_id, const std::string& param, float value) {
-    auto* cg = scheduler_.compiled_graph();
+    auto* cg = core_.compiled_graph();
     auto* cn = cg->find_node(node_id);
     if (!cn) return {false, "unknown node '" + node_id + "'"};
 
@@ -224,7 +224,7 @@ CommandResult RuntimeAPI::set_string_param(const std::string& node_id, const std
         }
     }
 
-    auto* cg = scheduler_.compiled_graph();
+    auto* cg = core_.compiled_graph();
     auto* cn = cg->find_node(node_id);
     if (!cn) return {false, "unknown node '" + node_id + "'"};
 
@@ -245,7 +245,7 @@ CommandResult RuntimeAPI::set_string_param(const std::string& node_id, const std
 }
 
 CommandResult RuntimeAPI::get_param(const std::string& node_id, const std::string& param) {
-    auto* cn = scheduler_.compiled_graph()->find_node(node_id);
+    auto* cn = core_.compiled_graph()->find_node(node_id);
     if (!cn) return {false, "unknown node '" + node_id + "'"};
     auto pi = cn->param_indices.find(param);
     if (pi == cn->param_indices.end()) {
@@ -259,7 +259,7 @@ CommandResult RuntimeAPI::get_param(const std::string& node_id, const std::strin
 // --- Per-parameter lock flags ---
 
 CommandResult RuntimeAPI::set_param_lock(const std::string& node_id, const std::string& param, uint8_t flags) {
-    auto* cg = scheduler_.compiled_graph();
+    auto* cg = core_.compiled_graph();
     auto* cn = cg->find_node(node_id);
     if (!cn) return {false, "unknown node '" + node_id + "'"};
 
@@ -285,7 +285,7 @@ CommandResult RuntimeAPI::set_param_lock(const std::string& node_id, const std::
 }
 
 CommandResult RuntimeAPI::get_param_lock(const std::string& node_id, const std::string& param) {
-    auto* cn = scheduler_.compiled_graph()->find_node(node_id);
+    auto* cn = core_.compiled_graph()->find_node(node_id);
     if (!cn) return {false, "unknown node '" + node_id + "'"};
     auto pi = cn->param_indices.find(param);
     if (pi == cn->param_indices.end())
@@ -321,10 +321,12 @@ CommandResult RuntimeAPI::set_resolution(const std::string& node_id, uint32_t wi
     ndef->tex_height = height;
 
     // Update live state
-    auto* cn = scheduler_.compiled_graph()->find_node(node_id);
+    auto* cn = core_.compiled_graph()->find_node(node_id);
     if (cn) {
-        cn->gpu_tex_width  = width;
-        cn->gpu_tex_height = height;
+        if (cn->gpu) {
+            cn->gpu->tex_width  = width;
+            cn->gpu->tex_height = height;
+        }
         cn->dirty = true;
     }
 
@@ -455,7 +457,7 @@ bool RuntimeAPI::apply_pending(bool& has_gpu_ops, bool& has_audio) {
     std::unordered_map<std::string, std::unordered_map<std::string, float>> saved_params;
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> saved_string_params;
     std::unordered_map<std::string, std::unordered_map<std::string, uint8_t>> saved_locks;
-    for (const auto& cn : scheduler_.compiled_graph()->nodes) {
+    for (const auto& cn : core_.compiled_graph()->nodes) {
         auto& sp = saved_params[cn.node_id];
         for (const auto& [name, idx] : cn.param_indices) {
             sp[name] = cn.param_values[idx];
@@ -476,10 +478,10 @@ bool RuntimeAPI::apply_pending(bool& has_gpu_ops, bool& has_audio) {
     }
 
     // 3. Shutdown scheduler
-    scheduler_.shutdown();
+    core_.shutdown();
 
     // 4. Rebuild scheduler from (mutated) graph
-    if (!scheduler_.build(graph_, registry_)) {
+    if (!core_.build(graph_, registry_)) {
         std::fprintf(stderr, "[vivid] RuntimeAPI: rebuild failed\n");
         has_gpu_ops = false;
         has_audio = false;
@@ -487,7 +489,7 @@ bool RuntimeAPI::apply_pending(bool& has_gpu_ops, bool& has_audio) {
     }
 
     // 5. Restore saved params
-    auto* cg = scheduler_.compiled_graph();
+    auto* cg = core_.compiled_graph();
     for (auto& cn : cg->nodes) {
         auto sit = saved_params.find(cn.node_id);
         if (sit != saved_params.end()) {
@@ -519,11 +521,11 @@ bool RuntimeAPI::apply_pending(bool& has_gpu_ops, bool& has_audio) {
         }
     }
 
-    has_gpu_ops = scheduler_.has_gpu_operators();
+    has_gpu_ops = core_.has_gpu_operators();
 
     // 6. Rebuild audio if there are audio operators
-    if (scheduler_.has_audio_operators()) {
-        if (audio_engine_.build(scheduler_.core())) {
+    if (core_.has_audio_operators()) {
+        if (audio_engine_.build(core_)) {
             if (audio_engine_.start()) {
                 has_audio = true;
             }
@@ -536,7 +538,7 @@ bool RuntimeAPI::apply_pending(bool& has_gpu_ops, bool& has_audio) {
 // --- Inspection ---
 
 CommandResult RuntimeAPI::inspect(const std::string& node_id) {
-    const auto* cn = scheduler_.compiled_graph()->find_node(node_id);
+    const auto* cn = core_.compiled_graph()->find_node(node_id);
     if (!cn) return {false, "unknown node '" + node_id + "'"};
     const auto* desc = node_descriptor(*cn);
     std::ostringstream oss;
@@ -602,7 +604,7 @@ CommandResult RuntimeAPI::inspect(const std::string& node_id) {
 }
 
 CommandResult RuntimeAPI::list_nodes() {
-    const auto& nodes = scheduler_.compiled_graph()->nodes;
+    const auto& nodes = core_.compiled_graph()->nodes;
     if (nodes.empty()) return {true, "(no nodes)"};
     std::ostringstream oss;
     for (const auto& cn : nodes) {
@@ -678,7 +680,7 @@ void RuntimeAPI::apply_midi_mappings() {
 CommandResult RuntimeAPI::save_variation(const std::string& name) {
     VariationDef vd;
     vd.name = name;
-    for (const auto& cn : scheduler_.compiled_graph()->nodes) {
+    for (const auto& cn : core_.compiled_graph()->nodes) {
         const auto* desc = node_descriptor(cn);
         if (!desc) continue;
         auto& pm = vd.params[cn.node_id];
@@ -732,7 +734,7 @@ void RuntimeAPI::apply_variation(int idx) {
     const auto& vd = graph_.variations()[idx];
 
     // Phase 1: Reset all unlocked params to defaults
-    auto* cg = scheduler_.compiled_graph();
+    auto* cg = core_.compiled_graph();
     for (auto& cn : cg->nodes) {
         const auto* desc = node_descriptor(cn);
         if (!desc) continue;
@@ -860,7 +862,7 @@ CommandResult RuntimeAPI::update_variation(const std::string& name) {
     if (!vd) return {false, "unknown variation '" + name + "'"};
     vd->params.clear();
     vd->string_params.clear();
-    for (const auto& cn : scheduler_.compiled_graph()->nodes) {
+    for (const auto& cn : core_.compiled_graph()->nodes) {
         const auto* desc = node_descriptor(cn);
         if (!desc) continue;
         auto& pm = vd->params[cn.node_id];
@@ -942,7 +944,7 @@ void RuntimeAPI::tick_quantized_switch() {
         return;
     }
 
-    const auto* clock_cn = scheduler_.compiled_graph()->find_node(clock_id);
+    const auto* clock_cn = core_.compiled_graph()->find_node(clock_id);
     if (!clock_cn) {
         // Clock node missing — instant fallback
         apply_variation(pending_variation_.variation_idx);
@@ -979,7 +981,7 @@ const std::string& RuntimeAPI::active_preset(const std::string& node_id) const {
 }
 
 CommandResult RuntimeAPI::save_preset(const std::string& node_id, const std::string& name) {
-    auto* cn = scheduler_.compiled_graph()->find_node(node_id);
+    auto* cn = core_.compiled_graph()->find_node(node_id);
     if (!cn) return {false, "unknown node '" + node_id + "'"};
 
     OperatorPreset preset;
@@ -1022,7 +1024,7 @@ CommandResult RuntimeAPI::recall_preset(const std::string& node_id, const std::s
 
     if (!preset) return {false, "preset '" + name + "' not found on " + node_id};
 
-    auto* cn = scheduler_.compiled_graph()->find_node(node_id);
+    auto* cn = core_.compiled_graph()->find_node(node_id);
     if (!cn) return {false, "unknown node '" + node_id + "'"};
 
     for (const auto& [pname, pval] : preset->params) {
@@ -1075,7 +1077,7 @@ CommandResult RuntimeAPI::update_preset(const std::string& node_id, const std::s
         return {false, "preset '" + name + "' not found on " + node_id};
     }
 
-    auto* cn = scheduler_.compiled_graph()->find_node(node_id);
+    auto* cn = core_.compiled_graph()->find_node(node_id);
     if (!cn) return {false, "unknown node '" + node_id + "'"};
 
     preset->params.clear();
@@ -1217,7 +1219,7 @@ void RuntimeAPI::tick_state_presets() {
     }
 
     for (const auto& spm : graph_.state_preset_mappings()) {
-        const auto* sm_cn = scheduler_.compiled_graph()->find_node(spm.state_machine_node);
+        const auto* sm_cn = core_.compiled_graph()->find_node(spm.state_machine_node);
         if (!sm_cn) continue;
 
         // Read the "state" output
@@ -1257,7 +1259,7 @@ void RuntimeAPI::tick_state_presets() {
                 for (const auto& [target_node, preset_name] : spm.state_presets[state_idx]) {
                     const auto* preset = graph_.find_preset(target_node, preset_name);
                     if (!preset) continue;
-                    auto* tcn = scheduler_.compiled_graph()->find_node(target_node);
+                    auto* tcn = core_.compiled_graph()->find_node(target_node);
                     if (!tcn) continue;
 
                     CrossfadeState cs;
@@ -1299,7 +1301,7 @@ void RuntimeAPI::tick_state_presets() {
         float xfade_t = sm_cn->output_values[xf_oi->second];
 
         for (auto& [target_node, cs] : acit->second.targets) {
-            auto* tcn = scheduler_.compiled_graph()->find_node(target_node);
+            auto* tcn = core_.compiled_graph()->find_node(target_node);
             if (!tcn) continue;
             NodeDef* ndef = graph_.find_node(target_node);
             for (const auto& [pname, start_val] : cs.start_params) {
@@ -1316,7 +1318,7 @@ void RuntimeAPI::tick_state_presets() {
         // Finalize when crossfade completes: snap params to exact target values
         if (xfade_t >= 1.0f) {
             for (auto& [target_node, cs] : acit->second.targets) {
-                auto* tcn = scheduler_.compiled_graph()->find_node(target_node);
+                auto* tcn = core_.compiled_graph()->find_node(target_node);
                 if (tcn) {
                     NodeDef* ndef = graph_.find_node(target_node);
                     for (const auto& [pname, target_val] : cs.target_params) {
@@ -1339,21 +1341,21 @@ void RuntimeAPI::tick_state_presets() {
 
 CommandResult RuntimeAPI::set_solo(const std::string& node_id) {
     if (node_id.empty()) {
-        scheduler_.set_solo(-1);
+        core_.set_solo(-1);
         return {true, "solo cleared"};
     }
-    auto* cg = scheduler_.compiled_graph();
+    auto* cg = core_.compiled_graph();
     auto it = cg->node_id_to_index.find(node_id);
     if (it != cg->node_id_to_index.end()) {
-        scheduler_.set_solo(static_cast<int>(it->second));
+        core_.set_solo(static_cast<int>(it->second));
         return {true, "soloed " + node_id};
     }
     return {false, "node not found: " + node_id};
 }
 
 std::string RuntimeAPI::solo_node_id() const {
-    int idx = scheduler_.solo_node_idx();
-    const auto& nodes = scheduler_.compiled_graph()->nodes;
+    int idx = core_.solo_node_idx();
+    const auto& nodes = core_.compiled_graph()->nodes;
     if (idx < 0 || idx >= static_cast<int>(nodes.size())) return {};
     return nodes[idx].node_id;
 }
@@ -1402,7 +1404,7 @@ CommandResult RuntimeAPI::load_graph(const std::string& path,
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> saved_string_params;
     std::unordered_map<std::string, std::unordered_map<std::string, uint8_t>> saved_locks;
     if (preserve_runtime_state) {
-        for (const auto& cn : scheduler_.compiled_graph()->nodes) {
+        for (const auto& cn : core_.compiled_graph()->nodes) {
             auto& sp = saved_params[cn.node_id];
             for (const auto& [name, idx] : cn.param_indices) {
                 sp[name] = cn.param_values[idx];
@@ -1424,18 +1426,18 @@ CommandResult RuntimeAPI::load_graph(const std::string& path,
         }
         graph_.set_source_path(previous_source_path);
 
-        if (!scheduler_.build(graph_, registry_)) {
+        if (!core_.build(graph_, registry_)) {
             has_gpu_ops = false;
             has_audio = false;
             return {false, reason + " (and failed to rebuild previous graph)"};
         }
 
-        has_gpu_ops = scheduler_.has_gpu_operators();
+        has_gpu_ops = core_.has_gpu_operators();
         if (has_gpu_ops) needs_gpu_realloc_ = true;
 
         has_audio = false;
-        if (scheduler_.has_audio_operators()) {
-            if (audio_engine_.build(scheduler_.core())) {
+        if (core_.has_audio_operators()) {
+            if (audio_engine_.build(core_)) {
                 if (audio_engine_.start()) {
                     has_audio = true;
                 }
@@ -1453,20 +1455,20 @@ CommandResult RuntimeAPI::load_graph(const std::string& path,
         audio_engine_.shutdown();
         has_audio = false;
     }
-    scheduler_.shutdown();
+    core_.shutdown();
     registry_.clear_retired_package_loaders();
 
     if (!graph_.load(path.c_str())) {
         return restore_previous_state("failed to reload " + path);
     }
 
-    if (!scheduler_.build(graph_, registry_)) {
+    if (!core_.build(graph_, registry_)) {
         return restore_previous_state("rebuild failed after reload");
     }
 
     if (preserve_runtime_state) {
         // Restore saved params to rebuilt nodes.
-        auto* cg = scheduler_.compiled_graph();
+        auto* cg = core_.compiled_graph();
         for (auto& cn : cg->nodes) {
             auto sit = saved_params.find(cn.node_id);
             if (sit != saved_params.end()) {
@@ -1497,11 +1499,11 @@ CommandResult RuntimeAPI::load_graph(const std::string& path,
         }
     }
 
-    has_gpu_ops = scheduler_.has_gpu_operators();
+    has_gpu_ops = core_.has_gpu_operators();
     if (has_gpu_ops) needs_gpu_realloc_ = true;
 
-    if (scheduler_.has_audio_operators()) {
-        if (audio_engine_.build(scheduler_.core())) {
+    if (core_.has_audio_operators()) {
+        if (audio_engine_.build(core_)) {
             if (audio_engine_.start()) {
                 has_audio = true;
             }
@@ -1517,7 +1519,7 @@ CommandResult RuntimeAPI::load_graph(const std::string& path,
 
 CommandResult RuntimeAPI::new_graph(bool& has_gpu_ops, bool& has_audio) {
     if (has_audio) { audio_engine_.shutdown(); has_audio = false; }
-    scheduler_.shutdown();
+    core_.shutdown();
     registry_.clear_retired_package_loaders();
 
     auto read_file = [](const std::string& path, std::string& out) -> bool {
@@ -1559,16 +1561,16 @@ CommandResult RuntimeAPI::new_graph(bool& has_gpu_ops, bool& has_audio) {
         has_gpu_ops = false;
         return {false, "failed to load default graph template"};
     }
-    if (!scheduler_.build(graph_, registry_)) {
+    if (!core_.build(graph_, registry_)) {
         has_gpu_ops = false;
         return {false, "scheduler build failed for new graph"};
     }
 
-    has_gpu_ops = scheduler_.has_gpu_operators();
+    has_gpu_ops = core_.has_gpu_operators();
     if (has_gpu_ops) needs_gpu_realloc_ = true;
 
-    if (scheduler_.has_audio_operators()) {
-        if (audio_engine_.build(scheduler_.core()) && audio_engine_.start())
+    if (core_.has_audio_operators()) {
+        if (audio_engine_.build(core_) && audio_engine_.start())
             has_audio = true;
     }
 
@@ -1625,18 +1627,18 @@ CommandResult RuntimeAPI::apply_snapshot_json(const std::string& graph_json,
             return {false, reason + " (and failed to restore previous graph)"};
         }
 
-        if (!scheduler_.build(graph_, registry_)) {
+        if (!core_.build(graph_, registry_)) {
             has_gpu_ops = false;
             has_audio = false;
             return {false, reason + " (and failed to rebuild previous graph)"};
         }
 
-        has_gpu_ops = scheduler_.has_gpu_operators();
+        has_gpu_ops = core_.has_gpu_operators();
         if (has_gpu_ops) needs_gpu_realloc_ = true;
 
         has_audio = false;
-        if (scheduler_.has_audio_operators()) {
-            if (audio_engine_.build(scheduler_.core())) {
+        if (core_.has_audio_operators()) {
+            if (audio_engine_.build(core_)) {
                 if (audio_engine_.start()) {
                     has_audio = true;
                 }
@@ -1653,7 +1655,7 @@ CommandResult RuntimeAPI::apply_snapshot_json(const std::string& graph_json,
         audio_engine_.shutdown();
         has_audio = false;
     }
-    scheduler_.shutdown();
+    core_.shutdown();
     registry_.clear_retired_package_loaders();
 
     // Preserve source_path so normal save/reload still target the same graph file.
@@ -1661,15 +1663,15 @@ CommandResult RuntimeAPI::apply_snapshot_json(const std::string& graph_json,
         return restore_previous_state("failed to load graph snapshot JSON");
     }
 
-    if (!scheduler_.build(graph_, registry_)) {
+    if (!core_.build(graph_, registry_)) {
         return restore_previous_state("rebuild failed after snapshot load");
     }
 
-    has_gpu_ops = scheduler_.has_gpu_operators();
+    has_gpu_ops = core_.has_gpu_operators();
     if (has_gpu_ops) needs_gpu_realloc_ = true;
 
-    if (scheduler_.has_audio_operators()) {
-        if (audio_engine_.build(scheduler_.core())) {
+    if (core_.has_audio_operators()) {
+        if (audio_engine_.build(core_)) {
             if (audio_engine_.start()) {
                 has_audio = true;
             }

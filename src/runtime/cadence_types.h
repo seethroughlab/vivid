@@ -4,6 +4,12 @@
 
 namespace vivid {
 
+// Runtime execution rate of a node.
+enum class Cadence : uint8_t {
+    Frame = 0,   // ~60 Hz, main thread (control + GPU)
+    Audio = 1,   // ~48 kHz, audio thread
+};
+
 // Per-node cadence override (stored in NodeDef, serialized as integer 0/1/2).
 enum class CadenceOverride : uint8_t {
     Auto  = 0,  // runtime decides (default)

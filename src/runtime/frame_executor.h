@@ -17,8 +17,8 @@ using PostNodeFn = std::function<void(uint32_t node_idx, const std::string& node
 // ---------------------------------------------------------------------------
 // FrameExecutor — processes frame-rate and GPU nodes.
 //
-// Replaces Scheduler::tick().  Operates on a CompiledGraph, iterating
-// frame_order and propagating values via frame_direct_edges.
+// Operates on a CompiledGraph, iterating frame_order and propagating
+// values via frame_direct_edges.
 // ---------------------------------------------------------------------------
 
 class FrameExecutor {

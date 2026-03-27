@@ -9,7 +9,7 @@
 #include "runtime/cadence_bridge.h"
 #include "runtime/compiled_graph.h"
 #include "runtime/graph.h"
-#include "runtime/scheduler.h"
+#include "runtime/runtime_core.h"
 #include "runtime/operator_registry.h"
 #include <cstdio>
 #include <cmath>
@@ -299,38 +299,40 @@ static void test_signal_auto_extraction() {
     vivid::CompiledNode cn;
     cn.output_port_count = 1;
     cn.output_port_types.push_back(VIVID_PORT_SIGNAL);
-    cn.audio_buffers_out.resize(1, std::vector<float>(256, 0.0f));
-    cn.float_output_count = 1;
-    cn.float_output_values.resize(1, 0.0f);
-    cn.signal_output_extractions.push_back({0, 0}); // port_idx=0, float_ordinal=0
+    cn.audio = std::make_unique<vivid::AudioNodeState>();
+    auto& a = *cn.audio;
+    a.buffers_out.resize(1, std::vector<float>(256, 0.0f));
+    a.float_output_count = 1;
+    a.float_output_values.resize(1, 0.0f);
+    a.signal_output_extractions.push_back({0, 0}); // port_idx=0, float_ordinal=0
 
     // Fill output buffer with known pattern
     for (uint32_t i = 0; i < 256; ++i)
-        cn.audio_buffers_out[0][i] = static_cast<float>(i) / 255.0f;
+        a.buffers_out[0][i] = static_cast<float>(i) / 255.0f;
 
     // Simulate auto-extraction (same code as audio_callback)
     uint32_t chunk = 256;
-    for (const auto& se : cn.signal_output_extractions) {
-        if (se.port_idx < cn.audio_buffers_out.size() && chunk > 0) {
-            cn.float_output_values[se.float_ordinal] =
-                cn.audio_buffers_out[se.port_idx][chunk - 1];
+    for (const auto& se : a.signal_output_extractions) {
+        if (se.port_idx < a.buffers_out.size() && chunk > 0) {
+            a.float_output_values[se.float_ordinal] =
+                a.buffers_out[se.port_idx][chunk - 1];
         }
     }
 
     // Last sample should be 255/255 = 1.0
-    check_float(cn.float_output_values[0], 1.0f, 0.001f,
+    check_float(a.float_output_values[0], 1.0f, 0.001f,
                 "auto-extracted last sample = 1.0");
 
     // Scalar-written outputs must survive the same extraction pass unchanged.
-    cn.float_output_values[0] = 0.37f;
-    for (const auto& se : cn.signal_output_extractions) {
-        if (se.port_idx < cn.audio_buffers_out.size() && chunk > 0 &&
-            std::isnan(cn.float_output_values[se.float_ordinal])) {
-            cn.float_output_values[se.float_ordinal] =
-                cn.audio_buffers_out[se.port_idx][chunk - 1];
+    a.float_output_values[0] = 0.37f;
+    for (const auto& se : a.signal_output_extractions) {
+        if (se.port_idx < a.buffers_out.size() && chunk > 0 &&
+            std::isnan(a.float_output_values[se.float_ordinal])) {
+            a.float_output_values[se.float_ordinal] =
+                a.buffers_out[se.port_idx][chunk - 1];
         }
     }
-    check_float(cn.float_output_values[0], 0.37f, 0.001f,
+    check_float(a.float_output_values[0], 0.37f, 0.001f,
                 "scalar-written signal output preserved");
 }
 
@@ -374,11 +376,11 @@ static void test_audio_engine_integration(const std::string& build_dir) {
     graph.add_node("ctrl", "TestOp", {{"scale", 1.0f}});
     graph.add_connection("lfo", "value", "cv_dest", "cv");
 
-    vivid::Scheduler scheduler;
+    vivid::RuntimeCore scheduler;
     check(scheduler.build(graph, registry), "scheduler.build()");
 
     vivid::AudioEngine audio_engine;
-    check(audio_engine.build(scheduler.core()), "audio_engine.build()");
+    check(audio_engine.build(scheduler), "audio_engine.build()");
 
     // --- Test 5: LFO SIGNAL → AudioFloatCvOp SIGNAL input ---
     // LFO writes a per-sample buffer. The wire should deliver the last sample

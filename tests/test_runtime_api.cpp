@@ -1,6 +1,6 @@
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
-#include "runtime/scheduler.h"
+#include "runtime/runtime_core.h"
 #include "runtime/compiled_graph.h"
 #include "runtime/audio_engine.h"
 #include "runtime/runtime_api.h"
@@ -56,7 +56,7 @@ int main(int argc, char* argv[]) {
     vivid::Graph graph;
     check(graph.load(graph_path.c_str()), "graph.load()");
 
-    vivid::Scheduler scheduler;
+    vivid::RuntimeCore scheduler;
     check(scheduler.build(graph, registry), "scheduler.build()");
 
     vivid::AudioEngine audio_engine;
@@ -241,8 +241,10 @@ int main(int argc, char* argv[]) {
         auto* cn = scheduler.compiled_graph()->find_node("a");
         check(cn != nullptr, "CompiledNode a exists");
         if (cn) {
-            check(cn->gpu_tex_width == 1920, "CompiledNode gpu_tex_width = 1920");
-            check(cn->gpu_tex_height == 1080, "CompiledNode gpu_tex_height = 1080");
+            // TestOp is not a GPU operator, so gpu sub-struct is not present.
+            // The resolution is stored on the NodeDef (verified above) and will
+            // take effect when the graph is recompiled with a GPU node.
+            check(!cn->gpu, "non-GPU node has no gpu state");
         }
         check(api.needs_gpu_realloc(), "needs_gpu_realloc set");
     }
@@ -308,7 +310,7 @@ int main(int argc, char* argv[]) {
         // Create auxiliary objects loaded from that file (sets source_path_)
         vivid::Graph g2;
         check(g2.load(tmp_path.c_str()), "save test: load graph");
-        vivid::Scheduler s2;
+        vivid::RuntimeCore s2;
         check(s2.build(g2, registry), "save test: build scheduler");
         vivid::AudioEngine ae2;
         vivid::RuntimeAPI api2(g2, s2, ae2, registry);
@@ -341,7 +343,7 @@ int main(int argc, char* argv[]) {
     {
         vivid::Graph g_empty;
         g_empty.add_node("x", "TestOp");
-        vivid::Scheduler s_empty;
+        vivid::RuntimeCore s_empty;
         vivid::AudioEngine ae_empty;
         vivid::RuntimeAPI api_empty(g_empty, s_empty, ae_empty, registry);
         auto r = api_empty.save();
@@ -356,7 +358,7 @@ int main(int argc, char* argv[]) {
 
         vivid::Graph g2;
         check(g2.load(tmp_path.c_str()), "reload test: load graph");
-        vivid::Scheduler s2;
+        vivid::RuntimeCore s2;
         check(s2.build(g2, registry), "reload test: build scheduler");
         vivid::AudioEngine ae2;
         vivid::RuntimeAPI api2(g2, s2, ae2, registry);
@@ -379,7 +381,7 @@ int main(int argc, char* argv[]) {
     // --- Test reload() no source_path ---
     {
         vivid::Graph g_empty;
-        vivid::Scheduler s_empty;
+        vivid::RuntimeCore s_empty;
         vivid::AudioEngine ae_empty;
         vivid::RuntimeAPI api_empty(g_empty, s_empty, ae_empty, registry);
         bool hgpu = false, haudio = false;
@@ -461,7 +463,7 @@ int main(int argc, char* argv[]) {
 
         vivid::Graph g_switch;
         check(g_switch.load(graph_a_path.c_str()), "switch regression: load graph A");
-        vivid::Scheduler s_switch;
+        vivid::RuntimeCore s_switch;
         check(s_switch.build(g_switch, registry), "switch regression: build graph A");
         vivid::AudioEngine ae_switch;
         vivid::RuntimeAPI api_switch(g_switch, s_switch, ae_switch, registry);
@@ -559,7 +561,7 @@ int main(int argc, char* argv[]) {
     {
         vivid::Graph g_dirty;
         check(g_dirty.add_node("a", "TestOp"), "undo-style snapshot regression: add node a");
-        vivid::Scheduler s_dirty;
+        vivid::RuntimeCore s_dirty;
         check(s_dirty.build(g_dirty, registry), "undo-style snapshot regression: build scheduler");
         vivid::AudioEngine ae_dirty;
         vivid::RuntimeAPI api_dirty(g_dirty, s_dirty, ae_dirty, registry);
@@ -597,7 +599,7 @@ int main(int argc, char* argv[]) {
 
         vivid::Graph g_saved;
         check(g_saved.add_node("a", "TestOp"), "snapshot source_path regression: add node a");
-        vivid::Scheduler s_saved;
+        vivid::RuntimeCore s_saved;
         check(s_saved.build(g_saved, registry), "snapshot source_path regression: build saved scheduler");
         vivid::AudioEngine ae_saved;
         vivid::RuntimeAPI api_saved(g_saved, s_saved, ae_saved, registry);
@@ -622,7 +624,7 @@ int main(int argc, char* argv[]) {
 
         vivid::Graph g_unsaved;
         check(g_unsaved.add_node("a", "TestOp"), "snapshot source_path regression: add node a to unsaved graph");
-        vivid::Scheduler s_unsaved;
+        vivid::RuntimeCore s_unsaved;
         check(s_unsaved.build(g_unsaved, registry), "snapshot source_path regression: build unsaved scheduler");
         vivid::AudioEngine ae_unsaved;
         vivid::RuntimeAPI api_unsaved(g_unsaved, s_unsaved, ae_unsaved, registry);
@@ -657,7 +659,7 @@ int main(int argc, char* argv[]) {
 
         vivid::Graph g2;
         g2.add_node("a", "TestOp");
-        vivid::Scheduler s2;
+        vivid::RuntimeCore s2;
         s2.build(g2, registry);
         vivid::AudioEngine ae2;
         vivid::RuntimeAPI api2(g2, s2, ae2, registry);
@@ -690,7 +692,7 @@ int main(int argc, char* argv[]) {
 
         vivid::Graph g2;
         g2.add_node("a", "TestOp");
-        vivid::Scheduler s2;
+        vivid::RuntimeCore s2;
         s2.build(g2, registry);
         vivid::AudioEngine ae2;
         vivid::RuntimeAPI api2(g2, s2, ae2, registry);

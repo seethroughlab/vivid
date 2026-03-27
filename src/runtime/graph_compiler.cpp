@@ -24,8 +24,7 @@ static float remap_to_scale(const ConnectionDef& c) {
 // ---------------------------------------------------------------------------
 
 // Initialize the frame-side state on a CompiledNode (ports, params, spreads,
-// strings, custom ports, file params, GPU resources).  This corresponds to
-// the logic formerly in Scheduler::init_node_state().
+// strings, custom ports, file params, GPU resources).
 void GraphCompiler::init_frame_state(CompiledNode& cn,
                                      const VividOperatorDescriptor* desc,
                                      const std::unordered_map<std::string, float>* param_overrides,
@@ -78,13 +77,14 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
 
     // Execution flags
     cn.time_dependent = desc->time_dependent != 0;
-    cn.is_gpu = (desc->execution_env == VIVID_ENV_GPU);
+    bool node_is_gpu = (desc->execution_env == VIVID_ENV_GPU);
 
     // Implicit analysis ports for audio-cadence nodes
     if (cn.active_cadence == Cadence::Audio) {
-        cn.analysis_output_port_indices["rms"]      = cn.output_port_count++;
-        cn.analysis_output_port_indices["peak"]     = cn.output_port_count++;
-        cn.analysis_output_port_indices["waveform"] = cn.output_port_count++;
+        // audio sub-struct must already be allocated
+        cn.audio->analysis_output_port_indices["rms"]      = cn.output_port_count++;
+        cn.audio->analysis_output_port_indices["peak"]     = cn.output_port_count++;
+        cn.audio->analysis_output_port_indices["waveform"] = cn.output_port_count++;
         cn.output_values.resize(cn.output_port_count, 0.0f);
         cn.output_spreads.resize(cn.output_port_count);
     }
@@ -146,24 +146,31 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
         cn.file_param_ptrs[i] = cn.file_param_storage[i].c_str();
 
     // Identify special port indices
-    cn.texture_input_port_indices.clear();
     cn.custom_input_port_indices.clear();
     cn.custom_output_port_indices.clear();
     cn.string_input_port_indices.clear();
     cn.string_spread_input_port_indices.clear();
-    cn.is_gpu_sink = false;
-    cn.has_texture_output = false;
     cn.has_string_output = false;
     cn.has_string_spread_output = false;
-    cn.aux_texture_output_port_indices.clear();
-    cn.aux_gpu_textures.clear();
-    cn.aux_gpu_texture_views.clear();
+
+    // GPU-specific port scanning
+    if (node_is_gpu) {
+        if (!cn.gpu) cn.gpu = std::make_unique<GpuNodeState>();
+        cn.gpu->texture_input_port_indices.clear();
+        cn.gpu->is_sink = false;
+        cn.gpu->has_texture_output = false;
+        cn.gpu->aux_texture_output_port_indices.clear();
+        cn.gpu->aux_gpu_textures.clear();
+        cn.gpu->aux_gpu_texture_views.clear();
+    }
+
     uint32_t input_idx = 0, out_idx = 0, gpu_tex_out_count = 0;
     for (uint32_t i = 0; i < desc->port_count; ++i) {
         if (desc->ports[i].direction == VIVID_PORT_INPUT) {
             switch (desc->ports[i].type) {
                 case VIVID_PORT_TEXTURE:
-                    cn.texture_input_port_indices.push_back(input_idx); break;
+                    if (cn.gpu) cn.gpu->texture_input_port_indices.push_back(input_idx);
+                    break;
                 case VIVID_PORT_STRING:
                     cn.string_input_port_indices.push_back(input_idx); break;
                 case VIVID_PORT_STRING_SPREAD:
@@ -177,13 +184,15 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
         } else {
             switch (desc->ports[i].type) {
                 case VIVID_PORT_TEXTURE:
-                    cn.has_texture_output = true;
-                    if (gpu_tex_out_count > 0) {
-                        cn.aux_texture_output_port_indices.push_back(static_cast<int32_t>(out_idx));
-                        cn.aux_gpu_textures.push_back(nullptr);
-                        cn.aux_gpu_texture_views.push_back(nullptr);
+                    if (cn.gpu) {
+                        cn.gpu->has_texture_output = true;
+                        if (gpu_tex_out_count > 0) {
+                            cn.gpu->aux_texture_output_port_indices.push_back(static_cast<int32_t>(out_idx));
+                            cn.gpu->aux_gpu_textures.push_back(nullptr);
+                            cn.gpu->aux_gpu_texture_views.push_back(nullptr);
+                        }
+                        ++gpu_tex_out_count;
                     }
-                    ++gpu_tex_out_count;
                     break;
                 case VIVID_PORT_STRING:
                     cn.has_string_output = true; break;
@@ -197,10 +206,10 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
             out_idx++;
         }
     }
-    if (cn.is_gpu) {
-        cn.is_gpu_sink = !cn.texture_input_port_indices.empty()
-                      && !cn.has_texture_output
-                      && cn.custom_output_port_indices.empty();
+    if (cn.gpu) {
+        cn.gpu->is_sink = !cn.gpu->texture_input_port_indices.empty()
+                       && !cn.gpu->has_texture_output
+                       && cn.custom_output_port_indices.empty();
     }
 
     cn.custom_output_buf.assign(cn.custom_output_port_indices.size(), nullptr);
@@ -209,86 +218,88 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
 }
 
 // Initialize audio-specific state on a CompiledNode that has Cadence::Audio.
-// Formerly in AudioEngine::init_audio_node_state().
 void GraphCompiler::init_audio_state(CompiledNode& cn,
                                      const VividOperatorDescriptor* desc,
                                      uint32_t buffer_size) {
+    // cn.audio must already be allocated by the caller
+    auto& a = *cn.audio;
+
     // Channel descriptors
-    cn.descriptor_input_channels.clear();
-    cn.descriptor_output_channels.clear();
-    cn.has_spread_ports = false;
-    cn.has_string_input_ports = false;
-    cn.has_custom_input_ports = false;
-    cn.has_custom_output_ports_audio = false;
+    a.descriptor_input_channels.clear();
+    a.descriptor_output_channels.clear();
+    a.has_spread_ports = false;
+    a.has_string_input_ports = false;
+    a.has_custom_input_ports = false;
+    a.has_custom_output_ports = false;
 
     for (uint32_t i = 0; i < desc->port_count; ++i) {
         if (desc->ports[i].direction == VIVID_PORT_INPUT) {
-            cn.descriptor_input_channels.push_back(desc->ports[i].channels);
+            a.descriptor_input_channels.push_back(desc->ports[i].channels);
             if (desc->ports[i].type == VIVID_PORT_SPREAD)
-                cn.has_spread_ports = true;
+                a.has_spread_ports = true;
             if (desc->ports[i].type == VIVID_PORT_STRING)
-                cn.has_string_input_ports = true;
+                a.has_string_input_ports = true;
             if (vivid_is_custom_port_type(desc->ports[i].type))
-                cn.has_custom_input_ports = true;
+                a.has_custom_input_ports = true;
         } else {
-            cn.descriptor_output_channels.push_back(desc->ports[i].channels);
+            a.descriptor_output_channels.push_back(desc->ports[i].channels);
             if (vivid_is_custom_port_type(desc->ports[i].type))
-                cn.has_custom_output_ports_audio = true;
+                a.has_custom_output_ports = true;
         }
     }
 
     // Channel counts default to 1; channel negotiation (Pass 4) will override
-    cn.input_channel_counts.assign(cn.input_port_count, 1);
-    cn.output_channel_counts.assign(cn.output_port_count, 1);
-    cn.is_mono_autodup = false;
+    a.input_channel_counts.assign(cn.input_port_count, 1);
+    a.output_channel_counts.assign(cn.output_port_count, 1);
+    a.is_mono_autodup = false;
 
     // Audio buffers (will be resized during channel negotiation)
-    cn.audio_buffers_in.resize(cn.input_port_count,
+    a.buffers_in.resize(cn.input_port_count,
                                std::vector<float>(buffer_size, 0.0f));
-    cn.audio_buffers_out.resize(cn.output_port_count,
+    a.buffers_out.resize(cn.output_port_count,
                                 std::vector<float>(buffer_size, 0.0f));
-    cn.audio_in_ptrs.resize(cn.input_port_count);
-    cn.audio_out_ptrs.resize(cn.output_port_count);
+    a.in_ptrs.resize(cn.input_port_count);
+    a.out_ptrs.resize(cn.output_port_count);
 
     // Float CV inputs (from descriptor defaults for SIGNAL input ports)
-    cn.float_input_defaults.clear();
-    cn.float_input_count = 0;
+    a.float_input_defaults.clear();
+    a.float_input_count = 0;
     for (uint32_t i = 0; i < desc->port_count; ++i) {
         if (desc->ports[i].direction == VIVID_PORT_INPUT &&
             desc->ports[i].type == VIVID_PORT_SIGNAL) {
-            cn.float_input_defaults.push_back(desc->ports[i].default_value);
-            cn.float_input_count++;
+            a.float_input_defaults.push_back(desc->ports[i].default_value);
+            a.float_input_count++;
         }
     }
-    cn.float_input_values = cn.float_input_defaults;
+    a.float_input_values = a.float_input_defaults;
 
     // Float/SIGNAL outputs + auto-extraction mappings
-    cn.float_output_values.clear();
-    cn.float_output_count = 0;
-    cn.signal_output_extractions.clear();
+    a.float_output_values.clear();
+    a.float_output_count = 0;
+    a.signal_output_extractions.clear();
     {
         uint32_t oi = 0;
         for (uint32_t i = 0; i < desc->port_count; ++i) {
             if (desc->ports[i].direction == VIVID_PORT_OUTPUT) {
                 if (desc->ports[i].type == VIVID_PORT_SIGNAL) {
-                    cn.signal_output_extractions.push_back({oi, cn.float_output_count});
-                    cn.float_output_count++;
+                    a.signal_output_extractions.push_back({oi, a.float_output_count});
+                    a.float_output_count++;
                 }
                 oi++;
             }
         }
     }
-    cn.float_output_values.resize(cn.float_output_count, 0.0f);
+    a.float_output_values.resize(a.float_output_count, 0.0f);
 
     // Custom output ptrs
-    cn.custom_output_ptrs.clear();
-    cn.custom_output_count_audio = 0;
+    a.custom_output_ptrs.clear();
+    a.custom_output_count = 0;
     for (uint32_t i = 0; i < desc->port_count; ++i) {
         if (desc->ports[i].direction == VIVID_PORT_OUTPUT &&
             vivid_is_custom_port_type(desc->ports[i].type))
-            cn.custom_output_count_audio++;
+            a.custom_output_count++;
     }
-    cn.custom_output_ptrs.resize(cn.custom_output_count_audio, nullptr);
+    a.custom_output_ptrs.resize(a.custom_output_count, nullptr);
 }
 
 // ---------------------------------------------------------------------------
@@ -362,7 +373,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             // Fixed-env operators (GPU, audio-native) ignore overrides.
             if (desc->execution_env == VIVID_ENV_GPU || desc->has_process_gpu) {
                 cn.active_cadence = Cadence::Frame;
-                cn.is_gpu = true;
+                cn.gpu = std::make_unique<GpuNodeState>();
             } else if (desc->execution_env == VIVID_ENV_AUDIO ||
                        (desc->has_process_audio && !desc->has_process_frame)) {
                 cn.active_cadence = Cadence::Audio;
@@ -378,12 +389,19 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             }
             cn.cadence_capability = desc->cadence_capability;
 
-            // Initialize frame-side state (all nodes get this)
+            // Allocate audio sub-struct before init_frame_state (which uses it
+            // for analysis port indices), but defer full audio init until after
+            // init_frame_state sets up port counts.
+            if (cn.active_cadence == Cadence::Audio) {
+                cn.audio = std::make_unique<AudioNodeState>();
+            }
+
+            // Initialize frame-side state (all nodes get this — sets port counts)
             init_frame_state(cn, desc, &ndef.params,
                              ndef.string_params.empty() ? nullptr : &ndef.string_params,
                              graph_base_dir);
 
-            // Initialize audio-specific state (audio-cadence nodes only)
+            // Initialize audio-specific state (after frame state sets port counts)
             if (cn.active_cadence == Cadence::Audio) {
                 init_audio_state(cn, desc, options.audio_buffer_size);
             }
@@ -396,19 +414,16 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             }
 
             // Per-node GPU texture resolution
-            if (cn.is_gpu) {
-                cn.gpu_tex_width  = ndef.tex_width;
-                cn.gpu_tex_height = ndef.tex_height;
+            if (cn.gpu) {
+                cn.gpu->tex_width  = ndef.tex_width;
+                cn.gpu->tex_height = ndef.tex_height;
             }
         } else {
             // Missing operator placeholder
             cn.missing_operator = true;
             cn.instance = nullptr;
             cn.time_dependent = false;
-            cn.is_gpu = false;
             cn.active_cadence = Cadence::Frame;
-            cn.is_gpu_sink = false;
-            cn.has_texture_output = false;
 
             const auto& in_names = incoming_ports[ndef.id];
             const auto& out_names = outgoing_ports[ndef.id];
@@ -711,10 +726,11 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
 
     // Build frame_order and audio_order from sorted nodes
     for (uint32_t i = 0; i < n; ++i) {
-        if (cg->nodes[i].active_cadence == Cadence::Audio)
+        if (cg->nodes[i].active_cadence == Cadence::Audio) {
             cg->audio_order.push_back(i);
-        else
+        } else {
             cg->frame_order.push_back(i);
+        }
     }
 
     // ===================================================================
@@ -724,34 +740,35 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
 
     // Pass 4a: Set explicit channel counts from descriptors
     for (uint32_t idx : cg->audio_order) {
-        auto& cn = cg->nodes[idx];
-        for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-            if (p < cn.descriptor_input_channels.size() &&
-                cn.descriptor_input_channels[p] > 0)
-                cn.input_channel_counts[p] = cn.descriptor_input_channels[p];
+        auto& a = *cg->nodes[idx].audio;
+        for (uint32_t p = 0; p < cg->nodes[idx].input_port_count; ++p) {
+            if (p < a.descriptor_input_channels.size() &&
+                a.descriptor_input_channels[p] > 0)
+                a.input_channel_counts[p] = a.descriptor_input_channels[p];
         }
-        for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-            if (p < cn.descriptor_output_channels.size() &&
-                cn.descriptor_output_channels[p] > 0)
-                cn.output_channel_counts[p] = cn.descriptor_output_channels[p];
+        for (uint32_t p = 0; p < cg->nodes[idx].output_port_count; ++p) {
+            if (p < a.descriptor_output_channels.size() &&
+                a.descriptor_output_channels[p] > 0)
+                a.output_channel_counts[p] = a.descriptor_output_channels[p];
         }
     }
 
     // Pass 4b: Propagate via audio Direct edges in topo order
     for (uint32_t idx : cg->audio_order) {
         auto& cn = cg->nodes[idx];
+        auto& a = *cn.audio;
         // Auto outputs inherit max of inputs
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-            if (p < cn.descriptor_output_channels.size() &&
-                cn.descriptor_output_channels[p] == 0 &&
+            if (p < a.descriptor_output_channels.size() &&
+                a.descriptor_output_channels[p] == 0 &&
                 p < cn.output_port_types.size() &&
                 cn.output_port_types[p] == VIVID_PORT_AUDIO) {
                 uint8_t max_in = 1;
                 for (uint32_t ip = 0; ip < cn.input_port_count; ++ip) {
-                    if (cn.input_channel_counts[ip] > max_in)
-                        max_in = cn.input_channel_counts[ip];
+                    if (a.input_channel_counts[ip] > max_in)
+                        max_in = a.input_channel_counts[ip];
                 }
-                cn.output_channel_counts[p] = max_in;
+                a.output_channel_counts[p] = max_in;
             }
         }
         // Propagate to downstream via edges
@@ -759,15 +776,15 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             if (e.from_node == idx && e.transport == EdgeTransport::Direct &&
                 cg->nodes[e.to_node].active_cadence == Cadence::Audio &&
                 !e.targets_param) {
-                auto& to_cn = cg->nodes[e.to_node];
+                auto& to_a = *cg->nodes[e.to_node].audio;
                 uint8_t src_ch = 1;
-                if (e.from_port < cn.output_channel_counts.size())
-                    src_ch = cn.output_channel_counts[e.from_port];
-                if (e.to_port < to_cn.input_channel_counts.size() &&
-                    e.to_port < to_cn.descriptor_input_channels.size() &&
-                    to_cn.descriptor_input_channels[e.to_port] == 0 &&
-                    src_ch > to_cn.input_channel_counts[e.to_port]) {
-                    to_cn.input_channel_counts[e.to_port] = src_ch;
+                if (e.from_port < a.output_channel_counts.size())
+                    src_ch = a.output_channel_counts[e.from_port];
+                if (e.to_port < to_a.input_channel_counts.size() &&
+                    e.to_port < to_a.descriptor_input_channels.size() &&
+                    to_a.descriptor_input_channels[e.to_port] == 0 &&
+                    src_ch > to_a.input_channel_counts[e.to_port]) {
+                    to_a.input_channel_counts[e.to_port] = src_ch;
                 }
             }
         }
@@ -775,18 +792,19 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
 
     // Pass 4c: Detect mono auto-dup candidates
     for (uint32_t idx : cg->audio_order) {
+        auto& a = *cg->nodes[idx].audio;
         auto& cn = cg->nodes[idx];
         bool all_mono = true;
         for (uint32_t p = 0; p < cn.input_port_count && all_mono; ++p) {
-            if (p < cn.descriptor_input_channels.size() &&
+            if (p < a.descriptor_input_channels.size() &&
                 cn.input_port_types[p] == VIVID_PORT_AUDIO &&
-                cn.descriptor_input_channels[p] > 1)
+                a.descriptor_input_channels[p] > 1)
                 all_mono = false;
         }
         for (uint32_t p = 0; p < cn.output_port_count && all_mono; ++p) {
-            if (p < cn.descriptor_output_channels.size() &&
+            if (p < a.descriptor_output_channels.size() &&
                 cn.output_port_types[p] == VIVID_PORT_AUDIO &&
-                cn.descriptor_output_channels[p] > 1)
+                a.descriptor_output_channels[p] > 1)
                 all_mono = false;
         }
         if (!all_mono) continue;
@@ -796,15 +814,16 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             if (e.to_node == idx && e.transport == EdgeTransport::Direct &&
                 !e.targets_param) {
                 uint8_t src_ch = 1;
-                if (e.from_port < cg->nodes[e.from_node].output_channel_counts.size())
-                    src_ch = cg->nodes[e.from_node].output_channel_counts[e.from_port];
+                auto& from_a = cg->nodes[e.from_node].audio;
+                if (from_a && e.from_port < from_a->output_channel_counts.size())
+                    src_ch = from_a->output_channel_counts[e.from_port];
                 if (src_ch > max_wire_ch) max_wire_ch = src_ch;
             }
         }
         if (max_wire_ch > 1) {
-            cn.is_mono_autodup = true;
-            for (auto& ch : cn.input_channel_counts) ch = 1;
-            for (auto& ch : cn.output_channel_counts) ch = 1;
+            a.is_mono_autodup = true;
+            for (auto& ch : a.input_channel_counts) ch = 1;
+            for (auto& ch : a.output_channel_counts) ch = 1;
         }
     }
 
@@ -814,35 +833,37 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
 
     for (uint32_t idx : cg->audio_order) {
         auto& cn = cg->nodes[idx];
+        auto& a = *cn.audio;
         uint32_t bs = options.audio_buffer_size;
 
-        if (cn.is_mono_autodup) {
+        if (a.is_mono_autodup) {
             // Find max incoming wire channel count for buffer sizing
             uint8_t wire_ch = 1;
             for (const auto& e : cg->edges) {
                 if (e.to_node == idx && e.transport == EdgeTransport::Direct && !e.targets_param) {
                     uint8_t src_ch = 1;
-                    if (e.from_port < cg->nodes[e.from_node].output_channel_counts.size())
-                        src_ch = cg->nodes[e.from_node].output_channel_counts[e.from_port];
+                    auto& from_a = cg->nodes[e.from_node].audio;
+                    if (from_a && e.from_port < from_a->output_channel_counts.size())
+                        src_ch = from_a->output_channel_counts[e.from_port];
                     if (src_ch > wire_ch) wire_ch = src_ch;
                 }
             }
             for (uint32_t p = 0; p < cn.input_port_count; ++p)
-                cn.audio_buffers_in[p].resize(wire_ch * bs, 0.0f);
+                a.buffers_in[p].resize(wire_ch * bs, 0.0f);
             for (uint32_t p = 0; p < cn.output_port_count; ++p)
-                cn.audio_buffers_out[p].resize(wire_ch * bs, 0.0f);
+                a.buffers_out[p].resize(wire_ch * bs, 0.0f);
         } else {
             for (uint32_t p = 0; p < cn.input_port_count; ++p)
-                cn.audio_buffers_in[p].resize(cn.input_channel_counts[p] * bs, 0.0f);
+                a.buffers_in[p].resize(a.input_channel_counts[p] * bs, 0.0f);
             for (uint32_t p = 0; p < cn.output_port_count; ++p)
-                cn.audio_buffers_out[p].resize(cn.output_channel_counts[p] * bs, 0.0f);
+                a.buffers_out[p].resize(a.output_channel_counts[p] * bs, 0.0f);
         }
 
         // Set audio buffer pointers
         for (uint32_t p = 0; p < cn.input_port_count; ++p)
-            cn.audio_in_ptrs[p] = cn.audio_buffers_in[p].data();
+            a.in_ptrs[p] = a.buffers_in[p].data();
         for (uint32_t p = 0; p < cn.output_port_count; ++p)
-            cn.audio_out_ptrs[p] = cn.audio_buffers_out[p].data();
+            a.out_ptrs[p] = a.buffers_out[p].data();
     }
 
     // Set from_channels/to_channels on audio Direct edges
@@ -851,29 +872,30 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         if (cg->nodes[e.from_node].active_cadence != Cadence::Audio) continue;
         if (e.targets_param) continue;
 
-        auto& from_cn = cg->nodes[e.from_node];
+        auto& from_a = *cg->nodes[e.from_node].audio;
         auto& to_cn = cg->nodes[e.to_node];
 
-        if (from_cn.is_mono_autodup) {
+        if (from_a.is_mono_autodup) {
             // Trace back to find upstream channel count
             uint8_t ch = 1;
             for (const auto& ue : cg->edges) {
                 if (ue.to_node == e.from_node && ue.transport == EdgeTransport::Direct && !ue.targets_param) {
                     uint8_t src_ch = 1;
-                    if (ue.from_port < cg->nodes[ue.from_node].output_channel_counts.size())
-                        src_ch = cg->nodes[ue.from_node].output_channel_counts[ue.from_port];
+                    auto& ue_from_a = cg->nodes[ue.from_node].audio;
+                    if (ue_from_a && ue.from_port < ue_from_a->output_channel_counts.size())
+                        src_ch = ue_from_a->output_channel_counts[ue.from_port];
                     if (src_ch > ch) ch = src_ch;
                 }
             }
             e.from_channels = ch;
-        } else if (e.from_port < from_cn.output_channel_counts.size()) {
-            e.from_channels = from_cn.output_channel_counts[e.from_port];
+        } else if (e.from_port < from_a.output_channel_counts.size()) {
+            e.from_channels = from_a.output_channel_counts[e.from_port];
         }
 
-        if (to_cn.is_mono_autodup) {
+        if (to_cn.audio && to_cn.audio->is_mono_autodup) {
             e.to_channels = e.from_channels;  // auto-dup matches source
-        } else if (e.to_port < to_cn.input_channel_counts.size()) {
-            e.to_channels = to_cn.input_channel_counts[e.to_port];
+        } else if (to_cn.audio && e.to_port < to_cn.audio->input_channel_counts.size()) {
+            e.to_channels = to_cn.audio->input_channel_counts[e.to_port];
         }
     }
 

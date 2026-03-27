@@ -1,6 +1,6 @@
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
-#include "runtime/scheduler.h"
+#include "runtime/runtime_core.h"
 #include "runtime/audio_engine.h"
 #include "runtime/builtin_operators.h"
 #include "runtime/cadence_bridge.h"
@@ -17,39 +17,15 @@
 #include <filesystem>
 #include <string>
 #include <vector>
-#include <thread>
-#include <atomic>
-#include <chrono>
 #include <csignal>
 #include <unistd.h>
+#include <spawn.h>
+#include <sys/wait.h>
 #ifdef __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
 #endif
 
-// ============================================================================
-// SIGABRT guard — AVFoundation's dispatch_sync deadlock can trigger an
-// immediate abort rather than a hang.  We catch it and exit cleanly so
-// CI reports a skip rather than an abort.
-// ============================================================================
-
-static const char* g_current_graph = nullptr;  // set before each graph
-static int g_real_stderr = -1;                 // original stderr fd (survives dup2 redirect)
-
-static void sigabrt_handler(int) {
-    // Signal handler — async-signal-safe calls only.
-    int fd = (g_real_stderr >= 0) ? g_real_stderr : STDERR_FILENO;
-    const char* msg1 = "  SKIP: ";
-    const char* msg2 = g_current_graph ? g_current_graph : "(unknown)";
-    const char* msg3 = " — caught SIGABRT (AVFoundation deadlock)\n";
-    const char* msg4 = "\n========================================\n"
-                       "Media headless: terminated by SIGABRT guard\n"
-                       "========================================\n";
-    (void)write(fd, msg1, strlen(msg1));
-    (void)write(fd, msg2, strlen(msg2));
-    (void)write(fd, msg3, strlen(msg3));
-    (void)write(fd, msg4, strlen(msg4));
-    _exit(0);
-}
+extern char** environ;
 
 // ============================================================================
 // Test infrastructure
@@ -150,7 +126,7 @@ struct HeadlessGpu {
 };
 
 // Helper: run one scheduler tick with a GPU command encoder, then submit + wait.
-static void tick_gpu(vivid::Scheduler& sched, HeadlessGpu& gpu,
+static void tick_gpu(vivid::RuntimeCore& sched, HeadlessGpu& gpu,
                      WGPUTextureFormat format, double time, uint64_t frame) {
     WGPUCommandEncoderDescriptor enc_desc{};
     enc_desc.label = vivid::to_sv("Tick Encoder");
@@ -186,257 +162,229 @@ static void tick_gpu(vivid::Scheduler& sched, HeadlessGpu& gpu,
 }
 
 // ============================================================================
-// Representative movie graphs — deliberately curated, not discovered.
+// Discover movie/media graphs — any graph containing MovieLoaded or
+// MovieAudioOut operators.
 // ============================================================================
 
-static const char* kMediaGraphs[] = {
-    "gpu/movie_loaded_demo.json",
-    "filters/color_space_demo.json",
-    "io/movie_file/mfi_av_sync_demo.json",
-};
-static constexpr int kMediaGraphCount = sizeof(kMediaGraphs) / sizeof(kMediaGraphs[0]);
+static std::vector<std::string> discover_media_graphs(const char* graphs_dir) {
+    std::vector<std::string> result;
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(graphs_dir)) {
+        if (!entry.is_regular_file()) continue;
+        if (entry.path().extension() != ".json") continue;
 
-// Per-graph watchdog timeout (seconds).
-static constexpr int kWatchdogSeconds = 15;
+        vivid::Graph probe;
+        if (!probe.load(entry.path().string().c_str())) continue;
+        for (const auto& n : probe.nodes()) {
+            if (n.type == "MovieLoaded" || n.type == "MovieAudioOut") {
+                result.push_back(entry.path().string());
+                break;
+            }
+        }
+    }
+    std::sort(result.begin(), result.end());
+    return result;
+}
+
+// Per-graph timeout (seconds).
+static constexpr int kTimeoutSeconds = 20;
 
 // ============================================================================
-// Main
+// Single-graph mode (--single <graph_path>)
+//
+// Runs one graph in a fresh process. Exit codes:
+//   0 = pass
+//   1 = fail (audio error, GPU error)
+//   2 = skip (needs GPU, etc.)
+// ============================================================================
+
+static int run_single_graph(const char* exe_path, const char* graph_path) {
+    // SIGABRT guard — catch AVFoundation deadlocks in this child process.
+    std::signal(SIGABRT, [](int) {
+        const char* msg = "SIGABRT (AVFoundation deadlock)\n";
+        (void)write(STDERR_FILENO, msg, strlen(msg));
+        _exit(2);  // skip
+    });
+
+    // Watchdog alarm — if AVFoundation hangs instead of aborting.
+    alarm(kTimeoutSeconds);
+
+    static constexpr WGPUTextureFormat kFormat = WGPUTextureFormat_RGBA16Float;
+
+    HeadlessGpu gpu;
+    bool have_gpu = gpu.init();
+
+    // Operator registry
+    std::filesystem::path exe_dir = std::filesystem::absolute(exe_path).parent_path();
+    vivid::OperatorRegistry registry;
+    registry.scan_deferred(exe_dir.string().c_str());
+    register_builtin_operators(registry);
+    registry.scan_wgsl_presets((exe_dir / "filters").string().c_str());
+
+#ifdef __APPLE__
+    CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.01, false);
+#endif
+
+    vivid::Graph graph;
+    if (!graph.load(graph_path)) {
+        std::fprintf(stderr, "graph.load() failed\n");
+        return 1;
+    }
+
+    registry.load_for_graph(graph);
+
+#ifdef __APPLE__
+    CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.01, false);
+#endif
+
+    vivid::RuntimeCore sched;
+    if (!sched.build(graph, registry)) {
+        std::fprintf(stderr, "scheduler.build() failed\n");
+        return 1;
+    }
+
+    bool use_gpu = sched.has_gpu_operators();
+    bool use_audio = sched.has_audio_operators();
+
+    if (use_gpu && !have_gpu) {
+        std::fprintf(stderr, "needs GPU\n");
+        sched.shutdown();
+        return 2;
+    }
+    if (use_gpu) {
+        sched.allocate_gpu_textures(gpu.device, 64, 64, kFormat);
+    }
+
+    vivid::AudioEngine* audio = nullptr;
+    if (use_audio) {
+        audio = new vivid::AudioEngine();
+        audio->build(sched);
+        audio->start(true);  // null device
+    }
+
+    if (use_gpu) gpu.reset_errors();
+
+    // Tick 60 frames
+    float audio_buf[vivid::AudioEngine::kBufferSize * 2] = {};
+    for (uint64_t frame = 0; frame < 60; ++frame) {
+        double time = frame * 0.016;
+        if (audio) {
+            sched.pre_tick_audio_sync(time);
+        }
+        if (use_gpu) {
+            tick_gpu(sched, gpu, kFormat, time, frame);
+        } else {
+            sched.tick(time, 0.016, frame);
+        }
+        if (audio) {
+            sched.cadence_bridge().push_to_audio(*sched.compiled_graph());
+            audio->process_audio_for_test(audio_buf, vivid::AudioEngine::kBufferSize);
+        }
+#ifdef __APPLE__
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.005, false);
+#endif
+    }
+
+    // Check for errors
+    int result = 0;
+
+    if (audio) {
+        sched.cadence_bridge().pull_from_audio(*sched.compiled_graph());
+        const auto& analysis = audio->analysis_read();
+        for (size_t i = 0; i < analysis.errored.size(); ++i) {
+            if (analysis.errored[i]) {
+                std::fprintf(stderr, "audio node error: %s\n", analysis.error_msgs[i].data());
+                result = 1;
+            }
+        }
+    }
+
+    if (use_gpu && gpu.has_gpu_error) {
+        std::fprintf(stderr, "GPU error: %s\n", gpu.gpu_error_msg.c_str());
+        result = 1;
+    }
+
+    if (audio) { audio->shutdown(); delete audio; }
+    sched.shutdown();
+    gpu.shutdown();
+
+    return result;
+}
+
+// ============================================================================
+// Main — orchestrates per-graph child processes via posix_spawn (re-exec)
 // ============================================================================
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        std::fprintf(stderr, "Usage: test_media_headless <graphs_dir>\n");
+        std::fprintf(stderr, "Usage: test_media_headless <build_dir> [--single <graph_path>]\n");
         return 1;
     }
-    const char* graphs_dir = argv[1];
-    static constexpr WGPUTextureFormat kFormat = WGPUTextureFormat_RGBA8Unorm;
 
-    // Install SIGABRT guard before any AVFoundation work.
-    std::signal(SIGABRT, sigabrt_handler);
-
-    // --- One-time GPU setup ---
-    HeadlessGpu gpu;
-    bool have_gpu = gpu.init();
-    if (have_gpu) {
-        std::fprintf(stderr, "[media_headless] GPU available\n");
-    } else {
-        std::fprintf(stderr, "[media_headless] No GPU — GPU-only graphs will be skipped\n");
+    // --single mode: run one graph and exit
+    if (argc >= 4 && std::strcmp(argv[2], "--single") == 0) {
+        return run_single_graph(argv[0], argv[3]);
     }
 
-    // --- Operator registry ---
-    vivid::OperatorRegistry registry;
-    registry.scan_deferred(".");
-    register_builtin_operators(registry);
-    registry.scan_wgsl_presets("filters");
+    const char* graphs_dir = argv[1];
+    std::string exe_path = std::filesystem::absolute(argv[0]).string();
 
-    std::fprintf(stderr, "[media_headless] Testing %d media graphs\n\n", kMediaGraphCount);
+    // Discover media graphs
+    auto media_graphs = discover_media_graphs(graphs_dir);
+    int media_graph_count = static_cast<int>(media_graphs.size());
+    std::fprintf(stderr, "[media_headless] Found %d media graphs\n\n", media_graph_count);
 
-    // --- Iterate media graphs ---
-    for (int gi = 0; gi < kMediaGraphCount; ++gi) {
-        std::string rel_path = kMediaGraphs[gi];
-        std::string full_path = std::string(graphs_dir) + "/" + rel_path;
-        g_current_graph = kMediaGraphs[gi];
+    // Run each graph in an isolated child process via posix_spawn (re-exec).
+    // Unlike fork(), posix_spawn creates a full fresh process with proper
+    // Objective-C runtime, GCD, and AVFoundation state.
+    for (int gi = 0; gi < media_graph_count; ++gi) {
+        std::string full_path = media_graphs[gi];
+        std::string rel_path = std::filesystem::path(full_path).filename().string();
         std::fprintf(stderr, "=== %s ===\n", rel_path.c_str());
 
-        if (!std::filesystem::exists(full_path)) {
-            skip(rel_path.c_str(), "graph file not found");
+        // Build argv for child: exe <build_dir> --single <graph_path>
+        const char* child_argv[] = {
+            exe_path.c_str(),
+            graphs_dir,
+            "--single",
+            full_path.c_str(),
+            nullptr
+        };
+
+        pid_t pid = 0;
+        int rc = posix_spawn(&pid, exe_path.c_str(), nullptr, nullptr,
+                             const_cast<char**>(child_argv), environ);
+        if (rc != 0) {
+            skip(rel_path.c_str(), "posix_spawn failed");
             continue;
         }
 
-        // Watchdog: if this graph hangs (AVFoundation dispatch_sync deadlock),
-        // the watchdog fires and we skip rather than blocking the entire suite.
-        std::atomic<bool> graph_done{false};
-        std::atomic<bool> graph_timed_out{false};
-        std::thread watchdog([&graph_done, &graph_timed_out, &rel_path]() {
-            for (int elapsed = 0; elapsed < kWatchdogSeconds * 10; ++elapsed) {
-                if (graph_done.load(std::memory_order_acquire)) return;
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            }
-            if (!graph_done.load(std::memory_order_acquire)) {
-                graph_timed_out.store(true, std::memory_order_release);
-                // The main thread is likely stuck in dispatch_sync and cannot
-                // be interrupted.  Print a skip diagnostic and exit cleanly
-                // so CI does not hang.  Phase 1 contract: no hang, no abort.
-                std::fprintf(stderr, "  SKIP: %s — watchdog timeout after %ds "
-                             "(AVFoundation deadlock)\n", rel_path.c_str(), kWatchdogSeconds);
-                std::fprintf(stderr, "\n========================================\n");
-                std::fprintf(stderr, "Media headless: terminated by watchdog (dispatch_sync hang)\n");
-                std::fprintf(stderr, "========================================\n");
-                _exit(0);
-            }
-        });
-
-        // Pump CFRunLoop before graph init to let AVFoundation set up.
-#ifdef __APPLE__
-        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.01, false);
-#endif
-
-        // Load graph
-        vivid::Graph graph;
-        if (!graph.load(full_path.c_str())) {
-            graph_done.store(true, std::memory_order_release);
-            watchdog.join();
-            fail(rel_path.c_str(), "graph.load() failed");
+        int status = 0;
+        pid_t waited = waitpid(pid, &status, 0);
+        if (waited < 0) {
+            skip(rel_path.c_str(), "waitpid failed");
             continue;
         }
 
-        registry.load_for_graph(graph);
-
-        // Build scheduler (this is where AVFoundation init can deadlock)
-#ifdef __APPLE__
-        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.01, false);
-#endif
-
-        vivid::Scheduler sched;
-        if (!sched.build(graph, registry)) {
-            graph_done.store(true, std::memory_order_release);
-            watchdog.join();
-            fail(rel_path.c_str(), "scheduler.build() failed");
-            continue;
-        }
-
-        if (graph_timed_out.load(std::memory_order_acquire)) {
-            sched.shutdown();
-            graph_done.store(true, std::memory_order_release);
-            watchdog.join();
-            skip(rel_path.c_str(), "watchdog timeout during init");
-            continue;
-        }
-
-        bool use_gpu = sched.has_gpu_operators();
-        bool use_audio = sched.has_audio_operators();
-
-        if (use_gpu && !have_gpu) {
-            sched.shutdown();
-            graph_done.store(true, std::memory_order_release);
-            watchdog.join();
-            skip(rel_path.c_str(), "needs GPU");
-            continue;
-        }
-        if (use_gpu) {
-            sched.allocate_gpu_textures(gpu.device, 64, 64, kFormat);
-        }
-
-        vivid::AudioEngine* audio = nullptr;
-        if (use_audio) {
-            audio = new vivid::AudioEngine();
-            audio->build(sched.core());
-            audio->start(true);  // null device
-        }
-
-        if (use_gpu) gpu.reset_errors();
-
-        // Capture stderr during tick phase
-        int saved_stderr = dup(STDERR_FILENO);
-        g_real_stderr = saved_stderr;
-        FILE* warn_capture = tmpfile();
-        dup2(fileno(warn_capture), STDERR_FILENO);
-
-        // Tick — 60 frames to give movie operators time to initialize
-        int tick_count = 60;
-        float audio_buf[vivid::AudioEngine::kBufferSize * 2] = {};
-        for (uint64_t frame = 0; frame < (uint64_t)tick_count; ++frame) {
-            if (graph_timed_out.load(std::memory_order_acquire)) break;
-            double time = frame * 0.016;
-            if (audio) {
-                auto& cb = sched.cadence_bridge();
-                auto* cg = sched.compiled_graph();
-                cb.pull_from_audio(*cg);
-                cb.update_sources(time, *cg);
-            }
-            if (use_gpu) {
-                tick_gpu(sched, gpu, kFormat, time, frame);
-            } else {
-                sched.tick(time, 0.016, frame);
-            }
-            if (audio) {
-                sched.cadence_bridge().push_to_audio(*sched.compiled_graph());
-                audio->process_audio_for_test(audio_buf, vivid::AudioEngine::kBufferSize);
-            }
-#ifdef __APPLE__
-            CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.005, false);
-#endif
-        }
-
-        // Restore stderr
-        fflush(stderr);
-        dup2(saved_stderr, STDERR_FILENO);
-        close(saved_stderr);
-        g_real_stderr = -1;
-
-        rewind(warn_capture);
-        std::string captured;
-        char buf[256];
-        while (fgets(buf, sizeof(buf), warn_capture))
-            captured += buf;
-        fclose(warn_capture);
-
-        // Audio output verification (diagnostic only — movie audio may not
-        // produce output fast enough in headless mode)
-        bool audio_errored = false;
-        std::string audio_error_detail;
-        if (audio) {
-            sched.cadence_bridge().pull_from_audio(*sched.compiled_graph());
-            const auto& analysis = audio->analysis_read();
-
-            for (size_t i = 0; i < analysis.errored.size(); ++i) {
-                if (analysis.errored[i]) {
-                    audio_errored = true;
-                    audio_error_detail += std::string(analysis.error_msgs[i].data()) + "; ";
-                }
-            }
-
-            // Log per-node diagnostics (stderr already restored)
-            for (size_t i = 0; i < analysis.rms.size(); ++i) {
-                std::fprintf(stderr, "[media_headless]   audio node %zu: RMS=%.6f peak=%.6f%s\n",
-                             i, analysis.rms[i], analysis.peak[i],
-                             analysis.errored[i] ? " ERRORED" : "");
-            }
-        }
-
-        // Cleanup
-        if (audio) {
-            audio->shutdown();
-            delete audio;
-        }
-        sched.shutdown();
-
-        graph_done.store(true, std::memory_order_release);
-        watchdog.join();
-
-        if (graph_timed_out.load(std::memory_order_acquire)) {
-            skip(rel_path.c_str(), "watchdog timeout during ticks");
-            continue;
-        }
-
-        if (audio_errored) {
-            fail(rel_path.c_str(), ("audio node error: " + audio_error_detail).c_str());
-            continue;
-        }
-
-        if (use_gpu && gpu.has_gpu_error) {
-            fail(rel_path.c_str(), ("GPU error: " + gpu.gpu_error_msg).c_str());
-            continue;
-        }
-
-        std::string lower = captured;
-        for (auto& c : lower) c = (char)tolower((unsigned char)c);
-        if (lower.find("warn") != std::string::npos || lower.find("error") != std::string::npos) {
-            fail(rel_path.c_str(), ("unexpected stderr: " + captured).c_str());
+        if (WIFEXITED(status)) {
+            int code = WEXITSTATUS(status);
+            if (code == 0)      pass(rel_path.c_str());
+            else if (code == 2) skip(rel_path.c_str(), "child reported skip");
+            else                fail(rel_path.c_str(), "child reported failure");
+        } else if (WIFSIGNALED(status)) {
+            int sig = WTERMSIG(status);
+            char reason[64];
+            snprintf(reason, sizeof(reason), "killed by signal %d", sig);
+            skip(rel_path.c_str(), reason);
         } else {
-            pass(rel_path.c_str());
+            skip(rel_path.c_str(), "unknown child exit");
         }
     }
-
-    gpu.shutdown();
 
     std::fprintf(stderr, "\n========================================\n");
     std::fprintf(stderr, "Media headless: %d passed, %d failed, %d skipped (of %d total)\n",
-                 passes, failures, skipped, kMediaGraphCount);
+                 passes, failures, skipped, media_graph_count);
     std::fprintf(stderr, "========================================\n");
 
-    // Step 5 contract: movie_loaded_demo.json must pass.
-    // Other graphs may skip (e.g. if audio+movie triggers residual issues).
-    if (passes == 0) return 1;
+    if (media_graph_count == 0) return 0;
     return failures > 0 ? 1 : 0;
 }

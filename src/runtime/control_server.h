@@ -10,7 +10,7 @@ namespace vivid {
 
 class RuntimeAPI;
 class Graph;
-class Scheduler;
+class RuntimeCore;
 class OperatorRegistry;
 class HotReloader;
 class CaptureCoordinator;
@@ -50,7 +50,7 @@ public:
     // dispatches commands against the runtime, and signals responses.
     // has_gpu_ops/has_audio are updated by reload commands.
     void process_requests(RuntimeAPI& api, Graph& graph,
-                          Scheduler& scheduler,
+                          RuntimeCore& core,
                           OperatorRegistry& registry,
                           bool& has_gpu_ops, bool& has_audio);
 

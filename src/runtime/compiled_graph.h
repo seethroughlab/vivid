@@ -1,11 +1,13 @@
 #pragma once
 
 #include "operator_api/types.h"
+#include "runtime/cadence_types.h"
 #include "runtime/operator_loader.h"
 #include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -26,15 +28,6 @@ enum ParamLockFlags : uint8_t {
     PARAM_LOCK_WIRES   = 1,
     PARAM_LOCK_PRESETS = 2,
     PARAM_LOCK_ALL     = 3,
-};
-
-// ---------------------------------------------------------------------------
-// Cadence — the runtime execution rate of a node.
-// ---------------------------------------------------------------------------
-
-enum class Cadence : uint8_t {
-    Frame = 0,   // ~60 Hz, main thread (control + GPU)
-    Audio = 1,   // ~48 kHz, audio thread
 };
 
 // ---------------------------------------------------------------------------
@@ -120,10 +113,91 @@ struct CompiledEdge {
 };
 
 // ---------------------------------------------------------------------------
+// AudioNodeState — audio-specific state, allocated only for audio-cadence nodes.
+// ---------------------------------------------------------------------------
+
+struct AudioNodeState {
+    // Audio buffers [port][sample * channels]
+    std::vector<std::vector<float>> buffers_in;
+    std::vector<std::vector<float>> buffers_out;
+    std::vector<float*> in_ptrs;
+    std::vector<float*> out_ptrs;
+
+    // Multi-channel negotiation.
+    std::vector<uint8_t> input_channel_counts;
+    std::vector<uint8_t> output_channel_counts;
+    std::vector<uint8_t> descriptor_input_channels;
+    std::vector<uint8_t> descriptor_output_channels;
+    bool is_mono_autodup = false;
+
+    // Float CV inputs (cross-cadence bridge for audio nodes).
+    std::vector<float> float_input_defaults;
+    std::vector<float> float_input_values;
+    uint32_t float_input_count = 0;
+
+    // Float outputs (audio SIGNAL output ports → scalar values).
+    std::vector<float> float_output_values;
+    uint32_t float_output_count = 0;
+
+    // SIGNAL output auto-extraction mapping.
+    struct SignalOutputMapping { uint32_t port_idx; uint32_t float_ordinal; };
+    std::vector<SignalOutputMapping> signal_output_extractions;
+
+    // Audio spread/string/custom bridging flags.
+    bool has_spread_ports = false;
+    bool has_string_input_ports = false;
+    bool has_custom_input_ports = false;
+
+    // Defensive scratch buffers.
+    static constexpr uint32_t kScratchFloats = 8;
+    float float_output_scratch[kScratchFloats] = {};
+    float float_input_scratch[kScratchFloats] = {};
+
+    // Audio error state (fixed-size, no allocation on audio thread).
+    char error_message[256] = {};
+
+    // Audio-cadence custom ports.
+    std::vector<void*> custom_output_ptrs;
+    uint32_t custom_output_count = 0;
+    bool has_custom_output_ports = false;
+
+    // Analysis output port indices (rms, peak, waveform).
+    std::unordered_map<std::string, uint32_t> analysis_output_port_indices;
+};
+
+// ---------------------------------------------------------------------------
+// GpuNodeState — GPU-specific state, allocated only for GPU nodes.
+// ---------------------------------------------------------------------------
+
+struct GpuNodeState {
+    WGPUTexture      texture      = nullptr;
+    WGPUTextureView  texture_view = nullptr;
+    uint32_t         tex_width    = 0;
+    uint32_t         tex_height   = 0;
+    bool             tex_inherited = false;
+
+    std::vector<uint32_t> texture_input_port_indices;
+    std::vector<WGPUTextureView> resolved_tex_inputs;
+    std::vector<WGPUTexture>     resolved_tex_raw;
+    std::vector<uint32_t>        resolved_tex_widths;
+    std::vector<uint32_t>        resolved_tex_heights;
+    bool is_sink = false;
+
+    std::vector<int32_t>         aux_texture_output_port_indices;
+    std::vector<WGPUTexture>     aux_gpu_textures;
+    std::vector<WGPUTextureView> aux_gpu_texture_views;
+
+    bool has_texture_output = false;
+    bool shader_error = false;
+    std::string shader_error_msg;
+};
+
+// ---------------------------------------------------------------------------
 // CompiledNode — unified node state.
 //
 // A single CompiledNode exists per graph node. The active_cadence determines
-// which executor processes it.
+// which executor processes it. Audio and GPU state are factored into optional
+// sub-structs that exist only for the appropriate cadence/env.
 // ---------------------------------------------------------------------------
 
 struct CompiledNode {
@@ -145,9 +219,6 @@ struct CompiledNode {
     std::unordered_map<std::string, uint32_t> input_port_indices;
     std::unordered_map<std::string, uint32_t> output_port_indices;
     std::unordered_map<std::string, uint32_t> param_indices;
-
-    // Analysis output port indices (audio nodes: rms, peak, waveform).
-    std::unordered_map<std::string, uint32_t> analysis_output_port_indices;
 
     // ── Scalar state (params, inputs, outputs) ──────────────────────────────
     std::vector<float> param_values;
@@ -183,11 +254,6 @@ struct CompiledNode {
     std::vector<void*> custom_outputs;
     std::vector<void*> custom_output_buf;
 
-    // Audio-cadence custom ports.
-    std::vector<void*> custom_output_ptrs;
-    uint32_t custom_output_count_audio = 0;
-    bool has_custom_output_ports_audio = false;
-
     // ── File (string) params ────────────────────────────────────────────────
     std::vector<std::string> file_param_storage;
     std::vector<const char*> file_param_ptrs;
@@ -196,78 +262,27 @@ struct CompiledNode {
 
     // ── Frame-rate skip logic ────────────────────────────────────────────────
     bool time_dependent = false;
-    bool is_gpu = false;
     bool dirty = false;              // set by out-of-band changes (bridge, API, reload)
     bool processed_this_tick = false;
     std::vector<uint32_t> upstream_nodes;  // indices of nodes feeding into this one
 
-    // ── Audio-specific state (allocated only when active_cadence == Audio) ──
-    std::vector<std::vector<float>> audio_buffers_in;   // [port][sample]
-    std::vector<std::vector<float>> audio_buffers_out;  // [port][sample]
-    std::vector<float*> audio_in_ptrs;
-    std::vector<float*> audio_out_ptrs;
+    // ── Cadence-specific state (at most one is non-null) ─────────────────────
+    std::unique_ptr<AudioNodeState> audio;  // present iff active_cadence == Audio
+    std::unique_ptr<GpuNodeState>   gpu;    // present iff node has GPU processing
 
-    // Multi-channel negotiation.
-    std::vector<uint8_t> input_channel_counts;
-    std::vector<uint8_t> output_channel_counts;
-    std::vector<uint8_t> descriptor_input_channels;
-    std::vector<uint8_t> descriptor_output_channels;
-    bool is_mono_autodup = false;
-
-    // Float CV inputs (cross-cadence bridge for audio nodes).
-    std::vector<float> float_input_defaults;
-    std::vector<float> float_input_values;
-    uint32_t float_input_count = 0;
-
-    // Float outputs (audio SIGNAL output ports → scalar values).
-    std::vector<float> float_output_values;
-    uint32_t float_output_count = 0;
-
-    // SIGNAL output auto-extraction mapping.
-    struct SignalOutputMapping { uint32_t port_idx; uint32_t float_ordinal; };
-    std::vector<SignalOutputMapping> signal_output_extractions;
-
-    // Audio spread bridging.
-    bool has_spread_ports = false;
-    bool has_string_input_ports = false;
-    bool has_custom_input_ports = false;
-
-    // Defensive scratch buffers.
-    static constexpr uint32_t kScratchFloats = 8;
-    float float_output_scratch[kScratchFloats] = {};
-    float float_input_scratch[kScratchFloats] = {};
-
-    // Audio error state (fixed-size, no allocation on audio thread).
-    char audio_error_message[256] = {};
-
-    // ── GPU resources ───────────────────────────────────────────────────────
-    WGPUTexture      gpu_texture      = nullptr;
-    WGPUTextureView  gpu_texture_view = nullptr;
-    uint32_t         gpu_tex_width    = 0;
-    uint32_t         gpu_tex_height   = 0;
-    bool             gpu_tex_inherited = false;
-    std::vector<uint32_t> texture_input_port_indices;
-    std::vector<WGPUTextureView> resolved_tex_inputs;
-    std::vector<WGPUTexture>     resolved_tex_raw;
-    std::vector<uint32_t>        resolved_tex_widths;
-    std::vector<uint32_t>        resolved_tex_heights;
-    bool is_gpu_sink = false;
-
-    std::vector<int32_t>         aux_texture_output_port_indices;
-    std::vector<WGPUTexture>     aux_gpu_textures;
-    std::vector<WGPUTextureView> aux_gpu_texture_views;
+    // ── Convenience queries ─────────────────────────────────────────────────
+    bool is_gpu() const { return gpu != nullptr; }
+    bool is_gpu_sink() const { return gpu && gpu->is_sink; }
+    bool has_texture_output() const { return gpu && gpu->has_texture_output; }
 
     // ── Misc ────────────────────────────────────────────────────────────────
     std::vector<uint32_t> string_input_port_indices;
     std::vector<uint32_t> string_spread_input_port_indices;
-    bool has_texture_output = false;
     bool has_string_output = false;
     bool has_string_spread_output = false;
 
     bool errored = false;
     std::string error_message;
-    bool gpu_shader_error = false;
-    std::string gpu_shader_error_msg;
 
     // Per-instance loader for WGSLFilter nodes.
     std::unique_ptr<OperatorLoader> owned_loader;

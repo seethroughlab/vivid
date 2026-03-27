@@ -3,7 +3,7 @@
 // error flag — without crashing the engine or affecting other audio nodes.
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
-#include "runtime/scheduler.h"
+#include "runtime/runtime_core.h"
 #include "runtime/audio_engine.h"
 #include "runtime/cadence_bridge.h"
 #include "runtime/compiled_graph.h"
@@ -49,11 +49,11 @@ int main(int argc, char* argv[]) {
     vivid::Graph graph;
     check(graph.load(graph_path.c_str()), "graph.load()");
 
-    vivid::Scheduler scheduler;
+    vivid::RuntimeCore scheduler;
     check(scheduler.build(graph, registry), "scheduler.build()");
 
     vivid::AudioEngine audio_engine;
-    check(audio_engine.build(scheduler.core()), "audio_engine.build()");
+    check(audio_engine.build(scheduler), "audio_engine.build()");
 
     // --- Test 1: Engine starts without crashing despite throwing operator ---
     std::fprintf(stderr, "\n--- start with throwing operator ---\n");

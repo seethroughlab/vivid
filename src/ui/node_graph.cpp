@@ -291,7 +291,7 @@ uint32_t NodeGraphUI::count_visible_output_ports(const NodeSnapshot& ns, bool sh
 // -----------------------------------------------------------------------
 void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
     bool has_ct = custom_thumb_nodes_.count(rect.node_id) > 0;
-    float body_h = env_body_height(rect.env, has_ct);
+    float body_h = node_body_height(rect.is_gpu, rect.active_cadence, has_ct);
 
     rect.inputs.clear();
     rect.outputs.clear();
@@ -482,7 +482,7 @@ void NodeGraphUI::layout_nodes(bool force) {
             const auto& ns = nodes[ni];
 
             bool has_ct = custom_thumb_nodes_.count(ns.node_id) > 0;
-            float body_h = env_body_height(ns.env, has_ct);
+            float body_h = node_body_height(ns.is_gpu, ns.active_cadence, has_ct);
 
             uint32_t n_inputs = count_visible_input_ports(ns, show_param_wires_);
             uint32_t n_outputs = count_visible_output_ports(ns, show_param_wires_);
@@ -504,7 +504,8 @@ void NodeGraphUI::layout_nodes(bool force) {
             auto& rect = node_rects_[ni];
             rect.node_id = ns.node_id;
             rect.type_name = ns.type_name;
-            rect.env = ns.env;
+            rect.active_cadence = ns.active_cadence;
+            rect.is_gpu = ns.is_gpu;
             rect.x = col_x;
             rect.y = cur_y;
             rect.w = kNodeW;
@@ -562,7 +563,7 @@ void NodeGraphUI::place_new_nodes() {
     auto compute_height = [&](size_t ni) -> float {
         const auto& ns = nodes[ni];
         bool has_ct = custom_thumb_nodes_.count(ns.node_id) > 0;
-        float body_h = env_body_height(ns.env, has_ct);
+        float body_h = node_body_height(ns.is_gpu, ns.active_cadence, has_ct);
         uint32_t n_inputs = count_visible_input_ports(ns, show_param_wires_);
         uint32_t n_outputs = count_visible_output_ports(ns, show_param_wires_);
         uint32_t port_rows = std::max(n_inputs, n_outputs);
@@ -577,7 +578,8 @@ void NodeGraphUI::place_new_nodes() {
         auto& rect = node_rects_[ni];
         rect.node_id = ns.node_id;
         rect.type_name = ns.type_name;
-        rect.env = ns.env;
+        rect.active_cadence = ns.active_cadence;
+        rect.is_gpu = ns.is_gpu;
         rect.w = kNodeW;
         rect.h = h;
         rect.target_h = h;
@@ -1644,10 +1646,11 @@ void NodeGraphUI::check_relayout() {
             auto it = rect_by_id.find(ns.node_id);
             if (it == rect_by_id.end()) continue;
             auto& rect = node_rects_[it->second];
-            rect.env = ns.env;
+            rect.active_cadence = ns.active_cadence;
+            rect.is_gpu = ns.is_gpu;
             rect.type_name = ns.type_name;
             bool has_ct = custom_thumb_nodes_.count(ns.node_id) > 0;
-            float body_h = env_body_height(ns.env, has_ct);
+            float body_h = node_body_height(ns.is_gpu, ns.active_cadence, has_ct);
             uint32_t n_inputs = count_visible_input_ports(ns, show_param_wires_);
             uint32_t n_outputs = count_visible_output_ports(ns, show_param_wires_);
             uint32_t port_rows = std::max(n_inputs, n_outputs);
@@ -1956,7 +1959,7 @@ void NodeGraphUI::update_wire_hover() {
 
 void NodeGraphUI::update_sparklines() {
     for (const auto& ns : snap_.nodes) {
-        if (ns.is_gpu || ns.env == VIVID_ENV_AUDIO) continue;
+        if (ns.is_gpu || ns.active_cadence == Cadence::Audio) continue;
 
         auto sorted_outs = sorted_ports(ns.output_port_indices);
         if (sorted_outs.empty()) continue;

@@ -11,7 +11,7 @@
 
 namespace vivid::ui {
 
-// Per-parameter lock flag constants (mirrored from scheduler.h for UI use)
+// Per-parameter lock flag constants (mirrored from compiled_graph.h for UI use)
 static constexpr uint8_t kParamLockNone    = 0;
 static constexpr uint8_t kParamLockWires   = 1;
 static constexpr uint8_t kParamLockPresets = 2;
@@ -49,7 +49,8 @@ struct PortInfo {
 // Owned copy of operator metadata
 struct OperatorInfo {
     std::string name;
-    VividExecutionEnv env = VIVID_ENV_FRAME;
+    bool is_gpu = false;
+    bool is_audio_native = false;  // execution_env == VIVID_ENV_AUDIO
     bool has_shader = false;
     bool is_user = false;
     bool has_custom_inspector = false;
@@ -63,8 +64,7 @@ struct OperatorInfo {
 struct NodeSnapshot {
     std::string node_id;
     std::string type_name;
-    VividExecutionEnv env = VIVID_ENV_FRAME;
-
+    Cadence active_cadence = Cadence::Frame;
     bool is_gpu = false;
     bool is_audio_capable = false;  // true if operator supports both frame and audio cadence
     CadenceOverride cadence_override = CadenceOverride::Auto;
@@ -88,7 +88,7 @@ struct NodeSnapshot {
     uint32_t gpu_tex_height = 0;
     bool gpu_tex_inherited = false;
 
-    // Error state (from scheduler)
+    // Error state (from runtime)
     bool errored = false;
     std::string error_message;
     bool missing_operator = false;

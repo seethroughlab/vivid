@@ -1,6 +1,6 @@
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
-#include "runtime/scheduler.h"
+#include "runtime/runtime_core.h"
 #include "runtime/audio_engine.h"
 #include "runtime/cadence_bridge.h"
 #include "runtime/compiled_graph.h"
@@ -57,14 +57,14 @@ int main(int argc, char* argv[]) {
     vivid::Graph graph;
     check(graph.load(graph_path.c_str()), "graph.load()");
 
-    vivid::Scheduler scheduler;
+    vivid::RuntimeCore scheduler;
     check(scheduler.build(graph, registry), "scheduler.build()");
 
     vivid::AudioEngine audio_engine;
 
     // --- Test 1: Build succeeds ---
     std::fprintf(stderr, "\n--- build ---\n");
-    check(audio_engine.build(scheduler.core()), "audio_engine.build()");
+    check(audio_engine.build(scheduler), "audio_engine.build()");
 
     int audio_idx = audio_engine.audio_node_index("audio");
     check(audio_idx >= 0, "audio node found in engine");

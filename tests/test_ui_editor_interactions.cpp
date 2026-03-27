@@ -96,7 +96,7 @@ static std::shared_ptr<OperatorInfo> make_op(
     const std::vector<PortInfo>& ports) {
     auto op = std::make_shared<OperatorInfo>();
     op->name = name;
-    op->env = VIVID_ENV_FRAME;
+    op->is_gpu = false;
     op->params = params;
     op->ports = ports;
     return op;
@@ -109,7 +109,7 @@ static void add_node(GraphSnapshot& snap, const std::shared_ptr<OperatorInfo>& o
     NodeSnapshot node;
     node.node_id = node_id;
     node.type_name = op->name;
-    node.env = VIVID_ENV_FRAME;
+    node.active_cadence = vivid::Cadence::Frame;
     node.has_layout = true;
     node.layout_x = x;
     node.layout_y = y;

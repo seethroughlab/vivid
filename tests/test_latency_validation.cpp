@@ -1,6 +1,6 @@
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
-#include "runtime/scheduler.h"
+#include "runtime/runtime_core.h"
 #include "runtime/compiled_graph.h"
 #include "runtime/audio_engine.h"
 #include "runtime/runtime_api.h"
@@ -80,7 +80,7 @@ static void scenario_param_responsiveness(vivid::OperatorRegistry& registry) {
     vivid::Graph graph;
     graph.add_node("a", "TestOp");
 
-    vivid::Scheduler scheduler;
+    vivid::RuntimeCore scheduler;
     check(scheduler.build(graph, registry), "s1: scheduler.build()");
 
     // Warm-up tick
@@ -120,7 +120,7 @@ static void scenario_routing_responsiveness(vivid::OperatorRegistry& registry) {
     graph.add_node("a", "TestOp", {{"scale", 5.0f}});
     graph.add_node("b", "TestOp");
 
-    vivid::Scheduler scheduler;
+    vivid::RuntimeCore scheduler;
     check(scheduler.build(graph, registry), "s2: scheduler.build()");
     vivid::AudioEngine audio_engine;
     vivid::RuntimeAPI api(graph, scheduler, audio_engine, registry);
@@ -174,11 +174,11 @@ static void scenario_hot_reload(const std::string& build_dir) {
     check(graph.add_node("out", "audio_out"), "s3: add audio_out");
     check(graph.add_connection("audio", "out", "out", "input"), "s3: connect audio -> out");
 
-    vivid::Scheduler scheduler;
+    vivid::RuntimeCore scheduler;
     check(scheduler.build(graph, audio_registry), "s3: scheduler.build()");
 
     vivid::AudioEngine audio_engine;
-    check(audio_engine.build(scheduler.core()), "s3: audio_engine.build()");
+    check(audio_engine.build(scheduler), "s3: audio_engine.build()");
 
     // Verify v1 output
     {
@@ -224,7 +224,7 @@ static void scenario_introspection_refresh(vivid::OperatorRegistry& registry) {
     graph.add_node("a", "TestOp", {{"scale", 5.0f}});
     graph.add_node("b", "TestOp");
 
-    vivid::Scheduler scheduler;
+    vivid::RuntimeCore scheduler;
     check(scheduler.build(graph, registry), "s4: scheduler.build()");
     vivid::AudioEngine audio_engine;
     vivid::RuntimeAPI api(graph, scheduler, audio_engine, registry);

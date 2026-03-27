@@ -9,7 +9,7 @@
 namespace vivid {
 
 class Graph;
-class Scheduler;
+class RuntimeCore;
 class AudioEngine;
 class OperatorRegistry;
 class SystemMidiListener;
@@ -33,7 +33,7 @@ struct ActiveCrossfade {
 
 class RuntimeAPI {
 public:
-    RuntimeAPI(Graph& graph, Scheduler& scheduler, AudioEngine& audio_engine,
+    RuntimeAPI(Graph& graph, RuntimeCore& core, AudioEngine& audio_engine,
                OperatorRegistry& registry, SystemMidiListener* system_midi = nullptr);
 
     // Immediate: modify param on live scheduler node
@@ -158,7 +158,7 @@ private:
     static bool split_addr(const std::string& addr, std::string& node, std::string& port);
 
     Graph& graph_;
-    Scheduler& scheduler_;
+    RuntimeCore& core_;
     AudioEngine& audio_engine_;
     OperatorRegistry& registry_;
     SystemMidiListener* system_midi_ = nullptr;

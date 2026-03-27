@@ -9,7 +9,7 @@
 #include "runtime/operator_destination_policy.h"
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
-#include "runtime/scheduler.h"
+#include "runtime/runtime_core.h"
 #include "runtime/audio_engine.h"
 #include "runtime/runtime_api.h"
 #include "runtime/runtime_command_sink.h"
@@ -219,7 +219,7 @@ int main(int argc, char* argv[]) {
 
                 // Set up runtime and command sink
                 vivid::Graph graph;
-                vivid::Scheduler scheduler;
+                vivid::RuntimeCore scheduler;
                 vivid::AudioEngine audio_engine;
                 vivid::RuntimeAPI api(graph, scheduler, audio_engine, registry);
                 RuntimeCommandSink sink(api);

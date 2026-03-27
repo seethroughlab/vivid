@@ -16,8 +16,8 @@ AudioEngine::~AudioEngine() {
 }
 
 bool AudioEngine::build(RuntimeCore& core) {
-    compiled_graph_ = core.compiled_graph.get();
-    cadence_bridge_ = &core.cadence_bridge;
+    compiled_graph_ = core.compiled_graph();
+    cadence_bridge_ = &core.cadence_bridge();
     if (!compiled_graph_ || compiled_graph_->audio_order.empty()) {
         std::fprintf(stderr, "[vivid] AudioEngine: no audio nodes\n");
         return false;
@@ -154,7 +154,7 @@ bool AudioEngine::post_reload_operator(const std::string& type_name, OperatorReg
 
         cn.errored = false;
         cn.error_message.clear();
-        cn.audio_error_message[0] = '\0';
+        if (cn.audio) cn.audio->error_message[0] = '\0';
     }
 
     reload_saved_.clear();
@@ -215,9 +215,9 @@ float AudioEngine::float_input_value_for_test(int node_idx, int port_idx) const 
         return 0.0f;
     uint32_t ni = compiled_graph_->audio_order[node_idx];
     const auto& cn = compiled_graph_->nodes[ni];
-    if (port_idx < 0 || port_idx >= static_cast<int>(cn.float_input_values.size()))
+    if (!cn.audio || port_idx < 0 || port_idx >= static_cast<int>(cn.audio->float_input_values.size()))
         return 0.0f;
-    return cn.float_input_values[port_idx];
+    return cn.audio->float_input_values[port_idx];
 }
 
 void AudioEngine::process_audio_for_test(float* output, uint32_t frame_count) {

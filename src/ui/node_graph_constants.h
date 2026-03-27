@@ -1,6 +1,7 @@
 #pragma once
 
 #include "operator_api/types.h"
+#include "runtime/cadence_types.h"
 #include <array>
 
 namespace vivid::ui {
@@ -133,25 +134,19 @@ static constexpr float kInspScrollbarW = 6.0f;
 static constexpr float kInspScrollSpeed = 40.0f;     // px per scroll tick
 static constexpr float kInspScrollbarMinThumb = 20.0f;
 
-// Shared execution-env helpers (inline so they can live in the header)
+// Node accent color and body height based on cadence + GPU status.
 
-inline const float* env_color(VividExecutionEnv env) {
-    switch (env) {
-        case VIVID_ENV_GPU:   return kGpuAccent.data();
-        case VIVID_ENV_AUDIO: return kAudioAccent.data();
-        case VIVID_ENV_FRAME: return kControlAccent.data();
-        default:              return kControlAccent.data();
-    }
+inline const float* node_accent_color(bool is_gpu, vivid::Cadence cadence) {
+    if (is_gpu) return kGpuAccent.data();
+    if (cadence == vivid::Cadence::Audio) return kAudioAccent.data();
+    return kControlAccent.data();
 }
 
-inline float env_body_height(VividExecutionEnv env, bool has_custom_thumb = false) {
-    if (has_custom_thumb && env != VIVID_ENV_GPU) return kGpuThumbH;
-    switch (env) {
-        case VIVID_ENV_GPU:   return kGpuThumbH;
-        case VIVID_ENV_AUDIO: return kAudioWaveH;
-        case VIVID_ENV_FRAME: return kControlSparkH;
-        default:              return kControlSparkH;
-    }
+inline float node_body_height(bool is_gpu, vivid::Cadence cadence, bool has_custom_thumb = false) {
+    if (has_custom_thumb && !is_gpu) return kGpuThumbH;
+    if (is_gpu) return kGpuThumbH;
+    if (cadence == vivid::Cadence::Audio) return kAudioWaveH;
+    return kControlSparkH;
 }
 
 // Bezier evaluation

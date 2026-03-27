@@ -45,7 +45,7 @@ struct DummySink : UICommandSink {
 static std::shared_ptr<OperatorInfo> make_widget_op() {
     auto op = std::make_shared<OperatorInfo>();
     op->name = "WidgetTest";
-    op->env = VIVID_ENV_FRAME;
+    op->is_gpu = false;
     op->params = {
         ParamInfo{"gain", VIVID_PARAM_FLOAT, 0.0f, 0.0f, 1.0f},
         ParamInfo{"pos_x", VIVID_PARAM_FLOAT, 0.0f, 0.0f, 1.0f, {}, 0, "", VIVID_DISPLAY_XY_PAD},
@@ -66,7 +66,7 @@ static GraphSnapshot make_widget_snapshot() {
     NodeSnapshot node;
     node.node_id = "widget1";
     node.type_name = op->name;
-    node.env = VIVID_ENV_FRAME;
+    node.active_cadence = vivid::Cadence::Frame;
     node.has_layout = true;
     node.layout_x = 120.0f;
     node.layout_y = 120.0f;

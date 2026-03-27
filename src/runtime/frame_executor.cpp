@@ -25,9 +25,9 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
         auto& cn = cg.nodes[ni];
 
         // Clear transient GPU shader error each tick
-        if (cn.is_gpu) {
-            cn.gpu_shader_error = false;
-            cn.gpu_shader_error_msg.clear();
+        if (cn.is_gpu()) {
+            cn.gpu->shader_error = false;
+            cn.gpu->shader_error_msg.clear();
         }
 
         // Skip errored nodes — zero outputs
@@ -177,7 +177,7 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
         // ── Process ─────────────────────────────────────────────────────
         if (cn.missing_operator || !cn.loader) {
             std::fill(cn.output_values.begin(), cn.output_values.end(), 0.0f);
-        } else if (cn.is_gpu && gpu_state) {
+        } else if (cn.is_gpu() && gpu_state) {
             // ── GPU path: build VividGpuContext ─────────────────────────
             auto* base_gpu = static_cast<VividGpuContext*>(gpu_state);
             VividGpuContext gpu_ctx{};
@@ -211,63 +211,63 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             gpu_ctx.queue           = base_gpu->queue;
             gpu_ctx.command_encoder = base_gpu->command_encoder;
             gpu_ctx.output_format   = base_gpu->output_format;
-            gpu_ctx.output_texture      = cn.gpu_texture;
-            gpu_ctx.output_texture_view = cn.gpu_texture_view;
-            gpu_ctx.output_width    = cn.gpu_tex_width;
-            gpu_ctx.output_height   = cn.gpu_tex_height;
+            gpu_ctx.output_texture      = cn.gpu->texture;
+            gpu_ctx.output_texture_view = cn.gpu->texture_view;
+            gpu_ctx.output_width    = cn.gpu->tex_width;
+            gpu_ctx.output_height   = cn.gpu->tex_height;
 
             // Resolve texture inputs from upstream via edges
-            size_t tex_count = cn.texture_input_port_indices.size();
-            cn.resolved_tex_inputs.clear();
-            cn.resolved_tex_inputs.resize(tex_count, nullptr);
-            cn.resolved_tex_raw.clear();
-            cn.resolved_tex_raw.resize(tex_count, nullptr);
-            cn.resolved_tex_widths.clear();
-            cn.resolved_tex_widths.resize(tex_count, 0);
-            cn.resolved_tex_heights.clear();
-            cn.resolved_tex_heights.resize(tex_count, 0);
+            size_t tex_count = cn.gpu->texture_input_port_indices.size();
+            cn.gpu->resolved_tex_inputs.clear();
+            cn.gpu->resolved_tex_inputs.resize(tex_count, nullptr);
+            cn.gpu->resolved_tex_raw.clear();
+            cn.gpu->resolved_tex_raw.resize(tex_count, nullptr);
+            cn.gpu->resolved_tex_widths.clear();
+            cn.gpu->resolved_tex_widths.resize(tex_count, 0);
+            cn.gpu->resolved_tex_heights.clear();
+            cn.gpu->resolved_tex_heights.resize(tex_count, 0);
             for (size_t ti = 0; ti < tex_count; ++ti) {
-                uint32_t port_idx = cn.texture_input_port_indices[ti];
+                uint32_t port_idx = cn.gpu->texture_input_port_indices[ti];
                 for (uint32_t ei : cg.frame_direct_edges) {
                     const auto& e = cg.edges[ei];
                     if (e.to_node == ni && !e.targets_param &&
                         e.to_port == port_idx && e.data_type == VIVID_PORT_TEXTURE) {
                         const auto& upstream = cg.nodes[e.from_node];
                         bool routed_aux = false;
-                        for (size_t ai = 0; ai < upstream.aux_texture_output_port_indices.size(); ++ai) {
+                        for (size_t ai = 0; ai < upstream.gpu->aux_texture_output_port_indices.size(); ++ai) {
                             if (e.from_port ==
-                                    static_cast<uint32_t>(upstream.aux_texture_output_port_indices[ai])) {
-                                cn.resolved_tex_inputs[ti] = upstream.aux_gpu_texture_views[ai];
-                                cn.resolved_tex_raw[ti]    = upstream.aux_gpu_textures[ai];
+                                    static_cast<uint32_t>(upstream.gpu->aux_texture_output_port_indices[ai])) {
+                                cn.gpu->resolved_tex_inputs[ti] = upstream.gpu->aux_gpu_texture_views[ai];
+                                cn.gpu->resolved_tex_raw[ti]    = upstream.gpu->aux_gpu_textures[ai];
                                 routed_aux = true;
                                 break;
                             }
                         }
                         if (!routed_aux) {
-                            cn.resolved_tex_inputs[ti] = upstream.gpu_texture_view;
-                            cn.resolved_tex_raw[ti]    = upstream.gpu_texture;
+                            cn.gpu->resolved_tex_inputs[ti] = upstream.gpu->texture_view;
+                            cn.gpu->resolved_tex_raw[ti]    = upstream.gpu->texture;
                         }
-                        cn.resolved_tex_widths[ti]  = upstream.gpu_tex_width;
-                        cn.resolved_tex_heights[ti] = upstream.gpu_tex_height;
+                        cn.gpu->resolved_tex_widths[ti]  = upstream.gpu->tex_width;
+                        cn.gpu->resolved_tex_heights[ti] = upstream.gpu->tex_height;
                         break;
                     }
                 }
             }
-            gpu_ctx.input_texture_views = cn.resolved_tex_inputs.empty()
-                                            ? nullptr : cn.resolved_tex_inputs.data();
+            gpu_ctx.input_texture_views = cn.gpu->resolved_tex_inputs.empty()
+                                            ? nullptr : cn.gpu->resolved_tex_inputs.data();
             gpu_ctx.input_texture_count = static_cast<uint32_t>(tex_count);
-            gpu_ctx.input_textures       = cn.resolved_tex_raw.empty()
-                                            ? nullptr : cn.resolved_tex_raw.data();
-            gpu_ctx.input_texture_widths  = cn.resolved_tex_widths.empty()
-                                            ? nullptr : cn.resolved_tex_widths.data();
-            gpu_ctx.input_texture_heights = cn.resolved_tex_heights.empty()
-                                            ? nullptr : cn.resolved_tex_heights.data();
+            gpu_ctx.input_textures       = cn.gpu->resolved_tex_raw.empty()
+                                            ? nullptr : cn.gpu->resolved_tex_raw.data();
+            gpu_ctx.input_texture_widths  = cn.gpu->resolved_tex_widths.empty()
+                                            ? nullptr : cn.gpu->resolved_tex_widths.data();
+            gpu_ctx.input_texture_heights = cn.gpu->resolved_tex_heights.empty()
+                                            ? nullptr : cn.gpu->resolved_tex_heights.data();
             gpu_ctx.operators_src_dir = operators_src_dir_.empty()
                                             ? nullptr : operators_src_dir_.c_str();
-            gpu_ctx.aux_output_texture_views = cn.aux_gpu_texture_views.empty()
-                ? nullptr : cn.aux_gpu_texture_views.data();
+            gpu_ctx.aux_output_texture_views = cn.gpu->aux_gpu_texture_views.empty()
+                ? nullptr : cn.gpu->aux_gpu_texture_views.data();
             gpu_ctx.aux_output_texture_count =
-                static_cast<uint32_t>(cn.aux_gpu_texture_views.size());
+                static_cast<uint32_t>(cn.gpu->aux_gpu_texture_views.size());
 
             // Resolve custom inputs from upstream via edges
             for (size_t hi = 0; hi < cn.custom_input_port_indices.size(); ++hi) {
@@ -312,16 +312,16 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             }
 
             if (gpu_ctx.operator_errored) {
-                cn.gpu_shader_error = true;
-                cn.gpu_shader_error_msg = gpu_ctx.operator_error_msg
+                cn.gpu->shader_error = true;
+                cn.gpu->shader_error_msg = gpu_ctx.operator_error_msg
                     ? gpu_ctx.operator_error_msg : "";
             }
 
             if (gpu_ctx.preferred_tex_width > 0 && gpu_ctx.preferred_tex_height > 0) {
-                if (gpu_ctx.preferred_tex_width != cn.gpu_tex_width ||
-                    gpu_ctx.preferred_tex_height != cn.gpu_tex_height) {
-                    cn.gpu_tex_width = gpu_ctx.preferred_tex_width;
-                    cn.gpu_tex_height = gpu_ctx.preferred_tex_height;
+                if (gpu_ctx.preferred_tex_width != cn.gpu->tex_width ||
+                    gpu_ctx.preferred_tex_height != cn.gpu->tex_height) {
+                    cn.gpu->tex_width = gpu_ctx.preferred_tex_width;
+                    cn.gpu->tex_height = gpu_ctx.preferred_tex_height;
                     needs_gpu_realloc_ = true;
                 }
             }
@@ -364,10 +364,10 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             }
 
             if (ctx.preferred_tex_width > 0 && ctx.preferred_tex_height > 0) {
-                if (ctx.preferred_tex_width != cn.gpu_tex_width ||
-                    ctx.preferred_tex_height != cn.gpu_tex_height) {
-                    cn.gpu_tex_width = ctx.preferred_tex_width;
-                    cn.gpu_tex_height = ctx.preferred_tex_height;
+                if (ctx.preferred_tex_width != cn.gpu->tex_width ||
+                    ctx.preferred_tex_height != cn.gpu->tex_height) {
+                    cn.gpu->tex_width = ctx.preferred_tex_width;
+                    cn.gpu->tex_height = ctx.preferred_tex_height;
                     needs_gpu_realloc_ = true;
                 }
             }
@@ -401,8 +401,8 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
         }
 
         // ── PostNodeFn callback ─────────────────────────────────────────
-        if (cn.is_gpu && on_gpu_node && cn.gpu_texture_view)
-            on_gpu_node(ni, cn.node_id, cn.gpu_texture_view);
+        if (cn.is_gpu() && on_gpu_node && cn.gpu->texture_view)
+            on_gpu_node(ni, cn.node_id, cn.gpu->texture_view);
 
         // ── Mark processed ──────────────────────────────────────────────
         cn.dirty = false;
@@ -422,7 +422,7 @@ void FrameExecutor::set_solo(int node_idx, const std::vector<bool>& active_set) 
 
 int FrameExecutor::find_gpu_sink(const CompiledGraph& cg) const {
     for (uint32_t ni : cg.frame_order) {
-        if (cg.nodes[ni].is_gpu_sink) return static_cast<int>(ni);
+        if (cg.nodes[ni].is_gpu_sink()) return static_cast<int>(ni);
     }
     return -1;
 }
@@ -430,7 +430,7 @@ int FrameExecutor::find_gpu_sink(const CompiledGraph& cg) const {
 int FrameExecutor::find_effective_gpu_sink(const CompiledGraph& cg) const {
     if (solo_node_idx_ >= 0 &&
         static_cast<uint32_t>(solo_node_idx_) < cg.nodes.size() &&
-        cg.nodes[solo_node_idx_].has_texture_output)
+        cg.nodes[solo_node_idx_].has_texture_output())
         return solo_node_idx_;
     return find_gpu_sink(cg);
 }
@@ -444,37 +444,37 @@ void FrameExecutor::allocate_gpu_textures(CompiledGraph& cg, WGPUDevice device,
     // Iterate nodes in topological order (they're already sorted)
     for (uint32_t ni = 0; ni < static_cast<uint32_t>(cg.nodes.size()); ++ni) {
         auto& cn = cg.nodes[ni];
-        if (!cn.is_gpu) continue;
+        if (!cn.is_gpu()) continue;
 
         // Release existing primary textures.
-        if (cn.gpu_texture_view) { wgpuTextureViewRelease(cn.gpu_texture_view); cn.gpu_texture_view = nullptr; }
-        if (cn.gpu_texture) { wgpuTextureRelease(cn.gpu_texture); cn.gpu_texture = nullptr; }
-        for (auto& v : cn.aux_gpu_texture_views) v = nullptr;
-        for (auto& t : cn.aux_gpu_textures)      t = nullptr;
+        if (cn.gpu->texture_view) { wgpuTextureViewRelease(cn.gpu->texture_view); cn.gpu->texture_view = nullptr; }
+        if (cn.gpu->texture) { wgpuTextureRelease(cn.gpu->texture); cn.gpu->texture = nullptr; }
+        for (auto& v : cn.gpu->aux_gpu_texture_views) v = nullptr;
+        for (auto& t : cn.gpu->aux_gpu_textures)      t = nullptr;
 
         // GPU sinks and scene-only nodes don't produce their own textures
-        cn.gpu_tex_inherited = false;
-        if (cn.is_gpu_sink || !cn.has_texture_output) {
-            cn.gpu_tex_width  = 0;
-            cn.gpu_tex_height = 0;
+        cn.gpu->tex_inherited = false;
+        if (cn.is_gpu_sink() || !cn.has_texture_output()) {
+            cn.gpu->tex_width  = 0;
+            cn.gpu->tex_height = 0;
             continue;
         }
 
         // Resolve texture size
-        uint32_t w = cn.gpu_tex_width;
-        uint32_t h = cn.gpu_tex_height;
+        uint32_t w = cn.gpu->tex_width;
+        uint32_t h = cn.gpu->tex_height;
 
         // Nodes with texture inputs always inherit from upstream (filters).
-        if (!cn.texture_input_port_indices.empty()) {
-            uint32_t first_tex_port = cn.texture_input_port_indices[0];
+        if (!cn.gpu->texture_input_port_indices.empty()) {
+            uint32_t first_tex_port = cn.gpu->texture_input_port_indices[0];
             for (const auto& e : cg.edges) {
                 if (e.to_node == ni && !e.targets_param &&
                     e.to_port == first_tex_port && e.data_type == VIVID_PORT_TEXTURE) {
                     const auto& upstream = cg.nodes[e.from_node];
-                    if (upstream.gpu_tex_width > 0 && upstream.gpu_tex_height > 0) {
-                        w = upstream.gpu_tex_width;
-                        h = upstream.gpu_tex_height;
-                        cn.gpu_tex_inherited = true;
+                    if (upstream.gpu->tex_width > 0 && upstream.gpu->tex_height > 0) {
+                        w = upstream.gpu->tex_width;
+                        h = upstream.gpu->tex_height;
+                        cn.gpu->tex_inherited = true;
                     }
                     break;
                 }
@@ -487,8 +487,8 @@ void FrameExecutor::allocate_gpu_textures(CompiledGraph& cg, WGPUDevice device,
             h = default_h;
         }
 
-        cn.gpu_tex_width  = w;
-        cn.gpu_tex_height = h;
+        cn.gpu->tex_width  = w;
+        cn.gpu->tex_height = h;
 
         // Create texture
         WGPUTextureDescriptor tex_desc{};
@@ -501,8 +501,8 @@ void FrameExecutor::allocate_gpu_textures(CompiledGraph& cg, WGPUDevice device,
         tex_desc.format = format;
         tex_desc.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding
                        | WGPUTextureUsage_CopySrc | WGPUTextureUsage_CopyDst | extra_usage;
-        cn.gpu_texture = wgpuDeviceCreateTexture(device, &tex_desc);
-        if (!cn.gpu_texture) {
+        cn.gpu->texture = wgpuDeviceCreateTexture(device, &tex_desc);
+        if (!cn.gpu->texture) {
             std::fprintf(stderr, "[vivid] GPU texture alloc failed for node '%s'\n", cn.node_id.c_str());
             continue;
         }
@@ -517,11 +517,11 @@ void FrameExecutor::allocate_gpu_textures(CompiledGraph& cg, WGPUDevice device,
         view_desc.baseArrayLayer = 0;
         view_desc.arrayLayerCount = 1;
         view_desc.aspect = WGPUTextureAspect_All;
-        cn.gpu_texture_view = wgpuTextureCreateView(cn.gpu_texture, &view_desc);
-        if (!cn.gpu_texture_view) {
+        cn.gpu->texture_view = wgpuTextureCreateView(cn.gpu->texture, &view_desc);
+        if (!cn.gpu->texture_view) {
             std::fprintf(stderr, "[vivid] GPU texture view creation failed for node '%s'\n", cn.node_id.c_str());
-            wgpuTextureRelease(cn.gpu_texture);
-            cn.gpu_texture = nullptr;
+            wgpuTextureRelease(cn.gpu->texture);
+            cn.gpu->texture = nullptr;
             continue;
         }
 
@@ -532,7 +532,7 @@ void FrameExecutor::allocate_gpu_textures(CompiledGraph& cg, WGPUDevice device,
 
 bool FrameExecutor::has_gpu_operators(const CompiledGraph& cg) const {
     for (const auto& cn : cg.nodes)
-        if (cn.is_gpu) return true;
+        if (cn.is_gpu()) return true;
     return false;
 }
 
@@ -542,8 +542,8 @@ bool FrameExecutor::gpu_sink_source_size(const CompiledGraph& cg, int sink_idx,
         if (e.to_node == static_cast<uint32_t>(sink_idx) &&
             e.data_type == VIVID_PORT_TEXTURE && !e.targets_param) {
             const auto& up = cg.nodes[e.from_node];
-            w = up.gpu_tex_width;
-            h = up.gpu_tex_height;
+            w = up.gpu->tex_width;
+            h = up.gpu->tex_height;
             return w > 0 && h > 0;
         }
     }
@@ -555,12 +555,12 @@ WGPUTexture FrameExecutor::gpu_sink_source_texture(const CompiledGraph& cg, int 
         if (e.to_node == static_cast<uint32_t>(sink_idx) &&
             e.data_type == VIVID_PORT_TEXTURE && !e.targets_param) {
             const auto& up = cg.nodes[e.from_node];
-            for (size_t ai = 0; ai < up.aux_texture_output_port_indices.size(); ++ai) {
+            for (size_t ai = 0; ai < up.gpu->aux_texture_output_port_indices.size(); ++ai) {
                 if (e.from_port ==
-                        static_cast<uint32_t>(up.aux_texture_output_port_indices[ai]))
-                    return up.aux_gpu_textures[ai];
+                        static_cast<uint32_t>(up.gpu->aux_texture_output_port_indices[ai]))
+                    return up.gpu->aux_gpu_textures[ai];
             }
-            return up.gpu_texture;  // primary
+            return up.gpu->texture;  // primary
         }
     }
     return nullptr;
@@ -568,10 +568,11 @@ WGPUTexture FrameExecutor::gpu_sink_source_texture(const CompiledGraph& cg, int 
 
 void FrameExecutor::shutdown_gpu(CompiledGraph& cg) {
     for (auto& cn : cg.nodes) {
-        if (cn.gpu_texture_view) { wgpuTextureViewRelease(cn.gpu_texture_view); cn.gpu_texture_view = nullptr; }
-        if (cn.gpu_texture) { wgpuTextureRelease(cn.gpu_texture); cn.gpu_texture = nullptr; }
-        for (auto& v : cn.aux_gpu_texture_views) v = nullptr;
-        for (auto& t : cn.aux_gpu_textures)      t = nullptr;
+        if (!cn.gpu) continue;
+        if (cn.gpu->texture_view) { wgpuTextureViewRelease(cn.gpu->texture_view); cn.gpu->texture_view = nullptr; }
+        if (cn.gpu->texture) { wgpuTextureRelease(cn.gpu->texture); cn.gpu->texture = nullptr; }
+        for (auto& v : cn.gpu->aux_gpu_texture_views) v = nullptr;
+        for (auto& t : cn.gpu->aux_gpu_textures)      t = nullptr;
     }
 
     if (gpu_device_) {

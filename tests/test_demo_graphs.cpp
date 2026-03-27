@@ -1,6 +1,6 @@
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
-#include "runtime/scheduler.h"
+#include "runtime/runtime_core.h"
 #include "runtime/audio_engine.h"
 #include "runtime/builtin_operators.h"
 #include "runtime/cadence_bridge.h"
@@ -108,7 +108,7 @@ struct HeadlessGpu {
         acb.userdata1 = &ad;
         WGPURequestAdapterOptions opts{};
         opts.powerPreference = WGPUPowerPreference_HighPerformance;
-        opts.forceFallbackAdapter = true;
+        // Use the real GPU adapter (matching other GPU test files).
         wgpuInstanceRequestAdapter(instance, &opts, acb);
         if (!ad.done || !ad.adapter) return false;
         adapter = ad.adapter;
@@ -152,7 +152,7 @@ struct HeadlessGpu {
 };
 
 // Helper: run one scheduler tick with a GPU command encoder, then submit + wait.
-static void tick_gpu(vivid::Scheduler& sched, HeadlessGpu& gpu,
+static void tick_gpu(vivid::RuntimeCore& sched, HeadlessGpu& gpu,
                      WGPUTextureFormat format, double time, uint64_t frame) {
     WGPUCommandEncoderDescriptor enc_desc{};
     enc_desc.label = vivid::to_sv("Tick Encoder");
@@ -210,7 +210,7 @@ int main(int argc, char* argv[]) {
             capture_stderr = false;
         }
     }
-    static constexpr WGPUTextureFormat kFormat = WGPUTextureFormat_RGBA8Unorm;
+    static constexpr WGPUTextureFormat kFormat = WGPUTextureFormat_RGBA16Float;
     g_diag_fd = dup(STDERR_FILENO);
 
     signal(SIGABRT, on_fatal_signal);
@@ -308,7 +308,7 @@ int main(int argc, char* argv[]) {
         }
 
         // Build scheduler
-        vivid::Scheduler sched;
+        vivid::RuntimeCore sched;
         emit_checkpoint("scheduler-build");
         if (!sched.build(graph, registry)) {
             fail(filename.c_str(), "scheduler.build() failed");
@@ -334,7 +334,7 @@ int main(int argc, char* argv[]) {
         if (use_audio) {
             audio = new vivid::AudioEngine();
             emit_checkpoint("audio-build");
-            audio->build(sched.core());
+            audio->build(sched);
             emit_checkpoint("audio-start");
             audio->start(true);  // null device
         }
@@ -358,10 +358,7 @@ int main(int argc, char* argv[]) {
         for (uint64_t frame = 0; frame < (uint64_t)tick_count; ++frame) {
             double time = frame * 0.016;
             if (audio) {
-                auto& cb = sched.cadence_bridge();
-                auto* cg = sched.compiled_graph();
-                cb.pull_from_audio(*cg);
-                cb.update_sources(time, *cg);
+                sched.pre_tick_audio_sync(time);
             }
             if (use_gpu) {
                 tick_gpu(sched, gpu, kFormat, time, frame);

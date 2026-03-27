@@ -3,7 +3,7 @@
 #include "runtime/compiled_graph.h"
 #include "runtime/runtime_api.h"
 #include "runtime/graph.h"
-#include "runtime/scheduler.h"
+#include "runtime/runtime_core.h"
 #include "runtime/operator_registry.h"
 #include "runtime/operator_loader.h"
 #include "runtime/operator_creator.h"
@@ -259,8 +259,8 @@ static bool is_undo_tracked_method(const std::string& method) {
 // Command handlers
 // ---------------------------------------------------------------------------
 
-static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
-    const auto* cg = scheduler.compiled_graph();
+static std::string handle_inspect_graph(Graph& graph, RuntimeCore& core) {
+    const auto* cg = core.compiled_graph();
     std::unordered_map<std::string, const CompiledNode*> state_map;
     if (cg) {
         for (const auto& cn : cg->nodes)
@@ -435,9 +435,9 @@ static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
     return json_ok(std::move(result));
 }
 
-static const CompiledNode* find_node_state(const Scheduler& scheduler,
+static const CompiledNode* find_node_state(const RuntimeCore& core,
                                             const std::string& node_id) {
-    const auto* cg = scheduler.compiled_graph();
+    const auto* cg = core.compiled_graph();
     if (!cg) return nullptr;
     return cg->find_node(node_id);
 }
@@ -494,7 +494,7 @@ static nlohmann::json sample_node_outputs_snapshot(const CompiledNode& ns,
     return outputs_obj;
 }
 
-static std::string handle_sample_node_outputs(Graph& graph, Scheduler& scheduler,
+static std::string handle_sample_node_outputs(Graph& graph, RuntimeCore& core,
                                               const nlohmann::json& root) {
     if (!root.contains("node_id") || !root["node_id"].is_string()) return json_err("missing 'node_id'");
     std::string node_id = root["node_id"].get<std::string>();
@@ -513,7 +513,7 @@ static std::string handle_sample_node_outputs(Graph& graph, Scheduler& scheduler
     duration_seconds = std::clamp(duration_seconds, 0.0, 60.0);
     interval_ms = std::clamp(interval_ms, 10, 5000);
 
-    const CompiledNode* initial = find_node_state(scheduler, node_id);
+    const CompiledNode* initial = find_node_state(core, node_id);
     if (!initial) return json_err("node not found");
     if (!initial->loader || !initial->loader->descriptor()) {
         return json_err("node has no live descriptor");
@@ -522,7 +522,7 @@ static std::string handle_sample_node_outputs(Graph& graph, Scheduler& scheduler
     nlohmann::json result = nlohmann::json::object();
     result["node_id"] = node_id;
     result["type"] = initial->type_name;
-    result["env"] = initial->is_gpu ? "gpu" : (initial->active_cadence == vivid::Cadence::Audio ? "audio" : "control");
+    result["env"] = initial->is_gpu() ? "gpu" : (initial->active_cadence == vivid::Cadence::Audio ? "audio" : "control");
     result["duration_seconds"] = duration_seconds;
     result["interval_ms"] = interval_ms;
     result["include_spreads"] = include_spreads;
@@ -535,7 +535,7 @@ static std::string handle_sample_node_outputs(Graph& graph, Scheduler& scheduler
 
     while (true) {
         const auto now = std::chrono::steady_clock::now();
-        const CompiledNode* ns = find_node_state(scheduler, node_id);
+        const CompiledNode* ns = find_node_state(core, node_id);
         if (!ns) {
             return json_err("node disappeared during sampling");
         }
@@ -557,7 +557,7 @@ static std::string handle_sample_node_outputs(Graph& graph, Scheduler& scheduler
     return json_ok(std::move(result));
 }
 
-static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
+static std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core) {
     std::unordered_map<std::string, const NodeDef*> def_map;
     for (const auto& ndef : graph.nodes())
         def_map[ndef.id] = &ndef;
@@ -575,7 +575,7 @@ static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
     nlohmann::json result_obj = nlohmann::json::object();
     nlohmann::json nodes_arr = nlohmann::json::array();
 
-    const auto* cg = scheduler.compiled_graph();
+    const auto* cg = core.compiled_graph();
     if (!cg) {
         result_obj["nodes"] = std::move(nodes_arr);
         return nlohmann::json{{"ok", true}, {"schema_version", 1}, {"result", std::move(result_obj)}}.dump();
@@ -594,7 +594,7 @@ static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
                 type_name = dit->second->type;
         }
         node["type"] = type_name;
-        node["env"] = ns.is_gpu ? "gpu" : (ns.active_cadence == vivid::Cadence::Audio ? "audio" : "control");
+        node["env"] = ns.is_gpu() ? "gpu" : (ns.active_cadence == vivid::Cadence::Audio ? "audio" : "control");
         node["cadence_capability"] = (ns.cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE) ? "audio_capable" : "frame_only";
         {
             const auto* ndef = graph.find_node(ns.node_id);
@@ -736,9 +736,9 @@ static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
                     }
                 }
 
-                if (pd.type == VIVID_PORT_TEXTURE && ns.gpu_tex_width > 0 && ns.gpu_tex_height > 0) {
-                    out["width"] = ns.gpu_tex_width;
-                    out["height"] = ns.gpu_tex_height;
+                if (pd.type == VIVID_PORT_TEXTURE && ns.gpu && ns.gpu->tex_width > 0 && ns.gpu->tex_height > 0) {
+                    out["width"] = ns.gpu->tex_width;
+                    out["height"] = ns.gpu->tex_height;
                 }
                 outputs_arr.push_back(std::move(out));
             }
@@ -747,12 +747,12 @@ static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
 
         // Environment metrics (lightweight first pass)
         nlohmann::json env_metrics = nlohmann::json::object();
-        if (ns.is_gpu) {
+        if (ns.is_gpu()) {
             nlohmann::json gpu = nlohmann::json::object();
-            gpu["width"] = ns.gpu_tex_width;
-            gpu["height"] = ns.gpu_tex_height;
-            gpu["has_texture"] = (ns.gpu_texture != nullptr);
-            gpu["aux_texture_count"] = static_cast<int64_t>(ns.aux_gpu_texture_views.size());
+            gpu["width"] = ns.gpu->tex_width;
+            gpu["height"] = ns.gpu->tex_height;
+            gpu["has_texture"] = (ns.gpu->texture != nullptr);
+            gpu["aux_texture_count"] = static_cast<int64_t>(ns.gpu->aux_gpu_texture_views.size());
             env_metrics["gpu"] = std::move(gpu);
         } else if (ns.active_cadence == vivid::Cadence::Audio) {
             nlohmann::json audio = nlohmann::json::object();
@@ -819,7 +819,7 @@ struct DiagnosticFinding {
 };
 
 static std::vector<DiagnosticFinding> collect_diagnostics(
-        Graph& graph, Scheduler& scheduler, OperatorRegistry& registry) {
+        Graph& graph, RuntimeCore& core, OperatorRegistry& registry) {
     std::unordered_map<std::string, int> incoming_wires;
     std::unordered_map<std::string, int> outgoing_wires;
     for (const auto& conn : graph.connections()) {
@@ -830,7 +830,7 @@ static std::vector<DiagnosticFinding> collect_diagnostics(
     std::vector<DiagnosticFinding> findings;
     findings.reserve(32);
 
-    const auto* cg = scheduler.compiled_graph();
+    const auto* cg = core.compiled_graph();
     if (!cg) return findings;
     const auto& nodes = cg->nodes;
     for (const auto& ns : nodes) {
@@ -939,8 +939,8 @@ static std::vector<DiagnosticFinding> collect_diagnostics(
     return findings;
 }
 
-static std::string handle_run_diagnostics(Graph& graph, Scheduler& scheduler, OperatorRegistry& registry) {
-    std::vector<DiagnosticFinding> findings = collect_diagnostics(graph, scheduler, registry);
+static std::string handle_run_diagnostics(Graph& graph, RuntimeCore& core, OperatorRegistry& registry) {
+    std::vector<DiagnosticFinding> findings = collect_diagnostics(graph, core, registry);
 
     nlohmann::json summary = nlohmann::json::object();
     int64_t critical_count = 0;
@@ -1083,7 +1083,7 @@ static bool eval_compare(const CheckValue& actual, const std::string& op,
     return false;
 }
 
-static bool resolve_state_path(Graph& graph, Scheduler& scheduler,
+static bool resolve_state_path(Graph& graph, RuntimeCore& core,
                                const std::unordered_map<std::string, int>& incoming_wires,
                                const std::unordered_map<std::string, int>& outgoing_wires,
                                const std::string& path, CheckValue& out) {
@@ -1099,13 +1099,13 @@ static bool resolve_state_path(Graph& graph, Scheduler& scheduler,
     std::string node_id = path.substr(prefix.size(), node_end - prefix.size());
     std::string rest = path.substr(node_end + 1);
 
-    const auto* cg = scheduler.compiled_graph();
+    const auto* cg = core.compiled_graph();
     if (!cg) return false;
     const CompiledNode* node = cg->find_node(node_id);
     if (!node) return false;
 
     if (rest == "env") {
-        out = cv_string(node->is_gpu ? "gpu" : (node->active_cadence == vivid::Cadence::Audio ? "audio" : "control"));
+        out = cv_string(node->is_gpu() ? "gpu" : (node->active_cadence == vivid::Cadence::Audio ? "audio" : "control"));
         return true;
     }
     if (rest == "incoming_wires") {
@@ -1344,7 +1344,7 @@ static std::string handle_validate_checks(const nlohmann::json& root) {
     return nlohmann::json{{"ok", true}, {"schema_version", 1}, {"result", std::move(result_obj)}}.dump();
 }
 
-static std::string handle_run_checks(Graph& graph, Scheduler& scheduler, OperatorRegistry& registry, const nlohmann::json& root) {
+static std::string handle_run_checks(Graph& graph, RuntimeCore& core, OperatorRegistry& registry, const nlohmann::json& root) {
     if (!root.contains("checks") || !root["checks"].is_array()) return json_err("missing 'checks' array");
     const auto& checks = root["checks"];
 
@@ -1370,7 +1370,7 @@ static std::string handle_run_checks(Graph& graph, Scheduler& scheduler, Operato
         incoming_wires[conn.to_node]++;
         outgoing_wires[conn.from_node]++;
     }
-    std::vector<DiagnosticFinding> findings = collect_diagnostics(graph, scheduler, registry);
+    std::vector<DiagnosticFinding> findings = collect_diagnostics(graph, core, registry);
 
     nlohmann::json results = nlohmann::json::array();
 
@@ -1393,7 +1393,7 @@ static std::string handle_run_checks(Graph& graph, Scheduler& scheduler, Operato
 
         if (!r_skipped && c.has_when) {
             CheckValue guard_actual;
-            if (!resolve_state_path(graph, scheduler, incoming_wires, outgoing_wires, c.when_path, guard_actual)) {
+            if (!resolve_state_path(graph, core, incoming_wires, outgoing_wires, c.when_path, guard_actual)) {
                 r_skipped = true;
                 message = message.empty() ? "guard path not found" : message;
             } else {
@@ -1406,7 +1406,7 @@ static std::string handle_run_checks(Graph& graph, Scheduler& scheduler, Operato
         }
 
         if (!r_skipped && c.type == "state_check") {
-            bool has_actual = resolve_state_path(graph, scheduler, incoming_wires, outgoing_wires, c.path, actual);
+            bool has_actual = resolve_state_path(graph, core, incoming_wires, outgoing_wires, c.path, actual);
             if (!has_actual) actual.kind = CheckValue::Kind::Missing;
             if (c.op == "between")
                 r_passed = eval_compare(actual, c.op, c.value, c.tolerance, &c.between_max);
@@ -1625,16 +1625,16 @@ static std::string handle_get_registry_diagnostics(OperatorRegistry& registry) {
 
 static std::string dispatch(const std::string& method, const std::string& body,
                             RuntimeAPI& api, Graph& graph,
-                            Scheduler& scheduler, OperatorRegistry& registry,
+                            RuntimeCore& core, OperatorRegistry& registry,
                             bool& has_gpu_ops, bool& has_audio,
                             const std::string& src_dir, HotReloader* hot_reloader,
                             PackageManager* package_manager,
                             PackageCompiler* package_compiler,
                             const Settings* settings) {
     // Read-only queries (no body needed)
-    if (method == "inspect_graph") return handle_inspect_graph(graph, scheduler);
-    if (method == "introspect_nodes") return handle_introspect_nodes(graph, scheduler);
-    if (method == "run_diagnostics") return handle_run_diagnostics(graph, scheduler, registry);
+    if (method == "inspect_graph") return handle_inspect_graph(graph, core);
+    if (method == "introspect_nodes") return handle_introspect_nodes(graph, core);
+    if (method == "run_diagnostics") return handle_run_diagnostics(graph, core, registry);
     if (method == "list_types")    return handle_list_types(registry);
     if (method == "get_registry_diagnostics") return handle_get_registry_diagnostics(registry);
     if (method == "get_graph_load_diagnostics") return handle_get_graph_load_diagnostics(graph);
@@ -1652,10 +1652,10 @@ static std::string dispatch(const std::string& method, const std::string& body,
         else result = handle_validate_checks(root);
     } else if (method == "sample_node_outputs") {
         if (!root_valid) result = json_err("invalid JSON body");
-        else result = handle_sample_node_outputs(graph, scheduler, root);
+        else result = handle_sample_node_outputs(graph, core, root);
     } else if (method == "run_checks") {
         if (!root_valid) result = json_err("invalid JSON body");
-        else result = handle_run_checks(graph, scheduler, registry, root);
+        else result = handle_run_checks(graph, core, registry, root);
     } else if (method == "add_node") {
         if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
@@ -1900,7 +1900,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
     } else if (method == "get_graph_errors") {
         nlohmann::json res = nlohmann::json::object();
         nlohmann::json errs = nlohmann::json::array();
-        if (const auto* cg = scheduler.compiled_graph()) {
+        if (const auto* cg = core.compiled_graph()) {
             for (const auto& cn : cg->nodes) {
                 if (!cn.errored) continue;
                 errs.push_back({{"node_id", cn.node_id}, {"error", cn.error_message}});
@@ -2288,7 +2288,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     res["operator_count"] = static_cast<int64_t>(ir.info.operators.size() + ir.info.gpu_operators.size());
                     result = json_ok(std::move(res));
                     // Auto-reload graph if it has missing operators
-                    if (const auto* cg = scheduler.compiled_graph()) {
+                    if (const auto* cg = core.compiled_graph()) {
                         for (const auto& cn : cg->nodes) {
                             if (cn.missing_operator) {
                                 auto rr = api.reload(has_gpu_ops, has_audio);
@@ -2348,7 +2348,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     res["linked"] = true;
                     result = json_ok(std::move(res));
                     // Auto-reload graph if it has missing operators
-                    if (const auto* cg = scheduler.compiled_graph()) {
+                    if (const auto* cg = core.compiled_graph()) {
                         for (const auto& cn : cg->nodes) {
                             if (cn.missing_operator) {
                                 auto rr = api.reload(has_gpu_ops, has_audio);
@@ -2417,7 +2417,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
                         if (!rr.ok) {
                             result = json_err("package rebuilt but runtime refresh failed: " + rr.message);
                         } else {
-                            scheduler.tick(0.0, 0.016, 0);
+                            core.tick(0.0, 0.016, 0);
                             nlohmann::json res = {
                                 {"name", ir.info.name},
                                 {"operator_count", static_cast<int64_t>(ir.info.operators.size() + ir.info.gpu_operators.size())},
@@ -3270,7 +3270,7 @@ void ControlServer::stop() {
 }
 
 void ControlServer::process_requests(RuntimeAPI& api, Graph& graph,
-                                     Scheduler& scheduler,
+                                     RuntimeCore& core,
                                      OperatorRegistry& registry,
                                      bool& has_gpu_ops, bool& has_audio) {
     if (!impl_) return;
@@ -3357,7 +3357,7 @@ void ControlServer::process_requests(RuntimeAPI& api, Graph& graph,
         }
 
         std::string response = dispatch(req.method, req.body,
-                                        api, graph, scheduler, registry,
+                                        api, graph, core, registry,
                                         has_gpu_ops, has_audio,
                                         src_dir_, hot_reloader_,
                                         package_manager_,

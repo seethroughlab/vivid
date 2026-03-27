@@ -48,7 +48,8 @@ public:
 
         auto info = std::make_shared<vivid::ui::OperatorInfo>();
         info->name = desc->name;
-        info->env = desc->execution_env;
+        info->is_gpu = (desc->execution_env == VIVID_ENV_GPU);
+        info->is_audio_native = (desc->execution_env == VIVID_ENV_AUDIO);
         info->params.resize(desc->param_count);
         for (uint32_t i = 0; i < desc->param_count; ++i) {
             auto& pi = info->params[i];

@@ -3,7 +3,7 @@
 #include "runtime/package_compiler.h"
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
-#include "runtime/scheduler.h"
+#include "runtime/runtime_core.h"
 #include <array>
 #include <cstdio>
 #include <filesystem>
@@ -103,7 +103,7 @@ static SingleTestResult run_graph_test(const std::string& graph_path,
     registry.load_for_graph(graph);
 
     // Build scheduler
-    Scheduler sched;
+    RuntimeCore sched;
     if (!sched.build(graph, registry)) {
         r.status = "failed";
         r.code = "graph_build_failed";

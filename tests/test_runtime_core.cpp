@@ -1,6 +1,6 @@
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
-#include "runtime/scheduler.h"
+#include "runtime/runtime_core.h"
 #include "runtime/compiled_graph.h"
 #include <cstdio>
 #include <cstdlib>
@@ -29,7 +29,7 @@ static void check_float(float actual, float expected, const char* msg) {
 }
 
 // Helper: find node index by id in a scheduler
-static int find_idx(const vivid::Scheduler& sched, const std::string& id) {
+static int find_idx(const vivid::RuntimeCore& sched, const std::string& id) {
     const auto& nodes = sched.compiled_graph()->nodes;
     for (size_t i = 0; i < nodes.size(); ++i) {
         if (nodes[i].node_id == id) return static_cast<int>(i);
@@ -72,7 +72,7 @@ int main() {
         g.add_connection("a", "out", "b", "in");
         g.add_connection("b", "out", "c", "in");
 
-        vivid::Scheduler sched;
+        vivid::RuntimeCore sched;
         check(sched.build(g, registry), "build succeeds");
         sched.tick(0.0, 0.016, 0);
 
@@ -106,7 +106,7 @@ int main() {
         g.add_connection("b", "out", "d", "in");
         g.add_connection("c", "out", "d", "gain");  // param wire
 
-        vivid::Scheduler sched;
+        vivid::RuntimeCore sched;
         check(sched.build(g, registry), "build succeeds");
 
         // Verify evaluation order: a before b,c; b,c before d
@@ -143,7 +143,7 @@ int main() {
         g.add_connection("a", "out", "b", "in");
         g.add_connection("b", "out", "a", "in");
 
-        vivid::Scheduler sched;
+        vivid::RuntimeCore sched;
         check(!sched.build(g, registry), "build returns false for cycle");
     }
 
@@ -163,7 +163,7 @@ int main() {
         g.add_connection("a", "out", "b", "in");
         g.add_connection("b", "out", "c", "in");
 
-        vivid::Scheduler sched;
+        vivid::RuntimeCore sched;
         check(sched.build(g, registry), "build succeeds");
 
         // Tick 1: first evaluation, all outputs compute from defaults
@@ -207,7 +207,7 @@ int main() {
         g.add_connection("src", "out", "dst", "in");
         g.add_connection("mod", "out", "dst", "gain");  // param wire
 
-        vivid::Scheduler sched;
+        vivid::RuntimeCore sched;
         check(sched.build(g, registry), "build succeeds");
         sched.tick(0.0, 0.016, 0);
 
@@ -235,7 +235,7 @@ int main() {
         g.add_node("pass", "ControlPassOp", {{"gain", 2.0f}});
         g.add_connection("src", "out", "pass", "in");
 
-        vivid::Scheduler sched;
+        vivid::RuntimeCore sched;
         check(sched.build(g, registry), "build succeeds");
         sched.tick(0.0, 0.016, 0);
 
@@ -270,7 +270,7 @@ int main() {
         g.add_node("audio", "AudioTestOp", {{"level", 0.5f}});
         g.add_connection("ctrl", "out", "audio", "level");  // param wire
 
-        vivid::Scheduler sched;
+        vivid::RuntimeCore sched;
         check(sched.build(g, registry), "build succeeds");
 
         // AudioTestOp gets 3 implicit analysis ports: rms, peak, waveform
@@ -299,7 +299,7 @@ int main() {
         g.add_node("ctrl", "TestOp", {{"scale", 1.0f}});
         g.add_node("audio", "AudioTestOp", {{"level", 0.5f}});
 
-        vivid::Scheduler sched;
+        vivid::RuntimeCore sched;
         check(sched.build(g, registry), "build succeeds");
 
         check(!sched.has_gpu_operators(), "has_gpu = false");
@@ -317,8 +317,8 @@ int main() {
         check(sched.compiled_graph()->find_node("nonexistent") == nullptr, "find_node_mut(nonexistent) = nullptr");
 
         // is_audio_type
-        check(sched.is_audio_type("AudioTestOp"), "is_audio_type(AudioTestOp) = true");
-        check(!sched.is_audio_type("TestOp"), "is_audio_type(TestOp) = false");
+        check(sched.has_audio_cadence_type("AudioTestOp"), "is_audio_type(AudioTestOp) = true");
+        check(!sched.has_audio_cadence_type("TestOp"), "is_audio_type(TestOp) = false");
 
         sched.shutdown();
     }

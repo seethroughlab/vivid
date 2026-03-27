@@ -38,9 +38,6 @@ public:
     // Read audio analysis snapshot and inject into frame-rate nodes.
     void pull_from_audio(CompiledGraph& cg);
 
-    // Call main_thread_update() on audio-cadence operators that support it.
-    void update_sources(double time, CompiledGraph& cg);
-
     // ── Audio thread operations (called by AudioExecutor) ───────────────────
 
     // Read the active param snapshot (lock-free, acquire semantics).
@@ -77,10 +74,9 @@ private:
     AnalysisSnapshot analysis_snapshots_[2];
     std::atomic<int> analysis_active_{0};
 
-    // Mapping from audio_order index to the position in snapshot arrays.
-    // audio_order[i] is the CompiledGraph node index; we need a mapping
-    // from CompiledGraph node index → snapshot array index.
-    std::unordered_map<uint32_t, uint32_t> node_to_snapshot_idx_;
+    // Mapping from CompiledGraph node index → snapshot array index.
+    // Indexed by graph node index; -1 for non-audio nodes.
+    std::vector<int32_t> node_to_snapshot_idx_;
 
     // Analysis port mappings (audio node → analysis output ports in CompiledNode)
     struct AnalysisMapping {

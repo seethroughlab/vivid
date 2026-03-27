@@ -3,7 +3,7 @@
 
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
-#include "runtime/scheduler.h"
+#include "runtime/runtime_core.h"
 #include "runtime/audio_engine.h"
 #include "runtime/builtin_operators.h"
 #include "runtime/cadence_bridge.h"
@@ -110,13 +110,13 @@ int main(int argc, char* argv[]) {
     registry.load_for_graph(graph);
 
     // Build scheduler
-    vivid::Scheduler sched;
+    vivid::RuntimeCore sched;
     bool sched_ok = sched.build(graph, registry);
     check(sched_ok, "Scheduler built");
 
     // Build audio engine
     vivid::AudioEngine audio;
-    bool audio_ok = audio.build(sched.core());
+    bool audio_ok = audio.build(sched);
     check(audio_ok, "Audio engine built");
 
     // Start audio with null device (no real audio output)
@@ -127,12 +127,9 @@ int main(int argc, char* argv[]) {
     float audio_buf[vivid::AudioEngine::kBufferSize * 2] = {};
     for (uint64_t frame = 0; frame < 30; ++frame) {
         double time = frame * 0.016;
-        auto& cb = sched.cadence_bridge();
-        auto* cg = sched.compiled_graph();
-        cb.pull_from_audio(*cg);
-        cb.update_sources(time, *cg);
+        sched.pre_tick_audio_sync(time);
         sched.tick(time, 0.016, frame);
-        cb.push_to_audio(*cg);
+        sched.post_tick_audio_sync();
         audio.process_audio_for_test(audio_buf, vivid::AudioEngine::kBufferSize);
     }
 

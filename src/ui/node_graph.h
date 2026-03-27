@@ -111,7 +111,8 @@ struct MouseState {
 struct NodeRect {
     std::string node_id;
     std::string type_name;
-    VividExecutionEnv env = VIVID_ENV_FRAME;
+    Cadence active_cadence = Cadence::Frame;
+    bool is_gpu = false;
     float x = 0, y = 0, w = 0, h = 0;
     float target_h = 0;  // animated height target (h lerps toward this)
     struct PortPos { std::string name; float x, y; bool is_param = false; };

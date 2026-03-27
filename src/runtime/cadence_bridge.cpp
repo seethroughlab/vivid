@@ -7,13 +7,13 @@
 namespace vivid {
 
 void CadenceBridge::build(const CompiledGraph& cg) {
-    node_to_snapshot_idx_.clear();
     analysis_mappings_.clear();
 
-    // Count audio-cadence nodes and build snapshot index mapping
+    // Build flat lookup: graph node index → snapshot array index (-1 = not audio)
+    node_to_snapshot_idx_.assign(cg.nodes.size(), -1);
     uint32_t audio_count = 0;
     for (uint32_t idx : cg.audio_order) {
-        node_to_snapshot_idx_[idx] = audio_count++;
+        node_to_snapshot_idx_[idx] = static_cast<int32_t>(audio_count++);
     }
 
     // Allocate ParamSnapshot arrays
@@ -28,8 +28,9 @@ void CadenceBridge::build(const CompiledGraph& cg) {
         for (uint32_t i = 0; i < audio_count; ++i) {
             uint32_t gi = cg.audio_order[i];
             const auto& cn = cg.nodes[gi];
+            const auto& a = *cn.audio;
             snap.node_params[i] = cn.param_values;
-            snap.float_input_values[i] = cn.float_input_defaults;
+            snap.float_input_values[i] = a.float_input_defaults;
             snap.spread_inputs[i].resize(cn.input_port_count);
             snap.input_string_values[i].assign(cn.input_port_count, "");
             snap.custom_inputs[i].resize(cn.input_port_count);
@@ -51,23 +52,24 @@ void CadenceBridge::build(const CompiledGraph& cg) {
         for (uint32_t i = 0; i < audio_count; ++i) {
             uint32_t gi = cg.audio_order[i];
             const auto& cn = cg.nodes[gi];
+            const auto& a = *cn.audio;
             snap.spread_outputs[i].resize(cn.output_port_count);
-            snap.float_outputs[i].resize(cn.float_output_count, 0.0f);
+            snap.float_outputs[i].resize(a.float_output_count, 0.0f);
         }
     }
 
     // Build analysis mappings (audio nodes with rms/peak/waveform ports)
     for (uint32_t i = 0; i < audio_count; ++i) {
         uint32_t gi = cg.audio_order[i];
-        const auto& cn = cg.nodes[gi];
+        const auto& a = *cg.nodes[gi].audio;
 
-        auto rms_it = cn.analysis_output_port_indices.find("rms");
-        auto peak_it = cn.analysis_output_port_indices.find("peak");
-        auto wave_it = cn.analysis_output_port_indices.find("waveform");
+        auto rms_it = a.analysis_output_port_indices.find("rms");
+        auto peak_it = a.analysis_output_port_indices.find("peak");
+        auto wave_it = a.analysis_output_port_indices.find("waveform");
 
-        if (rms_it != cn.analysis_output_port_indices.end() &&
-            peak_it != cn.analysis_output_port_indices.end() &&
-            wave_it != cn.analysis_output_port_indices.end()) {
+        if (rms_it != a.analysis_output_port_indices.end() &&
+            peak_it != a.analysis_output_port_indices.end() &&
+            wave_it != a.analysis_output_port_indices.end()) {
             analysis_mappings_.push_back({
                 gi, i,
                 rms_it->second,
@@ -122,8 +124,9 @@ void CadenceBridge::push_to_audio(const CompiledGraph& cg) {
     for (uint32_t i = 0; i < static_cast<uint32_t>(cg.audio_order.size()); ++i) {
         uint32_t gi = cg.audio_order[i];
         const auto& cn = cg.nodes[gi];
+        const auto& a = *cn.audio;
         snap.node_params[i] = cn.param_values;
-        snap.float_input_values[i] = cn.float_input_defaults;
+        snap.float_input_values[i] = a.float_input_defaults;
         for (auto& sp : snap.spread_inputs[i]) sp.length = 0;
         for (auto& s : snap.input_string_values[i]) s.clear();
         for (auto& ci : snap.custom_inputs[i]) ci.clear();
@@ -134,9 +137,10 @@ void CadenceBridge::push_to_audio(const CompiledGraph& cg) {
         const auto& e = cg.edges[ei];
         const auto& from_cn = cg.nodes[e.from_node];
 
-        auto snap_it = node_to_snapshot_idx_.find(e.to_node);
-        if (snap_it == node_to_snapshot_idx_.end()) continue;
-        uint32_t si = snap_it->second;
+        if (e.to_node >= node_to_snapshot_idx_.size()) continue;
+        int32_t si_signed = node_to_snapshot_idx_[e.to_node];
+        if (si_signed < 0) continue;
+        uint32_t si = static_cast<uint32_t>(si_signed);
 
         if (e.targets_param && !e.targets_file_param) {
             // Scalar param modulation
@@ -230,9 +234,10 @@ void CadenceBridge::pull_from_audio(CompiledGraph& cg) {
     // Inject float outputs via audio_to_frame snapshot edges
     for (uint32_t ei : cg.audio_to_frame_edges) {
         const auto& e = cg.edges[ei];
-        auto snap_it = node_to_snapshot_idx_.find(e.from_node);
-        if (snap_it == node_to_snapshot_idx_.end()) continue;
-        uint32_t si = snap_it->second;
+        if (e.from_node >= node_to_snapshot_idx_.size()) continue;
+        int32_t si_signed = node_to_snapshot_idx_[e.from_node];
+        if (si_signed < 0) continue;
+        uint32_t si = static_cast<uint32_t>(si_signed);
 
         auto& to_cn = cg.nodes[e.to_node];
 
@@ -270,9 +275,9 @@ void CadenceBridge::pull_from_audio(CompiledGraph& cg) {
     for (uint32_t i = 0; i < static_cast<uint32_t>(cg.audio_order.size()); ++i) {
         uint32_t gi = cg.audio_order[i];
         auto& cn = cg.nodes[gi];
-        auto snap_it = node_to_snapshot_idx_.find(gi);
-        if (snap_it == node_to_snapshot_idx_.end()) continue;
-        uint32_t si = snap_it->second;
+        int32_t si_signed = node_to_snapshot_idx_[gi];
+        if (si_signed < 0) continue;
+        uint32_t si = static_cast<uint32_t>(si_signed);
         if (si >= snap.float_outputs.size()) continue;
         const auto& fo = snap.float_outputs[si];
         // Map float output ordinals back to output port indices
@@ -312,20 +317,6 @@ void CadenceBridge::pull_from_audio(CompiledGraph& cg) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// update_sources — main-thread update hook for audio operators
-// ---------------------------------------------------------------------------
-
-void CadenceBridge::update_sources(double time, CompiledGraph& cg) {
-    for (uint32_t idx : cg.audio_order) {
-        auto& cn = cg.nodes[idx];
-        if (!cn.loader || !cn.loader->has_main_thread_update()) continue;
-        cn.loader->main_thread_update(
-            cn.instance, time,
-            cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data(),
-            static_cast<uint32_t>(cn.file_param_ptrs.size()));
-    }
-}
 
 void CadenceBridge::set_solo_active_set(const std::vector<bool>& set) {
     // Write into inactive snapshot, will be published on next push_to_audio
