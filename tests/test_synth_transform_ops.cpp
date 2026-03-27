@@ -103,7 +103,7 @@ static void test_ring_mod(const std::string& staging) {
 
     check(std::strcmp(desc->name, "RingMod") == 0, "descriptor name");
     check(static_cast<int>(desc->param_count) == 3, "param_count = 3");
-    check(static_cast<int>(desc->port_count) == 3, "port_count = 3");
+    check(static_cast<int>(desc->port_count) == 6, "port_count = 6");
 
     // Silence -> silence
     {
@@ -181,7 +181,7 @@ static void test_fm_synth(const std::string& staging) {
 
     check(std::strcmp(desc->name, "FmSynth") == 0, "descriptor name");
     check(static_cast<int>(desc->param_count) == 8, "param_count = 8");
-    check(static_cast<int>(desc->port_count) == 4, "port_count = 4");
+    check(static_cast<int>(desc->port_count) == 10, "port_count = 10");
 
     // No gate -> silence
     {
@@ -265,7 +265,7 @@ static void test_parametric_eq(const std::string& staging) {
 
     check(std::strcmp(desc->name, "ParametricEQ") == 0, "descriptor name");
     check(static_cast<int>(desc->param_count) == 17, "param_count = 17");
-    check(static_cast<int>(desc->port_count) == 3, "port_count = 3");
+    check(static_cast<int>(desc->port_count) == 6, "port_count = 6");
 
     // Silence -> silence (default gains = 0 dB = passthrough)
     {

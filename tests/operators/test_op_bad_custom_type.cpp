@@ -2,12 +2,17 @@
 #include "operator_api/operator.h"
 #include "operator_api/port_type_registry.h"
 
+// Declares a custom type with the same stable_type_id as ExportCustomPortOp's
+// TestCustomRef but with a different payload size, creating a conflict that
+// the registry should reject.
 struct BadMediaStreamToken {
     uint64_t handle_id = 0;
+    uint64_t extra_field = 0;
+    uint64_t another_field = 0;  // different payload size than TestCustomRef
 };
 
 VIVID_DECLARE_CUSTOM_REF_TYPE(BadMediaStreamToken,
-                              "seethroughlab.vivid.media_stream_v1",
+                              "seethroughlab.vivid.test_custom_ref",
                               "BadMediaStreamToken",
                               false);
 

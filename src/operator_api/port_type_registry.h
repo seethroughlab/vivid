@@ -23,7 +23,7 @@ extern "C" {
 
 // ABI version embedded in every record. Increment when VividPortTypeInfo
 // gains new fields.
-#define VIVID_PORT_TYPE_ABI_VERSION 2u
+#define VIVID_PORT_TYPE_ABI_VERSION 1u
 
 // Metadata record for one registered custom port type.
 typedef struct VividPortTypeInfo {

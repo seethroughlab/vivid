@@ -2329,6 +2329,62 @@ add_executable(test_editor_detect
 target_include_directories(test_editor_detect PRIVATE src tests)
 add_test(NAME test_editor_detect COMMAND test_editor_detect WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+add_executable(test_tool_discovery
+    tests/test_tool_discovery.cpp
+    src/runtime/tool_discovery.cpp
+)
+target_include_directories(test_tool_discovery PRIVATE src tests)
+add_test(NAME test_tool_discovery COMMAND test_tool_discovery WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_graph_compiler_init
+    tests/test_graph_compiler_init.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/port_type_registry.cpp
+)
+target_include_directories(test_graph_compiler_init PRIVATE src)
+target_link_libraries(test_graph_compiler_init PRIVATE
+    vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_test(NAME test_graph_compiler_init COMMAND test_graph_compiler_init WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_frame_executor_queries
+    tests/test_frame_executor_queries.cpp
+    src/runtime/frame_executor.cpp
+    src/runtime/port_type_registry.cpp
+)
+target_include_directories(test_frame_executor_queries PRIVATE src)
+target_link_libraries(test_frame_executor_queries PRIVATE vivid_operator_api webgpu)
+add_test(NAME test_frame_executor_queries COMMAND test_frame_executor_queries WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_cadence_bridge
+    tests/test_cadence_bridge.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/port_type_registry.cpp
+)
+target_include_directories(test_cadence_bridge PRIVATE src)
+target_link_libraries(test_cadence_bridge PRIVATE vivid_operator_api webgpu)
+add_test(NAME test_cadence_bridge COMMAND test_cadence_bridge WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_graph_compiler
+    tests/test_graph_compiler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/port_type_registry.cpp
+)
+target_include_directories(test_graph_compiler PRIVATE src)
+target_link_libraries(test_graph_compiler PRIVATE
+    vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_dependencies(test_graph_compiler lfo gain)
+add_test(NAME test_graph_compiler
+    COMMAND test_graph_compiler ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Undo coverage across roadmap mutation types via RuntimeCommandSink + RuntimeAPI
 add_executable(test_undo_mutation_types
     tests/test_undo_mutation_types.cpp

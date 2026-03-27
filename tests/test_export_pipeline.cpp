@@ -128,7 +128,7 @@ int main(int argc, char* argv[]) {
     check(!cmakelists.empty(), "CMakeLists.txt generated");
     check(static_registry.find("vivid_register_port_type") != std::string::npos,
           "static registry registers custom port types");
-    check(static_registry.find("seethroughlab.vivid.media_stream_v1") != std::string::npos,
+    check(static_registry.find("seethroughlab.vivid.test_custom_ref") != std::string::npos,
           "static registry embeds stable custom type id");
     check(static_registry.find("ExportCustomPortOp") != std::string::npos,
           "static registry registers the operator");
