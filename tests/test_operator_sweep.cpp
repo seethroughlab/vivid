@@ -479,7 +479,7 @@ static bool test_param_boundary(vivid::OperatorLoader& loader, void* inst,
         params[i] = desc->params[i].default_value;
 
     auto run_one_tick = [&]() -> bool {
-        if (desc->execution_env == VIVID_ENV_FRAME) {
+        if (vivid_execution_env(desc) == VIVID_ENV_FRAME) {
             uint32_t ni = 0, no = 0, nsi = 0, nso = 0;
             for (uint32_t pi = 0; pi < desc->port_count; pi++) {
                 if (desc->ports[pi].direction == VIVID_PORT_INPUT) {
@@ -503,7 +503,7 @@ static bool test_param_boundary(vivid::OperatorLoader& loader, void* inst,
             for (uint32_t i = 0; i < no; i++)
                 if (!std::isfinite(outs[i])) return false;
             return true;
-        } else if (desc->execution_env == VIVID_ENV_AUDIO) {
+        } else if (vivid_execution_env(desc) == VIVID_ENV_AUDIO) {
             constexpr int kF = 512;
             // Mirror smoke_audio port counting.
             uint32_t nbi = 0, nbo = 0, nfi = 0, nfo = 0;
@@ -596,7 +596,7 @@ static void sweep_operator(const fs::path& path, HeadlessGpu* gpu) {
 
     // --- Descriptor sanity ---
     const auto* desc = loader.descriptor();
-    if (!desc || !desc->name || desc->name[0] == '\0' || desc->execution_env > VIVID_ENV_GPU) {
+    if (!desc || !desc->name || desc->name[0] == '\0' || vivid_execution_env(desc) > VIVID_ENV_GPU) {
         result.fail_reason = "bad descriptor";
         g_failed++;
         g_results.push_back(result);
@@ -619,7 +619,7 @@ static void sweep_operator(const fs::path& path, HeadlessGpu* gpu) {
         return;
     }
     result.desc_ok = true;
-    result.env_str = env_label(desc->execution_env);
+    result.env_str = env_label(vivid_execution_env(desc));
 
     // --- Instance lifecycle ---
     void* inst = loader.create_instance();
@@ -635,11 +635,11 @@ static void sweep_operator(const fs::path& path, HeadlessGpu* gpu) {
     // --- Domain smoke ---
     bool smoke = false;
     try {
-        if (desc->execution_env == VIVID_ENV_FRAME) {
+        if (vivid_execution_env(desc) == VIVID_ENV_FRAME) {
             smoke = smoke_control(loader, inst, desc);
-        } else if (desc->execution_env == VIVID_ENV_AUDIO) {
+        } else if (vivid_execution_env(desc) == VIVID_ENV_AUDIO) {
             smoke = smoke_audio(loader, inst, desc);
-        } else if (desc->execution_env == VIVID_ENV_GPU) {
+        } else if (vivid_execution_env(desc) == VIVID_ENV_GPU) {
             // GPU operators manage their own shaders, pipelines, and internal
             // textures. Calling process_gpu with a minimal context (no runtime,
             // no proper texture setup) causes wgpu validation errors and aborts.

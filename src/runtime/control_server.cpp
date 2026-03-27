@@ -1486,7 +1486,7 @@ static std::string handle_list_types(OperatorRegistry& registry) {
 
         nlohmann::json t = nlohmann::json::object();
         t["name"] = desc->name;
-        t["env"] = env_str(desc->execution_env);
+        t["env"] = env_str(vivid_execution_env(desc));
 
         // Params
         nlohmann::json params_arr = nlohmann::json::array();
@@ -2589,7 +2589,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
 
                         nlohmann::json op = nlohmann::json::object();
                         op["name"] = desc->name;
-                        op["env"] = env_str(desc->execution_env);
+                        op["env"] = env_str(vivid_execution_env(desc));
                         op["time_dependent"] = (desc->time_dependent != 0);
 
                         nlohmann::json params_arr = nlohmann::json::array();

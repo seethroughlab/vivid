@@ -77,7 +77,7 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
 
     // Execution flags
     cn.time_dependent = desc->time_dependent != 0;
-    bool node_is_gpu = (desc->execution_env == VIVID_ENV_GPU);
+    bool node_is_gpu = (desc->has_process_gpu != 0);
 
     // Implicit analysis ports for audio-cadence nodes
     if (cn.active_cadence == Cadence::Audio) {
@@ -371,11 +371,10 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
 
             // Determine cadence from descriptor + per-node override.
             // Fixed-env operators (GPU, audio-native) ignore overrides.
-            if (desc->execution_env == VIVID_ENV_GPU || desc->has_process_gpu) {
+            if (desc->has_process_gpu) {
                 cn.active_cadence = Cadence::Frame;
                 cn.gpu = std::make_unique<GpuNodeState>();
-            } else if (desc->execution_env == VIVID_ENV_AUDIO ||
-                       (desc->has_process_audio && !desc->has_process_frame)) {
+            } else if (desc->has_process_audio && !desc->has_process_frame) {
                 cn.active_cadence = Cadence::Audio;
             } else if (ndef.cadence_override == CadenceOverride::Audio &&
                        desc->cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE) {

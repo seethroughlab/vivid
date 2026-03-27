@@ -7,7 +7,7 @@
 //   - At audio-rate (~48 kHz): computes one scalar output via process_audio()
 //
 // VIVID_REGISTER detects both interfaces and sets:
-//   execution_env = VIVID_ENV_FRAME, cadence_capability = VIVID_CADENCE_AUDIO_CAPABLE
+//   cadence_capability = VIVID_CADENCE_AUDIO_CAPABLE
 //
 struct NoteDuration : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "NoteDuration";

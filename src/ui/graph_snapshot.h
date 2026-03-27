@@ -50,7 +50,7 @@ struct PortInfo {
 struct OperatorInfo {
     std::string name;
     bool is_gpu = false;
-    bool is_audio_native = false;  // execution_env == VIVID_ENV_AUDIO
+    bool is_audio_native = false;  // has_process_audio && !has_process_frame
     bool has_shader = false;
     bool is_user = false;
     bool has_custom_inspector = false;

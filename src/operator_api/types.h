@@ -7,7 +7,8 @@ extern "C" {
 #endif
 
 /* Bump when operator-facing C ABI changes in incompatible ways. */
-#define VIVID_OPERATOR_ABI_VERSION 17u
+#define VIVID_OPERATOR_ABI_VERSION 18u
+// v18: Removed execution_env field — use vivid_execution_env() to derive from has_process_* flags.
 // v17: Renamed vivid_process entry point to vivid_process_frame.
 // v16: Removed deprecated `domain` field from VividOperatorDescriptor.
 // v15: Cadence-aware execution model — replaced VividDomain with VividExecutionEnv + VividCadenceCapability.
@@ -122,10 +123,16 @@ typedef struct VividOperatorDescriptor {
     const struct VividEmbeddedOpSlot* embedded_op_slots;
 
     // Cadence-aware execution model (v15+)
-    VividExecutionEnv         execution_env;        // which executor owns this operator
     VividCadenceCapability    cadence_capability;    // FRAME_ONLY or AUDIO_CAPABLE
     int                       has_process_frame;     // 1 if operator implements FrameProcessable
 } VividOperatorDescriptor;
+
+// Derive execution environment from capability flags (replaces stored field, v18+).
+static inline VividExecutionEnv vivid_execution_env(const VividOperatorDescriptor* d) {
+    if (d->has_process_gpu)                              return VIVID_ENV_GPU;
+    if (d->has_process_audio && !d->has_process_frame)   return VIVID_ENV_AUDIO;
+    return VIVID_ENV_FRAME;
+}
 
 // Embedded operator slot metadata — declares which owned modulation slots
 // an operator supports, and how their params map to the host's flat param namespace.

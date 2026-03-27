@@ -99,7 +99,7 @@ static void test_operator(const std::string& staging, const OpInfo& info) {
     if (!desc) return;
 
     check(std::strcmp(desc->name, info.name) == 0, "descriptor name matches");
-    check(desc->execution_env == VIVID_ENV_AUDIO, "env = AUDIO");
+    check(vivid_execution_env(desc) == VIVID_ENV_AUDIO, "env = AUDIO");
     check(desc->has_process_audio == 1, "has_process_audio");
     check(static_cast<int>(desc->param_count) == info.expected_param_count,
           "param_count matches");

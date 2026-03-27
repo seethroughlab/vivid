@@ -347,7 +347,7 @@ name                    — type name (e.g., "Oscillator")
 param_count, params[]   — parameter descriptors (name, type, range, defaults)
 port_count, ports[]     — port descriptors (name, type, direction, transport)
 time_dependent          — whether the operator reads ctx->time
-execution_env           — VIVID_ENV_FRAME / AUDIO / GPU
+has_process_frame/audio/gpu — capability flags (which process methods exist)
 cadence_capability      — FRAME_ONLY or AUDIO_CAPABLE
 embedded_op_slots[]     — modulation sub-operator slots
 ```

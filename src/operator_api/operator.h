@@ -237,32 +237,11 @@ struct GpuProcessable {
 } // namespace vivid
 
 // ---------------------------------------------------------------------------
-// Execution-env inference helper — used by VIVID_REGISTER
-// ---------------------------------------------------------------------------
-
-namespace vivid::detail {
-
-inline VividExecutionEnv infer_execution_env(const std::vector<VividPortDescriptor>& ports) {
-    for (const auto& p : ports) {
-        switch (p.type) {
-            case VIVID_PORT_TEXTURE:
-                return VIVID_ENV_GPU;
-            case VIVID_PORT_AUDIO:
-                return VIVID_ENV_AUDIO;
-            default:
-                break;
-        }
-    }
-    return VIVID_ENV_FRAME;
-}
-
-} // namespace vivid::detail
-
-// ---------------------------------------------------------------------------
 // VIVID_REGISTER(ClassName) — generates extern "C" entry points
 //
-// Infers execution environment from port types; detects base class via std::is_base_of;
-// emits typed entry points (vivid_process, vivid_process_audio, vivid_process_gpu).
+// Detects base class via std::is_base_of; derives cadence capability from
+// capability flags; emits typed entry points (vivid_process_frame,
+// vivid_process_audio, vivid_process_gpu).
 // ---------------------------------------------------------------------------
 
 #define VIVID_REGISTER(ClassName)                                             \
@@ -375,16 +354,10 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
             std::is_base_of_v<vivid::GpuProcessable, ClassName> ? 1 : 0;      \
         desc.has_process_frame =                                              \
             std::is_base_of_v<vivid::FrameProcessable, ClassName> ? 1 : 0;    \
-        /* Infer execution_env from capabilities */                           \
-        if (desc.has_process_gpu)                                             \
-            desc.execution_env = VIVID_ENV_GPU;                               \
-        else if (desc.has_process_audio && !desc.has_process_frame)           \
-            desc.execution_env = VIVID_ENV_AUDIO;                             \
-        else                                                                  \
-            desc.execution_env = vivid::detail::infer_execution_env(s_ports); \
-        /* Cadence capability: frame-env operators that also implement        \
+        /* Cadence capability: frame operators that also implement              \
            AudioProcessable are audio-capable (can be promoted). */           \
-        if (desc.execution_env == VIVID_ENV_FRAME && desc.has_process_audio)  \
+        if (!desc.has_process_gpu && desc.has_process_frame &&                \
+            desc.has_process_audio)                                           \
             desc.cadence_capability = VIVID_CADENCE_AUDIO_CAPABLE;            \
         else                                                                  \
             desc.cadence_capability = VIVID_CADENCE_FRAME_ONLY;               \

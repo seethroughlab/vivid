@@ -30,7 +30,6 @@ static const VividOperatorDescriptor audio_out_desc = {
     1,                      // has_process_audio
     0,                      // has_process_gpu
     0, nullptr,             // embedded_op_slots
-    VIVID_ENV_AUDIO,        // execution_env
     VIVID_CADENCE_FRAME_ONLY, // cadence_capability
     0,                      // has_process_frame
 };
@@ -70,7 +69,6 @@ static const VividOperatorDescriptor video_out_desc = {
     0,                      // has_process_audio
     1,                      // has_process_gpu
     0, nullptr,             // embedded_op_slots
-    VIVID_ENV_GPU,          // execution_env
     VIVID_CADENCE_FRAME_ONLY, // cadence_capability
     0,                      // has_process_frame
 };

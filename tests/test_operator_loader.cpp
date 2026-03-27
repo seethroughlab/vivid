@@ -94,7 +94,7 @@ int main() {
         check(desc != nullptr, "descriptor not null");
         if (desc) {
             check(std::strcmp(desc->name, "TestOp") == 0, "descriptor name = TestOp");
-            check(desc->execution_env == VIVID_ENV_FRAME, "env = CONTROL");
+            check(vivid_execution_env(desc) == VIVID_ENV_FRAME, "env = CONTROL");
             check(desc->param_count == 1, "param_count = 1");
             check(desc->port_count == 1, "port_count = 1");
             check(std::strcmp(desc->params[0].name, "scale") == 0, "param[0] = scale");

@@ -328,7 +328,6 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
 
     // Build the owned descriptor
     entry.desc.name = nullptr;  // set after emplace (points to stable map key)
-    entry.desc.execution_env = src->execution_env;
     entry.desc.param_count = param_count;
     entry.desc.params = entry.params.empty() ? nullptr : entry.params.data();
     entry.desc.port_count = port_count;
@@ -336,6 +335,8 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
     entry.desc.time_dependent = src->time_dependent;
     entry.desc.has_process_audio = src->has_process_audio;
     entry.desc.has_process_gpu = src->has_process_gpu;
+    entry.desc.has_process_frame = src->has_process_frame;
+    entry.desc.cadence_capability = src->cadence_capability;
 
     entry.file_drop_handlers.resize(file_drop_count);
     entry.file_drop_labels.resize(file_drop_count);

@@ -707,7 +707,7 @@ private:
 
         // Map execution env → subdirectory
         const char* env_dir = "control";
-        switch (desc->execution_env) {
+        switch (vivid_execution_env(desc)) {
             case VIVID_ENV_AUDIO: env_dir = "audio"; break;
             case VIVID_ENV_GPU:   env_dir = "gpu"; break;
             default: break;
@@ -830,7 +830,7 @@ private:
                 << env_dir << "/" << new_stem << "/" << new_stem << ".cpp)\n";
             ofs << "set_target_properties(" << new_stem
                 << " PROPERTIES PREFIX \"\" SUFFIX \"${VIVID_PLUGIN_SUFFIX}\")\n";
-            if (desc->execution_env == VIVID_ENV_GPU)
+            if (vivid_execution_env(desc) == VIVID_ENV_GPU)
                 ofs << "target_link_libraries(" << new_stem << " PRIVATE vivid_operator_api webgpu)\n";
             else
                 ofs << "target_link_libraries(" << new_stem << " PRIVATE vivid_operator_api)\n";

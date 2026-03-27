@@ -63,7 +63,7 @@ bool hot_reload_port_layout_compatible(const VividOperatorDescriptor* old_desc,
 bool hot_reload_descriptor_compatible(const VividOperatorDescriptor* old_desc,
                                       const VividOperatorDescriptor* new_desc) {
     if (!old_desc || !new_desc) return true;
-    if (old_desc->execution_env != new_desc->execution_env) return false;
+    if (vivid_execution_env(old_desc) != vivid_execution_env(new_desc)) return false;
     if (!hot_reload_param_layout_compatible(old_desc, new_desc)) return false;
     if (!hot_reload_port_layout_compatible(old_desc, new_desc)) return false;
     return true;
@@ -404,12 +404,12 @@ void OperatorLoader::init_data_driven(std::shared_ptr<DataDrivenFilterConfig> co
     dd_ports_.push_back({dd_port_names_.back().c_str(),
                           VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
 
-    dd_desc_.execution_env = VIVID_ENV_GPU;
     dd_desc_.param_count = static_cast<uint32_t>(dd_params_.size());
     dd_desc_.port_count = static_cast<uint32_t>(dd_ports_.size());
     dd_desc_.time_dependent = dd_config_->time_dependent ? 1 : 0;
     dd_desc_.has_process_audio = 0;
     dd_desc_.has_process_gpu = 1;
+    dd_desc_.has_process_frame = 0;
     // Re-point all const char* after vectors are final (push_back may have reallocated)
     fixup_dd_pointers();
 }
