@@ -14,7 +14,7 @@ OPDEV_DOCS_DIR = Path(__file__).resolve().parent / "opdev_docs"
 
 # Allowlisted API headers (no path traversal)
 ALLOWED_HEADERS = {
-    "operator.h", "types.h", "audio_operator.h", "gpu_operator.h",
+    "operator.h", "types.h", "gpu_operator.h",
     "gpu_common.h", "gpu_types.h", "wgsl_filter.h", "wgsl_preprocessor.h",
     "audio_dsp.h", "drum_dsp.h", "adsr.h", "child_op.h", "midi_types.h",
     "input_state.h", "media_stream.h", "media_clock.h", "type_id.h",

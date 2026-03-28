@@ -379,7 +379,6 @@ vivid/
 │   ├── operator_api/           # Public headers for operator contract
 │   │   ├── operator.h          # Base classes, Param<T>, VIVID_REGISTER macro
 │   │   ├── types.h             # C ABI: enums, descriptors, contexts
-│   │   ├── audio_operator.h    # Compat shim (includes types.h; prefer operator.h directly)
 │   │   ├── gpu_operator.h      # GpuProcessable, VividGpuContext, VividGpuState
 │   │   ├── gpu_types.h         # VividGpuBuffer, VividMesh, VividComputeBuffer
 │   │   ├── child_op.h          # ChildOp<T> for operator composition
