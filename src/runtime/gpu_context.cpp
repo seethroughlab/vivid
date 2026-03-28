@@ -212,6 +212,8 @@ void GpuContext::resize(uint32_t width, uint32_t height) {
 }
 
 bool GpuContext::begin_frame(FrameState& frame) {
+    if (device_lost_) return false;
+
     WGPUSurfaceTexture surface_tex{};
     wgpuSurfaceGetCurrentTexture(surface_, &surface_tex);
     if (surface_tex.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal) {
@@ -264,6 +266,11 @@ bool GpuContext::begin_frame(FrameState& frame) {
 }
 
 bool GpuContext::end_frame(const FrameState& frame) {
+    if (device_lost_) {
+        discard_frame(frame);
+        return false;
+    }
+
     if (!gpu_submit(device_, queue_, frame.encoder, "Frame Commands")) {
         // Encoder was in an error state (e.g. surface texture invalidated mid-frame
         // during resize, fullscreen, or macOS drag-tracking transitions).
@@ -334,32 +341,36 @@ bool gpu_submit(WGPUDevice device, WGPUQueue queue, WGPUCommandEncoder encoder,
 
     // Push error scopes so errors are captured instead of falling through
     // to wgpu-native's handle_error_fatal / abort.
-    // Note: only Validation and OutOfMemory are supported by our wgpu-native
-    // build; WGPUErrorFilter_Internal is not implemented and will abort.
     wgpuDevicePushErrorScope(device, WGPUErrorFilter_Validation);
     wgpuDevicePushErrorScope(device, WGPUErrorFilter_OutOfMemory);
+    wgpuDevicePushErrorScope(device, WGPUErrorFilter_Internal);
 
     wgpuQueueSubmit(queue, 1, &cmd);
     wgpuCommandBufferRelease(cmd);
     wgpuCommandEncoderRelease(encoder);
 
-    // Pop both scopes (LIFO order: OutOfMemory, Validation)
+    // Pop all three scopes (LIFO order: Internal, OutOfMemory, Validation).
+    // AllowSpontaneous fires the callback inline during pop, so we can capture
+    // the result and propagate failure to the caller.
+    bool had_error = false;
     auto error_cb = [](WGPUPopErrorScopeStatus status, WGPUErrorType type,
-                       WGPUStringView message, void*, void*) {
+                       WGPUStringView message, void* ud1, void*) {
         if (status == WGPUPopErrorScopeStatus_Success && type != WGPUErrorType_NoError) {
+            *static_cast<bool*>(ud1) = true;
             std::fprintf(stderr, "[vivid] GPU submit error (%d): %.*s\n",
                          static_cast<int>(type), static_cast<int>(message.length),
                          message.data ? message.data : "");
         }
     };
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < 3; ++i) {
         WGPUPopErrorScopeCallbackInfo pop_cb{};
         pop_cb.mode = WGPUCallbackMode_AllowSpontaneous;
         pop_cb.callback = error_cb;
+        pop_cb.userdata1 = &had_error;
         wgpuDevicePopErrorScope(device, pop_cb);
     }
 
-    return true;
+    return !had_error;
 }
 
 } // namespace vivid
