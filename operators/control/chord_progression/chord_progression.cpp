@@ -352,9 +352,12 @@ struct ChordProgression : vivid::OperatorBase, vivid::FrameProcessable, vivid::A
         }
 
         // Detect current chord root
+        // Port 3 is the scalar "note" output (VIVID_PORT_SIGNAL), which the
+        // cadence bridge syncs from the audio thread.  Ports 0-2 are spread
+        // ports whose scalar slots are NOT synced by the bridge.
         int current_chord_root = -1;
-        if (ctx->output_count > 0) {
-            float out_note = ctx->output_values[0];
+        if (ctx->output_count > 3) {
+            float out_note = ctx->output_values[3];
             int oct = (ctx->param_count > 3) ? static_cast<int>(ctx->param_values[3]) : 4;
             for (int s = 0; s < num_steps; ++s) {
                 if (ctx->param_count <= static_cast<uint32_t>(7 + s)) break;
