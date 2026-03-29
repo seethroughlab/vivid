@@ -10,9 +10,43 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <unordered_set>
 #include <sys/stat.h>
 
 namespace vivid {
+
+// WGSL reserved keywords (W3C spec §14.3).  Param names that collide with
+// these will fail naga parsing with an opaque error, so we reject them early.
+inline bool is_wgsl_reserved(const std::string& name) {
+    static const std::unordered_set<std::string> reserved = {
+        "NULL", "Self", "abstract", "active", "alignas", "alignof", "as",
+        "asm", "asm_fragment", "async", "attribute", "auto", "await",
+        "become", "binding_array", "cast", "catch", "class", "co_await",
+        "co_return", "co_yield", "coherent", "column_major", "common",
+        "compile", "compile_fragment", "concept", "const_cast", "consteval",
+        "constexpr", "constinit", "crate", "debugger", "decltype", "delete",
+        "demote", "demote_to_helper", "do", "dynamic_cast", "enum",
+        "explicit", "export", "extends", "extern", "external", "fallthrough",
+        "filter", "final", "finally", "friend", "from", "fxgroup", "get",
+        "goto", "groupshared", "highp", "impl", "implements", "import",
+        "inline", "instanceof", "interface", "layout", "lowp", "macro",
+        "macro_rules", "match", "mediump", "meta", "mod", "module", "move",
+        "mut", "mutable", "namespace", "new", "nil", "noexcept",
+        "noinline", "nointerpolation", "noperspective", "null", "nullptr",
+        "of", "operator", "package", "packoffset", "partition", "pass",
+        "patch", "pixelfragment", "precise", "precision", "premerge",
+        "priv", "protected", "pub", "public", "readonly", "ref", "regard",
+        "register", "reinterpret_cast", "require", "resource",
+        "restrict", "self", "set", "shared", "sizeof", "smooth", "snorm",
+        "static", "static_assert", "static_cast", "std", "subroutine",
+        "super", "target", "template", "this", "thread_local", "throw",
+        "trait", "try", "type", "typedef", "typeid", "typename",
+        "typeof", "union", "unless", "unorm", "unsafe", "unsized",
+        "use", "using", "varying", "virtual", "volatile", "wgsl",
+        "where", "with", "writeonly", "yield",
+    };
+    return reserved.count(name) > 0;
+}
 
 // =============================================================================
 // WgslFilterBase — generic base class for WGSL fragment-shader filters.
@@ -152,6 +186,11 @@ private:
         s << "    time: f32,\n";
         s << "    frame: u32,\n";
         for (uint32_t i = 0; i < param_count_; ++i) {
+            if (is_wgsl_reserved(std::string(params[i]->name))) {
+                std::fprintf(stderr, "[wgsl_filter] Param '%s' is a WGSL reserved keyword"
+                             " — rename it to avoid shader compilation failure.  shader: %s\n",
+                             params[i]->name, shader_filename_.c_str());
+            }
             s << "    " << params[i]->name << ": f32,\n";
         }
         s << "}\n\n";
@@ -263,7 +302,32 @@ private:
         WGPUShaderModuleDescriptor desc{};
         desc.nextInChain = &wgsl_src.chain;
         desc.label = vivid_sv("WgslFilter Shader");
-        return wgpuDeviceCreateShaderModule(device, &desc);
+
+        // Wrap in error scope so naga parsing/validation errors are captured
+        // immediately — otherwise wgpu returns an "error object" (non-null but
+        // invalid) and the real message only surfaces at pipeline creation as
+        // the opaque "ShaderModule is invalid".
+        wgpuDevicePushErrorScope(device, WGPUErrorFilter_Validation);
+        WGPUShaderModule mod = wgpuDeviceCreateShaderModule(device, &desc);
+        struct ErrData { bool has_error = false; std::string msg; };
+        ErrData err;
+        WGPUPopErrorScopeCallbackInfo pop_cb{};
+        pop_cb.mode = WGPUCallbackMode_AllowSpontaneous;
+        pop_cb.callback = [](WGPUPopErrorScopeStatus, WGPUErrorType type,
+                              WGPUStringView msg, void* ud1, void*) {
+            if (type != WGPUErrorType_NoError) {
+                auto* e = static_cast<ErrData*>(ud1);
+                e->has_error = true;
+                e->msg = msg.data ? std::string(msg.data, msg.length) : "unknown error";
+            }
+        };
+        pop_cb.userdata1 = &err;
+        wgpuDevicePopErrorScope(device, pop_cb);
+        if (err.has_error) {
+            std::fprintf(stderr, "[wgsl_filter] Shader compilation error: %s\n  shader: %s\n",
+                         err.msg.c_str(), shader_path_.c_str());
+        }
+        return mod;
     }
 
     // -----------------------------------------------------------------------

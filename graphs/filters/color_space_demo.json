@@ -30,7 +30,7 @@
       "type": "Color Space",
       "params": {
         "source": 0,
-        "target": 1
+        "target_cs": 1
       }
     },
     "vout": {

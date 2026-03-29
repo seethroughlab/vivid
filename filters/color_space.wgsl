@@ -2,15 +2,15 @@
   "name": "Color Space",
   "params": [
     {"name": "source",     "default": 0, "type": "int", "choices": ["sRGB / Rec.709", "DCI-P3", "Rec.2020"]},
-    {"name": "target",     "default": 0, "type": "int", "choices": ["sRGB / Rec.709", "DCI-P3", "Rec.2020"]},
+    {"name": "target_cs",  "default": 0, "type": "int", "choices": ["sRGB / Rec.709", "DCI-P3", "Rec.2020"]},
     {"name": "adapt",      "default": 1, "type": "int", "choices": ["None", "Bradford"]},
     {"name": "gamut_clip", "default": 1, "type": "int", "choices": ["Off", "Clip", "Compress"]}
   ]
 }*/
 
 // RGB ↔ XYZ conversions using explicit dot products.
-// Avoids module-scope `const mat3x3` and function recursion, both of
-// which trigger GPU hangs in wgpu-native's Metal backend.
+// Note: param is named `target_cs` (not `target`) because `target` is a
+// WGSL reserved keyword that naga rejects at shader module creation.
 
 fn rgb_to_xyz(rgb: vec3f, space: i32) -> vec3f {
     if (space == 1) {
@@ -77,17 +77,17 @@ fn gamut_compress_channel(v: f32) -> f32 {
 fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     let col = textureSample(inputTex, texSampler, input.uv);
 
-    let source = i32(u.source);
-    let target = i32(u.target);
+    let src_space = i32(u.source);
+    let dst_space = i32(u.target_cs);
 
     // Identity: same source and target, skip conversion
-    if (source == target) {
+    if (src_space == dst_space) {
         return col;
     }
 
     // Convert: source RGB → XYZ → target RGB
-    let xyz = rgb_to_xyz(col.rgb, source);
-    var rgb = xyz_to_rgb(xyz, target);
+    let xyz = rgb_to_xyz(col.rgb, src_space);
+    var rgb = xyz_to_rgb(xyz, dst_space);
 
     // Gamut handling
     let mode = i32(u.gamut_clip);
