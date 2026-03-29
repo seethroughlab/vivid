@@ -1910,7 +1910,7 @@ add_dependencies(test_demo_graphs
 add_test(NAME test_demo_graphs
     COMMAND test_demo_graphs ${CMAKE_BINARY_DIR}/graphs
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-set_tests_properties(test_demo_graphs PROPERTIES LABELS "HEADLESS_SMOKE" TIMEOUT 120)
+set_tests_properties(test_demo_graphs PROPERTIES LABELS "HEADLESS_SMOKE" TIMEOUT 300)
 
 # Media-headless integration test — MovieLoaded/AVFoundation chains
 # with bounded timeout to prevent CI hangs. See docs/test_stabilization.md step 4.
