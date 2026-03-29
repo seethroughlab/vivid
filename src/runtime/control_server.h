@@ -17,6 +17,7 @@ class CaptureCoordinator;
 class PackageManager;
 class PackageCompiler;
 class PackageCatalog;
+class AudioEngine;
 class AppUpdateManager;
 struct Settings;
 
@@ -40,7 +41,8 @@ public:
     void set_package_compiler(PackageCompiler* pc);
     void set_package_catalog(PackageCatalog* cat);
     void set_app_update_manager(AppUpdateManager* aum);
-    void set_settings(const Settings* settings);
+    void set_settings(Settings* settings);
+    void set_audio_engine(AudioEngine* ae);
 
     // Returns the wall-clock ms timestamp of the last /mcp_ping from a given
     // server name ("vivid" or "opdev").  Returns 0 if never pinged.
@@ -69,7 +71,8 @@ private:
     PackageCompiler* package_compiler_ = nullptr;
     PackageCatalog* package_catalog_ = nullptr;
     AppUpdateManager* app_update_manager_ = nullptr;
-    const Settings* settings_ = nullptr;
+    Settings* settings_ = nullptr;
+    AudioEngine* audio_engine_ = nullptr;
 };
 
 } // namespace vivid
