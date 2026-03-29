@@ -89,8 +89,9 @@ The `GraphCompiler` transforms a `Graph` plus an `OperatorRegistry` into a `Comp
 2. **Assign cadences.** Each node is assigned `Cadence::Frame` or `Cadence::Audio`:
    - If the node has `cadence_override == Audio` and the operator is `AUDIO_CAPABLE` → Audio.
    - If `cadence_override == Frame` → Frame.
-   - If the descriptor declares `has_process_audio` → Audio.
+   - If the descriptor declares `has_process_audio` (audio-only) → Audio.
    - Otherwise → Frame.
+   - **Auto-inference:** After initial assignment, the compiler walks edges looking for `AUDIO_CAPABLE` nodes with `cadence_override == Auto` that feed downstream audio-cadence nodes via signal edges. These are promoted to Audio so the connection becomes a same-cadence Direct edge instead of a cross-cadence Snapshot. This promotion is **ephemeral** — re-derived each compile, never persisted to the graph.
 
 3. **Classify edges.** Each connection becomes a `CompiledEdge` with a transport type:
    - **Direct** — both endpoints share the same cadence. The executor copies data during its pass.
@@ -207,6 +208,11 @@ for node in frame_order:
         copy output → input (with remap if configured)
         propagate spreads, strings, file params, custom ports
 
+    apply audio→frame bridge values:
+        for each port where bridge_input_dirty[port] is set:
+            input_values[port] = bridge_input_values[port]
+            clear bridge_input_dirty[port]
+
     build VividFrameContext with time, params, inputs, outputs, spreads
     call process_frame(instance, ctx)
 
@@ -214,6 +220,8 @@ for node in frame_order:
         call process_gpu(instance, gpu_ctx)
         invoke PostNodeFn callback
 ```
+
+The **bridge value application** step ensures that audio-to-frame signal values (written by `CadenceBridge::pull_from_audio()`) survive the per-frame zeroing of `input_values`. A dirty bitmask tracks which ports have been written by the bridge, so legitimate zero values are not dropped.
 
 ### Skip Logic
 
@@ -226,7 +234,7 @@ To avoid redundant computation on static graphs, the executor skips a node unles
 
 ### GPU Management
 
-GPU nodes receive a `VividGpuContext` with the WebGPU device, queue, and command encoder. The executor manages per-node texture allocation, finds the GPU sink (`video_out`), and retrieves the final output texture for display.
+GPU nodes receive a `VividGpuContext` with the WebGPU device, queue, and command encoder. The context also includes an `input_connected` array (one byte per input port) so operators can distinguish a disconnected port from a connected port sending zero. The executor manages per-node texture allocation, finds the GPU sink (`video_out`), and retrieves the final output texture for display.
 
 
 ## 8. Audio Executor
@@ -438,6 +446,21 @@ Passed to frame-rate operators on the main thread.
 | `file_param_values` | `const char**` | File/text parameter values |
 | `input_state` | `const VividInputState*` | Keyboard/mouse input |
 
+### VividGpuContext
+
+Extends the common fields with GPU-specific resources. Key additional fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `input_connected` | `const uint8_t*` | Per-port: 1 if wired, 0 if disconnected |
+| `device` | `WGPUDevice` | WebGPU device handle |
+| `queue` | `WGPUQueue` | WebGPU queue handle |
+| `command_encoder` | `WGPUCommandEncoder` | Per-frame command encoder |
+| `output_texture` / `output_texture_view` | `WGPUTexture` / `WGPUTextureView` | Node's output render target |
+| `output_width` / `output_height` | `uint32_t` | Output texture dimensions |
+| `input_texture_views` | `WGPUTextureView*` | Upstream textures (one per TEXTURE input port) |
+| `input_textures` | `WGPUTexture*` | Raw texture handles (parallel to views) |
+
 ### VividAudioContext
 
 Passed to audio-rate operators on the audio thread.
@@ -465,9 +488,13 @@ Passed to audio-rate operators on the audio thread.
 | `node_id` | Unique identifier from graph |
 | `type_name` | Operator type name |
 | `active_cadence` | `Cadence::Frame` or `Cadence::Audio` |
+| `operator_kind` | `VIVID_OP_CONTROL`, `VIVID_OP_AUDIO`, or `VIVID_OP_GPU` |
 | `loader` / `instance` | Operator loader and live instance |
 | `param_values[]` | Current parameter floats |
 | `input_values[]` / `output_values[]` | SIGNAL port state |
+| `bridge_input_values[]` | Audio→frame bridge-injected values (survive per-frame zeroing) |
+| `bridge_input_dirty[]` | Per-port dirty flags: 1 = bridge wrote since last frame |
+| `input_connected[]` | Per-port connection flags: 1 = has an incoming edge |
 | `input_spreads[]` / `output_spreads[]` | Spread port state |
 | `audio` | `AudioNodeState*` — buffers, channels (audio nodes only) |
 | `gpu` | `GpuNodeState*` — textures, views (GPU nodes only) |
