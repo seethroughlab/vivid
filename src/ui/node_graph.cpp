@@ -1822,10 +1822,24 @@ void NodeGraphUI::update_wire_drag() {
 void NodeGraphUI::update_slider_drag() {
     if (active_slider_idx_ < 0 || dragging_node_idx_ >= 0) return;
     if (mouse_.left_down) {
+        if (active_slider_idx_ >= static_cast<int>(slider_rects_.size())) {
+            std::fprintf(stderr, "[UI DEBUG] slider drag: idx=%d out of range (size=%d), resetting\n",
+                         active_slider_idx_, static_cast<int>(slider_rects_.size()));
+            active_slider_idx_ = -1;
+            return;
+        }
         const auto& s = slider_rects_[active_slider_idx_];
         const auto* ns = snap_.find_node(active_slider_node_id_);
+        if (!ns) {
+            std::fprintf(stderr, "[UI DEBUG] slider drag: node '%s' not found in snapshot\n",
+                         active_slider_node_id_.c_str());
+        }
         if (ns) {
             const ParamInfo* pd = ns->find_param(active_slider_param_name_);
+            if (!pd) {
+                std::fprintf(stderr, "[UI DEBUG] slider drag: param '%s' not found on node '%s'\n",
+                             active_slider_param_name_.c_str(), active_slider_node_id_.c_str());
+            }
             if (pd) {
                 float val;
                 if (pd->display_hint == VIVID_DISPLAY_KNOB) {

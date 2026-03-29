@@ -2228,8 +2228,12 @@ bool NodeGraphUI::handle_inspector_click() {
         return true;
     }
 
-    if (mouse_.x < graph_right() || mouse_.y >= static_cast<float>(win_h_))
+    if (mouse_.x < graph_right() || mouse_.y >= static_cast<float>(win_h_)) {
+        std::fprintf(stderr, "[UI DEBUG] inspector click rejected: mx=%.0f graph_right=%.0f my=%.0f win_h=%d sliders=%d bools=%d\n",
+                     mouse_.x, graph_right(), mouse_.y, win_h_,
+                     static_cast<int>(slider_rects_.size()), static_cast<int>(bool_rects_.size()));
         return false;
+    }
 
     // --- MIDI map mode click guard ---
     if (midi_map_mode_) {
@@ -2605,6 +2609,8 @@ bool NodeGraphUI::handle_inspector_click() {
         active_slider_idx_ = si;
         active_slider_node_id_ = slider_rects_[si].node_id;
         active_slider_param_name_ = slider_rects_[si].param_name;
+        std::fprintf(stderr, "[UI DEBUG] slider click: idx=%d node=%s param=%s\n",
+                     si, active_slider_node_id_.c_str(), active_slider_param_name_.c_str());
         return true;
     }
 
@@ -2612,6 +2618,8 @@ bool NodeGraphUI::handle_inspector_click() {
     int bi = hit_test_rect(bool_rects_, mouse_.x, mouse_.y);
     if (bi >= 0) {
         const auto& br = bool_rects_[bi];
+        std::fprintf(stderr, "[UI DEBUG] bool click: node=%s param=%s\n",
+                     br.node_id.c_str(), br.param_name.c_str());
         const auto* ns = snap_.find_node(br.node_id);
         if (ns) {
             auto it = ns->param_indices.find(br.param_name);
