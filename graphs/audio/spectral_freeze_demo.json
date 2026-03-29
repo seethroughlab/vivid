@@ -77,7 +77,7 @@
   "connections": [
     {
       "from": "clock/beat_phase",
-      "to": "env_freeze/phase"
+      "to": "env_freeze/beat_phase"
     },
     {
       "from": "noise/output",

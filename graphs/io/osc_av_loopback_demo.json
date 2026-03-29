@@ -86,7 +86,7 @@
   "connections": [
     {
       "from": "clock1/beat_phase",
-      "to": "lfo1/phase"
+      "to": "lfo1/beat_phase"
     },
     {
       "from": "lfo1/value",

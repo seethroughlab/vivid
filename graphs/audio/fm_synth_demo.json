@@ -72,7 +72,7 @@
   "connections": [
     {
       "from": "clock/beat_phase",
-      "to": "env_gate/phase"
+      "to": "env_gate/beat_phase"
     },
     {
       "from": "env_gate/value",

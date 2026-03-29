@@ -82,7 +82,7 @@
   "connections": [
     {
       "from": "shape/texture",
-      "to": "hsv/source"
+      "to": "hsv/input"
     },
     {
       "from": "lfo_hue/value",

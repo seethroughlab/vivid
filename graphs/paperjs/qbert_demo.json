@@ -42,7 +42,7 @@
     }
   },
   "connections": [
-    {"from": "source/texture",  "to": "hex/source"},
+    {"from": "source/texture",  "to": "hex/input"},
     {"from": "lfo_size/value",  "to": "hex/cell_size"},
     {"from": "hex/texture",     "to": "vout/input"}
   ]

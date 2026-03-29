@@ -65,7 +65,7 @@
     }
   },
   "connections": [
-    {"from": "shape/texture",     "to": "hsv/source"},
+    {"from": "shape/texture",     "to": "hsv/input"},
     {"from": "lfo_hue/value",     "to": "hsv/hue_shift"},
     {"from": "lfo_bounce/value",  "to": "feedback/offset_y"},
     {"from": "hsv/texture",       "to": "feedback/input"},

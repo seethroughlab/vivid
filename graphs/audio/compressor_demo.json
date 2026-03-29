@@ -108,15 +108,15 @@
   "connections": [
     {
       "from": "clock/beat_phase",
-      "to": "env/phase"
+      "to": "env/beat_phase"
     },
     {
       "from": "clock/beat_phase",
-      "to": "kick_env/phase"
+      "to": "kick_env/beat_phase"
     },
     {
       "from": "env/value",
-      "to": "osc/amplitude_cv"
+      "to": "osc/amp_cv"
     },
     {
       "from": "osc/output",

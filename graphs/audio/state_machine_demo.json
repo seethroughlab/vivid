@@ -102,7 +102,7 @@
       }
     },
     "noise1": {
-      "type": "Noise",
+      "type": "NoiseTexture",
       "params": {
         "noise_type": 0,
         "scale": 3.0,

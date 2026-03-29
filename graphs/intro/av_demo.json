@@ -70,11 +70,11 @@
   "connections": [
     {
       "from": "clock1/beat_phase",
-      "to": "lfo_vis/phase"
+      "to": "lfo_vis/beat_phase"
     },
     {
       "from": "clock1/beat_phase",
-      "to": "lfo_aud/phase"
+      "to": "lfo_aud/beat_phase"
     },
     {
       "from": "lfo_vis/value",

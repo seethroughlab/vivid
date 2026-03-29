@@ -63,7 +63,7 @@
   },
   "connections": [
     {"from": "lfo_rot/value", "to": "shape/rotation"},
-    {"from": "shape/texture", "to": "warp/source"},
+    {"from": "shape/texture", "to": "warp/input"},
     {"from": "lfo_tr/value",  "to": "warp/tr_x"},
     {"from": "lfo_bl/value",  "to": "warp/bl_y"},
     {"from": "warp/texture",  "to": "vout/input"}

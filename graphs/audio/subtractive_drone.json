@@ -188,11 +188,11 @@
   "connections": [
     {
       "from": "clock/beat_phase",
-      "to": "env_amp/phase"
+      "to": "env_amp/beat_phase"
     },
     {
       "from": "clock/beat_phase",
-      "to": "env_filter/phase"
+      "to": "env_filter/beat_phase"
     },
     {
       "from": "lfo/value",
