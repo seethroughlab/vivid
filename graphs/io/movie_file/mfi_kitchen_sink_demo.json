@@ -93,5 +93,14 @@
         "pan_x": -320.12274169921875,
         "pan_y": -47.829833984375,
         "zoom": 1.266577124595642
+    },
+    "meta": {
+        "id": "mfi_kitchen_sink_demo",
+        "title": "Movie File: Kitchen Sink",
+        "description": "Stacked effect chain on video: Levels, Posterize, Halftone, and Blur combined for a heavily stylized look.",
+        "tags": ["movie", "effects", "chain", "demo"],
+        "difficulty": "advanced",
+        "domains": ["io", "audio", "gpu"],
+        "featured_rank": 43
     }
 }

@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "mfi_displace_demo",
-    "title": "Movie File: Displace",
-    "description": "Displaces video using an animated noise map with LFO-controlled intensity.",
+    "title": "Movie File: Displacement",
+    "description": "Animated noise-driven displacement on video. LFO modulates the distortion amount.",
     "tags": [
       "file",
       "mfi",

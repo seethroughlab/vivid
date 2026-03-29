@@ -70,5 +70,13 @@
         "pan_x": 403.2991027832031,
         "pan_y": 400.3992919921875,
         "zoom": 0.4422111213207245
+    },
+    "meta": {
+        "id": "mfi_av_sync_demo",
+        "title": "Movie File: AV Sync",
+        "description": "Audio-synced video playback with reverb. MovieFileAudio's time output drives MovieFileIn via the cadence bridge.",
+        "tags": ["movie", "audio-visual", "reverb", "demo"],
+        "difficulty": "beginner",
+        "domains": ["io", "audio", "gpu"]
     }
 }

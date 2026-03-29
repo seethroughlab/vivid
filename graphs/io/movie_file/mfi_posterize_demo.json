@@ -79,7 +79,7 @@
   "meta": {
     "id": "mfi_posterize_demo",
     "title": "Movie File: Posterize",
-    "description": "Loads a movie and reduces its colors with Levels and Posterize, creating a graphic-novel look.",
+    "description": "Color reduction on video via Levels and Posterize for a graphic-novel look.",
     "tags": [
       "movie",
       "posterize",

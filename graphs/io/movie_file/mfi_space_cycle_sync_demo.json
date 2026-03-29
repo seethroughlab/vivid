@@ -126,8 +126,8 @@
   },
   "meta": {
     "id": "mfi_space_cycle_sync_demo",
-    "title": "Movie File: Spacebar Cycle",
-    "description": "Press spacebar to cycle through movie files in a folder. Displays filename overlay and plays audio/video in sync.",
+    "title": "Movie File: Folder Cycle",
+    "description": "Interactive graph: press spacebar to cycle through video files in a folder. Shows filename overlay via Composite.",
     "tags": [
       "movie",
       "keyboard",

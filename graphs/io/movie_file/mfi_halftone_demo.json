@@ -4,7 +4,7 @@
   "meta": {
     "id": "mfi_halftone_demo",
     "title": "Movie File: Halftone",
-    "description": "Halftone printing effect applied to video with LFO-animated dot size.",
+    "description": "Halftone dot effect on video with LFO-animated dot size.",
     "tags": [
       "file",
       "mfi",
