@@ -22,7 +22,7 @@ jobs:
         run: mkdir -p build/vivid.app/Contents/PlugIns
 
       - name: Build smoke tests
-        run: cmake --build build --target test_demo_graphs test_ui_overlay_interactions test_ui_editor_interactions test_ui_widget_interactions test_ui_screenshot_smoke -j$(sysctl -n hw.logicalcpu)
+        run: cmake --build build --target test_demo_graphs test_operator_sweep test_ui_overlay_interactions test_ui_editor_interactions test_ui_widget_interactions test_ui_screenshot_smoke -j$(sysctl -n hw.logicalcpu)
 
       - name: Validate semantic tags
         run: ./scripts/validate_semantic_tags.sh

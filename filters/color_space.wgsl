@@ -69,7 +69,8 @@ fn gamut_compress_channel(v: f32) -> f32 {
     let excess = abs_v - 1.0;
     let threshold = 0.2;
     let compressed = 1.0 + threshold * (1.0 - exp(-excess / threshold));
-    return select(compressed, -compressed, v < 0.0);
+    if (v < 0.0) { return -compressed; }
+    return compressed;
 }
 
 @fragment
