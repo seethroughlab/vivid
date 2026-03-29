@@ -4,6 +4,8 @@
 #include <memory>
 
 // AVFoundation-based video decoder for macOS.
+// open() and close() are safe from any thread (dispatch to main internally).
+// All other methods must be called from the main thread (GPU render loop).
 // Implementation in avf_decoder.mm (Objective-C++).
 
 class AVFDecoder : public VideoDecoder {
@@ -21,8 +23,6 @@ public:
     float duration() const override;
     void set_loop(bool loop) override;
     void set_speed(float speed) override;
-    void play() override;
-    void pause() override;
     float current_time() const override;
     bool seek(double time_seconds) override;
     float frame_rate() const override;

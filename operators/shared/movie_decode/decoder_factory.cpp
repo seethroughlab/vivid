@@ -41,7 +41,10 @@ DecoderLoadResult load_video_decoder_for_path(const std::string& path,
                 out.diagnostics = "cancelled";
                 return out;
             }
-            hap->play();
+            // Don't call play() here — we're on the loader thread, and
+            // AVPlayer must only be driven from the main thread.
+            // Playback is started by set_speed() on the GPU/main thread
+            // when apply_ready_load_result() picks up this decoder.
             out.success = true;
             out.decoder = std::move(hap);
             out.diagnostics += " route=hap";
@@ -60,7 +63,6 @@ DecoderLoadResult load_video_decoder_for_path(const std::string& path,
             out.diagnostics = "cancelled";
             return out;
         }
-        avf->play();
         out.success = true;
         out.decoder = std::move(avf);
         if (!out.diagnostics.empty()) out.diagnostics += " ";

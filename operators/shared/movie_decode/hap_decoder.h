@@ -3,6 +3,8 @@
 #include "video_decoder.h"
 #include <memory>
 
+// HAP compressed-texture video decoder. Uses AVAssetReader (not AVPlayer),
+// so all methods are safe to call from any single thread.
 class HAPDecoder : public VideoDecoder {
 public:
     HAPDecoder();
@@ -18,8 +20,6 @@ public:
     float duration() const override;
     void set_loop(bool loop) override;
     void set_speed(float speed) override;
-    void play() override;
-    void pause() override;
     float current_time() const override;
     bool seek(double time_seconds) override;
     float frame_rate() const override;

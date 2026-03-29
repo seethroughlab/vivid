@@ -273,8 +273,6 @@ uint32_t HAPDecoder::height() const { return impl_->frame_height; }
 float HAPDecoder::duration() const { return impl_->media_duration; }
 void HAPDecoder::set_loop(bool loop) { impl_->loop = loop; }
 void HAPDecoder::set_speed(float speed) { impl_->speed = std::max(0.01f, speed); }
-void HAPDecoder::play() { impl_->playing = true; }
-void HAPDecoder::pause() { impl_->playing = false; }
 float HAPDecoder::current_time() const { return impl_->current_time_s; }
 bool HAPDecoder::seek(double time_seconds) {
     if (!impl_ || !impl_->opened) return false;

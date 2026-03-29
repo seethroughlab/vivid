@@ -11,6 +11,7 @@
 #include <thread>
 #include <atomic>
 #include <memory>
+#include <cassert>
 
 // =============================================================================
 // LoopObserver — restarts playback when the item reaches end
@@ -232,10 +233,13 @@ struct AVFDecoder::Impl {
     }
 
     bool decode_frame() {
+        assert([NSThread isMainThread]);
         @autoreleasepool {
             if (!opened || !video_output || !player) return false;
 
             // Recover from transient paused/stalled state (seen after seeks/loops).
+            // Run this even when the player item isn't ready yet, so that AVPlayer
+            // can process the play request and transition to ReadyToPlay.
             if (current_speed_ > 0.0f &&
                 player.timeControlStatus != AVPlayerTimeControlStatusPlaying) {
                 [player play];
@@ -306,6 +310,7 @@ struct AVFDecoder::Impl {
     }
 
     void set_loop(bool loop) {
+        assert([NSThread isMainThread]);
         @autoreleasepool {
             is_looping = loop;
             if (loop_observer) {
@@ -315,6 +320,7 @@ struct AVFDecoder::Impl {
     }
 
     void set_speed(float speed) {
+        assert([NSThread isMainThread]);
         @autoreleasepool {
             if (!player || !opened) return;
             bool force = loop_observer && loop_observer.loopFired;
@@ -331,6 +337,7 @@ struct AVFDecoder::Impl {
     }
 
     void play() {
+        assert([NSThread isMainThread]);
         @autoreleasepool {
             if (player && opened) {
                 [player play];
@@ -339,6 +346,7 @@ struct AVFDecoder::Impl {
     }
 
     void pause() {
+        assert([NSThread isMainThread]);
         @autoreleasepool {
             if (player && opened) {
                 [player pause];
@@ -347,6 +355,7 @@ struct AVFDecoder::Impl {
     }
 
     float current_time() const {
+        assert([NSThread isMainThread]);
         @autoreleasepool {
             if (player && opened) {
                 return static_cast<float>(CMTimeGetSeconds(player_item.currentTime));
@@ -356,6 +365,7 @@ struct AVFDecoder::Impl {
     }
 
     bool seek(double time_seconds) {
+        assert([NSThread isMainThread]);
         if (!opened || !player_item || !player) return false;
         const double t = std::max(0.0, time_seconds);
         @autoreleasepool {
@@ -389,8 +399,6 @@ uint32_t AVFDecoder::height() const { return impl_->frame_height; }
 float AVFDecoder::duration() const { return impl_->media_duration; }
 void AVFDecoder::set_loop(bool loop) { impl_->set_loop(loop); }
 void AVFDecoder::set_speed(float speed) { impl_->set_speed(speed); }
-void AVFDecoder::play() { impl_->play(); }
-void AVFDecoder::pause() { impl_->pause(); }
 float AVFDecoder::current_time() const { return impl_->current_time(); }
 bool AVFDecoder::seek(double time_seconds) { return impl_->seek(time_seconds); }
 float AVFDecoder::frame_rate() const { return impl_->frame_rate_; }

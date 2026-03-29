@@ -16,6 +16,11 @@ enum class VideoCompressedFormat {
     BC4
 };
 
+// Threading contract:
+//   open() and close() are safe to call from any thread (implementations
+//   dispatch internally when needed, e.g. AVFDecoder dispatches to main).
+//   All other methods must be called from the main thread (GPU render loop).
+//   Implementations may assert this; see AVFDecoder for an example.
 class VideoDecoder {
 public:
     virtual ~VideoDecoder() = default;
@@ -28,9 +33,7 @@ public:
     virtual uint32_t height() const = 0;
     virtual float duration() const = 0;
     virtual void set_loop(bool loop) = 0;
-    virtual void set_speed(float speed) = 0;
-    virtual void play() = 0;
-    virtual void pause() = 0;
+    virtual void set_speed(float speed) = 0;  // speed > 0 starts playback, 0 pauses
     virtual float current_time() const = 0;
     // Optional: seek decoder timeline to local media time (seconds).
     virtual bool seek(double /*time_seconds*/) { return false; }
