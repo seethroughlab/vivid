@@ -17,6 +17,7 @@
 #include <cctype>
 #include <filesystem>
 #include <string>
+#include <unordered_set>
 #include <vector>
 #include <signal.h>
 #include <unistd.h>
@@ -361,9 +362,20 @@ int main(int argc, char* argv[]) {
     }
     std::fprintf(stderr, "[demo_graphs] Found %zu graph files\n\n", graph_files.size());
 
+    // Demos with known environment-specific failures (shader backend bugs, etc.)
+    static const std::unordered_set<std::string> headless_skip = {
+        "color_space_demo.json",  // wgpu/naga shader module validation failure on headless Metal
+    };
+
     // --- Run each graph in an isolated child process ---
     for (const auto& path : graph_files) {
         std::string filename = std::filesystem::path(path).filename().string();
+
+        if (headless_skip.count(filename)) {
+            skip(filename.c_str(), "headless skip list");
+            continue;
+        }
+
         std::fprintf(stderr, "=== %s ===\n", filename.c_str());
 
         const char* child_argv[] = {
