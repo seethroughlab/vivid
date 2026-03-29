@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "vivid": {
+      "command": "/Users/jeff/.local/bin/uv",
+      "args": [
+        "run",
+        "--with", "mcp",
+        "--with", "httpx",
+        "/Users/jeff/Developer/vivid/mcp/vivid_mcp.py"
+      ]
+    }
+  }
+}
