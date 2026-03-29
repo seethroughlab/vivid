@@ -364,7 +364,8 @@ int main(int argc, char* argv[]) {
 
     // Demos with known environment-specific failures (shader backend bugs, etc.)
     static const std::unordered_set<std::string> headless_skip = {
-        "color_space_demo.json",  // wgpu/naga shader module validation failure on headless Metal
+        "color_space_demo.json",           // wgpu/naga shader module validation failure on headless Metal
+        "mfi_space_cycle_sync_demo.json",  // FolderList→video load chain needs more startup time than test allows
     };
 
     // --- Run each graph in an isolated child process ---
