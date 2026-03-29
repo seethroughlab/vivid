@@ -83,13 +83,31 @@ struct AudioRing {
             std::memset(r_out + n, 0, (frames - n) * sizeof(float));
         }
         read_pos.store((rp + n) % kCapacity, std::memory_order_release);
-        // Always advance time by full frame count to prevent drift during underruns
+        // Advance time and reconcile with write head to prevent unbounded drift.
         {
             const double sr = std::max(1.0, static_cast<double>(sample_rate.load(std::memory_order_relaxed)));
             const double spd = std::max(0.0, static_cast<double>(speed.load(std::memory_order_relaxed)));
             const double advance = static_cast<double>(frames) * spd / sr;
             const double old_t = read_head_time.load(std::memory_order_relaxed);
-            read_head_time.store(old_t + advance, std::memory_order_relaxed);
+            double new_t = old_t + advance;
+
+            // The "true" read position is write_head_time minus buffered duration.
+            const double wht = write_head_time.load(std::memory_order_acquire);
+            const double buffer_lag = static_cast<double>(available_read()) * spd / sr;
+            const double expected_t = wht - buffer_lag;
+            const double error = new_t - expected_t;
+
+            constexpr double kSnapThreshold = 0.100; // 100ms: hard snap
+            constexpr double kSlewThreshold = 0.002;  // 2ms: begin slewing
+            constexpr double kSlewRate      = 0.10;   // correct 10% of error per callback
+
+            if (std::abs(error) > kSnapThreshold) {
+                new_t = expected_t + advance;
+            } else if (std::abs(error) > kSlewThreshold) {
+                new_t -= error * kSlewRate;
+            }
+
+            read_head_time.store(new_t, std::memory_order_relaxed);
         }
         return n;
     }
@@ -367,7 +385,16 @@ struct MovieFileAudio : vivid::OperatorBase, vivid::AudioProcessable {
             mono_time = static_cast<double>(dur);
         }
 
-        ctx->output_float_values[0] = static_cast<float>(mono_time);
+        // Wrap by duration before float cast to preserve precision for long playback.
+        // MovieFileIn already applies wrap_time() so this is compatible.
+        double out_time = mono_time;
+        if (dur > 0.0f) {
+            out_time = std::fmod(mono_time, static_cast<double>(dur));
+            if (out_time < 0.0) out_time += static_cast<double>(dur);
+        }
+        // Floor to epsilon so the video operator's audio_master gate (> 0.0f) stays active.
+        if (out_time < 1e-6 && mono_time > 0.0) out_time = 1e-6;
+        ctx->output_float_values[0] = static_cast<float>(out_time);
         ctx->output_float_values[1] = dur;
     }
 

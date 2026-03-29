@@ -112,7 +112,24 @@ struct AudioRing {
             const double spd = std::max(0.0, static_cast<double>(speed.load(std::memory_order_relaxed)));
             const double advance = static_cast<double>(frames) * spd / sr;
             const double old_t = read_head_time.load(std::memory_order_relaxed);
-            read_head_time.store(old_t + advance, std::memory_order_relaxed);
+            double new_t = old_t + advance;
+
+            const double wht = write_head_time.load(std::memory_order_acquire);
+            const double buffer_lag = static_cast<double>(available_read()) * spd / sr;
+            const double expected_t = wht - buffer_lag;
+            const double error = new_t - expected_t;
+
+            constexpr double kSnapThreshold = 0.100;
+            constexpr double kSlewThreshold = 0.002;
+            constexpr double kSlewRate      = 0.10;
+
+            if (std::abs(error) > kSnapThreshold) {
+                new_t = expected_t + advance;
+            } else if (std::abs(error) > kSlewThreshold) {
+                new_t -= error * kSlewRate;
+            }
+
+            read_head_time.store(new_t, std::memory_order_relaxed);
         }
         return n;
     }
@@ -251,6 +268,11 @@ static void test_ring_time_advances_during_underrun() {
     for (uint32_t i = 0; i < 100; ++i) { wl[i] = 0.5f; wr[i] = 0.5f; }
     ring.write(wl, wr, 100);
 
+    // Set write_head_time consistent with the data written (100 frames at 1x/48kHz)
+    // so the reconciliation doesn't fight the expected advance.
+    const double written_time = 256.0 / 48000.0; // matches expected read head after read
+    ring.write_head_time.store(written_time, std::memory_order_relaxed);
+
     float rl[256], rr[256];
     ring.read(rl, rr, 256);
 
@@ -272,11 +294,17 @@ static void test_ring_time_scales_with_speed() {
     for (uint32_t i = 0; i < 4096; ++i) { wl[i] = 0.1f; wr[i] = 0.1f; }
     ring.write(wl, wr, 4096);
 
+    // Set write_head_time so reconciliation doesn't interfere.
+    // After reading 256 frames at 2x speed: expected read_head = 256*2/48000
+    // buffer_lag = (4096-256) * 2 / 48000, so wht = expected + buffer_lag
+    const double expected = 256.0 * 2.0 / 48000.0;
+    const double buffer_lag = (4096.0 - 256.0) * 2.0 / 48000.0;
+    ring.write_head_time.store(expected + buffer_lag, std::memory_order_relaxed);
+
     float rl[256], rr[256];
     ring.read(rl, rr, 256);
 
     // At 2x speed, time advances twice as fast: 256 * 2.0 / 48000
-    const double expected = 256.0 * 2.0 / 48000.0;
     const double actual = ring.read_head_time.load(std::memory_order_relaxed);
     check(std::abs(actual - expected) < 1e-6, "ring time scales with speed (2x)");
 }
@@ -341,6 +369,117 @@ static void test_ring_capacity_limit() {
     check(ring.available_read() == 0, "ring: initial readable == 0");
 }
 
+static void test_ring_drift_snap() {
+    // When read_head_time drifts >100ms from expected, it should snap.
+    AudioRing ring{};
+    ring.sample_rate.store(48000.0f, std::memory_order_relaxed);
+    ring.speed.store(1.0f, std::memory_order_relaxed);
+
+    // Fill some data so available_read > 0
+    float buf[4096];
+    std::memset(buf, 0, sizeof(buf));
+    ring.write(buf, buf, 4096);
+
+    // Set write_head_time far ahead of where read_head_time will be
+    ring.read_head_time.store(0.0, std::memory_order_relaxed);
+    ring.write_head_time.store(1.0, std::memory_order_relaxed); // 1s ahead
+
+    // Read one buffer — should snap
+    float rl[256], rr[256];
+    ring.read(rl, rr, 256);
+
+    // expected_t = 1.0 - (available_read * 1.0 / 48000)
+    // After snap: new_t = expected_t + advance
+    const double rht = ring.read_head_time.load(std::memory_order_relaxed);
+    // The read head should now be close to expected_t + advance, not 256/48000
+    check(rht > 0.5, "drift snap: read_head_time jumped toward write_head (> 0.5s)");
+    check(rht < 1.1, "drift snap: read_head_time reasonable upper bound");
+}
+
+static void test_ring_drift_slew() {
+    // When read_head_time drifts 2-100ms, it should slew toward correct value.
+    AudioRing ring{};
+    ring.sample_rate.store(48000.0f, std::memory_order_relaxed);
+    ring.speed.store(1.0f, std::memory_order_relaxed);
+
+    // Fill plenty of data
+    float buf[4096];
+    std::memset(buf, 0, sizeof(buf));
+    for (int i = 0; i < 20; ++i) ring.write(buf, buf, 4096);
+
+    // Introduce a 50ms drift: set read_head_time 50ms ahead of where it should be
+    const double buffered_sec = static_cast<double>(ring.available_read()) / 48000.0;
+    const double wht = 2.0;
+    ring.write_head_time.store(wht, std::memory_order_relaxed);
+    const double expected = wht - buffered_sec;
+    ring.read_head_time.store(expected + 0.050, std::memory_order_relaxed); // 50ms ahead
+
+    // Run 200 callbacks (should converge well within this)
+    float rl[256], rr[256];
+    for (int i = 0; i < 200; ++i) {
+        // Keep write_head_time advancing to match what read consumes
+        double cur_wht = ring.write_head_time.load(std::memory_order_relaxed);
+        ring.write_head_time.store(cur_wht + 256.0 / 48000.0, std::memory_order_relaxed);
+        // Refill data to keep ring from draining
+        ring.write(buf, buf, 256);
+        ring.read(rl, rr, 256);
+    }
+
+    const double final_rht = ring.read_head_time.load(std::memory_order_relaxed);
+    const double final_wht = ring.write_head_time.load(std::memory_order_relaxed);
+    const double final_buffered = static_cast<double>(ring.available_read()) / 48000.0;
+    const double final_expected = final_wht - final_buffered;
+    const double final_error = std::abs(final_rht - final_expected);
+    check(final_error < 0.002, "drift slew: error converged below 2ms deadband");
+}
+
+static void test_ring_drift_deadband() {
+    // When drift is < 2ms, no correction should be applied — pure free-running.
+    AudioRing ring{};
+    ring.sample_rate.store(48000.0f, std::memory_order_relaxed);
+    ring.speed.store(1.0f, std::memory_order_relaxed);
+
+    float buf[4096];
+    std::memset(buf, 0, sizeof(buf));
+    ring.write(buf, buf, 4096);
+
+    // Set clocks so they're perfectly aligned
+    const double buffered_sec = static_cast<double>(ring.available_read()) / 48000.0;
+    ring.write_head_time.store(1.0, std::memory_order_relaxed);
+    ring.read_head_time.store(1.0 - buffered_sec, std::memory_order_relaxed);
+
+    float rl[256], rr[256];
+    ring.read(rl, rr, 256);
+
+    // Should advance by exactly frames/sr with no correction
+    const double expected_advance = 256.0 / 48000.0;
+    const double actual = ring.read_head_time.load(std::memory_order_relaxed);
+    const double expected_final = (1.0 - buffered_sec) + expected_advance;
+    check(std::abs(actual - expected_final) < 1e-9,
+          "drift deadband: no correction when error < 2ms");
+}
+
+static void test_ring_drift_underrun_snap() {
+    // Empty ring with diverged clocks — buffer_lag is 0, should snap to write_head_time.
+    AudioRing ring{};
+    ring.sample_rate.store(48000.0f, std::memory_order_relaxed);
+    ring.speed.store(1.0f, std::memory_order_relaxed);
+
+    // No data in ring
+    ring.read_head_time.store(0.0, std::memory_order_relaxed);
+    ring.write_head_time.store(2.0, std::memory_order_relaxed);
+
+    float rl[256], rr[256];
+    ring.read(rl, rr, 256);
+
+    // available_read == 0, so expected_t = wht - 0 = 2.0
+    // error = (0 + 256/48000) - 2.0 ≈ -1.995 → snap
+    const double rht = ring.read_head_time.load(std::memory_order_relaxed);
+    const double advance = 256.0 / 48000.0;
+    check(std::abs(rht - (2.0 + advance)) < 0.001,
+          "drift underrun snap: read_head_time snapped to write_head_time + advance");
+}
+
 // ============================================================================
 
 int main() {
@@ -357,6 +496,12 @@ int main() {
     test_ring_clear_resets_state();
     test_ring_preroll_gate();
     test_ring_capacity_limit();
+
+    std::fprintf(stderr, "\n=== Drift reconciliation tests ===\n");
+    test_ring_drift_snap();
+    test_ring_drift_slew();
+    test_ring_drift_deadband();
+    test_ring_drift_underrun_snap();
 
     std::fprintf(stderr, "\n========================================\n");
     std::fprintf(stderr, "AV sync tests: %d passed, %d failed\n", g_pass, g_fail);
