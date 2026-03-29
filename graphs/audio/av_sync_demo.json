@@ -46,7 +46,7 @@
   "connections": [
     {
       "from": "clock1/beat_phase",
-      "to": "env1/phase"
+      "to": "env1/beat_phase"
     },
     {
       "from": "env1/value",
