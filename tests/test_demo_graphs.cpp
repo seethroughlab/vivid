@@ -254,7 +254,7 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
     if (use_gpu) gpu.reset_errors();
 
     // Tick — movie graphs need more frames for AVFoundation to start decoding
-    int tick_count = has_movie ? 240 : use_audio ? 120 : use_gpu ? 60 : 5;
+    int tick_count = has_movie ? 240 : use_audio ? 240 : use_gpu ? 60 : 5;
     float audio_buf[vivid::AudioEngine::kBufferSize * 2] = {};
     for (uint64_t frame = 0; frame < (uint64_t)tick_count; ++frame) {
         double time = frame * 0.016;
