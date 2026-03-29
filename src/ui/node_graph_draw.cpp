@@ -3231,10 +3231,6 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
     tr.draw_rect(0, 0, static_cast<float>(w), static_cast<float>(h), 0.05f, 0.06f, 0.07f, 0.55f);
 
     draw_grid(tr);
-    draw_perf_bar(tr);
-    draw_midi_map_banner(tr);
-    draw_core_update_banner(tr);
-
     draw_sticky_notes(tr);
     draw_graph(tr);
     draw_connections(tr);
@@ -3242,6 +3238,9 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
     draw_box_select(tr);
     draw_wire_tooltip(tr);
     draw_session_grid(tr);
+    draw_perf_bar(tr);
+    draw_midi_map_banner(tr);
+    draw_core_update_banner(tr);
 }
 
 // -----------------------------------------------------------------------
