@@ -81,8 +81,10 @@ public:
         vivid::gpu::run_pass(encoder, pipeline_, bind_group_,
                              staging_view_, "Readback Downscale");
 
-        // Copy staging texture → readback buffer
+        // Copy staging texture → readback buffer.
+        // Skip if the write target is still busy (pending map or mapped).
         int write_idx = 1 - read_idx_;
+        if (buf_busy_[write_idx]) return;
         uint32_t aligned_bpr = align_bpr(target_w_ * 4);
 
         WGPUTexelCopyTextureInfo src{};
@@ -105,6 +107,8 @@ public:
             mapping_pending_ = true;
             map_target_idx_ = read_idx_;
 
+            buf_busy_[read_idx_] = true;  // mark busy before async map
+
             WGPUBufferMapCallbackInfo map_cb{};
             map_cb.mode = WGPUCallbackMode_AllowSpontaneous;
             map_cb.callback = [](WGPUMapAsyncStatus status, WGPUStringView,
@@ -113,6 +117,8 @@ public:
                 if (status == WGPUMapAsyncStatus_Success) {
                     self->on_map_complete(self->map_target_idx_);
                 }
+                // Buffer is unmapped in on_map_complete; mark not busy.
+                self->buf_busy_[self->map_target_idx_] = false;
                 self->mapping_pending_ = false;
             };
             map_cb.userdata1 = this;
@@ -162,6 +168,7 @@ private:
     int        read_idx_    = 0;
     int        map_target_idx_ = 0;
     bool       mapping_pending_ = false;
+    bool       buf_busy_[2] = {false, false};  // true from mapAsync until unmap completes
     bool       ready_ = false;
 
     // Downscale pipeline
