@@ -1701,6 +1701,17 @@ target_link_libraries(test_synth_transform_ops PRIVATE vivid_operator_api webgpu
 add_dependencies(test_synth_transform_ops fm_synth ring_mod parametric_eq)
 add_test(NAME test_synth_transform_ops COMMAND test_synth_transform_ops WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Audio output correctness tests (spectral/amplitude property assertions)
+add_executable(test_audio_correctness
+    tests/test_audio_correctness.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/output_analyzer.cpp
+)
+target_include_directories(test_audio_correctness PRIVATE src)
+target_link_libraries(test_audio_correctness PRIVATE vivid_operator_api webgpu nlohmann_json::nlohmann_json)
+add_dependencies(test_audio_correctness audio_noise fm_synth filter gain)
+add_test(NAME test_audio_correctness COMMAND test_audio_correctness WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # GPU operator plugin for testing (solid color fill)
 add_vivid_operator(gpu_fill_op      tests/operators/gpu_fill_op.cpp      EXTRA_LIBS webgpu)
 
@@ -1721,6 +1732,25 @@ target_include_directories(test_gpu_operators PRIVATE src)
 target_link_libraries(test_gpu_operators PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_dependencies(test_gpu_operators gpu_fill_op shape control_thumb_op)
 add_test(NAME test_gpu_operators COMMAND test_gpu_operators WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# GPU output correctness tests (brightness, contrast, motion property assertions)
+add_executable(test_gpu_correctness
+    tests/test_gpu_correctness.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
+    src/runtime/output_analyzer.cpp
+)
+target_include_directories(test_gpu_correctness PRIVATE src)
+target_link_libraries(test_gpu_correctness PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_dependencies(test_gpu_correctness gpu_fill_op shape noise)
+add_test(NAME test_gpu_correctness COMMAND test_gpu_correctness WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Per-operator smoke sweep — discovers all dylibs and validates load/desc/process/boundary
 add_executable(test_operator_sweep

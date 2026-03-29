@@ -108,6 +108,92 @@ int main() {
               "Slider drag clamps to the max bound");
     }
 
+    // Slider drag on a wide-range param (like Clock bpm 1–300)
+    {
+        auto clock_op = std::make_shared<OperatorInfo>();
+        clock_op->name = "Clock";
+        clock_op->params = {
+            ParamInfo{"bpm", VIVID_PARAM_FLOAT, 120.0f, 1.0f, 300.0f},
+            ParamInfo{"beats_per_bar", VIVID_PARAM_INT, 4.0f, 1.0f, 16.0f},
+        };
+        GraphSnapshot clock_snap;
+        NodeSnapshot cn;
+        cn.node_id = "clock1";
+        cn.type_name = "Clock";
+        cn.active_cadence = vivid::Cadence::Audio;
+        cn.has_layout = true;
+        cn.layout_x = 120.0f;
+        cn.layout_y = 120.0f;
+        cn.op_info = clock_op;
+        cn.param_values = {120.0f, 4.0f};
+        cn.param_lock_flags = {0, 0};
+        cn.param_indices["bpm"] = 0;
+        cn.param_indices["beats_per_bar"] = 1;
+        clock_snap.node_index["clock1"] = 0;
+        clock_snap.nodes.push_back(std::move(cn));
+
+        DummySink sink;
+        NodeGraphUI ui(sink);
+        ui.selected_node_ids_ = {"clock1"};
+        // Slider for bpm: drag to 50% position → should emit ~150.5
+        ui.slider_rects_.push_back({920.0f, 120.0f, 160.0f, 16.0f, "clock1", "bpm"});
+        ui.on_mouse_move(1000.0f, 128.0f);  // 50% of slider (920+80)
+        ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
+        ui.update(clock_snap);
+        ui.on_mouse_move(1000.0f, 128.0f);  // hold at 50%
+        ui.update(clock_snap);
+        check(!sink.set_param_calls.empty(), "Wide-range slider drag emits a param update");
+        float expected_bpm = 1.0f + ((1000.0f - 920.0f) / 160.0f) * (300.0f - 1.0f);
+        check(last_param(sink).param == "bpm" &&
+                  std::fabs(last_param(sink).value - expected_bpm) < 1.0f,
+              "Wide-range slider maps mouse position to correct parameter value");
+        ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE, 0);
+        ui.update(clock_snap);
+    }
+
+    // Slider drag on an int param (like Clock beats_per_bar 1–16)
+    {
+        auto clock_op = std::make_shared<OperatorInfo>();
+        clock_op->name = "Clock";
+        clock_op->params = {
+            ParamInfo{"bpm", VIVID_PARAM_FLOAT, 120.0f, 1.0f, 300.0f},
+            ParamInfo{"beats_per_bar", VIVID_PARAM_INT, 4.0f, 1.0f, 16.0f},
+        };
+        GraphSnapshot clock_snap;
+        NodeSnapshot cn;
+        cn.node_id = "clock1";
+        cn.type_name = "Clock";
+        cn.active_cadence = vivid::Cadence::Audio;
+        cn.has_layout = true;
+        cn.layout_x = 120.0f;
+        cn.layout_y = 120.0f;
+        cn.op_info = clock_op;
+        cn.param_values = {120.0f, 4.0f};
+        cn.param_lock_flags = {0, 0};
+        cn.param_indices["bpm"] = 0;
+        cn.param_indices["beats_per_bar"] = 1;
+        clock_snap.node_index["clock1"] = 0;
+        clock_snap.nodes.push_back(std::move(cn));
+
+        DummySink sink;
+        NodeGraphUI ui(sink);
+        ui.selected_node_ids_ = {"clock1"};
+        // Slider for beats_per_bar: drag to 75% → should round to int
+        ui.slider_rects_.push_back({920.0f, 140.0f, 160.0f, 16.0f, "clock1", "beats_per_bar"});
+        ui.on_mouse_move(1040.0f, 148.0f);  // 75% of slider
+        ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
+        ui.update(clock_snap);
+        ui.on_mouse_move(1040.0f, 148.0f);
+        ui.update(clock_snap);
+        check(!sink.set_param_calls.empty(), "Int slider drag emits a param update");
+        float raw = 1.0f + 0.75f * 15.0f;  // = 12.25 → rounds to 12
+        check(last_param(sink).param == "beats_per_bar" &&
+                  std::fabs(last_param(sink).value - std::round(raw)) < 0.001f,
+              "Int slider drag rounds to nearest integer");
+        ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE, 0);
+        ui.update(clock_snap);
+    }
+
     {
         DummySink sink;
         NodeGraphUI ui(sink);
