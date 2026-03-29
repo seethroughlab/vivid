@@ -363,7 +363,7 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         [viewMenu addItem:toggleParamWiresItem];
 
         NSMenuItem* toggleAnalysisItem = [[NSMenuItem alloc]
-            initWithTitle:@"Show Analysis"
+            initWithTitle:@"Enable Analysis"
                    action:@selector(menuAction:)
             keyEquivalent:@""];
         toggleAnalysisItem.target = sDelegate;

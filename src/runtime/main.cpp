@@ -2963,6 +2963,7 @@ int main(int argc, char* argv[]) {
     control_server.set_package_catalog(&pkg_catalog);
     control_server.set_app_update_manager(&app_updates);
     control_server.set_settings(&settings);
+    control_server.set_audio_engine(&audio_engine);
     if (!control_server.start(9876)) {
         std::fprintf(stderr, "[vivid] Control server unavailable (port 9876 in use?)\n");
     }

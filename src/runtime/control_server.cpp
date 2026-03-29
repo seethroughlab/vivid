@@ -560,7 +560,8 @@ static std::string handle_sample_node_outputs(Graph& graph, RuntimeCore& core,
     nlohmann::json result = nlohmann::json::object();
     result["node_id"] = node_id;
     result["type"] = initial->type_name;
-    result["kind"] = initial->is_gpu() ? "gpu" : (initial->active_cadence == vivid::Cadence::Audio ? "audio" : "control");
+    result["kind"] = kind_str(initial->operator_kind);
+    result["active_cadence"] = (initial->active_cadence == vivid::Cadence::Audio) ? "audio" : "frame";
     result["duration_seconds"] = duration_seconds;
     result["interval_ms"] = interval_ms;
     result["include_spreads"] = include_spreads;
@@ -632,7 +633,8 @@ static std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core) {
                 type_name = dit->second->type;
         }
         node["type"] = type_name;
-        node["kind"] = ns.is_gpu() ? "gpu" : (ns.active_cadence == vivid::Cadence::Audio ? "audio" : "control");
+        node["kind"] = kind_str(ns.operator_kind);
+        node["active_cadence"] = (ns.active_cadence == vivid::Cadence::Audio) ? "audio" : "frame";
         node["cadence_capability"] = (ns.cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE) ? "audio_capable"
                                    : (ns.cadence_capability == VIVID_CADENCE_AUDIO_ONLY) ? "audio_only"
                                    : "frame_only";
@@ -1145,7 +1147,7 @@ static bool resolve_state_path(Graph& graph, RuntimeCore& core,
     if (!node) return false;
 
     if (rest == "kind") {
-        out = cv_string(node->is_gpu() ? "gpu" : (node->active_cadence == vivid::Cadence::Audio ? "audio" : "control"));
+        out = cv_string(kind_str(node->operator_kind));
         return true;
     }
     if (rest == "incoming_wires") {
@@ -2042,7 +2044,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
                 core.frame_executor().set_analysis_enabled(enabled);
                 if (audio_engine) audio_engine->set_analysis_enabled(enabled);
                 if (settings) settings->show_analysis = enabled;
-                result = json_ok_simple();
+                result = json_ok_msg(enabled ? "analysis enabled" : "analysis disabled");
             }
         }
     } else if (method == "save_preset") {
@@ -3417,7 +3419,8 @@ void ControlServer::process_requests(RuntimeAPI& api, Graph& graph,
                                         src_dir_, hot_reloader_,
                                         package_manager_,
                                         package_compiler_,
-                                        settings_);
+                                        settings_,
+                                        audio_engine_);
 
         if (track_for_undo && response_is_ok(response)) {
             if (req.method == "load_graph") {
