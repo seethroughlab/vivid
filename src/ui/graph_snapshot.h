@@ -64,6 +64,12 @@ struct OperatorInfo {
 struct NodeSnapshot {
     std::string node_id;
     std::string type_name;
+
+    // Subgraph module membership (empty for top-level nodes)
+    bool is_subgraph_member = false;
+    std::string subgraph_owner;  // instance ID of owning module node
+    std::string subgraph_type;   // module type name
+
     Cadence active_cadence = Cadence::Frame;
     bool is_gpu = false;
     VividCadenceCapability cadence_capability = VIVID_CADENCE_FRAME_ONLY;

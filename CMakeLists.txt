@@ -723,7 +723,9 @@ add_executable(vivid
     src/runtime/port_type_registry.cpp
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -1041,6 +1043,7 @@ add_executable(test_hot_reload
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -1059,6 +1062,7 @@ add_executable(test_audio_hot_reload
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -1095,6 +1099,7 @@ add_executable(test_runtime_api
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -1118,6 +1123,7 @@ add_executable(test_latency_validation
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -1142,6 +1148,7 @@ add_executable(test_control_server
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -1186,6 +1193,7 @@ add_executable(test_perception_introspection
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -1237,6 +1245,7 @@ add_executable(test_audio_engine
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -1259,6 +1268,7 @@ add_executable(test_audio_float_snapshot
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -1281,6 +1291,7 @@ add_executable(test_audio_robustness
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -1302,6 +1313,7 @@ add_executable(test_runtime_core
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -1567,6 +1579,7 @@ add_executable(test_runtime_stress
     src/runtime/builtin_operators.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -1590,6 +1603,7 @@ add_executable(test_hot_reload_stress
     src/runtime/builtin_operators.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -1612,6 +1626,7 @@ add_executable(test_package_stress
     src/runtime/builtin_operators.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -1638,6 +1653,7 @@ add_executable(test_mixed_runtime_stability
     src/runtime/builtin_operators.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -1696,6 +1712,7 @@ add_executable(test_gpu_operators
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -1738,6 +1755,7 @@ add_executable(test_cross_cadence_spread
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -1760,6 +1778,7 @@ add_executable(test_spread_broadcast
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -1778,6 +1797,7 @@ add_executable(test_audio_spread_wire
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -1810,6 +1830,7 @@ add_executable(test_signal_port
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -1859,6 +1880,7 @@ add_executable(test_demo_graphs
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -1899,6 +1921,7 @@ add_executable(test_media_headless
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -1929,6 +1952,7 @@ add_executable(test_audio_cadence_sequencer
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -1954,6 +1978,7 @@ add_executable(test_cadence_inference
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -2117,6 +2142,7 @@ add_executable(test_package_test_runner
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -2144,6 +2170,7 @@ add_executable(test_package_contract_ecosystem
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -2174,6 +2201,7 @@ add_executable(test_capture_coordinator
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -2260,6 +2288,7 @@ add_executable(test_string_ports
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -2368,6 +2397,16 @@ target_include_directories(test_cadence_bridge PRIVATE src)
 target_link_libraries(test_cadence_bridge PRIVATE vivid_operator_api webgpu)
 add_test(NAME test_cadence_bridge COMMAND test_cadence_bridge WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+add_executable(test_subgraph_module
+    tests/test_subgraph_module.cpp
+    src/runtime/subgraph_module.cpp
+    src/runtime/graph.cpp
+)
+target_include_directories(test_subgraph_module PRIVATE src)
+target_link_libraries(test_subgraph_module PRIVATE
+    vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_test(NAME test_subgraph_module COMMAND test_subgraph_module WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 add_executable(test_graph_compiler
     tests/test_graph_compiler.cpp
     src/runtime/graph_compiler.cpp
@@ -2393,6 +2432,7 @@ add_executable(test_undo_mutation_types
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
@@ -2433,6 +2473,7 @@ add_executable(test_team_workflow_regression
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp

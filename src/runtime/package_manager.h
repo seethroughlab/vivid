@@ -11,6 +11,7 @@
 namespace vivid {
 
 class OperatorRegistry;
+class SubgraphModuleRegistry;
 
 struct VendorDependency {
     std::string name;     // e.g. "stb_image"
@@ -37,6 +38,7 @@ struct PackageInfo {
     std::vector<std::string> tags;
     std::vector<std::string> operators;      // "audio/drum_kick", etc.
     std::vector<std::string> gpu_operators;  // operators needing Dawn
+    std::vector<std::string> modules;        // "modules/synth.vivid-module.json", etc.
     std::string path;                        // absolute path on disk
     std::string source_scope;                // local|workspace|user|extra
     std::string build_type;                  // "" = clang++ (default), "cmake" = cmake build
@@ -98,8 +100,12 @@ public:
     // List installed packages
     std::vector<PackageInfo> list();
 
-    // Scan already-installed packages into registry (called at startup)
+    // Scan already-installed packages into registry (called at startup).
+    // If a SubgraphModuleRegistry is set, also loads .vivid-module.json files from packages.
     void scan_installed();
+
+    // Set the subgraph module registry for loading package modules.
+    void set_subgraph_module_registry(SubgraphModuleRegistry* reg) { subgraph_modules_ = reg; }
 
     // Returns <config_dir>/packages (platform-specific config dir)
     static std::string packages_dir();
@@ -150,6 +156,7 @@ private:
     PackageCompiler& compiler_;
     OperatorRegistry& registry_;
     PackageResolver resolver_;
+    SubgraphModuleRegistry* subgraph_modules_ = nullptr;
 };
 
 } // namespace vivid

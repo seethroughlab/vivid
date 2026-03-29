@@ -13,6 +13,7 @@ namespace vivid {
 
 class Graph;
 class OperatorRegistry;
+class SubgraphModuleRegistry;
 
 // ---------------------------------------------------------------------------
 // RuntimeCore — shared runtime state accessed by both frame and audio sides.
@@ -24,6 +25,9 @@ class OperatorRegistry;
 class RuntimeCore {
 public:
     // ── Build / lifecycle ───────────────────────────────────────────────────
+
+    void set_subgraph_modules(const SubgraphModuleRegistry* reg) { subgraph_modules_ = reg; }
+    const SubgraphModuleRegistry* subgraph_modules() const { return subgraph_modules_; }
 
     bool build(const Graph& graph, OperatorRegistry& registry,
                std::vector<GraphCompiler::InferredCadence>* inferred_out = nullptr);
@@ -85,6 +89,7 @@ private:
 
     std::string operators_src_dir_;
     std::filesystem::path graph_base_dir_;
+    const SubgraphModuleRegistry* subgraph_modules_ = nullptr;
     bool needs_gpu_realloc_ = false;
 
     int solo_node_idx_ = -1;

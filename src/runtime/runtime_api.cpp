@@ -1,6 +1,7 @@
 #include "runtime/runtime_api.h"
 #include "runtime/graph.h"
 #include "runtime/runtime_core.h"
+#include "runtime/subgraph_module.h"
 #include "runtime/compiled_graph.h"
 #include "runtime/audio_engine.h"
 #include "runtime/operator_registry.h"
@@ -348,7 +349,8 @@ CommandResult RuntimeAPI::set_cadence_override(const std::string& node_id, uint8
 // --- Buffered topology changes ---
 
 CommandResult RuntimeAPI::add_node(const std::string& type, const std::string& id) {
-    if (!registry_.find(type) && !registry_.is_wgsl_preset(type)) {
+    if (!registry_.find(type) && !registry_.is_wgsl_preset(type) &&
+        !(core_.subgraph_modules() && core_.subgraph_modules()->find(type))) {
         return {false, "unknown type '" + type + "'"};
     }
     if (!graph_.add_node(id, type)) {

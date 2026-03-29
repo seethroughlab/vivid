@@ -276,6 +276,10 @@ struct CompiledNode {
     bool is_gpu_sink() const { return gpu && gpu->is_sink; }
     bool has_texture_output() const { return gpu && gpu->has_texture_output; }
 
+    // ── Subgraph module membership ─────────────────────────────────────────
+    std::string subgraph_owner;  // empty = top-level node
+    std::string subgraph_type;   // module type name
+
     // ── Misc ────────────────────────────────────────────────────────────────
     std::vector<uint32_t> string_input_port_indices;
     std::vector<uint32_t> string_spread_input_port_indices;

@@ -35,6 +35,12 @@ struct NodeDef {
     // Package provenance (empty for core operators)
     std::string pkg_name;
     std::string pkg_version;
+
+    // Subgraph module membership (populated by flatten_subgraphs).
+    // subgraph_owner is intentionally redundant with the "instance.__" node ID prefix
+    // to allow O(1) lookup without string parsing.
+    std::string subgraph_owner;  // empty = top-level node; otherwise instance ID of owning module
+    std::string subgraph_type;   // module type name (e.g. "WavetablePad")
 };
 
 struct ConnectionDef {

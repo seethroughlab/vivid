@@ -367,6 +367,8 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         CompiledNode cn;
         cn.node_id = ndef.id;
         cn.type_name = ndef.type;
+        cn.subgraph_owner = ndef.subgraph_owner;
+        cn.subgraph_type = ndef.subgraph_type;
         cn.loader = loader;
         cn.owned_loader = std::move(owned);
 

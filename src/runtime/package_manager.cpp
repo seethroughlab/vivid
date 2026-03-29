@@ -1,4 +1,5 @@
 #include "runtime/package_manager.h"
+#include "runtime/subgraph_module.h"
 #include "runtime/tool_discovery.h"
 #include "runtime/operator_registry.h"
 #include "runtime/platform.h"
@@ -527,6 +528,14 @@ std::pair<std::string, std::string> PackageManager::parse_manifest(const std::st
                     return {"manifest_invalid_operator_name", "Invalid operator name '" + op_name + "': contains invalid characters or path traversal"};
                 info.gpu_operators.push_back(std::move(op_name));
             }
+        }
+    }
+
+    // modules (optional array of .vivid-module.json paths)
+    if (root.contains("modules") && root["modules"].is_array()) {
+        for (const auto& val : root["modules"]) {
+            if (val.is_string())
+                info.modules.push_back(val.get<std::string>());
         }
     }
 
@@ -1265,6 +1274,18 @@ void PackageManager::scan_installed() {
         registry_.scan_deferred(build_dir.c_str());
         registry_.register_package(info.name, build_dir);
         registry_.scan_factory_presets(info.path + "/factory_presets");
+
+        // Load subgraph modules declared in package manifest
+        if (subgraph_modules_ && !info.modules.empty()) {
+            for (const auto& mod_path : info.modules) {
+                std::string abs_path = info.path + "/" + mod_path;
+                if (subgraph_modules_->load(abs_path)) {
+                    std::fprintf(stderr, "[vivid] PackageManager: loaded module %s from %s\n",
+                                 mod_path.c_str(), info.name.c_str());
+                }
+            }
+        }
+
         count++;
         std::fprintf(stderr, "[vivid] PackageManager: loaded package %s [%s] (%zu operators)\n",
                      info.name.c_str(),

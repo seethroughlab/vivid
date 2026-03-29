@@ -1,6 +1,7 @@
 #include "runtime/runtime_core.h"
 #include "runtime/graph.h"
 #include "runtime/operator_registry.h"
+#include "runtime/subgraph_module.h"
 #include <cstdio>
 
 namespace vivid {
@@ -17,11 +18,20 @@ bool RuntimeCore::build(const Graph& graph, OperatorRegistry& registry,
     // Extract graph base directory for resolving relative file paths
     graph_base_dir_ = std::filesystem::path(graph.source_path()).parent_path();
 
+    // Flatten subgraph modules before compilation (if any are registered)
+    const Graph* compile_target = &graph;
+    Graph flattened;
+    if (subgraph_modules_ && !subgraph_modules_->empty()) {
+        flattened = flatten_subgraphs(graph, *subgraph_modules_);
+        flattened.set_source_path(std::string(graph.source_path()));
+        compile_target = &flattened;
+    }
+
     // Compile the graph
     GraphCompiler::Options opts;
     opts.graph_base_dir = graph_base_dir_;
     opts.operators_src_dir = operators_src_dir_;
-    compiled_graph_ = GraphCompiler::compile(graph, registry, opts, inferred_out);
+    compiled_graph_ = GraphCompiler::compile(*compile_target, registry, opts, inferred_out);
     if (!compiled_graph_) {
         std::fprintf(stderr, "[vivid] CompiledGraph: compile failed\n");
         return false;

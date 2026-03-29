@@ -129,6 +129,14 @@ static bool parse_node_fields(const nlohmann::json& val, NodeDef& node) {
         }
     }
 
+    // Subgraph module membership (present in flattened graphs)
+    auto sg_owner_it = val.find("subgraph_owner");
+    if (sg_owner_it != val.end() && sg_owner_it->is_string())
+        node.subgraph_owner = sg_owner_it->get<std::string>();
+    auto sg_type_it = val.find("subgraph_type");
+    if (sg_type_it != val.end() && sg_type_it->is_string())
+        node.subgraph_type = sg_type_it->get<std::string>();
+
     return true;
 }
 
@@ -920,6 +928,11 @@ static void serialize_node_fields(nlohmann::ordered_json& node_obj, const NodeDe
         node_obj["locks"] = std::move(locks_obj);
     }
 
+    // Subgraph module membership (only written for flattened graphs)
+    if (!node.subgraph_owner.empty()) {
+        node_obj["subgraph_owner"] = node.subgraph_owner;
+        node_obj["subgraph_type"]  = node.subgraph_type;
+    }
 }
 
 static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {

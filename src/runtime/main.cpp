@@ -6,6 +6,7 @@
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
 #include "runtime/runtime_core.h"
+#include "runtime/subgraph_module.h"
 #include "runtime/audio_engine.h"
 #include "runtime/cadence_bridge.h"
 #include "runtime/compiled_graph.h"
@@ -1144,7 +1145,8 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         vivid::SystemMidiListener* system_midi = nullptr,
         const vivid::RuntimeAPI* runtime_api = nullptr,
         vivid::CaptureCoordinator* capture_coordinator = nullptr,
-        const vivid::ControlServer* control_server = nullptr) {
+        const vivid::ControlServer* control_server = nullptr,
+        const vivid::SubgraphModuleRegistry* subgraph_modules = nullptr) {
     vivid::ui::GraphSnapshot snap;
 
     const auto* cg = runtime.compiled_graph();
@@ -1159,6 +1161,9 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         auto& sn = snap.nodes[i];
         sn.node_id = cn.node_id;
         sn.type_name = runtime.type_name(static_cast<uint32_t>(i));
+        sn.subgraph_owner = cn.subgraph_owner;
+        sn.subgraph_type = cn.subgraph_type;
+        sn.is_subgraph_member = !cn.subgraph_owner.empty();
         sn.active_cadence = cn.active_cadence;
         sn.is_gpu = cn.is_gpu();
         sn.cadence_capability = cn.cadence_capability;
@@ -1366,10 +1371,21 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
 
     // Operator catalog
     snap.operator_types = registry.type_names();
+    // Include subgraph module types in the catalog
+    if (subgraph_modules) {
+        for (const auto& mt : subgraph_modules->type_names())
+            snap.operator_types.push_back(mt);
+    }
     std::sort(snap.operator_types.begin(), snap.operator_types.end());
     for (const auto& tn : snap.operator_types) {
+        // Try operator registry first, then subgraph modules
         auto info = op_cache.get(tn, registry);
-        if (info) snap.operator_catalog[tn] = info;
+        if (info) {
+            snap.operator_catalog[tn] = info;
+        } else if (subgraph_modules) {
+            const auto* mod = subgraph_modules->find(tn);
+            if (mod) snap.operator_catalog[tn] = vivid::make_operator_info(*mod);
+        }
     }
 
     // WGSL preset names (for filter selector UI)
@@ -2730,9 +2746,18 @@ int main(int argc, char* argv[]) {
     std::string factory_presets_dir = (resources_dir / "factory_presets").string();
     registry.scan_factory_presets(factory_presets_dir);
 
+    // --- Subgraph module registry ---
+    vivid::SubgraphModuleRegistry subgraph_modules;
+    {
+        auto modules_dir = resources_dir / "modules";
+        if (std::filesystem::is_directory(modules_dir))
+            subgraph_modules.scan(modules_dir.string());
+    }
+
     // --- Package management (needs to outlive main loop for catalog/install) ---
     vivid::PackageCompiler pkg_compiler(build_paths.source_dir, build_paths.build_dir);
     vivid::PackageManager pkg_manager(pkg_compiler, registry);
+    pkg_manager.set_subgraph_module_registry(&subgraph_modules);
     if (std::getenv("VIVID_SKIP_PACKAGE_SCAN")) {
         std::fprintf(stderr, "[vivid] Skipping installed package scan (VIVID_SKIP_PACKAGE_SCAN)\n");
     } else {
@@ -2824,6 +2849,7 @@ int main(int argc, char* argv[]) {
     // --- Load graph ---
     vivid::Graph graph;
     vivid::RuntimeCore runtime;
+    runtime.set_subgraph_modules(&subgraph_modules);
     bool graph_loaded = false;
 
     // Working directory for user filter shaders: {graph_dir}/{graph_stem}_filters/
@@ -4532,7 +4558,7 @@ int main(int argc, char* argv[]) {
                 auto snapshot = build_graph_snapshot(
                     graph, runtime, has_audio ? &audio_engine : nullptr,
                     registry, op_info_cache, &system_midi, &runtime_api,
-                    &capture_coordinator, &control_server);
+                    &capture_coordinator, &control_server, &subgraph_modules);
 
                 if (!test_ui_script.actions.empty()) {
                     run_ui_test_script_frame(test_ui_script, graph_ui, window_user_data,
