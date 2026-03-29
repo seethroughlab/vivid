@@ -63,7 +63,7 @@
   "connections": [
     {
       "from": "clock1/bar_phase",
-      "to": "ds1/phase"
+      "to": "ds1/beat_phase"
     },
     {
       "from": "ds1/gates",
