@@ -4447,8 +4447,12 @@ int main(int argc, char* argv[]) {
             // --- Tick state-preset mappings (after runtime tick, state outputs are fresh) ---
             runtime_api.tick_state_presets();
 
-            if (has_audio)
-                runtime.post_tick_audio_sync();
+            // NOTE: post_tick_audio_sync (push_to_audio) is deferred to the end
+            // of tick_frame so that UI set_param writes from graph_ui.update()
+            // are captured before the audio snapshot is published.  Without this,
+            // the audio executor overwrites cn.param_values with the stale
+            // snapshot every callback, reverting slider drags on audio-cadence
+            // nodes (e.g. Clock, DrumKick).
 
             // Process capture/recording/analysis requests (after tick, textures are fresh)
             if (capture_coordinator.has_pending() || capture_coordinator.is_recording() ||
@@ -4671,6 +4675,11 @@ int main(int argc, char* argv[]) {
             // and poll the device so audio/compute operators still advance.
             vivid::gpu_submit(gpu.device(), gpu.queue(), tick_encoder, "Offscreen Commands");
         }
+
+        // Push param snapshot to audio thread AFTER UI update so that any
+        // set_param writes from slider drags are included in the snapshot.
+        if (has_audio)
+            runtime.post_tick_audio_sync();
 
         // wgpu-native: poll the device to process async operations
         wgpuDevicePoll(gpu.device(), false, nullptr);
