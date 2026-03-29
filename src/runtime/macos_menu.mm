@@ -27,6 +27,7 @@ enum MenuTag : NSInteger {
     kMenuTagToggleFullscreen,
     kMenuTagToggleBezierWires,
     kMenuTagToggleShowParamWires,
+    kMenuTagToggleAnalysis,
     kMenuTagToggleSessionGrid,
     kMenuTagToggleMidiMap,
     // Insert
@@ -72,6 +73,7 @@ enum MenuTag : NSInteger {
         case kMenuTagToggleFullscreen:  if (_callbacks.on_toggle_fullscreen) _callbacks.on_toggle_fullscreen(); break;
         case kMenuTagToggleBezierWires: if (_callbacks.on_toggle_bezier_wires) _callbacks.on_toggle_bezier_wires(); break;
         case kMenuTagToggleShowParamWires: if (_callbacks.on_toggle_show_param_wires) _callbacks.on_toggle_show_param_wires(); break;
+        case kMenuTagToggleAnalysis: if (_callbacks.on_toggle_analysis) _callbacks.on_toggle_analysis(); break;
         case kMenuTagToggleSessionGrid: if (_callbacks.on_toggle_session_grid) _callbacks.on_toggle_session_grid(); break;
         case kMenuTagToggleMidiMap:     if (_callbacks.on_toggle_midi_map) _callbacks.on_toggle_midi_map(); break;
         case kMenuTagAddNode:           if (_callbacks.on_add_node) _callbacks.on_add_node(); break;
@@ -101,6 +103,10 @@ enum MenuTag : NSInteger {
 
         case kMenuTagToggleShowParamWires:
             item.state = (_callbacks.is_show_param_wires && _callbacks.is_show_param_wires()) ? NSControlStateValueOn : NSControlStateValueOff;
+            return YES;
+
+        case kMenuTagToggleAnalysis:
+            item.state = (_callbacks.is_analysis_enabled && _callbacks.is_analysis_enabled()) ? NSControlStateValueOn : NSControlStateValueOff;
             return YES;
 
         case kMenuTagToggleSessionGrid:
@@ -355,6 +361,14 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         toggleParamWiresItem.target = sDelegate;
         toggleParamWiresItem.tag = kMenuTagToggleShowParamWires;
         [viewMenu addItem:toggleParamWiresItem];
+
+        NSMenuItem* toggleAnalysisItem = [[NSMenuItem alloc]
+            initWithTitle:@"Show Analysis"
+                   action:@selector(menuAction:)
+            keyEquivalent:@""];
+        toggleAnalysisItem.target = sDelegate;
+        toggleAnalysisItem.tag = kMenuTagToggleAnalysis;
+        [viewMenu addItem:toggleAnalysisItem];
 
         NSMenuItem* toggleGridItem = [[NSMenuItem alloc]
             initWithTitle:@"Toggle Session Grid"

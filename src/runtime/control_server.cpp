@@ -15,6 +15,7 @@
 #include "runtime/package_catalog.h"
 #include "runtime/app_update_manager.h"
 #include "runtime/settings.h"
+#include "runtime/audio_engine.h"
 #include "runtime/operator_destination_policy.h"
 #include "operator_api/types.h"
 #include "operator_api/type_id.h"
@@ -240,6 +241,7 @@ static bool is_undo_tracked_method(const std::string& method) {
            method == "update_variation" ||
            method == "queue_variation" ||
            method == "set_quantize_clock" ||
+           method == "set_analysis" ||
            method == "save_preset" ||
            method == "recall_preset" ||
            method == "update_preset" ||
@@ -405,6 +407,25 @@ static std::string handle_inspect_graph(Graph& graph, RuntimeCore& core) {
                     outputs_arr.push_back(std::move(p));
             }
         }
+        // Append runtime-injected GPU analysis ports.
+        if (ns && ns->gpu) {
+            static const char* kGpuAnalysisPorts[] = {
+                "frame_hash", "brightness", "contrast", "dominant_hue"
+            };
+            for (const char* name : kGpuAnalysisPorts) {
+                auto oit = ns->output_port_indices.find(name);
+                if (oit != ns->output_port_indices.end() &&
+                    oit->second < ns->output_values.size()) {
+                    nlohmann::json p = nlohmann::json::object();
+                    p["name"] = name;
+                    p["type"] = "float";
+                    p["transport"] = "scalar";
+                    p["current_value"] = static_cast<double>(ns->output_values[oit->second]);
+                    outputs_arr.push_back(std::move(p));
+                }
+            }
+        }
+
         node["inputs"] = std::move(inputs_arr);
         node["outputs"] = std::move(outputs_arr);
 
@@ -489,6 +510,23 @@ static nlohmann::json sample_node_outputs_snapshot(const CompiledNode& ns,
         }
 
         outputs_obj[pd.name] = std::move(out);
+    }
+
+    // Include runtime-injected GPU analysis ports (not in the operator descriptor).
+    if (ns.gpu) {
+        static const char* kGpuAnalysisPorts[] = {
+            "frame_hash", "brightness", "contrast", "dominant_hue"
+        };
+        for (const char* name : kGpuAnalysisPorts) {
+            auto oit = ns.output_port_indices.find(name);
+            if (oit != ns.output_port_indices.end() && oit->second < ns.output_values.size()) {
+                nlohmann::json out = nlohmann::json::object();
+                out["kind"] = "float";
+                out["transport"] = "scalar";
+                out["scalar"] = static_cast<double>(ns.output_values[oit->second]);
+                outputs_obj[name] = std::move(out);
+            }
+        }
     }
 
     return outputs_obj;
@@ -1632,7 +1670,8 @@ static std::string dispatch(const std::string& method, const std::string& body,
                             const std::string& src_dir, HotReloader* hot_reloader,
                             PackageManager* package_manager,
                             PackageCompiler* package_compiler,
-                            const Settings* settings) {
+                            Settings* settings,
+                            AudioEngine* audio_engine) {
     // Read-only queries (no body needed)
     if (method == "inspect_graph") return handle_inspect_graph(graph, core);
     if (method == "introspect_nodes") return handle_introspect_nodes(graph, core);
@@ -1992,6 +2031,19 @@ static std::string dispatch(const std::string& method, const std::string& body,
                 result = json_err("missing 'node_id'");
             else
                 result = command_result_to_json(api.set_quantize_clock(root["node_id"].get<std::string>()));
+        }
+    } else if (method == "set_analysis") {
+        if (!root_valid) { result = json_err("invalid JSON body"); }
+        else {
+            if (!root.contains("enabled") || !root["enabled"].is_boolean())
+                result = json_err("missing 'enabled' (boolean)");
+            else {
+                bool enabled = root["enabled"].get<bool>();
+                core.frame_executor().set_analysis_enabled(enabled);
+                if (audio_engine) audio_engine->set_analysis_enabled(enabled);
+                if (settings) settings->show_analysis = enabled;
+                result = json_ok_simple();
+            }
         }
     } else if (method == "save_preset") {
         if (!root_valid) { result = json_err("invalid JSON body"); }
@@ -2798,7 +2850,8 @@ void ControlServer::set_package_manager(PackageManager* pm) { assert(!impl_); pa
 void ControlServer::set_package_compiler(PackageCompiler* pc) { assert(!impl_); package_compiler_ = pc; }
 void ControlServer::set_package_catalog(PackageCatalog* cat) { assert(!impl_); package_catalog_ = cat; }
 void ControlServer::set_app_update_manager(AppUpdateManager* aum) { assert(!impl_); app_update_manager_ = aum; }
-void ControlServer::set_settings(const Settings* settings) { assert(!impl_); settings_ = settings; }
+void ControlServer::set_settings(Settings* settings) { assert(!impl_); settings_ = settings; }
+void ControlServer::set_audio_engine(AudioEngine* ae) { audio_engine_ = ae; }
 
 uint64_t ControlServer::mcp_last_ping_ms(const std::string& name) const {
     std::lock_guard<std::mutex> lk(mcp_ping_mutex_);

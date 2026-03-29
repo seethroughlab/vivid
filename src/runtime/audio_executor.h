@@ -43,6 +43,10 @@ public:
     uint64_t available_recorded_samples() const;
     uint64_t pop_recorded_samples(float* dst, uint64_t max_samples);
 
+    // Analysis toggle (main thread sets, audio thread reads)
+    void set_analysis_enabled(bool enabled) { analysis_enabled_.store(enabled, std::memory_order_relaxed); }
+    bool analysis_enabled() const { return analysis_enabled_.load(std::memory_order_relaxed); }
+
     // Diagnostics
     uint32_t underrun_count() const { return underrun_count_.load(std::memory_order_relaxed); }
     bool last_buffer_underrun() const { return last_buffer_underrun_.load(std::memory_order_relaxed); }
@@ -78,6 +82,9 @@ private:
 
     // Audio time tracking
     uint64_t audio_frame_ = 0;
+
+    // Analysis toggle (set from main thread, read from audio thread)
+    std::atomic<bool> analysis_enabled_{true};
 
     // Diagnostics (atomic — read from main thread, written from audio thread)
     std::atomic<uint32_t> underrun_count_{0};

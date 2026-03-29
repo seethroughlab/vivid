@@ -51,6 +51,9 @@ public:
     uint64_t available_recorded_samples() const;
     uint64_t pop_recorded_samples(float* dst, uint64_t max_samples);
 
+    // Analysis toggle (main thread)
+    void set_analysis_enabled(bool enabled);
+
     uint32_t underrun_count() const;
     bool last_buffer_underrun() const;
     float audio_load() const;

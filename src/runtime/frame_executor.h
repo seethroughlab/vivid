@@ -27,6 +27,10 @@ public:
               void* gpu_state = nullptr, PostNodeFn on_gpu_node = nullptr,
               const VividInputState* input = nullptr);
 
+    // Enable/disable GPU frame analysis (readback + metric computation).
+    void set_analysis_enabled(bool enabled) { analysis_enabled_ = enabled; }
+    bool analysis_enabled() const { return analysis_enabled_; }
+
     // Solo mode — active set is computed by RuntimeCore and synced here.
     void set_solo(int node_idx, const std::vector<bool>& active_set);
     int solo_node_idx() const { return solo_node_idx_; }
@@ -54,6 +58,7 @@ private:
     int solo_node_idx_ = -1;
     std::vector<bool> solo_active_set_;
     bool needs_gpu_realloc_ = false;
+    bool analysis_enabled_ = true;
     WGPUDevice gpu_device_ = nullptr;
     std::string operators_src_dir_;
 

@@ -92,6 +92,28 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
         }
     }
 
+    // Auto-inject GPU analysis output ports (frame_hash, brightness, contrast, dominant_hue).
+    // These are owned by the runtime — operators don't declare them.
+    if (node_is_gpu && cn.gpu) {
+        auto inject = [&](const char* name) -> uint32_t {
+            uint32_t idx = cn.output_port_count++;
+            cn.output_port_indices[name] = idx;
+            cn.output_port_types.push_back(VIVID_PORT_SIGNAL);
+            return idx;
+        };
+        cn.gpu->analysis_frame_hash_idx   = inject("frame_hash");
+        cn.gpu->analysis_brightness_idx   = inject("brightness");
+        cn.gpu->analysis_contrast_idx     = inject("contrast");
+        cn.gpu->analysis_dominant_hue_idx = inject("dominant_hue");
+
+        // Resize output arrays to accommodate the injected ports.
+        cn.output_values.resize(cn.output_port_count, 0.0f);
+        cn.output_string_values.resize(cn.output_port_count, "");
+        cn.c_output_string_values.resize(cn.output_port_count, nullptr);
+        cn.output_spreads.resize(cn.output_port_count);
+        cn.output_string_spreads.resize(cn.output_port_count);
+    }
+
     // Spread port staging buffers
     cn.c_in_spreads.resize(cn.input_port_count);
     cn.c_out_spreads.resize(cn.output_port_count);

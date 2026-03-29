@@ -640,8 +640,9 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             buf_len = std::min(frame_count, static_cast<uint32_t>(a.buffers_out[0].size()));
         }
 
-        // RMS & peak
-        if (buf && buf_len > 0 && i < analysis.rms.size()) {
+        // RMS & peak (gated by analysis toggle)
+        if (analysis_enabled_.load(std::memory_order_relaxed) &&
+            buf && buf_len > 0 && i < analysis.rms.size()) {
             float sum_sq = 0.0f, peak = 0.0f;
             for (uint32_t s = 0; s < buf_len; ++s) {
                 float v = buf[s];
@@ -653,8 +654,9 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             analysis.peak[i] = peak;
         }
 
-        // Waveform ring
-        if (buf && buf_len > 0 && i < waveform_rings_.size()) {
+        // Waveform ring (gated by analysis toggle)
+        if (analysis_enabled_.load(std::memory_order_relaxed) &&
+            buf && buf_len > 0 && i < waveform_rings_.size()) {
             auto& ring = waveform_rings_[i];
             auto& pos = waveform_ring_pos_[i];
             for (uint32_t s = 0; s < buf_len; ++s) {

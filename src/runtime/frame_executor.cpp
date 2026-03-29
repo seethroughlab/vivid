@@ -400,6 +400,32 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             }
         }
 
+        // ── GPU frame analysis (readback + metrics) ───────────────────
+        if (cn.is_gpu() && cn.gpu && analysis_enabled_ &&
+            cn.gpu->analysis_frame_hash_idx != UINT32_MAX) {
+            auto& fa = cn.gpu->frame_analysis;
+            if (!fa) {
+                fa = std::make_unique<GpuFrameAnalysis>();
+            }
+            auto* base_gpu = static_cast<VividGpuContext*>(gpu_state);
+            if (base_gpu && !fa->is_inited()) {
+                fa->init(base_gpu->device);
+            }
+            // Process previous frame's readback and write metrics.
+            fa->compute_metrics();
+            fa->inject(cn.output_values.data(),
+                       cn.gpu->analysis_frame_hash_idx,
+                       cn.gpu->analysis_brightness_idx,
+                       cn.gpu->analysis_contrast_idx,
+                       cn.gpu->analysis_dominant_hue_idx);
+            // Queue readback for this frame's output.
+            if (base_gpu && cn.gpu->texture_view) {
+                fa->queue_readback(base_gpu->command_encoder, base_gpu->queue,
+                                   cn.gpu->texture_view,
+                                   cn.gpu->tex_width, cn.gpu->tex_height);
+            }
+        }
+
         // ── PostNodeFn callback ─────────────────────────────────────────
         if (cn.is_gpu() && on_gpu_node && cn.gpu->texture_view)
             on_gpu_node(ni, cn.node_id, cn.gpu->texture_view);

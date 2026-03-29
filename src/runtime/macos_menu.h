@@ -33,6 +33,7 @@ struct MenuCallbacks {
     std::function<void()> on_toggle_fullscreen;
     std::function<void()> on_toggle_bezier_wires;
     std::function<void()> on_toggle_show_param_wires;
+    std::function<void()> on_toggle_analysis;
     std::function<void()> on_toggle_session_grid;
     std::function<void()> on_toggle_midi_map;
 
@@ -44,6 +45,7 @@ struct MenuCallbacks {
     std::function<bool()> is_fullscreen;
     std::function<bool()> is_bezier_wires;
     std::function<bool()> is_show_param_wires;
+    std::function<bool()> is_analysis_enabled;
     std::function<bool()> is_session_grid_open;
     std::function<bool()> is_midi_map_mode;
     std::function<bool()> has_selection;

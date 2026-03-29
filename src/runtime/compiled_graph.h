@@ -3,6 +3,7 @@
 #include "operator_api/types.h"
 #include "runtime/cadence_types.h"
 #include "runtime/operator_loader.h"
+#include "runtime/gpu_frame_analysis.h"
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -190,6 +191,16 @@ struct GpuNodeState {
     bool has_texture_output = false;
     bool shader_error = false;
     std::string shader_error_msg;
+
+    // Runtime-injected GPU analysis output port indices.
+    // Populated during compilation; values written by the FrameExecutor.
+    uint32_t analysis_frame_hash_idx  = UINT32_MAX;
+    uint32_t analysis_brightness_idx  = UINT32_MAX;
+    uint32_t analysis_contrast_idx    = UINT32_MAX;
+    uint32_t analysis_dominant_hue_idx = UINT32_MAX;
+
+    // Per-node frame analysis (lazily initialized on first GPU tick).
+    std::unique_ptr<GpuFrameAnalysis> frame_analysis;
 };
 
 // ---------------------------------------------------------------------------

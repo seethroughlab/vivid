@@ -865,9 +865,11 @@ static std::filesystem::path expand_tilde_path(const std::string& input) {
     return std::filesystem::path(input);
 }
 
-static void refresh_window_title(GLFWwindow* window, const std::string& graph_path) {
+static void refresh_window_title(GLFWwindow* window, const std::string& graph_path,
+                                  bool analysis_enabled) {
     if (!window) return;
     std::string title = "Vivid";
+    if (analysis_enabled) title += " [Analysis]";
     if (!graph_path.empty()) {
         std::string file = std::filesystem::path(graph_path).filename().string();
         if (!file.empty()) {
@@ -2850,6 +2852,7 @@ int main(int argc, char* argv[]) {
     vivid::Graph graph;
     vivid::RuntimeCore runtime;
     runtime.set_subgraph_modules(&subgraph_modules);
+    runtime.frame_executor().set_analysis_enabled(settings.show_analysis);
     bool graph_loaded = false;
 
     // Working directory for user filter shaders: {graph_dir}/{graph_stem}_filters/
@@ -2931,6 +2934,7 @@ int main(int argc, char* argv[]) {
 
     // --- Audio engine ---
     vivid::AudioEngine audio_engine;
+    audio_engine.set_analysis_enabled(settings.show_analysis);
     bool has_audio = false;
     if (graph_loaded && runtime.has_audio_operators()) {
         if (audio_engine.build(runtime)) {
@@ -3934,6 +3938,12 @@ int main(int argc, char* argv[]) {
         menu_cbs.on_toggle_fullscreen = [&]() { toggle_fullscreen(); };
         menu_cbs.on_toggle_bezier_wires = [&]() { graph_ui.set_bezier_wires(!graph_ui.bezier_wires()); };
         menu_cbs.on_toggle_show_param_wires = [&]() { graph_ui.set_show_param_wires(!graph_ui.show_param_wires()); };
+        menu_cbs.on_toggle_analysis = [&]() {
+            bool next = !runtime.frame_executor().analysis_enabled();
+            runtime.frame_executor().set_analysis_enabled(next);
+            audio_engine.set_analysis_enabled(next);
+            settings.show_analysis = next;
+        };
         menu_cbs.on_toggle_session_grid = [&]() { graph_ui.toggle_session_grid(); };
         menu_cbs.on_toggle_midi_map = [&]() { graph_ui.toggle_midi_map_mode(); };
 
@@ -3945,6 +3955,7 @@ int main(int argc, char* argv[]) {
         menu_cbs.is_fullscreen = [&]() { return display_state.fullscreen; };
         menu_cbs.is_bezier_wires = [&]() { return graph_ui.bezier_wires(); };
         menu_cbs.is_show_param_wires = [&]() { return graph_ui.show_param_wires(); };
+        menu_cbs.is_analysis_enabled = [&]() { return runtime.frame_executor().analysis_enabled(); };
         menu_cbs.is_session_grid_open = [&]() { return graph_ui.session_grid_open(); };
         menu_cbs.is_midi_map_mode = [&]() { return graph_ui.midi_map_mode(); };
         menu_cbs.has_selection = [&]() { return graph_ui.has_selection(); };
@@ -3966,6 +3977,7 @@ int main(int argc, char* argv[]) {
     bool window_doc_edited = false;
 #endif
     std::string window_title_graph_path;
+    bool window_title_analysis = settings.show_analysis;
     reset_file_dialog_test_stats_runtime();
 
     // --- Main loop ---
@@ -3986,9 +3998,12 @@ int main(int argc, char* argv[]) {
         if (glfwWindowShouldClose(window)) return false;
 
         const std::string current_graph_path = graph.source_path();
-        if (current_graph_path != window_title_graph_path) {
-            refresh_window_title(window, current_graph_path);
+        const bool current_analysis = runtime.frame_executor().analysis_enabled();
+        if (current_graph_path != window_title_graph_path ||
+            current_analysis != window_title_analysis) {
+            refresh_window_title(window, current_graph_path, current_analysis);
             window_title_graph_path = current_graph_path;
+            window_title_analysis = current_analysis;
         }
 
         int win_w, win_h;
@@ -4721,6 +4736,7 @@ int main(int argc, char* argv[]) {
         glfwGetWindowSize(window, &s.window_width, &s.window_height);
         s.bezier_wires = graph_ui.bezier_wires();
         s.show_param_wires = graph_ui.show_param_wires();
+        s.show_analysis = runtime.frame_executor().analysis_enabled();
         vivid::save_settings(s);
     }
 
