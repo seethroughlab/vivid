@@ -525,10 +525,27 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
     for (uint32_t i = 0; i < n; ++i)
         string_in_fanin[i].assign(cg->nodes[i].input_port_count, 0);
 
+    auto drop_connection = [&](const auto& conn, const std::string& reason) {
+        std::fprintf(stderr, "[vivid] warning: dropped connection %s/%s → %s/%s: %s\n",
+                     conn.from_node.c_str(), conn.from_port.c_str(),
+                     conn.to_node.c_str(), conn.to_port.c_str(), reason.c_str());
+        cg->dropped_connections.push_back({conn.from_node, conn.from_port,
+                                           conn.to_node, conn.to_port, reason});
+    };
+
     for (const auto& conn : graph.connections()) {
         auto from_it = node_index.find(conn.from_node);
         auto to_it   = node_index.find(conn.to_node);
-        if (from_it == node_index.end() || to_it == node_index.end()) continue;
+        if (from_it == node_index.end() || to_it == node_index.end()) {
+            std::string reason;
+            if (from_it == node_index.end()) reason = "node '" + conn.from_node + "' not found";
+            if (to_it == node_index.end()) {
+                if (!reason.empty()) reason += "; ";
+                reason += "node '" + conn.to_node + "' not found";
+            }
+            drop_connection(conn, reason);
+            continue;
+        }
 
         uint32_t fi = from_it->second;
         uint32_t ti = to_it->second;
@@ -561,7 +578,16 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             }
         } else {
             auto pp_it = from_cn.param_indices.find(conn.from_port);
-            if (pp_it == from_cn.param_indices.end()) continue;
+            if (pp_it == from_cn.param_indices.end()) {
+                std::string avail;
+                for (const auto& [k, _] : from_cn.output_port_indices)
+                    avail += (avail.empty() ? "" : ", ") + k;
+                for (const auto& [k, _] : from_cn.param_indices)
+                    avail += (avail.empty() ? "" : ", ") + k;
+                drop_connection(conn, "'" + conn.from_port + "' not found on node '" +
+                    conn.from_node + "' (" + from_cn.type_name + "). Available: " + avail);
+                continue;
+            }
             from_port_idx = pp_it->second;
             source_is_param = true;
             auto fp_src_it = from_cn.file_param_indices.find(conn.from_port);
@@ -646,14 +672,10 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                         conn.to_node.c_str(), conn.to_port.c_str());
                     return nullptr;
                 } else if (from_port_type == VIVID_PORT_TEXTURE || to_port_type == VIVID_PORT_TEXTURE) {
-                    std::fprintf(stderr, "[vivid] GraphCompiler: texture type mismatch %s/%s -> %s/%s\n",
-                                 conn.from_node.c_str(), conn.from_port.c_str(),
-                                 conn.to_node.c_str(), conn.to_port.c_str());
+                    drop_connection(conn, "texture type mismatch");
                     continue;
                 } else if (vivid_is_custom_port_type(from_port_type) != vivid_is_custom_port_type(to_port_type)) {
-                    std::fprintf(stderr, "[vivid] GraphCompiler: custom port type mismatch %s/%s -> %s/%s\n",
-                                 conn.from_node.c_str(), conn.from_port.c_str(),
-                                 conn.to_node.c_str(), conn.to_port.c_str());
+                    drop_connection(conn, "custom port type mismatch");
                     continue;
                 }
             }
@@ -669,7 +691,16 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                 e.targets_param = true;
             } else {
                 auto pp_it = to_cn.param_indices.find(conn.to_port);
-                if (pp_it == to_cn.param_indices.end()) continue;
+                if (pp_it == to_cn.param_indices.end()) {
+                    std::string avail;
+                    for (const auto& [k, _] : to_cn.input_port_indices)
+                        avail += (avail.empty() ? "" : ", ") + k;
+                    for (const auto& [k, _] : to_cn.param_indices)
+                        avail += (avail.empty() ? "" : ", ") + k;
+                    drop_connection(conn, "'" + conn.to_port + "' not found on node '" +
+                        conn.to_node + "' (" + to_cn.type_name + "). Available: " + avail);
+                    continue;
+                }
                 e.to_port = pp_it->second;
                 e.targets_param = true;
             }

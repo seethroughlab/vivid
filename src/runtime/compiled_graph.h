@@ -333,6 +333,14 @@ struct CompiledGraph {
     std::vector<uint32_t> frame_direct_edges;    // indices into edges[]
     std::vector<uint32_t> audio_direct_edges;    // indices into edges[]
 
+    // Connections dropped during compilation (port name mismatch, type mismatch, etc.)
+    struct DroppedConnection {
+        std::string from_node, from_port;
+        std::string to_node, to_port;
+        std::string reason;
+    };
+    std::vector<DroppedConnection> dropped_connections;
+
     // Lookup.
     std::unordered_map<std::string, uint32_t> node_id_to_index;
 

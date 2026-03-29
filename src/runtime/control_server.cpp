@@ -969,6 +969,17 @@ static std::vector<DiagnosticFinding> collect_diagnostics(
         }
     }
 
+    for (const auto& dc : cg->dropped_connections) {
+        findings.push_back({
+            "dropped_connection",
+            "warning",
+            dc.to_node,
+            "Connection " + dc.from_node + "/" + dc.from_port + " → " +
+                dc.to_node + "/" + dc.to_port + " was dropped: " + dc.reason,
+            "Check port names match the operator's declared ports."
+        });
+    }
+
     std::sort(findings.begin(), findings.end(), [](const DiagnosticFinding& a, const DiagnosticFinding& b) {
         int ar = severity_rank(a.severity);
         int br = severity_rank(b.severity);
@@ -1949,7 +1960,18 @@ static std::string dispatch(const std::string& method, const std::string& body,
                 errs.push_back({{"node_id", cn.node_id}, {"error", cn.error_message}});
             }
         }
+        nlohmann::json dropped = nlohmann::json::array();
+        if (const auto* cg = core.compiled_graph()) {
+            for (const auto& dc : cg->dropped_connections) {
+                dropped.push_back({
+                    {"from", dc.from_node + "/" + dc.from_port},
+                    {"to", dc.to_node + "/" + dc.to_port},
+                    {"reason", dc.reason}
+                });
+            }
+        }
         res["errors"] = std::move(errs);
+        res["dropped_connections"] = std::move(dropped);
         result = json_ok(std::move(res));
     } else if (method == "save_variation") {
         if (!root_valid) { result = json_err("invalid JSON body"); }
