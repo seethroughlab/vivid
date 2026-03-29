@@ -59,11 +59,10 @@ private:
     WGPUErrorType last_error_type_ = WGPUErrorType_NoError;
 };
 
-// Finish, submit, and release a command encoder with error-scope protection.
-// Wraps wgpuQueueSubmit in Validation + OutOfMemory + Internal error scopes so
-// that GPU errors are captured and logged instead of hitting wgpu-native's
-// fatal abort.  Returns false if the encoder was in an error state (null
-// command buffer).
+// Finish, submit, and release a command encoder.  Returns false if the encoder
+// was in an error state (null command buffer).  GPU errors are handled by the
+// uncaptured error callback configured on the device — error scopes are not
+// used because wgpu-native panics if PushErrorScope is called on a lost device.
 bool gpu_submit(WGPUDevice device, WGPUQueue queue, WGPUCommandEncoder encoder,
                 const char* label = "Commands");
 

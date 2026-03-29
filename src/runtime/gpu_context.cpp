@@ -339,38 +339,15 @@ bool gpu_submit(WGPUDevice device, WGPUQueue queue, WGPUCommandEncoder encoder,
         return false;
     }
 
-    // Push error scopes so errors are captured instead of falling through
-    // to wgpu-native's handle_error_fatal / abort.
-    wgpuDevicePushErrorScope(device, WGPUErrorFilter_Validation);
-    wgpuDevicePushErrorScope(device, WGPUErrorFilter_OutOfMemory);
-    wgpuDevicePushErrorScope(device, WGPUErrorFilter_Internal);
-
     wgpuQueueSubmit(queue, 1, &cmd);
     wgpuCommandBufferRelease(cmd);
     wgpuCommandEncoderRelease(encoder);
 
-    // Pop all three scopes (LIFO order: Internal, OutOfMemory, Validation).
-    // AllowSpontaneous fires the callback inline during pop, so we can capture
-    // the result and propagate failure to the caller.
-    bool had_error = false;
-    auto error_cb = [](WGPUPopErrorScopeStatus status, WGPUErrorType type,
-                       WGPUStringView message, void* ud1, void*) {
-        if (status == WGPUPopErrorScopeStatus_Success && type != WGPUErrorType_NoError) {
-            *static_cast<bool*>(ud1) = true;
-            std::fprintf(stderr, "[vivid] GPU submit error (%d): %.*s\n",
-                         static_cast<int>(type), static_cast<int>(message.length),
-                         message.data ? message.data : "");
-        }
-    };
-    for (int i = 0; i < 3; ++i) {
-        WGPUPopErrorScopeCallbackInfo pop_cb{};
-        pop_cb.mode = WGPUCallbackMode_AllowSpontaneous;
-        pop_cb.callback = error_cb;
-        pop_cb.userdata1 = &had_error;
-        wgpuDevicePopErrorScope(device, pop_cb);
-    }
-
-    return !had_error;
+    // GPU errors (validation, OOM, internal) are handled by the uncaptured
+    // error callback configured on the device.  We intentionally avoid
+    // PushErrorScope/PopErrorScope here because wgpu-native panics (abort)
+    // if PushErrorScope is called on a lost device.
+    return true;
 }
 
 } // namespace vivid
