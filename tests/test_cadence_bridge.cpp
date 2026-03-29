@@ -212,6 +212,8 @@ static void test_pull_float_output() {
     frame_node.active_cadence = vivid::Cadence::Frame;
     frame_node.input_port_count = 1;
     frame_node.input_values.assign(1, 0.0f);
+    frame_node.bridge_input_values.assign(1, 0.0f);
+    frame_node.bridge_input_dirty.assign(1, 0);
     cg.nodes.push_back(std::move(frame_node));
     cg.node_id_to_index["display"] = 1;
 
@@ -241,8 +243,20 @@ static void test_pull_float_output() {
     // Main thread pulls
     bridge.pull_from_audio(cg);
 
-    check(cg.nodes[1].input_values[0] == 0.42f, "float output pulled to frame input");
+    check(cg.nodes[1].bridge_input_values[0] == 0.42f, "float output pulled to bridge_input_values");
+    check(cg.nodes[1].bridge_input_dirty[0] == 1, "bridge_input_dirty set");
     check(cg.nodes[1].dirty, "frame node marked dirty");
+
+    // Simulate frame executor applying bridge values
+    auto& cn = cg.nodes[1];
+    for (size_t p = 0; p < cn.bridge_input_dirty.size() && p < cn.input_values.size(); ++p) {
+        if (cn.bridge_input_dirty[p]) {
+            cn.input_values[p] = cn.bridge_input_values[p];
+            cn.bridge_input_dirty[p] = 0;
+        }
+    }
+    check(cn.input_values[0] == 0.42f, "frame executor applied bridge value to input_values");
+    check(cn.bridge_input_dirty[0] == 0, "dirty flag cleared after application");
 }
 
 static void test_pull_analysis_data() {
@@ -417,6 +431,62 @@ static void test_propagate_respects_param_lock() {
 }
 
 // ---------------------------------------------------------------------------
+// bridge dirty-flag tests
+// ---------------------------------------------------------------------------
+
+static void test_bridge_zero_value_passthrough() {
+    std::fprintf(stderr, "\n--- bridge dirty flag: zero value passes through ---\n");
+
+    // audio node 0 → frame node 1, audio outputs exactly 0.0
+    auto cg = make_audio_graph({
+        {"src", 0, 0, 1, 0, 1, false},
+    });
+
+    vivid::CompiledNode frame_node;
+    frame_node.node_id = "dst";
+    frame_node.active_cadence = vivid::Cadence::Frame;
+    frame_node.input_port_count = 1;
+    frame_node.input_values.assign(1, 999.0f);  // sentinel — should be overwritten with 0.0
+    frame_node.bridge_input_values.assign(1, 0.0f);
+    frame_node.bridge_input_dirty.assign(1, 0);
+    cg.nodes.push_back(std::move(frame_node));
+    cg.node_id_to_index["dst"] = 1;
+
+    vivid::CompiledEdge edge{};
+    edge.from_node = 0;
+    edge.from_port = 0;
+    edge.to_node = 1;
+    edge.to_port = 0;
+    edge.transport = vivid::EdgeTransport::Snapshot;
+    edge.data_type = VIVID_PORT_SIGNAL;
+    edge.from_signal_ordinal = 0;
+    cg.edges.push_back(edge);
+    cg.audio_to_frame_edges.push_back(0);
+    cg.nodes[0].output_port_types[0] = VIVID_PORT_SIGNAL;
+
+    vivid::CadenceBridge bridge;
+    bridge.build(cg);
+
+    // Audio thread outputs exactly 0.0
+    auto& write_buf = bridge.analysis_write_buffer();
+    write_buf.float_outputs[0] = {0.0f};
+    bridge.publish_analysis();
+    bridge.pull_from_audio(cg);
+
+    check(cg.nodes[1].bridge_input_dirty[0] == 1, "dirty flag set for zero value");
+
+    // Simulate frame executor
+    auto& cn = cg.nodes[1];
+    for (size_t p = 0; p < cn.bridge_input_dirty.size() && p < cn.input_values.size(); ++p) {
+        if (cn.bridge_input_dirty[p]) {
+            cn.input_values[p] = cn.bridge_input_values[p];
+            cn.bridge_input_dirty[p] = 0;
+        }
+    }
+    check(cn.input_values[0] == 0.0f, "zero value applied (not dropped by != 0.0 check)");
+}
+
+// ---------------------------------------------------------------------------
 
 int main() {
     std::fprintf(stderr, "=== test_cadence_bridge ===\n");
@@ -433,6 +503,7 @@ int main() {
     test_solo_active_set();
     test_propagate_audio_display_params();
     test_propagate_respects_param_lock();
+    test_bridge_zero_value_passthrough();
 
     std::fprintf(stderr, "\n%s (%d failures)\n", failures == 0 ? "PASSED" : "FAILED", failures);
     return failures > 0 ? 1 : 0;

@@ -127,6 +127,14 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             }
         }
 
+        // ── Apply audio→frame bridge values (survive per-frame zeroing) ──
+        for (size_t p = 0; p < cn.bridge_input_dirty.size() && p < cn.input_values.size(); ++p) {
+            if (cn.bridge_input_dirty[p]) {
+                cn.input_values[p] = cn.bridge_input_values[p];
+                cn.bridge_input_dirty[p] = 0;
+            }
+        }
+
         // ── Skip logic ──────────────────────────────────────────────────
         // Process if: time-dependent, root node, any upstream processed this
         // tick, any audio upstream has new data (dirty), or self was externally
@@ -186,8 +194,9 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             gpu_ctx.delta_time    = delta_time;
             gpu_ctx.frame         = frame;
             gpu_ctx.param_values  = cn.param_values.data();
-            gpu_ctx.input_values  = cn.input_values.data();
-            gpu_ctx.output_values = cn.output_values.data();
+            gpu_ctx.input_values     = cn.input_values.data();
+            gpu_ctx.output_values    = cn.output_values.data();
+            gpu_ctx.input_connected  = cn.input_connected.data();
             gpu_ctx.input_spreads  = cn.c_in_spreads.data();
             gpu_ctx.output_spreads = cn.c_out_spreads.data();
             gpu_ctx.input_string_values = cn.c_input_string_values.empty()

@@ -47,6 +47,12 @@ struct AVFAudioExtractor::Impl {
     uint32_t residual_count = 0;
     uint32_t residual_offset = 0;
 
+    // NOTE: TimePitch latency compensation (~85ms) was attempted here but
+    // reverted — the step-function transition when the pipeline primes
+    // interacts with the AV sync seek threshold (~83ms at 24fps), causing
+    // oscillation. Proper fix requires proportional video speed adjustment
+    // (see "What We'd Do Differently" in docs/movie-player-fixes.md).
+
     bool open(const std::string& path, uint32_t sample_rate) {
         @autoreleasepool {
             target_sample_rate = sample_rate;
@@ -326,6 +332,7 @@ struct AVFAudioExtractor::Impl {
             if (!engine) return 0;
 
             uint32_t total_out = 0;
+            float speed = current_speed.load(std::memory_order_relaxed);
 
             // First drain any residual from previous render pass
             if (residual_count > 0) {
@@ -334,11 +341,10 @@ struct AVFAudioExtractor::Impl {
                 std::memcpy(right, residual_right + residual_offset, from_residual * sizeof(float));
                 residual_count -= from_residual;
                 residual_offset += from_residual;
+                media_time_written += static_cast<double>(from_residual) * speed / target_sample_rate;
                 total_out += from_residual;
                 if (total_out >= max_frames) return total_out;
             }
-
-            float speed = current_speed.load(std::memory_order_relaxed);
 
             // Feed input and render in chunks
             while (total_out < max_frames) {

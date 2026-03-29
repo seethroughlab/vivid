@@ -222,7 +222,11 @@ struct MovieFileIn : vivid::OperatorBase, vivid::GpuProcessable {
             // When connected, it receives monotonic playback seconds from
             // MovieFileAudio/time via the cadence bridge (~60Hz snapshot).
             const float audio_time = ctx->input_values ? ctx->input_values[0] : 0.0f;
-            const bool audio_master = (audio_time > 0.0f);
+            // Connected check: structural (port is wired). Started check: temporal
+            // (audio pipeline has delivered a value — MovieFileAudio floors to 1e-6
+            // so a running connection is always > 0).
+            const bool audio_master = ctx->input_connected && ctx->input_connected[0]
+                                      && audio_time > 0.0f;
             const double duration_s = std::max(0.0, static_cast<double>(decoder_->duration()));
             const double frame_dur = 1.0 / std::max(1.0, static_cast<double>(decoder_->frame_rate()));
             const double kSeekThreshold = frame_dur * 2.0;
@@ -242,6 +246,8 @@ struct MovieFileIn : vivid::OperatorBase, vivid::GpuProcessable {
                     if (decoder_->seek(desired_local)) {
                         last_video_sync_seek_mono_s_ = desired_mono;
                         last_video_sync_seek_generation_ = source_generation_;
+                    } else {
+                        std::fprintf(stderr, "[movie_file_in] seek to %.3fs failed\n", desired_local);
                     }
                 }
                 published_local_time = wrap_time(desired_mono, duration_s);

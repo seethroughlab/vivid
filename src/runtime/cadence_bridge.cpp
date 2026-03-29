@@ -249,8 +249,11 @@ void CadenceBridge::pull_from_audio(CompiledGraph& cg) {
                     if (e.to_port < to_cn.param_values.size())
                         to_cn.param_values[e.to_port] = val;
                 } else {
-                    if (e.to_port < to_cn.input_values.size())
-                        to_cn.input_values[e.to_port] = val;
+                    if (e.to_port < to_cn.bridge_input_values.size()) {
+                        to_cn.bridge_input_values[e.to_port] = val;
+                        if (e.to_port < to_cn.bridge_input_dirty.size())
+                            to_cn.bridge_input_dirty[e.to_port] = 1;
+                    }
                 }
                 to_cn.dirty = true;
             }

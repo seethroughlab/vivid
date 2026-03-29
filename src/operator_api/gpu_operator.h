@@ -23,6 +23,7 @@ struct VividGpuContext {
     float*    param_values;
     float*    input_values;
     float*    output_values;
+    const uint8_t* input_connected; // per-input-port: 1 if wired, 0 if disconnected
 
     // ---- GPU-specific resources ---------------------------------------------
     WGPUDevice         device;

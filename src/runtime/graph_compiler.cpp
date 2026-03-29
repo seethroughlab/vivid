@@ -50,6 +50,9 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
     }
 
     cn.input_values.assign(cn.input_port_count, 0.0f);
+    cn.bridge_input_values.assign(cn.input_port_count, 0.0f);
+    cn.bridge_input_dirty.assign(cn.input_port_count, 0);
+    cn.input_connected.assign(cn.input_port_count, 0);
     cn.output_values.assign(cn.output_port_count, 0.0f);
     cn.input_string_values.assign(cn.input_port_count, "");
     cn.output_string_values.assign(cn.output_port_count, "");
@@ -334,8 +337,7 @@ void GraphCompiler::init_audio_state(CompiledNode& cn,
 std::unique_ptr<CompiledGraph> GraphCompiler::compile(
     const Graph& graph,
     OperatorRegistry& registry,
-    const Options& options,
-    std::vector<InferredCadence>* inferred_out)
+    const Options& options)
 {
     auto cg = std::make_unique<CompiledGraph>();
     std::filesystem::path graph_base_dir;
@@ -404,8 +406,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                 cn.gpu = std::make_unique<GpuNodeState>();
             } else if (desc->has_process_audio && !desc->has_process_frame) {
                 cn.active_cadence = Cadence::Audio;
-            } else if ((ndef.cadence_override == CadenceOverride::Audio ||
-                       ndef.cadence_override == CadenceOverride::InferredAudio) &&
+            } else if (ndef.cadence_override == CadenceOverride::Audio &&
                        desc->cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE) {
                 cn.active_cadence = Cadence::Audio;
             } else if (ndef.cadence_override == CadenceOverride::Frame) {
@@ -416,6 +417,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                 cn.active_cadence = Cadence::Frame;
             }
             cn.cadence_capability = desc->cadence_capability;
+            cn.operator_kind = vivid_operator_kind(desc);
             cn.original_cadence_override = ndef.cadence_override;
 
             // Allocate audio sub-struct before init_frame_state (which uses it
@@ -465,6 +467,9 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             cn.input_port_types.assign(cn.input_port_count, VIVID_PORT_SIGNAL);
             cn.output_port_types.assign(cn.output_port_count, VIVID_PORT_SIGNAL);
             cn.input_values.assign(cn.input_port_count, 0.0f);
+            cn.bridge_input_values.assign(cn.input_port_count, 0.0f);
+            cn.bridge_input_dirty.assign(cn.input_port_count, 0);
+            cn.input_connected.assign(cn.input_port_count, 0);
             cn.output_values.assign(cn.output_port_count, 0.0f);
             cn.input_string_values.assign(cn.input_port_count, "");
             cn.output_string_values.assign(cn.output_port_count, "");
@@ -735,10 +740,6 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                     from_cn.audio = std::make_unique<AudioNodeState>();
                     init_audio_state(from_cn, from_cn.loader->descriptor(),
                                      options.audio_buffer_size);
-                    if (inferred_out) {
-                        inferred_out->push_back({from_cn.node_id,
-                                                 CadenceOverride::InferredAudio});
-                    }
                     changed = true;
                 }
             }
@@ -1010,6 +1011,13 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
     // Build node_id_to_index
     for (uint32_t i = 0; i < n; ++i)
         cg->node_id_to_index[cg->nodes[i].node_id] = i;
+
+    // Mark which input ports have incoming edges (for connection metadata).
+    for (const auto& e : cg->edges) {
+        if (!e.targets_param && e.to_node < cg->nodes.size() &&
+            e.to_port < cg->nodes[e.to_node].input_connected.size())
+            cg->nodes[e.to_node].input_connected[e.to_port] = 1;
+    }
 
     if (std::getenv("VIVID_VERBOSE")) {
         std::fprintf(stderr, "[vivid] GraphCompiler: %u nodes (%zu frame, %zu audio), %zu edges (%zu snapshot)\n",

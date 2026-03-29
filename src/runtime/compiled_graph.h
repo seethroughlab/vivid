@@ -221,6 +221,7 @@ struct CompiledNode {
     // ── Cadence ─────────────────────────────────────────────────────────────
     Cadence active_cadence = Cadence::Frame;
     VividCadenceCapability cadence_capability = VIVID_CADENCE_FRAME_ONLY;
+    VividOperatorKind operator_kind = VIVID_OP_CONTROL;
     CadenceOverride original_cadence_override = CadenceOverride::Auto;
 
     // ── Port configuration (set once at compile time) ───────────────────────
@@ -236,6 +237,9 @@ struct CompiledNode {
     std::vector<float> param_values;
     std::vector<uint8_t> param_lock_flags;
     std::vector<float> input_values;
+    std::vector<float> bridge_input_values; // Audio→frame bridge-injected values (survive per-frame zeroing)
+    std::vector<uint8_t> bridge_input_dirty; // 1 = bridge wrote this port since last frame
+    std::vector<uint8_t> input_connected;    // 1 = port has an incoming edge (frame-direct or audio-bridge)
     std::vector<float> output_values;
 
     // ── String state ────────────────────────────────────────────────────────
