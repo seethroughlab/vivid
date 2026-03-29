@@ -966,6 +966,20 @@ async def set_quantize_clock(node_id: str) -> str:
 
 
 @mcp.tool()
+async def set_analysis(enabled: bool) -> str:
+    """Enable or disable GPU and audio analysis metrics (frame_hash, brightness, contrast, dominant_hue, rms, peak, waveform).
+
+    When enabled, GPU operators compute frame metrics via tiny texture readback and
+    audio operators compute RMS/peak/waveform. When disabled, analysis ports remain
+    but read as 0 with no overhead. State is reflected in the title bar.
+
+    Args:
+        enabled: True to enable analysis, False to disable
+    """
+    return await _post("set_analysis", {"enabled": enabled})
+
+
+@mcp.tool()
 async def save_preset(node_id: str, name: str) -> str:
     """Save a named preset of the current parameter values for a single operator instance.
 
