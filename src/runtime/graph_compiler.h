@@ -34,21 +34,12 @@ public:
         uint32_t audio_sample_rate = 48000;
     };
 
-    // Nodes inferred as audio by the compiler (written back to NodeDef).
-    struct InferredCadence {
-        std::string node_id;
-        CadenceOverride new_override;
-    };
-
     // Compile a Graph into a ready-to-execute CompiledGraph.
     // Returns nullptr on failure (cycle detected, missing operators, etc.).
-    // If inferred_out is provided, nodes promoted by cadence inference are
-    // appended so the caller can write InferredAudio back to the Graph.
     static std::unique_ptr<CompiledGraph> compile(
         const Graph& graph,
         OperatorRegistry& registry,
-        const Options& options,
-        std::vector<InferredCadence>* inferred_out = nullptr);
+        const Options& options);
 
     // Initialize the frame-side state on a CompiledNode (ports, params, spreads,
     // strings, custom ports, file params, GPU resources).

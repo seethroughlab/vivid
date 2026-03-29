@@ -21,6 +21,21 @@ typedef uint32_t VividOperatorKind;
 #define VIVID_OP_GPU     2u   // main thread, GPU command submission
 
 // Cadence capability — classifies an operator's supported execution cadences.
+//
+// AUDIO_CAPABLE contract: an operator that declares audio capability (by
+// implementing both process_frame and process_audio) promises that its
+// process_audio path is safe for real-time audio-thread execution:
+//
+//   - No heap allocation (malloc, new, vector::push_back, string concat, etc.)
+//   - No blocking or locks (mutex, sleep, file/network I/O)
+//   - No dependence on frame-thread-only services (GPU state, UI)
+//   - Bounded CPU cost appropriate for audio-rate invocation (~48 kHz)
+//   - Deterministic output for a given input stream and internal state
+//   - Semantics that remain meaningful when advanced at audio cadence
+//
+// The runtime does not enforce these constraints automatically. Violating them
+// may cause audio glitches, priority inversion, or undefined behavior when the
+// node is promoted to audio cadence.
 typedef uint32_t VividCadenceCapability;
 #define VIVID_CADENCE_FRAME_ONLY     0u  // can only run at frame rate
 #define VIVID_CADENCE_AUDIO_CAPABLE  1u  // implements both process_frame and process_audio; can be promoted

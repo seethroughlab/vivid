@@ -1,6 +1,7 @@
 // Integration test: CadenceOverride::Auto inference from downstream connections.
 // Verifies that audio-capable nodes with Auto override get promoted to audio
-// cadence when they feed downstream audio consumers.
+// cadence when they feed downstream audio consumers, and that promotion is
+// ephemeral — re-derived each compile, not persisted to the graph.
 
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
@@ -76,8 +77,7 @@ int main(int argc, char* argv[]) {
         g.add_connection("clock", "beat_phase", "osc", "freq_cv");
 
         vivid::RuntimeCore runtime;
-        std::vector<vivid::GraphCompiler::InferredCadence> inferred;
-        check(runtime.build(g, registry, &inferred), "build succeeds");
+        check(runtime.build(g, registry), "build succeeds");
 
         auto* cn_clock = runtime.compiled_graph()->find_node("clock");
         auto* cn_osc = runtime.compiled_graph()->find_node("osc");
@@ -101,12 +101,10 @@ int main(int argc, char* argv[]) {
             check(found_direct, "clock→osc edge is Direct (same cadence)");
         }
 
-        check(inferred.size() == 1, "one node inferred");
-        if (!inferred.empty()) {
-            check(inferred[0].node_id == "clock", "inferred node is clock");
-            check(inferred[0].new_override == vivid::CadenceOverride::InferredAudio,
-                  "inferred override is InferredAudio");
-        }
+        // NodeDef should remain Auto (promotion is ephemeral)
+        auto* ndef = g.find_node("clock");
+        check(ndef && ndef->cadence_override == vivid::CadenceOverride::Auto,
+              "clock NodeDef stays Auto (not persisted)");
 
         runtime.shutdown();
     }
@@ -125,8 +123,7 @@ int main(int argc, char* argv[]) {
         g.add_connection("lfo", "value", "osc", "freq_cv");
 
         vivid::RuntimeCore runtime;
-        std::vector<vivid::GraphCompiler::InferredCadence> inferred;
-        check(runtime.build(g, registry, &inferred), "build succeeds");
+        check(runtime.build(g, registry), "build succeeds");
 
         auto* cn_clock = runtime.compiled_graph()->find_node("clock");
         auto* cn_lfo = runtime.compiled_graph()->find_node("lfo");
@@ -134,7 +131,6 @@ int main(int argc, char* argv[]) {
               "clock promoted to Audio");
         check(cn_lfo && cn_lfo->active_cadence == vivid::Cadence::Audio,
               "lfo promoted to Audio");
-        check(inferred.size() == 2, "two nodes inferred");
 
         runtime.shutdown();
     }
@@ -155,13 +151,11 @@ int main(int argc, char* argv[]) {
         if (ndef) ndef->cadence_override = vivid::CadenceOverride::Frame;
 
         vivid::RuntimeCore runtime;
-        std::vector<vivid::GraphCompiler::InferredCadence> inferred;
-        check(runtime.build(g, registry, &inferred), "build succeeds");
+        check(runtime.build(g, registry), "build succeeds");
 
         auto* cn_clock = runtime.compiled_graph()->find_node("clock");
         check(cn_clock && cn_clock->active_cadence == vivid::Cadence::Frame,
               "clock stays at Frame");
-        check(inferred.empty(), "no nodes inferred");
 
         // Edge should be Snapshot (cross-cadence)
         bool found_snapshot = false;
@@ -178,50 +172,32 @@ int main(int argc, char* argv[]) {
     }
 
     // =====================================================================
-    // Test 4: FRAME_ONLY not promoted
-    // A frame-only control node → Audio-only node stays at Frame.
+    // Test 4: No audio consumer — no promotion
+    // Clock (Auto, audio-capable) with no audio downstream stays Frame.
     // =====================================================================
     {
-        std::fprintf(stderr, "\n=== Test 4: FRAME_ONLY not promoted ===\n");
+        std::fprintf(stderr, "\n=== Test 4: No audio consumer ===\n");
         vivid::Graph g;
-        g.add_node("gain_ctrl", "Gain");  // Gain is audio-only, try a different approach
-        // Use a frame-only operator that has an output port we can wire
-        // TestOp is FRAME_ONLY with "out" port
-        // AudioTestOp is AUDIO_ONLY
-        // We just need to verify FRAME_ONLY doesn't get promoted
-
-        // Actually, let's load a proper frame-only operator
-        // The staging has audio_test_op — let's use Clock with Frame override
-        // and verify that even with Auto, a FRAME_ONLY operator stays Frame.
-        // We need a FRAME_ONLY operator... but TestOp isn't staged.
-        // Let's verify the cadence_capability check works by confirming
-        // Clock (AUDIO_CAPABLE) gets promoted but a hypothetical FRAME_ONLY wouldn't.
-        // Since we don't have a staged FRAME_ONLY op with output ports that connect
-        // to audio, we'll verify the inference loop's capability check indirectly:
-        // Clock without any audio consumer stays Frame.
-
         g.add_node("clock", "Clock");
         // No audio consumer connected
 
         vivid::RuntimeCore runtime;
-        std::vector<vivid::GraphCompiler::InferredCadence> inferred;
-        check(runtime.build(g, registry, &inferred), "build succeeds");
+        check(runtime.build(g, registry), "build succeeds");
 
         auto* cn_clock = runtime.compiled_graph()->find_node("clock");
         check(cn_clock && cn_clock->active_cadence == vivid::Cadence::Frame,
               "clock stays at Frame (no audio consumer)");
-        check(inferred.empty(), "no nodes inferred");
 
         runtime.shutdown();
     }
 
     // =====================================================================
-    // Test 5: InferredAudio persists on rebuild
-    // After inference promotes a node, write back InferredAudio to NodeDef,
-    // rebuild. Node should still be Audio.
+    // Test 5: Promotion re-derived on rebuild
+    // After inference promotes a node, rebuild with consumer still connected.
+    // Node should still be promoted (re-inferred, not persisted).
     // =====================================================================
     {
-        std::fprintf(stderr, "\n=== Test 5: InferredAudio persists on rebuild ===\n");
+        std::fprintf(stderr, "\n=== Test 5: Promotion re-derived on rebuild ===\n");
         vivid::Graph g;
         g.add_node("clock", "Clock");
         g.add_node("osc", "Oscillator");
@@ -229,37 +205,35 @@ int main(int argc, char* argv[]) {
 
         // First build — inference promotes clock
         vivid::RuntimeCore runtime;
-        std::vector<vivid::GraphCompiler::InferredCadence> inferred;
-        check(runtime.build(g, registry, &inferred), "first build succeeds");
-        check(inferred.size() == 1, "clock inferred");
-
-        // Write back (simulating what RuntimeAPI::apply_pending does)
-        for (const auto& ic : inferred) {
-            auto* ndef = g.find_node(ic.node_id);
-            if (ndef) ndef->cadence_override = ic.new_override;
-        }
-
-        // Second build — clock should start as Audio via InferredAudio
-        runtime.shutdown();
-        std::vector<vivid::GraphCompiler::InferredCadence> inferred2;
-        check(runtime.build(g, registry, &inferred2), "second build succeeds");
+        check(runtime.build(g, registry), "first build succeeds");
 
         auto* cn_clock = runtime.compiled_graph()->find_node("clock");
         check(cn_clock && cn_clock->active_cadence == vivid::Cadence::Audio,
-              "clock still Audio after rebuild");
-        // No new inferences (already InferredAudio from NodeDef)
-        check(inferred2.empty(), "no new inferences on rebuild");
+              "clock promoted on first build");
+
+        // NodeDef should still be Auto
+        auto* ndef = g.find_node("clock");
+        check(ndef && ndef->cadence_override == vivid::CadenceOverride::Auto,
+              "clock NodeDef is Auto (ephemeral)");
+
+        // Second build — clock should be re-promoted from Auto
+        runtime.shutdown();
+        check(runtime.build(g, registry), "second build succeeds");
+
+        cn_clock = runtime.compiled_graph()->find_node("clock");
+        check(cn_clock && cn_clock->active_cadence == vivid::Cadence::Audio,
+              "clock still Audio after rebuild (re-inferred)");
 
         runtime.shutdown();
     }
 
     // =====================================================================
-    // Test 6: Disconnect preserves InferredAudio
-    // After inference, remove audio consumer, rebuild. Node stays Audio
-    // because InferredAudio is sticky.
+    // Test 6: Disconnect demotes to Frame
+    // After inference promotes a node, remove the audio consumer. On rebuild
+    // the node should revert to Frame (promotion is ephemeral).
     // =====================================================================
     {
-        std::fprintf(stderr, "\n=== Test 6: Disconnect preserves InferredAudio ===\n");
+        std::fprintf(stderr, "\n=== Test 6: Disconnect demotes to Frame ===\n");
         vivid::Graph g;
         g.add_node("clock", "Clock");
         g.add_node("osc", "Oscillator");
@@ -267,94 +241,47 @@ int main(int argc, char* argv[]) {
 
         // First build — inference promotes clock
         vivid::RuntimeCore runtime;
-        std::vector<vivid::GraphCompiler::InferredCadence> inferred;
-        check(runtime.build(g, registry, &inferred), "first build succeeds");
+        check(runtime.build(g, registry), "first build succeeds");
 
-        // Write back InferredAudio
-        for (const auto& ic : inferred) {
-            auto* ndef = g.find_node(ic.node_id);
-            if (ndef) ndef->cadence_override = ic.new_override;
-        }
+        auto* cn_clock = runtime.compiled_graph()->find_node("clock");
+        check(cn_clock && cn_clock->active_cadence == vivid::Cadence::Audio,
+              "clock promoted to Audio");
 
         // Disconnect the audio consumer
         g.remove_connection("clock", "beat_phase", "osc", "freq_cv");
 
-        // Rebuild — clock should STAY Audio (InferredAudio is sticky)
+        // Rebuild — clock should demote to Frame (no audio consumer)
         runtime.shutdown();
         check(runtime.build(g, registry), "rebuild after disconnect succeeds");
 
-        auto* cn_clock = runtime.compiled_graph()->find_node("clock");
-        check(cn_clock && cn_clock->active_cadence == vivid::Cadence::Audio,
-              "clock stays Audio after disconnect (InferredAudio sticky)");
-
-        runtime.shutdown();
-    }
-
-    // =====================================================================
-    // Test 7: Explicit Auto after disconnect demotes
-    // After disconnect + InferredAudio, user sets back to Auto.
-    // No downstream audio → node goes back to Frame.
-    // =====================================================================
-    {
-        std::fprintf(stderr, "\n=== Test 7: Explicit Auto after disconnect demotes ===\n");
-        vivid::Graph g;
-        g.add_node("clock", "Clock");
-        g.add_node("osc", "Oscillator");
-        g.add_connection("clock", "beat_phase", "osc", "freq_cv");
-
-        // First build — inference promotes clock
-        vivid::RuntimeCore runtime;
-        std::vector<vivid::GraphCompiler::InferredCadence> inferred;
-        check(runtime.build(g, registry, &inferred), "first build succeeds");
-
-        // Write back InferredAudio
-        for (const auto& ic : inferred) {
-            auto* ndef = g.find_node(ic.node_id);
-            if (ndef) ndef->cadence_override = ic.new_override;
-        }
-
-        // Disconnect and reset to Auto
-        g.remove_connection("clock", "beat_phase", "osc", "freq_cv");
-        auto* ndef = g.find_node("clock");
-        if (ndef) ndef->cadence_override = vivid::CadenceOverride::Auto;
-
-        // Rebuild — no downstream audio, Auto → Frame
-        runtime.shutdown();
-        check(runtime.build(g, registry), "rebuild after reset succeeds");
-
-        auto* cn_clock = runtime.compiled_graph()->find_node("clock");
+        cn_clock = runtime.compiled_graph()->find_node("clock");
         check(cn_clock && cn_clock->active_cadence == vivid::Cadence::Frame,
-              "clock demoted to Frame after explicit Auto reset");
+              "clock demoted to Frame after disconnect");
 
         runtime.shutdown();
     }
 
     // =====================================================================
-    // Test 8: Serialization round-trip
+    // Test 7: Legacy InferredAudio (value 3) migrates to Auto on load
     // =====================================================================
     {
-        std::fprintf(stderr, "\n=== Test 8: Serialization round-trip ===\n");
+        std::fprintf(stderr, "\n=== Test 7: Legacy InferredAudio migration ===\n");
+        // Build a graph JSON with "cadence": 3 (legacy InferredAudio)
+        const char* json = R"({
+            "nodes": {
+                "clock": { "type": "Clock", "cadence": 3 }
+            },
+            "connections": []
+        })";
+
         vivid::Graph g;
-        g.add_node("clock", "Clock");
+        check(g.load_from_string(json, std::strlen(json)), "load legacy JSON");
+
         auto* ndef = g.find_node("clock");
-        if (ndef) ndef->cadence_override = vivid::CadenceOverride::InferredAudio;
-
-        // Save to JSON
-        std::string json_str;
-        check(g.save_to_string(json_str), "save to JSON");
-        check(json_str.find("\"cadence\":3") != std::string::npos ||
-              json_str.find("\"cadence\": 3") != std::string::npos,
-              "JSON contains cadence:3");
-
-        // Reload
-        vivid::Graph g2;
-        check(g2.load_from_string(json_str.c_str(), json_str.size()), "reload from JSON");
-
-        auto* ndef2 = g2.find_node("clock");
-        check(ndef2 != nullptr, "clock node found after reload");
-        if (ndef2) {
-            check(ndef2->cadence_override == vivid::CadenceOverride::InferredAudio,
-                  "InferredAudio preserved after round-trip");
+        check(ndef != nullptr, "clock node found");
+        if (ndef) {
+            check(ndef->cadence_override == vivid::CadenceOverride::Auto,
+                  "legacy InferredAudio (3) migrated to Auto");
         }
     }
 

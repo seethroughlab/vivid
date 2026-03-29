@@ -2271,7 +2271,6 @@ void NodeGraphUI::draw_inspector_cadence(Renderer2D& tr, const NodeSnapshot& nod
     const char* label;
     if (node.cadence_override == CadenceOverride::Frame) label = "Frame";
     else if (node.cadence_override == CadenceOverride::Audio) label = "Audio";
-    else if (node.cadence_override == CadenceOverride::InferredAudio) label = "Audio (auto)";
     else label = (node.active_cadence == Cadence::Audio) ? "Audio (auto)" : "Frame (auto)";
 
     float val_x = px + 4;
