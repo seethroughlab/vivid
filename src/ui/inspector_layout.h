@@ -10,6 +10,7 @@ namespace vivid::ui {
 enum class RowMode : uint8_t {
     kFull,      // single column, full content width
     kTwoUp,    // two columns side by side
+    kMultiUp,  // N columns side by side (N >= 2)
     kCompound, // full width for compound widgets (XY pad, color picker)
 };
 
@@ -25,7 +26,8 @@ struct ParamLayoutRequest {
 
 struct ParamLayoutPlan {
     RowMode row_mode = RowMode::kFull;
-    uint8_t column = 0;
+    uint8_t columns = 0;    // total columns in row (for kMultiUp)
+    uint8_t column = 0;     // col_index within row
     bool compact = false;
     bool allow_secondary_text = true;
     bool allow_semantic_hint = true;
@@ -79,10 +81,11 @@ struct InspectorLayout {
         return plan;
     }
 
-    static ParamLayoutPlan two_up_plan(uint8_t column) {
+    static ParamLayoutPlan multi_up_plan(uint8_t columns, uint8_t col_index) {
         ParamLayoutPlan plan;
-        plan.row_mode = RowMode::kTwoUp;
-        plan.column = column;
+        plan.row_mode = RowMode::kMultiUp;
+        plan.columns = columns;
+        plan.column = col_index;
         plan.compact = true;
         plan.allow_secondary_text = false;
         plan.allow_semantic_hint = false;
@@ -90,6 +93,10 @@ struct InspectorLayout {
         plan.allow_inline_midi_badge = false;
         plan.allow_inline_lock_badge = true;
         return plan;
+    }
+
+    static ParamLayoutPlan two_up_plan(uint8_t column) {
+        return multi_up_plan(2, column);
     }
 
     static bool requests_form_two_up_pair(const ParamLayoutRequest& lhs,
@@ -117,6 +124,22 @@ struct InspectorLayout {
         return (lhs.col_index / 2) == (rhs.col_index / 2);
     }
 
+    // Check whether count consecutive requests form a complete N-column row.
+    // All must be multi-up-compatible, share the same column count, and have
+    // sequential col_index values 0..count-1.
+    static bool requests_form_multi_up_run(const ParamLayoutRequest* reqs, uint8_t count) {
+        if (count < 2) return false;
+        uint8_t columns = reqs[0].columns;
+        if (columns != count) return false;
+        for (uint8_t i = 0; i < count; ++i) {
+            if (!param_supports_two_up(reqs[i])) return false;
+            if (is_compound_hint(reqs[i].hint)) return false;
+            if (reqs[i].columns != columns) return false;
+            if (reqs[i].col_index != i) return false;
+        }
+        return true;
+    }
+
     ParamLayoutPlan plan_param(const ParamLayoutRequest& req) {
         if (is_compound_hint(req.hint))
             return compound_plan();
@@ -133,6 +156,9 @@ struct InspectorLayout {
             break;
         case RowMode::kTwoUp:
             begin_param(2, plan.column);
+            break;
+        case RowMode::kMultiUp:
+            begin_param(plan.columns, plan.column);
             break;
         }
     }

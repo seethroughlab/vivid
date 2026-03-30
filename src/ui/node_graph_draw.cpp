@@ -754,6 +754,75 @@ void NodeGraphUI::draw_node_error_tooltip(Renderer2D& tr) {
     }
 }
 
+void NodeGraphUI::draw_param_tooltip(Renderer2D& tr) {
+    if (hovered_label_idx_ < 0) return;
+    static constexpr float kParamTooltipDelay = 1.0f;
+    if (label_hover_time_ < kParamTooltipDelay) return;
+    if (hovered_label_idx_ >= static_cast<int>(label_rects_.size())) return;
+
+    const auto& r = label_rects_[hovered_label_idx_];
+    const auto* ns = snap_.find_node(r.node_id);
+    if (!ns || !ns->op_info) return;
+
+    std::string desc;
+    for (const auto& pi : ns->op_info->params) {
+        if (pi.name == r.param_name) { desc = pi.description; break; }
+    }
+    if (desc.empty()) return;
+
+    static constexpr float kMaxParamTooltipW = 300.0f;
+
+    // Word-wrap into lines
+    std::vector<std::string> lines;
+    std::string word, line;
+    for (size_t ci = 0; ci <= desc.size(); ++ci) {
+        char ch = ci < desc.size() ? desc[ci] : ' ';
+        if (ch == ' ' || ch == '\n' || ci == desc.size()) {
+            if (!word.empty()) {
+                std::string test = line.empty() ? word : line + " " + word;
+                if (tr.text_width(test.c_str()) > kMaxParamTooltipW && !line.empty()) {
+                    lines.push_back(line);
+                    line = word;
+                } else {
+                    line = test;
+                }
+                word.clear();
+            }
+            if (ch == '\n' && !line.empty()) { lines.push_back(line); line.clear(); }
+        } else {
+            word += ch;
+        }
+    }
+    if (!line.empty()) lines.push_back(line);
+    if (lines.empty()) return;
+
+    float max_line_w = 0.0f;
+    for (const auto& l : lines)
+        max_line_w = std::max(max_line_w, tr.text_width(l.c_str()));
+
+    float pad = kTooltipPad;
+    float line_h = kTooltipLineH;
+    float popup_w = max_line_w + pad * 2;
+    float popup_h = line_h * static_cast<float>(lines.size()) + pad * 2;
+
+    float px = mouse_.x + kTooltipCursorOff;
+    float py = mouse_.y + kTooltipCursorOff;
+    if (px + popup_w > static_cast<float>(win_w_))
+        px = mouse_.x - popup_w - kTooltipClampMargin;
+    if (py + popup_h > static_cast<float>(win_h_))
+        py = mouse_.y - popup_h - kTooltipClampMargin;
+
+    draw_shadow(tr, px, py, popup_w, popup_h);
+    tr.draw_rect(px, py, popup_w, popup_h,
+                 style_.inspector_bg[0], style_.inspector_bg[1], style_.inspector_bg[2], kTooltipBgAlpha);
+    tr.draw_rect(px, py, popup_w, kTooltipAccentH,
+                 style_.accent[0], style_.accent[1], style_.accent[2], 0.9f);
+    for (int k = 0; k < static_cast<int>(lines.size()); ++k) {
+        tr.draw_text(px + pad, py + pad + line_h * static_cast<float>(k), lines[k].c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    }
+}
+
 void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     slider_rects_.clear();
     xy_pad_rects_.clear();
@@ -774,6 +843,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     state_preset_rects_.clear();
     state_header_rects_.clear();
     lock_badge_rects_.clear();
+    label_rects_.clear();
     wire_remap_rects_.clear();
     wire_clamp_rects_.clear();
 
@@ -1224,6 +1294,8 @@ void NodeGraphUI::draw_inspector_knob(Renderer2D& tr, const NodeSnapshot& node,
     float label_x = cx - label_w * 0.5f;
     tr.draw_text(label_x, label_y, label_text.c_str(),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, 0.85f);
+    label_rects_.push_back({label_x, label_y, label_w, tr.line_height() * 0.85f,
+                            node.node_id, pd.name});
 
     // Lock badge next to knob label
     {
@@ -1567,7 +1639,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
     const bool is_dropdown = pd.choice_count > 0;
     const bool is_numeric = !is_file && !is_text && !is_bool && !is_dropdown;
 
-    if (pd.display_hint == VIVID_DISPLAY_KNOB && pd.type == VIVID_PARAM_FLOAT) {
+    if (pd.display_hint == VIVID_DISPLAY_KNOB && (pd.type == VIVID_PARAM_FLOAT || pd.type == VIVID_PARAM_INT)) {
         draw_inspector_knob(tr, node, layout, plan, pi);
         return;
     }
@@ -1599,6 +1671,8 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
                  is_connected ? style_.dim_text[1] : 0.82f,
                  is_connected ? style_.dim_text[2] : 0.85f,
                  is_connected ? 0.75f : 1.0f, label_scale);
+    label_rects_.push_back({px, py, tr.text_width(display_label.c_str(), label_scale),
+                            tr.line_height() * label_scale, node.node_id, pd.name});
 
     float after_label_x = px + tr.text_width(display_label.c_str(), label_scale) + 6.0f;
     if (plan.allow_inline_midi_badge && midi_mm) {
@@ -1868,7 +1942,7 @@ void NodeGraphUI::draw_inspector_group_header(Renderer2D& tr, InspectorLayout& l
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.9f);
 
     group_header_rects_.push_back({hx, hy, hw, kGroupHeaderH, type_name, group_name});
-    layout.y = hy + kGroupHeaderH;
+    layout.y = hy + kGroupHeaderH + kGroupHeaderPadBottom;
 }
 
 void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node,
@@ -1906,7 +1980,7 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
             const bool is_bool = mpd.type == VIVID_PARAM_BOOL;
             const bool is_dropdown = mpd.choice_count > 0;
             float total_h = kLineH + 3.0f;
-            if (mpd.display_hint == VIVID_DISPLAY_KNOB && mpd.type == VIVID_PARAM_FLOAT) {
+            if (mpd.display_hint == VIVID_DISPLAY_KNOB && (mpd.type == VIVID_PARAM_FLOAT || mpd.type == VIVID_PARAM_INT)) {
                 total_h = kKnobDiameter + kKnobLabelGap + tr.line_height() * 0.85f +
                           kKnobValueGap + tr.line_height() * 0.8f + 4.0f;
             } else if (is_file || is_text || is_dropdown) {
@@ -1985,6 +2059,74 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
             }
 
             ParamLayoutRequest req = build_request(pi);
+
+            // --- Auto-row: consecutive knobs with no explicit column layout ---
+            // Scan ahead for a run of knobs that can share a row.
+            // Knobs are self-contained (fixed 40px diameter) so metadata_heavy
+            // and long_label don't block auto-row — the compact layout
+            // suppresses secondary text anyway.
+            auto is_auto_row_knob = [&](uint32_t idx) {
+                const auto& cpd = op.params[idx];
+                if (cpd.display_hint == VIVID_DISPLAY_HIDDEN) return false;
+                if (cpd.group != current_group) return false;
+                if (cpd.display_hint != VIVID_DISPLAY_KNOB) return false;
+                if (cpd.layout_columns != 0) return false;
+                if (cpd.type == VIVID_PARAM_BOOL || cpd.type == VIVID_PARAM_FILE ||
+                    cpd.type == VIVID_PARAM_TEXT || cpd.choice_count > 0)
+                    return false;
+                return true;
+            };
+
+            if (req.columns == 0 && req.hint == VIVID_DISPLAY_KNOB &&
+                is_auto_row_knob(pi)) {
+                uint32_t run = 1;
+                while (pi + run < param_count && run < 4 &&
+                       is_auto_row_knob(pi + run))
+                    ++run;
+
+                if (run >= 2) {
+                    for (uint32_t k = 0; k < run; ++k) {
+                        auto col_plan = InspectorLayout::multi_up_plan(
+                            static_cast<uint8_t>(run), static_cast<uint8_t>(k));
+                        layout.begin_param(col_plan);
+                        tr.push_clip_rect(layout.x, layout.y, layout.col_w,
+                                          measure_param_clip_height(pi + k, col_plan));
+                        draw_one_inspector_param(tr, node, layout, col_plan, pi + k);
+                        tr.pop_clip_rect();
+                    }
+                    pi += run;
+                    continue;
+                }
+            }
+
+            // --- Explicit multi-column run (columns >= 3, e.g. layout_row(p, 4, k)) ---
+            if (req.columns >= 3 && req.col_index == 0) {
+                uint8_t target = req.columns;
+                ParamLayoutRequest run_reqs[4];
+                run_reqs[0] = req;
+                uint8_t found = 1;
+                for (uint8_t k = 1; k < target && pi + k < param_count; ++k) {
+                    const auto& cpd = op.params[pi + k];
+                    if (cpd.display_hint == VIVID_DISPLAY_HIDDEN) break;
+                    if (cpd.group != current_group) break;
+                    run_reqs[k] = build_request(pi + k);
+                    ++found;
+                }
+                if (InspectorLayout::requests_form_multi_up_run(run_reqs, found)) {
+                    for (uint8_t k = 0; k < found; ++k) {
+                        auto col_plan = InspectorLayout::multi_up_plan(found, k);
+                        layout.begin_param(col_plan);
+                        tr.push_clip_rect(layout.x, layout.y, layout.col_w,
+                                          measure_param_clip_height(pi + k, col_plan));
+                        draw_one_inspector_param(tr, node, layout, col_plan, pi + k);
+                        tr.pop_clip_rect();
+                    }
+                    pi += found;
+                    continue;
+                }
+            }
+
+            // --- Two-up pair (columns == 2) ---
             bool drew_pair = false;
             if (pi + 1 < param_count) {
                 const auto& next_pd = op.params[pi + 1];
@@ -3257,6 +3399,9 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
 
     // Error tooltip — drawn after inspector so it appears above GPU thumbnails
     draw_node_error_tooltip(tr);
+
+    // Param description tooltip — shown after hovering a param label for ~1s
+    draw_param_tooltip(tr);
 
     // Operator chooser — drawn here (overlay pass) so it appears above GPU thumbnails
     draw_chooser(tr);

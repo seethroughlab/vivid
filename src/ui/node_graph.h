@@ -340,6 +340,7 @@ private:
     void draw_box_select(Renderer2D& tr);
     void draw_wire_tooltip(Renderer2D& tr);
     void draw_node_error_tooltip(Renderer2D& tr);
+    void draw_param_tooltip(Renderer2D& tr);
     void draw_inspector_scrollbar(Renderer2D& tr);
     void draw_midi_map_banner(Renderer2D& tr);
     void draw_core_update_banner(Renderer2D& tr);
@@ -814,6 +815,13 @@ private:
     int hovered_slider_idx_ = -1;
     int hovered_bool_idx_ = -1;
     int hovered_dropdown_idx_ = -1;
+
+    // Param label tooltip state
+    std::vector<InspectorRect> label_rects_;
+    int hovered_label_idx_ = -1;
+    float label_hover_time_ = 0.0f;
+    std::string label_hover_param_name_;
+    std::string label_hover_node_id_;
 
     // Multi-output expand state (keyed by node_id)
     std::unordered_set<std::string> outputs_expanded_;

@@ -56,6 +56,7 @@ static constexpr float kInspColGap = 8.0f;
 static constexpr float kInspMinColW = 160.0f;  // minimum per-column width; safety net for two-up layout
 static constexpr float kGroupHeaderH = 22.0f;
 static constexpr float kGroupHeaderPadTop = 6.0f;
+static constexpr float kGroupHeaderPadBottom = 4.0f;
 static constexpr float kGroupChevronSize = 8.0f;
 
 // Section dividers (between major inspector regions)

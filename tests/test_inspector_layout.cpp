@@ -52,7 +52,7 @@ int main() {
         auto rhs = make_request(2, 1, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_FLOAT);
         check(InspectorLayout::requests_form_two_up_pair(lhs, rhs), "adjacent compact pair accepted");
         auto plan0 = InspectorLayout::two_up_plan(0);
-        check(plan0.row_mode == RowMode::kTwoUp, "col 0 uses two-up");
+        check(plan0.row_mode == RowMode::kMultiUp, "col 0 uses multi-up");
         check(plan0.compact, "col 0 marked compact");
         check(!plan0.allow_secondary_text, "compact row suppresses secondary text");
         layout.begin_param(plan0);
@@ -61,7 +61,7 @@ int main() {
         layout.end_param(20.0f);
 
         auto plan1 = InspectorLayout::two_up_plan(1);
-        check(plan1.row_mode == RowMode::kTwoUp, "col 1 uses two-up");
+        check(plan1.row_mode == RowMode::kMultiUp, "col 1 uses multi-up");
         layout.begin_param(plan1);
         check_float(layout.x, layout.base_x + kTwoUpColW + kInspColGap, "col 1 x");
         layout.end_param(20.0f);
@@ -84,7 +84,7 @@ int main() {
     }
 
     {
-        std::fprintf(stderr, "\n=== Test 5: 4-col knobs pair only as explicit adjacent rows ===\n");
+        std::fprintf(stderr, "\n=== Test 5: 4-col knobs form a single multi-up row ===\n");
         auto layout = make_layout(100.0f);
 
         auto req0 = make_request(4, 0, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT);
@@ -92,27 +92,36 @@ int main() {
         auto req2 = make_request(4, 2, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT);
         auto req3 = make_request(4, 3, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT);
 
-        check(InspectorLayout::requests_form_two_up_pair(req0, req1), "knob 0/1 pair");
-        check(InspectorLayout::requests_form_two_up_pair(req2, req3), "knob 2/3 pair");
-        check(!InspectorLayout::requests_form_two_up_pair(req1, req2), "no modulo remap across 1/2");
+        ParamLayoutRequest reqs[] = {req0, req1, req2, req3};
+        check(InspectorLayout::requests_form_multi_up_run(reqs, 4), "4 knobs form multi-up run");
 
-        auto p0 = InspectorLayout::two_up_plan(0);
-        auto p1 = InspectorLayout::two_up_plan(1);
-        auto p2 = InspectorLayout::two_up_plan(0);
-        auto p3 = InspectorLayout::two_up_plan(1);
+        float expected_col_w = (kInspContentW - 3 * kInspColGap) / 4.0f;
+
+        auto p0 = InspectorLayout::multi_up_plan(4, 0);
+        auto p1 = InspectorLayout::multi_up_plan(4, 1);
+        auto p2 = InspectorLayout::multi_up_plan(4, 2);
+        auto p3 = InspectorLayout::multi_up_plan(4, 3);
+
         layout.begin_param(p0);
-        float row1_y = layout.y;
+        float row_y = layout.y;
+        check_float(layout.col_w, expected_col_w, "4-col width");
+        check_float(layout.x, layout.base_x, "col 0 x");
         layout.end_param(40.0f);
+
         layout.begin_param(p1);
-        check_float(layout.y, row1_y, "row 1 reused");
+        check_float(layout.y, row_y, "col 1 same row");
         layout.end_param(40.0f);
+
         layout.begin_param(p2);
-        check(layout.y > row1_y, "row advanced");
-        float row2_y = layout.y;
+        check_float(layout.y, row_y, "col 2 same row");
         layout.end_param(40.0f);
+
         layout.begin_param(p3);
-        check_float(layout.y, row2_y, "row 2 reused");
+        check_float(layout.y, row_y, "col 3 same row");
         layout.end_param(40.0f);
+
+        layout.flush_row();
+        check_float(layout.y, row_y + 40.0f, "row advanced by tallest column");
     }
 
     {
@@ -170,19 +179,33 @@ int main() {
     }
 
     {
-        std::fprintf(stderr, "\n=== Test 10: Compact rows preserve control order, not legacy modulo semantics ===\n");
-        check(InspectorLayout::requests_form_two_up_pair(
-                  make_request(4, 0, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT),
-                  make_request(4, 1, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT)),
-              "A/D pair accepted");
-        check(InspectorLayout::requests_form_two_up_pair(
-                  make_request(4, 2, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT),
-                  make_request(4, 3, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT)),
-              "S/R pair accepted");
-        check(!InspectorLayout::requests_form_two_up_pair(
-                  make_request(4, 1, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT),
-                  make_request(4, 2, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT)),
-              "1/2 never form an arithmetic modulo pair");
+        std::fprintf(stderr, "\n=== Test 10: Multi-up run validation ===\n");
+        // Full 4-knob run
+        ParamLayoutRequest full4[] = {
+            make_request(4, 0, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT),
+            make_request(4, 1, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT),
+            make_request(4, 2, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT),
+            make_request(4, 3, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT),
+        };
+        check(InspectorLayout::requests_form_multi_up_run(full4, 4), "full 4-knob run accepted");
+
+        // 3-knob run
+        ParamLayoutRequest run3[] = {
+            make_request(3, 0, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT),
+            make_request(3, 1, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT),
+            make_request(3, 2, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT),
+        };
+        check(InspectorLayout::requests_form_multi_up_run(run3, 3), "3-knob run accepted");
+
+        // Incomplete run (3 of 4) rejected
+        check(!InspectorLayout::requests_form_multi_up_run(full4, 3), "incomplete 4-col run rejected");
+
+        // Gap in col_index rejected
+        ParamLayoutRequest gap[] = {
+            make_request(4, 0, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT),
+            make_request(4, 2, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT),
+        };
+        check(!InspectorLayout::requests_form_multi_up_run(gap, 2), "col_index gap rejected");
     }
 
     {

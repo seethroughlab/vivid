@@ -1464,6 +1464,7 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     hovered_slider_idx_ = -1;
     hovered_bool_idx_ = -1;
     hovered_dropdown_idx_ = -1;
+    hovered_label_idx_ = -1;
     if (mouse_.x >= graph_right() && has_selection() && !editing_param_) {
         for (int i = 0; i < static_cast<int>(slider_rects_.size()); ++i) {
             const auto& r = slider_rects_[i];
@@ -1489,6 +1490,30 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
                 break;
             }
         }
+        for (int i = 0; i < static_cast<int>(label_rects_.size()); ++i) {
+            const auto& r = label_rects_[i];
+            if (mouse_.x >= r.x && mouse_.x <= r.x + r.w &&
+                mouse_.y >= r.y && mouse_.y <= r.y + r.h) {
+                hovered_label_idx_ = i;
+                break;
+            }
+        }
+    }
+
+    // Param label tooltip hover timer
+    if (hovered_label_idx_ >= 0) {
+        const auto& r = label_rects_[hovered_label_idx_];
+        if (r.node_id == label_hover_node_id_ && r.param_name == label_hover_param_name_) {
+            label_hover_time_ += dt_;
+        } else {
+            label_hover_node_id_ = r.node_id;
+            label_hover_param_name_ = r.param_name;
+            label_hover_time_ = 0.0f;
+        }
+    } else {
+        label_hover_time_ = 0.0f;
+        label_hover_node_id_.clear();
+        label_hover_param_name_.clear();
     }
 
     update_sparklines();

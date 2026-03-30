@@ -364,6 +364,87 @@ int main() {
               "Toggle click flips the bound boolean param");
     }
 
+    // Knob vertical drag on a float param
+    {
+        auto op = std::make_shared<OperatorInfo>();
+        op->name = "Chorus";
+        op->params = {
+            ParamInfo{"rate", VIVID_PARAM_FLOAT, 0.5f, 0.05f, 5.0f, {}, 0, "", VIVID_DISPLAY_KNOB},
+        };
+        GraphSnapshot snap;
+        NodeSnapshot n;
+        n.node_id = "chorus1";
+        n.type_name = "Chorus";
+        n.active_cadence = vivid::Cadence::Audio;
+        n.has_layout = true;
+        n.layout_x = 120.0f;
+        n.layout_y = 120.0f;
+        n.op_info = op;
+        n.param_values = {0.5f};
+        n.param_lock_flags = {0};
+        n.param_indices["rate"] = 0;
+        snap.node_index["chorus1"] = 0;
+        snap.nodes.push_back(std::move(n));
+
+        DummySink sink;
+        NodeGraphUI ui(sink);
+        ui.selected_node_ids_ = {"chorus1"};
+        // Knob hit rect (kKnobDiameter + 4 = 44)
+        ui.slider_rects_.push_back({920.0f, 120.0f, 44.0f, 44.0f, "chorus1", "rate"});
+        ui.on_mouse_move(942.0f, 142.0f);
+        ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
+        ui.update(snap);
+        // Drag upward by 40px → should increase value
+        ui.on_mouse_move(942.0f, 102.0f);
+        ui.update(snap);
+        check(!sink.set_param_calls.empty(), "Float knob vertical drag emits a param update");
+        check(last_param(sink).param == "rate" && last_param(sink).value > 0.5f,
+              "Float knob vertical drag upward increases the value");
+        ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE, 0);
+        ui.update(snap);
+    }
+
+    // Knob vertical drag on an int param (Chorus voices)
+    {
+        auto op = std::make_shared<OperatorInfo>();
+        op->name = "Chorus";
+        op->params = {
+            ParamInfo{"voices", VIVID_PARAM_INT, 3.0f, 1.0f, 6.0f, {}, 0, "", VIVID_DISPLAY_KNOB},
+        };
+        GraphSnapshot snap;
+        NodeSnapshot n;
+        n.node_id = "chorus1";
+        n.type_name = "Chorus";
+        n.active_cadence = vivid::Cadence::Audio;
+        n.has_layout = true;
+        n.layout_x = 120.0f;
+        n.layout_y = 120.0f;
+        n.op_info = op;
+        n.param_values = {3.0f};
+        n.param_lock_flags = {0};
+        n.param_indices["voices"] = 0;
+        snap.node_index["chorus1"] = 0;
+        snap.nodes.push_back(std::move(n));
+
+        DummySink sink;
+        NodeGraphUI ui(sink);
+        ui.selected_node_ids_ = {"chorus1"};
+        // Knob hit rect (same dimensions as float knob)
+        ui.slider_rects_.push_back({920.0f, 120.0f, 44.0f, 44.0f, "chorus1", "voices"});
+        ui.on_mouse_move(942.0f, 142.0f);
+        ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
+        ui.update(snap);
+        // Drag upward by 80px → range=5, sensitivity=5/200=0.025, dy=80 → delta=2.0
+        ui.on_mouse_move(942.0f, 62.0f);
+        ui.update(snap);
+        check(!sink.set_param_calls.empty(), "Int knob vertical drag emits a param update");
+        check(last_param(sink).param == "voices" &&
+                  std::fabs(last_param(sink).value - 5.0f) < 0.001f,
+              "Int knob vertical drag rounds to nearest integer (3 + 2 = 5)");
+        ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE, 0);
+        ui.update(snap);
+    }
+
     std::fprintf(stderr, "%s (%d failures)\n", failures == 0 ? "PASSED" : "FAILED", failures);
     return failures == 0 ? 0 : 1;
 }

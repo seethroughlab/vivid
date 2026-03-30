@@ -37,6 +37,7 @@ struct ParamInfo {
     std::string semantic_shape;
     std::string semantic_unit;
     std::string semantic_intent;
+    std::string description;
 };
 
 // Owned copy of port metadata
