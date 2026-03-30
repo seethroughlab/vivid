@@ -1,0 +1,27 @@
+{
+  "name": "Slicer",
+  "id": "slicer",
+  "domain": "audio",
+  "source_file": "operators/audio/slicer/slicer.cpp",
+  "brief": "Sample slicer dividing audio into N equal segments triggered by note.",
+  "description": "Loads an audio file and divides it into equal slices. Each slice maps\nto a MIDI note starting from note 36 (C2). Supports one-shot, loop,\nand gate play modes with per-voice ADSR.",
+  "tips": [],
+  "related": [
+    "Sampler",
+    "SP404",
+    "DrumSequencer"
+  ],
+  "has_docs": true,
+  "params": [
+    {
+      "name": "slices",
+      "doc": "Number of equal divisions of the sample."
+    },
+    {
+      "name": "mode",
+      "doc": "one_shot plays once, loop repeats the slice, gate sustains while held."
+    }
+  ],
+  "inputs": [],
+  "outputs": []
+}

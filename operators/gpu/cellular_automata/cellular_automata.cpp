@@ -176,9 +176,17 @@ struct VisUniforms {
 // ── Waveform index mapping (UI enum → LFO enum) ─────────────────────────
 
 static constexpr int kWaveformMap[] = { 0, 3, 1, 2 }; // Sine, Tri, Saw, Square
-
-// ── Operator ────────────────────────────────────────────────────────────
-
+/**
+ * @brief Cellular automaton simulation with Game of Life and custom rules.
+ *
+ * Runs Conway's Game of Life, HighLife, Seeds, or custom birth/survive
+ * rules on a configurable grid. LFO-modulated thresholds create evolving
+ * patterns. Randomize button reseeds the state.
+ *
+ * @param rule_mode Preset rule set: Life, HighLife, Seeds, or Custom.
+ * @param grid_size Simulation resolution (64-1024).
+ * @see ReactionDiffusion, Noise
+ */
 struct CellularAutomata : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Cellular Automata";
     static constexpr bool kTimeDependent = true;

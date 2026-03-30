@@ -3,14 +3,18 @@
 #include "operator_api/midi_types.h"
 #include "operator_api/type_id.h"
 
-// ---------------------------------------------------------------------------
-// DrumKick: 808-style kick drum
-//
-// Sine oscillator + 2nd/3rd harmonics + white noise click transient (2ms burst).
-// Pitch envelope sweeps down from (pitch + pitch_env) to pitch.
-// Soft clipping via tanh for warmth/drive.
-// ---------------------------------------------------------------------------
-
+/**
+ * @brief Synthesized kick drum with pitch envelope and click transient.
+ *
+ * Sine oscillator with exponential pitch sweep, optional harmonic
+ * overtones, a short noise click for attack, and tanh soft clipping
+ * for drive.
+ *
+ * @param pitch_env Frequency sweep range added to base pitch on trigger.
+ * @param click Amount of noise burst at the attack transient.
+ * @param overtones Harmonic content added to the fundamental.
+ * @see DrumSnare, DrumTom, DrumKit
+ */
 struct DrumKick : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "DrumKick";
     static constexpr bool kTimeDependent = true;
@@ -33,24 +37,36 @@ struct DrumKick : vivid::OperatorBase, vivid::AudioProcessable {
     float               prev_trigger_ = 0.0f;
 
     DrumKick() {
+        vivid::description(pitch, "Base frequency of the kick body in Hz");
         vivid::semantic_tag(pitch, "frequency_hz");
         vivid::semantic_shape(pitch, "scalar");
         vivid::semantic_unit(pitch, "Hz");
 
+        vivid::description(pitch_env, "Frequency sweep range added to base pitch on trigger");
+        vivid::description(pitch_decay, "How quickly the pitch sweep falls to the base frequency, in seconds");
         vivid::semantic_tag(pitch_decay, "time_seconds");
         vivid::semantic_shape(pitch_decay, "scalar");
         vivid::semantic_unit(pitch_decay, "s");
 
+        vivid::description(decay, "Amplitude decay time in seconds");
         vivid::semantic_tag(decay, "time_seconds");
         vivid::semantic_shape(decay, "scalar");
         vivid::semantic_unit(decay, "s");
 
+        vivid::description(click, "Amount of noise burst at the attack transient (0 = none)");
+        vivid::description(drive, "Soft-clipping saturation amount (0 = clean)");
+        vivid::description(overtones, "Harmonic content added to the fundamental sine");
+
+        vivid::description(attack, "Amplitude ramp-up time in seconds (0 = instant)");
         vivid::semantic_tag(attack, "time_seconds");
         vivid::semantic_shape(attack, "scalar");
         vivid::semantic_unit(attack, "s");
 
+        vivid::description(volume, "Overall output level");
         vivid::semantic_tag(volume, "amplitude_linear");
         vivid::semantic_shape(volume, "scalar");
+
+        vivid::description(note, "MIDI note number that triggers this drum (0-127)");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

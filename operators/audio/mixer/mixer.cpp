@@ -1,6 +1,14 @@
 #include "operator_api/operator.h"
 #include "operator_api/thumbnail.h"
 
+/**
+ * @brief Four-input summing mixer with per-channel gain.
+ *
+ * Sums up to 4 audio inputs with independent gain controls.
+ * Disconnected inputs contribute silence.
+ *
+ * @see Gain, Composite
+ */
 struct Mixer : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Mixer";
     static constexpr bool kTimeDependent = false;
@@ -28,6 +36,10 @@ struct Mixer : vivid::OperatorBase, vivid::AudioProcessable {
             vivid::semantic_tag(*p, "amplitude_linear");
             vivid::semantic_shape(*p, "scalar");
         }
+        vivid::description(gain1, "Level multiplier for input 1 (0 = silent, 1 = unity, 2 = double)");
+        vivid::description(gain2, "Level multiplier for input 2 (0 = silent, 1 = unity, 2 = double)");
+        vivid::description(gain3, "Level multiplier for input 3 (0 = silent, 1 = unity, 2 = double)");
+        vivid::description(gain4, "Level multiplier for input 4 (0 = silent, 1 = unity, 2 = double)");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

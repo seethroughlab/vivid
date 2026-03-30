@@ -168,11 +168,15 @@ struct MeshWarpUniforms {
 struct ControlPointGpu {
     float x, y;
 };
-
-// =============================================================================
-// Mesh Warp Operator
-// =============================================================================
-
+/**
+ * @brief Warps a texture via bicubic-interpolated control point grid.
+ *
+ * Defines a grid of draggable control points that deform the source
+ * texture using Catmull-Rom bicubic interpolation. Optional grid overlay
+ * shows control points and mesh lines.
+ *
+ * @see Feedback, TimeMachine
+ */
 struct MeshWarp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "MeshWarp";
     static constexpr bool kTimeDependent = false;

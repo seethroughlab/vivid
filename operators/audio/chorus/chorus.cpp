@@ -47,6 +47,16 @@ static constexpr float kCenterDelay = 0.007f;  // 7ms
 static constexpr float kMaxDepth    = 0.005f;  // 5ms
 static constexpr float kMaxDelay    = 0.015f;  // 15ms
 
+/**
+ * @brief Multi-voice chorus effect with modulated fractional delay.
+ *
+ * Mixes delayed copies of the input with phase-offset LFO modulation.
+ * Each voice uses a slightly different delay time to create width and
+ * movement. Center delay is 7ms with +/-5ms variation.
+ *
+ * @tip Increase voices for a thicker, more ensemble-like sound.
+ * @see Flanger, Phaser, Delay
+ */
 struct Chorus : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Chorus";
     static constexpr bool kTimeDependent = false;
@@ -66,19 +76,23 @@ struct Chorus : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::semantic_shape(rate, "scalar");
         vivid::semantic_unit(rate, "Hz");
         vivid::display_hint(rate, VIVID_DISPLAY_KNOB);
+        vivid::description(rate, "LFO modulation speed in Hz");
 
         vivid::semantic_tag(depth, "probability_01");
         vivid::semantic_shape(depth, "scalar");
         vivid::display_hint(depth, VIVID_DISPLAY_KNOB);
+        vivid::description(depth, "Amount of delay-time modulation (0 = none, 1 = full)");
 
         vivid::semantic_tag(voices, "count");
         vivid::semantic_shape(voices, "scalar");
         vivid::display_hint(voices, VIVID_DISPLAY_KNOB);
+        vivid::description(voices, "Number of chorus voices (more = thicker)");
 
         vivid::semantic_tag(mix, "probability_01");
         vivid::semantic_shape(mix, "scalar");
         vivid::semantic_intent(mix, "wet_mix");
         vivid::display_hint(mix, VIVID_DISPLAY_KNOB);
+        vivid::description(mix, "Dry/wet blend (0 = dry, 1 = fully chorused)");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

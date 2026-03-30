@@ -218,10 +218,17 @@ private:
     std::array<float, kFillChunk> fill_right_{};
 };
 
-// =============================================================================
-// MovieFileAudio — cadence-native audio operator for movie file playback
-// =============================================================================
-
+/**
+ * @brief Audio playback from video and audio files with speed control.
+ *
+ * Decodes and plays the audio track from media files with adjustable
+ * playback speed. Optional pitch preservation prevents chipmunk effects
+ * at non-unity speeds.
+ *
+ * @param pitch_preserve Maintain original pitch when changing speed.
+ * @param play_mode Loop, Once, or Hold Last frame.
+ * @see MovieFileIn, Sampler
+ */
 struct MovieFileAudio : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "MovieFileAudio";
     static constexpr bool kTimeDependent = true;
@@ -235,18 +242,23 @@ struct MovieFileAudio : vivid::OperatorBase, vivid::AudioProcessable {
     MovieFileAudio() {
         vivid::semantic_tag(file, "path_video");
         vivid::semantic_shape(file, "path");
+        vivid::description(file, "Path to a video or audio file to play");
 
         vivid::semantic_tag(speed, "x_playback_speed");
         vivid::semantic_shape(speed, "scalar");
+        vivid::description(speed, "Playback speed multiplier (1 = normal, 0 = paused)");
 
         vivid::semantic_tag(volume, "amplitude_linear");
         vivid::semantic_shape(volume, "scalar");
+        vivid::description(volume, "Output volume (0\u20132, with 1 = unity gain)");
 
         vivid::semantic_tag(pitch_preserve, "x_pitch_preserve");
         vivid::semantic_shape(pitch_preserve, "enum");
+        vivid::description(pitch_preserve, "Keep original pitch when speed is changed");
 
         vivid::semantic_tag(play_mode, "x_play_mode");
         vivid::semantic_shape(play_mode, "enum");
+        vivid::description(play_mode, "Loop continuously, play Once, or Hold Last frame at end");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

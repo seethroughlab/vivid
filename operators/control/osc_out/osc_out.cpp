@@ -10,7 +10,15 @@
 #include <memory>
 #include <string>
 #include <vector>
-
+/**
+ * @brief OSC client sending values over UDP.
+ *
+ * Sends OSC messages to a target host and port. Configurable to send
+ * on trigger, every frame, or on value change.
+ *
+ * @param send_mode When to transmit: on_trigger, every_frame, or on_change.
+ * @see OscIn, MidiInput
+ */
 struct OscOut : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "OscOut";
     static constexpr bool kTimeDependent = true;
@@ -22,6 +30,12 @@ struct OscOut : vivid::OperatorBase, vivid::FrameProcessable {
     vivid::Param<int> send_mode{"send_mode", 0, {"on_trigger", "every_frame", "on_change"}};
 
     OscOut() {
+        vivid::description(host, "Target hostname or IP address");
+        vivid::description(target_port, "UDP port on the target host");
+        vivid::description(address, "OSC address to send to (e.g. /vivid/value)");
+        vivid::description(value_type, "Data type sent in the OSC message: float, int, or bool");
+        vivid::description(send_mode, "When to transmit: on trigger, every frame, or on value change");
+
         vivid::semantic_tag(host, "x_network_host");
         vivid::semantic_shape(host, "string");
 

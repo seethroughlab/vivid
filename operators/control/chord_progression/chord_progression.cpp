@@ -6,12 +6,16 @@
 #include <cmath>
 #include "operator_api/thumbnail.h"
 #include <cstring>
-
-// ChordProgression — dual-cadence diatonic chord sequencer.
-//
-// Beat-phase wrap detection + diatonic chord building + gate window + MIDI output.
-// All timing logic is cadence-agnostic.
-//
+/**
+ * @brief Diatonic chord sequencer with per-step voicing and extensions.
+ *
+ * Sequences up to 8 chords in a chosen key and mode, each with configurable
+ * scale degree, inversion, and extension (triad, 7th, add9). Outputs notes
+ * as a polyphonic spread and optional MIDI.
+ *
+ * @param mode Scale mode: Major, Minor, Dorian, Mixolydian, Harmonic Minor, Melodic Minor.
+ * @see NotePattern, Arpeggiator, Sequencer
+ */
 struct ChordProgression : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "ChordProgression";
     static constexpr bool kTimeDependent = true;

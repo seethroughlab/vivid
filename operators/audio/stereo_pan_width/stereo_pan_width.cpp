@@ -2,10 +2,16 @@
 
 #include <cmath>
 
-// ---------------------------------------------------------------------------
-// Stereo Pan/Width — pan, width, and mid/side balance (stereo in/out)
-// ---------------------------------------------------------------------------
-
+/**
+ * @brief Stereo panning and width control via mid/side processing.
+ *
+ * Encodes stereo to mid/side, applies width scaling and balance, then
+ * decodes back. Uses constant-power pan law for smooth panning.
+ *
+ * @param width Stereo width. 0 = mono, 1 = original, 2 = exaggerated.
+ * @param ms_balance Mid/side ratio. 0 = all mid, 1 = all side.
+ * @see Mixer, Gain
+ */
 struct StereoPanWidth : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "StereoPanWidth";
     static constexpr bool kTimeDependent = false;
@@ -18,14 +24,17 @@ struct StereoPanWidth : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::semantic_tag(pan, "pan");
         vivid::semantic_shape(pan, "scalar");
         vivid::display_hint(pan, VIVID_DISPLAY_KNOB);
+        vivid::description(pan, "Stereo position (-1 = hard left, 0 = center, 1 = hard right)");
 
         vivid::semantic_tag(width, "amplitude_linear");
         vivid::semantic_shape(width, "scalar");
         vivid::display_hint(width, VIVID_DISPLAY_KNOB);
+        vivid::description(width, "Stereo width (0 = mono, 1 = original, 2 = exaggerated)");
 
         vivid::semantic_tag(ms_balance, "probability_01");
         vivid::semantic_shape(ms_balance, "scalar");
         vivid::display_hint(ms_balance, VIVID_DISPLAY_KNOB);
+        vivid::description(ms_balance, "Balance between mid and side content (0 = all mid, 1 = all side)");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

@@ -6,6 +6,15 @@
 
 namespace adsr = vivid::adsr;
 
+/**
+ * @brief Per-voice ADSR envelopes for polyphonic spread chains.
+ *
+ * Generates independent ADSR envelopes for each active voice in a spread.
+ * Connect to a spread gate source (like MidiInput or Sequencer) and route
+ * the envelope output to control amplitude or filter cutoff per voice.
+ *
+ * @see Envelope, SpreadLFO, FmSynth
+ */
 struct SpreadADSR : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "SpreadADSR";
     static constexpr bool kTimeDependent = false;
@@ -19,17 +28,21 @@ struct SpreadADSR : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::semantic_tag(attack, "time_seconds");
         vivid::semantic_shape(attack, "scalar");
         vivid::semantic_unit(attack, "s");
+        vivid::description(attack, "Time to reach full level after gate-on, in seconds");
 
         vivid::semantic_tag(decay, "time_seconds");
         vivid::semantic_shape(decay, "scalar");
         vivid::semantic_unit(decay, "s");
+        vivid::description(decay, "Time to fall from peak to sustain level, in seconds");
 
         vivid::semantic_tag(sustain, "amplitude_linear");
         vivid::semantic_shape(sustain, "scalar");
+        vivid::description(sustain, "Held amplitude level while gate is on (0\u20131)");
 
         vivid::semantic_tag(release, "time_seconds");
         vivid::semantic_shape(release, "scalar");
         vivid::semantic_unit(release, "s");
+        vivid::description(release, "Time to fade to silence after gate-off, in seconds");
     }
 
     static constexpr int kMaxSlots = 16;

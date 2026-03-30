@@ -49,7 +49,15 @@ static float half_to_float(uint16_t h) {
 }
 
 static constexpr uint32_t kCropSize = 16;  // 16×16 center crop
-
+/**
+ * @brief GPU-to-control bridge analyzing texture brightness, contrast, and color.
+ *
+ * Reads back a small center crop from the input texture and computes
+ * brightness, contrast, per-channel averages, and edge density as control
+ * signals. One frame of latency for async GPU readback.
+ *
+ * @see Scopes, AudioAnalysis
+ */
 struct TextureAnalysis : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "TextureAnalysis";
     static constexpr bool kTimeDependent = true;

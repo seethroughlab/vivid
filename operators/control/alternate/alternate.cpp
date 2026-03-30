@@ -1,17 +1,24 @@
 #include "operator_api/operator.h"
 #include <algorithm>
 #include <cmath>
-
-// Alternate — dual-cadence spread selector.
-//
-// Selects one of 4 input spreads based on beat phase and cycle length.
-// Inherits both FrameProcessable and AudioProcessable for audio-capable cadence.
-//
+/**
+ * @brief Cycles through up to 4 input spreads based on beat phase.
+ *
+ * Selects one of four spread inputs in round-robin order, advancing on
+ * each beat wrap. Use the cycle parameter to set how many beats before advancing.
+ *
+ * @param cycle Number of beats per input selection (Beat, 2 Beats, Bar, etc.).
+ * @see Stack, PatTransform
+ */
 struct Alternate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Alternate";
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<int> cycle {"cycle", 2, {"Beat","2 Beats","Bar","2 Bars","4 Bars"}};
+
+    Alternate() {
+        vivid::description(cycle, "How many beats before advancing to the next input");
+    }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&cycle);  // 0

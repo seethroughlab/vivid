@@ -158,9 +158,17 @@ struct SimUniforms {
     float seed;            // f32 (sim: 1.0=seed/0.0=run; vis: color_mode)
     float seed_radius;     // f32
 };
-
-// ── Operator ────────────────────────────────────────────────────────────
-
+/**
+ * @brief Gray-Scott reaction-diffusion with LFO-modulated parameters.
+ *
+ * Simulates the Gray-Scott model on a 2D grid with configurable feed
+ * and kill rates. LFO modulation on feed, kill, and diffusion creates
+ * evolving organic patterns. Multiple color palettes available.
+ *
+ * @param feed_rate Rate of chemical A replenishment.
+ * @param kill_rate Rate of chemical B removal.
+ * @see CellularAutomata, Fluid
+ */
 struct ReactionDiffusion : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Reaction Diffusion";
     static constexpr bool kTimeDependent = true;

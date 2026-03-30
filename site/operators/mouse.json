@@ -1,0 +1,17 @@
+{
+  "name": "Mouse",
+  "id": "mouse",
+  "domain": "control",
+  "source_file": "operators/control/mouse/mouse.cpp",
+  "brief": "Outputs mouse cursor position and button states.",
+  "description": "Reports the mouse position as normalized 0-1 coordinates and the state\nof left, right, and middle buttons as 0/1 signals.",
+  "tips": [],
+  "related": [
+    "Keyboard",
+    "PathAnimate"
+  ],
+  "has_docs": true,
+  "params": [],
+  "inputs": [],
+  "outputs": []
+}

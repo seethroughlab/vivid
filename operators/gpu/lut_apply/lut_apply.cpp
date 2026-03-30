@@ -262,11 +262,15 @@ static bool parse_3dl(const std::string& path, LutData& lut) {
     lut.data = std::move(values);
     return true;
 }
-
-// =============================================================================
-// LUT Apply Operator
-// =============================================================================
-
+/**
+ * @brief Applies a 3D color lookup table from .cube files.
+ *
+ * Loads a .cube LUT file and applies the color transform to an input
+ * texture. Intensity parameter blends between original and LUT-graded.
+ *
+ * @param interpolation Nearest or Trilinear sampling of the LUT.
+ * @see Composite, TextureLoader
+ */
 struct LutApply : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "LUT Apply";
     static constexpr bool kTimeDependent = false;

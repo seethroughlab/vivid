@@ -1,0 +1,28 @@
+{
+  "name": "Filter",
+  "id": "filter",
+  "domain": "audio",
+  "source_file": "operators/audio/filter/filter.cpp",
+  "brief": "Multi-mode audio filter with 14 filter types and keytracking.",
+  "description": "Biquad-based filter supporting LP12, LP24, HP12, HP24, BP, BP24, Notch,\nPeak, Allpass, Comb, Ladder, Formant, Diode, and MS-20 modes. Keytracking\nshifts cutoff based on incoming note frequency for polyphonic chains.",
+  "tips": [
+    "Use Comb mode with short delay times for Karplus-Strong-like string sounds."
+  ],
+  "related": [
+    "ParametricEQ",
+    "Vocoder"
+  ],
+  "has_docs": true,
+  "params": [
+    {
+      "name": "mode",
+      "doc": "Filter algorithm. Each mode has a distinct character."
+    },
+    {
+      "name": "keytrack",
+      "doc": "Scales cutoff with note frequency. 1 = full tracking."
+    }
+  ],
+  "inputs": [],
+  "outputs": []
+}

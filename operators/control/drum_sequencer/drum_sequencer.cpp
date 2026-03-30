@@ -20,12 +20,15 @@ static constexpr float kCellPad = 2.0f;
 static constexpr float kTabW = 80.0f;
 static constexpr float kTabH = 18.0f;
 } // namespace drum_insp
-
-// DrumSequencer — dual-cadence 6-track drum pattern sequencer.
-//
-// Phase-driven step advancement with swing, per-step triggers, mod A/B,
-// spread outputs, and MIDI. All logic is cadence-agnostic.
-//
+/**
+ * @brief Six-track drum pattern sequencer with probability and swing.
+ *
+ * Programs up to 16-step patterns across 6 drum tracks with per-step
+ * probability. Outputs trigger/gate/velocity as both spreads and
+ * individual signals, plus MIDI output.
+ *
+ * @see DrumKit, Euclidean, StepSeq
+ */
 struct DrumSequencer : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "DrumSequencer";
     static constexpr bool kTimeDependent = false;

@@ -1,6 +1,14 @@
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 
+/**
+ * @brief Sends video frames via Syphon (macOS inter-app video sharing).
+ *
+ * Publishes the input texture as a Syphon server that other applications
+ * can subscribe to for real-time video sharing.
+ *
+ * @see SyphonIn
+ */
 struct SyphonOut : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "SyphonOut";
     static constexpr bool kTimeDependent = true;

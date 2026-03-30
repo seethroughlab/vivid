@@ -1,0 +1,58 @@
+{
+  "name": "LFO",
+  "id": "lfo",
+  "domain": "control",
+  "source_file": "operators/control/lfo/lfo.h",
+  "brief": "Low-frequency oscillator for parameter modulation.",
+  "description": "Generates periodic or random control signals at frame-rate (~60 Hz) or\naudio-rate (~48 kHz). Connect the `value` output to any numeric parameter\nfor animation, or wire it into other control operators.\n\nSupports seven waveforms including two random modes: **sample & hold**\n(stepped random on each cycle) and **smooth random** (Catmull-Rom\ninterpolated). Use the `gate` input to reset phase and trigger fade-in;\nuse `beat_phase` with `rate_mode=sync` for tempo-locked modulation.",
+  "tips": [
+    "Use unipolar mode when driving parameters that expect 0-1 (like mix knobs).",
+    "Connect a Clock's beat_phase output and set rate_mode=sync for tempo-locked sweeps.",
+    "The slew param smooths all waveforms \u2014 useful for softening square or S&H steps."
+  ],
+  "related": [
+    "Envelope",
+    "Clock",
+    "Math",
+    "Smooth"
+  ],
+  "has_docs": true,
+  "params": [
+    {
+      "name": "frequency",
+      "doc": "Oscillation rate in Hz (ignored when synced to beat_phase)."
+    },
+    {
+      "name": "waveform",
+      "doc": "Shape of the output wave. sample_hold and smooth_random use the seed param."
+    },
+    {
+      "name": "rate_mode",
+      "doc": "free = internal clock, sync = driven by beat_phase input."
+    },
+    {
+      "name": "polarity",
+      "doc": "bipolar = -1..1, unipolar = 0..1."
+    },
+    {
+      "name": "slew",
+      "doc": "Smooths output transitions. Higher values = more lag."
+    }
+  ],
+  "inputs": [
+    {
+      "name": "gate",
+      "doc": "Rising edge resets phase and starts fade-in timer."
+    },
+    {
+      "name": "beat_phase",
+      "doc": "External phase source (0-1 sawtooth from Clock) for sync mode."
+    }
+  ],
+  "outputs": [
+    {
+      "name": "value",
+      "doc": "The computed LFO signal."
+    }
+  ]
+}

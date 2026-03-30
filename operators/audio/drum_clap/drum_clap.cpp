@@ -3,13 +3,17 @@
 #include "operator_api/midi_types.h"
 #include "operator_api/type_id.h"
 
-// ---------------------------------------------------------------------------
-// DrumClap: 4 staggered noise bursts through SVF bandpass (stereo)
-//
-// Each burst has randomized timing (controlled by sloppy) and stereo panning.
-// Filtered tail provides the reverberant decay.
-// ---------------------------------------------------------------------------
-
+/**
+ * @brief Synthesized hand clap with staggered noise bursts and filtered tail.
+ *
+ * Generates a clap sound from 4 randomly-timed noise bursts through a
+ * bandpass filter, followed by a filtered noise tail for body. Supports
+ * both trigger input and MIDI velocity.
+ *
+ * @param sloppy Timing randomization between the initial bursts.
+ * @param tail Amount of filtered noise tail after the initial bursts.
+ * @see DrumSnare, DrumKick, DrumKit
+ */
 struct DrumClap : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "DrumClap";
     static constexpr bool kTimeDependent = true;
@@ -38,16 +42,26 @@ struct DrumClap : vivid::OperatorBase, vivid::AudioProcessable {
     float  burst_pan_[kNumBursts]     = {};  // -1 to 1
 
     DrumClap() {
+        vivid::description(decay, "Overall decay time in seconds");
         vivid::semantic_tag(decay, "time_seconds");
         vivid::semantic_shape(decay, "scalar");
         vivid::semantic_unit(decay, "s");
 
+        vivid::description(tone, "Bandpass filter brightness applied to the clap");
+        vivid::description(sloppy, "Timing randomization between the initial noise bursts");
+        vivid::description(tail, "Amount of filtered noise tail after the initial bursts");
+        vivid::description(stereo_width, "Stereo spread of the randomized burst panning");
+
+        vivid::description(tune, "Center frequency of the bandpass filter in Hz");
         vivid::semantic_tag(tune, "frequency_hz");
         vivid::semantic_shape(tune, "scalar");
         vivid::semantic_unit(tune, "Hz");
 
+        vivid::description(volume, "Overall output level");
         vivid::semantic_tag(volume, "amplitude_linear");
         vivid::semantic_shape(volume, "scalar");
+
+        vivid::description(note, "MIDI note number that triggers this drum (0-127)");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

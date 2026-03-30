@@ -2,6 +2,14 @@
 #include "operator_api/audio_dsp.h"
 #include <cmath>
 
+/**
+ * @brief Basic waveform oscillator with frequency and amplitude CV.
+ *
+ * Phase-accumulating oscillator generating sine, saw, square, or triangle
+ * waveforms. CV inputs accept control signals with +/-120 semitone range.
+ *
+ * @see FmSynth, LFO, Noise
+ */
 struct Oscillator : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Oscillator";
     static constexpr bool kTimeDependent = true;
@@ -16,9 +24,12 @@ struct Oscillator : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::semantic_tag(frequency, "frequency_hz");
         vivid::semantic_shape(frequency, "scalar");
         vivid::semantic_unit(frequency, "Hz");
+        vivid::description(frequency, "Base pitch of the oscillator in Hz");
 
         vivid::semantic_tag(amplitude, "amplitude_linear");
         vivid::semantic_shape(amplitude, "scalar");
+        vivid::description(amplitude, "Output level of the waveform");
+        vivid::description(waveform, "Shape of the generated waveform");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

@@ -67,11 +67,14 @@ struct TextUniforms {
     float _pad0;
     float bg_r, bg_g, bg_b, bg_a;
 };
-
-// =============================================================================
-// Text Operator
-// =============================================================================
-
+/**
+ * @brief Renders simple static text with configurable font, color, and position.
+ *
+ * Rasterizes text using TrueType fonts via stb_truetype. For animated
+ * or per-character effects, use RichText instead.
+ *
+ * @see RichText
+ */
 struct Text : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Text";
     static constexpr bool kTimeDependent = false;

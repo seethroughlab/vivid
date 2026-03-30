@@ -67,11 +67,14 @@ static float fps_for_preset(int preset) {
         case 3:  return 60.0f;
     }
 }
-
-// =============================================================================
-// WebcamIn Operator
-// =============================================================================
-
+/**
+ * @brief Live camera capture with device selection and resolution presets.
+ *
+ * Captures video from a connected camera device. Dynamically discovers
+ * available cameras on startup. Supports 480p, 720p, and 1080p presets.
+ *
+ * @see MovieFileIn, SyphonIn
+ */
 struct WebcamIn : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "WebcamIn";
     static constexpr bool kTimeDependent = true;

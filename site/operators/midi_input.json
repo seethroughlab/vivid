@@ -1,0 +1,25 @@
+{
+  "name": "MidiInput",
+  "id": "midi_input",
+  "domain": "control",
+  "source_file": "operators/control/midi_input/midi_input.cpp",
+  "brief": "MIDI device listener outputting notes, velocity, gates, and CCs.",
+  "description": "Connects to a MIDI input device and outputs note/velocity/gate as both\nscalar signals (latest note) and polyphonic spreads (up to 16 held notes).\nAlso provides pitch bend, mod wheel, and a learnable CC value.",
+  "tips": [
+    "Enable learn mode and move a controller to auto-assign the CC number."
+  ],
+  "related": [
+    "DrumKit",
+    "Arpeggiator",
+    "Keyboard"
+  ],
+  "has_docs": true,
+  "params": [
+    {
+      "name": "channel",
+      "doc": "MIDI channel filter. 0 = omni (all channels)."
+    }
+  ],
+  "inputs": [],
+  "outputs": []
+}

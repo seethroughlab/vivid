@@ -9,12 +9,20 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-// ---------------------------------------------------------------------------
-// Spectral Freeze — STFT-based spectral snapshot with overlap-add (mono)
-// ---------------------------------------------------------------------------
-
 static constexpr int kMaxFFTSize = 1024;
 
+/**
+ * @brief STFT-based spectral freeze capturing and sustaining a moment in time.
+ *
+ * Performs real-time FFT analysis and can freeze the spectral magnitudes
+ * on a rising edge of the freeze input. The frozen spectrum sustains
+ * indefinitely, blendable with live input. Phase modes control the
+ * character of the frozen sound.
+ *
+ * @param freeze Gate-like input -- rising edge captures the current spectrum.
+ * @param phase_mode How phase is handled: input (natural), frozen (static), or random (shimmering).
+ * @see GranularSynth, Vocoder
+ */
 struct SpectralFreeze : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "SpectralFreeze";
     static constexpr bool kTimeDependent = false;
@@ -56,18 +64,23 @@ struct SpectralFreeze : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::semantic_tag(freeze, "gate");
         vivid::semantic_shape(freeze, "scalar");
         vivid::display_hint(freeze, VIVID_DISPLAY_KNOB);
+        vivid::description(freeze, "Rising edge captures the current spectrum");
 
         vivid::semantic_tag(blend, "probability_01");
         vivid::semantic_shape(blend, "scalar");
         vivid::semantic_intent(blend, "wet_mix");
         vivid::display_hint(blend, VIVID_DISPLAY_KNOB);
+        vivid::description(blend, "Mix between live input and frozen spectrum");
 
         vivid::semantic_tag(smoothing, "probability_01");
         vivid::semantic_shape(smoothing, "scalar");
         vivid::display_hint(smoothing, VIVID_DISPLAY_KNOB);
+        vivid::description(smoothing, "Smoothing applied to the frozen magnitude spectrum");
 
         vivid::display_hint(fft_size, VIVID_DISPLAY_KNOB);
+        vivid::description(fft_size, "FFT window size: 256, 512, or 1024 samples");
         vivid::display_hint(phase_mode, VIVID_DISPLAY_KNOB);
+        vivid::description(phase_mode, "Phase handling: input (natural), frozen (static), or random (shimmering)");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

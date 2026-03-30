@@ -1,0 +1,44 @@
+{
+  "name": "Bitcrush",
+  "id": "bitcrush",
+  "domain": "audio",
+  "source_file": "operators/audio/bitcrush/bitcrush.cpp",
+  "brief": "Bit-depth reduction and sample-rate decimation effect.",
+  "description": "Combines two lo-fi effects: **bit crushing** (quantizing amplitude to\nfewer levels) and **sample-rate reduction** (sample-and-hold decimation).\nTogether they produce the characteristic \"retro digital\" sound of early\nsamplers and video game consoles.\n\nThe effect is mono \u2014 stereo signals should be split first.",
+  "tips": [
+    "Automate `bits` with an LFO for evolving texture. Values below 4 get aggressive.",
+    "Set rate to match a classic sampler (8000 Hz = telephone, 22050 Hz = early CD-ROM)."
+  ],
+  "related": [
+    "Distortion",
+    "Filter",
+    "RingMod"
+  ],
+  "has_docs": true,
+  "params": [
+    {
+      "name": "bits",
+      "doc": "Number of quantization levels (2^bits). Lower = crunchier."
+    },
+    {
+      "name": "rate",
+      "doc": "Target sample rate for decimation. Lower = more aliasing artifacts."
+    },
+    {
+      "name": "mix",
+      "doc": "Dry/wet blend. 0 = bypass, 1 = fully crushed."
+    }
+  ],
+  "inputs": [
+    {
+      "name": "input",
+      "doc": "Mono audio signal to process."
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "doc": "The crushed signal."
+    }
+  ]
+}

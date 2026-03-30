@@ -1,0 +1,17 @@
+{
+  "name": "Trails",
+  "id": "trails",
+  "domain": "gpu",
+  "source_file": "operators/gpu/trails/trails.cpp",
+  "brief": "Autonomous motion trails with physics, decay, and hue shift.",
+  "description": "Simulates up to 32 trail heads moving with configurable speed and\ncurvature. Renders capsule SDFs with per-trail LFO modulation on\nwidth, opacity, and color. Persistent feedback texture provides decay.",
+  "tips": [],
+  "related": [
+    "Feedback",
+    "Particles"
+  ],
+  "has_docs": true,
+  "params": [],
+  "inputs": [],
+  "outputs": []
+}

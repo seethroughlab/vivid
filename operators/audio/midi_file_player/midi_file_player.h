@@ -13,6 +13,15 @@
 #include <string>
 #include <vector>
 
+/**
+ * @brief Plays standard MIDI files and outputs note, velocity, and gate data.
+ *
+ * Loads and plays .mid files, outputting real-time note events as control
+ * signals and polyphonic spreads. Supports loop, once, and hold-last
+ * play modes.
+ *
+ * @see MidiInput, Sampler, Sequencer
+ */
 struct MidiFilePlayer : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName = "MidiFilePlayer";
     static constexpr bool kTimeDependent = true;
@@ -25,6 +34,11 @@ struct MidiFilePlayer : vivid::OperatorBase, vivid::AudioProcessable {
 
     MidiFilePlayer() {
         vivid::semantic_shape(file, "path");
+        vivid::description(file, "Path to a .mid MIDI file to play");
+        vivid::description(playing, "Enable or disable playback");
+        vivid::description(loop, "Loop the MIDI file when it reaches the end");
+        vivid::description(transpose, "Shift all notes up or down in semitones (-48 to +48)");
+        vivid::description(velocity_scale, "Scale note velocities (1 = original, 0 = silent)");
     }
 
     ~MidiFilePlayer() override {

@@ -103,11 +103,18 @@ struct TimeMachineUniforms {
     uint32_t filled;
     uint32_t _pad0, _pad1, _pad2;
 };
-
-// =============================================================================
-// TimeMachine Operator
-// =============================================================================
-
+/**
+ * @brief Temporal slit-scan effect using a displacement map and history buffer.
+ *
+ * Stores a ring buffer of past source frames. Each output pixel samples
+ * from a different point in the history based on the grayscale displacement
+ * map, creating slit-scan and time-displacement effects.
+ *
+ * @param depth Maximum temporal displacement as fraction of history.
+ * @param frames Number of history frames to store (2-120).
+ * @input map Grayscale displacement map controlling per-pixel time offset.
+ * @see Feedback, Trails
+ */
 struct TimeMachine : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "TimeMachine";
     static constexpr bool kTimeDependent = false;

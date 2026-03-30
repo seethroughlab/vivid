@@ -320,11 +320,17 @@ struct NoiseUniforms {
     int   colorNoise;
     int   centerOrigin;
 };
-
-// =============================================================================
-// Noise Operator
-// =============================================================================
-
+/**
+ * @brief Perlin or Simplex noise generator with FBm octaves and animation.
+ *
+ * Evaluates 3D noise in a fragment shader with configurable octaves,
+ * lacunarity, and persistence for fractal detail. Speed parameter
+ * animates through the Z axis over time.
+ *
+ * @param noiseType Perlin or Simplex noise algorithm.
+ * @param octaves Number of FBm layers. More = finer detail.
+ * @see Shape, ReactionDiffusion
+ */
 struct Noise : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "NoiseTexture";
     static constexpr bool kTimeDependent = true;

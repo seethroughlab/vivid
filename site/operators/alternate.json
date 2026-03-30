@@ -1,0 +1,22 @@
+{
+  "name": "Alternate",
+  "id": "alternate",
+  "domain": "control",
+  "source_file": "operators/control/alternate/alternate.cpp",
+  "brief": "Cycles through up to 4 input spreads based on beat phase.",
+  "description": "Selects one of four spread inputs in round-robin order, advancing on\neach beat wrap. Use the cycle parameter to set how many beats before advancing.",
+  "tips": [],
+  "related": [
+    "Stack",
+    "PatTransform"
+  ],
+  "has_docs": true,
+  "params": [
+    {
+      "name": "cycle",
+      "doc": "Number of beats per input selection (Beat, 2 Beats, Bar, etc.)."
+    }
+  ],
+  "inputs": [],
+  "outputs": []
+}

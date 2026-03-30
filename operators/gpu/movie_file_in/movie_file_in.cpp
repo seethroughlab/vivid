@@ -121,11 +121,15 @@ static WGPUTextureFormat compressed_format_to_texture(VideoCompressedFormat fmt)
             return WGPUTextureFormat_Undefined;
     }
 }
-
-// ---------------------------------------------------------------------------
-// MovieFileIn — cadence-native GPU operator for video file playback
-// ---------------------------------------------------------------------------
-
+/**
+ * @brief Video file playback with frame-accurate timing and audio sync.
+ *
+ * Plays MP4, MOV, MKV, WebM and other video formats. Supports GPU-compressed
+ * textures (BC1/BC3/BC4) and YCoCg color space decoding. Audio sync via
+ * optional audio_time input from MovieFileAudio.
+ *
+ * @see TextureLoader, WebcamIn, MovieFileAudio
+ */
 struct MovieFileIn : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "MovieFileIn";
     static constexpr bool kTimeDependent = true;

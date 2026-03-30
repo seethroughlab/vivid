@@ -1,17 +1,23 @@
 #include "operator_api/operator.h"
 #include <cmath>
 #include <algorithm>
-
-// Math — dual-cadence control operator.
-//
-// Inherits both FrameProcessable and AudioProcessable, making it audio-capable.
-// Stateless: applies a binary operation (add/mul/min/max) to two scalar inputs.
-//
+/**
+ * @brief Binary math operation on two control signals.
+ *
+ * Performs add, multiply, min, or max on inputs A and B. Chain multiple
+ * Math operators for complex expressions.
+ *
+ * @see Logic, Macro, Quantizer
+ */
 struct Math : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Math";
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<int> operation{"operation", 0, {"add", "multiply", "min", "max"}};
+
+    Math() {
+        vivid::description(operation, "Binary operation applied to inputs A and B");
+    }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&operation);

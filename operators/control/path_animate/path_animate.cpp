@@ -4,20 +4,17 @@
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
-
-// =============================================================================
-// Path Animate — cubic bezier path evaluator (control operator)
-//
-// Outputs position (x, y), tangent angle, and progress along a cubic bezier.
-// Follows LFO phase-accumulation pattern with external phase override.
-// =============================================================================
-
-// PathAnimate — dual-cadence cubic bezier path evaluator.
-//
-// Free-running phase accumulation (delta_time * speed) with optional external
-// phase override. Easing, loop/ping-pong modes. Cadence-agnostic because
-// delta_time is provided correctly at both frame and audio rate.
-//
+/**
+ * @brief Cubic Bezier path evaluator with easing and loop modes.
+ *
+ * Defines a 2D cubic Bezier curve via 4 control points and evaluates
+ * position along it over time or from an external phase input. Outputs
+ * X, Y, tangent angle, and progress.
+ *
+ * @param loop_mode Loop, Ping-Pong, Once, or Once+Hold.
+ * @param easing Easing curve: Linear, EaseIn, EaseOut, EaseInOut, Bounce.
+ * @see LFO, Mouse
+ */
 struct PathAnimate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Path Animate";
     static constexpr bool kTimeDependent = true;

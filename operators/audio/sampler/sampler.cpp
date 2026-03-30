@@ -10,6 +10,17 @@
 
 using namespace vivid_sampler;
 
+/**
+ * @brief Multi-group polyphonic sample player with ADSR and velocity control.
+ *
+ * Loads audio files organized into groups, each with configurable ADSR,
+ * volume, and voice count. Supports velocity-sensitive playback and
+ * keytracking across up to 16 simultaneous voices.
+ *
+ * @param group Selects which sample group to play from the loaded bank.
+ * @param voices Maximum polyphony (1-16).
+ * @see Slicer, SP404, MidiInput
+ */
 struct Sampler : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName = "Sampler";
     static constexpr bool kTimeDependent = false;
@@ -30,6 +41,17 @@ struct Sampler : vivid::OperatorBase, vivid::AudioProcessable {
     SampleBank* deferred_delete_ = nullptr;
     std::string last_path_;
     uint64_t frame_counter_ = 0;
+
+    Sampler() {
+        vivid::description(file, "Audio file or sample bank to load");
+        vivid::description(attack, "Envelope attack time in seconds (0 = use sample default)");
+        vivid::description(decay, "Envelope decay time in seconds (0 = use sample default)");
+        vivid::description(sustain, "Envelope sustain level (0 = use sample default)");
+        vivid::description(release, "Envelope release time in seconds (0 = use sample default)");
+        vivid::description(volume, "Master output volume, can boost up to 2x");
+        vivid::description(voices, "Maximum number of simultaneous notes (1-16)");
+        vivid::description(group, "Which sample group to play from the loaded bank");
+    }
 
     ~Sampler() {
         delete bank_.load(std::memory_order_relaxed);

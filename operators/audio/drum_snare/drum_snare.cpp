@@ -3,13 +3,17 @@
 #include "operator_api/midi_types.h"
 #include "operator_api/type_id.h"
 
-// ---------------------------------------------------------------------------
-// DrumSnare: Sine body + harmonics + SVF-filtered white noise
-//
-// Independent tone/noise decay times for snappy control.
-// SVF bandpass on noise controlled by snappy param.
-// ---------------------------------------------------------------------------
-
+/**
+ * @brief Synthesized snare with tonal body and bandpass-filtered noise.
+ *
+ * Combines a sine oscillator with harmonics and bandpass-filtered noise,
+ * each with independent decay times. The snappy parameter controls the
+ * noise character.
+ *
+ * @param snappy Character of the noise component — tighter vs looser rattle.
+ * @param color Amount of harmonic overtones in the tonal body.
+ * @see DrumKick, DrumClap, DrumKit
+ */
 struct DrumSnare : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "DrumSnare";
     static constexpr bool kTimeDependent = true;
@@ -32,20 +36,32 @@ struct DrumSnare : vivid::OperatorBase, vivid::AudioProcessable {
     float               prev_trigger_ = 0.0f;
 
     DrumSnare() {
+        vivid::description(tone_level, "Level of the tonal sine body in the mix");
+        vivid::description(noise_level, "Level of the filtered noise in the mix");
+
+        vivid::description(pitch, "Fundamental frequency of the tonal body in Hz");
         vivid::semantic_tag(pitch, "frequency_hz");
         vivid::semantic_shape(pitch, "scalar");
         vivid::semantic_unit(pitch, "Hz");
 
+        vivid::description(tone_decay, "Decay time of the tonal body in seconds");
         vivid::semantic_tag(tone_decay, "time_seconds");
         vivid::semantic_shape(tone_decay, "scalar");
         vivid::semantic_unit(tone_decay, "s");
 
+        vivid::description(noise_decay, "Decay time of the noise component in seconds");
         vivid::semantic_tag(noise_decay, "time_seconds");
         vivid::semantic_shape(noise_decay, "scalar");
         vivid::semantic_unit(noise_decay, "s");
 
+        vivid::description(snappy, "Tightness of the noise rattle (higher = brighter, snappier)");
+        vivid::description(color, "Harmonic overtone content in the tonal body");
+
+        vivid::description(volume, "Overall output level");
         vivid::semantic_tag(volume, "amplitude_linear");
         vivid::semantic_shape(volume, "scalar");
+
+        vivid::description(note, "MIDI note number that triggers this drum (0-127)");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

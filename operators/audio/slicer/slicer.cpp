@@ -13,6 +13,17 @@ struct SlicerData {
     std::shared_ptr<SampleData> sample;
 };
 
+/**
+ * @brief Sample slicer dividing audio into N equal segments triggered by note.
+ *
+ * Loads an audio file and divides it into equal slices. Each slice maps
+ * to a MIDI note starting from note 36 (C2). Supports one-shot, loop,
+ * and gate play modes with per-voice ADSR.
+ *
+ * @param slices Number of equal divisions of the sample.
+ * @param mode one_shot plays once, loop repeats the slice, gate sustains while held.
+ * @see Sampler, SP404, DrumSequencer
+ */
 struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName = "Slicer";
     static constexpr bool kTimeDependent = false;
@@ -37,6 +48,17 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
     std::string last_path_;
     uint64_t frame_counter_ = 0;
     int last_slices_ = -1;
+
+    Slicer() {
+        vivid::description(file, "Audio file to slice");
+        vivid::description(slices, "Number of equal slices to divide the sample into");
+        vivid::description(mode, "Playback mode: one_shot plays once, loop repeats, gate sustains while held");
+        vivid::description(attack, "Envelope attack time in seconds");
+        vivid::description(decay, "Envelope decay time in seconds");
+        vivid::description(sustain, "Envelope sustain level (0-1)");
+        vivid::description(release, "Envelope release time in seconds");
+        vivid::description(volume, "Master output volume, can boost up to 2x");
+    }
 
     ~Slicer() {
         delete data_.load(std::memory_order_relaxed);

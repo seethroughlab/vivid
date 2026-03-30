@@ -2,6 +2,16 @@
 #include "operator_api/audio_dsp.h"
 #include "operator_api/thumbnail.h"
 
+/**
+ * @brief Colored noise generator with five spectral profiles.
+ *
+ * Generates white, pink, brown, blue, or violet noise. Each color has
+ * a distinct spectral slope -- white is flat, pink falls at 3 dB/octave,
+ * brown at 6 dB/octave, blue rises at 3 dB/octave, violet at 6 dB/octave.
+ *
+ * @tip Pink noise is useful for testing frequency response. Brown works well as a modulation source.
+ * @see Oscillator, SpreadNoise
+ */
 struct Noise : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Noise";
     static constexpr bool kTimeDependent = false;  // uses PRNG state, not ctx->time
@@ -26,6 +36,8 @@ struct Noise : vivid::OperatorBase, vivid::AudioProcessable {
     Noise() {
         vivid::semantic_tag(amplitude, "amplitude_linear");
         vivid::semantic_shape(amplitude, "scalar");
+        vivid::description(color, "Spectral profile of the noise (white = flat, pink = -3 dB/oct, brown = -6 dB/oct)");
+        vivid::description(amplitude, "Output level of the noise signal");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

@@ -1,0 +1,16 @@
+{
+  "name": "Text",
+  "id": "text",
+  "domain": "gpu",
+  "source_file": "operators/gpu/text/text.cpp",
+  "brief": "Renders simple static text with configurable font, color, and position.",
+  "description": "Rasterizes text using TrueType fonts via stb_truetype. For animated\nor per-character effects, use RichText instead.",
+  "tips": [],
+  "related": [
+    "RichText"
+  ],
+  "has_docs": true,
+  "params": [],
+  "inputs": [],
+  "outputs": []
+}

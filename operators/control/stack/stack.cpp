@@ -1,16 +1,22 @@
 #include "operator_api/operator.h"
 #include <algorithm>
-
-// Stack — dual-cadence spread combiner.
-//
-// Concatenates or interleaves up to 4 input spreads into one output spread.
-// Stateless — identical behavior at both cadences.
-//
+/**
+ * @brief Combines up to 4 spreads into one via concatenation or interleaving.
+ *
+ * Merges input spreads A through D into a single output spread. Concat
+ * mode appends them end-to-end; interleave mode alternates elements.
+ *
+ * @see Alternate, PatTransform
+ */
 struct Stack : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Stack";
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<int> mode {"mode", 0, {"Concat","Interleave"}};
+
+    Stack() {
+        vivid::description(mode, "Concat appends spreads end-to-end; Interleave alternates elements");
+    }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&mode);  // 0

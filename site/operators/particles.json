@@ -1,0 +1,17 @@
+{
+  "name": "Particles",
+  "id": "particles",
+  "domain": "gpu",
+  "source_file": "operators/gpu/particles/particles.cpp",
+  "brief": "Spawns and renders soft particles with per-particle envelope control.",
+  "description": "Maintains a pool of up to 64 particles, spawning at a configurable rate.\nEach particle has position, velocity, and optional ADSR envelope for\ndynamic opacity and size. Renders as soft circles with additive glow.",
+  "tips": [],
+  "related": [
+    "Flocking",
+    "Trails"
+  ],
+  "has_docs": true,
+  "params": [],
+  "inputs": [],
+  "outputs": []
+}

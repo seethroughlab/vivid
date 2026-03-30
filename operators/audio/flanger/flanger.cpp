@@ -46,6 +46,14 @@ static constexpr float kCenterDelay = 0.002f;  // 2ms
 static constexpr float kMaxDepth    = 0.003f;  // 3ms
 static constexpr float kMaxDelay    = 0.006f;  // 6ms
 
+/**
+ * @brief Sine-modulated fractional delay with feedback for jet-like sweeps.
+ *
+ * Short delay line modulated by a sine LFO, creating comb-filtering that
+ * sweeps through the spectrum. Negative feedback inverts the comb pattern.
+ *
+ * @see Chorus, Phaser, Delay
+ */
 struct Flanger : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Flanger";
     static constexpr bool kTimeDependent = false;
@@ -69,19 +77,23 @@ struct Flanger : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::semantic_shape(rate, "scalar");
         vivid::semantic_unit(rate, "Hz");
         vivid::display_hint(rate, VIVID_DISPLAY_KNOB);
+        vivid::description(rate, "Speed of the LFO sweep in Hz");
 
         vivid::semantic_tag(depth, "probability_01");
         vivid::semantic_shape(depth, "scalar");
         vivid::display_hint(depth, VIVID_DISPLAY_KNOB);
+        vivid::description(depth, "How far the delay time sweeps from center (0 = none, 1 = full)");
 
         vivid::semantic_tag(feedback, "probability_01");
         vivid::semantic_shape(feedback, "scalar");
         vivid::display_hint(feedback, VIVID_DISPLAY_KNOB);
+        vivid::description(feedback, "Amount of output fed back into the delay; negative values invert the comb pattern");
 
         vivid::semantic_tag(mix, "probability_01");
         vivid::semantic_shape(mix, "scalar");
         vivid::semantic_intent(mix, "wet_mix");
         vivid::display_hint(mix, VIVID_DISPLAY_KNOB);
+        vivid::description(mix, "Blend between dry input and flanged signal");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

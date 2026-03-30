@@ -1,7 +1,17 @@
 #include "operator_api/operator.h"
 #include <algorithm>
 #include <cmath>
-
+/**
+ * @brief Eight-state sequencer with beat-quantized transitions and crossfade.
+ *
+ * Progresses through up to 8 states with configurable duration per state.
+ * Transitions can be sequential, manual (trigger-driven), or threshold-based.
+ * Supports crossfade between states for smooth blending.
+ *
+ * @param transition Transition mode: sequential, manual, or threshold.
+ * @param xfade_mode How states blend: cut, crossfade, or morph.
+ * @see Clock, Sequencer, Envelope
+ */
 struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "StateMachine";
     static constexpr bool kTimeDependent = false;

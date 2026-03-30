@@ -1,0 +1,17 @@
+{
+  "name": "Scopes",
+  "id": "scopes",
+  "domain": "gpu",
+  "source_file": "operators/gpu/scopes/scopes.cpp",
+  "brief": "Real-time waveform, histogram, vectorscope, and parade analysis.",
+  "description": "Analyzes an input texture and renders one of four scope types:\nwaveform (luminance plot), histogram (level distribution), vectorscope\n(CbCr color plot), or parade (per-channel waveforms).",
+  "tips": [],
+  "related": [
+    "TextureAnalysis",
+    "AudioAnalysis"
+  ],
+  "has_docs": true,
+  "params": [],
+  "inputs": [],
+  "outputs": []
+}

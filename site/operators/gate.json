@@ -1,0 +1,18 @@
+{
+  "name": "Gate",
+  "id": "gate",
+  "domain": "control",
+  "source_file": "operators/control/gate/gate.cpp",
+  "brief": "Passes or blocks a signal based on a gate threshold.",
+  "description": "When the gate input exceeds the threshold, the signal passes through.\nOtherwise outputs zero. Optional invert mode reverses the logic.",
+  "tips": [],
+  "related": [
+    "Logic",
+    "SampleHold",
+    "Math"
+  ],
+  "has_docs": true,
+  "params": [],
+  "inputs": [],
+  "outputs": []
+}

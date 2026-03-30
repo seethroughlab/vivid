@@ -166,9 +166,15 @@ struct Trail {
 struct LfoPool {
     std::vector<vivid::ChildOp<LFO>> pool;
 };
-
-// ── Operator ────────────────────────────────────────────────────────────
-
+/**
+ * @brief Autonomous motion trails with physics, decay, and hue shift.
+ *
+ * Simulates up to 32 trail heads moving with configurable speed and
+ * curvature. Renders capsule SDFs with per-trail LFO modulation on
+ * width, opacity, and color. Persistent feedback texture provides decay.
+ *
+ * @see Feedback, Particles
+ */
 struct Trails : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Trails";
     static constexpr bool kTimeDependent = true;

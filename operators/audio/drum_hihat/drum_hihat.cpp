@@ -3,13 +3,16 @@
 #include "operator_api/midi_types.h"
 #include "operator_api/type_id.h"
 
-// ---------------------------------------------------------------------------
-// DrumHiHat: Filtered noise + 6 metallic ring oscillators
-//
-// Square waves at classic 808 hi-hat frequencies, SVF highpass filtered.
-// Short decay = closed hat, long decay = open hat.
-// ---------------------------------------------------------------------------
-
+/**
+ * @brief Synthesized hi-hat from 6 metallic oscillators and noise.
+ *
+ * Blends 6 ring oscillators at metallic frequency ratios with filtered
+ * noise. The ring parameter controls the oscillator-to-noise ratio.
+ * Short decay for closed hat, longer for open.
+ *
+ * @param ring Balance between metallic oscillators (1) and noise (0).
+ * @see DrumCymbal, DrumClap, DrumKit
+ */
 struct DrumHiHat : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "DrumHiHat";
     static constexpr bool kTimeDependent = true;
@@ -32,16 +35,25 @@ struct DrumHiHat : vivid::OperatorBase, vivid::AudioProcessable {
     float               prev_trigger_ = 0.0f;
 
     DrumHiHat() {
+        vivid::description(decay, "Amplitude decay time in seconds (short = closed, long = open)");
         vivid::semantic_tag(decay, "time_seconds");
         vivid::semantic_shape(decay, "scalar");
         vivid::semantic_unit(decay, "s");
 
+        vivid::description(tone, "Highpass filter brightness (higher = more sizzle)");
+        vivid::description(ring, "Balance between metallic oscillators and noise (0 = noise, 1 = ring)");
+        vivid::description(pitch, "Pitch multiplier for the metallic oscillator bank");
+
+        vivid::description(attack, "Amplitude ramp-up time in seconds (0 = instant)");
         vivid::semantic_tag(attack, "time_seconds");
         vivid::semantic_shape(attack, "scalar");
         vivid::semantic_unit(attack, "s");
 
+        vivid::description(volume, "Overall output level");
         vivid::semantic_tag(volume, "amplitude_linear");
         vivid::semantic_shape(volume, "scalar");
+
+        vivid::description(note, "MIDI note number that triggers this drum (0-127)");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

@@ -1,0 +1,27 @@
+{
+  "name": "DrumClap",
+  "id": "drum_clap",
+  "domain": "audio",
+  "source_file": "operators/audio/drum_clap/drum_clap.cpp",
+  "brief": "Synthesized hand clap with staggered noise bursts and filtered tail.",
+  "description": "Generates a clap sound from 4 randomly-timed noise bursts through a\nbandpass filter, followed by a filtered noise tail for body. Supports\nboth trigger input and MIDI velocity.",
+  "tips": [],
+  "related": [
+    "DrumSnare",
+    "DrumKick",
+    "DrumKit"
+  ],
+  "has_docs": true,
+  "params": [
+    {
+      "name": "sloppy",
+      "doc": "Timing randomization between the initial bursts."
+    },
+    {
+      "name": "tail",
+      "doc": "Amount of filtered noise tail after the initial bursts."
+    }
+  ],
+  "inputs": [],
+  "outputs": []
+}

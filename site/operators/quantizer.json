@@ -1,0 +1,23 @@
+{
+  "name": "Quantizer",
+  "id": "quantizer",
+  "domain": "control",
+  "source_file": "operators/control/quantizer/quantizer.cpp",
+  "brief": "Quantizes a control signal to scale degrees, range grid, or uniform steps.",
+  "description": "Three modes: pitch mode snaps to the nearest note in a musical scale,\nrange mode divides a min-max range into equal bins, and steps mode\nquantizes to N uniform levels.",
+  "tips": [],
+  "related": [
+    "Math",
+    "NotePattern",
+    "Smooth"
+  ],
+  "has_docs": true,
+  "params": [
+    {
+      "name": "scale",
+      "doc": "Musical scale used in pitch mode: chromatic, major, minor, pentatonic, etc."
+    }
+  ],
+  "inputs": [],
+  "outputs": []
+}

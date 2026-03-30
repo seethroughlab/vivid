@@ -1,0 +1,18 @@
+{
+  "name": "Sequencer",
+  "id": "sequencer",
+  "domain": "control",
+  "source_file": "operators/control/sequencer/sequencer.cpp",
+  "brief": "Multi-spread step sequencer with ratchets and probability.",
+  "description": "Sequences up to 128 steps consuming per-step values, probabilities,\nand ratchet counts from input spreads. Outputs notes, velocities, and\ngates as both spreads and scalar signals with MIDI output.",
+  "tips": [],
+  "related": [
+    "PatternSeq",
+    "StepSeq",
+    "Arpeggiator"
+  ],
+  "has_docs": true,
+  "params": [],
+  "inputs": [],
+  "outputs": []
+}

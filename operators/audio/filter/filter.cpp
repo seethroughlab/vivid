@@ -5,19 +5,18 @@
 #include <cmath>
 #include <cstring>
 
-// ---------------------------------------------------------------------------
-// Filter — Multi-mode filter with 14 types, drive, keytracking, and
-// per-voice modulation via channel_index (for auto-dup poly chains).
-//
-// Modes 0-3 (LP12, LP24, HP12, HP24) are biquad-based.
-// Modes 4-8 (BP, BP24, Notch, Peak, Allpass) are also biquad variants.
-// Modes 9-13 (Comb, Ladder, Formant, Diode, MS-20) are character filters.
-//
-// In a polyphonic (N-channel) chain, the engine auto-dups this operator to
-// N instances. Each reads ctx->channel_index to get per-voice modulation
-// from spread inputs (cutoff_mod, frequencies for keytracking).
-// ---------------------------------------------------------------------------
-
+/**
+ * @brief Multi-mode audio filter with 14 filter types and keytracking.
+ *
+ * Biquad-based filter supporting LP12, LP24, HP12, HP24, BP, BP24, Notch,
+ * Peak, Allpass, Comb, Ladder, Formant, Diode, and MS-20 modes. Keytracking
+ * shifts cutoff based on incoming note frequency for polyphonic chains.
+ *
+ * @tip Use Comb mode with short delay times for Karplus-Strong-like string sounds.
+ * @param mode Filter algorithm. Each mode has a distinct character.
+ * @param keytrack Scales cutoff with note frequency. 1 = full tracking.
+ * @see ParametricEQ, Vocoder
+ */
 struct Filter : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Filter";
     static constexpr bool kTimeDependent = false;
@@ -45,13 +44,18 @@ struct Filter : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::semantic_shape(cutoff, "scalar");
         vivid::semantic_unit(cutoff, "Hz");
         vivid::display_hint(cutoff, VIVID_DISPLAY_KNOB);
+        vivid::description(cutoff, "Filter cutoff frequency in Hz");
 
         vivid::semantic_tag(resonance, "resonance");
         vivid::semantic_shape(resonance, "scalar");
         vivid::display_hint(resonance, VIVID_DISPLAY_KNOB);
+        vivid::description(resonance, "Emphasis at the cutoff frequency (0 = flat, 1 = self-oscillation)");
 
+        vivid::description(mode, "Filter algorithm: LP, HP, BP, Notch, Comb, Ladder, Formant, and more");
         vivid::display_hint(drive, VIVID_DISPLAY_KNOB);
+        vivid::description(drive, "Nonlinear saturation applied inside the filter");
         vivid::display_hint(keytrack, VIVID_DISPLAY_KNOB);
+        vivid::description(keytrack, "Scales cutoff with note frequency (1 = full tracking)");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

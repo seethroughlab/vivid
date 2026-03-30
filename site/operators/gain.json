@@ -1,0 +1,18 @@
+{
+  "name": "Gain",
+  "id": "gain",
+  "domain": "audio",
+  "source_file": "operators/audio/gain/gain.cpp",
+  "brief": "Simple amplitude multiplier with CV modulation.",
+  "description": "Scales the input signal by a gain factor. Connect a control signal\nto the amplitude CV input for dynamic volume control.",
+  "tips": [],
+  "related": [
+    "Mixer",
+    "Compressor",
+    "Limiter"
+  ],
+  "has_docs": true,
+  "params": [],
+  "inputs": [],
+  "outputs": []
+}

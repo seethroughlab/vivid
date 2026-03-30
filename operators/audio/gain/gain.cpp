@@ -1,5 +1,13 @@
 #include "operator_api/operator.h"
 
+/**
+ * @brief Simple amplitude multiplier with CV modulation.
+ *
+ * Scales the input signal by a gain factor. Connect a control signal
+ * to the amplitude CV input for dynamic volume control.
+ *
+ * @see Mixer, Compressor, Limiter
+ */
 struct Gain : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Gain";
     static constexpr bool kTimeDependent = true;
@@ -10,6 +18,7 @@ struct Gain : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::semantic_tag(gain, "amplitude_linear");
         vivid::semantic_shape(gain, "scalar");
         vivid::semantic_intent(gain, "input_gain");
+        vivid::description(gain, "Scales the input signal amplitude (0 = silence, 1 = unity)");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

@@ -1,7 +1,11 @@
 #include "operator_api/operator.h"
 
 #include <string>
-
+/**
+ * @brief Extracts the filename from a full file path string.
+ *
+ * @see FolderList, StringSelect
+ */
 struct Basename : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "Basename";
     static constexpr bool kTimeDependent = false;

@@ -1,0 +1,17 @@
+{
+  "name": "Composite",
+  "id": "composite",
+  "domain": "gpu",
+  "source_file": "operators/gpu/composite/composite.cpp",
+  "brief": "Blends two textures with configurable blend mode and opacity.",
+  "description": "Composites layer A over layer B using Normal, Add, Multiply, Screen,\nor Overlay blend modes. Disconnected inputs default to transparent.",
+  "tips": [],
+  "related": [
+    "Feedback",
+    "Bloom"
+  ],
+  "has_docs": true,
+  "params": [],
+  "inputs": [],
+  "outputs": []
+}

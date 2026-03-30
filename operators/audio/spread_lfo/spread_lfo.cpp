@@ -4,6 +4,16 @@
 #include <cstring>
 #include <algorithm>
 
+/**
+ * @brief Per-voice or shared LFO for polyphonic spread chains.
+ *
+ * Generates LFO signals as a spread matching active voices. In free mode,
+ * all voices share one phase. In per_voice mode, each voice resets phase
+ * on gate-on for independent modulation.
+ *
+ * @param mode free = shared phase, per_voice = independent per gate.
+ * @see LFO, SpreadADSR
+ */
 struct SpreadLFO : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "SpreadLFO";
     static constexpr bool kTimeDependent = true;
@@ -13,6 +23,14 @@ struct SpreadLFO : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<float> offset    {"offset",     0.0f,  0.0f,  10.0f};
     vivid::Param<int>   waveform  {"waveform",   0, {"sine", "saw", "square", "triangle"}};
     vivid::Param<int>   mode      {"mode",       0, {"free", "per_voice"}};
+
+    SpreadLFO() {
+        vivid::description(frequency, "LFO rate in Hz");
+        vivid::description(amplitude, "Output amplitude scale");
+        vivid::description(offset, "DC offset added to the LFO output");
+        vivid::description(waveform, "Oscillator shape: sine, saw, square, or triangle");
+        vivid::description(mode, "free = shared phase for all voices, per_voice = phase resets on gate-on");
+    }
 
     static constexpr int kMaxSlots = 16;
 

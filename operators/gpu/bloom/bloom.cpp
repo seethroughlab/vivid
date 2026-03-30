@@ -193,11 +193,16 @@ struct BloomUniforms {
     float texel_h;
     float _pad0, _pad1, _pad2;
 };
-
-// =============================================================================
-// Bloom Operator
-// =============================================================================
-
+/**
+ * @brief Multi-pass glow effect with threshold, blur, and composite.
+ *
+ * Extracts bright pixels above a luminance threshold, applies iterative
+ * Gaussian blur, and composites the glow back over the original image.
+ *
+ * @param threshold Luminance cutoff for bright pixels.
+ * @param passes Number of blur iterations. More = wider, softer glow.
+ * @see Composite, Feedback
+ */
 struct Bloom : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Bloom";
     static constexpr bool kTimeDependent = false;

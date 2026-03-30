@@ -1,0 +1,29 @@
+{
+  "name": "FmSynth",
+  "id": "fm_synth",
+  "domain": "audio",
+  "source_file": "operators/audio/fm_synth/fm_synth.cpp",
+  "brief": "Two-operator FM synthesizer with ADSR envelope.",
+  "description": "Classic FM synthesis with a carrier and modulator oscillator. The\nmodulator frequency is set as a ratio of the carrier, and the modulation\nindex controls harmonic richness. Supports polyphonic spread inputs\nfor sequencer integration.",
+  "tips": [
+    "Integer mod_ratio values produce harmonic timbres; non-integer values create bell-like inharmonic sounds."
+  ],
+  "related": [
+    "Oscillator",
+    "Filter",
+    "SpreadADSR"
+  ],
+  "has_docs": true,
+  "params": [
+    {
+      "name": "mod_ratio",
+      "doc": "Modulator frequency as a multiple of the carrier."
+    },
+    {
+      "name": "mod_index",
+      "doc": "Depth of frequency modulation. Higher = more harmonics."
+    }
+  ],
+  "inputs": [],
+  "outputs": []
+}

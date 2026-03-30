@@ -123,11 +123,16 @@ struct RichTextUniforms {
     float resolution_x, resolution_y;
     float _pad0, _pad1, _pad2;
 };
-
-// =============================================================================
-// Rich Text Operator
-// =============================================================================
-
+/**
+ * @brief Animated text with per-character effects.
+ *
+ * Renders text with TrueType fonts and applies per-character animation:
+ * wave (sine offset), typewriter (progressive reveal), scatter (fly-in),
+ * or fade (progressive alpha). Supports alignment and line height control.
+ *
+ * @param anim_mode Animation style: None, Wave, Typewriter, Scatter, or Fade.
+ * @see Text
+ */
 struct RichText : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Rich Text";
     static constexpr bool kTimeDependent = true;

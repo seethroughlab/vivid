@@ -1,0 +1,20 @@
+{
+  "name": "Smooth",
+  "id": "smooth",
+  "domain": "control",
+  "source_file": "operators/control/smooth/smooth.h",
+  "brief": "Exponential smoothing with separate rise and fall times.",
+  "description": "First-order low-pass filter with independent time constants for rising\nand falling signals. Use it to smooth stepped or noisy control signals,\nor to add slew to abrupt parameter changes.",
+  "tips": [
+    "Set rise_time=0 and a long fall_time for a peak-hold-then-decay effect."
+  ],
+  "related": [
+    "LFO",
+    "SampleHold",
+    "Envelope"
+  ],
+  "has_docs": true,
+  "params": [],
+  "inputs": [],
+  "outputs": []
+}

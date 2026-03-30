@@ -1,0 +1,25 @@
+{
+  "name": "Envelope",
+  "id": "envelope",
+  "domain": "control",
+  "source_file": "operators/control/envelope/envelope.h",
+  "brief": "ADSR envelope generator with curve shaping.",
+  "description": "Classic attack-decay-sustain-release envelope triggered by a gate input.\nSupports linear, exponential, and logarithmic curve shapes. Can also\nretrigger on beat phase wrap for rhythmic envelopes.",
+  "tips": [
+    "Connect beat_phase from a Clock to retrigger the envelope rhythmically."
+  ],
+  "related": [
+    "LFO",
+    "MSEG",
+    "SpreadADSR"
+  ],
+  "has_docs": true,
+  "params": [
+    {
+      "name": "curve",
+      "doc": "Envelope curve shape: linear, exponential, or logarithmic."
+    }
+  ],
+  "inputs": [],
+  "outputs": []
+}

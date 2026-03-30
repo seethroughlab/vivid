@@ -5,12 +5,15 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-
-// PatternSeq — dual-cadence step sequencer with probability and MIDI.
-//
-// Phase-driven beat tracking with rate multipliers, per-step probability,
-// gate output, and MIDI note-on/off. All timing is cadence-agnostic.
-//
+/**
+ * @brief Step sequencer with per-step values, probability, and MIDI output.
+ *
+ * Sequences up to 16 steps with configurable values and gate probability.
+ * Outputs the current value, trigger, gate, step index, and the full
+ * pattern as a spread.
+ *
+ * @see StepSeq, Sequencer, Euclidean
+ */
 struct PatternSeq : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "PatternSeq";
     static constexpr bool kTimeDependent = true;

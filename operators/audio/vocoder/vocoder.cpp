@@ -18,6 +18,18 @@ struct BandState {
     float envelope = 0.0f;                     // Envelope follower
 };
 
+/**
+ * @brief Channel vocoder analyzing a modulator to shape a carrier signal.
+ *
+ * Splits both modulator and carrier through parallel bandpass filter
+ * banks (4-32 bands). Envelope followers on the modulator bands control
+ * the amplitude of corresponding carrier bands, transferring the spectral shape.
+ *
+ * @tip Use speech as modulator and a rich synth (saw wave) as carrier for classic robot voice.
+ * @input modulator The signal whose spectral envelope is extracted (typically voice).
+ * @input carrier The signal being shaped (typically a synth or noise).
+ * @see Filter, ParametricEQ, SpectralFreeze
+ */
 struct Vocoder : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Vocoder";
     static constexpr bool kTimeDependent = false;
@@ -32,16 +44,19 @@ struct Vocoder : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::semantic_tag(bands, "count");
         vivid::semantic_shape(bands, "scalar");
         vivid::display_hint(bands, VIVID_DISPLAY_KNOB);
+        vivid::description(bands, "Number of frequency bands in the filter bank (4-32)");
 
         vivid::semantic_tag(envelope_speed, "time_milliseconds");
         vivid::semantic_shape(envelope_speed, "scalar");
         vivid::semantic_unit(envelope_speed, "ms");
         vivid::display_hint(envelope_speed, VIVID_DISPLAY_KNOB);
+        vivid::description(envelope_speed, "Envelope follower response time in milliseconds");
 
         vivid::semantic_tag(mix, "probability_01");
         vivid::semantic_shape(mix, "scalar");
         vivid::semantic_intent(mix, "wet_mix");
         vivid::display_hint(mix, VIVID_DISPLAY_KNOB);
+        vivid::description(mix, "Blend between dry modulator and vocoded signal");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

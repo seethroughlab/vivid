@@ -37,6 +37,14 @@ struct DelayLine {
 
 static constexpr float kMaxDelaySeconds = 2.0f;
 
+/**
+ * @brief Mono feedback delay line with up to 2 seconds of delay.
+ *
+ * Classic echo effect with adjustable delay time, feedback, and dry/wet
+ * mix. Includes DC blocking on the feedback path to prevent buildup.
+ *
+ * @see PingPongDelay, Chorus, Reverb
+ */
 struct Delay : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Delay";
     static constexpr bool kTimeDependent = false;
@@ -57,13 +65,16 @@ struct Delay : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::semantic_tag(time, "time_milliseconds");
         vivid::semantic_shape(time, "scalar");
         vivid::semantic_unit(time, "ms");
+        vivid::description(time, "Delay time in milliseconds (up to 2 seconds)");
 
         vivid::semantic_tag(feedback, "probability_01");
         vivid::semantic_shape(feedback, "scalar");
+        vivid::description(feedback, "Amount of delayed signal fed back into the delay line");
 
         vivid::semantic_tag(mix, "probability_01");
         vivid::semantic_shape(mix, "scalar");
         vivid::semantic_intent(mix, "wet_mix");
+        vivid::description(mix, "Dry/wet blend (0 = dry, 1 = fully delayed)");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

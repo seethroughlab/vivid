@@ -1,6 +1,14 @@
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 
+/**
+ * @brief Receives video frames via Syphon (macOS inter-app video sharing).
+ *
+ * Captures frames from a Syphon server published by another application.
+ * Select a specific server or use auto-detection.
+ *
+ * @see SyphonOut, WebcamIn
+ */
 struct SyphonIn : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "SyphonIn";
     static constexpr bool kTimeDependent = true;

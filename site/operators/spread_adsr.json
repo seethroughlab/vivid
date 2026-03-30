@@ -1,0 +1,18 @@
+{
+  "name": "SpreadADSR",
+  "id": "spread_adsr",
+  "domain": "audio",
+  "source_file": "operators/audio/spread_adsr/spread_adsr.cpp",
+  "brief": "Per-voice ADSR envelopes for polyphonic spread chains.",
+  "description": "Generates independent ADSR envelopes for each active voice in a spread.\nConnect to a spread gate source (like MidiInput or Sequencer) and route\nthe envelope output to control amplitude or filter cutoff per voice.",
+  "tips": [],
+  "related": [
+    "Envelope",
+    "SpreadLFO",
+    "FmSynth"
+  ],
+  "has_docs": true,
+  "params": [],
+  "inputs": [],
+  "outputs": []
+}

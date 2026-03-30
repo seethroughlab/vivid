@@ -1,7 +1,16 @@
 #include "operator_api/operator.h"
 #include <algorithm>
 #include <cstdint>
-
+/**
+ * @brief Transforms a spread pattern with reverse, rotate, scale, and probability.
+ *
+ * Applies a chain of transformations to an input spread: reverse, rotate
+ * by N positions, scale and offset all values, then probabilistically
+ * mask elements using a deterministic hash.
+ *
+ * @param probability Chance each element survives (1.0 = all pass, 0.0 = all masked).
+ * @see Stack, Alternate, Euclidean
+ */
 struct PatTransform : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "PatTransform";
     static constexpr bool kTimeDependent = false;

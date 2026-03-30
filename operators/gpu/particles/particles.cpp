@@ -114,9 +114,15 @@ struct Particle {
     bool  active = false;
     bool  released = false;  // gate-off sent, waiting for envelope to finish
 };
-
-// ── Operator ────────────────────────────────────────────────────────────
-
+/**
+ * @brief Spawns and renders soft particles with per-particle envelope control.
+ *
+ * Maintains a pool of up to 64 particles, spawning at a configurable rate.
+ * Each particle has position, velocity, and optional ADSR envelope for
+ * dynamic opacity and size. Renders as soft circles with additive glow.
+ *
+ * @see Flocking, Trails
+ */
 struct Particles : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Particles";
     static constexpr bool kTimeDependent = true;

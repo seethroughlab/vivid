@@ -1,0 +1,17 @@
+{
+  "name": "MeshWarp",
+  "id": "mesh_warp",
+  "domain": "gpu",
+  "source_file": "operators/gpu/mesh_warp/mesh_warp.cpp",
+  "brief": "Warps a texture via bicubic-interpolated control point grid.",
+  "description": "Defines a grid of draggable control points that deform the source\ntexture using Catmull-Rom bicubic interpolation. Optional grid overlay\nshows control points and mesh lines.",
+  "tips": [],
+  "related": [
+    "Feedback",
+    "TimeMachine"
+  ],
+  "has_docs": true,
+  "params": [],
+  "inputs": [],
+  "outputs": []
+}

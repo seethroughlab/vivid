@@ -12,7 +12,16 @@
 #include <string>
 #include <thread>
 #include <vector>
-
+/**
+ * @brief OSC server receiving values over UDP.
+ *
+ * Listens on a configurable UDP port for OSC messages matching an address
+ * pattern. Parses the first argument and outputs its value plus a trigger
+ * on each new message.
+ *
+ * @param address OSC address to match (e.g. /sensor/value).
+ * @see OscOut, MidiInput
+ */
 struct OscIn : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "OscIn";
     static constexpr bool kTimeDependent = true;
@@ -22,6 +31,10 @@ struct OscIn : vivid::OperatorBase, vivid::FrameProcessable {
     vivid::Param<bool> strict_address{"strict_address", true};
 
     OscIn() {
+        vivid::description(listen_port, "UDP port to listen on for incoming OSC messages");
+        vivid::description(address, "OSC address pattern to match (e.g. /sensor/value)");
+        vivid::description(strict_address, "When on, only exact address matches are accepted");
+
         vivid::semantic_tag(listen_port, "x_network_port");
         vivid::semantic_shape(listen_port, "int");
 

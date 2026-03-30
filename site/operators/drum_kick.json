@@ -1,0 +1,31 @@
+{
+  "name": "DrumKick",
+  "id": "drum_kick",
+  "domain": "audio",
+  "source_file": "operators/audio/drum_kick/drum_kick.cpp",
+  "brief": "Synthesized kick drum with pitch envelope and click transient.",
+  "description": "Sine oscillator with exponential pitch sweep, optional harmonic\novertones, a short noise click for attack, and tanh soft clipping\nfor drive.",
+  "tips": [],
+  "related": [
+    "DrumSnare",
+    "DrumTom",
+    "DrumKit"
+  ],
+  "has_docs": true,
+  "params": [
+    {
+      "name": "pitch_env",
+      "doc": "Frequency sweep range added to base pitch on trigger."
+    },
+    {
+      "name": "click",
+      "doc": "Amount of noise burst at the attack transient."
+    },
+    {
+      "name": "overtones",
+      "doc": "Harmonic content added to the fundamental."
+    }
+  ],
+  "inputs": [],
+  "outputs": []
+}

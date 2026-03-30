@@ -169,9 +169,15 @@ struct Boid {
 struct LfoPool {
     std::vector<vivid::ChildOp<LFO>> pool;
 };
-
-// ── Operator ────────────────────────────────────────────────────────────
-
+/**
+ * @brief 2D Reynolds boids simulation with per-boid LFO modulation.
+ *
+ * Simulates up to 64 boids with classic separation, alignment, and cohesion
+ * forces. Renders oriented triangle SDFs with optional elongated trails.
+ * Per-boid LFO modulation on speed, separation, and alignment.
+ *
+ * @see Particles, Trails
+ */
 struct Flocking : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Flocking";
     static constexpr bool kTimeDependent = true;

@@ -1,0 +1,26 @@
+{
+  "name": "ReactionDiffusion",
+  "id": "reaction_diffusion",
+  "domain": "gpu",
+  "source_file": "operators/gpu/reaction_diffusion/reaction_diffusion.cpp",
+  "brief": "Gray-Scott reaction-diffusion with LFO-modulated parameters.",
+  "description": "Simulates the Gray-Scott model on a 2D grid with configurable feed\nand kill rates. LFO modulation on feed, kill, and diffusion creates\nevolving organic patterns. Multiple color palettes available.",
+  "tips": [],
+  "related": [
+    "CellularAutomata",
+    "Fluid"
+  ],
+  "has_docs": true,
+  "params": [
+    {
+      "name": "feed_rate",
+      "doc": "Rate of chemical A replenishment."
+    },
+    {
+      "name": "kill_rate",
+      "doc": "Rate of chemical B removal."
+    }
+  ],
+  "inputs": [],
+  "outputs": []
+}

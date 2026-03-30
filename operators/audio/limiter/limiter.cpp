@@ -3,10 +3,17 @@
 #include <cmath>
 #include <vector>
 
-// ---------------------------------------------------------------------------
-// Brickwall lookahead limiter for peak protection
-// ---------------------------------------------------------------------------
-
+/**
+ * @brief Brickwall lookahead limiter with smooth release.
+ *
+ * Prevents the signal from exceeding the ceiling level using lookahead
+ * peak detection for transparent limiting. Attack is instant; release
+ * smoothly returns to unity gain.
+ *
+ * @param ceiling Maximum output level in dB. -0.3 dB is a safe default.
+ * @param lookahead Anticipation time in ms. Longer catches faster transients but adds latency.
+ * @see Compressor, Gain
+ */
 struct Limiter : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Limiter";
     static constexpr bool kTimeDependent = false;
@@ -27,16 +34,19 @@ struct Limiter : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::semantic_shape(ceiling, "scalar");
         vivid::semantic_unit(ceiling, "dB");
         vivid::display_hint(ceiling, VIVID_DISPLAY_KNOB);
+        vivid::description(ceiling, "Maximum output level in dB; signal peaks are clamped here");
 
         vivid::semantic_tag(release, "time_milliseconds");
         vivid::semantic_shape(release, "scalar");
         vivid::semantic_unit(release, "ms");
         vivid::display_hint(release, VIVID_DISPLAY_KNOB);
+        vivid::description(release, "How quickly gain returns to unity after limiting, in milliseconds");
 
         vivid::semantic_tag(lookahead, "time_milliseconds");
         vivid::semantic_shape(lookahead, "scalar");
         vivid::semantic_unit(lookahead, "ms");
         vivid::display_hint(lookahead, VIVID_DISPLAY_KNOB);
+        vivid::description(lookahead, "Anticipation time in ms; longer values catch faster transients but add latency");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

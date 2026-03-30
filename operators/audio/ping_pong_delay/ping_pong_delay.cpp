@@ -52,6 +52,17 @@ struct OnePoleFilter {
 
 static constexpr float kMaxDelaySeconds = 2.0f;
 
+/**
+ * @brief Stereo ping-pong delay with cross-feed and feedback filtering.
+ *
+ * Alternates echoes between left and right channels. The spread parameter
+ * controls cross-feed between channels -- 0 is mono delay, 1 is full
+ * ping-pong. Optional low/high pass filter on the feedback path.
+ *
+ * @param spread Cross-feed amount. 0 = mono, 1 = full stereo alternation.
+ * @param filter Feedback filter mode. Tames harsh repeats or thins the tail.
+ * @see Delay, Reverb
+ */
 struct PingPongDelay : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "PingPongDelay";
     static constexpr bool kTimeDependent = false;
@@ -75,27 +86,33 @@ struct PingPongDelay : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::semantic_shape(time, "scalar");
         vivid::semantic_unit(time, "ms");
         vivid::display_hint(time, VIVID_DISPLAY_KNOB);
+        vivid::description(time, "Delay time in milliseconds");
 
         vivid::semantic_tag(feedback, "probability_01");
         vivid::semantic_shape(feedback, "scalar");
         vivid::display_hint(feedback, VIVID_DISPLAY_KNOB);
+        vivid::description(feedback, "Amount of delayed signal fed back into the delay line");
 
         vivid::semantic_tag(spread, "probability_01");
         vivid::semantic_shape(spread, "scalar");
         vivid::display_hint(spread, VIVID_DISPLAY_KNOB);
+        vivid::description(spread, "Stereo cross-feed amount (0 = mono delay, 1 = full ping-pong)");
 
         vivid::semantic_tag(filter, "x_filter_mode");
         vivid::semantic_shape(filter, "enum");
+        vivid::description(filter, "Filter applied to the feedback path: off, low-pass, or high-pass");
 
         vivid::semantic_tag(filter_freq, "frequency_hz");
         vivid::semantic_shape(filter_freq, "scalar");
         vivid::semantic_unit(filter_freq, "Hz");
         vivid::display_hint(filter_freq, VIVID_DISPLAY_KNOB);
+        vivid::description(filter_freq, "Cutoff frequency of the feedback filter in Hz");
 
         vivid::semantic_tag(mix, "probability_01");
         vivid::semantic_shape(mix, "scalar");
         vivid::semantic_intent(mix, "wet_mix");
         vivid::display_hint(mix, VIVID_DISPLAY_KNOB);
+        vivid::description(mix, "Blend between dry input and delayed signal");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

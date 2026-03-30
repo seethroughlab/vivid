@@ -1,0 +1,23 @@
+{
+  "name": "ChordProgression",
+  "id": "chord_progression",
+  "domain": "control",
+  "source_file": "operators/control/chord_progression/chord_progression.cpp",
+  "brief": "Diatonic chord sequencer with per-step voicing and extensions.",
+  "description": "Sequences up to 8 chords in a chosen key and mode, each with configurable\nscale degree, inversion, and extension (triad, 7th, add9). Outputs notes\nas a polyphonic spread and optional MIDI.",
+  "tips": [],
+  "related": [
+    "NotePattern",
+    "Arpeggiator",
+    "Sequencer"
+  ],
+  "has_docs": true,
+  "params": [
+    {
+      "name": "mode",
+      "doc": "Scale mode: Major, Minor, Dorian, Mixolydian, Harmonic Minor, Melodic Minor."
+    }
+  ],
+  "inputs": [],
+  "outputs": []
+}

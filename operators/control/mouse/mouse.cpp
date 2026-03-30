@@ -1,6 +1,13 @@
 #include "operator_api/operator.h"
 #include "operator_api/input_state.h"
-
+/**
+ * @brief Outputs mouse cursor position and button states.
+ *
+ * Reports the mouse position as normalized 0-1 coordinates and the state
+ * of left, right, and middle buttons as 0/1 signals.
+ *
+ * @see Keyboard, PathAnimate
+ */
 struct Mouse : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "Mouse";
     static constexpr bool kTimeDependent = true;

@@ -5,12 +5,16 @@
 #include <cmath>
 
 struct SmoothThumbState;
-
-// Smooth — dual-cadence control operator.
-//
-// Inherits both FrameProcessable and AudioProcessable, making it audio-capable.
-// State: first-order exponential smoothing with separate rise/fall time constants.
-//
+/**
+ * @brief Exponential smoothing with separate rise and fall times.
+ *
+ * First-order low-pass filter with independent time constants for rising
+ * and falling signals. Use it to smooth stepped or noisy control signals,
+ * or to add slew to abrupt parameter changes.
+ *
+ * @tip Set rise_time=0 and a long fall_time for a peak-hold-then-decay effect.
+ * @see LFO, SampleHold, Envelope
+ */
 struct Smooth : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Smooth";
     static constexpr bool kTimeDependent = true;
@@ -26,6 +30,9 @@ struct Smooth : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProces
         vivid::semantic_tag(fall_time, "time_seconds");
         vivid::semantic_shape(fall_time, "scalar");
         vivid::semantic_unit(fall_time, "s");
+
+        vivid::description(rise_time, "Smoothing time when the signal is rising, in seconds");
+        vivid::description(fall_time, "Smoothing time when the signal is falling, in seconds");
 
         // Display as side-by-side knobs
         vivid::layout_row(rise_time, 2, 0);

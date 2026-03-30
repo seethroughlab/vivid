@@ -4,16 +4,15 @@
 #include "operator_api/audio_dsp.h"
 #include "operator_api/midi_types.h"
 #include "operator_api/type_id.h"
-
-// ---------------------------------------------------------------------------
-// PhaseToMidi: Converts a [0,1) beat_phase signal into MIDI note-on messages.
-//
-// Detects phase wraps (same as Clock -> Sequencer convention) and emits
-// a note-on for the configured note/velocity on each wrap. This bridges
-// the Clock Phase layer to the MIDI layer for operators that only accept
-// midi_in (e.g., drum operators after the unified triggering convention).
-// ---------------------------------------------------------------------------
-
+/**
+ * @brief Converts beat phase wraps into MIDI note-on events.
+ *
+ * Detects phase wraps in a 0-1 beat_phase signal and emits a MIDI note-on
+ * for the configured note and velocity. Bridges the Clock/phase layer to
+ * MIDI-only operators like drum synths.
+ *
+ * @see Clock, MidiInput, DrumKit
+ */
 struct PhaseToMidi : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "PhaseToMidi";
     static constexpr bool kTimeDependent = false;

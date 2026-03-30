@@ -1,12 +1,16 @@
 #include "operator_api/operator.h"
 #include <cmath>
 #include <algorithm>
-
-// Quantizer — dual-cadence control operator.
-//
-// Inherits both FrameProcessable and AudioProcessable, making it audio-capable.
-// Stateless: quantizes input to pitch scale degrees, range steps, or uniform steps.
-//
+/**
+ * @brief Quantizes a control signal to scale degrees, range grid, or uniform steps.
+ *
+ * Three modes: pitch mode snaps to the nearest note in a musical scale,
+ * range mode divides a min-max range into equal bins, and steps mode
+ * quantizes to N uniform levels.
+ *
+ * @param scale Musical scale used in pitch mode: chromatic, major, minor, pentatonic, etc.
+ * @see Math, NotePattern, Smooth
+ */
 struct Quantizer : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Quantizer";
     static constexpr bool kTimeDependent = false;
@@ -20,6 +24,13 @@ struct Quantizer : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPro
     vivid::Param<float> max_val  {"max_val",   1.0f, -10000.0f, 10000.0f};
 
     Quantizer() {
+        vivid::description(mode, "Quantization method: pitch snaps to scale notes, range divides a region, steps uses uniform levels");
+        vivid::description(scale, "Musical scale used in pitch mode");
+        vivid::description(root, "Root note of the scale as semitone offset (0 = C)");
+        vivid::description(num_steps, "Number of quantization steps for range and steps modes");
+        vivid::description(min_val, "Lower bound of the quantization range");
+        vivid::description(max_val, "Upper bound of the quantization range");
+
         vivid::semantic_shape(mode, "enum");
         vivid::semantic_shape(scale, "enum");
         vivid::semantic_shape(root, "int");

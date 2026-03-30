@@ -1,0 +1,22 @@
+{
+  "name": "InstancedShapes",
+  "id": "instanced_shapes",
+  "domain": "gpu",
+  "source_file": "operators/gpu/instanced_shapes/instanced_shapes.cpp",
+  "brief": "Renders N SDF shapes with per-instance layout and LFO modulation.",
+  "description": "Draws up to 64 instances of a chosen SDF shape (circle, polygon, star)\narranged in grid, circle, line, or random layouts. Per-instance LFO\nmodulation on scale, rotation, and color.",
+  "tips": [],
+  "related": [
+    "Shape",
+    "Particles"
+  ],
+  "has_docs": true,
+  "params": [
+    {
+      "name": "layout",
+      "doc": "Arrangement: Random, Grid, Circle, or Line."
+    }
+  ],
+  "inputs": [],
+  "outputs": []
+}

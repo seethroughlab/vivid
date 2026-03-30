@@ -1,0 +1,18 @@
+{
+  "name": "MovieFileIn",
+  "id": "movie_file_in",
+  "domain": "gpu",
+  "source_file": "operators/gpu/movie_file_in/movie_file_in.cpp",
+  "brief": "Video file playback with frame-accurate timing and audio sync.",
+  "description": "Plays MP4, MOV, MKV, WebM and other video formats. Supports GPU-compressed\ntextures (BC1/BC3/BC4) and YCoCg color space decoding. Audio sync via\noptional audio_time input from MovieFileAudio.",
+  "tips": [],
+  "related": [
+    "TextureLoader",
+    "WebcamIn",
+    "MovieFileAudio"
+  ],
+  "has_docs": true,
+  "params": [],
+  "inputs": [],
+  "outputs": []
+}

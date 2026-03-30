@@ -7,15 +7,31 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-// LFO — dual-cadence control operator.
-//
-// Inherits both FrameProcessable and AudioProcessable, making it audio-capable:
-//   - At frame-rate (~60 Hz): computes one output value per tick via process_frame()
-//   - At audio-rate (~48 kHz): computes one value per sample via process_audio()
-//
-// VIVID_REGISTER detects both interfaces and sets:
-//   cadence_capability = VIVID_CADENCE_AUDIO_CAPABLE
-//
+/**
+ * @brief Low-frequency oscillator for parameter modulation.
+ *
+ * Generates periodic or random control signals at frame-rate (~60 Hz) or
+ * audio-rate (~48 kHz). Connect the `value` output to any numeric parameter
+ * for animation, or wire it into other control operators.
+ *
+ * Supports seven waveforms including two random modes: **sample & hold**
+ * (stepped random on each cycle) and **smooth random** (Catmull-Rom
+ * interpolated). Use the `gate` input to reset phase and trigger fade-in;
+ * use `beat_phase` with `rate_mode=sync` for tempo-locked modulation.
+ *
+ * @tip Use unipolar mode when driving parameters that expect 0-1 (like mix knobs).
+ * @tip Connect a Clock's beat_phase output and set rate_mode=sync for tempo-locked sweeps.
+ * @tip The slew param smooths all waveforms — useful for softening square or S&H steps.
+ * @see Envelope, Clock, Math, Smooth
+ * @param frequency Oscillation rate in Hz (ignored when synced to beat_phase).
+ * @param waveform Shape of the output wave. sample_hold and smooth_random use the seed param.
+ * @param rate_mode free = internal clock, sync = driven by beat_phase input.
+ * @param polarity bipolar = -1..1, unipolar = 0..1.
+ * @param slew Smooths output transitions. Higher values = more lag.
+ * @input gate Rising edge resets phase and starts fade-in timer.
+ * @input beat_phase External phase source (0-1 sawtooth from Clock) for sync mode.
+ * @output value The computed LFO signal.
+ */
 struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "LFO";
     static constexpr bool kTimeDependent = true;
@@ -50,19 +66,32 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
         vivid::semantic_tag(frequency, "frequency_hz");
         vivid::semantic_shape(frequency, "scalar");
         vivid::semantic_unit(frequency, "Hz");
+        vivid::description(frequency, "Oscillation rate in cycles per second");
 
         vivid::semantic_tag(amplitude, "amplitude_linear");
         vivid::semantic_shape(amplitude, "scalar");
+        vivid::description(amplitude, "Peak output level of the waveform");
 
         vivid::semantic_tag(offset, "amplitude_linear");
         vivid::semantic_shape(offset, "scalar");
         vivid::semantic_intent(offset, "dc_offset");
+        vivid::description(offset, "Constant value added to the output signal");
+
+        vivid::description(waveform, "Shape of the oscillation cycle");
+        vivid::description(rate_mode, "Free runs independently; sync locks to the global clock");
+        vivid::description(polarity, "Bipolar swings above and below zero; unipolar stays positive");
+        vivid::description(phase_offset, "Starting point in the cycle (0 = beginning, 1 = full cycle)");
+        vivid::description(fade_in, "Seconds to ramp from zero to full amplitude on start");
 
         vivid::semantic_tag(slew, "probability_01");
         vivid::semantic_shape(slew, "scalar");
+        vivid::description(slew, "Smooths abrupt value changes in stepped waveforms");
 
         vivid::semantic_tag(seed, "seed");
         vivid::semantic_shape(seed, "int");
+        vivid::description(seed, "Random seed for noise and sample-hold waveforms");
+
+        vivid::description(distribution, "Noise distribution: uniform or bell-curved gaussian");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

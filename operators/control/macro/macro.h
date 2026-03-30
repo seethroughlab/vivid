@@ -1,12 +1,14 @@
 #pragma once
 
 #include "operator_api/operator.h"
-
-// Macro — dual-cadence control operator.
-//
-// Inherits both FrameProcessable and AudioProcessable, making it audio-capable.
-// Stateless: output = value * amplitude + offset.
-//
+/**
+ * @brief Simple scalar transform mapping a value through amplitude and offset.
+ *
+ * Outputs `value * amplitude + offset`. Useful for rescaling control
+ * signals to a desired range, or as a manually-tweakable control source.
+ *
+ * @see Math, Smooth, LFO
+ */
 struct Macro : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Macro";
     static constexpr bool kTimeDependent = false;
@@ -26,6 +28,10 @@ struct Macro : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcess
         vivid::semantic_tag(offset, "amplitude_linear");
         vivid::semantic_shape(offset, "scalar");
         vivid::semantic_intent(offset, "dc_offset");
+
+        vivid::description(value, "Base control value before scaling (0–1)");
+        vivid::description(amplitude, "Multiplier applied to the base value");
+        vivid::description(offset, "Constant added after scaling");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

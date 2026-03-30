@@ -1,0 +1,1189 @@
+{
+  "schema_version": 1,
+  "operators": [
+    {
+      "name": "AudioAnalysis",
+      "id": "audio_analysis",
+      "domain": "audio",
+      "brief": "Passthrough audio analyzer outputting RMS, peak, and spectral features.",
+      "has_docs": true,
+      "related": [
+        "Scopes",
+        "TextureAnalysis"
+      ]
+    },
+    {
+      "name": "Bitcrush",
+      "id": "bitcrush",
+      "domain": "audio",
+      "brief": "Bit-depth reduction and sample-rate decimation effect.",
+      "has_docs": true,
+      "related": [
+        "Distortion",
+        "Filter",
+        "RingMod"
+      ]
+    },
+    {
+      "name": "Chorus",
+      "id": "chorus",
+      "domain": "audio",
+      "brief": "Multi-voice chorus effect with modulated fractional delay.",
+      "has_docs": true,
+      "related": [
+        "Flanger",
+        "Phaser",
+        "Delay"
+      ]
+    },
+    {
+      "name": "Compressor",
+      "id": "compressor",
+      "domain": "audio",
+      "brief": "Feed-forward dynamics compressor with soft knee and sidechain.",
+      "has_docs": true,
+      "related": [
+        "Limiter",
+        "Gain"
+      ]
+    },
+    {
+      "name": "Delay",
+      "id": "delay",
+      "domain": "audio",
+      "brief": "Mono feedback delay line with up to 2 seconds of delay.",
+      "has_docs": true,
+      "related": [
+        "PingPongDelay",
+        "Chorus",
+        "Reverb"
+      ]
+    },
+    {
+      "name": "Distortion",
+      "id": "distortion",
+      "domain": "audio",
+      "brief": "Tanh soft-clipping distortion with post-drive tone filter.",
+      "has_docs": true,
+      "related": [
+        "Bitcrush",
+        "RingMod",
+        "Filter"
+      ]
+    },
+    {
+      "name": "DrumClap",
+      "id": "drum_clap",
+      "domain": "audio",
+      "brief": "Synthesized hand clap with staggered noise bursts and filtered tail.",
+      "has_docs": true,
+      "related": [
+        "DrumSnare",
+        "DrumKick",
+        "DrumKit"
+      ]
+    },
+    {
+      "name": "DrumCymbal",
+      "id": "drum_cymbal",
+      "domain": "audio",
+      "brief": "Synthesized cymbal from 12 inharmonic ring oscillators.",
+      "has_docs": true,
+      "related": [
+        "DrumHiHat",
+        "DrumClap",
+        "DrumKit"
+      ]
+    },
+    {
+      "name": "DrumHiHat",
+      "id": "drum_hihat",
+      "domain": "audio",
+      "brief": "Synthesized hi-hat from 6 metallic oscillators and noise.",
+      "has_docs": true,
+      "related": [
+        "DrumCymbal",
+        "DrumClap",
+        "DrumKit"
+      ]
+    },
+    {
+      "name": "DrumKick",
+      "id": "drum_kick",
+      "domain": "audio",
+      "brief": "Synthesized kick drum with pitch envelope and click transient.",
+      "has_docs": true,
+      "related": [
+        "DrumSnare",
+        "DrumTom",
+        "DrumKit"
+      ]
+    },
+    {
+      "name": "DrumSnare",
+      "id": "drum_snare",
+      "domain": "audio",
+      "brief": "Synthesized snare with tonal body and bandpass-filtered noise.",
+      "has_docs": true,
+      "related": [
+        "DrumKick",
+        "DrumClap",
+        "DrumKit"
+      ]
+    },
+    {
+      "name": "DrumTom",
+      "id": "drum_tom",
+      "domain": "audio",
+      "brief": "Synthesized tom with pitch bend envelope and body filter.",
+      "has_docs": true,
+      "related": [
+        "DrumKick",
+        "DrumSnare",
+        "DrumKit"
+      ]
+    },
+    {
+      "name": "Filter",
+      "id": "filter",
+      "domain": "audio",
+      "brief": "Multi-mode audio filter with 14 filter types and keytracking.",
+      "has_docs": true,
+      "related": [
+        "ParametricEQ",
+        "Vocoder"
+      ]
+    },
+    {
+      "name": "Flanger",
+      "id": "flanger",
+      "domain": "audio",
+      "brief": "Sine-modulated fractional delay with feedback for jet-like sweeps.",
+      "has_docs": true,
+      "related": [
+        "Chorus",
+        "Phaser",
+        "Delay"
+      ]
+    },
+    {
+      "name": "FmSynth",
+      "id": "fm_synth",
+      "domain": "audio",
+      "brief": "Two-operator FM synthesizer with ADSR envelope.",
+      "has_docs": true,
+      "related": [
+        "Oscillator",
+        "Filter",
+        "SpreadADSR"
+      ]
+    },
+    {
+      "name": "Gain",
+      "id": "gain",
+      "domain": "audio",
+      "brief": "Simple amplitude multiplier with CV modulation.",
+      "has_docs": true,
+      "related": [
+        "Mixer",
+        "Compressor",
+        "Limiter"
+      ]
+    },
+    {
+      "name": "GranularSynth",
+      "id": "granular_synth",
+      "domain": "audio",
+      "brief": "Granular synthesis engine with up to 32 simultaneous grains.",
+      "has_docs": true,
+      "related": [
+        "SpectralFreeze",
+        "Sampler"
+      ]
+    },
+    {
+      "name": "Limiter",
+      "id": "limiter",
+      "domain": "audio",
+      "brief": "Brickwall lookahead limiter with smooth release.",
+      "has_docs": true,
+      "related": [
+        "Compressor",
+        "Gain"
+      ]
+    },
+    {
+      "name": "MicInput",
+      "id": "mic_input",
+      "domain": "audio",
+      "brief": "Live microphone capture with device selection and metering.",
+      "has_docs": true,
+      "related": [
+        "WebcamIn",
+        "AudioAnalysis"
+      ]
+    },
+    {
+      "name": "MidiFilePlayer",
+      "id": "midi_file_player",
+      "domain": "audio",
+      "brief": "Plays standard MIDI files and outputs note, velocity, and gate data.",
+      "has_docs": true,
+      "related": [
+        "MidiInput",
+        "Sampler",
+        "Sequencer"
+      ]
+    },
+    {
+      "name": "Mixer",
+      "id": "mixer",
+      "domain": "audio",
+      "brief": "Four-input summing mixer with per-channel gain.",
+      "has_docs": true,
+      "related": [
+        "Gain",
+        "Composite"
+      ]
+    },
+    {
+      "name": "MovieFileAudio",
+      "id": "movie_file_audio",
+      "domain": "audio",
+      "brief": "Audio playback from video and audio files with speed control.",
+      "has_docs": true,
+      "related": [
+        "MovieFileIn",
+        "Sampler"
+      ]
+    },
+    {
+      "name": "Noise",
+      "id": "noise",
+      "domain": "audio",
+      "brief": "Colored noise generator with five spectral profiles.",
+      "has_docs": true,
+      "related": [
+        "Oscillator",
+        "SpreadNoise"
+      ]
+    },
+    {
+      "name": "Oscillator",
+      "id": "oscillator",
+      "domain": "audio",
+      "brief": "Basic waveform oscillator with frequency and amplitude CV.",
+      "has_docs": true,
+      "related": [
+        "FmSynth",
+        "LFO",
+        "Noise"
+      ]
+    },
+    {
+      "name": "ParametricEQ",
+      "id": "parametric_eq",
+      "domain": "audio",
+      "brief": "Four-band parametric equalizer with cascaded biquad filters.",
+      "has_docs": true,
+      "related": [
+        "Filter",
+        "Vocoder"
+      ]
+    },
+    {
+      "name": "Phaser",
+      "id": "phaser",
+      "domain": "audio",
+      "brief": "Allpass cascade swept by sine LFO for phase-shifting effects.",
+      "has_docs": true,
+      "related": [
+        "Flanger",
+        "Chorus",
+        "Filter"
+      ]
+    },
+    {
+      "name": "PingPongDelay",
+      "id": "ping_pong_delay",
+      "domain": "audio",
+      "brief": "Stereo ping-pong delay with cross-feed and feedback filtering.",
+      "has_docs": true,
+      "related": [
+        "Delay",
+        "Reverb"
+      ]
+    },
+    {
+      "name": "Reverb",
+      "id": "reverb",
+      "domain": "audio",
+      "brief": "Freeverb-style algorithmic reverb with room size and damping.",
+      "has_docs": true,
+      "related": [
+        "Delay",
+        "PingPongDelay"
+      ]
+    },
+    {
+      "name": "RingMod",
+      "id": "ring_mod",
+      "domain": "audio",
+      "brief": "Ring modulator multiplying input by an internal carrier oscillator.",
+      "has_docs": true,
+      "related": [
+        "Distortion",
+        "Bitcrush",
+        "FmSynth"
+      ]
+    },
+    {
+      "name": "Sampler",
+      "id": "sampler",
+      "domain": "audio",
+      "brief": "Multi-group polyphonic sample player with ADSR and velocity control.",
+      "has_docs": true,
+      "related": [
+        "Slicer",
+        "SP404",
+        "MidiInput"
+      ]
+    },
+    {
+      "name": "Slicer",
+      "id": "slicer",
+      "domain": "audio",
+      "brief": "Sample slicer dividing audio into N equal segments triggered by note.",
+      "has_docs": true,
+      "related": [
+        "Sampler",
+        "SP404",
+        "DrumSequencer"
+      ]
+    },
+    {
+      "name": "SP404",
+      "id": "sp404",
+      "domain": "audio",
+      "brief": "Single-pad sampler with one-shot, loop, and gate playback.",
+      "has_docs": true,
+      "related": [
+        "Sampler",
+        "Slicer"
+      ]
+    },
+    {
+      "name": "SpectralFreeze",
+      "id": "spectral_freeze",
+      "domain": "audio",
+      "brief": "STFT-based spectral freeze capturing and sustaining a moment in time.",
+      "has_docs": true,
+      "related": [
+        "GranularSynth",
+        "Vocoder"
+      ]
+    },
+    {
+      "name": "SpreadADSR",
+      "id": "spread_adsr",
+      "domain": "audio",
+      "brief": "Per-voice ADSR envelopes for polyphonic spread chains.",
+      "has_docs": true,
+      "related": [
+        "Envelope",
+        "SpreadLFO",
+        "FmSynth"
+      ]
+    },
+    {
+      "name": "SpreadLFO",
+      "id": "spread_lfo",
+      "domain": "audio",
+      "brief": "Per-voice or shared LFO for polyphonic spread chains.",
+      "has_docs": true,
+      "related": [
+        "LFO",
+        "SpreadADSR"
+      ]
+    },
+    {
+      "name": "StereoPanWidth",
+      "id": "stereo_pan_width",
+      "domain": "audio",
+      "brief": "Stereo panning and width control via mid/side processing.",
+      "has_docs": true,
+      "related": [
+        "Mixer",
+        "Gain"
+      ]
+    },
+    {
+      "name": "Vocoder",
+      "id": "vocoder",
+      "domain": "audio",
+      "brief": "Channel vocoder analyzing a modulator to shape a carrier signal.",
+      "has_docs": true,
+      "related": [
+        "Filter",
+        "ParametricEQ",
+        "SpectralFreeze"
+      ]
+    },
+    {
+      "name": "Alternate",
+      "id": "alternate",
+      "domain": "control",
+      "brief": "Cycles through up to 4 input spreads based on beat phase.",
+      "has_docs": true,
+      "related": [
+        "Stack",
+        "PatTransform"
+      ]
+    },
+    {
+      "name": "Arpeggiator",
+      "id": "arpeggiator",
+      "domain": "control",
+      "brief": "Arpeggiation engine with 10 modes, swing, and per-step modulation.",
+      "has_docs": true,
+      "related": [
+        "Sequencer",
+        "ChordProgression",
+        "MidiInput"
+      ]
+    },
+    {
+      "name": "Basename",
+      "id": "basename",
+      "domain": "control",
+      "brief": "Extracts the filename from a full file path string.",
+      "has_docs": true,
+      "related": [
+        "FolderList",
+        "StringSelect"
+      ]
+    },
+    {
+      "name": "ChordProgression",
+      "id": "chord_progression",
+      "domain": "control",
+      "brief": "Diatonic chord sequencer with per-step voicing and extensions.",
+      "has_docs": true,
+      "related": [
+        "NotePattern",
+        "Arpeggiator",
+        "Sequencer"
+      ]
+    },
+    {
+      "name": "Clock",
+      "id": "clock",
+      "domain": "control",
+      "brief": "Master tempo clock generating beat and bar phase signals.",
+      "has_docs": true,
+      "related": [
+        "LFO",
+        "Envelope",
+        "Sequencer"
+      ]
+    },
+    {
+      "name": "DrumKit",
+      "id": "drum_kit",
+      "domain": "control",
+      "brief": "MIDI note demuxer routing notes to per-slot outputs.",
+      "has_docs": true,
+      "related": [
+        "DrumSequencer",
+        "MidiInput",
+        "DrumKick"
+      ]
+    },
+    {
+      "name": "DrumSequencer",
+      "id": "drum_sequencer",
+      "domain": "control",
+      "brief": "Six-track drum pattern sequencer with probability and swing.",
+      "has_docs": true,
+      "related": [
+        "DrumKit",
+        "Euclidean",
+        "StepSeq"
+      ]
+    },
+    {
+      "name": "Envelope",
+      "id": "envelope",
+      "domain": "control",
+      "brief": "ADSR envelope generator with curve shaping.",
+      "has_docs": true,
+      "related": [
+        "LFO",
+        "MSEG",
+        "SpreadADSR"
+      ]
+    },
+    {
+      "name": "Euclidean",
+      "id": "euclidean",
+      "domain": "control",
+      "brief": "Euclidean rhythm generator distributing hits evenly across steps.",
+      "has_docs": true,
+      "related": [
+        "DrumSequencer",
+        "StepSeq",
+        "PatternSeq"
+      ]
+    },
+    {
+      "name": "FFTAnalysis",
+      "id": "fft_analysis",
+      "domain": "control",
+      "brief": "Radix-2 FFT computing magnitude spectrum from a waveform spread.",
+      "has_docs": true,
+      "related": [
+        "AudioAnalysis",
+        "TextureAnalysis"
+      ]
+    },
+    {
+      "name": "FolderList",
+      "id": "folder_list",
+      "domain": "control",
+      "brief": "Scans a directory and outputs matching filenames as a spread.",
+      "has_docs": true,
+      "related": [
+        "StringSelect",
+        "Basename",
+        "TextureLoader"
+      ]
+    },
+    {
+      "name": "Gate",
+      "id": "gate",
+      "domain": "control",
+      "brief": "Passes or blocks a signal based on a gate threshold.",
+      "has_docs": true,
+      "related": [
+        "Logic",
+        "SampleHold",
+        "Math"
+      ]
+    },
+    {
+      "name": "Keyboard",
+      "id": "keyboard",
+      "domain": "control",
+      "brief": "Queries keyboard input state for a specified key.",
+      "has_docs": true,
+      "related": [
+        "Mouse",
+        "MidiInput"
+      ]
+    },
+    {
+      "name": "LFO",
+      "id": "lfo",
+      "domain": "control",
+      "brief": "Low-frequency oscillator for parameter modulation.",
+      "has_docs": true,
+      "related": [
+        "Envelope",
+        "Clock",
+        "Math",
+        "Smooth"
+      ]
+    },
+    {
+      "name": "Logic",
+      "id": "logic",
+      "domain": "control",
+      "brief": "Boolean logic gate operating on two control signals.",
+      "has_docs": true,
+      "related": [
+        "Math",
+        "Gate"
+      ]
+    },
+    {
+      "name": "Macro",
+      "id": "macro",
+      "domain": "control",
+      "brief": "Simple scalar transform mapping a value through amplitude and offset.",
+      "has_docs": true,
+      "related": [
+        "Math",
+        "Smooth",
+        "LFO"
+      ]
+    },
+    {
+      "name": "Math",
+      "id": "math",
+      "domain": "control",
+      "brief": "Binary math operation on two control signals.",
+      "has_docs": true,
+      "related": [
+        "Logic",
+        "Macro",
+        "Quantizer"
+      ]
+    },
+    {
+      "name": "MidiInput",
+      "id": "midi_input",
+      "domain": "control",
+      "brief": "MIDI device listener outputting notes, velocity, gates, and CCs.",
+      "has_docs": true,
+      "related": [
+        "DrumKit",
+        "Arpeggiator",
+        "Keyboard"
+      ]
+    },
+    {
+      "name": "ModulatedGain",
+      "id": "modulated_gain",
+      "domain": "control",
+      "brief": "Gain with built-in LFO modulation and smoothing.",
+      "has_docs": true,
+      "related": [
+        "Gain",
+        "LFO",
+        "Smooth"
+      ]
+    },
+    {
+      "name": "Mouse",
+      "id": "mouse",
+      "domain": "control",
+      "brief": "Outputs mouse cursor position and button states.",
+      "has_docs": true,
+      "related": [
+        "Keyboard",
+        "PathAnimate"
+      ]
+    },
+    {
+      "name": "MSEG",
+      "id": "mseg",
+      "domain": "control",
+      "brief": "Multi-segment envelope generator with per-segment curves and looping.",
+      "has_docs": true,
+      "related": [
+        "Envelope",
+        "LFO",
+        "PathAnimate"
+      ]
+    },
+    {
+      "name": "NoteDuration",
+      "id": "note_duration",
+      "domain": "control",
+      "brief": "Converts beat duration to musical note duration.",
+      "has_docs": true,
+      "related": [
+        "Clock",
+        "Delay"
+      ]
+    },
+    {
+      "name": "NotePattern",
+      "id": "note_pattern",
+      "domain": "control",
+      "brief": "Per-step chord pattern sequencer with visual grid editor.",
+      "has_docs": true,
+      "related": [
+        "ChordProgression",
+        "Arpeggiator",
+        "PatternSeq"
+      ]
+    },
+    {
+      "name": "OscIn",
+      "id": "osc_in",
+      "domain": "control",
+      "brief": "OSC server receiving values over UDP.",
+      "has_docs": true,
+      "related": [
+        "OscOut",
+        "MidiInput"
+      ]
+    },
+    {
+      "name": "OscOut",
+      "id": "osc_out",
+      "domain": "control",
+      "brief": "OSC client sending values over UDP.",
+      "has_docs": true,
+      "related": [
+        "OscIn",
+        "MidiInput"
+      ]
+    },
+    {
+      "name": "PatTransform",
+      "id": "pat_transform",
+      "domain": "control",
+      "brief": "Transforms a spread pattern with reverse, rotate, scale, and probability.",
+      "has_docs": true,
+      "related": [
+        "Stack",
+        "Alternate",
+        "Euclidean"
+      ]
+    },
+    {
+      "name": "PathAnimate",
+      "id": "path_animate",
+      "domain": "control",
+      "brief": "Cubic Bezier path evaluator with easing and loop modes.",
+      "has_docs": true,
+      "related": [
+        "LFO",
+        "Mouse"
+      ]
+    },
+    {
+      "name": "PatternSeq",
+      "id": "pattern_seq",
+      "domain": "control",
+      "brief": "Step sequencer with per-step values, probability, and MIDI output.",
+      "has_docs": true,
+      "related": [
+        "StepSeq",
+        "Sequencer",
+        "Euclidean"
+      ]
+    },
+    {
+      "name": "PhaseToMidi",
+      "id": "phase_to_midi",
+      "domain": "control",
+      "brief": "Converts beat phase wraps into MIDI note-on events.",
+      "has_docs": true,
+      "related": [
+        "Clock",
+        "MidiInput",
+        "DrumKit"
+      ]
+    },
+    {
+      "name": "Quantizer",
+      "id": "quantizer",
+      "domain": "control",
+      "brief": "Quantizes a control signal to scale degrees, range grid, or uniform steps.",
+      "has_docs": true,
+      "related": [
+        "Math",
+        "NotePattern",
+        "Smooth"
+      ]
+    },
+    {
+      "name": "SampleHold",
+      "id": "sample_hold",
+      "domain": "control",
+      "brief": "Captures a signal value on trigger edge or tracks while gate is high.",
+      "has_docs": true,
+      "related": [
+        "Smooth",
+        "Gate",
+        "LFO"
+      ]
+    },
+    {
+      "name": "Sequencer",
+      "id": "sequencer",
+      "domain": "control",
+      "brief": "Multi-spread step sequencer with ratchets and probability.",
+      "has_docs": true,
+      "related": [
+        "PatternSeq",
+        "StepSeq",
+        "Arpeggiator"
+      ]
+    },
+    {
+      "name": "Smooth",
+      "id": "smooth",
+      "domain": "control",
+      "brief": "Exponential smoothing with separate rise and fall times.",
+      "has_docs": true,
+      "related": [
+        "LFO",
+        "SampleHold",
+        "Envelope"
+      ]
+    },
+    {
+      "name": "SpreadNoise",
+      "id": "spread_noise",
+      "domain": "control",
+      "brief": "Animated noise spread using hash-based value noise.",
+      "has_docs": true,
+      "related": [
+        "Noise",
+        "LFO",
+        "SpreadLFO"
+      ]
+    },
+    {
+      "name": "Stack",
+      "id": "stack",
+      "domain": "control",
+      "brief": "Combines up to 4 spreads into one via concatenation or interleaving.",
+      "has_docs": true,
+      "related": [
+        "Alternate",
+        "PatTransform"
+      ]
+    },
+    {
+      "name": "StateMachine",
+      "id": "state_machine",
+      "domain": "control",
+      "brief": "Eight-state sequencer with beat-quantized transitions and crossfade.",
+      "has_docs": true,
+      "related": [
+        "Clock",
+        "Sequencer",
+        "Envelope"
+      ]
+    },
+    {
+      "name": "StepCounter",
+      "id": "step_counter",
+      "domain": "control",
+      "brief": "Trigger-driven counter with modulus wrapping.",
+      "has_docs": true,
+      "related": [
+        "Euclidean",
+        "StepSeq",
+        "Math"
+      ]
+    },
+    {
+      "name": "StepSeq",
+      "id": "step_seq",
+      "domain": "control",
+      "brief": "Free-running or beat-synced step sequencer with glide and per-step gates.",
+      "has_docs": true,
+      "related": [
+        "PatternSeq",
+        "Sequencer",
+        "LFO"
+      ]
+    },
+    {
+      "name": "StringSelect",
+      "id": "string_select",
+      "domain": "control",
+      "brief": "Selects a string from an input spread by index.",
+      "has_docs": true,
+      "related": [
+        "FolderList",
+        "Basename",
+        "Stack"
+      ]
+    },
+    {
+      "name": "Tracker",
+      "id": "tracker",
+      "domain": "control",
+      "brief": "Multi-channel tracker-style pattern sequencer with keyboard editing.",
+      "has_docs": true,
+      "related": [
+        "Sequencer",
+        "DrumSequencer",
+        "NotePattern"
+      ]
+    },
+    {
+      "name": "Bloom",
+      "id": "bloom",
+      "domain": "gpu",
+      "brief": "Multi-pass glow effect with threshold, blur, and composite.",
+      "has_docs": true,
+      "related": [
+        "Composite",
+        "Feedback"
+      ]
+    },
+    {
+      "name": "CellularAutomata",
+      "id": "cellular_automata",
+      "domain": "gpu",
+      "brief": "Cellular automaton simulation with Game of Life and custom rules.",
+      "has_docs": true,
+      "related": [
+        "ReactionDiffusion",
+        "Noise"
+      ]
+    },
+    {
+      "name": "Composite",
+      "id": "composite",
+      "domain": "gpu",
+      "brief": "Blends two textures with configurable blend mode and opacity.",
+      "has_docs": true,
+      "related": [
+        "Feedback",
+        "Bloom"
+      ]
+    },
+    {
+      "name": "Feedback",
+      "id": "feedback",
+      "domain": "gpu",
+      "brief": "Recursive feedback loop with decay, zoom, rotation, and offset.",
+      "has_docs": true,
+      "related": [
+        "Trails",
+        "Composite",
+        "TimeMachine"
+      ]
+    },
+    {
+      "name": "Flocking",
+      "id": "flocking",
+      "domain": "gpu",
+      "brief": "2D Reynolds boids simulation with per-boid LFO modulation.",
+      "has_docs": true,
+      "related": [
+        "Particles",
+        "Trails"
+      ]
+    },
+    {
+      "name": "Fluid",
+      "id": "fluid",
+      "domain": "gpu",
+      "brief": "2D Navier-Stokes fluid simulation with dye advection.",
+      "has_docs": true,
+      "related": [
+        "ReactionDiffusion",
+        "CellularAutomata"
+      ]
+    },
+    {
+      "name": "InstancedShapes",
+      "id": "instanced_shapes",
+      "domain": "gpu",
+      "brief": "Renders N SDF shapes with per-instance layout and LFO modulation.",
+      "has_docs": true,
+      "related": [
+        "Shape",
+        "Particles"
+      ]
+    },
+    {
+      "name": "LutApply",
+      "id": "lut_apply",
+      "domain": "gpu",
+      "brief": "Applies a 3D color lookup table from .cube files.",
+      "has_docs": true,
+      "related": [
+        "Composite",
+        "TextureLoader"
+      ]
+    },
+    {
+      "name": "MeshWarp",
+      "id": "mesh_warp",
+      "domain": "gpu",
+      "brief": "Warps a texture via bicubic-interpolated control point grid.",
+      "has_docs": true,
+      "related": [
+        "Feedback",
+        "TimeMachine"
+      ]
+    },
+    {
+      "name": "Metaball",
+      "id": "metaball",
+      "domain": "gpu",
+      "brief": "2D metaballs with implicit surface blending and multiple render modes.",
+      "has_docs": true,
+      "related": [
+        "Fluid",
+        "Shape"
+      ]
+    },
+    {
+      "name": "MovieFileIn",
+      "id": "movie_file_in",
+      "domain": "gpu",
+      "brief": "Video file playback with frame-accurate timing and audio sync.",
+      "has_docs": true,
+      "related": [
+        "TextureLoader",
+        "WebcamIn",
+        "MovieFileAudio"
+      ]
+    },
+    {
+      "name": "Noise",
+      "id": "noise",
+      "domain": "gpu",
+      "brief": "Perlin or Simplex noise generator with FBm octaves and animation.",
+      "has_docs": true,
+      "related": [
+        "Shape",
+        "ReactionDiffusion"
+      ]
+    },
+    {
+      "name": "Particles",
+      "id": "particles",
+      "domain": "gpu",
+      "brief": "Spawns and renders soft particles with per-particle envelope control.",
+      "has_docs": true,
+      "related": [
+        "Flocking",
+        "Trails"
+      ]
+    },
+    {
+      "name": "ReactionDiffusion",
+      "id": "reaction_diffusion",
+      "domain": "gpu",
+      "brief": "Gray-Scott reaction-diffusion with LFO-modulated parameters.",
+      "has_docs": true,
+      "related": [
+        "CellularAutomata",
+        "Fluid"
+      ]
+    },
+    {
+      "name": "RichText",
+      "id": "rich_text",
+      "domain": "gpu",
+      "brief": "Animated text with per-character effects.",
+      "has_docs": true,
+      "related": [
+        "Text"
+      ]
+    },
+    {
+      "name": "Scopes",
+      "id": "scopes",
+      "domain": "gpu",
+      "brief": "Real-time waveform, histogram, vectorscope, and parade analysis.",
+      "has_docs": true,
+      "related": [
+        "TextureAnalysis",
+        "AudioAnalysis"
+      ]
+    },
+    {
+      "name": "Shape",
+      "id": "shape",
+      "domain": "gpu",
+      "brief": "SDF polygon/star shape generator with soft edges.",
+      "has_docs": true,
+      "related": [
+        "Noise",
+        "Composite",
+        "Trails"
+      ]
+    },
+    {
+      "name": "SvgRender",
+      "id": "svg_render",
+      "domain": "gpu",
+      "brief": "Renders SVG files using the nanosvg rasterizer.",
+      "has_docs": true,
+      "related": [
+        "TextureLoader",
+        "Text"
+      ]
+    },
+    {
+      "name": "SyphonIn",
+      "id": "syphon_in",
+      "domain": "gpu",
+      "brief": "Receives video frames via Syphon (macOS inter-app video sharing).",
+      "has_docs": true,
+      "related": [
+        "SyphonOut",
+        "WebcamIn"
+      ]
+    },
+    {
+      "name": "SyphonOut",
+      "id": "syphon_out",
+      "domain": "gpu",
+      "brief": "Sends video frames via Syphon (macOS inter-app video sharing).",
+      "has_docs": true,
+      "related": [
+        "SyphonIn"
+      ]
+    },
+    {
+      "name": "Text",
+      "id": "text",
+      "domain": "gpu",
+      "brief": "Renders simple static text with configurable font, color, and position.",
+      "has_docs": true,
+      "related": [
+        "RichText"
+      ]
+    },
+    {
+      "name": "TextureAnalysis",
+      "id": "texture_analysis",
+      "domain": "gpu",
+      "brief": "GPU-to-control bridge analyzing texture brightness, contrast, and color.",
+      "has_docs": true,
+      "related": [
+        "Scopes",
+        "AudioAnalysis"
+      ]
+    },
+    {
+      "name": "TextureLoader",
+      "id": "texture_loader",
+      "domain": "gpu",
+      "brief": "Loads image files (JPEG, PNG, EXR, HDR) as GPU textures.",
+      "has_docs": true,
+      "related": [
+        "MovieFileIn",
+        "SvgRender"
+      ]
+    },
+    {
+      "name": "TimeMachine",
+      "id": "time_machine",
+      "domain": "gpu",
+      "brief": "Temporal slit-scan effect using a displacement map and history buffer.",
+      "has_docs": true,
+      "related": [
+        "Feedback",
+        "Trails"
+      ]
+    },
+    {
+      "name": "Trails",
+      "id": "trails",
+      "domain": "gpu",
+      "brief": "Autonomous motion trails with physics, decay, and hue shift.",
+      "has_docs": true,
+      "related": [
+        "Feedback",
+        "Particles"
+      ]
+    },
+    {
+      "name": "WebcamIn",
+      "id": "webcam_in",
+      "domain": "gpu",
+      "brief": "Live camera capture with device selection and resolution presets.",
+      "has_docs": true,
+      "related": [
+        "MovieFileIn",
+        "SyphonIn"
+      ]
+    }
+  ]
+}

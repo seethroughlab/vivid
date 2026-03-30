@@ -1,11 +1,14 @@
 #include "operator_api/operator.h"
 #include <cmath>
-
-// SampleHold — dual-cadence control operator.
-//
-// Inherits both FrameProcessable and AudioProcessable, making it audio-capable.
-// State: held_value_ and prev_trigger_ for edge detection.
-//
+/**
+ * @brief Captures a signal value on trigger edge or tracks while gate is high.
+ *
+ * In sample mode, latches the input value on each rising edge. In
+ * track-and-hold mode, continuously follows the input while trigger is
+ * high and holds the last value when it goes low.
+ *
+ * @see Smooth, Gate, LFO
+ */
 struct SampleHold : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "SampleHold";
     static constexpr bool kTimeDependent = false;
@@ -14,6 +17,7 @@ struct SampleHold : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPr
 
     SampleHold() {
         vivid::semantic_shape(mode, "enum");
+        vivid::description(mode, "Sample latches on rising edge; track-and-hold follows while high");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

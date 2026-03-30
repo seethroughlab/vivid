@@ -178,11 +178,16 @@ struct MetaballUniforms {
     float render_mode;
     float balls[16 * 4];  // array<vec4f, 16> — xy=position, z=radius, w=hue
 };
-
-// =============================================================================
-// Metaball Operator
-// =============================================================================
-
+/**
+ * @brief 2D metaballs with implicit surface blending and multiple render modes.
+ *
+ * Simulates up to 16 bouncing blobs using inverse-distance field
+ * accumulation. Supports SDF and circle render modes with per-ball
+ * rainbow, field gradient, or single-color output.
+ *
+ * @param threshold Field strength cutoff for surface detection.
+ * @see Fluid, Shape
+ */
 struct Metaball : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Metaball";
     static constexpr bool kTimeDependent = true;

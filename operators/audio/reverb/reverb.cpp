@@ -65,6 +65,15 @@ struct AllPassDelay {
 static constexpr int kCombLengths[8]    = {1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617};
 static constexpr int kAllPassLengths[4] = {556, 441, 341, 225};
 
+/**
+ * @brief Freeverb-style algorithmic reverb with room size and damping.
+ *
+ * Eight parallel comb filters feed into a cascade of four allpass filters,
+ * producing a dense reverberant tail. Room size controls feedback (decay
+ * length), damping controls high-frequency absorption.
+ *
+ * @see Delay, PingPongDelay
+ */
 struct Reverb : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Reverb";
     static constexpr bool kTimeDependent = false;
@@ -81,13 +90,16 @@ struct Reverb : vivid::OperatorBase, vivid::AudioProcessable {
     Reverb() {
         vivid::semantic_tag(room_size, "probability_01");
         vivid::semantic_shape(room_size, "scalar");
+        vivid::description(room_size, "Size of the virtual space, controlling reverb decay length");
 
         vivid::semantic_tag(damping, "probability_01");
         vivid::semantic_shape(damping, "scalar");
+        vivid::description(damping, "High-frequency absorption in the reverb tail (higher = darker)");
 
         vivid::semantic_tag(mix, "probability_01");
         vivid::semantic_shape(mix, "scalar");
         vivid::semantic_intent(mix, "wet_mix");
+        vivid::description(mix, "Blend between dry input and reverb signal");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

@@ -1,0 +1,26 @@
+{
+  "name": "Fluid",
+  "id": "fluid",
+  "domain": "gpu",
+  "source_file": "operators/gpu/fluid/fluid.cpp",
+  "brief": "2D Navier-Stokes fluid simulation with dye advection.",
+  "description": "Implements Stable Fluids on the GPU: semi-Lagrangian advection, Jacobi\npressure solver, and Gaussian force emitter. Dye injection visualizes\nthe flow field. Buoyancy drives dye upward.",
+  "tips": [],
+  "related": [
+    "ReactionDiffusion",
+    "CellularAutomata"
+  ],
+  "has_docs": true,
+  "params": [
+    {
+      "name": "grid_size",
+      "doc": "Simulation resolution. Higher = more detail, more cost."
+    },
+    {
+      "name": "iterations",
+      "doc": "Jacobi pressure solver steps. More = more accurate, slower."
+    }
+  ],
+  "inputs": [],
+  "outputs": []
+}

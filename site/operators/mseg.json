@@ -1,0 +1,20 @@
+{
+  "name": "MSEG",
+  "id": "mseg",
+  "domain": "control",
+  "source_file": "operators/control/mseg/mseg.h",
+  "brief": "Multi-segment envelope generator with per-segment curves and looping.",
+  "description": "Defines up to 16 breakpoints with configurable time, value, and curve per\nsegment. Supports loop regions for sustained modulation and gate-triggered\nattack/release behavior.",
+  "tips": [
+    "Use loop mode with 2-3 points for a custom-shaped LFO."
+  ],
+  "related": [
+    "Envelope",
+    "LFO",
+    "PathAnimate"
+  ],
+  "has_docs": true,
+  "params": [],
+  "inputs": [],
+  "outputs": []
+}

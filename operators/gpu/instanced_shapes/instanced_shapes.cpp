@@ -160,9 +160,16 @@ static int host_waveform_to_lfo(int host) {
         default: return 0;
     }
 }
-
-// ── Operator ────────────────────────────────────────────────────────────
-
+/**
+ * @brief Renders N SDF shapes with per-instance layout and LFO modulation.
+ *
+ * Draws up to 64 instances of a chosen SDF shape (circle, polygon, star)
+ * arranged in grid, circle, line, or random layouts. Per-instance LFO
+ * modulation on scale, rotation, and color.
+ *
+ * @param layout Arrangement: Random, Grid, Circle, or Line.
+ * @see Shape, Particles
+ */
 struct InstancedShapes : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Instanced Shapes";
     static constexpr bool kTimeDependent = true;

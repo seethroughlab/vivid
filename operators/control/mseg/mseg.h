@@ -4,13 +4,16 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
-
-// MSEG — dual-cadence multi-segment envelope generator.
-//
-// Gate-triggered envelope with breakpoint evaluation. State machine
-// (IDLE → PLAYING → LOOPING → RELEASING) advances via delta_time
-// accumulation, which is cadence-agnostic.
-//
+/**
+ * @brief Multi-segment envelope generator with per-segment curves and looping.
+ *
+ * Defines up to 16 breakpoints with configurable time, value, and curve per
+ * segment. Supports loop regions for sustained modulation and gate-triggered
+ * attack/release behavior.
+ *
+ * @tip Use loop mode with 2-3 points for a custom-shaped LFO.
+ * @see Envelope, LFO, PathAnimate
+ */
 struct MSEG : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "MSEG";
     static constexpr bool kTimeDependent = true;

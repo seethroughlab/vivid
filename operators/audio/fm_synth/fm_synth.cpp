@@ -7,10 +7,19 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-// ---------------------------------------------------------------------------
-// FM Synth — 2-operator FM synthesizer with ADSR envelope (mono, generator)
-// ---------------------------------------------------------------------------
-
+/**
+ * @brief Two-operator FM synthesizer with ADSR envelope.
+ *
+ * Classic FM synthesis with a carrier and modulator oscillator. The
+ * modulator frequency is set as a ratio of the carrier, and the modulation
+ * index controls harmonic richness. Supports polyphonic spread inputs
+ * for sequencer integration.
+ *
+ * @tip Integer mod_ratio values produce harmonic timbres; non-integer values create bell-like inharmonic sounds.
+ * @param mod_ratio Modulator frequency as a multiple of the carrier.
+ * @param mod_index Depth of frequency modulation. Higher = more harmonics.
+ * @see Oscillator, Filter, SpreadADSR
+ */
 struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "FmSynth";
     static constexpr bool kTimeDependent = true;
@@ -34,36 +43,44 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::semantic_shape(carrier_freq, "scalar");
         vivid::semantic_unit(carrier_freq, "Hz");
         vivid::display_hint(carrier_freq, VIVID_DISPLAY_KNOB);
+        vivid::description(carrier_freq, "Base frequency of the carrier oscillator in Hz");
 
         vivid::semantic_shape(mod_ratio, "scalar");
         vivid::display_hint(mod_ratio, VIVID_DISPLAY_KNOB);
+        vivid::description(mod_ratio, "Modulator frequency as a multiple of the carrier (integer = harmonic)");
 
         vivid::semantic_tag(mod_index, "amplitude_linear");
         vivid::semantic_shape(mod_index, "scalar");
         vivid::display_hint(mod_index, VIVID_DISPLAY_KNOB);
+        vivid::description(mod_index, "Depth of frequency modulation, higher values add more harmonics");
 
         vivid::semantic_tag(attack, "time_seconds");
         vivid::semantic_shape(attack, "scalar");
         vivid::semantic_unit(attack, "s");
         vivid::display_hint(attack, VIVID_DISPLAY_KNOB);
+        vivid::description(attack, "Time to reach full volume after a note-on, in seconds");
 
         vivid::semantic_tag(decay, "time_seconds");
         vivid::semantic_shape(decay, "scalar");
         vivid::semantic_unit(decay, "s");
         vivid::display_hint(decay, VIVID_DISPLAY_KNOB);
+        vivid::description(decay, "Time to fall from peak to sustain level, in seconds");
 
         vivid::semantic_tag(sustain, "probability_01");
         vivid::semantic_shape(sustain, "scalar");
         vivid::display_hint(sustain, VIVID_DISPLAY_KNOB);
+        vivid::description(sustain, "Held volume level while the note is sustained (0-1)");
 
         vivid::semantic_tag(release, "time_seconds");
         vivid::semantic_shape(release, "scalar");
         vivid::semantic_unit(release, "s");
         vivid::display_hint(release, VIVID_DISPLAY_KNOB);
+        vivid::description(release, "Fade-out time after a note-off, in seconds");
 
         vivid::semantic_tag(amplitude, "amplitude_linear");
         vivid::semantic_shape(amplitude, "scalar");
         vivid::display_hint(amplitude, VIVID_DISPLAY_KNOB);
+        vivid::description(amplitude, "Master output volume of the synth");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

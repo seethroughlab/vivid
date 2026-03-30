@@ -1,0 +1,17 @@
+{
+  "name": "SvgRender",
+  "id": "svg_render",
+  "domain": "gpu",
+  "source_file": "operators/gpu/svg_render/svg_render.cpp",
+  "brief": "Renders SVG files using the nanosvg rasterizer.",
+  "description": "Loads and rasterizes .svg files to a texture with configurable scale,\nposition, and optional color override for tinting.",
+  "tips": [],
+  "related": [
+    "TextureLoader",
+    "Text"
+  ],
+  "has_docs": true,
+  "params": [],
+  "inputs": [],
+  "outputs": []
+}

@@ -23,6 +23,16 @@ struct OnePole {
     }
 };
 
+/**
+ * @brief Tanh soft-clipping distortion with post-drive tone filter.
+ *
+ * Applies waveshaping distortion via hyperbolic tangent saturation
+ * followed by a one-pole tone filter sweepable from 1-10 kHz.
+ *
+ * @param drive Amount of gain before clipping. Higher values = more harmonics.
+ * @param tone Post-distortion brightness. 0 = dark, 1 = bright.
+ * @see Bitcrush, RingMod, Filter
+ */
 struct Distortion : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Distortion";
     static constexpr bool kTimeDependent = false;
@@ -38,17 +48,21 @@ struct Distortion : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::semantic_tag(drive, "amplitude_linear");
         vivid::semantic_shape(drive, "scalar");
         vivid::semantic_intent(drive, "pre_gain");
+        vivid::description(drive, "Gain before clipping (higher = more harmonics)");
 
         vivid::semantic_tag(tone, "probability_01");
         vivid::semantic_shape(tone, "scalar");
+        vivid::description(tone, "Post-distortion brightness (0 = dark, 1 = bright)");
 
         vivid::semantic_tag(level, "amplitude_linear");
         vivid::semantic_shape(level, "scalar");
         vivid::semantic_intent(level, "post_gain");
+        vivid::description(level, "Output level after distortion");
 
         vivid::semantic_tag(mix, "probability_01");
         vivid::semantic_shape(mix, "scalar");
         vivid::semantic_intent(mix, "wet_mix");
+        vivid::description(mix, "Dry/wet blend (0 = clean, 1 = fully distorted)");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

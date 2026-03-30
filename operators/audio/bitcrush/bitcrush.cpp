@@ -2,10 +2,25 @@
 
 #include <cmath>
 
-// ---------------------------------------------------------------------------
-// Bitcrusher: bit-depth reduction + sample-rate reduction (mono)
-// ---------------------------------------------------------------------------
-
+/**
+ * @brief Bit-depth reduction and sample-rate decimation effect.
+ *
+ * Combines two lo-fi effects: **bit crushing** (quantizing amplitude to
+ * fewer levels) and **sample-rate reduction** (sample-and-hold decimation).
+ * Together they produce the characteristic "retro digital" sound of early
+ * samplers and video game consoles.
+ *
+ * The effect is mono — stereo signals should be split first.
+ *
+ * @tip Automate `bits` with an LFO for evolving texture. Values below 4 get aggressive.
+ * @tip Set rate to match a classic sampler (8000 Hz = telephone, 22050 Hz = early CD-ROM).
+ * @see Distortion, Filter, RingMod
+ * @param bits Number of quantization levels (2^bits). Lower = crunchier.
+ * @param rate Target sample rate for decimation. Lower = more aliasing artifacts.
+ * @param mix Dry/wet blend. 0 = bypass, 1 = fully crushed.
+ * @input input Mono audio signal to process.
+ * @output output The crushed signal.
+ */
 struct Bitcrush : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Bitcrush";
     static constexpr bool kTimeDependent = false;
@@ -21,14 +36,17 @@ struct Bitcrush : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::semantic_tag(bits, "count");
         vivid::semantic_shape(bits, "scalar");
         vivid::semantic_intent(bits, "bit_depth");
+        vivid::description(bits, "Bit depth for amplitude quantization (lower = crunchier)");
 
         vivid::semantic_tag(rate, "frequency_hz");
         vivid::semantic_shape(rate, "scalar");
         vivid::semantic_unit(rate, "Hz");
+        vivid::description(rate, "Target sample rate for decimation in Hz");
 
         vivid::semantic_tag(mix, "probability_01");
         vivid::semantic_shape(mix, "scalar");
         vivid::semantic_intent(mix, "wet_mix");
+        vivid::description(mix, "Dry/wet blend (0 = bypass, 1 = fully crushed)");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

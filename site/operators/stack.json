@@ -1,0 +1,17 @@
+{
+  "name": "Stack",
+  "id": "stack",
+  "domain": "control",
+  "source_file": "operators/control/stack/stack.cpp",
+  "brief": "Combines up to 4 spreads into one via concatenation or interleaving.",
+  "description": "Merges input spreads A through D into a single output spread. Concat\nmode appends them end-to-end; interleave mode alternates elements.",
+  "tips": [],
+  "related": [
+    "Alternate",
+    "PatTransform"
+  ],
+  "has_docs": true,
+  "params": [],
+  "inputs": [],
+  "outputs": []
+}

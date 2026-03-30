@@ -7,12 +7,19 @@
 #include <cmath>
 #include <cstring>
 #include "operator_api/thumbnail.h"
-
-// Arpeggiator — dual-cadence arpeggiator with 10 modes, latch, swing, and MIDI.
-//
-// Phase-driven beat tracking with rate multipliers. Builds note pool from
-// input spreads, selects notes via mode pattern. All logic is cadence-agnostic.
-//
+/**
+ * @brief Arpeggiation engine with 10 modes, swing, and per-step modulation.
+ *
+ * Collects notes from input spreads into a pool and plays them back in
+ * configurable patterns (up, down, up-down, random, converge, diverge, etc.).
+ * Supports per-step velocity and transpose modulation, swing timing, and
+ * optional note latching.
+ *
+ * @tip Enable latch to keep playing after releasing keys.
+ * @param mode Arpeggiation pattern: Up, Down, UpDown, Random, Converge, etc.
+ * @param octaves Range of octave transposition applied to the pattern.
+ * @see Sequencer, ChordProgression, MidiInput
+ */
 struct Arpeggiator : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Arpeggiator";
     static constexpr bool kTimeDependent = true;

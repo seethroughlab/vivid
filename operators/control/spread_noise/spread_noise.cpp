@@ -1,11 +1,15 @@
 #include "operator_api/operator.h"
 #include <cmath>
 #include <cstdint>
-
-// SpreadNoise — dual-cadence animated hash-based 1D value noise spread generator.
-//
-// Inherits both FrameProcessable and AudioProcessable for audio-capable cadence.
-//
+/**
+ * @brief Animated noise spread using hash-based value noise.
+ *
+ * Generates a spread of smoothly animated random values using golden-ratio
+ * sampling and smoothstep interpolation. Each element evolves independently.
+ *
+ * @param count Number of noise values in the output spread.
+ * @see Noise, LFO, SpreadLFO
+ */
 struct SpreadNoise : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "SpreadNoise";
     static constexpr bool kTimeDependent = true;
@@ -25,6 +29,12 @@ struct SpreadNoise : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
 
         vivid::semantic_tag(seed, "seed");
         vivid::semantic_shape(seed, "int");
+
+        vivid::description(count, "Number of noise values in the output spread");
+        vivid::description(speed, "Rate of noise animation (0 = frozen)");
+        vivid::description(amplitude, "Scale factor applied to each noise value");
+        vivid::description(offset, "Constant added to each noise value after scaling");
+        vivid::description(seed, "Random seed for repeatable noise patterns");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

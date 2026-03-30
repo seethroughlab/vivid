@@ -36,12 +36,24 @@ static int resolve_key(const std::string& key) {
 
     return -1;
 }
-
+/**
+ * @brief Queries keyboard input state for a specified key.
+ *
+ * Monitors a named key and outputs whether it is currently held, plus
+ * single-frame pressed and released triggers. Also reports modifier states.
+ *
+ * @param key Key name: space, escape, return, arrow keys, or single character.
+ * @see Mouse, MidiInput
+ */
 struct Keyboard : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "Keyboard";
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<vivid::TextValue> key{"key", "space"};
+
+    Keyboard() {
+        vivid::description(key, "Name of the key to monitor (e.g. space, escape, A, 1)");
+    }
 
     bool key_held = false;
 

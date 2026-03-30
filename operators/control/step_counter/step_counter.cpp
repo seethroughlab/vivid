@@ -2,12 +2,15 @@
 
 #include <algorithm>
 #include <cmath>
-
-// StepCounter — dual-cadence control operator.
-//
-// Inherits both FrameProcessable and AudioProcessable, making it audio-capable.
-// State: step counter with edge-detected trigger and modular wrap.
-//
+/**
+ * @brief Trigger-driven counter with modulus wrapping.
+ *
+ * Increments on each rising edge of the trigger input. Wraps to zero
+ * when reaching the modulus. Outputs the current index and a wrapped
+ * flag on overflow. Reset returns to initial value.
+ *
+ * @see Euclidean, StepSeq, Math
+ */
 struct StepCounter : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName = "StepCounter";
     static constexpr bool kTimeDependent = true;
@@ -17,6 +20,7 @@ struct StepCounter : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
     StepCounter() {
         vivid::semantic_tag(initial, "index");
         vivid::semantic_shape(initial, "int");
+        vivid::description(initial, "Starting count value and reset target");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

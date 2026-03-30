@@ -1,0 +1,22 @@
+{
+  "name": "OscOut",
+  "id": "osc_out",
+  "domain": "control",
+  "source_file": "operators/control/osc_out/osc_out.cpp",
+  "brief": "OSC client sending values over UDP.",
+  "description": "Sends OSC messages to a target host and port. Configurable to send\non trigger, every frame, or on value change.",
+  "tips": [],
+  "related": [
+    "OscIn",
+    "MidiInput"
+  ],
+  "has_docs": true,
+  "params": [
+    {
+      "name": "send_mode",
+      "doc": "When to transmit: on_trigger, every_frame, or on_change."
+    }
+  ],
+  "inputs": [],
+  "outputs": []
+}

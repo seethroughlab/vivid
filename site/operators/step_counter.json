@@ -1,0 +1,18 @@
+{
+  "name": "StepCounter",
+  "id": "step_counter",
+  "domain": "control",
+  "source_file": "operators/control/step_counter/step_counter.cpp",
+  "brief": "Trigger-driven counter with modulus wrapping.",
+  "description": "Increments on each rising edge of the trigger input. Wraps to zero\nwhen reaching the modulus. Outputs the current index and a wrapped\nflag on overflow. Reset returns to initial value.",
+  "tips": [],
+  "related": [
+    "Euclidean",
+    "StepSeq",
+    "Math"
+  ],
+  "has_docs": true,
+  "params": [],
+  "inputs": [],
+  "outputs": []
+}

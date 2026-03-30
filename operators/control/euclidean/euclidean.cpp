@@ -1,12 +1,18 @@
 #include "operator_api/operator.h"
 #include <algorithm>
 #include <cmath>
-
-// Euclidean — dual-cadence Bjorklund pattern sequencer.
-//
-// Beat-phase wrap detection + gate window evaluation. All timing logic is
-// cadence-agnostic — identical behavior at frame rate and audio rate.
-//
+/**
+ * @brief Euclidean rhythm generator distributing hits evenly across steps.
+ *
+ * Uses the Bjorklund algorithm to space a given number of hits as evenly
+ * as possible across a step count. Rotation shifts the pattern start point.
+ *
+ * @tip 3 hits in 8 steps gives the classic tresillo rhythm. 5 in 8 gives a cinquillo.
+ * @param hits Number of active steps in the pattern.
+ * @param steps Total pattern length.
+ * @param rotation Rotates the pattern by N steps.
+ * @see DrumSequencer, StepSeq, PatternSeq
+ */
 struct Euclidean : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Euclidean";
     static constexpr bool kTimeDependent = true;

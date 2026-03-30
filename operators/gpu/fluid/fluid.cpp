@@ -193,9 +193,17 @@ struct FluidUniforms {
     float dye_b;            // f32
     float padding;          // f32 — 64 bytes total
 };
-
-// ── Operator ────────────────────────────────────────────────────────────
-
+/**
+ * @brief 2D Navier-Stokes fluid simulation with dye advection.
+ *
+ * Implements Stable Fluids on the GPU: semi-Lagrangian advection, Jacobi
+ * pressure solver, and Gaussian force emitter. Dye injection visualizes
+ * the flow field. Buoyancy drives dye upward.
+ *
+ * @param grid_size Simulation resolution. Higher = more detail, more cost.
+ * @param iterations Jacobi pressure solver steps. More = more accurate, slower.
+ * @see ReactionDiffusion, CellularAutomata
+ */
 struct Fluid : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Fluid";
     static constexpr bool kTimeDependent = true;

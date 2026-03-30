@@ -114,12 +114,15 @@ inline bool hit_test(float mx, float my, float rx, float ry, float rw, float rh)
 }
 
 } // namespace tracker_insp
-
-// Tracker — dual-cadence MOD-style pattern sequencer.
-//
-// Phase-driven tick/row/pattern sequencing with 8 channels, effects column,
-// arrangement navigation, and MIDI. All timing is cadence-agnostic.
-//
+/**
+ * @brief Multi-channel tracker-style pattern sequencer with keyboard editing.
+ *
+ * Classic tracker interface with per-channel note, velocity, and effect
+ * columns. Supports multiple tracks with independent patterns, edited via
+ * a custom keyboard-driven inspector. Outputs per-track MIDI.
+ *
+ * @see Sequencer, DrumSequencer, NotePattern
+ */
 struct Tracker : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Tracker";
     static constexpr bool kTimeDependent = true;

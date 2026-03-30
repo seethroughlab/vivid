@@ -1,0 +1,31 @@
+{
+  "name": "TimeMachine",
+  "id": "time_machine",
+  "domain": "gpu",
+  "source_file": "operators/gpu/time_machine/time_machine.cpp",
+  "brief": "Temporal slit-scan effect using a displacement map and history buffer.",
+  "description": "Stores a ring buffer of past source frames. Each output pixel samples\nfrom a different point in the history based on the grayscale displacement\nmap, creating slit-scan and time-displacement effects.",
+  "tips": [],
+  "related": [
+    "Feedback",
+    "Trails"
+  ],
+  "has_docs": true,
+  "params": [
+    {
+      "name": "depth",
+      "doc": "Maximum temporal displacement as fraction of history."
+    },
+    {
+      "name": "frames",
+      "doc": "Number of history frames to store (2-120)."
+    }
+  ],
+  "inputs": [
+    {
+      "name": "map",
+      "doc": "Grayscale displacement map controlling per-pixel time offset."
+    }
+  ],
+  "outputs": []
+}

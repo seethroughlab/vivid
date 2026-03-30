@@ -66,11 +66,14 @@ static void convert_rgba_f32_to_f16(const float* src, uint16_t* dst, int pixel_c
         dst[i] = static_cast<uint16_t>(sign | (static_cast<uint32_t>(exp) << 10) | (mant >> 13));
     }
 }
-
-// ---------------------------------------------------------------------------
-// TextureLoader operator
-// ---------------------------------------------------------------------------
-
+/**
+ * @brief Loads image files (JPEG, PNG, EXR, HDR) as GPU textures.
+ *
+ * Supports both LDR (JPEG/PNG via stb_image) and HDR (EXR/Radiance)
+ * formats. Hot-reloads on file change.
+ *
+ * @see MovieFileIn, SvgRender
+ */
 struct TextureLoader : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "TextureLoader";
     static constexpr bool kTimeDependent = false;

@@ -1,14 +1,14 @@
 #include "operator_api/child_op.h"
 #include "control/lfo/lfo.h"
 #include "control/smooth/smooth.h"
-
-// ModulatedGain — dual-cadence composite operator using ChildOp
-//
-// Passes an input signal through a gain stage modulated by an internal LFO.
-// The LFO output is smoothed before applying, giving a "breathing" effect.
-//
-// output = input * (base_gain + lfo_depth * smoothed_lfo)
-
+/**
+ * @brief Gain with built-in LFO modulation and smoothing.
+ *
+ * Composite operator that multiplies the input by a base gain modulated
+ * by an internal LFO. The LFO output is smoothed before application.
+ *
+ * @see Gain, LFO, Smooth
+ */
 struct ModulatedGain : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "ModulatedGain";
     static constexpr bool kTimeDependent = true;
@@ -23,6 +23,12 @@ struct ModulatedGain : vivid::OperatorBase, vivid::FrameProcessable, vivid::Audi
     vivid::ChildOp<Smooth> smoother_;
 
     ModulatedGain() {
+        vivid::description(base_gain, "Static gain level before modulation is applied");
+        vivid::description(lfo_rate, "Speed of the modulation oscillator in Hz");
+        vivid::description(lfo_depth, "How much the LFO modulates the gain");
+        vivid::description(lfo_shape, "Waveform of the modulation oscillator");
+        vivid::description(smooth_time, "Smoothing applied to the LFO output in seconds");
+
         vivid::semantic_tag(base_gain, "amplitude_linear");
         vivid::semantic_shape(base_gain, "scalar");
 

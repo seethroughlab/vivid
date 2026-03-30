@@ -1,15 +1,21 @@
 #include "operator_api/operator.h"
-
-// Logic — dual-cadence control operator.
-//
-// Inherits both FrameProcessable and AudioProcessable, making it audio-capable.
-// Stateless: applies boolean logic (AND/OR/XOR/NOT/NAND/NOR) to two inputs.
-//
+/**
+ * @brief Boolean logic gate operating on two control signals.
+ *
+ * Applies AND, OR, XOR, NOT, NAND, or NOR to two inputs (threshold
+ * > 0.5 = true). NOT only uses input A.
+ *
+ * @see Math, Gate
+ */
 struct Logic : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Logic";
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<int> operation{"operation", 0, {"AND", "OR", "XOR", "NOT", "NAND", "NOR"}};
+
+    Logic() {
+        vivid::description(operation, "Boolean operation to apply (NOT uses only input A)");
+    }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&operation);

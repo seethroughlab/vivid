@@ -3,13 +3,16 @@
 #include "operator_api/midi_types.h"
 #include "operator_api/type_id.h"
 
-// ---------------------------------------------------------------------------
-// DrumTom: Pitched sine + harmonics with pitch bend envelope
-//
-// SVF bandpass for body resonance. Pitch drops from (pitch * (1+bend))
-// down to base pitch over bend_time.
-// ---------------------------------------------------------------------------
-
+/**
+ * @brief Synthesized tom with pitch bend envelope and body filter.
+ *
+ * Sine oscillator with harmonics and an exponential pitch bend on
+ * trigger. Optional bandpass body filter controlled by the tone parameter.
+ *
+ * @param bend Depth of the pitch drop on trigger.
+ * @param bend_time Duration of the pitch envelope.
+ * @see DrumKick, DrumSnare, DrumKit
+ */
 struct DrumTom : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "DrumTom";
     static constexpr bool kTimeDependent = true;
@@ -30,20 +33,30 @@ struct DrumTom : vivid::OperatorBase, vivid::AudioProcessable {
     float               prev_trigger_ = 0.0f;
 
     DrumTom() {
+        vivid::description(pitch, "Base frequency of the tom body in Hz");
         vivid::semantic_tag(pitch, "frequency_hz");
         vivid::semantic_shape(pitch, "scalar");
         vivid::semantic_unit(pitch, "Hz");
 
+        vivid::description(bend, "Depth of the pitch drop on trigger (0 = none)");
+        vivid::description(bend_time, "Duration of the pitch bend envelope in seconds");
         vivid::semantic_tag(bend_time, "time_seconds");
         vivid::semantic_shape(bend_time, "scalar");
         vivid::semantic_unit(bend_time, "s");
 
+        vivid::description(color, "Harmonic overtone content added to the sine");
+        vivid::description(tone, "Body filter resonance amount (0 = bypass)");
+
+        vivid::description(decay, "Amplitude decay time in seconds");
         vivid::semantic_tag(decay, "time_seconds");
         vivid::semantic_shape(decay, "scalar");
         vivid::semantic_unit(decay, "s");
 
+        vivid::description(volume, "Overall output level");
         vivid::semantic_tag(volume, "amplitude_linear");
         vivid::semantic_shape(volume, "scalar");
+
+        vivid::description(note, "MIDI note number that triggers this drum (0-127)");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

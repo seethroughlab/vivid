@@ -1,0 +1,22 @@
+{
+  "name": "OscIn",
+  "id": "osc_in",
+  "domain": "control",
+  "source_file": "operators/control/osc_in/osc_in.cpp",
+  "brief": "OSC server receiving values over UDP.",
+  "description": "Listens on a configurable UDP port for OSC messages matching an address\npattern. Parses the first argument and outputs its value plus a trigger\non each new message.",
+  "tips": [],
+  "related": [
+    "OscOut",
+    "MidiInput"
+  ],
+  "has_docs": true,
+  "params": [
+    {
+      "name": "address",
+      "doc": "OSC address to match (e.g. /sensor/value)."
+    }
+  ],
+  "inputs": [],
+  "outputs": []
+}

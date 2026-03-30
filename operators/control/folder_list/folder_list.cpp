@@ -33,7 +33,15 @@ static std::vector<std::string> parse_extensions(const std::string& csv) {
     return out;
 }
 } // namespace
-
+/**
+ * @brief Scans a directory and outputs matching filenames as a spread.
+ *
+ * Lists files in a folder filtered by comma-separated extensions, with
+ * optional recursive scanning and sorting.
+ *
+ * @param extensions Comma-separated file extensions to include (e.g. "wav,mp3").
+ * @see StringSelect, Basename, TextureLoader
+ */
 struct FolderList : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "FolderList";
     static constexpr bool kTimeDependent = false;
@@ -44,6 +52,11 @@ struct FolderList : vivid::OperatorBase, vivid::FrameProcessable {
     vivid::Param<int> sort_mode{"sort_mode", 0, {"NameAsc", "NameDesc"}};
 
     FolderList() {
+        vivid::description(folder, "Directory path to scan for files");
+        vivid::description(extensions, "Comma-separated file extensions to include (e.g. \"wav,mp3\")");
+        vivid::description(recursive, "Scan subdirectories when enabled");
+        vivid::description(sort_mode, "Sort order for the output file list");
+
         vivid::semantic_tag(recursive, "enabled");
         vivid::semantic_shape(recursive, "bool");
     }

@@ -17,12 +17,15 @@ static constexpr float kTypeColors[7][3] = {
 static constexpr float kPreviewH = 60.0f;
 static constexpr float kLineH = 18.0f;
 } // namespace note_insp
-
-// NotePattern — dual-cadence polyphonic chord sequencer.
-//
-// Beat-phase wrap detection + chord voicing + gate window + MIDI output.
-// All timing logic is cadence-agnostic.
-//
+/**
+ * @brief Per-step chord pattern sequencer with visual grid editor.
+ *
+ * Sequences up to 8 steps, each with a configurable root note and chord
+ * type (major, minor, 7th, dim, aug, sus2, sus4). Outputs chord notes
+ * as a polyphonic spread with MIDI output.
+ *
+ * @see ChordProgression, Arpeggiator, PatternSeq
+ */
 struct NotePattern : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "NotePattern";
     static constexpr bool kTimeDependent = true;

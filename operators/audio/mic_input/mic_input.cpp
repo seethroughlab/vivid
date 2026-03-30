@@ -60,9 +60,14 @@ struct CaptureRing {
     }
 };
 
-// ---------------------------------------------------------------------------
-// MicInput operator
-// ---------------------------------------------------------------------------
+/**
+ * @brief Live microphone capture with device selection and metering.
+ *
+ * Captures audio from a system input device using a triple-buffered
+ * ring buffer. Outputs stereo audio plus RMS and peak metering signals.
+ *
+ * @see WebcamIn, AudioAnalysis
+ */
 struct MicInput : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "MicInput";
     static constexpr bool kTimeDependent = true;
@@ -78,9 +83,13 @@ struct MicInput : vivid::OperatorBase, vivid::AudioProcessable {
     MicInput() {
         vivid::semantic_tag(gain, "amplitude_linear");
         vivid::semantic_shape(gain, "scalar");
+        vivid::description(gain, "Input gain multiplier (1 = unity)");
 
         vivid::semantic_tag(device, "index");
         vivid::semantic_shape(device, "int");
+        vivid::description(device, "System audio input device to capture from");
+
+        vivid::description(mute, "Silence the output without closing the device");
 
         // Enumerate capture devices for dropdown labels
         ma_context ctx;

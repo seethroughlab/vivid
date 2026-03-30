@@ -76,11 +76,16 @@ struct FeedbackUniforms {
     float rotate_rad;
     float _pad0, _pad1;
 };
-
-// =============================================================================
-// Feedback Operator
-// =============================================================================
-
+/**
+ * @brief Recursive feedback loop with decay, zoom, rotation, and offset.
+ *
+ * Composites the input over the previous frame's output with configurable
+ * affine transform (zoom, rotate, offset) and brightness decay. Creates
+ * trails, tunnels, and recursive visual effects.
+ *
+ * @tip Small zoom values (0.99) create tunnel effects. Combine with rotation for spirals.
+ * @see Trails, Composite, TimeMachine
+ */
 struct Feedback : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Feedback";
     static constexpr bool kTimeDependent = true;

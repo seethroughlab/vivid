@@ -3,14 +3,17 @@
 #include "operator_api/midi_types.h"
 #include "operator_api/type_id.h"
 
-// ---------------------------------------------------------------------------
-// DrumCymbal: 12 inharmonic ring oscillators + noise sizzle
-//
-// Square waves at inharmonically-related frequencies create metallic timbre.
-// SVF highpass for brightness. Shimmer LFO amplitude modulation.
-// Long decay times: 1-2s = ride, 3+ = crash.
-// ---------------------------------------------------------------------------
-
+/**
+ * @brief Synthesized cymbal from 12 inharmonic ring oscillators.
+ *
+ * Combines 12 metallic square-wave oscillators at inharmonic ratios with
+ * filtered noise, passed through a highpass filter. Long decay times
+ * produce ride sounds (1-2s), longer values crash cymbals.
+ *
+ * @param shimmer LFO modulation depth for amplitude tremolo.
+ * @param sizzle Amount of noise mixed into the metallic tone.
+ * @see DrumHiHat, DrumClap, DrumKit
+ */
 struct DrumCymbal : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "DrumCymbal";
     static constexpr bool kTimeDependent = true;
@@ -38,12 +41,21 @@ struct DrumCymbal : vivid::OperatorBase, vivid::AudioProcessable {
     float               prev_trigger_ = 0.0f;
 
     DrumCymbal() {
+        vivid::description(decay, "Amplitude decay time in seconds (1-2 = ride, longer = crash)");
         vivid::semantic_tag(decay, "time_seconds");
         vivid::semantic_shape(decay, "scalar");
         vivid::semantic_unit(decay, "s");
 
+        vivid::description(tone, "Highpass filter brightness (higher = thinner, more cut)");
+        vivid::description(pitch, "Pitch multiplier for the inharmonic oscillator bank");
+        vivid::description(shimmer, "LFO tremolo depth for amplitude modulation");
+        vivid::description(sizzle, "Amount of noise mixed into the metallic tone");
+
+        vivid::description(volume, "Overall output level");
         vivid::semantic_tag(volume, "amplitude_linear");
         vivid::semantic_shape(volume, "scalar");
+
+        vivid::description(note, "MIDI note number that triggers this drum (0-127)");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

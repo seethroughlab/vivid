@@ -78,11 +78,14 @@ struct SvgUniforms {
     float use_override;
     float bg_r, bg_g, bg_b, bg_a;
 };
-
-// =============================================================================
-// SVG Render Operator
-// =============================================================================
-
+/**
+ * @brief Renders SVG files using the nanosvg rasterizer.
+ *
+ * Loads and rasterizes .svg files to a texture with configurable scale,
+ * position, and optional color override for tinting.
+ *
+ * @see TextureLoader, Text
+ */
 struct SvgRender : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "SVG Render";
     static constexpr bool kTimeDependent = false;

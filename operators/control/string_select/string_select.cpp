@@ -4,7 +4,14 @@
 #include <cmath>
 #include <string>
 #include <vector>
-
+/**
+ * @brief Selects a string from an input spread by index.
+ *
+ * Picks one string from an input string spread at the given index.
+ * Optional wrap mode cycles the index; otherwise it clamps.
+ *
+ * @see FolderList, Basename, Stack
+ */
 struct StringSelect : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "StringSelect";
     static constexpr bool kTimeDependent = false;
@@ -14,6 +21,7 @@ struct StringSelect : vivid::OperatorBase, vivid::FrameProcessable {
     StringSelect() {
         vivid::semantic_tag(wrap, "enabled");
         vivid::semantic_shape(wrap, "bool");
+        vivid::description(wrap, "Wrap index around the list instead of clamping");
     }
 
     std::string selected_;

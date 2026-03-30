@@ -4,12 +4,17 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
-
-// StepSeq — dual-cadence step sequencer.
-//
-// Free-running or sync phase + step values with glide + per-step gate lengths.
-// Phase accumulation via delta_time is cadence-agnostic.
-//
+/**
+ * @brief Free-running or beat-synced step sequencer with glide and per-step gates.
+ *
+ * Sequences up to 32 steps with individual values and gate lengths.
+ * Supports free-running (internal clock) or beat-synced operation. Glide
+ * adds cubic interpolation between steps for smooth portamento.
+ *
+ * @param glide Smoothing between step values. 0 = instant, 1 = full cubic interpolation.
+ * @param polarity bipolar remaps output from [-1,1]; unipolar stays [0,1].
+ * @see PatternSeq, Sequencer, LFO
+ */
 struct StepSeq : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "StepSeq";
     static constexpr bool kTimeDependent = true;

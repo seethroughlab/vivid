@@ -8,6 +8,15 @@
 
 using namespace vivid_sampler;
 
+/**
+ * @brief Single-pad sampler with one-shot, loop, and gate playback.
+ *
+ * Plays the first group from a sample bank file with configurable ADSR
+ * and play mode. Designed for simple trigger-and-play use cases like
+ * drum pads.
+ *
+ * @see Sampler, Slicer
+ */
 struct SP404 : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName = "SP404";
     static constexpr bool kTimeDependent = false;
@@ -27,6 +36,16 @@ struct SP404 : vivid::OperatorBase, vivid::AudioProcessable {
     SampleBank* deferred_delete_ = nullptr;
     std::string last_path_;
     uint64_t frame_counter_ = 0;
+
+    SP404() {
+        vivid::description(file, "Sample bank file to load");
+        vivid::description(mode, "Playback mode: one_shot plays once, loop repeats, gate sustains while held");
+        vivid::description(attack, "Envelope attack time in seconds");
+        vivid::description(decay, "Envelope decay time in seconds");
+        vivid::description(sustain, "Envelope sustain level (0-1)");
+        vivid::description(release, "Envelope release time in seconds");
+        vivid::description(volume, "Master output volume, can boost up to 2x");
+    }
 
     ~SP404() {
         delete bank_.load(std::memory_order_relaxed);

@@ -297,11 +297,15 @@ struct ScopesUniforms {
     float brightness;      // 4
     float opacity;         // 4
 };                         // = 32 bytes
-
-// =============================================================================
-// Scopes Operator
-// =============================================================================
-
+/**
+ * @brief Real-time waveform, histogram, vectorscope, and parade analysis.
+ *
+ * Analyzes an input texture and renders one of four scope types:
+ * waveform (luminance plot), histogram (level distribution), vectorscope
+ * (CbCr color plot), or parade (per-channel waveforms).
+ *
+ * @see TextureAnalysis, AudioAnalysis
+ */
 struct Scopes : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Scopes";
     static constexpr bool kTimeDependent = false;

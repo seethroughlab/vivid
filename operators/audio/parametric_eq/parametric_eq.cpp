@@ -6,15 +6,19 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-// ---------------------------------------------------------------------------
-// Parametric EQ — 4-band biquad equalizer (RBJ Audio EQ Cookbook) (mono)
-// ---------------------------------------------------------------------------
-
 struct BiquadState {
     float x1 = 0.0f, x2 = 0.0f;
     float y1 = 0.0f, y2 = 0.0f;
 };
 
+/**
+ * @brief Four-band parametric equalizer with cascaded biquad filters.
+ *
+ * Up to 4 filter bands in series, each configurable as peak, low shelf,
+ * high shelf, low pass, or high pass. Band 1 frequency supports CV modulation.
+ *
+ * @see Filter, Vocoder
+ */
 struct ParametricEQ : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "ParametricEQ";
     static constexpr bool kTimeDependent = false;
@@ -51,6 +55,7 @@ struct ParametricEQ : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::semantic_tag(band_count, "count");
         vivid::semantic_shape(band_count, "scalar");
         vivid::display_hint(band_count, VIVID_DISPLAY_KNOB);
+        vivid::description(band_count, "Number of active EQ bands (1\u20134)");
 
         auto setup_band = [](vivid::Param<float>& freq, vivid::Param<float>& gain,
                              vivid::Param<float>& q, vivid::Param<int>& type,
@@ -61,6 +66,7 @@ struct ParametricEQ : vivid::OperatorBase, vivid::AudioProcessable {
             vivid::semantic_unit(freq, "Hz");
             vivid::display_hint(freq, VIVID_DISPLAY_KNOB);
             vivid::layout_row(freq, 2, 0);
+            vivid::description(freq, "Center frequency of this EQ band in Hz");
 
             vivid::param_group(gain, group);
             vivid::semantic_tag(gain, "gain_db");
@@ -68,16 +74,19 @@ struct ParametricEQ : vivid::OperatorBase, vivid::AudioProcessable {
             vivid::semantic_unit(gain, "dB");
             vivid::display_hint(gain, VIVID_DISPLAY_KNOB);
             vivid::layout_row(gain, 2, 1);
+            vivid::description(gain, "Boost or cut in dB (-24 to +24)");
 
             vivid::param_group(q, group);
             vivid::semantic_tag(q, "resonance");
             vivid::semantic_shape(q, "scalar");
             vivid::display_hint(q, VIVID_DISPLAY_KNOB);
             vivid::layout_row(q, 2, 0);
+            vivid::description(q, "Filter Q / bandwidth (higher = narrower)");
 
             vivid::param_group(type, group);
             vivid::display_hint(type, VIVID_DISPLAY_KNOB);
             vivid::layout_row(type, 2, 1);
+            vivid::description(type, "Filter shape: Peak, Low Shelf, High Shelf, Low Pass, or High Pass");
         };
 
         setup_band(freq_1, gain_1, q_1, type_1, "Band 1");

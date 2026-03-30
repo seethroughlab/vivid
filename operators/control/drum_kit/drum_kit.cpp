@@ -3,16 +3,16 @@
 #include "operator_api/type_id.h"
 #include <cstdint>
 #include <cstring>
-
-// DrumKit — MIDI-to-per-slot-MIDI demuxer.
-//
-// Takes a single MIDI stream and fans it out to per-slot MIDI outputs,
-// filtering note-on/off messages by configurable note number per slot.
-// Non-note messages (CC, etc.) are forwarded to all slots.
-//
-// Analogous to Ableton's Drum Rack: each slot maps a MIDI note to an
-// output that can drive any audio operator (DrumKick, Sampler, etc.).
-//
+/**
+ * @brief MIDI note demuxer routing notes to per-slot outputs.
+ *
+ * Routes incoming MIDI messages to 8 output slots based on configurable
+ * note numbers. Non-note messages (CC, pitchbend, etc.) are broadcast to
+ * all slots. Use this to split a single MIDI stream into individual drum
+ * trigger channels.
+ *
+ * @see DrumSequencer, MidiInput, DrumKick
+ */
 struct DrumKit : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName = "DrumKit";
     static constexpr bool kTimeDependent = false;

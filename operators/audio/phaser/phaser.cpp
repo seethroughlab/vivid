@@ -26,6 +26,16 @@ static constexpr int   kMaxStages = 12;
 static constexpr float kMinFreq   = 100.0f;
 static constexpr float kMaxFreq   = 4000.0f;
 
+/**
+ * @brief Allpass cascade swept by sine LFO for phase-shifting effects.
+ *
+ * Chains 2 to 12 allpass filter stages with frequencies modulated by
+ * a sine LFO, creating notches that sweep through the spectrum.
+ * Feedback deepens the effect.
+ *
+ * @param stages Number of allpass stages. More stages = more notches.
+ * @see Flanger, Chorus, Filter
+ */
 struct Phaser : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Phaser";
     static constexpr bool kTimeDependent = false;
@@ -47,22 +57,27 @@ struct Phaser : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::semantic_shape(rate, "scalar");
         vivid::semantic_unit(rate, "Hz");
         vivid::display_hint(rate, VIVID_DISPLAY_KNOB);
+        vivid::description(rate, "Speed of the LFO sweep in Hz");
 
         vivid::semantic_tag(depth, "probability_01");
         vivid::semantic_shape(depth, "scalar");
         vivid::display_hint(depth, VIVID_DISPLAY_KNOB);
+        vivid::description(depth, "How far the notch frequencies sweep across the spectrum");
 
         vivid::semantic_shape(stages, "scalar");
         vivid::semantic_intent(stages, "stage_count");
+        vivid::description(stages, "Number of allpass stages; more stages produce more notches");
 
         vivid::semantic_tag(feedback, "probability_01");
         vivid::semantic_shape(feedback, "scalar");
         vivid::display_hint(feedback, VIVID_DISPLAY_KNOB);
+        vivid::description(feedback, "Amount of output fed back into the allpass chain to deepen the effect");
 
         vivid::semantic_tag(mix, "probability_01");
         vivid::semantic_shape(mix, "scalar");
         vivid::semantic_intent(mix, "wet_mix");
         vivid::display_hint(mix, VIVID_DISPLAY_KNOB);
+        vivid::description(mix, "Blend between dry input and phased signal");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

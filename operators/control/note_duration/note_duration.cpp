@@ -1,14 +1,13 @@
 #include "operator_api/operator.h"
-
-// NoteDuration — dual-cadence control operator.
-//
-// Inherits both FrameProcessable and AudioProcessable, making it audio-capable:
-//   - At frame-rate (~60 Hz): computes one output value per tick via process_frame()
-//   - At audio-rate (~48 kHz): computes one scalar output via process_audio()
-//
-// VIVID_REGISTER detects both interfaces and sets:
-//   cadence_capability = VIVID_CADENCE_AUDIO_CAPABLE
-//
+/**
+ * @brief Converts beat duration to musical note duration.
+ *
+ * Takes beat_ms input and multiplies by a subdivision factor to produce
+ * the duration of a note value (whole, half, quarter, eighth, etc.,
+ * including dotted and triplet variants).
+ *
+ * @see Clock, Delay
+ */
 struct NoteDuration : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "NoteDuration";
     static constexpr bool kTimeDependent = false;
@@ -17,6 +16,10 @@ struct NoteDuration : vivid::OperatorBase, vivid::FrameProcessable, vivid::Audio
         {"1/1", "1/2", "1/4", "1/8", "1/16", "1/32",
          "dotted 1/4", "dotted 1/8", "dotted 1/16",
          "triplet 1/4", "triplet 1/8", "triplet 1/16"}};
+
+    NoteDuration() {
+        vivid::description(subdivision, "Musical note value to convert the beat duration into");
+    }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&subdivision);

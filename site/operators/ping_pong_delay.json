@@ -1,0 +1,26 @@
+{
+  "name": "PingPongDelay",
+  "id": "ping_pong_delay",
+  "domain": "audio",
+  "source_file": "operators/audio/ping_pong_delay/ping_pong_delay.cpp",
+  "brief": "Stereo ping-pong delay with cross-feed and feedback filtering.",
+  "description": "Alternates echoes between left and right channels. The spread parameter\ncontrols cross-feed between channels -- 0 is mono delay, 1 is full\nping-pong. Optional low/high pass filter on the feedback path.",
+  "tips": [],
+  "related": [
+    "Delay",
+    "Reverb"
+  ],
+  "has_docs": true,
+  "params": [
+    {
+      "name": "spread",
+      "doc": "Cross-feed amount. 0 = mono, 1 = full stereo alternation."
+    },
+    {
+      "name": "filter",
+      "doc": "Feedback filter mode. Tames harsh repeats or thins the tail."
+    }
+  ],
+  "inputs": [],
+  "outputs": []
+}

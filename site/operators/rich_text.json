@@ -1,0 +1,21 @@
+{
+  "name": "RichText",
+  "id": "rich_text",
+  "domain": "gpu",
+  "source_file": "operators/gpu/rich_text/rich_text.cpp",
+  "brief": "Animated text with per-character effects.",
+  "description": "Renders text with TrueType fonts and applies per-character animation:\nwave (sine offset), typewriter (progressive reveal), scatter (fly-in),\nor fade (progressive alpha). Supports alignment and line height control.",
+  "tips": [],
+  "related": [
+    "Text"
+  ],
+  "has_docs": true,
+  "params": [
+    {
+      "name": "anim_mode",
+      "doc": "Animation style: None, Wave, Typewriter, Scatter, or Fade."
+    }
+  ],
+  "inputs": [],
+  "outputs": []
+}

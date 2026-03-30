@@ -1,0 +1,20 @@
+{
+  "name": "Chorus",
+  "id": "chorus",
+  "domain": "audio",
+  "source_file": "operators/audio/chorus/chorus.cpp",
+  "brief": "Multi-voice chorus effect with modulated fractional delay.",
+  "description": "Mixes delayed copies of the input with phase-offset LFO modulation.\nEach voice uses a slightly different delay time to create width and\nmovement. Center delay is 7ms with +/-5ms variation.",
+  "tips": [
+    "Increase voices for a thicker, more ensemble-like sound."
+  ],
+  "related": [
+    "Flanger",
+    "Phaser",
+    "Delay"
+  ],
+  "has_docs": true,
+  "params": [],
+  "inputs": [],
+  "outputs": []
+}

@@ -32,12 +32,15 @@ inline bool midi_note_off(VividMidiBuffer& buf, uint8_t note,
 }
 
 } // anonymous namespace
-
-// Sequencer — dual-cadence step sequencer with ratchets, probability, and MIDI.
-//
-// Purely phase-driven (kTimeDependent = false). Spread inputs for values,
-// probabilities, and ratchet counts. All logic is cadence-agnostic.
-//
+/**
+ * @brief Multi-spread step sequencer with ratchets and probability.
+ *
+ * Sequences up to 128 steps consuming per-step values, probabilities,
+ * and ratchet counts from input spreads. Outputs notes, velocities, and
+ * gates as both spreads and scalar signals with MIDI output.
+ *
+ * @see PatternSeq, StepSeq, Arpeggiator
+ */
 struct Sequencer : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Sequencer";
     static constexpr bool kTimeDependent = false;
@@ -49,6 +52,8 @@ struct Sequencer : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPro
         vivid::semantic_tag(steps, "count");
         vivid::semantic_shape(steps, "int");
         vivid::semantic_intent(steps, "sequence_length");
+        vivid::description(steps, "Number of active steps in the sequence (1–128)");
+        vivid::description(midi_channel, "MIDI output channel (1–16)");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

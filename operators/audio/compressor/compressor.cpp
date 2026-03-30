@@ -2,12 +2,19 @@
 
 #include <cmath>
 
-// ---------------------------------------------------------------------------
-// Feed-forward compressor with envelope follower and optional sidechain input
-// ---------------------------------------------------------------------------
-
 static constexpr float kFloorDB = -96.0f;
 
+/**
+ * @brief Feed-forward dynamics compressor with soft knee and sidechain.
+ *
+ * Reduces dynamic range using an envelope follower with configurable
+ * attack, release, ratio, and knee. Optional sidechain input allows
+ * ducking based on an external signal.
+ *
+ * @tip Use the sidechain input with a kick drum to create a pumping effect.
+ * @param knee Soft knee width in dB. Wider = more gradual onset.
+ * @see Limiter, Gain
+ */
 struct Compressor : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Compressor";
     static constexpr bool kTimeDependent = false;
@@ -26,29 +33,35 @@ struct Compressor : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::semantic_shape(threshold, "scalar");
         vivid::semantic_unit(threshold, "dB");
         vivid::display_hint(threshold, VIVID_DISPLAY_KNOB);
+        vivid::description(threshold, "Level in dB above which compression begins");
 
         vivid::semantic_shape(ratio, "scalar");
         vivid::display_hint(ratio, VIVID_DISPLAY_KNOB);
+        vivid::description(ratio, "Compression ratio (e.g. 4 means 4:1 gain reduction)");
 
         vivid::semantic_tag(attack, "time_milliseconds");
         vivid::semantic_shape(attack, "scalar");
         vivid::semantic_unit(attack, "ms");
         vivid::display_hint(attack, VIVID_DISPLAY_KNOB);
+        vivid::description(attack, "How quickly compression engages in milliseconds");
 
         vivid::semantic_tag(release, "time_milliseconds");
         vivid::semantic_shape(release, "scalar");
         vivid::semantic_unit(release, "ms");
         vivid::display_hint(release, VIVID_DISPLAY_KNOB);
+        vivid::description(release, "How quickly compression releases in milliseconds");
 
         vivid::semantic_tag(knee, "gain_db");
         vivid::semantic_shape(knee, "scalar");
         vivid::semantic_unit(knee, "dB");
         vivid::display_hint(knee, VIVID_DISPLAY_KNOB);
+        vivid::description(knee, "Soft knee width in dB (0 = hard knee, higher = more gradual)");
 
         vivid::semantic_tag(makeup, "gain_db");
         vivid::semantic_shape(makeup, "scalar");
         vivid::semantic_unit(makeup, "dB");
         vivid::display_hint(makeup, VIVID_DISPLAY_KNOB);
+        vivid::description(makeup, "Output gain boost in dB to compensate for compression");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

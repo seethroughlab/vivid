@@ -85,11 +85,14 @@ struct CompositeUniforms {
     float _pad0;
     float _pad1;
 };
-
-// =============================================================================
-// Composite Operator
-// =============================================================================
-
+/**
+ * @brief Blends two textures with configurable blend mode and opacity.
+ *
+ * Composites layer A over layer B using Normal, Add, Multiply, Screen,
+ * or Overlay blend modes. Disconnected inputs default to transparent.
+ *
+ * @see Feedback, Bloom
+ */
 struct Composite : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Composite";
     static constexpr bool kTimeDependent = false;

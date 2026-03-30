@@ -1,0 +1,18 @@
+{
+  "name": "Tracker",
+  "id": "tracker",
+  "domain": "control",
+  "source_file": "operators/control/tracker/tracker.cpp",
+  "brief": "Multi-channel tracker-style pattern sequencer with keyboard editing.",
+  "description": "Classic tracker interface with per-channel note, velocity, and effect\ncolumns. Supports multiple tracks with independent patterns, edited via\na custom keyboard-driven inspector. Outputs per-track MIDI.",
+  "tips": [],
+  "related": [
+    "Sequencer",
+    "DrumSequencer",
+    "NotePattern"
+  ],
+  "has_docs": true,
+  "params": [],
+  "inputs": [],
+  "outputs": []
+}

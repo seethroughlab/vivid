@@ -1,0 +1,24 @@
+{
+  "name": "Compressor",
+  "id": "compressor",
+  "domain": "audio",
+  "source_file": "operators/audio/compressor/compressor.cpp",
+  "brief": "Feed-forward dynamics compressor with soft knee and sidechain.",
+  "description": "Reduces dynamic range using an envelope follower with configurable\nattack, release, ratio, and knee. Optional sidechain input allows\nducking based on an external signal.",
+  "tips": [
+    "Use the sidechain input with a kick drum to create a pumping effect."
+  ],
+  "related": [
+    "Limiter",
+    "Gain"
+  ],
+  "has_docs": true,
+  "params": [
+    {
+      "name": "knee",
+      "doc": "Soft knee width in dB. Wider = more gradual onset."
+    }
+  ],
+  "inputs": [],
+  "outputs": []
+}

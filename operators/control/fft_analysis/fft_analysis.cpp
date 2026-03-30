@@ -6,7 +6,14 @@
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
-
+/**
+ * @brief Radix-2 FFT computing magnitude spectrum from a waveform spread.
+ *
+ * Performs a Cooley-Tukey FFT with optional windowing (Hann, Hamming)
+ * on an input waveform spread and outputs the magnitude spectrum.
+ *
+ * @see AudioAnalysis, TextureAnalysis
+ */
 struct FFTAnalysis : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "FFTAnalysis";
     static constexpr bool kTimeDependent = false;
@@ -15,6 +22,9 @@ struct FFTAnalysis : vivid::OperatorBase, vivid::FrameProcessable {
     vivid::Param<int> fft_size {"fft_size", 512, 256, 1024};
 
     FFTAnalysis() {
+        vivid::description(window, "Windowing function applied before the FFT: none, hann, or hamming");
+        vivid::description(fft_size, "Number of FFT samples (256, 512, or 1024)");
+
         vivid::semantic_tag(fft_size, "count");
         vivid::semantic_shape(fft_size, "int");
     }

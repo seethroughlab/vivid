@@ -107,10 +107,24 @@ struct ShapeUniforms {
     float color_b;
 };
 
-// =============================================================================
-// Shape Operator
-// =============================================================================
-
+/**
+ * @brief SDF polygon/star shape generator with soft edges.
+ *
+ * Renders a regular polygon or star using a signed-distance-field evaluated
+ * in a fragment shader. The shape is always centered and aspect-corrected.
+ * Increase `sides` for rounder shapes (64 = near-circle). Enable `star`
+ * to pull alternating vertices inward, creating star patterns.
+ *
+ * Output is premultiplied-alpha — composite it with Composite or layer
+ * it over other generators.
+ *
+ * @tip Set sides=64 and star=0 for a soft circle. Pair with Trails for motion blur.
+ * @tip Modulate rotation with an LFO for spinning shapes.
+ * @see Noise, Composite, Trails
+ * @param star How far inner vertices pull inward. 0 = regular polygon, 0.9 = extreme spikes.
+ * @param softness Width of the antialiased edge. Higher values give a glow-like falloff.
+ * @output texture The rendered shape on a transparent background.
+ */
 struct Shape : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Shape";
     static constexpr bool kTimeDependent = false;

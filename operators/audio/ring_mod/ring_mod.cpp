@@ -7,10 +7,16 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-// ---------------------------------------------------------------------------
-// Ring Modulator — multiplies input by internal carrier oscillator (mono)
-// ---------------------------------------------------------------------------
-
+/**
+ * @brief Ring modulator multiplying input by an internal carrier oscillator.
+ *
+ * Multiplies the input signal by a selectable carrier waveform, producing
+ * sum and difference frequencies. Creates metallic, bell-like, or robotic
+ * timbres depending on the carrier frequency.
+ *
+ * @tip Set carrier near the input fundamental for subtle thickening; higher ratios for extreme effects.
+ * @see Distortion, Bitcrush, FmSynth
+ */
 struct RingMod : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "RingMod";
     static constexpr bool kTimeDependent = false;
@@ -26,13 +32,16 @@ struct RingMod : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::semantic_shape(carrier_freq, "scalar");
         vivid::semantic_unit(carrier_freq, "Hz");
         vivid::display_hint(carrier_freq, VIVID_DISPLAY_KNOB);
+        vivid::description(carrier_freq, "Frequency of the internal carrier oscillator in Hz");
 
         vivid::display_hint(carrier_waveform, VIVID_DISPLAY_KNOB);
+        vivid::description(carrier_waveform, "Carrier oscillator shape: sine, saw, square, or triangle");
 
         vivid::semantic_tag(mix, "probability_01");
         vivid::semantic_shape(mix, "scalar");
         vivid::semantic_intent(mix, "wet_mix");
         vivid::display_hint(mix, VIVID_DISPLAY_KNOB);
+        vivid::description(mix, "Blend between dry input and ring-modulated signal");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

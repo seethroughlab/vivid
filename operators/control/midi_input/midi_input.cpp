@@ -7,7 +7,17 @@
 #include <memory>
 #include <cstring>
 #include <cstdio>
-
+/**
+ * @brief MIDI device listener outputting notes, velocity, gates, and CCs.
+ *
+ * Connects to a MIDI input device and outputs note/velocity/gate as both
+ * scalar signals (latest note) and polyphonic spreads (up to 16 held notes).
+ * Also provides pitch bend, mod wheel, and a learnable CC value.
+ *
+ * @tip Enable learn mode and move a controller to auto-assign the CC number.
+ * @param channel MIDI channel filter. 0 = omni (all channels).
+ * @see DrumKit, Arpeggiator, Keyboard
+ */
 struct MidiInput : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "MidiInput";
     static constexpr bool kTimeDependent = true;
@@ -42,6 +52,11 @@ struct MidiInput : vivid::OperatorBase, vivid::FrameProcessable {
 
     MidiInput() {
         std::memset(cc_values_, 0, sizeof(cc_values_));
+
+        vivid::description(device, "MIDI input device index");
+        vivid::description(channel, "MIDI channel filter, 0 = omni (all channels)");
+        vivid::description(cc_number, "CC number to read (0-127)");
+        vivid::description(learn, "When enabled, auto-assigns cc_number from the next incoming CC");
 
         vivid::semantic_tag(channel, "index");
         vivid::semantic_shape(channel, "int");

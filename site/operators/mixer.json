@@ -1,0 +1,17 @@
+{
+  "name": "Mixer",
+  "id": "mixer",
+  "domain": "audio",
+  "source_file": "operators/audio/mixer/mixer.cpp",
+  "brief": "Four-input summing mixer with per-channel gain.",
+  "description": "Sums up to 4 audio inputs with independent gain controls.\nDisconnected inputs contribute silence.",
+  "tips": [],
+  "related": [
+    "Gain",
+    "Composite"
+  ],
+  "has_docs": true,
+  "params": [],
+  "inputs": [],
+  "outputs": []
+}

@@ -19,6 +19,16 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+/**
+ * @brief Passthrough audio analyzer outputting RMS, peak, and spectral features.
+ *
+ * Computes RMS, peak, spectral centroid, spectral flux, and zero-crossing
+ * rate per buffer with exponential smoothing. Audio passes through unchanged,
+ * so it can be inserted into any chain without breaking it.
+ *
+ * @param smoothing Exponential averaging factor. Higher = more stable, slower response.
+ * @see Scopes, TextureAnalysis
+ */
 struct AudioAnalysis : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "AudioAnalysis";
     static constexpr bool kTimeDependent = true;
@@ -27,6 +37,7 @@ struct AudioAnalysis : vivid::OperatorBase, vivid::AudioProcessable {
 
     AudioAnalysis() {
         vivid::semantic_shape(smoothing, "scalar");
+        vivid::description(smoothing, "Exponential averaging factor for output stability (higher = smoother, slower)");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

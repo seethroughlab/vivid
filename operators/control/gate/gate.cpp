@@ -1,10 +1,12 @@
 #include "operator_api/operator.h"
-
-// Gate — dual-cadence control operator.
-//
-// Inherits both FrameProcessable and AudioProcessable, making it audio-capable.
-// Stateless: passes or zeros a signal based on a threshold comparison.
-//
+/**
+ * @brief Passes or blocks a signal based on a gate threshold.
+ *
+ * When the gate input exceeds the threshold, the signal passes through.
+ * Otherwise outputs zero. Optional invert mode reverses the logic.
+ *
+ * @see Logic, SampleHold, Math
+ */
 struct Gate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Gate";
     static constexpr bool kTimeDependent = false;
@@ -13,6 +15,9 @@ struct Gate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessa
     vivid::Param<bool>  invert{"invert", false};
 
     Gate() {
+        vivid::description(threshold, "Gate input level required to pass the signal (0 to 1)");
+        vivid::description(invert, "Reverses the gate logic so signal passes when input is below threshold");
+
         vivid::semantic_tag(threshold, "probability_01");
         vivid::semantic_shape(threshold, "scalar");
 

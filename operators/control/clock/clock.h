@@ -5,7 +5,18 @@
 #include <cstring>
 
 struct ClockThumbState;
-
+/**
+ * @brief Master tempo clock generating beat and bar phase signals.
+ *
+ * Drives time-based operators with a steady pulse. Outputs a 0-1 sawtooth
+ * beat phase, bar phase, milliseconds per beat, and a trigger pulse on
+ * each beat boundary.
+ *
+ * @tip Connect beat_phase to any operator with a beat_phase input for tempo sync.
+ * @output beat_phase Sawtooth ramp 0-1 over each beat.
+ * @output beat_trigger Impulse on each beat boundary.
+ * @see LFO, Envelope, Sequencer
+ */
 struct Clock : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Clock";
     static constexpr bool kTimeDependent = true;
@@ -20,6 +31,8 @@ struct Clock : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcess
         vivid::semantic_tag(bpm, "bpm");
         vivid::semantic_shape(bpm, "scalar");
         vivid::semantic_unit(bpm, "bpm");
+        vivid::description(bpm, "Tempo in beats per minute");
+        vivid::description(beats_per_bar, "Number of beats in each bar for the bar_trigger output");
     }
 
     ~Clock() override;
