@@ -3198,12 +3198,83 @@ void NodeGraphUI::draw_sticky_notes(Renderer2D& tr) {
         float text_y = sy + g_to_s(kStickyPad);
         float text_scale = zoom_ * 0.85f;
         if (text_scale < 0.3f) text_scale = 0.3f;
+        float line_h = 14.0f * text_scale;
+        float line_spacing = line_h + 2.0f * text_scale;
+        float max_text_w = sw - 2.0f * g_to_s(kStickyPad);
+
+        // Measure display width after stripping markdown markers.
+        auto plain_width = [&](const std::string& s) -> float {
+            std::string out;
+            out.reserve(s.size());
+            size_t i = 0;
+            while (i < s.size()) {
+                if (i + 1 < s.size() && s[i] == '*' && s[i+1] == '*') { i += 2; continue; }
+                if (s[i] == '[') {
+                    size_t mid = s.find("](", i);
+                    size_t end = (mid != std::string::npos) ? s.find(')', mid + 2) : std::string::npos;
+                    if (end != std::string::npos) {
+                        out += s.substr(i + 1, mid - i - 1);
+                        i = end + 1; continue;
+                    }
+                }
+                out += s[i++];
+            }
+            return tr.text_width(out.c_str(), text_scale);
+        };
+
+        // Word-wrap a line into visual lines that fit max_w.
+        // Returns pairs of (display text, offset into src where this visual line starts).
+        struct VisLine { std::string text; size_t src_offset; };
+        auto raw_width = [&](const std::string& s) -> float {
+            return tr.text_width(s.c_str(), text_scale);
+        };
+
+        auto wrap_line_impl = [&](const std::string& src, float max_w,
+                                   size_t base_offset,
+                                   const std::function<float(const std::string&)>& measure) -> std::vector<VisLine> {
+            std::vector<VisLine> out;
+            if (max_w <= 0 || src.empty()) { out.push_back({src, base_offset}); return out; }
+            std::string cur;
+            size_t cur_start = 0;
+            size_t i = 0;
+            while (i < src.size()) {
+                size_t ws = i;
+                while (ws < src.size() && src[ws] == ' ') ++ws;
+                size_t we = ws;
+                while (we < src.size() && src[we] != ' ') ++we;
+                std::string token = src.substr(i, we - i);
+                std::string test = cur.empty() ? token : cur + token;
+                if (measure(test) > max_w && !cur.empty()) {
+                    while (!cur.empty() && cur.back() == ' ') cur.pop_back();
+                    out.push_back({cur, base_offset + cur_start});
+                    cur = src.substr(ws, we - ws);
+                    cur_start = ws;
+                } else {
+                    cur = test;
+                }
+                i = we;
+            }
+            if (!cur.empty()) {
+                while (!cur.empty() && cur.back() == ' ') cur.pop_back();
+                out.push_back({cur, base_offset + cur_start});
+            }
+            if (out.empty()) out.push_back({"", base_offset});
+            return out;
+        };
+
+        // Display path: measure with markdown stripped
+        auto wrap_line = [&](const std::string& src, float max_w, size_t base_offset = 0) {
+            return wrap_line_impl(src, max_w, base_offset, plain_width);
+        };
+        // Edit path: measure raw text including markdown markers
+        auto wrap_line_raw = [&](const std::string& src, float max_w, size_t base_offset = 0) {
+            return wrap_line_impl(src, max_w, base_offset, raw_width);
+        };
 
         if (editing_sticky_ && sticky_edit_id_ == sn.id) {
-            // Render edit buffer line-by-line (split on \n)
+            // Render edit buffer with word-wrap
             const std::string& buf = sticky_edit_buffer_;
             float line_y = text_y;
-            float line_h = 14.0f * text_scale;
             size_t cursor_pos = static_cast<size_t>(text_edit_.cursor);
             float cursor_draw_x = 0, cursor_draw_y = 0;
             bool cursor_found = false;
@@ -3214,32 +3285,38 @@ void NodeGraphUI::draw_sticky_notes(Renderer2D& tr) {
                 if (nl == std::string::npos) nl = buf.size();
                 std::string line = buf.substr(pos, nl - pos);
 
-                tr.draw_text(text_x, line_y, line.c_str(),
-                             0.1f, 0.1f, 0.1f, 1.0f, text_scale);
+                auto vis = wrap_line_raw(line, max_text_w, pos);
+                for (size_t vi = 0; vi < vis.size(); ++vi) {
+                    if (line_y > sy + sh - g_to_s(kStickyPad)) break;
+                    tr.draw_text(text_x, line_y, vis[vi].text.c_str(),
+                                 0.1f, 0.1f, 0.1f, 1.0f, text_scale);
 
-                // Check if cursor is on this line
-                if (!cursor_found && cursor_pos >= pos && cursor_pos <= nl) {
-                    std::string before_cursor = buf.substr(pos, cursor_pos - pos);
-                    cursor_draw_x = text_x + tr.text_width(before_cursor.c_str(), text_scale);
-                    cursor_draw_y = line_y;
-                    cursor_found = true;
+                    // Map cursor into this visual line
+                    size_t vstart = vis[vi].src_offset;
+                    size_t vend = (vi + 1 < vis.size()) ? vis[vi + 1].src_offset : nl;
+                    if (!cursor_found && cursor_pos >= vstart && cursor_pos <= vend) {
+                        if (cursor_pos == vend && vi + 1 < vis.size()) {
+                            // Belongs to next visual line
+                        } else {
+                            size_t off = cursor_pos - vstart;
+                            if (off > vis[vi].text.size()) off = vis[vi].text.size();
+                            std::string before = vis[vi].text.substr(0, off);
+                            cursor_draw_x = text_x + tr.text_width(before.c_str(), text_scale);
+                            cursor_draw_y = line_y;
+                            cursor_found = true;
+                        }
+                    }
+                    line_y += line_spacing;
                 }
 
-                line_y += line_h + 2.0f * text_scale;
                 pos = nl + 1;
                 if (pos > buf.size()) break;
                 if (line_y > sy + sh - g_to_s(kStickyPad)) break;
             }
 
-            // Cursor at end of buffer (after last line)
             if (!cursor_found) {
-                cursor_draw_y = line_y - (line_h + 2.0f * text_scale);
-                size_t last_nl = buf.rfind('\n');
-                if (last_nl != std::string::npos) {
-                    cursor_draw_x = text_x + tr.text_width(buf.substr(last_nl + 1).c_str(), text_scale);
-                } else {
-                    cursor_draw_x = text_x + tr.text_width(buf.c_str(), text_scale);
-                }
+                cursor_draw_x = text_x;
+                cursor_draw_y = std::max(text_y, line_y - line_spacing);
             }
 
             if (cursor_blink_on()) {
@@ -3247,31 +3324,12 @@ void NodeGraphUI::draw_sticky_notes(Renderer2D& tr) {
                              0.1f, 0.1f, 0.1f, 0.8f);
             }
         } else {
-            // Render text with lightweight markdown
+            // Render text with lightweight markdown and word-wrap
             const std::string& text = sn.text;
             float line_y = text_y;
-            float line_h = 14.0f * text_scale;
-            size_t pos = 0;
-            while (pos < text.size()) {
-                size_t nl = text.find('\n', pos);
-                if (nl == std::string::npos) nl = text.size();
-                std::string line = text.substr(pos, nl - pos);
 
-                // Bullet list item
-                bool is_bullet = false;
-                if (line.size() >= 2 && line[0] == '-' && line[1] == ' ') {
-                    is_bullet = true;
-                    line = line.substr(2);
-                }
-
-                float lx = text_x;
-                if (is_bullet) {
-                    tr.draw_text(lx, line_y, "\xe2\x80\xa2",
-                                 0.1f, 0.1f, 0.1f, 1.0f, text_scale);
-                    lx += 10.0f * text_scale;
-                }
-
-                // Simple bold: **text**
+            // Render a single visual line with markdown (bold, links, plain).
+            auto render_md_line = [&](const std::string& line, float lx) {
                 size_t bold_start = line.find("**");
                 if (bold_start != std::string::npos) {
                     size_t bold_end = line.find("**", bold_start + 2);
@@ -3287,46 +3345,66 @@ void NodeGraphUI::draw_sticky_notes(Renderer2D& tr) {
                         tr.draw_text(lx, line_y, bold_text.c_str(),
                                      0.05f, 0.05f, 0.05f, 1.0f, text_scale);
                         lx += tr.text_width(bold_text.c_str(), text_scale);
-                        if (!after.empty()) {
+                        if (!after.empty())
                             tr.draw_text(lx, line_y, after.c_str(),
                                          0.15f, 0.15f, 0.15f, 1.0f, text_scale);
-                        }
-                    } else {
-                        tr.draw_text(lx, line_y, line.c_str(),
-                                     0.15f, 0.15f, 0.15f, 1.0f, text_scale);
-                    }
-                } else {
-                    // Check for link: [text](url) — render text in accent color
-                    size_t link_start = line.find('[');
-                    size_t link_mid = (link_start != std::string::npos) ? line.find("](", link_start) : std::string::npos;
-                    size_t link_end = (link_mid != std::string::npos) ? line.find(')', link_mid + 2) : std::string::npos;
-                    if (link_start != std::string::npos && link_end != std::string::npos) {
-                        std::string before = line.substr(0, link_start);
-                        std::string link_text = line.substr(link_start + 1, link_mid - link_start - 1);
-                        std::string after = line.substr(link_end + 1);
-                        if (!before.empty()) {
-                            tr.draw_text(lx, line_y, before.c_str(),
-                                         0.15f, 0.15f, 0.15f, 1.0f, text_scale);
-                            lx += tr.text_width(before.c_str(), text_scale);
-                        }
-                        std::string link_url = line.substr(link_mid + 2, link_end - link_mid - 2);
-                        float link_x = lx;
-                        float link_w = tr.text_width(link_text.c_str(), text_scale);
-                        tr.draw_text(lx, line_y, link_text.c_str(),
-                                     kAccent[0] * 0.7f, kAccent[1] * 0.7f, kAccent[2] * 0.9f, 1.0f, text_scale);
-                        lx += link_w;
-                        sticky_link_rects_.push_back({link_x, line_y, link_w, line_h, std::move(link_url)});
-                        if (!after.empty()) {
-                            tr.draw_text(lx, line_y, after.c_str(),
-                                         0.15f, 0.15f, 0.15f, 1.0f, text_scale);
-                        }
-                    } else {
-                        tr.draw_text(lx, line_y, line.c_str(),
-                                     0.15f, 0.15f, 0.15f, 1.0f, text_scale);
+                        return;
                     }
                 }
+                size_t link_start = line.find('[');
+                size_t link_mid = (link_start != std::string::npos) ? line.find("](", link_start) : std::string::npos;
+                size_t link_end = (link_mid != std::string::npos) ? line.find(')', link_mid + 2) : std::string::npos;
+                if (link_start != std::string::npos && link_end != std::string::npos) {
+                    std::string before = line.substr(0, link_start);
+                    std::string link_text = line.substr(link_start + 1, link_mid - link_start - 1);
+                    std::string after = line.substr(link_end + 1);
+                    if (!before.empty()) {
+                        tr.draw_text(lx, line_y, before.c_str(),
+                                     0.15f, 0.15f, 0.15f, 1.0f, text_scale);
+                        lx += tr.text_width(before.c_str(), text_scale);
+                    }
+                    std::string link_url = line.substr(link_mid + 2, link_end - link_mid - 2);
+                    float link_x = lx;
+                    float link_w = tr.text_width(link_text.c_str(), text_scale);
+                    tr.draw_text(lx, line_y, link_text.c_str(),
+                                 kAccent[0] * 0.7f, kAccent[1] * 0.7f, kAccent[2] * 0.9f, 1.0f, text_scale);
+                    lx += link_w;
+                    sticky_link_rects_.push_back({link_x, line_y, link_w, line_h, std::move(link_url)});
+                    if (!after.empty())
+                        tr.draw_text(lx, line_y, after.c_str(),
+                                     0.15f, 0.15f, 0.15f, 1.0f, text_scale);
+                    return;
+                }
+                tr.draw_text(lx, line_y, line.c_str(),
+                             0.15f, 0.15f, 0.15f, 1.0f, text_scale);
+            };
 
-                line_y += line_h + 2.0f * text_scale;
+            size_t pos = 0;
+            while (pos < text.size()) {
+                size_t nl = text.find('\n', pos);
+                if (nl == std::string::npos) nl = text.size();
+                std::string line = text.substr(pos, nl - pos);
+
+                bool is_bullet = false;
+                if (line.size() >= 2 && line[0] == '-' && line[1] == ' ') {
+                    is_bullet = true;
+                    line = line.substr(2);
+                }
+
+                float bullet_indent = is_bullet ? 10.0f * text_scale : 0.0f;
+                auto wrapped = wrap_line(line, max_text_w - bullet_indent);
+
+                for (size_t wi = 0; wi < wrapped.size(); ++wi) {
+                    if (line_y > sy + sh - g_to_s(kStickyPad)) break;
+                    float lx = text_x;
+                    if (is_bullet && wi == 0)
+                        tr.draw_text(lx, line_y, "\xe2\x80\xa2",
+                                     0.1f, 0.1f, 0.1f, 1.0f, text_scale);
+                    lx += bullet_indent;
+                    render_md_line(wrapped[wi].text, lx);
+                    line_y += line_spacing;
+                }
+
                 pos = nl + 1;
                 if (line_y > sy + sh - g_to_s(kStickyPad)) break;
             }
