@@ -53,7 +53,7 @@
       "to": "shape1/radius"
     },
     {
-      "from": "clock1/beat_phase",
+      "from": "clock1/beat_trigger",
       "to": "drum1/trigger"
     },
     {
