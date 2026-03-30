@@ -273,7 +273,7 @@
   "sticky_notes": [
     {
       "id": "note_1",
-      "text": "**Full Filter Chain**\nVideo \u2192 HSV \u2192 Levels \u2192 Mirror \u2192\nDisplace \u2192 Transform \u2192 Posterize \u2192\nPixelate \u2192 Chroma \u2192 Scanlines \u2192 CRT",
+      "text": "**Full Filter Chain** Video \u2192 HSV \u2192 Levels \u2192 Mirror \u2192 Displace \u2192 Transform \u2192 Posterize \u2192 Pixelate \u2192 Chroma \u2192 Scanlines \u2192 CRT",
       "x": -100.0,
       "y": -120.0,
       "width": 300.0,
@@ -282,7 +282,7 @@
     },
     {
       "id": "note_2",
-      "text": "**Color correction** stage\nHSV shifts hue (LFO-driven)\nLevels adjusts gamma + contrast",
+      "text": "**Color correction** stage HSV shifts hue (LFO-driven) Levels adjusts gamma + contrast",
       "x": -100.0,
       "y": 100.0,
       "width": 240.0,
@@ -291,7 +291,7 @@
     },
     {
       "id": "note_3",
-      "text": "**Distortion** stage\nNoise texture displaces pixels;\nMirror creates kaleidoscope effect",
+      "text": "**Distortion** stage Noise texture displaces pixels; Mirror creates kaleidoscope effect",
       "x": 200.0,
       "y": 100.0,
       "width": 240.0,
@@ -300,7 +300,7 @@
     },
     {
       "id": "note_4",
-      "text": "**Lo-fi** stage\nPosterize + Pixelate + CRT\nadd retro character to output",
+      "text": "**Lo-fi** stage Posterize + Pixelate + CRT add retro character to output",
       "x": 500.0,
       "y": 100.0,
       "width": 220.0,

@@ -274,7 +274,7 @@
   "sticky_notes": [
     {
       "id": "note_1",
-      "text": "**Dual-envelope technique**\nOne envelope shapes the filter cutoff,\nanother shapes the amplitude—both\ntriggered by the same clock",
+      "text": "**Dual-envelope technique** One envelope shapes the filter cutoff, another shapes the amplitude\u2014both triggered by the same clock",
       "x": -100.0,
       "y": -80.0,
       "width": 280.0,
@@ -283,7 +283,7 @@
     },
     {
       "id": "note_2",
-      "text": "**LFO vibrato** adds subtle\npitch drift to the 110 Hz saw",
+      "text": "**LFO vibrato** adds subtle pitch drift to the 110 Hz saw",
       "x": -100.0,
       "y": 200.0,
       "width": 220.0,
@@ -292,7 +292,7 @@
     },
     {
       "id": "note_3",
-      "text": "Audio RMS drives visual noise scale\nfor beat-reactive visuals",
+      "text": "Audio RMS drives visual noise scale for beat-reactive visuals",
       "x": 300.0,
       "y": 350.0,
       "width": 240.0,

@@ -88,7 +88,7 @@
   "sticky_notes": [
     {
       "id": "note_1",
-      "text": "**Filter Sweep** basics\nEnvelope sweeps the cutoff of a\nresonant low-pass filter each beat",
+      "text": "**Filter Sweep** basics Envelope sweeps the cutoff of a resonant low-pass filter each beat",
       "x": -100.0,
       "y": -80.0,
       "width": 260.0,
@@ -97,7 +97,7 @@
     },
     {
       "id": "note_2",
-      "text": "**Resonance=2.5** adds a peak\nat the cutoff frequency —\nhigher values = more pronounced",
+      "text": "**Resonance=2.5** adds a peak at the cutoff frequency \u2014 higher values = more pronounced",
       "x": -100.0,
       "y": 150.0,
       "width": 250.0,
@@ -106,7 +106,7 @@
     },
     {
       "id": "note_3",
-      "text": "Envelope amplitude=36 means\ncutoff sweeps up 36 semitones\nfrom the base 200 Hz",
+      "text": "Envelope amplitude=36 means cutoff sweeps up 36 semitones from the base 200 Hz",
       "x": 250.0,
       "y": -80.0,
       "width": 240.0,

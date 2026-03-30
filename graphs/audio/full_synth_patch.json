@@ -134,7 +134,7 @@
   "sticky_notes": [
     {
       "id": "note_1",
-      "text": "**Full Modular Synth**\nClock → Envelope → amplitude shaping\nLFO → Smooth → filter cutoff modulation",
+      "text": "**Full Modular Synth** Clock \u2192 Envelope \u2192 amplitude shaping LFO \u2192 Smooth \u2192 filter cutoff modulation",
       "x": -100.0,
       "y": -80.0,
       "width": 280.0,
@@ -143,7 +143,7 @@
     },
     {
       "id": "note_2",
-      "text": "**Modulation path**\nLFO → Smooth removes zipper noise\nbefore reaching the filter cutoff CV",
+      "text": "**Modulation path** LFO \u2192 Smooth removes zipper noise before reaching the filter cutoff CV",
       "x": -100.0,
       "y": 200.0,
       "width": 260.0,
@@ -152,7 +152,7 @@
     },
     {
       "id": "note_3",
-      "text": "**Audio path**\nOsc + Noise → Mixer → Filter → Gain\nNoise adds body to the saw wave",
+      "text": "**Audio path** Osc + Noise \u2192 Mixer \u2192 Filter \u2192 Gain Noise adds body to the saw wave",
       "x": 300.0,
       "y": -80.0,
       "width": 250.0,
@@ -161,7 +161,7 @@
     },
     {
       "id": "note_4",
-      "text": "Envelope shapes volume per beat—\nthe Gain node’s amplitude_cv input",
+      "text": "Envelope shapes volume per beat\u2014 the Gain node\u2019s amplitude_cv input",
       "x": 300.0,
       "y": 200.0,
       "width": 250.0,

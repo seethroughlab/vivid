@@ -246,7 +246,7 @@
   "sticky_notes": [
     {
       "id": "note_1",
-      "text": "**Shared Control Hub**\nClock → LFO + Envelope drive\nboth audio and visual paths\nsymmetrically",
+      "text": "**Shared Control Hub** Clock \u2192 LFO + Envelope drive both audio and visual paths symmetrically",
       "x": -100.0,
       "y": -80.0,
       "width": 260.0,
@@ -255,7 +255,7 @@
     },
     {
       "id": "note_2",
-      "text": "**Audio path**: LFO → osc freq,\nEnvelope → gain + filter cutoff",
+      "text": "**Audio path**: LFO \u2192 osc freq, Envelope \u2192 gain + filter cutoff",
       "x": 400.0,
       "y": -80.0,
       "width": 240.0,
@@ -264,7 +264,7 @@
     },
     {
       "id": "note_3",
-      "text": "**Visual path**: LFO → rotation\n+ noise scale, Env → shape radius",
+      "text": "**Visual path**: LFO \u2192 rotation + noise scale, Env \u2192 shape radius",
       "x": 400.0,
       "y": 250.0,
       "width": 250.0,
@@ -273,7 +273,7 @@
     },
     {
       "id": "note_4",
-      "text": "Range mapping (from_min/max →\nto_min/max) scales control signals\nto each domain’s natural units",
+      "text": "Range mapping (from_min/max \u2192 to_min/max) scales control signals to each domain\u2019s natural units",
       "x": -100.0,
       "y": 250.0,
       "width": 260.0,

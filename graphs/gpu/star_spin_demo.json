@@ -138,7 +138,7 @@
   "sticky_notes": [
     {
       "id": "note_1",
-      "text": "**Audio-Reactive Visuals**\nAudio RMS level drives the\nfeedback zoom amount via Math",
+      "text": "**Audio-Reactive Visuals** Audio RMS level drives the feedback zoom amount via Math",
       "x": -100.0,
       "y": -80.0,
       "width": 260.0,
@@ -147,7 +147,7 @@
     },
     {
       "id": "note_2",
-      "text": "**RMS → Math(add 1.01) → zoom**\nLouder audio = more zoom =\nfaster spiral expansion",
+      "text": "**RMS \u2192 Math(add 1.01) \u2192 zoom** Louder audio = more zoom = faster spiral expansion",
       "x": -100.0,
       "y": 180.0,
       "width": 250.0,
@@ -156,7 +156,7 @@
     },
     {
       "id": "note_3",
-      "text": "Bloom softens the feedback\ntrails into a glowing halo",
+      "text": "Bloom softens the feedback trails into a glowing halo",
       "x": 300.0,
       "y": -80.0,
       "width": 220.0,

@@ -74,7 +74,7 @@
   "sticky_notes": [
     {
       "id": "note_1",
-      "text": "**Displacement Mapping**\nThe **source** (hexagon) is warped\nby the **map** (noise texture)",
+      "text": "**Displacement Mapping** The **source** (hexagon) is warped by the **map** (noise texture)",
       "x": -100.0,
       "y": -80.0,
       "width": 260.0,
@@ -83,7 +83,7 @@
     },
     {
       "id": "note_2",
-      "text": "Bright pixels in the map push\nsource pixels further; LFO\nanimates the displacement amount",
+      "text": "Bright pixels in the map push source pixels further; LFO animates the displacement amount",
       "x": -100.0,
       "y": 150.0,
       "width": 250.0,

@@ -71,7 +71,7 @@
   "sticky_notes": [
     {
       "id": "note_modulation",
-      "text": "**Owned LFO Modulation**\n\nEach shape instance has its own LFO for scale and rotation.\nEnable color_mod to add per-instance color variation.",
+      "text": "**Owned LFO Modulation**\n\nEach shape instance has its own LFO for scale and rotation. Enable color_mod to add per-instance color variation.",
       "x": -300,
       "y": -100,
       "width": 280,

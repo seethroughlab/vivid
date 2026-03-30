@@ -4,7 +4,7 @@
   "meta": {
     "id": "envelope_shapes",
     "title": "Envelope Shapes",
-    "description": "Three envelopes with contrasting ADSR curves — plucky, pad, and percussive — each shaping an oscillator. The node thumbnails show each envelope's distinct curve shape.",
+    "description": "Three envelopes with contrasting ADSR curves \u2014 plucky, pad, and percussive \u2014 each shaping an oscillator. The node thumbnails show each envelope's distinct curve shape.",
     "tags": [
       "envelope",
       "adsr",
@@ -168,7 +168,7 @@
   "sticky_notes": [
     {
       "id": "note_1",
-      "text": "**Three ADSR shapes compared**\nSame clock triggers all three—\nlisten for the different characters",
+      "text": "**Three ADSR shapes compared** Same clock triggers all three\u2014 listen for the different characters",
       "x": -100.0,
       "y": -80.0,
       "width": 270.0,
@@ -177,7 +177,7 @@
     },
     {
       "id": "note_2",
-      "text": "**Pluck**: instant attack,\nfast decay, no sustain →\nshort percussive hit",
+      "text": "**Pluck**: instant attack, fast decay, no sustain \u2192 short percussive hit",
       "x": -100.0,
       "y": 200.0,
       "width": 220.0,
@@ -186,7 +186,7 @@
     },
     {
       "id": "note_3",
-      "text": "**Pad**: slow 400ms attack,\nhigh sustain (0.8), long release\n→ swelling, ambient tone",
+      "text": "**Pad**: slow 400ms attack, high sustain (0.8), long release \u2192 swelling, ambient tone",
       "x": 180.0,
       "y": 200.0,
       "width": 230.0,
@@ -195,7 +195,7 @@
     },
     {
       "id": "note_4",
-      "text": "**Perc**: instant attack,\nvery fast decay (80ms),\nshort release → snappy click",
+      "text": "**Perc**: instant attack, very fast decay (80ms), short release \u2192 snappy click",
       "x": 470.0,
       "y": 200.0,
       "width": 220.0,

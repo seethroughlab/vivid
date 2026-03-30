@@ -4,10 +4,17 @@
   "meta": {
     "id": "spread_intro_demo",
     "title": "Introduction to Spreads",
-    "description": "Learn what a spread is — Vivid's core data primitive. Three SpreadNoise operators generate variable-length float arrays that drive Metaball circles on screen.",
-    "tags": ["demo", "spreads", "tutorial"],
+    "description": "Learn what a spread is \u2014 Vivid's core data primitive. Three SpreadNoise operators generate variable-length float arrays that drive Metaball circles on screen.",
+    "tags": [
+      "demo",
+      "spreads",
+      "tutorial"
+    ],
     "difficulty": "beginner",
-    "domains": ["control", "gpu"],
+    "domains": [
+      "control",
+      "gpu"
+    ],
     "requires_packages": [],
     "featured_rank": 5
   },
@@ -86,7 +93,7 @@
   "sticky_notes": [
     {
       "id": "note_1",
-      "text": "**What is a Spread?**\nA spread is a variable-length array of floats —\nVivid's core data primitive. Even a single\nvalue is a spread of length 1. This graph\nuses three 8-element spreads to animate\n8 circles on screen.",
+      "text": "**What is a Spread?** A spread is a variable-length array of floats \u2014 Vivid's core data primitive. Even a single value is a spread of length 1. This graph uses three 8-element spreads to animate 8 circles on screen.",
       "x": -350.0,
       "y": -50.0,
       "width": 300.0,
@@ -95,7 +102,7 @@
     },
     {
       "id": "note_2",
-      "text": "**SpreadNoise → X positions**\nGenerates 8 animated noise values\nused as X coordinates. Each element\ndrifts independently, creating organic\nhorizontal motion.",
+      "text": "**SpreadNoise \u2192 X positions** Generates 8 animated noise values used as X coordinates. Each element drifts independently, creating organic horizontal motion.",
       "x": -350.0,
       "y": 100.0,
       "width": 280.0,
@@ -104,7 +111,7 @@
     },
     {
       "id": "note_3",
-      "text": "**SpreadNoise → Y positions**\nSame operator, different seed so\nY motion is independent of X.\nTogether they create 2D wandering.",
+      "text": "**SpreadNoise \u2192 Y positions** Same operator, different seed so Y motion is independent of X. Together they create 2D wandering.",
       "x": -350.0,
       "y": 230.0,
       "width": 280.0,
@@ -113,7 +120,7 @@
     },
     {
       "id": "note_4",
-      "text": "**SpreadNoise → Radii**\nSmaller amplitude (0.06) keeps radii\nvisible but subtle. The circles gently\nbreathe as values animate.",
+      "text": "**SpreadNoise \u2192 Radii** Smaller amplitude (0.06) keeps radii visible but subtle. The circles gently breathe as values animate.",
       "x": -350.0,
       "y": 360.0,
       "width": 280.0,
@@ -122,7 +129,7 @@
     },
     {
       "id": "note_5",
-      "text": "**3 spreads flow into Metaball**\npos_x, pos_y, and radii each receive\n8 values. Metaball draws one circle\nper element — element 0 gets\n(x[0], y[0], r[0]), and so on.",
+      "text": "**3 spreads flow into Metaball** pos_x, pos_y, and radii each receive 8 values. Metaball draws one circle per element \u2014 element 0 gets (x[0], y[0], r[0]), and so on.",
       "x": 300.0,
       "y": -50.0,
       "width": 280.0,
@@ -131,7 +138,7 @@
     },
     {
       "id": "note_6",
-      "text": "**Circles + Rainbow mode**\nEach ball gets a unique hue from the\nRainbow color mode. Try switching\nrender_mode to Metaball to see the\nclassic blobby look!",
+      "text": "**Circles + Rainbow mode** Each ball gets a unique hue from the Rainbow color mode. Try switching render_mode to Metaball to see the classic blobby look!",
       "x": 600.0,
       "y": -50.0,
       "width": 280.0,

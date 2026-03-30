@@ -116,7 +116,7 @@
   "sticky_notes": [
     {
       "id": "note_1",
-      "text": "**Granular Synthesis**\nChops audio into tiny grains and\nreassembles them into texture clouds",
+      "text": "**Granular Synthesis** Chops audio into tiny grains and reassembles them into texture clouds",
       "x": -100.0,
       "y": -80.0,
       "width": 270.0,
@@ -125,7 +125,7 @@
     },
     {
       "id": "note_2",
-      "text": "**Position LFO** scans through\nthe grain buffer — triangle wave\nfor smooth back-and-forth scanning",
+      "text": "**Position LFO** scans through the grain buffer \u2014 triangle wave for smooth back-and-forth scanning",
       "x": -100.0,
       "y": 180.0,
       "width": 260.0,
@@ -134,7 +134,7 @@
     },
     {
       "id": "note_3",
-      "text": "**Pitch LFO** drifts the grain\npitch ±4 semitones for shimmer",
+      "text": "**Pitch LFO** drifts the grain pitch \u00b14 semitones for shimmer",
       "x": 250.0,
       "y": 180.0,
       "width": 230.0,

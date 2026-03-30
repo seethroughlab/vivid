@@ -189,7 +189,7 @@
   "sticky_notes": [
     {
       "id": "note_1",
-      "text": "**Visual-First** with audio coupling\nShape → Feedback → Bloom forms\nthe core visual loop",
+      "text": "**Visual-First** with audio coupling Shape \u2192 Feedback \u2192 Bloom forms the core visual loop",
       "x": -100.0,
       "y": -80.0,
       "width": 260.0,
@@ -198,7 +198,7 @@
     },
     {
       "id": "note_2",
-      "text": "**TextureAnalysis** extracts\nbrightness → osc frequency\nedge_density → filter cutoff\nVisuals drive the audio!",
+      "text": "**TextureAnalysis** extracts brightness \u2192 osc frequency edge_density \u2192 filter cutoff Visuals drive the audio!",
       "x": -100.0,
       "y": 200.0,
       "width": 260.0,
@@ -207,7 +207,7 @@
     },
     {
       "id": "note_3",
-      "text": "Audio path: Osc → Filter → Gain\nModulated entirely by what’s\nhappening on screen",
+      "text": "Audio path: Osc \u2192 Filter \u2192 Gain Modulated entirely by what\u2019s happening on screen",
       "x": 300.0,
       "y": 200.0,
       "width": 240.0,

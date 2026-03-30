@@ -218,7 +218,7 @@
   "sticky_notes": [
     {
       "id": "note_1",
-      "text": "**Audio-First** analysis bridge\nAudioAnalysis extracts spectral\nmetrics to drive visuals",
+      "text": "**Audio-First** analysis bridge AudioAnalysis extracts spectral metrics to drive visuals",
       "x": -100.0,
       "y": -80.0,
       "width": 260.0,
@@ -227,7 +227,7 @@
     },
     {
       "id": "note_2",
-      "text": "**Spectral centroid** → noise speed\n(brighter audio = faster texture)\n**RMS** → noise scale + shape radius",
+      "text": "**Spectral centroid** \u2192 noise speed (brighter audio = faster texture) **RMS** \u2192 noise scale + shape radius",
       "x": -100.0,
       "y": 200.0,
       "width": 270.0,
@@ -236,7 +236,7 @@
     },
     {
       "id": "note_3",
-      "text": "Audio path is fully self-contained;\nvisuals are a reactive overlay\ndriven by analysis outputs",
+      "text": "Audio path is fully self-contained; visuals are a reactive overlay driven by analysis outputs",
       "x": 350.0,
       "y": -80.0,
       "width": 250.0,

@@ -90,7 +90,7 @@
   "sticky_notes": [
     {
       "id": "note_1",
-      "text": "**Pan vs Width**\n**Pan** moves the sound L/R;\n**Width** controls stereo spread\n(>1 = wider than source)",
+      "text": "**Pan vs Width** **Pan** moves the sound L/R; **Width** controls stereo spread (>1 = wider than source)",
       "x": -100.0,
       "y": -80.0,
       "width": 250.0,
@@ -99,7 +99,7 @@
     },
     {
       "id": "note_2",
-      "text": "Slow pan LFO (0.25 Hz) sweeps\nthe image; width LFO (0.08 Hz)\nbreathes the stereo field",
+      "text": "Slow pan LFO (0.25 Hz) sweeps the image; width LFO (0.08 Hz) breathes the stereo field",
       "x": -100.0,
       "y": 180.0,
       "width": 250.0,

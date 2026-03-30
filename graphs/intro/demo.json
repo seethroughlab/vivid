@@ -1,84 +1,84 @@
 {
-    "schema_version": 2,
-    "vivid_version": "0.1.0",
-    "nodes": {
-        "clock1": {
-            "type": "Clock",
-            "params": {
-                "beats_per_bar": 4.0,
-                "bpm": 60.0
-            },
-            "layout": {
-                "x": -113.95703125,
-                "y": 373.1640625
-            }
-        },
-        "lfo1": {
-            "type": "LFO",
-            "params": {
-                "offset": 4.0,
-                "amplitude": 2.0
-            },
-            "layout": {
-                "x": 157.21875,
-                "y": 387.96875
-            }
-        },
-        "noise1": {
-            "type": "NoiseTexture",
-            "params": {
-                "speed": 1.0
-            },
-            "layout": {
-                "x": 399.86328125,
-                "y": 358.64453125
-            }
-        },
-        "vout": {
-            "type": "video_out",
-            "layout": {
-                "x": 737.1875,
-                "y": 329.91015625
-            }
-        }
+  "schema_version": 2,
+  "vivid_version": "0.1.0",
+  "nodes": {
+    "clock1": {
+      "type": "Clock",
+      "params": {
+        "beats_per_bar": 4.0,
+        "bpm": 60.0
+      },
+      "layout": {
+        "x": -113.95703125,
+        "y": 373.1640625
+      }
     },
-    "connections": [
-        {
-            "from": "clock1/beat_phase",
-            "to": "lfo1/beat_phase"
-        },
-        {
-            "from": "lfo1/value",
-            "to": "noise1/scale"
-        },
-        {
-            "from": "noise1/texture",
-            "to": "vout/input"
-        }
-    ],
-    "viewport": {
-        "pan_x": 245.37890625,
-        "pan_y": 274.1015625,
-        "zoom": 1.0
+    "lfo1": {
+      "type": "LFO",
+      "params": {
+        "offset": 4.0,
+        "amplitude": 2.0
+      },
+      "layout": {
+        "x": 157.21875,
+        "y": 387.96875
+      }
     },
-    "sticky_notes": [
-        {
-            "id": "note_1",
-            "text": "**Clock → LFO → Visual** pipeline\nThe Clock's beat_phase drives the LFO,\nwhich modulates the noise texture scale",
-            "x": -41.75,
-            "y": 250.38671875,
-            "width": 280.0,
-            "height": 80.0,
-            "color": 0
-        },
-        {
-            "id": "note_2",
-            "text": "LFO offset=4 keeps scale positive;\namplitude=2 sweeps scale from 2–6",
-            "x": -40.30078125,
-            "y": 174.08984375,
-            "width": 250.0,
-            "height": 60.0,
-            "color": 2
-        }
-    ]
+    "noise1": {
+      "type": "NoiseTexture",
+      "params": {
+        "speed": 1.0
+      },
+      "layout": {
+        "x": 399.86328125,
+        "y": 358.64453125
+      }
+    },
+    "vout": {
+      "type": "video_out",
+      "layout": {
+        "x": 737.1875,
+        "y": 329.91015625
+      }
+    }
+  },
+  "connections": [
+    {
+      "from": "clock1/beat_phase",
+      "to": "lfo1/beat_phase"
+    },
+    {
+      "from": "lfo1/value",
+      "to": "noise1/scale"
+    },
+    {
+      "from": "noise1/texture",
+      "to": "vout/input"
+    }
+  ],
+  "viewport": {
+    "pan_x": 245.37890625,
+    "pan_y": 274.1015625,
+    "zoom": 1.0
+  },
+  "sticky_notes": [
+    {
+      "id": "note_1",
+      "text": "**Clock \u2192 LFO \u2192 Visual** pipeline The Clock's beat_phase drives the LFO, which modulates the noise texture scale",
+      "x": -41.75,
+      "y": 250.38671875,
+      "width": 280.0,
+      "height": 80.0,
+      "color": 0
+    },
+    {
+      "id": "note_2",
+      "text": "LFO offset=4 keeps scale positive; amplitude=2 sweeps scale from 2\u20136",
+      "x": -40.30078125,
+      "y": 174.08984375,
+      "width": 250.0,
+      "height": 60.0,
+      "color": 2
+    }
+  ]
 }

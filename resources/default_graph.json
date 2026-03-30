@@ -1,15 +1,15 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "nodes": {
-    "audio_out": {
-      "type": "audio_out",
-      "params": {}
+    "schema_version": 2,
+    "vivid_version": "0.1.0",
+    "nodes": {
+        "audio_out": {
+            "type": "audio_out",
+            "layout": { "x": 800.0, "y": 250.0 }
+        },
+        "video_out": {
+            "type": "video_out",
+            "layout": { "x": 800.0, "y": 50.0 }
+        }
     },
-    "video_out": {
-      "type": "video_out",
-      "params": {}
-    }
-  },
-  "connections": []
+    "connections": []
 }

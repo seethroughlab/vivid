@@ -86,7 +86,7 @@
   "sticky_notes": [
     {
       "id": "note_1",
-      "text": "**3-Band Parametric EQ**\nSculpts white noise into a\ntonal, evolving texture",
+      "text": "**3-Band Parametric EQ** Sculpts white noise into a tonal, evolving texture",
       "x": -100.0,
       "y": -80.0,
       "width": 240.0,
@@ -95,7 +95,7 @@
     },
     {
       "id": "note_2",
-      "text": "Band 1: +12 dB sweep (LFO-driven)\nBand 2: −6 dB cut at 1 kHz\nBand 3: +8 dB boost at 5 kHz",
+      "text": "Band 1: +12 dB sweep (LFO-driven) Band 2: \u22126 dB cut at 1 kHz Band 3: +8 dB boost at 5 kHz",
       "x": -100.0,
       "y": 150.0,
       "width": 260.0,
@@ -104,7 +104,7 @@
     },
     {
       "id": "note_3",
-      "text": "The LFO sweeps Band 1’s\nfrequency ±300 Hz for\nan audible filter sweep",
+      "text": "The LFO sweeps Band 1\u2019s frequency \u00b1300 Hz for an audible filter sweep",
       "x": 250.0,
       "y": -80.0,
       "width": 230.0,

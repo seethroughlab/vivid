@@ -87,7 +87,7 @@
   "sticky_notes": [
     {
       "id": "note_1",
-      "text": "**Vocoder** — talking-robot effect\nThe modulator’s spectral shape is\nimprinted onto the carrier",
+      "text": "**Vocoder** \u2014 talking-robot effect The modulator\u2019s spectral shape is imprinted onto the carrier",
       "x": -100.0,
       "y": -80.0,
       "width": 260.0,
@@ -96,7 +96,7 @@
     },
     {
       "id": "note_2",
-      "text": "**Modulator**: white noise\nProvides the spectral envelope\nthat shapes the output",
+      "text": "**Modulator**: white noise Provides the spectral envelope that shapes the output",
       "x": -100.0,
       "y": 150.0,
       "width": 230.0,
@@ -105,7 +105,7 @@
     },
     {
       "id": "note_3",
-      "text": "**Carrier**: 110 Hz saw wave\nProvides the pitched harmonic\ncontent that gets shaped",
+      "text": "**Carrier**: 110 Hz saw wave Provides the pitched harmonic content that gets shaped",
       "x": 200.0,
       "y": 150.0,
       "width": 230.0,

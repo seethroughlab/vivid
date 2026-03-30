@@ -77,7 +77,7 @@
   "sticky_notes": [
     {
       "id": "note_1",
-      "text": "**Ring Modulation**\nMultiplies two signals → outputs\nsum and difference frequencies\n(165±300 Hz = 135 & 465 Hz)",
+      "text": "**Ring Modulation** Multiplies two signals \u2192 outputs sum and difference frequencies (165\u00b1300 Hz = 135 & 465 Hz)",
       "x": -100.0,
       "y": -80.0,
       "width": 270.0,
@@ -86,7 +86,7 @@
     },
     {
       "id": "note_2",
-      "text": "LFO sweeps carrier freq ±150 Hz\nfor evolving metallic texture",
+      "text": "LFO sweeps carrier freq \u00b1150 Hz for evolving metallic texture",
       "x": -100.0,
       "y": 180.0,
       "width": 240.0,

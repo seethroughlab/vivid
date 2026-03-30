@@ -100,7 +100,7 @@
   "sticky_notes": [
     {
       "id": "note_1",
-      "text": "**Shared Clock** drives both domains\nOne Clock syncs audio and visuals\nvia two separate LFOs",
+      "text": "**Shared Clock** drives both domains One Clock syncs audio and visuals via two separate LFOs",
       "x": -100.0,
       "y": -80.0,
       "width": 260.0,
@@ -109,7 +109,7 @@
     },
     {
       "id": "note_2",
-      "text": "**Visual path**: LFO modulates\nnoise texture scale",
+      "text": "**Visual path**: LFO modulates noise texture scale",
       "x": 250.0,
       "y": -80.0,
       "width": 220.0,
@@ -118,7 +118,7 @@
     },
     {
       "id": "note_3",
-      "text": "**Audio path**: LFO sweeps\noscillator frequency 230\u2013430 Hz",
+      "text": "**Audio path**: LFO sweeps oscillator frequency 230\u2013430 Hz",
       "x": 250.0,
       "y": 120.0,
       "width": 230.0,

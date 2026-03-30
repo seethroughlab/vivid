@@ -66,7 +66,7 @@
   "sticky_notes": [
     {
       "id": "note_envelope",
-      "text": "**Owned Envelope Demo**\n\nThe Particles operator owns an internal Envelope per particle.\nTry changing Attack, Decay, and Release to reshape how particles appear and fade.",
+      "text": "**Owned Envelope Demo**\n\nThe Particles operator owns an internal Envelope per particle. Try changing Attack, Decay, and Release to reshape how particles appear and fade.",
       "x": -300,
       "y": -100,
       "width": 280,

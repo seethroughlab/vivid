@@ -61,7 +61,7 @@
   "sticky_notes": [
     {
       "id": "note_1",
-      "text": "**Calibration Patterns**\nLFO cycles through pattern types\nfor projection/display testing",
+      "text": "**Calibration Patterns** LFO cycles through pattern types for projection/display testing",
       "x": -100.0,
       "y": -80.0,
       "width": 260.0,
@@ -70,7 +70,7 @@
     },
     {
       "id": "note_2",
-      "text": "Square-wave LFO snaps between\npattern types (grid, bars, etc.)\nrather than blending smoothly",
+      "text": "Square-wave LFO snaps between pattern types (grid, bars, etc.) rather than blending smoothly",
       "x": -100.0,
       "y": 150.0,
       "width": 260.0,

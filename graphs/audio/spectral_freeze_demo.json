@@ -103,7 +103,7 @@
   "sticky_notes": [
     {
       "id": "note_1",
-      "text": "**Spectral Freeze**\nCaptures a FFT snapshot of the\nspectrum and holds it as a pad",
+      "text": "**Spectral Freeze** Captures a FFT snapshot of the spectrum and holds it as a pad",
       "x": -100.0,
       "y": -80.0,
       "width": 260.0,
@@ -112,7 +112,7 @@
     },
     {
       "id": "note_2",
-      "text": "Clock triggers envelope → freeze_cv\nEach beat captures a new snapshot\nof the pink noise spectrum",
+      "text": "Clock triggers envelope \u2192 freeze_cv Each beat captures a new snapshot of the pink noise spectrum",
       "x": -100.0,
       "y": 150.0,
       "width": 260.0,
@@ -121,7 +121,7 @@
     },
     {
       "id": "note_3",
-      "text": "**Blend LFO** crossfades between\nlive noise and frozen spectrum",
+      "text": "**Blend LFO** crossfades between live noise and frozen spectrum",
       "x": 250.0,
       "y": -80.0,
       "width": 230.0,
