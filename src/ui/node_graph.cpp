@@ -535,6 +535,44 @@ void NodeGraphUI::layout_nodes(bool force) {
 }
 
 // -----------------------------------------------------------------------
+// Reposition unconnected output sinks to the right edge of the window.
+// Called from draw() after win_w_/win_h_ are known.
+// -----------------------------------------------------------------------
+void NodeGraphUI::reposition_output_sinks() {
+    const auto& nodes = snap_.nodes;
+    const auto& conns = snap_.connections;
+
+    // Build connectivity sets
+    std::unordered_set<std::string> connected;
+    for (const auto& c : conns) {
+        connected.insert(c.from_node);
+        connected.insert(c.to_node);
+    }
+
+    // Collect unconnected output sinks
+    std::vector<size_t> sink_indices;
+    float total_h = 0;
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        const auto& ns = nodes[i];
+        if (ns.has_layout) continue;
+        if (connected.count(ns.node_id)) continue;
+        if (ns.type_name != "video_out" && ns.type_name != "audio_out") continue;
+        total_h += node_rects_[i].h;
+        sink_indices.push_back(i);
+    }
+    if (sink_indices.empty()) return;
+
+    total_h += (sink_indices.size() - 1) * kRowSpacing;
+    float sx = static_cast<float>(win_w_) - kNodeW - 10.0f;
+    float sy = (static_cast<float>(win_h_) - total_h) * 0.5f;
+    for (size_t i : sink_indices) {
+        node_rects_[i].x = sx;
+        node_rects_[i].y = sy;
+        sy += node_rects_[i].h + kRowSpacing;
+    }
+}
+
+// -----------------------------------------------------------------------
 // Incremental layout — only position newly added nodes
 // -----------------------------------------------------------------------
 void NodeGraphUI::place_new_nodes() {
@@ -1648,6 +1686,7 @@ void NodeGraphUI::check_relayout() {
         for (const auto& r : node_rects_) rect_ids.insert(r.node_id);
         for (const auto& n : snap_.nodes) {
             if (!rect_ids.count(n.node_id)) {
+                output_sink_positioned_ = false;
                 layout_nodes();
                 return;
             }

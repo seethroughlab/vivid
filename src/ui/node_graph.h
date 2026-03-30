@@ -296,6 +296,7 @@ public:
 private:
     // --- Layout ---
     void layout_nodes(bool force = false);
+    void reposition_output_sinks();
     void place_new_nodes();
     void prune_node_rects();
     void recompute_ports(NodeRect& rect, const NodeSnapshot& ns);
@@ -518,6 +519,7 @@ private:
     size_t last_node_count_ = 0;
     size_t last_conn_count_ = 0;
     bool first_layout_done_ = false;
+    bool output_sink_positioned_ = false;
 
     // Node drag state
     int dragging_node_idx_ = -1;

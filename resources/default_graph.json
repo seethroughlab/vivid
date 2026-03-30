@@ -3,12 +3,10 @@
     "vivid_version": "0.1.0",
     "nodes": {
         "audio_out": {
-            "type": "audio_out",
-            "layout": { "x": 800.0, "y": 250.0 }
+            "type": "audio_out"
         },
         "video_out": {
-            "type": "video_out",
-            "layout": { "x": 800.0, "y": 50.0 }
+            "type": "video_out"
         }
     },
     "connections": []

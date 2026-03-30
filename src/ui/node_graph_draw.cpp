@@ -3494,6 +3494,14 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
         layout_nodes();
     }
 
+    // One-shot: reposition unconnected output sinks to the right edge of the
+    // window.  layout_nodes() may run from update() before draw() has set
+    // win_w_/win_h_, so we fix up positions here on the first real frame.
+    if (!output_sink_positioned_ && !node_rects_.empty()) {
+        output_sink_positioned_ = true;
+        reposition_output_sinks();
+    }
+
     // Semi-transparent scrim so wires are visible over the visualization
     tr.draw_rect(0, 0, static_cast<float>(w), static_cast<float>(h), 0.05f, 0.06f, 0.07f, 0.55f);
 
