@@ -5,6 +5,7 @@
 #include "arpeggiator_patterns.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include "operator_api/thumbnail.h"
 /**
@@ -54,6 +55,33 @@ struct Arpeggiator : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
     vivid::Param<int> tr_7 {"tr_7", 0, -24, 24};
     vivid::Param<int> midi_channel {"midi_channel", 1, 1, 16};
 
+    Arpeggiator() {
+        vivid::description(mode, "Arpeggiation pattern: Up, Down, UpDown, Random, Converge, etc");
+        vivid::description(octaves, "Number of octaves to span above the input notes");
+        vivid::description(rate, "Clock subdivision for arp step timing");
+        vivid::description(gate_length, "Fraction of each step during which the note sounds");
+        vivid::description(swing, "Timing offset between even and odd steps, 0 = straight");
+        vivid::description(latch, "Keep playing the pattern after all input gates go low");
+        vivid::description(mod_steps, "Number of active steps in the velocity/transpose modulation cycle");
+        vivid::description(vel_0, "Velocity multiplier for modulation step 1");
+        vivid::description(vel_1, "Velocity multiplier for modulation step 2");
+        vivid::description(vel_2, "Velocity multiplier for modulation step 3");
+        vivid::description(vel_3, "Velocity multiplier for modulation step 4");
+        vivid::description(vel_4, "Velocity multiplier for modulation step 5");
+        vivid::description(vel_5, "Velocity multiplier for modulation step 6");
+        vivid::description(vel_6, "Velocity multiplier for modulation step 7");
+        vivid::description(vel_7, "Velocity multiplier for modulation step 8");
+        vivid::description(tr_0, "Semitone transpose for modulation step 1, -24 to +24");
+        vivid::description(tr_1, "Semitone transpose for modulation step 2, -24 to +24");
+        vivid::description(tr_2, "Semitone transpose for modulation step 3, -24 to +24");
+        vivid::description(tr_3, "Semitone transpose for modulation step 4, -24 to +24");
+        vivid::description(tr_4, "Semitone transpose for modulation step 5, -24 to +24");
+        vivid::description(tr_5, "Semitone transpose for modulation step 6, -24 to +24");
+        vivid::description(tr_6, "Semitone transpose for modulation step 7, -24 to +24");
+        vivid::description(tr_7, "Semitone transpose for modulation step 8, -24 to +24");
+        vivid::description(midi_channel, "MIDI channel for note output, 1 to 16");
+    }
+
     WGPURenderPipeline thumb_pipeline_ = nullptr;
     WGPUBindGroup thumb_bind_group_ = nullptr;
     WGPUBindGroupLayout thumb_bind_layout_ = nullptr;
@@ -74,6 +102,9 @@ struct Arpeggiator : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
     //  15..22  = tr_0..tr_7
     //  23      = midi_channel
 
+    vivid::Param<float>* vel_params_[8] = {&vel_0,&vel_1,&vel_2,&vel_3,&vel_4,&vel_5,&vel_6,&vel_7};
+    vivid::Param<int>*   tr_params_[8]  = {&tr_0,&tr_1,&tr_2,&tr_3,&tr_4,&tr_5,&tr_6,&tr_7};
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&mode);         // 0
         out.push_back(&octaves);      // 1
@@ -82,14 +113,16 @@ struct Arpeggiator : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
         out.push_back(&swing);        // 4
         out.push_back(&latch);        // 5
         out.push_back(&mod_steps);    // 6
-        out.push_back(&vel_0); out.push_back(&vel_1);  // 7..14
-        out.push_back(&vel_2); out.push_back(&vel_3);
-        out.push_back(&vel_4); out.push_back(&vel_5);
-        out.push_back(&vel_6); out.push_back(&vel_7);
-        out.push_back(&tr_0);  out.push_back(&tr_1);   // 15..22
-        out.push_back(&tr_2);  out.push_back(&tr_3);
-        out.push_back(&tr_4);  out.push_back(&tr_5);
-        out.push_back(&tr_6);  out.push_back(&tr_7);
+
+        for (int i = 0; i < 8; ++i) {
+            display_hint(*vel_params_[i], VIVID_DISPLAY_HIDDEN);
+            out.push_back(vel_params_[i]);   // 7..14
+        }
+        for (int i = 0; i < 8; ++i) {
+            display_hint(*tr_params_[i], VIVID_DISPLAY_HIDDEN);
+            out.push_back(tr_params_[i]);    // 15..22
+        }
+
         out.push_back(&midi_channel); // 23
     }
 
@@ -349,6 +382,149 @@ struct Arpeggiator : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
         vivid::thumbnail::run_pass(ctx, thumb_pipeline_, thumb_bind_group_, "Arpeggiator Thumb Pass");
     }
 
+    void draw_inspector(VividInspectorContext* ctx) override {
+        auto& d = ctx->draw;
+        void* o = d.opaque;
+        const auto& th = ctx->theme;
+
+        float px = ctx->content_x;
+        float py = ctx->content_y;
+        float w = ctx->content_width;
+
+        constexpr float vel_h = 70.0f;
+        constexpr float tr_h = 70.0f;
+        constexpr float label_h = 16.0f;
+        constexpr float section_gap = 6.0f;
+        constexpr float pad = 4.0f;
+        constexpr float bar_gap = 1.0f;
+
+        int msteps = std::clamp(
+            (ctx->param_count > 6) ? static_cast<int>(ctx->param_values[6]) : 8, 1, 8);
+
+        // Current playing mod step from step output (output index 3)
+        int current_mod = -1;
+        if (ctx->output_count > 3) {
+            int raw_step = static_cast<int>(ctx->output_values[3]);
+            if (raw_step >= 0) current_mod = raw_step % msteps;
+        }
+
+        float bar_w = (w - 2.0f * pad) / static_cast<float>(msteps);
+
+        // --- Velocity section ---
+        float vy = py + section_gap;
+        d.draw_text(o, px + pad, vy, "Velocity", {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.9f}, 0.85f);
+        vy += label_h;
+        d.draw_rect(o, px, vy, w, vel_h, {th.dark_bg.r, th.dark_bg.g, th.dark_bg.b, 0.9f});
+
+        float vel_plot_x = px + pad;
+        float vel_plot_y = vy + pad;
+        float vel_plot_h = vel_h - 2.0f * pad;
+
+        for (int i = 0; i < msteps; ++i) {
+            float vel = (ctx->param_count > static_cast<uint32_t>(7 + i))
+                ? std::clamp(ctx->param_values[7 + i], 0.0f, 1.0f) : 1.0f;
+
+            float bx = vel_plot_x + static_cast<float>(i) * bar_w + bar_gap;
+            float bw = bar_w - 2.0f * bar_gap;
+            if (bw < 1.0f) bw = 1.0f;
+
+            float bar_h = vel * vel_plot_h;
+            float by = vel_plot_y + vel_plot_h - bar_h;
+
+            float alpha = (i == current_mod) ? 0.8f : 0.45f;
+            d.draw_rect(o, bx, by, bw, bar_h,
+                        {th.accent.r, th.accent.g, th.accent.b, alpha});
+        }
+
+        // --- Transpose section ---
+        float ty = vy + vel_h + section_gap;
+        d.draw_text(o, px + pad, ty, "Transpose", {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.9f}, 0.85f);
+        ty += label_h;
+        d.draw_rect(o, px, ty, w, tr_h, {th.dark_bg.r, th.dark_bg.g, th.dark_bg.b, 0.9f});
+
+        float tr_plot_x = px + pad;
+        float tr_plot_y = ty + pad;
+        float tr_plot_h = tr_h - 2.0f * pad;
+        float tr_center_y = tr_plot_y + tr_plot_h * 0.5f;
+
+        // Center line
+        d.draw_line(o, tr_plot_x, tr_center_y, tr_plot_x + (w - 2.0f * pad), tr_center_y, 1.0f,
+                    {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.15f});
+
+        for (int i = 0; i < msteps; ++i) {
+            float tr = (ctx->param_count > static_cast<uint32_t>(15 + i))
+                ? ctx->param_values[15 + i] : 0.0f;
+            float norm = std::clamp(tr / 24.0f, -1.0f, 1.0f);
+
+            float bx = tr_plot_x + static_cast<float>(i) * bar_w + bar_gap;
+            float bw = bar_w - 2.0f * bar_gap;
+            if (bw < 1.0f) bw = 1.0f;
+
+            float bar_h = std::abs(norm) * (tr_plot_h * 0.5f);
+            float by = (norm >= 0.0f) ? (tr_center_y - bar_h) : tr_center_y;
+
+            // Color: warm for positive transpose, cool for negative
+            float r = th.accent.r, g = th.accent.g, b = th.accent.b;
+            if (norm > 0.0f) {
+                r = std::min(1.0f, r + 0.3f * norm);
+                g = std::max(0.0f, g - 0.1f * norm);
+                b = std::max(0.0f, b - 0.3f * norm);
+            } else if (norm < 0.0f) {
+                float an = -norm;
+                r = std::max(0.0f, r - 0.2f * an);
+                g = std::min(1.0f, g + 0.15f * an);
+                b = std::min(1.0f, b + 0.2f * an);
+            }
+
+            float alpha = (i == current_mod) ? 0.8f : 0.45f;
+            d.draw_rect(o, bx, by, bw, bar_h, {r, g, b, alpha});
+        }
+
+        // --- Drag interaction (velocity) ---
+        if (ctx->mouse.left_clicked) {
+            dragged_vel_ = -1;
+            dragged_tr_ = -1;
+            float mx = ctx->mouse.x;
+            float my = ctx->mouse.y;
+            if (mx >= vel_plot_x && mx <= vel_plot_x + (w - 2.0f * pad)) {
+                int hit = static_cast<int>((mx - vel_plot_x) / bar_w);
+                if (hit >= 0 && hit < msteps) {
+                    if (my >= vel_plot_y && my <= vel_plot_y + vel_plot_h) {
+                        dragged_vel_ = hit;
+                    } else if (my >= tr_plot_y && my <= tr_plot_y + tr_plot_h) {
+                        dragged_tr_ = hit;
+                    }
+                }
+            }
+        }
+
+        if (ctx->mouse.left_down && dragged_vel_ >= 0 && dragged_vel_ < msteps) {
+            float new_val = 1.0f - (ctx->mouse.y - vel_plot_y) / vel_plot_h;
+            new_val = std::clamp(new_val, 0.0f, 1.0f);
+            char name[16];
+            std::snprintf(name, sizeof(name), "vel_%d", dragged_vel_);
+            ctx->commands.set_param(ctx->commands.opaque, name, new_val);
+        }
+
+        if (ctx->mouse.left_down && dragged_tr_ >= 0 && dragged_tr_ < msteps) {
+            // Map mouse Y to [-24, 24]: top = +24, bottom = -24
+            float norm = 1.0f - (ctx->mouse.y - tr_plot_y) / tr_plot_h;  // 0..1 bottom..top
+            float semitones = (norm - 0.5f) * 48.0f;  // -24..+24
+            semitones = std::clamp(semitones, -24.0f, 24.0f);
+            semitones = std::round(semitones);
+            char name[16];
+            std::snprintf(name, sizeof(name), "tr_%d", dragged_tr_);
+            ctx->commands.set_param(ctx->commands.opaque, name, semitones);
+        }
+
+        if (!ctx->mouse.left_down) {
+            dragged_vel_ = -1;
+            dragged_tr_ = -1;
+        }
+
+        ctx->consumed_height = section_gap + label_h + vel_h + section_gap + label_h + tr_h + section_gap;
+    }
+
     ~Arpeggiator() override {
         vivid::gpu::release(thumb_pipeline_);
         vivid::gpu::release(thumb_bind_group_);
@@ -379,6 +555,10 @@ private:
     float latch_notes_[16] = {};
     float latch_vels_[16] = {};
     int latch_count_ = 0;
+
+    // Inspector drag state
+    int dragged_vel_ = -1;
+    int dragged_tr_ = -1;
 
     // MIDI state
     bool prev_midi_gate_ = false;
@@ -616,3 +796,4 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 
 VIVID_REGISTER(Arpeggiator)
 VIVID_THUMBNAIL(Arpeggiator)
+VIVID_INSPECTOR(Arpeggiator)
