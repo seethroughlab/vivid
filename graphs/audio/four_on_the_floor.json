@@ -84,6 +84,10 @@
         "volume": 0.12
       }
     },
+    "kit1": {
+      "type": "DrumKit",
+      "params": {}
+    },
     "aout": {
       "type": "audio_out",
       "params": {}
@@ -95,20 +99,24 @@
       "to": "seq1/beat_phase"
     },
     {
-      "from": "seq1/kick",
-      "to": "kick1/trigger"
+      "from": "seq1/midi_out",
+      "to": "kit1/midi_in"
     },
     {
-      "from": "seq1/snare",
-      "to": "snare1/trigger"
+      "from": "kit1/slot_0",
+      "to": "kick1/midi_in"
     },
     {
-      "from": "seq1/hat",
-      "to": "hat1/trigger"
+      "from": "kit1/slot_1",
+      "to": "snare1/midi_in"
     },
     {
-      "from": "seq1/clap",
-      "to": "clap1/trigger"
+      "from": "kit1/slot_2",
+      "to": "hat1/midi_in"
+    },
+    {
+      "from": "kit1/slot_4",
+      "to": "clap1/midi_in"
     },
     {
       "from": "kick1/output",

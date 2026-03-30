@@ -142,6 +142,10 @@
       "type": "video_out",
       "params": {}
     },
+    "kit1": {
+      "type": "DrumKit",
+      "params": {}
+    },
     "audio_out": {
       "type": "audio_out",
       "params": {}
@@ -165,16 +169,20 @@
       "to": "shape1/rotation"
     },
     {
-      "from": "drums1/kick",
-      "to": "kick1/trigger"
+      "from": "drums1/midi_out",
+      "to": "kit1/midi_in"
     },
     {
-      "from": "drums1/snare",
-      "to": "snare1/trigger"
+      "from": "kit1/slot_0",
+      "to": "kick1/midi_in"
     },
     {
-      "from": "drums1/hat",
-      "to": "hat1/trigger"
+      "from": "kit1/slot_1",
+      "to": "snare1/midi_in"
+    },
+    {
+      "from": "kit1/slot_2",
+      "to": "hat1/midi_in"
     },
     {
       "from": "notes1/notes",

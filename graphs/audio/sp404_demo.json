@@ -66,16 +66,8 @@
       "to": "ds1/beat_phase"
     },
     {
-      "from": "ds1/gates",
-      "to": "sp1/gates"
-    },
-    {
-      "from": "ds1/notes",
-      "to": "sp1/notes"
-    },
-    {
-      "from": "ds1/velocities",
-      "to": "sp1/velocities"
+      "from": "ds1/midi_out",
+      "to": "sp1/midi_in"
     },
     {
       "from": "sp1/output",
