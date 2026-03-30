@@ -572,34 +572,9 @@ struct DrumSequencer : vivid::OperatorBase, vivid::FrameProcessable, vivid::Audi
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"beat_phase",   VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"reset",   VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"kick",    VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"snare",   VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"hat",     VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"oh",      VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"clap",    VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"tom",     VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"step",    VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        // Mod A outputs (ports 7..12 after 2 inputs)
-        out.push_back({"kick_mod_a",  VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"snare_mod_a", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"hat_mod_a",   VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"oh_mod_a",    VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"clap_mod_a",  VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"tom_mod_a",   VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        // Mod B outputs (ports 13..18)
-        out.push_back({"kick_mod_b",  VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"snare_mod_b", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"hat_mod_b",   VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"oh_mod_b",    VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"clap_mod_b",  VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"tom_mod_b",   VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        // Spread outputs for SP404 integration
-        out.push_back({"gates",      VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});
-        out.push_back({"notes",      VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});
-        out.push_back({"velocities", VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});
-        // MIDI output
+        out.push_back({"beat_phase", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
+        out.push_back({"reset",      VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
+        out.push_back({"step",       VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
     }
 
@@ -616,7 +591,7 @@ struct DrumSequencer : vivid::OperatorBase, vivid::FrameProcessable, vivid::Audi
     }
 
     void compute(float phase, float reset_in, const float* params,
-                 float* output_values, VividSpreadPort* out_spreads,
+                 float* output_values, VividSpreadPort* /*out_spreads*/,
                  void** custom_outputs, uint32_t custom_output_count) {
         namespace layout = vivid_sequencers::drum_layout;
         bool reset = reset_in > 0.5f;
@@ -648,46 +623,21 @@ struct DrumSequencer : vivid::OperatorBase, vivid::FrameProcessable, vivid::Audi
         bool step_changed = (step != prev_step_);
         prev_step_ = step;
 
-        for (std::size_t d = 0; d < layout::kDrumCount; ++d) {
-            bool active = (step_changed &&
-                params[layout::trigger_param_index(d, step)] > 0.5f);
-            output_values[d] = active ? 1.0f : 0.0f;
-        }
-        output_values[layout::kStepOutputIndex] = static_cast<float>(step);
+        // Step output (index 0, only signal output)
+        output_values[0] = static_cast<float>(step);
 
-        for (std::size_t d = 0; d < layout::kDrumCount; ++d) {
-            output_values[layout::mod_a_output_index(d)] =
-                params[layout::mod_a_param_index(d, step)];
-            output_values[layout::mod_b_output_index(d)] =
-                params[layout::mod_b_param_index(d, step)];
-        }
-
-        if (out_spreads) {
-            auto& gates_sp = out_spreads[layout::kGatesSpreadOutputIndex];
-            auto& notes_sp = out_spreads[layout::kNotesSpreadOutputIndex];
-            auto& vels_sp  = out_spreads[layout::kVelocitiesSpreadOutputIndex];
-
-            if (gates_sp.capacity >= layout::kDrumCount) {
-                gates_sp.length = static_cast<uint32_t>(layout::kDrumCount);
-                notes_sp.length = static_cast<uint32_t>(layout::kDrumCount);
-                vels_sp.length  = static_cast<uint32_t>(layout::kDrumCount);
-                for (std::size_t d = 0; d < layout::kDrumCount; ++d) {
-                    gates_sp.data[d] = output_values[d];
-                    notes_sp.data[d] = static_cast<float>(params[layout::note_param_index(d)]);
-                    vels_sp.data[d]  = params[layout::mod_a_param_index(d, step)];
-                }
-            }
-        }
-
-        // Populate MIDI output with note-on messages for active drums
+        // Populate MIDI output — Mod A per step maps to velocity
         uint8_t ch = static_cast<uint8_t>(midi_channel.int_value() - 1);
         midi_buf_.count = 0;
         for (std::size_t d = 0; d < layout::kDrumCount; ++d) {
             bool active = (step_changed &&
                 params[layout::trigger_param_index(d, step)] > 0.5f);
             if (active) {
+                float mod_a = params[layout::mod_a_param_index(d, step)];
+                uint8_t vel = static_cast<uint8_t>(std::clamp(
+                    static_cast<int>(mod_a * 127.0f + 0.5f), 1, 127));
                 vivid_sequencers::midi_note_on(midi_buf_,
-                    static_cast<uint8_t>(params[layout::note_param_index(d)]), 127, ch);
+                    static_cast<uint8_t>(params[layout::note_param_index(d)]), vel, ch);
             }
         }
         if (custom_outputs && custom_output_count > 0) {
@@ -893,8 +843,8 @@ struct DrumSequencer : vivid::OperatorBase, vivid::FrameProcessable, vivid::Audi
         if (ctx->param_count > 0)
             n = std::max(1, std::min(16, static_cast<int>(ctx->param_values[0])));
         int cur_step = -1;
-        if (ctx->output_count > layout::kStepOutputIndex)
-            cur_step = static_cast<int>(ctx->output_values[layout::kStepOutputIndex]);
+        if (ctx->output_count > 0)
+            cur_step = static_cast<int>(ctx->output_values[0]);
 
         u.meta[0] = static_cast<float>(n);
         u.meta[1] = static_cast<float>(cur_step);

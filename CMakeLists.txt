@@ -354,8 +354,9 @@ add_vivid_operator(tracker            operators/control/tracker/tracker.cpp     
 add_vivid_operator(euclidean          operators/control/euclidean/euclidean.cpp)
 add_vivid_operator(pat_transform      operators/control/pat_transform/pat_transform.cpp)
 add_vivid_operator(phase_to_midi      operators/control/phase_to_midi/phase_to_midi.cpp)
+add_vivid_operator(drum_kit            operators/control/drum_kit/drum_kit.cpp)
 foreach(_seq_op sequencer drum_sequencer pattern_seq note_pattern note_duration
-        arpeggiator chord_progression state_machine tracker euclidean pat_transform phase_to_midi)
+        arpeggiator chord_progression state_machine tracker euclidean pat_transform phase_to_midi drum_kit)
     target_include_directories(${_seq_op} PRIVATE ${CMAKE_SOURCE_DIR}/operators/shared/sequencer)
 endforeach()
 
