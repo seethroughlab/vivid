@@ -30,6 +30,7 @@ struct DeferredEntry {
     std::vector<std::string> semantic_shapes;       // stable strings for semantic_shape pointers
     std::vector<std::string> semantic_units;        // stable strings for semantic_unit pointers
     std::vector<std::string> semantic_intents;      // stable strings for semantic_intent pointers
+    std::vector<std::string> descriptions;          // stable strings for description pointers
     std::vector<std::vector<std::string>> choice_labels;     // owned choice label strings
     std::vector<std::vector<const char*>> choice_label_ptrs; // C pointer arrays into choice_labels
     std::vector<VividFileDropHandlerDescriptor> file_drop_handlers;

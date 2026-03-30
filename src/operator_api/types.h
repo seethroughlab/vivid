@@ -8,7 +8,7 @@ extern "C" {
 
 /* Bump when operator-facing C ABI changes in incompatible ways.
    Catches stale dylibs during hot-reload — not a cross-version compatibility promise. */
-#define VIVID_OPERATOR_ABI_VERSION 1u
+#define VIVID_OPERATOR_ABI_VERSION 2u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -106,6 +106,7 @@ typedef struct VividParamDescriptor {
     const char*       semantic_shape;     /* e.g. "scalar", "vec2", "color", "event" */
     const char*       semantic_unit;      /* e.g. "Hz", "s", "dB" */
     const char*       semantic_intent;    /* free-form hint, e.g. "input_gain" */
+    const char*       description;        /* human-readable tooltip shown in inspector on hover */
 } VividParamDescriptor;
 
 typedef struct VividPortDescriptor {

@@ -231,6 +231,7 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
     entry.semantic_shapes.resize(param_count);
     entry.semantic_units.resize(param_count);
     entry.semantic_intents.resize(param_count);
+    entry.descriptions.resize(param_count);
     entry.choice_labels.resize(param_count);
     entry.choice_label_ptrs.resize(param_count);
     for (uint32_t i = 0; i < param_count; ++i) {
@@ -292,6 +293,12 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
             dp.semantic_intent = entry.semantic_intents[i].c_str();
         } else {
             dp.semantic_intent = nullptr;
+        }
+        if (sp.description) {
+            entry.descriptions[i] = sp.description;
+            dp.description = entry.descriptions[i].c_str();
+        } else {
+            dp.description = nullptr;
         }
     }
 

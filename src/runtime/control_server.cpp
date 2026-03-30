@@ -309,6 +309,8 @@ static std::string handle_inspect_graph(Graph& graph, RuntimeCore& core) {
                     p["semantic_unit"] = pd.semantic_unit;
                 if (pd.semantic_intent)
                     p["semantic_intent"] = pd.semantic_intent;
+                if (pd.description)
+                    p["description"] = pd.description;
                 if (pd.choice_count > 0 && pd.choice_labels) {
                     nlohmann::json choices = nlohmann::json::array();
                     for (uint32_t c = 0; c < pd.choice_count; ++c)
@@ -696,6 +698,8 @@ static std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core) {
                     pm["semantic_unit"] = pd.semantic_unit;
                 if (pd.semantic_intent)
                     pm["semantic_intent"] = pd.semantic_intent;
+                if (pd.description)
+                    pm["description"] = pd.description;
                 param_meta_arr.push_back(std::move(pm));
             }
         }
@@ -1559,6 +1563,8 @@ static std::string handle_list_types(OperatorRegistry& registry) {
                 p["semantic_unit"] = pd.semantic_unit;
             if (pd.semantic_intent)
                 p["semantic_intent"] = pd.semantic_intent;
+            if (pd.description)
+                p["description"] = pd.description;
             params_arr.push_back(std::move(p));
         }
         t["params"] = std::move(params_arr);
@@ -2683,6 +2689,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
                             if (pd.semantic_shape) p["semantic_shape"] = pd.semantic_shape;
                             if (pd.semantic_unit) p["semantic_unit"] = pd.semantic_unit;
                             if (pd.semantic_intent) p["semantic_intent"] = pd.semantic_intent;
+                            if (pd.description) p["description"] = pd.description;
                             if (pd.default_string) p["default_string"] = pd.default_string;
                             if (pd.group) p["group"] = pd.group;
                             if (pd.choice_count > 0 && pd.choice_labels) {

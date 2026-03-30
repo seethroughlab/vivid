@@ -68,6 +68,7 @@ public:
             pi.semantic_shape      = pd.semantic_shape ? pd.semantic_shape : "";
             pi.semantic_unit       = pd.semantic_unit ? pd.semantic_unit : "";
             pi.semantic_intent     = pd.semantic_intent ? pd.semantic_intent : "";
+            pi.description         = pd.description ? pd.description : "";
             if (pd.choice_labels && pd.choice_count > 0) {
                 pi.choice_labels.reserve(pd.choice_count);
                 for (uint32_t ci = 0; ci < pd.choice_count; ++ci)

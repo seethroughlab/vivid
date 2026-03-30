@@ -366,6 +366,7 @@ void OperatorLoader::init_data_driven(std::shared_ptr<DataDrivenFilterConfig> co
         dp.semantic_shape = nullptr;
         dp.semantic_unit = nullptr;
         dp.semantic_intent = nullptr;
+        dp.description = nullptr;
 
         // Group
         dd_group_strings_[i] = sp.group;
