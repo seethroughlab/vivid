@@ -599,10 +599,26 @@ void Renderer2D::push_clip_rect(float x, float y, float w, float h) {
     finalize_batch();
     DrawBatch clip;
     clip.has_scissor = true;
-    clip.sx = x * dpi_scale_;
-    clip.sy = y * dpi_scale_;
-    clip.sw = w * dpi_scale_;
-    clip.sh = h * dpi_scale_;
+    float px = x * dpi_scale_;
+    float py = y * dpi_scale_;
+    float pw = w * dpi_scale_;
+    float ph = h * dpi_scale_;
+    // Intersect with parent clip rect if one exists
+    if (!clip_stack_.empty() && clip_stack_.back().has_scissor) {
+        const auto& parent = clip_stack_.back();
+        float x0 = std::max(px, parent.sx);
+        float y0 = std::max(py, parent.sy);
+        float x1 = std::min(px + pw, parent.sx + parent.sw);
+        float y1 = std::min(py + ph, parent.sy + parent.sh);
+        px = x0;
+        py = y0;
+        pw = std::max(0.0f, x1 - x0);
+        ph = std::max(0.0f, y1 - y0);
+    }
+    clip.sx = px;
+    clip.sy = py;
+    clip.sw = pw;
+    clip.sh = ph;
     clip_stack_.push_back(clip);
 }
 

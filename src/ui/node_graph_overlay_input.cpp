@@ -3,6 +3,7 @@
 #include "ui/overlay_layouts.h"
 #include "ui/file_dialog.h"
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 namespace vivid::ui {
@@ -71,14 +72,18 @@ void NodeGraphUI::update_package_browser() {
 
     float list_top = layout.list_top;
     int total = static_cast<int>(pkg_browser_entries_.size());
-    int end = std::min(total, pkg_browser_scroll_ + kPkgBrowserMaxVisible);
+    float pkg_list_area_h = layout.visible_count * kPkgBrowserItemH;
+    int pkg_first = std::max(0, static_cast<int>(std::floor(pkg_browser_scroll_ / kPkgBrowserItemH)));
+    float pkg_pix_offset = pkg_browser_scroll_ - pkg_first * kPkgBrowserItemH;
+    int pkg_draw_count = std::min(total - pkg_first, kPkgBrowserMaxVisible + 1);
 
-    for (int i = pkg_browser_scroll_; i < end; ++i) {
-        float iy = list_top + (i - pkg_browser_scroll_) * kPkgBrowserItemH;
-        if (mouse_.y < iy || mouse_.y > iy + kPkgBrowserItemH) continue;
+    for (int vi = 0; vi < pkg_draw_count; ++vi) {
+        int i = pkg_first + vi;
+        float iy = list_top - pkg_pix_offset + vi * kPkgBrowserItemH;
+        if (mouse_.y < std::max(iy, list_top) || mouse_.y > std::min(iy + kPkgBrowserItemH, list_top + pkg_list_area_h)) continue;
         if (mouse_.x < cx || mouse_.x > cx + inner_w) continue;
 
-        OverlayRect btn = compute_package_action_button_rect(layout, i - pkg_browser_scroll_);
+        OverlayRect btn = compute_package_action_button_rect(layout, iy);
         if (overlay_contains(btn, mouse_.x, mouse_.y)) {
             if (!pkg_action_pending_) {
                 const auto& entry = pkg_browser_entries_[i];
@@ -234,39 +239,41 @@ void NodeGraphUI::update_example_browser() {
     cy += kPkgBrowserTabH + 8;
 
     if (!example_entries_.empty()) {
-        int clicked_rel = static_cast<int>((mouse_.y - cy) / kPkgBrowserItemH);
-        if (clicked_rel >= 0 && clicked_rel < visible_count) {
-            int idx = example_browser_scroll_ + clicked_rel;
-            if (idx >= 0 && idx < static_cast<int>(example_entries_.size())) {
-                example_browser_sel_ = idx;
-                OverlayRect open_btn = compute_example_open_button_rect(layout, clicked_rel);
-                if (overlay_contains(open_btn, mouse_.x, mouse_.y) &&
-                    example_open_callback_) {
-                    const auto& e = example_entries_[idx];
-                    std::string missing;
-                    bool ok = true;
-                    if (example_package_checker_) {
-                        ok = example_package_checker_(e.requires_packages, missing);
-                    }
-                    if (ok) {
-                        example_action_error_.clear();
-                        example_warn_id_.clear();
-                        example_open_callback_(e.path);
-                        example_browser_open_ = false;
-                    } else if (example_warn_id_ == e.id) {
-                        example_action_error_ = "Opening anyway with missing package: " + missing;
-                        example_open_callback_(e.path);
-                        example_browser_open_ = false;
-                    } else {
-                        example_warn_id_ = e.id;
-                        example_action_error_ =
-                            "Missing package: " + missing + " (click Open again to continue)";
-                    }
+        float ex_list_area_h = visible_count * kPkgBrowserItemH;
+        int idx = static_cast<int>(std::floor((mouse_.y - cy + example_browser_scroll_) / kPkgBrowserItemH));
+        int ex_first = static_cast<int>(std::floor(example_browser_scroll_ / kPkgBrowserItemH));
+        float ex_offset = example_browser_scroll_ - ex_first * kPkgBrowserItemH;
+        float iy = cy - ex_offset + (idx - ex_first) * kPkgBrowserItemH;
+        if (idx >= 0 && idx < static_cast<int>(example_entries_.size()) &&
+            mouse_.y >= cy && mouse_.y < cy + ex_list_area_h) {
+            example_browser_sel_ = idx;
+            OverlayRect open_btn = compute_example_open_button_rect(layout, iy);
+            if (overlay_contains(open_btn, mouse_.x, mouse_.y) &&
+                example_open_callback_) {
+                const auto& e = example_entries_[idx];
+                std::string missing;
+                bool ok = true;
+                if (example_package_checker_) {
+                    ok = example_package_checker_(e.requires_packages, missing);
                 }
-                mouse_.left_clicked = false;
-                mouse_.left_released = false;
-                return;
+                if (ok) {
+                    example_action_error_.clear();
+                    example_warn_id_.clear();
+                    example_open_callback_(e.path);
+                    example_browser_open_ = false;
+                } else if (example_warn_id_ == e.id) {
+                    example_action_error_ = "Opening anyway with missing package: " + missing;
+                    example_open_callback_(e.path);
+                    example_browser_open_ = false;
+                } else {
+                    example_warn_id_ = e.id;
+                    example_action_error_ =
+                        "Missing package: " + missing + " (click Open again to continue)";
+                }
             }
+            mouse_.left_clicked = false;
+            mouse_.left_released = false;
+            return;
         }
     }
 

@@ -130,25 +130,25 @@ void NodeGraphUI::on_scroll(float x_offset, float y_offset, int mods) {
 
     // Example browser scroll
     if (example_browser_open_ && !example_entries_.empty()) {
-        example_browser_scroll_ -= static_cast<int>(y_offset);
-        int max_scroll = std::max(0, static_cast<int>(example_entries_.size()) - kPkgBrowserMaxVisible);
-        example_browser_scroll_ = std::max(0, std::min(example_browser_scroll_, max_scroll));
+        example_browser_scroll_ -= y_offset * kPkgBrowserItemH;
+        float max_scroll = std::max(0.0f, (static_cast<int>(example_entries_.size()) - kPkgBrowserMaxVisible) * kPkgBrowserItemH);
+        example_browser_scroll_ = std::max(0.0f, std::min(example_browser_scroll_, max_scroll));
         return;
     }
 
     // Package browser scroll
     if (pkg_browser_open_ && !pkg_browser_entries_.empty()) {
-        pkg_browser_scroll_ -= static_cast<int>(y_offset);
-        int max_scroll = std::max(0, static_cast<int>(pkg_browser_entries_.size()) - kPkgBrowserMaxVisible);
-        pkg_browser_scroll_ = std::max(0, std::min(pkg_browser_scroll_, max_scroll));
+        pkg_browser_scroll_ -= y_offset * kPkgBrowserItemH;
+        float max_scroll = std::max(0.0f, (static_cast<int>(pkg_browser_entries_.size()) - kPkgBrowserMaxVisible) * kPkgBrowserItemH);
+        pkg_browser_scroll_ = std::max(0.0f, std::min(pkg_browser_scroll_, max_scroll));
         return;
     }
 
     // Param picker scroll
     if (param_picker_open_ && !param_picker_items_.empty()) {
-        param_picker_scroll_ -= static_cast<int>(y_offset);
-        int max_scroll = std::max(0, static_cast<int>(param_picker_items_.size()) - 12);
-        param_picker_scroll_ = std::max(0, std::min(param_picker_scroll_, max_scroll));
+        param_picker_scroll_ -= y_offset * kPickerItemH;
+        float max_scroll = std::max(0.0f, (static_cast<int>(param_picker_items_.size()) - kPickerMaxVisible) * kPickerItemH);
+        param_picker_scroll_ = std::max(0.0f, std::min(param_picker_scroll_, max_scroll));
         return;
     }
 
@@ -160,9 +160,9 @@ void NodeGraphUI::on_scroll(float x_offset, float y_offset, int mods) {
         float panel_h = kChooserHeaderH + visible * kChooserItemH + 4;
         if (mouse_.x >= px && mouse_.x <= px + kChooserW &&
             mouse_.y >= panel_top && mouse_.y <= panel_top + panel_h) {
-            chooser_scroll_ -= static_cast<int>(y_offset);
-            int max_scroll = std::max(0, static_cast<int>(chooser_items_.size()) - kChooserMaxVisible);
-            chooser_scroll_ = std::max(0, std::min(chooser_scroll_, max_scroll));
+            chooser_scroll_ -= y_offset * kChooserItemH;
+            float max_scroll = std::max(0.0f, (static_cast<int>(chooser_items_.size()) - kChooserMaxVisible) * kChooserItemH);
+            chooser_scroll_ = std::max(0.0f, std::min(chooser_scroll_, max_scroll));
             return;
         }
     }
@@ -447,16 +447,16 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
             example_browser_filter_.clear();
         } else if (key == GLFW_KEY_UP) {
             example_browser_sel_ = std::max(0, example_browser_sel_ - 1);
-            if (example_browser_sel_ < example_browser_scroll_)
-                example_browser_scroll_ = example_browser_sel_;
+            if (example_browser_sel_ * kPkgBrowserItemH < example_browser_scroll_)
+                example_browser_scroll_ = example_browser_sel_ * kPkgBrowserItemH;
         } else if (key == GLFW_KEY_DOWN) {
             int max_sel = static_cast<int>(example_entries_.size()) - 1;
             example_browser_sel_ = std::min(max_sel, example_browser_sel_ + 1);
-            if (example_browser_sel_ >= example_browser_scroll_ + kPkgBrowserMaxVisible)
-                example_browser_scroll_ = example_browser_sel_ - kPkgBrowserMaxVisible + 1;
+            if ((example_browser_sel_ + 1) * kPkgBrowserItemH > example_browser_scroll_ + kPkgBrowserMaxVisible * kPkgBrowserItemH)
+                example_browser_scroll_ = (example_browser_sel_ - kPkgBrowserMaxVisible + 1) * kPkgBrowserItemH;
         } else if (key == GLFW_KEY_BACKSPACE) {
             text_edit_backspace(example_browser_filter_, text_edit_);
-            example_browser_scroll_ = 0;
+            example_browser_scroll_ = 0.0f;
             example_browser_sel_ = 0;
             rebuild_example_items();
         } else if (key == GLFW_KEY_ENTER) {
@@ -493,13 +493,13 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
             pkg_browser_filter_.clear();
         } else if (key == GLFW_KEY_UP) {
             pkg_browser_sel_ = std::max(0, pkg_browser_sel_ - 1);
-            if (pkg_browser_sel_ < pkg_browser_scroll_)
-                pkg_browser_scroll_ = pkg_browser_sel_;
+            if (pkg_browser_sel_ * kPkgBrowserItemH < pkg_browser_scroll_)
+                pkg_browser_scroll_ = pkg_browser_sel_ * kPkgBrowserItemH;
         } else if (key == GLFW_KEY_DOWN) {
             int max_sel = static_cast<int>(pkg_browser_entries_.size()) - 1;
             pkg_browser_sel_ = std::min(max_sel, pkg_browser_sel_ + 1);
-            if (pkg_browser_sel_ >= pkg_browser_scroll_ + kPkgBrowserMaxVisible)
-                pkg_browser_scroll_ = pkg_browser_sel_ - kPkgBrowserMaxVisible + 1;
+            if ((pkg_browser_sel_ + 1) * kPkgBrowserItemH > pkg_browser_scroll_ + kPkgBrowserMaxVisible * kPkgBrowserItemH)
+                pkg_browser_scroll_ = (pkg_browser_sel_ - kPkgBrowserMaxVisible + 1) * kPkgBrowserItemH;
         } else if (key == GLFW_KEY_ENTER) {
             // Trigger install/remove on selected entry
             if (pkg_browser_sel_ >= 0 &&
@@ -933,15 +933,15 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
             case GLFW_KEY_UP:
                 if (param_picker_sel_ > 0) {
                     param_picker_sel_--;
-                    if (param_picker_sel_ < param_picker_scroll_)
-                        param_picker_scroll_ = param_picker_sel_;
+                    if (param_picker_sel_ * kPickerItemH < param_picker_scroll_)
+                        param_picker_scroll_ = param_picker_sel_ * kPickerItemH;
                 }
                 break;
             case GLFW_KEY_DOWN:
                 if (param_picker_sel_ < static_cast<int>(param_picker_items_.size()) - 1) {
                     param_picker_sel_++;
-                    if (param_picker_sel_ >= param_picker_scroll_ + 12)
-                        param_picker_scroll_ = param_picker_sel_ - 12 + 1;
+                    if ((param_picker_sel_ + 1) * kPickerItemH > param_picker_scroll_ + kPickerMaxVisible * kPickerItemH)
+                        param_picker_scroll_ = (param_picker_sel_ - kPickerMaxVisible + 1) * kPickerItemH;
                 }
                 break;
             case GLFW_KEY_ENTER:
@@ -1182,16 +1182,16 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         case GLFW_KEY_UP:
             if (chooser_sel_ > 0) {
                 chooser_sel_--;
-                if (chooser_sel_ < chooser_scroll_)
-                    chooser_scroll_ = chooser_sel_;
+                if (chooser_sel_ * kChooserItemH < chooser_scroll_)
+                    chooser_scroll_ = chooser_sel_ * kChooserItemH;
             }
             break;
 
         case GLFW_KEY_DOWN:
             if (chooser_sel_ < static_cast<int>(chooser_items_.size()) - 1) {
                 chooser_sel_++;
-                if (chooser_sel_ >= chooser_scroll_ + kChooserMaxVisible)
-                    chooser_scroll_ = chooser_sel_ - kChooserMaxVisible + 1;
+                if ((chooser_sel_ + 1) * kChooserItemH > chooser_scroll_ + kChooserMaxVisible * kChooserItemH)
+                    chooser_scroll_ = (chooser_sel_ - kChooserMaxVisible + 1) * kChooserItemH;
             }
             break;
 
@@ -2019,7 +2019,7 @@ bool NodeGraphUI::handle_chooser_click() {
     if (mouse_.x >= chooser_x() && mouse_.x <= chooser_x() + kChooserW &&
         mouse_.y >= items_y && mouse_.y <= items_y + visible * kChooserItemH &&
         !chooser_items_.empty()) {
-        int idx = chooser_scroll_ + static_cast<int>((mouse_.y - items_y) / kChooserItemH);
+        int idx = static_cast<int>(std::floor((mouse_.y - items_y + chooser_scroll_) / kChooserItemH));
         if (idx >= 0 && idx < static_cast<int>(chooser_items_.size())) {
             confirm_chooser_selection_idx(idx);
             mouse_.left_clicked = false;

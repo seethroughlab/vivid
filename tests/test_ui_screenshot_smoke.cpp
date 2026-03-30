@@ -1183,7 +1183,7 @@ int main(int argc, char* argv[]) {
   {"type":"wait","frames":1},
   {"type":"mouse_button","button":"left","action":"release"},
   {"type":"wait","frames":1},
-  {"type":"mouse_move","x":260,"y":232},
+  {"type":"mouse_move","x":260,"y":206},
   {"type":"mouse_button","button":"left","action":"press"},
   {"type":"wait","frames":1},
   {"type":"mouse_move","x":360,"y":314},

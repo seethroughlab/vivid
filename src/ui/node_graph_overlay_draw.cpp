@@ -5,6 +5,7 @@
 #include "ui/renderer_2d.h"
 #include "ui/i18n.h"
 #include <algorithm>
+#include <cmath>
 
 namespace vivid::ui {
 
@@ -110,24 +111,29 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
 
     float list_top = layout.list_top;
     int total = static_cast<int>(pkg_browser_entries_.size());
-    int end = std::min(total, pkg_browser_scroll_ + kPkgBrowserMaxVisible);
+    float list_area_h = visible_count * kPkgBrowserItemH;
+    int first = std::max(0, static_cast<int>(std::floor(pkg_browser_scroll_ / kPkgBrowserItemH)));
+    float offset = pkg_browser_scroll_ - first * kPkgBrowserItemH;
+    int draw_count = std::min(total - first, kPkgBrowserMaxVisible + 1);
 
-    for (int i = pkg_browser_scroll_; i < end; ++i) {
+    tr.push_clip_rect(cx, list_top, inner_w, list_area_h);
+    for (int vi = 0; vi < draw_count; ++vi) {
+        int i = first + vi;
         const auto& entry = pkg_browser_entries_[i];
-        float iy = list_top + (i - pkg_browser_scroll_) * kPkgBrowserItemH;
+        float iy = list_top - offset + vi * kPkgBrowserItemH;
         bool hovered = mouse_.x >= cx && mouse_.x <= cx + inner_w &&
-                       mouse_.y >= iy && mouse_.y <= iy + kPkgBrowserItemH;
+                       mouse_.y >= std::max(iy, list_top) && mouse_.y <= std::min(iy + kPkgBrowserItemH, list_top + list_area_h);
         if (hovered || i == pkg_browser_sel_) {
             tr.draw_rect(cx, iy, inner_w, kPkgBrowserItemH,
                          style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2],
                          hovered ? 0.5f : 0.3f);
         }
-        if (i > pkg_browser_scroll_) {
+        if (vi > 0 || offset > 0.0f) {
             tr.draw_rect(cx + 4, iy, inner_w - 8, 1,
                          style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.3f);
         }
 
-        OverlayRect btn = compute_package_action_button_rect(layout, i - pkg_browser_scroll_);
+        OverlayRect btn = compute_package_action_button_rect(layout, iy);
         const float text_left = cx + 8.0f;
         const float text_right = btn.x - 10.0f;
         const float text_w = std::max(0.0f, text_right - text_left);
@@ -232,13 +238,14 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         }
     }
+    tr.pop_clip_rect();
 
     if (total > kPkgBrowserMaxVisible) {
         float sb_x = cx + inner_w - 4;
         float sb_h = visible_count * kPkgBrowserItemH;
         float thumb_h = std::max(20.0f, sb_h * kPkgBrowserMaxVisible / static_cast<float>(total));
-        float thumb_y = list_top + (sb_h - thumb_h) * pkg_browser_scroll_ /
-                        static_cast<float>(total - kPkgBrowserMaxVisible);
+        float max_scroll_px = std::max(1.0f, (total - kPkgBrowserMaxVisible) * kPkgBrowserItemH);
+        float thumb_y = list_top + (sb_h - thumb_h) * pkg_browser_scroll_ / max_scroll_px;
         tr.draw_rect(sb_x, list_top, 4, sb_h,
                      style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.3f);
         tr.draw_rect(sb_x, thumb_y, 4, thumb_h,
@@ -371,23 +378,29 @@ void NodeGraphUI::draw_example_browser(Renderer2D& tr) {
     cy += kPkgBrowserTabH + 8;
 
     int total = static_cast<int>(example_entries_.size());
-    int end = std::min(total, example_browser_scroll_ + kPkgBrowserMaxVisible);
-    for (int i = example_browser_scroll_; i < end; ++i) {
+    float ex_list_area_h = layout.visible_count * kPkgBrowserItemH;
+    int ex_first = std::max(0, static_cast<int>(std::floor(example_browser_scroll_ / kPkgBrowserItemH)));
+    float ex_offset = example_browser_scroll_ - ex_first * kPkgBrowserItemH;
+    int ex_draw_count = std::min(total - ex_first, kPkgBrowserMaxVisible + 1);
+
+    tr.push_clip_rect(cx, cy, inner_w, ex_list_area_h);
+    for (int vi = 0; vi < ex_draw_count; ++vi) {
+        int i = ex_first + vi;
         const auto& e = example_entries_[i];
-        float iy = cy + (i - example_browser_scroll_) * kPkgBrowserItemH;
+        float iy = cy - ex_offset + vi * kPkgBrowserItemH;
         bool hovered = mouse_.x >= cx && mouse_.x <= cx + inner_w &&
-                       mouse_.y >= iy && mouse_.y <= iy + kPkgBrowserItemH;
+                       mouse_.y >= std::max(iy, cy) && mouse_.y <= std::min(iy + kPkgBrowserItemH, cy + ex_list_area_h);
         if (hovered || i == example_browser_sel_) {
             tr.draw_rect(cx, iy, inner_w, kPkgBrowserItemH,
                          style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2],
                          hovered ? 0.5f : 0.3f);
         }
-        if (i > example_browser_scroll_) {
+        if (vi > 0 || ex_offset > 0.0f) {
             tr.draw_rect(cx + 4, iy, inner_w - 8, 1,
                          style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.3f);
         }
 
-        OverlayRect open_btn = compute_example_open_button_rect(layout, i - example_browser_scroll_);
+        OverlayRect open_btn = compute_example_open_button_rect(layout, iy);
         float bx = open_btn.x;
         float by = open_btn.y;
         const bool has_required_packages = !e.requires_packages.empty();
@@ -431,13 +444,14 @@ void NodeGraphUI::draw_example_browser(Renderer2D& tr) {
                          0.95f, 0.78f, 0.32f, 0.95f);
         }
     }
+    tr.pop_clip_rect();
 
     if (total > kPkgBrowserMaxVisible) {
         float sb_x = cx + inner_w - 4;
         float sb_h = layout.visible_count * kPkgBrowserItemH;
         float thumb_h = std::max(20.0f, sb_h * kPkgBrowserMaxVisible / static_cast<float>(total));
-        float thumb_y = cy + (sb_h - thumb_h) * example_browser_scroll_ /
-                        static_cast<float>(total - kPkgBrowserMaxVisible);
+        float max_scroll_px = std::max(1.0f, (total - kPkgBrowserMaxVisible) * kPkgBrowserItemH);
+        float thumb_y = cy + (sb_h - thumb_h) * example_browser_scroll_ / max_scroll_px;
         tr.draw_rect(sb_x, cy, 4, sb_h,
                      style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.3f);
         tr.draw_rect(sb_x, thumb_y, 4, thumb_h,

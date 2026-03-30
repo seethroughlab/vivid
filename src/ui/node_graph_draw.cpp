@@ -3019,11 +3019,17 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
 
     // Items
     float iy = py + kChooserHeaderH;
-    for (int i = 0; i < visible; ++i) {
-        int idx = chooser_scroll_ + i;
+    float ch_list_area_h = visible * kChooserItemH;
+    int ch_first = std::max(0, static_cast<int>(std::floor(chooser_scroll_ / kChooserItemH)));
+    float ch_offset = chooser_scroll_ - ch_first * kChooserItemH;
+    int ch_draw_count = std::min(static_cast<int>(chooser_items_.size()) - ch_first, kChooserMaxVisible + 1);
+
+    tr.push_clip_rect(px, iy, kChooserW, ch_list_area_h);
+    for (int vi = 0; vi < ch_draw_count; ++vi) {
+        int idx = ch_first + vi;
         if (idx >= static_cast<int>(chooser_items_.size())) break;
 
-        float item_y = iy + i * kChooserItemH;
+        float item_y = iy - ch_offset + vi * kChooserItemH;
 
         // Highlight selected
         if (idx == chooser_sel_) {
@@ -3069,6 +3075,7 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
             tr.draw_text(px + 42, item_y + 3, name.c_str(), 0.85f, 0.87f, 0.90f);
         }
     }
+    tr.pop_clip_rect();
 
     // Show "no matches" if empty
     if (chooser_items_.empty()) {
@@ -3089,8 +3096,8 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
         // Thumb
         float ratio = static_cast<float>(kChooserMaxVisible) / static_cast<float>(total_items);
         float thumb_h = std::max(kInspScrollbarMinThumb, track_h * ratio);
-        int max_scroll = total_items - kChooserMaxVisible;
-        float scroll_ratio = (max_scroll > 0) ? static_cast<float>(chooser_scroll_) / static_cast<float>(max_scroll) : 0.0f;
+        float max_scroll_px = std::max(1.0f, (total_items - kChooserMaxVisible) * kChooserItemH);
+        float scroll_ratio = chooser_scroll_ / max_scroll_px;
         float thumb_y = track_y + scroll_ratio * (track_h - thumb_h);
         tr.draw_rect(track_x, thumb_y, kInspScrollbarW, thumb_h,
                      style_.scrollbar_thumb[0], style_.scrollbar_thumb[1], style_.scrollbar_thumb[2], kScrollbarThumbIdle);
@@ -3703,6 +3710,7 @@ void NodeGraphUI::draw_clone_confirm(Renderer2D& tr) {
                      style_.accent[0], style_.accent[1], style_.accent[2], 0.85f);
     }
 
+    tr.push_clip_rect(toggle_x, toggle_y, left_w, toggle_h);
     if (clone_confirm_project_available_) {
         tr.draw_text(toggle_x + 12.0f, toggle_y + 4.0f, T("project_package", "Project Package"),
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
@@ -3710,8 +3718,11 @@ void NodeGraphUI::draw_clone_confirm(Renderer2D& tr) {
         tr.draw_text(toggle_x + 12.0f, toggle_y + 4.0f, T("project_package_unavailable", "Project Package (unavailable)"),
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     }
+    tr.pop_clip_rect();
+    tr.push_clip_rect(toggle_x + left_w, toggle_y, left_w, toggle_h);
     tr.draw_text(toggle_x + left_w + 12.0f, toggle_y + 4.0f, T("core", "Core"),
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    tr.pop_clip_rect();
 
     // Buttons
     float btn_w = 70.0f, btn_h = 22.0f;
@@ -5035,10 +5046,6 @@ void NodeGraphUI::draw_thumbnails(ThumbnailRenderer& renderer, const ThumbnailCa
 void NodeGraphUI::draw_param_picker(Renderer2D& tr) {
     if (!param_picker_open_ || param_picker_items_.empty()) return;
 
-    static constexpr float kPickerItemH = 22.0f;
-    static constexpr float kPickerW = 220.0f;
-    static constexpr int kPickerMaxVisible = 12;
-
     int visible = std::min(static_cast<int>(param_picker_items_.size()), kPickerMaxVisible);
     float popup_h = visible * kPickerItemH + 4;
 
@@ -5053,11 +5060,18 @@ void NodeGraphUI::draw_param_picker(Renderer2D& tr) {
     draw_popup_bg(tr, style_, px, py, kPickerW, popup_h);
 
     // Items
-    for (int i = 0; i < visible; ++i) {
-        int idx = param_picker_scroll_ + i;
-        if (idx < 0 || idx >= static_cast<int>(param_picker_items_.size())) break;
+    float pk_list_top = py + 2;
+    float pk_list_area_h = visible * kPickerItemH;
+    int pk_first = std::max(0, static_cast<int>(std::floor(param_picker_scroll_ / kPickerItemH)));
+    float pk_offset = param_picker_scroll_ - pk_first * kPickerItemH;
+    int pk_draw_count = std::min(static_cast<int>(param_picker_items_.size()) - pk_first, kPickerMaxVisible + 1);
 
-        float iy = py + 2 + i * kPickerItemH;
+    tr.push_clip_rect(px, pk_list_top, kPickerW, pk_list_area_h);
+    for (int vi = 0; vi < pk_draw_count; ++vi) {
+        int idx = pk_first + vi;
+        if (idx >= static_cast<int>(param_picker_items_.size())) break;
+
+        float iy = pk_list_top - pk_offset + vi * kPickerItemH;
         if (idx == param_picker_sel_) {
             tr.draw_rect(px + 2, iy, kPickerW - 4, kPickerItemH,
                          style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2], 0.9f);
@@ -5075,6 +5089,7 @@ void NodeGraphUI::draw_param_picker(Renderer2D& tr) {
                          style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         }
     }
+    tr.pop_clip_rect();
 }
 
 // -----------------------------------------------------------------------

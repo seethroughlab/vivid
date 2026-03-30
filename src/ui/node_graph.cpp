@@ -1959,7 +1959,7 @@ void NodeGraphUI::update_chooser_hover() {
     if (mouse_.x >= chooser_x() && mouse_.x <= chooser_x() + kChooserW &&
         mouse_.y >= items_y && mouse_.y < items_y + visible * kChooserItemH &&
         !chooser_items_.empty()) {
-        int idx = chooser_scroll_ + static_cast<int>((mouse_.y - items_y) / kChooserItemH);
+        int idx = static_cast<int>(std::floor((mouse_.y - items_y + chooser_scroll_) / kChooserItemH));
         if (idx >= 0 && idx < static_cast<int>(chooser_items_.size()))
             chooser_sel_ = idx;
     }
@@ -2241,15 +2241,13 @@ void NodeGraphUI::update_param_picker() {
     if (!param_picker_open_) return;
 
     // Hover tracking
-    static constexpr float kPickerItemH = 22.0f;
-    static constexpr float kPickerW = 220.0f;
-    int visible = std::min(static_cast<int>(param_picker_items_.size()), 12);
+    int visible = std::min(static_cast<int>(param_picker_items_.size()), kPickerMaxVisible);
     float items_y = param_picker_y_;
     float items_h = visible * kPickerItemH;
 
     if (mouse_.x >= param_picker_x_ && mouse_.x <= param_picker_x_ + kPickerW &&
         mouse_.y >= items_y && mouse_.y < items_y + items_h) {
-        int idx = param_picker_scroll_ + static_cast<int>((mouse_.y - items_y) / kPickerItemH);
+        int idx = static_cast<int>(std::floor((mouse_.y - items_y + param_picker_scroll_) / kPickerItemH));
         if (idx >= 0 && idx < static_cast<int>(param_picker_items_.size()))
             param_picker_sel_ = idx;
     }
@@ -2259,7 +2257,7 @@ void NodeGraphUI::update_param_picker() {
         if (mouse_.x >= param_picker_x_ && mouse_.x <= param_picker_x_ + kPickerW &&
             mouse_.y >= items_y && mouse_.y < items_y + items_h &&
             !param_picker_items_.empty()) {
-            int idx = param_picker_scroll_ + static_cast<int>((mouse_.y - items_y) / kPickerItemH);
+            int idx = static_cast<int>(std::floor((mouse_.y - items_y + param_picker_scroll_) / kPickerItemH));
             if (idx >= 0 && idx < static_cast<int>(param_picker_items_.size())) {
                 const std::string& selected = param_picker_items_[idx];
                 if (param_picker_is_output_) {

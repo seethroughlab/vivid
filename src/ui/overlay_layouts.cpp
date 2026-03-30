@@ -104,23 +104,21 @@ OverlayPanelLayout compute_about_layout(uint32_t win_w, uint32_t win_h) {
     return l;
 }
 
-OverlayRect compute_example_open_button_rect(const OverlayPanelLayout& layout, int visible_row) {
+OverlayRect compute_example_open_button_rect(const OverlayPanelLayout& layout, float item_y) {
     OverlayRect r;
     r.w = 64.0f;
     r.h = 22.0f;
     r.x = layout.cx + layout.inner_w - r.w - 8.0f;
-    float row_y = layout.list_top + visible_row * kPkgBrowserItemH;
-    r.y = row_y + (kPkgBrowserItemH - r.h) * 0.5f;
+    r.y = item_y + (kPkgBrowserItemH - r.h) * 0.5f;
     return r;
 }
 
-OverlayRect compute_package_action_button_rect(const OverlayPanelLayout& layout, int visible_row) {
+OverlayRect compute_package_action_button_rect(const OverlayPanelLayout& layout, float item_y) {
     OverlayRect r;
     r.w = kPkgBrowserBtnW;
     r.h = kPkgBrowserBtnH;
     r.x = layout.cx + layout.inner_w - r.w - 8.0f;
-    float row_y = layout.list_top + visible_row * kPkgBrowserItemH;
-    r.y = row_y + (kPkgBrowserItemH - r.h) * 0.5f;
+    r.y = item_y + (kPkgBrowserItemH - r.h) * 0.5f;
     return r;
 }
 

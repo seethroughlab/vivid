@@ -177,8 +177,9 @@ void NodeGraphUI::rebuild_pkg_browser_items() {
     // Clamp selection
     if (pkg_browser_sel_ >= static_cast<int>(pkg_browser_entries_.size()))
         pkg_browser_sel_ = std::max(0, static_cast<int>(pkg_browser_entries_.size()) - 1);
-    if (pkg_browser_scroll_ > static_cast<int>(pkg_browser_entries_.size()) - kPkgBrowserMaxVisible)
-        pkg_browser_scroll_ = std::max(0, static_cast<int>(pkg_browser_entries_.size()) - kPkgBrowserMaxVisible);
+    float pkg_max_scroll = std::max(0.0f, (static_cast<int>(pkg_browser_entries_.size()) - kPkgBrowserMaxVisible) * kPkgBrowserItemH);
+    if (pkg_browser_scroll_ > pkg_max_scroll)
+        pkg_browser_scroll_ = pkg_max_scroll;
 }
 
 void NodeGraphUI::rebuild_example_items() {
@@ -249,8 +250,8 @@ void NodeGraphUI::rebuild_example_items() {
 
     if (example_browser_sel_ >= static_cast<int>(example_entries_.size()))
         example_browser_sel_ = std::max(0, static_cast<int>(example_entries_.size()) - 1);
-    int max_scroll = std::max(0, static_cast<int>(example_entries_.size()) - kPkgBrowserMaxVisible);
-    if (example_browser_scroll_ > max_scroll) example_browser_scroll_ = max_scroll;
+    float ex_max_scroll = std::max(0.0f, (static_cast<int>(example_entries_.size()) - kPkgBrowserMaxVisible) * kPkgBrowserItemH);
+    if (example_browser_scroll_ > ex_max_scroll) example_browser_scroll_ = ex_max_scroll;
 }
 
 } // namespace vivid::ui

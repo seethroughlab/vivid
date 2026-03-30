@@ -554,7 +554,7 @@ private:
     std::vector<std::string> param_picker_items_;
     std::vector<bool> param_picker_item_is_param_;  // parallel to param_picker_items_
     int param_picker_sel_ = 0;
-    int param_picker_scroll_ = 0;
+    float param_picker_scroll_ = 0.0f;
 
     // Zoom/pan state
     float zoom_ = 1.0f;
@@ -773,7 +773,7 @@ private:
     ChooserMode chooser_mode_ = ChooserMode::Operators;
     std::string chooser_filter_;
     int chooser_sel_ = 0;
-    int chooser_scroll_ = 0;
+    float chooser_scroll_ = 0.0f;
     std::vector<std::string> chooser_items_;
     std::vector<std::string> chooser_subtitles_;
     std::vector<FileDropChooserAction> chooser_drop_actions_;
@@ -891,7 +891,7 @@ private:
     bool pkg_browser_open_ = false;
     std::string pkg_browser_filter_;
     int pkg_browser_sel_ = 0;
-    int pkg_browser_scroll_ = 0;
+    float pkg_browser_scroll_ = 0.0f;
     int pkg_browser_category_ = 0;   // 0=All, 1=Audio, 2=GPU, 3=Control, 4=Utility, 5=Installed
     std::array<float, 6> pkg_browser_tab_widths_{};
     std::vector<PackageBrowserEntry> pkg_browser_entries_;   // filtered snapshot
@@ -905,7 +905,7 @@ private:
     bool example_browser_open_ = false;
     std::string example_browser_filter_;
     int example_browser_sel_ = 0;
-    int example_browser_scroll_ = 0;
+    float example_browser_scroll_ = 0.0f;
     int example_browser_env_ = 0;      // 0=All 1=GPU 2=Audio 3=Control 4=IO
     int example_browser_difficulty_ = 0;  // 0=All 1=Beginner 2=Intermediate 3=Advanced
     int example_browser_sort_ = 0;        // 0=Featured 1=Alphabetical

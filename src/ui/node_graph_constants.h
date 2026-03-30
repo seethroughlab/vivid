@@ -123,6 +123,11 @@ static constexpr float kChooserHeaderH = 28.0f;
 static constexpr float kChooserItemH = 22.0f;
 static constexpr float kChooserY = 80.0f;
 
+// Parameter picker popup
+static constexpr float kPickerItemH = 22.0f;
+static constexpr float kPickerW = 220.0f;
+static constexpr int   kPickerMaxVisible = 12;
+
 // Create operator modal
 static constexpr float kCreateModalW = 480.0f;
 static constexpr float kCreateModalPadX = 20.0f;
