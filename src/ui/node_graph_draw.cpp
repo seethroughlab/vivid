@@ -1397,14 +1397,65 @@ void NodeGraphUI::draw_inspector_xy_pad(Renderer2D& tr, const NodeSnapshot& node
     tr.draw_rect(dot_sx - dot_r, dot_sy - dot_r, kXYPadDotSize, kXYPadDotSize,
                  style_.accent[0], style_.accent[1], style_.accent[2]);
 
-    // Labels below pad
+    // Labels below pad (segment-drawn for click-to-edit support)
     float label_y = pad_y + pad_size + kXYPadLabelGap;
-    std::string label = std::string(pd_x.name) + ": " + format_float(val_x, 2) +
-                        "  " + pd_y.name + ": " + format_float(val_y, 2);
-    float label_w = tr.text_width(label.c_str(), 0.85f);
+    float lh = tr.line_height() * 0.85f;
+
+    bool editing_x = editing_param_ && edit_node_id_ == single_selected_id()
+                     && edit_param_name_ == pd_x.name;
+    bool editing_y = editing_param_ && edit_node_id_ == single_selected_id()
+                     && edit_param_name_ == pd_y.name;
+
+    std::string val_x_str = format_float(val_x, 2);
+    std::string val_y_str = format_float(val_y, 2);
+    std::string name_x_str = std::string(pd_x.name) + ": ";
+    std::string sep_name_y_str = "  " + std::string(pd_y.name) + ": ";
+
+    float name_x_w    = tr.text_width(name_x_str.c_str(), 0.85f);
+    float val_x_str_w = tr.text_width(val_x_str.c_str(), 0.85f);
+    float name_y_w    = tr.text_width(sep_name_y_str.c_str(), 0.85f);
+    float val_y_str_w = tr.text_width(val_y_str.c_str(), 0.85f);
+
+    float label_w = name_x_w + val_x_str_w + name_y_w + val_y_str_w;
     float label_lx = layout.base_x + (content_w - label_w) * 0.5f;
-    tr.draw_text(label_lx, label_y, label.c_str(),
+
+    float cx = label_lx;
+
+    // Segment: "X: "
+    tr.draw_text(cx, label_y, name_x_str.c_str(),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, 0.85f);
+    cx += name_x_w;
+
+    // Segment: X value (or edit field)
+    if (editing_x) {
+        float edit_w = std::max(val_x_str_w + 8.0f, pad_size * 0.45f);
+        draw_editing_text_field(tr, style_, cx, label_y, edit_w, lh,
+                                edit_buffer_, text_edit_, cursor_blink_on(), 2.0f, 0.0f);
+        cx += edit_w;
+    } else {
+        tr.draw_text(cx, label_y, val_x_str.c_str(),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, 0.85f);
+        value_text_rects_.push_back({cx, label_y, val_x_str_w, lh,
+                                     single_selected_id(), pd_x.name});
+        cx += val_x_str_w;
+    }
+
+    // Segment: "  Y: "
+    tr.draw_text(cx, label_y, sep_name_y_str.c_str(),
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, 0.85f);
+    cx += name_y_w;
+
+    // Segment: Y value (or edit field)
+    if (editing_y) {
+        float edit_w = std::max(val_y_str_w + 8.0f, pad_size * 0.45f);
+        draw_editing_text_field(tr, style_, cx, label_y, edit_w, lh,
+                                edit_buffer_, text_edit_, cursor_blink_on(), 2.0f, 0.0f);
+    } else {
+        tr.draw_text(cx, label_y, val_y_str.c_str(),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, 0.85f);
+        value_text_rects_.push_back({cx, label_y, val_y_str_w, lh,
+                                     single_selected_id(), pd_y.name});
+    }
 
     // Lock badges for XY params (shown after label)
     {
@@ -1431,17 +1482,6 @@ void NodeGraphUI::draw_inspector_xy_pad(Renderer2D& tr, const NodeSnapshot& node
     // Hit-test rect for XY pad drag
     xy_pad_rects_.push_back({pad_x, pad_y, pad_size, pad_size,
                              single_selected_id(), pd_x.name, pd_y.name});
-
-    // Value text rects for click-to-edit on each param
-    float val_x_str_w = tr.text_width(format_float(val_x, 2).c_str(), 0.85f);
-    float val_y_str_w = tr.text_width(format_float(val_y, 2).c_str(), 0.85f);
-    float name_x_w = tr.text_width((std::string(pd_x.name) + ": ").c_str(), 0.85f);
-    float name_y_w = tr.text_width(("  " + std::string(pd_y.name) + ": ").c_str(), 0.85f);
-    float lh = tr.line_height() * 0.85f;
-    value_text_rects_.push_back({label_lx + name_x_w, label_y, val_x_str_w, lh,
-                                 single_selected_id(), pd_x.name});
-    value_text_rects_.push_back({label_lx + name_x_w + val_x_str_w + name_y_w, label_y,
-                                 val_y_str_w, lh, single_selected_id(), pd_y.name});
 
     float total_h = pad_size + kXYPadLabelGap + lh + 8.0f;
     layout.end_param(total_h);
