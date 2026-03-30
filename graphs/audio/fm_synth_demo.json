@@ -33,7 +33,7 @@
         "attack": 0.001,
         "decay": 0.01,
         "sustain": 1.0,
-        "release": 0.01,
+        "release": 0.3,
         "amplitude": 1.0
       }
     },
