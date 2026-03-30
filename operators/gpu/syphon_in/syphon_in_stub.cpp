@@ -17,6 +17,12 @@ struct SyphonIn : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<int> server{"server", 0, {"Auto (First Available)"}};
     vivid::Param<vivid::TextValue> server_name{"server_name", ""};
 
+    SyphonIn() {
+        vivid::description(active, "Enable or disable Syphon frame capture");
+        vivid::description(server, "Which Syphon server to receive from");
+        vivid::description(server_name, "Display name of the currently selected Syphon server");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&active);
         out.push_back(&server);

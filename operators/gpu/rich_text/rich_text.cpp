@@ -157,6 +157,25 @@ struct RichText : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> y    {"y",    0.0f, -1.0f, 1.0f};
 
     RichText() {
+        vivid::description(text, "The text string to render");
+        vivid::description(font, "Path to a TrueType font file, blank for default");
+        vivid::description(size, "Text height as a fraction of the output resolution");
+        vivid::description(alignment, "Horizontal alignment: Left, Center, or Right");
+        vivid::description(line_height, "Vertical spacing between lines as a multiplier");
+        vivid::description(char_spacing, "Extra horizontal space between characters in em units");
+        vivid::description(anim_mode, "Per-character animation: None, Wave, Typewriter, Scatter, or Fade");
+        vivid::description(anim_speed, "Speed of the character animation");
+        vivid::description(anim_amount, "Intensity of the character animation effect");
+        vivid::description(r, "Red component of the text foreground color");
+        vivid::description(g, "Green component of the text foreground color");
+        vivid::description(b, "Blue component of the text foreground color");
+        vivid::description(bg_r, "Red component of the background color");
+        vivid::description(bg_g, "Green component of the background color");
+        vivid::description(bg_b, "Blue component of the background color");
+        vivid::description(bg_a, "Opacity of the background, 0 = transparent");
+        vivid::description(x, "Horizontal position offset from center");
+        vivid::description(y, "Vertical position offset from center");
+
         vivid::semantic_tag(r, "color_rgba");
         vivid::semantic_shape(r, "scalar");
         vivid::semantic_tag(g, "color_rgba");

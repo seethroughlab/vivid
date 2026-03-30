@@ -145,6 +145,24 @@ struct Particles : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> envelope_sustain  {"envelope_sustain",  0.0f, 0.0f, 1.0f};
     vivid::Param<float> envelope_release  {"envelope_release",  0.5f, 0.001f, 10.0f};
 
+    Particles() {
+        vivid::description(count, "Maximum number of particles in the pool");
+        vivid::description(rate, "How many particles spawn per second");
+        vivid::description(size, "Base radius of each particle");
+        vivid::description(spread, "How far from center new particles can spawn");
+        vivid::description(speed, "Drift velocity of particles after spawning");
+        vivid::description(color_r, "Red component of particle color");
+        vivid::description(color_g, "Green component of particle color");
+        vivid::description(color_b, "Blue component of particle color");
+        vivid::description(glow, "Intensity of the additive glow halo around each particle");
+        vivid::description(envelope_enabled, "Enable per-particle ADSR envelope for size and opacity");
+        vivid::description(envelope_amount, "How strongly the envelope modulates each particle");
+        vivid::description(envelope_attack, "Envelope attack time in seconds");
+        vivid::description(envelope_decay, "Envelope decay time in seconds");
+        vivid::description(envelope_sustain, "Envelope sustain level, 0 = fully decay before release");
+        vivid::description(envelope_release, "Envelope release time in seconds after particle lifetime ends");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         vivid::layout_row(count, 2, 0);
         vivid::layout_row(rate,  2, 1);

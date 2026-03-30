@@ -26,9 +26,11 @@ struct PhaseToMidi : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
     PhaseToMidi() {
         vivid::semantic_tag(note, "midi_note");
         vivid::semantic_shape(note, "int");
+        vivid::description(note, "MIDI note number to emit on each beat, 0 to 127");
 
         vivid::semantic_tag(velocity, "midi_velocity");
         vivid::semantic_shape(velocity, "scalar");
+        vivid::description(velocity, "MIDI velocity of the emitted note, 0 to 127");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

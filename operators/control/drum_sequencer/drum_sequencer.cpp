@@ -365,6 +365,74 @@ struct DrumSequencer : vivid::OperatorBase, vivid::FrameProcessable, vivid::Audi
 
     vivid::Param<int> midi_channel {"midi_channel", 1, 1, 16};
 
+    DrumSequencer() {
+        vivid::description(steps, "Number of active steps in the pattern (1-16)");
+        vivid::description(swing, "Swing amount, shifts even steps later (0 = straight, 0.5 = heavy triplet)");
+
+        vivid::description(kick_note, "MIDI note number for the kick drum");
+        vivid::description(snare_note, "MIDI note number for the snare drum");
+        vivid::description(hat_note, "MIDI note number for the closed hi-hat");
+        vivid::description(oh_note, "MIDI note number for the open hi-hat");
+        vivid::description(clap_note, "MIDI note number for the clap");
+        vivid::description(tom_note, "MIDI note number for the tom");
+
+        vivid::description(midi_channel, "MIDI output channel (1-16)");
+
+        // Per-step trigger params (6 drums x 16 steps)
+        vivid::ParamBase* triggers[] = {
+            &kick_0,  &kick_1,  &kick_2,  &kick_3,  &kick_4,  &kick_5,  &kick_6,  &kick_7,
+            &kick_8,  &kick_9,  &kick_10, &kick_11, &kick_12, &kick_13, &kick_14, &kick_15,
+            &snare_0, &snare_1, &snare_2, &snare_3, &snare_4, &snare_5, &snare_6, &snare_7,
+            &snare_8, &snare_9, &snare_10,&snare_11,&snare_12,&snare_13,&snare_14,&snare_15,
+            &hat_0,   &hat_1,   &hat_2,   &hat_3,   &hat_4,   &hat_5,   &hat_6,   &hat_7,
+            &hat_8,   &hat_9,   &hat_10,  &hat_11,  &hat_12,  &hat_13,  &hat_14,  &hat_15,
+            &oh_0,    &oh_1,    &oh_2,    &oh_3,    &oh_4,    &oh_5,    &oh_6,    &oh_7,
+            &oh_8,    &oh_9,    &oh_10,   &oh_11,   &oh_12,   &oh_13,   &oh_14,   &oh_15,
+            &clap_0,  &clap_1,  &clap_2,  &clap_3,  &clap_4,  &clap_5,  &clap_6,  &clap_7,
+            &clap_8,  &clap_9,  &clap_10, &clap_11, &clap_12, &clap_13, &clap_14, &clap_15,
+            &tom_0,   &tom_1,   &tom_2,   &tom_3,   &tom_4,   &tom_5,   &tom_6,   &tom_7,
+            &tom_8,   &tom_9,   &tom_10,  &tom_11,  &tom_12,  &tom_13,  &tom_14,  &tom_15,
+        };
+        for (auto* p : triggers)
+            p->description = "Trigger on/off for this step (>0.5 = active)";
+
+        // Per-step Mod A params (6 drums x 16 steps) — controls velocity
+        vivid::ParamBase* mod_a[] = {
+            &kick_ma_0,  &kick_ma_1,  &kick_ma_2,  &kick_ma_3,  &kick_ma_4,  &kick_ma_5,  &kick_ma_6,  &kick_ma_7,
+            &kick_ma_8,  &kick_ma_9,  &kick_ma_10, &kick_ma_11, &kick_ma_12, &kick_ma_13, &kick_ma_14, &kick_ma_15,
+            &snare_ma_0, &snare_ma_1, &snare_ma_2, &snare_ma_3, &snare_ma_4, &snare_ma_5, &snare_ma_6, &snare_ma_7,
+            &snare_ma_8, &snare_ma_9, &snare_ma_10,&snare_ma_11,&snare_ma_12,&snare_ma_13,&snare_ma_14,&snare_ma_15,
+            &hat_ma_0,   &hat_ma_1,   &hat_ma_2,   &hat_ma_3,   &hat_ma_4,   &hat_ma_5,   &hat_ma_6,   &hat_ma_7,
+            &hat_ma_8,   &hat_ma_9,   &hat_ma_10,  &hat_ma_11,  &hat_ma_12,  &hat_ma_13,  &hat_ma_14,  &hat_ma_15,
+            &oh_ma_0,    &oh_ma_1,    &oh_ma_2,    &oh_ma_3,    &oh_ma_4,    &oh_ma_5,    &oh_ma_6,    &oh_ma_7,
+            &oh_ma_8,    &oh_ma_9,    &oh_ma_10,   &oh_ma_11,   &oh_ma_12,   &oh_ma_13,   &oh_ma_14,   &oh_ma_15,
+            &clap_ma_0,  &clap_ma_1,  &clap_ma_2,  &clap_ma_3,  &clap_ma_4,  &clap_ma_5,  &clap_ma_6,  &clap_ma_7,
+            &clap_ma_8,  &clap_ma_9,  &clap_ma_10, &clap_ma_11, &clap_ma_12, &clap_ma_13, &clap_ma_14, &clap_ma_15,
+            &tom_ma_0,   &tom_ma_1,   &tom_ma_2,   &tom_ma_3,   &tom_ma_4,   &tom_ma_5,   &tom_ma_6,   &tom_ma_7,
+            &tom_ma_8,   &tom_ma_9,   &tom_ma_10,  &tom_ma_11,  &tom_ma_12,  &tom_ma_13,  &tom_ma_14,  &tom_ma_15,
+        };
+        for (auto* p : mod_a)
+            p->description = "Per-step velocity for this hit (0-1, maps to MIDI velocity)";
+
+        // Per-step Mod B params (6 drums x 16 steps) — general-purpose modulation
+        vivid::ParamBase* mod_b[] = {
+            &kick_mb_0,  &kick_mb_1,  &kick_mb_2,  &kick_mb_3,  &kick_mb_4,  &kick_mb_5,  &kick_mb_6,  &kick_mb_7,
+            &kick_mb_8,  &kick_mb_9,  &kick_mb_10, &kick_mb_11, &kick_mb_12, &kick_mb_13, &kick_mb_14, &kick_mb_15,
+            &snare_mb_0, &snare_mb_1, &snare_mb_2, &snare_mb_3, &snare_mb_4, &snare_mb_5, &snare_mb_6, &snare_mb_7,
+            &snare_mb_8, &snare_mb_9, &snare_mb_10,&snare_mb_11,&snare_mb_12,&snare_mb_13,&snare_mb_14,&snare_mb_15,
+            &hat_mb_0,   &hat_mb_1,   &hat_mb_2,   &hat_mb_3,   &hat_mb_4,   &hat_mb_5,   &hat_mb_6,   &hat_mb_7,
+            &hat_mb_8,   &hat_mb_9,   &hat_mb_10,  &hat_mb_11,  &hat_mb_12,  &hat_mb_13,  &hat_mb_14,  &hat_mb_15,
+            &oh_mb_0,    &oh_mb_1,    &oh_mb_2,    &oh_mb_3,    &oh_mb_4,    &oh_mb_5,    &oh_mb_6,    &oh_mb_7,
+            &oh_mb_8,    &oh_mb_9,    &oh_mb_10,   &oh_mb_11,   &oh_mb_12,   &oh_mb_13,   &oh_mb_14,   &oh_mb_15,
+            &clap_mb_0,  &clap_mb_1,  &clap_mb_2,  &clap_mb_3,  &clap_mb_4,  &clap_mb_5,  &clap_mb_6,  &clap_mb_7,
+            &clap_mb_8,  &clap_mb_9,  &clap_mb_10, &clap_mb_11, &clap_mb_12, &clap_mb_13, &clap_mb_14, &clap_mb_15,
+            &tom_mb_0,   &tom_mb_1,   &tom_mb_2,   &tom_mb_3,   &tom_mb_4,   &tom_mb_5,   &tom_mb_6,   &tom_mb_7,
+            &tom_mb_8,   &tom_mb_9,   &tom_mb_10,  &tom_mb_11,  &tom_mb_12,  &tom_mb_13,  &tom_mb_14,  &tom_mb_15,
+        };
+        for (auto* p : mod_b)
+            p->description = "Per-step modulation value for external routing (0-1)";
+    }
+
     WGPURenderPipeline thumb_pipeline_ = nullptr;
     WGPUBindGroup thumb_bind_group_ = nullptr;
     WGPUBindGroupLayout thumb_bind_layout_ = nullptr;

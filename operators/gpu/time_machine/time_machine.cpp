@@ -126,9 +126,13 @@ struct TimeMachine : vivid::OperatorBase, vivid::GpuProcessable {
     TimeMachine() {
         vivid::semantic_tag(depth, "phase_01");
         vivid::semantic_shape(depth, "scalar");
+        vivid::description(depth, "Maximum temporal displacement as a fraction of the history buffer");
 
         vivid::semantic_tag(frames, "count");
         vivid::semantic_shape(frames, "int");
+        vivid::description(frames, "Number of past frames stored in the history buffer, 2-120");
+
+        vivid::description(offset, "Shifts the entire time window forward into the past");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

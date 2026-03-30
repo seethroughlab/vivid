@@ -100,23 +100,29 @@ struct Feedback : vivid::OperatorBase, vivid::GpuProcessable {
     Feedback() {
         vivid::semantic_tag(decay, "probability_01");
         vivid::semantic_shape(decay, "scalar");
+        vivid::description(decay, "How much brightness is retained each frame, 0 = no trail");
 
         vivid::semantic_tag(mix, "probability_01");
         vivid::semantic_shape(mix, "scalar");
+        vivid::description(mix, "Blend amount of the feedback buffer into the output");
 
         vivid::semantic_tag(offset_x, "position_xy");
         vivid::semantic_shape(offset_x, "scalar");
         vivid::semantic_intent(offset_x, "x_component");
+        vivid::description(offset_x, "Horizontal shift of the feedback image each frame");
         vivid::semantic_tag(offset_y, "position_xy");
         vivid::semantic_shape(offset_y, "scalar");
         vivid::semantic_intent(offset_y, "y_component");
+        vivid::description(offset_y, "Vertical shift of the feedback image each frame");
 
         vivid::semantic_tag(zoom, "scale_xy");
         vivid::semantic_shape(zoom, "scalar");
+        vivid::description(zoom, "Scale applied to the feedback each frame, <1 shrinks, >1 grows");
 
         vivid::semantic_tag(rotate, "rotation_degrees");
         vivid::semantic_shape(rotate, "scalar");
         vivid::semantic_unit(rotate, "deg");
+        vivid::description(rotate, "Rotation applied to the feedback each frame, in degrees");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

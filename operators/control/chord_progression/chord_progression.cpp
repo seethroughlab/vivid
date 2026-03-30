@@ -110,6 +110,45 @@ struct ChordProgression : vivid::OperatorBase, vivid::FrameProcessable, vivid::A
     //  23..30  = ext_0..ext_7
     //  31      = midi_channel
 
+    ChordProgression() {
+        vivid::description(steps, "Number of chords in the progression (1-8)");
+        vivid::description(key_root, "Root note of the scale");
+        vivid::description(mode, "Scale mode: Major, Minor, Dorian, Mixolydian, Harmonic/Melodic Minor");
+        vivid::description(octave, "Base octave for chord voicings");
+        vivid::description(beats_per_step, "How many beats each chord is held");
+        vivid::description(gate_length, "Fraction of each step where the gate is high (0-1)");
+        vivid::description(velocity, "MIDI velocity for all chord notes (0-1)");
+
+        vivid::description(degree_0, "Scale degree for step 1");
+        vivid::description(degree_1, "Scale degree for step 2");
+        vivid::description(degree_2, "Scale degree for step 3");
+        vivid::description(degree_3, "Scale degree for step 4");
+        vivid::description(degree_4, "Scale degree for step 5");
+        vivid::description(degree_5, "Scale degree for step 6");
+        vivid::description(degree_6, "Scale degree for step 7");
+        vivid::description(degree_7, "Scale degree for step 8");
+
+        vivid::description(voicing_0, "Voicing for step 1: root position, inversions, or drop-2");
+        vivid::description(voicing_1, "Voicing for step 2: root position, inversions, or drop-2");
+        vivid::description(voicing_2, "Voicing for step 3: root position, inversions, or drop-2");
+        vivid::description(voicing_3, "Voicing for step 4: root position, inversions, or drop-2");
+        vivid::description(voicing_4, "Voicing for step 5: root position, inversions, or drop-2");
+        vivid::description(voicing_5, "Voicing for step 6: root position, inversions, or drop-2");
+        vivid::description(voicing_6, "Voicing for step 7: root position, inversions, or drop-2");
+        vivid::description(voicing_7, "Voicing for step 8: root position, inversions, or drop-2");
+
+        vivid::description(ext_0, "Extension for step 1: triad, 7th, or add9");
+        vivid::description(ext_1, "Extension for step 2: triad, 7th, or add9");
+        vivid::description(ext_2, "Extension for step 3: triad, 7th, or add9");
+        vivid::description(ext_3, "Extension for step 4: triad, 7th, or add9");
+        vivid::description(ext_4, "Extension for step 5: triad, 7th, or add9");
+        vivid::description(ext_5, "Extension for step 6: triad, 7th, or add9");
+        vivid::description(ext_6, "Extension for step 7: triad, 7th, or add9");
+        vivid::description(ext_7, "Extension for step 8: triad, 7th, or add9");
+
+        vivid::description(midi_channel, "MIDI output channel (1-16)");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&steps);           // 0
         out.push_back(&key_root);        // 1

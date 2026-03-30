@@ -230,6 +230,34 @@ struct CellularAutomata : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<int>   survive_threshold_waveform {"survive_threshold_waveform", 0,    {"Sine", "Tri", "Saw", "Square"}};
     vivid::Param<float> survive_threshold_offset   {"survive_threshold_offset",   0.0f, -1.0f, 1.0f};
 
+    CellularAutomata() {
+        vivid::description(rule_mode, "Preset rule set: Life, HighLife, Seeds, or fully Custom");
+        vivid::description(grid_size, "Simulation grid resolution in cells per side, 64-1024");
+        vivid::description(birth_min, "Minimum neighbor count for a dead cell to become alive (Custom mode)");
+        vivid::description(birth_max, "Maximum neighbor count for a dead cell to become alive (Custom mode)");
+        vivid::description(survive_min, "Minimum neighbor count for a living cell to survive (Custom mode)");
+        vivid::description(survive_max, "Maximum neighbor count for a living cell to survive (Custom mode)");
+        vivid::description(speed, "Simulation steps per second");
+        vivid::description(fill_density, "Fraction of cells that start alive when randomized, 0-1");
+        vivid::description(alive_r, "Red component of the alive cell color");
+        vivid::description(alive_g, "Green component of the alive cell color");
+        vivid::description(alive_b, "Blue component of the alive cell color");
+        vivid::description(dead_r, "Red component of the dead cell color");
+        vivid::description(dead_g, "Green component of the dead cell color");
+        vivid::description(dead_b, "Blue component of the dead cell color");
+        vivid::description(randomize, "Trigger to reseed the grid with random cells");
+        vivid::description(birth_threshold_enabled, "Enable LFO modulation of the birth threshold");
+        vivid::description(birth_threshold_amount, "Strength of the birth threshold LFO modulation");
+        vivid::description(birth_threshold_rate, "Frequency of the birth threshold LFO in Hz");
+        vivid::description(birth_threshold_waveform, "Waveform shape for the birth threshold LFO");
+        vivid::description(birth_threshold_offset, "DC offset added to the birth threshold LFO output");
+        vivid::description(survive_threshold_enabled, "Enable LFO modulation of the survive threshold");
+        vivid::description(survive_threshold_amount, "Strength of the survive threshold LFO modulation");
+        vivid::description(survive_threshold_rate, "Frequency of the survive threshold LFO in Hz");
+        vivid::description(survive_threshold_waveform, "Waveform shape for the survive threshold LFO");
+        vivid::description(survive_threshold_offset, "DC offset added to the survive threshold LFO output");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         vivid::layout_row(rule_mode,    2, 0);
         vivid::layout_row(grid_size,    2, 1);

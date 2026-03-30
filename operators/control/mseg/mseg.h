@@ -65,13 +65,21 @@ struct MSEG : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessa
     };
 
     MSEG() {
+        vivid::description(num_points, "Number of breakpoints in the envelope, 2 to 16");
+
         vivid::semantic_tag(total_time, "time_seconds");
         vivid::semantic_shape(total_time, "scalar");
         vivid::semantic_unit(total_time, "s");
+        vivid::description(total_time, "Duration of the full envelope in seconds");
+
+        vivid::description(loop_enabled, "When on, the envelope loops between loop_start and loop_end while the gate is held");
+        vivid::description(loop_start, "Breakpoint index where the loop region begins");
+        vivid::description(loop_end, "Breakpoint index where the loop region ends");
 
         vivid::semantic_tag(amplitude, "amplitude_linear");
         vivid::semantic_shape(amplitude, "scalar");
         vivid::semantic_intent(amplitude, "env_amount");
+        vivid::description(amplitude, "Scales the entire envelope output");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

@@ -26,15 +26,21 @@ struct Euclidean : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPro
     Euclidean() {
         vivid::semantic_tag(hits, "count");
         vivid::semantic_shape(hits, "int");
+        vivid::description(hits, "Number of active hits distributed across the pattern");
 
         vivid::semantic_tag(steps, "count");
         vivid::semantic_shape(steps, "int");
+        vivid::description(steps, "Total number of steps in the pattern");
 
         vivid::semantic_tag(rotation, "index");
         vivid::semantic_shape(rotation, "int");
+        vivid::description(rotation, "Rotates the pattern start point by N steps");
 
         vivid::semantic_tag(gate_length, "phase_01");
         vivid::semantic_shape(gate_length, "scalar");
+        vivid::description(gate_length, "Fraction of each step during which the gate stays high");
+
+        vivid::description(rate, "Clock subdivision for step timing");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

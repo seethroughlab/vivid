@@ -185,6 +185,12 @@ struct MeshWarp : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<int>   grid_y       {"grid_y",       4, 2, 16};
     vivid::Param<float> grid_overlay {"grid_overlay",  0.0f, 0.0f, 1.0f};
 
+    MeshWarp() {
+        vivid::description(grid_x, "Number of horizontal control point divisions");
+        vivid::description(grid_y, "Number of vertical control point divisions");
+        vivid::description(grid_overlay, "Visibility of the control point grid overlay, 0 = hidden");
+    }
+
     static constexpr int kTessLevel = 8; // subdivisions between each pair of control points
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

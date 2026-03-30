@@ -16,6 +16,11 @@ struct SyphonOut : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<bool> active{"active", false};
     vivid::Param<vivid::TextValue> server_name{"server_name", "Vivid Output"};
 
+    SyphonOut() {
+        vivid::description(active, "Enable or disable Syphon frame publishing");
+        vivid::description(server_name, "Name other apps will see for this Syphon server");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&active);
         out.push_back(&server_name);

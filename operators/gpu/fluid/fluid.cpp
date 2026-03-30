@@ -248,6 +248,37 @@ struct Fluid : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<int>   force_mod_waveform     {"force_mod_waveform",    0, {"Sine", "Triangle", "Saw", "Square"}};
     vivid::Param<float> force_mod_offset       {"force_mod_offset",      0.0f, -1.0f, 1.0f};
 
+    Fluid() {
+        vivid::description(viscosity, "Fluid thickness; higher values damp motion faster");
+        vivid::description(pressure_iters, "Jacobi pressure solver iterations, more = more accurate");
+        vivid::description(buoyancy, "Upward force applied proportional to dye density");
+        vivid::description(dissipation, "Dye fade rate per frame, 1 = no fade");
+        vivid::description(emitter_x, "Horizontal position of the dye/force emitter, 0-1");
+        vivid::description(emitter_y, "Vertical position of the dye/force emitter, 0-1");
+        vivid::description(emitter_radius, "Radius of the Gaussian emitter splat");
+        vivid::description(force_strength, "Magnitude of the force injected at the emitter");
+        vivid::description(color_r, "Red component of the injected dye color");
+        vivid::description(color_g, "Green component of the injected dye color");
+        vivid::description(color_b, "Blue component of the injected dye color");
+        vivid::description(sim_resolution, "Simulation grid size: 64, 128, 256, or 512");
+        vivid::description(reset, "Trigger to clear all velocity and dye state");
+        vivid::description(viscosity_mod_enabled, "Enable LFO modulation of viscosity");
+        vivid::description(viscosity_mod_amount, "Strength of the viscosity LFO modulation");
+        vivid::description(viscosity_mod_rate, "Frequency of the viscosity modulation LFO in Hz");
+        vivid::description(viscosity_mod_waveform, "Waveform shape for the viscosity modulation LFO");
+        vivid::description(viscosity_mod_offset, "DC offset added to the viscosity modulation LFO");
+        vivid::description(buoyancy_mod_enabled, "Enable LFO modulation of buoyancy");
+        vivid::description(buoyancy_mod_amount, "Strength of the buoyancy LFO modulation");
+        vivid::description(buoyancy_mod_rate, "Frequency of the buoyancy modulation LFO in Hz");
+        vivid::description(buoyancy_mod_waveform, "Waveform shape for the buoyancy modulation LFO");
+        vivid::description(buoyancy_mod_offset, "DC offset added to the buoyancy modulation LFO");
+        vivid::description(force_mod_enabled, "Enable LFO modulation of emitter force strength");
+        vivid::description(force_mod_amount, "Strength of the force LFO modulation");
+        vivid::description(force_mod_rate, "Frequency of the force modulation LFO in Hz");
+        vivid::description(force_mod_waveform, "Waveform shape for the force modulation LFO");
+        vivid::description(force_mod_offset, "DC offset added to the force modulation LFO");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         vivid::layout_row(viscosity,       2, 0);
         vivid::layout_row(pressure_iters,  2, 1);

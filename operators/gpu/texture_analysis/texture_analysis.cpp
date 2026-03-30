@@ -67,6 +67,7 @@ struct TextureAnalysis : vivid::OperatorBase, vivid::GpuProcessable {
     TextureAnalysis() {
         vivid::semantic_tag(skip_frames, "count");
         vivid::semantic_shape(skip_frames, "enum");
+        vivid::description(skip_frames, "How often to read back pixels, less frequent = lower GPU cost");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

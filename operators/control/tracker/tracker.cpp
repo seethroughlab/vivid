@@ -138,6 +138,17 @@ struct Tracker : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProce
     vivid::Param<int>   mute_mask     {"mute_mask",     0, 0, 255};
     vivid::Param<vivid::TextValue> pattern_data {"pattern_data", ""};
 
+    Tracker() {
+        vivid::description(rate, "Step rate relative to the beat clock");
+        vivid::description(speed, "Number of rows advanced per beat tick, 1 to 16");
+        vivid::description(base_channel, "Starting MIDI channel for track output, 1 to 16");
+        vivid::description(channel_mode, "Single sends all tracks on base_channel; Multi assigns one channel per track");
+        vivid::description(edit_pattern, "Index of the pattern currently shown in the editor");
+        vivid::description(edit_channel, "Index of the track/channel currently focused in the editor");
+        vivid::description(mute_mask, "Bitmask of muted tracks (bit 0 = track 1)");
+        vivid::description(pattern_data, "Serialized tracker pattern data");
+    }
+
     WGPURenderPipeline thumb_pipeline_ = nullptr;
     WGPUBindGroup thumb_bind_group_ = nullptr;
     WGPUBindGroupLayout thumb_bind_layout_ = nullptr;

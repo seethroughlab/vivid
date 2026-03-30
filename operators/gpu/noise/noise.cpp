@@ -345,6 +345,15 @@ struct Noise : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<int>   center_origin{"center_origin", 0, {"Off", "On"}};
 
     Noise() {
+        vivid::description(scale, "Zoom level of the noise pattern");
+        vivid::description(speed, "Rate of animation through the noise Z axis");
+        vivid::description(octaves, "Number of FBm layers, more means finer detail");
+        vivid::description(lacunarity, "Frequency multiplier between successive octaves");
+        vivid::description(persistence, "Amplitude falloff between successive octaves");
+        vivid::description(noise_type, "Algorithm: Perlin, Simplex, Worley, or Value");
+        vivid::description(channels, "Output channels: Mono grayscale, 2 Channel RG, or full RGB");
+        vivid::description(center_origin, "Shift UV origin to the center of the frame");
+
         vivid::semantic_tag(speed, "frequency_hz");
         vivid::semantic_shape(speed, "scalar");
         vivid::semantic_unit(speed, "Hz");

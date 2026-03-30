@@ -103,9 +103,11 @@ struct Composite : vivid::OperatorBase, vivid::GpuProcessable {
     Composite() {
         vivid::semantic_tag(blend_mode, "x_blend_mode");
         vivid::semantic_shape(blend_mode, "enum");
+        vivid::description(blend_mode, "How layers are combined: Normal, Add, Multiply, Screen, or Overlay");
 
         vivid::semantic_tag(opacity, "probability_01");
         vivid::semantic_shape(opacity, "scalar");
+        vivid::description(opacity, "Strength of layer A over layer B, 0 = fully transparent");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

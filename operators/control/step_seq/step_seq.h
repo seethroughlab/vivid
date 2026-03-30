@@ -85,6 +85,16 @@ struct StepSeq : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProce
 
         vivid::semantic_tag(glide, "probability_01");
         vivid::semantic_shape(glide, "scalar");
+
+        vivid::description(num_steps, "Number of active steps in the sequence, 1 to 32");
+        vivid::description(frequency, "Cycle rate in Hz (free mode) or beat multiplier (sync mode)");
+        vivid::description(rate_mode, "Clock source: free-running internal clock or synced to beat_phase input");
+        vivid::description(glide, "Smoothing between step values, 0 = instant, 1 = full portamento");
+        vivid::description(amplitude, "Scales the output value");
+        vivid::description(offset, "DC offset added to the output after amplitude scaling");
+        vivid::description(polarity, "Output range: bipolar (-1 to 1) or unipolar (0 to 1)");
+        vivid::description(step_value[0], "Value for step 1");
+        vivid::description(step_gate[0], "Gate length for step 1, 0 = silent, 1 = full step");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

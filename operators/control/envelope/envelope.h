@@ -43,25 +43,33 @@ struct Envelope : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProc
         vivid::semantic_tag(attack, "time_seconds");
         vivid::semantic_shape(attack, "scalar");
         vivid::semantic_unit(attack, "s");
+        vivid::description(attack, "Time to rise from zero to peak in seconds");
 
         vivid::semantic_tag(decay, "time_seconds");
         vivid::semantic_shape(decay, "scalar");
         vivid::semantic_unit(decay, "s");
+        vivid::description(decay, "Time to fall from peak to sustain level in seconds");
 
         vivid::semantic_tag(sustain, "amplitude_linear");
         vivid::semantic_shape(sustain, "scalar");
+        vivid::description(sustain, "Level held while the gate stays high, 0 to 1");
 
         vivid::semantic_tag(release, "time_seconds");
         vivid::semantic_shape(release, "scalar");
         vivid::semantic_unit(release, "s");
+        vivid::description(release, "Time to fade to zero after the gate drops in seconds");
 
         vivid::semantic_tag(amplitude, "amplitude_linear");
         vivid::semantic_shape(amplitude, "scalar");
         vivid::semantic_intent(amplitude, "env_amount");
+        vivid::description(amplitude, "Scales the entire envelope output");
 
         vivid::semantic_tag(offset, "amplitude_linear");
         vivid::semantic_shape(offset, "scalar");
         vivid::semantic_intent(offset, "env_offset");
+        vivid::description(offset, "Constant value added to the envelope output");
+
+        vivid::description(curve, "Envelope shape: linear, exponential, or logarithmic");
     }
 
     ~Envelope() override;

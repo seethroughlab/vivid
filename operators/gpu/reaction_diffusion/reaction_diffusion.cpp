@@ -208,6 +208,32 @@ struct ReactionDiffusion : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<int>   diffusion_mod_waveform {"diffusion_mod_waveform", 0, {"Sine", "Triangle", "Saw", "Square"}};
     vivid::Param<float> diffusion_mod_offset   {"diffusion_mod_offset",   0.0f, -1.0f, 1.0f};
 
+    ReactionDiffusion() {
+        vivid::description(feed_rate, "Rate at which chemical A is replenished");
+        vivid::description(kill_rate, "Rate at which chemical B is removed");
+        vivid::description(diffusion_a, "Diffusion speed of chemical A");
+        vivid::description(diffusion_b, "Diffusion speed of chemical B");
+        vivid::description(iterations, "Simulation steps per frame, more means faster evolution");
+        vivid::description(seed_radius, "Radius of the initial seed circle at center");
+        vivid::description(color_mode, "Visualization palette: Grayscale, Blue-White, Fire, or Chemical");
+        vivid::description(reset, "Trigger a reset to re-seed the simulation");
+        vivid::description(feed_mod_enabled, "Enable LFO modulation of the feed rate");
+        vivid::description(feed_mod_amount, "Strength of LFO modulation on feed rate");
+        vivid::description(feed_mod_rate, "LFO frequency for feed modulation in Hz");
+        vivid::description(feed_mod_waveform, "LFO waveform shape for feed modulation");
+        vivid::description(feed_mod_offset, "DC offset added to the feed LFO output");
+        vivid::description(kill_mod_enabled, "Enable LFO modulation of the kill rate");
+        vivid::description(kill_mod_amount, "Strength of LFO modulation on kill rate");
+        vivid::description(kill_mod_rate, "LFO frequency for kill modulation in Hz");
+        vivid::description(kill_mod_waveform, "LFO waveform shape for kill modulation");
+        vivid::description(kill_mod_offset, "DC offset added to the kill LFO output");
+        vivid::description(diffusion_mod_enabled, "Enable LFO modulation of both diffusion rates");
+        vivid::description(diffusion_mod_amount, "Strength of LFO modulation on diffusion");
+        vivid::description(diffusion_mod_rate, "LFO frequency for diffusion modulation in Hz");
+        vivid::description(diffusion_mod_waveform, "LFO waveform shape for diffusion modulation");
+        vivid::description(diffusion_mod_offset, "DC offset added to the diffusion LFO output");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         vivid::layout_row(feed_rate,    2, 0);
         vivid::layout_row(kill_rate,    2, 1);

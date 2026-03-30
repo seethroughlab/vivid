@@ -44,6 +44,8 @@ struct PathAnimate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
         vivid::semantic_shape(p0_y, "scalar");
         vivid::display_hint(p0_x, VIVID_DISPLAY_XY_PAD);
         vivid::display_hint(p0_y, VIVID_DISPLAY_XY_PAD);
+        vivid::description(p0_x, "X position of the first control point (curve start)");
+        vivid::description(p0_y, "Y position of the first control point (curve start)");
 
         vivid::semantic_tag(p1_x, "position_xy");
         vivid::semantic_shape(p1_x, "scalar");
@@ -51,6 +53,8 @@ struct PathAnimate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
         vivid::semantic_shape(p1_y, "scalar");
         vivid::display_hint(p1_x, VIVID_DISPLAY_XY_PAD);
         vivid::display_hint(p1_y, VIVID_DISPLAY_XY_PAD);
+        vivid::description(p1_x, "X position of the second control point (influences departure)");
+        vivid::description(p1_y, "Y position of the second control point (influences departure)");
 
         vivid::semantic_tag(p2_x, "position_xy");
         vivid::semantic_shape(p2_x, "scalar");
@@ -58,6 +62,8 @@ struct PathAnimate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
         vivid::semantic_shape(p2_y, "scalar");
         vivid::display_hint(p2_x, VIVID_DISPLAY_XY_PAD);
         vivid::display_hint(p2_y, VIVID_DISPLAY_XY_PAD);
+        vivid::description(p2_x, "X position of the third control point (influences arrival)");
+        vivid::description(p2_y, "Y position of the third control point (influences arrival)");
 
         vivid::semantic_tag(p3_x, "position_xy");
         vivid::semantic_shape(p3_x, "scalar");
@@ -65,10 +71,15 @@ struct PathAnimate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
         vivid::semantic_shape(p3_y, "scalar");
         vivid::display_hint(p3_x, VIVID_DISPLAY_XY_PAD);
         vivid::display_hint(p3_y, VIVID_DISPLAY_XY_PAD);
+        vivid::description(p3_x, "X position of the fourth control point (curve end)");
+        vivid::description(p3_y, "Y position of the fourth control point (curve end)");
 
         vivid::semantic_tag(speed, "frequency_hz");
         vivid::semantic_shape(speed, "scalar");
         vivid::semantic_unit(speed, "Hz");
+        vivid::description(speed, "Playback speed of the animation in cycles per second");
+        vivid::description(loop_mode, "How the animation repeats: Loop, Ping-Pong, Once, or Once+Hold");
+        vivid::description(easing, "Easing curve applied to the progress along the path");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

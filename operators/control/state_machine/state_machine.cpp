@@ -34,6 +34,25 @@ struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<float> dur_6       {"dur_6", 4.0f, 0.0f, 256.0f};
     vivid::Param<float> dur_7       {"dur_7", 4.0f, 0.0f, 256.0f};
 
+    StateMachine() {
+        vivid::description(states, "Number of active states, 1 to 8");
+        vivid::description(transition, "How states advance: sequential (auto), manual (trigger), or threshold (signal)");
+        vivid::description(quantize, "Snap state transitions to the next bar boundary");
+        vivid::description(loop, "Restart from state 1 after the last state");
+        vivid::description(bars_per_beat, "Number of beats per bar for duration counting");
+        vivid::description(threshold, "Signal level that triggers a transition in threshold mode");
+        vivid::description(xfade_mode, "Blend between states: cut, crossfade, or morph (smoothstep)");
+        vivid::description(xfade_bars, "Duration of the crossfade in bars, 0 = instant");
+        vivid::description(dur_0, "Duration of state 1 in bars");
+        vivid::description(dur_1, "Duration of state 2 in bars");
+        vivid::description(dur_2, "Duration of state 3 in bars");
+        vivid::description(dur_3, "Duration of state 4 in bars");
+        vivid::description(dur_4, "Duration of state 5 in bars");
+        vivid::description(dur_5, "Duration of state 6 in bars");
+        vivid::description(dur_6, "Duration of state 7 in bars");
+        vivid::description(dur_7, "Duration of state 8 in bars");
+    }
+
     // State variables
     int    current_state_   = 0;
     int    bar_count_       = 0;

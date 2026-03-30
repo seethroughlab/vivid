@@ -104,6 +104,19 @@ struct SvgRender : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> bg_a {"bg_a", 0.0f, 0.0f, 1.0f};
 
     SvgRender() {
+        vivid::description(file, "Path to the SVG file to render");
+        vivid::description(scale, "Scale multiplier applied to the SVG natural size");
+        vivid::description(x, "Horizontal position offset from center");
+        vivid::description(y, "Vertical position offset from center");
+        vivid::description(override_r, "Red component of the tint color when override is enabled");
+        vivid::description(override_g, "Green component of the tint color when override is enabled");
+        vivid::description(override_b, "Blue component of the tint color when override is enabled");
+        vivid::description(use_color_override, "Replace SVG colors with the override tint color");
+        vivid::description(bg_r, "Red component of the background color");
+        vivid::description(bg_g, "Green component of the background color");
+        vivid::description(bg_b, "Blue component of the background color");
+        vivid::description(bg_a, "Opacity of the background, 0 = transparent");
+
         vivid::semantic_tag(x, "position_xy");
         vivid::semantic_shape(x, "scalar");
         vivid::semantic_tag(y, "position_xy");

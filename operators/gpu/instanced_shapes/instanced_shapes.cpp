@@ -204,6 +204,34 @@ struct InstancedShapes : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<int>   color_mod_waveform {"color_mod_waveform", 0, {"Sine", "Triangle", "Saw", "Square"}};
     vivid::Param<float> color_mod_offset   {"color_mod_offset",   0.0f, -1.0f, 1.0f};
 
+    InstancedShapes() {
+        vivid::description(count, "Number of shape instances to render, 1-64");
+        vivid::description(shape, "SDF shape type: Circle, Triangle, Square, Pentagon, Hexagon, or Star");
+        vivid::description(base_size, "Base radius of each shape instance");
+        vivid::description(softness, "Edge softness of the shape rendering");
+        vivid::description(color_r, "Red component of the shape color");
+        vivid::description(color_g, "Green component of the shape color");
+        vivid::description(color_b, "Blue component of the shape color");
+        vivid::description(layout, "Spatial arrangement: Random, Grid, Circle, or Line");
+        vivid::description(animate, "Enable built-in layout animation");
+        vivid::description(speed, "Speed of the layout animation");
+        vivid::description(scale_enabled, "Enable per-instance LFO modulation of scale");
+        vivid::description(scale_amount, "Strength of the scale modulation");
+        vivid::description(scale_rate, "Frequency of the scale modulation LFO in Hz");
+        vivid::description(scale_waveform, "Waveform shape for the scale modulation LFO");
+        vivid::description(scale_offset, "DC offset added to the scale modulation LFO");
+        vivid::description(rotation_enabled, "Enable per-instance LFO modulation of rotation");
+        vivid::description(rotation_amount, "Strength of the rotation modulation");
+        vivid::description(rotation_rate, "Frequency of the rotation modulation LFO in Hz");
+        vivid::description(rotation_waveform, "Waveform shape for the rotation modulation LFO");
+        vivid::description(rotation_offset, "DC offset added to the rotation modulation LFO");
+        vivid::description(color_mod_enabled, "Enable per-instance LFO modulation of brightness");
+        vivid::description(color_mod_amount, "Strength of the color brightness modulation");
+        vivid::description(color_mod_rate, "Frequency of the color modulation LFO in Hz");
+        vivid::description(color_mod_waveform, "Waveform shape for the color modulation LFO");
+        vivid::description(color_mod_offset, "DC offset added to the color modulation LFO");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         vivid::layout_row(count,     2, 0);
         vivid::layout_row(shape,     2, 1);

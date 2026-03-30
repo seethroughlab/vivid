@@ -226,6 +226,37 @@ struct Flocking : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<int>   alignment_mod_waveform {"alignment_mod_waveform", 0, {"Sine", "Triangle", "Saw", "Square"}};
     vivid::Param<float> alignment_mod_offset   {"alignment_mod_offset",   0.0f, -1.0f, 1.0f};
 
+    Flocking() {
+        vivid::description(count, "Number of boids in the simulation, 1-64");
+        vivid::description(boundary_mode, "Edge behavior: Wrap toroidally or Bounce off walls");
+        vivid::description(separation_wt, "Strength of the force pushing boids apart");
+        vivid::description(alignment_wt, "Strength of the force aligning boid headings with neighbors");
+        vivid::description(cohesion_wt, "Strength of the force pulling boids toward the group center");
+        vivid::description(sep_radius, "Distance within which separation force is applied");
+        vivid::description(max_speed, "Maximum boid velocity");
+        vivid::description(boid_size, "Visual size of each boid triangle");
+        vivid::description(trail_length, "Length of the motion trail behind each boid, 0 = off");
+        vivid::description(softness, "Edge softness of the boid shape rendering");
+        vivid::description(color_r, "Red component of the boid color");
+        vivid::description(color_g, "Green component of the boid color");
+        vivid::description(color_b, "Blue component of the boid color");
+        vivid::description(speed_mod_enabled, "Enable per-boid LFO modulation of speed");
+        vivid::description(speed_mod_amount, "Strength of the speed modulation");
+        vivid::description(speed_mod_rate, "Frequency of the speed modulation LFO in Hz");
+        vivid::description(speed_mod_waveform, "Waveform shape for the speed modulation LFO");
+        vivid::description(speed_mod_offset, "DC offset added to the speed modulation LFO");
+        vivid::description(separation_mod_enabled, "Enable per-boid LFO modulation of separation force");
+        vivid::description(separation_mod_amount, "Strength of the separation modulation");
+        vivid::description(separation_mod_rate, "Frequency of the separation modulation LFO in Hz");
+        vivid::description(separation_mod_waveform, "Waveform shape for the separation modulation LFO");
+        vivid::description(separation_mod_offset, "DC offset added to the separation modulation LFO");
+        vivid::description(alignment_mod_enabled, "Enable per-boid LFO modulation of alignment force");
+        vivid::description(alignment_mod_amount, "Strength of the alignment modulation");
+        vivid::description(alignment_mod_rate, "Frequency of the alignment modulation LFO in Hz");
+        vivid::description(alignment_mod_waveform, "Waveform shape for the alignment modulation LFO");
+        vivid::description(alignment_mod_offset, "DC offset added to the alignment modulation LFO");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         vivid::layout_row(count,         2, 0);
         vivid::layout_row(boundary_mode, 2, 1);

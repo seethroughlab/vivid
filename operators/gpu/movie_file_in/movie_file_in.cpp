@@ -142,16 +142,20 @@ struct MovieFileIn : vivid::OperatorBase, vivid::GpuProcessable {
     MovieFileIn() {
         vivid::semantic_tag(file, "path_video");
         vivid::semantic_shape(file, "path");
+        vivid::description(file, "Path to a video or image file to play");
 
         vivid::semantic_tag(play_mode, "x_play_mode");
         vivid::semantic_shape(play_mode, "enum");
+        vivid::description(play_mode, "What happens at the end: Loop, play Once, or Hold Last frame");
 
         vivid::semantic_tag(speed, "x_playback_speed");
         vivid::semantic_shape(speed, "scalar");
+        vivid::description(speed, "Playback rate multiplier, 1 = normal speed");
 
         vivid::semantic_tag(video_phase_offset_ms, "time_milliseconds");
         vivid::semantic_shape(video_phase_offset_ms, "scalar");
         vivid::semantic_unit(video_phase_offset_ms, "ms");
+        vivid::description(video_phase_offset_ms, "Timing offset for audio sync, in milliseconds");
 
         start_loader_thread();
     }

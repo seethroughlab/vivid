@@ -42,6 +42,30 @@ struct PatternSeq : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPr
 
     // Param indices: steps=0, rate=1, gate_length=2, probability=3, val_0..val_15=4..19, midi_channel=20
 
+    PatternSeq() {
+        vivid::description(steps, "Number of active steps in the sequence, 1 to 16");
+        vivid::description(rate, "Step rate relative to the beat clock");
+        vivid::description(gate_length, "Fraction of each step where the gate stays high, 0 to 1");
+        vivid::description(probability, "Chance each step fires, 0 = never, 1 = always");
+        vivid::description(val_0, "Value output when step 1 is active");
+        vivid::description(val_1, "Value output when step 2 is active");
+        vivid::description(val_2, "Value output when step 3 is active");
+        vivid::description(val_3, "Value output when step 4 is active");
+        vivid::description(val_4, "Value output when step 5 is active");
+        vivid::description(val_5, "Value output when step 6 is active");
+        vivid::description(val_6, "Value output when step 7 is active");
+        vivid::description(val_7, "Value output when step 8 is active");
+        vivid::description(val_8, "Value output when step 9 is active");
+        vivid::description(val_9, "Value output when step 10 is active");
+        vivid::description(val_10, "Value output when step 11 is active");
+        vivid::description(val_11, "Value output when step 12 is active");
+        vivid::description(val_12, "Value output when step 13 is active");
+        vivid::description(val_13, "Value output when step 14 is active");
+        vivid::description(val_14, "Value output when step 15 is active");
+        vivid::description(val_15, "Value output when step 16 is active");
+        vivid::description(midi_channel, "MIDI channel for note output, 1 to 16");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&steps);        // 0
         out.push_back(&rate);         // 1

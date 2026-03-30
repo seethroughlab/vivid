@@ -53,6 +53,31 @@ struct NotePattern : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
     vivid::Param<float> velocity     {"velocity",       0.8f, 0.0f, 1.0f};
     vivid::Param<int>   midi_channel {"midi_channel",   1, 1, 16};
 
+    NotePattern() {
+        vivid::description(steps, "Number of active chord steps in the sequence, 1 to 8");
+        vivid::description(root_0, "Root note for step 1");
+        vivid::description(root_1, "Root note for step 2");
+        vivid::description(root_2, "Root note for step 3");
+        vivid::description(root_3, "Root note for step 4");
+        vivid::description(root_4, "Root note for step 5");
+        vivid::description(root_5, "Root note for step 6");
+        vivid::description(root_6, "Root note for step 7");
+        vivid::description(root_7, "Root note for step 8");
+        vivid::description(type_0, "Chord type for step 1");
+        vivid::description(type_1, "Chord type for step 2");
+        vivid::description(type_2, "Chord type for step 3");
+        vivid::description(type_3, "Chord type for step 4");
+        vivid::description(type_4, "Chord type for step 5");
+        vivid::description(type_5, "Chord type for step 6");
+        vivid::description(type_6, "Chord type for step 7");
+        vivid::description(type_7, "Chord type for step 8");
+        vivid::description(octave, "Base octave for all chord notes, 2 to 7");
+        vivid::description(beats_per_step, "Number of beats each chord step lasts");
+        vivid::description(gate_length, "Fraction of each step where notes are held, 0 to 1");
+        vivid::description(velocity, "MIDI velocity for all chord notes, 0 to 1");
+        vivid::description(midi_channel, "MIDI channel for chord output, 1 to 16");
+    }
+
     WGPURenderPipeline thumb_pipeline_ = nullptr;
     WGPUBindGroup thumb_bind_group_ = nullptr;
     WGPUBindGroupLayout thumb_bind_layout_ = nullptr;

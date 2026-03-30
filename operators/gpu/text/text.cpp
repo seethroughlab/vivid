@@ -92,6 +92,18 @@ struct Text : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> y    {"y",    0.0f, -1.0f, 1.0f};
 
     Text() {
+        vivid::description(text, "The text string to render");
+        vivid::description(size, "Text height as a fraction of the output resolution");
+        vivid::description(r, "Red component of the text foreground color");
+        vivid::description(g, "Green component of the text foreground color");
+        vivid::description(b, "Blue component of the text foreground color");
+        vivid::description(bg_r, "Red component of the background color");
+        vivid::description(bg_g, "Green component of the background color");
+        vivid::description(bg_b, "Blue component of the background color");
+        vivid::description(bg_a, "Opacity of the background, 0 = transparent");
+        vivid::description(x, "Horizontal position offset from center");
+        vivid::description(y, "Vertical position offset from center");
+
         vivid::semantic_tag(r, "color_rgba");
         vivid::semantic_shape(r, "scalar");
 

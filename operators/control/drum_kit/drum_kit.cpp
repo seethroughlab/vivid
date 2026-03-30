@@ -30,6 +30,17 @@ struct DrumKit : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProce
 
     VividMidiBuffer slot_bufs_[kSlotCount];
 
+    DrumKit() {
+        vivid::description(note_0, "MIDI note number for slot 0 (default: kick)");
+        vivid::description(note_1, "MIDI note number for slot 1 (default: snare)");
+        vivid::description(note_2, "MIDI note number for slot 2 (default: closed hi-hat)");
+        vivid::description(note_3, "MIDI note number for slot 3 (default: open hi-hat)");
+        vivid::description(note_4, "MIDI note number for slot 4 (default: clap)");
+        vivid::description(note_5, "MIDI note number for slot 5 (default: tom)");
+        vivid::description(note_6, "MIDI note number for slot 6 (default: cross stick)");
+        vivid::description(note_7, "MIDI note number for slot 7 (default: high tom)");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&note_0);
         out.push_back(&note_1);

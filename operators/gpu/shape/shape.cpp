@@ -139,6 +139,15 @@ struct Shape : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> b        {"b",        1.0f,  0.0f,  1.0f};
 
     Shape() {
+        vivid::description(radius, "Size of the shape from center to edge");
+        vivid::description(sides, "Number of polygon sides, 64 is nearly a circle");
+        vivid::description(star, "How far inner vertices pull inward, 0 = regular polygon");
+        vivid::description(rotation, "Shape rotation in radians");
+        vivid::description(softness, "Width of the antialiased edge, higher values add glow");
+        vivid::description(r, "Red component of the shape color");
+        vivid::description(g, "Green component of the shape color");
+        vivid::description(b, "Blue component of the shape color");
+
         vivid::semantic_tag(rotation, "rotation_radians");
         vivid::semantic_shape(rotation, "scalar");
         vivid::semantic_unit(rotation, "rad");

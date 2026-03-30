@@ -281,6 +281,9 @@ struct LutApply : vivid::OperatorBase, vivid::GpuProcessable {
 
     LutApply() {
         vivid::semantic_shape(file, "path");
+        vivid::description(file, "Path to a .cube or .3dl LUT file");
+        vivid::description(intensity, "Blend between original and LUT-graded color, 0 = no effect");
+        vivid::description(interpolation, "LUT sampling quality: Nearest is fast, Trilinear is smooth");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

@@ -217,6 +217,33 @@ struct Trails : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<int>   color_shift_mod_waveform {"color_shift_mod_waveform", 0, {"Sine", "Triangle", "Saw", "Square"}};
     vivid::Param<float> color_shift_mod_offset   {"color_shift_mod_offset",   0.0f, -1.0f, 1.0f};
 
+    Trails() {
+        vivid::description(count, "Number of autonomous trail heads");
+        vivid::description(decay, "Feedback persistence per frame, 1.0 = no fade");
+        vivid::description(width, "Base width of each trail stroke");
+        vivid::description(speed, "Movement speed of the trail heads");
+        vivid::description(curvature, "How strongly trail heads curve as they move");
+        vivid::description(color_r, "Red component of the trail base color");
+        vivid::description(color_g, "Green component of the trail base color");
+        vivid::description(color_b, "Blue component of the trail base color");
+        vivid::description(glow, "Intensity of the soft glow around each trail");
+        vivid::description(width_mod_enabled, "Enable LFO modulation of trail width");
+        vivid::description(width_mod_amount, "Strength of the width modulation");
+        vivid::description(width_mod_rate, "LFO frequency for width modulation in Hz");
+        vivid::description(width_mod_waveform, "LFO waveform shape for width modulation");
+        vivid::description(width_mod_offset, "DC offset added to the width LFO output");
+        vivid::description(opacity_mod_enabled, "Enable LFO modulation of trail opacity");
+        vivid::description(opacity_mod_amount, "Strength of the opacity modulation");
+        vivid::description(opacity_mod_rate, "LFO frequency for opacity modulation in Hz");
+        vivid::description(opacity_mod_waveform, "LFO waveform shape for opacity modulation");
+        vivid::description(opacity_mod_offset, "DC offset added to the opacity LFO output");
+        vivid::description(color_shift_mod_enabled, "Enable LFO-driven hue rotation per trail");
+        vivid::description(color_shift_mod_amount, "Strength of the hue shift modulation");
+        vivid::description(color_shift_mod_rate, "LFO frequency for hue shift modulation in Hz");
+        vivid::description(color_shift_mod_waveform, "LFO waveform shape for hue shift modulation");
+        vivid::description(color_shift_mod_offset, "DC offset added to the hue shift LFO output");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         vivid::layout_row(count,     2, 0);
         vivid::layout_row(decay,     2, 1);

@@ -83,6 +83,7 @@ struct TextureLoader : vivid::OperatorBase, vivid::GpuProcessable {
     TextureLoader() {
         vivid::semantic_tag(file, "path_image");
         vivid::semantic_shape(file, "path");
+        vivid::description(file, "Path to an image file (PNG, JPEG, EXR, HDR)");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

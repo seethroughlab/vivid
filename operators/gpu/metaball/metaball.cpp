@@ -203,6 +203,15 @@ struct Metaball : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<int>   render_mode{"render_mode", 0,    0,    1};
 
     Metaball() {
+        vivid::description(count, "Number of metaballs, 1-16");
+        vivid::description(threshold, "Field strength cutoff for the metaball surface boundary");
+        vivid::description(softness, "Width of the soft transition at the surface edge");
+        vivid::description(glow, "Intensity of the glow halo beyond the surface");
+        vivid::description(color_mode, "Coloring mode: Solid, per-ball Rainbow, or field Gradient");
+        vivid::description(r, "Red component of the base color (Solid mode)");
+        vivid::description(g, "Green component of the base color (Solid mode)");
+        vivid::description(b, "Blue component of the base color (Solid mode)");
+        vivid::description(render_mode, "Render style: Metaball SDF blending or discrete Circles");
         vivid::semantic_tag(r, "color_rgba");
         vivid::semantic_shape(r, "scalar");
         vivid::semantic_intent(r, "color_red");

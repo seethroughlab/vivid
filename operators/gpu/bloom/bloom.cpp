@@ -215,15 +215,19 @@ struct Bloom : vivid::OperatorBase, vivid::GpuProcessable {
     Bloom() {
         vivid::semantic_tag(threshold, "probability_01");
         vivid::semantic_shape(threshold, "scalar");
+        vivid::description(threshold, "Luminance cutoff for bright pixels, 0 = everything glows");
 
         vivid::semantic_tag(intensity, "amplitude_linear");
         vivid::semantic_shape(intensity, "scalar");
+        vivid::description(intensity, "Brightness of the glow added back to the image");
 
         vivid::semantic_tag(radius, "scale_xy");
         vivid::semantic_shape(radius, "scalar");
+        vivid::description(radius, "Size of the blur kernel that spreads the glow");
 
         vivid::semantic_tag(passes, "count");
         vivid::semantic_shape(passes, "int");
+        vivid::description(passes, "Number of blur iterations, more = wider and softer glow");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

@@ -24,12 +24,18 @@ struct PatTransform : vivid::OperatorBase, vivid::FrameProcessable {
     PatTransform() {
         vivid::semantic_tag(reverse, "enabled");
         vivid::semantic_shape(reverse, "bool");
+        vivid::description(reverse, "Flip the pattern so the last element becomes the first");
 
         vivid::semantic_tag(rotate, "index");
         vivid::semantic_shape(rotate, "int");
+        vivid::description(rotate, "Shift the pattern left or right by N positions");
+
+        vivid::description(scale, "Multiplier applied to every element in the pattern");
+        vivid::description(offset, "Constant added to every element after scaling");
 
         vivid::semantic_tag(probability, "probability_01");
         vivid::semantic_shape(probability, "scalar");
+        vivid::description(probability, "Chance each element survives, 0 = all masked, 1 = all pass");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

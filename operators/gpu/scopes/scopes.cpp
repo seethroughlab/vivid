@@ -316,6 +316,14 @@ struct Scopes : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> brightness  {"brightness", 1.5f, 0.5f, 3.0f};
     vivid::Param<int>   subsample   {"subsample",  4, 1, 8};
 
+    Scopes() {
+        vivid::description(scope_type, "Analysis type: Waveform, Histogram, Vectorscope, or Parade");
+        vivid::description(opacity, "Visibility of the scope visualization");
+        vivid::description(overlay, "Standalone renders on black, Overlay composites over the input");
+        vivid::description(brightness, "Gain applied to the scope traces");
+        vivid::description(subsample, "Pixel skip factor for faster analysis, higher = less accurate");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&scope_type);
         out.push_back(&opacity);

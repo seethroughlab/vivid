@@ -91,15 +91,19 @@ struct WebcamIn : vivid::OperatorBase, vivid::GpuProcessable {
     WebcamIn() {
         vivid::semantic_tag(active, "enabled");
         vivid::semantic_shape(active, "bool");
+        vivid::description(active, "Enable or disable camera capture");
 
         vivid::semantic_tag(device, "index");
         vivid::semantic_shape(device, "int");
+        vivid::description(device, "Which camera to capture from");
 
         vivid::semantic_tag(resolution, "resolution_px");
         vivid::semantic_shape(resolution, "enum");
+        vivid::description(resolution, "Capture resolution preset: 480p, 720p, or 1080p");
 
         vivid::semantic_tag(fps, "frequency_hz");
         vivid::semantic_shape(fps, "enum");
+        vivid::description(fps, "Target capture frame rate");
 
         auto cameras = enumerate_cameras();
         if (cameras.empty()) {
