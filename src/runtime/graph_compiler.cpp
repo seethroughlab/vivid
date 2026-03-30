@@ -753,16 +753,20 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
     // ===================================================================
     // Pass 2.5: Cadence inference
     // ===================================================================
-    // Promote Auto audio-capable nodes that feed audio-cadence consumers.
-    // Iterate to a fixed point: promoting one node may cause its upstream
-    // suppliers to qualify for promotion too.
+    // Promote Auto audio-capable nodes to Audio cadence when connected to
+    // audio-cadence neighbours in either direction:
+    //   - Downstream pull: a Frame supplier feeds an Audio consumer
+    //   - Upstream push:   an Audio supplier feeds a Frame consumer
+    // Iterate to a fixed point so chains of dual-cadence nodes all promote.
     {
         bool changed = true;
         while (changed) {
             changed = false;
             for (const auto& e : cg->edges) {
                 auto& from_cn = cg->nodes[e.from_node];
-                const auto& to_cn = cg->nodes[e.to_node];
+                auto& to_cn = cg->nodes[e.to_node];
+
+                // Downstream pull: promote supplier to match audio consumer
                 if (to_cn.active_cadence == Cadence::Audio &&
                     from_cn.active_cadence == Cadence::Frame &&
                     from_cn.cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE &&
@@ -770,6 +774,18 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                     from_cn.active_cadence = Cadence::Audio;
                     from_cn.audio = std::make_unique<AudioNodeState>();
                     init_audio_state(from_cn, from_cn.loader->descriptor(),
+                                     options.audio_buffer_size);
+                    changed = true;
+                }
+
+                // Upstream push: promote consumer to match audio supplier
+                if (from_cn.active_cadence == Cadence::Audio &&
+                    to_cn.active_cadence == Cadence::Frame &&
+                    to_cn.cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE &&
+                    to_cn.original_cadence_override == CadenceOverride::Auto) {
+                    to_cn.active_cadence = Cadence::Audio;
+                    to_cn.audio = std::make_unique<AudioNodeState>();
+                    init_audio_state(to_cn, to_cn.loader->descriptor(),
                                      options.audio_buffer_size);
                     changed = true;
                 }
