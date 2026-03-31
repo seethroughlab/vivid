@@ -47,8 +47,12 @@ Mono audio operators that receive multi-channel or multi-lane inputs are automat
 For per-lane persistent state (e.g., oscillator phase), use `vivid_lane_state()`:
 ```cpp
 struct Voice { double phase; float freq; };
-Voice& v = *vivid_lane_state(ctx, lane_id, Voice);
+Voice& v = *vivid_lane_state(ctx, ctx->lane_id, Voice);
 ```
+
+Each lifted lane receives a distinct `lane_id` (derived positional ID), so `vivid_lane_state()` returns per-lane-distinct storage. These IDs are not allocator-managed identities — they don't survive graph rebuilds. For true identity-bearing state (voice allocation, portamento), use `lane_id` values from a structural operator's `lane_ids` spread output.
+
+**Strategy-independent convention:** New operators should use `vivid_lane_state()` for all per-lane persistent state, even when expecting to be lifted. This makes the operator compatible with future runtime execution strategies (loop-based, GPU compute) without source changes.
 
 ## Planar Buffer Layout
 

@@ -74,8 +74,12 @@ bool AudioExecutor::build(CadenceBridge& bridge, CompiledGraph& cg) {
         for (uint32_t c = 1; c < lanes; ++c)
             group.instances[c] = cn.loader->create_instance();
 
-        // Lane IDs: positional for now (identity-bearing lane sets come in Phase 5)
-        group.lane_ids.assign(lanes, 0);
+        // Derived positional lane IDs for non-identity-bearing lifted sets.
+        // These enable per-lane-distinct vivid_lane_state() lookups but are NOT
+        // allocator-managed identities — no continuity guarantees across rebuilds.
+        group.lane_ids.resize(lanes);
+        for (uint32_t c = 0; c < lanes; ++c)
+            group.lane_ids[c] = lane_state_.allocate_lane_id();
 
         // Allocate per-lane mono buffers
         group.per_lane_inputs.resize(lanes);
