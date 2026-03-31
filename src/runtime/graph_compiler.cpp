@@ -13,6 +13,141 @@ namespace vivid {
 
 static constexpr uint32_t kMaxSpreadCapacity = 1024;
 
+// ---------------------------------------------------------------------------
+// Lane execution planner — formal boundary for strategy selection.
+//
+// These functions examine a node's lane behavior, port configuration,
+// upstream provenance, and operator opt-in flags, and return all the
+// data needed to apply an execution strategy. Pass 4c/4d call these
+// and apply the result to the CompiledNode.
+// ---------------------------------------------------------------------------
+
+struct AudioLanePlan {
+    LaneExecutionStrategy strategy = LaneExecutionStrategy::Scalar;
+    uint32_t lane_lift_count = 0;       // N for InstancePerLane
+    uint32_t lane_lift_set_id = 0;      // provenance of the lane set
+    int32_t  lane_id_spread_port = -1;  // identity-bearing lane_ids port
+    bool     override_channel_counts = false;  // true → set all ch counts to 1
+};
+
+struct FrameLanePlan {
+    LaneExecutionStrategy strategy = LaneExecutionStrategy::Scalar;
+    int32_t  lane_id_spread_port = -1;
+};
+
+// Detect the lane_ids spread port on a node (shared logic).
+static int32_t detect_lane_id_spread_port(const CompiledNode& cn) {
+    auto li_it = cn.input_port_indices.find("lane_ids");
+    if (li_it != cn.input_port_indices.end()) {
+        uint32_t pi = li_it->second;
+        if (pi < cn.input_port_types.size() &&
+            cn.input_port_types[pi] == VIVID_PORT_SPREAD) {
+            return static_cast<int32_t>(pi);
+        }
+    }
+    return -1;
+}
+
+// Find the first non-scalar input lane set and return its set ID (0 = none found).
+static uint32_t find_structural_input(const CompiledNode& cn) {
+    for (const auto& ils : cn.input_lane_sets) {
+        if (!ils.is_scalar()) return ils.lane_set_id;
+    }
+    return 0;
+}
+
+static AudioLanePlan plan_audio_lane_strategy(
+    const CompiledNode& cn,
+    const AudioNodeState& a,
+    const CompiledGraph& cg,
+    uint32_t node_idx)
+{
+    AudioLanePlan plan;
+
+    // Only pointwise operators are lane-liftable.
+    if (cn.lane_behavior != LaneBehavior::Pointwise) return plan;
+
+    // Check that all audio ports are mono (descriptor says 1 channel).
+    bool all_mono = true;
+    for (uint32_t p = 0; p < cn.input_port_count && all_mono; ++p) {
+        if (p < a.descriptor_input_channels.size() &&
+            cn.input_port_types[p] == VIVID_PORT_AUDIO &&
+            a.descriptor_input_channels[p] > 1)
+            all_mono = false;
+    }
+    for (uint32_t p = 0; p < cn.output_port_count && all_mono; ++p) {
+        if (p < a.descriptor_output_channels.size() &&
+            cn.output_port_types[p] == VIVID_PORT_AUDIO &&
+            a.descriptor_output_channels[p] > 1)
+            all_mono = false;
+    }
+    if (!all_mono) return plan;
+
+    // InstancePerLane: multi-channel audio input to mono-declared operator.
+    uint8_t max_wire_ch = 1;
+    for (const auto& e : cg.edges) {
+        if (e.to_node == node_idx && e.transport == EdgeTransport::Direct &&
+            !e.targets_param) {
+            uint8_t src_ch = 1;
+            auto& from_a = cg.nodes[e.from_node].audio;
+            if (from_a && e.from_port < from_a->output_channel_counts.size())
+                src_ch = from_a->output_channel_counts[e.from_port];
+            if (src_ch > max_wire_ch) max_wire_ch = src_ch;
+        }
+    }
+
+    if (max_wire_ch > 1) {
+        plan.strategy = LaneExecutionStrategy::InstancePerLane;
+        plan.lane_lift_count = max_wire_ch;
+        plan.lane_lift_set_id = find_structural_input(cn);
+        plan.override_channel_counts = true;
+        return plan;
+    }
+
+    // LoopBased: strategy_independent operator with structural upstream.
+    const auto* desc = cn.loader ? cn.loader->descriptor() : nullptr;
+    bool opt_in = desc && desc->strategy_independent;
+    if (!opt_in) return plan;
+
+    // Check Direct edges
+    uint32_t structural_set_id = find_structural_input(cn);
+    // Also check Snapshot edges for cross-cadence structural provenance
+    if (structural_set_id == 0) {
+        for (const auto& e : cg.edges) {
+            if (e.to_node == node_idx && e.transport == EdgeTransport::Snapshot &&
+                e.lane_set_id != 0) {
+                structural_set_id = e.lane_set_id;
+                break;
+            }
+        }
+    }
+
+    if (structural_set_id != 0) {
+        plan.strategy = LaneExecutionStrategy::LoopBased;
+        plan.lane_lift_set_id = structural_set_id;
+        plan.lane_id_spread_port = detect_lane_id_spread_port(cn);
+    }
+
+    return plan;
+}
+
+static FrameLanePlan plan_frame_lane_strategy(const CompiledNode& cn) {
+    FrameLanePlan plan;
+
+    if (cn.lane_behavior != LaneBehavior::Pointwise) return plan;
+
+    const auto* desc = cn.loader ? cn.loader->descriptor() : nullptr;
+    if (!desc || !desc->strategy_independent) return plan;
+
+    uint32_t structural_set_id = find_structural_input(cn);
+    if (structural_set_id != 0) {
+        plan.strategy = LaneExecutionStrategy::LoopBased;
+        plan.lane_id_spread_port = detect_lane_id_spread_port(cn);
+    }
+
+    return plan;
+}
+
 // Compute a linear scale equivalent from ConnectionDef remap fields.
 static float remap_to_scale(const ConnectionDef& c) {
     float range = c.from_max - c.from_min;
@@ -1060,134 +1195,28 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         }
     }
 
-    // Pass 4c: Detect lane-liftable pointwise audio operators.
-    // A pointwise audio operator with all-mono audio ports that receives
-    // multi-channel audio input (or multi-lane spread input) is lane-lifted:
-    // the runtime creates N instances and processes each lane independently.
+    // Pass 4c: Apply audio lane execution strategy via planner.
     for (uint32_t idx : cg->audio_order) {
         auto& a = *cg->nodes[idx].audio;
         auto& cn = cg->nodes[idx];
 
-        // Only pointwise operators are lane-lifted.
-        if (cn.lane_behavior != LaneBehavior::Pointwise) continue;
-
-        // Check that all audio ports are mono (descriptor says 1 channel).
-        bool all_mono = true;
-        for (uint32_t p = 0; p < cn.input_port_count && all_mono; ++p) {
-            if (p < a.descriptor_input_channels.size() &&
-                cn.input_port_types[p] == VIVID_PORT_AUDIO &&
-                a.descriptor_input_channels[p] > 1)
-                all_mono = false;
-        }
-        for (uint32_t p = 0; p < cn.output_port_count && all_mono; ++p) {
-            if (p < a.descriptor_output_channels.size() &&
-                cn.output_port_types[p] == VIVID_PORT_AUDIO &&
-                a.descriptor_output_channels[p] > 1)
-                all_mono = false;
-        }
-        if (!all_mono) continue;
-
-        // Find max incoming audio channel count (lane lifting for stereo/multichannel).
-        uint8_t max_wire_ch = 1;
-        for (const auto& e : cg->edges) {
-            if (e.to_node == idx && e.transport == EdgeTransport::Direct &&
-                !e.targets_param) {
-                uint8_t src_ch = 1;
-                auto& from_a = cg->nodes[e.from_node].audio;
-                if (from_a && e.from_port < from_a->output_channel_counts.size())
-                    src_ch = from_a->output_channel_counts[e.from_port];
-                if (src_ch > max_wire_ch) max_wire_ch = src_ch;
-            }
-        }
-
-        if (max_wire_ch > 1) {
-            a.execution_strategy = LaneExecutionStrategy::InstancePerLane;
-            a.lane_lift_count = max_wire_ch;
-            // Use the lane_set_id from the node's resolved input lane sets if available,
-            // otherwise use 0 (positional channel-based lifting).
-            a.lane_lift_set_id = 0;
-            for (const auto& ils : cn.input_lane_sets) {
-                if (!ils.is_scalar()) { a.lane_lift_set_id = ils.lane_set_id; break; }
-            }
+        AudioLanePlan plan = plan_audio_lane_strategy(cn, a, *cg, idx);
+        a.execution_strategy = plan.strategy;
+        a.lane_lift_count = plan.lane_lift_count;
+        a.lane_lift_set_id = plan.lane_lift_set_id;
+        a.lane_id_spread_port = plan.lane_id_spread_port;
+        if (plan.override_channel_counts) {
             for (auto& ch : a.input_channel_counts) ch = 1;
             for (auto& ch : a.output_channel_counts) ch = 1;
         }
-
-        // LoopBased: for operators that opt in via strategy_independent,
-        // non-audio lane-bearing inputs trigger runtime-driven loop evaluation.
-        // Check both Direct edges (input_lane_sets) and Snapshot edges
-        // (compiled edge lane_set_id) for structural upstream provenance.
-        if (a.execution_strategy == LaneExecutionStrategy::Scalar) {
-            const auto* desc = cn.loader ? cn.loader->descriptor() : nullptr;
-            bool opt_in = desc && desc->strategy_independent;
-            bool has_structural_input = false;
-            uint32_t structural_set_id = 0;
-            // Check input_lane_sets (populated for Direct edges)
-            for (const auto& ils : cn.input_lane_sets) {
-                if (!ils.is_scalar()) { has_structural_input = true; structural_set_id = ils.lane_set_id; break; }
-            }
-            // Also check incoming Snapshot edges for cross-cadence structural provenance
-            if (!has_structural_input) {
-                for (const auto& e : cg->edges) {
-                    if (e.to_node == idx && e.transport == EdgeTransport::Snapshot &&
-                        e.lane_set_id != 0) {
-                        has_structural_input = true;
-                        structural_set_id = e.lane_set_id;
-                        break;
-                    }
-                }
-            }
-            if (opt_in && has_structural_input) {
-                a.execution_strategy = LaneExecutionStrategy::LoopBased;
-                a.lane_lift_set_id = structural_set_id;
-                // Detect identity-bearing lane_ids spread port for runtime propagation
-                auto li_it = cn.input_port_indices.find("lane_ids");
-                if (li_it != cn.input_port_indices.end()) {
-                    uint32_t pi = li_it->second;
-                    if (pi < cn.input_port_types.size() &&
-                        cn.input_port_types[pi] == VIVID_PORT_SPREAD) {
-                        a.lane_id_spread_port = static_cast<int32_t>(pi);
-                    }
-                }
-            }
-        }
     }
 
-    // Pass 4d: Detect lane-liftable pointwise frame operators.
-    // Frame operators with kStrategyIndependent and structural upstream get LoopBased.
-    // Only LoopBased is supported for frame nodes (no InstancePerLane — loop overhead
-    // is negligible at frame rate).
+    // Pass 4d: Apply frame lane execution strategy via planner.
     for (uint32_t idx : cg->frame_order) {
         auto& cn = cg->nodes[idx];
-        if (cn.lane_behavior != LaneBehavior::Pointwise) continue;
-
-        const auto* desc = cn.loader ? cn.loader->descriptor() : nullptr;
-        bool opt_in = desc && desc->strategy_independent;
-        if (!opt_in) continue;
-
-        bool has_structural_input = false;
-        uint32_t structural_set_id = 0;
-        for (const auto& ils : cn.input_lane_sets) {
-            if (!ils.is_scalar()) {
-                has_structural_input = true;
-                structural_set_id = ils.lane_set_id;
-                break;
-            }
-        }
-
-        if (has_structural_input) {
-            cn.frame_execution_strategy = LaneExecutionStrategy::LoopBased;
-
-            // Detect identity-bearing lane_ids spread port
-            auto li_it = cn.input_port_indices.find("lane_ids");
-            if (li_it != cn.input_port_indices.end()) {
-                uint32_t pi = li_it->second;
-                if (pi < cn.input_port_types.size() &&
-                    cn.input_port_types[pi] == VIVID_PORT_SPREAD) {
-                    cn.frame_lane_id_spread_port = static_cast<int32_t>(pi);
-                }
-            }
-        }
+        FrameLanePlan plan = plan_frame_lane_strategy(cn);
+        cn.frame_execution_strategy = plan.strategy;
+        cn.frame_lane_id_spread_port = plan.lane_id_spread_port;
     }
 
     // ===================================================================
