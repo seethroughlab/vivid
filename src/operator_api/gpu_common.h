@@ -286,4 +286,68 @@ inline uint16_t float_to_half(float f) {
     return static_cast<uint16_t>(sign | ((exp + 15) << 10) | (mantissa >> 13));
 }
 
+// ---------------------------------------------------------------------------
+// Compute shader helpers
+// ---------------------------------------------------------------------------
+
+// Compile a WGSL compute shader (no fullscreen vertex preamble).
+inline WGPUShaderModule create_compute_shader(WGPUDevice device, const char* src,
+                                               const char* label) {
+    WGPUShaderSourceWGSL wgsl_src{};
+    wgsl_src.chain.sType = WGPUSType_ShaderSourceWGSL;
+    wgsl_src.code = vivid_sv(src);
+
+    WGPUShaderModuleDescriptor desc{};
+    desc.nextInChain = &wgsl_src.chain;
+    desc.label = vivid_sv(label);
+    return wgpuDeviceCreateShaderModule(device, &desc);
+}
+
+// Create a compute pipeline.
+inline WGPUComputePipeline create_compute_pipeline(WGPUDevice device,
+                                                     WGPUShaderModule shader,
+                                                     WGPUPipelineLayout layout,
+                                                     const char* label) {
+    WGPUComputePipelineDescriptor desc{};
+    desc.label = vivid_sv(label);
+    desc.layout = layout;
+    desc.compute.module = shader;
+    desc.compute.entryPoint = vivid_sv("cs_main");
+    return wgpuDeviceCreateComputePipeline(device, &desc);
+}
+
+// Create a Storage | CopyDst | CopySrc buffer.
+inline WGPUBuffer create_storage_buffer(WGPUDevice device, uint64_t size,
+                                         const char* label) {
+    WGPUBufferDescriptor desc{};
+    desc.label = vivid_sv(label);
+    desc.size = size;
+    desc.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst | WGPUBufferUsage_CopySrc;
+    return wgpuDeviceCreateBuffer(device, &desc);
+}
+
+// Create a MapRead | CopyDst buffer (for GPU → CPU readback).
+inline WGPUBuffer create_readback_buffer(WGPUDevice device, uint64_t size,
+                                          const char* label) {
+    WGPUBufferDescriptor desc{};
+    desc.label = vivid_sv(label);
+    desc.size = size;
+    desc.usage = WGPUBufferUsage_MapRead | WGPUBufferUsage_CopyDst;
+    return wgpuDeviceCreateBuffer(device, &desc);
+}
+
+// Record a compute dispatch into a command encoder.
+inline void dispatch_compute(WGPUCommandEncoder encoder, WGPUComputePipeline pipeline,
+                              WGPUBindGroup bind_group, uint32_t workgroups_x,
+                              const char* label) {
+    WGPUComputePassDescriptor cp_desc{};
+    cp_desc.label = vivid_sv(label);
+    WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, &cp_desc);
+    wgpuComputePassEncoderSetPipeline(pass, pipeline);
+    wgpuComputePassEncoderSetBindGroup(pass, 0, bind_group, 0, nullptr);
+    wgpuComputePassEncoderDispatchWorkgroups(pass, workgroups_x, 1, 1);
+    wgpuComputePassEncoderEnd(pass);
+    wgpuComputePassEncoderRelease(pass);
+}
+
 } // namespace vivid::gpu

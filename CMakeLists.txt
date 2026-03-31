@@ -320,6 +320,9 @@ add_vivid_operator(logic             operators/control/logic/logic.cpp)
 add_vivid_operator(gate              operators/control/gate/gate.cpp)
 add_vivid_operator(smooth            operators/control/smooth/smooth.cpp            EXTRA_LIBS webgpu)
 add_vivid_operator(stack             operators/control/stack/stack.cpp)
+add_vivid_operator(repeat            operators/control/repeat/repeat.cpp)
+add_vivid_operator(tile              operators/control/tile/tile.cpp)
+add_vivid_operator(select            operators/control/select/select.cpp)
 add_vivid_operator(alternate         operators/control/alternate/alternate.cpp)
 add_vivid_operator(modulated_gain   operators/control/modulated_gain/modulated_gain.cpp
                                     EXTRA_LIBS vivid_composable_ops)
@@ -1237,6 +1240,11 @@ add_vivid_operator(lane_metadata_op       tests/operators/lane_metadata_op.cpp)
 add_vivid_operator(lane_metadata_audio_op tests/operators/lane_metadata_audio_op.cpp)
 add_vivid_operator(lane_smooth_op         tests/operators/lane_smooth_op.cpp)
 add_vivid_operator(lane_slew_op           tests/operators/lane_slew_op.cpp)
+add_vivid_operator(identity_spread_source_op tests/operators/identity_spread_source_op.cpp)
+add_vivid_operator(lane_state_tracker_op     tests/operators/lane_state_tracker_op.cpp)
+add_vivid_operator(multi_channel_dc_source_op tests/operators/multi_channel_dc_source_op.cpp)
+add_vivid_operator(dc_per_lane_op            tests/operators/dc_per_lane_op.cpp)
+add_vivid_operator(lane_frame_op             tests/operators/lane_frame_op.cpp)
 add_vivid_operator(audio_spread_op    tests/operators/audio_spread_op.cpp)
 
 # AudioEngine integration test (null audio backend, no GPU, no window)
@@ -1820,6 +1828,68 @@ target_link_libraries(test_spread_broadcast PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_dependencies(test_spread_broadcast spread_source_op spread_sink_op lane_smooth_op)
 add_test(NAME test_spread_broadcast COMMAND test_spread_broadcast WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_lane_reshape
+    tests/test_lane_reshape.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
+    src/runtime/port_type_registry.cpp
+)
+target_include_directories(test_lane_reshape PRIVATE src)
+target_link_libraries(test_lane_reshape PRIVATE
+    vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_dependencies(test_lane_reshape spread_source_op spread_sink_op repeat tile select math)
+add_test(NAME test_lane_reshape COMMAND test_lane_reshape WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_frame_lane_lifting
+    tests/test_frame_lane_lifting.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
+    src/runtime/port_type_registry.cpp
+)
+target_include_directories(test_frame_lane_lifting PRIVATE src)
+target_link_libraries(test_frame_lane_lifting PRIVATE
+    vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_dependencies(test_frame_lane_lifting spread_source_op spread_sink_op lane_frame_op identity_spread_source_op)
+add_test(NAME test_frame_lane_lifting COMMAND test_frame_lane_lifting WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_lane_breadth
+    tests/test_lane_breadth.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
+    src/runtime/port_type_registry.cpp
+)
+target_include_directories(test_lane_breadth PRIVATE src)
+target_link_libraries(test_lane_breadth PRIVATE
+    vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_dependencies(test_lane_breadth spread_source_op spread_sink_op lane_frame_op fft_analysis repeat)
+add_test(NAME test_lane_breadth COMMAND test_lane_breadth WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_compute_lane_equivalence tests/test_compute_lane_equivalence.cpp)
+target_include_directories(test_compute_lane_equivalence PRIVATE src)
+target_link_libraries(test_compute_lane_equivalence PRIVATE vivid_operator_api webgpu)
+add_test(NAME test_compute_lane_equivalence COMMAND test_compute_lane_equivalence WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Lane metadata runtime test
 configure_file(tests/graphs/test_lane_metadata.json ${CMAKE_BINARY_DIR}/test_lane_metadata.json COPYONLY)
@@ -2470,6 +2540,71 @@ add_executable(test_lane_state tests/test_lane_state.cpp)
 target_include_directories(test_lane_state PRIVATE src)
 target_link_libraries(test_lane_state PRIVATE vivid_operator_api)
 add_test(NAME test_lane_state COMMAND test_lane_state WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_lane_capacity
+    tests/test_lane_capacity.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/port_type_registry.cpp
+)
+target_include_directories(test_lane_capacity PRIVATE src)
+target_link_libraries(test_lane_capacity PRIVATE
+    vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_dependencies(test_lane_capacity spread_source_op lane_slew_op)
+add_test(NAME test_lane_capacity
+    COMMAND test_lane_capacity ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_lane_compaction
+    tests/test_lane_compaction.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
+    src/runtime/port_type_registry.cpp
+    src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
+    src/runtime/builtin_operators.cpp
+)
+target_include_directories(test_lane_compaction PRIVATE src)
+target_link_libraries(test_lane_compaction PRIVATE
+    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
+add_dependencies(test_lane_compaction identity_spread_source_op lane_state_tracker_op)
+add_test(NAME test_lane_compaction
+    COMMAND test_lane_compaction ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_lane_equivalence
+    tests/test_lane_equivalence.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
+    src/runtime/port_type_registry.cpp
+    src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
+    src/runtime/builtin_operators.cpp
+)
+target_include_directories(test_lane_equivalence PRIVATE src)
+target_link_libraries(test_lane_equivalence PRIVATE
+    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
+add_dependencies(test_lane_equivalence identity_spread_source_op lane_slew_op multi_channel_dc_source_op dc_per_lane_op spread_source_op)
+add_test(NAME test_lane_equivalence
+    COMMAND test_lane_equivalence ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Undo coverage across roadmap mutation types via RuntimeCommandSink + RuntimeAPI
 add_executable(test_undo_mutation_types
