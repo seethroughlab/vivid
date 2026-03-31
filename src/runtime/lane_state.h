@@ -33,8 +33,9 @@ public:
 
     // Get per-lane state for (node_idx, lane_id).
     // Returns zero-initialized storage of byte_size bytes.
-    // If the entry doesn't exist yet (first audio callback after allocation),
-    // returns a per-node scratch buffer (zero-initialized, not identity-stable).
+    // Allocates on first access (one heap allocation per voice creation,
+    // not per-sample — acceptable for typical voice counts of 1-16).
+    // Stable until retire() + sweep_retired().
     inline void* get(uint32_t node_idx, uint32_t lane_id, uint32_t byte_size) {
         uint64_t key = make_key(node_idx, lane_id);
         auto it = entries_.find(key);
@@ -43,12 +44,11 @@ public:
                    "lane_state: byte_size mismatch for existing (node_idx, lane_id)");
             return it->second.data.data();
         }
-        // Entry doesn't exist yet. Return per-node scratch buffer.
-        auto& scratch = scratch_[node_idx];
-        if (scratch.size() < byte_size)
-            scratch.resize(byte_size, 0);
-        std::memset(scratch.data(), 0, byte_size);
-        return scratch.data();
+        // First access for this (node_idx, lane_id): allocate identity-stable storage.
+        Entry entry;
+        entry.data.resize(byte_size, 0);
+        auto [inserted_it, _] = entries_.emplace(key, std::move(entry));
+        return inserted_it->second.data.data();
     }
 
     // Mark a (node_idx, lane_id) for deferred cleanup. Audio-thread safe.
@@ -82,7 +82,6 @@ public:
     // Clear all state (shutdown/rebuild).
     inline void clear() {
         entries_.clear();
-        scratch_.clear();
         pending_retirements_.clear();
         next_lane_id_.store(1, std::memory_order_relaxed);
     }
@@ -97,7 +96,6 @@ private:
     };
 
     std::unordered_map<uint64_t, Entry> entries_;
-    std::unordered_map<uint32_t, std::vector<uint8_t>> scratch_;
     std::atomic<uint32_t> next_lane_id_{1};
     std::vector<uint64_t> pending_retirements_;
     std::mutex retire_mutex_;

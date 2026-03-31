@@ -154,23 +154,35 @@ static void test_clear() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 8: scratch buffer for unknown lane_id (pre-allocation not yet done)
+// Test 8: first-access allocation is identity-stable (no pre_allocate needed)
 // ---------------------------------------------------------------------------
 
-static void test_scratch_fallback() {
-    std::fprintf(stderr, "\n--- lane_state: scratch fallback for unknown lane_id ---\n");
+static void test_first_access_stable() {
+    std::fprintf(stderr, "\n--- lane_state: first-access allocation is identity-stable ---\n");
 
     vivid::LaneStateService svc;
-    // Don't pre_allocate — simulate first audio callback after allocation.
-    void* p = svc.get(5, 999, 32);
-    check(p != nullptr, "scratch returned for unknown lane_id");
+    // No pre_allocate — get() allocates on first access.
+    void* p1 = svc.get(5, 999, 32);
+    check(p1 != nullptr, "first access returns non-null");
 
-    // Should be zero-initialized.
+    // Zero-initialized.
     bool all_zero = true;
     for (uint32_t i = 0; i < 32; ++i) {
-        if (static_cast<uint8_t*>(p)[i] != 0) all_zero = false;
+        if (static_cast<uint8_t*>(p1)[i] != 0) all_zero = false;
     }
-    check(all_zero, "scratch is zero-initialized");
+    check(all_zero, "first access is zero-initialized");
+
+    // Write a marker.
+    static_cast<uint8_t*>(p1)[0] = 0xAB;
+
+    // Second access returns same pointer with preserved data.
+    void* p2 = svc.get(5, 999, 32);
+    check(p1 == p2, "second access returns same pointer (identity-stable)");
+    check(static_cast<uint8_t*>(p2)[0] == 0xAB, "data preserved across calls");
+
+    // Different lane_id on same node gets different storage.
+    void* p3 = svc.get(5, 1000, 32);
+    check(p3 != p1, "different lane_id gets different storage");
 }
 
 // ---------------------------------------------------------------------------
@@ -185,7 +197,7 @@ int main() {
     test_retire_and_sweep();
     test_allocate_lane_id();
     test_clear();
-    test_scratch_fallback();
+    test_first_access_stable();
 
     std::fprintf(stderr, "\n%s (%d failures)\n",
                  failures == 0 ? "PASSED" : "FAILED", failures);
