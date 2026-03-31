@@ -78,6 +78,9 @@ struct NodeSnapshot {
     bool is_gpu_sink = false;
     bool is_generator = false;  // GPU node with no texture inputs and not a sink
 
+    // Lane metadata (from compiler)
+    uint8_t lane_behavior = 0;  // 0=Pointwise, 1=Structural, 2=Reduction, 3=Kernel
+
     std::unordered_map<std::string, uint32_t> input_port_indices;
     std::unordered_map<std::string, uint32_t> output_port_indices;
     std::unordered_map<std::string, uint32_t> analysis_output_port_indices; // rms/peak/waveform
@@ -145,6 +148,10 @@ struct ConnectionSnapshot {
     bool from_endpoint_missing = false;
     bool to_endpoint_missing = false;
     std::string invalid_reason;
+
+    // Lane metadata (from compiled edge)
+    uint32_t lane_set_id = 0;
+    uint32_t lane_count  = 1;
 
     bool has_remap() const {
         return from_min != 0.0f || from_max != 1.0f ||

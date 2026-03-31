@@ -1175,6 +1175,7 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         }
         sn.is_gpu_sink = cn.is_gpu_sink();
         sn.is_generator = cn.gpu ? cn.gpu->texture_input_port_indices.empty() && !cn.is_gpu_sink() : true;
+        sn.lane_behavior = static_cast<uint8_t>(cn.lane_behavior);
         sn.input_port_indices = cn.input_port_indices;
         sn.output_port_indices = cn.output_port_indices;
         sn.analysis_output_port_indices = cn.audio ? cn.audio->analysis_output_port_indices
@@ -1346,6 +1347,19 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         c.from_endpoint_missing = from_endpoint_missing;
         c.to_endpoint_missing = to_endpoint_missing;
         c.invalid_reason = invalid_reason;
+
+        // Lane metadata from compiled edge
+        if (cg) {
+            for (const auto& e : cg->edges) {
+                if (e.from_node < cg->nodes.size() && e.to_node < cg->nodes.size() &&
+                    cg->nodes[e.from_node].node_id == conns[i].from_node &&
+                    cg->nodes[e.to_node].node_id == conns[i].to_node) {
+                    c.lane_set_id = e.lane_set_id;
+                    c.lane_count  = e.lane_count;
+                    break;
+                }
+            }
+        }
     }
 
     // Audio analysis
