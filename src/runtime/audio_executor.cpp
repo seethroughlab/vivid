@@ -14,6 +14,21 @@
 
 namespace vivid {
 
+static void* lane_state_fn_bridge(void* ctx_ptr, uint32_t lane_id, uint32_t byte_size) {
+    auto* lsc = static_cast<AudioExecutor::NodeLaneCtx*>(ctx_ptr);
+    return lsc->service->get(lsc->node_idx, lane_id, byte_size);
+}
+
+static uint32_t allocate_lane_id_fn_bridge(void* ctx_ptr) {
+    auto* lsc = static_cast<AudioExecutor::NodeLaneCtx*>(ctx_ptr);
+    return lsc->service->allocate_lane_id();
+}
+
+static void retire_lane_id_fn_bridge(void* ctx_ptr, uint32_t lane_id) {
+    auto* lsc = static_cast<AudioExecutor::NodeLaneCtx*>(ctx_ptr);
+    lsc->service->retire(lsc->node_idx, lane_id);
+}
+
 static float unset_signal_output_sentinel() {
     return std::numeric_limits<float>::quiet_NaN();
 }
@@ -83,6 +98,16 @@ bool AudioExecutor::build(CadenceBridge& bridge, CompiledGraph& cg) {
         uint32_t group_idx = static_cast<uint32_t>(lane_lift_groups_.size());
         node_to_lift_group_[idx] = group_idx;
         lane_lift_groups_.push_back(std::move(group));
+    }
+
+    // Reset lane state service
+    lane_state_.clear();
+
+    // Build per-node lane state contexts
+    node_lane_contexts_.resize(cg.audio_order.size());
+    for (size_t i = 0; i < cg.audio_order.size(); ++i) {
+        node_lane_contexts_[i].service = &lane_state_;
+        node_lane_contexts_[i].node_idx = cg.audio_order[i];
     }
 
     // Allocate waveform ring buffers
@@ -411,6 +436,11 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                     ctx.lane_index = c;
                     ctx.lane_set_id = group.lane_set_id;
                     ctx.lane_id = group.lane_ids[c];
+                    ctx.lane_state_fn = lane_state_fn_bridge;
+                    ctx.lane_state_service = &node_lane_contexts_[ni_ord];
+                    ctx.allocate_lane_id_fn = allocate_lane_id_fn_bridge;
+                    ctx.retire_lane_id_fn = retire_lane_id_fn_bridge;
+                    // Note: allocate/retire use lane_state_ directly (not per-node context)
 
                     try {
                         cn.loader->process_audio(group.instances[c], &ctx);
@@ -467,6 +497,10 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 ctx.lane_index = 0;
                 ctx.lane_set_id = 0;
                 ctx.lane_id = 0;
+                ctx.lane_state_fn = lane_state_fn_bridge;
+                ctx.lane_state_service = &node_lane_contexts_[ni_ord];
+                ctx.allocate_lane_id_fn = allocate_lane_id_fn_bridge;
+                ctx.retire_lane_id_fn = retire_lane_id_fn_bridge;
 
                 try {
                     cn.loader->process_audio(cn.instance, &ctx);

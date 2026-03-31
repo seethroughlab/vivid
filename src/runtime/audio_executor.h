@@ -1,6 +1,7 @@
 #pragma once
 
 #include "runtime/compiled_graph.h"
+#include "runtime/lane_state.h"
 #include "runtime/snapshot_types.h"
 #include <array>
 #include <atomic>
@@ -58,6 +59,9 @@ public:
     static constexpr uint32_t kBufferSize = 256;
     static constexpr uint32_t kSampleRate = 48000;
 
+    // Per-node lane state context (public for bridge callback access).
+    struct NodeLaneCtx { LaneStateService* service; uint32_t node_idx; };
+
 private:
     void audio_callback(float* output, uint32_t frame_count);
     static void ma_data_callback(ma_device* device, void* output,
@@ -71,6 +75,10 @@ private:
     // Lane lift groups for pointwise operators in multi-lane chains
     std::vector<LaneLiftGroup> lane_lift_groups_;
     std::unordered_map<uint32_t, uint32_t> node_to_lift_group_;
+
+    // Per-lane persistent state service (Phase 5)
+    LaneStateService lane_state_;
+    std::vector<NodeLaneCtx> node_lane_contexts_;  // indexed by audio_order position
 
     // Waveform ring buffers for analysis
     std::vector<std::array<float, 1024>> waveform_rings_;

@@ -269,6 +269,11 @@ constexpr VividLaneBehavior get_lane_behavior() {
 }
 }} // namespace vivid::detail
 
+// Convenience macro: get identity-keyed per-lane persistent state from audio context.
+// Returns T* pointing to zero-initialized storage stable until lane retirement.
+#define vivid_lane_state(ctx, lane_id, T) \
+    static_cast<T*>((ctx)->lane_state_fn((ctx)->lane_state_service, (lane_id), sizeof(T)))
+
 // ---------------------------------------------------------------------------
 // VIVID_REGISTER(ClassName) — generates extern "C" entry points
 //

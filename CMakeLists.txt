@@ -2491,6 +2491,11 @@ target_link_libraries(test_lane_propagation PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_test(NAME test_lane_propagation COMMAND test_lane_propagation WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+add_executable(test_lane_state tests/test_lane_state.cpp)
+target_include_directories(test_lane_state PRIVATE src)
+target_link_libraries(test_lane_state PRIVATE vivid_operator_api)
+add_test(NAME test_lane_state COMMAND test_lane_state WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Undo coverage across roadmap mutation types via RuntimeCommandSink + RuntimeAPI
 add_executable(test_undo_mutation_types
     tests/test_undo_mutation_types.cpp

@@ -257,6 +257,18 @@ typedef struct VividAudioContext {
     uint32_t          lane_index;
     uint32_t          lane_set_id;
     uint32_t          lane_id;
+
+    // ---- Per-lane persistent state service (Phase 5) ----
+    // lane_state_fn: get identity-keyed state for (lane_id, byte_size).
+    //   RT-safe lookup; returns pre-allocated storage or scratch for new lanes.
+    void*    (*lane_state_fn)(void* service, uint32_t lane_id, uint32_t byte_size);
+    void*    lane_state_service;    // opaque pointer to LaneStateService
+
+    // ---- Lane identity allocation/retirement (for structural operators) ----
+    // allocate_lane_id_fn: returns a fresh monotonic uint32_t. Audio-thread safe.
+    // retire_lane_id_fn: marks lane_id for deferred cleanup (node_idx is implicit).
+    uint32_t (*allocate_lane_id_fn)(void* service);
+    void     (*retire_lane_id_fn)(void* service, uint32_t lane_id);
 } VividAudioContext;
 
 // ---------------------------------------------------------------------------
