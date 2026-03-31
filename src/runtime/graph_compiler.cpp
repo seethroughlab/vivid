@@ -117,6 +117,10 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
         cn.output_string_spreads.resize(cn.output_port_count);
     }
 
+    // Lane metadata (sized to port count, populated by Pass 2.6).
+    cn.input_lane_sets.resize(cn.input_port_count);
+    cn.output_lane_sets.resize(cn.output_port_count);
+
     // Spread port staging buffers
     cn.c_in_spreads.resize(cn.input_port_count);
     cn.c_out_spreads.resize(cn.output_port_count);
@@ -417,6 +421,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                 cn.active_cadence = Cadence::Frame;
             }
             cn.cadence_capability = desc->cadence_capability;
+            cn.lane_behavior = static_cast<LaneBehavior>(desc->lane_behavior);
             cn.operator_kind = vivid_operator_kind(desc);
             cn.original_cadence_override = ndef.cadence_override;
 
@@ -479,6 +484,8 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             cn.output_spreads.resize(cn.output_port_count);
             cn.input_string_spreads.resize(cn.input_port_count);
             cn.output_string_spreads.resize(cn.output_port_count);
+            cn.input_lane_sets.resize(cn.input_port_count);
+            cn.output_lane_sets.resize(cn.output_port_count);
 
             uint32_t pidx = 0;
             for (const auto& [pname, pval] : ndef.params) {
@@ -807,6 +814,134 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             if (e.transport == EdgeTransport::Direct) {
                 adj[e.from_node].push_back(e.to_node);
                 in_degree[e.to_node]++;
+            }
+        }
+    }
+
+    // ===================================================================
+    // Pass 2.6: Lane-set propagation
+    // ===================================================================
+    // Walk nodes in topological order and propagate lane-set metadata.
+    // Enforces legality: pointwise nodes may not receive inputs from
+    // different non-scalar lane sets. Structural nodes allocate fresh
+    // lane sets. Reductions emit scalar output.
+    //
+    // In Phase 2A all operators default to Pointwise, so this pass
+    // populates metadata but does not reject any existing graphs.
+    {
+        // We need a topo order for propagation. Use a temporary sort
+        // from the current adjacency (rebuilt at end of Pass 2.5).
+        auto lane_order = kahn_sort(n, adj, in_degree);
+        // If cycle detected, skip lane propagation — Pass 3 will catch it.
+        if (!lane_order.empty() || n == 0) {
+            for (uint32_t idx : lane_order) {
+                auto& cn = cg->nodes[idx];
+
+                // Collect non-scalar input lane sets from incoming Direct edges.
+                uint32_t resolved_lane_set_id = 0;
+                uint32_t resolved_lane_count  = 1;
+                bool     resolved_identity    = false;
+                bool     has_multi_lane       = false;
+                bool     lane_mismatch        = false;
+                std::string mismatch_src_a, mismatch_src_b;
+
+                for (const auto& e : cg->edges) {
+                    if (e.to_node != idx || e.transport != EdgeTransport::Direct || e.targets_param)
+                        continue;
+
+                    const auto& from_cn = cg->nodes[e.from_node];
+                    if (e.from_port >= from_cn.output_lane_sets.size())
+                        continue;
+
+                    const auto& src_ls = from_cn.output_lane_sets[e.from_port];
+                    if (src_ls.is_scalar())
+                        continue;
+
+                    if (!has_multi_lane) {
+                        // First non-scalar input — adopt it.
+                        resolved_lane_set_id = src_ls.lane_set_id;
+                        resolved_lane_count  = src_ls.lane_count;
+                        resolved_identity    = src_ls.identity_bearing;
+                        has_multi_lane       = true;
+                    } else if (src_ls.lane_set_id != resolved_lane_set_id) {
+                        lane_mismatch = true;
+                        if (mismatch_src_a.empty())
+                            mismatch_src_a = cg->nodes[e.from_node].node_id;
+                        mismatch_src_b = cg->nodes[e.from_node].node_id;
+                    } else {
+                        // Same lane_set_id — take the max count.
+                        if (src_ls.lane_count > resolved_lane_count)
+                            resolved_lane_count = src_ls.lane_count;
+                    }
+                }
+
+                // Enforce legality for Pointwise nodes: mismatched non-scalar
+                // lane sets are a hard compile failure.
+                if (lane_mismatch && cn.lane_behavior == LaneBehavior::Pointwise) {
+                    std::fprintf(stderr,
+                        "[vivid] GraphCompiler: lane-set mismatch at pointwise node '%s' "
+                        "(conflicting sources: '%s', '%s')\n",
+                        cn.node_id.c_str(), mismatch_src_a.c_str(),
+                        mismatch_src_b.c_str());
+                    return nullptr;
+                }
+
+                // Build the resolved input lane set.
+                LaneSet resolved;
+                resolved.lane_set_id     = resolved_lane_set_id;
+                resolved.lane_count      = resolved_lane_count;
+                resolved.identity_bearing = resolved_identity;
+
+                // Store per-input-port lane sets.
+                for (const auto& e : cg->edges) {
+                    if (e.to_node != idx || e.transport != EdgeTransport::Direct || e.targets_param)
+                        continue;
+                    if (e.to_port < cn.input_lane_sets.size()) {
+                        const auto& from_cn = cg->nodes[e.from_node];
+                        if (e.from_port < from_cn.output_lane_sets.size()) {
+                            const auto& src_ls = from_cn.output_lane_sets[e.from_port];
+                            if (src_ls.is_scalar()) {
+                                // Scalar broadcasts into the resolved lane set.
+                                cn.input_lane_sets[e.to_port] = resolved;
+                            } else {
+                                cn.input_lane_sets[e.to_port] = src_ls;
+                            }
+                        }
+                    }
+                }
+
+                // Set output lane sets based on lane behavior.
+                LaneSet output_ls;
+                switch (cn.lane_behavior) {
+                    case LaneBehavior::Pointwise:
+                    case LaneBehavior::Kernel:
+                        output_ls = resolved;
+                        break;
+                    case LaneBehavior::Structural:
+                        output_ls.lane_set_id = cg->next_lane_set_id++;
+                        output_ls.lane_count  = 1;  // runtime will set actual count
+                        output_ls.identity_bearing = false;
+                        break;
+                    case LaneBehavior::Reduction:
+                        output_ls.lane_set_id     = 0;
+                        output_ls.lane_count      = 1;
+                        output_ls.identity_bearing = false;
+                        break;
+                }
+
+                for (auto& ols : cn.output_lane_sets)
+                    ols = output_ls;
+
+                // Populate edge lane metadata for outgoing edges.
+                for (auto& e : cg->edges) {
+                    if (e.from_node != idx)
+                        continue;
+                    if (e.from_port < cn.output_lane_sets.size()) {
+                        const auto& ols = cn.output_lane_sets[e.from_port];
+                        e.lane_set_id = ols.lane_set_id;
+                        e.lane_count  = ols.lane_count;
+                    }
+                }
             }
         }
     }

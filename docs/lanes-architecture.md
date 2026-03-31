@@ -97,6 +97,10 @@ Today, Vivid often bundles these together:
 
 The lanes model disentangles these concerns.
 
+This separation is not only a conceptual cleanup. It is what makes the model compiler-reasonable. Payload compatibility, lane provenance, and identity effects must each be explicit enough that the runtime can decide whether an operator preserves, reshapes, or consumes a collection rather than inferring that from ad hoc storage conventions.
+
+The next question is: if Vivid were being designed from scratch today, what is the smallest model that should actually exist? The rest of this document answers that question directly and then expands outward from it.
+
 ## 4. Why Lanes, Not Just Width
 
 An alternate proposal framed this architecture around **width**. That proposal gets several important things right:
@@ -151,9 +155,116 @@ This proposal should be understood as a refinement of the width model:
 - avoid using `VIVID_PORT_SPREAD` as the long-term semantic boundary
 - keep nontrivial lane reshaping explicit
 
-## 5. Lane Sets
+The strongest lesson from the width model is not merely that Vivid needs a count-aware abstraction. It is that multiplicity semantics must be explicit enough to support correctness. In the target model, width remains a useful property, but legality depends on lane-set provenance and identity semantics, not cardinality alone.
+
+If Vivid were being designed from scratch today, the right next step would not be to add another mechanism. It would be to define the smallest correct model and make everything else a derivation or implementation strategy.
+
+## 5. Minimal Correct Runtime/Data Model
+
+If Vivid were being designed from scratch today, this is the **smallest correct model** I would choose.
+
+Anything beyond these primitives is either:
+
+- a derivation from them
+- or an implementation strategy beneath them
+
+### 5.1 Essential data model primitives
+
+The irreducible data model is:
+
+- **Graph**
+  - a collection of nodes and edges
+- **Node**
+  - an operator type plus parameter values and runtime-managed state
+- **Edge**
+  - a connection between one output and one input
+- **Value**
+  - `payload type + lane set`
+- **LaneSet**
+  - `lane_set_id + lane_count + optional identity/lifecycle`
+- **Cadence**
+  - `frame | audio`
+
+This is the minimum model that can describe:
+
+- scalar control
+- polyphony
+- FFT bins
+- particles and instancing
+- multichannel audio
+- cross-cadence runtime execution
+
+### 5.2 Essential operator model
+
+Every operator should declare one of four lane behaviors:
+
+- **Pointwise**
+- **Structural**
+- **Reduction**
+- **Kernel**
+
+These are the only operator-level multiplicity concepts the architecture should need.
+
+### 5.3 Essential runtime and compiler responsibilities
+
+A minimal correct runtime/compiler must perform:
+
+- **payload/type propagation**
+- **cadence propagation**
+- **lane-set propagation**
+- **runtime-owned per-lane state management where required**
+
+These are the responsibilities that make the model real. Everything else is secondary.
+
+### 5.4 Explicit non-primitives
+
+The following should **not** be treated as foundational concepts in the from-scratch model:
+
+- **Spreads**
+  - legacy representation vocabulary, but not the primitive
+- **Auto-dup**
+  - useful as one runtime strategy, but not the primitive
+- **Width alone**
+  - useful as lane count, but not rich enough to be the primitive
+- **Kernels as a separate graph model**
+  - useful as one operator behavior, but not a second multiplicity system
+
+`VIVID_PORT_SPREAD` is legacy representation vocabulary, not a target architectural primitive. In the target model, multiplicity is expressed only through lane-bearing values. No new semantics, operator behaviors, or public APIs should be introduced at the `SPREAD` layer.
+
+If `VIVID_PORT_SPREAD` survives temporarily during implementation, it does so only as an internal storage or transport detail and not as a semantic boundary.
+
+### 5.5 Summary table
+
+| Primitive | Role | Why it exists | What it replaces or absorbs |
+|-----------|------|---------------|-----------------------------|
+| **Value** | The thing that flows through edges | Separates payload from multiplicity | Scalar-vs-spread special casing |
+| **LaneSet** | The multiplicity primitive | Unifies one-to-many across domains | Spreads, voice-slot thinking, auto-dup semantics |
+| **Cadence** | Execution timing | Keeps “when” separate from “how many” | Overloaded domain semantics |
+| **Pointwise** | Default operator behavior | Makes one-lane authoring scale to N lanes | Duplicated scalar/spread operators |
+| **Structural** | Creates or reshapes lane sets | Makes multiplicity-changing behavior explicit | Ad hoc collection builders, hidden reshaping |
+| **Reduction** | Collapses many lanes to fewer lanes | Makes mixdown/select/aggregate behavior explicit | Implicit collapsing semantics |
+| **Kernel** | Cross-lane operator behavior | Supports neighborhood/full-collection access without a new graph model | Proposed third “kernel” mechanism |
+
+This section is the doctrinal center of the document. The sections that follow expand this minimal model rather than redefining it.
+
+### 5.6 Semantic legality rules
+
+The minimal model only stays coherent if legality is defined more strongly than “the counts happen to match.”
+
+- **Cardinality is necessary but not sufficient.**
+  - Equal lane count does not by itself prove that two multi-lane values are elementwise compatible.
+- **Provenance determines default alignment.**
+  - Sharing the same `lane_set_id` is the default proof that two multi-lane values are aligned lane-for-lane.
+- **Structural operators legalize reshape and remap.**
+  - Nontrivial cardinality or provenance changes become legal at explicit structural nodes rather than through incidental runtime behavior.
+- **Reductions legalize consumption.**
+  - Reduction nodes are the explicit places where an upstream lane set is intentionally collapsed and its lane-wise interpretation ceases to exist downstream.
+
+## 6. Lane Sets
 
 A **lane set** is the parallel collection over which a value exists.
+
+This section expands the `LaneSet` primitive introduced above.
 
 Examples:
 
@@ -164,7 +275,7 @@ Examples:
 - a list of file paths = string payload over many lanes
 - a particle parameter field = many-lane control value
 
-### 5.1 Lane count
+### 6.1 Lane count
 
 Lane count is the simplest property of a lane set.
 
@@ -173,7 +284,7 @@ Lane count is the simplest property of a lane set.
 
 This is the part the width proposal captures well.
 
-### 5.2 Positional lane sets
+### 6.2 Positional lane sets
 
 Some lane sets only need positional meaning:
 
@@ -183,7 +294,7 @@ Some lane sets only need positional meaning:
 
 For these, lane `i` is just “the ith element.”
 
-### 5.3 Identity-bearing lane sets
+### 6.3 Identity-bearing lane sets
 
 Some lane sets need stable identity and lifecycle:
 
@@ -193,7 +304,9 @@ Some lane sets need stable identity and lifecycle:
 
 For these, lane `i` is not just an index. It represents a specific evolving element. The runtime and operators may need to preserve state per lane as the lane set changes.
 
-### 5.4 Lane lifecycle
+Identity-bearing lane sets are not merely collections whose elements happen to be stateful. They are collections whose element continuity is part of program semantics. Any operator that preserves such a lane set must preserve lane identity unless it explicitly declares an identity transform.
+
+### 6.4 Lane lifecycle
 
 Identity-bearing lane sets may need lifecycle semantics:
 
@@ -205,7 +318,7 @@ Identity-bearing lane sets may need lifecycle semantics:
 
 This should not burden the common case, but the model must allow it.
 
-### 5.5 Scope of v1
+### 6.5 Scope of v1
 
 Version 1 of this design should support **one lane axis only**.
 
@@ -217,11 +330,13 @@ That means:
 
 It does **not** attempt to turn Vivid into a general multidimensional tensor system.
 
-## 6. Values and Ports
+## 7. Values and Ports
 
 The target model for a value is:
 
 > **payload type + lane set**
+
+This section expands the `Value = payload type + lane set` primitive introduced above.
 
 Examples:
 
@@ -231,7 +346,7 @@ Examples:
 - `string` over N lanes
 - `texture` over N lanes
 
-### 6.1 Ports primarily describe payload compatibility
+### 7.1 Ports primarily describe payload compatibility
 
 In the target architecture, ports primarily describe:
 
@@ -247,7 +362,7 @@ and toward:
 
 - base payload types plus lane-bearing values
 
-### 6.2 Payloads remain domain-native
+### 7.2 Payloads remain domain-native
 
 This is important for clarity.
 
@@ -263,11 +378,11 @@ What lanes unify is **parallel multiplicity**, not domain-native internal struct
 
 So audio sample time remains inside the audio payload. Texture pixels remain inside texture payloads. Lanes describe “how many parallel payloads” exist, not the internal dimensionality of the payload itself.
 
-## 7. Operator Lane Behaviors
+## 8. Operator Lane Behaviors
 
 Operators should declare how they behave over lanes. Four behavior classes are sufficient for the target model.
 
-### 7.1 Pointwise
+### 8.1 Pointwise
 
 A pointwise operator processes each lane independently and preserves lane structure.
 
@@ -284,7 +399,7 @@ Examples:
 
 This should be the default behavior for most operators.
 
-### 7.2 Structural
+### 8.2 Structural
 
 A structural operator creates, reshapes, reorders, or filters lanes.
 
@@ -300,7 +415,7 @@ Examples:
 
 This is where current spread-building and lane-shaping behavior belongs.
 
-### 7.3 Reduction
+### 8.3 Reduction
 
 A reduction operator combines many lanes into fewer lanes, often one.
 
@@ -315,7 +430,7 @@ Examples:
 
 This is the explicit answer to “many becomes one.”
 
-### 7.4 Kernel / Neighborhood
+### 8.4 Kernel / Neighborhood
 
 A kernel operator needs cross-lane access rather than pure per-lane independence.
 
@@ -328,11 +443,11 @@ Examples:
 
 This is where the “kernel” concept belongs. It is **not** a new graph model. It is simply one operator behavior over lane sets.
 
-## 8. Lane Propagation Rules
+## 9. Lane Propagation Rules
 
 The lane model should use strict and predictable propagation rules.
 
-### 8.1 Automatic scalar broadcast
+### 9.1 Automatic scalar broadcast
 
 This should be automatic:
 
@@ -344,7 +459,9 @@ This covers the most common and intuitive case:
 
 - one control modulating many elements
 
-### 8.2 Elementwise alignment
+Broadcast is the only implicit cardinality adaptation in the target model. It does not create a new lane set. It adapts a one-lane value into an existing destination lane set.
+
+### 9.2 Elementwise alignment
 
 This should also be automatic:
 
@@ -352,7 +469,7 @@ This should also be automatic:
 
 Two lane-aligned values combine elementwise.
 
-### 8.3 Non-scalar mismatches are explicit
+### 9.3 Non-scalar mismatches are explicit
 
 This should **not** be automatic:
 
@@ -371,13 +488,13 @@ These cases should require an explicit structural operator such as:
 
 This is a deliberate simplification over current spread wrapping behavior. It makes larger graphs easier to reason about because nontrivial reshaping becomes visible.
 
-### 8.4 Shape-preserving default
+### 9.4 Shape-preserving default
 
 Unless an operator explicitly declares structural or reduction behavior, it should preserve lane structure.
 
 This is one of the core simplifying rules of the whole architecture.
 
-### 8.5 Lane-set provenance
+### 9.5 Lane-set provenance
 
 Lane propagation should carry not only lane count, but also **lane-set provenance**.
 
@@ -387,7 +504,7 @@ This means the compiler/runtime should conceptually track:
 - whether two multi-lane inputs are lanes of the **same** set or merely have the same count
 - whether a node preserves, reshapes, reduces, or creates a new lane set
 
-The target model should therefore treat lane-set identity as something that flows through the compiled graph alongside payload type and cadence classification.
+The target model should therefore treat lane-set identity as something that flows through the compiled graph alongside payload type and cadence classification. Equal lane count is not enough; provenance is part of the legality model.
 
 Conceptually, every lane-bearing edge value should carry:
 
@@ -414,7 +531,7 @@ In implementation terms, this means the graph compiler will eventually need a la
 
 This is the missing link between “lane identity matters” and “how does the runtime know which lanes belong together?” The answer is: the compiled graph must explicitly track lane-set provenance, not infer it ad hoc from array length.
 
-### 8.6 Worked example: `poly_voice_allocator -> wavetable_osc -> voice_mixer`
+### 9.6 Worked example: `poly_voice_allocator -> wavetable_osc -> voice_mixer`
 
 The clearest way to make lane-set provenance concrete is to walk a real chain from `vivid-wavetable`.
 
@@ -633,7 +750,7 @@ So the compiler must be able to represent, at minimum:
 
 That is the practical meaning of lane-set provenance in a real patch.
 
-### 8.7 Lane identity quick reference
+### 9.7 Lane identity quick reference
 
 The lane model uses three related but distinct concepts:
 
@@ -651,7 +768,7 @@ The intended rule is:
 
 Only `lane_index` should be treated as a cheap positional convenience. Persistent operator state should never rely on `lane_index` remaining stable.
 
-### 8.8 Worked example: `fft_analysis -> instanced_shapes`
+### 9.8 Worked example: `fft_analysis -> instanced_shapes`
 
 Not every lane set needs stable identity. The clearest positional-only example is FFT-driven visual instancing.
 
@@ -766,19 +883,19 @@ That distinction is why the architecture should separate:
 
 under one common lane-set model rather than forcing every case into the same heavy-weight semantics.
 
-## 9. Runtime Execution Model
+## 10. Runtime Execution Model
 
 The user should see one concept: lanes.
 
 The runtime should be free to choose the best evaluation strategy for that concept.
 
-### 9.1 Scalar fast path
+### 10.1 Scalar fast path
 
 When lane count is `1`, runtime behavior should be equivalent to today’s scalar fast path.
 
 This keeps the common case cheap.
 
-### 9.2 Instance duplication
+### 10.2 Instance duplication
 
 For some operators and some lane counts, the runtime may evaluate lanes by duplicating operator instances.
 
@@ -786,7 +903,7 @@ This is closest to today’s auto-dup behavior and has one strong property:
 
 - independent operator state per lane comes “for free” because each lane has its own instance
 
-### 9.3 Loop-based evaluation
+### 10.3 Loop-based evaluation
 
 For larger lane counts, instance duplication may be too heavy. The runtime may instead:
 
@@ -796,13 +913,13 @@ For larger lane counts, instance duplication may be too heavy. The runtime may i
 
 This is conceptually similar to how some current multi-slot operators work by hand, but generalized by the runtime.
 
-### 9.4 Future GPU-backed evaluation
+### 10.4 Future GPU-backed evaluation
 
 For very large lane counts, especially in GPU-facing scenarios, the runtime may choose GPU-backed evaluation strategies.
 
 This should remain an implementation detail. The graph model should not change.
 
-### 9.5 Semantic invariants
+### 10.5 Semantic invariants
 
 This is the most important execution-rule constraint:
 
@@ -810,9 +927,15 @@ This is the most important execution-rule constraint:
 
 If the runtime switches from duplicated instances to loop-based evaluation, the user-facing behavior must remain the same. This implies a stronger operator contract than today’s scattered mechanisms.
 
-## 10. Runtime Representation in Vivid
+### 10.6 Backend equivalence constraints
+
+Backend choice is an optimization boundary, not a semantic boundary. A runtime is only free to switch among instance-based, loop-based, or GPU-backed execution when lane order, lane identity, per-lane state continuity, and operator-declared structural/reduction behavior remain observably identical.
+
+## 11. Runtime Representation in Vivid
 
 The current runtime is already close enough to make the target direction concrete.
+
+This section explains how the minimal model maps onto current runtime structures.
 
 Relevant current components include:
 
@@ -824,7 +947,7 @@ Relevant current components include:
 
 The target architecture would conceptually change each of these.
 
-### 10.1 Compiled graph
+### 11.1 Compiled graph
 
 Today, `CompiledNode` state is split across:
 
@@ -845,9 +968,11 @@ Concretely, the compiled graph will eventually need to represent, per relevant p
 - lane provenance (`lane_set_id`)
 - lane behavior expectations at the operator boundary
 
+In the target model, lane-set provenance is not advisory metadata. It is part of the compiled graph’s legality model in the same way that payload compatibility and cadence classification are.
+
 That does not require an immediate “one container type everywhere” rewrite, but it does require that the compiler stop treating spread buffers, audio channel multiplicity, and future kernel-like multiplicity as unrelated cases.
 
-### 10.2 Frame execution
+### 11.2 Frame execution
 
 Today, frame execution propagates:
 
@@ -867,7 +992,7 @@ The target direction is:
 
 Frame execution should stop treating “spread” as the one special collection case.
 
-### 10.3 Audio execution
+### 11.3 Audio execution
 
 Today, audio execution contains a special mechanism for mono operators in multichannel chains: auto-dup.
 
@@ -879,7 +1004,7 @@ The target direction is:
 
 Audio sample-time structure remains distinct from lane multiplicity.
 
-### 10.4 Cadence bridge
+### 11.4 Cadence bridge
 
 Today, cross-cadence transport special-cases:
 
@@ -895,7 +1020,7 @@ The target direction is:
 
 The bridge may still need size-dependent transport strategies, but that should not affect the graph model.
 
-### 10.5 Operator state
+### 11.5 Operator state
 
 The runtime must support both:
 
@@ -954,17 +1079,18 @@ This also defines what happens when lanes are reordered or compacted:
 
 For purely positional lane sets, the runtime can optimize away most of this machinery. But for identity-bearing lane sets, especially voices and persistent simulation elements, this contract needs to be explicit in the architecture.
 
-## 11. Target Operator API
+## 12. Target Operator API
 
 The target operator API should make the lane model concrete without burdening the common case.
 
-### 11.1 Descriptor-level concepts
+### 12.1 Descriptor-level concepts
 
 An operator descriptor conceptually needs to declare:
 
 - base payload compatibility
 - lane behavior
 - lane capability constraints
+- identity effect on lane sets
 - optional stateful-lane contract when relevant
 
 Examples of capability constraints:
@@ -975,7 +1101,16 @@ Examples of capability constraints:
 - reduction
 - kernel / full-lane access
 
-### 11.2 Common-case authoring model
+Identity effects should be described in terms like:
+
+- preserves identity
+- allocates new identity
+- remaps identity
+- consumes identity
+
+Most pointwise operators default to identity-preserving behavior. Structural operators must define their identity effect explicitly. Reductions consume identity-bearing lane sets unless otherwise stated.
+
+### 12.2 Common-case authoring model
 
 The common case should be simple:
 
@@ -985,7 +1120,7 @@ The common case should be simple:
 
 This is one of the main reasons the lanes approach is worth doing.
 
-### 11.3 Pointwise operator context
+### 12.3 Pointwise operator context
 
 A pointwise operator may conceptually need:
 
@@ -1005,7 +1140,7 @@ For stateful pointwise operators, the target API should additionally distinguish
 
 That distinction is what makes voice-preserving or simulation-preserving behavior possible without forcing every operator to manage its own slot maps.
 
-### 11.4 Structural / reduction / kernel contexts
+### 12.4 Structural / reduction / kernel contexts
 
 These operators may need richer access:
 
@@ -1016,7 +1151,7 @@ These operators may need richer access:
 
 This is where full collection access belongs.
 
-### 11.5 Lane identity access
+### 12.5 Lane identity access
 
 Operators that need persistent per-lane state should have a lane identity mechanism available.
 
@@ -1034,14 +1169,28 @@ The intended rule is:
 - stateful pointwise operators with identity-bearing lane sets care about `lane_id`
 - structural operators are the primary place where new lane identities are created, preserved, remapped, or discarded
 
-## 12. Cross-Cadence Behavior
+### 12.6 Identity effects by lane behavior
+
+- **Pointwise**
+  - default: preserves `lane_set_id`
+  - preserves `lane_id` when the lane set is identity-bearing
+- **Structural**
+  - must declare whether it preserves, remaps, allocates, or discards lane identity
+- **Reduction**
+  - consumes upstream lane identities as part of collapsing the lane set
+- **Kernel**
+  - usually preserves upstream lane identity unless explicitly documented otherwise
+
+## 13. Cross-Cadence Behavior
 
 Lanes must work coherently across the current two-cadence runtime:
 
 - frame cadence
 - audio cadence
 
-### 12.1 Frame-to-audio
+Crossing a cadence boundary must not reinterpret lane semantics. A frame-to-audio or audio-to-frame bridge may change transport strategy or storage representation, but it may not silently change lane count, lane provenance, or identity behavior unless the crossing node is itself structural or reductive.
+
+### 13.1 Frame-to-audio
 
 Lane-valued control data sent into audio should preserve lane semantics.
 
@@ -1056,7 +1205,7 @@ The bridge should preserve:
 - lane order
 - lane identity where relevant to the receiving operator contract
 
-### 12.2 Audio-to-frame
+### 13.2 Audio-to-frame
 
 Lane-valued audio-derived data sent back to frame should also preserve lane semantics.
 
@@ -1066,7 +1215,7 @@ Examples:
 - FFT-like outputs
 - lane-valued metering or control signals
 
-### 12.3 Bridge scaling constraints
+### 13.3 Bridge scaling constraints
 
 Current snapshot infrastructure has hard limits and special cases. The target architecture should explicitly acknowledge that not all lane counts are equally cheap to transport across cadences.
 
@@ -1077,7 +1226,7 @@ So the model should distinguish:
 
 Lane semantics should remain consistent even when the runtime chooses different transport/storage backends for small and large lane counts.
 
-### 12.4 No new cadence model is required
+### 13.4 No new cadence model is required
 
 The lane proposal does **not** replace the current dual-cadence runtime model. It sits orthogonally to it.
 
@@ -1091,9 +1240,11 @@ Lanes answer:
 
 Keeping those concerns separate is important.
 
-## 13. What Happens to Existing Concepts
+## 14. What Happens to Existing Concepts
 
-### 13.1 Spreads
+These concepts are intentionally demoted in the target model. They may survive temporarily only as internal implementation residues during the refactor, but they are not architectural primitives and should not be extended as if they were.
+
+### 14.1 Spreads as legacy vocabulary
 
 Spreads stop being the long-term conceptual primitive.
 
@@ -1101,9 +1252,13 @@ In the target model:
 
 - a spread is just a lane-valued signal or string collection
 
-For transition purposes, spread ports may still exist, but the architecture should stop treating them as the foundation.
+This is the important architectural boundary: `VIVID_PORT_SPREAD` is legacy representation vocabulary, not the target abstraction. No new semantics, operator classes, or public APIs should be introduced at the `SPREAD` layer.
 
-### 13.2 Auto-dup
+### 14.2 Spread-compatible transition paths
+
+If `VIVID_PORT_SPREAD` survives temporarily during implementation, it survives only as an internal storage or transport detail while lane-bearing values replace spread-driven semantics. It is not a public compatibility surface, and it should be removed or fully demoted to a non-semantic representation detail once the clean lane runtime is in place.
+
+### 14.3 Auto-dup
 
 Auto-dup stops being a separate graph-visible concept.
 
@@ -1112,7 +1267,7 @@ Its useful behavior survives as:
 - pointwise lane lifting in audio
 - one possible runtime execution strategy
 
-### 13.3 Spread operators
+### 14.4 Spread operators
 
 Operators whose only reason for existing is “scalar operator but spread-aware” should eventually disappear or collapse into their ordinary pointwise equivalents.
 
@@ -1120,7 +1275,7 @@ Examples in spirit:
 
 - spread-specific versions of ordinary modulation operators
 
-### 13.4 Kernels
+### 14.5 Kernels
 
 Kernels should not become a new top-level graph abstraction.
 
@@ -1130,11 +1285,11 @@ They should be:
 
 That keeps the graph model unified instead of introducing a third one-to-many mechanism.
 
-## 14. `vivid-wavetable` as the Proof Case
+## 15. `vivid-wavetable` as the Proof Case
 
 `../vivid-wavetable` is one of the best possible stress tests for this architecture because it already demonstrates both the need for unification and the limits of a shallow width-only model.
 
-### 14.1 What the package does today
+### 15.1 What the package does today
 
 [poly_voice_allocator.cpp](/Users/jeff/Developer/vivid-wavetable/src/poly_voice_allocator.cpp) outputs:
 
@@ -1162,7 +1317,7 @@ This means the package currently uses:
 - channels for voice audio
 - manual operator logic to reconcile the two
 
-### 14.2 What this proves
+### 15.2 What this proves
 
 The package proves two things at once:
 
@@ -1180,7 +1335,9 @@ Why width/count is not enough:
 
 This is why the lane-set model is stronger than both the current spread model and a pure width-count model.
 
-### 14.3 Target reinterpretation under lanes
+In purity-first terms, `vivid-wavetable` demonstrates that voice-aligned values are not merely equal-width collections; they are values proven to belong to the same identity-bearing lane set.
+
+### 15.3 Target reinterpretation under lanes
 
 #### PolyVoiceAllocator
 
@@ -1206,7 +1363,16 @@ This becomes:
 
 This is conceptually much cleaner than “special operator that understands channelized voice audio plus spread control inputs.”
 
-## 15. Phased Implementation Plan: Vivid
+### 15.4 Identity preservation matrix
+
+| Behavior | Default lane-set effect | Default identity effect |
+|----------|--------------------------|-------------------------|
+| **Pointwise** | Preserves upstream lane set | Preserves identity |
+| **Structural** | May preserve, replace, reshape, or create lane sets | Must declare whether identity is preserved, remapped, allocated, or discarded |
+| **Reduction** | Consumes upstream lane set | Consumes upstream identity |
+| **Kernel** | Usually preserves upstream lane set | Usually preserves upstream identity unless documented otherwise |
+
+## 16. Phased Implementation Plan: Vivid
 
 This is a clean conceptual break with staged implementation.
 
@@ -1246,7 +1412,7 @@ This is a clean conceptual break with staged implementation.
 - update operator authoring docs/templates
 - make structural and reduction nodes visibly legible in the graph
 
-## 16. Phased Implementation Plan: `vivid-wavetable`
+## 17. Phased Implementation Plan: `vivid-wavetable`
 
 ### Phase 1: Voice lane-set model
 
@@ -1280,7 +1446,7 @@ Preserve and validate:
 - active-voice normalization
 - stereo spread / panning behavior
 
-## 17. Acceptance Scenarios
+## 18. Acceptance Scenarios
 
 The architecture should support all of these cleanly:
 
@@ -1295,8 +1461,11 @@ The architecture should support all of these cleanly:
 - FFT bins driving visuals using the same multiplicity model
 - particle or instance systems driven by lane-valued control data
 - `vivid-wavetable` voice allocation and oscillator state under stable lane identity
+- two multi-lane inputs with the same count but different `lane_set_id` do not combine elementwise without an explicit structural operator
+- compacting an identity-bearing lane set changes `lane_index` but preserves `lane_id`
+- switching runtime backend strategy does not change observable lane ordering, identity continuity, or reduction results
 
-## 18. Conclusion
+## 19. Conclusion
 
 Lanes are the right long-term architecture for Vivid.
 
@@ -1309,3 +1478,7 @@ Most importantly, lanes fit what Vivid is trying to be:
 - an environment where common creative patterns feel native rather than bolted on
 
 Spreads, auto-dup, and future kernel pressure are all evidence of the same missing idea. Lane sets provide that idea in a form that is simpler for users, better for operator authors, and more coherent for the runtime.
+
+That usability-first surface only works if the semantic core underneath is stricter. The lane architecture succeeds only if the compiler and runtime enforce provenance legality, identity preservation, and backend-equivalence rules rigorously even when the graph stays simple to author.
+
+The minimal correct model defined in Section 5 should therefore be treated as the recommended architectural baseline for future runtime, API, and package-design decisions.

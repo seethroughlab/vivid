@@ -2450,10 +2450,24 @@ add_executable(test_graph_compiler
 target_include_directories(test_graph_compiler PRIVATE src)
 target_link_libraries(test_graph_compiler PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json webgpu)
-add_dependencies(test_graph_compiler lfo gain)
+add_dependencies(test_graph_compiler lfo gain spread_noise)
 add_test(NAME test_graph_compiler
     COMMAND test_graph_compiler ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_lane_propagation
+    tests/test_lane_propagation.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/port_type_registry.cpp
+)
+target_include_directories(test_lane_propagation PRIVATE src)
+target_link_libraries(test_lane_propagation PRIVATE
+    vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_test(NAME test_lane_propagation COMMAND test_lane_propagation WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Undo coverage across roadmap mutation types via RuntimeCommandSink + RuntimeAPI
 add_executable(test_undo_mutation_types

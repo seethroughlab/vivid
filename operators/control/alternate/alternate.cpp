@@ -13,6 +13,7 @@
 struct Alternate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Alternate";
     static constexpr bool kTimeDependent = true;
+    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
 
     vivid::Param<int> cycle {"cycle", 2, {"Beat","2 Beats","Bar","2 Bars","4 Bars"}};
 

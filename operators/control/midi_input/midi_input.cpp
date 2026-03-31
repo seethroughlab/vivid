@@ -21,6 +21,7 @@
 struct MidiInput : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "MidiInput";
     static constexpr bool kTimeDependent = true;
+    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
 
     // Params (order matters — indices used for CC learn write-back)
     vivid::Param<int>  device   {"device",    0, 0, 15};    // [0]

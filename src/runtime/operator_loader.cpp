@@ -66,6 +66,7 @@ bool hot_reload_descriptor_compatible(const VividOperatorDescriptor* old_desc,
     if (old_desc->has_process_gpu != new_desc->has_process_gpu) return false;
     if (!hot_reload_param_layout_compatible(old_desc, new_desc)) return false;
     if (!hot_reload_port_layout_compatible(old_desc, new_desc)) return false;
+    if (old_desc->lane_behavior != new_desc->lane_behavior) return false;
     return true;
 }
 } // namespace

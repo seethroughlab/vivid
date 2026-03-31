@@ -4,6 +4,7 @@
 #include "runtime/cadence_types.h"
 #include "runtime/operator_loader.h"
 #include "runtime/gpu_frame_analysis.h"
+#include "runtime/lane_types.h"
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -87,6 +88,10 @@ struct CompiledEdge {
     uint32_t custom_type_id = 0;
     VividPortTransport port_transport = VIVID_PORT_TRANSPORT_SIGNAL;
     uint32_t custom_payload_size = 0;
+
+    // Lane metadata (populated by compiler Pass 2.6).
+    uint32_t lane_set_id = 0;    // 0 = scalar
+    uint32_t lane_count  = 1;
 
     // Remap helpers.
     bool has_remap() const {
@@ -308,6 +313,11 @@ struct CompiledNode {
     std::unique_ptr<OperatorLoader> owned_loader;
 
     bool missing_operator = false;
+
+    // ── Lane metadata (populated by compiler Pass 2.6) ────────────────────
+    LaneBehavior lane_behavior = LaneBehavior::Pointwise;
+    std::vector<LaneSet> output_lane_sets;
+    std::vector<LaneSet> input_lane_sets;
 };
 
 // ---------------------------------------------------------------------------
@@ -355,6 +365,9 @@ struct CompiledGraph {
 
     // Check if any audio-cadence node instances of a given type exist.
     // Scans only audio_order (typically 2-5 nodes), not all nodes.
+    // Lane-set ID allocator (0 reserved for scalar).
+    uint32_t next_lane_set_id = 1;
+
     bool has_audio_cadence_instances(const std::string& type_name) const {
         for (uint32_t ni : audio_order) {
             if (nodes[ni].type_name == type_name) return true;

@@ -11,6 +11,7 @@
 struct Stack : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Stack";
     static constexpr bool kTimeDependent = false;
+    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
 
     vivid::Param<int> mode {"mode", 0, {"Concat","Interleave"}};
 

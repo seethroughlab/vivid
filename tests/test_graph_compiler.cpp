@@ -8,6 +8,7 @@
 #include "runtime/graph_compiler.h"
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
+#include "runtime/lane_types.h"
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -326,6 +327,62 @@ static void test_node_id_to_index() {
 }
 
 // ---------------------------------------------------------------------------
+// Test: Lane behavior from real operator descriptors
+// ---------------------------------------------------------------------------
+
+static void test_lane_behavior_from_descriptor(const std::string& build_dir) {
+    std::fprintf(stderr, "\n--- compile: lane behavior from descriptor ---\n");
+
+    const std::string staging = build_dir + "/.test_lane_behavior_staging";
+    std::filesystem::remove_all(staging);
+    std::filesystem::create_directories(staging);
+
+    auto stage = [&](const char* name) {
+        std::string src = build_dir + "/" + name;
+        std::string dst = staging + "/" + name;
+        if (std::filesystem::exists(src))
+            std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing);
+    };
+    stage("spread_noise.dylib");
+    stage("lfo.dylib");
+
+    vivid::OperatorRegistry registry;
+    registry.scan_deferred(staging.c_str());
+
+    // Build a graph: SpreadNoise → LFO (via param connection or port)
+    vivid::Graph g;
+    g.add_node("sn", "SpreadNoise");
+    g.add_node("lfo1", "LFO");
+
+    vivid::GraphCompiler::Options opts;
+    auto cg = vivid::GraphCompiler::compile(g, registry, opts);
+    check(cg != nullptr, "compiles with real operators");
+    if (!cg) return;
+
+    auto* sn = cg->find_node("sn");
+    auto* lfo = cg->find_node("lfo1");
+    check(sn != nullptr, "SpreadNoise node found");
+    check(lfo != nullptr, "LFO node found");
+    if (!sn || !lfo) return;
+
+    check(sn->lane_behavior == vivid::LaneBehavior::Structural,
+          "SpreadNoise classified as Structural");
+    check(lfo->lane_behavior == vivid::LaneBehavior::Pointwise,
+          "LFO classified as Pointwise (default)");
+
+    // Structural node should have gotten a fresh lane_set_id on its outputs.
+    bool has_fresh_id = false;
+    for (const auto& ls : sn->output_lane_sets) {
+        if (ls.lane_set_id != 0)
+            has_fresh_id = true;
+    }
+    check(has_fresh_id, "SpreadNoise outputs have fresh lane_set_id");
+    check(cg->next_lane_set_id > 1, "lane_set_id counter advanced");
+
+    std::filesystem::remove_all(staging);
+}
+
+// ---------------------------------------------------------------------------
 
 int main(int argc, char* argv[]) {
     std::string build_dir = ".";
@@ -342,6 +399,7 @@ int main(int argc, char* argv[]) {
     test_disconnected_nodes();
     test_mixed_real_and_missing(build_dir);
     test_node_id_to_index();
+    test_lane_behavior_from_descriptor(build_dir);
 
     std::fprintf(stderr, "\n%s (%d failures)\n", failures == 0 ? "PASSED" : "FAILED", failures);
     return failures > 0 ? 1 : 0;

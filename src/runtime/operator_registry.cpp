@@ -344,6 +344,7 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
     entry.desc.has_process_gpu = src->has_process_gpu;
     entry.desc.has_process_frame = src->has_process_frame;
     entry.desc.cadence_capability = src->cadence_capability;
+    entry.desc.lane_behavior = src->lane_behavior;
 
     entry.file_drop_handlers.resize(file_drop_count);
     entry.file_drop_labels.resize(file_drop_count);

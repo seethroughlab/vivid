@@ -253,6 +253,22 @@ inline void append_analysis_ports(std::vector<VividPortDescriptor>& out) {
 
 } // namespace vivid
 
+// C++17-compatible detection of static constexpr kLaneBehavior member.
+namespace vivid { namespace detail {
+template <typename T, typename = void>
+struct has_lane_behavior : std::false_type {};
+template <typename T>
+struct has_lane_behavior<T, std::void_t<decltype(T::kLaneBehavior)>> : std::true_type {};
+
+template <typename T>
+constexpr VividLaneBehavior get_lane_behavior() {
+    if constexpr (has_lane_behavior<T>::value)
+        return T::kLaneBehavior;
+    else
+        return VIVID_LANE_POINTWISE;
+}
+}} // namespace vivid::detail
+
 // ---------------------------------------------------------------------------
 // VIVID_REGISTER(ClassName) — generates extern "C" entry points
 //
@@ -380,6 +396,8 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
             desc.cadence_capability = VIVID_CADENCE_AUDIO_ONLY;               \
         else                                                                  \
             desc.cadence_capability = VIVID_CADENCE_FRAME_ONLY;               \
+        /* Lane behavior: detect kLaneBehavior if declared, else Pointwise. */\
+        desc.lane_behavior = vivid::detail::get_lane_behavior<ClassName>();   \
         desc.param_count    = static_cast<uint32_t>(s_params.size());         \
         desc.params         = s_params.data();                                \
         desc.port_count     = static_cast<uint32_t>(s_ports.size());          \

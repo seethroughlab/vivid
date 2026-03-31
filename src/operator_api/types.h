@@ -8,7 +8,7 @@ extern "C" {
 
 /* Bump when operator-facing C ABI changes in incompatible ways.
    Catches stale dylibs during hot-reload — not a cross-version compatibility promise. */
-#define VIVID_OPERATOR_ABI_VERSION 2u
+#define VIVID_OPERATOR_ABI_VERSION 3u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -40,6 +40,13 @@ typedef uint32_t VividCadenceCapability;
 #define VIVID_CADENCE_FRAME_ONLY     0u  // can only run at frame rate
 #define VIVID_CADENCE_AUDIO_CAPABLE  1u  // implements both process_frame and process_audio; can be promoted
 #define VIVID_CADENCE_AUDIO_ONLY     2u  // implements only process_audio; always runs at audio rate
+
+// Lane behavior — how an operator interacts with lane multiplicity.
+typedef uint32_t VividLaneBehavior;
+#define VIVID_LANE_POINTWISE   0u  // processes each lane independently, preserves lane set
+#define VIVID_LANE_STRUCTURAL  1u  // creates, reshapes, reorders, or filters lanes
+#define VIVID_LANE_REDUCTION   2u  // collapses many lanes into fewer (often one)
+#define VIVID_LANE_KERNEL      3u  // needs cross-lane access (neighborhood / full collection)
 
 typedef uint32_t VividParamType;
 #define VIVID_PARAM_FLOAT  0u
@@ -136,6 +143,9 @@ typedef struct VividOperatorDescriptor {
     // Cadence-aware execution model (v15+)
     VividCadenceCapability    cadence_capability;    // FRAME_ONLY, AUDIO_CAPABLE, or AUDIO_ONLY
     int                       has_process_frame;     // 1 if operator implements FrameProcessable
+
+    // Lane behavior (v3+)
+    VividLaneBehavior         lane_behavior;         // POINTWISE, STRUCTURAL, REDUCTION, or KERNEL
 } VividOperatorDescriptor;
 
 // Derive operator kind from capability flags (replaces stored field, v18+).
