@@ -424,6 +424,64 @@ static void test_lane_mismatch_fails(const std::string& build_dir) {
 }
 
 // ---------------------------------------------------------------------------
+// Test: Audio lane lifting from structural spread input
+// ---------------------------------------------------------------------------
+
+static void test_audio_lane_lift_from_spread(const std::string& build_dir) {
+    std::fprintf(stderr, "\n--- compile: audio lane lift from spread input ---\n");
+
+    const std::string staging = build_dir + "/.test_audio_lane_lift_staging";
+    std::filesystem::remove_all(staging);
+    std::filesystem::create_directories(staging);
+
+    auto stage = [&](const char* name) {
+        std::string src = build_dir + "/" + name;
+        std::string dst = staging + "/" + name;
+        if (std::filesystem::exists(src))
+            std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing);
+    };
+    stage("spread_noise.dylib");
+    stage("lane_metadata_audio_op.dylib");
+
+    vivid::OperatorRegistry registry;
+    registry.scan_deferred(staging.c_str());
+
+    // SpreadNoise (Structural, frame-cadence) → LaneMetadataAudioOp (Pointwise, audio-cadence)
+    // The audio op receives a non-scalar lane-bearing input via cadence bridge.
+    // Currently, non-audio lane-bearing inputs do NOT trigger audio lane lifting
+    // because structural outputs have runtime-dynamic lane counts that can't be
+    // pre-allocated at compile time. This test verifies the provenance metadata
+    // is present on input_lane_sets even without lifting.
+    vivid::Graph g;
+    g.add_node("sn", "SpreadNoise");
+    g.add_node("audio_meta", "LaneMetadataAudioOp");
+    g.add_connection("sn", "values", "audio_meta", "input");
+
+    vivid::GraphCompiler::Options opts;
+    auto cg = vivid::GraphCompiler::compile(g, registry, opts);
+    check(cg != nullptr, "compiles with spread → audio path");
+    if (!cg) { std::filesystem::remove_all(staging); return; }
+
+    auto* sn = cg->find_node("sn");
+    auto* audio_meta = cg->find_node("audio_meta");
+    check(sn != nullptr, "SpreadNoise node found");
+    check(audio_meta != nullptr, "LaneMetadataAudioOp node found");
+
+    if (audio_meta) {
+        // The audio op should have non-scalar input lane set provenance
+        // from the structural upstream, even without lane lifting.
+        bool has_non_scalar = false;
+        for (const auto& ils : audio_meta->input_lane_sets) {
+            if (!ils.is_scalar()) has_non_scalar = true;
+        }
+        check(has_non_scalar,
+              "audio op has non-scalar input lane set from structural source");
+    }
+
+    std::filesystem::remove_all(staging);
+}
+
+// ---------------------------------------------------------------------------
 
 int main(int argc, char* argv[]) {
     std::string build_dir = ".";
@@ -442,6 +500,7 @@ int main(int argc, char* argv[]) {
     test_node_id_to_index();
     test_lane_behavior_from_descriptor(build_dir);
     test_lane_mismatch_fails(build_dir);
+    test_audio_lane_lift_from_spread(build_dir);
 
     std::fprintf(stderr, "\n%s (%d failures)\n", failures == 0 ? "PASSED" : "FAILED", failures);
     return failures > 0 ? 1 : 0;

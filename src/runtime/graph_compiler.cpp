@@ -1109,6 +1109,12 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             for (auto& ch : a.input_channel_counts) ch = 1;
             for (auto& ch : a.output_channel_counts) ch = 1;
         }
+
+        // NOTE: Non-audio lane-bearing inputs (spread/control from structural
+        // operators) do NOT yet trigger audio lane lifting. Structural outputs
+        // have runtime-dynamic lane counts that can't be pre-allocated at
+        // compile time. Runtime-dynamic lane lifting requires the per-lane
+        // state service from Phase 5.
     }
 
     // ===================================================================
