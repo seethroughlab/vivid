@@ -15,6 +15,20 @@ namespace vivid {
 
 static constexpr uint32_t kMaxSpreadCapacity = 1024;
 
+// Bridge functions for lane state service (frame-thread variant).
+static void* frame_lane_state_fn_bridge(void* ctx_ptr, uint32_t lane_id, uint32_t byte_size) {
+    auto* lsc = static_cast<FrameExecutor::NodeLaneCtx*>(ctx_ptr);
+    return lsc->service->get(lsc->node_idx, lane_id, byte_size);
+}
+static uint32_t frame_allocate_lane_id_fn_bridge(void* ctx_ptr) {
+    auto* lsc = static_cast<FrameExecutor::NodeLaneCtx*>(ctx_ptr);
+    return lsc->service->allocate_lane_id();
+}
+static void frame_retire_lane_id_fn_bridge(void* ctx_ptr, uint32_t lane_id) {
+    auto* lsc = static_cast<FrameExecutor::NodeLaneCtx*>(ctx_ptr);
+    lsc->service->retire(lsc->node_idx, lane_id);
+}
+
 void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
                          uint64_t frame, void* gpu_state,
                          PostNodeFn on_gpu_node,
@@ -22,7 +36,19 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
     // Reset per-tick flags
     for (auto& cn : cg.nodes) cn.processed_this_tick = false;
 
-    for (uint32_t ni : cg.frame_order) {
+    // Initialize per-node lane contexts for LoopBased frame operators.
+    // Always reinitialize (not just on size change) because a rebuild can
+    // produce a different graph with the same frame_order length but
+    // different node indices.
+    frame_lane_contexts_.resize(cg.frame_order.size());
+    for (uint32_t i = 0; i < static_cast<uint32_t>(cg.frame_order.size()); ++i) {
+        frame_lane_contexts_[i].service = &frame_lane_state_;
+        frame_lane_contexts_[i].node_idx = cg.frame_order[i];
+    }
+    frame_lane_state_.sweep_retired();
+
+    for (uint32_t fi_ord = 0; fi_ord < static_cast<uint32_t>(cg.frame_order.size()); ++fi_ord) {
+        uint32_t ni = cg.frame_order[fi_ord];
         auto& cn = cg.nodes[ni];
 
         // Clear transient GPU shader error each tick
@@ -341,8 +367,122 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
                     needs_gpu_realloc_ = true;
                 }
             }
+        } else if (cn.frame_execution_strategy == LaneExecutionStrategy::LoopBased) {
+            // ── LoopBased frame processing: per-lane loop ──
+            // Discover lane count from max input spread length.
+            uint32_t loop_lanes = 0;
+            for (uint32_t p = 0; p < cn.input_port_count; ++p) {
+                if (p < cn.input_spreads.size() && cn.input_spreads[p].size() > loop_lanes)
+                    loop_lanes = static_cast<uint32_t>(cn.input_spreads[p].size());
+            }
+
+            // Read identity-bearing lane_ids from spread, or fall back to positional.
+            std::vector<uint32_t> loop_lane_ids(loop_lanes);
+            int32_t lid_port = cn.frame_lane_id_spread_port;
+            bool has_identity_ids = false;
+            if (lid_port >= 0 && static_cast<uint32_t>(lid_port) < cn.input_spreads.size()) {
+                const auto& lid_sp = cn.input_spreads[lid_port];
+                if (lid_sp.size() >= loop_lanes) {
+                    for (uint32_t c = 0; c < loop_lanes; ++c)
+                        loop_lane_ids[c] = static_cast<uint32_t>(lid_sp[c]);
+                    has_identity_ids = true;
+                }
+            }
+            if (!has_identity_ids) {
+                for (uint32_t c = 0; c < loop_lanes; ++c)
+                    loop_lane_ids[c] = c + 1;
+            }
+
+            // lane_set_id from compilation
+            uint32_t lane_set_id = 0;
+            for (const auto& ils : cn.input_lane_sets) {
+                if (!ils.is_scalar()) { lane_set_id = ils.lane_set_id; break; }
+            }
+
+            // Per-lane scratch for input/output values
+            std::vector<float> lane_input_values(cn.input_port_count, 0.0f);
+            std::vector<float> lane_output_values(cn.output_port_count, 0.0f);
+
+            // Ensure output spreads have capacity for all lanes
+            for (uint32_t p = 0; p < cn.output_port_count; ++p) {
+                if (cn.c_out_spreads[p].capacity >= loop_lanes)
+                    cn.c_out_spreads[p].length = loop_lanes;
+            }
+
+            for (uint32_t c = 0; c < loop_lanes; ++c) {
+                // Extract per-lane scalar from each input spread
+                for (uint32_t p = 0; p < cn.input_port_count; ++p) {
+                    if (p < cn.input_spreads.size() && c < cn.input_spreads[p].size())
+                        lane_input_values[p] = cn.input_spreads[p][c];
+                    else
+                        lane_input_values[p] = cn.input_values[p];  // scalar fallback
+                }
+
+                // Reset per-lane output
+                std::fill(lane_output_values.begin(), lane_output_values.end(), 0.0f);
+
+                VividFrameContext ctx{};
+                ctx.time = time;
+                ctx.delta_time = delta_time;
+                ctx.frame = frame;
+                ctx.param_values = cn.param_values.data();
+                ctx.input_values = lane_input_values.data();
+                ctx.output_values = lane_output_values.data();
+                ctx.input_spreads = cn.c_in_spreads.data();
+                ctx.output_spreads = cn.c_out_spreads.data();
+                ctx.custom_inputs = cn.resolved_custom_inputs.data();
+                ctx.custom_input_count = static_cast<uint32_t>(cn.resolved_custom_inputs.size());
+                ctx.custom_outputs = cn.custom_output_buf.data();
+                ctx.custom_output_count = static_cast<uint32_t>(cn.custom_output_buf.size());
+                ctx.input_string_values = cn.c_input_string_values.data();
+                ctx.output_string_values = cn.c_output_string_values.data();
+                ctx.input_string_spreads = cn.c_in_string_spreads.data();
+                ctx.output_string_spreads = cn.c_out_string_spreads.data();
+                ctx.file_param_values = cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data();
+                ctx.file_param_count = static_cast<uint32_t>(cn.file_param_ptrs.size());
+                ctx.input = const_cast<void*>(static_cast<const void*>(input));
+                ctx.shared_handles = vivid::shared_handle_service();
+                ctx.preferred_tex_width = 0;
+                ctx.preferred_tex_height = 0;
+                ctx.lane_count = loop_lanes;
+                ctx.lane_index = c;
+                ctx.lane_set_id = lane_set_id;
+                ctx.lane_id = loop_lane_ids[c];
+                ctx.lane_state_fn = frame_lane_state_fn_bridge;
+                ctx.lane_state_service = &frame_lane_contexts_[fi_ord];
+                ctx.allocate_lane_id_fn = frame_allocate_lane_id_fn_bridge;
+                ctx.retire_lane_id_fn = frame_retire_lane_id_fn_bridge;
+
+                try {
+                    cn.loader->process_frame(cn.instance, &ctx);
+                } catch (const std::exception& ex) {
+                    cn.errored = true;
+                    cn.error_message = ex.what();
+                    break;
+                } catch (...) {
+                    cn.errored = true;
+                    cn.error_message = "unknown exception in process_frame()";
+                    break;
+                }
+
+                // Write per-lane output into output spread
+                for (uint32_t p = 0; p < cn.output_port_count; ++p) {
+                    if (cn.c_out_spreads[p].length > c)
+                        cn.c_out_spreads[p].data[c] = lane_output_values[p];
+                }
+            }
+
+            // Set scalar output = first lane
+            for (uint32_t p = 0; p < cn.output_port_count; ++p) {
+                cn.output_values[p] = (loop_lanes > 0 && cn.c_out_spreads[p].length > 0)
+                    ? cn.c_out_spreads[p].data[0] : 0.0f;
+            }
+
+            if (cn.errored) {
+                std::fill(cn.output_values.begin(), cn.output_values.end(), 0.0f);
+            }
         } else {
-            // Control processing — build VividFrameContext
+            // ── Normal (non-lifted) control processing ──
             VividFrameContext ctx{};
             ctx.time = time;
             ctx.delta_time = delta_time;
@@ -368,7 +508,6 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             ctx.preferred_tex_height = 0;
 
             // Lane metadata.
-            // lane_count = runtime materialized count (max non-empty input spread length).
             uint32_t max_spread_len = 0;
             for (uint32_t p = 0; p < cn.input_port_count; ++p) {
                 if (p < cn.input_spreads.size() && !cn.input_spreads[p].empty())
@@ -377,7 +516,6 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             }
             ctx.lane_count = max_spread_len > 1 ? max_spread_len : 1;
             ctx.lane_index = 0;
-            // lane_set_id = compile-time provenance (first non-scalar input lane set).
             ctx.lane_set_id = 0;
             for (const auto& ils : cn.input_lane_sets) {
                 if (!ils.is_scalar()) { ctx.lane_set_id = ils.lane_set_id; break; }

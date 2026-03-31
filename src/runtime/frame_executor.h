@@ -1,6 +1,7 @@
 #pragma once
 
 #include "runtime/compiled_graph.h"
+#include "runtime/lane_state.h"
 #include <functional>
 #include <string>
 #include <vector>
@@ -54,6 +55,9 @@ public:
     // Lifecycle — release GPU textures and flush device.
     void shutdown_gpu(CompiledGraph& cg);
 
+    // Per-node lane state context for LoopBased frame operators.
+    struct NodeLaneCtx { LaneStateService* service; uint32_t node_idx; };
+
 private:
     int solo_node_idx_ = -1;
     std::vector<bool> solo_active_set_;
@@ -61,6 +65,10 @@ private:
     bool analysis_enabled_ = true;
     WGPUDevice gpu_device_ = nullptr;
     std::string operators_src_dir_;
+
+    // Lane state service for LoopBased frame operators.
+    LaneStateService frame_lane_state_;
+    std::vector<NodeLaneCtx> frame_lane_contexts_;
 
 public:
     void set_operators_src_dir(const std::string& dir) { operators_src_dir_ = dir; }

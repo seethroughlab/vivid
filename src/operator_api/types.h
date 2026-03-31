@@ -300,12 +300,16 @@ typedef struct VividFrameContext {
     const VividSharedHandleService* shared_handles; // runtime-owned process-wide handle service
 
     // ---- Lane metadata (read-only, populated by frame executor) ----
-    // lane_count: runtime materialized lane count (max input spread length, 1 = scalar).
-    // lane_index: always 0 in current implementation (no per-lane lifting yet).
-    // lane_set_id: compile-time provenance (0 = scalar, nonzero = upstream structural node).
-    uint32_t  lane_count;
-    uint32_t  lane_index;
-    uint32_t  lane_set_id;
+    uint32_t  lane_count;     // runtime materialized lane count (1 = scalar)
+    uint32_t  lane_index;     // current lane in LoopBased (0 = scalar or first lane)
+    uint32_t  lane_set_id;    // compile-time provenance (0 = scalar)
+    uint32_t  lane_id;        // stable identity token for vivid_lane_state() (0 = positional)
+
+    // ---- Lane state service (populated for LoopBased frame nodes) ----
+    void*     (*lane_state_fn)(void* service, uint32_t lane_id, uint32_t byte_size);
+    void*     lane_state_service;
+    uint32_t  (*allocate_lane_id_fn)(void* service);
+    void      (*retire_lane_id_fn)(void* service, uint32_t lane_id);
 
     // ---- Operator write-back: operator sets these during process_frame() ----
     // The runtime reads them after process_frame() returns and acts accordingly.
