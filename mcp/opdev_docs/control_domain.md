@@ -32,6 +32,9 @@ struct MyControlOp : vivid::OperatorBase, vivid::FrameProcessable {
 | `file_param_values` | `const char**` | File/text param string values |
 | `input` | `void*` | Cast to `VividInputState*` for interactive operators |
 | `shared_handles` | `VividSharedHandleService*` | Process-wide handle service |
+| `lane_count` | `uint32_t` | Runtime lane count (max input spread length, 1 = scalar) |
+| `lane_index` | `uint32_t` | Always 0 (no per-lane frame lifting yet) |
+| `lane_set_id` | `uint32_t` | Lane provenance (0 = scalar, nonzero = upstream structural node) |
 
 ### Write-back Fields
 | Field | Type | Description |

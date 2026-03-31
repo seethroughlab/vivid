@@ -32,6 +32,23 @@ struct MyAudioOp : vivid::OperatorBase, vivid::AudioProcessable {
 | `input_string_values` | `const char**` | String inputs |
 | `file_param_values` | `const char**` | File/text param values |
 | `shared_handles` | `VividSharedHandleService*` | Process-wide handle service |
+| `lane_count` | `uint32_t` | Number of lanes (1 = not lane-lifted) |
+| `lane_index` | `uint32_t` | Which lane this invocation processes (0..lane_count-1) |
+| `lane_set_id` | `uint32_t` | Lane provenance (0 = scalar) |
+| `lane_id` | `uint32_t` | Stable identity for identity-bearing lane sets (0 = positional) |
+| `lane_state_fn` | function pointer | Get per-lane persistent state keyed by lane_id |
+| `allocate_lane_id_fn` | function pointer | Allocate a fresh lane_id (structural operators) |
+| `retire_lane_id_fn` | function pointer | Retire a lane_id for deferred cleanup |
+
+## Lane Lifting
+
+Mono audio operators that receive multi-channel or multi-lane inputs are automatically **lane-lifted**: the runtime creates N instances and processes each lane independently. Each instance sees `lane_index` identifying its lane and `lane_count` for the total.
+
+For per-lane persistent state (e.g., oscillator phase), use `vivid_lane_state()`:
+```cpp
+struct Voice { double phase; float freq; };
+Voice& v = *vivid_lane_state(ctx, lane_id, Voice);
+```
 
 ## Planar Buffer Layout
 

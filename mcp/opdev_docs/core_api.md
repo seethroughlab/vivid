@@ -10,6 +10,19 @@ Every operator must:
 5. Override the capability-specific process method
 6. End the `.cpp` file with `VIVID_REGISTER(ClassName)`
 
+Optionally declare lane behavior (defaults to `VIVID_LANE_POINTWISE` if omitted):
+```cpp
+static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
+```
+
+Lane behavior classes:
+| Constant | Meaning |
+|----------|---------|
+| `VIVID_LANE_POINTWISE` | Processes each lane independently (default). Runtime may lift to N lanes. |
+| `VIVID_LANE_STRUCTURAL` | Creates, reshapes, or filters lane sets (e.g., voice allocator, collection generator). |
+| `VIVID_LANE_REDUCTION` | Collapses many lanes into fewer (e.g., voice mixer, sum). |
+| `VIVID_LANE_KERNEL` | Reads full lane set with cross-lane access (e.g., smoothing, convolution). |
+
 ```cpp
 #include "operator_api/operator.h"
 
@@ -58,7 +71,7 @@ Params are declared as member variables. The runtime syncs `ctx->param_values` i
 | `VIVID_PORT_SIGNAL` | `control_float` | Scalar control signals |
 | `VIVID_PORT_AUDIO` | `audio_float` | Audio sample buffers |
 | `VIVID_PORT_TEXTURE` | `gpu_texture` | GPU textures |
-| `VIVID_PORT_SPREAD` | spread | Variable-length float arrays |
+| `VIVID_PORT_SPREAD` | spread | Variable-length float arrays (lane-bearing data transport) |
 | `VIVID_PORT_STRING` | string | UTF-8 strings |
 | `VIVID_PORT_STRING_SPREAD` | string spread | Variable-length string arrays |
 

@@ -195,3 +195,43 @@ Reference operators for advanced patterns — study these when implementing spec
 | GPU compute buffers | `gpu/texture_analysis` |
 | Custom thumbnails | `control/envelope`, `control/clock`, `control/smooth` |
 | Audio analysis / FFT | `control/fft_analysis`, `audio/audio_analysis` |
+
+## Lane Behavior and Identity-Bearing Lane Sets
+
+### Declaring Lane Behavior
+
+```cpp
+static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
+```
+
+If omitted, the operator defaults to `VIVID_LANE_POINTWISE`.
+
+### Behavior Classes
+
+- **Pointwise** (default): processes one lane at a time. The runtime may create N instances for multi-lane inputs (lane lifting). Most operators are pointwise.
+- **Structural**: creates, reshapes, or filters lane sets. Outputs get a fresh lane-set provenance. Example: voice allocator, collection generator.
+- **Reduction**: collapses many lanes into fewer. Example: voice mixer, sum.
+- **Kernel**: reads the full lane set with cross-lane access. Not lane-lifted; runs as a single instance with full spread data. Example: lane smoothing, FFT-bin interpolation.
+
+### Per-Lane Persistent State
+
+Audio operators can use `vivid_lane_state()` for persistent state keyed by lane identity (not positional index):
+
+```cpp
+struct Voice { double phase; float current_freq; bool was_gated; };
+uint32_t lid = /* lane_id from upstream allocator */;
+Voice& v = *vivid_lane_state(ctx, lid, Voice);
+// v.phase, v.current_freq, etc. survive across callbacks for this lane_id
+```
+
+The state is zero-initialized on first access and stable until the lane_id is retired.
+
+### Identity Allocation and Retirement
+
+Structural operators that manage voice lifecycle call:
+```cpp
+uint32_t new_id = ctx->allocate_lane_id_fn(ctx->lane_state_service);  // fresh identity
+ctx->retire_lane_id_fn(ctx->lane_state_service, old_id);              // deferred cleanup
+```
+
+Lane IDs are monotonic `uint32_t` values. Retirement triggers deferred cleanup on the next frame tick.

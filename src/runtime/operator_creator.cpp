@@ -288,7 +288,8 @@ static std::string control_template(const std::string& name, const std::string& 
     emit_custom_type_support(s, effective_ports);
     s << "struct " << struct_name << " : vivid::OperatorBase, vivid::FrameProcessable {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
-    s << "    static constexpr bool kTimeDependent = false;\n\n";
+    s << "    static constexpr bool kTimeDependent = false;\n";
+    s << "    // Lane behavior: VIVID_LANE_POINTWISE (default), STRUCTURAL, REDUCTION, or KERNEL\n\n";
 
     // Param declarations
     for (const auto& p : effective_params)
@@ -366,7 +367,8 @@ static std::string audio_template(const std::string& name, const std::string& st
     emit_custom_type_support(s, effective_ports);
     s << "struct " << struct_name << " : vivid::OperatorBase, vivid::AudioProcessable {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
-    s << "    static constexpr bool kTimeDependent = true;\n\n";
+    s << "    static constexpr bool kTimeDependent = true;\n";
+    s << "    // Lane behavior: VIVID_LANE_POINTWISE (default), STRUCTURAL, REDUCTION, or KERNEL\n\n";
 
     for (const auto& p : effective_params)
         emit_param_declaration(s, p);
@@ -444,7 +446,8 @@ static std::string gpu_template(const std::string& name, const std::string& stru
     emit_custom_type_support(s, effective_ports);
     s << "struct " << struct_name << " : vivid::WgslFilterBase {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
-    s << "    static constexpr bool kTimeDependent = true;\n\n";
+    s << "    static constexpr bool kTimeDependent = true;\n";
+    s << "    // Lane behavior: VIVID_LANE_POINTWISE (default), STRUCTURAL, REDUCTION, or KERNEL\n\n";
 
     for (const auto& p : effective_params)
         emit_param_declaration(s, p);
@@ -487,7 +490,8 @@ static std::string composite_control_template(const std::string& name, const std
     s << "// vivid_composable_ops through a *_composable.cpp support file.\n\n";
     s << "struct " << struct_name << " : vivid::OperatorBase, vivid::FrameProcessable {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
-    s << "    static constexpr bool kTimeDependent = true;\n\n";
+    s << "    static constexpr bool kTimeDependent = true;\n";
+    s << "    // Lane behavior: VIVID_LANE_POINTWISE (default), STRUCTURAL, REDUCTION, or KERNEL\n\n";
     s << "    vivid::Param<float> amount   {\"amount\",    1.0f, 0.0f, 10.0f};\n";
     s << "    vivid::Param<float> lfo_rate {\"lfo_rate\",  2.0f, 0.01f, 20.0f};\n";
     s << "    vivid::Param<float> lfo_depth{\"lfo_depth\", 0.5f, 0.0f, 1.0f};\n";
@@ -547,7 +551,8 @@ static std::string empty_control_template(const std::string& struct_name) {
     s << "// inspectors, thumbnails), see examples in operators/ or use MCP opdev tools.\n\n";
     s << "struct " << struct_name << " : vivid::OperatorBase, vivid::FrameProcessable {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
-    s << "    static constexpr bool kTimeDependent = false;\n\n";
+    s << "    static constexpr bool kTimeDependent = false;\n";
+    s << "    // Lane behavior: VIVID_LANE_POINTWISE (default), STRUCTURAL, REDUCTION, or KERNEL\n\n";
     s << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {}\n\n";
     s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
     s << "        out.push_back({\"input\",  VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});\n";
@@ -568,7 +573,8 @@ static std::string empty_audio_template(const std::string& struct_name) {
     s << "// inspectors, thumbnails), see examples in operators/ or use MCP opdev tools.\n\n";
     s << "struct " << struct_name << " : vivid::OperatorBase, vivid::AudioProcessable {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
-    s << "    static constexpr bool kTimeDependent = true;\n\n";
+    s << "    static constexpr bool kTimeDependent = true;\n";
+    s << "    // Lane behavior: VIVID_LANE_POINTWISE (default), STRUCTURAL, REDUCTION, or KERNEL\n\n";
     s << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {}\n\n";
     s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
     s << "        out.push_back({\"input\",  VIVID_PORT_AUDIO, VIVID_PORT_INPUT});\n";
@@ -594,7 +600,8 @@ static std::string empty_gpu_template(const std::string& name, const std::string
     s << "// inspectors, thumbnails), see examples in operators/ or use MCP opdev tools.\n\n";
     s << "struct " << struct_name << " : vivid::WgslFilterBase {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
-    s << "    static constexpr bool kTimeDependent = true;\n\n";
+    s << "    static constexpr bool kTimeDependent = true;\n";
+    s << "    // Lane behavior: VIVID_LANE_POINTWISE (default), STRUCTURAL, REDUCTION, or KERNEL\n\n";
     s << "    " << struct_name << "() : WgslFilterBase(\"" << name << ".wgsl\") {}\n\n";
     s << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {}\n\n";
     s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
