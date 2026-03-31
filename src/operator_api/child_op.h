@@ -189,7 +189,7 @@ public:
     // -- Audio-cadence process -----------------------------------------------
     // Call this instead of process() when the parent runs at audio cadence.
     // Forwards the parent's VividAudioContext to the child with correct
-    // sample_rate, shared_handles, and channel_index.
+    // sample_rate, shared_handles, and lane metadata.
 
     void process_audio(const VividAudioContext* parent_ctx) {
         sync_params_();
@@ -226,7 +226,10 @@ public:
             child_ctx.file_param_values   = nullptr;
             child_ctx.file_param_count    = 0;
             child_ctx.shared_handles      = parent_ctx->shared_handles;
-            child_ctx.channel_index       = parent_ctx->channel_index;
+            child_ctx.lane_count          = parent_ctx->lane_count;
+            child_ctx.lane_index          = parent_ctx->lane_index;
+            child_ctx.lane_set_id         = parent_ctx->lane_set_id;
+            child_ctx.lane_id             = parent_ctx->lane_id;
 
             op_.process_audio(&child_ctx);
 

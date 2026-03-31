@@ -283,7 +283,8 @@ void GraphCompiler::init_audio_state(CompiledNode& cn,
     // Channel counts default to 1; channel negotiation (Pass 4) will override
     a.input_channel_counts.assign(cn.input_port_count, 1);
     a.output_channel_counts.assign(cn.output_port_count, 1);
-    a.is_mono_autodup = false;
+    a.lane_lift_count = 0;
+    a.lane_lift_set_id = 0;
 
     // Audio buffers (will be resized during channel negotiation)
     a.buffers_in.resize(cn.input_port_count,
@@ -1057,10 +1058,18 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         }
     }
 
-    // Pass 4c: Detect mono auto-dup candidates
+    // Pass 4c: Detect lane-liftable pointwise audio operators.
+    // A pointwise audio operator with all-mono audio ports that receives
+    // multi-channel audio input (or multi-lane spread input) is lane-lifted:
+    // the runtime creates N instances and processes each lane independently.
     for (uint32_t idx : cg->audio_order) {
         auto& a = *cg->nodes[idx].audio;
         auto& cn = cg->nodes[idx];
+
+        // Only pointwise operators are lane-lifted.
+        if (cn.lane_behavior != LaneBehavior::Pointwise) continue;
+
+        // Check that all audio ports are mono (descriptor says 1 channel).
         bool all_mono = true;
         for (uint32_t p = 0; p < cn.input_port_count && all_mono; ++p) {
             if (p < a.descriptor_input_channels.size() &&
@@ -1076,6 +1085,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         }
         if (!all_mono) continue;
 
+        // Find max incoming audio channel count (lane lifting for stereo/multichannel).
         uint8_t max_wire_ch = 1;
         for (const auto& e : cg->edges) {
             if (e.to_node == idx && e.transport == EdgeTransport::Direct &&
@@ -1087,8 +1097,15 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                 if (src_ch > max_wire_ch) max_wire_ch = src_ch;
             }
         }
+
         if (max_wire_ch > 1) {
-            a.is_mono_autodup = true;
+            a.lane_lift_count = max_wire_ch;
+            // Use the lane_set_id from the node's resolved input lane sets if available,
+            // otherwise use 0 (positional channel-based lifting).
+            a.lane_lift_set_id = 0;
+            for (const auto& ils : cn.input_lane_sets) {
+                if (!ils.is_scalar()) { a.lane_lift_set_id = ils.lane_set_id; break; }
+            }
             for (auto& ch : a.input_channel_counts) ch = 1;
             for (auto& ch : a.output_channel_counts) ch = 1;
         }
@@ -1103,22 +1120,13 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         auto& a = *cn.audio;
         uint32_t bs = options.audio_buffer_size;
 
-        if (a.is_mono_autodup) {
-            // Find max incoming wire channel count for buffer sizing
-            uint8_t wire_ch = 1;
-            for (const auto& e : cg->edges) {
-                if (e.to_node == idx && e.transport == EdgeTransport::Direct && !e.targets_param) {
-                    uint8_t src_ch = 1;
-                    auto& from_a = cg->nodes[e.from_node].audio;
-                    if (from_a && e.from_port < from_a->output_channel_counts.size())
-                        src_ch = from_a->output_channel_counts[e.from_port];
-                    if (src_ch > wire_ch) wire_ch = src_ch;
-                }
-            }
+        if (a.lane_lift_count > 0) {
+            // Lane-lifted: allocate multi-lane buffers (one mono buffer per lane).
+            uint32_t lanes = a.lane_lift_count;
             for (uint32_t p = 0; p < cn.input_port_count; ++p)
-                a.buffers_in[p].resize(wire_ch * bs, 0.0f);
+                a.buffers_in[p].resize(lanes * bs, 0.0f);
             for (uint32_t p = 0; p < cn.output_port_count; ++p)
-                a.buffers_out[p].resize(wire_ch * bs, 0.0f);
+                a.buffers_out[p].resize(lanes * bs, 0.0f);
         } else {
             for (uint32_t p = 0; p < cn.input_port_count; ++p)
                 a.buffers_in[p].resize(a.input_channel_counts[p] * bs, 0.0f);
@@ -1142,8 +1150,8 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         auto& from_a = *cg->nodes[e.from_node].audio;
         auto& to_cn = cg->nodes[e.to_node];
 
-        if (from_a.is_mono_autodup) {
-            // Trace back to find upstream channel count
+        if (from_a.lane_lift_count > 0) {
+            // Lane-lifted: trace back to find upstream channel count
             uint8_t ch = 1;
             for (const auto& ue : cg->edges) {
                 if (ue.to_node == e.from_node && ue.transport == EdgeTransport::Direct && !ue.targets_param) {
@@ -1159,8 +1167,8 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             e.from_channels = from_a.output_channel_counts[e.from_port];
         }
 
-        if (to_cn.audio && to_cn.audio->is_mono_autodup) {
-            e.to_channels = e.from_channels;  // auto-dup matches source
+        if (to_cn.audio && to_cn.audio->lane_lift_count > 0) {
+            e.to_channels = e.from_channels;  // lane-lifted: matches source
         } else if (to_cn.audio && e.to_port < to_cn.audio->input_channel_counts.size()) {
             e.to_channels = to_cn.audio->input_channel_counts[e.to_port];
         }

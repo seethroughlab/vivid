@@ -247,10 +247,16 @@ typedef struct VividAudioContext {
     const char**      file_param_values;
     uint32_t          file_param_count;
     const VividSharedHandleService* shared_handles;
-    // Auto-dup channel index: 0 for normal operators; for auto-dup mono operators
-    // in multi-channel chains, identifies which channel this instance processes.
-    // Operators can use this to index into spread data for per-voice modulation.
-    uint8_t           channel_index;
+
+    // ---- Lane metadata (populated by audio executor) ----
+    // lane_count: number of lanes this node is lifted over (1 = not lifted).
+    // lane_index: which lane this invocation processes (0..lane_count-1).
+    // lane_set_id: compile-time provenance (0 = scalar).
+    // lane_id: stable identity token for identity-bearing lane sets (0 = positional).
+    uint32_t          lane_count;
+    uint32_t          lane_index;
+    uint32_t          lane_set_id;
+    uint32_t          lane_id;
 } VividAudioContext;
 
 // ---------------------------------------------------------------------------
@@ -279,6 +285,14 @@ typedef struct VividFrameContext {
     uint32_t     file_param_count;
     void*     input;          // VividInputState* for interactive operators, NULL otherwise
     const VividSharedHandleService* shared_handles; // runtime-owned process-wide handle service
+
+    // ---- Lane metadata (read-only, populated by frame executor) ----
+    // lane_count: runtime materialized lane count (max input spread length, 1 = scalar).
+    // lane_index: always 0 in current implementation (no per-lane lifting yet).
+    // lane_set_id: compile-time provenance (0 = scalar, nonzero = upstream structural node).
+    uint32_t  lane_count;
+    uint32_t  lane_index;
+    uint32_t  lane_set_id;
 
     // ---- Operator write-back: operator sets these during process_frame() ----
     // The runtime reads them after process_frame() returns and acts accordingly.

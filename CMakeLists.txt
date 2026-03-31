@@ -1236,6 +1236,7 @@ add_vivid_operator(audio_throwing_op  tests/operators/audio_throwing_op.cpp)
 add_vivid_operator(control_pass_op    tests/operators/control_pass_op.cpp)
 add_vivid_operator(spread_source_op   tests/operators/spread_source_op.cpp)
 add_vivid_operator(spread_sink_op     tests/operators/spread_sink_op.cpp)
+add_vivid_operator(lane_metadata_op   tests/operators/lane_metadata_op.cpp)
 add_vivid_operator(audio_spread_op    tests/operators/audio_spread_op.cpp)
 
 # AudioEngine integration test (null audio backend, no GPU, no window)
@@ -1819,6 +1820,26 @@ target_link_libraries(test_spread_broadcast PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_dependencies(test_spread_broadcast spread_source_op spread_sink_op)
 add_test(NAME test_spread_broadcast COMMAND test_spread_broadcast WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Lane metadata runtime test
+configure_file(tests/graphs/test_lane_metadata.json ${CMAKE_BINARY_DIR}/test_lane_metadata.json COPYONLY)
+add_executable(test_lane_metadata
+    tests/test_lane_metadata.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
+)
+target_include_directories(test_lane_metadata PRIVATE src)
+target_link_libraries(test_lane_metadata PRIVATE
+    vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_dependencies(test_lane_metadata spread_source_op lane_metadata_op)
+add_test(NAME test_lane_metadata COMMAND test_lane_metadata WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Audio spread wire integration test
 add_executable(test_audio_spread_wire

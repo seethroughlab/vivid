@@ -18,6 +18,7 @@ struct SpreadSnapshot {
     static constexpr uint32_t kMaxLength = 64;
     float data[kMaxLength] = {};
     uint32_t length = 0;
+    uint32_t lane_set_id = 0;  // provenance metadata across cadence boundary
 };
 
 struct CustomPortSnapshot {
@@ -68,16 +69,19 @@ struct RecordingTap {
     std::atomic<bool> active{false};    // main thread toggles
 };
 
-// Auto-duplication group: runs a mono operator N times for N-channel wires
-struct AutoDupGroup {
+// Lane lift group: runs a pointwise operator once per lane.
+// Replaces the old AutoDupGroup (which ran mono operators per audio channel).
+struct LaneLiftGroup {
     uint32_t node_idx;
-    uint8_t  channel_count;          // e.g. 2 for stereo
-    std::vector<void*> instances;    // [channel] → operator instance (instances[0] = primary)
-    // Per-instance mono buffers for process() calls
-    std::vector<std::vector<std::vector<float>>> per_ch_inputs;  // [ch][port][sample]
-    std::vector<std::vector<std::vector<float>>> per_ch_outputs; // [ch][port][sample]
-    std::vector<std::vector<float*>> per_ch_in_ptrs;  // [ch][port]
-    std::vector<std::vector<float*>> per_ch_out_ptrs;  // [ch][port]
+    uint32_t lane_count;             // number of lanes to lift over
+    uint32_t lane_set_id;            // provenance of the lane set
+    std::vector<void*> instances;    // [lane] → operator instance (instances[0] = primary)
+    std::vector<uint32_t> lane_ids;  // [lane] → stable identity (0 = positional)
+    // Per-lane mono buffers for process() calls
+    std::vector<std::vector<std::vector<float>>> per_lane_inputs;  // [lane][port][sample]
+    std::vector<std::vector<std::vector<float>>> per_lane_outputs; // [lane][port][sample]
+    std::vector<std::vector<float*>> per_lane_in_ptrs;  // [lane][port]
+    std::vector<std::vector<float*>> per_lane_out_ptrs;  // [lane][port]
 };
 
 } // namespace vivid

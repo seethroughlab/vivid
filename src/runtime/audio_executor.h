@@ -68,9 +68,9 @@ private:
 
     int sink_node_idx_ = -1;
 
-    // Auto-duplication groups for mono operators in multi-channel chains
-    std::vector<AutoDupGroup> auto_dup_groups_;
-    std::unordered_map<uint32_t, uint32_t> node_to_dup_group_;
+    // Lane lift groups for pointwise operators in multi-lane chains
+    std::vector<LaneLiftGroup> lane_lift_groups_;
+    std::unordered_map<uint32_t, uint32_t> node_to_lift_group_;
 
     // Waveform ring buffers for analysis
     std::vector<std::array<float, 1024>> waveform_rings_;

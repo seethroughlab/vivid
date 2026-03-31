@@ -82,7 +82,7 @@ struct Filter : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"output",       VIVID_PORT_AUDIO,  VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
         out.push_back({"cutoff_cv",    VIVID_PORT_SIGNAL, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         out.push_back({"resonance_cv", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
-        // Spread inputs for per-voice modulation (used via channel_index in auto-dup)
+        // Spread inputs for per-voice modulation (indexed via lane_index in lane-lifted chains)
         out.push_back({"cutoff_mod",   VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
         out.push_back({"frequencies",  VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
         vivid::append_analysis_ports(out);
@@ -98,11 +98,11 @@ struct Filter : vivid::OperatorBase, vivid::AudioProcessable {
         float cutoff_cv_val    = ctx->input_float_values ? ctx->input_float_values[0] : 0.0f;
         float resonance_cv_val = ctx->input_float_values ? ctx->input_float_values[1] : 0.0f;
 
-        // Spread inputs via channel_index (for auto-dup poly chains)
+        // Spread inputs via lane_index (for lane-lifted poly chains)
         float cutoff_mod_val = 0.0f;
         float voice_freq = 0.0f;
         if (ctx->input_spreads) {
-            uint8_t ci = ctx->channel_index;
+            uint32_t ci = ctx->lane_index;
             auto& cutoff_mod_sp = ctx->input_spreads[0];  // cutoff_mod spread
             if (cutoff_mod_sp.data && ci < cutoff_mod_sp.length)
                 cutoff_mod_val = cutoff_mod_sp.data[ci];

@@ -28,8 +28,8 @@ bool AudioExecutor::build(CadenceBridge& bridge, CompiledGraph& cg) {
     bridge_ = &bridge;
     graph_ = &cg;
     sink_node_idx_ = -1;
-    auto_dup_groups_.clear();
-    node_to_dup_group_.clear();
+    lane_lift_groups_.clear();
+    node_to_lift_group_.clear();
 
     if (cg.audio_order.empty()) return false;
 
@@ -41,55 +41,48 @@ bool AudioExecutor::build(CadenceBridge& bridge, CompiledGraph& cg) {
         }
     }
 
-    // Set up auto-dup groups for mono operators in multi-channel chains
+    // Set up lane lift groups for pointwise operators with multi-lane inputs
     for (uint32_t idx : cg.audio_order) {
         auto& cn = cg.nodes[idx];
-        if (!cn.audio || !cn.audio->is_mono_autodup || !cn.loader) continue;
+        if (!cn.audio || cn.audio->lane_lift_count <= 1 || !cn.loader) continue;
 
-        // Find max incoming wire channel count
-        uint8_t ch_count = 1;
-        for (const auto& e : cg.edges) {
-            if (e.to_node == idx && e.transport == EdgeTransport::Direct && !e.targets_param) {
-                uint8_t src_ch = 1;
-                auto& from_a = cg.nodes[e.from_node].audio;
-                if (from_a && e.from_port < from_a->output_channel_counts.size())
-                    src_ch = from_a->output_channel_counts[e.from_port];
-                if (src_ch > ch_count) ch_count = src_ch;
-            }
-        }
-        if (ch_count <= 1) continue;
+        uint32_t lanes = cn.audio->lane_lift_count;
 
-        AutoDupGroup group;
+        LaneLiftGroup group;
         group.node_idx = idx;
-        group.channel_count = ch_count;
+        group.lane_count = lanes;
+        group.lane_set_id = cn.audio->lane_lift_set_id;
 
-        // Create additional instances (channel 0 uses primary instance)
-        group.instances.resize(ch_count);
+        // Create additional instances (lane 0 uses primary instance)
+        group.instances.resize(lanes);
         group.instances[0] = cn.instance;
-        for (uint8_t c = 1; c < ch_count; ++c)
+        for (uint32_t c = 1; c < lanes; ++c)
             group.instances[c] = cn.loader->create_instance();
 
-        // Allocate per-channel mono buffers
-        group.per_ch_inputs.resize(ch_count);
-        group.per_ch_outputs.resize(ch_count);
-        group.per_ch_in_ptrs.resize(ch_count);
-        group.per_ch_out_ptrs.resize(ch_count);
-        for (uint8_t c = 0; c < ch_count; ++c) {
-            group.per_ch_inputs[c].resize(cn.input_port_count,
+        // Lane IDs: positional for now (identity-bearing lane sets come in Phase 5)
+        group.lane_ids.assign(lanes, 0);
+
+        // Allocate per-lane mono buffers
+        group.per_lane_inputs.resize(lanes);
+        group.per_lane_outputs.resize(lanes);
+        group.per_lane_in_ptrs.resize(lanes);
+        group.per_lane_out_ptrs.resize(lanes);
+        for (uint32_t c = 0; c < lanes; ++c) {
+            group.per_lane_inputs[c].resize(cn.input_port_count,
                 std::vector<float>(kBufferSize, 0.0f));
-            group.per_ch_outputs[c].resize(cn.output_port_count,
+            group.per_lane_outputs[c].resize(cn.output_port_count,
                 std::vector<float>(kBufferSize, 0.0f));
-            group.per_ch_in_ptrs[c].resize(cn.input_port_count);
-            group.per_ch_out_ptrs[c].resize(cn.output_port_count);
+            group.per_lane_in_ptrs[c].resize(cn.input_port_count);
+            group.per_lane_out_ptrs[c].resize(cn.output_port_count);
             for (uint32_t p = 0; p < cn.input_port_count; ++p)
-                group.per_ch_in_ptrs[c][p] = group.per_ch_inputs[c][p].data();
+                group.per_lane_in_ptrs[c][p] = group.per_lane_inputs[c][p].data();
             for (uint32_t p = 0; p < cn.output_port_count; ++p)
-                group.per_ch_out_ptrs[c][p] = group.per_ch_outputs[c][p].data();
+                group.per_lane_out_ptrs[c][p] = group.per_lane_outputs[c][p].data();
         }
 
-        uint32_t group_idx = static_cast<uint32_t>(auto_dup_groups_.size());
-        node_to_dup_group_[idx] = group_idx;
-        auto_dup_groups_.push_back(std::move(group));
+        uint32_t group_idx = static_cast<uint32_t>(lane_lift_groups_.size());
+        node_to_lift_group_[idx] = group_idx;
+        lane_lift_groups_.push_back(std::move(group));
     }
 
     // Allocate waveform ring buffers
@@ -144,8 +137,8 @@ void AudioExecutor::shutdown() {
     }
     running_ = false;
 
-    // Destroy auto-dup extra instances
-    for (auto& group : auto_dup_groups_) {
+    // Destroy lane-lift extra instances
+    for (auto& group : lane_lift_groups_) {
         if (group.node_idx < graph_->nodes.size()) {
             auto& cn = graph_->nodes[group.node_idx];
             for (size_t c = 1; c < group.instances.size(); ++c) {
@@ -154,8 +147,8 @@ void AudioExecutor::shutdown() {
             }
         }
     }
-    auto_dup_groups_.clear();
-    node_to_dup_group_.clear();
+    lane_lift_groups_.clear();
+    node_to_lift_group_.clear();
 }
 
 void AudioExecutor::pause() {
@@ -368,36 +361,36 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 cn.c_out_spreads[p].capacity = static_cast<uint32_t>(cn.out_spread_buf[p].size());
             }
 
-            // Check for auto-dup processing
-            auto dup_it = node_to_dup_group_.find(ni);
-            if (dup_it != node_to_dup_group_.end()) {
-                // ── Auto-dup: deinterleave → per-channel process → interleave ──
-                auto& group = auto_dup_groups_[dup_it->second];
-                uint8_t ch = group.channel_count;
+            // Check for lane-lifted processing
+            auto lift_it = node_to_lift_group_.find(ni);
+            if (lift_it != node_to_lift_group_.end()) {
+                // ── Lane-lifted: deinterleave → per-lane process → interleave ──
+                auto& group = lane_lift_groups_[lift_it->second];
+                uint32_t lanes = group.lane_count;
 
-                // Deinterleave: extract channel c from multi-channel buffers into per-channel mono buffers
-                for (uint8_t c = 0; c < ch; ++c) {
+                // Deinterleave: extract lane c from multi-lane buffers into per-lane mono buffers
+                for (uint32_t c = 0; c < lanes; ++c) {
                     for (uint32_t p = 0; p < cn.input_port_count; ++p) {
                         if (p < cn.input_port_types.size() && cn.input_port_types[p] == VIVID_PORT_AUDIO) {
                             const float* mc = a.buffers_in[p].data() + c * kBufferSize;
-                            std::memcpy(group.per_ch_inputs[c][p].data(), mc, chunk * sizeof(float));
+                            std::memcpy(group.per_lane_inputs[c][p].data(), mc, chunk * sizeof(float));
                         } else {
-                            // Non-audio ports: copy same data to all channels
-                            std::memcpy(group.per_ch_inputs[c][p].data(),
+                            // Non-audio ports: broadcast same data to all lanes
+                            std::memcpy(group.per_lane_inputs[c][p].data(),
                                         a.buffers_in[p].data(), chunk * sizeof(float));
                         }
                     }
                 }
 
-                // Process each channel instance
-                for (uint8_t c = 0; c < ch; ++c) {
+                // Process each lane instance
+                for (uint32_t c = 0; c < lanes; ++c) {
                     VividAudioContext ctx{};
                     ctx.time = node_time;
                     ctx.delta_time = static_cast<double>(chunk) / kSampleRate;
                     ctx.frame = audio_frame_ + frames_written;
                     ctx.param_values = cn.param_values.data();
-                    ctx.input_buffers = group.per_ch_in_ptrs[c].data();
-                    ctx.output_buffers = group.per_ch_out_ptrs[c].data();
+                    ctx.input_buffers = group.per_lane_in_ptrs[c].data();
+                    ctx.output_buffers = group.per_lane_out_ptrs[c].data();
                     ctx.buffer_size = chunk;
                     ctx.sample_rate = kSampleRate;
                     ctx.input_channel_counts = nullptr;  // mono view
@@ -414,7 +407,10 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                     ctx.shared_handles = vivid::shared_handle_service();
                     ctx.file_param_values = cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data();
                     ctx.file_param_count = static_cast<uint32_t>(cn.file_param_ptrs.size());
-                    ctx.channel_index = c;
+                    ctx.lane_count = lanes;
+                    ctx.lane_index = c;
+                    ctx.lane_set_id = group.lane_set_id;
+                    ctx.lane_id = group.lane_ids[c];
 
                     try {
                         cn.loader->process_audio(group.instances[c], &ctx);
@@ -432,18 +428,18 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                     for (auto& buf : a.buffers_out)
                         std::memset(buf.data(), 0, buf.size() * sizeof(float));
                 } else {
-                    // Interleave: copy per-channel mono output back into multi-channel output buffers
-                    for (uint8_t c = 0; c < ch; ++c) {
+                    // Interleave: copy per-lane mono output back into multi-lane output buffers
+                    for (uint32_t c = 0; c < lanes; ++c) {
                         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
                             if (p < cn.output_port_types.size() && cn.output_port_types[p] == VIVID_PORT_AUDIO) {
                                 float* mc = a.buffers_out[p].data() + c * kBufferSize;
-                                std::memcpy(mc, group.per_ch_outputs[c][p].data(), chunk * sizeof(float));
+                                std::memcpy(mc, group.per_lane_outputs[c][p].data(), chunk * sizeof(float));
                             }
                         }
                     }
                 }
             } else {
-                // ── Normal (non-dup) processing ──
+                // ── Normal (non-lifted) processing ──
                 VividAudioContext ctx{};
                 ctx.time = node_time;
                 ctx.delta_time = static_cast<double>(chunk) / kSampleRate;
@@ -467,7 +463,10 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 ctx.shared_handles = vivid::shared_handle_service();
                 ctx.file_param_values = cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data();
                 ctx.file_param_count = static_cast<uint32_t>(cn.file_param_ptrs.size());
-                ctx.channel_index = 0;
+                ctx.lane_count = 1;
+                ctx.lane_index = 0;
+                ctx.lane_set_id = 0;
+                ctx.lane_id = 0;
 
                 try {
                     cn.loader->process_audio(cn.instance, &ctx);
