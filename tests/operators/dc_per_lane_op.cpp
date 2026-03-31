@@ -22,7 +22,7 @@ struct DcPerLaneOp : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"input",  VIVID_PORT_AUDIO, VIVID_PORT_INPUT});
         out.push_back({"output", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT});
         // Spread input to receive structural upstream (triggers LoopBased)
-        out.push_back({"lanes",  VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
+        out.push_back({"lanes",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
     }
 
     void process_audio(const VividAudioContext* ctx) override {

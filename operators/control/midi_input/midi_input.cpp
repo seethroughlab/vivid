@@ -45,9 +45,9 @@ struct MidiInput : vivid::OperatorBase, vivid::FrameProcessable {
         out.push_back({"pitch_bend", VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});  // [4]
         out.push_back({"mod_wheel",  VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});  // [5]
         out.push_back({"cc_value",   VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});  // [6]
-        out.push_back({"notes",      VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // [7]
-        out.push_back({"velocities", VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // [8]
-        out.push_back({"gates",      VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // [9]
+        out.push_back({"notes",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // [7]
+        out.push_back({"velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // [8]
+        out.push_back({"gates",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // [9]
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));  // [10]
     }
 
@@ -188,10 +188,10 @@ struct MidiInput : vivid::OperatorBase, vivid::FrameProcessable {
         ctx->output_values[6] = cc_values_[cc_idx];                     // cc_value
 
         // Write spread outputs: all currently held notes
-        if (ctx->output_spreads) {
-            auto& notes_sp = ctx->output_spreads[7];
-            auto& vel_sp   = ctx->output_spreads[8];
-            auto& gates_sp = ctx->output_spreads[9];
+        if (ctx->output_lanes) {
+            auto& notes_sp = ctx->output_lanes[7];
+            auto& vel_sp   = ctx->output_lanes[8];
+            auto& gates_sp = ctx->output_lanes[9];
 
             uint32_t len = static_cast<uint32_t>(held_count_);
             if (notes_sp.capacity >= len) {

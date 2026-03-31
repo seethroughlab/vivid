@@ -30,22 +30,22 @@ struct Repeat : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProces
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"input",  VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"output", VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});
+        out.push_back({"output", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
     }
 
     void process_frame(const VividFrameContext* ctx) override {
         compute(ctx->input_values[0], ctx->param_values,
-                ctx->output_spreads, ctx->output_values);
+                ctx->output_lanes, ctx->output_values);
     }
 
     void process_audio(const VividAudioContext* ctx) override {
         float in = ctx->input_float_values ? ctx->input_float_values[0] : 0.0f;
-        compute(in, ctx->param_values, ctx->output_spreads, ctx->output_float_values);
+        compute(in, ctx->param_values, ctx->output_lanes, ctx->output_float_values);
     }
 
 private:
     void compute(float input, const float* params,
-                 VividSpreadPort* out_spreads, float* output_values) {
+                 VividLanePort* out_spreads, float* output_values) {
         if (!out_spreads) return;
         auto& out = out_spreads[0];
         uint32_t n = std::clamp(static_cast<uint32_t>(params[0]), 1u, out.capacity);

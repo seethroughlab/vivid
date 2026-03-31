@@ -196,7 +196,7 @@ struct SpreadInput {
     uint32_t length = 0;
 };
 
-inline SpreadInput read_spread_input(const VividSpreadPort* spreads, int port_index) {
+inline SpreadInput read_spread_input(const VividLanePort* spreads, int port_index) {
     SpreadInput result;
     if (spreads) {
         result.data = spreads[port_index].data;

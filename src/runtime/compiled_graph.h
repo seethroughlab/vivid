@@ -154,7 +154,7 @@ struct AudioNodeState {
     std::vector<SignalOutputMapping> signal_output_extractions;
 
     // Audio spread/string/custom bridging flags.
-    bool has_spread_ports = false;
+    bool has_lane_ports = false;
     bool has_string_input_ports = false;
     bool has_custom_input_ports = false;
 
@@ -258,17 +258,17 @@ struct CompiledNode {
     std::vector<const char*> c_output_string_values;
 
     // ── Spread state ────────────────────────────────────────────────────────
-    std::vector<std::vector<float>> input_spreads;
-    std::vector<std::vector<float>> output_spreads;
-    std::vector<std::vector<std::string>> input_string_spreads;
-    std::vector<std::vector<std::string>> output_string_spreads;
+    std::vector<std::vector<float>> input_lanes;
+    std::vector<std::vector<float>> output_lanes;
+    std::vector<std::vector<std::string>> input_string_lanes;
+    std::vector<std::vector<std::string>> output_string_lanes;
 
     // Pre-allocated staging buffers for VividFrameContext.
-    std::vector<VividSpreadPort> c_in_spreads;
-    std::vector<VividSpreadPort> c_out_spreads;
-    std::vector<std::vector<float>> out_spread_buf;
-    std::vector<VividStringSpreadPort> c_in_string_spreads;
-    std::vector<VividStringSpreadPort> c_out_string_spreads;
+    std::vector<VividLanePort> c_in_lanes;
+    std::vector<VividLanePort> c_out_lanes;
+    std::vector<std::vector<float>> out_lane_buf;
+    std::vector<VividStringLanePort> c_in_string_lanes;
+    std::vector<VividStringLanePort> c_out_string_lanes;
     std::vector<std::vector<const char*>> in_string_spread_ptrs;
     std::vector<std::vector<const char*>> out_string_spread_ptr_buf;
 
@@ -306,7 +306,7 @@ struct CompiledNode {
 
     // ── Misc ────────────────────────────────────────────────────────────────
     std::vector<uint32_t> string_input_port_indices;
-    std::vector<uint32_t> string_spread_input_port_indices;
+    std::vector<uint32_t> string_lane_input_port_indices;
     bool has_string_output = false;
     bool has_string_spread_output = false;
 

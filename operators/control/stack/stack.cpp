@@ -24,31 +24,31 @@ struct Stack : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcess
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"a",      VIVID_PORT_SPREAD, VIVID_PORT_INPUT});   // in spread[0]
-        out.push_back({"b",      VIVID_PORT_SPREAD, VIVID_PORT_INPUT});   // in spread[1]
-        out.push_back({"c",      VIVID_PORT_SPREAD, VIVID_PORT_INPUT});   // in spread[2]
-        out.push_back({"d",      VIVID_PORT_SPREAD, VIVID_PORT_INPUT});   // in spread[3]
-        out.push_back({"output", VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // out spread[0]
+        out.push_back({"a",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in spread[0]
+        out.push_back({"b",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in spread[1]
+        out.push_back({"c",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in spread[2]
+        out.push_back({"d",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in spread[3]
+        out.push_back({"output", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // out spread[0]
     }
 
     void process_frame(const VividFrameContext* ctx) override {
-        compute(ctx->param_values, ctx->input_spreads, ctx->output_spreads, ctx->output_values);
+        compute(ctx->param_values, ctx->input_lanes, ctx->output_lanes, ctx->output_values);
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        compute(ctx->param_values, ctx->input_spreads, ctx->output_spreads, ctx->output_float_values);
+        compute(ctx->param_values, ctx->input_lanes, ctx->output_lanes, ctx->output_float_values);
     }
 
 private:
-    void compute(const float* params, VividSpreadPort* in_spreads,
-                 VividSpreadPort* out_spreads, float* output_values) {
+    void compute(const float* params, VividLanePort* in_spreads,
+                 VividLanePort* out_spreads, float* output_values) {
         if (!in_spreads || !out_spreads) return;
 
         auto& out = out_spreads[0];
         int m = std::clamp(static_cast<int>(params[0]), 0, 1);
 
         // Collect non-empty input spreads
-        const VividSpreadPort* inputs[4];
+        const VividLanePort* inputs[4];
         int input_count = 0;
         for (int i = 0; i < 4; ++i) {
             if (in_spreads[i].length > 0)

@@ -130,13 +130,13 @@ struct Arpeggiator : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         // Inputs
         out.push_back({"beat_phase", VIVID_PORT_SIGNAL,  VIVID_PORT_INPUT});   // [0]
-        out.push_back({"notes",      VIVID_PORT_SPREAD, VIVID_PORT_INPUT});   // [1]
-        out.push_back({"velocities", VIVID_PORT_SPREAD, VIVID_PORT_INPUT});   // [2]
-        out.push_back({"gates",      VIVID_PORT_SPREAD, VIVID_PORT_INPUT});   // [3]
+        out.push_back({"notes",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // [1]
+        out.push_back({"velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // [2]
+        out.push_back({"gates",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // [3]
         // Outputs
-        out.push_back({"notes",      VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // [0]
-        out.push_back({"velocities", VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // [1]
-        out.push_back({"gates",      VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // [2]
+        out.push_back({"notes",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // [0]
+        out.push_back({"velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // [1]
+        out.push_back({"gates",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // [2]
         out.push_back({"note",       VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});  // [0]
         out.push_back({"vel",        VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});  // [1]
         out.push_back({"gate",       VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});  // [2]
@@ -145,19 +145,19 @@ struct Arpeggiator : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
     }
 
     void process_frame(const VividFrameContext* ctx) override {
-        compute(ctx->input_values[0], ctx->param_values, ctx->input_spreads,
-                ctx->output_values, ctx->output_spreads,
+        compute(ctx->input_values[0], ctx->param_values, ctx->input_lanes,
+                ctx->output_values, ctx->output_lanes,
                 ctx->custom_outputs, ctx->custom_output_count);
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        compute(ctx->input_float_values[0], ctx->param_values, ctx->input_spreads,
-                ctx->output_float_values, ctx->output_spreads,
+        compute(ctx->input_float_values[0], ctx->param_values, ctx->input_lanes,
+                ctx->output_float_values, ctx->output_lanes,
                 ctx->custom_outputs, ctx->custom_output_count);
     }
 
-    void compute(float beat_phase, const float* params, VividSpreadPort* in_spreads,
-                 float* output_values, VividSpreadPort* out_spreads,
+    void compute(float beat_phase, const float* params, VividLanePort* in_spreads,
+                 float* output_values, VividLanePort* out_spreads,
                  void** custom_outputs, uint32_t custom_output_count) {
         int m = mode.int_value();
         int oct = octaves.int_value();
@@ -743,7 +743,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
         thumb_pipeline_format_ = ctx->thumbnail_format;
     }
 
-    void write_output(float* output_values, VividSpreadPort* out_spreads,
+    void write_output(float* output_values, VividLanePort* out_spreads,
                       void** custom_outputs, uint32_t custom_output_count,
                       float note, float vel, float gate, int step) {
         if (out_spreads) {

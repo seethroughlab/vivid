@@ -98,17 +98,17 @@ public:
         }
 
         // Rewrite spread port arrays for the C context
-        for (size_t i = 0; i < input_spreads_.size(); ++i) {
-            c_input_spreads_[i].data     = input_spreads_[i].empty() ? nullptr : input_spreads_[i].data();
-            c_input_spreads_[i].length   = static_cast<uint32_t>(input_spreads_[i].size());
-            c_input_spreads_[i].capacity = c_input_spreads_[i].length;
+        for (size_t i = 0; i < input_lanes_.size(); ++i) {
+            c_input_lanes_[i].data     = input_lanes_[i].empty() ? nullptr : input_lanes_[i].data();
+            c_input_lanes_[i].length   = static_cast<uint32_t>(input_lanes_[i].size());
+            c_input_lanes_[i].capacity = c_input_lanes_[i].length;
         }
-        for (size_t i = 0; i < output_spreads_.size(); ++i) {
-            if (output_spreads_[i].capacity() < 256)
-                output_spreads_[i].reserve(256);
-            c_output_spreads_[i].data     = output_spreads_[i].data();
-            c_output_spreads_[i].length   = static_cast<uint32_t>(output_spreads_[i].size());
-            c_output_spreads_[i].capacity = static_cast<uint32_t>(output_spreads_[i].capacity());
+        for (size_t i = 0; i < output_lanes_.size(); ++i) {
+            if (output_lanes_[i].capacity() < 256)
+                output_lanes_[i].reserve(256);
+            c_output_lanes_[i].data     = output_lanes_[i].data();
+            c_output_lanes_[i].length   = static_cast<uint32_t>(output_lanes_[i].size());
+            c_output_lanes_[i].capacity = static_cast<uint32_t>(output_lanes_[i].capacity());
         }
 
         if (uses_audio_cadence_) {
@@ -127,8 +127,8 @@ public:
                 : 48000;
             audio_ctx.input_channel_counts  = nullptr;
             audio_ctx.output_channel_counts = nullptr;
-            audio_ctx.input_spreads  = c_input_spreads_.empty() ? nullptr : c_input_spreads_.data();
-            audio_ctx.output_spreads = c_output_spreads_.empty() ? nullptr : c_output_spreads_.data();
+            audio_ctx.input_lanes  = c_input_lanes_.empty() ? nullptr : c_input_lanes_.data();
+            audio_ctx.output_lanes = c_output_lanes_.empty() ? nullptr : c_output_lanes_.data();
             audio_ctx.input_float_values  = input_values_.empty() ? nullptr : input_values_.data();
             audio_ctx.output_float_values = output_values_.empty() ? nullptr : output_values_.data();
             audio_ctx.custom_inputs       = nullptr;
@@ -152,8 +152,8 @@ public:
             child_ctx.param_values = param_values_.data();
             child_ctx.input_values = input_values_.empty() ? nullptr : input_values_.data();
             child_ctx.output_values = output_values_.empty() ? nullptr : output_values_.data();
-            child_ctx.input_spreads  = c_input_spreads_.empty() ? nullptr : c_input_spreads_.data();
-            child_ctx.output_spreads = c_output_spreads_.empty() ? nullptr : c_output_spreads_.data();
+            child_ctx.input_lanes  = c_input_lanes_.empty() ? nullptr : c_input_lanes_.data();
+            child_ctx.output_lanes = c_output_lanes_.empty() ? nullptr : c_output_lanes_.data();
             child_ctx.file_param_values = nullptr;
             child_ctx.file_param_count  = 0;
             child_ctx.preferred_tex_width  = 0;
@@ -162,11 +162,11 @@ public:
             frame_iface_->process_frame(&child_ctx);
         }
 
-        for (size_t i = 0; i < output_spreads_.size(); ++i) {
-            uint32_t len = c_output_spreads_[i].length;
-            uint32_t cap = c_output_spreads_[i].capacity;
+        for (size_t i = 0; i < output_lanes_.size(); ++i) {
+            uint32_t len = c_output_lanes_[i].length;
+            uint32_t cap = c_output_lanes_[i].capacity;
             if (len > cap) len = cap;
-            output_spreads_[i].resize(len);
+            output_lanes_[i].resize(len);
         }
     }
 
@@ -205,10 +205,10 @@ private:
 
         input_values_.resize(in_idx, 0.0f);
         output_values_.resize(out_idx, 0.0f);
-        input_spreads_.resize(in_idx);
-        output_spreads_.resize(out_idx);
-        c_input_spreads_.resize(in_idx);
-        c_output_spreads_.resize(out_idx);
+        input_lanes_.resize(in_idx);
+        output_lanes_.resize(out_idx);
+        c_input_lanes_.resize(in_idx);
+        c_output_lanes_.resize(out_idx);
     }
 
     OwnedOp op_;
@@ -225,10 +225,10 @@ private:
     std::unordered_map<std::string, uint32_t> input_name_to_index_;
     std::unordered_map<std::string, uint32_t> output_name_to_index_;
 
-    std::vector<std::vector<float>> input_spreads_;
-    std::vector<std::vector<float>> output_spreads_;
-    std::vector<VividSpreadPort> c_input_spreads_;
-    std::vector<VividSpreadPort> c_output_spreads_;
+    std::vector<std::vector<float>> input_lanes_;
+    std::vector<std::vector<float>> output_lanes_;
+    std::vector<VividLanePort> c_input_lanes_;
+    std::vector<VividLanePort> c_output_lanes_;
 
     std::vector<std::vector<float>> audio_in_bufs_;
     std::vector<std::vector<float>> audio_out_bufs_;

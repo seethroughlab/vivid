@@ -56,22 +56,22 @@ struct Euclidean : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPro
         out.push_back({"trigger",    VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});   // out[0]
         out.push_back({"gate",       VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});   // out[1]
         out.push_back({"step",       VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});   // out[2]
-        out.push_back({"pattern",    VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});   // spread[0]
+        out.push_back({"pattern",    VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});   // spread[0]
     }
 
     void process_frame(const VividFrameContext* ctx) override {
         compute(ctx->input_values[0], ctx->param_values,
-                ctx->output_spreads, ctx->output_values);
+                ctx->output_lanes, ctx->output_values);
     }
 
     void process_audio(const VividAudioContext* ctx) override {
         compute(ctx->input_float_values[0], ctx->param_values,
-                ctx->output_spreads, ctx->output_float_values);
+                ctx->output_lanes, ctx->output_float_values);
     }
 
 private:
     void compute(float beat_phase, const float* params,
-                 VividSpreadPort* out_spreads, float* output_values) {
+                 VividLanePort* out_spreads, float* output_values) {
         int h   = std::clamp(static_cast<int>(params[0]), 0, 32);
         int n   = std::clamp(static_cast<int>(params[1]), 1, 32);
         int rot = std::clamp(static_cast<int>(params[2]), 0, 31);

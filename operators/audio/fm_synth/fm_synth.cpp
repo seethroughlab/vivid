@@ -100,9 +100,9 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"mod_index_cv", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         out.push_back({"gate_cv",      VIVID_PORT_SIGNAL, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         // Spread inputs for sequencer/arpeggiator-driven usage
-        out.push_back({"gates",      VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
-        out.push_back({"notes",      VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
-        out.push_back({"velocities", VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
+        out.push_back({"gates",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
+        out.push_back({"notes",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
+        out.push_back({"velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
         vivid::append_analysis_ports(out);
     }
 
@@ -117,10 +117,10 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
         // Spread inputs override signal inputs when connected.
         // Spread port indices follow the 3 signal inputs (freq_cv, mod_index_cv, gate_cv).
         float vel_scale = 1.0f;
-        if (ctx->input_spreads) {
-            const auto& gates_sp = ctx->input_spreads[3];
-            const auto& notes_sp = ctx->input_spreads[4];
-            const auto& vels_sp  = ctx->input_spreads[5];
+        if (ctx->input_lanes) {
+            const auto& gates_sp = ctx->input_lanes[3];
+            const auto& notes_sp = ctx->input_lanes[4];
+            const auto& vels_sp  = ctx->input_lanes[5];
             if (gates_sp.length > 0 && gates_sp.data) {
                 float spread_gate = 0.0f;
                 float spread_note = 60.0f;

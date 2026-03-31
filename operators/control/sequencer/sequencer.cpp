@@ -64,9 +64,9 @@ struct Sequencer : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPro
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"beat_phase", VIVID_PORT_SIGNAL,  VIVID_PORT_INPUT});
         out.push_back({"reset",     VIVID_PORT_SIGNAL,  VIVID_PORT_INPUT});
-        out.push_back({"values",    VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
-        out.push_back({"probs",     VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
-        out.push_back({"ratchets",  VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
+        out.push_back({"values",    VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
+        out.push_back({"probs",     VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
+        out.push_back({"ratchets",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
         out.push_back({"value",     VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});
         out.push_back({"step",      VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});
         out.push_back({"trigger",   VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});
@@ -75,17 +75,17 @@ struct Sequencer : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPro
 
     void process_frame(const VividFrameContext* ctx) override {
         compute(ctx->input_values[0], ctx->input_values[1],
-                ctx->input_spreads, ctx->output_values,
+                ctx->input_lanes, ctx->output_values,
                 ctx->custom_outputs, ctx->custom_output_count);
     }
 
     void process_audio(const VividAudioContext* ctx) override {
         compute(ctx->input_float_values[0], ctx->input_float_values[1],
-                ctx->input_spreads, ctx->output_float_values,
+                ctx->input_lanes, ctx->output_float_values,
                 ctx->custom_outputs, ctx->custom_output_count);
     }
 
-    void compute(float phase, float reset_in, VividSpreadPort* in_spreads,
+    void compute(float phase, float reset_in, VividLanePort* in_spreads,
                  float* output_values, void** custom_outputs, uint32_t custom_output_count) {
         bool reset = reset_in > 0.5f;
 

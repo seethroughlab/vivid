@@ -85,8 +85,8 @@ int main(int argc, char* argv[]) {
 
         auto* sink = runtime.compiled_graph()->find_node("sink");
         check(sink != nullptr, "sink found");
-        if (sink && !sink->output_spreads.empty()) {
-            const auto& sp = sink->output_spreads[0];
+        if (sink && !sink->output_lanes.empty()) {
+            const auto& sp = sink->output_lanes[0];
             check(sp.size() == 8, "output has 8 elements");
             bool all_five = true;
             for (size_t i = 0; i < sp.size(); ++i) {
@@ -115,8 +115,8 @@ int main(int argc, char* argv[]) {
 
         auto* sink = runtime.compiled_graph()->find_node("sink");
         check(sink != nullptr, "sink found");
-        if (sink && !sink->output_spreads.empty()) {
-            const auto& sp = sink->output_spreads[0];
+        if (sink && !sink->output_lanes.empty()) {
+            const auto& sp = sink->output_lanes[0];
             check(sp.size() == 9, "output has 9 elements");
             if (sp.size() == 9) {
                 float expected[] = {10, 20, 30, 10, 20, 30, 10, 20, 30};
@@ -314,8 +314,8 @@ int main(int argc, char* argv[]) {
         if (built) {
             runtime.tick(0.0, 1.0 / 60.0, 0);
             auto* sink = runtime.compiled_graph()->find_node("sink");
-            if (sink && !sink->output_spreads.empty()) {
-                check(sink->output_spreads[0].size() == 8, "Tiled output has 8 elements");
+            if (sink && !sink->output_lanes.empty()) {
+                check(sink->output_lanes[0].size() == 8, "Tiled output has 8 elements");
             }
         }
     }

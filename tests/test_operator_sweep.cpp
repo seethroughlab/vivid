@@ -265,10 +265,10 @@ static bool smoke_control(vivid::OperatorLoader& loader, void* inst,
     for (uint32_t i = 0; i < desc->port_count; i++) {
         if (desc->ports[i].direction == VIVID_PORT_INPUT) {
             n_in_total++;
-            if (desc->ports[i].type == VIVID_PORT_SPREAD) n_spread_in++;
+            if (desc->ports[i].type == VIVID_PORT_LANE_ARRAY) n_spread_in++;
         } else {
             n_out_total++;
-            if (desc->ports[i].type == VIVID_PORT_SPREAD) n_spread_out++;
+            if (desc->ports[i].type == VIVID_PORT_LANE_ARRAY) n_spread_out++;
         }
     }
 
@@ -280,8 +280,8 @@ static bool smoke_control(vivid::OperatorLoader& loader, void* inst,
     std::vector<float> outputs(n_out_total, 0.0f);
 
     // Allocate empty spread ports so operators that read them don't crash.
-    std::vector<VividSpreadPort> in_spreads(n_spread_in, {nullptr, 0, 0});
-    std::vector<VividSpreadPort> out_spreads(n_spread_out, {nullptr, 0, 0});
+    std::vector<VividLanePort> in_spreads(n_spread_in, {nullptr, 0, 0});
+    std::vector<VividLanePort> out_spreads(n_spread_out, {nullptr, 0, 0});
 
     VividFrameContext ctx{};
     ctx.time       = 0.0;
@@ -290,8 +290,8 @@ static bool smoke_control(vivid::OperatorLoader& loader, void* inst,
     ctx.param_values   = params.empty()      ? nullptr : params.data();
     ctx.input_values   = inputs.empty()      ? nullptr : inputs.data();
     ctx.output_values  = outputs.empty()     ? nullptr : outputs.data();
-    ctx.input_spreads  = in_spreads.empty()  ? nullptr : in_spreads.data();
-    ctx.output_spreads = out_spreads.empty() ? nullptr : out_spreads.data();
+    ctx.input_lanes  = in_spreads.empty()  ? nullptr : in_spreads.data();
+    ctx.output_lanes = out_spreads.empty() ? nullptr : out_spreads.data();
 
     // Process a few ticks to let initialization settle.
     for (int t = 0; t < 3; t++) {
@@ -486,21 +486,21 @@ static bool test_param_boundary(vivid::OperatorLoader& loader, void* inst,
             for (uint32_t pi = 0; pi < desc->port_count; pi++) {
                 if (desc->ports[pi].direction == VIVID_PORT_INPUT) {
                     ni++;
-                    if (desc->ports[pi].type == VIVID_PORT_SPREAD) nsi++;
+                    if (desc->ports[pi].type == VIVID_PORT_LANE_ARRAY) nsi++;
                 } else {
                     no++;
-                    if (desc->ports[pi].type == VIVID_PORT_SPREAD) nso++;
+                    if (desc->ports[pi].type == VIVID_PORT_LANE_ARRAY) nso++;
                 }
             }
             std::vector<float> ins(ni, 0.0f), outs(no, 0.0f);
-            std::vector<VividSpreadPort> si(nsi, {nullptr, 0, 0}), so(nso, {nullptr, 0, 0});
+            std::vector<VividLanePort> si(nsi, {nullptr, 0, 0}), so(nso, {nullptr, 0, 0});
             VividFrameContext ctx{};
             ctx.time = 0.0; ctx.delta_time = 0.016; ctx.frame = 0;
             ctx.param_values   = params.empty() ? nullptr : params.data();
             ctx.input_values   = ins.empty()    ? nullptr : ins.data();
             ctx.output_values  = outs.empty()   ? nullptr : outs.data();
-            ctx.input_spreads  = si.empty()     ? nullptr : si.data();
-            ctx.output_spreads = so.empty()     ? nullptr : so.data();
+            ctx.input_lanes  = si.empty()     ? nullptr : si.data();
+            ctx.output_lanes = so.empty()     ? nullptr : so.data();
             loader.process_frame(inst, &ctx);
             for (uint32_t i = 0; i < no; i++)
                 if (!std::isfinite(outs[i])) return false;

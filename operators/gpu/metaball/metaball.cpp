@@ -248,9 +248,9 @@ struct Metaball : vivid::OperatorBase, vivid::GpuProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"pos_x",   VIVID_PORT_SPREAD,  VIVID_PORT_INPUT});   // spread input 0
-        out.push_back({"pos_y",   VIVID_PORT_SPREAD,  VIVID_PORT_INPUT});   // spread input 1
-        out.push_back({"radii",   VIVID_PORT_SPREAD,  VIVID_PORT_INPUT});   // spread input 2
+        out.push_back({"pos_x",   VIVID_PORT_LANE_ARRAY,  VIVID_PORT_INPUT});   // spread input 0
+        out.push_back({"pos_y",   VIVID_PORT_LANE_ARRAY,  VIVID_PORT_INPUT});   // spread input 1
+        out.push_back({"radii",   VIVID_PORT_LANE_ARRAY,  VIVID_PORT_INPUT});   // spread input 2
         out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
@@ -285,22 +285,22 @@ struct Metaball : vivid::OperatorBase, vivid::GpuProcessable {
             float px = 0.5f, py = 0.5f, rad = 0.08f;
 
             // Read spread inputs if connected
-            if (ctx->input_spreads) {
-                auto& sp_x = ctx->input_spreads[0];
+            if (ctx->input_lanes) {
+                auto& sp_x = ctx->input_lanes[0];
                 if (sp_x.data && static_cast<uint32_t>(i) < sp_x.length)
                     px = sp_x.data[i];
 
-                auto& sp_y = ctx->input_spreads[1];
+                auto& sp_y = ctx->input_lanes[1];
                 if (sp_y.data && static_cast<uint32_t>(i) < sp_y.length)
                     py = sp_y.data[i];
 
-                auto& sp_r = ctx->input_spreads[2];
+                auto& sp_r = ctx->input_lanes[2];
                 if (sp_r.data && static_cast<uint32_t>(i) < sp_r.length)
                     rad = sp_r.data[i];
             }
 
             // Fallback: distribute in a circle if no spread input
-            if (!ctx->input_spreads || !ctx->input_spreads[0].data) {
+            if (!ctx->input_lanes || !ctx->input_lanes[0].data) {
                 float angle = static_cast<float>(i) / static_cast<float>(n) * 6.2831853f;
                 float phase = static_cast<float>(ctx->time) * 0.5f;
                 px = 0.5f + 0.25f * std::cos(angle + phase);

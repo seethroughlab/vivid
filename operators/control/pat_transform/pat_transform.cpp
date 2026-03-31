@@ -47,15 +47,15 @@ struct PatTransform : vivid::OperatorBase, vivid::FrameProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"pattern", VIVID_PORT_SPREAD, VIVID_PORT_INPUT});   // in spread[0]
-        out.push_back({"pattern", VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // out spread[0]
+        out.push_back({"pattern", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in spread[0]
+        out.push_back({"pattern", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // out spread[0]
     }
 
     void process_frame(const VividFrameContext* ctx) override {
-        if (!ctx->input_spreads || !ctx->output_spreads) return;
+        if (!ctx->input_lanes || !ctx->output_lanes) return;
 
-        auto& in  = ctx->input_spreads[0];
-        auto& out = ctx->output_spreads[0];
+        auto& in  = ctx->input_lanes[0];
+        auto& out = ctx->output_lanes[0];
 
         if (in.length == 0) {
             out.length = 0;

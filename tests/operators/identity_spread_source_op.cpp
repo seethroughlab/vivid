@@ -36,7 +36,7 @@ struct IdentitySpreadSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"out",      VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"lane_ids", VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});
+        out.push_back({"lane_ids", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
     }
 
     void process_frame(const VividFrameContext* ctx) override {
@@ -60,8 +60,8 @@ struct IdentitySpreadSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
         ctx->output_values[0] = active_count > 0 ? values[0] : 0.0f;
 
         // Write main spread (out port, index 0)
-        if (ctx->output_spreads) {
-            auto& osp = ctx->output_spreads[0];
+        if (ctx->output_lanes) {
+            auto& osp = ctx->output_lanes[0];
             if (osp.capacity >= active_count) {
                 osp.length = active_count;
                 for (uint32_t i = 0; i < active_count; ++i)
@@ -69,7 +69,7 @@ struct IdentitySpreadSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
             }
 
             // Write lane_ids spread (lane_ids port, index 1)
-            auto& lid_sp = ctx->output_spreads[1];
+            auto& lid_sp = ctx->output_lanes[1];
             if (lid_sp.capacity >= active_count) {
                 lid_sp.length = active_count;
                 for (uint32_t i = 0; i < active_count; ++i)

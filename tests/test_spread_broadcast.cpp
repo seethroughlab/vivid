@@ -73,8 +73,8 @@ int main(int argc, char* argv[]) {
     check(sink != nullptr, "found single_sink node");
     if (sink) {
         // SpreadSourceOp with base=2.0, count=4 → spread = [2, 4, 6, 8]
-        check(sink->output_spreads.size() > 0, "sink has output_spreads");
-        const auto& sp = sink->output_spreads[0];
+        check(sink->output_lanes.size() > 0, "sink has output_lanes");
+        const auto& sp = sink->output_lanes[0];
         check(sp.size() == 4, "spread has 4 elements (no cycle-expand)");
         if (sp.size() >= 4) {
             check_float(sp[0], 2.0f, 0.01f, "spread[0] = 2.0");
@@ -103,8 +103,8 @@ int main(int argc, char* argv[]) {
     }
     check(merge_sink != nullptr, "found merge_sink node");
     if (merge_sink) {
-        check(merge_sink->output_spreads.size() > 0, "merge_sink has output_spreads");
-        const auto& sp = merge_sink->output_spreads[0];
+        check(merge_sink->output_lanes.size() > 0, "merge_sink has output_lanes");
+        const auto& sp = merge_sink->output_lanes[0];
         check(sp.size() == 4, "merged spread has 4 elements (same length, no cycle-expand)");
         if (sp.size() >= 4) {
             check_float(sp[0],  4.0f, 0.01f, "merge[0] = 2+2 = 4");
@@ -127,8 +127,8 @@ int main(int argc, char* argv[]) {
     }
     check(smooth_sink != nullptr, "found smooth_sink node");
     if (smooth_sink) {
-        check(smooth_sink->output_spreads.size() > 0, "smooth_sink has output_spreads");
-        const auto& sp = smooth_sink->output_spreads[0];
+        check(smooth_sink->output_lanes.size() > 0, "smooth_sink has output_lanes");
+        const auto& sp = smooth_sink->output_lanes[0];
         check(sp.size() == 4, "smoothed spread has 4 elements");
         if (sp.size() >= 4) {
             // [2,4,6,8] → avg neighbors:

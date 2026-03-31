@@ -651,18 +651,18 @@ struct DrumSequencer : vivid::OperatorBase, vivid::FrameProcessable, vivid::Audi
 
     void process_frame(const VividFrameContext* ctx) override {
         compute(ctx->input_values[0], ctx->input_values[1], ctx->param_values,
-                ctx->output_values, ctx->output_spreads,
+                ctx->output_values, ctx->output_lanes,
                 ctx->custom_outputs, ctx->custom_output_count);
     }
 
     void process_audio(const VividAudioContext* ctx) override {
         compute(ctx->input_float_values[0], ctx->input_float_values[1], ctx->param_values,
-                ctx->output_float_values, ctx->output_spreads,
+                ctx->output_float_values, ctx->output_lanes,
                 ctx->custom_outputs, ctx->custom_output_count);
     }
 
     void compute(float phase, float reset_in, const float* params,
-                 float* output_values, VividSpreadPort* /*out_spreads*/,
+                 float* output_values, VividLanePort* /*out_spreads*/,
                  void** custom_outputs, uint32_t custom_output_count) {
         namespace layout = vivid_sequencers::drum_layout;
         bool reset = reset_in > 0.5f;

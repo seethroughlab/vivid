@@ -28,20 +28,20 @@ struct Select : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProces
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",  VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
+        out.push_back({"input",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
         out.push_back({"output", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
     void process_frame(const VividFrameContext* ctx) override {
-        compute(ctx->input_spreads, ctx->param_values, ctx->output_values);
+        compute(ctx->input_lanes, ctx->param_values, ctx->output_values);
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        compute(ctx->input_spreads, ctx->param_values, ctx->output_float_values);
+        compute(ctx->input_lanes, ctx->param_values, ctx->output_float_values);
     }
 
 private:
-    void compute(VividSpreadPort* in_spreads, const float* params,
+    void compute(VividLanePort* in_spreads, const float* params,
                  float* output_values) {
         if (!output_values) return;
         if (!in_spreads || in_spreads[0].length == 0) {

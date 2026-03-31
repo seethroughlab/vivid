@@ -176,7 +176,7 @@ inline bool is_control_type(VividPortType t) {
 }
 
 inline bool is_numeric_type(VividPortType t) {
-    return t == VIVID_PORT_SIGNAL || t == VIVID_PORT_SPREAD || t == VIVID_PORT_AUDIO;
+    return t == VIVID_PORT_SIGNAL || t == VIVID_PORT_LANE_ARRAY || t == VIVID_PORT_AUDIO;
 }
 
 inline bool port_type_compatible(VividPortType a, VividPortType b) {
@@ -193,7 +193,7 @@ struct PortTypeEntry {
 inline const std::vector<PortTypeEntry>& port_types_for_env(int env_sel) {
     static const std::vector<PortTypeEntry> control_types = {
         {"float",         VIVID_PORT_SIGNAL},
-        {"spread",        VIVID_PORT_SPREAD},
+        {"spread",        VIVID_PORT_LANE_ARRAY},
         {"string",        VIVID_PORT_STRING},
         {"string_spread", VIVID_PORT_STRING_SPREAD},
     };

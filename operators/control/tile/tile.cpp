@@ -30,23 +30,23 @@ struct Tile : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessa
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",  VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
-        out.push_back({"output", VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});
+        out.push_back({"input",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
+        out.push_back({"output", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
     }
 
     void process_frame(const VividFrameContext* ctx) override {
-        compute(ctx->input_spreads, ctx->param_values,
-                ctx->output_spreads, ctx->output_values);
+        compute(ctx->input_lanes, ctx->param_values,
+                ctx->output_lanes, ctx->output_values);
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        compute(ctx->input_spreads, ctx->param_values,
-                ctx->output_spreads, ctx->output_float_values);
+        compute(ctx->input_lanes, ctx->param_values,
+                ctx->output_lanes, ctx->output_float_values);
     }
 
 private:
-    void compute(VividSpreadPort* in_spreads, const float* params,
-                 VividSpreadPort* out_spreads, float* output_values) {
+    void compute(VividLanePort* in_spreads, const float* params,
+                 VividLanePort* out_spreads, float* output_values) {
         if (!in_spreads || !out_spreads) return;
         auto& in = in_spreads[0];
         auto& out = out_spreads[0];

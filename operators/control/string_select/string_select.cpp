@@ -43,8 +43,8 @@ struct StringSelect : vivid::OperatorBase, vivid::FrameProcessable {
         int resolved = -1;
         bool valid = false;
 
-        const VividStringSpreadPort* in_spreads =
-            ctx->input_string_spreads ? &ctx->input_string_spreads[0] : nullptr;
+        const VividStringLanePort* in_spreads =
+            ctx->input_string_lanes ? &ctx->input_string_lanes[0] : nullptr;
         const uint32_t n = (in_spreads && in_spreads->data) ? in_spreads->length : 0;
         if (n > 0) {
             int idx = static_cast<int>(std::floor(ctx->input_values[1]));

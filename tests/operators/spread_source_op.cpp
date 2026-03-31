@@ -25,8 +25,8 @@ struct SpreadSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
         ctx->output_values[0] = b;
 
         // Write spread: [base*1, base*2, ..., base*count]
-        if (ctx->output_spreads) {
-            auto& osp = ctx->output_spreads[0];
+        if (ctx->output_lanes) {
+            auto& osp = ctx->output_lanes[0];
             uint32_t len = static_cast<uint32_t>(n);
             if (osp.capacity >= len) {
                 osp.length = len;

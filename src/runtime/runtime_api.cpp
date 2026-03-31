@@ -557,19 +557,19 @@ CommandResult RuntimeAPI::inspect(const std::string& node_id) {
         oss << " " << name << "=" << cn->output_values[idx];
         if (idx < cn->output_string_values.size() && !cn->output_string_values[idx].empty())
             oss << " \"" << cn->output_string_values[idx] << "\"";
-        if (idx < cn->output_spreads.size() && !cn->output_spreads[idx].empty()) {
+        if (idx < cn->output_lanes.size() && !cn->output_lanes[idx].empty()) {
             oss << " [";
-            for (size_t si = 0; si < cn->output_spreads[idx].size(); ++si) {
+            for (size_t si = 0; si < cn->output_lanes[idx].size(); ++si) {
                 if (si > 0) oss << ",";
-                oss << cn->output_spreads[idx][si];
+                oss << cn->output_lanes[idx][si];
             }
             oss << "]";
         }
-        if (idx < cn->output_string_spreads.size() && !cn->output_string_spreads[idx].empty()) {
+        if (idx < cn->output_string_lanes.size() && !cn->output_string_lanes[idx].empty()) {
             oss << " [";
-            for (size_t si = 0; si < cn->output_string_spreads[idx].size(); ++si) {
+            for (size_t si = 0; si < cn->output_string_lanes[idx].size(); ++si) {
                 if (si > 0) oss << ",";
-                oss << "\"" << cn->output_string_spreads[idx][si] << "\"";
+                oss << "\"" << cn->output_string_lanes[idx][si] << "\"";
             }
             oss << "]";
         }
@@ -580,19 +580,19 @@ CommandResult RuntimeAPI::inspect(const std::string& node_id) {
             oss << " " << name << "=" << cn->input_values[idx];
             if (idx < cn->input_string_values.size() && !cn->input_string_values[idx].empty())
                 oss << " \"" << cn->input_string_values[idx] << "\"";
-            if (idx < cn->input_spreads.size() && !cn->input_spreads[idx].empty()) {
+            if (idx < cn->input_lanes.size() && !cn->input_lanes[idx].empty()) {
                 oss << " [";
-                for (size_t si = 0; si < cn->input_spreads[idx].size(); ++si) {
+                for (size_t si = 0; si < cn->input_lanes[idx].size(); ++si) {
                     if (si > 0) oss << ",";
-                    oss << cn->input_spreads[idx][si];
+                    oss << cn->input_lanes[idx][si];
                 }
                 oss << "]";
             }
-            if (idx < cn->input_string_spreads.size() && !cn->input_string_spreads[idx].empty()) {
+            if (idx < cn->input_string_lanes.size() && !cn->input_string_lanes[idx].empty()) {
                 oss << " [";
-                for (size_t si = 0; si < cn->input_string_spreads[idx].size(); ++si) {
+                for (size_t si = 0; si < cn->input_string_lanes[idx].size(); ++si) {
                     if (si > 0) oss << ",";
-                    oss << "\"" << cn->input_string_spreads[idx][si] << "\"";
+                    oss << "\"" << cn->input_string_lanes[idx][si] << "\"";
                 }
                 oss << "]";
             }

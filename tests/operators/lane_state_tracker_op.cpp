@@ -27,8 +27,8 @@ struct LaneStateTrackerOp : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"input",    VIVID_PORT_AUDIO,  VIVID_PORT_INPUT});
         out.push_back({"output",   VIVID_PORT_AUDIO,  VIVID_PORT_OUTPUT});
         // Spread inputs for per-lane values and identity-bearing lane_ids
-        out.push_back({"values",   VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
-        out.push_back({"lane_ids", VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
+        out.push_back({"values",   VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
+        out.push_back({"lane_ids", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
         // Signal outputs for last-lane readback
         out.push_back({"lane_count_out",  VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
         out.push_back({"lane_id_out",     VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
@@ -41,11 +41,11 @@ struct LaneStateTrackerOp : vivid::OperatorBase, vivid::AudioProcessable {
 
         // Read per-lane value from spread input
         // Port order: input(audio)=0, values(spread)=1, lane_ids(spread)=2
-        // input_spreads is indexed by input port ordinal
+        // input_lanes is indexed by input port ordinal
         float value = 0.0f;
-        if (ctx->input_spreads) {
+        if (ctx->input_lanes) {
             uint32_t ci = ctx->lane_index;
-            const auto& val_sp = ctx->input_spreads[1];  // "values" spread (port index 1)
+            const auto& val_sp = ctx->input_lanes[1];  // "values" spread (port index 1)
             if (val_sp.data && ci < val_sp.length)
                 value = val_sp.data[ci];
         }

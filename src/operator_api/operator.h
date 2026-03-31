@@ -247,7 +247,7 @@ inline void append_analysis_ports(std::vector<VividPortDescriptor>& out) {
                    VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "analysis"});
     out.push_back({"peak",     VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT,
                    VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "analysis"});
-    out.push_back({"waveform", VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT,
+    out.push_back({"waveform", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT,
                    VIVID_PORT_TRANSPORT_SPREAD, 0, nullptr, 0, 0.0f, nullptr, "analysis"});
 }
 

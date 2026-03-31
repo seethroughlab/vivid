@@ -20,7 +20,7 @@ void CadenceBridge::build(const CompiledGraph& cg) {
     for (auto& snap : snapshots_) {
         snap.node_params.resize(audio_count);
         snap.float_input_values.resize(audio_count);
-        snap.spread_inputs.resize(audio_count);
+        snap.lane_inputs.resize(audio_count);
         snap.input_string_values.resize(audio_count);
         snap.custom_inputs.resize(audio_count);
         snap.solo_active_set.clear();
@@ -31,7 +31,7 @@ void CadenceBridge::build(const CompiledGraph& cg) {
             const auto& a = *cn.audio;
             snap.node_params[i] = cn.param_values;
             snap.float_input_values[i] = a.float_input_defaults;
-            snap.spread_inputs[i].resize(cn.input_port_count);
+            snap.lane_inputs[i].resize(cn.input_port_count);
             snap.input_string_values[i].assign(cn.input_port_count, "");
             snap.custom_inputs[i].resize(cn.input_port_count);
         }
@@ -43,7 +43,7 @@ void CadenceBridge::build(const CompiledGraph& cg) {
         snap.peak.assign(audio_count, 0.0f);
         snap.waveform.resize(audio_count);
         for (auto& w : snap.waveform) w.fill(0.0f);
-        snap.spread_outputs.resize(audio_count);
+        snap.lane_outputs.resize(audio_count);
         snap.float_outputs.resize(audio_count);
         snap.errored.assign(audio_count, false);
         snap.error_msgs.resize(audio_count);
@@ -53,7 +53,7 @@ void CadenceBridge::build(const CompiledGraph& cg) {
             uint32_t gi = cg.audio_order[i];
             const auto& cn = cg.nodes[gi];
             const auto& a = *cn.audio;
-            snap.spread_outputs[i].resize(cn.output_port_count);
+            snap.lane_outputs[i].resize(cn.output_port_count);
             snap.float_outputs[i].resize(a.float_output_count, 0.0f);
         }
     }
@@ -127,7 +127,7 @@ void CadenceBridge::push_to_audio(const CompiledGraph& cg) {
         const auto& a = *cn.audio;
         snap.node_params[i] = cn.param_values;
         snap.float_input_values[i] = a.float_input_defaults;
-        for (auto& sp : snap.spread_inputs[i]) sp.length = 0;
+        for (auto& sp : snap.lane_inputs[i]) sp.length = 0;
         for (auto& s : snap.input_string_values[i]) s.clear();
         for (auto& ci : snap.custom_inputs[i]) ci.clear();
     }
@@ -150,12 +150,12 @@ void CadenceBridge::push_to_audio(const CompiledGraph& cg) {
             val *= e.remap_scale();
             if (e.to_port < snap.node_params[si].size())
                 snap.node_params[si][e.to_port] = val;
-        } else if (e.data_type == VIVID_PORT_SPREAD && !e.targets_param) {
+        } else if (e.data_type == VIVID_PORT_LANE_ARRAY && !e.targets_param) {
             // Spread input
-            if (e.from_port < from_cn.output_spreads.size() &&
-                e.to_port < snap.spread_inputs[si].size()) {
-                const auto& src = from_cn.output_spreads[e.from_port];
-                auto& dst = snap.spread_inputs[si][e.to_port];
+            if (e.from_port < from_cn.output_lanes.size() &&
+                e.to_port < snap.lane_inputs[si].size()) {
+                const auto& src = from_cn.output_lanes[e.from_port];
+                auto& dst = snap.lane_inputs[si][e.to_port];
                 dst.length = std::min(static_cast<uint32_t>(src.size()),
                                       SpreadSnapshot::kMaxLength);
                 float scale = e.remap_scale();
@@ -258,13 +258,13 @@ void CadenceBridge::pull_from_audio(CompiledGraph& cg) {
                 }
                 to_cn.dirty = true;
             }
-        } else if (e.data_type == VIVID_PORT_SPREAD) {
+        } else if (e.data_type == VIVID_PORT_LANE_ARRAY) {
             // Spread output → frame-rate input
-            if (si < snap.spread_outputs.size() &&
-                e.from_port < snap.spread_outputs[si].size()) {
-                const auto& src = snap.spread_outputs[si][e.from_port];
-                if (e.to_port < to_cn.input_spreads.size()) {
-                    to_cn.input_spreads[e.to_port].assign(src.data,
+            if (si < snap.lane_outputs.size() &&
+                e.from_port < snap.lane_outputs[si].size()) {
+                const auto& src = snap.lane_outputs[si][e.from_port];
+                if (e.to_port < to_cn.input_lanes.size()) {
+                    to_cn.input_lanes[e.to_port].assign(src.data,
                         src.data + src.length);
                     to_cn.dirty = true;
                 }
@@ -294,11 +294,11 @@ void CadenceBridge::pull_from_audio(CompiledGraph& cg) {
             }
         }
         // Also sync spread outputs
-        if (si < snap.spread_outputs.size()) {
-            for (uint32_t p = 0; p < cn.output_port_count && p < snap.spread_outputs[si].size(); ++p) {
-                const auto& src = snap.spread_outputs[si][p];
-                if (p < cn.output_spreads.size() && src.length > 0)
-                    cn.output_spreads[p].assign(src.data, src.data + src.length);
+        if (si < snap.lane_outputs.size()) {
+            for (uint32_t p = 0; p < cn.output_port_count && p < snap.lane_outputs[si].size(); ++p) {
+                const auto& src = snap.lane_outputs[si][p];
+                if (p < cn.output_lanes.size() && src.length > 0)
+                    cn.output_lanes[p].assign(src.data, src.data + src.length);
             }
         }
     }
@@ -312,8 +312,8 @@ void CadenceBridge::pull_from_audio(CompiledGraph& cg) {
             cn.output_values[am.rms_port_idx] = snap.rms[si];
         if (si < snap.peak.size() && am.peak_port_idx < cn.output_values.size())
             cn.output_values[am.peak_port_idx] = snap.peak[si];
-        if (si < snap.waveform.size() && am.waveform_port_idx < cn.output_spreads.size()) {
-            auto& dst = cn.output_spreads[am.waveform_port_idx];
+        if (si < snap.waveform.size() && am.waveform_port_idx < cn.output_lanes.size()) {
+            auto& dst = cn.output_lanes[am.waveform_port_idx];
             dst.assign(snap.waveform[si].begin(), snap.waveform[si].end());
         }
         cn.dirty = true;

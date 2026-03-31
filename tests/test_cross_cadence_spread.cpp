@@ -107,7 +107,7 @@ int main(int argc, char* argv[]) {
 
             if (echo_it != audio_ns->output_port_indices.end()) {
                 uint32_t echo_idx = echo_it->second;
-                const auto& spread = audio_ns->output_spreads[echo_idx];
+                const auto& spread = audio_ns->output_lanes[echo_idx];
                 check(spread.size() == 3, "echo spread has 3 elements");
                 if (spread.size() >= 3) {
                     check_float(spread[0], 1.0f, 0.01f, "echo[0] = 1.0");
@@ -154,7 +154,7 @@ int main(int argc, char* argv[]) {
         if (audio_ns) {
             auto echo_it = audio_ns->output_port_indices.find("echo");
             if (echo_it != audio_ns->output_port_indices.end()) {
-                const auto& spread = audio_ns->output_spreads[echo_it->second];
+                const auto& spread = audio_ns->output_lanes[echo_it->second];
                 check(spread.size() == 3, "echo spread still has 3 elements");
                 if (spread.size() >= 3) {
                     check_float(spread[0], 2.0f, 0.01f, "echo[0] = 2.0");

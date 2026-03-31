@@ -26,8 +26,8 @@ struct StringSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
 
     void process_frame(const VividFrameContext* ctx) override {
         if (ctx->output_string_values) ctx->output_string_values[0] = value.str_value.c_str();
-        if (ctx->output_string_spreads && ctx->output_string_spreads[1].data) {
-            auto& sp = ctx->output_string_spreads[1];
+        if (ctx->output_string_lanes && ctx->output_string_lanes[1].data) {
+            auto& sp = ctx->output_string_lanes[1];
             uint32_t n = std::min<uint32_t>(sp.capacity, static_cast<uint32_t>(spread_ptrs_.size()));
             sp.length = n;
             for (uint32_t i = 0; i < n; ++i) sp.data[i] = spread_ptrs_[i];

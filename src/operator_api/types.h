@@ -67,7 +67,7 @@ typedef uint32_t VividPortType;
 
 #define VIVID_PORT_SIGNAL         0u  // continuous numeric value (scalar at frame cadence, per-sample buffer at audio cadence)
 #define VIVID_PORT_AUDIO          1u  // audio sample buffer
-#define VIVID_PORT_SPREAD         2u  // variable-length float array
+#define VIVID_PORT_LANE_ARRAY         2u  // variable-length float array
 #define VIVID_PORT_STRING         3u  // UTF-8 string
 #define VIVID_PORT_STRING_SPREAD  4u  // variable-length string array
 #define VIVID_PORT_TEXTURE        5u  // WGPUTextureView
@@ -191,17 +191,17 @@ typedef struct VividInputState {
 // Spread port — variable-length float array
 // ---------------------------------------------------------------------------
 
-typedef struct VividSpreadPort {
+typedef struct VividLanePort {
     float*   data;      // pointer to spread data
     uint32_t length;    // current number of floats
     uint32_t capacity;  // allocated size (for output ports)
-} VividSpreadPort;
+} VividLanePort;
 
-typedef struct VividStringSpreadPort {
+typedef struct VividStringLanePort {
     const char** data;    // pointer to array of UTF-8 string pointers
     uint32_t length;      // current number of strings
     uint32_t capacity;    // allocated size (for output ports)
-} VividStringSpreadPort;
+} VividStringLanePort;
 
 typedef struct VividSharedHandleEntry {
     const char* type;
@@ -236,8 +236,8 @@ typedef struct VividAudioContext {
     const uint8_t* input_channel_counts;   // [port_idx] — NULL when all mono
     const uint8_t* output_channel_counts;  // [port_idx] — NULL when all mono
     // Cross-cadence inputs from frame executor
-    VividSpreadPort*  input_spreads;
-    VividSpreadPort*  output_spreads;
+    VividLanePort*  input_lanes;
+    VividLanePort*  output_lanes;
     void**            custom_inputs;       // [custom_input_ordinal] — opaque custom-type inputs
     uint32_t          custom_input_count;  // number of custom-transport input ports
     const char**      input_string_values;
@@ -284,16 +284,16 @@ typedef struct VividFrameContext {
     float*    param_values;   // indexed by param descriptor order
     float*    input_values;   // indexed by input port order (VIVID_PORT_INPUT only)
     float*    output_values;  // indexed by output port order (VIVID_PORT_OUTPUT only)
-    VividSpreadPort* input_spreads;    // [spread_port_ordinal], NULL if none
-    VividSpreadPort* output_spreads;   // [spread_port_ordinal], NULL if none
+    VividLanePort* input_lanes;    // [spread_port_ordinal], NULL if none
+    VividLanePort* output_lanes;   // [spread_port_ordinal], NULL if none
     void**     custom_inputs;          // [custom_input_ordinal], NULL if none
     uint32_t   custom_input_count;     // number of custom-transport input ports
     void**     custom_outputs;         // [custom_output_ordinal], NULL if none
     uint32_t   custom_output_count;    // number of custom-transport output ports
     const char** input_string_values;   // [string_port_ordinal]
     const char** output_string_values;  // [string_port_ordinal]
-    VividStringSpreadPort* input_string_spreads;   // [string_spread_port_ordinal], NULL if none
-    VividStringSpreadPort* output_string_spreads;  // [string_spread_port_ordinal], NULL if none
+    VividStringLanePort* input_string_lanes;   // [string_spread_port_ordinal], NULL if none
+    VividStringLanePort* output_string_lanes;  // [string_spread_port_ordinal], NULL if none
     const char** file_param_values;   // indexed by file param order, NULL if none
     uint32_t     file_param_count;
     void*     input;          // VividInputState* for interactive operators, NULL otherwise
@@ -437,7 +437,7 @@ typedef void (*VividMainThreadUpdateFn)(void* instance, double time,
 // ---------------------------------------------------------------------------
 
 static inline int vivid_is_control_type(VividPortType t) {
-    return t == VIVID_PORT_SIGNAL || t == VIVID_PORT_SPREAD ||
+    return t == VIVID_PORT_SIGNAL || t == VIVID_PORT_LANE_ARRAY ||
            t == VIVID_PORT_STRING || t == VIVID_PORT_STRING_SPREAD;
 }
 

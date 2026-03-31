@@ -101,8 +101,8 @@ int main(int argc, char* argv[]) {
 
         auto* sink = runtime.compiled_graph()->find_node("sink");
         check(sink != nullptr, "sink found");
-        if (sink && !sink->output_spreads.empty()) {
-            const auto& sp = sink->output_spreads[0];
+        if (sink && !sink->output_lanes.empty()) {
+            const auto& sp = sink->output_lanes[0];
             check(sp.size() == 4, "output spread has 4 elements");
             if (sp.size() == 4) {
                 check_float(sp[0], 10.0f, 0.01f, "lane 0 output = 10");
@@ -138,8 +138,8 @@ int main(int argc, char* argv[]) {
 
         auto* sink = runtime.compiled_graph()->find_node("sink");
         check(sink != nullptr, "sink found");
-        if (sink && !sink->output_spreads.empty()) {
-            const auto& sp = sink->output_spreads[0];
+        if (sink && !sink->output_lanes.empty()) {
+            const auto& sp = sink->output_lanes[0];
             check(sp.size() == 4, "output spread has 4 elements");
             if (sp.size() == 4) {
                 check_float(sp[0],  30.0f, 0.01f, "lane 0 accumulated = 30 (10*3)");
@@ -181,8 +181,8 @@ int main(int argc, char* argv[]) {
 
         auto* sink = runtime.compiled_graph()->find_node("sink");
         check(sink != nullptr, "sink found");
-        if (sink && !sink->output_spreads.empty()) {
-            const auto& sp = sink->output_spreads[0];
+        if (sink && !sink->output_lanes.empty()) {
+            const auto& sp = sink->output_lanes[0];
             check(sp.size() == 4, "tick 1: 4-element output");
             if (sp.size() == 4) {
                 check_float(sp[0], 10.0f, 0.01f, "tick 1 lane 0 = 10");
@@ -204,8 +204,8 @@ int main(int argc, char* argv[]) {
         // Tick 2: 3 voices, state should follow lane_id
         runtime.tick(1.0 / 60.0, 1.0 / 60.0, 1);
 
-        if (sink && !sink->output_spreads.empty()) {
-            const auto& sp = sink->output_spreads[0];
+        if (sink && !sink->output_lanes.empty()) {
+            const auto& sp = sink->output_lanes[0];
             check(sp.size() == 3, "tick 2: 3-element output (compacted)");
             if (sp.size() == 3) {
                 // Position 0 (lane_id=100): was 10, now adds 10 → 20

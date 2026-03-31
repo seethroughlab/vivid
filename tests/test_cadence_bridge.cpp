@@ -49,8 +49,8 @@ static vivid::CompiledGraph make_audio_graph(const std::vector<AudioNodeSpec>& s
         cn.input_values.assign(s.input_port_count, 0.0f);
         cn.output_values.assign(s.output_port_count, 0.0f);
         cn.output_port_types.assign(s.output_port_count, VIVID_PORT_AUDIO);
-        cn.input_spreads.resize(s.input_port_count);
-        cn.output_spreads.resize(s.output_port_count);
+        cn.input_lanes.resize(s.input_port_count);
+        cn.output_lanes.resize(s.output_port_count);
 
         cn.audio = std::make_unique<vivid::AudioNodeState>();
         auto& a = *cn.audio;
@@ -96,7 +96,7 @@ static void test_build_snapshot_allocation() {
     const auto& snap = bridge.active_params();
     check(snap.node_params.size() == 2, "2 node_params entries");
     check(snap.float_input_values.size() == 2, "2 float_input_values entries");
-    check(snap.spread_inputs.size() == 2, "2 spread_inputs entries");
+    check(snap.lane_inputs.size() == 2, "2 lane_inputs entries");
 
     // osc has 2 params, gain has 1
     check(snap.node_params[0].size() == 2, "osc: 2 params in snapshot");
@@ -500,7 +500,7 @@ static void test_push_spread_preserves_lane_set_id() {
     cg.audio_order = {1};
 
     // gen outputs a spread
-    cg.nodes[0].output_spreads[0] = {1.0f, 2.0f, 3.0f};
+    cg.nodes[0].output_lanes[0] = {1.0f, 2.0f, 3.0f};
 
     // Snapshot edge with lane_set_id = 42
     vivid::CompiledEdge edge{};
@@ -509,7 +509,7 @@ static void test_push_spread_preserves_lane_set_id() {
     edge.to_node = 1;
     edge.to_port = 0;
     edge.transport = vivid::EdgeTransport::Snapshot;
-    edge.data_type = VIVID_PORT_SPREAD;
+    edge.data_type = VIVID_PORT_LANE_ARRAY;
     edge.lane_set_id = 42;
     cg.edges.push_back(edge);
     cg.frame_to_audio_edges.push_back(0);
@@ -519,8 +519,8 @@ static void test_push_spread_preserves_lane_set_id() {
     bridge.push_to_audio(cg);
 
     const auto& snap = bridge.active_params();
-    check(snap.spread_inputs[0][0].length == 3, "spread length = 3");
-    check(snap.spread_inputs[0][0].lane_set_id == 42,
+    check(snap.lane_inputs[0][0].length == 3, "spread length = 3");
+    check(snap.lane_inputs[0][0].lane_set_id == 42,
           "lane_set_id = 42 preserved through snapshot");
 }
 

@@ -77,9 +77,9 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"gates",      VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
-        out.push_back({"notes",      VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
-        out.push_back({"velocities", VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
+        out.push_back({"gates",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
+        out.push_back({"notes",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
+        out.push_back({"velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_in", VIVID_PORT_INPUT, VividMidiBuffer));
         out.push_back({"output",     VIVID_PORT_AUDIO,  VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2});
         vivid::append_analysis_ports(out);
@@ -151,9 +151,9 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
                                static_cast<double>(ctx->sample_rate);
 
         // Read spread inputs
-        SpreadInput gates_in = read_spread_input(ctx->input_spreads, 0);
-        SpreadInput notes_in = read_spread_input(ctx->input_spreads, 1);
-        SpreadInput vels_in  = read_spread_input(ctx->input_spreads, 2);
+        SpreadInput gates_in = read_spread_input(ctx->input_lanes, 0);
+        SpreadInput notes_in = read_spread_input(ctx->input_lanes, 1);
+        SpreadInput vels_in  = read_spread_input(ctx->input_lanes, 2);
 
         // Process MIDI input
         if (ctx->custom_inputs && ctx->custom_input_count > 0 && ctx->custom_inputs[0]) {

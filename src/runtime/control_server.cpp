@@ -91,7 +91,7 @@ static const char* port_type_str(VividPortType t) {
     switch (t) {
         case VIVID_PORT_SIGNAL:         return "float";
         case VIVID_PORT_AUDIO:         return "audio";
-        case VIVID_PORT_SPREAD:        return "spread";
+        case VIVID_PORT_LANE_ARRAY:        return "spread";
         case VIVID_PORT_STRING:        return "string";
         case VIVID_PORT_STRING_SPREAD: return "string_spread";
         case VIVID_PORT_TEXTURE:       return "texture";
@@ -367,18 +367,18 @@ static std::string handle_inspect_graph(Graph& graph, RuntimeCore& core) {
                         p["current_string"] = ns->output_string_values[oi->second];
                     }
                     if (oi != ns->output_port_indices.end() &&
-                        oi->second < ns->output_spreads.size() &&
-                        !ns->output_spreads[oi->second].empty()) {
+                        oi->second < ns->output_lanes.size() &&
+                        !ns->output_lanes[oi->second].empty()) {
                         nlohmann::json spread_arr = nlohmann::json::array();
-                        for (float sv : ns->output_spreads[oi->second])
+                        for (float sv : ns->output_lanes[oi->second])
                             spread_arr.push_back(static_cast<double>(sv));
                         p["spread"] = std::move(spread_arr);
                     }
                     if (oi != ns->output_port_indices.end() &&
-                        oi->second < ns->output_string_spreads.size() &&
-                        !ns->output_string_spreads[oi->second].empty()) {
+                        oi->second < ns->output_string_lanes.size() &&
+                        !ns->output_string_lanes[oi->second].empty()) {
                         nlohmann::json spread_arr = nlohmann::json::array();
-                        for (const auto& sv : ns->output_string_spreads[oi->second])
+                        for (const auto& sv : ns->output_string_lanes[oi->second])
                             spread_arr.push_back(sv);
                         p["string_spread"] = std::move(spread_arr);
                     }
@@ -396,18 +396,18 @@ static std::string handle_inspect_graph(Graph& graph, RuntimeCore& core) {
                         p["current_string"] = ns->input_string_values[ii->second];
                     }
                     if (ii != ns->input_port_indices.end() &&
-                        ii->second < ns->input_spreads.size() &&
-                        !ns->input_spreads[ii->second].empty()) {
+                        ii->second < ns->input_lanes.size() &&
+                        !ns->input_lanes[ii->second].empty()) {
                         nlohmann::json spread_arr = nlohmann::json::array();
-                        for (float sv : ns->input_spreads[ii->second])
+                        for (float sv : ns->input_lanes[ii->second])
                             spread_arr.push_back(static_cast<double>(sv));
                         p["spread"] = std::move(spread_arr);
                     }
                     if (ii != ns->input_port_indices.end() &&
-                        ii->second < ns->input_string_spreads.size() &&
-                        !ns->input_string_spreads[ii->second].empty()) {
+                        ii->second < ns->input_string_lanes.size() &&
+                        !ns->input_string_lanes[ii->second].empty()) {
                         nlohmann::json spread_arr = nlohmann::json::array();
-                        for (const auto& sv : ns->input_string_spreads[ii->second])
+                        for (const auto& sv : ns->input_string_lanes[ii->second])
                             spread_arr.push_back(sv);
                         p["string_spread"] = std::move(spread_arr);
                     }
@@ -542,18 +542,18 @@ static nlohmann::json sample_node_outputs_snapshot(const CompiledNode& ns,
                 !ns.output_string_values[oi].empty()) {
                 out["string"] = ns.output_string_values[oi];
             }
-            if (include_spreads && oi < ns.output_spreads.size() &&
-                !ns.output_spreads[oi].empty()) {
+            if (include_spreads && oi < ns.output_lanes.size() &&
+                !ns.output_lanes[oi].empty()) {
                 nlohmann::json spread_arr = nlohmann::json::array();
-                for (float sv : ns.output_spreads[oi]) {
+                for (float sv : ns.output_lanes[oi]) {
                     spread_arr.push_back(static_cast<double>(sv));
                 }
                 out["spread"] = std::move(spread_arr);
             }
-            if (include_spreads && oi < ns.output_string_spreads.size() &&
-                !ns.output_string_spreads[oi].empty()) {
+            if (include_spreads && oi < ns.output_string_lanes.size() &&
+                !ns.output_string_lanes[oi].empty()) {
                 nlohmann::json spread_arr = nlohmann::json::array();
-                for (const auto& sv : ns.output_string_spreads[oi]) {
+                for (const auto& sv : ns.output_string_lanes[oi]) {
                     spread_arr.push_back(sv);
                 }
                 out["string_spread"] = std::move(spread_arr);
@@ -783,11 +783,11 @@ static std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core) {
                         !ns.input_string_values[ii].empty()) {
                         in["string"] = ns.input_string_values[ii];
                     }
-                    if (ii < ns.input_spreads.size()) {
-                        in["spread"] = nlohmann::json{{"length", static_cast<int64_t>(ns.input_spreads[ii].size())}};
+                    if (ii < ns.input_lanes.size()) {
+                        in["spread"] = nlohmann::json{{"length", static_cast<int64_t>(ns.input_lanes[ii].size())}};
                     }
-                    if (ii < ns.input_string_spreads.size()) {
-                        in["string_spread"] = nlohmann::json{{"length", static_cast<int64_t>(ns.input_string_spreads[ii].size())}};
+                    if (ii < ns.input_string_lanes.size()) {
+                        in["string_spread"] = nlohmann::json{{"length", static_cast<int64_t>(ns.input_string_lanes[ii].size())}};
                     }
                 }
                 inputs_arr.push_back(std::move(in));
@@ -823,11 +823,11 @@ static std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core) {
                         !ns.output_string_values[oi].empty()) {
                         out["string"] = ns.output_string_values[oi];
                     }
-                    if (oi < ns.output_spreads.size()) {
-                        out["spread"] = nlohmann::json{{"length", static_cast<int64_t>(ns.output_spreads[oi].size())}};
+                    if (oi < ns.output_lanes.size()) {
+                        out["spread"] = nlohmann::json{{"length", static_cast<int64_t>(ns.output_lanes[oi].size())}};
                     }
-                    if (oi < ns.output_string_spreads.size()) {
-                        out["string_spread"] = nlohmann::json{{"length", static_cast<int64_t>(ns.output_string_spreads[oi].size())}};
+                    if (oi < ns.output_string_lanes.size()) {
+                        out["string_spread"] = nlohmann::json{{"length", static_cast<int64_t>(ns.output_string_lanes[oi].size())}};
                     }
                 }
 
@@ -865,8 +865,8 @@ static std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core) {
             }
             auto wave_it = ns.output_port_indices.find("waveform");
             if (wave_it != ns.output_port_indices.end() &&
-                wave_it->second < ns.output_spreads.size()) {
-                const auto& wave = ns.output_spreads[wave_it->second];
+                wave_it->second < ns.output_lanes.size()) {
+                const auto& wave = ns.output_lanes[wave_it->second];
                 audio["waveform_length"] = static_cast<int64_t>(wave.size());
                 nlohmann::json preview = nlohmann::json::array();
                 size_t preview_count = wave.size();
@@ -881,11 +881,11 @@ static std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core) {
             nlohmann::json control = nlohmann::json::object();
             int64_t spread_out_nonempty = 0;
             int64_t scalar_out_nonzero = 0;
-            for (const auto& sp : ns.output_spreads)
+            for (const auto& sp : ns.output_lanes)
                 if (!sp.empty()) spread_out_nonempty++;
             for (float v : ns.output_values)
                 if (v != 0.0f) scalar_out_nonzero++;
-            control["non_empty_spread_outputs"] = spread_out_nonempty;
+            control["non_empty_lane_outputs"] = spread_out_nonempty;
             control["non_zero_scalar_outputs"] = scalar_out_nonzero;
             env_metrics["control"] = std::move(control);
         }
@@ -988,7 +988,7 @@ static std::vector<DiagnosticFinding> collect_diagnostics(
             }
         }
         if (!found_non_finite) {
-            for (const auto& sp : ns.output_spreads) {
+            for (const auto& sp : ns.output_lanes) {
                 for (float v : sp) {
                     if (!std::isfinite(v)) { found_non_finite = true; break; }
                 }
@@ -1252,9 +1252,9 @@ static bool resolve_state_path(Graph& graph, RuntimeCore& core,
     }
     if (rest == "env_metrics.audio.waveform_length") {
         auto it = node->output_port_indices.find("waveform");
-        if (node->active_cadence != vivid::Cadence::Audio || it == node->output_port_indices.end() || it->second >= node->output_spreads.size())
+        if (node->active_cadence != vivid::Cadence::Audio || it == node->output_port_indices.end() || it->second >= node->output_lanes.size())
             return false;
-        out = cv_number(static_cast<double>(node->output_spreads[it->second].size()));
+        out = cv_number(static_cast<double>(node->output_lanes[it->second].size()));
         return true;
     }
 
@@ -1287,8 +1287,8 @@ static bool resolve_state_path(Graph& graph, RuntimeCore& core,
             out = cv_number(node->output_values[pi]);
             return true;
         }
-        if (tail == "spread.length" && pi < node->output_spreads.size()) {
-            out = cv_number(static_cast<double>(node->output_spreads[pi].size()));
+        if (tail == "spread.length" && pi < node->output_lanes.size()) {
+            out = cv_number(static_cast<double>(node->output_lanes[pi].size()));
             return true;
         }
         return false;
@@ -2316,7 +2316,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     if      (type_str == "float")         out = VIVID_PORT_SIGNAL;
                     else if (type_str == "int")           out = VIVID_PORT_SIGNAL;
                     else if (type_str == "bool")          out = VIVID_PORT_SIGNAL;
-                    else if (type_str == "spread")        out = VIVID_PORT_SPREAD;
+                    else if (type_str == "spread")        out = VIVID_PORT_LANE_ARRAY;
                     else if (type_str == "string")        out = VIVID_PORT_STRING;
                     else if (type_str == "string_spread") out = VIVID_PORT_STRING_SPREAD;
                     else return "unknown control port type '" + type_str + "'";

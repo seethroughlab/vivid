@@ -64,7 +64,7 @@ static void test_port_type_compat() {
     // Incompatible pairs (sanity)
     check(!vivid_port_type_compatible(VIVID_PORT_SIGNAL, VIVID_PORT_TEXTURE),
           "SIGNAL ↔ TEXTURE incompatible");
-    check(!vivid_port_type_compatible(VIVID_PORT_AUDIO, VIVID_PORT_SPREAD),
+    check(!vivid_port_type_compatible(VIVID_PORT_AUDIO, VIVID_PORT_LANE_ARRAY),
           "AUDIO ↔ SPREAD incompatible");
 }
 
@@ -107,8 +107,8 @@ struct AudioTestContext {
         ctx.sample_rate = kSampleRate;
         ctx.input_channel_counts = nullptr;
         ctx.output_channel_counts = nullptr;
-        ctx.input_spreads = nullptr;
-        ctx.output_spreads = nullptr;
+        ctx.input_lanes = nullptr;
+        ctx.output_lanes = nullptr;
         ctx.custom_inputs = nullptr;
         ctx.custom_input_count = 0;
         ctx.custom_outputs = nullptr;

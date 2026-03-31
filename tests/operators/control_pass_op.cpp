@@ -22,9 +22,9 @@ struct ControlPassOp : vivid::OperatorBase, vivid::FrameProcessable {
         ctx->output_values[0] = in * g;
 
         // Spread propagation: multiply each spread element by gain
-        if (ctx->input_spreads && ctx->output_spreads) {
-            const auto& isp = ctx->input_spreads[0];
-            auto& osp = ctx->output_spreads[0];
+        if (ctx->input_lanes && ctx->output_lanes) {
+            const auto& isp = ctx->input_lanes[0];
+            auto& osp = ctx->output_lanes[0];
             if (isp.length > 0 && osp.capacity >= isp.length) {
                 osp.length = isp.length;
                 for (uint32_t i = 0; i < isp.length; ++i) {

@@ -36,19 +36,19 @@ struct FFTAnalysis : vivid::OperatorBase, vivid::FrameProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"waveform", VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
-        out.push_back({"spectrum", VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});
+        out.push_back({"waveform", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
+        out.push_back({"spectrum", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
     }
 
     void process_frame(const VividFrameContext* ctx) override {
         // Read input spread
-        if (!ctx->input_spreads || ctx->input_spreads[0].length == 0) {
+        if (!ctx->input_lanes || ctx->input_lanes[0].length == 0) {
             ctx->output_values[0] = 0.0f;
             return;
         }
 
-        const float* wave_data = ctx->input_spreads[0].data;
-        uint32_t wave_len = ctx->input_spreads[0].length;
+        const float* wave_data = ctx->input_lanes[0].data;
+        uint32_t wave_len = ctx->input_lanes[0].length;
 
         // Determine FFT size (must be power of 2: 256, 512, or 1024)
         uint32_t N = static_cast<uint32_t>(fft_size.int_value());
@@ -113,8 +113,8 @@ struct FFTAnalysis : vivid::OperatorBase, vivid::FrameProcessable {
 
         // Output magnitude spectrum (N/2 bins)
         uint32_t num_bins = N / 2;
-        if (!ctx->output_spreads) return;
-        auto& out = ctx->output_spreads[0];
+        if (!ctx->output_lanes) return;
+        auto& out = ctx->output_lanes[0];
         if (out.capacity < num_bins) num_bins = out.capacity;
         float inv_N = 2.0f / N;
         for (uint32_t i = 0; i < num_bins; ++i) {

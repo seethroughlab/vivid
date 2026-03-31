@@ -17,9 +17,9 @@ struct SpreadSinkOp : vivid::OperatorBase, vivid::FrameProcessable {
         ctx->output_values[0] = ctx->input_values[0];
 
         // Copy input spread to output spread
-        if (ctx->input_spreads && ctx->output_spreads) {
-            auto& isp = ctx->input_spreads[0];
-            auto& osp = ctx->output_spreads[0];
+        if (ctx->input_lanes && ctx->output_lanes) {
+            auto& isp = ctx->input_lanes[0];
+            auto& osp = ctx->output_lanes[0];
             uint32_t len = isp.length;
             if (len > osp.capacity) len = osp.capacity;
             osp.length = len;

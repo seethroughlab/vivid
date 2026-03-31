@@ -11,7 +11,7 @@
 
 namespace vivid {
 
-static constexpr uint32_t kMaxSpreadCapacity = 1024;
+static constexpr uint32_t kMaxLaneCapacity = 1024;
 
 // ---------------------------------------------------------------------------
 // Lane execution planner — formal boundary for strategy selection.
@@ -41,7 +41,7 @@ static int32_t detect_lane_id_spread_port(const CompiledNode& cn) {
     if (li_it != cn.input_port_indices.end()) {
         uint32_t pi = li_it->second;
         if (pi < cn.input_port_types.size() &&
-            cn.input_port_types[pi] == VIVID_PORT_SPREAD) {
+            cn.input_port_types[pi] == VIVID_PORT_LANE_ARRAY) {
             return static_cast<int32_t>(pi);
         }
     }
@@ -193,10 +193,10 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
     cn.output_string_values.assign(cn.output_port_count, "");
     cn.c_input_string_values.assign(cn.input_port_count, nullptr);
     cn.c_output_string_values.assign(cn.output_port_count, nullptr);
-    cn.input_spreads.resize(cn.input_port_count);
-    cn.output_spreads.resize(cn.output_port_count);
-    cn.input_string_spreads.resize(cn.input_port_count);
-    cn.output_string_spreads.resize(cn.output_port_count);
+    cn.input_lanes.resize(cn.input_port_count);
+    cn.output_lanes.resize(cn.output_port_count);
+    cn.input_string_lanes.resize(cn.input_port_count);
+    cn.output_string_lanes.resize(cn.output_port_count);
 
     // Params
     cn.param_values.resize(desc->param_count);
@@ -248,8 +248,8 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
         cn.output_values.resize(cn.output_port_count, 0.0f);
         cn.output_string_values.resize(cn.output_port_count, "");
         cn.c_output_string_values.resize(cn.output_port_count, nullptr);
-        cn.output_spreads.resize(cn.output_port_count);
-        cn.output_string_spreads.resize(cn.output_port_count);
+        cn.output_lanes.resize(cn.output_port_count);
+        cn.output_string_lanes.resize(cn.output_port_count);
     }
 
     // Lane metadata (sized to port count, populated by Pass 2.6).
@@ -257,19 +257,19 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
     cn.output_lane_sets.resize(cn.output_port_count);
 
     // Spread port staging buffers
-    cn.c_in_spreads.resize(cn.input_port_count);
-    cn.c_out_spreads.resize(cn.output_port_count);
-    cn.out_spread_buf.resize(cn.output_port_count);
-    cn.c_in_string_spreads.resize(cn.input_port_count);
-    cn.c_out_string_spreads.resize(cn.output_port_count);
+    cn.c_in_lanes.resize(cn.input_port_count);
+    cn.c_out_lanes.resize(cn.output_port_count);
+    cn.out_lane_buf.resize(cn.output_port_count);
+    cn.c_in_string_lanes.resize(cn.input_port_count);
+    cn.c_out_string_lanes.resize(cn.output_port_count);
     cn.in_string_spread_ptrs.resize(cn.input_port_count);
     cn.out_string_spread_ptr_buf.resize(cn.output_port_count);
     for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-        cn.out_spread_buf[p].resize(kMaxSpreadCapacity, 0.0f);
-        cn.out_string_spread_ptr_buf[p].resize(kMaxSpreadCapacity, nullptr);
+        cn.out_lane_buf[p].resize(kMaxLaneCapacity, 0.0f);
+        cn.out_string_spread_ptr_buf[p].resize(kMaxLaneCapacity, nullptr);
     }
     for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-        cn.in_string_spread_ptrs[p].resize(kMaxSpreadCapacity, nullptr);
+        cn.in_string_spread_ptrs[p].resize(kMaxLaneCapacity, nullptr);
     }
 
     // File params
@@ -316,7 +316,7 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
     cn.custom_input_port_indices.clear();
     cn.custom_output_port_indices.clear();
     cn.string_input_port_indices.clear();
-    cn.string_spread_input_port_indices.clear();
+    cn.string_lane_input_port_indices.clear();
     cn.has_string_output = false;
     cn.has_string_spread_output = false;
 
@@ -341,7 +341,7 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
                 case VIVID_PORT_STRING:
                     cn.string_input_port_indices.push_back(input_idx); break;
                 case VIVID_PORT_STRING_SPREAD:
-                    cn.string_spread_input_port_indices.push_back(input_idx); break;
+                    cn.string_lane_input_port_indices.push_back(input_idx); break;
                 default:
                     if (vivid_is_custom_port_type(desc->ports[i].type))
                         cn.custom_input_port_indices.push_back(input_idx);
@@ -394,7 +394,7 @@ void GraphCompiler::init_audio_state(CompiledNode& cn,
     // Channel descriptors
     a.descriptor_input_channels.clear();
     a.descriptor_output_channels.clear();
-    a.has_spread_ports = false;
+    a.has_lane_ports = false;
     a.has_string_input_ports = false;
     a.has_custom_input_ports = false;
     a.has_custom_output_ports = false;
@@ -402,8 +402,8 @@ void GraphCompiler::init_audio_state(CompiledNode& cn,
     for (uint32_t i = 0; i < desc->port_count; ++i) {
         if (desc->ports[i].direction == VIVID_PORT_INPUT) {
             a.descriptor_input_channels.push_back(desc->ports[i].channels);
-            if (desc->ports[i].type == VIVID_PORT_SPREAD)
-                a.has_spread_ports = true;
+            if (desc->ports[i].type == VIVID_PORT_LANE_ARRAY)
+                a.has_lane_ports = true;
             if (desc->ports[i].type == VIVID_PORT_STRING)
                 a.has_string_input_ports = true;
             if (vivid_is_custom_port_type(desc->ports[i].type))
@@ -618,10 +618,10 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             cn.output_string_values.assign(cn.output_port_count, "");
             cn.c_input_string_values.assign(cn.input_port_count, nullptr);
             cn.c_output_string_values.assign(cn.output_port_count, nullptr);
-            cn.input_spreads.resize(cn.input_port_count);
-            cn.output_spreads.resize(cn.output_port_count);
-            cn.input_string_spreads.resize(cn.input_port_count);
-            cn.output_string_spreads.resize(cn.output_port_count);
+            cn.input_lanes.resize(cn.input_port_count);
+            cn.output_lanes.resize(cn.output_port_count);
+            cn.input_string_lanes.resize(cn.input_port_count);
+            cn.output_string_lanes.resize(cn.output_port_count);
             cn.input_lane_sets.resize(cn.input_port_count);
             cn.output_lane_sets.resize(cn.output_port_count);
 
@@ -637,19 +637,19 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                     cn.param_lock_flags[pi->second] = flags;
             }
 
-            cn.c_in_spreads.resize(cn.input_port_count);
-            cn.c_out_spreads.resize(cn.output_port_count);
-            cn.out_spread_buf.resize(cn.output_port_count);
-            cn.c_in_string_spreads.resize(cn.input_port_count);
-            cn.c_out_string_spreads.resize(cn.output_port_count);
+            cn.c_in_lanes.resize(cn.input_port_count);
+            cn.c_out_lanes.resize(cn.output_port_count);
+            cn.out_lane_buf.resize(cn.output_port_count);
+            cn.c_in_string_lanes.resize(cn.input_port_count);
+            cn.c_out_string_lanes.resize(cn.output_port_count);
             cn.in_string_spread_ptrs.resize(cn.input_port_count);
             cn.out_string_spread_ptr_buf.resize(cn.output_port_count);
             for (uint32_t p = 0; p < cn.output_port_count; ++p)
-                cn.out_spread_buf[p].resize(kMaxSpreadCapacity, 0.0f);
+                cn.out_lane_buf[p].resize(kMaxLaneCapacity, 0.0f);
             for (uint32_t p = 0; p < cn.input_port_count; ++p)
-                cn.in_string_spread_ptrs[p].resize(kMaxSpreadCapacity, nullptr);
+                cn.in_string_spread_ptrs[p].resize(kMaxLaneCapacity, nullptr);
             for (uint32_t p = 0; p < cn.output_port_count; ++p)
-                cn.out_string_spread_ptr_buf[p].resize(kMaxSpreadCapacity, nullptr);
+                cn.out_string_spread_ptr_buf[p].resize(kMaxLaneCapacity, nullptr);
 
             std::fprintf(stderr, "[vivid] GraphCompiler: missing operator '%s' (node '%s') — placeholder\n",
                          ndef.type.c_str(), ndef.id.c_str());
@@ -790,11 +790,11 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                 } else if (from_port_type == VIVID_PORT_TEXTURE &&
                            to_port_type == VIVID_PORT_TEXTURE) {
                     e.data_type = VIVID_PORT_TEXTURE;
-                } else if (from_port_type == VIVID_PORT_SPREAD ||
-                           to_port_type == VIVID_PORT_SPREAD) {
+                } else if (from_port_type == VIVID_PORT_LANE_ARRAY ||
+                           to_port_type == VIVID_PORT_LANE_ARRAY) {
                     // SPREAD on either end → treat as spread edge
                     // (SIGNAL↔SPREAD is compatible for control types)
-                    e.data_type = VIVID_PORT_SPREAD;
+                    e.data_type = VIVID_PORT_LANE_ARRAY;
                 } else if (vivid_is_custom_port_type(from_port_type) &&
                            vivid_is_custom_port_type(to_port_type) &&
                            from_port_type == to_port_type) {

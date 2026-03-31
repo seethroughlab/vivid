@@ -78,7 +78,7 @@ static const char* port_type_name(VividPortType t) {
     switch (t) {
         case VIVID_PORT_SIGNAL:         return "VIVID_PORT_SIGNAL";
         case VIVID_PORT_AUDIO:         return "VIVID_PORT_AUDIO";
-        case VIVID_PORT_SPREAD:        return "VIVID_PORT_SPREAD";
+        case VIVID_PORT_LANE_ARRAY:        return "VIVID_PORT_LANE_ARRAY";
         case VIVID_PORT_STRING:        return "VIVID_PORT_STRING";
         case VIVID_PORT_STRING_SPREAD: return "VIVID_PORT_STRING_SPREAD";
         case VIVID_PORT_TEXTURE:       return "VIVID_PORT_TEXTURE";

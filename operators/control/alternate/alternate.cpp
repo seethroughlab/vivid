@@ -27,25 +27,25 @@ struct Alternate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPro
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"beat_phase", VIVID_PORT_SIGNAL,  VIVID_PORT_INPUT});   // in float[0]
-        out.push_back({"a",          VIVID_PORT_SPREAD, VIVID_PORT_INPUT});   // in spread[0]
-        out.push_back({"b",          VIVID_PORT_SPREAD, VIVID_PORT_INPUT});   // in spread[1]
-        out.push_back({"c",          VIVID_PORT_SPREAD, VIVID_PORT_INPUT});   // in spread[2]
-        out.push_back({"d",          VIVID_PORT_SPREAD, VIVID_PORT_INPUT});   // in spread[3]
-        out.push_back({"output",     VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // out spread[0]
+        out.push_back({"a",          VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in spread[0]
+        out.push_back({"b",          VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in spread[1]
+        out.push_back({"c",          VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in spread[2]
+        out.push_back({"d",          VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in spread[3]
+        out.push_back({"output",     VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // out spread[0]
         out.push_back({"index",      VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});  // out float[0]
     }
 
     void process_frame(const VividFrameContext* ctx) override {
-        compute(ctx->input_values[0], ctx->param_values, ctx->input_spreads, ctx->output_spreads, ctx->output_values);
+        compute(ctx->input_values[0], ctx->param_values, ctx->input_lanes, ctx->output_lanes, ctx->output_values);
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        compute(ctx->input_float_values[0], ctx->param_values, ctx->input_spreads, ctx->output_spreads, ctx->output_float_values);
+        compute(ctx->input_float_values[0], ctx->param_values, ctx->input_lanes, ctx->output_lanes, ctx->output_float_values);
     }
 
 private:
-    void compute(float beat_phase, const float* params, VividSpreadPort* in_spreads,
-                 VividSpreadPort* out_spreads, float* output_values) {
+    void compute(float beat_phase, const float* params, VividLanePort* in_spreads,
+                 VividLanePort* out_spreads, float* output_values) {
         int c = std::clamp(static_cast<int>(params[0]), 0, 4);
 
         // Cycle lengths in beats: Beat=1, 2 Beats=2, Bar=4, 2 Bars=8, 4 Bars=16
@@ -61,7 +61,7 @@ private:
 
         // Collect connected (non-empty) spread inputs
         // Spread inputs are at port indices 1..4 (a,b,c,d); port 0 is beat_phase (float)
-        const VividSpreadPort* inputs[4];
+        const VividLanePort* inputs[4];
         int input_indices[4];
         int input_count = 0;
         for (int i = 0; i < 4; ++i) {

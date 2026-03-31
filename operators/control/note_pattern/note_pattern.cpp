@@ -129,24 +129,24 @@ struct NotePattern : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"beat_phase", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"notes",      VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});
-        out.push_back({"velocities", VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});
-        out.push_back({"gates",      VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});
+        out.push_back({"notes",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({"velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({"gates",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
     }
 
     void process_frame(const VividFrameContext* ctx) override {
-        compute(ctx->input_values[0], ctx->param_values, ctx->output_spreads,
+        compute(ctx->input_values[0], ctx->param_values, ctx->output_lanes,
                 ctx->output_values, ctx->custom_outputs, ctx->custom_output_count);
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        compute(ctx->input_float_values[0], ctx->param_values, ctx->output_spreads,
+        compute(ctx->input_float_values[0], ctx->param_values, ctx->output_lanes,
                 ctx->output_float_values, ctx->custom_outputs, ctx->custom_output_count);
     }
 
 private:
-    void compute(float beat_phase, const float* params, VividSpreadPort* out_spreads,
+    void compute(float beat_phase, const float* params, VividLanePort* out_spreads,
                  float* output_values, void** custom_outputs, uint32_t custom_output_count) {
         int num_steps = steps.int_value();
         int oct = octave.int_value();

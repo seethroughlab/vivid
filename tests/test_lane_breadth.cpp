@@ -85,8 +85,8 @@ int main(int argc, char* argv[]) {
 
         auto* sink = runtime.compiled_graph()->find_node("sink");
         check(sink != nullptr, "sink found");
-        if (sink && !sink->output_spreads.empty()) {
-            const auto& sp = sink->output_spreads[0];
+        if (sink && !sink->output_lanes.empty()) {
+            const auto& sp = sink->output_lanes[0];
             check(sp.size() == 256, "output spread has 256 elements");
             if (sp.size() == 256) {
                 // Lane 0: base*1 = 1, accumulated over 2 ticks → 2
@@ -116,8 +116,8 @@ int main(int argc, char* argv[]) {
 
         auto* sink = runtime.compiled_graph()->find_node("sink");
         check(sink != nullptr, "sink found");
-        if (sink && !sink->output_spreads.empty()) {
-            const auto& sp = sink->output_spreads[0];
+        if (sink && !sink->output_lanes.empty()) {
+            const auto& sp = sink->output_lanes[0];
             check(sp.size() == 512, "output spread has 512 elements");
             if (sp.size() >= 512) {
                 // Lane 0: 0.1*1 = 0.1
@@ -176,8 +176,8 @@ int main(int argc, char* argv[]) {
 
         auto* sink = runtime.compiled_graph()->find_node("sink");
         check(sink != nullptr, "sink found");
-        if (sink && !sink->output_spreads.empty()) {
-            const auto& sp = sink->output_spreads[0];
+        if (sink && !sink->output_lanes.empty()) {
+            const auto& sp = sink->output_lanes[0];
             check(sp.size() == 512, "output spread has 512 bins (N/2)");
             if (sp.size() >= 2) {
                 // Bin 0 (DC): magnitude ≈ 2.0 (constant 1.0 * N * 2/N)
@@ -193,8 +193,8 @@ int main(int argc, char* argv[]) {
 
         // Run a second tick to prove per-bin state accumulation
         runtime.tick(1.0 / 60.0, 1.0 / 60.0, 1);
-        if (sink && !sink->output_spreads.empty()) {
-            const auto& sp = sink->output_spreads[0];
+        if (sink && !sink->output_lanes.empty()) {
+            const auto& sp = sink->output_lanes[0];
             if (sp.size() >= 1) {
                 // Bin 0 accumulated twice: 2.0 + 2.0 = 4.0
                 check_float(sp[0], 4.0f, 0.1f, "bin 0 after 2 ticks ≈ 4.0");

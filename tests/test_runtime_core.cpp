@@ -243,16 +243,16 @@ int main() {
         auto* npass = runtime.compiled_graph()->find_node("pass");
 
         check_float(nsrc->output_values[0], 1.0f, "src scalar = 1.0");
-        check(nsrc->output_spreads[0].size() == 4, "src spread has 4 elements");
+        check(nsrc->output_lanes[0].size() == 4, "src spread has 4 elements");
 
         // After spread propagation, scalar fallback = spread[0] = 1.0, * gain 2 = 2.0
         check_float(npass->output_values[0], 2.0f, "pass scalar = 2.0");
-        check(npass->output_spreads[0].size() == 4, "pass spread has 4 elements");
-        if (npass->output_spreads[0].size() == 4) {
-            check_float(npass->output_spreads[0][0], 2.0f, "spread[0] = 2.0");
-            check_float(npass->output_spreads[0][1], 4.0f, "spread[1] = 4.0");
-            check_float(npass->output_spreads[0][2], 6.0f, "spread[2] = 6.0");
-            check_float(npass->output_spreads[0][3], 8.0f, "spread[3] = 8.0");
+        check(npass->output_lanes[0].size() == 4, "pass spread has 4 elements");
+        if (npass->output_lanes[0].size() == 4) {
+            check_float(npass->output_lanes[0][0], 2.0f, "spread[0] = 2.0");
+            check_float(npass->output_lanes[0][1], 4.0f, "spread[1] = 4.0");
+            check_float(npass->output_lanes[0][2], 6.0f, "spread[2] = 6.0");
+            check_float(npass->output_lanes[0][3], 8.0f, "spread[3] = 8.0");
         }
         runtime.shutdown();
     }

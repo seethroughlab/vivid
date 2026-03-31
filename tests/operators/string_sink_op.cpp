@@ -29,8 +29,8 @@ struct StringSinkOp : vivid::OperatorBase, vivid::FrameProcessable {
 
         last_spread_.clear();
         out_spread_ptrs_.clear();
-        if (ctx->input_string_spreads && ctx->input_string_spreads[1].data) {
-            const auto& in = ctx->input_string_spreads[1];
+        if (ctx->input_string_lanes && ctx->input_string_lanes[1].data) {
+            const auto& in = ctx->input_string_lanes[1];
             for (uint32_t i = 0; i < in.length; ++i) {
                 const char* s = in.data[i];
                 last_spread_.push_back(s ? s : "");
@@ -40,8 +40,8 @@ struct StringSinkOp : vivid::OperatorBase, vivid::FrameProcessable {
         for (const auto& s : last_spread_) out_spread_ptrs_.push_back(s.c_str());
 
         if (ctx->output_string_values) ctx->output_string_values[0] = last_.c_str();
-        if (ctx->output_string_spreads && ctx->output_string_spreads[1].data) {
-            auto& out = ctx->output_string_spreads[1];
+        if (ctx->output_string_lanes && ctx->output_string_lanes[1].data) {
+            auto& out = ctx->output_string_lanes[1];
             uint32_t n = std::min<uint32_t>(out.capacity, static_cast<uint32_t>(out_spread_ptrs_.size()));
             out.length = n;
             for (uint32_t i = 0; i < n; ++i) out.data[i] = out_spread_ptrs_[i];

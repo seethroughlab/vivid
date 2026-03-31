@@ -697,7 +697,7 @@ int main() {
         req.kind = VIVID_OP_CONTROL;
         req.ports = {
             {"in_a", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT},
-            {"in_b", VIVID_PORT_SPREAD, VIVID_PORT_INPUT},
+            {"in_b", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT},
             {"out",  VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT},
         };
         req.params = {
@@ -710,7 +710,7 @@ int main() {
         std::string src = read_file(result.cpp_path);
         check(src.find("\"in_a\"") != std::string::npos, "port in_a");
         check(src.find("\"in_b\"") != std::string::npos, "port in_b");
-        check(src.find("VIVID_PORT_SPREAD") != std::string::npos, "spread port type");
+        check(src.find("VIVID_PORT_LANE_ARRAY") != std::string::npos, "spread port type");
         check(src.find("Param<float> gain") != std::string::npos, "custom param gain");
         check(src.find("collect_params") != std::string::npos, "has collect_params");
         check(src.find("collect_ports") != std::string::npos, "has collect_ports");

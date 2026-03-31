@@ -89,9 +89,9 @@ struct NodeSnapshot {
     std::vector<float> param_values;
     std::vector<uint8_t> param_lock_flags;  // parallel to param_values
     std::vector<float> output_values;
-    std::vector<std::vector<float>> output_spreads;
+    std::vector<std::vector<float>> output_lanes;
     std::vector<std::string> output_string_values;
-    std::vector<std::vector<std::string>> output_string_spreads;
+    std::vector<std::vector<std::string>> output_string_lanes;
     std::unordered_map<std::string, std::string> file_param_values;  // param_name -> path
 
     uint32_t gpu_tex_width = 0;

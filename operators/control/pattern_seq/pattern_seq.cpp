@@ -89,22 +89,22 @@ struct PatternSeq : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPr
         out.push_back({"trigger",    VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});   // out[1]
         out.push_back({"gate",       VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});   // out[2]
         out.push_back({"step",       VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});   // out[3]
-        out.push_back({"pattern",    VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});   // spread[0]
+        out.push_back({"pattern",    VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});   // spread[0]
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
     }
 
     void process_frame(const VividFrameContext* ctx) override {
         compute(ctx->input_values[0], ctx->param_values, ctx->output_values,
-                ctx->output_spreads, ctx->custom_outputs, ctx->custom_output_count);
+                ctx->output_lanes, ctx->custom_outputs, ctx->custom_output_count);
     }
 
     void process_audio(const VividAudioContext* ctx) override {
         compute(ctx->input_float_values[0], ctx->param_values, ctx->output_float_values,
-                ctx->output_spreads, ctx->custom_outputs, ctx->custom_output_count);
+                ctx->output_lanes, ctx->custom_outputs, ctx->custom_output_count);
     }
 
     void compute(float beat_phase, const float* params, float* output_values,
-                 VividSpreadPort* out_spreads, void** custom_outputs, uint32_t custom_output_count) {
+                 VividLanePort* out_spreads, void** custom_outputs, uint32_t custom_output_count) {
         int n   = std::clamp(static_cast<int>(params[0]), 1, 16);
         int r   = std::clamp(static_cast<int>(params[1]), 0, 8);
         float gl = params[2];

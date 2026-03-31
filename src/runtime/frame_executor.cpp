@@ -13,7 +13,7 @@
 
 namespace vivid {
 
-static constexpr uint32_t kMaxSpreadCapacity = 1024;
+static constexpr uint32_t kMaxLaneCapacity = 1024;
 
 // Bridge functions for lane state service (frame-thread variant).
 static void* frame_lane_state_fn_bridge(void* ctx_ptr, uint32_t lane_id, uint32_t byte_size) {
@@ -60,8 +60,8 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
         // Skip errored nodes — zero outputs
         if (cn.errored) {
             std::fill(cn.output_values.begin(), cn.output_values.end(), 0.0f);
-            for (auto& sp : cn.output_spreads) sp.clear();
-            for (auto& sp : cn.output_string_spreads) sp.clear();
+            for (auto& sp : cn.output_lanes) sp.clear();
+            for (auto& sp : cn.output_string_lanes) sp.clear();
             std::fill(cn.output_string_values.begin(), cn.output_string_values.end(), std::string());
             continue;
         }
@@ -69,15 +69,15 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
         // Solo mode: skip non-active nodes
         if (solo_node_idx_ >= 0 && !solo_active_set_.empty() && !solo_active_set_[ni]) {
             std::fill(cn.output_values.begin(), cn.output_values.end(), 0.0f);
-            for (auto& sp : cn.output_spreads) sp.clear();
+            for (auto& sp : cn.output_lanes) sp.clear();
             continue;
         }
 
         // Zero inputs
         std::fill(cn.input_values.begin(), cn.input_values.end(), 0.0f);
         std::fill(cn.input_string_values.begin(), cn.input_string_values.end(), std::string());
-        for (auto& sp : cn.input_spreads) sp.clear();
-        for (auto& sp : cn.input_string_spreads) sp.clear();
+        for (auto& sp : cn.input_lanes) sp.clear();
+        for (auto& sp : cn.input_string_lanes) sp.clear();
 
         // ── Wire propagation ────────────────────────────────────────────
         for (uint32_t ei : cg.frame_direct_edges) {
@@ -103,7 +103,7 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
                 continue;
             }
             if (e.data_type == VIVID_PORT_STRING_SPREAD) {
-                cn.input_string_spreads[e.to_port] = from_cn.output_string_spreads[e.from_port];
+                cn.input_string_lanes[e.to_port] = from_cn.output_string_lanes[e.from_port];
                 continue;
             }
 
@@ -125,10 +125,10 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
                 // No cycle-expand, no modulo indexing. Compiler legality
                 // (Pass 2.6) guarantees that non-scalar inputs sharing a
                 // port have the same lane_set_id.
-                if (!e.sources_param && e.from_port < from_cn.output_spreads.size()) {
-                    const auto& src_spread = from_cn.output_spreads[e.from_port];
+                if (!e.sources_param && e.from_port < from_cn.output_lanes.size()) {
+                    const auto& src_spread = from_cn.output_lanes[e.from_port];
                     if (!src_spread.empty()) {
-                        auto& dst_spread = cn.input_spreads[e.to_port];
+                        auto& dst_spread = cn.input_lanes[e.to_port];
                         if (dst_spread.empty()) {
                             // First non-scalar wire: establish destination.
                             dst_spread = src_spread;
@@ -185,26 +185,26 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
 
         // ── Build spread port staging ───────────────────────────────────
         for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-            cn.c_in_spreads[p].data = cn.input_spreads[p].data();
-            cn.c_in_spreads[p].length = static_cast<uint32_t>(cn.input_spreads[p].size());
-            cn.c_in_spreads[p].capacity = static_cast<uint32_t>(cn.input_spreads[p].capacity());
+            cn.c_in_lanes[p].data = cn.input_lanes[p].data();
+            cn.c_in_lanes[p].length = static_cast<uint32_t>(cn.input_lanes[p].size());
+            cn.c_in_lanes[p].capacity = static_cast<uint32_t>(cn.input_lanes[p].capacity());
         }
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-            cn.c_out_spreads[p].data = cn.out_spread_buf[p].data();
-            cn.c_out_spreads[p].length = 0;
-            cn.c_out_spreads[p].capacity = kMaxSpreadCapacity;
+            cn.c_out_lanes[p].data = cn.out_lane_buf[p].data();
+            cn.c_out_lanes[p].length = 0;
+            cn.c_out_lanes[p].capacity = kMaxLaneCapacity;
         }
         for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-            for (size_t si = 0; si < cn.input_string_spreads[p].size() && si < cn.in_string_spread_ptrs[p].size(); ++si)
-                cn.in_string_spread_ptrs[p][si] = cn.input_string_spreads[p][si].c_str();
-            cn.c_in_string_spreads[p].data = cn.in_string_spread_ptrs[p].data();
-            cn.c_in_string_spreads[p].length = static_cast<uint32_t>(cn.input_string_spreads[p].size());
-            cn.c_in_string_spreads[p].capacity = kMaxSpreadCapacity;
+            for (size_t si = 0; si < cn.input_string_lanes[p].size() && si < cn.in_string_spread_ptrs[p].size(); ++si)
+                cn.in_string_spread_ptrs[p][si] = cn.input_string_lanes[p][si].c_str();
+            cn.c_in_string_lanes[p].data = cn.in_string_spread_ptrs[p].data();
+            cn.c_in_string_lanes[p].length = static_cast<uint32_t>(cn.input_string_lanes[p].size());
+            cn.c_in_string_lanes[p].capacity = kMaxLaneCapacity;
         }
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-            cn.c_out_string_spreads[p].data = cn.out_string_spread_ptr_buf[p].data();
-            cn.c_out_string_spreads[p].length = 0;
-            cn.c_out_string_spreads[p].capacity = kMaxSpreadCapacity;
+            cn.c_out_string_lanes[p].data = cn.out_string_spread_ptr_buf[p].data();
+            cn.c_out_string_lanes[p].length = 0;
+            cn.c_out_string_lanes[p].capacity = kMaxLaneCapacity;
         }
         std::fill(cn.custom_output_buf.begin(), cn.custom_output_buf.end(), nullptr);
 
@@ -230,16 +230,16 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             gpu_ctx.input_values     = cn.input_values.data();
             gpu_ctx.output_values    = cn.output_values.data();
             gpu_ctx.input_connected  = cn.input_connected.data();
-            gpu_ctx.input_spreads  = cn.c_in_spreads.data();
-            gpu_ctx.output_spreads = cn.c_out_spreads.data();
+            gpu_ctx.input_lanes  = cn.c_in_lanes.data();
+            gpu_ctx.output_lanes = cn.c_out_lanes.data();
             gpu_ctx.input_string_values = cn.c_input_string_values.empty()
                                         ? nullptr : cn.c_input_string_values.data();
             gpu_ctx.output_string_values = cn.c_output_string_values.empty()
                                         ? nullptr : cn.c_output_string_values.data();
-            gpu_ctx.input_string_spreads = cn.c_in_string_spreads.empty()
-                                        ? nullptr : cn.c_in_string_spreads.data();
-            gpu_ctx.output_string_spreads = cn.c_out_string_spreads.empty()
-                                        ? nullptr : cn.c_out_string_spreads.data();
+            gpu_ctx.input_string_lanes = cn.c_in_string_lanes.empty()
+                                        ? nullptr : cn.c_in_string_lanes.data();
+            gpu_ctx.output_string_lanes = cn.c_out_string_lanes.empty()
+                                        ? nullptr : cn.c_out_string_lanes.data();
             gpu_ctx.file_param_values = cn.file_param_ptrs.empty()
                                         ? nullptr : cn.file_param_ptrs.data();
             gpu_ctx.file_param_count  = static_cast<uint32_t>(cn.file_param_ptrs.size());
@@ -372,16 +372,16 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             // Discover lane count from max input spread length.
             uint32_t loop_lanes = 0;
             for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-                if (p < cn.input_spreads.size() && cn.input_spreads[p].size() > loop_lanes)
-                    loop_lanes = static_cast<uint32_t>(cn.input_spreads[p].size());
+                if (p < cn.input_lanes.size() && cn.input_lanes[p].size() > loop_lanes)
+                    loop_lanes = static_cast<uint32_t>(cn.input_lanes[p].size());
             }
 
             // Read identity-bearing lane_ids from spread, or fall back to positional.
             std::vector<uint32_t> loop_lane_ids(loop_lanes);
             int32_t lid_port = cn.frame_lane_id_spread_port;
             bool has_identity_ids = false;
-            if (lid_port >= 0 && static_cast<uint32_t>(lid_port) < cn.input_spreads.size()) {
-                const auto& lid_sp = cn.input_spreads[lid_port];
+            if (lid_port >= 0 && static_cast<uint32_t>(lid_port) < cn.input_lanes.size()) {
+                const auto& lid_sp = cn.input_lanes[lid_port];
                 if (lid_sp.size() >= loop_lanes) {
                     for (uint32_t c = 0; c < loop_lanes; ++c)
                         loop_lane_ids[c] = static_cast<uint32_t>(lid_sp[c]);
@@ -405,15 +405,15 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
 
             // Ensure output spreads have capacity for all lanes
             for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-                if (cn.c_out_spreads[p].capacity >= loop_lanes)
-                    cn.c_out_spreads[p].length = loop_lanes;
+                if (cn.c_out_lanes[p].capacity >= loop_lanes)
+                    cn.c_out_lanes[p].length = loop_lanes;
             }
 
             for (uint32_t c = 0; c < loop_lanes; ++c) {
                 // Extract per-lane scalar from each input spread
                 for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-                    if (p < cn.input_spreads.size() && c < cn.input_spreads[p].size())
-                        lane_input_values[p] = cn.input_spreads[p][c];
+                    if (p < cn.input_lanes.size() && c < cn.input_lanes[p].size())
+                        lane_input_values[p] = cn.input_lanes[p][c];
                     else
                         lane_input_values[p] = cn.input_values[p];  // scalar fallback
                 }
@@ -428,16 +428,16 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
                 ctx.param_values = cn.param_values.data();
                 ctx.input_values = lane_input_values.data();
                 ctx.output_values = lane_output_values.data();
-                ctx.input_spreads = cn.c_in_spreads.data();
-                ctx.output_spreads = cn.c_out_spreads.data();
+                ctx.input_lanes = cn.c_in_lanes.data();
+                ctx.output_lanes = cn.c_out_lanes.data();
                 ctx.custom_inputs = cn.resolved_custom_inputs.data();
                 ctx.custom_input_count = static_cast<uint32_t>(cn.resolved_custom_inputs.size());
                 ctx.custom_outputs = cn.custom_output_buf.data();
                 ctx.custom_output_count = static_cast<uint32_t>(cn.custom_output_buf.size());
                 ctx.input_string_values = cn.c_input_string_values.data();
                 ctx.output_string_values = cn.c_output_string_values.data();
-                ctx.input_string_spreads = cn.c_in_string_spreads.data();
-                ctx.output_string_spreads = cn.c_out_string_spreads.data();
+                ctx.input_string_lanes = cn.c_in_string_lanes.data();
+                ctx.output_string_lanes = cn.c_out_string_lanes.data();
                 ctx.file_param_values = cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data();
                 ctx.file_param_count = static_cast<uint32_t>(cn.file_param_ptrs.size());
                 ctx.input = const_cast<void*>(static_cast<const void*>(input));
@@ -467,15 +467,15 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
 
                 // Write per-lane output into output spread
                 for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-                    if (cn.c_out_spreads[p].length > c)
-                        cn.c_out_spreads[p].data[c] = lane_output_values[p];
+                    if (cn.c_out_lanes[p].length > c)
+                        cn.c_out_lanes[p].data[c] = lane_output_values[p];
                 }
             }
 
             // Set scalar output = first lane
             for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-                cn.output_values[p] = (loop_lanes > 0 && cn.c_out_spreads[p].length > 0)
-                    ? cn.c_out_spreads[p].data[0] : 0.0f;
+                cn.output_values[p] = (loop_lanes > 0 && cn.c_out_lanes[p].length > 0)
+                    ? cn.c_out_lanes[p].data[0] : 0.0f;
             }
 
             if (cn.errored) {
@@ -490,16 +490,16 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             ctx.param_values = cn.param_values.data();
             ctx.input_values = cn.input_values.data();
             ctx.output_values = cn.output_values.data();
-            ctx.input_spreads = cn.c_in_spreads.data();
-            ctx.output_spreads = cn.c_out_spreads.data();
+            ctx.input_lanes = cn.c_in_lanes.data();
+            ctx.output_lanes = cn.c_out_lanes.data();
             ctx.custom_inputs = cn.resolved_custom_inputs.data();
             ctx.custom_input_count = static_cast<uint32_t>(cn.resolved_custom_inputs.size());
             ctx.custom_outputs = cn.custom_output_buf.data();
             ctx.custom_output_count = static_cast<uint32_t>(cn.custom_output_buf.size());
             ctx.input_string_values = cn.c_input_string_values.data();
             ctx.output_string_values = cn.c_output_string_values.data();
-            ctx.input_string_spreads = cn.c_in_string_spreads.data();
-            ctx.output_string_spreads = cn.c_out_string_spreads.data();
+            ctx.input_string_lanes = cn.c_in_string_lanes.data();
+            ctx.output_string_lanes = cn.c_out_string_lanes.data();
             ctx.file_param_values = cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data();
             ctx.file_param_count = static_cast<uint32_t>(cn.file_param_ptrs.size());
             ctx.input = const_cast<void*>(static_cast<const void*>(input));
@@ -510,9 +510,9 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             // Lane metadata.
             uint32_t max_spread_len = 0;
             for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-                if (p < cn.input_spreads.size() && !cn.input_spreads[p].empty())
+                if (p < cn.input_lanes.size() && !cn.input_lanes[p].empty())
                     max_spread_len = std::max(max_spread_len,
-                        static_cast<uint32_t>(cn.input_spreads[p].size()));
+                        static_cast<uint32_t>(cn.input_lanes[p].size()));
             }
             ctx.lane_count = max_spread_len > 1 ? max_spread_len : 1;
             ctx.lane_index = 0;
@@ -546,12 +546,12 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
         // ── Output readback ─────────────────────────────────────────────
         cn.custom_outputs = cn.custom_output_buf;
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-            if (cn.c_out_spreads[p].length > 0) {
-                cn.output_spreads[p].assign(
-                    cn.out_spread_buf[p].begin(),
-                    cn.out_spread_buf[p].begin() + cn.c_out_spreads[p].length);
+            if (cn.c_out_lanes[p].length > 0) {
+                cn.output_lanes[p].assign(
+                    cn.out_lane_buf[p].begin(),
+                    cn.out_lane_buf[p].begin() + cn.c_out_lanes[p].length);
             } else {
-                cn.output_spreads[p].clear();
+                cn.output_lanes[p].clear();
             }
         }
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
@@ -559,14 +559,14 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
                 cn.output_string_values[p] = cn.c_output_string_values[p];
         }
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-            if (cn.c_out_string_spreads[p].length > 0) {
-                cn.output_string_spreads[p].resize(cn.c_out_string_spreads[p].length);
-                for (uint32_t si = 0; si < cn.c_out_string_spreads[p].length; ++si) {
+            if (cn.c_out_string_lanes[p].length > 0) {
+                cn.output_string_lanes[p].resize(cn.c_out_string_lanes[p].length);
+                for (uint32_t si = 0; si < cn.c_out_string_lanes[p].length; ++si) {
                     if (cn.out_string_spread_ptr_buf[p][si])
-                        cn.output_string_spreads[p][si] = cn.out_string_spread_ptr_buf[p][si];
+                        cn.output_string_lanes[p][si] = cn.out_string_spread_ptr_buf[p][si];
                 }
             } else {
-                cn.output_string_spreads[p].clear();
+                cn.output_string_lanes[p].clear();
             }
         }
 

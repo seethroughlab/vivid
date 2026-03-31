@@ -89,8 +89,8 @@ struct FolderList : vivid::OperatorBase, vivid::FrameProcessable {
 
         if (should_refresh) refresh();
 
-        if (ctx->output_string_spreads && ctx->output_string_spreads[0].data) {
-            auto& out = ctx->output_string_spreads[0];
+        if (ctx->output_string_lanes && ctx->output_string_lanes[0].data) {
+            auto& out = ctx->output_string_lanes[0];
             uint32_t n = std::min(out.capacity, static_cast<uint32_t>(file_ptrs_.size()));
             out.length = n;
             for (uint32_t i = 0; i < n; ++i) out.data[i] = file_ptrs_[i];

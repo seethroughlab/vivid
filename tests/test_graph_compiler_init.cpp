@@ -271,8 +271,8 @@ static void test_frame_state_spread_ports() {
     std::fprintf(stderr, "\n--- init_frame_state: spread port buffers ---\n");
 
     VividPortDescriptor ports[] = {
-        make_port("sp_in",  VIVID_PORT_SPREAD, VIVID_PORT_INPUT),
-        make_port("sp_out", VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT),
+        make_port("sp_in",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT),
+        make_port("sp_out", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT),
     };
     VividOperatorDescriptor desc{};
     desc.name = "SpreadOp";
@@ -284,10 +284,10 @@ static void test_frame_state_spread_ports() {
     vivid::CompiledNode cn;
     vivid::GraphCompiler::init_frame_state(cn, &desc, nullptr, nullptr, "");
 
-    check(cn.c_in_spreads.size() == 1, "1 input spread staging");
-    check(cn.c_out_spreads.size() == 1, "1 output spread staging");
-    check(cn.out_spread_buf.size() == 1, "output spread buf allocated");
-    check(cn.out_spread_buf[0].size() == 1024, "spread buf capacity 1024");
+    check(cn.c_in_lanes.size() == 1, "1 input spread staging");
+    check(cn.c_out_lanes.size() == 1, "1 output spread staging");
+    check(cn.out_lane_buf.size() == 1, "output spread buf allocated");
+    check(cn.out_lane_buf[0].size() == 1024, "spread buf capacity 1024");
 }
 
 // ---------------------------------------------------------------------------
@@ -400,7 +400,7 @@ static void test_audio_state_spread_flags() {
     std::fprintf(stderr, "\n--- init_audio_state: spread/string/custom flags ---\n");
 
     VividPortDescriptor ports[] = {
-        make_port("sp_in",  VIVID_PORT_SPREAD, VIVID_PORT_INPUT),
+        make_port("sp_in",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT),
         make_port("str_in", VIVID_PORT_STRING, VIVID_PORT_INPUT),
         make_port("out",    VIVID_PORT_AUDIO,  VIVID_PORT_OUTPUT, 1),
     };
@@ -419,7 +419,7 @@ static void test_audio_state_spread_flags() {
     vivid::GraphCompiler::init_audio_state(cn, &desc, 256);
 
     auto& a = *cn.audio;
-    check(a.has_spread_ports, "spread flag set");
+    check(a.has_lane_ports, "spread flag set");
     check(a.has_string_input_ports, "string input flag set");
     check(!a.has_custom_input_ports, "no custom input ports");
     check(!a.has_custom_output_ports, "no custom output ports");

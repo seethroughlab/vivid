@@ -59,12 +59,12 @@ struct VividGpuContext {
     uint32_t  custom_input_count;
 
     // ---- Cross-cadence inputs from frame executor ---------------------------
-    VividSpreadPort*   input_spreads;
-    VividSpreadPort*   output_spreads;
+    VividLanePort*   input_lanes;
+    VividLanePort*   output_lanes;
     const char**       input_string_values;
     const char**       output_string_values;
-    VividStringSpreadPort* input_string_spreads;
-    VividStringSpreadPort* output_string_spreads;
+    VividStringLanePort* input_string_lanes;
+    VividStringLanePort* output_string_lanes;
     const char**       file_param_values;
     uint32_t           file_param_count;
 
