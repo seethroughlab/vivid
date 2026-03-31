@@ -488,6 +488,42 @@ static void test_bridge_zero_value_passthrough() {
 
 // ---------------------------------------------------------------------------
 
+static void test_push_spread_preserves_lane_set_id() {
+    std::fprintf(stderr, "\n--- push_to_audio: spread lane_set_id preserved ---\n");
+
+    // Frame node 0 → audio node 1 via SPREAD snapshot edge
+    auto cg = make_audio_graph({
+        {"gen",  0, 0, 1, 0, 0, false},
+        {"osc",  1, 1, 1, 0, 0, false},
+    });
+    cg.nodes[0].active_cadence = vivid::Cadence::Frame;
+    cg.audio_order = {1};
+
+    // gen outputs a spread
+    cg.nodes[0].output_spreads[0] = {1.0f, 2.0f, 3.0f};
+
+    // Snapshot edge with lane_set_id = 42
+    vivid::CompiledEdge edge{};
+    edge.from_node = 0;
+    edge.from_port = 0;
+    edge.to_node = 1;
+    edge.to_port = 0;
+    edge.transport = vivid::EdgeTransport::Snapshot;
+    edge.data_type = VIVID_PORT_SPREAD;
+    edge.lane_set_id = 42;
+    cg.edges.push_back(edge);
+    cg.frame_to_audio_edges.push_back(0);
+
+    vivid::CadenceBridge bridge;
+    bridge.build(cg);
+    bridge.push_to_audio(cg);
+
+    const auto& snap = bridge.active_params();
+    check(snap.spread_inputs[0][0].length == 3, "spread length = 3");
+    check(snap.spread_inputs[0][0].lane_set_id == 42,
+          "lane_set_id = 42 preserved through snapshot");
+}
+
 int main() {
     std::fprintf(stderr, "=== test_cadence_bridge ===\n");
 
@@ -504,6 +540,7 @@ int main() {
     test_propagate_audio_display_params();
     test_propagate_respects_param_lock();
     test_bridge_zero_value_passthrough();
+    test_push_spread_preserves_lane_set_id();
 
     std::fprintf(stderr, "\n%s (%d failures)\n", failures == 0 ? "PASSED" : "FAILED", failures);
     return failures > 0 ? 1 : 0;

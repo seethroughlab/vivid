@@ -367,6 +367,22 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             ctx.preferred_tex_width = 0;
             ctx.preferred_tex_height = 0;
 
+            // Lane metadata.
+            // lane_count = runtime materialized count (max non-empty input spread length).
+            uint32_t max_spread_len = 0;
+            for (uint32_t p = 0; p < cn.input_port_count; ++p) {
+                if (p < cn.input_spreads.size() && !cn.input_spreads[p].empty())
+                    max_spread_len = std::max(max_spread_len,
+                        static_cast<uint32_t>(cn.input_spreads[p].size()));
+            }
+            ctx.lane_count = max_spread_len > 1 ? max_spread_len : 1;
+            ctx.lane_index = 0;
+            // lane_set_id = compile-time provenance (first non-scalar input lane set).
+            ctx.lane_set_id = 0;
+            for (const auto& ils : cn.input_lane_sets) {
+                if (!ils.is_scalar()) { ctx.lane_set_id = ils.lane_set_id; break; }
+            }
+
             try {
                 cn.loader->process_frame(cn.instance, &ctx);
             } catch (const std::exception& ex) {

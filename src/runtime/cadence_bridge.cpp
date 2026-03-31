@@ -161,6 +161,7 @@ void CadenceBridge::push_to_audio(const CompiledGraph& cg) {
                 float scale = e.remap_scale();
                 for (uint32_t j = 0; j < dst.length; ++j)
                     dst.data[j] = src[j] * scale;
+                dst.lane_set_id = e.lane_set_id;
             }
         } else if (e.data_type == VIVID_PORT_STRING) {
             // String input or file param

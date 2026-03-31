@@ -1,0 +1,10 @@
+{
+    "nodes": {
+        "src": { "type": "SpreadSourceOp", "params": { "base": 1.0, "count": 8 } },
+        "meta": { "type": "LaneMetadataOp" },
+        "meta_scalar": { "type": "LaneMetadataOp" }
+    },
+    "connections": [
+        { "from": "src/out", "to": "meta/in" }
+    ]
+}
