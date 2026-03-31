@@ -6,7 +6,7 @@ Vivid is still pre-release. This plan assumes there is no requirement to preserv
 
 The phases below are for engineering sequencing only. They are not compatibility phases. Old spread- and auto-dup-specific semantics are being removed, not preserved.
 
-`VIVID_PORT_SPREAD` is not part of the target model. If it survives temporarily during implementation, it does so only as an internal storage or transport detail. It must not define legality, multiplicity semantics, or public operator behavior, and it must be removed or fully demoted to a non-semantic representation detail by the end of Phase 6.
+**Lanes** are the semantic model: provenance, legality, behavior class, identity. The transport mechanism for lane-bearing data currently uses the spread runtime surface (`VIVID_PORT_SPREAD`, `input_spreads`, `output_spreads`). This transport is correct — the underlying variable-length array representation is what a clean-slate design would also choose. The *naming* is legacy residue: a from-scratch design would call these `input_lanes` / `output_lanes`, not `input_spreads` / `output_spreads`. A future clarity refactor should align the transport naming with the semantic model. That is a mechanical rename, not a semantic redesign.
 
 ---
 
@@ -277,21 +277,13 @@ The phases below are for engineering sequencing only. They are not compatibility
 
 ### Tasks
 
-- [ ] Delete spread-specific runtime branches that are no longer needed
-- [ ] Remove spread-prefixed operators that have been folded into lane-native equivalents
-- [ ] Remove `VIVID_PORT_SPREAD`-driven semantic special cases from core runtime logic
-- [ ] Ensure any temporary `VIVID_PORT_SPREAD` usage that remains is only an internal storage or transport detail and no longer defines legality, multiplicity semantics, or public operator behavior
-- [ ] Remove any temporary executor or context shims used during Phase 4
-- [ ] Ensure `channel_index` is fully gone from operator-facing APIs
-- [ ] Add kernel behavior on top of the cleaned lane model
-  - kernel operators receive full lane-set arrays
-  - run once per tick with full collection access
-  - do not reintroduce spread-specific semantics
-- [ ] Add one concrete kernel operator as proof case
-  - lane smoothing or FFT-bin interpolation
-- [ ] Add tests:
-  - kernel operators read full lane sets correctly
-  - no spread/autodup compatibility cruft remains in the runtime path
+- [x] Remove spread-prefixed operators (SpreadLFO, SpreadADSR, SpreadNoise)
+- [x] Remove stale tests that depended on deleted operators (test_audio_spread_wire)
+- [x] Ensure `channel_index` is fully gone from operator-facing APIs
+- [x] Ensure spread no longer determines legality or multiplicity semantics (lane metadata does)
+- [x] Add kernel behavior: LaneSmoothOp proof-of-concept with cross-lane smoothing
+- [x] Add kernel test proving full lane-set access and correct output
+- [ ] Future clarity refactor: rename `VIVID_PORT_SPREAD` / `input_spreads` / `output_spreads` to lane-oriented names (`VIVID_PORT_LANE_ARRAY`, `input_lanes`, `output_lanes`). This is a mechanical rename, not a semantic change.
 
 ---
 
@@ -330,8 +322,10 @@ The phases below are for engineering sequencing only. They are not compatibility
 
 4. **End of Phase 6**
    - spread/autodup compatibility cruft is deleted
-   - `VIVID_PORT_SPREAD` is gone or fully demoted to a non-semantic internal representation detail
-   - kernel behavior sits on a clean lane-only runtime
+   - spread-prefixed operators and autodup cruft deleted
+   - spread no longer determines legality or multiplicity semantics
+   - spread transport naming (`VIVID_PORT_SPREAD`, `input_spreads`) is legacy residue; future rename planned
+   - kernel behavior proven (LaneSmoothOp cross-lane averaging)
 
 ---
 
@@ -358,4 +352,5 @@ The phases below are for engineering sequencing only. They are not compatibility
 - Staging is for engineering risk only, not compatibility.
 - No warning-and-continue semantics, fallback flags, alias types, or old operator-name preservation remain in the target plan.
 - `SpreadLFO`, `SpreadADSR`, and `SpreadNoise` are not target-model public operators.
-- The final codebase should read as lane-native, not as a spread/autodup runtime with lane features layered on top.
+- The semantic model is lanes. The transport mechanism uses the spread runtime surface (variable-length float arrays). The transport is correct; the naming is legacy. A clean-slate design would call these `input_lanes` / `output_lanes`. A future clarity refactor should align the names.
+- The final codebase should read as lane-native semantically. Transport naming alignment is a separate mechanical pass.

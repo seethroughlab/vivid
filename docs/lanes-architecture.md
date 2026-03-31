@@ -221,7 +221,8 @@ These are the responsibilities that make the model real. Everything else is seco
 The following should **not** be treated as foundational concepts in the from-scratch model:
 
 - **Spreads**
-  - legacy representation vocabulary, but not the primitive
+  - the transport mechanism for lane-bearing data (variable-length float arrays), but not the semantic primitive
+  - `VIVID_PORT_SPREAD` / `input_spreads` / `output_spreads` naming is legacy; a from-scratch design would use lane-oriented names
 - **Auto-dup**
   - useful as one runtime strategy, but not the primitive
 - **Width alone**
@@ -229,9 +230,7 @@ The following should **not** be treated as foundational concepts in the from-scr
 - **Kernels as a separate graph model**
   - useful as one operator behavior, but not a second multiplicity system
 
-`VIVID_PORT_SPREAD` is legacy representation vocabulary, not a target architectural primitive. In the target model, multiplicity is expressed only through lane-bearing values. No new semantics, operator behaviors, or public APIs should be introduced at the `SPREAD` layer.
-
-If `VIVID_PORT_SPREAD` survives temporarily during implementation, it does so only as an internal storage or transport detail and not as a semantic boundary.
+The spread runtime surface (`VIVID_PORT_SPREAD`, `input_spreads`, `output_spreads`) is the transport representation for lane-bearing collections. The underlying variable-length array mechanism is correct — a clean-slate design would choose the same transport. The naming is legacy: it would be called `input_lanes` / `output_lanes` in a from-scratch design. No new semantic decisions should be based on spread port types. Legality, provenance, behavior class, and identity are lane metadata concerns. A future clarity refactor should align the transport naming with the semantic model.
 
 ### 5.5 Summary table
 
@@ -1246,17 +1245,34 @@ These concepts are intentionally demoted in the target model. They may survive t
 
 ### 14.1 Spreads as legacy vocabulary
 
-Spreads stop being the long-term conceptual primitive.
+Spreads stop being the semantic primitive for multiplicity.
 
 In the target model:
 
-- a spread is just a lane-valued signal or string collection
+- a spread is the transport representation for a lane-valued collection
+- the semantic model is lanes (provenance, legality, behavior class, identity)
+- the transport mechanism (variable-length float arrays) is correct
+- the transport naming (`VIVID_PORT_SPREAD`, `input_spreads`) is legacy
 
-This is the important architectural boundary: `VIVID_PORT_SPREAD` is legacy representation vocabulary, not the target abstraction. No new semantics, operator classes, or public APIs should be introduced at the `SPREAD` layer.
+A clean-slate design would call these `input_lanes` / `output_lanes` and use a port type like `VIVID_PORT_LANE_ARRAY`. The underlying mechanism would be the same variable-length array.
 
-### 14.2 Spread-compatible transition paths
+### 14.2 What changed vs. what stayed
 
-If `VIVID_PORT_SPREAD` survives temporarily during implementation, it survives only as an internal storage or transport detail while lane-bearing values replace spread-driven semantics. It is not a public compatibility surface, and it should be removed or fully demoted to a non-semantic representation detail once the clean lane runtime is in place.
+**Changed (semantic authority removed from spreads):**
+- Cycle-expand of mismatched spread lengths: removed
+- Implicit merge of unrelated collections: removed (lane provenance legality replaces it)
+- Spread-prefixed operator duplication (SpreadLFO, SpreadADSR, SpreadNoise): removed
+- Auto-dup as a separate concept: replaced by lane lifting
+
+**Stayed (transport representation):**
+- Variable-length float arrays as the physical lane-array representation
+- `ctx->input_spreads` / `ctx->output_spreads` as the operator-facing data surface
+- Spread snapshot bridging across cadence boundaries
+
+**Future (naming alignment):**
+- Rename `VIVID_PORT_SPREAD` to a lane-oriented name
+- Rename `input_spreads` / `output_spreads` to `input_lanes` / `output_lanes`
+- This is a mechanical clarity refactor, not a semantic or runtime redesign
 
 ### 14.3 Auto-dup
 
