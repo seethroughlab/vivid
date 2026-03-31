@@ -1236,6 +1236,7 @@ add_vivid_operator(spread_sink_op     tests/operators/spread_sink_op.cpp)
 add_vivid_operator(lane_metadata_op       tests/operators/lane_metadata_op.cpp)
 add_vivid_operator(lane_metadata_audio_op tests/operators/lane_metadata_audio_op.cpp)
 add_vivid_operator(lane_smooth_op         tests/operators/lane_smooth_op.cpp)
+add_vivid_operator(lane_slew_op           tests/operators/lane_slew_op.cpp)
 add_vivid_operator(audio_spread_op    tests/operators/audio_spread_op.cpp)
 
 # AudioEngine integration test (null audio backend, no GPU, no window)
@@ -2446,7 +2447,7 @@ add_executable(test_graph_compiler
 target_include_directories(test_graph_compiler PRIVATE src)
 target_link_libraries(test_graph_compiler PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json webgpu)
-add_dependencies(test_graph_compiler lfo gain spread_source_op lane_metadata_audio_op)
+add_dependencies(test_graph_compiler lfo gain spread_source_op lane_metadata_audio_op lane_slew_op)
 add_test(NAME test_graph_compiler
     COMMAND test_graph_compiler ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

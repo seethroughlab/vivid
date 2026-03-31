@@ -1114,20 +1114,31 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
 
         // LoopBased: for operators that opt in via strategy_independent,
         // non-audio lane-bearing inputs trigger runtime-driven loop evaluation.
+        // Check both Direct edges (input_lane_sets) and Snapshot edges
+        // (compiled edge lane_set_id) for structural upstream provenance.
         if (a.execution_strategy == LaneExecutionStrategy::Scalar) {
             const auto* desc = cn.loader ? cn.loader->descriptor() : nullptr;
             bool opt_in = desc && desc->strategy_independent;
             bool has_structural_input = false;
+            uint32_t structural_set_id = 0;
+            // Check input_lane_sets (populated for Direct edges)
             for (const auto& ils : cn.input_lane_sets) {
-                if (!ils.is_scalar()) { has_structural_input = true; break; }
+                if (!ils.is_scalar()) { has_structural_input = true; structural_set_id = ils.lane_set_id; break; }
+            }
+            // Also check incoming Snapshot edges for cross-cadence structural provenance
+            if (!has_structural_input) {
+                for (const auto& e : cg->edges) {
+                    if (e.to_node == idx && e.transport == EdgeTransport::Snapshot &&
+                        e.lane_set_id != 0) {
+                        has_structural_input = true;
+                        structural_set_id = e.lane_set_id;
+                        break;
+                    }
+                }
             }
             if (opt_in && has_structural_input) {
                 a.execution_strategy = LaneExecutionStrategy::LoopBased;
-                // lane_lift_count stays 0 (dynamic at runtime)
-                a.lane_lift_set_id = 0;
-                for (const auto& ils : cn.input_lane_sets) {
-                    if (!ils.is_scalar()) { a.lane_lift_set_id = ils.lane_set_id; break; }
-                }
+                a.lane_lift_set_id = structural_set_id;
             }
         }
     }

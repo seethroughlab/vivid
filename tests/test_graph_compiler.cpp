@@ -492,6 +492,60 @@ static void test_audio_lane_lift_from_spread(const std::string& build_dir) {
 }
 
 // ---------------------------------------------------------------------------
+// Test: LoopBased strategy assigned for strategy-independent operator
+// ---------------------------------------------------------------------------
+
+static void test_loop_based_strategy(const std::string& build_dir) {
+    std::fprintf(stderr, "\n--- compile: LoopBased strategy for strategy-independent op ---\n");
+
+    const std::string staging = build_dir + "/.test_loop_based_staging";
+    std::filesystem::remove_all(staging);
+    std::filesystem::create_directories(staging);
+
+    auto stage = [&](const char* name) {
+        std::string src = build_dir + "/" + name;
+        std::string dst = staging + "/" + name;
+        if (std::filesystem::exists(src))
+            std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing);
+    };
+    stage("spread_source_op.dylib");
+    stage("lane_slew_op.dylib");
+
+    vivid::OperatorRegistry registry;
+    registry.scan_deferred(staging.c_str());
+
+    // SpreadSourceOp (Structural, frame-cadence) → LaneSlewOp (Pointwise + strategy_independent, audio-cadence)
+    vivid::Graph g;
+    g.add_node("src", "SpreadSourceOp");
+    g.add_node("slew", "LaneSlewOp");
+    g.add_connection("src", "out", "slew", "input");
+
+    vivid::GraphCompiler::Options opts;
+    auto cg = vivid::GraphCompiler::compile(g, registry, opts);
+    check(cg != nullptr, "compiles");
+    if (!cg) { std::filesystem::remove_all(staging); return; }
+
+    auto* slew = cg->find_node("slew");
+    check(slew != nullptr, "LaneSlewOp node found");
+
+    if (slew && slew->audio) {
+        check(slew->audio->execution_strategy == vivid::LaneExecutionStrategy::LoopBased,
+              "LaneSlewOp assigned LoopBased strategy");
+    }
+
+    // Verify the source is structural
+    auto* src = cg->find_node("src");
+    if (src) {
+        bool has_non_scalar = false;
+        for (const auto& ols : src->output_lane_sets)
+            if (!ols.is_scalar()) has_non_scalar = true;
+        check(has_non_scalar, "SpreadSourceOp has non-scalar output lane set");
+    }
+
+    std::filesystem::remove_all(staging);
+}
+
+// ---------------------------------------------------------------------------
 
 int main(int argc, char* argv[]) {
     std::string build_dir = ".";
@@ -511,6 +565,7 @@ int main(int argc, char* argv[]) {
     test_lane_behavior_from_descriptor(build_dir);
     test_lane_mismatch_fails(build_dir);
     test_audio_lane_lift_from_spread(build_dir);
+    test_loop_based_strategy(build_dir);
 
     std::fprintf(stderr, "\n%s (%d failures)\n", failures == 0 ? "PASSED" : "FAILED", failures);
     return failures > 0 ? 1 : 0;
