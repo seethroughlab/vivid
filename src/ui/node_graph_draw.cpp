@@ -411,6 +411,18 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         float tx = sx + (sw - tw) * 0.5f;
         tr.draw_text(tx, text_y, r.type_name.c_str(), 1.0f, 1.0f, 1.0f, 1.0f, zoom_);
 
+        // Lane behavior badge (S/R/K) for non-Pointwise operators
+        if (r.lane_behavior > 0) {
+            const char* lb_badge = (r.lane_behavior == 1) ? "S"
+                                 : (r.lane_behavior == 2) ? "R"
+                                 : (r.lane_behavior == 3) ? "K" : nullptr;
+            if (lb_badge) {
+                float bx = tx + tw + 4.0f * zoom_;
+                tr.draw_text(bx, text_y, lb_badge,
+                             0.6f, 0.8f, 1.0f, 0.7f, zoom_);  // subtle blue tint
+            }
+        }
+
         // Node ID below type
         float iw = tr.text_width(r.node_id.c_str(), zoom_);
         float ix = sx + (sw - iw) * 0.5f;
@@ -562,35 +574,40 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
                                 cr, cg, cb, a);
         }
 
-        // Spread cardinality badge: show "×N" at wire midpoint for spread wires
+        // Lane cardinality badge: show "×N" at wire midpoint for multi-lane wires.
+        // Use semantic lane_count from compiled edge (primary), falling back to
+        // materialized spread length when semantic count is unavailable.
         float badge_offset = 0.0f;
-        if (!c.from_is_param) {
-            auto src_it = snap_.node_index.find(c.from_node);
-            if (src_it != snap_.node_index.end()) {
-                const auto& src_node = snap_.nodes[src_it->second];
-                auto port_it = src_node.output_port_indices.find(c.from_port);
-                if (port_it != src_node.output_port_indices.end()) {
-                    uint32_t pidx = port_it->second;
-                    size_t spread_len = 0;
-                    bool has_spread = false;
-                    if (pidx < src_node.output_spreads.size() &&
-                        !src_node.output_spreads[pidx].empty()) {
-                        spread_len = src_node.output_spreads[pidx].size();
-                        has_spread = true;
-                    } else if (pidx < src_node.output_string_spreads.size() &&
-                               !src_node.output_string_spreads[pidx].empty()) {
-                        spread_len = src_node.output_string_spreads[pidx].size();
-                        has_spread = true;
-                    }
-                    if (has_spread) {
-                        float mx = (ssx + sex) * 0.5f;
-                        float my = (ssy + sey) * 0.5f - kWireBadgeYOff * zoom_;
-                        char badge[16];
-                        std::snprintf(badge, sizeof(badge), "\xc3\x97%zu", spread_len);
-                        tr.draw_text(mx, my, badge, cr, cg, cb, 0.6f, zoom_);
-                        badge_offset = kWireBadgeSpacing * zoom_;
+        {
+            size_t lane_n = 0;
+            if (c.lane_count > 1) {
+                // Semantic lane count from compiled graph
+                lane_n = c.lane_count;
+            } else if (!c.from_is_param) {
+                // Fallback: materialized runtime spread length
+                auto src_it = snap_.node_index.find(c.from_node);
+                if (src_it != snap_.node_index.end()) {
+                    const auto& src_node = snap_.nodes[src_it->second];
+                    auto port_it = src_node.output_port_indices.find(c.from_port);
+                    if (port_it != src_node.output_port_indices.end()) {
+                        uint32_t pidx = port_it->second;
+                        if (pidx < src_node.output_spreads.size() &&
+                            !src_node.output_spreads[pidx].empty()) {
+                            lane_n = src_node.output_spreads[pidx].size();
+                        } else if (pidx < src_node.output_string_spreads.size() &&
+                                   !src_node.output_string_spreads[pidx].empty()) {
+                            lane_n = src_node.output_string_spreads[pidx].size();
+                        }
                     }
                 }
+            }
+            if (lane_n > 1) {
+                float mx = (ssx + sex) * 0.5f;
+                float my = (ssy + sey) * 0.5f - kWireBadgeYOff * zoom_;
+                char badge[16];
+                std::snprintf(badge, sizeof(badge), "\xc3\x97%zu", lane_n);
+                tr.draw_text(mx, my, badge, cr, cg, cb, 0.6f, zoom_);
+                badge_offset = kWireBadgeSpacing * zoom_;
             }
         }
 

@@ -113,6 +113,7 @@ struct NodeRect {
     std::string type_name;
     Cadence active_cadence = Cadence::Frame;
     bool is_gpu = false;
+    uint8_t lane_behavior = 0;  // 0=Pointwise, 1=Structural, 2=Reduction, 3=Kernel
     float x = 0, y = 0, w = 0, h = 0;
     float target_h = 0;  // animated height target (h lerps toward this)
     struct PortPos { std::string name; float x, y; bool is_param = false; };
