@@ -112,18 +112,23 @@ Each declares `kLaneBehavior = VIVID_LANE_STRUCTURAL` with appropriate lane-set 
 
 ## Phase D: Proof cases for breadth
 
-**Goal:** Prove the lane model handles the full range of use cases from the architecture doc's acceptance scenarios.
+**Goal:** Prove the lane model handles large lane counts and real structural provenance chains at scale.
 
-### D1. FFT-driven visual instancing
-- `FFTAnalysis` (Structural, frame-cadence) → pointwise color/size mapping → `InstancedShapes`
-- All using lane provenance from the same FFT lane set
-- Validates positional lane sets (no identity needed) at scale (512 bins)
+### D1. FFT-derived structural provenance
+- `FFTAnalysis` (Structural, frame-cadence) → pointwise per-bin processing via LoopBased frame lifting
+- Validates positional lane sets at scale (512 bins from 1024-point FFT)
+- Proves structural provenance flows through the compilation and lifting pipeline
 
-### D2. Particle/instance systems
-- Structural particle emitter → pointwise position/velocity integration → GPU instancing
-- Validates large lane counts (100+) with frame-rate lane lifting
+### D2. Large-count frame lane lifting
+- `SpreadSourceOp` at 256 and 512 lanes → LoopBased frame operator → per-lane output
+- Validates the frame executor handles lane counts well beyond the small counts used in Phase C
 
-**Scope:** ~500 LOC. **Risk:** Low — application-level, no runtime changes.
+### Future: lane-driven GPU visual proof cases
+- FFT spectrum → GPU instanced shapes (lane-bearing spread → per-instance rendering)
+- Structural particle emitter → per-particle GPU integration
+- These require GPU operators that consume lane-bearing spread data for rendering, which is not yet implemented
+
+**Scope:** ~200 LOC. **Risk:** Low — application-level, no runtime changes.
 
 ---
 
