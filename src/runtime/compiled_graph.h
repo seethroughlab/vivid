@@ -134,7 +134,8 @@ struct AudioNodeState {
     std::vector<uint8_t> output_channel_counts;
     std::vector<uint8_t> descriptor_input_channels;
     std::vector<uint8_t> descriptor_output_channels;
-    // Lane lifting (replaces is_mono_autodup).
+    // Lane execution strategy (selected by compiler, not operator author).
+    LaneExecutionStrategy execution_strategy = LaneExecutionStrategy::Scalar;
     uint32_t lane_lift_count = 0;   // 0 = no lifting, N = lift to N lanes
     uint32_t lane_lift_set_id = 0;  // provenance of the lane set being lifted over
 

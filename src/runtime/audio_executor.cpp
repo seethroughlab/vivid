@@ -59,7 +59,7 @@ bool AudioExecutor::build(CadenceBridge& bridge, CompiledGraph& cg) {
     // Set up lane lift groups for pointwise operators with multi-lane inputs
     for (uint32_t idx : cg.audio_order) {
         auto& cn = cg.nodes[idx];
-        if (!cn.audio || cn.audio->lane_lift_count <= 1 || !cn.loader) continue;
+        if (!cn.audio || cn.audio->execution_strategy != LaneExecutionStrategy::InstancePerLane || !cn.loader) continue;
 
         uint32_t lanes = cn.audio->lane_lift_count;
 

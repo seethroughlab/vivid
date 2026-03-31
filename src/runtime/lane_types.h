@@ -27,4 +27,16 @@ struct LaneSet {
     bool is_scalar() const { return lane_set_id == 0 && lane_count <= 1; }
 };
 
+// ---------------------------------------------------------------------------
+// LaneExecutionStrategy — how the runtime evaluates lanes for a given node.
+// Selected by the compiler/planner, not by operator authors.
+// ---------------------------------------------------------------------------
+
+enum class LaneExecutionStrategy : uint8_t {
+    Scalar          = 0,  // lane_count=1, single instance, no lifting
+    InstancePerLane = 1,  // N instances (LaneLiftGroup), deinterleave/interleave
+    LoopBased       = 2,  // single instance, runtime-driven loop over lanes
+    // Future: GpuCompute = 3
+};
+
 } // namespace vivid

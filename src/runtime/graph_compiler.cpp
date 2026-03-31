@@ -283,6 +283,7 @@ void GraphCompiler::init_audio_state(CompiledNode& cn,
     // Channel counts default to 1; channel negotiation (Pass 4) will override
     a.input_channel_counts.assign(cn.input_port_count, 1);
     a.output_channel_counts.assign(cn.output_port_count, 1);
+    a.execution_strategy = LaneExecutionStrategy::Scalar;
     a.lane_lift_count = 0;
     a.lane_lift_set_id = 0;
 
@@ -1099,6 +1100,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         }
 
         if (max_wire_ch > 1) {
+            a.execution_strategy = LaneExecutionStrategy::InstancePerLane;
             a.lane_lift_count = max_wire_ch;
             // Use the lane_set_id from the node's resolved input lane sets if available,
             // otherwise use 0 (positional channel-based lifting).
