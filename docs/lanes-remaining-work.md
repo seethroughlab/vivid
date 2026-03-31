@@ -1,196 +1,76 @@
-# Lanes Remaining Work — Phased Plan
+# Lanes Remaining Work — Status
 
-## Inventory
-
-11 items documented as future work across the three lane architecture docs. Grouped into 6 phases by dependency and value.
-
-The remaining work falls into two categories:
-
-- proving backend equivalence
-- removing interim runtime constraints that still prevent the execution model from being fully general
+All six phases (A–F) from the original phased plan have been delivered and tested. This document records what was delivered and what remains as future work.
 
 ---
 
-## Phase A: Prove the execution model
+## Delivered
 
-**Goal:** Validate that `InstancePerLane` and `LoopBased` produce identical results, migrate enough operators to make the model real, and resolve the biggest remaining runtime constraint that keeps `LoopBased` from being a generally valid backend.
+### Phase A: Prove the execution model ✓
 
-**Why first:** Everything else builds on confidence that the execution strategy alignment actually works. Right now the `LoopBased` path exists but still lacks both runtime equivalence proof and a fully general runtime shape. See [lanes-execution-strategy-alignment.md](lanes-execution-strategy-alignment.md) for why backend independence is the target and why the current bounded/intermediate runtime shape is not yet enough.
+- Full 4-lane InstancePerLane vs LoopBased equivalence test (identical output within tolerance)
+- Identity compaction proof: state follows `lane_id` across voice removal and reordering
+- Configurable `max_loop_lanes` with diagnostic logging (replaces silent clamping)
+- LoopBased→LoopBased audio routing copies full multi-lane buffer
+- Operator migrations to `vivid_lane_state()`: Gain, Filter, Bitcrush, LFO, Envelope
+- LoopBased lane_id propagation from upstream identity-bearing spreads
 
-### A1. InstancePerLane ↔ LoopBased equivalence test
-- Run `LaneSlewOp` under both strategies with identical 4-lane input
-- Compare audio output sample-by-sample within tolerance
-- Requires wiring `LaneSlewOp` in both a static stereo graph (`InstancePerLane`) and a structural spread graph (`LoopBased`)
+### Phase B: Structural reshaping ✓
 
-### A2. End-to-end identity compaction test
-- `PolyVoiceAllocator` creates 4 voices, releases voice 2, compacts to 3
-- Downstream oscillator (using `vivid_lane_state`) must prove that voice 1 and voice 3 state survived with correct `lane_id`, not positional index
-- Requires a test harness that can inspect per-lane state after compaction
+- Repeat (Structural): broadcast scalar to N lanes
+- Tile (Structural): tile short pattern to target length
+- Select (Reduction): pick one lane to scalar (`lane_set_id=0`)
+- Compiler metadata verified: fresh `lane_set_id` on Repeat/Tile, scalar on Select
+- Mismatch resolution: Select reduces one branch to scalar, enabling mixing
 
-### A3. Convert LFO and Envelope to lane-aware
-- Move per-element state to `vivid_lane_state()`
-- Declare `kStrategyIndependent = true`
-- These replace the deleted `SpreadLFO` / `SpreadADSR` with ordinary operators that work under any execution strategy
-- Test: `LFO` receiving multi-lane gate input produces per-lane independent output
+### Phase C: Frame-domain per-lane lifting ✓
 
-### A4. Migrate 2-3 core audio operators to `vivid_lane_state`
-- Candidates: Gain (stateless, trivial), Filter (has per-voice spread indexing), Bitcrush (has counter state)
-- For each: move per-lane state to `vivid_lane_state()`, declare `kStrategyIndependent`
-- Test: stereo processing still works (now via LoopBased-compatible path even if still evaluated as `InstancePerLane`)
+- LoopBased dispatch in frame executor with `vivid_lane_state()` support
+- Compiler Pass 4d assigns LoopBased to strategy-independent frame operators
+- Identity-bearing lane_ids propagation and compaction proof on frame path
+- `VividFrameContext` extended with `lane_id`, `lane_state_fn`, `allocate_lane_id_fn`, `retire_lane_id_fn`
 
-### A5. Remove or formalize the current LoopBased lane-capacity limit
-- The current `LoopBased` audio path is not yet fully general
-- It currently clamps runtime lanes to a fixed bound (`kMaxLoopLanes = 16`)
-- It also preallocates `LoopBased` buffers to that same fixed capacity
-- This limit must be resolved before the execution model can be considered generally valid
+### Phase D: Breadth proof cases ✓
 
-Acceptable outcomes:
-- preferred: remove the fixed limit and support runtime-dynamic lane counts safely
-- acceptable intermediate step: make the limit explicit, configurable, and tested, with clear failure behavior when exceeded
+- FFTAnalysis reclassified as `VIVID_LANE_STRUCTURAL`
+- 256-lane and 512-lane frame LoopBased lifting verified
+- FFT pipeline: `Repeat(1024)` → `FFTAnalysis(fft_size=1024)` → per-bin LoopBased processing (512 bins)
 
-Verification:
-- test with lane counts above the current fixed bound
-- verify behavior is either:
-  - correct and uncapped, or
-  - explicitly rejected with deterministic, documented behavior
-- do not allow silent truncation or silent clamping as the final state
+### Phase E: GPU compute-backed lane evaluation ✓
 
-**Scope:** ~700 LOC. **Risk:** Medium — touches core audio operators and the current LoopBased runtime shape.
+- Compute shader helpers in `gpu_common.h`
+- CPU vs GPU direct comparison: same operation, same input, output matches within tolerance
+- Lane ordering preserved through GPU dispatch
+- Reduction on GPU: sum 128 lanes to scalar, matches CPU
+
+### Phase F: Polish and naming ✓
+
+- Transport naming: `VIVID_PORT_SPREAD` → `VIVID_PORT_LANE_ARRAY`, `VividSpreadPort` → `VividLanePort`, `input_spreads` → `input_lanes`, etc. Clean break, no aliases.
+- Formal planner boundary: `AudioLanePlan` / `FrameLanePlan` structs, extracted `plan_audio_lane_strategy()` and `plan_frame_lane_strategy()` from inline compiler logic.
 
 ---
 
-## Phase B: Structural reshaping
+## Remaining future work
 
-**Goal:** Unlock N→M lane transformations with explicit structural operators.
+### Phase 7: UI and authoring
 
-**Why second:** Currently, mismatched non-scalar lane sets fail compilation. Users need reshape operators to build non-trivial graphs with multiple lane sources.
+- Lane-count badges on wires and ports
+- Visual distinction for structural and reduction nodes
+- Operator scaffold templates with lane behavior declarations
+- Opdev documentation updated to lane vocabulary
 
-### B1. Implement core reshape operators
-At minimum:
-- **Repeat** — broadcast a value to N lanes (explicit version of scalar broadcast)
-- **Tile** — repeat a short lane set to fill a longer one (3 → 12 by tiling)
-- **Select** — pick one lane from a multi-lane set (explicit reduction to scalar)
+### GPU visual proof cases
 
-Optional but valuable:
-- **Zip** — interleave two lane sets
-- **Flatten** — concatenate lane sets
-
-Each declares `kLaneBehavior = VIVID_LANE_STRUCTURAL` with appropriate lane-set effect (new ID, reshaped count).
-
-### B2. Tests
-- `Repeat(scalar, count=8)` → pointwise op → verify 8-lane output
-- `Tile([1,2,3], count=9)` → verify `[1,2,3,1,2,3,1,2,3]`
-- `Select(lane=2, input=[a,b,c,d])` → verify scalar `c`
-- mismatched lane sets → `Tile` → now legal
-
-**Scope:** ~400 LOC. **Risk:** Low — new operators, no runtime changes.
-
----
-
-## Phase C: Frame-domain per-lane lifting
-
-**Goal:** Extend lane lifting to frame-rate operators so they can be auto-lifted like audio operators.
-
-**Why third:** Completes the "one model" story — frame and audio operators both get lifted transparently.
-
-### C1. Add LoopBased/InstancePerLane support to FrameExecutor
-- Similar to audio executor's dispatch paths
-- Frame operators with `kStrategyIndependent` and structural upstream get `LoopBased`
-- Frame operators with static multi-lane input get `InstancePerLane` (if that case exists)
-
-### C2. FrameLiftGroup (if needed)
-- May reuse the same pattern as `LaneLiftGroup` but for frame-rate nodes
-- Or the `LoopBased` path may be sufficient (frame operators are cheaper, loop overhead is negligible)
-
-### C3. Test
-- `SpreadSourceOp` → frame-rate pointwise op (with `kStrategyIndependent`) → verify per-lane output
-- Currently this runs once per tick seeing the full spread; after C1 it runs per-lane
-
-**Scope:** ~300 LOC. **Risk:** Medium — new frame executor path.
-
----
-
-## Phase D: Proof cases for breadth
-
-**Goal:** Prove the lane model handles large lane counts and real structural provenance chains at scale.
-
-### D1. FFT-derived structural provenance
-- `FFTAnalysis` (Structural, frame-cadence) → pointwise per-bin processing via LoopBased frame lifting
-- Validates positional lane sets at scale (512 bins from 1024-point FFT)
-- Proves structural provenance flows through the compilation and lifting pipeline
-
-### D2. Large-count frame lane lifting
-- `SpreadSourceOp` at 256 and 512 lanes → LoopBased frame operator → per-lane output
-- Validates the frame executor handles lane counts well beyond the small counts used in Phase C
-
-### Future: lane-driven GPU visual proof cases
-- FFT spectrum → GPU instanced shapes (lane-bearing spread → per-instance rendering)
+- FFT spectrum → GPU instanced shapes (lane-bearing data → per-instance rendering)
 - Structural particle emitter → per-particle GPU integration
-- These require GPU operators that consume lane-bearing spread data for rendering, which is not yet implemented
+- Requires GPU operators that consume lane-bearing data for rendering (not yet implemented)
 
-**Scope:** ~200 LOC. **Risk:** Low — application-level, no runtime changes.
+### Stronger GPU backend proof
 
----
+- One shared semantic operator with both CPU LoopBased and GPU compute implementations, compared through the runtime (not standalone)
+- Identity-bearing and reduction coverage on the GPU compute path
 
-## Phase E: GPU compute-backed lane evaluation
+### vivid-wavetable migration
 
-**Goal:** Prove that backend choice is genuinely an implementation detail by running lanes through WGSL compute shaders.
-
-### E1. Compute shader infrastructure
-- Add WGSL compute pipeline helpers to `gpu_common.h`
-- Storage buffer creation/binding
-- Compute dispatch helper
-
-### E2. Compute-backed lane operator proof case
-- A simple pointwise operation (e.g., lane-parallel sine oscillator) implemented as a WGSL compute shader
-- Input: lane-bearing control data (frequencies)
-- Output: lane-bearing audio or control data
-- Validates: lane ordering preserved, identity continuity, reduction equivalence
-
-### E3. Backend equivalence test
-- Same operator, same input, CPU `LoopBased` vs GPU compute
-- Verify identical output within floating-point tolerance
-
-**Scope:** ~800 LOC. **Risk:** High — new GPU infrastructure.
-
----
-
-## Phase F: Polish and naming
-
-**Goal:** Clean up naming residue and formalize the planner boundary.
-
-### F1. Transport naming alignment
-- Rename `VIVID_PORT_SPREAD` → `VIVID_PORT_LANE_ARRAY` (or similar)
-- Rename `input_spreads` / `output_spreads` → `input_lanes` / `output_lanes` on contexts
-- Rename `VividSpreadPort` → `VividLanePort`
-- Mechanical — touches every operator, every test, every doc reference
-- Should be done in one atomic pass
-
-### F2. Formal runtime planner boundary
-- Currently the "planner" is Pass 4c with hardcoded rules
-- That is an intermediate mechanism, not the final architectural boundary
-- A formal planner boundary is required before backend choice can honestly be called an implementation detail
-- The exact type name can remain open (`LaneExecutionPlan`, `LaneEvaluationStrategy`, etc.)
-- This planner must become the place where backend selection is represented and reasoned about
-
-**Scope:** F1 ~1000 LOC (mechanical). F2 TBD.
-
----
-
-## Sequencing
-
-```
-A (prove execution model)     validates strategy alignment and resolves the current bounded LoopBased runtime shape
- ↓
-B (reshape operators)         unlocks N→M lane transformations
- ↓
-C (frame-domain lifting)      completes the "one model" story
- ↓
-D (proof cases)               validates breadth (FFT, particles)
- ↓
-E (GPU compute)               validates backend independence
- ↓
-F (polish + naming)           cleanup and planner formalization
-```
-
-A is the most important near-term work — without it, the LoopBased path is infrastructure without proof and still carries an interim runtime constraint. B and C are independently valuable. D depends on B/C for some scenarios. E is the long-term target. F can happen anytime but is most efficient last, with the planner boundary required before the execution model can honestly be considered backend-independent.
+- External package needs updating for the `VIVID_PORT_LANE_ARRAY` / `input_lanes` rename
+- No backward-compat aliases in core headers — package must be rebuilt against current API
