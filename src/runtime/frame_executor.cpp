@@ -120,12 +120,12 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
                             // Same-provenance but different runtime length.
                             // Compiler proved lane-set compatibility; operators
                             // emitted inconsistent sizes. Skip merge.
-                            assert(false && "lane-aware spread merge: same-provenance runtime length mismatch");
                             std::fprintf(stderr,
                                 "[vivid] frame_executor: spread length mismatch at node '%s' "
                                 "port %u (dst %zu vs src %zu) — skipping merge\n",
                                 cn.node_id.c_str(), e.to_port,
                                 dst_spread.size(), src_spread.size());
+                            assert(false && "lane-aware spread merge: same-provenance runtime length mismatch");
                         }
                         if (!dst_spread.empty())
                             cn.input_values[e.to_port] = dst_spread[0];
