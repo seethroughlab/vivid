@@ -1,4 +1,5 @@
-// Spread source: generates spread data [base*1, base*2, ..., base*count]
+// Lane array source: generates lane data [base*1, base*2, ..., base*count]
+// (Operator name kept as SpreadSourceOp for test fixture compatibility.)
 #include "operator_api/operator.h"
 
 struct SpreadSourceOp : vivid::OperatorBase, vivid::FrameProcessable {

@@ -68,7 +68,7 @@ Connections may carry an optional **value remap**: `from_min`, `from_max`, `to_m
 |------|----|-------------|
 | `SIGNAL` | 0 | Scalar float (frame) or 1-channel buffer (audio) |
 | `AUDIO` | 1 | Multi-channel sample buffer |
-| `SPREAD` | 2 | Variable-length float array |
+| `LANE_ARRAY` | 2 | Variable-length float array (lane-bearing data) |
 | `STRING` | 3 | UTF-8 text |
 | `STRING_SPREAD` | 4 | Variable-length string array |
 | `TEXTURE` | 5 | `WGPUTextureView` (GPU only) |
@@ -101,7 +101,7 @@ The `GraphCompiler` transforms a `Graph` plus an `OperatorRegistry` into a `Comp
    - `frame_order` — all Frame and GPU nodes.
    - `audio_order` — all Audio nodes.
 
-5. **Pre-allocate state.** All buffers, parameter arrays, spread storage, string arrays, GPU textures, and audio buffers are allocated up front. No heap allocation occurs during execution.
+5. **Pre-allocate state.** All buffers, parameter arrays, lane array storage, string arrays, GPU textures, and audio buffers are allocated up front. No heap allocation occurs during execution.
 
 ### CompiledGraph Structure
 
@@ -131,7 +131,7 @@ Each frame follows a three-phase pattern:
 1. **pre_tick_audio_sync()** — Pull the latest `AnalysisSnapshot` from the audio thread. Inject RMS, peak, waveform, and scalar outputs into frame-rate nodes.
 
 2. **FrameExecutor::tick()** — Iterate `frame_order`. For each node:
-   - Propagate values along `frame_direct_edges` (copy, remap, spread merge).
+   - Propagate values along `frame_direct_edges` (copy, remap, lane merge).
    - Call `process_frame()` (or `process_gpu()` for GPU nodes).
    - Apply skip logic: only process if time-dependent, dirty, or upstream changed.
 
@@ -168,7 +168,7 @@ Contains everything the audio thread needs from the frame world:
 |-------|---------|
 | `node_params` | Parameter values per audio node |
 | `float_input_values` | CV/signal inputs from frame-rate outputs |
-| `spread_inputs` | Spread data crossing cadence boundary |
+| `lane_inputs` | Lane data crossing cadence boundary |
 | `input_string_values` | String inputs (file paths, text) |
 | `custom_inputs` | Custom-type port data |
 | `solo_active_set` | Which nodes are active under solo mode |
@@ -186,7 +186,7 @@ Contains audio-thread outputs for visualization and frame-rate modulation:
 | `rms`, `peak` | Per-node level meters |
 | `waveform` | 1024-sample ring buffer per node |
 | `float_outputs` | Scalar signal outputs for frame-rate consumption |
-| `spread_outputs` | Spread data from audio nodes |
+| `lane_outputs` | Lane data from audio nodes |
 | `errored`, `error_msgs` | Error state (fixed-size, no heap) |
 
 The same double-buffer / atomic-swap pattern applies in the reverse direction.
@@ -206,14 +206,14 @@ for node in frame_order:
 
     for edge in frame_direct_edges targeting this node:
         copy output → input (with remap if configured)
-        propagate spreads, strings, file params, custom ports
+        propagate lanes, strings, file params, custom ports
 
     apply audio→frame bridge values:
         for each port where bridge_input_dirty[port] is set:
             input_values[port] = bridge_input_values[port]
             clear bridge_input_dirty[port]
 
-    build VividFrameContext with time, params, inputs, outputs, spreads
+    build VividFrameContext with time, params, inputs, outputs, lanes
     call process_frame(instance, ctx)
 
     if GPU node:
@@ -378,7 +378,7 @@ The registry manages operator discovery and loading:
 
 Same-cadence edges are **Direct**: the executor copies the output value from the source node into the input slot of the destination node during its iteration pass. This is a simple memory copy with no synchronization overhead.
 
-For **SIGNAL** ports, a single float is copied. For **AUDIO** ports, the entire sample buffer pointer is routed. For **SPREAD** and **STRING** ports, the data is copied into pre-allocated staging buffers.
+For **SIGNAL** ports, a single float is copied. For **AUDIO** ports, the entire sample buffer pointer is routed. For **LANE_ARRAY** and **STRING** ports, the data is copied into pre-allocated staging buffers.
 
 ### Snapshot Edges
 
@@ -398,7 +398,7 @@ With an optional `clamp` to constrain the result to `[to_min, to_max]`. This all
 ### Port Type Compatibility
 
 - **SIGNAL** and **AUDIO** are cross-compatible: at audio cadence, a SIGNAL port becomes a 1-channel buffer.
-- Control types (SIGNAL, SPREAD, STRING) are inter-compatible for flexible routing.
+- Control types (SIGNAL, LANE_ARRAY, STRING) are inter-compatible for flexible routing.
 - **TEXTURE** ports connect only to other TEXTURE ports.
 - **Custom** ports match by `stable_type_id`.
 
@@ -439,8 +439,8 @@ Passed to frame-rate operators on the main thread.
 | `param_values` | `float*` | Parameter array, indexed by param order |
 | `input_values` | `float*` | Input port values (SIGNAL) |
 | `output_values` | `float*` | Output port values (SIGNAL) — write here |
-| `input_lanes` | `VividLanePort*` | Spread input ports |
-| `output_lanes` | `VividLanePort*` | Spread output ports |
+| `input_lanes` | `VividLanePort*` | Lane array input ports |
+| `output_lanes` | `VividLanePort*` | Lane array output ports |
 | `input_string_values` | `const char**` | String input values |
 | `output_string_values` | `const char**` | String output values |
 | `file_param_values` | `const char**` | File/text parameter values |
@@ -495,7 +495,7 @@ Passed to audio-rate operators on the audio thread.
 | `bridge_input_values[]` | Audio→frame bridge-injected values (survive per-frame zeroing) |
 | `bridge_input_dirty[]` | Per-port dirty flags: 1 = bridge wrote since last frame |
 | `input_connected[]` | Per-port connection flags: 1 = has an incoming edge |
-| `input_lanes[]` / `output_lanes[]` | Spread port state |
+| `input_lanes[]` / `output_lanes[]` | Lane array port state |
 | `audio` | `AudioNodeState*` — buffers, channels (audio nodes only) |
 | `gpu` | `GpuNodeState*` — textures, views (GPU nodes only) |
 
@@ -506,6 +506,6 @@ Passed to audio-rate operators on the audio thread.
 | `from_node` / `to_node` | Source and destination node indices |
 | `from_port` / `to_port` | Port ordinals |
 | `transport` | `Direct` or `Snapshot` |
-| `data_type` | Port type (SIGNAL, AUDIO, SPREAD, etc.) |
+| `data_type` | Port type (SIGNAL, AUDIO, LANE_ARRAY, etc.) |
 | `from_channels` / `to_channels` | Audio channel negotiation |
 | `from_min/max`, `to_min/max`, `clamp` | Value remap parameters |

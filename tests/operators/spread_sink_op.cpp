@@ -1,5 +1,5 @@
-// Spread sink: reads input spread and copies it to output spread (passthrough).
-// Used by test_spread_broadcast to observe the resulting spread after broadcasting.
+// Lane array sink: reads input lane data and copies it to output (passthrough).
+// (Operator name kept as SpreadSinkOp for test fixture compatibility.)
 #include "operator_api/operator.h"
 
 struct SpreadSinkOp : vivid::OperatorBase, vivid::FrameProcessable {

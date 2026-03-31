@@ -45,9 +45,9 @@ struct Repeat : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProces
 
 private:
     void compute(float input, const float* params,
-                 VividLanePort* out_spreads, float* output_values) {
-        if (!out_spreads) return;
-        auto& out = out_spreads[0];
+                 VividLanePort* out_lanes, float* output_values) {
+        if (!out_lanes) return;
+        auto& out = out_lanes[0];
         uint32_t n = std::clamp(static_cast<uint32_t>(params[0]), 1u, out.capacity);
         out.length = n;
         for (uint32_t i = 0; i < n; ++i)

@@ -26,8 +26,8 @@ struct MyAudioOp : vivid::OperatorBase, vivid::AudioProcessable {
 | `sample_rate` | `uint32_t` | Sample rate (typically 48000) |
 | `input_channel_counts` | `const uint8_t*` | Per-port channel count (NULL = all mono) |
 | `output_channel_counts` | `const uint8_t*` | Per-port channel count (NULL = all mono) |
-| `input_lanes` | `VividLanePort*` | Cross-cadence spread inputs from control |
-| `output_lanes` | `VividLanePort*` | Spread outputs |
+| `input_lanes` | `VividLanePort*` | Cross-cadence lane inputs from control |
+| `output_lanes` | `VividLanePort*` | Lane outputs |
 | `input_handles` | `void**` | Handle inputs |
 | `input_string_values` | `const char**` | String inputs |
 | `file_param_values` | `const char**` | File/text param values |
@@ -50,7 +50,7 @@ struct Voice { double phase; float freq; };
 Voice& v = *vivid_lane_state(ctx, ctx->lane_id, Voice);
 ```
 
-Each lifted lane receives a distinct `lane_id` (derived positional ID), so `vivid_lane_state()` returns per-lane-distinct storage. These IDs are not allocator-managed identities — they don't survive graph rebuilds. For true identity-bearing state (voice allocation, portamento), use `lane_id` values from a structural operator's `lane_ids` spread output.
+Each lifted lane receives a distinct `lane_id` (derived positional ID), so `vivid_lane_state()` returns per-lane-distinct storage. These IDs are not allocator-managed identities — they don't survive graph rebuilds. For true identity-bearing state (voice allocation, portamento), use `lane_id` values from a structural operator's `lane_ids` lane-array output.
 
 **Strategy-independent convention:** New operators should use `vivid_lane_state()` for all per-lane persistent state, even when expecting to be lifted. This makes the operator compatible with future runtime execution strategies (loop-based, GPU compute) without source changes.
 

@@ -2,16 +2,16 @@
 #include <algorithm>
 
 /**
- * @brief Repeat a short lane pattern to fill a longer spread.
+ * @brief Repeat a short lane pattern to fill a longer lane array.
  *
- * Tiles the input spread cyclically to produce an output of the target
+ * Tiles the input lane array cyclically to produce an output of the target
  * length. For example, a 3-element input tiled to 9 produces
  * [a, b, c, a, b, c, a, b, c].
  *
  * Use this to match a short modulation pattern to a larger polyphonic
  * lane set without introducing a lane-set mismatch.
  *
- * @tip Tile a 2-element spread to 8 lanes for alternating left/right panning.
+ * @tip Tile a 2-element lane array to 8 lanes for alternating left/right panning.
  * @see Repeat, Select, Stack
  */
 struct Tile : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
@@ -45,11 +45,11 @@ struct Tile : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessa
     }
 
 private:
-    void compute(VividLanePort* in_spreads, const float* params,
-                 VividLanePort* out_spreads, float* output_values) {
-        if (!in_spreads || !out_spreads) return;
-        auto& in = in_spreads[0];
-        auto& out = out_spreads[0];
+    void compute(VividLanePort* in_lanes, const float* params,
+                 VividLanePort* out_lanes, float* output_values) {
+        if (!in_lanes || !out_lanes) return;
+        auto& in = in_lanes[0];
+        auto& out = out_lanes[0];
 
         if (in.length == 0) {
             out.length = 0;

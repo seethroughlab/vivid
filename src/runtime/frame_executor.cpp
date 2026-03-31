@@ -121,26 +121,26 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             } else {
                 cn.input_values[e.to_port] = val;
 
-                // Lane-aware spread propagation.
+                // Lane-aware lane propagation.
                 // No cycle-expand, no modulo indexing. Compiler legality
                 // (Pass 2.6) guarantees that non-scalar inputs sharing a
                 // port have the same lane_set_id.
                 if (!e.sources_param && e.from_port < from_cn.output_lanes.size()) {
-                    const auto& src_spread = from_cn.output_lanes[e.from_port];
-                    if (!src_spread.empty()) {
-                        auto& dst_spread = cn.input_lanes[e.to_port];
-                        if (dst_spread.empty()) {
+                    const auto& src_lane = from_cn.output_lanes[e.from_port];
+                    if (!src_lane.empty()) {
+                        auto& dst_lane = cn.input_lanes[e.to_port];
+                        if (dst_lane.empty()) {
                             // First non-scalar wire: establish destination.
-                            dst_spread = src_spread;
+                            dst_lane = src_lane;
                             if (e.has_remap()) {
-                                for (auto& v : dst_spread) v = e.apply_remap(v);
+                                for (auto& v : dst_lane) v = e.apply_remap(v);
                             }
-                        } else if (src_spread.size() == dst_spread.size()) {
+                        } else if (src_lane.size() == dst_lane.size()) {
                             // Same-provenance, same length: element-wise add.
-                            for (size_t j = 0; j < dst_spread.size(); ++j) {
-                                float sv = src_spread[j];
+                            for (size_t j = 0; j < dst_lane.size(); ++j) {
+                                float sv = src_lane[j];
                                 if (e.has_remap()) sv = e.apply_remap(sv);
-                                dst_spread[j] += sv;
+                                dst_lane[j] += sv;
                             }
                         } else {
                             // Same-provenance but different runtime length.
@@ -150,11 +150,11 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
                                 "[vivid] frame_executor: spread length mismatch at node '%s' "
                                 "port %u (dst %zu vs src %zu) — skipping merge\n",
                                 cn.node_id.c_str(), e.to_port,
-                                dst_spread.size(), src_spread.size());
+                                dst_lane.size(), src_lane.size());
                             assert(false && "lane-aware spread merge: same-provenance runtime length mismatch");
                         }
-                        if (!dst_spread.empty())
-                            cn.input_values[e.to_port] = dst_spread[0];
+                        if (!dst_lane.empty())
+                            cn.input_values[e.to_port] = dst_lane[0];
                     }
                 }
             }

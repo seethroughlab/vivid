@@ -1,9 +1,9 @@
 #include "operator_api/operator.h"
 #include <algorithm>
 /**
- * @brief Combines up to 4 spreads into one via concatenation or interleaving.
+ * @brief Combines up to 4 lane arrays into one via concatenation or interleaving.
  *
- * Merges input spreads A through D into a single output spread. Concat
+ * Merges input lane arrays A through D into a single output. Concat
  * mode appends them end-to-end; interleave mode alternates elements.
  *
  * @see Alternate, PatTransform
@@ -16,7 +16,7 @@ struct Stack : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcess
     vivid::Param<int> mode {"mode", 0, {"Concat","Interleave"}};
 
     Stack() {
-        vivid::description(mode, "Concat appends spreads end-to-end; Interleave alternates elements");
+        vivid::description(mode, "Concat appends lane arrays end-to-end; Interleave alternates elements");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
@@ -24,11 +24,11 @@ struct Stack : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcess
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"a",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in spread[0]
-        out.push_back({"b",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in spread[1]
-        out.push_back({"c",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in spread[2]
-        out.push_back({"d",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in spread[3]
-        out.push_back({"output", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // out spread[0]
+        out.push_back({"a",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in lane[0]
+        out.push_back({"b",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in lane[1]
+        out.push_back({"c",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in lane[2]
+        out.push_back({"d",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in lane[3]
+        out.push_back({"output", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // out lane[0]
     }
 
     void process_frame(const VividFrameContext* ctx) override {
@@ -40,19 +40,19 @@ struct Stack : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcess
     }
 
 private:
-    void compute(const float* params, VividLanePort* in_spreads,
-                 VividLanePort* out_spreads, float* output_values) {
-        if (!in_spreads || !out_spreads) return;
+    void compute(const float* params, VividLanePort* in_lanes,
+                 VividLanePort* out_lanes, float* output_values) {
+        if (!in_lanes || !out_lanes) return;
 
-        auto& out = out_spreads[0];
+        auto& out = out_lanes[0];
         int m = std::clamp(static_cast<int>(params[0]), 0, 1);
 
-        // Collect non-empty input spreads
+        // Collect non-empty input lane arrays
         const VividLanePort* inputs[4];
         int input_count = 0;
         for (int i = 0; i < 4; ++i) {
-            if (in_spreads[i].length > 0)
-                inputs[input_count++] = &in_spreads[i];
+            if (in_lanes[i].length > 0)
+                inputs[input_count++] = &in_lanes[i];
         }
 
         if (input_count == 0) {
@@ -95,7 +95,7 @@ private:
             }
         }
 
-        // Scalar output = first element of output spread
+        // Scalar output = first element of output lane array
         if (output_values)
             output_values[0] = (out.length > 0) ? out.data[0] : 0.0f;
     }

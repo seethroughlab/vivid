@@ -56,7 +56,7 @@ Start with the discovery tools before scaffolding:
 ## API Documentation Topics
 
 - `"core"` — Param<T>, OperatorBase, VIVID_REGISTER, collect_params/ports, semantic metadata
-- `"control"` — VividFrameContext, float/spread/string/handle ports, frame-rate processing
+- `"control"` — VividFrameContext, float/lane-array/string/handle ports, frame-rate processing
 - `"audio"` — VividAudioContext, planar buffers, sample rate, channel counts, thread safety
 - `"gpu"` — VividGpuContext, WgslFilterBase, gpu_common helpers, WGSL patterns, hot-reload
 - `"dsp"` — Oscillators, waveforms, noise generators, SVF filter, decay envelope, ADSR
@@ -73,7 +73,7 @@ Start with the discovery tools before scaffolding:
 
 ## Three Envs
 
-- **Control** (OperatorBase + FrameProcessable) — main thread, ~60 Hz, scalar/spread/string/handle ports
+- **Control** (OperatorBase + FrameProcessable) — main thread, ~60 Hz, scalar/lane-array/string/handle ports
 - **Audio** (OperatorBase + AudioProcessable) — audio thread, per-buffer, planar float buffers
 - **GPU** (OperatorBase + GpuProcessable) — main thread, ~60 Hz, WebGPU textures
 """)

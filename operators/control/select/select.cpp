@@ -41,14 +41,14 @@ struct Select : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProces
     }
 
 private:
-    void compute(VividLanePort* in_spreads, const float* params,
+    void compute(VividLanePort* in_lanes, const float* params,
                  float* output_values) {
         if (!output_values) return;
-        if (!in_spreads || in_spreads[0].length == 0) {
+        if (!in_lanes || in_lanes[0].length == 0) {
             output_values[0] = 0.0f;
             return;
         }
-        auto& in = in_spreads[0];
+        auto& in = in_lanes[0];
         uint32_t idx = std::clamp(static_cast<uint32_t>(params[0]),
                                    0u, in.length - 1);
         output_values[0] = in.data[idx];

@@ -6,7 +6,7 @@ Rules for promoting new concepts in the vivid codebase.
 
 The architecture supports three ways for operators to interact:
 
-1. **Ports** — graph-visible transport between nodes (signal, audio, texture, spread)
+1. **Ports** — graph-visible transport between nodes (signal, audio, texture, lane array)
 2. **Owned embedded composition** — host-local reusable modulation via `ChildOp<T>` / `BoundControlInstance`, serialized as host-local state
 3. **Explicit outputs** — when host-local behavior must become graph-visible (triggers, gates, energy summaries)
 

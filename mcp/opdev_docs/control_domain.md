@@ -1,6 +1,6 @@
 # Control Domain
 
-Control operators run on the main thread at frame rate (~60 Hz). They process scalar values, spreads, strings, and handles.
+Control operators run on the main thread at frame rate (~60 Hz). They process scalar values, lane arrays, strings, and handles.
 
 ## Capability Interface
 
@@ -21,19 +21,19 @@ struct MyControlOp : vivid::OperatorBase, vivid::FrameProcessable {
 | `param_values` | `float*` | Indexed by param descriptor order (auto-synced to Param<T>.value) |
 | `input_values` | `float*` | Float input ports, indexed by input port order |
 | `output_values` | `float*` | Float output ports, indexed by output port order — **write your outputs here** |
-| `input_lanes` | `VividLanePort*` | Spread input ports (`.data`, `.length`) |
-| `output_lanes` | `VividLanePort*` | Spread output ports (write `.data`, set `.length`) |
+| `input_lanes` | `VividLanePort*` | Lane array input ports (`.data`, `.length`) |
+| `output_lanes` | `VividLanePort*` | Lane array output ports (write `.data`, set `.length`) |
 | `input_handles` | `void**` | Handle input ports |
 | `output_handles` | `void**` | Handle output ports |
 | `input_string_values` | `const char**` | String input ports |
 | `output_string_values` | `const char**` | String output ports (write pointers here) |
-| `input_string_lanes` | `VividStringSpreadPort*` | String spread inputs |
-| `output_string_lanes` | `VividStringSpreadPort*` | String spread outputs |
+| `input_string_lanes` | `VividStringLanePort*` | String lane array inputs |
+| `output_string_lanes` | `VividStringLanePort*` | String lane array outputs |
 | `file_param_values` | `const char**` | File/text param string values |
 | `input` | `void*` | Cast to `VividInputState*` for interactive operators |
 | `shared_handles` | `VividSharedHandleService*` | Process-wide handle service |
-| `lane_count` | `uint32_t` | Runtime lane count (max input spread length, 1 = scalar) |
-| `lane_index` | `uint32_t` | Always 0 (no per-lane frame lifting yet) |
+| `lane_count` | `uint32_t` | Runtime lane count (max input lane array length, 1 = scalar) |
+| `lane_index` | `uint32_t` | Current lane in LoopBased (0 = scalar or first lane) |
 | `lane_set_id` | `uint32_t` | Lane provenance (0 = scalar, nonzero = upstream structural node) |
 
 ### Write-back Fields
@@ -47,20 +47,20 @@ struct MyControlOp : vivid::OperatorBase, vivid::FrameProcessable {
 Port indices are counted separately for inputs and outputs, in the order declared in `collect_ports()`. Only ports of the matching type contribute to each index array:
 
 - Float ports → `input_values[i]` / `output_values[i]`
-- Spread ports → `input_lanes[i]` / `output_lanes[i]`
+- Lane array ports → `input_lanes[i]` / `output_lanes[i]`
 - String ports → `input_string_values[i]` / `output_string_values[i]`
 - Handle ports → `input_handles[i]` / `output_handles[i]`
 
-## Spread Ports
+## Lane Array Ports
 
 ```cpp
-// Reading input spread
+// Reading input lane array
 const VividLanePort& sp = ctx->input_lanes[0];
 for (uint32_t i = 0; i < sp.length; i++) {
     float val = sp.data[i];
 }
 
-// Writing output spread
+// Writing output lane array
 VividLanePort& out = ctx->output_lanes[0];
 out.length = count;  // must not exceed capacity
 for (uint32_t i = 0; i < count; i++) {
