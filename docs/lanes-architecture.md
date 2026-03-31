@@ -912,6 +912,17 @@ For larger lane counts, instance duplication may be too heavy. The runtime may i
 
 This is conceptually similar to how some current multi-slot operators work by hand, but generalized by the runtime.
 
+### 10.3.1 Current implementation state
+
+The current implementation uses a **structural split**, not a general strategy switcher:
+
+- **Static lane counts** (stereo, multichannel): `LaneLiftGroup` with compile-time duplicated instances. Per-lane state lives in per-instance member variables.
+- **Dynamic identity-bearing collections** (vivid-wavetable voices): single-instance collection processors that loop explicitly and access per-lane state through `vivid_lane_state()`.
+
+These two paths are **not yet interchangeable** for existing operators. Instance-duplication operators use per-instance member state; loop-based operators use `vivid_lane_state()`. Switching between them requires operator adaptation (specifically, moving per-lane state from member variables to `vivid_lane_state()` lookups).
+
+The target model described in 10.2–10.3 remains correct. The path from the current structural split to the target is staged: first normalize per-lane state access, then introduce a `kStrategyIndependent` operator capability flag, then add runtime-driven loop-based evaluation as a planner-selected backend. See `docs/lanes-execution-strategy-alignment.md` for the full path.
+
 ### 10.4 Future GPU-backed evaluation
 
 For very large lane counts, especially in GPU-facing scenarios, the runtime may choose GPU-backed evaluation strategies.
