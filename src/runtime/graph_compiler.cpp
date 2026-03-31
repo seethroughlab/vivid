@@ -346,6 +346,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
     const Options& options)
 {
     auto cg = std::make_unique<CompiledGraph>();
+    cg->max_loop_lanes = options.max_loop_lanes;
     std::filesystem::path graph_base_dir;
     if (!graph.source_path().empty()) {
         graph_base_dir = std::filesystem::path(graph.source_path()).parent_path();
@@ -1139,6 +1140,52 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             if (opt_in && has_structural_input) {
                 a.execution_strategy = LaneExecutionStrategy::LoopBased;
                 a.lane_lift_set_id = structural_set_id;
+                // Detect identity-bearing lane_ids spread port for runtime propagation
+                auto li_it = cn.input_port_indices.find("lane_ids");
+                if (li_it != cn.input_port_indices.end()) {
+                    uint32_t pi = li_it->second;
+                    if (pi < cn.input_port_types.size() &&
+                        cn.input_port_types[pi] == VIVID_PORT_SPREAD) {
+                        a.lane_id_spread_port = static_cast<int32_t>(pi);
+                    }
+                }
+            }
+        }
+    }
+
+    // Pass 4d: Detect lane-liftable pointwise frame operators.
+    // Frame operators with kStrategyIndependent and structural upstream get LoopBased.
+    // Only LoopBased is supported for frame nodes (no InstancePerLane — loop overhead
+    // is negligible at frame rate).
+    for (uint32_t idx : cg->frame_order) {
+        auto& cn = cg->nodes[idx];
+        if (cn.lane_behavior != LaneBehavior::Pointwise) continue;
+
+        const auto* desc = cn.loader ? cn.loader->descriptor() : nullptr;
+        bool opt_in = desc && desc->strategy_independent;
+        if (!opt_in) continue;
+
+        bool has_structural_input = false;
+        uint32_t structural_set_id = 0;
+        for (const auto& ils : cn.input_lane_sets) {
+            if (!ils.is_scalar()) {
+                has_structural_input = true;
+                structural_set_id = ils.lane_set_id;
+                break;
+            }
+        }
+
+        if (has_structural_input) {
+            cn.frame_execution_strategy = LaneExecutionStrategy::LoopBased;
+
+            // Detect identity-bearing lane_ids spread port
+            auto li_it = cn.input_port_indices.find("lane_ids");
+            if (li_it != cn.input_port_indices.end()) {
+                uint32_t pi = li_it->second;
+                if (pi < cn.input_port_types.size() &&
+                    cn.input_port_types[pi] == VIVID_PORT_SPREAD) {
+                    cn.frame_lane_id_spread_port = static_cast<int32_t>(pi);
+                }
             }
         }
     }
@@ -1161,11 +1208,11 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                 a.buffers_out[p].resize(lanes * bs, 0.0f);
         } else if (a.execution_strategy == LaneExecutionStrategy::LoopBased) {
             // LoopBased: pre-allocate at max lane capacity to avoid audio-thread allocation.
-            static constexpr uint32_t kMaxLoopLanes = 16;
+            uint32_t max_ll = options.max_loop_lanes;
             for (uint32_t p = 0; p < cn.input_port_count; ++p)
-                a.buffers_in[p].resize(kMaxLoopLanes * bs, 0.0f);
+                a.buffers_in[p].resize(max_ll * bs, 0.0f);
             for (uint32_t p = 0; p < cn.output_port_count; ++p)
-                a.buffers_out[p].resize(kMaxLoopLanes * bs, 0.0f);
+                a.buffers_out[p].resize(max_ll * bs, 0.0f);
         } else {
             for (uint32_t p = 0; p < cn.input_port_count; ++p)
                 a.buffers_in[p].resize(a.input_channel_counts[p] * bs, 0.0f);
@@ -1210,6 +1257,15 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             e.to_channels = e.from_channels;  // lane-lifted: matches source
         } else if (to_cn.audio && e.to_port < to_cn.audio->input_channel_counts.size()) {
             e.to_channels = to_cn.audio->input_channel_counts[e.to_port];
+        }
+
+        // LoopBased → LoopBased: route the full multi-lane buffer so per-lane
+        // audio data propagates between chained LoopBased operators.
+        if (from_a.execution_strategy == LaneExecutionStrategy::LoopBased &&
+            to_cn.audio && to_cn.audio->execution_strategy == LaneExecutionStrategy::LoopBased) {
+            uint8_t ml = static_cast<uint8_t>(options.max_loop_lanes);
+            e.from_channels = ml;
+            e.to_channels = ml;
         }
     }
 

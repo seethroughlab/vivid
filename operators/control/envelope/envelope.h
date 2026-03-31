@@ -21,6 +21,8 @@ struct EnvelopeThumbState;
 struct Envelope : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Envelope";
     static constexpr bool kTimeDependent = true;
+    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
+    static constexpr bool kStrategyIndependent = true;
 
     vivid::Param<float> attack   {"attack",    0.001f, 0.0f,   0.5f};
     vivid::Param<float> decay    {"decay",     0.2f,   0.01f,  2.0f};
@@ -30,14 +32,22 @@ struct Envelope : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProc
     vivid::Param<float> offset   {"offset",    0.0f,   0.0f,   10.0f};
     vivid::Param<int>   curve    {"curve",     1,      {"linear", "exponential", "logarithmic"}};
 
-    enum Stage { IDLE, ATTACK, DECAY, SUSTAIN, RELEASE };
-    Stage stage_        = IDLE;
-    float env_value_    = 0.0f;
-    float env_progress_ = 0.0f;
-    float release_start_ = 0.0f;
-    float prev_phase_   = 0.0f;
-    bool  prev_gate_    = false;
-    bool  gate_ever_on_ = false;
+    enum Stage : uint8_t { IDLE, ATTACK, DECAY, SUSTAIN, RELEASE };
+
+    // Per-lane persistent state (used by vivid_lane_state in audio path,
+    // and as member state in frame path until Phase C frame lifting).
+    struct AudioState {
+        Stage stage        = IDLE;
+        float env_value    = 0.0f;
+        float env_progress = 0.0f;
+        float release_start = 0.0f;
+        float prev_phase   = 0.0f;
+        bool  prev_gate    = false;
+        bool  gate_ever_on = false;
+    };
+
+    // Member state for frame-rate path (Phase C will migrate this too)
+    AudioState frame_state_;
 
     Envelope() {
         vivid::semantic_tag(attack, "time_seconds");
@@ -128,98 +138,98 @@ struct Envelope : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProc
     // Gate/phase trigger detection and state transitions are handled here.
     // Returns the final output value (env_value * amp + off).
 
-    void advance_triggers(float gate_in, float phase_in) {
+    static void advance_triggers(AudioState& s, float gate_in, float phase_in) {
         bool gate_on = gate_in > 0.5f;
-        if (gate_on) gate_ever_on_ = true;
+        if (gate_on) s.gate_ever_on = true;
 
-        bool gate_attack  = gate_on && !prev_gate_;
-        bool gate_release = !gate_on && prev_gate_;
+        bool gate_attack  = gate_on && !s.prev_gate;
+        bool gate_release = !gate_on && s.prev_gate;
 
-        float phase_delta = phase_in - prev_phase_;
+        float phase_delta = phase_in - s.prev_phase;
         bool phase_wrap = phase_delta < -0.5f;
 
-        prev_phase_ = phase_in;
-        prev_gate_  = gate_on;
+        s.prev_phase = phase_in;
+        s.prev_gate  = gate_on;
 
         if (gate_attack || phase_wrap) {
-            stage_ = ATTACK;
-            env_progress_ = 0.0f;
-        } else if (gate_release && stage_ != IDLE) {
-            release_start_ = env_value_;
-            stage_ = RELEASE;
-            env_progress_ = 0.0f;
+            s.stage = ATTACK;
+            s.env_progress = 0.0f;
+        } else if (gate_release && s.stage != IDLE) {
+            s.release_start = s.env_value;
+            s.stage = RELEASE;
+            s.env_progress = 0.0f;
         }
     }
 
-    void advance_adsr(float dt, float atk, float dec, float sus, float rel, int c) {
-        env_progress_ += dt;
+    static void advance_adsr(AudioState& s, float dt, float atk, float dec, float sus, float rel, int c) {
+        s.env_progress += dt;
 
-        switch (stage_) {
+        switch (s.stage) {
         case ATTACK:
             if (atk > 0.0f) {
-                float t_a = env_progress_ / atk;
+                float t_a = s.env_progress / atk;
                 if (t_a >= 1.0f) {
-                    env_value_ = 1.0f;
-                    stage_ = DECAY;
-                    env_progress_ = 0.0f;
+                    s.env_value = 1.0f;
+                    s.stage = DECAY;
+                    s.env_progress = 0.0f;
                 } else {
-                    env_value_ = shape_attack(t_a, c);
+                    s.env_value = shape_attack(t_a, c);
                 }
             } else {
-                env_value_ = 1.0f;
-                stage_ = DECAY;
-                env_progress_ = 0.0f;
+                s.env_value = 1.0f;
+                s.stage = DECAY;
+                s.env_progress = 0.0f;
             }
             break;
 
         case DECAY:
             if (dec > 0.0f) {
-                float t = env_progress_ / dec;
+                float t = s.env_progress / dec;
                 float shaped = shape_decay(std::min(t, 1.0f), c);
-                env_value_ = 1.0f - (1.0f - sus) * shaped;
-                if (env_value_ <= sus) {
-                    env_value_ = sus;
-                    if (!gate_ever_on_) {
-                        release_start_ = sus;
-                        stage_ = RELEASE;
-                        env_progress_ = 0.0f;
+                s.env_value = 1.0f - (1.0f - sus) * shaped;
+                if (s.env_value <= sus) {
+                    s.env_value = sus;
+                    if (!s.gate_ever_on) {
+                        s.release_start = sus;
+                        s.stage = RELEASE;
+                        s.env_progress = 0.0f;
                     } else {
-                        stage_ = SUSTAIN;
+                        s.stage = SUSTAIN;
                     }
                 }
             } else {
-                env_value_ = sus;
-                if (!gate_ever_on_) {
-                    release_start_ = sus;
-                    stage_ = RELEASE;
-                    env_progress_ = 0.0f;
+                s.env_value = sus;
+                if (!s.gate_ever_on) {
+                    s.release_start = sus;
+                    s.stage = RELEASE;
+                    s.env_progress = 0.0f;
                 } else {
-                    stage_ = SUSTAIN;
+                    s.stage = SUSTAIN;
                 }
             }
             break;
 
         case SUSTAIN:
-            env_value_ = sus;
+            s.env_value = sus;
             break;
 
         case RELEASE:
             if (rel > 0.0f) {
-                float t = env_progress_ / rel;
+                float t = s.env_progress / rel;
                 float shaped = shape_decay(std::min(t, 1.0f), c);
-                env_value_ = release_start_ * (1.0f - shaped);
-                if (env_value_ <= 0.0f) {
-                    env_value_ = 0.0f;
-                    stage_ = IDLE;
+                s.env_value = s.release_start * (1.0f - shaped);
+                if (s.env_value <= 0.0f) {
+                    s.env_value = 0.0f;
+                    s.stage = IDLE;
                 }
             } else {
-                env_value_ = 0.0f;
-                stage_ = IDLE;
+                s.env_value = 0.0f;
+                s.stage = IDLE;
             }
             break;
 
         case IDLE:
-            env_value_ = 0.0f;
+            s.env_value = 0.0f;
             break;
         }
     }
@@ -240,15 +250,17 @@ struct Envelope : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProc
         float off = ctx->param_values[5];
         int   c   = static_cast<int>(ctx->param_values[6]);
 
-        advance_triggers(gate_in, phase_in);
-        advance_adsr(dt, atk, dec, sus, rel, c);
+        advance_triggers(frame_state_, gate_in, phase_in);
+        advance_adsr(frame_state_, dt, atk, dec, sus, rel, c);
 
-        ctx->output_values[0] = env_value_ * amp + off;
+        ctx->output_values[0] = frame_state_.env_value * amp + off;
     }
 
     // ── Audio-rate processing (~48 kHz) ─────────────────────────────────
 
     void process_audio(const VividAudioContext* ctx) override {
+        auto& s = *vivid_lane_state(ctx, ctx->lane_id, AudioState);
+
         float gate_in  = ctx->input_float_values[0];
         float phase_in = ctx->input_float_values[1];
 
@@ -262,11 +274,11 @@ struct Envelope : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProc
         int   c   = curve.int_value();
 
         // Gate and phase trigger detection (once per buffer, from cross-cadence scalar)
-        advance_triggers(gate_in, phase_in);
+        advance_triggers(s, gate_in, phase_in);
 
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
-            advance_adsr(sample_dt, atk, dec, sus, rel, c);
-            ctx->output_buffers[0][i] = env_value_ * amp + off;
+            advance_adsr(s, sample_dt, atk, dec, sus, rel, c);
+            ctx->output_buffers[0][i] = s.env_value * amp + off;
         }
     }
 

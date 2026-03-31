@@ -480,14 +480,30 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                     if (cn.c_in_spreads[p].length > loop_lanes)
                         loop_lanes = cn.c_in_spreads[p].length;
                 }
-                static constexpr uint32_t kMaxLoopLanes = 16;
-                if (loop_lanes > kMaxLoopLanes) loop_lanes = kMaxLoopLanes;
+                uint32_t max_ll = graph_->max_loop_lanes;
+                if (loop_lanes > max_ll) {
+                    std::fprintf(stderr, "[vivid] LoopBased node '%s': lane count %u exceeds max %u, clamping\n",
+                                 cn.node_id.c_str(), loop_lanes, max_ll);
+                    loop_lanes = max_ll;
+                }
 
                 if (loop_lanes > 0) {
-                    // Allocate lane_ids for this tick if needed
+                    // Read identity-bearing lane_ids from upstream spread, or fall back to positional.
                     std::vector<uint32_t> loop_lane_ids(loop_lanes);
-                    for (uint32_t c = 0; c < loop_lanes; ++c)
-                        loop_lane_ids[c] = c + 1;  // derived positional IDs
+                    int32_t lid_port = a.lane_id_spread_port;
+                    bool has_identity_ids = false;
+                    if (lid_port >= 0 && static_cast<uint32_t>(lid_port) < cn.c_in_spreads.size()) {
+                        const auto& lid_sp = cn.c_in_spreads[lid_port];
+                        if (lid_sp.length >= loop_lanes) {
+                            for (uint32_t c = 0; c < loop_lanes; ++c)
+                                loop_lane_ids[c] = static_cast<uint32_t>(lid_sp.data[c]);
+                            has_identity_ids = true;
+                        }
+                    }
+                    if (!has_identity_ids) {
+                        for (uint32_t c = 0; c < loop_lanes; ++c)
+                            loop_lane_ids[c] = c + 1;  // derived positional IDs
+                    }
 
                     // Per-lane mono buffer pointers (reused across iterations)
                     std::vector<float*> loop_in_ptrs(cn.input_port_count);

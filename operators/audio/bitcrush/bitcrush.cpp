@@ -24,13 +24,17 @@
 struct Bitcrush : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Bitcrush";
     static constexpr bool kTimeDependent = false;
+    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
+    static constexpr bool kStrategyIndependent = true;
 
     vivid::Param<float> bits{"bits",  8.0f, 1.0f, 16.0f};
     vivid::Param<float> rate{"rate",  8000.0f, 100.0f, 48000.0f};
     vivid::Param<float> mix {"mix",   1.0f, 0.0f, 1.0f};
 
-    float hold_    = 0.0f; // sample-and-hold value
-    float counter_ = 0.0f; // fractional sample counter
+    struct LaneState {
+        float hold = 0.0f;
+        float counter = 0.0f;
+    };
 
     Bitcrush() {
         vivid::semantic_tag(bits, "count");
@@ -62,6 +66,8 @@ struct Bitcrush : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void process_audio(const VividAudioContext* ctx) override {
+        auto& ls = *vivid_lane_state(ctx, ctx->lane_id, LaneState);
+
         float* in  = ctx->input_buffers[0];
         float* out = ctx->output_buffers[0];
         uint32_t frames = ctx->buffer_size;
@@ -76,15 +82,15 @@ struct Bitcrush : vivid::OperatorBase, vivid::AudioProcessable {
         float dry = 1.0f - wet;
 
         for (uint32_t i = 0; i < frames; i++) {
-            counter_ += 1.0f;
-            if (counter_ >= ratio) {
-                counter_ -= ratio;
+            ls.counter += 1.0f;
+            if (ls.counter >= ratio) {
+                ls.counter -= ratio;
                 // Sample-and-hold: grab new value and quantize
                 float v = in[i];
                 v = std::round(v * levels) / levels;
-                hold_ = v;
+                ls.hold = v;
             }
-            out[i] = in[i] * dry + hold_ * wet;
+            out[i] = in[i] * dry + ls.hold * wet;
         }
     }
 };

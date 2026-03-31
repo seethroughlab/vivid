@@ -138,6 +138,7 @@ struct AudioNodeState {
     LaneExecutionStrategy execution_strategy = LaneExecutionStrategy::Scalar;
     uint32_t lane_lift_count = 0;   // 0 = no lifting, N = lift to N lanes
     uint32_t lane_lift_set_id = 0;  // provenance of the lane set being lifted over
+    int32_t lane_id_spread_port = -1;  // spread port carrying identity-bearing lane_ids (-1 = positional)
 
     // Float CV inputs (cross-cadence bridge for audio nodes).
     std::vector<float> float_input_defaults;
@@ -321,6 +322,10 @@ struct CompiledNode {
     LaneBehavior lane_behavior = LaneBehavior::Pointwise;
     std::vector<LaneSet> output_lane_sets;
     std::vector<LaneSet> input_lane_sets;
+
+    // ── Frame-domain lane execution (populated by compiler Pass 4c) ──────
+    LaneExecutionStrategy frame_execution_strategy = LaneExecutionStrategy::Scalar;
+    int32_t frame_lane_id_spread_port = -1;  // spread port with lane_ids (-1 = positional)
 };
 
 // ---------------------------------------------------------------------------
@@ -370,6 +375,9 @@ struct CompiledGraph {
     // Scans only audio_order (typically 2-5 nodes), not all nodes.
     // Lane-set ID allocator (0 reserved for scalar).
     uint32_t next_lane_set_id = 1;
+
+    // Maximum lane count for LoopBased audio operators (from compiler options).
+    uint32_t max_loop_lanes = 16;
 
     bool has_audio_cadence_instances(const std::string& type_name) const {
         for (uint32_t ni : audio_order) {

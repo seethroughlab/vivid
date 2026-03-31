@@ -32,6 +32,10 @@ public:
         // Audio buffer size and sample rate.
         uint32_t audio_buffer_size = 256;
         uint32_t audio_sample_rate = 48000;
+
+        // Maximum lane count for LoopBased audio operators.
+        // Buffers are pre-allocated to this capacity at compile time.
+        uint32_t max_loop_lanes = 16;
     };
 
     // Compile a Graph into a ready-to-execute CompiledGraph.

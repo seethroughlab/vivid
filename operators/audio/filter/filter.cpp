@@ -20,6 +20,8 @@
 struct Filter : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Filter";
     static constexpr bool kTimeDependent = false;
+    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
+    static constexpr bool kStrategyIndependent = true;
 
     vivid::Param<float> cutoff    {"cutoff",    2000.0f, 20.0f, 20000.0f};
     vivid::Param<float> resonance {"resonance",  0.5f,   0.0f,   1.0f};
@@ -29,7 +31,9 @@ struct Filter : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<float> drive     {"drive",      0.0f,   0.0f,   1.0f};
     vivid::Param<float> keytrack  {"keytrack",   0.0f,   0.0f,   1.0f};
 
-    audio_dsp::FilterState filter_state_;
+    struct LaneState {
+        audio_dsp::FilterState filter_state;
+    };
 
     WGPURenderPipeline thumb_pipeline_ = nullptr;
     WGPUBindGroup thumb_bind_group_ = nullptr;
@@ -89,6 +93,8 @@ struct Filter : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void process_audio(const VividAudioContext* ctx) override {
+        auto& ls = *vivid_lane_state(ctx, ctx->lane_id, LaneState);
+
         const float* in  = ctx->input_buffers[0];
         float*       out = ctx->output_buffers[0];
         uint32_t frames  = ctx->buffer_size;
@@ -137,7 +143,7 @@ struct Filter : vivid::OperatorBase, vivid::AudioProcessable {
         int ftype = mode.int_value();
 
         for (uint32_t i = 0; i < frames; i++) {
-            out[i] = filter_state_.process(in[i], mod_cutoff, mod_reso, drv, ftype, sr);
+            out[i] = ls.filter_state.process(in[i], mod_cutoff, mod_reso, drv, ftype, sr);
         }
     }
 
