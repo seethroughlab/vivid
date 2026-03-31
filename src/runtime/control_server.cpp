@@ -467,12 +467,31 @@ static std::string handle_inspect_graph(Graph& graph, RuntimeCore& core) {
             if (conn.clamp)
                 c["clamp"] = true;
         }
-        // Lane metadata from compiled edge
+        // Lane metadata from compiled edge (match by node + port)
         if (cg) {
             for (const auto& e : cg->edges) {
-                if (e.from_node < cg->nodes.size() && e.to_node < cg->nodes.size() &&
-                    cg->nodes[e.from_node].node_id == conn.from_node &&
-                    cg->nodes[e.to_node].node_id == conn.to_node) {
+                if (e.from_node >= cg->nodes.size() || e.to_node >= cg->nodes.size())
+                    continue;
+                const auto& fn = cg->nodes[e.from_node];
+                const auto& tn = cg->nodes[e.to_node];
+                if (fn.node_id != conn.from_node || tn.node_id != conn.to_node)
+                    continue;
+                // Match port indices to port names
+                bool from_match = false, to_match = false;
+                for (const auto& [name, idx] : fn.output_port_indices)
+                    if (idx == e.from_port && name == conn.from_port) { from_match = true; break; }
+                if (!from_match) {
+                    for (const auto& [name, idx] : fn.param_indices)
+                        if (idx == e.from_port && name == conn.from_port) { from_match = true; break; }
+                }
+                if (e.targets_param) {
+                    for (const auto& [name, idx] : tn.param_indices)
+                        if (idx == e.to_port && name == conn.to_port) { to_match = true; break; }
+                } else {
+                    for (const auto& [name, idx] : tn.input_port_indices)
+                        if (idx == e.to_port && name == conn.to_port) { to_match = true; break; }
+                }
+                if (from_match && to_match) {
                     if (e.lane_set_id != 0)
                         c["lane_set_id"] = e.lane_set_id;
                     if (e.lane_count > 1)

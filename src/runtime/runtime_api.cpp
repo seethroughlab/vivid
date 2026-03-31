@@ -536,6 +536,11 @@ CommandResult RuntimeAPI::inspect(const std::string& node_id) {
     const auto* desc = node_descriptor(*cn);
     std::ostringstream oss;
     oss << node_id << " (" << node_display_name(*cn, desc) << ")\n";
+    {
+        static const char* lb_names[] = {"pointwise", "structural", "reduction", "kernel"};
+        uint8_t lb = static_cast<uint8_t>(cn->lane_behavior);
+        if (lb < 4) oss << "  lane_behavior: " << lb_names[lb] << "\n";
+    }
     if (cn->missing_operator) {
         oss << "  status: missing operator placeholder for type "
             << cn->type_name << "\n";

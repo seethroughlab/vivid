@@ -1348,12 +1348,30 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         c.to_endpoint_missing = to_endpoint_missing;
         c.invalid_reason = invalid_reason;
 
-        // Lane metadata from compiled edge
+        // Lane metadata from compiled edge (match by node + port)
         if (cg) {
             for (const auto& e : cg->edges) {
-                if (e.from_node < cg->nodes.size() && e.to_node < cg->nodes.size() &&
-                    cg->nodes[e.from_node].node_id == conns[i].from_node &&
-                    cg->nodes[e.to_node].node_id == conns[i].to_node) {
+                if (e.from_node >= cg->nodes.size() || e.to_node >= cg->nodes.size())
+                    continue;
+                const auto& fn = cg->nodes[e.from_node];
+                const auto& tn = cg->nodes[e.to_node];
+                if (fn.node_id != conns[i].from_node || tn.node_id != conns[i].to_node)
+                    continue;
+                bool from_ok = false, to_ok = false;
+                for (const auto& [name, idx] : fn.output_port_indices)
+                    if (idx == e.from_port && name == conns[i].from_port) { from_ok = true; break; }
+                if (!from_ok) {
+                    for (const auto& [name, idx] : fn.param_indices)
+                        if (idx == e.from_port && name == conns[i].from_port) { from_ok = true; break; }
+                }
+                if (e.targets_param) {
+                    for (const auto& [name, idx] : tn.param_indices)
+                        if (idx == e.to_port && name == conns[i].to_port) { to_ok = true; break; }
+                } else {
+                    for (const auto& [name, idx] : tn.input_port_indices)
+                        if (idx == e.to_port && name == conns[i].to_port) { to_ok = true; break; }
+                }
+                if (from_ok && to_ok) {
                     c.lane_set_id = e.lane_set_id;
                     c.lane_count  = e.lane_count;
                     break;
