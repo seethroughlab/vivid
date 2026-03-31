@@ -7,6 +7,7 @@
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>
 #include <algorithm>
+#include <cassert>
 #include <cstdio>
 #include <cstring>
 
@@ -94,31 +95,37 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             } else {
                 cn.input_values[e.to_port] = val;
 
-                // Spread propagation
+                // Lane-aware spread propagation.
+                // No cycle-expand, no modulo indexing. Compiler legality
+                // (Pass 2.6) guarantees that non-scalar inputs sharing a
+                // port have the same lane_set_id.
                 if (!e.sources_param && e.from_port < from_cn.output_spreads.size()) {
                     const auto& src_spread = from_cn.output_spreads[e.from_port];
                     if (!src_spread.empty()) {
                         auto& dst_spread = cn.input_spreads[e.to_port];
                         if (dst_spread.empty()) {
+                            // First non-scalar wire: establish destination.
                             dst_spread = src_spread;
                             if (e.has_remap()) {
                                 for (auto& v : dst_spread) v = e.apply_remap(v);
                             }
-                        } else {
-                            size_t old_len = dst_spread.size();
-                            size_t src_len = src_spread.size();
-                            size_t new_len = std::max(old_len, src_len);
-                            if (new_len > kMaxSpreadCapacity) new_len = kMaxSpreadCapacity;
-                            if (new_len > old_len) {
-                                dst_spread.resize(new_len);
-                                for (size_t si = old_len; si < new_len; ++si)
-                                    dst_spread[si] = dst_spread[si % old_len];
-                            }
-                            for (size_t j = 0; j < new_len; ++j) {
-                                float sv = src_spread[j % src_len];
+                        } else if (src_spread.size() == dst_spread.size()) {
+                            // Same-provenance, same length: element-wise add.
+                            for (size_t j = 0; j < dst_spread.size(); ++j) {
+                                float sv = src_spread[j];
                                 if (e.has_remap()) sv = e.apply_remap(sv);
                                 dst_spread[j] += sv;
                             }
+                        } else {
+                            // Same-provenance but different runtime length.
+                            // Compiler proved lane-set compatibility; operators
+                            // emitted inconsistent sizes. Skip merge.
+                            assert(false && "lane-aware spread merge: same-provenance runtime length mismatch");
+                            std::fprintf(stderr,
+                                "[vivid] frame_executor: spread length mismatch at node '%s' "
+                                "port %u (dst %zu vs src %zu) — skipping merge\n",
+                                cn.node_id.c_str(), e.to_port,
+                                dst_spread.size(), src_spread.size());
                         }
                         if (!dst_spread.empty())
                             cn.input_values[e.to_port] = dst_spread[0];

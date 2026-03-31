@@ -383,6 +383,47 @@ static void test_lane_behavior_from_descriptor(const std::string& build_dir) {
 }
 
 // ---------------------------------------------------------------------------
+// Test: Different-provenance non-scalar inputs fail compilation
+// ---------------------------------------------------------------------------
+
+static void test_lane_mismatch_fails(const std::string& build_dir) {
+    std::fprintf(stderr, "\n--- compile: lane-set mismatch fails ---\n");
+
+    const std::string staging = build_dir + "/.test_lane_mismatch_staging";
+    std::filesystem::remove_all(staging);
+    std::filesystem::create_directories(staging);
+
+    auto stage = [&](const char* name) {
+        std::string src = build_dir + "/" + name;
+        std::string dst = staging + "/" + name;
+        if (std::filesystem::exists(src))
+            std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing);
+    };
+    stage("spread_noise.dylib");
+    stage("lfo.dylib");
+
+    vivid::OperatorRegistry registry;
+    registry.scan_deferred(staging.c_str());
+
+    // Two different SpreadNoise nodes wired to the same LFO input.
+    // Each SpreadNoise is Structural → gets a different lane_set_id.
+    // LFO is Pointwise → receiving two different non-scalar lane sets is illegal.
+    vivid::Graph g;
+    g.add_node("sn1", "SpreadNoise");
+    g.add_node("sn2", "SpreadNoise");
+    g.add_node("lfo1", "LFO");
+    g.add_connection("sn1", "values", "lfo1", "gate");
+    g.add_connection("sn2", "values", "lfo1", "gate");
+
+    vivid::GraphCompiler::Options opts;
+    auto cg = vivid::GraphCompiler::compile(g, registry, opts);
+    check(cg == nullptr,
+          "compilation fails: two different-provenance non-scalar inputs to pointwise node");
+
+    std::filesystem::remove_all(staging);
+}
+
+// ---------------------------------------------------------------------------
 
 int main(int argc, char* argv[]) {
     std::string build_dir = ".";
@@ -400,6 +441,7 @@ int main(int argc, char* argv[]) {
     test_mixed_real_and_missing(build_dir);
     test_node_id_to_index();
     test_lane_behavior_from_descriptor(build_dir);
+    test_lane_mismatch_fails(build_dir);
 
     std::fprintf(stderr, "\n%s (%d failures)\n", failures == 0 ? "PASSED" : "FAILED", failures);
     return failures > 0 ? 1 : 0;

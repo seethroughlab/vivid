@@ -24,7 +24,7 @@ struct LaneSet {
     uint32_t lane_count      = 1;      // 1 = scalar
     bool     identity_bearing = false;  // true for voice-like sets with persistent per-lane state
 
-    bool is_scalar() const { return lane_count <= 1; }
+    bool is_scalar() const { return lane_set_id == 0 && lane_count <= 1; }
 };
 
 } // namespace vivid
