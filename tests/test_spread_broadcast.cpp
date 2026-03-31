@@ -88,6 +88,32 @@ int main(int argc, char* argv[]) {
                      "scalar output = spread[0] = 2.0");
     }
 
+    // --- Test 3: Same-provenance same-length merge (element-wise add) ---
+    // merge_sink receives two wires from the same single_src/out.
+    // Both edges carry the same lane_set_id (same Structural source).
+    // The executor should add them element-wise:
+    //   [2, 4, 6, 8] + [2, 4, 6, 8] = [4, 8, 12, 16]
+    std::fprintf(stderr, "\n--- same-provenance merge (element-wise add) ---\n");
+    const vivid::CompiledNode* merge_sink = nullptr;
+    for (const auto& ns : runtime.compiled_graph()->nodes) {
+        if (ns.node_id == "merge_sink") { merge_sink = &ns; break; }
+    }
+    check(merge_sink != nullptr, "found merge_sink node");
+    if (merge_sink) {
+        check(merge_sink->output_spreads.size() > 0, "merge_sink has output_spreads");
+        const auto& sp = merge_sink->output_spreads[0];
+        check(sp.size() == 4, "merged spread has 4 elements (same length, no cycle-expand)");
+        if (sp.size() >= 4) {
+            check_float(sp[0],  4.0f, 0.01f, "merge[0] = 2+2 = 4");
+            check_float(sp[1],  8.0f, 0.01f, "merge[1] = 4+4 = 8");
+            check_float(sp[2], 12.0f, 0.01f, "merge[2] = 6+6 = 12");
+            check_float(sp[3], 16.0f, 0.01f, "merge[3] = 8+8 = 16");
+        }
+        // Scalar should be spread[0] of the merged result
+        check_float(merge_sink->output_values[0], 4.0f, 0.01f,
+                     "merge scalar = spread[0] = 4.0");
+    }
+
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",
         failures == 0 ? "ALL PASSED" : "SOME FAILED", failures);
     return failures == 0 ? 0 : 1;

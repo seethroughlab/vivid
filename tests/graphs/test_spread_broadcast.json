@@ -1,9 +1,14 @@
 {
     "nodes": {
         "single_src": { "type": "SpreadSourceOp", "params": { "base": 2.0, "count": 4 } },
-        "single_sink": { "type": "SpreadSinkOp" }
+        "single_sink": { "type": "SpreadSinkOp" },
+        "relay": { "type": "SpreadSinkOp" },
+        "merge_sink": { "type": "SpreadSinkOp" }
     },
     "connections": [
-        { "from": "single_src/out", "to": "single_sink/in" }
+        { "from": "single_src/out", "to": "single_sink/in" },
+        { "from": "single_src/out", "to": "relay/in" },
+        { "from": "single_src/out", "to": "merge_sink/in" },
+        { "from": "relay/out", "to": "merge_sink/in" }
     ]
 }

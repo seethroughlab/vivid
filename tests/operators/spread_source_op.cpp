@@ -4,6 +4,7 @@
 struct SpreadSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "SpreadSourceOp";
     static constexpr bool kTimeDependent = false;
+    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
 
     vivid::Param<float> base{"base", 1.0f, 0.0f, 100.0f};
     vivid::Param<int>   count{"count", 4, 1, 64};
