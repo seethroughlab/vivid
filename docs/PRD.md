@@ -316,7 +316,7 @@ Seven canonical port types reflect the runtime's routing mechanisms:
 
 - `VIVID_PORT_SIGNAL` — scalar float (control values: floats, ints, bools all route identically). Updated at no fixed rate.
 - `VIVID_PORT_AUDIO` — a 256-sample buffer at 48kHz. Always continuous — producing a buffer every callback, even if silence. Mono throughout; stereo is two ports (left/right).
-- `VIVID_PORT_SPREAD` — variable-length float array with broadcast semantics.
+- `VIVID_PORT_LANE_ARRAY` — variable-length float array with broadcast semantics.
 - `VIVID_PORT_STRING` — UTF-8 string.
 - `VIVID_PORT_STRING_SPREAD` — variable-length string array.
 - `VIVID_PORT_TEXTURE` — 2D RGBA8 `WGPUTextureView` with per-node configurable resolution (default 800×600).

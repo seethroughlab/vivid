@@ -69,7 +69,7 @@ public:
 
     // -- Spread input access ------------------------------------------------
 
-    void set_input_spread(uint32_t index, const float* data, uint32_t length) {
+    void set_input_lane_data(uint32_t index, const float* data, uint32_t length) {
         assert(index < input_lanes_.size());
         auto& sp = input_lanes_[index];
         sp.resize(length);
@@ -77,10 +77,10 @@ public:
             sp[i] = data[i];
     }
 
-    void set_input_spread(const char* name, const float* data, uint32_t length) {
+    void set_input_lane_data(const char* name, const float* data, uint32_t length) {
         auto it = input_name_to_index_.find(name);
         assert(it != input_name_to_index_.end());
-        set_input_spread(it->second, data, length);
+        set_input_lane_data(it->second, data, length);
     }
 
     // -- Output access ------------------------------------------------------
@@ -98,26 +98,26 @@ public:
 
     // -- Spread output access -----------------------------------------------
 
-    const float* output_spread_data(uint32_t index) const {
+    const float* output_lane_data(uint32_t index) const {
         assert(index < output_lanes_.size());
         return output_lanes_[index].data();
     }
 
-    uint32_t output_spread_length(uint32_t index) const {
+    uint32_t output_lane_length(uint32_t index) const {
         assert(index < output_lanes_.size());
         return static_cast<uint32_t>(output_lanes_[index].size());
     }
 
-    const float* output_spread_data(const char* name) const {
+    const float* output_lane_data(const char* name) const {
         auto it = output_name_to_index_.find(name);
         assert(it != output_name_to_index_.end());
-        return output_spread_data(it->second);
+        return output_lane_data(it->second);
     }
 
-    uint32_t output_spread_length(const char* name) const {
+    uint32_t output_lane_length(const char* name) const {
         auto it = output_name_to_index_.find(name);
         assert(it != output_name_to_index_.end());
-        return output_spread_length(it->second);
+        return output_lane_length(it->second);
     }
 
     // -- Process ------------------------------------------------------------

@@ -71,7 +71,7 @@ Params are declared as member variables. The runtime syncs `ctx->param_values` i
 | `VIVID_PORT_SIGNAL` | `control_float` | Scalar control signals |
 | `VIVID_PORT_AUDIO` | `audio_float` | Audio sample buffers |
 | `VIVID_PORT_TEXTURE` | `gpu_texture` | GPU textures |
-| `VIVID_PORT_SPREAD` | spread | Variable-length float arrays (lane-bearing data transport) |
+| `VIVID_PORT_LANE_ARRAY` | spread | Variable-length float arrays (lane-bearing data transport) |
 | `VIVID_PORT_STRING` | string | UTF-8 strings |
 | `VIVID_PORT_STRING_SPREAD` | string spread | Variable-length string arrays |
 

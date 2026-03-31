@@ -152,7 +152,7 @@ This proposal should be understood as a refinement of the width model:
 - use lane sets instead of raw width as the conceptual center
 - make identity/lifecycle available where needed
 - separate payload type from operator lane behavior
-- avoid using `VIVID_PORT_SPREAD` as the long-term semantic boundary
+- avoid using `VIVID_PORT_LANE_ARRAY` as the long-term semantic boundary
 - keep nontrivial lane reshaping explicit
 
 The strongest lesson from the width model is not merely that Vivid needs a count-aware abstraction. It is that multiplicity semantics must be explicit enough to support correctness. In the target model, width remains a useful property, but legality depends on lane-set provenance and identity semantics, not cardinality alone.
@@ -222,7 +222,7 @@ The following should **not** be treated as foundational concepts in the from-scr
 
 - **Spreads**
   - the transport mechanism for lane-bearing data (variable-length float arrays), but not the semantic primitive
-  - `VIVID_PORT_SPREAD` / `input_spreads` / `output_spreads` naming is legacy; a from-scratch design would use lane-oriented names
+  - `VIVID_PORT_LANE_ARRAY` / `input_lanes` / `output_lanes` naming is legacy; a from-scratch design would use lane-oriented names
 - **Auto-dup**
   - useful as one runtime strategy, but not the primitive
 - **Width alone**
@@ -230,7 +230,7 @@ The following should **not** be treated as foundational concepts in the from-scr
 - **Kernels as a separate graph model**
   - useful as one operator behavior, but not a second multiplicity system
 
-The spread runtime surface (`VIVID_PORT_SPREAD`, `input_spreads`, `output_spreads`) is the transport representation for lane-bearing collections. The underlying variable-length array mechanism is correct — a clean-slate design would choose the same transport. The naming is legacy: it would be called `input_lanes` / `output_lanes` in a from-scratch design. No new semantic decisions should be based on spread port types. Legality, provenance, behavior class, and identity are lane metadata concerns. A future clarity refactor should align the transport naming with the semantic model.
+The spread runtime surface (`VIVID_PORT_LANE_ARRAY`, `input_lanes`, `output_lanes`) is the transport representation for lane-bearing collections. The underlying variable-length array mechanism is correct — a clean-slate design would choose the same transport. The naming is legacy: it would be called `input_lanes` / `output_lanes` in a from-scratch design. No new semantic decisions should be based on spread port types. Legality, provenance, behavior class, and identity are lane metadata concerns. A future clarity refactor should align the transport naming with the semantic model.
 
 ### 5.5 Summary table
 
@@ -962,7 +962,7 @@ The target architecture would conceptually change each of these.
 Today, `CompiledNode` state is split across:
 
 - scalar arrays (`input_values`, `output_values`)
-- spread buffers (`input_spreads`, `output_spreads`)
+- spread buffers (`input_lanes`, `output_lanes`)
 - string arrays
 - audio buffers
 - custom payload structures
@@ -1263,7 +1263,7 @@ In the target model:
 - a spread is the transport representation for a lane-valued collection
 - the semantic model is lanes (provenance, legality, behavior class, identity)
 - the transport mechanism (variable-length float arrays) is correct
-- the transport naming (`VIVID_PORT_SPREAD`, `input_spreads`) is legacy
+- the transport naming (`VIVID_PORT_LANE_ARRAY`, `input_lanes`) is legacy
 
 A clean-slate design would call these `input_lanes` / `output_lanes` and use a port type like `VIVID_PORT_LANE_ARRAY`. The underlying mechanism would be the same variable-length array.
 
@@ -1277,12 +1277,12 @@ A clean-slate design would call these `input_lanes` / `output_lanes` and use a p
 
 **Stayed (transport representation):**
 - Variable-length float arrays as the physical lane-array representation
-- `ctx->input_spreads` / `ctx->output_spreads` as the operator-facing data surface
+- `ctx->input_lanes` / `ctx->output_lanes` as the operator-facing data surface
 - Spread snapshot bridging across cadence boundaries
 
 **Future (naming alignment):**
-- Rename `VIVID_PORT_SPREAD` to a lane-oriented name
-- Rename `input_spreads` / `output_spreads` to `input_lanes` / `output_lanes`
+- Rename `VIVID_PORT_LANE_ARRAY` to a lane-oriented name
+- Rename `input_lanes` / `output_lanes` to `input_lanes` / `output_lanes`
 - This is a mechanical clarity refactor, not a semantic or runtime redesign
 
 ### 14.3 Auto-dup

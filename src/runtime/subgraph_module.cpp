@@ -38,7 +38,7 @@ const SubgraphPreset* SubgraphModuleDef::find_preset(const std::string& preset_n
 static VividPortType parse_port_type(const std::string& s) {
     if (s == "signal")        return VIVID_PORT_SIGNAL;
     if (s == "audio")         return VIVID_PORT_AUDIO;
-    if (s == "spread")        return VIVID_PORT_LANE_ARRAY;
+    if (s == "lane_array")    return VIVID_PORT_LANE_ARRAY;
     if (s == "string")        return VIVID_PORT_STRING;
     if (s == "string_spread") return VIVID_PORT_STRING_SPREAD;
     if (s == "texture")       return VIVID_PORT_TEXTURE;

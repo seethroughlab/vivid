@@ -157,7 +157,7 @@ void CadenceBridge::push_to_audio(const CompiledGraph& cg) {
                 const auto& src = from_cn.output_lanes[e.from_port];
                 auto& dst = snap.lane_inputs[si][e.to_port];
                 dst.length = std::min(static_cast<uint32_t>(src.size()),
-                                      SpreadSnapshot::kMaxLength);
+                                      LaneSnapshot::kMaxLength);
                 float scale = e.remap_scale();
                 for (uint32_t j = 0; j < dst.length; ++j)
                     dst.data[j] = src[j] * scale;

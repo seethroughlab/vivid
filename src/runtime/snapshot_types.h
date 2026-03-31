@@ -14,7 +14,7 @@
 
 namespace vivid {
 
-struct SpreadSnapshot {
+struct LaneSnapshot {
     static constexpr uint32_t kMaxLength = 64;
     float data[kMaxLength] = {};
     uint32_t length = 0;
@@ -39,7 +39,7 @@ struct CustomPortSnapshot {
 struct ParamSnapshot {
     std::vector<std::vector<float>> node_params;  // [audio_node_idx][param_idx]
     std::vector<std::vector<float>> float_input_values; // [audio_node_idx][float_input_ordinal]
-    std::vector<std::vector<SpreadSnapshot>> lane_inputs; // [audio_node_idx][input_port_idx]
+    std::vector<std::vector<LaneSnapshot>> lane_inputs; // [audio_node_idx][input_port_idx]
     std::vector<std::vector<std::string>> input_string_values; // [audio_node_idx][input_port_idx]
     std::vector<std::vector<CustomPortSnapshot>> custom_inputs; // [audio_node_idx][input_port_idx]
     std::vector<bool> solo_active_set;  // empty = no solo; [audio_node_idx] = active
@@ -50,7 +50,7 @@ struct AnalysisSnapshot {
     std::vector<float> rms;   // [audio_node_idx]
     std::vector<float> peak;  // [audio_node_idx]
     std::vector<std::array<float, kWaveformSamples>> waveform; // [audio_node_idx]
-    std::vector<std::vector<SpreadSnapshot>> lane_outputs; // [audio_node_idx][output_port_idx]
+    std::vector<std::vector<LaneSnapshot>> lane_outputs; // [audio_node_idx][output_port_idx]
     std::vector<std::vector<float>> float_outputs; // [audio_node_idx][float_output_ordinal]
 
     // Error state propagation (audio thread → main thread)

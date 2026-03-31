@@ -193,7 +193,7 @@ struct PortTypeEntry {
 inline const std::vector<PortTypeEntry>& port_types_for_env(int env_sel) {
     static const std::vector<PortTypeEntry> control_types = {
         {"float",         VIVID_PORT_SIGNAL},
-        {"spread",        VIVID_PORT_LANE_ARRAY},
+        {"lane_array",    VIVID_PORT_LANE_ARRAY},
         {"string",        VIVID_PORT_STRING},
         {"string_spread", VIVID_PORT_STRING_SPREAD},
     };

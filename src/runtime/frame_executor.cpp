@@ -195,14 +195,14 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             cn.c_out_lanes[p].capacity = kMaxLaneCapacity;
         }
         for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-            for (size_t si = 0; si < cn.input_string_lanes[p].size() && si < cn.in_string_spread_ptrs[p].size(); ++si)
-                cn.in_string_spread_ptrs[p][si] = cn.input_string_lanes[p][si].c_str();
-            cn.c_in_string_lanes[p].data = cn.in_string_spread_ptrs[p].data();
+            for (size_t si = 0; si < cn.input_string_lanes[p].size() && si < cn.in_string_lane_ptrs[p].size(); ++si)
+                cn.in_string_lane_ptrs[p][si] = cn.input_string_lanes[p][si].c_str();
+            cn.c_in_string_lanes[p].data = cn.in_string_lane_ptrs[p].data();
             cn.c_in_string_lanes[p].length = static_cast<uint32_t>(cn.input_string_lanes[p].size());
             cn.c_in_string_lanes[p].capacity = kMaxLaneCapacity;
         }
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-            cn.c_out_string_lanes[p].data = cn.out_string_spread_ptr_buf[p].data();
+            cn.c_out_string_lanes[p].data = cn.out_string_lane_ptr_buf[p].data();
             cn.c_out_string_lanes[p].length = 0;
             cn.c_out_string_lanes[p].capacity = kMaxLaneCapacity;
         }
@@ -562,8 +562,8 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             if (cn.c_out_string_lanes[p].length > 0) {
                 cn.output_string_lanes[p].resize(cn.c_out_string_lanes[p].length);
                 for (uint32_t si = 0; si < cn.c_out_string_lanes[p].length; ++si) {
-                    if (cn.out_string_spread_ptr_buf[p][si])
-                        cn.output_string_lanes[p][si] = cn.out_string_spread_ptr_buf[p][si];
+                    if (cn.out_string_lane_ptr_buf[p][si])
+                        cn.output_string_lanes[p][si] = cn.out_string_lane_ptr_buf[p][si];
                 }
             } else {
                 cn.output_string_lanes[p].clear();

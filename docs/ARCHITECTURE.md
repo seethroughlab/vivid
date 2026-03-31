@@ -35,8 +35,8 @@ Both cadences are pull-based — frame-rate is driven by the display refresh, au
 **Decision: Control sits at the center of a star topology.** Audio and GPU never communicate directly — everything routes through Control. This simplifies the architecture from six specialized bridges to two bidirectional mechanisms:
 
 ### Control ↔ Audio
-- **Control → Audio:** lock-free ring buffer or atomic. Audio callback reads at next block boundary. Latency: ~5ms at 256 samples / 48kHz. (Implemented: `ParamSnapshot` double-buffer with atomic index swap. Spread data uses `SpreadSnapshot` — a fixed-size 64-element struct copied alongside scalar params, avoiding audio-thread heap allocation.)
-- **Audio → Control:** audio analysis operators write results into a lock-free queue. Control nodes poll at whatever rate they like. (Implemented: `AnalysisSnapshot` double-buffer carries RMS, peak, waveform, and per-port `SpreadSnapshot` data back to the control domain.)
+- **Control → Audio:** lock-free ring buffer or atomic. Audio callback reads at next block boundary. Latency: ~5ms at 256 samples / 48kHz. (Implemented: `ParamSnapshot` double-buffer with atomic index swap. Spread data uses `LaneSnapshot` — a fixed-size 64-element struct copied alongside scalar params, avoiding audio-thread heap allocation.)
+- **Audio → Control:** audio analysis operators write results into a lock-free queue. Control nodes poll at whatever rate they like. (Implemented: `AnalysisSnapshot` double-buffer carries RMS, peak, waveform, and per-port `LaneSnapshot` data back to the control domain.)
 
 ### Control ↔ GPU
 - **Control → GPU:** atomics or double-buffered parameter store. GPU render loop picks up changes next frame. Latency: ~16ms at 60fps.
@@ -54,7 +54,7 @@ Six built-in port types reflect the runtime's routing mechanisms:
 
 - `VIVID_PORT_SIGNAL` — scalar float (control values: floats, ints, bools all route identically). Updated at no fixed rate.
 - `VIVID_PORT_AUDIO` — a 256-sample buffer at 48kHz. Always continuous — producing a buffer every callback, even if silence. Mono throughout; stereo is two ports (left/right).
-- `VIVID_PORT_SPREAD` — variable-length float array with broadcast semantics.
+- `VIVID_PORT_LANE_ARRAY` — variable-length float array with broadcast semantics.
 - `VIVID_PORT_STRING` — UTF-8 string.
 - `VIVID_PORT_STRING_SPREAD` — variable-length string array.
 - `VIVID_PORT_TEXTURE` — 2D RGBA8 `WGPUTextureView` with per-node configurable resolution (default 800×600).
@@ -212,8 +212,8 @@ Precedent: vvvv's Spreads, Houdini's per-point attribute operations, and Blender
 - **Broadcasting:** when two Spreads of different lengths connect to the same operator, the shorter one repeats (wraps) to match the longer. A Spread of 3 colors applied to a Spread of 512 particles cycles through the 3 colors.
 - **Cross-domain:** a Spread of Control values (e.g., 512 FFT bins) can connect directly to a GPU operator's parameter, producing 512 visual elements driven by audio. No explicit bridging required — the existing Control→GPU bridge handles the data; Spreads handle the cardinality.
 - **LLM-friendly:** describing Spread-based operations in natural language is natural. "Create 512 particles in a circle, sized by the FFT, colored by frequency" maps directly to a chain of operations on Spreads.
-- **Port types:** `VIVID_PORT_SPREAD` is a dedicated port type for variable-length float arrays. Texture and audio ports don't have a spread variant — multiple instances use multiple ports. String arrays use the separate `VIVID_PORT_STRING_SPREAD` type.
-- **Cross-domain bridge implementation:** Control↔Audio uses `SpreadSnapshot` (fixed 64-element struct) inside the double-buffered `ParamSnapshot`/`AnalysisSnapshot` bridges — no heap allocation on the audio thread. Control→GPU uses WebGPU storage buffers: the operator uploads Spread data via `wgpuQueueWriteBuffer` into a `ReadOnlyStorage` binding that the fragment shader reads as `array<f32>`.
+- **Port types:** `VIVID_PORT_LANE_ARRAY` is a dedicated port type for variable-length float arrays. Texture and audio ports don't have a spread variant — multiple instances use multiple ports. String arrays use the separate `VIVID_PORT_STRING_SPREAD` type.
+- **Cross-domain bridge implementation:** Control↔Audio uses `LaneSnapshot` (fixed 64-element struct) inside the double-buffered `ParamSnapshot`/`AnalysisSnapshot` bridges — no heap allocation on the audio thread. Control→GPU uses WebGPU storage buffers: the operator uploads Spread data via `wgpuQueueWriteBuffer` into a `ReadOnlyStorage` binding that the fragment shader reads as `array<f32>`.
 
 ## 5.10 Simulation Zones: Frame-to-Frame State
 

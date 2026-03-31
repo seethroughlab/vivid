@@ -21,14 +21,14 @@ struct MyControlOp : vivid::OperatorBase, vivid::FrameProcessable {
 | `param_values` | `float*` | Indexed by param descriptor order (auto-synced to Param<T>.value) |
 | `input_values` | `float*` | Float input ports, indexed by input port order |
 | `output_values` | `float*` | Float output ports, indexed by output port order — **write your outputs here** |
-| `input_spreads` | `VividSpreadPort*` | Spread input ports (`.data`, `.length`) |
-| `output_spreads` | `VividSpreadPort*` | Spread output ports (write `.data`, set `.length`) |
+| `input_lanes` | `VividLanePort*` | Spread input ports (`.data`, `.length`) |
+| `output_lanes` | `VividLanePort*` | Spread output ports (write `.data`, set `.length`) |
 | `input_handles` | `void**` | Handle input ports |
 | `output_handles` | `void**` | Handle output ports |
 | `input_string_values` | `const char**` | String input ports |
 | `output_string_values` | `const char**` | String output ports (write pointers here) |
-| `input_string_spreads` | `VividStringSpreadPort*` | String spread inputs |
-| `output_string_spreads` | `VividStringSpreadPort*` | String spread outputs |
+| `input_string_lanes` | `VividStringSpreadPort*` | String spread inputs |
+| `output_string_lanes` | `VividStringSpreadPort*` | String spread outputs |
 | `file_param_values` | `const char**` | File/text param string values |
 | `input` | `void*` | Cast to `VividInputState*` for interactive operators |
 | `shared_handles` | `VividSharedHandleService*` | Process-wide handle service |
@@ -47,7 +47,7 @@ struct MyControlOp : vivid::OperatorBase, vivid::FrameProcessable {
 Port indices are counted separately for inputs and outputs, in the order declared in `collect_ports()`. Only ports of the matching type contribute to each index array:
 
 - Float ports → `input_values[i]` / `output_values[i]`
-- Spread ports → `input_spreads[i]` / `output_spreads[i]`
+- Spread ports → `input_lanes[i]` / `output_lanes[i]`
 - String ports → `input_string_values[i]` / `output_string_values[i]`
 - Handle ports → `input_handles[i]` / `output_handles[i]`
 
@@ -55,13 +55,13 @@ Port indices are counted separately for inputs and outputs, in the order declare
 
 ```cpp
 // Reading input spread
-const VividSpreadPort& sp = ctx->input_spreads[0];
+const VividLanePort& sp = ctx->input_lanes[0];
 for (uint32_t i = 0; i < sp.length; i++) {
     float val = sp.data[i];
 }
 
 // Writing output spread
-VividSpreadPort& out = ctx->output_spreads[0];
+VividLanePort& out = ctx->output_lanes[0];
 out.length = count;  // must not exceed capacity
 for (uint32_t i = 0; i < count; i++) {
     out.data[i] = computed_value;

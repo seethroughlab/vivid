@@ -269,8 +269,8 @@ struct CompiledNode {
     std::vector<std::vector<float>> out_lane_buf;
     std::vector<VividStringLanePort> c_in_string_lanes;
     std::vector<VividStringLanePort> c_out_string_lanes;
-    std::vector<std::vector<const char*>> in_string_spread_ptrs;
-    std::vector<std::vector<const char*>> out_string_spread_ptr_buf;
+    std::vector<std::vector<const char*>> in_string_lane_ptrs;
+    std::vector<std::vector<const char*>> out_string_lane_ptr_buf;
 
     // ── Custom ports ────────────────────────────────────────────────────────
     std::vector<uint32_t> custom_input_port_indices;
@@ -308,7 +308,7 @@ struct CompiledNode {
     std::vector<uint32_t> string_input_port_indices;
     std::vector<uint32_t> string_lane_input_port_indices;
     bool has_string_output = false;
-    bool has_string_spread_output = false;
+    bool has_string_lane_output = false;
 
     bool errored = false;
     std::string error_message;

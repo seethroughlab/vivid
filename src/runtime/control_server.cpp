@@ -91,7 +91,7 @@ static const char* port_type_str(VividPortType t) {
     switch (t) {
         case VIVID_PORT_SIGNAL:         return "float";
         case VIVID_PORT_AUDIO:         return "audio";
-        case VIVID_PORT_LANE_ARRAY:        return "spread";
+        case VIVID_PORT_LANE_ARRAY:        return "lane_array";
         case VIVID_PORT_STRING:        return "string";
         case VIVID_PORT_STRING_SPREAD: return "string_spread";
         case VIVID_PORT_TEXTURE:       return "texture";
@@ -105,7 +105,7 @@ static const char* transport_str(VividPortTransport t) {
     switch (t) {
         case VIVID_PORT_TRANSPORT_SIGNAL:        return "scalar";
         case VIVID_PORT_TRANSPORT_AUDIO_BUFFER:  return "audio_buffer";
-        case VIVID_PORT_TRANSPORT_SPREAD:        return "spread";
+        case VIVID_PORT_TRANSPORT_LANE_ARRAY:        return "lane_array";
         case VIVID_PORT_TRANSPORT_STRING:        return "string";
         case VIVID_PORT_TRANSPORT_STRING_SPREAD: return "string_spread";
         case VIVID_PORT_TRANSPORT_TEXTURE:       return "texture";
@@ -369,18 +369,18 @@ static std::string handle_inspect_graph(Graph& graph, RuntimeCore& core) {
                     if (oi != ns->output_port_indices.end() &&
                         oi->second < ns->output_lanes.size() &&
                         !ns->output_lanes[oi->second].empty()) {
-                        nlohmann::json spread_arr = nlohmann::json::array();
+                        nlohmann::json lane_arr = nlohmann::json::array();
                         for (float sv : ns->output_lanes[oi->second])
-                            spread_arr.push_back(static_cast<double>(sv));
-                        p["spread"] = std::move(spread_arr);
+                            lane_arr.push_back(static_cast<double>(sv));
+                        p["lane_array"] = std::move(lane_arr);
                     }
                     if (oi != ns->output_port_indices.end() &&
                         oi->second < ns->output_string_lanes.size() &&
                         !ns->output_string_lanes[oi->second].empty()) {
-                        nlohmann::json spread_arr = nlohmann::json::array();
+                        nlohmann::json lane_arr = nlohmann::json::array();
                         for (const auto& sv : ns->output_string_lanes[oi->second])
-                            spread_arr.push_back(sv);
-                        p["string_spread"] = std::move(spread_arr);
+                            lane_arr.push_back(sv);
+                        p["string_spread"] = std::move(lane_arr);
                     }
                 }
 
@@ -398,18 +398,18 @@ static std::string handle_inspect_graph(Graph& graph, RuntimeCore& core) {
                     if (ii != ns->input_port_indices.end() &&
                         ii->second < ns->input_lanes.size() &&
                         !ns->input_lanes[ii->second].empty()) {
-                        nlohmann::json spread_arr = nlohmann::json::array();
+                        nlohmann::json lane_arr = nlohmann::json::array();
                         for (float sv : ns->input_lanes[ii->second])
-                            spread_arr.push_back(static_cast<double>(sv));
-                        p["spread"] = std::move(spread_arr);
+                            lane_arr.push_back(static_cast<double>(sv));
+                        p["lane_array"] = std::move(lane_arr);
                     }
                     if (ii != ns->input_port_indices.end() &&
                         ii->second < ns->input_string_lanes.size() &&
                         !ns->input_string_lanes[ii->second].empty()) {
-                        nlohmann::json spread_arr = nlohmann::json::array();
+                        nlohmann::json lane_arr = nlohmann::json::array();
                         for (const auto& sv : ns->input_string_lanes[ii->second])
-                            spread_arr.push_back(sv);
-                        p["string_spread"] = std::move(spread_arr);
+                            lane_arr.push_back(sv);
+                        p["string_spread"] = std::move(lane_arr);
                     }
                 }
 
@@ -544,19 +544,19 @@ static nlohmann::json sample_node_outputs_snapshot(const CompiledNode& ns,
             }
             if (include_spreads && oi < ns.output_lanes.size() &&
                 !ns.output_lanes[oi].empty()) {
-                nlohmann::json spread_arr = nlohmann::json::array();
+                nlohmann::json lane_arr = nlohmann::json::array();
                 for (float sv : ns.output_lanes[oi]) {
-                    spread_arr.push_back(static_cast<double>(sv));
+                    lane_arr.push_back(static_cast<double>(sv));
                 }
-                out["spread"] = std::move(spread_arr);
+                out["lane_array"] = std::move(lane_arr);
             }
             if (include_spreads && oi < ns.output_string_lanes.size() &&
                 !ns.output_string_lanes[oi].empty()) {
-                nlohmann::json spread_arr = nlohmann::json::array();
+                nlohmann::json lane_arr = nlohmann::json::array();
                 for (const auto& sv : ns.output_string_lanes[oi]) {
-                    spread_arr.push_back(sv);
+                    lane_arr.push_back(sv);
                 }
-                out["string_spread"] = std::move(spread_arr);
+                out["string_spread"] = std::move(lane_arr);
             }
         }
 
@@ -784,7 +784,7 @@ static std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core) {
                         in["string"] = ns.input_string_values[ii];
                     }
                     if (ii < ns.input_lanes.size()) {
-                        in["spread"] = nlohmann::json{{"length", static_cast<int64_t>(ns.input_lanes[ii].size())}};
+                        in["lane_array"] = nlohmann::json{{"length", static_cast<int64_t>(ns.input_lanes[ii].size())}};
                     }
                     if (ii < ns.input_string_lanes.size()) {
                         in["string_spread"] = nlohmann::json{{"length", static_cast<int64_t>(ns.input_string_lanes[ii].size())}};
@@ -824,7 +824,7 @@ static std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core) {
                         out["string"] = ns.output_string_values[oi];
                     }
                     if (oi < ns.output_lanes.size()) {
-                        out["spread"] = nlohmann::json{{"length", static_cast<int64_t>(ns.output_lanes[oi].size())}};
+                        out["lane_array"] = nlohmann::json{{"length", static_cast<int64_t>(ns.output_lanes[oi].size())}};
                     }
                     if (oi < ns.output_string_lanes.size()) {
                         out["string_spread"] = nlohmann::json{{"length", static_cast<int64_t>(ns.output_string_lanes[oi].size())}};
@@ -2316,7 +2316,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     if      (type_str == "float")         out = VIVID_PORT_SIGNAL;
                     else if (type_str == "int")           out = VIVID_PORT_SIGNAL;
                     else if (type_str == "bool")          out = VIVID_PORT_SIGNAL;
-                    else if (type_str == "spread")        out = VIVID_PORT_LANE_ARRAY;
+                    else if (type_str == "lane_array")        out = VIVID_PORT_LANE_ARRAY;
                     else if (type_str == "string")        out = VIVID_PORT_STRING;
                     else if (type_str == "string_spread") out = VIVID_PORT_STRING_SPREAD;
                     else return "unknown control port type '" + type_str + "'";

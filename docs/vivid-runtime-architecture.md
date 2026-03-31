@@ -439,8 +439,8 @@ Passed to frame-rate operators on the main thread.
 | `param_values` | `float*` | Parameter array, indexed by param order |
 | `input_values` | `float*` | Input port values (SIGNAL) |
 | `output_values` | `float*` | Output port values (SIGNAL) — write here |
-| `input_spreads` | `VividSpreadPort*` | Spread input ports |
-| `output_spreads` | `VividSpreadPort*` | Spread output ports |
+| `input_lanes` | `VividLanePort*` | Spread input ports |
+| `output_lanes` | `VividLanePort*` | Spread output ports |
 | `input_string_values` | `const char**` | String input values |
 | `output_string_values` | `const char**` | String output values |
 | `file_param_values` | `const char**` | File/text parameter values |
@@ -495,7 +495,7 @@ Passed to audio-rate operators on the audio thread.
 | `bridge_input_values[]` | Audio→frame bridge-injected values (survive per-frame zeroing) |
 | `bridge_input_dirty[]` | Per-port dirty flags: 1 = bridge wrote since last frame |
 | `input_connected[]` | Per-port connection flags: 1 = has an incoming edge |
-| `input_spreads[]` / `output_spreads[]` | Spread port state |
+| `input_lanes[]` / `output_lanes[]` | Spread port state |
 | `audio` | `AudioNodeState*` — buffers, channels (audio nodes only) |
 | `gpu` | `GpuNodeState*` — textures, views (GPU nodes only) |
 

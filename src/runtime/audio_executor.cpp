@@ -821,7 +821,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                     auto& dst = analysis.lane_outputs[i][p];
                     const auto& src = cn.output_lanes[p];
                     dst.length = std::min(static_cast<uint32_t>(src.size()),
-                                          SpreadSnapshot::kMaxLength);
+                                          LaneSnapshot::kMaxLength);
                     for (uint32_t j = 0; j < dst.length; ++j)
                         dst.data[j] = src[j];
                 }

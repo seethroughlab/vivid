@@ -262,14 +262,14 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
     cn.out_lane_buf.resize(cn.output_port_count);
     cn.c_in_string_lanes.resize(cn.input_port_count);
     cn.c_out_string_lanes.resize(cn.output_port_count);
-    cn.in_string_spread_ptrs.resize(cn.input_port_count);
-    cn.out_string_spread_ptr_buf.resize(cn.output_port_count);
+    cn.in_string_lane_ptrs.resize(cn.input_port_count);
+    cn.out_string_lane_ptr_buf.resize(cn.output_port_count);
     for (uint32_t p = 0; p < cn.output_port_count; ++p) {
         cn.out_lane_buf[p].resize(kMaxLaneCapacity, 0.0f);
-        cn.out_string_spread_ptr_buf[p].resize(kMaxLaneCapacity, nullptr);
+        cn.out_string_lane_ptr_buf[p].resize(kMaxLaneCapacity, nullptr);
     }
     for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-        cn.in_string_spread_ptrs[p].resize(kMaxLaneCapacity, nullptr);
+        cn.in_string_lane_ptrs[p].resize(kMaxLaneCapacity, nullptr);
     }
 
     // File params
@@ -318,7 +318,7 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
     cn.string_input_port_indices.clear();
     cn.string_lane_input_port_indices.clear();
     cn.has_string_output = false;
-    cn.has_string_spread_output = false;
+    cn.has_string_lane_output = false;
 
     // GPU-specific port scanning
     if (node_is_gpu) {
@@ -364,7 +364,7 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
                 case VIVID_PORT_STRING:
                     cn.has_string_output = true; break;
                 case VIVID_PORT_STRING_SPREAD:
-                    cn.has_string_spread_output = true; break;
+                    cn.has_string_lane_output = true; break;
                 default:
                     if (vivid_is_custom_port_type(desc->ports[i].type))
                         cn.custom_output_port_indices.push_back(out_idx);
@@ -642,14 +642,14 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             cn.out_lane_buf.resize(cn.output_port_count);
             cn.c_in_string_lanes.resize(cn.input_port_count);
             cn.c_out_string_lanes.resize(cn.output_port_count);
-            cn.in_string_spread_ptrs.resize(cn.input_port_count);
-            cn.out_string_spread_ptr_buf.resize(cn.output_port_count);
+            cn.in_string_lane_ptrs.resize(cn.input_port_count);
+            cn.out_string_lane_ptr_buf.resize(cn.output_port_count);
             for (uint32_t p = 0; p < cn.output_port_count; ++p)
                 cn.out_lane_buf[p].resize(kMaxLaneCapacity, 0.0f);
             for (uint32_t p = 0; p < cn.input_port_count; ++p)
-                cn.in_string_spread_ptrs[p].resize(kMaxLaneCapacity, nullptr);
+                cn.in_string_lane_ptrs[p].resize(kMaxLaneCapacity, nullptr);
             for (uint32_t p = 0; p < cn.output_port_count; ++p)
-                cn.out_string_spread_ptr_buf[p].resize(kMaxLaneCapacity, nullptr);
+                cn.out_string_lane_ptr_buf[p].resize(kMaxLaneCapacity, nullptr);
 
             std::fprintf(stderr, "[vivid] GraphCompiler: missing operator '%s' (node '%s') — placeholder\n",
                          ndef.type.c_str(), ndef.id.c_str());

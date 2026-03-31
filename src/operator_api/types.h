@@ -79,7 +79,7 @@ typedef uint32_t VividPortDirection;
 typedef uint32_t VividPortTransport;
 #define VIVID_PORT_TRANSPORT_SIGNAL         0u  // numeric value (scalar or buffer depending on execution environment)
 #define VIVID_PORT_TRANSPORT_AUDIO_BUFFER   1u  // audio sample buffers
-#define VIVID_PORT_TRANSPORT_SPREAD         2u  // float spread copy
+#define VIVID_PORT_TRANSPORT_LANE_ARRAY         2u  // float spread copy
 #define VIVID_PORT_TRANSPORT_STRING         3u  // string copy
 #define VIVID_PORT_TRANSPORT_STRING_SPREAD  4u  // string spread copy
 #define VIVID_PORT_TRANSPORT_TEXTURE        5u  // GPU texture/view routing
