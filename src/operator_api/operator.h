@@ -267,6 +267,18 @@ constexpr VividLaneBehavior get_lane_behavior() {
     else
         return VIVID_LANE_POINTWISE;
 }
+template <typename T, typename = void>
+struct has_strategy_independent : std::false_type {};
+template <typename T>
+struct has_strategy_independent<T, std::void_t<decltype(T::kStrategyIndependent)>> : std::true_type {};
+
+template <typename T>
+constexpr bool get_strategy_independent() {
+    if constexpr (has_strategy_independent<T>::value)
+        return T::kStrategyIndependent;
+    else
+        return false;
+}
 }} // namespace vivid::detail
 
 // Convenience macro: get identity-keyed per-lane persistent state from audio context.
@@ -403,6 +415,8 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
             desc.cadence_capability = VIVID_CADENCE_FRAME_ONLY;               \
         /* Lane behavior: detect kLaneBehavior if declared, else Pointwise. */\
         desc.lane_behavior = vivid::detail::get_lane_behavior<ClassName>();   \
+        desc.strategy_independent =                                           \
+            vivid::detail::get_strategy_independent<ClassName>() ? 1 : 0;     \
         desc.param_count    = static_cast<uint32_t>(s_params.size());         \
         desc.params         = s_params.data();                                \
         desc.port_count     = static_cast<uint32_t>(s_ports.size());          \

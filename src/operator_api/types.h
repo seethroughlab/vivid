@@ -146,6 +146,7 @@ typedef struct VividOperatorDescriptor {
 
     // Lane behavior (v3+)
     VividLaneBehavior         lane_behavior;         // POINTWISE, STRUCTURAL, REDUCTION, or KERNEL
+    int                       strategy_independent;  // 1 if operator uses vivid_lane_state() for all per-lane state
 } VividOperatorDescriptor;
 
 // Derive operator kind from capability flags (replaces stored field, v18+).

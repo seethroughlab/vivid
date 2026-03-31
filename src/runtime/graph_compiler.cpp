@@ -1112,11 +1112,24 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             for (auto& ch : a.output_channel_counts) ch = 1;
         }
 
-        // NOTE: Non-audio lane-bearing inputs (spread/control from structural
-        // operators) do NOT yet trigger audio lane lifting. Structural outputs
-        // have runtime-dynamic lane counts that can't be pre-allocated at
-        // compile time. Runtime-dynamic lane lifting requires the per-lane
-        // state service from Phase 5.
+        // LoopBased: for operators that opt in via strategy_independent,
+        // non-audio lane-bearing inputs trigger runtime-driven loop evaluation.
+        if (a.execution_strategy == LaneExecutionStrategy::Scalar) {
+            const auto* desc = cn.loader ? cn.loader->descriptor() : nullptr;
+            bool opt_in = desc && desc->strategy_independent;
+            bool has_structural_input = false;
+            for (const auto& ils : cn.input_lane_sets) {
+                if (!ils.is_scalar()) { has_structural_input = true; break; }
+            }
+            if (opt_in && has_structural_input) {
+                a.execution_strategy = LaneExecutionStrategy::LoopBased;
+                // lane_lift_count stays 0 (dynamic at runtime)
+                a.lane_lift_set_id = 0;
+                for (const auto& ils : cn.input_lane_sets) {
+                    if (!ils.is_scalar()) { a.lane_lift_set_id = ils.lane_set_id; break; }
+                }
+            }
+        }
     }
 
     // ===================================================================
@@ -1128,13 +1141,20 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         auto& a = *cn.audio;
         uint32_t bs = options.audio_buffer_size;
 
-        if (a.lane_lift_count > 0) {
-            // Lane-lifted: allocate multi-lane buffers (one mono buffer per lane).
+        if (a.execution_strategy == LaneExecutionStrategy::InstancePerLane) {
+            // Instance-per-lane: allocate multi-lane buffers (one mono buffer per lane).
             uint32_t lanes = a.lane_lift_count;
             for (uint32_t p = 0; p < cn.input_port_count; ++p)
                 a.buffers_in[p].resize(lanes * bs, 0.0f);
             for (uint32_t p = 0; p < cn.output_port_count; ++p)
                 a.buffers_out[p].resize(lanes * bs, 0.0f);
+        } else if (a.execution_strategy == LaneExecutionStrategy::LoopBased) {
+            // LoopBased: pre-allocate at max lane capacity to avoid audio-thread allocation.
+            static constexpr uint32_t kMaxLoopLanes = 16;
+            for (uint32_t p = 0; p < cn.input_port_count; ++p)
+                a.buffers_in[p].resize(kMaxLoopLanes * bs, 0.0f);
+            for (uint32_t p = 0; p < cn.output_port_count; ++p)
+                a.buffers_out[p].resize(kMaxLoopLanes * bs, 0.0f);
         } else {
             for (uint32_t p = 0; p < cn.input_port_count; ++p)
                 a.buffers_in[p].resize(a.input_channel_counts[p] * bs, 0.0f);

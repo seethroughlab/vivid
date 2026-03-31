@@ -32,6 +32,7 @@ static const VividOperatorDescriptor audio_out_desc = {
     VIVID_CADENCE_AUDIO_ONLY, // cadence_capability (has_process_audio && !has_process_frame)
     0,                        // has_process_frame
     VIVID_LANE_POINTWISE,     // lane_behavior
+    0,                        // strategy_independent
 };
 
 static const VividOperatorDescriptor* audio_out_descriptor() { return &audio_out_desc; }

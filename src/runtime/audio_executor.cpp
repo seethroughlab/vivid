@@ -472,6 +472,88 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                         }
                     }
                 }
+            } else if (cn.audio && cn.audio->execution_strategy == LaneExecutionStrategy::LoopBased) {
+                // ── LoopBased: single instance, runtime-driven loop over lanes ──
+                // Discover lane count from spread inputs at runtime.
+                uint32_t loop_lanes = 0;
+                for (uint32_t p = 0; p < cn.input_port_count && p < cn.c_in_spreads.size(); ++p) {
+                    if (cn.c_in_spreads[p].length > loop_lanes)
+                        loop_lanes = cn.c_in_spreads[p].length;
+                }
+                static constexpr uint32_t kMaxLoopLanes = 16;
+                if (loop_lanes > kMaxLoopLanes) loop_lanes = kMaxLoopLanes;
+
+                if (loop_lanes > 0) {
+                    // Allocate lane_ids for this tick if needed
+                    std::vector<uint32_t> loop_lane_ids(loop_lanes);
+                    for (uint32_t c = 0; c < loop_lanes; ++c)
+                        loop_lane_ids[c] = c + 1;  // derived positional IDs
+
+                    // Per-lane mono buffer pointers (reused across iterations)
+                    std::vector<float*> loop_in_ptrs(cn.input_port_count);
+                    std::vector<float*> loop_out_ptrs(cn.output_port_count);
+
+                    for (uint32_t c = 0; c < loop_lanes; ++c) {
+                        // Set up per-lane buffer pointers (slice into pre-allocated buffers)
+                        for (uint32_t p = 0; p < cn.input_port_count; ++p) {
+                            if (p < cn.input_port_types.size() && cn.input_port_types[p] == VIVID_PORT_AUDIO) {
+                                loop_in_ptrs[p] = a.buffers_in[p].data() + c * kBufferSize;
+                            } else {
+                                loop_in_ptrs[p] = a.buffers_in[p].data();  // broadcast non-audio
+                            }
+                        }
+                        for (uint32_t p = 0; p < cn.output_port_count; ++p)
+                            loop_out_ptrs[p] = a.buffers_out[p].data() + c * kBufferSize;
+
+                        VividAudioContext ctx{};
+                        ctx.time = node_time;
+                        ctx.delta_time = static_cast<double>(chunk) / kSampleRate;
+                        ctx.frame = audio_frame_ + frames_written;
+                        ctx.param_values = cn.param_values.data();
+                        ctx.input_buffers = loop_in_ptrs.data();
+                        ctx.output_buffers = loop_out_ptrs.data();
+                        ctx.buffer_size = chunk;
+                        ctx.sample_rate = kSampleRate;
+                        ctx.input_channel_counts = nullptr;  // mono view
+                        ctx.output_channel_counts = nullptr;
+                        ctx.input_float_values = a.float_input_values.empty() ? a.float_input_scratch : a.float_input_values.data();
+                        ctx.output_float_values = a.float_output_values.empty() ? a.float_output_scratch : a.float_output_values.data();
+                        ctx.input_spreads = cn.c_in_spreads.empty() ? nullptr : cn.c_in_spreads.data();
+                        ctx.output_spreads = cn.c_out_spreads.empty() ? nullptr : cn.c_out_spreads.data();
+                        ctx.input_string_values = cn.c_input_string_values.empty() ? nullptr : cn.c_input_string_values.data();
+                        ctx.custom_inputs = a.has_custom_input_ports ? cn.resolved_custom_inputs.data() : nullptr;
+                        ctx.custom_input_count = static_cast<uint32_t>(cn.custom_input_port_indices.size());
+                        ctx.custom_outputs = a.custom_output_ptrs.empty() ? nullptr : a.custom_output_ptrs.data();
+                        ctx.custom_output_count = a.custom_output_count;
+                        ctx.shared_handles = vivid::shared_handle_service();
+                        ctx.file_param_values = cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data();
+                        ctx.file_param_count = static_cast<uint32_t>(cn.file_param_ptrs.size());
+                        ctx.lane_count = loop_lanes;
+                        ctx.lane_index = c;
+                        ctx.lane_set_id = cn.audio->lane_lift_set_id;
+                        ctx.lane_id = loop_lane_ids[c];
+                        ctx.lane_state_fn = lane_state_fn_bridge;
+                        ctx.lane_state_service = &node_lane_contexts_[ni_ord];
+                        ctx.allocate_lane_id_fn = allocate_lane_id_fn_bridge;
+                        ctx.retire_lane_id_fn = retire_lane_id_fn_bridge;
+
+                        try {
+                            cn.loader->process_audio(cn.instance, &ctx);
+                        } catch (const std::exception& ex) {
+                            cn.errored = true;
+                            std::strncpy(a.error_message, ex.what(), sizeof(a.error_message) - 1);
+                            a.error_message[sizeof(a.error_message) - 1] = '\0';
+                        } catch (...) {
+                            cn.errored = true;
+                            std::strncpy(a.error_message, "unknown exception", sizeof(a.error_message) - 1);
+                        }
+                    }
+
+                    if (cn.errored) {
+                        for (auto& buf : a.buffers_out)
+                            std::memset(buf.data(), 0, buf.size() * sizeof(float));
+                    }
+                }
             } else {
                 // ── Normal (non-lifted) processing ──
                 VividAudioContext ctx{};
