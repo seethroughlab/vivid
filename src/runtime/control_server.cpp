@@ -57,6 +57,16 @@ static constexpr int kTestPackageTimeoutSec        = 60;
 // Enum → string helpers
 // ---------------------------------------------------------------------------
 
+static const char* lane_behavior_str(VividLaneBehavior lb) {
+    switch (lb) {
+        case VIVID_LANE_POINTWISE:  return "pointwise";
+        case VIVID_LANE_STRUCTURAL: return "structural";
+        case VIVID_LANE_REDUCTION:  return "reduction";
+        case VIVID_LANE_KERNEL:     return "kernel";
+        default: return "unknown";
+    }
+}
+
 static const char* kind_str(VividOperatorKind k) {
     switch (k) {
         case VIVID_OP_CONTROL: return "control";
@@ -431,6 +441,12 @@ static std::string handle_inspect_graph(Graph& graph, RuntimeCore& core) {
         node["inputs"] = std::move(inputs_arr);
         node["outputs"] = std::move(outputs_arr);
 
+        // Lane metadata
+        if (ns) {
+            node["lane_behavior"] = lane_behavior_str(
+                static_cast<VividLaneBehavior>(ns->lane_behavior));
+        }
+
         nodes_arr.push_back(std::move(node));
     }
     result["nodes"] = std::move(nodes_arr);
@@ -450,6 +466,20 @@ static std::string handle_inspect_graph(Graph& graph, RuntimeCore& core) {
             c["to_max"] = conn.to_max;
             if (conn.clamp)
                 c["clamp"] = true;
+        }
+        // Lane metadata from compiled edge
+        if (cg) {
+            for (const auto& e : cg->edges) {
+                if (e.from_node < cg->nodes.size() && e.to_node < cg->nodes.size() &&
+                    cg->nodes[e.from_node].node_id == conn.from_node &&
+                    cg->nodes[e.to_node].node_id == conn.to_node) {
+                    if (e.lane_set_id != 0)
+                        c["lane_set_id"] = e.lane_set_id;
+                    if (e.lane_count > 1)
+                        c["lane_count"] = e.lane_count;
+                    break;
+                }
+            }
         }
         conns_arr.push_back(std::move(c));
     }
@@ -1544,6 +1574,7 @@ static std::string handle_list_types(OperatorRegistry& registry) {
         nlohmann::json t = nlohmann::json::object();
         t["name"] = desc->name;
         t["kind"] = kind_str(vivid_operator_kind(desc));
+        t["lane_behavior"] = lane_behavior_str(desc->lane_behavior);
 
         // Params
         nlohmann::json params_arr = nlohmann::json::array();
