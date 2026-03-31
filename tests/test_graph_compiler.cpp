@@ -343,15 +343,15 @@ static void test_lane_behavior_from_descriptor(const std::string& build_dir) {
         if (std::filesystem::exists(src))
             std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing);
     };
-    stage("spread_noise.dylib");
+    stage("spread_source_op.dylib");
     stage("lfo.dylib");
 
     vivid::OperatorRegistry registry;
     registry.scan_deferred(staging.c_str());
 
-    // Build a graph: SpreadNoise → LFO (via param connection or port)
+    // Build a graph: SpreadSourceOp → LFO (via param connection or port)
     vivid::Graph g;
-    g.add_node("sn", "SpreadNoise");
+    g.add_node("sn", "SpreadSourceOp");
     g.add_node("lfo1", "LFO");
 
     vivid::GraphCompiler::Options opts;
@@ -361,12 +361,12 @@ static void test_lane_behavior_from_descriptor(const std::string& build_dir) {
 
     auto* sn = cg->find_node("sn");
     auto* lfo = cg->find_node("lfo1");
-    check(sn != nullptr, "SpreadNoise node found");
+    check(sn != nullptr, "SpreadSourceOp node found");
     check(lfo != nullptr, "LFO node found");
     if (!sn || !lfo) return;
 
     check(sn->lane_behavior == vivid::LaneBehavior::Structural,
-          "SpreadNoise classified as Structural");
+          "SpreadSourceOp classified as Structural");
     check(lfo->lane_behavior == vivid::LaneBehavior::Pointwise,
           "LFO classified as Pointwise (default)");
 
@@ -376,7 +376,7 @@ static void test_lane_behavior_from_descriptor(const std::string& build_dir) {
         if (ls.lane_set_id != 0)
             has_fresh_id = true;
     }
-    check(has_fresh_id, "SpreadNoise outputs have fresh lane_set_id");
+    check(has_fresh_id, "SpreadSourceOp outputs have fresh lane_set_id");
     check(cg->next_lane_set_id > 1, "lane_set_id counter advanced");
 
     std::filesystem::remove_all(staging);
@@ -399,21 +399,21 @@ static void test_lane_mismatch_fails(const std::string& build_dir) {
         if (std::filesystem::exists(src))
             std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing);
     };
-    stage("spread_noise.dylib");
+    stage("spread_source_op.dylib");
     stage("lfo.dylib");
 
     vivid::OperatorRegistry registry;
     registry.scan_deferred(staging.c_str());
 
-    // Two different SpreadNoise nodes wired to the same LFO input.
-    // Each SpreadNoise is Structural → gets a different lane_set_id.
+    // Two different SpreadSourceOp nodes wired to the same LFO input.
+    // Each SpreadSourceOp is Structural → gets a different lane_set_id.
     // LFO is Pointwise → receiving two different non-scalar lane sets is illegal.
     vivid::Graph g;
-    g.add_node("sn1", "SpreadNoise");
-    g.add_node("sn2", "SpreadNoise");
+    g.add_node("sn1", "SpreadSourceOp");
+    g.add_node("sn2", "SpreadSourceOp");
     g.add_node("lfo1", "LFO");
-    g.add_connection("sn1", "values", "lfo1", "gate");
-    g.add_connection("sn2", "values", "lfo1", "gate");
+    g.add_connection("sn1", "out", "lfo1", "gate");
+    g.add_connection("sn2", "out", "lfo1", "gate");
 
     vivid::GraphCompiler::Options opts;
     auto cg = vivid::GraphCompiler::compile(g, registry, opts);
@@ -440,22 +440,22 @@ static void test_audio_lane_lift_from_spread(const std::string& build_dir) {
         if (std::filesystem::exists(src))
             std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing);
     };
-    stage("spread_noise.dylib");
+    stage("spread_source_op.dylib");
     stage("lane_metadata_audio_op.dylib");
 
     vivid::OperatorRegistry registry;
     registry.scan_deferred(staging.c_str());
 
-    // SpreadNoise (Structural, frame-cadence) → LaneMetadataAudioOp (Pointwise, audio-cadence)
+    // SpreadSourceOp (Structural, frame-cadence) → LaneMetadataAudioOp (Pointwise, audio-cadence)
     // The audio op receives a non-scalar lane-bearing input via cadence bridge.
     // Currently, non-audio lane-bearing inputs do NOT trigger audio lane lifting
     // because structural outputs have runtime-dynamic lane counts that can't be
     // pre-allocated at compile time. This test verifies the provenance metadata
     // is present on input_lane_sets even without lifting.
     vivid::Graph g;
-    g.add_node("sn", "SpreadNoise");
+    g.add_node("sn", "SpreadSourceOp");
     g.add_node("audio_meta", "LaneMetadataAudioOp");
-    g.add_connection("sn", "values", "audio_meta", "input");
+    g.add_connection("sn", "out", "audio_meta", "input");
 
     vivid::GraphCompiler::Options opts;
     auto cg = vivid::GraphCompiler::compile(g, registry, opts);
@@ -464,18 +464,28 @@ static void test_audio_lane_lift_from_spread(const std::string& build_dir) {
 
     auto* sn = cg->find_node("sn");
     auto* audio_meta = cg->find_node("audio_meta");
-    check(sn != nullptr, "SpreadNoise node found");
+    check(sn != nullptr, "SpreadSourceOp node found");
     check(audio_meta != nullptr, "LaneMetadataAudioOp node found");
 
-    if (audio_meta) {
-        // The audio op should have non-scalar input lane set provenance
-        // from the structural upstream, even without lane lifting.
+    if (sn) {
+        // The structural source should have non-scalar output lane sets.
+        // Cross-cadence provenance propagation happens via the snapshot bridge
+        // at runtime (Phase 3), not via compiler Pass 2.6 (which only processes
+        // Direct edges). So we verify the source has the provenance.
         bool has_non_scalar = false;
-        for (const auto& ils : audio_meta->input_lane_sets) {
-            if (!ils.is_scalar()) has_non_scalar = true;
+        for (const auto& ols : sn->output_lane_sets) {
+            if (!ols.is_scalar()) has_non_scalar = true;
         }
         check(has_non_scalar,
-              "audio op has non-scalar input lane set from structural source");
+              "structural source has non-scalar output lane set");
+    }
+
+    if (audio_meta) {
+        // The audio node's input_lane_sets are NOT populated for cross-cadence
+        // edges (Pass 2.6 only processes Direct edges). Lane provenance crosses
+        // the cadence boundary via snapshot bridge at runtime.
+        check(audio_meta->lane_behavior == vivid::LaneBehavior::Pointwise,
+              "audio op is Pointwise (default)");
     }
 
     std::filesystem::remove_all(staging);

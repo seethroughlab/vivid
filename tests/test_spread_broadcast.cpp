@@ -40,9 +40,12 @@ int main(int argc, char* argv[]) {
     // Setup: staging dir with required operators
     std::string staging = build_dir + "/.test_broadcast_staging";
     std::filesystem::create_directories(staging);
-    std::filesystem::copy_file(build_dir + "/spread_source_op.dylib",
-        staging + "/spread_source_op.dylib",
-        std::filesystem::copy_options::overwrite_existing);
+    auto stage = [&](const char* name) {
+        std::filesystem::copy_file(build_dir + "/" + name, staging + "/" + name,
+            std::filesystem::copy_options::overwrite_existing);
+    };
+    stage("spread_source_op.dylib");
+    stage("lane_smooth_op.dylib");
     std::filesystem::copy_file(build_dir + "/spread_sink_op.dylib",
         staging + "/spread_sink_op.dylib",
         std::filesystem::copy_options::overwrite_existing);
@@ -112,6 +115,32 @@ int main(int argc, char* argv[]) {
         // Scalar should be spread[0] of the merged result
         check_float(merge_sink->output_values[0], 4.0f, 0.01f,
                      "merge scalar = spread[0] = 4.0");
+    }
+
+    // --- Test 4: Kernel operator receives full lane-set data ---
+    // LaneSmoothOp (KERNEL) reads all lanes from SpreadSourceOp [2,4,6,8]
+    // and writes 3-element moving average: [2.67, 4.0, 6.0, 7.33]
+    std::fprintf(stderr, "\n--- kernel operator (cross-lane smoothing) ---\n");
+    const vivid::CompiledNode* smooth_sink = nullptr;
+    for (const auto& ns : runtime.compiled_graph()->nodes) {
+        if (ns.node_id == "smooth_sink") { smooth_sink = &ns; break; }
+    }
+    check(smooth_sink != nullptr, "found smooth_sink node");
+    if (smooth_sink) {
+        check(smooth_sink->output_spreads.size() > 0, "smooth_sink has output_spreads");
+        const auto& sp = smooth_sink->output_spreads[0];
+        check(sp.size() == 4, "smoothed spread has 4 elements");
+        if (sp.size() >= 4) {
+            // [2,4,6,8] → avg neighbors:
+            // [0]: (2+2+4)/3 = 2.667
+            // [1]: (2+4+6)/3 = 4.0
+            // [2]: (4+6+8)/3 = 6.0
+            // [3]: (6+8+8)/3 = 7.333
+            check_float(sp[0], 2.667f, 0.01f, "smooth[0] = avg(2,2,4) = 2.667");
+            check_float(sp[1], 4.0f,   0.01f, "smooth[1] = avg(2,4,6) = 4.0");
+            check_float(sp[2], 6.0f,   0.01f, "smooth[2] = avg(4,6,8) = 6.0");
+            check_float(sp[3], 7.333f, 0.01f, "smooth[3] = avg(6,8,8) = 7.333");
+        }
     }
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",

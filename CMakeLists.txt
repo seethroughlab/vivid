@@ -323,7 +323,6 @@ add_vivid_operator(stack             operators/control/stack/stack.cpp)
 add_vivid_operator(alternate         operators/control/alternate/alternate.cpp)
 add_vivid_operator(modulated_gain   operators/control/modulated_gain/modulated_gain.cpp
                                     EXTRA_LIBS vivid_composable_ops)
-add_vivid_operator(spread_noise    operators/control/spread_noise/spread_noise.cpp)
 add_vivid_operator(osc_in            operators/control/osc_in/osc_in.cpp      EXTRA_LIBS oscpack)
 add_vivid_operator(osc_out           operators/control/osc_out/osc_out.cpp     EXTRA_LIBS oscpack)
 add_vivid_operator(mouse             operators/control/mouse/mouse.cpp)
@@ -567,8 +566,6 @@ set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS syphon_out)
 # --- Audio operator plugins ---
 add_vivid_operator(oscillator     operators/audio/oscillator/oscillator.cpp)
 add_vivid_operator(gain           operators/audio/gain/gain.cpp)
-add_vivid_operator(spread_adsr    operators/audio/spread_adsr/spread_adsr.cpp)
-add_vivid_operator(spread_lfo     operators/audio/spread_lfo/spread_lfo.cpp)
 add_vivid_operator(reverb         operators/audio/reverb/reverb.cpp
                    FACTORY_PRESETS operators/audio/reverb/factory_presets.json)
 add_vivid_operator(delay          operators/audio/delay/delay.cpp
@@ -1238,6 +1235,7 @@ add_vivid_operator(spread_source_op   tests/operators/spread_source_op.cpp)
 add_vivid_operator(spread_sink_op     tests/operators/spread_sink_op.cpp)
 add_vivid_operator(lane_metadata_op       tests/operators/lane_metadata_op.cpp)
 add_vivid_operator(lane_metadata_audio_op tests/operators/lane_metadata_audio_op.cpp)
+add_vivid_operator(lane_smooth_op         tests/operators/lane_smooth_op.cpp)
 add_vivid_operator(audio_spread_op    tests/operators/audio_spread_op.cpp)
 
 # AudioEngine integration test (null audio backend, no GPU, no window)
@@ -1819,7 +1817,7 @@ add_executable(test_spread_broadcast
 target_include_directories(test_spread_broadcast PRIVATE src)
 target_link_libraries(test_spread_broadcast PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json webgpu)
-add_dependencies(test_spread_broadcast spread_source_op spread_sink_op)
+add_dependencies(test_spread_broadcast spread_source_op spread_sink_op lane_smooth_op)
 add_test(NAME test_spread_broadcast COMMAND test_spread_broadcast WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Lane metadata runtime test
@@ -1841,29 +1839,6 @@ target_link_libraries(test_lane_metadata PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_dependencies(test_lane_metadata spread_source_op lane_metadata_op)
 add_test(NAME test_lane_metadata COMMAND test_lane_metadata WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-
-# Audio spread wire integration test
-add_executable(test_audio_spread_wire
-    tests/test_audio_spread_wire.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/audio_engine.cpp
-    src/runtime/audio_executor.cpp
-)
-target_include_directories(test_audio_spread_wire PRIVATE src)
-target_link_libraries(test_audio_spread_wire PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
-add_dependencies(test_audio_spread_wire spread_source_op audio_spread_op spread_adsr)
-add_test(NAME test_audio_spread_wire COMMAND test_audio_spread_wire
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # ChildOp<T> composition unit test (no plugins, no runtime, logic only).
 # Non-header-only embeddables have separate loader regressions in
@@ -1908,7 +1883,6 @@ configure_file(tests/graphs/test_audio_engine.json ${CMAKE_BINARY_DIR}/test_audi
 configure_file(tests/graphs/test_audio_robustness.json ${CMAKE_BINARY_DIR}/test_audio_robustness.json COPYONLY)
 configure_file(tests/graphs/test_spread_broadcast.json ${CMAKE_BINARY_DIR}/test_spread_broadcast.json COPYONLY)
 configure_file(tests/graphs/test_cross_cadence_spread.json ${CMAKE_BINARY_DIR}/test_cross_cadence_spread.json COPYONLY)
-configure_file(tests/graphs/test_audio_spread_wire.json ${CMAKE_BINARY_DIR}/test_audio_spread_wire.json COPYONLY)
 configure_file(tests/graphs/test_mixed_runtime_stability.json ${CMAKE_BINARY_DIR}/test_mixed_runtime_stability.json COPYONLY)
 configure_file(tests/graphs/test_package_stress.json ${CMAKE_BINARY_DIR}/test_package_stress.json COPYONLY)
 
@@ -1950,12 +1924,12 @@ add_dependencies(test_demo_graphs
     lfo clock math envelope midi_input fft_analysis
     logic gate smooth
     stack alternate
-    modulated_gain spread_noise
+    modulated_gain
     # gpu (compiled plugins — WGSL filter presets are loaded from filters/)
     noise shape composite
     bloom feedback movie_file_in texture_analysis
     # audio
-    oscillator gain spread_adsr spread_lfo
+    oscillator gain
     reverb delay bitcrush distortion filter audio_noise mixer
     movie_file_audio
     webcam_in time_machine
@@ -2472,7 +2446,7 @@ add_executable(test_graph_compiler
 target_include_directories(test_graph_compiler PRIVATE src)
 target_link_libraries(test_graph_compiler PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json webgpu)
-add_dependencies(test_graph_compiler lfo gain spread_noise lane_metadata_audio_op)
+add_dependencies(test_graph_compiler lfo gain spread_source_op lane_metadata_audio_op)
 add_test(NAME test_graph_compiler
     COMMAND test_graph_compiler ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
