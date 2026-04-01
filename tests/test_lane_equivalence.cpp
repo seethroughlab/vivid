@@ -97,7 +97,7 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- per-lane independent slew output ---\n");
     {
         vivid::Graph graph;
-        // 4 voices, base=100: spread values [100, 200, 300, 400]
+        // 4 voices, base=100: lane values [100, 200, 300, 400]
         // LaneSlewOp reads audio input (zeros from no audio upstream) and
         // accumulates per-lane state. The slew filter converges toward the
         // audio input (0), so we verify that each lane's state is independent.

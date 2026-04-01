@@ -7,7 +7,7 @@
 //
 // Graph: IdentityLaneSourceOp (frame) → LaneStateTrackerOp (audio)
 //
-// Phase 1: 4 voices with distinct spread values. Each lane accumulates
+// Phase 1: 4 voices with distinct lane values. Each lane accumulates
 //          its value into per-lane state keyed by lane_id.
 // Phase 2: Voice 1 (second voice) is removed; spread compacts to 3.
 //          Verify that surviving lanes retained correct accumulated state.

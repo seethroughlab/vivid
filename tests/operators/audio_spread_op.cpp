@@ -18,7 +18,7 @@ struct AudioSpreadOp : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        // Sum spread input values
+        // Sum lane input values
         float sum = 0.0f;
         if (ctx->input_lanes) {
             const auto& isp = ctx->input_lanes[0];  // "values" input (port 0)

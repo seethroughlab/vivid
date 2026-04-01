@@ -91,7 +91,7 @@ int main(int argc, char* argv[]) {
     }
     check(meta_scalar != nullptr, "found meta_scalar node");
     if (meta_scalar) {
-        // No spread input → lane_count = 1, lane_set_id = 0
+        // No lane input → lane_count = 1, lane_set_id = 0
         check_float(meta_scalar->output_values[0], 1.0f, 0.01f,
                      "lane_count = 1 (scalar)");
         check_float(meta_scalar->output_values[1], 0.0f, 0.01f,

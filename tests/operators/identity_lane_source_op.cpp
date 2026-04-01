@@ -68,7 +68,7 @@ struct IdentityLaneSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
                     osp.data[i] = values[i];
             }
 
-            // Write lane_ids spread (lane_ids port, index 1)
+            // Write lane_ids lane array (lane_ids port, index 1)
             auto& lid_sp = ctx->output_lanes[1];
             if (lid_sp.capacity >= active_count) {
                 lid_sp.length = active_count;

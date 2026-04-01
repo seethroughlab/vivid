@@ -39,7 +39,7 @@ struct LaneStateTrackerOp : vivid::OperatorBase, vivid::AudioProcessable {
     void process_audio(const VividAudioContext* ctx) override {
         State& s = *vivid_lane_state(ctx, ctx->lane_id, State);
 
-        // Read per-lane value from spread input
+        // Read per-lane value from lane input
         // Port order: input(audio)=0, values(spread)=1, lane_ids(spread)=2
         // input_lanes is indexed by input port ordinal
         float value = 0.0f;
