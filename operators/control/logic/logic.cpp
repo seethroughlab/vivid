@@ -7,7 +7,7 @@
  *
  * @see Math, Gate
  */
-struct Logic : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct Logic : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "Logic";
     static constexpr bool kTimeDependent = false;
 
@@ -22,9 +22,9 @@ struct Logic : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcess
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"a",      VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"b",      VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"result", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"a",      VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"b",      VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"result", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     float compute(float a_val, float b_val, int op) const {
@@ -47,12 +47,6 @@ struct Logic : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcess
                                         operation.int_value());
     }
 
-    void process_audio(const VividAudioContext* ctx) override {
-        float result = compute(ctx->input_float_values[0], ctx->input_float_values[1],
-                               operation.int_value());
-        for (uint32_t i = 0; i < ctx->buffer_size; ++i)
-            ctx->output_buffers[0][i] = result;
-    }
 };
 
 VIVID_REGISTER(Logic)

@@ -9,7 +9,7 @@
  *
  * @see Logic, Macro, Quantizer
  */
-struct Math : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct Math : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "Math";
     static constexpr bool kTimeDependent = false;
 
@@ -24,9 +24,9 @@ struct Math : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessa
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"a",      VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"b",      VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"result", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"a",      VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"b",      VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"result", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     float compute(float a, float b, int op) const {
@@ -44,13 +44,6 @@ struct Math : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessa
                                         operation.int_value());
     }
 
-    void process_audio(const VividAudioContext* ctx) override {
-        float a = ctx->input_float_values[0];
-        float b = ctx->input_float_values[1];
-        float result = compute(a, b, operation.int_value());
-        for (uint32_t i = 0; i < ctx->buffer_size; ++i)
-            ctx->output_buffers[0][i] = result;
-    }
 };
 
 VIVID_REGISTER(Math)

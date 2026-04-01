@@ -8,7 +8,7 @@
  *
  * @see Alternate, PatTransform
  */
-struct Stack : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct Stack : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "Stack";
     static constexpr bool kTimeDependent = false;
     static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
@@ -35,9 +35,6 @@ struct Stack : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcess
         compute(ctx->param_values, ctx->input_lanes, ctx->output_lanes, ctx->output_values);
     }
 
-    void process_audio(const VividAudioContext* ctx) override {
-        compute(ctx->param_values, ctx->input_lanes, ctx->output_lanes, ctx->output_float_values);
-    }
 
 private:
     void compute(const float* params, VividLanePort* in_lanes,

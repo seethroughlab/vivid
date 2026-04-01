@@ -8,7 +8,7 @@
  *
  * @see Clock, Delay
  */
-struct NoteDuration : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct NoteDuration : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "NoteDuration";
     static constexpr bool kTimeDependent = false;
 
@@ -26,8 +26,8 @@ struct NoteDuration : vivid::OperatorBase, vivid::FrameProcessable, vivid::Audio
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"beat_ms",     VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"duration_ms", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"beat_ms",     VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"duration_ms", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     // ── Shared helper ──────────────────────────────────────────────────
@@ -55,13 +55,6 @@ struct NoteDuration : vivid::OperatorBase, vivid::FrameProcessable, vivid::Audio
         ctx->output_values[0] = beat_ms * kFactors[idx];
     }
 
-    // ── Audio-rate processing (~48 kHz) ─────────────────────────────────
-
-    void process_audio(const VividAudioContext* ctx) override {
-        float beat_ms = ctx->input_float_values[0];
-        int idx = subdivision.int_value();
-        ctx->output_float_values[0] = beat_ms * kFactors[idx];
-    }
 };
 
 VIVID_REGISTER(NoteDuration)

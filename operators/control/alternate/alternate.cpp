@@ -10,7 +10,7 @@
  * @param cycle Number of beats per input selection (Beat, 2 Beats, Bar, etc.).
  * @see Stack, PatTransform
  */
-struct Alternate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct Alternate : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "Alternate";
     static constexpr bool kTimeDependent = true;
     static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
@@ -26,22 +26,19 @@ struct Alternate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPro
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"beat_phase", VIVID_PORT_SIGNAL,  VIVID_PORT_INPUT});   // in float[0]
+        out.push_back({"beat_phase", VIVID_PORT_SCALAR,  VIVID_PORT_INPUT});   // in float[0]
         out.push_back({"a",          VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in lane[0]
         out.push_back({"b",          VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in lane[1]
         out.push_back({"c",          VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in lane[2]
         out.push_back({"d",          VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in lane[3]
         out.push_back({"output",     VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // out lane[0]
-        out.push_back({"index",      VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});  // out float[0]
+        out.push_back({"index",      VIVID_PORT_SCALAR,  VIVID_PORT_OUTPUT});  // out float[0]
     }
 
     void process_frame(const VividFrameContext* ctx) override {
         compute(ctx->input_values[0], ctx->param_values, ctx->input_lanes, ctx->output_lanes, ctx->output_values);
     }
 
-    void process_audio(const VividAudioContext* ctx) override {
-        compute(ctx->input_float_values[0], ctx->param_values, ctx->input_lanes, ctx->output_lanes, ctx->output_float_values);
-    }
 
 private:
     void compute(float beat_phase, const float* params, VividLanePort* in_lanes,

@@ -15,7 +15,7 @@
  * @param easing Easing curve: Linear, EaseIn, EaseOut, EaseInOut, Bounce.
  * @see LFO, Mouse
  */
-struct PathAnimate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct PathAnimate : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "Path Animate";
     static constexpr bool kTimeDependent = true;
 
@@ -93,12 +93,12 @@ struct PathAnimate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"phase_in", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"trigger",  VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"x",        VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"y",        VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"angle",    VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"progress", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"phase_in", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"trigger",  VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"x",        VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"y",        VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"angle",    VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"progress", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     // -------------------------------------------------------------------------
@@ -146,9 +146,6 @@ struct PathAnimate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
         compute(ctx->input_values, ctx->delta_time, ctx->output_values);
     }
 
-    void process_audio(const VividAudioContext* ctx) override {
-        compute(ctx->input_float_values, ctx->delta_time, ctx->output_float_values);
-    }
 
 private:
     void compute(const float* input_values, double delta_time, float* output_values) {

@@ -14,7 +14,7 @@
  * @tip Tile a 2-element lane array to 8 lanes for alternating left/right panning.
  * @see Repeat, Select, Stack
  */
-struct Tile : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct Tile : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "Tile";
     static constexpr bool kTimeDependent = false;
     static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
@@ -39,10 +39,6 @@ struct Tile : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessa
                 ctx->output_lanes, ctx->output_values);
     }
 
-    void process_audio(const VividAudioContext* ctx) override {
-        compute(ctx->input_lanes, ctx->param_values,
-                ctx->output_lanes, ctx->output_float_values);
-    }
 
 private:
     void compute(VividLanePort* in_lanes, const float* params,

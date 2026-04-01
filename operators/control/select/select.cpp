@@ -12,7 +12,7 @@
  * @tip Use Select to solo one voice from a polyphonic chain for monitoring.
  * @see Repeat, Tile, Stack
  */
-struct Select : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct Select : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "Select";
     static constexpr bool kTimeDependent = false;
     static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_REDUCTION;
@@ -29,16 +29,13 @@ struct Select : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProces
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"input",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
-        out.push_back({"output", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"output", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     void process_frame(const VividFrameContext* ctx) override {
         compute(ctx->input_lanes, ctx->param_values, ctx->output_values);
     }
 
-    void process_audio(const VividAudioContext* ctx) override {
-        compute(ctx->input_lanes, ctx->param_values, ctx->output_float_values);
-    }
 
 private:
     void compute(VividLanePort* in_lanes, const float* params,

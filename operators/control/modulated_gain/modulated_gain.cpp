@@ -9,7 +9,7 @@
  *
  * @see Gain, LFO, Smooth
  */
-struct ModulatedGain : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct ModulatedGain : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "ModulatedGain";
     static constexpr bool kTimeDependent = true;
 
@@ -53,8 +53,8 @@ struct ModulatedGain : vivid::OperatorBase, vivid::FrameProcessable, vivid::Audi
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"value", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"input", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"value", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     void process_frame(const VividFrameContext* ctx) override {
@@ -65,13 +65,6 @@ struct ModulatedGain : vivid::OperatorBase, vivid::FrameProcessable, vivid::Audi
         ctx->output_values[0] = input * gain;
     }
 
-    void process_audio(const VividAudioContext* ctx) override {
-        drive_children_audio(ctx);
-        float input = ctx->input_float_values[0];
-        float mod = smoother_.output("value");
-        float gain = base_gain.value + lfo_depth.value * mod;
-        ctx->output_float_values[0] = input * gain;
-    }
 
 private:
     void drive_children_frame(const VividFrameContext* ctx) {
@@ -87,18 +80,6 @@ private:
         smoother_.process(ctx);
     }
 
-    void drive_children_audio(const VividAudioContext* ctx) {
-        lfo_.set_param("frequency", lfo_rate.value);
-        lfo_.set_param("amplitude", 1.0f);
-        lfo_.set_param("offset", 0.0f);
-        lfo_.set_param("waveform", static_cast<float>(lfo_shape.int_value()));
-        lfo_.process_audio(ctx);
-
-        smoother_.set_param("rise_time", smooth_time.value);
-        smoother_.set_param("fall_time", smooth_time.value);
-        smoother_.set_input("input", lfo_.output("value"));
-        smoother_.process_audio(ctx);
-    }
 };
 
 VIVID_REGISTER(ModulatedGain)
