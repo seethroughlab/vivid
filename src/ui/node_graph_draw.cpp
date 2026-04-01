@@ -650,11 +650,11 @@ void NodeGraphUI::draw_wire_tooltip(Renderer2D& tr) {
                 float val = src_ns->output_values[pidx];
                 if (pidx < src_ns->output_lanes.size() &&
                     !src_ns->output_lanes[pidx].empty()) {
-                    value_str = format_float(val) + " [spread: " +
+                    value_str = format_float(val) + " [lane_array: " +
                                 std::to_string(src_ns->output_lanes[pidx].size()) + "]";
                 } else if (pidx < src_ns->output_string_lanes.size() &&
                            !src_ns->output_string_lanes[pidx].empty()) {
-                    value_str = "\"" + src_ns->output_string_lanes[pidx][0] + "\" [string spread: " +
+                    value_str = "\"" + src_ns->output_string_lanes[pidx][0] + "\" [string_lanes: " +
                                 std::to_string(src_ns->output_string_lanes[pidx].size()) + "]";
                 } else {
                     if (pidx < src_ns->output_string_values.size() &&

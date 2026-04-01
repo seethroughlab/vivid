@@ -378,7 +378,7 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
 
             // Read identity-bearing lane_ids from lane array, or fall back to positional.
             std::vector<uint32_t> loop_lane_ids(loop_lanes);
-            int32_t lid_port = cn.frame_lane_id_spread_port;
+            int32_t lid_port = cn.frame_lane_id_port;
             bool has_identity_ids = false;
             if (lid_port >= 0 && static_cast<uint32_t>(lid_port) < cn.input_lanes.size()) {
                 const auto& lid_sp = cn.input_lanes[lid_port];

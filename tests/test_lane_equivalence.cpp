@@ -88,8 +88,8 @@ int main(int argc, char* argv[]) {
         if (slew && slew->audio) {
             check(slew->audio->execution_strategy == vivid::LaneExecutionStrategy::LoopBased,
                   "slew assigned LoopBased");
-            check(slew->audio->lane_id_spread_port >= 0,
-                  "lane_id_spread_port detected");
+            check(slew->audio->lane_id_port >= 0,
+                  "lane_id_port detected");
         }
     }
 

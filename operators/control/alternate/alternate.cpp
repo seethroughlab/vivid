@@ -2,9 +2,9 @@
 #include <algorithm>
 #include <cmath>
 /**
- * @brief Cycles through up to 4 input spreads based on beat phase.
+ * @brief Cycles through up to 4 input lane arrays based on beat phase.
  *
- * Selects one of four spread inputs in round-robin order, advancing on
+ * Selects one of four lane-array inputs in round-robin order, advancing on
  * each beat wrap. Use the cycle parameter to set how many beats before advancing.
  *
  * @param cycle Number of beats per input selection (Beat, 2 Beats, Bar, etc.).
@@ -27,10 +27,10 @@ struct Alternate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPro
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"beat_phase", VIVID_PORT_SIGNAL,  VIVID_PORT_INPUT});   // in float[0]
-        out.push_back({"a",          VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in spread[0]
-        out.push_back({"b",          VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in spread[1]
-        out.push_back({"c",          VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in spread[2]
-        out.push_back({"d",          VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in spread[3]
+        out.push_back({"a",          VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in lane[0]
+        out.push_back({"b",          VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in lane[1]
+        out.push_back({"c",          VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in lane[2]
+        out.push_back({"d",          VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in lane[3]
         out.push_back({"output",     VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // out spread[0]
         out.push_back({"index",      VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});  // out float[0]
     }

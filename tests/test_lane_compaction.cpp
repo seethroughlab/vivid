@@ -91,8 +91,8 @@ int main(int argc, char* argv[]) {
     if (tracker_node && tracker_node->audio) {
         check(tracker_node->audio->execution_strategy == vivid::LaneExecutionStrategy::LoopBased,
               "tracker assigned LoopBased");
-        check(tracker_node->audio->lane_id_spread_port >= 0,
-              "tracker has lane_id_spread_port set");
+        check(tracker_node->audio->lane_id_port >= 0,
+              "tracker has lane_id_port set");
     }
 
     vivid::AudioEngine audio_engine;

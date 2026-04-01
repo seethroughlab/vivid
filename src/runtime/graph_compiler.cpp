@@ -26,17 +26,17 @@ struct AudioLanePlan {
     LaneExecutionStrategy strategy = LaneExecutionStrategy::Scalar;
     uint32_t lane_lift_count = 0;       // N for InstancePerLane
     uint32_t lane_lift_set_id = 0;      // provenance of the lane set
-    int32_t  lane_id_spread_port = -1;  // identity-bearing lane_ids port
+    int32_t  lane_id_port = -1;  // identity-bearing lane_ids port
     bool     override_channel_counts = false;  // true → set all ch counts to 1
 };
 
 struct FrameLanePlan {
     LaneExecutionStrategy strategy = LaneExecutionStrategy::Scalar;
-    int32_t  lane_id_spread_port = -1;
+    int32_t  lane_id_port = -1;
 };
 
-// Detect the lane_ids spread port on a node (shared logic).
-static int32_t detect_lane_id_spread_port(const CompiledNode& cn) {
+// Detect the lane_ids lane-array port on a node (shared logic).
+static int32_t detect_lane_id_port(const CompiledNode& cn) {
     auto li_it = cn.input_port_indices.find("lane_ids");
     if (li_it != cn.input_port_indices.end()) {
         uint32_t pi = li_it->second;
@@ -125,7 +125,7 @@ static AudioLanePlan plan_audio_lane_strategy(
     if (structural_set_id != 0) {
         plan.strategy = LaneExecutionStrategy::LoopBased;
         plan.lane_lift_set_id = structural_set_id;
-        plan.lane_id_spread_port = detect_lane_id_spread_port(cn);
+        plan.lane_id_port = detect_lane_id_port(cn);
     }
 
     return plan;
@@ -142,7 +142,7 @@ static FrameLanePlan plan_frame_lane_strategy(const CompiledNode& cn) {
     uint32_t structural_set_id = find_structural_input(cn);
     if (structural_set_id != 0) {
         plan.strategy = LaneExecutionStrategy::LoopBased;
-        plan.lane_id_spread_port = detect_lane_id_spread_port(cn);
+        plan.lane_id_port = detect_lane_id_port(cn);
     }
 
     return plan;
@@ -1204,7 +1204,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         a.execution_strategy = plan.strategy;
         a.lane_lift_count = plan.lane_lift_count;
         a.lane_lift_set_id = plan.lane_lift_set_id;
-        a.lane_id_spread_port = plan.lane_id_spread_port;
+        a.lane_id_port = plan.lane_id_port;
         if (plan.override_channel_counts) {
             for (auto& ch : a.input_channel_counts) ch = 1;
             for (auto& ch : a.output_channel_counts) ch = 1;
@@ -1216,7 +1216,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         auto& cn = cg->nodes[idx];
         FrameLanePlan plan = plan_frame_lane_strategy(cn);
         cn.frame_execution_strategy = plan.strategy;
-        cn.frame_lane_id_spread_port = plan.lane_id_spread_port;
+        cn.frame_lane_id_port = plan.lane_id_port;
     }
 
     // ===================================================================

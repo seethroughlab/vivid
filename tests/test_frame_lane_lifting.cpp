@@ -172,8 +172,8 @@ int main(int argc, char* argv[]) {
         auto* op_node = runtime.compiled_graph()->find_node("op");
         check(op_node != nullptr, "op node found");
         if (op_node) {
-            check(op_node->frame_lane_id_spread_port >= 0,
-                  "frame_lane_id_spread_port detected");
+            check(op_node->frame_lane_id_port >= 0,
+                  "frame_lane_id_port detected");
         }
 
         // Tick 1: 4 voices [10, 20, 30, 40] with lane_ids [100, 101, 102, 103]

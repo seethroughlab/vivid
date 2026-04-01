@@ -5,9 +5,9 @@
 #include <string>
 #include <vector>
 /**
- * @brief Selects a string from an input spread by index.
+ * @brief Selects a string from an input string lane array by index.
  *
- * Picks one string from an input string spread at the given index.
+ * Picks one string from an input string lane array at the given index.
  * Optional wrap mode cycles the index; otherwise it clamps.
  *
  * @see FolderList, Basename, Stack
@@ -43,9 +43,9 @@ struct StringSelect : vivid::OperatorBase, vivid::FrameProcessable {
         int resolved = -1;
         bool valid = false;
 
-        const VividStringLanePort* in_spreads =
+        const VividStringLanePort* in_lanes =
             ctx->input_string_lanes ? &ctx->input_string_lanes[0] : nullptr;
-        const uint32_t n = (in_spreads && in_spreads->data) ? in_spreads->length : 0;
+        const uint32_t n = (in_lanes && in_lanes->data) ? in_lanes->length : 0;
         if (n > 0) {
             int idx = static_cast<int>(std::floor(ctx->input_values[1]));
             if (wrap.bool_value()) {
@@ -54,7 +54,7 @@ struct StringSelect : vivid::OperatorBase, vivid::FrameProcessable {
             } else {
                 idx = std::max(0, std::min(idx, static_cast<int>(n) - 1));
             }
-            const char* s = in_spreads->data[idx];
+            const char* s = in_lanes->data[idx];
             if (s && *s) {
                 selected_ = s;
                 resolved = idx;

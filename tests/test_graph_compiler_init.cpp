@@ -267,8 +267,8 @@ static void test_frame_state_no_ports() {
     check(cn.gpu == nullptr, "no GPU state");
 }
 
-static void test_frame_state_spread_ports() {
-    std::fprintf(stderr, "\n--- init_frame_state: spread port buffers ---\n");
+static void test_frame_state_lane_ports() {
+    std::fprintf(stderr, "\n--- init_frame_state: lane port buffers ---\n");
 
     VividPortDescriptor ports[] = {
         make_port("sp_in",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT),
@@ -284,9 +284,9 @@ static void test_frame_state_spread_ports() {
     vivid::CompiledNode cn;
     vivid::GraphCompiler::init_frame_state(cn, &desc, nullptr, nullptr, "");
 
-    check(cn.c_in_lanes.size() == 1, "1 input spread staging");
-    check(cn.c_out_lanes.size() == 1, "1 output spread staging");
-    check(cn.out_lane_buf.size() == 1, "output spread buf allocated");
+    check(cn.c_in_lanes.size() == 1, "1 input lane staging");
+    check(cn.c_out_lanes.size() == 1, "1 output lane staging");
+    check(cn.out_lane_buf.size() == 1, "output lane buf allocated");
     check(cn.out_lane_buf[0].size() == 1024, "spread buf capacity 1024");
 }
 
@@ -469,7 +469,7 @@ int main() {
     test_frame_state_gpu_sink();
     test_frame_state_gpu_passthrough();
     test_frame_state_no_ports();
-    test_frame_state_spread_ports();
+    test_frame_state_lane_ports();
 
     // init_audio_state tests
     test_audio_state_basic();

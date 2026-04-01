@@ -138,7 +138,7 @@ struct AudioNodeState {
     LaneExecutionStrategy execution_strategy = LaneExecutionStrategy::Scalar;
     uint32_t lane_lift_count = 0;   // 0 = no lifting, N = lift to N lanes
     uint32_t lane_lift_set_id = 0;  // provenance of the lane set being lifted over
-    int32_t lane_id_spread_port = -1;  // spread port carrying identity-bearing lane_ids (-1 = positional)
+    int32_t lane_id_port = -1;  // lane-array port carrying identity-bearing lane_ids (-1 = positional)
 
     // Float CV inputs (cross-cadence bridge for audio nodes).
     std::vector<float> float_input_defaults;
@@ -153,7 +153,7 @@ struct AudioNodeState {
     struct SignalOutputMapping { uint32_t port_idx; uint32_t float_ordinal; };
     std::vector<SignalOutputMapping> signal_output_extractions;
 
-    // Audio spread/string/custom bridging flags.
+    // Audio lane/string/custom bridging flags.
     bool has_lane_ports = false;
     bool has_string_input_ports = false;
     bool has_custom_input_ports = false;
@@ -325,7 +325,7 @@ struct CompiledNode {
 
     // ── Frame-domain lane execution (populated by compiler Pass 4c) ──────
     LaneExecutionStrategy frame_execution_strategy = LaneExecutionStrategy::Scalar;
-    int32_t frame_lane_id_spread_port = -1;  // spread port with lane_ids (-1 = positional)
+    int32_t frame_lane_id_port = -1;  // lane-array port with lane_ids (-1 = positional)
 };
 
 // ---------------------------------------------------------------------------

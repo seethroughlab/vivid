@@ -33,11 +33,11 @@ inline bool midi_note_off(VividMidiBuffer& buf, uint8_t note,
 
 } // anonymous namespace
 /**
- * @brief Multi-spread step sequencer with ratchets and probability.
+ * @brief Multi-lane step sequencer with ratchets and probability.
  *
  * Sequences up to 128 steps consuming per-step values, probabilities,
- * and ratchet counts from input spreads. Outputs notes, velocities, and
- * gates as both spreads and scalar signals with MIDI output.
+ * and ratchet counts from input lane arrays. Outputs notes, velocities, and
+ * gates as both lane arrays and scalar signals with MIDI output.
  *
  * @see PatternSeq, StepSeq, Arpeggiator
  */
@@ -85,25 +85,25 @@ struct Sequencer : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPro
                 ctx->custom_outputs, ctx->custom_output_count);
     }
 
-    void compute(float phase, float reset_in, VividLanePort* in_spreads,
+    void compute(float phase, float reset_in, VividLanePort* in_lanes,
                  float* output_values, void** custom_outputs, uint32_t custom_output_count) {
         bool reset = reset_in > 0.5f;
 
-        // Read spread inputs
+        // Read lane inputs
         const float* val_data = nullptr;
         uint32_t val_len = 0;
         const float* prob_data = nullptr;
         uint32_t prob_len = 0;
         const float* ratch_data = nullptr;
         uint32_t ratch_len = 0;
-        if (in_spreads) {
-            const auto& val_sp = in_spreads[0];   // values
+        if (in_lanes) {
+            const auto& val_sp = in_lanes[0];   // values
             val_len = val_sp.length;
             val_data = val_sp.data;
-            const auto& prob_sp = in_spreads[1];  // probs
+            const auto& prob_sp = in_lanes[1];  // probs
             prob_len = prob_sp.length;
             prob_data = prob_sp.data;
-            const auto& ratch_sp = in_spreads[2]; // ratchets
+            const auto& ratch_sp = in_lanes[2]; // ratchets
             ratch_len = ratch_sp.length;
             ratch_data = ratch_sp.data;
         }

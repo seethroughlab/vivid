@@ -39,11 +39,11 @@ struct ModulatedGain : vivid::OperatorBase, vivid::FrameProcessable {
 | `set_param(name, value)` | Set child param by name |
 | `set_param(index, value)` | Set child param by index |
 | `set_input(name, value)` | Set child float input |
-| `set_input_spread(name, data, length)` | Set child spread input |
+| `set_input_lane_data(name, data, length)` | Set child lane input |
 | `process(parent_ctx)` | Run child (inherits time/frame) |
 | `output(name)` | Read child float output |
-| `output_spread_data(name)` | Read child spread output data |
-| `output_spread_length(name)` | Read child spread output length |
+| `output_lane_data(name)` | Read child lane output data |
+| `output_lane_length(name)` | Read child lane output length |
 | `op()` | Direct access to underlying operator instance |
 
 ## Custom Port Types
@@ -211,7 +211,7 @@ If omitted, the operator defaults to `VIVID_LANE_POINTWISE`.
 - **Pointwise** (default): processes one lane at a time. The runtime may create N instances for multi-lane inputs (lane lifting). Most operators are pointwise.
 - **Structural**: creates, reshapes, or filters lane sets. Outputs get a fresh lane-set provenance. Example: voice allocator, collection generator.
 - **Reduction**: collapses many lanes into fewer. Example: voice mixer, sum.
-- **Kernel**: reads the full lane set with cross-lane access. Not lane-lifted; runs as a single instance with full spread data. Example: lane smoothing, FFT-bin interpolation.
+- **Kernel**: reads the full lane set with cross-lane access. Not lane-lifted; runs as a single instance with full lane data. Example: lane smoothing, FFT-bin interpolation.
 
 ### Per-Lane Persistent State
 

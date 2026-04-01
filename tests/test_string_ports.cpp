@@ -33,7 +33,7 @@ int main() {
     check(registry.find("StringSourceOp") != nullptr, "StringSourceOp present");
     check(registry.find("StringSinkOp") != nullptr, "StringSinkOp present");
 
-    // String scalar + spread routing.
+    // String scalar + lane routing.
     {
         vivid::Graph g;
         g.add_node("src", "StringSourceOp", {});
@@ -60,7 +60,7 @@ int main() {
                 check(sink->output_string_values[out_it->second] == "alpha", "string scalar routed");
             }
             if (list_it != sink->output_port_indices.end()) {
-                check(sink->output_string_lanes[list_it->second].size() == 3, "string spread size routed");
+                check(sink->output_string_lanes[list_it->second].size() == 3, "string lane array size routed");
             }
             if (valid_it != sink->output_port_indices.end()) {
                 check(sink->output_values[valid_it->second] > 0.5f, "valid output true");

@@ -490,7 +490,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 if (loop_lanes > 0) {
                     // Read identity-bearing lane_ids from upstream lane array, or fall back to positional.
                     std::vector<uint32_t> loop_lane_ids(loop_lanes);
-                    int32_t lid_port = a.lane_id_spread_port;
+                    int32_t lid_port = a.lane_id_port;
                     bool has_identity_ids = false;
                     if (lid_port >= 0 && static_cast<uint32_t>(lid_port) < cn.c_in_lanes.size()) {
                         const auto& lid_sp = cn.c_in_lanes[lid_port];
