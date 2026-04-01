@@ -25,9 +25,9 @@ struct SampleHold : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPr
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"signal",  VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"trigger", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"value",   VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"signal",  VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"trigger", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"value",   VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     void advance(float signal, bool trig, int m) {
@@ -59,4 +59,4 @@ private:
     bool prev_trigger_ = false;
 };
 
-VIVID_REGISTER(SampleHold)
+// Legacy registration removed — use _fr/_au variants instead.

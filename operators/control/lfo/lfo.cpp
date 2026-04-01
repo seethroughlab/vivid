@@ -1,3 +1,3 @@
 #include "lfo.h"
 
-VIVID_REGISTER(LFO)
+// Legacy registration removed — use _fr/_au variants instead.

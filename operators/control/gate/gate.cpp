@@ -32,10 +32,10 @@ struct Gate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessa
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"signal", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"gate",   VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"value",  VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"open",   VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"signal", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"gate",   VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"value",  VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"open",   VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     void process_frame(const VividFrameContext* ctx) override {
@@ -61,4 +61,4 @@ struct Gate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessa
     }
 };
 
-VIVID_REGISTER(Gate)
+// Legacy registration removed — use _fr/_au variants instead.

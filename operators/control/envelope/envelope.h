@@ -1,4 +1,7 @@
 #pragma once
+// Internal-only: this dual-cadence Envelope class is retained for ChildOp<Envelope>
+// consumers. The public operator surface uses envelope_fr / envelope_au variants.
+// Remove after Phase 4 migrates ChildOp embedding.
 
 #include "operator_api/operator.h"
 #include "operator_api/adsr_inspector.h"
@@ -128,9 +131,9 @@ struct Envelope : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProc
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"gate",       VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"beat_phase", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"value",      VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"gate",       VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"value",      VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     // ── Shared ADSR step ────────────────────────────────────────────────

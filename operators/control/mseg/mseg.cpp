@@ -208,5 +208,5 @@ void MSEG::draw_inspector(VividInspectorContext* ctx) {
     ctx->consumed_height = 4.0f + h + 4.0f;
 }
 
-VIVID_REGISTER(MSEG)
+// Legacy registration removed — use _fr/_au variants instead.
 VIVID_INSPECTOR(MSEG)

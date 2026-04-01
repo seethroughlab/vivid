@@ -123,4 +123,4 @@ struct DrumKit : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProce
     }
 };
 
-VIVID_REGISTER(DrumKit)
+// Legacy registration removed — use _fr/_au variants instead.

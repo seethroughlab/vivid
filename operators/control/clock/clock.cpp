@@ -111,5 +111,5 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     thumb_state_->pipeline_format = ctx->thumbnail_format;
 }
 
-VIVID_REGISTER(Clock)
+// Legacy registration removed — use _fr/_au variants instead.
 VIVID_THUMBNAIL(Clock)

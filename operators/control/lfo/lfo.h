@@ -1,4 +1,8 @@
 #pragma once
+// Internal-only: this dual-cadence LFO class is retained for ChildOp<LFO>
+// consumers (e.g. ModulatedGain, GPU operators). The public operator surface
+// uses lfo_fr / lfo_au variants instead. Remove after Phase 4 migrates
+// ChildOp embedding to the fixed-cadence model.
 
 #include "operator_api/operator.h"
 #include <cmath>
@@ -126,9 +130,9 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"gate",       VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"beat_phase", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"value",      VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"gate",       VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"value",      VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     // ── Shared helpers ──────────────────────────────────────────────────

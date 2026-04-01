@@ -28,11 +28,11 @@ struct StepCounter : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"trigger", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"modulus", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"reset", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"index", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"wrapped", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"trigger", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"modulus", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"reset", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"index", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"wrapped", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     // Shared advance logic: returns wrapped flag
@@ -87,4 +87,4 @@ private:
     int step_ = 0;
 };
 
-VIVID_REGISTER(StepCounter)
+// Legacy registration removed — use _fr/_au variants instead.

@@ -54,9 +54,9 @@ struct Quantizer : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPro
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"value", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"step",  VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"input", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"value", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"step",  VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     // Shared quantization: returns {value, step}
@@ -160,4 +160,4 @@ private:
     }
 };
 
-VIVID_REGISTER(Quantizer)
+// Legacy registration removed — use _fr/_au variants instead.

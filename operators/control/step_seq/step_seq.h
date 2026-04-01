@@ -127,10 +127,10 @@ struct StepSeq : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProce
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"gate",       VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});   // 0
-        out.push_back({"beat_phase", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});   // 1
-        out.push_back({"value",      VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});  // 0
-        out.push_back({"trigger",    VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});  // 1
+        out.push_back({"gate",       VIVID_PORT_SCALAR, VIVID_PORT_INPUT});   // 0
+        out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});   // 1
+        out.push_back({"value",      VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});  // 0
+        out.push_back({"trigger",    VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});  // 1
     }
 
     void process_frame(const VividFrameContext* ctx) override {

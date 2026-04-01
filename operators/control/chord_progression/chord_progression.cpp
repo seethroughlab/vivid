@@ -173,13 +173,13 @@ struct ChordProgression : vivid::OperatorBase, vivid::FrameProcessable, vivid::A
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"beat_phase", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
+        out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
         out.push_back({"notes",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
         out.push_back({"velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
         out.push_back({"gates",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
-        out.push_back({"note",       VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});
-        out.push_back({"vel",        VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});
-        out.push_back({"gate",       VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});
+        out.push_back({"note",       VIVID_PORT_SCALAR,  VIVID_PORT_OUTPUT});
+        out.push_back({"vel",        VIVID_PORT_SCALAR,  VIVID_PORT_OUTPUT});
+        out.push_back({"gate",       VIVID_PORT_SCALAR,  VIVID_PORT_OUTPUT});
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
     }
 
@@ -395,7 +395,7 @@ struct ChordProgression : vivid::OperatorBase, vivid::FrameProcessable, vivid::A
         }
 
         // Detect current chord root
-        // Port 3 is the scalar "note" output (VIVID_PORT_SIGNAL), which the
+        // Port 3 is the scalar "note" output (VIVID_PORT_SCALAR), which the
         // cadence bridge syncs from the audio thread. Ports 0-2 are lane-array
         // ports whose scalar slots are NOT synced by the bridge.
         int current_chord_root = -1;
@@ -578,5 +578,5 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     }
 };
 
-VIVID_REGISTER(ChordProgression)
+// Legacy registration removed — use _fr/_au variants instead.
 VIVID_THUMBNAIL(ChordProgression)

@@ -1,3 +1,3 @@
 #include "phase_to_midi.h"
 
-VIVID_REGISTER(PhaseToMidi)
+// Legacy registration removed — use _fr/_au variants instead.

@@ -1,4 +1,7 @@
 #pragma once
+// Internal-only: this dual-cadence Smooth class is retained for ChildOp<Smooth>
+// consumers. The public operator surface uses smooth_fr / smooth_au variants.
+// Remove after Phase 4 migrates ChildOp embedding.
 
 #include "operator_api/operator.h"
 #include <algorithm>
@@ -49,8 +52,8 @@ struct Smooth : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProces
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"value", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"input", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"value", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     void advance(float target, float dt) {
