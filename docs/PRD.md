@@ -372,7 +372,7 @@ Precedent: vvvv's Spreads, Houdini's per-point attribute operations, and Blender
 - **Broadcasting:** scalar values broadcast into any lane set. A single control knob modulating a 512-lane particle field applies the same value to every lane. Mismatched non-scalar lane sets require explicit reshape operators.
 - **Cross-domain:** lane-bearing control values (e.g., 512 FFT bins) can connect directly to a GPU operator, producing 512 visual elements driven by audio. The Control→GPU bridge handles the data; lanes handle the cardinality.
 - **LLM-friendly:** describing lane-based operations in natural language is natural. "Create 512 particles in a circle, sized by the FFT, colored by frequency" maps directly to a chain of operations on lane-bearing values.
-- **Port types:** `VIVID_PORT_LANE_ARRAY` for variable-length float lane arrays. `VIVID_PORT_STRING_LANES` for variable-length string lane arrays. Payload kind and multiplicity are orthogonal — see [lanes-architecture.md](lanes-architecture.md).
+- **Port types:** `VIVID_PORT_LANE_ARRAY` for variable-length float lane arrays. `VIVID_PORT_STRING_LANES` for variable-length string lane arrays. Payload kind and multiplicity are orthogonal, and differences between float lanes and string lanes are capability differences rather than separate collection models.
 
 ### 5.10 Simulation Zones: Frame-to-Frame State
 

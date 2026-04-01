@@ -163,7 +163,14 @@ vivid/
 - Node IDs are object keys (e.g., `"lfo1"`, `"particles1"`), not UUIDs
 - Parameters in JSON carry current values only — metadata (min, max, tags) lives in operator code
 - Connections: `{"from": "node/port", "to": "node/port"}`
-- Every wire implicitly carries a Spread (ordered collection); single values are Spreads of length 1
+- Every wire carries a value; multiplicity is expressed with lanes. A scalar is a one-lane value.
+
+### Lane Vocabulary
+- Use the canonical multiplicity surfaces: `VIVID_PORT_LANE_ARRAY`, `VIVID_PORT_STRING_LANES`, `lane_array`, and `string_lanes`
+- No new multiplicity-bearing surface should use `spread`
+- Allowed exceptions: clearly marked historical references and legitimate domain terms like stereo spread or spatial spread
+- Locked naming decisions: `string_spread` became `string_lanes`, and `SpreadSourceOp` / `SpreadSinkOp` / `IdentitySpreadSourceOp` became lane-oriented names
+- Treat string-lane work as lane work. Prefer payload-generic lane operators where semantics are shared instead of rebuilding a separate collection model for strings
 
 ### Three Domains
 - **GPU** (cyan `#4ECDC4`): textures, shaders, meshes, particles — Dawn/WebGPU

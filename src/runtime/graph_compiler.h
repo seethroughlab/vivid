@@ -45,7 +45,7 @@ public:
         OperatorRegistry& registry,
         const Options& options);
 
-    // Initialize the frame-side state on a CompiledNode (ports, params, spreads,
+    // Initialize the frame-side state on a CompiledNode (ports, params, lanes,
     // strings, custom ports, file params, GPU resources).
     static void init_frame_state(
         CompiledNode& cn,

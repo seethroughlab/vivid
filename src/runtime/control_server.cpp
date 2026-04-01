@@ -515,7 +515,7 @@ static const CompiledNode* find_node_state(const RuntimeCore& core,
 }
 
 static nlohmann::json sample_node_outputs_snapshot(const CompiledNode& ns,
-                                                    bool include_spreads) {
+                                                    bool include_lanes) {
     nlohmann::json outputs_obj = nlohmann::json::object();
     const VividOperatorDescriptor* desc = ns.loader ? ns.loader->descriptor() : nullptr;
     if (!desc) return outputs_obj;
@@ -542,7 +542,7 @@ static nlohmann::json sample_node_outputs_snapshot(const CompiledNode& ns,
                 !ns.output_string_values[oi].empty()) {
                 out["string"] = ns.output_string_values[oi];
             }
-            if (include_spreads && oi < ns.output_lanes.size() &&
+            if (include_lanes && oi < ns.output_lanes.size() &&
                 !ns.output_lanes[oi].empty()) {
                 nlohmann::json lane_arr = nlohmann::json::array();
                 for (float sv : ns.output_lanes[oi]) {
@@ -550,7 +550,7 @@ static nlohmann::json sample_node_outputs_snapshot(const CompiledNode& ns,
                 }
                 out["lane_array"] = std::move(lane_arr);
             }
-            if (include_spreads && oi < ns.output_string_lanes.size() &&
+            if (include_lanes && oi < ns.output_string_lanes.size() &&
                 !ns.output_string_lanes[oi].empty()) {
                 nlohmann::json lane_arr = nlohmann::json::array();
                 for (const auto& sv : ns.output_string_lanes[oi]) {
@@ -590,14 +590,14 @@ static std::string handle_sample_node_outputs(Graph& graph, RuntimeCore& core,
 
     double duration_seconds = 8.0;
     int interval_ms = 250;
-    bool include_spreads = true;
+    bool include_lanes = true;
 
     if (root.contains("duration_seconds") && root["duration_seconds"].is_number())
         duration_seconds = root["duration_seconds"].get<double>();
     if (root.contains("interval_ms") && root["interval_ms"].is_number())
         interval_ms = root["interval_ms"].get<int>();
-    if (root.contains("include_spreads") && root["include_spreads"].is_boolean())
-        include_spreads = root["include_spreads"].get<bool>();
+    if (root.contains("include_lanes") && root["include_lanes"].is_boolean())
+        include_lanes = root["include_lanes"].get<bool>();
 
     duration_seconds = std::clamp(duration_seconds, 0.0, 60.0);
     interval_ms = std::clamp(interval_ms, 10, 5000);
@@ -615,7 +615,7 @@ static std::string handle_sample_node_outputs(Graph& graph, RuntimeCore& core,
     result["active_cadence"] = (initial->active_cadence == vivid::Cadence::Audio) ? "audio" : "frame";
     result["duration_seconds"] = duration_seconds;
     result["interval_ms"] = interval_ms;
-    result["include_spreads"] = include_spreads;
+    result["include_lanes"] = include_lanes;
 
     nlohmann::json samples_arr = nlohmann::json::array();
     const auto start = std::chrono::steady_clock::now();
@@ -633,7 +633,7 @@ static std::string handle_sample_node_outputs(Graph& graph, RuntimeCore& core,
         nlohmann::json sample = nlohmann::json::object();
         const double t = std::chrono::duration<double>(now - start).count();
         sample["time_seconds"] = t;
-        sample["outputs"] = sample_node_outputs_snapshot(*ns, include_spreads);
+        sample["outputs"] = sample_node_outputs_snapshot(*ns, include_lanes);
         samples_arr.push_back(std::move(sample));
         ++sample_count;
 
@@ -879,13 +879,13 @@ static std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core) {
             env_metrics["audio"] = std::move(audio);
         } else {
             nlohmann::json control = nlohmann::json::object();
-            int64_t spread_out_nonempty = 0;
+            int64_t lane_out_nonempty = 0;
             int64_t scalar_out_nonzero = 0;
             for (const auto& sp : ns.output_lanes)
-                if (!sp.empty()) spread_out_nonempty++;
+                if (!sp.empty()) lane_out_nonempty++;
             for (float v : ns.output_values)
                 if (v != 0.0f) scalar_out_nonzero++;
-            control["non_empty_lane_outputs"] = spread_out_nonempty;
+            control["non_empty_lane_outputs"] = lane_out_nonempty;
             control["non_zero_scalar_outputs"] = scalar_out_nonzero;
             env_metrics["control"] = std::move(control);
         }

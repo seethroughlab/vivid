@@ -576,7 +576,7 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
 
         // Lane cardinality badge: show "×N" at wire midpoint for multi-lane wires.
         // Use semantic lane_count from compiled edge (primary), falling back to
-        // materialized spread length when semantic count is unavailable.
+        // materialized lane length when semantic count is unavailable.
         float badge_offset = 0.0f;
         {
             size_t lane_n = 0;

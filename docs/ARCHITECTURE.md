@@ -18,11 +18,11 @@ C++ was chosen over Zig and Rust for one overriding reason: library integration.
 
 **Operator compilation for hot-reload:** during development, operators are compiled by invoking the system C++ compiler as a subprocess. Vivid detects which compiler is available and invokes it directly. For future zero-friction onboarding (no system compiler required), a bundled compiler option can be added later — Zig's `zig c++` command is a single-binary C++ compiler that could serve this role without requiring Vivid's runtime to be written in Zig.
 
-## 5.3 Three Domains
+## 5.3 Operator Families
 
-The system has three operator domains — conceptual groupings that describe what kind of data an operator works with and where it appears in the UI. These are distinct from the runtime's two **cadences** (frame-rate ~60 Hz, audio-rate ~48 kHz), which determine *when* an operator executes. See the [runtime architecture](vivid-runtime-architecture.md) for the cadence model.
+Vivid operators fall into three families based on the kind of data they work with and where they appear in the UI. These are distinct from the runtime's two **cadences** (frame-rate ~60 Hz, audio-rate ~48 kHz), which determine *when* an operator executes. See the [runtime architecture](vivid-runtime-architecture.md) for the cadence model.
 
-- **Control** — floats, ints, bools, events, strings, spreads. Runs at frame cadence on the main thread. Some control operators are audio-capable and can be promoted to audio cadence for sample-accurate modulation.
+- **Control** — floats, ints, bools, events, strings, lane arrays. Runs at frame cadence on the main thread. Some control operators are audio-capable and can be promoted to audio cadence for sample-accurate modulation.
 - **Audio** — sample buffers at audio cadence (48 kHz typical). Runs on a real-time audio thread managed by miniaudio. Operators produce a buffer every callback, even if silence.
 - **GPU** — textures, shaders, meshes, compute buffers. Runs at frame cadence on the main thread. Operators execute as Dawn/WebGPU render/compute passes.
 
@@ -30,21 +30,19 @@ The system has three operator domains — conceptual groupings that describe wha
 
 Both cadences are pull-based — frame-rate is driven by the display refresh, audio-rate by the audio device callback. Frame and audio executors process their respective nodes in topological order each tick/buffer. Cross-cadence data flows through the `CadenceBridge` using lock-free double-buffered snapshots, so neither cadence ever waits on the other.
 
-## 5.5 Domain Bridges: Control as Hub
+## 5.5 Cadence Bridges
 
-**Decision: Control sits at the center of a star topology.** Audio and GPU never communicate directly — everything routes through Control. This simplifies the architecture from six specialized bridges to two bidirectional mechanisms:
+**Decision: Cross-cadence data flows through two bidirectional bridges.** Audio and GPU never communicate directly — everything routes through the frame-rate side. This simplifies the architecture to two boundary mechanisms:
 
-### Control ↔ Audio
-- **Control → Audio:** lock-free ring buffer or atomic. Audio callback reads at next block boundary. Latency: ~5ms at 256 samples / 48kHz. (Implemented: `ParamSnapshot` double-buffer with atomic index swap. Spread data uses `LaneSnapshot` — a fixed-size 64-element struct copied alongside scalar params, avoiding audio-thread heap allocation.)
-- **Audio → Control:** audio analysis operators write results into a lock-free queue. Control nodes poll at whatever rate they like. (Implemented: `AnalysisSnapshot` double-buffer carries RMS, peak, waveform, and per-port `LaneSnapshot` data back to the control domain.)
+### Frame ↔ Audio (`CadenceBridge`)
+- **Frame → Audio:** `ParamSnapshot` double-buffer with atomic index swap. Lane-bearing data uses `LaneSnapshot` — a fixed-size 64-element struct copied alongside scalar params, avoiding audio-thread heap allocation. Latency: ~5ms at 256 samples / 48kHz.
+- **Audio → Frame:** `AnalysisSnapshot` double-buffer carries RMS, peak, waveform, and per-port `LaneSnapshot` data back to the frame side.
 
-### Control ↔ GPU
-- **Control → GPU:** atomics or double-buffered parameter store. GPU render loop picks up changes next frame. Latency: ~16ms at 60fps.
-- **GPU → Control:** async readback from GPU staging buffers. Control emits events when data lands. Latency: 1–2 frames.
+### CPU ↔ GPU
+- **CPU → GPU:** parameter store updated per frame. GPU operators upload lane data via `wgpuQueueWriteBuffer` into storage buffers. Latency: ~16ms at 60fps.
+- **GPU → CPU:** async readback from GPU staging buffers. Frame-rate nodes receive data when it lands. Latency: 1–2 frames.
 
-**Why not direct Audio ↔ GPU?** Audio and Control both live on the CPU. The "hop" through Control is just a CPU-side buffer copy (nanoseconds), followed by the same CPU→GPU upload that would happen regardless. The only real domain boundary is CPU↔GPU, and that crossing happens exactly once no matter how the data is routed.
-
-**Backup approach:** If six explicit per-pair bridges prove to share enough machinery during implementation, a unified port abstraction may emerge naturally from the bottom up.
+**Why not direct Audio ↔ GPU?** Audio and frame-rate operators both live on the CPU. The "hop" through the frame side is just a CPU-side buffer copy (nanoseconds), followed by the same CPU→GPU upload that would happen regardless. The only real boundary is CPU↔GPU, and that crossing happens exactly once no matter how the data is routed.
 
 ## 5.6 Port Type System
 
@@ -215,7 +213,60 @@ Precedent: vvvv's Spreads, Houdini's per-point attribute operations, and Blender
 - **LLM-friendly:** describing lane-based operations in natural language is natural. "Create 512 particles in a circle, sized by the FFT, colored by frequency" maps directly to a chain of operations on lane-bearing values.
 - **Port types:** `VIVID_PORT_LANE_ARRAY` is the port type for variable-length float lane arrays. `VIVID_PORT_STRING_LANES` is the port type for variable-length string lane arrays. Texture and audio ports don't have a lane-array variant — multiple instances use multiple ports.
 - **Cross-domain bridge implementation:** Control↔Audio uses `LaneSnapshot` (fixed 64-element struct) inside the double-buffered `ParamSnapshot`/`AnalysisSnapshot` bridges — no heap allocation on the audio thread. Control→GPU uses WebGPU storage buffers: the operator uploads lane data via `wgpuQueueWriteBuffer` into a `ReadOnlyStorage` binding that the fragment shader reads as `array<f32>`.
-- **Lane identity:** for stateful lane sets (polyphonic voices, persistent simulations), lanes carry stable identity tokens (`lane_id`) that survive reordering and compaction. Operators access per-lane persistent state via `vivid_lane_state()` keyed by `lane_id`, not positional index. See [lanes-architecture.md](lanes-architecture.md) for the full model.
+- **Lane identity:** for stateful lane sets (polyphonic voices, persistent simulations), lanes carry stable identity tokens (`lane_id`) that survive reordering and compaction. Operators access per-lane persistent state via `vivid_lane_state()` keyed by `lane_id`, not positional index.
+
+### 5.9.1 Core Value Model
+
+The semantic unit that moves through the graph is:
+
+- **payload kind + lane set**
+
+Those axes are independent:
+
+- **payload kind** answers what each lane carries: scalar float, string, audio buffer, texture, or custom payload.
+- **lane set** answers how many parallel elements the value contains and how those elements relate.
+- **cadence** answers when the value is produced and consumed. It is separate from both payload kind and multiplicity.
+
+This separation is what lets Vivid say "512 FFT bins driving 512 particles" without inventing a separate collection system for each payload kind or cadence.
+
+### 5.9.2 Lane Behaviors
+
+Operators participate in the lane model in four ways:
+
+- **Pointwise** — preserve the upstream lane set and apply the operator independently per lane.
+- **Structural** — create, reshape, remap, or otherwise legalize a new lane arrangement.
+- **Reduction** — intentionally collapse many lanes into fewer lanes.
+- **Kernel** — read across lanes while still operating inside the same multiplicity system.
+
+These are semantic behaviors, not transport details. They explain how an operator treats multiplicity regardless of whether the underlying payload is floats, strings, or something else.
+
+### 5.9.3 Legality and Provenance
+
+Lane compatibility is stricter than "the counts happen to match."
+
+- Matching lane count is necessary, but not sufficient, for elementwise alignment.
+- Lane-set provenance is the default proof that two multi-lane values are aligned lane-for-lane.
+- Structural operators are the explicit places where reshaping, remapping, or broadcasting becomes legal.
+
+This is why Vivid can broadcast a scalar into any lane set by default while still requiring explicit reshape operators such as `Repeat`, `Tile`, or `Select` when two non-scalar lane sets do not already share provenance.
+
+### 5.9.4 Lane Identity
+
+Not every lane set needs identity semantics. Vivid distinguishes between:
+
+- **positional lane sets** — only the order and count matter
+- **identity-bearing lane sets** — lanes carry stable identity tokens that matter across time
+
+Identity-bearing lane sets are what make polyphonic voices, persistent simulations, and other stateful pointwise systems behave correctly. Reordering or compaction may change positional index, but stable `lane_id` is what preserves per-lane state.
+
+### 5.9.5 Capability Differences, Not Model Differences
+
+Float lanes and string lanes are both first-class lane-bearing values.
+
+- `VIVID_PORT_LANE_ARRAY` is the float-lane transport.
+- `VIVID_PORT_STRING_LANES` is the string-lane transport.
+
+The storage, operators, or backend support available to those payload kinds may differ, but those are capability differences. They do not create separate multiplicity models.
 
 ## 5.10 Simulation Zones: Frame-to-Frame State
 

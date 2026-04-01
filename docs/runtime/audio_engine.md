@@ -30,6 +30,10 @@ double-buffered snapshot pairs with lock-free atomic index flips:
 - **`AnalysisSnapshot`** (audio → frame): RMS, peak, waveform ring buffers, float scalar outputs,
   lane outputs, error state
 
+These snapshots are runtime transport, not a second multiplicity model. They carry the same
+lane-bearing values described in the top-level architecture, packaged into audio-safe transfer
+structures for the cadence boundary.
+
 ### Frame → Audio
 
 `CadenceBridge::push_to_audio()` iterates `frame_to_audio_edges` (snapshot edges) and copies

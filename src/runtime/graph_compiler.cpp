@@ -158,7 +158,7 @@ static float remap_to_scale(const ConnectionDef& c) {
 // Node initialization helpers
 // ---------------------------------------------------------------------------
 
-// Initialize the frame-side state on a CompiledNode (ports, params, spreads,
+// Initialize the frame-side state on a CompiledNode (ports, params, lanes,
 // strings, custom ports, file params, GPU resources).
 void GraphCompiler::init_frame_state(CompiledNode& cn,
                                      const VividOperatorDescriptor* desc,
@@ -792,7 +792,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                     e.data_type = VIVID_PORT_TEXTURE;
                 } else if (from_port_type == VIVID_PORT_LANE_ARRAY ||
                            to_port_type == VIVID_PORT_LANE_ARRAY) {
-                    // SPREAD on either end → treat as spread edge
+                    // LANE_ARRAY on either end → treat as lane edge
                     // (SIGNAL↔SPREAD is compatible for control types)
                     e.data_type = VIVID_PORT_LANE_ARRAY;
                 } else if (vivid_is_custom_port_type(from_port_type) &&

@@ -33,6 +33,10 @@ GPU nodes run at frame cadence on the main thread, with `GpuContext` providing t
 All operators come from the same `OperatorRegistry`/`OperatorLoader` system.
 Audio-cadence operators must never allocate or block.
 
+Lane-bearing values participate in this cadence model without creating a second collection system.
+Cross-cadence transport copies lane-bearing values through `CadenceBridge` snapshots, but the
+lane model itself remains the same on both sides of the boundary.
+
 ## Main Loop (main.cpp)
 
 Each frame:
