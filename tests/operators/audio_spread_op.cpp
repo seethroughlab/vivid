@@ -1,6 +1,6 @@
 // Audio test operator for cross-cadence spread testing.
 // Reads CONTROL_SPREAD input, copies to CONTROL_SPREAD output,
-// generates DC audio output = sum of spread values.
+// generates DC audio output = sum of lane values.
 #include "operator_api/operator.h"
 #include <cstring>
 

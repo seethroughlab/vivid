@@ -293,7 +293,7 @@ void CadenceBridge::pull_from_audio(CompiledGraph& cg) {
                 float_ord++;
             }
         }
-        // Also sync spread outputs
+        // Also sync lane outputs
         if (si < snap.lane_outputs.size()) {
             for (uint32_t p = 0; p < cn.output_port_count && p < snap.lane_outputs[si].size(); ++p) {
                 const auto& src = snap.lane_outputs[si][p];

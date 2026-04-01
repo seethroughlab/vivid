@@ -1,4 +1,4 @@
-// Test operator: accumulates per-lane state from spread input values.
+// Test operator: accumulates per-lane state from lane input values.
 //
 // Strategy-independent operator used to test identity compaction.
 // Each lane reads its value from the input spread (indexed by lane_index),

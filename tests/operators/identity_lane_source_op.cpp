@@ -22,7 +22,7 @@ struct IdentityLaneSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
 
     // active_mask: bitmask of which voices are active (default: 0xF = first 4)
     vivid::Param<int> active_mask{"active_mask", 0xF, 0, 255};
-    // base: multiplier for spread values (voice i outputs base * (i+1))
+    // base: multiplier for lane values (voice i outputs base * (i+1))
     vivid::Param<float> base{"base", 1.0f, 0.0f, 100.0f};
 
     // Fixed lane IDs per voice slot (deterministic, non-overlapping).

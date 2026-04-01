@@ -3,7 +3,7 @@
 // Verifies that LaneSlewOp (strategy-independent, VIVID_LANE_POINTWISE)
 // runs correctly under LoopBased execution:
 // - Compiler assigns LoopBased strategy
-// - Runtime drives per-lane loop from spread input
+// - Runtime drives per-lane loop from lane input
 // - Each lane accumulates independent slew state via vivid_lane_state()
 // - Output audio buffers contain per-lane data at correct offsets
 //

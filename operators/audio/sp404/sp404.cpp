@@ -101,7 +101,7 @@ struct SP404 : vivid::OperatorBase, vivid::AudioProcessable {
             return;
         }
 
-        // Read spread inputs
+        // Read lane inputs
         LaneInput gates_in = read_lane_input(ctx->input_lanes, 0);
         LaneInput notes_in = read_lane_input(ctx->input_lanes, 1);
         LaneInput vels_in  = read_lane_input(ctx->input_lanes, 2);

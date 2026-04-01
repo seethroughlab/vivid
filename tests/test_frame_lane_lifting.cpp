@@ -1,7 +1,7 @@
 // Test: frame-domain per-lane lifting (Phase C).
 //
 // Verifies that frame-rate operators with kStrategyIndependent are
-// evaluated per-lane when receiving structural spread input:
+// evaluated per-lane when receiving structural lane input:
 // 1. Compiler assigns LoopBased frame execution strategy
 // 2. Frame executor drives per-lane loop, extracting per-lane input from spreads
 // 3. Per-lane output is written back to output spread

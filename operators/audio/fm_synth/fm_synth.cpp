@@ -122,21 +122,21 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
             const auto& notes_sp = ctx->input_lanes[4];
             const auto& vels_sp  = ctx->input_lanes[5];
             if (gates_sp.length > 0 && gates_sp.data) {
-                float spread_gate = 0.0f;
-                float spread_note = 60.0f;
+                float lane_gate = 0.0f;
+                float lane_note = 60.0f;
                 for (uint32_t s = 0; s < gates_sp.length; ++s) {
                     if (gates_sp.data[s] > 0.5f) {
-                        spread_gate = gates_sp.data[s];
+                        lane_gate = gates_sp.data[s];
                         if (notes_sp.data && s < notes_sp.length)
-                            spread_note = notes_sp.data[s];
+                            lane_note = notes_sp.data[s];
                         if (vels_sp.data && s < vels_sp.length)
                             vel_scale = vels_sp.data[s];
                         break;
                     }
                 }
-                gate_cv = spread_gate;
+                gate_cv = lane_gate;
                 // Convert MIDI note to freq_cv offset from carrier_freq
-                float target_freq = 440.0f * std::pow(2.0f, (spread_note - 69.0f) / 12.0f);
+                float target_freq = 440.0f * std::pow(2.0f, (lane_note - 69.0f) / 12.0f);
                 freq_cv = 12.0f * std::log2f(target_freq / carrier_freq.value);
             }
         }

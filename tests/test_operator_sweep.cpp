@@ -279,7 +279,7 @@ static bool smoke_control(vivid::OperatorLoader& loader, void* inst,
     std::vector<float> inputs(n_in_total, 0.0f);
     std::vector<float> outputs(n_out_total, 0.0f);
 
-    // Allocate empty spread ports so operators that read them don't crash.
+    // Allocate empty lane ports so operators that read them don't crash.
     std::vector<VividLanePort> in_spreads(n_lane_in, {nullptr, 0, 0});
     std::vector<VividLanePort> out_spreads(n_lane_out, {nullptr, 0, 0});
 

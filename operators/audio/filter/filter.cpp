@@ -109,10 +109,10 @@ struct Filter : vivid::OperatorBase, vivid::AudioProcessable {
         float voice_freq = 0.0f;
         if (ctx->input_lanes) {
             uint32_t ci = ctx->lane_index;
-            auto& cutoff_mod_sp = ctx->input_lanes[0];  // cutoff_mod spread
+            auto& cutoff_mod_sp = ctx->input_lanes[0];  // cutoff_mod lane
             if (cutoff_mod_sp.data && ci < cutoff_mod_sp.length)
                 cutoff_mod_val = cutoff_mod_sp.data[ci];
-            auto& freq_sp = ctx->input_lanes[1];  // frequencies spread
+            auto& freq_sp = ctx->input_lanes[1];  // frequencies lane
             if (freq_sp.data && ci < freq_sp.length)
                 voice_freq = freq_sp.data[ci];
         }
@@ -122,7 +122,7 @@ struct Filter : vivid::OperatorBase, vivid::AudioProcessable {
         if (cutoff_cv_val != 0.0f)
             mod_cutoff *= std::pow(2.0f, cutoff_cv_val / 12.0f);
 
-        // Per-voice cutoff modulation from spread (±4 octaves)
+        // Per-voice cutoff modulation from lane input (±4 octaves)
         if (cutoff_mod_val != 0.0f)
             mod_cutoff *= std::pow(2.0f, cutoff_mod_val * 4.0f);
 

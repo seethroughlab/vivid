@@ -60,7 +60,7 @@ private:
         if (!in_lanes || !out_lanes) return;
 
         // Collect connected (non-empty) lane inputs
-        // Spread inputs are at port indices 1..4 (a,b,c,d); port 0 is beat_phase (float)
+        // Lane inputs are at port indices 1..4 (a,b,c,d); port 0 is beat_phase (float)
         const VividLanePort* inputs[4];
         int input_indices[4];
         int input_count = 0;
