@@ -1207,7 +1207,7 @@ int main() {
         // Semantically mismatched ports — accepted at data level
         check(g.add_connection("audio_src", "audio_out", "vis_node", "control_in"),
               "audio→control connection accepted by data model");
-        check(g.add_connection("audio_src", "spread_out", "vis_node", "gpu_in"),
+        check(g.add_connection("audio_src", "lane_out", "vis_node", "gpu_in"),
               "lane_array→gpu connection accepted by data model");
 
         const auto& c0 = g.connections()[0];

@@ -488,7 +488,7 @@ static void test_bridge_zero_value_passthrough() {
 
 // ---------------------------------------------------------------------------
 
-static void test_push_spread_preserves_lane_set_id() {
+static void test_push_lane_preserves_lane_set_id() {
     std::fprintf(stderr, "\n--- push_to_audio: lane-array lane_set_id preserved ---\n");
 
     // Frame node 0 → audio node 1 via SPREAD snapshot edge
@@ -540,7 +540,7 @@ int main() {
     test_propagate_audio_display_params();
     test_propagate_respects_param_lock();
     test_bridge_zero_value_passthrough();
-    test_push_spread_preserves_lane_set_id();
+    test_push_lane_preserves_lane_set_id();
 
     std::fprintf(stderr, "\n%s (%d failures)\n", failures == 0 ? "PASSED" : "FAILED", failures);
     return failures > 0 ? 1 : 0;

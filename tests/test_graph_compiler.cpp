@@ -427,7 +427,7 @@ static void test_lane_mismatch_fails(const std::string& build_dir) {
 // Test: Audio lane lifting from structural lane input
 // ---------------------------------------------------------------------------
 
-static void test_audio_lane_lift_from_spread(const std::string& build_dir) {
+static void test_audio_lane_lift_from_lane_input(const std::string& build_dir) {
     std::fprintf(stderr, "\n--- compile: audio lane lift from lane input ---\n");
 
     const std::string staging = build_dir + "/.test_audio_lane_lift_staging";
@@ -564,7 +564,7 @@ int main(int argc, char* argv[]) {
     test_node_id_to_index();
     test_lane_behavior_from_descriptor(build_dir);
     test_lane_mismatch_fails(build_dir);
-    test_audio_lane_lift_from_spread(build_dir);
+    test_audio_lane_lift_from_lane_input(build_dir);
     test_loop_based_strategy(build_dir);
 
     std::fprintf(stderr, "\n%s (%d failures)\n", failures == 0 ? "PASSED" : "FAILED", failures);

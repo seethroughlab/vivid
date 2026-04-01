@@ -396,7 +396,7 @@ static void test_audio_state_signal_outputs() {
     check(a.signal_output_extractions[1].float_ordinal == 1, "peak float_ordinal 1");
 }
 
-static void test_audio_state_spread_flags() {
+static void test_audio_state_lane_flags() {
     std::fprintf(stderr, "\n--- init_audio_state: lane/string/custom flags ---\n");
 
     VividPortDescriptor ports[] = {
@@ -475,7 +475,7 @@ int main() {
     test_audio_state_basic();
     test_audio_state_float_cv();
     test_audio_state_signal_outputs();
-    test_audio_state_spread_flags();
+    test_audio_state_lane_flags();
     test_audio_state_different_buffer_sizes();
 
     std::fprintf(stderr, "\n%s (%d failures)\n", failures == 0 ? "PASSED" : "FAILED", failures);

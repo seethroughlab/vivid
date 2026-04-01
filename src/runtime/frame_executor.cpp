@@ -508,13 +508,13 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             ctx.preferred_tex_height = 0;
 
             // Lane metadata.
-            uint32_t max_spread_len = 0;
+            uint32_t max_lane_len = 0;
             for (uint32_t p = 0; p < cn.input_port_count; ++p) {
                 if (p < cn.input_lanes.size() && !cn.input_lanes[p].empty())
-                    max_spread_len = std::max(max_spread_len,
+                    max_lane_len = std::max(max_lane_len,
                         static_cast<uint32_t>(cn.input_lanes[p].size()));
             }
-            ctx.lane_count = max_spread_len > 1 ? max_spread_len : 1;
+            ctx.lane_count = max_lane_len > 1 ? max_lane_len : 1;
             ctx.lane_index = 0;
             ctx.lane_set_id = 0;
             for (const auto& ils : cn.input_lane_sets) {
