@@ -116,9 +116,15 @@ int main(int argc, char* argv[]) {
     {
         std::fprintf(stderr, "\n=== Test 2: Frame-only clock → audio-only osc ===\n");
         vivid::Graph g;
-        g.add_node("clock", "clock_fr");
-        g.add_node("osc", "Oscillator");
-        g.add_connection("clock", "beat_phase", "osc", "freq_cv");
+        g.load_from_string(R"({
+            "nodes": {
+                "clock": { "type": "clock_fr" },
+                "osc":   { "type": "Oscillator" }
+            },
+            "connections": [
+                { "from": "clock/beat_phase", "to": "osc/freq_cv", "bridge": "hold" }
+            ]
+        })");
 
         vivid::RuntimeCore runtime;
         check(runtime.build(g, registry), "build succeeds");

@@ -140,15 +140,13 @@ struct MicInput : vivid::OperatorBase, vivid::AudioProcessable {
         uint32_t N = ctx->buffer_size;
 
         bool is_muted = mute.int_value() != 0;
-        float gain_cv_val = ctx->input_float_values ? ctx->input_float_values[0] : 1.0f;
+        float gain_cv_val = 1.0f;
         float effective_gain = is_muted ? 0.0f : gain.value * gain_cv_val;
 
         if (!device_active_.load(std::memory_order_acquire)) {
             // No active capture device — output silence
             std::memset(out_l, 0, N * sizeof(float));
             std::memset(out_r, 0, N * sizeof(float));
-            ctx->output_float_values[0] = rms_;
-            ctx->output_float_values[1] = peak_;
             return;
         }
 
@@ -181,8 +179,6 @@ struct MicInput : vivid::OperatorBase, vivid::AudioProcessable {
         rms_  = alpha * rms_  + (1.0f - alpha) * rms_raw;
         peak_ = alpha * peak_ + (1.0f - alpha) * peak_raw;
 
-        ctx->output_float_values[0] = rms_;
-        ctx->output_float_values[1] = peak_;
     }
 
     // -----------------------------------------------------------------------

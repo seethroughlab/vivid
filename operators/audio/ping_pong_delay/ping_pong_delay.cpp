@@ -172,8 +172,8 @@ struct PingPongDelay : vivid::OperatorBase, vivid::AudioProcessable {
         float* R_out = ctx->output_buffers[0] + frames;
 
         // CV offsets
-        float time_cv_val = ctx->input_float_values ? ctx->input_float_values[0] : 0.0f;
-        float fb_cv_val   = ctx->input_float_values ? ctx->input_float_values[1] : 0.0f;
+        float time_cv_val = 0.0f;
+        float fb_cv_val   = 0.0f;
 
         float t = time.value + time_cv_val;
         if (t < 10.0f)   t = 10.0f;

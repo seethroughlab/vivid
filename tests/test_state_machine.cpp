@@ -61,8 +61,6 @@ struct SMDriver {
         ctx.delta_time = 0.016;
         ctx.frame = frame++;
         ctx.param_values = param_values.data();
-        ctx.input_float_values = input_values;
-        ctx.output_float_values = output_values;
         ctx.buffer_size = 0;
         ctx.sample_rate = 48000;
         sm.process_audio(&ctx);

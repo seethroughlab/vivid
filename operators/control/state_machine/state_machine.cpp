@@ -104,10 +104,10 @@ struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
 
     void process_audio(const VividAudioContext* ctx) override {
         // 1. Read inputs
-        float beat_phase = ctx->input_float_values[0];
-        float trigger_in = ctx->input_float_values[1];
-        float reset_in   = ctx->input_float_values[2];
-        float signal_in  = ctx->input_float_values[3];
+        float beat_phase = 0.0f;
+        float trigger_in = 0.0f;
+        float reset_in   = 0.0f;
+        float signal_in  = 0.0f;
 
         // 2. Read params
         int   num_states     = static_cast<int>(ctx->param_values[0]);
@@ -275,12 +275,17 @@ struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
         float trigger_out = transition_fired ? 1.0f : 0.0f;
 
         // 10. Write outputs
-        ctx->output_float_values[0] = state_out;
-        ctx->output_float_values[1] = progress_out;
-        ctx->output_float_values[2] = trigger_out;
-        ctx->output_float_values[3] = bar_out;
-        ctx->output_float_values[4] = beat_out;
-        ctx->output_float_values[5] = xfade_out;
+        float local_out[6];
+        local_out[0] = state_out;
+        local_out[1] = progress_out;
+        local_out[2] = trigger_out;
+        local_out[3] = bar_out;
+        local_out[4] = beat_out;
+        local_out[5] = xfade_out;
+        for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
+            for (int j = 0; j < 6; ++j)
+                ctx->output_buffers[j][i] = local_out[j];
+        }
     }
 };
 

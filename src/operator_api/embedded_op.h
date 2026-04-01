@@ -129,8 +129,6 @@ public:
             audio_ctx.output_channel_counts = nullptr;
             audio_ctx.input_lanes  = c_input_lanes_.empty() ? nullptr : c_input_lanes_.data();
             audio_ctx.output_lanes = c_output_lanes_.empty() ? nullptr : c_output_lanes_.data();
-            audio_ctx.input_float_values  = input_values_.empty() ? nullptr : input_values_.data();
-            audio_ctx.output_float_values = output_values_.empty() ? nullptr : output_values_.data();
             audio_ctx.custom_inputs       = nullptr;
             audio_ctx.custom_input_count  = 0;
             audio_ctx.custom_outputs      = nullptr;

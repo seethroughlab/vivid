@@ -186,11 +186,6 @@ struct AudioAnalysis : vivid::OperatorBase, vivid::AudioProcessable {
         zcr_      = alpha * zcr_      + (1.0f - alpha) * zcr_raw;
 
         // Write control float outputs (indices match float output port order)
-        ctx->output_float_values[0] = rms_;
-        ctx->output_float_values[1] = peak_;
-        ctx->output_float_values[2] = centroid_;
-        ctx->output_float_values[3] = flux_;
-        ctx->output_float_values[4] = zcr_;
     }
 
 private:

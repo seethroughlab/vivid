@@ -101,8 +101,8 @@ struct Filter : vivid::OperatorBase, vivid::AudioProcessable {
         float sr = static_cast<float>(ctx->sample_rate);
 
         // Signal CV inputs
-        float cutoff_cv_val    = ctx->input_float_values ? ctx->input_float_values[0] : 0.0f;
-        float resonance_cv_val = ctx->input_float_values ? ctx->input_float_values[1] : 0.0f;
+        float cutoff_cv_val    = 0.0f;
+        float resonance_cv_val = 0.0f;
 
         // Spread inputs via lane_index (for lane-lifted poly chains)
         float cutoff_mod_val = 0.0f;

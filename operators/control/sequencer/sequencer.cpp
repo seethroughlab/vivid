@@ -80,7 +80,7 @@ struct Sequencer : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPro
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        compute(ctx->input_float_values[0], ctx->input_float_values[1],
+        compute(0.0f, 0.0f,
                 ctx->input_lanes, ctx->output_float_values,
                 ctx->custom_outputs, ctx->custom_output_count);
     }

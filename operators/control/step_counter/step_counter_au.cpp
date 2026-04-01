@@ -32,9 +32,9 @@ struct StepCounterAu : vivid::OperatorBase, vivid::AudioProcessable {
             initialized_ = true;
         }
 
-        float trigger = ctx->input_float_values[0];
-        int modulus = std::max(1, static_cast<int>(std::floor(ctx->input_float_values[1])));
-        bool reset = ctx->input_float_values[2] > 0.5f;
+        float trigger = 0.0f;
+        int modulus = std::max(1, static_cast<int>(std::floor(0.0f)));
+        bool reset = 0.0f > 0.5f;
 
         bool wrapped = false;
         if (reset) {

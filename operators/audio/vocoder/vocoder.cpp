@@ -79,7 +79,7 @@ struct Vocoder : vivid::OperatorBase, vivid::AudioProcessable {
         float* out    = ctx->output_buffers[0];
         uint32_t frames = ctx->buffer_size;
 
-        float speed_cv = ctx->input_float_values ? ctx->input_float_values[0] : 0.0f;
+        float speed_cv = 0.0f;
         float speed_ms = envelope_speed.value + speed_cv;
         if (speed_ms < 1.0f)   speed_ms = 1.0f;
         if (speed_ms > 500.0f) speed_ms = 500.0f;

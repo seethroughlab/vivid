@@ -48,7 +48,7 @@ struct PhaseToMidi : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        compute(ctx->input_float_values[0], ctx->custom_outputs, ctx->custom_output_count);
+        compute(0.0f, ctx->custom_outputs, ctx->custom_output_count);
     }
 
 private:

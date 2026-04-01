@@ -36,7 +36,7 @@ struct SmoothAu : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        float target = ctx->input_float_values[0];
+        float target = 0.0f;
         float sample_dt = 1.0f / static_cast<float>(ctx->sample_rate);
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
             core_.advance(target, sample_dt, rise_time.value, fall_time.value);

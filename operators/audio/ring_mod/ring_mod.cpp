@@ -62,7 +62,7 @@ struct RingMod : vivid::OperatorBase, vivid::AudioProcessable {
         float* out = ctx->output_buffers[0];
         uint32_t frames = ctx->buffer_size;
 
-        float freq_cv = ctx->input_float_values ? ctx->input_float_values[0] : 0.0f;
+        float freq_cv = 0.0f;
         float freq = carrier_freq.value * std::pow(2.0f, freq_cv / 12.0f);
         if (freq < 20.0f)    freq = 20.0f;
         if (freq > 20000.0f) freq = 20000.0f;

@@ -364,8 +364,6 @@ static bool smoke_audio(vivid::OperatorLoader& loader, void* inst,
     ctx.input_buffers       = in_ptrs.empty()       ? nullptr : in_ptrs.data();
     ctx.output_buffers      = out_ptrs.empty()       ? nullptr : out_ptrs.data();
     ctx.param_values        = params.empty()         ? nullptr : params.data();
-    ctx.input_float_values  = float_inputs.empty()   ? nullptr : float_inputs.data();
-    ctx.output_float_values = float_outputs.empty()  ? nullptr : float_outputs.data();
 
     // Process several buffers to let state settle.
     for (int b = 0; b < 4; b++) {
@@ -529,8 +527,6 @@ static bool test_param_boundary(vivid::OperatorLoader& loader, void* inst,
             ctx.input_buffers       = ip.empty() ? nullptr : ip.data();
             ctx.output_buffers      = op.empty() ? nullptr : op.data();
             ctx.param_values        = params.empty() ? nullptr : params.data();
-            ctx.input_float_values  = fi.empty() ? nullptr : fi.data();
-            ctx.output_float_values = fo.empty() ? nullptr : fo.data();
             loader.process_audio(inst, &ctx);
             for (auto& b : obs)
                 if (!is_finite_buf(b.data(), kF)) return false;

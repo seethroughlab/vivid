@@ -23,11 +23,16 @@ struct LaneMetadataAudioOp : vivid::OperatorBase, vivid::AudioProcessable {
         if (ctx->input_buffers && ctx->output_buffers)
             std::memcpy(ctx->output_buffers[0], ctx->input_buffers[0],
                         ctx->buffer_size * sizeof(float));
-        // Write lane metadata to float signal outputs
-        if (ctx->output_float_values) {
-            ctx->output_float_values[0] = static_cast<float>(ctx->lane_count);
-            ctx->output_float_values[1] = static_cast<float>(ctx->lane_index);
-            ctx->output_float_values[2] = static_cast<float>(ctx->lane_set_id);
+        // Write lane metadata to signal output buffers
+        {
+            float vals[3];
+            vals[0] = static_cast<float>(ctx->lane_count);
+            vals[1] = static_cast<float>(ctx->lane_index);
+            vals[2] = static_cast<float>(ctx->lane_set_id);
+            for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
+                for (int j = 0; j < 3; ++j)
+                    ctx->output_buffers[j][i] = vals[j];
+            }
         }
     }
 };

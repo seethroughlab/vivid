@@ -19,7 +19,6 @@ void CadenceBridge::build(const CompiledGraph& cg) {
     // Allocate ParamSnapshot arrays
     for (auto& snap : snapshots_) {
         snap.node_params.resize(audio_count);
-        snap.float_input_values.resize(audio_count);
         snap.lane_inputs.resize(audio_count);
         snap.input_string_values.resize(audio_count);
         snap.custom_inputs.resize(audio_count);
@@ -30,7 +29,6 @@ void CadenceBridge::build(const CompiledGraph& cg) {
             const auto& cn = cg.nodes[gi];
             const auto& a = *cn.audio;
             snap.node_params[i] = cn.param_values;
-            snap.float_input_values[i] = a.float_input_defaults;
             snap.lane_inputs[i].resize(cn.input_port_count);
             snap.input_string_values[i].assign(cn.input_port_count, "");
             snap.custom_inputs[i].resize(cn.input_port_count);
@@ -44,7 +42,6 @@ void CadenceBridge::build(const CompiledGraph& cg) {
         snap.waveform.resize(audio_count);
         for (auto& w : snap.waveform) w.fill(0.0f);
         snap.lane_outputs.resize(audio_count);
-        snap.float_outputs.resize(audio_count);
         snap.errored.assign(audio_count, false);
         snap.error_msgs.resize(audio_count);
         for (auto& msg : snap.error_msgs) msg.fill('\0');
@@ -52,9 +49,7 @@ void CadenceBridge::build(const CompiledGraph& cg) {
         for (uint32_t i = 0; i < audio_count; ++i) {
             uint32_t gi = cg.audio_order[i];
             const auto& cn = cg.nodes[gi];
-            const auto& a = *cn.audio;
             snap.lane_outputs[i].resize(cn.output_port_count);
-            snap.float_outputs[i].resize(a.float_output_count, 0.0f);
         }
     }
 
@@ -124,9 +119,7 @@ void CadenceBridge::push_to_audio(const CompiledGraph& cg) {
     for (uint32_t i = 0; i < static_cast<uint32_t>(cg.audio_order.size()); ++i) {
         uint32_t gi = cg.audio_order[i];
         const auto& cn = cg.nodes[gi];
-        const auto& a = *cn.audio;
         snap.node_params[i] = cn.param_values;
-        snap.float_input_values[i] = a.float_input_defaults;
         for (auto& sp : snap.lane_inputs[i]) sp.length = 0;
         for (auto& s : snap.input_string_values[i]) s.clear();
         for (auto& ci : snap.custom_inputs[i]) ci.clear();
@@ -174,14 +167,6 @@ void CadenceBridge::push_to_audio(const CompiledGraph& cg) {
             } else if (e.to_port < snap.input_string_values[si].size()) {
                 snap.input_string_values[si][e.to_port] = src;
             }
-        } else if (e.data_type == VIVID_PORT_SCALAR && !e.targets_param) {
-            // Float CV input (control float → audio SIGNAL input)
-            float val = e.sources_param
-                ? from_cn.param_values[e.from_port]
-                : from_cn.output_values[e.from_port];
-            val *= e.remap_scale();
-            if (e.to_signal_ordinal < snap.float_input_values[si].size())
-                snap.float_input_values[si][e.to_signal_ordinal] = val;
         } else if (vivid_is_custom_port_type(e.data_type) && !e.targets_param) {
             // Custom type snapshot — find which custom output ordinal this port maps to
             uint32_t custom_ord = UINT32_MAX;
@@ -241,24 +226,7 @@ void CadenceBridge::pull_from_audio(CompiledGraph& cg) {
 
         auto& to_cn = cg.nodes[e.to_node];
 
-        if (e.data_type == VIVID_PORT_SCALAR && !e.sources_param) {
-            // Float output → frame-rate input (use precomputed ordinal)
-            if (si < snap.float_outputs.size() &&
-                e.from_signal_ordinal < snap.float_outputs[si].size()) {
-                float val = snap.float_outputs[si][e.from_signal_ordinal];
-                if (e.targets_param) {
-                    if (e.to_port < to_cn.param_values.size())
-                        to_cn.param_values[e.to_port] = val;
-                } else {
-                    if (e.to_port < to_cn.bridge_input_values.size()) {
-                        to_cn.bridge_input_values[e.to_port] = val;
-                        if (e.to_port < to_cn.bridge_input_dirty.size())
-                            to_cn.bridge_input_dirty[e.to_port] = 1;
-                    }
-                }
-                to_cn.dirty = true;
-            }
-        } else if (e.data_type == VIVID_PORT_LANE_ARRAY) {
+        if (e.data_type == VIVID_PORT_LANE_ARRAY) {
             // Spread output → frame-rate input
             if (si < snap.lane_outputs.size() &&
                 e.from_port < snap.lane_outputs[si].size()) {
@@ -272,28 +240,13 @@ void CadenceBridge::pull_from_audio(CompiledGraph& cg) {
         }
     }
 
-    // Sync all audio-node float outputs back to CompiledNode output_values.
-    // This covers scalar outputs (e.g. clock beat_phase) even when no frame-rate
-    // consumer is wired — they still need to be visible for inspection/display.
+    // Sync lane outputs back to CompiledNode output_lanes for inspection/display.
     for (uint32_t i = 0; i < static_cast<uint32_t>(cg.audio_order.size()); ++i) {
         uint32_t gi = cg.audio_order[i];
         auto& cn = cg.nodes[gi];
         int32_t si_signed = node_to_snapshot_idx_[gi];
         if (si_signed < 0) continue;
         uint32_t si = static_cast<uint32_t>(si_signed);
-        if (si >= snap.float_outputs.size()) continue;
-        const auto& fo = snap.float_outputs[si];
-        // Map float output ordinals back to output port indices
-        uint32_t float_ord = 0;
-        for (uint32_t p = 0; p < cn.output_port_count && float_ord < fo.size(); ++p) {
-            if (p < cn.output_port_types.size() &&
-                cn.output_port_types[p] == VIVID_PORT_SCALAR) {
-                if (p < cn.output_values.size())
-                    cn.output_values[p] = fo[float_ord];
-                float_ord++;
-            }
-        }
-        // Also sync lane outputs
         if (si < snap.lane_outputs.size()) {
             for (uint32_t p = 0; p < cn.output_port_count && p < snap.lane_outputs[si].size(); ++p) {
                 const auto& src = snap.lane_outputs[si][p];

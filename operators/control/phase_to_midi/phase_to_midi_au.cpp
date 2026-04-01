@@ -34,7 +34,7 @@ struct PhaseToMidiAu : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        float phase = ctx->input_float_values[0];
+        float phase = 0.0f;
         float delta = phase - prev_phase_;
         prev_phase_ = phase;
 

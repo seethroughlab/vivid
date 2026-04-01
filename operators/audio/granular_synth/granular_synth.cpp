@@ -331,9 +331,9 @@ struct GranularSynth : vivid::OperatorBase, vivid::AudioProcessable {
         float* out = ctx->output_buffers[0];
         uint32_t frames = ctx->buffer_size;
 
-        float pos_cv = ctx->input_float_values ? ctx->input_float_values[0] : 0.0f;
-        float pitch_cv = ctx->input_float_values ? ctx->input_float_values[1] : 0.0f;
-        float density_cv = ctx->input_float_values ? ctx->input_float_values[2] : 0.0f;
+        float pos_cv = 0.0f;
+        float pitch_cv = 0.0f;
+        float density_cv = 0.0f;
 
         float mod_position = std::fmax(0.0f, std::fmin(1.0f, position.value + pos_cv));
         float mod_pitch    = std::fmax(-24.0f, std::fmin(24.0f, pitch.value + pitch_cv));

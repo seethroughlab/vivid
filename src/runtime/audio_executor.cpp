@@ -10,7 +10,6 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
-#include <limits>
 
 namespace vivid {
 
@@ -27,10 +26,6 @@ static uint32_t allocate_lane_id_fn_bridge(void* ctx_ptr) {
 static void retire_lane_id_fn_bridge(void* ctx_ptr, uint32_t lane_id) {
     auto* lsc = static_cast<AudioExecutor::NodeLaneCtx*>(ctx_ptr);
     lsc->service->retire(lsc->node_idx, lane_id);
-}
-
-static float unset_signal_output_sentinel() {
-    return std::numeric_limits<float>::quiet_NaN();
 }
 
 AudioExecutor::AudioExecutor() = default;
@@ -230,11 +225,6 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             for (size_t p = 0; p < cn.param_values.size() && p < snap.node_params[i].size(); ++p)
                 cn.param_values[p] = snap.node_params[i][p];
         }
-        // Copy float inputs
-        if (i < snap.float_input_values.size()) {
-            for (size_t p = 0; p < a.float_input_values.size() && p < snap.float_input_values[i].size(); ++p)
-                a.float_input_values[p] = snap.float_input_values[i][p];
-        }
         // Copy lane inputs from snapshot to CompiledNode
         if (a.has_lane_ports && i < snap.lane_inputs.size()) {
             for (size_t p = 0; p < cn.input_port_count && p < snap.lane_inputs[i].size(); ++p) {
@@ -349,10 +339,6 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
 
             double node_time = static_cast<double>(audio_frame_ + frames_written) / kSampleRate;
 
-            // Reset float outputs to NaN sentinel
-            for (auto& fv : a.float_output_values)
-                fv = unset_signal_output_sentinel();
-
             // Debug node state
             if (std::getenv("VIVID_DEBUG_AUDIO") && frames_written == 0) {
                 std::fprintf(stderr, "[audio-debug] node '%s' loader=%p instance=%p errored=%d\n",
@@ -424,8 +410,6 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                     ctx.sample_rate = kSampleRate;
                     ctx.input_channel_counts = nullptr;  // mono view
                     ctx.output_channel_counts = nullptr;
-                    ctx.input_float_values = a.float_input_values.empty() ? a.float_input_scratch : a.float_input_values.data();
-                    ctx.output_float_values = a.float_output_values.empty() ? a.float_output_scratch : a.float_output_values.data();
                     ctx.input_lanes = cn.c_in_lanes.empty() ? nullptr : cn.c_in_lanes.data();
                     ctx.output_lanes = cn.c_out_lanes.empty() ? nullptr : cn.c_out_lanes.data();
                     ctx.input_string_values = cn.c_input_string_values.empty() ? nullptr : cn.c_input_string_values.data();
@@ -536,8 +520,6 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                         ctx.sample_rate = kSampleRate;
                         ctx.input_channel_counts = nullptr;  // mono view
                         ctx.output_channel_counts = nullptr;
-                        ctx.input_float_values = a.float_input_values.empty() ? a.float_input_scratch : a.float_input_values.data();
-                        ctx.output_float_values = a.float_output_values.empty() ? a.float_output_scratch : a.float_output_values.data();
                         ctx.input_lanes = cn.c_in_lanes.empty() ? nullptr : cn.c_in_lanes.data();
                         ctx.output_lanes = cn.c_out_lanes.empty() ? nullptr : cn.c_out_lanes.data();
                         ctx.input_string_values = cn.c_input_string_values.empty() ? nullptr : cn.c_input_string_values.data();
@@ -604,8 +586,6 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 ctx.sample_rate = kSampleRate;
                 ctx.input_channel_counts = a.input_channel_counts.data();
                 ctx.output_channel_counts = a.output_channel_counts.data();
-                ctx.input_float_values = a.float_input_values.empty() ? a.float_input_scratch : a.float_input_values.data();
-                ctx.output_float_values = a.float_output_values.empty() ? a.float_output_scratch : a.float_output_values.data();
                 ctx.input_lanes = cn.c_in_lanes.empty() ? nullptr : cn.c_in_lanes.data();
                 ctx.output_lanes = cn.c_out_lanes.empty() ? nullptr : cn.c_out_lanes.data();
                 ctx.input_string_values = cn.c_input_string_values.empty() ? nullptr : cn.c_input_string_values.data();
@@ -650,37 +630,12 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 }
             }
 
-            // SIGNAL output auto-extraction
-            for (const auto& se : a.signal_output_extractions) {
-                if (se.float_ordinal < a.float_output_values.size()) {
-                    float fv = a.float_output_values[se.float_ordinal];
-                    if (std::isnan(fv)) {
-                        // Auto-extract last sample from buffer
-                        if (se.port_idx < a.buffers_out.size() && chunk > 0)
-                            a.float_output_values[se.float_ordinal] =
-                                a.buffers_out[se.port_idx][chunk - 1];
-                    }
-                }
-            }
-            // Replace remaining NaN with 0
-            for (auto& fv : a.float_output_values)
-                if (std::isnan(fv)) fv = 0.0f;
-
             // Route float/lane/custom outputs to downstream audio nodes
             for (uint32_t ei : cg.audio_direct_edges) {
                 const auto& e = cg.edges[ei];
                 if (e.from_node != ni || e.targets_param) continue;
 
-                // Float port routing (SIGNAL→SIGNAL between audio nodes)
-                if (e.data_type == VIVID_PORT_SCALAR) {
-                    auto& to_cn = cg.nodes[e.to_node];
-                    auto& to_a = *to_cn.audio;
-                    float scale = e.remap_scale();
-                    if (e.from_signal_ordinal < a.float_output_values.size() &&
-                        e.to_signal_ordinal < to_a.float_input_values.size())
-                        to_a.float_input_values[e.to_signal_ordinal] =
-                            a.float_output_values[e.from_signal_ordinal] * scale;
-                } else if (e.data_type == VIVID_PORT_LANE_ARRAY) {
+                if (e.data_type == VIVID_PORT_LANE_ARRAY) {
                     // Lane routing between audio nodes
                     auto& to_cn = cg.nodes[e.to_node];
                     if (e.from_port < cn.output_lanes.size() &&
@@ -822,16 +777,6 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             if (i < analysis.waveform.size()) {
                 for (uint32_t j = 0; j < 1024; ++j)
                     analysis.waveform[i][j] = ring[(pos + j) % 1024];
-            }
-        }
-
-        // Float outputs
-        if (i < analysis.float_outputs.size()) {
-            for (size_t p = 0; p < a.float_output_values.size() && p < analysis.float_outputs[i].size(); ++p) {
-                analysis.float_outputs[i][p] = a.float_output_values[p];
-                if (std::getenv("VIVID_DEBUG_AUDIO") && a.float_output_values[p] != 0.0f)
-                    std::fprintf(stderr, "[audio-debug] analysis float_outputs[%u][%zu] = %.4f\n",
-                                 i, p, a.float_output_values[p]);
             }
         }
 

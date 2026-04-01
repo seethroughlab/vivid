@@ -39,8 +39,8 @@ struct GateAu : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        float signal = ctx->input_float_values[0];
-        bool is_open = ctx->input_float_values[1] > threshold.value;
+        float signal = 0.0f;
+        bool is_open = 0.0f > threshold.value;
         if (invert.bool_value()) is_open = !is_open;
 
         float value = is_open ? signal : 0.0f;

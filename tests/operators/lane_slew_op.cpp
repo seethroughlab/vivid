@@ -52,11 +52,16 @@ struct LaneSlewOp : vivid::OperatorBase, vivid::AudioProcessable {
         }
 
         // Write lane metadata + state to float outputs for test readback
-        if (ctx->output_float_values) {
-            ctx->output_float_values[0] = static_cast<float>(ctx->lane_count);
-            ctx->output_float_values[1] = static_cast<float>(ctx->lane_index);
-            ctx->output_float_values[2] = static_cast<float>(ctx->lane_id);
-            ctx->output_float_values[3] = s.value;
+        {
+            float vals[4];
+            vals[0] = static_cast<float>(ctx->lane_count);
+            vals[1] = static_cast<float>(ctx->lane_index);
+            vals[2] = static_cast<float>(ctx->lane_id);
+            vals[3] = s.value;
+            for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
+                for (int j = 0; j < 4; ++j)
+                    ctx->output_buffers[j][i] = vals[j];
+            }
         }
     }
 };

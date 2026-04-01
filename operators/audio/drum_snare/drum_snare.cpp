@@ -99,18 +99,6 @@ struct DrumSnare : vivid::OperatorBase, vivid::AudioProcessable {
 
         float cutoff = 2000.0f + snap * 4000.0f;
 
-        // Check for float gate trigger (rising edge)
-        bool float_triggered = false;
-        float float_vel_scale = 1.0f;
-        if (ctx->input_float_values) {
-            float trig = ctx->input_float_values[0];
-            if (trig > 0.5f && prev_trigger_ <= 0.5f) {
-                float_triggered = true;
-                float_vel_scale = trig;
-            }
-            prev_trigger_ = trig;
-        }
-
         // Check for MIDI trigger
         bool midi_triggered = false;
         float midi_vel_scale = 1.0f;
@@ -127,8 +115,8 @@ struct DrumSnare : vivid::OperatorBase, vivid::AudioProcessable {
             }
         }
 
-        bool triggered = midi_triggered || float_triggered;
-        float vel_scale = midi_triggered ? midi_vel_scale : float_vel_scale;
+        bool triggered = midi_triggered;
+        float vel_scale = midi_vel_scale;
 
         for (uint32_t i = 0; i < ctx->buffer_size; i++) {
             bool trig = (i == 0) && triggered;

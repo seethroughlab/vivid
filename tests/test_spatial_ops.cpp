@@ -56,7 +56,6 @@ struct StereoTestContext {
         ctx.buffer_size        = kFrames;
         ctx.input_buffers      = input_bufs;
         ctx.output_buffers     = output_bufs;
-        ctx.input_float_values = float_values;
         ctx.param_values       = nullptr;
     }
 

@@ -62,7 +62,7 @@ struct QuantizerAu : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        auto r = quantize(ctx->input_float_values[0]);
+        auto r = quantize(0.0f);
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
             ctx->output_buffers[0][i] = r.value;
             ctx->output_buffers[1][i] = r.step;

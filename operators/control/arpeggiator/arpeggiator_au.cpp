@@ -4,9 +4,14 @@ struct ArpeggiatorAu : ArpeggiatorCore, vivid::AudioProcessable {
     static constexpr const char* kName = "arpeggiator_au";
 
     void process_audio(const VividAudioContext* ctx) override {
-        compute(ctx->input_float_values[0], ctx->param_values, ctx->input_lanes,
-                ctx->output_float_values, ctx->output_lanes,
+        float local_out[4] = {};
+        compute(0.0f, ctx->param_values, ctx->input_lanes,
+                local_out, ctx->output_lanes,
                 ctx->custom_outputs, ctx->custom_output_count);
+        for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
+            for (int j = 0; j < 4; ++j)
+                ctx->output_buffers[j][i] = local_out[j];
+        }
     }
 };
 

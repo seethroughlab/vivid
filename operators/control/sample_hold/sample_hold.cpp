@@ -46,8 +46,8 @@ struct SampleHold : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPr
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        float signal = ctx->input_float_values[0];
-        bool trig = ctx->input_float_values[1] > 0.5f;
+        float signal = 0.0f;
+        bool trig = 0.0f > 0.5f;
         int m = mode.int_value();
         advance(signal, trig, m);
         for (uint32_t i = 0; i < ctx->buffer_size; ++i)

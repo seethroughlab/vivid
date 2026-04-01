@@ -91,11 +91,6 @@ struct CompiledEdge {
     uint8_t from_channels = 1;
     uint8_t to_channels = 1;
 
-    // Precomputed SIGNAL ordinals — the index of from_port/to_port among
-    // VIVID_PORT_SCALAR ports only.  Set by GraphCompiler for SIGNAL edges.
-    uint32_t from_signal_ordinal = 0;
-    uint32_t to_signal_ordinal = 0;
-
     // Remap transform.
     float from_min = 0.0f, from_max = 1.0f;
     float to_min   = 0.0f, to_max  = 1.0f;
@@ -157,28 +152,10 @@ struct AudioNodeState {
     uint32_t lane_lift_set_id = 0;  // provenance of the lane set being lifted over
     int32_t lane_id_port = -1;  // lane-array port carrying identity-bearing lane_ids (-1 = positional)
 
-    // Float CV inputs (cross-cadence bridge for audio nodes).
-    std::vector<float> float_input_defaults;
-    std::vector<float> float_input_values;
-    uint32_t float_input_count = 0;
-
-    // Float outputs (audio SIGNAL output ports → scalar values).
-    std::vector<float> float_output_values;
-    uint32_t float_output_count = 0;
-
-    // SIGNAL output auto-extraction mapping.
-    struct SignalOutputMapping { uint32_t port_idx; uint32_t float_ordinal; };
-    std::vector<SignalOutputMapping> signal_output_extractions;
-
     // Audio lane/string/custom bridging flags.
     bool has_lane_ports = false;
     bool has_string_input_ports = false;
     bool has_custom_input_ports = false;
-
-    // Defensive scratch buffers.
-    static constexpr uint32_t kScratchFloats = 8;
-    float float_output_scratch[kScratchFloats] = {};
-    float float_input_scratch[kScratchFloats] = {};
 
     // Audio error state (fixed-size, no allocation on audio thread).
     char error_message[256] = {};

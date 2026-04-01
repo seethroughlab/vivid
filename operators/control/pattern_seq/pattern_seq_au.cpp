@@ -83,8 +83,13 @@ struct PatternSeq_AU : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        compute(ctx->input_float_values[0], ctx->param_values, ctx->output_float_values,
+        float local_out[4] = {};
+        compute(0.0f, ctx->param_values, local_out,
                 ctx->output_lanes, ctx->custom_outputs, ctx->custom_output_count);
+        for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
+            for (int j = 0; j < 4; ++j)
+                ctx->output_buffers[j][i] = local_out[j];
+        }
     }
 
     void compute(float beat_phase, const float* params, float* output_values,

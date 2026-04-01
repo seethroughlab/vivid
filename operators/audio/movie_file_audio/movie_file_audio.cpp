@@ -406,8 +406,6 @@ struct MovieFileAudio : vivid::OperatorBase, vivid::AudioProcessable {
         }
         // Floor to epsilon so the video operator's audio_master gate (> 0.0f) stays active.
         if (out_time < 1e-6 && mono_time > 0.0) out_time = 1e-6;
-        ctx->output_float_values[0] = static_cast<float>(out_time);
-        ctx->output_float_values[1] = dur;
     }
 
     ~MovieFileAudio() override {

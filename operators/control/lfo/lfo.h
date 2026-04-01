@@ -293,8 +293,8 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
             ? *vivid_lane_state(ctx, ctx->lane_id, LaneState)
             : scalar_state_;
 
-        float gate_in  = ctx->input_float_values[0];
-        float phase_in = ctx->input_float_values[1];
+        float gate_in  = 0.0f;
+        float phase_in = 0.0f;
         const double sample_dt = 1.0 / static_cast<double>(ctx->sample_rate);
 
         int wf   = waveform.int_value();

@@ -138,7 +138,13 @@ struct StepSeq : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProce
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        compute(ctx->input_float_values, ctx->delta_time, ctx->output_float_values);
+        float local_in[2] = {};
+        float local_out[2] = {};
+        compute(local_in, ctx->delta_time, local_out);
+        for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
+            for (int j = 0; j < 2; ++j)
+                ctx->output_buffers[j][i] = local_out[j];
+        }
     }
 
 private:

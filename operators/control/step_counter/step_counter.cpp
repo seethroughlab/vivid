@@ -69,9 +69,9 @@ struct StepCounter : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        float trigger = ctx->input_float_values[0];
-        int modulus = std::max(1, static_cast<int>(std::floor(ctx->input_float_values[1])));
-        bool reset = ctx->input_float_values[2] > 0.5f;
+        float trigger = 0.0f;
+        int modulus = std::max(1, static_cast<int>(std::floor(0.0f)));
+        bool reset = 0.0f > 0.5f;
         bool wrapped = advance(trigger, modulus, reset);
         float idx = static_cast<float>(step_);
         float wrap_val = wrapped ? 1.0f : 0.0f;

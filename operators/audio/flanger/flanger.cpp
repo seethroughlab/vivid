@@ -135,7 +135,7 @@ struct Flanger : vivid::OperatorBase, vivid::AudioProcessable {
         float* out = ctx->output_buffers[0];
         uint32_t frames = ctx->buffer_size;
 
-        float rate_cv_val = ctx->input_float_values ? ctx->input_float_values[0] : 0.0f;
+        float rate_cv_val = 0.0f;
         float mod_rate = rate.value + rate_cv_val;
         if (mod_rate < 0.01f) mod_rate = 0.01f;
         if (mod_rate > 10.0f) mod_rate = 10.0f;

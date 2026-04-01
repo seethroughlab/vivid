@@ -4,9 +4,12 @@ struct DrumSequencerAu : DrumSequencerCore, vivid::AudioProcessable {
     static constexpr const char* kName = "drum_sequencer_au";
 
     void process_audio(const VividAudioContext* ctx) override {
-        compute(ctx->input_float_values[0], ctx->input_float_values[1], ctx->param_values,
-                ctx->output_float_values, ctx->output_lanes,
+        float local_out[1] = {};
+        compute(0.0f, 0.0f, ctx->param_values,
+                local_out, ctx->output_lanes,
                 ctx->custom_outputs, ctx->custom_output_count);
+        for (uint32_t i = 0; i < ctx->buffer_size; ++i)
+            ctx->output_buffers[0][i] = local_out[0];
     }
 };
 

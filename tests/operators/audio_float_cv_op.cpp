@@ -15,7 +15,7 @@ struct AudioFloatCvOp : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        const float cv = ctx->input_float_values ? ctx->input_float_values[0] : 0.0f;
+        const float cv = 0.0f;
         float* out = ctx->output_buffers[0];
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) out[i] = cv;
     }

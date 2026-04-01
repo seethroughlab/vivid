@@ -37,7 +37,7 @@ struct Gain : vivid::OperatorBase, vivid::AudioProcessable {
     void process_audio(const VividAudioContext* ctx) override {
         float* in  = ctx->input_buffers[0];
         float* out = ctx->output_buffers[0];
-        float amp_cv_val = ctx->input_float_values ? ctx->input_float_values[0] : 1.0f;
+        float amp_cv_val = 1.0f;
         float g = gain.value * amp_cv_val;
 
         for (uint32_t i = 0; i < ctx->buffer_size; i++)

@@ -199,7 +199,7 @@ struct ParametricEQ : vivid::OperatorBase, vivid::AudioProcessable {
         for (uint32_t i = 0; i < frames; i++)
             out[i] = in[i];
 
-        float freq_1_cv = ctx->input_float_values ? ctx->input_float_values[0] : 0.0f;
+        float freq_1_cv = 0.0f;
 
         int bc = band_count.int_value();
 

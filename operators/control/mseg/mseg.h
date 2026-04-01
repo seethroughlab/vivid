@@ -146,8 +146,10 @@ struct MSEG : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessa
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        compute(ctx->input_float_values[0], static_cast<float>(ctx->delta_time));
-        ctx->output_float_values[0] = current_value_ * amplitude.value;
+        compute(0.0f, static_cast<float>(ctx->delta_time));
+        float val = current_value_ * amplitude.value;
+        for (uint32_t i = 0; i < ctx->buffer_size; ++i)
+            ctx->output_buffers[0][i] = val;
     }
 
     void compute(float gate_in, float dt) {

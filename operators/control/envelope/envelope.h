@@ -270,8 +270,8 @@ struct Envelope : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProc
             ? *vivid_lane_state(ctx, ctx->lane_id, LaneState)
             : scalar_state_;
 
-        float gate_in  = ctx->input_float_values[0];
-        float phase_in = ctx->input_float_values[1];
+        float gate_in  = 0.0f;
+        float phase_in = 0.0f;
 
         const float sample_dt = 1.0f / static_cast<float>(ctx->sample_rate);
         float atk = attack.value;

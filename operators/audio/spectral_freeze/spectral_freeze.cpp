@@ -283,8 +283,8 @@ struct SpectralFreeze : vivid::OperatorBase, vivid::AudioProcessable {
         float* out = ctx->output_buffers[0];
         uint32_t frames = ctx->buffer_size;
 
-        float freeze_cv = ctx->input_float_values ? ctx->input_float_values[0] : 0.0f;
-        float blend_cv  = ctx->input_float_values ? ctx->input_float_values[1] : 0.0f;
+        float freeze_cv = 0.0f;
+        float blend_cv  = 0.0f;
 
         float mod_freeze = std::fmax(0.0f, std::fmin(1.0f, freeze.value + freeze_cv));
         float mod_blend  = std::fmax(0.0f, std::fmin(1.0f, blend.value + blend_cv));

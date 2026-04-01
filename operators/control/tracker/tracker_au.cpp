@@ -4,8 +4,14 @@ struct TrackerAu : TrackerCore, vivid::AudioProcessable {
     static constexpr const char* kName = "tracker_au";
 
     void process_audio(const VividAudioContext* ctx) override {
-        compute(ctx->input_float_values, ctx->param_values, ctx->output_lanes,
-                ctx->output_float_values, ctx->custom_outputs, ctx->custom_output_count);
+        float local_in[2] = {};
+        float local_out[3] = {};
+        compute(local_in, ctx->param_values, ctx->output_lanes,
+                local_out, ctx->custom_outputs, ctx->custom_output_count);
+        for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
+            for (int j = 0; j < 3; ++j)
+                ctx->output_buffers[j][i] = local_out[j];
+        }
     }
 };
 

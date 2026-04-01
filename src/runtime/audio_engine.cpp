@@ -213,15 +213,8 @@ uint32_t AudioEngine::node_count() const {
     return 0;
 }
 
-float AudioEngine::float_input_value_for_test(int node_idx, int port_idx) const {
-    if (!compiled_graph_ || node_idx < 0 ||
-        node_idx >= static_cast<int>(compiled_graph_->audio_order.size()))
-        return 0.0f;
-    uint32_t ni = compiled_graph_->audio_order[node_idx];
-    const auto& cn = compiled_graph_->nodes[ni];
-    if (!cn.audio || port_idx < 0 || port_idx >= static_cast<int>(cn.audio->float_input_values.size()))
-        return 0.0f;
-    return cn.audio->float_input_values[port_idx];
+float AudioEngine::float_input_value_for_test(int /*node_idx*/, int /*port_idx*/) const {
+    return 0.0f;
 }
 
 void AudioEngine::process_audio_for_test(float* output, uint32_t frame_count) {
