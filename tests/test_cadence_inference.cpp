@@ -182,10 +182,10 @@ int main(int argc, char* argv[]) {
     }
 
     // =====================================================================
-    // Test 5: Legacy InferredAudio (value 3) migrates to Auto on load
+    // Test 5: Legacy graph with "cadence" key loads without error
     // =====================================================================
     {
-        std::fprintf(stderr, "\n=== Test 5: Legacy InferredAudio migration ===\n");
+        std::fprintf(stderr, "\n=== Test 5: Legacy cadence key ignored ===\n");
         const char* json = R"({
             "nodes": {
                 "clock": { "type": "clock_fr", "cadence": 3 }
@@ -194,14 +194,8 @@ int main(int argc, char* argv[]) {
         })";
 
         vivid::Graph g;
-        check(g.load_from_string(json, std::strlen(json)), "load legacy JSON");
-
-        auto* ndef = g.find_node("clock");
-        check(ndef != nullptr, "clock node found");
-        if (ndef) {
-            check(ndef->cadence_override == vivid::CadenceOverride::Auto,
-                  "legacy InferredAudio (3) migrated to Auto");
-        }
+        check(g.load_from_string(json, std::strlen(json)), "load legacy JSON with cadence key");
+        check(g.find_node("clock") != nullptr, "clock node loaded despite cadence key");
     }
 
     // --- Summary ---

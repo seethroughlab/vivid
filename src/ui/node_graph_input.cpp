@@ -2483,22 +2483,6 @@ bool NodeGraphUI::handle_inspector_click() {
         return true;
     }
 
-    // Check cadence selector click — cycle through auto/frame/audio
-    {
-        int cad_i = hit_test_rect(cadence_rects_, mouse_.x, mouse_.y);
-        if (cad_i >= 0) {
-            const auto& cr = cadence_rects_[cad_i];
-            const auto* ns = snap_.find_node(cr.node_id);
-            if (ns) {
-                // Cycle: Auto → Frame → Audio → Auto
-                uint8_t cur = static_cast<uint8_t>(ns->cadence_override);
-                uint8_t next = (cur + 1) % 3;
-                commands_.set_cadence_override(cr.node_id, next);
-            }
-            return true;
-        }
-    }
-
     // Check value text click-to-edit
     int vt = hit_test_rect(value_text_rects_, mouse_.x, mouse_.y);
     if (vt >= 0) {

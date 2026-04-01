@@ -849,7 +849,6 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     dropdown_rects_.clear();
     file_button_rects_.clear();
     resolution_rects_.clear();
-    cadence_rects_.clear();
     preset_dropdown_rects_.clear();
     preset_save_rects_.clear();
     midi_remove_rects_.clear();
@@ -1099,7 +1098,6 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
         if (has_resolution || has_cadence || has_state_presets || has_outputs)
             draw_section_separator(tr, px, py, kInspContentW, "Technical");
         draw_inspector_resolution(tr, *sel_node, px, py);
-        draw_inspector_cadence(tr, *sel_node, px, py);
         draw_inspector_state_presets(tr, *sel_node, px, py);
         draw_inspector_outputs(tr, *sel_node, px, py);
     }
@@ -2456,27 +2454,6 @@ void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& 
         float label_x = h_val_x + kResInputW + 4.0f;
         tr.draw_text(label_x, py, T("from_input", "(from input)"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     }
-
-    py += kLineH;
-}
-
-void NodeGraphUI::draw_inspector_cadence(Renderer2D& tr, const NodeSnapshot& node,
-                                         float px, float& py) {
-    if (node.cadence_capability != VIVID_CADENCE_AUDIO_CAPABLE) return;
-
-    tr.draw_text(px, py, T("cadence", "Cadence"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
-
-    // Determine current cadence display
-    const char* label;
-    if (node.cadence_override == CadenceOverride::Frame) label = "Frame";
-    else if (node.cadence_override == CadenceOverride::Audio) label = "Audio";
-    else label = (node.active_cadence == Cadence::Audio) ? "Audio (auto)" : "Frame (auto)";
-
-    float val_x = px + 4;
-    tr.draw_text(val_x + 80, py, label, 0.8f, 0.82f, 0.85f);
-
-    // Clickable area for cycling
-    cadence_rects_.push_back({val_x + 80, py, 100.0f, kLineH, node.node_id});
 
     py += kLineH;
 }

@@ -113,16 +113,7 @@ static bool parse_node_fields(const nlohmann::json& val, NodeDef& node) {
         }
     }
 
-    // cadence override
-    auto cadence_it = val.find("cadence");
-    if (cadence_it != val.end() && cadence_it->is_number_integer()) {
-        int c = cadence_it->get<int>();
-        // Legacy value 3 (InferredAudio) maps to Auto — inference is now ephemeral.
-        if (c >= 0 && c <= 3) {
-            node.cadence_override = (c == 3) ? CadenceOverride::Auto
-                                              : static_cast<CadenceOverride>(c);
-        }
-    }
+    // "cadence" key silently ignored for backward compat with old graphs.
 
     // locks
     auto locks_it = val.find("locks");
@@ -922,10 +913,6 @@ static void serialize_node_fields(nlohmann::ordered_json& node_obj, const NodeDe
 
     if (node.tex_width > 0 && node.tex_height > 0) {
         node_obj["resolution"] = nlohmann::ordered_json::array({static_cast<int64_t>(node.tex_width), static_cast<int64_t>(node.tex_height)});
-    }
-
-    if (node.cadence_override != CadenceOverride::Auto) {
-        node_obj["cadence"] = static_cast<int64_t>(static_cast<uint8_t>(node.cadence_override));
     }
 
     if (!node.param_lock_flags.empty()) {

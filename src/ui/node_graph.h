@@ -664,10 +664,6 @@ private:
     std::string edit_res_node_id_;
     bool edit_res_is_width_ = true;
 
-    // Cadence selector state
-    struct CadenceRect { float x, y, w, h; std::string node_id; };
-    std::vector<CadenceRect> cadence_rects_;
-
     // MIDI map mode state
     bool midi_map_mode_ = false;
     bool midi_map_waiting_ = false;          // clicked param, waiting for CC

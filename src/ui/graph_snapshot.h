@@ -74,7 +74,6 @@ struct NodeSnapshot {
     Cadence active_cadence = Cadence::Frame;
     bool is_gpu = false;
     VividCadenceCapability cadence_capability = VIVID_CADENCE_FRAME_ONLY;
-    CadenceOverride cadence_override = CadenceOverride::Auto;
     bool is_gpu_sink = false;
     bool is_generator = false;  // GPU node with no texture inputs and not a sink
 

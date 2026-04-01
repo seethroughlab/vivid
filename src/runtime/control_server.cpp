@@ -237,7 +237,6 @@ static bool is_undo_tracked_method(const std::string& method) {
            method == "set_param" ||
            method == "set_string_param" ||
            method == "set_resolution" ||
-           method == "set_cadence_override" ||
            method == "set_node_layout" ||
            method == "add_midi_mapping" ||
            method == "remove_midi_mapping" ||
@@ -699,13 +698,6 @@ static std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core) {
         node["type"] = type_name;
         node["kind"] = kind_str(ns.operator_kind);
         node["active_cadence"] = (ns.active_cadence == vivid::Cadence::Audio) ? "audio" : "frame";
-        node["cadence_capability"] = (ns.cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE) ? "audio_capable"
-                                   : (ns.cadence_capability == VIVID_CADENCE_AUDIO_ONLY) ? "audio_only"
-                                   : "frame_only";
-        {
-            const auto* ndef = graph.find_node(ns.node_id);
-            node["cadence_override"] = ndef ? static_cast<int>(static_cast<uint8_t>(ndef->cadence_override)) : 0;
-        }
         node["incoming_wires"] = static_cast<int64_t>(incoming_wires[ns.node_id]);
         node["outgoing_wires"] = static_cast<int64_t>(outgoing_wires[ns.node_id]);
 
@@ -1995,17 +1987,6 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     api.set_resolution(root["node_id"].get<std::string>(),
                                        root["width"].get<uint32_t>(),
                                        root["height"].get<uint32_t>()));
-        }
-    } else if (method == "set_cadence_override") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string() ||
-                !root.contains("cadence") || !root["cadence"].is_number_integer())
-                result = json_err("missing 'node_id' or 'cadence' (0=auto, 1=frame, 2=audio)");
-            else
-                result = command_result_to_json(
-                    api.set_cadence_override(root["node_id"].get<std::string>(),
-                                             static_cast<uint8_t>(root["cadence"].get<int>())));
         }
     } else if (method == "set_node_layout") {
         if (!root_valid) { result = json_err("invalid JSON body"); }

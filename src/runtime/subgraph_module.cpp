@@ -356,7 +356,6 @@ Graph flatten_subgraphs(const Graph& authored, const SubgraphModuleRegistry& reg
             added->layout_y = node.layout_y;
             added->tex_width = node.tex_width;
             added->tex_height = node.tex_height;
-            added->cadence_override = node.cadence_override;
             added->param_lock_flags = node.param_lock_flags;
             added->pkg_name = node.pkg_name;
             added->pkg_version = node.pkg_version;
@@ -418,7 +417,6 @@ Graph flatten_subgraphs(const Graph& authored, const SubgraphModuleRegistry& reg
                 added->layout_y = inode.layout_y;
                 added->tex_width = inode.tex_width;
                 added->tex_height = inode.tex_height;
-                added->cadence_override = inode.cadence_override;
                 added->param_lock_flags = inode.param_lock_flags;
                 added->pkg_name = inode.pkg_name;
                 added->pkg_version = inode.pkg_version;

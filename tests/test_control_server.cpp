@@ -1949,17 +1949,6 @@ int main(int argc, char* argv[]) {
             check(res.ok, "set_resolution ok");
         }
 
-        // =============================================================
-        // Set cadence override
-        // =============================================================
-        {
-            std::fprintf(stderr, "\n  set_cadence_override\n");
-
-            auto cad = post(client, base_url, "set_cadence_override",
-                R"({"node_id":"test_ep","cadence":1})");
-            check(cad.ok, "set_cadence_override ok");
-        }
-
         done.store(true);
     });
 

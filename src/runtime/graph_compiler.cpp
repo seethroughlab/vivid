@@ -552,27 +552,18 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         if (loader && desc) {
             cn.instance = loader->create_instance();
 
-            // Determine cadence from descriptor + per-node override.
-            // Fixed-env operators (GPU, audio-native) ignore overrides.
+            // Determine cadence from descriptor.
             if (desc->has_process_gpu) {
                 cn.active_cadence = Cadence::Frame;
                 cn.gpu = std::make_unique<GpuNodeState>();
             } else if (desc->has_process_audio && !desc->has_process_frame) {
                 cn.active_cadence = Cadence::Audio;
-            } else if (ndef.cadence_override == CadenceOverride::Audio &&
-                       desc->cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE) {
-                cn.active_cadence = Cadence::Audio;
-            } else if (ndef.cadence_override == CadenceOverride::Frame) {
-                cn.active_cadence = Cadence::Frame;
             } else {
-                // Audio-capable operators default to frame cadence unless
-                // explicitly promoted via CadenceOverride::Audio.
                 cn.active_cadence = Cadence::Frame;
             }
             cn.cadence_capability = desc->cadence_capability;
             cn.lane_behavior = static_cast<LaneBehavior>(desc->lane_behavior);
             cn.operator_kind = vivid_operator_kind(desc);
-            cn.original_cadence_override = ndef.cadence_override;
 
             // Allocate audio sub-struct before init_frame_state (which uses it
             // for analysis port indices), but defer full audio init until after
@@ -931,67 +922,6 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                 std::fprintf(stderr, "[vivid] GraphCompiler: string fan-in > 1 on '%s' port %u\n",
                              cg->nodes[ni].node_id.c_str(), pi);
                 return nullptr;
-            }
-        }
-    }
-
-    // ===================================================================
-    // Pass 2.5: Cadence inference
-    // ===================================================================
-    // Promote Auto audio-capable nodes to Audio cadence when connected to
-    // audio-cadence neighbours in either direction:
-    //   - Downstream pull: a Frame supplier feeds an Audio consumer
-    //   - Upstream push:   an Audio supplier feeds a Frame consumer
-    // Iterate to a fixed point so chains of dual-cadence nodes all promote.
-    {
-        bool changed = true;
-        while (changed) {
-            changed = false;
-            for (const auto& e : cg->edges) {
-                auto& from_cn = cg->nodes[e.from_node];
-                auto& to_cn = cg->nodes[e.to_node];
-
-                // Downstream pull: promote supplier to match audio consumer
-                if (to_cn.active_cadence == Cadence::Audio &&
-                    from_cn.active_cadence == Cadence::Frame &&
-                    from_cn.cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE &&
-                    from_cn.original_cadence_override == CadenceOverride::Auto) {
-                    from_cn.active_cadence = Cadence::Audio;
-                    from_cn.audio = std::make_unique<AudioNodeState>();
-                    init_audio_state(from_cn, from_cn.loader->descriptor(),
-                                     options.audio_buffer_size);
-                    changed = true;
-                }
-
-                // Upstream push: promote consumer to match audio supplier
-                if (from_cn.active_cadence == Cadence::Audio &&
-                    to_cn.active_cadence == Cadence::Frame &&
-                    to_cn.cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE &&
-                    to_cn.original_cadence_override == CadenceOverride::Auto) {
-                    to_cn.active_cadence = Cadence::Audio;
-                    to_cn.audio = std::make_unique<AudioNodeState>();
-                    init_audio_state(to_cn, to_cn.loader->descriptor(),
-                                     options.audio_buffer_size);
-                    changed = true;
-                }
-            }
-        }
-
-        // Reclassify edge transport after promotions
-        for (auto& e : cg->edges) {
-            if (cg->nodes[e.from_node].active_cadence == cg->nodes[e.to_node].active_cadence)
-                e.transport = EdgeTransport::Direct;
-            else
-                e.transport = EdgeTransport::Snapshot;
-        }
-
-        // Rebuild adjacency for topo sort (Direct edges only)
-        for (auto& a : adj) a.clear();
-        std::fill(in_degree.begin(), in_degree.end(), 0);
-        for (const auto& e : cg->edges) {
-            if (e.transport == EdgeTransport::Direct) {
-                adj[e.from_node].push_back(e.to_node);
-                in_degree[e.to_node]++;
             }
         }
     }
