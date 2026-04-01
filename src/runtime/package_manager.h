@@ -47,6 +47,26 @@ struct PackageInfo {
     PackageTests tests;
 };
 
+struct SkippedPackage {
+    std::string name;
+    std::string path;
+    std::string source_scope;
+    std::string reason;   // "not_built", "manifest_error", "duplicate", "shadowed"
+    std::string detail;
+};
+
+struct DiscoveryReport {
+    struct ScopeEntry {
+        std::string scope;  // "local", "workspace", "user", "extra"
+        std::string root;
+        bool exists = false;
+    };
+    std::vector<ScopeEntry> scopes_searched;
+    std::vector<PackageInfo> loaded_packages;
+    std::vector<SkippedPackage> skipped_packages;
+    bool workspace_detected = false;
+};
+
 struct InstallResult {
     bool success = false;
     std::string error_code;  // machine-readable, e.g. "missing_tool", "abi_mismatch"
@@ -136,6 +156,9 @@ public:
     static PackageUpdateClass classify_version_delta(const std::string& saved_version,
                                                      const std::string& installed_version);
 
+    // Discovery report from the last scan_installed() call.
+    const DiscoveryReport& last_discovery_report() const { return discovery_report_; }
+
 private:
     // Discover package candidates across all scopes and resolve winners by precedence.
     static std::vector<PackageInfo> resolve_packages(bool emit_warnings);
@@ -157,6 +180,7 @@ private:
     OperatorRegistry& registry_;
     PackageResolver resolver_;
     SubgraphModuleRegistry* subgraph_modules_ = nullptr;
+    DiscoveryReport discovery_report_;
 };
 
 } // namespace vivid

@@ -296,6 +296,20 @@ async def run_diagnostics(include_payload: bool = False) -> str:
 
 
 @mcp.tool()
+async def operator_map() -> str:
+    """Show every operator the runtime knows about: dylib path, package, status (loaded/deferred/abi_mismatch), and ABI version. Use this to debug operator loading issues."""
+    raw = await _post("operator_map")
+    return _json_response(raw)
+
+
+@mcp.tool()
+async def discovery_report() -> str:
+    """Show the package discovery report: scopes searched, packages loaded, packages skipped (with reasons). Use this to debug missing operators or package loading issues."""
+    raw = await _post("get_discovery_report")
+    return _json_response(raw)
+
+
+@mcp.tool()
 async def validate_checks(checks: list[dict], include_payload: bool = False) -> str:
     """Validate check definitions before execution."""
     raw = await _post("validate_checks", {"checks": checks})

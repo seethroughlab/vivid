@@ -599,6 +599,28 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             cn.time_dependent = false;
             cn.active_cadence = Cadence::Frame;
 
+            // Classify why the operator is missing
+            if (const auto* prov = registry.operator_provenance(ndef.type)) {
+                if (!prov->package_built) {
+                    cn.missing_operator_reason = "not_built";
+                    cn.missing_operator_detail = "Package '" + prov->package_name +
+                        "' found but not built. Run 'vivid rebuild " + prov->package_name + "'.";
+                } else if (prov->abi_mismatch) {
+                    cn.missing_operator_reason = "abi_mismatch";
+                    cn.missing_operator_detail = prov->failure_detail;
+                } else if (prov->load_failed) {
+                    cn.missing_operator_reason = "load_failed";
+                    cn.missing_operator_detail = prov->failure_detail;
+                } else {
+                    cn.missing_operator_reason = "load_failed";
+                    cn.missing_operator_detail = "Package '" + prov->package_name +
+                        "' is installed but operator '" + ndef.type + "' failed to load.";
+                }
+            } else {
+                cn.missing_operator_reason = "not_found";
+                cn.missing_operator_detail = "No installed package provides operator '" + ndef.type + "'.";
+            }
+
             const auto& in_names = incoming_ports[ndef.id];
             const auto& out_names = outgoing_ports[ndef.id];
             cn.input_port_count = static_cast<uint32_t>(in_names.size());

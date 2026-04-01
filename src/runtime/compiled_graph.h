@@ -317,6 +317,8 @@ struct CompiledNode {
     std::unique_ptr<OperatorLoader> owned_loader;
 
     bool missing_operator = false;
+    std::string missing_operator_reason;  // "not_found", "not_built", "abi_mismatch", "load_failed"
+    std::string missing_operator_detail;  // human-readable explanation
 
     // ── Lane metadata (populated by compiler Pass 2.6) ────────────────────
     LaneBehavior lane_behavior = LaneBehavior::Pointwise;

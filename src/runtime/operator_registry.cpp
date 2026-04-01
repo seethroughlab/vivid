@@ -415,8 +415,8 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
         const uint32_t abi = abi_fn();
         if (abi != runtime_abi) {
             std::fprintf(stderr,
-                         "[vivid] probe: skipping %s (ABI %u != runtime ABI %u)\n",
-                         name, abi, runtime_abi);
+                         "[vivid] probe: ABI mismatch %s (ABI %u, expected %u) at %s\n",
+                         name, abi, runtime_abi, path.c_str());
             AbiMismatchDiagnostic diag;
             diag.plugin_path = path;
             diag.plugin_name = name;
@@ -424,6 +424,16 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
             diag.plugin_abi = abi;
             diag.runtime_abi = runtime_abi;
             abi_mismatch_by_path_[path] = std::move(diag);
+            // Enrich expected-operator provenance if known
+            for (auto& [tn, prov] : expected_operators_) {
+                if (tn == name) {
+                    prov.abi_mismatch = true;
+                    prov.failure_detail = "ABI " + std::to_string(abi) +
+                        " != runtime ABI " + std::to_string(runtime_abi) +
+                        ". Rebuild package '" + prov.package_name + "'.";
+                    break;
+                }
+            }
             deferred_probe_handles_.push_back({path, handle});
             return;
         }
@@ -568,6 +578,15 @@ void OperatorRegistry::register_target_mapping(const std::string& dylib_path,
     size_t slen = std::strlen(kPluginSuffix);
     if (filename.size() > slen) filename = filename.substr(0, filename.size() - slen);
     target_to_type_[filename] = type_name;
+
+    // Promote expected-operator provenance from target stem → type name
+    if (filename != type_name) {
+        auto it = expected_operators_.find(filename);
+        if (it != expected_operators_.end()) {
+            expected_operators_[type_name] = it->second;
+            expected_operators_.erase(it);
+        }
+    }
 }
 
 bool OperatorRegistry::load_for_graph(const Graph& graph) {
@@ -949,6 +968,66 @@ bool OperatorRegistry::has_loader_failure_diagnostics() const {
     return !loader_failure_by_path_.empty();
 }
 
+std::vector<OperatorMapEntry> OperatorRegistry::operator_map() const {
+    std::vector<OperatorMapEntry> out;
+
+    // Deferred (probed but not fully loaded) — includes package operators
+    for (const auto& [type_name, de] : deferred_) {
+        OperatorMapEntry e;
+        e.type_name = type_name;
+        e.dylib_path = de.dylib_path;
+        e.status = "deferred";
+        auto pkg_it = type_to_package_.find(type_name);
+        if (pkg_it != type_to_package_.end())
+            e.package_name = pkg_it->second;
+        out.push_back(std::move(e));
+    }
+
+    // Fully loaded (built-in or lazy-loaded from deferred)
+    for (const auto& [type_name, loader] : loaders_) {
+        // Skip if already covered by deferred
+        bool found = false;
+        for (const auto& existing : out) {
+            if (existing.type_name == type_name) { found = true; break; }
+        }
+        if (found) continue;
+        OperatorMapEntry e;
+        e.type_name = type_name;
+        e.status = "loaded";
+        auto pkg_it = type_to_package_.find(type_name);
+        if (pkg_it != type_to_package_.end())
+            e.package_name = pkg_it->second;
+        out.push_back(std::move(e));
+    }
+
+    // ABI mismatches
+    for (const auto& [path, diag] : abi_mismatch_by_path_) {
+        OperatorMapEntry e;
+        e.type_name = diag.plugin_name;
+        e.dylib_path = diag.plugin_path;
+        e.package_name = diag.package_name;
+        e.status = "abi_mismatch";
+        e.abi_version = diag.plugin_abi;
+        out.push_back(std::move(e));
+    }
+
+    std::sort(out.begin(), out.end(), [](const OperatorMapEntry& a, const OperatorMapEntry& b) {
+        return a.type_name < b.type_name;
+    });
+    return out;
+}
+
+void OperatorRegistry::register_expected_operator(const std::string& type_name,
+                                                  OperatorProvenance provenance) {
+    expected_operators_[type_name] = std::move(provenance);
+}
+
+const OperatorProvenance* OperatorRegistry::operator_provenance(const std::string& type_name) const {
+    auto it = expected_operators_.find(type_name);
+    if (it != expected_operators_.end()) return &it->second;
+    return nullptr;
+}
+
 void OperatorRegistry::record_loader_failure(const std::string& plugin_path,
                                              const std::string& plugin_name,
                                              const OperatorLoader::LastError& error) {
@@ -959,6 +1038,12 @@ void OperatorRegistry::record_loader_failure(const std::string& plugin_path,
     diag.code = error.code.empty() ? "load_failed" : error.code;
     diag.message = error.message.empty() ? "operator load failed" : error.message;
     loader_failure_by_path_[plugin_path] = std::move(diag);
+    // Enrich expected-operator provenance if known
+    auto prov_it = expected_operators_.find(plugin_name);
+    if (prov_it != expected_operators_.end()) {
+        prov_it->second.load_failed = true;
+        prov_it->second.failure_detail = diag.message;
+    }
 }
 
 // --- Factory presets ---

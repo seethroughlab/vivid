@@ -49,6 +49,23 @@ struct AbiMismatchDiagnostic {
     uint32_t runtime_abi = 0;
 };
 
+struct OperatorMapEntry {
+    std::string type_name;
+    std::string dylib_path;
+    std::string package_name;   // empty for built-in
+    std::string status;         // "loaded", "deferred", "abi_mismatch"
+    uint32_t abi_version = 0;   // 0 if unknown
+};
+
+struct OperatorProvenance {
+    std::string package_name;
+    std::string package_path;
+    bool package_built = false;
+    bool abi_mismatch = false;
+    bool load_failed = false;
+    std::string failure_detail;
+};
+
 struct LoaderFailureDiagnostic {
     std::string plugin_path;
     std::string plugin_name;
@@ -135,6 +152,14 @@ public:
     std::vector<LoaderFailureDiagnostic> loader_failure_diagnostics_for_dir(const std::string& directory) const;
     bool has_loader_failure_diagnostics() const;
 
+    // Developer diagnostic: full map of every known operator with provenance.
+    std::vector<OperatorMapEntry> operator_map() const;
+
+    // Expected-operator provenance: tracks operators declared in package manifests,
+    // even if the package isn't built. Enables "why is this operator missing?" diagnostics.
+    void register_expected_operator(const std::string& type_name, OperatorProvenance provenance);
+    const OperatorProvenance* operator_provenance(const std::string& type_name) const;
+
 private:
     void record_loader_failure(const std::string& plugin_path,
                                const std::string& plugin_name,
@@ -162,6 +187,7 @@ private:
     std::unordered_map<std::string, std::vector<OperatorPreset>> factory_presets_;  // type_name → presets
     std::unordered_map<std::string, AbiMismatchDiagnostic> abi_mismatch_by_path_;   // plugin path -> mismatch info
     std::unordered_map<std::string, LoaderFailureDiagnostic> loader_failure_by_path_; // plugin path -> load failure
+    std::unordered_map<std::string, OperatorProvenance> expected_operators_;  // type_name → manifest provenance
 };
 
 } // namespace vivid

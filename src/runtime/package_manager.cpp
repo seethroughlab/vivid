@@ -334,14 +334,10 @@ static std::string abi_mismatch_error_for_package(const std::string& package_nam
                                                   const std::vector<AbiMismatchDiagnostic>& mismatches) {
     std::ostringstream oss;
     oss << "Plugin ABI mismatch for package '" << package_name << "'. "
-        << "Rebuild vivid and rerun package rebuild.";
-    if (!mismatches.empty()) {
-        oss << "\n";
-        for (const auto& m : mismatches) {
-            oss << "  - " << (m.plugin_name.empty() ? m.plugin_path : m.plugin_name)
-                << ": plugin ABI " << m.plugin_abi
-                << ", runtime ABI " << m.runtime_abi << "\n";
-        }
+        << "Rebuild vivid and rerun package rebuild.\n";
+    for (const auto& m : mismatches) {
+        oss << "  - " << m.plugin_path
+            << " (ABI " << m.plugin_abi << ", expected " << m.runtime_abi << ")\n";
     }
     return oss.str();
 }
@@ -950,6 +946,27 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
         }
     }
 
+    // Clean stale dylibs: remove any .dylib in build/ that doesn't correspond
+    // to a declared operator. Prevents removed targets from being scanned.
+    {
+        std::unordered_set<std::string> declared;
+        for (const auto& op : result.info.operators)
+            declared.insert(op + kPluginSuffix);
+        for (const auto& op : result.info.gpu_operators)
+            declared.insert(op + kPluginSuffix);
+        std::error_code clean_ec;
+        for (auto& entry : std::filesystem::directory_iterator(build_dir, clean_ec)) {
+            if (clean_ec) break;
+            auto ext = entry.path().extension().string();
+            if (ext != ".dylib" && ext != ".so" && ext != ".dll") continue;
+            if (declared.count(entry.path().filename().string())) continue;
+            std::fprintf(stderr, "[vivid] PackageManager: removing stale dylib %s\n",
+                         entry.path().c_str());
+            std::filesystem::remove(entry.path(), clean_ec);
+            clean_ec.clear();
+        }
+    }
+
     if (register_outputs) {
         // Scan compiled operators into registry
         registry_.clear_deferred_probe_handles_for_dir(build_dir);
@@ -1208,15 +1225,64 @@ std::vector<PackageInfo> PackageManager::list() {
 }
 
 void PackageManager::scan_installed() {
+    namespace fs = std::filesystem;
+    discovery_report_ = {};
+
+    // Record scopes searched
+    auto scope_roots = discover_scope_roots();
+    for (const auto& sr : scope_roots) {
+        std::error_code ec;
+        discovery_report_.scopes_searched.push_back({
+            sr.scope, sr.root, fs::exists(sr.root, ec)
+        });
+    }
+
+    // Record workspace detection
+    std::string ws = discover_workspace_root();
+    discovery_report_.workspace_detected = !ws.empty();
+    if (ws.empty()) {
+        std::fprintf(stderr,
+            "[vivid] Package discovery: workspace scope not detected "
+            "(no CMakeLists.txt + src/runtime/ found above CWD)\n");
+    }
+
     std::vector<PackageInfo> all_packages = PackageManager::resolve_packages(true);
     if (all_packages.empty()) return;
+
+    // Register expected operators for ALL packages (even unbuilt) so provenance
+    // diagnostics can explain why an operator is missing.
+    for (const auto& info : all_packages) {
+        bool built = std::filesystem::exists(info.path + "/build");
+        auto register_ops = [&](const std::vector<std::string>& ops) {
+            for (const auto& op : ops) {
+                // Manifest uses target paths like "audio/spread_adsr"; extract stem
+                std::string stem = op;
+                auto slash = stem.rfind('/');
+                if (slash != std::string::npos) stem = stem.substr(slash + 1);
+                OperatorProvenance prov;
+                prov.package_name = info.name;
+                prov.package_path = info.path;
+                prov.package_built = built;
+                registry_.register_expected_operator(stem, std::move(prov));
+            }
+        };
+        register_ops(info.operators);
+        register_ops(info.gpu_operators);
+    }
 
     // First pass: keep only packages that have a build directory.
     std::vector<PackageInfo> loadable_packages;
     std::unordered_map<std::string, size_t> name_to_idx;
     for (auto& info : all_packages) {
         std::string build_dir = info.path + "/build";
-        if (!std::filesystem::exists(build_dir)) continue;
+        if (!fs::exists(build_dir)) {
+            discovery_report_.skipped_packages.push_back({
+                info.name, info.path, info.source_scope,
+                "not_built",
+                "No build/ directory. Run 'vivid rebuild " + info.name + "'."
+            });
+            continue;
+        }
         name_to_idx[info.name] = loadable_packages.size();
         loadable_packages.push_back(std::move(info));
     }
@@ -1287,14 +1353,20 @@ void PackageManager::scan_installed() {
         }
 
         count++;
+        discovery_report_.loaded_packages.push_back(info);
         std::fprintf(stderr, "[vivid] PackageManager: loaded package %s [%s] (%zu operators)\n",
                      info.name.c_str(),
                      info.source_scope.empty() ? "unknown" : info.source_scope.c_str(),
                      info.operators.size() + info.gpu_operators.size());
     }
 
-    if (count > 0) {
-        std::fprintf(stderr, "[vivid] PackageManager: %d package(s) loaded\n", count);
+    // Startup summary
+    size_t skipped = discovery_report_.skipped_packages.size();
+    std::fprintf(stderr, "[vivid] Package discovery: %zu scope(s), %d loaded, %zu skipped\n",
+                 discovery_report_.scopes_searched.size(), count, skipped);
+    for (const auto& sp : discovery_report_.skipped_packages) {
+        std::fprintf(stderr, "[vivid]   skipped: %s (%s)\n",
+                     sp.name.c_str(), sp.detail.c_str());
     }
 }
 

@@ -293,6 +293,19 @@ static std::string handle_inspect_graph(Graph& graph, RuntimeCore& core) {
         const VividOperatorDescriptor* desc =
             (ns && ns->loader) ? ns->loader->descriptor() : nullptr;
 
+        // Health — surface errors and missing operators
+        if (ns && (ns->errored || ns->missing_operator)) {
+            nlohmann::json health = nlohmann::json::object();
+            health["errored"] = ns->errored;
+            health["message"] = ns->error_message;
+            health["missing_operator"] = ns->missing_operator;
+            if (!ns->missing_operator_reason.empty())
+                health["reason"] = ns->missing_operator_reason;
+            if (!ns->missing_operator_detail.empty())
+                health["detail"] = ns->missing_operator_detail;
+            node["health"] = std::move(health);
+        }
+
         // Params (with live values from runtime)
         nlohmann::json params_arr = nlohmann::json::array();
         if (desc) {
@@ -701,6 +714,10 @@ static std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core) {
         health["errored"] = (ns.errored || ns.missing_operator);
         health["message"] = ns.error_message;
         health["missing_operator"] = ns.missing_operator;
+        if (!ns.missing_operator_reason.empty())
+            health["reason"] = ns.missing_operator_reason;
+        if (!ns.missing_operator_detail.empty())
+            health["detail"] = ns.missing_operator_detail;
         node["health"] = std::move(health);
 
         const VividOperatorDescriptor* desc = ns.loader ? ns.loader->descriptor() : nullptr;
@@ -934,16 +951,23 @@ static std::vector<DiagnosticFinding> collect_diagnostics(
         if (type_name.empty() && desc && desc->name) type_name = desc->name;
 
         if (ns.missing_operator) {
-            std::string suggestion = "Install or link the package providing this operator type, then reload.";
-            if (registry.has_abi_mismatch_diagnostics()) {
-                suggestion = "Install/link may be fine but plugin ABI appears incompatible. "
-                             "Rebuild vivid and rerun package rebuild.";
-            }
+            std::string description = ns.missing_operator_detail.empty()
+                ? "Operator type is unresolved; missing-operator placeholder is active."
+                : ns.missing_operator_detail;
+            std::string suggestion;
+            if (ns.missing_operator_reason == "not_built")
+                suggestion = "Run 'vivid rebuild <package>' to compile this package.";
+            else if (ns.missing_operator_reason == "abi_mismatch")
+                suggestion = "Rebuild vivid and rerun 'vivid rebuild <package>'.";
+            else if (ns.missing_operator_reason == "load_failed")
+                suggestion = "Check library dependencies; run 'vivid run-diagnostics' for details.";
+            else
+                suggestion = "Install or link the package providing this operator type, then reload.";
             findings.push_back({
                 "missing_operator_type",
                 "critical",
                 ns.node_id,
-                "Operator type is unresolved; missing-operator placeholder is active.",
+                description,
                 suggestion
             });
         }
@@ -1748,6 +1772,47 @@ static std::string dispatch(const std::string& method, const std::string& body,
     if (method == "list_types")    return handle_list_types(registry);
     if (method == "get_registry_diagnostics") return handle_get_registry_diagnostics(registry);
     if (method == "get_graph_load_diagnostics") return handle_get_graph_load_diagnostics(graph);
+    if (method == "operator_map") {
+        nlohmann::json entries = nlohmann::json::array();
+        for (const auto& e : registry.operator_map()) {
+            nlohmann::json j;
+            j["type"] = e.type_name;
+            if (!e.dylib_path.empty()) j["path"] = e.dylib_path;
+            if (!e.package_name.empty()) j["package"] = e.package_name;
+            j["status"] = e.status;
+            if (e.abi_version > 0) j["abi_version"] = e.abi_version;
+            entries.push_back(std::move(j));
+        }
+        return json_ok(std::move(entries));
+    }
+    if (method == "get_discovery_report" && package_manager) {
+        const auto& report = package_manager->last_discovery_report();
+        nlohmann::json result = nlohmann::json::object();
+        result["workspace_detected"] = report.workspace_detected;
+        nlohmann::json scopes = nlohmann::json::array();
+        for (const auto& s : report.scopes_searched) {
+            scopes.push_back({{"scope", s.scope}, {"root", s.root}, {"exists", s.exists}});
+        }
+        result["scopes"] = std::move(scopes);
+        nlohmann::json loaded = nlohmann::json::array();
+        for (const auto& p : report.loaded_packages) {
+            loaded.push_back({
+                {"name", p.name}, {"version", p.version},
+                {"scope", p.source_scope}, {"path", p.path},
+                {"operators", p.operators.size() + p.gpu_operators.size()}
+            });
+        }
+        result["loaded"] = std::move(loaded);
+        nlohmann::json skipped = nlohmann::json::array();
+        for (const auto& s : report.skipped_packages) {
+            skipped.push_back({
+                {"name", s.name}, {"path", s.path}, {"scope", s.source_scope},
+                {"reason", s.reason}, {"detail", s.detail}
+            });
+        }
+        result["skipped"] = std::move(skipped);
+        return json_ok(std::move(result));
+    }
 
     // Parse body JSON (may be empty for some commands)
     nlohmann::json root;
@@ -2012,8 +2077,17 @@ static std::string dispatch(const std::string& method, const std::string& body,
         nlohmann::json errs = nlohmann::json::array();
         if (const auto* cg = core.compiled_graph()) {
             for (const auto& cn : cg->nodes) {
-                if (!cn.errored) continue;
-                errs.push_back({{"node_id", cn.node_id}, {"error", cn.error_message}});
+                if (!cn.errored && !cn.missing_operator) continue;
+                nlohmann::json err_obj = {
+                    {"node_id", cn.node_id},
+                    {"error", cn.missing_operator ? "missing operator" : cn.error_message},
+                    {"missing_operator", cn.missing_operator}
+                };
+                if (!cn.missing_operator_reason.empty())
+                    err_obj["reason"] = cn.missing_operator_reason;
+                if (!cn.missing_operator_detail.empty())
+                    err_obj["detail"] = cn.missing_operator_detail;
+                errs.push_back(std::move(err_obj));
             }
         }
         nlohmann::json dropped = nlohmann::json::array();
