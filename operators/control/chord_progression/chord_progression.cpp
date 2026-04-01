@@ -260,7 +260,7 @@ struct ChordProgression : vivid::OperatorBase, vivid::FrameProcessable, vivid::A
 
     void process_audio(const VividAudioContext* ctx) override {
         compute(0.0f, ctx->param_values, ctx->output_lanes,
-                ctx->output_float_values, ctx->custom_outputs, ctx->custom_output_count);
+                nullptr, ctx->custom_outputs, ctx->custom_output_count);
     }
 
     void compute(float beat_phase, const float* params, VividLanePort* output_lanes,

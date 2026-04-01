@@ -657,7 +657,7 @@ struct DrumSequencer : vivid::OperatorBase, vivid::FrameProcessable, vivid::Audi
 
     void process_audio(const VividAudioContext* ctx) override {
         compute(0.0f, 0.0f, ctx->param_values,
-                ctx->output_float_values, ctx->output_lanes,
+                nullptr, ctx->output_lanes,
                 ctx->custom_outputs, ctx->custom_output_count);
     }
 

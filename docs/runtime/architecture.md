@@ -7,11 +7,11 @@ main.cpp
  ├── GpuContext          — WebGPU/Dawn init, surface, FrameState
  ├── OperatorRegistry    — type name → OperatorLoader, deferred probe
  ├── Graph               — serializable scene description (NodeDef/ConnectionDef)
- ├── RuntimeCore         — graph compilation, frame-rate execution, cadence bridge
+ ├── RuntimeCore         — graph compilation, frame-rate execution, audio frame bridge
  │    ├── GraphCompiler  — 7-pass pipeline: Graph → CompiledGraph
  │    ├── CompiledGraph  — unified node/edge representation, shared by both executors
  │    ├── FrameExecutor  — frame-rate + GPU node processing (~60 Hz)
- │    └── CadenceBridge  — double-buffered snapshot bridge (frame ↔ audio)
+ │    └── AudioFrameBridge — double-buffered snapshot bridge (frame ↔ audio)
  ├── AudioEngine         — audio device lifecycle (thin facade over AudioExecutor)
  │    └── AudioExecutor  — audio-rate node processing (~48 kHz)
  ├── RuntimeAPI          — high-level commands over graph+runtime+audio
@@ -34,7 +34,7 @@ All operators come from the same `OperatorRegistry`/`OperatorLoader` system.
 Audio-cadence operators must never allocate or block.
 
 Lane-bearing values participate in this cadence model without creating a second collection system.
-Cross-cadence transport copies lane-bearing values through `CadenceBridge` snapshots, but the
+Cross-cadence transport copies lane-bearing values through `AudioFrameBridge` snapshots, but the
 lane model itself remains the same on both sides of the boundary.
 
 ## Main Loop (main.cpp)
@@ -94,7 +94,7 @@ Hot reload is intentionally conservative after the audit hardening work:
 ## Key Invariants
 
 - One `CompiledGraph` is shared (read) by both `FrameExecutor` and `AudioExecutor`. No parallel independent builds.
-- Audio thread reads `ParamSnapshot` atomically via `CadenceBridge`; never touches `CompiledNode` state directly.
+- Audio thread reads `ParamSnapshot` atomically via `AudioFrameBridge`; never touches `CompiledNode` state directly.
 - GPU textures are allocated once at build time and reallocated on window resize or node addition via `needs_gpu_realloc_`.
 - `OperatorRegistry::find()` may trigger a lazy dlopen for deferred entries.
 - UI-facing graph views should remain faithful to graph truth, including broken connections, rather

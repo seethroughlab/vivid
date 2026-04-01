@@ -190,8 +190,8 @@ struct Tracker : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProce
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        compute(ctx->input_float_values, ctx->param_values, ctx->output_lanes,
-                ctx->output_float_values, ctx->custom_outputs, ctx->custom_output_count);
+        compute(nullptr, ctx->param_values, ctx->output_lanes,
+                nullptr, ctx->custom_outputs, ctx->custom_output_count);
     }
 
     void compute(const float* input_values, const float* params,

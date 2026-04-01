@@ -66,7 +66,7 @@ struct Euclidean : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPro
 
     void process_audio(const VividAudioContext* ctx) override {
         compute(0.0f, ctx->param_values,
-                ctx->output_lanes, ctx->output_float_values);
+                ctx->output_lanes, nullptr);
     }
 
 private:

@@ -4,7 +4,7 @@
 
 `RuntimeCore` (runtime_core.h/cpp) takes a `Graph` and `OperatorRegistry`, compiles them into a
 `CompiledGraph`, and coordinates frame-rate execution. It delegates actual processing to
-`FrameExecutor` and cross-cadence communication to `CadenceBridge`.
+`FrameExecutor` and cross-cadence communication to `AudioFrameBridge`.
 
 ## Build
 
@@ -13,7 +13,7 @@ bool build(const Graph& graph, OperatorRegistry& registry);
 ```
 
 1. Compiles `Graph` → `CompiledGraph` via `GraphCompiler::compile()` (7-pass algorithm)
-2. Builds `CadenceBridge` snapshot buffers from the compiled graph
+2. Builds `AudioFrameBridge` snapshot buffers from the compiled graph
 3. Configures `FrameExecutor` with source directory for file param resolution
 
 ## Tick
@@ -50,7 +50,7 @@ void set_solo(int node_idx);   // -1 to clear
 ```
 
 Uses BFS over `upstream_nodes` to build the active set, which is forwarded to both
-`FrameExecutor` (skip logic) and `CadenceBridge` → `AudioExecutor` (via `ParamSnapshot`).
+`FrameExecutor` (skip logic) and `AudioFrameBridge` → `AudioExecutor` (via `ParamSnapshot`).
 
 ## Hot-Reload
 

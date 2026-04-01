@@ -22,19 +22,19 @@ C++ was chosen over Zig and Rust for one overriding reason: library integration.
 
 Vivid operators fall into three families based on the kind of data they work with and where they appear in the UI. These are distinct from the runtime's two **cadences** (frame-rate ~60 Hz, audio-rate ~48 kHz), which determine *when* an operator executes. See the [runtime architecture](vivid-runtime-architecture.md) for the cadence model.
 
-- **Control** — floats, ints, bools, events, strings, lane arrays. Runs at frame cadence on the main thread. Some control operators are audio-capable and can be promoted to audio cadence for sample-accurate modulation.
+- **Control** — floats, ints, bools, events, strings, lane arrays. Runs at frame cadence on the main thread. Control operators are frame-only (`_fr`); audio-rate modulation requires a dedicated audio operator (`_au`) with an explicit `AudioFrameBridge` edge between cadences.
 - **Audio** — sample buffers at audio cadence (48 kHz typical). Runs on a real-time audio thread managed by miniaudio. Operators produce a buffer every callback, even if silence.
 - **GPU** — textures, shaders, meshes, compute buffers. Runs at frame cadence on the main thread. Operators execute as Dawn/WebGPU render/compute passes.
 
 ## 5.4 Execution Model: Dual-Cadence Pull
 
-Both cadences are pull-based — frame-rate is driven by the display refresh, audio-rate by the audio device callback. Frame and audio executors process their respective nodes in topological order each tick/buffer. Cross-cadence data flows through the `CadenceBridge` using lock-free double-buffered snapshots, so neither cadence ever waits on the other.
+Both cadences are pull-based — frame-rate is driven by the display refresh, audio-rate by the audio device callback. Frame and audio executors process their respective nodes in topological order each tick/buffer. Operators are single-cadence: frame-only (`_fr`) or audio-only (`_au`). Cross-cadence data flows through `AudioFrameBridge` using lock-free double-buffered snapshots, so neither cadence ever waits on the other. Cross-cadence edges require an explicit `"bridge": true` field in the graph JSON.
 
 ## 5.5 Cadence Bridges
 
 **Decision: Cross-cadence data flows through two bidirectional bridges.** Audio and GPU never communicate directly — everything routes through the frame-rate side. This simplifies the architecture to two boundary mechanisms:
 
-### Frame ↔ Audio (`CadenceBridge`)
+### Frame ↔ Audio (`AudioFrameBridge`)
 - **Frame → Audio:** `ParamSnapshot` double-buffer with atomic index swap. Lane-bearing data uses `LaneSnapshot` — a fixed-size 64-element struct copied alongside scalar params, avoiding audio-thread heap allocation. Latency: ~5ms at 256 samples / 48kHz.
 - **Audio → Frame:** `AnalysisSnapshot` double-buffer carries RMS, peak, waveform, and per-port `LaneSnapshot` data back to the frame side.
 
@@ -50,8 +50,8 @@ The type system serves three consumers: the graph runtime (bridge selection), th
 
 Six built-in port types reflect the runtime's routing mechanisms:
 
-- `VIVID_PORT_SIGNAL` — scalar float (control values: floats, ints, bools all route identically). Updated at no fixed rate.
-- `VIVID_PORT_AUDIO` — a 256-sample buffer at 48kHz. Always continuous — producing a buffer every callback, even if silence. Mono throughout; stereo is two ports (left/right).
+- `VIVID_PORT_SCALAR` — scalar float (control values: floats, ints, bools all route identically). Updated at no fixed rate.
+- `VIVID_PORT_AUDIO_BUFFER` — a 256-sample buffer at 48kHz. Always continuous — producing a buffer every callback, even if silence. Mono throughout; stereo is two ports (left/right).
 - `VIVID_PORT_LANE_ARRAY` — variable-length float array with broadcast semantics.
 - `VIVID_PORT_STRING` — UTF-8 string.
 - `VIVID_PORT_STRING_LANES` — variable-length string array.
@@ -97,8 +97,8 @@ struct MyEffect : vivid::OperatorBase, vivid::FrameProcessable {
         out = {&intensity, &mode};
     }
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out = {{"input",  VIVID_PORT_SIGNAL, VIVID_PORT_INPUT},
-               {"output", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT}};
+        out = {{"input",  VIVID_PORT_SCALAR, VIVID_PORT_INPUT},
+               {"output", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT}};
     }
     void process_frame(const VividFrameContext* ctx) override {
         float in = ctx->input_values[0];
@@ -108,7 +108,7 @@ struct MyEffect : vivid::OperatorBase, vivid::FrameProcessable {
 VIVID_REGISTER(MyEffect)
 ```
 
-Three domain-specific mix-in interfaces exist: `vivid::FrameProcessable` (implements `process_frame(const VividFrameContext*)`), `vivid::AudioProcessable` (implements `process_audio(const VividAudioContext*)`), and `vivid::GpuProcessable` (implements `process_gpu(const VividGpuContext*)`). All operators inherit `vivid::OperatorBase` and one or more of these interfaces; dual-cadence operators inherit both `FrameProcessable` and `AudioProcessable`. The `VIVID_REGISTER` macro generates `extern "C"` entry points (`vivid_abi_version`, `vivid_descriptor`, `vivid_create`, `vivid_destroy`, and domain-specific dispatch functions). It infers the operator's domain from its mix-ins, and emits a `vivid_abi_version()` function returning `VIVID_OPERATOR_ABI_VERSION` (currently 9). The runtime checks this on `dlopen` to reject stale dylibs left over from a previous build — it is not a cross-version compatibility contract. Operators always compile against the current headers.
+Three domain-specific mix-in interfaces exist: `vivid::FrameProcessable` (implements `process_frame(const VividFrameContext*)`), `vivid::AudioProcessable` (implements `process_audio(const VividAudioContext*)`), and `vivid::GpuProcessable` (implements `process_gpu(const VividGpuContext*)`). All operators inherit `vivid::OperatorBase` and exactly one of these interfaces — operators are single-cadence (`_fr` for frame-only, `_au` for audio-only). The `VIVID_REGISTER` macro generates `extern "C"` entry points (`vivid_abi_version`, `vivid_descriptor`, `vivid_create`, `vivid_destroy`, and domain-specific dispatch functions). It infers the operator's domain from its mix-ins, and emits a `vivid_abi_version()` function returning `VIVID_OPERATOR_ABI_VERSION` (currently 9). The runtime checks this on `dlopen` to reject stale dylibs left over from a previous build — it is not a cross-version compatibility contract. Operators always compile against the current headers.
 
 For statically linked export builds (§5.16), the `extern "C"` boundary is unnecessary — everything links together as one C++ binary. The macro handles both cases.
 
@@ -259,7 +259,7 @@ Not every lane set needs identity semantics. Vivid distinguishes between:
 
 Identity-bearing lane sets are what make polyphonic voices, persistent simulations, and other stateful pointwise systems behave correctly. Reordering or compaction may change positional index, but stable `lane_id` is what preserves per-lane state.
 
-**Dual-cadence operator rule:** If a dual-cadence operator (both `FrameProcessable` and `AudioProcessable`) declares `kStrategyIndependent = true`, all per-lane persistent state must be sourced through `vivid_lane_state()` in both `process_frame` and `process_audio` when `ctx->lane_state_fn` is present. Any member state in such an operator is a scalar fallback only and must not be used when lane-state services are active.
+**Cross-cadence lane state rule:** When per-lane persistent state crosses the `AudioFrameBridge` boundary, all per-lane persistent state must be sourced through `vivid_lane_state()` in both the frame-side and audio-side operators when `ctx->lane_state_fn` is present. Any member state in such an operator is a scalar fallback only and must not be used when lane-state services are active.
 
 ### 5.9.5 Capability Differences, Not Model Differences
 
@@ -404,7 +404,7 @@ vivid/
 │   ├── runtime/                # Core engine
 │   │   ├── main.cpp            # Entry point, window, main loop
 │   │   ├── graph.cpp/.h        # JSON graph loading, node management, serialization
-│   │   ├── runtime_core.cpp/.h # Graph compilation, frame-rate execution, cadence bridge
+│   │   ├── runtime_core.cpp/.h # Graph compilation, frame-rate execution, audio frame bridge
 │   │   ├── audio_engine.cpp/.h # miniaudio device, audio callback, ParamSnapshot bridge
 │   │   ├── gpu_context.cpp/.h  # WebGPU device, queue, surface
 │   │   ├── hot_reload.cpp/.h   # File watch, compile, dlclose/dlopen swap
@@ -660,10 +660,10 @@ Vivid exposes its full runtime API through two integration surfaces:
 
 ## 5.23 Media Pipeline
 
-Vivid's media pipeline handles video file playback with synchronized audio through two cadence-native operators that communicate exclusively through normal graph edges and the cadence bridge — no side channels or shared state:
+Vivid's media pipeline handles video file playback with synchronized audio through two cadence-native operators that communicate exclusively through normal graph edges and the `AudioFrameBridge` — no side channels or shared state:
 
-- **`MovieFileIn`** (`operators/gpu/movie_file_in/`) — decodes video frames from a file using AVFoundation (macOS). Supports HAP (via Snappy decompression + BC GPU upload), HAPQ (YCoCg color space), HAP-alpha, H.264, HEVC codecs, and static images (via stb_image). Outputs a `VIVID_PORT_TEXTURE` (decoded frames) plus `SIGNAL` outputs for playback time and duration. Accepts an optional `audio_time` SIGNAL input for AV sync. A background loader thread handles async video decoder creation with generation tracking (`MovieLoadCoordinator`). Playback modes: Loop, Once, Hold Last.
+- **`MovieFileIn`** (`operators/gpu/movie_file_in/`) — decodes video frames from a file using AVFoundation (macOS). Supports HAP (via Snappy decompression + BC GPU upload), HAPQ (YCoCg color space), HAP-alpha, H.264, HEVC codecs, and static images (via stb_image). Outputs a `VIVID_PORT_TEXTURE` (decoded frames) plus `SCALAR` outputs for playback time and duration. Accepts an optional `audio_time` SCALAR input for AV sync. A background loader thread handles async video decoder creation with generation tracking (`MovieLoadCoordinator`). Playback modes: Loop, Once, Hold Last.
 
-- **`MovieFileAudio`** (`operators/audio/movie_file_audio/`) — decodes audio from a movie file and outputs stereo `VIVID_PORT_AUDIO`. Uses a private lock-free ring buffer (~5s @ 48kHz) fed by a dedicated fill thread. Publishes monotonic playback time as a `SIGNAL` output, which crosses the cadence bridge to `MovieFileIn` for AV sync. Includes a preroll gate (~0.5s) to prevent startup clicks, volume ramping, and pitch-preserving time stretch via AVFoundation.
+- **`MovieFileAudio`** (`operators/audio/movie_file_audio/`) — decodes audio from a movie file and outputs stereo `VIVID_PORT_AUDIO_BUFFER`. Uses a private lock-free ring buffer (~5s @ 48kHz) fed by a dedicated fill thread. Publishes monotonic playback time as a `SCALAR` output, which crosses the `AudioFrameBridge` to `MovieFileIn` for AV sync. Includes a preroll gate (~0.5s) to prevent startup clicks, volume ramping, and pitch-preserving time stretch via AVFoundation.
 
-**AV sync model:** `MovieFileAudio` is the time master. Its `time` SIGNAL output crosses the cadence bridge at ~60Hz to `MovieFileIn`'s `audio_time` input. The video operator seeks only when drift exceeds two frame durations, absorbing bridge latency cleanly. Each operator declares its own `file`, `speed`, and `play_mode` params, so either can be used independently (video-only or audio-only).
+**AV sync model:** `MovieFileAudio` is the time master. Its `time` SCALAR output crosses the `AudioFrameBridge` at ~60Hz to `MovieFileIn`'s `audio_time` input. The video operator seeks only when drift exceeds two frame durations, absorbing bridge latency cleanly. Each operator declares its own `file`, `speed`, and `play_mode` params, so either can be used independently (video-only or audio-only).

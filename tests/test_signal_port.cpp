@@ -328,7 +328,7 @@ static void test_audio_engine_integration(const std::string& build_dir) {
 
     // --- Test 5: LFO SIGNAL → AudioFloatCvOp SIGNAL input ---
     // LFO writes a per-sample buffer. The cross-cadence snapshot extracts the
-    // last sample into AudioFloatCvOp's input_float_values. AudioFloatCvOp then
+    // The bridge delivers the LFO value to AudioFloatCvOp via params.
     // fills its AUDIO output with that CV value.
     runtime.tick(0.0, 1.0 / 60.0, 0, nullptr);
     runtime.audio_frame_bridge().push_to_audio(*runtime.compiled_graph());

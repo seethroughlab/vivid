@@ -802,11 +802,6 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                     e.custom_type_id = from_port_type;
                     e.port_transport = from_port_transport;
                     e.custom_payload_size = from_payload_size;
-                } else if ((from_port_type == VIVID_PORT_SCALAR || from_port_type == VIVID_PORT_AUDIO_BUFFER) &&
-                           (to_port_type == VIVID_PORT_SCALAR || to_port_type == VIVID_PORT_AUDIO_BUFFER)) {
-                    // SIGNAL/AUDIO interop
-                    e.data_type = (from_port_type == VIVID_PORT_AUDIO_BUFFER || to_port_type == VIVID_PORT_AUDIO_BUFFER)
-                        ? VIVID_PORT_AUDIO_BUFFER : VIVID_PORT_SCALAR;
                 } else if (from_port_type == VIVID_PORT_STRING ||
                            from_port_type == VIVID_PORT_STRING_LANES ||
                            to_port_type == VIVID_PORT_STRING ||

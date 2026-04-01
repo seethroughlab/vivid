@@ -314,8 +314,6 @@ static bool smoke_control(vivid::OperatorLoader& loader, void* inst,
 // For audio-cadence operators, the runtime allocates:
 //   - input_buffers: one per AUDIO-type or AUDIO_BUFFER-transport input port
 //   - output_buffers: one per output port (audio ops can write per-sample to any output)
-//   - input_float_values: one per SIGNAL-type input port (cross-cadence scalars)
-//   - output_float_values: one per SIGNAL-type output port (cross-cadence scalars)
 // We mirror this generously to avoid null-pointer crashes.
 
 static bool smoke_audio(vivid::OperatorLoader& loader, void* inst,
