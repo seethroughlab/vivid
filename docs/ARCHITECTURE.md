@@ -576,7 +576,7 @@ This system is the core experimentation mechanism: save what works, explore free
 
 > **Status: Implemented.** All pattern algebra operators are built-in core operators.
 
-**Decision: Patterns are standard control-domain operators with Spread ports, not a DSL.** Composition happens through normal graph wiring. The Spread type system (§5.9) provides implicit vectorization — a pattern transformer operates on all elements transparently.
+**Decision: Patterns are standard control-domain operators with lane-array ports, not a DSL.** Composition happens through normal graph wiring. The lane model (§5.9) provides implicit vectorization — a pattern transformer operates on all lanes transparently.
 
 **Three operator roles:**
 
@@ -591,9 +591,9 @@ Euclidean → PatTransform → Stack → Arpeggiator
 (generate)   (rotate+scale)  (combine w/ melody)  (consume as note sequence)
 ```
 
-Every intermediate result is a Spread visible on a wire. Every step is a discrete operator with inspectable parameters. The LLM can reason about pattern composition using the same vocabulary it uses for any other graph operation.
+Every intermediate result is a lane-bearing value visible on a wire. Every step is a discrete operator with inspectable parameters. The LLM can reason about pattern composition using the same vocabulary it uses for any other graph operation.
 
-**Why not a DSL:** A pattern language would require its own parser, type system, and error reporting — and would be opaque to the graph editor and LLM. By making patterns ordinary operators, they inherit Spread broadcasting, cross-domain bridging, serialization, hot-reload, ChildOp embedding, and inspector UI for free. The cost is verbosity (a chain of 4 operators vs. a one-line expression), but the graph editor makes this visual, not textual.
+**Why not a DSL:** A pattern language would require its own parser, type system, and error reporting — and would be opaque to the graph editor and LLM. By making patterns ordinary operators, they inherit lane broadcasting, cross-domain bridging, serialization, hot-reload, ChildOp embedding, and inspector UI for free. The cost is verbosity (a chain of 4 operators vs. a one-line expression), but the graph editor makes this visual, not textual.
 
 ## 5.22 MCP / LLM Integration
 
