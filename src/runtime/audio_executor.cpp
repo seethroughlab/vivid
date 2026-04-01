@@ -462,10 +462,14 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                     for (auto& buf : a.buffers_out)
                         std::memset(buf.data(), 0, buf.size() * sizeof(float));
                 } else {
-                    // Interleave: copy per-lane mono output back into multi-lane output buffers
+                    // Interleave: copy per-lane mono output back into multi-lane output buffers.
+                    // Include SIGNAL ports — dual-cadence operators write audio buffers
+                    // on SIGNAL outputs when promoted to audio cadence.
                     for (uint32_t c = 0; c < lanes; ++c) {
                         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-                            if (p < cn.output_port_types.size() && cn.output_port_types[p] == VIVID_PORT_AUDIO) {
+                            if (p < cn.output_port_types.size() &&
+                                (cn.output_port_types[p] == VIVID_PORT_AUDIO ||
+                                 cn.output_port_types[p] == VIVID_PORT_SIGNAL)) {
                                 float* mc = a.buffers_out[p].data() + c * kBufferSize;
                                 std::memcpy(mc, group.per_lane_outputs[c][p].data(), chunk * sizeof(float));
                             }
@@ -568,6 +572,23 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                     if (cn.errored) {
                         for (auto& buf : a.buffers_out)
                             std::memset(buf.data(), 0, buf.size() * sizeof(float));
+                    }
+
+                    // Collect per-lane SIGNAL output values into output_lanes.
+                    // Dual-cadence operators write audio buffers on SIGNAL ports;
+                    // extract the last sample per lane so frame-side inspection
+                    // and analysis snapshots see correct per-lane values.
+                    for (uint32_t p = 0; p < cn.output_port_count; ++p) {
+                        if (p < cn.output_port_types.size() &&
+                            cn.output_port_types[p] == VIVID_PORT_SIGNAL &&
+                            p < cn.c_out_lanes.size() &&
+                            cn.c_out_lanes[p].capacity >= loop_lanes) {
+                            cn.c_out_lanes[p].length = loop_lanes;
+                            for (uint32_t c = 0; c < loop_lanes; ++c) {
+                                float* lane_buf = a.buffers_out[p].data() + c * kBufferSize;
+                                cn.c_out_lanes[p].data[c] = (chunk > 0) ? lane_buf[chunk - 1] : 0.0f;
+                            }
+                        }
                     }
                 }
             } else {

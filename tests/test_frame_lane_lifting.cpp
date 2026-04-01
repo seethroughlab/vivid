@@ -381,6 +381,62 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // --- Test 8: Envelope output contains ADSR values, not input passthrough ---
+    // LaneSourceOp(base=60, count=4) → Envelope(gate) → LaneSinkOp
+    // Input lanes are [60, 120, 180, 240] (mimicking MIDI notes).
+    // All are > 0.5 so treated as "gate on". The Envelope output should be
+    // ADSR values in the 0-to-amplitude range (default amplitude=1.0),
+    // NOT the input values (60, 120, ...). This catches the passthrough bug
+    // where output_lanes gets input data instead of computed output.
+    std::fprintf(stderr, "\n--- Envelope output is ADSR, not input passthrough ---\n");
+    {
+        vivid::Graph graph;
+        graph.add_node("src", "LaneSourceOp", {{"base", 60.0f}, {"count", 4.0f}});
+        graph.add_node("env", "Envelope", {{"attack", 0.01f}, {"decay", 0.1f},
+                                            {"sustain", 0.7f}, {"release", 0.3f},
+                                            {"amplitude", 1.0f}});
+        graph.add_node("sink", "LaneSinkOp");
+        graph.add_connection("src", "out", "env", "gate");
+        graph.add_connection("env", "value", "sink", "in");
+
+        vivid::RuntimeCore runtime;
+        check(runtime.build(graph, registry), "runtime.build() [Envelope passthrough]");
+
+        auto* env_node = runtime.compiled_graph()->find_node("env");
+        check(env_node != nullptr, "env node found");
+        if (env_node) {
+            check(env_node->frame_execution_strategy == vivid::LaneExecutionStrategy::LoopBased,
+                  "Envelope assigned LoopBased");
+        }
+
+        // Tick several frames for ADSR to advance
+        for (int t = 0; t < 10; ++t)
+            runtime.tick(t * (1.0 / 60.0), 1.0 / 60.0, t);
+
+        auto* sink = runtime.compiled_graph()->find_node("sink");
+        check(sink != nullptr, "sink found");
+        if (sink && !sink->output_lanes.empty()) {
+            const auto& sp = sink->output_lanes[0];
+            check(sp.size() == 4, "output has 4 lanes");
+            if (sp.size() == 4) {
+                // ADSR output must be in [0, amplitude]. With amplitude=1.0,
+                // values must be <= 1.0. Input values are 60+ so any value > 2.0
+                // proves passthrough rather than computed ADSR.
+                bool passthrough_detected = false;
+                for (int i = 0; i < 4; ++i) {
+                    std::fprintf(stderr, "    lane %d = %.4f\n", i, sp[i]);
+                    if (sp[i] > 2.0f) {
+                        std::fprintf(stderr, "  FAIL: lane %d value %.2f >> amplitude — input passthrough!\n", i, sp[i]);
+                        passthrough_detected = true;
+                    }
+                }
+                check(!passthrough_detected, "no input passthrough in Envelope output");
+                // Also verify envelope is non-zero (gate is on, ADSR should be active)
+                check(sp[0] > 0.001f, "Envelope output is non-zero (ADSR active)");
+            }
+        }
+    }
+
     std::filesystem::remove_all(staging);
 
     std::fprintf(stderr, "\n%s (%d failures)\n", failures == 0 ? "PASSED" : "FAILED", failures);
