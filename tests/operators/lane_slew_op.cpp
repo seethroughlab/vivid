@@ -2,7 +2,7 @@
 // Uses vivid_lane_state() for per-lane state, NOT member variables.
 // Declares kStrategyIndependent = true so the compiler can assign LoopBased.
 //
-// When receiving multi-lane spread input from a structural source, the
+// When receiving multi-lane lane input from a structural source, the
 // runtime drives the per-lane loop. Each lane gets its own slew state
 // keyed by lane_id via vivid_lane_state().
 

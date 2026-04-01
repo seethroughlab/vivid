@@ -199,21 +199,23 @@ Compatibility is enforced by `tests/test_audio_dsp_api.cpp`.
 
 Hot-reload flow: file system watcher (kqueue on macOS) detects operator source change → invoke system C++ compiler to build `.dylib` → `dlclose` old library → `dlopen` new library → call `vivid_create` with existing parameter values → operator resumes with new behavior, old parameter state intact.
 
-## 5.9 Spreads: Implicit Vectorization
+## 5.9 Lanes: Implicit Vectorization
 
-**Decision: Every wire in the graph implicitly carries a Spread — an ordered collection of values.** A single number is a Spread of length 1. An FFT output is a Spread of length 512. When a Spread-producing output connects to a single-value input, the operation automatically vectorizes across all elements. No explicit loop nodes are needed for the common case.
+**Decision: Every value in the graph can carry multiple parallel elements — lanes.** A single number is a one-lane value. An FFT output is a 512-lane value. When a multi-lane output connects to a single-lane input, the operation automatically vectorizes across all lanes. No explicit loop nodes are needed for the common case.
 
-This is the single most impactful design decision for Vivid's data model. It resolves the instantiation problem that plagues every visual programming environment for creative work: "how do I make 500 particles?" In Vivid, the answer is "connect a Spread of 500 positions to a rendering operator." Where that Spread came from — a grid generator, an FFT, a MIDI controller, a Spread literal — doesn't matter. The operator processes all elements.
+This is the single most impactful design decision for Vivid's data model. It resolves the instantiation problem that plagues every visual programming environment for creative work: "how do I make 500 particles?" In Vivid, the answer is "connect a 500-lane position value to a rendering operator." Where those lanes came from — a grid generator, an FFT, a MIDI controller, a lane source — doesn't matter. The operator processes all elements.
 
 Precedent: vvvv's Spreads, Houdini's per-point attribute operations, and Blender Geometry Nodes' Fields all validate this pattern. The systems that handle instantiation best all converge on the same insight: the right primitive for creative work is not an object with methods but an element with attributes, operated on in parallel.
 
 **Key properties:**
 
-- **Broadcasting:** when two Spreads of different lengths connect to the same operator, the shorter one repeats (wraps) to match the longer. A Spread of 3 colors applied to a Spread of 512 particles cycles through the 3 colors.
-- **Cross-domain:** a Spread of Control values (e.g., 512 FFT bins) can connect directly to a GPU operator's parameter, producing 512 visual elements driven by audio. No explicit bridging required — the existing Control→GPU bridge handles the data; Spreads handle the cardinality.
-- **LLM-friendly:** describing Spread-based operations in natural language is natural. "Create 512 particles in a circle, sized by the FFT, colored by frequency" maps directly to a chain of operations on Spreads.
-- **Port types:** `VIVID_PORT_LANE_ARRAY` is a dedicated port type for variable-length float arrays. Texture and audio ports don't have a spread variant — multiple instances use multiple ports. String arrays use the separate `VIVID_PORT_STRING_LANES` type.
-- **Cross-domain bridge implementation:** Control↔Audio uses `LaneSnapshot` (fixed 64-element struct) inside the double-buffered `ParamSnapshot`/`AnalysisSnapshot` bridges — no heap allocation on the audio thread. Control→GPU uses WebGPU storage buffers: the operator uploads Spread data via `wgpuQueueWriteBuffer` into a `ReadOnlyStorage` binding that the fragment shader reads as `array<f32>`.
+- **Broadcasting:** scalar values broadcast into any lane set. A single control knob modulating a 512-lane particle field applies the same value to every lane.
+- **Provenance:** multi-lane values carry lane-set provenance. Two values with the same `lane_set_id` are aligned lane-for-lane. Mismatched non-scalar lane sets require explicit reshape operators (Repeat, Tile, Select).
+- **Cross-domain:** lane-bearing control values (e.g., 512 FFT bins) can connect directly to GPU operators, producing 512 visual elements driven by audio. The Control→GPU bridge handles the data; lanes handle the cardinality.
+- **LLM-friendly:** describing lane-based operations in natural language is natural. "Create 512 particles in a circle, sized by the FFT, colored by frequency" maps directly to a chain of operations on lane-bearing values.
+- **Port types:** `VIVID_PORT_LANE_ARRAY` is the port type for variable-length float lane arrays. `VIVID_PORT_STRING_LANES` is the port type for variable-length string lane arrays. Texture and audio ports don't have a lane-array variant — multiple instances use multiple ports.
+- **Cross-domain bridge implementation:** Control↔Audio uses `LaneSnapshot` (fixed 64-element struct) inside the double-buffered `ParamSnapshot`/`AnalysisSnapshot` bridges — no heap allocation on the audio thread. Control→GPU uses WebGPU storage buffers: the operator uploads lane data via `wgpuQueueWriteBuffer` into a `ReadOnlyStorage` binding that the fragment shader reads as `array<f32>`.
+- **Lane identity:** for stateful lane sets (polyphonic voices, persistent simulations), lanes carry stable identity tokens (`lane_id`) that survive reordering and compaction. Operators access per-lane persistent state via `vivid_lane_state()` keyed by `lane_id`, not positional index. See [lanes-architecture.md](lanes-architecture.md) for the full model.
 
 ## 5.10 Simulation Zones: Frame-to-Frame State
 
@@ -228,11 +230,11 @@ The Simulation Zone makes this feedback explicit and visible in the graph, unlik
 **Domain applications:**
 
 - **GPU — video feedback:** previous frame's texture → Blur → Displace → Composite with new input. The classic generative feedback loop, now debuggable because every step is visible.
-- **GPU — particle state:** the Previous State is a Spread of particle positions/velocities/colors. Inside: apply forces, update positions, kill dead particles, spawn new ones. The Spread output is both renderable data and state for next frame.
+- **GPU — particle state:** the Previous State is a lane-bearing value of particle positions/velocities/colors. Inside: apply forces, update positions, kill dead particles, spawn new ones. The lane output is both renderable data and state for next frame.
 - **Audio — envelope follower:** previous smoothed value blended with new raw value by a coefficient. Output is the smoothed value.
 - **Control — accumulators:** previous count incremented on each beat event. Running totals, state machines, event counters.
 
-**Spread-compatible:** the state inside a Simulation Zone can be a Spread. "500 particles each with their own evolving state" is a Simulation Zone operating on a Spread of 500 elements. Each element carries its own position, velocity, color, and lifetime — updated in parallel every frame.
+**Lane-compatible:** the state inside a Simulation Zone can be lane-bearing. "500 particles each with their own evolving state" is a Simulation Zone operating on a 500-lane value. Each lane carries its own position, velocity, color, and lifetime — updated in parallel every frame.
 
 **JSON representation:** a Simulation Zone is a node with a feedback connection from its output to a designated state input. The runtime knows to buffer the previous frame's output and provide it as input on the next frame. The exact visual representation — whether a visible bounding box around grouped nodes or a single Feedback operator with an internal graph — is a UX question to be resolved during prototyping.
 
