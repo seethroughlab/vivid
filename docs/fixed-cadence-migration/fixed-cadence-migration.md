@@ -70,9 +70,21 @@ Mechanically rename the numeric port kinds across the repo while keeping their i
 
 Remove the public dual-cadence operator surface. True twins become explicit `_fr` / `_au` pairs, while frame-native operators lose `AudioProcessable` and keep their current bare names.
 
-### [Phase 4: Remove Dual-Cadence Infrastructure and Enforce Explicit Bridges](phase-4-runtime-break.md)
+### Phase 4: Remove Dual-Cadence Infrastructure (3 sub-phases)
 
-Delete the core dual-cadence model: cadence capability, node cadence override, implicit promotion, scalar/audio compatibility shortcuts, and audio float-CV side channels. This is the first half of the atomic runtime break.
+Delete the core dual-cadence model incrementally. 4A and 4B land independently; 4C is coordinated with Phase 5.
+
+#### [Phase 4A: Remove Cadence Override Surface and Delete Inference Pass](phase-4a-cadence-override-removal.md)
+
+Remove the cadence override mechanism and the promotion pass. Dead code since Phase 3. Safe, no behavioral change.
+
+#### [Phase 4B: Remove VividCadenceCapability, Signal Ordinals, and Enforce Explicit Bridges](phase-4b-capability-ordinals-bridge-enforcement.md)
+
+Remove the dual-cadence type system, scalar CV routing ordinals, and Phase 2 aliases. Enforce explicit bridge rules in the compiler. Bump operator ABI.
+
+#### [Phase 4C: Remove Float-CV Plumbing and Update Audio Operators](phase-4c-float-cv-removal.md)
+
+Remove `input_float_values`/`output_float_values` from VividAudioContext. Update all audio operators. Lands atomically with Phase 5.
 
 ### [Phase 5: Replace CadenceBridge With Explicit AudioFrameBridge Semantics](phase-5-bridge-executor-rework.md)
 
@@ -94,13 +106,15 @@ and the node graph UI/docs, not a nonexistent CLI MCP server.
 ## Sequencing
 
 ```text
-Phase 1 (graph model)     ─── additive, non-breaking
-Phase 2 (port rename)     ─── mechanical, can land independently
-Phase 3 (operator split)  ─── depends on Phase 2 naming
-Phase 4 (runtime break)   ─┐
-Phase 5 (bridge/executor)  ├─ atomic cutover
-Phase 6 (migration/tests) ─┘
-Phase 7 (UI/MCP/docs)     ─── after Phase 6, partly parallelizable
+Phase 1  (graph model)              ─── additive, non-breaking
+Phase 2  (port rename)              ─── mechanical, can land independently
+Phase 3  (operator split)           ─── depends on Phase 2 naming
+Phase 4A (cadence override removal) ─── safe cleanup, no behavioral change
+Phase 4B (capability + ordinals)    ─── structural break, ABI bump
+Phase 4C (float-CV removal)         ─┐
+Phase 5  (bridge/executor)           ├─ atomic cutover
+Phase 6  (migration/tests)          ─┘
+Phase 7  (UI/MCP/docs)              ─── after Phase 6, partly parallelizable
 ```
 
 Phases 1-3 are safe preparation. Phases 4-6 are the actual architectural migration and should be treated as one coordinated break. Phase 7 makes the new model visible and teachable everywhere else.
