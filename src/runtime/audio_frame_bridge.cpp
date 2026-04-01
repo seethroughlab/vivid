@@ -42,6 +42,7 @@ void AudioFrameBridge::build(const CompiledGraph& cg) {
         snap.waveform.resize(audio_count);
         for (auto& w : snap.waveform) w.fill(0.0f);
         snap.lane_outputs.resize(audio_count);
+        snap.scalar_outputs.resize(audio_count);
         snap.errored.assign(audio_count, false);
         snap.error_msgs.resize(audio_count);
         for (auto& msg : snap.error_msgs) msg.fill('\0');
@@ -50,6 +51,7 @@ void AudioFrameBridge::build(const CompiledGraph& cg) {
             uint32_t gi = cg.audio_order[i];
             const auto& cn = cg.nodes[gi];
             snap.lane_outputs[i].resize(cn.output_port_count);
+            snap.scalar_outputs[i].assign(cn.output_port_count, 0.0f);
         }
     }
 
@@ -136,11 +138,24 @@ void AudioFrameBridge::push_to_audio(const CompiledGraph& cg) {
         uint32_t si = static_cast<uint32_t>(si_signed);
 
         if (e.targets_param && !e.targets_file_param) {
-            // Scalar param modulation
+            // Scalar param modulation (works for Hold bridge kind)
             float val = e.sources_param
                 ? from_cn.param_values[e.from_port]
                 : from_cn.output_values[e.from_port];
             val *= e.remap_scale();
+            if (e.to_port < snap.node_params[si].size())
+                snap.node_params[si][e.to_port] = val;
+        } else if (e.bridge_kind == BridgeKind::Hold &&
+                   e.data_type == VIVID_PORT_SCALAR && !e.targets_param) {
+            // Hold bridge: scalar port input → deliver as param-style value.
+            // The audio executor applies params before process_audio; this
+            // value will be accessible through the synced param mechanism.
+            float val = e.sources_param
+                ? from_cn.param_values[e.from_port]
+                : from_cn.output_values[e.from_port];
+            val = e.has_remap() ? e.apply_remap(val) : val;
+            // Write to param snapshot — the audio executor applies all params
+            // before calling process_audio.
             if (e.to_port < snap.node_params[si].size())
                 snap.node_params[si][e.to_port] = val;
         } else if (e.data_type == VIVID_PORT_LANE_ARRAY && !e.targets_param) {
@@ -227,7 +242,7 @@ void AudioFrameBridge::pull_from_audio(CompiledGraph& cg) {
         auto& to_cn = cg.nodes[e.to_node];
 
         if (e.data_type == VIVID_PORT_LANE_ARRAY) {
-            // Spread output → frame-rate input
+            // Spread output → frame-rate input (Snapshot bridge kind)
             if (si < snap.lane_outputs.size() &&
                 e.from_port < snap.lane_outputs[si].size()) {
                 const auto& src = snap.lane_outputs[si][e.from_port];
@@ -236,6 +251,69 @@ void AudioFrameBridge::pull_from_audio(CompiledGraph& cg) {
                         src.data + src.length);
                     to_cn.dirty = true;
                 }
+            }
+        } else if (e.bridge_kind == BridgeKind::LastSample &&
+                   e.data_type == VIVID_PORT_SCALAR) {
+            // LastSample: read last sample from audio output buffer → frame input
+            if (si < snap.scalar_outputs.size() &&
+                e.from_port < snap.scalar_outputs[si].size()) {
+                float val = snap.scalar_outputs[si][e.from_port];
+                val = e.has_remap() ? e.apply_remap(val) : val;
+                if (e.targets_param) {
+                    if (e.to_port < to_cn.param_values.size())
+                        to_cn.param_values[e.to_port] = val;
+                } else {
+                    if (e.to_port < to_cn.bridge_input_values.size()) {
+                        to_cn.bridge_input_values[e.to_port] = val;
+                        if (e.to_port < to_cn.bridge_input_dirty.size())
+                            to_cn.bridge_input_dirty[e.to_port] = 1;
+                    }
+                }
+                to_cn.dirty = true;
+            }
+        } else if (e.bridge_kind == BridgeKind::Rms &&
+                   e.data_type == VIVID_PORT_SCALAR) {
+            // Rms: read RMS from analysis snapshot → frame input
+            if (si < snap.rms.size()) {
+                float val = snap.rms[si];
+                val = e.has_remap() ? e.apply_remap(val) : val;
+                if (e.targets_param) {
+                    if (e.to_port < to_cn.param_values.size())
+                        to_cn.param_values[e.to_port] = val;
+                } else {
+                    if (e.to_port < to_cn.bridge_input_values.size()) {
+                        to_cn.bridge_input_values[e.to_port] = val;
+                        if (e.to_port < to_cn.bridge_input_dirty.size())
+                            to_cn.bridge_input_dirty[e.to_port] = 1;
+                    }
+                }
+                to_cn.dirty = true;
+            }
+        } else if (e.bridge_kind == BridgeKind::Peak &&
+                   e.data_type == VIVID_PORT_SCALAR) {
+            // Peak: read peak from analysis snapshot → frame input
+            if (si < snap.peak.size()) {
+                float val = snap.peak[si];
+                val = e.has_remap() ? e.apply_remap(val) : val;
+                if (e.targets_param) {
+                    if (e.to_port < to_cn.param_values.size())
+                        to_cn.param_values[e.to_port] = val;
+                } else {
+                    if (e.to_port < to_cn.bridge_input_values.size()) {
+                        to_cn.bridge_input_values[e.to_port] = val;
+                        if (e.to_port < to_cn.bridge_input_dirty.size())
+                            to_cn.bridge_input_dirty[e.to_port] = 1;
+                    }
+                }
+                to_cn.dirty = true;
+            }
+        } else if (e.bridge_kind == BridgeKind::Waveform &&
+                   e.data_type == VIVID_PORT_LANE_ARRAY) {
+            // Waveform: read downsampled waveform → frame lane port
+            if (si < snap.waveform.size() && e.to_port < to_cn.input_lanes.size()) {
+                const auto& wf = snap.waveform[si];
+                to_cn.input_lanes[e.to_port].assign(wf.begin(), wf.end());
+                to_cn.dirty = true;
             }
         }
     }

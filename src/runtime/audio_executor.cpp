@@ -794,6 +794,15 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             }
         }
 
+        // Scalar outputs: extract last sample from each output buffer for bridge delivery
+        if (i < analysis.scalar_outputs.size()) {
+            for (uint32_t p = 0; p < cn.output_port_count && p < analysis.scalar_outputs[i].size(); ++p) {
+                if (p < a.buffers_out.size() && !a.buffers_out[p].empty()) {
+                    analysis.scalar_outputs[i][p] = a.buffers_out[p].back();
+                }
+            }
+        }
+
         // Error state
         if (i < analysis.errored.size()) {
             analysis.errored[i] = cn.errored;
