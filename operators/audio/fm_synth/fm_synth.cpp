@@ -12,7 +12,7 @@
  *
  * Classic FM synthesis with a carrier and modulator oscillator. The
  * modulator frequency is set as a ratio of the carrier, and the modulation
- * index controls harmonic richness. Supports polyphonic spread inputs
+ * index controls harmonic richness. Supports polyphonic lane inputs
  * for sequencer integration.
  *
  * @tip Integer mod_ratio values produce harmonic timbres; non-integer values create bell-like inharmonic sounds.

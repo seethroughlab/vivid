@@ -248,9 +248,9 @@ struct Metaball : vivid::OperatorBase, vivid::GpuProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"pos_x",   VIVID_PORT_LANE_ARRAY,  VIVID_PORT_INPUT});   // spread input 0
-        out.push_back({"pos_y",   VIVID_PORT_LANE_ARRAY,  VIVID_PORT_INPUT});   // spread input 1
-        out.push_back({"radii",   VIVID_PORT_LANE_ARRAY,  VIVID_PORT_INPUT});   // spread input 2
+        out.push_back({"pos_x",   VIVID_PORT_LANE_ARRAY,  VIVID_PORT_INPUT});   // lane input 0
+        out.push_back({"pos_y",   VIVID_PORT_LANE_ARRAY,  VIVID_PORT_INPUT});   // lane input 1
+        out.push_back({"radii",   VIVID_PORT_LANE_ARRAY,  VIVID_PORT_INPUT});   // lane input 2
         out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
@@ -280,11 +280,11 @@ struct Metaball : vivid::OperatorBase, vivid::GpuProcessable {
         u.color_b    = b.value;
         u.render_mode = static_cast<float>(render_mode.int_value());
 
-        // Pack ball data from spread inputs (or generate defaults)
+        // Pack ball data from lane inputs (or generate defaults)
         for (int i = 0; i < n; ++i) {
             float px = 0.5f, py = 0.5f, rad = 0.08f;
 
-            // Read spread inputs if connected
+            // Read lane inputs if connected
             if (ctx->input_lanes) {
                 auto& sp_x = ctx->input_lanes[0];
                 if (sp_x.data && static_cast<uint32_t>(i) < sp_x.length)
@@ -299,7 +299,7 @@ struct Metaball : vivid::OperatorBase, vivid::GpuProcessable {
                     rad = sp_r.data[i];
             }
 
-            // Fallback: distribute in a circle if no spread input
+            // Fallback: distribute in a circle if no lane input
             if (!ctx->input_lanes || !ctx->input_lanes[0].data) {
                 float angle = static_cast<float>(i) / static_cast<float>(n) * 6.2831853f;
                 float phase = static_cast<float>(ctx->time) * 0.5f;

@@ -195,7 +195,7 @@ struct Tracker : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProce
     }
 
     void compute(const float* input_values, const float* params,
-                 VividLanePort* out_spreads, float* output_values,
+                 VividLanePort* out_lanes, float* output_values,
                  void** custom_outputs, uint32_t custom_output_count) {
         float beat_phase = input_values[0];
         bool reset_signal = input_values[1] > 0.5f;
@@ -249,11 +249,11 @@ struct Tracker : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProce
         }
         prev_global_tick_ = global_tick;
 
-        // Write spread outputs
-        if (out_spreads) {
-            auto& notes_sp = out_spreads[0];
-            auto& vels_sp  = out_spreads[1];
-            auto& gates_sp = out_spreads[2];
+        // Write lane outputs
+        if (out_lanes) {
+            auto& notes_sp = out_lanes[0];
+            auto& vels_sp  = out_lanes[1];
+            auto& gates_sp = out_lanes[2];
 
             if (notes_sp.capacity >= tracker::MAX_CHANNELS) {
                 notes_sp.length = tracker::MAX_CHANNELS;

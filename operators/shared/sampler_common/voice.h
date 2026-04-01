@@ -174,7 +174,7 @@ struct GateTracker {
 
     // Call at end of buffer to update state. Releases disappeared slots.
     void update(const float* gate_data, uint32_t len) {
-        // Release any slots that disappeared (spread shrank)
+        // Release any slots that disappeared (lane array shrank)
         for (uint32_t i = len; i < prev_len; ++i) {
             prev_gates[i] = 0.0f;
         }
@@ -191,13 +191,13 @@ struct GateTracker {
 // Spread input helper
 // ---------------------------------------------------------------------------
 
-struct SpreadInput {
+struct LaneInput {
     const float* data = nullptr;
     uint32_t length = 0;
 };
 
-inline SpreadInput read_spread_input(const VividLanePort* spreads, int port_index) {
-    SpreadInput result;
+inline LaneInput read_lane_input(const VividLanePort* spreads, int port_index) {
+    LaneInput result;
     if (spreads) {
         result.data = spreads[port_index].data;
         result.length = spreads[port_index].length;

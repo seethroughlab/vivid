@@ -150,10 +150,10 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
         double playback_rate = static_cast<double>(sample.sample_rate) /
                                static_cast<double>(ctx->sample_rate);
 
-        // Read spread inputs
-        SpreadInput gates_in = read_spread_input(ctx->input_lanes, 0);
-        SpreadInput notes_in = read_spread_input(ctx->input_lanes, 1);
-        SpreadInput vels_in  = read_spread_input(ctx->input_lanes, 2);
+        // Read lane inputs
+        LaneInput gates_in = read_lane_input(ctx->input_lanes, 0);
+        LaneInput notes_in = read_lane_input(ctx->input_lanes, 1);
+        LaneInput vels_in  = read_lane_input(ctx->input_lanes, 2);
 
         // Process MIDI input
         if (ctx->custom_inputs && ctx->custom_input_count > 0 && ctx->custom_inputs[0]) {

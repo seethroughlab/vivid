@@ -25,10 +25,10 @@ static constexpr uint32_t kSampleRate = 48000;
 Communication between frame and audio worlds uses `CadenceBridge`, which maintains two
 double-buffered snapshot pairs with lock-free atomic index flips:
 
-- **`ParamSnapshot`** (frame → audio): param values, float CV inputs, spreads, strings, custom
+- **`ParamSnapshot`** (frame → audio): param values, float CV inputs, lanes, strings, custom
   ports, solo active set
 - **`AnalysisSnapshot`** (audio → frame): RMS, peak, waveform ring buffers, float scalar outputs,
-  spread outputs, error state
+  lane outputs, error state
 
 ### Frame → Audio
 
@@ -55,7 +55,7 @@ Partitioned into four index lists in `CompiledGraph`: `frame_direct_edges`, `aud
 
 `AudioExecutor::audio_callback()` processes audio-order nodes in chunks of `kBufferSize`:
 
-1. Apply `ParamSnapshot` (params, float inputs, spreads, strings, custom ports)
+1. Apply `ParamSnapshot` (params, float inputs, lanes, strings, custom ports)
 2. For each node in `audio_order`:
    - Zero input buffers
    - Route upstream audio via `audio_direct_edges` (with channel negotiation)

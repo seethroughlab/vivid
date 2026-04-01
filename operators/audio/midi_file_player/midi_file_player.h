@@ -17,7 +17,7 @@
  * @brief Plays standard MIDI files and outputs note, velocity, and gate data.
  *
  * Loads and plays .mid files, outputting real-time note events as control
- * signals and polyphonic spreads. Supports loop, once, and hold-last
+ * signals and polyphonic lane arrays. Supports loop, once, and hold-last
  * play modes.
  *
  * @see MidiInput, Sampler, Sequencer

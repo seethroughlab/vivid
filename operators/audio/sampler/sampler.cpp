@@ -118,10 +118,10 @@ struct Sampler : vivid::OperatorBase, vivid::AudioProcessable {
             return;
         }
 
-        // Read spread inputs
-        SpreadInput gates_in = read_spread_input(ctx->input_lanes, 0);
-        SpreadInput notes_in = read_spread_input(ctx->input_lanes, 1);
-        SpreadInput vels_in  = read_spread_input(ctx->input_lanes, 2);
+        // Read lane inputs
+        LaneInput gates_in = read_lane_input(ctx->input_lanes, 0);
+        LaneInput notes_in = read_lane_input(ctx->input_lanes, 1);
+        LaneInput vels_in  = read_lane_input(ctx->input_lanes, 2);
 
         // Read params
         float p_attack  = attack.value;

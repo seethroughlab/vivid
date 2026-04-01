@@ -11,7 +11,7 @@
  * @brief MIDI device listener outputting notes, velocity, gates, and CCs.
  *
  * Connects to a MIDI input device and outputs note/velocity/gate as both
- * scalar signals (latest note) and polyphonic spreads (up to 16 held notes).
+ * scalar signals (latest note) and polyphonic lane arrays (up to 16 held notes).
  * Also provides pitch bend, mod wheel, and a learnable CC value.
  *
  * @tip Enable learn mode and move a controller to auto-assign the CC number.
@@ -36,7 +36,7 @@ struct MidiInput : vivid::OperatorBase, vivid::FrameProcessable {
         out.push_back(&learn);
     }
 
-    // Output ports: scalar note/vel/gate/trigger/pitch_bend/mod_wheel/cc_value + spread notes/velocities/gates
+    // Output ports: scalar note/vel/gate/trigger/pitch_bend/mod_wheel/cc_value + lane-array notes/velocities/gates
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"note",       VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});  // [0]
         out.push_back({"velocity",   VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});  // [1]
@@ -187,7 +187,7 @@ struct MidiInput : vivid::OperatorBase, vivid::FrameProcessable {
         ctx->output_values[5] = cc_values_[1];                          // mod_wheel (CC1)
         ctx->output_values[6] = cc_values_[cc_idx];                     // cc_value
 
-        // Write spread outputs: all currently held notes
+        // Write lane outputs: all currently held notes
         if (ctx->output_lanes) {
             auto& notes_sp = ctx->output_lanes[7];
             auto& vel_sp   = ctx->output_lanes[8];
