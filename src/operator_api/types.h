@@ -65,12 +65,16 @@ typedef uint32_t VividDisplayHint;
 // Channel kinds — reflect the logical data type on a port.
 typedef uint32_t VividPortType;
 
-#define VIVID_PORT_SIGNAL         0u  // continuous numeric value (scalar at frame cadence, per-sample buffer at audio cadence)
-#define VIVID_PORT_AUDIO          1u  // audio sample buffer
+#define VIVID_PORT_SCALAR         0u  // scalar numeric value
+#define VIVID_PORT_AUDIO_BUFFER   1u  // audio sample buffer
 #define VIVID_PORT_LANE_ARRAY         2u  // variable-length float array
 #define VIVID_PORT_STRING         3u  // UTF-8 string
 #define VIVID_PORT_STRING_LANES  4u  // variable-length string array
 #define VIVID_PORT_TEXTURE        5u  // WGPUTextureView
+
+// Temporary aliases — removed before Phase 4 cutover.
+#define VIVID_PORT_SIGNAL         VIVID_PORT_SCALAR
+#define VIVID_PORT_AUDIO          VIVID_PORT_AUDIO_BUFFER
 
 typedef uint32_t VividPortDirection;
 #define VIVID_PORT_INPUT   0u
@@ -124,7 +128,7 @@ typedef struct VividPortDescriptor {
     uint32_t           payload_size; // 0 for built-in types
     const char*        type_name;    // C++ type name, NULL for built-ins
     uint8_t            channels;     // 0=auto, 1=mono, 2=stereo, etc.
-    float              default_value;// default for VIVID_PORT_SIGNAL inputs
+    float              default_value;// default for VIVID_PORT_SCALAR inputs
     const char*        stable_type_id; // stable namespaced id for custom types, NULL for built-ins
     const char*        semantic_tag;   // e.g. "beat_phase", "gate", "trigger", "midi", NULL if unset
 } VividPortDescriptor;
@@ -437,15 +441,15 @@ typedef void (*VividMainThreadUpdateFn)(void* instance, double time,
 // ---------------------------------------------------------------------------
 
 static inline int vivid_is_control_type(VividPortType t) {
-    return t == VIVID_PORT_SIGNAL || t == VIVID_PORT_LANE_ARRAY ||
+    return t == VIVID_PORT_SCALAR || t == VIVID_PORT_LANE_ARRAY ||
            t == VIVID_PORT_STRING || t == VIVID_PORT_STRING_LANES;
 }
 
 static inline int vivid_port_type_compatible(VividPortType a, VividPortType b) {
     if (a == b) return 1;
-    /* SIGNAL ↔ AUDIO: audio-cadence SIGNAL ports use 1-channel buffers */
-    if ((a == VIVID_PORT_SIGNAL && b == VIVID_PORT_AUDIO) ||
-        (a == VIVID_PORT_AUDIO  && b == VIVID_PORT_SIGNAL)) return 1;
+    /* SCALAR ↔ AUDIO_BUFFER: audio-cadence SCALAR ports use 1-channel buffers */
+    if ((a == VIVID_PORT_SCALAR       && b == VIVID_PORT_AUDIO_BUFFER) ||
+        (a == VIVID_PORT_AUDIO_BUFFER && b == VIVID_PORT_SCALAR)) return 1;
     return vivid_is_control_type(a) && vivid_is_control_type(b);
 }
 

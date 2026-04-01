@@ -102,12 +102,12 @@ static void test_parse_simple_module() {
     // Ports
     check(mod->ports.size() == 3, "3 ports defined");
     check(mod->ports[0].name == "freq_in", "port 0 name");
-    check(mod->ports[0].type == VIVID_PORT_SIGNAL, "port 0 type = signal");
+    check(mod->ports[0].type == VIVID_PORT_SCALAR, "port 0 type = signal");
     check(mod->ports[0].direction == VIVID_PORT_INPUT, "port 0 direction = input");
     check(mod->ports[0].internal_node == "osc", "port 0 internal node");
     check(mod->ports[0].internal_port == "frequency", "port 0 internal port");
     check(mod->ports[2].name == "output", "port 2 name");
-    check(mod->ports[2].type == VIVID_PORT_AUDIO, "port 2 type = audio");
+    check(mod->ports[2].type == VIVID_PORT_AUDIO_BUFFER, "port 2 type = audio");
     check(mod->ports[2].direction == VIVID_PORT_OUTPUT, "port 2 direction = output");
 
     // Params
@@ -149,9 +149,9 @@ static void test_parse_effects_module() {
     if (!mod) return;
 
     check(mod->ports.size() == 2, "2 ports (audio in + audio out)");
-    check(mod->ports[0].type == VIVID_PORT_AUDIO, "input port is audio");
+    check(mod->ports[0].type == VIVID_PORT_AUDIO_BUFFER, "input port is audio");
     check(mod->ports[0].direction == VIVID_PORT_INPUT, "input port direction");
-    check(mod->ports[1].type == VIVID_PORT_AUDIO, "output port is audio");
+    check(mod->ports[1].type == VIVID_PORT_AUDIO_BUFFER, "output port is audio");
     check(mod->ports[1].direction == VIVID_PORT_OUTPUT, "output port direction");
 
     std::remove(tmp_path.c_str());

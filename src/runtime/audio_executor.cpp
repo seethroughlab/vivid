@@ -294,7 +294,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             for (uint32_t ei : cg.audio_direct_edges) {
                 const auto& e = cg.edges[ei];
                 if (e.to_node != ni || e.targets_param) continue;
-                if (e.data_type != VIVID_PORT_AUDIO && e.data_type != VIVID_PORT_SIGNAL) continue;
+                if (e.data_type != VIVID_PORT_AUDIO_BUFFER && e.data_type != VIVID_PORT_SCALAR) continue;
 
                 auto& from_cn = cg.nodes[e.from_node];
                 auto& from_a = *from_cn.audio;
@@ -400,7 +400,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 // Deinterleave: extract lane c from multi-lane buffers into per-lane mono buffers
                 for (uint32_t c = 0; c < lanes; ++c) {
                     for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-                        if (p < cn.input_port_types.size() && cn.input_port_types[p] == VIVID_PORT_AUDIO) {
+                        if (p < cn.input_port_types.size() && cn.input_port_types[p] == VIVID_PORT_AUDIO_BUFFER) {
                             const float* mc = a.buffers_in[p].data() + c * kBufferSize;
                             std::memcpy(group.per_lane_inputs[c][p].data(), mc, chunk * sizeof(float));
                         } else {
@@ -468,8 +468,8 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                     for (uint32_t c = 0; c < lanes; ++c) {
                         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
                             if (p < cn.output_port_types.size() &&
-                                (cn.output_port_types[p] == VIVID_PORT_AUDIO ||
-                                 cn.output_port_types[p] == VIVID_PORT_SIGNAL)) {
+                                (cn.output_port_types[p] == VIVID_PORT_AUDIO_BUFFER ||
+                                 cn.output_port_types[p] == VIVID_PORT_SCALAR)) {
                                 float* mc = a.buffers_out[p].data() + c * kBufferSize;
                                 std::memcpy(mc, group.per_lane_outputs[c][p].data(), chunk * sizeof(float));
                             }
@@ -516,7 +516,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                     for (uint32_t c = 0; c < loop_lanes; ++c) {
                         // Set up per-lane buffer pointers (slice into pre-allocated buffers)
                         for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-                            if (p < cn.input_port_types.size() && cn.input_port_types[p] == VIVID_PORT_AUDIO) {
+                            if (p < cn.input_port_types.size() && cn.input_port_types[p] == VIVID_PORT_AUDIO_BUFFER) {
                                 loop_in_ptrs[p] = a.buffers_in[p].data() + c * kBufferSize;
                             } else {
                                 loop_in_ptrs[p] = a.buffers_in[p].data();  // broadcast non-audio
@@ -580,7 +580,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                     // and analysis snapshots see correct per-lane values.
                     for (uint32_t p = 0; p < cn.output_port_count; ++p) {
                         if (p < cn.output_port_types.size() &&
-                            cn.output_port_types[p] == VIVID_PORT_SIGNAL &&
+                            cn.output_port_types[p] == VIVID_PORT_SCALAR &&
                             p < cn.c_out_lanes.size() &&
                             cn.c_out_lanes[p].capacity >= loop_lanes) {
                             cn.c_out_lanes[p].length = loop_lanes;
@@ -672,7 +672,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 if (e.from_node != ni || e.targets_param) continue;
 
                 // Float port routing (SIGNAL→SIGNAL between audio nodes)
-                if (e.data_type == VIVID_PORT_SIGNAL) {
+                if (e.data_type == VIVID_PORT_SCALAR) {
                     auto& to_cn = cg.nodes[e.to_node];
                     auto& to_a = *to_cn.audio;
                     float scale = e.remap_scale();

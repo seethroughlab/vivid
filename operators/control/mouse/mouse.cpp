@@ -15,11 +15,11 @@ struct Mouse : vivid::OperatorBase, vivid::FrameProcessable {
     void collect_params(std::vector<vivid::ParamBase*>&) override {}
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"x",      VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"y",      VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"left",   VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"right",  VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"middle", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"x",      VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"y",      VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"left",   VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"right",  VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"middle", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     void process_frame(const VividFrameContext* ctx) override {

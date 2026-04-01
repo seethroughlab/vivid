@@ -25,7 +25,7 @@ static void check(bool cond, const char* msg) {
 static VividParamDescriptor s_builtin_param =
     {"val", VIVID_PARAM_FLOAT, 0.0f, 0.0f, 1.0f, nullptr, 0};
 static VividPortDescriptor s_builtin_port =
-    {"out", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT};
+    {"out", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT};
 static VividOperatorDescriptor s_builtin_desc =
     {"BuiltinTestOp", 1, &s_builtin_param, 1, &s_builtin_port, 0};
 

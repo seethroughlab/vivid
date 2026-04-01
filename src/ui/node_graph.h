@@ -785,15 +785,15 @@ private:
     // Insert-on-wire state (chooser opened from wire context menu)
     bool chooser_insert_wire_ = false;
     ConnectionSnapshot chooser_insert_conn_;
-    VividPortType insert_wire_source_type_ = VIVID_PORT_SIGNAL;
-    VividPortType insert_wire_dest_type_ = VIVID_PORT_SIGNAL;
+    VividPortType insert_wire_source_type_ = VIVID_PORT_SCALAR;
+    VividPortType insert_wire_dest_type_ = VIVID_PORT_SCALAR;
 
     // Connect-from-wire-drag state (chooser opened via Tab during wire drag)
     bool chooser_wire_connect_ = false;
     std::string wire_connect_node_id_;
     std::string wire_connect_port_;
     bool wire_connect_from_output_ = true;
-    VividPortType wire_connect_type_ = VIVID_PORT_SIGNAL;
+    VividPortType wire_connect_type_ = VIVID_PORT_SCALAR;
 
     // Right-click context menu state
     bool context_menu_open_ = false;

@@ -110,7 +110,7 @@ static void test_stereo_pan_width(const std::string& staging) {
 
     // Verify stereo channels on audio ports
     for (uint32_t p = 0; p < desc->port_count; p++) {
-        if (desc->ports[p].type == VIVID_PORT_AUDIO) {
+        if (desc->ports[p].type == VIVID_PORT_AUDIO_BUFFER) {
             char msg[128];
             std::snprintf(msg, sizeof(msg), "port '%s' channels = 2", desc->ports[p].name);
             check(desc->ports[p].channels == 2, msg);
@@ -376,7 +376,7 @@ static void test_ping_pong_delay(const std::string& staging) {
 
     // Verify stereo channels on audio ports
     for (uint32_t p = 0; p < desc->port_count; p++) {
-        if (desc->ports[p].type == VIVID_PORT_AUDIO) {
+        if (desc->ports[p].type == VIVID_PORT_AUDIO_BUFFER) {
             char msg[128];
             std::snprintf(msg, sizeof(msg), "port '%s' channels = 2", desc->ports[p].name);
             check(desc->ports[p].channels == 2, msg);

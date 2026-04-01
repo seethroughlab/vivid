@@ -26,15 +26,15 @@ struct LaneSlewOp : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",  VIVID_PORT_AUDIO, VIVID_PORT_INPUT});
-        out.push_back({"output", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT});
+        out.push_back({"input",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT});
+        out.push_back({"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT});
         // Spread input for identity-bearing lane_ids from structural upstream
         out.push_back({"lane_ids", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
         // Signal outputs for test readback
-        out.push_back({"lane_count_out",  VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"lane_index_out",  VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"lane_id_out",     VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"state_value_out", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"lane_count_out",  VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"lane_index_out",  VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"lane_id_out",     VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"state_value_out", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     void process_audio(const VividAudioContext* ctx) override {

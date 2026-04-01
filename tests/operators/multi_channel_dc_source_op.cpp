@@ -13,7 +13,7 @@ struct MultiChannelDcSourceOp : vivid::OperatorBase, vivid::AudioProcessable {
     void collect_params(std::vector<vivid::ParamBase*>&) override {}
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"output", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT,
+        out.push_back({"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT,
                         VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 4, 0.0f});
     }
 

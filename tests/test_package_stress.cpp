@@ -47,7 +47,7 @@ static void write_live_pkg_source(const std::string& root,
            "    static constexpr bool kTimeDependent = false;\n"
            "    void collect_params(std::vector<vivid::ParamBase*>&) override {}\n"
            "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n"
-           "        out.push_back({\"out\", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});\n"
+           "        out.push_back({\"out\", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});\n"
            "    }\n"
            "    void process_frame(const VividFrameContext* ctx) override {\n"
         << "        ctx->output_values[0] = " << std::to_string(output_value) << "f;\n"

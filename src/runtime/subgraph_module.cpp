@@ -36,14 +36,14 @@ const SubgraphPreset* SubgraphModuleDef::find_preset(const std::string& preset_n
 // ---------------------------------------------------------------------------
 
 static VividPortType parse_port_type(const std::string& s) {
-    if (s == "signal")        return VIVID_PORT_SIGNAL;
-    if (s == "audio")         return VIVID_PORT_AUDIO;
+    if (s == "signal")        return VIVID_PORT_SCALAR;
+    if (s == "audio")         return VIVID_PORT_AUDIO_BUFFER;
     if (s == "lane_array")    return VIVID_PORT_LANE_ARRAY;
     if (s == "string")        return VIVID_PORT_STRING;
     if (s == "string_lanes") return VIVID_PORT_STRING_LANES;
     if (s == "texture")       return VIVID_PORT_TEXTURE;
     std::fprintf(stderr, "[vivid] SubgraphModule: unknown port type '%s', defaulting to signal\n", s.c_str());
-    return VIVID_PORT_SIGNAL;
+    return VIVID_PORT_SCALAR;
 }
 
 static VividPortDirection parse_port_direction(const std::string& s) {
@@ -267,7 +267,7 @@ std::shared_ptr<const ui::OperatorInfo> make_operator_info(const SubgraphModuleD
     // audio-cadence ports, the module is at least audio-capable.
     bool has_audio_port = false;
     for (const auto& pb : def.ports) {
-        if (pb.type == VIVID_PORT_AUDIO) { has_audio_port = true; break; }
+        if (pb.type == VIVID_PORT_AUDIO_BUFFER) { has_audio_port = true; break; }
     }
     info->cadence_capability = has_audio_port ? VIVID_CADENCE_AUDIO_CAPABLE
                                               : VIVID_CADENCE_FRAME_ONLY;

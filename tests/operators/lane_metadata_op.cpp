@@ -10,10 +10,10 @@ struct LaneMetadataOp : vivid::OperatorBase, vivid::FrameProcessable {
     void collect_params(std::vector<vivid::ParamBase*>& out) override {}
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"in",          VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"lane_count",  VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"lane_index",  VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"lane_set_id", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"in",          VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"lane_count",  VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"lane_index",  VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"lane_set_id", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     void process_frame(const VividFrameContext* ctx) override {

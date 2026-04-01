@@ -19,8 +19,8 @@ struct DcPerLaneOp : vivid::OperatorBase, vivid::AudioProcessable {
     void collect_params(std::vector<vivid::ParamBase*>&) override {}
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",  VIVID_PORT_AUDIO, VIVID_PORT_INPUT});
-        out.push_back({"output", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT});
+        out.push_back({"input",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT});
+        out.push_back({"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT});
         // Spread input to receive structural upstream (triggers LoopBased)
         out.push_back({"lanes",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
     }

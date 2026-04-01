@@ -2643,7 +2643,7 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
         // Outputs first (signal output ports)
         auto sorted_outs = sorted_ports(ns.output_port_indices);
         for (const auto& [idx, name] : sorted_outs) {
-            VividPortType pt = VIVID_PORT_SIGNAL;
+            VividPortType pt = VIVID_PORT_SCALAR;
             for (const auto& p : ns.op_info->ports)
                 if (p.name == name && p.direction == VIVID_PORT_OUTPUT) { pt = p.type; break; }
             result.ports.push_back({name, pt, true, false, false});
@@ -2665,7 +2665,7 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
         for (const auto& [idx, name] : sorted_params) {
             const ParamInfo* pd = ns.find_param(name);
             if (pd && (pd->type == VIVID_PARAM_FILE || pd->type == VIVID_PARAM_TEXT)) continue;
-            result.params.push_back({name, VIVID_PORT_SIGNAL, true, true, true});
+            result.params.push_back({name, VIVID_PORT_SCALAR, true, true, true});
         }
         return result;
     };

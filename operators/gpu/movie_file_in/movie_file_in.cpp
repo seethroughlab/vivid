@@ -182,10 +182,10 @@ struct MovieFileIn : vivid::OperatorBase, vivid::GpuProcessable {
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         // audio_time: SIGNAL input from MovieFileAudio/time via cadence bridge
-        out.push_back({"audio_time", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
+        out.push_back({"audio_time", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
         out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
-        out.push_back({"time",     VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"duration", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"time",     VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"duration", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     void process_gpu(const VividGpuContext* ctx) override {

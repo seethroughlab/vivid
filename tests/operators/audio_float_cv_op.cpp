@@ -8,9 +8,9 @@ struct AudioFloatCvOp : vivid::OperatorBase, vivid::AudioProcessable {
     void collect_params(std::vector<vivid::ParamBase*>&) override {}
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"cv", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT,
+        out.push_back({"cv", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,
                        VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
-        out.push_back({"out", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT});
+        out.push_back({"out", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT});
         vivid::append_analysis_ports(out);
     }
 

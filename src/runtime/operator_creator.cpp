@@ -76,13 +76,13 @@ static bool is_valid_stable_type_id_literal(const std::string& stable_type_id) {
 
 static const char* port_type_name(VividPortType t) {
     switch (t) {
-        case VIVID_PORT_SIGNAL:         return "VIVID_PORT_SIGNAL";
-        case VIVID_PORT_AUDIO:         return "VIVID_PORT_AUDIO";
+        case VIVID_PORT_SCALAR:         return "VIVID_PORT_SCALAR";
+        case VIVID_PORT_AUDIO_BUFFER:         return "VIVID_PORT_AUDIO_BUFFER";
         case VIVID_PORT_LANE_ARRAY:        return "VIVID_PORT_LANE_ARRAY";
         case VIVID_PORT_STRING:        return "VIVID_PORT_STRING";
         case VIVID_PORT_STRING_LANES: return "VIVID_PORT_STRING_LANES";
         case VIVID_PORT_TEXTURE:       return "VIVID_PORT_TEXTURE";
-        default:                       return "VIVID_PORT_SIGNAL";
+        default:                       return "VIVID_PORT_SCALAR";
     }
 }
 
@@ -266,8 +266,8 @@ static std::string control_template(const std::string& name, const std::string& 
     if (custom_ports) {
         effective_ports = ports;
     } else {
-        effective_ports.push_back({"input",  VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        effective_ports.push_back({"output", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        effective_ports.push_back({"input",  VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        effective_ports.push_back({"output", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     // Build effective param list
@@ -340,8 +340,8 @@ static std::string audio_template(const std::string& name, const std::string& st
     if (custom_ports) {
         effective_ports = ports;
     } else {
-        effective_ports.push_back({"input",  VIVID_PORT_AUDIO, VIVID_PORT_INPUT});
-        effective_ports.push_back({"output", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT});
+        effective_ports.push_back({"input",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT});
+        effective_ports.push_back({"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT});
     }
 
     std::vector<VividParamSpec> effective_params;
@@ -354,7 +354,7 @@ static std::string audio_template(const std::string& name, const std::string& st
     int num_input_bufs  = 0;
     int num_output_bufs = 0;
     for (const auto& p : effective_ports) {
-        if (p.type == VIVID_PORT_AUDIO) {
+        if (p.type == VIVID_PORT_AUDIO_BUFFER) {
             if (p.direction == VIVID_PORT_INPUT) ++num_input_bufs;
             else ++num_output_bufs;
         }
@@ -518,8 +518,8 @@ static std::string composite_control_template(const std::string& name, const std
     s << "        out.push_back(&smooth_time);\n";
     s << "    }\n\n";
     s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
-    s << "        out.push_back({\"input\",  VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});\n";
-    s << "        out.push_back({\"output\", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});\n";
+    s << "        out.push_back({\"input\",  VIVID_PORT_SCALAR, VIVID_PORT_INPUT});\n";
+    s << "        out.push_back({\"output\", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});\n";
     s << "    }\n\n";
     s << "    void process_frame(const VividFrameContext* ctx) override {\n";
     s << "        float input = ctx->input_values[0];\n\n";
@@ -555,8 +555,8 @@ static std::string empty_control_template(const std::string& struct_name) {
     s << "    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;\n\n";
     s << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {}\n\n";
     s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
-    s << "        out.push_back({\"input\",  VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});\n";
-    s << "        out.push_back({\"output\", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});\n";
+    s << "        out.push_back({\"input\",  VIVID_PORT_SCALAR, VIVID_PORT_INPUT});\n";
+    s << "        out.push_back({\"output\", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});\n";
     s << "    }\n\n";
     s << "    void process_frame(const VividFrameContext* ctx) override {\n";
     s << "        ctx->output_values[0] = ctx->input_values[0];\n";
@@ -577,8 +577,8 @@ static std::string empty_audio_template(const std::string& struct_name) {
     s << "    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;\n\n";
     s << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {}\n\n";
     s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
-    s << "        out.push_back({\"input\",  VIVID_PORT_AUDIO, VIVID_PORT_INPUT});\n";
-    s << "        out.push_back({\"output\", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT});\n";
+    s << "        out.push_back({\"input\",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT});\n";
+    s << "        out.push_back({\"output\", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT});\n";
     s << "    }\n\n";
     s << "    // Audio-thread contract: no heap alloc, no locks, no blocking I/O.\n";
     s << "    // See VIVID_CADENCE_AUDIO_CAPABLE in operator_api/types.h for details.\n";

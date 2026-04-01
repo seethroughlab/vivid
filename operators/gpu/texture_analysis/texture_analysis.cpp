@@ -77,12 +77,12 @@ struct TextureAnalysis : vivid::OperatorBase, vivid::GpuProcessable {
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});
         out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});  // passthrough
-        out.push_back({"brightness", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"contrast",   VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"red",        VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"green",      VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"blue",       VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"edge_density", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"brightness", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"contrast",   VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"red",        VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"green",      VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"blue",       VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"edge_density", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     void process_gpu(const VividGpuContext* ctx) override {

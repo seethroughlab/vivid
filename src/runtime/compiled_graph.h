@@ -42,6 +42,22 @@ enum class EdgeTransport : uint8_t {
 };
 
 // ---------------------------------------------------------------------------
+// BridgeKind — explicit bridge semantics requested by the graph author.
+// Carried on CompiledEdge but not acted on until the fixed-cadence migration
+// replaces implicit cadence inference with explicit bridge edges.
+// ---------------------------------------------------------------------------
+
+enum class BridgeKind : uint8_t {
+    None,        // no explicit bridge (default)
+    Hold,        // hold last value
+    Snapshot,    // snapshot at cadence boundary
+    LastSample,  // last audio sample
+    Rms,         // RMS reduction
+    Peak,        // peak reduction
+    Waveform,    // waveform summary
+};
+
+// ---------------------------------------------------------------------------
 // CompiledEdge — unified wire representation.
 //
 // Replaces Wire, AudioWire, AudioFloatPortWire, AudioCustomWire,
@@ -55,9 +71,10 @@ struct CompiledEdge {
     uint32_t to_port;         // port index (input port ordinal, or param index if targets_param)
 
     EdgeTransport transport = EdgeTransport::Direct;
+    BridgeKind bridge_kind = BridgeKind::None;
 
     // Data type carried by this edge.
-    VividPortType data_type = VIVID_PORT_SIGNAL;
+    VividPortType data_type = VIVID_PORT_SCALAR;
 
     // True when the source is a param rather than an output port.
     bool sources_param = false;
@@ -75,7 +92,7 @@ struct CompiledEdge {
     uint8_t to_channels = 1;
 
     // Precomputed SIGNAL ordinals — the index of from_port/to_port among
-    // VIVID_PORT_SIGNAL ports only.  Set by GraphCompiler for SIGNAL edges.
+    // VIVID_PORT_SCALAR ports only.  Set by GraphCompiler for SIGNAL edges.
     uint32_t from_signal_ordinal = 0;
     uint32_t to_signal_ordinal = 0;
 

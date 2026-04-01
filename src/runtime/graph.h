@@ -50,6 +50,10 @@ struct ConnectionDef {
     float to_min   = 0.0f, to_max  = 1.0f;
     bool  clamp    = false;
 
+    std::string bridge;  // explicit bridge kind ("hold", "snapshot", etc.), empty = none
+
+    bool has_bridge() const { return !bridge.empty(); }
+
     bool has_remap() const {
         return from_min != 0.0f || from_max != 1.0f ||
                to_min  != 0.0f || to_max  != 1.0f || clamp;

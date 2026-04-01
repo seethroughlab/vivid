@@ -48,7 +48,7 @@ static vivid::CompiledGraph make_audio_graph(const std::vector<AudioNodeSpec>& s
         cn.param_lock_flags.assign(s.param_count, 0);
         cn.input_values.assign(s.input_port_count, 0.0f);
         cn.output_values.assign(s.output_port_count, 0.0f);
-        cn.output_port_types.assign(s.output_port_count, VIVID_PORT_AUDIO);
+        cn.output_port_types.assign(s.output_port_count, VIVID_PORT_AUDIO_BUFFER);
         cn.input_lanes.resize(s.input_port_count);
         cn.output_lanes.resize(s.output_port_count);
 
@@ -182,7 +182,7 @@ static void test_push_float_cv_via_edge() {
     edge.to_node = 1;
     edge.to_port = 0;
     edge.transport = vivid::EdgeTransport::Snapshot;
-    edge.data_type = VIVID_PORT_SIGNAL;
+    edge.data_type = VIVID_PORT_SCALAR;
     edge.to_signal_ordinal = 0;
     cg.edges.push_back(edge);
     cg.frame_to_audio_edges.push_back(0);
@@ -224,13 +224,13 @@ static void test_pull_float_output() {
     edge.to_node = 1;
     edge.to_port = 0;
     edge.transport = vivid::EdgeTransport::Snapshot;
-    edge.data_type = VIVID_PORT_SIGNAL;
+    edge.data_type = VIVID_PORT_SCALAR;
     edge.from_signal_ordinal = 0;
     cg.edges.push_back(edge);
     cg.audio_to_frame_edges.push_back(0);
 
     // Mark clock output port 0 as SIGNAL type
-    cg.nodes[0].output_port_types[0] = VIVID_PORT_SIGNAL;
+    cg.nodes[0].output_port_types[0] = VIVID_PORT_SCALAR;
 
     vivid::CadenceBridge bridge;
     bridge.build(cg);
@@ -391,7 +391,7 @@ static void test_propagate_audio_display_params() {
     edge.to_node = 1;
     edge.to_port = 0;
     edge.targets_param = true;
-    edge.data_type = VIVID_PORT_SIGNAL;
+    edge.data_type = VIVID_PORT_SCALAR;
     cg.edges.push_back(edge);
 
     vivid::CadenceBridge bridge;
@@ -420,7 +420,7 @@ static void test_propagate_respects_param_lock() {
     edge.to_node = 1;
     edge.to_port = 0;
     edge.targets_param = true;
-    edge.data_type = VIVID_PORT_SIGNAL;
+    edge.data_type = VIVID_PORT_SCALAR;
     cg.edges.push_back(edge);
 
     vivid::CadenceBridge bridge;
@@ -458,11 +458,11 @@ static void test_bridge_zero_value_passthrough() {
     edge.to_node = 1;
     edge.to_port = 0;
     edge.transport = vivid::EdgeTransport::Snapshot;
-    edge.data_type = VIVID_PORT_SIGNAL;
+    edge.data_type = VIVID_PORT_SCALAR;
     edge.from_signal_ordinal = 0;
     cg.edges.push_back(edge);
     cg.audio_to_frame_edges.push_back(0);
-    cg.nodes[0].output_port_types[0] = VIVID_PORT_SIGNAL;
+    cg.nodes[0].output_port_types[0] = VIVID_PORT_SCALAR;
 
     vivid::CadenceBridge bridge;
     bridge.build(cg);

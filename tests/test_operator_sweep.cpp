@@ -74,7 +74,7 @@ static uint32_t count_signal_ports(const VividOperatorDescriptor* desc,
     uint32_t n = 0;
     for (uint32_t i = 0; i < desc->port_count; i++) {
         if (desc->ports[i].direction == dir &&
-            desc->ports[i].type == VIVID_PORT_SIGNAL)
+            desc->ports[i].type == VIVID_PORT_SCALAR)
             n++;
     }
     return n;
@@ -83,7 +83,7 @@ static uint32_t count_signal_ports(const VividOperatorDescriptor* desc,
 // For audio-cadence operators, the runtime provides audio buffers for ports
 // that carry audio data (AUDIO type or AUDIO_BUFFER transport), and float
 // values for signal ports that carry cross-cadence scalars. However, some
-// audio operators declare output ports as VIVID_PORT_SIGNAL but write to
+// audio operators declare output ports as VIVID_PORT_SCALAR but write to
 // output_buffers (the runtime allocates buffers for all ports at audio
 // cadence). To be safe, we count:
 //   - audio_buffer ports: any port with AUDIO type or AUDIO_BUFFER transport,
@@ -102,7 +102,7 @@ static uint32_t count_buffer_ports(const VividOperatorDescriptor* desc,
         if (desc->ports[i].direction != dir) continue;
         auto t = desc->ports[i].type;
         auto tr = desc->ports[i].transport;
-        if (t == VIVID_PORT_AUDIO || tr == VIVID_PORT_TRANSPORT_AUDIO_BUFFER)
+        if (t == VIVID_PORT_AUDIO_BUFFER || tr == VIVID_PORT_TRANSPORT_AUDIO_BUFFER)
             n++;
     }
     return n;
@@ -114,7 +114,7 @@ static uint32_t count_float_ports(const VividOperatorDescriptor* desc,
     uint32_t n = 0;
     for (uint32_t i = 0; i < desc->port_count; i++) {
         if (desc->ports[i].direction != dir) continue;
-        if (desc->ports[i].type == VIVID_PORT_SIGNAL &&
+        if (desc->ports[i].type == VIVID_PORT_SCALAR &&
             desc->ports[i].transport == VIVID_PORT_TRANSPORT_SIGNAL)
             n++;
     }
@@ -329,9 +329,9 @@ static bool smoke_audio(vivid::OperatorLoader& loader, void* inst,
     for (uint32_t i = 0; i < desc->port_count; i++) {
         auto& p = desc->ports[i];
         bool is_in = (p.direction == VIVID_PORT_INPUT);
-        bool is_audio_buf = (p.type == VIVID_PORT_AUDIO ||
+        bool is_audio_buf = (p.type == VIVID_PORT_AUDIO_BUFFER ||
                              p.transport == VIVID_PORT_TRANSPORT_AUDIO_BUFFER);
-        bool is_signal = (p.type == VIVID_PORT_SIGNAL);
+        bool is_signal = (p.type == VIVID_PORT_SCALAR);
 
         if (is_in) {
             if (is_audio_buf) n_buf_in++;
@@ -512,8 +512,8 @@ static bool test_param_boundary(vivid::OperatorLoader& loader, void* inst,
             for (uint32_t pi = 0; pi < desc->port_count; pi++) {
                 auto& pp = desc->ports[pi];
                 bool is_in = (pp.direction == VIVID_PORT_INPUT);
-                bool is_ab = (pp.type == VIVID_PORT_AUDIO || pp.transport == VIVID_PORT_TRANSPORT_AUDIO_BUFFER);
-                bool is_sg = (pp.type == VIVID_PORT_SIGNAL);
+                bool is_ab = (pp.type == VIVID_PORT_AUDIO_BUFFER || pp.transport == VIVID_PORT_TRANSPORT_AUDIO_BUFFER);
+                bool is_sg = (pp.type == VIVID_PORT_SCALAR);
                 if (is_in) { if (is_ab) nbi++; if (is_sg) nfi++; }
                 else { if (is_ab || is_sg) nbo++; if (is_sg) nfo++; }
             }

@@ -15,7 +15,7 @@ namespace vivid {
 
 struct SubgraphPortBinding {
     std::string name;           // external port name (e.g. "output")
-    VividPortType type;         // VIVID_PORT_SIGNAL, _AUDIO, _SPREAD, etc.
+    VividPortType type;         // VIVID_PORT_SCALAR, _AUDIO, _SPREAD, etc.
     VividPortDirection direction;
     std::string internal_node;  // internal node ID (e.g. "mixer")
     std::string internal_port;  // internal port name (e.g. "output")

@@ -15,7 +15,7 @@ struct TestStateCarryOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"out", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"out", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     void process_frame(const VividFrameContext* ctx) override {

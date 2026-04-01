@@ -13,11 +13,11 @@ struct AudioTestOp : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        VividPortDescriptor in{"in",  VIVID_PORT_AUDIO, VIVID_PORT_INPUT};
+        VividPortDescriptor in{"in",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT};
         in.semantic_tag = "audio_signal_in";
         out.push_back(in);
 
-        VividPortDescriptor out_port{"out", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT};
+        VividPortDescriptor out_port{"out", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT};
         out_port.semantic_tag = "audio_signal_out";
         out.push_back(out_port);
         vivid::append_analysis_ports(out);

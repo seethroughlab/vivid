@@ -56,9 +56,9 @@ static void test_frame_state_basic_ports() {
     std::fprintf(stderr, "\n--- init_frame_state: basic port indexing ---\n");
 
     VividPortDescriptor ports[] = {
-        make_port("in_a",  VIVID_PORT_SIGNAL, VIVID_PORT_INPUT),
-        make_port("in_b",  VIVID_PORT_SIGNAL, VIVID_PORT_INPUT),
-        make_port("out_x", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT),
+        make_port("in_a",  VIVID_PORT_SCALAR, VIVID_PORT_INPUT),
+        make_port("in_b",  VIVID_PORT_SCALAR, VIVID_PORT_INPUT),
+        make_port("out_x", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT),
     };
     VividParamDescriptor params[] = {
         make_param("freq", VIVID_PARAM_FLOAT, 440.0f),
@@ -174,10 +174,10 @@ static void test_frame_state_mixed_port_types() {
     std::fprintf(stderr, "\n--- init_frame_state: mixed port types ---\n");
 
     VividPortDescriptor ports[] = {
-        make_port("sig_in",  VIVID_PORT_SIGNAL,  VIVID_PORT_INPUT),
+        make_port("sig_in",  VIVID_PORT_SCALAR,  VIVID_PORT_INPUT),
         make_port("str_in",  VIVID_PORT_STRING,  VIVID_PORT_INPUT),
         make_port("tex_in",  VIVID_PORT_TEXTURE, VIVID_PORT_INPUT),
-        make_port("sig_out", VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT),
+        make_port("sig_out", VIVID_PORT_SCALAR,  VIVID_PORT_OUTPUT),
         make_port("str_out", VIVID_PORT_STRING,  VIVID_PORT_OUTPUT),
     };
     VividOperatorDescriptor desc{};
@@ -205,7 +205,7 @@ static void test_frame_state_gpu_sink() {
 
     VividPortDescriptor ports[] = {
         make_port("tex_in", VIVID_PORT_TEXTURE, VIVID_PORT_INPUT),
-        make_port("sig_out", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT),
+        make_port("sig_out", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT),
     };
     VividOperatorDescriptor desc{};
     desc.name = "SinkOp";
@@ -298,8 +298,8 @@ static void test_audio_state_basic() {
     std::fprintf(stderr, "\n--- init_audio_state: basic buffer allocation ---\n");
 
     VividPortDescriptor ports[] = {
-        make_port("audio_in",  VIVID_PORT_AUDIO, VIVID_PORT_INPUT, 2),
-        make_port("audio_out", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT, 2),
+        make_port("audio_in",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT, 2),
+        make_port("audio_out", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, 2),
     };
     VividOperatorDescriptor desc{};
     desc.name = "AudioOp";
@@ -332,10 +332,10 @@ static void test_audio_state_float_cv() {
     std::fprintf(stderr, "\n--- init_audio_state: float CV inputs ---\n");
 
     VividPortDescriptor ports[] = {
-        make_port("freq",     VIVID_PORT_SIGNAL, VIVID_PORT_INPUT),
-        make_port("audio_in", VIVID_PORT_AUDIO,  VIVID_PORT_INPUT, 1),
-        make_port("gain",     VIVID_PORT_SIGNAL, VIVID_PORT_INPUT),
-        make_port("out",      VIVID_PORT_AUDIO,  VIVID_PORT_OUTPUT, 1),
+        make_port("freq",     VIVID_PORT_SCALAR, VIVID_PORT_INPUT),
+        make_port("audio_in", VIVID_PORT_AUDIO_BUFFER,  VIVID_PORT_INPUT, 1),
+        make_port("gain",     VIVID_PORT_SCALAR, VIVID_PORT_INPUT),
+        make_port("out",      VIVID_PORT_AUDIO_BUFFER,  VIVID_PORT_OUTPUT, 1),
     };
     ports[0].default_value = 440.0f;
     ports[2].default_value = 1.0f;
@@ -366,9 +366,9 @@ static void test_audio_state_signal_outputs() {
     std::fprintf(stderr, "\n--- init_audio_state: signal output extraction ---\n");
 
     VividPortDescriptor ports[] = {
-        make_port("audio_out", VIVID_PORT_AUDIO,  VIVID_PORT_OUTPUT, 1),
-        make_port("rms",       VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT),
-        make_port("peak",      VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT),
+        make_port("audio_out", VIVID_PORT_AUDIO_BUFFER,  VIVID_PORT_OUTPUT, 1),
+        make_port("rms",       VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT),
+        make_port("peak",      VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT),
     };
     VividOperatorDescriptor desc{};
     desc.name = "AnalysisOp";
@@ -402,7 +402,7 @@ static void test_audio_state_lane_flags() {
     VividPortDescriptor ports[] = {
         make_port("sp_in",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT),
         make_port("str_in", VIVID_PORT_STRING, VIVID_PORT_INPUT),
-        make_port("out",    VIVID_PORT_AUDIO,  VIVID_PORT_OUTPUT, 1),
+        make_port("out",    VIVID_PORT_AUDIO_BUFFER,  VIVID_PORT_OUTPUT, 1),
     };
     VividOperatorDescriptor desc{};
     desc.name = "FlagOp";
@@ -429,8 +429,8 @@ static void test_audio_state_different_buffer_sizes() {
     std::fprintf(stderr, "\n--- init_audio_state: different buffer sizes ---\n");
 
     VividPortDescriptor ports[] = {
-        make_port("in",  VIVID_PORT_AUDIO, VIVID_PORT_INPUT, 1),
-        make_port("out", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT, 1),
+        make_port("in",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT, 1),
+        make_port("out", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, 1),
     };
     VividOperatorDescriptor desc{};
     desc.name = "BufOp";

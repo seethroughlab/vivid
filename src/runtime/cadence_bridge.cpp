@@ -174,7 +174,7 @@ void CadenceBridge::push_to_audio(const CompiledGraph& cg) {
             } else if (e.to_port < snap.input_string_values[si].size()) {
                 snap.input_string_values[si][e.to_port] = src;
             }
-        } else if (e.data_type == VIVID_PORT_SIGNAL && !e.targets_param) {
+        } else if (e.data_type == VIVID_PORT_SCALAR && !e.targets_param) {
             // Float CV input (control float → audio SIGNAL input)
             float val = e.sources_param
                 ? from_cn.param_values[e.from_port]
@@ -241,7 +241,7 @@ void CadenceBridge::pull_from_audio(CompiledGraph& cg) {
 
         auto& to_cn = cg.nodes[e.to_node];
 
-        if (e.data_type == VIVID_PORT_SIGNAL && !e.sources_param) {
+        if (e.data_type == VIVID_PORT_SCALAR && !e.sources_param) {
             // Float output → frame-rate input (use precomputed ordinal)
             if (si < snap.float_outputs.size() &&
                 e.from_signal_ordinal < snap.float_outputs[si].size()) {
@@ -287,7 +287,7 @@ void CadenceBridge::pull_from_audio(CompiledGraph& cg) {
         uint32_t float_ord = 0;
         for (uint32_t p = 0; p < cn.output_port_count && float_ord < fo.size(); ++p) {
             if (p < cn.output_port_types.size() &&
-                cn.output_port_types[p] == VIVID_PORT_SIGNAL) {
+                cn.output_port_types[p] == VIVID_PORT_SCALAR) {
                 if (p < cn.output_values.size())
                     cn.output_values[p] = fo[float_ord];
                 float_ord++;

@@ -19,8 +19,8 @@ struct LaneFrameOp : vivid::OperatorBase, vivid::FrameProcessable {
     void collect_params(std::vector<vivid::ParamBase*>&) override {}
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",    VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"output",   VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"input",    VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"output",   VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
         out.push_back({"lane_ids", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
     }
 

@@ -10,7 +10,7 @@
 // ============================================================================
 
 static const VividPortDescriptor audio_out_ports[] = {
-    { "input", VIVID_PORT_AUDIO, VIVID_PORT_INPUT },
+    { "input", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT },
 };
 
 static const char* audio_out_device_labels[] = { "Default" };

@@ -12,7 +12,7 @@ struct AudioReloadOp : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"out", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT});
+        out.push_back({"out", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT});
         vivid::append_analysis_ports(out);
     }
 

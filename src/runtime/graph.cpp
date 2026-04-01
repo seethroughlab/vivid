@@ -271,6 +271,9 @@ bool Graph::parse_doc(const nlohmann::json& root) {
                 if (clamp_it != val.end() && clamp_it->is_boolean())
                     conn.clamp = clamp_it->get<bool>();
             }
+            auto bridge_it = val.find("bridge");
+            if (bridge_it != val.end() && bridge_it->is_string())
+                conn.bridge = bridge_it->get<std::string>();
             // Deduplicate: skip if an identical connection already exists
             bool dup = false;
             for (const auto& c : connections_) {
@@ -1002,6 +1005,8 @@ static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
             if (conn.clamp)
                 conn_obj["clamp"] = true;
         }
+        if (conn.has_bridge())
+            conn_obj["bridge"] = conn.bridge;
         conns_arr.push_back(std::move(conn_obj));
     }
     root["connections"] = std::move(conns_arr);

@@ -2132,14 +2132,14 @@ VividPortType NodeGraphUI::resolve_port_type(const GraphSnapshot& snap,
                                               const std::string& port_name,
                                               bool is_output) {
     const auto* ns = snap.find_node(node_id);
-    if (!ns || !ns->op_info) return VIVID_PORT_SIGNAL;
+    if (!ns || !ns->op_info) return VIVID_PORT_SCALAR;
     for (const auto& p : ns->op_info->ports) {
         if (p.name == port_name &&
             ((is_output && p.direction == VIVID_PORT_OUTPUT) ||
              (!is_output && p.direction == VIVID_PORT_INPUT)))
             return p.type;
     }
-    return VIVID_PORT_SIGNAL;
+    return VIVID_PORT_SCALAR;
 }
 
 // -----------------------------------------------------------------------
@@ -2188,7 +2188,7 @@ void NodeGraphUI::rebuild_param_picker_items() {
         VividPortType src_type;
         std::string src_semantic_tag;
         if (!wire_from_is_output_)
-            src_type = VIVID_PORT_SIGNAL;  // param sources are always float
+            src_type = VIVID_PORT_SCALAR;  // param sources are always float
         else
             src_type = resolve_port_type(snap_, param_picker_wire_from_node_,
                                           param_picker_wire_from_port_, true);
@@ -2218,7 +2218,7 @@ void NodeGraphUI::rebuild_param_picker_items() {
             if (already_connected) continue;
 
             // Check type compatibility
-            VividPortType dest_type = VIVID_PORT_SIGNAL;
+            VividPortType dest_type = VIVID_PORT_SCALAR;
             for (const auto& p : ns->op_info->ports) {
                 if (p.name == name && p.direction == VIVID_PORT_INPUT) {
                     dest_type = p.type;

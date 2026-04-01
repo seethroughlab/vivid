@@ -71,13 +71,13 @@ static AudioLanePlan plan_audio_lane_strategy(
     bool all_mono = true;
     for (uint32_t p = 0; p < cn.input_port_count && all_mono; ++p) {
         if (p < a.descriptor_input_channels.size() &&
-            cn.input_port_types[p] == VIVID_PORT_AUDIO &&
+            cn.input_port_types[p] == VIVID_PORT_AUDIO_BUFFER &&
             a.descriptor_input_channels[p] > 1)
             all_mono = false;
     }
     for (uint32_t p = 0; p < cn.output_port_count && all_mono; ++p) {
         if (p < a.descriptor_output_channels.size() &&
-            cn.output_port_types[p] == VIVID_PORT_AUDIO &&
+            cn.output_port_types[p] == VIVID_PORT_AUDIO_BUFFER &&
             a.descriptor_output_channels[p] > 1)
             all_mono = false;
     }
@@ -146,6 +146,17 @@ static FrameLanePlan plan_frame_lane_strategy(const CompiledNode& cn) {
     }
 
     return plan;
+}
+
+// Parse explicit bridge kind string from ConnectionDef into BridgeKind enum.
+static BridgeKind parse_bridge_kind(const std::string& s) {
+    if (s == "hold")        return BridgeKind::Hold;
+    if (s == "snapshot")    return BridgeKind::Snapshot;
+    if (s == "last_sample") return BridgeKind::LastSample;
+    if (s == "rms")         return BridgeKind::Rms;
+    if (s == "peak")        return BridgeKind::Peak;
+    if (s == "waveform")    return BridgeKind::Waveform;
+    return BridgeKind::None;
 }
 
 // Compute a linear scale equivalent from ConnectionDef remap fields.
@@ -236,7 +247,7 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
         auto inject = [&](const char* name) -> uint32_t {
             uint32_t idx = cn.output_port_count++;
             cn.output_port_indices[name] = idx;
-            cn.output_port_types.push_back(VIVID_PORT_SIGNAL);
+            cn.output_port_types.push_back(VIVID_PORT_SCALAR);
             return idx;
         };
         cn.gpu->analysis_frame_hash_idx   = inject("frame_hash");
@@ -435,7 +446,7 @@ void GraphCompiler::init_audio_state(CompiledNode& cn,
     a.float_input_count = 0;
     for (uint32_t i = 0; i < desc->port_count; ++i) {
         if (desc->ports[i].direction == VIVID_PORT_INPUT &&
-            desc->ports[i].type == VIVID_PORT_SIGNAL) {
+            desc->ports[i].type == VIVID_PORT_SCALAR) {
             a.float_input_defaults.push_back(desc->ports[i].default_value);
             a.float_input_count++;
         }
@@ -450,7 +461,7 @@ void GraphCompiler::init_audio_state(CompiledNode& cn,
         uint32_t oi = 0;
         for (uint32_t i = 0; i < desc->port_count; ++i) {
             if (desc->ports[i].direction == VIVID_PORT_OUTPUT) {
-                if (desc->ports[i].type == VIVID_PORT_SIGNAL) {
+                if (desc->ports[i].type == VIVID_PORT_SCALAR) {
                     a.signal_output_extractions.push_back({oi, a.float_output_count});
                     a.float_output_count++;
                 }
@@ -629,8 +640,8 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                 cn.input_port_indices[in_names[i]] = i;
             for (uint32_t i = 0; i < cn.output_port_count; ++i)
                 cn.output_port_indices[out_names[i]] = i;
-            cn.input_port_types.assign(cn.input_port_count, VIVID_PORT_SIGNAL);
-            cn.output_port_types.assign(cn.output_port_count, VIVID_PORT_SIGNAL);
+            cn.input_port_types.assign(cn.input_port_count, VIVID_PORT_SCALAR);
+            cn.output_port_types.assign(cn.output_port_count, VIVID_PORT_SCALAR);
             cn.input_values.assign(cn.input_port_count, 0.0f);
             cn.bridge_input_values.assign(cn.input_port_count, 0.0f);
             cn.bridge_input_dirty.assign(cn.input_port_count, 0);
@@ -720,7 +731,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         auto& to_cn   = cg->nodes[ti];
 
         // Determine source port
-        VividPortType from_port_type = VIVID_PORT_SIGNAL;
+        VividPortType from_port_type = VIVID_PORT_SCALAR;
         VividPortTransport from_port_transport = VIVID_PORT_TRANSPORT_SIGNAL;
         uint32_t from_payload_size = 0;
         bool source_is_param = false;
@@ -759,7 +770,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             source_is_param = true;
             auto fp_src_it = from_cn.file_param_indices.find(conn.from_port);
             from_port_type = (fp_src_it != from_cn.file_param_indices.end())
-                ? VIVID_PORT_STRING : VIVID_PORT_SIGNAL;
+                ? VIVID_PORT_STRING : VIVID_PORT_SCALAR;
         }
 
         CompiledEdge e;
@@ -778,6 +789,13 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         e.to_min   = conn.to_min;
         e.to_max   = conn.to_max;
         e.clamp    = conn.clamp;
+        e.bridge_kind = parse_bridge_kind(conn.bridge);
+        if (!conn.bridge.empty() && e.bridge_kind == BridgeKind::None) {
+            std::fprintf(stderr, "[vivid] warning: unknown bridge kind '%s' on connection %s/%s → %s/%s\n",
+                         conn.bridge.c_str(),
+                         conn.from_node.c_str(), conn.from_port.c_str(),
+                         conn.to_node.c_str(), conn.to_port.c_str());
+        }
 
         // Determine destination port
         auto tp_it = to_cn.input_port_indices.find(conn.to_port);
@@ -785,7 +803,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             e.to_port = tp_it->second;
             e.targets_param = false;
 
-            VividPortType to_port_type = VIVID_PORT_SIGNAL;
+            VividPortType to_port_type = VIVID_PORT_SCALAR;
             if (to_cn.loader && to_cn.loader->descriptor()) {
                 const auto* to_desc = to_cn.loader->descriptor();
                 uint32_t inp_idx = 0;
@@ -824,11 +842,11 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                     e.custom_type_id = from_port_type;
                     e.port_transport = from_port_transport;
                     e.custom_payload_size = from_payload_size;
-                } else if ((from_port_type == VIVID_PORT_SIGNAL || from_port_type == VIVID_PORT_AUDIO) &&
-                           (to_port_type == VIVID_PORT_SIGNAL || to_port_type == VIVID_PORT_AUDIO)) {
+                } else if ((from_port_type == VIVID_PORT_SCALAR || from_port_type == VIVID_PORT_AUDIO_BUFFER) &&
+                           (to_port_type == VIVID_PORT_SCALAR || to_port_type == VIVID_PORT_AUDIO_BUFFER)) {
                     // SIGNAL/AUDIO interop
-                    e.data_type = (from_port_type == VIVID_PORT_AUDIO || to_port_type == VIVID_PORT_AUDIO)
-                        ? VIVID_PORT_AUDIO : VIVID_PORT_SIGNAL;
+                    e.data_type = (from_port_type == VIVID_PORT_AUDIO_BUFFER || to_port_type == VIVID_PORT_AUDIO_BUFFER)
+                        ? VIVID_PORT_AUDIO_BUFFER : VIVID_PORT_SCALAR;
                 } else if (from_port_type == VIVID_PORT_STRING ||
                            from_port_type == VIVID_PORT_STRING_LANES ||
                            to_port_type == VIVID_PORT_STRING ||
@@ -881,18 +899,18 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         }
 
         // Precompute SIGNAL ordinals for cross-cadence and audio-direct paths.
-        // The ordinal is the index of this port among VIVID_PORT_SIGNAL ports only.
-        if (e.data_type == VIVID_PORT_SIGNAL) {
+        // The ordinal is the index of this port among VIVID_PORT_SCALAR ports only.
+        if (e.data_type == VIVID_PORT_SCALAR) {
             if (!e.sources_param) {
                 uint32_t ord = 0;
                 for (uint32_t p = 0; p < e.from_port && p < from_cn.output_port_types.size(); ++p)
-                    if (from_cn.output_port_types[p] == VIVID_PORT_SIGNAL) ord++;
+                    if (from_cn.output_port_types[p] == VIVID_PORT_SCALAR) ord++;
                 e.from_signal_ordinal = ord;
             }
             if (!e.targets_param) {
                 uint32_t ord = 0;
                 for (uint32_t p = 0; p < e.to_port && p < to_cn.input_port_types.size(); ++p)
-                    if (to_cn.input_port_types[p] == VIVID_PORT_SIGNAL) ord++;
+                    if (to_cn.input_port_types[p] == VIVID_PORT_SCALAR) ord++;
                 e.to_signal_ordinal = ord;
             }
         }
@@ -1192,8 +1210,8 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             if (p < a.descriptor_output_channels.size() &&
                 a.descriptor_output_channels[p] == 0 &&
                 p < cn.output_port_types.size() &&
-                (cn.output_port_types[p] == VIVID_PORT_AUDIO ||
-                 (cn.output_port_types[p] == VIVID_PORT_SIGNAL &&
+                (cn.output_port_types[p] == VIVID_PORT_AUDIO_BUFFER ||
+                 (cn.output_port_types[p] == VIVID_PORT_SCALAR &&
                   cn.cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE))) {
                 uint8_t max_in = 1;
                 for (uint32_t ip = 0; ip < cn.input_port_count; ++ip) {

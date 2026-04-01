@@ -89,8 +89,8 @@ static const char* param_type_str(VividParamType t) {
 
 static const char* port_type_str(VividPortType t) {
     switch (t) {
-        case VIVID_PORT_SIGNAL:         return "float";
-        case VIVID_PORT_AUDIO:         return "audio";
+        case VIVID_PORT_SCALAR:         return "float";
+        case VIVID_PORT_AUDIO_BUFFER:         return "audio";
         case VIVID_PORT_LANE_ARRAY:        return "lane_array";
         case VIVID_PORT_STRING:        return "string";
         case VIVID_PORT_STRING_LANES: return "string_lanes";
@@ -2387,15 +2387,15 @@ static std::string dispatch(const std::string& method, const std::string& body,
 
             auto parse_port_type = [&](const std::string& type_str, VividOperatorKind k, VividPortType& out) -> std::string {
                 if (k == VIVID_OP_CONTROL) {
-                    if      (type_str == "float")         out = VIVID_PORT_SIGNAL;
-                    else if (type_str == "int")           out = VIVID_PORT_SIGNAL;
-                    else if (type_str == "bool")          out = VIVID_PORT_SIGNAL;
+                    if      (type_str == "float")         out = VIVID_PORT_SCALAR;
+                    else if (type_str == "int")           out = VIVID_PORT_SCALAR;
+                    else if (type_str == "bool")          out = VIVID_PORT_SCALAR;
                     else if (type_str == "lane_array")        out = VIVID_PORT_LANE_ARRAY;
                     else if (type_str == "string")        out = VIVID_PORT_STRING;
                     else if (type_str == "string_lanes") out = VIVID_PORT_STRING_LANES;
                     else return "unknown control port type '" + type_str + "'";
                 } else if (k == VIVID_OP_AUDIO) {
-                    if (type_str == "float") out = VIVID_PORT_AUDIO;
+                    if (type_str == "float") out = VIVID_PORT_AUDIO_BUFFER;
                     else return "unknown audio port type '" + type_str + "'";
                 } else if (k == VIVID_OP_GPU) {
                     if (type_str == "texture") out = VIVID_PORT_TEXTURE;

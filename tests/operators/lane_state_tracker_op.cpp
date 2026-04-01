@@ -24,16 +24,16 @@ struct LaneStateTrackerOp : vivid::OperatorBase, vivid::AudioProcessable {
     void collect_params(std::vector<vivid::ParamBase*>&) override {}
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",    VIVID_PORT_AUDIO,  VIVID_PORT_INPUT});
-        out.push_back({"output",   VIVID_PORT_AUDIO,  VIVID_PORT_OUTPUT});
+        out.push_back({"input",    VIVID_PORT_AUDIO_BUFFER,  VIVID_PORT_INPUT});
+        out.push_back({"output",   VIVID_PORT_AUDIO_BUFFER,  VIVID_PORT_OUTPUT});
         // Lane-array inputs for per-lane values and identity-bearing lane_ids
         out.push_back({"values",   VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
         out.push_back({"lane_ids", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
         // Signal outputs for last-lane readback
-        out.push_back({"lane_count_out",  VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"lane_id_out",     VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"accumulated_out", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"update_count_out",VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"lane_count_out",  VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"lane_id_out",     VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"accumulated_out", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"update_count_out",VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     void process_audio(const VividAudioContext* ctx) override {

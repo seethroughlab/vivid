@@ -11,11 +11,11 @@ struct LaneMetadataAudioOp : vivid::OperatorBase, vivid::AudioProcessable {
     void collect_params(std::vector<vivid::ParamBase*>& out) override {}
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",       VIVID_PORT_AUDIO,  VIVID_PORT_INPUT});
-        out.push_back({"output",      VIVID_PORT_AUDIO,  VIVID_PORT_OUTPUT});
-        out.push_back({"lane_count",  VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"lane_index",  VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"lane_set_id", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"input",       VIVID_PORT_AUDIO_BUFFER,  VIVID_PORT_INPUT});
+        out.push_back({"output",      VIVID_PORT_AUDIO_BUFFER,  VIVID_PORT_OUTPUT});
+        out.push_back({"lane_count",  VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"lane_index",  VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"lane_set_id", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     void process_audio(const VividAudioContext* ctx) override {
