@@ -1,9 +1,9 @@
-// Unit tests for CadenceBridge — double-buffered snapshot bridge between
+// Unit tests for AudioFrameBridge — double-buffered snapshot bridge between
 // frame (60Hz) and audio (48kHz) execution.
 // Tests build(), push_to_audio(), pull_from_audio(), publish_analysis(),
 // and set_solo_active_set() using mock CompiledGraphs.
 
-#include "runtime/cadence_bridge.h"
+#include "runtime/audio_frame_bridge.h"
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -28,8 +28,8 @@ struct AudioNodeSpec {
     uint32_t param_count;
     uint32_t input_port_count;
     uint32_t output_port_count;
-    uint32_t float_input_count;
-    uint32_t float_output_count;
+    uint32_t unused1 = 0;  // was float_input_count
+    uint32_t unused2 = 0;  // was float_output_count
     bool has_analysis;  // rms, peak, waveform output ports
 };
 
@@ -54,11 +54,6 @@ static vivid::CompiledGraph make_audio_graph(const std::vector<AudioNodeSpec>& s
 
         cn.audio = std::make_unique<vivid::AudioNodeState>();
         auto& a = *cn.audio;
-        a.float_input_defaults.assign(s.float_input_count, 0.0f);
-        a.float_input_values.assign(s.float_input_count, 0.0f);
-        a.float_input_count = s.float_input_count;
-        a.float_output_values.assign(s.float_output_count, 0.0f);
-        a.float_output_count = s.float_output_count;
 
         if (s.has_analysis) {
             // Assume last 3 output ports are rms, peak, waveform
@@ -89,13 +84,12 @@ static void test_build_snapshot_allocation() {
         {"gain", 1, 1, 1, 0, 0, false},
     });
 
-    vivid::CadenceBridge bridge;
+    vivid::AudioFrameBridge bridge;
     bridge.build(cg);
 
     // Both snapshots should be allocated for 2 audio nodes
     const auto& snap = bridge.active_params();
     check(snap.node_params.size() == 2, "2 node_params entries");
-    check(snap.float_input_values.size() == 2, "2 float_input_values entries");
     check(snap.lane_inputs.size() == 2, "2 lane_inputs entries");
 
     // osc has 2 params, gain has 1
@@ -103,7 +97,6 @@ static void test_build_snapshot_allocation() {
     check(snap.node_params[1].size() == 1, "gain: 1 param in snapshot");
 
     // osc has 1 float input
-    check(snap.float_input_values[0].size() == 1, "osc: 1 float input default");
 }
 
 static void test_build_analysis_allocation() {
@@ -113,15 +106,13 @@ static void test_build_analysis_allocation() {
         {"analyzer", 0, 1, 4, 0, 1, true},  // 4 outputs: audio + rms + peak + waveform
     });
 
-    vivid::CadenceBridge bridge;
+    vivid::AudioFrameBridge bridge;
     bridge.build(cg);
 
     const auto& analysis = bridge.active_analysis();
     check(analysis.rms.size() == 1, "1 rms entry");
     check(analysis.peak.size() == 1, "1 peak entry");
     check(analysis.waveform.size() == 1, "1 waveform entry");
-    check(analysis.float_outputs.size() == 1, "1 float_outputs entry");
-    check(analysis.float_outputs[0].size() == 1, "1 float output value");
     check(analysis.errored.size() == 1, "1 errored entry");
 }
 
@@ -129,7 +120,7 @@ static void test_build_empty_graph() {
     std::fprintf(stderr, "\n--- build: empty graph (no audio nodes) ---\n");
 
     vivid::CompiledGraph cg;
-    vivid::CadenceBridge bridge;
+    vivid::AudioFrameBridge bridge;
     bridge.build(cg);
 
     check(bridge.active_params().node_params.empty(), "no params");
@@ -148,7 +139,7 @@ static void test_push_snapshots_params() {
     });
     cg.nodes[0].param_values = {440.0f, 0.8f};
 
-    vivid::CadenceBridge bridge;
+    vivid::AudioFrameBridge bridge;
     bridge.build(cg);
 
     // Modify param and push
@@ -186,12 +177,11 @@ static void test_push_float_cv_via_edge() {
     cg.edges.push_back(edge);
     cg.frame_to_audio_edges.push_back(0);
 
-    vivid::CadenceBridge bridge;
+    vivid::AudioFrameBridge bridge;
     bridge.build(cg);
     bridge.push_to_audio(cg);
 
     const auto& snap = bridge.active_params();
-    check(snap.float_input_values[0][0] == 0.75f, "CV input snapshotted to 0.75");
 }
 
 // ---------------------------------------------------------------------------
@@ -230,12 +220,11 @@ static void test_pull_float_output() {
     // Mark clock output port 0 as SIGNAL type
     cg.nodes[0].output_port_types[0] = VIVID_PORT_SCALAR;
 
-    vivid::CadenceBridge bridge;
+    vivid::AudioFrameBridge bridge;
     bridge.build(cg);
 
     // Simulate audio thread writing analysis
     auto& write_buf = bridge.analysis_write_buffer();
-    write_buf.float_outputs[0] = {0.42f};
     bridge.publish_analysis();
 
     // Main thread pulls
@@ -264,7 +253,7 @@ static void test_pull_analysis_data() {
         {"analyzer", 0, 1, 4, 0, 0, true},  // outputs: audio, rms(1), peak(2), waveform(3)
     });
 
-    vivid::CadenceBridge bridge;
+    vivid::AudioFrameBridge bridge;
     bridge.build(cg);
 
     // Simulate audio thread writing analysis values
@@ -287,7 +276,7 @@ static void test_pull_error_propagation() {
         {"osc", 1, 0, 1, 0, 0, false},
     });
 
-    vivid::CadenceBridge bridge;
+    vivid::AudioFrameBridge bridge;
     bridge.build(cg);
 
     // Simulate error on audio thread
@@ -321,7 +310,7 @@ static void test_double_buffer_swap() {
         {"osc", 0, 0, 1, 0, 0, false},
     });
 
-    vivid::CadenceBridge bridge;
+    vivid::AudioFrameBridge bridge;
     bridge.build(cg);
 
     // Write to inactive, publish
@@ -352,7 +341,7 @@ static void test_solo_active_set() {
         {"gain", 0, 1, 1, 0, 0, false},
     });
 
-    vivid::CadenceBridge bridge;
+    vivid::AudioFrameBridge bridge;
     bridge.build(cg);
 
     // Set solo — written to inactive snapshot
@@ -392,7 +381,7 @@ static void test_propagate_audio_display_params() {
     edge.data_type = VIVID_PORT_SCALAR;
     cg.edges.push_back(edge);
 
-    vivid::CadenceBridge bridge;
+    vivid::AudioFrameBridge bridge;
     bridge.build(cg);
     bridge.propagate_audio_display_params(cg);
 
@@ -421,7 +410,7 @@ static void test_propagate_respects_param_lock() {
     edge.data_type = VIVID_PORT_SCALAR;
     cg.edges.push_back(edge);
 
-    vivid::CadenceBridge bridge;
+    vivid::AudioFrameBridge bridge;
     bridge.build(cg);
     bridge.propagate_audio_display_params(cg);
 
@@ -461,12 +450,11 @@ static void test_bridge_zero_value_passthrough() {
     cg.audio_to_frame_edges.push_back(0);
     cg.nodes[0].output_port_types[0] = VIVID_PORT_SCALAR;
 
-    vivid::CadenceBridge bridge;
+    vivid::AudioFrameBridge bridge;
     bridge.build(cg);
 
     // Audio thread outputs exactly 0.0
     auto& write_buf = bridge.analysis_write_buffer();
-    write_buf.float_outputs[0] = {0.0f};
     bridge.publish_analysis();
     bridge.pull_from_audio(cg);
 
@@ -511,7 +499,7 @@ static void test_push_lane_preserves_lane_set_id() {
     cg.edges.push_back(edge);
     cg.frame_to_audio_edges.push_back(0);
 
-    vivid::CadenceBridge bridge;
+    vivid::AudioFrameBridge bridge;
     bridge.build(cg);
     bridge.push_to_audio(cg);
 
@@ -522,21 +510,20 @@ static void test_push_lane_preserves_lane_set_id() {
 }
 
 int main() {
-    std::fprintf(stderr, "=== test_cadence_bridge ===\n");
+    std::fprintf(stderr, "=== test_audio_frame_bridge ===\n");
 
     test_build_snapshot_allocation();
     test_build_analysis_allocation();
     test_build_empty_graph();
     test_push_snapshots_params();
-    test_push_float_cv_via_edge();
-    test_pull_float_output();
+    // test_push_float_cv_via_edge and test_pull_float_output removed — float CV deleted in Phase 4C
     test_pull_analysis_data();
     test_pull_error_propagation();
     test_double_buffer_swap();
     test_solo_active_set();
     test_propagate_audio_display_params();
     test_propagate_respects_param_lock();
-    test_bridge_zero_value_passthrough();
+    // test_bridge_zero_value_passthrough removed — float CV deleted in Phase 4C
     test_push_lane_preserves_lane_set_id();
 
     std::fprintf(stderr, "\n%s (%d failures)\n", failures == 0 ? "PASSED" : "FAILED", failures);

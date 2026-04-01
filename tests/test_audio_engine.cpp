@@ -2,7 +2,7 @@
 #include "runtime/graph.h"
 #include "runtime/runtime_core.h"
 #include "runtime/audio_engine.h"
-#include "runtime/cadence_bridge.h"
+#include "runtime/audio_frame_bridge.h"
 #include "runtime/compiled_graph.h"
 #include <cstdio>
 #include <cstdlib>
@@ -81,13 +81,13 @@ int main(int argc, char* argv[]) {
     {
         // Tick the runtime so ctrl produces output (scale=0.8 → output=1.6)
         runtime.tick(0.0, 0.016, 0);
-        runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
+        runtime.audio_frame_bridge().push_to_audio(*runtime.compiled_graph());
 
         // Poll for analysis results
         bool got_signal = false;
         for (int i = 0; i < 200; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            runtime.cadence_bridge().pull_from_audio(*runtime.compiled_graph());
+            runtime.audio_frame_bridge().pull_from_audio(*runtime.compiled_graph());
             const auto& snap = audio_engine.analysis_read();
             if (src_idx >= 0 && snap.rms[src_idx] > 0.01f) {
                 got_signal = true;
@@ -121,13 +121,13 @@ int main(int argc, char* argv[]) {
             }
         }
         runtime.tick(0.0, 0.016, 1);
-        runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
+        runtime.audio_frame_bridge().push_to_audio(*runtime.compiled_graph());
 
         // Poll for updated analysis
         bool updated = false;
         for (int i = 0; i < 200; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            runtime.cadence_bridge().pull_from_audio(*runtime.compiled_graph());
+            runtime.audio_frame_bridge().pull_from_audio(*runtime.compiled_graph());
             const auto& snap = audio_engine.analysis_read();
             if (dst_idx >= 0 && snap.rms[dst_idx] > 4.0f) {
                 updated = true;
@@ -154,7 +154,7 @@ int main(int argc, char* argv[]) {
         bool resumed = false;
         for (int i = 0; i < 200; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            runtime.cadence_bridge().pull_from_audio(*runtime.compiled_graph());
+            runtime.audio_frame_bridge().pull_from_audio(*runtime.compiled_graph());
             const auto& snap = audio_engine.analysis_read();
             if (src_idx >= 0 && snap.rms[src_idx] > 0.01f) {
                 resumed = true;

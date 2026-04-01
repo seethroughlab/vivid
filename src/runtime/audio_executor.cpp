@@ -1,7 +1,7 @@
 #include <miniaudio.h>
 
 #include "runtime/audio_executor.h"
-#include "runtime/cadence_bridge.h"
+#include "runtime/audio_frame_bridge.h"
 #include "runtime/crash_guard.h"
 #include "runtime/shared_handle_registry.h"
 #include "operator_api/type_id.h"
@@ -34,7 +34,7 @@ AudioExecutor::~AudioExecutor() {
     shutdown();
 }
 
-bool AudioExecutor::build(CadenceBridge& bridge, CompiledGraph& cg) {
+bool AudioExecutor::build(AudioFrameBridge& bridge, CompiledGraph& cg) {
     bridge_ = &bridge;
     graph_ = &cg;
     sink_node_idx_ = -1;

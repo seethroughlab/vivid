@@ -12,11 +12,11 @@ namespace vivid {
 
 class RuntimeCore;
 struct CompiledGraph;
-class CadenceBridge;
+class AudioFrameBridge;
 class AudioExecutor;
 
 // ---------------------------------------------------------------------------
-// AudioEngine — thin facade over AudioExecutor, CompiledGraph, and CadenceBridge.
+// AudioEngine — thin facade over AudioExecutor, CompiledGraph, and AudioFrameBridge.
 //
 // Manages audio device lifecycle and exposes analysis/recording/diagnostics
 // to the main thread.  All real audio processing happens in AudioExecutor.
@@ -76,10 +76,10 @@ private:
 
     // Cadence-aware runtime references (not owned)
     CompiledGraph* compiled_graph_ = nullptr;
-    CadenceBridge* cadence_bridge_ = nullptr;
+    AudioFrameBridge* audio_frame_bridge_ = nullptr;
     std::unique_ptr<AudioExecutor> audio_executor_;
 
-    // Fallback analysis snapshot (returned when no CadenceBridge available)
+    // Fallback analysis snapshot (returned when no AudioFrameBridge available)
     AnalysisSnapshot empty_analysis_;
 };
 

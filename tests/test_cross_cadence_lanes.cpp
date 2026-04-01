@@ -2,7 +2,7 @@
 #include "runtime/graph.h"
 #include "runtime/runtime_core.h"
 #include "runtime/audio_engine.h"
-#include "runtime/cadence_bridge.h"
+#include "runtime/audio_frame_bridge.h"
 #include "runtime/compiled_graph.h"
 #include <cstdio>
 #include <cstdlib>
@@ -75,13 +75,13 @@ int main(int argc, char* argv[]) {
 
     // Tick runtime so LaneSourceOp produces lane array [1,2,3]
     runtime.tick(0.0, 0.016, 0);
-    runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
+    runtime.audio_frame_bridge().push_to_audio(*runtime.compiled_graph());
 
     // Poll for audio signal: RMS should be ~6.0 (sum of [1,2,3])
     bool got_signal = false;
     for (int i = 0; i < 200; ++i) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        runtime.cadence_bridge().pull_from_audio(*runtime.compiled_graph());
+        runtime.audio_frame_bridge().pull_from_audio(*runtime.compiled_graph());
             const auto& snap = audio_engine.analysis_read();
             if (audio_idx >= 0 && snap.rms[audio_idx] > 5.0f) {
             got_signal = true;
@@ -131,13 +131,13 @@ int main(int argc, char* argv[]) {
             }
         }
         runtime.tick(0.0, 0.016, 1);
-        runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
+        runtime.audio_frame_bridge().push_to_audio(*runtime.compiled_graph());
 
         // Poll for updated RMS
         bool updated = false;
         for (int i = 0; i < 200; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            runtime.cadence_bridge().pull_from_audio(*runtime.compiled_graph());
+            runtime.audio_frame_bridge().pull_from_audio(*runtime.compiled_graph());
             const auto& snap = audio_engine.analysis_read();
             if (audio_idx >= 0 && snap.rms[audio_idx] > 11.0f) {
                 updated = true;
@@ -177,13 +177,13 @@ int main(int argc, char* argv[]) {
             }
         }
         runtime.tick(0.0, 0.016, 2);
-        runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
+        runtime.audio_frame_bridge().push_to_audio(*runtime.compiled_graph());
 
         // Poll for RMS to drop to ~0
         bool zeroed = false;
         for (int i = 0; i < 200; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            runtime.cadence_bridge().pull_from_audio(*runtime.compiled_graph());
+            runtime.audio_frame_bridge().pull_from_audio(*runtime.compiled_graph());
             const auto& snap = audio_engine.analysis_read();
             if (audio_idx >= 0 && snap.rms[audio_idx] < 0.5f) {
                 zeroed = true;

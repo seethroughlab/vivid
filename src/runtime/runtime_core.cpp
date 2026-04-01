@@ -36,7 +36,7 @@ bool RuntimeCore::build(const Graph& graph, OperatorRegistry& registry) {
         return false;
     }
 
-    cadence_bridge_.build(*compiled_graph_);
+    audio_frame_bridge_.build(*compiled_graph_);
     frame_executor_.set_operators_src_dir(operators_src_dir_);
 
     if (std::getenv("VIVID_VERBOSE")) {
@@ -73,7 +73,7 @@ void RuntimeCore::tick(double time, double delta_time, uint64_t frame, void* gpu
                          gpu_state, on_gpu_node, input);
 
     // Update audio nodes' param_values for inspector display.
-    cadence_bridge_.propagate_audio_display_params(*compiled_graph_);
+    audio_frame_bridge_.propagate_audio_display_params(*compiled_graph_);
 
     needs_gpu_realloc_ = frame_executor_.needs_gpu_realloc();
     if (needs_gpu_realloc_) frame_executor_.clear_gpu_realloc();
@@ -85,13 +85,13 @@ void RuntimeCore::tick(double time, double delta_time, uint64_t frame, void* gpu
 
 void RuntimeCore::pre_tick_audio_sync(double time) {
     if (!compiled_graph_ || compiled_graph_->audio_order.empty()) return;
-    cadence_bridge_.pull_from_audio(*compiled_graph_);
+    audio_frame_bridge_.pull_from_audio(*compiled_graph_);
     update_audio_sources(time);
 }
 
 void RuntimeCore::post_tick_audio_sync() {
     if (!compiled_graph_ || compiled_graph_->audio_order.empty()) return;
-    cadence_bridge_.push_to_audio(*compiled_graph_);
+    audio_frame_bridge_.push_to_audio(*compiled_graph_);
 }
 
 // ---------------------------------------------------------------------------
@@ -105,7 +105,7 @@ void RuntimeCore::set_solo(int node_idx) {
     if (node_idx < 0 || node_idx >= static_cast<int>(n)) {
         solo_node_idx_ = -1;
         solo_active_set_.clear();
-        cadence_bridge_.set_solo_active_set({});
+        audio_frame_bridge_.set_solo_active_set({});
         frame_executor_.set_solo(-1, {});
         return;
     }
@@ -128,7 +128,7 @@ void RuntimeCore::set_solo(int node_idx) {
     }
 
     // Sync to audio side via snapshot bridge
-    cadence_bridge_.set_solo_active_set(solo_active_set_);
+    audio_frame_bridge_.set_solo_active_set(solo_active_set_);
     // Sync to frame executor for frame-rate skip logic
     frame_executor_.set_solo(solo_node_idx_, solo_active_set_);
 }

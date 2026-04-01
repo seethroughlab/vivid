@@ -8,7 +8,7 @@
 #include "runtime/runtime_core.h"
 #include "runtime/subgraph_module.h"
 #include "runtime/audio_engine.h"
-#include "runtime/cadence_bridge.h"
+#include "runtime/audio_frame_bridge.h"
 #include "runtime/compiled_graph.h"
 #include "runtime/file_watcher.h"
 #include "runtime/hot_reload.h"

@@ -9,7 +9,7 @@
 namespace vivid {
 
 // ---------------------------------------------------------------------------
-// CadenceBridge — double-buffered snapshot bridge between frame and audio
+// AudioFrameBridge — double-buffered snapshot bridge between frame and audio
 // execution worlds.
 //
 // Main thread calls push_to_audio() after FrameExecutor::tick() to snapshot
@@ -20,7 +20,7 @@ namespace vivid {
 // + publish_analysis().
 // ---------------------------------------------------------------------------
 
-class CadenceBridge {
+class AudioFrameBridge {
 public:
     // Allocate snapshot buffers sized to the audio node count in the compiled graph.
     void build(const CompiledGraph& cg);

@@ -1,4 +1,4 @@
-#include "runtime/cadence_bridge.h"
+#include "runtime/audio_frame_bridge.h"
 #include "operator_api/type_id.h"
 #include <algorithm>
 #include <cstdio>
@@ -6,7 +6,7 @@
 
 namespace vivid {
 
-void CadenceBridge::build(const CompiledGraph& cg) {
+void AudioFrameBridge::build(const CompiledGraph& cg) {
     analysis_mappings_.clear();
 
     // Build flat lookup: graph node index → snapshot array index (-1 = not audio)
@@ -82,7 +82,7 @@ void CadenceBridge::build(const CompiledGraph& cg) {
 // propagate_audio_display_params — update audio node param_values for display
 // ---------------------------------------------------------------------------
 
-void CadenceBridge::propagate_audio_display_params(CompiledGraph& cg) {
+void AudioFrameBridge::propagate_audio_display_params(CompiledGraph& cg) {
     for (const auto& e : cg.edges) {
         if (!e.targets_param) continue;
         auto& to_cn = cg.nodes[e.to_node];
@@ -111,7 +111,7 @@ void CadenceBridge::propagate_audio_display_params(CompiledGraph& cg) {
 // ---------------------------------------------------------------------------
 
 
-void CadenceBridge::push_to_audio(const CompiledGraph& cg) {
+void AudioFrameBridge::push_to_audio(const CompiledGraph& cg) {
     int write_idx = 1 - param_active_.load(std::memory_order_acquire);
     auto& snap = snapshots_[write_idx];
 
@@ -199,7 +199,7 @@ void CadenceBridge::push_to_audio(const CompiledGraph& cg) {
 // pull_from_audio — inject audio analysis into frame-rate nodes
 // ---------------------------------------------------------------------------
 
-void CadenceBridge::pull_from_audio(CompiledGraph& cg) {
+void AudioFrameBridge::pull_from_audio(CompiledGraph& cg) {
     const auto& snap = analysis_snapshots_[analysis_active_.load(std::memory_order_acquire)];
 
     // Propagate error state
@@ -274,7 +274,7 @@ void CadenceBridge::pull_from_audio(CompiledGraph& cg) {
 }
 
 
-void CadenceBridge::set_solo_active_set(const std::vector<bool>& set) {
+void AudioFrameBridge::set_solo_active_set(const std::vector<bool>& set) {
     // Write into inactive snapshot, will be published on next push_to_audio
     int write_idx = 1 - param_active_.load(std::memory_order_acquire);
     snapshots_[write_idx].solo_active_set = set;

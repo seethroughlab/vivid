@@ -3,7 +3,7 @@
 #include "runtime/runtime_core.h"
 #include "runtime/audio_engine.h"
 #include "runtime/builtin_operators.h"
-#include "runtime/cadence_bridge.h"
+#include "runtime/audio_frame_bridge.h"
 #include "runtime/compiled_graph.h"
 #include "operator_api/gpu_operator.h"
 #include "common/gpu_util.h"
@@ -267,7 +267,7 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
             runtime.tick(time, 0.016, frame);
         }
         if (audio) {
-            runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
+            runtime.audio_frame_bridge().push_to_audio(*runtime.compiled_graph());
             audio->process_audio_for_test(audio_buf, vivid::AudioEngine::kBufferSize);
         }
 #ifdef __APPLE__
@@ -278,7 +278,7 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
     // Check results
     int result = 0;
     if (audio) {
-        runtime.cadence_bridge().pull_from_audio(*runtime.compiled_graph());
+        runtime.audio_frame_bridge().pull_from_audio(*runtime.compiled_graph());
         const auto& analysis = audio->analysis_read();
 
         for (size_t i = 0; i < analysis.errored.size(); ++i) {

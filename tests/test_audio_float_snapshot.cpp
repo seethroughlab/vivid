@@ -1,5 +1,5 @@
 #include "runtime/audio_engine.h"
-#include "runtime/cadence_bridge.h"
+#include "runtime/audio_frame_bridge.h"
 #include "runtime/compiled_graph.h"
 
 #include "runtime/operator_registry.h"
@@ -62,7 +62,7 @@ int main(int argc, char* argv[]) {
     check(audio_engine.build(runtime), "audio_engine.build()");
 
     runtime.tick(0.0, 0.016, 0);
-    runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
+    runtime.audio_frame_bridge().push_to_audio(*runtime.compiled_graph());
 
     const int audio_idx = audio_engine.audio_node_index("audio");
     check(audio_idx >= 0, "audio node exists");
@@ -90,7 +90,7 @@ int main(int argc, char* argv[]) {
         check_float(audio_engine.analysis_read().rms[audio_idx], 2.0f, 0.1f,
                     "audio analysis remains at previous snapshot without push_to_audio");
 
-        runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
+        runtime.audio_frame_bridge().push_to_audio(*runtime.compiled_graph());
         check_float(audio_engine.float_input_value_for_test(audio_idx, 0), 2.0f, 1e-5f,
                     "push_to_audio still leaves live float state untouched until callback");
 

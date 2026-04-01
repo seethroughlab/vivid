@@ -1,7 +1,7 @@
 #pragma once
 
 // Shared snapshot types for cross-cadence communication.
-// Used by CadenceBridge (owns the double-buffered snapshots),
+// Used by AudioFrameBridge (owns the double-buffered snapshots),
 // AudioExecutor (reads/writes them on the audio thread), and
 // AudioEngine (thin facade exposing analysis reads).
 

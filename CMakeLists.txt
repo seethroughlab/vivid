@@ -752,11 +752,11 @@ add_executable(vivid
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/audio_engine.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/audio_executor.cpp
     src/runtime/file_watcher.cpp
@@ -1070,7 +1070,7 @@ add_executable(test_hot_reload
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
 )
 target_include_directories(test_hot_reload PRIVATE src)
@@ -1089,7 +1089,7 @@ add_executable(test_audio_hot_reload
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
@@ -1126,7 +1126,7 @@ add_executable(test_runtime_api
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
@@ -1150,7 +1150,7 @@ add_executable(test_latency_validation
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
@@ -1175,7 +1175,7 @@ add_executable(test_control_server
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
@@ -1220,7 +1220,7 @@ add_executable(test_perception_introspection
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
@@ -1281,7 +1281,7 @@ add_executable(test_audio_engine
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
@@ -1304,7 +1304,7 @@ add_executable(test_audio_float_snapshot
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
@@ -1327,7 +1327,7 @@ add_executable(test_audio_robustness
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
@@ -1349,7 +1349,7 @@ add_executable(test_runtime_core
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
 )
 target_include_directories(test_runtime_core PRIVATE src)
@@ -1615,7 +1615,7 @@ add_executable(test_runtime_stress
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/audio_engine.cpp
     src/runtime/audio_executor.cpp
@@ -1639,7 +1639,7 @@ add_executable(test_hot_reload_stress
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/audio_engine.cpp
     src/runtime/audio_executor.cpp
@@ -1662,7 +1662,7 @@ add_executable(test_package_stress
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/audio_engine.cpp
     src/runtime/audio_executor.cpp
@@ -1689,7 +1689,7 @@ add_executable(test_mixed_runtime_stability
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/audio_engine.cpp
     src/runtime/audio_executor.cpp
@@ -1759,7 +1759,7 @@ add_executable(test_gpu_operators
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
 )
 target_include_directories(test_gpu_operators PRIVATE src)
@@ -1777,7 +1777,7 @@ add_executable(test_gpu_correctness
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/output_analyzer.cpp
 )
@@ -1821,7 +1821,7 @@ add_executable(test_cross_cadence_lanes
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
@@ -1844,7 +1844,7 @@ add_executable(test_lane_broadcast
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
 )
 target_include_directories(test_lane_broadcast PRIVATE src)
@@ -1862,7 +1862,7 @@ add_executable(test_lane_reshape
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
 )
@@ -1881,7 +1881,7 @@ add_executable(test_frame_lane_lifting
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
 )
@@ -1900,7 +1900,7 @@ add_executable(test_lane_breadth
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
 )
@@ -1926,7 +1926,7 @@ add_executable(test_lane_metadata
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
 )
 target_include_directories(test_lane_metadata PRIVATE src)
@@ -1955,7 +1955,7 @@ add_executable(test_signal_port
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
@@ -2004,7 +2004,7 @@ add_executable(test_demo_graphs
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
@@ -2045,7 +2045,7 @@ add_executable(test_media_headless
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
@@ -2076,7 +2076,7 @@ add_executable(test_audio_cadence_sequencer
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
@@ -2102,7 +2102,7 @@ add_executable(test_cadence_inference
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
@@ -2266,7 +2266,7 @@ add_executable(test_package_test_runner
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/builtin_operators.cpp
     src/runtime/port_type_registry.cpp
@@ -2294,7 +2294,7 @@ add_executable(test_package_contract_ecosystem
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/builtin_operators.cpp
     src/runtime/port_type_registry.cpp
@@ -2325,7 +2325,7 @@ add_executable(test_capture_coordinator
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/screenshot.cpp
     src/runtime/runtime_api.cpp
@@ -2412,7 +2412,7 @@ add_executable(test_string_ports
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
 )
 target_include_directories(test_string_ports PRIVATE src tests)
@@ -2510,14 +2510,14 @@ target_include_directories(test_frame_executor_queries PRIVATE src)
 target_link_libraries(test_frame_executor_queries PRIVATE vivid_operator_api webgpu)
 add_test(NAME test_frame_executor_queries COMMAND test_frame_executor_queries WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-add_executable(test_cadence_bridge
-    tests/test_cadence_bridge.cpp
-    src/runtime/cadence_bridge.cpp
+add_executable(test_audio_frame_bridge
+    tests/test_audio_frame_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/port_type_registry.cpp
 )
-target_include_directories(test_cadence_bridge PRIVATE src)
-target_link_libraries(test_cadence_bridge PRIVATE vivid_operator_api webgpu)
-add_test(NAME test_cadence_bridge COMMAND test_cadence_bridge WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+target_include_directories(test_audio_frame_bridge PRIVATE src)
+target_link_libraries(test_audio_frame_bridge PRIVATE vivid_operator_api webgpu)
+add_test(NAME test_audio_frame_bridge COMMAND test_audio_frame_bridge WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_subgraph_module
     tests/test_subgraph_module.cpp
@@ -2591,7 +2591,7 @@ add_executable(test_lane_compaction
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
@@ -2615,7 +2615,7 @@ add_executable(test_lane_equivalence
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
@@ -2640,7 +2640,7 @@ add_executable(test_undo_mutation_types
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
@@ -2681,7 +2681,7 @@ add_executable(test_team_workflow_regression
     src/runtime/runtime_core.cpp
     src/runtime/subgraph_module.cpp
     src/runtime/graph_compiler.cpp
-    src/runtime/cadence_bridge.cpp
+    src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp

@@ -17,14 +17,14 @@ AudioEngine::~AudioEngine() {
 
 bool AudioEngine::build(RuntimeCore& core) {
     compiled_graph_ = core.compiled_graph();
-    cadence_bridge_ = &core.cadence_bridge();
+    audio_frame_bridge_ = &core.audio_frame_bridge();
     if (!compiled_graph_ || compiled_graph_->audio_order.empty()) {
         std::fprintf(stderr, "[vivid] AudioEngine: no audio nodes\n");
         return false;
     }
 
     audio_executor_ = std::make_unique<AudioExecutor>();
-    if (!audio_executor_->build(*cadence_bridge_, *compiled_graph_)) {
+    if (!audio_executor_->build(*audio_frame_bridge_, *compiled_graph_)) {
         audio_executor_.reset();
         return false;
     }
@@ -43,7 +43,7 @@ bool AudioEngine::build(RuntimeCore& core) {
 }
 
 bool AudioEngine::start(bool use_null_device) {
-    if (!audio_executor_ || !cadence_bridge_ || !compiled_graph_) return false;
+    if (!audio_executor_ || !audio_frame_bridge_ || !compiled_graph_) return false;
     bool ok = audio_executor_->start(use_null_device);
     if (ok) {
         std::fprintf(stderr, "[vivid] AudioEngine: started (%u Hz, %u frames/buffer, %zu audio nodes)\n",
@@ -58,13 +58,13 @@ void AudioEngine::shutdown() {
         audio_executor_.reset();
     }
     compiled_graph_ = nullptr;
-    cadence_bridge_ = nullptr;
+    audio_frame_bridge_ = nullptr;
 
     std::fprintf(stderr, "[vivid] AudioEngine: shutdown\n");
 }
 
 const AnalysisSnapshot& AudioEngine::analysis_read() const {
-    if (cadence_bridge_) return cadence_bridge_->active_analysis();
+    if (audio_frame_bridge_) return audio_frame_bridge_->active_analysis();
     return empty_analysis_;
 }
 
@@ -160,10 +160,10 @@ bool AudioEngine::post_reload_operator(const std::string& type_name, OperatorReg
     reload_saved_.clear();
 
     // Rebuild AudioExecutor (auto-dup groups may change with new descriptor)
-    if (audio_executor_ && compiled_graph_ && cadence_bridge_) {
+    if (audio_executor_ && compiled_graph_ && audio_frame_bridge_) {
         audio_executor_->shutdown();
-        audio_executor_->build(*cadence_bridge_, *compiled_graph_);
-        cadence_bridge_->build(*compiled_graph_);
+        audio_executor_->build(*audio_frame_bridge_, *compiled_graph_);
+        audio_frame_bridge_->build(*compiled_graph_);
         audio_executor_->start(false);
     }
 

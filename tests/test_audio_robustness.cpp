@@ -5,7 +5,7 @@
 #include "runtime/graph.h"
 #include "runtime/runtime_core.h"
 #include "runtime/audio_engine.h"
-#include "runtime/cadence_bridge.h"
+#include "runtime/audio_frame_bridge.h"
 #include "runtime/compiled_graph.h"
 #include <cstdio>
 #include <cmath>
@@ -61,12 +61,12 @@ int main(int argc, char* argv[]) {
 
     // Let the audio thread run a few buffers to trigger the exception
     runtime.tick(0.0, 1.0 / 60.0, 0);
-    runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
+    runtime.audio_frame_bridge().push_to_audio(*runtime.compiled_graph());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     // --- Test 2: Error state is propagated ---
     std::fprintf(stderr, "\n--- error state propagation ---\n");
-    runtime.cadence_bridge().pull_from_audio(*runtime.compiled_graph());
+    runtime.audio_frame_bridge().pull_from_audio(*runtime.compiled_graph());
 
     int bad_idx = audio_engine.audio_node_index("bad");
     int good_idx = audio_engine.audio_node_index("good");

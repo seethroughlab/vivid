@@ -7,7 +7,7 @@
 #include "runtime/graph.h"
 #include "runtime/runtime_core.h"
 #include "runtime/audio_engine.h"
-#include "runtime/cadence_bridge.h"
+#include "runtime/audio_frame_bridge.h"
 #include "runtime/compiled_graph.h"
 #include "runtime/runtime_api.h"
 #include "runtime/builtin_operators.h"

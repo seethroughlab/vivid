@@ -38,7 +38,7 @@ enum ParamLockFlags : uint8_t {
 
 enum class EdgeTransport : uint8_t {
     Direct,      // same-cadence: value copy during executor pass
-    Snapshot,    // cross-cadence: double-buffered snapshot via CadenceBridge
+    Snapshot,    // cross-cadence: double-buffered snapshot via AudioFrameBridge
 };
 
 // ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@
 #include "runtime/runtime_core.h"
 #include "runtime/audio_engine.h"
 #include "runtime/builtin_operators.h"
-#include "runtime/cadence_bridge.h"
+#include "runtime/audio_frame_bridge.h"
 #include "runtime/compiled_graph.h"
 #include <cstdio>
 #include <cmath>
@@ -133,7 +133,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Pull final audio results into CompiledNode for assertions below
-    runtime.cadence_bridge().pull_from_audio(*runtime.compiled_graph());
+    runtime.audio_frame_bridge().pull_from_audio(*runtime.compiled_graph());
 
     // Check that audio output has non-zero RMS (the gain node should pass through sound)
     const auto& analysis = audio.analysis_read();

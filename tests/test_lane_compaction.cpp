@@ -16,7 +16,7 @@
 #include "runtime/graph.h"
 #include "runtime/runtime_core.h"
 #include "runtime/audio_engine.h"
-#include "runtime/cadence_bridge.h"
+#include "runtime/audio_frame_bridge.h"
 #include "runtime/compiled_graph.h"
 #include "runtime/builtin_operators.h"
 #include <cstdio>
@@ -103,7 +103,7 @@ int main(int argc, char* argv[]) {
 
     // Tick frame to produce lane arrays, push to audio snapshot
     runtime.tick(0.0, 1.0 / 60.0, 0);
-    runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
+    runtime.audio_frame_bridge().push_to_audio(*runtime.compiled_graph());
 
     // Run 1 audio buffer (256 samples) via test path
     float output[512] = {};  // stereo output
@@ -149,7 +149,7 @@ int main(int argc, char* argv[]) {
 
     // Tick frame to produce compacted lane arrays
     runtime.tick(1.0 / 60.0, 1.0 / 60.0, 1);
-    runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
+    runtime.audio_frame_bridge().push_to_audio(*runtime.compiled_graph());
 
     // Run another audio buffer
     float output2[512] = {};

@@ -13,7 +13,7 @@
 #include "runtime/graph.h"
 #include "runtime/runtime_core.h"
 #include "runtime/audio_engine.h"
-#include "runtime/cadence_bridge.h"
+#include "runtime/audio_frame_bridge.h"
 #include "runtime/compiled_graph.h"
 #include "runtime/builtin_operators.h"
 #include "runtime/lane_types.h"
@@ -117,7 +117,7 @@ int main(int argc, char* argv[]) {
 
         // Tick frame, push to audio, process one buffer
         runtime.tick(0.0, 1.0 / 60.0, 0);
-        runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
+        runtime.audio_frame_bridge().push_to_audio(*runtime.compiled_graph());
 
         float output[512] = {};
         audio_engine.process_audio_for_test(output, 256);
@@ -229,7 +229,7 @@ int main(int argc, char* argv[]) {
             check(engine.build(runtime), "IPL: engine.build()");
 
             runtime.tick(0.0, 1.0 / 60.0, 0);
-            runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
+            runtime.audio_frame_bridge().push_to_audio(*runtime.compiled_graph());
 
             float out_buf[512] = {};
             engine.process_audio_for_test(out_buf, kBufSize);
@@ -279,7 +279,7 @@ int main(int argc, char* argv[]) {
             check(engine.build(runtime), "LB: engine.build()");
 
             runtime.tick(0.0, 1.0 / 60.0, 0);
-            runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
+            runtime.audio_frame_bridge().push_to_audio(*runtime.compiled_graph());
 
             float out_buf[512] = {};
             engine.process_audio_for_test(out_buf, kBufSize);

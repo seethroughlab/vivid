@@ -1,7 +1,7 @@
 #pragma once
 
 #include "runtime/compiled_graph.h"
-#include "runtime/cadence_bridge.h"
+#include "runtime/audio_frame_bridge.h"
 #include "runtime/frame_executor.h"
 #include "runtime/graph_compiler.h"
 #include <filesystem>
@@ -18,7 +18,7 @@ class SubgraphModuleRegistry;
 // ---------------------------------------------------------------------------
 // RuntimeCore — shared runtime state accessed by both frame and audio sides.
 //
-// Owns the CompiledGraph, CadenceBridge, FrameExecutor, and solo state.
+// Owns the CompiledGraph, AudioFrameBridge, FrameExecutor, and solo state.
 // Provides build/tick/shutdown lifecycle and runtime queries.
 // ---------------------------------------------------------------------------
 
@@ -76,14 +76,14 @@ public:
 
     CompiledGraph* compiled_graph() { return compiled_graph_.get(); }
     const CompiledGraph* compiled_graph() const { return compiled_graph_.get(); }
-    CadenceBridge& cadence_bridge() { return cadence_bridge_; }
-    const CadenceBridge& cadence_bridge() const { return cadence_bridge_; }
+    AudioFrameBridge& audio_frame_bridge() { return audio_frame_bridge_; }
+    const AudioFrameBridge& audio_frame_bridge() const { return audio_frame_bridge_; }
     FrameExecutor& frame_executor() { return frame_executor_; }
     const FrameExecutor& frame_executor() const { return frame_executor_; }
 
 private:
     std::unique_ptr<CompiledGraph> compiled_graph_;
-    CadenceBridge cadence_bridge_;
+    AudioFrameBridge audio_frame_bridge_;
     FrameExecutor frame_executor_;
 
     std::string operators_src_dir_;

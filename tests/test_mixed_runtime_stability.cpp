@@ -1,6 +1,6 @@
 #include "runtime/audio_engine.h"
 #include "runtime/builtin_operators.h"
-#include "runtime/cadence_bridge.h"
+#include "runtime/audio_frame_bridge.h"
 #include "runtime/compiled_graph.h"
 #include "runtime/graph.h"
 #include "runtime/operator_registry.h"
