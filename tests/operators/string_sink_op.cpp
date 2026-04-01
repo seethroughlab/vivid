@@ -9,8 +9,8 @@ struct StringSinkOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr bool kTimeDependent = false;
 
     std::string last_;
-    std::vector<std::string> last_spread_;
-    std::vector<const char*> out_spread_ptrs_;
+    std::vector<std::string> last_lanes_;
+    std::vector<const char*> out_lane_ptrs_;
 
     void collect_params(std::vector<vivid::ParamBase*>&) override {}
 
@@ -27,28 +27,28 @@ struct StringSinkOp : vivid::OperatorBase, vivid::FrameProcessable {
         last_.clear();
         if (ctx->input_string_values && ctx->input_string_values[0]) last_ = ctx->input_string_values[0];
 
-        last_spread_.clear();
-        out_spread_ptrs_.clear();
+        last_lanes_.clear();
+        out_lane_ptrs_.clear();
         if (ctx->input_string_lanes && ctx->input_string_lanes[1].data) {
             const auto& in = ctx->input_string_lanes[1];
             for (uint32_t i = 0; i < in.length; ++i) {
                 const char* s = in.data[i];
-                last_spread_.push_back(s ? s : "");
+                last_lanes_.push_back(s ? s : "");
             }
         }
-        out_spread_ptrs_.reserve(last_spread_.size());
-        for (const auto& s : last_spread_) out_spread_ptrs_.push_back(s.c_str());
+        out_lane_ptrs_.reserve(last_lanes_.size());
+        for (const auto& s : last_lanes_) out_lane_ptrs_.push_back(s.c_str());
 
         if (ctx->output_string_values) ctx->output_string_values[0] = last_.c_str();
         if (ctx->output_string_lanes && ctx->output_string_lanes[1].data) {
             auto& out = ctx->output_string_lanes[1];
-            uint32_t n = std::min<uint32_t>(out.capacity, static_cast<uint32_t>(out_spread_ptrs_.size()));
+            uint32_t n = std::min<uint32_t>(out.capacity, static_cast<uint32_t>(out_lane_ptrs_.size()));
             out.length = n;
-            for (uint32_t i = 0; i < n; ++i) out.data[i] = out_spread_ptrs_[i];
+            for (uint32_t i = 0; i < n; ++i) out.data[i] = out_lane_ptrs_[i];
         }
         if (ctx->output_values) {
             ctx->output_values[2] = last_.empty() ? 0.0f : 1.0f;
-            ctx->output_values[3] = static_cast<float>(last_spread_.size());
+            ctx->output_values[3] = static_cast<float>(last_lanes_.size());
         }
     }
 };

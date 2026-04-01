@@ -9,12 +9,12 @@ struct StringSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<vivid::TextValue> value{"value", "alpha"};
-    std::vector<std::string> spread_{"alpha", "beta", "gamma"};
-    std::vector<const char*> spread_ptrs_;
+    std::vector<std::string> lanes_{"alpha", "beta", "gamma"};
+    std::vector<const char*> lanes_ptrs_;
 
     StringSourceOp() {
-        spread_ptrs_.reserve(spread_.size());
-        for (const auto& s : spread_) spread_ptrs_.push_back(s.c_str());
+        lanes_ptrs_.reserve(lanes_.size());
+        for (const auto& s : lanes_) lanes_ptrs_.push_back(s.c_str());
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override { out.push_back(&value); }
@@ -28,9 +28,9 @@ struct StringSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
         if (ctx->output_string_values) ctx->output_string_values[0] = value.str_value.c_str();
         if (ctx->output_string_lanes && ctx->output_string_lanes[1].data) {
             auto& sp = ctx->output_string_lanes[1];
-            uint32_t n = std::min<uint32_t>(sp.capacity, static_cast<uint32_t>(spread_ptrs_.size()));
+            uint32_t n = std::min<uint32_t>(sp.capacity, static_cast<uint32_t>(lanes_ptrs_.size()));
             sp.length = n;
-            for (uint32_t i = 0; i < n; ++i) sp.data[i] = spread_ptrs_[i];
+            for (uint32_t i = 0; i < n; ++i) sp.data[i] = lanes_ptrs_[i];
         }
     }
 };

@@ -31,7 +31,7 @@ struct Alternate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPro
         out.push_back({"b",          VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in lane[1]
         out.push_back({"c",          VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in lane[2]
         out.push_back({"d",          VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in lane[3]
-        out.push_back({"output",     VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // out spread[0]
+        out.push_back({"output",     VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // out lane[0]
         out.push_back({"index",      VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});  // out float[0]
     }
 
@@ -44,8 +44,8 @@ struct Alternate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPro
     }
 
 private:
-    void compute(float beat_phase, const float* params, VividLanePort* in_spreads,
-                 VividLanePort* out_spreads, float* output_values) {
+    void compute(float beat_phase, const float* params, VividLanePort* in_lanes,
+                 VividLanePort* out_lanes, float* output_values) {
         int c = std::clamp(static_cast<int>(params[0]), 0, 4);
 
         // Cycle lengths in beats: Beat=1, 2 Beats=2, Bar=4, 2 Bars=8, 4 Bars=16
@@ -57,22 +57,22 @@ private:
         if (delta < -0.5f) beat_count_++;
         prev_phase_ = beat_phase;
 
-        if (!in_spreads || !out_spreads) return;
+        if (!in_lanes || !out_lanes) return;
 
-        // Collect connected (non-empty) spread inputs
+        // Collect connected (non-empty) lane inputs
         // Spread inputs are at port indices 1..4 (a,b,c,d); port 0 is beat_phase (float)
         const VividLanePort* inputs[4];
         int input_indices[4];
         int input_count = 0;
         for (int i = 0; i < 4; ++i) {
-            if (in_spreads[1 + i].length > 0) {
-                inputs[input_count] = &in_spreads[1 + i];
+            if (in_lanes[1 + i].length > 0) {
+                inputs[input_count] = &in_lanes[1 + i];
                 input_indices[input_count] = i;
                 input_count++;
             }
         }
 
-        auto& out = out_spreads[0];
+        auto& out = out_lanes[0];
 
         if (input_count == 0) {
             out.length = 0;

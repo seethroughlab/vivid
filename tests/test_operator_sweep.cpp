@@ -153,7 +153,7 @@ static const std::unordered_set<std::string>& always_skip() {
         "file_drop_test_op_alt",
         "file_drop_bad_param_op",
         // Dual-cadence spread selector — segfaults in sweep due to
-        // spread port index layout mismatch (signal + spread mix).
+        // lane port index layout mismatch (signal + lane-array mix).
         "alternate",
     };
     return s;
@@ -261,14 +261,14 @@ static bool smoke_control(vivid::OperatorLoader& loader, void* inst,
     // Count all ports by direction — allocate generously since operators may
     // access input_values/output_values by port ordinal regardless of type.
     uint32_t n_in_total = 0, n_out_total = 0;
-    uint32_t n_spread_in = 0, n_spread_out = 0;
+    uint32_t n_lane_in = 0, n_lane_out = 0;
     for (uint32_t i = 0; i < desc->port_count; i++) {
         if (desc->ports[i].direction == VIVID_PORT_INPUT) {
             n_in_total++;
-            if (desc->ports[i].type == VIVID_PORT_LANE_ARRAY) n_spread_in++;
+            if (desc->ports[i].type == VIVID_PORT_LANE_ARRAY) n_lane_in++;
         } else {
             n_out_total++;
-            if (desc->ports[i].type == VIVID_PORT_LANE_ARRAY) n_spread_out++;
+            if (desc->ports[i].type == VIVID_PORT_LANE_ARRAY) n_lane_out++;
         }
     }
 
@@ -280,8 +280,8 @@ static bool smoke_control(vivid::OperatorLoader& loader, void* inst,
     std::vector<float> outputs(n_out_total, 0.0f);
 
     // Allocate empty spread ports so operators that read them don't crash.
-    std::vector<VividLanePort> in_spreads(n_spread_in, {nullptr, 0, 0});
-    std::vector<VividLanePort> out_spreads(n_spread_out, {nullptr, 0, 0});
+    std::vector<VividLanePort> in_spreads(n_lane_in, {nullptr, 0, 0});
+    std::vector<VividLanePort> out_spreads(n_lane_out, {nullptr, 0, 0});
 
     VividFrameContext ctx{};
     ctx.time       = 0.0;

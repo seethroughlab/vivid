@@ -133,13 +133,13 @@ If payload-generic implementation is not immediate, temporary string-specific op
 
 ## Alignment Checklist
 
-Use this checklist for the remaining repo cleanup:
+Status of the clean-break checklist:
 
-- rename remaining `string_spread` API/UI/control-server strings to `string_lanes`
-- rename lane test fixtures to lane-oriented names
-- remove contributor-facing comments that describe lane-bearing transport as spreads
-- update string-lane tests and comments to use lane vocabulary
-- ensure docs do not describe strings as a spread-era exception
+- [x] rename `string_spread` API/UI/control-server strings to `string_lanes`
+- [x] rename lane test fixtures to lane-oriented names (LaneSourceOp, LaneSinkOp, IdentityLaneSourceOp)
+- [x] remove contributor-facing comments that describe lane-bearing transport as spreads
+- [x] update string-lane tests and comments to use lane vocabulary
+- [x] ensure docs do not describe strings as a spread-era exception
 
 ## Acceptance Bar
 
