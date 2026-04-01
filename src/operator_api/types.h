@@ -79,9 +79,9 @@ typedef uint32_t VividPortDirection;
 typedef uint32_t VividPortTransport;
 #define VIVID_PORT_TRANSPORT_SIGNAL         0u  // numeric value (scalar or buffer depending on execution environment)
 #define VIVID_PORT_TRANSPORT_AUDIO_BUFFER   1u  // audio sample buffers
-#define VIVID_PORT_TRANSPORT_LANE_ARRAY         2u  // float spread copy
+#define VIVID_PORT_TRANSPORT_LANE_ARRAY         2u  // float lane array copy
 #define VIVID_PORT_TRANSPORT_STRING         3u  // string copy
-#define VIVID_PORT_TRANSPORT_STRING_SPREAD  4u  // string spread copy
+#define VIVID_PORT_TRANSPORT_STRING_SPREAD  4u  // string lane array copy
 #define VIVID_PORT_TRANSPORT_TEXTURE        5u  // GPU texture/view routing
 #define VIVID_PORT_TRANSPORT_CUSTOM_VALUE   6u  // memcpy-by-value snapshot
 #define VIVID_PORT_TRANSPORT_CUSTOM_REF     7u  // opaque shared-handle/reference
@@ -188,11 +188,11 @@ typedef struct VividInputState {
 } VividInputState;
 
 // ---------------------------------------------------------------------------
-// Spread port — variable-length float array
+// Lane port — variable-length float array
 // ---------------------------------------------------------------------------
 
 typedef struct VividLanePort {
-    float*   data;      // pointer to spread data
+    float*   data;      // pointer to lane data
     uint32_t length;    // current number of floats
     uint32_t capacity;  // allocated size (for output ports)
 } VividLanePort;
@@ -284,16 +284,16 @@ typedef struct VividFrameContext {
     float*    param_values;   // indexed by param descriptor order
     float*    input_values;   // indexed by input port order (VIVID_PORT_INPUT only)
     float*    output_values;  // indexed by output port order (VIVID_PORT_OUTPUT only)
-    VividLanePort* input_lanes;    // [spread_port_ordinal], NULL if none
-    VividLanePort* output_lanes;   // [spread_port_ordinal], NULL if none
+    VividLanePort* input_lanes;    // [lane_port_ordinal], NULL if none
+    VividLanePort* output_lanes;   // [lane_port_ordinal], NULL if none
     void**     custom_inputs;          // [custom_input_ordinal], NULL if none
     uint32_t   custom_input_count;     // number of custom-transport input ports
     void**     custom_outputs;         // [custom_output_ordinal], NULL if none
     uint32_t   custom_output_count;    // number of custom-transport output ports
     const char** input_string_values;   // [string_port_ordinal]
     const char** output_string_values;  // [string_port_ordinal]
-    VividStringLanePort* input_string_lanes;   // [string_spread_port_ordinal], NULL if none
-    VividStringLanePort* output_string_lanes;  // [string_spread_port_ordinal], NULL if none
+    VividStringLanePort* input_string_lanes;   // [string_lane_port_ordinal], NULL if none
+    VividStringLanePort* output_string_lanes;  // [string_lane_port_ordinal], NULL if none
     const char** file_param_values;   // indexed by file param order, NULL if none
     uint32_t     file_param_count;
     void*     input;          // VividInputState* for interactive operators, NULL otherwise

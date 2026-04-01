@@ -97,7 +97,7 @@ public:
             }
         }
 
-        // Rewrite spread port arrays for the C context
+        // Rewrite lane port arrays for the C context
         for (size_t i = 0; i < input_lanes_.size(); ++i) {
             c_input_lanes_[i].data     = input_lanes_[i].empty() ? nullptr : input_lanes_[i].data();
             c_input_lanes_[i].length   = static_cast<uint32_t>(input_lanes_[i].size());

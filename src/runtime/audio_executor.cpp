@@ -235,7 +235,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             for (size_t p = 0; p < a.float_input_values.size() && p < snap.float_input_values[i].size(); ++p)
                 a.float_input_values[p] = snap.float_input_values[i][p];
         }
-        // Copy spread inputs from snapshot to CompiledNode
+        // Copy lane inputs from snapshot to CompiledNode
         if (a.has_lane_ports && i < snap.lane_inputs.size()) {
             for (size_t p = 0; p < cn.input_port_count && p < snap.lane_inputs[i].size(); ++p) {
                 const auto& ss = snap.lane_inputs[i][p];
@@ -358,11 +358,11 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 std::fprintf(stderr, "[audio-debug] node '%s' loader=%p instance=%p errored=%d\n",
                              cn.node_id.c_str(), (void*)cn.loader, cn.instance, cn.errored);
             }
-            // Debug spread data
+            // Debug lane data
             if (std::getenv("VIVID_DEBUG_AUDIO")) {
                 for (uint32_t p = 0; p < cn.input_port_count; ++p) {
                     if (p < cn.input_lanes.size() && !cn.input_lanes[p].empty()) {
-                        std::fprintf(stderr, "[audio-debug] node '%s' input_spread[%u] len=%zu val[0]=%.2f\n",
+                        std::fprintf(stderr, "[audio-debug] node '%s' input_lane[%u] len=%zu val[0]=%.2f\n",
                                      cn.node_id.c_str(), p, cn.input_lanes[p].size(),
                                      cn.input_lanes[p][0]);
                     }
@@ -372,7 +372,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             // Process
             if (!cn.loader || !cn.instance || cn.errored) continue;
 
-            // Set up spread ports for context
+            // Set up lane ports for context
             for (uint32_t p = 0; p < cn.input_port_count && p < cn.c_in_lanes.size(); ++p) {
                 if (p < cn.input_lanes.size()) {
                     cn.c_in_lanes[p].data = cn.input_lanes[p].empty() ? nullptr : cn.input_lanes[p].data();
@@ -474,7 +474,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 }
             } else if (cn.audio && cn.audio->execution_strategy == LaneExecutionStrategy::LoopBased) {
                 // ── LoopBased: single instance, runtime-driven loop over lanes ──
-                // Discover lane count from spread inputs at runtime.
+                // Discover lane count from lane inputs at runtime.
                 uint32_t loop_lanes = 0;
                 for (uint32_t p = 0; p < cn.input_port_count && p < cn.c_in_lanes.size(); ++p) {
                     if (cn.c_in_lanes[p].length > loop_lanes)
@@ -488,7 +488,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 }
 
                 if (loop_lanes > 0) {
-                    // Read identity-bearing lane_ids from upstream spread, or fall back to positional.
+                    // Read identity-bearing lane_ids from upstream lane array, or fall back to positional.
                     std::vector<uint32_t> loop_lane_ids(loop_lanes);
                     int32_t lid_port = a.lane_id_spread_port;
                     bool has_identity_ids = false;
@@ -620,7 +620,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 }
             }
 
-            // Read back spread outputs
+            // Read back lane outputs
             for (uint32_t p = 0; p < cn.output_port_count && p < cn.c_out_lanes.size(); ++p) {
                 if (cn.c_out_lanes[p].length > 0 && p < cn.output_lanes.size()) {
                     cn.output_lanes[p].assign(
@@ -645,7 +645,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             for (auto& fv : a.float_output_values)
                 if (std::isnan(fv)) fv = 0.0f;
 
-            // Route float/spread/custom outputs to downstream audio nodes
+            // Route float/lane/custom outputs to downstream audio nodes
             for (uint32_t ei : cg.audio_direct_edges) {
                 const auto& e = cg.edges[ei];
                 if (e.from_node != ni || e.targets_param) continue;
@@ -660,7 +660,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                         to_a.float_input_values[e.to_signal_ordinal] =
                             a.float_output_values[e.from_signal_ordinal] * scale;
                 } else if (e.data_type == VIVID_PORT_LANE_ARRAY) {
-                    // Spread routing between audio nodes
+                    // Lane routing between audio nodes
                     auto& to_cn = cg.nodes[e.to_node];
                     if (e.from_port < cn.output_lanes.size() &&
                         e.to_port < to_cn.input_lanes.size()) {

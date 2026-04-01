@@ -147,11 +147,11 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
                             // Compiler proved lane-set compatibility; operators
                             // emitted inconsistent sizes. Skip merge.
                             std::fprintf(stderr,
-                                "[vivid] frame_executor: spread length mismatch at node '%s' "
+                                "[vivid] frame_executor: lane length mismatch at node '%s' "
                                 "port %u (dst %zu vs src %zu) — skipping merge\n",
                                 cn.node_id.c_str(), e.to_port,
                                 dst_lane.size(), src_lane.size());
-                            assert(false && "lane-aware spread merge: same-provenance runtime length mismatch");
+                            assert(false && "lane-aware lane merge: same-provenance runtime length mismatch");
                         }
                         if (!dst_lane.empty())
                             cn.input_values[e.to_port] = dst_lane[0];
@@ -183,7 +183,7 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
         }
         if (!should_process) continue;
 
-        // ── Build spread port staging ───────────────────────────────────
+        // ── Build lane port staging ───────────────────────────────────
         for (uint32_t p = 0; p < cn.input_port_count; ++p) {
             cn.c_in_lanes[p].data = cn.input_lanes[p].data();
             cn.c_in_lanes[p].length = static_cast<uint32_t>(cn.input_lanes[p].size());
@@ -369,14 +369,14 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             }
         } else if (cn.frame_execution_strategy == LaneExecutionStrategy::LoopBased) {
             // ── LoopBased frame processing: per-lane loop ──
-            // Discover lane count from max input spread length.
+            // Discover lane count from max input lane length.
             uint32_t loop_lanes = 0;
             for (uint32_t p = 0; p < cn.input_port_count; ++p) {
                 if (p < cn.input_lanes.size() && cn.input_lanes[p].size() > loop_lanes)
                     loop_lanes = static_cast<uint32_t>(cn.input_lanes[p].size());
             }
 
-            // Read identity-bearing lane_ids from spread, or fall back to positional.
+            // Read identity-bearing lane_ids from lane array, or fall back to positional.
             std::vector<uint32_t> loop_lane_ids(loop_lanes);
             int32_t lid_port = cn.frame_lane_id_spread_port;
             bool has_identity_ids = false;
@@ -403,14 +403,14 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             std::vector<float> lane_input_values(cn.input_port_count, 0.0f);
             std::vector<float> lane_output_values(cn.output_port_count, 0.0f);
 
-            // Ensure output spreads have capacity for all lanes
+            // Ensure output lanes have capacity for all lanes
             for (uint32_t p = 0; p < cn.output_port_count; ++p) {
                 if (cn.c_out_lanes[p].capacity >= loop_lanes)
                     cn.c_out_lanes[p].length = loop_lanes;
             }
 
             for (uint32_t c = 0; c < loop_lanes; ++c) {
-                // Extract per-lane scalar from each input spread
+                // Extract per-lane scalar from each input lane
                 for (uint32_t p = 0; p < cn.input_port_count; ++p) {
                     if (p < cn.input_lanes.size() && c < cn.input_lanes[p].size())
                         lane_input_values[p] = cn.input_lanes[p][c];
@@ -465,7 +465,7 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
                     break;
                 }
 
-                // Write per-lane output into output spread
+                // Write per-lane output into output lane array
                 for (uint32_t p = 0; p < cn.output_port_count; ++p) {
                     if (cn.c_out_lanes[p].length > c)
                         cn.c_out_lanes[p].data[c] = lane_output_values[p];

@@ -7,10 +7,10 @@
 #define M_PI 3.14159265358979323846
 #endif
 /**
- * @brief Radix-2 FFT computing magnitude spectrum from a waveform spread.
+ * @brief Radix-2 FFT computing magnitude spectrum from a waveform lane array.
  *
  * Performs a Cooley-Tukey FFT with optional windowing (Hann, Hamming)
- * on an input waveform spread and outputs the magnitude spectrum.
+ * on an input waveform lane array and outputs the magnitude spectrum.
  *
  * @see AudioAnalysis, TextureAnalysis
  */
@@ -41,7 +41,7 @@ struct FFTAnalysis : vivid::OperatorBase, vivid::FrameProcessable {
     }
 
     void process_frame(const VividFrameContext* ctx) override {
-        // Read input spread
+        // Read input lane array
         if (!ctx->input_lanes || ctx->input_lanes[0].length == 0) {
             ctx->output_values[0] = 0.0f;
             return;
