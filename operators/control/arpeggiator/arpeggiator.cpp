@@ -11,7 +11,7 @@
 /**
  * @brief Arpeggiation engine with 10 modes, swing, and per-step modulation.
  *
- * Collects notes from input spreads into a pool and plays them back in
+ * Collects notes from input lane arrays into a pool and plays them back in
  * configurable patterns (up, down, up-down, random, converge, diverge, etc.).
  * Supports per-step velocity and transpose modulation, swing timing, and
  * optional note latching.
@@ -156,8 +156,8 @@ struct Arpeggiator : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
                 ctx->custom_outputs, ctx->custom_output_count);
     }
 
-    void compute(float beat_phase, const float* params, VividLanePort* in_spreads,
-                 float* output_values, VividLanePort* out_spreads,
+    void compute(float beat_phase, const float* params, VividLanePort* input_lanes,
+                 float* output_values, VividLanePort* output_lanes,
                  void** custom_outputs, uint32_t custom_output_count) {
         int m = mode.int_value();
         int oct = octaves.int_value();
@@ -172,23 +172,23 @@ struct Arpeggiator : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
         if (r < 0) r = 0; if (r > 8) r = 8;
         if (msteps < 1) msteps = 1; if (msteps > 8) msteps = 8;
 
-        // Read input spread notes
+        // Read input lane-array notes
         int input_count = 0;
         float input_notes[16];
         float input_vels[16];
         bool any_gate_high = false;
 
-        if (in_spreads) {
-            auto& notes_sp = in_spreads[1];  // input port 1
-            auto& vel_sp   = in_spreads[2];  // input port 2
-            auto& gates_sp = in_spreads[3];  // input port 3
+        if (input_lanes) {
+            auto& notes_lane = input_lanes[1];  // input port 1
+            auto& velocity_lane   = input_lanes[2];  // input port 2
+            auto& gates_lane = input_lanes[3];  // input port 3
 
-            for (uint32_t i = 0; i < notes_sp.length && input_count < 16; ++i) {
-                if (i < gates_sp.length && gates_sp.data[i] > 0.5f) {
+            for (uint32_t i = 0; i < notes_lane.length && input_count < 16; ++i) {
+                if (i < gates_lane.length && gates_lane.data[i] > 0.5f) {
                     any_gate_high = true;
                 }
-                input_notes[input_count] = notes_sp.data[i];
-                input_vels[input_count] = (i < vel_sp.length) ? vel_sp.data[i] : 0.8f;
+                input_notes[input_count] = notes_lane.data[i];
+                input_vels[input_count] = (i < velocity_lane.length) ? velocity_lane.data[i] : 0.8f;
                 input_count++;
             }
         }
@@ -259,7 +259,7 @@ struct Arpeggiator : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
         }
         prev_phase_ = beat_phase;
 
-        // Note presence: spread has notes regardless of input gate state
+        // Note presence: lane array has notes regardless of input gate state
         // (ChordProgression outputs notes with gate=0 during gate-off phase)
         bool has_notes = (pool_count > 0);
 
@@ -278,7 +278,7 @@ struct Arpeggiator : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
 
         // No notes — output silence
         if (!has_notes) {
-            write_output(output_values, out_spreads, custom_outputs, custom_output_count,
+            write_output(output_values, output_lanes, custom_outputs, custom_output_count,
                          0.0f, 0.0f, 0.0f, 0);
             return;
         }
@@ -335,7 +335,7 @@ struct Arpeggiator : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
         float out_vel = pool_vels[note_idx] * vel_mod;
         float out_gate = (step_phase < gl) ? 1.0f : 0.0f;
 
-        write_output(output_values, out_spreads, custom_outputs, custom_output_count,
+        write_output(output_values, output_lanes, custom_outputs, custom_output_count,
                      out_note, out_vel, out_gate, raw_step);
     }
 
@@ -743,21 +743,21 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
         thumb_pipeline_format_ = ctx->thumbnail_format;
     }
 
-    void write_output(float* output_values, VividLanePort* out_spreads,
+    void write_output(float* output_values, VividLanePort* output_lanes,
                       void** custom_outputs, uint32_t custom_output_count,
                       float note, float vel, float gate, int step) {
-        if (out_spreads) {
-            auto& notes_sp = out_spreads[0];
-            auto& vel_sp   = out_spreads[1];
-            auto& gates_sp = out_spreads[2];
+        if (output_lanes) {
+            auto& notes_lane = output_lanes[0];
+            auto& velocity_lane   = output_lanes[1];
+            auto& gates_lane = output_lanes[2];
 
-            if (notes_sp.capacity >= 1) {
-                notes_sp.length = 1;
-                vel_sp.length   = 1;
-                gates_sp.length = 1;
-                notes_sp.data[0] = note;
-                vel_sp.data[0]   = vel;
-                gates_sp.data[0] = gate;
+            if (notes_lane.capacity >= 1) {
+                notes_lane.length = 1;
+                velocity_lane.length   = 1;
+                gates_lane.length = 1;
+                notes_lane.data[0] = note;
+                velocity_lane.data[0]   = vel;
+                gates_lane.data[0] = gate;
             }
         }
 

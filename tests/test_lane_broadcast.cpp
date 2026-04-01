@@ -1,8 +1,8 @@
-// Test: lane-aware spread propagation in the frame executor.
+// Test: lane-aware lane-array propagation in the frame executor.
 //
 // Replaces the old cycle-expand/modulo-wrap broadcast test.
-// Verifies that spreads propagate intact through single wires and that
-// the scalar input_value is set to spread[0].
+// Verifies that lane arrays propagate intact through single wires and that
+// the scalar input_value is set to lane_array[0].
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
 #include "runtime/runtime_core.h"
@@ -35,7 +35,7 @@ int main(int argc, char* argv[]) {
     std::string build_dir = ".";
     if (argc > 1) build_dir = argv[1];
 
-    std::string graph_path = build_dir + "/test_spread_broadcast.json";
+    std::string graph_path = build_dir + "/test_lane_broadcast.json";
 
     // Setup: staging dir with required operators
     std::string staging = build_dir + "/.test_broadcast_staging";
@@ -50,7 +50,7 @@ int main(int argc, char* argv[]) {
         staging + "/lane_sink_op.dylib",
         std::filesystem::copy_options::overwrite_existing);
 
-    std::fprintf(stderr, "\n=== Test: Lane-Aware Spread Propagation ===\n\n");
+    std::fprintf(stderr, "\n=== Test: Lane-Aware Lane Propagation ===\n\n");
 
     // --- Setup ---
     vivid::OperatorRegistry registry;
@@ -62,8 +62,8 @@ int main(int argc, char* argv[]) {
     vivid::RuntimeCore runtime;
     check(runtime.build(graph, registry), "runtime.build()");
 
-    // --- Test 1: Single spread propagates intact (no cycle-expand, no modulo) ---
-    std::fprintf(stderr, "\n--- single spread propagation ---\n");
+    // --- Test 1: Single lane array propagates intact (no cycle-expand, no modulo) ---
+    std::fprintf(stderr, "\n--- single lane-array propagation ---\n");
     runtime.tick(0.0, 1.0 / 60.0, 0);
 
     const vivid::CompiledNode* sink = nullptr;
@@ -72,23 +72,23 @@ int main(int argc, char* argv[]) {
     }
     check(sink != nullptr, "found single_sink node");
     if (sink) {
-        // LaneSourceOp with base=2.0, count=4 → spread = [2, 4, 6, 8]
+        // LaneSourceOp with base=2.0, count=4 → lane array = [2, 4, 6, 8]
         check(sink->output_lanes.size() > 0, "sink has output_lanes");
         const auto& sp = sink->output_lanes[0];
-        check(sp.size() == 4, "spread has 4 elements (no cycle-expand)");
+        check(sp.size() == 4, "lane array has 4 elements (no cycle-expand)");
         if (sp.size() >= 4) {
-            check_float(sp[0], 2.0f, 0.01f, "spread[0] = 2.0");
-            check_float(sp[1], 4.0f, 0.01f, "spread[1] = 4.0");
-            check_float(sp[2], 6.0f, 0.01f, "spread[2] = 6.0");
-            check_float(sp[3], 8.0f, 0.01f, "spread[3] = 8.0");
+            check_float(sp[0], 2.0f, 0.01f, "lane_array[0] = 2.0");
+            check_float(sp[1], 4.0f, 0.01f, "lane_array[1] = 4.0");
+            check_float(sp[2], 6.0f, 0.01f, "lane_array[2] = 6.0");
+            check_float(sp[3], 8.0f, 0.01f, "lane_array[3] = 8.0");
         }
     }
 
-    // --- Test 2: Scalar value = spread[0] ---
-    std::fprintf(stderr, "\n--- scalar value from spread ---\n");
+    // --- Test 2: Scalar value = lane_array[0] ---
+    std::fprintf(stderr, "\n--- scalar value from lane array ---\n");
     if (sink) {
         check_float(sink->output_values[0], 2.0f, 0.01f,
-                     "scalar output = spread[0] = 2.0");
+                     "scalar output = lane_array[0] = 2.0");
     }
 
     // --- Test 3: Same-provenance same-length merge (element-wise add) ---
@@ -105,16 +105,16 @@ int main(int argc, char* argv[]) {
     if (merge_sink) {
         check(merge_sink->output_lanes.size() > 0, "merge_sink has output_lanes");
         const auto& sp = merge_sink->output_lanes[0];
-        check(sp.size() == 4, "merged spread has 4 elements (same length, no cycle-expand)");
+        check(sp.size() == 4, "merged lane array has 4 elements (same length, no cycle-expand)");
         if (sp.size() >= 4) {
             check_float(sp[0],  4.0f, 0.01f, "merge[0] = 2+2 = 4");
             check_float(sp[1],  8.0f, 0.01f, "merge[1] = 4+4 = 8");
             check_float(sp[2], 12.0f, 0.01f, "merge[2] = 6+6 = 12");
             check_float(sp[3], 16.0f, 0.01f, "merge[3] = 8+8 = 16");
         }
-        // Scalar should be spread[0] of the merged result
+        // Scalar should be lane_array[0] of the merged result
         check_float(merge_sink->output_values[0], 4.0f, 0.01f,
-                     "merge scalar = spread[0] = 4.0");
+                     "merge scalar = lane_array[0] = 4.0");
     }
 
     // --- Test 4: Kernel operator receives full lane-set data ---
@@ -129,7 +129,7 @@ int main(int argc, char* argv[]) {
     if (smooth_sink) {
         check(smooth_sink->output_lanes.size() > 0, "smooth_sink has output_lanes");
         const auto& sp = smooth_sink->output_lanes[0];
-        check(sp.size() == 4, "smoothed spread has 4 elements");
+        check(sp.size() == 4, "smoothed lane array has 4 elements");
         if (sp.size() >= 4) {
             // [2,4,6,8] → avg neighbors:
             // [0]: (2+2+4)/3 = 2.667

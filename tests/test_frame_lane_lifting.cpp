@@ -3,8 +3,8 @@
 // Verifies that frame-rate operators with kStrategyIndependent are
 // evaluated per-lane when receiving structural lane input:
 // 1. Compiler assigns LoopBased frame execution strategy
-// 2. Frame executor drives per-lane loop, extracting per-lane input from spreads
-// 3. Per-lane output is written back to output spread
+// 2. Frame executor drives per-lane loop, extracting per-lane input from lane arrays
+// 3. Per-lane output is written back to the output lane array
 // 4. Per-lane state via vivid_lane_state() persists across ticks
 
 #include "runtime/operator_registry.h"
@@ -82,9 +82,9 @@ int main(int argc, char* argv[]) {
     }
 
     // --- Test 2: Per-lane output ---
-    // LaneSourceOp(base=10, count=4) → spread [10, 20, 30, 40]
+    // LaneSourceOp(base=10, count=4) → lane array [10, 20, 30, 40]
     // LaneFrameOp accumulates: after tick 1, each lane's accumulated = input value
-    // Output spread should be [10, 20, 30, 40]
+    // Output lane array should be [10, 20, 30, 40]
     std::fprintf(stderr, "\n--- per-lane output from LoopBased frame ---\n");
     {
         vivid::Graph graph;
@@ -103,7 +103,7 @@ int main(int argc, char* argv[]) {
         check(sink != nullptr, "sink found");
         if (sink && !sink->output_lanes.empty()) {
             const auto& sp = sink->output_lanes[0];
-            check(sp.size() == 4, "output spread has 4 elements");
+            check(sp.size() == 4, "output lane array has 4 elements");
             if (sp.size() == 4) {
                 check_float(sp[0], 10.0f, 0.01f, "lane 0 output = 10");
                 check_float(sp[1], 20.0f, 0.01f, "lane 1 output = 20");
@@ -140,7 +140,7 @@ int main(int argc, char* argv[]) {
         check(sink != nullptr, "sink found");
         if (sink && !sink->output_lanes.empty()) {
             const auto& sp = sink->output_lanes[0];
-            check(sp.size() == 4, "output spread has 4 elements");
+            check(sp.size() == 4, "output lane array has 4 elements");
             if (sp.size() == 4) {
                 check_float(sp[0],  30.0f, 0.01f, "lane 0 accumulated = 30 (10*3)");
                 check_float(sp[1],  60.0f, 0.01f, "lane 1 accumulated = 60 (20*3)");

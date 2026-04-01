@@ -10,7 +10,7 @@
  *
  * Sequences up to 16 steps with configurable values and gate probability.
  * Outputs the current value, trigger, gate, step index, and the full
- * pattern as a spread.
+ * pattern as a lane array.
  *
  * @see StepSeq, Sequencer, Euclidean
  */
@@ -89,7 +89,7 @@ struct PatternSeq : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPr
         out.push_back({"trigger",    VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});   // out[1]
         out.push_back({"gate",       VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});   // out[2]
         out.push_back({"step",       VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});   // out[3]
-        out.push_back({"pattern",    VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});   // spread[0]
+        out.push_back({"pattern",    VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});   // lane_array[0]
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
     }
 
@@ -104,7 +104,7 @@ struct PatternSeq : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPr
     }
 
     void compute(float beat_phase, const float* params, float* output_values,
-                 VividLanePort* out_spreads, void** custom_outputs, uint32_t custom_output_count) {
+                 VividLanePort* output_lanes, void** custom_outputs, uint32_t custom_output_count) {
         int n   = std::clamp(static_cast<int>(params[0]), 1, 16);
         int r   = std::clamp(static_cast<int>(params[1]), 0, 8);
         float gl = params[2];
@@ -173,14 +173,14 @@ struct PatternSeq : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPr
             custom_outputs[0] = &midi_buf_;
         }
 
-        // Full pattern as spread (output port 4 = pattern)
-        if (out_spreads) {
-            auto& sp = out_spreads[4];
+        // Full pattern as lane array (output port 4 = pattern)
+        if (output_lanes) {
+            auto& pattern_lane = output_lanes[4];
             auto len = static_cast<uint32_t>(n);
-            if (sp.capacity >= len) {
-                sp.length = len;
+            if (pattern_lane.capacity >= len) {
+                pattern_lane.length = len;
                 for (uint32_t i = 0; i < len; ++i)
-                    sp.data[i] = params[4 + i];
+                    pattern_lane.data[i] = params[4 + i];
             }
         }
     }

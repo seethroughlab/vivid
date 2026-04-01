@@ -63,20 +63,20 @@ int main(int argc, char* argv[]) {
 
     runtime.tick(0.0, 1.0 / 60.0, 0);
 
-    // --- Test 1: Spread-fed operator sees lane metadata ---
-    std::fprintf(stderr, "\n--- spread-fed lane metadata ---\n");
+    // --- Test 1: Lane-fed operator sees lane metadata ---
+    std::fprintf(stderr, "\n--- lane-fed lane metadata ---\n");
     const vivid::CompiledNode* meta = nullptr;
     for (const auto& ns : runtime.compiled_graph()->nodes) {
         if (ns.node_id == "meta") { meta = &ns; break; }
     }
     check(meta != nullptr, "found meta node");
     if (meta) {
-        // LaneSourceOp emits count=8 spread. LaneMetadataOp should see:
-        // lane_count = 8 (runtime materialized spread length)
+        // LaneSourceOp emits count=8 lane array. LaneMetadataOp should see:
+        // lane_count = 8 (runtime materialized lane length)
         // lane_index = 0 (always 0 in Phase 3)
         // lane_set_id != 0 (LaneSourceOp is Structural → nonzero provenance)
         check_float(meta->output_values[0], 8.0f, 0.01f,
-                     "lane_count = 8 (spread length)");
+                     "lane_count = 8 (lane length)");
         check_float(meta->output_values[1], 0.0f, 0.01f,
                      "lane_index = 0 (no per-lane lifting)");
         check(meta->output_values[2] != 0.0f,

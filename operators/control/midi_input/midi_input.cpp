@@ -189,19 +189,19 @@ struct MidiInput : vivid::OperatorBase, vivid::FrameProcessable {
 
         // Write lane outputs: all currently held notes
         if (ctx->output_lanes) {
-            auto& notes_sp = ctx->output_lanes[7];
-            auto& vel_sp   = ctx->output_lanes[8];
-            auto& gates_sp = ctx->output_lanes[9];
+            auto& notes_lane = ctx->output_lanes[7];
+            auto& velocity_lane   = ctx->output_lanes[8];
+            auto& gates_lane = ctx->output_lanes[9];
 
             uint32_t len = static_cast<uint32_t>(held_count_);
-            if (notes_sp.capacity >= len) {
-                notes_sp.length = len;
-                vel_sp.length   = len;
-                gates_sp.length = len;
+            if (notes_lane.capacity >= len) {
+                notes_lane.length = len;
+                velocity_lane.length   = len;
+                gates_lane.length = len;
                 for (uint32_t i = 0; i < len; ++i) {
-                    notes_sp.data[i] = static_cast<float>(held_buffer_[i].note);
-                    vel_sp.data[i]   = held_buffer_[i].velocity;
-                    gates_sp.data[i] = 1.0f;
+                    notes_lane.data[i] = static_cast<float>(held_buffer_[i].note);
+                    velocity_lane.data[i]   = held_buffer_[i].velocity;
+                    gates_lane.data[i] = 1.0f;
                 }
             }
         }

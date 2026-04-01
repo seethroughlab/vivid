@@ -124,7 +124,7 @@ public:
 
     void process(const VividFrameContext* parent_ctx) {
         sync_params_();
-        sync_spreads_();
+        sync_lanes_();
 
         if constexpr (std::is_base_of_v<AudioProcessable, T>) {
             // Audio child op: process a single sample per control frame
@@ -183,7 +183,7 @@ public:
             op_.process_frame(&child_ctx);
         }
 
-        readback_spreads_();
+        readback_lanes_();
     }
 
     // -- Audio-cadence process -----------------------------------------------
@@ -193,7 +193,7 @@ public:
 
     void process_audio(const VividAudioContext* parent_ctx) {
         sync_params_();
-        sync_spreads_();
+        sync_lanes_();
 
         if constexpr (std::is_base_of_v<AudioProcessable, T>) {
             // Child supports audio: forward audio context
@@ -255,7 +255,7 @@ public:
             op_.process_frame(&child_ctx);
         }
 
-        readback_spreads_();
+        readback_lanes_();
     }
 
     // -- Direct access to underlying operator instance ----------------------
@@ -336,7 +336,7 @@ private:
         }
     }
 
-    void sync_spreads_() {
+    void sync_lanes_() {
         for (size_t i = 0; i < input_lanes_.size(); ++i) {
             c_input_lanes_[i].data     = input_lanes_[i].empty() ? nullptr : input_lanes_[i].data();
             c_input_lanes_[i].length   = static_cast<uint32_t>(input_lanes_[i].size());
@@ -351,12 +351,12 @@ private:
         }
     }
 
-    void readback_spreads_() {
+    void readback_lanes_() {
         for (size_t i = 0; i < output_lanes_.size(); ++i) {
             uint32_t len = c_output_lanes_[i].length;
             uint32_t cap = c_output_lanes_[i].capacity;
             if (len > cap) {
-                std::fprintf(stderr, "[vivid] ChildOp: output spread %zu wrote %u elements "
+                std::fprintf(stderr, "[vivid] ChildOp: output lane array %zu wrote %u elements "
                              "but capacity was %u, clamping\n", i, len, cap);
                 len = cap;
             }

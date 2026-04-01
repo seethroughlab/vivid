@@ -4,13 +4,13 @@
 /**
  * @brief Broadcast a scalar value to N lanes.
  *
- * Takes a single input value and produces an output spread of the
+ * Takes a single input value and produces an output lane array of the
  * specified length, with every element set to the input value.
  * This is the explicit version of scalar broadcast — use it to match
  * a control signal to a polyphonic lane set.
  *
  * @tip Connect a knob or LFO to the input, then wire the output alongside
- *      a polyphonic spread to apply the same modulation to every voice.
+ *      a polyphonic lane set to apply the same modulation to every voice.
  * @see Tile, Select, Stack
  */
 struct Repeat : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {

@@ -483,7 +483,7 @@ vivid/
 │  │  ├─ main.cpp                # Entry point, window, main loop
 │  │  ├─ graph.cpp/.h            # JSON graph loading, node management
 │  │  ├─ runtime_core.cpp/.h     # Graph compilation, frame-rate execution
-│  │  ├─ spreads.cpp/.h          # Spread type, broadcasting
+│  │  ├─ lane_types.h            # Lane-set metadata and provenance
 │  │  ├─ simulation.cpp/.h       # Simulation Zone state
 │  │  ├─ bridges.cpp/.h          # Control↔GPU, Control↔Audio
 │  │  ├─ params.cpp/.h           # Parameter store
@@ -500,7 +500,7 @@ vivid/
 │  │  └─ text.cpp/.h             # Text rendering (stb_truetype)
 │  └─ operator_api/             # Shared headers for operator contract
 │     ├─ operator.h              # Base classes, Param<T>, VIVID_REGISTER
-│     ├─ spread.h                # Spread types
+│     ├─ types.h                 # Shared type definitions and lane-facing port types
 │     └─ types.h                 # Shared type definitions
 ├─ operators/                    # Built-in operators (each a directory)
 │  ├─ gpu/
@@ -808,11 +808,11 @@ What happens when an operator's hot-reload fails to compile? When an operator se
 
 > **Largely resolved:** `crash_guard.h` provides per-operator crash isolation. Shader compilation errors fall back to last-known-good pipeline with visual error indicators. Hot-reload compilation failures keep the previous .dylib loaded. Audio operators that miss deadlines produce silence.
 
-**Spread Visual Representation**
+**Lane Visual Representation**
 
-How do Spreads appear in the graph? Wire thickness proportional to cardinality? A small badge showing count? Color intensity? How does the user know they're looking at a Spread of 512 vs. a Spread of 1? This is a UX design problem to be resolved through prototyping.
+How do lane-bearing wires appear in the graph? Wire thickness proportional to cardinality? A small badge showing count? Color intensity? How does the user know they're looking at 512 lanes versus 1 lane? This is a UX design problem to be resolved through prototyping.
 
-> **Resolved:** Spread wires display a small badge showing the spread count. The inspector shows spread data as a list of values. Wire thickness does not vary by cardinality.
+> **Resolved:** Lane-bearing wires display a small badge showing lane count. The inspector shows lane-array data as a list of values. Wire thickness does not vary by cardinality.
 
 **Simulation Zone Visual Representation**
 

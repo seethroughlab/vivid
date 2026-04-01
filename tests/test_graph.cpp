@@ -1208,7 +1208,7 @@ int main() {
         check(g.add_connection("audio_src", "audio_out", "vis_node", "control_in"),
               "audio→control connection accepted by data model");
         check(g.add_connection("audio_src", "spread_out", "vis_node", "gpu_in"),
-              "spread→gpu connection accepted by data model");
+              "lane_array→gpu connection accepted by data model");
 
         const auto& c0 = g.connections()[0];
         check(c0.from_port == "audio_out",   "from_port stored verbatim");

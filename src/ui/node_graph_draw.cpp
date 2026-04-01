@@ -584,7 +584,7 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
                 // Semantic lane count from compiled graph
                 lane_n = c.lane_count;
             } else if (!c.from_is_param) {
-                // Fallback: materialized runtime spread length
+                // Fallback: materialized runtime lane count
                 auto src_it = snap_.node_index.find(c.from_node);
                 if (src_it != snap_.node_index.end()) {
                     const auto& src_node = snap_.nodes[src_it->second];

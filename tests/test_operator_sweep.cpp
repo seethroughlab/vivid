@@ -152,7 +152,7 @@ static const std::unordered_set<std::string>& always_skip() {
         "file_drop_test_op",
         "file_drop_test_op_alt",
         "file_drop_bad_param_op",
-        // Dual-cadence spread selector — segfaults in sweep due to
+        // Dual-cadence lane selector — segfaults in sweep due to
         // lane port index layout mismatch (signal + lane-array mix).
         "alternate",
     };
@@ -280,8 +280,8 @@ static bool smoke_control(vivid::OperatorLoader& loader, void* inst,
     std::vector<float> outputs(n_out_total, 0.0f);
 
     // Allocate empty lane ports so operators that read them don't crash.
-    std::vector<VividLanePort> in_spreads(n_lane_in, {nullptr, 0, 0});
-    std::vector<VividLanePort> out_spreads(n_lane_out, {nullptr, 0, 0});
+    std::vector<VividLanePort> input_lanes(n_lane_in, {nullptr, 0, 0});
+    std::vector<VividLanePort> output_lanes(n_lane_out, {nullptr, 0, 0});
 
     VividFrameContext ctx{};
     ctx.time       = 0.0;
@@ -290,8 +290,8 @@ static bool smoke_control(vivid::OperatorLoader& loader, void* inst,
     ctx.param_values   = params.empty()      ? nullptr : params.data();
     ctx.input_values   = inputs.empty()      ? nullptr : inputs.data();
     ctx.output_values  = outputs.empty()     ? nullptr : outputs.data();
-    ctx.input_lanes  = in_spreads.empty()  ? nullptr : in_spreads.data();
-    ctx.output_lanes = out_spreads.empty() ? nullptr : out_spreads.data();
+    ctx.input_lanes  = input_lanes.empty()  ? nullptr : input_lanes.data();
+    ctx.output_lanes = output_lanes.empty() ? nullptr : output_lanes.data();
 
     // Process a few ticks to let initialization settle.
     for (int t = 0; t < 3; t++) {
@@ -338,7 +338,7 @@ static bool smoke_audio(vivid::OperatorLoader& loader, void* inst,
             if (is_signal)    n_float_in++;
         } else {
             // Audio operators can write to output_buffers for ANY output port.
-            // Allocate a buffer for every non-spread, non-string, non-custom output.
+            // Allocate a buffer for every non-lane, non-string, non-custom output.
             if (is_audio_buf || is_signal) n_buf_out++;
             if (is_signal) n_float_out++;
         }

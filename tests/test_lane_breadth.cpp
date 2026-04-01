@@ -79,7 +79,7 @@ int main(int argc, char* argv[]) {
                   "op assigned LoopBased");
         }
 
-        // 2 ticks: each lane accumulates its spread value twice
+        // 2 ticks: each lane accumulates its lane value twice
         runtime.tick(0.0, 1.0 / 60.0, 0);
         runtime.tick(1.0 / 60.0, 1.0 / 60.0, 1);
 
@@ -87,7 +87,7 @@ int main(int argc, char* argv[]) {
         check(sink != nullptr, "sink found");
         if (sink && !sink->output_lanes.empty()) {
             const auto& sp = sink->output_lanes[0];
-            check(sp.size() == 256, "output spread has 256 elements");
+            check(sp.size() == 256, "output lane array has 256 elements");
             if (sp.size() == 256) {
                 // Lane 0: base*1 = 1, accumulated over 2 ticks → 2
                 check_float(sp[0], 2.0f, 0.01f, "lane 0: 1*2 ticks = 2");
@@ -118,7 +118,7 @@ int main(int argc, char* argv[]) {
         check(sink != nullptr, "sink found");
         if (sink && !sink->output_lanes.empty()) {
             const auto& sp = sink->output_lanes[0];
-            check(sp.size() == 512, "output spread has 512 elements");
+            check(sp.size() == 512, "output lane array has 512 elements");
             if (sp.size() >= 512) {
                 // Lane 0: 0.1*1 = 0.1
                 check_float(sp[0], 0.1f, 0.001f, "lane 0 = 0.1");
@@ -132,14 +132,14 @@ int main(int argc, char* argv[]) {
     // Chain: Repeat(1.0, count=1024) → FFTAnalysis(fft_size=1024, window=none) → LaneFrameOp → sink
     // Constant waveform of 1.0 across 1024 samples.
     // FFT of DC=1.0 with N=1024: bin 0 magnitude = 1.0 * 1024 * (2/1024) = 2.0, all others ≈ 0.
-    // FFTAnalysis is STRUCTURAL → its spectrum spread gets a fresh lane_set_id.
+    // FFTAnalysis is STRUCTURAL → its spectrum lane array gets a fresh lane_set_id.
     // LaneFrameOp is kStrategyIndependent → compiler assigns LoopBased from FFT's lane set.
     // Per-bin accumulation proves each of 512 bins is lifted independently.
     std::fprintf(stderr, "\n--- FFT-derived per-bin lane processing ---\n");
     {
         vivid::Graph graph;
         // Produce constant waveform: LaneSourceOp(base=1, count=1) outputs scalar 1.0
-        // Repeat(count=1024) broadcasts to 1024-element spread
+        // Repeat(count=1024) broadcasts to a 1024-element lane array
         graph.add_node("scalar", "LaneSourceOp", {{"base", 1.0f}, {"count", 1.0f}});
         graph.add_node("wave", "Repeat", {{"count", 1024.0f}});
         graph.add_node("fft", "FFTAnalysis", {{"fft_size", 1024.0f}, {"window", 0.0f}});
@@ -178,7 +178,7 @@ int main(int argc, char* argv[]) {
         check(sink != nullptr, "sink found");
         if (sink && !sink->output_lanes.empty()) {
             const auto& sp = sink->output_lanes[0];
-            check(sp.size() == 512, "output spread has 512 bins (N/2)");
+            check(sp.size() == 512, "output lane array has 512 bins (N/2)");
             if (sp.size() >= 2) {
                 // Bin 0 (DC): magnitude ≈ 2.0 (constant 1.0 * N * 2/N)
                 // LaneFrameOp accumulates, so after 1 tick: output = 2.0

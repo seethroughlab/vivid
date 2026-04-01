@@ -1,4 +1,4 @@
-// Control passthrough with spread support: output = input * gain
+// Control passthrough with lane support: output = input * gain
 #include "operator_api/operator.h"
 
 struct ControlPassOp : vivid::OperatorBase, vivid::FrameProcessable {
@@ -21,7 +21,7 @@ struct ControlPassOp : vivid::OperatorBase, vivid::FrameProcessable {
         float in = ctx->input_values[0];
         ctx->output_values[0] = in * g;
 
-        // Spread propagation: multiply each spread element by gain
+        // Lane propagation: multiply each lane element by gain
         if (ctx->input_lanes && ctx->output_lanes) {
             const auto& isp = ctx->input_lanes[0];
             auto& osp = ctx->output_lanes[0];

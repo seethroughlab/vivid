@@ -1787,9 +1787,9 @@ add_test(NAME test_state_machine COMMAND test_state_machine)
 
 # 3D tests are in the vivid-3d package (see ../vivid-3d/)
 
-# Cross-cadence spread integration test
-add_executable(test_cross_cadence_spread
-    tests/test_cross_cadence_spread.cpp
+# Cross-cadence lane integration test
+add_executable(test_cross_cadence_lanes
+    tests/test_cross_cadence_lanes.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
     src/runtime/wgsl_header_parser.cpp
@@ -1803,16 +1803,16 @@ add_executable(test_cross_cadence_spread
     src/runtime/audio_engine.cpp
     src/runtime/audio_executor.cpp
 )
-target_include_directories(test_cross_cadence_spread PRIVATE src)
-target_link_libraries(test_cross_cadence_spread PRIVATE
+target_include_directories(test_cross_cadence_lanes PRIVATE src)
+target_link_libraries(test_cross_cadence_lanes PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
-add_dependencies(test_cross_cadence_spread lane_source_op audio_lane_op)
-add_test(NAME test_cross_cadence_spread COMMAND test_cross_cadence_spread
+add_dependencies(test_cross_cadence_lanes lane_source_op audio_lane_op)
+add_test(NAME test_cross_cadence_lanes COMMAND test_cross_cadence_lanes
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-# Spread broadcast/wrap test
-add_executable(test_spread_broadcast
-    tests/test_spread_broadcast.cpp
+# Lane broadcast/wrap test
+add_executable(test_lane_broadcast
+    tests/test_lane_broadcast.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
     src/runtime/wgsl_header_parser.cpp
@@ -1823,11 +1823,11 @@ add_executable(test_spread_broadcast
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
 )
-target_include_directories(test_spread_broadcast PRIVATE src)
-target_link_libraries(test_spread_broadcast PRIVATE
+target_include_directories(test_lane_broadcast PRIVATE src)
+target_link_libraries(test_lane_broadcast PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json webgpu)
-add_dependencies(test_spread_broadcast lane_source_op lane_sink_op lane_smooth_op)
-add_test(NAME test_spread_broadcast COMMAND test_spread_broadcast WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+add_dependencies(test_lane_broadcast lane_source_op lane_sink_op lane_smooth_op)
+add_test(NAME test_lane_broadcast COMMAND test_lane_broadcast WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_lane_reshape
     tests/test_lane_reshape.cpp
@@ -1952,8 +1952,8 @@ configure_file(tests/graphs/test_reload.json ${CMAKE_BINARY_DIR}/test_reload.jso
 configure_file(tests/graphs/test_runtime_api.json ${CMAKE_BINARY_DIR}/test_runtime_api.json COPYONLY)
 configure_file(tests/graphs/test_audio_engine.json ${CMAKE_BINARY_DIR}/test_audio_engine.json COPYONLY)
 configure_file(tests/graphs/test_audio_robustness.json ${CMAKE_BINARY_DIR}/test_audio_robustness.json COPYONLY)
-configure_file(tests/graphs/test_spread_broadcast.json ${CMAKE_BINARY_DIR}/test_spread_broadcast.json COPYONLY)
-configure_file(tests/graphs/test_cross_cadence_spread.json ${CMAKE_BINARY_DIR}/test_cross_cadence_spread.json COPYONLY)
+configure_file(tests/graphs/test_lane_broadcast.json ${CMAKE_BINARY_DIR}/test_lane_broadcast.json COPYONLY)
+configure_file(tests/graphs/test_cross_cadence_lanes.json ${CMAKE_BINARY_DIR}/test_cross_cadence_lanes.json COPYONLY)
 configure_file(tests/graphs/test_mixed_runtime_stability.json ${CMAKE_BINARY_DIR}/test_mixed_runtime_stability.json COPYONLY)
 configure_file(tests/graphs/test_package_stress.json ${CMAKE_BINARY_DIR}/test_package_stress.json COPYONLY)
 

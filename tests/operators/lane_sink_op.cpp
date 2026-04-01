@@ -16,7 +16,7 @@ struct LaneSinkOp : vivid::OperatorBase, vivid::FrameProcessable {
     void process_frame(const VividFrameContext* ctx) override {
         ctx->output_values[0] = ctx->input_values[0];
 
-        // Copy input spread to output spread
+        // Copy input lane array to output lane array
         if (ctx->input_lanes && ctx->output_lanes) {
             auto& isp = ctx->input_lanes[0];
             auto& osp = ctx->output_lanes[0];

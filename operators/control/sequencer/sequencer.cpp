@@ -115,7 +115,7 @@ struct Sequencer : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPro
 
         float adj_phase = std::fmod(phase - phase_offset_ + 1.0f, 1.0f);
 
-        // Clamp steps to values spread length
+        // Clamp steps to values lane-array length
         int n = std::min(steps.int_value(), static_cast<int>(val_len));
         if (n < 1) n = 1;
 

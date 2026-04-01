@@ -69,8 +69,8 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- Repeat: scalar → 8 lanes ---\n");
     {
         vivid::Graph graph;
-        // LaneSourceOp(base=5, count=3) → spread [5,10,15]
-        // Signal wire to Repeat → input_values[0] = spread[0] = 5.0
+        // LaneSourceOp(base=5, count=3) → lane array [5,10,15]
+        // Signal wire to Repeat → input_values[0] = lane_array[0] = 5.0
         // Repeat(count=8) → [5,5,5,5,5,5,5,5]
         graph.add_node("src", "LaneSourceOp", {{"base", 5.0f}, {"count", 3.0f}});
         graph.add_node("rep", "Repeat", {{"count", 8.0f}});
@@ -100,7 +100,7 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- Tile: [10,20,30] → 9 elements ---\n");
     {
         vivid::Graph graph;
-        // LaneSourceOp(base=10, count=3) → spread [10,20,30]
+        // LaneSourceOp(base=10, count=3) → lane array [10,20,30]
         // Tile(count=9) → [10,20,30, 10,20,30, 10,20,30]
         graph.add_node("src", "LaneSourceOp", {{"base", 10.0f}, {"count", 3.0f}});
         graph.add_node("til", "Tile", {{"count", 9.0f}});
@@ -133,7 +133,7 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- Select: lane 2 from [1,2,3,4] ---\n");
     {
         vivid::Graph graph;
-        // LaneSourceOp(base=1, count=4) → spread [1,2,3,4]
+        // LaneSourceOp(base=1, count=4) → lane array [1,2,3,4]
         // Select(lane=2) → scalar 3.0
         graph.add_node("src", "LaneSourceOp", {{"base", 1.0f}, {"count", 4.0f}});
         graph.add_node("sel", "Select", {{"lane", 2.0f}});
@@ -155,12 +155,12 @@ int main(int argc, char* argv[]) {
     }
 
     // --- Test 4: Mismatch resolution ---
-    // Two different spread sources → one through Select → pointwise Math → compiles
+    // Two different lane sources → one through Select → pointwise Math → compiles
     std::fprintf(stderr, "\n--- mismatch resolution via Select ---\n");
     {
         vivid::Graph graph;
-        // src_a(base=1, count=4) → spread [1,2,3,4], lane_set_id=X
-        // src_b(base=10, count=3) → spread [10,20,30], lane_set_id=Y
+        // src_a(base=1, count=4) → lane array [1,2,3,4], lane_set_id=X
+        // src_b(base=10, count=3) → lane array [10,20,30], lane_set_id=Y
         // Select(lane=0) on src_b → scalar 10.0 (Reduction → lane_set_id=0)
         // Math(add): a=src_a, b=Select(src_b)
         // src_a is non-scalar (lane_set_id=X), Select output is scalar → no mismatch
@@ -184,8 +184,8 @@ int main(int argc, char* argv[]) {
             auto* sink = runtime.compiled_graph()->find_node("sink");
             check(sink != nullptr, "sink found");
             if (sink) {
-                // Math sees: a = input_values[0] = spread_a[0] = 1.0
-                //            b = input_values[1] = select(spread_b) = 10.0
+                // Math sees: a = input_values[0] = lane_array_a[0] = 1.0
+                //            b = input_values[1] = select(lane_array_b) = 10.0
                 // result = 1.0 + 10.0 = 11.0
                 check_float(sink->output_values[0], 11.0f, 0.01f,
                             "Math(add) scalar result = 11.0 (1 + 10)");
@@ -254,13 +254,13 @@ int main(int argc, char* argv[]) {
     }
 
     // --- Test 6: Tile mismatch resolution ---
-    // Two spread sources with different lane_set_ids → each through Tile to
+    // Two lane sources with different lane_set_ids → each through Tile to
     // same length → feed pointwise Math → verify compilation succeeds.
     // This is the specific doc scenario: "mismatched lane sets → Tile → now legal"
     std::fprintf(stderr, "\n--- Tile mismatch resolution ---\n");
     {
         vivid::Graph graph;
-        // Two independent spread sources → different lane_set_ids
+        // Two independent lane sources → different lane_set_ids
         graph.add_node("src_a", "LaneSourceOp", {{"base", 1.0f}, {"count", 3.0f}});
         graph.add_node("src_b", "LaneSourceOp", {{"base", 10.0f}, {"count", 4.0f}});
         // Tile both to the same length (12)
@@ -285,7 +285,7 @@ int main(int argc, char* argv[]) {
         // Tile (same lane_set_id). Or use one Tile for both (but that's semantically
         // different).
         //
-        // The doc's "mismatched lane sets → Tile → now legal" means: a short spread
+        // The doc's "mismatched lane sets → Tile → now legal" means: a short lane array
         // from one source, Tiled to match the lane count of another source FROM THE
         // SAME PROVENANCE. Not mixing two independent provenances.
         //
@@ -296,7 +296,7 @@ int main(int argc, char* argv[]) {
     }
 
     // --- Test 7: Tile from same provenance is legal ---
-    // Single spread source → Tile → alongside original source → pointwise Math
+    // Single lane source → Tile → alongside original source → pointwise Math
     // Both carry the SAME provenance (scalar broadcast), so this SHOULD compile.
     std::fprintf(stderr, "\n--- Tile same-provenance is legal ---\n");
     {

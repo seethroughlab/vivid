@@ -287,7 +287,7 @@ static void test_frame_state_lane_ports() {
     check(cn.c_in_lanes.size() == 1, "1 input lane staging");
     check(cn.c_out_lanes.size() == 1, "1 output lane staging");
     check(cn.out_lane_buf.size() == 1, "output lane buf allocated");
-    check(cn.out_lane_buf[0].size() == 1024, "spread buf capacity 1024");
+    check(cn.out_lane_buf[0].size() == 1024, "lane buf capacity 1024");
 }
 
 // ---------------------------------------------------------------------------
@@ -397,7 +397,7 @@ static void test_audio_state_signal_outputs() {
 }
 
 static void test_audio_state_spread_flags() {
-    std::fprintf(stderr, "\n--- init_audio_state: spread/string/custom flags ---\n");
+    std::fprintf(stderr, "\n--- init_audio_state: lane/string/custom flags ---\n");
 
     VividPortDescriptor ports[] = {
         make_port("sp_in",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT),
@@ -419,7 +419,7 @@ static void test_audio_state_spread_flags() {
     vivid::GraphCompiler::init_audio_state(cn, &desc, 256);
 
     auto& a = *cn.audio;
-    check(a.has_lane_ports, "spread flag set");
+    check(a.has_lane_ports, "lane flag set");
     check(a.has_string_input_ports, "string input flag set");
     check(!a.has_custom_input_ports, "no custom input ports");
     check(!a.has_custom_output_ports, "no custom output ports");

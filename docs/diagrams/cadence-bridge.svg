@@ -32,14 +32,14 @@
   <text x="324" y="148" text-anchor="middle" font-size="9" font-weight="600" fill="#2563eb">Buf [0]</text>
   <text x="324" y="162" text-anchor="middle" font-size="8" fill="#555">params</text>
   <text x="324" y="174" text-anchor="middle" font-size="8" fill="#555">floats</text>
-  <text x="324" y="186" text-anchor="middle" font-size="8" fill="#555">spreads</text>
+  <text x="324" y="186" text-anchor="middle" font-size="8" fill="#555">lanes</text>
   <text x="324" y="198" text-anchor="middle" font-size="8" fill="#555">strings</text>
 
   <rect x="368" y="132" width="56" height="70" rx="4" fill="#e8f0fe" stroke="#2563eb" stroke-width="1.5"/>
   <text x="396" y="148" text-anchor="middle" font-size="9" font-weight="600" fill="#2563eb">Buf [1]</text>
   <text x="396" y="162" text-anchor="middle" font-size="8" fill="#555">params</text>
   <text x="396" y="174" text-anchor="middle" font-size="8" fill="#555">floats</text>
-  <text x="396" y="186" text-anchor="middle" font-size="8" fill="#555">spreads</text>
+  <text x="396" y="186" text-anchor="middle" font-size="8" fill="#555">lanes</text>
   <text x="396" y="198" text-anchor="middle" font-size="8" fill="#555">strings</text>
 
   <!-- Atomic index -->

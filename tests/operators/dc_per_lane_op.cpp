@@ -2,7 +2,7 @@
 //
 // Strategy-independent audio operator that outputs a distinct DC value
 // per lane: DC = (lane_index + 1) * 0.1f. When assigned LoopBased from
-// a structural spread upstream, each lane iteration writes its own DC
+// a structural lane source upstream, each lane iteration writes its own DC
 // value to the output buffer.
 //
 // Used to provide per-lane-distinct audio input for cross-strategy

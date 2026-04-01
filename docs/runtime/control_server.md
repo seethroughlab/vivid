@@ -59,7 +59,7 @@ All requests are POSTs. The URL path is the method name (e.g. `POST /add_node`).
 | `inspect` | `node_id` | Single node params + port values |
 | `validate_checks` | `checks` | Validate check definitions (no graph needed) |
 | `run_checks` | `checks` | Run checks against live graph |
-| `sample_node_outputs` | `node_id`, `duration_seconds`, `interval_ms`, `include_spreads` | Time-series sampling of a node's output port values |
+| `sample_node_outputs` | `node_id`, `duration_seconds`, `interval_ms`, `include_lanes` | Time-series sampling of a node's output port values |
 
 ### Capture
 | Method | Key params | Description |

@@ -424,11 +424,11 @@ static void test_lane_mismatch_fails(const std::string& build_dir) {
 }
 
 // ---------------------------------------------------------------------------
-// Test: Audio lane lifting from structural spread input
+// Test: Audio lane lifting from structural lane input
 // ---------------------------------------------------------------------------
 
 static void test_audio_lane_lift_from_spread(const std::string& build_dir) {
-    std::fprintf(stderr, "\n--- compile: audio lane lift from spread input ---\n");
+    std::fprintf(stderr, "\n--- compile: audio lane lift from lane input ---\n");
 
     const std::string staging = build_dir + "/.test_audio_lane_lift_staging";
     std::filesystem::remove_all(staging);
@@ -459,7 +459,7 @@ static void test_audio_lane_lift_from_spread(const std::string& build_dir) {
 
     vivid::GraphCompiler::Options opts;
     auto cg = vivid::GraphCompiler::compile(g, registry, opts);
-    check(cg != nullptr, "compiles with spread → audio path");
+    check(cg != nullptr, "compiles with lane-array → audio path");
     if (!cg) { std::filesystem::remove_all(staging); return; }
 
     auto* sn = cg->find_node("sn");

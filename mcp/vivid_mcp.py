@@ -25,7 +25,7 @@ mcp = FastMCP("vivid", instructions="""Vivid is a real-time audio-visual graph e
 
 - **GPU** — texture-based visual operators (noise, shape, blur, composite, etc.). Ports use type `gpu_texture` for 2D image data. Packages can define custom opaque-pointer port types using `data` with a `data_type` string (e.g. the vivid-3d package defines `"gpu_scene"` for 3D scene fragments). 3D operators (Shape3D, Transform3D, SceneMerge, Light3D, Render3D, etc.) are available via the vivid-3d package. Every visual graph needs a `video_out` node to display output.
 - **Audio** — sample-based audio operators (oscillator, gain, reverb, etc.). Ports use type `audio_float`. Every audio graph needs an `audio_out` node to hear output.
-- **Control** — scalar/spread signals for modulation (lfo, clock, math, sequencer, etc.). Ports use type `control_float`. Control outputs can also drive any numeric parameter directly.
+- **Control** — scalar or lane-bearing signals for modulation (lfo, clock, math, sequencer, etc.). Ports use type `control_float`. Control outputs can also drive any numeric parameter directly.
 
 ## Port Compatibility
 
@@ -401,13 +401,13 @@ async def capture_image(mode: str = "interface",
 async def sample_node_outputs(node_id: str,
                               duration_seconds: float = 8.0,
                               interval_ms: int = 250,
-                              include_spreads: bool = True) -> str:
+                              include_lanes: bool = True) -> str:
     """Sample one live node repeatedly over time."""
     body = {
         "node_id": node_id,
         "duration_seconds": duration_seconds,
         "interval_ms": interval_ms,
-        "include_spreads": include_spreads,
+        "include_lanes": include_lanes,
     }
     timeout = max(10.0, float(duration_seconds) + 5.0)
     return await _post("sample_node_outputs", body, timeout=timeout)

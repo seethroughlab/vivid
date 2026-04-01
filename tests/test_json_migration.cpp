@@ -207,12 +207,11 @@ int main() {
         "test_runtime_api.json",
         "test_audio_engine.json",
         "test_audio_robustness.json",
-        "test_audio_spread_wire.json",
-        "test_cross_cadence_spread.json",
+        "test_cross_cadence_lanes.json",
         "test_mixed_runtime_stability.json",
         "test_package_stress.json",
         "test_reload.json",
-        "test_spread_broadcast.json",
+        "test_lane_broadcast.json",
     };
 
     // Use SOURCE_DIR macro set by CMake to locate test graphs

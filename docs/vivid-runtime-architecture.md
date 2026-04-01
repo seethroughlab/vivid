@@ -70,7 +70,7 @@ Connections may carry an optional **value remap**: `from_min`, `from_max`, `to_m
 | `AUDIO` | 1 | Multi-channel sample buffer |
 | `LANE_ARRAY` | 2 | Variable-length float array (lane-bearing data) |
 | `STRING` | 3 | UTF-8 text |
-| `STRING_SPREAD` | 4 | Variable-length string array |
+| `STRING_LANES` | 4 | Variable-length string lane array |
 | `TEXTURE` | 5 | `WGPUTextureView` (GPU only) |
 
 Custom port types can be registered at runtime via the port type registry, identified by a `stable_type_id`.

@@ -1,13 +1,13 @@
-// Test operator: structural spread source with identity-bearing lane_ids.
+// Test operator: structural lane source with identity-bearing lane_ids.
 //
 // Emits a controllable number of lanes with stable lane_ids allocated via
 // allocate_lane_id_fn. The `active_mask` param controls which voices are
-// active (bitmask). When a voice is deactivated, the output spreads are
+// active (bitmask). When a voice is deactivated, the output lane arrays are
 // compacted (no gaps) and the retired lane_id is cleaned up.
 //
 // Used to test identity compaction: downstream operators using
 // vivid_lane_state() keyed by lane_id must retain correct state when
-// the spread compacts and lane order changes.
+// the lane array compacts and lane order changes.
 
 #include "operator_api/operator.h"
 #include <vector>
@@ -59,7 +59,7 @@ struct IdentityLaneSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
         // Write scalar output (first active value or 0)
         ctx->output_values[0] = active_count > 0 ? values[0] : 0.0f;
 
-        // Write main spread (out port, index 0)
+        // Write main lane array (out port, index 0)
         if (ctx->output_lanes) {
             auto& osp = ctx->output_lanes[0];
             if (osp.capacity >= active_count) {

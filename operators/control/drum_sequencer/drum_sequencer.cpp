@@ -24,7 +24,7 @@ static constexpr float kTabH = 18.0f;
  * @brief Six-track drum pattern sequencer with probability and swing.
  *
  * Programs up to 16-step patterns across 6 drum tracks with per-step
- * probability. Outputs trigger/gate/velocity as both spreads and
+ * probability. Outputs trigger/gate/velocity as both lane arrays and
  * individual signals, plus MIDI output.
  *
  * @see DrumKit, Euclidean, StepSeq
@@ -662,7 +662,7 @@ struct DrumSequencer : vivid::OperatorBase, vivid::FrameProcessable, vivid::Audi
     }
 
     void compute(float phase, float reset_in, const float* params,
-                 float* output_values, VividLanePort* /*out_spreads*/,
+                 float* output_values, VividLanePort* /*output_lanes*/,
                  void** custom_outputs, uint32_t custom_output_count) {
         namespace layout = vivid_sequencers::drum_layout;
         bool reset = reset_in > 0.5f;

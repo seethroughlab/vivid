@@ -2,9 +2,9 @@
 #include <algorithm>
 
 /**
- * @brief Pick one lane from a multi-lane spread.
+ * @brief Pick one lane from a multi-lane input.
  *
- * Extracts a single element from the input spread by index, producing
+ * Extracts a single element from the input lane array by index, producing
  * a scalar output. This is a lane reduction — the output has no lane
  * provenance and can be freely mixed with any other lane set at
  * downstream pointwise operators.

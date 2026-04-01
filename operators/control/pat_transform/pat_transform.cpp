@@ -2,9 +2,9 @@
 #include <algorithm>
 #include <cstdint>
 /**
- * @brief Transforms a spread pattern with reverse, rotate, scale, and probability.
+ * @brief Transforms a lane-array pattern with reverse, rotate, scale, and probability.
  *
- * Applies a chain of transformations to an input spread: reverse, rotate
+ * Applies a chain of transformations to an input lane array: reverse, rotate
  * by N positions, scale and offset all values, then probabilistically
  * mask elements using a deterministic hash.
  *
@@ -47,8 +47,8 @@ struct PatTransform : vivid::OperatorBase, vivid::FrameProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"pattern", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in spread[0]
-        out.push_back({"pattern", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // out spread[0]
+        out.push_back({"pattern", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in lane_array[0]
+        out.push_back({"pattern", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // out lane_array[0]
     }
 
     void process_frame(const VividFrameContext* ctx) override {

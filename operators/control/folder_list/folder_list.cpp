@@ -34,7 +34,7 @@ static std::vector<std::string> parse_extensions(const std::string& csv) {
 }
 } // namespace
 /**
- * @brief Scans a directory and outputs matching filenames as a spread.
+ * @brief Scans a directory and outputs matching filenames as string lanes.
  *
  * Lists files in a folder filtered by comma-separated extensions, with
  * optional recursive scanning and sorting.

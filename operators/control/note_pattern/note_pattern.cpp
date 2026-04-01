@@ -22,7 +22,7 @@ static constexpr float kLineH = 18.0f;
  *
  * Sequences up to 8 steps, each with a configurable root note and chord
  * type (major, minor, 7th, dim, aug, sus2, sus4). Outputs chord notes
- * as a polyphonic spread with MIDI output.
+ * as a polyphonic lane array with MIDI output.
  *
  * @see ChordProgression, Arpeggiator, PatternSeq
  */
@@ -146,7 +146,7 @@ struct NotePattern : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
     }
 
 private:
-    void compute(float beat_phase, const float* params, VividLanePort* out_spreads,
+    void compute(float beat_phase, const float* params, VividLanePort* output_lanes,
                  float* output_values, void** custom_outputs, uint32_t custom_output_count) {
         int num_steps = steps.int_value();
         int oct = octave.int_value();
@@ -182,21 +182,21 @@ private:
         // Gate: 1.0 if beat_phase < gate_length, else 0.0
         float gate_val = (beat_phase < gl) ? 1.0f : 0.0f;
 
-        // Write output spreads
-        if (out_spreads) {
-            auto& notes_sp = out_spreads[0];
-            auto& vel_sp   = out_spreads[1];
-            auto& gates_sp = out_spreads[2];
+        // Write output lane arrays
+        if (output_lanes) {
+            auto& notes_lane = output_lanes[0];
+            auto& velocity_lane   = output_lanes[1];
+            auto& gates_lane = output_lanes[2];
 
             uint32_t len = static_cast<uint32_t>(chord_size);
-            if (notes_sp.capacity >= len) {
-                notes_sp.length = len;
-                vel_sp.length   = len;
-                gates_sp.length = len;
+            if (notes_lane.capacity >= len) {
+                notes_lane.length = len;
+                velocity_lane.length   = len;
+                gates_lane.length = len;
                 for (uint32_t i = 0; i < len; ++i) {
-                    notes_sp.data[i] = static_cast<float>(root + oct * 12 + intervals[i]);
-                    vel_sp.data[i]   = vel;
-                    gates_sp.data[i] = gate_val;
+                    notes_lane.data[i] = static_cast<float>(root + oct * 12 + intervals[i]);
+                    velocity_lane.data[i]   = vel;
+                    gates_lane.data[i] = gate_val;
                 }
             }
         }

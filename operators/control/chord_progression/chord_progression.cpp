@@ -11,7 +11,7 @@
  *
  * Sequences up to 8 chords in a chosen key and mode, each with configurable
  * scale degree, inversion, and extension (triad, 7th, add9). Outputs notes
- * as a polyphonic spread and optional MIDI.
+ * as a polyphonic lane array and optional MIDI.
  *
  * @param mode Scale mode: Major, Minor, Dorian, Mixolydian, Harmonic Minor, Melodic Minor.
  * @see NotePattern, Arpeggiator, Sequencer
@@ -263,7 +263,7 @@ struct ChordProgression : vivid::OperatorBase, vivid::FrameProcessable, vivid::A
                 ctx->output_float_values, ctx->custom_outputs, ctx->custom_output_count);
     }
 
-    void compute(float beat_phase, const float* params, VividLanePort* out_spreads,
+    void compute(float beat_phase, const float* params, VividLanePort* output_lanes,
                  float* output_values, void** custom_outputs, uint32_t custom_output_count) {
         int num_steps = steps.int_value();
         int kr = key_root.int_value();
@@ -303,21 +303,21 @@ struct ChordProgression : vivid::OperatorBase, vivid::FrameProcessable, vivid::A
 
         float gate_val = (beat_phase < gl) ? 1.0f : 0.0f;
 
-        // Write output spreads
-        if (out_spreads) {
-            auto& notes_sp = out_spreads[0];
-            auto& vel_sp   = out_spreads[1];
-            auto& gates_sp = out_spreads[2];
+        // Write output lane arrays
+        if (output_lanes) {
+            auto& notes_lane = output_lanes[0];
+            auto& velocity_lane   = output_lanes[1];
+            auto& gates_lane = output_lanes[2];
 
             uint32_t len = static_cast<uint32_t>(chord_size);
-            if (notes_sp.capacity >= len) {
-                notes_sp.length = len;
-                vel_sp.length   = len;
-                gates_sp.length = len;
+            if (notes_lane.capacity >= len) {
+                notes_lane.length = len;
+                velocity_lane.length   = len;
+                gates_lane.length = len;
                 for (uint32_t i = 0; i < len; ++i) {
-                    notes_sp.data[i] = static_cast<float>(base_note + intervals[i]);
-                    vel_sp.data[i]   = vel;
-                    gates_sp.data[i] = gate_val;
+                    notes_lane.data[i] = static_cast<float>(base_note + intervals[i]);
+                    velocity_lane.data[i]   = vel;
+                    gates_lane.data[i] = gate_val;
                 }
             }
         }
@@ -396,7 +396,7 @@ struct ChordProgression : vivid::OperatorBase, vivid::FrameProcessable, vivid::A
 
         // Detect current chord root
         // Port 3 is the scalar "note" output (VIVID_PORT_SIGNAL), which the
-        // cadence bridge syncs from the audio thread.  Ports 0-2 are spread
+        // cadence bridge syncs from the audio thread. Ports 0-2 are lane-array
         // ports whose scalar slots are NOT synced by the bridge.
         int current_chord_root = -1;
         if (ctx->output_count > 3) {

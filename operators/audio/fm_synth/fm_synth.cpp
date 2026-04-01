@@ -114,23 +114,23 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
         float mod_index_cv = ctx->input_float_values ? ctx->input_float_values[1] : 0.0f;
         float gate_cv      = ctx->input_float_values ? ctx->input_float_values[2] : 0.0f;
 
-        // Spread inputs override signal inputs when connected.
-        // Spread port indices follow the 3 signal inputs (freq_cv, mod_index_cv, gate_cv).
+        // Lane-array inputs override signal inputs when connected.
+        // Lane port indices follow the 3 signal inputs (freq_cv, mod_index_cv, gate_cv).
         float vel_scale = 1.0f;
         if (ctx->input_lanes) {
-            const auto& gates_sp = ctx->input_lanes[3];
-            const auto& notes_sp = ctx->input_lanes[4];
-            const auto& vels_sp  = ctx->input_lanes[5];
-            if (gates_sp.length > 0 && gates_sp.data) {
+            const auto& gates_lane = ctx->input_lanes[3];
+            const auto& notes_lane = ctx->input_lanes[4];
+            const auto& velocities_lane  = ctx->input_lanes[5];
+            if (gates_lane.length > 0 && gates_lane.data) {
                 float lane_gate = 0.0f;
                 float lane_note = 60.0f;
-                for (uint32_t s = 0; s < gates_sp.length; ++s) {
-                    if (gates_sp.data[s] > 0.5f) {
-                        lane_gate = gates_sp.data[s];
-                        if (notes_sp.data && s < notes_sp.length)
-                            lane_note = notes_sp.data[s];
-                        if (vels_sp.data && s < vels_sp.length)
-                            vel_scale = vels_sp.data[s];
+                for (uint32_t s = 0; s < gates_lane.length; ++s) {
+                    if (gates_lane.data[s] > 0.5f) {
+                        lane_gate = gates_lane.data[s];
+                        if (notes_lane.data && s < notes_lane.length)
+                            lane_note = notes_lane.data[s];
+                        if (velocities_lane.data && s < velocities_lane.length)
+                            vel_scale = velocities_lane.data[s];
                         break;
                     }
                 }

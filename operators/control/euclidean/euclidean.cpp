@@ -56,7 +56,7 @@ struct Euclidean : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPro
         out.push_back({"trigger",    VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});   // out[0]
         out.push_back({"gate",       VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});   // out[1]
         out.push_back({"step",       VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});   // out[2]
-        out.push_back({"pattern",    VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});   // spread[0]
+        out.push_back({"pattern",    VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});   // lane_array[0]
     }
 
     void process_frame(const VividFrameContext* ctx) override {
@@ -71,7 +71,7 @@ struct Euclidean : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPro
 
 private:
     void compute(float beat_phase, const float* params,
-                 VividLanePort* out_spreads, float* output_values) {
+                 VividLanePort* output_lanes, float* output_values) {
         int h   = std::clamp(static_cast<int>(params[0]), 0, 32);
         int n   = std::clamp(static_cast<int>(params[1]), 1, 32);
         int rot = std::clamp(static_cast<int>(params[2]), 0, 31);
@@ -109,14 +109,14 @@ private:
         output_values[1] = (is_hit && step_phase < gl) ? 1.0f : 0.0f;  // gate
         output_values[2] = static_cast<float>(current_step);  // step
 
-        // Full pattern as spread (output port 3 = pattern)
-        if (out_spreads) {
-            auto& sp = out_spreads[3];
+        // Full pattern as lane array (output port 3 = pattern)
+        if (output_lanes) {
+            auto& pattern_lane = output_lanes[3];
             auto len = static_cast<uint32_t>(n);
-            if (sp.capacity >= len) {
-                sp.length = len;
+            if (pattern_lane.capacity >= len) {
+                pattern_lane.length = len;
                 for (uint32_t i = 0; i < len; ++i)
-                    sp.data[i] = static_cast<float>(pattern_[i]);
+                    pattern_lane.data[i] = static_cast<float>(pattern_[i]);
             }
         }
     }

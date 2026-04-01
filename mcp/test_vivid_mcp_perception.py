@@ -204,7 +204,7 @@ class PerceptionMCPTests(unittest.TestCase):
             self.assertEqual(body["node_id"], "cp1")
             self.assertEqual(body["duration_seconds"], 8.0)
             self.assertEqual(body["interval_ms"], 250)
-            self.assertEqual(body["include_spreads"], True)
+            self.assertEqual(body["include_lanes"], True)
             self.assertEqual(timeout, 13.0)
             return '{"ok":true}'
 

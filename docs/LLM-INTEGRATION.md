@@ -72,7 +72,7 @@ Perception MCP tool surface (current):
 - `run_checks(checks, include_payload=false)` — compact pass/fail summary (`all_passed`, `all_critical_passed`); optional full per-check results.
 - `analyze_output(mode="frame"|"audio"|"av", window_seconds=1.0, include_payload=false, node_id="")` — capture and analyze current output. Returns structured metrics (brightness, RMS, peak, etc.).
 - `compare_outputs(mode, window_seconds_a, window_seconds_b, include_payload, node_id)` — A/B comparison of two output windows for before/after analysis.
-- `sample_node_outputs(node_id, duration_seconds=8.0, interval_ms=250, include_spreads=true)` — time-series sampling of a node's output port values over a configurable window. Returns timestamped snapshots of scalars and spreads.
+- `sample_node_outputs(node_id, duration_seconds=8.0, interval_ms=250, include_lanes=true)` — time-series sampling of a node's output port values over a configurable window. Returns timestamped snapshots of scalars and lane-bearing outputs.
 
 Perception MCP response policy:
 - Default output is compact and deterministic for stable tool loops.

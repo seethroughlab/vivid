@@ -1,7 +1,7 @@
 // Test operator: accumulates per-lane state from lane input values.
 //
 // Strategy-independent operator used to test identity compaction.
-// Each lane reads its value from the input spread (indexed by lane_index),
+// Each lane reads its value from the input lane array (indexed by lane_index),
 // accumulates it into vivid_lane_state keyed by lane_id, and writes the
 // accumulated value to the audio output buffer.
 //
@@ -26,7 +26,7 @@ struct LaneStateTrackerOp : vivid::OperatorBase, vivid::AudioProcessable {
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"input",    VIVID_PORT_AUDIO,  VIVID_PORT_INPUT});
         out.push_back({"output",   VIVID_PORT_AUDIO,  VIVID_PORT_OUTPUT});
-        // Spread inputs for per-lane values and identity-bearing lane_ids
+        // Lane-array inputs for per-lane values and identity-bearing lane_ids
         out.push_back({"values",   VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
         out.push_back({"lane_ids", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
         // Signal outputs for last-lane readback
@@ -40,12 +40,12 @@ struct LaneStateTrackerOp : vivid::OperatorBase, vivid::AudioProcessable {
         State& s = *vivid_lane_state(ctx, ctx->lane_id, State);
 
         // Read per-lane value from lane input
-        // Port order: input(audio)=0, values(spread)=1, lane_ids(spread)=2
+        // Port order: input(audio)=0, values(lane_array)=1, lane_ids(lane_array)=2
         // input_lanes is indexed by input port ordinal
         float value = 0.0f;
         if (ctx->input_lanes) {
             uint32_t ci = ctx->lane_index;
-            const auto& val_sp = ctx->input_lanes[1];  // "values" spread (port index 1)
+            const auto& val_sp = ctx->input_lanes[1];  // "values" lane array (port index 1)
             if (val_sp.data && ci < val_sp.length)
                 value = val_sp.data[ci];
         }

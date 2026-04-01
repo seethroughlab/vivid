@@ -175,9 +175,9 @@ struct Tracker : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProce
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"beat_phase", VIVID_PORT_SIGNAL,  VIVID_PORT_INPUT});   // in[0]
         out.push_back({"reset",     VIVID_PORT_SIGNAL,  VIVID_PORT_INPUT});    // in[1]
-        out.push_back({"notes",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // spread[0], port idx 0
-        out.push_back({"velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // spread[1], port idx 1
-        out.push_back({"gates",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // spread[2], port idx 2
+        out.push_back({"notes",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // lane_array[0], port idx 0
+        out.push_back({"velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // lane_array[1], port idx 1
+        out.push_back({"gates",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // lane_array[2], port idx 2
         out.push_back({"row",        VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});  // out[0]
         out.push_back({"pattern",    VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});  // out[1]
         out.push_back({"order",      VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});  // out[2]
@@ -251,19 +251,19 @@ struct Tracker : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProce
 
         // Write lane outputs
         if (out_lanes) {
-            auto& notes_sp = out_lanes[0];
-            auto& vels_sp  = out_lanes[1];
-            auto& gates_sp = out_lanes[2];
+            auto& notes_lane = out_lanes[0];
+            auto& velocities_lane  = out_lanes[1];
+            auto& gates_lane = out_lanes[2];
 
-            if (notes_sp.capacity >= tracker::MAX_CHANNELS) {
-                notes_sp.length = tracker::MAX_CHANNELS;
-                vels_sp.length  = tracker::MAX_CHANNELS;
-                gates_sp.length = tracker::MAX_CHANNELS;
+            if (notes_lane.capacity >= tracker::MAX_CHANNELS) {
+                notes_lane.length = tracker::MAX_CHANNELS;
+                velocities_lane.length  = tracker::MAX_CHANNELS;
+                gates_lane.length = tracker::MAX_CHANNELS;
                 for (int ch = 0; ch < tracker::MAX_CHANNELS; ++ch) {
                     bool muted = (mute >> ch) & 1;
-                    notes_sp.data[ch] = channels_[ch].current_pitch;
-                    vels_sp.data[ch]  = muted ? 0.0f : static_cast<float>(channels_[ch].current_velocity) / 127.0f;
-                    gates_sp.data[ch] = (channels_[ch].gate_active && !muted) ? 1.0f : 0.0f;
+                    notes_lane.data[ch] = channels_[ch].current_pitch;
+                    velocities_lane.data[ch]  = muted ? 0.0f : static_cast<float>(channels_[ch].current_velocity) / 127.0f;
+                    gates_lane.data[ch] = (channels_[ch].gate_active && !muted) ? 1.0f : 0.0f;
                 }
             }
         }

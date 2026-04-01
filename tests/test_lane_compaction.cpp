@@ -2,14 +2,14 @@
 //
 // Proves that vivid_lane_state() keyed by lane_id survives compaction
 // correctly. When a structural operator removes a voice and compacts
-// its spread, downstream operators must retain state for surviving
+// its lane array, downstream operators must retain state for surviving
 // lane_ids — state must NOT follow positional index.
 //
 // Graph: IdentityLaneSourceOp (frame) → LaneStateTrackerOp (audio)
 //
 // Phase 1: 4 voices with distinct lane values. Each lane accumulates
 //          its value into per-lane state keyed by lane_id.
-// Phase 2: Voice 1 (second voice) is removed; spread compacts to 3.
+// Phase 2: Voice 1 (second voice) is removed; the lane array compacts to 3.
 //          Verify that surviving lanes retained correct accumulated state.
 
 #include "runtime/operator_registry.h"
@@ -75,7 +75,7 @@ int main(int argc, char* argv[]) {
     graph.add_node("tracker", "LaneStateTrackerOp");
     graph.add_node("out", "audio_out");
 
-    // Wire spreads: src.out → tracker.values, src.lane_ids → tracker.lane_ids
+    // Wire lane arrays: src.out → tracker.values, src.lane_ids → tracker.lane_ids
     graph.add_connection("src", "out", "tracker", "values");
     graph.add_connection("src", "lane_ids", "tracker", "lane_ids");
     // Audio output (so audio executor has a sink)
@@ -101,7 +101,7 @@ int main(int argc, char* argv[]) {
     // --- Phase 1: 4 voices, accumulate state ---
     std::fprintf(stderr, "\n--- Phase 1: 4 voices ---\n");
 
-    // Tick frame to produce spreads, push to audio snapshot
+    // Tick frame to produce lane arrays, push to audio snapshot
     runtime.tick(0.0, 1.0 / 60.0, 0);
     runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
 
@@ -115,7 +115,7 @@ int main(int argc, char* argv[]) {
         const auto& buf = tracker_node->audio->buffers_out[0];
         constexpr uint32_t kBufSize = 256;
 
-        // After 1 buffer, each lane accumulated its spread value once:
+        // After 1 buffer, each lane accumulated its lane value once:
         // Voice 0: value=10 → accumulated=10
         // Voice 1: value=20 → accumulated=20
         // Voice 2: value=30 → accumulated=30
@@ -147,7 +147,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // Tick frame to produce compacted spreads
+    // Tick frame to produce compacted lane arrays
     runtime.tick(1.0 / 60.0, 1.0 / 60.0, 1);
     runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
 
@@ -155,7 +155,7 @@ int main(int argc, char* argv[]) {
     float output2[512] = {};
     audio_engine.process_audio_for_test(output2, 256);
 
-    // Now spreads are: values=[10, 30, 40], lane_ids=[L1, L3, L4]
+    // Now the lane arrays are: values=[10, 30, 40], lane_ids=[L1, L3, L4]
     // (voice 1 removed, voice 2 shifted to position 1)
     //
     // Expected per-lane state after 2 buffers:

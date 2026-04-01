@@ -1,6 +1,6 @@
 // Test operator: kernel behavior proof-of-concept.
-// Reads all lanes from input spread and writes a 3-element moving average
-// across lanes to the output spread. Demonstrates cross-lane access.
+// Reads all lanes from the input lane array and writes a 3-element moving average
+// across lanes to the output lane array. Demonstrates cross-lane access.
 #include "operator_api/operator.h"
 #include <algorithm>
 
@@ -20,7 +20,7 @@ struct LaneSmoothOp : vivid::OperatorBase, vivid::FrameProcessable {
         // Pass through scalar value
         ctx->output_values[0] = ctx->input_values[0];
 
-        // Kernel behavior: read full input spread, smooth across lanes
+        // Kernel behavior: read full input lane array, smooth across lanes
         if (ctx->input_lanes && ctx->output_lanes) {
             auto& isp = ctx->input_lanes[0];
             auto& osp = ctx->output_lanes[0];

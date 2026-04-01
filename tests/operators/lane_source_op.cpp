@@ -25,7 +25,7 @@ struct LaneSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
 
         ctx->output_values[0] = b;
 
-        // Write spread: [base*1, base*2, ..., base*count]
+        // Write lane array: [base*1, base*2, ..., base*count]
         if (ctx->output_lanes) {
             auto& osp = ctx->output_lanes[0];
             uint32_t len = static_cast<uint32_t>(n);

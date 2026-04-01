@@ -1287,7 +1287,7 @@ static bool resolve_state_path(Graph& graph, RuntimeCore& core,
             out = cv_number(node->output_values[pi]);
             return true;
         }
-        if (tail == "spread.length" && pi < node->output_lanes.size()) {
+        if (tail == "lane_array.length" && pi < node->output_lanes.size()) {
             out = cv_number(static_cast<double>(node->output_lanes[pi].size()));
             return true;
         }

@@ -26,7 +26,7 @@ struct AudioLaneOp : vivid::OperatorBase, vivid::AudioProcessable {
                 sum += isp.data[i];
             }
 
-            // Echo spread to output port 1 ("echo")
+            // Echo lane array to output port 1 ("echo")
             if (ctx->output_lanes) {
                 auto& osp = ctx->output_lanes[1];  // "echo" output (port 1)
                 if (osp.capacity >= isp.length) {

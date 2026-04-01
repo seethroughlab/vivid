@@ -160,7 +160,7 @@ int main(int argc, char* argv[]) {
                 // lane_id_out should be the identity-bearing ID from the source
                 // IdentityLaneSourceOp uses kBaseLaneId=100, so lane 3 = 103
                 check_float(slew->audio->float_output_values[2], 103.0f, 0.01f,
-                            "lane_id_out = 103 (identity from spread)");
+                            "lane_id_out = 103 (identity from lane array)");
             }
         }
 
