@@ -5,9 +5,17 @@
     "id": "lut_apply_demo",
     "title": "LUT Apply",
     "description": "3D LUT color grading with animated intensity showing before/after.",
-    "tags": ["demo", "color-science", "lut", "color-grading"],
+    "tags": [
+      "demo",
+      "color-science",
+      "lut",
+      "color-grading"
+    ],
     "difficulty": "beginner",
-    "domains": ["gpu", "control"],
+    "domains": [
+      "gpu",
+      "control"
+    ],
     "requires_packages": [],
     "featured_rank": 34
   },
@@ -50,10 +58,26 @@
     }
   },
   "connections": [
-    {"from": "vid/texture",          "to": "lut/input"},
-    {"from": "lfo_intensity/value",  "to": "lut/intensity"},
-    {"from": "lut/texture",          "to": "vout/input"},
-    {"from": "audio/time",           "to": "vid/audio_time"},
-    {"from": "audio/output",         "to": "aout/input"}
+    {
+      "from": "vid/texture",
+      "to": "lut/input"
+    },
+    {
+      "from": "lfo_intensity/value",
+      "to": "lut/intensity"
+    },
+    {
+      "from": "lut/texture",
+      "to": "vout/input"
+    },
+    {
+      "from": "audio/time",
+      "to": "vid/audio_time",
+      "bridge": "last_sample"
+    },
+    {
+      "from": "audio/output",
+      "to": "aout/input"
+    }
   ]
 }

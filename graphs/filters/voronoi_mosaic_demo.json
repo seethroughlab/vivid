@@ -4,10 +4,19 @@
   "meta": {
     "id": "voronoi_mosaic_demo",
     "title": "Voronoi Mosaic",
-    "description": "Image subdivision into Voronoi cells — each cell shows the average color from the source. Audio-reactive cell density.",
-    "tags": ["demo", "voronoi", "mosaic", "audio-reactive"],
+    "description": "Image subdivision into Voronoi cells \u2014 each cell shows the average color from the source. Audio-reactive cell density.",
+    "tags": [
+      "demo",
+      "voronoi",
+      "mosaic",
+      "audio-reactive"
+    ],
     "difficulty": "intermediate",
-    "domains": ["audio", "gpu", "control"],
+    "domains": [
+      "audio",
+      "gpu",
+      "control"
+    ],
     "requires_packages": [],
     "featured_rank": 13
   },
@@ -74,13 +83,38 @@
     }
   },
   "connections": [
-    {"from": "osc/output",       "to": "gain/input"},
-    {"from": "gain/output",      "to": "aout/input"},
-    {"from": "tex/texture",      "to": "voronoi/source"},
-    {"from": "lfo_scale/value",  "to": "voronoi/scale"},
-    {"from": "gain/rms",         "to": "math_edge/a"},
-    {"from": "math_edge/result", "to": "voronoi/edge_width"},
-    {"from": "voronoi/texture",  "to": "bloom/input"},
-    {"from": "bloom/texture",    "to": "vout/input"}
+    {
+      "from": "osc/output",
+      "to": "gain/input"
+    },
+    {
+      "from": "gain/output",
+      "to": "aout/input"
+    },
+    {
+      "from": "tex/texture",
+      "to": "voronoi/source"
+    },
+    {
+      "from": "lfo_scale/value",
+      "to": "voronoi/scale"
+    },
+    {
+      "from": "gain/rms",
+      "to": "math_edge/a",
+      "bridge": "rms"
+    },
+    {
+      "from": "math_edge/result",
+      "to": "voronoi/edge_width"
+    },
+    {
+      "from": "voronoi/texture",
+      "to": "bloom/input"
+    },
+    {
+      "from": "bloom/texture",
+      "to": "vout/input"
+    }
   ]
 }

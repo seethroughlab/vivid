@@ -70,7 +70,8 @@
     },
     {
       "from": "noise/output",
-      "to": "filter/input"
+      "to": "filter/input",
+      "bridge": "hold"
     },
     {
       "from": "env/value",

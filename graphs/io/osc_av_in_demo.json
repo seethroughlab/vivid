@@ -70,7 +70,8 @@
     },
     {
       "from": "oscin/value",
-      "to": "gain1/gain"
+      "to": "gain1/gain",
+      "bridge": "hold"
     },
     {
       "from": "oscin/value",

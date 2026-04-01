@@ -4,10 +4,19 @@
   "meta": {
     "id": "spirograph_demo",
     "title": "Audio Spirograph",
-    "description": "Audio-reactive spirograph with feedback trails — curve parameters morph with audio.",
-    "tags": ["demo", "spirograph", "feedback", "audio-reactive"],
+    "description": "Audio-reactive spirograph with feedback trails \u2014 curve parameters morph with audio.",
+    "tags": [
+      "demo",
+      "spirograph",
+      "feedback",
+      "audio-reactive"
+    ],
     "difficulty": "intermediate",
-    "domains": ["audio", "gpu", "control"],
+    "domains": [
+      "audio",
+      "gpu",
+      "control"
+    ],
     "requires_packages": [],
     "featured_rank": 14
   },
@@ -92,14 +101,44 @@
     }
   },
   "connections": [
-    {"from": "osc/output",         "to": "gain/input"},
-    {"from": "gain/output",        "to": "aout/input"},
-    {"from": "lfo_inner/value",    "to": "spirograph/inner_r"},
-    {"from": "lfo_rot/value",      "to": "spirograph/rotation"},
-    {"from": "gain/rms",           "to": "math_pen/a"},
-    {"from": "math_pen/result",    "to": "spirograph/pen_dist"},
-    {"from": "spirograph/texture", "to": "feedback/input"},
-    {"from": "feedback/texture",   "to": "bloom/input"},
-    {"from": "bloom/texture",      "to": "vout/input"}
+    {
+      "from": "osc/output",
+      "to": "gain/input"
+    },
+    {
+      "from": "gain/output",
+      "to": "aout/input"
+    },
+    {
+      "from": "lfo_inner/value",
+      "to": "spirograph/inner_r"
+    },
+    {
+      "from": "lfo_rot/value",
+      "to": "spirograph/rotation"
+    },
+    {
+      "from": "gain/rms",
+      "to": "math_pen/a",
+      "bridge": "rms"
+    },
+    {
+      "from": "math_pen/result",
+      "to": "spirograph/pen_dist"
+    },
+    {
+      "from": "spirograph/texture",
+      "to": "feedback/input",
+      "bridge": "hold"
+    },
+    {
+      "from": "feedback/texture",
+      "to": "bloom/input",
+      "bridge": "last_sample"
+    },
+    {
+      "from": "bloom/texture",
+      "to": "vout/input"
+    }
   ]
 }

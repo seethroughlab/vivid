@@ -114,19 +114,23 @@
     },
     {
       "from": "arp1/notes",
-      "to": "synth1/notes"
+      "to": "synth1/notes",
+      "bridge": "last_sample"
     },
     {
       "from": "arp1/velocities",
-      "to": "synth1/velocities"
+      "to": "synth1/velocities",
+      "bridge": "last_sample"
     },
     {
       "from": "arp1/gates",
-      "to": "synth1/gates"
+      "to": "synth1/gates",
+      "bridge": "last_sample"
     },
     {
       "from": "synth1/output",
-      "to": "reverb1/input"
+      "to": "reverb1/input",
+      "bridge": "hold"
     },
     {
       "from": "reverb1/output",

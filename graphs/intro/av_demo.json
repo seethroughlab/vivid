@@ -82,7 +82,8 @@
     },
     {
       "from": "lfo_aud/value",
-      "to": "osc1/frequency"
+      "to": "osc1/frequency",
+      "bridge": "hold"
     },
     {
       "from": "osc1/output",

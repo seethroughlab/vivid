@@ -90,15 +90,18 @@
     },
     {
       "from": "lfo_y/value",
-      "to": "feedback/offset_y"
+      "to": "feedback/offset_y",
+      "bridge": "hold"
     },
     {
       "from": "hsv/texture",
-      "to": "feedback/input"
+      "to": "feedback/input",
+      "bridge": "hold"
     },
     {
       "from": "feedback/texture",
-      "to": "bloom/input"
+      "to": "bloom/input",
+      "bridge": "last_sample"
     },
     {
       "from": "bloom/texture",

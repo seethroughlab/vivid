@@ -74,11 +74,13 @@
     },
     {
       "from": "star/texture",
-      "to": "feedback/input"
+      "to": "feedback/input",
+      "bridge": "hold"
     },
     {
       "from": "feedback/texture",
-      "to": "vout/input"
+      "to": "vout/input",
+      "bridge": "last_sample"
     }
   ],
   "sticky_notes": [

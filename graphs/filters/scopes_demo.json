@@ -5,9 +5,17 @@
     "id": "scopes_demo",
     "title": "Scopes",
     "description": "Video analysis scopes cycling through Waveform, Histogram, Vectorscope, and Parade.",
-    "tags": ["demo", "color-science", "scopes", "analysis"],
+    "tags": [
+      "demo",
+      "color-science",
+      "scopes",
+      "analysis"
+    ],
     "difficulty": "beginner",
-    "domains": ["gpu", "control"],
+    "domains": [
+      "gpu",
+      "control"
+    ],
     "requires_packages": [],
     "featured_rank": 36
   },
@@ -51,10 +59,26 @@
     }
   },
   "connections": [
-    {"from": "vid/texture",       "to": "scopes/input"},
-    {"from": "lfo_scope/value",   "to": "scopes/scope_type"},
-    {"from": "scopes/texture",    "to": "vout/input"},
-    {"from": "audio/time",        "to": "vid/audio_time"},
-    {"from": "audio/output",      "to": "aout/input"}
+    {
+      "from": "vid/texture",
+      "to": "scopes/input"
+    },
+    {
+      "from": "lfo_scope/value",
+      "to": "scopes/scope_type"
+    },
+    {
+      "from": "scopes/texture",
+      "to": "vout/input"
+    },
+    {
+      "from": "audio/time",
+      "to": "vid/audio_time",
+      "bridge": "last_sample"
+    },
+    {
+      "from": "audio/output",
+      "to": "aout/input"
+    }
   ]
 }

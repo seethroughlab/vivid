@@ -27,15 +27,24 @@
         "speed": 0.5,
         "scale": 4.0
       },
-      "layout": [100, 200]
+      "layout": [
+        100,
+        200
+      ]
     },
     "analyze": {
       "type": "TextureAnalysis",
-      "layout": [400, 200]
+      "layout": [
+        400,
+        200
+      ]
     },
     "display": {
       "type": "video_out",
-      "layout": [700, 200]
+      "layout": [
+        700,
+        200
+      ]
     },
     "osc": {
       "type": "Oscillator",
@@ -44,7 +53,10 @@
         "amplitude": 0.5,
         "waveform": 1
       },
-      "layout": [400, 450]
+      "layout": [
+        400,
+        450
+      ]
     },
     "filter": {
       "type": "Filter",
@@ -53,19 +65,28 @@
         "resonance": 1.2,
         "mode": 0
       },
-      "layout": [600, 450]
+      "layout": [
+        600,
+        450
+      ]
     },
     "gain": {
       "type": "Gain",
       "params": {
         "gain": 0.4
       },
-      "layout": [800, 450]
+      "layout": [
+        800,
+        450
+      ]
     },
     "audio_out": {
       "type": "audio_out",
       "params": {},
-      "layout": [1000, 450]
+      "layout": [
+        1000,
+        450
+      ]
     }
   },
   "connections": [
@@ -83,7 +104,8 @@
       "from_min": 0.0,
       "from_max": 1.0,
       "to_min": 220.0,
-      "to_max": 880.0
+      "to_max": 880.0,
+      "bridge": "hold"
     },
     {
       "from": "analyze/edge_density",
@@ -91,7 +113,8 @@
       "from_min": 0.0,
       "from_max": 1.0,
       "to_min": 300.0,
-      "to_max": 3000.0
+      "to_max": 3000.0,
+      "bridge": "hold"
     },
     {
       "from": "osc/output",

@@ -50,7 +50,8 @@
     },
     {
       "from": "env1/value",
-      "to": "shape1/radius"
+      "to": "shape1/radius",
+      "bridge": "last_sample"
     },
     {
       "from": "clock1/beat_trigger",

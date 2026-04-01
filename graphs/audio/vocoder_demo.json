@@ -65,7 +65,8 @@
   "connections": [
     {
       "from": "noise/output",
-      "to": "vocoder/modulator"
+      "to": "vocoder/modulator",
+      "bridge": "hold"
     },
     {
       "from": "carrier_osc/output",

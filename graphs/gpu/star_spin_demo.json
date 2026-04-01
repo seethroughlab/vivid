@@ -116,19 +116,23 @@
     },
     {
       "from": "gain/rms",
-      "to": "math_zoom/a"
+      "to": "math_zoom/a",
+      "bridge": "rms"
     },
     {
       "from": "math_zoom/result",
-      "to": "feedback/zoom"
+      "to": "feedback/zoom",
+      "bridge": "hold"
     },
     {
       "from": "star/texture",
-      "to": "feedback/input"
+      "to": "feedback/input",
+      "bridge": "hold"
     },
     {
       "from": "feedback/texture",
-      "to": "bloom/input"
+      "to": "bloom/input",
+      "bridge": "last_sample"
     },
     {
       "from": "bloom/texture",

@@ -81,7 +81,8 @@
     },
     {
       "from": "noise/output",
-      "to": "freeze/input"
+      "to": "freeze/input",
+      "bridge": "hold"
     },
     {
       "from": "env_freeze/value",

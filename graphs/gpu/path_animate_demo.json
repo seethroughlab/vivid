@@ -5,9 +5,17 @@
     "id": "path_animate_demo",
     "title": "Path Animate",
     "description": "Bezier path motion graphics with feedback trails showing the path a shape follows.",
-    "tags": ["demo", "motion-graphics", "path", "bezier"],
+    "tags": [
+      "demo",
+      "motion-graphics",
+      "path",
+      "bezier"
+    ],
     "difficulty": "intermediate",
-    "domains": ["gpu", "control"],
+    "domains": [
+      "gpu",
+      "control"
+    ],
     "requires_packages": [],
     "featured_rank": 39
   },
@@ -30,7 +38,10 @@
         "g": 0.4,
         "b": 0.8
       },
-      "resolution": [800, 600]
+      "resolution": [
+        800,
+        600
+      ]
     },
     "xform": {
       "type": "Transform",
@@ -48,10 +59,27 @@
     }
   },
   "connections": [
-    {"from": "path/x",            "to": "xform/translate_x"},
-    {"from": "path/y",            "to": "xform/translate_y"},
-    {"from": "shape/texture",     "to": "xform/input"},
-    {"from": "xform/texture",     "to": "feedback/input"},
-    {"from": "feedback/texture",  "to": "vout/input"}
+    {
+      "from": "path/x",
+      "to": "xform/translate_x"
+    },
+    {
+      "from": "path/y",
+      "to": "xform/translate_y"
+    },
+    {
+      "from": "shape/texture",
+      "to": "xform/input"
+    },
+    {
+      "from": "xform/texture",
+      "to": "feedback/input",
+      "bridge": "hold"
+    },
+    {
+      "from": "feedback/texture",
+      "to": "vout/input",
+      "bridge": "last_sample"
+    }
   ]
 }

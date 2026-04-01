@@ -204,7 +204,8 @@
     },
     {
       "from": "noise/output",
-      "to": "mixer/input_2"
+      "to": "mixer/input_2",
+      "bridge": "hold"
     },
     {
       "from": "mixer/output",
@@ -228,7 +229,8 @@
     },
     {
       "from": "gain/rms",
-      "to": "noise_vis/scale"
+      "to": "noise_vis/scale",
+      "bridge": "rms"
     },
     {
       "from": "noise_vis/texture",
@@ -252,7 +254,8 @@
     },
     {
       "from": "lfo_hue/value",
-      "to": "hsv_vis/hue_shift"
+      "to": "hsv_vis/hue_shift",
+      "bridge": "last_sample"
     },
     {
       "from": "hsv_vis/texture",
@@ -260,7 +263,8 @@
     },
     {
       "from": "clock/beat_phase",
-      "to": "vis_glitch/phase"
+      "to": "vis_glitch/phase",
+      "bridge": "last_sample"
     },
     {
       "from": "vis_glitch/texture",

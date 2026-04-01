@@ -154,7 +154,8 @@
   "connections": [
     {
       "from": "clock1/beat_phase",
-      "to": "sm1/beat_phase"
+      "to": "sm1/beat_phase",
+      "bridge": "last_sample"
     },
     {
       "from": "clock1/beat_phase",
@@ -166,7 +167,8 @@
     },
     {
       "from": "lfo1/value",
-      "to": "shape1/rotation"
+      "to": "shape1/rotation",
+      "bridge": "last_sample"
     },
     {
       "from": "drums1/midi_out",
@@ -182,19 +184,23 @@
     },
     {
       "from": "kit1/slot_2",
-      "to": "hat1/midi_in"
+      "to": "hat1/midi_in",
+      "bridge": "last_sample"
     },
     {
       "from": "notes1/notes",
-      "to": "synth1/notes"
+      "to": "synth1/notes",
+      "bridge": "last_sample"
     },
     {
       "from": "notes1/velocities",
-      "to": "synth1/velocities"
+      "to": "synth1/velocities",
+      "bridge": "last_sample"
     },
     {
       "from": "notes1/gates",
-      "to": "synth1/gates"
+      "to": "synth1/gates",
+      "bridge": "last_sample"
     },
     {
       "from": "noise1/texture",
@@ -214,7 +220,8 @@
     },
     {
       "from": "synth1/output",
-      "to": "audio_out/input"
+      "to": "audio_out/input",
+      "bridge": "hold"
     },
     {
       "from": "kick1/output",
@@ -226,7 +233,8 @@
     },
     {
       "from": "hat1/output",
-      "to": "audio_out/input"
+      "to": "audio_out/input",
+      "bridge": "hold"
     }
   ],
   "presets": {

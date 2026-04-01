@@ -176,7 +176,8 @@
       "from_min": -1.0,
       "from_max": 1.0,
       "to_min": 220.0,
-      "to_max": 660.0
+      "to_max": 660.0,
+      "bridge": "hold"
     },
     {
       "from": "lfo1/value",
@@ -196,7 +197,8 @@
     },
     {
       "from": "env1/value",
-      "to": "gain1/amplitude_cv"
+      "to": "gain1/amplitude_cv",
+      "bridge": "hold"
     },
     {
       "from": "env1/value",
@@ -212,7 +214,8 @@
       "from_min": 0.0,
       "from_max": 1.0,
       "to_min": 500.0,
-      "to_max": 6000.0
+      "to_max": 6000.0,
+      "bridge": "hold"
     },
     {
       "from": "osc1/output",

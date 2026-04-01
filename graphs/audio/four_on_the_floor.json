@@ -112,7 +112,8 @@
     },
     {
       "from": "kit1/slot_2",
-      "to": "hat1/midi_in"
+      "to": "hat1/midi_in",
+      "bridge": "last_sample"
     },
     {
       "from": "kit1/slot_4",
@@ -128,7 +129,8 @@
     },
     {
       "from": "hat1/output",
-      "to": "aout/input"
+      "to": "aout/input",
+      "bridge": "hold"
     },
     {
       "from": "clap1/output",

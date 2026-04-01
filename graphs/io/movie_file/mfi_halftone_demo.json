@@ -71,7 +71,8 @@
     },
     {
       "from": "audio/time",
-      "to": "vid/audio_time"
+      "to": "vid/audio_time",
+      "bridge": "last_sample"
     },
     {
       "from": "audio/output",

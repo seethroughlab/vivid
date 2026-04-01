@@ -76,15 +76,18 @@
     },
     {
       "from": "env_gate/value",
-      "to": "fm/gate_cv"
+      "to": "fm/gate_cv",
+      "bridge": "last_sample"
     },
     {
       "from": "lfo_mod/value",
-      "to": "fm/mod_index_cv"
+      "to": "fm/mod_index_cv",
+      "bridge": "last_sample"
     },
     {
       "from": "fm/output",
-      "to": "gain/input"
+      "to": "gain/input",
+      "bridge": "hold"
     },
     {
       "from": "gain/output",

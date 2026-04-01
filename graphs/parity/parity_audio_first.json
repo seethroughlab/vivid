@@ -148,7 +148,8 @@
   "connections": [
     {
       "from": "lfo1/value",
-      "to": "osc1/frequency"
+      "to": "osc1/frequency",
+      "bridge": "hold"
     },
     {
       "from": "osc1/output",
@@ -172,7 +173,8 @@
       "from_min": 0.0,
       "from_max": 1.0,
       "to_min": 0.5,
-      "to_max": 8.0
+      "to_max": 8.0,
+      "bridge": "last_sample"
     },
     {
       "from": "audio_analysis/rms",
@@ -180,7 +182,8 @@
       "from_min": 0.0,
       "from_max": 0.5,
       "to_min": 2.0,
-      "to_max": 12.0
+      "to_max": 12.0,
+      "bridge": "rms"
     },
     {
       "from": "audio_analysis/rms",
@@ -188,7 +191,8 @@
       "from_min": 0.0,
       "from_max": 0.5,
       "to_min": 0.05,
-      "to_max": 0.4
+      "to_max": 0.4,
+      "bridge": "rms"
     },
     {
       "from": "lfo1/value",

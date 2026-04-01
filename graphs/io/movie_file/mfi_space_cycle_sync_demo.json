@@ -88,11 +88,13 @@
     },
     {
       "from": "pick/file",
-      "to": "movie_audio/file"
+      "to": "movie_audio/file",
+      "bridge": "hold"
     },
     {
       "from": "movie_audio/time",
-      "to": "movie/audio_time"
+      "to": "movie/audio_time",
+      "bridge": "last_sample"
     },
     {
       "from": "movie_audio/output",

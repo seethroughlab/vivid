@@ -61,11 +61,13 @@
   "connections": [
     {
       "from": "webcam/texture",
-      "to": "time_machine/source"
+      "to": "time_machine/source",
+      "bridge": "hold"
     },
     {
       "from": "noise/texture",
-      "to": "time_machine/map"
+      "to": "time_machine/map",
+      "bridge": "hold"
     },
     {
       "from": "lfo/value",
@@ -73,7 +75,8 @@
     },
     {
       "from": "time_machine/texture",
-      "to": "vout/input"
+      "to": "vout/input",
+      "bridge": "last_sample"
     }
   ],
   "sticky_notes": [

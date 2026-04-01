@@ -5,9 +5,18 @@
     "id": "path_animate_av_demo",
     "title": "Path Animate AV",
     "description": "Audio-reactive path animation where oscillator RMS drives path traversal speed.",
-    "tags": ["demo", "motion-graphics", "path", "audio-reactive"],
+    "tags": [
+      "demo",
+      "motion-graphics",
+      "path",
+      "audio-reactive"
+    ],
     "difficulty": "advanced",
-    "domains": ["audio", "gpu", "control"],
+    "domains": [
+      "audio",
+      "gpu",
+      "control"
+    ],
     "requires_packages": [],
     "featured_rank": 40
   },
@@ -54,7 +63,10 @@
         "g": 0.8,
         "b": 0.2
       },
-      "resolution": [800, 600]
+      "resolution": [
+        800,
+        600
+      ]
     },
     "xform": {
       "type": "Transform",
@@ -74,14 +86,42 @@
     }
   },
   "connections": [
-    {"from": "osc/output",        "to": "gain/input"},
-    {"from": "gain/output",       "to": "aout/input"},
-    {"from": "gain/rms",          "to": "math_speed/a"},
-    {"from": "math_speed/result", "to": "path/speed"},
-    {"from": "path/x",            "to": "xform/translate_x"},
-    {"from": "path/y",            "to": "xform/translate_y"},
-    {"from": "shape/texture",     "to": "xform/input"},
-    {"from": "xform/texture",     "to": "bloom/input"},
-    {"from": "bloom/texture",     "to": "vout/input"}
+    {
+      "from": "osc/output",
+      "to": "gain/input"
+    },
+    {
+      "from": "gain/output",
+      "to": "aout/input"
+    },
+    {
+      "from": "gain/rms",
+      "to": "math_speed/a",
+      "bridge": "rms"
+    },
+    {
+      "from": "math_speed/result",
+      "to": "path/speed"
+    },
+    {
+      "from": "path/x",
+      "to": "xform/translate_x"
+    },
+    {
+      "from": "path/y",
+      "to": "xform/translate_y"
+    },
+    {
+      "from": "shape/texture",
+      "to": "xform/input"
+    },
+    {
+      "from": "xform/texture",
+      "to": "bloom/input"
+    },
+    {
+      "from": "bloom/texture",
+      "to": "vout/input"
+    }
   ]
 }

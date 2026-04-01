@@ -72,11 +72,13 @@
     },
     {
       "from": "lfo/value",
-      "to": "eq/freq_1_cv"
+      "to": "eq/freq_1_cv",
+      "bridge": "last_sample"
     },
     {
       "from": "eq/output",
-      "to": "gain/input"
+      "to": "gain/input",
+      "bridge": "hold"
     },
     {
       "from": "gain/output",

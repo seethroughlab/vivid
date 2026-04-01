@@ -58,7 +58,8 @@
   "connections": [
     {
       "from": "lfo1/value",
-      "to": "osc1/amplitude"
+      "to": "osc1/amplitude",
+      "bridge": "hold"
     },
     {
       "from": "osc1/output",
@@ -70,7 +71,8 @@
     },
     {
       "from": "gain1/rms",
-      "to": "noise1/scale"
+      "to": "noise1/scale",
+      "bridge": "rms"
     },
     {
       "from": "noise1/texture",

@@ -143,11 +143,13 @@
     },
     {
       "from": "shape1/texture",
-      "to": "feedback1/input"
+      "to": "feedback1/input",
+      "bridge": "hold"
     },
     {
       "from": "feedback1/texture",
-      "to": "bloom1/input"
+      "to": "bloom1/input",
+      "bridge": "last_sample"
     },
     {
       "from": "bloom1/texture",
@@ -163,7 +165,8 @@
       "from_min": 0.0,
       "from_max": 1.0,
       "to_min": 110.0,
-      "to_max": 880.0
+      "to_max": 880.0,
+      "bridge": "hold"
     },
     {
       "from": "analyze1/edge_density",
@@ -171,7 +174,8 @@
       "from_min": 0.0,
       "from_max": 1.0,
       "to_min": 200.0,
-      "to_max": 4000.0
+      "to_max": 4000.0,
+      "bridge": "hold"
     },
     {
       "from": "osc1/output",

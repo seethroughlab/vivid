@@ -47,11 +47,13 @@
   "connections": [
     {
       "from": "midi1/cc_value",
-      "to": "lfo1/frequency"
+      "to": "lfo1/frequency",
+      "bridge": "hold"
     },
     {
       "from": "lfo1/value",
-      "to": "noise1/scale"
+      "to": "noise1/scale",
+      "bridge": "last_sample"
     },
     {
       "from": "noise1/texture",

@@ -4,10 +4,18 @@
   "meta": {
     "id": "paperjs_nyan_rainbow",
     "title": "Nyan Rainbow",
-    "description": "Faithful port of Paper.js NyanRainbow — 6-band rainbow horizontal trail with vertical bounce.",
-    "tags": ["demo", "paperjs", "rainbow", "feedback"],
+    "description": "Faithful port of Paper.js NyanRainbow \u2014 6-band rainbow horizontal trail with vertical bounce.",
+    "tags": [
+      "demo",
+      "paperjs",
+      "rainbow",
+      "feedback"
+    ],
     "difficulty": "intermediate",
-    "domains": ["gpu", "control"],
+    "domains": [
+      "gpu",
+      "control"
+    ],
     "requires_packages": [],
     "featured_rank": 15
   },
@@ -65,10 +73,28 @@
     }
   },
   "connections": [
-    {"from": "shape/texture",     "to": "hsv/input"},
-    {"from": "lfo_hue/value",     "to": "hsv/hue_shift"},
-    {"from": "lfo_bounce/value",  "to": "feedback/offset_y"},
-    {"from": "hsv/texture",       "to": "feedback/input"},
-    {"from": "feedback/texture",  "to": "vout/input"}
+    {
+      "from": "shape/texture",
+      "to": "hsv/input"
+    },
+    {
+      "from": "lfo_hue/value",
+      "to": "hsv/hue_shift"
+    },
+    {
+      "from": "lfo_bounce/value",
+      "to": "feedback/offset_y",
+      "bridge": "hold"
+    },
+    {
+      "from": "hsv/texture",
+      "to": "feedback/input",
+      "bridge": "hold"
+    },
+    {
+      "from": "feedback/texture",
+      "to": "vout/input",
+      "bridge": "last_sample"
+    }
   ]
 }
