@@ -22,13 +22,13 @@
   },
   "nodes": {
     "clock": {
-      "type": "Clock",
+      "type": "clock_au",
       "params": {
         "bpm": 60.0
       }
     },
     "env_freeze": {
-      "type": "Envelope",
+      "type": "envelope_au",
       "params": {
         "attack": 0.001,
         "decay": 0.01,
@@ -38,7 +38,7 @@
       }
     },
     "lfo_blend": {
-      "type": "LFO",
+      "type": "lfo_au",
       "params": {
         "frequency": 0.1,
         "amplitude": 0.5,

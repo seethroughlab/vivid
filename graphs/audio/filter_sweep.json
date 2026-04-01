@@ -22,13 +22,13 @@
   },
   "nodes": {
     "clock": {
-      "type": "Clock",
+      "type": "clock_au",
       "params": {
         "bpm": 130.0
       }
     },
     "env": {
-      "type": "Envelope",
+      "type": "envelope_au",
       "params": {
         "attack": 0.01,
         "decay": 0.3,

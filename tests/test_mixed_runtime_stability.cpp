@@ -129,7 +129,7 @@ int main(int argc, char* argv[]) {
     std::filesystem::create_directories(staging);
     std::filesystem::copy_file(build_dir + "/gpu_fill_op.dylib", staging + "/gpu_fill_op.dylib",
                                std::filesystem::copy_options::overwrite_existing);
-    std::filesystem::copy_file(build_dir + "/lfo.dylib", staging + "/lfo.dylib",
+    std::filesystem::copy_file(build_dir + "/lfo_fr.dylib", staging + "/lfo_fr.dylib",
                                std::filesystem::copy_options::overwrite_existing);
     std::filesystem::copy_file(build_dir + "/oscillator.dylib", staging + "/oscillator.dylib",
                                std::filesystem::copy_options::overwrite_existing);

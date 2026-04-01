@@ -3,7 +3,7 @@
   "vivid_version": "0.1.0",
   "nodes": {
     "clock1": {
-      "type": "Clock",
+      "type": "clock_fr",
       "params": {
         "beats_per_bar": 4.0,
         "bpm": 60.0
@@ -14,7 +14,7 @@
       }
     },
     "lfo1": {
-      "type": "LFO",
+      "type": "lfo_fr",
       "params": {
         "offset": 4.0,
         "amplitude": 2.0

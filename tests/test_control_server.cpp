@@ -139,8 +139,8 @@ int main(int argc, char* argv[]) {
     std::filesystem::copy_file(build_dir + "/test_op_bad_custom_type.dylib",
         staging + "/test_op_bad_custom_type.dylib",
         std::filesystem::copy_options::overwrite_existing);
-    std::filesystem::copy_file(build_dir + "/envelope.dylib",
-        staging + "/envelope.dylib",
+    std::filesystem::copy_file(build_dir + "/envelope_fr.dylib",
+        staging + "/envelope_fr.dylib",
         std::filesystem::copy_options::overwrite_existing);
 
     std::string abi_probe_dir = build_dir + "/.test_cs_abi_probe";
@@ -306,7 +306,7 @@ int main(int argc, char* argv[]) {
                "    static constexpr bool kTimeDependent = false;\n"
                "    void collect_params(std::vector<vivid::ParamBase*>&) override {}\n"
                "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n"
-               "        out.push_back({\"out\", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});\n"
+               "        out.push_back({\"out\", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});\n"
                "    }\n"
                "    void process_frame(const VividFrameContext* ctx) override {\n"
             << "        ctx->output_values[0] = " << std::to_string(output_value) << "f;\n"

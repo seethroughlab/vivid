@@ -37,7 +37,7 @@ int main(int argc, char* argv[]) {
     const std::string staging = build_dir + "/.test_audio_sequencer_staging";
     std::filesystem::remove_all(staging);
     std::filesystem::create_directories(staging);
-    std::filesystem::copy_file(build_dir + "/clock.dylib", staging + "/clock.dylib",
+    std::filesystem::copy_file(build_dir + "/clock_au.dylib", staging + "/clock_au.dylib",
                                std::filesystem::copy_options::overwrite_existing);
     std::filesystem::copy_file(build_dir + "/oscillator.dylib", staging + "/oscillator.dylib",
                                std::filesystem::copy_options::overwrite_existing);
@@ -49,18 +49,18 @@ int main(int argc, char* argv[]) {
     registry.scan_deferred(staging.c_str());
 
     // Verify operators loaded
-    check(registry.find("Clock") != nullptr, "Clock operator loaded");
+    check(registry.find("clock_au") != nullptr, "Clock operator loaded");
     check(registry.find("Oscillator") != nullptr, "Oscillator operator loaded");
     check(registry.find("Gain") != nullptr, "Gain operator loaded");
 
-    // Verify Clock is dual-cadence (audio-capable frame operator)
+    // Verify clock_au is audio-only
     {
-        auto* clock_loader = registry.find("Clock");
+        auto* clock_loader = registry.find("clock_au");
         if (clock_loader) {
             const auto* desc = clock_loader->descriptor();
-            check(desc->has_process_audio == 1, "Clock has process_audio");
-            check(desc->has_process_frame == 1, "Clock has process_frame");
-            check(desc->cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE, "Clock is audio-capable");
+            check(desc->has_process_audio == 1, "clock_au has process_audio");
+            check(desc->has_process_frame == 0, "clock_au has no process_frame");
+            check(desc->cadence_capability == VIVID_CADENCE_AUDIO_ONLY, "clock_au is audio-only");
         }
     }
 
@@ -74,7 +74,7 @@ int main(int argc, char* argv[]) {
             bool has_freq_cv = false;
             for (uint32_t i = 0; i < desc->port_count; ++i) {
                 if (std::string(desc->ports[i].name) == "freq_cv" &&
-                    desc->ports[i].type == VIVID_PORT_SIGNAL &&
+                    desc->ports[i].type == VIVID_PORT_SCALAR &&
                     desc->ports[i].direction == VIVID_PORT_INPUT) {
                     has_freq_cv = true;
                     break;
@@ -87,7 +87,7 @@ int main(int argc, char* argv[]) {
     // --- Build graph: Clock → Oscillator → Gain → audio_out ---
     const char* graph_json = R"({
         "nodes": {
-            "clock1": { "type": "Clock", "params": { "bpm": 120.0 } },
+            "clock1": { "type": "clock_au", "params": { "bpm": 120.0 } },
             "osc1": { "type": "Oscillator", "params": { "frequency": 440.0 } },
             "gain1": { "type": "Gain", "params": { "amplitude": 0.8 } },
             "aout": { "type": "audio_out", "params": {} }

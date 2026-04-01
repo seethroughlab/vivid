@@ -42,7 +42,7 @@
       }
     },
     "lfo1": {
-      "type": "LFO",
+      "type": "lfo_fr",
       "params": {
         "frequency": 0.15,
         "amplitude": 20.0,

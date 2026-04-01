@@ -40,7 +40,7 @@
       }
     },
     "lfo_hue": {
-      "type": "LFO",
+      "type": "lfo_fr",
       "params": {
         "frequency": 0.1,
         "amplitude": 180.0,

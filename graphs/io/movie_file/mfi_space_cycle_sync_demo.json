@@ -9,7 +9,7 @@
       }
     },
     "step": {
-      "type": "StepCounter",
+      "type": "step_counter_fr",
       "params": {
         "initial": 0.0
       }

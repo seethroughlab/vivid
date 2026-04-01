@@ -147,7 +147,7 @@
       }
     },
     "lfo_hue": {
-      "type": "LFO",
+      "type": "lfo_fr",
       "params": {
         "waveform": 1.0,
         "offset": 0.0,
@@ -156,7 +156,7 @@
       }
     },
     "lfo_rot": {
-      "type": "LFO",
+      "type": "lfo_fr",
       "params": {
         "waveform": 1.0,
         "offset": 0.0,
@@ -165,7 +165,7 @@
       }
     },
     "lfo_chroma": {
-      "type": "LFO",
+      "type": "lfo_fr",
       "params": {
         "offset": 0.004999999888241291,
         "amplitude": 0.009999999776482582,
@@ -173,7 +173,7 @@
       }
     },
     "lfo_pixel": {
-      "type": "LFO",
+      "type": "lfo_fr",
       "params": {
         "offset": 4.0,
         "amplitude": 4.0,

@@ -1,4 +1,4 @@
-// Tests for VIVID_PORT_SIGNAL: port type compatibility, per-sample audio output
+// Tests for VIVID_PORT_SCALAR: port type compatibility, per-sample audio output
 // correctness (LFO, Envelope), auto-extraction, and wire routing.
 
 #include "operator_api/types.h"
@@ -49,22 +49,22 @@ static void test_port_type_compat() {
     std::fprintf(stderr, "\n--- Port type compatibility ---\n");
 
     // SIGNAL is a control type
-    check(vivid_is_control_type(VIVID_PORT_SIGNAL), "SIGNAL is control type");
+    check(vivid_is_control_type(VIVID_PORT_SCALAR), "SIGNAL is control type");
 
     // Self-compatibility
-    check(vivid_port_type_compatible(VIVID_PORT_SIGNAL, VIVID_PORT_SIGNAL),
+    check(vivid_port_type_compatible(VIVID_PORT_SCALAR, VIVID_PORT_SCALAR),
           "SIGNAL ↔ SIGNAL compatible");
 
     // SIGNAL ↔ AUDIO cross-type compatibility
-    check(vivid_port_type_compatible(VIVID_PORT_SIGNAL, VIVID_PORT_AUDIO),
+    check(vivid_port_type_compatible(VIVID_PORT_SCALAR, VIVID_PORT_AUDIO_BUFFER),
           "SIGNAL → AUDIO compatible");
-    check(vivid_port_type_compatible(VIVID_PORT_AUDIO, VIVID_PORT_SIGNAL),
+    check(vivid_port_type_compatible(VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_SCALAR),
           "AUDIO → SIGNAL compatible");
 
     // Incompatible pairs (sanity)
-    check(!vivid_port_type_compatible(VIVID_PORT_SIGNAL, VIVID_PORT_TEXTURE),
+    check(!vivid_port_type_compatible(VIVID_PORT_SCALAR, VIVID_PORT_TEXTURE),
           "SIGNAL ↔ TEXTURE incompatible");
-    check(!vivid_port_type_compatible(VIVID_PORT_AUDIO, VIVID_PORT_LANE_ARRAY),
+    check(!vivid_port_type_compatible(VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_LANE_ARRAY),
           "AUDIO ↔ SPREAD incompatible");
 }
 
@@ -298,7 +298,7 @@ static void test_signal_auto_extraction() {
 
     vivid::CompiledNode cn;
     cn.output_port_count = 1;
-    cn.output_port_types.push_back(VIVID_PORT_SIGNAL);
+    cn.output_port_types.push_back(VIVID_PORT_SCALAR);
     cn.audio = std::make_unique<vivid::AudioNodeState>();
     auto& a = *cn.audio;
     a.buffers_out.resize(1, std::vector<float>(256, 0.0f));
@@ -358,7 +358,7 @@ static void test_audio_engine_integration(const std::string& build_dir) {
         return true;
     };
 
-    if (!try_copy("lfo.dylib") || !try_copy("audio_float_cv_op.dylib") ||
+    if (!try_copy("lfo_au.dylib") || !try_copy("audio_float_cv_op.dylib") ||
         !try_copy("test_op_v1.dylib")) {
         std::fprintf(stderr, "  SKIP: required dylibs not available\n");
         return;
@@ -370,7 +370,7 @@ static void test_audio_engine_integration(const std::string& build_dir) {
     // Build graph: LFO (SIGNAL output) → AudioFloatCvOp (SIGNAL input, AUDIO output)
     // Also: TestOp (control, for runtime to have a non-audio node)
     vivid::Graph graph;
-    graph.add_node("lfo", "LFO", {{"frequency", 10.0f}, {"amplitude", 1.0f},
+    graph.add_node("lfo", "lfo_au", {{"frequency", 10.0f}, {"amplitude", 1.0f},
                                     {"waveform", 0.0f}});
     graph.add_node("cv_dest", "AudioFloatCvOp", {});
     graph.add_node("ctrl", "TestOp", {{"scale", 1.0f}});

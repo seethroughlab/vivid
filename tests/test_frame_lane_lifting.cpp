@@ -55,8 +55,8 @@ int main(int argc, char* argv[]) {
     stage("lane_frame_op.dylib");
     stage("identity_lane_source_op.dylib");
     stage("repeat.dylib");
-    stage("envelope.dylib");
-    stage("lfo.dylib");
+    stage("envelope_fr.dylib");
+    stage("lfo_fr.dylib");
 
     std::fprintf(stderr, "\n=== test_frame_lane_lifting ===\n\n");
 
@@ -235,7 +235,7 @@ int main(int argc, char* argv[]) {
     {
         vivid::Graph graph;
         graph.add_node("rep", "Repeat", {{"count", 4.0f}});
-        graph.add_node("env", "Envelope", {{"attack", 0.01f}, {"decay", 0.1f},
+        graph.add_node("env", "envelope_fr", {{"attack", 0.01f}, {"decay", 0.1f},
                                             {"sustain", 0.7f}, {"release", 0.3f}});
         graph.add_node("sink", "LaneSinkOp");
         graph.add_connection("rep", "output", "env", "gate");
@@ -297,7 +297,7 @@ int main(int argc, char* argv[]) {
     {
         vivid::Graph graph;
         graph.add_node("rep", "Repeat", {{"count", 4.0f}});
-        graph.add_node("lfo", "LFO", {{"frequency", 1.0f}, {"amplitude", 1.0f}});
+        graph.add_node("lfo", "lfo_fr", {{"frequency", 1.0f}, {"amplitude", 1.0f}});
         graph.add_node("sink", "LaneSinkOp");
         graph.add_connection("rep", "output", "lfo", "gate");
         graph.add_connection("lfo", "value", "sink", "in");
@@ -341,7 +341,7 @@ int main(int argc, char* argv[]) {
         // Envelope scalar
         {
             vivid::Graph graph;
-            graph.add_node("env", "Envelope", {{"attack", 0.01f}});
+            graph.add_node("env", "envelope_fr", {{"attack", 0.01f}});
             graph.add_node("sink", "LaneSinkOp");
             graph.add_connection("env", "value", "sink", "in");
 
@@ -362,7 +362,7 @@ int main(int argc, char* argv[]) {
         // LFO scalar
         {
             vivid::Graph graph;
-            graph.add_node("lfo", "LFO", {{"frequency", 1.0f}, {"amplitude", 1.0f}});
+            graph.add_node("lfo", "lfo_fr", {{"frequency", 1.0f}, {"amplitude", 1.0f}});
             graph.add_node("sink", "LaneSinkOp");
             graph.add_connection("lfo", "value", "sink", "in");
 
@@ -392,7 +392,7 @@ int main(int argc, char* argv[]) {
     {
         vivid::Graph graph;
         graph.add_node("src", "LaneSourceOp", {{"base", 60.0f}, {"count", 4.0f}});
-        graph.add_node("env", "Envelope", {{"attack", 0.01f}, {"decay", 0.1f},
+        graph.add_node("env", "envelope_fr", {{"attack", 0.01f}, {"decay", 0.1f},
                                             {"sustain", 0.7f}, {"release", 0.3f},
                                             {"amplitude", 1.0f}});
         graph.add_node("sink", "LaneSinkOp");

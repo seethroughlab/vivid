@@ -336,7 +336,7 @@ int main() {
         // Load graph with midi_mappings in JSON
         std::string path = write_temp("midi_map", R"({
             "nodes": {
-                "lfo1": { "type": "LFO", "params": { "frequency": 2.0 } },
+                "lfo1": { "type": "lfo_fr", "params": { "frequency": 2.0 } },
                 "gain1": { "type": "Gain" }
             },
             "connections": [],
@@ -1236,7 +1236,7 @@ int main() {
         std::fprintf(stderr, "\n=== Test 31: save_to_string round-trip ===\n");
 
         vivid::Graph g1;
-        check(g1.add_node("a", "Clock", {{"bpm", 120.0f}}), "add node a");
+        check(g1.add_node("a", "clock_fr", {{"bpm", 120.0f}}), "add node a");
         check(g1.add_node("b", "Math", {{"scale", 2.0f}}), "add node b");
         check(g1.add_connection("a", "beat_phase", "b", "input"), "add connection");
         check(g1.add_midi_mapping("b", "scale", 12, 1, 0.0f, 2.0f), "add midi mapping");
@@ -1736,6 +1736,76 @@ int main() {
               "saved JSON has schema_version 2");
         vivid::Graph g2;
         check(g2.load_from_string(json.c_str(), json.size()), "reload schema v2 graph");
+    }
+
+    // =====================================================================
+    // Test: Connection bridge round-trip
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test: Connection bridge round-trip ===\n");
+        vivid::Graph g;
+        check(g.load_from_string(R"({
+            "nodes": {
+                "lfo": { "type": "lfo_fr" },
+                "osc": { "type": "Oscillator" }
+            },
+            "connections": [
+                { "from": "lfo/out", "to": "osc/freq", "bridge": "snapshot" }
+            ]
+        })"), "load graph with bridge");
+
+        check(g.connections().size() == 1, "1 connection loaded");
+        check(g.connections()[0].has_bridge(), "has_bridge() true");
+        check(g.connections()[0].bridge == "snapshot", "bridge == snapshot");
+
+        // Round-trip via string
+        std::string json;
+        check(g.save_to_string(json), "save with bridge");
+        check(json.find("\"bridge\"") != std::string::npos, "bridge key in saved JSON");
+        check(json.find("\"snapshot\"") != std::string::npos, "snapshot value in saved JSON");
+
+        vivid::Graph g2;
+        check(g2.load_from_string(json.c_str(), json.size()), "reload with bridge");
+        check(g2.connections().size() == 1, "1 connection after round-trip");
+        check(g2.connections()[0].bridge == "snapshot", "bridge survives round-trip");
+    }
+
+    // =====================================================================
+    // Test: Connection without bridge omits key
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test: Connection without bridge omits key ===\n");
+        vivid::Graph g;
+        g.add_node("a", "Foo");
+        g.add_node("b", "Bar");
+        g.add_connection("a", "out", "b", "in");
+
+        check(!g.connections()[0].has_bridge(), "no bridge on default connection");
+
+        std::string json;
+        check(g.save_to_string(json), "save without bridge");
+        check(json.find("\"bridge\"") == std::string::npos, "no bridge key in saved JSON");
+    }
+
+    // =====================================================================
+    // Test: Unknown bridge value round-trips as-is
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test: Unknown bridge value round-trips ===\n");
+        vivid::Graph g;
+        check(g.load_from_string(R"({
+            "nodes": { "a": { "type": "Foo" }, "b": { "type": "Bar" } },
+            "connections": [
+                { "from": "a/out", "to": "b/in", "bridge": "bogus" }
+            ]
+        })"), "load with unknown bridge");
+        check(g.connections()[0].bridge == "bogus", "unknown bridge preserved on load");
+
+        std::string json;
+        check(g.save_to_string(json), "save with unknown bridge");
+        vivid::Graph g2;
+        check(g2.load_from_string(json.c_str(), json.size()), "reload unknown bridge");
+        check(g2.connections()[0].bridge == "bogus", "unknown bridge survives round-trip");
     }
 
     // --- Cleanup temp files ---

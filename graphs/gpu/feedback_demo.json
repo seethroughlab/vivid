@@ -34,7 +34,7 @@
       ]
     },
     "lfo_rot": {
-      "type": "LFO",
+      "type": "lfo_fr",
       "params": {
         "frequency": 0.15,
         "amplitude": 3.14,
@@ -42,7 +42,7 @@
       }
     },
     "lfo_size": {
-      "type": "LFO",
+      "type": "lfo_fr",
       "params": {
         "frequency": 0.08,
         "amplitude": 0.1,

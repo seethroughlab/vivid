@@ -137,13 +137,13 @@ static void add_node(GraphSnapshot& snap, const std::shared_ptr<OperatorInfo>& o
 static GraphSnapshot make_editor_snapshot() {
     GraphSnapshot snap;
     auto lfo = make_op(
-        "LFO",
+        "lfo_fr",
         {
             ParamInfo{"frequency", VIVID_PARAM_FLOAT, 0.0f, 0.0f, 10.0f},
             ParamInfo{"amplitude", VIVID_PARAM_FLOAT, 0.0f, 0.0f, 1.0f},
         },
         {
-            PortInfo{"value", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT},
+            PortInfo{"value", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT},
         });
     auto math = make_op(
         "Math",
@@ -152,9 +152,9 @@ static GraphSnapshot make_editor_snapshot() {
             ParamInfo{"label", VIVID_PARAM_TEXT, 0.0f, 0.0f, 0.0f},
         },
         {
-            PortInfo{"a", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT},
-            PortInfo{"b", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT},
-            PortInfo{"value", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT},
+            PortInfo{"a", VIVID_PORT_SCALAR, VIVID_PORT_INPUT},
+            PortInfo{"b", VIVID_PORT_SCALAR, VIVID_PORT_INPUT},
+            PortInfo{"value", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT},
         });
 
     add_node(snap, lfo, "lfo1", 100.0f, 120.0f, {0.5f, 0.25f});
@@ -326,7 +326,7 @@ int main() {
         bool saw_lfo = false;
         bool saw_math = false;
         for (const auto& call : sink.add_calls) {
-            saw_lfo = saw_lfo || call.first == "LFO";
+            saw_lfo = saw_lfo || call.first == "lfo_fr";
             saw_math = saw_math || call.first == "Math";
         }
         check(saw_lfo && saw_math, "Paste preserves copied operator types");

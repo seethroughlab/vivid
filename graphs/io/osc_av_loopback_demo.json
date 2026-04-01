@@ -23,13 +23,13 @@
   },
   "nodes": {
     "clock1": {
-      "type": "Clock",
+      "type": "clock_fr",
       "params": {
         "bpm": 120.0
       }
     },
     "lfo1": {
-      "type": "LFO",
+      "type": "lfo_fr",
       "params": {
         "amplitude": 0.5,
         "offset": 0.5,

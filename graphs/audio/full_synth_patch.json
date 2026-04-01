@@ -21,14 +21,14 @@
   },
   "nodes": {
     "clock": {
-      "type": "Clock",
+      "type": "clock_au",
       "params": {
         "bpm": 128.0,
         "beats_per_bar": 4
       }
     },
     "env": {
-      "type": "Envelope",
+      "type": "envelope_au",
       "params": {
         "attack": 0.01,
         "decay": 0.2,
@@ -38,7 +38,7 @@
       }
     },
     "lfo": {
-      "type": "LFO",
+      "type": "lfo_au",
       "params": {
         "frequency": 0.3,
         "amplitude": 12.0,
@@ -46,7 +46,7 @@
       }
     },
     "smooth": {
-      "type": "Smooth",
+      "type": "smooth_au",
       "params": {
         "rise_time": 0.05,
         "fall_time": 0.05

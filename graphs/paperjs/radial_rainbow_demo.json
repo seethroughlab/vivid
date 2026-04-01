@@ -24,7 +24,7 @@
       }
     },
     "lfo_cx": {
-      "type": "LFO",
+      "type": "lfo_fr",
       "params": {
         "frequency": 0.07,
         "amplitude": 0.15,
@@ -33,7 +33,7 @@
       }
     },
     "lfo_cy": {
-      "type": "LFO",
+      "type": "lfo_fr",
       "params": {
         "frequency": 0.11,
         "amplitude": 0.15,

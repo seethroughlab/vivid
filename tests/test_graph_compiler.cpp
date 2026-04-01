@@ -261,14 +261,14 @@ static void test_mixed_real_and_missing(const std::string& build_dir) {
         if (std::filesystem::exists(src))
             std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing);
     };
-    stage("lfo.dylib");
+    stage("lfo_fr.dylib");
     stage("gain.dylib");
 
     vivid::OperatorRegistry registry;
     registry.scan_deferred(staging.c_str());
 
     vivid::Graph g;
-    g.add_node("lfo1", "LFO");
+    g.add_node("lfo1", "lfo_fr");
     g.add_node("mystery", "NonExistent");
     g.add_node("gain1", "Gain");
     g.add_connection("lfo1", "value", "mystery", "input");
@@ -344,7 +344,7 @@ static void test_lane_behavior_from_descriptor(const std::string& build_dir) {
             std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing);
     };
     stage("lane_source_op.dylib");
-    stage("lfo.dylib");
+    stage("lfo_fr.dylib");
 
     vivid::OperatorRegistry registry;
     registry.scan_deferred(staging.c_str());
@@ -352,7 +352,7 @@ static void test_lane_behavior_from_descriptor(const std::string& build_dir) {
     // Build a graph: LaneSourceOp → LFO (via param connection or port)
     vivid::Graph g;
     g.add_node("sn", "LaneSourceOp");
-    g.add_node("lfo1", "LFO");
+    g.add_node("lfo1", "lfo_fr");
 
     vivid::GraphCompiler::Options opts;
     auto cg = vivid::GraphCompiler::compile(g, registry, opts);
@@ -400,7 +400,7 @@ static void test_lane_mismatch_fails(const std::string& build_dir) {
             std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing);
     };
     stage("lane_source_op.dylib");
-    stage("lfo.dylib");
+    stage("lfo_fr.dylib");
 
     vivid::OperatorRegistry registry;
     registry.scan_deferred(staging.c_str());
@@ -411,7 +411,7 @@ static void test_lane_mismatch_fails(const std::string& build_dir) {
     vivid::Graph g;
     g.add_node("sn1", "LaneSourceOp");
     g.add_node("sn2", "LaneSourceOp");
-    g.add_node("lfo1", "LFO");
+    g.add_node("lfo1", "lfo_fr");
     g.add_connection("sn1", "out", "lfo1", "gate");
     g.add_connection("sn2", "out", "lfo1", "gate");
 
@@ -546,6 +546,142 @@ static void test_loop_based_strategy(const std::string& build_dir) {
 }
 
 // ---------------------------------------------------------------------------
+// Test: BridgeKind populated from connection bridge field
+// ---------------------------------------------------------------------------
+
+static void test_bridge_kind_from_connection() {
+    std::fprintf(stderr, "\n--- compile: bridge_kind from connection ---\n");
+
+    vivid::Graph g;
+    g.load_from_string(R"({
+        "nodes": {
+            "src": { "type": "UnknownSrc" },
+            "dst": { "type": "UnknownDst" }
+        },
+        "connections": [
+            { "from": "src/out", "to": "dst/in", "bridge": "hold" }
+        ]
+    })");
+
+    vivid::OperatorRegistry registry;
+    vivid::GraphCompiler::Options opts;
+
+    auto cg = vivid::GraphCompiler::compile(g, registry, opts);
+    check(cg != nullptr, "compiles with bridge");
+    if (cg) {
+        check(cg->edges.size() == 1, "1 edge");
+        check(cg->edges[0].bridge_kind == vivid::BridgeKind::Hold,
+              "bridge_kind == Hold");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Test: BridgeKind defaults to None without bridge field
+// ---------------------------------------------------------------------------
+
+static void test_bridge_kind_default_none() {
+    std::fprintf(stderr, "\n--- compile: bridge_kind defaults to None ---\n");
+
+    vivid::Graph g;
+    g.add_node("a", "UnknownA");
+    g.add_node("b", "UnknownB");
+    g.add_connection("a", "out", "b", "in");
+
+    vivid::OperatorRegistry registry;
+    vivid::GraphCompiler::Options opts;
+
+    auto cg = vivid::GraphCompiler::compile(g, registry, opts);
+    check(cg != nullptr, "compiles without bridge");
+    if (cg) {
+        check(cg->edges.size() == 1, "1 edge");
+        check(cg->edges[0].bridge_kind == vivid::BridgeKind::None,
+              "bridge_kind == None by default");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Test: All BridgeKind values parsed correctly
+// ---------------------------------------------------------------------------
+
+static void test_bridge_kind_all_values() {
+    std::fprintf(stderr, "\n--- compile: all BridgeKind values ---\n");
+
+    const char* json = R"({
+        "nodes": {
+            "a": { "type": "X" }, "b": { "type": "X" }, "c": { "type": "X" },
+            "d": { "type": "X" }, "e": { "type": "X" }, "f": { "type": "X" },
+            "g": { "type": "X" }
+        },
+        "connections": [
+            { "from": "a/out", "to": "b/in", "bridge": "hold" },
+            { "from": "a/out", "to": "c/in", "bridge": "snapshot" },
+            { "from": "a/out", "to": "d/in", "bridge": "last_sample" },
+            { "from": "a/out", "to": "e/in", "bridge": "rms" },
+            { "from": "a/out", "to": "f/in", "bridge": "peak" },
+            { "from": "a/out", "to": "g/in", "bridge": "waveform" }
+        ]
+    })";
+
+    vivid::Graph g;
+    g.load_from_string(json);
+
+    vivid::OperatorRegistry registry;
+    vivid::GraphCompiler::Options opts;
+
+    auto cg = vivid::GraphCompiler::compile(g, registry, opts);
+    check(cg != nullptr, "compiles with all bridge kinds");
+    if (cg && cg->edges.size() == 6) {
+        // Find edges by target node
+        auto find_edge = [&](const std::string& to_id) -> const vivid::CompiledEdge* {
+            auto* n = cg->find_node(to_id);
+            if (!n) return nullptr;
+            uint32_t ni = static_cast<uint32_t>(n - cg->nodes.data());
+            for (const auto& e : cg->edges)
+                if (e.to_node == ni) return &e;
+            return nullptr;
+        };
+        auto check_bk = [&](const std::string& to_id, vivid::BridgeKind expected, const char* label) {
+            auto* e = find_edge(to_id);
+            check(e && e->bridge_kind == expected, label);
+        };
+        check_bk("b", vivid::BridgeKind::Hold,       "hold parsed");
+        check_bk("c", vivid::BridgeKind::Snapshot,    "snapshot parsed");
+        check_bk("d", vivid::BridgeKind::LastSample,  "last_sample parsed");
+        check_bk("e", vivid::BridgeKind::Rms,         "rms parsed");
+        check_bk("f", vivid::BridgeKind::Peak,        "peak parsed");
+        check_bk("g", vivid::BridgeKind::Waveform,    "waveform parsed");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Test: Unknown bridge string maps to BridgeKind::None with warning
+// ---------------------------------------------------------------------------
+
+static void test_bridge_kind_unknown_warns() {
+    std::fprintf(stderr, "\n--- compile: unknown bridge kind warns ---\n");
+
+    vivid::Graph g;
+    g.load_from_string(R"({
+        "nodes": { "a": { "type": "X" }, "b": { "type": "X" } },
+        "connections": [
+            { "from": "a/out", "to": "b/in", "bridge": "lastsample" }
+        ]
+    })");
+
+    vivid::OperatorRegistry registry;
+    vivid::GraphCompiler::Options opts;
+
+    // The warning goes to stderr (visible in test output).
+    auto cg = vivid::GraphCompiler::compile(g, registry, opts);
+    check(cg != nullptr, "compiles despite unknown bridge");
+    if (cg) {
+        check(cg->edges.size() == 1, "1 edge");
+        check(cg->edges[0].bridge_kind == vivid::BridgeKind::None,
+              "unknown bridge maps to None");
+    }
+}
+
+// ---------------------------------------------------------------------------
 
 int main(int argc, char* argv[]) {
     std::string build_dir = ".";
@@ -566,6 +702,10 @@ int main(int argc, char* argv[]) {
     test_lane_mismatch_fails(build_dir);
     test_audio_lane_lift_from_lane_input(build_dir);
     test_loop_based_strategy(build_dir);
+    test_bridge_kind_from_connection();
+    test_bridge_kind_default_none();
+    test_bridge_kind_all_values();
+    test_bridge_kind_unknown_warns();
 
     std::fprintf(stderr, "\n%s (%d failures)\n", failures == 0 ? "PASSED" : "FAILED", failures);
     return failures > 0 ? 1 : 0;

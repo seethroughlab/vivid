@@ -20,7 +20,7 @@
       "resolution": [800, 600]
     },
     "lfo_left": {
-      "type": "LFO",
+      "type": "lfo_fr",
       "params": {
         "frequency": 0.08,
         "amplitude": 0.15,
@@ -28,7 +28,7 @@
       }
     },
     "lfo_right": {
-      "type": "LFO",
+      "type": "lfo_fr",
       "params": {
         "frequency": 0.06,
         "amplitude": 0.15,

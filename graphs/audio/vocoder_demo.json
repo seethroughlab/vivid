@@ -36,7 +36,7 @@
       }
     },
     "lfo_speed": {
-      "type": "LFO",
+      "type": "lfo_au",
       "params": {
         "frequency": 0.1,
         "amplitude": 20.0,

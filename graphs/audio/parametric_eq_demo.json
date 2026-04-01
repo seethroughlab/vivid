@@ -29,7 +29,7 @@
       }
     },
     "lfo": {
-      "type": "LFO",
+      "type": "lfo_au",
       "params": {
         "frequency": 0.12,
         "amplitude": 300.0,

@@ -39,7 +39,7 @@
       }
     },
     "lfo_levels": {
-      "type": "LFO",
+      "type": "lfo_fr",
       "params": {
         "frequency": 0.1,
         "amplitude": 6.0,

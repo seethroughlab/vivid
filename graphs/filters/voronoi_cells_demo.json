@@ -23,7 +23,7 @@
       }
     },
     "lfo_scale": {
-      "type": "LFO",
+      "type": "lfo_fr",
       "params": {
         "frequency": 0.1,
         "amplitude": 6.0,
@@ -32,7 +32,7 @@
       }
     },
     "lfo_speed": {
-      "type": "LFO",
+      "type": "lfo_fr",
       "params": {
         "frequency": 0.05,
         "amplitude": 1.5,

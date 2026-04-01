@@ -111,7 +111,7 @@ int main() {
     // Slider drag on a wide-range param (like Clock bpm 1–300)
     {
         auto clock_op = std::make_shared<OperatorInfo>();
-        clock_op->name = "Clock";
+        clock_op->name = "clock_fr";
         clock_op->params = {
             ParamInfo{"bpm", VIVID_PARAM_FLOAT, 120.0f, 1.0f, 300.0f},
             ParamInfo{"beats_per_bar", VIVID_PARAM_INT, 4.0f, 1.0f, 16.0f},
@@ -119,7 +119,7 @@ int main() {
         GraphSnapshot clock_snap;
         NodeSnapshot cn;
         cn.node_id = "clock1";
-        cn.type_name = "Clock";
+        cn.type_name = "clock_fr";
         cn.active_cadence = vivid::Cadence::Audio;
         cn.has_layout = true;
         cn.layout_x = 120.0f;
@@ -154,7 +154,7 @@ int main() {
     // Slider drag on an int param (like Clock beats_per_bar 1–16)
     {
         auto clock_op = std::make_shared<OperatorInfo>();
-        clock_op->name = "Clock";
+        clock_op->name = "clock_fr";
         clock_op->params = {
             ParamInfo{"bpm", VIVID_PARAM_FLOAT, 120.0f, 1.0f, 300.0f},
             ParamInfo{"beats_per_bar", VIVID_PARAM_INT, 4.0f, 1.0f, 16.0f},
@@ -162,7 +162,7 @@ int main() {
         GraphSnapshot clock_snap;
         NodeSnapshot cn;
         cn.node_id = "clock1";
-        cn.type_name = "Clock";
+        cn.type_name = "clock_fr";
         cn.active_cadence = vivid::Cadence::Audio;
         cn.has_layout = true;
         cn.layout_x = 120.0f;

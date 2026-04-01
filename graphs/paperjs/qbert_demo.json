@@ -16,7 +16,7 @@
             }
         },
         "lfo_size": {
-            "type": "LFO",
+            "type": "lfo_fr",
             "params": {
                 "waveform": 0.0,
                 "offset": 30.0,

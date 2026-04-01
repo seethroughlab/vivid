@@ -25,13 +25,13 @@
   },
   "nodes": {
     "clock": {
-      "type": "Clock",
+      "type": "clock_au",
       "params": {
         "bpm": 120.0
       }
     },
     "lfo": {
-      "type": "LFO",
+      "type": "lfo_au",
       "params": {
         "frequency": 0.3,
         "amplitude": 3.0,
@@ -39,7 +39,7 @@
       }
     },
     "env_amp": {
-      "type": "Envelope",
+      "type": "envelope_au",
       "params": {
         "attack": 0.005,
         "decay": 0.2,
@@ -49,7 +49,7 @@
       }
     },
     "env_filter": {
-      "type": "Envelope",
+      "type": "envelope_au",
       "params": {
         "attack": 0.005,
         "decay": 0.2,
@@ -99,7 +99,7 @@
       "params": {}
     },
     "lfo_hue": {
-      "type": "LFO",
+      "type": "lfo_au",
       "params": {
         "frequency": 0.05,
         "amplitude": 180.0,

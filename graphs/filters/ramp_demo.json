@@ -35,7 +35,7 @@
       ]
     },
     "lfo_hue": {
-      "type": "LFO",
+      "type": "lfo_fr",
       "params": {
         "frequency": 0.06,
         "amplitude": 0.5,
@@ -43,7 +43,7 @@
       }
     },
     "lfo_angle": {
-      "type": "LFO",
+      "type": "lfo_fr",
       "params": {
         "frequency": 0.04,
         "amplitude": 180.0,

@@ -20,20 +20,20 @@
   },
   "nodes": {
     "clock1": {
-      "type": "Clock",
+      "type": "clock_fr",
       "params": {
         "bpm": 120.0
       }
     },
     "lfo_vis": {
-      "type": "LFO",
+      "type": "lfo_fr",
       "params": {
         "amplitude": 3.0,
         "offset": 5.0
       }
     },
     "lfo_aud": {
-      "type": "LFO",
+      "type": "lfo_fr",
       "params": {
         "amplitude": 100.0,
         "offset": 330.0

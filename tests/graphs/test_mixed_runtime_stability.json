@@ -1,6 +1,6 @@
 {
   "nodes": {
-    "lfo":  { "type": "LFO", "params": { "frequency": 0.75, "amplitude": 0.5, "offset": 0.5, "waveform": 0.0 } },
+    "lfo":  { "type": "lfo_fr", "params": { "frequency": 0.75, "amplitude": 0.5, "offset": 0.5, "waveform": 0.0 } },
     "osc":  { "type": "Oscillator", "params": { "frequency": 220.0, "amplitude": 0.2, "waveform": 0.0 } },
     "fill": { "type": "GpuFillOp", "params": { "r": 0.5, "g": 0.2, "b": 0.8 }, "tex_width": 64, "tex_height": 64 },
     "aout": { "type": "audio_out", "params": { "device": 0.0 } }
