@@ -54,6 +54,9 @@ int main(int argc, char* argv[]) {
     stage("lane_sink_op.dylib");
     stage("lane_frame_op.dylib");
     stage("identity_lane_source_op.dylib");
+    stage("repeat.dylib");
+    stage("envelope.dylib");
+    stage("lfo.dylib");
 
     std::fprintf(stderr, "\n=== test_frame_lane_lifting ===\n\n");
 
@@ -219,6 +222,162 @@ int main(int argc, char* argv[]) {
                 check_float(sp[2], 80.0f, 0.01f,
                             "pos 2 (id=103): 80 (40+40), NOT 70");
             }
+        }
+    }
+
+    // --- Test 5: Envelope frame LoopBased parity across identical lanes ---
+    // Repeat(input=1.0, count=4) → Envelope(gate) → LaneSinkOp
+    // All 4 lanes receive the same gate=1.0 input. Under correct LoopBased
+    // lifting with per-lane state, all lanes must produce identical envelope values.
+    // The old shared frame_state_ bug caused lane N to advance the ADSR N extra
+    // times per tick (cross-lane contamination).
+    std::fprintf(stderr, "\n--- Envelope frame LoopBased parity across identical lanes ---\n");
+    {
+        vivid::Graph graph;
+        graph.add_node("rep", "Repeat", {{"count", 4.0f}});
+        graph.add_node("env", "Envelope", {{"attack", 0.01f}, {"decay", 0.1f},
+                                            {"sustain", 0.7f}, {"release", 0.3f}});
+        graph.add_node("sink", "LaneSinkOp");
+        graph.add_connection("rep", "output", "env", "gate");
+        graph.add_connection("env", "value", "sink", "in");
+
+        vivid::RuntimeCore runtime;
+        check(runtime.build(graph, registry), "runtime.build() [Envelope parity]");
+
+        auto* env_node = runtime.compiled_graph()->find_node("env");
+        check(env_node != nullptr, "env node found");
+        if (env_node) {
+            check(env_node->frame_execution_strategy == vivid::LaneExecutionStrategy::LoopBased,
+                  "Envelope assigned LoopBased frame strategy");
+        }
+
+        auto* rep_node = runtime.compiled_graph()->find_node("rep");
+
+        // Tick 10 frames and verify all lanes are equal on each tick
+        bool parity_ok = true;
+        for (int t = 0; t < 10; ++t) {
+            // Drive Repeat's input port to 1.0 (gate high) via bridge values.
+            // bridge_input_dirty is consumed each frame, so re-set every tick.
+            if (rep_node && !rep_node->bridge_input_values.empty()) {
+                rep_node->bridge_input_values[0] = 1.0f;
+                rep_node->bridge_input_dirty[0] = 1;
+            }
+            runtime.tick(t * (1.0 / 60.0), 1.0 / 60.0, t);
+
+            auto* sink = runtime.compiled_graph()->find_node("sink");
+            if (sink && !sink->output_lanes.empty()) {
+                const auto& sp = sink->output_lanes[0];
+                if (sp.size() == 4) {
+                    for (int i = 1; i < 4; ++i) {
+                        if (std::fabs(sp[i] - sp[0]) > 0.001f) {
+                            std::fprintf(stderr, "  FAIL: tick %d lane %d (%.4f) != lane 0 (%.4f)\n",
+                                         t, i, sp[i], sp[0]);
+                            parity_ok = false;
+                        }
+                    }
+                }
+            }
+        }
+        check(parity_ok, "all Envelope lanes equal across 10 ticks");
+
+        // Verify envelope is actually doing something (not stuck at 0)
+        auto* sink_final = runtime.compiled_graph()->find_node("sink");
+        if (sink_final && !sink_final->output_lanes.empty() && !sink_final->output_lanes[0].empty()) {
+            check(sink_final->output_lanes[0][0] > 0.001f,
+                  "Envelope output is non-zero (envelope is active)");
+        }
+    }
+
+    // --- Test 6: LFO frame LoopBased parity across identical lanes ---
+    // Repeat(input=0.0, count=4) → LFO(gate) → LaneSinkOp
+    // All 4 lanes receive the same input. Under correct LoopBased lifting,
+    // all lanes must produce identical LFO values (free-running sine).
+    // The old shared frame_state_ bug caused free_phase to advance 4x per tick.
+    std::fprintf(stderr, "\n--- LFO frame LoopBased parity across identical lanes ---\n");
+    {
+        vivid::Graph graph;
+        graph.add_node("rep", "Repeat", {{"count", 4.0f}});
+        graph.add_node("lfo", "LFO", {{"frequency", 1.0f}, {"amplitude", 1.0f}});
+        graph.add_node("sink", "LaneSinkOp");
+        graph.add_connection("rep", "output", "lfo", "gate");
+        graph.add_connection("lfo", "value", "sink", "in");
+
+        vivid::RuntimeCore runtime;
+        check(runtime.build(graph, registry), "runtime.build() [LFO parity]");
+
+        auto* lfo_node = runtime.compiled_graph()->find_node("lfo");
+        check(lfo_node != nullptr, "lfo node found");
+        if (lfo_node) {
+            check(lfo_node->frame_execution_strategy == vivid::LaneExecutionStrategy::LoopBased,
+                  "LFO assigned LoopBased frame strategy");
+        }
+
+        bool parity_ok = true;
+        for (int t = 0; t < 10; ++t) {
+            runtime.tick(t * (1.0 / 60.0), 1.0 / 60.0, t);
+
+            auto* sink = runtime.compiled_graph()->find_node("sink");
+            if (sink && !sink->output_lanes.empty()) {
+                const auto& sp = sink->output_lanes[0];
+                if (sp.size() == 4) {
+                    for (int i = 1; i < 4; ++i) {
+                        if (std::fabs(sp[i] - sp[0]) > 0.001f) {
+                            std::fprintf(stderr, "  FAIL: tick %d lane %d (%.4f) != lane 0 (%.4f)\n",
+                                         t, i, sp[i], sp[0]);
+                            parity_ok = false;
+                        }
+                    }
+                }
+            }
+        }
+        check(parity_ok, "all LFO lanes equal across 10 ticks");
+    }
+
+    // --- Test 7: Scalar fallback unchanged ---
+    // Envelope and LFO with no lane-array inputs should NOT get LoopBased
+    // and should still produce output normally.
+    std::fprintf(stderr, "\n--- scalar fallback unchanged ---\n");
+    {
+        // Envelope scalar
+        {
+            vivid::Graph graph;
+            graph.add_node("env", "Envelope", {{"attack", 0.01f}});
+            graph.add_node("sink", "LaneSinkOp");
+            graph.add_connection("env", "value", "sink", "in");
+
+            vivid::RuntimeCore runtime;
+            check(runtime.build(graph, registry), "runtime.build() [Envelope scalar]");
+
+            auto* env_node = runtime.compiled_graph()->find_node("env");
+            if (env_node) {
+                check(env_node->frame_execution_strategy != vivid::LaneExecutionStrategy::LoopBased,
+                      "scalar Envelope is NOT LoopBased");
+            }
+
+            runtime.tick(0.0, 1.0 / 60.0, 0);
+            // Just verify no crash — scalar envelope with no gate stays at 0 (IDLE)
+            check(true, "scalar Envelope ticked without crash");
+        }
+
+        // LFO scalar
+        {
+            vivid::Graph graph;
+            graph.add_node("lfo", "LFO", {{"frequency", 1.0f}, {"amplitude", 1.0f}});
+            graph.add_node("sink", "LaneSinkOp");
+            graph.add_connection("lfo", "value", "sink", "in");
+
+            vivid::RuntimeCore runtime;
+            check(runtime.build(graph, registry), "runtime.build() [LFO scalar]");
+
+            auto* lfo_node = runtime.compiled_graph()->find_node("lfo");
+            if (lfo_node) {
+                check(lfo_node->frame_execution_strategy != vivid::LaneExecutionStrategy::LoopBased,
+                      "scalar LFO is NOT LoopBased");
+            }
+
+            runtime.tick(0.0, 1.0 / 60.0, 0);
+            runtime.tick(1.0 / 60.0, 1.0 / 60.0, 1);
+            check(true, "scalar LFO ticked without crash");
         }
     }
 

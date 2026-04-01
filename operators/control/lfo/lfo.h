@@ -50,9 +50,10 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
     vivid::Param<int>   distribution {"distribution",  0, {"uniform", "gaussian"}};
     vivid::Param<int>   seed         {"seed",          0, 0, 99999};
 
-    // Per-lane persistent state (used by vivid_lane_state in audio path,
-    // and as member state in frame path until Phase C frame lifting).
-    struct AudioState {
+    // Per-lane persistent state for both frame and audio execution.
+    // Sourced via vivid_lane_state() when lane-state services are active;
+    // scalar_state_ is the fallback for non-lifted scalar execution only.
+    struct LaneState {
         double free_phase = 0.0;
         double prev_phase = 0.0;
         float sh_value    = 0.0f;
@@ -67,8 +68,7 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
         int   prev_seed    = 0;
     };
 
-    // Member state for frame-rate path (Phase C will migrate this too)
-    AudioState frame_state_;
+    LaneState scalar_state_;
 
     LFO() {
         vivid::semantic_tag(frequency, "frequency_hz");
@@ -133,17 +133,17 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
 
     // ── Shared helpers ──────────────────────────────────────────────────
 
-    static float lcg_random_uniform(AudioState& s) {
+    static float lcg_random_uniform(LaneState& s) {
         s.noise_seed = s.noise_seed * 1664525u + 1013904223u;
         return static_cast<float>(static_cast<int32_t>(s.noise_seed)) / 2147483648.0f;
     }
 
-    static uint32_t lcg_raw(AudioState& s) {
+    static uint32_t lcg_raw(LaneState& s) {
         s.noise_seed = s.noise_seed * 1664525u + 1013904223u;
         return s.noise_seed;
     }
 
-    static float lcg_random_gaussian(AudioState& s) {
+    static float lcg_random_gaussian(LaneState& s) {
         float u1 = (static_cast<float>(lcg_raw(s)) + 1.0f) / 4294967296.0f;
         float u2 = static_cast<float>(lcg_raw(s)) / 4294967295.0f;
         float z = std::sqrt(-2.0f * std::log(u1)) * std::cos(6.2831853f * u2);
@@ -151,7 +151,7 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
         return std::max(-1.0f, std::min(1.0f, z));
     }
 
-    static float lcg_random(AudioState& s, int dist) {
+    static float lcg_random(LaneState& s, int dist) {
         if (dist == 1)
             return lcg_random_gaussian(s);
         return lcg_random_uniform(s);
@@ -166,7 +166,7 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
 
     // Advance phase by dt seconds, apply gate/fade tracking.
     // Returns the computed output value for one time step.
-    static float compute_one_sample(AudioState& st, float freq, float amp, float off,
+    static float compute_one_sample(LaneState& st, float freq, float amp, float off,
                                     int wf, int rm, int pol, int dist, int seed_val,
                                     float ph_off, float fade, float gate_in, float phase_in,
                                     double dt, float slew_amt) {
@@ -273,17 +273,21 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
         float off      = ctx->param_values[4];  // offset
         float slew_amt = ctx->param_values[8];  // slew
 
+        LaneState& s = ctx->lane_state_fn
+            ? *vivid_lane_state(ctx, ctx->lane_id, LaneState)
+            : scalar_state_;
+
         ctx->output_values[0] = compute_one_sample(
-            frame_state_, freq, amp, off, wf, rm, pol, dist, sv,
+            s, freq, amp, off, wf, rm, pol, dist, sv,
             ph_off, fade, gate_in, phase_in, dt, slew_amt);
     }
 
     // ── Audio-rate processing (~48 kHz) ─────────────────────────────────
 
     void process_audio(const VividAudioContext* ctx) override {
-        AudioState& s = ctx->lane_state_fn
-            ? *vivid_lane_state(ctx, ctx->lane_id, AudioState)
-            : frame_state_;
+        LaneState& s = ctx->lane_state_fn
+            ? *vivid_lane_state(ctx, ctx->lane_id, LaneState)
+            : scalar_state_;
 
         float gate_in  = ctx->input_float_values[0];
         float phase_in = ctx->input_float_values[1];

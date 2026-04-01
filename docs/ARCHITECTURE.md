@@ -259,6 +259,8 @@ Not every lane set needs identity semantics. Vivid distinguishes between:
 
 Identity-bearing lane sets are what make polyphonic voices, persistent simulations, and other stateful pointwise systems behave correctly. Reordering or compaction may change positional index, but stable `lane_id` is what preserves per-lane state.
 
+**Dual-cadence operator rule:** If a dual-cadence operator (both `FrameProcessable` and `AudioProcessable`) declares `kStrategyIndependent = true`, all per-lane persistent state must be sourced through `vivid_lane_state()` in both `process_frame` and `process_audio` when `ctx->lane_state_fn` is present. Any member state in such an operator is a scalar fallback only and must not be used when lane-state services are active.
+
 ### 5.9.5 Capability Differences, Not Model Differences
 
 Float lanes and string lanes are both first-class lane-bearing values.

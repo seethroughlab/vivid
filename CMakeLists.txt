@@ -1864,7 +1864,7 @@ add_executable(test_frame_lane_lifting
 target_include_directories(test_frame_lane_lifting PRIVATE src)
 target_link_libraries(test_frame_lane_lifting PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json webgpu)
-add_dependencies(test_frame_lane_lifting lane_source_op lane_sink_op lane_frame_op identity_lane_source_op)
+add_dependencies(test_frame_lane_lifting lane_source_op lane_sink_op lane_frame_op identity_lane_source_op repeat envelope lfo)
 add_test(NAME test_frame_lane_lifting COMMAND test_frame_lane_lifting WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_lane_breadth

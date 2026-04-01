@@ -34,9 +34,10 @@ struct Envelope : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProc
 
     enum Stage : uint8_t { IDLE, ATTACK, DECAY, SUSTAIN, RELEASE };
 
-    // Per-lane persistent state (used by vivid_lane_state in audio path,
-    // and as member state in frame path until Phase C frame lifting).
-    struct AudioState {
+    // Per-lane persistent state for both frame and audio execution.
+    // Sourced via vivid_lane_state() when lane-state services are active;
+    // scalar_state_ is the fallback for non-lifted scalar execution only.
+    struct LaneState {
         Stage stage        = IDLE;
         float env_value    = 0.0f;
         float env_progress = 0.0f;
@@ -46,8 +47,7 @@ struct Envelope : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProc
         bool  gate_ever_on = false;
     };
 
-    // Member state for frame-rate path (Phase C will migrate this too)
-    AudioState frame_state_;
+    LaneState scalar_state_;
 
     Envelope() {
         vivid::semantic_tag(attack, "time_seconds");
@@ -138,7 +138,7 @@ struct Envelope : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProc
     // Gate/phase trigger detection and state transitions are handled here.
     // Returns the final output value (env_value * amp + off).
 
-    static void advance_triggers(AudioState& s, float gate_in, float phase_in) {
+    static void advance_triggers(LaneState& s, float gate_in, float phase_in) {
         bool gate_on = gate_in > 0.5f;
         if (gate_on) s.gate_ever_on = true;
 
@@ -161,7 +161,7 @@ struct Envelope : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProc
         }
     }
 
-    static void advance_adsr(AudioState& s, float dt, float atk, float dec, float sus, float rel, int c) {
+    static void advance_adsr(LaneState& s, float dt, float atk, float dec, float sus, float rel, int c) {
         s.env_progress += dt;
 
         switch (s.stage) {
@@ -250,18 +250,22 @@ struct Envelope : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProc
         float off = ctx->param_values[5];
         int   c   = static_cast<int>(ctx->param_values[6]);
 
-        advance_triggers(frame_state_, gate_in, phase_in);
-        advance_adsr(frame_state_, dt, atk, dec, sus, rel, c);
+        LaneState& s = ctx->lane_state_fn
+            ? *vivid_lane_state(ctx, ctx->lane_id, LaneState)
+            : scalar_state_;
 
-        ctx->output_values[0] = frame_state_.env_value * amp + off;
+        advance_triggers(s, gate_in, phase_in);
+        advance_adsr(s, dt, atk, dec, sus, rel, c);
+
+        ctx->output_values[0] = s.env_value * amp + off;
     }
 
     // ── Audio-rate processing (~48 kHz) ─────────────────────────────────
 
     void process_audio(const VividAudioContext* ctx) override {
-        AudioState& s = ctx->lane_state_fn
-            ? *vivid_lane_state(ctx, ctx->lane_id, AudioState)
-            : frame_state_;
+        LaneState& s = ctx->lane_state_fn
+            ? *vivid_lane_state(ctx, ctx->lane_id, LaneState)
+            : scalar_state_;
 
         float gate_in  = ctx->input_float_values[0];
         float phase_in = ctx->input_float_values[1];
