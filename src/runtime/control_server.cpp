@@ -93,7 +93,7 @@ static const char* port_type_str(VividPortType t) {
         case VIVID_PORT_AUDIO:         return "audio";
         case VIVID_PORT_LANE_ARRAY:        return "lane_array";
         case VIVID_PORT_STRING:        return "string";
-        case VIVID_PORT_STRING_SPREAD: return "string_spread";
+        case VIVID_PORT_STRING_LANES: return "string_lanes";
         case VIVID_PORT_TEXTURE:       return "texture";
         default:
             if (vivid_is_custom_port_type(t)) return "custom";
@@ -107,7 +107,7 @@ static const char* transport_str(VividPortTransport t) {
         case VIVID_PORT_TRANSPORT_AUDIO_BUFFER:  return "audio_buffer";
         case VIVID_PORT_TRANSPORT_LANE_ARRAY:        return "lane_array";
         case VIVID_PORT_TRANSPORT_STRING:        return "string";
-        case VIVID_PORT_TRANSPORT_STRING_SPREAD: return "string_spread";
+        case VIVID_PORT_TRANSPORT_STRING_LANES: return "string_lanes";
         case VIVID_PORT_TRANSPORT_TEXTURE:       return "texture";
         case VIVID_PORT_TRANSPORT_CUSTOM_VALUE:  return "custom_value";
         case VIVID_PORT_TRANSPORT_CUSTOM_REF:    return "custom_ref";
@@ -380,7 +380,7 @@ static std::string handle_inspect_graph(Graph& graph, RuntimeCore& core) {
                         nlohmann::json lane_arr = nlohmann::json::array();
                         for (const auto& sv : ns->output_string_lanes[oi->second])
                             lane_arr.push_back(sv);
-                        p["string_spread"] = std::move(lane_arr);
+                        p["string_lanes"] = std::move(lane_arr);
                     }
                 }
 
@@ -409,7 +409,7 @@ static std::string handle_inspect_graph(Graph& graph, RuntimeCore& core) {
                         nlohmann::json lane_arr = nlohmann::json::array();
                         for (const auto& sv : ns->input_string_lanes[ii->second])
                             lane_arr.push_back(sv);
-                        p["string_spread"] = std::move(lane_arr);
+                        p["string_lanes"] = std::move(lane_arr);
                     }
                 }
 
@@ -556,7 +556,7 @@ static nlohmann::json sample_node_outputs_snapshot(const CompiledNode& ns,
                 for (const auto& sv : ns.output_string_lanes[oi]) {
                     lane_arr.push_back(sv);
                 }
-                out["string_spread"] = std::move(lane_arr);
+                out["string_lanes"] = std::move(lane_arr);
             }
         }
 
@@ -787,7 +787,7 @@ static std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core) {
                         in["lane_array"] = nlohmann::json{{"length", static_cast<int64_t>(ns.input_lanes[ii].size())}};
                     }
                     if (ii < ns.input_string_lanes.size()) {
-                        in["string_spread"] = nlohmann::json{{"length", static_cast<int64_t>(ns.input_string_lanes[ii].size())}};
+                        in["string_lanes"] = nlohmann::json{{"length", static_cast<int64_t>(ns.input_string_lanes[ii].size())}};
                     }
                 }
                 inputs_arr.push_back(std::move(in));
@@ -827,7 +827,7 @@ static std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core) {
                         out["lane_array"] = nlohmann::json{{"length", static_cast<int64_t>(ns.output_lanes[oi].size())}};
                     }
                     if (oi < ns.output_string_lanes.size()) {
-                        out["string_spread"] = nlohmann::json{{"length", static_cast<int64_t>(ns.output_string_lanes[oi].size())}};
+                        out["string_lanes"] = nlohmann::json{{"length", static_cast<int64_t>(ns.output_string_lanes[oi].size())}};
                     }
                 }
 
@@ -2318,7 +2318,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     else if (type_str == "bool")          out = VIVID_PORT_SIGNAL;
                     else if (type_str == "lane_array")        out = VIVID_PORT_LANE_ARRAY;
                     else if (type_str == "string")        out = VIVID_PORT_STRING;
-                    else if (type_str == "string_spread") out = VIVID_PORT_STRING_SPREAD;
+                    else if (type_str == "string_lanes") out = VIVID_PORT_STRING_LANES;
                     else return "unknown control port type '" + type_str + "'";
                 } else if (k == VIVID_OP_AUDIO) {
                     if (type_str == "float") out = VIVID_PORT_AUDIO;

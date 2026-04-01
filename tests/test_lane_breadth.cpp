@@ -49,8 +49,8 @@ int main(int argc, char* argv[]) {
         if (std::filesystem::exists(src))
             std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing);
     };
-    stage("spread_source_op.dylib");
-    stage("spread_sink_op.dylib");
+    stage("lane_source_op.dylib");
+    stage("lane_sink_op.dylib");
     stage("lane_frame_op.dylib");
     stage("fft_analysis.dylib");
     stage("repeat.dylib");
@@ -64,9 +64,9 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- large-count frame lifting: 256 lanes ---\n");
     {
         vivid::Graph graph;
-        graph.add_node("src", "SpreadSourceOp", {{"base", 1.0f}, {"count", 256.0f}});
+        graph.add_node("src", "LaneSourceOp", {{"base", 1.0f}, {"count", 256.0f}});
         graph.add_node("op", "LaneFrameOp");
-        graph.add_node("sink", "SpreadSinkOp");
+        graph.add_node("sink", "LaneSinkOp");
         graph.add_connection("src", "out", "op", "input");
         graph.add_connection("op", "output", "sink", "in");
 
@@ -103,9 +103,9 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- large-count frame lifting: 512 lanes ---\n");
     {
         vivid::Graph graph;
-        graph.add_node("src", "SpreadSourceOp", {{"base", 0.1f}, {"count", 512.0f}});
+        graph.add_node("src", "LaneSourceOp", {{"base", 0.1f}, {"count", 512.0f}});
         graph.add_node("op", "LaneFrameOp");
-        graph.add_node("sink", "SpreadSinkOp");
+        graph.add_node("sink", "LaneSinkOp");
         graph.add_connection("src", "out", "op", "input");
         graph.add_connection("op", "output", "sink", "in");
 
@@ -138,13 +138,13 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- FFT-derived per-bin lane processing ---\n");
     {
         vivid::Graph graph;
-        // Produce constant waveform: SpreadSourceOp(base=1, count=1) outputs scalar 1.0
+        // Produce constant waveform: LaneSourceOp(base=1, count=1) outputs scalar 1.0
         // Repeat(count=1024) broadcasts to 1024-element spread
-        graph.add_node("scalar", "SpreadSourceOp", {{"base", 1.0f}, {"count", 1.0f}});
+        graph.add_node("scalar", "LaneSourceOp", {{"base", 1.0f}, {"count", 1.0f}});
         graph.add_node("wave", "Repeat", {{"count", 1024.0f}});
         graph.add_node("fft", "FFTAnalysis", {{"fft_size", 1024.0f}, {"window", 0.0f}});
         graph.add_node("op", "LaneFrameOp");
-        graph.add_node("sink", "SpreadSinkOp");
+        graph.add_node("sink", "LaneSinkOp");
         graph.add_connection("scalar", "out", "wave", "input");
         graph.add_connection("wave", "output", "fft", "waveform");
         graph.add_connection("fft", "spectrum", "op", "input");

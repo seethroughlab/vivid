@@ -45,7 +45,7 @@ int main() {
         std::filesystem::copy_options::overwrite_existing);
     std::filesystem::copy_file("control_pass_op.dylib", staging + "/control_pass_op.dylib",
         std::filesystem::copy_options::overwrite_existing);
-    std::filesystem::copy_file("spread_source_op.dylib", staging + "/spread_source_op.dylib",
+    std::filesystem::copy_file("lane_source_op.dylib", staging + "/lane_source_op.dylib",
         std::filesystem::copy_options::overwrite_existing);
     std::filesystem::copy_file("audio_test_op.dylib", staging + "/audio_test_op.dylib",
         std::filesystem::copy_options::overwrite_existing);
@@ -54,7 +54,7 @@ int main() {
     check(registry.scan(staging.c_str()), "registry.scan() succeeds");
     check(registry.find("TestOp") != nullptr, "TestOp registered");
     check(registry.find("ControlPassOp") != nullptr, "ControlPassOp registered");
-    check(registry.find("SpreadSourceOp") != nullptr, "SpreadSourceOp registered");
+    check(registry.find("LaneSourceOp") != nullptr, "LaneSourceOp registered");
     check(registry.find("AudioTestOp") != nullptr, "AudioTestOp registered");
 
     // =====================================================================
@@ -224,14 +224,14 @@ int main() {
 
     // =====================================================================
     // Test 6: Spread propagation
-    // SpreadSourceOp(base=1,count=4) → ControlPassOp(gain=2)
+    // LaneSourceOp(base=1,count=4) → ControlPassOp(gain=2)
     // Source: scalar=1, spread=[1,2,3,4]
     // Pass: scalar=1*2=2, spread=[2,4,6,8]
     // =====================================================================
     {
         std::fprintf(stderr, "\n=== Test 6: Spread propagation ===\n");
         vivid::Graph g;
-        g.add_node("src", "SpreadSourceOp", {{"base", 1.0f}, {"count", 4.0f}});
+        g.add_node("src", "LaneSourceOp", {{"base", 1.0f}, {"count", 4.0f}});
         g.add_node("pass", "ControlPassOp", {{"gain", 2.0f}});
         g.add_connection("src", "out", "pass", "in");
 

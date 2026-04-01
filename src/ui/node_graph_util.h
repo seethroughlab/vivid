@@ -195,7 +195,7 @@ inline const std::vector<PortTypeEntry>& port_types_for_env(int env_sel) {
         {"float",         VIVID_PORT_SIGNAL},
         {"lane_array",    VIVID_PORT_LANE_ARRAY},
         {"string",        VIVID_PORT_STRING},
-        {"string_spread", VIVID_PORT_STRING_SPREAD},
+        {"string_lanes", VIVID_PORT_STRING_LANES},
     };
     static const std::vector<PortTypeEntry> audio_types = {
         {"audio", VIVID_PORT_AUDIO},

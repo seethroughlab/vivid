@@ -1234,13 +1234,13 @@ add_vivid_operator(audio_test_op      tests/operators/audio_test_op.cpp)
 add_vivid_operator(audio_float_cv_op  tests/operators/audio_float_cv_op.cpp)
 add_vivid_operator(audio_throwing_op  tests/operators/audio_throwing_op.cpp)
 add_vivid_operator(control_pass_op    tests/operators/control_pass_op.cpp)
-add_vivid_operator(spread_source_op   tests/operators/spread_source_op.cpp)
-add_vivid_operator(spread_sink_op     tests/operators/spread_sink_op.cpp)
+add_vivid_operator(lane_source_op   tests/operators/lane_source_op.cpp)
+add_vivid_operator(lane_sink_op     tests/operators/lane_sink_op.cpp)
 add_vivid_operator(lane_metadata_op       tests/operators/lane_metadata_op.cpp)
 add_vivid_operator(lane_metadata_audio_op tests/operators/lane_metadata_audio_op.cpp)
 add_vivid_operator(lane_smooth_op         tests/operators/lane_smooth_op.cpp)
 add_vivid_operator(lane_slew_op           tests/operators/lane_slew_op.cpp)
-add_vivid_operator(identity_spread_source_op tests/operators/identity_spread_source_op.cpp)
+add_vivid_operator(identity_lane_source_op tests/operators/identity_lane_source_op.cpp)
 add_vivid_operator(lane_state_tracker_op     tests/operators/lane_state_tracker_op.cpp)
 add_vivid_operator(multi_channel_dc_source_op tests/operators/multi_channel_dc_source_op.cpp)
 add_vivid_operator(dc_per_lane_op            tests/operators/dc_per_lane_op.cpp)
@@ -1330,7 +1330,7 @@ add_executable(test_runtime_core
 )
 target_include_directories(test_runtime_core PRIVATE src)
 target_link_libraries(test_runtime_core PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
-add_dependencies(test_runtime_core test_op_v1 control_pass_op spread_source_op audio_test_op)
+add_dependencies(test_runtime_core test_op_v1 control_pass_op lane_source_op audio_test_op)
 add_test(NAME test_runtime_core COMMAND test_runtime_core WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Graph data-model unit test (no operators, no runtime, no GPU)
@@ -1806,7 +1806,7 @@ add_executable(test_cross_cadence_spread
 target_include_directories(test_cross_cadence_spread PRIVATE src)
 target_link_libraries(test_cross_cadence_spread PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
-add_dependencies(test_cross_cadence_spread spread_source_op audio_spread_op)
+add_dependencies(test_cross_cadence_spread lane_source_op audio_spread_op)
 add_test(NAME test_cross_cadence_spread COMMAND test_cross_cadence_spread
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -1826,7 +1826,7 @@ add_executable(test_spread_broadcast
 target_include_directories(test_spread_broadcast PRIVATE src)
 target_link_libraries(test_spread_broadcast PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json webgpu)
-add_dependencies(test_spread_broadcast spread_source_op spread_sink_op lane_smooth_op)
+add_dependencies(test_spread_broadcast lane_source_op lane_sink_op lane_smooth_op)
 add_test(NAME test_spread_broadcast COMMAND test_spread_broadcast WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_lane_reshape
@@ -1845,7 +1845,7 @@ add_executable(test_lane_reshape
 target_include_directories(test_lane_reshape PRIVATE src)
 target_link_libraries(test_lane_reshape PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json webgpu)
-add_dependencies(test_lane_reshape spread_source_op spread_sink_op repeat tile select math)
+add_dependencies(test_lane_reshape lane_source_op lane_sink_op repeat tile select math)
 add_test(NAME test_lane_reshape COMMAND test_lane_reshape WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_frame_lane_lifting
@@ -1864,7 +1864,7 @@ add_executable(test_frame_lane_lifting
 target_include_directories(test_frame_lane_lifting PRIVATE src)
 target_link_libraries(test_frame_lane_lifting PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json webgpu)
-add_dependencies(test_frame_lane_lifting spread_source_op spread_sink_op lane_frame_op identity_spread_source_op)
+add_dependencies(test_frame_lane_lifting lane_source_op lane_sink_op lane_frame_op identity_lane_source_op)
 add_test(NAME test_frame_lane_lifting COMMAND test_frame_lane_lifting WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_lane_breadth
@@ -1883,7 +1883,7 @@ add_executable(test_lane_breadth
 target_include_directories(test_lane_breadth PRIVATE src)
 target_link_libraries(test_lane_breadth PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json webgpu)
-add_dependencies(test_lane_breadth spread_source_op spread_sink_op lane_frame_op fft_analysis repeat)
+add_dependencies(test_lane_breadth lane_source_op lane_sink_op lane_frame_op fft_analysis repeat)
 add_test(NAME test_lane_breadth COMMAND test_lane_breadth WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_compute_lane_equivalence tests/test_compute_lane_equivalence.cpp)
@@ -1908,7 +1908,7 @@ add_executable(test_lane_metadata
 target_include_directories(test_lane_metadata PRIVATE src)
 target_link_libraries(test_lane_metadata PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json webgpu)
-add_dependencies(test_lane_metadata spread_source_op lane_metadata_op)
+add_dependencies(test_lane_metadata lane_source_op lane_metadata_op)
 add_test(NAME test_lane_metadata COMMAND test_lane_metadata WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # ChildOp<T> composition unit test (no plugins, no runtime, logic only).
@@ -2517,7 +2517,7 @@ add_executable(test_graph_compiler
 target_include_directories(test_graph_compiler PRIVATE src)
 target_link_libraries(test_graph_compiler PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json webgpu)
-add_dependencies(test_graph_compiler lfo gain spread_source_op lane_metadata_audio_op lane_slew_op)
+add_dependencies(test_graph_compiler lfo gain lane_source_op lane_metadata_audio_op lane_slew_op)
 add_test(NAME test_graph_compiler
     COMMAND test_graph_compiler ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -2553,7 +2553,7 @@ add_executable(test_lane_capacity
 target_include_directories(test_lane_capacity PRIVATE src)
 target_link_libraries(test_lane_capacity PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json webgpu)
-add_dependencies(test_lane_capacity spread_source_op lane_slew_op)
+add_dependencies(test_lane_capacity lane_source_op lane_slew_op)
 add_test(NAME test_lane_capacity
     COMMAND test_lane_capacity ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -2577,7 +2577,7 @@ add_executable(test_lane_compaction
 target_include_directories(test_lane_compaction PRIVATE src)
 target_link_libraries(test_lane_compaction PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
-add_dependencies(test_lane_compaction identity_spread_source_op lane_state_tracker_op)
+add_dependencies(test_lane_compaction identity_lane_source_op lane_state_tracker_op)
 add_test(NAME test_lane_compaction
     COMMAND test_lane_compaction ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -2601,7 +2601,7 @@ add_executable(test_lane_equivalence
 target_include_directories(test_lane_equivalence PRIVATE src)
 target_link_libraries(test_lane_equivalence PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
-add_dependencies(test_lane_equivalence identity_spread_source_op lane_slew_op multi_channel_dc_source_op dc_per_lane_op spread_source_op)
+add_dependencies(test_lane_equivalence identity_lane_source_op lane_slew_op multi_channel_dc_source_op dc_per_lane_op lane_source_op)
 add_test(NAME test_lane_equivalence
     COMMAND test_lane_equivalence ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

@@ -318,7 +318,7 @@ Seven canonical port types reflect the runtime's routing mechanisms:
 - `VIVID_PORT_AUDIO` — a 256-sample buffer at 48kHz. Always continuous — producing a buffer every callback, even if silence. Mono throughout; stereo is two ports (left/right).
 - `VIVID_PORT_LANE_ARRAY` — variable-length float array with broadcast semantics.
 - `VIVID_PORT_STRING` — UTF-8 string.
-- `VIVID_PORT_STRING_SPREAD` — variable-length string array.
+- `VIVID_PORT_STRING_LANES` — variable-length string array.
 - `VIVID_PORT_TEXTURE` — 2D RGBA8 `WGPUTextureView` with per-node configurable resolution (default 800×600).
 - `VIVID_CUSTOM_PORT(id)` — custom port types using either `CUSTOM_REF` (opaque pointer) or `CUSTOM_VALUE` (inline blob) transport. Type-safe via named type registry with `transport`, `type_name`, and `payload_size`. Used for GPU buffers, meshes, compute dispatches, media streams, MIDI, and package-defined types.
 

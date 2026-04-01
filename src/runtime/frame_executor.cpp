@@ -102,7 +102,7 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
                 cn.input_string_values[e.to_port] = from_cn.output_string_values[e.from_port];
                 continue;
             }
-            if (e.data_type == VIVID_PORT_STRING_SPREAD) {
+            if (e.data_type == VIVID_PORT_STRING_LANES) {
                 cn.input_string_lanes[e.to_port] = from_cn.output_string_lanes[e.from_port];
                 continue;
             }

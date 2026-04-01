@@ -16,9 +16,9 @@ struct StringSinkOp : vivid::OperatorBase, vivid::FrameProcessable {
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"in", VIVID_PORT_STRING, VIVID_PORT_INPUT});
-        out.push_back({"in_list", VIVID_PORT_STRING_SPREAD, VIVID_PORT_INPUT});
+        out.push_back({"in_list", VIVID_PORT_STRING_LANES, VIVID_PORT_INPUT});
         out.push_back({"out", VIVID_PORT_STRING, VIVID_PORT_OUTPUT});
-        out.push_back({"out_list", VIVID_PORT_STRING_SPREAD, VIVID_PORT_OUTPUT});
+        out.push_back({"out_list", VIVID_PORT_STRING_LANES, VIVID_PORT_OUTPUT});
         out.push_back({"valid", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
         out.push_back({"count", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }

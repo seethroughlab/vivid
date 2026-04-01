@@ -259,7 +259,9 @@ struct Envelope : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProc
     // ── Audio-rate processing (~48 kHz) ─────────────────────────────────
 
     void process_audio(const VividAudioContext* ctx) override {
-        auto& s = *vivid_lane_state(ctx, ctx->lane_id, AudioState);
+        AudioState& s = ctx->lane_state_fn
+            ? *vivid_lane_state(ctx, ctx->lane_id, AudioState)
+            : frame_state_;
 
         float gate_in  = ctx->input_float_values[0];
         float phase_in = ctx->input_float_values[1];

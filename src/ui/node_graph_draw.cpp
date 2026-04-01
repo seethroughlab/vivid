@@ -2671,7 +2671,7 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
     };
     auto type_suffix = [](VividPortType t) -> const char* {
         if (t == VIVID_PORT_STRING) return " \"";
-        if (t == VIVID_PORT_STRING_SPREAD) return " [\"]";
+        if (t == VIVID_PORT_STRING_LANES) return " [\"]";
         return "";
     };
 

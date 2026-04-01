@@ -1,9 +1,9 @@
 // Lane array source: generates lane data [base*1, base*2, ..., base*count]
-// (Operator name kept as SpreadSourceOp for test fixture compatibility.)
+// (Operator name kept as LaneSourceOp for test fixture compatibility.)
 #include "operator_api/operator.h"
 
-struct SpreadSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
-    static constexpr const char* kName   = "SpreadSourceOp";
+struct LaneSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
+    static constexpr const char* kName   = "LaneSourceOp";
     static constexpr bool kTimeDependent = false;
     static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
 
@@ -39,4 +39,4 @@ struct SpreadSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(SpreadSourceOp)
+VIVID_REGISTER(LaneSourceOp)

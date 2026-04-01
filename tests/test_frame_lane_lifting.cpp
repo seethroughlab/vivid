@@ -50,10 +50,10 @@ int main(int argc, char* argv[]) {
         if (std::filesystem::exists(src))
             std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing);
     };
-    stage("spread_source_op.dylib");
-    stage("spread_sink_op.dylib");
+    stage("lane_source_op.dylib");
+    stage("lane_sink_op.dylib");
     stage("lane_frame_op.dylib");
-    stage("identity_spread_source_op.dylib");
+    stage("identity_lane_source_op.dylib");
 
     std::fprintf(stderr, "\n=== test_frame_lane_lifting ===\n\n");
 
@@ -64,9 +64,9 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- compiler assigns LoopBased for frame node ---\n");
     {
         vivid::Graph graph;
-        graph.add_node("src", "SpreadSourceOp", {{"base", 10.0f}, {"count", 4.0f}});
+        graph.add_node("src", "LaneSourceOp", {{"base", 10.0f}, {"count", 4.0f}});
         graph.add_node("op", "LaneFrameOp");
-        graph.add_node("sink", "SpreadSinkOp");
+        graph.add_node("sink", "LaneSinkOp");
         graph.add_connection("src", "out", "op", "input");
         graph.add_connection("op", "output", "sink", "in");
 
@@ -82,15 +82,15 @@ int main(int argc, char* argv[]) {
     }
 
     // --- Test 2: Per-lane output ---
-    // SpreadSourceOp(base=10, count=4) → spread [10, 20, 30, 40]
+    // LaneSourceOp(base=10, count=4) → spread [10, 20, 30, 40]
     // LaneFrameOp accumulates: after tick 1, each lane's accumulated = input value
     // Output spread should be [10, 20, 30, 40]
     std::fprintf(stderr, "\n--- per-lane output from LoopBased frame ---\n");
     {
         vivid::Graph graph;
-        graph.add_node("src", "SpreadSourceOp", {{"base", 10.0f}, {"count", 4.0f}});
+        graph.add_node("src", "LaneSourceOp", {{"base", 10.0f}, {"count", 4.0f}});
         graph.add_node("op", "LaneFrameOp");
-        graph.add_node("sink", "SpreadSinkOp");
+        graph.add_node("sink", "LaneSinkOp");
         graph.add_connection("src", "out", "op", "input");
         graph.add_connection("op", "output", "sink", "in");
 
@@ -123,9 +123,9 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- per-lane state persists across ticks ---\n");
     {
         vivid::Graph graph;
-        graph.add_node("src", "SpreadSourceOp", {{"base", 10.0f}, {"count", 4.0f}});
+        graph.add_node("src", "LaneSourceOp", {{"base", 10.0f}, {"count", 4.0f}});
         graph.add_node("op", "LaneFrameOp");
-        graph.add_node("sink", "SpreadSinkOp");
+        graph.add_node("sink", "LaneSinkOp");
         graph.add_connection("src", "out", "op", "input");
         graph.add_connection("op", "output", "sink", "in");
 
@@ -151,17 +151,17 @@ int main(int argc, char* argv[]) {
     }
 
     // --- Test 4: Identity-bearing lane_ids on frame path ---
-    // IdentitySpreadSourceOp emits explicit lane_ids (100, 101, 102, 103).
+    // IdentityLaneSourceOp emits explicit lane_ids (100, 101, 102, 103).
     // LaneFrameOp should see these via ctx->lane_id, not positional (1,2,3,4).
     // Verify by accumulating across 2 ticks then compacting (remove voice 1).
     // State must follow lane_id, not position — same proof as audio compaction test.
     std::fprintf(stderr, "\n--- identity-bearing lane_ids on frame path ---\n");
     {
         vivid::Graph graph;
-        graph.add_node("src", "IdentitySpreadSourceOp",
+        graph.add_node("src", "IdentityLaneSourceOp",
                        {{"active_mask", 15.0f}, {"base", 10.0f}});
         graph.add_node("op", "LaneFrameOp");
-        graph.add_node("sink", "SpreadSinkOp");
+        graph.add_node("sink", "LaneSinkOp");
         graph.add_connection("src", "out", "op", "input");
         graph.add_connection("src", "lane_ids", "op", "lane_ids");
         graph.add_connection("op", "output", "sink", "in");

@@ -5,7 +5,7 @@
 // its spread, downstream operators must retain state for surviving
 // lane_ids — state must NOT follow positional index.
 //
-// Graph: IdentitySpreadSourceOp (frame) → LaneStateTrackerOp (audio)
+// Graph: IdentityLaneSourceOp (frame) → LaneStateTrackerOp (audio)
 //
 // Phase 1: 4 voices with distinct spread values. Each lane accumulates
 //          its value into per-lane state keyed by lane_id.
@@ -58,7 +58,7 @@ int main(int argc, char* argv[]) {
         if (std::filesystem::exists(src))
             std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing);
     };
-    stage("identity_spread_source_op.dylib");
+    stage("identity_lane_source_op.dylib");
     stage("lane_state_tracker_op.dylib");
 
     std::fprintf(stderr, "\n=== test_lane_compaction ===\n\n");
@@ -70,7 +70,7 @@ int main(int argc, char* argv[]) {
 
     vivid::Graph graph;
     // active_mask=0xF: voices 0,1,2,3 active. base=10.0: values=[10,20,30,40]
-    graph.add_node("src", "IdentitySpreadSourceOp",
+    graph.add_node("src", "IdentityLaneSourceOp",
                    {{"active_mask", 15.0f}, {"base", 10.0f}});
     graph.add_node("tracker", "LaneStateTrackerOp");
     graph.add_node("out", "audio_out");

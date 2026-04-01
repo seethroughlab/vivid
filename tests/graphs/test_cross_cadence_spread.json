@@ -1,6 +1,6 @@
 {
     "nodes": {
-        "src":   { "type": "SpreadSourceOp", "params": { "base": 1.0, "count": 3 } },
+        "src":   { "type": "LaneSourceOp", "params": { "base": 1.0, "count": 3 } },
         "audio": { "type": "AudioSpreadOp",  "params": {} }
     },
     "connections": [

@@ -69,7 +69,7 @@ typedef uint32_t VividPortType;
 #define VIVID_PORT_AUDIO          1u  // audio sample buffer
 #define VIVID_PORT_LANE_ARRAY         2u  // variable-length float array
 #define VIVID_PORT_STRING         3u  // UTF-8 string
-#define VIVID_PORT_STRING_SPREAD  4u  // variable-length string array
+#define VIVID_PORT_STRING_LANES  4u  // variable-length string array
 #define VIVID_PORT_TEXTURE        5u  // WGPUTextureView
 
 typedef uint32_t VividPortDirection;
@@ -81,7 +81,7 @@ typedef uint32_t VividPortTransport;
 #define VIVID_PORT_TRANSPORT_AUDIO_BUFFER   1u  // audio sample buffers
 #define VIVID_PORT_TRANSPORT_LANE_ARRAY         2u  // float lane array copy
 #define VIVID_PORT_TRANSPORT_STRING         3u  // string copy
-#define VIVID_PORT_TRANSPORT_STRING_SPREAD  4u  // string lane array copy
+#define VIVID_PORT_TRANSPORT_STRING_LANES  4u  // string lane array copy
 #define VIVID_PORT_TRANSPORT_TEXTURE        5u  // GPU texture/view routing
 #define VIVID_PORT_TRANSPORT_CUSTOM_VALUE   6u  // memcpy-by-value snapshot
 #define VIVID_PORT_TRANSPORT_CUSTOM_REF     7u  // opaque shared-handle/reference
@@ -438,7 +438,7 @@ typedef void (*VividMainThreadUpdateFn)(void* instance, double time,
 
 static inline int vivid_is_control_type(VividPortType t) {
     return t == VIVID_PORT_SIGNAL || t == VIVID_PORT_LANE_ARRAY ||
-           t == VIVID_PORT_STRING || t == VIVID_PORT_STRING_SPREAD;
+           t == VIVID_PORT_STRING || t == VIVID_PORT_STRING_LANES;
 }
 
 static inline int vivid_port_type_compatible(VividPortType a, VividPortType b) {

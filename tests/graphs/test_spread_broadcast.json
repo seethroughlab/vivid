@@ -1,11 +1,11 @@
 {
     "nodes": {
-        "single_src": { "type": "SpreadSourceOp", "params": { "base": 2.0, "count": 4 } },
-        "single_sink": { "type": "SpreadSinkOp" },
-        "relay": { "type": "SpreadSinkOp" },
-        "merge_sink": { "type": "SpreadSinkOp" },
+        "single_src": { "type": "LaneSourceOp", "params": { "base": 2.0, "count": 4 } },
+        "single_sink": { "type": "LaneSinkOp" },
+        "relay": { "type": "LaneSinkOp" },
+        "merge_sink": { "type": "LaneSinkOp" },
         "smooth": { "type": "LaneSmoothOp" },
-        "smooth_sink": { "type": "SpreadSinkOp" }
+        "smooth_sink": { "type": "LaneSinkOp" }
     },
     "connections": [
         { "from": "single_src/out", "to": "single_sink/in" },

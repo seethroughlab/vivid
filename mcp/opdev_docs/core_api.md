@@ -73,7 +73,7 @@ Params are declared as member variables. The runtime syncs `ctx->param_values` i
 | `VIVID_PORT_TEXTURE` | `gpu_texture` | GPU textures |
 | `VIVID_PORT_LANE_ARRAY` | lane array | Variable-length float arrays (lane-bearing data transport) |
 | `VIVID_PORT_STRING` | string | UTF-8 strings |
-| `VIVID_PORT_STRING_SPREAD` | string spread | Variable-length string arrays |
+| `VIVID_PORT_STRING_LANES` | string lanes | Variable-length string arrays |
 
 ### Custom Types
 

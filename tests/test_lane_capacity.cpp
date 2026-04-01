@@ -24,7 +24,7 @@ static void check(bool cond, const char* msg) {
     }
 }
 
-// Build a SpreadSourceOp -> LaneSlewOp graph, compile with the given max_loop_lanes,
+// Build a LaneSourceOp -> LaneSlewOp graph, compile with the given max_loop_lanes,
 // and return the compiled graph for inspection.
 static std::unique_ptr<vivid::CompiledGraph> compile_with_limit(
     const std::string& staging, uint32_t max_loop_lanes)
@@ -33,7 +33,7 @@ static std::unique_ptr<vivid::CompiledGraph> compile_with_limit(
     registry.scan_deferred(staging.c_str());
 
     vivid::Graph g;
-    g.add_node("src", "SpreadSourceOp");
+    g.add_node("src", "LaneSourceOp");
     g.add_node("slew", "LaneSlewOp");
     g.add_connection("src", "out", "slew", "input");
 
@@ -102,7 +102,7 @@ static void test_default_limit(const std::string& staging) {
     registry.scan_deferred(staging.c_str());
 
     vivid::Graph g;
-    g.add_node("src", "SpreadSourceOp");
+    g.add_node("src", "LaneSourceOp");
     g.add_node("slew", "LaneSlewOp");
     g.add_connection("src", "out", "slew", "input");
 
@@ -138,7 +138,7 @@ int main(int argc, char* argv[]) {
         if (std::filesystem::exists(src))
             std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing);
     };
-    stage("spread_source_op.dylib");
+    stage("lane_source_op.dylib");
     stage("lane_slew_op.dylib");
 
     std::fprintf(stderr, "=== test_lane_capacity ===\n");

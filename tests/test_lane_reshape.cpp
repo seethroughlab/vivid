@@ -53,8 +53,8 @@ int main(int argc, char* argv[]) {
         if (std::filesystem::exists(src))
             std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing);
     };
-    stage("spread_source_op.dylib");
-    stage("spread_sink_op.dylib");
+    stage("lane_source_op.dylib");
+    stage("lane_sink_op.dylib");
     stage("repeat.dylib");
     stage("tile.dylib");
     stage("select.dylib");
@@ -69,12 +69,12 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- Repeat: scalar → 8 lanes ---\n");
     {
         vivid::Graph graph;
-        // SpreadSourceOp(base=5, count=3) → spread [5,10,15]
+        // LaneSourceOp(base=5, count=3) → spread [5,10,15]
         // Signal wire to Repeat → input_values[0] = spread[0] = 5.0
         // Repeat(count=8) → [5,5,5,5,5,5,5,5]
-        graph.add_node("src", "SpreadSourceOp", {{"base", 5.0f}, {"count", 3.0f}});
+        graph.add_node("src", "LaneSourceOp", {{"base", 5.0f}, {"count", 3.0f}});
         graph.add_node("rep", "Repeat", {{"count", 8.0f}});
-        graph.add_node("sink", "SpreadSinkOp");
+        graph.add_node("sink", "LaneSinkOp");
         graph.add_connection("src", "out", "rep", "input");
         graph.add_connection("rep", "output", "sink", "in");
 
@@ -100,11 +100,11 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- Tile: [10,20,30] → 9 elements ---\n");
     {
         vivid::Graph graph;
-        // SpreadSourceOp(base=10, count=3) → spread [10,20,30]
+        // LaneSourceOp(base=10, count=3) → spread [10,20,30]
         // Tile(count=9) → [10,20,30, 10,20,30, 10,20,30]
-        graph.add_node("src", "SpreadSourceOp", {{"base", 10.0f}, {"count", 3.0f}});
+        graph.add_node("src", "LaneSourceOp", {{"base", 10.0f}, {"count", 3.0f}});
         graph.add_node("til", "Tile", {{"count", 9.0f}});
-        graph.add_node("sink", "SpreadSinkOp");
+        graph.add_node("sink", "LaneSinkOp");
         graph.add_connection("src", "out", "til", "input");
         graph.add_connection("til", "output", "sink", "in");
 
@@ -133,11 +133,11 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- Select: lane 2 from [1,2,3,4] ---\n");
     {
         vivid::Graph graph;
-        // SpreadSourceOp(base=1, count=4) → spread [1,2,3,4]
+        // LaneSourceOp(base=1, count=4) → spread [1,2,3,4]
         // Select(lane=2) → scalar 3.0
-        graph.add_node("src", "SpreadSourceOp", {{"base", 1.0f}, {"count", 4.0f}});
+        graph.add_node("src", "LaneSourceOp", {{"base", 1.0f}, {"count", 4.0f}});
         graph.add_node("sel", "Select", {{"lane", 2.0f}});
-        graph.add_node("sink", "SpreadSinkOp");
+        graph.add_node("sink", "LaneSinkOp");
         graph.add_connection("src", "out", "sel", "input");
         graph.add_connection("sel", "output", "sink", "in");
 
@@ -164,11 +164,11 @@ int main(int argc, char* argv[]) {
         // Select(lane=0) on src_b → scalar 10.0 (Reduction → lane_set_id=0)
         // Math(add): a=src_a, b=Select(src_b)
         // src_a is non-scalar (lane_set_id=X), Select output is scalar → no mismatch
-        graph.add_node("src_a", "SpreadSourceOp", {{"base", 1.0f}, {"count", 4.0f}});
-        graph.add_node("src_b", "SpreadSourceOp", {{"base", 10.0f}, {"count", 3.0f}});
+        graph.add_node("src_a", "LaneSourceOp", {{"base", 1.0f}, {"count", 4.0f}});
+        graph.add_node("src_b", "LaneSourceOp", {{"base", 10.0f}, {"count", 3.0f}});
         graph.add_node("sel", "Select", {{"lane", 0.0f}});
         graph.add_node("add", "Math", {{"operation", 0.0f}});
-        graph.add_node("sink", "SpreadSinkOp");
+        graph.add_node("sink", "LaneSinkOp");
         graph.add_connection("src_b", "out", "sel", "input");
         graph.add_connection("src_a", "out", "add", "a");
         graph.add_connection("sel", "output", "add", "b");
@@ -197,7 +197,7 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- compiler metadata: lane_set_id provenance ---\n");
     {
         vivid::Graph graph;
-        graph.add_node("src", "SpreadSourceOp", {{"base", 1.0f}, {"count", 4.0f}});
+        graph.add_node("src", "LaneSourceOp", {{"base", 1.0f}, {"count", 4.0f}});
         graph.add_node("rep", "Repeat", {{"count", 8.0f}});
         graph.add_node("til", "Tile", {{"count", 9.0f}});
         graph.add_node("sel", "Select", {{"lane", 0.0f}});
@@ -261,14 +261,14 @@ int main(int argc, char* argv[]) {
     {
         vivid::Graph graph;
         // Two independent spread sources → different lane_set_ids
-        graph.add_node("src_a", "SpreadSourceOp", {{"base", 1.0f}, {"count", 3.0f}});
-        graph.add_node("src_b", "SpreadSourceOp", {{"base", 10.0f}, {"count", 4.0f}});
+        graph.add_node("src_a", "LaneSourceOp", {{"base", 1.0f}, {"count", 3.0f}});
+        graph.add_node("src_b", "LaneSourceOp", {{"base", 10.0f}, {"count", 4.0f}});
         // Tile both to the same length (12)
         graph.add_node("tile_a", "Tile", {{"count", 12.0f}});
         graph.add_node("tile_b", "Tile", {{"count", 12.0f}});
         // Pointwise Math(add) on both tiled outputs
         graph.add_node("add", "Math", {{"operation", 0.0f}});
-        graph.add_node("sink", "SpreadSinkOp");
+        graph.add_node("sink", "LaneSinkOp");
         graph.add_connection("src_a", "out", "tile_a", "input");
         graph.add_connection("src_b", "out", "tile_b", "input");
         graph.add_connection("tile_a", "output", "add", "a");
@@ -301,9 +301,9 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- Tile same-provenance is legal ---\n");
     {
         vivid::Graph graph;
-        graph.add_node("src", "SpreadSourceOp", {{"base", 1.0f}, {"count", 4.0f}});
+        graph.add_node("src", "LaneSourceOp", {{"base", 1.0f}, {"count", 4.0f}});
         graph.add_node("til", "Tile", {{"count", 8.0f}});
-        graph.add_node("sink", "SpreadSinkOp");
+        graph.add_node("sink", "LaneSinkOp");
         graph.add_connection("src", "out", "til", "input");
         graph.add_connection("til", "output", "sink", "in");
 

@@ -1,9 +1,9 @@
 // Lane array sink: reads input lane data and copies it to output (passthrough).
-// (Operator name kept as SpreadSinkOp for test fixture compatibility.)
+// (Operator name kept as LaneSinkOp for test fixture compatibility.)
 #include "operator_api/operator.h"
 
-struct SpreadSinkOp : vivid::OperatorBase, vivid::FrameProcessable {
-    static constexpr const char* kName   = "SpreadSinkOp";
+struct LaneSinkOp : vivid::OperatorBase, vivid::FrameProcessable {
+    static constexpr const char* kName   = "LaneSinkOp";
     static constexpr bool kTimeDependent = false;
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {}
@@ -29,4 +29,4 @@ struct SpreadSinkOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(SpreadSinkOp)
+VIVID_REGISTER(LaneSinkOp)

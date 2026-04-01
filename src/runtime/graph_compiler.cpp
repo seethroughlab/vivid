@@ -340,7 +340,7 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
                     break;
                 case VIVID_PORT_STRING:
                     cn.string_input_port_indices.push_back(input_idx); break;
-                case VIVID_PORT_STRING_SPREAD:
+                case VIVID_PORT_STRING_LANES:
                     cn.string_lane_input_port_indices.push_back(input_idx); break;
                 default:
                     if (vivid_is_custom_port_type(desc->ports[i].type))
@@ -363,7 +363,7 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
                     break;
                 case VIVID_PORT_STRING:
                     cn.has_string_output = true; break;
-                case VIVID_PORT_STRING_SPREAD:
+                case VIVID_PORT_STRING_LANES:
                     cn.has_string_lane_output = true; break;
                 default:
                     if (vivid_is_custom_port_type(desc->ports[i].type))
@@ -784,9 +784,9 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                     to_port_type == VIVID_PORT_STRING) {
                     e.data_type = VIVID_PORT_STRING;
                     string_in_fanin[ti][e.to_port]++;
-                } else if (from_port_type == VIVID_PORT_STRING_SPREAD &&
-                           to_port_type == VIVID_PORT_STRING_SPREAD) {
-                    e.data_type = VIVID_PORT_STRING_SPREAD;
+                } else if (from_port_type == VIVID_PORT_STRING_LANES &&
+                           to_port_type == VIVID_PORT_STRING_LANES) {
+                    e.data_type = VIVID_PORT_STRING_LANES;
                 } else if (from_port_type == VIVID_PORT_TEXTURE &&
                            to_port_type == VIVID_PORT_TEXTURE) {
                     e.data_type = VIVID_PORT_TEXTURE;
@@ -808,9 +808,9 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                     e.data_type = (from_port_type == VIVID_PORT_AUDIO || to_port_type == VIVID_PORT_AUDIO)
                         ? VIVID_PORT_AUDIO : VIVID_PORT_SIGNAL;
                 } else if (from_port_type == VIVID_PORT_STRING ||
-                           from_port_type == VIVID_PORT_STRING_SPREAD ||
+                           from_port_type == VIVID_PORT_STRING_LANES ||
                            to_port_type == VIVID_PORT_STRING ||
-                           to_port_type == VIVID_PORT_STRING_SPREAD) {
+                           to_port_type == VIVID_PORT_STRING_LANES) {
                     std::fprintf(stderr, "[vivid] GraphCompiler: string type mismatch %s/%s -> %s/%s "
                         "(string port types must match exactly)\n",
                         conn.from_node.c_str(), conn.from_port.c_str(),

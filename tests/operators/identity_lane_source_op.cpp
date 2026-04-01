@@ -12,8 +12,8 @@
 #include "operator_api/operator.h"
 #include <vector>
 
-struct IdentitySpreadSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
-    static constexpr const char* kName   = "IdentitySpreadSourceOp";
+struct IdentityLaneSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
+    static constexpr const char* kName   = "IdentityLaneSourceOp";
     static constexpr bool kTimeDependent = false;
     static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
 
@@ -79,4 +79,4 @@ struct IdentitySpreadSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(IdentitySpreadSourceOp)
+VIVID_REGISTER(IdentityLaneSourceOp)

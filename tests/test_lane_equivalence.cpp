@@ -7,7 +7,7 @@
 // - Each lane accumulates independent slew state via vivid_lane_state()
 // - Output audio buffers contain per-lane data at correct offsets
 //
-// Graph: IdentitySpreadSourceOp (frame) → LaneSlewOp (audio) → audio_out
+// Graph: IdentityLaneSourceOp (frame) → LaneSlewOp (audio) → audio_out
 
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
@@ -56,11 +56,11 @@ int main(int argc, char* argv[]) {
         if (std::filesystem::exists(src))
             std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing);
     };
-    stage("identity_spread_source_op.dylib");
+    stage("identity_lane_source_op.dylib");
     stage("lane_slew_op.dylib");
     stage("multi_channel_dc_source_op.dylib");
     stage("dc_per_lane_op.dylib");
-    stage("spread_source_op.dylib");
+    stage("lane_source_op.dylib");
 
     std::fprintf(stderr, "\n=== test_lane_equivalence ===\n\n");
 
@@ -72,7 +72,7 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- compiler strategy assignment ---\n");
     {
         vivid::Graph graph;
-        graph.add_node("src", "IdentitySpreadSourceOp",
+        graph.add_node("src", "IdentityLaneSourceOp",
                        {{"active_mask", 15.0f}, {"base", 1.0f}});
         graph.add_node("slew", "LaneSlewOp", {{"rate", 1.0f}});
         graph.add_node("out", "audio_out");
@@ -101,7 +101,7 @@ int main(int argc, char* argv[]) {
         // LaneSlewOp reads audio input (zeros from no audio upstream) and
         // accumulates per-lane state. The slew filter converges toward the
         // audio input (0), so we verify that each lane's state is independent.
-        graph.add_node("src", "IdentitySpreadSourceOp",
+        graph.add_node("src", "IdentityLaneSourceOp",
                        {{"active_mask", 15.0f}, {"base", 100.0f}});
         graph.add_node("slew", "LaneSlewOp", {{"rate", 0.5f}});
         graph.add_node("out", "audio_out");
@@ -158,7 +158,7 @@ int main(int argc, char* argv[]) {
                 check_float(slew->audio->float_output_values[1], 3.0f, 0.01f,
                             "lane_index_out = 3 (last lane)");
                 // lane_id_out should be the identity-bearing ID from the source
-                // IdentitySpreadSourceOp uses kBaseLaneId=100, so lane 3 = 103
+                // IdentityLaneSourceOp uses kBaseLaneId=100, so lane 3 = 103
                 check_float(slew->audio->float_output_values[2], 103.0f, 0.01f,
                             "lane_id_out = 103 (identity from spread)");
             }
@@ -195,7 +195,7 @@ int main(int argc, char* argv[]) {
     // Graph A (InstancePerLane): MultiChannelDcSourceOp(4ch) → slew → audio_out
     //   Channel c outputs DC = (c+1) * 0.1. Compiler assigns InstancePerLane.
     //
-    // Graph B (LoopBased): SpreadSourceOp(4) → DcPerLaneOp → slew → audio_out
+    // Graph B (LoopBased): LaneSourceOp(4) → DcPerLaneOp → slew → audio_out
     //   DcPerLaneOp writes DC = (lane_index+1) * 0.1 per lane. Both DcPerLaneOp
     //   and slew are LoopBased. LoopBased→LoopBased routing copies the full
     //   multi-lane buffer so each lane of slew sees the correct per-lane DC.
@@ -248,7 +248,7 @@ int main(int argc, char* argv[]) {
         float lb_output[kLanes] = {};
         {
             vivid::Graph graph;
-            graph.add_node("src", "SpreadSourceOp", {{"base", 1.0f}, {"count", 4.0f}});
+            graph.add_node("src", "LaneSourceOp", {{"base", 1.0f}, {"count", 4.0f}});
             graph.add_node("dc", "DcPerLaneOp");
             graph.add_node("slew", "LaneSlewOp", {{"rate", kRate}});
             graph.add_node("out", "audio_out");

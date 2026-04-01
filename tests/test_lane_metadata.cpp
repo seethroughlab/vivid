@@ -47,7 +47,7 @@ int main(int argc, char* argv[]) {
             std::filesystem::copy_file(src, dst,
                 std::filesystem::copy_options::overwrite_existing);
     };
-    stage("spread_source_op.dylib");
+    stage("lane_source_op.dylib");
     stage("lane_metadata_op.dylib");
 
     std::fprintf(stderr, "\n=== Test: Lane Metadata ===\n\n");
@@ -71,10 +71,10 @@ int main(int argc, char* argv[]) {
     }
     check(meta != nullptr, "found meta node");
     if (meta) {
-        // SpreadSourceOp emits count=8 spread. LaneMetadataOp should see:
+        // LaneSourceOp emits count=8 spread. LaneMetadataOp should see:
         // lane_count = 8 (runtime materialized spread length)
         // lane_index = 0 (always 0 in Phase 3)
-        // lane_set_id != 0 (SpreadSourceOp is Structural → nonzero provenance)
+        // lane_set_id != 0 (LaneSourceOp is Structural → nonzero provenance)
         check_float(meta->output_values[0], 8.0f, 0.01f,
                      "lane_count = 8 (spread length)");
         check_float(meta->output_values[1], 0.0f, 0.01f,

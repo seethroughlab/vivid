@@ -41,8 +41,8 @@ int main(int argc, char* argv[]) {
     // Setup: staging dir with required operators
     std::string staging = build_dir + "/.test_spread_staging";
     std::filesystem::create_directories(staging);
-    std::filesystem::copy_file(build_dir + "/spread_source_op.dylib",
-        staging + "/spread_source_op.dylib",
+    std::filesystem::copy_file(build_dir + "/lane_source_op.dylib",
+        staging + "/lane_source_op.dylib",
         std::filesystem::copy_options::overwrite_existing);
     std::filesystem::copy_file(build_dir + "/audio_spread_op.dylib",
         staging + "/audio_spread_op.dylib",
@@ -73,7 +73,7 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- spread arrives at audio cadence ---\n");
     check(audio_engine.start(true), "audio_engine.start(null)");
 
-    // Tick runtime so SpreadSourceOp produces spread [1,2,3]
+    // Tick runtime so LaneSourceOp produces spread [1,2,3]
     runtime.tick(0.0, 0.016, 0);
     runtime.cadence_bridge().push_to_audio(*runtime.compiled_graph());
 

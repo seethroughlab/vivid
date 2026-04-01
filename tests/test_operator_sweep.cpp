@@ -140,8 +140,8 @@ static const std::unordered_set<std::string>& always_skip() {
         "test_multi_output_bindable",
         "test_state_carry_op",
         // Test fixtures for specific port-type testing.
-        "spread_sink_op",
-        "spread_source_op",
+        "lane_sink_op",
+        "lane_source_op",
         "string_sink_op",
         "string_source_op",
         "semantic_ms_source_op",

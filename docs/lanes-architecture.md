@@ -17,7 +17,7 @@ These are not separate product features. They are separate implementations of on
 
 This document proposes **lanes** as the replacement model.
 
-A lane is one parallel element in a value. A scalar is just a one-lane value. A chord is a multi-lane note value. Stereo audio is audio over two lanes. A particle parameter field is control data over many lanes. A value's base payload type and its multiplicity become separate concerns.
+A lane is one parallel element in a value. A scalar is just a one-lane value. A chord is a multi-lane note value. Stereo audio is audio over two lanes. A particle parameter field is control data over many lanes. A string list is a string value over many lanes. A value's base payload type and its multiplicity become separate concerns.
 
 The goal is not only runtime cleanup. The goal is to give Vivid one user-facing story for one-to-many behavior and one operator-authoring story for one-to-many behavior.
 
@@ -91,11 +91,14 @@ This is the most important separation in the proposal.
 
 Today, Vivid often bundles these together:
 
-- `SPREAD` means both “float payload” and “many elements”
+- float spread-era transport meant both “float payload” and “many elements”
 - multichannel audio means both “audio payload” and “parallel elements”
+- string collections were treated as a separate special-case collection type instead of another lane-bearing payload
 - auto-dup mixes multiplicity handling with execution strategy
 
 The lanes model disentangles these concerns.
+
+One explicit rule follows from this: when two payload kinds both participate in lanes, any differences between them should be treated as capability differences, not as evidence of separate multiplicity models.
 
 This separation is not only a conceptual cleanup. It is what makes the model compiler-reasonable. Payload compatibility, lane provenance, and identity effects must each be explicit enough that the runtime can decide whether an operator preserves, reshapes, or consumes a collection rather than inferring that from ad hoc storage conventions.
 
@@ -221,8 +224,8 @@ These are the responsibilities that make the model real. Everything else is seco
 The following should **not** be treated as foundational concepts in the from-scratch model:
 
 - **Spreads**
-  - the transport mechanism for lane-bearing data (variable-length float arrays), but not the semantic primitive
-  - `VIVID_PORT_LANE_ARRAY` / `input_lanes` / `output_lanes` naming is legacy; a from-scratch design would use lane-oriented names
+  - a historical transport/model term from the pre-lane architecture, not the semantic primitive
+  - from-scratch lane-native naming should treat multiplicity-bearing surfaces as lanes across payload kinds
 - **Auto-dup**
   - useful as one runtime strategy, but not the primitive
 - **Width alone**
@@ -230,7 +233,7 @@ The following should **not** be treated as foundational concepts in the from-scr
 - **Kernels as a separate graph model**
   - useful as one operator behavior, but not a second multiplicity system
 
-The spread runtime surface (`VIVID_PORT_LANE_ARRAY`, `input_lanes`, `output_lanes`) is the transport representation for lane-bearing collections. The underlying variable-length array mechanism is correct — a clean-slate design would choose the same transport. The naming is legacy: it would be called `input_lanes` / `output_lanes` in a from-scratch design. No new semantic decisions should be based on spread port types. Legality, provenance, behavior class, and identity are lane metadata concerns. A future clarity refactor should align the transport naming with the semantic model.
+The current runtime surface already exposes lane-oriented transport for built-in lane-bearing payloads. `VIVID_PORT_LANE_ARRAY` / `input_lanes` / `output_lanes` are the float-lane transport, and `VIVID_PORT_STRING_LANES` / `input_string_lanes` / `output_string_lanes` are the string-lane transport. The underlying storage mechanisms may differ by payload kind, but legality, provenance, behavior class, and identity belong to the lane model rather than to any spread-era transport term. Differences between float lanes and string lanes should be understood as payload-specific capability differences, not as differences in lane-model membership.
 
 ### 5.5 Summary table
 
@@ -962,8 +965,8 @@ The target architecture would conceptually change each of these.
 Today, `CompiledNode` state is split across:
 
 - scalar arrays (`input_values`, `output_values`)
-- spread buffers (`input_lanes`, `output_lanes`)
-- string arrays
+- float lane buffers (`input_lanes`, `output_lanes`)
+- string lane buffers (`input_string_lanes`, `output_string_lanes`)
 - audio buffers
 - custom payload structures
 
@@ -980,14 +983,14 @@ Concretely, the compiled graph will eventually need to represent, per relevant p
 
 In the target model, lane-set provenance is not advisory metadata. It is part of the compiled graph’s legality model in the same way that payload compatibility and cadence classification are.
 
-That does not require an immediate “one container type everywhere” rewrite, but it does require that the compiler stop treating spread buffers, audio channel multiplicity, and future kernel-like multiplicity as unrelated cases.
+That does not require an immediate “one container type everywhere” rewrite, but it does require that the compiler stop treating float lanes, string lanes, audio channel multiplicity, and future kernel-like multiplicity as unrelated cases. Payload-specific capabilities may differ, but that does not create a second multiplicity model.
 
 ### 11.2 Frame execution
 
 Today, frame execution propagates:
 
 - scalar values
-- spread values
+- lane-bearing values
 - string values
 - textures
 - custom payloads
@@ -1260,12 +1263,12 @@ Spreads stop being the semantic primitive for multiplicity.
 
 In the target model:
 
-- a spread is the transport representation for a lane-valued collection
+- spread is historical vocabulary from the pre-lane model
 - the semantic model is lanes (provenance, legality, behavior class, identity)
-- the transport mechanism (variable-length float arrays) is correct
-- the transport naming (`VIVID_PORT_LANE_ARRAY`, `input_lanes`) is legacy
+- transport/storage may differ by payload kind
+- current lane-native surfaces should be named in lane terms, not spread terms
 
-A clean-slate design would call these `input_lanes` / `output_lanes` and use a port type like `VIVID_PORT_LANE_ARRAY`. The underlying mechanism would be the same variable-length array.
+A clean-slate design would treat multiplicity and payload kind as orthogonal. Float lanes and string lanes are both first-class lane-bearing values; they simply use payload-appropriate transport/storage representations today. Any differences between them are capability differences, not model differences.
 
 ### 14.2 What changed vs. what stayed
 
@@ -1276,13 +1279,14 @@ A clean-slate design would call these `input_lanes` / `output_lanes` and use a p
 - Auto-dup as a separate concept: replaced by lane lifting
 
 **Stayed (transport representation):**
-- Variable-length float arrays as the physical lane-array representation
-- `ctx->input_lanes` / `ctx->output_lanes` as the operator-facing data surface
-- Spread snapshot bridging across cadence boundaries
+- Variable-length float arrays as the current physical float-lane representation
+- Variable-length string arrays as the current physical string-lane representation
+- `ctx->input_lanes` / `ctx->output_lanes` and `ctx->input_string_lanes` / `ctx->output_string_lanes` as the operator-facing lane surfaces
+- Lane snapshot bridging across cadence boundaries
 
-**Future (naming alignment):**
-- Rename `VIVID_PORT_LANE_ARRAY` to a lane-oriented name
-- Rename `input_lanes` / `output_lanes` to `input_lanes` / `output_lanes`
+**Current naming direction:**
+- Keep lane-oriented naming for multiplicity-bearing surfaces
+- Prefer payload-specific lane transport names (`VIVID_PORT_LANE_ARRAY`, `VIVID_PORT_STRING_LANES`) over spread-era terminology
 - This is a mechanical clarity refactor, not a semantic or runtime redesign
 
 ### 14.3 Auto-dup

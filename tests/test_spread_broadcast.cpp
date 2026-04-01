@@ -44,10 +44,10 @@ int main(int argc, char* argv[]) {
         std::filesystem::copy_file(build_dir + "/" + name, staging + "/" + name,
             std::filesystem::copy_options::overwrite_existing);
     };
-    stage("spread_source_op.dylib");
+    stage("lane_source_op.dylib");
     stage("lane_smooth_op.dylib");
-    std::filesystem::copy_file(build_dir + "/spread_sink_op.dylib",
-        staging + "/spread_sink_op.dylib",
+    std::filesystem::copy_file(build_dir + "/lane_sink_op.dylib",
+        staging + "/lane_sink_op.dylib",
         std::filesystem::copy_options::overwrite_existing);
 
     std::fprintf(stderr, "\n=== Test: Lane-Aware Spread Propagation ===\n\n");
@@ -72,7 +72,7 @@ int main(int argc, char* argv[]) {
     }
     check(sink != nullptr, "found single_sink node");
     if (sink) {
-        // SpreadSourceOp with base=2.0, count=4 → spread = [2, 4, 6, 8]
+        // LaneSourceOp with base=2.0, count=4 → spread = [2, 4, 6, 8]
         check(sink->output_lanes.size() > 0, "sink has output_lanes");
         const auto& sp = sink->output_lanes[0];
         check(sp.size() == 4, "spread has 4 elements (no cycle-expand)");
@@ -118,7 +118,7 @@ int main(int argc, char* argv[]) {
     }
 
     // --- Test 4: Kernel operator receives full lane-set data ---
-    // LaneSmoothOp (KERNEL) reads all lanes from SpreadSourceOp [2,4,6,8]
+    // LaneSmoothOp (KERNEL) reads all lanes from LaneSourceOp [2,4,6,8]
     // and writes 3-element moving average: [2.67, 4.0, 6.0, 7.33]
     std::fprintf(stderr, "\n--- kernel operator (cross-lane smoothing) ---\n");
     const vivid::CompiledNode* smooth_sink = nullptr;
