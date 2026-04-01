@@ -44,8 +44,8 @@ int main(int argc, char* argv[]) {
     std::filesystem::copy_file(build_dir + "/lane_source_op.dylib",
         staging + "/lane_source_op.dylib",
         std::filesystem::copy_options::overwrite_existing);
-    std::filesystem::copy_file(build_dir + "/audio_spread_op.dylib",
-        staging + "/audio_spread_op.dylib",
+    std::filesystem::copy_file(build_dir + "/audio_lane_op.dylib",
+        staging + "/audio_lane_op.dylib",
         std::filesystem::copy_options::overwrite_existing);
 
     std::fprintf(stderr, "\n=== Test: Cross-Cadence Spread ===\n\n");

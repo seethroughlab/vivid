@@ -1245,7 +1245,7 @@ add_vivid_operator(lane_state_tracker_op     tests/operators/lane_state_tracker_
 add_vivid_operator(multi_channel_dc_source_op tests/operators/multi_channel_dc_source_op.cpp)
 add_vivid_operator(dc_per_lane_op            tests/operators/dc_per_lane_op.cpp)
 add_vivid_operator(lane_frame_op             tests/operators/lane_frame_op.cpp)
-add_vivid_operator(audio_spread_op    tests/operators/audio_spread_op.cpp)
+add_vivid_operator(audio_lane_op    tests/operators/audio_lane_op.cpp)
 
 # AudioEngine integration test (null audio backend, no GPU, no window)
 add_executable(test_audio_engine
@@ -1806,7 +1806,7 @@ add_executable(test_cross_cadence_spread
 target_include_directories(test_cross_cadence_spread PRIVATE src)
 target_link_libraries(test_cross_cadence_spread PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
-add_dependencies(test_cross_cadence_spread lane_source_op audio_spread_op)
+add_dependencies(test_cross_cadence_spread lane_source_op audio_lane_op)
 add_test(NAME test_cross_cadence_spread COMMAND test_cross_cadence_spread
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 

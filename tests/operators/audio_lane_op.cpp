@@ -4,8 +4,8 @@
 #include "operator_api/operator.h"
 #include <cstring>
 
-struct AudioSpreadOp : vivid::OperatorBase, vivid::AudioProcessable {
-    static constexpr const char* kName   = "AudioSpreadOp";
+struct AudioLaneOp : vivid::OperatorBase, vivid::AudioProcessable {
+    static constexpr const char* kName   = "AudioLaneOp";
     static constexpr bool kTimeDependent = false;
 
     void collect_params(std::vector<vivid::ParamBase*>&) override {}
@@ -46,4 +46,4 @@ struct AudioSpreadOp : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
-VIVID_REGISTER(AudioSpreadOp)
+VIVID_REGISTER(AudioLaneOp)
