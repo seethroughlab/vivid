@@ -51,7 +51,6 @@ struct PortInfo {
 struct OperatorInfo {
     std::string name;
     bool is_gpu = false;
-    VividCadenceCapability cadence_capability = VIVID_CADENCE_FRAME_ONLY;
     bool has_shader = false;
     bool is_user = false;
     bool has_custom_inspector = false;
@@ -73,7 +72,6 @@ struct NodeSnapshot {
 
     Cadence active_cadence = Cadence::Frame;
     bool is_gpu = false;
-    VividCadenceCapability cadence_capability = VIVID_CADENCE_FRAME_ONLY;
     bool is_gpu_sink = false;
     bool is_generator = false;  // GPU node with no texture inputs and not a sink
 

@@ -60,16 +60,16 @@ int main(int argc, char* argv[]) {
         check(loader_fr != nullptr, "clock_fr loaded");
         if (loader_fr) {
             const auto* desc = loader_fr->descriptor();
-            check(desc->cadence_capability == VIVID_CADENCE_FRAME_ONLY,
-                  "clock_fr is FRAME_ONLY");
+            check(desc->has_process_frame == 1 && desc->has_process_audio == 0,
+                  "clock_fr is frame-only");
         }
 
         auto* loader_au = registry.find("clock_au");
         check(loader_au != nullptr, "clock_au loaded");
         if (loader_au) {
             const auto* desc = loader_au->descriptor();
-            check(desc->cadence_capability == VIVID_CADENCE_AUDIO_ONLY,
-                  "clock_au is AUDIO_ONLY");
+            check(desc->has_process_audio == 1 && desc->has_process_frame == 0,
+                  "clock_au is audio-only");
         }
     }
 

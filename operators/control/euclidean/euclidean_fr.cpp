@@ -41,10 +41,10 @@ struct Euclidean_FR : vivid::OperatorBase, vivid::FrameProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"beat_phase", VIVID_PORT_SIGNAL,  VIVID_PORT_INPUT});
-        out.push_back({"trigger",    VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});
-        out.push_back({"gate",       VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});
-        out.push_back({"step",       VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});
+        out.push_back({"beat_phase", VIVID_PORT_SCALAR,  VIVID_PORT_INPUT});
+        out.push_back({"trigger",    VIVID_PORT_SCALAR,  VIVID_PORT_OUTPUT});
+        out.push_back({"gate",       VIVID_PORT_SCALAR,  VIVID_PORT_OUTPUT});
+        out.push_back({"step",       VIVID_PORT_SCALAR,  VIVID_PORT_OUTPUT});
         out.push_back({"pattern",    VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
     }
 

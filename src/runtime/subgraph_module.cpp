@@ -269,9 +269,6 @@ std::shared_ptr<const ui::OperatorInfo> make_operator_info(const SubgraphModuleD
     for (const auto& pb : def.ports) {
         if (pb.type == VIVID_PORT_AUDIO_BUFFER) { has_audio_port = true; break; }
     }
-    info->cadence_capability = has_audio_port ? VIVID_CADENCE_AUDIO_CAPABLE
-                                              : VIVID_CADENCE_FRAME_ONLY;
-
     // Ports from module definition
     info->ports.reserve(def.ports.size());
     for (const auto& pb : def.ports) {

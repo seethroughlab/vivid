@@ -441,36 +441,6 @@ void GraphCompiler::init_audio_state(CompiledNode& cn,
     a.in_ptrs.resize(cn.input_port_count);
     a.out_ptrs.resize(cn.output_port_count);
 
-    // Float CV inputs (from descriptor defaults for SIGNAL input ports)
-    a.float_input_defaults.clear();
-    a.float_input_count = 0;
-    for (uint32_t i = 0; i < desc->port_count; ++i) {
-        if (desc->ports[i].direction == VIVID_PORT_INPUT &&
-            desc->ports[i].type == VIVID_PORT_SCALAR) {
-            a.float_input_defaults.push_back(desc->ports[i].default_value);
-            a.float_input_count++;
-        }
-    }
-    a.float_input_values = a.float_input_defaults;
-
-    // Float/SIGNAL outputs + auto-extraction mappings
-    a.float_output_values.clear();
-    a.float_output_count = 0;
-    a.signal_output_extractions.clear();
-    {
-        uint32_t oi = 0;
-        for (uint32_t i = 0; i < desc->port_count; ++i) {
-            if (desc->ports[i].direction == VIVID_PORT_OUTPUT) {
-                if (desc->ports[i].type == VIVID_PORT_SCALAR) {
-                    a.signal_output_extractions.push_back({oi, a.float_output_count});
-                    a.float_output_count++;
-                }
-                oi++;
-            }
-        }
-    }
-    a.float_output_values.resize(a.float_output_count, 0.0f);
-
     // Custom output ptrs
     a.custom_output_ptrs.clear();
     a.custom_output_count = 0;
@@ -561,7 +531,6 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             } else {
                 cn.active_cadence = Cadence::Frame;
             }
-            cn.cadence_capability = desc->cadence_capability;
             cn.lane_behavior = static_cast<LaneBehavior>(desc->lane_behavior);
             cn.operator_kind = vivid_operator_kind(desc);
 
@@ -889,21 +858,15 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             e.transport = EdgeTransport::Snapshot;
         }
 
-        // Precompute SIGNAL ordinals for cross-cadence and audio-direct paths.
-        // The ordinal is the index of this port among VIVID_PORT_SCALAR ports only.
-        if (e.data_type == VIVID_PORT_SCALAR) {
-            if (!e.sources_param) {
-                uint32_t ord = 0;
-                for (uint32_t p = 0; p < e.from_port && p < from_cn.output_port_types.size(); ++p)
-                    if (from_cn.output_port_types[p] == VIVID_PORT_SCALAR) ord++;
-                e.from_signal_ordinal = ord;
-            }
-            if (!e.targets_param) {
-                uint32_t ord = 0;
-                for (uint32_t p = 0; p < e.to_port && p < to_cn.input_port_types.size(); ++p)
-                    if (to_cn.input_port_types[p] == VIVID_PORT_SCALAR) ord++;
-                e.to_signal_ordinal = ord;
-            }
+        // Enforce explicit bridge rules (use raw bridge string to catch typos too)
+        bool has_bridge = conn.has_bridge();
+        if (e.transport == EdgeTransport::Snapshot && !has_bridge) {
+            drop_connection(conn, "cross-cadence connection requires explicit bridge");
+            continue;
+        }
+        if (e.transport == EdgeTransport::Direct && has_bridge) {
+            drop_connection(conn, "same-cadence connection must not have bridge");
+            continue;
         }
 
         cg->edges.push_back(e);
@@ -1140,9 +1103,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             if (p < a.descriptor_output_channels.size() &&
                 a.descriptor_output_channels[p] == 0 &&
                 p < cn.output_port_types.size() &&
-                (cn.output_port_types[p] == VIVID_PORT_AUDIO_BUFFER ||
-                 (cn.output_port_types[p] == VIVID_PORT_SCALAR &&
-                  cn.cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE))) {
+                cn.output_port_types[p] == VIVID_PORT_AUDIO_BUFFER) {
                 uint8_t max_in = 1;
                 for (uint32_t ip = 0; ip < cn.input_port_count; ++ip) {
                     if (a.input_channel_counts[ip] > max_in)

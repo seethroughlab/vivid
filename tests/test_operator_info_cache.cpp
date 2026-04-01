@@ -49,10 +49,8 @@ int main() {
     auto unknown = cache.get("does_not_exist", registry);
     check(unknown == nullptr, "get() for unknown type returns null");
 
-    // 6. Returned OperatorInfo has correct cadence flags, port count, param count
+    // 6. Returned OperatorInfo has correct port count, param count
     if (a_info_new) {
-        check(a_info_new->cadence_capability == VIVID_CADENCE_AUDIO_ONLY,
-              "audio_out info cadence is AUDIO_ONLY");
         check(a_info_new->ports.size() == 1,
               "audio_out info has 1 port");
         check(a_info_new->params.size() == 1,

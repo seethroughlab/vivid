@@ -1168,7 +1168,6 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         sn.is_subgraph_member = !cn.subgraph_owner.empty();
         sn.active_cadence = cn.active_cadence;
         sn.is_gpu = cn.is_gpu();
-        sn.cadence_capability = cn.cadence_capability;
         sn.is_gpu_sink = cn.is_gpu_sink();
         sn.is_generator = cn.gpu ? cn.gpu->texture_input_port_indices.empty() && !cn.is_gpu_sink() : true;
         sn.lane_behavior = static_cast<uint8_t>(cn.lane_behavior);

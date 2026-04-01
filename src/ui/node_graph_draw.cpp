@@ -1092,10 +1092,9 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     // --- Technical section ---
     {
         bool has_resolution = sel_node->is_gpu && sel_node->gpu_tex_width > 0;
-        bool has_cadence = sel_node->cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE;
         bool has_state_presets = sel_node->param_indices.count("states") > 0;
         bool has_outputs = !sel_node->output_port_indices.empty();
-        if (has_resolution || has_cadence || has_state_presets || has_outputs)
+        if (has_resolution || has_state_presets || has_outputs)
             draw_section_separator(tr, px, py, kInspContentW, "Technical");
         draw_inspector_resolution(tr, *sel_node, px, py);
         draw_inspector_state_presets(tr, *sel_node, px, py);
@@ -3091,7 +3090,7 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
             auto cat_it = snap_.operator_catalog.find(name);
             if (cat_it != snap_.operator_catalog.end()) {
                 dcol = node_accent_color(cat_it->second->is_gpu,
-                    cat_it->second->cadence_capability == VIVID_CADENCE_AUDIO_ONLY ? Cadence::Audio : Cadence::Frame);
+                    Cadence::Frame);
             }
             float dot_x = px + 10;
             float dot_y = item_y + (kChooserItemH - 6) * 0.5f;
@@ -3100,8 +3099,7 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
             // Cadence tag
             const char* tag = "[C]";
             if (cat_it != snap_.operator_catalog.end()) {
-                tag = cat_it->second->is_gpu ? "[G]" :
-                      cat_it->second->cadence_capability == VIVID_CADENCE_AUDIO_ONLY ? "[A]" : "[C]";
+                tag = cat_it->second->is_gpu ? "[G]" : "[C]";
             }
             tr.draw_text(px + 20, item_y + 3, tag, dcol[0], dcol[1], dcol[2]);
 

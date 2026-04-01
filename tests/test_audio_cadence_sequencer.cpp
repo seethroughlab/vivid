@@ -60,7 +60,6 @@ int main(int argc, char* argv[]) {
             const auto* desc = clock_loader->descriptor();
             check(desc->has_process_audio == 1, "clock_au has process_audio");
             check(desc->has_process_frame == 0, "clock_au has no process_frame");
-            check(desc->cadence_capability == VIVID_CADENCE_AUDIO_ONLY, "clock_au is audio-only");
         }
     }
 

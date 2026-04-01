@@ -8,7 +8,7 @@ extern "C" {
 
 /* Bump when operator-facing C ABI changes in incompatible ways.
    Catches stale dylibs during hot-reload — not a cross-version compatibility promise. */
-#define VIVID_OPERATOR_ABI_VERSION 3u
+#define VIVID_OPERATOR_ABI_VERSION 4u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -19,27 +19,6 @@ typedef uint32_t VividOperatorKind;
 #define VIVID_OP_CONTROL 0u   // main thread, frame-rate (~60 Hz)
 #define VIVID_OP_AUDIO   1u   // audio thread, audio-rate (~48 kHz)
 #define VIVID_OP_GPU     2u   // main thread, GPU command submission
-
-// Cadence capability — classifies an operator's supported execution cadences.
-//
-// AUDIO_CAPABLE contract: an operator that declares audio capability (by
-// implementing both process_frame and process_audio) promises that its
-// process_audio path is safe for real-time audio-thread execution:
-//
-//   - No heap allocation (malloc, new, vector::push_back, string concat, etc.)
-//   - No blocking or locks (mutex, sleep, file/network I/O)
-//   - No dependence on frame-thread-only services (GPU state, UI)
-//   - Bounded CPU cost appropriate for audio-rate invocation (~48 kHz)
-//   - Deterministic output for a given input stream and internal state
-//   - Semantics that remain meaningful when advanced at audio cadence
-//
-// The runtime does not enforce these constraints automatically. Violating them
-// may cause audio glitches, priority inversion, or undefined behavior when the
-// node is promoted to audio cadence.
-typedef uint32_t VividCadenceCapability;
-#define VIVID_CADENCE_FRAME_ONLY     0u  // can only run at frame rate
-#define VIVID_CADENCE_AUDIO_CAPABLE  1u  // implements both process_frame and process_audio; can be promoted
-#define VIVID_CADENCE_AUDIO_ONLY     2u  // implements only process_audio; always runs at audio rate
 
 // Lane behavior — how an operator interacts with lane multiplicity.
 typedef uint32_t VividLaneBehavior;
@@ -71,10 +50,6 @@ typedef uint32_t VividPortType;
 #define VIVID_PORT_STRING         3u  // UTF-8 string
 #define VIVID_PORT_STRING_LANES  4u  // variable-length string array
 #define VIVID_PORT_TEXTURE        5u  // WGPUTextureView
-
-// Temporary aliases — removed before Phase 4 cutover.
-#define VIVID_PORT_SIGNAL         VIVID_PORT_SCALAR
-#define VIVID_PORT_AUDIO          VIVID_PORT_AUDIO_BUFFER
 
 typedef uint32_t VividPortDirection;
 #define VIVID_PORT_INPUT   0u
@@ -144,8 +119,6 @@ typedef struct VividOperatorDescriptor {
     int                       has_process_audio; // 1 if operator implements AudioProcessable
     int                       has_process_gpu;   // 1 if operator implements GpuProcessable
 
-    // Cadence-aware execution model (v15+)
-    VividCadenceCapability    cadence_capability;    // FRAME_ONLY, AUDIO_CAPABLE, or AUDIO_ONLY
     int                       has_process_frame;     // 1 if operator implements FrameProcessable
 
     // Lane behavior (v3+)
@@ -447,9 +420,6 @@ static inline int vivid_is_control_type(VividPortType t) {
 
 static inline int vivid_port_type_compatible(VividPortType a, VividPortType b) {
     if (a == b) return 1;
-    /* SCALAR ↔ AUDIO_BUFFER: audio-cadence SCALAR ports use 1-channel buffers */
-    if ((a == VIVID_PORT_SCALAR       && b == VIVID_PORT_AUDIO_BUFFER) ||
-        (a == VIVID_PORT_AUDIO_BUFFER && b == VIVID_PORT_SCALAR)) return 1;
     return vivid_is_control_type(a) && vivid_is_control_type(b);
 }
 

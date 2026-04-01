@@ -388,7 +388,7 @@ static std::string audio_template(const std::string& name, const std::string& st
     s << "\n";
 
     s << "    // Audio-thread contract: no heap alloc, no locks, no blocking I/O.\n";
-    s << "    // See VIVID_CADENCE_AUDIO_CAPABLE in operator_api/types.h for details.\n";
+    s << "    // See operator_api/types.h for audio-thread safety requirements.\n";
     s << "    void process_audio(const VividAudioContext* ctx) override {\n";
     if (num_input_bufs > 0)
         s << "        float* in  = ctx->input_buffers[0];\n";
@@ -581,7 +581,7 @@ static std::string empty_audio_template(const std::string& struct_name) {
     s << "        out.push_back({\"output\", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT});\n";
     s << "    }\n\n";
     s << "    // Audio-thread contract: no heap alloc, no locks, no blocking I/O.\n";
-    s << "    // See VIVID_CADENCE_AUDIO_CAPABLE in operator_api/types.h for details.\n";
+    s << "    // See operator_api/types.h for audio-thread safety requirements.\n";
     s << "    void process_audio(const VividAudioContext* ctx) override {\n";
     s << "        float* in  = ctx->input_buffers[0];\n";
     s << "        float* out = ctx->output_buffers[0];\n";

@@ -175,7 +175,7 @@ static void test_push_float_cv_via_edge() {
     // LFO output
     cg.nodes[0].output_values = {0.75f};
 
-    // Add a snapshot edge: lfo out:0 → osc signal input (to_signal_ordinal = 0)
+    // Add a snapshot edge: lfo out:0 → osc input
     vivid::CompiledEdge edge{};
     edge.from_node = 0;
     edge.from_port = 0;
@@ -183,7 +183,6 @@ static void test_push_float_cv_via_edge() {
     edge.to_port = 0;
     edge.transport = vivid::EdgeTransport::Snapshot;
     edge.data_type = VIVID_PORT_SCALAR;
-    edge.to_signal_ordinal = 0;
     cg.edges.push_back(edge);
     cg.frame_to_audio_edges.push_back(0);
 
@@ -225,7 +224,6 @@ static void test_pull_float_output() {
     edge.to_port = 0;
     edge.transport = vivid::EdgeTransport::Snapshot;
     edge.data_type = VIVID_PORT_SCALAR;
-    edge.from_signal_ordinal = 0;
     cg.edges.push_back(edge);
     cg.audio_to_frame_edges.push_back(0);
 
@@ -459,7 +457,6 @@ static void test_bridge_zero_value_passthrough() {
     edge.to_port = 0;
     edge.transport = vivid::EdgeTransport::Snapshot;
     edge.data_type = VIVID_PORT_SCALAR;
-    edge.from_signal_ordinal = 0;
     cg.edges.push_back(edge);
     cg.audio_to_frame_edges.push_back(0);
     cg.nodes[0].output_port_types[0] = VIVID_PORT_SCALAR;

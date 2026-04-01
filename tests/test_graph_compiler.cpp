@@ -515,10 +515,17 @@ static void test_loop_based_strategy(const std::string& build_dir) {
     registry.scan_deferred(staging.c_str());
 
     // LaneSourceOp (Structural, frame-cadence) → LaneSlewOp (Pointwise + strategy_independent, audio-cadence)
+    // Cross-cadence connection requires explicit bridge.
     vivid::Graph g;
-    g.add_node("src", "LaneSourceOp");
-    g.add_node("slew", "LaneSlewOp");
-    g.add_connection("src", "out", "slew", "input");
+    g.load_from_string(R"({
+        "nodes": {
+            "src":  { "type": "LaneSourceOp" },
+            "slew": { "type": "LaneSlewOp" }
+        },
+        "connections": [
+            { "from": "src/out", "to": "slew/input", "bridge": "hold" }
+        ]
+    })");
 
     vivid::GraphCompiler::Options opts;
     auto cg = vivid::GraphCompiler::compile(g, registry, opts);
@@ -546,41 +553,11 @@ static void test_loop_based_strategy(const std::string& build_dir) {
 }
 
 // ---------------------------------------------------------------------------
-// Test: BridgeKind populated from connection bridge field
+// Test: Same-cadence edge without bridge compiles normally
 // ---------------------------------------------------------------------------
 
-static void test_bridge_kind_from_connection() {
-    std::fprintf(stderr, "\n--- compile: bridge_kind from connection ---\n");
-
-    vivid::Graph g;
-    g.load_from_string(R"({
-        "nodes": {
-            "src": { "type": "UnknownSrc" },
-            "dst": { "type": "UnknownDst" }
-        },
-        "connections": [
-            { "from": "src/out", "to": "dst/in", "bridge": "hold" }
-        ]
-    })");
-
-    vivid::OperatorRegistry registry;
-    vivid::GraphCompiler::Options opts;
-
-    auto cg = vivid::GraphCompiler::compile(g, registry, opts);
-    check(cg != nullptr, "compiles with bridge");
-    if (cg) {
-        check(cg->edges.size() == 1, "1 edge");
-        check(cg->edges[0].bridge_kind == vivid::BridgeKind::Hold,
-              "bridge_kind == Hold");
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Test: BridgeKind defaults to None without bridge field
-// ---------------------------------------------------------------------------
-
-static void test_bridge_kind_default_none() {
-    std::fprintf(stderr, "\n--- compile: bridge_kind defaults to None ---\n");
+static void test_bridge_same_cadence_no_bridge() {
+    std::fprintf(stderr, "\n--- compile: same-cadence no bridge → accepted ---\n");
 
     vivid::Graph g;
     g.add_node("a", "UnknownA");
@@ -591,70 +568,49 @@ static void test_bridge_kind_default_none() {
     vivid::GraphCompiler::Options opts;
 
     auto cg = vivid::GraphCompiler::compile(g, registry, opts);
-    check(cg != nullptr, "compiles without bridge");
+    check(cg != nullptr, "compiles");
     if (cg) {
         check(cg->edges.size() == 1, "1 edge");
         check(cg->edges[0].bridge_kind == vivid::BridgeKind::None,
-              "bridge_kind == None by default");
+              "bridge_kind == None");
+        check(cg->edges[0].transport == vivid::EdgeTransport::Direct,
+              "transport == Direct");
     }
 }
 
 // ---------------------------------------------------------------------------
-// Test: All BridgeKind values parsed correctly
+// Test: Same-cadence edge WITH bridge → rejected
 // ---------------------------------------------------------------------------
 
-static void test_bridge_kind_all_values() {
-    std::fprintf(stderr, "\n--- compile: all BridgeKind values ---\n");
-
-    const char* json = R"({
-        "nodes": {
-            "a": { "type": "X" }, "b": { "type": "X" }, "c": { "type": "X" },
-            "d": { "type": "X" }, "e": { "type": "X" }, "f": { "type": "X" },
-            "g": { "type": "X" }
-        },
-        "connections": [
-            { "from": "a/out", "to": "b/in", "bridge": "hold" },
-            { "from": "a/out", "to": "c/in", "bridge": "snapshot" },
-            { "from": "a/out", "to": "d/in", "bridge": "last_sample" },
-            { "from": "a/out", "to": "e/in", "bridge": "rms" },
-            { "from": "a/out", "to": "f/in", "bridge": "peak" },
-            { "from": "a/out", "to": "g/in", "bridge": "waveform" }
-        ]
-    })";
+static void test_bridge_same_cadence_with_bridge_rejected() {
+    std::fprintf(stderr, "\n--- compile: same-cadence with bridge → rejected ---\n");
 
     vivid::Graph g;
-    g.load_from_string(json);
+    g.load_from_string(R"({
+        "nodes": { "a": { "type": "X" }, "b": { "type": "X" } },
+        "connections": [
+            { "from": "a/out", "to": "b/in", "bridge": "hold" }
+        ]
+    })");
 
     vivid::OperatorRegistry registry;
     vivid::GraphCompiler::Options opts;
 
     auto cg = vivid::GraphCompiler::compile(g, registry, opts);
-    check(cg != nullptr, "compiles with all bridge kinds");
-    if (cg && cg->edges.size() == 6) {
-        // Find edges by target node
-        auto find_edge = [&](const std::string& to_id) -> const vivid::CompiledEdge* {
-            auto* n = cg->find_node(to_id);
-            if (!n) return nullptr;
-            uint32_t ni = static_cast<uint32_t>(n - cg->nodes.data());
-            for (const auto& e : cg->edges)
-                if (e.to_node == ni) return &e;
-            return nullptr;
-        };
-        auto check_bk = [&](const std::string& to_id, vivid::BridgeKind expected, const char* label) {
-            auto* e = find_edge(to_id);
-            check(e && e->bridge_kind == expected, label);
-        };
-        check_bk("b", vivid::BridgeKind::Hold,       "hold parsed");
-        check_bk("c", vivid::BridgeKind::Snapshot,    "snapshot parsed");
-        check_bk("d", vivid::BridgeKind::LastSample,  "last_sample parsed");
-        check_bk("e", vivid::BridgeKind::Rms,         "rms parsed");
-        check_bk("f", vivid::BridgeKind::Peak,        "peak parsed");
-        check_bk("g", vivid::BridgeKind::Waveform,    "waveform parsed");
+    check(cg != nullptr, "compiles (connection dropped)");
+    if (cg) {
+        check(cg->edges.empty(), "edge rejected (same-cadence with bridge)");
+        check(cg->dropped_connections.size() == 1, "1 dropped connection");
     }
 }
 
 // ---------------------------------------------------------------------------
-// Test: Unknown bridge string maps to BridgeKind::None with warning
+// Test: Cross-cadence edge without bridge → rejected
+// (requires real frame + audio operators; tested in test_cadence_inference)
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Test: Unknown bridge string on same-cadence → warns + rejected
 // ---------------------------------------------------------------------------
 
 static void test_bridge_kind_unknown_warns() {
@@ -671,13 +627,12 @@ static void test_bridge_kind_unknown_warns() {
     vivid::OperatorRegistry registry;
     vivid::GraphCompiler::Options opts;
 
-    // The warning goes to stderr (visible in test output).
     auto cg = vivid::GraphCompiler::compile(g, registry, opts);
-    check(cg != nullptr, "compiles despite unknown bridge");
+    check(cg != nullptr, "compiles (connection dropped)");
     if (cg) {
-        check(cg->edges.size() == 1, "1 edge");
-        check(cg->edges[0].bridge_kind == vivid::BridgeKind::None,
-              "unknown bridge maps to None");
+        // Unknown bridge → BridgeKind::None → but bridge string is non-empty
+        // → same-cadence with bridge → rejected
+        check(cg->edges.empty(), "edge rejected");
     }
 }
 
@@ -702,9 +657,8 @@ int main(int argc, char* argv[]) {
     test_lane_mismatch_fails(build_dir);
     test_audio_lane_lift_from_lane_input(build_dir);
     test_loop_based_strategy(build_dir);
-    test_bridge_kind_from_connection();
-    test_bridge_kind_default_none();
-    test_bridge_kind_all_values();
+    test_bridge_same_cadence_no_bridge();
+    test_bridge_same_cadence_with_bridge_rejected();
     test_bridge_kind_unknown_warns();
 
     std::fprintf(stderr, "\n%s (%d failures)\n", failures == 0 ? "PASSED" : "FAILED", failures);

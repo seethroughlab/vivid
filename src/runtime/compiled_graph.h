@@ -246,7 +246,6 @@ struct CompiledNode {
 
     // ── Cadence ─────────────────────────────────────────────────────────────
     Cadence active_cadence = Cadence::Frame;
-    VividCadenceCapability cadence_capability = VIVID_CADENCE_FRAME_ONLY;
     VividOperatorKind operator_kind = VIVID_OP_CONTROL;
 
     // ── Port configuration (set once at compile time) ───────────────────────

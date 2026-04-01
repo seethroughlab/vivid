@@ -354,47 +354,13 @@ static void test_audio_state_float_cv() {
 
     vivid::GraphCompiler::init_audio_state(cn, &desc, 128);
 
+    // Float CV init removed in Phase 4B — vectors stay empty.
     auto& a = *cn.audio;
-    check(a.float_input_count == 2, "2 float CV inputs (SIGNAL ports)");
-    check(a.float_input_defaults.size() == 2, "2 float input defaults");
-    check(a.float_input_defaults[0] == 440.0f, "first CV default 440");
-    check(a.float_input_defaults[1] == 1.0f, "second CV default 1.0");
-    check(a.float_input_values == a.float_input_defaults, "input values == defaults initially");
+    check(a.float_input_values.empty(), "float_input_values empty (no CV init)");
+    check(a.float_output_values.empty(), "float_output_values empty (no CV init)");
 }
 
-static void test_audio_state_signal_outputs() {
-    std::fprintf(stderr, "\n--- init_audio_state: signal output extraction ---\n");
-
-    VividPortDescriptor ports[] = {
-        make_port("audio_out", VIVID_PORT_AUDIO_BUFFER,  VIVID_PORT_OUTPUT, 1),
-        make_port("rms",       VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT),
-        make_port("peak",      VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT),
-    };
-    VividOperatorDescriptor desc{};
-    desc.name = "AnalysisOp";
-    desc.port_count = 3;
-    desc.ports = ports;
-    desc.param_count = 0;
-    desc.params = nullptr;
-
-    vivid::CompiledNode cn;
-    cn.input_port_count = 0;
-    cn.output_port_count = 3;
-    cn.audio = std::make_unique<vivid::AudioNodeState>();
-
-    vivid::GraphCompiler::init_audio_state(cn, &desc, 256);
-
-    auto& a = *cn.audio;
-    check(a.float_output_count == 2, "2 SIGNAL outputs");
-    check(a.float_output_values.size() == 2, "float output values sized");
-    check(a.signal_output_extractions.size() == 2, "2 extraction mappings");
-    // rms is port_idx 1 (second output), float_ordinal 0
-    check(a.signal_output_extractions[0].port_idx == 1, "rms at port_idx 1");
-    check(a.signal_output_extractions[0].float_ordinal == 0, "rms float_ordinal 0");
-    // peak is port_idx 2 (third output), float_ordinal 1
-    check(a.signal_output_extractions[1].port_idx == 2, "peak at port_idx 2");
-    check(a.signal_output_extractions[1].float_ordinal == 1, "peak float_ordinal 1");
-}
+// Signal output extraction test removed in Phase 4B — float CV plumbing no longer initialized.
 
 static void test_audio_state_lane_flags() {
     std::fprintf(stderr, "\n--- init_audio_state: lane/string/custom flags ---\n");
@@ -474,7 +440,6 @@ int main() {
     // init_audio_state tests
     test_audio_state_basic();
     test_audio_state_float_cv();
-    test_audio_state_signal_outputs();
     test_audio_state_lane_flags();
     test_audio_state_different_buffer_sizes();
 

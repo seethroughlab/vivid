@@ -31,8 +31,8 @@ struct SmoothAu : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"value", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"input", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"value", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     void process_audio(const VividAudioContext* ctx) override {

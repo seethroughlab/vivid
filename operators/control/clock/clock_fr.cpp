@@ -24,10 +24,10 @@ struct ClockFr : vivid::OperatorBase, vivid::FrameProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"beat_phase",   VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"beat_ms",      VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"bar_phase",    VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
-        out.push_back({"beat_trigger", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"beat_phase",   VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"beat_ms",      VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"bar_phase",    VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"beat_trigger", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     void process_frame(const VividFrameContext* ctx) override {
