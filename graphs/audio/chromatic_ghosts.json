@@ -1,0 +1,435 @@
+{
+    "schema_version": 2,
+    "vivid_version": "0.1.0",
+    "nodes": {
+        "bitcrush": {
+            "type": "Bitcrush",
+            "params": {
+                "rate": 2506.0,
+                "mix": 1.0,
+                "bits": 1.7300000190734863
+            }
+        },
+        "block_disp": {
+            "type": "Block Displacement",
+            "pkg": {
+                "name": "vivid-glitch",
+                "version": "2.0.0"
+            },
+            "params": {
+                "seed": 42.0,
+                "mix": 0.8999999761581421,
+                "grid_y": 8.0,
+                "grid_x": 8.0,
+                "duplicate": 0.07999999821186066,
+                "direction": 0.0,
+                "chance": 0.4000000059604645,
+                "amount": 0.6000000238418579
+            }
+        },
+        "clock": {
+            "type": "ClockAu",
+            "params": {
+                "bpm": 140.0
+            },
+            "layout": {
+                "x": -61.10182189941406,
+                "y": 50.90354919433594
+            }
+        },
+        "comp_text": {
+            "type": "Composite",
+            "params": {
+                "blend_mode": 1.0
+            }
+        },
+        "delay": {
+            "type": "Delay",
+            "params": {
+                "time": 321.0,
+                "mix": 0.3499999940395355,
+                "feedback": 0.4000000059604645
+            }
+        },
+        "env_bass": {
+            "type": "EnvelopeAu",
+            "params": {
+                "sustain": 0.4000000059604645,
+                "decay": 0.15000000596046448,
+                "attack": 0.009999999776482582,
+                "release": 0.30000001192092896,
+                "amplitude": 1.0
+            }
+        },
+        "euclid_bass": {
+            "type": "EuclideanAu",
+            "params": {
+                "rate": 2.0,
+                "hits": 3.0,
+                "steps": 8.0,
+                "rotation": 11.0,
+                "gate_length": 0.5
+            },
+            "layout": {
+                "x": 230.0,
+                "y": 254.0
+            }
+        },
+        "euclid_lead": {
+            "type": "EuclideanAu",
+            "params": {
+                "rate": 2.0,
+                "hits": 3.0,
+                "steps": 17.0,
+                "rotation": 0.0,
+                "gate_length": 0.5419694781303406
+            },
+            "layout": {
+                "x": 708.0906982421875,
+                "y": 195.53778076171875
+            }
+        },
+        "euclid_noise": {
+            "type": "EuclideanAu",
+            "params": {
+                "rate": 4.0,
+                "hits": 6.0,
+                "steps": 11.0,
+                "rotation": 5.0,
+                "gate_length": 0.15000000596046448
+            },
+            "layout": {
+                "x": 230.0,
+                "y": 391.0
+            }
+        },
+        "filter": {
+            "type": "Filter",
+            "params": {
+                "resonance": 1.399999976158142,
+                "mode": 0.0,
+                "cutoff": 300.0
+            }
+        },
+        "gain_bass": {
+            "type": "Gain",
+            "params": {
+                "gain": 1.0
+            },
+            "layout": {
+                "x": 601.8828125,
+                "y": 490.7124328613281
+            }
+        },
+        "gain_noise": {
+            "type": "Gain",
+            "params": {
+                "gain": 1.0
+            }
+        },
+        "gain_out": {
+            "type": "Gain",
+            "params": {
+                "gain": 0.699999988079071
+            }
+        },
+        "hsv_vis": {
+            "type": "HSV",
+            "params": {
+                "value": 0.0,
+                "saturation": -0.4000000059604645,
+                "hue_shift": 0.0
+            }
+        },
+        "lfo_filter": {
+            "type": "LfoAu",
+            "params": {
+                "waveform": 1.0,
+                "offset": 4.0,
+                "frequency": 0.33000001311302185,
+                "amplitude": 8.0
+            },
+            "layout": {
+                "x": 813.735595703125,
+                "y": 695.323486328125
+            }
+        },
+        "lfo_hue": {
+            "type": "LfoFr",
+            "params": {
+                "waveform": 1.0,
+                "offset": 180.0,
+                "frequency": 0.03999999910593033,
+                "amplitude": 180.0
+            }
+        },
+        "mixer": {
+            "type": "Mixer",
+            "params": {
+                "gain_3": 0.13707031309604645,
+                "gain_4": 0.06800781190395355,
+                "gain_2": 0.09804686903953552,
+                "gain_1": 1.0391792058944702
+            },
+            "layout": {
+                "x": 830.0,
+                "y": 441.5
+            }
+        },
+        "noise": {
+            "type": "Noise",
+            "params": {
+                "color": 1.0,
+                "amplitude": 0.15000000596046448
+            }
+        },
+        "noise_vis": {
+            "type": "NoiseTexture",
+            "params": {
+                "speed": 3.0,
+                "octaves": 4.0,
+                "scale": 5.0,
+                "channels": 0.0
+            }
+        },
+        "osc_bass": {
+            "type": "Oscillator",
+            "params": {
+                "waveform": 2.0,
+                "frequency": 110.0,
+                "amplitude": 0.5
+            },
+            "layout": {
+                "x": 304.8518371582031,
+                "y": 544.0018310546875
+            }
+        },
+        "osc_lead": {
+            "type": "Oscillator",
+            "params": {
+                "waveform": 1.0,
+                "frequency": 220.0,
+                "amplitude": 0.5
+            },
+            "layout": {
+                "x": 900.3049926757813,
+                "y": 156.81936645507813
+            }
+        },
+        "out": {
+            "type": "audio_out"
+        },
+        "pixelate": {
+            "type": "Pixelate",
+            "params": {
+                "size_y": 8.0,
+                "size_x": 8.0
+            }
+        },
+        "posterize": {
+            "type": "Posterize",
+            "params": {
+                "levels": 3.0
+            }
+        },
+        "rand_pitch": {
+            "type": "LfoFr",
+            "params": {
+                "seed": 23907.0,
+                "phase_offset": 0.0,
+                "waveform": 4.0,
+                "polarity": 1.0,
+                "offset": 0.0,
+                "frequency": 7.448746681213379,
+                "amplitude": 9.7953462600708
+            },
+            "layout": {
+                "x": 223.28411865234375,
+                "y": 972.8863525390625
+            }
+        },
+        "scanlines": {
+            "type": "Scanlines",
+            "params": {
+                "thickness": 0.4000000059604645,
+                "spacing": 2.0,
+                "intensity": 0.3499999940395355
+            }
+        },
+        "text_vis": {
+            "type": "Text",
+            "params": {
+                "y": 0.7400000095367432,
+                "size": 0.1599999964237213,
+                "g": 1.0,
+                "bg_r": 0.0,
+                "r": 1.0,
+                "bg_g": 0.0,
+                "bg_b": 0.0,
+                "x": -0.6000000238418579,
+                "b": 1.0,
+                "text": "GHOSTS"
+            }
+        },
+        "vis_glitch": {
+            "type": "Visual Glitch",
+            "pkg": {
+                "name": "vivid-glitch",
+                "version": "2.0.0"
+            },
+            "params": {
+                "shift_chance": 0.20000000298023224,
+                "mix": 0.800000011920929,
+                "scan_chance": 0.20000000298023224,
+                "invert_chance": 0.0,
+                "intensity": 1.0,
+                "static_chance": 0.20000000298023224,
+                "duration": 0.11999999731779099,
+                "pixelate_chance": 0.10000000149011612,
+                "block_chance": 0.30000001192092896
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        }
+    },
+    "connections": [
+        {
+            "from": "clock/beat_phase",
+            "to": "euclid_lead/beat_phase"
+        },
+        {
+            "from": "clock/beat_phase",
+            "to": "euclid_bass/beat_phase"
+        },
+        {
+            "from": "clock/beat_phase",
+            "to": "euclid_noise/beat_phase"
+        },
+        {
+            "from": "euclid_lead/gate",
+            "to": "osc_lead/amp_cv"
+        },
+        {
+            "from": "rand_pitch/value",
+            "to": "osc_lead/freq_cv",
+            "bridge": "hold"
+        },
+        {
+            "from": "euclid_bass/gate",
+            "to": "env_bass/gate"
+        },
+        {
+            "from": "env_bass/value",
+            "to": "gain_bass/amplitude_cv"
+        },
+        {
+            "from": "osc_bass/output",
+            "to": "gain_bass/input"
+        },
+        {
+            "from": "noise/output",
+            "to": "gain_noise/input"
+        },
+        {
+            "from": "euclid_noise/gate",
+            "to": "gain_noise/amplitude_cv"
+        },
+        {
+            "from": "lfo_filter/value",
+            "to": "filter/cutoff_cv"
+        },
+        {
+            "from": "osc_lead/output",
+            "to": "mixer/input_1"
+        },
+        {
+            "from": "gain_bass/output",
+            "to": "mixer/input_2"
+        },
+        {
+            "from": "gain_noise/output",
+            "to": "mixer/input_3"
+        },
+        {
+            "from": "mixer/output",
+            "to": "filter/input"
+        },
+        {
+            "from": "filter/output",
+            "to": "bitcrush/input"
+        },
+        {
+            "from": "bitcrush/output",
+            "to": "delay/input"
+        },
+        {
+            "from": "delay/output",
+            "to": "gain_out/input"
+        },
+        {
+            "from": "gain_out/output",
+            "to": "out/input"
+        },
+        {
+            "from": "gain_out/rms",
+            "to": "noise_vis/scale",
+            "bridge": "hold"
+        },
+        {
+            "from": "noise_vis/texture",
+            "to": "comp_text/a"
+        },
+        {
+            "from": "text_vis/texture",
+            "to": "comp_text/b"
+        },
+        {
+            "from": "comp_text/texture",
+            "to": "pixelate/input"
+        },
+        {
+            "from": "pixelate/texture",
+            "to": "posterize/input"
+        },
+        {
+            "from": "posterize/texture",
+            "to": "hsv_vis/input"
+        },
+        {
+            "from": "lfo_hue/value",
+            "to": "hsv_vis/hue_shift"
+        },
+        {
+            "from": "hsv_vis/texture",
+            "to": "block_disp/input"
+        },
+        {
+            "from": "gain_out/rms",
+            "to": "block_disp/amount",
+            "bridge": "hold"
+        },
+        {
+            "from": "block_disp/texture",
+            "to": "vis_glitch/input"
+        },
+        {
+            "from": "clock/beat_phase",
+            "to": "vis_glitch/phase",
+            "bridge": "hold"
+        },
+        {
+            "from": "vis_glitch/texture",
+            "to": "scanlines/input"
+        },
+        {
+            "from": "scanlines/texture",
+            "to": "vout/input"
+        }
+    ],
+    "viewport": {
+        "pan_x": 343.11004638671875,
+        "pan_y": -12.442581176757813,
+        "zoom": 0.6909933090209961
+    }
+}

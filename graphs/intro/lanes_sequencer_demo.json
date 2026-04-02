@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "lanes_sequencer_demo",
+    "title": "Lanes: NotePattern",
+    "description": "Demonstrates structural lane creation using NotePattern — a chord sequencer that outputs note, velocity, and gate lane arrays. Each chord voice becomes a lane, driving a metaball's position.",
+    "tags": ["lanes", "intro", "sequencer", "notepattern", "metaball", "demo"],
+    "difficulty": "beginner",
+    "domains": ["control", "gpu"],
+    "requires_packages": [],
+    "featured_rank": 4
+  },
+  "nodes": {
+    "clock": {
+      "type": "ClockFr",
+      "params": {
+        "bpm": 100.0
+      },
+      "layout": { "x": -250, "y": 500 }
+    },
+    "pattern": {
+      "type": "NotePatternFr",
+      "params": {
+        "steps": 4,
+        "root_0": 0,  "type_0": 0,
+        "root_1": 5,  "type_1": 1,
+        "root_2": 7,  "type_2": 0,
+        "root_3": 4,  "type_3": 1,
+        "octave": 4,
+        "beats_per_step": 4,
+        "gate_length": 0.8,
+        "velocity": 0.8
+      },
+      "layout": { "x": 0, "y": 500 }
+    },
+    "metaball": {
+      "type": "Metaball",
+      "params": {
+        "softness": 0.015,
+        "count": 8.0,
+        "threshold": 2.0,
+        "render_mode": 0.0,
+        "glow": 0.5,
+        "color_mode": 0.0
+      },
+      "layout": { "x": 320, "y": 500 }
+    },
+    "bloom": {
+      "type": "Bloom",
+      "params": {
+        "threshold": 0.3,
+        "intensity": 0.4,
+        "radius": 8.0
+      },
+      "layout": { "x": 520, "y": 500 }
+    },
+    "vout": {
+      "type": "video_out",
+      "layout": { "x": 720, "y": 500 }
+    }
+  },
+  "connections": [
+    { "from": "clock/beat_phase",     "to": "pattern/beat_phase" },
+    { "from": "pattern/notes",        "to": "metaball/pos_x",
+      "from_min": 48.0, "from_max": 84.0, "to_min": -0.8, "to_max": 0.8 },
+    { "from": "pattern/gates",        "to": "metaball/pos_y",
+      "from_min": 0.0, "from_max": 1.0, "to_min": 0.3, "to_max": -0.3 },
+    { "from": "pattern/velocities",   "to": "metaball/radii",
+      "from_min": 0.0, "from_max": 1.0, "to_min": 0.02, "to_max": 0.15 },
+    { "from": "metaball/texture",     "to": "bloom/input" },
+    { "from": "bloom/texture",        "to": "vout/input" }
+  ],
+  "sticky_notes": [
+    {
+      "id": "note_intro",
+      "text": "**Lanes: NotePattern** Some operators are **structural** — they create new lane sets from their own logic. NotePattern generates chord voices, where each note in the chord becomes a lane.",
+      "x": -270, "y": 50, "width": 310, "height": 130, "color": 0
+    },
+    {
+      "id": "note_pattern",
+      "text": "**NotePattern** sequences 4 chords (C maj → F min → G maj → E min). Each chord has 3-4 notes, output as a lane array. The chord changes every 4 beats.",
+      "x": -270, "y": 210, "width": 300, "height": 120, "color": 1
+    },
+    {
+      "id": "note_outputs",
+      "text": "**Three lane outputs** share the same lane set:\n- **notes** → X position (pitch maps to horizontal)\n- **gates** → Y position (ball lifts when note is held)\n- **velocities** → radius (louder = bigger)",
+      "x": 30, "y": 210, "width": 280, "height": 140, "color": 1
+    },
+    {
+      "id": "note_remap",
+      "text": "**Connection remapping** translates MIDI notes (48-84) into visual coordinates (-0.8 to 0.8). The remap fields on each connection handle this scaling.",
+      "x": 30, "y": 380, "width": 280, "height": 100, "color": 2
+    },
+    {
+      "id": "note_provenance",
+      "text": "**Lane provenance** All three outputs (notes, gates, velocities) share the same lane set, so they can all connect to the same pointwise operator (Metaball) without conflict.",
+      "x": 340, "y": 210, "width": 280, "height": 120, "color": 3
+    }
+  ]
+}

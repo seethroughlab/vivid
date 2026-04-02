@@ -204,8 +204,7 @@
     },
     {
       "from": "noise/output",
-      "to": "mixer/input_2",
-      "bridge": "hold"
+      "to": "mixer/input_2"
     },
     {
       "from": "mixer/output",

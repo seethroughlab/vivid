@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "lanes_stack_demo",
+    "title": "Lanes: Stack",
+    "description": "Demonstrates Stack — combining four independent LFO signals into a 4-lane array so each metaball gets its own X position. Y and radius are scalar (broadcast to all).",
+    "tags": ["lanes", "intro", "stack", "metaball", "demo"],
+    "difficulty": "beginner",
+    "domains": ["control", "gpu"],
+    "requires_packages": [],
+    "featured_rank": 3
+  },
+  "nodes": {
+    "lfo_a": {
+      "type": "LfoFr",
+      "params": {
+        "frequency": 0.15,
+        "amplitude": 0.8,
+        "offset": -0.6,
+        "waveform": 0
+      },
+      "layout": { "x": -250, "y": 350 }
+    },
+    "lfo_b": {
+      "type": "LfoFr",
+      "params": {
+        "frequency": 0.22,
+        "amplitude": 0.8,
+        "offset": -0.2,
+        "waveform": 0,
+        "phase_offset": 0.25
+      },
+      "layout": { "x": -250, "y": 470 }
+    },
+    "lfo_c": {
+      "type": "LfoFr",
+      "params": {
+        "frequency": 0.31,
+        "amplitude": 0.8,
+        "offset": 0.2,
+        "waveform": 0,
+        "phase_offset": 0.5
+      },
+      "layout": { "x": -250, "y": 590 }
+    },
+    "lfo_d": {
+      "type": "LfoFr",
+      "params": {
+        "frequency": 0.19,
+        "amplitude": 0.8,
+        "offset": 0.6,
+        "waveform": 0,
+        "phase_offset": 0.75
+      },
+      "layout": { "x": -250, "y": 710 }
+    },
+    "stack_x": {
+      "type": "Stack",
+      "params": { "mode": 0 },
+      "layout": { "x": 50, "y": 500 }
+    },
+    "lfo_y": {
+      "type": "LfoFr",
+      "params": {
+        "frequency": 0.1,
+        "amplitude": 0.4,
+        "offset": 0.0,
+        "waveform": 0
+      },
+      "layout": { "x": 50, "y": 680 }
+    },
+    "lfo_r": {
+      "type": "LfoFr",
+      "params": {
+        "frequency": 0.35,
+        "amplitude": 0.04,
+        "offset": 0.1,
+        "waveform": 0,
+        "polarity": 1
+      },
+      "layout": { "x": 50, "y": 800 }
+    },
+    "metaball": {
+      "type": "Metaball",
+      "params": {
+        "softness": 0.01,
+        "count": 4.0,
+        "threshold": 2.5,
+        "render_mode": 0.0,
+        "glow": 0.38,
+        "color_mode": 0.0
+      },
+      "layout": { "x": 340, "y": 550 }
+    },
+    "vout": {
+      "type": "video_out",
+      "layout": { "x": 640, "y": 550 }
+    }
+  },
+  "connections": [
+    { "from": "lfo_a/value",      "to": "stack_x/a" },
+    { "from": "lfo_b/value",      "to": "stack_x/b" },
+    { "from": "lfo_c/value",      "to": "stack_x/c" },
+    { "from": "lfo_d/value",      "to": "stack_x/d" },
+    { "from": "stack_x/output",   "to": "metaball/pos_x" },
+    { "from": "lfo_y/value",      "to": "metaball/pos_y" },
+    { "from": "lfo_r/value",      "to": "metaball/radii" },
+    { "from": "metaball/texture", "to": "vout/input" }
+  ],
+  "sticky_notes": [
+    {
+      "id": "note_intro",
+      "text": "**Lanes: Stack** Stack combines independent signals into a single lane array. Each element in the output comes from a different source, giving every lane its own value.",
+      "x": -270, "y": 50, "width": 300, "height": 120, "color": 0
+    },
+    {
+      "id": "note_lfos",
+      "text": "**Four LFOs** each produce a different X position. Different frequencies and offsets mean each ball wanders independently.",
+      "x": -270, "y": 200, "width": 260, "height": 100, "color": 1
+    },
+    {
+      "id": "note_stack",
+      "text": "**Stack (concat)** merges 4 scalar inputs into a 4-lane array: [a, b, c, d]. This creates a lane set where element 0 is LFO A, element 1 is LFO B, etc.",
+      "x": 30, "y": 200, "width": 280, "height": 120, "color": 1
+    },
+    {
+      "id": "note_scalar",
+      "text": "**Y and R are scalar** They auto-broadcast into the lane set established by Stack. All 4 balls share the same Y position and radius.",
+      "x": 30, "y": 350, "width": 280, "height": 100, "color": 2
+    },
+    {
+      "id": "note_result",
+      "text": "**Each ball moves independently on X** because Stack gave each lane a unique signal. Compare with the Repeat demo where all balls overlap!",
+      "x": 350, "y": 200, "width": 280, "height": 100, "color": 3
+    }
+  ]
+}

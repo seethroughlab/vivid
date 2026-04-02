@@ -2,90 +2,98 @@
     "schema_version": 2,
     "vivid_version": "0.1.0",
     "nodes": {
+        "lfo_r": {
+            "type": "LfoFr",
+            "params": {
+                "waveform": 0.0,
+                "polarity": 1.0,
+                "offset": 0.10000000149011612,
+                "frequency": 0.4000000059604645,
+                "amplitude": 0.03999999910593033
+            },
+            "layout": {
+                "x": -223.5625,
+                "y": 800.6015625
+            }
+        },
+        "lfo_x": {
+            "type": "LfoFr",
+            "params": {
+                "waveform": 0.0,
+                "offset": 0.0,
+                "frequency": 0.20000000298023224,
+                "amplitude": 0.4000000059604645
+            },
+            "layout": {
+                "x": -215.84375,
+                "y": 343.65234375
+            }
+        },
+        "lfo_y": {
+            "type": "LfoFr",
+            "params": {
+                "waveform": 0.0,
+                "phase_offset": 0.25,
+                "offset": 0.0,
+                "frequency": 0.15000000596046448,
+                "amplitude": 0.30000001192092896
+            },
+            "layout": {
+                "x": -242.3515625,
+                "y": 545.8515625
+            }
+        },
         "metaball": {
             "type": "Metaball",
             "params": {
-                "softness": 0.010835576802492142,
+                "softness": 0.012000000104308128,
+                "color_mode": 0.0,
+                "glow": 0.3799999952316284,
+                "threshold": 2.5,
                 "count": 8.0,
-                "threshold": 2.505061149597168,
-                "render_mode": 0.0,
-                "glow": 0.37521228194236755,
-                "color_mode": 0.0
+                "render_mode": 0.0
             },
             "layout": {
-                "x": 305.15625,
-                "y": 522.90234375
+                "x": 320.0,
+                "y": 520.0
             }
         },
-        "noise_r": {
-            "type": "SpreadNoise",
+        "repeat_x": {
+            "type": "Repeat",
             "params": {
-                "speed": 1.24363112449646,
-                "seed": 999.0,
-                "offset": 0.07999999821186066,
-                "count": 8.0,
-                "amplitude": 0.20000000298023224
+                "seed": 2377.0,
+                "spread": 0.851435124874115,
+                "mode": 4.0,
+                "count": 39.0
             },
             "layout": {
-                "x": 30.05078125,
-                "y": 748.15234375
-            }
-        },
-        "noise_x": {
-            "type": "SpreadNoise",
-            "params": {
-                "speed": 0.30000001192092896,
-                "seed": 42.0,
-                "offset": 0.5,
-                "count": 8.0,
-                "amplitude": 0.5
-            },
-            "layout": {
-                "x": 30.0,
-                "y": 496.53125
-            }
-        },
-        "noise_y": {
-            "type": "SpreadNoise",
-            "params": {
-                "speed": 0.4000000059604645,
-                "seed": 137.0,
-                "offset": 0.5,
-                "count": 8.0,
-                "amplitude": 0.5
-            },
-            "layout": {
-                "x": 30.0,
-                "y": 616.5
+                "x": 60.0,
+                "y": 450.0
             }
         },
         "vout": {
             "type": "video_out",
             "layout": {
-                "x": 606.734375,
-                "y": 502.80859375
+                "x": 620.0,
+                "y": 520.0
             }
         }
     },
     "connections": [
         {
-            "from": "noise_x/values",
-            "to": "metaball/pos_x",
-            "from_min": 0.0,
-            "from_max": 1.0,
-            "to_min": -1.0,
-            "to_max": 1.0
+            "from": "lfo_x/value",
+            "to": "repeat_x/input"
         },
         {
-            "from": "noise_y/values",
-            "to": "metaball/pos_y",
-            "from_min": 0.0,
-            "from_max": 1.0,
-            "to_min": -1.0,
-            "to_max": 1.0
+            "from": "repeat_x/output",
+            "to": "metaball/pos_x"
         },
         {
-            "from": "noise_r/values",
+            "from": "lfo_y/value",
+            "to": "metaball/pos_y"
+        },
+        {
+            "from": "lfo_r/value",
             "to": "metaball/radii"
         },
         {
@@ -94,63 +102,54 @@
         }
     ],
     "viewport": {
-        "pan_x": 472.015625,
-        "pan_y": 165.87109375,
+        "pan_x": 428.4453125,
+        "pan_y": -103.92578125,
         "zoom": 1.0
     },
     "sticky_notes": [
         {
-            "id": "note_1",
-            "text": "**What is a Lane?** A lane is a variable-length array of floats — Vivid's core data primitive. Even a single value is a lane of length 1. This graph uses three 8-element lanes to animate 8 circles on screen.",
-            "x": -40.88671875,
-            "y": 46.65234375,
+            "id": "note_intro",
+            "text": "**Lanes: Repeat** A lane is a variable-length array of floats. **Repeat** takes one scalar and copies it to N lanes, with optional spread to offset each lane.",
+            "x": -220.0,
+            "y": 50.0,
             "width": 300.0,
             "height": 120.0,
             "color": 0
         },
         {
-            "id": "note_2",
-            "text": "**SpreadNoise → X positions** Generates 8 animated noise values used as X coordinates. Each element drifts independently, creating organic horizontal motion.",
-            "x": -42.02734375,
-            "y": 173.4609375,
-            "width": 280.0,
+            "id": "note_repeat",
+            "text": "**Repeat (linear, spread=0.6)** The X LFO drives 8 lanes, each offset by a linear spread. Ball 0 is at (center−0.6), ball 7 at (center+0.6). All drift together but stay spaced out.",
+            "x": -220.0,
+            "y": 200.0,
+            "width": 300.0,
+            "height": 120.0,
+            "color": 1
+        },
+        {
+            "id": "note_scalar",
+            "text": "**Scalar auto-broadcast** Y and radius LFOs connect as scalars — they automatically apply to all 8 lanes. No Repeat needed for shared values.",
+            "x": 90.0,
+            "y": 200.0,
+            "width": 260.0,
             "height": 100.0,
             "color": 1
         },
         {
-            "id": "note_3",
-            "text": "**SpreadNoise → Y positions** Same operator, different seed so Y motion is independent of X. Together they create 2D wandering.",
-            "x": -42.8359375,
-            "y": 281.1015625,
-            "width": 280.0,
-            "height": 80.0,
-            "color": 1
-        },
-        {
-            "id": "note_4",
-            "text": "**SpreadNoise → Radii** Smaller amplitude (0.06) keeps radii visible but subtle. The circles gently breathe as values animate.",
-            "x": -42.37890625,
-            "y": 367.609375,
-            "width": 280.0,
-            "height": 80.0,
-            "color": 1
-        },
-        {
-            "id": "note_5",
-            "text": "**3 lanes flow into Metaball** pos_x, pos_y, and radii each receive 8 values. Metaball draws one circle per element — element 0 gets (x[0], y[0], r[0]), and so on.",
-            "x": 377.6796875,
-            "y": 69.97265625,
-            "width": 280.0,
-            "height": 100.0,
+            "id": "note_modes",
+            "text": "**Try the other modes!** Click the Repeat node and change mode:\n- **copy**: all identical\n- **random**: scattered offsets\n- **phase**: 0-1 ramp\n- **golden**: maximally decorrelated",
+            "x": 90.0,
+            "y": 330.0,
+            "width": 260.0,
+            "height": 130.0,
             "color": 2
         },
         {
-            "id": "note_6",
-            "text": "**Circles + Rainbow mode** Each ball gets a unique hue from the Rainbow color mode. Try switching render_mode to Metaball to see the classic blobby look!",
-            "x": 689.94140625,
-            "y": 64.79296875,
-            "width": 280.0,
-            "height": 100.0,
+            "id": "note_next",
+            "text": "**Next: Lanes: Stack** shows how to give each ball a completely independent signal using the Stack operator.",
+            "x": 360.0,
+            "y": 200.0,
+            "width": 260.0,
+            "height": 80.0,
             "color": 3
         }
     ]
