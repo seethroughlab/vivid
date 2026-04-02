@@ -1,55 +1,19 @@
-#include "clock.h"
+#include "clock_core.h"
+#include "operator_api/thumbnail.h"
 
-struct ClockAu : vivid::OperatorBase, vivid::AudioProcessable {
-    static constexpr const char* kName   = "clock_au";
-    static constexpr bool kTimeDependent = true;
-
-    vivid::Param<float> bpm{"bpm", 120.0f, 1.0f, 300.0f};
-    vivid::Param<int>   beats_per_bar{"beats_per_bar", 4, 1, 16};
-    double phase_ = 0.0;
-    double bar_phase_ = 0.0;
-    double prev_phase_ = 0.0;
-
-    ClockAu() {
-        vivid::semantic_tag(bpm, "bpm");
-        vivid::semantic_shape(bpm, "scalar");
-        vivid::semantic_unit(bpm, "bpm");
-        vivid::description(bpm, "Tempo in beats per minute");
-        vivid::description(beats_per_bar, "Number of beats in each bar for the bar_trigger output");
-    }
-
-    void collect_params(std::vector<vivid::ParamBase*>& out) override {
-        out.push_back(&bpm);
-        out.push_back(&beats_per_bar);
-    }
-
-    void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"beat_phase",   VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
-        out.push_back({"beat_ms",      VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
-        out.push_back({"bar_phase",    VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
-        out.push_back({"beat_trigger", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
-    }
+struct ClockAu : ClockCore, vivid::AudioProcessable {
+    static constexpr const char* kName = "ClockAu";
 
     void process_audio(const VividAudioContext* ctx) override {
         double delta_time = static_cast<double>(ctx->buffer_size) / ctx->sample_rate;
-        double beats_per_sec = static_cast<double>(bpm.value) / 60.0;
-        double bars_per_sec = beats_per_sec / static_cast<double>(beats_per_bar.value);
-        prev_phase_ = phase_;
-        phase_ += delta_time * beats_per_sec;
-        phase_ -= std::floor(phase_);
-        bar_phase_ += delta_time * bars_per_sec;
-        bar_phase_ -= std::floor(bar_phase_);
-        float out0 = static_cast<float>(phase_);
-        float out1 = 60000.0f / bpm.value;
-        float out2 = static_cast<float>(bar_phase_);
-        float out3 = (phase_ < prev_phase_) ? 1.0f : 0.0f;
+        float out4[4];
+        advance(delta_time, out4);
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
-            ctx->output_buffers[0][i] = out0;
-            ctx->output_buffers[1][i] = out1;
-            ctx->output_buffers[2][i] = out2;
-            ctx->output_buffers[3][i] = out3;
+            for (int j = 0; j < 4; ++j)
+                ctx->output_buffers[j][i] = out4[j];
         }
     }
 };
 
 VIVID_REGISTER(ClockAu)
+VIVID_THUMBNAIL(ClockAu)

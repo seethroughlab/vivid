@@ -35,7 +35,7 @@
  * @input beat_phase External phase source (0-1 sawtooth from Clock) for sync mode.
  * @output value The computed LFO signal.
  */
-struct LFO : vivid::OperatorBase, vivid::FrameProcessable {
+struct LFO : vivid::OperatorBase {
     static constexpr const char* kName   = "LFO";
     static constexpr bool kTimeDependent = true;
     static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
@@ -257,32 +257,22 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable {
         return output;
     }
 
-    // ── Frame-rate processing (~60 Hz) ──────────────────────────────────
+    // ── Frame-rate processing (used by ChildOp<LFO> and LfoFr) ────────
 
-    void process_frame(const VividFrameContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) {
         float gate_in  = ctx->input_values[0];
         float phase_in = ctx->input_values[1];
         double dt = ctx->delta_time;
-
-        int wf   = static_cast<int>(ctx->param_values[5]);   // waveform
-        int rm   = static_cast<int>(ctx->param_values[6]);   // rate_mode
-        int pol  = static_cast<int>(ctx->param_values[7]);   // polarity
-        int dist = static_cast<int>(ctx->param_values[9]);   // distribution
-        int sv   = static_cast<int>(ctx->param_values[10]);  // seed
-        float freq     = ctx->param_values[0];  // frequency
-        float ph_off   = ctx->param_values[1];  // phase_offset
-        float fade     = ctx->param_values[2];  // fade_in
-        float amp      = ctx->param_values[3];  // amplitude
-        float off      = ctx->param_values[4];  // offset
-        float slew_amt = ctx->param_values[8];  // slew
 
         LaneState& s = ctx->lane_state_fn
             ? *vivid_lane_state(ctx, ctx->lane_id, LaneState)
             : scalar_state_;
 
         ctx->output_values[0] = compute_one_sample(
-            s, freq, amp, off, wf, rm, pol, dist, sv,
-            ph_off, fade, gate_in, phase_in, dt, slew_amt);
+            s, frequency.value, amplitude.value, offset.value,
+            waveform.int_value(), rate_mode.int_value(),
+            polarity.int_value(), distribution.int_value(),
+            seed.int_value(), static_cast<float>(phase_offset.value),
+            fade_in.value, gate_in, phase_in, dt, slew.value);
     }
-
 };

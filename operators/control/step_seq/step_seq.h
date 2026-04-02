@@ -147,7 +147,7 @@ struct StepSeq : vivid::OperatorBase {
         }
     }
 
-private:
+protected:
     void compute(const float* input_values, double delta_time, float* output_values) {
         float dt = static_cast<float>(delta_time);
         float beat_phase_in = input_values[1];
@@ -216,9 +216,11 @@ public:
 
     void draw_inspector(VividInspectorContext* ctx) override;
 
-private:
+protected:
     double free_phase_    = 0.0;
     int    prev_step_     = -1;
     float  current_value_ = 0.5f;
+
+private:
     int    dragged_step_  = -1;  // inspector drag state
 };

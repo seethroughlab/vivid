@@ -20,7 +20,7 @@ struct EnvelopeThumbState;
  * @param curve Envelope curve shape: linear, exponential, or logarithmic.
  * @see LFO, MSEG, SpreadADSR
  */
-struct Envelope : vivid::OperatorBase, vivid::FrameProcessable {
+struct Envelope : vivid::OperatorBase {
     static constexpr const char* kName   = "Envelope";
     static constexpr bool kTimeDependent = true;
     static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
@@ -236,30 +236,22 @@ struct Envelope : vivid::OperatorBase, vivid::FrameProcessable {
         }
     }
 
-    // ── Frame-rate processing (~60 Hz) ──────────────────────────────────
+    // ── Frame-rate processing (used by ChildOp<Envelope> and EnvelopeFr) ──
 
-    void process_frame(const VividFrameContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) {
         float gate_in  = ctx->input_values[0];
         float phase_in = ctx->input_values[1];
         float dt = static_cast<float>(ctx->delta_time);
-
-        // Param order: attack=0, decay=1, sustain=2, release=3, amplitude=4, offset=5, curve=6
-        float atk = ctx->param_values[0];
-        float dec = ctx->param_values[1];
-        float sus = ctx->param_values[2];
-        float rel = ctx->param_values[3];
-        float amp = ctx->param_values[4];
-        float off = ctx->param_values[5];
-        int   c   = static_cast<int>(ctx->param_values[6]);
 
         LaneState& s = ctx->lane_state_fn
             ? *vivid_lane_state(ctx, ctx->lane_id, LaneState)
             : scalar_state_;
 
         advance_triggers(s, gate_in, phase_in);
-        advance_adsr(s, dt, atk, dec, sus, rel, c);
+        advance_adsr(s, dt, attack.value, decay.value,
+                     sustain.value, release.value, curve.int_value());
 
-        ctx->output_values[0] = s.env_value * amp + off;
+        ctx->output_values[0] = s.env_value * amplitude.value + offset.value;
     }
 
     void draw_inspector(VividInspectorContext* ctx) override {

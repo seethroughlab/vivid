@@ -1,4 +1,4 @@
-#include "clock.h"
+#include "clock_core.h"
 #include "operator_api/thumbnail.h"
 
 struct ClockThumbState {
@@ -20,14 +20,14 @@ struct ClockThumbState {
     }
 };
 
-Clock::~Clock() {
+ClockCore::~ClockCore() {
     if (thumb_state_) {
         thumb_state_->release_all();
         delete thumb_state_;
     }
 }
 
-void Clock::draw_thumbnail(const VividThumbnailContext* ctx) {
+void ClockCore::draw_thumbnail(const VividThumbnailContext* ctx) {
     if (!ctx) return;
     if (!thumb_state_) thumb_state_ = new ClockThumbState();
 
@@ -45,7 +45,7 @@ void Clock::draw_thumbnail(const VividThumbnailContext* ctx) {
     vivid::thumbnail::run_pass(ctx, thumb_state_->pipeline, thumb_state_->bind_group, "Clock Thumb Pass");
 }
 
-void Clock::rebuild_thumb_pipeline(const VividThumbnailContext* ctx) {
+void ClockCore::rebuild_thumb_pipeline(const VividThumbnailContext* ctx) {
     thumb_state_->release_all();
 
     static const char* kThumbFragment = R"(
@@ -111,5 +111,4 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     thumb_state_->pipeline_format = ctx->thumbnail_format;
 }
 
-// Shared implementation only; public registration lives in _fr/_au wrappers.
-VIVID_THUMBNAIL(Clock)
+// Thumbnail entry point is exported by each _fr/_au wrapper via VIVID_THUMBNAIL.

@@ -1,7 +1,7 @@
 #include "smooth_core.h"
 
 struct SmoothAu : vivid::OperatorBase, vivid::AudioProcessable {
-    static constexpr const char* kName   = "smooth_au";
+    static constexpr const char* kName   = "SmoothAu";
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<float> rise_time{"rise_time", 0.1f, 0.0f, 10.0f};
