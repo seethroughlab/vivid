@@ -4,6 +4,7 @@
 #include "runtime/compiled_graph.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/thumbnail.h"
+#include "ui/renderer_2d.h"
 #include "common/gpu_util.h"
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>
@@ -322,10 +323,29 @@ static std::vector<uint8_t> render_custom_thumbnail(vivid::OperatorLoader& loade
                                                     uint32_t width,
                                                     uint32_t height) {
     RenderTarget rt = make_render_target(gpu.device, width, height, format);
+    vivid::ui::Renderer2D draw_renderer;
+    bool have_draw_api = draw_renderer.init(gpu.device, format, "../fonts/JetBrainsMono-Regular.ttf", 16.0f, 1.0f);
 
     WGPUCommandEncoderDescriptor enc_desc{};
     enc_desc.label = vivid::to_sv("Thumb Encoder");
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(gpu.device, &enc_desc);
+
+    {
+        WGPURenderPassColorAttachment color_att{};
+        color_att.view = rt.view;
+        color_att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+        color_att.loadOp = WGPULoadOp_Clear;
+        color_att.storeOp = WGPUStoreOp_Store;
+        color_att.clearValue = {0.0, 0.0, 0.0, 0.0};
+
+        WGPURenderPassDescriptor rp_desc{};
+        rp_desc.label = vivid::to_sv("Thumb Clear");
+        rp_desc.colorAttachmentCount = 1;
+        rp_desc.colorAttachments = &color_att;
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &rp_desc);
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
+    }
 
     VividThumbnailContext ctx{};
     ctx.time = 0.0;
@@ -347,8 +367,16 @@ static std::vector<uint8_t> render_custom_thumbnail(vivid::OperatorLoader& loade
     ctx.thumbnail_width = width;
     ctx.thumbnail_height = height;
     ctx.thumbnail_format = format;
+    ctx.thumbnail_logical_width = width;
+    ctx.thumbnail_logical_height = height;
+    if (have_draw_api) {
+        vivid::ui::populate_draw_api(ctx.draw, draw_renderer);
+    }
 
     loader.draw_thumbnail(instance, &ctx);
+    if (have_draw_api) {
+        draw_renderer.flush(encoder, rt.view, width, height);
+    }
 
     WGPUCommandBufferDescriptor cmd_desc{};
     cmd_desc.label = vivid::to_sv("Thumb Commands");
@@ -574,6 +602,81 @@ int main() {
             size_t idx = ((32u * 64u) + 32u) * 4u;
             check(pixels[idx + 1] > 0 && pixels[idx + 2] > 0,
                   "gpu thumbnail picked up custom fill color");
+        }
+
+        loader.destroy_instance(instance);
+    }
+
+    // =====================================================================
+    // Test 6b: draw-only thumbnail for waveform operator
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 6b: Draw-only waveform thumbnail ===\n");
+        vivid::OperatorLoader loader;
+        check(loader.load("lfo_fr.dylib"), "load lfo_fr");
+        check(loader.has_draw_thumbnail(), "lfo_fr exposes draw_thumbnail");
+
+        void* instance = loader.create_instance();
+        check(instance != nullptr, "create lfo_fr instance");
+
+        float params[] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+        float outputs[] = {0.25f};
+        auto pixels = render_custom_thumbnail(loader, instance, gpu, kFormat, params, 11, outputs, 1, 64, 64);
+        check(!pixels.empty(), "lfo thumbnail rendered");
+        if (!pixels.empty()) {
+            size_t idx = ((32u * 64u) + 32u) * 4u;
+            check(pixels[idx] > 0 || pixels[idx + 1] > 0 || pixels[idx + 2] > 0,
+                  "lfo draw-only thumbnail contains visible content");
+        }
+
+        loader.destroy_instance(instance);
+    }
+
+    // =====================================================================
+    // Test 6c: draw-only thumbnail for envelope operator
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 6c: Draw-only envelope thumbnail ===\n");
+        vivid::OperatorLoader loader;
+        check(loader.load("envelope_fr.dylib"), "load envelope_fr");
+        check(loader.has_draw_thumbnail(), "envelope_fr exposes draw_thumbnail");
+
+        void* instance = loader.create_instance();
+        check(instance != nullptr, "create envelope_fr instance");
+
+        float params[] = {0.05f, 0.2f, 0.7f, 0.3f, 1.0f, 0.0f, 1.0f};
+        float outputs[] = {0.6f};
+        auto pixels = render_custom_thumbnail(loader, instance, gpu, kFormat, params, 7, outputs, 1, 64, 64);
+        check(!pixels.empty(), "envelope thumbnail rendered");
+        if (!pixels.empty()) {
+            size_t idx = ((24u * 64u) + 28u) * 4u;
+            check(pixels[idx] > 0 || pixels[idx + 1] > 0 || pixels[idx + 2] > 0,
+                  "envelope draw-only thumbnail contains visible content");
+        }
+
+        loader.destroy_instance(instance);
+    }
+
+    // =====================================================================
+    // Test 6d: draw-only thumbnail for meter operator
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 6d: Draw-only meter thumbnail ===\n");
+        vivid::OperatorLoader loader;
+        check(loader.load("gain.dylib"), "load gain");
+        check(loader.has_draw_thumbnail(), "gain exposes draw_thumbnail");
+
+        void* instance = loader.create_instance();
+        check(instance != nullptr, "create gain instance");
+
+        float params[] = {1.5f};
+        float outputs[] = {0.0f};
+        auto pixels = render_custom_thumbnail(loader, instance, gpu, kFormat, params, 1, outputs, 1, 64, 64);
+        check(!pixels.empty(), "gain thumbnail rendered");
+        if (!pixels.empty()) {
+            size_t idx = ((40u * 64u) + 32u) * 4u;
+            check(pixels[idx] > 0 || pixels[idx + 1] > 0 || pixels[idx + 2] > 0,
+                  "gain draw-only thumbnail contains visible content");
         }
 
         loader.destroy_instance(instance);

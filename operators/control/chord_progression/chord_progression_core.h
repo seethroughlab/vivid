@@ -1,5 +1,6 @@
 #pragma once
 #include "operator_api/operator.h"
+#include "operator_api/draw_ui_helpers.h"
 #include "operator_api/midi_types.h"
 #include "operator_api/type_id.h"
 #include "midi_helpers.h"
@@ -493,10 +494,6 @@ struct ChordProgressionCore : vivid::OperatorBase {
             }
         }
 
-        // Layout: compute card width to fill available space
-        float card_w = (panel_w - ci::kCardGap * 7.0f) / 8.0f;
-        if (card_w < 32.0f) card_w = 32.0f;
-
         float y = 4.0f; // relative y offset
 
         // Row labels column
@@ -507,9 +504,8 @@ struct ChordProgressionCore : vivid::OperatorBase {
 
         float total_h = ci::kNameRowH + ci::kRowH * 3.0f;
 
-        // Dark background
-        d.draw_rect(o, px, base_y + y, panel_w, total_h + 4.0f,
-                    {th.dark_bg.r, th.dark_bg.g, th.dark_bg.b, 0.9f});
+        vivid::draw_ui::draw_panel(d, o, px, base_y + y, panel_w, total_h + 4.0f,
+                                   {th.dark_bg.r, th.dark_bg.g, th.dark_bg.b, 0.9f});
 
         float grid_y = y + 2.0f;
 
@@ -533,8 +529,9 @@ struct ChordProgressionCore : vivid::OperatorBase {
 
             // Current step highlight
             if (s == current_step && !beyond) {
-                d.draw_rect(o, px + cx, base_y + grid_y, actual_card_w, total_h,
-                            {th.accent.r, th.accent.g, th.accent.b, 0.15f});
+                vivid::draw_ui::draw_selection_highlight(d, o,
+                    px + cx, base_y + grid_y, actual_card_w, total_h,
+                    {th.accent.r, th.accent.g, th.accent.b, 1.0f});
             }
 
             // Read per-step param values
@@ -548,10 +545,11 @@ struct ChordProgressionCore : vivid::OperatorBase {
             // Row 0: Chord name (display only)
             char name_buf[16];
             ci::chord_display_name(name_buf, sizeof(name_buf), scale, kr, deg, ext);
-            float tw = d.text_width(o, name_buf, 1.0f);
-            float text_x = cx + (actual_card_w - tw) * 0.5f;
-            d.draw_text(o, px + text_x, base_y + row_tops[0] + 2.0f, name_buf,
-                        {th.bright_text.r, th.bright_text.g, th.bright_text.b, col_alpha}, 1.0f);
+            vivid::draw_ui::draw_text_aligned(d, o,
+                px + cx, base_y + row_tops[0] + 2.0f, actual_card_w,
+                name_buf,
+                {th.bright_text.r, th.bright_text.g, th.bright_text.b, col_alpha},
+                1.0f, 0.5f);
 
             // Rows 1-3: degree, voicing, extension (clickable)
             const char* cell_labels[3] = {ci::kDegreeLabels[deg], ci::kVoicingLabels[voic], ci::kExtLabels[ext]};
@@ -564,16 +562,13 @@ struct ChordProgressionCore : vivid::OperatorBase {
                 float rh = row_heights[1 + r];
 
                 // Cell background
-                d.draw_rounded_rect(o, px + cx + ci::kPad, base_y + ry + ci::kPad,
-                                    actual_card_w - 2.0f * ci::kPad, rh - 2.0f * ci::kPad,
-                                    2.0f,
-                                    {th.slider_track.r, th.slider_track.g, th.slider_track.b, 0.6f * col_alpha});
-
-                // Cell text (centered)
-                float ctw = d.text_width(o, cell_labels[r], 1.0f);
-                float ctx_x = cx + (actual_card_w - ctw) * 0.5f;
-                d.draw_text(o, px + ctx_x, base_y + ry + 2.0f, cell_labels[r],
-                            {th.bright_text.r, th.bright_text.g, th.bright_text.b, 0.9f * col_alpha}, 1.0f);
+                vivid::draw_ui::draw_grid_cell(d, o,
+                    px + cx + ci::kPad, base_y + ry + ci::kPad,
+                    actual_card_w - 2.0f * ci::kPad, rh - 2.0f * ci::kPad,
+                    cell_labels[r],
+                    {th.slider_track.r, th.slider_track.g, th.slider_track.b, 0.6f * col_alpha},
+                    {th.bright_text.r, th.bright_text.g, th.bright_text.b, 0.9f * col_alpha},
+                    2.0f, 1.0f);
 
                 // Click interaction: left=forward, right or shift+left=backward
                 bool left_hit = mouse.left_clicked &&

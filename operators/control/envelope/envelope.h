@@ -8,7 +8,6 @@
 #include <cstring>
 #include <vector>
 
-struct EnvelopeThumbState;
 /**
  * @brief ADSR envelope generator with curve shaping.
  *
@@ -292,9 +291,4 @@ struct Envelope : vivid::OperatorBase {
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override;
-
-private:
-    EnvelopeThumbState* thumb_state_ = nullptr;
-
-    void rebuild_thumb_pipeline(const VividThumbnailContext* ctx);
 };

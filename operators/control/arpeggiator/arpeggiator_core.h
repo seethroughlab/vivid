@@ -1,5 +1,6 @@
 #pragma once
 #include "operator_api/operator.h"
+#include "operator_api/draw_ui_helpers.h"
 #include "operator_api/midi_types.h"
 #include "operator_api/type_id.h"
 #include "midi_helpers.h"
@@ -414,9 +415,11 @@ struct ArpeggiatorCore : vivid::OperatorBase {
 
         // --- Velocity section ---
         float vy = py + section_gap;
-        d.draw_text(o, px + pad, vy, "Velocity", {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.9f}, 0.85f);
+        vivid::draw_ui::draw_section_header(d, o, px + pad, vy, w - 2.0f * pad,
+                                            "Velocity",
+                                            {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.9f});
         vy += label_h;
-        d.draw_rect(o, px, vy, w, vel_h, {th.dark_bg.r, th.dark_bg.g, th.dark_bg.b, 0.9f});
+        vivid::draw_ui::draw_panel(d, o, px, vy, w, vel_h, {th.dark_bg.r, th.dark_bg.g, th.dark_bg.b, 0.9f});
 
         float vel_plot_x = px + pad;
         float vel_plot_y = vy + pad;
@@ -440,9 +443,11 @@ struct ArpeggiatorCore : vivid::OperatorBase {
 
         // --- Transpose section ---
         float ty = vy + vel_h + section_gap;
-        d.draw_text(o, px + pad, ty, "Transpose", {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.9f}, 0.85f);
+        vivid::draw_ui::draw_section_header(d, o, px + pad, ty, w - 2.0f * pad,
+                                            "Transpose",
+                                            {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.9f});
         ty += label_h;
-        d.draw_rect(o, px, ty, w, tr_h, {th.dark_bg.r, th.dark_bg.g, th.dark_bg.b, 0.9f});
+        vivid::draw_ui::draw_panel(d, o, px, ty, w, tr_h, {th.dark_bg.r, th.dark_bg.g, th.dark_bg.b, 0.9f});
 
         float tr_plot_x = px + pad;
         float tr_plot_y = ty + pad;

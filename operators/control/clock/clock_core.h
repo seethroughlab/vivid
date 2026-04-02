@@ -4,7 +4,6 @@
 #include <cmath>
 #include <cstring>
 
-struct ClockThumbState;
 /**
  * @brief Master tempo clock generating beat and bar phase signals.
  *
@@ -43,7 +42,7 @@ struct ClockCore : vivid::OperatorBase {
         vivid::description(beats_per_bar, "Number of beats in each bar for the bar_trigger output");
     }
 
-    ~ClockCore() override;
+    ~ClockCore() override = default;
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&bpm);
@@ -96,9 +95,4 @@ struct ClockCore : vivid::OperatorBase {
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override;
-
-private:
-    ClockThumbState* thumb_state_ = nullptr;
-
-    void rebuild_thumb_pipeline(const VividThumbnailContext* ctx);
 };

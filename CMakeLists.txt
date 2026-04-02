@@ -736,11 +736,8 @@ add_library(vivid_ui STATIC
     src/ui/thumbnail_cache.cpp
     src/ui/i18n.cpp
     src/ui/node_graph.cpp
-    src/ui/node_graph_overlays.cpp
     src/ui/node_graph_draw.cpp
-    src/ui/node_graph_overlay_draw.cpp
     src/ui/node_graph_input.cpp
-    src/ui/node_graph_overlay_input.cpp
     src/ui/overlay_layouts.cpp
     src/ui/dialog_manager.cpp
     src/ui/dialog_manager_draw.cpp
@@ -1800,10 +1797,11 @@ add_executable(test_gpu_operators
     src/runtime/graph_compiler.cpp
     src/runtime/audio_frame_bridge.cpp
     src/runtime/frame_executor.cpp
+    src/ui/renderer_2d.cpp
 )
-target_include_directories(test_gpu_operators PRIVATE src)
+target_include_directories(test_gpu_operators PRIVATE src deps/stb)
 target_link_libraries(test_gpu_operators PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
-add_dependencies(test_gpu_operators gpu_fill_op shape control_thumb_op)
+add_dependencies(test_gpu_operators gpu_fill_op shape control_thumb_op lfo_fr envelope_fr gain)
 add_test(NAME test_gpu_operators COMMAND test_gpu_operators WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # GPU output correctness tests (brightness, contrast, motion property assertions)

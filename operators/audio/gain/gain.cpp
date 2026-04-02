@@ -1,5 +1,6 @@
 #include "operator_api/operator.h"
 #include "operator_api/thumbnail.h"
+#include "operator_api/draw_plot_helpers.h"
 
 #include <algorithm>
 #include <cmath>
@@ -67,7 +68,7 @@ struct Gain : vivid::OperatorBase, vivid::AudioProcessable {
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override {
         if (!ctx || !ctx->draw.opaque) return;
-        const auto& d = ctx->draw;
+        auto& d = const_cast<VividDrawAPI&>(ctx->draw);
         void* o = d.opaque;
 
         float g = (ctx->param_count > 0) ? std::clamp(ctx->param_values[0], 0.0f, 2.0f) : 1.0f;
@@ -75,19 +76,16 @@ struct Gain : vivid::OperatorBase, vivid::AudioProcessable {
         float w = static_cast<float>(ctx->thumbnail_logical_width  ? ctx->thumbnail_logical_width  : ctx->thumbnail_width);
         float h = static_cast<float>(ctx->thumbnail_logical_height ? ctx->thumbnail_logical_height : ctx->thumbnail_height);
 
-        // Background
-        d.draw_rect(o, 0, 0, w, h, {0.07f, 0.08f, 0.09f, 0.9f});
+        vivid::draw_plot::draw_thumb_background(d, o, w, h);
 
-        // dB label
         float db = (g > 0.0001f) ? 20.0f * std::log10(g) : -60.0f;
         char db_label[16];
         if (db <= -60.0f)
             std::snprintf(db_label, sizeof(db_label), "-inf dB");
         else
             std::snprintf(db_label, sizeof(db_label), "%+.1fdB", db);
-        d.draw_text(o, 6, 3, db_label, {0.45f, 0.55f, 0.65f, 1.0f}, 1.0f);
+        vivid::draw_plot::draw_thumb_label(d, o, 6.0f, 4.0f, db_label, {0.45f, 0.55f, 0.65f, 0.95f}, 0.8f);
 
-        // Bar layout
         float pad = 6.0f;
         float bar_top = 22.0f;
         float bar_bot = h - pad;
@@ -96,45 +94,17 @@ struct Gain : vivid::OperatorBase, vivid::AudioProcessable {
         float bar_right = w * 0.7f;
         float bar_w = bar_right - bar_left;
 
-        // Bar background
-        d.draw_rounded_rect(o, bar_left, bar_top, bar_w, bar_h, 2.0f, {0.16f, 0.16f, 0.19f, 0.8f});
-
-        // Filled portion: gain normalized 0-2 -> 0-1
-        float fill_norm = std::clamp(g / 2.0f, 0.0f, 1.0f);
-        float fill_h = fill_norm * bar_h;
-        float fill_top = bar_bot - fill_h;
-
-        // Draw gradient via stacked rects (8 slices)
-        int slices = 8;
-        float slice_h = fill_h / slices;
-        for (int i = 0; i < slices; ++i) {
-            float sy = fill_top + i * slice_h;
-            // norm_y: 0 at bottom (green), 1 at top (red)
-            float norm_y = 1.0f - (float(i) + 0.5f) / slices;
-
-            float r, gn, b;
-            if (norm_y < 0.5f) {
-                float t = norm_y * 2.0f;
-                r  = 0.31f + t * (0.86f - 0.31f);
-                gn = 0.75f + t * (0.78f - 0.75f);
-                b  = 0.39f + t * (0.24f - 0.39f);
-            } else {
-                float t = (norm_y - 0.5f) * 2.0f;
-                r  = 0.86f + t * (0.86f - 0.86f);
-                gn = 0.78f + t * (0.31f - 0.78f);
-                b  = 0.24f + t * (0.24f - 0.24f);
-            }
-            d.draw_rect(o, bar_left + 1, sy, bar_w - 2, slice_h + 0.5f, {r, gn, b, 0.86f});
-        }
-
-        // Unity (1.0) marker line at the midpoint of the bar
-        float unity_y = bar_top + bar_h * 0.5f;
-        d.draw_line(o, bar_left - 3, unity_y, bar_right + 3, unity_y, 1.5f, {0.78f, 0.82f, 0.86f, 0.7f});
-
-        // Unity label
-        float unity_label_w = d.text_width ? d.text_width(o, "1.0", 0.8f) : 14.0f;
-        d.draw_text(o, bar_right + 5, unity_y - 5, "1.0", {0.55f, 0.6f, 0.65f, 0.7f}, 0.8f);
-        (void)unity_label_w;
+        vivid::draw_plot::draw_scalar_meter(d, o,
+                                            bar_left, bar_top, bar_w, bar_h,
+                                            std::clamp(g / 2.0f, 0.0f, 1.0f),
+                                            {0.16f, 0.16f, 0.19f, 0.8f},
+                                            {0.31f, 0.75f, 0.39f, 0.86f},
+                                            {0.86f, 0.31f, 0.24f, 0.86f},
+                                            2.0f,
+                                            0.5f,
+                                            {0.78f, 0.82f, 0.86f, 0.7f});
+        vivid::draw_plot::draw_thumb_value(d, o, bar_right + 5.0f, bar_top + bar_h * 0.5f - 5.0f, 24.0f,
+                                           "1.0", {0.55f, 0.6f, 0.65f, 0.7f}, 0.8f);
     }
 
     void process_audio(const VividAudioContext* ctx) override {

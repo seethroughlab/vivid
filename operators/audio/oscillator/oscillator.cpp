@@ -1,26 +1,8 @@
 #include "operator_api/operator.h"
 #include "operator_api/audio_dsp.h"
 #include "operator_api/thumbnail.h"
+#include "operator_api/draw_plot_helpers.h"
 #include <cmath>
-
-struct OscThumbState {
-    WGPURenderPipeline pipeline = nullptr;
-    WGPUBindGroup bind_group = nullptr;
-    WGPUBindGroupLayout bind_layout = nullptr;
-    WGPUBuffer uniform_buf = nullptr;
-    WGPUShaderModule shader = nullptr;
-    WGPUPipelineLayout pipe_layout = nullptr;
-    WGPUTextureFormat pipeline_format = WGPUTextureFormat_Undefined;
-
-    void release_all() {
-        vivid::gpu::release(pipeline);
-        vivid::gpu::release(bind_group);
-        vivid::gpu::release(bind_layout);
-        vivid::gpu::release(uniform_buf);
-        vivid::gpu::release(shader);
-        vivid::gpu::release(pipe_layout);
-    }
-};
 
 /**
  * @brief Basic waveform oscillator with frequency and amplitude CV.
@@ -39,11 +21,7 @@ struct Oscillator : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<int>   waveform {"waveform",  0, {"sine", "saw", "square", "triangle"}};
 
     double phase_ = 0.0;
-    OscThumbState* thumb_state_ = nullptr;
-
-    ~Oscillator() override {
-        if (thumb_state_) { thumb_state_->release_all(); delete thumb_state_; }
-    }
+    ~Oscillator() override = default;
 
     Oscillator() {
         vivid::semantic_tag(frequency, "frequency_hz");
@@ -71,106 +49,48 @@ struct Oscillator : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override {
-        if (!ctx) return;
-        if (!thumb_state_) thumb_state_ = new OscThumbState();
-        if (!thumb_state_->pipeline || thumb_state_->pipeline_format != ctx->thumbnail_format) {
-            rebuild_thumb_pipeline(ctx);
+        if (!ctx || !ctx->draw.opaque) return;
+        auto& d = const_cast<VividDrawAPI&>(ctx->draw);
+        void* o = d.opaque;
+
+        float w = static_cast<float>(ctx->thumbnail_logical_width ? ctx->thumbnail_logical_width : ctx->thumbnail_width);
+        float h = static_cast<float>(ctx->thumbnail_logical_height ? ctx->thumbnail_logical_height : ctx->thumbnail_height);
+        int wave = (ctx->param_count > 2) ? static_cast<int>(ctx->param_values[2]) : 0;
+        float amp = (ctx->param_count > 1) ? std::clamp(ctx->param_values[1], 0.0f, 1.0f) : 0.5f;
+
+        vivid::draw_plot::draw_thumb_background(d, o, w, h);
+
+        const char* wave_name = "SIN";
+        switch (wave) {
+            case 1: wave_name = "SAW"; break;
+            case 2: wave_name = "SQR"; break;
+            case 3: wave_name = "TRI"; break;
+            default: break;
         }
-        if (!thumb_state_->pipeline || !thumb_state_->bind_group || !thumb_state_->uniform_buf) {
-            vivid_report_thumbnail_error(ctx, "oscillator thumbnail pipeline init failed");
-            return;
-        }
-        struct Uniforms { float waveform, amplitude, pad0, pad1; } u{};
-        u.waveform = (ctx->param_count > 2) ? ctx->param_values[2] : 0.0f;
-        u.amplitude = (ctx->param_count > 1) ? ctx->param_values[1] : 0.5f;
-        wgpuQueueWriteBuffer(ctx->queue, thumb_state_->uniform_buf, 0, &u, sizeof(u));
-        vivid::thumbnail::run_pass(ctx, thumb_state_->pipeline, thumb_state_->bind_group, "Osc Thumb Pass");
-    }
+        vivid::draw_plot::draw_thumb_label(d, o, 6.0f, 4.0f, wave_name, {0.45f, 0.55f, 0.65f, 0.9f}, 0.8f);
 
-    void rebuild_thumb_pipeline(const VividThumbnailContext* ctx) {
-        thumb_state_->release_all();
-        static const char* kShader = R"(
-struct Uniforms { data: vec4f, };
-struct VertexOutput { @builtin(position) position: vec4f, @location(0) uv: vec2f, }
-@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+        auto sample_fn = [wave, amp](float phase) {
+            float p = phase - std::floor(phase);
+            float raw = 0.0f;
+            switch (wave) {
+                case 0: raw = std::sin(p * 2.0f * static_cast<float>(M_PI)); break;
+                case 1: raw = 2.0f * p - 1.0f; break;
+                case 2: raw = (p < 0.5f) ? 1.0f : -1.0f; break;
+                case 3: raw = 4.0f * ((p < 0.5f) ? p : 1.0f - p) - 1.0f; break;
+                default: raw = std::sin(p * 2.0f * static_cast<float>(M_PI)); break;
+            }
+            return raw * amp;
+        };
 
-@vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    let fs = fullscreenTriangle(vertexIndex, true);
-    var out: VertexOutput;
-    out.position = fs.position;
-    out.uv = fs.uv;
-    return out;
-}
-
-const PI: f32 = 3.14159265359;
-
-fn osc_wave(phase: f32, wave: i32) -> f32 {
-    switch (wave) {
-        case 0: { return sin(phase * 2.0 * PI); }
-        case 1: { return 2.0 * phase - 1.0; }
-        case 2: { return select(-1.0, 1.0, phase < 0.5); }
-        case 3: {
-            let t = phase * 4.0;
-            if (t < 1.0) { return t; }
-            if (t < 3.0) { return 2.0 - t; }
-            return t - 4.0;
-        }
-        default: { return sin(phase * 2.0 * PI); }
-    }
-}
-
-@fragment
-fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-    let uv = input.uv;
-    let wave = i32(uniforms.data.x);
-    let amp = clamp(uniforms.data.y, 0.0, 1.0);
-
-    let bg = vec4f(18.0/255.0, 20.0/255.0, 23.0/255.0, 230.0/255.0);
-    let fill_col = vec4f(80.0/255.0, 130.0/255.0, 190.0/255.0, 160.0/255.0);
-    let line_col = vec4f(160.0/255.0, 200.0/255.0, 240.0/255.0, 240.0/255.0);
-
-    // Show 2 cycles across the thumbnail
-    let phase = fract(uv.x * 2.0);
-    let wave_val = osc_wave(phase, wave) * amp;
-
-    let pad = 0.08;
-    let plot_y = (uv.y - pad) / (1.0 - 2.0 * pad);
-    let center = 0.5;
-    let curve_y = center - wave_val * 0.45;
-
-    // Fill between center and curve
-    let lo = min(center, curve_y);
-    let hi = max(center, curve_y);
-    if (plot_y >= lo && plot_y <= hi) {
-        let dist = min(abs(plot_y - curve_y), abs(plot_y - center));
-        if (abs(plot_y - curve_y) < 0.02) { return line_col; }
-        return fill_col;
-    }
-
-    // Line on curve
-    if (abs(plot_y - curve_y) < 0.02) { return line_col; }
-
-    // Center line
-    if (abs(plot_y - center) < 0.008) {
-        return vec4f(60.0/255.0, 65.0/255.0, 75.0/255.0, 180.0/255.0);
-    }
-
-    return bg;
-}
-)";
-        thumb_state_->shader = vivid::thumbnail::create_shader(ctx->device, kShader, "Osc Thumb Shader");
-        thumb_state_->uniform_buf =
-            vivid::thumbnail::create_uniform_buffer(ctx->device, sizeof(float) * 4, "Osc Thumb Uniforms");
-        thumb_state_->bind_layout =
-            vivid::thumbnail::create_uniform_bind_layout(ctx->device, sizeof(float) * 4, "Osc Thumb BGL");
-        thumb_state_->pipe_layout =
-            vivid::thumbnail::create_pipeline_layout(ctx->device, thumb_state_->bind_layout, "Osc Thumb Layout");
-        thumb_state_->bind_group = vivid::thumbnail::create_uniform_bind_group(
-            ctx->device, thumb_state_->bind_layout, thumb_state_->uniform_buf, sizeof(float) * 4, "Osc Thumb BG");
-        thumb_state_->pipeline = vivid::thumbnail::create_pipeline(
-            ctx->device, thumb_state_->shader, thumb_state_->pipe_layout, ctx->thumbnail_format, "Osc Thumb Pipeline");
-        thumb_state_->pipeline_format = ctx->thumbnail_format;
+        vivid::draw_plot::draw_waveform_plot(d, o,
+                                             8.0f, 20.0f, w - 16.0f, h - 26.0f,
+                                             sample_fn,
+                                             {0.31f, 0.51f, 0.75f, 0.35f},
+                                             {0.63f, 0.78f, 0.94f, 0.95f},
+                                             {0.24f, 0.25f, 0.29f, 0.7f},
+                                             true,
+                                             2.0f,
+                                             2.0f);
     }
 
     void process_audio(const VividAudioContext* ctx) override {

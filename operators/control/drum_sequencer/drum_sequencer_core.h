@@ -1,5 +1,6 @@
 #pragma once
 #include "operator_api/operator.h"
+#include "operator_api/draw_ui_helpers.h"
 #include "operator_api/midi_types.h"
 #include "operator_api/type_id.h"
 #include "drum_sequencer_layout.h"
@@ -730,23 +731,16 @@ struct DrumSequencerCore : vivid::OperatorBase {
 
         float y = 4.0f; // relative y offset
 
-        // --- Tab bar ---
+        vivid::draw_ui::draw_tab_strip(d, o,
+                                       px, base_y + y,
+                                       di::kTabW, di::kTabH,
+                                       di::kTabLabels, 3, insp_tab_,
+                                       {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.5f},
+                                       {th.dim_text.r * 1.5f, th.dim_text.g * 1.5f, th.dim_text.b * 1.5f, 1.0f},
+                                       {th.dark_bg.r, th.dark_bg.g, th.dark_bg.b, 0.9f},
+                                       {th.accent.r, th.accent.g, th.accent.b, 1.0f});
         for (int t = 0; t < 3; ++t) {
             float tx = static_cast<float>(t) * di::kTabW;
-            bool active = (insp_tab_ == t);
-
-            if (active) {
-                d.draw_rect(o, px + tx, base_y + y, di::kTabW, di::kTabH,
-                            {th.dark_bg.r, th.dark_bg.g, th.dark_bg.b, 0.9f});
-                d.draw_rect(o, px + tx, base_y + y + di::kTabH - 2, di::kTabW, 2,
-                            {th.accent.r, th.accent.g, th.accent.b, 1.0f});
-            }
-
-            float mult = active ? 1.5f : 1.0f;
-            float text_alpha = active ? 1.0f : 0.5f;
-            d.draw_text(o, px + tx + 8, base_y + y + 3, di::kTabLabels[t],
-                        {th.dim_text.r * mult, th.dim_text.g * mult, th.dim_text.b * mult, text_alpha}, 1.0f);
-
             if (mouse.left_clicked &&
                 mouse.x >= tx && mouse.x < tx + di::kTabW &&
                 mouse.y >= y && mouse.y < y + di::kTabH) {
@@ -759,17 +753,18 @@ struct DrumSequencerCore : vivid::OperatorBase {
         float total_h = grid_h + 8.0f;
 
         // Dark background for grid area
-        d.draw_rect(o, px, base_y + y, panel_w, total_h,
-                    {th.dark_bg.r, th.dark_bg.g, th.dark_bg.b, 0.9f});
+        vivid::draw_ui::draw_panel(d, o, px, base_y + y, panel_w, total_h,
+                                   {th.dark_bg.r, th.dark_bg.g, th.dark_bg.b, 0.9f});
 
         float grid_x = di::kLabelW;     // relative x
         float grid_y = y + 4.0f;        // relative y
 
         // Current step column highlight
         if (current_step >= 0 && current_step < num_steps) {
-            d.draw_rect(o, px + grid_x + current_step * cell_w, base_y + grid_y,
-                        cell_w, grid_h,
-                        {th.accent.r, th.accent.g, th.accent.b, 0.15f});
+            vivid::draw_ui::draw_selection_highlight(d, o,
+                px + grid_x + current_step * cell_w, base_y + grid_y,
+                cell_w, grid_h,
+                {th.accent.r, th.accent.g, th.accent.b, 1.0f});
         }
 
         // Beat group separators
@@ -800,9 +795,13 @@ struct DrumSequencerCore : vivid::OperatorBase {
                     // Pattern tab: boolean toggle
                     if (trigger_active) {
                         float alpha = beyond_steps ? 0.25f : 0.9f;
-                        d.draw_rect(o, px + cx + di::kCellPad, base_y + cy + di::kCellPad,
-                                    cell_w - 2 * di::kCellPad, di::kCellH - 2 * di::kCellPad,
-                                    {di::kDrumColors[drum][0], di::kDrumColors[drum][1], di::kDrumColors[drum][2], alpha});
+                        vivid::draw_ui::draw_grid_cell(d, o,
+                            px + cx + di::kCellPad, base_y + cy + di::kCellPad,
+                            cell_w - 2 * di::kCellPad, di::kCellH - 2 * di::kCellPad,
+                            "",
+                            {di::kDrumColors[drum][0], di::kDrumColors[drum][1], di::kDrumColors[drum][2], alpha},
+                            {0.0f, 0.0f, 0.0f, 0.0f},
+                            1.5f, 1.0f);
                     }
 
                     if (mouse.left_clicked &&
@@ -824,9 +823,10 @@ struct DrumSequencerCore : vivid::OperatorBase {
                     float base_alpha = beyond_steps ? 0.25f : (trigger_active ? 0.8f : 0.3f);
 
                     // Dark track background
-                    d.draw_rect(o, px + cx + di::kCellPad, base_y + cy + di::kCellPad,
+                    vivid::draw_ui::draw_panel(d, o,
+                                px + cx + di::kCellPad, base_y + cy + di::kCellPad,
                                 cell_w - 2 * di::kCellPad, di::kCellH - 2 * di::kCellPad,
-                                {0.1f, 0.1f, 0.12f, base_alpha});
+                                {0.1f, 0.1f, 0.12f, base_alpha}, {0, 0, 0, 0}, 1.5f);
 
                     // Fill bar from bottom
                     float inner_h = di::kCellH - 2 * di::kCellPad;
@@ -952,4 +952,3 @@ protected:
     bool prev_reset_ = false;
     VividMidiBuffer midi_buf_ = {};
 };
-
