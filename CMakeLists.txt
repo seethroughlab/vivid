@@ -241,6 +241,7 @@ endfunction()
 add_vivid_embeddable_composable_support(Smooth   operators/control/smooth/smooth_composable.cpp)
 add_vivid_embeddable_composable_support(Envelope operators/control/envelope/envelope_composable.cpp)
 target_sources(vivid_composable_ops PRIVATE operators/control/clock/clock.cpp)
+target_sources(vivid_composable_ops PRIVATE operators/control/euclidean/euclidean.cpp)
 
 # --- Operator plugin suffix (platform-aware) ---
 if(APPLE)
@@ -387,8 +388,8 @@ add_vivid_operator(chord_progression_au operators/control/chord_progression/chor
 add_vivid_operator(state_machine      operators/control/state_machine/state_machine.cpp)
 add_vivid_operator(tracker_fr         operators/control/tracker/tracker_fr.cpp         EXTRA_LIBS webgpu)
 add_vivid_operator(tracker_au         operators/control/tracker/tracker_au.cpp         EXTRA_LIBS webgpu)
-add_vivid_operator(euclidean_fr       operators/control/euclidean/euclidean_fr.cpp)
-add_vivid_operator(euclidean_au       operators/control/euclidean/euclidean_au.cpp)
+add_vivid_operator(euclidean_fr       operators/control/euclidean/euclidean_fr.cpp       EXTRA_LIBS webgpu vivid_composable_ops)
+add_vivid_operator(euclidean_au       operators/control/euclidean/euclidean_au.cpp       EXTRA_LIBS webgpu vivid_composable_ops)
 add_vivid_operator(pat_transform      operators/control/pat_transform/pat_transform.cpp)
 add_vivid_operator(phase_to_midi_fr   operators/control/phase_to_midi/phase_to_midi_fr.cpp)
 add_vivid_operator(phase_to_midi_au   operators/control/phase_to_midi/phase_to_midi_au.cpp)
