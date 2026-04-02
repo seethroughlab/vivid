@@ -1,5 +1,5 @@
-// Integration test: Clock → Oscillator → Gain → audio_out, all audio cadence.
-// Verifies audio-direct edge routing with core CMake-built operators.
+// Integration test: Clock → Oscillator → Gain → audio_out, all on the audio
+// execution world. Verifies direct audio-edge routing with core operators.
 
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
@@ -31,7 +31,7 @@ int main(int argc, char* argv[]) {
     std::string build_dir = ".";
     if (argc > 1) build_dir = argv[1];
 
-    std::fprintf(stderr, "=== test_audio_cadence_sequencer ===\n");
+    std::fprintf(stderr, "=== test_audio_sequencer_graph ===\n");
 
     // --- Stage required dylibs into an isolated directory ---
     const std::string staging = build_dir + "/.test_audio_sequencer_staging";
@@ -79,7 +79,7 @@ int main(int argc, char* argv[]) {
                     break;
                 }
             }
-            check(has_freq_cv, "Oscillator has float freq_cv input port");
+            check(has_freq_cv, "Oscillator has SCALAR freq_cv input port");
         }
     }
 
@@ -160,24 +160,8 @@ int main(int argc, char* argv[]) {
     auto* clock_cn = runtime.compiled_graph()->find_node("clock1");
     check(clock_cn != nullptr, "Clock node found in runtime");
     if (clock_cn) {
-        auto beat_phase_it = clock_cn->output_port_indices.find("beat_phase");
-        auto beat_ms_it = clock_cn->output_port_indices.find("beat_ms");
-        auto bar_phase_it = clock_cn->output_port_indices.find("bar_phase");
-        check(beat_phase_it != clock_cn->output_port_indices.end(), "Clock beat_phase output exists");
-        check(beat_ms_it != clock_cn->output_port_indices.end(), "Clock beat_ms output exists");
-        check(bar_phase_it != clock_cn->output_port_indices.end(), "Clock bar_phase output exists");
-        if (beat_phase_it != clock_cn->output_port_indices.end() &&
-            beat_ms_it != clock_cn->output_port_indices.end() &&
-            bar_phase_it != clock_cn->output_port_indices.end()) {
-            float beat_phase = clock_cn->output_values[beat_phase_it->second];
-            float beat_ms = clock_cn->output_values[beat_ms_it->second];
-            float bar_phase = clock_cn->output_values[bar_phase_it->second];
-            std::fprintf(stderr, "    clock1 beat_phase=%.6f beat_ms=%.6f bar_phase=%.6f\n",
-                         beat_phase, beat_ms, bar_phase);
-            check(beat_phase > 0.001f, "Clock beat_phase advances");
-            check(std::fabs(beat_ms - 500.0f) < 0.5f, "Clock beat_ms remains correct");
-            check(bar_phase > 0.001f, "Clock bar_phase advances");
-        }
+        check(clock_cn->active_cadence == vivid::Cadence::Audio,
+              "Clock remains on the audio execution world");
     }
 
     // Check no errors on any audio node

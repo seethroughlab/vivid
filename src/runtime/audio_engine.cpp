@@ -213,10 +213,6 @@ uint32_t AudioEngine::node_count() const {
     return 0;
 }
 
-float AudioEngine::float_input_value_for_test(int /*node_idx*/, int /*port_idx*/) const {
-    return 0.0f;
-}
-
 void AudioEngine::process_audio_for_test(float* output, uint32_t frame_count) {
     if (audio_executor_) {
         audio_executor_->process_audio_for_test(output, frame_count);

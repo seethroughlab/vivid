@@ -605,8 +605,8 @@ static void test_bridge_same_cadence_with_bridge_rejected() {
 }
 
 // ---------------------------------------------------------------------------
-// Test: Cross-cadence edge without bridge → rejected
-// (requires real frame + audio operators; tested in test_cadence_inference)
+// Test: Audio-frame bridge edge without bridge metadata → rejected
+// (requires real frame + audio operators; tested in test_fixed_cadence_assignment)
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------

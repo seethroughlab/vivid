@@ -59,8 +59,7 @@ public:
     float audio_load() const;
     uint32_t node_count() const;
 
-    // Test-only accessors — expose internal state for white-box snapshot contract tests.
-    float float_input_value_for_test(int node_idx, int port_idx) const;
+    // Test-only accessors used by headless audio integration tests.
     void  process_audio_for_test(float* output, uint32_t frame_count);
 
     static constexpr uint32_t kBufferSize = 256;

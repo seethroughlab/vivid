@@ -96,7 +96,7 @@ static void test_build_snapshot_allocation() {
     check(snap.node_params[0].size() == 2, "osc: 2 params in snapshot");
     check(snap.node_params[1].size() == 1, "gain: 1 param in snapshot");
 
-    // osc has 1 float input
+    // osc has 1 bridged scalar input
 }
 
 static void test_build_analysis_allocation() {

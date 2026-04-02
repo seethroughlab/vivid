@@ -207,7 +207,7 @@ int main() {
         "test_runtime_api.json",
         "test_audio_engine.json",
         "test_audio_robustness.json",
-        "test_cross_cadence_lanes.json",
+        "test_lane_bridge_snapshot.json",
         "test_mixed_runtime_stability.json",
         "test_package_stress.json",
         "test_reload.json",

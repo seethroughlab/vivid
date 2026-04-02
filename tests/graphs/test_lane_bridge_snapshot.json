@@ -4,6 +4,6 @@
         "audio": { "type": "AudioLaneOp",  "params": {} }
     },
     "connections": [
-        { "from": "src/out", "to": "audio/values" }
+        { "from": "src/out", "to": "audio/values", "bridge": "snapshot" }
     ]
 }

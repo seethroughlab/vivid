@@ -1255,7 +1255,7 @@ add_test(NAME test_perception_introspection COMMAND test_perception_introspectio
 
 # Test operator plugins
 add_vivid_operator(audio_test_op      tests/operators/audio_test_op.cpp)
-add_vivid_operator(audio_float_cv_op  tests/operators/audio_float_cv_op.cpp)
+add_vivid_operator(audio_scalar_probe_op tests/operators/audio_scalar_probe_op.cpp)
 add_vivid_operator(audio_throwing_op  tests/operators/audio_throwing_op.cpp)
 add_vivid_operator(control_pass_op    tests/operators/control_pass_op.cpp)
 add_vivid_operator(lane_source_op   tests/operators/lane_source_op.cpp)
@@ -1295,8 +1295,8 @@ target_link_libraries(test_audio_engine PRIVATE
 add_dependencies(test_audio_engine test_op_v1 audio_test_op)
 add_test(NAME test_audio_engine COMMAND test_audio_engine WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-add_executable(test_audio_float_snapshot
-    tests/test_audio_float_snapshot.cpp
+add_executable(test_scalar_hold_bridge
+    tests/test_scalar_hold_bridge.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
     src/runtime/wgsl_header_parser.cpp
@@ -1310,11 +1310,11 @@ add_executable(test_audio_float_snapshot
     src/runtime/audio_engine.cpp
     src/runtime/audio_executor.cpp
 )
-target_include_directories(test_audio_float_snapshot PRIVATE src)
-target_link_libraries(test_audio_float_snapshot PRIVATE
+target_include_directories(test_scalar_hold_bridge PRIVATE src)
+target_link_libraries(test_scalar_hold_bridge PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
-add_dependencies(test_audio_float_snapshot test_op_v1 audio_float_cv_op)
-add_test(NAME test_audio_float_snapshot COMMAND test_audio_float_snapshot
+add_dependencies(test_scalar_hold_bridge test_op_v1 audio_scalar_probe_op)
+add_test(NAME test_scalar_hold_bridge COMMAND test_scalar_hold_bridge
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Audio thread robustness test (exception handling in audio callback)
@@ -1811,9 +1811,9 @@ add_test(NAME test_state_machine COMMAND test_state_machine)
 
 # 3D tests are in the vivid-3d package (see ../vivid-3d/)
 
-# Cross-cadence lane integration test
-add_executable(test_cross_cadence_lanes
-    tests/test_cross_cadence_lanes.cpp
+# Audio-frame bridge lane snapshot integration test
+add_executable(test_lane_bridge_snapshot
+    tests/test_lane_bridge_snapshot.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
     src/runtime/wgsl_header_parser.cpp
@@ -1827,11 +1827,11 @@ add_executable(test_cross_cadence_lanes
     src/runtime/audio_engine.cpp
     src/runtime/audio_executor.cpp
 )
-target_include_directories(test_cross_cadence_lanes PRIVATE src)
-target_link_libraries(test_cross_cadence_lanes PRIVATE
+target_include_directories(test_lane_bridge_snapshot PRIVATE src)
+target_link_libraries(test_lane_bridge_snapshot PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
-add_dependencies(test_cross_cadence_lanes lane_source_op audio_lane_op)
-add_test(NAME test_cross_cadence_lanes COMMAND test_cross_cadence_lanes
+add_dependencies(test_lane_bridge_snapshot lane_source_op audio_lane_op)
+add_test(NAME test_lane_bridge_snapshot COMMAND test_lane_bridge_snapshot
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Lane broadcast/wrap test
@@ -1944,10 +1944,9 @@ target_include_directories(test_child_op PRIVATE src tests ${CMAKE_SOURCE_DIR}/o
 target_link_libraries(test_child_op PRIVATE vivid_operator_api)
 add_test(NAME test_child_op COMMAND test_child_op WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-# SIGNAL port tests (type compat, per-sample LFO/Envelope, auto-extraction, wire routing)
-add_executable(test_signal_port
-    tests/test_signal_port.cpp
-    tests/stubs/envelope_stubs.cpp
+# SCALAR port tests (type compatibility and audio-rate scalar routing)
+add_executable(test_scalar_port
+    tests/test_scalar_port.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
     src/runtime/wgsl_header_parser.cpp
@@ -1963,11 +1962,11 @@ add_executable(test_signal_port
     src/runtime/runtime_api.cpp
     src/runtime/system_midi.cpp
 )
-target_include_directories(test_signal_port PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
-target_link_libraries(test_signal_port PRIVATE
+target_include_directories(test_scalar_port PRIVATE src)
+target_link_libraries(test_scalar_port PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
-add_dependencies(test_signal_port lfo_fr audio_float_cv_op test_op_v1)
-add_test(NAME test_signal_port COMMAND test_signal_port WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+add_dependencies(test_scalar_port lfo_au audio_scalar_probe_op)
+add_test(NAME test_scalar_port COMMAND test_scalar_port WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 
 
@@ -1977,7 +1976,7 @@ configure_file(tests/graphs/test_runtime_api.json ${CMAKE_BINARY_DIR}/test_runti
 configure_file(tests/graphs/test_audio_engine.json ${CMAKE_BINARY_DIR}/test_audio_engine.json COPYONLY)
 configure_file(tests/graphs/test_audio_robustness.json ${CMAKE_BINARY_DIR}/test_audio_robustness.json COPYONLY)
 configure_file(tests/graphs/test_lane_broadcast.json ${CMAKE_BINARY_DIR}/test_lane_broadcast.json COPYONLY)
-configure_file(tests/graphs/test_cross_cadence_lanes.json ${CMAKE_BINARY_DIR}/test_cross_cadence_lanes.json COPYONLY)
+configure_file(tests/graphs/test_lane_bridge_snapshot.json ${CMAKE_BINARY_DIR}/test_lane_bridge_snapshot.json COPYONLY)
 configure_file(tests/graphs/test_mixed_runtime_stability.json ${CMAKE_BINARY_DIR}/test_mixed_runtime_stability.json COPYONLY)
 configure_file(tests/graphs/test_package_stress.json ${CMAKE_BINARY_DIR}/test_package_stress.json COPYONLY)
 
@@ -2066,9 +2065,9 @@ set_tests_properties(test_media_headless PROPERTIES
     LABELS "MEDIA_HEADLESS"
     TIMEOUT 60)
 
-# Audio-domain sequencer integration test
-add_executable(test_audio_cadence_sequencer
-    tests/test_audio_cadence_sequencer.cpp
+# Audio-domain sequencer graph integration test
+add_executable(test_audio_sequencer_graph
+    tests/test_audio_sequencer_graph.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
     src/runtime/wgsl_header_parser.cpp
@@ -2083,18 +2082,18 @@ add_executable(test_audio_cadence_sequencer
     src/runtime/audio_executor.cpp
     src/runtime/builtin_operators.cpp
 )
-target_include_directories(test_audio_cadence_sequencer PRIVATE src)
-target_link_libraries(test_audio_cadence_sequencer PRIVATE
+target_include_directories(test_audio_sequencer_graph PRIVATE src)
+target_link_libraries(test_audio_sequencer_graph PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
-add_dependencies(test_audio_cadence_sequencer clock_fr clock_au oscillator gain)
-add_test(NAME test_audio_cadence_sequencer
-    COMMAND test_audio_cadence_sequencer ${CMAKE_BINARY_DIR}
+add_dependencies(test_audio_sequencer_graph clock_au oscillator gain)
+add_test(NAME test_audio_sequencer_graph
+    COMMAND test_audio_sequencer_graph ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-set_tests_properties(test_audio_cadence_sequencer PROPERTIES LABELS "STABILITY")
+set_tests_properties(test_audio_sequencer_graph PROPERTIES LABELS "STABILITY")
 
-# Cadence inference integration test
-add_executable(test_cadence_inference
-    tests/test_cadence_inference.cpp
+# Fixed-cadence assignment integration test
+add_executable(test_fixed_cadence_assignment
+    tests/test_fixed_cadence_assignment.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
     src/runtime/wgsl_header_parser.cpp
@@ -2112,14 +2111,14 @@ add_executable(test_cadence_inference
     src/runtime/operator_creator.cpp
     src/runtime/capture_coordinator.cpp
 )
-target_include_directories(test_cadence_inference PRIVATE src)
-target_link_libraries(test_cadence_inference PRIVATE
+target_include_directories(test_fixed_cadence_assignment PRIVATE src)
+target_link_libraries(test_fixed_cadence_assignment PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
-add_dependencies(test_cadence_inference clock_fr clock_au oscillator lfo_fr lfo_au gain audio_test_op)
-add_test(NAME test_cadence_inference
-    COMMAND test_cadence_inference ${CMAKE_BINARY_DIR}
+add_dependencies(test_fixed_cadence_assignment clock_fr clock_au oscillator lfo_fr lfo_au)
+add_test(NAME test_fixed_cadence_assignment
+    COMMAND test_fixed_cadence_assignment ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-set_tests_properties(test_cadence_inference PROPERTIES LABELS "STABILITY")
+set_tests_properties(test_fixed_cadence_assignment PROPERTIES LABELS "STABILITY")
 
 # PackageCompiler unit test (compiles a mock package operator)
 add_executable(test_package_compiler

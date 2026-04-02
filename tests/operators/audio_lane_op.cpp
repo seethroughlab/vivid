@@ -1,6 +1,6 @@
-// Audio test operator for cross-cadence lane testing.
-// Reads CONTROL_SPREAD input, copies to CONTROL_SPREAD output,
-// generates DC audio output = sum of lane values.
+// Audio test operator for audio-frame bridge lane snapshot testing.
+// Reads a lane-array input, copies it to the lane-array output, and emits a
+// DC audio signal equal to the sum of the lane values.
 #include "operator_api/operator.h"
 #include <cstring>
 

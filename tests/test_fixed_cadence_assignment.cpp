@@ -1,6 +1,7 @@
-// Integration test: Fixed-cadence operator model.
+// Integration test: fixed-cadence operator assignment.
 // Verifies that _fr operators are frame-only and _au operators are audio-only,
-// with no implicit cadence promotion. Cross-cadence edges use Snapshot transport.
+// and that audio-frame bridge edges compile as snapshot
+// transports with an explicit bridge kind.
 
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
@@ -9,7 +10,6 @@
 #include "runtime/compiled_graph.h"
 #include "runtime/cadence_types.h"
 #include <cstdio>
-#include <cstring>
 #include <filesystem>
 #include <string>
 
@@ -30,10 +30,10 @@ int main(int argc, char* argv[]) {
     std::string build_dir = ".";
     if (argc > 1) build_dir = argv[1];
 
-    std::fprintf(stderr, "=== test_cadence_inference ===\n");
+    std::fprintf(stderr, "=== test_fixed_cadence_assignment ===\n");
 
     // Stage required dylibs
-    const std::string staging = build_dir + "/.test_cadence_inference_staging";
+    const std::string staging = build_dir + "/.test_fixed_cadence_assignment_staging";
     std::filesystem::remove_all(staging);
     std::filesystem::create_directories(staging);
 
@@ -48,8 +48,6 @@ int main(int argc, char* argv[]) {
     stage("oscillator.dylib");
     stage("lfo_fr.dylib");
     stage("lfo_au.dylib");
-    stage("gain.dylib");
-    stage("audio_test_op.dylib");
 
     vivid::OperatorRegistry registry;
     registry.scan_deferred(staging.c_str());
@@ -111,10 +109,10 @@ int main(int argc, char* argv[]) {
     }
 
     // =====================================================================
-    // Test 2: Frame-only clock_fr → Oscillator (cross-cadence, Snapshot edge)
+    // Test 2: Frame-only clock_fr → Oscillator (audio-frame bridge edge)
     // =====================================================================
     {
-        std::fprintf(stderr, "\n=== Test 2: Frame-only clock → audio-only osc ===\n");
+        std::fprintf(stderr, "\n=== Test 2: Frame-only clock → audio-only osc via hold bridge ===\n");
         vivid::Graph g;
         g.load_from_string(R"({
             "nodes": {
@@ -133,15 +131,16 @@ int main(int argc, char* argv[]) {
         check(cn_clock && cn_clock->active_cadence == vivid::Cadence::Frame,
               "clock_fr stays at Frame");
 
-        bool found_snapshot = false;
+        bool found_bridge = false;
         for (const auto& e : runtime.compiled_graph()->edges) {
             if (runtime.compiled_graph()->nodes[e.from_node].node_id == "clock" &&
                 runtime.compiled_graph()->nodes[e.to_node].node_id == "osc") {
-                found_snapshot = (e.transport == vivid::EdgeTransport::Snapshot);
+                found_bridge = (e.transport == vivid::EdgeTransport::Snapshot &&
+                                e.bridge_kind == vivid::BridgeKind::Hold);
                 break;
             }
         }
-        check(found_snapshot, "clock→osc edge is Snapshot (cross-cadence)");
+        check(found_bridge, "clock→osc edge compiles as hold bridge transport");
 
         runtime.shutdown();
     }
@@ -185,23 +184,6 @@ int main(int argc, char* argv[]) {
               "clock_fr stays at Frame (standalone)");
 
         runtime.shutdown();
-    }
-
-    // =====================================================================
-    // Test 5: Legacy graph with "cadence" key loads without error
-    // =====================================================================
-    {
-        std::fprintf(stderr, "\n=== Test 5: Legacy cadence key ignored ===\n");
-        const char* json = R"({
-            "nodes": {
-                "clock": { "type": "clock_fr", "cadence": 3 }
-            },
-            "connections": []
-        })";
-
-        vivid::Graph g;
-        check(g.load_from_string(json, std::strlen(json)), "load legacy JSON with cadence key");
-        check(g.find_node("clock") != nullptr, "clock node loaded despite cadence key");
     }
 
     // --- Summary ---

@@ -43,8 +43,8 @@ enum class EdgeTransport : uint8_t {
 
 // ---------------------------------------------------------------------------
 // BridgeKind — explicit bridge semantics requested by the graph author.
-// Carried on CompiledEdge but not acted on until the fixed-cadence migration
-// replaces implicit cadence inference with explicit bridge edges.
+// Stored on CompiledEdge so the runtime can apply the requested audio-frame
+// bridge behavior at the cadence boundary.
 // ---------------------------------------------------------------------------
 
 enum class BridgeKind : uint8_t {

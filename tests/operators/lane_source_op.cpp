@@ -1,5 +1,5 @@
-// Lane array source: generates lane data [base*1, base*2, ..., base*count]
-// (Operator name kept as LaneSourceOp for test fixture compatibility.)
+// Lane-array source used by the audio-frame bridge snapshot tests.
+// Generates lane data [base*1, base*2, ..., base*count].
 #include "operator_api/operator.h"
 
 struct LaneSourceOp : vivid::OperatorBase, vivid::FrameProcessable {

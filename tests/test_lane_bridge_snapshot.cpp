@@ -36,7 +36,7 @@ int main(int argc, char* argv[]) {
     std::string build_dir = ".";
     if (argc > 1) build_dir = argv[1];
 
-    std::string graph_path = build_dir + "/test_cross_cadence_lanes.json";
+    std::string graph_path = build_dir + "/test_lane_bridge_snapshot.json";
 
     // Setup: staging dir with required operators
     std::string staging = build_dir + "/.test_lane_staging";
@@ -48,7 +48,7 @@ int main(int argc, char* argv[]) {
         staging + "/audio_lane_op.dylib",
         std::filesystem::copy_options::overwrite_existing);
 
-    std::fprintf(stderr, "\n=== Test: Cross-Cadence Lanes ===\n\n");
+    std::fprintf(stderr, "\n=== Test: Lane Bridge Snapshot ===\n\n");
 
     // --- Setup ---
     vivid::OperatorRegistry registry;
@@ -69,8 +69,8 @@ int main(int argc, char* argv[]) {
     int audio_idx = audio_engine.audio_node_index("audio");
     check(audio_idx >= 0, "audio node found in engine");
 
-    // --- Test 2: Start and verify lane array arrives at audio cadence ---
-    std::fprintf(stderr, "\n--- lane array arrives at audio cadence ---\n");
+    // --- Test 2: Start and verify lane array arrives through the bridge ---
+    std::fprintf(stderr, "\n--- lane array arrives through the audio-frame bridge ---\n");
     check(audio_engine.start(true), "audio_engine.start(null)");
 
     // Tick runtime so LaneSourceOp produces lane array [1,2,3]
@@ -94,7 +94,7 @@ int main(int argc, char* argv[]) {
         check_float(snap.rms[audio_idx], 6.0f, 0.5f, "RMS ≈ 6.0 (sum of [1,2,3])");
     }
 
-    // --- Test 3: Lane array echoed back to frame cadence ---
+    // --- Test 3: Lane array echoed back to the frame world ---
     std::fprintf(stderr, "\n--- lane array echoed back ---\n");
     {
         // Find the runtime node for "audio" and check its "echo" output lane array
