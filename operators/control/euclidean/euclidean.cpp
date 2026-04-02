@@ -103,6 +103,9 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     if (steps <= 0) { return vec4f(0.0, 0.0, 0.0, 0.0); }
 
     let uv = input.uv;
+    // Pixel size for anti-aliasing (in UV space)
+    let px = fwidth(uv.x);
+    let py = fwidth(uv.y);
 
     // Layout: horizontal row of cells with margins for label space
     let margin_x = 0.06;
@@ -125,8 +128,9 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     let cell_idx = i32(floor(cell_idx_f));
     let in_cell_x = fract(cell_idx_f);
 
-    // Gap between cells (thinner at high step counts)
-    let gap_frac = select(0.08, 0.03, steps > 16);
+    // Gap between cells — scale with pixel size so gaps are always >= 1px
+    let min_gap = px / cell_area_w * f32(steps);  // 1 pixel in cell-fraction space
+    let gap_frac = max(select(0.08, 0.03, steps > 16), min_gap);
     let half_gap = gap_frac * 0.5;
 
     // Reject gap areas
@@ -141,12 +145,16 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     let cx = (in_cell_x - half_gap) / (1.0 - 2.0 * half_gap);
     let cy = (local_y - 0.04) / 0.92;
 
-    // Rounded rect SDF
+    // Rounded rect SDF in cell-local space
     let corner_r = 0.15;
     let p = vec2f(cx, cy) * 2.0 - vec2f(1.0);
     let q = abs(p) - vec2f(1.0 - corner_r);
     let d = length(max(q, vec2f(0.0))) - corner_r;
-    if (d > 0.0) {
+
+    // Anti-aliased edge: compute pixel width in SDF space
+    let sdf_px = length(fwidth(p)) * 0.5;
+    let edge_alpha = 1.0 - smoothstep(-sdf_px, sdf_px, d);
+    if (edge_alpha < 0.01) {
         return vec4f(0.0, 0.0, 0.0, 0.0);
     }
 
@@ -169,13 +177,15 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
         alpha = select(0.25, 0.45, is_current);
     }
 
-    // Current-step highlight ring on edge pixels
-    if (is_current && d > -0.12) {
-        color = accent * 1.3;
-        alpha = 0.9;
+    // Current-step highlight ring: 2px border using SDF
+    if (is_current) {
+        let ring_width = sdf_px * 4.0;  // ~2 pixels thick
+        let ring = smoothstep(-ring_width - sdf_px, -ring_width, d);
+        color = mix(color, accent * 1.4, ring);
+        alpha = mix(alpha, 0.95, ring);
     }
 
-    return vec4f(color * alpha, alpha);
+    return vec4f(color * alpha * edge_alpha, alpha * edge_alpha);
 }
 )";
 
