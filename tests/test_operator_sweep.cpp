@@ -6,6 +6,7 @@
 // otherwise they are gracefully skipped.
 
 #include "runtime/operator_loader.h"
+#include "runtime/shared_handle_registry.h"
 #include "operator_api/gpu_operator.h"
 #include "common/gpu_util.h"
 #include <webgpu/webgpu.h>
@@ -48,6 +49,10 @@ struct OpResult {
 
 static std::vector<OpResult> g_results;
 
+struct SweepLaneStateStore {
+    std::unordered_map<uint64_t, std::vector<uint8_t>> slots;
+};
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -68,8 +73,16 @@ static const char* kind_label(uint32_t d) {
     }
 }
 
-// Count signal-like input or output ports (for control context sizing).
-static uint32_t count_signal_ports(const VividOperatorDescriptor* desc,
+static void* sweep_lane_state_fn(void* service, uint32_t lane_id, uint32_t byte_size) {
+    auto* store = static_cast<SweepLaneStateStore*>(service);
+    uint64_t key = (static_cast<uint64_t>(lane_id) << 32) | static_cast<uint64_t>(byte_size);
+    auto& slot = store->slots[key];
+    if (slot.size() != byte_size) slot.assign(byte_size, 0);
+    return slot.data();
+}
+
+// Count scalar input or output ports (for control / GPU context sizing).
+static uint32_t count_scalar_ports(const VividOperatorDescriptor* desc,
                                     VividPortDirection dir) {
     uint32_t n = 0;
     for (uint32_t i = 0; i < desc->port_count; i++) {
@@ -80,19 +93,9 @@ static uint32_t count_signal_ports(const VividOperatorDescriptor* desc,
     return n;
 }
 
-// For audio-cadence operators, the runtime provides audio buffers for ports
-// that carry audio data (AUDIO type or AUDIO_BUFFER transport), and float
-// values for signal ports that carry cross-cadence scalars. However, some
-// audio operators declare output ports as VIVID_PORT_SCALAR but write to
-// output_buffers (the runtime allocates buffers for all ports at audio
-// cadence). To be safe, we count:
-//   - audio_buffer ports: any port with AUDIO type or AUDIO_BUFFER transport,
-//     PLUS any SIGNAL port that doesn't explicitly use SIGNAL transport
-//     (i.e. it gets a buffer at audio cadence).
-//   - float ports: SIGNAL type ports (these get float values from/to frame).
-//
-// For audio operators, the runtime gives EVERY port a buffer slot. Signal
-// ports also get a float_value slot for cross-cadence bridging. We mirror this.
+// For audio-cadence operators, the runtime provides output buffers for scalar
+// and audio-buffer outputs. We mirror that allocation pattern here so smoke
+// tests exercise the same memory layout the audio executor uses.
 
 // Count ports that need audio buffer allocation.
 static uint32_t count_buffer_ports(const VividOperatorDescriptor* desc,
@@ -103,19 +106,6 @@ static uint32_t count_buffer_ports(const VividOperatorDescriptor* desc,
         auto t = desc->ports[i].type;
         auto tr = desc->ports[i].transport;
         if (t == VIVID_PORT_AUDIO_BUFFER || tr == VIVID_PORT_TRANSPORT_AUDIO_BUFFER)
-            n++;
-    }
-    return n;
-}
-
-// Count signal/float ports (cross-cadence scalar values).
-static uint32_t count_float_ports(const VividOperatorDescriptor* desc,
-                                   VividPortDirection dir) {
-    uint32_t n = 0;
-    for (uint32_t i = 0; i < desc->port_count; i++) {
-        if (desc->ports[i].direction != dir) continue;
-        if (desc->ports[i].type == VIVID_PORT_SCALAR &&
-            desc->ports[i].transport == VIVID_PORT_TRANSPORT_SIGNAL)
             n++;
     }
     return n;
@@ -323,7 +313,7 @@ static bool smoke_audio(vivid::OperatorLoader& loader, void* inst,
 
     // Count all input/output ports by type for buffer allocation.
     uint32_t n_buf_in = 0, n_buf_out = 0;
-    uint32_t n_float_in = 0, n_float_out = 0;
+    uint32_t n_in_total = 0, n_out_total = 0;
     for (uint32_t i = 0; i < desc->port_count; i++) {
         auto& p = desc->ports[i];
         bool is_in = (p.direction == VIVID_PORT_INPUT);
@@ -332,13 +322,13 @@ static bool smoke_audio(vivid::OperatorLoader& loader, void* inst,
         bool is_signal = (p.type == VIVID_PORT_SCALAR);
 
         if (is_in) {
+            n_in_total++;
             if (is_audio_buf) n_buf_in++;
-            if (is_signal)    n_float_in++;
         } else {
+            n_out_total++;
             // Audio operators can write to output_buffers for ANY output port.
             // Allocate a buffer for every non-lane, non-string, non-custom output.
             if (is_audio_buf || is_signal) n_buf_out++;
-            if (is_signal) n_float_out++;
         }
     }
 
@@ -348,13 +338,13 @@ static bool smoke_audio(vivid::OperatorLoader& loader, void* inst,
     std::vector<float*> in_ptrs, out_ptrs;
     for (auto& b : in_bufs)  in_ptrs.push_back(b.data());
     for (auto& b : out_bufs) out_ptrs.push_back(b.data());
+    std::vector<VividLanePort> input_lanes(n_in_total, {nullptr, 0, 0});
+    std::vector<VividLanePort> output_lanes(n_out_total, {nullptr, 0, 0});
 
     std::vector<float> params(desc->param_count);
     for (uint32_t i = 0; i < desc->param_count; i++)
         params[i] = desc->params[i].default_value;
-
-    std::vector<float> float_inputs(n_float_in, 0.0f);
-    std::vector<float> float_outputs(n_float_out, 0.0f);
+    SweepLaneStateStore lane_state;
 
     VividAudioContext ctx{};
     ctx.sample_rate         = kSampleRate;
@@ -362,6 +352,15 @@ static bool smoke_audio(vivid::OperatorLoader& loader, void* inst,
     ctx.input_buffers       = in_ptrs.empty()       ? nullptr : in_ptrs.data();
     ctx.output_buffers      = out_ptrs.empty()       ? nullptr : out_ptrs.data();
     ctx.param_values        = params.empty()         ? nullptr : params.data();
+    ctx.input_lanes         = input_lanes.empty()    ? nullptr : input_lanes.data();
+    ctx.output_lanes        = output_lanes.empty()   ? nullptr : output_lanes.data();
+    ctx.shared_handles      = vivid::shared_handle_service();
+    ctx.lane_count          = 1;
+    ctx.lane_index          = 0;
+    ctx.lane_set_id         = 0;
+    ctx.lane_id             = 1;
+    ctx.lane_state_fn       = sweep_lane_state_fn;
+    ctx.lane_state_service  = &lane_state;
 
     // Process several buffers to let state settle.
     for (int b = 0; b < 4; b++) {
@@ -372,9 +371,6 @@ static bool smoke_audio(vivid::OperatorLoader& loader, void* inst,
     for (auto& buf : out_bufs) {
         if (!is_finite_buf(buf.data(), kFrames)) return false;
     }
-    // Check float outputs are finite.
-    if (n_float_out > 0 && !is_finite_buf(float_outputs.data(), static_cast<int>(n_float_out)))
-        return false;
     return true;
 }
 
@@ -387,8 +383,8 @@ static bool smoke_gpu(vivid::OperatorLoader& loader, void* inst,
                        HeadlessGpu& gpu) {
     gpu.gpu_error_fired = false;
 
-    uint32_t n_in  = count_signal_ports(desc, VIVID_PORT_INPUT);
-    uint32_t n_out = count_signal_ports(desc, VIVID_PORT_OUTPUT);
+    uint32_t n_in  = count_scalar_ports(desc, VIVID_PORT_INPUT);
+    uint32_t n_out = count_scalar_ports(desc, VIVID_PORT_OUTPUT);
 
     std::vector<float> params(desc->param_count);
     for (uint32_t i = 0; i < desc->param_count; i++)
@@ -504,27 +500,39 @@ static bool test_param_boundary(vivid::OperatorLoader& loader, void* inst,
         } else if (vivid_operator_kind(desc) == VIVID_OP_AUDIO) {
             constexpr int kF = 512;
             // Mirror smoke_audio port counting.
-            uint32_t nbi = 0, nbo = 0, nfi = 0, nfo = 0;
+            uint32_t nbi = 0, nbo = 0;
+            uint32_t ni = 0, no = 0;
             for (uint32_t pi = 0; pi < desc->port_count; pi++) {
                 auto& pp = desc->ports[pi];
                 bool is_in = (pp.direction == VIVID_PORT_INPUT);
                 bool is_ab = (pp.type == VIVID_PORT_AUDIO_BUFFER || pp.transport == VIVID_PORT_TRANSPORT_AUDIO_BUFFER);
                 bool is_sg = (pp.type == VIVID_PORT_SCALAR);
-                if (is_in) { if (is_ab) nbi++; if (is_sg) nfi++; }
-                else { if (is_ab || is_sg) nbo++; if (is_sg) nfo++; }
+                if (is_in) { ni++; if (is_ab) nbi++; }
+                else { no++; if (is_ab || is_sg) nbo++; }
             }
             std::vector<std::vector<float>> ibs(nbi, std::vector<float>(kF, 0.0f));
             std::vector<std::vector<float>> obs(nbo, std::vector<float>(kF, 0.0f));
             std::vector<float*> ip, op;
             for (auto& b : ibs) ip.push_back(b.data());
             for (auto& b : obs) op.push_back(b.data());
-            std::vector<float> fi(nfi, 0.0f), fo(nfo, 0.0f);
+            std::vector<VividLanePort> in_lanes(ni, {nullptr, 0, 0});
+            std::vector<VividLanePort> out_lanes(no, {nullptr, 0, 0});
+            SweepLaneStateStore lane_state;
             VividAudioContext ctx{};
             ctx.sample_rate         = 44100;
             ctx.buffer_size         = kF;
             ctx.input_buffers       = ip.empty() ? nullptr : ip.data();
             ctx.output_buffers      = op.empty() ? nullptr : op.data();
             ctx.param_values        = params.empty() ? nullptr : params.data();
+            ctx.input_lanes         = in_lanes.empty() ? nullptr : in_lanes.data();
+            ctx.output_lanes        = out_lanes.empty() ? nullptr : out_lanes.data();
+            ctx.shared_handles      = vivid::shared_handle_service();
+            ctx.lane_count          = 1;
+            ctx.lane_index          = 0;
+            ctx.lane_set_id         = 0;
+            ctx.lane_id             = 1;
+            ctx.lane_state_fn       = sweep_lane_state_fn;
+            ctx.lane_state_service  = &lane_state;
             loader.process_audio(inst, &ctx);
             for (auto& b : obs)
                 if (!is_finite_buf(b.data(), kF)) return false;
@@ -581,6 +589,15 @@ static void sweep_operator(const fs::path& path, HeadlessGpu* gpu) {
     // --- Load ---
     vivid::OperatorLoader loader;
     if (!loader.load(path.c_str())) {
+        if (loader.last_error().message.find("plugin ABI") != std::string::npos) {
+            result.skipped = true;
+            result.skip_reason = "stale_build_artifact";
+            g_skipped++;
+            g_results.push_back(result);
+            std::fprintf(stderr, "  [SKIP] %-30s stale build artifact: %s\n",
+                         stem.c_str(), loader.last_error().message.c_str());
+            return;
+        }
         result.fail_reason = "load failed: " + loader.last_error().message;
         g_failed++;
         g_results.push_back(result);

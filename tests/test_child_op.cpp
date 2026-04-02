@@ -164,7 +164,7 @@ static void test_op_access() {
     vivid::ChildOp<LFO> lfo;
 
     // Access internal state directly
-    check(lfo.op().frame_state_.free_phase == 0.0, "LFO initial phase is 0");
+    check(lfo.op().scalar_state_.free_phase == 0.0, "LFO initial phase is 0");
 
     // Process a frame
     lfo.set_param("frequency", 1.0f);
@@ -175,7 +175,7 @@ static void test_op_access() {
     auto ctx = make_ctx(0.0, 0.1, 0);
     lfo.process(&ctx);
 
-    check(lfo.op().frame_state_.free_phase > 0.0, "LFO phase advanced after process()");
+    check(lfo.op().scalar_state_.free_phase > 0.0, "LFO phase advanced after process()");
 }
 
 // =====================================================================

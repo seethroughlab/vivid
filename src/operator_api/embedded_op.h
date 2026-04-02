@@ -111,7 +111,7 @@ public:
             c_output_lanes_[i].capacity = static_cast<uint32_t>(output_lanes_[i].capacity());
         }
 
-        if (uses_audio_cadence_) {
+        if (has_audio_interface_) {
             ensure_audio_buffers_();
 
             VividAudioContext audio_ctx{};
@@ -172,7 +172,7 @@ public:
 
     OperatorBase&       op()       { return *op_; }
     const OperatorBase& op() const { return *op_; }
-    bool uses_audio_cadence() const { return uses_audio_cadence_; }
+    bool has_audio_interface() const { return has_audio_interface_; }
     uint32_t param_count()  const { return static_cast<uint32_t>(param_ptrs_.size()); }
 
 private:
@@ -182,7 +182,7 @@ private:
     void init() {
         audio_iface_ = dynamic_cast<AudioProcessable*>(op_.get());
         frame_iface_ = dynamic_cast<FrameProcessable*>(op_.get());
-        uses_audio_cadence_ = (audio_iface_ != nullptr);
+        has_audio_interface_ = (audio_iface_ != nullptr);
 
         op_->collect_params(param_ptrs_);
         param_values_.resize(param_ptrs_.size());
@@ -212,7 +212,7 @@ private:
     OwnedOp op_;
     AudioProcessable* audio_iface_ = nullptr;
     FrameProcessable* frame_iface_ = nullptr;
-    bool uses_audio_cadence_ = false;
+    bool has_audio_interface_ = false;
 
     std::vector<ParamBase*> param_ptrs_;
     std::vector<float>      param_values_;

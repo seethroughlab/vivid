@@ -328,8 +328,8 @@ static void test_audio_state_basic() {
     check(a.descriptor_output_channels[0] == 2, "output channel count 2");
 }
 
-static void test_audio_state_float_cv() {
-    std::fprintf(stderr, "\n--- init_audio_state: float CV inputs ---\n");
+static void test_audio_state_scalar_ports() {
+    std::fprintf(stderr, "\n--- init_audio_state: scalar ports still receive audio-side buffer slots ---\n");
 
     VividPortDescriptor ports[] = {
         make_port("freq",     VIVID_PORT_SCALAR, VIVID_PORT_INPUT),
@@ -354,13 +354,14 @@ static void test_audio_state_float_cv() {
 
     vivid::GraphCompiler::init_audio_state(cn, &desc, 128);
 
-    // Float CV init removed in Phase 4B — vectors stay empty.
     auto& a = *cn.audio;
-    check(a.float_input_values.empty(), "float_input_values empty (no CV init)");
-    check(a.float_output_values.empty(), "float_output_values empty (no CV init)");
+    check(a.buffers_in.size() == 3, "audio state allocates one input buffer slot per input port");
+    check(a.buffers_out.size() == 1, "only AUDIO_BUFFER output allocates an audio buffer");
+    check(a.in_ptrs.size() == 3, "3 audio input ptrs");
+    check(a.out_ptrs.size() == 1, "1 audio output ptr");
 }
 
-// Signal output extraction test removed in Phase 4B — float CV plumbing no longer initialized.
+// Scalar side-channel init removed in Phase 4B — scalar bridge delivery is explicit.
 
 static void test_audio_state_lane_flags() {
     std::fprintf(stderr, "\n--- init_audio_state: lane/string/custom flags ---\n");
@@ -439,7 +440,7 @@ int main() {
 
     // init_audio_state tests
     test_audio_state_basic();
-    test_audio_state_float_cv();
+    test_audio_state_scalar_ports();
     test_audio_state_lane_flags();
     test_audio_state_different_buffer_sizes();
 
