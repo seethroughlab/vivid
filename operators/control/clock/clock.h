@@ -17,7 +17,7 @@ struct ClockThumbState;
  * @output beat_trigger Impulse on each beat boundary.
  * @see LFO, Envelope, Sequencer
  */
-struct Clock : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct Clock : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "Clock";
     static constexpr bool kTimeDependent = true;
 
@@ -61,26 +61,6 @@ struct Clock : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcess
         ctx->output_values[1] = 60000.0f / bpm.value;
         ctx->output_values[2] = static_cast<float>(bar_phase_);
         ctx->output_values[3] = (phase_ < prev_phase_) ? 1.0f : 0.0f;
-    }
-
-    void process_audio(const VividAudioContext* ctx) override {
-        double delta_time = static_cast<double>(ctx->buffer_size) / ctx->sample_rate;
-        double beats_per_sec = static_cast<double>(bpm.value) / 60.0;
-        double bars_per_sec = beats_per_sec / static_cast<double>(beats_per_bar.value);
-        prev_phase_ = phase_;
-        phase_ += delta_time * beats_per_sec;
-        phase_ -= std::floor(phase_);
-        bar_phase_ += delta_time * bars_per_sec;
-        bar_phase_ -= std::floor(bar_phase_);
-        float vals[4];
-        vals[0] = static_cast<float>(phase_);
-        vals[1] = 60000.0f / bpm.value;
-        vals[2] = static_cast<float>(bar_phase_);
-        vals[3] = (phase_ < prev_phase_) ? 1.0f : 0.0f;
-        for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
-            for (int j = 0; j < 4; ++j)
-                ctx->output_buffers[j][i] = vals[j];
-        }
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override;

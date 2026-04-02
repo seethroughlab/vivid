@@ -21,7 +21,7 @@
  * @param octaves Range of octave transposition applied to the pattern.
  * @see Sequencer, ChordProgression, MidiInput
  */
-struct Arpeggiator : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct Arpeggiator : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "Arpeggiator";
     static constexpr bool kTimeDependent = true;
     static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;

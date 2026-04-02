@@ -2,157 +2,142 @@
 
 ## Summary
 
-Phases 1-7 have landed the fixed-cadence architecture, but the repo still contains visible fossils of the previous dual-cadence model.
+The fixed-cadence migration is functionally complete, and the repository now mostly reads as fixed-cadence-native.
 
-If the goal is for a newcomer to experience the codebase as if it had always been designed this way, the remaining work is not about behavior. It is about **removing conflicting stories** from:
+This note records the **remaining** cleanup needed to make the codebase feel, to a newcomer, as though it had always been designed this way.
 
-- canonical docs
-- active code comments and API language
-- internal helper types that still present themselves as dual-cadence
-- migration docs that are now stale or too prominent
+The earlier version of this cleanup plan overstated what remained. Most of the broad cleanup tracks are already complete. What is left is a small convergence pass in three places:
 
-This cleanup should be treated as one short, explicit convergence pass after the functional migration is complete.
+1. one stale canonical runtime reference doc
+2. a few stale SVG diagrams
+3. internal shared operator implementation types that still implement both frame and audio interfaces
 
-## Cleanup Tracks
+This is now a **post-migration polish plan**, not a runtime redesign, compatibility effort, or continuation of the seven migration phases.
 
-### 1. Rewrite the canonical docs so they teach only the fixed-cadence model
+## Already Complete
 
-Update the docs a new contributor is most likely to read first:
+The following cleanup work no longer needs to be tracked as active:
 
-- `docs/PRD.md`
-- `docs/ARCHITECTURE.md`
-- `docs/vivid-runtime-architecture.md`
-- `docs/runtime/architecture.md`
-- `docs/runtime/runtime_core.md`
-- `docs/runtime/audio_engine.md`
-- `mcp/opdev_docs/core_api.md`
-- `mcp/opdev_docs/control_domain.md`
-- `mcp/opdev_docs/audio_domain.md`
-- `mcp/opdev_docs/advanced.md`
+- Migration docs have already been moved under `docs/archive/fixed-cadence-migration/`.
+- Primary terminology has been updated in active docs and operator-authoring docs:
+  - `VIVID_PORT_SCALAR`
+  - `VIVID_PORT_AUDIO_BUFFER`
+  - `AudioFrameBridge`
+- Active API comments no longer teach the old “audio-capable / promotion” model.
+- Old `input_float_values` / `output_float_values` names no longer appear in active code.
+- Broad fixed-cadence cleanup work should now be treated as archival history, not an active migration stream.
 
-Make these changes consistently:
+The repo is no longer in the state this document originally described. What remains is narrower and more specific.
 
-- replace `VIVID_PORT_SIGNAL` with `VIVID_PORT_SCALAR`
-- replace `VIVID_PORT_AUDIO` with `VIVID_PORT_AUDIO_BUFFER`
-- remove references to `CadenceBridge` and replace them with `AudioFrameBridge`
-- remove `cadence_capability`, `audio-capable`, `dual-cadence`, and promotion language
-- describe operators as fixed-cadence:
-  - frame-only
-  - audio-only
-  - gpu
-- describe frame/audio crossings as explicit bridge edges only
-- update all example code snippets to use the fixed-cadence names and current port constants
+## Remaining Cleanup
 
-Also update diagrams under `docs/diagrams/` that still show:
+### 1. Rewrite `docs/vivid-runtime-architecture.md`
 
-- `CadenceBridge`
-- dual-cadence terminology
-- old port names
+This is the biggest remaining active-doc mismatch.
 
-The canonical doc set should become self-consistent enough that the migration docs are no longer required to understand the runtime.
+`docs/vivid-runtime-architecture.md` still describes the old runtime in several places, including:
 
-### 2. Scrub active code comments and API language that still teach the old model
+- `active_cadence` user-facing assignment rules
+- `Auto-inference` / promotion logic
+- `AUDIO_ONLY` / `FRAME_ONLY` cadence classification text
+- `float_input_values`
+- `float_outputs`
+- multi-interface operator descriptions that no longer match the current fixed-cadence design
 
-The active source tree still contains comments that describe promotion and audio-capable operators. Remove or rewrite those comments so the code explains only the current model.
+This file needs a full pass, not piecemeal edits.
 
-Priority files:
+Rewrite intent:
 
-- `src/operator_api/operator.h`
-- `src/runtime/subgraph_module.cpp`
-- `src/runtime/audio_executor.cpp`
-- `src/runtime/graph_compiler.cpp`
+- describe the runtime as fixed-cadence only
+- remove promotion/inference language entirely
+- describe `AudioFrameBridge` and explicit bridge edges as the only frame/audio crossing model
+- align context field tables, graph compilation, and execution sections with current code
+
+### 2. Update stale SVG diagrams
+
+The only remaining old terminology outside the archive shows up in diagrams.
+
+Update these files:
+
+- `docs/diagrams/architecture-overview.svg`
+- `docs/diagrams/cadence-bridge.svg`
+- `docs/diagrams/data-flow.svg`
 
 Required changes:
 
-- remove “audio-capable” terminology
-- remove comments that describe frame-to-audio promotion
-- remove comments that describe `SCALAR` outputs as writing audio buffers “when promoted”
-- update helper comments so they describe explicit bridge handling and fixed-cadence execution only
+- rename `CadenceBridge` labels to `AudioFrameBridge`
+- remove any old dual-cadence wording from comments or visible labels
+- ensure the diagrams visually match the fixed-cadence documentation set
 
-This is important because many contributors will learn the system from comments in these files before they read the migration notes.
+`docs/diagrams/fixed-cadence-tick.svg` is already the canonical tick diagram and should remain so.
 
-### 3. Remove or fully reframe the remaining internal dual-cadence helper types
+### 3. Resolve the internal shared-implementation layer
 
-The biggest remaining code-level fossil is the internal operator reuse layer.
+This is the main remaining code-level fossil.
 
-Current examples:
+Public fixed-cadence wrappers are already in place, but multiple shared implementation structs still implement both frame and audio interfaces. Current examples include:
 
-- `operators/control/lfo/lfo.h`
-- `operators/control/envelope/envelope.h`
-- `operators/control/smooth/smooth.h`
-- `src/operator_api/embedded_op.h`
+- `operators/control/clock/clock.h`
+- `operators/control/mseg/mseg.h`
+- `operators/control/arpeggiator/arpeggiator.cpp`
+- similar shared implementation units for other `_fr` / `_au` operator pairs
 
-These still present themselves as retained dual-cadence types for internal embedding. That may be technically workable, but it prevents the codebase from reading as natively fixed-cadence.
+The cleanup direction should be:
 
-Make this cleanup explicit:
+- move shared behavior into cadence-neutral implementation helpers (`*_core.h`, utility functions, or plain state structs)
+- keep `_fr` and `_au` wrappers as the only operator-shaped types that implement runtime interfaces
+- stop using dual-interface shared structs as the primary implementation container
 
-- stop retaining internal helper types that implement both `FrameProcessable` and `AudioProcessable`
-- move shared logic into cadence-neutral implementation helpers (`*_core.h`, utility structs, or pure helper functions)
-- keep the public execution wrappers cadence-specific:
-  - `<name>_fr`
-  - `<name>_au`
-- update `ChildOp` / embedded-op support so it embeds:
-  - a fixed frame operator implementation, or
-  - a fixed audio operator implementation
-  instead of an old dual-cadence class
-- rename helper fields and comments in `embedded_op.h` so they describe whether an embedded operator has an audio interface, not whether it “uses audio cadence” in the old sense
+Follow-on polish:
 
-The target state is:
-
-- no internal class remains whose primary identity is “the old dual-cadence operator”
-- shared behavior exists only as implementation reuse, not as a preserved historical abstraction
-
-### 4. Demote the migration docs from active guidance to historical record
-
-Right now `docs/fixed-cadence-migration/` still reads like the main explanation for the architecture, and some review notes inside it are already stale.
-
-Make the migration folder explicitly historical:
-
-- update stale review notes so they no longer contradict current code
-- add a short banner to `docs/fixed-cadence-migration/fixed-cadence-migration.md` saying this directory is an implementation record for the migration, not the primary source of runtime truth
-- once the canonical docs are updated, move the fixed-cadence migration directory under an archive path such as:
-  - `docs/archive/fixed-cadence-migration/`
-
-After that move:
-
-- remove links to the migration docs from any primary architecture doc
-- keep them available only as historical implementation notes
-
-This preserves history without making the old architecture part of the newcomer path.
+- `src/operator_api/embedded_op.h` still uses `uses_audio_cadence_`
+- this name is no longer wrong, but it still carries transitional wording
+- rename it only if the shared-implementation cleanup lands, so terminology stays consistent
 
 ## Acceptance Criteria
 
-The cleanup is complete when all of the following are true:
+This cleanup is complete when the remaining active surfaces match the fixed-cadence model without requiring the archived migration notes.
 
-- a newcomer can read `docs/PRD.md`, `docs/ARCHITECTURE.md`, and the runtime docs without encountering:
-  - `CadenceBridge`
-  - `VIVID_PORT_SIGNAL`
-  - `VIVID_PORT_AUDIO`
-  - `cadence_capability`
-  - `audio-capable`
-  - `dual-cadence`
-  - promotion language
-- active code comments do not describe the old execution model
-- internal helper code no longer preserves old dual-cadence operator types as first-class abstractions
-- migration docs are clearly archival, not the default explanation of the system
+### Doc and terminology gates outside the archive
 
-Use grep gates on active code and primary docs. Outside the archive directory, these should return no hits:
+Outside `docs/archive/`, these should return no hits:
 
 - `CadenceBridge`
-- `CadenceOverride`
-- `VividCadenceCapability`
-- `AUDIO_CAPABLE`
 - `VIVID_PORT_SIGNAL`
-- `VIVID_PORT_AUDIO\\b`
+- `VIVID_PORT_AUDIO\b`
+- `input_float_values`
+- `output_float_values`
 - `audio-capable`
 - `dual-cadence`
 - `cadence_capability`
-- `input_float_values`
-- `output_float_values`
+
+### Runtime-reference gate
+
+`docs/vivid-runtime-architecture.md` should no longer contain:
+
+- `active_cadence == Audio`
+- `active_cadence == Auto`
+- `Auto-inference`
+- `AUDIO_ONLY`
+- `FRAME_ONLY`
+- `float_input_values`
+- `float_outputs`
+
+### Internal implementation gate
+
+Run a focused search for operator structs that still implement both:
+
+- `FrameProcessable`
+- `AudioProcessable`
+
+Treat remaining matches under `operators/control/` and `operators/shared/` as the cleanup list for the internal implementation refactor.
 
 ## Assumptions and Defaults
 
-- This cleanup is about **contributor clarity**, not runtime compatibility.
-- Backward compatibility is not required.
-- Historical migration notes may remain in the repo, but only under an explicit archive path.
-- The preferred end state is not merely “the old model is disabled.” It is “the old model is no longer the way the repo explains itself.”
+- This file remains under `docs/archive/fixed-cadence-migration/` as an archival note describing the remaining cleanup after the migration.
+- Historical migration docs are allowed to keep old terminology because they are implementation records.
+- The target standard is: active code and active docs should read as fixed-cadence-native, even if archived docs still describe the migration history.
+- Remaining cleanup priority:
+  1. `docs/vivid-runtime-architecture.md`
+  2. stale SVG diagrams
+  3. internal shared operator implementation refactor

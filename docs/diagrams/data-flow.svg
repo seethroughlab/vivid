@@ -54,7 +54,7 @@
   <text x="608" y="100" text-anchor="middle" font-weight="600" fill="#ea580c">Audio Op</text>
   <text x="608" y="114" text-anchor="middle" font-size="9" fill="#ea580c">~48 kHz</text>
 
-  <text x="390" y="148" font-size="11" fill="#444" font-weight="600">Via CadenceBridge:</text>
+  <text x="390" y="148" font-size="11" fill="#444" font-weight="600">Via AudioFrameBridge:</text>
   <text x="400" y="166" font-size="10" fill="#555">Frame → Audio: ParamSnapshot</text>
   <text x="410" y="182" font-size="10" fill="#555">params, CV floats, lane arrays, string lanes</text>
   <text x="400" y="200" font-size="10" fill="#555">Audio → Frame: AnalysisSnapshot</text>

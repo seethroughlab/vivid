@@ -47,9 +47,9 @@
   <text x="135" y="314" text-anchor="middle" font-weight="bold" fill="#2563eb">FrameExecutor</text>
   <text x="135" y="332" text-anchor="middle" font-size="10" fill="#555">frame_order, GPU nodes</text>
 
-  <!-- CadenceBridge -->
+  <!-- AudioFrameBridge -->
   <rect x="250" y="290" width="220" height="60" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
-  <text x="360" y="314" text-anchor="middle" font-weight="bold" fill="#b45309">CadenceBridge</text>
+  <text x="360" y="314" text-anchor="middle" font-weight="bold" fill="#b45309">AudioFrameBridge</text>
   <text x="360" y="332" text-anchor="middle" font-size="10" fill="#92400e">double-buffered snapshots</text>
 
   <!-- GPU Context -->
@@ -93,10 +93,10 @@
   <!-- CompiledGraph → FrameExecutor -->
   <line x1="175" y1="266" x2="145" y2="290" stroke="#2563eb" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
 
-  <!-- CompiledGraph → CadenceBridge -->
+  <!-- CompiledGraph → AudioFrameBridge -->
   <line x1="275" y1="266" x2="330" y2="290" stroke="#d97706" stroke-width="1.5" marker-end="url(#arrow)"/>
 
-  <!-- CadenceBridge ↔ AudioExecutor (bidirectional) -->
+  <!-- AudioFrameBridge ↔ AudioExecutor (bidirectional) -->
   <line x1="470" y1="310" x2="510" y2="310" stroke="#ea580c" stroke-width="1.5" marker-end="url(#arrow-orange)"/>
   <line x1="510" y1="330" x2="470" y2="330" stroke="#2563eb" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
   <text x="490" y="303" text-anchor="middle" font-size="9" fill="#ea580c">params</text>

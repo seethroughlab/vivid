@@ -11,7 +11,7 @@
     </marker>
   </defs>
 
-  <text x="360" y="28" text-anchor="middle" font-size="18" font-weight="bold" fill="#111">CadenceBridge: Double-Buffered Snapshots</text>
+  <text x="360" y="28" text-anchor="middle" font-size="18" font-weight="bold" fill="#111">AudioFrameBridge: Double-Buffered Snapshots</text>
 
   <!-- Frame Thread Side -->
   <rect x="20" y="50" width="250" height="350" rx="8" fill="#f0f4ff" stroke="#93a3c0" stroke-width="1.5" stroke-dasharray="6,3"/>
@@ -21,9 +21,9 @@
   <rect x="450" y="50" width="250" height="350" rx="8" fill="#fff7ed" stroke="#c4956a" stroke-width="1.5" stroke-dasharray="6,3"/>
   <text x="575" y="70" text-anchor="middle" font-size="13" font-weight="bold" fill="#ea580c">Audio Thread</text>
 
-  <!-- Center: CadenceBridge -->
+  <!-- Center: AudioFrameBridge -->
   <rect x="280" y="80" width="160" height="300" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
-  <text x="360" y="100" text-anchor="middle" font-weight="bold" font-size="13" fill="#b45309">CadenceBridge</text>
+  <text x="360" y="100" text-anchor="middle" font-weight="bold" font-size="13" fill="#b45309">AudioFrameBridge</text>
 
   <!-- ParamSnapshot double buffer -->
   <text x="360" y="125" text-anchor="middle" font-weight="600" font-size="11" fill="#555">Frame → Audio</text>

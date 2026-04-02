@@ -14,7 +14,7 @@
  * @tip Use loop mode with 2-3 points for a custom-shaped LFO.
  * @see Envelope, LFO, PathAnimate
  */
-struct MSEG : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct MSEG : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "MSEG";
     static constexpr bool kTimeDependent = true;
 
@@ -143,13 +143,6 @@ struct MSEG : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessa
     void process_frame(const VividFrameContext* ctx) override {
         compute(ctx->input_values[0], static_cast<float>(ctx->delta_time));
         ctx->output_values[0] = current_value_ * amplitude.value;
-    }
-
-    void process_audio(const VividAudioContext* ctx) override {
-        compute(0.0f, static_cast<float>(ctx->delta_time));
-        float val = current_value_ * amplitude.value;
-        for (uint32_t i = 0; i < ctx->buffer_size; ++i)
-            ctx->output_buffers[0][i] = val;
     }
 
     void compute(float gate_in, float dt) {

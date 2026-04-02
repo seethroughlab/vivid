@@ -86,12 +86,11 @@ The `GraphCompiler` transforms a `Graph` plus an `OperatorRegistry` into a `Comp
 
 1. **Resolve descriptors.** For each node, look up the `VividOperatorDescriptor` from the registry. This provides port definitions, parameter metadata, execution environment, and cadence capability.
 
-2. **Assign cadences.** Each node is assigned `Cadence::Frame` or `Cadence::Audio`:
-   - If the node has `active_cadence == Audio` and the operator is `AUDIO_ONLY` → Audio.
-   - If `active_cadence == Frame` → Frame.
-   - If the descriptor declares `has_process_audio` (audio-only) → Audio.
-   - Otherwise → Frame.
-   - **Auto-inference:** After initial assignment, the compiler walks edges looking for `AUDIO_ONLY` nodes with `active_cadence == Auto` that feed downstream audio-cadence nodes via signal edges. These are promoted to Audio so the connection becomes a same-cadence Direct edge instead of a cross-cadence Snapshot. This promotion is **ephemeral** — re-derived each compile, never persisted to the graph.
+2. **Assign cadences.** Each node is assigned a fixed cadence from its descriptor:
+   - `has_process_gpu` → Frame (GPU operators run on the main thread).
+   - `has_process_audio && !has_process_frame` → Audio.
+   - `has_process_frame && !has_process_audio` → Frame.
+   - No implicit promotion or inference. Each operator runs at exactly one cadence.
 
 3. **Classify edges.** Each connection becomes a `CompiledEdge` with a transport type:
    - **Direct** — both endpoints share the same cadence. The executor copies data during its pass.
@@ -167,7 +166,6 @@ Contains everything the audio thread needs from the frame world:
 | Field | Content |
 |-------|---------|
 | `node_params` | Parameter values per audio node |
-| `float_input_values` | CV/signal inputs from frame-rate outputs |
 | `lane_inputs` | Lane data crossing cadence boundary |
 | `input_string_values` | String inputs (file paths, text) |
 | `custom_inputs` | Custom-type port data |
@@ -185,7 +183,7 @@ Contains audio-thread outputs for visualization and frame-rate modulation:
 |-------|---------|
 | `rms`, `peak` | Per-node level meters |
 | `waveform` | 1024-sample ring buffer per node |
-| `float_outputs` | Scalar signal outputs for frame-rate consumption |
+| `scalar_outputs` | Per-port scalar outputs for bridge delivery |
 | `lane_outputs` | Lane data from audio nodes |
 | `errored`, `error_msgs` | Error state (fixed-size, no heap) |
 
@@ -335,7 +333,7 @@ An operator opts into execution environments by inheriting capability interfaces
 | `AudioProcessable` | `process_audio(VividAudioContext*)` | Audio thread, 48 kHz |
 | `GpuProcessable` | `process_gpu(VividGpuContext*)` | Main thread, WebGPU |
 
-An operator may implement multiple interfaces. The `operator_kind` flag classifies cadence support: `FRAME_ONLY` (frame-rate only), `AUDIO_ONLY` (implements both `process_frame` and `process_audio`, runs at a fixed cadence to audio-rate), or `AUDIO_ONLY` (implements only `process_audio`, always runs at audio-rate).
+Each operator implements exactly one interface. The `operator_kind` field classifies it: `VIVID_OP_CONTROL` (frame-rate), `VIVID_OP_AUDIO` (audio-rate), or `VIVID_OP_GPU` (GPU). Paired operators that need both cadences are split into explicit `_fr` and `_au` variants.
 
 ### The VIVID_REGISTER Macro
 
@@ -356,7 +354,7 @@ param_count, params[]   — parameter descriptors (name, type, range, defaults)
 port_count, ports[]     — port descriptors (name, type, direction, transport)
 time_dependent          — whether the operator reads ctx->time
 has_process_frame/audio/gpu — capability flags (which process methods exist)
-operator_kind      — FRAME_ONLY, AUDIO_ONLY, or AUDIO_ONLY
+operator_kind      — VIVID_OP_CONTROL, VIVID_OP_AUDIO, or VIVID_OP_GPU
 ```
 
 ### OperatorRegistry
