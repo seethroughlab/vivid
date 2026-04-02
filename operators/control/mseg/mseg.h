@@ -14,7 +14,9 @@
  * @tip Use loop mode with 2-3 points for a custom-shaped LFO.
  * @see Envelope, LFO, PathAnimate
  */
-struct MSEG : vivid::OperatorBase, vivid::FrameProcessable {
+struct MsegThumbState;
+
+struct MSEG : vivid::OperatorBase {
     static constexpr const char* kName   = "MSEG";
     static constexpr bool kTimeDependent = true;
 
@@ -140,7 +142,9 @@ struct MSEG : vivid::OperatorBase, vivid::FrameProcessable {
         return pt_value[np - 1].value;
     }
 
-    void process_frame(const VividFrameContext* ctx) override {
+    // ── Frame-rate processing (used by MSEG_FR) ──────────────────────
+
+    void process_frame(const VividFrameContext* ctx) {
         compute(ctx->input_values[0], static_cast<float>(ctx->delta_time));
         ctx->output_values[0] = current_value_ * amplitude.value;
     }
@@ -222,9 +226,12 @@ struct MSEG : vivid::OperatorBase, vivid::FrameProcessable {
         }
     }
 
-    void draw_inspector(VividInspectorContext* ctx) override;
+    ~MSEG() override;
 
-private:
+    void draw_inspector(VividInspectorContext* ctx) override;
+    void draw_thumbnail(const VividThumbnailContext* ctx) override;
+
+protected:
     enum Stage { IDLE, PLAYING, LOOPING, RELEASING };
     Stage stage_               = IDLE;
     float elapsed_             = 0.0f;
@@ -232,6 +239,10 @@ private:
     float current_value_       = 0.0f;
     bool  prev_gate_           = false;
 
+private:
     // Inspector interaction state
     int dragged_point_ = -1;
+
+    MsegThumbState* thumb_state_ = nullptr;
+    void rebuild_thumb_pipeline(const VividThumbnailContext* ctx);
 };

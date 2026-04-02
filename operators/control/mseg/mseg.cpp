@@ -1,4 +1,213 @@
 #include "mseg.h"
+#include "operator_api/thumbnail.h"
+
+struct MsegThumbState {
+    WGPURenderPipeline pipeline = nullptr;
+    WGPUBindGroup bind_group = nullptr;
+    WGPUBindGroupLayout bind_layout = nullptr;
+    WGPUBuffer uniform_buf = nullptr;
+    WGPUShaderModule shader = nullptr;
+    WGPUPipelineLayout pipe_layout = nullptr;
+    WGPUTextureFormat pipeline_format = WGPUTextureFormat_Undefined;
+
+    void release_all() {
+        vivid::gpu::release(pipeline);
+        vivid::gpu::release(bind_group);
+        vivid::gpu::release(bind_layout);
+        vivid::gpu::release(uniform_buf);
+        vivid::gpu::release(shader);
+        vivid::gpu::release(pipe_layout);
+    }
+};
+
+MSEG::~MSEG() {
+    if (thumb_state_) {
+        thumb_state_->release_all();
+        delete thumb_state_;
+    }
+}
+
+void MSEG::draw_thumbnail(const VividThumbnailContext* ctx) {
+    if (!ctx) return;
+    if (!thumb_state_) thumb_state_ = new MsegThumbState();
+
+    if (!thumb_state_->pipeline || thumb_state_->pipeline_format != ctx->thumbnail_format) {
+        rebuild_thumb_pipeline(ctx);
+    }
+    if (!thumb_state_->pipeline || !thumb_state_->bind_group || !thumb_state_->uniform_buf) {
+        vivid_report_thumbnail_error(ctx, "mseg thumbnail pipeline init failed");
+        return;
+    }
+
+    // Uniform layout: 14 vec4f = 56 floats
+    // [0]: num_points, current_value, loop_enabled, loop_start
+    // [1]: loop_end, pad, pad, pad
+    // [2..5]: pt_time[16]
+    // [6..9]: pt_value[16]
+    // [10..13]: pt_curve[16] (15 + 1 pad)
+    float u[56] = {};
+    u[0] = ctx->param_values[0]; // num_points
+    float amp = (ctx->param_count > 5) ? ctx->param_values[5] : 1.0f;
+    float raw_out = (ctx->output_count > 0) ? ctx->output_values[0] : 0.0f;
+    u[1] = (amp > 0.0001f) ? raw_out / amp : 0.0f; // normalized current value
+    u[2] = (ctx->param_count > 2) ? ctx->param_values[2] : 0.0f; // loop_enabled
+    u[3] = (ctx->param_count > 3) ? ctx->param_values[3] : 0.0f; // loop_start
+
+    u[4] = (ctx->param_count > 4) ? ctx->param_values[4] : 3.0f; // loop_end
+
+    // pt_time[16] at param indices 6..21 → uniform offset 8
+    for (int i = 0; i < 16; ++i)
+        u[8 + i] = (ctx->param_count > static_cast<uint32_t>(6 + i)) ? ctx->param_values[6 + i] : 0.0f;
+    // pt_value[16] at param indices 22..37 → uniform offset 24
+    for (int i = 0; i < 16; ++i)
+        u[24 + i] = (ctx->param_count > static_cast<uint32_t>(22 + i)) ? ctx->param_values[22 + i] : 0.0f;
+    // pt_curve[15] at param indices 38..52 → uniform offset 40
+    for (int i = 0; i < 15; ++i)
+        u[40 + i] = (ctx->param_count > static_cast<uint32_t>(38 + i)) ? ctx->param_values[38 + i] : 0.0f;
+
+    wgpuQueueWriteBuffer(ctx->queue, thumb_state_->uniform_buf, 0, u, sizeof(u));
+    vivid::thumbnail::run_pass(ctx, thumb_state_->pipeline, thumb_state_->bind_group, "MSEG Thumb Pass");
+}
+
+void MSEG::rebuild_thumb_pipeline(const VividThumbnailContext* ctx) {
+    thumb_state_->release_all();
+
+    static const char* kThumbFragment = R"(
+struct Uniforms {
+    header0: vec4f,      // num_points, current_value, loop_enabled, loop_start
+    header1: vec4f,      // loop_end, pad, pad, pad
+    pt_time: array<vec4f, 4>,   // 16 floats
+    pt_value: array<vec4f, 4>,  // 16 floats
+    pt_curve: array<vec4f, 4>,  // 16 floats (15 used + 1 pad)
+};
+
+struct VertexOutput {
+    @builtin(position) position: vec4f,
+    @location(0) uv: vec2f,
+}
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
+@vertex
+fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+    let fs = fullscreenTriangle(vertexIndex, true);
+    var out: VertexOutput;
+    out.position = fs.position;
+    out.uv = fs.uv;
+    return out;
+}
+
+fn get_time(i: i32) -> f32 {
+    let idx = i / 4;
+    let comp = i % 4;
+    return uniforms.pt_time[idx][comp];
+}
+
+fn get_value(i: i32) -> f32 {
+    let idx = i / 4;
+    let comp = i % 4;
+    return uniforms.pt_value[idx][comp];
+}
+
+fn get_curve(i: i32) -> f32 {
+    let idx = i / 4;
+    let comp = i % 4;
+    return uniforms.pt_curve[idx][comp];
+}
+
+fn curve_interp(t: f32, curve: f32) -> f32 {
+    if (abs(curve) < 0.001) { return t; }
+    let k = curve * 4.0;
+    return (exp(k * t) - 1.0) / (exp(k) - 1.0);
+}
+
+fn mseg_at(x: f32, np: i32) -> f32 {
+    if (np < 2) { return 0.0; }
+    for (var i = 0; i < np - 1; i++) {
+        let t0 = get_time(i);
+        let t1 = get_time(i + 1);
+        if (x <= t1 || i == np - 2) {
+            let seg_len = t1 - t0;
+            var t = 0.0f;
+            if (seg_len > 0.0001) { t = clamp((x - t0) / seg_len, 0.0, 1.0); }
+            let shaped = curve_interp(t, get_curve(i));
+            return get_value(i) + (get_value(i + 1) - get_value(i)) * shaped;
+        }
+    }
+    return get_value(np - 1);
+}
+
+@fragment
+fn fs_main(input: VertexOutput) -> @location(0) vec4f {
+    let uv = input.uv;
+    let np = i32(uniforms.header0.x);
+    let current_value = clamp(uniforms.header0.y, 0.0, 1.0);
+    let loop_on = uniforms.header0.z > 0.5;
+    let ls = i32(uniforms.header0.w);
+    let le = i32(uniforms.header1.x);
+
+    let bg = vec4f(18.0/255.0, 20.0/255.0, 23.0/255.0, 230.0/255.0);
+    let fill_col = vec4f(80.0/255.0, 130.0/255.0, 190.0/255.0, 160.0/255.0);
+    let line_col = vec4f(160.0/255.0, 200.0/255.0, 240.0/255.0, 220.0/255.0);
+    let loop_col = vec4f(100.0/255.0, 180.0/255.0, 100.0/255.0, 80.0/255.0);
+    let playhead_col = vec4f(255.0/255.0, 200.0/255.0, 80.0/255.0, 220.0/255.0);
+
+    let pad = 0.08;
+    let plot_y = (uv.y - pad) / (1.0 - 2.0 * pad);
+
+    let env = mseg_at(uv.x, np);
+    let curve_y = 1.0 - env;
+
+    // Loop region tint
+    if (loop_on && ls < np && le < np) {
+        let ls_time = get_time(ls);
+        let le_time = get_time(le);
+        if (uv.x >= ls_time && uv.x <= le_time) {
+            if (plot_y > curve_y) {
+                return loop_col + fill_col;
+            }
+            let dist = abs(plot_y - curve_y);
+            if (dist < 0.025) { return line_col; }
+            return loop_col;
+        }
+    }
+
+    // Fill below curve
+    if (plot_y > curve_y) {
+        let dist = abs(plot_y - curve_y);
+        if (dist < 0.025) { return line_col; }
+        return fill_col;
+    }
+
+    // Line on curve
+    let dist = abs(plot_y - curve_y);
+    if (dist < 0.025) { return line_col; }
+
+    // Playhead horizontal line
+    if (current_value > 0.001) {
+        let ph_y = 1.0 - current_value;
+        let ph_dist = abs(plot_y - ph_y);
+        if (ph_dist < 0.015) { return playhead_col; }
+    }
+
+    return bg;
+}
+)";
+
+    constexpr size_t kUniformSize = sizeof(float) * 56;
+    thumb_state_->shader = vivid::thumbnail::create_shader(ctx->device, kThumbFragment, "MSEG Thumb Shader");
+    thumb_state_->uniform_buf =
+        vivid::thumbnail::create_uniform_buffer(ctx->device, kUniformSize, "MSEG Thumb Uniforms");
+    thumb_state_->bind_layout =
+        vivid::thumbnail::create_uniform_bind_layout(ctx->device, kUniformSize, "MSEG Thumb BGL");
+    thumb_state_->pipe_layout =
+        vivid::thumbnail::create_pipeline_layout(ctx->device, thumb_state_->bind_layout, "MSEG Thumb Layout");
+    thumb_state_->bind_group = vivid::thumbnail::create_uniform_bind_group(
+        ctx->device, thumb_state_->bind_layout, thumb_state_->uniform_buf, kUniformSize, "MSEG Thumb BG");
+    thumb_state_->pipeline = vivid::thumbnail::create_pipeline(
+        ctx->device, thumb_state_->shader, thumb_state_->pipe_layout, ctx->thumbnail_format, "MSEG Thumb Pipeline");
+    thumb_state_->pipeline_format = ctx->thumbnail_format;
+}
 
 void MSEG::draw_inspector(VividInspectorContext* ctx) {
     auto& d = ctx->draw;
@@ -209,4 +418,3 @@ void MSEG::draw_inspector(VividInspectorContext* ctx) {
 }
 
 // Shared implementation only; public registration lives in _fr/_au wrappers.
-VIVID_INSPECTOR(MSEG)

@@ -232,7 +232,7 @@ endif()
 # hooks, or other concrete definitions that ChildOp<T> consumers must link.
 add_library(vivid_composable_ops STATIC)
 target_include_directories(vivid_composable_ops PUBLIC ${CMAKE_SOURCE_DIR}/operators)
-target_link_libraries(vivid_composable_ops PUBLIC vivid_operator_api)
+target_link_libraries(vivid_composable_ops PUBLIC vivid_operator_api webgpu)
 
 function(add_vivid_embeddable_composable_support name source)
     target_sources(vivid_composable_ops PRIVATE ${source})
@@ -240,6 +240,7 @@ endfunction()
 
 add_vivid_embeddable_composable_support(Smooth   operators/control/smooth/smooth_composable.cpp)
 add_vivid_embeddable_composable_support(Envelope operators/control/envelope/envelope_composable.cpp)
+target_sources(vivid_composable_ops PRIVATE operators/control/clock/clock.cpp)
 
 # --- Operator plugin suffix (platform-aware) ---
 if(APPLE)
@@ -308,22 +309,29 @@ endfunction()
 
 # --- Control operator plugins ---
 add_vivid_operator(lfo_fr         operators/control/lfo/lfo_fr.cpp
-                   FACTORY_PRESETS operators/control/lfo/factory_presets.json)
-add_vivid_operator(lfo_au         operators/control/lfo/lfo_au.cpp)
-add_vivid_operator(clock_fr       operators/control/clock/clock_fr.cpp       EXTRA_LIBS webgpu)
-add_vivid_operator(clock_au       operators/control/clock/clock_au.cpp       EXTRA_LIBS webgpu)
-add_vivid_operator(math           operators/control/math/math.cpp)
+                   FACTORY_PRESETS operators/control/lfo/factory_presets.json
+                   EXTRA_LIBS webgpu)
+add_vivid_operator(lfo_au         operators/control/lfo/lfo_au.cpp
+                   EXTRA_LIBS webgpu)
+add_vivid_operator(clock_fr       operators/control/clock/clock_fr.cpp       EXTRA_LIBS webgpu vivid_composable_ops)
+add_vivid_operator(clock_au       operators/control/clock/clock_au.cpp       EXTRA_LIBS webgpu vivid_composable_ops)
+add_vivid_operator(math           operators/control/math/math.cpp           EXTRA_LIBS webgpu)
 add_vivid_operator(envelope_fr    operators/control/envelope/envelope_fr.cpp
                    FACTORY_PRESETS operators/control/envelope/factory_presets.json
                    EXTRA_LIBS webgpu vivid_composable_ops)
+target_sources(envelope_fr PRIVATE operators/control/envelope/envelope.cpp)
 add_vivid_operator(envelope_au    operators/control/envelope/envelope_au.cpp
                    EXTRA_LIBS webgpu vivid_composable_ops)
+target_sources(envelope_au PRIVATE operators/control/envelope/envelope.cpp)
 add_vivid_operator(midi_input     operators/control/midi_input/midi_input.cpp     EXTRA_LIBS rtmidi)
 add_vivid_operator(fft_analysis   operators/control/fft_analysis/fft_analysis.cpp)
-add_vivid_operator(logic             operators/control/logic/logic.cpp)
-add_vivid_operator(gate_fr           operators/control/gate/gate_fr.cpp)
-add_vivid_operator(gate_au           operators/control/gate/gate_au.cpp)
+add_vivid_operator(logic             operators/control/logic/logic.cpp             EXTRA_LIBS webgpu)
+add_vivid_operator(gate_fr           operators/control/gate/gate_fr.cpp           EXTRA_LIBS webgpu)
+target_sources(gate_fr PRIVATE operators/control/gate/gate.cpp)
+add_vivid_operator(gate_au           operators/control/gate/gate_au.cpp           EXTRA_LIBS webgpu)
+target_sources(gate_au PRIVATE operators/control/gate/gate.cpp)
 add_vivid_operator(smooth_fr          operators/control/smooth/smooth_fr.cpp          EXTRA_LIBS webgpu)
+target_sources(smooth_fr PRIVATE operators/control/smooth/smooth.cpp)
 add_vivid_operator(smooth_au          operators/control/smooth/smooth_au.cpp          EXTRA_LIBS webgpu)
 add_vivid_operator(stack             operators/control/stack/stack.cpp)
 add_vivid_operator(repeat            operators/control/repeat/repeat.cpp)
@@ -342,14 +350,20 @@ add_vivid_operator(basename          operators/control/basename/basename.cpp)
 add_vivid_operator(step_counter_fr   operators/control/step_counter/step_counter_fr.cpp)
 add_vivid_operator(step_counter_au   operators/control/step_counter/step_counter_au.cpp)
 add_vivid_operator(path_animate      operators/control/path_animate/path_animate.cpp)
-add_vivid_operator(sample_hold_fr    operators/control/sample_hold/sample_hold_fr.cpp)
-add_vivid_operator(sample_hold_au    operators/control/sample_hold/sample_hold_au.cpp)
+add_vivid_operator(sample_hold_fr    operators/control/sample_hold/sample_hold_fr.cpp    EXTRA_LIBS webgpu)
+target_sources(sample_hold_fr PRIVATE operators/control/sample_hold/sample_hold.cpp)
+add_vivid_operator(sample_hold_au    operators/control/sample_hold/sample_hold_au.cpp    EXTRA_LIBS webgpu)
+target_sources(sample_hold_au PRIVATE operators/control/sample_hold/sample_hold.cpp)
 add_vivid_operator(quantizer_fr      operators/control/quantizer/quantizer_fr.cpp)
 add_vivid_operator(quantizer_au      operators/control/quantizer/quantizer_au.cpp)
 add_vivid_operator(macro             operators/control/macro/macro.cpp)
 add_vivid_operator(mseg_fr           operators/control/mseg/mseg_fr.cpp
-                   FACTORY_PRESETS operators/control/mseg/factory_presets.json)
-add_vivid_operator(mseg_au           operators/control/mseg/mseg_au.cpp)
+                   FACTORY_PRESETS operators/control/mseg/factory_presets.json
+                   EXTRA_LIBS webgpu)
+target_sources(mseg_fr PRIVATE operators/control/mseg/mseg.cpp)
+add_vivid_operator(mseg_au           operators/control/mseg/mseg_au.cpp
+                   EXTRA_LIBS webgpu)
+target_sources(mseg_au PRIVATE operators/control/mseg/mseg.cpp)
 add_vivid_operator(step_seq_fr       operators/control/step_seq/step_seq_fr.cpp
                    FACTORY_PRESETS operators/control/step_seq/factory_presets.json)
 add_vivid_operator(step_seq_au       operators/control/step_seq/step_seq_au.cpp)
@@ -591,8 +605,8 @@ endif()
 set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS syphon_out)
 
 # --- Audio operator plugins ---
-add_vivid_operator(oscillator     operators/audio/oscillator/oscillator.cpp)
-add_vivid_operator(gain           operators/audio/gain/gain.cpp)
+add_vivid_operator(oscillator     operators/audio/oscillator/oscillator.cpp     EXTRA_LIBS webgpu)
+add_vivid_operator(gain           operators/audio/gain/gain.cpp           EXTRA_LIBS webgpu)
 add_vivid_operator(reverb         operators/audio/reverb/reverb.cpp
                    FACTORY_PRESETS operators/audio/reverb/factory_presets.json)
 add_vivid_operator(delay          operators/audio/delay/delay.cpp

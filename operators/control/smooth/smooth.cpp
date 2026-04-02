@@ -140,4 +140,3 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 }
 
 // Shared implementation only; public registration lives in _fr/_au wrappers.
-VIVID_THUMBNAIL(Smooth)
