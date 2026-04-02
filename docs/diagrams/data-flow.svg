@@ -33,11 +33,11 @@
   <text x="248" y="114" text-anchor="middle" font-size="9" fill="#555">Frame</text>
 
   <text x="40" y="148" font-size="11" fill="#444" font-weight="600">Supported transports:</text>
-  <text x="50" y="166" font-size="10" fill="#555">SIGNAL — scalar float value</text>
+  <text x="50" y="166" font-size="10" fill="#555">SCALAR — scalar numeric value</text>
   <text x="50" y="180" font-size="10" fill="#555">SPREAD — variable-length float[]</text>
   <text x="50" y="194" font-size="10" fill="#555">STRING — UTF-8 text</text>
   <text x="50" y="208" font-size="10" fill="#555">TEXTURE — WGPUTextureView</text>
-  <text x="50" y="222" font-size="10" fill="#555">AUDIO — sample buffer (audio cadence)</text>
+  <text x="50" y="222" font-size="10" fill="#555">AUDIO_BUFFER — planar sample buffer</text>
 
   <!-- Section 2: Snapshot Edges -->
   <rect x="370" y="48" width="330" height="190" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
@@ -56,9 +56,9 @@
 
   <text x="390" y="148" font-size="11" fill="#444" font-weight="600">Via AudioFrameBridge:</text>
   <text x="400" y="166" font-size="10" fill="#555">Frame → Audio: ParamSnapshot</text>
-  <text x="410" y="182" font-size="10" fill="#555">params, CV floats, lane arrays, string lanes</text>
+  <text x="410" y="182" font-size="10" fill="#555">params, held scalars, lane arrays, string lanes</text>
   <text x="400" y="200" font-size="10" fill="#555">Audio → Frame: AnalysisSnapshot</text>
-  <text x="410" y="216" font-size="10" fill="#555">rms, peak, waveform, float outputs</text>
+  <text x="410" y="216" font-size="10" fill="#555">rms, peak, waveform, scalar outputs</text>
 
   <!-- Section 3: Value Remap -->
   <rect x="20" y="258" width="330" height="110" rx="6" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.5"/>
@@ -123,8 +123,8 @@
   <!-- Port types legend -->
   <rect x="20" y="382" width="330" height="106" rx="6" fill="#f8f8f8" stroke="#ddd" stroke-width="1"/>
   <text x="185" y="402" text-anchor="middle" font-size="12" font-weight="bold" fill="#333">Port Type Compatibility</text>
-  <text x="40" y="422" font-size="10" fill="#555">SIGNAL ↔ AUDIO: compatible (1ch buffer ↔ scalar)</text>
-  <text x="40" y="438" font-size="10" fill="#555">SIGNAL ↔ SPREAD: compatible (control types)</text>
+  <text x="40" y="422" font-size="10" fill="#555">Cross-cadence flow requires an explicit bridge edge</text>
+  <text x="40" y="438" font-size="10" fill="#555">SCALAR, lanes, strings, and custom ports stay type-checked</text>
   <text x="40" y="454" font-size="10" fill="#555">TEXTURE ↔ TEXTURE: only GPU-to-GPU</text>
   <text x="40" y="470" font-size="10" fill="#555">CUSTOM: matched by stable_type_id</text>
 </svg>

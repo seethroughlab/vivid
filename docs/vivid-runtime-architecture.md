@@ -4,17 +4,21 @@
 
 ## 1. Introduction
 
-Vivid is a real-time audiovisual graph engine. Users build directed graphs of **operators** — nodes that generate or transform signals, audio, GPU textures, and data — and the runtime evaluates them continuously at two independent rates: a **frame cadence** (~60 Hz, main thread) for control logic and GPU rendering, and an **audio cadence** (48 kHz, dedicated thread) for sample-accurate sound processing.
+Vivid is a real-time audiovisual graph engine with two execution worlds:
+
+- **Frame** cadence on the main thread for control logic and GPU rendering.
+- **Audio** cadence on the audio thread for sample-accurate DSP.
+
+Each operator runs in exactly one of those worlds. Cross-cadence data transfer is explicit and always flows through the `AudioFrameBridge` via bridge edges compiled from the graph.
 
 The runtime's core responsibilities are:
 
-- **Compile** a user-authored graph into an efficient, pre-allocated execution plan.
+- **Compile** a user-authored graph into a pre-allocated execution plan.
 - **Execute** frame-rate and audio-rate operators in topological order on their respective threads.
-- **Synchronize** data between cadences using lock-free double-buffered snapshots.
-- **Hot-reload** operator code from recompiled dynamic libraries without stopping playback.
+- **Transfer** data across cadences through explicit bridge semantics.
+- **Hot-reload** operator code from rebuilt dynamic libraries without stopping playback.
 
 ![Architecture Overview](diagrams/architecture-overview.svg)
-
 
 ## 2. Architecture Overview
 
@@ -23,15 +27,14 @@ The runtime is composed of several cooperating subsystems:
 | Component | Thread | Role |
 |-----------|--------|------|
 | **RuntimeCore** | Main | Top-level orchestrator. Owns the compiled graph, audio frame bridge, and frame executor. Drives the tick cycle. |
-| **GraphCompiler** | Main (once) | Static factory that transforms a `Graph` into a `CompiledGraph`. |
-| **CompiledGraph** | Both (read-only) | The execution plan: pre-allocated node state, classified edges, and topologically sorted execution orders. |
-| **FrameExecutor** | Main | Iterates `frame_order`, propagates direct edges, calls `process_frame()` and `process_gpu()`. |
-| **AudioExecutor** | Audio | Iterates `audio_order` inside the miniaudio callback, processes 256-sample buffers at 48 kHz. |
-| **AudioFrameBridge** | Both | Double-buffered snapshot bridge. Transfers parameters frame-to-audio and analysis audio-to-frame without locks. |
+| **GraphCompiler** | Main (once) | Transforms a `Graph` into a `CompiledGraph`. |
+| **CompiledGraph** | Both (read-only) | Pre-allocated node state, classified edges, bridge metadata, and execution orders. |
+| **FrameExecutor** | Main | Iterates `frame_order`, propagates direct edges, applies audio-to-frame bridge data, and calls `process_frame()` / `process_gpu()`. |
+| **AudioExecutor** | Audio | Iterates `audio_order` inside the miniaudio callback, processes planar sample buffers, and publishes analysis snapshots. |
+| **AudioFrameBridge** | Both | Double-buffered snapshot bridge. Transfers explicit frame-to-audio and audio-to-frame bridge payloads without locks. |
 | **OperatorRegistry** | Main | Discovers, lazy-loads, and hot-reloads operator dynamic libraries. |
 | **GpuContext** | Main | Manages the WebGPU device, queue, and surface. |
 | **HotReloader** | Background | Watches source files and runs background cmake builds. |
-
 
 ## 3. The Graph Model
 
@@ -44,13 +47,15 @@ Each node declares an operator type and its parameter values:
 ```json
 {
   "osc": {
-    "type": "Oscillator",
+    "type": "oscillator",
     "params": { "frequency": 440.0, "amplitude": 0.8, "waveform": 0 }
   }
 }
 ```
 
-Key fields: `type` (operator name), `params` (float values), `string_params` (file paths, text), `active_cadence` (Auto / Frame / Audio), `tex_width` / `tex_height` (per-node GPU resolution).
+Key fields: `type` (operator name), `params` (numeric parameter values), `string_params` (file paths, text), and optional `tex_width` / `tex_height` overrides for GPU nodes.
+
+Cadence is not configured per node in graph JSON. It comes from the operator descriptor compiled into the operator binary.
 
 ### ConnectionDef
 
@@ -60,21 +65,28 @@ Connections wire an output port of one node to an input port of another:
 { "from": "osc/output", "to": "gain/input" }
 ```
 
-Connections may carry an optional **value remap**: `from_min`, `from_max`, `to_min`, `to_max`, and a `clamp` flag. This linearly rescales the value as it crosses the edge.
+Cross-cadence connections carry an explicit `bridge` field:
+
+```json
+{ "from": "lfo_fr/value", "to": "filter_au/cutoff", "bridge": "hold" }
+```
+
+Supported bridge values are compiled into `BridgeKind` and include `hold`, `snapshot`, `last_sample`, `rms`, `peak`, and `waveform`.
+
+Connections may also carry an optional value remap: `from_min`, `from_max`, `to_min`, `to_max`, and `clamp`.
 
 ### Port Types
 
 | Type | ID | Description |
 |------|----|-------------|
-| `SIGNAL` | 0 | Scalar float (frame) or 1-channel buffer (audio) |
-| `AUDIO` | 1 | Multi-channel sample buffer |
-| `LANE_ARRAY` | 2 | Variable-length float array (lane-bearing data) |
+| `SCALAR` | 0 | Scalar numeric value |
+| `AUDIO_BUFFER` | 1 | Planar audio sample buffer |
+| `LANE_ARRAY` | 2 | Variable-length float array |
 | `STRING` | 3 | UTF-8 text |
 | `STRING_LANES` | 4 | Variable-length string lane array |
 | `TEXTURE` | 5 | `WGPUTextureView` (GPU only) |
 
-Custom port types can be registered at runtime via the port type registry, identified by a `stable_type_id`.
-
+Custom port types can be registered at runtime via the port type registry, identified by `stable_type_id`.
 
 ## 4. Graph Compilation
 
@@ -84,173 +96,143 @@ The `GraphCompiler` transforms a `Graph` plus an `OperatorRegistry` into a `Comp
 
 ### Compilation Steps
 
-1. **Resolve descriptors.** For each node, look up the `VividOperatorDescriptor` from the registry. This provides port definitions, parameter metadata, execution environment, and cadence capability.
+1. **Resolve descriptors.** For each node, look up the `VividOperatorDescriptor` from the registry. This provides port definitions, parameter metadata, operator kind, and available processing entrypoints.
 
-2. **Assign cadences.** Each node is assigned a fixed cadence from its descriptor:
-   - `has_process_gpu` → Frame (GPU operators run on the main thread).
-   - `has_process_audio && !has_process_frame` → Audio.
-   - `has_process_frame && !has_process_audio` → Frame.
-   - No implicit promotion or inference. Each operator runs at exactly one cadence.
+2. **Assign execution world.** Each node is assigned a fixed cadence directly from its descriptor:
+   - operators with GPU processing run on the frame cadence
+   - operators with `process_audio()` only run on the audio cadence
+   - operators with `process_frame()` only run on the frame cadence
 
-3. **Classify edges.** Each connection becomes a `CompiledEdge` with a transport type:
-   - **Direct** — both endpoints share the same cadence. The executor copies data during its pass.
-   - **Snapshot** — endpoints are on different cadences. Data flows through the `AudioFrameBridge`.
+3. **Classify edges.** Each connection becomes a `CompiledEdge`:
+   - **Direct** when both endpoints share the same cadence
+   - **Snapshot** when endpoints are on different cadences and the graph declares a valid bridge kind
 
-4. **Topological sort.** Kahn's algorithm produces two independent execution orders:
-   - `frame_order` — all Frame and GPU nodes.
-   - `audio_order` — all Audio nodes.
+4. **Validate bridge semantics.** Cross-cadence edges must declare a valid `bridge`, and same-cadence edges must not. Bridge compatibility is checked against source/destination port types during compilation.
 
-5. **Pre-allocate state.** All buffers, parameter arrays, lane array storage, string arrays, GPU textures, and audio buffers are allocated up front. No heap allocation occurs during execution.
+5. **Topological sort.** Kahn's algorithm produces two execution orders:
+   - `frame_order` for frame and GPU nodes
+   - `audio_order` for audio nodes
+
+6. **Pre-allocate state.** Buffers, parameter arrays, lane storage, string storage, custom-port staging, GPU textures, and audio buffers are allocated up front. Execution avoids heap allocation on the hot path.
 
 ### CompiledGraph Structure
 
-```
+```text
 CompiledGraph
-├── nodes[]              — CompiledNode instances (all state)
-├── edges[]              — CompiledEdge instances
-├── frame_order[]        — topological indices for frame nodes
-├── audio_order[]        — topological indices for audio nodes
-├── frame_direct_edges[] — edge indices within frame cadence
-├── audio_direct_edges[] — edge indices within audio cadence
-├── frame_to_audio_edges[] — snapshot edge indices
-└── audio_to_frame_edges[] — snapshot edge indices
+├── nodes[]                 — CompiledNode instances (all state)
+├── edges[]                 — CompiledEdge instances
+├── frame_order[]           — topological indices for frame nodes
+├── audio_order[]           — topological indices for audio nodes
+├── frame_direct_edges[]    — same-cadence frame edge indices
+├── audio_direct_edges[]    — same-cadence audio edge indices
+├── frame_to_audio_edges[]  — cross-cadence bridge edge indices
+└── audio_to_frame_edges[]  — cross-cadence bridge edge indices
 ```
 
+## 5. Execution Model
 
-## 5. Dual-Cadence Execution
+The frame and audio cadences run on independent threads and never block each other.
 
-The two cadences run on independent threads at vastly different rates. They never block each other.
-
-![Dual-Cadence Tick Sequence](diagrams/fixed-cadence-tick.svg)
+![Fixed-Cadence Tick Sequence](diagrams/fixed-cadence-tick.svg)
 
 ### Frame Cadence (~60 Hz, Main Thread)
 
 Each frame follows a three-phase pattern:
 
-1. **pre_tick_audio_sync()** — Pull the latest `AnalysisSnapshot` from the audio thread. Inject RMS, peak, waveform, and scalar outputs into frame-rate nodes.
+1. **pre_tick_audio_sync()** — pull the latest `AnalysisSnapshot` from the audio thread and inject bridge results into frame-rate nodes.
+2. **FrameExecutor::tick()** — iterate `frame_order`, propagate direct frame edges, call `process_frame()` or `process_gpu()`, and apply skip logic where valid.
+3. **post_tick_audio_sync()** — publish frame-side bridge payloads into the `ParamSnapshot` for the audio thread.
 
-2. **FrameExecutor::tick()** — Iterate `frame_order`. For each node:
-   - Propagate values along `frame_direct_edges` (copy, remap, lane merge).
-   - Call `process_frame()` (or `process_gpu()` for GPU nodes).
-   - Apply skip logic: only process if time-dependent, dirty, or upstream changed.
+### Audio Cadence (~48 kHz, Audio Thread)
 
-3. **post_tick_audio_sync()** — Snapshot frame outputs into the `AudioFrameBridge` for the audio thread to consume.
+The miniaudio callback fires repeatedly with fixed-size sample buffers:
 
-### Audio Cadence (~48 kHz = ~188 callbacks/sec, Audio Thread)
+1. Read the active `ParamSnapshot` from `AudioFrameBridge`.
+2. Iterate `audio_order`, propagate direct audio edges, and call `process_audio()` with a `VividAudioContext`.
+3. Compute analysis payloads such as RMS, peak, waveform summaries, scalar bridge outputs, and lane snapshots.
+4. Publish the next `AnalysisSnapshot` back to the frame thread.
 
-The miniaudio callback fires approximately 188 times per second (48000 / 256):
+## 6. AudioFrameBridge
 
-1. Read the active `ParamSnapshot` (lock-free atomic acquire).
-2. Iterate `audio_order`. For each node:
-   - Propagate audio buffers along `audio_direct_edges`.
-   - Handle auto-duplication for mono operators in multi-channel chains.
-   - Call `process_audio()` with a `VividAudioContext`.
-3. Compute per-node analysis (RMS, peak, waveform ring buffer).
-4. Publish the `AnalysisSnapshot` (lock-free atomic release).
-
-### Timing Relationship
-
-At 60 fps and 48 kHz with 256-sample buffers, approximately **3 audio callbacks** execute per visual frame. The two threads are decoupled — if the frame rate drops, audio continues uninterrupted.
-
-
-## 6. The Cadence Bridge
-
-The `AudioFrameBridge` is the sole communication channel between the frame and audio threads. It uses **double-buffered snapshots** with atomic index swaps — no mutexes touch the audio thread.
+`AudioFrameBridge` is the sole communication channel between the frame and audio threads. It uses double-buffered snapshots with atomic index swaps; the audio thread never waits on a mutex.
 
 ![Audio Frame Bridge](diagrams/audio-frame-bridge.svg)
 
 ### Frame → Audio: ParamSnapshot
 
-Contains everything the audio thread needs from the frame world:
+Contains the payloads needed by audio-cadence nodes:
 
 | Field | Content |
 |-------|---------|
 | `node_params` | Parameter values per audio node |
-| `lane_inputs` | Lane data crossing cadence boundary |
-| `input_string_values` | String inputs (file paths, text) |
-| `custom_inputs` | Custom-type port data |
+| `scalar_inputs` | Held scalar bridge values (`hold`) |
+| `lane_inputs` | Lane-array snapshots (`snapshot`) |
+| `input_string_values` | String and string-lane snapshots |
+| `custom_inputs` | Custom-value or custom-ref snapshots |
 | `solo_active_set` | Which nodes are active under solo mode |
-
-**Write path (main thread):** `push_to_audio()` writes to the *inactive* buffer, then atomically swaps `param_active_` with release semantics.
-
-**Read path (audio thread):** `active_params()` reads `param_active_` with acquire semantics, returning the latest complete snapshot.
 
 ### Audio → Frame: AnalysisSnapshot
 
-Contains audio-thread outputs for visualization and frame-rate modulation:
+Contains the payloads needed by frame-cadence nodes:
 
 | Field | Content |
 |-------|---------|
-| `rms`, `peak` | Per-node level meters |
-| `waveform` | 1024-sample ring buffer per node |
-| `scalar_outputs` | Per-port scalar outputs for bridge delivery |
-| `lane_outputs` | Lane data from audio nodes |
-| `errored`, `error_msgs` | Error state (fixed-size, no heap) |
+| `rms`, `peak` | Per-node meter values |
+| `waveform` | 1024-sample waveform summaries |
+| `scalar_outputs` | Audio-to-frame scalar bridge payloads |
+| `lane_outputs` | Lane snapshots from audio nodes |
+| `errored`, `error_msgs` | Error state propagated without heap allocation |
 
-The same double-buffer / atomic-swap pattern applies in the reverse direction.
+Bridge behavior is explicit and edge-driven:
 
+- `hold` keeps the latest frame scalar available to audio inputs
+- `snapshot` copies lane, string, or custom payloads across the cadence boundary
+- `last_sample`, `rms`, and `peak` reduce audio output to a frame-visible scalar
+- `waveform` publishes a summarized lane array for frame-side consumers
 
 ## 7. Frame Executor
 
-The `FrameExecutor` processes all frame-rate and GPU nodes on the main thread.
+`FrameExecutor` processes frame-rate and GPU nodes on the main thread.
 
 ### Tick Algorithm
 
-```
+```text
 for node in frame_order:
     if solo_active and node not in solo_set: skip
 
-    zero input values
+    zero input_values
 
     for edge in frame_direct_edges targeting this node:
         copy output → input (with remap if configured)
-        propagate lanes, strings, file params, custom ports
+        propagate lanes, strings, textures, and custom ports
 
-    apply audio→frame bridge values:
-        for each port where bridge_input_dirty[port] is set:
-            input_values[port] = bridge_input_values[port]
-            clear bridge_input_dirty[port]
+    apply audio→frame bridge values for dirty bridge inputs
 
-    build VividFrameContext with time, params, inputs, outputs, lanes
+    build VividFrameContext
     call process_frame(instance, ctx)
 
     if GPU node:
         call process_gpu(instance, gpu_ctx)
-        invoke PostNodeFn callback
 ```
 
-The **bridge value application** step ensures that audio-to-frame signal values (written by `AudioFrameBridge::pull_from_audio()`) survive the per-frame zeroing of `input_values`. A dirty bitmask tracks which ports have been written by the bridge, so legitimate zero values are not dropped.
-
-### Skip Logic
-
-To avoid redundant computation on static graphs, the executor skips a node unless:
-
-- It is **time-dependent** (reads `ctx->time`).
-- It is a **root node** (no upstream connections).
-- Any **upstream node** was processed this tick.
-- The node is **dirty** (marked by bridge sync, API call, or hot-reload).
-
-### GPU Management
-
-GPU nodes receive a `VividGpuContext` with the WebGPU device, queue, and command encoder. The context also includes an `input_connected` array (one byte per input port) so operators can distinguish a disconnected port from a connected port sending zero. The executor manages per-node texture allocation, finds the GPU sink (`video_out`), and retrieves the final output texture for display.
-
+Bridge-applied values are kept separate from ordinary per-frame input clearing so audio-derived values survive until consumed.
 
 ## 8. Audio Executor
 
-The `AudioExecutor` runs on the dedicated audio thread, processing 256-sample buffers at 48 kHz via miniaudio.
+`AudioExecutor` runs on the dedicated audio thread and processes planar sample buffers.
 
 ### Audio Callback Flow
 
-```
+```text
 audio_callback(output_buffer, frame_count):
-    snap = bridge.active_params()          // lock-free read
+    snap = bridge.active_params()
 
-    apply snapshot params to audio nodes
+    apply snapshot params and bridge inputs to audio nodes
 
     for node in audio_order:
         if solo_active and not in solo_set: mute
 
-        propagate audio_direct_edges (buffer routing, channel negotiation)
+        propagate audio_direct_edges
 
         if auto_dup_group:
             deinterleave → per-channel mono buffers
@@ -259,249 +241,62 @@ audio_callback(output_buffer, frame_count):
         else:
             process_audio(instance, ctx)
 
-        extract scalar float outputs for frame bridge
-
-    compute RMS, peak, waveform per node
-    bridge.publish_analysis()              // lock-free write
+    compute RMS / peak / waveform / scalar bridge payloads
+    bridge.publish_analysis()
 ```
 
-### Channel Negotiation
+Audio operators receive a `VividAudioContext` with:
 
-Each audio port declares a channel count (0 = auto, 1 = mono, 2 = stereo, etc.). Edges negotiate channel counts between source and destination. When a mono operator appears in a stereo chain, the runtime uses **auto-duplication**.
+| Field | Meaning |
+|-------|---------|
+| `sample_rate` | Device sample rate |
+| `buffer_size` | Samples per callback |
+| `input_buffers` | Planar input buffers indexed by input port order |
+| `output_buffers` | Planar output buffers indexed by output port order |
+| `param_values` | Numeric parameter values |
+| `custom_inputs`, `custom_outputs` | Audio-cadence custom port data |
+| `delta_time` | Buffer duration in seconds |
 
-### Auto-Duplication
+There is no separate float-CV side channel in the audio context. Scalar cross-cadence data reaches audio operators only through explicit bridge semantics.
 
-When a mono operator (1-in, 1-out) receives multi-channel input:
+## 9. Compiled Node State
 
-1. The runtime clones the operator instance for each channel.
-2. Multi-channel buffers are deinterleaved into per-channel mono buffers.
-3. Each instance processes its channel independently.
-4. Outputs are interleaved back to multi-channel format.
+Each `CompiledNode` stores the execution-world-independent state needed by the runtime:
 
-This is transparent to the operator — it always sees mono buffers.
+| Category | Examples |
+|----------|----------|
+| Identity | `node_id`, `type_name`, `operator_kind`, `active_cadence` |
+| Scalar state | `param_values`, `input_values`, `output_values` |
+| Bridge state | `bridge_input_values`, `bridge_input_dirty`, `input_connected` |
+| String state | `input_string_values`, `output_string_values` |
+| Lane state | `input_lanes`, `output_lanes`, lane metadata |
+| Custom ports | resolved input/output storage |
+| Cadence-specific state | `audio` or `gpu` sub-structs |
 
-### Diagnostics
+`AudioNodeState` contains only audio-specific execution buffers, channel metadata, lane execution strategy, and analysis/custom-port bookkeeping. `GpuNodeState` contains textures, pipeline state, and GPU analysis state.
 
-The audio executor tracks:
-- **Underrun count** — atomic counter incremented on buffer underruns.
-- **Audio load** — ratio of processing time to buffer duration.
-- **RecordingTap** — lock-free ring buffer (960,000 samples = 10 sec stereo) for mix recording.
+## 10. Operator Contract
 
+Operators are fixed-cadence at runtime:
 
-## 9. Operator System
+- frame wrappers implement `FrameProcessable`
+- audio wrappers implement `AudioProcessable`
+- GPU operators implement `GpuProcessable`
 
-Operators are the computational units of a Vivid graph. They are implemented as C++ structs compiled to dynamic libraries.
+Paired operators expose separate public names such as `<name>_fr` and `<name>_au`. The graph compiler does not infer or promote cadence.
 
-![Operator Lifecycle](diagrams/operator-lifecycle.svg)
+## 11. Hot Reload and Safety
 
-### Defining an Operator
+Hot reload keeps the runtime interactive during operator development:
 
-```cpp
-struct MyFilter : vivid::OperatorBase, vivid::FrameProcessable {
-    static constexpr const char* kName = "MyFilter";
-    static constexpr bool kTimeDependent = false;
+- source changes trigger a background rebuild
+- rebuilt operator libraries are reloaded by `OperatorRegistry`
+- `RuntimeCore` rebuilds compiled state as needed
+- ABI version checks reject stale binaries built against old headers
 
-    vivid::Param<float> cutoff{"cutoff", 1000.0f, 20.0f, 20000.0f};
-    vivid::Param<int>   mode{"mode", 0, 0, 3};
+The runtime favors deterministic hot-path behavior:
 
-    void collect_params(std::vector<vivid::ParamBase*>& out) override {
-        out.push_back(&cutoff);
-        out.push_back(&mode);
-    }
-
-    void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"in",  VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
-        out.push_back({"out", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
-    }
-
-    void process_frame(const VividFrameContext* ctx) override {
-        float c = ctx->param_values[0];
-        ctx->output_values[0] = ctx->input_values[0] * c;
-    }
-};
-
-VIVID_REGISTER(MyFilter)
-```
-
-### Capability Interfaces
-
-An operator opts into execution environments by inheriting capability interfaces:
-
-| Interface | Method | Environment |
-|-----------|--------|-------------|
-| `FrameProcessable` | `process_frame(VividFrameContext*)` | Main thread, ~60 Hz |
-| `AudioProcessable` | `process_audio(VividAudioContext*)` | Audio thread, 48 kHz |
-| `GpuProcessable` | `process_gpu(VividGpuContext*)` | Main thread, WebGPU |
-
-Each operator implements exactly one interface. The `operator_kind` field classifies it: `VIVID_OP_CONTROL` (frame-rate), `VIVID_OP_AUDIO` (audio-rate), or `VIVID_OP_GPU` (GPU). Paired operators that need both cadences are split into explicit `_fr` and `_au` variants.
-
-### The VIVID_REGISTER Macro
-
-This macro generates the `extern "C"` entry points that the runtime loads via `dlopen`:
-
-- `vivid_descriptor()` — returns `VividOperatorDescriptor` with all metadata.
-- `vivid_create()` / `vivid_destroy()` — instance lifecycle.
-- `vivid_process_frame()`, `vivid_process_audio()`, `vivid_process_gpu()` — execution dispatch.
-- `vivid_main_thread_update()` — optional per-frame hook on main thread.
-
-### VividOperatorDescriptor
-
-The descriptor is the operator's complete metadata:
-
-```
-name                    — type name (e.g., "Oscillator")
-param_count, params[]   — parameter descriptors (name, type, range, defaults)
-port_count, ports[]     — port descriptors (name, type, direction, transport)
-time_dependent          — whether the operator reads ctx->time
-has_process_frame/audio/gpu — capability flags (which process methods exist)
-operator_kind      — VIVID_OP_CONTROL, VIVID_OP_AUDIO, or VIVID_OP_GPU
-```
-
-### OperatorRegistry
-
-The registry manages operator discovery and loading:
-
-- **`scan_deferred(dir)`** — Probes each `.dylib` for metadata without full load.
-- **`load_for_graph(graph)`** — Lazy-loads only the operators referenced by the graph.
-- **`find(type_name)`** — Returns the `OperatorLoader` (may trigger lazy load).
-- **`register_builtin()`** — Registers built-in operators (e.g., `audio_out`, `video_out`).
-- **`register_alias()`** — Maps alternative names to canonical types.
-
-
-## 10. Data Flow & Edge Types
-
-![Data Flow and Edge Types](diagrams/data-flow.svg)
-
-### Direct Edges
-
-Same-cadence edges are **Direct**: the executor copies the output value from the source node into the input slot of the destination node during its iteration pass. This is a simple memory copy with no synchronization overhead.
-
-For **SIGNAL** ports, a single float is copied. For **AUDIO** ports, the entire sample buffer pointer is routed. For **LANE_ARRAY** and **STRING** ports, the data is copied into pre-allocated staging buffers.
-
-### Snapshot Edges
-
-Cross-cadence edges are **Snapshot**: data is written into the `AudioFrameBridge`'s double-buffered snapshot and read by the other thread on its next cycle. There is an inherent one-cycle latency (one frame period for frame-to-audio, one audio callback period for audio-to-frame).
-
-### Value Remap
-
-Any edge can carry a remap transform:
-
-```
-normalized = (value - from_min) / (from_max - from_min)
-result     = to_min + normalized * (to_max - to_min)
-```
-
-With an optional `clamp` to constrain the result to `[to_min, to_max]`. This allows connecting outputs with different value ranges (e.g., a 0–1 LFO driving a 20–20000 Hz frequency parameter).
-
-### Port Type Compatibility
-
-- **SIGNAL** and **AUDIO** are cross-compatible: at audio cadence, a SIGNAL port becomes a 1-channel buffer.
-- Control types (SIGNAL, LANE_ARRAY, STRING) are inter-compatible for flexible routing.
-- **TEXTURE** ports connect only to other TEXTURE ports.
-- **Custom** ports match by `stable_type_id`.
-
-
-## 11. Hot Reload
-
-Vivid supports hot-reloading operator code while the graph is running.
-
-### Pipeline
-
-1. **FileWatcher** detects a source file change.
-2. **HotReloader** queues a background `cmake --build` for the affected target.
-3. The background compile thread produces a new `.dylib`.
-4. Main thread polls `poll_ready()` and initiates the reload.
-
-### Two-Phase Reload
-
-Reloading is a delicate operation because the old dylib must remain loaded while old instances are destroyed:
-
-1. **Phase 1: Destroy old instances.** For all nodes of the reloading type, save current parameter values, then call `destroy_instance()` while the old loader is still valid.
-
-2. **Phase 2: Swap and recreate.** Replace the dylib in the registry, create new instances via the new loader, and reconcile saved parameters (matching by name to handle added/removed params).
-
-For audio operators, the `AudioEngine` coordinates a pause/resume around the reload to avoid accessing stale instances on the audio thread.
-
-
-## 12. Appendix: Key Types Reference
-
-### VividFrameContext
-
-Passed to frame-rate operators on the main thread.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `time` | `double` | Absolute time in seconds |
-| `delta_time` | `double` | Frame duration (~0.0167s at 60 Hz) |
-| `frame` | `uint64_t` | Frame counter |
-| `param_values` | `float*` | Parameter array, indexed by param order |
-| `input_values` | `float*` | Input port values (SIGNAL) |
-| `output_values` | `float*` | Output port values (SIGNAL) — write here |
-| `input_lanes` | `VividLanePort*` | Lane array input ports |
-| `output_lanes` | `VividLanePort*` | Lane array output ports |
-| `input_string_values` | `const char**` | String input values |
-| `output_string_values` | `const char**` | String output values |
-| `file_param_values` | `const char**` | File/text parameter values |
-| `input_state` | `const VividInputState*` | Keyboard/mouse input |
-
-### VividGpuContext
-
-Extends the common fields with GPU-specific resources. Key additional fields:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `input_connected` | `const uint8_t*` | Per-port: 1 if wired, 0 if disconnected |
-| `device` | `WGPUDevice` | WebGPU device handle |
-| `queue` | `WGPUQueue` | WebGPU queue handle |
-| `command_encoder` | `WGPUCommandEncoder` | Per-frame command encoder |
-| `output_texture` / `output_texture_view` | `WGPUTexture` / `WGPUTextureView` | Node's output render target |
-| `output_width` / `output_height` | `uint32_t` | Output texture dimensions |
-| `input_texture_views` | `WGPUTextureView*` | Upstream textures (one per TEXTURE input port) |
-| `input_textures` | `WGPUTexture*` | Raw texture handles (parallel to views) |
-
-### VividAudioContext
-
-Passed to audio-rate operators on the audio thread.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `time` | `double` | Absolute time in seconds |
-| `delta_time` | `double` | Chunk duration (buffer_size / sample_rate) |
-| `frame` | `uint64_t` | Sample frame counter |
-| `param_values` | `float*` | Parameters (from ParamSnapshot) |
-| `input_buffers` | `float**` | Planar audio: `[port][sample * channels]` |
-| `output_buffers` | `float**` | Planar audio output — write here |
-| `buffer_size` | `uint32_t` | Samples per buffer (256) |
-| `sample_rate` | `uint32_t` | Sample rate (48000) |
-| `input_channel_counts` | `const uint8_t*` | Per-port input channel count |
-| `output_channel_counts` | `const uint8_t*` | Per-port output channel count |
-| `channel_index` | `uint8_t` | Channel index (for auto-dup groups) |
-
-### CompiledNode (key fields)
-
-| Field | Description |
-|-------|-------------|
-| `node_id` | Unique identifier from graph |
-| `type_name` | Operator type name |
-| `active_cadence` | `Cadence::Frame` or `Cadence::Audio` |
-| `operator_kind` | `VIVID_OP_CONTROL`, `VIVID_OP_AUDIO`, or `VIVID_OP_GPU` |
-| `loader` / `instance` | Operator loader and live instance |
-| `param_values[]` | Current parameter floats |
-| `input_values[]` / `output_values[]` | SIGNAL port state |
-| `bridge_input_values[]` | Audio→frame bridge-injected values (survive per-frame zeroing) |
-| `bridge_input_dirty[]` | Per-port dirty flags: 1 = bridge wrote since last frame |
-| `input_connected[]` | Per-port connection flags: 1 = has an incoming edge |
-| `input_lanes[]` / `output_lanes[]` | Lane array port state |
-| `audio` | `AudioNodeState*` — buffers, channels (audio nodes only) |
-| `gpu` | `GpuNodeState*` — textures, views (GPU nodes only) |
-
-### CompiledEdge (key fields)
-
-| Field | Description |
-|-------|-------------|
-| `from_node` / `to_node` | Source and destination node indices |
-| `from_port` / `to_port` | Port ordinals |
-| `transport` | `Direct` or `Snapshot` |
-| `data_type` | Port type (SIGNAL, AUDIO, LANE_ARRAY, etc.) |
-| `from_channels` / `to_channels` | Audio channel negotiation |
-| `from_min/max`, `to_min/max`, `clamp` | Value remap parameters |
+- no heap allocation on the audio thread
+- lock-free bridge swaps between execution worlds
+- explicit bridge semantics instead of implicit cross-cadence coercion
+- pre-allocated compiled state for frame, audio, and GPU execution
