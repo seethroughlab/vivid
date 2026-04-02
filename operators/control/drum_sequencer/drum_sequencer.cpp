@@ -15,10 +15,10 @@ static constexpr float kDrumColors[6][3] = {
 };
 static const char* kTabLabels[] = {"Pattern", "Mod A", "Mod B"};
 static constexpr float kLabelW = 28.0f;
-static constexpr float kCellH = 14.0f;
-static constexpr float kCellPad = 2.0f;
+static constexpr float kCellH = 28.0f;
+static constexpr float kCellPad = 4.0f;
 static constexpr float kTabW = 80.0f;
-static constexpr float kTabH = 18.0f;
+static constexpr float kTabH = 36.0f;
 } // namespace drum_insp
 /**
  * @brief Six-track drum pattern sequencer with probability and swing.
