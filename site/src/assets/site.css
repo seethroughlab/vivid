@@ -187,6 +187,10 @@ a:hover {
   gap: 12px;
 }
 
+.grid > * {
+  min-width: 0;
+}
+
 .op-card,
 .card {
   padding: 14px 16px;
@@ -310,6 +314,13 @@ a:hover {
   font-size: 12px;
   overflow-x: auto;
   white-space: nowrap;
+}
+
+.install-command {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow-x: hidden;
 }
 
 .detail-layout {
