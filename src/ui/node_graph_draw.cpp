@@ -405,11 +405,18 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         }
         // GPU env: body region left blank (thumbnails drawn in separate pass)
 
-        // Type name (centered, below accent bar + body)
+        // Type name (centered, below accent bar + body).
+        // Strip cadence suffixes ("Au"/"Fr") — cadence is conveyed by accent color.
+        std::string display_name = r.type_name;
+        if (display_name.size() > 2) {
+            auto suffix = display_name.substr(display_name.size() - 2);
+            if (suffix == "Au" || suffix == "Fr")
+                display_name.resize(display_name.size() - 2);
+        }
         float text_y = sy + s_accent_h + s_body_h + g_to_s(kNodePadY);
-        float tw = tr.text_width(r.type_name.c_str(), zoom_);
+        float tw = tr.text_width(display_name.c_str(), zoom_);
         float tx = sx + (sw - tw) * 0.5f;
-        tr.draw_text(tx, text_y, r.type_name.c_str(), 1.0f, 1.0f, 1.0f, 1.0f, zoom_);
+        tr.draw_text(tx, text_y, display_name.c_str(), 1.0f, 1.0f, 1.0f, 1.0f, zoom_);
 
         // Lane behavior badge (S/R/K) for non-Pointwise operators
         if (r.lane_behavior > 0) {
