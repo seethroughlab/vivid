@@ -311,8 +311,10 @@ endfunction()
 add_vivid_operator(lfo_fr         operators/control/lfo/lfo_fr.cpp
                    FACTORY_PRESETS operators/control/lfo/factory_presets.json
                    EXTRA_LIBS webgpu)
+target_sources(lfo_fr PRIVATE operators/control/lfo/lfo.cpp)
 add_vivid_operator(lfo_au         operators/control/lfo/lfo_au.cpp
                    EXTRA_LIBS webgpu)
+target_sources(lfo_au PRIVATE operators/control/lfo/lfo.cpp)
 add_vivid_operator(clock_fr       operators/control/clock/clock_fr.cpp       EXTRA_LIBS webgpu vivid_composable_ops)
 add_vivid_operator(clock_au       operators/control/clock/clock_au.cpp       EXTRA_LIBS webgpu vivid_composable_ops)
 add_vivid_operator(math           operators/control/math/math.cpp           EXTRA_LIBS webgpu)

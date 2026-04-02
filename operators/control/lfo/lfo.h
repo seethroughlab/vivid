@@ -6,6 +6,8 @@
 #include "operator_api/operator.h"
 #include <cmath>
 
+struct LfoThumbState;
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -36,6 +38,7 @@
  * @output value The computed LFO signal.
  */
 struct LFO : vivid::OperatorBase {
+    ~LFO() override;
     static constexpr const char* kName   = "LFO";
     static constexpr bool kTimeDependent = true;
     static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
@@ -275,4 +278,10 @@ struct LFO : vivid::OperatorBase {
             seed.int_value(), static_cast<float>(phase_offset.value),
             fade_in.value, gate_in, phase_in, dt, slew.value);
     }
+
+    void draw_thumbnail(const VividThumbnailContext* ctx) override;
+
+private:
+    LfoThumbState* thumb_state_ = nullptr;
+    void rebuild_thumb_pipeline(const VividThumbnailContext* ctx);
 };
