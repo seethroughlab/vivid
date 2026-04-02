@@ -146,6 +146,7 @@ struct AudioNodeState {
     std::vector<uint8_t> output_channel_counts;
     std::vector<uint8_t> descriptor_input_channels;
     std::vector<uint8_t> descriptor_output_channels;
+    std::vector<float> input_port_defaults;   // per-input-port default_value from descriptor
     // Lane execution strategy (selected by compiler, not operator author).
     LaneExecutionStrategy execution_strategy = LaneExecutionStrategy::Scalar;
     uint32_t lane_lift_count = 0;   // 0 = no lifting, N = lift to N lanes

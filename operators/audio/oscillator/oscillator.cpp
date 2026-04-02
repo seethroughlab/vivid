@@ -175,8 +175,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 
     void process_audio(const VividAudioContext* ctx) override {
         float* out = ctx->output_buffers[0];
-        float freq_cv_val = 0.0f;
-        float amp_cv_val  = 1.0f;
+        float freq_cv_val = ctx->input_buffers[0] ? ctx->input_buffers[0][0] : 0.0f;
+        float amp_cv_val  = ctx->input_buffers[1] ? ctx->input_buffers[1][0] : 1.0f;
         // Clamp CV to ±120 semitones (~10 octaves) to prevent pow() overflow.
         if (freq_cv_val < -120.0f) freq_cv_val = -120.0f;
         if (freq_cv_val >  120.0f) freq_cv_val =  120.0f;

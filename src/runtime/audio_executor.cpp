@@ -268,9 +268,15 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             auto& cn = cg.nodes[ni];
             auto& a = *cn.audio;
 
-            // Zero input buffers
-            for (auto& buf : a.buffers_in)
-                std::memset(buf.data(), 0, buf.size() * sizeof(float));
+            // Reset input buffers to port default values (0 for most, 1.0 for multiplicative CVs)
+            for (uint32_t bi = 0; bi < a.buffers_in.size(); ++bi) {
+                float def = (bi < a.input_port_defaults.size()) ? a.input_port_defaults[bi] : 0.0f;
+                if (def == 0.0f) {
+                    std::memset(a.buffers_in[bi].data(), 0, a.buffers_in[bi].size() * sizeof(float));
+                } else {
+                    std::fill(a.buffers_in[bi].begin(), a.buffers_in[bi].end(), def);
+                }
+            }
 
             // Solo mode check
             if (!snap.solo_active_set.empty() && ni_ord < snap.solo_active_set.size() &&

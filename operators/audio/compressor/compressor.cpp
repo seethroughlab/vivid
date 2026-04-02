@@ -96,7 +96,7 @@ struct Compressor : vivid::OperatorBase, vivid::AudioProcessable {
         }
         float* detect = has_sidechain ? sc : in;
 
-        float thresh_cv = 0.0f;
+        float thresh_cv = ctx->input_buffers[2] ? ctx->input_buffers[2][0] : 0.0f;
         float thresh = threshold.value + thresh_cv;
         if (thresh < -60.0f) thresh = -60.0f;
         if (thresh > 0.0f)   thresh = 0.0f;

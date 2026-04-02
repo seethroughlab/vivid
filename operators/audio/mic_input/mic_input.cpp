@@ -140,7 +140,7 @@ struct MicInput : vivid::OperatorBase, vivid::AudioProcessable {
         uint32_t N = ctx->buffer_size;
 
         bool is_muted = mute.int_value() != 0;
-        float gain_cv_val = 1.0f;
+        float gain_cv_val = ctx->input_buffers[0] ? ctx->input_buffers[0][0] : 1.0f;
         float effective_gain = is_muted ? 0.0f : gain.value * gain_cv_val;
 
         if (!device_active_.load(std::memory_order_acquire)) {

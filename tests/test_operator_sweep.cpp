@@ -12,6 +12,7 @@
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -323,7 +324,7 @@ static bool smoke_audio(vivid::OperatorLoader& loader, void* inst,
 
         if (is_in) {
             n_in_total++;
-            if (is_audio_buf) n_buf_in++;
+            if (is_audio_buf || is_signal) n_buf_in++;
         } else {
             n_out_total++;
             // Audio operators can write to output_buffers for ANY output port.
@@ -332,8 +333,23 @@ static bool smoke_audio(vivid::OperatorLoader& loader, void* inst,
         }
     }
 
-    // Allocate planar buffers (silence).
+    // Allocate planar buffers, filled with port default values.
     std::vector<std::vector<float>> in_bufs(n_buf_in, std::vector<float>(kFrames, 0.0f));
+    // Fill scalar input buffers with their declared default values
+    {
+        uint32_t buf_idx = 0;
+        for (uint32_t i = 0; i < desc->port_count && buf_idx < n_buf_in; i++) {
+            auto& p = desc->ports[i];
+            if (p.direction != VIVID_PORT_INPUT) continue;
+            bool is_buf = (p.type == VIVID_PORT_AUDIO_BUFFER ||
+                           p.transport == VIVID_PORT_TRANSPORT_AUDIO_BUFFER ||
+                           p.type == VIVID_PORT_SCALAR);
+            if (!is_buf) continue;
+            if (p.default_value != 0.0f)
+                std::fill(in_bufs[buf_idx].begin(), in_bufs[buf_idx].end(), p.default_value);
+            buf_idx++;
+        }
+    }
     std::vector<std::vector<float>> out_bufs(n_buf_out, std::vector<float>(kFrames, 0.0f));
     std::vector<float*> in_ptrs, out_ptrs;
     for (auto& b : in_bufs)  in_ptrs.push_back(b.data());
@@ -507,10 +523,24 @@ static bool test_param_boundary(vivid::OperatorLoader& loader, void* inst,
                 bool is_in = (pp.direction == VIVID_PORT_INPUT);
                 bool is_ab = (pp.type == VIVID_PORT_AUDIO_BUFFER || pp.transport == VIVID_PORT_TRANSPORT_AUDIO_BUFFER);
                 bool is_sg = (pp.type == VIVID_PORT_SCALAR);
-                if (is_in) { ni++; if (is_ab) nbi++; }
+                if (is_in) { ni++; if (is_ab || is_sg) nbi++; }
                 else { no++; if (is_ab || is_sg) nbo++; }
             }
             std::vector<std::vector<float>> ibs(nbi, std::vector<float>(kF, 0.0f));
+            // Fill scalar input buffers with port default values
+            {
+                uint32_t bi = 0;
+                for (uint32_t pi = 0; pi < desc->port_count && bi < nbi; pi++) {
+                    auto& pp = desc->ports[pi];
+                    if (pp.direction != VIVID_PORT_INPUT) continue;
+                    bool is_ab = (pp.type == VIVID_PORT_AUDIO_BUFFER || pp.transport == VIVID_PORT_TRANSPORT_AUDIO_BUFFER);
+                    bool is_sg = (pp.type == VIVID_PORT_SCALAR);
+                    if (!is_ab && !is_sg) continue;
+                    if (pp.default_value != 0.0f)
+                        std::fill(ibs[bi].begin(), ibs[bi].end(), pp.default_value);
+                    bi++;
+                }
+            }
             std::vector<std::vector<float>> obs(nbo, std::vector<float>(kF, 0.0f));
             std::vector<float*> ip, op;
             for (auto& b : ibs) ip.push_back(b.data());

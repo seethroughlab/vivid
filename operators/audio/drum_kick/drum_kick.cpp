@@ -123,12 +123,16 @@ struct DrumKick : vivid::OperatorBase, vivid::AudioProcessable {
             }
         }
 
-        // MIDI takes priority if both fire
-        bool triggered = midi_triggered;
         float vel_scale = midi_vel_scale;
+        const float* trig_buf = ctx->input_buffers[0];
 
         for (uint32_t i = 0; i < ctx->buffer_size; i++) {
-            bool trig = (i == 0) && triggered;
+            // Wire trigger: rising-edge detection
+            float tv = trig_buf ? trig_buf[i] : 0.0f;
+            bool wire_trig = (tv > 0.5f && prev_trigger_ <= 0.5f);
+            prev_trigger_ = tv;
+
+            bool trig = wire_trig || ((i == 0) && midi_triggered);
             if (trig) {
                 amp_env_.trigger();
                 pitch_env_.trigger();

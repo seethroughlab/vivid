@@ -441,6 +441,15 @@ void GraphCompiler::init_audio_state(CompiledNode& cn,
     a.in_ptrs.resize(cn.input_port_count);
     a.out_ptrs.resize(cn.output_port_count);
 
+    // Port default values (for resetting unconnected scalar inputs each tick)
+    a.input_port_defaults.resize(cn.input_port_count, 0.0f);
+    for (uint32_t i = 0, inp = 0; i < desc->port_count; ++i) {
+        if (desc->ports[i].direction == VIVID_PORT_INPUT) {
+            a.input_port_defaults[inp] = desc->ports[i].default_value;
+            ++inp;
+        }
+    }
+
     // Custom output ptrs
     a.custom_output_ptrs.clear();
     a.custom_output_count = 0;

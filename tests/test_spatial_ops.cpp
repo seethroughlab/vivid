@@ -45,9 +45,10 @@ struct StereoTestContext {
 
     float input[kFrames * 2]  = {};   // planar: L then R
     float output[kFrames * 2] = {};
-    float* input_bufs[2]  = {input, nullptr};
+    float cv_buf_0[kFrames]   = {};   // CV input 0 (pan_cv / time_cv)
+    float cv_buf_1[kFrames]   = {};   // CV input 1 (width_cv / feedback_cv)
+    float* input_bufs[3]  = {input, cv_buf_0, cv_buf_1};
     float* output_bufs[1] = {output};
-    float float_values[2] = {};       // CV inputs
 
     VividAudioContext ctx{};
 
@@ -81,8 +82,13 @@ struct StereoTestContext {
     }
 
     void clear_cv() {
-        float_values[0] = 0.0f;
-        float_values[1] = 0.0f;
+        std::memset(cv_buf_0, 0, sizeof(cv_buf_0));
+        std::memset(cv_buf_1, 0, sizeof(cv_buf_1));
+    }
+
+    void set_cv(int idx, float val) {
+        float* buf = (idx == 0) ? cv_buf_0 : cv_buf_1;
+        std::fill(buf, buf + kFrames, val);
     }
 };
 
@@ -340,7 +346,7 @@ static void test_stereo_pan_width(const std::string& staging) {
         // With pan_cv = +0.5: should shift right
         loader.destroy_instance(inst);
         inst = loader.create_instance();
-        tc.float_values[0] = 0.5f;
+        tc.set_cv(0, 0.5f);
         tc.clear_output();
         loader.process_audio(inst, &tc.ctx);
         float shifted_l = rms(tc.L_out(), StereoTestContext::kFrames);

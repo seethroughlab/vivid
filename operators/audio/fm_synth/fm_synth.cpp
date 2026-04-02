@@ -110,9 +110,9 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
         float* out = ctx->output_buffers[0];
         uint32_t frames = ctx->buffer_size;
 
-        float freq_cv      = 0.0f;
-        float mod_index_cv = 0.0f;
-        float gate_cv      = 0.0f;
+        float freq_cv      = ctx->input_buffers[0] ? ctx->input_buffers[0][0] : 0.0f;
+        float mod_index_cv = ctx->input_buffers[1] ? ctx->input_buffers[1][0] : 0.0f;
+        float gate_cv      = ctx->input_buffers[2] ? ctx->input_buffers[2][0] : 0.0f;
 
         // Lane-array inputs override signal inputs when connected.
         // Lane port indices follow the 3 signal inputs (freq_cv, mod_index_cv, gate_cv).

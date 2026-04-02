@@ -4,6 +4,7 @@
 
 #include "runtime/operator_loader.h"
 #include "runtime/output_analyzer.h"
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -40,10 +41,11 @@ struct TestContext {
     static constexpr uint32_t kSampleRate = 48000;
 
     float input[kFrames]  = {};
+    float cv_buf_1[kFrames] = {};
+    float cv_buf_2[kFrames] = {};
     float output[kFrames] = {};
-    float* input_bufs[2]  = {input, nullptr};
+    float* input_bufs[3]  = {input, cv_buf_1, cv_buf_2};
     float* output_bufs[1] = {output};
-    float float_values[4] = {};
 
     VividAudioContext ctx{};
 
@@ -157,8 +159,8 @@ static void test_fm_synth(const std::string& staging) {
 
         TestContext tc;
         tc.ctx.param_values = params.data();
-        // gate_cv is float_values[2] (3rd signal input)
-        tc.float_values[2] = 1.0f;  // gate ON
+        // gate_cv is input_buffers[2] (3rd signal input)
+        std::fill(tc.cv_buf_2, tc.cv_buf_2 + TestContext::kFrames, 1.0f);  // gate ON
 
         // Process several buffers for envelope attack to settle
         for (int b = 0; b < 8; b++) {
@@ -189,7 +191,7 @@ static void test_fm_synth(const std::string& staging) {
             params[p] = desc->params[p].default_value;
         if (mod_index_idx >= 0) params[mod_index_idx] = 8.0f;
         tc.ctx.param_values = params.data();
-        tc.float_values[2] = 1.0f;
+        std::fill(tc.cv_buf_2, tc.cv_buf_2 + TestContext::kFrames, 1.0f);
         tc.ctx.time = 0.0;
         tc.ctx.frame = 0;
 
@@ -333,7 +335,7 @@ static void test_gain(const std::string& staging) {
 
         TestContext tc;
         tc.ctx.param_values = params.data();
-        tc.float_values[0] = 1.0f;  // amplitude_cv default
+        std::fill(tc.cv_buf_1, tc.cv_buf_1 + TestContext::kFrames, 1.0f);  // amplitude_cv = 1.0
         tc.fill_sine(440.0f, 0.5f);
         tc.clear_output();
         loader.process_audio(inst, &tc.ctx);
@@ -358,7 +360,7 @@ static void test_gain(const std::string& staging) {
 
         TestContext tc;
         tc.ctx.param_values = params.data();
-        tc.float_values[0] = 1.0f;  // amplitude_cv default
+        std::fill(tc.cv_buf_1, tc.cv_buf_1 + TestContext::kFrames, 1.0f);  // amplitude_cv = 1.0
         tc.fill_sine(440.0f, 0.5f);
         tc.clear_output();
         loader.process_audio(inst, &tc.ctx);

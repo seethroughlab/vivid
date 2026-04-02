@@ -45,10 +45,10 @@ struct TestContext {
 
     float input[kFrames]   = {};
     float input2[kFrames]  = {};
+    float cv_buf_2[kFrames]= {};   // extra CV buffer (e.g. gate_cv for FmSynth)
     float output[kFrames]  = {};
-    float* input_bufs[2]   = {input, input2};
+    float* input_bufs[3]   = {input, input2, cv_buf_2};
     float* output_bufs[1]  = {output};
-    float float_values[4]  = {};
 
     VividAudioContext ctx{};
 
@@ -80,7 +80,12 @@ struct TestContext {
     }
 
     void clear_floats() {
-        std::memset(float_values, 0, sizeof(float_values));
+        std::memset(cv_buf_2, 0, sizeof(cv_buf_2));
+    }
+
+    void set_cv(int idx, float val) {
+        float* buf = (idx == 0) ? input : (idx == 1) ? input2 : cv_buf_2;
+        std::fill(buf, buf + kFrames, val);
     }
 };
 
@@ -205,7 +210,7 @@ static void test_fm_synth(const std::string& staging) {
         TestContext tc;
         tc.fill_silence();
         tc.clear_floats();
-        tc.float_values[2] = 1.0f; // gate_cv on
+        tc.set_cv(2, 1.0f); // gate_cv on
 
         for (int b = 0; b < 8; b++) {
             tc.clear_output();
@@ -222,7 +227,7 @@ static void test_fm_synth(const std::string& staging) {
         void* inst = loader.create_instance();
         TestContext tc;
         tc.fill_silence();
-        tc.float_values[2] = 1.0f; // gate on
+        tc.set_cv(2, 1.0f); // gate on
 
         std::vector<float> param_vals(desc->param_count);
         for (uint32_t p = 0; p < desc->param_count; p++)

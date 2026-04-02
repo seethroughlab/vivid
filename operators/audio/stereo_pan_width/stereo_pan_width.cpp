@@ -61,8 +61,8 @@ struct StereoPanWidth : vivid::OperatorBase, vivid::AudioProcessable {
         float* R_out = ctx->output_buffers[0] + frames;
 
         // CV offsets
-        float pan_cv_val   = 0.0f;
-        float width_cv_val = 0.0f;
+        float pan_cv_val   = ctx->input_buffers[1] ? ctx->input_buffers[1][0] : 0.0f;
+        float width_cv_val = ctx->input_buffers[2] ? ctx->input_buffers[2][0] : 0.0f;
 
         float p = pan.value + pan_cv_val;
         if (p < -1.0f) p = -1.0f;

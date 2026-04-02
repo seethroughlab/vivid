@@ -170,7 +170,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     void process_audio(const VividAudioContext* ctx) override {
         float* in  = ctx->input_buffers[0];
         float* out = ctx->output_buffers[0];
-        float amp_cv_val = 1.0f;
+        float amp_cv_val = ctx->input_buffers[1] ? ctx->input_buffers[1][0] : 1.0f;
         float g = gain.value * amp_cv_val;
 
         for (uint32_t i = 0; i < ctx->buffer_size; i++)
