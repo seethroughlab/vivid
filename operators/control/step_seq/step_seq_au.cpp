@@ -1,4 +1,5 @@
 #include "step_seq.h"
+#include "control/audio_scalar_utils.h"
 
 struct StepSeq_AU : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "step_seq_au";
@@ -112,7 +113,10 @@ struct StepSeq_AU : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        float local_in[2] = {};
+        float local_in[2] = {
+            vivid::audio_scalar_block_start(ctx, 0),  // gate
+            vivid::audio_scalar_block_start(ctx, 1),  // beat_phase
+        };
         float local_out[2] = {};
         compute(local_in, ctx->delta_time, local_out);
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {

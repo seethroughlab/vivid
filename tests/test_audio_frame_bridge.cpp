@@ -28,8 +28,8 @@ struct AudioNodeSpec {
     uint32_t param_count;
     uint32_t input_port_count;
     uint32_t output_port_count;
-    uint32_t unused1 = 0;  // was float_input_count
-    uint32_t unused2 = 0;  // was float_output_count
+    uint32_t reserved_1 = 0;
+    uint32_t reserved_2 = 0;
     bool has_analysis;  // rms, peak, waveform output ports
 };
 
@@ -151,10 +151,10 @@ static void test_push_snapshots_params() {
     check(snap.node_params[0][1] == 0.8f, "gain stays 0.8");
 }
 
-static void test_push_float_cv_via_edge() {
-    std::fprintf(stderr, "\n--- push_to_audio: float CV via snapshot edge ---\n");
+static void test_push_scalar_bridge_via_edge() {
+    std::fprintf(stderr, "\n--- push_to_audio: scalar bridge via snapshot edge ---\n");
 
-    // Frame node 0 → audio node 1 via SIGNAL snapshot edge
+    // Frame node 0 -> audio node 1 via SCALAR bridge edge
     auto cg = make_audio_graph({
         {"lfo",  0, 0, 1, 0, 0, false},
         {"osc",  1, 1, 1, 1, 0, false},
@@ -188,12 +188,12 @@ static void test_push_float_cv_via_edge() {
 // pull_from_audio tests
 // ---------------------------------------------------------------------------
 
-static void test_pull_float_output() {
-    std::fprintf(stderr, "\n--- pull_from_audio: float output to frame node ---\n");
+static void test_pull_scalar_bridge_output() {
+    std::fprintf(stderr, "\n--- pull_from_audio: scalar bridge output to frame node ---\n");
 
-    // audio node 0 → frame node 1 via SIGNAL snapshot edge
+    // audio node 0 -> frame node 1 via SCALAR bridge edge
     auto cg = make_audio_graph({
-        {"clock", 0, 0, 2, 0, 1, false},  // 2 outputs, 1 float (signal)
+        {"clock", 0, 0, 2, 0, 1, false},
     });
     // Add a frame node
     vivid::CompiledNode frame_node;
@@ -217,7 +217,7 @@ static void test_pull_float_output() {
     cg.edges.push_back(edge);
     cg.audio_to_frame_edges.push_back(0);
 
-    // Mark clock output port 0 as SIGNAL type
+    // Mark clock output port 0 as SCALAR
     cg.nodes[0].output_port_types[0] = VIVID_PORT_SCALAR;
 
     vivid::AudioFrameBridge bridge;
@@ -230,7 +230,8 @@ static void test_pull_float_output() {
     // Main thread pulls
     bridge.pull_from_audio(cg);
 
-    check(cg.nodes[1].bridge_input_values[0] == 0.42f, "float output pulled to bridge_input_values");
+    check(cg.nodes[1].bridge_input_values[0] == 0.42f,
+          "scalar bridge output pulled to bridge_input_values");
     check(cg.nodes[1].bridge_input_dirty[0] == 1, "bridge_input_dirty set");
     check(cg.nodes[1].dirty, "frame node marked dirty");
 
@@ -516,14 +517,16 @@ int main() {
     test_build_analysis_allocation();
     test_build_empty_graph();
     test_push_snapshots_params();
-    // test_push_float_cv_via_edge and test_pull_float_output removed — float CV deleted in Phase 4C
+    // test_push_scalar_bridge_via_edge and test_pull_scalar_bridge_output were removed because the
+    // dedicated scalar-side-channel behavior was replaced by explicit bridge semantics.
     test_pull_analysis_data();
     test_pull_error_propagation();
     test_double_buffer_swap();
     test_solo_active_set();
     test_propagate_audio_display_params();
     test_propagate_respects_param_lock();
-    // test_bridge_zero_value_passthrough removed — float CV deleted in Phase 4C
+    // test_bridge_zero_value_passthrough removed when explicit bridge semantics became the
+    // only frame/audio delivery path.
     test_push_lane_preserves_lane_set_id();
 
     std::fprintf(stderr, "\n%s (%d failures)\n", failures == 0 ? "PASSED" : "FAILED", failures);

@@ -1968,6 +1968,16 @@ target_link_libraries(test_scalar_port PRIVATE
 add_dependencies(test_scalar_port lfo_au audio_scalar_probe_op)
 add_test(NAME test_scalar_port COMMAND test_scalar_port WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+add_executable(test_audio_control_timing
+    tests/test_audio_control_timing.cpp
+    src/runtime/operator_loader.cpp
+)
+target_include_directories(test_audio_control_timing PRIVATE src)
+target_link_libraries(test_audio_control_timing PRIVATE vivid_operator_api webgpu)
+add_dependencies(test_audio_control_timing
+    gate_au sample_hold_au step_counter_au phase_to_midi_au step_seq_au euclidean_au)
+add_test(NAME test_audio_control_timing COMMAND test_audio_control_timing WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 
 
 # Copy test graphs to build directory

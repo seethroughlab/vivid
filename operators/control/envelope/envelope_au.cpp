@@ -24,9 +24,10 @@ struct EnvelopeAu : vivid::OperatorBase, vivid::AudioProcessable {
 
         const float sample_dt = 1.0f / static_cast<float>(ctx->sample_rate);
 
-        impl_.advance_triggers(s, 0.0f, 0.0f);
-
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
+            float gate_in = ctx->input_buffers[0][i];
+            float phase_in = ctx->input_buffers[1][i];
+            impl_.advance_triggers(s, gate_in, phase_in);
             impl_.advance_adsr(s, sample_dt, impl_.attack.value, impl_.decay.value,
                                impl_.sustain.value, impl_.release.value, impl_.curve.int_value());
             ctx->output_buffers[0][i] = s.env_value * impl_.amplitude.value + impl_.offset.value;

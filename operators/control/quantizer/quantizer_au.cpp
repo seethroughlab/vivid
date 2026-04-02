@@ -1,4 +1,5 @@
 #include "operator_api/operator.h"
+#include "control/audio_scalar_utils.h"
 #include <cmath>
 #include <algorithm>
 
@@ -62,8 +63,8 @@ struct QuantizerAu : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        auto r = quantize(0.0f);
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
+            auto r = quantize(vivid::audio_scalar_sample(ctx, 0, i));
             ctx->output_buffers[0][i] = r.value;
             ctx->output_buffers[1][i] = r.step;
         }

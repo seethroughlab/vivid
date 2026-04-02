@@ -11,7 +11,7 @@ Audio-rate processing is split across two classes:
 
 Both operate on the shared `CompiledGraph`. Audio-cadence nodes (`active_cadence == Cadence::Audio`)
 store their buffer state directly in `CompiledNode` fields (`audio_buffers_in/out`, channel counts,
-float CV values, etc.).
+bridge-accessible scalar inputs, etc.).
 
 ## Constants
 
@@ -25,10 +25,10 @@ static constexpr uint32_t kSampleRate = 48000;
 Communication between frame and audio worlds uses `AudioFrameBridge`, which maintains two
 double-buffered snapshot pairs with lock-free atomic index flips:
 
-- **`ParamSnapshot`** (frame → audio): param values, float CV inputs, lanes, strings, custom
-  ports, solo active set
-- **`AnalysisSnapshot`** (audio → frame): RMS, peak, waveform ring buffers, float scalar outputs,
-  lane outputs, error state
+- **`ParamSnapshot`** (frame → audio): audio-node parameter snapshots, held scalar bridge values,
+  lane/string/custom snapshots, and solo active set
+- **`AnalysisSnapshot`** (audio → frame): RMS, peak, waveform ring buffers, scalar bridge
+  payloads, lane outputs, and error state
 
 These snapshots are runtime transport, not a second multiplicity model. They carry the same
 lane-bearing values described in the top-level architecture, packaged into audio-safe transfer
@@ -38,19 +38,22 @@ structures for the cadence boundary.
 
 `AudioFrameBridge::push_to_audio()` iterates `frame_to_audio_edges` (snapshot edges) and copies
 frame-side output values into the inactive `ParamSnapshot`, then publishes with release semantics.
+This is the runtime transport for explicit audio-frame bridge edges such as `hold` and
+`snapshot`.
 
 ### Audio → Frame
 
 `AudioFrameBridge::pull_from_audio()` reads the published `AnalysisSnapshot` and injects values into
 frame-side `CompiledNode` outputs via `audio_to_frame_edges`. Bumps `generation` on receiving nodes
-to trigger frame-executor recomputation.
+to trigger frame-executor recomputation. This is how audio analysis and audio-to-frame scalar bridge
+payloads cross back into the frame execution world.
 
 ## Edge Transport
 
 Edges between nodes are classified at compile time:
 
 - **`EdgeTransport::Direct`** — same cadence; value copied during the owning executor's pass
-- **`EdgeTransport::Snapshot`** — cross cadence; routed through `AudioFrameBridge`
+- **`EdgeTransport::Snapshot`** — cross cadence; routed through the explicit audio-frame bridge
 
 Partitioned into four index lists in `CompiledGraph`: `frame_direct_edges`, `audio_direct_edges`,
 `frame_to_audio_edges`, `audio_to_frame_edges`.
@@ -59,11 +62,13 @@ Partitioned into four index lists in `CompiledGraph`: `frame_direct_edges`, `aud
 
 `AudioExecutor::audio_callback()` processes audio-order nodes in chunks of `kBufferSize`:
 
-1. Apply `ParamSnapshot` (params, float inputs, lanes, strings, custom ports)
+1. Apply `ParamSnapshot` (params, held scalar bridge values, lanes, strings, custom ports)
 2. For each node in `audio_order`:
    - Zero input buffers
    - Route upstream audio via `audio_direct_edges` (with channel negotiation)
    - Call `process_audio()` (or per-channel auto-dup for mono operators in stereo chains)
+     Audio-world scalar buffers may be consumed sample-by-sample by audio-rate scalar operators
+     or read once at block start by block-constant sequencing operators.
 3. Extract sink node output to device buffer
 4. Compute per-node analysis (RMS, peak, waveform ring buffer)
 5. Publish `AnalysisSnapshot`

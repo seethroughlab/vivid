@@ -1,11 +1,14 @@
 #include "sequencer_core.h"
+#include "control/audio_scalar_utils.h"
 
 struct SequencerAu : SequencerCore, vivid::AudioProcessable {
     static constexpr const char* kName = "sequencer_au";
 
     void process_audio(const VividAudioContext* ctx) override {
         float local_out[3] = {};
-        compute(0.0f, 0.0f,
+        float beat_phase = vivid::audio_scalar_block_start(ctx, 0);
+        float reset = vivid::audio_scalar_block_start(ctx, 1);
+        compute(beat_phase, reset,
                 ctx->input_lanes, local_out,
                 ctx->custom_outputs, ctx->custom_output_count);
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {

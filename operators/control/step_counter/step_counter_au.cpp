@@ -1,4 +1,5 @@
 #include "operator_api/operator.h"
+#include "control/audio_scalar_utils.h"
 #include <algorithm>
 #include <cmath>
 
@@ -32,31 +33,29 @@ struct StepCounterAu : vivid::OperatorBase, vivid::AudioProcessable {
             initialized_ = true;
         }
 
-        float trigger = 0.0f;
-        int modulus = std::max(1, static_cast<int>(std::floor(0.0f)));
-        bool reset = 0.0f > 0.5f;
-
-        bool wrapped = false;
-        if (reset) {
-            step_ = initial.int_value();
-            if (step_ >= modulus || step_ < 0) {
-                step_ = ((step_ % modulus) + modulus) % modulus;
-                wrapped = true;
-            }
-        } else if (trigger > 0.5f && prev_trigger_ <= 0.5f) {
-            step_++;
-            if (step_ >= modulus) {
-                step_ = 0;
-                wrapped = true;
-            }
-        }
-
-        prev_trigger_ = trigger;
-        float idx = static_cast<float>(step_);
-        float wrap_val = wrapped ? 1.0f : 0.0f;
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
-            ctx->output_buffers[0][i] = idx;
-            ctx->output_buffers[1][i] = wrap_val;
+            float trigger = vivid::audio_scalar_sample(ctx, 0, i);
+            int modulus = std::max(1, static_cast<int>(std::floor(vivid::audio_scalar_sample(ctx, 1, i))));
+            bool reset = vivid::audio_scalar_sample(ctx, 2, i) > 0.5f;
+            bool wrapped = false;
+
+            if (reset) {
+                step_ = initial.int_value();
+                if (step_ >= modulus || step_ < 0) {
+                    step_ = ((step_ % modulus) + modulus) % modulus;
+                    wrapped = true;
+                }
+            } else if (trigger > 0.5f && prev_trigger_ <= 0.5f) {
+                step_++;
+                if (step_ >= modulus) {
+                    step_ = 0;
+                    wrapped = true;
+                }
+            }
+
+            prev_trigger_ = trigger;
+            ctx->output_buffers[0][i] = static_cast<float>(step_);
+            ctx->output_buffers[1][i] = wrapped ? 1.0f : 0.0f;
         }
     }
 

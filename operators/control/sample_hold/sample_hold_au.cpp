@@ -1,4 +1,5 @@
 #include "operator_api/operator.h"
+#include "control/audio_scalar_utils.h"
 #include <cmath>
 
 struct SampleHoldAu : vivid::OperatorBase, vivid::AudioProcessable {
@@ -23,20 +24,22 @@ struct SampleHoldAu : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        float signal = 0.0f;
-        bool trig = 0.0f > 0.5f;
         int m = mode.int_value();
 
-        bool rising = trig && !prev_trigger_;
-        prev_trigger_ = trig;
-        if (m == 0) {
-            if (rising) held_value_ = signal;
-        } else {
-            if (trig) held_value_ = signal;
-        }
+        for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
+            float signal = vivid::audio_scalar_sample(ctx, 0, i);
+            bool trig = vivid::audio_scalar_sample(ctx, 1, i) > 0.5f;
+            bool rising = trig && !prev_trigger_;
+            prev_trigger_ = trig;
 
-        for (uint32_t i = 0; i < ctx->buffer_size; ++i)
+            if (m == 0) {
+                if (rising) held_value_ = signal;
+            } else if (trig) {
+                held_value_ = signal;
+            }
+
             ctx->output_buffers[0][i] = held_value_;
+        }
     }
 
 private:

@@ -31,7 +31,9 @@ struct LfoAu : vivid::OperatorBase, vivid::AudioProcessable {
                 impl_.waveform.int_value(), impl_.rate_mode.int_value(),
                 impl_.polarity.int_value(), impl_.distribution.int_value(),
                 impl_.seed.int_value(), static_cast<float>(impl_.phase_offset.value),
-                impl_.fade_in.value, 0.0f, 0.0f, sample_dt, impl_.slew.value);
+                impl_.fade_in.value,
+                ctx->input_buffers[0][i], ctx->input_buffers[1][i],
+                sample_dt, impl_.slew.value);
         }
     }
 };

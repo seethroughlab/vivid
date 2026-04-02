@@ -1,4 +1,5 @@
 #include "operator_api/operator.h"
+#include "control/audio_scalar_utils.h"
 /**
  * @brief Passes or blocks a signal based on a gate threshold (audio-rate).
  *
@@ -39,15 +40,14 @@ struct GateAu : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        float signal = 0.0f;
-        bool is_open = 0.0f > threshold.value;
-        if (invert.bool_value()) is_open = !is_open;
-
-        float value = is_open ? signal : 0.0f;
-        float open_val = is_open ? 1.0f : 0.0f;
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
-            ctx->output_buffers[0][i] = value;
-            ctx->output_buffers[1][i] = open_val;
+            float signal = vivid::audio_scalar_sample(ctx, 0, i);
+            float gate_in = vivid::audio_scalar_sample(ctx, 1, i);
+            bool is_open = gate_in > threshold.value;
+            if (invert.bool_value()) is_open = !is_open;
+
+            ctx->output_buffers[0][i] = is_open ? signal : 0.0f;
+            ctx->output_buffers[1][i] = is_open ? 1.0f : 0.0f;
         }
     }
 };

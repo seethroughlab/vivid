@@ -334,6 +334,21 @@ void AudioFrameBridge::pull_from_audio(CompiledGraph& cg) {
         }
     }
 
+    // Sync scalar outputs back to CompiledNode output_values for inspection/display.
+    for (uint32_t i = 0; i < static_cast<uint32_t>(cg.audio_order.size()); ++i) {
+        uint32_t gi = cg.audio_order[i];
+        auto& cn = cg.nodes[gi];
+        int32_t si_signed = node_to_snapshot_idx_[gi];
+        if (si_signed < 0) continue;
+        uint32_t si = static_cast<uint32_t>(si_signed);
+        if (si < snap.scalar_outputs.size()) {
+            for (uint32_t p = 0; p < cn.output_port_count && p < snap.scalar_outputs[si].size(); ++p) {
+                if (p < cn.output_values.size())
+                    cn.output_values[p] = snap.scalar_outputs[si][p];
+            }
+        }
+    }
+
     // Inject analysis data (rms, peak, waveform) into audio nodes' own output ports
     for (const auto& am : analysis_mappings_) {
         auto& cn = cg.nodes[am.graph_node_idx];

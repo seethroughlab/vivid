@@ -2,6 +2,7 @@
 #include "operator_api/audio_dsp.h"
 #include "operator_api/midi_types.h"
 #include "operator_api/type_id.h"
+#include "control/audio_scalar_utils.h"
 
 struct PhaseToMidiAu : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "phase_to_midi_au";
@@ -34,22 +35,23 @@ struct PhaseToMidiAu : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        float phase = 0.0f;
-        float delta = phase - prev_phase_;
-        prev_phase_ = phase;
-
         midi_buf_.count = 0;
 
-        if (delta < -0.5f) {
-            uint8_t n = static_cast<uint8_t>(std::clamp(note.int_value(), 0, 127));
-            uint8_t v = static_cast<uint8_t>(std::clamp(static_cast<int>(velocity.value), 0, 127));
-            auto& msg = midi_buf_.messages[0];
-            msg.status = 0x90;
-            msg.data1  = n;
-            msg.data2  = v;
-            msg.reserved = 0;
-            msg.frame_offset_samples = 0;
-            midi_buf_.count = 1;
+        for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
+            float phase = vivid::audio_scalar_sample(ctx, 0, i);
+            float delta = phase - prev_phase_;
+            prev_phase_ = phase;
+
+            if (delta < -0.5f && midi_buf_.count < VIVID_MIDI_BUFFER_CAPACITY) {
+                uint8_t n = static_cast<uint8_t>(std::clamp(note.int_value(), 0, 127));
+                uint8_t v = static_cast<uint8_t>(std::clamp(static_cast<int>(velocity.value), 0, 127));
+                auto& msg = midi_buf_.messages[midi_buf_.count++];
+                msg.status = 0x90;
+                msg.data1  = n;
+                msg.data2  = v;
+                msg.reserved = 0;
+                msg.frame_offset_samples = i;
+            }
         }
 
         if (ctx->custom_outputs && ctx->custom_output_count > 0) {

@@ -1,4 +1,5 @@
 #include "operator_api/operator.h"
+#include "control/audio_scalar_utils.h"
 #include <algorithm>
 #include <cmath>
 
@@ -50,7 +51,8 @@ struct Euclidean_AU : vivid::OperatorBase, vivid::AudioProcessable {
 
     void process_audio(const VividAudioContext* ctx) override {
         float local_out[3] = {};
-        compute(0.0f, ctx->param_values,
+        float beat_phase = vivid::audio_scalar_block_start(ctx, 0);
+        compute(beat_phase, ctx->param_values,
                 ctx->output_lanes, local_out);
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
             for (int j = 0; j < 3; ++j)
