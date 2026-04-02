@@ -32,6 +32,9 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
+      - name: Install Python dependencies
+        run: pip install -r site/requirements.txt
+
       - name: Generate package catalog data
         run: python3 site/generate.py
 
