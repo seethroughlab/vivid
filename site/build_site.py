@@ -858,6 +858,9 @@ def build_site(output_dir: Path, local_packages: bool) -> None:
             write_text(output_dir / "packages" / docs.slug / "operators" / op.slug / "index.html", render_package_operator(docs, op, base_tpl, package_operator_tpl))
 
     readme_text = README_PATH.read_text() if README_PATH.exists() else ""
+    # Strip the h1 title and bold tagline — the home template provides its own header.
+    readme_text = re.sub(r"^#\s+VIVID\s*\n+", "", readme_text)
+    readme_text = re.sub(r"^\*\*[^*]+\*\*\s*\n+", "", readme_text)
     vivid_repo = PackageRepo(
         name="vivid",
         repo_url="https://github.com/seethroughlab/vivid.git",

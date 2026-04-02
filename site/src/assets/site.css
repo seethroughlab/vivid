@@ -52,26 +52,36 @@ a:hover {
   text-decoration: underline;
 }
 
-.hero {
-  max-width: 760px;
-  padding: 48px 0 20px;
+.site-header {
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: 0 2px 6px var(--shadow);
+  margin-bottom: 28px;
 }
 
-.hero h1 {
-  font-size: 48px;
-  margin: 0 0 12px;
-  letter-spacing: -0.02em;
+.site-header-accent {
+  height: 3px;
+  background: linear-gradient(to right, var(--gpu), var(--accent), var(--audio));
 }
 
-.hero h1 span {
+.site-header-body {
+  padding: 28px 24px 24px;
+}
+
+.site-title {
+  font-size: 36px;
+  margin: 0 0 8px;
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
   color: var(--accent);
 }
 
-.hero .tagline {
-  font-size: 18px;
+.site-tagline {
+  font-size: 14px;
   color: var(--muted);
-  margin: 0 0 32px;
+  margin: 0 0 20px;
   line-height: 1.5;
+  max-width: 640px;
 }
 
 .features {
@@ -630,8 +640,12 @@ tr:last-child td {
 }
 
 @media (max-width: 700px) {
-  .hero h1 {
-    font-size: 38px;
+  .site-title {
+    font-size: 28px;
+  }
+
+  .site-header-body {
+    padding: 20px 16px 18px;
   }
 
   .detail-title {
