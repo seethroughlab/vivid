@@ -410,6 +410,8 @@ def render_operator_detail(operator: dict, operator_by_name: dict[str, dict], ba
         meta_description=esc(operator.get("brief") or operator.get("description") or "Vivid operator reference"),
         asset_prefix="../../",
         content=content,
+        extra_head="",
+        extra_body_end="",
     )
 
 
@@ -421,17 +423,27 @@ def render_operator_index(operators: list[dict], base_tpl: Template, index_tpl: 
             continue
         cards = []
         for op in items:
+            name = str(op.get("name", "Operator"))
+            brief = str(op.get("brief", "Documentation coming soon."))
+            slug = operator_slug(op)
+            search_text = " ".join(part for part in [name, brief, domain, slug] if part).lower()
             cards.append(
-                '<article class="op-card">'
+                '<article class="op-card operator-card"'
+                f' data-domain="{esc(domain)}"'
+                f' data-name="{esc(name.lower())}"'
+                f' data-brief="{esc(brief.lower())}"'
+                f' data-slug="{esc(slug)}"'
+                f' data-search="{esc(search_text)}">'
                 '<div class="op-card-header">'
-                f'<h3><a href="./{operator_slug(op)}/">{esc(op.get("name", "Operator"))}</a></h3>'
+                f'<h3><a href="./{slug}/">{esc(name)}</a></h3>'
                 f'<span class="badge {esc(domain)}">{esc(domain_label(domain))}</span>'
                 '</div>'
-                f'<p>{esc(op.get("brief", "Documentation coming soon."))}</p>'
+                f'<p>{esc(brief)}</p>'
                 '</article>'
             )
         sections.append(
-            '<section class="section-group">'
+            '<section class="section-group operator-section"'
+            f' data-domain="{esc(domain)}">'
             f'<p class="section-kicker">{esc(domain_label(domain))} · {len(items)}</p>'
             f'<div class="grid">{"".join(cards)}</div>'
             '</section>'
@@ -442,6 +454,8 @@ def render_operator_index(operators: list[dict], base_tpl: Template, index_tpl: 
         meta_description="Browse all built-in Vivid operators across GPU, audio, and control domains.",
         asset_prefix="../",
         content=content,
+        extra_head="",
+        extra_body_end='<script src="../assets/operator-filter.js" defer></script>',
     )
 
 
@@ -451,6 +465,8 @@ def render_home(base_tpl: Template, home_tpl: Template) -> str:
         meta_description="A real-time creative coding environment for visual and audio performance.",
         asset_prefix="./",
         content=home_tpl.substitute(),
+        extra_head="",
+        extra_body_end="",
     )
 
 
@@ -732,6 +748,8 @@ def render_package_catalog(packages: list[dict], package_docs: dict[str, Package
         meta_description="Curated package catalog and central package documentation for the Vivid runtime.",
         asset_prefix="../",
         content=content,
+        extra_head="",
+        extra_body_end="",
     )
 
 
@@ -800,6 +818,8 @@ def render_package_detail(package_docs: PackageDocs, base_tpl: Template, detail_
         meta_description=esc(package.get("description") or package.get("description_short") or package["name"]),
         asset_prefix="../../",
         content=content,
+        extra_head="",
+        extra_body_end="",
     )
 
 
@@ -818,6 +838,8 @@ def render_package_guide(package_docs: PackageDocs, guide: PackageGuide, base_tp
         meta_description=esc(f"{guide.title} guide for {package['name']}"),
         asset_prefix="../../../../",
         content=content,
+        extra_head="",
+        extra_body_end="",
     )
 
 
@@ -854,6 +876,8 @@ def render_package_operator(package_docs: PackageDocs, op: PackageOperatorDoc, b
         meta_description=esc(op.brief),
         asset_prefix="../../../../",
         content=content,
+        extra_head="",
+        extra_body_end="",
     )
 
 
