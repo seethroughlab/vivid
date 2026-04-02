@@ -101,7 +101,7 @@
     "sticky_notes": [
         {
             "id": "note_1",
-            "text": "**What is a Spread?** A spread is a variable-length array of floats — Vivid's core data primitive. Even a single value is a spread of length 1. This graph uses three 8-element spreads to animate 8 circles on screen.",
+            "text": "**What is a Lane?** A lane is a variable-length array of floats — Vivid's core data primitive. Even a single value is a lane of length 1. This graph uses three 8-element lanes to animate 8 circles on screen.",
             "x": -40.88671875,
             "y": 46.65234375,
             "width": 300.0,
@@ -137,7 +137,7 @@
         },
         {
             "id": "note_5",
-            "text": "**3 spreads flow into Metaball** pos_x, pos_y, and radii each receive 8 values. Metaball draws one circle per element — element 0 gets (x[0], y[0], r[0]), and so on.",
+            "text": "**3 lanes flow into Metaball** pos_x, pos_y, and radii each receive 8 values. Metaball draws one circle per element — element 0 gets (x[0], y[0], r[0]), and so on.",
             "x": 377.6796875,
             "y": 69.97265625,
             "width": 280.0,

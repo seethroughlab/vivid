@@ -104,7 +104,7 @@
     },
     {
       "id": "sticky_3",
-      "text": "**ChordProgression** cycles through I-II-III-IV in C major (octave 2), outputting note/gate/ velocity spreads every 2 beats",
+      "text": "**ChordProgression** cycles through I-II-III-IV in C major (octave 2), outputting note/gate/velocity lanes every 2 beats",
       "x": 195.0,
       "y": 270.0,
       "width": 180.0,
