@@ -1,7 +1,6 @@
 #pragma once
-// Internal-only: this dual-cadence Envelope class is retained for ChildOp<Envelope>
+// Internal frame-rate Envelope implementation used by ChildOp<Envelope>
 // consumers. The public operator surface uses envelope_fr / envelope_au variants.
-// Remove after Phase 4 migrates ChildOp embedding.
 
 #include "operator_api/operator.h"
 #include "operator_api/adsr_inspector.h"
@@ -21,7 +20,7 @@ struct EnvelopeThumbState;
  * @param curve Envelope curve shape: linear, exponential, or logarithmic.
  * @see LFO, MSEG, SpreadADSR
  */
-struct Envelope : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct Envelope : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "Envelope";
     static constexpr bool kTimeDependent = true;
     static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
@@ -261,34 +260,6 @@ struct Envelope : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProc
         advance_adsr(s, dt, atk, dec, sus, rel, c);
 
         ctx->output_values[0] = s.env_value * amp + off;
-    }
-
-    // ── Audio-rate processing (~48 kHz) ─────────────────────────────────
-
-    void process_audio(const VividAudioContext* ctx) override {
-        LaneState& s = ctx->lane_state_fn
-            ? *vivid_lane_state(ctx, ctx->lane_id, LaneState)
-            : scalar_state_;
-
-        float gate_in  = 0.0f;
-        float phase_in = 0.0f;
-
-        const float sample_dt = 1.0f / static_cast<float>(ctx->sample_rate);
-        float atk = attack.value;
-        float dec = decay.value;
-        float sus = sustain.value;
-        float rel = release.value;
-        float amp = amplitude.value;
-        float off = offset.value;
-        int   c   = curve.int_value();
-
-        // Gate and phase trigger detection (once per buffer, from cross-cadence scalar)
-        advance_triggers(s, gate_in, phase_in);
-
-        for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
-            advance_adsr(s, sample_dt, atk, dec, sus, rel, c);
-            ctx->output_buffers[0][i] = s.env_value * amp + off;
-        }
     }
 
     void draw_inspector(VividInspectorContext* ctx) override {

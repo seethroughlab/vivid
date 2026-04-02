@@ -1,8 +1,7 @@
 #pragma once
-// Internal-only: this dual-cadence LFO class is retained for ChildOp<LFO>
-// consumers (e.g. ModulatedGain, GPU operators). The public operator surface
-// uses lfo_fr / lfo_au variants instead. Remove after Phase 4 migrates
-// ChildOp embedding to the fixed-cadence model.
+// Internal frame-rate LFO implementation used by ChildOp<LFO> consumers
+// (e.g. ModulatedGain, GPU operators). The public operator surface uses
+// lfo_fr / lfo_au variants instead.
 
 #include "operator_api/operator.h"
 #include <cmath>
@@ -36,7 +35,7 @@
  * @input beat_phase External phase source (0-1 sawtooth from Clock) for sync mode.
  * @output value The computed LFO signal.
  */
-struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct LFO : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "LFO";
     static constexpr bool kTimeDependent = true;
     static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
@@ -286,33 +285,4 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
             ph_off, fade, gate_in, phase_in, dt, slew_amt);
     }
 
-    // ── Audio-rate processing (~48 kHz) ─────────────────────────────────
-
-    void process_audio(const VividAudioContext* ctx) override {
-        LaneState& s = ctx->lane_state_fn
-            ? *vivid_lane_state(ctx, ctx->lane_id, LaneState)
-            : scalar_state_;
-
-        float gate_in  = 0.0f;
-        float phase_in = 0.0f;
-        const double sample_dt = 1.0 / static_cast<double>(ctx->sample_rate);
-
-        int wf   = waveform.int_value();
-        int rm   = rate_mode.int_value();
-        int pol  = polarity.int_value();
-        int dist = distribution.int_value();
-        int sv   = seed.int_value();
-        float freq     = frequency.value;
-        float amp      = amplitude.value;
-        float off      = offset.value;
-        float ph_off   = static_cast<float>(phase_offset.value);
-        float fade     = fade_in.value;
-        float slew_amt = slew.value;
-
-        for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
-            ctx->output_buffers[0][i] = compute_one_sample(
-                s, freq, amp, off, wf, rm, pol, dist, sv,
-                ph_off, fade, gate_in, phase_in, sample_dt, slew_amt);
-        }
-    }
 };

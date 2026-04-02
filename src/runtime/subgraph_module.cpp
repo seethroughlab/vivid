@@ -263,8 +263,7 @@ std::shared_ptr<const ui::OperatorInfo> make_operator_info(const SubgraphModuleD
     info->name = def.name;
     info->is_gpu = false;
 
-    // Infer cadence capability from internal graph: if any internal node has
-    // audio-cadence ports, the module is at least audio-capable.
+    // Check if the module has audio-cadence ports.
     bool has_audio_port = false;
     for (const auto& pb : def.ports) {
         if (pb.type == VIVID_PORT_AUDIO_BUFFER) { has_audio_port = true; break; }

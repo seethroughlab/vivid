@@ -1,7 +1,6 @@
 #pragma once
-// Internal-only: this dual-cadence Smooth class is retained for ChildOp<Smooth>
+// Internal frame-rate Smooth implementation used by ChildOp<Smooth>
 // consumers. The public operator surface uses smooth_fr / smooth_au variants.
-// Remove after Phase 4 migrates ChildOp embedding.
 
 #include "operator_api/operator.h"
 #include <algorithm>
@@ -18,7 +17,7 @@ struct SmoothThumbState;
  * @tip Set rise_time=0 and a long fall_time for a peak-hold-then-decay effect.
  * @see LFO, SampleHold, Envelope
  */
-struct Smooth : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct Smooth : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "Smooth";
     static constexpr bool kTimeDependent = true;
 
@@ -74,15 +73,6 @@ struct Smooth : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProces
     void process_frame(const VividFrameContext* ctx) override {
         advance(ctx->input_values[0], static_cast<float>(ctx->delta_time));
         ctx->output_values[0] = current_;
-    }
-
-    void process_audio(const VividAudioContext* ctx) override {
-        float target = 0.0f;
-        float sample_dt = 1.0f / static_cast<float>(ctx->sample_rate);
-        for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
-            advance(target, sample_dt);
-            ctx->output_buffers[0][i] = current_;
-        }
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override;

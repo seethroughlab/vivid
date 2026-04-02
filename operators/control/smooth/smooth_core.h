@@ -5,9 +5,6 @@
 #include <cmath>
 
 // Shared smoothing state and advance logic for SmoothFr / SmoothAu.
-// The original Smooth struct (smooth.h) remains for the dual-cadence
-// registration and thumbnail; this header is consumed only by the
-// single-cadence variants.
 
 struct SmoothCore {
     float current_ = 0.0f;

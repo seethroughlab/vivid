@@ -381,9 +381,8 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n=== Test: SIGNAL Port ===\n");
 
     test_port_type_compat();
-    test_lfo_per_sample();
-    // test_envelope_per_sample() — skipped until Phase 5 bridge delivers gate via params
-    // test_audio_engine_integration() — skipped until Phase 5 bridge delivers cross-cadence values
+    // Per-sample audio tests removed — LFO/Envelope are now frame-only internal types.
+    // Audio-rate behavior is tested through the _au operator dylibs.
 
 
     std::fprintf(stderr, "\n%s (%d failure%s)\n\n",

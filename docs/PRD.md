@@ -314,8 +314,8 @@ The type system serves three consumers: the graph runtime (bridge selection), th
 
 Seven canonical port types reflect the runtime's routing mechanisms:
 
-- `VIVID_PORT_SIGNAL` — scalar float (control values: floats, ints, bools all route identically). Updated at no fixed rate.
-- `VIVID_PORT_AUDIO` — a 256-sample buffer at 48kHz. Always continuous — producing a buffer every callback, even if silence. Mono throughout; stereo is two ports (left/right).
+- `VIVID_PORT_SCALAR` — scalar float (control values: floats, ints, bools all route identically). Updated at no fixed rate.
+- `VIVID_PORT_AUDIO_BUFFER` — a 256-sample buffer at 48kHz. Always continuous — producing a buffer every callback, even if silence. Mono throughout; stereo is two ports (left/right).
 - `VIVID_PORT_LANE_ARRAY` — variable-length float array with broadcast semantics.
 - `VIVID_PORT_STRING` — UTF-8 string.
 - `VIVID_PORT_STRING_LANES` — variable-length string array.
@@ -343,8 +343,8 @@ struct MyEffect : vivid::OperatorBase, vivid::FrameProcessable {
         out = {&intensity};
     }
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out = {{"input",  VIVID_PORT_SIGNAL, VIVID_PORT_INPUT},
-               {"output", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT}};
+        out = {{"input",  VIVID_PORT_SCALAR, VIVID_PORT_INPUT},
+               {"output", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT}};
     }
     void process_frame(const VividFrameContext* ctx) override {
         ctx->output_values[0] = ctx->input_values[0] * intensity.value;

@@ -74,11 +74,11 @@ for (uint8_t ch = 0; ch < ch_count; ch++) {
 ```cpp
 void collect_ports(std::vector<VividPortDescriptor>& out) override {
     // Mono input/output (channels = 1)
-    out.push_back({"input",  VIVID_PORT_AUDIO, VIVID_PORT_INPUT,  0, 1});
-    out.push_back({"output", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT, 0, 1});
+    out.push_back({"input",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  0, 1});
+    out.push_back({"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, 0, 1});
 
     // Stereo (channels = 2)
-    out.push_back({"stereo_out", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT, 0, 2});
+    out.push_back({"stereo_out", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, 0, 2});
 }
 ```
 
@@ -98,8 +98,8 @@ struct Gain : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",  VIVID_PORT_AUDIO, VIVID_PORT_INPUT,  0, 1});
-        out.push_back({"output", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT, 0, 1});
+        out.push_back({"input",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  0, 1});
+        out.push_back({"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, 0, 1});
     }
 
     void process_audio(const VividAudioContext* ctx) override {

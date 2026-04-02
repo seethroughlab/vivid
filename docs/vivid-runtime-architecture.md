@@ -122,7 +122,7 @@ CompiledGraph
 
 The two cadences run on independent threads at vastly different rates. They never block each other.
 
-![Dual-Cadence Tick Sequence](diagrams/dual-cadence-tick.svg)
+![Dual-Cadence Tick Sequence](diagrams/fixed-cadence-tick.svg)
 
 ### Frame Cadence (~60 Hz, Main Thread)
 
@@ -312,8 +312,8 @@ struct MyFilter : vivid::OperatorBase, vivid::FrameProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"in",  VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"out", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"in",  VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"out", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     void process_frame(const VividFrameContext* ctx) override {
@@ -335,7 +335,7 @@ An operator opts into execution environments by inheriting capability interfaces
 | `AudioProcessable` | `process_audio(VividAudioContext*)` | Audio thread, 48 kHz |
 | `GpuProcessable` | `process_gpu(VividGpuContext*)` | Main thread, WebGPU |
 
-An operator may implement multiple interfaces. The `cadence_capability` flag classifies cadence support: `FRAME_ONLY` (frame-rate only), `AUDIO_ONLY` (implements both `process_frame` and `process_audio`, can be promoted to audio-rate), or `AUDIO_ONLY` (implements only `process_audio`, always runs at audio-rate).
+An operator may implement multiple interfaces. The `operator_kind` flag classifies cadence support: `FRAME_ONLY` (frame-rate only), `AUDIO_ONLY` (implements both `process_frame` and `process_audio`, runs at a fixed cadence to audio-rate), or `AUDIO_ONLY` (implements only `process_audio`, always runs at audio-rate).
 
 ### The VIVID_REGISTER Macro
 
@@ -356,7 +356,7 @@ param_count, params[]   — parameter descriptors (name, type, range, defaults)
 port_count, ports[]     — port descriptors (name, type, direction, transport)
 time_dependent          — whether the operator reads ctx->time
 has_process_frame/audio/gpu — capability flags (which process methods exist)
-cadence_capability      — FRAME_ONLY, AUDIO_ONLY, or AUDIO_ONLY
+operator_kind      — FRAME_ONLY, AUDIO_ONLY, or AUDIO_ONLY
 ```
 
 ### OperatorRegistry
@@ -477,8 +477,6 @@ Passed to audio-rate operators on the audio thread.
 | `sample_rate` | `uint32_t` | Sample rate (48000) |
 | `input_channel_counts` | `const uint8_t*` | Per-port input channel count |
 | `output_channel_counts` | `const uint8_t*` | Per-port output channel count |
-| `input_float_values` | `float*` | CV inputs from frame cadence |
-| `output_float_values` | `float*` | Scalar outputs for frame cadence |
 | `channel_index` | `uint8_t` | Channel index (for auto-dup groups) |
 
 ### CompiledNode (key fields)

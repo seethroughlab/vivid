@@ -217,10 +217,9 @@ struct OperatorBase {
 };
 
 // ---------------------------------------------------------------------------
-// Capability interfaces — operators implement one or more to declare what
-// execution environments they support.  An operator that implements both
-// FrameProcessable and AudioProcessable is "audio-capable": it can be promoted
-// from frame-rate to audio-rate execution at graph-build time.
+// Capability interfaces — each operator implements exactly one to declare
+// its fixed execution cadence: FrameProcessable (frame-rate), AudioProcessable
+// (audio-rate), or GpuProcessable (GPU).
 // ---------------------------------------------------------------------------
 
 struct FrameProcessable {

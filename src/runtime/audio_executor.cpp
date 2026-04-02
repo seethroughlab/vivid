@@ -447,8 +447,6 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                         std::memset(buf.data(), 0, buf.size() * sizeof(float));
                 } else {
                     // Interleave: copy per-lane mono output back into multi-lane output buffers.
-                    // Include SIGNAL ports — dual-cadence operators write audio buffers
-                    // on SIGNAL outputs when promoted to audio cadence.
                     for (uint32_t c = 0; c < lanes; ++c) {
                         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
                             if (p < cn.output_port_types.size() &&

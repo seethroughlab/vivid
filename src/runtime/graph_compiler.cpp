@@ -1091,9 +1091,6 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         auto& cn = cg->nodes[idx];
         auto& a = *cn.audio;
         // Auto outputs inherit max of inputs.
-        // Include SIGNAL ports on audio-capable operators — dual-cadence operators
-        // like Envelope/LFO declare SIGNAL outputs but write audio buffers when
-        // promoted to audio cadence.
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
             if (p < a.descriptor_output_channels.size() &&
                 a.descriptor_output_channels[p] == 0 &&

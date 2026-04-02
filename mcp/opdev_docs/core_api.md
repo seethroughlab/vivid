@@ -37,8 +37,8 @@ struct MyOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",  VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
-        out.push_back({"output", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"input",  VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"output", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     void process_frame(const VividFrameContext* ctx) override {
@@ -68,8 +68,8 @@ Params are declared as member variables. The runtime syncs `ctx->param_values` i
 
 | Constant | Wire Type | Usage |
 |----------|-----------|-------|
-| `VIVID_PORT_SIGNAL` | `control_float` | Scalar control signals |
-| `VIVID_PORT_AUDIO` | `audio_float` | Audio sample buffers |
+| `VIVID_PORT_SCALAR` | `control_float` | Scalar control signals |
+| `VIVID_PORT_AUDIO_BUFFER` | `audio_float` | Audio sample buffers |
 | `VIVID_PORT_TEXTURE` | `gpu_texture` | GPU textures |
 | `VIVID_PORT_LANE_ARRAY` | lane array | Variable-length float arrays (lane-bearing data transport) |
 | `VIVID_PORT_STRING` | string | UTF-8 strings |
@@ -151,7 +151,7 @@ All operators inherit from `vivid::OperatorBase` and implement one or more capab
 | `vivid::AudioProcessable` | `process_audio(const VividAudioContext* ctx)` | Audio (audio thread, per-buffer) |
 | `vivid::GpuProcessable` | `process_gpu(const VividGpuContext* ctx)` | GPU (main thread, ~60 Hz) |
 
-An operator implementing both `FrameProcessable` and `AudioProcessable` is "dual-cadence" (audio-capable) and receives callbacks at both frame rate and audio rate.
+An operator implementing both `FrameProcessable` and `AudioProcessable` is "fixed-cadence" (audio-only) and receives callbacks at both frame rate and audio rate.
 
 ## ABI Version
 
