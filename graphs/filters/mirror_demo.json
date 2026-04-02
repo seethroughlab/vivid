@@ -57,7 +57,8 @@
   "connections": [
     {
       "from": "vid/texture",
-      "to": "mirror/input"
+      "to": "mirror/input",
+      "bridge": "last_sample"
     },
     {
       "from": "lfo_angle/value",

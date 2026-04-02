@@ -59,7 +59,8 @@
   "connections": [
     {
       "from": "vid/texture",
-      "to": "halftone/input"
+      "to": "halftone/input",
+      "bridge": "last_sample"
     },
     {
       "from": "lfo1/value",

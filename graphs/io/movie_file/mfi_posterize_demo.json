@@ -52,7 +52,8 @@
   "connections": [
     {
       "from": "vid/texture",
-      "to": "levels/input"
+      "to": "levels/input",
+      "bridge": "last_sample"
     },
     {
       "from": "levels/texture",

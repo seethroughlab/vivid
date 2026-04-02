@@ -49,7 +49,8 @@
   "connections": [
     {
       "from": "vid/texture",
-      "to": "color_space/input"
+      "to": "color_space/input",
+      "bridge": "last_sample"
     },
     {
       "from": "color_space/texture",

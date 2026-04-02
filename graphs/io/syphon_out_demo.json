@@ -46,7 +46,8 @@
     },
     {
       "from": "noise1/texture",
-      "to": "sout/input"
+      "to": "sout/input",
+      "bridge": "hold"
     }
   ]
 }

@@ -60,7 +60,8 @@
   "connections": [
     {
       "from": "vid/texture",
-      "to": "lut/input"
+      "to": "lut/input",
+      "bridge": "last_sample"
     },
     {
       "from": "lfo_intensity/value",

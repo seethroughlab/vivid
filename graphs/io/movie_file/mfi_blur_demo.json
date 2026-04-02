@@ -48,7 +48,8 @@
   "connections": [
     {
       "from": "img/texture",
-      "to": "blur/input"
+      "to": "blur/input",
+      "bridge": "last_sample"
     },
     {
       "from": "lfo1/value",

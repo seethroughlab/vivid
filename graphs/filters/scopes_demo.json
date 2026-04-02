@@ -61,7 +61,8 @@
   "connections": [
     {
       "from": "vid/texture",
-      "to": "scopes/input"
+      "to": "scopes/input",
+      "bridge": "last_sample"
     },
     {
       "from": "lfo_scope/value",

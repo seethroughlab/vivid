@@ -68,7 +68,8 @@
   "connections": [
     {
       "from": "vid/texture",
-      "to": "crt/input"
+      "to": "crt/input",
+      "bridge": "last_sample"
     },
     {
       "from": "crt/texture",

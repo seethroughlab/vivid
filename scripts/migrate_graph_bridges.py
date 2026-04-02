@@ -18,7 +18,12 @@ AUDIO_OPERATORS = {
     "DrumKick", "DrumSnare", "DrumHihat", "DrumClap", "DrumCymbal", "DrumTom",
     "AudioAnalysis", "MicInput", "MovieFileAudio", "AudioNoise",
     "Sampler", "SP404", "SubOsc", "PolyVoiceAllocator",
-    "Feedback", "TimeMachine",
+    "Feedback", "TimeMachine", "MidiFilePlayer",
+}
+
+# GPU operators that output textures — NOT audio despite having audio-like names
+GPU_OPERATORS = {
+    "MovieFileIn", "SyphonIn", "SyphonOut", "WebcamIn",
 }
 
 # Sinks that adapt to their input (treated as same-cadence as source)
@@ -28,6 +33,8 @@ def classify_cadence(type_name):
     """Return 'audio', 'frame', or 'unknown'."""
     if type_name in SINKS:
         return type_name  # special handling
+    if type_name in GPU_OPERATORS:
+        return "frame"
     if type_name in AUDIO_OPERATORS:
         return "audio"
     if type_name.endswith("_au"):

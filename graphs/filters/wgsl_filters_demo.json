@@ -190,7 +190,8 @@
   "connections": [
     {
       "from": "vid/texture",
-      "to": "hsv/input"
+      "to": "hsv/input",
+      "bridge": "last_sample"
     },
     {
       "from": "hsv/texture",

@@ -84,7 +84,8 @@
     },
     {
       "from": "pick/file",
-      "to": "movie/file"
+      "to": "movie/file",
+      "bridge": "hold"
     },
     {
       "from": "pick/file",
@@ -114,7 +115,8 @@
     },
     {
       "from": "movie/texture",
-      "to": "comp/b"
+      "to": "comp/b",
+      "bridge": "last_sample"
     },
     {
       "from": "comp/texture",

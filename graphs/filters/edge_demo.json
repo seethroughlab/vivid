@@ -69,7 +69,8 @@
   "connections": [
     {
       "from": "vid/texture",
-      "to": "edge/input"
+      "to": "edge/input",
+      "bridge": "last_sample"
     },
     {
       "from": "lfo_strength/value",
