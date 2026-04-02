@@ -311,7 +311,7 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         NSMenuItem* editMetaItem = [[NSMenuItem alloc]
             initWithTitle:@"Edit Meta..."
                    action:@selector(menuAction:)
-            keyEquivalent:@"e"];
+            keyEquivalent:@"i"];
         editMetaItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
         editMetaItem.target = sDelegate;
         editMetaItem.tag = kMenuTagEditMeta;
