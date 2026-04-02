@@ -21,6 +21,10 @@ struct TestOp : vivid::OperatorBase, vivid::FrameProcessable {
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"out", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        vivid::semantic_tag(out.back(), "test_scalar_out");
+        vivid::semantic_shape(out.back(), "scalar");
+        vivid::semantic_intent(out.back(), "test_output");
+        vivid::description(out.back(), "Scaled test output used by loader and control-server tests.");
     }
 
     void process_frame(const VividFrameContext* ctx) override {

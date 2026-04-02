@@ -234,6 +234,7 @@ int main(int argc, char* argv[]) {
     std::string scaffold_core_src = build_dir + "/.test_cs_scaffold_core";
     std::filesystem::remove_all(scaffold_core_src);
     std::filesystem::create_directories(scaffold_core_src + "/operators/control");
+    std::filesystem::create_directories(scaffold_core_src + "/site/operators");
     {
         std::ofstream ofs(scaffold_core_src + "/CMakeLists.txt");
         ofs << "cmake_minimum_required(VERSION 3.20)\n"
@@ -245,6 +246,35 @@ int main(int argc, char* argv[]) {
                "# --- Movie File In\n"
                "\n"
                "# --- Movie File Audio In\n";
+    }
+    {
+        std::ofstream ofs(scaffold_core_src + "/site/operators/index.json");
+        ofs << "{\n"
+               "  \"operators\": [\n"
+               "    {\n"
+               "      \"name\": \"TestOp\",\n"
+               "      \"id\": \"test-op\",\n"
+               "      \"has_docs\": true,\n"
+               "      \"brief\": \"Fixture operator docs for MCP/control-server tests.\",\n"
+               "      \"operator_family\": \"test-fixture\"\n"
+               "    }\n"
+               "  ]\n"
+               "}\n";
+    }
+    {
+        std::ofstream ofs(scaffold_core_src + "/site/operators/test-op.json");
+        ofs << "{\n"
+               "  \"name\": \"TestOp\",\n"
+               "  \"id\": \"test-op\",\n"
+               "  \"has_docs\": true,\n"
+               "  \"brief\": \"Fixture operator docs for MCP/control-server tests.\",\n"
+               "  \"body\": \"Detailed body for the TestOp fixture.\",\n"
+               "  \"source_path\": \"tests/operators/test_op_v1.cpp\",\n"
+               "  \"operator_family\": \"test-fixture\",\n"
+               "  \"tips\": [\"Use this fixture to verify MCP doc merging.\"],\n"
+               "  \"params\": [{\"name\": \"scale\", \"doc\": \"Scale multiplier for the output.\"}],\n"
+               "  \"outputs\": [{\"name\": \"out\", \"doc\": \"Scaled scalar output.\"}]\n"
+               "}\n";
     }
 
     std::string local_pkg_src = build_dir + "/.test_cs_linked_pkg_src";
@@ -290,12 +320,40 @@ int main(int argc, char* argv[]) {
     std::string live_pkg_src = build_dir + "/.test_cs_live_pkg_src";
     std::filesystem::remove_all(live_pkg_src);
     std::filesystem::create_directories(live_pkg_src + "/operators/control/pkg_live_op");
+    std::filesystem::create_directories(live_pkg_src + "/site/operators");
     {
         std::ofstream ofs(live_pkg_src + "/vivid-package.json");
         ofs << "{\n"
                "  \"name\": \"vivid-live-pkg\",\n"
                "  \"version\": \"0.0.1\",\n"
                "  \"operators\": [\"control/pkg_live_op\"]\n"
+               "}\n";
+    }
+    {
+        std::ofstream ofs(live_pkg_src + "/site/operators/index.json");
+        ofs << "{\n"
+               "  \"operators\": [\n"
+               "    {\n"
+               "      \"name\": \"PkgLiveOp\",\n"
+               "      \"id\": \"pkg-live-op\",\n"
+               "      \"has_docs\": true,\n"
+               "      \"brief\": \"Linked package fixture operator.\",\n"
+               "      \"operator_family\": \"package-fixture\"\n"
+               "    }\n"
+               "  ]\n"
+               "}\n";
+    }
+    {
+        std::ofstream ofs(live_pkg_src + "/site/operators/pkg-live-op.json");
+        ofs << "{\n"
+               "  \"name\": \"PkgLiveOp\",\n"
+               "  \"id\": \"pkg-live-op\",\n"
+               "  \"has_docs\": true,\n"
+               "  \"brief\": \"Linked package fixture operator.\",\n"
+               "  \"body\": \"Package operator doc fixture used by control-server tests.\",\n"
+               "  \"source_path\": \"operators/control/pkg_live_op/pkg_live_op.cpp\",\n"
+               "  \"operator_family\": \"package-fixture\",\n"
+               "  \"outputs\": [{\"name\": \"out\", \"doc\": \"Live package scalar output.\"}]\n"
                "}\n";
     }
     auto write_live_pkg_source = [&](float output_value) {
@@ -684,6 +742,19 @@ int main(int argc, char* argv[]) {
                         }
                     }
                     check(!t0.is_null(), "contains TestOp");
+                    check(t0.contains("brief") && t0["brief"].is_string() &&
+                              t0["brief"].get<std::string>() ==
+                                  "Fixture operator docs for MCP/control-server tests.",
+                          "list_types merges doc brief");
+                    check(t0.contains("has_docs") && t0["has_docs"].is_boolean() &&
+                              t0["has_docs"].get<bool>(),
+                          "list_types marks documented operator");
+                    check(t0.contains("operator_family") && t0["operator_family"].is_string() &&
+                              t0["operator_family"].get<std::string>() == "test-fixture",
+                          "list_types exposes operator_family");
+                    check(t0.contains("lane_behavior_help") && t0["lane_behavior_help"].is_string() &&
+                              !t0["lane_behavior_help"].get<std::string>().empty(),
+                          "list_types exposes lane_behavior_help");
                     auto& params = t0["params"];
                     check(params.is_array() && params.size() > 0, "TestOp has params");
                     if (params.is_array() && params.size() > 0) {
@@ -703,6 +774,22 @@ int main(int argc, char* argv[]) {
                     }
                     auto& outputs = t0["outputs"];
                     check(outputs.is_array() && outputs.size() > 0, "TestOp has ports");
+                    if (outputs.is_array() && outputs.size() > 0) {
+                        auto& port0 = outputs[0];
+                        check(port0.contains("semantic_tag") && port0["semantic_tag"].is_string() &&
+                                  port0["semantic_tag"].get<std::string>() == "test_scalar_out",
+                              "list_types port exposes semantic_tag");
+                        check(port0.contains("semantic_shape") && port0["semantic_shape"].is_string() &&
+                                  port0["semantic_shape"].get<std::string>() == "scalar",
+                              "list_types port exposes semantic_shape");
+                        check(port0.contains("semantic_intent") && port0["semantic_intent"].is_string() &&
+                                  port0["semantic_intent"].get<std::string>() == "test_output",
+                              "list_types port exposes semantic_intent");
+                        check(port0.contains("description") && port0["description"].is_string() &&
+                                  port0["description"].get<std::string>() ==
+                                      "Scaled test output used by loader and control-server tests.",
+                              "list_types port exposes description");
+                    }
 
                     auto check_first_param_tag = [&](const json& type_obj, const char* expected_tag,
                                                      const char* label) {
@@ -769,6 +856,65 @@ int main(int argc, char* argv[]) {
                               "list_types custom port exposes audio_safe");
                     }
                 }
+            }
+        }
+
+        // Phase 2a: operator_docs
+        std::fprintf(stderr, "\n--- operator_docs ---\n");
+        {
+            auto r = post(client, base_url, "operator_docs",
+                R"({"name":"TestOp"})");
+            check(r.ok, "operator_docs TestOp ok");
+            if (!r.j.is_null()) {
+                auto& op = r.j["result"];
+                check(op.contains("has_docs") && op["has_docs"].is_boolean() &&
+                          op["has_docs"].get<bool>(),
+                      "operator_docs reports docs present");
+                check(op.contains("brief") && op["brief"].is_string() &&
+                          op["brief"].get<std::string>() ==
+                              "Fixture operator docs for MCP/control-server tests.",
+                      "operator_docs merges brief");
+                check(op.contains("body") && op["body"].is_string() &&
+                          op["body"].get<std::string>() == "Detailed body for the TestOp fixture.",
+                      "operator_docs merges body");
+                check(op.contains("source_path") && op["source_path"].is_string() &&
+                          op["source_path"].get<std::string>() == "tests/operators/test_op_v1.cpp",
+                      "operator_docs merges source_path");
+                check(op.contains("lane_behavior_help") && op["lane_behavior_help"].is_string() &&
+                          !op["lane_behavior_help"].get<std::string>().empty(),
+                      "operator_docs includes lane_behavior_help");
+                auto& params_obj = op["params"];
+                check(params_obj.is_array() && params_obj.size() == 1, "operator_docs returns params");
+                if (params_obj.is_array() && params_obj.size() == 1) {
+                    auto& p0 = params_obj[0];
+                    check(p0.contains("doc") && p0["doc"].is_string() &&
+                              p0["doc"].get<std::string>() == "Scale multiplier for the output.",
+                          "operator_docs merges param doc");
+                }
+                auto& outputs_obj = op["outputs"];
+                check(outputs_obj.is_array() && outputs_obj.size() == 1, "operator_docs returns outputs");
+                if (outputs_obj.is_array() && outputs_obj.size() == 1) {
+                    auto& p0 = outputs_obj[0];
+                    check(p0.contains("doc") && p0["doc"].is_string() &&
+                              p0["doc"].get<std::string>() == "Scaled scalar output.",
+                          "operator_docs merges output doc");
+                    check(p0.contains("semantic_shape") && p0["semantic_shape"].is_string() &&
+                              p0["semantic_shape"].get<std::string>() == "scalar",
+                          "operator_docs preserves port semantic_shape");
+                }
+            }
+
+            auto fallback = post(client, base_url, "operator_docs",
+                R"({"name":"ExportCustomPortOp"})");
+            check(fallback.ok, "operator_docs descriptor-only fallback ok");
+            if (!fallback.j.is_null()) {
+                auto& op = fallback.j["result"];
+                check(op.contains("has_docs") && op["has_docs"].is_boolean() &&
+                          !op["has_docs"].get<bool>(),
+                      "operator_docs descriptor-only fallback marks has_docs false");
+                check(op.contains("outputs") && op["outputs"].is_array() &&
+                          op["outputs"].size() == 1,
+                      "operator_docs descriptor-only fallback still returns outputs");
             }
         }
 
@@ -1624,6 +1770,42 @@ int main(int argc, char* argv[]) {
                 check(result.contains("linked") && result["linked"].is_boolean() &&
                           result["linked"].get<bool>(),
                       "link_package marks package as linked");
+            }
+
+            auto pkg_docs = post(client, base_url, "package_operator_docs",
+                R"({"name":"vivid-live-pkg"})");
+            check(pkg_docs.ok, "package_operator_docs vivid-live-pkg ok");
+            if (!pkg_docs.j.is_null()) {
+                auto& result = pkg_docs.j["result"];
+                check(result.contains("operators") && result["operators"].is_array() &&
+                          result["operators"].size() == 1,
+                      "package_operator_docs returns linked package operator");
+                if (result.contains("operators") && result["operators"].is_array() &&
+                    result["operators"].size() == 1) {
+                    auto& op = result["operators"][0];
+                    check(op.contains("name") && op["name"].is_string() &&
+                              op["name"].get<std::string>() == "PkgLiveOp",
+                          "package_operator_docs returns operator name");
+                    check(op.contains("package") && op["package"].is_string() &&
+                              op["package"].get<std::string>() == "vivid-live-pkg",
+                          "package_operator_docs includes package name");
+                    check(op.contains("has_docs") && op["has_docs"].is_boolean() &&
+                              op["has_docs"].get<bool>(),
+                          "package_operator_docs marks has_docs true");
+                    check(op.contains("brief") && op["brief"].is_string() &&
+                              op["brief"].get<std::string>() == "Linked package fixture operator.",
+                          "package_operator_docs merges brief");
+                    check(op.contains("outputs") && op["outputs"].is_array() &&
+                              op["outputs"].size() == 1,
+                          "package_operator_docs returns outputs");
+                    if (op.contains("outputs") && op["outputs"].is_array() &&
+                        op["outputs"].size() == 1) {
+                        auto& out0 = op["outputs"][0];
+                        check(out0.contains("doc") && out0["doc"].is_string() &&
+                                  out0["doc"].get<std::string>() == "Live package scalar output.",
+                              "package_operator_docs merges output doc");
+                    }
+                }
             }
 
             auto add_live = post(client, base_url, "add_node",

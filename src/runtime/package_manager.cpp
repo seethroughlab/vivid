@@ -950,10 +950,17 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
     // to a declared operator. Prevents removed targets from being scanned.
     {
         std::unordered_set<std::string> declared;
+        auto add_declared_target = [&](const std::string& op_path) {
+            std::string target = op_path;
+            auto slash = target.rfind('/');
+            if (slash != std::string::npos)
+                target = target.substr(slash + 1);
+            declared.insert(target + kPluginSuffix);
+        };
         for (const auto& op : result.info.operators)
-            declared.insert(op + kPluginSuffix);
+            add_declared_target(op);
         for (const auto& op : result.info.gpu_operators)
-            declared.insert(op + kPluginSuffix);
+            add_declared_target(op);
         std::error_code clean_ec;
         for (auto& entry : std::filesystem::directory_iterator(build_dir, clean_ec)) {
             if (clean_ec) break;

@@ -308,6 +308,9 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
     entry.port_type_names.resize(port_count);
     entry.port_stable_type_ids.resize(port_count);
     entry.port_semantic_tags.resize(port_count);
+    entry.port_semantic_shapes.resize(port_count);
+    entry.port_semantic_intents.resize(port_count);
+    entry.port_descriptions.resize(port_count);
     for (uint32_t i = 0; i < port_count; ++i) {
         const auto& sp = src->ports[i];
         auto& dp = entry.ports[i];
@@ -330,6 +333,24 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
             dp.semantic_tag = entry.port_semantic_tags[i].c_str();
         } else {
             dp.semantic_tag = nullptr;
+        }
+        if (sp.semantic_shape) {
+            entry.port_semantic_shapes[i] = sp.semantic_shape;
+            dp.semantic_shape = entry.port_semantic_shapes[i].c_str();
+        } else {
+            dp.semantic_shape = nullptr;
+        }
+        if (sp.semantic_intent) {
+            entry.port_semantic_intents[i] = sp.semantic_intent;
+            dp.semantic_intent = entry.port_semantic_intents[i].c_str();
+        } else {
+            dp.semantic_intent = nullptr;
+        }
+        if (sp.description) {
+            entry.port_descriptions[i] = sp.description;
+            dp.description = entry.port_descriptions[i].c_str();
+        } else {
+            dp.description = nullptr;
         }
     }
 

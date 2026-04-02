@@ -13,8 +13,17 @@ struct ClockThumbState;
  * each beat boundary.
  *
  * @tip Connect beat_phase to any operator with a beat_phase input for tempo sync.
+ * @tip Use beat_phase for global tempo sync, not for per-note ADSR triggering.
  * @output beat_phase Sawtooth ramp 0-1 over each beat.
+ * @output beat_ms Milliseconds per beat at the current tempo.
+ * @output bar_phase Sawtooth ramp 0-1 over each bar.
  * @output beat_trigger Impulse on each beat boundary.
+ * @recipe ClockAu/beat_phase -> LFO/beat_phase
+ * @recipe ClockAu/beat_phase -> ChordProgressionAu/beat_phase
+ * @pitfall beat_phase is a global transport signal; it does not create separate per-note envelope state.
+ * @family note_source
+ * @best_used_with ChordProgressionAu, EnvelopeAu, LFO
+ * @common_companions Arpeggiator, Sequencer, NotePattern
  * @see LFO, Envelope, Sequencer
  */
 struct ClockCore : vivid::OperatorBase {
@@ -42,10 +51,33 @@ struct ClockCore : vivid::OperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"beat_phase",   VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
-        out.push_back({"beat_ms",      VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
-        out.push_back({"bar_phase",    VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
-        out.push_back({"beat_trigger", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        VividPortDescriptor beat_phase_port{"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT};
+        vivid::semantic_tag(beat_phase_port, "beat_phase");
+        vivid::semantic_shape(beat_phase_port, "scalar");
+        vivid::semantic_intent(beat_phase_port, "global_transport_phase");
+        vivid::description(beat_phase_port, "Global 0-1 sawtooth phase over one beat.");
+        out.push_back(beat_phase_port);
+
+        VividPortDescriptor beat_ms_port{"beat_ms", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT};
+        vivid::semantic_tag(beat_ms_port, "time_milliseconds");
+        vivid::semantic_shape(beat_ms_port, "scalar");
+        vivid::semantic_intent(beat_ms_port, "tempo_ms_per_beat");
+        vivid::description(beat_ms_port, "Milliseconds per beat at the current tempo.");
+        out.push_back(beat_ms_port);
+
+        VividPortDescriptor bar_phase_port{"bar_phase", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT};
+        vivid::semantic_tag(bar_phase_port, "bar_phase");
+        vivid::semantic_shape(bar_phase_port, "scalar");
+        vivid::semantic_intent(bar_phase_port, "global_transport_bar_phase");
+        vivid::description(bar_phase_port, "Global 0-1 sawtooth phase over one bar.");
+        out.push_back(bar_phase_port);
+
+        VividPortDescriptor beat_trigger_port{"beat_trigger", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT};
+        vivid::semantic_tag(beat_trigger_port, "trigger");
+        vivid::semantic_shape(beat_trigger_port, "scalar");
+        vivid::semantic_intent(beat_trigger_port, "global_transport_trigger");
+        vivid::description(beat_trigger_port, "Impulse on each beat boundary.");
+        out.push_back(beat_trigger_port);
     }
 
     // Advance phase by delta_time seconds and write the 4 output values.

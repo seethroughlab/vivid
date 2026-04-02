@@ -8,7 +8,7 @@ extern "C" {
 
 /* Bump when operator-facing C ABI changes in incompatible ways.
    Catches stale dylibs during hot-reload — not a cross-version compatibility promise. */
-#define VIVID_OPERATOR_ABI_VERSION 4u
+#define VIVID_OPERATOR_ABI_VERSION 5u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -106,6 +106,9 @@ typedef struct VividPortDescriptor {
     float              default_value;// default for VIVID_PORT_SCALAR inputs
     const char*        stable_type_id; // stable namespaced id for custom types, NULL for built-ins
     const char*        semantic_tag;   // e.g. "beat_phase", "gate", "trigger", "midi", NULL if unset
+    const char*        semantic_shape; // e.g. "scalar", "lane_array", "audio_buffer", NULL if unset
+    const char*        semantic_intent;// free-form hint, e.g. "per_note_gate", NULL if unset
+    const char*        description;    // human-readable tooltip shown in inspector/docs, NULL if unset
 } VividPortDescriptor;
 
 

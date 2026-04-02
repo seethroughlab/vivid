@@ -54,7 +54,8 @@ All requests are POSTs. The URL path is the method name (e.g. `POST /add_node`).
 | `get_graph_load_diagnostics` | — | Package version mismatch info from last load |
 | `get_registry_diagnostics` | — | Registered custom port types + loader ABI mismatch diagnostics |
 | `get_graph_errors` | — | Per-node error state |
-| `list_types` | — | All registered operator types with params/ports |
+| `list_types` | — | All registered operator types with enriched params/ports plus summary docs fields when available |
+| `operator_docs` | `name`, `package` (optional) | Full documentation + descriptor metadata for one operator |
 | `list_nodes` | — | All nodes (id, type) |
 | `inspect` | `node_id` | Single node params + port values |
 | `validate_checks` | `checks` | Validate check definitions (no graph needed) |
@@ -177,7 +178,7 @@ All requests are POSTs. The URL path is the method name (e.g. `POST /add_node`).
 | `read_package_docs` | `name` | Read package README |
 | `list_package_examples` | `name` | List example graph files |
 | `read_package_example` | `name`, `example` | Read example file |
-| `package_operator_docs` | `name` | Per-operator documentation |
+| `package_operator_docs` | `name` | Per-operator documentation merged with descriptor metadata |
 | `test_package` | `name` | Run package tests |
 
 ### Scaffolding
@@ -218,6 +219,57 @@ Topology-changing commands that modify the graph capture a before/after JSON sna
 ## `test_package` Response Shape
 
 `test_package` returns package-test results with both human-readable and machine-readable fields.
+
+## Operator Introspection Payloads
+
+The operator introspection endpoints are intended to serve MCP planning, authoring, and docs lookup.
+
+### `list_types`
+
+`list_types` returns the registered operator catalog with descriptor metadata for:
+
+- params: type/default/range plus semantic metadata and descriptions when present
+- ports: type/transport plus semantic metadata, defaults/channels, and custom-type registry info when present
+
+When the runtime can resolve operator docs from `site/operators/` (core) or a package's `site/operators/`,
+the response may also include summary-level doc fields:
+
+- `brief`
+- `has_docs`
+- `operator_family`
+- `lane_behavior_help`
+
+Missing docs are not an error. Operators without matching docs still appear with descriptor-only metadata and `has_docs: false`.
+
+### `operator_docs`
+
+`operator_docs` returns a single enriched operator object for `name`.
+
+Request body:
+
+```json
+{ "name": "Envelope" }
+```
+
+Optional:
+
+- `package`: force package doc lookup for an installed package operator
+
+Response shape:
+
+- descriptor metadata: `name`, `kind`, `time_dependent`, `lane_behavior`, `lane_behavior_help`, `params`, `inputs`, `outputs`
+- doc-derived fields when available: `brief`, `body`, `source_path`, `tips`, `related`, `recipes`, `pitfalls`, `best_used_with`, `common_companions`, `operator_family`
+- `has_docs`: `true` when doc JSON was found and merged, `false` otherwise
+
+If no docs are found, the endpoint still succeeds and returns the descriptor-only payload.
+
+### `package_operator_docs`
+
+`package_operator_docs` returns the same enriched operator shape as `operator_docs`, but for every operator
+owned by the installed package named by `name`.
+
+Docs are loaded from `<package>/site/operators/` when present. Missing package docs do not fail the request;
+the endpoint still returns descriptor-only entries with `has_docs: false`.
 
 Top-level response payload:
 

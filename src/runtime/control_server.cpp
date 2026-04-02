@@ -67,6 +67,25 @@ static const char* lane_behavior_str(VividLaneBehavior lb) {
     }
 }
 
+static const char* lane_behavior_help_str(VividLaneBehavior lb) {
+    switch (lb) {
+        case VIVID_LANE_POINTWISE:
+            return "Processes each lane independently and preserves per-lane structure. "
+                   "Use this in poly chains when you want one stateful copy per note or lane.";
+        case VIVID_LANE_STRUCTURAL:
+            return "Creates, reorders, or reshapes lane structure. "
+                   "Use this to generate or transform polyphonic note/gate lane arrays.";
+        case VIVID_LANE_REDUCTION:
+            return "Consumes multiple lanes and collapses them into fewer outputs. "
+                   "Use this when summing or mixing voices back to a smaller channel count.";
+        case VIVID_LANE_KERNEL:
+            return "Processes neighborhoods of lanes together. "
+                   "Use this for cross-lane operations that depend on nearby lane values.";
+        default:
+            return "Lane behavior is unknown.";
+    }
+}
+
 static const char* kind_str(VividOperatorKind k) {
     switch (k) {
         case VIVID_OP_CONTROL: return "control";
@@ -129,6 +148,236 @@ static void add_port_registry_metadata(nlohmann::json& port_obj,
         port_obj["registry_package_name"] = info.package_name;
     if (info.description && *info.description)
         port_obj["registry_description"] = info.description;
+}
+
+static void add_port_descriptor_metadata(nlohmann::json& port_obj,
+                                         const VividPortDescriptor& pd) {
+    if (pd.channels > 0)
+        port_obj["channels"] = pd.channels;
+    if (pd.direction == VIVID_PORT_INPUT && pd.type == VIVID_PORT_SCALAR)
+        port_obj["default"] = static_cast<double>(pd.default_value);
+    if (pd.semantic_tag && *pd.semantic_tag)
+        port_obj["semantic_tag"] = pd.semantic_tag;
+    if (pd.semantic_shape && *pd.semantic_shape)
+        port_obj["semantic_shape"] = pd.semantic_shape;
+    if (pd.semantic_intent && *pd.semantic_intent)
+        port_obj["semantic_intent"] = pd.semantic_intent;
+    if (pd.description && *pd.description)
+        port_obj["description"] = pd.description;
+    add_port_registry_metadata(port_obj, pd);
+}
+
+static nlohmann::json build_param_descriptor_json(const VividParamDescriptor& pd) {
+    nlohmann::json p = nlohmann::json::object();
+    p["name"] = pd.name;
+    p["type"] = param_type_str(pd.type);
+    p["default"] = static_cast<double>(pd.default_value);
+    p["min"] = static_cast<double>(pd.min_value);
+    p["max"] = static_cast<double>(pd.max_value);
+    if (pd.semantic_tag && *pd.semantic_tag)
+        p["semantic_tag"] = pd.semantic_tag;
+    if (pd.semantic_shape && *pd.semantic_shape)
+        p["semantic_shape"] = pd.semantic_shape;
+    if (pd.semantic_unit && *pd.semantic_unit)
+        p["semantic_unit"] = pd.semantic_unit;
+    if (pd.semantic_intent && *pd.semantic_intent)
+        p["semantic_intent"] = pd.semantic_intent;
+    if (pd.description && *pd.description)
+        p["description"] = pd.description;
+    if (pd.default_string && *pd.default_string)
+        p["default_string"] = pd.default_string;
+    if (pd.group && *pd.group)
+        p["group"] = pd.group;
+    if (pd.choice_count > 0 && pd.choice_labels) {
+        nlohmann::json choices = nlohmann::json::array();
+        for (uint32_t c = 0; c < pd.choice_count; ++c)
+            choices.push_back(pd.choice_labels[c]);
+        p["choices"] = std::move(choices);
+    }
+    return p;
+}
+
+static nlohmann::json build_port_descriptor_json(const VividPortDescriptor& pd) {
+    nlohmann::json p = nlohmann::json::object();
+    p["name"] = pd.name;
+    p["type"] = port_type_str(pd.type);
+    p["transport"] = transport_str(pd.transport);
+    if (pd.type_name && *pd.type_name)
+        p["type_name"] = pd.type_name;
+    if (pd.stable_type_id && *pd.stable_type_id)
+        p["stable_type_id"] = pd.stable_type_id;
+    if (pd.payload_size > 0)
+        p["payload_size"] = pd.payload_size;
+    add_port_descriptor_metadata(p, pd);
+    return p;
+}
+
+struct OperatorDocCatalog {
+    std::filesystem::path docs_dir;
+    std::unordered_map<std::string, nlohmann::json> index_by_name;
+    std::unordered_map<std::string, nlohmann::json> index_by_id;
+    bool loaded = false;
+};
+
+static std::string camel_to_snake_id(std::string name) {
+    if (name.size() > 2) {
+        const std::string suffix = name.substr(name.size() - 2);
+        if (suffix == "Au" || suffix == "Fr")
+            name.resize(name.size() - 2);
+    }
+    std::string out;
+    out.reserve(name.size() + 8);
+    for (size_t i = 0; i < name.size(); ++i) {
+        const unsigned char ch = static_cast<unsigned char>(name[i]);
+        if (std::isupper(ch)) {
+            if (!out.empty() && (std::islower(static_cast<unsigned char>(out.back())) ||
+                                 (i + 1 < name.size() && std::islower(static_cast<unsigned char>(name[i + 1])))))
+                out.push_back('_');
+            out.push_back(static_cast<char>(std::tolower(ch)));
+        } else {
+            out.push_back(static_cast<char>(ch));
+        }
+    }
+    return out;
+}
+
+static OperatorDocCatalog load_operator_doc_catalog(const std::filesystem::path& docs_dir) {
+    OperatorDocCatalog catalog;
+    catalog.docs_dir = docs_dir;
+    const auto index_path = docs_dir / "index.json";
+    std::ifstream f(index_path);
+    if (!f.is_open()) return catalog;
+
+    try {
+        nlohmann::json index = nlohmann::json::parse(f);
+        const auto* operators = index.contains("operators") && index["operators"].is_array()
+            ? &index["operators"] : nullptr;
+        if (!operators) return catalog;
+        for (const auto& entry : *operators) {
+            if (!entry.contains("name") || !entry["name"].is_string()) continue;
+            catalog.index_by_name[entry["name"].get<std::string>()] = entry;
+            if (entry.contains("id") && entry["id"].is_string())
+                catalog.index_by_id[entry["id"].get<std::string>()] = entry;
+        }
+        catalog.loaded = true;
+    } catch (...) {
+        catalog.index_by_name.clear();
+        catalog.loaded = false;
+    }
+    return catalog;
+}
+
+static nlohmann::json load_operator_doc_detail(const OperatorDocCatalog& catalog,
+                                               const std::string& type_name) {
+    nlohmann::json index_entry;
+    auto it = catalog.index_by_name.find(type_name);
+    if (it != catalog.index_by_name.end()) {
+        index_entry = it->second;
+    } else {
+        const auto derived_id = camel_to_snake_id(type_name);
+        auto id_it = catalog.index_by_id.find(derived_id);
+        if (id_it != catalog.index_by_id.end())
+            index_entry = id_it->second;
+    }
+    if (index_entry.is_null()) return nullptr;
+    if (index_entry.contains("has_docs") && index_entry["has_docs"].is_boolean() &&
+        !index_entry["has_docs"].get<bool>()) {
+        return nullptr;
+    }
+    if (!index_entry.contains("id") || !index_entry["id"].is_string()) return nullptr;
+    const auto detail_path = catalog.docs_dir / (index_entry["id"].get<std::string>() + ".json");
+    std::ifstream f(detail_path);
+    if (!f.is_open()) return nullptr;
+    try {
+        return nlohmann::json::parse(f);
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+static void merge_doc_text_field(nlohmann::json& out, const nlohmann::json& doc,
+                                 const char* target_key, const char* source_key) {
+    if (doc.contains(source_key) && doc[source_key].is_string() && !doc[source_key].get<std::string>().empty())
+        out[target_key] = doc[source_key];
+}
+
+static std::unordered_map<std::string, nlohmann::json> index_docs_by_name(const nlohmann::json& arr) {
+    std::unordered_map<std::string, nlohmann::json> out;
+    if (!arr.is_array()) return out;
+    for (const auto& item : arr) {
+        if (!item.contains("name") || !item["name"].is_string()) continue;
+        out[item["name"].get<std::string>()] = item;
+    }
+    return out;
+}
+
+static nlohmann::json build_operator_docs_response(const VividOperatorDescriptor& desc,
+                                                   const nlohmann::json* doc,
+                                                   const std::string& package_name = "") {
+    nlohmann::json op = nlohmann::json::object();
+    op["name"] = desc.name;
+    op["kind"] = kind_str(vivid_operator_kind(&desc));
+    op["time_dependent"] = (desc.time_dependent != 0);
+    op["lane_behavior"] = lane_behavior_str(desc.lane_behavior);
+    op["lane_behavior_help"] = lane_behavior_help_str(desc.lane_behavior);
+    if (!package_name.empty())
+        op["package"] = package_name;
+
+    bool has_docs = false;
+    std::unordered_map<std::string, nlohmann::json> param_docs;
+    std::unordered_map<std::string, nlohmann::json> input_docs;
+    std::unordered_map<std::string, nlohmann::json> output_docs;
+    if (doc && doc->is_object()) {
+        has_docs = doc->value("has_docs", false);
+        if (doc->contains("brief") && (*doc)["brief"].is_string())
+            op["brief"] = (*doc)["brief"];
+        merge_doc_text_field(op, *doc, "body", "body");
+        if (!op.contains("body"))
+            merge_doc_text_field(op, *doc, "body", "description");
+        if (!op.contains("source_path"))
+            merge_doc_text_field(op, *doc, "source_path", "source_path");
+        if (!op.contains("source_path"))
+            merge_doc_text_field(op, *doc, "source_path", "source_file");
+        for (const char* key : {"tips", "related", "recipes", "pitfalls", "best_used_with", "common_companions"}) {
+            if (doc->contains(key) && (*doc)[key].is_array())
+                op[key] = (*doc)[key];
+        }
+        if (doc->contains("operator_family") && (*doc)["operator_family"].is_string())
+            op["operator_family"] = (*doc)["operator_family"];
+        param_docs = index_docs_by_name(doc->value("params", nlohmann::json::array()));
+        input_docs = index_docs_by_name(doc->value("inputs", nlohmann::json::array()));
+        output_docs = index_docs_by_name(doc->value("outputs", nlohmann::json::array()));
+    }
+    op["has_docs"] = has_docs;
+
+    nlohmann::json params_arr = nlohmann::json::array();
+    for (uint32_t i = 0; i < desc.param_count; ++i) {
+        const auto& pd = desc.params[i];
+        nlohmann::json p = build_param_descriptor_json(pd);
+        auto it = param_docs.find(pd.name);
+        if (it != param_docs.end() && it->second.contains("doc") && it->second["doc"].is_string())
+            p["doc"] = it->second["doc"];
+        params_arr.push_back(std::move(p));
+    }
+    op["params"] = std::move(params_arr);
+
+    nlohmann::json inputs_arr = nlohmann::json::array();
+    nlohmann::json outputs_arr = nlohmann::json::array();
+    for (uint32_t i = 0; i < desc.port_count; ++i) {
+        const auto& pd = desc.ports[i];
+        nlohmann::json p = build_port_descriptor_json(pd);
+        auto& doc_map = (pd.direction == VIVID_PORT_INPUT) ? input_docs : output_docs;
+        auto it = doc_map.find(pd.name);
+        if (it != doc_map.end() && it->second.contains("doc") && it->second["doc"].is_string())
+            p["doc"] = it->second["doc"];
+        if (pd.direction == VIVID_PORT_INPUT)
+            inputs_arr.push_back(std::move(p));
+        else
+            outputs_arr.push_back(std::move(p));
+    }
+    op["inputs"] = std::move(inputs_arr);
+    op["outputs"] = std::move(outputs_arr);
+    return op;
 }
 
 static const char* update_class_str(PackageUpdateClass c) {
@@ -1603,9 +1852,16 @@ static std::string handle_run_checks(Graph& graph, RuntimeCore& core, OperatorRe
     return nlohmann::json{{"ok", true}, {"schema_version", 1}, {"result", std::move(result_obj)}}.dump();
 }
 
-static std::string handle_list_types(OperatorRegistry& registry) {
+static std::string handle_list_types(OperatorRegistry& registry,
+                                     PackageManager* package_manager,
+                                     const std::string& src_dir) {
     nlohmann::json result = nlohmann::json::object();
     nlohmann::json types_arr = nlohmann::json::array();
+    OperatorDocCatalog docs = load_operator_doc_catalog(
+        std::filesystem::path(src_dir).empty()
+            ? (std::filesystem::current_path() / "site" / "operators")
+            : (std::filesystem::path(src_dir) / "site" / "operators"));
+    std::unordered_map<std::string, OperatorDocCatalog> package_docs_cache;
 
     for (const auto& name : registry.type_names()) {
         auto* loader = registry.find(name);
@@ -1617,28 +1873,51 @@ static std::string handle_list_types(OperatorRegistry& registry) {
         t["name"] = desc->name;
         t["kind"] = kind_str(vivid_operator_kind(desc));
         t["lane_behavior"] = lane_behavior_str(desc->lane_behavior);
+        t["lane_behavior_help"] = lane_behavior_help_str(desc->lane_behavior);
+        const nlohmann::json* doc_summary = nullptr;
+        auto doc_it = docs.index_by_name.find(desc->name);
+        if (doc_it != docs.index_by_name.end()) {
+            doc_summary = &doc_it->second;
+        } else {
+            auto id_it = docs.index_by_id.find(camel_to_snake_id(desc->name));
+            if (id_it != docs.index_by_id.end())
+                doc_summary = &id_it->second;
+        }
+        if (!doc_summary && package_manager) {
+            const auto* pkg = registry.package_for_type(name);
+            if (pkg && package_manager->is_installed(*pkg)) {
+                auto cache_it = package_docs_cache.find(*pkg);
+                if (cache_it == package_docs_cache.end()) {
+                    cache_it = package_docs_cache.emplace(
+                        *pkg,
+                        load_operator_doc_catalog(std::filesystem::path(
+                            package_manager->resolve_package_path(*pkg)) / "site" / "operators")).first;
+                }
+                auto pkg_doc_it = cache_it->second.index_by_name.find(desc->name);
+                if (pkg_doc_it != cache_it->second.index_by_name.end()) {
+                    doc_summary = &pkg_doc_it->second;
+                } else {
+                    auto pkg_id_it = cache_it->second.index_by_id.find(camel_to_snake_id(desc->name));
+                    if (pkg_id_it != cache_it->second.index_by_id.end())
+                        doc_summary = &pkg_id_it->second;
+                }
+            }
+        }
+        if (doc_summary) {
+            if (doc_summary->contains("brief") && (*doc_summary)["brief"].is_string())
+                t["brief"] = (*doc_summary)["brief"];
+            if (doc_summary->contains("has_docs") && (*doc_summary)["has_docs"].is_boolean())
+                t["has_docs"] = (*doc_summary)["has_docs"];
+            if (doc_summary->contains("operator_family") && (*doc_summary)["operator_family"].is_string())
+                t["operator_family"] = (*doc_summary)["operator_family"];
+        }
+        if (!t.contains("has_docs"))
+            t["has_docs"] = false;
 
         // Params
         nlohmann::json params_arr = nlohmann::json::array();
         for (uint32_t i = 0; i < desc->param_count; ++i) {
-            const auto& pd = desc->params[i];
-            nlohmann::json p = nlohmann::json::object();
-            p["name"] = pd.name;
-            p["type"] = param_type_str(pd.type);
-            p["default"] = static_cast<double>(pd.default_value);
-            p["min"] = static_cast<double>(pd.min_value);
-            p["max"] = static_cast<double>(pd.max_value);
-            if (pd.semantic_tag)
-                p["semantic_tag"] = pd.semantic_tag;
-            if (pd.semantic_shape)
-                p["semantic_shape"] = pd.semantic_shape;
-            if (pd.semantic_unit)
-                p["semantic_unit"] = pd.semantic_unit;
-            if (pd.semantic_intent)
-                p["semantic_intent"] = pd.semantic_intent;
-            if (pd.description)
-                p["description"] = pd.description;
-            params_arr.push_back(std::move(p));
+            params_arr.push_back(build_param_descriptor_json(desc->params[i]));
         }
         t["params"] = std::move(params_arr);
 
@@ -1647,17 +1926,7 @@ static std::string handle_list_types(OperatorRegistry& registry) {
         nlohmann::json outputs_arr = nlohmann::json::array();
         for (uint32_t i = 0; i < desc->port_count; ++i) {
             const auto& pd = desc->ports[i];
-            nlohmann::json p = nlohmann::json::object();
-            p["name"] = pd.name;
-            p["type"] = port_type_str(pd.type);
-            p["transport"] = transport_str(pd.transport);
-            if (pd.type_name)
-                p["type_name"] = pd.type_name;
-            if (pd.stable_type_id)
-                p["stable_type_id"] = pd.stable_type_id;
-            if (pd.payload_size > 0)
-                p["payload_size"] = pd.payload_size;
-            add_port_registry_metadata(p, pd);
+            nlohmann::json p = build_port_descriptor_json(pd);
             if (pd.direction == VIVID_PORT_INPUT)
                 inputs_arr.push_back(std::move(p));
             else
@@ -1671,6 +1940,38 @@ static std::string handle_list_types(OperatorRegistry& registry) {
 
     result["types"] = std::move(types_arr);
     return json_ok(std::move(result));
+}
+
+static std::string handle_operator_docs(OperatorRegistry& registry,
+                                        PackageManager* package_manager,
+                                        const nlohmann::json& root,
+                                        const std::string& src_dir) {
+    if (!root.contains("name") || !root["name"].is_string())
+        return json_err("missing 'name'");
+
+    const std::string name = root["name"].get<std::string>();
+    const auto* desc = registry.probe_descriptor(name);
+    if (!desc)
+        return json_err("unknown operator: " + name);
+
+    std::string package_name;
+    if (root.contains("package") && root["package"].is_string())
+        package_name = root["package"].get<std::string>();
+    else if (const auto* pkg = registry.package_for_type(name); pkg)
+        package_name = *pkg;
+
+    std::filesystem::path docs_dir;
+    if (!package_name.empty() && package_manager && package_manager->is_installed(package_name)) {
+        docs_dir = std::filesystem::path(package_manager->resolve_package_path(package_name)) / "site" / "operators";
+    } else {
+        docs_dir = (std::filesystem::path(src_dir).empty()
+            ? std::filesystem::current_path()
+            : std::filesystem::path(src_dir)) / "site" / "operators";
+    }
+
+    OperatorDocCatalog catalog = load_operator_doc_catalog(docs_dir);
+    nlohmann::json detail = load_operator_doc_detail(catalog, name);
+    return json_ok(build_operator_docs_response(*desc, detail.is_null() ? nullptr : &detail, package_name));
 }
 
 static std::string handle_get_registry_diagnostics(OperatorRegistry& registry) {
@@ -1768,7 +2069,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
     if (method == "inspect_graph") return handle_inspect_graph(graph, core);
     if (method == "introspect_nodes") return handle_introspect_nodes(graph, core);
     if (method == "run_diagnostics") return handle_run_diagnostics(graph, core, registry);
-    if (method == "list_types")    return handle_list_types(registry);
+    if (method == "list_types")    return handle_list_types(registry, package_manager, src_dir);
     if (method == "get_registry_diagnostics") return handle_get_registry_diagnostics(registry);
     if (method == "get_graph_load_diagnostics") return handle_get_graph_load_diagnostics(graph);
     if (method == "operator_map") {
@@ -2763,6 +3064,12 @@ static std::string dispatch(const std::string& method, const std::string& body,
                 }
             }
         }
+    } else if (method == "operator_docs") {
+        if (!root_valid) {
+            result = json_err("invalid JSON body");
+        } else {
+            result = handle_operator_docs(registry, package_manager, root, src_dir);
+        }
     } else if (method == "package_operator_docs") {
         if (!package_manager) {
             result = json_err("package manager not available");
@@ -2779,62 +3086,16 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     nlohmann::json res = nlohmann::json::object();
                     res["package"] = name;
                     nlohmann::json ops_arr = nlohmann::json::array();
+                    OperatorDocCatalog catalog = load_operator_doc_catalog(
+                        std::filesystem::path(package_manager->resolve_package_path(name)) / "site" / "operators");
                     for (const auto& type_name : registry.type_names()) {
                         const auto* pkg = registry.package_for_type(type_name);
                         if (!pkg || *pkg != name) continue;
                         const auto* desc = registry.probe_descriptor(type_name);
                         if (!desc) continue;
-
-                        nlohmann::json op = nlohmann::json::object();
-                        op["name"] = desc->name;
-                        op["kind"] = kind_str(vivid_operator_kind(desc));
-                        op["time_dependent"] = (desc->time_dependent != 0);
-
-                        nlohmann::json params_arr = nlohmann::json::array();
-                        for (uint32_t i = 0; i < desc->param_count; ++i) {
-                            const auto& pd = desc->params[i];
-                            nlohmann::json p = nlohmann::json::object();
-                            p["name"] = pd.name;
-                            p["type"] = param_type_str(pd.type);
-                            p["default"] = static_cast<double>(pd.default_value);
-                            p["min"] = static_cast<double>(pd.min_value);
-                            p["max"] = static_cast<double>(pd.max_value);
-                            if (pd.semantic_tag) p["semantic_tag"] = pd.semantic_tag;
-                            if (pd.semantic_shape) p["semantic_shape"] = pd.semantic_shape;
-                            if (pd.semantic_unit) p["semantic_unit"] = pd.semantic_unit;
-                            if (pd.semantic_intent) p["semantic_intent"] = pd.semantic_intent;
-                            if (pd.description) p["description"] = pd.description;
-                            if (pd.default_string) p["default_string"] = pd.default_string;
-                            if (pd.group) p["group"] = pd.group;
-                            if (pd.choice_count > 0 && pd.choice_labels) {
-                                nlohmann::json choices = nlohmann::json::array();
-                                for (uint32_t c = 0; c < pd.choice_count; ++c)
-                                    choices.push_back(pd.choice_labels[c]);
-                                p["choices"] = std::move(choices);
-                            }
-                            params_arr.push_back(std::move(p));
-                        }
-                        op["params"] = std::move(params_arr);
-
-                        nlohmann::json inputs_arr = nlohmann::json::array();
-                        nlohmann::json outputs_arr = nlohmann::json::array();
-                        for (uint32_t i = 0; i < desc->port_count; ++i) {
-                            const auto& portd = desc->ports[i];
-                            nlohmann::json p = nlohmann::json::object();
-                            p["name"] = portd.name;
-                            p["type"] = port_type_str(portd.type);
-                            p["transport"] = transport_str(portd.transport);
-                            if (portd.type_name) p["type_name"] = portd.type_name;
-                            if (portd.stable_type_id) p["stable_type_id"] = portd.stable_type_id;
-                            if (portd.payload_size > 0) p["payload_size"] = portd.payload_size;
-                            if (portd.direction == VIVID_PORT_INPUT)
-                                inputs_arr.push_back(std::move(p));
-                            else
-                                outputs_arr.push_back(std::move(p));
-                        }
-                        op["inputs"] = std::move(inputs_arr);
-                        op["outputs"] = std::move(outputs_arr);
-
+                        nlohmann::json detail = load_operator_doc_detail(catalog, type_name);
+                        nlohmann::json op = build_operator_docs_response(*desc,
+                            detail.is_null() ? nullptr : &detail, name);
                         ops_arr.push_back(std::move(op));
                     }
                     res["operators"] = std::move(ops_arr);

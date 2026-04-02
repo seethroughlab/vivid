@@ -58,6 +58,9 @@ int main() {
     std::filesystem::copy_file(build_dir + "/test_op_v1.dylib",
         staging + "/test_op_v1.dylib",
         std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/test_op_abi_v4.dylib",
+        staging + "/test_op_abi_v4.dylib",
+        std::filesystem::copy_options::overwrite_existing);
     std::filesystem::copy_file(build_dir + "/test_op_v1.dylib",
         staging_mixed + "/test_op_v1.dylib",
         std::filesystem::copy_options::overwrite_existing);
@@ -289,6 +292,25 @@ int main() {
         }
     }
 
+    // Test 13c: stale previous-ABI plugin is rejected and recorded as ABI mismatch
+    {
+        vivid::OperatorRegistry reg;
+        check(reg.scan_deferred(staging.c_str()), "scan_deferred succeeds with stale ABI plugin present");
+        const auto* stale = reg.probe_descriptor("TestOpAbiV4");
+        check(stale == nullptr, "previous-ABI plugin is not accepted as a descriptor");
+        auto mismatches = reg.abi_mismatch_diagnostics_for_dir(staging);
+        bool found = false;
+        for (const auto& item : mismatches) {
+            if (item.plugin_name != "test_op_abi_v4.dylib")
+                continue;
+            found = true;
+            check(item.plugin_abi == 4u, "previous-ABI diagnostic captures plugin ABI 4");
+            check(item.runtime_abi == VIVID_OPERATOR_ABI_VERSION,
+                  "previous-ABI diagnostic captures current runtime ABI");
+        }
+        check(found, "previous-ABI plugin produces ABI mismatch diagnostic");
+    }
+
     // Test 14: find existing type
     {
         vivid::OperatorRegistry reg;
@@ -433,6 +455,15 @@ int main() {
                 check(desc->ports[1].semantic_tag != nullptr &&
                           std::strcmp(desc->ports[1].semantic_tag, "audio_signal_out") == 0,
                       "probe preserves output port semantic_tag");
+                check(desc->ports[0].semantic_shape != nullptr &&
+                          std::strcmp(desc->ports[0].semantic_shape, "audio_buffer") == 0,
+                      "probe preserves input port semantic_shape");
+                check(desc->ports[0].semantic_intent != nullptr &&
+                          std::strcmp(desc->ports[0].semantic_intent, "monitor_input") == 0,
+                      "probe preserves input port semantic_intent");
+                check(desc->ports[0].description != nullptr &&
+                          std::strcmp(desc->ports[0].description, "Stereo audio input") == 0,
+                      "probe preserves input port description");
             }
         }
     }

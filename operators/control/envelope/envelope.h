@@ -16,7 +16,17 @@ struct EnvelopeThumbState;
  * Supports linear, exponential, and logarithmic curve shapes. Can also
  * retrigger on beat phase wrap for rhythmic envelopes.
  *
+ * @input gate Gate signal. Rising edges start the ADSR and falling edges trigger release.
+ * @input beat_phase External 0-1 beat ramp. A wrap retriggers the envelope globally.
+ * @output value The computed envelope value after amplitude and offset are applied.
  * @tip Connect beat_phase from a Clock to retrigger the envelope rhythmically.
+ * @tip In polyphonic graphs, drive gate from voices/gates so each lane gets its own ADSR state.
+ * @recipe voices/gates -> EnvelopeAu/gate -> VoiceMixer/amp_env_audio
+ * @recipe EnvelopeAu/value -> Filter/cutoff_mod with PolyVoiceAllocator/frequencies -> Filter/frequencies
+ * @pitfall beat_phase retriggers globally; use gate when you want per-note articulation.
+ * @family voice_shaper
+ * @best_used_with PolyVoiceAllocator, VoiceMixer, Filter
+ * @common_companions ClockAu, ChordProgressionAu, WavetableOsc
  * @param curve Envelope curve shape: linear, exponential, or logarithmic.
  * @see LFO, MSEG, SpreadADSR
  */
@@ -130,9 +140,26 @@ struct Envelope : vivid::OperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"gate",       VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
-        out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
-        out.push_back({"value",      VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        VividPortDescriptor gate_port{"gate", VIVID_PORT_SCALAR, VIVID_PORT_INPUT};
+        vivid::semantic_tag(gate_port, "gate");
+        vivid::semantic_shape(gate_port, "scalar");
+        vivid::semantic_intent(gate_port, "per_note_gate");
+        vivid::description(gate_port, "Gate input for ADSR triggering. Use voices/gates for per-note envelopes.");
+        out.push_back(gate_port);
+
+        VividPortDescriptor beat_phase_port{"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT};
+        vivid::semantic_tag(beat_phase_port, "beat_phase");
+        vivid::semantic_shape(beat_phase_port, "scalar");
+        vivid::semantic_intent(beat_phase_port, "global_retrigger_phase");
+        vivid::description(beat_phase_port, "Global tempo phase. A wrap retriggers the envelope for all lanes.");
+        out.push_back(beat_phase_port);
+
+        VividPortDescriptor value_port{"value", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT};
+        vivid::semantic_tag(value_port, "amplitude_linear");
+        vivid::semantic_shape(value_port, "scalar");
+        vivid::semantic_intent(value_port, "envelope_output");
+        vivid::description(value_port, "Envelope output signal for amp, filter, or modulation shaping.");
+        out.push_back(value_port);
     }
 
     // ── Shared ADSR step ────────────────────────────────────────────────

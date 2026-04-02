@@ -148,6 +148,11 @@ def parse_doc_block(raw: str) -> dict:
         "description": None,
         "tips": [],
         "related": [],
+        "recipes": [],
+        "pitfalls": [],
+        "operator_family": None,
+        "best_used_with": [],
+        "common_companions": [],
         "params": {},
         "inputs": {},
         "outputs": {},
@@ -194,6 +199,31 @@ def parse_doc_block(raw: str) -> dict:
                 current_tag = "see"
                 current_name = None
 
+            elif tag == "recipe":
+                flush_body()
+                result["recipes"].append(rest)
+                current_tag = "recipe"
+                current_name = len(result["recipes"]) - 1
+
+            elif tag == "pitfall":
+                flush_body()
+                result["pitfalls"].append(rest)
+                current_tag = "pitfall"
+                current_name = len(result["pitfalls"]) - 1
+
+            elif tag == "family":
+                flush_body()
+                result["operator_family"] = rest
+                current_tag = "family"
+                current_name = None
+
+            elif tag in ("best_used_with", "common_companions"):
+                flush_body()
+                names = [n.strip() for n in rest.split(",") if n.strip()]
+                result[tag] = names
+                current_tag = tag
+                current_name = None
+
             elif tag in ("param", "input", "output"):
                 flush_body()
                 # Extract name token
@@ -218,6 +248,10 @@ def parse_doc_block(raw: str) -> dict:
                 body_lines.append(line)
             elif current_tag == "tip" and current_name is not None:
                 result["tips"][current_name] += " " + line.strip()
+            elif current_tag == "recipe" and current_name is not None:
+                result["recipes"][current_name] += " " + line.strip()
+            elif current_tag == "pitfall" and current_name is not None:
+                result["pitfalls"][current_name] += " " + line.strip()
             elif current_tag in ("param", "input", "output") and current_name is not None:
                 target = {"param": "params", "input": "inputs", "output": "outputs"}[current_tag]
                 result[target][current_name] += " " + line.strip()
@@ -275,6 +309,7 @@ def merge_runtime(doc: dict, runtime: dict) -> dict:
             "semantic_shape": p.get("semantic_shape"),
             "semantic_unit": p.get("semantic_unit"),
             "semantic_intent": p.get("semantic_intent"),
+            "description": p.get("description"),
             "doc": param_docs.get(p.get("name")),
         }
         merged_params.append(entry)
@@ -289,12 +324,32 @@ def merge_runtime(doc: dict, runtime: dict) -> dict:
         merged_inputs.append({
             "name": p.get("name"),
             "type": p.get("type"),
+            "transport": p.get("transport"),
+            "type_name": p.get("type_name"),
+            "stable_type_id": p.get("stable_type_id"),
+            "payload_size": p.get("payload_size"),
+            "channels": p.get("channels"),
+            "default": p.get("default"),
+            "semantic_tag": p.get("semantic_tag"),
+            "semantic_shape": p.get("semantic_shape"),
+            "semantic_intent": p.get("semantic_intent"),
+            "description": p.get("description"),
             "doc": input_docs.get(p.get("name")),
         })
     for p in rt.get("outputs", []):
         merged_outputs.append({
             "name": p.get("name"),
             "type": p.get("type"),
+            "transport": p.get("transport"),
+            "type_name": p.get("type_name"),
+            "stable_type_id": p.get("stable_type_id"),
+            "payload_size": p.get("payload_size"),
+            "channels": p.get("channels"),
+            "default": p.get("default"),
+            "semantic_tag": p.get("semantic_tag"),
+            "semantic_shape": p.get("semantic_shape"),
+            "semantic_intent": p.get("semantic_intent"),
+            "description": p.get("description"),
             "doc": output_docs.get(p.get("name")),
         })
     doc["inputs"] = merged_inputs
@@ -321,10 +376,17 @@ def build_operator_doc(op: dict, runtime: dict | None) -> dict:
         "id": op["id"],
         "domain": op["domain"],
         "source_file": source_file,
+        "source_path": source_file,
         "brief": None,
+        "body": None,
         "description": None,
         "tips": [],
         "related": [],
+        "recipes": [],
+        "pitfalls": [],
+        "operator_family": None,
+        "best_used_with": [],
+        "common_companions": [],
         "has_docs": False,
     }
 
@@ -334,10 +396,25 @@ def build_operator_doc(op: dict, runtime: dict | None) -> dict:
         if raw:
             parsed = parse_doc_block(raw)
             entry["brief"] = parsed["brief"]
+            entry["body"] = parsed["description"]
             entry["description"] = parsed["description"]
             entry["tips"] = parsed["tips"]
             entry["related"] = parsed["related"]
-            entry["has_docs"] = parsed["brief"] is not None
+            entry["recipes"] = parsed["recipes"]
+            entry["pitfalls"] = parsed["pitfalls"]
+            entry["operator_family"] = parsed["operator_family"]
+            entry["best_used_with"] = parsed["best_used_with"]
+            entry["common_companions"] = parsed["common_companions"]
+            entry["has_docs"] = any([
+                parsed["brief"],
+                parsed["description"],
+                parsed["tips"],
+                parsed["params"],
+                parsed["inputs"],
+                parsed["outputs"],
+                parsed["recipes"],
+                parsed["pitfalls"],
+            ])
 
             # Store doc narratives for runtime merge
             entry["param_docs"] = parsed["params"]
@@ -358,6 +435,7 @@ def build_operator_doc(op: dict, runtime: dict | None) -> dict:
     # Make source_file relative
     try:
         entry["source_file"] = str(Path(entry["source_file"]).relative_to(Path.cwd()))
+        entry["source_path"] = str(Path(entry["source_path"]).relative_to(Path.cwd()))
     except ValueError:
         pass
 
@@ -402,6 +480,7 @@ def main():
                 "brief": e["brief"],
                 "has_docs": e["has_docs"],
                 "related": e["related"],
+                "operator_family": e["operator_family"],
             }
             for e in entries
         ],
@@ -413,9 +492,9 @@ def main():
     # Write per-operator detail files
     documented = 0
     for entry in entries:
+        detail_path = out_dir / f"{entry['id']}.json"
+        detail_path.write_text(json.dumps(entry, indent=2) + "\n")
         if entry["has_docs"]:
-            detail_path = out_dir / f"{entry['id']}.json"
-            detail_path.write_text(json.dumps(entry, indent=2) + "\n")
             documented += 1
 
     print(f"Wrote {documented} detail files ({len(entries) - documented} undocumented)")

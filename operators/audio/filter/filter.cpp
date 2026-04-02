@@ -12,7 +12,20 @@
  * Peak, Allpass, Comb, Ladder, Formant, Diode, and MS-20 modes. Keytracking
  * shifts cutoff based on incoming note frequency for polyphonic chains.
  *
+ * @input input Audio signal to filter.
+ * @input cutoff_cv Scalar cutoff modulation in semitone-like octave steps.
+ * @input resonance_cv Scalar resonance modulation added to the resonance param.
+ * @input cutoff_mod Per-lane cutoff modulation for polyphonic note articulation.
+ * @input frequencies Per-lane note frequencies used for keytracking in poly chains.
+ * @output output Filtered audio signal.
  * @tip Use Comb mode with short delay times for Karplus-Strong-like string sounds.
+ * @tip In poly synth graphs, pair cutoff_mod with an EnvelopeAu driven by voices/gates.
+ * @recipe EnvelopeAu/value -> Filter/cutoff_mod
+ * @recipe PolyVoiceAllocator/frequencies -> Filter/frequencies
+ * @pitfall cutoff_cv is global scalar modulation; cutoff_mod is the per-lane path for poly voices.
+ * @family voice_shaper
+ * @best_used_with EnvelopeAu, PolyVoiceAllocator, Gain
+ * @common_companions ChordProgressionAu, WavetableOsc, VoiceMixer
  * @param mode Filter algorithm. Each mode has a distinct character.
  * @param keytrack Scales cutoff with note frequency. 1 = full tracking.
  * @see ParametricEQ, Vocoder
@@ -82,13 +95,51 @@ struct Filter : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",        VIVID_PORT_AUDIO_BUFFER,  VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
-        out.push_back({"output",       VIVID_PORT_AUDIO_BUFFER,  VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
-        out.push_back({"cutoff_cv",    VIVID_PORT_SCALAR, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
-        out.push_back({"resonance_cv", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
+        VividPortDescriptor input_port{"input", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,
+                                       VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f};
+        vivid::semantic_tag(input_port, "audio_signal");
+        vivid::semantic_shape(input_port, "audio_buffer");
+        vivid::semantic_intent(input_port, "audio_input");
+        vivid::description(input_port, "Audio input to be filtered.");
+        out.push_back(input_port);
+
+        VividPortDescriptor output_port{"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT,
+                                        VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f};
+        vivid::semantic_tag(output_port, "audio_signal");
+        vivid::semantic_shape(output_port, "audio_buffer");
+        vivid::semantic_intent(output_port, "audio_output");
+        vivid::description(output_port, "Filtered audio output.");
+        out.push_back(output_port);
+
+        VividPortDescriptor cutoff_cv_port{"cutoff_cv", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,
+                                           VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f};
+        vivid::semantic_tag(cutoff_cv_port, "pitch_like_mod");
+        vivid::semantic_shape(cutoff_cv_port, "scalar");
+        vivid::semantic_intent(cutoff_cv_port, "global_cutoff_mod");
+        vivid::description(cutoff_cv_port, "Global cutoff modulation shared by all voices.");
+        out.push_back(cutoff_cv_port);
+
+        VividPortDescriptor resonance_cv_port{"resonance_cv", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,
+                                              VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f};
+        vivid::semantic_tag(resonance_cv_port, "resonance");
+        vivid::semantic_shape(resonance_cv_port, "scalar");
+        vivid::semantic_intent(resonance_cv_port, "global_resonance_mod");
+        vivid::description(resonance_cv_port, "Global resonance modulation shared by all voices.");
+        out.push_back(resonance_cv_port);
         // Spread inputs for per-voice modulation (indexed via lane_index in lane-lifted chains)
-        out.push_back({"cutoff_mod",   VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
-        out.push_back({"frequencies",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
+        VividPortDescriptor cutoff_mod_port{"cutoff_mod", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT};
+        vivid::semantic_tag(cutoff_mod_port, "cutoff_mod");
+        vivid::semantic_shape(cutoff_mod_port, "lane_array");
+        vivid::semantic_intent(cutoff_mod_port, "per_note_cutoff_mod");
+        vivid::description(cutoff_mod_port, "Per-lane cutoff modulation for polyphonic envelopes and note shaping.");
+        out.push_back(cutoff_mod_port);
+
+        VividPortDescriptor frequencies_port{"frequencies", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT};
+        vivid::semantic_tag(frequencies_port, "frequency_hz");
+        vivid::semantic_shape(frequencies_port, "lane_array");
+        vivid::semantic_intent(frequencies_port, "per_note_frequency");
+        vivid::description(frequencies_port, "Per-lane note frequencies used for keytracking in polyphonic chains.");
+        out.push_back(frequencies_port);
         vivid::append_analysis_ports(out);
     }
 

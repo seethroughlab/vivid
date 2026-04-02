@@ -203,6 +203,26 @@ Param<T>& description(Param<T>& p, const char* desc) {
     return p;
 }
 
+inline VividPortDescriptor& semantic_tag(VividPortDescriptor& p, const char* tag) {
+    p.semantic_tag = tag;
+    return p;
+}
+
+inline VividPortDescriptor& semantic_shape(VividPortDescriptor& p, const char* shape) {
+    p.semantic_shape = shape;
+    return p;
+}
+
+inline VividPortDescriptor& semantic_intent(VividPortDescriptor& p, const char* intent) {
+    p.semantic_intent = intent;
+    return p;
+}
+
+inline VividPortDescriptor& description(VividPortDescriptor& p, const char* desc) {
+    p.description = desc;
+    return p;
+}
+
 // ---------------------------------------------------------------------------
 // OperatorBase — abstract base class for operators (no process method)
 // ---------------------------------------------------------------------------
@@ -545,4 +565,3 @@ extern "C" void vivid_draw_inspector(void* instance,                           \
                                      VividInspectorContext* ctx) {              \
     static_cast<_VividInstance*>(instance)->op.draw_inspector(ctx);             \
 }
-

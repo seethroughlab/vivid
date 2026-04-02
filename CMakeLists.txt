@@ -1054,6 +1054,14 @@ enable_testing()
 # Test operator plugins (two versions of the same operator)
 add_vivid_operator(test_op_v1     tests/operators/test_op_v1.cpp)
 add_vivid_operator(test_op_v2     tests/operators/test_op_v2.cpp)
+add_library(test_op_abi_v4 MODULE tests/operators/test_op_abi_v4.cpp)
+target_link_libraries(test_op_abi_v4 PRIVATE vivid_operator_api)
+set_target_properties(test_op_abi_v4 PROPERTIES
+    PREFIX ""
+    SUFFIX ${VIVID_PLUGIN_SUFFIX}
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+)
 add_vivid_operator(test_op_incompatible_port tests/operators/test_op_incompatible_port.cpp)
 add_vivid_operator(test_op_null_desc tests/operators/test_op_null_desc.cpp)
 add_vivid_operator(control_thumb_op tests/operators/control_thumb_op.cpp EXTRA_LIBS webgpu)
@@ -1592,7 +1600,7 @@ add_executable(test_operator_loader
 )
 target_include_directories(test_operator_loader PRIVATE src)
 target_link_libraries(test_operator_loader PRIVATE vivid_operator_api webgpu nlohmann_json::nlohmann_json)
-add_dependencies(test_operator_loader test_op_v1 test_op_v2 test_op_incompatible_port test_op_null_desc test_op_bad_custom_type control_pass_op audio_test_op export_custom_port_op control_thumb_op file_drop_test_op particles)
+add_dependencies(test_operator_loader test_op_v1 test_op_v2 test_op_abi_v4 test_op_incompatible_port test_op_null_desc test_op_bad_custom_type control_pass_op audio_test_op export_custom_port_op control_thumb_op file_drop_test_op particles)
 add_test(NAME test_operator_loader COMMAND test_operator_loader WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_operator_loader PROPERTIES LABELS "LOADER")
 
