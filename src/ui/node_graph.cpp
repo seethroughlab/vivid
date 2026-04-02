@@ -1539,6 +1539,19 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
         }
     }
 
+    // Flat dropdown popup hover tracking (non-preset param dropdowns)
+    dropdown_flat_hovered_idx_ = -1;
+    if (dropdown_open_ && !dropdown_is_preset_ && !dropdown_is_state_preset_ && !dropdown_labels_.empty()) {
+        float item_h = kDropdownItemH;
+        float popup_h = dropdown_labels_.size() * item_h + 4;
+        if (mouse_.x >= dropdown_x_ && mouse_.x <= dropdown_x_ + dropdown_w_ &&
+            mouse_.y >= dropdown_y_ && mouse_.y <= dropdown_y_ + popup_h) {
+            int idx = static_cast<int>((mouse_.y - dropdown_y_ - 2) / item_h);
+            if (idx >= 0 && idx < static_cast<int>(dropdown_labels_.size()))
+                dropdown_flat_hovered_idx_ = idx;
+        }
+    }
+
     // Param label tooltip hover timer
     if (hovered_label_idx_ >= 0) {
         const auto& r = label_rects_[hovered_label_idx_];

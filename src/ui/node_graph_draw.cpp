@@ -894,6 +894,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
             py += 20;
         }
 
+        if (!c.dropped) {
         // Remap fields
         static const char* field_labels[4] = { "From Min", "From Max", "To Min", "To Max" };
         float vals[4] = { c.from_min, c.from_max, c.to_min, c.to_max };
@@ -951,6 +952,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
         wire_clamp_rects_.push_back({px, py, cb_size, cb_size});
         tr.draw_text(px + cb_size + 6, py + 1, T("clamp", "Clamp"),
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.85f);
+        } // !c.dropped
 
         insp_content_h_ = 0;
         return;
@@ -3603,9 +3605,10 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
             draw_popup_bg(tr, style_, dropdown_x_, dropdown_y_, dropdown_w_, popup_h);
             for (int i = 0; i < static_cast<int>(dropdown_labels_.size()); ++i) {
                 float iy = dropdown_y_ + 2 + i * item_h;
-                if (i == dropdown_sel_) {
+                if (i == dropdown_flat_hovered_idx_ || i == dropdown_sel_) {
                     tr.draw_rect(dropdown_x_ + 2, iy, dropdown_w_ - 4, item_h,
-                                 style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2], 0.9f);
+                                 style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2],
+                                 (i == dropdown_flat_hovered_idx_) ? 0.9f : 0.5f);
                 }
                 tr.draw_text(dropdown_x_ + 8, iy + 2, dropdown_labels_[i].c_str(),
                              style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);

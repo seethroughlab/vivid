@@ -228,9 +228,9 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
             graph_meta_fields_[graph_meta_active_field_]) {
             return {graph_meta_fields_[graph_meta_active_field_], filter_printable};
         }
-        if (example_browser_open_)
+        if (example_browser_open_ && example_browser_search_focused_)
             return {&example_browser_filter_, filter_printable};
-        if (pkg_browser_open_)
+        if (pkg_browser_open_ && pkg_browser_search_focused_)
             return {&pkg_browser_filter_, filter_printable};
         if (prefs_open_ && prefs_editing_custom_)
             return {&prefs_custom_command_, filter_printable};
@@ -454,7 +454,7 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
             example_browser_sel_ = std::min(max_sel, example_browser_sel_ + 1);
             if ((example_browser_sel_ + 1) * kPkgBrowserItemH > example_browser_scroll_ + kPkgBrowserMaxVisible * kPkgBrowserItemH)
                 example_browser_scroll_ = (example_browser_sel_ - kPkgBrowserMaxVisible + 1) * kPkgBrowserItemH;
-        } else if (key == GLFW_KEY_BACKSPACE) {
+        } else if (key == GLFW_KEY_BACKSPACE && example_browser_search_focused_) {
             text_edit_backspace(example_browser_filter_, text_edit_);
             example_browser_scroll_ = 0.0f;
             example_browser_sel_ = 0;
@@ -536,7 +536,7 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
                 }
                 }
             }
-        } else if (key == GLFW_KEY_BACKSPACE) {
+        } else if (key == GLFW_KEY_BACKSPACE && pkg_browser_search_focused_) {
             text_edit_backspace(pkg_browser_filter_, text_edit_);
             pkg_browser_scroll_ = 0;
             pkg_browser_sel_ = 0;
@@ -1221,9 +1221,9 @@ void NodeGraphUI::on_char(unsigned int codepoint) {
             graph_meta_fields_[graph_meta_active_field_]) {
             return {graph_meta_fields_[graph_meta_active_field_], filter_printable};
         }
-        if (example_browser_open_)
+        if (example_browser_open_ && example_browser_search_focused_)
             return {&example_browser_filter_, filter_printable};
-        if (pkg_browser_open_)
+        if (pkg_browser_open_ && pkg_browser_search_focused_)
             return {&pkg_browser_filter_, filter_printable};
         if (session_editing_name_)
             return {&session_edit_buffer_, filter_printable};

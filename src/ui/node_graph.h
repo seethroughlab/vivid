@@ -699,6 +699,7 @@ private:
     std::vector<SubmenuLevel> dropdown_submenu_stack_;
     int dropdown_hover_frames_ = 0;
     int dropdown_hover_target_ = -1;
+    int dropdown_flat_hovered_idx_ = -1;  // hover index for non-preset flat dropdowns
 
     // State-preset dropdown context
     int dropdown_state_idx_ = -1;
@@ -887,6 +888,7 @@ private:
 
     // --- Package browser ---
     bool pkg_browser_open_ = false;
+    bool pkg_browser_search_focused_ = false;
     std::string pkg_browser_filter_;
     int pkg_browser_sel_ = 0;
     float pkg_browser_scroll_ = 0.0f;
@@ -901,6 +903,7 @@ private:
 
     // --- Example browser ---
     bool example_browser_open_ = false;
+    bool example_browser_search_focused_ = false;
     std::string example_browser_filter_;
     int example_browser_sel_ = 0;
     float example_browser_scroll_ = 0.0f;

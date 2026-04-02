@@ -27,10 +27,22 @@ void NodeGraphUI::update_package_browser() {
     if (!overlay_contains(layout, mouse_.x, mouse_.y)) {
         pkg_browser_open_ = false;
         pkg_browser_filter_.clear();
+        pkg_browser_search_focused_ = false;
         mouse_.left_clicked = false;
         mouse_.left_released = false;
         return;
     }
+
+    // Search field click-to-focus
+    float search_cy = py + kPkgBrowserPadY + kPkgBrowserHeaderH;
+    if (mouse_.x >= cx && mouse_.x <= cx + inner_w &&
+        mouse_.y >= search_cy && mouse_.y <= search_cy + kPkgBrowserSearchH) {
+        pkg_browser_search_focused_ = true;
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+        return;
+    }
+    pkg_browser_search_focused_ = false;
 
     // Hit-test "Link Local..." button
     static const float kLinkBtnW = 96.0f;
@@ -154,10 +166,22 @@ void NodeGraphUI::update_example_browser() {
     if (!overlay_contains(layout, mouse_.x, mouse_.y)) {
         example_browser_open_ = false;
         example_browser_filter_.clear();
+        example_browser_search_focused_ = false;
         mouse_.left_clicked = false;
         mouse_.left_released = false;
         return;
     }
+
+    // Search field click-to-focus
+    float search_cy = py + kPkgBrowserPadY + kPkgBrowserHeaderH;
+    if (mouse_.x >= cx && mouse_.x <= cx + inner_w &&
+        mouse_.y >= search_cy && mouse_.y <= search_cy + kPkgBrowserSearchH) {
+        example_browser_search_focused_ = true;
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+        return;
+    }
+    example_browser_search_focused_ = false;
 
     float cy = py + kPkgBrowserPadY + kPkgBrowserHeaderH + kPkgBrowserSearchH + 6;
     static const char* env_tabs[] = { "All", "GPU", "Audio", "Control", "I/O" };

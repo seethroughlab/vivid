@@ -47,6 +47,8 @@ void NodeGraphUI::refresh_package_browser_snapshot_if_ready() {
 void NodeGraphUI::toggle_package_browser() {
     pkg_browser_open_ = !pkg_browser_open_;
     if (pkg_browser_open_) example_browser_open_ = false;
+    pkg_browser_search_focused_ = false;
+    pkg_browser_filter_.clear();
     if (pkg_browser_open_ && pkg_browser_callbacks_.list_entries) {
         // Refresh catalog and load entries
         if (pkg_browser_callbacks_.fetch_state && pkg_browser_callbacks_.refresh) {
@@ -78,6 +80,7 @@ void NodeGraphUI::toggle_example_browser() {
     example_browser_open_ = !example_browser_open_;
     if (example_browser_open_) {
         pkg_browser_open_ = false;
+        example_browser_search_focused_ = false;
         example_browser_filter_.clear();
         example_browser_sel_ = 0;
         example_browser_scroll_ = 0;

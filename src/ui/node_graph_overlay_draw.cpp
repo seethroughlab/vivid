@@ -74,23 +74,27 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
 
     cy += kPkgBrowserHeaderH;
 
-    tr.draw_rect(cx, cy, inner_w, kPkgBrowserSearchH,
-                 style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
-    tr.draw_rect(cx, cy, inner_w, 1,
-                 style_.accent[0], style_.accent[1], style_.accent[2]);
-
-    std::string search_display = pkg_browser_filter_;
-    if (static_cast<int>(perf_frame_counter_ / 30) % 2 == 0)
-        search_display += "_";
-    else
-        search_display += " ";
-
-    if (pkg_browser_filter_.empty() && search_display.size() <= 1) {
-        tr.draw_text(cx + 4, cy + 5, T("search_packages", "Search packages..."),
-                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
-    } else {
+    if (pkg_browser_search_focused_) {
+        tr.draw_rect(cx - 1, cy - 1, inner_w + 2, kPkgBrowserSearchH + 2,
+                     style_.accent[0], style_.accent[1], style_.accent[2]);
+        tr.draw_rect(cx, cy, inner_w, kPkgBrowserSearchH,
+                     style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
+        std::string search_display = pkg_browser_filter_;
+        search_display += (static_cast<int>(perf_frame_counter_ / 30) % 2 == 0) ? "_" : " ";
         tr.draw_text(cx + 4, cy + 5, search_display.c_str(),
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    } else {
+        tr.draw_rect(cx, cy, inner_w, kPkgBrowserSearchH,
+                     style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
+        tr.draw_rect(cx, cy, inner_w, 1,
+                     style_.accent[0], style_.accent[1], style_.accent[2]);
+        if (pkg_browser_filter_.empty()) {
+            tr.draw_text(cx + 4, cy + 5, T("search_packages", "Search packages..."),
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
+        } else {
+            tr.draw_text(cx + 4, cy + 5, pkg_browser_filter_.c_str(),
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        }
     }
     cy += kPkgBrowserSearchH + 6;
 
@@ -312,17 +316,26 @@ void NodeGraphUI::draw_example_browser(Renderer2D& tr) {
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
     cy += kPkgBrowserHeaderH;
 
-    tr.draw_rect(cx, cy, inner_w, kPkgBrowserSearchH,
-                 style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
-    tr.draw_rect(cx, cy, inner_w, 1, style_.accent[0], style_.accent[1], style_.accent[2]);
-    std::string s = example_browser_filter_;
-    s += (static_cast<int>(perf_frame_counter_ / 30) % 2 == 0) ? "_" : " ";
-    if (example_browser_filter_.empty() && s.size() <= 1) {
-        tr.draw_text(cx + 4, cy + 5, T("search_examples", "Search by title, tags, id, path..."),
-                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.55f);
-    } else {
+    if (example_browser_search_focused_) {
+        tr.draw_rect(cx - 1, cy - 1, inner_w + 2, kPkgBrowserSearchH + 2,
+                     style_.accent[0], style_.accent[1], style_.accent[2]);
+        tr.draw_rect(cx, cy, inner_w, kPkgBrowserSearchH,
+                     style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
+        std::string s = example_browser_filter_;
+        s += (static_cast<int>(perf_frame_counter_ / 30) % 2 == 0) ? "_" : " ";
         tr.draw_text(cx + 4, cy + 5, s.c_str(),
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    } else {
+        tr.draw_rect(cx, cy, inner_w, kPkgBrowserSearchH,
+                     style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
+        tr.draw_rect(cx, cy, inner_w, 1, style_.accent[0], style_.accent[1], style_.accent[2]);
+        if (example_browser_filter_.empty()) {
+            tr.draw_text(cx + 4, cy + 5, T("search_examples", "Search by title, tags, id, path..."),
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.55f);
+        } else {
+            tr.draw_text(cx + 4, cy + 5, example_browser_filter_.c_str(),
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        }
     }
     cy += kPkgBrowserSearchH + 6;
 
