@@ -134,4 +134,4 @@ Contributions to this repository are subject to the [Contributor License Agreeme
 
 ---
 
-*Jeff Crouse / [See-Through Lab](https://see-through.studio)*
+*Jeff Crouse / [See-Through Lab](https://seethroughlab.com)*
