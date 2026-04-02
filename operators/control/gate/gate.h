@@ -2,7 +2,6 @@
 
 #include "operator_api/operator.h"
 
-struct GateThumbState;
 /**
  * @brief Passes or blocks a signal based on a gate threshold.
  *
@@ -30,8 +29,6 @@ struct Gate : vivid::OperatorBase {
         vivid::semantic_intent(invert, "invert_logic");
     }
 
-    ~Gate() override;
-
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&threshold);
         out.push_back(&invert);
@@ -54,9 +51,4 @@ struct Gate : vivid::OperatorBase {
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override;
-
-private:
-    GateThumbState* thumb_state_ = nullptr;
-
-    void rebuild_thumb_pipeline(const VividThumbnailContext* ctx);
 };

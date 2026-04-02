@@ -149,13 +149,6 @@ struct TrackerCore : vivid::OperatorBase {
         vivid::description(pattern_data, "Serialized tracker pattern data");
     }
 
-    WGPURenderPipeline thumb_pipeline_ = nullptr;
-    WGPUBindGroup thumb_bind_group_ = nullptr;
-    WGPUBindGroupLayout thumb_bind_layout_ = nullptr;
-    WGPUBuffer thumb_uniform_buf_ = nullptr;
-    WGPUShaderModule thumb_shader_ = nullptr;
-    WGPUPipelineLayout thumb_pipe_layout_ = nullptr;
-    WGPUTextureFormat thumb_pipeline_format_ = WGPUTextureFormat_Undefined;
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&rate);           // 0
@@ -275,20 +268,12 @@ struct TrackerCore : vivid::OperatorBase {
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override {
-        if (!ctx) return;
-        if (!thumb_pipeline_ || thumb_pipeline_format_ != ctx->thumbnail_format) {
-            rebuild_thumb_pipeline(ctx);
-        }
-        if (!thumb_pipeline_ || !thumb_bind_group_ || !thumb_uniform_buf_) {
-            vivid_report_thumbnail_error(ctx, "tracker thumbnail pipeline init failed");
-            return;
-        }
+        if (!ctx || !ctx->draw.opaque) return;
+        const auto& d = ctx->draw;
+        void* o = d.opaque;
 
-        struct Uniforms {
-            float meta[4];          // num_rows, current_row, num_channels_used, pad
-            uint32_t activity_lo[4]; // ch0..ch3 row activity bitmasks (32 bits each)
-            uint32_t activity_hi[4]; // ch4..ch7 row activity bitmasks
-        } u{};
+        float w = static_cast<float>(ctx->thumbnail_logical_width ? ctx->thumbnail_logical_width : ctx->thumbnail_width);
+        float h = static_cast<float>(ctx->thumbnail_logical_height ? ctx->thumbnail_logical_height : ctx->thumbnail_height);
 
         int cur_row = -1;
         if (ctx->output_count > 3)
@@ -297,56 +282,76 @@ struct TrackerCore : vivid::OperatorBase {
         // Parse song data
         tracker::TrackerSong thumb_song;
         bool has_data = false;
-        if (pattern_data.str_value.size() > 0) {
+        if (pattern_data.str_value.size() > 0)
             has_data = tracker::deserialize_song(pattern_data.str_value, thumb_song);
-        }
 
         int nr = 0;
-        int num_ch_used = 0;
+        int num_ch_used = 1;
+        int pat_idx = 0;
         if (has_data) {
-            int pat_idx = 0;
             if (ctx->output_count > 4)
                 pat_idx = std::clamp(static_cast<int>(ctx->output_values[4]), 0, thumb_song.num_patterns - 1);
-
-            const auto& pat = thumb_song.patterns[pat_idx];
-            nr = pat.num_rows;
-
-            // Build activity bitmasks — quantize into 32 bins
+            nr = thumb_song.patterns[pat_idx].num_rows;
             for (int ch = 0; ch < tracker::MAX_CHANNELS; ++ch) {
-                uint32_t mask = 0;
-                bool ch_has_notes = false;
                 for (int r = 0; r < nr; ++r) {
-                    if (pat.cells[ch][r].note != tracker::NOTE_EMPTY) {
-                        int bin = (nr > 32) ? (r * 32 / nr) : r;
-                        bin = std::min(bin, 31);
-                        mask |= (1u << bin);
-                        ch_has_notes = true;
+                    if (thumb_song.patterns[pat_idx].cells[ch][r].note != tracker::NOTE_EMPTY) {
+                        num_ch_used = std::max(num_ch_used, ch + 1);
+                        break;
                     }
-                }
-                if (ch_has_notes) num_ch_used = ch + 1;
-                if (ch < 4) {
-                    u.activity_lo[ch] = mask;
-                } else {
-                    u.activity_hi[ch - 4] = mask;
                 }
             }
         }
+        if (nr <= 0) nr = 16;
 
-        u.meta[0] = static_cast<float>(std::min(nr, 32));
-        u.meta[1] = static_cast<float>(nr > 32 ? (cur_row * 32 / std::max(nr, 1)) : cur_row);
-        u.meta[2] = static_cast<float>(num_ch_used);
+        // Mute mask
+        int mute_mask = (ctx->param_count > 6) ? static_cast<int>(ctx->param_values[6]) : 0;
 
-        wgpuQueueWriteBuffer(ctx->queue, thumb_uniform_buf_, 0, &u, sizeof(u));
-        vivid::thumbnail::run_pass(ctx, thumb_pipeline_, thumb_bind_group_, "Tracker Thumb Pass");
-    }
+        // Dark background
+        d.draw_rect(o, 0, 0, w, h, {0.07f, 0.08f, 0.09f, 0.9f});
 
-    ~TrackerCore() override {
-        vivid::gpu::release(thumb_pipeline_);
-        vivid::gpu::release(thumb_bind_group_);
-        vivid::gpu::release(thumb_bind_layout_);
-        vivid::gpu::release(thumb_uniform_buf_);
-        vivid::gpu::release(thumb_shader_);
-        vivid::gpu::release(thumb_pipe_layout_);
+        static constexpr float kChColors[8][3] = {
+            {0.39f, 0.63f, 0.86f}, {0.86f, 0.47f, 0.31f}, {0.31f, 0.78f, 0.55f},
+            {0.78f, 0.71f, 0.24f}, {0.63f, 0.39f, 0.78f}, {0.24f, 0.71f, 0.78f},
+            {0.78f, 0.39f, 0.63f}, {0.55f, 0.78f, 0.31f},
+        };
+
+        float margin = 2.0f;
+        float col_w = (w - 2 * margin) / static_cast<float>(num_ch_used);
+        float row_h = (h - 2 * margin) / static_cast<float>(std::min(nr, 32));
+        int display_rows = std::min(nr, 32);
+        float gap = 0.5f;
+
+        // Quantize current row into display range
+        int disp_cur_row = (nr > 32) ? (cur_row * 32 / std::max(nr, 1)) : cur_row;
+
+        for (int ch = 0; ch < num_ch_used; ++ch) {
+            bool muted = (mute_mask & (1 << ch)) != 0;
+            float cx = margin + ch * col_w;
+
+            for (int disp_r = 0; disp_r < display_rows; ++disp_r) {
+                float ry = margin + disp_r * row_h;
+                bool is_current = (disp_r == disp_cur_row);
+
+                // Current row highlight
+                if (is_current && ch == 0) {
+                    d.draw_rect(o, margin, ry, w - 2 * margin, row_h,
+                                {0.2f, 0.22f, 0.25f, 0.5f});
+                }
+
+                // Check activity: map display row back to pattern row
+                int pat_r = (nr > 32) ? (disp_r * nr / 32) : disp_r;
+                bool has_note = has_data && pat_r < nr &&
+                                thumb_song.patterns[pat_idx].cells[ch][pat_r].note != tracker::NOTE_EMPTY;
+
+                if (has_note) {
+                    uint8_t vel = thumb_song.patterns[pat_idx].cells[ch][pat_r].velocity;
+                    float vel_f = (vel > 0) ? static_cast<float>(vel) / 127.0f : 0.8f;
+                    float alpha = muted ? 0.15f : (is_current ? 1.0f : 0.3f + vel_f * 0.5f);
+                    d.draw_rect(o, cx + gap, ry + gap, col_w - 2 * gap, row_h - 2 * gap,
+                                {kChColors[ch][0], kChColors[ch][1], kChColors[ch][2], alpha});
+                }
+            }
+        }
     }
 
     void draw_inspector(VividInspectorContext* ctx) override {
@@ -878,133 +883,6 @@ protected:
                 tracker::deserialize_song(pattern_data.str_value, song_);
             }
         }
-    }
-
-    void rebuild_thumb_pipeline(const VividThumbnailContext* ctx) {
-        vivid::gpu::release(thumb_pipeline_);
-        vivid::gpu::release(thumb_bind_group_);
-        vivid::gpu::release(thumb_bind_layout_);
-        vivid::gpu::release(thumb_uniform_buf_);
-        vivid::gpu::release(thumb_shader_);
-        vivid::gpu::release(thumb_pipe_layout_);
-
-        static const char* kThumbFragment = R"(
-struct Uniforms {
-    info: vec4f,
-    activity_lo: vec4u,
-    activity_hi: vec4u,
-};
-
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
-}
-
-@group(0) @binding(0) var<uniform> uniforms: Uniforms;
-
-@vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    let fs = fullscreenTriangle(vertexIndex, true);
-    var out: VertexOutput;
-    out.position = fs.position;
-    out.uv = fs.uv;
-    return out;
-}
-
-fn get_activity(ch: i32, row: i32) -> bool {
-    var mask: u32;
-    if (ch < 4) {
-        mask = uniforms.activity_lo[ch];
-    } else {
-        mask = uniforms.activity_hi[ch - 4];
-    }
-    return (mask & (1u << u32(row))) != 0u;
-}
-
-fn ch_color(ch: i32) -> vec3f {
-    switch(ch) {
-        case 0: { return vec3f(100.0, 160.0, 220.0); }
-        case 1: { return vec3f(220.0, 120.0, 80.0); }
-        case 2: { return vec3f(80.0, 200.0, 140.0); }
-        case 3: { return vec3f(200.0, 180.0, 60.0); }
-        case 4: { return vec3f(160.0, 100.0, 200.0); }
-        case 5: { return vec3f(60.0, 180.0, 200.0); }
-        case 6: { return vec3f(200.0, 100.0, 160.0); }
-        case 7: { return vec3f(140.0, 200.0, 80.0); }
-        default: { return vec3f(100.0, 100.0, 100.0); }
-    }
-}
-
-@fragment
-fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-    let uv = input.uv;
-    let bg = vec4f(18.0/255.0, 20.0/255.0, 23.0/255.0, 230.0/255.0);
-
-    let num_rows = i32(uniforms.info.x);
-    let cur_row = i32(uniforms.info.y);
-    let num_ch = max(i32(uniforms.info.z), 1);
-
-    if (num_rows <= 0) { return bg; }
-
-    let col_f = uv.x * f32(num_ch);
-    let row_f = uv.y * f32(num_rows);
-    let col = i32(floor(col_f));
-    let row = i32(floor(row_f));
-
-    if (col >= num_ch || row >= num_rows) { return bg; }
-
-    var result = bg;
-
-    // Current row highlight
-    if (row == cur_row) {
-        result = vec4f(
-            min(1.0, bg.r + 30.0/255.0),
-            min(1.0, bg.g + 35.0/255.0),
-            min(1.0, bg.b + 40.0/255.0),
-            bg.a
-        );
-    }
-
-    // Active cell
-    let cell_x = fract(col_f);
-    let cell_y = fract(row_f);
-    let in_cell = cell_x > 0.05 && cell_x < 0.95 && cell_y > 0.05 && cell_y < 0.95;
-
-    if (in_cell && get_activity(col, row)) {
-        let c = ch_color(col);
-        var alpha = 180.0;
-        if (row == cur_row) { alpha = 255.0; }
-        result = vec4f(c / 255.0, alpha / 255.0);
-    }
-
-    return result;
-}
-)";
-
-        static constexpr uint64_t kUniformSize = sizeof(float) * 4 + sizeof(uint32_t) * 8;
-        thumb_shader_ = vivid::thumbnail::create_shader(ctx->device, kThumbFragment, "Tracker Thumb Shader");
-        thumb_uniform_buf_ =
-            vivid::thumbnail::create_uniform_buffer(ctx->device, kUniformSize, "Tracker Thumb Uniforms");
-        thumb_bind_layout_ =
-            vivid::thumbnail::create_uniform_bind_layout(ctx->device, kUniformSize, "Tracker Thumb BGL");
-        thumb_pipe_layout_ =
-            vivid::thumbnail::create_pipeline_layout(ctx->device, thumb_bind_layout_, "Tracker Thumb Layout");
-        thumb_bind_group_ = vivid::thumbnail::create_uniform_bind_group(
-            ctx->device, thumb_bind_layout_, thumb_uniform_buf_, kUniformSize, "Tracker Thumb BG");
-        thumb_pipeline_ = vivid::thumbnail::create_pipeline(
-            ctx->device, thumb_shader_, thumb_pipe_layout_, ctx->thumbnail_format, "Tracker Thumb Pipeline");
-        if (!thumb_shader_ || !thumb_uniform_buf_ || !thumb_bind_layout_ || !thumb_pipe_layout_
-            || !thumb_bind_group_ || !thumb_pipeline_) {
-            vivid::gpu::release(thumb_pipeline_);
-            vivid::gpu::release(thumb_bind_group_);
-            vivid::gpu::release(thumb_bind_layout_);
-            vivid::gpu::release(thumb_uniform_buf_);
-            vivid::gpu::release(thumb_shader_);
-            vivid::gpu::release(thumb_pipe_layout_);
-            thumb_pipeline_format_ = WGPUTextureFormat_Undefined;
-            return;
-        }
-        thumb_pipeline_format_ = ctx->thumbnail_format;
     }
 
     int get_pattern_index() const {

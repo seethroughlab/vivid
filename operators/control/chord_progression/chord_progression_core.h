@@ -110,14 +110,6 @@ struct ChordProgressionCore : vivid::OperatorBase {
 
     vivid::Param<int> midi_channel {"midi_channel", 1, 1, 16};
 
-    WGPURenderPipeline thumb_pipeline_ = nullptr;
-    WGPUBindGroup thumb_bind_group_ = nullptr;
-    WGPUBindGroupLayout thumb_bind_layout_ = nullptr;
-    WGPUBuffer thumb_uniform_buf_ = nullptr;
-    WGPUShaderModule thumb_shader_ = nullptr;
-    WGPUPipelineLayout thumb_pipe_layout_ = nullptr;
-    WGPUTextureFormat thumb_pipeline_format_ = WGPUTextureFormat_Undefined;
-
     // Internal state
     int beat_count_ = 0;
     float prev_phase_ = 0.0f;
@@ -611,19 +603,12 @@ struct ChordProgressionCore : vivid::OperatorBase {
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override {
-        if (!ctx) return;
-        if (!thumb_pipeline_ || thumb_pipeline_format_ != ctx->thumbnail_format) {
-            rebuild_thumb_pipeline(ctx);
-        }
-        if (!thumb_pipeline_ || !thumb_bind_group_ || !thumb_uniform_buf_) {
-            vivid_report_thumbnail_error(ctx, "chord_progression thumbnail pipeline init failed");
-            return;
-        }
+        if (!ctx || !ctx->draw.opaque) return;
+        const auto& d = ctx->draw;
+        void* o = d.opaque;
 
-        struct Uniforms {
-            float meta[4];  // key_root (0-11), chord_root (0-11, -1=none), scale_mask (bitcast u32), pad
-            float pad[4];
-        } u{};
+        float w = static_cast<float>(ctx->thumbnail_logical_width ? ctx->thumbnail_logical_width : ctx->thumbnail_width);
+        float h = static_cast<float>(ctx->thumbnail_logical_height ? ctx->thumbnail_logical_height : ctx->thumbnail_height);
 
         int kr = (ctx->param_count > 1)
             ? std::max(0, std::min(11, static_cast<int>(ctx->param_values[1]))) : 0;
@@ -632,11 +617,10 @@ struct ChordProgressionCore : vivid::OperatorBase {
         int num_steps = (ctx->param_count > 0)
             ? std::max(1, std::min(8, static_cast<int>(ctx->param_values[0]))) : 4;
 
-        // Compute scale mask (12-bit bitmask)
+        // Compute scale mask
         uint32_t scale_mask = 0;
-        for (int d = 0; d < 7; ++d) {
-            scale_mask |= (1u << ((kr + kScaleIntervals[m][d]) % 12));
-        }
+        for (int i = 0; i < 7; ++i)
+            scale_mask |= (1u << ((kr + kScaleIntervals[m][i]) % 12));
 
         // Detect current chord root
         int current_chord_root = -1;
@@ -650,11 +634,9 @@ struct ChordProgressionCore : vivid::OperatorBase {
                     ? std::max(0, std::min(3, static_cast<int>(ctx->param_values[15 + s]))) : 0;
                 int ext = (ctx->param_count > static_cast<uint32_t>(23 + s))
                     ? std::max(0, std::min(2, static_cast<int>(ctx->param_values[23 + s]))) : 0;
-
                 int intervals[5];
                 int csz = build_chord(m, deg, ext, intervals, 5);
                 apply_voicing(voic, intervals, csz);
-
                 int base = kr + oct * 12 + kScaleIntervals[m][deg];
                 float expected = static_cast<float>(base + intervals[0]);
                 if (std::fabs(out_note - expected) < 0.5f) {
@@ -664,157 +646,64 @@ struct ChordProgressionCore : vivid::OperatorBase {
             }
         }
 
-        u.meta[0] = static_cast<float>(kr);
-        u.meta[1] = static_cast<float>(current_chord_root);
-        float mask_as_float;
-        std::memcpy(&mask_as_float, &scale_mask, sizeof(float));
-        u.meta[2] = mask_as_float;
+        // Dark background
+        d.draw_rect(o, 0, 0, w, h, {0.07f, 0.08f, 0.09f, 0.9f});
 
-        wgpuQueueWriteBuffer(ctx->queue, thumb_uniform_buf_, 0, &u, sizeof(u));
-        vivid::thumbnail::run_pass(ctx, thumb_pipeline_, thumb_bind_group_, "ChordProg Thumb Pass");
-    }
+        // Circle of fifths: chromatic note -> position on circle
+        static constexpr int kFifths[12] = {0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5};
+        // Fifths position -> chromatic note
+        static constexpr int kFifthsOrder[12] = {0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5};
+        static const char* kNoteNames[12] = {"C","G","D","A","E","B","F#","Db","Ab","Eb","Bb","F"};
 
-    ~ChordProgressionCore() override {
-        vivid::gpu::release(thumb_pipeline_);
-        vivid::gpu::release(thumb_bind_group_);
-        vivid::gpu::release(thumb_bind_layout_);
-        vivid::gpu::release(thumb_uniform_buf_);
-        vivid::gpu::release(thumb_shader_);
-        vivid::gpu::release(thumb_pipe_layout_);
-    }
+        float cx = w * 0.5f;
+        float cy = h * 0.45f;
+        float radius = std::min(w, h) * 0.35f;
+        constexpr float pi = 3.14159265359f;
 
-protected:
-    void rebuild_thumb_pipeline(const VividThumbnailContext* ctx) {
-        vivid::gpu::release(thumb_pipeline_);
-        vivid::gpu::release(thumb_bind_group_);
-        vivid::gpu::release(thumb_bind_layout_);
-        vivid::gpu::release(thumb_uniform_buf_);
-        vivid::gpu::release(thumb_shader_);
-        vivid::gpu::release(thumb_pipe_layout_);
+        VividColor key_col   = {1.0f, 0.78f, 0.31f, 1.0f};   // gold
+        VividColor chord_col = {0.31f, 0.86f, 1.0f, 1.0f};   // cyan
+        VividColor scale_col = {0.39f, 0.47f, 0.63f, 0.78f};  // blue-gray
+        VividColor dim_col   = {0.2f, 0.22f, 0.25f, 0.55f};   // dark
 
-        static const char* kThumbFragment = R"(
-struct Uniforms {
-    info: vec4f,
-    pad: vec4f,
-};
-
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
-}
-
-@group(0) @binding(0) var<uniform> uniforms: Uniforms;
-
-@vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    let fs = fullscreenTriangle(vertexIndex, true);
-    var out: VertexOutput;
-    out.position = fs.position;
-    out.uv = fs.uv;
-    return out;
-}
-
-@fragment
-fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-    let uv = input.uv;
-    let bg = vec4f(18.0/255.0, 20.0/255.0, 23.0/255.0, 230.0/255.0);
-
-    let key_root = i32(uniforms.info.x);
-    let chord_root = i32(uniforms.info.y);
-    let scale_mask = bitcast<u32>(uniforms.info.z);
-
-    // Circle of fifths mapping: chromatic -> fifths position
-    let fifths = array<i32,12>(0,7,2,9,4,11,6,1,8,3,10,5);
-    // Fifths position -> chromatic
-    let fifths_order = array<i32,12>(0,7,2,9,4,11,6,1,8,3,10,5);
-
-    let cx = 0.5;
-    let cy = 0.5;
-    let radius = 0.38;
-    let pi = 3.14159265359;
-
-    // Draw line from key root to chord root
-    if (chord_root >= 0 && chord_root != key_root) {
-        let kr_pos = fifths[key_root];
-        let cc_pos = fifths[chord_root];
-        let a0 = f32(kr_pos) * (2.0 * pi / 12.0) - pi * 0.5;
-        let a1 = f32(cc_pos) * (2.0 * pi / 12.0) - pi * 0.5;
-        let p0 = vec2f(cx + radius * cos(a0), cy + radius * sin(a0));
-        let p1 = vec2f(cx + radius * cos(a1), cy + radius * sin(a1));
-
-        // Point-to-line-segment distance
-        let d = p1 - p0;
-        let t = clamp(dot(uv - p0, d) / dot(d, d), 0.0, 1.0);
-        let closest = p0 + t * d;
-        let line_dist = length(uv - closest);
-        if (line_dist < 0.015) {
-            return vec4f(
-                min(1.0, bg.r + 30.0/255.0),
-                min(1.0, bg.g + 35.0/255.0),
-                min(1.0, bg.b + 40.0/255.0),
-                bg.a
-            );
-        }
-    }
-
-    // Draw 12 dots
-    for (var pos = 0; pos < 12; pos++) {
-        let chromatic = fifths_order[pos];
-        let angle = f32(pos) * (2.0 * pi / 12.0) - pi * 0.5;
-        let dx = cx + radius * cos(angle);
-        let dy = cy + radius * sin(angle);
-
-        let dist = length(uv - vec2f(dx, dy));
-
-        var dot_r: f32;
-        var col: vec4f;
-
-        if (chromatic == key_root) {
-            dot_r = 4.0 / 64.0;
-            col = vec4f(255.0/255.0, 200.0/255.0, 80.0/255.0, 1.0);
-        } else if (chromatic == chord_root) {
-            dot_r = 3.5 / 64.0;
-            col = vec4f(80.0/255.0, 220.0/255.0, 255.0/255.0, 1.0);
-        } else if ((scale_mask & (1u << u32(chromatic))) != 0u) {
-            dot_r = 2.5 / 64.0;
-            col = vec4f(100.0/255.0, 120.0/255.0, 160.0/255.0, 200.0/255.0);
-        } else {
-            dot_r = 1.5 / 64.0;
-            col = vec4f(50.0/255.0, 55.0/255.0, 65.0/255.0, 140.0/255.0);
+        // Draw line from key root to chord root
+        if (current_chord_root >= 0 && current_chord_root != kr) {
+            int kr_pos = kFifths[kr];
+            int cc_pos = kFifths[current_chord_root];
+            float a0 = static_cast<float>(kr_pos) * (2.0f * pi / 12.0f) - pi * 0.5f;
+            float a1 = static_cast<float>(cc_pos) * (2.0f * pi / 12.0f) - pi * 0.5f;
+            float x0 = cx + radius * std::cos(a0);
+            float y0 = cy + radius * std::sin(a0);
+            float x1 = cx + radius * std::cos(a1);
+            float y1 = cy + radius * std::sin(a1);
+            d.draw_line(o, x0, y0, x1, y1, 1.0f, {0.3f, 0.33f, 0.38f, 0.5f});
         }
 
-        if (dist < dot_r) {
-            return col;
-        }
-    }
+        // Draw 12 dots as circles (rounded rects with radius = half size)
+        for (int pos = 0; pos < 12; ++pos) {
+            int chromatic = kFifthsOrder[pos];
+            float angle = static_cast<float>(pos) * (2.0f * pi / 12.0f) - pi * 0.5f;
+            float dx = cx + radius * std::cos(angle);
+            float dy = cy + radius * std::sin(angle);
 
-    return bg;
-}
-)";
+            float dot_r;
+            VividColor col;
 
-        static constexpr uint64_t kUniformSize = sizeof(float) * 8;
-        thumb_shader_ = vivid::thumbnail::create_shader(ctx->device, kThumbFragment, "ChordProg Thumb Shader");
-        thumb_uniform_buf_ =
-            vivid::thumbnail::create_uniform_buffer(ctx->device, kUniformSize, "ChordProg Thumb Uniforms");
-        thumb_bind_layout_ =
-            vivid::thumbnail::create_uniform_bind_layout(ctx->device, kUniformSize, "ChordProg Thumb BGL");
-        thumb_pipe_layout_ =
-            vivid::thumbnail::create_pipeline_layout(ctx->device, thumb_bind_layout_, "ChordProg Thumb Layout");
-        thumb_bind_group_ = vivid::thumbnail::create_uniform_bind_group(
-            ctx->device, thumb_bind_layout_, thumb_uniform_buf_, kUniformSize, "ChordProg Thumb BG");
-        thumb_pipeline_ = vivid::thumbnail::create_pipeline(
-            ctx->device, thumb_shader_, thumb_pipe_layout_, ctx->thumbnail_format, "ChordProg Thumb Pipeline");
-        if (!thumb_shader_ || !thumb_uniform_buf_ || !thumb_bind_layout_ || !thumb_pipe_layout_
-            || !thumb_bind_group_ || !thumb_pipeline_) {
-            vivid::gpu::release(thumb_pipeline_);
-            vivid::gpu::release(thumb_bind_group_);
-            vivid::gpu::release(thumb_bind_layout_);
-            vivid::gpu::release(thumb_uniform_buf_);
-            vivid::gpu::release(thumb_shader_);
-            vivid::gpu::release(thumb_pipe_layout_);
-            thumb_pipeline_format_ = WGPUTextureFormat_Undefined;
-            return;
+            if (chromatic == kr) {
+                dot_r = 5.0f; col = key_col;
+            } else if (chromatic == current_chord_root) {
+                dot_r = 4.5f; col = chord_col;
+            } else if ((scale_mask & (1u << chromatic)) != 0u) {
+                dot_r = 3.0f; col = scale_col;
+            } else {
+                dot_r = 2.0f; col = dim_col;
+            }
+
+            d.draw_rounded_rect(o, dx - dot_r, dy - dot_r, dot_r * 2, dot_r * 2, dot_r, col);
         }
-        thumb_pipeline_format_ = ctx->thumbnail_format;
+
+        // Key root note name label
+        static const char* kChromaticNames[12] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
+        float tw = d.text_width(o, kChromaticNames[kr], 0.85f);
+        d.draw_text(o, cx - tw * 0.5f, h - 14, kChromaticNames[kr], key_col, 0.85f);
     }
 };

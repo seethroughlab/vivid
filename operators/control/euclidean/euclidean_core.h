@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <cmath>
 
-struct EuclideanThumbState;
 /**
  * @brief Euclidean rhythm generator distributing hits evenly across steps.
  *
@@ -45,8 +44,6 @@ struct EuclideanCore : vivid::OperatorBase {
 
         vivid::description(rate, "Clock subdivision for step timing");
     }
-
-    ~EuclideanCore() override;
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&hits);        // 0
@@ -127,9 +124,6 @@ private:
     int prev_steps_ = -1;
     int prev_rotation_ = -1;
     int pattern_[32] = {};
-
-    EuclideanThumbState* thumb_state_ = nullptr;
-    void rebuild_thumb_pipeline(const VividThumbnailContext* ctx);
 
     void compute_pattern(int h, int n, int rot) {
         for (int i = 0; i < 32; ++i) pattern_[i] = 0;

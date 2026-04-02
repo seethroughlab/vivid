@@ -1,207 +1,144 @@
 #include "euclidean_core.h"
 #include "operator_api/thumbnail.h"
+#include <cstdio>
+#include <algorithm>
 
-struct EuclideanThumbState {
-    WGPURenderPipeline pipeline = nullptr;
-    WGPUBindGroup bind_group = nullptr;
-    WGPUBindGroupLayout bind_layout = nullptr;
-    WGPUBuffer uniform_buf = nullptr;
-    WGPUShaderModule shader = nullptr;
-    WGPUPipelineLayout pipe_layout = nullptr;
-    WGPUTextureFormat pipeline_format = WGPUTextureFormat_Undefined;
-
-    void release_all() {
-        vivid::gpu::release(pipeline);
-        vivid::gpu::release(bind_group);
-        vivid::gpu::release(bind_layout);
-        vivid::gpu::release(uniform_buf);
-        vivid::gpu::release(shader);
-        vivid::gpu::release(pipe_layout);
-    }
-};
-
-EuclideanCore::~EuclideanCore() {
-    if (thumb_state_) {
-        thumb_state_->release_all();
-        delete thumb_state_;
-    }
-}
-
-// Uniform layout: 48 floats (192 bytes)
-//   [0]  steps, [1] current_step, [2] gate, [3] pad
-//   [4..35] pattern (32 floats), [36..47] pad
-static constexpr uint64_t kUniformSize = 48 * sizeof(float);
-
-void EuclideanCore::draw_thumbnail(const VividThumbnailContext* ctx) {
-    if (!ctx) return;
-    if (!thumb_state_) thumb_state_ = new EuclideanThumbState();
-
-    if (!thumb_state_->pipeline || thumb_state_->pipeline_format != ctx->thumbnail_format) {
-        rebuild_thumb_pipeline(ctx);
-    }
-    if (!thumb_state_->pipeline || !thumb_state_->bind_group || !thumb_state_->uniform_buf) {
-        vivid_report_thumbnail_error(ctx, "euclidean thumbnail pipeline init failed");
+// Recompute the Euclidean pattern from params for thumbnail rendering.
+// This avoids relying on the operator's internal pattern_ which may be
+// on a different thread (audio) or not yet computed.
+static void compute_pattern_for_thumb(int h, int n, int rot, int* pattern) {
+    for (int i = 0; i < 32; ++i) pattern[i] = 0;
+    if (n <= 0) return;
+    h = std::clamp(h, 0, n);
+    if (h == 0) return;
+    if (h == n) {
+        for (int i = 0; i < n; ++i) pattern[i] = 1;
+        // rotate
+        if (rot > 0) {
+            rot = rot % n;
+            int tmp[32];
+            for (int i = 0; i < n; ++i) tmp[i] = pattern[(i + rot) % n];
+            for (int i = 0; i < n; ++i) pattern[i] = tmp[i];
+        }
         return;
     }
 
-    // Read live state from output values
-    int n = (ctx->param_count > 1) ? static_cast<int>(ctx->param_values[1]) : 8;
+    int seqs[32][32];
+    int slen[32];
+    for (int i = 0; i < h; ++i)  { seqs[i][0] = 1; slen[i] = 1; }
+    for (int i = h; i < n; ++i)  { seqs[i][0] = 0; slen[i] = 1; }
+
+    int left = h;
+    int right = n - h;
+    while (right > 1) {
+        int pairs = std::min(left, right);
+        for (int i = 0; i < pairs; ++i) {
+            int src = left + i;
+            for (int j = 0; j < slen[src]; ++j)
+                seqs[i][slen[i] + j] = seqs[src][j];
+            slen[i] += slen[src];
+        }
+        if (left > right) {
+            right = left - pairs;
+            left = pairs;
+        } else {
+            int extra_start = left + pairs;
+            int extra_count = right - pairs;
+            for (int i = 0; i < extra_count; ++i) {
+                int src = extra_start + i;
+                int dst = pairs + i;
+                for (int j = 0; j < slen[src]; ++j)
+                    seqs[dst][j] = seqs[src][j];
+                slen[dst] = slen[src];
+            }
+            right = right - pairs;
+            left = pairs;
+        }
+    }
+    int pos = 0;
+    int total = left + right;
+    for (int i = 0; i < total && pos < 32; ++i)
+        for (int j = 0; j < slen[i] && pos < 32; ++j)
+            pattern[pos++] = seqs[i][j];
+
+    if (rot > 0) {
+        rot = rot % n;
+        if (rot > 0) {
+            int tmp[32];
+            for (int i = 0; i < n; ++i) tmp[i] = pattern[(i + rot) % n];
+            for (int i = 0; i < n; ++i) pattern[i] = tmp[i];
+        }
+    }
+}
+
+void EuclideanCore::draw_thumbnail(const VividThumbnailContext* ctx) {
+    if (!ctx || !ctx->draw.opaque) return;
+    const auto& d = ctx->draw;
+    void* o = d.opaque;
+
+    // Read params: hits=0, steps=1, rotation=2
+    int h   = (ctx->param_count > 0) ? std::clamp(static_cast<int>(ctx->param_values[0]), 0, 32) : 3;
+    int n   = (ctx->param_count > 1) ? std::clamp(static_cast<int>(ctx->param_values[1]), 1, 32) : 8;
+    int rot = (ctx->param_count > 2) ? std::clamp(static_cast<int>(ctx->param_values[2]), 0, 31) : 0;
+
+    // Recompute pattern from params (thread-safe, no reliance on internal state)
+    int pat[32] = {};
+    compute_pattern_for_thumb(h, n, rot, pat);
+
     float cur_step = (ctx->output_count > 2) ? ctx->output_values[2] : 0.0f;
     float gate     = (ctx->output_count > 1) ? ctx->output_values[1] : 0.0f;
+    int cur = static_cast<int>(cur_step);
 
-    float uniforms[48] = {};
-    uniforms[0] = static_cast<float>(n);
-    uniforms[1] = cur_step;
-    uniforms[2] = gate;
-    const int* pat = current_pattern();
-    for (int i = 0; i < 32 && i < n; ++i)
-        uniforms[4 + i] = static_cast<float>(pat[i]);
+    float w = static_cast<float>(ctx->thumbnail_logical_width ? ctx->thumbnail_logical_width : ctx->thumbnail_width);
+    float height = static_cast<float>(ctx->thumbnail_logical_height ? ctx->thumbnail_logical_height : ctx->thumbnail_height);
 
-    wgpuQueueWriteBuffer(ctx->queue, thumb_state_->uniform_buf, 0, uniforms, sizeof(uniforms));
-    vivid::thumbnail::run_pass(ctx, thumb_state_->pipeline, thumb_state_->bind_group,
-                               "Euclidean Thumb Pass");
-}
+    // Dark background
+    d.draw_rect(o, 0, 0, w, height, {0.08f, 0.08f, 0.1f, 0.9f});
 
-void EuclideanCore::rebuild_thumb_pipeline(const VividThumbnailContext* ctx) {
-    thumb_state_->release_all();
+    // Label: "hits/steps"
+    char label[16];
+    std::snprintf(label, sizeof(label), "%d/%d", h, n);
+    d.draw_text(o, 6, 3, label, {0.45f, 0.55f, 0.65f, 1.0f}, 1.0f);
 
-    static const char* kFragment = R"(
-struct Uniforms {
-    steps:        f32,
-    current_step: f32,
-    gate:         f32,
-    pad0:         f32,
-    pattern:      array<vec4f, 8>,
-};
+    // Cell grid
+    float margin_x = 6.0f;
+    float top_y = 24.0f;
+    float bot_pad = 6.0f;
+    float cell_area_w = w - 2 * margin_x;
+    float cell_h = height - top_y - bot_pad;
+    float gap = (n <= 16) ? 2.0f : 1.0f;
+    float cell_w = (cell_area_w - gap * (n - 1)) / n;
+    cell_w = std::min(cell_w, 16.0f);
+    float cr = std::min(2.0f, cell_w * 0.2f);
 
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
-}
+    // Center the grid
+    float grid_w = cell_w * n + gap * (n - 1);
+    float grid_x0 = margin_x + (cell_area_w - grid_w) * 0.5f;
 
-@group(0) @binding(0) var<uniform> u: Uniforms;
+    VividColor accent = {0.45f, 0.55f, 0.65f, 1.0f};
+    VividColor dim    = {0.15f, 0.17f, 0.2f, 1.0f};
 
-fn get_pattern(i: i32) -> f32 {
-    let vec_idx = i / 4;
-    let comp = i % 4;
-    let v = u.pattern[vec_idx];
-    return select(select(select(v.w, v.z, comp == 2), v.y, comp == 1), v.x, comp == 0);
-}
+    for (int i = 0; i < n; ++i) {
+        bool is_hit = pat[i] != 0;
+        bool is_current = (i == cur);
+        bool is_gating = is_current && (gate > 0.5f);
+        float cx = grid_x0 + i * (cell_w + gap);
 
-@vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    let fs = fullscreenTriangle(vertexIndex, true);
-    var out: VertexOutput;
-    out.position = fs.position;
-    out.uv = fs.uv;
-    return out;
-}
+        // Current step highlight border
+        if (is_current) {
+            d.draw_rounded_rect(o, cx - 1.5f, top_y - 1.5f, cell_w + 3, cell_h + 3, cr + 1,
+                                {accent.r * 1.3f, accent.g * 1.3f, accent.b * 1.3f, 0.9f});
+        }
 
-@fragment
-fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-    let steps = i32(u.steps);
-    if (steps <= 0) { return vec4f(0.0, 0.0, 0.0, 0.0); }
+        VividColor fill;
+        if (is_hit) {
+            float a = is_gating ? 1.0f : 0.55f;
+            fill = {accent.r, accent.g, accent.b, a};
+        } else {
+            float a = is_current ? 0.4f : 0.2f;
+            fill = {dim.r, dim.g, dim.b, a};
+        }
 
-    let uv = input.uv;
-    // Pixel size for anti-aliasing (in UV space)
-    let px = fwidth(uv.x);
-    let py = fwidth(uv.y);
-
-    // Layout: horizontal row of cells with margins for label space
-    let margin_x = 0.06;
-    let margin_top = 0.28;
-    let margin_bot = 0.08;
-
-    let cell_area_x = margin_x;
-    let cell_area_w = 1.0 - 2.0 * margin_x;
-    let cell_area_y = margin_top;
-    let cell_area_h = 1.0 - margin_top - margin_bot;
-
-    let local_x = (uv.x - cell_area_x) / cell_area_w;
-    let local_y = (uv.y - cell_area_y) / cell_area_h;
-
-    if (local_x < 0.0 || local_x > 1.0 || local_y < 0.0 || local_y > 1.0) {
-        return vec4f(0.0, 0.0, 0.0, 0.0);
+        d.draw_rounded_rect(o, cx, top_y, cell_w, cell_h, cr, fill);
     }
-
-    let cell_idx_f = local_x * f32(steps);
-    let cell_idx = i32(floor(cell_idx_f));
-    let in_cell_x = fract(cell_idx_f);
-
-    // Gap between cells — scale with pixel size so gaps are always >= 1px
-    let min_gap = px / cell_area_w * f32(steps);  // 1 pixel in cell-fraction space
-    let gap_frac = max(select(0.08, 0.03, steps > 16), min_gap);
-    let half_gap = gap_frac * 0.5;
-
-    // Reject gap areas
-    if (in_cell_x < half_gap || in_cell_x > (1.0 - half_gap)) {
-        return vec4f(0.0, 0.0, 0.0, 0.0);
-    }
-    if (local_y < 0.04 || local_y > 0.96) {
-        return vec4f(0.0, 0.0, 0.0, 0.0);
-    }
-
-    // Remap to [0,1] within cell
-    let cx = (in_cell_x - half_gap) / (1.0 - 2.0 * half_gap);
-    let cy = (local_y - 0.04) / 0.92;
-
-    // Rounded rect SDF in cell-local space
-    let corner_r = 0.15;
-    let p = vec2f(cx, cy) * 2.0 - vec2f(1.0);
-    let q = abs(p) - vec2f(1.0 - corner_r);
-    let d = length(max(q, vec2f(0.0))) - corner_r;
-
-    // Anti-aliased edge: compute pixel width in SDF space
-    let sdf_px = length(fwidth(p)) * 0.5;
-    let edge_alpha = 1.0 - smoothstep(-sdf_px, sdf_px, d);
-    if (edge_alpha < 0.01) {
-        return vec4f(0.0, 0.0, 0.0, 0.0);
-    }
-
-    let is_hit = get_pattern(cell_idx) > 0.5;
-    let is_current = cell_idx == i32(u.current_step);
-    let is_gating = is_current && u.gate > 0.5;
-
-    // Accent color (matches control-cadence node tint)
-    let accent = vec3f(0.45, 0.55, 0.65);
-    let dim    = vec3f(0.15, 0.17, 0.2);
-
-    var color: vec3f;
-    var alpha: f32;
-
-    if (is_hit) {
-        color = accent;
-        alpha = select(0.6, 1.0, is_gating);
-    } else {
-        color = dim;
-        alpha = select(0.25, 0.45, is_current);
-    }
-
-    // Current-step highlight ring: 2px border using SDF
-    if (is_current) {
-        let ring_width = sdf_px * 4.0;  // ~2 pixels thick
-        let ring = smoothstep(-ring_width - sdf_px, -ring_width, d);
-        color = mix(color, accent * 1.4, ring);
-        alpha = mix(alpha, 0.95, ring);
-    }
-
-    return vec4f(color * alpha * edge_alpha, alpha * edge_alpha);
-}
-)";
-
-    thumb_state_->shader = vivid::thumbnail::create_shader(ctx->device, kFragment,
-                                                            "Euclidean Thumb Shader");
-    thumb_state_->uniform_buf = vivid::thumbnail::create_uniform_buffer(ctx->device,
-                                    kUniformSize, "Euclidean Thumb Uniforms");
-    thumb_state_->bind_layout = vivid::thumbnail::create_uniform_bind_layout(ctx->device,
-                                    kUniformSize, "Euclidean Thumb BGL");
-    thumb_state_->pipe_layout = vivid::thumbnail::create_pipeline_layout(ctx->device,
-                                    thumb_state_->bind_layout, "Euclidean Thumb Layout");
-    thumb_state_->bind_group = vivid::thumbnail::create_uniform_bind_group(ctx->device,
-                                   thumb_state_->bind_layout, thumb_state_->uniform_buf,
-                                   kUniformSize, "Euclidean Thumb BG");
-    thumb_state_->pipeline = vivid::thumbnail::create_pipeline(ctx->device, thumb_state_->shader,
-                                 thumb_state_->pipe_layout, ctx->thumbnail_format,
-                                 "Euclidean Thumb Pipeline");
-    thumb_state_->pipeline_format = ctx->thumbnail_format;
 }

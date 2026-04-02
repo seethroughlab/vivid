@@ -79,14 +79,6 @@ struct NotePatternCore : vivid::OperatorBase {
         vivid::description(midi_channel, "MIDI channel for chord output, 1 to 16");
     }
 
-    WGPURenderPipeline thumb_pipeline_ = nullptr;
-    WGPUBindGroup thumb_bind_group_ = nullptr;
-    WGPUBindGroupLayout thumb_bind_layout_ = nullptr;
-    WGPUBuffer thumb_uniform_buf_ = nullptr;
-    WGPUShaderModule thumb_shader_ = nullptr;
-    WGPUPipelineLayout thumb_pipe_layout_ = nullptr;
-    WGPUTextureFormat thumb_pipeline_format_ = WGPUTextureFormat_Undefined;
-
     // Internal state
     int beat_count_ = 0;
     float prev_phase_ = 0.0f;
@@ -317,27 +309,17 @@ struct NotePatternCore : vivid::OperatorBase {
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override {
-        if (!ctx) return;
-        if (!thumb_pipeline_ || thumb_pipeline_format_ != ctx->thumbnail_format) {
-            rebuild_thumb_pipeline(ctx);
-        }
-        if (!thumb_pipeline_ || !thumb_bind_group_ || !thumb_uniform_buf_) {
-            vivid_report_thumbnail_error(ctx, "note_pattern thumbnail pipeline init failed");
-            return;
-        }
+        if (!ctx || !ctx->draw.opaque) return;
+        const auto& d = ctx->draw;
+        void* o = d.opaque;
 
-        // Pack uniforms
-        struct Uniforms {
-            float meta[4];       // num_steps, current_step, pad, pad
-            float root_0123[4];
-            float root_4567[4];
-            float type_0123[4];
-            float type_4567[4];
-        } u{};
+        float w = static_cast<float>(ctx->thumbnail_logical_width ? ctx->thumbnail_logical_width : ctx->thumbnail_width);
+        float h = static_cast<float>(ctx->thumbnail_logical_height ? ctx->thumbnail_logical_height : ctx->thumbnail_height);
 
-        int num_steps = (ctx->param_count > 0) ? std::max(1, std::min(8, static_cast<int>(ctx->param_values[0]))) : 4;
+        int num_steps = (ctx->param_count > 0)
+            ? std::max(1, std::min(8, static_cast<int>(ctx->param_values[0]))) : 4;
 
-        // Detect current step from output
+        // Detect current step
         int current_step = -1;
         if (ctx->output_count > 0) {
             float out_note = ctx->output_values[0];
@@ -353,165 +335,47 @@ struct NotePatternCore : vivid::OperatorBase {
             }
         }
 
-        u.meta[0] = static_cast<float>(num_steps);
-        u.meta[1] = static_cast<float>(current_step);
+        // Dark background
+        d.draw_rect(o, 0, 0, w, h, {0.07f, 0.08f, 0.09f, 0.9f});
 
-        for (int i = 0; i < 8; ++i) {
-            float root = (ctx->param_count > static_cast<uint32_t>(1 + i))
-                ? ctx->param_values[1 + i] : 0.0f;
-            float type = (ctx->param_count > static_cast<uint32_t>(9 + i))
-                ? ctx->param_values[9 + i] : 0.0f;
-            if (i < 4) {
-                u.root_0123[i] = root;
-                u.type_0123[i] = type;
-            } else {
-                u.root_4567[i - 4] = root;
-                u.type_4567[i - 4] = type;
+        namespace ni = note_insp;
+
+        float margin = 4.0f;
+        float col_w = (w - 2 * margin) / static_cast<float>(num_steps);
+        float gap = 1.5f;
+        float text_h = 14.0f;
+        float bar_area_h = h - margin - text_h;
+
+        for (int s = 0; s < num_steps; ++s) {
+            int root = std::clamp(static_cast<int>(ctx->param_values[1 + s]), 0, 11);
+            int chord_type = std::clamp(static_cast<int>(ctx->param_values[9 + s]), 0, 6);
+            bool is_current = (s == current_step);
+
+            float cx = margin + s * col_w;
+            float bw = col_w - 2 * gap;
+
+            // Bar height proportional to root note (0-11)
+            float bar_frac = (static_cast<float>(root) + 1.0f) / 12.0f;
+            float bar_h = bar_frac * (bar_area_h - margin);
+            float by = margin + bar_area_h - bar_h;
+
+            // Current step highlight column
+            if (is_current) {
+                d.draw_rect(o, cx, margin, col_w, bar_area_h,
+                            {0.15f, 0.17f, 0.2f, 0.4f});
             }
+
+            float alpha = is_current ? 0.9f : 0.7f;
+            d.draw_rounded_rect(o, cx + gap, by, bw, bar_h, 2.0f,
+                                {ni::kTypeColors[chord_type][0], ni::kTypeColors[chord_type][1],
+                                 ni::kTypeColors[chord_type][2], alpha});
+
+            // Note name + chord type text below bars
+            char label[8];
+            std::snprintf(label, sizeof(label), "%s%s", ni::kNoteNames[root], ni::kChordAbbr[chord_type]);
+            float text_x = cx + col_w * 0.5f - d.text_width(o, label, 0.7f) * 0.5f;
+            d.draw_text(o, text_x, h - text_h + 1, label,
+                        {0.5f, 0.55f, 0.6f, is_current ? 1.0f : 0.7f}, 0.7f);
         }
-
-        wgpuQueueWriteBuffer(ctx->queue, thumb_uniform_buf_, 0, &u, sizeof(u));
-        vivid::thumbnail::run_pass(ctx, thumb_pipeline_, thumb_bind_group_, "NotePattern Thumb Pass");
-    }
-
-    ~NotePatternCore() override {
-        vivid::gpu::release(thumb_pipeline_);
-        vivid::gpu::release(thumb_bind_group_);
-        vivid::gpu::release(thumb_bind_layout_);
-        vivid::gpu::release(thumb_uniform_buf_);
-        vivid::gpu::release(thumb_shader_);
-        vivid::gpu::release(thumb_pipe_layout_);
-    }
-
-protected:
-    void rebuild_thumb_pipeline(const VividThumbnailContext* ctx) {
-        vivid::gpu::release(thumb_pipeline_);
-        vivid::gpu::release(thumb_bind_group_);
-        vivid::gpu::release(thumb_bind_layout_);
-        vivid::gpu::release(thumb_uniform_buf_);
-        vivid::gpu::release(thumb_shader_);
-        vivid::gpu::release(thumb_pipe_layout_);
-
-        static const char* kThumbFragment = R"(
-struct Uniforms {
-    info: vec4f,
-    root_0123: vec4f,
-    root_4567: vec4f,
-    type_0123: vec4f,
-    type_4567: vec4f,
-};
-
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
-}
-
-@group(0) @binding(0) var<uniform> uniforms: Uniforms;
-
-@vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    let fs = fullscreenTriangle(vertexIndex, true);
-    var out: VertexOutput;
-    out.position = fs.position;
-    out.uv = fs.uv;
-    return out;
-}
-
-fn get_root(idx: i32) -> f32 {
-    if (idx < 4) { return uniforms.root_0123[idx]; }
-    return uniforms.root_4567[idx - 4];
-}
-
-fn get_type(idx: i32) -> f32 {
-    if (idx < 4) { return uniforms.type_0123[idx]; }
-    return uniforms.type_4567[idx - 4];
-}
-
-fn type_color(t: i32) -> vec3f {
-    // 7-color palette for chord types
-    switch(t) {
-        case 0: { return vec3f(100.0, 160.0, 220.0); }  // Major  — blue
-        case 1: { return vec3f(160.0, 100.0, 200.0); }  // Minor  — purple
-        case 2: { return vec3f(200.0, 100.0, 100.0); }  // Dim    — red
-        case 3: { return vec3f(220.0, 180.0, 80.0); }   // Aug    — gold
-        case 4: { return vec3f(80.0, 180.0, 160.0); }   // Dom7   — teal
-        case 5: { return vec3f(140.0, 120.0, 200.0); }  // Min7   — lavender
-        case 6: { return vec3f(80.0, 140.0, 220.0); }   // Maj7   — sky blue
-        default: { return vec3f(100.0, 160.0, 220.0); }
-    }
-}
-
-@fragment
-fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-    let uv = input.uv;
-    let bg = vec4f(18.0/255.0, 20.0/255.0, 23.0/255.0, 230.0/255.0);
-    let highlight_bg = vec4f(35.0/255.0, 38.0/255.0, 45.0/255.0, 230.0/255.0);
-
-    let num_steps = i32(uniforms.info.x);
-    let current_step = i32(uniforms.info.y);
-    if (num_steps < 1) { return bg; }
-
-    let pad = 4.0 / 64.0;
-    let plot_x = (uv.x - pad) / (1.0 - 2.0 * pad);
-    let plot_y = (uv.y - pad) / (1.0 - 2.0 * pad);
-
-    if (plot_x < 0.0 || plot_x > 1.0 || plot_y < 0.0 || plot_y > 1.0) {
-        return bg;
-    }
-
-    let col_f = plot_x * f32(num_steps);
-    let col_idx = i32(floor(col_f));
-    if (col_idx >= num_steps) { return bg; }
-
-    let is_current = (col_idx == current_step);
-    let root = clamp(i32(get_root(col_idx)), 0, 11);
-    let chord_type = clamp(i32(get_type(col_idx)), 0, 6);
-
-    // Bar height from root: (root+1)/12
-    let bar_frac = (f32(root) + 1.0) / 12.0;
-    let bar_top = 1.0 - bar_frac;
-    let frac = fract(col_f);
-
-    var col = type_color(chord_type);
-    if (is_current) {
-        col = min(col + vec3f(60.0), vec3f(255.0));
-    }
-
-    if (plot_y >= bar_top && frac > 0.02 && frac < 0.98) {
-        return vec4f(col / 255.0, 220.0/255.0);
-    }
-
-    if (is_current) {
-        return highlight_bg;
-    }
-
-    return bg;
-}
-)";
-
-        static constexpr uint64_t kUniformSize = sizeof(float) * 20;
-        thumb_shader_ = vivid::thumbnail::create_shader(ctx->device, kThumbFragment, "NotePattern Thumb Shader");
-        thumb_uniform_buf_ =
-            vivid::thumbnail::create_uniform_buffer(ctx->device, kUniformSize, "NotePattern Thumb Uniforms");
-        thumb_bind_layout_ =
-            vivid::thumbnail::create_uniform_bind_layout(ctx->device, kUniformSize, "NotePattern Thumb BGL");
-        thumb_pipe_layout_ =
-            vivid::thumbnail::create_pipeline_layout(ctx->device, thumb_bind_layout_, "NotePattern Thumb Layout");
-        thumb_bind_group_ = vivid::thumbnail::create_uniform_bind_group(
-            ctx->device, thumb_bind_layout_, thumb_uniform_buf_, kUniformSize, "NotePattern Thumb BG");
-        thumb_pipeline_ = vivid::thumbnail::create_pipeline(
-            ctx->device, thumb_shader_, thumb_pipe_layout_, ctx->thumbnail_format, "NotePattern Thumb Pipeline");
-        if (!thumb_shader_ || !thumb_uniform_buf_ || !thumb_bind_layout_ || !thumb_pipe_layout_
-            || !thumb_bind_group_ || !thumb_pipeline_) {
-            vivid::gpu::release(thumb_pipeline_);
-            vivid::gpu::release(thumb_bind_group_);
-            vivid::gpu::release(thumb_bind_layout_);
-            vivid::gpu::release(thumb_uniform_buf_);
-            vivid::gpu::release(thumb_shader_);
-            vivid::gpu::release(thumb_pipe_layout_);
-            thumb_pipeline_format_ = WGPUTextureFormat_Undefined;
-            return;
-        }
-        thumb_pipeline_format_ = ctx->thumbnail_format;
     }
 };

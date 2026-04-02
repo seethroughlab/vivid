@@ -433,14 +433,6 @@ struct DrumSequencerCore : vivid::OperatorBase {
             p->description = "Per-step modulation value for external routing (0-1)";
     }
 
-    WGPURenderPipeline thumb_pipeline_ = nullptr;
-    WGPUBindGroup thumb_bind_group_ = nullptr;
-    WGPUBindGroupLayout thumb_bind_layout_ = nullptr;
-    WGPUBuffer thumb_uniform_buf_ = nullptr;
-    WGPUShaderModule thumb_shader_ = nullptr;
-    WGPUPipelineLayout thumb_pipe_layout_ = nullptr;
-    WGPUTextureFormat thumb_pipeline_format_ = WGPUTextureFormat_Undefined;
-
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&steps);   // 0
         out.push_back(&swing);   // 1
@@ -884,21 +876,12 @@ struct DrumSequencerCore : vivid::OperatorBase {
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override {
         namespace layout = vivid_sequencers::drum_layout;
-        if (!ctx) return;
-        if (!thumb_pipeline_ || thumb_pipeline_format_ != ctx->thumbnail_format) {
-            rebuild_thumb_pipeline(ctx);
-        }
-        if (!thumb_pipeline_ || !thumb_bind_group_ || !thumb_uniform_buf_) {
-            vivid_report_thumbnail_error(ctx, "drum_sequencer thumbnail pipeline init failed");
-            return;
-        }
+        if (!ctx || !ctx->draw.opaque) return;
+        const auto& d = ctx->draw;
+        void* o = d.opaque;
 
-        // Pack triggers into bitmasks
-        struct Uniforms {
-            float meta[4];      // num_steps, current_step, pad, pad
-            uint32_t triggers_lo[4]; // kick, snare, hat, oh bitmasks
-            uint32_t triggers_hi[4]; // clap, tom, 0, 0
-        } u{};
+        float w = static_cast<float>(ctx->thumbnail_logical_width ? ctx->thumbnail_logical_width : ctx->thumbnail_width);
+        float h = static_cast<float>(ctx->thumbnail_logical_height ? ctx->thumbnail_logical_height : ctx->thumbnail_height);
 
         int n = 16;
         if (ctx->param_count > 0)
@@ -907,37 +890,60 @@ struct DrumSequencerCore : vivid::OperatorBase {
         if (ctx->output_count > 0)
             cur_step = static_cast<int>(ctx->output_values[0]);
 
-        u.meta[0] = static_cast<float>(n);
-        u.meta[1] = static_cast<float>(cur_step);
+        // Dark background
+        d.draw_rect(o, 0, 0, w, h, {0.07f, 0.08f, 0.09f, 0.9f});
 
-        for (std::size_t drum = 0; drum < layout::kDrumCount; ++drum) {
-            uint32_t mask = 0;
-            for (std::size_t s = 0; s < layout::kStepCount; ++s) {
-                const int trig_idx = layout::trigger_param_index(drum, static_cast<int>(s));
-                if (ctx->param_count > static_cast<uint32_t>(trig_idx)) {
-                    if (ctx->param_values[trig_idx] > 0.5f) {
-                        mask |= (1u << s);
-                    }
+        // Layout
+        float label_w = 16.0f;
+        float margin = 3.0f;
+        float grid_x0 = label_w + margin;
+        float grid_y0 = margin;
+        float grid_w = w - grid_x0 - margin;
+        float grid_h = h - 2 * margin;
+        float row_h = grid_h / 6.0f;
+        float col_w = grid_w / static_cast<float>(n);
+        float gap = 1.0f;
+        float cr = std::min(1.5f, col_w * 0.15f);
+
+        static constexpr float kDrumColors[6][3] = {
+            {0.86f, 0.31f, 0.31f}, {0.86f, 0.75f, 0.24f}, {0.24f, 0.78f, 0.71f},
+            {0.31f, 0.51f, 0.86f}, {0.63f, 0.35f, 0.78f}, {0.31f, 0.78f, 0.39f},
+        };
+        static constexpr const char* kLabels[] = {"K", "S", "H", "O", "C", "T"};
+
+        for (int drum = 0; drum < 6; ++drum) {
+            float ry = grid_y0 + drum * row_h;
+
+            // Drum label
+            d.draw_text(o, margin, ry + row_h * 0.15f, kLabels[drum],
+                        {kDrumColors[drum][0], kDrumColors[drum][1], kDrumColors[drum][2], 0.8f}, 0.85f);
+
+            for (int step = 0; step < n; ++step) {
+                float cx = grid_x0 + step * col_w;
+                float cell_w = col_w - gap;
+                float cell_h = row_h - gap;
+                bool is_current = (step == cur_step);
+
+                // Current step column highlight
+                if (is_current) {
+                    d.draw_rect(o, cx, grid_y0, col_w, grid_h,
+                                {0.15f, 0.17f, 0.2f, 0.4f});
+                }
+
+                int trig_idx = layout::trigger_param_index(drum, step);
+                bool triggered = (ctx->param_count > static_cast<uint32_t>(trig_idx))
+                                 && (ctx->param_values[trig_idx] > 0.5f);
+
+                if (triggered) {
+                    float alpha = is_current ? 1.0f : 0.75f;
+                    d.draw_rounded_rect(o, cx + gap * 0.5f, ry + gap * 0.5f, cell_w, cell_h, cr,
+                                        {kDrumColors[drum][0], kDrumColors[drum][1], kDrumColors[drum][2], alpha});
+                } else {
+                    d.draw_rounded_rect(o, cx + gap * 0.5f, ry + gap * 0.5f, cell_w, cell_h, cr,
+                                        {0.12f, 0.13f, 0.15f, 0.2f});
                 }
             }
-            if (drum < 4) {
-                u.triggers_lo[drum] = mask;
-            } else {
-                u.triggers_hi[drum - 4] = mask;
-            }
         }
-
-        wgpuQueueWriteBuffer(ctx->queue, thumb_uniform_buf_, 0, &u, sizeof(u));
-        vivid::thumbnail::run_pass(ctx, thumb_pipeline_, thumb_bind_group_, "DrumSeq Thumb Pass");
-    }
-
-    ~DrumSequencerCore() override {
-        vivid::gpu::release(thumb_pipeline_);
-        vivid::gpu::release(thumb_bind_group_);
-        vivid::gpu::release(thumb_bind_layout_);
-        vivid::gpu::release(thumb_uniform_buf_);
-        vivid::gpu::release(thumb_shader_);
-        vivid::gpu::release(thumb_pipe_layout_);
     }
 
 protected:
@@ -945,136 +951,5 @@ protected:
     float phase_offset_ = 0.0f;
     bool prev_reset_ = false;
     VividMidiBuffer midi_buf_ = {};
-
-    void rebuild_thumb_pipeline(const VividThumbnailContext* ctx) {
-        vivid::gpu::release(thumb_pipeline_);
-        vivid::gpu::release(thumb_bind_group_);
-        vivid::gpu::release(thumb_bind_layout_);
-        vivid::gpu::release(thumb_uniform_buf_);
-        vivid::gpu::release(thumb_shader_);
-        vivid::gpu::release(thumb_pipe_layout_);
-
-        static const char* kThumbFragment = R"(
-struct Uniforms {
-    info: vec4f,
-    triggers_lo: vec4u,
-    triggers_hi: vec4u,
-};
-
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
-}
-
-@group(0) @binding(0) var<uniform> uniforms: Uniforms;
-
-@vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    let fs = fullscreenTriangle(vertexIndex, true);
-    var out: VertexOutput;
-    out.position = fs.position;
-    out.uv = fs.uv;
-    return out;
-}
-
-fn get_trigger(drum: i32, step: i32) -> bool {
-    var mask: u32;
-    if (drum < 4) {
-        mask = uniforms.triggers_lo[drum];
-    } else {
-        mask = uniforms.triggers_hi[drum - 4];
-    }
-    return (mask & (1u << u32(step))) != 0u;
-}
-
-fn drum_color(drum: i32) -> vec3f {
-    switch(drum) {
-        case 0: { return vec3f(220.0, 80.0, 80.0); }    // kick — red
-        case 1: { return vec3f(220.0, 190.0, 60.0); }   // snare — gold
-        case 2: { return vec3f(60.0, 200.0, 180.0); }   // hat — teal
-        case 3: { return vec3f(80.0, 130.0, 220.0); }   // oh — blue
-        case 4: { return vec3f(160.0, 90.0, 200.0); }   // clap — purple
-        case 5: { return vec3f(80.0, 200.0, 100.0); }   // tom — green
-        default: { return vec3f(100.0, 100.0, 100.0); }
-    }
-}
-
-@fragment
-fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-    let uv = input.uv;
-    let bg = vec4f(18.0/255.0, 20.0/255.0, 23.0/255.0, 230.0/255.0);
-
-    let num_steps = i32(uniforms.info.x);
-    let cur_step = i32(uniforms.info.y);
-
-    let pad = 2.0 / 64.0;
-    let grid_x = (uv.x - pad) / (1.0 - 2.0 * pad);
-    let grid_y = (uv.y - pad) / (1.0 - 2.0 * pad);
-
-    if (grid_x < 0.0 || grid_x > 1.0 || grid_y < 0.0 || grid_y > 1.0) {
-        return bg;
-    }
-
-    let col_f = grid_x * 16.0;
-    let row_f = grid_y * 6.0;
-    let col = i32(floor(col_f));
-    let row = i32(floor(row_f));
-    if (col >= 16 || row >= 6) { return bg; }
-
-    var result = bg;
-
-    // Current step column highlight
-    if (col == cur_step && col < num_steps) {
-        result = vec4f(
-            min(1.0, bg.r + 25.0/255.0),
-            min(1.0, bg.g + 30.0/255.0),
-            min(1.0, bg.b + 35.0/255.0),
-            bg.a
-        );
-    }
-
-    // Active cell dot (with inset)
-    let inset = 1.5 / 64.0 * 16.0;  // ~1.5px inset relative to cell
-    let cell_x = fract(col_f);
-    let cell_y = fract(row_f);
-    let in_dot = cell_x > (inset / 16.0 * 16.0) && cell_x < (1.0 - inset / 16.0 * 16.0) &&
-                 cell_y > (inset / 6.0 * 6.0) && cell_y < (1.0 - inset / 6.0 * 6.0);
-
-    if (in_dot && get_trigger(row, col)) {
-        let c = drum_color(row);
-        var alpha = 230.0;
-        if (col >= num_steps) { alpha = 60.0; }
-        result = vec4f(c / 255.0, alpha / 255.0);
-    }
-
-    return result;
-}
-)";
-
-        static constexpr uint64_t kUniformSize = sizeof(float) * 4 + sizeof(uint32_t) * 8;
-        thumb_shader_ = vivid::thumbnail::create_shader(ctx->device, kThumbFragment, "DrumSeq Thumb Shader");
-        thumb_uniform_buf_ =
-            vivid::thumbnail::create_uniform_buffer(ctx->device, kUniformSize, "DrumSeq Thumb Uniforms");
-        thumb_bind_layout_ =
-            vivid::thumbnail::create_uniform_bind_layout(ctx->device, kUniformSize, "DrumSeq Thumb BGL");
-        thumb_pipe_layout_ =
-            vivid::thumbnail::create_pipeline_layout(ctx->device, thumb_bind_layout_, "DrumSeq Thumb Layout");
-        thumb_bind_group_ = vivid::thumbnail::create_uniform_bind_group(
-            ctx->device, thumb_bind_layout_, thumb_uniform_buf_, kUniformSize, "DrumSeq Thumb BG");
-        thumb_pipeline_ = vivid::thumbnail::create_pipeline(
-            ctx->device, thumb_shader_, thumb_pipe_layout_, ctx->thumbnail_format, "DrumSeq Thumb Pipeline");
-        if (!thumb_shader_ || !thumb_uniform_buf_ || !thumb_bind_layout_ || !thumb_pipe_layout_
-            || !thumb_bind_group_ || !thumb_pipeline_) {
-            vivid::gpu::release(thumb_pipeline_);
-            vivid::gpu::release(thumb_bind_group_);
-            vivid::gpu::release(thumb_bind_layout_);
-            vivid::gpu::release(thumb_uniform_buf_);
-            vivid::gpu::release(thumb_shader_);
-            vivid::gpu::release(thumb_pipe_layout_);
-            thumb_pipeline_format_ = WGPUTextureFormat_Undefined;
-            return;
-        }
-        thumb_pipeline_format_ = ctx->thumbnail_format;
-    }
 };
 

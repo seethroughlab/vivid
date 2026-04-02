@@ -1667,6 +1667,7 @@ static int add_watch_for_resolved_package(vivid::FileWatcher& fw, const vivid::P
 static void draw_custom_thumbnails(const vivid::RuntimeCore& runtime,
                                    vivid::ui::ThumbnailCache& cache,
                                    vivid::ui::NodeGraphUI& graph_ui,
+                                   vivid::ui::Renderer2D* thumb_draw_renderer,
                                    WGPUDevice device,
                                    WGPUQueue queue,
                                    WGPUCommandEncoder encoder,
@@ -1675,18 +1676,11 @@ static void draw_custom_thumbnails(const vivid::RuntimeCore& runtime,
                                    uint64_t frame,
                                    uint32_t thumb_w,
                                    uint32_t thumb_h,
+                                   uint32_t thumb_logical_w,
+                                   uint32_t thumb_logical_h,
                                    WGPUTextureFormat thumb_format) {
     const auto* cg_thumb = runtime.compiled_graph();
     if (!cg_thumb) return;
-    for (const auto& cn : cg_thumb->nodes) {
-        if (cn.missing_operator) {
-            // Missing-operator placeholders are intentionally degraded UI state.
-            // Do not issue custom thumbnail GPU work in that state; fall back to
-            // default node bodies instead of risking stale/invalid thumbnail submit.
-            graph_ui.set_custom_thumbnail_nodes({});
-            return;
-        }
-    }
 
     std::unordered_set<std::string> custom_thumb_ids;
     for (const auto& cn : cg_thumb->nodes) {
@@ -1716,6 +1710,8 @@ static void draw_custom_thumbnails(const vivid::RuntimeCore& runtime,
         tctx.thumbnail_width = thumb_w;
         tctx.thumbnail_height = thumb_h;
         tctx.thumbnail_format = thumb_format;
+        tctx.thumbnail_logical_width = thumb_logical_w;
+        tctx.thumbnail_logical_height = thumb_logical_h;
         tctx.source_output_texture = cn.gpu ? cn.gpu->texture : nullptr;
         tctx.source_output_texture_view = cn.gpu ? cn.gpu->texture_view : nullptr;
         tctx.source_output_width = cn.gpu ? cn.gpu->tex_width : 0;
@@ -1728,7 +1724,33 @@ static void draw_custom_thumbnails(const vivid::RuntimeCore& runtime,
         tctx.operator_errored = 0;
         tctx.operator_error_msg = nullptr;
 
+        // Populate 2D draw API if thumbnail renderer is available
+        if (thumb_draw_renderer)
+            vivid::ui::populate_draw_api(tctx.draw, *thumb_draw_renderer);
+
+        // Clear thumbnail texture before operator draws
+        {
+            WGPURenderPassColorAttachment clear_att{};
+            clear_att.view = thumb_view;
+            clear_att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+            clear_att.loadOp = WGPULoadOp_Clear;
+            clear_att.storeOp = WGPUStoreOp_Store;
+            clear_att.clearValue = {0.0, 0.0, 0.0, 0.0};
+            WGPURenderPassDescriptor clear_desc{};
+            clear_desc.label = vivid_sv("Thumb Clear");
+            clear_desc.colorAttachmentCount = 1;
+            clear_desc.colorAttachments = &clear_att;
+            WGPURenderPassEncoder clear_pass = wgpuCommandEncoderBeginRenderPass(encoder, &clear_desc);
+            wgpuRenderPassEncoderEnd(clear_pass);
+            wgpuRenderPassEncoderRelease(clear_pass);
+        }
+
         cn.loader->draw_thumbnail(cn.instance, &tctx);
+
+        // Flush any 2D draw API calls onto the thumbnail texture
+        if (thumb_draw_renderer)
+            thumb_draw_renderer->flush(encoder, thumb_view, thumb_logical_w, thumb_logical_h);
+
         if (tctx.operator_errored) {
             std::fprintf(stderr, "[vivid] thumbnail render error for '%s': %s\n",
                          cn.node_id.c_str(),
@@ -2761,8 +2783,13 @@ int main(int argc, char* argv[]) {
     vivid::OutputWindow output_window;
 
     // --- Thumbnail cache + renderer ---
+    // Scale thumbnail textures by DPI for crisp rendering on Retina displays.
+    // Operators use logical coordinates (kThumbW x kThumbH); the Renderer2D
+    // and ThumbnailRenderer handle the pixel scaling transparently.
+    uint32_t thumb_tex_w = static_cast<uint32_t>(kThumbW * dpi_scale);
+    uint32_t thumb_tex_h = static_cast<uint32_t>(kThumbH * dpi_scale);
     vivid::ui::ThumbnailCache thumb_cache;
-    thumb_cache.init(gpu.device(), gpu.queue(), kThumbW, kThumbH);
+    thumb_cache.init(gpu.device(), gpu.queue(), thumb_tex_w, thumb_tex_h);
 
     // Separate blit pipeline for offscreen→thumbnail (targets RGBA16Float, not surface format)
     vivid::FullscreenBlit thumb_blit;
@@ -3061,6 +3088,22 @@ int main(int argc, char* argv[]) {
             text_renderer_ok = true;
         } else {
             std::fprintf(stderr, "[vivid] Text renderer disabled (font not found)\n");
+        }
+    }
+
+    // Thumbnail 2D renderer — targets RGBA16Float thumbnail textures.
+    // Operators can use ctx->draw for simple 2D shapes instead of custom GPU pipelines.
+    vivid::ui::Renderer2D thumb_draw_renderer;
+    bool thumb_draw_renderer_ok = false;
+    if (text_renderer_ok) {
+        std::string font_path = (resources_dir / "JetBrainsMono-Regular.ttf").string();
+        if (!std::filesystem::exists(font_path)) {
+            auto alt = exe_dir.parent_path() / "fonts" / "JetBrainsMono-Regular.ttf";
+            if (std::filesystem::exists(alt)) font_path = alt.string();
+        }
+        if (thumb_draw_renderer.init(gpu.device(), WGPUTextureFormat_RGBA16Float,
+                                      font_path.c_str(), 16.0f, dpi_scale)) {
+            thumb_draw_renderer_ok = true;
         }
     }
 
@@ -3653,6 +3696,11 @@ int main(int argc, char* argv[]) {
         if (result.ok) {
             graph_loaded = true;
             command_sink.reset_undo_history();
+            vivid::add_recent_file(settings, resolved);
+            vivid::save_settings(settings);
+#ifdef __APPLE__
+            vivid::macos_update_recent_files_menu(settings.recent_files);
+#endif
         }
         std::fprintf(stderr, "[vivid] %s: %s\n", label, result.message.c_str());
         return result.ok;
@@ -4005,7 +4053,17 @@ int main(int argc, char* argv[]) {
         menu_cbs.can_edit_meta = [&]() { return !graph.source_path().empty(); };
         menu_cbs.is_auto_check_updates = [&]() { return settings.core_update_auto_check; };
 
+        menu_cbs.on_open_recent = [&](const std::string& path) {
+            load_graph_runtime(path, "Open Recent");
+        };
+        menu_cbs.on_clear_recent = [&]() {
+            settings.recent_files.clear();
+            vivid::save_settings(settings);
+            vivid::macos_update_recent_files_menu(settings.recent_files);
+        };
+
         vivid::macos_setup_menu(menu_cbs);
+        vivid::macos_update_recent_files_menu(settings.recent_files);
     }
 #endif
 
@@ -4483,8 +4541,12 @@ int main(int argc, char* argv[]) {
             window_user_data.pending_events.clear();
 
             draw_custom_thumbnails(runtime, thumb_cache, graph_ui,
+                                   thumb_draw_renderer_ok ? &thumb_draw_renderer : nullptr,
                                    gpu.device(), gpu.queue(), tick_encoder,
-                                   now, dt, frame_count, kThumbW, kThumbH, kOffscreenFormat);
+                                   now, dt, frame_count,
+                                   thumb_tex_w, thumb_tex_h,
+                                   kThumbW, kThumbH,
+                                   kOffscreenFormat);
 
             // --- Tick state-preset mappings (after runtime tick, state outputs are fresh) ---
             runtime_api.tick_state_presets();

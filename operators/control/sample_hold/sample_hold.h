@@ -3,7 +3,6 @@
 #include "operator_api/operator.h"
 #include <cmath>
 
-struct SampleHoldThumbState;
 /**
  * @brief Captures a signal value on trigger edge or tracks while gate is high.
  *
@@ -23,8 +22,6 @@ struct SampleHold : vivid::OperatorBase {
         vivid::semantic_shape(mode, "enum");
         vivid::description(mode, "Sample latches on rising edge; track-and-hold follows while high");
     }
-
-    ~SampleHold() override;
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&mode);
@@ -55,9 +52,4 @@ struct SampleHold : vivid::OperatorBase {
 
     float held_value_ = 0.0f;
     bool prev_trigger_ = false;
-
-private:
-    SampleHoldThumbState* thumb_state_ = nullptr;
-
-    void rebuild_thumb_pipeline(const VividThumbnailContext* ctx);
 };

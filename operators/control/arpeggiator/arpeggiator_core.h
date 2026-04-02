@@ -84,14 +84,6 @@ struct ArpeggiatorCore : vivid::OperatorBase {
         vivid::description(midi_channel, "MIDI channel for note output, 1 to 16");
     }
 
-    WGPURenderPipeline thumb_pipeline_ = nullptr;
-    WGPUBindGroup thumb_bind_group_ = nullptr;
-    WGPUBindGroupLayout thumb_bind_layout_ = nullptr;
-    WGPUBuffer thumb_uniform_buf_ = nullptr;
-    WGPUShaderModule thumb_shader_ = nullptr;
-    WGPUPipelineLayout thumb_pipe_layout_ = nullptr;
-    WGPUTextureFormat thumb_pipeline_format_ = WGPUTextureFormat_Undefined;
-
     // Param indices:
     //  0       = mode
     //  1       = octaves
@@ -324,22 +316,12 @@ struct ArpeggiatorCore : vivid::OperatorBase {
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override {
-        if (!ctx) return;
-        if (!thumb_pipeline_ || thumb_pipeline_format_ != ctx->thumbnail_format) {
-            rebuild_thumb_pipeline(ctx);
-        }
-        if (!thumb_pipeline_ || !thumb_bind_group_ || !thumb_uniform_buf_) {
-            vivid_report_thumbnail_error(ctx, "arpeggiator thumbnail pipeline init failed");
-            return;
-        }
+        if (!ctx || !ctx->draw.opaque) return;
+        const auto& d = ctx->draw;
+        void* o = d.opaque;
 
-        struct Uniforms {
-            float meta[4];
-            float vel_0123[4];
-            float vel_4567[4];
-            float tr_0123[4];
-            float tr_4567[4];
-        } u{};
+        float w = static_cast<float>(ctx->thumbnail_logical_width ? ctx->thumbnail_logical_width : ctx->thumbnail_width);
+        float h = static_cast<float>(ctx->thumbnail_logical_height ? ctx->thumbnail_logical_height : ctx->thumbnail_height);
 
         int msteps = (ctx->param_count > 6)
             ? std::max(1, std::min(8, static_cast<int>(ctx->param_values[6]))) : 8;
@@ -347,23 +329,60 @@ struct ArpeggiatorCore : vivid::OperatorBase {
             ? static_cast<int>(ctx->output_values[3]) : -1;
         int current_mod = (current_step >= 0) ? (current_step % msteps) : -1;
 
-        u.meta[0] = static_cast<float>(msteps);
-        u.meta[1] = static_cast<float>(current_mod);
+        // Mode label
+        static const char* kModes[] = {"Up", "Down", "UpDn", "Rand", "Order"};
+        int mode = (ctx->param_count > 0) ? std::clamp(static_cast<int>(ctx->param_values[0]), 0, 4) : 0;
 
-        for (int i = 0; i < 8; ++i) {
-            float vel = (ctx->param_count > static_cast<uint32_t>(7 + i)) ? ctx->param_values[7 + i] : 1.0f;
-            float tr = (ctx->param_count > static_cast<uint32_t>(15 + i)) ? ctx->param_values[15 + i] : 0.0f;
-            if (i < 4) {
-                u.vel_0123[i] = vel;
-                u.tr_0123[i] = tr / 24.0f;
-            } else {
-                u.vel_4567[i - 4] = vel;
-                u.tr_4567[i - 4] = tr / 24.0f;
-            }
+        // Dark background
+        d.draw_rect(o, 0, 0, w, h, {0.07f, 0.08f, 0.09f, 0.9f});
+
+        // Mode text
+        d.draw_text(o, 4, 2, kModes[mode], {0.45f, 0.55f, 0.65f, 0.8f}, 0.8f);
+
+        // Layout: velocity bars top half, transpose bars bottom half
+        float margin = 4.0f;
+        float label_h = 14.0f;
+        float mid_gap = 3.0f;
+        float vel_y = label_h;
+        float section_h = (h - label_h - mid_gap - margin) * 0.5f;
+        float tr_y = vel_y + section_h + mid_gap;
+        float bar_w = (w - 2 * margin) / static_cast<float>(msteps);
+        float gap = 1.5f;
+
+        VividColor accent = {0.45f, 0.55f, 0.65f, 1.0f};
+
+        // Velocity bars (fill from bottom)
+        for (int i = 0; i < msteps; ++i) {
+            float vel = (ctx->param_count > static_cast<uint32_t>(7 + i))
+                ? std::clamp(ctx->param_values[7 + i], 0.0f, 1.0f) : 1.0f;
+            float bx = margin + i * bar_w + gap;
+            float bw = bar_w - 2 * gap;
+            float bh = vel * section_h;
+            float by = vel_y + section_h - bh;
+            float alpha = (i == current_mod) ? 0.9f : 0.45f;
+            d.draw_rect(o, bx, by, bw, bh, {accent.r, accent.g, accent.b, alpha});
         }
 
-        wgpuQueueWriteBuffer(ctx->queue, thumb_uniform_buf_, 0, &u, sizeof(u));
-        vivid::thumbnail::run_pass(ctx, thumb_pipeline_, thumb_bind_group_, "Arpeggiator Thumb Pass");
+        // Transpose bars (centered, extend up/down from middle)
+        float tr_center = tr_y + section_h * 0.5f;
+        d.draw_line(o, margin, tr_center, w - margin, tr_center, 0.5f,
+                    {0.3f, 0.33f, 0.36f, 0.4f});
+
+        for (int i = 0; i < msteps; ++i) {
+            float tr = (ctx->param_count > static_cast<uint32_t>(15 + i))
+                ? ctx->param_values[15 + i] : 0.0f;
+            float norm = std::clamp(tr / 24.0f, -1.0f, 1.0f);
+            float bx = margin + i * bar_w + gap;
+            float bw = bar_w - 2 * gap;
+            float bh = std::fabs(norm) * section_h * 0.5f;
+            float by = (norm >= 0) ? (tr_center - bh) : tr_center;
+            float alpha = (i == current_mod) ? 0.9f : 0.45f;
+            // Warm for positive transpose, cool for negative
+            VividColor col = (norm >= 0)
+                ? VividColor{0.85f, 0.55f, 0.3f, alpha}
+                : VividColor{0.3f, 0.55f, 0.85f, alpha};
+            d.draw_rect(o, bx, by, bw, bh, col);
+        }
     }
 
     void draw_inspector(VividInspectorContext* ctx) override {
@@ -505,14 +524,6 @@ struct ArpeggiatorCore : vivid::OperatorBase {
         ctx->consumed_height = section_gap + label_h + vel_h + section_gap + label_h + tr_h + section_gap;
     }
 
-    ~ArpeggiatorCore() override {
-        vivid::gpu::release(thumb_pipeline_);
-        vivid::gpu::release(thumb_bind_group_);
-        vivid::gpu::release(thumb_bind_layout_);
-        vivid::gpu::release(thumb_uniform_buf_);
-        vivid::gpu::release(thumb_shader_);
-        vivid::gpu::release(thumb_pipe_layout_);
-    }
 
 protected:
     static constexpr float kMultipliers[] = {0.25f, 0.5f, 1.0f, 2.0f, 4.0f, 8.0f, 1.5f, 3.0f, 6.0f};
@@ -575,149 +586,6 @@ protected:
             default:
                 return vivid_sequencers::arp_pattern_index(mode_val, raw_step, pool_count);
         }
-    }
-
-    void rebuild_thumb_pipeline(const VividThumbnailContext* ctx) {
-        vivid::gpu::release(thumb_pipeline_);
-        vivid::gpu::release(thumb_bind_group_);
-        vivid::gpu::release(thumb_bind_layout_);
-        vivid::gpu::release(thumb_uniform_buf_);
-        vivid::gpu::release(thumb_shader_);
-        vivid::gpu::release(thumb_pipe_layout_);
-
-        static const char* kThumbFragment = R"(
-struct Uniforms {
-    info: vec4f,
-    vel_0123: vec4f,
-    vel_4567: vec4f,
-    tr_0123: vec4f,
-    tr_4567: vec4f,
-};
-
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
-}
-
-@group(0) @binding(0) var<uniform> uniforms: Uniforms;
-
-@vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    let fs = fullscreenTriangle(vertexIndex, true);
-    var out: VertexOutput;
-    out.position = fs.position;
-    out.uv = fs.uv;
-    return out;
-}
-
-fn get_vel(idx: i32) -> f32 {
-    if (idx < 4) { return uniforms.vel_0123[idx]; }
-    return uniforms.vel_4567[idx - 4];
-}
-
-fn get_tr(idx: i32) -> f32 {
-    if (idx < 4) { return uniforms.tr_0123[idx]; }
-    return uniforms.tr_4567[idx - 4];
-}
-
-@fragment
-fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-    let uv = input.uv;
-    let bg = vec4f(18.0/255.0, 20.0/255.0, 23.0/255.0, 230.0/255.0);
-    let highlight_bg = vec4f(35.0/255.0, 38.0/255.0, 45.0/255.0, 230.0/255.0);
-    let baseline_col = vec4f(80.0/255.0, 85.0/255.0, 95.0/255.0, 200.0/255.0);
-
-    let msteps = i32(uniforms.info.x);
-    let current_mod = i32(uniforms.info.y);
-    if (msteps < 1) { return bg; }
-
-    let pad = 4.0 / 64.0;
-    let plot_x = (uv.x - pad) / (1.0 - 2.0 * pad);
-    let plot_y = (uv.y - pad) / (1.0 - 2.0 * pad);
-
-    if (plot_x < 0.0 || plot_x > 1.0 || plot_y < 0.0 || plot_y > 1.0) {
-        return bg;
-    }
-
-    let col_f = plot_x * f32(msteps);
-    let col_idx = i32(floor(col_f));
-    if (col_idx >= msteps) { return bg; }
-
-    let is_current = (col_idx == current_mod);
-
-    // Baseline
-    if (abs(plot_y - 1.0) < 0.015) {
-        return baseline_col;
-    }
-
-    // Current step background highlight
-    if (is_current) {
-        let vel = clamp(get_vel(col_idx), 0.0, 1.0);
-        let bar_top = 1.0 - vel;
-        let frac = fract(col_f);
-
-        if (plot_y >= bar_top && frac > 0.02 && frac < 0.98) {
-            let tr = get_tr(col_idx);
-            var cr = 100.0; var cg = 130.0; var cb = 170.0;
-            if (tr > 0.0) {
-                cr = cr + 120.0 * tr; cg = cg - 30.0 * tr; cb = cb - 100.0 * tr;
-            } else if (tr < 0.0) {
-                let at = -tr;
-                cr = cr - 50.0 * at; cg = cg + 50.0 * at; cb = cb + 60.0 * at;
-            }
-            cr = min(255.0, cr + 60.0);
-            cg = min(255.0, cg + 60.0);
-            cb = min(255.0, cb + 60.0);
-            return vec4f(cr/255.0, cg/255.0, cb/255.0, 220.0/255.0);
-        }
-        return highlight_bg;
-    }
-
-    // Non-current bars
-    let vel = clamp(get_vel(col_idx), 0.0, 1.0);
-    let bar_top = 1.0 - vel;
-    let frac = fract(col_f);
-
-    if (plot_y >= bar_top && frac > 0.02 && frac < 0.98) {
-        let tr = get_tr(col_idx);
-        var cr = 100.0; var cg = 130.0; var cb = 170.0;
-        if (tr > 0.0) {
-            cr = cr + 120.0 * tr; cg = cg - 30.0 * tr; cb = cb - 100.0 * tr;
-        } else if (tr < 0.0) {
-            let at = -tr;
-            cr = cr - 50.0 * at; cg = cg + 50.0 * at; cb = cb + 60.0 * at;
-        }
-        return vec4f(cr/255.0, cg/255.0, cb/255.0, 220.0/255.0);
-    }
-
-    return bg;
-}
-)";
-
-        static constexpr uint64_t kUniformSize = sizeof(float) * 20;
-        thumb_shader_ = vivid::thumbnail::create_shader(ctx->device, kThumbFragment, "Arp Thumb Shader");
-        thumb_uniform_buf_ =
-            vivid::thumbnail::create_uniform_buffer(ctx->device, kUniformSize, "Arp Thumb Uniforms");
-        thumb_bind_layout_ =
-            vivid::thumbnail::create_uniform_bind_layout(ctx->device, kUniformSize, "Arp Thumb BGL");
-        thumb_pipe_layout_ =
-            vivid::thumbnail::create_pipeline_layout(ctx->device, thumb_bind_layout_, "Arp Thumb Layout");
-        thumb_bind_group_ = vivid::thumbnail::create_uniform_bind_group(
-            ctx->device, thumb_bind_layout_, thumb_uniform_buf_, kUniformSize, "Arp Thumb BG");
-        thumb_pipeline_ = vivid::thumbnail::create_pipeline(
-            ctx->device, thumb_shader_, thumb_pipe_layout_, ctx->thumbnail_format, "Arp Thumb Pipeline");
-        if (!thumb_shader_ || !thumb_uniform_buf_ || !thumb_bind_layout_ || !thumb_pipe_layout_
-            || !thumb_bind_group_ || !thumb_pipeline_) {
-            vivid::gpu::release(thumb_pipeline_);
-            vivid::gpu::release(thumb_bind_group_);
-            vivid::gpu::release(thumb_bind_layout_);
-            vivid::gpu::release(thumb_uniform_buf_);
-            vivid::gpu::release(thumb_shader_);
-            vivid::gpu::release(thumb_pipe_layout_);
-            thumb_pipeline_format_ = WGPUTextureFormat_Undefined;
-            return;
-        }
-        thumb_pipeline_format_ = ctx->thumbnail_format;
     }
 
     void write_output(float* output_values, VividLanePort* out_spreads,

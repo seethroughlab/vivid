@@ -42,8 +42,13 @@ typedef struct VividThumbnailContext {
     WGPUTextureView*   input_texture_views;
     uint32_t           input_texture_count;
 
+    uint32_t           thumbnail_logical_width;   // graph-space dimensions (e.g. 140x88)
+    uint32_t           thumbnail_logical_height;  // use for draw API coordinates
+
     uint8_t            operator_errored;
     const char*        operator_error_msg;
+
+    VividDrawAPI       draw;  // 2D draw API (optional — check draw.opaque before use)
 } VividThumbnailContext;
 
 #ifdef __cplusplus

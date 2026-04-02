@@ -2,6 +2,7 @@
 #include "stb_truetype.h"
 
 #include "ui/renderer_2d.h"
+#include "operator_api/types.h"
 #include "common/gpu_util.h"
 #include <cstdio>
 #include <cstring>
@@ -795,6 +796,47 @@ void Renderer2D::shutdown() {
     if (pipe_layout_) { wgpuPipelineLayoutRelease(pipe_layout_);  pipe_layout_ = nullptr; }
     if (shader_)      { wgpuShaderModuleRelease(shader_);         shader_      = nullptr; }
     device_ = nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// VividDrawAPI thunks — bridge VividDrawAPI function pointers to Renderer2D
+// ---------------------------------------------------------------------------
+
+static void api_draw_rect(void* o, float x, float y, float w, float h, VividColor c) {
+    static_cast<Renderer2D*>(o)->draw_rect(x, y, w, h, c.r, c.g, c.b, c.a);
+}
+static void api_draw_rounded_rect(void* o, float x, float y, float w, float h, float radius, VividColor c) {
+    static_cast<Renderer2D*>(o)->draw_rounded_rect(x, y, w, h, radius, c.r, c.g, c.b, c.a);
+}
+static void api_draw_text(void* o, float x, float y, const char* text, VividColor c, float scale) {
+    static_cast<Renderer2D*>(o)->draw_text(x, y, text, c.r, c.g, c.b, c.a, scale);
+}
+static void api_draw_line(void* o, float x1, float y1, float x2, float y2, float thickness, VividColor c) {
+    static_cast<Renderer2D*>(o)->draw_line(x1, y1, x2, y2, thickness, c.r, c.g, c.b, c.a);
+}
+static float api_text_width(void* o, const char* text, float scale) {
+    return static_cast<Renderer2D*>(o)->text_width(text, scale);
+}
+static float api_line_height(void* o) {
+    return static_cast<Renderer2D*>(o)->line_height();
+}
+static void api_push_clip_rect(void* o, float x, float y, float w, float h) {
+    static_cast<Renderer2D*>(o)->push_clip_rect(x, y, w, h);
+}
+static void api_pop_clip_rect(void* o) {
+    static_cast<Renderer2D*>(o)->pop_clip_rect();
+}
+
+void populate_draw_api(VividDrawAPI& api, Renderer2D& renderer) {
+    api.opaque          = &renderer;
+    api.draw_rect       = api_draw_rect;
+    api.draw_rounded_rect = api_draw_rounded_rect;
+    api.draw_text       = api_draw_text;
+    api.draw_line       = api_draw_line;
+    api.text_width      = api_text_width;
+    api.line_height     = api_line_height;
+    api.push_clip_rect  = api_push_clip_rect;
+    api.pop_clip_rect   = api_pop_clip_rect;
 }
 
 } // namespace vivid::ui

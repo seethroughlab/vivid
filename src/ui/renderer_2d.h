@@ -1,5 +1,6 @@
 #pragma once
 
+#include "operator_api/types.h"
 #include <webgpu/webgpu.h>
 #include <cstdint>
 #include <unordered_map>
@@ -108,5 +109,9 @@ private:
     float dpi_scale_ = 1.0f;
     uint32_t overflow_count_ = 0; // quads dropped this frame due to full vertex buffer
 };
+
+// Populate a VividDrawAPI struct with thunks that delegate to a Renderer2D.
+// Used by both inspector and thumbnail rendering paths.
+void populate_draw_api(VividDrawAPI& api, Renderer2D& renderer);
 
 } // namespace vivid::ui

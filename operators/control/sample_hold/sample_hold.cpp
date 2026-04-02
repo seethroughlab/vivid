@@ -1,153 +1,79 @@
 #include "sample_hold.h"
 #include "operator_api/thumbnail.h"
+#include <cstdio>
 
-struct SampleHoldThumbState {
-    WGPURenderPipeline pipeline = nullptr;
-    WGPUBindGroup bind_group = nullptr;
-    WGPUBindGroupLayout bind_layout = nullptr;
-    WGPUBuffer uniform_buf = nullptr;
-    WGPUShaderModule shader = nullptr;
-    WGPUPipelineLayout pipe_layout = nullptr;
-    WGPUTextureFormat pipeline_format = WGPUTextureFormat_Undefined;
-
-    void release_all() {
-        vivid::gpu::release(pipeline);
-        vivid::gpu::release(bind_group);
-        vivid::gpu::release(bind_layout);
-        vivid::gpu::release(uniform_buf);
-        vivid::gpu::release(shader);
-        vivid::gpu::release(pipe_layout);
-    }
-};
-
-SampleHold::~SampleHold() {
-    if (thumb_state_) {
-        thumb_state_->release_all();
-        delete thumb_state_;
-    }
-}
-
-void SampleHold::draw_thumbnail(const VividThumbnailContext* ctx) {
-    if (!ctx) return;
-    if (!thumb_state_) thumb_state_ = new SampleHoldThumbState();
-
-    if (!thumb_state_->pipeline || thumb_state_->pipeline_format != ctx->thumbnail_format) {
-        rebuild_thumb_pipeline(ctx);
-    }
-    if (!thumb_state_->pipeline || !thumb_state_->bind_group || !thumb_state_->uniform_buf) {
-        vivid_report_thumbnail_error(ctx, "sample_hold thumbnail pipeline init failed");
-        return;
-    }
-
-    struct Uniforms { float held_value, mode, pad0, pad1; } u{};
-    u.held_value = (ctx->output_count > 0) ? ctx->output_values[0] : 0.0f;
-    u.mode = ctx->param_values[0];
-    wgpuQueueWriteBuffer(ctx->queue, thumb_state_->uniform_buf, 0, &u, sizeof(u));
-    vivid::thumbnail::run_pass(ctx, thumb_state_->pipeline, thumb_state_->bind_group, "SampleHold Thumb Pass");
-}
-
-void SampleHold::rebuild_thumb_pipeline(const VividThumbnailContext* ctx) {
-    thumb_state_->release_all();
-
-    static const char* kThumbFragment = R"(
-struct Uniforms {
-    data: vec4f,
-};
-
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
-}
-
-@group(0) @binding(0) var<uniform> uniforms: Uniforms;
-
-@vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    let fs = fullscreenTriangle(vertexIndex, true);
-    var out: VertexOutput;
-    out.position = fs.position;
-    out.uv = fs.uv;
-    return out;
-}
-
-// Deterministic hash for decorative staircase pattern
-fn pcg_hash(input: u32) -> u32 {
-    let state = input * 747796405u + 2891336453u;
-    let word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+// Simple deterministic hash for decorative staircase pattern
+static uint32_t pcg_hash(uint32_t input) {
+    uint32_t state = input * 747796405u + 2891336453u;
+    uint32_t word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
     return (word >> 22u) ^ word;
 }
 
-@fragment
-fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-    let uv = input.uv;
-    let held = clamp(uniforms.data.x, 0.0, 1.0);
-    let mode = uniforms.data.y;
+void SampleHold::draw_thumbnail(const VividThumbnailContext* ctx) {
+    if (!ctx || !ctx->draw.opaque) return;
+    const auto& d = ctx->draw;
+    void* o = d.opaque;
 
-    let bg = vec4f(18.0/255.0, 20.0/255.0, 23.0/255.0, 230.0/255.0);
-    let step_col = vec4f(80.0/255.0, 130.0/255.0, 190.0/255.0, 160.0/255.0);
-    let line_col = vec4f(160.0/255.0, 200.0/255.0, 240.0/255.0, 220.0/255.0);
-    let held_col = vec4f(255.0/255.0, 200.0/255.0, 80.0/255.0, 220.0/255.0);
+    float w = static_cast<float>(ctx->thumbnail_logical_width ? ctx->thumbnail_logical_width : ctx->thumbnail_width);
+    float h = static_cast<float>(ctx->thumbnail_logical_height ? ctx->thumbnail_logical_height : ctx->thumbnail_height);
 
-    let pad = 0.08;
-    let plot_y = (uv.y - pad) / (1.0 - 2.0 * pad);
+    float held = (ctx->output_count > 0) ? ctx->output_values[0] : 0.0f;
+    int m = (ctx->param_count > 0) ? static_cast<int>(ctx->param_values[0]) : 0;
 
-    // Decorative staircase: 6 steps across the width
-    let num_steps = 6u;
-    let step_idx = u32(uv.x * f32(num_steps));
-    let h = f32(pcg_hash(step_idx + 42u) % 1000u) / 1000.0;
-    let step_level = 1.0 - (h * 0.7 + 0.15);
+    // Dark background
+    d.draw_rect(o, 0, 0, w, h, {0.07f, 0.08f, 0.09f, 0.9f});
 
-    // Draw step fills
-    if (plot_y > step_level) {
-        let dist = abs(plot_y - step_level);
-        if (dist < 0.025) {
-            return line_col;
+    // Mode label
+    const char* mode_label = (m == 0) ? "S&H" : "T&H";
+    d.draw_text(o, 5, 3, mode_label, {0.45f, 0.55f, 0.65f, 0.8f}, 0.85f);
+
+    // Held value text
+    char buf[16];
+    std::snprintf(buf, sizeof(buf), "%.2f", held);
+    float tw = d.text_width(o, buf, 0.75f);
+    d.draw_text(o, w - tw - 5, 3, buf, {1.0f, 0.78f, 0.31f, 0.8f}, 0.75f);
+
+    // Staircase visualization
+    float margin = 4.0f;
+    float top_y = 18.0f;
+    float plot_h = h - top_y - margin;
+    float plot_w = w - 2 * margin;
+
+    VividColor step_col = {0.31f, 0.51f, 0.75f, 0.5f};
+    VividColor line_col = {0.63f, 0.78f, 0.94f, 0.8f};
+    VividColor held_col = {1.0f, 0.78f, 0.31f, 0.85f};
+
+    // Draw 6 decorative steps
+    constexpr int kSteps = 6;
+    float step_w = plot_w / kSteps;
+    float prev_level = 0.5f;
+
+    for (int i = 0; i < kSteps; ++i) {
+        float rnd = static_cast<float>(pcg_hash(static_cast<uint32_t>(i) + 42u) % 1000u) / 1000.0f;
+        float level = rnd * 0.7f + 0.15f;  // 0.15 to 0.85
+        float sy = top_y + plot_h * (1.0f - level);
+        float sx = margin + i * step_w;
+        float fill_h = plot_h * level;
+
+        // Step fill
+        d.draw_rect(o, sx, sy, step_w - 1, fill_h, step_col);
+
+        // Step top line
+        d.draw_line(o, sx, sy, sx + step_w - 1, sy, 1.5f, line_col);
+
+        // Vertical transition from previous step
+        if (i > 0) {
+            float prev_y = top_y + plot_h * (1.0f - prev_level);
+            float lo = std::min(sy, prev_y);
+            float hi = std::max(sy, prev_y);
+            d.draw_line(o, sx, lo, sx, hi, 1.5f, line_col);
         }
-        return step_col;
+
+        prev_level = level;
     }
 
-    // Step line
-    let dist = abs(plot_y - step_level);
-    if (dist < 0.025) {
-        return line_col;
-    }
-
-    // Vertical transitions between steps
-    let step_frac = fract(uv.x * f32(num_steps));
-    if (step_frac < 0.04 || step_frac > 0.96) {
-        let prev_idx = select(step_idx - 1u, num_steps - 1u, step_idx == 0u);
-        let prev_h = f32(pcg_hash(prev_idx + 42u) % 1000u) / 1000.0;
-        let prev_level = 1.0 - (prev_h * 0.7 + 0.15);
-        let lo = min(step_level, prev_level);
-        let hi = max(step_level, prev_level);
-        if (plot_y >= lo && plot_y <= hi) {
-            return line_col;
-        }
-    }
-
-    // Current held value indicator
-    let held_y = 1.0 - (held * 0.7 + 0.15);
-    let held_dist = abs(plot_y - held_y);
-    if (held_dist < 0.02) {
-        return held_col;
-    }
-
-    return bg;
+    // Held value indicator line (horizontal across full width)
+    float held_clamped = std::clamp(held, 0.0f, 1.0f);
+    float held_y = top_y + plot_h * (1.0f - (held_clamped * 0.7f + 0.15f));
+    d.draw_line(o, margin, held_y, margin + plot_w, held_y, 2.0f, held_col);
 }
-)";
-
-    thumb_state_->shader = vivid::thumbnail::create_shader(ctx->device, kThumbFragment, "SampleHold Thumb Shader");
-    thumb_state_->uniform_buf =
-        vivid::thumbnail::create_uniform_buffer(ctx->device, sizeof(float) * 4, "SampleHold Thumb Uniforms");
-    thumb_state_->bind_layout =
-        vivid::thumbnail::create_uniform_bind_layout(ctx->device, sizeof(float) * 4, "SampleHold Thumb BGL");
-    thumb_state_->pipe_layout =
-        vivid::thumbnail::create_pipeline_layout(ctx->device, thumb_state_->bind_layout, "SampleHold Thumb Layout");
-    thumb_state_->bind_group = vivid::thumbnail::create_uniform_bind_group(
-        ctx->device, thumb_state_->bind_layout, thumb_state_->uniform_buf, sizeof(float) * 4, "SampleHold Thumb BG");
-    thumb_state_->pipeline = vivid::thumbnail::create_pipeline(
-        ctx->device, thumb_state_->shader, thumb_state_->pipe_layout, ctx->thumbnail_format, "SampleHold Thumb Pipeline");
-    thumb_state_->pipeline_format = ctx->thumbnail_format;
-}
-
-// Shared implementation only; public registration lives in _fr/_au wrappers.

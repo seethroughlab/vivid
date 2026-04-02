@@ -8,7 +8,7 @@ extern "C" {
 
 /* Bump when operator-facing C ABI changes in incompatible ways.
    Catches stale dylibs during hot-reload — not a cross-version compatibility promise. */
-#define VIVID_OPERATOR_ABI_VERSION 5u
+#define VIVID_OPERATOR_ABI_VERSION 6u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -338,7 +338,7 @@ typedef uint32_t VividInspectorMode;
 
 typedef struct VividColor { float r, g, b, a; } VividColor;
 
-typedef struct VividInspectorDrawAPI {
+typedef struct VividDrawAPI {
     void* opaque;  // Renderer2D* — operators must not dereference
     void  (*draw_rect)(void*, float x, float y, float w, float h, VividColor);
     void  (*draw_rounded_rect)(void*, float x, float y, float w, float h, float radius, VividColor);
@@ -348,7 +348,8 @@ typedef struct VividInspectorDrawAPI {
     float (*line_height)(void*);
     void  (*push_clip_rect)(void*, float x, float y, float w, float h);
     void  (*pop_clip_rect)(void*);
-} VividInspectorDrawAPI;
+} VividDrawAPI;
+typedef VividDrawAPI VividInspectorDrawAPI;
 
 typedef struct VividInspectorCommandAPI {
     void* opaque;  // scoped to node_id by the core

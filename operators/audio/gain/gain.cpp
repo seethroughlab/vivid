@@ -1,24 +1,9 @@
 #include "operator_api/operator.h"
 #include "operator_api/thumbnail.h"
 
-struct GainThumbState {
-    WGPURenderPipeline pipeline = nullptr;
-    WGPUBindGroup bind_group = nullptr;
-    WGPUBindGroupLayout bind_layout = nullptr;
-    WGPUBuffer uniform_buf = nullptr;
-    WGPUShaderModule shader = nullptr;
-    WGPUPipelineLayout pipe_layout = nullptr;
-    WGPUTextureFormat pipeline_format = WGPUTextureFormat_Undefined;
-
-    void release_all() {
-        vivid::gpu::release(pipeline);
-        vivid::gpu::release(bind_group);
-        vivid::gpu::release(bind_layout);
-        vivid::gpu::release(uniform_buf);
-        vivid::gpu::release(shader);
-        vivid::gpu::release(pipe_layout);
-    }
-};
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
 
 /**
  * @brief Simple amplitude multiplier with CV modulation.
@@ -41,12 +26,6 @@ struct Gain : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr bool kStrategyIndependent = true;
 
     vivid::Param<float> gain{"gain", 1.0f, 0.0f, 2.0f};
-
-    GainThumbState* thumb_state_ = nullptr;
-
-    ~Gain() override {
-        if (thumb_state_) { thumb_state_->release_all(); delete thumb_state_; }
-    }
 
     Gain() {
         vivid::semantic_tag(gain, "amplitude_linear");
@@ -87,84 +66,75 @@ struct Gain : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override {
-        if (!ctx) return;
-        if (!thumb_state_) thumb_state_ = new GainThumbState();
-        if (!thumb_state_->pipeline || thumb_state_->pipeline_format != ctx->thumbnail_format) {
-            rebuild_thumb_pipeline(ctx);
+        if (!ctx || !ctx->draw.opaque) return;
+        const auto& d = ctx->draw;
+        void* o = d.opaque;
+
+        float g = (ctx->param_count > 0) ? std::clamp(ctx->param_values[0], 0.0f, 2.0f) : 1.0f;
+
+        float w = static_cast<float>(ctx->thumbnail_logical_width  ? ctx->thumbnail_logical_width  : ctx->thumbnail_width);
+        float h = static_cast<float>(ctx->thumbnail_logical_height ? ctx->thumbnail_logical_height : ctx->thumbnail_height);
+
+        // Background
+        d.draw_rect(o, 0, 0, w, h, {0.07f, 0.08f, 0.09f, 0.9f});
+
+        // dB label
+        float db = (g > 0.0001f) ? 20.0f * std::log10(g) : -60.0f;
+        char db_label[16];
+        if (db <= -60.0f)
+            std::snprintf(db_label, sizeof(db_label), "-inf dB");
+        else
+            std::snprintf(db_label, sizeof(db_label), "%+.1fdB", db);
+        d.draw_text(o, 6, 3, db_label, {0.45f, 0.55f, 0.65f, 1.0f}, 1.0f);
+
+        // Bar layout
+        float pad = 6.0f;
+        float bar_top = 22.0f;
+        float bar_bot = h - pad;
+        float bar_h = bar_bot - bar_top;
+        float bar_left = w * 0.3f;
+        float bar_right = w * 0.7f;
+        float bar_w = bar_right - bar_left;
+
+        // Bar background
+        d.draw_rounded_rect(o, bar_left, bar_top, bar_w, bar_h, 2.0f, {0.16f, 0.16f, 0.19f, 0.8f});
+
+        // Filled portion: gain normalized 0-2 -> 0-1
+        float fill_norm = std::clamp(g / 2.0f, 0.0f, 1.0f);
+        float fill_h = fill_norm * bar_h;
+        float fill_top = bar_bot - fill_h;
+
+        // Draw gradient via stacked rects (8 slices)
+        int slices = 8;
+        float slice_h = fill_h / slices;
+        for (int i = 0; i < slices; ++i) {
+            float sy = fill_top + i * slice_h;
+            // norm_y: 0 at bottom (green), 1 at top (red)
+            float norm_y = 1.0f - (float(i) + 0.5f) / slices;
+
+            float r, gn, b;
+            if (norm_y < 0.5f) {
+                float t = norm_y * 2.0f;
+                r  = 0.31f + t * (0.86f - 0.31f);
+                gn = 0.75f + t * (0.78f - 0.75f);
+                b  = 0.39f + t * (0.24f - 0.39f);
+            } else {
+                float t = (norm_y - 0.5f) * 2.0f;
+                r  = 0.86f + t * (0.86f - 0.86f);
+                gn = 0.78f + t * (0.31f - 0.78f);
+                b  = 0.24f + t * (0.24f - 0.24f);
+            }
+            d.draw_rect(o, bar_left + 1, sy, bar_w - 2, slice_h + 0.5f, {r, gn, b, 0.86f});
         }
-        if (!thumb_state_->pipeline || !thumb_state_->bind_group || !thumb_state_->uniform_buf) {
-            vivid_report_thumbnail_error(ctx, "gain thumbnail pipeline init failed");
-            return;
-        }
-        struct Uniforms { float gain_val, pad0, pad1, pad2; } u{};
-        u.gain_val = ctx->param_values[0];
-        wgpuQueueWriteBuffer(ctx->queue, thumb_state_->uniform_buf, 0, &u, sizeof(u));
-        vivid::thumbnail::run_pass(ctx, thumb_state_->pipeline, thumb_state_->bind_group, "Gain Thumb Pass");
-    }
 
-    void rebuild_thumb_pipeline(const VividThumbnailContext* ctx) {
-        thumb_state_->release_all();
-        static const char* kShader = R"(
-struct Uniforms { data: vec4f, };
-struct VertexOutput { @builtin(position) position: vec4f, @location(0) uv: vec2f, }
-@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+        // Unity (1.0) marker line at the midpoint of the bar
+        float unity_y = bar_top + bar_h * 0.5f;
+        d.draw_line(o, bar_left - 3, unity_y, bar_right + 3, unity_y, 1.5f, {0.78f, 0.82f, 0.86f, 0.7f});
 
-@vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    let fs = fullscreenTriangle(vertexIndex, true);
-    var out: VertexOutput;
-    out.position = fs.position;
-    out.uv = fs.uv;
-    return out;
-}
-
-@fragment
-fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-    let uv = input.uv;
-    let g = clamp(uniforms.data.x / 2.0, 0.0, 1.0);  // normalize 0-2 to 0-1
-
-    let bg = vec4f(18.0/255.0, 20.0/255.0, 23.0/255.0, 230.0/255.0);
-
-    // Vertical bar in center third of thumbnail
-    let bar_left = 0.3;
-    let bar_right = 0.7;
-    if (uv.x < bar_left || uv.x > bar_right) { return bg; }
-
-    let pad = 0.08;
-    let fill_top = 1.0 - g * (1.0 - 2.0 * pad) - pad;
-
-    // Bar background (dim)
-    let bar_bg = vec4f(40.0/255.0, 42.0/255.0, 48.0/255.0, 200.0/255.0);
-
-    if (uv.y < pad || uv.y > 1.0 - pad) { return bg; }
-
-    if (uv.y < fill_top) { return bar_bg; }
-
-    // Color gradient: green at low, yellow at unity (0.5), red at boost
-    let norm_y = 1.0 - (uv.y - pad) / (1.0 - 2.0 * pad);
-    var col = vec3f(0.0);
-    if (norm_y < 0.5) {
-        col = mix(vec3f(80.0/255.0, 190.0/255.0, 100.0/255.0),
-                  vec3f(220.0/255.0, 200.0/255.0, 60.0/255.0), norm_y * 2.0);
-    } else {
-        col = mix(vec3f(220.0/255.0, 200.0/255.0, 60.0/255.0),
-                  vec3f(220.0/255.0, 80.0/255.0, 60.0/255.0), (norm_y - 0.5) * 2.0);
-    }
-    return vec4f(col, 220.0/255.0);
-}
-)";
-        thumb_state_->shader = vivid::thumbnail::create_shader(ctx->device, kShader, "Gain Thumb Shader");
-        thumb_state_->uniform_buf =
-            vivid::thumbnail::create_uniform_buffer(ctx->device, sizeof(float) * 4, "Gain Thumb Uniforms");
-        thumb_state_->bind_layout =
-            vivid::thumbnail::create_uniform_bind_layout(ctx->device, sizeof(float) * 4, "Gain Thumb BGL");
-        thumb_state_->pipe_layout =
-            vivid::thumbnail::create_pipeline_layout(ctx->device, thumb_state_->bind_layout, "Gain Thumb Layout");
-        thumb_state_->bind_group = vivid::thumbnail::create_uniform_bind_group(
-            ctx->device, thumb_state_->bind_layout, thumb_state_->uniform_buf, sizeof(float) * 4, "Gain Thumb BG");
-        thumb_state_->pipeline = vivid::thumbnail::create_pipeline(
-            ctx->device, thumb_state_->shader, thumb_state_->pipe_layout, ctx->thumbnail_format, "Gain Thumb Pipeline");
-        thumb_state_->pipeline_format = ctx->thumbnail_format;
+        // Unity label
+        float unity_label_w = d.text_width ? d.text_width(o, "1.0", 0.8f) : 14.0f;
+        d.draw_text(o, bar_right + 5, unity_y - 5, "1.0", {0.55f, 0.6f, 0.65f, 0.7f}, 0.8f);
+        (void)unity_label_w;
     }
 
     void process_audio(const VividAudioContext* ctx) override {
