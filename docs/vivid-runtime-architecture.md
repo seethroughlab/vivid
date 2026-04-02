@@ -157,7 +157,7 @@ At 60 fps and 48 kHz with 256-sample buffers, approximately **3 audio callbacks*
 
 The `AudioFrameBridge` is the sole communication channel between the frame and audio threads. It uses **double-buffered snapshots** with atomic index swaps — no mutexes touch the audio thread.
 
-![Cadence Bridge](diagrams/cadence-bridge.svg)
+![Audio Frame Bridge](diagrams/audio-frame-bridge.svg)
 
 ### Frame → Audio: ParamSnapshot
 
