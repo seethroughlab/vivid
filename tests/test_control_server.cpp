@@ -234,7 +234,7 @@ int main(int argc, char* argv[]) {
     std::string scaffold_core_src = build_dir + "/.test_cs_scaffold_core";
     std::filesystem::remove_all(scaffold_core_src);
     std::filesystem::create_directories(scaffold_core_src + "/operators/control");
-    std::filesystem::create_directories(scaffold_core_src + "/site/operators");
+    std::filesystem::create_directories(scaffold_core_src + "/operators/control/test_op");
     {
         std::ofstream ofs(scaffold_core_src + "/CMakeLists.txt");
         ofs << "cmake_minimum_required(VERSION 3.20)\n"
@@ -248,33 +248,28 @@ int main(int argc, char* argv[]) {
                "# --- Movie File Audio In\n";
     }
     {
-        std::ofstream ofs(scaffold_core_src + "/site/operators/index.json");
-        ofs << "{\n"
-               "  \"operators\": [\n"
-               "    {\n"
-               "      \"name\": \"TestOp\",\n"
-               "      \"id\": \"test-op\",\n"
-               "      \"has_docs\": true,\n"
-               "      \"brief\": \"Fixture operator docs for MCP/control-server tests.\",\n"
-               "      \"operator_family\": \"test-fixture\"\n"
-               "    }\n"
-               "  ]\n"
-               "}\n";
-    }
-    {
-        std::ofstream ofs(scaffold_core_src + "/site/operators/test-op.json");
-        ofs << "{\n"
-               "  \"name\": \"TestOp\",\n"
-               "  \"id\": \"test-op\",\n"
-               "  \"has_docs\": true,\n"
-               "  \"brief\": \"Fixture operator docs for MCP/control-server tests.\",\n"
-               "  \"body\": \"Detailed body for the TestOp fixture.\",\n"
-               "  \"source_path\": \"tests/operators/test_op_v1.cpp\",\n"
-               "  \"operator_family\": \"test-fixture\",\n"
-               "  \"tips\": [\"Use this fixture to verify MCP doc merging.\"],\n"
-               "  \"params\": [{\"name\": \"scale\", \"doc\": \"Scale multiplier for the output.\"}],\n"
-               "  \"outputs\": [{\"name\": \"out\", \"doc\": \"Scaled scalar output.\"}]\n"
-               "}\n";
+        std::ofstream ofs(scaffold_core_src + "/operators/control/test_op/test_op.cpp");
+        ofs << R"(#include "operator_api/operator.h"
+
+/**
+ * @brief Fixture operator docs for MCP/control-server tests.
+ *
+ * Detailed body for the TestOp fixture.
+ *
+ * @tip Use this fixture to verify MCP doc merging.
+ * @param scale Scale multiplier for the output.
+ * @output out Scaled scalar output.
+ * @family test-fixture
+ */
+struct TestOp : vivid::OperatorBase, vivid::FrameProcessable {
+    static constexpr const char* kName = "TestOp";
+    void collect_params(std::vector<vivid::ParamBase*>&) override {}
+    void collect_ports(std::vector<VividPortDescriptor>&) override {}
+    void process_frame(const VividFrameContext*) override {}
+};
+
+VIVID_REGISTER(TestOp)
+)";
     }
 
     std::string local_pkg_src = build_dir + "/.test_cs_linked_pkg_src";
@@ -320,7 +315,6 @@ int main(int argc, char* argv[]) {
     std::string live_pkg_src = build_dir + "/.test_cs_live_pkg_src";
     std::filesystem::remove_all(live_pkg_src);
     std::filesystem::create_directories(live_pkg_src + "/operators/control/pkg_live_op");
-    std::filesystem::create_directories(live_pkg_src + "/site/operators");
     {
         std::ofstream ofs(live_pkg_src + "/vivid-package.json");
         ofs << "{\n"
@@ -329,36 +323,16 @@ int main(int argc, char* argv[]) {
                "  \"operators\": [\"control/pkg_live_op\"]\n"
                "}\n";
     }
-    {
-        std::ofstream ofs(live_pkg_src + "/site/operators/index.json");
-        ofs << "{\n"
-               "  \"operators\": [\n"
-               "    {\n"
-               "      \"name\": \"PkgLiveOp\",\n"
-               "      \"id\": \"pkg-live-op\",\n"
-               "      \"has_docs\": true,\n"
-               "      \"brief\": \"Linked package fixture operator.\",\n"
-               "      \"operator_family\": \"package-fixture\"\n"
-               "    }\n"
-               "  ]\n"
-               "}\n";
-    }
-    {
-        std::ofstream ofs(live_pkg_src + "/site/operators/pkg-live-op.json");
-        ofs << "{\n"
-               "  \"name\": \"PkgLiveOp\",\n"
-               "  \"id\": \"pkg-live-op\",\n"
-               "  \"has_docs\": true,\n"
-               "  \"brief\": \"Linked package fixture operator.\",\n"
-               "  \"body\": \"Package operator doc fixture used by control-server tests.\",\n"
-               "  \"source_path\": \"operators/control/pkg_live_op/pkg_live_op.cpp\",\n"
-               "  \"operator_family\": \"package-fixture\",\n"
-               "  \"outputs\": [{\"name\": \"out\", \"doc\": \"Live package scalar output.\"}]\n"
-               "}\n";
-    }
     auto write_live_pkg_source = [&](float output_value) {
         std::ofstream ofs(live_pkg_src + "/operators/control/pkg_live_op/pkg_live_op.cpp");
         ofs << "#include \"operator_api/operator.h\"\n\n"
+               "/**\n"
+               " * @brief Linked package fixture operator.\n"
+               " *\n"
+               " * Package operator doc fixture used by control-server tests.\n"
+               " * @output out Live package scalar output.\n"
+               " * @family package-fixture\n"
+               " */\n"
                "struct PkgLiveOp : vivid::OperatorBase, vivid::FrameProcessable {\n"
                "    static constexpr const char* kName = \"PkgLiveOp\";\n"
                "    static constexpr bool kTimeDependent = false;\n"
@@ -878,7 +852,7 @@ int main(int argc, char* argv[]) {
                           op["body"].get<std::string>() == "Detailed body for the TestOp fixture.",
                       "operator_docs merges body");
                 check(op.contains("source_path") && op["source_path"].is_string() &&
-                          op["source_path"].get<std::string>() == "tests/operators/test_op_v1.cpp",
+                          op["source_path"].get<std::string>() == "operators/control/test_op/test_op.cpp",
                       "operator_docs merges source_path");
                 check(op.contains("lane_behavior_help") && op["lane_behavior_help"].is_string() &&
                           !op["lane_behavior_help"].get<std::string>().empty(),

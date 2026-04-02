@@ -786,6 +786,7 @@ add_executable(vivid
     src/runtime/screenshot.cpp
     src/runtime/builtin_operators.cpp
     src/runtime/control_server.cpp
+    src/runtime/operator_source_docs.cpp
     src/runtime/capture_coordinator.cpp
     src/runtime/output_analyzer.cpp
     src/runtime/file_drop_registry.cpp
@@ -1210,6 +1211,7 @@ add_executable(test_control_server
     src/runtime/package_manager.cpp
     src/runtime/undo_manager.cpp
     src/runtime/control_server.cpp
+    src/runtime/operator_source_docs.cpp
     src/runtime/capture_coordinator.cpp
     src/runtime/output_analyzer.cpp
     src/runtime/screenshot.cpp
@@ -1255,6 +1257,7 @@ add_executable(test_perception_introspection
     src/runtime/package_manager.cpp
     src/runtime/undo_manager.cpp
     src/runtime/control_server.cpp
+    src/runtime/operator_source_docs.cpp
     src/runtime/capture_coordinator.cpp
     src/runtime/output_analyzer.cpp
     src/runtime/screenshot.cpp
@@ -1603,6 +1606,14 @@ target_link_libraries(test_operator_loader PRIVATE vivid_operator_api webgpu nlo
 add_dependencies(test_operator_loader test_op_v1 test_op_v2 test_op_abi_v4 test_op_incompatible_port test_op_null_desc test_op_bad_custom_type control_pass_op audio_test_op export_custom_port_op control_thumb_op file_drop_test_op particles)
 add_test(NAME test_operator_loader COMMAND test_operator_loader WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_operator_loader PROPERTIES LABELS "LOADER")
+
+add_executable(test_operator_source_docs
+    tests/test_operator_source_docs.cpp
+    src/runtime/operator_source_docs.cpp
+)
+target_include_directories(test_operator_source_docs PRIVATE src)
+target_link_libraries(test_operator_source_docs PRIVATE nlohmann_json::nlohmann_json)
+add_test(NAME test_operator_source_docs COMMAND test_operator_source_docs WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_file_drop_registry
     tests/test_file_drop_registry.cpp

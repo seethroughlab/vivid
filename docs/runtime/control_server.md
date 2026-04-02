@@ -231,8 +231,8 @@ The operator introspection endpoints are intended to serve MCP planning, authori
 - params: type/default/range plus semantic metadata and descriptions when present
 - ports: type/transport plus semantic metadata, defaults/channels, and custom-type registry info when present
 
-When the runtime can resolve operator docs from `site/operators/` (core) or a package's `site/operators/`,
-the response may also include summary-level doc fields:
+When the runtime can resolve operator docs from source comments in the core source tree or an installed
+package source tree, the response may also include summary-level doc fields:
 
 - `brief`
 - `has_docs`
@@ -259,7 +259,7 @@ Response shape:
 
 - descriptor metadata: `name`, `kind`, `time_dependent`, `lane_behavior`, `lane_behavior_help`, `params`, `inputs`, `outputs`
 - doc-derived fields when available: `brief`, `body`, `source_path`, `tips`, `related`, `recipes`, `pitfalls`, `best_used_with`, `common_companions`, `operator_family`
-- `has_docs`: `true` when doc JSON was found and merged, `false` otherwise
+- `has_docs`: `true` when a source doc block was found and merged, `false` otherwise
 
 If no docs are found, the endpoint still succeeds and returns the descriptor-only payload.
 
@@ -268,8 +268,8 @@ If no docs are found, the endpoint still succeeds and returns the descriptor-onl
 `package_operator_docs` returns the same enriched operator shape as `operator_docs`, but for every operator
 owned by the installed package named by `name`.
 
-Docs are loaded from `<package>/site/operators/` when present. Missing package docs do not fail the request;
-the endpoint still returns descriptor-only entries with `has_docs: false`.
+Docs are resolved from package operator source comments when available. Missing package docs do not fail the
+request; the endpoint still returns descriptor-only entries with `has_docs: false`.
 
 Top-level response payload:
 

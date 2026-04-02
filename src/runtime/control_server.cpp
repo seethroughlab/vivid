@@ -7,6 +7,7 @@
 #include "runtime/operator_registry.h"
 #include "runtime/operator_loader.h"
 #include "runtime/operator_creator.h"
+#include "runtime/operator_source_docs.h"
 #include "runtime/hot_reload.h"
 #include "runtime/undo_manager.h"
 #include "runtime/package_manager.h"
@@ -212,89 +213,6 @@ static nlohmann::json build_port_descriptor_json(const VividPortDescriptor& pd) 
     return p;
 }
 
-struct OperatorDocCatalog {
-    std::filesystem::path docs_dir;
-    std::unordered_map<std::string, nlohmann::json> index_by_name;
-    std::unordered_map<std::string, nlohmann::json> index_by_id;
-    bool loaded = false;
-};
-
-static std::string camel_to_snake_id(std::string name) {
-    if (name.size() > 2) {
-        const std::string suffix = name.substr(name.size() - 2);
-        if (suffix == "Au" || suffix == "Fr")
-            name.resize(name.size() - 2);
-    }
-    std::string out;
-    out.reserve(name.size() + 8);
-    for (size_t i = 0; i < name.size(); ++i) {
-        const unsigned char ch = static_cast<unsigned char>(name[i]);
-        if (std::isupper(ch)) {
-            if (!out.empty() && (std::islower(static_cast<unsigned char>(out.back())) ||
-                                 (i + 1 < name.size() && std::islower(static_cast<unsigned char>(name[i + 1])))))
-                out.push_back('_');
-            out.push_back(static_cast<char>(std::tolower(ch)));
-        } else {
-            out.push_back(static_cast<char>(ch));
-        }
-    }
-    return out;
-}
-
-static OperatorDocCatalog load_operator_doc_catalog(const std::filesystem::path& docs_dir) {
-    OperatorDocCatalog catalog;
-    catalog.docs_dir = docs_dir;
-    const auto index_path = docs_dir / "index.json";
-    std::ifstream f(index_path);
-    if (!f.is_open()) return catalog;
-
-    try {
-        nlohmann::json index = nlohmann::json::parse(f);
-        const auto* operators = index.contains("operators") && index["operators"].is_array()
-            ? &index["operators"] : nullptr;
-        if (!operators) return catalog;
-        for (const auto& entry : *operators) {
-            if (!entry.contains("name") || !entry["name"].is_string()) continue;
-            catalog.index_by_name[entry["name"].get<std::string>()] = entry;
-            if (entry.contains("id") && entry["id"].is_string())
-                catalog.index_by_id[entry["id"].get<std::string>()] = entry;
-        }
-        catalog.loaded = true;
-    } catch (...) {
-        catalog.index_by_name.clear();
-        catalog.loaded = false;
-    }
-    return catalog;
-}
-
-static nlohmann::json load_operator_doc_detail(const OperatorDocCatalog& catalog,
-                                               const std::string& type_name) {
-    nlohmann::json index_entry;
-    auto it = catalog.index_by_name.find(type_name);
-    if (it != catalog.index_by_name.end()) {
-        index_entry = it->second;
-    } else {
-        const auto derived_id = camel_to_snake_id(type_name);
-        auto id_it = catalog.index_by_id.find(derived_id);
-        if (id_it != catalog.index_by_id.end())
-            index_entry = id_it->second;
-    }
-    if (index_entry.is_null()) return nullptr;
-    if (index_entry.contains("has_docs") && index_entry["has_docs"].is_boolean() &&
-        !index_entry["has_docs"].get<bool>()) {
-        return nullptr;
-    }
-    if (!index_entry.contains("id") || !index_entry["id"].is_string()) return nullptr;
-    const auto detail_path = catalog.docs_dir / (index_entry["id"].get<std::string>() + ".json");
-    std::ifstream f(detail_path);
-    if (!f.is_open()) return nullptr;
-    try {
-        return nlohmann::json::parse(f);
-    } catch (...) {
-        return nullptr;
-    }
-}
-
 static void merge_doc_text_field(nlohmann::json& out, const nlohmann::json& doc,
                                  const char* target_key, const char* source_key) {
     if (doc.contains(source_key) && doc[source_key].is_string() && !doc[source_key].get<std::string>().empty())
@@ -309,6 +227,25 @@ static std::unordered_map<std::string, nlohmann::json> index_docs_by_name(const 
         out[item["name"].get<std::string>()] = item;
     }
     return out;
+}
+
+static nlohmann::json resolve_operator_source_doc(OperatorSourceDocs& source_docs,
+                                                  OperatorRegistry& registry,
+                                                  PackageManager* package_manager,
+                                                  const std::string& type_name,
+                                                  const std::string& forced_package = "") {
+    std::string package_name = forced_package;
+    if (package_name.empty()) {
+        if (const auto* pkg = registry.package_for_type(type_name))
+            package_name = *pkg;
+    }
+
+    if (!package_name.empty() && package_manager && package_manager->is_installed(package_name)) {
+        return source_docs.resolve_package(package_name,
+                                           package_manager->resolve_package_path(package_name),
+                                           type_name);
+    }
+    return source_docs.resolve_core(type_name);
 }
 
 static nlohmann::json build_operator_docs_response(const VividOperatorDescriptor& desc,
@@ -1854,14 +1791,9 @@ static std::string handle_run_checks(Graph& graph, RuntimeCore& core, OperatorRe
 
 static std::string handle_list_types(OperatorRegistry& registry,
                                      PackageManager* package_manager,
-                                     const std::string& src_dir) {
+                                     OperatorSourceDocs& source_docs) {
     nlohmann::json result = nlohmann::json::object();
     nlohmann::json types_arr = nlohmann::json::array();
-    OperatorDocCatalog docs = load_operator_doc_catalog(
-        std::filesystem::path(src_dir).empty()
-            ? (std::filesystem::current_path() / "site" / "operators")
-            : (std::filesystem::path(src_dir) / "site" / "operators"));
-    std::unordered_map<std::string, OperatorDocCatalog> package_docs_cache;
 
     for (const auto& name : registry.type_names()) {
         auto* loader = registry.find(name);
@@ -1874,42 +1806,14 @@ static std::string handle_list_types(OperatorRegistry& registry,
         t["kind"] = kind_str(vivid_operator_kind(desc));
         t["lane_behavior"] = lane_behavior_str(desc->lane_behavior);
         t["lane_behavior_help"] = lane_behavior_help_str(desc->lane_behavior);
-        const nlohmann::json* doc_summary = nullptr;
-        auto doc_it = docs.index_by_name.find(desc->name);
-        if (doc_it != docs.index_by_name.end()) {
-            doc_summary = &doc_it->second;
-        } else {
-            auto id_it = docs.index_by_id.find(camel_to_snake_id(desc->name));
-            if (id_it != docs.index_by_id.end())
-                doc_summary = &id_it->second;
-        }
-        if (!doc_summary && package_manager) {
-            const auto* pkg = registry.package_for_type(name);
-            if (pkg && package_manager->is_installed(*pkg)) {
-                auto cache_it = package_docs_cache.find(*pkg);
-                if (cache_it == package_docs_cache.end()) {
-                    cache_it = package_docs_cache.emplace(
-                        *pkg,
-                        load_operator_doc_catalog(std::filesystem::path(
-                            package_manager->resolve_package_path(*pkg)) / "site" / "operators")).first;
-                }
-                auto pkg_doc_it = cache_it->second.index_by_name.find(desc->name);
-                if (pkg_doc_it != cache_it->second.index_by_name.end()) {
-                    doc_summary = &pkg_doc_it->second;
-                } else {
-                    auto pkg_id_it = cache_it->second.index_by_id.find(camel_to_snake_id(desc->name));
-                    if (pkg_id_it != cache_it->second.index_by_id.end())
-                        doc_summary = &pkg_id_it->second;
-                }
-            }
-        }
-        if (doc_summary) {
-            if (doc_summary->contains("brief") && (*doc_summary)["brief"].is_string())
-                t["brief"] = (*doc_summary)["brief"];
-            if (doc_summary->contains("has_docs") && (*doc_summary)["has_docs"].is_boolean())
-                t["has_docs"] = (*doc_summary)["has_docs"];
-            if (doc_summary->contains("operator_family") && (*doc_summary)["operator_family"].is_string())
-                t["operator_family"] = (*doc_summary)["operator_family"];
+        nlohmann::json doc_summary = resolve_operator_source_doc(source_docs, registry, package_manager, name);
+        if (doc_summary.is_object()) {
+            if (doc_summary.contains("brief") && doc_summary["brief"].is_string())
+                t["brief"] = doc_summary["brief"];
+            if (doc_summary.contains("has_docs") && doc_summary["has_docs"].is_boolean())
+                t["has_docs"] = doc_summary["has_docs"];
+            if (doc_summary.contains("operator_family") && doc_summary["operator_family"].is_string())
+                t["operator_family"] = doc_summary["operator_family"];
         }
         if (!t.contains("has_docs"))
             t["has_docs"] = false;
@@ -1944,8 +1848,8 @@ static std::string handle_list_types(OperatorRegistry& registry,
 
 static std::string handle_operator_docs(OperatorRegistry& registry,
                                         PackageManager* package_manager,
-                                        const nlohmann::json& root,
-                                        const std::string& src_dir) {
+                                        OperatorSourceDocs& source_docs,
+                                        const nlohmann::json& root) {
     if (!root.contains("name") || !root["name"].is_string())
         return json_err("missing 'name'");
 
@@ -1959,18 +1863,8 @@ static std::string handle_operator_docs(OperatorRegistry& registry,
         package_name = root["package"].get<std::string>();
     else if (const auto* pkg = registry.package_for_type(name); pkg)
         package_name = *pkg;
-
-    std::filesystem::path docs_dir;
-    if (!package_name.empty() && package_manager && package_manager->is_installed(package_name)) {
-        docs_dir = std::filesystem::path(package_manager->resolve_package_path(package_name)) / "site" / "operators";
-    } else {
-        docs_dir = (std::filesystem::path(src_dir).empty()
-            ? std::filesystem::current_path()
-            : std::filesystem::path(src_dir)) / "site" / "operators";
-    }
-
-    OperatorDocCatalog catalog = load_operator_doc_catalog(docs_dir);
-    nlohmann::json detail = load_operator_doc_detail(catalog, name);
+    nlohmann::json detail = resolve_operator_source_doc(source_docs, registry,
+                                                        package_manager, name, package_name);
     return json_ok(build_operator_docs_response(*desc, detail.is_null() ? nullptr : &detail, package_name));
 }
 
@@ -2060,7 +1954,9 @@ static std::string dispatch(const std::string& method, const std::string& body,
                             RuntimeAPI& api, Graph& graph,
                             RuntimeCore& core, OperatorRegistry& registry,
                             bool& has_gpu_ops, bool& has_audio,
-                            const std::string& src_dir, HotReloader* hot_reloader,
+                            HotReloader* hot_reloader,
+                            const std::string& src_dir,
+                            OperatorSourceDocs& source_docs,
                             PackageManager* package_manager,
                             PackageCompiler* package_compiler,
                             Settings* settings,
@@ -2069,7 +1965,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
     if (method == "inspect_graph") return handle_inspect_graph(graph, core);
     if (method == "introspect_nodes") return handle_introspect_nodes(graph, core);
     if (method == "run_diagnostics") return handle_run_diagnostics(graph, core, registry);
-    if (method == "list_types")    return handle_list_types(registry, package_manager, src_dir);
+    if (method == "list_types")    return handle_list_types(registry, package_manager, source_docs);
     if (method == "get_registry_diagnostics") return handle_get_registry_diagnostics(registry);
     if (method == "get_graph_load_diagnostics") return handle_get_graph_load_diagnostics(graph);
     if (method == "operator_map") {
@@ -2817,6 +2713,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
                 if (!capture_live_graph_snapshot(graph, snapshot_json, snapshot_error)) {
                     result = json_err(snapshot_error);
                 } else if (package_manager->uninstall(root["name"].get<std::string>())) {
+                    source_docs.invalidate_package(root["name"].get<std::string>());
                     auto rr = api.apply_snapshot_json(snapshot_json, has_gpu_ops, has_audio);
                     if (!rr.ok)
                         result = json_err("package uninstalled but runtime refresh failed: " + rr.message);
@@ -2838,6 +2735,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
             else {
                 auto ir = package_manager->link(root["path"].get<std::string>());
                 if (ir.success) {
+                    source_docs.invalidate_package(ir.info.name, ir.info.path);
                     nlohmann::json res = nlohmann::json::object();
                     res["name"] = ir.info.name;
                     res["version"] = ir.info.version;
@@ -2877,6 +2775,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
                 if (!capture_live_graph_snapshot(graph, snapshot_json, snapshot_error)) {
                     result = json_err(snapshot_error);
                 } else if (package_manager->unlink(root["name"].get<std::string>())) {
+                    source_docs.invalidate_package(root["name"].get<std::string>());
                     auto rr = api.apply_snapshot_json(snapshot_json, has_gpu_ops, has_audio);
                     if (!rr.ok)
                         result = json_err("package unlinked but runtime refresh failed: " + rr.message);
@@ -2904,6 +2803,8 @@ static std::string dispatch(const std::string& method, const std::string& body,
                 } else {
                     auto ir = package_manager->rebuild(pkg_name);
                     if (ir.success) {
+                        source_docs.invalidate_package(pkg_name,
+                            package_manager->resolve_package_path(pkg_name));
                         std::error_code build_ec;
                         std::string pkg_path = package_manager->resolve_package_path(pkg_name);
                         if (!pkg_path.empty()) {
@@ -3068,7 +2969,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
         if (!root_valid) {
             result = json_err("invalid JSON body");
         } else {
-            result = handle_operator_docs(registry, package_manager, root, src_dir);
+            result = handle_operator_docs(registry, package_manager, source_docs, root);
         }
     } else if (method == "package_operator_docs") {
         if (!package_manager) {
@@ -3086,14 +2987,15 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     nlohmann::json res = nlohmann::json::object();
                     res["package"] = name;
                     nlohmann::json ops_arr = nlohmann::json::array();
-                    OperatorDocCatalog catalog = load_operator_doc_catalog(
-                        std::filesystem::path(package_manager->resolve_package_path(name)) / "site" / "operators");
                     for (const auto& type_name : registry.type_names()) {
                         const auto* pkg = registry.package_for_type(type_name);
                         if (!pkg || *pkg != name) continue;
                         const auto* desc = registry.probe_descriptor(type_name);
                         if (!desc) continue;
-                        nlohmann::json detail = load_operator_doc_detail(catalog, type_name);
+                        nlohmann::json detail = source_docs.resolve_package(
+                            name,
+                            package_manager->resolve_package_path(name),
+                            type_name);
                         nlohmann::json op = build_operator_docs_response(*desc,
                             detail.is_null() ? nullptr : &detail, name);
                         ops_arr.push_back(std::move(op));
@@ -3246,10 +3148,15 @@ struct ControlServer::Impl {
 // ControlServer lifecycle
 // ---------------------------------------------------------------------------
 
-ControlServer::ControlServer() = default;
+ControlServer::ControlServer()
+    : operator_source_docs_(std::make_unique<OperatorSourceDocs>()) {}
 ControlServer::~ControlServer() { stop(); }
 
-void ControlServer::set_src_dir(const std::string& src_dir) { src_dir_ = src_dir; }
+void ControlServer::set_src_dir(const std::string& src_dir) {
+    src_dir_ = src_dir;
+    if (operator_source_docs_)
+        operator_source_docs_->set_core_source_root(src_dir_);
+}
 void ControlServer::set_hot_reloader(HotReloader* hr) { hot_reloader_ = hr; }
 void ControlServer::set_capture_coordinator(CaptureCoordinator* cc) { assert(!impl_); capture_coordinator_ = cc; }
 void ControlServer::set_package_manager(PackageManager* pm) { assert(!impl_); package_manager_ = pm; }
@@ -3820,7 +3727,9 @@ void ControlServer::process_requests(RuntimeAPI& api, Graph& graph,
         std::string response = dispatch(req.method, req.body,
                                         api, graph, core, registry,
                                         has_gpu_ops, has_audio,
-                                        src_dir_, hot_reloader_,
+                                        hot_reloader_,
+                                        src_dir_,
+                                        *operator_source_docs_,
                                         package_manager_,
                                         package_compiler_,
                                         settings_,

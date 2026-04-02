@@ -1,7 +1,15 @@
-// Test operator v1: output = scale * 2.0
-// Param: "scale" (default 1.0)
 #include "operator_api/operator.h"
 
+/**
+ * @brief Fixture operator docs for MCP/control-server tests.
+ *
+ * Detailed body for the TestOp fixture.
+ *
+ * @tip Use this fixture to verify MCP doc merging.
+ * @param scale Scale multiplier for the output.
+ * @output out Scaled scalar output.
+ * @family test-fixture
+ */
 struct TestOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "TestOp";
     static constexpr bool kTimeDependent = false;

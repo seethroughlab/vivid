@@ -567,7 +567,7 @@ async def inspect_graph() -> str:
 
 @mcp.tool()
 async def list_types() -> str:
-    """List all available operator types with their params (name, type, default, min, max, semantic_tag/shape/unit/intent) and ports (name, type, direction)."""
+    """List all available operator types with descriptor metadata plus lightweight docs derived from operator source comments when available."""
     return await _post("list_types")
 
 
@@ -1218,8 +1218,17 @@ async def read_package_example(name: str, filename: str) -> str:
 
 
 @mcp.tool()
+async def operator_docs(name: str, package: str = "") -> str:
+    """Get merged operator docs from source comments plus runtime metadata for one operator. Set package for installed package operators when needed."""
+    body = {"name": name}
+    if package:
+        body["package"] = package
+    return await _post("operator_docs", body)
+
+
+@mcp.tool()
 async def package_operator_docs(name: str) -> str:
-    """Get detailed operator documentation for an installed package: params with types/ranges/defaults/choices and semantic_tag/shape/unit/intent, plus input/output ports and env."""
+    """Get source-comment-derived operator docs plus runtime metadata for every operator in an installed package."""
     return await _post("package_operator_docs", {"name": name})
 
 

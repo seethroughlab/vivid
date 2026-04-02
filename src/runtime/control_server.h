@@ -19,6 +19,7 @@ class PackageCompiler;
 class PackageCatalog;
 class AudioEngine;
 class AppUpdateManager;
+class OperatorSourceDocs;
 struct Settings;
 
 class ControlServer {
@@ -65,6 +66,7 @@ private:
     std::unordered_map<std::string, uint64_t> mcp_last_ping_ms_;
 
     std::string src_dir_;
+    std::unique_ptr<OperatorSourceDocs> operator_source_docs_;
     HotReloader* hot_reloader_ = nullptr;
     CaptureCoordinator* capture_coordinator_ = nullptr;
     PackageManager* package_manager_ = nullptr;
