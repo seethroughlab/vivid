@@ -581,6 +581,19 @@ tr:last-child td {
   padding-left: 20px;
 }
 
+.markdown-body img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.markdown-body table {
+  table-layout: fixed;
+  width: 100%;
+}
+
 .markdown-body code {
   background: var(--input-bg);
   border: 1px solid var(--border);
