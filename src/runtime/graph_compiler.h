@@ -55,7 +55,7 @@ public:
         const std::filesystem::path& graph_base_dir);
 
     // Initialize audio-specific state on a CompiledNode (channel counts, audio
-    // buffers, float CV inputs, signal output extraction).
+    // buffers, lane/string/custom port staging).
     static void init_audio_state(
         CompiledNode& cn,
         const VividOperatorDescriptor* desc,
