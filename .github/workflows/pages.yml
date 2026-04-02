@@ -24,24 +24,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
-      - name: Install Python dependencies
-        run: pip install -r site/requirements.txt
-
       - name: Generate package catalog data
-        run: python3 site/generate.py
+        run: uv run site/generate.py
 
       - name: Build static site
         run: |
           set -euo pipefail
-          python3 site/build_site.py --output _site
+          uv run --project site site/build_site.py --output _site
           echo "vivid.seethroughlab.com" > _site/CNAME
 
       - name: Upload Pages artifact
