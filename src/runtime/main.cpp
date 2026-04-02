@@ -1013,6 +1013,15 @@ static bool ensure_workspace_seeded(const std::filesystem::path& resources_dir,
     fs::path dst_assets = workspace_root / "assets";
 
     std::error_code ec;
+
+    // Always sync bundle → workspace for files where the bundle copy is
+    // strictly newer.  This runs every launch so that dev rebuilds pick up
+    // new/updated graphs and assets without requiring a version bump.
+    if (fs::is_directory(src_graphs, ec))
+        copy_tree_overwrite_newer(src_graphs, dst_graphs);
+    if (fs::is_directory(src_assets, ec))
+        copy_tree_overwrite_newer(src_assets, dst_assets);
+
     bool needs_seed =
         settings.workspace_seeded_version != VIVID_CORE_VERSION ||
         !fs::is_directory(dst_graphs, ec) ||
@@ -1020,6 +1029,7 @@ static bool ensure_workspace_seeded(const std::filesystem::path& resources_dir,
 
     if (!needs_seed) return settings_changed;
 
+    // First-time seed: copy everything that doesn't already exist.
     bool seed_ok = true;
     if (fs::is_directory(src_graphs, ec)) {
         if (!copy_tree_missing(src_graphs, dst_graphs)) {
@@ -1048,14 +1058,6 @@ static bool ensure_workspace_seeded(const std::filesystem::path& resources_dir,
         settings.workspace_seeded_version = VIVID_CORE_VERSION;
         settings_changed = true;
     }
-
-    // Always sync bundle → workspace for files where the bundle copy is newer.
-    // This propagates graph/asset updates from fresh builds without clobbering
-    // files the user has modified more recently.
-    if (fs::is_directory(src_graphs, ec))
-        copy_tree_overwrite_newer(src_graphs, dst_graphs);
-    if (fs::is_directory(src_assets, ec))
-        copy_tree_overwrite_newer(src_assets, dst_assets);
 
     return settings_changed;
 }
@@ -1371,6 +1373,19 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
                     c.lane_count  = e.lane_count;
                     break;
                 }
+            }
+        }
+    }
+
+    // Mark connections that the compiler dropped
+    for (const auto& dc : cg->dropped_connections) {
+        for (auto& sc : snap.connections) {
+            if (sc.from_node == dc.from_node && sc.from_port == dc.from_port &&
+                sc.to_node == dc.to_node && sc.to_port == dc.to_port) {
+                sc.dropped = true;
+                sc.invalid = true;
+                sc.invalid_reason = dc.reason;
+                break;
             }
         }
     }

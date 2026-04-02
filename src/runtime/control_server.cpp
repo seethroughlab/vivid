@@ -1791,7 +1791,13 @@ static std::string handle_run_checks(Graph& graph, RuntimeCore& core, OperatorRe
 
 static std::string handle_list_types(OperatorRegistry& registry,
                                      PackageManager* package_manager,
-                                     OperatorSourceDocs& source_docs) {
+                                     OperatorSourceDocs& source_docs,
+                                     const nlohmann::json& root) {
+    // Optional domain filter: "gpu", "audio", "control"
+    std::string domain_filter;
+    if (root.contains("domain") && root["domain"].is_string())
+        domain_filter = root["domain"].get<std::string>();
+
     nlohmann::json result = nlohmann::json::object();
     nlohmann::json types_arr = nlohmann::json::array();
 
@@ -1801,9 +1807,13 @@ static std::string handle_list_types(OperatorRegistry& registry,
         const auto* desc = loader->descriptor();
         if (!desc) continue;
 
+        std::string kind = kind_str(vivid_operator_kind(desc));
+        if (!domain_filter.empty() && kind != domain_filter)
+            continue;
+
         nlohmann::json t = nlohmann::json::object();
         t["name"] = desc->name;
-        t["kind"] = kind_str(vivid_operator_kind(desc));
+        t["kind"] = kind;
         t["lane_behavior"] = lane_behavior_str(desc->lane_behavior);
         t["lane_behavior_help"] = lane_behavior_help_str(desc->lane_behavior);
         nlohmann::json doc_summary = resolve_operator_source_doc(source_docs, registry, package_manager, name);
@@ -1817,27 +1827,6 @@ static std::string handle_list_types(OperatorRegistry& registry,
         }
         if (!t.contains("has_docs"))
             t["has_docs"] = false;
-
-        // Params
-        nlohmann::json params_arr = nlohmann::json::array();
-        for (uint32_t i = 0; i < desc->param_count; ++i) {
-            params_arr.push_back(build_param_descriptor_json(desc->params[i]));
-        }
-        t["params"] = std::move(params_arr);
-
-        // Ports split into inputs / outputs
-        nlohmann::json inputs_arr = nlohmann::json::array();
-        nlohmann::json outputs_arr = nlohmann::json::array();
-        for (uint32_t i = 0; i < desc->port_count; ++i) {
-            const auto& pd = desc->ports[i];
-            nlohmann::json p = build_port_descriptor_json(pd);
-            if (pd.direction == VIVID_PORT_INPUT)
-                inputs_arr.push_back(std::move(p));
-            else
-                outputs_arr.push_back(std::move(p));
-        }
-        t["inputs"] = std::move(inputs_arr);
-        t["outputs"] = std::move(outputs_arr);
 
         types_arr.push_back(std::move(t));
     }
@@ -1965,7 +1954,6 @@ static std::string dispatch(const std::string& method, const std::string& body,
     if (method == "inspect_graph") return handle_inspect_graph(graph, core);
     if (method == "introspect_nodes") return handle_introspect_nodes(graph, core);
     if (method == "run_diagnostics") return handle_run_diagnostics(graph, core, registry);
-    if (method == "list_types")    return handle_list_types(registry, package_manager, source_docs);
     if (method == "get_registry_diagnostics") return handle_get_registry_diagnostics(registry);
     if (method == "get_graph_load_diagnostics") return handle_get_graph_load_diagnostics(graph);
     if (method == "operator_map") {
@@ -2018,7 +2006,9 @@ static std::string dispatch(const std::string& method, const std::string& body,
 
     std::string result;
 
-    if (method == "validate_checks") {
+    if (method == "list_types") {
+        result = handle_list_types(registry, package_manager, source_docs, root_valid ? root : nlohmann::json::object());
+    } else if (method == "validate_checks") {
         if (!root_valid) result = json_err("invalid JSON body");
         else result = handle_validate_checks(root);
     } else if (method == "sample_node_outputs") {

@@ -144,6 +144,7 @@ struct ConnectionSnapshot {
     bool invalid = false;
     bool from_endpoint_missing = false;
     bool to_endpoint_missing = false;
+    bool dropped = false;           // compiler rejected this connection
     std::string invalid_reason;
 
     // Lane metadata (from compiled edge)

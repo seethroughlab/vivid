@@ -34,11 +34,15 @@ Connections must match types: `gpu_texture` → `gpu_texture`, `data` → `data`
 ## Workflow
 
 1. `ensure_runtime` — make sure a GUI Vivid runtime is running before using the rest of the tool surface
-2. `list_types` — discover all available operators (seed + installed packages)
+2. `list_types` — discover available operators (compact catalog). Use `operator_docs(name)` to get full param/port/doc details for a specific operator.
 3. **Compose first** — build the graph from existing operators before considering custom ones. Most goals are achievable by wiring existing operators together.
 4. `add_node` → `connect` → `set_param` — assemble and configure the graph
 5. `scaffold_operator` — scaffold a starter template when no existing operator achieves the goal. Creates a minimal working operator; use the opdev MCP server for advanced features (custom ports, params, inspectors).
 6. `inspect_graph` — verify the graph state, check live output values
+
+## Analyzing an Existing Graph
+
+When asked to examine, analyze, or debug an existing graph, **always call `get_graph_errors` first** before any other analysis. Errors and dropped connections are the most important information — report them prominently at the top of your response, not buried in a summary. A dropped connection means a wire the user drew is silently inactive, which is almost always the root cause of "signal not reaching downstream nodes" problems.
 
 ## Common Patterns
 
@@ -566,9 +570,16 @@ async def inspect_graph() -> str:
 
 
 @mcp.tool()
-async def list_types() -> str:
-    """List all available operator types with descriptor metadata plus lightweight docs derived from operator source comments when available."""
-    return await _post("list_types")
+async def list_types(domain: str = "") -> str:
+    """List all available operator types (compact catalog: name, kind, brief, lane_behavior). Use operator_docs(name) to get full details (params, ports, docs) for a specific operator.
+
+    Args:
+        domain: Optional filter — "gpu", "audio", or "control". Omit to list all domains.
+    """
+    body: dict = {}
+    if domain:
+        body["domain"] = domain
+    return await _post("list_types", body or None)
 
 
 @mcp.tool()
@@ -579,7 +590,7 @@ async def add_node(type: str, id: str) -> str:
         type: Operator type name (e.g. "lfo", "shape", "oscillator")
         id: Unique node identifier
     """
-    return await _post("add_node", {"type": type, "id": id})
+    return await _post("add_node", {"type": type, "node_id": id})
 
 
 @mcp.tool()
@@ -874,7 +885,11 @@ async def remove_sticky_note(id: str) -> str:
 
 @mcp.tool()
 async def get_graph_errors() -> str:
-    """Get a list of nodes that are in an error state."""
+    """Get all graph errors: nodes in error state AND dropped connections (wires the compiler rejected).
+
+    **Call this first when analyzing or debugging a graph.** Dropped connections are silent failures —
+    the wire exists in graph truth but carries no signal. Always report errors and dropped connections
+    prominently before other analysis."""
     return await _post("get_graph_errors")
 
 
