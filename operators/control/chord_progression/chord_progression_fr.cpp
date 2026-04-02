@@ -1,7 +1,7 @@
 #include "chord_progression_core.h"
 
 struct ChordProgressionFr : ChordProgressionCore, vivid::FrameProcessable {
-    static constexpr const char* kName = "chord_progression_fr";
+    static constexpr const char* kName = "ChordProgressionFr";
 
     void process_frame(const VividFrameContext* ctx) override {
         compute(ctx->input_values[0], ctx->param_values, ctx->output_lanes,
@@ -11,3 +11,4 @@ struct ChordProgressionFr : ChordProgressionCore, vivid::FrameProcessable {
 
 VIVID_REGISTER(ChordProgressionFr)
 VIVID_THUMBNAIL(ChordProgressionFr)
+VIVID_INSPECTOR(ChordProgressionFr)

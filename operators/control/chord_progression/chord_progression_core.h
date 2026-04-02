@@ -5,8 +5,42 @@
 #include "midi_helpers.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include "operator_api/thumbnail.h"
 #include <cstring>
+
+namespace chord_insp {
+static constexpr float kCardGap  = 2.0f;
+static constexpr float kRowH     = 16.0f;
+static constexpr float kNameRowH = 18.0f;
+static constexpr float kPad      = 2.0f;
+
+static const char* kNoteNames[12] = {
+    "C","C#","D","D#","E","F","F#","G","G#","A","A#","B"
+};
+static const char* kDegreeLabels[7] = {"I","II","III","IV","V","VI","VII"};
+static const char* kVoicingLabels[4] = {"Root","Inv1","Inv2","Drop2"};
+static const char* kExtLabels[3] = {"Triad","7th","Add9"};
+static const char* kRowLabels[3] = {"Deg","Voic","Ext"};
+
+// Build a human-readable chord name like "Cmaj7", "Am", "Gadd9".
+// buf must be at least 12 bytes.
+static void chord_display_name(char* buf, int buf_size,
+                               const int scale[7], int key_root, int degree, int ext) {
+    int root_chromatic = (key_root + scale[degree]) % 12;
+    // Determine quality from the 3rd interval
+    int third_interval = scale[(degree + 2) % 7] - scale[degree];
+    if (third_interval <= 0) third_interval += 12;
+    bool is_minor = (third_interval == 3);
+
+    const char* quality = is_minor ? "m" : "";
+    const char* ext_suffix = "";
+    if (ext == 1) ext_suffix = "7";
+    else if (ext == 2) ext_suffix = "add9";
+
+    std::snprintf(buf, buf_size, "%s%s%s", kNoteNames[root_chromatic], quality, ext_suffix);
+}
+} // namespace chord_insp
 
 /**
  * @brief Diatonic chord sequencer with per-step voicing and extensions.
@@ -158,6 +192,9 @@ struct ChordProgressionCore : vivid::OperatorBase {
         out.push_back(&beats_per_step);  // 4
         out.push_back(&gate_length);     // 5
         out.push_back(&velocity);        // 6
+
+        // Per-step params: rendered by custom inspector, hidden from standard list
+        size_t hidden_start = out.size();
         out.push_back(&degree_0);  out.push_back(&degree_1);   // 7..14
         out.push_back(&degree_2);  out.push_back(&degree_3);
         out.push_back(&degree_4);  out.push_back(&degree_5);
@@ -170,6 +207,9 @@ struct ChordProgressionCore : vivid::OperatorBase {
         out.push_back(&ext_2);    out.push_back(&ext_3);
         out.push_back(&ext_4);    out.push_back(&ext_5);
         out.push_back(&ext_6);    out.push_back(&ext_7);
+        for (size_t i = hidden_start; i < out.size(); ++i)
+            out[i]->display_hint = VIVID_DISPLAY_HIDDEN;
+
         out.push_back(&midi_channel); // 31
     }
 
@@ -355,6 +395,158 @@ struct ChordProgressionCore : vivid::OperatorBase {
             output_values[1] = vel;
             output_values[2] = gate_val;
         }
+    }
+
+    void draw_inspector(VividInspectorContext* ctx) override {
+        namespace ci = chord_insp;
+        auto& d = ctx->draw;
+        void* o = d.opaque;
+        const auto& th = ctx->theme;
+        const auto& mouse = ctx->mouse;
+
+        float px = ctx->content_x;
+        float base_y = ctx->content_y;
+        float panel_w = ctx->content_width;
+
+        int num_steps = (ctx->param_count > 0)
+            ? std::clamp(static_cast<int>(ctx->param_values[0]), 1, 8) : 4;
+        int kr = (ctx->param_count > 1)
+            ? std::clamp(static_cast<int>(ctx->param_values[1]), 0, 11) : 0;
+        int m = (ctx->param_count > 2)
+            ? std::clamp(static_cast<int>(ctx->param_values[2]), 0, 5) : 0;
+
+        // Detect current playing step from scalar "note" output (output index 3)
+        int current_step = -1;
+        if (ctx->output_count > 3) {
+            float out_note = ctx->output_values[3];
+            int oct = (ctx->param_count > 3) ? static_cast<int>(ctx->param_values[3]) : 4;
+            for (int s = 0; s < num_steps; ++s) {
+                if (ctx->param_count <= static_cast<uint32_t>(7 + s)) break;
+                int deg = std::clamp(static_cast<int>(ctx->param_values[7 + s]), 0, 6);
+                int voic = (ctx->param_count > static_cast<uint32_t>(15 + s))
+                    ? std::clamp(static_cast<int>(ctx->param_values[15 + s]), 0, 3) : 0;
+                int ext = (ctx->param_count > static_cast<uint32_t>(23 + s))
+                    ? std::clamp(static_cast<int>(ctx->param_values[23 + s]), 0, 2) : 0;
+
+                int intervals[5];
+                int csz = build_chord(m, deg, ext, intervals, 5);
+                apply_voicing(voic, intervals, csz);
+                int base = kr + oct * 12 + kScaleIntervals[m][deg];
+                float expected = static_cast<float>(base + intervals[0]);
+                if (std::fabs(out_note - expected) < 0.5f) {
+                    current_step = s;
+                    break;
+                }
+            }
+        }
+
+        // Layout: compute card width to fill available space
+        float card_w = (panel_w - ci::kCardGap * 7.0f) / 8.0f;
+        if (card_w < 32.0f) card_w = 32.0f;
+
+        float y = 4.0f; // relative y offset
+
+        // Row labels column
+        float label_w = 30.0f;
+        float grid_x = label_w;
+        float actual_card_w = (panel_w - label_w - ci::kCardGap * 7.0f) / 8.0f;
+        if (actual_card_w < 28.0f) actual_card_w = 28.0f;
+
+        float total_h = ci::kNameRowH + ci::kRowH * 3.0f;
+
+        // Dark background
+        d.draw_rect(o, px, base_y + y, panel_w, total_h + 4.0f,
+                    {th.dark_bg.r, th.dark_bg.g, th.dark_bg.b, 0.9f});
+
+        float grid_y = y + 2.0f;
+
+        // Row labels
+        const char* row_labels[4] = {"", "Deg", "Voic", "Ext"};
+        float row_tops[4] = {grid_y, grid_y + ci::kNameRowH,
+                             grid_y + ci::kNameRowH + ci::kRowH,
+                             grid_y + ci::kNameRowH + ci::kRowH * 2.0f};
+        float row_heights[4] = {ci::kNameRowH, ci::kRowH, ci::kRowH, ci::kRowH};
+        for (int r = 1; r < 4; ++r) {
+            d.draw_text(o, px + 2.0f, base_y + row_tops[r] + 2.0f, row_labels[r],
+                        {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.5f}, 1.0f);
+        }
+
+        const int* scale = kScaleIntervals[m];
+
+        for (int s = 0; s < 8; ++s) {
+            float cx = grid_x + s * (actual_card_w + ci::kCardGap);
+            bool beyond = (s >= num_steps);
+            float col_alpha = beyond ? 0.25f : 1.0f;
+
+            // Current step highlight
+            if (s == current_step && !beyond) {
+                d.draw_rect(o, px + cx, base_y + grid_y, actual_card_w, total_h,
+                            {th.accent.r, th.accent.g, th.accent.b, 0.15f});
+            }
+
+            // Read per-step param values
+            int deg = (ctx->param_count > static_cast<uint32_t>(7 + s))
+                ? std::clamp(static_cast<int>(ctx->param_values[7 + s]), 0, 6) : 0;
+            int voic = (ctx->param_count > static_cast<uint32_t>(15 + s))
+                ? std::clamp(static_cast<int>(ctx->param_values[15 + s]), 0, 3) : 0;
+            int ext = (ctx->param_count > static_cast<uint32_t>(23 + s))
+                ? std::clamp(static_cast<int>(ctx->param_values[23 + s]), 0, 2) : 0;
+
+            // Row 0: Chord name (display only)
+            char name_buf[16];
+            ci::chord_display_name(name_buf, sizeof(name_buf), scale, kr, deg, ext);
+            float tw = d.text_width(o, name_buf, 1.0f);
+            float text_x = cx + (actual_card_w - tw) * 0.5f;
+            d.draw_text(o, px + text_x, base_y + row_tops[0] + 2.0f, name_buf,
+                        {th.bright_text.r, th.bright_text.g, th.bright_text.b, col_alpha}, 1.0f);
+
+            // Rows 1-3: degree, voicing, extension (clickable)
+            const char* cell_labels[3] = {ci::kDegreeLabels[deg], ci::kVoicingLabels[voic], ci::kExtLabels[ext]};
+            int cell_maxes[3] = {7, 4, 3};
+            int cell_vals[3] = {deg, voic, ext};
+            const char* param_prefixes[3] = {"degree_", "voicing_", "ext_"};
+
+            for (int r = 0; r < 3; ++r) {
+                float ry = row_tops[1 + r];
+                float rh = row_heights[1 + r];
+
+                // Cell background
+                d.draw_rounded_rect(o, px + cx + ci::kPad, base_y + ry + ci::kPad,
+                                    actual_card_w - 2.0f * ci::kPad, rh - 2.0f * ci::kPad,
+                                    2.0f,
+                                    {th.slider_track.r, th.slider_track.g, th.slider_track.b, 0.6f * col_alpha});
+
+                // Cell text (centered)
+                float ctw = d.text_width(o, cell_labels[r], 1.0f);
+                float ctx_x = cx + (actual_card_w - ctw) * 0.5f;
+                d.draw_text(o, px + ctx_x, base_y + ry + 2.0f, cell_labels[r],
+                            {th.bright_text.r, th.bright_text.g, th.bright_text.b, 0.9f * col_alpha}, 1.0f);
+
+                // Click interaction: left=forward, right or shift+left=backward
+                bool left_hit = mouse.left_clicked &&
+                    mouse.x >= cx && mouse.x < cx + actual_card_w &&
+                    mouse.y >= ry && mouse.y < ry + rh;
+                bool right_hit = mouse.right_clicked &&
+                    mouse.x >= cx && mouse.x < cx + actual_card_w &&
+                    mouse.y >= ry && mouse.y < ry + rh;
+
+                if (left_hit || right_hit) {
+                    int max_val = cell_maxes[r];
+                    int new_val;
+                    if (right_hit || mouse.shift_down) {
+                        new_val = (cell_vals[r] + max_val - 1) % max_val;
+                    } else {
+                        new_val = (cell_vals[r] + 1) % max_val;
+                    }
+                    char param_name[16];
+                    std::snprintf(param_name, sizeof(param_name), "%s%d", param_prefixes[r], s);
+                    ctx->commands.set_param(ctx->commands.opaque, param_name, static_cast<float>(new_val));
+                }
+            }
+        }
+
+        y += total_h + 8.0f;
+        ctx->consumed_height = y;
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override {

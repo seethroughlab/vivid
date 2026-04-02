@@ -2,7 +2,7 @@
 #include "control/audio_scalar_utils.h"
 
 struct ChordProgressionAu : ChordProgressionCore, vivid::AudioProcessable {
-    static constexpr const char* kName = "chord_progression_au";
+    static constexpr const char* kName = "ChordProgressionAu";
 
     void process_audio(const VividAudioContext* ctx) override {
         float local_out[3] = {};
@@ -18,3 +18,4 @@ struct ChordProgressionAu : ChordProgressionCore, vivid::AudioProcessable {
 
 VIVID_REGISTER(ChordProgressionAu)
 VIVID_THUMBNAIL(ChordProgressionAu)
+VIVID_INSPECTOR(ChordProgressionAu)
