@@ -2,7 +2,7 @@
 #include "control/audio_scalar_utils.h"
 
 struct ArpeggiatorAu : ArpeggiatorCore, vivid::AudioProcessable {
-    static constexpr const char* kName = "arpeggiator_au";
+    static constexpr const char* kName = "ArpeggiatorAu";
 
     void process_audio(const VividAudioContext* ctx) override {
         float local_out[4] = {};

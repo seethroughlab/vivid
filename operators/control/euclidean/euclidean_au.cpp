@@ -4,7 +4,7 @@
 #include <cmath>
 
 struct Euclidean_AU : vivid::OperatorBase, vivid::AudioProcessable {
-    static constexpr const char* kName   = "euclidean_au";
+    static constexpr const char* kName   = "EuclideanAu";
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<int>   hits        {"hits",        3, 0, 32};

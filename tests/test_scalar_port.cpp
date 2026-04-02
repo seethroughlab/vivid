@@ -65,7 +65,7 @@ static void test_audio_scalar_routing(const std::string& build_dir) {
     vivid::Graph graph;
     check(graph.load_from_string(R"({
         "nodes": {
-            "lfo":   { "type": "lfo_au", "params": { "frequency": 10.0, "amplitude": 1.0, "waveform": 0.0 } },
+            "lfo":   { "type": "LfoAu", "params": { "frequency": 10.0, "amplitude": 1.0, "waveform": 0.0 } },
             "probe": { "type": "AudioScalarProbeOp" }
         },
         "connections": [

@@ -43,7 +43,7 @@
       "params": {}
     },
     "lfo_scale": {
-      "type": "lfo_fr",
+      "type": "LfoFr",
       "params": {
         "frequency": 0.12,
         "amplitude": 10.0,

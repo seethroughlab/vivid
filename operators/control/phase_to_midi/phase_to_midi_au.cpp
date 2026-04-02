@@ -5,7 +5,7 @@
 #include "control/audio_scalar_utils.h"
 
 struct PhaseToMidiAu : vivid::OperatorBase, vivid::AudioProcessable {
-    static constexpr const char* kName   = "phase_to_midi_au";
+    static constexpr const char* kName   = "PhaseToMidiAu";
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<int>   note    {"note",     60,  0, 127};

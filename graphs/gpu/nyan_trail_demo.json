@@ -31,7 +31,7 @@
       }
     },
     "lfo_hue": {
-      "type": "lfo_fr",
+      "type": "LfoFr",
       "params": {
         "frequency": 0.8,
         "amplitude": 180.0,
@@ -39,7 +39,7 @@
       }
     },
     "lfo_y": {
-      "type": "lfo_fr",
+      "type": "LfoFr",
       "params": {
         "frequency": 0.3,
         "amplitude": 0.15,

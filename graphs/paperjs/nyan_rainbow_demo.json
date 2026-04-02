@@ -32,7 +32,7 @@
       }
     },
     "lfo_hue": {
-      "type": "lfo_fr",
+      "type": "LfoFr",
       "params": {
         "frequency": 0.5,
         "amplitude": 180.0,
@@ -41,7 +41,7 @@
       }
     },
     "lfo_bounce": {
-      "type": "lfo_fr",
+      "type": "LfoFr",
       "params": {
         "frequency": 1.5,
         "amplitude": 0.008,

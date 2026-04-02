@@ -5,7 +5,7 @@
 #include <cstring>
 
 struct DrumKitFr : vivid::OperatorBase, vivid::FrameProcessable {
-    static constexpr const char* kName = "drum_kit_fr";
+    static constexpr const char* kName = "DrumKitFr";
     static constexpr bool kTimeDependent = false;
     static constexpr int kSlotCount = 8;
 

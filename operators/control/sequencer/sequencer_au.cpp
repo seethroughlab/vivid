@@ -2,7 +2,7 @@
 #include "control/audio_scalar_utils.h"
 
 struct SequencerAu : SequencerCore, vivid::AudioProcessable {
-    static constexpr const char* kName = "sequencer_au";
+    static constexpr const char* kName = "SequencerAu";
 
     void process_audio(const VividAudioContext* ctx) override {
         float local_out[3] = {};

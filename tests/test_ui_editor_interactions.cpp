@@ -137,7 +137,7 @@ static void add_node(GraphSnapshot& snap, const std::shared_ptr<OperatorInfo>& o
 static GraphSnapshot make_editor_snapshot() {
     GraphSnapshot snap;
     auto lfo = make_op(
-        "lfo_fr",
+        "LfoFr",
         {
             ParamInfo{"frequency", VIVID_PARAM_FLOAT, 0.0f, 0.0f, 10.0f},
             ParamInfo{"amplitude", VIVID_PARAM_FLOAT, 0.0f, 0.0f, 1.0f},
@@ -326,7 +326,7 @@ int main() {
         bool saw_lfo = false;
         bool saw_math = false;
         for (const auto& call : sink.add_calls) {
-            saw_lfo = saw_lfo || call.first == "lfo_fr";
+            saw_lfo = saw_lfo || call.first == "LfoFr";
             saw_math = saw_math || call.first == "Math";
         }
         check(saw_lfo && saw_math, "Paste preserves copied operator types");

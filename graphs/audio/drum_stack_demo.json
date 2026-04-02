@@ -16,13 +16,13 @@
   },
   "nodes": {
     "clock1": {
-      "type": "clock_au",
+      "type": "ClockAu",
       "params": {
         "bpm": 122.0
       }
     },
     "seq1": {
-      "type": "drum_sequencer_au",
+      "type": "DrumSequencerAu",
       "params": {
         "steps": 16,
         "swing": 0.12,
@@ -107,7 +107,7 @@
       }
     },
     "kit1": {
-      "type": "drum_kit_au",
+      "type": "DrumKitAu",
       "params": {}
     },
     "aout": {

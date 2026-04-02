@@ -1,7 +1,7 @@
 {
   "nodes": {
     "clock1": {
-      "type": "clock_au",
+      "type": "ClockAu",
       "params": {
         "bpm": 120.0
       }
@@ -22,7 +22,7 @@
       }
     },
     "lfo1": {
-      "type": "lfo_au",
+      "type": "LfoAu",
       "params": {
         "frequency": 0.15,
         "amplitude": 3.14,
@@ -31,7 +31,7 @@
       }
     },
     "drums1": {
-      "type": "drum_sequencer_au",
+      "type": "DrumSequencerAu",
       "params": {
         "steps": 16,
         "kick_0": 1.0,
@@ -71,7 +71,7 @@
       }
     },
     "notes1": {
-      "type": "note_pattern_au",
+      "type": "NotePatternAu",
       "params": {
         "steps": 4,
         "root_0": 0,
@@ -143,7 +143,7 @@
       "params": {}
     },
     "kit1": {
-      "type": "drum_kit_au",
+      "type": "DrumKitAu",
       "params": {}
     },
     "audio_out": {

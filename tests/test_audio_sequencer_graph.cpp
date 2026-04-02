@@ -49,13 +49,13 @@ int main(int argc, char* argv[]) {
     registry.scan_deferred(staging.c_str());
 
     // Verify operators loaded
-    check(registry.find("clock_au") != nullptr, "Clock operator loaded");
+    check(registry.find("ClockAu") != nullptr, "Clock operator loaded");
     check(registry.find("Oscillator") != nullptr, "Oscillator operator loaded");
     check(registry.find("Gain") != nullptr, "Gain operator loaded");
 
     // Verify clock_au is audio-only
     {
-        auto* clock_loader = registry.find("clock_au");
+        auto* clock_loader = registry.find("ClockAu");
         if (clock_loader) {
             const auto* desc = clock_loader->descriptor();
             check(desc->has_process_audio == 1, "clock_au has process_audio");
@@ -86,7 +86,7 @@ int main(int argc, char* argv[]) {
     // --- Build graph: Clock → Oscillator → Gain → audio_out ---
     const char* graph_json = R"({
         "nodes": {
-            "clock1": { "type": "clock_au", "params": { "bpm": 120.0 } },
+            "clock1": { "type": "ClockAu", "params": { "bpm": 120.0 } },
             "osc1": { "type": "Oscillator", "params": { "frequency": 440.0 } },
             "gain1": { "type": "Gain", "params": { "amplitude": 0.8 } },
             "aout": { "type": "audio_out", "params": {} }

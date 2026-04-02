@@ -21,13 +21,13 @@
   },
   "nodes": {
     "clock": {
-      "type": "clock_au",
+      "type": "ClockAu",
       "params": {
         "bpm": 120.0
       }
     },
     "env_pluck": {
-      "type": "envelope_au",
+      "type": "EnvelopeAu",
       "params": {
         "attack": 0.001,
         "decay": 0.15,
@@ -37,7 +37,7 @@
       }
     },
     "env_pad": {
-      "type": "envelope_au",
+      "type": "EnvelopeAu",
       "params": {
         "attack": 0.4,
         "decay": 0.3,
@@ -47,7 +47,7 @@
       }
     },
     "env_perc": {
-      "type": "envelope_au",
+      "type": "EnvelopeAu",
       "params": {
         "attack": 0.001,
         "decay": 0.08,

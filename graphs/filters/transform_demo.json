@@ -41,7 +41,7 @@
       }
     },
     "lfo_rot": {
-      "type": "lfo_fr",
+      "type": "LfoFr",
       "params": {
         "frequency": 0.08,
         "amplitude": 180.0,
@@ -49,7 +49,7 @@
       }
     },
     "lfo_sx": {
-      "type": "lfo_fr",
+      "type": "LfoFr",
       "params": {
         "frequency": 0.12,
         "amplitude": 0.5,

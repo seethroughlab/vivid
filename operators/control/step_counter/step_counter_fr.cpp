@@ -3,7 +3,7 @@
 #include <cmath>
 
 struct StepCounterFr : vivid::OperatorBase, vivid::FrameProcessable {
-    static constexpr const char* kName = "step_counter_fr";
+    static constexpr const char* kName = "StepCounterFr";
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<int> initial{"initial", 0, -1000000, 1000000};

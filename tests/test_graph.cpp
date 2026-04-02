@@ -336,7 +336,7 @@ int main() {
         // Load graph with midi_mappings in JSON
         std::string path = write_temp("midi_map", R"({
             "nodes": {
-                "lfo1": { "type": "lfo_fr", "params": { "frequency": 2.0 } },
+                "lfo1": { "type": "LfoFr", "params": { "frequency": 2.0 } },
                 "gain1": { "type": "Gain" }
             },
             "connections": [],
@@ -1236,7 +1236,7 @@ int main() {
         std::fprintf(stderr, "\n=== Test 31: save_to_string round-trip ===\n");
 
         vivid::Graph g1;
-        check(g1.add_node("a", "clock_fr", {{"bpm", 120.0f}}), "add node a");
+        check(g1.add_node("a", "ClockFr", {{"bpm", 120.0f}}), "add node a");
         check(g1.add_node("b", "Math", {{"scale", 2.0f}}), "add node b");
         check(g1.add_connection("a", "beat_phase", "b", "input"), "add connection");
         check(g1.add_midi_mapping("b", "scale", 12, 1, 0.0f, 2.0f), "add midi mapping");
@@ -1746,7 +1746,7 @@ int main() {
         vivid::Graph g;
         check(g.load_from_string(R"({
             "nodes": {
-                "lfo": { "type": "lfo_fr" },
+                "lfo": { "type": "LfoFr" },
                 "osc": { "type": "Oscillator" }
             },
             "connections": [

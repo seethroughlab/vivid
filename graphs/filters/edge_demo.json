@@ -48,7 +48,7 @@
       }
     },
     "lfo_strength": {
-      "type": "lfo_fr",
+      "type": "LfoFr",
       "params": {
         "offset": 3.0,
         "amplitude": 4.0,

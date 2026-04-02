@@ -268,7 +268,7 @@ static void test_mixed_real_and_missing(const std::string& build_dir) {
     registry.scan_deferred(staging.c_str());
 
     vivid::Graph g;
-    g.add_node("lfo1", "lfo_fr");
+    g.add_node("lfo1", "LfoFr");
     g.add_node("mystery", "NonExistent");
     g.add_node("gain1", "Gain");
     g.add_connection("lfo1", "value", "mystery", "input");
@@ -352,7 +352,7 @@ static void test_lane_behavior_from_descriptor(const std::string& build_dir) {
     // Build a graph: LaneSourceOp → LFO (via param connection or port)
     vivid::Graph g;
     g.add_node("sn", "LaneSourceOp");
-    g.add_node("lfo1", "lfo_fr");
+    g.add_node("lfo1", "LfoFr");
 
     vivid::GraphCompiler::Options opts;
     auto cg = vivid::GraphCompiler::compile(g, registry, opts);
@@ -411,7 +411,7 @@ static void test_lane_mismatch_fails(const std::string& build_dir) {
     vivid::Graph g;
     g.add_node("sn1", "LaneSourceOp");
     g.add_node("sn2", "LaneSourceOp");
-    g.add_node("lfo1", "lfo_fr");
+    g.add_node("lfo1", "LfoFr");
     g.add_connection("sn1", "out", "lfo1", "gate");
     g.add_connection("sn2", "out", "lfo1", "gate");
 

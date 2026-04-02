@@ -3,7 +3,7 @@
 #include <cmath>
 
 struct Euclidean_FR : vivid::OperatorBase, vivid::FrameProcessable {
-    static constexpr const char* kName   = "euclidean_fr";
+    static constexpr const char* kName   = "EuclideanFr";
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<int>   hits        {"hits",        3, 0, 32};

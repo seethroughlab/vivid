@@ -1,7 +1,7 @@
 #include "note_pattern_core.h"
 
 struct NotePatternFr : NotePatternCore, vivid::FrameProcessable {
-    static constexpr const char* kName = "note_pattern_fr";
+    static constexpr const char* kName = "NotePatternFr";
 
     void process_frame(const VividFrameContext* ctx) override {
         compute(ctx->input_values[0], ctx->param_values, ctx->output_lanes,

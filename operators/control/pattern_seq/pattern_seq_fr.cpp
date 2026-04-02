@@ -7,7 +7,7 @@
 #include <cstdint>
 
 struct PatternSeq_FR : vivid::OperatorBase, vivid::FrameProcessable {
-    static constexpr const char* kName   = "pattern_seq_fr";
+    static constexpr const char* kName   = "PatternSeqFr";
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<int>   steps       {"steps",       8, 1, 16};

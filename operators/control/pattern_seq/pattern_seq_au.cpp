@@ -8,7 +8,7 @@
 #include <cstdint>
 
 struct PatternSeq_AU : vivid::OperatorBase, vivid::AudioProcessable {
-    static constexpr const char* kName   = "pattern_seq_au";
+    static constexpr const char* kName   = "PatternSeqAu";
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<int>   steps       {"steps",       8, 1, 16};

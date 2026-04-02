@@ -22,7 +22,7 @@
   },
   "nodes": {
     "lfo1": {
-      "type": "lfo_fr",
+      "type": "LfoFr",
       "params": {
         "frequency": 2.0,
         "amplitude": 200.0,

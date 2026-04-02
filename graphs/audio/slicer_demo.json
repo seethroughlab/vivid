@@ -3,7 +3,7 @@
   "vivid_version": "0.1.0",
   "nodes": {
     "clock1": {
-      "type": "clock_au",
+      "type": "ClockAu",
       "params": {
         "bpm": 120.0
       },
@@ -13,7 +13,7 @@
       }
     },
     "cp1": {
-      "type": "chord_progression_au",
+      "type": "ChordProgressionAu",
       "params": {
         "voicing_3": 0.0,
         "voicing_2": 0.0,

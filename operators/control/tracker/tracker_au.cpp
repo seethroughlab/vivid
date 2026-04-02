@@ -2,7 +2,7 @@
 #include "control/audio_scalar_utils.h"
 
 struct TrackerAu : TrackerCore, vivid::AudioProcessable {
-    static constexpr const char* kName = "tracker_au";
+    static constexpr const char* kName = "TrackerAu";
 
     void process_audio(const VividAudioContext* ctx) override {
         float local_in[2] = {

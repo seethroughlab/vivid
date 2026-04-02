@@ -50,7 +50,7 @@
       }
     },
     "lfo_angle": {
-      "type": "lfo_fr",
+      "type": "LfoFr",
       "params": {
         "frequency": 0.08,
         "amplitude": 180.0,
@@ -58,7 +58,7 @@
       }
     },
     "lfo_scale": {
-      "type": "lfo_fr",
+      "type": "LfoFr",
       "params": {
         "frequency": 0.15,
         "amplitude": 2.0,

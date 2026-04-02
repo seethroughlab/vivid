@@ -43,7 +43,7 @@
       }
     },
     "lfo_scope": {
-      "type": "lfo_fr",
+      "type": "LfoFr",
       "params": {
         "frequency": 0.08,
         "amplitude": 1.5,

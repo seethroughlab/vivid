@@ -36,7 +36,7 @@
       ]
     },
     "lfo_pattern": {
-      "type": "lfo_fr",
+      "type": "LfoFr",
       "params": {
         "frequency": 0.1,
         "amplitude": 2.5,

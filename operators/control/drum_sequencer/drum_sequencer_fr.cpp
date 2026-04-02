@@ -1,7 +1,7 @@
 #include "drum_sequencer_core.h"
 
 struct DrumSequencerFr : DrumSequencerCore, vivid::FrameProcessable {
-    static constexpr const char* kName = "drum_sequencer_fr";
+    static constexpr const char* kName = "DrumSequencerFr";
 
     void process_frame(const VividFrameContext* ctx) override {
         compute(ctx->input_values[0], ctx->input_values[1], ctx->param_values,

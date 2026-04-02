@@ -3,7 +3,7 @@
 #include <algorithm>
 
 struct QuantizerFr : vivid::OperatorBase, vivid::FrameProcessable {
-    static constexpr const char* kName   = "quantizer_fr";
+    static constexpr const char* kName   = "QuantizerFr";
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<int>   mode     {"mode",      0, {"pitch", "range", "steps"}};

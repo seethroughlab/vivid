@@ -1,7 +1,7 @@
 #include "arpeggiator_core.h"
 
 struct ArpeggiatorFr : ArpeggiatorCore, vivid::FrameProcessable {
-    static constexpr const char* kName = "arpeggiator_fr";
+    static constexpr const char* kName = "ArpeggiatorFr";
 
     void process_frame(const VividFrameContext* ctx) override {
         compute(ctx->input_values[0], ctx->param_values, ctx->input_lanes,

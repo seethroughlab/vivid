@@ -75,7 +75,7 @@
       }
     },
     "lfo_idx": {
-      "type": "lfo_fr",
+      "type": "LfoFr",
       "params": {
         "waveform": 1.0,
         "offset": 0.0,
@@ -84,7 +84,7 @@
       }
     },
     "lfo_mix": {
-      "type": "lfo_fr",
+      "type": "LfoFr",
       "params": {
         "waveform": 0.0,
         "offset": 0.5,

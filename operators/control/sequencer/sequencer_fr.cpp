@@ -1,7 +1,7 @@
 #include "sequencer_core.h"
 
 struct SequencerFr : SequencerCore, vivid::FrameProcessable {
-    static constexpr const char* kName = "sequencer_fr";
+    static constexpr const char* kName = "SequencerFr";
 
     void process_frame(const VividFrameContext* ctx) override {
         compute(ctx->input_values[0], ctx->input_values[1],

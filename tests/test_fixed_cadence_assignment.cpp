@@ -54,7 +54,7 @@ int main(int argc, char* argv[]) {
 
     // Verify clock_fr is frame-only and clock_au is audio-only
     {
-        auto* loader_fr = registry.find("clock_fr");
+        auto* loader_fr = registry.find("ClockFr");
         check(loader_fr != nullptr, "clock_fr loaded");
         if (loader_fr) {
             const auto* desc = loader_fr->descriptor();
@@ -62,7 +62,7 @@ int main(int argc, char* argv[]) {
                   "clock_fr is frame-only");
         }
 
-        auto* loader_au = registry.find("clock_au");
+        auto* loader_au = registry.find("ClockAu");
         check(loader_au != nullptr, "clock_au loaded");
         if (loader_au) {
             const auto* desc = loader_au->descriptor();
@@ -77,7 +77,7 @@ int main(int argc, char* argv[]) {
     {
         std::fprintf(stderr, "\n=== Test 1: Audio-only clock → audio-only osc ===\n");
         vivid::Graph g;
-        g.add_node("clock", "clock_au");
+        g.add_node("clock", "ClockAu");
         g.add_node("osc", "Oscillator");
         g.add_connection("clock", "beat_phase", "osc", "freq_cv");
 
@@ -116,7 +116,7 @@ int main(int argc, char* argv[]) {
         vivid::Graph g;
         g.load_from_string(R"({
             "nodes": {
-                "clock": { "type": "clock_fr" },
+                "clock": { "type": "ClockFr" },
                 "osc":   { "type": "Oscillator" }
             },
             "connections": [
@@ -151,8 +151,8 @@ int main(int argc, char* argv[]) {
     {
         std::fprintf(stderr, "\n=== Test 3: Frame chain ===\n");
         vivid::Graph g;
-        g.add_node("clock", "clock_fr");
-        g.add_node("lfo", "lfo_fr");
+        g.add_node("clock", "ClockFr");
+        g.add_node("lfo", "LfoFr");
         g.add_connection("clock", "beat_phase", "lfo", "beat_phase");
 
         vivid::RuntimeCore runtime;
@@ -174,7 +174,7 @@ int main(int argc, char* argv[]) {
     {
         std::fprintf(stderr, "\n=== Test 4: Standalone frame node ===\n");
         vivid::Graph g;
-        g.add_node("clock", "clock_fr");
+        g.add_node("clock", "ClockFr");
 
         vivid::RuntimeCore runtime;
         check(runtime.build(g, registry), "build succeeds");

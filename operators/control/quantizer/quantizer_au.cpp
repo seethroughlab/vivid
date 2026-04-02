@@ -4,7 +4,7 @@
 #include <algorithm>
 
 struct QuantizerAu : vivid::OperatorBase, vivid::AudioProcessable {
-    static constexpr const char* kName   = "quantizer_au";
+    static constexpr const char* kName   = "QuantizerAu";
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<int>   mode     {"mode",      0, {"pitch", "range", "steps"}};

@@ -4,7 +4,7 @@
 #include "operator_api/type_id.h"
 
 struct PhaseToMidiFr : vivid::OperatorBase, vivid::FrameProcessable {
-    static constexpr const char* kName   = "phase_to_midi_fr";
+    static constexpr const char* kName   = "PhaseToMidiFr";
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<int>   note    {"note",     60,  0, 127};

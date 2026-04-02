@@ -4,7 +4,7 @@
 #include <cmath>
 
 struct StepCounterAu : vivid::OperatorBase, vivid::AudioProcessable {
-    static constexpr const char* kName = "step_counter_au";
+    static constexpr const char* kName = "StepCounterAu";
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<int> initial{"initial", 0, -1000000, 1000000};
