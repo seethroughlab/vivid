@@ -31,8 +31,7 @@ body {
   margin: 0;
   font-family: "JetBrains Mono", Menlo, Monaco, monospace;
   background:
-    repeating-linear-gradient(to right,  rgba(78, 205, 196, 0.06) 0 1px, transparent 1px 40px),
-    repeating-linear-gradient(to bottom, rgba(78, 205, 196, 0.06) 0 1px, transparent 1px 40px),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Cline x1='0' y1='0' x2='40' y2='0' stroke='%234ecdc4' stroke-opacity='0.06' stroke-width='1'/%3E%3Cline x1='0' y1='0' x2='0' y2='40' stroke='%234ecdc4' stroke-opacity='0.06' stroke-width='1'/%3E%3C/svg%3E"),
     linear-gradient(180deg, var(--bg) 0%, var(--bg2) 100%);
   color: var(--text);
   min-height: 100vh;
