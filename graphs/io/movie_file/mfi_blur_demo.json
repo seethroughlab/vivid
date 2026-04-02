@@ -1,63 +1,49 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "mfi_blur_demo",
-    "title": "Movie File: Animated Blur",
-    "description": "LFO-modulated Gaussian blur on a still image. Demonstrates control signal driving a GPU effect parameter.",
-    "tags": [
-      "file",
-      "mfi",
-      "blur",
-      "demo"
+    "schema_version": 2,
+    "vivid_version": "0.1.0",
+    "nodes": {
+        "blur": {
+            "type": "Blur",
+            "params": {
+                "radius": 15.0,
+                "quality": 8.0
+            }
+        },
+        "img": {
+            "type": "MovieFileIn",
+            "params": {
+                "file": "../../../assets/nature.jpg"
+            }
+        },
+        "lfo1": {
+            "type": "LfoFr",
+            "params": {
+                "offset": 5.0,
+                "frequency": 0.20000000298023224,
+                "amplitude": 20.0
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        }
+    },
+    "connections": [
+        {
+            "from": "lfo1/value",
+            "to": "blur/radius"
+        },
+        {
+            "from": "blur/texture",
+            "to": "vout/input"
+        },
+        {
+            "from": "img/texture",
+            "to": "blur/input"
+        }
     ],
-    "difficulty": "intermediate",
-    "domains": [
-      "io",
-      "gpu"
-    ],
-    "requires_packages": [],
-    "featured_rank": 39
-  },
-  "nodes": {
-    "img": {
-      "type": "MovieFileIn",
-      "params": {
-        "file": "../../../assets/nature.jpg"
-      }
-    },
-    "blur": {
-      "type": "Blur",
-      "params": {
-        "radius": 15.0,
-        "quality": 8.0
-      }
-    },
-    "lfo1": {
-      "type": "LfoFr",
-      "params": {
-        "frequency": 0.2,
-        "amplitude": 20.0,
-        "offset": 5.0
-      }
-    },
-    "vout": {
-      "type": "video_out"
+    "viewport": {
+        "pan_x": 237.34765625,
+        "pan_y": -94.94140625,
+        "zoom": 1.0
     }
-  },
-  "connections": [
-    {
-      "from": "img/texture",
-      "to": "blur/input",
-      "bridge": "last_sample"
-    },
-    {
-      "from": "lfo1/value",
-      "to": "blur/radius"
-    },
-    {
-      "from": "blur/texture",
-      "to": "vout/input"
-    }
-  ]
 }
