@@ -24,15 +24,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
+
+      - name: Generate package catalog data
+        run: python3 site/generate.py
 
       - name: Build static site
         run: |
           set -euo pipefail
-          rm -rf _site
-          mkdir -p _site
-          cp -R site/* _site/
+          python3 site/build_site.py --output _site
           echo "vivid.seethroughlab.com" > _site/CNAME
 
       - name: Upload Pages artifact

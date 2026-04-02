@@ -1,30 +1,50 @@
-# Package Catalog
+# Site Build
 
-This directory contains the curated package discovery catalog used by Vivid discovery surfaces.
+This directory contains the source data and build scripts for the published Vivid site.
 
 ## Source of truth
 
-- `packages.json` is the canonical curated index for package metadata.
-- Runtime parsers currently require (at minimum):
-  - `name`
-  - `description`
-  - `version`
-  - `url` (install URL)
-  - optional: `vivid_core`, `author`, `category`, `tags`
+Repo-authored site inputs live here:
 
-## Extended discovery fields
+- `src/templates/` — HTML templates used by the static site build
+- `src/assets/` — shared CSS and any optional enhancement assets
+- `operators/*.json` — operator metadata inputs
+- `operators/index.json` — operator index/order input
+- `repos.json` — package repo input
+- `packages.json` — generated package catalog data
+- `generate.py` — builds `packages.json` from `repos.json` + package manifests
+- `build_site.py` — renders the publishable static HTML site
 
-The catalog also includes website/discovery fields not yet consumed by all runtime paths:
+## Generated output
 
-- `install_url`
-- `repo_url`
-- `homepage_url`
-- `description_short`
-- `preview_image_url`
-- `maintainer`
-- `status`
+Generated site output is not checked in.
 
-## Notes
+- local preview output: `site/dist/`
+- CI publish output: `_site/`
 
-- Preview image URLs may initially point to placeholders.
-- Package additions/changes should be reviewed via PR.
+Do not hand-edit generated HTML.
+
+## Local build
+
+From the repo root:
+
+```bash
+python3 site/build_site.py
+python3 -m http.server --directory site/dist 8000
+```
+
+If you need to refresh package metadata first:
+
+```bash
+python3 site/generate.py --local
+python3 site/build_site.py
+```
+
+## Published artifacts
+
+The Pages build publishes:
+
+- the generated HTML pages
+- shared assets
+- `packages.json`
+- `appcast.xml`

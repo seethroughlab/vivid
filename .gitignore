@@ -70,6 +70,7 @@ __pycache__
 
 # Generated catalog
 catalog/packages.json
+site/dist/
 
 # Personal/local docs
 crash.txt
