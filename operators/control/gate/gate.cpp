@@ -7,7 +7,7 @@
  *
  * @see Logic, SampleHold, Math
  */
-struct Gate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct Gate : vivid::OperatorBase {
     static constexpr const char* kName   = "Gate";
     static constexpr bool kTimeDependent = false;
 
@@ -38,7 +38,7 @@ struct Gate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessa
         out.push_back({"open",   VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
-    void process_frame(const VividFrameContext* ctx) override {
+    void process_frame_impl(const VividFrameContext* ctx) {
         float signal = ctx->input_values[0];
         bool is_open = ctx->input_values[1] > threshold.value;
         if (invert.bool_value()) is_open = !is_open;
@@ -47,7 +47,7 @@ struct Gate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessa
         ctx->output_values[1] = is_open ? 1.0f : 0.0f;
     }
 
-    void process_audio(const VividAudioContext* ctx) override {
+    void process_audio_impl(const VividAudioContext* ctx) {
         float signal = 0.0f;
         bool is_open = 0.0f > threshold.value;
         if (invert.bool_value()) is_open = !is_open;
@@ -61,4 +61,4 @@ struct Gate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessa
     }
 };
 
-// Legacy registration removed — use _fr/_au variants instead.
+// Shared implementation only; public registration lives in _fr/_au wrappers.

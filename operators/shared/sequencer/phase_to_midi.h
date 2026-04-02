@@ -13,7 +13,7 @@
  *
  * @see Clock, MidiInput, DrumKit
  */
-struct PhaseToMidi : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct PhaseToMidi : vivid::OperatorBase {
     static constexpr const char* kName   = "PhaseToMidi";
     static constexpr bool kTimeDependent = false;
 
@@ -43,11 +43,11 @@ struct PhaseToMidi : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
     }
 
-    void process_frame(const VividFrameContext* ctx) override {
+    void process_frame_impl(const VividFrameContext* ctx) {
         compute(ctx->input_values[0], ctx->custom_outputs, ctx->custom_output_count);
     }
 
-    void process_audio(const VividAudioContext* ctx) override {
+    void process_audio_impl(const VividAudioContext* ctx) {
         compute(0.0f, ctx->custom_outputs, ctx->custom_output_count);
     }
 

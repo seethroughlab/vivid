@@ -9,7 +9,7 @@
  *
  * @see Smooth, Gate, LFO
  */
-struct SampleHold : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct SampleHold : vivid::OperatorBase {
     static constexpr const char* kName   = "SampleHold";
     static constexpr bool kTimeDependent = false;
 
@@ -40,12 +40,12 @@ struct SampleHold : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPr
         }
     }
 
-    void process_frame(const VividFrameContext* ctx) override {
+    void process_frame_impl(const VividFrameContext* ctx) {
         advance(ctx->input_values[0], ctx->input_values[1] > 0.5f, mode.int_value());
         ctx->output_values[0] = held_value_;
     }
 
-    void process_audio(const VividAudioContext* ctx) override {
+    void process_audio_impl(const VividAudioContext* ctx) {
         float signal = 0.0f;
         bool trig = 0.0f > 0.5f;
         int m = mode.int_value();
@@ -59,4 +59,4 @@ private:
     bool prev_trigger_ = false;
 };
 
-// Legacy registration removed — use _fr/_au variants instead.
+// Shared implementation only; public registration lives in _fr/_au wrappers.

@@ -11,7 +11,7 @@
  *
  * @see Euclidean, StepSeq, Math
  */
-struct StepCounter : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct StepCounter : vivid::OperatorBase {
     static constexpr const char* kName = "StepCounter";
     static constexpr bool kTimeDependent = true;
 
@@ -61,14 +61,14 @@ struct StepCounter : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
         return wrapped;
     }
 
-    void process_frame(const VividFrameContext* ctx) override {
+    void process_frame_impl(const VividFrameContext* ctx) {
         int modulus = std::max(1, static_cast<int>(std::floor(ctx->input_values[1])));
         bool wrapped = advance(ctx->input_values[0], modulus, ctx->input_values[2] > 0.5f);
         ctx->output_values[0] = static_cast<float>(step_);
         ctx->output_values[1] = wrapped ? 1.0f : 0.0f;
     }
 
-    void process_audio(const VividAudioContext* ctx) override {
+    void process_audio_impl(const VividAudioContext* ctx) {
         float trigger = 0.0f;
         int modulus = std::max(1, static_cast<int>(std::floor(0.0f)));
         bool reset = 0.0f > 0.5f;
@@ -87,4 +87,4 @@ private:
     int step_ = 0;
 };
 
-// Legacy registration removed — use _fr/_au variants instead.
+// Shared implementation only; public registration lives in _fr/_au wrappers.

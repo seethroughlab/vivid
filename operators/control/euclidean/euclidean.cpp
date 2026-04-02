@@ -13,7 +13,7 @@
  * @param rotation Rotates the pattern by N steps.
  * @see DrumSequencer, StepSeq, PatternSeq
  */
-struct Euclidean : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct Euclidean : vivid::OperatorBase {
     static constexpr const char* kName   = "Euclidean";
     static constexpr bool kTimeDependent = true;
 
@@ -59,12 +59,12 @@ struct Euclidean : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPro
         out.push_back({"pattern",    VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});   // lane_array[0]
     }
 
-    void process_frame(const VividFrameContext* ctx) override {
+    void process_frame_impl(const VividFrameContext* ctx) {
         compute(ctx->input_values[0], ctx->param_values,
                 ctx->output_lanes, ctx->output_values);
     }
 
-    void process_audio(const VividAudioContext* ctx) override {
+    void process_audio_impl(const VividAudioContext* ctx) {
         compute(0.0f, ctx->param_values,
                 ctx->output_lanes, nullptr);
     }
@@ -208,4 +208,4 @@ private:
     }
 };
 
-// Legacy registration removed — use _fr/_au variants instead.
+// Shared implementation only; public registration lives in _fr/_au wrappers.

@@ -182,6 +182,6 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     thumb_state_->pipeline_format = ctx->thumbnail_format;
 }
 
-// Legacy registration removed — use _fr/_au variants instead.
+// Shared implementation only; public registration lives in _fr/_au wrappers.
 VIVID_INSPECTOR(Envelope)
 VIVID_THUMBNAIL(Envelope)

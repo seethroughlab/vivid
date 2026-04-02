@@ -13,7 +13,7 @@
  *
  * @see DrumSequencer, MidiInput, DrumKick
  */
-struct DrumKit : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct DrumKit : vivid::OperatorBase {
     static constexpr const char* kName = "DrumKit";
     static constexpr bool kTimeDependent = false;
     static constexpr int kSlotCount = 8;
@@ -64,14 +64,14 @@ struct DrumKit : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProce
         out.push_back(VIVID_CUSTOM_REF_PORT("slot_7", VIVID_PORT_OUTPUT, VividMidiBuffer));
     }
 
-    void process_frame(const VividFrameContext* ctx) override {
+    void process_frame_impl(const VividFrameContext* ctx) {
         const VividMidiBuffer* midi_in = nullptr;
         if (ctx->custom_inputs && ctx->custom_input_count > 0 && ctx->custom_inputs[0])
             midi_in = static_cast<const VividMidiBuffer*>(ctx->custom_inputs[0]);
         route(midi_in, ctx->param_values, ctx->custom_outputs, ctx->custom_output_count);
     }
 
-    void process_audio(const VividAudioContext* ctx) override {
+    void process_audio_impl(const VividAudioContext* ctx) {
         const VividMidiBuffer* midi_in = nullptr;
         if (ctx->custom_inputs && ctx->custom_input_count > 0 && ctx->custom_inputs[0])
             midi_in = static_cast<const VividMidiBuffer*>(ctx->custom_inputs[0]);
@@ -123,4 +123,4 @@ struct DrumKit : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProce
     }
 };
 
-// Legacy registration removed — use _fr/_au variants instead.
+// Shared implementation only; public registration lives in _fr/_au wrappers.

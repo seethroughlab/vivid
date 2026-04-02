@@ -123,7 +123,7 @@ inline bool hit_test(float mx, float my, float rx, float ry, float rw, float rh)
  *
  * @see Sequencer, DrumSequencer, NotePattern
  */
-struct Tracker : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct Tracker : vivid::OperatorBase {
     static constexpr const char* kName   = "Tracker";
     static constexpr bool kTimeDependent = true;
 
@@ -184,12 +184,12 @@ struct Tracker : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProce
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
     }
 
-    void process_frame(const VividFrameContext* ctx) override {
+    void process_frame_impl(const VividFrameContext* ctx) {
         compute(ctx->input_values, ctx->param_values, ctx->output_lanes,
                 ctx->output_values, ctx->custom_outputs, ctx->custom_output_count);
     }
 
-    void process_audio(const VividAudioContext* ctx) override {
+    void process_audio_impl(const VividAudioContext* ctx) {
         compute(nullptr, ctx->param_values, ctx->output_lanes,
                 nullptr, ctx->custom_outputs, ctx->custom_output_count);
     }
@@ -1274,6 +1274,6 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     }
 };
 
-// Legacy registration removed — use _fr/_au variants instead.
+// Shared implementation only; public registration lives in _fr/_au wrappers.
 VIVID_THUMBNAIL(Tracker)
 VIVID_INSPECTOR(Tracker)

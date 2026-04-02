@@ -114,5 +114,5 @@ void StepSeq::draw_inspector(VividInspectorContext* ctx) {
     ctx->consumed_height = 4.0f + h + 4.0f;
 }
 
-// Legacy registration removed — use _fr/_au variants instead.
+// Shared implementation only; public registration lives in _fr/_au wrappers.
 VIVID_INSPECTOR(StepSeq)

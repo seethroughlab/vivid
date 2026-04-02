@@ -15,7 +15,7 @@
  * @param polarity bipolar remaps output from [-1,1]; unipolar stays [0,1].
  * @see PatternSeq, Sequencer, LFO
  */
-struct StepSeq : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct StepSeq : vivid::OperatorBase {
     static constexpr const char* kName   = "StepSeq";
     static constexpr bool kTimeDependent = true;
 
@@ -133,11 +133,11 @@ struct StepSeq : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProce
         out.push_back({"trigger",    VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});  // 1
     }
 
-    void process_frame(const VividFrameContext* ctx) override {
+    void process_frame_impl(const VividFrameContext* ctx) {
         compute(ctx->input_values, ctx->delta_time, ctx->output_values);
     }
 
-    void process_audio(const VividAudioContext* ctx) override {
+    void process_audio_impl(const VividAudioContext* ctx) {
         float local_in[2] = {};
         float local_out[2] = {};
         compute(local_in, ctx->delta_time, local_out);

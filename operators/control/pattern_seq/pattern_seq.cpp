@@ -14,7 +14,7 @@
  *
  * @see StepSeq, Sequencer, Euclidean
  */
-struct PatternSeq : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct PatternSeq : vivid::OperatorBase {
     static constexpr const char* kName   = "PatternSeq";
     static constexpr bool kTimeDependent = true;
 
@@ -93,12 +93,12 @@ struct PatternSeq : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPr
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
     }
 
-    void process_frame(const VividFrameContext* ctx) override {
+    void process_frame_impl(const VividFrameContext* ctx) {
         compute(ctx->input_values[0], ctx->param_values, ctx->output_values,
                 ctx->output_lanes, ctx->custom_outputs, ctx->custom_output_count);
     }
 
-    void process_audio(const VividAudioContext* ctx) override {
+    void process_audio_impl(const VividAudioContext* ctx) {
         compute(0.0f, ctx->param_values, nullptr,
                 ctx->output_lanes, ctx->custom_outputs, ctx->custom_output_count);
     }
@@ -205,4 +205,4 @@ private:
     }
 };
 
-// Legacy registration removed — use _fr/_au variants instead.
+// Shared implementation only; public registration lives in _fr/_au wrappers.

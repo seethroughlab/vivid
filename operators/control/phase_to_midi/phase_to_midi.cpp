@@ -1,3 +1,3 @@
 #include "phase_to_midi.h"
 
-// Legacy registration removed — use _fr/_au variants instead.
+// Shared implementation only; public registration lives in _fr/_au wrappers.

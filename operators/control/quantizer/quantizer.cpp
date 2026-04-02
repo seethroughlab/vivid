@@ -11,7 +11,7 @@
  * @param scale Musical scale used in pitch mode: chromatic, major, minor, pentatonic, etc.
  * @see Math, NotePattern, Smooth
  */
-struct Quantizer : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct Quantizer : vivid::OperatorBase {
     static constexpr const char* kName   = "Quantizer";
     static constexpr bool kTimeDependent = false;
 
@@ -71,13 +71,13 @@ struct Quantizer : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPro
         }
     }
 
-    void process_frame(const VividFrameContext* ctx) override {
+    void process_frame_impl(const VividFrameContext* ctx) {
         auto r = quantize(ctx->input_values[0]);
         ctx->output_values[0] = r.value;
         ctx->output_values[1] = r.step;
     }
 
-    void process_audio(const VividAudioContext* ctx) override {
+    void process_audio_impl(const VividAudioContext* ctx) {
         auto r = quantize(0.0f);
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
             ctx->output_buffers[0][i] = r.value;
@@ -160,4 +160,4 @@ private:
     }
 };
 
-// Legacy registration removed — use _fr/_au variants instead.
+// Shared implementation only; public registration lives in _fr/_au wrappers.

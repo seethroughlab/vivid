@@ -16,7 +16,7 @@
  * @param mode Scale mode: Major, Minor, Dorian, Mixolydian, Harmonic Minor, Melodic Minor.
  * @see NotePattern, Arpeggiator, Sequencer
  */
-struct ChordProgression : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct ChordProgression : vivid::OperatorBase {
     static constexpr const char* kName   = "ChordProgression";
     static constexpr bool kTimeDependent = true;
 
@@ -253,12 +253,12 @@ struct ChordProgression : vivid::OperatorBase, vivid::FrameProcessable, vivid::A
         }
     }
 
-    void process_frame(const VividFrameContext* ctx) override {
+    void process_frame_impl(const VividFrameContext* ctx) {
         compute(ctx->input_values[0], ctx->param_values, ctx->output_lanes,
                 ctx->output_values, ctx->custom_outputs, ctx->custom_output_count);
     }
 
-    void process_audio(const VividAudioContext* ctx) override {
+    void process_audio_impl(const VividAudioContext* ctx) {
         compute(0.0f, ctx->param_values, ctx->output_lanes,
                 nullptr, ctx->custom_outputs, ctx->custom_output_count);
     }
@@ -578,5 +578,5 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     }
 };
 
-// Legacy registration removed — use _fr/_au variants instead.
+// Shared implementation only; public registration lives in _fr/_au wrappers.
 VIVID_THUMBNAIL(ChordProgression)

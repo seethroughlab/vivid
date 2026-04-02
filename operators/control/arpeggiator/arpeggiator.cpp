@@ -795,6 +795,6 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     }
 };
 
-// Legacy registration removed — use _fr/_au variants instead.
+// Shared implementation only; public registration lives in _fr/_au wrappers.
 VIVID_THUMBNAIL(Arpeggiator)
 VIVID_INSPECTOR(Arpeggiator)

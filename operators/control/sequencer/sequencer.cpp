@@ -41,7 +41,7 @@ inline bool midi_note_off(VividMidiBuffer& buf, uint8_t note,
  *
  * @see PatternSeq, StepSeq, Arpeggiator
  */
-struct Sequencer : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
+struct Sequencer : vivid::OperatorBase {
     static constexpr const char* kName   = "Sequencer";
     static constexpr bool kTimeDependent = false;
 
@@ -73,13 +73,13 @@ struct Sequencer : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPro
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
     }
 
-    void process_frame(const VividFrameContext* ctx) override {
+    void process_frame_impl(const VividFrameContext* ctx) {
         compute(ctx->input_values[0], ctx->input_values[1],
                 ctx->input_lanes, ctx->output_values,
                 ctx->custom_outputs, ctx->custom_output_count);
     }
 
-    void process_audio(const VividAudioContext* ctx) override {
+    void process_audio_impl(const VividAudioContext* ctx) {
         compute(0.0f, 0.0f,
                 ctx->input_lanes, nullptr,
                 ctx->custom_outputs, ctx->custom_output_count);
@@ -191,4 +191,4 @@ private:
     VividMidiBuffer midi_buf_ = {};
 };
 
-// Legacy registration removed — use _fr/_au variants instead.
+// Shared implementation only; public registration lives in _fr/_au wrappers.
