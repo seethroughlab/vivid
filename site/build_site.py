@@ -15,7 +15,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from string import Template
 
+import markdown as md
+
 SCRIPT_DIR = Path(__file__).resolve().parent
+README_PATH = SCRIPT_DIR.parent / "README.md"
 TEMPLATES_DIR = SCRIPT_DIR / "src" / "templates"
 ASSETS_DIR = SCRIPT_DIR / "src" / "assets"
 OPERATORS_DIR = SCRIPT_DIR / "operators"
@@ -34,7 +37,7 @@ DOC_BLOCK_RE = re.compile(r"/\*\*(.*?)\*/", re.S)
 OPERATOR_NAME_RE = re.compile(r'static\s+constexpr\s+const\s+char\*\s+kName\s*=\s*"([^"]+)"')
 PARAM_RE = re.compile(r"vivid::Param<([^>]+)>\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{(.*?)\};", re.S)
 PORT_RE = re.compile(r'\{\s*"([^"]+)"\s*,\s*(VIVID_[A-Z0-9_]+)\s*,\s*(VIVID_PORT_(?:INPUT|OUTPUT))')
-INLINE_MD_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)|\[([^\]]+)\]\(([^)]+)\)|`([^`]+)`|\*\*([^*]+)\*\*")
+
 
 
 @dataclass
@@ -210,109 +213,34 @@ class MarkdownContext:
         return resolve_doc_url(url, self.repo, image=image)
 
 
-def inline_md(text: str, md_ctx: MarkdownContext | None = None) -> str:
-    md_ctx = md_ctx or MarkdownContext()
-    out: list[str] = []
-    cursor = 0
-    for match in INLINE_MD_RE.finditer(text):
-        out.append(html.escape(text[cursor:match.start()]))
-        if match.group(1) is not None:
-            alt = esc(match.group(1))
-            src = esc(md_ctx.resolve(match.group(2), image=True))
-            out.append(f'<img class="doc-image" src="{src}" alt="{alt}">')
-        elif match.group(3) is not None:
-            label = esc(match.group(3))
-            href = esc(md_ctx.resolve(match.group(4), image=False))
-            out.append(f'<a href="{href}" target="_blank" rel="noopener">{label}</a>')
-        elif match.group(5) is not None:
-            out.append(f"<code>{esc(match.group(5))}</code>")
-        else:
-            out.append(f"<strong>{esc(match.group(6))}</strong>")
-        cursor = match.end()
-    out.append(html.escape(text[cursor:]))
-    return "".join(out)
 
 
-def is_table_separator(line: str) -> bool:
-    stripped = line.strip()
-    return bool(re.fullmatch(r"\|?\s*[:\-]+(?:\s*\|\s*[:\-]+)+\s*\|?", stripped))
+RELATIVE_SRC_RE = re.compile(r'(<(?:img|source)[^>]+\bsrc=")([^"]+)(")')
+RELATIVE_HREF_RE = re.compile(r'(<a[^>]+\bhref=")([^"]+)(")')
+
+_md_converter = md.Markdown(extensions=["tables", "fenced_code"])
 
 
-def split_table_row(line: str) -> list[str]:
-    stripped = line.strip().strip("|")
-    return [cell.strip() for cell in stripped.split("|")]
+def _rewrite_urls(html_text: str, md_ctx: MarkdownContext) -> str:
+    """Rewrite relative URLs in rendered HTML to point at the repo."""
+    def _rewrite(match: re.Match, image: bool) -> str:
+        prefix, url, suffix = match.group(1), match.group(2), match.group(3)
+        if URL_RE.match(url) or url.startswith(("mailto:", "#", "/")):
+            return match.group(0)
+        return prefix + esc(md_ctx.resolve(url, image=image)) + suffix
+    html_text = RELATIVE_SRC_RE.sub(lambda m: _rewrite(m, image=True), html_text)
+    html_text = RELATIVE_HREF_RE.sub(lambda m: _rewrite(m, image=False), html_text)
+    return html_text
 
 
 def markdown_to_html(text: str | None, md_ctx: MarkdownContext | None = None) -> str:
     if not text:
         return ""
-    md_ctx = md_ctx or MarkdownContext()
-    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    html_blocks: list[str] = []
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        stripped = line.strip()
-        if not stripped:
-            i += 1
-            continue
-        if stripped.startswith("```"):
-            fence = stripped[:3]
-            code_lines: list[str] = []
-            i += 1
-            while i < len(lines) and not lines[i].strip().startswith(fence):
-                code_lines.append(lines[i])
-                i += 1
-            if i < len(lines):
-                i += 1
-            html_blocks.append(f'<pre class="code-block"><code>{esc("\n".join(code_lines))}</code></pre>')
-            continue
-        if stripped.startswith("#"):
-            level = min(len(stripped) - len(stripped.lstrip("#")), 6)
-            content = stripped[level:].strip()
-            html_blocks.append(f"<h{level}>{inline_md(content, md_ctx)}</h{level}>")
-            i += 1
-            continue
-        if "|" in stripped and i + 1 < len(lines) and is_table_separator(lines[i + 1]):
-            headers = split_table_row(lines[i])
-            rows: list[list[str]] = []
-            i += 2
-            while i < len(lines) and "|" in lines[i]:
-                rows.append(split_table_row(lines[i]))
-                i += 1
-            head_html = "".join(f"<th>{inline_md(cell, md_ctx)}</th>" for cell in headers)
-            row_html = []
-            for row in rows:
-                row_html.append("<tr>" + "".join(f"<td>{inline_md(cell, md_ctx)}</td>" for cell in row) + "</tr>")
-            html_blocks.append(f'<div class="table-wrap"><table><tr>{head_html}</tr>{"".join(row_html)}</table></div>')
-            continue
-        if stripped.startswith(("- ", "* ")):
-            items: list[str] = []
-            while i < len(lines) and lines[i].strip().startswith(("- ", "* ")):
-                items.append(lines[i].strip()[2:].strip())
-                i += 1
-            html_blocks.append("<ul>" + "".join(f"<li>{inline_md(item, md_ctx)}</li>" for item in items) + "</ul>")
-            continue
-        if re.match(r"\d+\.\s+", stripped):
-            items = []
-            while i < len(lines) and re.match(r"\d+\.\s+", lines[i].strip()):
-                items.append(re.sub(r"^\d+\.\s+", "", lines[i].strip()))
-                i += 1
-            html_blocks.append("<ol>" + "".join(f"<li>{inline_md(item, md_ctx)}</li>" for item in items) + "</ol>")
-            continue
-        paragraph: list[str] = []
-        while i < len(lines):
-            current = lines[i].strip()
-            if not current:
-                break
-            if current.startswith("```") or current.startswith("#") or current.startswith(("- ", "* ")) or re.match(r"\d+\.\s+", current):
-                break
-            if "|" in current and i + 1 < len(lines) and is_table_separator(lines[i + 1]):
-                break
-            paragraph.append(current)
-            i += 1
-        html_blocks.append(f"<p>{inline_md(' '.join(paragraph), md_ctx)}</p>")
-    return "\n".join(html_blocks)
+    _md_converter.reset()
+    result = _md_converter.convert(text)
+    if md_ctx and md_ctx.repo:
+        result = _rewrite_urls(result, md_ctx)
+    return result
 
 
 def render_table(title: str, headers: list[str], rows: list[list[str]]) -> str:
@@ -459,12 +387,12 @@ def render_operator_index(operators: list[dict], base_tpl: Template, index_tpl: 
     )
 
 
-def render_home(base_tpl: Template, home_tpl: Template) -> str:
+def render_home(base_tpl: Template, home_tpl: Template, readme_html: str) -> str:
     return base_tpl.substitute(
         title="Vivid",
         meta_description="A real-time creative coding environment for visual and audio performance.",
         asset_prefix="./",
-        content=home_tpl.substitute(),
+        content=home_tpl.substitute(readme_html=readme_html),
         extra_head="",
         extra_body_end="",
     )
@@ -929,7 +857,16 @@ def build_site(output_dir: Path, local_packages: bool) -> None:
         for op in docs.operator_pages:
             write_text(output_dir / "packages" / docs.slug / "operators" / op.slug / "index.html", render_package_operator(docs, op, base_tpl, package_operator_tpl))
 
-    home_html = render_home(base_tpl, home_tpl)
+    readme_text = README_PATH.read_text() if README_PATH.exists() else ""
+    vivid_repo = PackageRepo(
+        name="vivid",
+        repo_url="https://github.com/seethroughlab/vivid.git",
+        install_url="",
+        default_ref="master",
+        local_root=None,
+    )
+    readme_html = markdown_to_html(readme_text, MarkdownContext(vivid_repo))
+    home_html = render_home(base_tpl, home_tpl, readme_html)
     write_text(output_dir / "index.html", home_html)
 
 

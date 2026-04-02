@@ -1,0 +1,11 @@
+[project]
+name = "vivid-site"
+version = "0.1.0"
+description = "Static site generator for the Vivid docs site"
+requires-python = ">=3.10"
+dependencies = [
+    "markdown>=3.5",
+]
+
+[project.scripts]
+build-site = "build_site:main"
