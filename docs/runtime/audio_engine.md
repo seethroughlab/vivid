@@ -22,7 +22,7 @@ static constexpr uint32_t kSampleRate = 48000;
 
 ## Cross-Cadence Communication
 
-Communication between frame and audio worlds uses `CadenceBridge`, which maintains two
+Communication between frame and audio worlds uses `AudioFrameBridge`, which maintains two
 double-buffered snapshot pairs with lock-free atomic index flips:
 
 - **`ParamSnapshot`** (frame → audio): param values, float CV inputs, lanes, strings, custom
@@ -36,12 +36,12 @@ structures for the cadence boundary.
 
 ### Frame → Audio
 
-`CadenceBridge::push_to_audio()` iterates `frame_to_audio_edges` (snapshot edges) and copies
+`AudioFrameBridge::push_to_audio()` iterates `frame_to_audio_edges` (snapshot edges) and copies
 frame-side output values into the inactive `ParamSnapshot`, then publishes with release semantics.
 
 ### Audio → Frame
 
-`CadenceBridge::pull_from_audio()` reads the published `AnalysisSnapshot` and injects values into
+`AudioFrameBridge::pull_from_audio()` reads the published `AnalysisSnapshot` and injects values into
 frame-side `CompiledNode` outputs via `audio_to_frame_edges`. Bumps `generation` on receiving nodes
 to trigger frame-executor recomputation.
 
@@ -50,7 +50,7 @@ to trigger frame-executor recomputation.
 Edges between nodes are classified at compile time:
 
 - **`EdgeTransport::Direct`** — same cadence; value copied during the owning executor's pass
-- **`EdgeTransport::Snapshot`** — cross cadence; routed through `CadenceBridge`
+- **`EdgeTransport::Snapshot`** — cross cadence; routed through `AudioFrameBridge`
 
 Partitioned into four index lists in `CompiledGraph`: `frame_direct_edges`, `audio_direct_edges`,
 `frame_to_audio_edges`, `audio_to_frame_edges`.

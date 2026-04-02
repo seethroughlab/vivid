@@ -132,6 +132,9 @@ public:
     bool set_connection_remap(const std::string& from_node, const std::string& from_port,
                               const std::string& to_node, const std::string& to_port,
                               float from_min, float from_max, float to_min, float to_max, bool clamp);
+    bool set_connection_bridge(const std::string& from_node, const std::string& from_port,
+                               const std::string& to_node, const std::string& to_port,
+                               const std::string& bridge);
 
     // Filter mutation
     void add_filter(FilterDef filter);

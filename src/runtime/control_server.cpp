@@ -479,6 +479,8 @@ static std::string handle_inspect_graph(Graph& graph, RuntimeCore& core) {
             if (conn.clamp)
                 c["clamp"] = true;
         }
+        if (conn.has_bridge())
+            c["bridge"] = conn.bridge;
         // Lane metadata from compiled edge (match by node + port)
         if (cg) {
             for (const auto& e : cg->edges) {
@@ -504,6 +506,11 @@ static std::string handle_inspect_graph(Graph& graph, RuntimeCore& core) {
                         if (idx == e.to_port && name == conn.to_port) { to_match = true; break; }
                 }
                 if (from_match && to_match) {
+                    c["transport"] = (e.transport == vivid::EdgeTransport::Snapshot) ? "snapshot" : "direct";
+                    if (e.bridge_kind != vivid::BridgeKind::None) {
+                        static const char* bk_names[] = {"none","hold","snapshot","last_sample","rms","peak","waveform"};
+                        c["bridge_kind"] = bk_names[static_cast<int>(e.bridge_kind)];
+                    }
                     if (e.lane_set_id != 0)
                         c["lane_set_id"] = e.lane_set_id;
                     if (e.lane_count > 1)
@@ -1852,7 +1859,9 @@ static std::string dispatch(const std::string& method, const std::string& body,
                 const std::string to_addr = root["to_addr"].get<std::string>();
                 const bool semantic_defaults = root.contains("semantic_defaults") &&
                     root["semantic_defaults"].is_boolean() && root["semantic_defaults"].get<bool>();
-                CommandResult cr = api.connect(from_addr, to_addr, semantic_defaults);
+                const std::string bridge = (root.contains("bridge") && root["bridge"].is_string())
+                    ? root["bridge"].get<std::string>() : "";
+                CommandResult cr = api.connect(from_addr, to_addr, semantic_defaults, bridge);
                 if (!cr.ok) {
                     result = json_err(cr.message);
                 } else {

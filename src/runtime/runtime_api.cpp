@@ -355,7 +355,7 @@ CommandResult RuntimeAPI::remove_node(const std::string& id) {
 }
 
 CommandResult RuntimeAPI::connect(const std::string& from_addr, const std::string& to_addr,
-                                  bool semantic_defaults) {
+                                  bool semantic_defaults, const std::string& bridge) {
     std::string fn, fp, tn, tp;
     if (!split_addr(from_addr, fn, fp)) {
         return {false, "invalid address '" + from_addr + "' (expected node/port)"};
@@ -367,6 +367,10 @@ CommandResult RuntimeAPI::connect(const std::string& from_addr, const std::strin
     if (!graph_.find_node(tn)) return {false, "unknown node '" + tn + "'"};
     if (!graph_.add_connection(fn, fp, tn, tp)) {
         return {false, "connection already exists"};
+    }
+
+    if (!bridge.empty()) {
+        graph_.set_connection_bridge(fn, fp, tn, tp, bridge);
     }
 
     bool applied_semantic_remap = false;

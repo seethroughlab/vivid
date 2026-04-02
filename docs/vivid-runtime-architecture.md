@@ -22,12 +22,12 @@ The runtime is composed of several cooperating subsystems:
 
 | Component | Thread | Role |
 |-----------|--------|------|
-| **RuntimeCore** | Main | Top-level orchestrator. Owns the compiled graph, cadence bridge, and frame executor. Drives the tick cycle. |
+| **RuntimeCore** | Main | Top-level orchestrator. Owns the compiled graph, audio frame bridge, and frame executor. Drives the tick cycle. |
 | **GraphCompiler** | Main (once) | Static factory that transforms a `Graph` into a `CompiledGraph`. |
 | **CompiledGraph** | Both (read-only) | The execution plan: pre-allocated node state, classified edges, and topologically sorted execution orders. |
 | **FrameExecutor** | Main | Iterates `frame_order`, propagates direct edges, calls `process_frame()` and `process_gpu()`. |
 | **AudioExecutor** | Audio | Iterates `audio_order` inside the miniaudio callback, processes 256-sample buffers at 48 kHz. |
-| **CadenceBridge** | Both | Double-buffered snapshot bridge. Transfers parameters frame-to-audio and analysis audio-to-frame without locks. |
+| **AudioFrameBridge** | Both | Double-buffered snapshot bridge. Transfers parameters frame-to-audio and analysis audio-to-frame without locks. |
 | **OperatorRegistry** | Main | Discovers, lazy-loads, and hot-reloads operator dynamic libraries. |
 | **GpuContext** | Main | Manages the WebGPU device, queue, and surface. |
 | **HotReloader** | Background | Watches source files and runs background cmake builds. |
@@ -50,7 +50,7 @@ Each node declares an operator type and its parameter values:
 }
 ```
 
-Key fields: `type` (operator name), `params` (float values), `string_params` (file paths, text), `cadence_override` (Auto / Frame / Audio), `tex_width` / `tex_height` (per-node GPU resolution).
+Key fields: `type` (operator name), `params` (float values), `string_params` (file paths, text), `active_cadence` (Auto / Frame / Audio), `tex_width` / `tex_height` (per-node GPU resolution).
 
 ### ConnectionDef
 
@@ -87,15 +87,15 @@ The `GraphCompiler` transforms a `Graph` plus an `OperatorRegistry` into a `Comp
 1. **Resolve descriptors.** For each node, look up the `VividOperatorDescriptor` from the registry. This provides port definitions, parameter metadata, execution environment, and cadence capability.
 
 2. **Assign cadences.** Each node is assigned `Cadence::Frame` or `Cadence::Audio`:
-   - If the node has `cadence_override == Audio` and the operator is `AUDIO_CAPABLE` → Audio.
-   - If `cadence_override == Frame` → Frame.
+   - If the node has `active_cadence == Audio` and the operator is `AUDIO_ONLY` → Audio.
+   - If `active_cadence == Frame` → Frame.
    - If the descriptor declares `has_process_audio` (audio-only) → Audio.
    - Otherwise → Frame.
-   - **Auto-inference:** After initial assignment, the compiler walks edges looking for `AUDIO_CAPABLE` nodes with `cadence_override == Auto` that feed downstream audio-cadence nodes via signal edges. These are promoted to Audio so the connection becomes a same-cadence Direct edge instead of a cross-cadence Snapshot. This promotion is **ephemeral** — re-derived each compile, never persisted to the graph.
+   - **Auto-inference:** After initial assignment, the compiler walks edges looking for `AUDIO_ONLY` nodes with `active_cadence == Auto` that feed downstream audio-cadence nodes via signal edges. These are promoted to Audio so the connection becomes a same-cadence Direct edge instead of a cross-cadence Snapshot. This promotion is **ephemeral** — re-derived each compile, never persisted to the graph.
 
 3. **Classify edges.** Each connection becomes a `CompiledEdge` with a transport type:
    - **Direct** — both endpoints share the same cadence. The executor copies data during its pass.
-   - **Snapshot** — endpoints are on different cadences. Data flows through the `CadenceBridge`.
+   - **Snapshot** — endpoints are on different cadences. Data flows through the `AudioFrameBridge`.
 
 4. **Topological sort.** Kahn's algorithm produces two independent execution orders:
    - `frame_order` — all Frame and GPU nodes.
@@ -135,7 +135,7 @@ Each frame follows a three-phase pattern:
    - Call `process_frame()` (or `process_gpu()` for GPU nodes).
    - Apply skip logic: only process if time-dependent, dirty, or upstream changed.
 
-3. **post_tick_audio_sync()** — Snapshot frame outputs into the `CadenceBridge` for the audio thread to consume.
+3. **post_tick_audio_sync()** — Snapshot frame outputs into the `AudioFrameBridge` for the audio thread to consume.
 
 ### Audio Cadence (~48 kHz = ~188 callbacks/sec, Audio Thread)
 
@@ -156,7 +156,7 @@ At 60 fps and 48 kHz with 256-sample buffers, approximately **3 audio callbacks*
 
 ## 6. The Cadence Bridge
 
-The `CadenceBridge` is the sole communication channel between the frame and audio threads. It uses **double-buffered snapshots** with atomic index swaps — no mutexes touch the audio thread.
+The `AudioFrameBridge` is the sole communication channel between the frame and audio threads. It uses **double-buffered snapshots** with atomic index swaps — no mutexes touch the audio thread.
 
 ![Cadence Bridge](diagrams/cadence-bridge.svg)
 
@@ -221,7 +221,7 @@ for node in frame_order:
         invoke PostNodeFn callback
 ```
 
-The **bridge value application** step ensures that audio-to-frame signal values (written by `CadenceBridge::pull_from_audio()`) survive the per-frame zeroing of `input_values`. A dirty bitmask tracks which ports have been written by the bridge, so legitimate zero values are not dropped.
+The **bridge value application** step ensures that audio-to-frame signal values (written by `AudioFrameBridge::pull_from_audio()`) survive the per-frame zeroing of `input_values`. A dirty bitmask tracks which ports have been written by the bridge, so legitimate zero values are not dropped.
 
 ### Skip Logic
 
@@ -335,7 +335,7 @@ An operator opts into execution environments by inheriting capability interfaces
 | `AudioProcessable` | `process_audio(VividAudioContext*)` | Audio thread, 48 kHz |
 | `GpuProcessable` | `process_gpu(VividGpuContext*)` | Main thread, WebGPU |
 
-An operator may implement multiple interfaces. The `cadence_capability` flag classifies cadence support: `FRAME_ONLY` (frame-rate only), `AUDIO_CAPABLE` (implements both `process_frame` and `process_audio`, can be promoted to audio-rate), or `AUDIO_ONLY` (implements only `process_audio`, always runs at audio-rate).
+An operator may implement multiple interfaces. The `cadence_capability` flag classifies cadence support: `FRAME_ONLY` (frame-rate only), `AUDIO_ONLY` (implements both `process_frame` and `process_audio`, can be promoted to audio-rate), or `AUDIO_ONLY` (implements only `process_audio`, always runs at audio-rate).
 
 ### The VIVID_REGISTER Macro
 
@@ -356,7 +356,7 @@ param_count, params[]   — parameter descriptors (name, type, range, defaults)
 port_count, ports[]     — port descriptors (name, type, direction, transport)
 time_dependent          — whether the operator reads ctx->time
 has_process_frame/audio/gpu — capability flags (which process methods exist)
-cadence_capability      — FRAME_ONLY, AUDIO_CAPABLE, or AUDIO_ONLY
+cadence_capability      — FRAME_ONLY, AUDIO_ONLY, or AUDIO_ONLY
 ```
 
 ### OperatorRegistry
@@ -382,7 +382,7 @@ For **SIGNAL** ports, a single float is copied. For **AUDIO** ports, the entire 
 
 ### Snapshot Edges
 
-Cross-cadence edges are **Snapshot**: data is written into the `CadenceBridge`'s double-buffered snapshot and read by the other thread on its next cycle. There is an inherent one-cycle latency (one frame period for frame-to-audio, one audio callback period for audio-to-frame).
+Cross-cadence edges are **Snapshot**: data is written into the `AudioFrameBridge`'s double-buffered snapshot and read by the other thread on its next cycle. There is an inherent one-cycle latency (one frame period for frame-to-audio, one audio callback period for audio-to-frame).
 
 ### Value Remap
 

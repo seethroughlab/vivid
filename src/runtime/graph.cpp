@@ -550,6 +550,19 @@ bool Graph::set_connection_remap(const std::string& from_node, const std::string
     return false;
 }
 
+bool Graph::set_connection_bridge(const std::string& from_node, const std::string& from_port,
+                                   const std::string& to_node, const std::string& to_port,
+                                   const std::string& bridge) {
+    for (auto& c : connections_) {
+        if (c.from_node == from_node && c.from_port == from_port &&
+            c.to_node == to_node && c.to_port == to_port) {
+            c.bridge = bridge;
+            return true;
+        }
+    }
+    return false;
+}
+
 const NodeDef* Graph::find_node(const std::string& id) const {
     for (const auto& n : nodes_) {
         if (n.id == id) return &n;
