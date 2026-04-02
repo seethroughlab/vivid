@@ -1,0 +1,26 @@
+<a class="back-link" href="$catalog_href">&larr; Back to Package Catalog</a>
+<div class="detail-layout">
+  <section class="detail-panel">
+    <div class="detail-title-row">
+      <h1 class="detail-title">$name</h1>
+      <span class="badge $status_class">$status_label</span>
+      <span class="badge $category_class">$category_label</span>
+    </div>
+    <p class="detail-brief">$description</p>
+    <div class="meta-list">
+      <span>Version <strong>$version</strong></span>
+      <span>Vivid Core <strong>$vivid_core</strong></span>
+      <span>Author <strong>$author</strong></span>
+    </div>
+    $tags_html
+    $preview_html
+    <div class="actions">$actions_html</div>
+    <code class="install-command">./build/vivid install $install_url</code>
+  </section>
+  <section class="detail-panel">
+    <p class="table-label">Overview</p>
+    <div class="markdown-body">$overview_html</div>
+  </section>
+  $guides_html
+  $operators_html
+</div>

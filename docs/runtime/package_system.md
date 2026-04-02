@@ -59,6 +59,13 @@ with explicit classification instead of ambiguous compile noise.
     "packages": ["vivid-base"],
     "vendor": [{ "name": "stb_image", "include": "deps/stb" }]
   },
+  "site_docs": {
+    "overview": "README.md",
+    "preview_image": "docs/images/preview.png",
+    "guides": [
+      { "title": "Getting Started", "path": "docs/getting-started.md" }
+    ]
+  },
   "tests": {
     "graphs": ["tests/test_glitch.json"],
     "cpp": ["tests/test_glitch_ops.cpp"]
@@ -67,6 +74,18 @@ with explicit classification instead of ambiguous compile noise.
 ```
 
 Parsed by `PackageManager::parse_manifest()` into `PackageInfo`.
+
+The runtime ignores unknown manifest fields. The optional `site_docs` block is
+consumed by the Vivid site build, not by package install/load behavior.
+
+`site_docs` is the central package-docs contract:
+
+- `overview` — markdown file used as the package detail page body (typically `README.md`)
+- `preview_image` — optional preview image path
+- `guides` — optional curated list of markdown guide pages for the package docs surface
+
+Operator-level docs are not declared here. They are derived from source doc block comments in the
+operator code (`/** ... */`, `@brief`, `@param`) and merged into the published package operator pages.
 
 ## `PackageInfo`
 

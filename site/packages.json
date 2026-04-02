@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-03-14",
+  "generated_at": "2026-04-02",
   "packages": [
     {
       "name": "vivid-3d",
@@ -10,8 +10,45 @@
       "author": "seethroughlab",
       "category": "gpu",
       "description_short": "",
+      "tags": [
+        "gpu",
+        "3d",
+        "rendering"
+      ],
+      "operators": [],
+      "gpu_operators": [
+        "gpu/grid",
+        "gpu/sphere",
+        "gpu/box",
+        "gpu/point_cloud",
+        "gpu/instanced_render",
+        "gpu/render_3d",
+        "gpu/shape3d",
+        "gpu/transform3d",
+        "gpu/scene_merge",
+        "gpu/light3d",
+        "gpu/mesh_import",
+        "gpu/deformer",
+        "gpu/instancer3d",
+        "gpu/particles3d",
+        "gpu/sdf3d",
+        "gpu/material3d",
+        "gpu/ssao3d",
+        "gpu/dof3d",
+        "gpu/environment3d",
+        "gpu/boolean3d",
+        "gpu/depth_mask3d",
+        "gpu/mesh_builder",
+        "gpu/sweep"
+      ],
+      "build": "cmake",
+      "site_docs": {
+        "overview": "README.md",
+        "preview_image": "docs/images/preview.png"
+      },
       "url": "https://github.com/seethroughlab/vivid-3d.git",
       "status": "experimental",
+      "default_ref": "master",
       "repo_url": "https://github.com/seethroughlab/vivid-3d",
       "install_url": "https://github.com/seethroughlab/vivid-3d.git",
       "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-3d/master/docs/images/preview.png"
@@ -24,7 +61,39 @@
       "author": "Jeff",
       "category": "gpu",
       "description_short": "",
+      "tags": [
+        "gpu",
+        "effects",
+        "glitch"
+      ],
+      "operators": [
+        "audio/stutter",
+        "audio/tape_stop",
+        "audio/beat_repeat",
+        "audio/reverse",
+        "audio/scratch",
+        "audio/stretch",
+        "audio/freq_shift",
+        "audio/glitch"
+      ],
+      "gpu_operators": [
+        "gpu/jpeg_glitch",
+        "gpu/pixel_sort",
+        "gpu/block_displacement",
+        "gpu/scan_distort",
+        "gpu/channel_shift",
+        "gpu/vhs",
+        "gpu/static_glitch",
+        "gpu/datamosh",
+        "gpu/visual_glitch"
+      ],
+      "build": "",
+      "site_docs": {
+        "overview": "README.md",
+        "preview_image": "docs/images/preview.png"
+      },
       "url": "https://github.com/seethroughlab/vivid-glitch.git",
+      "default_ref": "master",
       "repo_url": "https://github.com/seethroughlab/vivid-glitch",
       "install_url": "https://github.com/seethroughlab/vivid-glitch.git",
       "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-glitch/master/docs/images/preview.png"
@@ -33,26 +102,64 @@
       "name": "vivid-cef",
       "description": "CEF browser operator \u2014 render HTML/CSS/JS/WebGL as GPU textures",
       "version": "0.1.0",
-      "vivid_core": "",
+      "vivid_core": ">=0.1.0 <2.0.0",
       "author": "Jeff",
       "category": "ui",
       "description_short": "",
+      "tags": [
+        "ui",
+        "web",
+        "experimental"
+      ],
+      "operators": [
+        "browser_audio_in"
+      ],
+      "gpu_operators": [
+        "browser"
+      ],
+      "build": "cmake",
+      "site_docs": {
+        "overview": "README.md",
+        "preview_image": "docs/images/preview.png"
+      },
       "url": "https://github.com/seethroughlab/vivid-cef.git",
       "status": "experimental",
+      "default_ref": "master",
       "repo_url": "https://github.com/seethroughlab/vivid-cef",
       "install_url": "https://github.com/seethroughlab/vivid-cef.git",
       "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-cef/master/docs/images/preview.png"
     },
     {
       "name": "vivid-physics2d",
-      "description": "2D physics simulation operators for Vivid",
-      "version": "0.1.0",
+      "description": "2D physics and fluid simulation operators for Vivid",
+      "version": "0.2.0",
       "vivid_core": ">=0.1.0 <2.0.0",
       "author": "Jeff",
-      "category": "control",
+      "category": "simulation",
       "description_short": "",
+      "tags": [
+        "physics",
+        "simulation",
+        "particles",
+        "fluid",
+        "boids",
+        "reaction-diffusion"
+      ],
+      "operators": [
+        "control/physics_sim"
+      ],
+      "gpu_operators": [
+        "gpu/reaction_diffusion",
+        "gpu/fluid_sim",
+        "gpu/boids"
+      ],
+      "build": "",
+      "site_docs": {
+        "overview": "README.md"
+      },
       "url": "https://github.com/seethroughlab/vivid-physics2d.git",
       "status": "experimental",
+      "default_ref": "master",
       "repo_url": "https://github.com/seethroughlab/vivid-physics2d",
       "install_url": "https://github.com/seethroughlab/vivid-physics2d.git"
     },
@@ -64,23 +171,99 @@
       "author": "seethroughlab",
       "category": "hybrid",
       "description_short": "",
+      "tags": [
+        "gpu",
+        "audio",
+        "visualizer"
+      ],
+      "operators": [
+        "plexus",
+        "plexus_synth"
+      ],
+      "gpu_operators": "",
+      "build": "cmake",
+      "site_docs": {
+        "overview": "README.md",
+        "preview_image": "docs/images/preview.png"
+      },
       "url": "https://github.com/seethroughlab/vivid-plexus.git",
+      "default_ref": "master",
       "repo_url": "https://github.com/seethroughlab/vivid-plexus",
       "install_url": "https://github.com/seethroughlab/vivid-plexus.git",
       "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-plexus/master/docs/images/preview.png"
     },
     {
       "name": "vivid-wavetable",
-      "description": "WavetableSynth package library for Vivid",
-      "version": "0.1.0",
+      "description": "Modular wavetable synthesis for Vivid",
+      "version": "0.2.0",
       "vivid_core": ">=0.1.0 <2.0.0",
       "author": "seethroughlab",
       "category": "audio",
       "description_short": "",
+      "tags": [
+        "audio",
+        "synthesis",
+        "wavetable"
+      ],
+      "operators": [
+        "poly_voice_allocator",
+        "wavetable_osc",
+        "voice_mixer",
+        "sub_osc",
+        "analog_osc"
+      ],
+      "gpu_operators": "",
+      "build": "cmake",
+      "site_docs": {
+        "overview": "README.md",
+        "preview_image": "docs/images/preview.png",
+        "guides": [
+          {
+            "title": "Building a Synth with vivid-wavetable",
+            "path": "docs/synth-building-tutorial.md"
+          }
+        ]
+      },
       "url": "https://github.com/seethroughlab/vivid-wavetable.git",
+      "default_ref": "master",
       "repo_url": "https://github.com/seethroughlab/vivid-wavetable",
       "install_url": "https://github.com/seethroughlab/vivid-wavetable.git",
       "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-wavetable/master/docs/images/preview.png"
+    },
+    {
+      "name": "vivid-ml",
+      "description": "AI/ML inference operators for Vivid \u2014 pose, depth, segmentation, style transfer, object detection",
+      "version": "0.1.0",
+      "vivid_core": ">=0.1.0 <2.0.0",
+      "author": "Jeff",
+      "category": "ml",
+      "description_short": "",
+      "tags": [
+        "ml",
+        "ai",
+        "pose",
+        "depth",
+        "segmentation",
+        "style-transfer",
+        "onnx"
+      ],
+      "operators": "",
+      "gpu_operators": [
+        "gpu/pose_estimator",
+        "gpu/depth_estimator",
+        "gpu/segmentation",
+        "gpu/style_transfer",
+        "gpu/object_detection"
+      ],
+      "build": "cmake",
+      "site_docs": {
+        "overview": "README.md"
+      },
+      "url": "https://github.com/seethroughlab/vivid-ml.git",
+      "status": "experimental",
+      "default_ref": "master",
+      "repo_url": "https://github.com/seethroughlab/vivid-ml",
+      "install_url": "https://github.com/seethroughlab/vivid-ml.git"
     }
   ]
 }

@@ -8,6 +8,12 @@ Vivid supports additional operator libraries as packages.
 
 For package authoring templates/checklists, see `../vivid-package-template/README.md`.
 
+Listed packages can also publish central docs through the main Vivid site:
+
+- package overview and guides come from markdown (`README.md` plus optional `site_docs.guides`)
+- operator reference pages are generated from source doc block comments in the package operator files
+- package inclusion is curated through the site catalog, not auto-discovered from GitHub naming
+
 ## Available Package Libraries
 
 ### vivid-3d

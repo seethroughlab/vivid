@@ -13,7 +13,7 @@ Repo-authored site inputs live here:
 - `repos.json` — package repo input
 - `packages.json` — generated package catalog data
 - `generate.py` — builds `packages.json` from `repos.json` + package manifests
-- `build_site.py` — renders the publishable static HTML site
+- `build_site.py` — renders the publishable static HTML site, including central package docs pages
 
 ## Generated output
 
@@ -29,16 +29,12 @@ Do not hand-edit generated HTML.
 From the repo root:
 
 ```bash
-python3 site/build_site.py
+python3 site/generate.py --local
+python3 site/build_site.py --local-packages
 python3 -m http.server --directory site/dist 8000
 ```
 
-If you need to refresh package metadata first:
-
-```bash
-python3 site/generate.py --local
-python3 site/build_site.py
-```
+The `--local-packages` mode reads package docs from sibling repos like `../vivid-wavetable/`.
 
 ## Published artifacts
 
@@ -48,3 +44,12 @@ The Pages build publishes:
 - shared assets
 - `packages.json`
 - `appcast.xml`
+
+## Package docs contract
+
+Listed packages may publish central docs through the main Vivid site.
+
+- discovery is curated through `repos.json`
+- package overview docs come from `README.md`
+- optional guides are declared in `vivid-package.json` under `site_docs.guides`
+- package operator pages are generated from source doc block comments (`/** ... */`, `@brief`, `@param`)

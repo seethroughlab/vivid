@@ -2,28 +2,40 @@
   {
     "name": "vivid-3d",
     "url": "https://github.com/seethroughlab/vivid-3d.git",
+    "default_ref": "master",
     "status": "experimental"
   },
   {
     "name": "vivid-glitch",
-    "url": "https://github.com/seethroughlab/vivid-glitch.git"
+    "url": "https://github.com/seethroughlab/vivid-glitch.git",
+    "default_ref": "master"
   },
   {
     "name": "vivid-cef",
     "url": "https://github.com/seethroughlab/vivid-cef.git",
+    "default_ref": "master",
     "status": "experimental"
   },
   {
     "name": "vivid-physics2d",
     "url": "https://github.com/seethroughlab/vivid-physics2d.git",
+    "default_ref": "master",
     "status": "experimental"
   },
   {
     "name": "vivid-plexus",
-    "url": "https://github.com/seethroughlab/vivid-plexus.git"
+    "url": "https://github.com/seethroughlab/vivid-plexus.git",
+    "default_ref": "master"
   },
   {
     "name": "vivid-wavetable",
-    "url": "https://github.com/seethroughlab/vivid-wavetable.git"
+    "url": "https://github.com/seethroughlab/vivid-wavetable.git",
+    "default_ref": "master"
+  },
+  {
+    "name": "vivid-ml",
+    "url": "https://github.com/seethroughlab/vivid-ml.git",
+    "default_ref": "master",
+    "status": "experimental"
   }
 ]

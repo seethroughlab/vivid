@@ -2,8 +2,10 @@
 """Generate site/packages.json from repos.json + vivid-package.json manifests.
 
 By default, fetches manifests from GitHub. Use --local to read from sibling
-directories (../vivid-{name}/vivid-package.json) instead.
+repositories (../vivid-{name}/vivid-package.json) instead.
 """
+
+from __future__ import annotations
 
 import argparse
 import json
@@ -17,24 +19,40 @@ REPOS_JSON = SCRIPT_DIR / "repos.json"
 OUTPUT_JSON = SCRIPT_DIR / "packages.json"
 
 MANIFEST_FIELDS = [
-    "name", "description", "version", "vivid_core", "author",
-    "category", "description_short",
+    "name",
+    "description",
+    "version",
+    "vivid_core",
+    "author",
+    "category",
+    "description_short",
+    "tags",
+    "operators",
+    "gpu_operators",
+    "build",
+    "site_docs",
 ]
 
-REPO_META_FIELDS = ["status", "status_note", "preview_image_url", "homepage_url"]
+REPO_META_FIELDS = [
+    "status",
+    "status_note",
+    "preview_image_url",
+    "homepage_url",
+    "default_ref",
+]
 
 RAW_URL_TEMPLATE = (
-    "https://raw.githubusercontent.com/seethroughlab/{name}/master/vivid-package.json"
+    "https://raw.githubusercontent.com/seethroughlab/{name}/{ref}/vivid-package.json"
 )
 
 
-def fetch_manifest_remote(name: str) -> dict | None:
-    url = RAW_URL_TEMPLATE.format(name=name)
+def fetch_manifest_remote(name: str, ref: str) -> dict | None:
+    url = RAW_URL_TEMPLATE.format(name=name, ref=ref)
     try:
         with urllib.request.urlopen(url, timeout=15) as resp:
             return json.loads(resp.read())
     except Exception as exc:
-        print(f"  warning: failed to fetch {name}: {exc}", file=sys.stderr)
+        print(f"  warning: failed to fetch {name}@{ref}: {exc}", file=sys.stderr)
         return None
 
 
@@ -59,34 +77,36 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    fetch = fetch_manifest_local if args.local else fetch_manifest_remote
-    source = "local sibling repos" if args.local else "GitHub"
-
     repos = json.loads(REPOS_JSON.read_text())
-
     packages = []
+
     for repo in repos:
         name = repo["name"]
+        ref = repo.get("default_ref", "master")
+        source = "local sibling repos" if args.local else f"GitHub@{ref}"
         print(f"Reading {name} ({source})...", file=sys.stderr)
-        manifest = fetch(name)
+
+        if args.local:
+            manifest = fetch_manifest_local(name)
+        else:
+            manifest = fetch_manifest_remote(name, ref)
+
         if manifest is None:
             continue
-        entry = {field: manifest.get(field, "") for field in MANIFEST_FIELDS}
+
+        entry = {field: manifest.get(field, [] if field in {"tags", "operators", "gpu_operators"} else {}) if field == "site_docs" else manifest.get(field, "") for field in MANIFEST_FIELDS}
         entry["url"] = repo["url"]
 
-        # Merge catalog metadata from repos.json
         for field in REPO_META_FIELDS:
             if field in repo:
                 entry[field] = repo[field]
 
-        # Derive repo_url (strip .git suffix) and install_url
         url = repo["url"]
         entry["repo_url"] = url.removesuffix(".git")
         entry["install_url"] = url
 
-        # Auto-derive preview_image_url if not explicitly set in repos.json
         if not entry.get("preview_image_url"):
-            derived_url = f"https://raw.githubusercontent.com/seethroughlab/{name}/master/docs/images/preview.png"
+            derived_url = f"https://raw.githubusercontent.com/seethroughlab/{name}/{ref}/docs/images/preview.png"
             if args.local:
                 preview_path = SCRIPT_DIR.parent.parent / name / "docs" / "images" / "preview.png"
                 if preview_path.exists():
