@@ -3,7 +3,7 @@
 #include "runtime/audio/audio_engine.h"
 #include "runtime/control/runtime_api.h"
 #include "runtime/gpu/gpu_context.h"
-#include "ui/node_graph.h"
+#include "ui/graph/node_graph.h"
 #include "common/gpu_util.h"
 #include <webgpu/wgpu.h>
 #include <stb_image_write.h>

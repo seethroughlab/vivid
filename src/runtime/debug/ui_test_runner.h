@@ -1,7 +1,7 @@
 #pragma once
 
-#include "ui/file_dialog.h"
-#include "ui/graph_snapshot.h"
+#include "ui/dialogs/file_dialog.h"
+#include "ui/graph/graph_snapshot.h"
 #include <filesystem>
 #include <string>
 #include <unordered_map>

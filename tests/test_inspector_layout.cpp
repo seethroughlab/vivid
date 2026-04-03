@@ -1,5 +1,5 @@
 #include "test_helpers.h"
-#include "ui/inspector_layout.h"
+#include "ui/inspector/inspector_layout.h"
 #include <cstdio>
 
 using namespace vivid::ui;

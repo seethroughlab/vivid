@@ -1,5 +1,5 @@
-#include "ui/overlay_layouts.h"
-#include "ui/node_graph_constants.h"
+#include "ui/rendering/overlay_layouts.h"
+#include "ui/graph/node_graph_constants.h"
 #include <algorithm>
 
 namespace vivid::ui {

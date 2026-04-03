@@ -2,7 +2,7 @@
 
 #include "runtime/operators/operator_registry.h"
 #include "runtime/operators/operator_loader.h"
-#include "ui/graph_snapshot.h"
+#include "ui/graph/graph_snapshot.h"
 #include <filesystem>
 #include <string>
 #include <unordered_map>

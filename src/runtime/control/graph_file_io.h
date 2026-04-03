@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ui/dialog_types.h"
+#include "ui/graph/dialog_types.h"
 #include <filesystem>
 #include <string>
 #include <vector>

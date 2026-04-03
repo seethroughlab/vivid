@@ -1,5 +1,5 @@
 #include "runtime/core/window_manager.h"
-#include "ui/node_graph.h"
+#include "ui/graph/node_graph.h"
 #include <cstdio>
 #include <filesystem>
 

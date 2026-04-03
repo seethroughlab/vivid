@@ -1,6 +1,6 @@
 #include "ui/build_console_panel.h"
 
-#include "ui/renderer_2d.h"
+#include "ui/rendering/renderer_2d.h"
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <chrono>

@@ -4,7 +4,7 @@
 #include "runtime/graph/compiled_graph.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/thumbnail.h"
-#include "ui/renderer_2d.h"
+#include "ui/rendering/renderer_2d.h"
 #include "common/gpu_util.h"
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>

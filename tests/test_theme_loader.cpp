@@ -1,6 +1,6 @@
 #include "test_helpers.h"
-#include "ui/theme_loader.h"
-#include "ui/ui_style.h"
+#include "ui/style/theme_loader.h"
+#include "ui/style/ui_style.h"
 #include <filesystem>
 #include <fstream>
 #include <cstdlib>

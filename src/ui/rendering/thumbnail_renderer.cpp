@@ -1,4 +1,4 @@
-#include "ui/thumbnail_renderer.h"
+#include "ui/rendering/thumbnail_renderer.h"
 #include "common/gpu_util.h"
 #include <cstdio>
 #include <cstring>

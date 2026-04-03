@@ -733,28 +733,28 @@ add_custom_target(operators DEPENDS ${_vivid_op_targets})
 # --- UI library ---
 add_library(vivid_ui STATIC
     src/ui/build_console_panel.cpp
-    src/ui/renderer_2d.cpp
-    src/ui/thumbnail_renderer.cpp
-    src/ui/thumbnail_cache.cpp
-    src/ui/i18n.cpp
-    src/ui/node_graph.cpp
-    src/ui/node_graph_draw.cpp
-    src/ui/node_graph_draw_inspector.cpp
-    src/ui/node_graph_draw_connections.cpp
-    src/ui/node_graph_draw_overlays.cpp
-    src/ui/node_graph_draw_elements.cpp
-    src/ui/node_graph_input.cpp
-    src/ui/inspector_controller.cpp
-    src/ui/overlay_layouts.cpp
-    src/ui/dialog_manager.cpp
-    src/ui/dialog_manager_draw.cpp
-    src/ui/dialog_manager_input.cpp
-    src/ui/ui_style.cpp
-    src/ui/theme_loader.cpp
+    src/ui/rendering/renderer_2d.cpp
+    src/ui/rendering/thumbnail_renderer.cpp
+    src/ui/rendering/thumbnail_cache.cpp
+    src/ui/style/i18n.cpp
+    src/ui/graph/node_graph.cpp
+    src/ui/graph/node_graph_draw.cpp
+    src/ui/graph/node_graph_draw_inspector.cpp
+    src/ui/graph/node_graph_draw_connections.cpp
+    src/ui/graph/node_graph_draw_overlays.cpp
+    src/ui/graph/node_graph_draw_elements.cpp
+    src/ui/graph/node_graph_input.cpp
+    src/ui/inspector/inspector_controller.cpp
+    src/ui/rendering/overlay_layouts.cpp
+    src/ui/dialogs/dialog_manager.cpp
+    src/ui/dialogs/dialog_manager_draw.cpp
+    src/ui/dialogs/dialog_manager_input.cpp
+    src/ui/style/ui_style.cpp
+    src/ui/style/theme_loader.cpp
 )
 if(APPLE)
-    target_sources(vivid_ui PRIVATE src/ui/file_dialog.mm)
-    set_source_files_properties(src/ui/file_dialog.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+    target_sources(vivid_ui PRIVATE src/ui/dialogs/file_dialog.mm)
+    set_source_files_properties(src/ui/dialogs/file_dialog.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
 endif()
 target_include_directories(vivid_ui PRIVATE src)
 target_link_libraries(vivid_ui PUBLIC vivid_operator_api webgpu)
@@ -1462,8 +1462,8 @@ add_test(NAME test_operator_destination_policy
 # Theme loader unit test
 add_executable(test_theme_loader
     tests/test_theme_loader.cpp
-    src/ui/theme_loader.cpp
-    src/ui/ui_style.cpp
+    src/ui/style/theme_loader.cpp
+    src/ui/style/ui_style.cpp
     src/runtime/platform/platform.cpp
 )
 target_include_directories(test_theme_loader PRIVATE src tests)
@@ -1473,7 +1473,7 @@ add_test(NAME test_theme_loader COMMAND test_theme_loader WORKING_DIRECTORY ${CM
 # Overlay layout/hit-test regressions
 add_executable(test_overlay_layouts
     tests/test_overlay_layouts.cpp
-    src/ui/overlay_layouts.cpp
+    src/ui/rendering/overlay_layouts.cpp
 )
 target_include_directories(test_overlay_layouts PRIVATE src tests)
 add_test(NAME test_overlay_layouts COMMAND test_overlay_layouts WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -1815,7 +1815,7 @@ add_executable(test_gpu_operators
     src/runtime/graph/graph_compiler.cpp
     src/runtime/audio/audio_frame_bridge.cpp
     src/runtime/graph/frame_executor.cpp
-    src/ui/renderer_2d.cpp
+    src/ui/rendering/renderer_2d.cpp
 )
 target_include_directories(test_gpu_operators PRIVATE src deps/stb)
 target_link_libraries(test_gpu_operators PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
@@ -2849,7 +2849,7 @@ add_test(NAME test_path_animate COMMAND test_path_animate WORKING_DIRECTORY ${CM
 # i18n module tests (load, get, get_plural, fallbacks)
 add_executable(test_i18n
     tests/test_i18n.cpp
-    src/ui/i18n.cpp
+    src/ui/style/i18n.cpp
 )
 target_include_directories(test_i18n PRIVATE src)
 target_link_libraries(test_i18n PRIVATE nlohmann_json::nlohmann_json)

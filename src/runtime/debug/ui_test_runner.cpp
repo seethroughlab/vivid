@@ -1,7 +1,7 @@
 #include "runtime/debug/ui_test_runner.h"
 
-#include "ui/file_dialog.h"
-#include "ui/node_graph.h"
+#include "ui/dialogs/file_dialog.h"
+#include "ui/graph/node_graph.h"
 #include <GLFW/glfw3.h>
 #include <fstream>
 #include <algorithm>

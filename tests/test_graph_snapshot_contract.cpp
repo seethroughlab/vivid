@@ -1,4 +1,4 @@
-#include "ui/graph_snapshot.h"
+#include "ui/graph/graph_snapshot.h"
 #include <cstdio>
 
 using namespace vivid::ui;

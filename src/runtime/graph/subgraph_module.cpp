@@ -1,5 +1,5 @@
 #include "runtime/graph/subgraph_module.h"
-#include "ui/graph_snapshot.h"
+#include "ui/graph/graph_snapshot.h"
 #include <cstdio>
 #include <cstring>
 #include <filesystem>

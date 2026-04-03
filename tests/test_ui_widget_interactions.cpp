@@ -1,7 +1,7 @@
 #define private public
-#include "ui/node_graph.h"
+#include "ui/graph/node_graph.h"
 #undef private
-#include "ui/graph_snapshot.h"
+#include "ui/graph/graph_snapshot.h"
 #include <GLFW/glfw3.h>
 #include <cmath>
 #include <cstdio>

@@ -1,9 +1,9 @@
 #include <nlohmann/json.hpp>
-#include "ui/node_graph.h"
-#include "ui/node_graph_constants.h"
-#include "ui/node_graph_util.h"
-#include "ui/renderer_2d.h"
-#include "ui/i18n.h"
+#include "ui/graph/node_graph.h"
+#include "ui/graph/node_graph_constants.h"
+#include "ui/graph/node_graph_util.h"
+#include "ui/rendering/renderer_2d.h"
+#include "ui/style/i18n.h"
 #include "common/string_util.h"
 #include <algorithm>
 #include <cmath>

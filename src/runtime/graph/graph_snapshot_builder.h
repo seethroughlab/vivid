@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ui/graph_snapshot.h"
+#include "ui/graph/graph_snapshot.h"
 #include <string>
 
 class OperatorInfoCache;

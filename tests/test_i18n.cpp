@@ -1,7 +1,7 @@
 // Tests for the i18n module (src/ui/i18n.h + i18n.cpp).
 // Covers load, get, get_plural, fallbacks, error paths.
 
-#include "ui/i18n.h"
+#include "ui/style/i18n.h"
 
 #include <cstdio>
 #include <cstring>

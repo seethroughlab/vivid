@@ -1,7 +1,7 @@
-#include "ui/node_graph.h"
-#include "ui/node_graph_constants.h"
-#include "ui/node_graph_util.h"
-#include "ui/ui_style.h"
+#include "ui/graph/node_graph.h"
+#include "ui/graph/node_graph_constants.h"
+#include "ui/graph/node_graph_util.h"
+#include "ui/style/ui_style.h"
 #include "common/topo_sort.h"
 #include "common/string_util.h"
 #include <algorithm>

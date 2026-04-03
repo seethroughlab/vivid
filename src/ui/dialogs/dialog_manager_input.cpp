@@ -1,10 +1,10 @@
-#include "ui/dialog_manager.h"
-#include "ui/node_graph.h"
-#include "ui/overlay_layouts.h"
-#include "ui/theme_loader.h"
+#include "ui/dialogs/dialog_manager.h"
+#include "ui/graph/node_graph.h"
+#include "ui/rendering/overlay_layouts.h"
+#include "ui/style/theme_loader.h"
 #include "ui/ui_command_sink.h"
-#include "ui/node_graph_constants.h"
-#include "ui/file_dialog.h"
+#include "ui/graph/node_graph_constants.h"
+#include "ui/dialogs/file_dialog.h"
 #include <GLFW/glfw3.h>
 #include <cstring>
 #include <cmath>

@@ -1,10 +1,10 @@
 #pragma once
 
-#include "ui/dialog_types.h"
-#include "ui/overlay_layouts.h"
+#include "ui/graph/dialog_types.h"
+#include "ui/rendering/overlay_layouts.h"
 #include "ui/active_text_field.h"
-#include "ui/ui_style.h"
-#include "ui/theme_loader.h"
+#include "ui/style/ui_style.h"
+#include "ui/style/theme_loader.h"
 #include "operator_api/create_request.h"
 #include <cstdint>
 #include <string>

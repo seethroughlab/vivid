@@ -1,5 +1,5 @@
 #include <nlohmann/json.hpp>
-#include "ui/i18n.h"
+#include "ui/style/i18n.h"
 #include <fstream>
 #include <cstdio>
 

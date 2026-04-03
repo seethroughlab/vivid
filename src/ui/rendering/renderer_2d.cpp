@@ -1,7 +1,7 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
 
-#include "ui/renderer_2d.h"
+#include "ui/rendering/renderer_2d.h"
 #include "operator_api/types.h"
 #include "common/gpu_util.h"
 #include <cstdio>

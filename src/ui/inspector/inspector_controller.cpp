@@ -1,5 +1,5 @@
-#include "ui/inspector_controller.h"
-#include "ui/node_graph.h"
+#include "ui/inspector/inspector_controller.h"
+#include "ui/graph/node_graph.h"
 
 namespace vivid::ui {
 

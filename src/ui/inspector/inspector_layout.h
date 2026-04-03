@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ui/node_graph_constants.h"
+#include "ui/graph/node_graph_constants.h"
 #include "operator_api/types.h"
 #include <cstdint>
 

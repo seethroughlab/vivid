@@ -1,5 +1,5 @@
-#include "ui/dialog_manager.h"
-#include "ui/node_graph_constants.h"
+#include "ui/dialogs/dialog_manager.h"
+#include "ui/graph/node_graph_constants.h"
 #include "ui/text_edit.h"
 #include "ui/ui_command_sink.h"
 #include <algorithm>
