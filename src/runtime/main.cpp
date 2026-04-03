@@ -1682,6 +1682,9 @@ static void draw_custom_thumbnails(const vivid::RuntimeCore& runtime,
     const auto* cg_thumb = runtime.compiled_graph();
     if (!cg_thumb) return;
 
+    if (thumb_draw_renderer)
+        thumb_draw_renderer->reset_ring();
+
     std::unordered_set<std::string> custom_thumb_ids;
     for (const auto& cn : cg_thumb->nodes) {
         if (!cn.loader || !cn.instance || cn.missing_operator) continue;

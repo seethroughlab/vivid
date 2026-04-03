@@ -707,14 +707,18 @@ void Renderer2D::flush(WGPUCommandEncoder encoder, WGPUTextureView surface_view,
 
     WGPUQueue queue = wgpuDeviceGetQueue(device_);
 
-    // Double-buffered vertex upload: alternate buffers each flush so the
-    // GPU never reads from a buffer that was just written. Works around a
-    // wgpu-native bug where wgpuQueueWriteBuffer data may not be visible
-    // to the GPU in time, causing early quads to render as invisible.
+    // Ring-buffer vertex upload: write each flush at an increasing offset so
+    // multiple flushes on the same command encoder never overwrite each other.
+    // When the current buffer is full, flip to the other buffer (double-buffer
+    // safety for the wgpu-native visibility bug).
     size_t data_size = vertices_.size() * sizeof(TextVertex);
+    size_t buf_capacity = kMaxVertices * sizeof(TextVertex);
+    if (ring_byte_offset_ + data_size > buf_capacity) {
+        buf_idx_ ^= 1;
+        ring_byte_offset_ = 0;
+    }
     WGPUBuffer vb = vertex_bufs_[buf_idx_];
-    buf_idx_ ^= 1;
-    wgpuQueueWriteBuffer(queue, vb, 0, vertices_.data(), data_size);
+    wgpuQueueWriteBuffer(queue, vb, ring_byte_offset_, vertices_.data(), data_size);
 
     // Update persistent uniform buffer with current screen size
     float uniforms[2] = { (float)surface_width, (float)surface_height };
@@ -736,7 +740,7 @@ void Renderer2D::flush(WGPUCommandEncoder encoder, WGPUTextureView surface_view,
     WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &rp_desc);
     wgpuRenderPassEncoderSetPipeline(pass, pipeline_);
     wgpuRenderPassEncoderSetBindGroup(pass, 0, bind_group_, 0, nullptr);
-    wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vb, 0, data_size);
+    wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vb, ring_byte_offset_, data_size);
 
     // SetScissorRect requires physical pixels; surface_width/height are logical.
     uint32_t phys_w = static_cast<uint32_t>(surface_width * dpi_scale_);
@@ -770,6 +774,8 @@ void Renderer2D::flush(WGPUCommandEncoder encoder, WGPUTextureView surface_view,
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);
 
+    ring_byte_offset_ += data_size;
+
     if (overflow_count_ > 0) {
         std::fprintf(stderr, "[vivid] Renderer2D: dropped %u quads (vertex buffer full, %u/%u verts used)\n",
                      overflow_count_, static_cast<uint32_t>(vertices_.size()), kMaxVertices);
@@ -781,8 +787,15 @@ void Renderer2D::flush(WGPUCommandEncoder encoder, WGPUTextureView surface_view,
     clip_stack_.clear();
 }
 
+void Renderer2D::reset_ring() {
+    ring_byte_offset_ = 0;
+    buf_idx_ = 0;
+}
+
 void Renderer2D::shutdown() {
     vertices_.clear();
+    ring_byte_offset_ = 0;
+    buf_idx_ = 0;
     for (auto& vb : vertex_bufs_) {
         if (vb) { wgpuBufferRelease(vb); vb = nullptr; }
     }

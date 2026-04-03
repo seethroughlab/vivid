@@ -62,6 +62,10 @@ public:
     void flush(WGPUCommandEncoder encoder, WGPUTextureView surface_view,
                uint32_t surface_width, uint32_t surface_height);
 
+    // Reset the ring-buffer write offset. Call once per frame before multiple
+    // flush() calls on the same command encoder (e.g. thumbnail rendering loop).
+    void reset_ring();
+
 private:
     void push_quad(float x0, float y0, float x1, float y1,
                    float u0, float v0, float u1, float v1,
@@ -83,7 +87,8 @@ private:
     WGPUTextureView atlas_view_ = nullptr;
     WGPUSampler sampler_ = nullptr;
     WGPUBuffer vertex_bufs_[2]{};   // double-buffered vertex buffers
-    int buf_idx_ = 0;               // alternates 0/1 each flush
+    int buf_idx_ = 0;               // current buffer index (flips on overflow)
+    size_t ring_byte_offset_ = 0;   // running write offset within current buffer
 
     GlyphInfo glyphs_[128]{}; // ASCII 0-127 (only 32-126 used)
     std::unordered_map<uint32_t, GlyphInfo> extra_glyphs_;
