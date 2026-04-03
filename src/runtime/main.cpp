@@ -44,6 +44,7 @@
 #include "runtime/platform.h"
 #include "runtime/operator_creator.h"
 #include "runtime/operator_destination_policy.h"
+#include "runtime/ui_test_runner.h"
 #include "ui/file_dialog.h"
 #include <fstream>
 #include <sstream>
@@ -151,462 +152,6 @@ static std::vector<std::string> json_str_array(const nlohmann::json& arr) {
         if (v.is_string()) out.emplace_back(v.get<std::string>());
     }
     return out;
-}
-
-enum class UITestActionType {
-    Wait,
-    MouseMove,
-    MouseButton,
-    Key,
-    CharInput,
-    Screenshot,
-    Checkpoint,
-};
-
-struct UITestAction {
-    UITestActionType type = UITestActionType::Wait;
-    int frames = 0;
-    float x = 0.0f;
-    float y = 0.0f;
-    int button = GLFW_MOUSE_BUTTON_LEFT;
-    int mouse_action = GLFW_PRESS;
-    int key = 0;
-    int key_action = GLFW_PRESS;
-    int mods = 0;
-    unsigned int codepoint = 0;
-    std::string screenshot_path;
-    int screenshot_delay = 0;
-    std::string checkpoint_label;
-};
-
-struct UITestScript {
-    std::vector<UITestAction> actions;
-    size_t next_action = 0;
-    int wait_frames_remaining = 0;
-    std::filesystem::path source_dir;
-    std::vector<std::string> pending_checkpoint_labels;
-};
-
-struct UITestNodeState {
-    std::string node_id;
-    std::string type_name;
-    bool missing_operator = false;
-    bool has_layout = false;
-    float layout_x = 0.0f;
-    float layout_y = 0.0f;
-    std::unordered_map<std::string, std::string> file_param_values;
-};
-
-struct UITestConnectionState {
-    std::string from_node;
-    std::string from_port;
-    std::string to_node;
-    std::string to_port;
-    bool invalid = false;
-};
-
-struct UITestObservedState {
-    std::vector<UITestNodeState> nodes;
-    std::vector<UITestConnectionState> connections;
-    std::vector<std::string> selected_node_ids;
-    bool chooser_open = false;
-    bool file_drop_chooser_open = false;
-    bool role_chooser_open = false;
-    vivid::ui::FileDialogTestStats file_dialog_stats;
-};
-
-struct UITestCheckpointState {
-    std::string label;
-    UITestObservedState state;
-};
-
-struct UITestDumpState {
-    bool has_final_state = false;
-    UITestObservedState final_state;
-    std::vector<UITestCheckpointState> checkpoints;
-};
-
-static std::string lower_copy(std::string s) {
-    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
-        return static_cast<char>(std::tolower(c));
-    });
-    return s;
-}
-
-static bool parse_ui_test_modifiers(const nlohmann::json& arr, int& mods, std::string& error) {
-    mods = 0;
-    if (arr.is_null()) return true;
-    if (!arr.is_array()) {
-        error = "mods must be an array";
-        return false;
-    }
-    for (const auto& value : arr) {
-        if (!value.is_string()) {
-            error = "mods entries must be strings";
-            return false;
-        }
-        std::string mod = lower_copy(value.get<std::string>());
-        if (mod == "shift") mods |= GLFW_MOD_SHIFT;
-        else if (mod == "control" || mod == "ctrl") mods |= GLFW_MOD_CONTROL;
-        else if (mod == "super" || mod == "cmd" || mod == "meta") mods |= GLFW_MOD_SUPER;
-        else if (mod == "alt" || mod == "option") mods |= GLFW_MOD_ALT;
-        else {
-            error = "unknown modifier: " + mod;
-            return false;
-        }
-    }
-    return true;
-}
-
-static bool parse_ui_test_mouse_button(const std::string& button_name, int& button) {
-    std::string name = lower_copy(button_name);
-    if (name == "left") {
-        button = GLFW_MOUSE_BUTTON_LEFT;
-        return true;
-    }
-    if (name == "right") {
-        button = GLFW_MOUSE_BUTTON_RIGHT;
-        return true;
-    }
-    if (name == "middle") {
-        button = GLFW_MOUSE_BUTTON_MIDDLE;
-        return true;
-    }
-    return false;
-}
-
-static bool parse_ui_test_action_name(const std::string& action_name, int& action) {
-    std::string name = lower_copy(action_name);
-    if (name == "press") {
-        action = GLFW_PRESS;
-        return true;
-    }
-    if (name == "release") {
-        action = GLFW_RELEASE;
-        return true;
-    }
-    if (name == "repeat") {
-        action = GLFW_REPEAT;
-        return true;
-    }
-    return false;
-}
-
-static bool parse_ui_test_key_name(const std::string& key_name, int& key) {
-    static const std::unordered_map<std::string, int> named_keys = {
-        {"tab", GLFW_KEY_TAB},
-        {"enter", GLFW_KEY_ENTER},
-        {"escape", GLFW_KEY_ESCAPE},
-        {"esc", GLFW_KEY_ESCAPE},
-        {"delete", GLFW_KEY_DELETE},
-        {"backspace", GLFW_KEY_BACKSPACE},
-        {"left", GLFW_KEY_LEFT},
-        {"right", GLFW_KEY_RIGHT},
-        {"up", GLFW_KEY_UP},
-        {"down", GLFW_KEY_DOWN},
-        {"space", GLFW_KEY_SPACE},
-    };
-    std::string name = lower_copy(key_name);
-    auto it = named_keys.find(name);
-    if (it != named_keys.end()) {
-        key = it->second;
-        return true;
-    }
-    if (name.size() == 1) {
-        char c = static_cast<char>(std::toupper(static_cast<unsigned char>(name[0])));
-        if (c >= 'A' && c <= 'Z') {
-            key = GLFW_KEY_A + (c - 'A');
-            return true;
-        }
-        if (c >= '0' && c <= '9') {
-            key = GLFW_KEY_0 + (c - '0');
-            return true;
-        }
-    }
-    return false;
-}
-
-static bool load_ui_test_script(const std::string& script_path,
-                                UITestScript& script,
-                                std::string& error) {
-    nlohmann::json root;
-    try {
-        std::ifstream ifs(script_path);
-        if (!ifs) {
-            error = "failed to read script JSON";
-            return false;
-        }
-        root = nlohmann::json::parse(ifs);
-    } catch (const std::exception&) {
-        error = "failed to read script JSON";
-        return false;
-    }
-
-    const nlohmann::json* actions_ptr = &root;
-    if (root.is_object() && root.contains("actions"))
-        actions_ptr = &root["actions"];
-    if (!actions_ptr->is_array()) {
-        error = "script must be a JSON array or an object with an 'actions' array";
-        return false;
-    }
-    const auto& actions = *actions_ptr;
-
-    script = {};
-    script.source_dir = std::filesystem::path(script_path).parent_path();
-    for (const auto& item : actions) {
-        if (!item.is_object()) {
-            error = "script actions must be objects";
-            return false;
-        }
-        auto type_it = item.find("type");
-        if (type_it == item.end() || !type_it->is_string()) {
-            error = "script action missing string 'type'";
-            return false;
-        }
-
-        UITestAction action;
-        std::string type = lower_copy(type_it->get<std::string>());
-        if (type == "wait") {
-            action.type = UITestActionType::Wait;
-            auto frames_it = item.find("frames");
-            action.frames = (frames_it != item.end() && frames_it->is_number_integer())
-                ? frames_it->get<int>()
-                : 1;
-        } else if (type == "mouse_move") {
-            auto x_it = item.find("x");
-            auto y_it = item.find("y");
-            if (x_it == item.end() || y_it == item.end() || !x_it->is_number() || !y_it->is_number()) {
-                error = "mouse_move requires numeric x and y";
-                return false;
-            }
-            action.type = UITestActionType::MouseMove;
-            action.x = x_it->get<float>();
-            action.y = y_it->get<float>();
-        } else if (type == "mouse_button") {
-            auto button_it = item.find("button");
-            auto action_it = item.find("action");
-            nlohmann::json mods_val = item.contains("mods") ? item["mods"] : nlohmann::json(nullptr);
-            if (button_it == item.end() || action_it == item.end() ||
-                !button_it->is_string() || !action_it->is_string() ||
-                !parse_ui_test_mouse_button(button_it->get<std::string>(), action.button) ||
-                !parse_ui_test_action_name(action_it->get<std::string>(), action.mouse_action) ||
-                !parse_ui_test_modifiers(mods_val, action.mods, error)) {
-                if (error.empty())
-                    error = "mouse_button requires valid button/action/mods";
-                return false;
-            }
-            action.type = UITestActionType::MouseButton;
-        } else if (type == "key") {
-            auto key_it = item.find("key");
-            auto action_it = item.find("action");
-            nlohmann::json mods_val = item.contains("mods") ? item["mods"] : nlohmann::json(nullptr);
-            if (key_it == item.end() || action_it == item.end() ||
-                !key_it->is_string() || !action_it->is_string() ||
-                !parse_ui_test_key_name(key_it->get<std::string>(), action.key) ||
-                !parse_ui_test_action_name(action_it->get<std::string>(), action.key_action) ||
-                !parse_ui_test_modifiers(mods_val, action.mods, error)) {
-                if (error.empty())
-                    error = "key requires valid key/action/mods";
-                return false;
-            }
-            action.type = UITestActionType::Key;
-        } else if (type == "char") {
-            auto value_it = item.find("value");
-            if (value_it == item.end() || !value_it->is_string()) {
-                error = "char requires string value";
-                return false;
-            }
-            std::string value = value_it->get<std::string>();
-            if (value.empty()) {
-                error = "char value must not be empty";
-                return false;
-            }
-            action.type = UITestActionType::CharInput;
-            action.codepoint = static_cast<unsigned int>(static_cast<unsigned char>(value[0]));
-        } else if (type == "screenshot") {
-            auto path_it = item.find("path");
-            if (path_it == item.end() || !path_it->is_string()) {
-                error = "screenshot requires string path";
-                return false;
-            }
-            action.type = UITestActionType::Screenshot;
-            action.screenshot_path = path_it->get<std::string>();
-            auto delay_it = item.find("delay_frames");
-            if (delay_it != item.end() && delay_it->is_number_integer())
-                action.screenshot_delay = delay_it->get<int>();
-        } else if (type == "checkpoint") {
-            auto label_it = item.find("label");
-            if (label_it == item.end() || !label_it->is_string()) {
-                error = "checkpoint requires string label";
-                return false;
-            }
-            action.type = UITestActionType::Checkpoint;
-            action.checkpoint_label = label_it->get<std::string>();
-        } else {
-            error = "unknown script action type: " + type;
-            return false;
-        }
-
-        script.actions.push_back(std::move(action));
-    }
-
-    return true;
-}
-
-static vivid::ui::FileDialogTestStats current_file_dialog_test_stats() {
-#ifdef __APPLE__
-    return vivid::ui::file_dialog_test_stats();
-#else
-    return {};
-#endif
-}
-
-static void reset_file_dialog_test_stats_runtime() {
-#ifdef __APPLE__
-    vivid::ui::reset_file_dialog_test_stats();
-#endif
-}
-
-static UITestObservedState capture_ui_test_observed_state(
-    const vivid::ui::GraphSnapshot& snapshot,
-    const vivid::ui::NodeGraphUI& graph_ui) {
-    UITestObservedState out;
-    out.nodes.reserve(snapshot.nodes.size());
-    for (const auto& node : snapshot.nodes) {
-        UITestNodeState state;
-        state.node_id = node.node_id;
-        state.type_name = node.type_name;
-        state.missing_operator = node.missing_operator;
-        state.has_layout = node.has_layout;
-        state.layout_x = node.layout_x;
-        state.layout_y = node.layout_y;
-        state.file_param_values = node.file_param_values;
-        out.nodes.push_back(std::move(state));
-    }
-    out.connections.reserve(snapshot.connections.size());
-    for (const auto& conn : snapshot.connections) {
-        UITestConnectionState state;
-        state.from_node = conn.from_node;
-        state.from_port = conn.from_port;
-        state.to_node = conn.to_node;
-        state.to_port = conn.to_port;
-        state.invalid = conn.invalid;
-        out.connections.push_back(std::move(state));
-    }
-    out.selected_node_ids = graph_ui.selected_node_ids_for_test();
-    std::sort(out.selected_node_ids.begin(), out.selected_node_ids.end());
-    out.chooser_open = graph_ui.chooser_open_for_test();
-    out.file_drop_chooser_open = graph_ui.file_drop_chooser_open_for_test();
-    out.file_dialog_stats = current_file_dialog_test_stats();
-    return out;
-}
-
-static std::string sanitize_json_string(const std::string& input) {
-    std::string out;
-    out.reserve(input.size());
-    for (unsigned char c : input) {
-        if (c >= 0x20 && c < 0x7f) {
-            out.push_back(static_cast<char>(c));
-        } else if (c == '\n' || c == '\r' || c == '\t') {
-            out.push_back(static_cast<char>(c));
-        } else {
-            out.push_back('?');
-        }
-    }
-    return out;
-}
-
-static nlohmann::json encode_ui_test_state(const UITestObservedState& state) {
-    nlohmann::json root = nlohmann::json::object();
-    root["node_count"] = static_cast<int64_t>(state.nodes.size());
-    root["connection_count"] = static_cast<int64_t>(state.connections.size());
-    root["chooser_open"] = state.chooser_open;
-    root["file_drop_chooser_open"] = state.file_drop_chooser_open;
-    root["role_chooser_open"] = state.role_chooser_open;
-    root["native_file_dialog_count"] = state.file_dialog_stats.invocation_count;
-
-    nlohmann::json dialog_stats = nlohmann::json::object();
-    dialog_stats["invocation_count"] = state.file_dialog_stats.invocation_count;
-    dialog_stats["open_file_count"] = state.file_dialog_stats.open_file_count;
-    dialog_stats["open_directory_count"] = state.file_dialog_stats.open_directory_count;
-    dialog_stats["save_file_count"] = state.file_dialog_stats.save_file_count;
-    dialog_stats["save_directory_count"] = state.file_dialog_stats.save_directory_count;
-    root["file_dialog_stats"] = dialog_stats;
-
-    nlohmann::json selected = nlohmann::json::array();
-    for (const auto& node_id : state.selected_node_ids) {
-        selected.push_back(sanitize_json_string(node_id));
-    }
-    root["selected_node_ids"] = selected;
-
-    nlohmann::json nodes = nlohmann::json::array();
-    for (const auto& node : state.nodes) {
-        nlohmann::json item = nlohmann::json::object();
-        item["node_id"] = sanitize_json_string(node.node_id);
-        item["type_name"] = sanitize_json_string(node.type_name);
-        item["missing_operator"] = node.missing_operator;
-        item["has_layout"] = node.has_layout;
-        item["layout_x"] = node.layout_x;
-        item["layout_y"] = node.layout_y;
-        nlohmann::json file_params = nlohmann::json::object();
-        std::vector<std::string> keys;
-        keys.reserve(node.file_param_values.size());
-        for (const auto& [key, _] : node.file_param_values)
-            keys.push_back(key);
-        std::sort(keys.begin(), keys.end());
-        for (const auto& key : keys) {
-            auto it = node.file_param_values.find(key);
-            file_params[sanitize_json_string(key)] = sanitize_json_string(it->second);
-        }
-        item["file_params"] = file_params;
-        nodes.push_back(item);
-    }
-    root["nodes"] = nodes;
-
-    nlohmann::json connections = nlohmann::json::array();
-    for (const auto& conn : state.connections) {
-        nlohmann::json item = nlohmann::json::object();
-        item["from_node"] = sanitize_json_string(conn.from_node);
-        item["from_port"] = sanitize_json_string(conn.from_port);
-        item["to_node"] = sanitize_json_string(conn.to_node);
-        item["to_port"] = sanitize_json_string(conn.to_port);
-        item["invalid"] = conn.invalid;
-        connections.push_back(item);
-    }
-    root["connections"] = connections;
-    return root;
-}
-
-static bool write_ui_test_dump_file(const std::string& path,
-                                    const UITestDumpState& dump,
-                                    std::string& error) {
-    nlohmann::json root = nlohmann::json::object();
-    root["has_final_state"] = dump.has_final_state;
-    if (dump.has_final_state) {
-        root["final_state"] = encode_ui_test_state(dump.final_state);
-    }
-
-    nlohmann::json checkpoints = nlohmann::json::array();
-    for (const auto& checkpoint : dump.checkpoints) {
-        nlohmann::json item = nlohmann::json::object();
-        item["label"] = sanitize_json_string(checkpoint.label);
-        item["state"] = encode_ui_test_state(checkpoint.state);
-        checkpoints.push_back(item);
-    }
-    root["checkpoints"] = checkpoints;
-
-    try {
-        std::ofstream ofs(path);
-        if (!ofs) {
-            error = "failed to write JSON";
-            return false;
-        }
-        ofs << root.dump(4);
-        return true;
-    } catch (const std::exception& e) {
-        error = e.what();
-        return false;
-    }
 }
 
 static std::string trim_copy(const std::string& s) {
@@ -1927,7 +1472,7 @@ struct WindowUserData {
     std::string pending_drop_path;
 };
 
-static void run_ui_test_script_frame(UITestScript& script,
+static void run_ui_test_script_frame(vivid::UITestScript& script,
                                      vivid::ui::NodeGraphUI& graph_ui,
                                      WindowUserData& window_user_data,
                                      std::string& screenshot_path,
@@ -1943,10 +1488,10 @@ static void run_ui_test_script_frame(UITestScript& script,
     while (script.next_action < script.actions.size()) {
         const auto& action = script.actions[script.next_action++];
         switch (action.type) {
-            case UITestActionType::Wait:
+            case vivid::UITestActionType::Wait:
                 script.wait_frames_remaining = std::max(0, action.frames);
                 return;
-            case UITestActionType::MouseMove:
+            case vivid::UITestActionType::MouseMove:
                 window_user_data.raw_mouse_x = action.x;
                 window_user_data.raw_mouse_y = action.y;
                 graph_ui.on_mouse_move(action.x, action.y);
@@ -1956,7 +1501,7 @@ static void run_ui_test_script_frame(UITestScript& script,
                              static_cast<double>(action.y),
                              static_cast<unsigned long long>(frame_count));
                 break;
-            case UITestActionType::MouseButton:
+            case vivid::UITestActionType::MouseButton:
                 window_user_data.current_mods = action.mods;
                 if (action.button >= 0 && action.button <= 2) {
                     if (action.mouse_action == GLFW_PRESS)
@@ -1970,7 +1515,7 @@ static void run_ui_test_script_frame(UITestScript& script,
                              action.button, action.mouse_action,
                              static_cast<unsigned long long>(frame_count));
                 break;
-            case UITestActionType::Key:
+            case vivid::UITestActionType::Key:
                 window_user_data.current_mods = action.mods;
                 graph_ui.on_key(action.key, action.key_action, action.mods);
                 std::fprintf(stderr,
@@ -1978,14 +1523,14 @@ static void run_ui_test_script_frame(UITestScript& script,
                              action.key, action.key_action, action.mods,
                              static_cast<unsigned long long>(frame_count));
                 break;
-            case UITestActionType::CharInput:
+            case vivid::UITestActionType::CharInput:
                 graph_ui.on_char(action.codepoint);
                 std::fprintf(stderr,
                              "[vivid] UI script char %u on frame %llu\n",
                              action.codepoint,
                              static_cast<unsigned long long>(frame_count));
                 break;
-            case UITestActionType::Screenshot: {
+            case vivid::UITestActionType::Screenshot: {
                 std::filesystem::path shot_path(action.screenshot_path);
                 if (!shot_path.is_absolute())
                     shot_path = script.source_dir / shot_path;
@@ -1996,7 +1541,7 @@ static void run_ui_test_script_frame(UITestScript& script,
                              screenshot_path.c_str(), screenshot_delay);
                 return;
             }
-            case UITestActionType::Checkpoint:
+            case vivid::UITestActionType::Checkpoint:
                 script.pending_checkpoint_labels.push_back(action.checkpoint_label);
                 std::fprintf(stderr,
                              "[vivid] UI script checkpoint queued: %s on frame %llu\n",
@@ -2331,10 +1876,10 @@ int main(int argc, char* argv[]) {
         return app.exit(e);
     }
     if (test_drop_frame < 0) test_drop_frame = 0;
-    UITestScript test_ui_script;
+    vivid::UITestScript test_ui_script;
     if (!test_ui_script_path.empty()) {
         std::string script_error;
-        if (!load_ui_test_script(test_ui_script_path, test_ui_script, script_error)) {
+        if (!vivid::load_ui_test_script(test_ui_script_path, test_ui_script, script_error)) {
             std::fprintf(stderr, "[vivid] Failed to load --test-ui-script %s: %s\n",
                          test_ui_script_path.c_str(), script_error.c_str());
             return 1;
@@ -4075,14 +3620,14 @@ int main(int argc, char* argv[]) {
     bool pkg_update_notice_done = false;
     bool core_update_notice_done = false;
     bool synthetic_drop_injected = false;
-    UITestDumpState test_dump_state;
+    vivid::UITestDumpState test_dump_state;
     bool test_dump_write_attempted = false;
 #ifdef __APPLE__
     bool window_doc_edited = false;
 #endif
     std::string window_title_graph_path;
     bool window_title_analysis = settings.show_analysis;
-    reset_file_dialog_test_stats_runtime();
+    vivid::reset_file_dialog_test_stats_runtime();
 
     // --- Main loop ---
     auto tick_frame = [&]() -> bool {
@@ -4694,13 +4239,13 @@ int main(int argc, char* argv[]) {
                 graph_ui.update(snapshot);
                 if (!test_dump_ui_state_path.empty()) {
                     test_dump_state.final_state =
-                        capture_ui_test_observed_state(snapshot, graph_ui);
+                        vivid::capture_ui_test_observed_state(snapshot, graph_ui);
                     test_dump_state.has_final_state = true;
                     for (const auto& label : test_ui_script.pending_checkpoint_labels) {
                         test_dump_state.checkpoints.push_back(
-                            UITestCheckpointState{
+                            vivid::UITestCheckpointState{
                                 label,
-                                capture_ui_test_observed_state(snapshot, graph_ui),
+                                vivid::capture_ui_test_observed_state(snapshot, graph_ui),
                             });
                     }
                     test_ui_script.pending_checkpoint_labels.clear();
@@ -4811,7 +4356,7 @@ int main(int argc, char* argv[]) {
         std::filesystem::create_directories(
             std::filesystem::path(test_dump_ui_state_path).parent_path());
         std::string dump_error;
-        if (write_ui_test_dump_file(test_dump_ui_state_path, test_dump_state, dump_error)) {
+        if (vivid::write_ui_test_dump_file(test_dump_ui_state_path, test_dump_state, dump_error)) {
             std::fprintf(stderr, "[vivid] UI test dump saved: %s\n",
                          test_dump_ui_state_path.c_str());
         } else {

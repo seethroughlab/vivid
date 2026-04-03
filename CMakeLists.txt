@@ -758,6 +758,7 @@ target_compile_definitions(vivid_ui PRIVATE "VIVID_CORE_VERSION=\"${PROJECT_VERS
 # --- Vivid executable ---
 add_executable(vivid
     src/runtime/main.cpp
+    src/runtime/ui_test_runner.cpp
     src/runtime/gpu_context.cpp
     src/runtime/fullscreen_blit.cpp
     src/runtime/output_window.cpp
