@@ -33,6 +33,10 @@ public:
     // Returns the number of files registered.
     int add_package_watches(const std::string& packages_dir);
 
+    // Scan a filter directory and register .wgsl shader operators for watching.
+    // Returns the number of files registered.
+    int add_shader_operator_watches(const std::string& directory);
+
 private:
     void watch_thread();
     void reopen_file(const std::string& path, const std::string& target_name);

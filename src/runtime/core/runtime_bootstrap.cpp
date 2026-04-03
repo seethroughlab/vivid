@@ -86,8 +86,8 @@ RegistryBootstrapResult bootstrap_operator_registry(OperatorRegistry& registry,
 #endif
     register_builtin_operators(registry);
 
-    if (options.scan_wgsl_presets)
-        registry.scan_wgsl_presets((paths.resources_dir / "filters").string());
+    if (options.scan_shader_operators)
+        registry.scan_shader_operators((paths.resources_dir / "filters").string());
 
     if (options.scan_factory_presets)
         registry.scan_factory_presets((paths.resources_dir / "factory_presets").string());

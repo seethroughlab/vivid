@@ -65,8 +65,9 @@ void DialogManager::open_save_confirm(SaveConfirmAction action) {
     save_confirm.open = true;
 }
 
-void DialogManager::open_clone_confirm(const std::string& type_name) {
+void DialogManager::open_clone_confirm(const std::string& type_name, const std::string& node_id) {
     clone_confirm.type = type_name;
+    clone_confirm.node_id = node_id;
     clone_confirm.project_available = commands_.has_project_clone_destination();
     clone_confirm.destination = clone_confirm.project_available ? 0 : 1;
     clone_confirm.open = true;

@@ -36,10 +36,6 @@ struct ConnectionDef {
 ```
 `has_remap()` returns true if any remap fields differ from their defaults.
 
-### `FilterDef`
-User-defined WGSL GPU filters — inline shader source stored in the graph JSON.
-Fields: `name`, `source` (which built-in it was copied from), `time_dependent`, `params[]`, `shader`.
-
 ### `MidiMappingDef`
 Maps a MIDI CC to a node parameter: `node_id`, `param_name`, `cc_number` (0-127), `channel` (0=omni), `range_min/max`.
 
@@ -64,7 +60,7 @@ bool load_from_string(const char* json, size_t len);  // parse in-memory JSON
 bool save(const char* path) const;
 bool save_to_string(std::string& out_json) const;
 ```
-Uses nlohmann/json for JSON parsing. Schema version checked against `GRAPH_SCHEMA_VERSION` (currently 1).
+Uses nlohmann/json for JSON parsing. Schema version checked against `GRAPH_SCHEMA_VERSION` (currently 3).
 `load_diagnostics` is populated with package version mismatches after load.
 
 ### Mutation
@@ -93,8 +89,14 @@ Viewport is UI-only state, persisted but ignored by the runtime.
 
 ## Schema Version
 
-`GRAPH_SCHEMA_VERSION` is defined as `1` in graph.h. Graphs saved with a newer schema version
+`GRAPH_SCHEMA_VERSION` is defined as `3` in graph.h. Graphs saved with a newer schema version
 are hard-rejected on load. Graphs without a `schema_version` field are treated as version 1.
+
+Graphs that still use the removed WGSL filter model are also hard-rejected, even when the schema
+version matches:
+
+- top-level `filters`
+- nodes of type `WGSLFilter`
 
 ## Load Diagnostics
 
@@ -106,7 +108,7 @@ differs from the installed version. Each entry has: `node_id`, `pkg_name`, `save
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "vivid_version": "1.2.3",
   "nodes": [
     { "id": "lfo1", "type": "lfo", "params": {"freq": 1.5}, "x": 100, "y": 200 }
@@ -115,9 +117,12 @@ differs from the installed version. Each entry has: `node_id`, `pkg_name`, `save
     { "from": "lfo1/value", "to": "shape1/rotation" }
   ],
   "midi_mappings": [...],
-  "filters": [...],
   "variations": [...],
   "active_variation": -1,
   "node_presets": { "lfo1": [{ "name": "slow", "params": {"freq": 0.1} }] }
 }
 ```
+
+Shader-backed operators are persisted exactly like any other operator: a node stores the concrete
+operator `type` (for example `"Blur"`), and the shader source lives in a real `.wgsl` file under
+core `filters/`, a package `filters/`, or the project-local `<graph_dir>/filters/` directory.

@@ -774,89 +774,31 @@ int main() {
     }
 
     // =====================================================================
-    // Test 23: Filter CRUD + round-trip
+    // Test 23: Legacy filter graph formats are rejected
     // =====================================================================
     {
-        std::fprintf(stderr, "\n=== Test 23: Filter CRUD + round-trip ===\n");
+        std::fprintf(stderr, "\n=== Test 23: Legacy filter graph formats are rejected ===\n");
         vivid::Graph g;
 
-        // Add filter
-        vivid::FilterDef f;
-        f.name = "blur";
-        f.source = "GaussianBlur";
-        f.time_dependent = false;
-        f.params.push_back({"radius", 5.0f, 0.0f, 50.0f});
-        f.shader = "fn main() {}";
-        g.add_filter(std::move(f));
+        const char* legacy_filters_json = R"JSON({
+            "schema_version": 3,
+            "nodes": {
+                "blur1": { "type": "Blur" }
+            },
+            "filters": [
+                { "name": "Blur", "shader": "@fragment fn fs_main() -> @location(0) vec4f { return vec4f(1.0); }" }
+            ]
+        })JSON";
+        check(!g.load_from_string(legacy_filters_json), "graphs with top-level filters are rejected");
 
-        // find_filter — non-null
-        const vivid::FilterDef* found = g.find_filter("blur");
-        check(found != nullptr, "find_filter blur");
-        if (found) {
-            check(found->name == "blur", "filter name = blur");
-            check(found->source == "GaussianBlur", "filter source = GaussianBlur");
-            check(found->time_dependent == false, "filter not time_dependent");
-            check(found->params.size() == 1, "filter has 1 param");
-            if (!found->params.empty()) {
-                check(found->params[0].name == "radius", "param name = radius");
-                check_float(found->params[0].default_value, 5.0f, "param default = 5");
-                check_float(found->params[0].min_value, 0.0f, "param min = 0");
-                check_float(found->params[0].max_value, 50.0f, "param max = 50");
+        const char* legacy_wgsl_filter_node_json = R"JSON({
+            "schema_version": 3,
+            "nodes": {
+                "filter1": { "type": "WGSLFilter", "string_params": { "filter": "Blur" } }
             }
-            check(found->shader == "fn main() {}", "shader matches");
-        }
-
-        // find_filter — non-existent
-        check(g.find_filter("nonexistent") == nullptr, "find_filter nonexistent = null");
-
-        // Const overload
-        const vivid::Graph& cg = g;
-        check(cg.find_filter("blur") != nullptr, "find_filter const works");
-        check(cg.find_filter("nope") == nullptr, "find_filter const nope = null");
-
-        // Mutable overload
-        vivid::FilterDef* mfilt = g.find_filter("blur");
-        check(mfilt != nullptr, "find_filter mutable works");
-
-        // update_filter_shader
-        g.update_filter_shader("blur", "fn updated() {}");
-        check(g.find_filter("blur")->shader == "fn updated() {}", "shader updated");
-
-        // remove_filter
-        check(g.remove_filter("blur"), "remove_filter blur succeeds");
-        check(g.find_filter("blur") == nullptr, "blur gone after remove");
-        check(!g.remove_filter("nonexistent"), "remove_filter nonexistent fails");
-
-        // Round-trip with time_dependent filter
-        vivid::FilterDef f2;
-        f2.name = "glow";
-        f2.source = "Glow";
-        f2.time_dependent = true;
-        f2.params.push_back({"intensity", 0.8f, 0.0f, 2.0f});
-        f2.shader = "@fragment fn frag() -> vec4f { return vec4f(1.0); }";
-        g.add_filter(std::move(f2));
-
-        std::string path = "/tmp/vivid_test_filter_rt.json";
-        g.add_node("x", "X"); // need at least one node for valid graph
-        check(g.save(path.c_str()), "save with filter");
-        vivid::Graph g2;
-        check(g2.load(path.c_str()), "load with filter");
-        check(g2.filters().size() == 1, "1 filter after round-trip");
-
-        const vivid::FilterDef* rt = g2.find_filter("glow");
-        check(rt != nullptr, "glow found after round-trip");
-        if (rt) {
-            check(rt->source == "Glow", "rt source = Glow");
-            check(rt->time_dependent == true, "rt time_dependent = true");
-            check(rt->params.size() == 1, "rt 1 param");
-            if (!rt->params.empty()) {
-                check(rt->params[0].name == "intensity", "rt param name = intensity");
-                check_float(rt->params[0].default_value, 0.8f, "rt param default = 0.8");
-            }
-            check(rt->shader == "@fragment fn frag() -> vec4f { return vec4f(1.0); }", "rt shader preserved");
-        }
-
-        std::remove(path.c_str());
+        })JSON";
+        check(!g.load_from_string(legacy_wgsl_filter_node_json),
+              "graphs with WGSLFilter nodes are rejected");
     }
 
     // =====================================================================
@@ -1703,20 +1645,19 @@ int main() {
     }
 
     // =====================================================================
-    // Test: Schema version 2 round-trip
+    // Test: current schema version round-trip
     // =====================================================================
     {
-        std::fprintf(stderr, "\n=== Test: Schema version 2 round-trip ===\n");
+        std::fprintf(stderr, "\n=== Test: current schema version round-trip ===\n");
         vivid::Graph g;
         g.add_node("n1", "Oscillator");
         std::string json;
         check(g.save_to_string(json), "save graph");
-        // Verify saved JSON contains schema_version 2
-        check(json.find("\"schema_version\": 2") != std::string::npos ||
-              json.find("\"schema_version\":2") != std::string::npos,
-              "saved JSON has schema_version 2");
+        check(json.find("\"schema_version\": 3") != std::string::npos ||
+              json.find("\"schema_version\":3") != std::string::npos,
+              "saved JSON has schema_version 3");
         vivid::Graph g2;
-        check(g2.load_from_string(json.c_str(), json.size()), "reload schema v2 graph");
+        check(g2.load_from_string(json.c_str(), json.size()), "reload schema v3 graph");
     }
 
     // =====================================================================

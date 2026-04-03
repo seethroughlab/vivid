@@ -39,7 +39,7 @@ public:
         } else {
             desc = registry.probe_descriptor(type_name);  // deferred metadata
         }
-        // Fall back to per-instance loader (e.g. WGSLFilter nodes)
+        // Fall back to a per-instance loader when one is explicitly supplied.
         if (!desc && fallback_loader) {
             loader = fallback_loader;
             desc = fallback_loader->descriptor();
@@ -85,7 +85,7 @@ public:
 
         // Only check shader/user status for fully-loaded operators
         if (loader) {
-            if (loader->is_data_driven()) {
+            if (loader->is_shader_operator()) {
                 info->has_shader = true;
             } else if (!operators_dir_.empty()) {
                 std::string stem = type_name;
@@ -93,7 +93,7 @@ public:
                 std::string wgsl_path = operators_dir_ + "/gpu/" + stem + "/" + stem + ".wgsl";
                 info->has_shader = std::filesystem::exists(wgsl_path);
             }
-            info->is_user = registry.is_user_filter(type_name) || registry.is_user_operator(type_name);
+            info->is_user = registry.is_user_shader_operator(type_name) || registry.is_user_operator(type_name);
             info->has_custom_inspector = loader->has_draw_inspector();
             info->inspector_mode = loader->has_draw_inspector()
                                    ? loader->inspector_mode() : 0;

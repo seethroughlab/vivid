@@ -33,7 +33,10 @@ bool DialogManager::on_key(int key, int /*action*/, int /*mods*/,
             }
         } else if (key == GLFW_KEY_ENTER) {
             const char* destination = (clone_confirm.destination == 0) ? "project" : "core";
-            commands_.clone_and_edit(clone_confirm.type, destination);
+            if (!clone_confirm.node_id.empty())
+                commands_.clone_and_edit_for_node(clone_confirm.node_id, clone_confirm.type, destination);
+            else
+                commands_.clone_and_edit(clone_confirm.type, destination);
             clone_confirm.open = false;
         }
         return true;
@@ -397,7 +400,10 @@ void DialogManager::update_clone_confirm(MouseState& mouse, uint32_t win_w, uint
     if (mouse.x >= clone_x && mouse.x <= clone_x + btn_w &&
         mouse.y >= btn_y && mouse.y <= btn_y + btn_h) {
         const char* destination = (clone_confirm.destination == 0) ? "project" : "core";
-        commands_.clone_and_edit(clone_confirm.type, destination);
+        if (!clone_confirm.node_id.empty())
+            commands_.clone_and_edit_for_node(clone_confirm.node_id, clone_confirm.type, destination);
+        else
+            commands_.clone_and_edit(clone_confirm.type, destination);
         clone_confirm.open = false;
         mouse.left_clicked = false;
         mouse.left_released = false;

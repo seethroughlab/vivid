@@ -173,8 +173,8 @@ void NodeGraphUI::paste_copied_nodes() {
     }
 }
 
-void NodeGraphUI::open_clone_confirm_dialog(const std::string& type_name) {
-    dialogs_.open_clone_confirm(type_name);
+void NodeGraphUI::open_clone_confirm_dialog(const std::string& type_name, const std::string& node_id) {
+    dialogs_.open_clone_confirm(type_name, node_id);
 }
 
 void NodeGraphUI::open_save_confirm_dialog(SaveConfirmAction action) {

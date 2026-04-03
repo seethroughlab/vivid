@@ -498,11 +498,9 @@ Graph flatten_subgraphs(const Graph& authored, const SubgraphModuleRegistry& reg
         }
     }
 
-    // Copy non-graph metadata: filters, MIDI mappings, variations, sticky notes.
+    // Copy non-graph metadata: MIDI mappings, variations, sticky notes.
     // MIDI mappings and variations that target module nodes must be remapped
     // through the param binding table to reach the correct internal node/param.
-    for (const auto& f : authored.filters())
-        flat.add_filter(f);
 
     for (const auto& m : authored.midi_mappings()) {
         std::string node_id = m.node_id;

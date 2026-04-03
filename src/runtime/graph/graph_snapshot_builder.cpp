@@ -112,7 +112,7 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
             sn.has_layout = true;
         }
 
-        // Operator info (cached; pass per-instance loader as fallback for WGSLFilter nodes)
+        // Operator info (cached)
         sn.op_info = op_cache.get(sn.type_name, registry, cn.loader);
 
         // Per-operator presets
@@ -310,9 +310,6 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
             if (mod) snap.operator_catalog[tn] = vivid::make_operator_info(*mod);
         }
     }
-
-    // WGSL preset names (for filter selector UI)
-    snap.wgsl_preset_names = registry.wgsl_preset_names();
 
     // MIDI mappings
     const auto& mappings = graph.midi_mappings();

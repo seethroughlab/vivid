@@ -143,55 +143,23 @@ struct AsyncGraphLoadPreparedResult {
     vivid::RuntimeAPI::PreservedRuntimeState preserved_state;
     vivid::Graph graph;
     vivid::RuntimeCore::PreparedBuild prepared;
-    std::string working_filters_dir;
 };
 
-static std::string derive_working_filters_dir(const vivid::Graph& graph) {
-    if (graph.source_path().empty()) {
-        return "_filters";
-    }
-    auto gp = std::filesystem::path(graph.source_path());
-    return (gp.parent_path() / (gp.stem().string() + "_filters")).string();
+static std::string derive_project_shader_dir(const vivid::Graph& graph) {
+    if (graph.source_path().empty()) return {};
+    return (std::filesystem::path(graph.source_path()).parent_path() / "filters").string();
 }
 
-static bool materialize_graph_filters(const vivid::Graph& graph,
-                                      const std::string& working_filters_dir,
-                                      vivid::OperatorRegistry& registry,
-                                      std::string& error) {
-    if (graph.filters().empty()) return true;
-    std::error_code ec;
-    std::filesystem::create_directories(working_filters_dir, ec);
-    if (ec) {
-        error = "failed to create working filter directory: " + ec.message();
+static bool prepare_graph_shader_operators(const vivid::Graph& graph,
+                                           vivid::OperatorRegistry& registry,
+                                           std::string& error) {
+    const std::string shader_dir = derive_project_shader_dir(graph);
+    if (shader_dir.empty() || !std::filesystem::exists(shader_dir))
+        return true;
+    if (!registry.scan_shader_operators(shader_dir, true)) {
+        error = "failed to register project shader operators from " + shader_dir;
         return false;
     }
-
-    for (const auto& fd : graph.filters()) {
-        std::string working_path = working_filters_dir + "/" + fd.name + ".wgsl";
-        std::ofstream ofs(working_path);
-        if (!ofs) {
-            error = "failed to write working shader for filter '" + fd.name + "'";
-            return false;
-        }
-        ofs << fd.shader;
-        ofs.close();
-
-        auto config = std::make_shared<vivid::DataDrivenFilterConfig>();
-        config->name = fd.name;
-        config->shader_path = working_path;
-        config->source_builtin = fd.source;
-        config->time_dependent = fd.time_dependent;
-        for (const auto& pd : fd.params) {
-            vivid::DataDrivenFilterConfig::ParamDef cpd;
-            cpd.name = pd.name;
-            cpd.default_value = pd.default_value;
-            cpd.min_value = pd.min_value;
-            cpd.max_value = pd.max_value;
-            config->params.push_back(std::move(cpd));
-        }
-        registry.register_user_filter(fd.name, config);
-    }
-
     return true;
 }
 
@@ -326,7 +294,6 @@ public:
             };
 
             const bool is_non_registry_type =
-                registry.is_wgsl_preset(request.type_name) ||
                 (runtime.subgraph_modules() && runtime.subgraph_modules()->find(request.type_name));
             if (!is_non_registry_type) {
                 auto prep_task_id = operator_preparation_service().submit(
@@ -446,9 +413,8 @@ public:
                 candidate.set_source_path("");
 
             populate_graph_package_diagnostics(candidate, packages);
-            result.working_filters_dir = derive_working_filters_dir(candidate);
             std::string prep_error;
-            if (!materialize_graph_filters(candidate, result.working_filters_dir, registry, prep_error)) {
+            if (!prepare_graph_shader_operators(candidate, registry, prep_error)) {
                 finish(false, prep_error);
                 return;
             }
@@ -1455,9 +1421,6 @@ fn fbm(p_in: vec2f) -> f32 {
     runtime.frame_executor().set_analysis_enabled(settings.show_analysis);
     bool graph_loaded = false;
 
-    // Working directory for user filter shaders: {graph_dir}/{graph_stem}_filters/
-    std::string working_filters_dir;
-
     AsyncGraphLoadRequest initial_graph_request;
     bool have_initial_graph_request = false;
     if (graph_file.empty()) {
@@ -1609,17 +1572,8 @@ fn fbm(p_in: vec2f) -> f32 {
     };
 
     auto adopt_prepared_graph_load = [&](AsyncGraphLoadPreparedResult prepared) -> bool {
-        std::unordered_set<std::string> previous_filter_names;
-        for (const auto& fd : graph.filters())
-            previous_filter_names.insert(fd.name);
-        std::unordered_set<std::string> next_filter_names;
-        for (const auto& fd : prepared.graph.filters())
-            next_filter_names.insert(fd.name);
-
-        for (const auto& name : previous_filter_names) {
-            if (!next_filter_names.count(name))
-                registry.unregister_user_filter(name);
-        }
+        const std::string previous_shader_dir = derive_project_shader_dir(graph);
+        const std::string next_shader_dir = derive_project_shader_dir(prepared.graph);
 
         if (!adopt_prepared_graph(std::move(prepared.graph), std::move(prepared.prepared)))
             return false;
@@ -1627,7 +1581,8 @@ fn fbm(p_in: vec2f) -> f32 {
         if (prepared.preserved_state.active)
             runtime_api.apply_preserved_runtime_state(prepared.preserved_state);
 
-        working_filters_dir = std::move(prepared.working_filters_dir);
+        if (!previous_shader_dir.empty() && previous_shader_dir != next_shader_dir)
+            registry.clear_shader_operators_in_dir(previous_shader_dir);
         runtime_api.finalize_external_graph_load();
 
         if (prepared.request.update_recent_files && !prepared.request.resolved_path.empty()) {
@@ -1663,7 +1618,6 @@ fn fbm(p_in: vec2f) -> f32 {
     command_sink.set_registry(&registry);
     command_sink.set_graph(&graph);
     command_sink.set_op_cache(&op_info_cache);
-    command_sink.set_working_filters_dir(working_filters_dir);
     command_sink.set_settings(&settings);
     command_sink.set_capture_coordinator(&capture_coordinator);
     command_sink.set_runtime_flags(&has_gpu_ops, &has_audio);
@@ -2049,7 +2003,6 @@ fn fbm(p_in: vec2f) -> f32 {
     window_user_data.graph_ui = &graph_ui;
     window_user_data.runtime_api = &runtime_api;
     window_user_data.graph = &graph;
-    window_user_data.working_filters_dir = working_filters_dir;
     window_user_data.settings = &settings;
     glfwSetWindowUserPointer(window, &window_user_data);
     glfwSetCharCallback(window, char_callback);
@@ -2090,21 +2043,21 @@ fn fbm(p_in: vec2f) -> f32 {
             std::string operators_dir = src_dir + "/operators";
             runtime.set_operators_src_dir(operators_dir);
             command_sink.set_operators_dir(operators_dir);
-            command_sink.set_filters_dir((resources_dir / "filters").string());
             command_sink.set_build_dir(runtime_paths.build_dir);
             op_info_cache.set_operators_dir(operators_dir);
-            // Set working filters dir if not already determined from graph
-            if (working_filters_dir.empty() && !graph.source_path().empty()) {
-                auto gp = std::filesystem::path(graph.source_path());
-                working_filters_dir = (gp.parent_path() / (gp.stem().string() + "_filters")).string();
-                command_sink.set_working_filters_dir(working_filters_dir);
-            }
             if (file_watcher.start(operators_dir) && hot_reloader.start(runtime_paths.build_dir)) {
                 hot_reload_enabled = true;
                 hot_reloader.set_build_console(build_console.get());
                 control_server.set_hot_reloader(&hot_reloader);
                 command_sink.set_hot_reloader(&hot_reloader);
+                command_sink.set_shader_watch_callback(
+                    [&file_watcher](const std::string& shader_path) {
+                        file_watcher.add_watch(shader_path, "shader:" + shader_path);
+                    });
                 std::fprintf(stderr, "[vivid] Hot-reload enabled (watching %s)\n", operators_dir.c_str());
+
+                file_watcher.add_shader_operator_watches(src_dir + "/filters");
+                file_watcher.add_shader_operator_watches(derive_project_shader_dir(graph));
 
                 // Also watch package source files (both operators/ and src/ layouts).
                 refresh_package_watches();
@@ -2366,21 +2319,10 @@ fn fbm(p_in: vec2f) -> f32 {
         return true;
     });
 
-    // Helper: save current graph (capturing viewport + filter shaders)
+    // Helper: save current graph
     auto do_save = [&]() {
         if (graph_ui.visible())
             graph.set_viewport(graph_ui.pan_x(), graph_ui.pan_y(), graph_ui.zoom());
-        if (!working_filters_dir.empty()) {
-            for (const auto& fd : graph.filters()) {
-                std::string wpath = working_filters_dir + "/" + fd.name + ".wgsl";
-                std::ifstream ifs(wpath);
-                if (ifs) {
-                    std::ostringstream ss;
-                    ss << ifs.rdbuf();
-                    graph.update_filter_shader(fd.name, ss.str());
-                }
-            }
-        }
         annotate_graph_packages(graph);
         auto result = runtime_api.save();
         std::fprintf(stderr, "[vivid] Save: %s\n", result.message.c_str());
@@ -2904,8 +2846,8 @@ fn fbm(p_in: vec2f) -> f32 {
                 graph_ui.set_async_graph_load_stage(
                     vivid::ui::NodeGraphUI::AsyncGraphLoadStage::Applying);
                 adopt_prepared_graph_load(std::move(async_graph_load_result));
-                command_sink.set_working_filters_dir(working_filters_dir);
-                window_user_data.working_filters_dir = working_filters_dir;
+                if (hot_reload_enabled)
+                    file_watcher.add_shader_operator_watches(derive_project_shader_dir(graph));
                 if (!had_graph_before_commit && graph.has_viewport()) {
                     graph_ui.set_viewport(graph.viewport_pan_x, graph.viewport_pan_y, graph.viewport_zoom);
                 }
@@ -3136,8 +3078,8 @@ fn fbm(p_in: vec2f) -> f32 {
                     refresh_package_watches();
                     next_package_watch_rescan_at = now_scan + std::chrono::seconds(1);
                 }
-                poll_hot_reload(file_watcher, hot_reloader, runtime, registry,
-                                audio_engine, has_audio, &op_info_cache,
+                poll_hot_reload(file_watcher, hot_reloader, runtime, registry, runtime_api,
+                                audio_engine, has_gpu_ops, has_audio, &op_info_cache,
                                 runtime.operators_src_dir());
             }
 

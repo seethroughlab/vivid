@@ -8,10 +8,10 @@
 namespace vivid {
 
 // ---------------------------------------------------------------------------
-// DataDrivenFilterConfig — everything needed to construct a user filter
+// WgslOperatorConfig — everything needed to construct a shader-backed operator
 // ---------------------------------------------------------------------------
 
-struct DataDrivenFilterConfig {
+struct WgslOperatorConfig {
     struct ParamDef {
         std::string name;
         VividParamType type = VIVID_PARAM_FLOAT;
@@ -40,12 +40,12 @@ struct DataDrivenFilterConfig {
 };
 
 // ---------------------------------------------------------------------------
-// DataDrivenFilter — runtime instance of a user-defined WGSL filter
+// WgslOperator — runtime instance of a shader-backed operator
 // ---------------------------------------------------------------------------
 
-class DataDrivenFilter : public WgslFilterBase {
+class WgslOperator : public WgslFilterBase {
 public:
-    explicit DataDrivenFilter(std::shared_ptr<DataDrivenFilterConfig> config)
+    explicit WgslOperator(std::shared_ptr<WgslOperatorConfig> config)
         : WgslFilterBase("data_driven.wgsl")  // dummy filename, overridden below
         , config_(std::move(config))
     {
@@ -118,7 +118,7 @@ public:
     }
 
 private:
-    std::shared_ptr<DataDrivenFilterConfig> config_;
+    std::shared_ptr<WgslOperatorConfig> config_;
     std::vector<std::string> param_names_;   // stable storage for const char* ptrs
     std::vector<ParamBase> params_;
     std::vector<std::string> group_strings_;

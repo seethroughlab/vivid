@@ -53,15 +53,16 @@ Each frame:
 1. Parse CLI args / load settings
 2. `gpu_context.init(window, w, h)` — create WebGPU device
 3. `registry.scan_deferred(builtins_dir)` — probe all built-in dylibs
-4. `registry.scan_wgsl_presets(presets_dir)` — register data-driven WGSL filters
+4. `registry.scan_shader_operators(presets_dir)` — register built-in `.wgsl` shader operators
 5. `pm.scan_installed()` — probe user packages
 6. `graph.load(path)` — parse JSON graph
-7. `runtime.build(graph, registry)` — compile graph, instantiate operators, resolve edges
-8. `runtime.allocate_gpu_textures(device, w, h, format)` — allocate per-node textures
-9. `audio_engine.build(runtime)` — build AudioExecutor from CompiledGraph
-10. `audio_engine.start()` — start miniaudio device
-11. `control_server.start(9876)` — start HTTP server
-12. Enter main loop
+7. if the graph has a saved path, `registry.scan_shader_operators(<graph_dir>/filters, mark_user=true)` — register project-local shader operators
+8. `runtime.build(graph, registry)` — compile graph, instantiate operators, resolve edges
+9. `runtime.allocate_gpu_textures(device, w, h, format)` — allocate per-node textures
+10. `audio_engine.build(runtime)` — build AudioExecutor from CompiledGraph
+11. `audio_engine.start()` — start miniaudio device
+12. `control_server.start(9876)` — start HTTP server
+13. Enter main loop
 
 ## Topology Changes
 
@@ -79,11 +80,17 @@ The same transactional expectation now applies to graph-wide rebuild flows:
 
 ## Hot Reload Path
 
-1. File watcher (or MCP `rebuild_package`) triggers `hot_reloader.queue_rebuild(target_name)`
+1. `.cpp` file watcher (or MCP `rebuild_package`) triggers `hot_reloader.queue_rebuild(target_name)`
 2. Background compile thread: `cmake --build --target <name>` → staged .dylib in `/tmp/vivid_staging/`
 3. `hot_reloader.poll_ready()` returns `ReloadResult` with `staged_dylib_path`
 4. Main thread: `runtime.reload_operator(type_name, registry, new_path)` — swap dylib, preserve params
 5. `audio_engine.pre_reload_operator(type_name)` / `audio_engine.post_reload_operator(type_name, registry)` — same for audio nodes
+
+Shader-backed `.wgsl` operators use a split hot-reload path:
+
+- body-only edits stay inside `WgslFilterBase` and recompile the shader in place
+- header-shape edits are watched at the runtime level, rescan the affected shader-operator directory,
+  and rebuild the current graph transactionally
 
 Hot reload is intentionally conservative after the audit hardening work:
 

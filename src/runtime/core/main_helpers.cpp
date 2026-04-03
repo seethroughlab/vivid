@@ -3,16 +3,19 @@
 #include "runtime/core/file_watcher.h"
 #include "runtime/core/hot_reload.h"
 #include "runtime/core/runtime_core.h"
+#include "runtime/control/runtime_api.h"
 #include "runtime/operators/operator_registry.h"
 #include "runtime/audio/audio_engine.h"
 #include "runtime/operators/operator_info_cache.h"
 #include "runtime/core/build_console.h"
 #include "runtime/graph/compiled_graph.h"
 #include "runtime/gpu/gpu_context.h"
+#include "runtime/gpu/wgsl_header_parser.h"
 #include "runtime/packages/package_manager.h"
 #include "ui/graph/node_graph.h"
 #include "ui/rendering/thumbnail_cache.h"
 #include "ui/rendering/renderer_2d.h"
+#include "operator_api/data_driven_filter.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/thumbnail.h"
 #include "operator_api/types.h"
@@ -140,13 +143,181 @@ void emit_clear_pass(WGPUCommandEncoder encoder, WGPUTextureView view, const dou
     wgpuRenderPassEncoderRelease(pass);
 }
 
+static vivid::WgslOperatorConfig clone_shader_operator_config(const vivid::WgslOperatorConfig& config) {
+    return config;
+}
+
+static bool shader_param_matches(const vivid::WgslOperatorConfig::ParamDef& current,
+                                 const vivid::WgslHeaderParam& next) {
+    return current.name == next.name &&
+           current.type == next.type &&
+           current.default_value == next.default_value &&
+           current.min_value == next.min_value &&
+           current.max_value == next.max_value &&
+           current.label == next.label &&
+           current.choices == next.choices &&
+           current.display_hint == next.display_hint &&
+           current.group == next.group &&
+           current.layout_columns == next.layout_columns &&
+           current.layout_column_index == next.layout_column_index;
+}
+
+static bool shader_header_requires_rebuild(const vivid::WgslOperatorConfig& current,
+                                           const vivid::WgslHeader& next) {
+    if (current.name != next.name ||
+        current.time_dependent != next.time_dependent ||
+        current.inputs_specified != next.inputs_specified ||
+        current.inputs.size() != next.inputs.size() ||
+        current.params.size() != next.params.size()) {
+        return true;
+    }
+
+    for (size_t i = 0; i < current.inputs.size(); ++i) {
+        if (current.inputs[i].name != next.inputs[i].name)
+            return true;
+    }
+    for (size_t i = 0; i < current.params.size(); ++i) {
+        if (!shader_param_matches(current.params[i], next.params[i]))
+            return true;
+    }
+    return false;
+}
+
+struct ShaderOperatorBackup {
+    vivid::WgslOperatorConfig config;
+    bool mark_user = false;
+    std::string package_name;
+};
+
+static std::vector<ShaderOperatorBackup> backup_shader_operators_in_dir(
+    vivid::OperatorRegistry& registry,
+    const std::filesystem::path& directory) {
+    namespace fs = std::filesystem;
+    std::vector<ShaderOperatorBackup> backups;
+    std::error_code ec;
+    fs::path dir = fs::weakly_canonical(directory, ec);
+    if (ec) dir = directory.lexically_normal();
+    const std::string dir_s = dir.string();
+    const std::string dir_prefix = dir_s.empty() ? dir_s : (dir_s + "/");
+
+    for (const auto& type_name : registry.type_names()) {
+        const std::string* source = registry.shader_operator_source(type_name);
+        const vivid::WgslOperatorConfig* config = registry.shader_operator_config(type_name);
+        if (!source || !config) continue;
+
+        fs::path source_path = fs::weakly_canonical(*source, ec);
+        if (ec) {
+            ec.clear();
+            source_path = fs::path(*source).lexically_normal();
+        }
+        const std::string source_s = source_path.string();
+        if (source_s != dir_s && source_s.rfind(dir_prefix, 0) != 0)
+            continue;
+
+        ShaderOperatorBackup backup;
+        backup.config = clone_shader_operator_config(*config);
+        backup.mark_user = registry.is_user_shader_operator(type_name);
+        if (const std::string* package_name = registry.package_for_type(type_name))
+            backup.package_name = *package_name;
+        backups.push_back(std::move(backup));
+    }
+    return backups;
+}
+
+static void restore_shader_operator_backups(vivid::OperatorRegistry& registry,
+                                            const std::filesystem::path& directory,
+                                            const std::vector<ShaderOperatorBackup>& backups) {
+    registry.clear_shader_operators_in_dir(directory.string());
+    for (const auto& backup : backups) {
+        registry.register_shader_operator(
+            std::make_shared<vivid::WgslOperatorConfig>(backup.config),
+            backup.mark_user,
+            backup.package_name);
+    }
+}
+
+static void handle_shader_operator_change(const vivid::FileChangeEvent& change,
+                                          vivid::OperatorRegistry& registry,
+                                          vivid::RuntimeAPI& runtime_api,
+                                          bool& has_gpu_ops,
+                                          bool& has_audio,
+                                          OperatorInfoCache* op_cache) {
+    namespace fs = std::filesystem;
+
+    std::string matched_type;
+    const vivid::WgslOperatorConfig* current_config = nullptr;
+    for (const auto& type_name : registry.type_names()) {
+        const std::string* source = registry.shader_operator_source(type_name);
+        if (!source || *source != change.file_path)
+            continue;
+        current_config = registry.shader_operator_config(type_name);
+        if (!current_config)
+            continue;
+        matched_type = type_name;
+        break;
+    }
+    if (!current_config)
+        return;
+
+    std::ifstream ifs(change.file_path);
+    if (!ifs)
+        return;
+    std::ostringstream ss;
+    ss << ifs.rdbuf();
+
+    std::string parse_error;
+    auto header = vivid::parse_wgsl_header(ss.str(), parse_error);
+    if (!header)
+        return;
+    if (!shader_header_requires_rebuild(*current_config, *header))
+        return;
+
+    fs::path shader_dir = fs::path(change.file_path).parent_path();
+    const auto backups = backup_shader_operators_in_dir(registry, shader_dir);
+    const bool mark_user = registry.is_user_shader_operator(matched_type);
+    std::string package_name;
+    if (const std::string* pkg = registry.package_for_type(matched_type))
+        package_name = *pkg;
+
+    std::fprintf(stderr, "[vivid] Shader operator schema changed: %s — rescanning and rebuilding graph\n",
+                 change.file_path.c_str());
+
+    if (!registry.scan_shader_operators(shader_dir.string(), mark_user, package_name)) {
+        std::fprintf(stderr, "[vivid] Shader operator rescan failed for %s; restoring previous descriptors\n",
+                     change.file_path.c_str());
+        restore_shader_operator_backups(registry, shader_dir, backups);
+        if (op_cache) op_cache->invalidate_all();
+        return;
+    }
+
+    if (op_cache) op_cache->invalidate_all();
+    vivid::CommandResult rebuild_result = runtime_api.rebuild_current_graph(has_gpu_ops, has_audio);
+    if (!rebuild_result.ok) {
+        std::fprintf(stderr, "[vivid] Shader operator rebuild failed after schema change in %s: %s\n",
+                     change.file_path.c_str(), rebuild_result.message.c_str());
+        restore_shader_operator_backups(registry, shader_dir, backups);
+        if (op_cache) op_cache->invalidate_all();
+        vivid::CommandResult restore_result = runtime_api.rebuild_current_graph(has_gpu_ops, has_audio);
+        if (!restore_result.ok) {
+            std::fprintf(stderr, "[vivid] Failed to restore previous shader operator state for %s: %s\n",
+                         change.file_path.c_str(), restore_result.message.c_str());
+        }
+        return;
+    }
+}
+
 void poll_hot_reload(vivid::FileWatcher& fw, vivid::HotReloader& hr,
                             vivid::RuntimeCore& runtime, vivid::OperatorRegistry& registry,
-                            vivid::AudioEngine& audio_engine, bool has_audio,
-                            OperatorInfoCache* op_cache,
+                            vivid::RuntimeAPI& runtime_api, vivid::AudioEngine& audio_engine,
+                            bool& has_gpu_ops, bool& has_audio, OperatorInfoCache* op_cache,
                             const std::string& operators_dir) {
     auto changes = fw.poll_changes();
     for (const auto& change : changes) {
+        if (std::filesystem::path(change.file_path).extension() == ".wgsl") {
+            handle_shader_operator_change(change, registry, runtime_api, has_gpu_ops, has_audio,
+                                          op_cache);
+            continue;
+        }
         hr.queue_rebuild(change.target_name);
     }
 
@@ -274,6 +445,8 @@ int add_watch_for_resolved_package(vivid::FileWatcher& fw, const vivid::PackageI
             if (fw.add_watch(entry.path().string(), target)) count++;
         }
     }
+
+    count += fw.add_shader_operator_watches((fs::path(pkg.path) / "filters").string());
     return count;
 }
 

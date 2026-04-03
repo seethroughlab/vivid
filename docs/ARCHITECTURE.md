@@ -530,11 +530,11 @@ The manifest is minimal:
 
 **Constraints:** libraries may only depend on the Vivid operator API and standard C/C++. External library dependencies (OpenCV, FFTW) are not managed by the library system — users who need them are responsible for making them available to the build. This keeps the package manager from becoming a general-purpose build system.
 
-## 5.18 Data-Driven WGSL Filter Framework
+## 5.18 WGSL Shader Operators
 
-**Decision: GPU image filters are self-describing `.wgsl` files with embedded JSON metadata, loaded by a generic runtime. No per-filter C++ code is required.**
+**Decision: self-describing `.wgsl` files are first-class operator types. No per-filter C++ code is required, and there is no separate preset/filter subsystem.**
 
-A filter is a single `.wgsl` file in the `filters/` directory. A JSON comment block at the top declares its name, parameters, and input ports:
+A shader-backed operator is a single `.wgsl` file in a `filters/` directory. A JSON comment block at the top declares its name, parameters, and input ports:
 
 ```wgsl
 /*{
@@ -556,13 +556,17 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 
 2. **`WgslFilterBase`** (`src/operator_api/wgsl_filter.h`) is the generic GPU operator base class. On first process, it reads the `.wgsl` file, generates a WGSL preamble containing a fullscreen-triangle vertex shader, a `Uniforms` struct built from the parsed params, bind group layouts, and a sampler — then compiles the preamble + fragment source into a single WebGPU shader module and pipeline. It hot-reloads on file change (checked every 30 frames by mtime).
 
-3. **`DataDrivenFilter`** (`src/operator_api/data_driven_filter.h`) wraps `WgslFilterBase` with dynamic param and port collection driven by a `DataDrivenFilterConfig` struct. A single C++ class serves all WGSL filter presets.
+3. **`WgslOperator`** (`src/operator_api/data_driven_filter.h`) wraps `WgslFilterBase` with dynamic param and port collection driven by a `WgslOperatorConfig` struct. A single C++ class serves all shader-backed operators.
 
-4. **`OperatorRegistry::scan_wgsl_presets()`** (`src/runtime/operator_registry.cpp`) scans the `filters/` directory at startup, parses each `.wgsl` header, and registers a `DataDrivenFilterConfig` per file. The registry maps filter names to configs; instantiation creates a `DataDrivenFilter` initialized with the appropriate config.
+4. **`OperatorRegistry::scan_shader_operators()`** (`src/runtime/operator_registry.cpp`) scans a `filters/` directory, parses each `.wgsl` header, and registers a concrete operator type per file. Built-in filters, package filters, and project-local filters all use this same path.
 
 **Param metadata** supports type (float/int/bool), min/max/default, enum choices, display hints (`"knob"`, `"xy_pad"`, `"color"`), groups, and column layout — all declared in JSON, all consumed by the inspector UI without per-filter code.
 
-**Why this matters:** Adding a new GPU filter means writing one `.wgsl` file. No C++ boilerplate, no CMake changes, no registration macro. The file is auto-discovered, hot-reloadable, and its parameters appear in the inspector automatically. This is the path for both built-in filters and user-authored ones.
+**Persistence model:** graphs no longer store inline WGSL filter definitions. A node simply stores the concrete operator type name (for example `Blur`), and the shader source remains in a real file under core `filters/`, a package `filters/`, or `<graph_dir>/filters/`.
+
+**Reload model:** body-only `.wgsl` edits hot-reload inside `WgslFilterBase`. Header-derived descriptor changes (params, inputs, time-dependence, or operator name) rescan the affected shader directory and rebuild the graph instead of mutating descriptors in place.
+
+**Why this matters:** Adding a new GPU shader operator means writing one `.wgsl` file. No C++ boilerplate, no CMake changes, no registration macro. The file is auto-discovered, hot-reloadable, and its parameters appear in the inspector automatically. This is the path for both built-in filters and user-authored ones.
 
 ## 5.19 State Machines & Subgraphs
 

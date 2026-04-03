@@ -1,4 +1,5 @@
 #include "runtime/control/runtime_command_sink.h"
+#include <nlohmann/json.hpp>
 
 void RuntimeCommandSink::open_shader(const std::string& type_name) {
     // User C++ operator → open its source .cpp
@@ -9,25 +10,10 @@ void RuntimeCommandSink::open_shader(const std::string& type_name) {
         }
         return;
     }
-    // User filter → open its working .wgsl file
-    if (registry_ && registry_->is_user_filter(type_name)) {
-        std::string path = working_filters_dir_ + "/" + type_name + ".wgsl";
-        if (std::filesystem::exists(path)) {
-            vivid::open_in_editor(path, settings_ ? *settings_ : vivid::Settings{});
-            return;
-        }
-    }
-    // Built-in WGSL preset → tell user to use Clone & Edit
-    if (registry_ && registry_->is_wgsl_preset(type_name)) {
-        std::fprintf(stderr, "[vivid] Built-in filter '%s': use Clone & Edit to modify\n",
-                     type_name.c_str());
-        return;
-    }
-    if (!filters_dir_.empty()) {
-        auto preset_path = find_preset_wgsl(type_name);
-        if (!preset_path.empty()) {
-            std::fprintf(stderr, "[vivid] Built-in filter '%s': use Clone & Edit to modify\n",
-                         type_name.c_str());
+    if (registry_) {
+        auto* shader_src = registry_->shader_operator_source(type_name);
+        if (shader_src && std::filesystem::exists(*shader_src)) {
+            vivid::open_in_editor(*shader_src, settings_ ? *settings_ : vivid::Settings{});
             return;
         }
     }
@@ -42,182 +28,173 @@ void RuntimeCommandSink::open_shader(const std::string& type_name) {
     }
 }
 
-void RuntimeCommandSink::duplicate_as_user_filter(const std::string& type_name) {
-    if (!registry_ || !graph_ || !op_cache_) return;
+std::string RuntimeCommandSink::project_shader_dir() const {
+    if (!graph_ || graph_->source_path().empty()) return {};
+    return (std::filesystem::path(graph_->source_path()).parent_path() / "filters").string();
+}
 
-    // Look up source's descriptor for params
-    auto* loader = registry_->find(type_name);
-    const VividOperatorDescriptor* desc = nullptr;
-    std::unique_ptr<vivid::OperatorLoader> temp_loader;
-
-    if (loader) {
-        desc = loader->descriptor();
-    } else if (auto* cfg = registry_->wgsl_config(type_name)) {
-        // WGSL preset not in loaders_ — create temporary loader for descriptor
-        temp_loader = std::make_unique<vivid::OperatorLoader>();
-        temp_loader->init_data_driven(*cfg);
-        loader = temp_loader.get();
-        desc = loader->descriptor();
-    }
-    if (!desc) return;
-
-    // Read the source .wgsl file — try config path, then filters/ scan, then working dir
-    std::string wgsl_path;
-    if (auto* cfg = registry_->wgsl_config(type_name))
-        wgsl_path = (*cfg)->shader_path;
-    if (wgsl_path.empty())
-        wgsl_path = find_preset_wgsl(type_name);
-    if (wgsl_path.empty() && !working_filters_dir_.empty()) {
-        std::string try_path = working_filters_dir_ + "/" + type_name + ".wgsl";
-        if (std::filesystem::exists(try_path))
-            wgsl_path = try_path;
-    }
-    if (wgsl_path.empty()) {
-        std::fprintf(stderr, "[vivid] Cannot find .wgsl source for '%s'\n", type_name.c_str());
-        return;
-    }
-
-    std::string full_source;
-    {
-        std::ifstream ifs(wgsl_path);
-        if (!ifs) {
-            std::fprintf(stderr, "[vivid] Cannot read shader: %s\n", wgsl_path.c_str());
-            return;
-        }
-        std::ostringstream ss;
-        ss << ifs.rdbuf();
-        full_source = ss.str();
-    }
-
-    // Parse the source to get its header (for preserving metadata in the copy)
-    std::string parse_error;
-    auto header = vivid::parse_wgsl_header(full_source, parse_error);
-    // If parsing fails, use full_source as fragment and build from descriptor
-    std::string fragment_source = header ? header->fragment_source : full_source;
-
-    // Generate unique name
-    std::string base_name = type_name + "_copy";
+std::string RuntimeCommandSink::make_unique_shader_operator_name(const std::string& base_name) const {
     std::string unique_name = base_name;
-    for (int n = 2; graph_->find_filter(unique_name) || registry_->find(unique_name); ++n) {
+    for (int n = 2;
+         (registry_ && (registry_->probe_descriptor(unique_name) || registry_->find_loaded(unique_name))) ||
+             (graph_ && graph_->find_node(unique_name));
+         ++n) {
         unique_name = base_name + std::to_string(n);
     }
+    return unique_name;
+}
 
-    // Build a self-describing .wgsl file with JSON header for the copy
-    // (so the copy is also a self-describing preset)
+bool RuntimeCommandSink::clone_shader_operator(const std::string& type_name,
+                                               const std::string& node_id,
+                                               std::string* error) {
+    if (!registry_ || !graph_ || !op_cache_) {
+        if (error) *error = "shader operator clone unavailable";
+        return false;
+    }
+    if (graph_->source_path().empty()) {
+        if (error) *error = "save the graph before cloning a shader operator";
+        return false;
+    }
+
+    const std::string* shader_src = registry_->shader_operator_source(type_name);
+    if (!shader_src || shader_src->empty()) {
+        if (error) *error = "unknown shader operator '" + type_name + "'";
+        return false;
+    }
+
+    std::ifstream ifs(*shader_src);
+    if (!ifs) {
+        if (error) *error = "cannot read shader source '" + *shader_src + "'";
+        return false;
+    }
+    std::ostringstream ss;
+    ss << ifs.rdbuf();
+    std::string full_source = ss.str();
+
+    std::string parse_error;
+    auto header = vivid::parse_wgsl_header(full_source, parse_error);
+    if (!header) {
+        if (error) *error = "cannot parse shader header for '" + type_name + "': " + parse_error;
+        return false;
+    }
+
+    const std::string unique_name = make_unique_shader_operator_name(type_name + "_copy");
     std::string new_source = full_source;
-    if (header) {
-        // Replace the name in the JSON header
-        // Simple approach: rebuild from parsed header with new name
-        size_t name_pos = new_source.find("\"name\"");
-        if (name_pos != std::string::npos) {
-            size_t colon = new_source.find(':', name_pos);
-            size_t quote1 = new_source.find('"', colon + 1);
-            size_t quote2 = new_source.find('"', quote1 + 1);
-            if (quote1 != std::string::npos && quote2 != std::string::npos) {
-                new_source.replace(quote1 + 1, quote2 - quote1 - 1, unique_name);
-            }
-        }
+    size_t name_pos = new_source.find("\"name\"");
+    if (name_pos == std::string::npos) {
+        if (error) *error = "shader header for '" + type_name + "' is missing a name field";
+        return false;
+    }
+    size_t colon = new_source.find(':', name_pos);
+    size_t quote1 = new_source.find('"', colon + 1);
+    size_t quote2 = new_source.find('"', quote1 + 1);
+    if (colon == std::string::npos || quote1 == std::string::npos || quote2 == std::string::npos) {
+        if (error) *error = "shader header for '" + type_name + "' has an invalid name field";
+        return false;
+    }
+    new_source.replace(quote1 + 1, quote2 - quote1 - 1, unique_name);
+
+    const std::string shader_dir = project_shader_dir();
+    std::error_code ec;
+    std::filesystem::create_directories(shader_dir, ec);
+    if (ec) {
+        if (error) *error = "failed to create project shader directory: " + ec.message();
+        return false;
     }
 
-    // Create FilterDef for graph persistence
-    vivid::FilterDef fd;
-    fd.name = unique_name;
-    fd.source = type_name;
-    fd.time_dependent = desc->time_dependent != 0;
-    fd.shader = fragment_source;
-    for (uint32_t i = 0; i < desc->param_count; ++i) {
-        vivid::FilterDef::ParamDef pd;
-        pd.name = desc->params[i].name;
-        pd.default_value = desc->params[i].default_value;
-        pd.min_value = desc->params[i].min_value;
-        pd.max_value = desc->params[i].max_value;
-        fd.params.push_back(std::move(pd));
+    const std::string output_path =
+        (std::filesystem::path(shader_dir) / (unique_name + ".wgsl")).string();
+    std::ofstream ofs(output_path);
+    if (!ofs) {
+        if (error) *error = "failed to write shader clone '" + output_path + "'";
+        return false;
     }
-    graph_->add_filter(fd);
-    capture_undo_snapshot();
+    ofs << new_source;
+    ofs.close();
 
-    // Write self-describing .wgsl to working file
-    if (!working_filters_dir_.empty()) {
-        std::filesystem::create_directories(working_filters_dir_);
-        std::string working_path = working_filters_dir_ + "/" + unique_name + ".wgsl";
-        {
-            std::ofstream ofs(working_path);
-            ofs << new_source;
-        }
-
-        // Build config and register
-        auto config = std::make_shared<vivid::DataDrivenFilterConfig>();
-        config->name = unique_name;
-        config->shader_path = working_path;
-        config->source_builtin = type_name;
-        config->time_dependent = fd.time_dependent;
-
-        // If we parsed a header, use its rich metadata
-        if (header) {
-            config->inputs_specified = header->inputs_specified;
-            for (const auto& inp : header->inputs)
-                config->inputs.push_back({inp.name});
-            for (const auto& hp : header->params) {
-                vivid::DataDrivenFilterConfig::ParamDef cpd;
-                cpd.name = hp.name;
-                cpd.type = hp.type;
-                cpd.default_value = hp.default_value;
-                cpd.min_value = hp.min_value;
-                cpd.max_value = hp.max_value;
-                cpd.label = hp.label;
-                cpd.choices = hp.choices;
-                cpd.display_hint = hp.display_hint;
-                cpd.group = hp.group;
-                cpd.layout_columns = hp.layout_columns;
-                cpd.layout_column_index = hp.layout_column_index;
-                config->params.push_back(std::move(cpd));
-            }
-        } else {
-            for (const auto& pd : fd.params) {
-                vivid::DataDrivenFilterConfig::ParamDef cpd;
-                cpd.name = pd.name;
-                cpd.default_value = pd.default_value;
-                cpd.min_value = pd.min_value;
-                cpd.max_value = pd.max_value;
-                config->params.push_back(std::move(cpd));
-            }
-        }
-        registry_->register_user_filter(unique_name, config);
-        op_cache_->invalidate_all();
-
-        // Open in external editor
-        vivid::open_in_editor(working_path, settings_ ? *settings_ : vivid::Settings{});
+    if (!registry_->scan_shader_operators(shader_dir, true)) {
+        if (error) *error = "failed to register cloned shader operator '" + unique_name + "'";
+        return false;
     }
 
-    std::fprintf(stderr, "[vivid] Duplicated '%s' as user filter '%s'\n",
+    if (shader_watch_callback_)
+        shader_watch_callback_(output_path);
+
+    if (!node_id.empty()) {
+        if (!has_gpu_ops_ || !has_audio_) {
+            if (error) *error = "runtime flags unavailable for shader retarget";
+            return false;
+        }
+
+        std::string snapshot_json;
+        if (!graph_->save_to_string(snapshot_json)) {
+            if (error) *error = "failed to serialize graph before retargeting shader clone";
+            return false;
+        }
+
+        nlohmann::json root;
+        try {
+            root = nlohmann::json::parse(snapshot_json);
+        } catch (const std::exception& e) {
+            if (error) *error = std::string("failed to parse graph snapshot JSON: ") + e.what();
+            return false;
+        }
+
+        auto nodes_it = root.find("nodes");
+        if (nodes_it == root.end() || !nodes_it->is_object() || !nodes_it->contains(node_id)) {
+            if (error) *error = "node '" + node_id + "' not found while retargeting shader clone";
+            return false;
+        }
+        (*nodes_it)[node_id]["type"] = unique_name;
+
+        vivid::CommandResult apply_result =
+            api_.apply_snapshot_json(root.dump(), *has_gpu_ops_, *has_audio_);
+        if (!apply_result.ok) {
+            if (error) {
+                *error = "failed to retarget node '" + node_id + "' to shader operator '" +
+                         unique_name + "': " + apply_result.message;
+            }
+            return false;
+        }
+        capture_undo_snapshot();
+    }
+
+    op_cache_->invalidate_all();
+    vivid::open_in_editor(output_path, settings_ ? *settings_ : vivid::Settings{});
+    std::fprintf(stderr, "[vivid] Cloned shader operator '%s' to '%s'\n",
                  type_name.c_str(), unique_name.c_str());
+    if (error) error->clear();
+    return true;
 }
 
 void RuntimeCommandSink::clone_and_edit(const std::string& type_name, const std::string& destination) {
     if (!registry_ || !op_cache_) return;
 
-    // WGSL presets (no longer in loaders_) → duplicate as user filter
-    if (registry_->is_wgsl_preset(type_name)) {
-        duplicate_as_user_filter(type_name);
+    if (registry_->is_shader_operator(type_name)) {
+        std::string error;
+        if (!clone_shader_operator(type_name, {}, &error) && !error.empty())
+            std::fprintf(stderr, "[vivid] %s\n", error.c_str());
         return;
     }
 
     auto* loader = registry_->find(type_name);
-
-    // Data-driven filters (user filters) → duplicate as user filter
-    if (loader && loader->is_data_driven()) {
-        duplicate_as_user_filter(type_name);
-        return;
-    }
-
-    // Check if there's a WGSL preset in filters/ for this type
-    if (!find_preset_wgsl(type_name).empty()) {
-        duplicate_as_user_filter(type_name);
-        return;
-    }
-
     if (!loader || operators_dir_.empty()) return;
     clone_cpp_operator(type_name, destination);
+}
+
+void RuntimeCommandSink::clone_and_edit_for_node(const std::string& node_id,
+                                                 const std::string& type_name,
+                                                 const std::string& destination) {
+    if (!registry_ || !op_cache_) return;
+
+    if (registry_->is_shader_operator(type_name)) {
+        std::string error;
+        if (!clone_shader_operator(type_name, node_id, &error) && !error.empty())
+            std::fprintf(stderr, "[vivid] %s\n", error.c_str());
+        return;
+    }
+
+    clone_and_edit(type_name, destination);
 }
 
 bool RuntimeCommandSink::has_project_clone_destination() {
@@ -356,24 +333,6 @@ void RuntimeCommandSink::capture_undo_snapshot(const std::string& coalesce_key) 
         last_coalesce_key_ = coalesce_key;
         last_coalesce_time_ = now;
     }
-}
-
-std::string RuntimeCommandSink::find_preset_wgsl(const std::string& type_name) {
-    if (filters_dir_.empty()) return {};
-    // Scan the filters directory for a file whose parsed name matches
-    for (auto& entry : std::filesystem::directory_iterator(filters_dir_)) {
-        if (entry.path().extension() != ".wgsl") continue;
-        // Quick check: read and parse the header
-        std::ifstream ifs(entry.path());
-        if (!ifs) continue;
-        std::ostringstream ss;
-        ss << ifs.rdbuf();
-        std::string error;
-        auto header = vivid::parse_wgsl_header(ss.str(), error);
-        if (header && header->name == type_name)
-            return entry.path().string();
-    }
-    return {};
 }
 
 bool RuntimeCommandSink::patch_package_cmake_ops(const std::string& pkg_dir, const std::string& op_name) {
@@ -625,4 +584,3 @@ void RuntimeCommandSink::clone_cpp_operator(const std::string& type_name, const 
 
     std::fprintf(stderr, "[vivid] Cloned '%s' as '%s'\n", type_name.c_str(), new_type.c_str());
 }
-

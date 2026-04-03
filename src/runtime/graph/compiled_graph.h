@@ -306,7 +306,7 @@ struct CompiledNode {
     bool errored = false;
     std::string error_message;
 
-    // Per-instance loader for WGSLFilter nodes.
+    // Optional per-instance loader override.
     std::unique_ptr<OperatorLoader> owned_loader;
 
     bool missing_operator = false;

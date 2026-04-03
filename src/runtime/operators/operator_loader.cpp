@@ -329,7 +329,7 @@ void OperatorLoader::init_builtin(VividDescriptorFn desc, VividCreateFn create,
     process_frame_fn_ = process;
 }
 
-void OperatorLoader::init_data_driven(std::shared_ptr<DataDrivenFilterConfig> config) {
+void OperatorLoader::init_wgsl_operator(std::shared_ptr<WgslOperatorConfig> config) {
     unload();
     dd_config_ = std::move(config);
 
@@ -473,13 +473,13 @@ const VividOperatorDescriptor* OperatorLoader::descriptor() const {
 }
 
 void* OperatorLoader::create_instance() const {
-    if (dd_config_) return new DataDrivenFilter(dd_config_);
+    if (dd_config_) return new WgslOperator(dd_config_);
     return create_fn_ ? create_fn_() : nullptr;
 }
 
 void OperatorLoader::destroy_instance(void* instance) const {
     if (dd_config_) {
-        if (instance) delete static_cast<DataDrivenFilter*>(instance);
+        if (instance) delete static_cast<WgslOperator*>(instance);
         return;
     }
     if (destroy_fn_ && instance) {

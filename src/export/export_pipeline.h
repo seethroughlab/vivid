@@ -35,7 +35,7 @@ private:
                            OperatorRegistry& registry);
     bool generate_static_registry();
     bool generate_embedded_graph(const std::string& graph_path);
-    bool generate_embedded_wgsl_presets(OperatorRegistry& registry);
+    bool generate_embedded_shader_operators(OperatorRegistry& registry);
     bool generate_cmakelists();
     bool copy_standalone_main();
     bool build();
@@ -63,7 +63,7 @@ private:
     };
     std::vector<ResolvedOperator> resolved_ops_;
     std::vector<VividPortTypeInfo> required_custom_types_;
-    std::vector<std::string> wgsl_preset_names_;
+    std::vector<std::string> shader_operator_types_;
     bool needs_webgpu_ = false;
     bool needs_rtmidi_ = false;
     bool headless_ = false;

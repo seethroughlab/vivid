@@ -17,6 +17,7 @@ class HotReloader;
 class RuntimeCore;
 class OperatorRegistry;
 class AudioEngine;
+class RuntimeAPI;
 class BuildConsole;
 
 } // namespace vivid
@@ -58,7 +59,8 @@ void emit_clear_pass(WGPUCommandEncoder encoder, WGPUTextureView view, const dou
 // --- Hot reload ---
 void poll_hot_reload(FileWatcher& fw, HotReloader& hr,
                      RuntimeCore& runtime, OperatorRegistry& registry,
-                     AudioEngine& audio_engine, bool has_audio,
+                     RuntimeAPI& runtime_api,
+                     AudioEngine& audio_engine, bool& has_gpu_ops, bool& has_audio,
                      OperatorInfoCache* op_cache = nullptr,
                      const std::string& operators_dir = {});
 

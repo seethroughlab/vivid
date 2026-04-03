@@ -39,6 +39,7 @@ public:
     struct CloneConfirmState {
         bool open = false;
         std::string type;
+        std::string node_id;
         bool project_available = false;
         int destination = 0; // 0=Project Package, 1=Core
     };
@@ -190,7 +191,7 @@ public:
 
     // --- Open helpers ---
     void open_save_confirm(SaveConfirmAction action);
-    void open_clone_confirm(const std::string& type_name);
+    void open_clone_confirm(const std::string& type_name, const std::string& node_id = {});
     void open_mcp_setup() { mcp_setup.open = true; }
 
     // --- MCP setup ---

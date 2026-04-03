@@ -103,7 +103,7 @@ void NodeGraphUI::update_context_menu() {
                     }
                 } else if (clicked_item == clone_idx && context_node_has_shader_) {
                     // "Clone & Edit"
-                    open_clone_confirm_dialog(context_node_type_);
+                    open_clone_confirm_dialog(context_node_type_, context_node_id_);
                 } else if (clicked_item == solo_idx) {
                     // "Solo" / "Unsolo"
                     bool is_soloed = (!snap_.solo_node_id.empty() && snap_.solo_node_id == context_node_id_);
@@ -1197,7 +1197,7 @@ void NodeGraphUI::handle_graph_click() {
                 if (is_user) {
                     commands_.open_shader(type_name);
                 } else {
-                    open_clone_confirm_dialog(type_name);
+                    open_clone_confirm_dialog(type_name, node_id);
                 }
                 last_click_node_id_.clear();
             } else {

@@ -123,6 +123,34 @@ static std::vector<DiagnosticT> diagnostics_for_dir(
     return out;
 }
 
+static std::shared_ptr<WgslOperatorConfig> make_wgsl_operator_config(
+        const std::string& path,
+        const WgslHeader& header) {
+    auto config = std::make_shared<WgslOperatorConfig>();
+    config->name = header.name;
+    config->shader_path = path;
+    config->time_dependent = header.time_dependent;
+    config->inputs_specified = header.inputs_specified;
+    for (const auto& inp : header.inputs)
+        config->inputs.push_back({inp.name});
+    for (const auto& hp : header.params) {
+        WgslOperatorConfig::ParamDef pd;
+        pd.name = hp.name;
+        pd.type = hp.type;
+        pd.default_value = hp.default_value;
+        pd.min_value = hp.min_value;
+        pd.max_value = hp.max_value;
+        pd.label = hp.label;
+        pd.choices = hp.choices;
+        pd.display_hint = hp.display_hint;
+        pd.group = hp.group;
+        pd.layout_columns = hp.layout_columns;
+        pd.layout_column_index = hp.layout_column_index;
+        config->params.push_back(std::move(pd));
+    }
+    return config;
+}
+
 // Iterate plugin files in a directory, calling fn(path, filename, stem_len) for each
 // matching file (correct suffix, not lib*-prefixed).
 template<typename Fn>
@@ -517,13 +545,18 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
     });
 }
 
-bool OperatorRegistry::scan_wgsl_presets(const std::string& directory) {
+bool OperatorRegistry::scan_shader_operators(const std::string& directory,
+                                             bool mark_user,
+                                             const std::string& package_name) {
     DIR* dir = opendir(directory.c_str());
     if (!dir) {
-        // Not an error — filters/ directory is optional
+        // Not an error — shader operator directory is optional
         return false;
     }
 
+    clear_shader_operators_in_dir(directory);
+
+    bool ok = true;
     struct dirent* entry;
     while ((entry = readdir(dir)) != nullptr) {
         const char* name = entry->d_name;
@@ -545,60 +578,32 @@ bool OperatorRegistry::scan_wgsl_presets(const std::string& directory) {
         auto header = parse_wgsl_header(contents, error);
         if (!header) {
             std::fprintf(stderr, "[vivid] Skipping %s: %s\n", name, error.c_str());
+            ok = false;
             continue;
         }
 
-        // Skip if already fully loaded (e.g. user filter with same name)
-        if (loaders_.count(header->name))
-            continue;
-        // .wgsl presets override stale deferred dylib entries
-        if (deferred_.count(header->name))
-            deferred_.erase(header->name);
-
-        // Build DataDrivenFilterConfig and store in wgsl_configs_
-        auto config = std::make_shared<DataDrivenFilterConfig>();
-        config->name = header->name;
-        config->shader_path = path;
-        config->time_dependent = header->time_dependent;
-        config->inputs_specified = header->inputs_specified;
-        for (const auto& inp : header->inputs)
-            config->inputs.push_back({inp.name});
-        for (const auto& hp : header->params) {
-            DataDrivenFilterConfig::ParamDef pd;
-            pd.name = hp.name;
-            pd.type = hp.type;
-            pd.default_value = hp.default_value;
-            pd.min_value = hp.min_value;
-            pd.max_value = hp.max_value;
-            pd.label = hp.label;
-            pd.choices = hp.choices;
-            pd.display_hint = hp.display_hint;
-            pd.group = hp.group;
-            pd.layout_columns = hp.layout_columns;
-            pd.layout_column_index = hp.layout_column_index;
-            config->params.push_back(std::move(pd));
+        const auto existing_source = shader_operator_sources_.find(header->name);
+        if (existing_source != shader_operator_sources_.end() &&
+            existing_source->second == path) {
+            unregister_shader_operator(header->name);
         }
 
-        wgsl_configs_[header->name] = config;
-        std::fprintf(stderr, "[vivid] Registry: loaded preset %s from %s\n",
+        if (loaders_.count(header->name) || deferred_.count(header->name) ||
+            aliases_.count(header->name)) {
+            std::fprintf(stderr,
+                         "[vivid] Shader operator name collision for '%s' at %s\n",
+                         header->name.c_str(), path.c_str());
+            ok = false;
+            continue;
+        }
+
+        register_shader_operator(make_wgsl_operator_config(path, *header), mark_user, package_name);
+        std::fprintf(stderr, "[vivid] Registry: loaded shader operator %s from %s\n",
                      header->name.c_str(), name);
     }
 
     closedir(dir);
-
-    // Register a single WGSLFilter type with a minimal factory descriptor.
-    // Actual instances get per-instance descriptors from the runtime.
-    if (!wgsl_configs_.empty() && !loaders_.count("WGSLFilter")) {
-        auto factory = std::make_shared<DataDrivenFilterConfig>();
-        factory->name = "WGSLFilter";
-        auto loader = std::make_unique<OperatorLoader>();
-        loader->init_data_driven(std::move(factory));
-        loaders_["WGSLFilter"] = std::move(loader);
-        std::fprintf(stderr, "[vivid] Registry: registered WGSLFilter (%zu presets)\n",
-                     wgsl_configs_.size());
-    }
-
-    return true;
+    return ok;
 }
 
 void OperatorRegistry::register_target_mapping(const std::string& dylib_path,
@@ -625,7 +630,6 @@ bool OperatorRegistry::load_for_graph(const Graph& graph) {
     for (const auto& ndef : graph.nodes()) {
         const std::string resolved = resolve_alias_once(aliases_, ndef.type);
         if (loaders_.count(resolved)) continue;      // already loaded
-        if (wgsl_configs_.count(resolved)) continue;  // handled by runtime
         auto dit = deferred_.find(resolved);
         if (dit == deferred_.end()) continue;          // builtin or unknown
 
@@ -708,28 +712,86 @@ OperatorLoader* OperatorRegistry::find(const std::string& type_name) {
     return ptr;
 }
 
-void OperatorRegistry::register_user_filter(const std::string& name,
-                                            std::shared_ptr<DataDrivenFilterConfig> config) {
+void OperatorRegistry::register_shader_operator(std::shared_ptr<WgslOperatorConfig> config,
+                                                bool mark_user,
+                                                const std::string& package_name) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
+    const std::string name = config ? config->name : "";
+    if (name.empty()) return;
     if (loaders_.count(name)) {
         std::fprintf(stderr, "[vivid] warning: re-registering operator type '%s'\n", name.c_str());
     }
     auto loader = std::make_unique<OperatorLoader>();
-    loader->init_data_driven(std::move(config));
-    std::fprintf(stderr, "[vivid] Registry: registered user filter %s\n", name.c_str());
+    loader->init_wgsl_operator(config);
+    shader_operator_configs_[name] = std::move(config);
+    shader_operator_sources_[name] = shader_operator_configs_[name]->shader_path;
+    if (mark_user) user_shader_operator_types_.insert(name);
+    else user_shader_operator_types_.erase(name);
+    if (!package_name.empty()) type_to_package_[name] = package_name;
+    else type_to_package_.erase(name);
+    std::fprintf(stderr, "[vivid] Registry: registered shader operator %s\n", name.c_str());
     loaders_[name] = std::move(loader);
-    user_filter_types_.insert(name);
 }
 
-void OperatorRegistry::unregister_user_filter(const std::string& name) {
+void OperatorRegistry::unregister_shader_operator(const std::string& name) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
-    loaders_.erase(name);
-    user_filter_types_.erase(name);
+    auto lit = loaders_.find(name);
+    if (lit != loaders_.end()) {
+        retired_package_loaders_.push_back(std::move(lit->second));
+        loaders_.erase(lit);
+    }
+    shader_operator_configs_.erase(name);
+    shader_operator_sources_.erase(name);
+    user_shader_operator_types_.erase(name);
+    type_to_package_.erase(name);
 }
 
-bool OperatorRegistry::is_user_filter(const std::string& name) const {
+void OperatorRegistry::clear_shader_operators_in_dir(const std::string& directory) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::path dir = fs::weakly_canonical(fs::path(directory), ec);
+    if (ec) dir = fs::path(directory).lexically_normal();
+    const std::string dir_s = dir.string();
+    const std::string dir_prefix = dir_s.empty() ? dir_s : (dir_s + "/");
+    std::vector<std::string> to_remove;
+    {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        for (const auto& [type_name, source] : shader_operator_sources_) {
+            fs::path source_path = fs::weakly_canonical(fs::path(source), ec);
+            if (ec) {
+                ec.clear();
+                source_path = fs::path(source).lexically_normal();
+            }
+            const std::string source_s = source_path.string();
+            if (source_s == dir_s || source_s.rfind(dir_prefix, 0) == 0)
+                to_remove.push_back(type_name);
+        }
+    }
+    for (const auto& type_name : to_remove)
+        unregister_shader_operator(type_name);
+}
+
+bool OperatorRegistry::is_shader_operator(const std::string& name) const {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
-    return user_filter_types_.count(name) > 0;
+    return shader_operator_configs_.count(name) > 0;
+}
+
+bool OperatorRegistry::is_user_shader_operator(const std::string& name) const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    return user_shader_operator_types_.count(name) > 0;
+}
+
+const WgslOperatorConfig* OperatorRegistry::shader_operator_config(const std::string& name) const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    auto it = shader_operator_configs_.find(name);
+    return it == shader_operator_configs_.end() ? nullptr : it->second.get();
+}
+
+const std::string* OperatorRegistry::shader_operator_source(const std::string& name) const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    auto it = shader_operator_sources_.find(name);
+    if (it == shader_operator_sources_.end()) return nullptr;
+    return &it->second;
 }
 
 void OperatorRegistry::register_user_operator(const std::string& name, const std::string& source_path) {
@@ -795,27 +857,6 @@ std::string OperatorRegistry::type_to_target(const std::string& type_name) const
         if (type == type_name) return target;
     }
     return {};
-}
-
-const std::shared_ptr<DataDrivenFilterConfig>* OperatorRegistry::wgsl_config(
-        const std::string& name) const {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
-    auto it = wgsl_configs_.find(name);
-    if (it == wgsl_configs_.end()) return nullptr;
-    return &it->second;
-}
-
-std::vector<std::string> OperatorRegistry::wgsl_preset_names() const {
-    std::vector<std::string> names;
-    names.reserve(wgsl_configs_.size());
-    for (const auto& [name, _] : wgsl_configs_) names.push_back(name);
-    std::sort(names.begin(), names.end());
-    return names;
-}
-
-bool OperatorRegistry::is_wgsl_preset(const std::string& name) const {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
-    return wgsl_configs_.count(name) > 0;
 }
 
 bool OperatorRegistry::reload_operator(const std::string& type_name, const std::string& new_dylib_path) {

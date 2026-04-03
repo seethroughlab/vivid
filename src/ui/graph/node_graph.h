@@ -409,7 +409,8 @@ private:
         const std::unordered_map<std::string, uint32_t>& port_indices);
 
     // --- Clone confirmation dialog (forwarded to DialogManager) ---
-    void open_clone_confirm_dialog(const std::string& type_name);
+    void open_clone_confirm_dialog(const std::string& type_name,
+                                   const std::string& node_id = {});
 
     // --- Save confirmation dialog (forwarded to DialogManager) ---
 public:

@@ -9,7 +9,7 @@
 
 // Bumped when the graph JSON format changes in a backward-incompatible way.
 // Graphs saved with schema_version > GRAPH_SCHEMA_VERSION are hard-rejected.
-#define GRAPH_SCHEMA_VERSION 2
+#define GRAPH_SCHEMA_VERSION 3
 
 namespace vivid {
 
@@ -58,20 +58,6 @@ struct ConnectionDef {
     }
 };
 
-struct FilterDef {
-    std::string name;
-    std::string source;         // which built-in it was copied from
-    bool time_dependent = false;
-    struct ParamDef {
-        std::string name;
-        float default_value = 0.0f;
-        float min_value = 0.0f;
-        float max_value = 1.0f;
-    };
-    std::vector<ParamDef> params;
-    std::string shader;         // WGSL source (inline in JSON)
-};
-
 struct MidiMappingDef {
     std::string node_id;
     std::string param_name;
@@ -115,7 +101,6 @@ public:
     const std::vector<NodeDef>& nodes() const { return nodes_; }
     const std::vector<ConnectionDef>& connections() const { return connections_; }
     const std::vector<MidiMappingDef>& midi_mappings() const { return midi_mappings_; }
-    const std::vector<FilterDef>& filters() const { return filters_; }
     const std::vector<VariationDef>& variations() const { return variations_; }
     const std::string& source_path() const { return source_path_; }
     void set_source_path(std::string path) { source_path_ = std::move(path); }
@@ -135,13 +120,6 @@ public:
     bool set_connection_bridge(const std::string& from_node, const std::string& from_port,
                                const std::string& to_node, const std::string& to_port,
                                const std::string& bridge);
-
-    // Filter mutation
-    void add_filter(FilterDef filter);
-    const FilterDef* find_filter(const std::string& name) const;
-    FilterDef* find_filter(const std::string& name);
-    bool remove_filter(const std::string& name);
-    void update_filter_shader(const std::string& name, const std::string& source);
 
     // MIDI mapping mutation
     bool add_midi_mapping(const std::string& node_id, const std::string& param,
@@ -234,7 +212,6 @@ private:
     std::vector<NodeDef> nodes_;
     std::vector<ConnectionDef> connections_;
     std::vector<MidiMappingDef> midi_mappings_;
-    std::vector<FilterDef> filters_;
     std::vector<VariationDef> variations_;
     int active_variation_ = -1;
     std::string quantize_clock_node_;

@@ -20,7 +20,7 @@ struct RuntimeBootstrapPaths {
 };
 
 struct RegistryBootstrapOptions {
-    bool scan_wgsl_presets = true;
+    bool scan_shader_operators = true;
     bool scan_factory_presets = false;
     bool scan_packages = true;
     bool respect_skip_package_scan_env = true;

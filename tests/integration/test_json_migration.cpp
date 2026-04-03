@@ -122,25 +122,6 @@ static void compare_graphs(const vivid::Graph& a, const vivid::Graph& b,
         check_float(ma.range_max, mb.range_max, (mc + " range_max").c_str());
     }
 
-    // Filters
-    check(a.filters().size() == b.filters().size(),
-          (ctx + " filter count").c_str());
-    for (size_t i = 0; i < std::min(a.filters().size(), b.filters().size()); i++) {
-        auto& fa = a.filters()[i];
-        auto& fb = b.filters()[i];
-        std::string fc = ctx + " filter[" + std::to_string(i) + "]";
-        check(fa.name == fb.name, (fc + " name").c_str());
-        check(fa.source == fb.source, (fc + " source").c_str());
-        check(fa.time_dependent == fb.time_dependent, (fc + " time_dependent").c_str());
-        check(fa.shader == fb.shader, (fc + " shader").c_str());
-        check(fa.params.size() == fb.params.size(), (fc + " param count").c_str());
-        for (size_t j = 0; j < std::min(fa.params.size(), fb.params.size()); j++) {
-            check(fa.params[j].name == fb.params[j].name, (fc + " param name").c_str());
-            check_float(fa.params[j].default_value, fb.params[j].default_value,
-                       (fc + " param default").c_str());
-        }
-    }
-
     // Variations
     check(a.variations().size() == b.variations().size(),
           (ctx + " variation count").c_str());

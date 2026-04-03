@@ -1417,6 +1417,7 @@ void PackageManager::scan_installed() {
         registry_.clear_deferred_probe_handles_for_dir(build_dir);
         registry_.scan_deferred(build_dir.c_str());
         registry_.register_package(info.name, build_dir);
+        registry_.scan_shader_operators(info.path + "/filters", false, info.name);
         registry_.scan_factory_presets(info.path + "/factory_presets");
 
         // Load subgraph modules declared in package manifest

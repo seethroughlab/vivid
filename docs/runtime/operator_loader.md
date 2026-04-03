@@ -2,7 +2,7 @@
 
 ## OperatorLoader
 
-`OperatorLoader` (operator_loader.h/cpp) wraps a single operator dylib (or a built-in / data-driven filter).
+`OperatorLoader` (operator_loader.h/cpp) wraps a single operator dylib (or a built-in / shader-backed operator).
 It is move-only (non-copyable).
 
 ### Loading Modes
@@ -10,10 +10,10 @@ It is move-only (non-copyable).
 ```cpp
 bool load(const char* path);                     // dlopen a .dylib/.so/.dll
 void init_builtin(VividDescriptorFn, VividCreateFn, VividDestroyFn, VividProcessFrameFn);
-void init_data_driven(shared_ptr<DataDrivenFilterConfig> config); // WGSL filter
+void init_wgsl_operator(shared_ptr<WgslOperatorConfig> config); // shader-backed .wgsl operator
 void unload();                                   // dlclose
 bool is_loaded() const;
-bool is_data_driven() const;
+bool is_shader_operator() const;
 const LastError& last_error() const;
 ```
 
@@ -82,10 +82,10 @@ void main_thread_update(void* instance, double time,
                         const char** file_param_values, uint32_t file_param_count) const;
 ```
 
-### Data-Driven Filters
+### Shader-Backed Operators
 
-When `init_data_driven()` is called, the loader synthesizes a `VividOperatorDescriptor` from
-the `DataDrivenFilterConfig`. All `const char*` pointers in the descriptor are backed by
+When `init_wgsl_operator()` is called, the loader synthesizes a `VividOperatorDescriptor` from
+the `WgslOperatorConfig`. All `const char*` pointers in the descriptor are backed by
 `std::string` members on the loader (stable pointer lifetime). The `fixup_dd_pointers()` method
 re-points them after a move.
 
@@ -107,7 +107,9 @@ runtime callers, and package/test flows on one preparation path.
 ```cpp
 bool scan(const char* directory);               // full load: dlopen every dylib
 bool scan_deferred(const char* directory);      // probe-only: read descriptor, don't dlopen
-bool scan_wgsl_presets(const std::string& dir); // register WGSL filters as data-driven
+bool scan_shader_operators(const std::string& dir,
+                           bool mark_user = false,
+                           const std::string& package_name = ""); // register .wgsl files as operator types
 bool load_for_graph(const Graph& graph);        // lazy-load only operators the graph uses
 ```
 
@@ -154,15 +156,22 @@ void register_alias(alias_name, canonical_type_name);       // alternate name fo
 bool register_loaded_operator(const std::string& dylib_path); // for cloned operators
 ```
 
-### User-Defined Operators and Filters
+### User-Defined Operators and Shader Operators
 
 ```cpp
-void register_user_filter(name, shared_ptr<DataDrivenFilterConfig>);
-void unregister_user_filter(name);
-bool is_user_filter(name) const;
+void register_shader_operator(shared_ptr<WgslOperatorConfig>, bool mark_user, package_name);
+void unregister_shader_operator(name);
+bool is_shader_operator(name) const;
+bool is_user_shader_operator(name) const;
+const WgslOperatorConfig* shader_operator_config(name) const;
+const std::string* shader_operator_source(name) const;
 void register_user_operator(name, source_path);
 bool is_user_operator(name) const;
 ```
+
+Shader-backed operators are first-class operator types. A `.wgsl` file named `Blur` registers as
+type `Blur`; there is no `WGSLFilter` pseudo-type, preset selector string param, or graph-owned
+inline shader blob.
 
 ### Hot-Reload
 
@@ -175,6 +184,10 @@ Called by `RuntimeCore::reload_operator()` and `AudioEngine::reload_operator()`.
 Hot reload is intentionally shape-conservative. The reload path preserves the previous loader when
 the replacement dylib fails to load, and it rejects descriptor-incompatible edits rather than
 reusing stale wire/port metadata.
+
+Shader-backed operators follow the same philosophy. Body-only `.wgsl` edits hot-reload inside
+`WgslFilterBase`, but header-derived descriptor changes (params, inputs, time-dependence, or name)
+trigger a registry rescan plus full graph rebuild instead of mutating descriptors in place.
 
 ### Loader Failure Diagnostics
 

@@ -218,7 +218,7 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
     vivid::OperatorRegistry registry;
     registry.scan_deferred(exe_dir.string().c_str());
     register_builtin_operators(registry);
-    registry.scan_wgsl_presets((exe_dir / "filters").string().c_str());
+    registry.scan_shader_operators((exe_dir / "filters").string());
 
 #ifdef __APPLE__
     CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.01, false);

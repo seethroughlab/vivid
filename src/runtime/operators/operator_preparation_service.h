@@ -246,10 +246,6 @@ private:
         switch (request.kind) {
             case OperatorPrepareRequest::Kind::PrepareOperatorType: {
                 set_stage(task, OperatorPrepareStage::LoadingOperators);
-                if (request.registry->is_wgsl_preset(request.type_name)) {
-                    finish_task(task, true, {}, {}, {request.type_name});
-                    return;
-                }
                 OperatorLoader* loader = request.registry->find(request.type_name);
                 if (!loader) {
                     const auto* desc = request.registry->probe_descriptor(request.type_name);

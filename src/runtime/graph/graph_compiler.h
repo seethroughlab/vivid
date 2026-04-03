@@ -22,7 +22,7 @@ public:
         // Base directory for resolving relative file paths in node params.
         std::filesystem::path graph_base_dir;
 
-        // Source directory for operators (for WGSLFilter hot-reload paths).
+        // Source directory for operators (for shader hot-reload paths).
         std::string operators_src_dir;
 
         // Default GPU texture dimensions.

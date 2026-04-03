@@ -496,28 +496,6 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
 
     for (const auto& ndef : graph.nodes()) {
         OperatorLoader* loader = registry.find(ndef.type);
-        std::unique_ptr<OperatorLoader> owned;
-
-        // WGSLFilter / preset handling
-        if (!loader && registry.is_wgsl_preset(ndef.type)) {
-            auto* cfg = registry.wgsl_config(ndef.type);
-            if (cfg) {
-                owned = std::make_unique<OperatorLoader>();
-                owned->init_data_driven(*cfg);
-                loader = owned.get();
-            }
-        } else if (loader && ndef.type == "WGSLFilter") {
-            auto it = ndef.string_params.find("filter");
-            if (it != ndef.string_params.end()) {
-                auto* cfg = registry.wgsl_config(it->second);
-                if (cfg) {
-                    owned = std::make_unique<OperatorLoader>();
-                    owned->init_data_driven(*cfg);
-                    loader = owned.get();
-                }
-            }
-        }
-
         const VividOperatorDescriptor* desc = loader ? loader->descriptor() : nullptr;
 
         CompiledNode cn;
@@ -526,7 +504,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         cn.subgraph_owner = ndef.subgraph_owner;
         cn.subgraph_type = ndef.subgraph_type;
         cn.loader = loader;
-        cn.owned_loader = std::move(owned);
+        cn.owned_loader = nullptr;
 
         if (loader && desc) {
             cn.instance = loader->create_instance();

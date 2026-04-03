@@ -121,7 +121,7 @@ int main(int argc, char* argv[]) {
         vivid::PackageManager pm(compiler, registry);
         auto paths = vivid::resolve_runtime_bootstrap_paths(argv[0], source_dir);
         vivid::RegistryBootstrapOptions opts;
-        opts.scan_wgsl_presets = false;
+        opts.scan_shader_operators = false;
         opts.scan_factory_presets = false;
         auto result = vivid::bootstrap_operator_registry(registry, &pm, paths, opts);
 
@@ -150,7 +150,7 @@ int main(int argc, char* argv[]) {
         vivid::PackageManager pm(compiler, registry);
         auto paths = vivid::resolve_runtime_bootstrap_paths(argv[0], source_dir);
         vivid::RegistryBootstrapOptions opts;
-        opts.scan_wgsl_presets = false;
+        opts.scan_shader_operators = false;
         opts.scan_factory_presets = false;
         auto result = vivid::bootstrap_operator_registry(registry, &pm, paths, opts);
 

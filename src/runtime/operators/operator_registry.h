@@ -12,7 +12,7 @@
 
 namespace vivid {
 
-struct DataDrivenFilterConfig;
+struct WgslOperatorConfig;
 struct OperatorBase;
 class Graph;
 
@@ -100,7 +100,9 @@ public:
 
     bool scan(const char* directory);
     bool scan_deferred(const char* directory);       // probe-only scan (no full load)
-    bool scan_wgsl_presets(const std::string& directory);  // self-describing .wgsl filters
+    bool scan_shader_operators(const std::string& directory,
+                               bool mark_user = false,
+                               const std::string& package_name = "");
     bool load_for_graph(const Graph& graph);         // load only operators the graph uses
     void register_builtin(const std::string& type_name,
                           VividDescriptorFn, VividCreateFn, VividDestroyFn, VividProcessFrameFn);
@@ -111,11 +113,16 @@ public:
     OperatorLoader* find_loaded(const std::string& type_name);
     const VividOperatorDescriptor* probe_descriptor(const std::string& type_name) const;
 
-    // User-defined filter management
-    void register_user_filter(const std::string& name,
-                              std::shared_ptr<DataDrivenFilterConfig> config);
-    void unregister_user_filter(const std::string& name);
-    bool is_user_filter(const std::string& name) const;
+    // Shader-backed operator management
+    void register_shader_operator(std::shared_ptr<WgslOperatorConfig> config,
+                                  bool mark_user = false,
+                                  const std::string& package_name = "");
+    void unregister_shader_operator(const std::string& name);
+    void clear_shader_operators_in_dir(const std::string& directory);
+    bool is_shader_operator(const std::string& name) const;
+    bool is_user_shader_operator(const std::string& name) const;
+    const WgslOperatorConfig* shader_operator_config(const std::string& name) const;
+    const std::string* shader_operator_source(const std::string& name) const;
 
     // User-defined C++ operator management
     void register_user_operator(const std::string& name, const std::string& source_path);
@@ -124,11 +131,6 @@ public:
 
     // Load a brand-new operator from a dylib (for cloned operators)
     bool register_loaded_operator(const std::string& dylib_path);
-
-    // WGSL preset accessors
-    const std::shared_ptr<DataDrivenFilterConfig>* wgsl_config(const std::string& name) const;
-    std::vector<std::string> wgsl_preset_names() const;
-    bool is_wgsl_preset(const std::string& name) const;
 
     // Introspection
     std::vector<std::string> type_names() const;
@@ -178,7 +180,8 @@ private:
     // Helper: extract target name from dylib path and register loader
     void register_target_mapping(const std::string& dylib_path, const std::string& type_name);
 
-    std::unordered_map<std::string, std::shared_ptr<DataDrivenFilterConfig>> wgsl_configs_;
+    std::unordered_map<std::string, std::shared_ptr<WgslOperatorConfig>> shader_operator_configs_;
+    std::unordered_map<std::string, std::string> shader_operator_sources_;
     std::unordered_map<std::string, std::unique_ptr<OperatorLoader>> loaders_;
     std::unordered_map<std::string, DeferredEntry> deferred_;  // probed but not yet loaded
     std::unordered_map<std::string, std::string> target_to_type_;  // cmake target → descriptor name
@@ -190,7 +193,7 @@ private:
         void* handle = nullptr;
     };
     std::vector<DeferredProbeHandle> deferred_probe_handles_;
-    std::unordered_set<std::string> user_filter_types_;
+    std::unordered_set<std::string> user_shader_operator_types_;
     std::unordered_map<std::string, std::string> user_operator_sources_;
     std::unordered_map<std::string, std::string> type_to_package_;  // type_name → package_name
     std::vector<std::unique_ptr<OperatorLoader>> retired_package_loaders_;

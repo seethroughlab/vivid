@@ -140,7 +140,6 @@ bool Graph::parse_doc(const nlohmann::json& root) {
     nodes_.clear();
     connections_.clear();
     midi_mappings_.clear();
-    filters_.clear();
     variations_.clear();
     node_presets_.clear();
     state_preset_mappings_.clear();
@@ -163,46 +162,11 @@ bool Graph::parse_doc(const nlohmann::json& root) {
         vivid_version = vv_it->get<std::string>();
     else
         vivid_version.clear();
-
-    // Parse filters (before nodes, since nodes may reference user filter types)
-    auto filters_it = root.find("filters");
-    if (filters_it != root.end() && filters_it->is_object()) {
-        for (auto& [fkey, fval] : filters_it->items()) {
-            FilterDef fd;
-            fd.name = fkey;
-
-            auto src_it = fval.find("source");
-            if (src_it != fval.end() && src_it->is_string())
-                fd.source = src_it->get<std::string>();
-
-            auto td_it = fval.find("time_dependent");
-            if (td_it != fval.end() && td_it->is_boolean())
-                fd.time_dependent = td_it->get<bool>();
-
-            auto shader_it = fval.find("shader");
-            if (shader_it != fval.end() && shader_it->is_string())
-                fd.shader = shader_it->get<std::string>();
-
-            auto params_it = fval.find("params");
-            if (params_it != fval.end() && params_it->is_array()) {
-                for (auto& pval : *params_it) {
-                    FilterDef::ParamDef pd;
-                    auto pn = pval.find("name");
-                    if (pn != pval.end() && pn->is_string()) pd.name = pn->get<std::string>();
-                    auto pdef = pval.find("default");
-                    if (pdef != pval.end() && pdef->is_number()) pd.default_value = static_cast<float>(pdef->get<double>());
-                    auto pmin = pval.find("min");
-                    if (pmin != pval.end() && pmin->is_number()) pd.min_value = static_cast<float>(pmin->get<double>());
-                    auto pmax_v = pval.find("max");
-                    if (pmax_v != pval.end() && pmax_v->is_number()) pd.max_value = static_cast<float>(pmax_v->get<double>());
-                    fd.params.push_back(std::move(pd));
-                }
-            }
-
-            std::fprintf(stderr, "[vivid] Graph: loaded filter '%s' (source=%s, %zu params)\n",
-                         fd.name.c_str(), fd.source.c_str(), fd.params.size());
-            filters_.push_back(std::move(fd));
-        }
+    if (root.contains("filters")) {
+        std::fprintf(stderr,
+                     "[vivid] Graph: schema %d uses removed graph-level filters; this format is no longer supported.\n",
+                     schema_version);
+        return false;
     }
 
     // Parse nodes
@@ -219,6 +183,12 @@ bool Graph::parse_doc(const nlohmann::json& root) {
             }
 
             parse_node_fields(val, node);
+            if (node.type == "WGSLFilter") {
+                std::fprintf(stderr,
+                             "[vivid] Graph: node '%s' uses removed type WGSLFilter; this format is no longer supported.\n",
+                             node.id.c_str());
+                return false;
+            }
 
             if (find_node(node.id)) {
                 std::fprintf(stderr, "[vivid] Graph: duplicate node id '%s', skipping\n", node.id.c_str());
@@ -578,46 +548,6 @@ NodeDef* Graph::find_node(const std::string& id) {
     return nullptr;
 }
 
-// --- Filter Mutation ---
-
-void Graph::add_filter(FilterDef filter) {
-    // Replace if already exists
-    for (auto& f : filters_) {
-        if (f.name == filter.name) {
-            f = std::move(filter);
-            return;
-        }
-    }
-    filters_.push_back(std::move(filter));
-}
-
-const FilterDef* Graph::find_filter(const std::string& name) const {
-    for (const auto& f : filters_) {
-        if (f.name == name) return &f;
-    }
-    return nullptr;
-}
-
-FilterDef* Graph::find_filter(const std::string& name) {
-    for (auto& f : filters_) {
-        if (f.name == name) return &f;
-    }
-    return nullptr;
-}
-
-bool Graph::remove_filter(const std::string& name) {
-    auto it = std::find_if(filters_.begin(), filters_.end(),
-        [&](const FilterDef& f) { return f.name == name; });
-    if (it == filters_.end()) return false;
-    filters_.erase(it);
-    return true;
-}
-
-void Graph::update_filter_shader(const std::string& name, const std::string& source) {
-    auto* f = find_filter(name);
-    if (f) f->shader = source;
-}
-
 // --- MIDI Mapping Mutation ---
 
 bool Graph::add_midi_mapping(const std::string& node_id, const std::string& param,
@@ -949,37 +879,6 @@ static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
     // Schema metadata
     root["schema_version"] = GRAPH_SCHEMA_VERSION;
     root["vivid_version"] = VIVID_CORE_VERSION;
-
-    // Filters
-    if (!graph.filters().empty()) {
-        nlohmann::ordered_json filters_obj = nlohmann::ordered_json::object();
-        for (const auto& fd : graph.filters()) {
-            nlohmann::ordered_json f_obj = nlohmann::ordered_json::object();
-            if (!fd.source.empty())
-                f_obj["source"] = fd.source;
-            if (fd.time_dependent)
-                f_obj["time_dependent"] = true;
-
-            if (!fd.params.empty()) {
-                nlohmann::ordered_json p_arr = nlohmann::ordered_json::array();
-                for (const auto& pd : fd.params) {
-                    nlohmann::ordered_json p_obj = nlohmann::ordered_json::object();
-                    p_obj["name"] = pd.name;
-                    p_obj["default"] = static_cast<double>(pd.default_value);
-                    p_obj["min"] = static_cast<double>(pd.min_value);
-                    p_obj["max"] = static_cast<double>(pd.max_value);
-                    p_arr.push_back(std::move(p_obj));
-                }
-                f_obj["params"] = std::move(p_arr);
-            }
-
-            if (!fd.shader.empty())
-                f_obj["shader"] = fd.shader;
-
-            filters_obj[fd.name] = std::move(f_obj);
-        }
-        root["filters"] = std::move(filters_obj);
-    }
 
     // Nodes
     nlohmann::ordered_json nodes_obj = nlohmann::ordered_json::object();

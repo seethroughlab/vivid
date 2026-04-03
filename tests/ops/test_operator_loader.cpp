@@ -507,18 +507,20 @@ int main() {
         check(found_bad_custom, "loader failure diagnostics include bad custom-type plugin");
     }
 
-    // Test 23: User filter register/unregister cycle
+    // Test 23: Shader operator register/unregister cycle
     {
-        std::fprintf(stderr, "\n--- User filter register/unregister ---\n");
+        std::fprintf(stderr, "\n--- Shader operator register/unregister ---\n");
         vivid::OperatorRegistry reg;
 
-        auto config = std::make_shared<vivid::DataDrivenFilterConfig>();
+        auto config = std::make_shared<vivid::WgslOperatorConfig>();
         config->name = "MyFilter";
         config->shader_path = "/tmp/my_filter.wgsl";
 
-        reg.register_user_filter("MyFilter", config);
-        check(reg.is_user_filter("MyFilter"), "is_user_filter after register");
+        reg.register_shader_operator(config, true);
+        check(reg.is_user_shader_operator("MyFilter"), "is_user_shader_operator after register");
+        check(reg.is_shader_operator("MyFilter"), "is_shader_operator after register");
         check(reg.find("MyFilter") != nullptr, "find MyFilter after register");
+        check(reg.shader_operator_config("MyFilter") != nullptr, "shader_operator_config after register");
 
         auto names = reg.type_names();
         bool found = false;
@@ -527,8 +529,9 @@ int main() {
         }
         check(found, "type_names includes MyFilter");
 
-        reg.unregister_user_filter("MyFilter");
-        check(!reg.is_user_filter("MyFilter"), "not user_filter after unregister");
+        reg.unregister_shader_operator("MyFilter");
+        check(!reg.is_user_shader_operator("MyFilter"), "not user shader operator after unregister");
+        check(!reg.is_shader_operator("MyFilter"), "not shader operator after unregister");
 
         names = reg.type_names();
         found = false;
@@ -537,7 +540,8 @@ int main() {
         }
         check(!found, "type_names no longer includes MyFilter");
 
-        check(!reg.is_user_filter("nonexistent"), "is_user_filter nonexistent = false");
+        check(!reg.is_user_shader_operator("nonexistent"), "is_user_shader_operator nonexistent = false");
+        check(reg.shader_operator_config("nonexistent") == nullptr, "shader_operator_config nonexistent = null");
     }
 
     // Test 24: User operator register/query
@@ -622,14 +626,15 @@ int main() {
         check(reg.package_for_type("nonexistent") == nullptr, "package_for_type nonexistent = null");
     }
 
-    // Test 27: WGSL preset accessors (empty registry)
+    // Test 27: Shader operator accessors (empty registry)
     {
-        std::fprintf(stderr, "\n--- WGSL preset accessors ---\n");
+        std::fprintf(stderr, "\n--- Shader operator accessors ---\n");
         vivid::OperatorRegistry reg;
 
-        check(!reg.is_wgsl_preset("nonexistent"), "is_wgsl_preset nonexistent = false");
-        check(reg.wgsl_config("nonexistent") == nullptr, "wgsl_config nonexistent = null");
-        check(reg.wgsl_preset_names().empty(), "wgsl_preset_names empty on fresh registry");
+        check(!reg.is_shader_operator("nonexistent"), "is_shader_operator nonexistent = false");
+        check(!reg.is_user_shader_operator("nonexistent"), "is_user_shader_operator nonexistent = false");
+        check(reg.shader_operator_config("nonexistent") == nullptr, "shader_operator_config nonexistent = null");
+        check(reg.shader_operator_source("nonexistent") == nullptr, "shader_operator_source nonexistent = null");
     }
 
     // Test 28: type_to_target reverse mapping
@@ -689,36 +694,36 @@ int main() {
         check(new_inst == nullptr, "create_instance returns null after unload");
     }
 
-    // Test 31: destroy_instance(nullptr) on a data-driven loader is a safe no-op
+    // Test 31: destroy_instance(nullptr) on a shader-operator loader is a safe no-op
     {
-        std::fprintf(stderr, "\n--- destroy_instance(nullptr) on data-driven loader ---\n");
-        auto config = std::make_shared<vivid::DataDrivenFilterConfig>();
+        std::fprintf(stderr, "\n--- destroy_instance(nullptr) on shader-operator loader ---\n");
+        auto config = std::make_shared<vivid::WgslOperatorConfig>();
         config->name = "NullSafetyFilter";
         config->shader_path = "/tmp/null_safety.wgsl";
 
         vivid::OperatorLoader loader;
-        loader.init_data_driven(std::move(config));
-        check(loader.is_loaded(), "data-driven: is_loaded after init");
+        loader.init_wgsl_operator(std::move(config));
+        check(loader.is_loaded(), "shader operator: is_loaded after init");
 
         // Must not crash or dereference nullptr
         loader.destroy_instance(nullptr);
-        check(true, "data-driven: destroy_instance(nullptr) does not crash");
+        check(true, "shader operator: destroy_instance(nullptr) does not crash");
     }
 
-    // Test 32: process(nullptr, ctx) on a data-driven loader is a safe no-op
+    // Test 32: process(nullptr, ctx) on a shader-operator loader is a safe no-op
     {
-        std::fprintf(stderr, "\n--- process(nullptr, ctx) on data-driven loader ---\n");
-        auto config = std::make_shared<vivid::DataDrivenFilterConfig>();
+        std::fprintf(stderr, "\n--- process(nullptr, ctx) on shader-operator loader ---\n");
+        auto config = std::make_shared<vivid::WgslOperatorConfig>();
         config->name = "NullSafetyFilter2";
         config->shader_path = "/tmp/null_safety2.wgsl";
 
         vivid::OperatorLoader loader;
-        loader.init_data_driven(std::move(config));
+        loader.init_wgsl_operator(std::move(config));
 
         VividFrameContext ctx{};
         // Must not crash or dereference nullptr
         loader.process_frame(nullptr, &ctx);
-        check(true, "data-driven: process(nullptr, ctx) does not crash");
+        check(true, "shader operator: process(nullptr, ctx) does not crash");
     }
 
     // Test 33: hot-reload failure keeps the previous loader active

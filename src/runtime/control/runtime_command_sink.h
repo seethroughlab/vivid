@@ -15,7 +15,6 @@
 #include "runtime/packages/package_manager.h"
 #include "runtime/core/build_console.h"
 #include "runtime/operators/operator_destination_policy.h"
-#include "operator_api/data_driven_filter.h"
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -25,6 +24,7 @@
 #include <string>
 #include <chrono>
 #include <array>
+#include <functional>
 
 class RuntimeCommandSink : public vivid::ui::UICommandSink {
 public:
@@ -186,13 +186,14 @@ public:
 
     void open_shader(const std::string& type_name) override;
 
-    void duplicate_as_user_filter(const std::string& type_name) override;
-
     void clone_and_edit(const std::string& type_name) override {
         clone_and_edit(type_name, "auto");
     }
 
     void clone_and_edit(const std::string& type_name, const std::string& destination) override;
+    void clone_and_edit_for_node(const std::string& node_id,
+                                 const std::string& type_name,
+                                 const std::string& destination) override;
 
     bool has_project_clone_destination() override;
 
@@ -286,19 +287,20 @@ public:
         capture_undo_snapshot();
     }
     void set_operators_dir(const std::string& dir) { operators_dir_ = dir; }
-    void set_filters_dir(const std::string& dir) { filters_dir_ = dir; }
     void set_registry(vivid::OperatorRegistry* r) { registry_ = r; }
     void set_graph(vivid::Graph* g) {
         graph_ = g;
         reset_undo_history();
     }
     void set_op_cache(OperatorInfoCache* c) { op_cache_ = c; }
-    void set_working_filters_dir(const std::string& dir) { working_filters_dir_ = dir; }
     void set_build_dir(const std::string& dir) { build_dir_ = dir; }
     void set_settings(vivid::Settings* s) { settings_ = s; }
     void set_hot_reloader(vivid::HotReloader* hr) { hot_reloader_ = hr; }
     void set_package_manager(vivid::PackageManager* pm) { package_manager_ = pm; }
     void set_build_console(vivid::BuildConsole* bc) { build_console_ = bc; }
+    void set_shader_watch_callback(std::function<void(const std::string&)> cb) {
+        shader_watch_callback_ = std::move(cb);
+    }
     void capture_external_undo_snapshot() {
         last_coalesce_key_.clear();
         capture_undo_snapshot();
@@ -307,8 +309,11 @@ public:
 private:
     void capture_undo_snapshot(const std::string& coalesce_key = "");
 
-    // Find the .wgsl preset file for a given type name in the filters/ directory
-    std::string find_preset_wgsl(const std::string& type_name);
+    std::string project_shader_dir() const;
+    std::string make_unique_shader_operator_name(const std::string& base_name) const;
+    bool clone_shader_operator(const std::string& type_name,
+                               const std::string& node_id = {},
+                               std::string* error = nullptr);
 
     bool patch_package_cmake_ops(const std::string& pkg_dir, const std::string& op_name);
 
@@ -322,8 +327,6 @@ private:
     bool* has_gpu_ops_ = nullptr;
     bool* has_audio_ = nullptr;
     std::string operators_dir_;
-    std::string filters_dir_;
-    std::string working_filters_dir_;
     std::string build_dir_;
     vivid::OperatorRegistry* registry_ = nullptr;
     vivid::Graph* graph_ = nullptr;
@@ -332,4 +335,5 @@ private:
     vivid::HotReloader* hot_reloader_ = nullptr;
     vivid::PackageManager* package_manager_ = nullptr;
     vivid::BuildConsole* build_console_ = nullptr;
+    std::function<void(const std::string&)> shader_watch_callback_;
 };

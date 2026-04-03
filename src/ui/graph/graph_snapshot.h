@@ -222,9 +222,6 @@ struct GraphSnapshot {
     std::vector<std::string> operator_types;  // sorted list
     std::unordered_map<std::string, std::shared_ptr<const OperatorInfo>> operator_catalog;
 
-    // WGSL preset names for filter selector UI
-    std::vector<std::string> wgsl_preset_names;
-
     // Variation data
     std::vector<VariationInfo> variations;
     int active_variation = -1;

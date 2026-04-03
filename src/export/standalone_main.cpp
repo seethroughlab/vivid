@@ -13,7 +13,6 @@
 #include "runtime/operators/builtin_operators.h"
 #include "runtime/audio/system_midi.h"
 #include "operator_api/gpu_operator.h"
-#include "operator_api/data_driven_filter.h"
 #include "operator_api/types.h"
 #include "common/gpu_util.h"
 #include "embedded_graph.h"
@@ -37,8 +36,8 @@
 
 // Forward declarations from generated files
 void register_static_operators(vivid::OperatorRegistry& registry);
-#ifdef VIVID_HAS_WGSL_PRESETS
-void register_embedded_wgsl_presets(vivid::OperatorRegistry& registry);
+#ifdef VIVID_HAS_SHADER_OPERATORS
+void register_embedded_shader_operators(vivid::OperatorRegistry& registry);
 #endif
 
 using vivid::to_sv;
@@ -124,8 +123,8 @@ int main(int argc, char* argv[]) {
     register_builtin_operators(registry);
     register_static_operators(registry);
 
-#ifdef VIVID_HAS_WGSL_PRESETS
-    register_embedded_wgsl_presets(registry);
+#ifdef VIVID_HAS_SHADER_OPERATORS
+    register_embedded_shader_operators(registry);
 #endif
 
     // --- Load Graph ---
@@ -143,34 +142,6 @@ int main(int argc, char* argv[]) {
         glfwDestroyWindow(window);
         glfwTerminate();
         return 1;
-    }
-
-    // Register user filters from graph JSON (inline WGSL shaders)
-    if (!graph.filters().empty()) {
-        namespace fs = std::filesystem;
-        auto tmp_dir = fs::temp_directory_path() / "vivid_standalone_filters";
-        fs::create_directories(tmp_dir);
-
-        for (const auto& fd : graph.filters()) {
-            std::string working_path = (tmp_dir / (fd.name + ".wgsl")).string();
-            { std::ofstream ofs(working_path); ofs << fd.shader; }
-
-            auto config = std::make_shared<vivid::DataDrivenFilterConfig>();
-            config->name = fd.name;
-            config->shader_path = working_path;
-            config->source_builtin = fd.source;
-            config->time_dependent = fd.time_dependent;
-            for (const auto& pd : fd.params) {
-                vivid::DataDrivenFilterConfig::ParamDef cpd;
-                cpd.name = pd.name;
-                cpd.default_value = pd.default_value;
-                cpd.min_value = pd.min_value;
-                cpd.max_value = pd.max_value;
-                config->params.push_back(std::move(cpd));
-            }
-            registry.register_user_filter(fd.name, config);
-            std::fprintf(stderr, "[standalone] Registered user filter: %s\n", fd.name.c_str());
-        }
     }
 
     // --- Build Runtime ---

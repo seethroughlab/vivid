@@ -15,7 +15,6 @@ struct WindowUserData {
     vivid::ui::NodeGraphUI* graph_ui = nullptr;
     vivid::RuntimeAPI* runtime_api = nullptr;
     vivid::Graph* graph = nullptr;
-    std::string working_filters_dir;
     vivid::Settings* settings = nullptr;
 
     // Input forwarding to operators (when UI hidden)

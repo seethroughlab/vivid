@@ -143,6 +143,7 @@ public:
     CommandResult new_project(const std::string& dir_path, bool& has_gpu_ops, bool& has_audio);
     CommandResult apply_snapshot_json(const std::string& graph_json,
                                       bool& has_gpu_ops, bool& has_audio);
+    CommandResult rebuild_current_graph(bool& has_gpu_ops, bool& has_audio);
 
     // Solo mode (session-only, not serialized)
     CommandResult set_solo(const std::string& node_id);  // empty string = clear solo

@@ -7,7 +7,7 @@
 
 namespace vivid {
 
-struct DataDrivenFilterConfig;
+struct WgslOperatorConfig;
 
 class OperatorLoader {
 public:
@@ -27,7 +27,7 @@ public:
 
     bool load(const char* path);
     void init_builtin(VividDescriptorFn, VividCreateFn, VividDestroyFn, VividProcessFrameFn);
-    void init_data_driven(std::shared_ptr<DataDrivenFilterConfig> config);
+    void init_wgsl_operator(std::shared_ptr<WgslOperatorConfig> config);
     void unload();
 
     const VividOperatorDescriptor* descriptor() const;
@@ -54,7 +54,7 @@ public:
                             const char** file_param_values, uint32_t file_param_count) const;
 
     bool is_loaded() const { return handle_ != nullptr || desc_fn_ != nullptr || dd_config_ != nullptr; }
-    bool is_data_driven() const { return dd_config_ != nullptr; }
+    bool is_shader_operator() const { return dd_config_ != nullptr; }
     const LastError& last_error() const { return last_error_; }
 
 private:
@@ -75,8 +75,8 @@ private:
     VividInspectorModeFn   insp_mode_fn_      = nullptr;
     void fixup_dd_pointers();  // re-point all C string pointers after move
 
-    // Data-driven filter support
-    std::shared_ptr<DataDrivenFilterConfig> dd_config_;
+    // Shader-backed operator support
+    std::shared_ptr<WgslOperatorConfig> dd_config_;
     // Owned descriptor + owned string/param storage for stable const char* pointers
     std::string dd_name_;
     std::vector<std::string> dd_param_names_;

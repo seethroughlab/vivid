@@ -285,4 +285,24 @@ int FileWatcher::add_package_watches(const std::string& packages_dir) {
     return count;
 }
 
+int FileWatcher::add_shader_operator_watches(const std::string& directory) {
+    namespace fs = std::filesystem;
+    if (directory.empty() || !fs::exists(directory)) return 0;
+
+    int count = 0;
+    std::error_code ec;
+    for (const auto& entry : fs::directory_iterator(directory, ec)) {
+        if (ec) break;
+        if (!entry.is_regular_file()) continue;
+        if (entry.path().extension() != ".wgsl") continue;
+        if (add_watch(entry.path().string(), "shader:" + entry.path().string()))
+            count++;
+    }
+    if (count > 0) {
+        std::fprintf(stderr, "[vivid] FileWatcher: watching %d shader files in %s\n",
+                     count, directory.c_str());
+    }
+    return count;
+}
+
 } // namespace vivid

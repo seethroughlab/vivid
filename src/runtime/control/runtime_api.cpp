@@ -206,17 +206,6 @@ CommandResult RuntimeAPI::set_param(const std::string& node_id, const std::strin
 
 CommandResult RuntimeAPI::set_string_param(const std::string& node_id, const std::string& param,
                                            const std::string& value) {
-    // WGSLFilter preset selection — triggers a full graph rebuild
-    if (param == "filter") {
-        NodeDef* ndef = graph_.find_node(node_id);
-        if (ndef && (ndef->type == "WGSLFilter" || registry_.is_wgsl_preset(ndef->type))) {
-            ndef->string_params["filter"] = value;
-            pending_topology_change_ = true;
-            mark_graph_dirty();
-            return {true, node_id + "/filter = " + value};
-        }
-    }
-
     auto* cg = core_.compiled_graph();
     auto* cn = cg->find_node(node_id);
     if (!cn) return {false, "unknown node '" + node_id + "'"};
@@ -335,7 +324,6 @@ CommandResult RuntimeAPI::set_resolution(const std::string& node_id, uint32_t wi
 
 CommandResult RuntimeAPI::add_node(const std::string& type, const std::string& id) {
     const bool is_non_registry_type =
-        registry_.is_wgsl_preset(type) ||
         (core_.subgraph_modules() && core_.subgraph_modules()->find(type));
     if (!is_non_registry_type) {
         auto prepared = prepare_operator_type_sync(registry_, type);
@@ -1626,6 +1614,50 @@ CommandResult RuntimeAPI::apply_snapshot_json(const std::string& graph_json,
     reload_serial_++;
     refresh_graph_dirty_from_saved_snapshot();
     return {true, "applied graph snapshot"};
+}
+
+CommandResult RuntimeAPI::rebuild_current_graph(bool& has_gpu_ops, bool& has_audio) {
+    const PreservedRuntimeState preserved_state =
+        capture_preserved_runtime_state_for_path(graph_.source_path());
+    const bool preserve_runtime_state = preserved_state.active;
+
+    bool had_audio = has_audio;
+    if (had_audio) {
+        audio_engine_.shutdown();
+        has_audio = false;
+    }
+    core_.shutdown();
+    registry_.clear_retired_package_loaders();
+
+    if (!core_.build(graph_, registry_)) {
+        has_gpu_ops = false;
+        has_audio = false;
+        preserve_undo_history_on_reload_ = false;
+        reload_serial_++;
+        return {false, "rebuild failed"};
+    }
+
+    if (preserve_runtime_state) {
+        apply_preserved_runtime_state(preserved_state);
+    }
+
+    has_gpu_ops = core_.has_gpu_operators();
+    if (has_gpu_ops) needs_gpu_realloc_ = true;
+
+    if (core_.has_audio_operators()) {
+        if (audio_engine_.build(core_)) {
+            if (audio_engine_.start()) {
+                has_audio = true;
+            }
+        }
+    }
+
+    pending_topology_change_ = false;
+    active_crossfades_.clear();
+    preserve_undo_history_on_reload_ = true;
+    reload_serial_++;
+    refresh_graph_dirty_from_saved_snapshot();
+    return {true, "rebuilt graph"};
 }
 
 std::filesystem::path RuntimeAPI::graph_base_dir() const {
