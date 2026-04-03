@@ -121,7 +121,7 @@ void AudioEngine::pre_reload_operator(const std::string& type_name) {
 
 // Phase 2: Create new instances from the new (already-swapped) loader.
 bool AudioEngine::post_reload_operator(const std::string& type_name, OperatorRegistry& registry) {
-    OperatorLoader* new_loader = registry.find(type_name);
+    OperatorLoader* new_loader = registry.find_loaded(type_name);
     if (!new_loader || !new_loader->descriptor()) {
         resume();
         reload_saved_.clear();

@@ -96,6 +96,12 @@ re-points them after a move.
 `OperatorRegistry` (operator_registry.h/cpp) is the central catalog of all operator types.
 It maps `type_name → OperatorLoader` and supports deferred (probe-only) loading.
 
+`OperatorRegistry` is now treated as the **low-level** loader/catalog primitive. Runtime callers
+that need on-demand operator materialization are expected to go through
+`OperatorPreparationService` (`src/runtime/operators/operator_preparation_service.h`) instead of
+calling lazy-loading entry points ad hoc. That keeps async UI graph transactions, blocking
+runtime callers, and package/test flows on one preparation path.
+
 ### Scanning
 
 ```cpp
@@ -117,6 +123,28 @@ OperatorLoader* find(const std::string& type_name);        // may trigger lazy d
 OperatorLoader* find_loaded(const std::string& type_name); // never triggers load
 const VividOperatorDescriptor* probe_descriptor(const std::string& type_name) const;
 ```
+
+`probe_descriptor()` is the preferred read-only metadata path. It exposes deferred-probe
+descriptors without forcing a dylib load, which keeps catalog/introspection surfaces cheap.
+
+### OperatorPreparationService
+
+`OperatorPreparationService` centralizes expensive operator materialization work:
+
+```cpp
+TaskId submit(OperatorPrepareRequest request);
+OperatorPrepareResult wait(TaskId task_id);
+OperatorPrepareStage task_stage(TaskId task_id) const;
+```
+
+Supported request kinds:
+
+- `PrepareOperatorType`
+- `PrepareGraphOperators`
+- `ReloadPackageOperators`
+
+The service serializes those tasks, deduplicates identical in-flight requests, and exposes a
+shared stage vocabulary used by async graph/add UI flows and blocking runtime callers.
 
 ### Registration
 

@@ -1535,7 +1535,7 @@ void NodeGraphUI::delete_selected() {
 }
 
 void NodeGraphUI::open_chooser() {
-    if (async_add_active_) return;
+    if (async_add_active_ || async_graph_load_active_) return;
     if (!snap_valid_ || snap_.operator_types.empty()) return;
     // Center chooser in visible graph area
     float center_sx = graph_right() * 0.5f;

@@ -30,7 +30,7 @@ void NodeGraphUI::on_mouse_move(float x, float y) {
 
 void NodeGraphUI::on_mouse_button(int button, int action, int mods) {
     mouse_.shift_down = (mods & GLFW_MOD_SHIFT) != 0;
-    if (async_add_active_) {
+    if (async_add_active_ || async_graph_load_active_) {
         if (button == GLFW_MOUSE_BUTTON_LEFT) {
             if (action == GLFW_RELEASE) {
                 mouse_.left_down = false;
@@ -101,7 +101,7 @@ void NodeGraphUI::on_mouse_button(int button, int action, int mods) {
 }
 
 void NodeGraphUI::on_scroll(float x_offset, float y_offset, int mods) {
-    if (async_add_active_) return;
+    if (async_add_active_ || async_graph_load_active_) return;
     // Delegate to dialog manager first (handles pkg/example browser scroll, about scroll, etc.)
     if (dialogs_.on_scroll(y_offset)) return;
 
@@ -731,7 +731,7 @@ bool NodeGraphUI::handle_graph_global_key(int key, int action, int mods, bool mo
 // Keyboard input
 // -----------------------------------------------------------------------
 void NodeGraphUI::on_key(int key, int action, int mods) {
-    if (async_add_active_) return;
+    if (async_add_active_ || async_graph_load_active_) return;
     if (inspector_.custom_inspector_wants_keyboard) {
         if (action == GLFW_PRESS || action == GLFW_REPEAT || action == GLFW_RELEASE) {
             inspector_.insp_key_events.push_back({key, action, mods});
@@ -874,7 +874,7 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
 }
 
 void NodeGraphUI::on_char(unsigned int codepoint) {
-    if (async_add_active_) return;
+    if (async_add_active_ || async_graph_load_active_) return;
     // Buffer char events for custom inspector when it wants keyboard focus
     if (inspector_.custom_inspector_wants_keyboard) {
         inspector_.insp_char_events.push_back(codepoint);

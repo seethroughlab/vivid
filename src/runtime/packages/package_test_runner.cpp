@@ -2,6 +2,7 @@
 #include "runtime/packages/package_manager.h"
 #include "runtime/packages/package_compiler.h"
 #include "runtime/operators/operator_registry.h"
+#include "runtime/operators/operator_preparation_service.h"
 #include "runtime/graph/graph.h"
 #include "runtime/core/runtime_core.h"
 #include <array>
@@ -99,8 +100,15 @@ static SingleTestResult run_graph_test(const std::string& graph_path,
         return r;
     }
 
-    // Load operators the graph needs
-    registry.load_for_graph(graph);
+    auto prepared = prepare_graph_operators_sync(registry, graph);
+    if (!prepared.success) {
+        r.status = "failed";
+        r.code = "graph_prepare_failed";
+        r.reason = prepared.user_message.empty()
+            ? "Failed to prepare operators for graph"
+            : prepared.user_message;
+        return r;
+    }
 
     // Build runtime
     RuntimeCore runtime;

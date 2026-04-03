@@ -621,6 +621,7 @@ void OperatorRegistry::register_target_mapping(const std::string& dylib_path,
 }
 
 bool OperatorRegistry::load_for_graph(const Graph& graph) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     for (const auto& ndef : graph.nodes()) {
         const std::string resolved = resolve_alias_once(aliases_, ndef.type);
         if (loaders_.count(resolved)) continue;      // already loaded
@@ -709,6 +710,7 @@ OperatorLoader* OperatorRegistry::find(const std::string& type_name) {
 
 void OperatorRegistry::register_user_filter(const std::string& name,
                                             std::shared_ptr<DataDrivenFilterConfig> config) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (loaders_.count(name)) {
         std::fprintf(stderr, "[vivid] warning: re-registering operator type '%s'\n", name.c_str());
     }
@@ -720,11 +722,13 @@ void OperatorRegistry::register_user_filter(const std::string& name,
 }
 
 void OperatorRegistry::unregister_user_filter(const std::string& name) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     loaders_.erase(name);
     user_filter_types_.erase(name);
 }
 
 bool OperatorRegistry::is_user_filter(const std::string& name) const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     return user_filter_types_.count(name) > 0;
 }
 
@@ -815,6 +819,7 @@ bool OperatorRegistry::is_wgsl_preset(const std::string& name) const {
 }
 
 bool OperatorRegistry::reload_operator(const std::string& type_name, const std::string& new_dylib_path) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     auto it = loaders_.find(type_name);
     if (it == loaders_.end()) {
         std::fprintf(stderr, "[vivid] Registry: unknown type '%s' for reload\n", type_name.c_str());

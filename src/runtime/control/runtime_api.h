@@ -33,6 +33,13 @@ struct ActiveCrossfade {
 
 class RuntimeAPI {
 public:
+    struct PreservedRuntimeState {
+        bool active = false;
+        std::unordered_map<std::string, std::unordered_map<std::string, float>> params;
+        std::unordered_map<std::string, std::unordered_map<std::string, std::string>> string_params;
+        std::unordered_map<std::string, std::unordered_map<std::string, uint8_t>> lock_flags;
+    };
+
     RuntimeAPI(Graph& graph, RuntimeCore& core, AudioEngine& audio_engine,
                OperatorRegistry& registry, SystemMidiListener* system_midi = nullptr);
 
@@ -148,6 +155,9 @@ public:
     void clear_gpu_realloc() { needs_gpu_realloc_ = false; }
     uint64_t reload_serial() const { return reload_serial_; }
     void notify_external_graph_mutation();
+    void finalize_external_graph_load();
+    PreservedRuntimeState capture_preserved_runtime_state_for_path(const std::string& path) const;
+    void apply_preserved_runtime_state(const PreservedRuntimeState& state);
     bool consume_preserve_undo_history_reload() {
         bool preserve = preserve_undo_history_on_reload_;
         preserve_undo_history_on_reload_ = false;

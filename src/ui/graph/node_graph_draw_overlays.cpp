@@ -211,6 +211,8 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
     dialogs_.set_frame_counter(perf_frame_counter_);
     dialogs_.draw(tr, mouse_, style_, popup_opacity_, win_w_, win_h_, text_edit_, cursor_blink_on());
     draw_async_add_overlay(tr);
+    draw_async_graph_load_overlay(tr);
+    draw_status_banner(tr);
 }
 
 void NodeGraphUI::draw_async_add_overlay(Renderer2D& tr) {
@@ -250,6 +252,63 @@ void NodeGraphUI::draw_async_add_overlay(Renderer2D& tr) {
     tr.push_clip_rect(px + 16.0f, py + 78.0f, panel_w - 32.0f, 24.0f);
     tr.draw_text(px + 16.0f, py + 78.0f, body.c_str(),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    tr.pop_clip_rect();
+}
+
+void NodeGraphUI::draw_async_graph_load_overlay(Renderer2D& tr) {
+    if (!async_graph_load_active_) return;
+
+    tr.draw_rect(0.0f, 0.0f, static_cast<float>(win_w_), static_cast<float>(win_h_),
+                 0.02f, 0.03f, 0.04f, 0.55f);
+
+    const float panel_w = 380.0f;
+    const float panel_h = 132.0f;
+    const float px = (static_cast<float>(win_w_) - panel_w) * 0.5f;
+    const float py = (static_cast<float>(win_h_) - panel_h) * 0.5f;
+    draw_popup_bg(tr, style_, px, py, panel_w, panel_h);
+    tr.draw_rect(px, py, panel_w, 2.0f, style_.accent[0], style_.accent[1], style_.accent[2]);
+
+    const char* title = "Loading Graph";
+    const char* stage = "Loading graph...";
+    switch (async_graph_load_stage_) {
+        case AsyncGraphLoadStage::Loading: stage = "Loading graph..."; break;
+        case AsyncGraphLoadStage::PreparingOperators: stage = "Preparing operators..."; break;
+        case AsyncGraphLoadStage::Compiling: stage = "Compiling graph..."; break;
+        case AsyncGraphLoadStage::Applying: stage = "Applying graph..."; break;
+    }
+
+    static const char* spinner_frames[] = {"...", ".  ", ".. "};
+    int spinner_idx = static_cast<int>(cursor_blink_time_ * 6.0f) % 3;
+
+    tr.draw_text(px + 16.0f, py + 16.0f, title,
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    tr.draw_text(px + 16.0f, py + 50.0f, spinner_frames[spinner_idx],
+                 style_.accent[0], style_.accent[1], style_.accent[2]);
+    tr.draw_text(px + 52.0f, py + 50.0f, stage,
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+
+    std::string body = async_graph_load_display_name_.empty()
+        ? "Please wait while Vivid prepares the requested graph."
+        : ("Please wait while Vivid prepares " + async_graph_load_display_name_ + ".");
+    tr.push_clip_rect(px + 16.0f, py + 78.0f, panel_w - 32.0f, 24.0f);
+    tr.draw_text(px + 16.0f, py + 78.0f, body.c_str(),
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    tr.pop_clip_rect();
+}
+
+void NodeGraphUI::draw_status_banner(Renderer2D& tr) {
+    if (status_banner_error_.empty()) return;
+
+    const float banner_max_w = std::min(520.0f, static_cast<float>(win_w_) - 32.0f);
+    const float banner_h = 30.0f;
+    const float bx = (static_cast<float>(win_w_) - banner_max_w) * 0.5f;
+    const float by = kPerfBarH + 12.0f;
+
+    tr.draw_rect(bx, by, banner_max_w, banner_h, 0.26f, 0.07f, 0.07f, 0.94f);
+    tr.draw_rect(bx, by, banner_max_w, 1.0f, 0.95f, 0.36f, 0.36f, 0.9f);
+    tr.push_clip_rect(bx + 10.0f, by + 6.0f, banner_max_w - 20.0f, banner_h - 12.0f);
+    tr.draw_text(bx + 10.0f, by + 7.0f, status_banner_error_.c_str(),
+                 0.98f, 0.82f, 0.82f, 1.0f);
     tr.pop_clip_rect();
 }
 

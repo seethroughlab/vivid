@@ -162,6 +162,27 @@ int main() {
               "Chooser shows compact async add failure summary");
     }
 
+    // Async graph load: modal state and bounded error banner
+    {
+        DummySink sink;
+        NodeGraphUI ui(sink);
+
+        ui.begin_async_graph_load("demo.json");
+        check(ui.async_graph_load_active_, "Async graph load becomes active");
+        check(ui.status_banner_error_.empty(), "Async graph load clears any prior status banner");
+
+        ui.set_async_graph_load_stage(NodeGraphUI::AsyncGraphLoadStage::Compiling);
+        ui.notify_async_graph_load_failure("failed to load demo.json");
+        check(!ui.async_graph_load_active_, "Async graph load clears active state on failure");
+        check(ui.status_banner_error_ == "failed to load demo.json",
+              "Async graph load failure stores bounded status banner text");
+
+        ui.begin_async_graph_load("demo.json");
+        ui.notify_async_graph_load_success();
+        check(!ui.async_graph_load_active_, "Async graph load clears active state on success");
+        check(ui.status_banner_error_.empty(), "Async graph load success clears status banner");
+    }
+
     // Package browser: install action dispatch
     {
         DummySink sink;

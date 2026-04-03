@@ -99,6 +99,13 @@ public:
         Applying,
     };
 
+    enum class AsyncGraphLoadStage {
+        Loading,
+        PreparingOperators,
+        Compiling,
+        Applying,
+    };
+
     NodeGraphUI(UICommandSink& commands);
 
     // GLFW callbacks
@@ -117,6 +124,7 @@ public:
     bool wants_keyboard() const {
         return dialogs_.wants_keyboard()
             || async_add_active_
+            || async_graph_load_active_
             || chooser_open_
             || context_menu_open_
             || patch_ctx_open_
@@ -154,9 +162,15 @@ public:
     }
     bool async_add_active() const { return async_add_active_; }
     void set_async_add_stage(AsyncAddStage stage) { async_add_stage_ = stage; }
+    void begin_async_graph_load(const std::string& display_name);
+    bool async_graph_load_active() const { return async_graph_load_active_; }
+    void set_async_graph_load_stage(AsyncGraphLoadStage stage) { async_graph_load_stage_ = stage; }
+    void notify_async_graph_load_success();
+    void notify_async_graph_load_failure(const std::string& summary);
     void update_modal_only();
     void notify_async_add_success(const std::string& node_id);
     void notify_async_add_failure(const std::string& summary);
+    void clear_status_banner() { status_banner_error_.clear(); }
 
     // State queries (used by menu bar for checkmarks)
     bool session_grid_open() const { return session_grid_open_; }
@@ -336,6 +350,8 @@ private:
     void draw_inspector_scrollbar(Renderer2D& tr);
     void draw_midi_map_banner(Renderer2D& tr);
     void draw_async_add_overlay(Renderer2D& tr);
+    void draw_async_graph_load_overlay(Renderer2D& tr);
+    void draw_status_banner(Renderer2D& tr);
     // draw_core_update_banner moved to DialogManager
 
     // --- Session grid ---
@@ -745,6 +761,10 @@ private:
     bool async_add_active_ = false;
     AsyncAddStage async_add_stage_ = AsyncAddStage::Preparing;
     std::string async_add_display_name_;
+    bool async_graph_load_active_ = false;
+    AsyncGraphLoadStage async_graph_load_stage_ = AsyncGraphLoadStage::Loading;
+    std::string async_graph_load_display_name_;
+    std::string status_banner_error_;
 
     // Wire rendering style toggle (B key)
     bool bezier_wires_ = false;

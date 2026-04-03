@@ -5,6 +5,7 @@
 #include "runtime/graph/compiled_graph.h"
 #include "runtime/audio/audio_engine.h"
 #include "runtime/operators/operator_registry.h"
+#include "runtime/operators/operator_preparation_service.h"
 #include "runtime/audio/system_midi.h"
 #include "common/path_util.h"
 #include "runtime/platform/platform.h"
@@ -333,9 +334,17 @@ CommandResult RuntimeAPI::set_resolution(const std::string& node_id, uint32_t wi
 // --- Buffered topology changes ---
 
 CommandResult RuntimeAPI::add_node(const std::string& type, const std::string& id) {
-    if (!registry_.find(type) && !registry_.is_wgsl_preset(type) &&
-        !(core_.subgraph_modules() && core_.subgraph_modules()->find(type))) {
-        return {false, "unknown type '" + type + "'"};
+    const bool is_non_registry_type =
+        registry_.is_wgsl_preset(type) ||
+        (core_.subgraph_modules() && core_.subgraph_modules()->find(type));
+    if (!is_non_registry_type) {
+        auto prepared = prepare_operator_type_sync(registry_, type);
+        if (!prepared.success) {
+            const std::string msg = prepared.user_message.empty()
+                ? "unknown type '" + type + "'"
+                : prepared.user_message;
+            return {false, msg};
+        }
     }
     if (!graph_.add_node(id, type)) {
         return {false, "node '" + id + "' already exists"};
@@ -1370,34 +1379,15 @@ CommandResult RuntimeAPI::load_graph(const std::string& path,
                                      bool& has_gpu_ops,
                                      bool& has_audio) {
     if (path.empty()) return {false, "missing graph path"};
-    const bool preserve_runtime_state =
-        normalized_graph_identity_path(path) == active_graph_source_path_;
+    const PreservedRuntimeState preserved_state =
+        capture_preserved_runtime_state_for_path(path);
+    const bool preserve_runtime_state = preserved_state.active;
     std::string previous_graph_json;
     if (!graph_.save_to_string(previous_graph_json)) {
         return {false, "failed to serialize current graph before reload"};
     }
     const std::string previous_source_path = graph_.source_path();
     const std::string previous_active_graph_source_path = active_graph_source_path_;
-
-    // Preserve live state only for same-graph reloads (e.g. hot reload).
-    // Graph switches should always start from file-defined values.
-    std::unordered_map<std::string, std::unordered_map<std::string, float>> saved_params;
-    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> saved_string_params;
-    std::unordered_map<std::string, std::unordered_map<std::string, uint8_t>> saved_locks;
-    if (preserve_runtime_state) {
-        for (const auto& cn : core_.compiled_graph()->nodes) {
-            auto& sp = saved_params[cn.node_id];
-            for (const auto& [name, idx] : cn.param_indices) {
-                sp[name] = cn.param_values[idx];
-                if (cn.param_lock_flags[idx] != PARAM_LOCK_NONE)
-                    saved_locks[cn.node_id][name] = cn.param_lock_flags[idx];
-            }
-            auto& ssp = saved_string_params[cn.node_id];
-            for (const auto& [name, idx] : cn.file_param_indices) {
-                ssp[name] = cn.file_param_storage[idx];
-            }
-        }
-    }
 
     auto restore_previous_state = [&](const std::string& reason) -> CommandResult {
         if (!graph_.load_from_string(previous_graph_json.c_str(), previous_graph_json.size(), true)) {
@@ -1448,36 +1438,7 @@ CommandResult RuntimeAPI::load_graph(const std::string& path,
     }
 
     if (preserve_runtime_state) {
-        // Restore saved params to rebuilt nodes.
-        auto* cg = core_.compiled_graph();
-        for (auto& cn : cg->nodes) {
-            auto sit = saved_params.find(cn.node_id);
-            if (sit != saved_params.end()) {
-                for (const auto& [pname, pval] : sit->second) {
-                    auto pi = cn.param_indices.find(pname);
-                    if (pi != cn.param_indices.end())
-                        cn.param_values[pi->second] = pval;
-                }
-            }
-            auto ssit = saved_string_params.find(cn.node_id);
-            if (ssit != saved_string_params.end()) {
-                for (const auto& [pname, pval] : ssit->second) {
-                    auto fi = cn.file_param_indices.find(pname);
-                    if (fi != cn.file_param_indices.end()) {
-                        cn.file_param_storage[fi->second] = pval;
-                        cn.file_param_ptrs[fi->second] = cn.file_param_storage[fi->second].c_str();
-                    }
-                }
-            }
-            auto lit = saved_locks.find(cn.node_id);
-            if (lit != saved_locks.end()) {
-                for (const auto& [pname, flags] : lit->second) {
-                    auto pi = cn.param_indices.find(pname);
-                    if (pi != cn.param_indices.end())
-                        cn.param_lock_flags[pi->second] = flags;
-                }
-            }
-        }
+        apply_preserved_runtime_state(preserved_state);
     }
 
     has_gpu_ops = core_.has_gpu_operators();
@@ -1717,6 +1678,73 @@ void RuntimeAPI::notify_external_graph_mutation() {
     reload_serial_++;
     needs_gpu_realloc_ = false;
     refresh_graph_dirty_from_saved_snapshot();
+}
+
+void RuntimeAPI::finalize_external_graph_load() {
+    pending_topology_change_ = false;
+    active_crossfades_.clear();
+    preserve_undo_history_on_reload_ = false;
+    reload_serial_++;
+    needs_gpu_realloc_ = false;
+    active_graph_source_path_ = normalized_graph_identity_path(graph_.source_path());
+    capture_saved_snapshot();
+}
+
+RuntimeAPI::PreservedRuntimeState
+RuntimeAPI::capture_preserved_runtime_state_for_path(const std::string& path) const {
+    PreservedRuntimeState state;
+    if (normalized_graph_identity_path(path) != active_graph_source_path_) return state;
+    if (!core_.compiled_graph()) return state;
+
+    state.active = true;
+    for (const auto& cn : core_.compiled_graph()->nodes) {
+        auto& saved_params = state.params[cn.node_id];
+        for (const auto& [name, idx] : cn.param_indices) {
+            saved_params[name] = cn.param_values[idx];
+            if (cn.param_lock_flags[idx] != PARAM_LOCK_NONE) {
+                state.lock_flags[cn.node_id][name] = cn.param_lock_flags[idx];
+            }
+        }
+        auto& saved_strings = state.string_params[cn.node_id];
+        for (const auto& [name, idx] : cn.file_param_indices) {
+            saved_strings[name] = cn.file_param_storage[idx];
+        }
+    }
+    return state;
+}
+
+void RuntimeAPI::apply_preserved_runtime_state(const PreservedRuntimeState& state) {
+    if (!state.active || !core_.compiled_graph()) return;
+    for (auto& cn : core_.compiled_graph()->nodes) {
+        auto sit = state.params.find(cn.node_id);
+        if (sit != state.params.end()) {
+            for (const auto& [pname, pval] : sit->second) {
+                auto pi = cn.param_indices.find(pname);
+                if (pi != cn.param_indices.end())
+                    cn.param_values[pi->second] = pval;
+            }
+        }
+
+        auto ssit = state.string_params.find(cn.node_id);
+        if (ssit != state.string_params.end()) {
+            for (const auto& [pname, pval] : ssit->second) {
+                auto fi = cn.file_param_indices.find(pname);
+                if (fi != cn.file_param_indices.end()) {
+                    cn.file_param_storage[fi->second] = pval;
+                    cn.file_param_ptrs[fi->second] = cn.file_param_storage[fi->second].c_str();
+                }
+            }
+        }
+
+        auto lit = state.lock_flags.find(cn.node_id);
+        if (lit != state.lock_flags.end()) {
+            for (const auto& [pname, flags] : lit->second) {
+                auto pi = cn.param_indices.find(pname);
+                if (pi != cn.param_indices.end())
+                    cn.param_lock_flags[pi->second] = flags;
+            }
+        }
+    }
 }
 
 void RuntimeAPI::capture_saved_snapshot() {

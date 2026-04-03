@@ -37,6 +37,10 @@ struct CommandResult {
 - `add_node()`, `remove_node()`, `connect()`, `disconnect()`
 - Applied by `apply_pending()` which calls `RuntimeCore::build()` + `AudioEngine::build()`
 
+`add_node()` now routes on-demand operator preparation through `OperatorPreparationService`
+before mutating the graph. External behavior stays synchronous, but it no longer performs its own
+ad hoc lazy dylib load.
+
 ```cpp
 bool apply_pending(bool& has_gpu_ops, bool& has_audio);
 bool has_pending() const { return pending_topology_change_; }
@@ -91,10 +95,26 @@ For runtime-owned topology commits that happen outside the normal buffered mutat
 
 ```cpp
 void notify_external_graph_mutation();
+void finalize_external_graph_load();
 ```
 
 This clears pending topology/crossfade state, bumps `reload_serial_`, preserves undo history
 for the caller, and refreshes the dirty flag against the last saved graph snapshot.
+
+`finalize_external_graph_load()` is the graph-load counterpart used by the async UI open/reload
+path after a prepared graph build has been adopted. It updates the active graph identity from the
+committed `Graph::source_path()`, clears pending topology state, bumps `reload_serial_`, and
+captures a fresh saved snapshot so graph-switches remain transactional from the UI's perspective.
+
+For same-graph async reloads, `RuntimeAPI` also exposes a small preserved-runtime-state helper:
+
+```cpp
+RuntimeAPI::PreservedRuntimeState capture_preserved_runtime_state_for_path(path) const;
+void apply_preserved_runtime_state(const PreservedRuntimeState& state);
+```
+
+This preserves the existing synchronous reload contract: only reloads that target the active graph
+identity restore live float params, string/file params, and param-lock flags after a rebuild.
 
 Recent hardening guarantees in this area:
 

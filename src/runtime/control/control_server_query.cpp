@@ -675,9 +675,7 @@ std::string handle_list_types(OperatorRegistry& registry,
     nlohmann::json types_arr = nlohmann::json::array();
 
     for (const auto& name : registry.type_names()) {
-        auto* loader = registry.find(name);
-        if (!loader) continue;
-        const auto* desc = loader->descriptor();
+        const auto* desc = registry.probe_descriptor(name);
         if (!desc) continue;
 
         std::string kind = kind_str(vivid_operator_kind(desc));

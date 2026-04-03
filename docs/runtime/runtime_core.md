@@ -34,6 +34,18 @@ adopt the prepared result on the main thread without recompiling. `adopt_prepare
 rebuilds the `AudioFrameBridge`, reapplies `operators_src_dir`, and resets solo state
 exactly like a normal `build()`.
 
+This seam is now used by both:
+- async UI add-node transactions
+- async UI graph-load/open/reload transactions
+
+In both cases the worker thread prepares a candidate `CompiledGraph`, while the main thread keeps
+the live runtime running until commit time. The commit step still owns audio shutdown/restart,
+GPU texture allocation, and any graph-identity bookkeeping.
+
+Operator availability preparation is now expected to happen before `prepare_build()` via the
+shared `OperatorPreparationService`. That keeps async UI transactions and blocking runtime callers
+on the same deferred-load path instead of having each flow call `OperatorRegistry` directly.
+
 ## Tick
 
 ```cpp

@@ -4,6 +4,7 @@
 #include "runtime/graph/compiled_graph.h"
 #include "runtime/audio/audio_engine.h"
 #include "runtime/control/runtime_api.h"
+#include "runtime/operators/operator_preparation_service.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
@@ -33,6 +34,18 @@ int main(int argc, char* argv[]) {
     // --- Setup ---
     vivid::OperatorRegistry registry;
     check(registry.scan(staging.c_str()), "registry.scan()");
+
+    // --- Test shared operator preparation path on a deferred registry ---
+    std::fprintf(stderr, "\n--- operator preparation service ---\n");
+    {
+        vivid::OperatorRegistry deferred_registry;
+        check(deferred_registry.scan_deferred(staging.c_str()), "registry.scan_deferred()");
+        auto prepared = vivid::prepare_operator_type_sync(deferred_registry, "TestOp");
+        check(prepared.success, "prepare deferred TestOp succeeds");
+        check(deferred_registry.find_loaded("TestOp") != nullptr, "TestOp promoted to loaded");
+        auto prepared_again = vivid::prepare_operator_type_sync(deferred_registry, "TestOp");
+        check(prepared_again.success, "re-preparing already-loaded TestOp succeeds");
+    }
 
     vivid::Graph graph;
     check(graph.load(graph_path.c_str()), "graph.load()");
@@ -491,6 +504,75 @@ int main(int argc, char* argv[]) {
         s_switch.shutdown();
         std::filesystem::remove(graph_a_path);
         std::filesystem::remove(graph_b_path);
+    }
+
+    // --- Regression: external graph-load helpers preserve same-graph live state ---
+    std::fprintf(stderr, "\n--- external graph load helper regression ---\n");
+    {
+        const std::string graph_path = build_dir + "/test_external_graph_load.json";
+        {
+            std::ofstream ofs(graph_path);
+            ofs << R"({
+  "nodes": {
+    "a": { "type": "TestStateCarryOp", "params": { "scale": 2.0, "label": "graph-file" } }
+  }
+}
+)";
+        }
+
+        vivid::Graph g_ext;
+        check(g_ext.load(graph_path.c_str()), "external graph helper: load graph");
+        vivid::RuntimeCore s_ext;
+        check(s_ext.build(g_ext, registry), "external graph helper: build runtime");
+        vivid::AudioEngine ae_ext;
+        vivid::RuntimeAPI api_ext(g_ext, s_ext, ae_ext, registry);
+        api_ext.finalize_external_graph_load();
+
+        check(api_ext.set_param("a", "scale", 31.0f).ok,
+              "external graph helper: mutate live numeric param");
+        check(api_ext.set_string_param("a", "label", "runtime-label").ok,
+              "external graph helper: mutate live string param");
+        check(api_ext.set_param_lock("a", "scale", vivid::PARAM_LOCK_ALL).ok,
+              "external graph helper: mutate lock flags");
+
+        auto preserved = api_ext.capture_preserved_runtime_state_for_path(graph_path);
+        check(preserved.active, "external graph helper: same-path capture is active");
+
+        check(g_ext.load(graph_path.c_str()), "external graph helper: reload file definition");
+        check(s_ext.build(g_ext, registry), "external graph helper: rebuild runtime from file");
+        api_ext.apply_preserved_runtime_state(preserved);
+        api_ext.finalize_external_graph_load();
+
+        const vivid::CompiledNode* a_node = nullptr;
+        for (const auto& ns : s_ext.compiled_graph()->nodes) {
+            if (ns.node_id == "a") {
+                a_node = &ns;
+                break;
+            }
+        }
+        check(a_node != nullptr, "external graph helper: node a exists after rebuild");
+        if (a_node) {
+            auto pi = a_node->param_indices.find("scale");
+            check(pi != a_node->param_indices.end(), "external graph helper: scale param present");
+            if (pi != a_node->param_indices.end()) {
+                check_float(a_node->param_values[pi->second], 31.0f,
+                            "external graph helper: live numeric param restored");
+                check(a_node->param_lock_flags[pi->second] == vivid::PARAM_LOCK_ALL,
+                      "external graph helper: lock flags restored");
+            }
+
+            auto fi = a_node->file_param_indices.find("label");
+            check(fi != a_node->file_param_indices.end(), "external graph helper: label param present");
+            if (fi != a_node->file_param_indices.end()) {
+                check(a_node->file_param_storage[fi->second] == "runtime-label",
+                      "external graph helper: live string param restored");
+            }
+        }
+        check(!api_ext.graph_dirty(),
+              "external graph helper: finalize_external_graph_load captures a clean snapshot");
+
+        s_ext.shutdown();
+        std::filesystem::remove(graph_path);
     }
 
     // --- Regression: apply_snapshot_json malformed input restores graph + source identity ---

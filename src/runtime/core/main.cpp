@@ -25,6 +25,7 @@
 #include "runtime/core/runtime_bootstrap.h"
 #include "runtime/core/editor_detect.h"
 #include "runtime/operators/operator_info_cache.h"
+#include "runtime/operators/operator_preparation_service.h"
 #include "runtime/control/runtime_command_sink.h"
 #include "runtime/core/file_drop_registry.h"
 #include "runtime/core/crash_guard.h"
@@ -116,6 +117,121 @@ struct AsyncAddPreparedResult {
     vivid::Graph graph;
     vivid::RuntimeCore::PreparedBuild prepared;
 };
+
+struct AsyncGraphLoadRequest {
+    enum class Kind {
+        StartupInitial,
+        Open,
+        OpenRecent,
+        OpenExample,
+        DropGraph,
+        Reload,
+    };
+
+    Kind kind = Kind::Open;
+    std::string requested_path;
+    std::string resolved_path;
+    std::string display_name;
+    bool clear_source_path = false;
+    bool update_recent_files = false;
+};
+
+struct AsyncGraphLoadPreparedResult {
+    bool success = false;
+    std::string user_message;
+    AsyncGraphLoadRequest request;
+    vivid::RuntimeAPI::PreservedRuntimeState preserved_state;
+    vivid::Graph graph;
+    vivid::RuntimeCore::PreparedBuild prepared;
+    std::string working_filters_dir;
+};
+
+static std::string derive_working_filters_dir(const vivid::Graph& graph) {
+    if (graph.source_path().empty()) {
+        return "_filters";
+    }
+    auto gp = std::filesystem::path(graph.source_path());
+    return (gp.parent_path() / (gp.stem().string() + "_filters")).string();
+}
+
+static bool materialize_graph_filters(const vivid::Graph& graph,
+                                      const std::string& working_filters_dir,
+                                      vivid::OperatorRegistry& registry,
+                                      std::string& error) {
+    if (graph.filters().empty()) return true;
+    std::error_code ec;
+    std::filesystem::create_directories(working_filters_dir, ec);
+    if (ec) {
+        error = "failed to create working filter directory: " + ec.message();
+        return false;
+    }
+
+    for (const auto& fd : graph.filters()) {
+        std::string working_path = working_filters_dir + "/" + fd.name + ".wgsl";
+        std::ofstream ofs(working_path);
+        if (!ofs) {
+            error = "failed to write working shader for filter '" + fd.name + "'";
+            return false;
+        }
+        ofs << fd.shader;
+        ofs.close();
+
+        auto config = std::make_shared<vivid::DataDrivenFilterConfig>();
+        config->name = fd.name;
+        config->shader_path = working_path;
+        config->source_builtin = fd.source;
+        config->time_dependent = fd.time_dependent;
+        for (const auto& pd : fd.params) {
+            vivid::DataDrivenFilterConfig::ParamDef cpd;
+            cpd.name = pd.name;
+            cpd.default_value = pd.default_value;
+            cpd.min_value = pd.min_value;
+            cpd.max_value = pd.max_value;
+            config->params.push_back(std::move(cpd));
+        }
+        registry.register_user_filter(fd.name, config);
+    }
+
+    return true;
+}
+
+static void populate_graph_package_diagnostics(
+    vivid::Graph& graph,
+    const std::vector<vivid::PackageInfo>& packages) {
+    graph.load_diagnostics.clear();
+    std::unordered_map<std::string, std::string> installed_map;
+    for (const auto& pkg : packages) installed_map[pkg.name] = pkg.version;
+    for (const auto& node : graph.nodes()) {
+        if (node.pkg_name.empty()) continue;
+        auto it = installed_map.find(node.pkg_name);
+        if (it == installed_map.end() || it->second.empty()) continue;
+        const std::string& installed_ver = it->second;
+        auto cls = vivid::PackageManager::classify_version_delta(node.pkg_version, installed_ver);
+        if (cls == vivid::PackageUpdateClass::CompatibleUpdate ||
+            cls == vivid::PackageUpdateClass::IncompatibleUpdate) {
+            vivid::Graph::LoadDiagnostic diag;
+            diag.node_id = node.id;
+            diag.pkg_name = node.pkg_name;
+            diag.saved_version = node.pkg_version;
+            diag.installed_version = installed_ver;
+            diag.classification = (cls == vivid::PackageUpdateClass::IncompatibleUpdate)
+                ? "incompatible_update"
+                : "compatible_update";
+            graph.load_diagnostics.push_back(std::move(diag));
+            if (cls == vivid::PackageUpdateClass::IncompatibleUpdate) {
+                std::fprintf(stderr,
+                             "[graph] Package version mismatch (incompatible): node '%s' saved with %s@%s, installed %s\n",
+                             node.id.c_str(), node.pkg_name.c_str(),
+                             node.pkg_version.c_str(), installed_ver.c_str());
+            } else {
+                std::fprintf(stderr,
+                             "[graph] Package update: node '%s' %s saved=%s installed=%s\n",
+                             node.id.c_str(), node.pkg_name.c_str(),
+                             node.pkg_version.c_str(), installed_ver.c_str());
+            }
+        }
+    }
+}
 
 static bool split_async_add_addr(const std::string& addr,
                                  std::string& node, std::string& port) {
@@ -209,11 +325,21 @@ public:
                 if (!success) stage_ = Stage::Idle;
             };
 
-            if (!registry.find(request.type_name) &&
-                !registry.is_wgsl_preset(request.type_name) &&
-                !(runtime.subgraph_modules() && runtime.subgraph_modules()->find(request.type_name))) {
-                finish(false, "unknown operator type '" + request.type_name + "'");
-                return;
+            const bool is_non_registry_type =
+                registry.is_wgsl_preset(request.type_name) ||
+                (runtime.subgraph_modules() && runtime.subgraph_modules()->find(request.type_name));
+            if (!is_non_registry_type) {
+                auto prep_task_id = operator_preparation_service().submit(
+                    make_prepare_operator_type_request(registry, request.type_name, true));
+                prep_task_id_ = prep_task_id;
+                auto prepared = operator_preparation_service().wait(prep_task_id);
+                prep_task_id_ = 0;
+                if (!prepared.success) {
+                    finish(false, prepared.user_message.empty()
+                                      ? "unknown operator type '" + request.type_name + "'"
+                                      : prepared.user_message);
+                    return;
+                }
             }
 
             vivid::Graph candidate = live_graph;
@@ -248,6 +374,7 @@ public:
         if (!completed_) return false;
         out = std::move(result_);
         completed_ = false;
+        prep_task_id_ = 0;
         stage_ = Stage::Idle;
         return true;
     }
@@ -256,9 +383,149 @@ private:
     std::thread worker_;
     std::atomic<bool> active_{false};
     std::atomic<Stage> stage_{Stage::Idle};
+    std::atomic<vivid::OperatorPreparationService::TaskId> prep_task_id_{0};
     std::mutex result_mutex_;
     std::atomic<bool> completed_{false};
     AsyncAddPreparedResult result_;
+};
+
+class AsyncGraphLoadCoordinator {
+public:
+    enum class Stage {
+        Idle,
+        Loading,
+        PreparingOperators,
+        Compiling,
+    };
+
+    ~AsyncGraphLoadCoordinator() {
+        if (worker_.joinable()) worker_.join();
+    }
+
+    bool begin(const AsyncGraphLoadRequest& request,
+               const std::vector<vivid::PackageInfo>& packages,
+               const vivid::RuntimeAPI::PreservedRuntimeState& preserved_state,
+               const vivid::RuntimeCore& runtime,
+               vivid::OperatorRegistry& registry,
+               std::string& error) {
+        if (active_) {
+            error = "another graph load is already in progress";
+            return false;
+        }
+        if (worker_.joinable()) worker_.join();
+
+        active_ = true;
+        completed_ = false;
+        result_ = {};
+        stage_ = Stage::Loading;
+        request_ = request;
+
+        worker_ = std::thread([this, request, packages, preserved_state, &runtime, &registry]() mutable {
+            AsyncGraphLoadPreparedResult result;
+            result.request = request;
+            result.preserved_state = preserved_state;
+
+            auto finish = [&](bool success, std::string message) {
+                result.success = success;
+                result.user_message = std::move(message);
+                {
+                    std::lock_guard<std::mutex> lock(result_mutex_);
+                    result_ = std::move(result);
+                    completed_ = true;
+                }
+                active_ = false;
+                if (!success) stage_ = Stage::Idle;
+            };
+
+            vivid::Graph candidate;
+            if (!candidate.load(request.resolved_path.c_str())) {
+                finish(false, "failed to load " + request.resolved_path);
+                return;
+            }
+            if (request.clear_source_path)
+                candidate.set_source_path("");
+
+            populate_graph_package_diagnostics(candidate, packages);
+            result.working_filters_dir = derive_working_filters_dir(candidate);
+            std::string prep_error;
+            if (!materialize_graph_filters(candidate, result.working_filters_dir, registry, prep_error)) {
+                finish(false, prep_error);
+                return;
+            }
+
+            stage_ = Stage::PreparingOperators;
+            auto prep_task_id = operator_preparation_service().submit(
+                make_prepare_graph_request(registry, candidate, true));
+            prep_task_id_ = prep_task_id;
+            auto prepared = operator_preparation_service().wait(prep_task_id);
+            prep_task_id_ = 0;
+            if (!prepared.success) {
+                finish(false, prepared.user_message.empty()
+                                  ? "failed to prepare operators for " + request.resolved_path
+                                  : prepared.user_message);
+                return;
+            }
+
+            result.graph = std::move(candidate);
+            stage_ = Stage::Compiling;
+            if (!runtime.prepare_build(result.graph, registry, result.prepared, &prep_error)) {
+                if (prep_error.empty())
+                    prep_error = "failed to compile " + request.resolved_path;
+                finish(false, prep_error);
+                return;
+            }
+
+            finish(true, {});
+        });
+
+        return true;
+    }
+
+    bool active() const { return active_; }
+    Stage stage() const { return stage_; }
+    bool startup_active() const {
+        return active_ && request_.kind == AsyncGraphLoadRequest::Kind::StartupInitial;
+    }
+
+    const char* stage_text() const {
+        switch (stage_) {
+            case Stage::Loading: return "Loading graph...";
+            case Stage::PreparingOperators: {
+                auto prep_task_id = prep_task_id_.load();
+                if (prep_task_id != 0) {
+                    return operator_prepare_stage_text(
+                        operator_preparation_service().task_stage(prep_task_id));
+                }
+                return "Preparing operators...";
+            }
+            case Stage::Compiling: return "Compiling graph...";
+            case Stage::Idle: break;
+        }
+        return "Loading graph...";
+    }
+
+    bool take_completed(AsyncGraphLoadPreparedResult& out) {
+        if (!completed_) return false;
+        if (worker_.joinable()) worker_.join();
+        std::lock_guard<std::mutex> lock(result_mutex_);
+        if (!completed_) return false;
+        out = std::move(result_);
+        completed_ = false;
+        prep_task_id_ = 0;
+        stage_ = Stage::Idle;
+        request_ = {};
+        return true;
+    }
+
+private:
+    std::thread worker_;
+    std::atomic<bool> active_{false};
+    std::atomic<Stage> stage_{Stage::Idle};
+    std::atomic<vivid::OperatorPreparationService::TaskId> prep_task_id_{0};
+    std::mutex result_mutex_;
+    std::atomic<bool> completed_{false};
+    AsyncGraphLoadPreparedResult result_;
+    AsyncGraphLoadRequest request_{};
 };
 
 } // namespace
@@ -1164,40 +1431,7 @@ fn fbm(p_in: vec2f) -> f32 {
     // Helper: populate graph.load_diagnostics by comparing saved pkg versions to installed.
     // Must be called after a successful graph.load().
     auto run_graph_package_diagnostics = [&](vivid::Graph& g) {
-        g.load_diagnostics.clear();
-        auto packages = pkg_manager.list();
-        std::unordered_map<std::string, std::string> installed_map;
-        for (const auto& p : packages) installed_map[p.name] = p.version;
-        for (const auto& node : g.nodes()) {
-            if (node.pkg_name.empty()) continue;
-            auto it = installed_map.find(node.pkg_name);
-            if (it == installed_map.end() || it->second.empty()) continue;
-            const std::string& installed_ver = it->second;
-            auto cls = vivid::PackageManager::classify_version_delta(node.pkg_version, installed_ver);
-            if (cls == vivid::PackageUpdateClass::CompatibleUpdate ||
-                cls == vivid::PackageUpdateClass::IncompatibleUpdate) {
-                vivid::Graph::LoadDiagnostic diag;
-                diag.node_id           = node.id;
-                diag.pkg_name          = node.pkg_name;
-                diag.saved_version     = node.pkg_version;
-                diag.installed_version = installed_ver;
-                diag.classification    = (cls == vivid::PackageUpdateClass::IncompatibleUpdate)
-                                         ? "incompatible_update" : "compatible_update";
-                g.load_diagnostics.push_back(std::move(diag));
-                if (cls == vivid::PackageUpdateClass::IncompatibleUpdate) {
-                    std::fprintf(stderr,
-                        "[graph] Package version mismatch (incompatible): "
-                        "node '%s' saved with %s@%s, installed %s\n",
-                        node.id.c_str(), node.pkg_name.c_str(),
-                        node.pkg_version.c_str(), installed_ver.c_str());
-                } else {
-                    std::fprintf(stderr,
-                        "[graph] Package update: node '%s' %s saved=%s installed=%s\n",
-                        node.id.c_str(), node.pkg_name.c_str(),
-                        node.pkg_version.c_str(), installed_ver.c_str());
-                }
-            }
-        }
+        populate_graph_package_diagnostics(g, pkg_manager.list());
     };
 
     // Helper: annotate graph nodes with their package provenance (called before save).
@@ -1224,77 +1458,34 @@ fn fbm(p_in: vec2f) -> f32 {
     // Working directory for user filter shaders: {graph_dir}/{graph_stem}_filters/
     std::string working_filters_dir;
 
-    bool initial_load_ok = false;
+    AsyncGraphLoadRequest initial_graph_request;
+    bool have_initial_graph_request = false;
     if (graph_file.empty()) {
-        // No file given: load default graph template (user override → bundled fallback)
         auto user_template = std::filesystem::path(vivid::get_config_dir()) / "default_graph.json";
         auto bundled_template = resources_dir / "default_graph.json";
-        if (std::filesystem::exists(user_template))
-            initial_load_ok = graph.load(user_template.string().c_str());
-        if (!initial_load_ok)
-            initial_load_ok = graph.load(bundled_template.string().c_str());
-        if (!initial_load_ok)
+        std::filesystem::path template_path;
+        if (std::filesystem::exists(user_template)) {
+            template_path = user_template;
+        } else if (std::filesystem::exists(bundled_template)) {
+            template_path = bundled_template;
+        } else {
             std::fprintf(stderr, "[vivid] Error: could not load default graph template\n");
-        // Clear source_path so Cmd-S prompts for a save location instead of
-        // overwriting the default template.
-        if (initial_load_ok)
-            graph.set_source_path("");
+        }
+        if (!template_path.empty()) {
+            initial_graph_request.kind = AsyncGraphLoadRequest::Kind::StartupInitial;
+            initial_graph_request.requested_path = template_path.string();
+            initial_graph_request.resolved_path = template_path.string();
+            initial_graph_request.display_name = "the default graph";
+            initial_graph_request.clear_source_path = true;
+            have_initial_graph_request = true;
+        }
     } else {
-        initial_load_ok = graph.load(graph_file.c_str());
-        if (!initial_load_ok)
-            std::fprintf(stderr, "[vivid] Graph load failed (non-fatal, continuing)\n");
-    }
-    if (initial_load_ok) {
-        run_graph_package_diagnostics(graph);
-        // Register user filters from graph before building the runtime
-        if (!graph.filters().empty()) {
-            auto gp = std::filesystem::path(graph.source_path());
-            auto graph_dir = gp.parent_path();
-            auto graph_stem = gp.stem();
-            working_filters_dir = (graph_dir / (graph_stem.string() + "_filters")).string();
-            std::filesystem::create_directories(working_filters_dir);
-
-            for (const auto& fd : graph.filters()) {
-                // Write shader source to working file
-                std::string working_path = working_filters_dir + "/" + fd.name + ".wgsl";
-                {
-                    std::ofstream ofs(working_path);
-                    ofs << fd.shader;
-                }
-
-                // Build DataDrivenFilterConfig
-                auto config = std::make_shared<vivid::DataDrivenFilterConfig>();
-                config->name = fd.name;
-                config->shader_path = working_path;
-                config->source_builtin = fd.source;
-                config->time_dependent = fd.time_dependent;
-                for (const auto& pd : fd.params) {
-                    vivid::DataDrivenFilterConfig::ParamDef cpd;
-                    cpd.name = pd.name;
-                    cpd.default_value = pd.default_value;
-                    cpd.min_value = pd.min_value;
-                    cpd.max_value = pd.max_value;
-                    config->params.push_back(std::move(cpd));
-                }
-                registry.register_user_filter(fd.name, config);
-            }
-        }
-
-        // Load only the operators this graph actually uses
-        render_splash_frame("Building graph...");
-        {
-            PhaseTimer t("load_for_graph");
-            registry.load_for_graph(graph);
-        }
-
-        {
-            PhaseTimer t("runtime.build");
-            if (runtime.build(graph, registry)) {
-                graph_loaded = true;
-            } else {
-                std::fprintf(stderr, "[vivid] Runtime build failed (non-fatal, continuing)\n");
-            }
-        }
+        initial_graph_request.kind = AsyncGraphLoadRequest::Kind::StartupInitial;
+        initial_graph_request.requested_path = graph_file;
+        initial_graph_request.resolved_path = graph_file;
+        initial_graph_request.display_name =
+            std::filesystem::path(graph_file).filename().string();
+        have_initial_graph_request = true;
     }
 
     bool has_gpu_ops = graph_loaded && runtime.has_gpu_operators();
@@ -1380,7 +1571,8 @@ fn fbm(p_in: vec2f) -> f32 {
         return true;
     };
 
-    auto adopt_prepared_runtime_build = [&](AsyncAddPreparedResult prepared) -> bool {
+    auto adopt_prepared_graph = [&](vivid::Graph&& next_graph,
+                                    vivid::RuntimeCore::PreparedBuild&& prepared_build) -> bool {
         if (has_audio) {
             audio_engine.shutdown();
             has_audio = false;
@@ -1388,8 +1580,8 @@ fn fbm(p_in: vec2f) -> f32 {
         runtime.shutdown();
         thumb_cache.clear();
 
-        graph = std::move(prepared.graph);
-        runtime.adopt_prepared_build(std::move(prepared.prepared));
+        graph = std::move(next_graph);
+        runtime.adopt_prepared_build(std::move(prepared_build));
 
         graph_loaded = runtime.compiled_graph() && !runtime.compiled_graph()->nodes.empty();
         has_gpu_ops = runtime.has_gpu_operators();
@@ -1405,8 +1597,46 @@ fn fbm(p_in: vec2f) -> f32 {
                 has_audio = true;
         }
 
-        runtime_api.notify_external_graph_mutation();
         capture_coordinator.set_audio_engine(has_audio ? &audio_engine : nullptr);
+        return true;
+    };
+
+    auto adopt_prepared_runtime_build = [&](AsyncAddPreparedResult prepared) -> bool {
+        if (!adopt_prepared_graph(std::move(prepared.graph), std::move(prepared.prepared)))
+            return false;
+        runtime_api.notify_external_graph_mutation();
+        return true;
+    };
+
+    auto adopt_prepared_graph_load = [&](AsyncGraphLoadPreparedResult prepared) -> bool {
+        std::unordered_set<std::string> previous_filter_names;
+        for (const auto& fd : graph.filters())
+            previous_filter_names.insert(fd.name);
+        std::unordered_set<std::string> next_filter_names;
+        for (const auto& fd : prepared.graph.filters())
+            next_filter_names.insert(fd.name);
+
+        for (const auto& name : previous_filter_names) {
+            if (!next_filter_names.count(name))
+                registry.unregister_user_filter(name);
+        }
+
+        if (!adopt_prepared_graph(std::move(prepared.graph), std::move(prepared.prepared)))
+            return false;
+
+        if (prepared.preserved_state.active)
+            runtime_api.apply_preserved_runtime_state(prepared.preserved_state);
+
+        working_filters_dir = std::move(prepared.working_filters_dir);
+        runtime_api.finalize_external_graph_load();
+
+        if (prepared.request.update_recent_files && !prepared.request.resolved_path.empty()) {
+            vivid::add_recent_file(settings, prepared.request.resolved_path);
+            vivid::save_settings(settings);
+#ifdef __APPLE__
+            vivid::macos_update_recent_files_menu(settings.recent_files);
+#endif
+        }
         return true;
     };
 
@@ -1453,14 +1683,44 @@ fn fbm(p_in: vec2f) -> f32 {
         graph_ui.set_mcp_dir(mcp_dir.string());
     }
     AsyncAddCoordinator async_add_coordinator;
+    AsyncGraphLoadCoordinator async_graph_load_coordinator;
     graph_ui.set_async_add_callback(
         [&](const vivid::ui::NodeGraphUI::AsyncAddOperatorRequest& request, std::string& error) {
             if (!graph_loaded || !runtime.compiled_graph()) {
                 error = "runtime is not ready for adding operators";
                 return false;
             }
+            if (operator_preparation_service().has_graph_affecting_task()) {
+                error = "another graph transaction is already running";
+                return false;
+            }
             return async_add_coordinator.begin(request, graph, runtime, registry, error);
         });
+    auto queue_graph_load = [&](AsyncGraphLoadRequest request, std::string* error = nullptr) -> bool {
+        if (async_add_coordinator.active() || async_graph_load_coordinator.active() ||
+            operator_preparation_service().has_graph_affecting_task()) {
+            if (error) *error = "another graph transaction is already running";
+            return false;
+        }
+        request.resolved_path =
+            resolve_graph_input_path(request.requested_path, graphs_root, discovered_examples);
+        if (request.display_name.empty()) {
+            auto name = std::filesystem::path(request.resolved_path).filename().string();
+            request.display_name = name.empty() ? request.resolved_path : name;
+        }
+
+        auto preserved_state =
+            runtime_api.capture_preserved_runtime_state_for_path(request.clear_source_path ? "" : request.resolved_path);
+        std::string begin_error;
+        if (!async_graph_load_coordinator.begin(
+                request, pkg_manager.list(), preserved_state, runtime, registry, begin_error)) {
+            if (error) *error = begin_error;
+            return false;
+        }
+        graph_ui.begin_async_graph_load(request.display_name);
+        if (error) error->clear();
+        return true;
+    };
     auto refresh_discovered_examples = [&]() {
         discovered_examples = discover_examples_with_packages(graphs_root, &pkg_manager);
         graph_ui.set_examples(discovered_examples);
@@ -2041,27 +2301,14 @@ fn fbm(p_in: vec2f) -> f32 {
         }
     };
 
-    auto load_graph_runtime = [&](const std::string& input_path, const char* label) {
-        std::string resolved = resolve_graph_input_path(input_path, graphs_root, discovered_examples);
-        if (!graph.load(resolved.c_str())) {
-            std::fprintf(stderr, "[vivid] %s: failed to load %s\n", label, resolved.c_str());
-            return false;
+    auto request_graph_load = [&](AsyncGraphLoadRequest request, const char* label) {
+        std::string error;
+        bool ok = queue_graph_load(std::move(request), &error);
+        if (!ok) {
+            std::fprintf(stderr, "[vivid] %s: %s\n", label, error.c_str());
+            graph_ui.notify_async_graph_load_failure(error);
         }
-        render_splash_frame("Loading graph...");
-        run_graph_package_diagnostics(graph);
-        registry.load_for_graph(graph);
-        auto result = runtime_api.reload(has_gpu_ops, has_audio);
-        if (result.ok) {
-            graph_loaded = true;
-            command_sink.reset_undo_history();
-            vivid::add_recent_file(settings, resolved);
-            vivid::save_settings(settings);
-#ifdef __APPLE__
-            vivid::macos_update_recent_files_menu(settings.recent_files);
-#endif
-        }
-        std::fprintf(stderr, "[vivid] %s: %s\n", label, result.message.c_str());
-        return result.ok;
+        return ok;
     };
 
     auto new_graph_runtime = [&]() {
@@ -2096,8 +2343,21 @@ fn fbm(p_in: vec2f) -> f32 {
         return true;
     };
 
+    if (have_initial_graph_request) {
+        std::string startup_error;
+        if (!queue_graph_load(initial_graph_request, &startup_error)) {
+            std::fprintf(stderr, "[vivid] Startup graph load: %s\n", startup_error.c_str());
+            graph_ui.notify_async_graph_load_failure(startup_error);
+        }
+    }
+
     graph_ui.set_example_open_callback([&](const std::string& rel_path) {
-        load_graph_runtime(rel_path, "Open Example");
+        AsyncGraphLoadRequest request;
+        request.kind = AsyncGraphLoadRequest::Kind::OpenExample;
+        request.requested_path = rel_path;
+        request.display_name = std::filesystem::path(rel_path).filename().string();
+        request.update_recent_files = true;
+        request_graph_load(std::move(request), "Open Example");
     });
     graph_ui.set_graph_meta_save_callback([&](const vivid::ui::GraphMetaEditData& data,
                                               std::string& error) {
@@ -2221,7 +2481,12 @@ fn fbm(p_in: vec2f) -> f32 {
         menu_cbs.on_open = [&]() {
             std::string path = vivid::ui::open_file_dialog();
             if (path.empty()) return;
-            load_graph_runtime(path, "Open");
+            AsyncGraphLoadRequest request;
+            request.kind = AsyncGraphLoadRequest::Kind::Open;
+            request.requested_path = path;
+            request.display_name = std::filesystem::path(path).filename().string();
+            request.update_recent_files = true;
+            request_graph_load(std::move(request), "Open");
         };
 
         menu_cbs.on_open_example = [&]() {
@@ -2398,7 +2663,12 @@ fn fbm(p_in: vec2f) -> f32 {
         menu_cbs.is_auto_check_updates = [&]() { return settings.core_update_auto_check; };
 
         menu_cbs.on_open_recent = [&](const std::string& path) {
-            load_graph_runtime(path, "Open Recent");
+            AsyncGraphLoadRequest request;
+            request.kind = AsyncGraphLoadRequest::Kind::OpenRecent;
+            request.requested_path = path;
+            request.display_name = std::filesystem::path(path).filename().string();
+            request.update_recent_files = true;
+            request_graph_load(std::move(request), "Open Recent");
         };
         menu_cbs.on_clear_recent = [&]() {
             settings.recent_files.clear();
@@ -2549,7 +2819,12 @@ fn fbm(p_in: vec2f) -> f32 {
                 c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 
             if (ext == ".json") {
-                load_graph_runtime(path, "Drop");
+                AsyncGraphLoadRequest request;
+                request.kind = AsyncGraphLoadRequest::Kind::DropGraph;
+                request.requested_path = path;
+                request.display_name = std::filesystem::path(path).filename().string();
+                request.update_recent_files = true;
+                request_graph_load(std::move(request), "Drop");
             } else {
                 refresh_file_drop_registry();
                 auto matches = file_drop_registry.matches_for_path(path);
@@ -2622,9 +2897,50 @@ fn fbm(p_in: vec2f) -> f32 {
                     : vivid::ui::NodeGraphUI::AsyncAddStage::Preparing);
         }
 
+        AsyncGraphLoadPreparedResult async_graph_load_result;
+        if (async_graph_load_coordinator.take_completed(async_graph_load_result)) {
+            if (async_graph_load_result.success) {
+                const bool had_graph_before_commit = graph_loaded;
+                graph_ui.set_async_graph_load_stage(
+                    vivid::ui::NodeGraphUI::AsyncGraphLoadStage::Applying);
+                adopt_prepared_graph_load(std::move(async_graph_load_result));
+                command_sink.set_working_filters_dir(working_filters_dir);
+                window_user_data.working_filters_dir = working_filters_dir;
+                if (!had_graph_before_commit && graph.has_viewport()) {
+                    graph_ui.set_viewport(graph.viewport_pan_x, graph.viewport_pan_y, graph.viewport_zoom);
+                }
+                graph_ui.notify_async_graph_load_success();
+            } else {
+                graph_ui.notify_async_graph_load_failure(async_graph_load_result.user_message);
+            }
+        } else if (async_graph_load_coordinator.active()) {
+            using GraphLoadStage = vivid::ui::NodeGraphUI::AsyncGraphLoadStage;
+            auto stage = async_graph_load_coordinator.stage();
+            GraphLoadStage ui_stage = GraphLoadStage::Loading;
+            switch (stage) {
+                case AsyncGraphLoadCoordinator::Stage::Loading:
+                    ui_stage = GraphLoadStage::Loading;
+                    break;
+                case AsyncGraphLoadCoordinator::Stage::PreparingOperators:
+                    ui_stage = GraphLoadStage::PreparingOperators;
+                    break;
+                case AsyncGraphLoadCoordinator::Stage::Compiling:
+                    ui_stage = GraphLoadStage::Compiling;
+                    break;
+                case AsyncGraphLoadCoordinator::Stage::Idle:
+                    ui_stage = GraphLoadStage::Loading;
+                    break;
+            }
+            graph_ui.set_async_graph_load_stage(ui_stage);
+        }
+
+        const bool graph_transaction_active =
+            async_add_coordinator.active() || async_graph_load_coordinator.active() ||
+            operator_preparation_service().has_graph_affecting_task();
+
         // Drain control server requests (may set pending topology changes).
-        // Keep the live graph stable while an async add transaction is preparing.
-        if (!async_add_coordinator.active()) {
+        // Keep the live graph stable while an async graph transaction is preparing.
+        if (!graph_transaction_active) {
             control_server.process_requests(runtime_api, graph, runtime, registry,
                                             has_gpu_ops, has_audio);
         }
@@ -2636,7 +2952,7 @@ fn fbm(p_in: vec2f) -> f32 {
             }
         }
 
-        if (!async_add_coordinator.active() && runtime_api.has_pending()) {
+        if (!graph_transaction_active && runtime_api.has_pending()) {
             runtime_api.apply_pending(has_gpu_ops, has_audio);
             // Re-allocate per-node GPU textures after topology change
             if (has_gpu_ops) {
@@ -2777,6 +3093,11 @@ fn fbm(p_in: vec2f) -> f32 {
             }
         }
 
+        if (async_graph_load_coordinator.startup_active()) {
+            render_splash_frame(async_graph_load_coordinator.stage_text());
+            return true;
+        }
+
         // --- Apply MIDI mappings (before tick so wire wins on conflict) ---
         runtime_api.apply_midi_mappings();
 
@@ -2809,7 +3130,7 @@ fn fbm(p_in: vec2f) -> f32 {
             gpu_state.output_format   = kOffscreenFormat;
 
             // --- Hot-reload polling ---
-            if (hot_reload_enabled && !async_add_coordinator.active()) {
+            if (hot_reload_enabled && !graph_transaction_active) {
                 auto now_scan = std::chrono::steady_clock::now();
                 if (now_scan >= next_package_watch_rescan_at) {
                     refresh_package_watches();
@@ -2968,8 +3289,9 @@ fn fbm(p_in: vec2f) -> f32 {
                 std::string err;
                 {
                     std::lock_guard<std::mutex> lk(pkg_action_mutex);
-                    if (pkg_action_state == PkgActionState::Done ||
-                        pkg_action_state == PkgActionState::Error) {
+                    if (!graph_transaction_active &&
+                        (pkg_action_state == PkgActionState::Done ||
+                         pkg_action_state == PkgActionState::Error)) {
                         done = true;
                         needs_refresh = pkg_action_needs_refresh;
                         err = pkg_action_error_msg;
@@ -2980,8 +3302,12 @@ fn fbm(p_in: vec2f) -> f32 {
                 if (done) {
                     if (needs_refresh) {
                         refresh_discovered_examples();
-                        registry.load_for_graph(graph);
-                        if (rebuild_live_runtime_from_graph()) {
+                        auto prepared = prepare_graph_operators_sync(registry, graph, true);
+                        if (!prepared.success) {
+                            err = prepared.user_message.empty()
+                                ? "Failed to prepare operators after package refresh"
+                                : prepared.user_message;
+                        } else if (rebuild_live_runtime_from_graph()) {
                             if (auto* cg_pkg = runtime.compiled_graph()) {
                                 std::unordered_set<std::string> active_ids;
                                 for (const auto& cn : cg_pkg->nodes) {
@@ -3045,7 +3371,7 @@ fn fbm(p_in: vec2f) -> f32 {
 
             // --- Node graph UI overlay (2-pass rendering) ---
             if (text_renderer_ok && (graph_ui.visible() || interface_capture_requested)) {
-                if (async_add_coordinator.active()) {
+                if (graph_transaction_active) {
                     graph_ui.update_modal_only();
                 } else {
                     auto snapshot = build_graph_snapshot(

@@ -1056,7 +1056,7 @@ void NodeGraphUI::graph_center_position(float& gx, float& gy) const {
 
 void NodeGraphUI::open_file_drop_chooser(std::vector<FileDropChooserAction> actions,
                                          float graph_x, float graph_y) {
-    if (async_add_active_) return;
+    if (async_add_active_ || async_graph_load_active_) return;
     chooser_mode_ = ChooserMode::FileDrop;
     chooser_items_.clear();
     chooser_subtitles_.clear();
@@ -1126,11 +1126,31 @@ void NodeGraphUI::update_modal_only() {
     clear_frame_flags();
 }
 
+void NodeGraphUI::begin_async_graph_load(const std::string& display_name) {
+    async_graph_load_active_ = true;
+    async_graph_load_stage_ = AsyncGraphLoadStage::Loading;
+    async_graph_load_display_name_ = display_name;
+    status_banner_error_.clear();
+}
+
+void NodeGraphUI::notify_async_graph_load_success() {
+    async_graph_load_active_ = false;
+    async_graph_load_display_name_.clear();
+    status_banner_error_.clear();
+}
+
+void NodeGraphUI::notify_async_graph_load_failure(const std::string& summary) {
+    async_graph_load_active_ = false;
+    async_graph_load_display_name_.clear();
+    status_banner_error_ = summary;
+}
+
 void NodeGraphUI::notify_async_add_success(const std::string& node_id) {
     async_add_active_ = false;
     async_add_display_name_.clear();
     async_add_restore_ = {};
     chooser_error_.clear();
+    status_banner_error_.clear();
     selected_node_ids_.clear();
     if (!node_id.empty())
         selected_node_ids_.insert(node_id);
@@ -1305,6 +1325,7 @@ void NodeGraphUI::confirm_chooser_selection_idx(int idx) {
         async_add_active_ = true;
         async_add_stage_ = AsyncAddStage::Preparing;
         async_add_display_name_ = request.display_name;
+        status_banner_error_.clear();
         reset_chooser_state();
         return;
     }

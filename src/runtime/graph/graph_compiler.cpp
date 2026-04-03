@@ -1333,7 +1333,7 @@ bool GraphCompiler::reload_operator(CompiledGraph& cg,
     if (!registry.reload_operator(type_name, new_dylib_path)) {
         std::fprintf(stderr, "[vivid] GraphCompiler: dylib reload failed for '%s'\n", type_name.c_str());
         // Old dylib is still loaded. Recreate instances using old loader so nodes keep running.
-        OperatorLoader* old_loader = registry.find(type_name);
+        OperatorLoader* old_loader = registry.find_loaded(type_name);
         if (old_loader && old_loader->is_loaded()) {
             const auto* old_desc = old_loader->descriptor();
             if (old_desc) {
@@ -1356,7 +1356,7 @@ bool GraphCompiler::reload_operator(CompiledGraph& cg,
     }
 
     // 4. Update loader pointer and recreate instances with param reconciliation
-    OperatorLoader* new_loader = registry.find(type_name);
+    OperatorLoader* new_loader = registry.find_loaded(type_name);
     if (!new_loader) return false;
     const auto* new_desc = new_loader->descriptor();
     if (!new_desc) return false;
