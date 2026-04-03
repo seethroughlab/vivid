@@ -36,6 +36,11 @@ struct SMDriver {
     std::vector<float> param_values;
     float input_values[4] = {};
     float output_values[6] = {};
+    float* in_ptrs[4]  = { &input_values[0], &input_values[1],
+                            &input_values[2], &input_values[3] };
+    float* out_ptrs[6] = { &output_values[0], &output_values[1],
+                            &output_values[2], &output_values[3],
+                            &output_values[4], &output_values[5] };
     uint64_t frame = 0;
 
     SMDriver() {
@@ -61,8 +66,10 @@ struct SMDriver {
         ctx.delta_time = 0.016;
         ctx.frame = frame++;
         ctx.param_values = param_values.data();
-        ctx.buffer_size = 0;
+        ctx.buffer_size = 1;
         ctx.sample_rate = 48000;
+        ctx.input_buffers = in_ptrs;
+        ctx.output_buffers = out_ptrs;
         sm.process_audio(&ctx);
     }
 

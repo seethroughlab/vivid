@@ -1,4 +1,5 @@
 #include "operator_api/operator.h"
+#include "control/audio_scalar_utils.h"
 #include <algorithm>
 #include <cmath>
 /**
@@ -103,11 +104,11 @@ struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        // 1. Read inputs
-        float beat_phase = 0.0f;
-        float trigger_in = 0.0f;
-        float reset_in   = 0.0f;
-        float signal_in  = 0.0f;
+        // 1. Read inputs (scalar ports delivered as audio buffers)
+        float beat_phase = vivid::audio_scalar_block_start(ctx, 0);
+        float trigger_in = vivid::audio_scalar_block_start(ctx, 1);
+        float reset_in   = vivid::audio_scalar_block_start(ctx, 2);
+        float signal_in  = vivid::audio_scalar_block_start(ctx, 3);
 
         // 2. Read params
         int   num_states     = static_cast<int>(ctx->param_values[0]);
