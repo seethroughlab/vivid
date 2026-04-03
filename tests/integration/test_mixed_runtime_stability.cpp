@@ -13,18 +13,9 @@
 #include <cmath>
 #include <filesystem>
 #include <vector>
+#include "test_helpers.h"
 
-static int failures = 0;
 static int skipped = 0;
-
-static void check(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "  FAIL: %s\n", msg);
-        failures++;
-    } else {
-        std::fprintf(stderr, "  PASS: %s\n", msg);
-    }
-}
 
 static void skip(const char* msg) {
     std::fprintf(stderr, "  SKIP: %s\n", msg);

@@ -5,6 +5,7 @@
 #include "runtime/graph/graph.h"
 #include "runtime/operators/operator_registry.h"
 #include "operator_api/port_type_registry.h"
+#include "test_helpers.h"
 
 namespace test {
 struct TestCustomRef {
@@ -23,17 +24,6 @@ VIVID_DECLARE_CUSTOM_REF_TYPE(test::TestCustomRef,
 #include <fstream>
 #include <sstream>
 #include <string>
-
-static int failures = 0;
-
-static void check(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "  FAIL: %s\n", msg);
-        failures++;
-    } else {
-        std::fprintf(stderr, "  PASS: %s\n", msg);
-    }
-}
 
 static std::string read_file(const std::filesystem::path& path) {
     std::ifstream ifs(path);

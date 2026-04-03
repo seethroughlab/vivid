@@ -1,9 +1,9 @@
-#include "test_helpers.h"
 #include "runtime/core/settings.h"
 #include <filesystem>
 #include <fstream>
 #include <cstdlib>
 #include <string>
+#include "test_helpers.h"
 
 namespace fs = std::filesystem;
 

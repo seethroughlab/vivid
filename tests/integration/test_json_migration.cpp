@@ -11,29 +11,7 @@
 #include <sstream>
 #include <vector>
 #include <algorithm>
-
-static int failures = 0;
-
-static void check(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "  FAIL: %s\n", msg);
-        failures++;
-    } else {
-        std::fprintf(stderr, "  PASS: %s\n", msg);
-    }
-}
-
-static void check_float(float actual, float expected, const char* label) {
-    // Both NaN → match.  Otherwise within tolerance.
-    bool match = (std::isnan(actual) && std::isnan(expected)) ||
-                 std::fabs(actual - expected) < 1e-4f;
-    if (!match) {
-        std::fprintf(stderr, "  FAIL: %s (expected %f, got %f)\n", label, expected, actual);
-        failures++;
-    } else {
-        std::fprintf(stderr, "  PASS: %s\n", label);
-    }
-}
+#include "test_helpers.h"
 
 // Read a file into a string.
 static std::string read_file(const char* path) {

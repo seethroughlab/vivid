@@ -3,19 +3,11 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include "test_helpers.h"
 
 namespace fs = std::filesystem;
 
 static bool g_all_ok = true;
-
-static void check(bool cond, const char* msg) {
-    if (cond) {
-        std::fprintf(stderr, "  PASS: %s\n", msg);
-    } else {
-        std::fprintf(stderr, "  FAIL: %s\n", msg);
-        g_all_ok = false;
-    }
-}
 
 static std::string find_repo_root() {
     for (const auto& candidate : {

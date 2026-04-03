@@ -8,17 +8,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <string>
-
-static int failures = 0;
-
-static void check(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "  FAIL: %s\n", msg);
-        failures++;
-    } else {
-        std::fprintf(stderr, "  PASS: %s\n", msg);
-    }
-}
+#include "test_helpers.h"
 
 static void test_port_type_compat() {
     std::fprintf(stderr, "\n--- SCALAR port compatibility ---\n");

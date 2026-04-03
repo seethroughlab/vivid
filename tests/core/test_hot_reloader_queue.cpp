@@ -8,17 +8,7 @@
 #include <string>
 #include <thread>
 #include <vector>
-
-static int failures = 0;
-
-static void check(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "  FAIL: %s\n", msg);
-        failures++;
-    } else {
-        std::fprintf(stderr, "  PASS: %s\n", msg);
-    }
-}
+#include "test_helpers.h"
 
 static bool wait_until_ms(const std::function<bool()>& pred, int timeout_ms) {
     const auto start = std::chrono::steady_clock::now();

@@ -1,4 +1,3 @@
-#include "test_helpers.h"
 #include "ui/style/theme_loader.h"
 #include "ui/style/ui_style.h"
 #include <filesystem>
@@ -6,6 +5,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cmath>
+#include "test_helpers.h"
 
 namespace fs = std::filesystem;
 

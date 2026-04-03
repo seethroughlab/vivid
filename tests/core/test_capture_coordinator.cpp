@@ -4,6 +4,7 @@
 #include <cstring>
 #include <string>
 #include <memory>
+#include "test_helpers.h"
 
 namespace {
 struct FakeFailingExporter : vivid::AVExporter {
@@ -16,17 +17,6 @@ struct FakeFailingExporter : vivid::AVExporter {
     std::string path_;
 };
 } // namespace
-
-static int failures = 0;
-
-static void check(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "  FAIL: %s\n", msg);
-        failures++;
-    } else {
-        std::fprintf(stderr, "  PASS: %s\n", msg);
-    }
-}
 
 int main() {
     // =====================================================================

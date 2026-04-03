@@ -7,19 +7,9 @@
 #include <algorithm>
 #include <cstdio>
 #include <tuple>
+#include "test_helpers.h"
 
 using namespace vivid::ui;
-
-static int failures = 0;
-
-static void check(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "FAIL: %s\n", msg);
-        ++failures;
-    } else {
-        std::fprintf(stderr, "PASS: %s\n", msg);
-    }
-}
 
 struct DummySink : UICommandSink {
     std::vector<std::pair<std::string, std::string>> connect_calls;

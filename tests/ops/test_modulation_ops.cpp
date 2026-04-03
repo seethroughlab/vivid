@@ -9,17 +9,7 @@
 #include <filesystem>
 #include <string>
 #include <vector>
-
-static int failures = 0;
-
-static void check(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "  FAIL: %s\n", msg);
-        failures++;
-    } else {
-        std::fprintf(stderr, "  PASS: %s\n", msg);
-    }
-}
+#include "test_helpers.h"
 
 static float rms(const float* buf, int n) {
     double sum = 0.0;

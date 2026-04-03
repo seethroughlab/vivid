@@ -1,7 +1,7 @@
-#include "test_helpers.h"
 #include "common/topo_sort.h"
 #include <algorithm>
 #include <set>
+#include "test_helpers.h"
 
 // Verify that `order` is a valid topological ordering of a DAG with `n` nodes.
 // For each edge u→v in adj, u must appear before v.

@@ -3,17 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
-
-static int failures = 0;
-
-static void check(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "  FAIL: %s\n", msg);
-        failures++;
-    } else {
-        std::fprintf(stderr, "  PASS: %s\n", msg);
-    }
-}
+#include "test_helpers.h"
 
 static void write_text(const std::filesystem::path& p, const std::string& text) {
     std::ofstream ofs(p);

@@ -1,6 +1,6 @@
-#include "test_helpers.h"
 #include "ui/inspector/inspector_layout.h"
 #include <cstdio>
+#include "test_helpers.h"
 
 using namespace vivid::ui;
 

@@ -3,21 +3,11 @@
 #include <cstdio>
 #include <cstring>
 #include <vector>
+#include "test_helpers.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
-
-static int failures = 0;
-
-static void check(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "  FAIL: %s\n", msg);
-        failures++;
-    } else {
-        std::fprintf(stderr, "  PASS: %s\n", msg);
-    }
-}
 
 static void check_near(float actual, float expected, float tol, const char* msg) {
     if (std::fabs(actual - expected) > tol) {

@@ -4,7 +4,6 @@
 // Case B: clone to project package via command sink — same isolation + correct hot-reload target.
 // Case C: fallback-to-core with no project package — warning emitted, operator lands in core.
 
-#include "test_helpers.h"
 #include "runtime/operators/operator_creator.h"
 #include "runtime/operators/operator_destination_policy.h"
 #include "runtime/operators/operator_registry.h"
@@ -23,6 +22,7 @@
 #include <string>
 #include <thread>
 #include <chrono>
+#include "test_helpers.h"
 
 namespace fs = std::filesystem;
 

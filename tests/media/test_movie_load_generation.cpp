@@ -1,16 +1,8 @@
 #include "operators/shared/movie_decode/load_generation.h"
 #include <cstdio>
+#include "test_helpers.h"
 
 static int g_fail = 0;
-
-static void check(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "FAIL: %s\n", msg);
-        g_fail++;
-    } else {
-        std::fprintf(stderr, "PASS: %s\n", msg);
-    }
-}
 
 int main() {
     MovieLoadGenerationTracker t;

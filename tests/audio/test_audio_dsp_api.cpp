@@ -2,17 +2,7 @@
 
 #include <cmath>
 #include <cstdio>
-
-static int failures = 0;
-
-static void check(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "  FAIL: %s\n", msg);
-        failures++;
-    } else {
-        std::fprintf(stderr, "  PASS: %s\n", msg);
-    }
-}
+#include "test_helpers.h"
 
 static bool approx(double a, double b, double eps = 1e-6) {
     return std::fabs(a - b) <= eps;

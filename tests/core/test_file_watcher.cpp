@@ -5,19 +5,9 @@
 #include <filesystem>
 #include <thread>
 #include <chrono>
+#include "test_helpers.h"
 
 namespace fs = std::filesystem;
-
-static int failures = 0;
-
-static void check(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "  FAIL: %s\n", msg);
-        failures++;
-    } else {
-        std::fprintf(stderr, "  PASS: %s\n", msg);
-    }
-}
 
 // Create a temp directory with the layout FileWatcher::start() expects:
 //   <root>/<domain>/<name>/<name>.cpp

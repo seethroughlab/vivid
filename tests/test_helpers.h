@@ -13,11 +13,15 @@ static void check(bool cond, const char* msg) {
     }
 }
 
-static void check_float(float actual, float expected, const char* msg) {
-    if (std::fabs(actual - expected) > 1e-4f) {
+static void check_float(float actual, float expected, float tol, const char* msg) {
+    if (std::fabs(actual - expected) > tol) {
         std::fprintf(stderr, "  FAIL: %s (expected %f, got %f)\n", msg, expected, actual);
         failures++;
     } else {
         std::fprintf(stderr, "  PASS: %s (%f)\n", msg, actual);
     }
+}
+
+static void check_float(float actual, float expected, const char* msg) {
+    check_float(actual, expected, 1e-4f, msg);
 }

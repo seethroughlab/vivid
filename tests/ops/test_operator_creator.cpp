@@ -1,9 +1,9 @@
-#include "test_helpers.h"
 #include "runtime/operators/operator_creator.h"
 #include "runtime/operators/operator_registry.h"
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include "test_helpers.h"
 
 namespace fs = std::filesystem;
 

@@ -14,19 +14,9 @@
 #include <fstream>
 #include <thread>
 #include <chrono>
+#include "test_helpers.h"
 
 namespace fs = std::filesystem;
-
-static int failures = 0;
-
-static void check(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "  FAIL: %s\n", msg);
-        failures++;
-    } else {
-        std::fprintf(stderr, "  PASS: %s\n", msg);
-    }
-}
 
 static void settle_topology(vivid::RuntimeAPI& api, bool& has_gpu_ops, bool& has_audio) {
     if (api.has_pending()) {

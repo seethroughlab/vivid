@@ -10,26 +10,7 @@
 #include <cstdio>
 #include <cmath>
 #include <filesystem>
-
-static int failures = 0;
-
-static void check(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "  FAIL: %s\n", msg);
-        failures++;
-    } else {
-        std::fprintf(stderr, "  PASS: %s\n", msg);
-    }
-}
-
-static void check_float(float actual, float expected, float tol, const char* msg) {
-    if (std::fabs(actual - expected) > tol) {
-        std::fprintf(stderr, "  FAIL: %s (expected %f, got %f)\n", msg, expected, actual);
-        failures++;
-    } else {
-        std::fprintf(stderr, "  PASS: %s (%f)\n", msg, actual);
-    }
-}
+#include "test_helpers.h"
 
 int main(int argc, char* argv[]) {
     std::string build_dir = ".";

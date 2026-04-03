@@ -5,17 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <vector>
-
-static int failures = 0;
-
-static void check(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "FAIL: %s\n", msg);
-        ++failures;
-    } else {
-        std::fprintf(stderr, "PASS: %s\n", msg);
-    }
-}
+#include "test_helpers.h"
 
 static void push_be16(std::vector<uint8_t>& out, uint16_t value) {
     out.push_back(static_cast<uint8_t>((value >> 8) & 0xFFu));

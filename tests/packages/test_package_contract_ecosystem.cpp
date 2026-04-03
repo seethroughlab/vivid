@@ -7,17 +7,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
-
-static int failures = 0;
-
-static void check(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "  FAIL: %s\n", msg);
-        failures++;
-    } else {
-        std::fprintf(stderr, "  PASS: %s\n", msg);
-    }
-}
+#include "test_helpers.h"
 
 static void write_text(const std::filesystem::path& path, const std::string& text) {
     std::filesystem::create_directories(path.parent_path());

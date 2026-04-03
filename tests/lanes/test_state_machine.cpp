@@ -9,26 +9,7 @@
 
 // Include the operator source directly so we can instantiate it.
 #include "../operators/control/state_machine/state_machine.cpp"
-
-static int failures = 0;
-
-static void check(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "  FAIL: %s\n", msg);
-        failures++;
-    } else {
-        std::fprintf(stderr, "  PASS: %s\n", msg);
-    }
-}
-
-static void check_float(float actual, float expected, const char* msg, float tol = 1e-4f) {
-    if (std::fabs(actual - expected) > tol) {
-        std::fprintf(stderr, "  FAIL: %s (expected %f, got %f)\n", msg, expected, actual);
-        failures++;
-    } else {
-        std::fprintf(stderr, "  PASS: %s (%f)\n", msg, actual);
-    }
-}
+#include "test_helpers.h"
 
 struct SMDriver {
     StateMachine sm;

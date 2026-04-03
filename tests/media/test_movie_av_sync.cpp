@@ -8,19 +8,10 @@
 #include <cstdio>
 #include <cstring>
 #include <algorithm>
+#include "test_helpers.h"
 
 static int g_fail = 0;
 static int g_pass = 0;
-
-static void check(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "FAIL: %s\n", msg);
-        g_fail++;
-    } else {
-        std::fprintf(stderr, "PASS: %s\n", msg);
-        g_pass++;
-    }
-}
 
 // ============================================================================
 // Sync math (copied from movie_file_in.cpp — pure functions)

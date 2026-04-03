@@ -4,17 +4,7 @@
 #include "runtime/graph/lane_state.h"
 #include <cstdio>
 #include <cstring>
-
-static int failures = 0;
-
-static void check(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "  FAIL: %s\n", msg);
-        failures++;
-    } else {
-        std::fprintf(stderr, "  PASS: %s\n", msg);
-    }
-}
+#include "test_helpers.h"
 
 // ---------------------------------------------------------------------------
 // Test 1: get returns zero-initialized storage

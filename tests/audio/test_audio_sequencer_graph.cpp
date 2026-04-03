@@ -13,19 +13,9 @@
 #include <cstring>
 #include <filesystem>
 #include <string>
+#include "test_helpers.h"
 
 static int passes = 0;
-static int failures = 0;
-
-static void check(bool ok, const char* label) {
-    if (ok) {
-        std::fprintf(stderr, "  PASS: %s\n", label);
-        passes++;
-    } else {
-        std::fprintf(stderr, "  FAIL: %s\n", label);
-        failures++;
-    }
-}
 
 int main(int argc, char* argv[]) {
     std::string build_dir = ".";

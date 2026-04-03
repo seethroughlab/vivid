@@ -17,31 +17,13 @@
 #include <cmath>
 #include <vector>
 #include <filesystem>
+#include "test_helpers.h"
 
 // ============================================================================
 // Test infrastructure
 // ============================================================================
 
-static int failures = 0;
 static int skipped  = 0;
-
-static void check(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "  FAIL: %s\n", msg);
-        failures++;
-    } else {
-        std::fprintf(stderr, "  PASS: %s\n", msg);
-    }
-}
-
-static void check_float(float actual, float expected, float tol, const char* msg) {
-    if (std::fabs(actual - expected) > tol) {
-        std::fprintf(stderr, "  FAIL: %s (expected %.4f, got %.4f)\n", msg, expected, actual);
-        failures++;
-    } else {
-        std::fprintf(stderr, "  PASS: %s (%.4f)\n", msg, actual);
-    }
-}
 
 static void skip(const char* msg) {
     std::fprintf(stderr, "  SKIP: %s\n", msg);

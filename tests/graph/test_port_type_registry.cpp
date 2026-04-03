@@ -1,7 +1,7 @@
-#include "test_helpers.h"
 #include "operator_api/port_type_registry.h"
 #include "operator_api/type_id.h"
 #include <cstring>
+#include "test_helpers.h"
 
 struct TestRefToken {
     uint64_t handle = 0;
