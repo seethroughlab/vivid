@@ -92,12 +92,6 @@ Viewport is UI-only state, persisted but ignored by the runtime.
 `GRAPH_SCHEMA_VERSION` is defined as `3` in graph.h. Graphs saved with a newer schema version
 are hard-rejected on load. Graphs without a `schema_version` field are treated as version 1.
 
-Graphs that still use the removed WGSL filter model are also hard-rejected, even when the schema
-version matches:
-
-- top-level `filters`
-- nodes of type `WGSLFilter`
-
 ## Load Diagnostics
 
 After `load()`, `graph.load_diagnostics` contains entries for nodes whose saved `pkg_version`

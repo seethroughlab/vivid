@@ -437,8 +437,8 @@ vivid/
 │   │   ├── gpu_operator.h      # GpuProcessable, VividGpuContext, VividGpuState
 │   │   ├── gpu_types.h         # VividGpuBuffer, VividMesh, VividComputeBuffer
 │   │   ├── child_op.h          # ChildOp<T> for operator composition
-│   │   ├── wgsl_filter.h       # WgslFilterBase for data-driven GPU filters
-│   │   ├── data_driven_filter.h # DataDrivenFilter with dynamic param/port collection
+│   │   ├── wgsl_filter.h       # WgslFilterBase for shader-backed GPU operators
+│   │   ├── data_driven_filter.h # WgslOperator with dynamic param/port collection
 │   │   ├── audio_dsp.h         # WhiteNoise, PinkNoise, waveform(), detect_trigger()
 │   │   └── midi_types.h        # VividMidiBuffer type (reserved)
 │   ├── cli/                    # CLI tooling
@@ -562,7 +562,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 
 **Param metadata** supports type (float/int/bool), min/max/default, enum choices, display hints (`"knob"`, `"xy_pad"`, `"color"`), groups, and column layout — all declared in JSON, all consumed by the inspector UI without per-filter code.
 
-**Persistence model:** graphs no longer store inline WGSL filter definitions. A node simply stores the concrete operator type name (for example `Blur`), and the shader source remains in a real file under core `filters/`, a package `filters/`, or `<graph_dir>/filters/`.
+**Persistence model:** graphs store the concrete operator type name (for example `Blur`), and the shader source remains in a real file under core `filters/`, a package `filters/`, or `<graph_dir>/filters/`.
 
 **Reload model:** body-only `.wgsl` edits hot-reload inside `WgslFilterBase`. Header-derived descriptor changes (params, inputs, time-dependence, or operator name) rescan the affected shader directory and rebuild the graph instead of mutating descriptors in place.
 

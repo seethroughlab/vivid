@@ -170,8 +170,7 @@ bool is_user_operator(name) const;
 ```
 
 Shader-backed operators are first-class operator types. A `.wgsl` file named `Blur` registers as
-type `Blur`; there is no `WGSLFilter` pseudo-type, preset selector string param, or graph-owned
-inline shader blob.
+type `Blur`, and graphs persist that operator type directly.
 
 ### Hot-Reload
 

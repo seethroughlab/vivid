@@ -677,7 +677,7 @@ The main workspace interaction pattern is centered on the node graph for structu
 
 The original 25-phase roadmap has been superseded by milestone-based planning in `docs/ROADMAP.md`. See the roadmap's "Shipped" section for the full list of delivered capabilities.
 
-**Completed highlights:** Three-domain data flow, Spreads, hot-reload, 71 operators across 3 domains, Python MCP bridge (57 tools), MIDI/OSC input, data-driven WGSL filter framework, package ecosystem (install/link/scaffold/publish/test), movie playback (MovieLoaded trio), standalone export, operator versioning, first-class GPU port types (buffer/mesh/compute), multiple output ports, output analyzer (audio/visual/AV metrics + comparison), capture/recording, variations/presets, undo/redo, introspection/diagnostics/checks. North Star validation completed.
+**Completed highlights:** Three-domain data flow, Spreads, hot-reload, 71 operators across 3 domains, Python MCP bridge (57 tools), MIDI/OSC input, WGSL shader operators, package ecosystem (install/link/scaffold/publish/test), movie playback (MovieLoaded trio), standalone export, operator versioning, first-class GPU port types (buffer/mesh/compute), multiple output ports, output analyzer (audio/visual/AV metrics + comparison), capture/recording, variations/presets, undo/redo, introspection/diagnostics/checks. North Star validation completed.
 
 **In progress:** Core stability verification (M1 exit gate), operator creation modal (M11), solo mode (M12), semantic tag rollout (M13), launch prep (M14).
 
@@ -707,13 +707,13 @@ How many semantic tags to define initially, and whether to formalize a standard 
 
 Whether GPU operators are primarily C++ host code dispatching compute shaders / WGSL, or C++ all the way down. Affects the operator API and what the build system compiles.
 
-> **Resolved:** GPU operators are C++ host code (`GpuProcessable::process_gpu()`) dispatching WGSL shaders via WebGPU. Additionally, a data-driven WGSL filter framework allows pure-WGSL filters with no C++ code (see ARCHITECTURE.md §5.18).
+> **Resolved:** GPU operators are C++ host code (`GpuProcessable::process_gpu()`) dispatching WGSL shaders via WebGPU. Vivid also supports pure-WGSL shader operators with no per-operator C++ code (see ARCHITECTURE.md §5.18).
 
 **Graph Serialization Format**
 
 The declarative graph representation enabling LLM-driven patching. Needs to capture node types, connections, parameter values, and semantic tags. This is the single source of truth for the entire system.
 
-> **Resolved:** JSON with `schema_version`, `vivid_version`, `meta` block, `nodes`, `connections`, and optional `variations`/`midi_mappings`/`filters` arrays. See ARCHITECTURE.md §5.11.
+> **Resolved:** JSON with `schema_version`, `vivid_version`, `meta` block, `nodes`, `connections`, and optional `variations`/`midi_mappings` arrays. See ARCHITECTURE.md §5.11.
 
 **Control Operator Sufficiency**
 
