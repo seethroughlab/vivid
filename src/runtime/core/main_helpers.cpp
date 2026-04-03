@@ -1,4 +1,5 @@
 #include "runtime/core/main_helpers.h"
+#include <nlohmann/json.hpp>
 #include "runtime/core/file_watcher.h"
 #include "runtime/core/hot_reload.h"
 #include "runtime/core/runtime_core.h"

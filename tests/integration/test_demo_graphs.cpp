@@ -1,3 +1,4 @@
+#include <nlohmann/json.hpp>
 #include "runtime/operators/operator_registry.h"
 #include "runtime/packages/package_manager.h"
 #include "runtime/graph/graph.h"

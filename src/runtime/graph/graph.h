@@ -4,7 +4,7 @@
 #include <vector>
 #include <unordered_map>
 #include <cmath>
-#include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
 #include "runtime/graph/cadence_types.h"
 
 // Bumped when the graph JSON format changes in a backward-incompatible way.
