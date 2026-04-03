@@ -39,6 +39,7 @@
 #include "export/export_pipeline.h"
 #include "runtime/package_compiler.h"
 #include "runtime/package_manager.h"
+#include "runtime/build_console.h"
 #include "runtime/package_catalog.h"
 #include "runtime/package_scaffolder.h"
 #include "runtime/app_update_manager.h"
@@ -2625,6 +2626,8 @@ fn fbm(p_in: vec2f) -> f32 {
     });
     vivid::PackageCompiler pkg_compiler(build_paths.source_dir, build_paths.build_dir);
     vivid::PackageManager pkg_manager(pkg_compiler, registry);
+    auto build_console = std::make_shared<vivid::BuildConsole>();
+    pkg_manager.set_build_console(build_console.get());
     pkg_manager.set_subgraph_module_registry(&subgraph_modules);
     if (std::getenv("VIVID_SKIP_PACKAGE_SCAN")) {
         std::fprintf(stderr, "[vivid] Skipping installed package scan (VIVID_SKIP_PACKAGE_SCAN)\n");
@@ -2910,7 +2913,9 @@ fn fbm(p_in: vec2f) -> f32 {
     command_sink.set_capture_coordinator(&capture_coordinator);
     command_sink.set_runtime_flags(&has_gpu_ops, &has_audio);
     command_sink.set_package_manager(&pkg_manager);
+    command_sink.set_build_console(build_console.get());
     vivid::ui::NodeGraphUI graph_ui(command_sink);
+    graph_ui.set_build_console(build_console);
     graph_ui.set_dpi_scale(dpi_scale);
     graph_ui.set_bezier_wires(settings.bezier_wires);
     graph_ui.set_show_param_wires(settings.show_param_wires);
@@ -3299,6 +3304,7 @@ fn fbm(p_in: vec2f) -> f32 {
             }
             if (file_watcher.start(operators_dir) && hot_reloader.start(build_paths.build_dir)) {
                 hot_reload_enabled = true;
+                hot_reloader.set_build_console(build_console.get());
                 control_server.set_hot_reloader(&hot_reloader);
                 command_sink.set_hot_reloader(&hot_reloader);
                 std::fprintf(stderr, "[vivid] Hot-reload enabled (watching %s)\n", operators_dir.c_str());
@@ -3311,7 +3317,7 @@ fn fbm(p_in: vec2f) -> f32 {
                 std::string pkg_src_dir = src_dir;
                 std::string pkg_build_dir = build_paths.build_dir;
                 hot_reloader.set_package_compiler(
-                    [&pkg_manager, pkg_src_dir, pkg_build_dir](const std::string& target) -> vivid::ReloadResult {
+                    [&pkg_manager, pkg_src_dir, pkg_build_dir, build_console](const std::string& target) -> vivid::ReloadResult {
                         // Parse "pkg:<package_name>:<operator_name>"
                         vivid::ReloadResult result;
                         result.target_name = target;
@@ -3339,10 +3345,14 @@ fn fbm(p_in: vec2f) -> f32 {
                         if (std::filesystem::exists(src_cpp)) {
                             auto quote = [](const std::string& s) { return "'" + s + "'"; };
                             std::string pkg_build = pkg_dir + "/build";
+                            vivid::BuildTaskId configure_task = 0;
 
                             // Ensure build directory exists/configured.
                             if (!std::filesystem::exists(std::filesystem::path(pkg_build) / "CMakeCache.txt")) {
                                 std::filesystem::create_directories(pkg_build);
+                                configure_task = build_console->begin_task(
+                                    vivid::BuildTaskKind::PackageConfigure,
+                                    pkg_name + ":" + op_name);
                                 std::string cfg_cmd = "cmake"
                                     " -B " + quote(pkg_build) +
                                     " -S " + quote(pkg_dir) +
@@ -3355,19 +3365,29 @@ fn fbm(p_in: vec2f) -> f32 {
                                 if (!cfg_pipe) {
                                     result.success = false;
                                     result.error_output = "Failed to execute cmake configure for package target";
+                                    build_console->append_system_line(configure_task, result.error_output);
+                                    build_console->finish_task(configure_task, vivid::BuildTaskState::Failed, "launch failed");
                                     return result;
                                 }
                                 std::array<char, 256> cfg_buf;
-                                while (fgets(cfg_buf.data(), cfg_buf.size(), cfg_pipe) != nullptr)
+                                while (fgets(cfg_buf.data(), cfg_buf.size(), cfg_pipe) != nullptr) {
                                     cfg_out += cfg_buf.data();
+                                    build_console->append_line(configure_task, vivid::BuildConsoleStreamKind::Stdout, cfg_buf.data());
+                                }
                                 int cfg_status = pclose(cfg_pipe);
                                 if (cfg_status != 0) {
                                     result.success = false;
                                     result.error_output = "cmake configure failed:\n" + cfg_out;
+                                    build_console->finish_task(configure_task, vivid::BuildTaskState::Failed,
+                                                               "failed (exit " + std::to_string(cfg_status) + ")");
                                     return result;
                                 }
+                                build_console->finish_task(configure_task, vivid::BuildTaskState::Succeeded, "configured");
                             }
 
+                            vivid::BuildTaskId build_task = build_console->begin_task(
+                                vivid::BuildTaskKind::PackageBuild,
+                                pkg_name + ":" + op_name);
                             std::string build_cmd = "cmake --build " + quote(pkg_build) +
                                                     " --target " + quote(op_name) + " 2>&1";
                             std::string build_out;
@@ -3375,17 +3395,24 @@ fn fbm(p_in: vec2f) -> f32 {
                             if (!pipe) {
                                 result.success = false;
                                 result.error_output = "Failed to execute cmake build for package target";
+                                build_console->append_system_line(build_task, result.error_output);
+                                build_console->finish_task(build_task, vivid::BuildTaskState::Failed, "launch failed");
                                 return result;
                             }
                             std::array<char, 256> buf;
-                            while (fgets(buf.data(), buf.size(), pipe) != nullptr)
+                            while (fgets(buf.data(), buf.size(), pipe) != nullptr) {
                                 build_out += buf.data();
+                                build_console->append_line(build_task, vivid::BuildConsoleStreamKind::Stdout, buf.data());
+                            }
                             int status = pclose(pipe);
                             if (status != 0) {
                                 result.success = false;
                                 result.error_output = "cmake build failed:\n" + build_out;
+                                build_console->finish_task(build_task, vivid::BuildTaskState::Failed,
+                                                           "failed (exit " + std::to_string(status) + ")");
                                 return result;
                             }
+                            build_console->finish_task(build_task, vivid::BuildTaskState::Succeeded, "built");
 
                             result.success = true;
                             result.staged_dylib_path = pkg_build + "/" + op_name + vivid::kPluginSuffix;

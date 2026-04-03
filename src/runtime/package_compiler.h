@@ -1,5 +1,6 @@
 #pragma once
 
+#include "runtime/build_console.h"
 #include <string>
 #include <vector>
 
@@ -52,6 +53,9 @@ public:
                                    const std::string& test_rel_path,
                                    const std::vector<std::string>& extra_include_dirs = {});
 
+    void set_build_console(BuildConsole* console) { build_console_ = console; }
+    BuildConsole* build_console() const { return build_console_; }
+
     // Accessors for cmake-based packages
     const std::string& src_dir() const { return vivid_src_dir_; }
     const std::string& build_dir() const { return vivid_build_dir_; }
@@ -59,6 +63,7 @@ public:
 private:
     std::string vivid_src_dir_;
     std::string vivid_build_dir_;
+    BuildConsole* build_console_ = nullptr;
 };
 
 } // namespace vivid

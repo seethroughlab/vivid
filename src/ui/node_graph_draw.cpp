@@ -3452,6 +3452,8 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
     draw_box_select(tr);
     draw_wire_tooltip(tr);
     draw_session_grid(tr);
+    build_console_panel_.draw(tr, style_, win_w_, win_h_,
+                              session_grid_open_ ? kSessionStripH : 0.0f);
     draw_perf_bar(tr);
     draw_midi_map_banner(tr);
     {
@@ -3855,6 +3857,26 @@ void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
             tr.draw_text(rx + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
                          snap_label, style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
             perf_button_rects_.push_back({rx, btn_y, btn_w, kPerfBtnH, 1, true});
+            rx -= kPerfBtnMargin;
+        }
+
+        // Build console toggle
+        {
+            const char* build_label = "Build";
+            float tw = tr.text_width(build_label);
+            float btn_w = tw + kPerfBtnPadX * 2;
+            rx -= btn_w;
+            bool hovered = mouse_.x >= rx && mouse_.x <= rx + btn_w &&
+                           mouse_.y >= btn_y && mouse_.y <= btn_y + kPerfBtnH;
+            bool active = build_console_panel_.is_open();
+            float br = active ? style_.accent[0] : 0.30f;
+            float bg = active ? style_.accent[1] : 0.32f;
+            float bb = active ? style_.accent[2] : 0.35f;
+            float ba = hovered ? (active ? 0.42f : 0.35f) : (active ? 0.28f : 0.20f);
+            tr.draw_rounded_rect(rx, btn_y, btn_w, kPerfBtnH, 3.0f, br, bg, bb, ba);
+            tr.draw_text(rx + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
+                         build_label, style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+            perf_button_rects_.push_back({rx, btn_y, btn_w, kPerfBtnH, 4, true});
             rx -= kPerfBtnMargin;
         }
 

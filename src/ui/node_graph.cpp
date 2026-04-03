@@ -187,8 +187,13 @@ float NodeGraphUI::graph_right() const {
 
 float NodeGraphUI::graph_bottom() const {
     float h = static_cast<float>(win_h_);
+    h -= build_console_panel_.panel_height();
     if (session_grid_open_) h -= kSessionStripH;
     return h;
+}
+
+float NodeGraphUI::session_strip_top() const {
+    return static_cast<float>(win_h_) - kSessionStripH;
 }
 
 // -----------------------------------------------------------------------
@@ -1248,6 +1253,7 @@ void NodeGraphUI::confirm_chooser_selection_idx(int idx) {
 void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     snap_ = snapshot;
     snap_valid_ = true;
+    build_console_panel_.sync_from_model();
 
     // Deselect a param wire that becomes hidden
     if (!show_param_wires_ && selected_wire_idx_ >= 0 &&
@@ -1273,6 +1279,12 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
         commands_.add_midi_mapping(midi_map_node_id_, midi_map_param_name_,
                                    ev.cc_number, ev.channel, range_min, range_max);
         midi_map_waiting_ = false;
+    }
+
+    {
+        float bottom_offset = session_grid_open_ ? kSessionStripH : 0.0f;
+        build_console_panel_.update_drag(mouse_.x, mouse_.y, mouse_.left_down,
+                                         win_w_, win_h_, bottom_offset);
     }
 
     check_relayout();

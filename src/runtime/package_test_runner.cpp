@@ -169,6 +169,9 @@ static SingleTestResult run_cpp_test(PackageCompiler& compiler,
     }
 
     // Run executable
+    BuildTaskId task_id = compiler.build_console()
+        ? compiler.build_console()->begin_task(BuildTaskKind::PackageTestRun, rel_path)
+        : 0;
     std::string cmd = "'" + cr.executable_path + "' 2>&1";
     std::string output;
     FILE* pipe = popen(cmd.c_str(), "r");
@@ -176,12 +179,18 @@ static SingleTestResult run_cpp_test(PackageCompiler& compiler,
         r.status = "failed";
         r.code = "cpp_runtime_launch_failed";
         r.reason = "Failed to execute test binary";
+        if (compiler.build_console()) {
+            compiler.build_console()->append_system_line(task_id, r.reason);
+            compiler.build_console()->finish_task(task_id, BuildTaskState::Failed, "launch failed");
+        }
         return r;
     }
 
     std::array<char, 256> buf;
     while (fgets(buf.data(), buf.size(), pipe) != nullptr) {
         output += buf.data();
+        if (compiler.build_console())
+            compiler.build_console()->append_line(task_id, BuildConsoleStreamKind::Stdout, buf.data());
         // Cap captured output at 4KB
         if (output.size() > 4096) {
             output = output.substr(0, 4096) + "\n... (truncated)";
@@ -198,15 +207,21 @@ static SingleTestResult run_cpp_test(PackageCompiler& compiler,
         if (exit_code == 0) {
             r.status = "passed";
             r.code = "cpp_passed";
+            if (compiler.build_console())
+                compiler.build_console()->finish_task(task_id, BuildTaskState::Succeeded, "passed");
         } else {
             r.status = "failed";
             r.code = "cpp_runtime_failed";
             r.reason = "Exit code " + std::to_string(exit_code);
+            if (compiler.build_console())
+                compiler.build_console()->finish_task(task_id, BuildTaskState::Failed, r.reason);
         }
     } else {
         r.status = "failed";
         r.code = "cpp_runtime_abnormal";
         r.reason = "Test process terminated abnormally";
+        if (compiler.build_console())
+            compiler.build_console()->finish_task(task_id, BuildTaskState::Failed, r.reason);
     }
 
     return r;

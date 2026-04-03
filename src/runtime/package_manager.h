@@ -12,6 +12,7 @@ namespace vivid {
 
 class OperatorRegistry;
 class SubgraphModuleRegistry;
+class BuildConsole;
 
 struct VendorDependency {
     std::string name;     // e.g. "stb_image"
@@ -132,6 +133,7 @@ public:
 
     // Set a callback that resolves package names to URLs (for dependency resolution)
     void set_resolver(PackageResolver resolver);
+    void set_build_console(BuildConsole* console);
 
     // Check if a package is installed (by name)
     bool is_installed(const std::string& name) const;
@@ -178,6 +180,7 @@ private:
 
     PackageCompiler& compiler_;
     OperatorRegistry& registry_;
+    BuildConsole* build_console_ = nullptr;
     PackageResolver resolver_;
     SubgraphModuleRegistry* subgraph_modules_ = nullptr;
     DiscoveryReport discovery_report_;

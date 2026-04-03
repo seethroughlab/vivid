@@ -2,6 +2,7 @@
 #include "runtime/package_manager.h"
 #include "runtime/package_compiler.h"
 #include "runtime/operator_registry.h"
+#include "runtime/build_console.h"
 #include <cstdlib>
 #include <cstdio>
 #include <filesystem>
@@ -107,7 +108,10 @@ VIVID_REGISTER(TestMgrOp)
     registry.scan_deferred(build_dir.c_str());
 
     vivid::PackageCompiler compiler(source_dir, build_dir);
+    vivid::BuildConsole build_console;
+    compiler.set_build_console(&build_console);
     vivid::PackageManager pm(compiler, registry);
+    pm.set_build_console(&build_console);
 
     // Clean up any previous test package
     std::string pkg_install_dir = vivid::PackageManager::packages_dir() + "/test-mgr-package";
@@ -126,6 +130,8 @@ VIVID_REGISTER(TestMgrOp)
     check(install_result.compile_results.size() == 1, "1 compile result");
     if (!install_result.compile_results.empty())
         check(install_result.compile_results[0].success, "operator compiled successfully");
+    auto build_snap = build_console.snapshot();
+    check(!build_snap.lines.empty(), "build console captured install compile activity");
 
     // Verify operator is in registry
     auto names = registry.type_names();

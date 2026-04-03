@@ -39,6 +39,14 @@ static std::string truncate_output(std::string output, size_t limit = 4096) {
     return output.substr(0, limit) + "\n... (truncated)";
 }
 
+static void stream_output_line(BuildConsole* console,
+                               BuildTaskId task_id,
+                               const char* text,
+                               BuildConsoleStreamKind stream_kind = BuildConsoleStreamKind::Stdout) {
+    if (!console || task_id == 0 || !text) return;
+    console->append_line(task_id, stream_kind, text);
+}
+
 static bool contains_any(const std::string& haystack, const std::initializer_list<const char*>& needles) {
     for (const char* needle : needles) {
         if (haystack.find(needle) != std::string::npos) return true;
@@ -172,12 +180,19 @@ CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
     std::string output_path = build_dir + "/" + name + kPluginSuffix;
     std::string temp_output = output_path + ".tmp";
     result.dylib_path = output_path;
+    BuildTaskId task_id = build_console_
+        ? build_console_->begin_task(BuildTaskKind::PackageBuild, "operator " + name)
+        : 0;
 
     // Resolve compiler path
     std::string compiler_exe = find_tool("clang++");
     if (compiler_exe.empty()) {
         result.success = false;
         result.error_output = missing_tool_error("clang++");
+        if (build_console_) {
+            build_console_->append_system_line(task_id, result.error_output);
+            build_console_->finish_task(task_id, BuildTaskState::Failed, "missing clang++");
+        }
         return result;
     }
 
@@ -256,12 +271,17 @@ CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
     if (!pipe) {
         result.success = false;
         result.error_output = "Failed to execute compiler";
+        if (build_console_) {
+            build_console_->append_system_line(task_id, result.error_output);
+            build_console_->finish_task(task_id, BuildTaskState::Failed, "launch failed");
+        }
         return result;
     }
 
     std::array<char, 256> buf;
     bool output_truncated = false;
     while (fgets(buf.data(), buf.size(), pipe) != nullptr) {
+        stream_output_line(build_console_, task_id, buf.data());
         if (output.size() < 1024 * 1024)
             output += buf.data();
         else if (!output_truncated) {
@@ -278,6 +298,9 @@ CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
         std::filesystem::remove(temp_output, ec);
         std::fprintf(stderr, "[vivid] PackageCompiler: FAILED %s:\n%s",
                      name.c_str(), output.c_str());
+        if (build_console_)
+            build_console_->finish_task(task_id, BuildTaskState::Failed,
+                                        "failed (exit " + std::to_string(status) + ")");
     } else {
         std::error_code ec;
         std::filesystem::rename(temp_output, output_path, ec);
@@ -285,9 +308,15 @@ CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
             result.success = false;
             result.error_output = "Failed to finalize output: " + ec.message();
             std::filesystem::remove(temp_output, ec);
+            if (build_console_) {
+                build_console_->append_system_line(task_id, result.error_output);
+                build_console_->finish_task(task_id, BuildTaskState::Failed, "finalize failed");
+            }
         } else {
             result.success = true;
             std::fprintf(stderr, "[vivid] PackageCompiler: compiled %s\n", name.c_str());
+            if (build_console_)
+                build_console_->finish_task(task_id, BuildTaskState::Succeeded, "succeeded");
         }
     }
 
@@ -299,8 +328,16 @@ TestCompileResult PackageCompiler::compile_test(const std::string& package_dir,
                                                 const std::vector<std::string>& extra_include_dirs) {
     TestCompileResult result = inspect_cpp_test_source(package_dir, test_rel_path);
     auto stem = result.test_name;
+    BuildTaskId task_id = build_console_
+        ? build_console_->begin_task(BuildTaskKind::PackageTestCompile, "test " + stem)
+        : 0;
     if (!result.success) {
         result.error_output = result.message;
+        if (build_console_) {
+            build_console_->append_system_line(task_id, result.message);
+            build_console_->finish_task(task_id, BuildTaskState::Failed,
+                                        result.code.empty() ? "validation failed" : result.code);
+        }
         return result;
     }
 
@@ -319,6 +356,10 @@ TestCompileResult PackageCompiler::compile_test(const std::string& package_dir,
     if (compiler_exe.empty()) {
         result.success = false;
         result.error_output = missing_tool_error("clang++");
+        if (build_console_) {
+            build_console_->append_system_line(task_id, result.error_output);
+            build_console_->finish_task(task_id, BuildTaskState::Failed, "missing clang++");
+        }
         return result;
     }
 
@@ -339,12 +380,17 @@ TestCompileResult PackageCompiler::compile_test(const std::string& package_dir,
     if (!pipe) {
         result.success = false;
         result.error_output = "Failed to execute compiler";
+        if (build_console_) {
+            build_console_->append_system_line(task_id, result.error_output);
+            build_console_->finish_task(task_id, BuildTaskState::Failed, "launch failed");
+        }
         return result;
     }
 
     std::array<char, 256> buf;
     while (fgets(buf.data(), buf.size(), pipe) != nullptr) {
         output += buf.data();
+        stream_output_line(build_console_, task_id, buf.data());
     }
     int status = pclose(pipe);
 
@@ -357,11 +403,16 @@ TestCompileResult PackageCompiler::compile_test(const std::string& package_dir,
         fs::remove(output_path, ec);
         std::fprintf(stderr, "[vivid] PackageCompiler::compile_test: FAILED %s:\n%s",
                      stem.c_str(), output.c_str());
+        if (build_console_)
+            build_console_->finish_task(task_id, BuildTaskState::Failed,
+                                        "failed (exit " + std::to_string(status) + ")");
     } else {
         result.success = true;
         result.code = "cpp_compiled";
         result.message = "compiled";
         std::fprintf(stderr, "[vivid] PackageCompiler::compile_test: compiled %s\n", stem.c_str());
+        if (build_console_)
+            build_console_->finish_task(task_id, BuildTaskState::Succeeded, "compiled");
     }
 
     return result;

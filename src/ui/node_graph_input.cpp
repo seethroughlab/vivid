@@ -37,6 +37,8 @@ void NodeGraphUI::on_mouse_button(int button, int action, int mods) {
         } else if (action == GLFW_RELEASE) {
             mouse_.left_down = false;
             mouse_.left_released = true;
+            float bottom_offset = session_grid_open_ ? kSessionStripH : 0.0f;
+            build_console_panel_.handle_left_release(mouse_.x, mouse_.y, win_w_, win_h_, bottom_offset);
         }
     } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
         if (action == GLFW_PRESS) {
@@ -107,8 +109,14 @@ void NodeGraphUI::on_scroll(float x_offset, float y_offset, int mods) {
         }
     }
 
+    float bottom_offset = session_grid_open_ ? kSessionStripH : 0.0f;
+    if (build_console_panel_.handle_scroll(mouse_.x, mouse_.y, x_offset, y_offset,
+                                           win_w_, win_h_, bottom_offset)) {
+        return;
+    }
+
     // Session grid horizontal scroll
-    if (session_grid_open_ && mouse_.y >= graph_bottom()) {
+    if (session_grid_open_ && mouse_.y >= session_strip_top()) {
         session_scroll_x_ -= y_offset * 30.0f;
         session_scroll_x_ = std::max(0.0f, session_scroll_x_);
         return;
@@ -707,6 +715,9 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         return;
     }
 
+    if (build_console_panel_.handle_key(nullptr, key, action, mods))
+        return;
+
     if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
     const bool mod_key = (mods & (GLFW_MOD_CONTROL | GLFW_MOD_SUPER)) != 0;
     const bool shift = (mods & GLFW_MOD_SHIFT) != 0;
@@ -1000,8 +1011,14 @@ void NodeGraphUI::update_context_menu() {
 void NodeGraphUI::handle_right_click() {
     if (!mouse_.right_clicked) return;
 
+    {
+        float bottom_offset = session_grid_open_ ? kSessionStripH : 0.0f;
+        if (build_console_panel_.contains(mouse_.x, mouse_.y, win_w_, win_h_, bottom_offset))
+            return;
+    }
+
     // Session grid right-click — context menu on card
-    if (session_grid_open_ && mouse_.y >= graph_bottom()) {
+    if (session_grid_open_ && mouse_.y >= session_strip_top()) {
         session_ctx_menu_open_ = false;
         for (const auto& cr : variation_cell_rects_) {
             if (mouse_.x >= cr.x && mouse_.x <= cr.x + cr.w &&
@@ -1086,6 +1103,12 @@ void NodeGraphUI::handle_left_click() {
     if (handle_chooser_click()) return;
     if (handle_dropdown_click()) return;
 
+    {
+        float bottom_offset = session_grid_open_ ? kSessionStripH : 0.0f;
+        if (!build_console_panel_.contains(mouse_.x, mouse_.y, win_w_, win_h_, bottom_offset))
+            build_console_panel_.blur();
+    }
+
     // Record codec dropdown click handling
     if (record_dropdown_open_) {
         static const char* codec_ids[] = { "h264", "h265", "prores4444" };
@@ -1135,6 +1158,8 @@ void NodeGraphUI::handle_left_click() {
                 commands_.undo();
             } else if (btn.action == 3) {  // Redo
                 commands_.redo();
+            } else if (btn.action == 4) {  // Build Console
+                build_console_panel_.toggle_open();
             }
             mouse_.left_clicked = false;
             return;
@@ -1151,8 +1176,16 @@ void NodeGraphUI::handle_left_click() {
         }
     }
 
+    {
+        float bottom_offset = session_grid_open_ ? kSessionStripH : 0.0f;
+        if (build_console_panel_.handle_left_press(mouse_.x, mouse_.y, win_w_, win_h_, bottom_offset)) {
+            mouse_.left_clicked = false;
+            return;
+        }
+    }
+
     // Session grid click handling
-    if (session_grid_open_ && mouse_.y >= graph_bottom()) {
+    if (session_grid_open_ && mouse_.y >= session_strip_top()) {
         // Close context menu if clicking elsewhere
         if (session_ctx_menu_open_) {
             // Check context menu item clicks

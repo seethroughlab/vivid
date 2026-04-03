@@ -11,6 +11,7 @@
 #include "ui/dialog_types.h"
 #include "ui/dialog_manager.h"
 #include "ui/inspector_controller.h"
+#include "ui/build_console_panel.h"
 #include "operator_api/types.h"
 #include <webgpu/webgpu.h>
 #include <string>
@@ -97,6 +98,7 @@ public:
             || record_dropdown_open_
             || editing_sticky_
             || sticky_color_menu_open_
+            || build_console_panel_.wants_keyboard()
             || inspector_.wants_keyboard();
     }
     bool wire_inspector_visible() const;
@@ -122,6 +124,11 @@ public:
     // State queries (used by menu bar for checkmarks)
     bool session_grid_open() const { return session_grid_open_; }
     bool midi_map_mode() const { return midi_map_mode_; }
+    bool build_console_open() const { return build_console_panel_.is_open(); }
+    void toggle_build_console() { build_console_panel_.toggle_open(); }
+    void set_build_console(std::shared_ptr<vivid::BuildConsole> console) {
+        build_console_panel_.set_console(std::move(console));
+    }
 
     // Called by main loop each frame with delta time
     void set_dt(float dt) { dt_ = dt; cursor_blink_time_ += dt; wire_flow_time_ += dt; }
@@ -426,6 +433,7 @@ private:
     float graph_right() const;
     // Bottom edge of interactive graph area (shrinks when session grid is open)
     float graph_bottom() const;
+    float session_strip_top() const;
     float inspector_x() const { return static_cast<float>(win_w_) - kInspectorW; }
     float chooser_x() const { return (graph_right() - kChooserW) * 0.5f; }
 
@@ -668,6 +676,7 @@ private:
 
     // Active UI style
     UIStyle style_;
+    BuildConsolePanel build_console_panel_;
 
     // Wire rendering style toggle (B key)
     bool bezier_wires_ = false;
@@ -739,7 +748,7 @@ private:
     int record_codec_sel_ = 0;  // 0=H.264, 1=H.265, 2=ProRes 4444
 
     struct PerfButtonRect { float x, y, w, h; int action; bool enabled; };
-    // action: 0=Record/Stop, 1=Snapshot, 2=Undo, 3=Redo
+    // action: 0=Record/Stop, 1=Snapshot, 2=Undo, 3=Redo, 4=Build Console
     std::vector<PerfButtonRect> perf_button_rects_;
 
     // --- Sticky notes ---

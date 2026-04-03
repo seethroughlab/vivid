@@ -4,6 +4,7 @@
 #include "runtime/package_compiler.h"
 #include "runtime/operator_registry.h"
 #include "runtime/builtin_operators.h"
+#include "runtime/build_console.h"
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -73,6 +74,8 @@ int main(int argc, char* argv[]) {
     register_builtin_operators(registry);
 
     vivid::PackageCompiler compiler(source_dir, build_dir);
+    vivid::BuildConsole build_console;
+    compiler.set_build_console(&build_console);
     vivid::PackageManager pm(compiler, registry);
 
     // --- Basic package: graph pass + cpp pass + cpp runtime failure ---
@@ -136,6 +139,15 @@ int main() {
     check(basic_cpp_pass && basic_cpp_pass->code == "cpp_passed", "cpp pass code is stable");
     auto* basic_cpp_fail = find_test(basic, "tests/test_fail.cpp");
     check(basic_cpp_fail && basic_cpp_fail->code == "cpp_runtime_failed", "cpp runtime failure code is stable");
+    auto console_snapshot = build_console.snapshot();
+    bool saw_test_output = false;
+    for (const auto& line : console_snapshot.lines) {
+        if (line.text.find("test_pass: OK") != std::string::npos) {
+            saw_test_output = true;
+            break;
+        }
+    }
+    check(saw_test_output, "build console captured cpp test stdout");
 
     // --- Validation package: deterministic graph/cpp classification ---
     std::string validation_pkg_dir = build_dir + "/.test_runner_validation_package";

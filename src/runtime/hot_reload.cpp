@@ -1,4 +1,5 @@
 #include "runtime/hot_reload.h"
+#include "runtime/build_console.h"
 #include "runtime/tool_discovery.h"
 #include "runtime/platform.h"
 #include <cstdio>
@@ -106,6 +107,10 @@ void HotReloader::compile_thread() {
         }
 
         std::fprintf(stderr, "[vivid] Hot-reload: compiling %s...\n", target.c_str());
+        BuildTaskId task_id = 0;
+        if (target.rfind("pkg:", 0) != 0 && build_console_) {
+            task_id = build_console_->begin_task(BuildTaskKind::HotReload, target);
+        }
 
         ReloadResult result;
         try {
@@ -121,22 +126,36 @@ void HotReloader::compile_thread() {
                 result.success = false;
                 result.error_output = missing_tool_error("cmake");
                 std::fprintf(stderr, "[vivid] Hot-reload: %s\n", result.error_output.c_str());
+                if (build_console_) {
+                    build_console_->append_system_line(task_id, result.error_output);
+                    build_console_->finish_task(task_id, BuildTaskState::Failed, "missing cmake");
+                }
             } else {
             // Run cmake --build and capture output.
             std::string cmd = quote(cmake_exe) + " --build " + quote(build_dir_) + " --target " + quote(target) + " 2>&1";
             std::string output;
             bool compile_ok = false;
+            bool launch_ok = false;
 
             FILE* pipe = popen(cmd.c_str(), "r");
             if (!pipe) {
                 output = "popen failed (system error)";
+                if (build_console_)
+                    build_console_->append_system_line(task_id, output);
             } else {
+                launch_ok = true;
                 std::array<char, 256> buf;
                 while (fgets(buf.data(), buf.size(), pipe) != nullptr) {
                     output += buf.data();
+                    if (build_console_)
+                        build_console_->append_line(task_id, BuildConsoleStreamKind::Stdout, buf.data());
                 }
                 int status = pclose(pipe);
                 compile_ok = (status == 0);
+                if (!compile_ok && build_console_) {
+                    build_console_->finish_task(task_id, BuildTaskState::Failed,
+                                                "failed (exit " + std::to_string(status) + ")");
+                }
             }
 
             result.target_name = target;
@@ -145,6 +164,8 @@ void HotReloader::compile_thread() {
                 result.error_output = output;
                 std::fprintf(stderr, "[vivid] Hot-reload: compile FAILED for %s:\n%s",
                     target.c_str(), output.c_str());
+                if (build_console_ && !launch_ok)
+                    build_console_->finish_task(task_id, BuildTaskState::Failed, "launch failed");
             } else {
                 // Get unique counter for staging path
                 uint32_t counter;
@@ -174,10 +195,16 @@ void HotReloader::compile_thread() {
                     result.error_output = "Failed to stage dylib: " + ec.message();
                     std::fprintf(stderr, "[vivid] Hot-reload: staging failed for %s: %s\n",
                         target.c_str(), ec.message().c_str());
+                    if (build_console_) {
+                        build_console_->append_system_line(task_id, result.error_output);
+                        build_console_->finish_task(task_id, BuildTaskState::Failed, "staging failed");
+                    }
                 } else {
                     result.success = true;
                     result.staged_dylib_path = staged_path;
                     std::fprintf(stderr, "[vivid] Hot-reload: %s compiled successfully\n", target.c_str());
+                    if (build_console_)
+                        build_console_->finish_task(task_id, BuildTaskState::Succeeded, "succeeded");
                 }
             }
             } // cmake found
@@ -188,12 +215,20 @@ void HotReloader::compile_thread() {
             result.target_name = target;
             std::fprintf(stderr, "[vivid] Hot-reload: exception in compile_thread for %s: %s\n",
                          target.c_str(), e.what());
+            if (build_console_) {
+                build_console_->append_system_line(task_id, result.error_output);
+                build_console_->finish_task(task_id, BuildTaskState::Failed, "internal error");
+            }
         } catch (...) {
             result.success = false;
             result.error_output = "Internal error: unknown exception";
             result.target_name = target;
             std::fprintf(stderr, "[vivid] Hot-reload: unknown exception in compile_thread for %s\n",
                          target.c_str());
+            if (build_console_) {
+                build_console_->append_system_line(task_id, result.error_output);
+                build_console_->finish_task(task_id, BuildTaskState::Failed, "internal error");
+            }
         }
 
         {

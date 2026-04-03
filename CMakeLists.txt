@@ -732,6 +732,7 @@ add_custom_target(operators DEPENDS ${_vivid_op_targets})
 
 # --- UI library ---
 add_library(vivid_ui STATIC
+    src/ui/build_console_panel.cpp
     src/ui/renderer_2d.cpp
     src/ui/thumbnail_renderer.cpp
     src/ui/thumbnail_cache.cpp
@@ -2429,6 +2430,12 @@ add_executable(test_hot_reloader_queue
 )
 target_include_directories(test_hot_reloader_queue PRIVATE src tests)
 add_test(NAME test_hot_reloader_queue COMMAND test_hot_reloader_queue WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_build_console
+    tests/test_build_console.cpp
+)
+target_include_directories(test_build_console PRIVATE src tests)
+add_test(NAME test_build_console COMMAND test_build_console WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # path_util unit tests (header-only, no extra deps)
 add_executable(test_path_util

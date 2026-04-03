@@ -13,6 +13,7 @@
 #include "runtime/editor_detect.h"
 #include "runtime/undo_manager.h"
 #include "runtime/package_manager.h"
+#include "runtime/build_console.h"
 #include "runtime/operator_destination_policy.h"
 #include "operator_api/data_driven_filter.h"
 #include <filesystem>
@@ -23,6 +24,7 @@
 #include <ctime>
 #include <string>
 #include <chrono>
+#include <array>
 
 class RuntimeCommandSink : public vivid::ui::UICommandSink {
 public:
@@ -618,6 +620,7 @@ public:
     void set_settings(vivid::Settings* s) { settings_ = s; }
     void set_hot_reloader(vivid::HotReloader* hr) { hot_reloader_ = hr; }
     void set_package_manager(vivid::PackageManager* pm) { package_manager_ = pm; }
+    void set_build_console(vivid::BuildConsole* bc) { build_console_ = bc; }
 
 private:
     void capture_undo_snapshot(const std::string& coalesce_key = "") {
@@ -856,11 +859,33 @@ private:
         // Build synchronously (core destination)
         std::string build_cmd = "cmake --build \"" + build_dir_ + "\" --target \"" + new_stem + "\" 2>&1";
         std::fprintf(stderr, "[vivid] Clone: building %s...\n", new_stem.c_str());
-        int rc = std::system(build_cmd.c_str());
-        if (rc != 0) {
-            std::fprintf(stderr, "[vivid] Clone: build failed (exit %d)\n", rc);
+        vivid::BuildTaskId task_id = build_console_
+            ? build_console_->begin_task(vivid::BuildTaskKind::PackageBuild, "clone " + new_stem)
+            : 0;
+        FILE* pipe = popen(build_cmd.c_str(), "r");
+        if (!pipe) {
+            if (build_console_)
+                build_console_->append_system_line(task_id, "Failed to execute cmake build");
+            if (build_console_)
+                build_console_->finish_task(task_id, vivid::BuildTaskState::Failed, "launch failed");
+            std::fprintf(stderr, "[vivid] Clone: failed to start build\n");
             return;
         }
+        std::array<char, 256> build_buf;
+        while (fgets(build_buf.data(), build_buf.size(), pipe) != nullptr) {
+            if (build_console_)
+                build_console_->append_line(task_id, vivid::BuildConsoleStreamKind::Stdout, build_buf.data());
+        }
+        int rc = pclose(pipe);
+        if (rc != 0) {
+            std::fprintf(stderr, "[vivid] Clone: build failed (exit %d)\n", rc);
+            if (build_console_)
+                build_console_->finish_task(task_id, vivid::BuildTaskState::Failed,
+                                            "failed (exit " + std::to_string(rc) + ")");
+            return;
+        }
+        if (build_console_)
+            build_console_->finish_task(task_id, vivid::BuildTaskState::Succeeded, "built");
 
         // Load the new dylib (core destination)
 #if defined(__APPLE__)
@@ -903,4 +928,5 @@ private:
     vivid::Settings* settings_ = nullptr;
     vivid::HotReloader* hot_reloader_ = nullptr;
     vivid::PackageManager* package_manager_ = nullptr;
+    vivid::BuildConsole* build_console_ = nullptr;
 };

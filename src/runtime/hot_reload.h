@@ -13,6 +13,8 @@
 
 namespace vivid {
 
+class BuildConsole;
+
 struct ReloadResult {
     std::string target_name;
     std::string staged_dylib_path;  // empty on failure
@@ -38,6 +40,7 @@ public:
     // instead of cmake --build.
     using PackageCompileFn = std::function<ReloadResult(const std::string& target_name)>;
     void set_package_compiler(PackageCompileFn fn);
+    void set_build_console(BuildConsole* console) { build_console_ = console; }
 
     // Poll for completed rebuild results (called from main thread each frame)
     std::vector<ReloadResult> poll_ready();
@@ -65,6 +68,7 @@ private:
     std::unordered_map<std::string, uint32_t> reload_counters_;
 
     PackageCompileFn package_compile_fn_;
+    BuildConsole* build_console_ = nullptr;
 
     std::thread thread_;
     std::atomic<bool> running_{false};

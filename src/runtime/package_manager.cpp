@@ -1,4 +1,5 @@
 #include "runtime/package_manager.h"
+#include "runtime/build_console.h"
 #include "runtime/subgraph_module.h"
 #include "runtime/tool_discovery.h"
 #include "runtime/operator_registry.h"
@@ -345,6 +346,11 @@ static std::string abi_mismatch_error_for_package(const std::string& package_nam
 PackageManager::PackageManager(PackageCompiler& compiler, OperatorRegistry& registry)
     : compiler_(compiler)
     , registry_(registry) {}
+
+void PackageManager::set_build_console(BuildConsole* console) {
+    build_console_ = console;
+    compiler_.set_build_console(console);
+}
 
 PackageUpdateAssessment PackageManager::assess_update(const PackageInfo& installed,
                                                       const std::string& remote_version,
@@ -717,10 +723,17 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
             return result;
         }
     } else {
+        BuildTaskId task_id = build_console_
+            ? build_console_->begin_task(BuildTaskKind::GitClone, normalized_url)
+            : 0;
         std::string git_exe = find_tool("git");
         if (git_exe.empty()) {
             result.error_code = "missing_tool";
             result.error = missing_tool_error("git");
+            if (build_console_) {
+                build_console_->append_system_line(task_id, result.error);
+                build_console_->finish_task(task_id, BuildTaskState::Failed, "missing git");
+            }
             return result;
         }
         // Git clone (quote URL and path for spaces and special characters)
@@ -732,19 +745,30 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
         if (!pipe) {
             result.error_code = "git_clone_failed";
             result.error = "Failed to execute git clone";
+            if (build_console_) {
+                build_console_->append_system_line(task_id, result.error);
+                build_console_->finish_task(task_id, BuildTaskState::Failed, "launch failed");
+            }
             return result;
         }
         std::array<char, 256> buf;
         while (fgets(buf.data(), buf.size(), pipe) != nullptr) {
             output += buf.data();
+            if (build_console_)
+                build_console_->append_line(task_id, BuildConsoleStreamKind::Stdout, buf.data());
         }
         int status = pclose(pipe);
         if (status != 0) {
             result.error_code = "git_clone_failed";
             result.error = "git clone failed: " + output;
+            if (build_console_)
+                build_console_->finish_task(task_id, BuildTaskState::Failed,
+                                            "failed (exit " + std::to_string(status) + ")");
             std::filesystem::remove_all(staging_dir);
             return result;
         }
+        if (build_console_)
+            build_console_->finish_task(task_id, BuildTaskState::Succeeded, "cloned");
     }
 
     // Parse manifest to get canonical package name
@@ -847,8 +871,16 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
         if (cmake_exe.empty()) {
             result.error_code = "missing_tool";
             result.error = missing_tool_error("cmake");
+            if (build_console_) {
+                auto task_id = build_console_->begin_task(BuildTaskKind::PackageConfigure, result.info.name);
+                build_console_->append_system_line(task_id, result.error);
+                build_console_->finish_task(task_id, BuildTaskState::Failed, "missing cmake");
+            }
             return false;
         }
+        BuildTaskId configure_task = build_console_
+            ? build_console_->begin_task(BuildTaskKind::PackageConfigure, result.info.name)
+            : 0;
         // CMake-based package: configure + build
         std::filesystem::create_directories(build_dir);
 
@@ -871,20 +903,35 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
         if (!pipe) {
             result.error_code = "cmake_configure_failed";
             result.error = "Failed to execute cmake configure";
+            if (build_console_) {
+                build_console_->append_system_line(configure_task, result.error);
+                build_console_->finish_task(configure_task, BuildTaskState::Failed, "launch failed");
+            }
             return false;
         }
         std::array<char, 256> buf;
-        while (fgets(buf.data(), buf.size(), pipe) != nullptr)
+        while (fgets(buf.data(), buf.size(), pipe) != nullptr) {
             output += buf.data();
+            if (build_console_)
+                build_console_->append_line(configure_task, BuildConsoleStreamKind::Stdout, buf.data());
+        }
         int status = pclose(pipe);
 
         if (status != 0) {
             result.error_code = "cmake_configure_failed";
             result.error = "cmake configure failed:\n" + output;
+            if (build_console_)
+                build_console_->finish_task(configure_task, BuildTaskState::Failed,
+                                            "failed (exit " + std::to_string(status) + ")");
             return false;
         }
+        if (build_console_)
+            build_console_->finish_task(configure_task, BuildTaskState::Succeeded, "configured");
 
         // Build
+        BuildTaskId build_task = build_console_
+            ? build_console_->begin_task(BuildTaskKind::PackageBuild, result.info.name)
+            : 0;
         std::string build_cmd = quote(cmake_exe) + " --build " + quote(build_dir) + " 2>&1";
         std::fprintf(stderr, "[vivid] PackageManager: %s\n", build_cmd.c_str());
 
@@ -893,17 +940,29 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
         if (!pipe) {
             result.error_code = "cmake_build_failed";
             result.error = "Failed to execute cmake build";
+            if (build_console_) {
+                build_console_->append_system_line(build_task, result.error);
+                build_console_->finish_task(build_task, BuildTaskState::Failed, "launch failed");
+            }
             return false;
         }
-        while (fgets(buf.data(), buf.size(), pipe) != nullptr)
+        while (fgets(buf.data(), buf.size(), pipe) != nullptr) {
             output += buf.data();
+            if (build_console_)
+                build_console_->append_line(build_task, BuildConsoleStreamKind::Stdout, buf.data());
+        }
         status = pclose(pipe);
 
         if (status != 0) {
             result.error_code = "cmake_build_failed";
             result.error = "cmake build failed:\n" + output;
+            if (build_console_)
+                build_console_->finish_task(build_task, BuildTaskState::Failed,
+                                            "failed (exit " + std::to_string(status) + ")");
             return false;
         }
+        if (build_console_)
+            build_console_->finish_task(build_task, BuildTaskState::Succeeded, "built");
 
         // Synthesize compile results by scanning for dylibs in build dir
         for (auto& entry : std::filesystem::recursive_directory_iterator(build_dir)) {
@@ -922,6 +981,11 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
         if (clang_exe.empty()) {
             result.error_code = "missing_tool";
             result.error = missing_tool_error("clang++");
+            if (build_console_) {
+                auto task_id = build_console_->begin_task(BuildTaskKind::PackageBuild, result.info.name);
+                build_console_->append_system_line(task_id, result.error);
+                build_console_->finish_task(task_id, BuildTaskState::Failed, "missing clang++");
+            }
             return false;
         }
 
