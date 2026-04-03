@@ -216,7 +216,7 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             sv = nullptr;
 
         // ── Process ─────────────────────────────────────────────────────
-        if (cn.missing_operator || !cn.loader) {
+        if (cn.missing_operator || !cn.loader || !cn.instance) {
             std::fill(cn.output_values.begin(), cn.output_values.end(), 0.0f);
         } else if (cn.is_gpu() && gpu_state) {
             // ── GPU path: build VividGpuContext ─────────────────────────
