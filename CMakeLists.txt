@@ -1104,7 +1104,7 @@ add_vivid_operator(untagged_dest_op          tests/operators/untagged_dest_op.cp
 
 # Hot-reload integration test (no GPU, no audio, no window)
 add_executable(test_hot_reload
-    tests/test_hot_reload.cpp
+    tests/core/test_hot_reload.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -1122,7 +1122,7 @@ add_test(NAME test_hot_reload COMMAND test_hot_reload WORKING_DIRECTORY ${CMAKE_
 set_tests_properties(test_hot_reload PROPERTIES TIMEOUT 15)
 
 add_executable(test_audio_hot_reload
-    tests/test_audio_hot_reload.cpp
+    tests/audio/test_audio_hot_reload.cpp
     src/runtime/operators/builtin_operators.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
@@ -1144,7 +1144,7 @@ add_test(NAME test_audio_hot_reload COMMAND test_audio_hot_reload WORKING_DIRECT
 set_tests_properties(test_audio_hot_reload PROPERTIES TIMEOUT 15)
 
 add_executable(test_export_pipeline
-    tests/test_export_pipeline.cpp
+    tests/media/test_export_pipeline.cpp
     src/export/export_pipeline.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
@@ -1160,7 +1160,7 @@ add_test(NAME test_export_pipeline COMMAND test_export_pipeline WORKING_DIRECTOR
 
 # RuntimeAPI integration test (no GPU, no audio, no window)
 add_executable(test_runtime_api
-    tests/test_runtime_api.cpp
+    tests/control/test_runtime_api.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -1183,7 +1183,7 @@ add_test(NAME test_runtime_api COMMAND test_runtime_api WORKING_DIRECTORY ${CMAK
 
 # Latency validation test (PRD responsiveness claims)
 add_executable(test_latency_validation
-    tests/test_latency_validation.cpp
+    tests/lanes/test_latency_validation.cpp
     src/runtime/operators/builtin_operators.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
@@ -1209,7 +1209,7 @@ set_tests_properties(test_latency_validation PROPERTIES TIMEOUT 30)
 
 # ControlServer integration test (HTTP endpoints, no GPU, no audio, no window)
 add_executable(test_control_server
-    tests/test_control_server.cpp
+    tests/control/test_control_server.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -1256,7 +1256,7 @@ add_test(NAME test_control_server COMMAND test_control_server ${CMAKE_BINARY_DIR
 
 # Perception introspection matrix test (domain snapshots + deterministic health)
 add_executable(test_perception_introspection
-    tests/test_perception_introspection.cpp
+    tests/ops/test_perception_introspection.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -1319,7 +1319,7 @@ add_vivid_operator(audio_lane_op    tests/operators/audio_lane_op.cpp)
 
 # AudioEngine integration test (null audio backend, no GPU, no window)
 add_executable(test_audio_engine
-    tests/test_audio_engine.cpp
+    tests/audio/test_audio_engine.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -1342,7 +1342,7 @@ add_dependencies(test_audio_engine test_op_v1 audio_test_op)
 add_test(NAME test_audio_engine COMMAND test_audio_engine WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_scalar_hold_bridge
-    tests/test_scalar_hold_bridge.cpp
+    tests/lanes/test_scalar_hold_bridge.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -1365,7 +1365,7 @@ add_test(NAME test_scalar_hold_bridge COMMAND test_scalar_hold_bridge
 
 # Audio thread robustness test (exception handling in audio callback)
 add_executable(test_audio_robustness
-    tests/test_audio_robustness.cpp
+    tests/audio/test_audio_robustness.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -1387,7 +1387,7 @@ add_test(NAME test_audio_robustness COMMAND test_audio_robustness WORKING_DIRECT
 
 # Scheduler unit test (no GPU, no audio playback, no window)
 add_executable(test_runtime_core
-    tests/test_runtime_core.cpp
+    tests/control/test_runtime_core.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -1405,7 +1405,7 @@ add_test(NAME test_runtime_core COMMAND test_runtime_core WORKING_DIRECTORY ${CM
 
 # Graph data-model unit test (no operators, no runtime, no GPU)
 add_executable(test_graph
-    tests/test_graph.cpp
+    tests/graph/test_graph.cpp
     src/runtime/graph/graph.cpp
 )
 target_include_directories(test_graph PRIVATE src)
@@ -1414,7 +1414,7 @@ add_test(NAME test_graph COMMAND test_graph WORKING_DIRECTORY ${CMAKE_BINARY_DIR
 
 # JSON migration round-trip regression test
 add_executable(test_json_migration
-    tests/test_json_migration.cpp
+    tests/integration/test_json_migration.cpp
     src/runtime/graph/graph.cpp
 )
 target_include_directories(test_json_migration PRIVATE src)
@@ -1423,13 +1423,13 @@ target_compile_definitions(test_json_migration PRIVATE SOURCE_DIR="${CMAKE_SOURC
 add_test(NAME test_json_migration COMMAND test_json_migration WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Topological sort unit test (header-only, no dependencies)
-add_executable(test_topo_sort tests/test_topo_sort.cpp)
+add_executable(test_topo_sort tests/common/test_topo_sort.cpp)
 target_include_directories(test_topo_sort PRIVATE src tests)
 add_test(NAME test_topo_sort COMMAND test_topo_sort WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # OperatorCreator unit test
 add_executable(test_operator_creator
-    tests/test_operator_creator.cpp
+    tests/ops/test_operator_creator.cpp
     src/runtime/operators/operator_creator.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -1442,7 +1442,7 @@ add_test(NAME test_operator_creator COMMAND test_operator_creator WORKING_DIRECT
 
 # Settings round-trip unit test
 add_executable(test_settings
-    tests/test_settings.cpp
+    tests/core/test_settings.cpp
     src/runtime/core/settings.cpp
     src/runtime/platform/platform.cpp
 )
@@ -1452,7 +1452,7 @@ add_test(NAME test_settings COMMAND test_settings WORKING_DIRECTORY ${CMAKE_BINA
 
 # Operator destination policy precedence unit test
 add_executable(test_operator_destination_policy
-    tests/test_operator_destination_policy.cpp
+    tests/ops/test_operator_destination_policy.cpp
 )
 target_include_directories(test_operator_destination_policy PRIVATE src tests)
 add_test(NAME test_operator_destination_policy
@@ -1461,7 +1461,7 @@ add_test(NAME test_operator_destination_policy
 
 # Theme loader unit test
 add_executable(test_theme_loader
-    tests/test_theme_loader.cpp
+    tests/ui/test_theme_loader.cpp
     src/ui/style/theme_loader.cpp
     src/ui/style/ui_style.cpp
     src/runtime/platform/platform.cpp
@@ -1472,28 +1472,28 @@ add_test(NAME test_theme_loader COMMAND test_theme_loader WORKING_DIRECTORY ${CM
 
 # Overlay layout/hit-test regressions
 add_executable(test_overlay_layouts
-    tests/test_overlay_layouts.cpp
+    tests/ui/test_overlay_layouts.cpp
     src/ui/rendering/overlay_layouts.cpp
 )
 target_include_directories(test_overlay_layouts PRIVATE src tests)
 add_test(NAME test_overlay_layouts COMMAND test_overlay_layouts WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_graph_snapshot_contract
-    tests/test_graph_snapshot_contract.cpp
+    tests/graph/test_graph_snapshot_contract.cpp
 )
 target_include_directories(test_graph_snapshot_contract PRIVATE src tests)
 add_test(NAME test_graph_snapshot_contract COMMAND test_graph_snapshot_contract WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Inspector layout normalization tests
 add_executable(test_inspector_layout
-    tests/test_inspector_layout.cpp
+    tests/ui/test_inspector_layout.cpp
 )
 target_include_directories(test_inspector_layout PRIVATE src tests)
 add_test(NAME test_inspector_layout COMMAND test_inspector_layout WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # UI overlay interaction regressions (example/package/meta overlay callbacks)
 add_executable(test_ui_overlay_interactions
-    tests/test_ui_overlay_interactions.cpp
+    tests/ui/test_ui_overlay_interactions.cpp
     src/runtime/platform/platform.cpp
 )
 target_include_directories(test_ui_overlay_interactions PRIVATE src tests)
@@ -1506,7 +1506,7 @@ add_test(NAME test_ui_overlay_interactions COMMAND test_ui_overlay_interactions 
 set_tests_properties(test_ui_overlay_interactions PROPERTIES LABELS "UI_SMOKE")
 
 add_executable(test_ui_editor_interactions
-    tests/test_ui_editor_interactions.cpp
+    tests/ui/test_ui_editor_interactions.cpp
     src/runtime/platform/platform.cpp
 )
 target_include_directories(test_ui_editor_interactions PRIVATE src tests)
@@ -1519,7 +1519,7 @@ add_test(NAME test_ui_editor_interactions COMMAND test_ui_editor_interactions WO
 set_tests_properties(test_ui_editor_interactions PROPERTIES LABELS "UI_SMOKE")
 
 add_executable(test_ui_widget_interactions
-    tests/test_ui_widget_interactions.cpp
+    tests/ui/test_ui_widget_interactions.cpp
     src/runtime/platform/platform.cpp
 )
 target_include_directories(test_ui_widget_interactions PRIVATE src tests)
@@ -1533,7 +1533,7 @@ set_tests_properties(test_ui_widget_interactions PROPERTIES LABELS "UI_SMOKE")
 
 # Windowed GUI smoke for inspector and editor-drop regressions.
 add_executable(test_ui_screenshot_smoke
-    tests/test_ui_screenshot_smoke.cpp
+    tests/ui/test_ui_screenshot_smoke.cpp
 )
 target_include_directories(test_ui_screenshot_smoke PRIVATE src tests deps/stb)
 target_link_libraries(test_ui_screenshot_smoke PRIVATE nlohmann_json::nlohmann_json)
@@ -1577,13 +1577,13 @@ set_tests_properties(test_ui_screenshot_smoke_harness PROPERTIES
         "VIVID_ENABLE_UI_SCREENSHOT_SMOKE=1;VIVID_UI_SMOKE_HARNESS_SELFTEST=1;VIVID_UI_SMOKE_LANE=harness_selftest;HOME=${CMAKE_BINARY_DIR}/.test_ui_screenshot_smoke/harness_selftest/home")
 
 # Architecture guard: UI layer must not directly include runtime package catalog
-add_executable(test_ui_arch_guard tests/test_ui_arch_guard.cpp)
+add_executable(test_ui_arch_guard tests/ui/test_ui_arch_guard.cpp)
 target_include_directories(test_ui_arch_guard PRIVATE src tests)
 add_test(NAME test_ui_arch_guard COMMAND test_ui_arch_guard ${CMAKE_SOURCE_DIR} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # WGSL header parser unit test
 add_executable(test_wgsl_header
-    tests/test_wgsl_header.cpp
+    tests/common/test_wgsl_header.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
 )
 target_include_directories(test_wgsl_header PRIVATE src)
@@ -1592,29 +1592,29 @@ add_test(NAME test_wgsl_header COMMAND test_wgsl_header WORKING_DIRECTORY ${CMAK
 
 # WGSL include preprocessor diagnostics (missing include/cycle/include chain)
 add_executable(test_wgsl_preprocessor
-    tests/test_wgsl_preprocessor.cpp
+    tests/common/test_wgsl_preprocessor.cpp
 )
 target_include_directories(test_wgsl_preprocessor PRIVATE src tests)
 add_test(NAME test_wgsl_preprocessor COMMAND test_wgsl_preprocessor WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # String utility unit test (header-only, no dependencies)
-add_executable(test_string_util tests/test_string_util.cpp)
+add_executable(test_string_util tests/common/test_string_util.cpp)
 target_include_directories(test_string_util PRIVATE src tests)
 add_test(NAME test_string_util COMMAND test_string_util WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Text editing unit test (header-only, no dependencies)
-add_executable(test_text_edit tests/test_text_edit.cpp)
+add_executable(test_text_edit tests/ui/test_text_edit.cpp)
 target_include_directories(test_text_edit PRIVATE src)
 add_test(NAME test_text_edit COMMAND test_text_edit WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # audio_dsp operator API compatibility test
-add_executable(test_audio_dsp_api tests/test_audio_dsp_api.cpp)
+add_executable(test_audio_dsp_api tests/audio/test_audio_dsp_api.cpp)
 target_include_directories(test_audio_dsp_api PRIVATE src)
 add_test(NAME test_audio_dsp_api COMMAND test_audio_dsp_api WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # OperatorLoader + OperatorRegistry unit tests (no GPU, no runtime, no graph)
 add_executable(test_operator_loader
-    tests/test_operator_loader.cpp
+    tests/ops/test_operator_loader.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/graph/port_type_registry.cpp
@@ -1627,7 +1627,7 @@ add_test(NAME test_operator_loader COMMAND test_operator_loader WORKING_DIRECTOR
 set_tests_properties(test_operator_loader PROPERTIES LABELS "LOADER")
 
 add_executable(test_operator_source_docs
-    tests/test_operator_source_docs.cpp
+    tests/ops/test_operator_source_docs.cpp
     src/runtime/operators/operator_source_docs.cpp
 )
 target_include_directories(test_operator_source_docs PRIVATE src)
@@ -1635,7 +1635,7 @@ target_link_libraries(test_operator_source_docs PRIVATE nlohmann_json::nlohmann_
 add_test(NAME test_operator_source_docs COMMAND test_operator_source_docs WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_file_drop_registry
-    tests/test_file_drop_registry.cpp
+    tests/core/test_file_drop_registry.cpp
     src/runtime/core/file_drop_registry.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
@@ -1647,7 +1647,7 @@ add_dependencies(test_file_drop_registry file_drop_test_op file_drop_test_op_alt
 add_test(NAME test_file_drop_registry COMMAND test_file_drop_registry WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_midi_file_parser
-    tests/test_midi_file_parser.cpp
+    tests/audio/test_midi_file_parser.cpp
     src/common/midi_file.cpp
 )
 target_include_directories(test_midi_file_parser PRIVATE src tests)
@@ -1655,7 +1655,7 @@ target_link_libraries(test_midi_file_parser PRIVATE vivid_operator_api)
 add_test(NAME test_midi_file_parser COMMAND test_midi_file_parser WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_midi_file_player
-    tests/test_midi_file_player.cpp
+    tests/audio/test_midi_file_player.cpp
     src/common/midi_file.cpp
 )
 target_include_directories(test_midi_file_player PRIVATE src tests operators)
@@ -1663,7 +1663,7 @@ target_link_libraries(test_midi_file_player PRIVATE vivid_operator_api)
 add_test(NAME test_midi_file_player COMMAND test_midi_file_player WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_runtime_stress
-    tests/test_runtime_stress.cpp
+    tests/integration/test_runtime_stress.cpp
     src/runtime/operators/builtin_operators.cpp
     src/runtime/graph/graph.cpp
     src/runtime/core/runtime_core.cpp
@@ -1687,7 +1687,7 @@ add_test(NAME test_runtime_stress COMMAND test_runtime_stress ${CMAKE_BINARY_DIR
 set_tests_properties(test_runtime_stress PROPERTIES LABELS "STABILITY" TIMEOUT 30)
 
 add_executable(test_hot_reload_stress
-    tests/test_hot_reload_stress.cpp
+    tests/core/test_hot_reload_stress.cpp
     src/runtime/operators/builtin_operators.cpp
     src/runtime/graph/graph.cpp
     src/runtime/core/runtime_core.cpp
@@ -1710,7 +1710,7 @@ add_test(NAME test_hot_reload_stress COMMAND test_hot_reload_stress ${CMAKE_BINA
 set_tests_properties(test_hot_reload_stress PROPERTIES LABELS "STABILITY" TIMEOUT 30)
 
 add_executable(test_package_stress
-    tests/test_package_stress.cpp
+    tests/packages/test_package_stress.cpp
     src/runtime/operators/builtin_operators.cpp
     src/runtime/graph/graph.cpp
     src/runtime/core/runtime_core.cpp
@@ -1737,7 +1737,7 @@ add_test(NAME test_package_stress COMMAND test_package_stress ${CMAKE_BINARY_DIR
 set_tests_properties(test_package_stress PROPERTIES LABELS "STABILITY" TIMEOUT 30)
 
 add_executable(test_mixed_runtime_stability
-    tests/test_mixed_runtime_stability.cpp
+    tests/integration/test_mixed_runtime_stability.cpp
     src/runtime/operators/builtin_operators.cpp
     src/runtime/graph/graph.cpp
     src/runtime/core/runtime_core.cpp
@@ -1761,7 +1761,7 @@ set_tests_properties(test_mixed_runtime_stability PROPERTIES LABELS "STABILITY" 
 
 # Modulation operator tests (Flanger, Chorus, Phaser)
 add_executable(test_modulation_ops
-    tests/test_modulation_ops.cpp
+    tests/ops/test_modulation_ops.cpp
     src/runtime/operators/operator_loader.cpp
 )
 target_include_directories(test_modulation_ops PRIVATE src)
@@ -1771,7 +1771,7 @@ add_test(NAME test_modulation_ops COMMAND test_modulation_ops WORKING_DIRECTORY 
 
 # Spatial operator tests (StereoPanWidth, PingPongDelay)
 add_executable(test_spatial_ops
-    tests/test_spatial_ops.cpp
+    tests/ops/test_spatial_ops.cpp
     src/runtime/operators/operator_loader.cpp
 )
 target_include_directories(test_spatial_ops PRIVATE src)
@@ -1781,7 +1781,7 @@ add_test(NAME test_spatial_ops COMMAND test_spatial_ops WORKING_DIRECTORY ${CMAK
 
 # Synthesis & transformation operator tests (FmSynth, RingMod, ParametricEQ)
 add_executable(test_synth_transform_ops
-    tests/test_synth_transform_ops.cpp
+    tests/ops/test_synth_transform_ops.cpp
     src/runtime/operators/operator_loader.cpp
 )
 target_include_directories(test_synth_transform_ops PRIVATE src)
@@ -1791,7 +1791,7 @@ add_test(NAME test_synth_transform_ops COMMAND test_synth_transform_ops WORKING_
 
 # Audio output correctness tests (spectral/amplitude property assertions)
 add_executable(test_audio_correctness
-    tests/test_audio_correctness.cpp
+    tests/audio/test_audio_correctness.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/debug/output_analyzer.cpp
 )
@@ -1805,7 +1805,7 @@ add_vivid_operator(gpu_fill_op      tests/operators/gpu_fill_op.cpp      EXTRA_L
 
 # GPU operator integration tests (headless WebGPU, no window)
 add_executable(test_gpu_operators
-    tests/test_gpu_operators.cpp
+    tests/gpu/test_gpu_operators.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -1824,7 +1824,7 @@ add_test(NAME test_gpu_operators COMMAND test_gpu_operators WORKING_DIRECTORY ${
 
 # GPU output correctness tests (brightness, contrast, motion property assertions)
 add_executable(test_gpu_correctness
-    tests/test_gpu_correctness.cpp
+    tests/gpu/test_gpu_correctness.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -1843,7 +1843,7 @@ add_test(NAME test_gpu_correctness COMMAND test_gpu_correctness WORKING_DIRECTOR
 
 # Per-operator smoke sweep — discovers all dylibs and validates load/desc/process/boundary
 add_executable(test_operator_sweep
-    tests/test_operator_sweep.cpp
+    tests/ops/test_operator_sweep.cpp
     src/runtime/operators/operator_loader.cpp
 )
 target_include_directories(test_operator_sweep PRIVATE src)
@@ -1852,13 +1852,13 @@ add_test(NAME test_operator_sweep COMMAND test_operator_sweep WORKING_DIRECTORY 
 set_tests_properties(test_operator_sweep PROPERTIES LABELS "HEADLESS_SMOKE" TIMEOUT 120)
 
 # --- Sequencer operator tests (from vivid-sequencers) ---
-add_executable(test_arpeggiator_patterns tests/test_arpeggiator_patterns.cpp)
+add_executable(test_arpeggiator_patterns tests/ops/test_arpeggiator_patterns.cpp)
 target_include_directories(test_arpeggiator_patterns PRIVATE
     src ${CMAKE_SOURCE_DIR}/operators/shared/sequencer)
 target_link_libraries(test_arpeggiator_patterns PRIVATE vivid_operator_api)
 add_test(NAME test_arpeggiator_patterns COMMAND test_arpeggiator_patterns)
 
-add_executable(test_state_machine tests/test_state_machine.cpp)
+add_executable(test_state_machine tests/lanes/test_state_machine.cpp)
 target_include_directories(test_state_machine PRIVATE
     src ${CMAKE_SOURCE_DIR}/operators/shared/sequencer)
 target_link_libraries(test_state_machine PRIVATE vivid_operator_api)
@@ -1868,7 +1868,7 @@ add_test(NAME test_state_machine COMMAND test_state_machine)
 
 # Audio-frame bridge lane snapshot integration test
 add_executable(test_lane_bridge_snapshot
-    tests/test_lane_bridge_snapshot.cpp
+    tests/lanes/test_lane_bridge_snapshot.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -1891,7 +1891,7 @@ add_test(NAME test_lane_bridge_snapshot COMMAND test_lane_bridge_snapshot
 
 # Lane broadcast/wrap test
 add_executable(test_lane_broadcast
-    tests/test_lane_broadcast.cpp
+    tests/lanes/test_lane_broadcast.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -1909,7 +1909,7 @@ add_dependencies(test_lane_broadcast lane_source_op lane_sink_op lane_smooth_op)
 add_test(NAME test_lane_broadcast COMMAND test_lane_broadcast WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_lane_reshape
-    tests/test_lane_reshape.cpp
+    tests/lanes/test_lane_reshape.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -1928,7 +1928,7 @@ add_dependencies(test_lane_reshape lane_source_op lane_sink_op repeat tile selec
 add_test(NAME test_lane_reshape COMMAND test_lane_reshape WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_frame_lane_lifting
-    tests/test_frame_lane_lifting.cpp
+    tests/lanes/test_frame_lane_lifting.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -1947,7 +1947,7 @@ add_dependencies(test_frame_lane_lifting lane_source_op lane_sink_op lane_frame_
 add_test(NAME test_frame_lane_lifting COMMAND test_frame_lane_lifting WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_lane_breadth
-    tests/test_lane_breadth.cpp
+    tests/lanes/test_lane_breadth.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -1965,7 +1965,7 @@ target_link_libraries(test_lane_breadth PRIVATE
 add_dependencies(test_lane_breadth lane_source_op lane_sink_op lane_frame_op fft_analysis repeat)
 add_test(NAME test_lane_breadth COMMAND test_lane_breadth WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-add_executable(test_compute_lane_equivalence tests/test_compute_lane_equivalence.cpp)
+add_executable(test_compute_lane_equivalence tests/lanes/test_compute_lane_equivalence.cpp)
 target_include_directories(test_compute_lane_equivalence PRIVATE src)
 target_link_libraries(test_compute_lane_equivalence PRIVATE vivid_operator_api webgpu)
 add_test(NAME test_compute_lane_equivalence COMMAND test_compute_lane_equivalence WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -1973,7 +1973,7 @@ add_test(NAME test_compute_lane_equivalence COMMAND test_compute_lane_equivalenc
 # Lane metadata runtime test
 configure_file(tests/graphs/test_lane_metadata.json ${CMAKE_BINARY_DIR}/test_lane_metadata.json COPYONLY)
 add_executable(test_lane_metadata
-    tests/test_lane_metadata.cpp
+    tests/lanes/test_lane_metadata.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -1994,14 +1994,14 @@ add_test(NAME test_lane_metadata COMMAND test_lane_metadata WORKING_DIRECTORY ${
 # Non-header-only embeddables have separate loader regressions in
 # test_operator_loader; this test uses stubs so it stays focused on ChildOp
 # call semantics and persistent state behavior.
-add_executable(test_child_op tests/test_child_op.cpp tests/stubs/smooth_stubs.cpp tests/stubs/lfo_stubs.cpp)
+add_executable(test_child_op tests/ops/test_child_op.cpp tests/stubs/smooth_stubs.cpp tests/stubs/lfo_stubs.cpp)
 target_include_directories(test_child_op PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
 target_link_libraries(test_child_op PRIVATE vivid_operator_api)
 add_test(NAME test_child_op COMMAND test_child_op WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # SCALAR port tests (type compatibility and audio-rate scalar routing)
 add_executable(test_scalar_port
-    tests/test_scalar_port.cpp
+    tests/lanes/test_scalar_port.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -2024,7 +2024,7 @@ add_dependencies(test_scalar_port lfo_au audio_scalar_probe_op)
 add_test(NAME test_scalar_port COMMAND test_scalar_port WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_audio_control_timing
-    tests/test_audio_control_timing.cpp
+    tests/audio/test_audio_control_timing.cpp
     src/runtime/operators/operator_loader.cpp
 )
 target_include_directories(test_audio_control_timing PRIVATE src)
@@ -2060,7 +2060,7 @@ add_custom_target(phase6_soak
 
 # Demo graph smoke test (loads every demo graph, builds runtime, ticks 5 frames)
 add_executable(test_demo_graphs
-    tests/test_demo_graphs.cpp
+    tests/integration/test_demo_graphs.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -2106,7 +2106,7 @@ set_tests_properties(test_demo_graphs PROPERTIES LABELS "HEADLESS_SMOKE" TIMEOUT
 # Media-headless integration test — MovieLoaded/AVFoundation chains
 # with bounded timeout to prevent CI hangs. See docs/test_stabilization.md step 4.
 add_executable(test_media_headless
-    tests/test_media_headless.cpp
+    tests/media/test_media_headless.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -2137,7 +2137,7 @@ set_tests_properties(test_media_headless PROPERTIES
 
 # Audio-domain sequencer graph integration test
 add_executable(test_audio_sequencer_graph
-    tests/test_audio_sequencer_graph.cpp
+    tests/audio/test_audio_sequencer_graph.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -2163,7 +2163,7 @@ set_tests_properties(test_audio_sequencer_graph PROPERTIES LABELS "STABILITY")
 
 # Fixed-cadence assignment integration test
 add_executable(test_fixed_cadence_assignment
-    tests/test_fixed_cadence_assignment.cpp
+    tests/lanes/test_fixed_cadence_assignment.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -2192,7 +2192,7 @@ set_tests_properties(test_fixed_cadence_assignment PROPERTIES LABELS "STABILITY"
 
 # PackageCompiler unit test (compiles a mock package operator)
 add_executable(test_package_compiler
-    tests/test_package_compiler.cpp
+    tests/packages/test_package_compiler.cpp
     src/runtime/packages/package_compiler.cpp
     src/runtime/core/tool_discovery.cpp
     src/runtime/operators/operator_loader.cpp
@@ -2209,7 +2209,7 @@ set_tests_properties(test_package_compiler PROPERTIES LABELS "PACKAGE")
 
 # PackageCatalog unit test (JSON parsing, cache, merge)
 add_executable(test_package_catalog
-    tests/test_package_catalog.cpp
+    tests/packages/test_package_catalog.cpp
     src/runtime/packages/package_catalog.cpp
     src/runtime/packages/package_manager.cpp
     src/runtime/packages/package_compiler.cpp
@@ -2228,7 +2228,7 @@ set_tests_properties(test_package_catalog PROPERTIES LABELS "PACKAGE")
 
 # PackageManager lifecycle test (install/list/uninstall with local path)
 add_executable(test_package_manager
-    tests/test_package_manager.cpp
+    tests/packages/test_package_manager.cpp
     src/runtime/packages/package_manager.cpp
     src/runtime/packages/package_compiler.cpp
     src/runtime/core/tool_discovery.cpp
@@ -2245,7 +2245,7 @@ add_test(NAME test_package_manager
 set_tests_properties(test_package_manager PROPERTIES LABELS "PACKAGE")
 
 add_executable(test_runtime_bootstrap_packages
-    tests/test_runtime_bootstrap_packages.cpp
+    tests/control/test_runtime_bootstrap_packages.cpp
     src/runtime/operators/builtin_operators.cpp
     src/runtime/core/runtime_bootstrap.cpp
     src/runtime/graph/graph.cpp
@@ -2273,7 +2273,7 @@ set_tests_properties(test_runtime_bootstrap_packages PROPERTIES LABELS "PACKAGE"
 
 # Package scope resolver test (deterministic multi-scope precedence/conflicts)
 add_executable(test_package_scope_resolver
-    tests/test_package_scope_resolver.cpp
+    tests/packages/test_package_scope_resolver.cpp
     src/runtime/packages/package_manager.cpp
     src/runtime/packages/package_compiler.cpp
     src/runtime/core/tool_discovery.cpp
@@ -2291,7 +2291,7 @@ set_tests_properties(test_package_scope_resolver PROPERTIES LABELS "PACKAGE")
 
 # Package scope + registry integration test (winner package only)
 add_executable(test_package_scope_registry
-    tests/test_package_scope_registry.cpp
+    tests/packages/test_package_scope_registry.cpp
     src/runtime/packages/package_manager.cpp
     src/runtime/packages/package_compiler.cpp
     src/runtime/core/tool_discovery.cpp
@@ -2309,7 +2309,7 @@ set_tests_properties(test_package_scope_registry PROPERTIES LABELS "PACKAGE")
 
 # Package scaffolder unit test (template copy + placeholder replacement)
 add_executable(test_package_scaffolder
-    tests/test_package_scaffolder.cpp
+    tests/packages/test_package_scaffolder.cpp
     src/runtime/packages/package_scaffolder.cpp
 )
 target_include_directories(test_package_scaffolder PRIVATE src)
@@ -2320,7 +2320,7 @@ set_tests_properties(test_package_scaffolder PROPERTIES LABELS "PACKAGE")
 
 # PackageManager update metadata logic test (semantic version + compatibility)
 add_executable(test_package_update_logic
-    tests/test_package_update_logic.cpp
+    tests/packages/test_package_update_logic.cpp
     src/runtime/packages/package_manager.cpp
     src/runtime/packages/package_compiler.cpp
     src/runtime/core/tool_discovery.cpp
@@ -2338,7 +2338,7 @@ set_tests_properties(test_package_update_logic PROPERTIES LABELS "PACKAGE")
 
 # Core app update metadata parsing test (appcast + semver compare)
 add_executable(test_app_update_manager
-    tests/test_app_update_manager.cpp
+    tests/core/test_app_update_manager.cpp
     src/runtime/platform/app_update_manager.cpp
 )
 target_include_directories(test_app_update_manager PRIVATE src)
@@ -2350,7 +2350,7 @@ set_tests_properties(test_app_update_manager PROPERTIES LABELS "PACKAGE")
 
 # PackageTestRunner test (graph + C++ test execution for packages)
 add_executable(test_package_test_runner
-    tests/test_package_test_runner.cpp
+    tests/packages/test_package_test_runner.cpp
     src/runtime/packages/package_test_runner.cpp
     src/runtime/packages/package_manager.cpp
     src/runtime/packages/package_compiler.cpp
@@ -2378,7 +2378,7 @@ add_test(NAME test_package_test_runner
 set_tests_properties(test_package_test_runner PROPERTIES LABELS "PACKAGE")
 
 add_executable(test_package_contract_ecosystem
-    tests/test_package_contract_ecosystem.cpp
+    tests/packages/test_package_contract_ecosystem.cpp
     src/runtime/packages/package_test_runner.cpp
     src/runtime/packages/package_manager.cpp
     src/runtime/packages/package_compiler.cpp
@@ -2407,7 +2407,7 @@ set_tests_properties(test_package_contract_ecosystem PROPERTIES LABELS "PACKAGE"
 
 # CaptureCoordinator unit test (non-GPU paths only)
 add_executable(test_capture_coordinator
-    tests/test_capture_coordinator.cpp
+    tests/core/test_capture_coordinator.cpp
     src/runtime/debug/capture_coordinator.cpp
     src/runtime/debug/output_analyzer.cpp
     src/runtime/platform/av_exporter.mm
@@ -2437,7 +2437,7 @@ add_test(NAME test_capture_coordinator COMMAND test_capture_coordinator
 
 # OutputAnalyzer unit test (pure analysis functions, no GPU/audio)
 add_executable(test_output_analyzer
-    tests/test_output_analyzer.cpp
+    tests/integration/test_output_analyzer.cpp
     src/runtime/debug/output_analyzer.cpp
 )
 target_include_directories(test_output_analyzer PRIVATE src)
@@ -2447,7 +2447,7 @@ add_test(NAME test_output_analyzer COMMAND test_output_analyzer
 
 # SystemMidiListener unit test (no hardware needed)
 add_executable(test_midi
-    tests/test_midi.cpp
+    tests/audio/test_midi.cpp
     src/runtime/audio/system_midi.cpp
 )
 target_include_directories(test_midi PRIVATE src)
@@ -2456,7 +2456,7 @@ add_test(NAME test_midi COMMAND test_midi WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # FileWatcher unit tests (kqueue, no runtime, no GPU)
 add_executable(test_file_watcher
-    tests/test_file_watcher.cpp
+    tests/core/test_file_watcher.cpp
     src/runtime/core/file_watcher.cpp
 )
 target_include_directories(test_file_watcher PRIVATE src tests)
@@ -2464,7 +2464,7 @@ add_test(NAME test_file_watcher COMMAND test_file_watcher WORKING_DIRECTORY ${CM
 
 # HotReloader queueing unit tests (no compiler invocation; package callback path)
 add_executable(test_hot_reloader_queue
-    tests/test_hot_reloader_queue.cpp
+    tests/core/test_hot_reloader_queue.cpp
     src/runtime/core/hot_reload.cpp
     src/runtime/core/tool_discovery.cpp
 )
@@ -2472,27 +2472,27 @@ target_include_directories(test_hot_reloader_queue PRIVATE src tests)
 add_test(NAME test_hot_reloader_queue COMMAND test_hot_reloader_queue WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_build_console
-    tests/test_build_console.cpp
+    tests/core/test_build_console.cpp
 )
 target_include_directories(test_build_console PRIVATE src tests)
 add_test(NAME test_build_console COMMAND test_build_console WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # path_util unit tests (header-only, no extra deps)
 add_executable(test_path_util
-    tests/test_path_util.cpp
+    tests/common/test_path_util.cpp
 )
 target_include_directories(test_path_util PRIVATE src tests)
 add_test(NAME test_path_util COMMAND test_path_util WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # HAP helper unit tests (FourCC and format mapping)
 add_executable(test_hap_codec
-    tests/test_hap_codec.cpp
+    tests/media/test_hap_codec.cpp
 )
 target_include_directories(test_hap_codec PRIVATE src tests ${CMAKE_SOURCE_DIR})
 add_test(NAME test_hap_codec COMMAND test_hap_codec WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_movie_decode_upload
-    tests/test_movie_decode_upload.cpp
+    tests/media/test_movie_decode_upload.cpp
     operators/shared/movie_decode/texture_upload.cpp
 )
 target_include_directories(test_movie_decode_upload PRIVATE src tests ${CMAKE_SOURCE_DIR})
@@ -2500,13 +2500,13 @@ target_link_libraries(test_movie_decode_upload PRIVATE webgpu)
 add_test(NAME test_movie_decode_upload COMMAND test_movie_decode_upload WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_movie_load_generation
-    tests/test_movie_load_generation.cpp
+    tests/media/test_movie_load_generation.cpp
 )
 target_include_directories(test_movie_load_generation PRIVATE src tests ${CMAKE_SOURCE_DIR})
 add_test(NAME test_movie_load_generation COMMAND test_movie_load_generation WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_string_ports
-    tests/test_string_ports.cpp
+    tests/lanes/test_string_ports.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -2523,19 +2523,19 @@ add_dependencies(test_string_ports test_op_v1 string_source_op string_sink_op)
 add_test(NAME test_string_ports COMMAND test_string_ports WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_movie_load_async
-    tests/test_movie_load_async.cpp
+    tests/media/test_movie_load_async.cpp
 )
 target_include_directories(test_movie_load_async PRIVATE src tests ${CMAKE_SOURCE_DIR})
 add_test(NAME test_movie_load_async COMMAND test_movie_load_async WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_movie_av_sync
-    tests/test_movie_av_sync.cpp
+    tests/media/test_movie_av_sync.cpp
 )
 target_include_directories(test_movie_av_sync PRIVATE src tests ${CMAKE_SOURCE_DIR})
 add_test(NAME test_movie_av_sync COMMAND test_movie_av_sync WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_port_type_registry
-    tests/test_port_type_registry.cpp
+    tests/graph/test_port_type_registry.cpp
     src/runtime/graph/port_type_registry.cpp
 )
 target_include_directories(test_port_type_registry PRIVATE src tests ${CMAKE_SOURCE_DIR})
@@ -2545,7 +2545,7 @@ add_test(NAME test_port_type_registry
 
 if(APPLE)
     add_executable(test_movie_decode_route
-        tests/test_movie_decode_route.cpp
+        tests/media/test_movie_decode_route.cpp
         operators/shared/movie_decode/decoder_factory.cpp
         operators/shared/movie_decode/codec_probe.mm
         operators/shared/movie_decode/avf_decoder.mm
@@ -2568,7 +2568,7 @@ endif()
 
 # UndoManager unit tests (snapshot history behavior)
 add_executable(test_undo_manager
-    tests/test_undo_manager.cpp
+    tests/core/test_undo_manager.cpp
     src/runtime/core/undo_manager.cpp
 )
 target_include_directories(test_undo_manager PRIVATE src tests)
@@ -2576,21 +2576,21 @@ add_test(NAME test_undo_manager COMMAND test_undo_manager WORKING_DIRECTORY ${CM
 
 # editor_detect unit tests (filesystem scan, no display)
 add_executable(test_editor_detect
-    tests/test_editor_detect.cpp
+    tests/core/test_editor_detect.cpp
     src/runtime/core/editor_detect.cpp
 )
 target_include_directories(test_editor_detect PRIVATE src tests)
 add_test(NAME test_editor_detect COMMAND test_editor_detect WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_tool_discovery
-    tests/test_tool_discovery.cpp
+    tests/core/test_tool_discovery.cpp
     src/runtime/core/tool_discovery.cpp
 )
 target_include_directories(test_tool_discovery PRIVATE src tests)
 add_test(NAME test_tool_discovery COMMAND test_tool_discovery WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_graph_compiler_init
-    tests/test_graph_compiler_init.cpp
+    tests/graph/test_graph_compiler_init.cpp
     src/runtime/graph/graph_compiler.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
@@ -2604,7 +2604,7 @@ target_link_libraries(test_graph_compiler_init PRIVATE
 add_test(NAME test_graph_compiler_init COMMAND test_graph_compiler_init WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_frame_executor_queries
-    tests/test_frame_executor_queries.cpp
+    tests/graph/test_frame_executor_queries.cpp
     src/runtime/graph/frame_executor.cpp
     src/runtime/graph/port_type_registry.cpp
 )
@@ -2613,7 +2613,7 @@ target_link_libraries(test_frame_executor_queries PRIVATE vivid_operator_api web
 add_test(NAME test_frame_executor_queries COMMAND test_frame_executor_queries WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_audio_frame_bridge
-    tests/test_audio_frame_bridge.cpp
+    tests/audio/test_audio_frame_bridge.cpp
     src/runtime/audio/audio_frame_bridge.cpp
     src/runtime/graph/port_type_registry.cpp
 )
@@ -2622,7 +2622,7 @@ target_link_libraries(test_audio_frame_bridge PRIVATE vivid_operator_api webgpu)
 add_test(NAME test_audio_frame_bridge COMMAND test_audio_frame_bridge WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_subgraph_module
-    tests/test_subgraph_module.cpp
+    tests/graph/test_subgraph_module.cpp
     src/runtime/graph/subgraph_module.cpp
     src/runtime/graph/graph.cpp
 )
@@ -2632,7 +2632,7 @@ target_link_libraries(test_subgraph_module PRIVATE
 add_test(NAME test_subgraph_module COMMAND test_subgraph_module WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_graph_compiler
-    tests/test_graph_compiler.cpp
+    tests/graph/test_graph_compiler.cpp
     src/runtime/graph/graph_compiler.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
@@ -2649,7 +2649,7 @@ add_test(NAME test_graph_compiler
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_lane_propagation
-    tests/test_lane_propagation.cpp
+    tests/lanes/test_lane_propagation.cpp
     src/runtime/graph/graph_compiler.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
@@ -2662,13 +2662,13 @@ target_link_libraries(test_lane_propagation PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_test(NAME test_lane_propagation COMMAND test_lane_propagation WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-add_executable(test_lane_state tests/test_lane_state.cpp)
+add_executable(test_lane_state tests/lanes/test_lane_state.cpp)
 target_include_directories(test_lane_state PRIVATE src)
 target_link_libraries(test_lane_state PRIVATE vivid_operator_api)
 add_test(NAME test_lane_state COMMAND test_lane_state WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_lane_capacity
-    tests/test_lane_capacity.cpp
+    tests/lanes/test_lane_capacity.cpp
     src/runtime/graph/graph_compiler.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
@@ -2685,7 +2685,7 @@ add_test(NAME test_lane_capacity
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_lane_compaction
-    tests/test_lane_compaction.cpp
+    tests/lanes/test_lane_compaction.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -2709,7 +2709,7 @@ add_test(NAME test_lane_compaction
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_lane_equivalence
-    tests/test_lane_equivalence.cpp
+    tests/lanes/test_lane_equivalence.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -2734,7 +2734,7 @@ add_test(NAME test_lane_equivalence
 
 # Undo coverage across roadmap mutation types via RuntimeCommandSink + RuntimeAPI
 add_executable(test_undo_mutation_types
-    tests/test_undo_mutation_types.cpp
+    tests/core/test_undo_mutation_types.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -2776,7 +2776,7 @@ add_test(NAME test_undo_mutation_types
 
 # Team workflow regression: project package isolation (Cases A/C: unit; Case B: dylib staging)
 add_executable(test_team_workflow_regression
-    tests/test_team_workflow_regression.cpp
+    tests/integration/test_team_workflow_regression.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
@@ -2817,7 +2817,7 @@ add_test(NAME test_team_workflow_regression
 
 # builtin_operators unit tests (no dylib, no GPU)
 add_executable(test_builtin_operators
-    tests/test_builtin_operators.cpp
+    tests/ops/test_builtin_operators.cpp
     src/runtime/operators/builtin_operators.cpp
     src/runtime/graph/port_type_registry.cpp
     src/runtime/operators/operator_registry.cpp
@@ -2830,7 +2830,7 @@ add_test(NAME test_builtin_operators COMMAND test_builtin_operators WORKING_DIRE
 
 # OperatorInfoCache unit tests (uses builtin operators as fixtures, no dylib)
 add_executable(test_operator_info_cache
-    tests/test_operator_info_cache.cpp
+    tests/ops/test_operator_info_cache.cpp
     src/runtime/operators/operator_registry.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/builtin_operators.cpp
@@ -2842,13 +2842,13 @@ target_link_libraries(test_operator_info_cache PRIVATE vivid_operator_api webgpu
 add_test(NAME test_operator_info_cache COMMAND test_operator_info_cache WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Path Animate unit tests (pure math, no runtime dependencies)
-add_executable(test_path_animate tests/test_path_animate.cpp)
+add_executable(test_path_animate tests/core/test_path_animate.cpp)
 target_include_directories(test_path_animate PRIVATE src)
 add_test(NAME test_path_animate COMMAND test_path_animate WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # i18n module tests (load, get, get_plural, fallbacks)
 add_executable(test_i18n
-    tests/test_i18n.cpp
+    tests/ui/test_i18n.cpp
     src/ui/style/i18n.cpp
 )
 target_include_directories(test_i18n PRIVATE src)
