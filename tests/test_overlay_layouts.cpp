@@ -30,11 +30,11 @@ int main() {
     check(nearly(p0.list_top, p1.list_top) && nearly(p0.status_y, p1.status_y),
           "package layout deterministic for same input");
 
-    auto open_btn = compute_example_open_button_rect(e0, 0);
+    auto open_btn = compute_example_open_button_rect(e0, e0.list_top);
     check(overlay_contains(e0, open_btn.x + open_btn.w * 0.5f, open_btn.y + open_btn.h * 0.5f),
           "example open button center lies inside example panel");
 
-    auto pkg_btn = compute_package_action_button_rect(p0, 0);
+    auto pkg_btn = compute_package_action_button_rect(p0, p0.list_top);
     check(overlay_contains(p0, pkg_btn.x + pkg_btn.w * 0.5f, pkg_btn.y + pkg_btn.h * 0.5f),
           "package action button center lies inside package panel");
 

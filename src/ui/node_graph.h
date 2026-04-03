@@ -8,6 +8,8 @@
 #include "ui/theme_loader.h"
 #include "ui/text_edit.h"
 #include "ui/node_graph_util.h"
+#include "ui/dialog_types.h"
+#include "ui/dialog_manager.h"
 #include "operator_api/types.h"
 #include <webgpu/webgpu.h>
 #include <string>
@@ -19,70 +21,6 @@
 #include <cassert>
 
 namespace vivid::ui {
-
-struct ExampleEntry {
-    std::string id;
-    std::string title;
-    std::string path;
-    std::string summary;
-    std::vector<std::string> tags;
-    std::string difficulty;
-    std::vector<std::string> envs;
-    std::vector<std::string> requires_packages;
-    int featured_rank = 1000;
-    int estimated_minutes = 0;
-};
-
-struct GraphMetaEditData {
-    std::string path;
-    std::string id;
-    std::string title;
-    std::string description;
-    std::string tags_csv;
-    std::string difficulty;
-    std::string envs_csv;
-    std::string requires_packages_csv;
-    std::string featured_rank;
-};
-
-enum class PackageBrowserFetchState {
-    Idle,
-    Fetching,
-    Ready,
-    Error
-};
-
-struct PackageBrowserEntry {
-    std::string name;
-    std::string description;
-    std::string version;
-    std::string author;
-    std::string category;
-    std::vector<std::string> tags;
-    bool installed = false;
-    bool linked = false;
-    bool needs_rebuild = false;      // ABI mismatch or load failure detected
-    std::string health_detail;       // e.g. "ABI mismatch — try rebuild"
-};
-
-struct PackageBrowserUpdateSummary {
-    int installed_packages = 0;
-    int updates_available = 0;
-    int incompatible_updates = 0;
-};
-
-struct PackageBrowserCallbacks {
-    std::function<void()> refresh;
-    std::function<std::vector<PackageBrowserEntry>()> list_entries;
-    std::function<PackageBrowserFetchState()> fetch_state;
-    std::function<std::string()> fetch_error;
-    std::function<PackageBrowserUpdateSummary()> update_summary;
-    std::function<bool(const std::string&, std::string&)> install;
-    std::function<bool(const std::string&, std::string&)> uninstall;
-    std::function<bool(const std::string&, std::string&)> unlink;
-    std::function<bool(const std::string&, std::string&)> link;
-    std::function<bool(const std::string&, std::string&)> rebuild;
-};
 
 struct FileDropChooserAction {
     std::string label;
@@ -149,7 +87,7 @@ public:
 
     // Returns true when a popup is open and wants keyboard focus
     bool wants_keyboard() const {
-        return create_popup_open_
+        return dialogs_.wants_keyboard()
             || chooser_open_
             || editing_param_
             || editing_resolution_
@@ -157,9 +95,6 @@ public:
             || dropdown_open_
             || context_menu_open_
             || editing_midi_range_
-            || clone_confirm_open_
-            || save_confirm_open_
-            || prefs_open_
             || param_picker_open_
             || color_editing_hex_
             || color_editing_rgb_ >= 0
@@ -167,12 +102,6 @@ public:
             || session_editing_name_
             || session_ctx_menu_open_
             || record_dropdown_open_
-            || preset_name_popup_open_
-            || pkg_browser_open_
-            || example_browser_open_
-            || graph_meta_editor_open_
-            || about_open_
-            || mcp_setup_open_
             || editing_sticky_
             || sticky_color_menu_open_
             || custom_inspector_wants_keyboard_;
@@ -249,33 +178,57 @@ public:
     const UIStyle& style() const { return style_; }
     void set_style(const UIStyle& s) { style_ = s; }
 
-    void toggle_preferences();
-    void toggle_package_browser();
-    void set_package_browser_callbacks(PackageBrowserCallbacks callbacks);
-    void notify_pkg_action_complete(bool success, const std::string& error);
-    void toggle_example_browser();
-    void set_examples(std::vector<ExampleEntry> examples);
-    void set_example_open_callback(std::function<void(const std::string&)> cb);
+    void toggle_preferences() { dialogs_.toggle_preferences(); }
+    void toggle_package_browser() { dialogs_.toggle_package_browser(); }
+    void set_package_browser_callbacks(PackageBrowserCallbacks callbacks) {
+        dialogs_.set_package_browser_callbacks(std::move(callbacks));
+    }
+    void notify_pkg_action_complete(bool success, const std::string& error) {
+        dialogs_.notify_pkg_action_complete(success, error);
+    }
+    void toggle_example_browser() { dialogs_.toggle_example_browser(); }
+    void set_examples(std::vector<ExampleEntry> examples) {
+        dialogs_.set_examples(std::move(examples));
+    }
+    void set_example_open_callback(std::function<void(const std::string&)> cb) {
+        dialogs_.set_example_open_callback(std::move(cb));
+    }
     void set_example_package_checker(
-        std::function<bool(const std::vector<std::string>&, std::string&)> cb);
-    void open_graph_meta_editor(const GraphMetaEditData& data);
+        std::function<bool(const std::vector<std::string>&, std::string&)> cb) {
+        dialogs_.set_example_package_checker(std::move(cb));
+    }
+    void open_graph_meta_editor(const GraphMetaEditData& data) {
+        dialogs_.open_graph_meta_editor(data, text_edit_);
+    }
     void set_graph_meta_save_callback(
-        std::function<bool(const GraphMetaEditData&, std::string&)> cb);
+        std::function<bool(const GraphMetaEditData&, std::string&)> cb) {
+        dialogs_.set_graph_meta_save_callback(std::move(cb));
+    }
     void set_editor_options(std::vector<std::string> names, std::vector<std::string> ids,
-                            int current_idx = 0, const std::string& custom_command = "");
+                            int current_idx = 0, const std::string& custom_command = "") {
+        dialogs_.set_editor_options(std::move(names), std::move(ids), current_idx, custom_command);
+    }
     void set_style_options(std::vector<UIStyle> styles, int current_idx,
-                            std::vector<ThemeInfo> themes = {});
+                            std::vector<ThemeInfo> themes = {}) {
+        dialogs_.set_style_options(std::move(styles), current_idx, std::move(themes));
+    }
     void show_core_update_notice(const std::string& latest_version,
-                                 const std::string& summary = "");
-    void clear_core_update_notice();
+                                 const std::string& summary = "") {
+        dialogs_.show_core_update_notice(latest_version, summary);
+    }
+    void clear_core_update_notice() { dialogs_.clear_core_update_notice(); }
     void set_core_update_notice_callbacks(std::function<void()> install_cb,
                                           std::function<void()> skip_cb,
-                                          std::function<void()> later_cb);
-    void open_about() { about_open_ = true; about_scroll_ = 0.0f; }
+                                          std::function<void()> later_cb) {
+        dialogs_.set_core_update_notice_callbacks(std::move(install_cb),
+                                                   std::move(skip_cb),
+                                                   std::move(later_cb));
+    }
+    void open_about() { dialogs_.open_about(); }
 
     // Read-only UI snapshot accessors used by tests and seam verification.
-    const std::vector<PackageBrowserEntry>& package_browser_entries() const { return pkg_browser_entries_; }
-    const GraphMetaEditData& graph_meta_data() const { return graph_meta_data_; }
+    const std::vector<PackageBrowserEntry>& package_browser_entries() const { return dialogs_.package_browser_entries(); }
+    const GraphMetaEditData& graph_meta_data() const { return dialogs_.graph_meta_data(); }
     std::vector<std::string> selected_node_ids_for_test() const {
         return std::vector<std::string>(selected_node_ids_.begin(), selected_node_ids_.end());
     }
@@ -284,7 +237,7 @@ public:
         return chooser_open_ && chooser_mode_ == ChooserMode::FileDrop;
     }
     // Set the directory containing the MCP Python scripts (used in setup dialog)
-    void set_mcp_dir(const std::string& dir) { mcp_dir_ = dir; }
+    void set_mcp_dir(const std::string& dir) { dialogs_.set_mcp_dir(dir); }
 
     // Debug/signoff seam: force a single-node inspector selection by id.
     // Review/debug-only selection seam used for deterministic inspector capture.
@@ -301,7 +254,7 @@ private:
     void place_new_nodes();
     void prune_node_rects();
     void recompute_ports(NodeRect& rect, const NodeSnapshot& ns);
-    void refresh_package_browser_snapshot_if_ready();
+    // refresh_package_browser_snapshot_if_ready moved to DialogManager
 
     // Count visible input/output ports for a node (signal ports + connected params/outputs)
     uint32_t count_visible_input_ports(const NodeSnapshot& ns, bool show_params = true) const;
@@ -344,7 +297,7 @@ private:
     void draw_param_tooltip(Renderer2D& tr);
     void draw_inspector_scrollbar(Renderer2D& tr);
     void draw_midi_map_banner(Renderer2D& tr);
-    void draw_core_update_banner(Renderer2D& tr);
+    // draw_core_update_banner moved to DialogManager
 
     // --- Session grid ---
     void draw_session_grid(Renderer2D& tr);
@@ -360,7 +313,6 @@ private:
                              float r, float g, float b, float a);
     void draw_perf_expanded(Renderer2D& tr);
     void draw_perf_audio_expanded(Renderer2D& tr);
-    void draw_mcp_setup_dialog(Renderer2D& tr);
 
     // --- Chooser ---
     void rebuild_chooser_items();
@@ -398,49 +350,25 @@ private:
     static std::vector<std::pair<uint32_t, std::string>> sorted_ports(
         const std::unordered_map<std::string, uint32_t>& port_indices);
 
-    // --- Clone confirmation dialog ---
+    // --- Clone confirmation dialog (forwarded to DialogManager) ---
     void open_clone_confirm_dialog(const std::string& type_name);
-    void update_clone_confirm();
-    void draw_clone_confirm(Renderer2D& tr);
 
-    // --- Save confirmation dialog (dirty check before New/New Project) ---
+    // --- Save confirmation dialog (forwarded to DialogManager) ---
 public:
-    enum class SaveConfirmAction { kNewGraph, kNewProject };
+    using SaveConfirmAction = vivid::ui::SaveConfirmAction;
     void open_save_confirm_dialog(SaveConfirmAction action);
-    // Callbacks set by main.cpp: invoked when the user resolves the save-confirm dialog
-    std::function<void()> on_save_confirm_save;      // "Save" clicked
-    std::function<void()> on_save_confirm_dont_save;  // "Don't Save" clicked (action)
-    std::function<void()> on_save_confirm_cancel;      // "Cancel" clicked
-    bool save_confirm_open() const { return save_confirm_open_; }
-    SaveConfirmAction save_confirm_action() const { return save_confirm_action_; }
+    // Callbacks forwarded to DialogManager
+    std::function<void()>& on_save_confirm_save = dialogs_.on_save_confirm_save;
+    std::function<void()>& on_save_confirm_dont_save = dialogs_.on_save_confirm_dont_save;
+    std::function<void()>& on_save_confirm_cancel = dialogs_.on_save_confirm_cancel;
+    bool save_confirm_open() const { return dialogs_.save_confirm_open(); }
+    SaveConfirmAction save_confirm_action() const { return dialogs_.save_confirm_action(); }
 private:
-    void update_save_confirm();
-    void draw_save_confirm(Renderer2D& tr);
 
-    // --- Create operator modal ---
-    void update_create_popup();
-    void draw_create_popup(Renderer2D& tr);
-    void submit_create_operator(bool empty_variant);
-    void reset_create_env_defaults();
+    // Create operator modal, preset name popup moved to DialogManager
 
-    // --- Preset name popup ---
-    void draw_preset_name_popup(Renderer2D& tr);
-
-    // --- Preferences panel ---
-    void update_preferences();
-    void draw_preferences(Renderer2D& tr);
-
-    // --- Package browser ---
-    void update_package_browser();
-    void draw_package_browser(Renderer2D& tr);
-    void rebuild_pkg_browser_items();
-    void update_example_browser();
-    void draw_example_browser(Renderer2D& tr);
-    void rebuild_example_items();
-    void update_graph_meta_editor();
-    void draw_graph_meta_editor(Renderer2D& tr);
-    void update_about();
-    void draw_about(Renderer2D& tr);
+    // Package browser / Example browser moved to DialogManager
+    // draw_graph_meta_editor and update_graph_meta_editor moved to DialogManager
 
     // --- Parameter picker popup ---
     void rebuild_param_picker_items();
@@ -501,6 +429,7 @@ private:
     float chooser_x() const { return (graph_right() - kChooserW) * 0.5f; }
 
     UICommandSink& commands_;
+    DialogManager dialogs_;
     GraphSnapshot snap_;
     bool snap_valid_ = false;
     MouseState mouse_;
@@ -717,10 +646,7 @@ private:
     struct StateHeaderRect { float x, y, w, h; int state_idx; };
     std::vector<StateHeaderRect> state_header_rects_;
 
-    // Preset name popup state (shown on Save when no active preset)
-    bool preset_name_popup_open_ = false;
-    std::string preset_name_buffer_;
-    std::string preset_name_node_id_;
+    // Preset name popup state: moved to DialogManager
 
     // Patch panel state
     struct PatchJack {
@@ -854,86 +780,15 @@ private:
     double last_click_time_ = 0.0;
     std::string last_click_node_id_;
 
-    // Clone confirmation dialog state
-    bool clone_confirm_open_ = false;
-    std::string clone_confirm_type_;
-    bool clone_confirm_project_available_ = false;
-    int clone_confirm_destination_ = 0; // 0=Project Package, 1=Core
+    // Clone confirm + Save confirm state: migrated to DialogManager
 
-    // Save confirmation dialog state
-    bool save_confirm_open_ = false;
-    SaveConfirmAction save_confirm_action_ = SaveConfirmAction::kNewGraph;
+    // Create operator modal state: moved to DialogManager
 
-    // Create operator modal state
-    bool create_popup_open_ = false;
-    int create_env_sel_ = 0;           // 0=control, 1=audio, 2=gpu
-    std::string create_name_buf_;
-    std::string create_error_;
-    bool create_composite_ = false;        // variant checkbox, control-only
-    int create_destination_ = 0;           // 0=auto, 1=project, 2=core
+    // Preferences state: moved to DialogManager::prefs
 
-    // Preferences panel state
-    bool prefs_open_ = false;
-    int prefs_editor_sel_ = 0;
-    std::vector<std::string> prefs_editor_names_;
-    std::vector<std::string> prefs_editor_ids_;
-    std::string prefs_custom_command_;
-    bool prefs_editing_custom_ = false;
-    int prefs_style_sel_ = 0;
-    std::vector<UIStyle> prefs_styles_;
-    std::vector<ThemeInfo> prefs_themes_;
-    int prefs_saved_style_sel_ = 0;   // to revert on cancel
-    int prefs_pan_gesture_sel_ = 1;       // 0=middle, 1=left, 2=right
-    int prefs_saved_pan_gesture_sel_ = 1; // to revert on cancel
+    // Package browser / Example browser state: moved to DialogManager
 
-    // --- Package browser ---
-    bool pkg_browser_open_ = false;
-    bool pkg_browser_search_focused_ = false;
-    std::string pkg_browser_filter_;
-    int pkg_browser_sel_ = 0;
-    float pkg_browser_scroll_ = 0.0f;
-    int pkg_browser_category_ = 0;   // 0=All, 1=Audio, 2=GPU, 3=Control, 4=Utility, 5=Installed
-    std::array<float, 6> pkg_browser_tab_widths_{};
-    std::vector<PackageBrowserEntry> pkg_browser_entries_;   // filtered snapshot
-    std::vector<PackageBrowserEntry> pkg_browser_all_;       // full snapshot
-    PackageBrowserCallbacks pkg_browser_callbacks_{};
-    bool pkg_action_pending_ = false;
-    std::string pkg_action_name_;
-    std::string pkg_action_error_;
-
-    // --- Example browser ---
-    bool example_browser_open_ = false;
-    bool example_browser_search_focused_ = false;
-    std::string example_browser_filter_;
-    int example_browser_sel_ = 0;
-    float example_browser_scroll_ = 0.0f;
-    int example_browser_env_ = 0;      // 0=All 1=GPU 2=Audio 3=Control 4=IO
-    int example_browser_difficulty_ = 0;  // 0=All 1=Beginner 2=Intermediate 3=Advanced
-    int example_browser_sort_ = 0;        // 0=Featured 1=Alphabetical
-    bool example_browser_core_only_ = true;
-    bool example_browser_package_only_ = false;
-    std::array<float, 5> example_env_tab_widths_{};
-    std::array<float, 4> example_diff_tab_widths_{};
-    std::array<float, 2> example_sort_tab_widths_{};
-    std::vector<ExampleEntry> example_entries_all_;
-    std::vector<ExampleEntry> example_entries_;
-    std::string example_action_error_;
-    std::string example_warn_id_;
-    std::function<void(const std::string&)> example_open_callback_;
-    std::function<bool(const std::vector<std::string>&, std::string&)> example_package_checker_;
-
-    // --- Graph meta editor ---
-    bool graph_meta_editor_open_ = false;
-    int graph_meta_active_field_ = 0;
-    std::vector<std::string*> graph_meta_fields_;
-    GraphMetaEditData graph_meta_data_;
-    std::string graph_meta_error_;
-    std::function<bool(const GraphMetaEditData&, std::string&)> graph_meta_save_callback_;
-
-    // --- About modal ---
-    bool about_open_ = false;
-    float about_scroll_ = 0.0f;
-    float about_max_scroll_ = 0.0f;
+    // --- Graph meta editor (migrated to DialogManager) ---
 
     // --- Session grid (variation strip / exploration surface) ---
     bool session_grid_open_ = false;
@@ -1033,23 +888,8 @@ private:
     float perf_audio_graph_y_ = 0.0f;
 
     // --- MCP status dots in perf bar ---
-    std::string mcp_dir_;  // directory containing vivid_mcp.py / vivid_opdev_mcp.py
-    bool mcp_setup_open_ = false;
     struct McpDotRect { float x, y, w, h; int idx; };  // idx: 0=vivid, 1=opdev
     std::vector<McpDotRect> mcp_dot_rects_;
-    struct McpDialogButtonRect { float x, y, w, h; int action; };  // action: 0=copy_vivid, 1=copy_opdev, 2=done, 3=close
-    std::vector<McpDialogButtonRect> mcp_dialog_button_rects_;
-
-    // --- MCP project config detection ---
-    struct McpProjectConfig {
-        bool scanned = false;
-        std::string scanned_for_path;
-        bool vivid_configured = false;
-        bool opdev_configured = false;
-        std::string mcp_json_dir;  // parent dir of found .mcp.json (for display)
-    };
-    McpProjectConfig mcp_project_config_;
-    void scan_mcp_project_config();
 
     // --- Record/Snapshot buttons in perf bar ---
     bool record_dropdown_open_ = false;
@@ -1082,16 +922,7 @@ private:
     std::string sticky_color_menu_id_;
     float sticky_color_menu_x_ = 0, sticky_color_menu_y_ = 0;
 
-    // --- Core update notice ---
-    bool core_update_notice_open_ = false;
-    std::string core_update_notice_version_;
-    std::string core_update_notice_summary_;
-    struct CoreUpdateButtonRect { float x, y, w, h; int action; };
-    // action: 0=Install, 1=Skip, 2=Later
-    std::vector<CoreUpdateButtonRect> core_update_button_rects_;
-    std::function<void()> on_core_update_install_;
-    std::function<void()> on_core_update_skip_;
-    std::function<void()> on_core_update_later_;
+    // Core update notice state: moved to DialogManager
 };
 
 } // namespace vivid::ui

@@ -22,10 +22,13 @@ using vivid::kahn_sort;
 // Constructor
 // -----------------------------------------------------------------------
 NodeGraphUI::NodeGraphUI(UICommandSink& commands)
-    : commands_(commands) {
+    : commands_(commands), dialogs_(commands) {
     // Initialize with default Dark Steel style
     auto styles = builtin_styles();
     if (!styles.empty()) style_ = styles[0];
+    // Give DialogManager access to live style and pan gesture for preferences
+    dialogs_.set_style_ptr(&style_);
+    dialogs_.set_pan_gesture_ptr(&pan_gesture_);
 }
 
 bool NodeGraphUI::select_single_node_for_review(const std::string& node_id) {
@@ -171,15 +174,11 @@ void NodeGraphUI::paste_copied_nodes() {
 }
 
 void NodeGraphUI::open_clone_confirm_dialog(const std::string& type_name) {
-    clone_confirm_type_ = type_name;
-    clone_confirm_project_available_ = commands_.has_project_clone_destination();
-    clone_confirm_destination_ = clone_confirm_project_available_ ? 0 : 1;
-    clone_confirm_open_ = true;
+    dialogs_.open_clone_confirm(type_name);
 }
 
 void NodeGraphUI::open_save_confirm_dialog(SaveConfirmAction action) {
-    save_confirm_action_ = action;
-    save_confirm_open_ = true;
+    dialogs_.open_save_confirm(action);
 }
 
 float NodeGraphUI::graph_right() const {
@@ -1144,13 +1143,8 @@ void NodeGraphUI::confirm_chooser_selection_idx(int idx) {
 
     // Handle "New Operator" sentinel
     if (type == "+ New Operator...") {
-        create_popup_open_ = true;
-        create_env_sel_ = 0;
-        create_name_buf_.clear();
+        dialogs_.open_create_popup();
         text_edit_.reset(0);
-        create_error_.clear();
-        create_composite_ = false;
-        create_destination_ = 0;
         reset_chooser_state();
         return;
     }
@@ -1254,7 +1248,6 @@ void NodeGraphUI::confirm_chooser_selection_idx(int idx) {
 void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     snap_ = snapshot;
     snap_valid_ = true;
-    refresh_package_browser_snapshot_if_ready();
 
     // Deselect a param wire that becomes hidden
     if (!show_param_wires_ && selected_wire_idx_ >= 0 &&
@@ -1467,14 +1460,9 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     update_patch_drag();
     update_chooser_hover();
     update_param_picker();   // may consume left_clicked
-    update_package_browser(); // may consume left_clicked
-    update_example_browser(); // may consume left_clicked
-    update_graph_meta_editor(); // may consume left_clicked
-    update_about();             // may consume left_clicked
-    update_preferences();    // may consume left_clicked
-    update_save_confirm();   // may consume left_clicked
-    update_clone_confirm();  // may consume left_clicked
-    update_create_popup();   // may consume left_clicked
+    // update_package_browser, update_example_browser, update_graph_meta_editor moved to DialogManager
+    dialogs_.update(mouse_, win_w_, win_h_);  // may consume left_clicked (includes pkg/example browsers, graph_meta, preferences)
+    // update_create_popup moved to DialogManager (called via dialogs_.update())
     update_context_menu();   // may consume left_clicked
     handle_right_click();
     handle_left_click();     // dispatches to sub-handlers
@@ -1586,10 +1574,8 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     }
 
     // Popup fade
-    bool any_popup = chooser_open_ || create_popup_open_ || prefs_open_ ||
-                     pkg_browser_open_ || example_browser_open_ || graph_meta_editor_open_ ||
-                     clone_confirm_open_ || save_confirm_open_ || preset_name_popup_open_ ||
-                     about_open_ || mcp_setup_open_ || color_popup_open_;
+    bool any_popup = dialogs_.any_open() || chooser_open_ ||
+                     color_popup_open_;
     float popup_target = any_popup ? 1.0f : 0.0f;
     popup_opacity_ = lerp_toward(popup_opacity_, popup_target, kPopupFadeSpeed, dt);
     if (popup_opacity_ < 0.01f) popup_opacity_ = 0.0f;
@@ -2072,69 +2058,10 @@ void NodeGraphUI::update_sparklines() {
     }
 }
 
-void NodeGraphUI::toggle_preferences() {
-    if (prefs_open_) {
-        // Cancel: revert style
-        if (prefs_saved_style_sel_ >= 0 &&
-            prefs_saved_style_sel_ < static_cast<int>(prefs_styles_.size())) {
-            style_ = prefs_styles_[prefs_saved_style_sel_];
-        }
-        prefs_open_ = false;
-        prefs_editing_custom_ = false;
-    } else {
-        prefs_open_ = true;
-        prefs_editing_custom_ = false;
-        prefs_saved_style_sel_ = prefs_style_sel_;
-        // Sync pan gesture selection from current state
-        if (pan_gesture_ == "left") prefs_pan_gesture_sel_ = 1;
-        else if (pan_gesture_ == "right") prefs_pan_gesture_sel_ = 2;
-        else prefs_pan_gesture_sel_ = 0;
-        prefs_saved_pan_gesture_sel_ = prefs_pan_gesture_sel_;
-    }
-}
+// toggle_preferences(), set_editor_options(), set_style_options() moved to DialogManager
 
-void NodeGraphUI::set_editor_options(std::vector<std::string> names,
-                                     std::vector<std::string> ids,
-                                     int current_idx,
-                                     const std::string& custom_command) {
-    prefs_editor_names_ = std::move(names);
-    prefs_editor_ids_ = std::move(ids);
-    prefs_editor_sel_ = current_idx;
-    prefs_custom_command_ = custom_command;
-}
-
-void NodeGraphUI::set_style_options(std::vector<UIStyle> styles, int current_idx,
-                                     std::vector<ThemeInfo> themes) {
-    prefs_styles_ = std::move(styles);
-    prefs_themes_ = std::move(themes);
-    prefs_style_sel_ = current_idx;
-    prefs_saved_style_sel_ = current_idx;
-    if (current_idx >= 0 && current_idx < static_cast<int>(prefs_styles_.size())) {
-        style_ = prefs_styles_[current_idx];
-    }
-}
-
-void NodeGraphUI::show_core_update_notice(const std::string& latest_version,
-                                          const std::string& summary) {
-    core_update_notice_open_ = true;
-    core_update_notice_version_ = latest_version;
-    core_update_notice_summary_ = summary;
-}
-
-void NodeGraphUI::clear_core_update_notice() {
-    core_update_notice_open_ = false;
-    core_update_notice_version_.clear();
-    core_update_notice_summary_.clear();
-    core_update_button_rects_.clear();
-}
-
-void NodeGraphUI::set_core_update_notice_callbacks(std::function<void()> install_cb,
-                                                   std::function<void()> skip_cb,
-                                                   std::function<void()> later_cb) {
-    on_core_update_install_ = std::move(install_cb);
-    on_core_update_skip_ = std::move(skip_cb);
-    on_core_update_later_ = std::move(later_cb);
-}
+// show_core_update_notice, clear_core_update_notice, set_core_update_notice_callbacks
+// moved to DialogManager (inlined in node_graph.h)
 
 // -----------------------------------------------------------------------
 // resolve_port_type — shared utility (was file-local static in input.cpp)

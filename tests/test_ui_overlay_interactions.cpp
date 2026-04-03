@@ -100,7 +100,7 @@ int main() {
         });
         ui.toggle_example_browser();
         OverlayPanelLayout example_layout = compute_example_browser_layout(1280, 720, 1);
-        OverlayRect open_btn = compute_example_open_button_rect(example_layout, 0);
+        OverlayRect open_btn = compute_example_open_button_rect(example_layout, example_layout.list_top);
         ui.on_mouse_move(open_btn.x + open_btn.w * 0.5f, open_btn.y + open_btn.h * 0.5f);
         ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
         ui.update(snap);
@@ -121,7 +121,7 @@ int main() {
         });
         ui.toggle_example_browser();
         OverlayPanelLayout example_layout = compute_example_browser_layout(1280, 720, 1);
-        OverlayRect open_btn = compute_example_open_button_rect(example_layout, 0);
+        OverlayRect open_btn = compute_example_open_button_rect(example_layout, example_layout.list_top);
         ui.on_mouse_move(open_btn.x + open_btn.w * 0.5f, open_btn.y + open_btn.h * 0.5f);
         ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
         ui.update(snap);
@@ -155,7 +155,7 @@ int main() {
         });
         ui.toggle_package_browser();
         OverlayPanelLayout pkg_layout = compute_package_browser_layout(1280, 720, 1);
-        OverlayRect pkg_btn = compute_package_action_button_rect(pkg_layout, 0);
+        OverlayRect pkg_btn = compute_package_action_button_rect(pkg_layout, pkg_layout.list_top);
         ui.on_mouse_move(pkg_btn.x + pkg_btn.w * 0.5f, pkg_btn.y + pkg_btn.h * 0.5f);
         ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
         ui.update(snap);

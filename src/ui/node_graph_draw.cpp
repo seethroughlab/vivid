@@ -1185,36 +1185,7 @@ void NodeGraphUI::draw_midi_map_banner(Renderer2D& tr) {
     tr.draw_text(10, banner_y + 4, status, 0.9f, 0.95f, 1.0f);
 }
 
-void NodeGraphUI::draw_core_update_banner(Renderer2D& tr) {
-    core_update_button_rects_.clear();
-    if (!core_update_notice_open_) return;
-
-    float y = kPerfBarH + (midi_map_mode_ ? kMidiMapBannerH : 0.0f);
-    float h = 28.0f;
-    float w = static_cast<float>(win_w_);
-    if (has_selection()) w = graph_right();
-
-    tr.draw_rect(0.0f, y, w, h, 0.14f, 0.20f, 0.26f, 0.95f);
-    tr.draw_rect(0.0f, y, w, 1.0f, 0.28f, 0.46f, 0.58f, 0.8f);
-
-    std::string label = "Core update available: v" + core_update_notice_version_;
-    if (!core_update_notice_summary_.empty()) label += " - " + core_update_notice_summary_;
-    tr.draw_text(10.0f, y + 6.0f, label.c_str(), 0.86f, 0.92f, 0.98f);
-
-    float bx = w - 12.0f;
-    auto draw_btn = [&](const char* text, int action, float r, float g, float b) {
-        float bw = tr.text_width(text) + 14.0f;
-        bx -= bw;
-        tr.draw_rounded_rect(bx, y + 4.0f, bw, 20.0f, 3.0f, r, g, b, 0.85f);
-        tr.draw_text(bx + 7.0f, y + 6.0f, text, 0.95f, 0.97f, 1.0f);
-        core_update_button_rects_.push_back({bx, y + 4.0f, bw, 20.0f, action});
-        bx -= 6.0f;
-    };
-
-    draw_btn("Later", 2, 0.26f, 0.30f, 0.34f);
-    draw_btn("Skip", 1, 0.33f, 0.25f, 0.23f);
-    draw_btn("Install", 0, 0.22f, 0.42f, 0.28f);
-}
+// draw_core_update_banner moved to DialogManager
 
 void NodeGraphUI::draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node,
                                         float px, float& py) {
@@ -3483,7 +3454,11 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
     draw_session_grid(tr);
     draw_perf_bar(tr);
     draw_midi_map_banner(tr);
-    draw_core_update_banner(tr);
+    {
+        float banner_y = kPerfBarH + (midi_map_mode_ ? kMidiMapBannerH : 0.0f);
+        float max_w = has_selection() ? graph_right() : static_cast<float>(win_w_);
+        dialogs_.draw_core_update_banner(tr, style_, banner_y, max_w);
+    }
 }
 
 // -----------------------------------------------------------------------
@@ -3671,8 +3646,6 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
     }
 
     draw_color_popup(tr);
-    draw_create_popup(tr);
-    draw_preset_name_popup(tr);
     // draw_preferences moved to DialogManager
     // draw_package_browser, draw_example_browser, draw_graph_meta_editor moved to DialogManager
     // Feed live data to MCP setup dialog
@@ -3683,190 +3656,7 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
     dialogs_.draw(tr, mouse_, style_, popup_opacity_, win_w_, win_h_, text_edit_, cursor_blink_on());
 }
 
-// -----------------------------------------------------------------------
-// Create operator modal
-// -----------------------------------------------------------------------
-void NodeGraphUI::draw_create_popup(Renderer2D& tr) {
-    if (!create_popup_open_) return;
-
-    float wf = static_cast<float>(win_w_);
-    float hf = static_cast<float>(win_h_);
-    bool blink_on = (static_cast<int>(perf_frame_counter_ / 30) % 2 == 0);
-    bool show_composite = (create_env_sel_ == 0);
-
-    auto layout = compute_create_operator_layout(win_w_, win_h_, show_composite);
-
-    // Scrim
-    tr.draw_rect(0, 0, wf, hf,
-                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3] * popup_opacity_);
-
-    // Shadow + Panel
-    draw_shadow(tr, layout.px, layout.py, layout.pw, layout.ph, style_.corner_radius);
-    tr.draw_rounded_rect(layout.px, layout.py, layout.pw, layout.ph, style_.corner_radius,
-                         style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
-    tr.draw_rect(layout.px, layout.py, layout.pw, 2,
-                 style_.accent[0], style_.accent[1], style_.accent[2]);
-
-    float cx = layout.cx;
-    float inner_w = layout.inner_w;
-    float cy = layout.py + kCreateModalPadY;
-
-    // 1. Title
-    tr.draw_text(cx, cy, T("new_operator", "New Starter Operator"),
-                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-    cy += 24.0f;
-
-    // 2. Env selector buttons
-    const char* env_labels[] = { "control", "audio", "gpu" };
-    const std::array<float, 3>* env_colors[] = { &kControlAccent, &kAudioAccent, &kGpuAccent };
-    float btn_gap = 8.0f;
-    float total_btn_w = 3 * kCreateEnvBtnW + 2 * btn_gap;
-    float bx = layout.px + (layout.pw - total_btn_w) * 0.5f;
-
-    for (int i = 0; i < 3; ++i) {
-        float btn_x = bx + i * (kCreateEnvBtnW + btn_gap);
-        const auto& dc = *env_colors[i];
-        if (i == create_env_sel_) {
-            tr.draw_rect(btn_x, cy, kCreateEnvBtnW, kCreateEnvBtnH,
-                         dc[0], dc[1], dc[2], 0.9f);
-            tr.draw_text(btn_x + 8, cy + 3, env_labels[i], 0.0f, 0.0f, 0.0f);
-        } else {
-            tr.draw_rect(btn_x, cy, kCreateEnvBtnW, kCreateEnvBtnH,
-                         style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.9f);
-            tr.draw_text(btn_x + 8, cy + 3, env_labels[i], dc[0], dc[1], dc[2]);
-        }
-    }
-    cy += kCreateEnvBtnH + 10.0f;
-
-    // 3. Composite checkbox (control env only)
-    if (show_composite) {
-        draw_checkbox(tr, style_, cx, cy + 2, 16.0f, create_composite_);
-        tr.draw_text(cx + 22, cy + 2, T("composite_template", "Composite (ChildOp template)"),
-                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
-        cy += 24.0f + kCreateModalRowGap;
-    }
-
-    // 4. Name field
-    draw_editing_text_field(tr, style_, cx, cy, inner_w, 22.0f,
-                           create_name_buf_, text_edit_, blink_on);
-    if (create_name_buf_.empty()) {
-        tr.draw_text(cx + 4, cy + 2, "operator_name",
-                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
-    }
-    cy += kCreateModalFieldH + kCreateModalRowGap;
-
-    // 5. MCP hint
-    cy += kCreateModalSectionGap;
-    tr.draw_text(cx, cy, "Use MCP opdev tools for custom ports and parameters",
-                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.6f);
-    cy += 18.0f + kCreateModalRowGap;
-
-    // 6. Destination radio buttons
-    cy += kCreateModalSectionGap;
-    const char* dest_labels[] = { "Auto", "Project", "Core" };
-    float dest_x = cx;
-    bool project_available = commands_.has_project_clone_destination();
-    for (int i = 0; i < 3; ++i) {
-        bool selected = (create_destination_ == i);
-        bool disabled = (i == 1 && !project_available);
-        float dw = tr.text_width(dest_labels[i]) + 24.0f;
-        // Radio circle
-        float circle_x = dest_x + 2;
-        float circle_y = cy + 4;
-        tr.draw_rect(circle_x, circle_y, 12.0f, 12.0f,
-                     style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
-        if (selected) {
-            tr.draw_rect(circle_x + 3, circle_y + 3, 6.0f, 6.0f,
-                         style_.accent[0], style_.accent[1], style_.accent[2]);
-        }
-        float alpha = disabled ? 0.3f : 1.0f;
-        tr.draw_text(dest_x + 18, cy + 2, dest_labels[i],
-                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], alpha);
-        dest_x += dw + 12.0f;
-    }
-    cy += 22.0f + kCreateModalRowGap;
-
-    // 7. Error area
-    if (!create_error_.empty()) {
-        tr.draw_text(cx, cy, create_error_.c_str(),
-                     kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.9f);
-    }
-    cy += 18.0f + kCreateModalRowGap;
-
-    // 8. Button row: [Create Empty] left, [Create] [Cancel] right
-    float btn_y = cy;
-    // Create Empty (left-aligned)
-    tr.draw_rect(cx, btn_y, kCreateModalBtnW, kCreateModalBtnH,
-                 style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.9f);
-    tr.draw_text(cx + 8, btn_y + 5, T("create_empty", "Create Empty"),
-                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
-
-    // Cancel (right-aligned)
-    float cancel_x = cx + inner_w - kCreateModalBtnW;
-    tr.draw_rect(cancel_x, btn_y, kCreateModalBtnW, kCreateModalBtnH,
-                 style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.9f);
-    tr.draw_text(cancel_x + 28, btn_y + 5, T("cancel", "Cancel"),
-                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
-
-    // Create (right of Create Empty... actually to the left of Cancel)
-    float create_x = cancel_x - kCreateModalBtnW - 8.0f;
-    tr.draw_rect(create_x, btn_y, kCreateModalBtnW, kCreateModalBtnH,
-                 style_.accent[0], style_.accent[1], style_.accent[2], 0.9f);
-    tr.draw_text(create_x + 28, btn_y + 5, T("create", "Create"), 0.0f, 0.0f, 0.0f);
-}
-
-// -----------------------------------------------------------------------
-// Preset name popup (Save with no active preset)
-// -----------------------------------------------------------------------
-void NodeGraphUI::draw_preset_name_popup(Renderer2D& tr) {
-    if (!preset_name_popup_open_) return;
-
-    float wf = static_cast<float>(win_w_);
-    float hf = static_cast<float>(win_h_);
-
-    // Scrim
-    tr.draw_rect(0, 0, wf, hf,
-                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3] * popup_opacity_);
-
-    float pw = 280.0f, ph = 70.0f;
-    float px = (wf - pw) * 0.5f;
-    float py = (hf - ph) * 0.5f;
-
-    draw_shadow(tr, px, py, pw, ph, style_.corner_radius);
-    tr.draw_rounded_rect(px, py, pw, ph, style_.corner_radius,
-                         style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
-    tr.draw_rect(px, py, pw, 2,
-                 style_.accent[0], style_.accent[1], style_.accent[2]);
-
-    float cx = px + 16.0f;
-    float cy = py + 12.0f;
-
-    tr.draw_text(cx, cy, T("save_preset", "Save Preset"),
-                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-    cy += 20.0f;
-
-    // Text field
-    float field_w = pw - 32.0f;
-    tr.draw_rect(cx, cy, field_w, 22.0f,
-                 style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
-    tr.draw_rect(cx, cy, field_w, 1,
-                 style_.accent[0], style_.accent[1], style_.accent[2]);
-
-    if (preset_name_buffer_.empty()) {
-        tr.draw_text(cx + 4, cy + 3, "Folder/Name",
-                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
-    } else {
-        tr.draw_text(cx + 4, cy + 3, preset_name_buffer_.c_str(),
-                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-    }
-    if (cursor_blink_on()) {
-        int cpos = std::max(0, std::min(text_edit_.cursor, static_cast<int>(preset_name_buffer_.size())));
-        float cur_x = cx + 4 + tr.text_width(preset_name_buffer_.substr(0, cpos).c_str());
-        tr.draw_rect(cur_x, cy + 1, 1.0f, 20.0f,
-                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-    }
-}
-
+// draw_create_popup, draw_preset_name_popup moved to DialogManager
 // draw_preferences moved to DialogManager
 
 // -----------------------------------------------------------------------

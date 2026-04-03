@@ -1,6 +1,7 @@
 #include "ui/node_graph.h"
 #include "ui/node_graph_constants.h"
 #include "ui/node_graph_util.h"
+#include "ui/active_text_field.h"
 #include "ui/overlay_layouts.h"
 #include "ui/file_dialog.h"
 #include "runtime/platform.h"
@@ -16,47 +17,6 @@ namespace vivid::ui {
 using vivid::format_float;
 using vivid::format_int;
 using vivid::format_uint;
-
-namespace {
-
-// Character filter predicates used across text fields
-inline bool filter_printable(char c) {
-    auto uc = static_cast<unsigned char>(c);
-    return uc >= 32 && uc < 127;
-}
-inline bool filter_numeric(char c) {
-    auto uc = static_cast<unsigned char>(c);
-    return std::isdigit(uc) || c == '.' || c == '-';
-}
-inline bool filter_digits(char c) {
-    return std::isdigit(static_cast<unsigned char>(c));
-}
-inline bool filter_identifier(char c) {
-    auto uc = static_cast<unsigned char>(c);
-    char lc = std::isupper(uc) ? static_cast<char>(std::tolower(uc)) : c;
-    return std::islower(static_cast<unsigned char>(lc)) ||
-           std::isdigit(static_cast<unsigned char>(lc)) || lc == '_';
-}
-inline bool filter_preset_name(char c) {
-    auto uc = static_cast<unsigned char>(c);
-    return std::isalnum(uc) || c == '_' || c == '/' || c == ' ' || c == '-';
-}
-inline bool filter_hex(char c) {
-    return std::isxdigit(static_cast<unsigned char>(c)) || c == '#';
-}
-inline bool filter_rgb(char c) {
-    return std::isdigit(static_cast<unsigned char>(c));
-}
-
-// Active text field resolution result
-struct ActiveTextField {
-    std::string* buf = nullptr;
-    CharFilter filter;
-    size_t max_len = SIZE_MAX;
-    bool lowercase = false;  // auto-lowercase input (for identifier fields)
-};
-
-} // namespace
 
 // -----------------------------------------------------------------------
 // GLFW callbacks
@@ -121,28 +81,8 @@ void NodeGraphUI::on_mouse_button(int button, int action, int mods) {
 }
 
 void NodeGraphUI::on_scroll(float x_offset, float y_offset, int mods) {
-    // About modal scroll
-    if (about_open_) {
-        about_scroll_ -= y_offset * 20.0f;
-        about_scroll_ = std::max(0.0f, std::min(about_scroll_, about_max_scroll_));
-        return;
-    }
-
-    // Example browser scroll
-    if (example_browser_open_ && !example_entries_.empty()) {
-        example_browser_scroll_ -= y_offset * kPkgBrowserItemH;
-        float max_scroll = std::max(0.0f, (static_cast<int>(example_entries_.size()) - kPkgBrowserMaxVisible) * kPkgBrowserItemH);
-        example_browser_scroll_ = std::max(0.0f, std::min(example_browser_scroll_, max_scroll));
-        return;
-    }
-
-    // Package browser scroll
-    if (pkg_browser_open_ && !pkg_browser_entries_.empty()) {
-        pkg_browser_scroll_ -= y_offset * kPkgBrowserItemH;
-        float max_scroll = std::max(0.0f, (static_cast<int>(pkg_browser_entries_.size()) - kPkgBrowserMaxVisible) * kPkgBrowserItemH);
-        pkg_browser_scroll_ = std::max(0.0f, std::min(pkg_browser_scroll_, max_scroll));
-        return;
-    }
+    // Delegate to dialog manager first (handles pkg/example browser scroll, about scroll, etc.)
+    if (dialogs_.on_scroll(y_offset)) return;
 
     // Param picker scroll
     if (param_picker_open_ && !param_picker_items_.empty()) {
@@ -222,18 +162,10 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
 
     // --- Resolve active text field for shared text editing keys ---
     auto resolve_active_field = [&]() -> ActiveTextField {
-        if (graph_meta_editor_open_ &&
-            graph_meta_active_field_ >= 0 &&
-            graph_meta_active_field_ < static_cast<int>(graph_meta_fields_.size()) &&
-            graph_meta_fields_[graph_meta_active_field_]) {
-            return {graph_meta_fields_[graph_meta_active_field_], filter_printable};
+        {
+            auto df = dialogs_.resolve_active_field();
+            if (df.buf) return df;
         }
-        if (example_browser_open_ && example_browser_search_focused_)
-            return {&example_browser_filter_, filter_printable};
-        if (pkg_browser_open_ && pkg_browser_search_focused_)
-            return {&pkg_browser_filter_, filter_printable};
-        if (prefs_open_ && prefs_editing_custom_)
-            return {&prefs_custom_command_, filter_printable};
         if (session_editing_name_)
             return {&session_edit_buffer_, filter_printable};
         if (editing_midi_range_ || editing_wire_remap_)
@@ -251,10 +183,6 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
             return {&color_hex_buffer_, filter_hex, 7};
         if (color_editing_rgb_ >= 0)
             return {&color_rgb_buffer_, filter_rgb, 3};
-        if (preset_name_popup_open_)
-            return {&preset_name_buffer_, filter_preset_name, SIZE_MAX, true};
-        if (create_popup_open_)
-            return {&create_name_buf_, filter_identifier, SIZE_MAX, true};
         if (editing_sticky_)
             return {&sticky_edit_buffer_, filter_printable};
         if (chooser_open_)
@@ -361,17 +289,8 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
             cursor_blink_time_ = 0.0f;
 
             // Per-field callbacks after paste
-            if (example_browser_open_) {
-                example_browser_scroll_ = 0;
-                example_browser_sel_ = 0;
-                rebuild_example_items();
-            } else if (pkg_browser_open_) {
-                pkg_browser_scroll_ = 0;
-                pkg_browser_sel_ = 0;
-                rebuild_pkg_browser_items();
-            } else if (create_popup_open_) {
-                create_error_ = commands_.validate_operator_name(create_name_buf_);
-            } else if (chooser_open_) {
+            dialogs_.on_char_post_insert();
+            if (chooser_open_) {
                 rebuild_chooser_items();
             }
             return;
@@ -393,172 +312,15 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
     // trigger hotkeys (e.g. M for MIDI map, B for bezier wires, etc.)
     if (editing_sticky_) return;
 
-    if (about_open_) {
-        if (key == GLFW_KEY_ESCAPE)
-            about_open_ = false;
-        return;
-    }
+    // Delegate to dialog manager (handles about, and future migrated dialogs)
+    if (dialogs_.on_key(key, action, mods, text_edit_, cursor_blink_time_)) return;
 
-    if (mcp_setup_open_) {
-        if (key == GLFW_KEY_ESCAPE) {
-            mcp_setup_open_ = false;
-            mcp_project_config_.scanned = false;
-        }
-        return;
-    }
+    // graph_meta_editor on_key moved to DialogManager
 
-    if (graph_meta_editor_open_) {
-        if (key == GLFW_KEY_ESCAPE) {
-            graph_meta_editor_open_ = false;
-            graph_meta_error_.clear();
-        } else if (key == GLFW_KEY_TAB || key == GLFW_KEY_DOWN) {
-            graph_meta_active_field_ =
-                (graph_meta_active_field_ + 1) % static_cast<int>(graph_meta_fields_.size());
-            if (auto* f = graph_meta_fields_[graph_meta_active_field_])
-                text_edit_.reset(static_cast<int>(f->size()));
-        } else if (key == GLFW_KEY_UP) {
-            graph_meta_active_field_--;
-            if (graph_meta_active_field_ < 0)
-                graph_meta_active_field_ = static_cast<int>(graph_meta_fields_.size()) - 1;
-            if (auto* f = graph_meta_fields_[graph_meta_active_field_])
-                text_edit_.reset(static_cast<int>(f->size()));
-        } else if (key == GLFW_KEY_BACKSPACE &&
-                   graph_meta_active_field_ >= 0 &&
-                   graph_meta_active_field_ < static_cast<int>(graph_meta_fields_.size())) {
-            auto* field = graph_meta_fields_[graph_meta_active_field_];
-            if (field) text_edit_backspace(*field, text_edit_);
-        } else if (key == GLFW_KEY_ENTER) {
-            if (graph_meta_save_callback_) {
-                std::string err;
-                if (graph_meta_save_callback_(graph_meta_data_, err)) {
-                    graph_meta_editor_open_ = false;
-                    graph_meta_error_.clear();
-                } else {
-                    graph_meta_error_ = err.empty() ? "Failed to save meta" : err;
-                }
-            }
-        }
-        return;
-    }
+    // example_browser, pkg_browser on_key handling moved to DialogManager
 
-    if (example_browser_open_) {
-        if (key == GLFW_KEY_ESCAPE) {
-            example_browser_open_ = false;
-            example_browser_filter_.clear();
-        } else if (key == GLFW_KEY_UP) {
-            example_browser_sel_ = std::max(0, example_browser_sel_ - 1);
-            if (example_browser_sel_ * kPkgBrowserItemH < example_browser_scroll_)
-                example_browser_scroll_ = example_browser_sel_ * kPkgBrowserItemH;
-        } else if (key == GLFW_KEY_DOWN) {
-            int max_sel = static_cast<int>(example_entries_.size()) - 1;
-            example_browser_sel_ = std::min(max_sel, example_browser_sel_ + 1);
-            if ((example_browser_sel_ + 1) * kPkgBrowserItemH > example_browser_scroll_ + kPkgBrowserMaxVisible * kPkgBrowserItemH)
-                example_browser_scroll_ = (example_browser_sel_ - kPkgBrowserMaxVisible + 1) * kPkgBrowserItemH;
-        } else if (key == GLFW_KEY_BACKSPACE && example_browser_search_focused_) {
-            text_edit_backspace(example_browser_filter_, text_edit_);
-            example_browser_scroll_ = 0.0f;
-            example_browser_sel_ = 0;
-            rebuild_example_items();
-        } else if (key == GLFW_KEY_ENTER) {
-            if (example_open_callback_ && example_browser_sel_ >= 0 &&
-                example_browser_sel_ < static_cast<int>(example_entries_.size())) {
-                const auto& e = example_entries_[example_browser_sel_];
-                std::string missing;
-                bool ok = true;
-                if (example_package_checker_) {
-                    ok = example_package_checker_(e.requires_packages, missing);
-                }
-                if (ok) {
-                    example_action_error_.clear();
-                    example_warn_id_.clear();
-                    example_open_callback_(e.path);
-                    example_browser_open_ = false;
-                } else if (example_warn_id_ == e.id) {
-                    example_action_error_ = "Opening anyway with missing package: " + missing;
-                    example_open_callback_(e.path);
-                    example_browser_open_ = false;
-                } else {
-                    example_warn_id_ = e.id;
-                    example_action_error_ =
-                        "Missing package: " + missing + " (press Enter again to open anyway)";
-                }
-            }
-        }
-        return;
-    }
-
-    if (pkg_browser_open_) {
-        if (key == GLFW_KEY_ESCAPE) {
-            pkg_browser_open_ = false;
-            pkg_browser_filter_.clear();
-        } else if (key == GLFW_KEY_UP) {
-            pkg_browser_sel_ = std::max(0, pkg_browser_sel_ - 1);
-            if (pkg_browser_sel_ * kPkgBrowserItemH < pkg_browser_scroll_)
-                pkg_browser_scroll_ = pkg_browser_sel_ * kPkgBrowserItemH;
-        } else if (key == GLFW_KEY_DOWN) {
-            int max_sel = static_cast<int>(pkg_browser_entries_.size()) - 1;
-            pkg_browser_sel_ = std::min(max_sel, pkg_browser_sel_ + 1);
-            if ((pkg_browser_sel_ + 1) * kPkgBrowserItemH > pkg_browser_scroll_ + kPkgBrowserMaxVisible * kPkgBrowserItemH)
-                pkg_browser_scroll_ = (pkg_browser_sel_ - kPkgBrowserMaxVisible + 1) * kPkgBrowserItemH;
-        } else if (key == GLFW_KEY_ENTER) {
-            // Trigger install/remove on selected entry
-            if (pkg_browser_sel_ >= 0 &&
-                pkg_browser_sel_ < static_cast<int>(pkg_browser_entries_.size())) {
-                const auto& entry = pkg_browser_entries_[pkg_browser_sel_];
-                if (!pkg_action_pending_) {
-                pkg_action_error_.clear();
-                pkg_action_pending_ = true;
-                pkg_action_name_ = entry.name;
-                if (entry.installed) {
-                    if (entry.linked) {
-                        if (!pkg_browser_callbacks_.unlink ||
-                            !pkg_browser_callbacks_.unlink(entry.name, pkg_action_error_)) {
-                            pkg_action_pending_ = false;
-                            pkg_action_name_.clear();
-                            if (pkg_action_error_.empty())
-                                pkg_action_error_ = "Failed to unlink " + entry.name;
-                        }
-                    } else if (!pkg_browser_callbacks_.uninstall ||
-                               !pkg_browser_callbacks_.uninstall(entry.name, pkg_action_error_)) {
-                        pkg_action_pending_ = false;
-                        pkg_action_name_.clear();
-                        if (pkg_action_error_.empty())
-                            pkg_action_error_ = "Failed to uninstall " + entry.name;
-                    }
-                } else {
-                    if (!pkg_browser_callbacks_.install ||
-                        !pkg_browser_callbacks_.install(entry.name, pkg_action_error_)) {
-                        pkg_action_pending_ = false;
-                        pkg_action_name_.clear();
-                        if (pkg_action_error_.empty())
-                            pkg_action_error_ = "Failed to install " + entry.name;
-                    }
-                }
-                }
-            }
-        } else if (key == GLFW_KEY_BACKSPACE && pkg_browser_search_focused_) {
-            text_edit_backspace(pkg_browser_filter_, text_edit_);
-            pkg_browser_scroll_ = 0;
-            pkg_browser_sel_ = 0;
-            rebuild_pkg_browser_items();
-        }
-        return;
-    }
-
-    if (prefs_open_) {
-        if (key == GLFW_KEY_ESCAPE) {
-            // Cancel: revert style
-            if (prefs_saved_style_sel_ >= 0 &&
-                prefs_saved_style_sel_ < static_cast<int>(prefs_styles_.size())) {
-                style_ = prefs_styles_[prefs_saved_style_sel_];
-                prefs_style_sel_ = prefs_saved_style_sel_;
-            }
-            prefs_open_ = false;
-            prefs_editing_custom_ = false;
-        } else if (prefs_editing_custom_) {
-            if (key == GLFW_KEY_BACKSPACE)
-                text_edit_backspace(prefs_custom_command_, text_edit_);
-        }
+    // prefs on_key handling moved to DialogManager
+    if (dialogs_.prefs_open()) {
         return;
     }
 
@@ -852,78 +614,7 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         return;
     }
 
-    if (preset_name_popup_open_) {
-        if (key == GLFW_KEY_ESCAPE) {
-            preset_name_popup_open_ = false;
-        } else if (key == GLFW_KEY_ENTER) {
-            if (!preset_name_buffer_.empty()) {
-                commands_.save_preset(preset_name_node_id_, preset_name_buffer_);
-                preset_name_popup_open_ = false;
-            }
-        } else if (key == GLFW_KEY_BACKSPACE) {
-            text_edit_backspace(preset_name_buffer_, text_edit_);
-        }
-        return;
-    }
-
-    if (create_popup_open_) {
-        switch (key) {
-            case GLFW_KEY_ESCAPE:
-                create_popup_open_ = false;
-                break;
-            case GLFW_KEY_LEFT:
-                if (create_env_sel_ > 0) {
-                    create_env_sel_--;
-                    reset_create_env_defaults();
-                }
-                break;
-            case GLFW_KEY_RIGHT:
-                if (create_env_sel_ < 2) {
-                    create_env_sel_++;
-                    reset_create_env_defaults();
-                }
-                break;
-            case GLFW_KEY_TAB:
-                break;  // single field, no-op
-            case GLFW_KEY_BACKSPACE:
-                text_edit_backspace(create_name_buf_, text_edit_);
-                create_error_ = create_name_buf_.empty() ? "" :
-                    commands_.validate_operator_name(create_name_buf_);
-                break;
-            case GLFW_KEY_ENTER:
-                if (!create_name_buf_.empty() && create_error_.empty()) {
-                    submit_create_operator(false);
-                }
-                break;
-        }
-        return;
-    }
-
-    if (save_confirm_open_) {
-        if (key == GLFW_KEY_ESCAPE) {
-            save_confirm_open_ = false;
-            if (on_save_confirm_cancel) on_save_confirm_cancel();
-        } else if (key == GLFW_KEY_ENTER) {
-            save_confirm_open_ = false;
-            if (on_save_confirm_save) on_save_confirm_save();
-        }
-        return;
-    }
-
-    if (clone_confirm_open_) {
-        if (key == GLFW_KEY_ESCAPE) {
-            clone_confirm_open_ = false;
-        } else if (key == GLFW_KEY_LEFT || key == GLFW_KEY_RIGHT) {
-            if (clone_confirm_project_available_) {
-                clone_confirm_destination_ = 1 - clone_confirm_destination_;
-            }
-        } else if (key == GLFW_KEY_ENTER) {
-            const char* destination = (clone_confirm_destination_ == 0) ? "project" : "core";
-            commands_.clone_and_edit(clone_confirm_type_, destination);
-            clone_confirm_open_ = false;
-        }
-        return;
-    }
+    // preset_name_popup and create_popup on_key moved to DialogManager
 
     if (param_picker_open_) {
         switch (key) {
@@ -1215,20 +906,12 @@ void NodeGraphUI::on_char(unsigned int codepoint) {
     // Centralized character input: resolve active field and insert via text_edit
     // (reuse the same field resolution logic as on_key)
     auto resolve_field = [&]() -> ActiveTextField {
-        if (graph_meta_editor_open_ &&
-            graph_meta_active_field_ >= 0 &&
-            graph_meta_active_field_ < static_cast<int>(graph_meta_fields_.size()) &&
-            graph_meta_fields_[graph_meta_active_field_]) {
-            return {graph_meta_fields_[graph_meta_active_field_], filter_printable};
+        {
+            auto df = dialogs_.resolve_active_field();
+            if (df.buf) return df;
         }
-        if (example_browser_open_ && example_browser_search_focused_)
-            return {&example_browser_filter_, filter_printable};
-        if (pkg_browser_open_ && pkg_browser_search_focused_)
-            return {&pkg_browser_filter_, filter_printable};
         if (session_editing_name_)
             return {&session_edit_buffer_, filter_printable};
-        if (prefs_open_ && prefs_editing_custom_)
-            return {&prefs_custom_command_, filter_printable};
         if (editing_midi_range_ || editing_wire_remap_)
             return {&edit_buffer_, filter_numeric};
         if (editing_param_) {
@@ -1244,10 +927,6 @@ void NodeGraphUI::on_char(unsigned int codepoint) {
             return {&color_hex_buffer_, filter_hex, 7};
         if (color_editing_rgb_ >= 0)
             return {&color_rgb_buffer_, filter_rgb, 3};
-        if (preset_name_popup_open_)
-            return {&preset_name_buffer_, filter_preset_name, SIZE_MAX, true};
-        if (create_popup_open_)
-            return {&create_name_buf_, filter_identifier, SIZE_MAX, true};
         if (editing_sticky_)
             return {&sticky_edit_buffer_, filter_printable};
         if (chooser_open_)
@@ -1267,278 +946,13 @@ void NodeGraphUI::on_char(unsigned int codepoint) {
     cursor_blink_time_ = 0.0f;
 
     // Per-field callbacks after character insert
-    if (example_browser_open_) {
-        example_browser_scroll_ = 0;
-        example_browser_sel_ = 0;
-        rebuild_example_items();
-    } else if (pkg_browser_open_) {
-        pkg_browser_scroll_ = 0;
-        pkg_browser_sel_ = 0;
-        rebuild_pkg_browser_items();
-    } else if (create_popup_open_) {
-        create_error_ = commands_.validate_operator_name(create_name_buf_);
-    } else if (chooser_open_) {
+    dialogs_.on_char_post_insert();
+    if (chooser_open_) {
         rebuild_chooser_items();
     }
 }
 
-// -----------------------------------------------------------------------
-// Clone confirmation dialog interaction (called from update())
-// -----------------------------------------------------------------------
-void NodeGraphUI::update_clone_confirm() {
-    if (!clone_confirm_open_ || !mouse_.left_clicked) return;
-
-    // Dialog geometry (centered on screen)
-    float dw = 360.0f, dh = 108.0f;
-    float dx = (static_cast<float>(win_w_) - dw) * 0.5f;
-    float dy = (static_cast<float>(win_h_) - dh) * 0.5f;
-
-    float btn_w = 70.0f, btn_h = 22.0f;
-    float btn_y = dy + dh - btn_h - 8.0f;
-    float clone_x = dx + dw * 0.5f - btn_w - 6.0f;
-    float cancel_x = dx + dw * 0.5f + 6.0f;
-
-    float toggle_y = dy + 38.0f;
-    float toggle_h = 24.0f;
-    float toggle_x = dx + 12.0f;
-    float toggle_w = dw - 24.0f;
-    float left_w = toggle_w * 0.5f;
-
-    if (clone_confirm_project_available_) {
-        if (mouse_.x >= toggle_x && mouse_.x <= toggle_x + left_w &&
-            mouse_.y >= toggle_y && mouse_.y <= toggle_y + toggle_h) {
-            clone_confirm_destination_ = 0;
-        } else if (mouse_.x >= toggle_x + left_w && mouse_.x <= toggle_x + toggle_w &&
-                   mouse_.y >= toggle_y && mouse_.y <= toggle_y + toggle_h) {
-            clone_confirm_destination_ = 1;
-        }
-    }
-
-    if (mouse_.x >= clone_x && mouse_.x <= clone_x + btn_w &&
-        mouse_.y >= btn_y && mouse_.y <= btn_y + btn_h) {
-        // Clone button clicked
-        const char* destination = (clone_confirm_destination_ == 0) ? "project" : "core";
-        commands_.clone_and_edit(clone_confirm_type_, destination);
-        clone_confirm_open_ = false;
-        mouse_.left_clicked = false;
-        mouse_.left_released = false;
-    } else if (mouse_.x >= cancel_x && mouse_.x <= cancel_x + btn_w &&
-               mouse_.y >= btn_y && mouse_.y <= btn_y + btn_h) {
-        // Cancel button clicked
-        clone_confirm_open_ = false;
-        mouse_.left_clicked = false;
-        mouse_.left_released = false;
-    } else if (mouse_.x < dx || mouse_.x > dx + dw ||
-               mouse_.y < dy || mouse_.y > dy + dh) {
-        // Clicked outside dialog
-        clone_confirm_open_ = false;
-    }
-    // Click inside dialog but not on buttons — consume but do nothing
-    mouse_.left_clicked = false;
-    mouse_.left_released = false;
-}
-
-// -----------------------------------------------------------------------
-// Save confirmation dialog interaction (called from update())
-// -----------------------------------------------------------------------
-void NodeGraphUI::update_save_confirm() {
-    if (!save_confirm_open_) return;
-
-    // Handle keyboard
-    // (Escape already handled in on_key)
-
-    if (!mouse_.left_clicked) return;
-
-    // Dialog geometry (centered on screen)
-    float dw = 360.0f, dh = 90.0f;
-    float dx = (static_cast<float>(win_w_) - dw) * 0.5f;
-    float dy = (static_cast<float>(win_h_) - dh) * 0.5f;
-
-    float btn_w = 80.0f, btn_h = 22.0f;
-    float btn_y = dy + dh - btn_h - 8.0f;
-    float total_btn_w = btn_w * 3 + 12.0f * 2;
-    float btn_start_x = dx + (dw - total_btn_w) * 0.5f;
-    float cancel_x = btn_start_x;
-    float dont_save_x = btn_start_x + btn_w + 12.0f;
-    float save_x = btn_start_x + (btn_w + 12.0f) * 2;
-
-    if (mouse_.x >= cancel_x && mouse_.x <= cancel_x + btn_w &&
-        mouse_.y >= btn_y && mouse_.y <= btn_y + btn_h) {
-        save_confirm_open_ = false;
-        if (on_save_confirm_cancel) on_save_confirm_cancel();
-    } else if (mouse_.x >= dont_save_x && mouse_.x <= dont_save_x + btn_w &&
-               mouse_.y >= btn_y && mouse_.y <= btn_y + btn_h) {
-        save_confirm_open_ = false;
-        if (on_save_confirm_dont_save) on_save_confirm_dont_save();
-    } else if (mouse_.x >= save_x && mouse_.x <= save_x + btn_w &&
-               mouse_.y >= btn_y && mouse_.y <= btn_y + btn_h) {
-        save_confirm_open_ = false;
-        if (on_save_confirm_save) on_save_confirm_save();
-    } else if (mouse_.x < dx || mouse_.x > dx + dw ||
-               mouse_.y < dy || mouse_.y > dy + dh) {
-        save_confirm_open_ = false;
-        if (on_save_confirm_cancel) on_save_confirm_cancel();
-    }
-    mouse_.left_clicked = false;
-    mouse_.left_released = false;
-}
-
-// -----------------------------------------------------------------------
-// Create operator popup interaction (called from update())
-// -----------------------------------------------------------------------
-// Helper: build VividCreateOperatorRequest from modal state and submit
-void NodeGraphUI::submit_create_operator(bool empty_variant) {
-    VividCreateOperatorRequest req;
-    req.name = create_name_buf_;
-    req.kind = static_cast<VividOperatorKind>(create_env_sel_);
-
-    if (empty_variant) {
-        req.variant = "empty";
-    } else if (create_composite_) {
-        req.variant = "composite";
-    }
-
-    // Destination
-    const char* dest_strs[] = { "auto", "project", "core" };
-    req.destination = dest_strs[create_destination_];
-
-    if (commands_.create_operator(req, &create_error_)) {
-        create_popup_open_ = false;
-    }
-    // error is already populated by the sink
-}
-
-// Helper: reset defaults when env changes
-void NodeGraphUI::reset_create_env_defaults() {
-    create_composite_ = false;
-}
-
-void NodeGraphUI::update_create_popup() {
-    if (!create_popup_open_ || !mouse_.left_clicked) return;
-
-    bool show_composite = (create_env_sel_ == 0);
-
-    auto layout = compute_create_operator_layout(win_w_, win_h_, show_composite);
-
-    // Click outside → close
-    if (!overlay_contains(layout, mouse_.x, mouse_.y)) {
-        create_popup_open_ = false;
-        mouse_.left_clicked = false;
-        mouse_.left_released = false;
-        return;
-    }
-
-    float cx = layout.cx;
-    float inner_w = layout.inner_w;
-    float cy = layout.py + kCreateModalPadY;
-
-    // Title
-    cy += 24.0f;
-
-    // Env buttons
-    float btn_gap = 8.0f;
-    float total_btn_w = 3 * kCreateEnvBtnW + 2 * btn_gap;
-    float bx = layout.px + (layout.pw - total_btn_w) * 0.5f;
-    for (int i = 0; i < 3; ++i) {
-        float btn_x = bx + i * (kCreateEnvBtnW + btn_gap);
-        if (mouse_.x >= btn_x && mouse_.x <= btn_x + kCreateEnvBtnW &&
-            mouse_.y >= cy && mouse_.y <= cy + kCreateEnvBtnH) {
-            if (create_env_sel_ != i) {
-                create_env_sel_ = i;
-                reset_create_env_defaults();
-            }
-            mouse_.left_clicked = false;
-            mouse_.left_released = false;
-            return;
-        }
-    }
-    cy += kCreateEnvBtnH + 10.0f;
-
-    // Composite checkbox
-    if (show_composite) {
-        if (mouse_.x >= cx && mouse_.x <= cx + 200 &&
-            mouse_.y >= cy && mouse_.y <= cy + 20) {
-            create_composite_ = !create_composite_;
-            mouse_.left_clicked = false;
-            mouse_.left_released = false;
-            return;
-        }
-        cy += 24.0f + kCreateModalRowGap;
-    }
-
-    // Name field click
-    if (mouse_.x >= cx && mouse_.x <= cx + inner_w &&
-        mouse_.y >= cy && mouse_.y <= cy + 22.0f) {
-        mouse_.left_clicked = false;
-        mouse_.left_released = false;
-        return;
-    }
-    cy += kCreateModalFieldH + kCreateModalRowGap;
-
-    // MCP hint line (no interaction)
-    cy += kCreateModalSectionGap;
-    cy += 18.0f + kCreateModalRowGap;
-
-    // Destination radio buttons
-    cy += kCreateModalSectionGap;
-    bool project_available = commands_.has_project_clone_destination();
-    float dest_x = cx;
-    const char* dest_labels[] = { "Auto", "Project", "Core" };
-    for (int i = 0; i < 3; ++i) {
-        float dw = 60.0f;  // approximate
-        if (mouse_.x >= dest_x && mouse_.x <= dest_x + dw &&
-            mouse_.y >= cy && mouse_.y <= cy + 22.0f) {
-            if (i != 1 || project_available) {
-                create_destination_ = i;
-            }
-            mouse_.left_clicked = false;
-            mouse_.left_released = false;
-            return;
-        }
-        dest_x += dw + 12.0f;
-    }
-    cy += 22.0f + kCreateModalRowGap;
-
-    // Error area
-    cy += 18.0f + kCreateModalRowGap;
-
-    // Button row
-    float btn_y = cy;
-    // Create Empty
-    if (mouse_.x >= cx && mouse_.x <= cx + kCreateModalBtnW &&
-        mouse_.y >= btn_y && mouse_.y <= btn_y + kCreateModalBtnH) {
-        if (!create_name_buf_.empty() && create_error_.empty()) {
-            submit_create_operator(true);
-        }
-        mouse_.left_clicked = false;
-        mouse_.left_released = false;
-        return;
-    }
-    // Cancel
-    float cancel_x = cx + inner_w - kCreateModalBtnW;
-    if (mouse_.x >= cancel_x && mouse_.x <= cancel_x + kCreateModalBtnW &&
-        mouse_.y >= btn_y && mouse_.y <= btn_y + kCreateModalBtnH) {
-        create_popup_open_ = false;
-        mouse_.left_clicked = false;
-        mouse_.left_released = false;
-        return;
-    }
-    // Create
-    float create_x = cancel_x - kCreateModalBtnW - 8.0f;
-    if (mouse_.x >= create_x && mouse_.x <= create_x + kCreateModalBtnW &&
-        mouse_.y >= btn_y && mouse_.y <= btn_y + kCreateModalBtnH) {
-        if (!create_name_buf_.empty() && create_error_.empty()) {
-            submit_create_operator(false);
-        }
-        mouse_.left_clicked = false;
-        mouse_.left_released = false;
-        return;
-    }
-
-    // Consume click inside modal
-    mouse_.left_clicked = false;
-    mouse_.left_released = false;
-}
+// submit_create_operator, reset_create_env_defaults, update_create_popup moved to DialogManager
 
 // -----------------------------------------------------------------------
 // Context menu interaction (called from update())
@@ -1786,38 +1200,7 @@ void NodeGraphUI::handle_left_click() {
         return;
     }
 
-    // Preset name popup — dismiss on click outside
-    if (preset_name_popup_open_) {
-        float pw = 280.0f, ph = 70.0f;
-        float px = (static_cast<float>(win_w_) - pw) * 0.5f;
-        float py = (static_cast<float>(win_h_) - ph) * 0.5f;
-        if (mouse_.x < px || mouse_.x > px + pw ||
-            mouse_.y < py || mouse_.y > py + ph) {
-            preset_name_popup_open_ = false;
-        }
-        mouse_.left_clicked = false;
-        mouse_.left_released = false;
-        return;
-    }
-
-    // Perf bar buttons (Record/Stop, Snapshot)
-    for (const auto& btn : core_update_button_rects_) {
-        if (mouse_.x >= btn.x && mouse_.x <= btn.x + btn.w &&
-            mouse_.y >= btn.y && mouse_.y <= btn.y + btn.h) {
-            if (btn.action == 0) {
-                if (on_core_update_install_) on_core_update_install_();
-                clear_core_update_notice();
-            } else if (btn.action == 1) {
-                if (on_core_update_skip_) on_core_update_skip_();
-                clear_core_update_notice();
-            } else if (btn.action == 2) {
-                if (on_core_update_later_) on_core_update_later_();
-                clear_core_update_notice();
-            }
-            mouse_.left_clicked = false;
-            return;
-        }
-    }
+    // preset_name_popup and core_update_button clicks moved to DialogManager
 
     // Perf bar buttons (Record/Stop, Snapshot)
     for (const auto& btn : perf_button_rects_) {
@@ -1847,42 +1230,11 @@ void NodeGraphUI::handle_left_click() {
         }
     }
 
-    // MCP setup dialog button clicks
-    if (mcp_setup_open_) {
-        for (const auto& btn : mcp_dialog_button_rects_) {
-            if (mouse_.x >= btn.x && mouse_.x <= btn.x + btn.w &&
-                mouse_.y >= btn.y && mouse_.y <= btn.y + btn.h) {
-                if (btn.action == 0) {  // Copy vivid JSON
-                    // Build the same snippet as in draw_mcp_setup_dialog
-                    std::string mcp_py = mcp_dir_.empty()
-                        ? "<path_to_vivid>/mcp/vivid_mcp.py"
-                        : mcp_dir_ + "/vivid_mcp.py";
-                    std::string json = "{\"vivid\":{\"command\":\"python\",\"args\":[\"" + mcp_py + "\"],\"type\":\"stdio\"}}";
-                    glfwSetClipboardString(nullptr, json.c_str());
-                } else if (btn.action == 1) {  // Copy opdev JSON
-                    std::string opdev_py = mcp_dir_.empty()
-                        ? "<path_to_vivid>/mcp/vivid_opdev_mcp.py"
-                        : mcp_dir_ + "/vivid_opdev_mcp.py";
-                    std::string json = "{\"opdev\":{\"command\":\"python\",\"args\":[\"" + opdev_py + "\"],\"type\":\"stdio\"}}";
-                    glfwSetClipboardString(nullptr, json.c_str());
-                } else if (btn.action == 2 || btn.action == 3) {  // Done or close
-                    mcp_setup_open_ = false;
-                    mcp_project_config_.scanned = false;
-                }
-                mouse_.left_clicked = false;
-                return;
-            }
-        }
-        // Backdrop click closes dialog
-        mouse_.left_clicked = false;
-        return;
-    }
-
     // MCP dot clicks (in perf bar) — open setup dialog
     for (const auto& dr : mcp_dot_rects_) {
         if (mouse_.x >= dr.x && mouse_.x <= dr.x + dr.w &&
             mouse_.y >= dr.y && mouse_.y <= dr.y + dr.h) {
-            mcp_setup_open_ = true;
+            dialogs_.open_mcp_setup();
             mouse_.left_clicked = false;
             return;
         }
@@ -2395,10 +1747,8 @@ bool NodeGraphUI::handle_inspector_click() {
             if (ns && !ns->active_preset.empty()) {
                 commands_.save_preset(r.node_id, ns->active_preset);
             } else if (ns) {
-                preset_name_popup_open_ = true;
-                preset_name_buffer_.clear();
+                dialogs_.open_preset_name_popup(r.node_id);
                 text_edit_.reset(0);
-                preset_name_node_id_ = r.node_id;
             }
             return true;
         }
@@ -2948,190 +2298,7 @@ void NodeGraphUI::update_scrollbar_drag() {
     }
 }
 
-// -----------------------------------------------------------------------
-// Preferences panel click handling (called from update())
-// -----------------------------------------------------------------------
-void NodeGraphUI::update_preferences() {
-    if (!prefs_open_ || !mouse_.left_clicked) return;
-
-    float wf = static_cast<float>(win_w_);
-    float hf = static_cast<float>(win_h_);
-
-    int editor_count = static_cast<int>(prefs_editor_names_.size());
-    int style_count = static_cast<int>(prefs_styles_.size());
-    bool show_custom = (prefs_editor_sel_ >= 0 &&
-                        prefs_editor_sel_ < static_cast<int>(prefs_editor_ids_.size()) &&
-                        prefs_editor_ids_[prefs_editor_sel_] == "custom");
-
-    float content_h = kPrefsPadY
-        + kPrefsRowH + kPrefsSectionGap
-        + kPrefsRowH + editor_count * kPrefsRowH
-        + (show_custom ? kPrefsRowH + 4 : 0)
-        + kPrefsSectionGap
-        + kPrefsRowH + style_count * kPrefsRowH
-        + kPrefsRowH + 4                          // "Open Themes Folder" link
-        + kPrefsSectionGap
-        + kPrefsRowH + 3 * kPrefsRowH             // MOUSE section header + 3 radio items
-        + kPrefsSectionGap + kPrefsBtnH + kPrefsPadY;
-
-    float pw = kPrefsW;
-    float ph = content_h;
-    float px = (wf - pw) * 0.5f;
-    float py = (hf - ph) * 0.5f;
-
-    // Click outside panel → close (cancel)
-    if (mouse_.x < px || mouse_.x > px + pw ||
-        mouse_.y < py || mouse_.y > py + ph) {
-        // Revert style
-        if (prefs_saved_style_sel_ >= 0 &&
-            prefs_saved_style_sel_ < static_cast<int>(prefs_styles_.size())) {
-            style_ = prefs_styles_[prefs_saved_style_sel_];
-            prefs_style_sel_ = prefs_saved_style_sel_;
-        }
-        prefs_pan_gesture_sel_ = prefs_saved_pan_gesture_sel_;
-        prefs_open_ = false;
-        prefs_editing_custom_ = false;
-        mouse_.left_clicked = false;
-        mouse_.left_released = false;
-        return;
-    }
-
-    float cx = px + kPrefsPadX;
-    float inner_w = pw - 2 * kPrefsPadX;
-    float cy = py + kPrefsPadY + kPrefsRowH + kPrefsSectionGap;
-
-    // Skip section header
-    cy += kPrefsRowH;
-
-    // Editor radio items
-    for (int i = 0; i < editor_count; ++i) {
-        if (mouse_.x >= cx && mouse_.x <= cx + inner_w &&
-            mouse_.y >= cy && mouse_.y <= cy + kPrefsRowH) {
-            prefs_editor_sel_ = i;
-            prefs_editing_custom_ = false;
-            mouse_.left_clicked = false;
-            mouse_.left_released = false;
-            return;
-        }
-        cy += kPrefsRowH;
-    }
-
-    // Custom command field click
-    if (show_custom) {
-        cy += 2;
-        if (mouse_.x >= cx + 18 && mouse_.x <= cx + inner_w &&
-            mouse_.y >= cy && mouse_.y <= cy + kPrefsRowH - 2) {
-            prefs_editing_custom_ = true;
-            mouse_.left_clicked = false;
-            mouse_.left_released = false;
-            return;
-        }
-        cy += kPrefsRowH + 2;
-    }
-
-    cy += kPrefsSectionGap;
-
-    // Skip STYLE section header
-    cy += kPrefsRowH;
-
-    // Style radio items
-    for (int i = 0; i < style_count; ++i) {
-        if (mouse_.x >= cx && mouse_.x <= cx + inner_w &&
-            mouse_.y >= cy && mouse_.y <= cy + kPrefsRowH) {
-            prefs_style_sel_ = i;
-            // Live preview: apply style immediately
-            if (i >= 0 && i < static_cast<int>(prefs_styles_.size())) {
-                style_ = prefs_styles_[i];
-            }
-            mouse_.left_clicked = false;
-            mouse_.left_released = false;
-            return;
-        }
-        cy += kPrefsRowH;
-    }
-
-    // "Open Themes Folder" link
-    cy += 4;
-    if (mouse_.x >= cx + 18 && mouse_.x <= cx + inner_w &&
-        mouse_.y >= cy && mouse_.y <= cy + kPrefsRowH) {
-        open_themes_folder();
-        mouse_.left_clicked = false;
-        mouse_.left_released = false;
-        return;
-    }
-    cy += kPrefsRowH;
-
-    cy += kPrefsSectionGap;
-
-    // Skip MOUSE section header
-    cy += kPrefsRowH;
-
-    // Pan gesture radio items
-    for (int i = 0; i < 3; ++i) {
-        if (mouse_.x >= cx && mouse_.x <= cx + inner_w &&
-            mouse_.y >= cy && mouse_.y <= cy + kPrefsRowH) {
-            prefs_pan_gesture_sel_ = i;
-            mouse_.left_clicked = false;
-            mouse_.left_released = false;
-            return;
-        }
-        cy += kPrefsRowH;
-    }
-
-    cy += kPrefsSectionGap;
-
-    // Buttons
-    float btn_total = 2 * kPrefsBtnW + 12;
-    float save_x = px + (pw - btn_total) * 0.5f;
-    float cancel_x = save_x + kPrefsBtnW + 12;
-
-    if (mouse_.x >= save_x && mouse_.x <= save_x + kPrefsBtnW &&
-        mouse_.y >= cy && mouse_.y <= cy + kPrefsBtnH) {
-        // Save
-        std::string editor_id;
-        if (prefs_editor_sel_ >= 0 && prefs_editor_sel_ < static_cast<int>(prefs_editor_ids_.size()))
-            editor_id = prefs_editor_ids_[prefs_editor_sel_];
-        commands_.set_editor_preference(editor_id, prefs_custom_command_);
-
-        if (prefs_style_sel_ >= 0 && prefs_style_sel_ < static_cast<int>(prefs_styles_.size())) {
-            commands_.set_style_preference(prefs_styles_[prefs_style_sel_].id);
-            prefs_saved_style_sel_ = prefs_style_sel_;
-        }
-
-        // Pan gesture
-        const char* gestures[] = { "middle", "left", "right" };
-        pan_gesture_ = gestures[prefs_pan_gesture_sel_];
-        commands_.set_pan_gesture_preference(pan_gesture_);
-        prefs_saved_pan_gesture_sel_ = prefs_pan_gesture_sel_;
-
-        prefs_open_ = false;
-        prefs_editing_custom_ = false;
-        mouse_.left_clicked = false;
-        mouse_.left_released = false;
-        return;
-    }
-
-    if (mouse_.x >= cancel_x && mouse_.x <= cancel_x + kPrefsBtnW &&
-        mouse_.y >= cy && mouse_.y <= cy + kPrefsBtnH) {
-        // Cancel: revert style
-        if (prefs_saved_style_sel_ >= 0 &&
-            prefs_saved_style_sel_ < static_cast<int>(prefs_styles_.size())) {
-            style_ = prefs_styles_[prefs_saved_style_sel_];
-            prefs_style_sel_ = prefs_saved_style_sel_;
-        }
-        prefs_pan_gesture_sel_ = prefs_saved_pan_gesture_sel_;
-        prefs_open_ = false;
-        prefs_editing_custom_ = false;
-        mouse_.left_clicked = false;
-        mouse_.left_released = false;
-        return;
-    }
-
-    // Consume click inside panel
-    prefs_editing_custom_ = false;
-    mouse_.left_clicked = false;
-    mouse_.left_released = false;
-}
+// update_preferences moved to DialogManager
 
 // -----------------------------------------------------------------------
 // Package browser interaction
