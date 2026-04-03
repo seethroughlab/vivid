@@ -2,6 +2,8 @@
 #ifdef __APPLE__
 
 #include <functional>
+#include <string>
+#include <vector>
 
 namespace vivid {
 
@@ -52,9 +54,14 @@ struct MenuCallbacks {
     std::function<bool()> can_edit_meta;
     std::function<bool()> has_graph_path;
     std::function<bool()> is_auto_check_updates;
+
+    // Recent files
+    std::function<void(const std::string&)> on_open_recent;
+    std::function<void()> on_clear_recent;
 };
 
 void macos_setup_menu(const MenuCallbacks& callbacks);
+void macos_update_recent_files_menu(const std::vector<std::string>& paths);
 void macos_set_presentation_fullscreen(bool enabled);
 void macos_set_document_edited(bool edited);
 

@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace vivid {
 
@@ -30,10 +31,15 @@ struct Settings {
     std::string project_operator_root;         // absolute path (optional)
     std::string project_package_name;          // package target hint (optional)
     std::string pan_gesture = "left";          // "middle", "left", or "right"
+
+    std::vector<std::string> recent_files;     // most-recent first, capped at 10
 };
 
 Settings load_settings();
 void save_settings(const Settings& s);
+
+// Insert path at front of recent_files, deduplicate, cap at 10.
+void add_recent_file(Settings& s, const std::string& path);
 
 // Open a file in the user's preferred editor
 void open_in_editor(const std::string& file_path, const Settings& settings);

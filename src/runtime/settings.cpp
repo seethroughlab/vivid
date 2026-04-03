@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 #include <filesystem>
 #include <fstream>
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <spawn.h>
@@ -61,6 +62,7 @@ Settings load_settings() {
     json_read(j, "project_operator_root", s.project_operator_root);
     json_read(j, "project_package_name", s.project_package_name);
     json_read(j, "pan_gesture", s.pan_gesture);
+    json_read(j, "recent_files", s.recent_files);
 
     if (s.pan_gesture != "middle" && s.pan_gesture != "left" && s.pan_gesture != "right")
         s.pan_gesture = "left";
@@ -104,6 +106,7 @@ void save_settings(const Settings& s) {
     if (!s.project_package_name.empty())
         j["project_package_name"] = s.project_package_name;
     j["pan_gesture"] = s.pan_gesture;
+    if (!s.recent_files.empty()) j["recent_files"] = s.recent_files;
 
     std::string path = settings_path();
     std::ofstream ofs(path);
@@ -112,6 +115,15 @@ void save_settings(const Settings& s) {
         return;
     }
     ofs << j.dump(4) << '\n';
+}
+
+void add_recent_file(Settings& s, const std::string& path) {
+    s.recent_files.erase(
+        std::remove(s.recent_files.begin(), s.recent_files.end(), path),
+        s.recent_files.end());
+    s.recent_files.insert(s.recent_files.begin(), path);
+    if (s.recent_files.size() > 10)
+        s.recent_files.resize(10);
 }
 
 // Fire-and-forget process launch via posix_spawn (no shell interpolation).

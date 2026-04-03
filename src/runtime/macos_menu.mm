@@ -37,6 +37,8 @@ enum MenuTag : NSInteger {
 @interface VividMenuDelegate : NSObject
 @property (nonatomic, assign) vivid::MenuCallbacks callbacks;
 - (void)menuAction:(NSMenuItem*)sender;
+- (void)recentFileAction:(NSMenuItem*)sender;
+- (void)clearRecentAction:(NSMenuItem*)sender;
 - (BOOL)validateMenuItem:(NSMenuItem*)item;
 @end
 
@@ -78,6 +80,17 @@ enum MenuTag : NSInteger {
         case kMenuTagToggleMidiMap:     if (_callbacks.on_toggle_midi_map) _callbacks.on_toggle_midi_map(); break;
         case kMenuTagAddNode:           if (_callbacks.on_add_node) _callbacks.on_add_node(); break;
     }
+}
+
+- (void)recentFileAction:(NSMenuItem*)sender {
+    NSString* path = [sender representedObject];
+    if (path && _callbacks.on_open_recent) {
+        _callbacks.on_open_recent([path UTF8String]);
+    }
+}
+
+- (void)clearRecentAction:(NSMenuItem*)sender {
+    if (_callbacks.on_clear_recent) _callbacks.on_clear_recent();
 }
 
 - (BOOL)validateMenuItem:(NSMenuItem*)item {
@@ -129,6 +142,7 @@ enum MenuTag : NSInteger {
 
 // Must be kept alive for the lifetime of the app (menus reference it as target).
 static VividMenuDelegate* sDelegate = nil;
+static NSMenu* sRecentMenu = nil;
 
 namespace vivid {
 
@@ -242,6 +256,17 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         openGraphFolderItem.target = sDelegate;
         openGraphFolderItem.tag = kMenuTagOpenGraphFolder;
         [fileMenu addItem:openGraphFolderItem];
+
+        // Open Recent submenu
+        sRecentMenu = [[NSMenu alloc] initWithTitle:@"Open Recent"];
+        NSMenuItem* recentMenuItem = [[NSMenuItem alloc]
+            initWithTitle:@"Open Recent"
+                   action:nil
+            keyEquivalent:@""];
+        [recentMenuItem setSubmenu:sRecentMenu];
+        [fileMenu addItem:recentMenuItem];
+
+        [fileMenu addItem:[NSMenuItem separatorItem]];
 
         NSMenuItem* saveItem = [[NSMenuItem alloc]
             initWithTitle:@"Save"
@@ -428,6 +453,38 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
                                                        keyEquivalent:@""];
         [helpMenuItem setSubmenu:helpMenu];
         [mainMenu addItem:helpMenuItem];
+    }
+}
+
+void macos_update_recent_files_menu(const std::vector<std::string>& paths) {
+    @autoreleasepool {
+        if (!sRecentMenu) return;
+        [sRecentMenu removeAllItems];
+        for (const auto& p : paths) {
+            NSString* fullPath = [NSString stringWithUTF8String:p.c_str()];
+            NSString* filename = [fullPath lastPathComponent];
+            NSMenuItem* item = [[NSMenuItem alloc]
+                initWithTitle:filename
+                       action:@selector(recentFileAction:)
+                keyEquivalent:@""];
+            item.target = sDelegate;
+            item.representedObject = fullPath;
+            item.toolTip = fullPath;
+            [sRecentMenu addItem:item];
+        }
+        if (paths.empty()) {
+            NSMenuItem* noneItem = [[NSMenuItem alloc]
+                initWithTitle:@"No Recent Files" action:nil keyEquivalent:@""];
+            [noneItem setEnabled:NO];
+            [sRecentMenu addItem:noneItem];
+        }
+        [sRecentMenu addItem:[NSMenuItem separatorItem]];
+        NSMenuItem* clearItem = [[NSMenuItem alloc]
+            initWithTitle:@"Clear Recent"
+                   action:@selector(clearRecentAction:)
+            keyEquivalent:@""];
+        clearItem.target = sDelegate;
+        [sRecentMenu addItem:clearItem];
     }
 }
 
