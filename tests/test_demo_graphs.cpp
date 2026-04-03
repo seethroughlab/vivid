@@ -1,4 +1,5 @@
 #include "runtime/operator_registry.h"
+#include "runtime/package_manager.h"
 #include "runtime/graph.h"
 #include "runtime/runtime_core.h"
 #include "runtime/audio_engine.h"
@@ -191,6 +192,11 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
     registry.scan_deferred(exe_dir.string().c_str());
     register_builtin_operators(registry);
     registry.scan_wgsl_presets((exe_dir / "filters").string().c_str());
+
+    // Load package-managed operators (same as runtime)
+    vivid::PackageCompiler pkg_compiler(exe_dir.string(), exe_dir.string());
+    vivid::PackageManager pkg_manager(pkg_compiler, registry);
+    pkg_manager.scan_installed();
 
 #ifdef __APPLE__
     CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.01, false);

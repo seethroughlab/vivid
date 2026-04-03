@@ -2062,6 +2062,9 @@ add_executable(test_demo_graphs
     src/runtime/audio_engine.cpp
     src/runtime/audio_executor.cpp
     src/runtime/builtin_operators.cpp
+    src/runtime/package_manager.cpp
+    src/runtime/package_compiler.cpp
+    src/runtime/tool_discovery.cpp
 )
 target_include_directories(test_demo_graphs PRIVATE src)
 target_link_libraries(test_demo_graphs PRIVATE
