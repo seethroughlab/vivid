@@ -20,8 +20,8 @@ A systematic review of the vivid codebase for organization, consistency, and qua
 | 1. File & Directory Organization | **Complete** | 22 findings (2 Critical, 5 High, 14 Medium, 1 Info) |
 | 2. Header Hygiene | **Complete** | 8 findings (0 Critical, 0 High, 3 Medium, 2 Low, 3 Info) |
 | 3. API Surface & Encapsulation | **Complete** | 6 findings (0 Critical, 0 High, 0 Medium, 2 Low, 4 Info) |
-| 4. Code Duplication | Pending | — |
-| 5. Naming & Convention Consistency | Pending | — |
+| 4. Code Duplication | **Complete** | 6 findings (0 Critical, 0 High, 2 Medium, 0 Low, 4 Info) |
+| 5. Naming & Convention Consistency | **Complete** | 9 findings (0 Critical, 0 High, 0 Medium, 1 Low, 8 Info) |
 | 6. Build System & Dependencies | Pending | — |
 | 7. Test Coverage & Quality | Pending | — |
 | 8. Error Handling & Robustness | Pending | — |
