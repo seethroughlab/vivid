@@ -10,6 +10,7 @@
 #include "ui/node_graph_util.h"
 #include "ui/dialog_types.h"
 #include "ui/dialog_manager.h"
+#include "ui/inspector_controller.h"
 #include "operator_api/types.h"
 #include <webgpu/webgpu.h>
 #include <string>
@@ -89,22 +90,14 @@ public:
     bool wants_keyboard() const {
         return dialogs_.wants_keyboard()
             || chooser_open_
-            || editing_param_
-            || editing_resolution_
-            || editing_wire_remap_
-            || dropdown_open_
             || context_menu_open_
-            || editing_midi_range_
-            || param_picker_open_
-            || color_editing_hex_
-            || color_editing_rgb_ >= 0
             || patch_ctx_open_
             || session_editing_name_
             || session_ctx_menu_open_
             || record_dropdown_open_
             || editing_sticky_
             || sticky_color_menu_open_
-            || custom_inspector_wants_keyboard_;
+            || inspector_.wants_keyboard();
     }
     bool wire_inspector_visible() const;
     bool has_selection() const { return !selected_node_ids_.empty() || wire_inspector_visible(); }
@@ -149,7 +142,7 @@ public:
     using CustomInspectorCallback = std::function<void(
         const std::string& node_id, VividInspectorContext* ctx)>;
     void set_custom_inspector_callback(CustomInspectorCallback cb) {
-        custom_inspector_cb_ = std::move(cb);
+        inspector_.set_custom_inspector_callback(std::move(cb));
     }
 
     void set_custom_thumbnail_nodes(std::unordered_set<std::string> ids) {
@@ -248,6 +241,7 @@ public:
     }
 
 private:
+    friend class InspectorController;
     // --- Layout ---
     void layout_nodes(bool force = false);
     void reposition_output_sinks();
@@ -407,6 +401,13 @@ private:
     void update_box_select();
 
     // --- Input handling (node_graph_input.cpp) ---
+    ActiveTextField resolve_active_text_field();
+    bool handle_sticky_edit_mode_key(int key, bool mod_key);
+    bool handle_session_mode_key(int key, int action, int mods, bool mod_key);
+    bool handle_inspector_edit_mode_key(int key);
+    bool handle_param_picker_mode_key(int key);
+    bool handle_dropdown_mode_key(int key);
+    bool handle_graph_global_key(int key, int action, int mods, bool mod_key);
     void handle_right_click();
     void handle_left_click();
     bool handle_chooser_click();
@@ -475,18 +476,6 @@ private:
     std::string wire_from_port_;
     float wire_from_gx_ = 0, wire_from_gy_ = 0;
 
-    // Parameter picker popup state
-    bool param_picker_open_ = false;
-    bool param_picker_is_output_ = false;  // true = picking output port on source node
-    float param_picker_x_ = 0, param_picker_y_ = 0;
-    std::string param_picker_node_id_;     // node being picked on
-    std::string param_picker_wire_from_node_;
-    std::string param_picker_wire_from_port_;
-    std::vector<std::string> param_picker_items_;
-    std::vector<bool> param_picker_item_is_param_;  // parallel to param_picker_items_
-    int param_picker_sel_ = 0;
-    float param_picker_scroll_ = 0.0f;
-
     // Zoom/pan state
     float zoom_ = 1.0f;
     float pan_x_ = 0.0f, pan_y_ = 0.0f;
@@ -511,140 +500,15 @@ private:
     float selection_glow_ = 0.0f;
     bool selection_glow_rising_ = true;
 
-    // Slider drag state
-    int active_slider_idx_ = -1;
-    std::string active_slider_node_id_;
-    std::string active_slider_param_name_;
-
-    struct InspectorRect { float x, y, w, h; std::string node_id; std::string param_name; };
-    std::vector<InspectorRect> slider_rects_;
-
-    // Lock badge hit rects
-    std::vector<InspectorRect> lock_badge_rects_;
-
-    // XY pad state
-    struct XYPadRect { float x, y, w, h; std::string node_id; std::string param_x, param_y; };
-    std::vector<XYPadRect> xy_pad_rects_;
-    int active_xy_pad_idx_ = -1;
-    std::string active_xy_node_id_;
-    std::string active_xy_param_x_, active_xy_param_y_;
-
-    // Color swatch state
-    struct ColorSwatchRect { float x, y, w, h; std::string node_id;
-                             std::string param_r, param_g, param_b; };
-    std::vector<ColorSwatchRect> color_swatch_rects_;
-
-    // Color popup state
-    bool color_popup_open_ = false;
-    std::string color_popup_node_id_;
-    std::string color_popup_param_r_, color_popup_param_g_, color_popup_param_b_;
-    float color_popup_x_ = 0, color_popup_y_ = 0;
-    float color_popup_h_ = 0, color_popup_s_ = 0, color_popup_v_ = 0;
-    bool color_dragging_sv_ = false;
-    bool color_dragging_hue_ = false;
-    bool color_editing_hex_ = false;
-    std::string color_hex_buffer_;
-    int  color_editing_rgb_ = -1;      // -1 = none, 0 = R, 1 = G, 2 = B
-    std::string color_rgb_buffer_;     // text buffer for active channel edit
-
-    struct GroupHeaderRect { float x, y, w, h; std::string type_name; std::string group_name; };
-    std::vector<GroupHeaderRect> group_header_rects_;
-
     // Shared text-edit cursor/selection state (only one field active at a time)
     TextEditState text_edit_;
-
-    // Slider text-edit state (click value text to type a value)
-    bool editing_param_ = false;
-    std::string edit_node_id_;
-    std::string edit_param_name_;
-    std::string edit_buffer_;
-
-    std::vector<InspectorRect> bool_rects_;
-    std::vector<InspectorRect> value_text_rects_;
-    std::vector<InspectorRect> dropdown_rects_;
-    std::vector<InspectorRect> file_button_rects_;
-
-    // Custom inspector state
-    CustomInspectorCallback custom_inspector_cb_;
-    bool custom_inspector_wants_keyboard_ = false;
-    // Saved click/release events for custom inspector (persisted across update→draw boundary)
-    bool insp_mouse_left_clicked_ = false;
-    bool insp_mouse_left_released_ = false;
-    bool insp_mouse_right_clicked_ = false;
-    std::vector<VividInspectorKeyEvent> insp_key_events_;
-    std::vector<uint32_t> insp_char_events_;
-
-    struct ResolutionRect { float x, y, w, h; std::string node_id; bool is_width; };
-    std::vector<ResolutionRect> resolution_rects_;
-
-    // Wire remap inspector rects
-    struct WireRemapRect { float x, y, w, h; int field; }; // field: 0=from_min,1=from_max,2=to_min,3=to_max
-    std::vector<WireRemapRect> wire_remap_rects_;
-    struct WireClampRect { float x, y, w, h; };
-    std::vector<WireClampRect> wire_clamp_rects_;
-
-    // Wire remap text editing state
-    bool editing_wire_remap_ = false;
-    int  edit_wire_remap_field_ = 0;  // 0..3 for the four float fields
-
-    // Resolution editing state
-    bool editing_resolution_ = false;
-    std::string edit_res_node_id_;
-    bool edit_res_is_width_ = true;
+    InspectorController inspector_;
 
     // MIDI map mode state
     bool midi_map_mode_ = false;
     bool midi_map_waiting_ = false;          // clicked param, waiting for CC
     std::string midi_map_node_id_;
     std::string midi_map_param_name_;
-    bool editing_midi_range_ = false;        // typing into a min/max field
-    std::string midi_range_node_id_;
-    std::string midi_range_param_name_;
-    bool midi_range_editing_min_ = true;
-    struct MidiRemoveRect { float x, y, w, h; std::string node_id; std::string param_name; };
-    struct MidiRangeRect { float x, y, w, h; std::string node_id; std::string param_name; bool is_min; };
-    std::vector<MidiRemoveRect> midi_remove_rects_;
-    std::vector<MidiRangeRect> midi_range_rects_;
-
-    // Dropdown popup state
-    bool dropdown_open_ = false;
-    bool dropdown_is_preset_ = false;  // true when showing preset choices (not param)
-    bool dropdown_is_state_preset_ = false;  // true when showing state-preset choices
-    std::string dropdown_node_id_;
-    std::string dropdown_param_name_;
-    int dropdown_sel_ = 0;
-    float dropdown_x_ = 0, dropdown_y_ = 0, dropdown_w_ = 0;
-    std::vector<std::string> dropdown_labels_;
-    int dropdown_factory_count_ = 0;  // number of factory preset entries at start of labels
-
-    // Preset submenu tree (hierarchical folders via "/" in names)
-    Renderer2D* dropdown_tr_ = nullptr;  // set during draw for submenu width calc
-    std::vector<ui::PresetMenuNode> dropdown_menu_tree_;
-    struct SubmenuLevel {
-        const std::vector<ui::PresetMenuNode>* items = nullptr;
-        int hovered_idx = -1;
-        float x = 0, y = 0, w = 0;
-    };
-    std::vector<SubmenuLevel> dropdown_submenu_stack_;
-    int dropdown_hover_frames_ = 0;
-    int dropdown_hover_target_ = -1;
-    int dropdown_flat_hovered_idx_ = -1;  // hover index for non-preset flat dropdowns
-
-    // State-preset dropdown context
-    int dropdown_state_idx_ = -1;
-    std::string dropdown_sm_node_;
-    std::string dropdown_target_node_;
-
-    // Preset row hit-test rects
-    std::vector<InspectorRect> preset_dropdown_rects_;
-    std::vector<InspectorRect> preset_save_rects_;
-
-    // State-preset hit-test rects
-    struct StatePresetRect { float x, y, w, h; std::string sm_node; int state_idx; std::string target_node; };
-    std::vector<StatePresetRect> state_preset_rects_;
-
-    struct StateHeaderRect { float x, y, w, h; int state_idx; };
-    std::vector<StateHeaderRect> state_header_rects_;
 
     // Preset name popup state: moved to DialogManager
 
@@ -736,42 +600,20 @@ private:
     };
     HoveredPort hovered_port_;
 
-    // Inspector widget hover (index into the respective rect vector, -1 = none)
-    int hovered_slider_idx_ = -1;
-    int hovered_bool_idx_ = -1;
-    int hovered_dropdown_idx_ = -1;
-
-    // Param label tooltip state
-    std::vector<InspectorRect> label_rects_;
-    int hovered_label_idx_ = -1;
-    float label_hover_time_ = 0.0f;
-    std::string label_hover_param_name_;
-    std::string label_hover_node_id_;
-
     // Multi-output expand state (keyed by node_id)
     std::unordered_set<std::string> outputs_expanded_;
     struct ExpandAffordanceRect { float x, y, w, h; std::string node_id; };
     std::vector<ExpandAffordanceRect> expand_affordance_rects_;
 
     // Group collapse state
-    std::unordered_map<std::string, bool> group_collapsed_;
-
     bool is_group_collapsed(const std::string& type_name, const std::string& group) const {
-        auto it = group_collapsed_.find(type_name + "\t" + group);
-        return it != group_collapsed_.end() && it->second;
+        auto it = inspector_.group_collapsed.find(type_name + "\t" + group);
+        return it != inspector_.group_collapsed.end() && it->second;
     }
     void toggle_group_collapsed(const std::string& type_name, const std::string& group) {
         auto key = type_name + "\t" + group;
-        group_collapsed_[key] = !group_collapsed_[key];
+        inspector_.group_collapsed[key] = !inspector_.group_collapsed[key];
     }
-
-    // Inspector scroll state
-    float insp_scroll_y_ = 0.0f;
-    float insp_content_h_ = 0.0f;
-    std::string insp_scroll_node_id_;    // reset scroll when selection changes
-    bool insp_scrollbar_dragging_ = false;
-    float insp_sb_drag_start_y_ = 0.0f;
-    float insp_sb_drag_start_scroll_ = 0.0f;
 
     // Cached window dimensions (updated each frame in draw())
     uint32_t win_w_ = 1280, win_h_ = 720;

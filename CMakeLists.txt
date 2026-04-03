@@ -738,6 +738,7 @@ add_library(vivid_ui STATIC
     src/ui/node_graph.cpp
     src/ui/node_graph_draw.cpp
     src/ui/node_graph_input.cpp
+    src/ui/inspector_controller.cpp
     src/ui/overlay_layouts.cpp
     src/ui/dialog_manager.cpp
     src/ui/dialog_manager_draw.cpp

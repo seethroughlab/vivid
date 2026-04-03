@@ -779,12 +779,12 @@ void NodeGraphUI::draw_node_error_tooltip(Renderer2D& tr) {
 }
 
 void NodeGraphUI::draw_param_tooltip(Renderer2D& tr) {
-    if (hovered_label_idx_ < 0) return;
+    if (inspector_.hovered_label_idx < 0) return;
     static constexpr float kParamTooltipDelay = 1.0f;
-    if (label_hover_time_ < kParamTooltipDelay) return;
-    if (hovered_label_idx_ >= static_cast<int>(label_rects_.size())) return;
+    if (inspector_.label_hover_time < kParamTooltipDelay) return;
+    if (inspector_.hovered_label_idx >= static_cast<int>(inspector_.label_rects.size())) return;
 
-    const auto& r = label_rects_[hovered_label_idx_];
+    const auto& r = inspector_.label_rects[inspector_.hovered_label_idx];
     const auto* ns = snap_.find_node(r.node_id);
     if (!ns || !ns->op_info) return;
 
@@ -848,27 +848,27 @@ void NodeGraphUI::draw_param_tooltip(Renderer2D& tr) {
 }
 
 void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
-    slider_rects_.clear();
-    xy_pad_rects_.clear();
-    color_swatch_rects_.clear();
-    bool_rects_.clear();
-    value_text_rects_.clear();
-    dropdown_rects_.clear();
-    file_button_rects_.clear();
-    resolution_rects_.clear();
-    preset_dropdown_rects_.clear();
-    preset_save_rects_.clear();
-    midi_remove_rects_.clear();
-    midi_range_rects_.clear();
+    inspector_.slider_rects.clear();
+    inspector_.xy_pad_rects.clear();
+    inspector_.color_swatch_rects.clear();
+    inspector_.bool_rects.clear();
+    inspector_.value_text_rects.clear();
+    inspector_.dropdown_rects.clear();
+    inspector_.file_button_rects.clear();
+    inspector_.resolution_rects.clear();
+    inspector_.preset_dropdown_rects.clear();
+    inspector_.preset_save_rects.clear();
+    inspector_.midi_remove_rects.clear();
+    inspector_.midi_range_rects.clear();
     patch_jacks_.clear();
     patch_wires_.clear();
-    group_header_rects_.clear();
-    state_preset_rects_.clear();
-    state_header_rects_.clear();
-    lock_badge_rects_.clear();
-    label_rects_.clear();
-    wire_remap_rects_.clear();
-    wire_clamp_rects_.clear();
+    inspector_.group_header_rects.clear();
+    inspector_.state_preset_rects.clear();
+    inspector_.state_header_rects.clear();
+    inspector_.lock_badge_rects.clear();
+    inspector_.label_rects.clear();
+    inspector_.wire_remap_rects.clear();
+    inspector_.wire_clamp_rects.clear();
 
     // Wire inspector (when a wire is selected and no nodes are)
     if (selected_node_ids_.empty() && wire_inspector_visible()) {
@@ -910,7 +910,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
             float fh = 18;
 
             // Background for text field
-            bool editing_this = editing_wire_remap_ && edit_wire_remap_field_ == f;
+            bool editing_this = inspector_.editing_wire_remap && inspector_.edit_wire_remap_field == f;
             tr.draw_rect(fx, py, fw, fh,
                          editing_this ? style_.accent[0] * 0.3f : style_.inspector_bg[0] * 0.7f,
                          editing_this ? style_.accent[1] * 0.3f : style_.inspector_bg[1] * 0.7f,
@@ -919,11 +919,11 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
             tr.draw_rect(fx, py + fh - 1, fw, 1, style_.separator[0], style_.separator[1], style_.separator[2], 0.5f);
 
             if (editing_this) {
-                tr.draw_text(fx + 4, py + 2, edit_buffer_.c_str(),
+                tr.draw_text(fx + 4, py + 2, inspector_.edit_buffer.c_str(),
                              style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
                 if (cursor_blink_on()) {
-                    int cpos = std::max(0, std::min(text_edit_.cursor, static_cast<int>(edit_buffer_.size())));
-                    float cx = fx + 4 + tr.text_width(edit_buffer_.substr(0, cpos).c_str());
+                    int cpos = std::max(0, std::min(text_edit_.cursor, static_cast<int>(inspector_.edit_buffer.size())));
+                    float cx = fx + 4 + tr.text_width(inspector_.edit_buffer.substr(0, cpos).c_str());
                     tr.draw_rect(cx, py + 1, 1.0f, fh - 2,
                                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
                 }
@@ -934,7 +934,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
                              style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
             }
 
-            wire_remap_rects_.push_back({fx, py, fw, fh, f});
+            inspector_.wire_remap_rects.push_back({fx, py, fw, fh, f});
             py += fh;
         }
 
@@ -949,12 +949,12 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
             tr.draw_rect(px + 3, py + 3, cb_size - 6, cb_size - 6,
                          style_.accent[0], style_.accent[1], style_.accent[2], 0.9f);
         }
-        wire_clamp_rects_.push_back({px, py, cb_size, cb_size});
+        inspector_.wire_clamp_rects.push_back({px, py, cb_size, cb_size});
         tr.draw_text(px + cb_size + 6, py + 1, T("clamp", "Clamp"),
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.85f);
         } // !c.dropped
 
-        insp_content_h_ = 0;
+        inspector_.insp_content_h = 0;
         return;
     }
 
@@ -978,26 +978,26 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
                 float px = insp_x + kInspPadX;
                 float py = kPerfBarH + 8;
                 tr.draw_text(px, py, T("node_not_found", "Node not found"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
-                insp_content_h_ = 0;
+                inspector_.insp_content_h = 0;
                 return;
             }
 
             // Reset scroll when the selected pair changes
             std::string scroll_key = id_a + "+" + id_b;
-            if (scroll_key != insp_scroll_node_id_) {
-                insp_scroll_y_ = 0.0f;
-                insp_scroll_node_id_ = scroll_key;
+            if (scroll_key != inspector_.insp_scroll_node_id) {
+                inspector_.insp_scroll_y = 0.0f;
+                inspector_.insp_scroll_node_id = scroll_key;
             }
 
             float viewport_top = kPerfBarH;
             float viewport_h = static_cast<float>(h) - viewport_top;
-            float max_scroll = std::max(0.0f, insp_content_h_ - viewport_h);
-            insp_scroll_y_ = std::max(0.0f, std::min(insp_scroll_y_, max_scroll));
+            float max_scroll = std::max(0.0f, inspector_.insp_content_h - viewport_h);
+            inspector_.insp_scroll_y = std::max(0.0f, std::min(inspector_.insp_scroll_y, max_scroll));
 
             tr.push_clip_rect(insp_x, viewport_top, kInspectorW, viewport_h);
 
             float px = insp_x + kInspPadX;
-            float py = viewport_top + 8 - insp_scroll_y_;
+            float py = viewport_top + 8 - inspector_.insp_scroll_y;
 
             // Header: both node names with env colors
             const float* clr_a = node_accent_color(node_a->is_gpu, node_a->active_cadence);
@@ -1019,7 +1019,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
 
             tr.pop_clip_rect();
 
-            insp_content_h_ = (py + insp_scroll_y_) - viewport_top;
+            inspector_.insp_content_h = (py + inspector_.insp_scroll_y) - viewport_top;
             draw_inspector_scrollbar(tr);
         } else {
             // 3+ nodes: summary
@@ -1030,7 +1030,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
             py += kLineH + 4;
             tr.draw_text(px, py, T("delete_to_remove", "Delete / Backspace to remove"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
 
-            insp_content_h_ = 0;
+            inspector_.insp_content_h = 0;
         }
         return;
     }
@@ -1038,9 +1038,9 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     const auto& sel_id = single_selected_id();
 
     // Reset scroll when selection changes
-    if (sel_id != insp_scroll_node_id_) {
-        insp_scroll_y_ = 0.0f;
-        insp_scroll_node_id_ = sel_id;
+    if (sel_id != inspector_.insp_scroll_node_id) {
+        inspector_.insp_scroll_y = 0.0f;
+        inspector_.insp_scroll_node_id = sel_id;
     }
 
     // Find the selected node in snapshot
@@ -1054,14 +1054,14 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     float viewport_h = static_cast<float>(h) - viewport_top;
 
     // Clamp scroll before drawing
-    float max_scroll = std::max(0.0f, insp_content_h_ - viewport_h);
-    insp_scroll_y_ = std::max(0.0f, std::min(insp_scroll_y_, max_scroll));
+    float max_scroll = std::max(0.0f, inspector_.insp_content_h - viewport_h);
+    inspector_.insp_scroll_y = std::max(0.0f, std::min(inspector_.insp_scroll_y, max_scroll));
 
     // Clip rect for scrollable content
     tr.push_clip_rect(insp_x, viewport_top, kInspectorW, viewport_h);
 
     float px = insp_x + kInspPadX;
-    float py = viewport_top + 8 - insp_scroll_y_;
+    float py = viewport_top + 8 - inspector_.insp_scroll_y;
 
     draw_inspector_header(tr, *sel_node, px, py);
 
@@ -1111,18 +1111,18 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     }
 
     // Inspector widget hover highlights
-    if (hovered_slider_idx_ >= 0 && hovered_slider_idx_ < static_cast<int>(slider_rects_.size())) {
-        const auto& r = slider_rects_[hovered_slider_idx_];
+    if (inspector_.hovered_slider_idx >= 0 && inspector_.hovered_slider_idx < static_cast<int>(inspector_.slider_rects.size())) {
+        const auto& r = inspector_.slider_rects[inspector_.hovered_slider_idx];
         tr.draw_rect(r.x, r.y, r.w, r.h,
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], kWidgetHoverAlpha);
     }
-    if (hovered_bool_idx_ >= 0 && hovered_bool_idx_ < static_cast<int>(bool_rects_.size())) {
-        const auto& r = bool_rects_[hovered_bool_idx_];
+    if (inspector_.hovered_bool_idx >= 0 && inspector_.hovered_bool_idx < static_cast<int>(inspector_.bool_rects.size())) {
+        const auto& r = inspector_.bool_rects[inspector_.hovered_bool_idx];
         tr.draw_rect(r.x - 2, r.y - 2, r.w + 4, r.h + 4,
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], kWidgetHoverAlpha);
     }
-    if (hovered_dropdown_idx_ >= 0 && hovered_dropdown_idx_ < static_cast<int>(dropdown_rects_.size())) {
-        const auto& r = dropdown_rects_[hovered_dropdown_idx_];
+    if (inspector_.hovered_dropdown_idx >= 0 && inspector_.hovered_dropdown_idx < static_cast<int>(inspector_.dropdown_rects.size())) {
+        const auto& r = inspector_.dropdown_rects[inspector_.hovered_dropdown_idx];
         tr.draw_rect(r.x, r.y, r.w, r.h,
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], kWidgetHoverAlpha);
     }
@@ -1130,7 +1130,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     tr.pop_clip_rect();
 
     // Compute content height from final py (relative to viewport top)
-    insp_content_h_ = (py + insp_scroll_y_) - viewport_top;
+    inspector_.insp_content_h = (py + inspector_.insp_scroll_y) - viewport_top;
 
     // Draw scrollbar outside clip rect
     draw_inspector_scrollbar(tr);
@@ -1141,7 +1141,7 @@ void NodeGraphUI::draw_inspector_scrollbar(Renderer2D& tr) {
     float viewport_h = static_cast<float>(win_h_) - viewport_top;
 
     // Only show scrollbar when content overflows
-    if (insp_content_h_ <= viewport_h) return;
+    if (inspector_.insp_content_h <= viewport_h) return;
 
     float insp_x = inspector_x();
     float track_x = insp_x + kInspectorW - kInspScrollbarW - 2.0f;
@@ -1153,18 +1153,18 @@ void NodeGraphUI::draw_inspector_scrollbar(Renderer2D& tr) {
                  style_.scrollbar_track[0], style_.scrollbar_track[1], style_.scrollbar_track[2], kScrollbarTrackAlpha);
 
     // Thumb size proportional to viewport/content ratio
-    float ratio = viewport_h / insp_content_h_;
+    float ratio = viewport_h / inspector_.insp_content_h;
     float thumb_h = std::max(kInspScrollbarMinThumb, track_h * ratio);
 
     // Thumb position based on scroll ratio
-    float max_scroll = insp_content_h_ - viewport_h;
-    float scroll_ratio = (max_scroll > 0) ? insp_scroll_y_ / max_scroll : 0.0f;
+    float max_scroll = inspector_.insp_content_h - viewport_h;
+    float scroll_ratio = (max_scroll > 0) ? inspector_.insp_scroll_y / max_scroll : 0.0f;
     float thumb_y = track_y + scroll_ratio * (track_h - thumb_h);
 
     // Thumb
     bool hovered = mouse_.x >= track_x && mouse_.x <= track_x + kInspScrollbarW &&
                    mouse_.y >= thumb_y && mouse_.y <= thumb_y + thumb_h;
-    float thumb_alpha = (hovered || insp_scrollbar_dragging_) ? kScrollbarThumbHovered : kScrollbarThumbIdle;
+    float thumb_alpha = (hovered || inspector_.insp_scrollbar_dragging) ? kScrollbarThumbHovered : kScrollbarThumbIdle;
     tr.draw_rect(track_x, thumb_y, kInspScrollbarW, thumb_h,
                  style_.scrollbar_thumb[0], style_.scrollbar_thumb[1], style_.scrollbar_thumb[2], thumb_alpha);
 }
@@ -1227,7 +1227,7 @@ void NodeGraphUI::draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
 
         // Hit-test rect for dropdown
-        preset_dropdown_rects_.push_back({px, py, dd_w, dd_h, node.node_id, ""});
+        inspector_.preset_dropdown_rects.push_back({px, py, dd_w, dd_h, node.node_id, ""});
 
         // Save button
         float save_x = px + dd_w + gap;
@@ -1235,7 +1235,7 @@ void NodeGraphUI::draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node
                      style_.button_bg[0], style_.button_bg[1], style_.button_bg[2]);
         tr.draw_text(save_x + 8, py + 3, T("save", "Save"),
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-        preset_save_rects_.push_back({save_x, py, save_w, dd_h, node.node_id, ""});
+        inspector_.preset_save_rects.push_back({save_x, py, save_w, dd_h, node.node_id, ""});
 
         py += dd_h + 6;
     }
@@ -1288,7 +1288,7 @@ void NodeGraphUI::draw_inspector_knob(Renderer2D& tr, const NodeSnapshot& node,
     float label_x = cx - label_w * 0.5f;
     tr.draw_text(label_x, label_y, label_text.c_str(),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, 0.85f);
-    label_rects_.push_back({label_x, label_y, label_w, tr.line_height() * 0.85f,
+    inspector_.label_rects.push_back({label_x, label_y, label_w, tr.line_height() * 0.85f,
                             node.node_id, pd.name});
 
     // Lock badge next to knob label
@@ -1303,10 +1303,10 @@ void NodeGraphUI::draw_inspector_knob(Renderer2D& tr, const NodeSnapshot& node,
             tr.draw_rect(badge_anchor_x, label_y, badge_w, kMidiBadgeH,
                          0.6f, 0.45f, 0.15f, 0.85f);
             tr.draw_text(badge_anchor_x + 3, label_y, lock_text, 1.0f, 0.85f, 0.4f, 1.0f, 0.75f);
-            lock_badge_rects_.push_back({badge_anchor_x, label_y, badge_w, kMidiBadgeH,
+            inspector_.lock_badge_rects.push_back({badge_anchor_x, label_y, badge_w, kMidiBadgeH,
                                          node.node_id, pd.name});
         } else {
-            lock_badge_rects_.push_back({badge_anchor_x, label_y, 14.0f, kMidiBadgeH,
+            inspector_.lock_badge_rects.push_back({badge_anchor_x, label_y, 14.0f, kMidiBadgeH,
                                          node.node_id, pd.name});
         }
     }
@@ -1326,11 +1326,11 @@ void NodeGraphUI::draw_inspector_knob(Renderer2D& tr, const NodeSnapshot& node,
     float knob_rect_y = py - 2;
     float knob_rect_w = kKnobDiameter + 4;
     float knob_rect_h = kKnobDiameter + 4;
-    slider_rects_.push_back({knob_rect_x, knob_rect_y, knob_rect_w, knob_rect_h,
+    inspector_.slider_rects.push_back({knob_rect_x, knob_rect_y, knob_rect_w, knob_rect_h,
                              single_selected_id(), pd.name});
 
     // Value text rect for click-to-edit
-    value_text_rects_.push_back({val_text_x, val_text_y, val_w, tr.line_height() * 0.8f,
+    inspector_.value_text_rects.push_back({val_text_x, val_text_y, val_w, tr.line_height() * 0.8f,
                                  single_selected_id(), pd.name});
 
     // Total height: knob diameter + label gap + label line + value gap + value line
@@ -1395,10 +1395,10 @@ void NodeGraphUI::draw_inspector_xy_pad(Renderer2D& tr, const NodeSnapshot& node
     float label_y = pad_y + pad_size + kXYPadLabelGap;
     float lh = tr.line_height() * 0.85f;
 
-    bool editing_x = editing_param_ && edit_node_id_ == single_selected_id()
-                     && edit_param_name_ == pd_x.name;
-    bool editing_y = editing_param_ && edit_node_id_ == single_selected_id()
-                     && edit_param_name_ == pd_y.name;
+    bool editing_x = inspector_.editing_param && inspector_.edit_node_id == single_selected_id()
+                     && inspector_.edit_param_name == pd_x.name;
+    bool editing_y = inspector_.editing_param && inspector_.edit_node_id == single_selected_id()
+                     && inspector_.edit_param_name == pd_y.name;
 
     std::string val_x_str = format_float(val_x, 2);
     std::string val_y_str = format_float(val_y, 2);
@@ -1424,12 +1424,12 @@ void NodeGraphUI::draw_inspector_xy_pad(Renderer2D& tr, const NodeSnapshot& node
     if (editing_x) {
         float edit_w = std::max(val_x_str_w + 8.0f, pad_size * 0.45f);
         draw_editing_text_field(tr, style_, cx, label_y, edit_w, lh,
-                                edit_buffer_, text_edit_, cursor_blink_on(), 2.0f, 0.0f);
+                                inspector_.edit_buffer, text_edit_, cursor_blink_on(), 2.0f, 0.0f);
         cx += edit_w;
     } else {
         tr.draw_text(cx, label_y, val_x_str.c_str(),
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, 0.85f);
-        value_text_rects_.push_back({cx, label_y, val_x_str_w, lh,
+        inspector_.value_text_rects.push_back({cx, label_y, val_x_str_w, lh,
                                      single_selected_id(), pd_x.name});
         cx += val_x_str_w;
     }
@@ -1443,11 +1443,11 @@ void NodeGraphUI::draw_inspector_xy_pad(Renderer2D& tr, const NodeSnapshot& node
     if (editing_y) {
         float edit_w = std::max(val_y_str_w + 8.0f, pad_size * 0.45f);
         draw_editing_text_field(tr, style_, cx, label_y, edit_w, lh,
-                                edit_buffer_, text_edit_, cursor_blink_on(), 2.0f, 0.0f);
+                                inspector_.edit_buffer, text_edit_, cursor_blink_on(), 2.0f, 0.0f);
     } else {
         tr.draw_text(cx, label_y, val_y_str.c_str(),
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, 0.85f);
-        value_text_rects_.push_back({cx, label_y, val_y_str_w, lh,
+        inspector_.value_text_rects.push_back({cx, label_y, val_y_str_w, lh,
                                      single_selected_id(), pd_y.name});
     }
 
@@ -1466,7 +1466,7 @@ void NodeGraphUI::draw_inspector_xy_pad(Renderer2D& tr, const NodeSnapshot& node
                 tr.draw_rect(badge_x, label_y, bw, kMidiBadgeH,
                              0.6f, 0.45f, 0.15f, 0.85f);
                 tr.draw_text(badge_x + 3, label_y, badge_label.c_str(), 1.0f, 0.85f, 0.4f, 1.0f, 0.75f);
-                lock_badge_rects_.push_back({badge_x, label_y, bw, kMidiBadgeH,
+                inspector_.lock_badge_rects.push_back({badge_x, label_y, bw, kMidiBadgeH,
                                              node.node_id, pd_name});
                 badge_x += bw + 3;
             }
@@ -1474,7 +1474,7 @@ void NodeGraphUI::draw_inspector_xy_pad(Renderer2D& tr, const NodeSnapshot& node
     }
 
     // Hit-test rect for XY pad drag
-    xy_pad_rects_.push_back({pad_x, pad_y, pad_size, pad_size,
+    inspector_.xy_pad_rects.push_back({pad_x, pad_y, pad_size, pad_size,
                              single_selected_id(), pd_x.name, pd_y.name});
 
     float total_h = pad_size + kXYPadLabelGap + lh + 8.0f;
@@ -1515,7 +1515,7 @@ void NodeGraphUI::draw_inspector_color_swatch(Renderer2D& tr, const NodeSnapshot
     float tc = lum > 0.5f ? 0.0f : 1.0f;
     tr.draw_text(px + sw - hex_w - 4, py + 3, hex, tc, tc, tc, 0.9f);
 
-    color_swatch_rects_.push_back({px, py, sw, kColorSwatchH,
+    inspector_.color_swatch_rects.push_back({px, py, sw, kColorSwatchH,
                                    single_selected_id(),
                                    op.params[pi_r].name, op.params[pi_g].name, op.params[pi_b].name});
 
@@ -1527,7 +1527,7 @@ void NodeGraphUI::draw_inspector_color_swatch(Renderer2D& tr, const NodeSnapshot
 // Color picker popup (drawn over everything in overlay pass)
 // -----------------------------------------------------------------------
 void NodeGraphUI::draw_color_popup(Renderer2D& tr) {
-    if (!color_popup_open_) return;
+    if (!inspector_.color_popup_open) return;
 
     float pad = kColorPopupPad;
     float sv_size = kColorPopupSVSize;
@@ -1539,16 +1539,16 @@ void NodeGraphUI::draw_color_popup(Renderer2D& tr) {
     float rgb_h = kColorRGBFieldH;
     float popup_w = pad + sv_size + gap + hue_w + pad;
     float popup_h = pad + sv_size + gap + hex_h + rgb_gap + rgb_h + pad;
-    float px = color_popup_x_;
-    float py = color_popup_y_;
+    float px = inspector_.color_popup_x;
+    float py = inspector_.color_popup_y;
 
     // Clamp to window bounds
     if (px + popup_w > static_cast<float>(win_w_)) px = static_cast<float>(win_w_) - popup_w;
     if (py + popup_h > static_cast<float>(win_h_)) py = static_cast<float>(win_h_) - popup_h;
     if (px < 0) px = 0;
     if (py < 0) py = 0;
-    color_popup_x_ = px;
-    color_popup_y_ = py;
+    inspector_.color_popup_x = px;
+    inspector_.color_popup_y = py;
 
     // Background
     draw_popup_bg(tr, style_, px, py, popup_w, popup_h);
@@ -1565,15 +1565,15 @@ void NodeGraphUI::draw_color_popup(Renderer2D& tr) {
             float s = (xi + 0.5f) / kGridN;
             float v = 1.0f - (yi + 0.5f) / kGridN;
             float cr, cg, cb;
-            hsv_to_rgb(color_popup_h_, s, v, cr, cg, cb);
+            hsv_to_rgb(inspector_.color_popup_h, s, v, cr, cg, cb);
             tr.draw_rect(sv_x + xi * cell_w, sv_y + yi * cell_h,
                          cell_w + 0.5f, cell_h + 0.5f, cr, cg, cb);
         }
     }
 
     // SV crosshair indicator
-    float sv_ix = sv_x + color_popup_s_ * sv_size;
-    float sv_iy = sv_y + (1.0f - color_popup_v_) * sv_size;
+    float sv_ix = sv_x + inspector_.color_popup_s * sv_size;
+    float sv_iy = sv_y + (1.0f - inspector_.color_popup_v) * sv_size;
     tr.draw_rect(sv_ix - 5, sv_iy, 11, 1, 1.0f, 1.0f, 1.0f, 0.8f);
     tr.draw_rect(sv_ix, sv_iy - 5, 1, 11, 1.0f, 1.0f, 1.0f, 0.8f);
     // Dark outline for visibility on bright backgrounds
@@ -1595,7 +1595,7 @@ void NodeGraphUI::draw_color_popup(Renderer2D& tr) {
     }
 
     // Hue bar indicator
-    float hue_iy = hue_y + (color_popup_h_ / 360.0f) * sv_size;
+    float hue_iy = hue_y + (inspector_.color_popup_h / 360.0f) * sv_size;
     tr.draw_rect(hue_x - 1, hue_iy - 1, hue_w + 2, 3, 1.0f, 1.0f, 1.0f, 0.9f);
     tr.draw_rect(hue_x - 2, hue_iy - 2, hue_w + 4, 1, 0.0f, 0.0f, 0.0f, 0.5f);
     tr.draw_rect(hue_x - 2, hue_iy + 2, hue_w + 4, 1, 0.0f, 0.0f, 0.0f, 0.5f);
@@ -1606,13 +1606,13 @@ void NodeGraphUI::draw_color_popup(Renderer2D& tr) {
 
     // Hex text
     float cr, cg, cb;
-    hsv_to_rgb(color_popup_h_, color_popup_s_, color_popup_v_, cr, cg, cb);
+    hsv_to_rgb(inspector_.color_popup_h, inspector_.color_popup_s, inspector_.color_popup_v, cr, cg, cb);
     char hex[8];
     rgb_to_hex(cr, cg, cb, hex, sizeof(hex));
 
-    if (color_editing_hex_) {
+    if (inspector_.color_editing_hex) {
         draw_editing_text_field(tr, style_, sv_x, hex_y, hex_w_full, hex_h,
-                                color_hex_buffer_, text_edit_, cursor_blink_on());
+                                inspector_.color_hex_buffer, text_edit_, cursor_blink_on());
     } else {
         tr.draw_rect(sv_x, hex_y, hex_w_full, hex_h,
                      style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
@@ -1633,8 +1633,8 @@ void NodeGraphUI::draw_color_popup(Renderer2D& tr) {
     const char* rgb_labels[3] = { "R", "G", "B" };
     for (int ch = 0; ch < 3; ++ch) {
         float fx = sv_x + ch * (field_w + field_gap);
-        if (color_editing_rgb_ == ch) {
-            std::string buf = std::string(rgb_labels[ch]) + " " + color_rgb_buffer_;
+        if (inspector_.color_editing_rgb == ch) {
+            std::string buf = std::string(rgb_labels[ch]) + " " + inspector_.color_rgb_buffer;
             draw_editing_text_field(tr, style_, fx, rgb_y, field_w, rgb_h,
                                     buf, text_edit_, cursor_blink_on(), 3.0f, 2.0f);
         } else {
@@ -1662,9 +1662,9 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
     const bool has_semantic_hint = !semantic_hint.empty();
     const auto conn = find_param_connection(snap_, node.node_id, pd.name);
     const bool is_connected = conn.connected;
-    bool is_editing_this = editing_param_ &&
-                           edit_node_id_ == single_selected_id() &&
-                           edit_param_name_ == pd.name;
+    bool is_editing_this = inspector_.editing_param &&
+                           inspector_.edit_node_id == single_selected_id() &&
+                           inspector_.edit_param_name == pd.name;
     const auto* midi_mm = snap_.find_midi_mapping(single_selected_id(), pd.name);
     uint8_t lock = (pi < node.param_lock_flags.size()) ? node.param_lock_flags[pi] : 0;
     const bool is_file = pd.type == VIVID_PARAM_FILE;
@@ -1705,7 +1705,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
                  is_connected ? style_.dim_text[1] : 0.82f,
                  is_connected ? style_.dim_text[2] : 0.85f,
                  is_connected ? 0.75f : 1.0f, label_scale);
-    label_rects_.push_back({px, py, tr.text_width(display_label.c_str(), label_scale),
+    inspector_.label_rects.push_back({px, py, tr.text_width(display_label.c_str(), label_scale),
                             tr.line_height() * label_scale, node.node_id, pd.name});
 
     float after_label_x = px + tr.text_width(display_label.c_str(), label_scale) + 6.0f;
@@ -1728,9 +1728,9 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         tr.draw_rect(badge_x, py, badge_w, kMidiBadgeH,
                      0.6f, 0.45f, 0.15f, 0.85f);
         tr.draw_text(badge_x + 4, py, lock_text, 1.0f, 0.85f, 0.4f, 1.0f, 0.8f);
-        lock_badge_rects_.push_back({badge_x, py, badge_w, kMidiBadgeH, node.node_id, pd.name});
+        inspector_.lock_badge_rects.push_back({badge_x, py, badge_w, kMidiBadgeH, node.node_id, pd.name});
     } else {
-        lock_badge_rects_.push_back({after_label_x, py, 18.0f, kMidiBadgeH, node.node_id, pd.name});
+        inspector_.lock_badge_rects.push_back({after_label_x, py, 18.0f, kMidiBadgeH, node.node_id, pd.name});
     }
 
     if (midi_map_waiting_ && midi_map_node_id_ == single_selected_id() &&
@@ -1766,14 +1766,14 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
             float edit_w = panel_w * (plan.compact ? 0.38f : 0.4f);
             float edit_x = px + panel_w - edit_w;
             draw_editing_text_field(tr, style_, edit_x, val_y, edit_w, kLineH,
-                                    edit_buffer_, text_edit_, cursor_blink_on(), 2.0f, 0.0f);
+                                    inspector_.edit_buffer, text_edit_, cursor_blink_on(), 2.0f, 0.0f);
         } else {
             tr.draw_text(val_x, py, display_val.c_str(),
                          is_connected ? style_.dim_text[0] : 0.8f,
                          is_connected ? style_.dim_text[1] : 0.82f,
                          is_connected ? style_.dim_text[2] : 0.85f,
                          is_connected ? 0.75f : 1.0f, value_scale);
-            value_text_rects_.push_back({val_x, val_y, vw, kLineH, single_selected_id(), pd.name});
+            inspector_.value_text_rects.push_back({val_x, val_y, vw, kLineH, single_selected_id(), pd.name});
         }
     }
 
@@ -1797,7 +1797,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         tr.draw_text(px + 6, py + 1,
                      truncate_text(tr, display_name, panel_w - 12.0f).c_str(),
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-        file_button_rects_.push_back({px, py, panel_w, btn_h, single_selected_id(), pd.name});
+        inspector_.file_button_rects.push_back({px, py, panel_w, btn_h, single_selected_id(), pd.name});
         py += btn_h + 6.0f;
     } else if (is_text) {
         std::string text_value;
@@ -1806,7 +1806,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         float field_h = kDropdownH;
         if (is_editing_this) {
             draw_editing_text_field(tr, style_, px, py, panel_w, field_h,
-                                    edit_buffer_, text_edit_, cursor_blink_on(), 6.0f, 1.0f);
+                                    inspector_.edit_buffer, text_edit_, cursor_blink_on(), 6.0f, 1.0f);
         } else {
             tr.draw_rect(px, py, panel_w, field_h,
                          style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
@@ -1814,11 +1814,11 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
             tr.draw_text(px + 6, py + 1, truncate_text(tr, display, panel_w - 12.0f).c_str(),
                          style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         }
-        value_text_rects_.push_back({px, py, panel_w, field_h, single_selected_id(), pd.name});
+        inspector_.value_text_rects.push_back({px, py, panel_w, field_h, single_selected_id(), pd.name});
         py += field_h + 6.0f;
     } else if (is_bool) {
         draw_checkbox(tr, style_, px, py, kCheckboxSize, val > 0.5f, is_connected ? 0.3f : 1.0f);
-        bool_rects_.push_back({px, py, kCheckboxSize, kCheckboxSize, single_selected_id(), pd.name});
+        inspector_.bool_rects.push_back({px, py, kCheckboxSize, kCheckboxSize, single_selected_id(), pd.name});
         tr.draw_text(px + kCheckboxSize + 8.0f, py - 1.0f, val_str.c_str(),
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.85f, 0.8f);
         py += kCheckboxSize + 6.0f;
@@ -1837,7 +1837,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
                      is_connected ? 0.75f : 1.0f);
         tr.draw_text(px + panel_w - 16, py + 1, "\xE2\x96\xBE",
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
-        dropdown_rects_.push_back({px, py, panel_w, dh, single_selected_id(), pd.name});
+        inspector_.dropdown_rects.push_back({px, py, panel_w, dh, single_selected_id(), pd.name});
         py += dh + 6.0f;
     } else {
         float sh = kSliderH;
@@ -1870,7 +1870,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
             tr.draw_rect(thumb_x, py - 2.0f, 6.0f, sh + 4.0f,
                          style_.accent[0], style_.accent[1], style_.accent[2]);
         }
-        slider_rects_.push_back({px, py - 4.0f, panel_w, sh + 8.0f, single_selected_id(), pd.name});
+        inspector_.slider_rects.push_back({px, py - 4.0f, panel_w, sh + 8.0f, single_selected_id(), pd.name});
         py += sh + 10.0f;
     }
 
@@ -1890,44 +1890,44 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         float row_y = py;
         float field_w = 50.0f;
 
-        bool is_editing_min = editing_midi_range_ &&
-                              midi_range_node_id_ == single_selected_id() &&
-                              midi_range_param_name_ == pd.name &&
-                              midi_range_editing_min_;
-        bool is_editing_max = editing_midi_range_ &&
-                              midi_range_node_id_ == single_selected_id() &&
-                              midi_range_param_name_ == pd.name &&
-                              !midi_range_editing_min_;
+        bool is_editing_min = inspector_.editing_midi_range &&
+                              inspector_.midi_range_node_id == single_selected_id() &&
+                              inspector_.midi_range_param_name == pd.name &&
+                              inspector_.midi_range_editing_min;
+        bool is_editing_max = inspector_.editing_midi_range &&
+                              inspector_.midi_range_node_id == single_selected_id() &&
+                              inspector_.midi_range_param_name == pd.name &&
+                              !inspector_.midi_range_editing_min;
 
         tr.draw_text(px, row_y, T("min", "min"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
         float min_x = px + 28.0f;
         if (is_editing_min) {
             draw_editing_text_field(tr, style_, min_x, row_y, field_w, kMidiRangeH - 2,
-                                    edit_buffer_, text_edit_, cursor_blink_on(), 2.0f, 0.0f);
+                                    inspector_.edit_buffer, text_edit_, cursor_blink_on(), 2.0f, 0.0f);
         } else {
             tr.draw_rect(min_x, row_y, field_w, kMidiRangeH - 2,
                          style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
             tr.draw_text(min_x + 2, row_y, format_float(midi_mm->range_min, 2).c_str(), 0.8f, 0.82f, 0.85f);
         }
-        midi_range_rects_.push_back({min_x, row_y, field_w, kMidiRangeH, single_selected_id(), pd.name, true});
+        inspector_.midi_range_rects.push_back({min_x, row_y, field_w, kMidiRangeH, single_selected_id(), pd.name, true});
 
         float max_label_x = min_x + field_w + 10.0f;
         tr.draw_text(max_label_x, row_y, T("max", "max"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
         float max_x = max_label_x + 30.0f;
         if (is_editing_max) {
             draw_editing_text_field(tr, style_, max_x, row_y, field_w, kMidiRangeH - 2,
-                                    edit_buffer_, text_edit_, cursor_blink_on(), 2.0f, 0.0f);
+                                    inspector_.edit_buffer, text_edit_, cursor_blink_on(), 2.0f, 0.0f);
         } else {
             tr.draw_rect(max_x, row_y, field_w, kMidiRangeH - 2,
                          style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
             tr.draw_text(max_x + 2, row_y, format_float(midi_mm->range_max, 2).c_str(), 0.8f, 0.82f, 0.85f);
         }
-        midi_range_rects_.push_back({max_x, row_y, field_w, kMidiRangeH, single_selected_id(), pd.name, false});
+        inspector_.midi_range_rects.push_back({max_x, row_y, field_w, kMidiRangeH, single_selected_id(), pd.name, false});
 
         float remove_x = max_x + field_w + 8.0f;
         tr.draw_rect(remove_x, row_y, 16.0f, kMidiRangeH - 2, 0.5f, 0.2f, 0.2f, 0.8f);
         tr.draw_text(remove_x + 3, row_y, "x", 0.9f, 0.6f, 0.6f);
-        midi_remove_rects_.push_back({remove_x, row_y, 16.0f, kMidiRangeH, single_selected_id(), pd.name});
+        inspector_.midi_remove_rects.push_back({remove_x, row_y, 16.0f, kMidiRangeH, single_selected_id(), pd.name});
 
         py += kMidiRangeH + 4.0f;
     }
@@ -1975,7 +1975,7 @@ void NodeGraphUI::draw_inspector_group_header(Renderer2D& tr, InspectorLayout& l
     tr.draw_text(tx, hy + 3.0f, group_name.c_str(),
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.9f);
 
-    group_header_rects_.push_back({hx, hy, hw, kGroupHeaderH, type_name, group_name});
+    inspector_.group_header_rects.push_back({hx, hy, hw, kGroupHeaderH, type_name, group_name});
     layout.y = hy + kGroupHeaderH + kGroupHeaderPadBottom;
 }
 
@@ -2231,7 +2231,7 @@ static void insp_set_string_param(void* o, const char* p, const char* v) {
 
 void NodeGraphUI::draw_custom_inspector(Renderer2D& tr, const NodeSnapshot& node,
                                         float px, float& py) {
-    if (!custom_inspector_cb_) return;
+    if (!inspector_.custom_inspector_cb) return;
 
     InspCmdCtx cmd_ctx{&commands_, node.node_id};
 
@@ -2290,29 +2290,29 @@ void NodeGraphUI::draw_custom_inspector(Renderer2D& tr, const NodeSnapshot& node
     ctx.mouse.prev_x = mouse_.prev_x - px;
     ctx.mouse.prev_y = mouse_.prev_y - py;
     ctx.mouse.left_down = mouse_.left_down ? 1 : 0;
-    ctx.mouse.left_clicked = insp_mouse_left_clicked_ ? 1 : 0;
-    ctx.mouse.left_released = insp_mouse_left_released_ ? 1 : 0;
-    ctx.mouse.right_clicked = insp_mouse_right_clicked_ ? 1 : 0;
+    ctx.mouse.left_clicked = inspector_.insp_mouse_left_clicked ? 1 : 0;
+    ctx.mouse.left_released = inspector_.insp_mouse_left_released ? 1 : 0;
+    ctx.mouse.right_clicked = inspector_.insp_mouse_right_clicked ? 1 : 0;
     ctx.mouse.shift_down = mouse_.shift_down ? 1 : 0;
 
     // Key/char events
-    ctx.key_events = insp_key_events_.empty() ? nullptr : insp_key_events_.data();
-    ctx.key_event_count = static_cast<uint32_t>(insp_key_events_.size());
-    ctx.char_events = insp_char_events_.empty() ? nullptr : insp_char_events_.data();
-    ctx.char_event_count = static_cast<uint32_t>(insp_char_events_.size());
+    ctx.key_events = inspector_.insp_key_events.empty() ? nullptr : inspector_.insp_key_events.data();
+    ctx.key_event_count = static_cast<uint32_t>(inspector_.insp_key_events.size());
+    ctx.char_events = inspector_.insp_char_events.empty() ? nullptr : inspector_.insp_char_events.data();
+    ctx.char_event_count = static_cast<uint32_t>(inspector_.insp_char_events.size());
 
     ctx.time = 0.0;  // could be wired to glfwGetTime if needed
     ctx.consumed_height = 0.0f;
     ctx.wants_keyboard = 0;
 
-    custom_inspector_cb_(node.node_id, &ctx);
+    inspector_.custom_inspector_cb(node.node_id, &ctx);
 
     py += ctx.consumed_height;
-    custom_inspector_wants_keyboard_ = ctx.wants_keyboard != 0;
+    inspector_.custom_inspector_wants_keyboard = ctx.wants_keyboard != 0;
 
     // Drain event buffers after draw
-    insp_key_events_.clear();
-    insp_char_events_.clear();
+    inspector_.insp_key_events.clear();
+    inspector_.insp_char_events.clear();
 }
 
 void NodeGraphUI::draw_section_separator(Renderer2D& tr, float px, float& py,
@@ -2342,13 +2342,13 @@ void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& 
     tr.draw_text(px, py, T("resolution", "Resolution"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     py += kLineH;
 
-    bool editing_w = editing_resolution_ &&
-                     edit_res_node_id_ == single_selected_id() && edit_res_is_width_;
-    bool editing_h = editing_resolution_ &&
-                     edit_res_node_id_ == single_selected_id() && !edit_res_is_width_;
+    bool editing_w = inspector_.editing_resolution &&
+                     inspector_.edit_res_node_id == single_selected_id() && inspector_.edit_res_is_width;
+    bool editing_h = inspector_.editing_resolution &&
+                     inspector_.edit_res_node_id == single_selected_id() && !inspector_.edit_res_is_width;
 
-    std::string w_str = editing_w ? edit_buffer_ : format_uint(node.gpu_tex_width);
-    std::string h_str = editing_h ? edit_buffer_ : format_uint(node.gpu_tex_height);
+    std::string w_str = editing_w ? inspector_.edit_buffer : format_uint(node.gpu_tex_width);
+    std::string h_str = editing_h ? inspector_.edit_buffer : format_uint(node.gpu_tex_height);
 
     float val_x = px + 4;
 
@@ -2361,12 +2361,12 @@ void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& 
                      editing_w ? 1.0f : 0.82f,
                      editing_w ? 1.0f : 0.85f);
         if (editing_w && cursor_blink_on()) {
-            int cpos = std::max(0, std::min(text_edit_.cursor, static_cast<int>(edit_buffer_.size())));
-            float cur_x = val_x + tr.text_width(edit_buffer_.substr(0, cpos).c_str());
+            int cpos = std::max(0, std::min(text_edit_.cursor, static_cast<int>(inspector_.edit_buffer.size())));
+            float cur_x = val_x + tr.text_width(inspector_.edit_buffer.substr(0, cpos).c_str());
             tr.draw_rect(cur_x, py, 1.0f, kLineH,
                          style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         }
-        resolution_rects_.push_back({val_x, py, kResInputW, kLineH,
+        inspector_.resolution_rects.push_back({val_x, py, kResInputW, kLineH,
                                      single_selected_id(), true});
     } else {
         tr.draw_text(val_x, py, w_str.c_str(), 0.5f, 0.52f, 0.55f);
@@ -2385,12 +2385,12 @@ void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& 
                      editing_h ? 1.0f : 0.82f,
                      editing_h ? 1.0f : 0.85f);
         if (editing_h && cursor_blink_on()) {
-            int cpos = std::max(0, std::min(text_edit_.cursor, static_cast<int>(edit_buffer_.size())));
-            float cur_x = h_val_x + tr.text_width(edit_buffer_.substr(0, cpos).c_str());
+            int cpos = std::max(0, std::min(text_edit_.cursor, static_cast<int>(inspector_.edit_buffer.size())));
+            float cur_x = h_val_x + tr.text_width(inspector_.edit_buffer.substr(0, cpos).c_str());
             tr.draw_rect(cur_x, py, 1.0f, kLineH,
                          style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         }
-        resolution_rects_.push_back({h_val_x, py, kResInputW, kLineH,
+        inspector_.resolution_rects.push_back({h_val_x, py, kResInputW, kLineH,
                                      single_selected_id(), false});
     } else {
         tr.draw_text(h_val_x, py, h_str.c_str(), 0.5f, 0.52f, 0.55f);
@@ -2437,8 +2437,8 @@ void NodeGraphUI::draw_inspector_state_presets(Renderer2D& tr, const NodeSnapsho
     for (int si = 0; si < state_count; ++si) {
         auto collapse_key = "__state_preset\t" + std::to_string(si);
         bool collapsed = false;
-        auto cit = group_collapsed_.find(collapse_key);
-        if (cit != group_collapsed_.end()) collapsed = cit->second;
+        auto cit = inspector_.group_collapsed.find(collapse_key);
+        if (cit != inspector_.group_collapsed.end()) collapsed = cit->second;
 
         // Draw collapsible header
         float hy = py;
@@ -2461,7 +2461,7 @@ void NodeGraphUI::draw_inspector_state_presets(Renderer2D& tr, const NodeSnapsho
         tr.draw_text(cx + cs + 6.0f, hy + 3.0f, header_label.c_str(),
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.9f);
 
-        state_header_rects_.push_back({px, hy, panel_w, kGroupHeaderH, si});
+        inspector_.state_header_rects.push_back({px, hy, panel_w, kGroupHeaderH, si});
         py = hy + kGroupHeaderH;
 
         if (collapsed) continue;
@@ -2493,7 +2493,7 @@ void NodeGraphUI::draw_inspector_state_presets(Renderer2D& tr, const NodeSnapsho
             tr.draw_text(dd_x + dd_w - 14, py + 3, "\xe2\x96\xbe",
                          style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
 
-            state_preset_rects_.push_back({dd_x, py, dd_w, dd_h, node.node_id, si, pn.node_id});
+            inspector_.state_preset_rects.push_back({dd_x, py, dd_w, dd_h, node.node_id, si, pn.node_id});
 
             py += dd_h + 2;
         }
@@ -3486,16 +3486,16 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
     draw_param_picker(tr);
 
     // Stash renderer ref for input-time submenu width calculations
-    dropdown_tr_ = &tr;
+    inspector_.dropdown_tr = &tr;
 
     // Dropdown popup
-    if (dropdown_open_ && !dropdown_labels_.empty()) {
+    if (inspector_.dropdown_open && !inspector_.dropdown_labels.empty()) {
         float item_h = kDropdownItemH;
 
         // Preset dropdowns use hierarchical submenu rendering
-        if ((dropdown_is_preset_ || dropdown_is_state_preset_) && !dropdown_submenu_stack_.empty()) {
-            for (size_t lvl = 0; lvl < dropdown_submenu_stack_.size(); ++lvl) {
-                auto& level = dropdown_submenu_stack_[lvl];
+        if ((inspector_.dropdown_is_preset || inspector_.dropdown_is_state_preset) && !inspector_.dropdown_submenu_stack.empty()) {
+            for (size_t lvl = 0; lvl < inspector_.dropdown_submenu_stack.size(); ++lvl) {
+                auto& level = inspector_.dropdown_submenu_stack[lvl];
                 if (!level.items || level.items->empty()) continue;
                 int count = static_cast<int>(level.items->size());
                 float popup_h = count * item_h + 4;
@@ -3543,16 +3543,16 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
             }
         } else {
             // Non-preset flat dropdown (param selectors, etc.)
-            float popup_h = dropdown_labels_.size() * item_h + 4;
-            draw_popup_bg(tr, style_, dropdown_x_, dropdown_y_, dropdown_w_, popup_h);
-            for (int i = 0; i < static_cast<int>(dropdown_labels_.size()); ++i) {
-                float iy = dropdown_y_ + 2 + i * item_h;
-                if (i == dropdown_flat_hovered_idx_ || i == dropdown_sel_) {
-                    tr.draw_rect(dropdown_x_ + 2, iy, dropdown_w_ - 4, item_h,
+            float popup_h = inspector_.dropdown_labels.size() * item_h + 4;
+            draw_popup_bg(tr, style_, inspector_.dropdown_x, inspector_.dropdown_y, inspector_.dropdown_w, popup_h);
+            for (int i = 0; i < static_cast<int>(inspector_.dropdown_labels.size()); ++i) {
+                float iy = inspector_.dropdown_y + 2 + i * item_h;
+                if (i == inspector_.dropdown_flat_hovered_idx || i == inspector_.dropdown_sel) {
+                    tr.draw_rect(inspector_.dropdown_x + 2, iy, inspector_.dropdown_w - 4, item_h,
                                  style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2],
-                                 (i == dropdown_flat_hovered_idx_) ? 0.9f : 0.5f);
+                                 (i == inspector_.dropdown_flat_hovered_idx) ? 0.9f : 0.5f);
                 }
-                tr.draw_text(dropdown_x_ + 8, iy + 2, dropdown_labels_[i].c_str(),
+                tr.draw_text(inspector_.dropdown_x + 8, iy + 2, inspector_.dropdown_labels[i].c_str(),
                              style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
             }
         }
@@ -4350,13 +4350,13 @@ void NodeGraphUI::draw_thumbnails(ThumbnailRenderer& renderer, const ThumbnailCa
 // Parameter picker popup
 // -----------------------------------------------------------------------
 void NodeGraphUI::draw_param_picker(Renderer2D& tr) {
-    if (!param_picker_open_ || param_picker_items_.empty()) return;
+    if (!inspector_.param_picker_open || inspector_.param_picker_items.empty()) return;
 
-    int visible = std::min(static_cast<int>(param_picker_items_.size()), kPickerMaxVisible);
+    int visible = std::min(static_cast<int>(inspector_.param_picker_items.size()), kPickerMaxVisible);
     float popup_h = visible * kPickerItemH + 4;
 
-    float px = param_picker_x_;
-    float py = param_picker_y_;
+    float px = inspector_.param_picker_x;
+    float py = inspector_.param_picker_y;
 
     // Clamp to window bounds
     if (px + kPickerW > static_cast<float>(win_w_)) px = static_cast<float>(win_w_) - kPickerW;
@@ -4368,30 +4368,30 @@ void NodeGraphUI::draw_param_picker(Renderer2D& tr) {
     // Items
     float pk_list_top = py + 2;
     float pk_list_area_h = visible * kPickerItemH;
-    int pk_first = std::max(0, static_cast<int>(std::floor(param_picker_scroll_ / kPickerItemH)));
-    float pk_offset = param_picker_scroll_ - pk_first * kPickerItemH;
-    int pk_draw_count = std::min(static_cast<int>(param_picker_items_.size()) - pk_first, kPickerMaxVisible + 1);
+    int pk_first = std::max(0, static_cast<int>(std::floor(inspector_.param_picker_scroll / kPickerItemH)));
+    float pk_offset = inspector_.param_picker_scroll - pk_first * kPickerItemH;
+    int pk_draw_count = std::min(static_cast<int>(inspector_.param_picker_items.size()) - pk_first, kPickerMaxVisible + 1);
 
     tr.push_clip_rect(px, pk_list_top, kPickerW, pk_list_area_h);
     for (int vi = 0; vi < pk_draw_count; ++vi) {
         int idx = pk_first + vi;
-        if (idx >= static_cast<int>(param_picker_items_.size())) break;
+        if (idx >= static_cast<int>(inspector_.param_picker_items.size())) break;
 
         float iy = pk_list_top - pk_offset + vi * kPickerItemH;
-        if (idx == param_picker_sel_) {
+        if (idx == inspector_.param_picker_sel) {
             tr.draw_rect(px + 2, iy, kPickerW - 4, kPickerItemH,
                          style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2], 0.9f);
         }
 
-        bool is_param = (!param_picker_item_is_param_.empty() &&
-                         idx < static_cast<int>(param_picker_item_is_param_.size()) &&
-                         param_picker_item_is_param_[idx]);
+        bool is_param = (!inspector_.param_picker_item_is_param.empty() &&
+                         idx < static_cast<int>(inspector_.param_picker_item_is_param.size()) &&
+                         inspector_.param_picker_item_is_param[idx]);
         if (is_param) {
-            std::string display = "\xC2\xB7 " + param_picker_items_[idx];  // "· name"
+            std::string display = "\xC2\xB7 " + inspector_.param_picker_items[idx];  // "· name"
             tr.draw_text(px + 8, iy + 3, display.c_str(),
                          style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.6f);
         } else {
-            tr.draw_text(px + 8, iy + 3, param_picker_items_[idx].c_str(),
+            tr.draw_text(px + 8, iy + 3, inspector_.param_picker_items[idx].c_str(),
                          style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         }
     }

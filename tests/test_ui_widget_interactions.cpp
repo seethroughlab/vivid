@@ -95,7 +95,7 @@ int main() {
         NodeGraphUI ui(sink);
         auto snap = make_widget_snapshot();
         ui.selected_node_ids_ = {"widget1"};
-        ui.slider_rects_.push_back({920.0f, 120.0f, 160.0f, 16.0f, "widget1", "gain"});
+        ui.inspector_.slider_rects.push_back({920.0f, 120.0f, 160.0f, 16.0f, "widget1", "gain"});
         ui.on_mouse_move(940.0f, 128.0f);
         ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
         ui.update(snap);
@@ -136,7 +136,7 @@ int main() {
         NodeGraphUI ui(sink);
         ui.selected_node_ids_ = {"clock1"};
         // Slider for bpm: drag to 50% position → should emit ~150.5
-        ui.slider_rects_.push_back({920.0f, 120.0f, 160.0f, 16.0f, "clock1", "bpm"});
+        ui.inspector_.slider_rects.push_back({920.0f, 120.0f, 160.0f, 16.0f, "clock1", "bpm"});
         ui.on_mouse_move(1000.0f, 128.0f);  // 50% of slider (920+80)
         ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
         ui.update(clock_snap);
@@ -179,7 +179,7 @@ int main() {
         NodeGraphUI ui(sink);
         ui.selected_node_ids_ = {"clock1"};
         // Slider for beats_per_bar: drag to 75% → should round to int
-        ui.slider_rects_.push_back({920.0f, 140.0f, 160.0f, 16.0f, "clock1", "beats_per_bar"});
+        ui.inspector_.slider_rects.push_back({920.0f, 140.0f, 160.0f, 16.0f, "clock1", "beats_per_bar"});
         ui.on_mouse_move(1040.0f, 148.0f);  // 75% of slider
         ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
         ui.update(clock_snap);
@@ -199,7 +199,7 @@ int main() {
         NodeGraphUI ui(sink);
         auto snap = make_widget_snapshot();
         ui.selected_node_ids_ = {"widget1"};
-        ui.xy_pad_rects_.push_back({920.0f, 160.0f, 120.0f, 120.0f, "widget1", "pos_x", "pos_y"});
+        ui.inspector_.xy_pad_rects.push_back({920.0f, 160.0f, 120.0f, 120.0f, "widget1", "pos_x", "pos_y"});
         ui.on_mouse_move(940.0f, 180.0f);
         ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
         ui.update(snap);
@@ -221,17 +221,17 @@ int main() {
         NodeGraphUI ui(sink);
         auto snap = make_widget_snapshot();
         ui.selected_node_ids_ = {"widget1"};
-        ui.color_popup_open_ = true;
-        ui.color_popup_node_id_ = "widget1";
-        ui.color_popup_param_r_ = "r";
-        ui.color_popup_param_g_ = "g";
-        ui.color_popup_param_b_ = "b";
-        ui.color_popup_x_ = 920.0f;
-        ui.color_popup_y_ = 140.0f;
-        ui.color_dragging_sv_ = true;
+        ui.inspector_.color_popup_open = true;
+        ui.inspector_.color_popup_node_id = "widget1";
+        ui.inspector_.color_popup_param_r = "r";
+        ui.inspector_.color_popup_param_g = "g";
+        ui.inspector_.color_popup_param_b = "b";
+        ui.inspector_.color_popup_x = 920.0f;
+        ui.inspector_.color_popup_y = 140.0f;
+        ui.inspector_.color_dragging_sv = true;
         ui.mouse_.left_down = true;
-        ui.mouse_.x = ui.color_popup_x_ + kColorPopupPad + kColorPopupSVSize;
-        ui.mouse_.y = ui.color_popup_y_ + kColorPopupPad;
+        ui.mouse_.x = ui.inspector_.color_popup_x + kColorPopupPad + kColorPopupSVSize;
+        ui.mouse_.y = ui.inspector_.color_popup_y + kColorPopupPad;
         ui.update(snap);
         check(sink.set_param_calls.size() == 3, "Color SV drag updates all RGB channels");
     }
@@ -241,17 +241,17 @@ int main() {
         NodeGraphUI ui(sink);
         auto snap = make_widget_snapshot();
         ui.selected_node_ids_ = {"widget1"};
-        ui.color_popup_open_ = true;
-        ui.color_popup_node_id_ = "widget1";
-        ui.color_popup_param_r_ = "r";
-        ui.color_popup_param_g_ = "g";
-        ui.color_popup_param_b_ = "b";
-        ui.color_popup_x_ = 920.0f;
-        ui.color_popup_y_ = 140.0f;
-        ui.color_dragging_hue_ = true;
+        ui.inspector_.color_popup_open = true;
+        ui.inspector_.color_popup_node_id = "widget1";
+        ui.inspector_.color_popup_param_r = "r";
+        ui.inspector_.color_popup_param_g = "g";
+        ui.inspector_.color_popup_param_b = "b";
+        ui.inspector_.color_popup_x = 920.0f;
+        ui.inspector_.color_popup_y = 140.0f;
+        ui.inspector_.color_dragging_hue = true;
         ui.mouse_.left_down = true;
-        ui.mouse_.x = ui.color_popup_x_ + kColorPopupPad + kColorPopupSVSize + kColorPopupGap + kColorHueBarW * 0.5f;
-        ui.mouse_.y = ui.color_popup_y_ + kColorPopupPad + kColorPopupSVSize;
+        ui.mouse_.x = ui.inspector_.color_popup_x + kColorPopupPad + kColorPopupSVSize + kColorPopupGap + kColorHueBarW * 0.5f;
+        ui.mouse_.y = ui.inspector_.color_popup_y + kColorPopupPad + kColorPopupSVSize;
         ui.update(snap);
         check(sink.set_param_calls.size() == 3, "Color hue drag updates all RGB channels");
     }
@@ -261,13 +261,13 @@ int main() {
         NodeGraphUI ui(sink);
         auto snap = make_widget_snapshot();
         ui.selected_node_ids_ = {"widget1"};
-        ui.color_popup_open_ = true;
-        ui.color_popup_node_id_ = "widget1";
-        ui.color_popup_param_r_ = "r";
-        ui.color_popup_param_g_ = "g";
-        ui.color_popup_param_b_ = "b";
-        ui.color_editing_hex_ = true;
-        ui.color_hex_buffer_ = "#336699";
+        ui.inspector_.color_popup_open = true;
+        ui.inspector_.color_popup_node_id = "widget1";
+        ui.inspector_.color_popup_param_r = "r";
+        ui.inspector_.color_popup_param_g = "g";
+        ui.inspector_.color_popup_param_b = "b";
+        ui.inspector_.color_editing_hex = true;
+        ui.inspector_.color_hex_buffer = "#336699";
         ui.on_key(GLFW_KEY_ENTER, GLFW_PRESS, 0);
         check(sink.set_param_calls.size() == 3, "Color hex commit updates all RGB channels");
         check(std::fabs(sink.set_param_calls[0].value - 0.2f) < 0.01f &&
@@ -281,19 +281,19 @@ int main() {
         NodeGraphUI ui(sink);
         auto snap = make_widget_snapshot();
         ui.selected_node_ids_ = {"widget1"};
-        ui.color_popup_open_ = true;
-        ui.color_popup_node_id_ = "widget1";
-        ui.color_popup_param_r_ = "r";
-        ui.color_popup_param_g_ = "g";
-        ui.color_popup_param_b_ = "b";
-        ui.color_editing_rgb_ = 0;
-        ui.color_rgb_buffer_ = "255";
+        ui.inspector_.color_popup_open = true;
+        ui.inspector_.color_popup_node_id = "widget1";
+        ui.inspector_.color_popup_param_r = "r";
+        ui.inspector_.color_popup_param_g = "g";
+        ui.inspector_.color_popup_param_b = "b";
+        ui.inspector_.color_editing_rgb = 0;
+        ui.inspector_.color_rgb_buffer = "255";
         ui.on_key(GLFW_KEY_TAB, GLFW_PRESS, 0);
         check(sink.set_param_calls.size() == 1 &&
                   sink.set_param_calls[0].param == "r" &&
                   std::fabs(sink.set_param_calls[0].value - 1.0f) < 0.001f,
               "RGB text edit commits the active channel on Tab");
-        check(ui.color_editing_rgb_ == 1, "RGB text edit advances focus to the next channel");
+        check(ui.inspector_.color_editing_rgb == 1, "RGB text edit advances focus to the next channel");
     }
 
     {
@@ -301,7 +301,7 @@ int main() {
         NodeGraphUI ui(sink);
         auto snap = make_widget_snapshot();
         ui.selected_node_ids_ = {"widget1"};
-        ui.value_text_rects_.push_back({920.0f, 120.0f, 80.0f, 18.0f, "widget1", "percent"});
+        ui.inspector_.value_text_rects.push_back({920.0f, 120.0f, 80.0f, 18.0f, "widget1", "percent"});
         ui.on_mouse_move(940.0f, 128.0f);
         ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
         ui.update(snap);
@@ -320,7 +320,7 @@ int main() {
         NodeGraphUI ui(sink);
         auto snap = make_widget_snapshot();
         ui.selected_node_ids_ = {"widget1"};
-        ui.value_text_rects_.push_back({920.0f, 120.0f, 80.0f, 18.0f, "widget1", "percent"});
+        ui.inspector_.value_text_rects.push_back({920.0f, 120.0f, 80.0f, 18.0f, "widget1", "percent"});
         ui.on_mouse_move(940.0f, 128.0f);
         ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
         ui.update(snap);
@@ -336,7 +336,7 @@ int main() {
         NodeGraphUI ui(sink);
         auto snap = make_widget_snapshot();
         ui.selected_node_ids_ = {"widget1"};
-        ui.dropdown_rects_.push_back({920.0f, 220.0f, 120.0f, 18.0f, "widget1", "mode"});
+        ui.inspector_.dropdown_rects.push_back({920.0f, 220.0f, 120.0f, 18.0f, "widget1", "mode"});
         ui.on_mouse_move(940.0f, 228.0f);
         ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
         ui.update(snap);
@@ -354,7 +354,7 @@ int main() {
         NodeGraphUI ui(sink);
         auto snap = make_widget_snapshot();
         ui.selected_node_ids_ = {"widget1"};
-        ui.bool_rects_.push_back({920.0f, 260.0f, 14.0f, 14.0f, "widget1", "enabled"});
+        ui.inspector_.bool_rects.push_back({920.0f, 260.0f, 14.0f, 14.0f, "widget1", "enabled"});
         ui.on_mouse_move(926.0f, 266.0f);
         ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
         ui.update(snap);
@@ -390,7 +390,7 @@ int main() {
         NodeGraphUI ui(sink);
         ui.selected_node_ids_ = {"chorus1"};
         // Knob hit rect (kKnobDiameter + 4 = 44)
-        ui.slider_rects_.push_back({920.0f, 120.0f, 44.0f, 44.0f, "chorus1", "rate"});
+        ui.inspector_.slider_rects.push_back({920.0f, 120.0f, 44.0f, 44.0f, "chorus1", "rate"});
         ui.on_mouse_move(942.0f, 142.0f);
         ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
         ui.update(snap);
@@ -430,7 +430,7 @@ int main() {
         NodeGraphUI ui(sink);
         ui.selected_node_ids_ = {"chorus1"};
         // Knob hit rect (same dimensions as float knob)
-        ui.slider_rects_.push_back({920.0f, 120.0f, 44.0f, 44.0f, "chorus1", "voices"});
+        ui.inspector_.slider_rects.push_back({920.0f, 120.0f, 44.0f, 44.0f, "chorus1", "voices"});
         ui.on_mouse_move(942.0f, 142.0f);
         ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
         ui.update(snap);

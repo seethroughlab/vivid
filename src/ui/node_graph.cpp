@@ -38,8 +38,8 @@ bool NodeGraphUI::select_single_node_for_review(const std::string& node_id) {
     selected_node_ids_.insert(node_id);
     selected_wire_idx_ = -1;
     pending_select_node_id_.clear();
-    insp_scroll_y_ = 0.0f;
-    insp_scroll_node_id_.clear();
+    inspector_.insp_scroll_y = 0.0f;
+    inspector_.insp_scroll_node_id.clear();
     return true;
 }
 
@@ -214,14 +214,14 @@ int NodeGraphUI::hit_test_rect(const std::vector<RectT>& rects, float mx, float 
 }
 
 // Explicit instantiations for rect types used across translation units
-template int NodeGraphUI::hit_test_rect(const std::vector<InspectorRect>& rects, float mx, float my);
-template int NodeGraphUI::hit_test_rect(const std::vector<ResolutionRect>& rects, float mx, float my);
-template int NodeGraphUI::hit_test_rect(const std::vector<MidiRemoveRect>& rects, float mx, float my);
-template int NodeGraphUI::hit_test_rect(const std::vector<MidiRangeRect>& rects, float mx, float my);
-template int NodeGraphUI::hit_test_rect(const std::vector<XYPadRect>& rects, float mx, float my);
-template int NodeGraphUI::hit_test_rect(const std::vector<ColorSwatchRect>& rects, float mx, float my);
-template int NodeGraphUI::hit_test_rect(const std::vector<StatePresetRect>& rects, float mx, float my);
-template int NodeGraphUI::hit_test_rect(const std::vector<StateHeaderRect>& rects, float mx, float my);
+template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::InspectorRect>& rects, float mx, float my);
+template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::ResolutionRect>& rects, float mx, float my);
+template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::MidiRemoveRect>& rects, float mx, float my);
+template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::MidiRangeRect>& rects, float mx, float my);
+template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::XYPadRect>& rects, float mx, float my);
+template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::ColorSwatchRect>& rects, float mx, float my);
+template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::StatePresetRect>& rects, float mx, float my);
+template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::StateHeaderRect>& rects, float mx, float my);
 
 // -----------------------------------------------------------------------
 // Port visibility helpers
@@ -817,79 +817,79 @@ int NodeGraphUI::hit_test_wire(float sx, float sy) const {
 // Text editing
 // -----------------------------------------------------------------------
 void NodeGraphUI::confirm_param_edit() {
-    if (!editing_param_) return;
-    const auto* ns = snap_.find_node(edit_node_id_);
+    if (!inspector_.editing_param) return;
+    const auto* ns = snap_.find_node(inspector_.edit_node_id);
     if (ns) {
-        const ParamInfo* pd = ns->find_param(edit_param_name_);
+        const ParamInfo* pd = ns->find_param(inspector_.edit_param_name);
         if (pd) {
             if (pd->type == VIVID_PARAM_TEXT) {
-                commands_.set_string_param(edit_node_id_, edit_param_name_, edit_buffer_);
+                commands_.set_string_param(inspector_.edit_node_id, inspector_.edit_param_name, inspector_.edit_buffer);
             } else {
                 try {
-                    float val = std::stof(edit_buffer_);
+                    float val = std::stof(inspector_.edit_buffer);
                 val = std::max(pd->min_value, std::min(pd->max_value, val));
                 if (pd->type == VIVID_PARAM_INT) val = std::round(val);
-                commands_.set_param(edit_node_id_, edit_param_name_, val);
+                commands_.set_param(inspector_.edit_node_id, inspector_.edit_param_name, val);
                 } catch (...) {
                     // Invalid input — silently discard
                 }
             }
         }
     }
-    editing_param_ = false;
-    edit_buffer_.clear();
+    inspector_.editing_param = false;
+    inspector_.edit_buffer.clear();
 }
 
 void NodeGraphUI::cancel_param_edit() {
-    editing_param_ = false;
-    edit_buffer_.clear();
+    inspector_.editing_param = false;
+    inspector_.edit_buffer.clear();
 }
 
 void NodeGraphUI::confirm_resolution_edit() {
-    if (!editing_resolution_) return;
+    if (!inspector_.editing_resolution) return;
     try {
-        int val = std::stoi(edit_buffer_);
+        int val = std::stoi(inspector_.edit_buffer);
         if (val < 1) val = 1;
         if (val > 8192) val = 8192;
 
-        const auto* ns = snap_.find_node(edit_res_node_id_);
+        const auto* ns = snap_.find_node(inspector_.edit_res_node_id);
         if (ns) {
-            uint32_t new_w = edit_res_is_width_ ? static_cast<uint32_t>(val) : ns->gpu_tex_width;
-            uint32_t new_h = edit_res_is_width_ ? ns->gpu_tex_height : static_cast<uint32_t>(val);
-            commands_.set_resolution(edit_res_node_id_, new_w, new_h);
+            uint32_t new_w = inspector_.edit_res_is_width ? static_cast<uint32_t>(val) : ns->gpu_tex_width;
+            uint32_t new_h = inspector_.edit_res_is_width ? ns->gpu_tex_height : static_cast<uint32_t>(val);
+            commands_.set_resolution(inspector_.edit_res_node_id, new_w, new_h);
         }
     } catch (...) {
         // Invalid input — silently discard
     }
-    editing_resolution_ = false;
-    edit_buffer_.clear();
+    inspector_.editing_resolution = false;
+    inspector_.edit_buffer.clear();
 }
 
 void NodeGraphUI::cancel_resolution_edit() {
-    editing_resolution_ = false;
-    edit_buffer_.clear();
+    inspector_.editing_resolution = false;
+    inspector_.edit_buffer.clear();
 }
 
 void NodeGraphUI::confirm_midi_range_edit() {
-    if (!editing_midi_range_) return;
+    if (!inspector_.editing_midi_range) return;
     try {
-        float val = std::stof(edit_buffer_);
-        const auto* mm = snap_.find_midi_mapping(midi_range_node_id_, midi_range_param_name_);
+        float val = std::stof(inspector_.edit_buffer);
+        const auto* mm = snap_.find_midi_mapping(inspector_.midi_range_node_id, inspector_.midi_range_param_name);
         if (mm) {
-            float new_min = midi_range_editing_min_ ? val : mm->range_min;
-            float new_max = midi_range_editing_min_ ? mm->range_max : val;
-            commands_.update_midi_mapping(midi_range_node_id_, midi_range_param_name_, new_min, new_max);
+            float new_min = inspector_.midi_range_editing_min ? val : mm->range_min;
+            float new_max = inspector_.midi_range_editing_min ? mm->range_max : val;
+            commands_.update_midi_mapping(inspector_.midi_range_node_id, inspector_.midi_range_param_name, new_min, new_max);
         }
     } catch (...) {
         // Invalid input — silently discard
     }
-    editing_midi_range_ = false;
-    edit_buffer_.clear();
+    inspector_.editing_midi_range = false;
+    inspector_.edit_buffer.clear();
 }
 
 void NodeGraphUI::cancel_midi_range_edit() {
-    editing_midi_range_ = false;
-    edit_buffer_.clear();
+    inspector_.editing_midi_range = false;
+    inspector_.edit_buffer.clear();
 }
 
 // -----------------------------------------------------------------------
@@ -1468,9 +1468,9 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     handle_left_click();     // dispatches to sub-handlers
     update_pan_release();
     // Preserve click events for custom inspector draw phase
-    insp_mouse_left_clicked_ = mouse_.left_clicked;
-    insp_mouse_left_released_ = mouse_.left_released;
-    insp_mouse_right_clicked_ = mouse_.right_clicked;
+    inspector_.insp_mouse_left_clicked = mouse_.left_clicked;
+    inspector_.insp_mouse_left_released = mouse_.left_released;
+    inspector_.insp_mouse_right_clicked = mouse_.right_clicked;
     clear_frame_flags();
     update_wire_hover();
     update_node_hover();
@@ -1478,7 +1478,7 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     // Port hover — find nearest port when not in a drag/popup state
     hovered_port_ = {};
     if (hovered_node_id_.empty() && !dragging_wire_ && !panning_ && !box_selecting_ &&
-        dragging_node_idx_ < 0 && !context_menu_open_ && !chooser_open_ && !dropdown_open_) {
+        dragging_node_idx_ < 0 && !context_menu_open_ && !chooser_open_ && !inspector_.dropdown_open) {
         PortHit ph = hit_test_port(mouse_.x, mouse_.y);
         if (ph.node_idx >= 0 && ph.node_idx < static_cast<int>(node_rects_.size())) {
             hovered_port_.node_id = node_rects_[ph.node_idx].node_id;
@@ -1488,72 +1488,72 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     }
 
     // Inspector widget hover
-    hovered_slider_idx_ = -1;
-    hovered_bool_idx_ = -1;
-    hovered_dropdown_idx_ = -1;
-    hovered_label_idx_ = -1;
-    if (mouse_.x >= graph_right() && has_selection() && !editing_param_) {
-        for (int i = 0; i < static_cast<int>(slider_rects_.size()); ++i) {
-            const auto& r = slider_rects_[i];
+    inspector_.hovered_slider_idx = -1;
+    inspector_.hovered_bool_idx = -1;
+    inspector_.hovered_dropdown_idx = -1;
+    inspector_.hovered_label_idx = -1;
+    if (mouse_.x >= graph_right() && has_selection() && !inspector_.editing_param) {
+        for (int i = 0; i < static_cast<int>(inspector_.slider_rects.size()); ++i) {
+            const auto& r = inspector_.slider_rects[i];
             if (mouse_.x >= r.x && mouse_.x <= r.x + r.w &&
                 mouse_.y >= r.y && mouse_.y <= r.y + r.h) {
-                hovered_slider_idx_ = i;
+                inspector_.hovered_slider_idx = i;
                 break;
             }
         }
-        for (int i = 0; i < static_cast<int>(bool_rects_.size()); ++i) {
-            const auto& r = bool_rects_[i];
+        for (int i = 0; i < static_cast<int>(inspector_.bool_rects.size()); ++i) {
+            const auto& r = inspector_.bool_rects[i];
             if (mouse_.x >= r.x && mouse_.x <= r.x + r.w &&
                 mouse_.y >= r.y && mouse_.y <= r.y + r.h) {
-                hovered_bool_idx_ = i;
+                inspector_.hovered_bool_idx = i;
                 break;
             }
         }
-        for (int i = 0; i < static_cast<int>(dropdown_rects_.size()); ++i) {
-            const auto& r = dropdown_rects_[i];
+        for (int i = 0; i < static_cast<int>(inspector_.dropdown_rects.size()); ++i) {
+            const auto& r = inspector_.dropdown_rects[i];
             if (mouse_.x >= r.x && mouse_.x <= r.x + r.w &&
                 mouse_.y >= r.y && mouse_.y <= r.y + r.h) {
-                hovered_dropdown_idx_ = i;
+                inspector_.hovered_dropdown_idx = i;
                 break;
             }
         }
-        for (int i = 0; i < static_cast<int>(label_rects_.size()); ++i) {
-            const auto& r = label_rects_[i];
+        for (int i = 0; i < static_cast<int>(inspector_.label_rects.size()); ++i) {
+            const auto& r = inspector_.label_rects[i];
             if (mouse_.x >= r.x && mouse_.x <= r.x + r.w &&
                 mouse_.y >= r.y && mouse_.y <= r.y + r.h) {
-                hovered_label_idx_ = i;
+                inspector_.hovered_label_idx = i;
                 break;
             }
         }
     }
 
     // Flat dropdown popup hover tracking (non-preset param dropdowns)
-    dropdown_flat_hovered_idx_ = -1;
-    if (dropdown_open_ && !dropdown_is_preset_ && !dropdown_is_state_preset_ && !dropdown_labels_.empty()) {
+    inspector_.dropdown_flat_hovered_idx = -1;
+    if (inspector_.dropdown_open && !inspector_.dropdown_is_preset && !inspector_.dropdown_is_state_preset && !inspector_.dropdown_labels.empty()) {
         float item_h = kDropdownItemH;
-        float popup_h = dropdown_labels_.size() * item_h + 4;
-        if (mouse_.x >= dropdown_x_ && mouse_.x <= dropdown_x_ + dropdown_w_ &&
-            mouse_.y >= dropdown_y_ && mouse_.y <= dropdown_y_ + popup_h) {
-            int idx = static_cast<int>((mouse_.y - dropdown_y_ - 2) / item_h);
-            if (idx >= 0 && idx < static_cast<int>(dropdown_labels_.size()))
-                dropdown_flat_hovered_idx_ = idx;
+        float popup_h = inspector_.dropdown_labels.size() * item_h + 4;
+        if (mouse_.x >= inspector_.dropdown_x && mouse_.x <= inspector_.dropdown_x + inspector_.dropdown_w &&
+            mouse_.y >= inspector_.dropdown_y && mouse_.y <= inspector_.dropdown_y + popup_h) {
+            int idx = static_cast<int>((mouse_.y - inspector_.dropdown_y - 2) / item_h);
+            if (idx >= 0 && idx < static_cast<int>(inspector_.dropdown_labels.size()))
+                inspector_.dropdown_flat_hovered_idx = idx;
         }
     }
 
     // Param label tooltip hover timer
-    if (hovered_label_idx_ >= 0) {
-        const auto& r = label_rects_[hovered_label_idx_];
-        if (r.node_id == label_hover_node_id_ && r.param_name == label_hover_param_name_) {
-            label_hover_time_ += dt_;
+    if (inspector_.hovered_label_idx >= 0) {
+        const auto& r = inspector_.label_rects[inspector_.hovered_label_idx];
+        if (r.node_id == inspector_.label_hover_node_id && r.param_name == inspector_.label_hover_param_name) {
+            inspector_.label_hover_time += dt_;
         } else {
-            label_hover_node_id_ = r.node_id;
-            label_hover_param_name_ = r.param_name;
-            label_hover_time_ = 0.0f;
+            inspector_.label_hover_node_id = r.node_id;
+            inspector_.label_hover_param_name = r.param_name;
+            inspector_.label_hover_time = 0.0f;
         }
     } else {
-        label_hover_time_ = 0.0f;
-        label_hover_node_id_.clear();
-        label_hover_param_name_.clear();
+        inspector_.label_hover_time = 0.0f;
+        inspector_.label_hover_node_id.clear();
+        inspector_.label_hover_param_name.clear();
     }
 
     update_sparklines();
@@ -1575,7 +1575,7 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
 
     // Popup fade
     bool any_popup = dialogs_.any_open() || chooser_open_ ||
-                     color_popup_open_;
+                     inspector_.color_popup_open;
     float popup_target = any_popup ? 1.0f : 0.0f;
     popup_opacity_ = lerp_toward(popup_opacity_, popup_target, kPopupFadeSpeed, dt);
     if (popup_opacity_ < 0.01f) popup_opacity_ = 0.0f;
@@ -1612,14 +1612,14 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     }
 
     // Preset submenu hover tracking
-    if (dropdown_open_ && (dropdown_is_preset_ || dropdown_is_state_preset_)
-        && !dropdown_submenu_stack_.empty()) {
+    if (inspector_.dropdown_open && (inspector_.dropdown_is_preset || inspector_.dropdown_is_state_preset)
+        && !inspector_.dropdown_submenu_stack.empty()) {
         float item_h = kDropdownItemH;
         // Find deepest level the mouse is inside
         int hit_lvl = -1;
         int hit_idx = -1;
-        for (int lvl = static_cast<int>(dropdown_submenu_stack_.size()) - 1; lvl >= 0; --lvl) {
-            const auto& level = dropdown_submenu_stack_[lvl];
+        for (int lvl = static_cast<int>(inspector_.dropdown_submenu_stack.size()) - 1; lvl >= 0; --lvl) {
+            const auto& level = inspector_.dropdown_submenu_stack[lvl];
             if (!level.items || level.items->empty()) continue;
             int count = static_cast<int>(level.items->size());
             float popup_h = count * item_h + 4;
@@ -1635,43 +1635,43 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
         }
 
         if (hit_lvl >= 0) {
-            dropdown_submenu_stack_[hit_lvl].hovered_idx = hit_idx;
-            const auto& node = (*dropdown_submenu_stack_[hit_lvl].items)[hit_idx];
+            inspector_.dropdown_submenu_stack[hit_lvl].hovered_idx = hit_idx;
+            const auto& node = (*inspector_.dropdown_submenu_stack[hit_lvl].items)[hit_idx];
 
             if (node.is_folder) {
                 // Hover on folder: after delay, open its submenu
                 int target_key = hit_lvl * 1000 + hit_idx;
-                if (dropdown_hover_target_ == target_key) {
-                    dropdown_hover_frames_++;
-                    if (dropdown_hover_frames_ >= 10) {
+                if (inspector_.dropdown_hover_target == target_key) {
+                    inspector_.dropdown_hover_frames++;
+                    if (inspector_.dropdown_hover_frames >= 10) {
                         // Open subfolder submenu
-                        dropdown_submenu_stack_.resize(hit_lvl + 1);
-                        const auto& level = dropdown_submenu_stack_[hit_lvl];
+                        inspector_.dropdown_submenu_stack.resize(hit_lvl + 1);
+                        const auto& level = inspector_.dropdown_submenu_stack[hit_lvl];
                         float sub_x = level.x + level.w - 2;
                         float sub_y = level.y + 2 + hit_idx * item_h;
                         float sub_w = level.w;
-                        if (dropdown_tr_) {
+                        if (inspector_.dropdown_tr) {
                             for (const auto& child : node.children) {
-                                float tw = dropdown_tr_->text_width(child.label.c_str()) + 24.0f;
+                                float tw = inspector_.dropdown_tr->text_width(child.label.c_str()) + 24.0f;
                                 if (child.is_folder) tw += 12.0f;
                                 if (tw > sub_w) sub_w = tw;
                             }
                         }
                         float wf = static_cast<float>(win_w_);
                         if (sub_x + sub_w > wf) sub_x = level.x - sub_w + 2;
-                        dropdown_submenu_stack_.push_back({&node.children, -1, sub_x, sub_y, sub_w});
-                        dropdown_hover_frames_ = 0;
-                        dropdown_hover_target_ = -1;
+                        inspector_.dropdown_submenu_stack.push_back({&node.children, -1, sub_x, sub_y, sub_w});
+                        inspector_.dropdown_hover_frames = 0;
+                        inspector_.dropdown_hover_target = -1;
                     }
                 } else {
-                    dropdown_hover_target_ = target_key;
-                    dropdown_hover_frames_ = 0;
+                    inspector_.dropdown_hover_target = target_key;
+                    inspector_.dropdown_hover_frames = 0;
                 }
             } else {
                 // Hovering a leaf: close deeper submenus
-                dropdown_submenu_stack_.resize(hit_lvl + 1);
-                dropdown_hover_target_ = -1;
-                dropdown_hover_frames_ = 0;
+                inspector_.dropdown_submenu_stack.resize(hit_lvl + 1);
+                inspector_.dropdown_hover_target = -1;
+                inspector_.dropdown_hover_frames = 0;
             }
         }
     }
@@ -1866,17 +1866,17 @@ void NodeGraphUI::update_wire_drag() {
             int ni = hit_test_node(mouse_.x, mouse_.y);
             if (ni >= 0 && node_rects_[ni].node_id != wire_from_node_id_) {
                 // Open parameter picker for the target node's input params
-                param_picker_node_id_ = node_rects_[ni].node_id;
-                param_picker_wire_from_node_ = wire_from_node_id_;
-                param_picker_wire_from_port_ = wire_from_port_;
-                param_picker_is_output_ = false; // picking a destination param
-                param_picker_x_ = mouse_.x;
-                param_picker_y_ = mouse_.y;
-                param_picker_sel_ = 0;
-                param_picker_scroll_ = 0;
+                inspector_.param_picker_node_id = node_rects_[ni].node_id;
+                inspector_.param_picker_wire_from_node = wire_from_node_id_;
+                inspector_.param_picker_wire_from_port = wire_from_port_;
+                inspector_.param_picker_is_output = false; // picking a destination param
+                inspector_.param_picker_x = mouse_.x;
+                inspector_.param_picker_y = mouse_.y;
+                inspector_.param_picker_sel = 0;
+                inspector_.param_picker_scroll = 0;
                 rebuild_param_picker_items();
-                if (!param_picker_items_.empty())
-                    param_picker_open_ = true;
+                if (!inspector_.param_picker_items.empty())
+                    inspector_.param_picker_open = true;
             }
         }
         dragging_wire_ = false;
@@ -1884,25 +1884,25 @@ void NodeGraphUI::update_wire_drag() {
 }
 
 void NodeGraphUI::update_slider_drag() {
-    if (active_slider_idx_ < 0 || dragging_node_idx_ >= 0) return;
+    if (inspector_.active_slider_idx < 0 || dragging_node_idx_ >= 0) return;
     if (mouse_.left_down) {
-        if (active_slider_idx_ >= static_cast<int>(slider_rects_.size())) {
+        if (inspector_.active_slider_idx >= static_cast<int>(inspector_.slider_rects.size())) {
             std::fprintf(stderr, "[UI DEBUG] slider drag: idx=%d out of range (size=%d), resetting\n",
-                         active_slider_idx_, static_cast<int>(slider_rects_.size()));
-            active_slider_idx_ = -1;
+                         inspector_.active_slider_idx, static_cast<int>(inspector_.slider_rects.size()));
+            inspector_.active_slider_idx = -1;
             return;
         }
-        const auto& s = slider_rects_[active_slider_idx_];
-        const auto* ns = snap_.find_node(active_slider_node_id_);
+        const auto& s = inspector_.slider_rects[inspector_.active_slider_idx];
+        const auto* ns = snap_.find_node(inspector_.active_slider_node_id);
         if (!ns) {
             std::fprintf(stderr, "[UI DEBUG] slider drag: node '%s' not found in snapshot\n",
-                         active_slider_node_id_.c_str());
+                         inspector_.active_slider_node_id.c_str());
         }
         if (ns) {
-            const ParamInfo* pd = ns->find_param(active_slider_param_name_);
+            const ParamInfo* pd = ns->find_param(inspector_.active_slider_param_name);
             if (!pd) {
                 std::fprintf(stderr, "[UI DEBUG] slider drag: param '%s' not found on node '%s'\n",
-                             active_slider_param_name_.c_str(), active_slider_node_id_.c_str());
+                             inspector_.active_slider_param_name.c_str(), inspector_.active_slider_node_id.c_str());
             }
             if (pd) {
                 float val;
@@ -1924,23 +1924,23 @@ void NodeGraphUI::update_slider_drag() {
                 if (pd->type == VIVID_PARAM_INT) {
                     val = std::round(val);
                 }
-                commands_.set_param(active_slider_node_id_, active_slider_param_name_, val);
+                commands_.set_param(inspector_.active_slider_node_id, inspector_.active_slider_param_name, val);
             }
         }
     }
     if (mouse_.left_released) {
-        active_slider_idx_ = -1;
+        inspector_.active_slider_idx = -1;
     }
 }
 
 void NodeGraphUI::update_xy_pad_drag() {
-    if (active_xy_pad_idx_ < 0 || dragging_node_idx_ >= 0) return;
-    if (mouse_.left_down && active_xy_pad_idx_ < static_cast<int>(xy_pad_rects_.size())) {
-        const auto& pad = xy_pad_rects_[active_xy_pad_idx_];
-        const auto* ns = snap_.find_node(active_xy_node_id_);
+    if (inspector_.active_xy_pad_idx < 0 || dragging_node_idx_ >= 0) return;
+    if (mouse_.left_down && inspector_.active_xy_pad_idx < static_cast<int>(inspector_.xy_pad_rects.size())) {
+        const auto& pad = inspector_.xy_pad_rects[inspector_.active_xy_pad_idx];
+        const auto* ns = snap_.find_node(inspector_.active_xy_node_id);
         if (ns) {
-            const ParamInfo* pdx = ns->find_param(active_xy_param_x_);
-            const ParamInfo* pdy = ns->find_param(active_xy_param_y_);
+            const ParamInfo* pdx = ns->find_param(inspector_.active_xy_param_x);
+            const ParamInfo* pdy = ns->find_param(inspector_.active_xy_param_y);
             if (pdx && pdy) {
                 float tx = (mouse_.x - pad.x) / pad.w;
                 float ty = (mouse_.y - pad.y) / pad.h;
@@ -1948,46 +1948,46 @@ void NodeGraphUI::update_xy_pad_drag() {
                 ty = std::max(0.0f, std::min(1.0f, ty));
                 float val_x = pdx->min_value + tx * (pdx->max_value - pdx->min_value);
                 float val_y = pdy->min_value + (1.0f - ty) * (pdy->max_value - pdy->min_value);
-                commands_.set_param(active_xy_node_id_, active_xy_param_x_, val_x);
-                commands_.set_param(active_xy_node_id_, active_xy_param_y_, val_y);
+                commands_.set_param(inspector_.active_xy_node_id, inspector_.active_xy_param_x, val_x);
+                commands_.set_param(inspector_.active_xy_node_id, inspector_.active_xy_param_y, val_y);
             }
         }
     }
     if (mouse_.left_released) {
-        active_xy_pad_idx_ = -1;
+        inspector_.active_xy_pad_idx = -1;
     }
 }
 
 void NodeGraphUI::update_color_drag() {
-    if (!color_popup_open_) return;
-    if (!color_dragging_sv_ && !color_dragging_hue_) return;
+    if (!inspector_.color_popup_open) return;
+    if (!inspector_.color_dragging_sv && !inspector_.color_dragging_hue) return;
     if (mouse_.left_down) {
         float pad = kColorPopupPad;
         float sv_size = kColorPopupSVSize;
         float hue_bar_w = kColorHueBarW;
         float gap = kColorPopupGap;
-        float sv_x = color_popup_x_ + pad;
-        float sv_y = color_popup_y_ + pad;
+        float sv_x = inspector_.color_popup_x + pad;
+        float sv_y = inspector_.color_popup_y + pad;
         float hue_x = sv_x + sv_size + gap;
         float hue_y = sv_y;
 
-        if (color_dragging_sv_) {
-            color_popup_s_ = std::max(0.0f, std::min(1.0f, (mouse_.x - sv_x) / sv_size));
-            color_popup_v_ = std::max(0.0f, std::min(1.0f, 1.0f - (mouse_.y - sv_y) / sv_size));
+        if (inspector_.color_dragging_sv) {
+            inspector_.color_popup_s = std::max(0.0f, std::min(1.0f, (mouse_.x - sv_x) / sv_size));
+            inspector_.color_popup_v = std::max(0.0f, std::min(1.0f, 1.0f - (mouse_.y - sv_y) / sv_size));
         }
-        if (color_dragging_hue_) {
-            color_popup_h_ = std::max(0.0f, std::min(360.0f,
+        if (inspector_.color_dragging_hue) {
+            inspector_.color_popup_h = std::max(0.0f, std::min(360.0f,
                 (mouse_.y - hue_y) / sv_size * 360.0f));
         }
         float r, g, b;
-        hsv_to_rgb(color_popup_h_, color_popup_s_, color_popup_v_, r, g, b);
-        commands_.set_param(color_popup_node_id_, color_popup_param_r_, r);
-        commands_.set_param(color_popup_node_id_, color_popup_param_g_, g);
-        commands_.set_param(color_popup_node_id_, color_popup_param_b_, b);
+        hsv_to_rgb(inspector_.color_popup_h, inspector_.color_popup_s, inspector_.color_popup_v, r, g, b);
+        commands_.set_param(inspector_.color_popup_node_id, inspector_.color_popup_param_r, r);
+        commands_.set_param(inspector_.color_popup_node_id, inspector_.color_popup_param_g, g);
+        commands_.set_param(inspector_.color_popup_node_id, inspector_.color_popup_param_b, b);
     }
     if (mouse_.left_released) {
-        color_dragging_sv_ = false;
-        color_dragging_hue_ = false;
+        inspector_.color_dragging_sv = false;
+        inspector_.color_dragging_hue = false;
     }
 }
 
@@ -2020,7 +2020,7 @@ void NodeGraphUI::clear_frame_flags() {
 void NodeGraphUI::update_node_hover() {
     hovered_node_id_.clear();
     if (dragging_wire_ || panning_ || box_selecting_ || dragging_node_idx_ >= 0 ||
-        context_menu_open_ || chooser_open_ || dropdown_open_) return;
+        context_menu_open_ || chooser_open_ || inspector_.dropdown_open) return;
     float gx = sx_to_gx(mouse_.x);
     float gy = sy_to_gy(mouse_.y);
     for (const auto& nr : node_rects_) {
@@ -2033,7 +2033,7 @@ void NodeGraphUI::update_node_hover() {
 
 void NodeGraphUI::update_wire_hover() {
     if (!dragging_wire_ && !panning_ && !box_selecting_ && dragging_node_idx_ < 0 &&
-        !context_menu_open_ && !chooser_open_ && !dropdown_open_) {
+        !context_menu_open_ && !chooser_open_ && !inspector_.dropdown_open) {
         hovered_wire_idx_ = hit_test_wire(mouse_.x, mouse_.y);
     } else {
         hovered_wire_idx_ = -1;
@@ -2097,18 +2097,18 @@ bool NodeGraphUI::wire_inspector_visible() const {
 // Parameter picker popup
 // -----------------------------------------------------------------------
 void NodeGraphUI::rebuild_param_picker_items() {
-    param_picker_items_.clear();
-    param_picker_item_is_param_.clear();
-    const auto* ns = snap_.find_node(param_picker_node_id_);
+    inspector_.param_picker_items.clear();
+    inspector_.param_picker_item_is_param.clear();
+    const auto* ns = snap_.find_node(inspector_.param_picker_node_id);
     if (!ns || !ns->op_info) return;
 
-    if (param_picker_is_output_) {
+    if (inspector_.param_picker_is_output) {
         // Picking an output port on this node (source side)
         // Output ports first
         auto sorted_outs = sorted_ports(ns->output_port_indices);
         for (const auto& [idx, name] : sorted_outs) {
-            param_picker_items_.push_back(name);
-            param_picker_item_is_param_.push_back(false);
+            inspector_.param_picker_items.push_back(name);
+            inspector_.param_picker_item_is_param.push_back(false);
         }
         // Params (non-FILE, not already an output port name)
         std::vector<std::pair<uint32_t, std::string>> sorted_params;
@@ -2118,8 +2118,8 @@ void NodeGraphUI::rebuild_param_picker_items() {
         for (const auto& [idx, name] : sorted_params) {
             const ParamInfo* pd = ns->find_param(name);
             if (pd && (pd->type == VIVID_PARAM_FILE || pd->type == VIVID_PARAM_TEXT)) continue;
-            param_picker_items_.push_back(name);
-            param_picker_item_is_param_.push_back(true);
+            inspector_.param_picker_items.push_back(name);
+            inspector_.param_picker_item_is_param.push_back(true);
         }
     } else {
         // Picking an input param on this node (destination side)
@@ -2129,10 +2129,10 @@ void NodeGraphUI::rebuild_param_picker_items() {
         if (!wire_from_is_output_)
             src_type = VIVID_PORT_SCALAR;  // param sources are always float
         else
-            src_type = resolve_port_type(snap_, param_picker_wire_from_node_,
-                                          param_picker_wire_from_port_, true);
+            src_type = resolve_port_type(snap_, inspector_.param_picker_wire_from_node,
+                                          inspector_.param_picker_wire_from_port, true);
         src_semantic_tag = semantic_tag_for_snapshot_endpoint(
-            snap_, param_picker_wire_from_node_, param_picker_wire_from_port_);
+            snap_, inspector_.param_picker_wire_from_node, inspector_.param_picker_wire_from_port);
 
         struct PickerCandidate {
             std::string name;
@@ -2149,7 +2149,7 @@ void NodeGraphUI::rebuild_param_picker_items() {
             // Check not already connected from this source
             bool already_connected = false;
             for (const auto& c : snap_.connections) {
-                if (c.to_node == param_picker_node_id_ && c.to_port == name) {
+                if (c.to_node == inspector_.param_picker_node_id && c.to_port == name) {
                     already_connected = true;
                     break;
                 }
@@ -2168,7 +2168,7 @@ void NodeGraphUI::rebuild_param_picker_items() {
             int semantic_score = 0;
             if (!src_semantic_tag.empty()) {
                 std::string candidate_tag =
-                    semantic_tag_for_snapshot_endpoint(snap_, param_picker_node_id_, name);
+                    semantic_tag_for_snapshot_endpoint(snap_, inspector_.param_picker_node_id, name);
                 if (!candidate_tag.empty() && candidate_tag == src_semantic_tag)
                     semantic_score = 1;
             }
@@ -2189,7 +2189,7 @@ void NodeGraphUI::rebuild_param_picker_items() {
             // Skip if already connected
             bool already_connected = false;
             for (const auto& c : snap_.connections) {
-                if (c.to_node == param_picker_node_id_ && c.to_port == name) {
+                if (c.to_node == inspector_.param_picker_node_id && c.to_port == name) {
                     already_connected = true;
                     break;
                 }
@@ -2211,49 +2211,49 @@ void NodeGraphUI::rebuild_param_picker_items() {
                 return a.order < b.order;
             });
         for (const auto& c : candidates) {
-            param_picker_items_.push_back(c.name);
-            param_picker_item_is_param_.push_back(c.is_param);
+            inspector_.param_picker_items.push_back(c.name);
+            inspector_.param_picker_item_is_param.push_back(c.is_param);
         }
     }
 }
 
 void NodeGraphUI::update_param_picker() {
-    if (!param_picker_open_) return;
+    if (!inspector_.param_picker_open) return;
 
     // Hover tracking
-    int visible = std::min(static_cast<int>(param_picker_items_.size()), kPickerMaxVisible);
-    float items_y = param_picker_y_;
+    int visible = std::min(static_cast<int>(inspector_.param_picker_items.size()), kPickerMaxVisible);
+    float items_y = inspector_.param_picker_y;
     float items_h = visible * kPickerItemH;
 
-    if (mouse_.x >= param_picker_x_ && mouse_.x <= param_picker_x_ + kPickerW &&
+    if (mouse_.x >= inspector_.param_picker_x && mouse_.x <= inspector_.param_picker_x + kPickerW &&
         mouse_.y >= items_y && mouse_.y < items_y + items_h) {
-        int idx = static_cast<int>(std::floor((mouse_.y - items_y + param_picker_scroll_) / kPickerItemH));
-        if (idx >= 0 && idx < static_cast<int>(param_picker_items_.size()))
-            param_picker_sel_ = idx;
+        int idx = static_cast<int>(std::floor((mouse_.y - items_y + inspector_.param_picker_scroll) / kPickerItemH));
+        if (idx >= 0 && idx < static_cast<int>(inspector_.param_picker_items.size()))
+            inspector_.param_picker_sel = idx;
     }
 
     // Click handling
     if (mouse_.left_clicked) {
-        if (mouse_.x >= param_picker_x_ && mouse_.x <= param_picker_x_ + kPickerW &&
+        if (mouse_.x >= inspector_.param_picker_x && mouse_.x <= inspector_.param_picker_x + kPickerW &&
             mouse_.y >= items_y && mouse_.y < items_y + items_h &&
-            !param_picker_items_.empty()) {
-            int idx = static_cast<int>(std::floor((mouse_.y - items_y + param_picker_scroll_) / kPickerItemH));
-            if (idx >= 0 && idx < static_cast<int>(param_picker_items_.size())) {
-                const std::string& selected = param_picker_items_[idx];
-                if (param_picker_is_output_) {
+            !inspector_.param_picker_items.empty()) {
+            int idx = static_cast<int>(std::floor((mouse_.y - items_y + inspector_.param_picker_scroll) / kPickerItemH));
+            if (idx >= 0 && idx < static_cast<int>(inspector_.param_picker_items.size())) {
+                const std::string& selected = inspector_.param_picker_items[idx];
+                if (inspector_.param_picker_is_output) {
                     // Selected an output port or param — now start a wire drag from it
-                    const auto* ns = snap_.find_node(param_picker_node_id_);
+                    const auto* ns = snap_.find_node(inspector_.param_picker_node_id);
                     if (ns) {
-                        bool is_param = (!param_picker_item_is_param_.empty() &&
-                                         idx < static_cast<int>(param_picker_item_is_param_.size()) &&
-                                         param_picker_item_is_param_[idx]);
+                        bool is_param = (!inspector_.param_picker_item_is_param.empty() &&
+                                         idx < static_cast<int>(inspector_.param_picker_item_is_param.size()) &&
+                                         inspector_.param_picker_item_is_param[idx]);
                         dragging_wire_ = true;
-                        wire_from_node_id_ = param_picker_node_id_;
+                        wire_from_node_id_ = inspector_.param_picker_node_id;
                         wire_from_port_ = selected;
                         wire_from_is_output_ = !is_param;
                         // Find port position or use node center
                         for (const auto& r : node_rects_) {
-                            if (r.node_id == param_picker_node_id_) {
+                            if (r.node_id == inspector_.param_picker_node_id) {
                                 wire_from_gx_ = r.x + r.w;
                                 wire_from_gy_ = r.y + r.h * 0.5f;
                                 if (!is_param) {
@@ -2271,14 +2271,14 @@ void NodeGraphUI::update_param_picker() {
                     }
                 } else {
                     // Selected a destination param — create connection
-                    commands_.connect(param_picker_wire_from_node_ + "/" + param_picker_wire_from_port_,
-                                 param_picker_node_id_ + "/" + selected);
+                    commands_.connect(inspector_.param_picker_wire_from_node + "/" + inspector_.param_picker_wire_from_port,
+                                 inspector_.param_picker_node_id + "/" + selected);
                 }
-                param_picker_open_ = false;
+                inspector_.param_picker_open = false;
             }
         } else {
             // Clicked outside — close
-            param_picker_open_ = false;
+            inspector_.param_picker_open = false;
         }
         mouse_.left_clicked = false;
         mouse_.left_released = false;
