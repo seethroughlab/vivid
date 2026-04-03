@@ -6,6 +6,7 @@
 #include "runtime/builtin_operators.h"
 #include "runtime/audio_frame_bridge.h"
 #include "runtime/compiled_graph.h"
+#include "runtime/runtime_bootstrap.h"
 #include "operator_api/gpu_operator.h"
 #include "common/gpu_util.h"
 #include <webgpu/webgpu.h>
@@ -15,6 +16,7 @@
 #include <cstring>
 #include <cstdarg>
 #include <algorithm>
+#include <fstream>
 #include <cctype>
 #include <filesystem>
 #include <string>
@@ -167,6 +169,102 @@ static void tick_gpu(vivid::RuntimeCore& runtime, HeadlessGpu& gpu,
 // Per-graph timeout (seconds).
 static constexpr int kTimeoutSeconds = 20;
 
+static std::unordered_set<std::string> load_required_packages(const char* graph_path) {
+    std::unordered_set<std::string> out;
+    try {
+        std::ifstream ifs(graph_path);
+        if (!ifs) return out;
+        auto root = nlohmann::json::parse(ifs, nullptr, false);
+        if (!root.is_object()) return out;
+        auto meta_it = root.find("meta");
+        if (meta_it == root.end() || !meta_it->is_object()) return out;
+        auto req_it = meta_it->find("requires_packages");
+        if (req_it == meta_it->end() || !req_it->is_array()) return out;
+        for (const auto& item : *req_it) {
+            if (item.is_string() && !item.get<std::string>().empty())
+                out.insert(item.get<std::string>());
+        }
+    } catch (...) {
+    }
+    return out;
+}
+
+static void print_package_discovery_report(const vivid::DiscoveryReport& report,
+                                           const std::unordered_set<std::string>& required_packages) {
+    std::fprintf(stderr, "[vivid] Package discovery report: workspace_detected=%s\n",
+                 report.workspace_detected ? "true" : "false");
+    for (const auto& scope : report.scopes_searched) {
+        std::fprintf(stderr, "[vivid]   scope[%s]: %s (%s)\n",
+                     scope.scope.c_str(), scope.root.c_str(), scope.exists ? "exists" : "missing");
+    }
+    for (const auto& info : report.loaded_packages) {
+        std::fprintf(stderr, "[vivid]   loaded package: %s (%s) from %s\n",
+                     info.name.c_str(), info.version.c_str(), info.path.c_str());
+    }
+    for (const auto& skipped : report.skipped_packages) {
+        std::fprintf(stderr, "[vivid]   skipped package: %s [%s] %s\n",
+                     skipped.name.c_str(), skipped.reason.c_str(), skipped.detail.c_str());
+    }
+    for (const auto& pkg : required_packages) {
+        bool found = false;
+        for (const auto& info : report.loaded_packages) {
+            if (info.name == pkg) {
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+            std::fprintf(stderr, "[vivid]   required package not loaded: %s\n", pkg.c_str());
+    }
+}
+
+static bool fail_if_required_package_placeholders(vivid::RuntimeCore& runtime,
+                                                  const vivid::OperatorRegistry& registry,
+                                                  const vivid::Graph& graph,
+                                                  const vivid::DiscoveryReport& discovery_report,
+                                                  const std::unordered_set<std::string>& required_packages) {
+    if (required_packages.empty()) return false;
+    const auto* cg = runtime.compiled_graph();
+    if (!cg) return false;
+
+    bool any_missing = false;
+    for (const auto& node : cg->nodes) {
+        if (!node.missing_operator) continue;
+        any_missing = true;
+        std::string package_name;
+        if (const auto* pkg = registry.package_for_type(node.type_name))
+            package_name = *pkg;
+        else if (const auto* prov = registry.operator_provenance(node.type_name))
+            package_name = prov->package_name;
+
+        std::fprintf(stderr,
+                     "[vivid] Required-package graph unresolved operator: node='%s' type='%s' package='%s' reason='%s' detail='%s'\n",
+                     node.node_id.c_str(), node.type_name.c_str(), package_name.c_str(),
+                     node.missing_operator_reason.c_str(), node.missing_operator_detail.c_str());
+    }
+
+    if (!any_missing) return false;
+
+    bool saw_required_provider = false;
+    for (const auto& node : graph.nodes()) {
+        std::string package_name;
+        if (const auto* pkg = registry.package_for_type(node.type))
+            package_name = *pkg;
+        else if (const auto* prov = registry.operator_provenance(node.type))
+            package_name = prov->package_name;
+        if (!package_name.empty() && required_packages.count(package_name)) {
+            saw_required_provider = true;
+            break;
+        }
+    }
+    if (!saw_required_provider) {
+        std::fprintf(stderr, "[vivid] Required packages were declared, but no graph node types resolved to those package operators before compilation.\n");
+    }
+
+    print_package_discovery_report(discovery_report, required_packages);
+    return true;
+}
+
 // ============================================================================
 // Single-graph mode (--single <graph_path>)
 //
@@ -187,20 +285,18 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
     HeadlessGpu gpu;
     bool have_gpu = gpu.init();
 
-    std::filesystem::path exe_dir = std::filesystem::absolute(exe_path).parent_path();
+    auto runtime_paths = vivid::resolve_runtime_bootstrap_paths(exe_path);
     vivid::OperatorRegistry registry;
-    registry.scan_deferred(exe_dir.string().c_str());
-    register_builtin_operators(registry);
-    registry.scan_wgsl_presets((exe_dir / "filters").string().c_str());
-
-    // Load package-managed operators (same as runtime)
-    vivid::PackageCompiler pkg_compiler(exe_dir.string(), exe_dir.string());
+    vivid::PackageCompiler pkg_compiler(runtime_paths.source_dir, runtime_paths.build_dir);
     vivid::PackageManager pkg_manager(pkg_compiler, registry);
-    pkg_manager.scan_installed();
+    vivid::RegistryBootstrapOptions bootstrap_opts;
+    auto bootstrap = vivid::bootstrap_operator_registry(registry, &pkg_manager, runtime_paths, bootstrap_opts);
 
 #ifdef __APPLE__
     CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.01, false);
 #endif
+
+    auto required_packages = load_required_packages(graph_path);
 
     vivid::Graph graph;
     if (!graph.load(graph_path)) {
@@ -235,6 +331,14 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
     vivid::RuntimeCore runtime;
     if (!runtime.build(graph, registry)) {
         std::fprintf(stderr, "runtime.build() failed\n");
+        if (!required_packages.empty())
+            print_package_discovery_report(bootstrap.package_discovery, required_packages);
+        return 1;
+    }
+    if (fail_if_required_package_placeholders(runtime, registry, graph,
+                                              bootstrap.package_discovery, required_packages)) {
+        runtime.shutdown();
+        gpu.shutdown();
         return 1;
     }
 

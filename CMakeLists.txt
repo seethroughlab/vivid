@@ -790,6 +790,7 @@ add_executable(vivid
     src/runtime/undo_manager.cpp
     src/runtime/screenshot.cpp
     src/runtime/builtin_operators.cpp
+    src/runtime/runtime_bootstrap.cpp
     src/runtime/control_server.cpp
     src/runtime/control_server_checks.cpp
     src/runtime/operator_source_docs.cpp
@@ -2063,9 +2064,11 @@ add_executable(test_demo_graphs
     src/runtime/audio_engine.cpp
     src/runtime/audio_executor.cpp
     src/runtime/builtin_operators.cpp
+    src/runtime/runtime_bootstrap.cpp
     src/runtime/package_manager.cpp
     src/runtime/package_compiler.cpp
     src/runtime/tool_discovery.cpp
+    src/runtime/platform.cpp
 )
 target_include_directories(test_demo_graphs PRIVATE src)
 target_link_libraries(test_demo_graphs PRIVATE
@@ -2230,6 +2233,33 @@ add_test(NAME test_package_manager
     COMMAND test_package_manager ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_package_manager PROPERTIES LABELS "PACKAGE")
+
+add_executable(test_runtime_bootstrap_packages
+    tests/test_runtime_bootstrap_packages.cpp
+    src/runtime/builtin_operators.cpp
+    src/runtime/runtime_bootstrap.cpp
+    src/runtime/graph.cpp
+    src/runtime/runtime_core.cpp
+    src/runtime/subgraph_module.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/audio_frame_bridge.cpp
+    src/runtime/frame_executor.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/port_type_registry.cpp
+    src/runtime/package_manager.cpp
+    src/runtime/package_compiler.cpp
+    src/runtime/tool_discovery.cpp
+    src/runtime/platform.cpp
+    src/runtime/wgsl_header_parser.cpp
+)
+target_include_directories(test_runtime_bootstrap_packages PRIVATE src)
+target_link_libraries(test_runtime_bootstrap_packages PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_dependencies(test_runtime_bootstrap_packages lane_source_op lane_sink_op)
+add_test(NAME test_runtime_bootstrap_packages
+    COMMAND test_runtime_bootstrap_packages ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_runtime_bootstrap_packages PROPERTIES LABELS "PACKAGE")
 
 # Package scope resolver test (deterministic multi-scope precedence/conflicts)
 add_executable(test_package_scope_resolver

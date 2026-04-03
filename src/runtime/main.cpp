@@ -22,6 +22,7 @@
 #include "runtime/capture_coordinator.h"
 #include "runtime/system_midi.h"
 #include "runtime/settings.h"
+#include "runtime/runtime_bootstrap.h"
 #include "runtime/editor_detect.h"
 #include "runtime/operator_info_cache.h"
 #include "runtime/runtime_command_sink.h"
@@ -1688,62 +1689,8 @@ static void drop_callback(GLFWwindow* w, int count, const char** paths) {
 // --- Build/source directory discovery (shared by export, packages, hot-reload) ---
 namespace fs = std::filesystem;
 
-struct BuildPaths { std::string source_dir, build_dir; };
-
-static BuildPaths discover_build_paths(const fs::path& exe_dir,
-                                       const fs::path& resources_dir,
-                                       const std::string& user_src_dir) {
-    BuildPaths p;
-    // Prefer compile-time build dir (set by CMake on Apple)
-#ifdef VIVID_BUILD_DIR
-    p.build_dir = VIVID_BUILD_DIR;
-    if (!fs::is_directory(p.build_dir))
-#endif
-    {
-#ifdef __APPLE__
-        // In a bundle: exe_dir is Contents/MacOS/, build dir is 3 levels up
-        p.build_dir = exe_dir.parent_path().parent_path().parent_path().string();
-#else
-        p.build_dir = exe_dir.string();
-#endif
-    }
-
-    // Walk up from build_dir looking for source root
-    auto c = fs::path(p.build_dir);
-    for (int i = 0; i < 3; ++i) {
-        if (fs::exists(c / "CMakeLists.txt") && fs::exists(c / "src" / "runtime")) {
-            p.source_dir = c.string();
-            break;
-        }
-        c = c.parent_path();
-    }
-    // Fallback: bundle SDK (Contents/Resources/sdk/)
-#ifdef __APPLE__
-    if (p.source_dir.empty()) {
-        auto sdk_dir = resources_dir / "sdk";
-        if (fs::is_directory(sdk_dir / "src" / "operator_api"))
-            p.source_dir = sdk_dir.string();
-    }
-#endif
-    if (p.source_dir.empty())
-        p.source_dir = user_src_dir;
-    return p;
-}
-
 int main(int argc, char* argv[]) {
     vivid::install_crash_handlers();
-
-    // Derive exe directory so resource lookup works from any CWD
-    auto exe_path = std::filesystem::canonical(std::filesystem::path(argv[0]));
-    auto exe_dir = exe_path.parent_path();
-
-    // Resources dir: Contents/Resources/ in a macOS bundle, else same as exe_dir
-#ifdef __APPLE__
-    auto resources_dir = exe_dir.parent_path() / "Resources";
-    auto plugins_dir = exe_dir.parent_path() / "PlugIns";
-#else
-    auto resources_dir = exe_dir;
-#endif
 
     // --- CLI argument parsing ---
     std::string graph_file;
@@ -1907,13 +1854,18 @@ int main(int argc, char* argv[]) {
         test_dump_ui_state_path = dump_path.string();
     }
 
+    auto runtime_paths = vivid::resolve_runtime_bootstrap_paths(argv[0], src_dir);
+    auto exe_path = runtime_paths.exe_path;
+    auto exe_dir = runtime_paths.exe_dir;
+    auto resources_dir = runtime_paths.resources_dir;
+    auto plugins_dir = runtime_paths.plugins_dir;
+
     // Resolve build/source directories once (used by export, packages, hot-reload)
-    auto build_paths = discover_build_paths(exe_dir, resources_dir, src_dir);
     vivid::Settings settings = vivid::load_settings();
 
     // --- Handle export subcommand (early exit, no GLFW) ---
     if (export_cmd->parsed()) {
-        if (build_paths.source_dir.empty()) {
+        if (runtime_paths.source_dir.empty()) {
             std::fprintf(stderr, "[vivid] Cannot determine source directory. "
                          "Use --src-dir or run from a build directory.\n");
             return 1;
@@ -1921,14 +1873,9 @@ int main(int argc, char* argv[]) {
 
         // Build registry to get type→target mappings
         vivid::OperatorRegistry registry;
-#ifdef __APPLE__
-        registry.scan_deferred(plugins_dir.string().c_str());
-#else
-        registry.scan_deferred(exe_dir.string().c_str());
-#endif
-        register_builtin_operators(registry);
-        std::string filters_dir = (resources_dir / "filters").string();
-        registry.scan_wgsl_presets(filters_dir);
+        vivid::RegistryBootstrapOptions bootstrap_opts;
+        bootstrap_opts.scan_packages = false;
+        vivid::bootstrap_operator_registry(registry, nullptr, runtime_paths, bootstrap_opts);
 
         vivid::ExportOptions opts;
         opts.graph_path = export_graph_path;
@@ -1939,7 +1886,7 @@ int main(int argc, char* argv[]) {
         opts.control_server = export_control_server;
         opts.extra_operators = export_extra_ops;
 
-        vivid::ExportPipeline pipeline(build_paths.source_dir, build_paths.build_dir);
+        vivid::ExportPipeline pipeline(runtime_paths.source_dir, runtime_paths.build_dir);
         if (!pipeline.run(opts, registry)) {
             std::fprintf(stderr, "[vivid] Export failed\n");
             return 1;
@@ -1958,7 +1905,7 @@ int main(int argc, char* argv[]) {
             opts.variant = scaffold_pkg_template;
             opts.output_dir = scaffold_pkg_output_dir;
             opts.template_root = scaffold_pkg_template_root;
-            opts.source_dir = build_paths.source_dir;
+            opts.source_dir = runtime_paths.source_dir;
             opts.force = scaffold_pkg_force;
 
             auto result = vivid::PackageScaffolder::scaffold(opts);
@@ -1976,14 +1923,11 @@ int main(int argc, char* argv[]) {
         }
 
         vivid::OperatorRegistry registry;
-#ifdef __APPLE__
-        registry.scan_deferred(plugins_dir.string().c_str());
-#else
-        registry.scan_deferred(exe_dir.string().c_str());
-#endif
-        register_builtin_operators(registry);
+        vivid::RegistryBootstrapOptions bootstrap_opts;
+        bootstrap_opts.scan_packages = false;
+        vivid::bootstrap_operator_registry(registry, nullptr, runtime_paths, bootstrap_opts);
 
-        vivid::PackageCompiler compiler(build_paths.source_dir, build_paths.build_dir);
+        vivid::PackageCompiler compiler(runtime_paths.source_dir, runtime_paths.build_dir);
         vivid::PackageManager pm(compiler, registry);
 
         if (scaffold_op_cmd->parsed()) {
@@ -2001,7 +1945,7 @@ int main(int argc, char* argv[]) {
 
             ScaffoldDestination destination;
             std::string dest_error;
-            if (!resolve_scaffold_destination(scaffold_op_dest, build_paths.source_dir, pm,
+            if (!resolve_scaffold_destination(scaffold_op_dest, runtime_paths.source_dir, pm,
                                               &settings,
                                               destination, dest_error)) {
                 std::fprintf(stderr, "Scaffold failed: %s\n", dest_error.c_str());
@@ -2032,7 +1976,7 @@ int main(int argc, char* argv[]) {
                             destination.package_name.empty() ? "<package-name>" : destination.package_name.c_str());
             } else {
                 std::printf("Next step: cmake --build %s --target %s\n",
-                            build_paths.build_dir.c_str(), result.target_name.c_str());
+                            runtime_paths.build_dir.c_str(), result.target_name.c_str());
             }
             std::printf("Hint: Use MCP opdev tools for advanced features (custom ports, params, inspectors)\n");
             return 0;
@@ -2589,27 +2533,8 @@ fn fbm(p_in: vec2f) -> f32 {
     // keeping the animation smooth during the ~2s scan_deferred phase.
     vivid::OperatorRegistry registry;
     registry.set_progress_callback([&]() {
-        render_splash_frame("Scanning plugins...");
+        render_splash_frame("Scanning operators...");
     });
-    {
-        PhaseTimer t("scan_deferred (core plugins)");
-#ifdef __APPLE__
-        registry.scan_deferred(plugins_dir.string().c_str());
-#else
-        registry.scan_deferred(exe_dir.string().c_str());
-#endif
-    }
-    register_builtin_operators(registry);
-
-    // --- Load self-describing .wgsl filter presets ---
-    render_splash_frame("Loading presets...");
-    std::string filters_dir = (resources_dir / "filters").string();
-    {
-        PhaseTimer t("scan_wgsl_presets + scan_factory_presets");
-        registry.scan_wgsl_presets(filters_dir);
-        std::string factory_presets_dir = (resources_dir / "factory_presets").string();
-        registry.scan_factory_presets(factory_presets_dir);
-    }
 
     // --- Subgraph module registry ---
     vivid::SubgraphModuleRegistry subgraph_modules;
@@ -2620,20 +2545,16 @@ fn fbm(p_in: vec2f) -> f32 {
     }
 
     // --- Package management (needs to outlive main loop for catalog/install) ---
-    // Reuse the progress callback for the package scan phase.
-    registry.set_progress_callback([&]() {
-        render_splash_frame("Scanning packages...");
-    });
-    vivid::PackageCompiler pkg_compiler(build_paths.source_dir, build_paths.build_dir);
+    vivid::PackageCompiler pkg_compiler(runtime_paths.source_dir, runtime_paths.build_dir);
     vivid::PackageManager pkg_manager(pkg_compiler, registry);
     auto build_console = std::make_shared<vivid::BuildConsole>();
     pkg_manager.set_build_console(build_console.get());
-    pkg_manager.set_subgraph_module_registry(&subgraph_modules);
-    if (std::getenv("VIVID_SKIP_PACKAGE_SCAN")) {
-        std::fprintf(stderr, "[vivid] Skipping installed package scan (VIVID_SKIP_PACKAGE_SCAN)\n");
-    } else {
-        PhaseTimer t("scan_installed (packages)");
-        pkg_manager.scan_installed();
+    vivid::RegistryBootstrapOptions bootstrap_opts;
+    bootstrap_opts.scan_factory_presets = true;
+    bootstrap_opts.subgraph_modules = &subgraph_modules;
+    {
+        PhaseTimer t("bootstrap_operator_registry");
+        vivid::bootstrap_operator_registry(registry, &pkg_manager, runtime_paths, bootstrap_opts);
     }
     registry.set_progress_callback(nullptr);
     vivid::PackageCatalog pkg_catalog(pkg_manager);
@@ -3293,8 +3214,8 @@ fn fbm(p_in: vec2f) -> f32 {
             std::string operators_dir = src_dir + "/operators";
             runtime.set_operators_src_dir(operators_dir);
             command_sink.set_operators_dir(operators_dir);
-            command_sink.set_filters_dir(filters_dir);
-            command_sink.set_build_dir(build_paths.build_dir);
+            command_sink.set_filters_dir((resources_dir / "filters").string());
+            command_sink.set_build_dir(runtime_paths.build_dir);
             op_info_cache.set_operators_dir(operators_dir);
             // Set working filters dir if not already determined from graph
             if (working_filters_dir.empty() && !graph.source_path().empty()) {
@@ -3302,7 +3223,7 @@ fn fbm(p_in: vec2f) -> f32 {
                 working_filters_dir = (gp.parent_path() / (gp.stem().string() + "_filters")).string();
                 command_sink.set_working_filters_dir(working_filters_dir);
             }
-            if (file_watcher.start(operators_dir) && hot_reloader.start(build_paths.build_dir)) {
+            if (file_watcher.start(operators_dir) && hot_reloader.start(runtime_paths.build_dir)) {
                 hot_reload_enabled = true;
                 hot_reloader.set_build_console(build_console.get());
                 control_server.set_hot_reloader(&hot_reloader);
@@ -3315,7 +3236,7 @@ fn fbm(p_in: vec2f) -> f32 {
 
                 // Set up package compile callback for hot-reloader
                 std::string pkg_src_dir = src_dir;
-                std::string pkg_build_dir = build_paths.build_dir;
+                std::string pkg_build_dir = runtime_paths.build_dir;
                 hot_reloader.set_package_compiler(
                     [&pkg_manager, pkg_src_dir, pkg_build_dir, build_console](const std::string& target) -> vivid::ReloadResult {
                         // Parse "pkg:<package_name>:<operator_name>"
@@ -3730,7 +3651,7 @@ fn fbm(p_in: vec2f) -> f32 {
             std::string output_name = out.stem().string();
             std::string output_dir = (out.parent_path() / (output_name + "_export")).string();
 
-            if (build_paths.source_dir.empty()) {
+            if (runtime_paths.source_dir.empty()) {
                 std::fprintf(stderr, "[vivid] Export: cannot determine source directory\n");
                 return;
             }
@@ -3741,7 +3662,7 @@ fn fbm(p_in: vec2f) -> f32 {
             opts.output_path = output_path;
             opts.output_dir = output_dir;
 
-            vivid::ExportPipeline pipeline(build_paths.source_dir, build_paths.build_dir);
+            vivid::ExportPipeline pipeline(runtime_paths.source_dir, runtime_paths.build_dir);
             if (pipeline.run(opts, registry)) {
                 std::fprintf(stderr, "[vivid] Export succeeded: %s\n", output_name.c_str());
             } else {
