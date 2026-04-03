@@ -1,7 +1,7 @@
 // Unit tests for FrameExecutor query methods (solo, GPU sink detection).
 // Tests the pure-logic query paths — no GPU device or operator loading required.
 
-#include "runtime/frame_executor.h"
+#include "runtime/graph/frame_executor.h"
 #include <cstdio>
 #include <string>
 #include <vector>

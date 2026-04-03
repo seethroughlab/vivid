@@ -1,5 +1,5 @@
-#include "runtime/file_drop_registry.h"
-#include "runtime/operator_registry.h"
+#include "runtime/core/file_drop_registry.h"
+#include "runtime/operators/operator_registry.h"
 
 #include <cstdio>
 #include <filesystem>

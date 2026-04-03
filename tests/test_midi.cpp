@@ -1,4 +1,4 @@
-#include "runtime/system_midi.h"
+#include "runtime/audio/system_midi.h"
 #include <cstdio>
 #include <string>
 

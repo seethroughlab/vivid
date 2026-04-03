@@ -763,65 +763,65 @@ target_compile_definitions(vivid_ui PRIVATE "VIVID_CORE_VERSION=\"${PROJECT_VERS
 
 # --- Vivid executable ---
 add_executable(vivid
-    src/runtime/main.cpp
-    src/runtime/graph_file_io.cpp
-    src/runtime/workspace_manager.cpp
-    src/runtime/window_manager.cpp
-    src/runtime/graph_snapshot_builder.cpp
-    src/runtime/main_helpers.cpp
-    src/runtime/runtime_command_sink.cpp
-    src/runtime/ui_test_runner.cpp
-    src/runtime/gpu_context.cpp
-    src/runtime/fullscreen_blit.cpp
-    src/runtime/output_window.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/audio_engine.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/audio_executor.cpp
-    src/runtime/file_watcher.cpp
-    src/runtime/hot_reload.cpp
-    src/runtime/tool_discovery.cpp
-    src/runtime/runtime_api.cpp
-    src/runtime/package_compiler.cpp
-    src/runtime/tool_discovery.cpp
-    src/runtime/package_manager.cpp
-    src/runtime/undo_manager.cpp
-    src/runtime/screenshot.cpp
-    src/runtime/builtin_operators.cpp
-    src/runtime/runtime_bootstrap.cpp
-    src/runtime/control_server.cpp
-    src/runtime/control_server_checks.cpp
-    src/runtime/operator_source_docs.cpp
-    src/runtime/capture_coordinator.cpp
-    src/runtime/output_analyzer.cpp
-    src/runtime/file_drop_registry.cpp
-    src/runtime/av_exporter.mm
-    src/runtime/operator_creator.cpp
-    src/runtime/system_midi.cpp
-    src/runtime/platform.cpp
-    src/runtime/settings.cpp
-    src/runtime/editor_detect.cpp
-    src/runtime/macos_frame_timer.cpp
+    src/runtime/core/main.cpp
+    src/runtime/control/graph_file_io.cpp
+    src/runtime/core/workspace_manager.cpp
+    src/runtime/core/window_manager.cpp
+    src/runtime/graph/graph_snapshot_builder.cpp
+    src/runtime/core/main_helpers.cpp
+    src/runtime/control/runtime_command_sink.cpp
+    src/runtime/debug/ui_test_runner.cpp
+    src/runtime/gpu/gpu_context.cpp
+    src/runtime/gpu/fullscreen_blit.cpp
+    src/runtime/debug/output_window.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/audio/audio_engine.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/graph/audio_executor.cpp
+    src/runtime/core/file_watcher.cpp
+    src/runtime/core/hot_reload.cpp
+    src/runtime/core/tool_discovery.cpp
+    src/runtime/control/runtime_api.cpp
+    src/runtime/packages/package_compiler.cpp
+    src/runtime/core/tool_discovery.cpp
+    src/runtime/packages/package_manager.cpp
+    src/runtime/core/undo_manager.cpp
+    src/runtime/gpu/screenshot.cpp
+    src/runtime/operators/builtin_operators.cpp
+    src/runtime/core/runtime_bootstrap.cpp
+    src/runtime/control/control_server.cpp
+    src/runtime/control/control_server_checks.cpp
+    src/runtime/operators/operator_source_docs.cpp
+    src/runtime/debug/capture_coordinator.cpp
+    src/runtime/debug/output_analyzer.cpp
+    src/runtime/core/file_drop_registry.cpp
+    src/runtime/platform/av_exporter.mm
+    src/runtime/operators/operator_creator.cpp
+    src/runtime/audio/system_midi.cpp
+    src/runtime/platform/platform.cpp
+    src/runtime/core/settings.cpp
+    src/runtime/core/editor_detect.cpp
+    src/runtime/platform/macos_frame_timer.cpp
     src/export/export_pipeline.cpp
-    src/runtime/package_compiler.cpp
-    src/runtime/tool_discovery.cpp
-    src/runtime/package_manager.cpp
-    src/runtime/package_scaffolder.cpp
-    src/runtime/package_test_runner.cpp
-    src/runtime/package_catalog.cpp
-    src/runtime/app_update_manager.cpp
+    src/runtime/packages/package_compiler.cpp
+    src/runtime/core/tool_discovery.cpp
+    src/runtime/packages/package_manager.cpp
+    src/runtime/packages/package_scaffolder.cpp
+    src/runtime/packages/package_test_runner.cpp
+    src/runtime/packages/package_catalog.cpp
+    src/runtime/platform/app_update_manager.cpp
 )
 
 if(APPLE)
@@ -857,12 +857,12 @@ endif()
 
 # macOS native menu bar
 if(APPLE)
-    target_sources(vivid PRIVATE src/runtime/macos_menu.mm src/runtime/metal_interop.mm src/runtime/syphon_output.mm src/runtime/sparkle_bridge.mm)
-    set_source_files_properties(src/runtime/macos_menu.mm src/runtime/metal_interop.mm src/runtime/syphon_output.mm src/runtime/sparkle_bridge.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+    target_sources(vivid PRIVATE src/runtime/platform/macos_menu.mm src/runtime/gpu/metal_interop.mm src/runtime/gpu/syphon_output.mm src/runtime/platform/sparkle_bridge.mm)
+    set_source_files_properties(src/runtime/platform/macos_menu.mm src/runtime/gpu/metal_interop.mm src/runtime/gpu/syphon_output.mm src/runtime/platform/sparkle_bridge.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
 endif()
 
 # ObjC ARC for AVExporter
-set_source_files_properties(src/runtime/av_exporter.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+set_source_files_properties(src/runtime/platform/av_exporter.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
 
 # Copy default startup graph
 configure_file(graphs/intro/demo.json ${CMAKE_BINARY_DIR}/graph.json COPYONLY)
@@ -1105,15 +1105,15 @@ add_vivid_operator(untagged_dest_op          tests/operators/untagged_dest_op.cp
 # Hot-reload integration test (no GPU, no audio, no window)
 add_executable(test_hot_reload
     tests/test_hot_reload.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
 )
 target_include_directories(test_hot_reload PRIVATE src)
 target_link_libraries(test_hot_reload PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
@@ -1123,19 +1123,19 @@ set_tests_properties(test_hot_reload PROPERTIES TIMEOUT 15)
 
 add_executable(test_audio_hot_reload
     tests/test_audio_hot_reload.cpp
-    src/runtime/builtin_operators.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/audio_engine.cpp
-    src/runtime/audio_executor.cpp
+    src/runtime/operators/builtin_operators.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/audio/audio_engine.cpp
+    src/runtime/graph/audio_executor.cpp
 )
 target_include_directories(test_audio_hot_reload PRIVATE src)
 target_link_libraries(test_audio_hot_reload PRIVATE vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
@@ -1146,12 +1146,12 @@ set_tests_properties(test_audio_hot_reload PROPERTIES TIMEOUT 15)
 add_executable(test_export_pipeline
     tests/test_export_pipeline.cpp
     src/export/export_pipeline.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/tool_discovery.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/core/tool_discovery.cpp
 )
 target_include_directories(test_export_pipeline PRIVATE src)
 target_link_libraries(test_export_pipeline PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
@@ -1161,20 +1161,20 @@ add_test(NAME test_export_pipeline COMMAND test_export_pipeline WORKING_DIRECTOR
 # RuntimeAPI integration test (no GPU, no audio, no window)
 add_executable(test_runtime_api
     tests/test_runtime_api.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/audio_engine.cpp
-    src/runtime/audio_executor.cpp
-    src/runtime/runtime_api.cpp
-    src/runtime/system_midi.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/audio/audio_engine.cpp
+    src/runtime/graph/audio_executor.cpp
+    src/runtime/control/runtime_api.cpp
+    src/runtime/audio/system_midi.cpp
 )
 target_include_directories(test_runtime_api PRIVATE src)
 target_link_libraries(test_runtime_api PRIVATE vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
@@ -1184,21 +1184,21 @@ add_test(NAME test_runtime_api COMMAND test_runtime_api WORKING_DIRECTORY ${CMAK
 # Latency validation test (PRD responsiveness claims)
 add_executable(test_latency_validation
     tests/test_latency_validation.cpp
-    src/runtime/builtin_operators.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/audio_engine.cpp
-    src/runtime/audio_executor.cpp
-    src/runtime/runtime_api.cpp
-    src/runtime/system_midi.cpp
+    src/runtime/operators/builtin_operators.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/audio/audio_engine.cpp
+    src/runtime/graph/audio_executor.cpp
+    src/runtime/control/runtime_api.cpp
+    src/runtime/audio/system_midi.cpp
 )
 target_include_directories(test_latency_validation PRIVATE src)
 target_link_libraries(test_latency_validation PRIVATE vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
@@ -1210,39 +1210,39 @@ set_tests_properties(test_latency_validation PROPERTIES TIMEOUT 30)
 # ControlServer integration test (HTTP endpoints, no GPU, no audio, no window)
 add_executable(test_control_server
     tests/test_control_server.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/audio_engine.cpp
-    src/runtime/audio_executor.cpp
-    src/runtime/runtime_api.cpp
-    src/runtime/package_compiler.cpp
-    src/runtime/tool_discovery.cpp
-    src/runtime/package_manager.cpp
-    src/runtime/undo_manager.cpp
-    src/runtime/control_server.cpp
-    src/runtime/control_server_checks.cpp
-    src/runtime/operator_source_docs.cpp
-    src/runtime/capture_coordinator.cpp
-    src/runtime/output_analyzer.cpp
-    src/runtime/screenshot.cpp
-    src/runtime/av_exporter.mm
-    src/runtime/operator_creator.cpp
-    src/runtime/hot_reload.cpp
-    src/runtime/system_midi.cpp
-    src/runtime/package_manager.cpp
-    src/runtime/package_compiler.cpp
-    src/runtime/package_test_runner.cpp
-    src/runtime/package_catalog.cpp
-    src/runtime/platform.cpp
-    src/runtime/app_update_manager.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/audio/audio_engine.cpp
+    src/runtime/graph/audio_executor.cpp
+    src/runtime/control/runtime_api.cpp
+    src/runtime/packages/package_compiler.cpp
+    src/runtime/core/tool_discovery.cpp
+    src/runtime/packages/package_manager.cpp
+    src/runtime/core/undo_manager.cpp
+    src/runtime/control/control_server.cpp
+    src/runtime/control/control_server_checks.cpp
+    src/runtime/operators/operator_source_docs.cpp
+    src/runtime/debug/capture_coordinator.cpp
+    src/runtime/debug/output_analyzer.cpp
+    src/runtime/gpu/screenshot.cpp
+    src/runtime/platform/av_exporter.mm
+    src/runtime/operators/operator_creator.cpp
+    src/runtime/core/hot_reload.cpp
+    src/runtime/audio/system_midi.cpp
+    src/runtime/packages/package_manager.cpp
+    src/runtime/packages/package_compiler.cpp
+    src/runtime/packages/package_test_runner.cpp
+    src/runtime/packages/package_catalog.cpp
+    src/runtime/platform/platform.cpp
+    src/runtime/platform/app_update_manager.cpp
 )
 target_include_directories(test_control_server PRIVATE src)
 target_link_libraries(test_control_server PRIVATE
@@ -1257,39 +1257,39 @@ add_test(NAME test_control_server COMMAND test_control_server ${CMAKE_BINARY_DIR
 # Perception introspection matrix test (domain snapshots + deterministic health)
 add_executable(test_perception_introspection
     tests/test_perception_introspection.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/audio_engine.cpp
-    src/runtime/audio_executor.cpp
-    src/runtime/runtime_api.cpp
-    src/runtime/package_compiler.cpp
-    src/runtime/tool_discovery.cpp
-    src/runtime/package_manager.cpp
-    src/runtime/undo_manager.cpp
-    src/runtime/control_server.cpp
-    src/runtime/control_server_checks.cpp
-    src/runtime/operator_source_docs.cpp
-    src/runtime/capture_coordinator.cpp
-    src/runtime/output_analyzer.cpp
-    src/runtime/screenshot.cpp
-    src/runtime/av_exporter.mm
-    src/runtime/operator_creator.cpp
-    src/runtime/hot_reload.cpp
-    src/runtime/system_midi.cpp
-    src/runtime/package_manager.cpp
-    src/runtime/package_compiler.cpp
-    src/runtime/package_test_runner.cpp
-    src/runtime/package_catalog.cpp
-    src/runtime/platform.cpp
-    src/runtime/app_update_manager.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/audio/audio_engine.cpp
+    src/runtime/graph/audio_executor.cpp
+    src/runtime/control/runtime_api.cpp
+    src/runtime/packages/package_compiler.cpp
+    src/runtime/core/tool_discovery.cpp
+    src/runtime/packages/package_manager.cpp
+    src/runtime/core/undo_manager.cpp
+    src/runtime/control/control_server.cpp
+    src/runtime/control/control_server_checks.cpp
+    src/runtime/operators/operator_source_docs.cpp
+    src/runtime/debug/capture_coordinator.cpp
+    src/runtime/debug/output_analyzer.cpp
+    src/runtime/gpu/screenshot.cpp
+    src/runtime/platform/av_exporter.mm
+    src/runtime/operators/operator_creator.cpp
+    src/runtime/core/hot_reload.cpp
+    src/runtime/audio/system_midi.cpp
+    src/runtime/packages/package_manager.cpp
+    src/runtime/packages/package_compiler.cpp
+    src/runtime/packages/package_test_runner.cpp
+    src/runtime/packages/package_catalog.cpp
+    src/runtime/platform/platform.cpp
+    src/runtime/platform/app_update_manager.cpp
 )
 target_include_directories(test_perception_introspection PRIVATE src)
 target_link_libraries(test_perception_introspection PRIVATE
@@ -1320,20 +1320,20 @@ add_vivid_operator(audio_lane_op    tests/operators/audio_lane_op.cpp)
 # AudioEngine integration test (null audio backend, no GPU, no window)
 add_executable(test_audio_engine
     tests/test_audio_engine.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/audio_engine.cpp
-    src/runtime/audio_executor.cpp
-    src/runtime/runtime_api.cpp
-    src/runtime/system_midi.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/audio/audio_engine.cpp
+    src/runtime/graph/audio_executor.cpp
+    src/runtime/control/runtime_api.cpp
+    src/runtime/audio/system_midi.cpp
 )
 target_include_directories(test_audio_engine PRIVATE src)
 target_link_libraries(test_audio_engine PRIVATE
@@ -1343,18 +1343,18 @@ add_test(NAME test_audio_engine COMMAND test_audio_engine WORKING_DIRECTORY ${CM
 
 add_executable(test_scalar_hold_bridge
     tests/test_scalar_hold_bridge.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/audio_engine.cpp
-    src/runtime/audio_executor.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/audio/audio_engine.cpp
+    src/runtime/graph/audio_executor.cpp
 )
 target_include_directories(test_scalar_hold_bridge PRIVATE src)
 target_link_libraries(test_scalar_hold_bridge PRIVATE
@@ -1366,18 +1366,18 @@ add_test(NAME test_scalar_hold_bridge COMMAND test_scalar_hold_bridge
 # Audio thread robustness test (exception handling in audio callback)
 add_executable(test_audio_robustness
     tests/test_audio_robustness.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/audio_engine.cpp
-    src/runtime/audio_executor.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/audio/audio_engine.cpp
+    src/runtime/graph/audio_executor.cpp
 )
 target_include_directories(test_audio_robustness PRIVATE src)
 target_link_libraries(test_audio_robustness PRIVATE
@@ -1388,15 +1388,15 @@ add_test(NAME test_audio_robustness COMMAND test_audio_robustness WORKING_DIRECT
 # Scheduler unit test (no GPU, no audio playback, no window)
 add_executable(test_runtime_core
     tests/test_runtime_core.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
 )
 target_include_directories(test_runtime_core PRIVATE src)
 target_link_libraries(test_runtime_core PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
@@ -1406,7 +1406,7 @@ add_test(NAME test_runtime_core COMMAND test_runtime_core WORKING_DIRECTORY ${CM
 # Graph data-model unit test (no operators, no runtime, no GPU)
 add_executable(test_graph
     tests/test_graph.cpp
-    src/runtime/graph.cpp
+    src/runtime/graph/graph.cpp
 )
 target_include_directories(test_graph PRIVATE src)
 target_link_libraries(test_graph PRIVATE nlohmann_json::nlohmann_json)
@@ -1415,7 +1415,7 @@ add_test(NAME test_graph COMMAND test_graph WORKING_DIRECTORY ${CMAKE_BINARY_DIR
 # JSON migration round-trip regression test
 add_executable(test_json_migration
     tests/test_json_migration.cpp
-    src/runtime/graph.cpp
+    src/runtime/graph/graph.cpp
 )
 target_include_directories(test_json_migration PRIVATE src)
 target_link_libraries(test_json_migration PRIVATE nlohmann_json::nlohmann_json)
@@ -1430,11 +1430,11 @@ add_test(NAME test_topo_sort COMMAND test_topo_sort WORKING_DIRECTORY ${CMAKE_BI
 # OperatorCreator unit test
 add_executable(test_operator_creator
     tests/test_operator_creator.cpp
-    src/runtime/operator_creator.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/graph.cpp
+    src/runtime/operators/operator_creator.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/graph/graph.cpp
 )
 target_include_directories(test_operator_creator PRIVATE src tests)
 target_link_libraries(test_operator_creator PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
@@ -1443,8 +1443,8 @@ add_test(NAME test_operator_creator COMMAND test_operator_creator WORKING_DIRECT
 # Settings round-trip unit test
 add_executable(test_settings
     tests/test_settings.cpp
-    src/runtime/settings.cpp
-    src/runtime/platform.cpp
+    src/runtime/core/settings.cpp
+    src/runtime/platform/platform.cpp
 )
 target_include_directories(test_settings PRIVATE src tests)
 target_link_libraries(test_settings PRIVATE nlohmann_json::nlohmann_json)
@@ -1464,7 +1464,7 @@ add_executable(test_theme_loader
     tests/test_theme_loader.cpp
     src/ui/theme_loader.cpp
     src/ui/ui_style.cpp
-    src/runtime/platform.cpp
+    src/runtime/platform/platform.cpp
 )
 target_include_directories(test_theme_loader PRIVATE src tests)
 target_link_libraries(test_theme_loader PRIVATE nlohmann_json::nlohmann_json)
@@ -1494,7 +1494,7 @@ add_test(NAME test_inspector_layout COMMAND test_inspector_layout WORKING_DIRECT
 # UI overlay interaction regressions (example/package/meta overlay callbacks)
 add_executable(test_ui_overlay_interactions
     tests/test_ui_overlay_interactions.cpp
-    src/runtime/platform.cpp
+    src/runtime/platform/platform.cpp
 )
 target_include_directories(test_ui_overlay_interactions PRIVATE src tests)
 target_link_libraries(test_ui_overlay_interactions PRIVATE vivid_ui webgpu glfw nlohmann_json::nlohmann_json stb_truetype)
@@ -1507,7 +1507,7 @@ set_tests_properties(test_ui_overlay_interactions PROPERTIES LABELS "UI_SMOKE")
 
 add_executable(test_ui_editor_interactions
     tests/test_ui_editor_interactions.cpp
-    src/runtime/platform.cpp
+    src/runtime/platform/platform.cpp
 )
 target_include_directories(test_ui_editor_interactions PRIVATE src tests)
 target_link_libraries(test_ui_editor_interactions PRIVATE vivid_ui webgpu glfw nlohmann_json::nlohmann_json stb_truetype)
@@ -1520,7 +1520,7 @@ set_tests_properties(test_ui_editor_interactions PROPERTIES LABELS "UI_SMOKE")
 
 add_executable(test_ui_widget_interactions
     tests/test_ui_widget_interactions.cpp
-    src/runtime/platform.cpp
+    src/runtime/platform/platform.cpp
 )
 target_include_directories(test_ui_widget_interactions PRIVATE src tests)
 target_link_libraries(test_ui_widget_interactions PRIVATE vivid_ui webgpu glfw nlohmann_json::nlohmann_json stb_truetype)
@@ -1584,7 +1584,7 @@ add_test(NAME test_ui_arch_guard COMMAND test_ui_arch_guard ${CMAKE_SOURCE_DIR} 
 # WGSL header parser unit test
 add_executable(test_wgsl_header
     tests/test_wgsl_header.cpp
-    src/runtime/wgsl_header_parser.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
 )
 target_include_directories(test_wgsl_header PRIVATE src)
 target_link_libraries(test_wgsl_header PRIVATE nlohmann_json::nlohmann_json)
@@ -1615,10 +1615,10 @@ add_test(NAME test_audio_dsp_api COMMAND test_audio_dsp_api WORKING_DIRECTORY ${
 # OperatorLoader + OperatorRegistry unit tests (no GPU, no runtime, no graph)
 add_executable(test_operator_loader
     tests/test_operator_loader.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
 )
 target_include_directories(test_operator_loader PRIVATE src)
 target_link_libraries(test_operator_loader PRIVATE vivid_operator_api webgpu nlohmann_json::nlohmann_json)
@@ -1628,7 +1628,7 @@ set_tests_properties(test_operator_loader PROPERTIES LABELS "LOADER")
 
 add_executable(test_operator_source_docs
     tests/test_operator_source_docs.cpp
-    src/runtime/operator_source_docs.cpp
+    src/runtime/operators/operator_source_docs.cpp
 )
 target_include_directories(test_operator_source_docs PRIVATE src)
 target_link_libraries(test_operator_source_docs PRIVATE nlohmann_json::nlohmann_json)
@@ -1636,10 +1636,10 @@ add_test(NAME test_operator_source_docs COMMAND test_operator_source_docs WORKIN
 
 add_executable(test_file_drop_registry
     tests/test_file_drop_registry.cpp
-    src/runtime/file_drop_registry.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
+    src/runtime/core/file_drop_registry.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
 )
 target_include_directories(test_file_drop_registry PRIVATE src)
 target_link_libraries(test_file_drop_registry PRIVATE vivid_operator_api webgpu nlohmann_json::nlohmann_json)
@@ -1664,20 +1664,20 @@ add_test(NAME test_midi_file_player COMMAND test_midi_file_player WORKING_DIRECT
 
 add_executable(test_runtime_stress
     tests/test_runtime_stress.cpp
-    src/runtime/builtin_operators.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/audio_engine.cpp
-    src/runtime/audio_executor.cpp
-    src/runtime/runtime_api.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
+    src/runtime/operators/builtin_operators.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/audio/audio_engine.cpp
+    src/runtime/graph/audio_executor.cpp
+    src/runtime/control/runtime_api.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
 )
 target_include_directories(test_runtime_stress PRIVATE src)
 target_link_libraries(test_runtime_stress PRIVATE vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
@@ -1688,19 +1688,19 @@ set_tests_properties(test_runtime_stress PROPERTIES LABELS "STABILITY" TIMEOUT 3
 
 add_executable(test_hot_reload_stress
     tests/test_hot_reload_stress.cpp
-    src/runtime/builtin_operators.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/audio_engine.cpp
-    src/runtime/audio_executor.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
+    src/runtime/operators/builtin_operators.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/audio/audio_engine.cpp
+    src/runtime/graph/audio_executor.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
 )
 target_include_directories(test_hot_reload_stress PRIVATE src)
 target_link_libraries(test_hot_reload_stress PRIVATE vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
@@ -1711,24 +1711,24 @@ set_tests_properties(test_hot_reload_stress PROPERTIES LABELS "STABILITY" TIMEOU
 
 add_executable(test_package_stress
     tests/test_package_stress.cpp
-    src/runtime/builtin_operators.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/audio_engine.cpp
-    src/runtime/audio_executor.cpp
-    src/runtime/runtime_api.cpp
-    src/runtime/package_compiler.cpp
-    src/runtime/package_manager.cpp
-    src/runtime/tool_discovery.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/platform.cpp
-    src/runtime/wgsl_header_parser.cpp
+    src/runtime/operators/builtin_operators.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/audio/audio_engine.cpp
+    src/runtime/graph/audio_executor.cpp
+    src/runtime/control/runtime_api.cpp
+    src/runtime/packages/package_compiler.cpp
+    src/runtime/packages/package_manager.cpp
+    src/runtime/core/tool_discovery.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/platform/platform.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
 )
 target_include_directories(test_package_stress PRIVATE src)
 target_link_libraries(test_package_stress PRIVATE vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
@@ -1738,19 +1738,19 @@ set_tests_properties(test_package_stress PROPERTIES LABELS "STABILITY" TIMEOUT 3
 
 add_executable(test_mixed_runtime_stability
     tests/test_mixed_runtime_stability.cpp
-    src/runtime/builtin_operators.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/audio_engine.cpp
-    src/runtime/audio_executor.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
+    src/runtime/operators/builtin_operators.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/audio/audio_engine.cpp
+    src/runtime/graph/audio_executor.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
 )
 target_include_directories(test_mixed_runtime_stability PRIVATE src)
 target_link_libraries(test_mixed_runtime_stability PRIVATE vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
@@ -1762,7 +1762,7 @@ set_tests_properties(test_mixed_runtime_stability PROPERTIES LABELS "STABILITY" 
 # Modulation operator tests (Flanger, Chorus, Phaser)
 add_executable(test_modulation_ops
     tests/test_modulation_ops.cpp
-    src/runtime/operator_loader.cpp
+    src/runtime/operators/operator_loader.cpp
 )
 target_include_directories(test_modulation_ops PRIVATE src)
 target_link_libraries(test_modulation_ops PRIVATE vivid_operator_api webgpu nlohmann_json::nlohmann_json)
@@ -1772,7 +1772,7 @@ add_test(NAME test_modulation_ops COMMAND test_modulation_ops WORKING_DIRECTORY 
 # Spatial operator tests (StereoPanWidth, PingPongDelay)
 add_executable(test_spatial_ops
     tests/test_spatial_ops.cpp
-    src/runtime/operator_loader.cpp
+    src/runtime/operators/operator_loader.cpp
 )
 target_include_directories(test_spatial_ops PRIVATE src)
 target_link_libraries(test_spatial_ops PRIVATE vivid_operator_api webgpu nlohmann_json::nlohmann_json)
@@ -1782,7 +1782,7 @@ add_test(NAME test_spatial_ops COMMAND test_spatial_ops WORKING_DIRECTORY ${CMAK
 # Synthesis & transformation operator tests (FmSynth, RingMod, ParametricEQ)
 add_executable(test_synth_transform_ops
     tests/test_synth_transform_ops.cpp
-    src/runtime/operator_loader.cpp
+    src/runtime/operators/operator_loader.cpp
 )
 target_include_directories(test_synth_transform_ops PRIVATE src)
 target_link_libraries(test_synth_transform_ops PRIVATE vivid_operator_api webgpu nlohmann_json::nlohmann_json)
@@ -1792,8 +1792,8 @@ add_test(NAME test_synth_transform_ops COMMAND test_synth_transform_ops WORKING_
 # Audio output correctness tests (spectral/amplitude property assertions)
 add_executable(test_audio_correctness
     tests/test_audio_correctness.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/output_analyzer.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/debug/output_analyzer.cpp
 )
 target_include_directories(test_audio_correctness PRIVATE src)
 target_link_libraries(test_audio_correctness PRIVATE vivid_operator_api webgpu nlohmann_json::nlohmann_json)
@@ -1806,15 +1806,15 @@ add_vivid_operator(gpu_fill_op      tests/operators/gpu_fill_op.cpp      EXTRA_L
 # GPU operator integration tests (headless WebGPU, no window)
 add_executable(test_gpu_operators
     tests/test_gpu_operators.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
     src/ui/renderer_2d.cpp
 )
 target_include_directories(test_gpu_operators PRIVATE src deps/stb)
@@ -1825,16 +1825,16 @@ add_test(NAME test_gpu_operators COMMAND test_gpu_operators WORKING_DIRECTORY ${
 # GPU output correctness tests (brightness, contrast, motion property assertions)
 add_executable(test_gpu_correctness
     tests/test_gpu_correctness.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/output_analyzer.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/debug/output_analyzer.cpp
 )
 target_include_directories(test_gpu_correctness PRIVATE src)
 target_link_libraries(test_gpu_correctness PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
@@ -1844,7 +1844,7 @@ add_test(NAME test_gpu_correctness COMMAND test_gpu_correctness WORKING_DIRECTOR
 # Per-operator smoke sweep — discovers all dylibs and validates load/desc/process/boundary
 add_executable(test_operator_sweep
     tests/test_operator_sweep.cpp
-    src/runtime/operator_loader.cpp
+    src/runtime/operators/operator_loader.cpp
 )
 target_include_directories(test_operator_sweep PRIVATE src)
 target_link_libraries(test_operator_sweep PRIVATE vivid_operator_api webgpu nlohmann_json::nlohmann_json)
@@ -1869,18 +1869,18 @@ add_test(NAME test_state_machine COMMAND test_state_machine)
 # Audio-frame bridge lane snapshot integration test
 add_executable(test_lane_bridge_snapshot
     tests/test_lane_bridge_snapshot.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/audio_engine.cpp
-    src/runtime/audio_executor.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/audio/audio_engine.cpp
+    src/runtime/graph/audio_executor.cpp
 )
 target_include_directories(test_lane_bridge_snapshot PRIVATE src)
 target_link_libraries(test_lane_bridge_snapshot PRIVATE
@@ -1892,15 +1892,15 @@ add_test(NAME test_lane_bridge_snapshot COMMAND test_lane_bridge_snapshot
 # Lane broadcast/wrap test
 add_executable(test_lane_broadcast
     tests/test_lane_broadcast.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
 )
 target_include_directories(test_lane_broadcast PRIVATE src)
 target_link_libraries(test_lane_broadcast PRIVATE
@@ -1910,16 +1910,16 @@ add_test(NAME test_lane_broadcast COMMAND test_lane_broadcast WORKING_DIRECTORY 
 
 add_executable(test_lane_reshape
     tests/test_lane_reshape.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/port_type_registry.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/graph/port_type_registry.cpp
 )
 target_include_directories(test_lane_reshape PRIVATE src)
 target_link_libraries(test_lane_reshape PRIVATE
@@ -1929,16 +1929,16 @@ add_test(NAME test_lane_reshape COMMAND test_lane_reshape WORKING_DIRECTORY ${CM
 
 add_executable(test_frame_lane_lifting
     tests/test_frame_lane_lifting.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/port_type_registry.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/graph/port_type_registry.cpp
 )
 target_include_directories(test_frame_lane_lifting PRIVATE src)
 target_link_libraries(test_frame_lane_lifting PRIVATE
@@ -1948,16 +1948,16 @@ add_test(NAME test_frame_lane_lifting COMMAND test_frame_lane_lifting WORKING_DI
 
 add_executable(test_lane_breadth
     tests/test_lane_breadth.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/port_type_registry.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/graph/port_type_registry.cpp
 )
 target_include_directories(test_lane_breadth PRIVATE src)
 target_link_libraries(test_lane_breadth PRIVATE
@@ -1974,15 +1974,15 @@ add_test(NAME test_compute_lane_equivalence COMMAND test_compute_lane_equivalenc
 configure_file(tests/graphs/test_lane_metadata.json ${CMAKE_BINARY_DIR}/test_lane_metadata.json COPYONLY)
 add_executable(test_lane_metadata
     tests/test_lane_metadata.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
 )
 target_include_directories(test_lane_metadata PRIVATE src)
 target_link_libraries(test_lane_metadata PRIVATE
@@ -2002,20 +2002,20 @@ add_test(NAME test_child_op COMMAND test_child_op WORKING_DIRECTORY ${CMAKE_BINA
 # SCALAR port tests (type compatibility and audio-rate scalar routing)
 add_executable(test_scalar_port
     tests/test_scalar_port.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/audio_engine.cpp
-    src/runtime/audio_executor.cpp
-    src/runtime/runtime_api.cpp
-    src/runtime/system_midi.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/audio/audio_engine.cpp
+    src/runtime/graph/audio_executor.cpp
+    src/runtime/control/runtime_api.cpp
+    src/runtime/audio/system_midi.cpp
 )
 target_include_directories(test_scalar_port PRIVATE src)
 target_link_libraries(test_scalar_port PRIVATE
@@ -2025,7 +2025,7 @@ add_test(NAME test_scalar_port COMMAND test_scalar_port WORKING_DIRECTORY ${CMAK
 
 add_executable(test_audio_control_timing
     tests/test_audio_control_timing.cpp
-    src/runtime/operator_loader.cpp
+    src/runtime/operators/operator_loader.cpp
 )
 target_include_directories(test_audio_control_timing PRIVATE src)
 target_link_libraries(test_audio_control_timing PRIVATE vivid_operator_api webgpu)
@@ -2061,24 +2061,24 @@ add_custom_target(phase6_soak
 # Demo graph smoke test (loads every demo graph, builds runtime, ticks 5 frames)
 add_executable(test_demo_graphs
     tests/test_demo_graphs.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/audio_engine.cpp
-    src/runtime/audio_executor.cpp
-    src/runtime/builtin_operators.cpp
-    src/runtime/runtime_bootstrap.cpp
-    src/runtime/package_manager.cpp
-    src/runtime/package_compiler.cpp
-    src/runtime/tool_discovery.cpp
-    src/runtime/platform.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/audio/audio_engine.cpp
+    src/runtime/graph/audio_executor.cpp
+    src/runtime/operators/builtin_operators.cpp
+    src/runtime/core/runtime_bootstrap.cpp
+    src/runtime/packages/package_manager.cpp
+    src/runtime/packages/package_compiler.cpp
+    src/runtime/core/tool_discovery.cpp
+    src/runtime/platform/platform.cpp
 )
 target_include_directories(test_demo_graphs PRIVATE src)
 target_link_libraries(test_demo_graphs PRIVATE
@@ -2107,19 +2107,19 @@ set_tests_properties(test_demo_graphs PROPERTIES LABELS "HEADLESS_SMOKE" TIMEOUT
 # with bounded timeout to prevent CI hangs. See docs/test_stabilization.md step 4.
 add_executable(test_media_headless
     tests/test_media_headless.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/audio_engine.cpp
-    src/runtime/audio_executor.cpp
-    src/runtime/builtin_operators.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/audio/audio_engine.cpp
+    src/runtime/graph/audio_executor.cpp
+    src/runtime/operators/builtin_operators.cpp
 )
 target_include_directories(test_media_headless PRIVATE src)
 target_link_libraries(test_media_headless PRIVATE
@@ -2138,19 +2138,19 @@ set_tests_properties(test_media_headless PROPERTIES
 # Audio-domain sequencer graph integration test
 add_executable(test_audio_sequencer_graph
     tests/test_audio_sequencer_graph.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/audio_engine.cpp
-    src/runtime/audio_executor.cpp
-    src/runtime/builtin_operators.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/audio/audio_engine.cpp
+    src/runtime/graph/audio_executor.cpp
+    src/runtime/operators/builtin_operators.cpp
 )
 target_include_directories(test_audio_sequencer_graph PRIVATE src)
 target_link_libraries(test_audio_sequencer_graph PRIVATE
@@ -2164,22 +2164,22 @@ set_tests_properties(test_audio_sequencer_graph PROPERTIES LABELS "STABILITY")
 # Fixed-cadence assignment integration test
 add_executable(test_fixed_cadence_assignment
     tests/test_fixed_cadence_assignment.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/audio_engine.cpp
-    src/runtime/audio_executor.cpp
-    src/runtime/runtime_api.cpp
-    src/runtime/package_manager.cpp
-    src/runtime/operator_creator.cpp
-    src/runtime/capture_coordinator.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/audio/audio_engine.cpp
+    src/runtime/graph/audio_executor.cpp
+    src/runtime/control/runtime_api.cpp
+    src/runtime/packages/package_manager.cpp
+    src/runtime/operators/operator_creator.cpp
+    src/runtime/debug/capture_coordinator.cpp
 )
 target_include_directories(test_fixed_cadence_assignment PRIVATE src)
 target_link_libraries(test_fixed_cadence_assignment PRIVATE
@@ -2193,12 +2193,12 @@ set_tests_properties(test_fixed_cadence_assignment PROPERTIES LABELS "STABILITY"
 # PackageCompiler unit test (compiles a mock package operator)
 add_executable(test_package_compiler
     tests/test_package_compiler.cpp
-    src/runtime/package_compiler.cpp
-    src/runtime/tool_discovery.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/platform.cpp
+    src/runtime/packages/package_compiler.cpp
+    src/runtime/core/tool_discovery.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/platform/platform.cpp
 )
 target_include_directories(test_package_compiler PRIVATE src)
 target_link_libraries(test_package_compiler PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
@@ -2210,14 +2210,14 @@ set_tests_properties(test_package_compiler PROPERTIES LABELS "PACKAGE")
 # PackageCatalog unit test (JSON parsing, cache, merge)
 add_executable(test_package_catalog
     tests/test_package_catalog.cpp
-    src/runtime/package_catalog.cpp
-    src/runtime/package_manager.cpp
-    src/runtime/package_compiler.cpp
-    src/runtime/tool_discovery.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/platform.cpp
+    src/runtime/packages/package_catalog.cpp
+    src/runtime/packages/package_manager.cpp
+    src/runtime/packages/package_compiler.cpp
+    src/runtime/core/tool_discovery.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/platform/platform.cpp
 )
 target_include_directories(test_package_catalog PRIVATE src)
 target_link_libraries(test_package_catalog PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
@@ -2229,13 +2229,13 @@ set_tests_properties(test_package_catalog PROPERTIES LABELS "PACKAGE")
 # PackageManager lifecycle test (install/list/uninstall with local path)
 add_executable(test_package_manager
     tests/test_package_manager.cpp
-    src/runtime/package_manager.cpp
-    src/runtime/package_compiler.cpp
-    src/runtime/tool_discovery.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/platform.cpp
+    src/runtime/packages/package_manager.cpp
+    src/runtime/packages/package_compiler.cpp
+    src/runtime/core/tool_discovery.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/platform/platform.cpp
 )
 target_include_directories(test_package_manager PRIVATE src)
 target_link_libraries(test_package_manager PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
@@ -2246,22 +2246,22 @@ set_tests_properties(test_package_manager PROPERTIES LABELS "PACKAGE")
 
 add_executable(test_runtime_bootstrap_packages
     tests/test_runtime_bootstrap_packages.cpp
-    src/runtime/builtin_operators.cpp
-    src/runtime/runtime_bootstrap.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/package_manager.cpp
-    src/runtime/package_compiler.cpp
-    src/runtime/tool_discovery.cpp
-    src/runtime/platform.cpp
-    src/runtime/wgsl_header_parser.cpp
+    src/runtime/operators/builtin_operators.cpp
+    src/runtime/core/runtime_bootstrap.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/packages/package_manager.cpp
+    src/runtime/packages/package_compiler.cpp
+    src/runtime/core/tool_discovery.cpp
+    src/runtime/platform/platform.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
 )
 target_include_directories(test_runtime_bootstrap_packages PRIVATE src)
 target_link_libraries(test_runtime_bootstrap_packages PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
@@ -2274,13 +2274,13 @@ set_tests_properties(test_runtime_bootstrap_packages PROPERTIES LABELS "PACKAGE"
 # Package scope resolver test (deterministic multi-scope precedence/conflicts)
 add_executable(test_package_scope_resolver
     tests/test_package_scope_resolver.cpp
-    src/runtime/package_manager.cpp
-    src/runtime/package_compiler.cpp
-    src/runtime/tool_discovery.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/platform.cpp
+    src/runtime/packages/package_manager.cpp
+    src/runtime/packages/package_compiler.cpp
+    src/runtime/core/tool_discovery.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/platform/platform.cpp
 )
 target_include_directories(test_package_scope_resolver PRIVATE src)
 target_link_libraries(test_package_scope_resolver PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
@@ -2292,13 +2292,13 @@ set_tests_properties(test_package_scope_resolver PROPERTIES LABELS "PACKAGE")
 # Package scope + registry integration test (winner package only)
 add_executable(test_package_scope_registry
     tests/test_package_scope_registry.cpp
-    src/runtime/package_manager.cpp
-    src/runtime/package_compiler.cpp
-    src/runtime/tool_discovery.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/platform.cpp
+    src/runtime/packages/package_manager.cpp
+    src/runtime/packages/package_compiler.cpp
+    src/runtime/core/tool_discovery.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/platform/platform.cpp
 )
 target_include_directories(test_package_scope_registry PRIVATE src)
 target_link_libraries(test_package_scope_registry PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
@@ -2310,7 +2310,7 @@ set_tests_properties(test_package_scope_registry PROPERTIES LABELS "PACKAGE")
 # Package scaffolder unit test (template copy + placeholder replacement)
 add_executable(test_package_scaffolder
     tests/test_package_scaffolder.cpp
-    src/runtime/package_scaffolder.cpp
+    src/runtime/packages/package_scaffolder.cpp
 )
 target_include_directories(test_package_scaffolder PRIVATE src)
 add_test(NAME test_package_scaffolder
@@ -2321,13 +2321,13 @@ set_tests_properties(test_package_scaffolder PROPERTIES LABELS "PACKAGE")
 # PackageManager update metadata logic test (semantic version + compatibility)
 add_executable(test_package_update_logic
     tests/test_package_update_logic.cpp
-    src/runtime/package_manager.cpp
-    src/runtime/package_compiler.cpp
-    src/runtime/tool_discovery.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/platform.cpp
+    src/runtime/packages/package_manager.cpp
+    src/runtime/packages/package_compiler.cpp
+    src/runtime/core/tool_discovery.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/platform/platform.cpp
 )
 target_include_directories(test_package_update_logic PRIVATE src)
 target_link_libraries(test_package_update_logic PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
@@ -2339,7 +2339,7 @@ set_tests_properties(test_package_update_logic PROPERTIES LABELS "PACKAGE")
 # Core app update metadata parsing test (appcast + semver compare)
 add_executable(test_app_update_manager
     tests/test_app_update_manager.cpp
-    src/runtime/app_update_manager.cpp
+    src/runtime/platform/app_update_manager.cpp
 )
 target_include_directories(test_app_update_manager PRIVATE src)
 target_link_libraries(test_app_update_manager PRIVATE vivid_operator_api webgpu)
@@ -2351,22 +2351,22 @@ set_tests_properties(test_app_update_manager PROPERTIES LABELS "PACKAGE")
 # PackageTestRunner test (graph + C++ test execution for packages)
 add_executable(test_package_test_runner
     tests/test_package_test_runner.cpp
-    src/runtime/package_test_runner.cpp
-    src/runtime/package_manager.cpp
-    src/runtime/package_compiler.cpp
-    src/runtime/tool_discovery.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/builtin_operators.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/platform.cpp
+    src/runtime/packages/package_test_runner.cpp
+    src/runtime/packages/package_manager.cpp
+    src/runtime/packages/package_compiler.cpp
+    src/runtime/core/tool_discovery.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/operators/builtin_operators.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/platform/platform.cpp
 )
 target_include_directories(test_package_test_runner PRIVATE src)
 target_link_libraries(test_package_test_runner PRIVATE
@@ -2379,22 +2379,22 @@ set_tests_properties(test_package_test_runner PROPERTIES LABELS "PACKAGE")
 
 add_executable(test_package_contract_ecosystem
     tests/test_package_contract_ecosystem.cpp
-    src/runtime/package_test_runner.cpp
-    src/runtime/package_manager.cpp
-    src/runtime/package_compiler.cpp
-    src/runtime/tool_discovery.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/builtin_operators.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/platform.cpp
+    src/runtime/packages/package_test_runner.cpp
+    src/runtime/packages/package_manager.cpp
+    src/runtime/packages/package_compiler.cpp
+    src/runtime/core/tool_discovery.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/operators/builtin_operators.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/platform/platform.cpp
 )
 target_include_directories(test_package_contract_ecosystem PRIVATE src)
 target_link_libraries(test_package_contract_ecosystem PRIVATE
@@ -2408,24 +2408,24 @@ set_tests_properties(test_package_contract_ecosystem PROPERTIES LABELS "PACKAGE"
 # CaptureCoordinator unit test (non-GPU paths only)
 add_executable(test_capture_coordinator
     tests/test_capture_coordinator.cpp
-    src/runtime/capture_coordinator.cpp
-    src/runtime/output_analyzer.cpp
-    src/runtime/av_exporter.mm
-    src/runtime/port_type_registry.cpp
-    src/runtime/audio_engine.cpp
-    src/runtime/audio_executor.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/screenshot.cpp
-    src/runtime/runtime_api.cpp
-    src/runtime/undo_manager.cpp
+    src/runtime/debug/capture_coordinator.cpp
+    src/runtime/debug/output_analyzer.cpp
+    src/runtime/platform/av_exporter.mm
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/audio/audio_engine.cpp
+    src/runtime/graph/audio_executor.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/gpu/screenshot.cpp
+    src/runtime/control/runtime_api.cpp
+    src/runtime/core/undo_manager.cpp
 )
 target_include_directories(test_capture_coordinator PRIVATE src)
 target_link_libraries(test_capture_coordinator PRIVATE
@@ -2438,7 +2438,7 @@ add_test(NAME test_capture_coordinator COMMAND test_capture_coordinator
 # OutputAnalyzer unit test (pure analysis functions, no GPU/audio)
 add_executable(test_output_analyzer
     tests/test_output_analyzer.cpp
-    src/runtime/output_analyzer.cpp
+    src/runtime/debug/output_analyzer.cpp
 )
 target_include_directories(test_output_analyzer PRIVATE src)
 target_link_libraries(test_output_analyzer PRIVATE vivid_operator_api)
@@ -2448,7 +2448,7 @@ add_test(NAME test_output_analyzer COMMAND test_output_analyzer
 # SystemMidiListener unit test (no hardware needed)
 add_executable(test_midi
     tests/test_midi.cpp
-    src/runtime/system_midi.cpp
+    src/runtime/audio/system_midi.cpp
 )
 target_include_directories(test_midi PRIVATE src)
 target_link_libraries(test_midi PRIVATE rtmidi)
@@ -2457,7 +2457,7 @@ add_test(NAME test_midi COMMAND test_midi WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 # FileWatcher unit tests (kqueue, no runtime, no GPU)
 add_executable(test_file_watcher
     tests/test_file_watcher.cpp
-    src/runtime/file_watcher.cpp
+    src/runtime/core/file_watcher.cpp
 )
 target_include_directories(test_file_watcher PRIVATE src tests)
 add_test(NAME test_file_watcher COMMAND test_file_watcher WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -2465,8 +2465,8 @@ add_test(NAME test_file_watcher COMMAND test_file_watcher WORKING_DIRECTORY ${CM
 # HotReloader queueing unit tests (no compiler invocation; package callback path)
 add_executable(test_hot_reloader_queue
     tests/test_hot_reloader_queue.cpp
-    src/runtime/hot_reload.cpp
-    src/runtime/tool_discovery.cpp
+    src/runtime/core/hot_reload.cpp
+    src/runtime/core/tool_discovery.cpp
 )
 target_include_directories(test_hot_reloader_queue PRIVATE src tests)
 add_test(NAME test_hot_reloader_queue COMMAND test_hot_reloader_queue WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -2507,15 +2507,15 @@ add_test(NAME test_movie_load_generation COMMAND test_movie_load_generation WORK
 
 add_executable(test_string_ports
     tests/test_string_ports.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
 )
 target_include_directories(test_string_ports PRIVATE src tests)
 target_link_libraries(test_string_ports PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
@@ -2536,7 +2536,7 @@ add_test(NAME test_movie_av_sync COMMAND test_movie_av_sync WORKING_DIRECTORY ${
 
 add_executable(test_port_type_registry
     tests/test_port_type_registry.cpp
-    src/runtime/port_type_registry.cpp
+    src/runtime/graph/port_type_registry.cpp
 )
 target_include_directories(test_port_type_registry PRIVATE src tests ${CMAKE_SOURCE_DIR})
 add_test(NAME test_port_type_registry
@@ -2569,7 +2569,7 @@ endif()
 # UndoManager unit tests (snapshot history behavior)
 add_executable(test_undo_manager
     tests/test_undo_manager.cpp
-    src/runtime/undo_manager.cpp
+    src/runtime/core/undo_manager.cpp
 )
 target_include_directories(test_undo_manager PRIVATE src tests)
 add_test(NAME test_undo_manager COMMAND test_undo_manager WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -2577,26 +2577,26 @@ add_test(NAME test_undo_manager COMMAND test_undo_manager WORKING_DIRECTORY ${CM
 # editor_detect unit tests (filesystem scan, no display)
 add_executable(test_editor_detect
     tests/test_editor_detect.cpp
-    src/runtime/editor_detect.cpp
+    src/runtime/core/editor_detect.cpp
 )
 target_include_directories(test_editor_detect PRIVATE src tests)
 add_test(NAME test_editor_detect COMMAND test_editor_detect WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_tool_discovery
     tests/test_tool_discovery.cpp
-    src/runtime/tool_discovery.cpp
+    src/runtime/core/tool_discovery.cpp
 )
 target_include_directories(test_tool_discovery PRIVATE src tests)
 add_test(NAME test_tool_discovery COMMAND test_tool_discovery WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_graph_compiler_init
     tests/test_graph_compiler_init.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/port_type_registry.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/graph/port_type_registry.cpp
 )
 target_include_directories(test_graph_compiler_init PRIVATE src)
 target_link_libraries(test_graph_compiler_init PRIVATE
@@ -2605,8 +2605,8 @@ add_test(NAME test_graph_compiler_init COMMAND test_graph_compiler_init WORKING_
 
 add_executable(test_frame_executor_queries
     tests/test_frame_executor_queries.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/port_type_registry.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/graph/port_type_registry.cpp
 )
 target_include_directories(test_frame_executor_queries PRIVATE src)
 target_link_libraries(test_frame_executor_queries PRIVATE vivid_operator_api webgpu)
@@ -2614,8 +2614,8 @@ add_test(NAME test_frame_executor_queries COMMAND test_frame_executor_queries WO
 
 add_executable(test_audio_frame_bridge
     tests/test_audio_frame_bridge.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/port_type_registry.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/port_type_registry.cpp
 )
 target_include_directories(test_audio_frame_bridge PRIVATE src)
 target_link_libraries(test_audio_frame_bridge PRIVATE vivid_operator_api webgpu)
@@ -2623,8 +2623,8 @@ add_test(NAME test_audio_frame_bridge COMMAND test_audio_frame_bridge WORKING_DI
 
 add_executable(test_subgraph_module
     tests/test_subgraph_module.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph.cpp
 )
 target_include_directories(test_subgraph_module PRIVATE src)
 target_link_libraries(test_subgraph_module PRIVATE
@@ -2633,12 +2633,12 @@ add_test(NAME test_subgraph_module COMMAND test_subgraph_module WORKING_DIRECTOR
 
 add_executable(test_graph_compiler
     tests/test_graph_compiler.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/port_type_registry.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/graph/port_type_registry.cpp
 )
 target_include_directories(test_graph_compiler PRIVATE src)
 target_link_libraries(test_graph_compiler PRIVATE
@@ -2650,12 +2650,12 @@ add_test(NAME test_graph_compiler
 
 add_executable(test_lane_propagation
     tests/test_lane_propagation.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/port_type_registry.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/graph/port_type_registry.cpp
 )
 target_include_directories(test_lane_propagation PRIVATE src)
 target_link_libraries(test_lane_propagation PRIVATE
@@ -2669,12 +2669,12 @@ add_test(NAME test_lane_state COMMAND test_lane_state WORKING_DIRECTORY ${CMAKE_
 
 add_executable(test_lane_capacity
     tests/test_lane_capacity.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/port_type_registry.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/graph/port_type_registry.cpp
 )
 target_include_directories(test_lane_capacity PRIVATE src)
 target_link_libraries(test_lane_capacity PRIVATE
@@ -2686,19 +2686,19 @@ add_test(NAME test_lane_capacity
 
 add_executable(test_lane_compaction
     tests/test_lane_compaction.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/audio_engine.cpp
-    src/runtime/audio_executor.cpp
-    src/runtime/builtin_operators.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/audio/audio_engine.cpp
+    src/runtime/graph/audio_executor.cpp
+    src/runtime/operators/builtin_operators.cpp
 )
 target_include_directories(test_lane_compaction PRIVATE src)
 target_link_libraries(test_lane_compaction PRIVATE
@@ -2710,19 +2710,19 @@ add_test(NAME test_lane_compaction
 
 add_executable(test_lane_equivalence
     tests/test_lane_equivalence.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/audio_engine.cpp
-    src/runtime/audio_executor.cpp
-    src/runtime/builtin_operators.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/audio/audio_engine.cpp
+    src/runtime/graph/audio_executor.cpp
+    src/runtime/operators/builtin_operators.cpp
 )
 target_include_directories(test_lane_equivalence PRIVATE src)
 target_link_libraries(test_lane_equivalence PRIVATE
@@ -2735,33 +2735,33 @@ add_test(NAME test_lane_equivalence
 # Undo coverage across roadmap mutation types via RuntimeCommandSink + RuntimeAPI
 add_executable(test_undo_mutation_types
     tests/test_undo_mutation_types.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/audio_engine.cpp
-    src/runtime/audio_executor.cpp
-    src/runtime/runtime_api.cpp
-    src/runtime/package_compiler.cpp
-    src/runtime/tool_discovery.cpp
-    src/runtime/package_manager.cpp
-    src/runtime/undo_manager.cpp
-    src/runtime/operator_creator.cpp
-    src/runtime/settings.cpp
-    src/runtime/hot_reload.cpp
-    src/runtime/capture_coordinator.cpp
-    src/runtime/output_analyzer.cpp
-    src/runtime/screenshot.cpp
-    src/runtime/av_exporter.mm
-    src/runtime/platform.cpp
-    src/runtime/system_midi.cpp
-    src/runtime/runtime_command_sink.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/audio/audio_engine.cpp
+    src/runtime/graph/audio_executor.cpp
+    src/runtime/control/runtime_api.cpp
+    src/runtime/packages/package_compiler.cpp
+    src/runtime/core/tool_discovery.cpp
+    src/runtime/packages/package_manager.cpp
+    src/runtime/core/undo_manager.cpp
+    src/runtime/operators/operator_creator.cpp
+    src/runtime/core/settings.cpp
+    src/runtime/core/hot_reload.cpp
+    src/runtime/debug/capture_coordinator.cpp
+    src/runtime/debug/output_analyzer.cpp
+    src/runtime/gpu/screenshot.cpp
+    src/runtime/platform/av_exporter.mm
+    src/runtime/platform/platform.cpp
+    src/runtime/audio/system_midi.cpp
+    src/runtime/control/runtime_command_sink.cpp
 )
 target_include_directories(test_undo_mutation_types PRIVATE src tests)
 target_link_libraries(test_undo_mutation_types PRIVATE
@@ -2777,33 +2777,33 @@ add_test(NAME test_undo_mutation_types
 # Team workflow regression: project package isolation (Cases A/C: unit; Case B: dylib staging)
 add_executable(test_team_workflow_regression
     tests/test_team_workflow_regression.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/runtime_core.cpp
-    src/runtime/subgraph_module.cpp
-    src/runtime/graph_compiler.cpp
-    src/runtime/audio_frame_bridge.cpp
-    src/runtime/frame_executor.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/audio_engine.cpp
-    src/runtime/audio_executor.cpp
-    src/runtime/runtime_api.cpp
-    src/runtime/package_compiler.cpp
-    src/runtime/tool_discovery.cpp
-    src/runtime/package_manager.cpp
-    src/runtime/undo_manager.cpp
-    src/runtime/operator_creator.cpp
-    src/runtime/settings.cpp
-    src/runtime/hot_reload.cpp
-    src/runtime/capture_coordinator.cpp
-    src/runtime/output_analyzer.cpp
-    src/runtime/screenshot.cpp
-    src/runtime/av_exporter.mm
-    src/runtime/platform.cpp
-    src/runtime/system_midi.cpp
-    src/runtime/runtime_command_sink.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/graph.cpp
+    src/runtime/core/runtime_core.cpp
+    src/runtime/graph/subgraph_module.cpp
+    src/runtime/graph/graph_compiler.cpp
+    src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/graph/frame_executor.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/audio/audio_engine.cpp
+    src/runtime/graph/audio_executor.cpp
+    src/runtime/control/runtime_api.cpp
+    src/runtime/packages/package_compiler.cpp
+    src/runtime/core/tool_discovery.cpp
+    src/runtime/packages/package_manager.cpp
+    src/runtime/core/undo_manager.cpp
+    src/runtime/operators/operator_creator.cpp
+    src/runtime/core/settings.cpp
+    src/runtime/core/hot_reload.cpp
+    src/runtime/debug/capture_coordinator.cpp
+    src/runtime/debug/output_analyzer.cpp
+    src/runtime/gpu/screenshot.cpp
+    src/runtime/platform/av_exporter.mm
+    src/runtime/platform/platform.cpp
+    src/runtime/audio/system_midi.cpp
+    src/runtime/control/runtime_command_sink.cpp
 )
 target_include_directories(test_team_workflow_regression PRIVATE src tests)
 target_link_libraries(test_team_workflow_regression PRIVATE
@@ -2818,11 +2818,11 @@ add_test(NAME test_team_workflow_regression
 # builtin_operators unit tests (no dylib, no GPU)
 add_executable(test_builtin_operators
     tests/test_builtin_operators.cpp
-    src/runtime/builtin_operators.cpp
-    src/runtime/port_type_registry.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/wgsl_header_parser.cpp
+    src/runtime/operators/builtin_operators.cpp
+    src/runtime/graph/port_type_registry.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
 )
 target_include_directories(test_builtin_operators PRIVATE src tests)
 target_link_libraries(test_builtin_operators PRIVATE vivid_operator_api webgpu nlohmann_json::nlohmann_json)
@@ -2831,11 +2831,11 @@ add_test(NAME test_builtin_operators COMMAND test_builtin_operators WORKING_DIRE
 # OperatorInfoCache unit tests (uses builtin operators as fixtures, no dylib)
 add_executable(test_operator_info_cache
     tests/test_operator_info_cache.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/builtin_operators.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/port_type_registry.cpp
+    src/runtime/operators/operator_registry.cpp
+    src/runtime/operators/operator_loader.cpp
+    src/runtime/operators/builtin_operators.cpp
+    src/runtime/gpu/wgsl_header_parser.cpp
+    src/runtime/graph/port_type_registry.cpp
 )
 target_include_directories(test_operator_info_cache PRIVATE src tests)
 target_link_libraries(test_operator_info_cache PRIVATE vivid_operator_api webgpu nlohmann_json::nlohmann_json)

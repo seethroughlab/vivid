@@ -1,7 +1,7 @@
 // Tests for synthesis & transformation audio operators:
 // RingMod, FmSynth, ParametricEQ.
 
-#include "runtime/operator_loader.h"
+#include "runtime/operators/operator_loader.h"
 
 #include <cstdio>
 #include <cstring>

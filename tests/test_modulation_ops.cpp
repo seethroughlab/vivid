@@ -2,7 +2,7 @@
 // Exercises load, silence, dry pass-through, wet signal, extreme params,
 // and DC stability (flanger).
 
-#include "runtime/operator_loader.h"
+#include "runtime/operators/operator_loader.h"
 #include <cstdio>
 #include <cstring>
 #include <cmath>

@@ -2,7 +2,7 @@
 // These are pure initialization functions that populate CompiledNode state
 // from VividOperatorDescriptor data — no dylib loading or runtime needed.
 
-#include "runtime/graph_compiler.h"
+#include "runtime/graph/graph_compiler.h"
 #include "operator_api/type_id.h"
 #include <cstdio>
 #include <cstring>

@@ -3,10 +3,10 @@
 // Replaces the old cycle-expand/modulo-wrap broadcast test.
 // Verifies that lane arrays propagate intact through single wires and that
 // the scalar input_value is set to lane_array[0].
-#include "runtime/operator_registry.h"
-#include "runtime/graph.h"
-#include "runtime/runtime_core.h"
-#include "runtime/compiled_graph.h"
+#include "runtime/operators/operator_registry.h"
+#include "runtime/graph/graph.h"
+#include "runtime/core/runtime_core.h"
+#include "runtime/graph/compiled_graph.h"
 #include <cstdio>
 #include <cmath>
 #include <filesystem>

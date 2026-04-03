@@ -1,5 +1,5 @@
 #include "test_helpers.h"
-#include "runtime/settings.h"
+#include "runtime/core/settings.h"
 #include <filesystem>
 #include <fstream>
 #include <cstdlib>

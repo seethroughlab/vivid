@@ -9,14 +9,14 @@
 //
 // Graph: IdentityLaneSourceOp (frame) → LaneSlewOp (audio) → audio_out
 
-#include "runtime/operator_registry.h"
-#include "runtime/graph.h"
-#include "runtime/runtime_core.h"
-#include "runtime/audio_engine.h"
-#include "runtime/audio_frame_bridge.h"
-#include "runtime/compiled_graph.h"
-#include "runtime/builtin_operators.h"
-#include "runtime/lane_types.h"
+#include "runtime/operators/operator_registry.h"
+#include "runtime/graph/graph.h"
+#include "runtime/core/runtime_core.h"
+#include "runtime/audio/audio_engine.h"
+#include "runtime/audio/audio_frame_bridge.h"
+#include "runtime/graph/compiled_graph.h"
+#include "runtime/operators/builtin_operators.h"
+#include "runtime/graph/lane_types.h"
 #include <cstdio>
 #include <cmath>
 #include <filesystem>

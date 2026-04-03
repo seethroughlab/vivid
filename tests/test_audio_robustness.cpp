@@ -1,12 +1,12 @@
 // Test: audio thread exception handling.
 // A throwing audio operator should be caught, produce silence, and set the
 // error flag — without crashing the engine or affecting other audio nodes.
-#include "runtime/operator_registry.h"
-#include "runtime/graph.h"
-#include "runtime/runtime_core.h"
-#include "runtime/audio_engine.h"
-#include "runtime/audio_frame_bridge.h"
-#include "runtime/compiled_graph.h"
+#include "runtime/operators/operator_registry.h"
+#include "runtime/graph/graph.h"
+#include "runtime/core/runtime_core.h"
+#include "runtime/audio/audio_engine.h"
+#include "runtime/audio/audio_frame_bridge.h"
+#include "runtime/graph/compiled_graph.h"
 #include <cstdio>
 #include <cmath>
 #include <chrono>

@@ -5,10 +5,10 @@
 // 2. max_loop_lanes is stored on CompiledGraph for runtime use
 // 3. Default value remains 16 for backward compatibility
 
-#include "runtime/graph_compiler.h"
-#include "runtime/operator_registry.h"
-#include "runtime/graph.h"
-#include "runtime/lane_types.h"
+#include "runtime/graph/graph_compiler.h"
+#include "runtime/operators/operator_registry.h"
+#include "runtime/graph/graph.h"
+#include "runtime/graph/lane_types.h"
 #include <cstdio>
 #include <filesystem>
 #include <string>

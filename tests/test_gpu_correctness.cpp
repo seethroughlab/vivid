@@ -2,11 +2,11 @@
 // Verifies that GPU operators produce expected visual properties using
 // analyze_frame() and compute_motion() — property-based, no golden files.
 
-#include "runtime/operator_registry.h"
-#include "runtime/graph.h"
-#include "runtime/runtime_core.h"
-#include "runtime/compiled_graph.h"
-#include "runtime/output_analyzer.h"
+#include "runtime/operators/operator_registry.h"
+#include "runtime/graph/graph.h"
+#include "runtime/core/runtime_core.h"
+#include "runtime/graph/compiled_graph.h"
+#include "runtime/debug/output_analyzer.h"
 #include "operator_api/gpu_operator.h"
 #include "common/gpu_util.h"
 #include <webgpu/webgpu.h>

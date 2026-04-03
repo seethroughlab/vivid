@@ -1,7 +1,7 @@
 // test_package_scope_registry.cpp — registry loading uses resolved package winner only
-#include "runtime/package_manager.h"
-#include "runtime/package_compiler.h"
-#include "runtime/operator_registry.h"
+#include "runtime/packages/package_manager.h"
+#include "runtime/packages/package_compiler.h"
+#include "runtime/operators/operator_registry.h"
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>

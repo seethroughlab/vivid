@@ -1,7 +1,7 @@
 #include "export/export_pipeline.h"
-#include "runtime/operator_registry.h"
-#include "runtime/tool_discovery.h"
-#include "runtime/graph.h"
+#include "runtime/operators/operator_registry.h"
+#include "runtime/core/tool_discovery.h"
+#include "runtime/graph/graph.h"
 #include "operator_api/data_driven_filter.h"
 #include "operator_api/port_type_registry.h"
 #include <nlohmann/json.hpp>

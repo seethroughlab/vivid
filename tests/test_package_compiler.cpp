@@ -1,6 +1,6 @@
 // Test: PackageCompiler — compile a test operator from a mock package directory
-#include "runtime/package_compiler.h"
-#include "runtime/operator_registry.h"
+#include "runtime/packages/package_compiler.h"
+#include "runtime/operators/operator_registry.h"
 #include <cstdio>
 #include <filesystem>
 #include <fstream>

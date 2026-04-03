@@ -1,0 +1,74 @@
+#pragma once
+
+#include "runtime/graph/compiled_graph.h"
+#include "runtime/graph/graph.h"
+#include "runtime/operators/operator_registry.h"
+#include <filesystem>
+#include <string>
+
+namespace vivid {
+
+// ---------------------------------------------------------------------------
+// GraphCompiler — builds a CompiledGraph from a Graph + OperatorRegistry.
+//
+// Single compile pass that determines cadence per node, classifies edges
+// as Direct or Snapshot, builds independent topological orders for each
+// cadence, and pre-allocates all execution state.
+// ---------------------------------------------------------------------------
+
+class GraphCompiler {
+public:
+    struct Options {
+        // Base directory for resolving relative file paths in node params.
+        std::filesystem::path graph_base_dir;
+
+        // Source directory for operators (for WGSLFilter hot-reload paths).
+        std::string operators_src_dir;
+
+        // Default GPU texture dimensions.
+        uint32_t default_tex_width  = 800;
+        uint32_t default_tex_height = 600;
+
+        // Audio buffer size and sample rate.
+        uint32_t audio_buffer_size = 256;
+        uint32_t audio_sample_rate = 48000;
+
+        // Maximum lane count for LoopBased audio operators.
+        // Buffers are pre-allocated to this capacity at compile time.
+        uint32_t max_loop_lanes = 16;
+    };
+
+    // Compile a Graph into a ready-to-execute CompiledGraph.
+    // Returns nullptr on failure (cycle detected, missing operators, etc.).
+    static std::unique_ptr<CompiledGraph> compile(
+        const Graph& graph,
+        OperatorRegistry& registry,
+        const Options& options);
+
+    // Initialize the frame-side state on a CompiledNode (ports, params, lanes,
+    // strings, custom ports, file params, GPU resources).
+    static void init_frame_state(
+        CompiledNode& cn,
+        const VividOperatorDescriptor* desc,
+        const std::unordered_map<std::string, float>* param_overrides,
+        const std::unordered_map<std::string, std::string>* string_overrides,
+        const std::filesystem::path& graph_base_dir);
+
+    // Initialize audio-specific state on a CompiledNode (channel counts, audio
+    // buffers, lane/string/custom port staging).
+    static void init_audio_state(
+        CompiledNode& cn,
+        const VividOperatorDescriptor* desc,
+        uint32_t buffer_size);
+
+    // Hot-reload: destroy old instances of a given type, swap the dylib via
+    // the registry, and recreate instances with param reconciliation.
+    static bool reload_operator(
+        CompiledGraph& cg,
+        const std::string& type_name,
+        OperatorRegistry& registry,
+        const std::string& new_dylib_path,
+        const std::filesystem::path& graph_base_dir);
+};
+
+} // namespace vivid

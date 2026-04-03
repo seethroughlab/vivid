@@ -2,8 +2,8 @@
 #include "export/export_pipeline.h"
 #undef private
 
-#include "runtime/graph.h"
-#include "runtime/operator_registry.h"
+#include "runtime/graph/graph.h"
+#include "runtime/operators/operator_registry.h"
 #include "operator_api/port_type_registry.h"
 
 namespace test {

@@ -3,12 +3,12 @@
 // and that audio-frame bridge edges compile as snapshot
 // transports with an explicit bridge kind.
 
-#include "runtime/operator_registry.h"
-#include "runtime/graph.h"
-#include "runtime/runtime_core.h"
-#include "runtime/graph_compiler.h"
-#include "runtime/compiled_graph.h"
-#include "runtime/cadence_types.h"
+#include "runtime/operators/operator_registry.h"
+#include "runtime/graph/graph.h"
+#include "runtime/core/runtime_core.h"
+#include "runtime/graph/graph_compiler.h"
+#include "runtime/graph/compiled_graph.h"
+#include "runtime/graph/cadence_types.h"
 #include <cstdio>
 #include <filesystem>
 #include <string>

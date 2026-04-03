@@ -3,7 +3,7 @@
 // and verifies the in-memory Graph structures match field-by-field.
 // This test should pass both before and after the yyjson → nlohmann migration.
 
-#include "runtime/graph.h"
+#include "runtime/graph/graph.h"
 #include <cstdio>
 #include <cmath>
 #include <fstream>

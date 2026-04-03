@@ -1,4 +1,4 @@
-#include "runtime/app_update_manager.h"
+#include "runtime/platform/app_update_manager.h"
 #include <cassert>
 #include <chrono>
 #include <cstdlib>

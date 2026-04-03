@@ -1,7 +1,7 @@
 // Unit tests for LaneStateService — per-lane persistent state keyed by
 // (node_idx, lane_id). Verifies get/retire/sweep/identity semantics.
 
-#include "runtime/lane_state.h"
+#include "runtime/graph/lane_state.h"
 #include <cstdio>
 #include <cstring>
 

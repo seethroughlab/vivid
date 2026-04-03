@@ -21,7 +21,7 @@ int main(int argc, char** argv) {
         return 1;
     }
     const std::filesystem::path ui_dir = std::filesystem::path(argv[1]) / "src" / "ui";
-    const std::string forbidden_include = "runtime/package_catalog.h";
+    const std::string forbidden_include = "runtime/packages/package_catalog.h";
 
     std::vector<std::filesystem::path> offenders;
     for (const auto& entry : std::filesystem::recursive_directory_iterator(ui_dir)) {

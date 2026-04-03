@@ -1,8 +1,8 @@
 // Test: PackageManager — install/list/uninstall lifecycle with local paths
-#include "runtime/package_manager.h"
-#include "runtime/package_compiler.h"
-#include "runtime/operator_registry.h"
-#include "runtime/build_console.h"
+#include "runtime/packages/package_manager.h"
+#include "runtime/packages/package_compiler.h"
+#include "runtime/operators/operator_registry.h"
+#include "runtime/core/build_console.h"
 #include <cstdlib>
 #include <cstdio>
 #include <filesystem>

@@ -1,5 +1,5 @@
 // test_package_update_logic.cpp — PackageManager version/compatibility classification
-#include "runtime/package_manager.h"
+#include "runtime/packages/package_manager.h"
 #include <cstdio>
 
 static int failures = 0;

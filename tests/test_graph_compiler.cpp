@@ -5,10 +5,10 @@
 // - diamond topology
 // - mixed cadence partitioning
 
-#include "runtime/graph_compiler.h"
-#include "runtime/operator_registry.h"
-#include "runtime/graph.h"
-#include "runtime/lane_types.h"
+#include "runtime/graph/graph_compiler.h"
+#include "runtime/operators/operator_registry.h"
+#include "runtime/graph/graph.h"
+#include "runtime/graph/lane_types.h"
 #include <cstdio>
 #include <cstring>
 #include <filesystem>

@@ -1,6 +1,6 @@
-#include "runtime/operator_info_cache.h"
-#include "runtime/builtin_operators.h"
-#include "runtime/operator_registry.h"
+#include "runtime/operators/operator_info_cache.h"
+#include "runtime/operators/builtin_operators.h"
+#include "runtime/operators/operator_registry.h"
 #include "operator_api/types.h"
 #include <cstdio>
 

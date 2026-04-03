@@ -5,8 +5,8 @@
 // GPU operators are tested only when a headless WebGPU device is available;
 // otherwise they are gracefully skipped.
 
-#include "runtime/operator_loader.h"
-#include "runtime/shared_handle_registry.h"
+#include "runtime/operators/operator_loader.h"
+#include "runtime/core/shared_handle_registry.h"
 #include "operator_api/gpu_operator.h"
 #include "common/gpu_util.h"
 #include <webgpu/webgpu.h>

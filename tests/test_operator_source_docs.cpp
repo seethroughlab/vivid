@@ -1,4 +1,4 @@
-#include "runtime/operator_source_docs.h"
+#include "runtime/operators/operator_source_docs.h"
 
 #include <filesystem>
 #include <fstream>

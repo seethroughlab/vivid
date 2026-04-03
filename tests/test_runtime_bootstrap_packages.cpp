@@ -1,10 +1,10 @@
-#include "runtime/runtime_bootstrap.h"
-#include "runtime/package_manager.h"
-#include "runtime/package_compiler.h"
-#include "runtime/operator_registry.h"
-#include "runtime/runtime_core.h"
-#include "runtime/graph.h"
-#include "runtime/platform.h"
+#include "runtime/core/runtime_bootstrap.h"
+#include "runtime/packages/package_manager.h"
+#include "runtime/packages/package_compiler.h"
+#include "runtime/operators/operator_registry.h"
+#include "runtime/core/runtime_core.h"
+#include "runtime/graph/graph.h"
+#include "runtime/platform/platform.h"
 
 #include <cstdio>
 #include <cstdlib>

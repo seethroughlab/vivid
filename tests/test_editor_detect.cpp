@@ -1,4 +1,4 @@
-#include "runtime/editor_detect.h"
+#include "runtime/core/editor_detect.h"
 #include <cstdio>
 #include <unordered_set>
 

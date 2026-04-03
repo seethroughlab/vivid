@@ -1,4 +1,4 @@
-#include "runtime/operator_loader.h"
+#include "runtime/operators/operator_loader.h"
 #include "operator_api/midi_types.h"
 
 #include <cmath>

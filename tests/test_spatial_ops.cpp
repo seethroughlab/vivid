@@ -2,7 +2,7 @@
 // Exercises stereo port handling, pan law, width/M-S, delay timing,
 // cross-feed, DC stability, and extreme params.
 
-#include "runtime/operator_loader.h"
+#include "runtime/operators/operator_loader.h"
 #include <cstdio>
 #include <cstring>
 #include <cmath>

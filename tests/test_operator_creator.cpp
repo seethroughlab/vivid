@@ -1,6 +1,6 @@
 #include "test_helpers.h"
-#include "runtime/operator_creator.h"
-#include "runtime/operator_registry.h"
+#include "runtime/operators/operator_creator.h"
+#include "runtime/operators/operator_registry.h"
 #include <filesystem>
 #include <fstream>
 #include <string>

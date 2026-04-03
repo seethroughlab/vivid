@@ -1,4 +1,4 @@
-#include "runtime/wgsl_header_parser.h"
+#include "runtime/gpu/wgsl_header_parser.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>

@@ -2,8 +2,8 @@
 // Verifies that core audio operators produce expected spectral and amplitude
 // properties using analyze_audio() — no golden files, property-based only.
 
-#include "runtime/operator_loader.h"
-#include "runtime/output_analyzer.h"
+#include "runtime/operators/operator_loader.h"
+#include "runtime/debug/output_analyzer.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstring>

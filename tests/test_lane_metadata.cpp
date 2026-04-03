@@ -3,10 +3,10 @@
 // Verifies that the frame executor populates lane_count, lane_index,
 // and lane_set_id on VividFrameContext before calling process_frame().
 // Uses LaneMetadataOp which copies these fields to scalar outputs.
-#include "runtime/operator_registry.h"
-#include "runtime/graph.h"
-#include "runtime/runtime_core.h"
-#include "runtime/compiled_graph.h"
+#include "runtime/operators/operator_registry.h"
+#include "runtime/graph/graph.h"
+#include "runtime/core/runtime_core.h"
+#include "runtime/graph/compiled_graph.h"
 #include <cstdio>
 #include <cmath>
 #include <filesystem>

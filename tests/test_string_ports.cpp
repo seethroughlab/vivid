@@ -1,7 +1,7 @@
-#include "runtime/compiled_graph.h"
-#include "runtime/graph.h"
-#include "runtime/operator_registry.h"
-#include "runtime/runtime_core.h"
+#include "runtime/graph/compiled_graph.h"
+#include "runtime/graph/graph.h"
+#include "runtime/operators/operator_registry.h"
+#include "runtime/core/runtime_core.h"
 
 #include <cstdio>
 #include <filesystem>

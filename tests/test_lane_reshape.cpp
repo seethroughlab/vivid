@@ -8,12 +8,12 @@
 // 5. Compiler metadata: provenance IDs on Repeat/Tile/Select
 // 6. Tile mismatch resolution: Tile makes mismatched lane sets legal
 
-#include "runtime/operator_registry.h"
-#include "runtime/graph.h"
-#include "runtime/graph_compiler.h"
-#include "runtime/runtime_core.h"
-#include "runtime/compiled_graph.h"
-#include "runtime/lane_types.h"
+#include "runtime/operators/operator_registry.h"
+#include "runtime/graph/graph.h"
+#include "runtime/graph/graph_compiler.h"
+#include "runtime/core/runtime_core.h"
+#include "runtime/graph/compiled_graph.h"
+#include "runtime/graph/lane_types.h"
 #include <cstdio>
 #include <cmath>
 #include <filesystem>

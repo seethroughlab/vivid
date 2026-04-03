@@ -1,4 +1,4 @@
-#include "runtime/output_analyzer.h"
+#include "runtime/debug/output_analyzer.h"
 #include <cmath>
 #include <cstdio>
 #include <cstring>

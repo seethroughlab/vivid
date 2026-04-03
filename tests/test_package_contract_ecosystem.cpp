@@ -1,9 +1,9 @@
 // Test: representative ecosystem package-test contract coverage
-#include "runtime/package_test_runner.h"
-#include "runtime/package_manager.h"
-#include "runtime/package_compiler.h"
-#include "runtime/operator_registry.h"
-#include "runtime/builtin_operators.h"
+#include "runtime/packages/package_test_runner.h"
+#include "runtime/packages/package_manager.h"
+#include "runtime/packages/package_compiler.h"
+#include "runtime/operators/operator_registry.h"
+#include "runtime/operators/builtin_operators.h"
 #include <cstdio>
 #include <filesystem>
 #include <fstream>

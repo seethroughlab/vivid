@@ -1,10 +1,10 @@
-#include "runtime/audio_engine.h"
-#include "runtime/builtin_operators.h"
-#include "runtime/audio_frame_bridge.h"
-#include "runtime/compiled_graph.h"
-#include "runtime/graph.h"
-#include "runtime/operator_registry.h"
-#include "runtime/runtime_core.h"
+#include "runtime/audio/audio_engine.h"
+#include "runtime/operators/builtin_operators.h"
+#include "runtime/audio/audio_frame_bridge.h"
+#include "runtime/graph/compiled_graph.h"
+#include "runtime/graph/graph.h"
+#include "runtime/operators/operator_registry.h"
+#include "runtime/core/runtime_core.h"
 #include "common/gpu_util.h"
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>

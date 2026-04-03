@@ -3,7 +3,7 @@
 // Tests build(), push_to_audio(), pull_from_audio(), publish_analysis(),
 // and set_solo_active_set() using mock CompiledGraphs.
 
-#include "runtime/audio_frame_bridge.h"
+#include "runtime/audio/audio_frame_bridge.h"
 #include <cstdio>
 #include <cstring>
 #include <string>

@@ -1,10 +1,10 @@
 // test_package_catalog.cpp — PackageCatalog unit tests
 // Tests JSON parsing helpers. Does NOT test network fetch.
 
-#include "runtime/package_catalog.h"
-#include "runtime/package_manager.h"
-#include "runtime/package_compiler.h"
-#include "runtime/operator_registry.h"
+#include "runtime/packages/package_catalog.h"
+#include "runtime/packages/package_manager.h"
+#include "runtime/packages/package_compiler.h"
+#include "runtime/operators/operator_registry.h"
 #include <cassert>
 #include <chrono>
 #include <cstdio>

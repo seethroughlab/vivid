@@ -1,7 +1,7 @@
 #pragma once
 
 #include "operator_api/types.h"
-#include "runtime/cadence_types.h"
+#include "runtime/graph/cadence_types.h"
 #include <array>
 
 namespace vivid::ui {

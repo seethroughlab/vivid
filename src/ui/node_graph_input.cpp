@@ -4,7 +4,7 @@
 #include "ui/active_text_field.h"
 #include "ui/overlay_layouts.h"
 #include "ui/file_dialog.h"
-#include "runtime/platform.h"
+#include "runtime/platform/platform.h"
 #include "common/string_util.h"
 #include <GLFW/glfw3.h>
 #include <algorithm>

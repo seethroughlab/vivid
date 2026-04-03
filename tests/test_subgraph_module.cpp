@@ -3,8 +3,8 @@
 // the compile-time flattening transform that expands module nodes
 // into their internal graphs.
 
-#include "runtime/subgraph_module.h"
-#include "runtime/graph.h"
+#include "runtime/graph/subgraph_module.h"
+#include "runtime/graph/graph.h"
 #include <cstdio>
 #include <cstring>
 

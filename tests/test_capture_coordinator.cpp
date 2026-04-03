@@ -1,5 +1,5 @@
-#include "runtime/capture_coordinator.h"
-#include "runtime/av_exporter.h"
+#include "runtime/debug/capture_coordinator.h"
+#include "runtime/platform/av_exporter.h"
 #include <cstdio>
 #include <cstring>
 #include <string>

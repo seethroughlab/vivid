@@ -1,6 +1,6 @@
 #pragma once
 
-#include "runtime/build_console.h"
+#include "runtime/core/build_console.h"
 #include "ui/ui_style.h"
 #include <memory>
 #include <string>
