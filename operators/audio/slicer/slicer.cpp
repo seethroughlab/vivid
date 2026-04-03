@@ -85,30 +85,12 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::append_analysis_ports(out);
     }
 
+    void prepare_instance_assets() override {
+        refresh_sample_data();
+    }
+
     void main_thread_update(double /*time*/) override {
-        delete deferred_delete_;
-        deferred_delete_ = nullptr;
-
-        const std::string& path = file.str_value;
-        if (path == last_path_) return;
-        last_path_ = path;
-
-        if (path.empty()) {
-            SlicerData* old = data_.exchange(nullptr, std::memory_order_acq_rel);
-            deferred_delete_ = old;
-            return;
-        }
-
-        auto sample = decode_wav(path);
-        if (!sample) {
-            SlicerData* old = data_.exchange(nullptr, std::memory_order_acq_rel);
-            deferred_delete_ = old;
-            return;
-        }
-
-        auto* new_data = new SlicerData{std::move(sample)};
-        SlicerData* old = data_.exchange(new_data, std::memory_order_acq_rel);
-        deferred_delete_ = old;
+        refresh_sample_data();
     }
 
     void process_audio(const VividAudioContext* ctx) override {
@@ -350,6 +332,26 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
 
             frame_counter_++;
         }
+    }
+
+    void refresh_sample_data() {
+        delete deferred_delete_;
+        deferred_delete_ = nullptr;
+
+        const std::string& path = file.str_value;
+        if (path == last_path_) return;
+        last_path_ = path;
+
+        SlicerData* new_data = nullptr;
+        if (!path.empty()) {
+            auto sample = decode_wav(path);
+            if (sample) {
+                new_data = new SlicerData{std::move(sample)};
+            }
+        }
+
+        SlicerData* old = data_.exchange(new_data, std::memory_order_acq_rel);
+        deferred_delete_ = old;
     }
 };
 

@@ -52,7 +52,8 @@ extern "C" VividCreateFn     vivid_create;
 extern "C" VividDestroyFn    vivid_destroy;
 extern "C" VividProcessFrameFn    vivid_process_frame;  // frame-rate
 // + optional: vivid_process_audio, vivid_process_gpu, vivid_draw_thumbnail,
-//             vivid_main_thread_update, vivid_draw_inspector, vivid_inspector_mode,
+//             vivid_main_thread_update, vivid_prepare_instance_assets,
+//             vivid_draw_inspector, vivid_inspector_mode,
 //             vivid_file_drop_descriptor
 ```
 
@@ -80,7 +81,32 @@ const VividFileDropHandlerDescriptor* file_drop_handlers(uint32_t* count) const;
 bool has_main_thread_update() const;
 void main_thread_update(void* instance, double time,
                         const char** file_param_values, uint32_t file_param_count) const;
+
+bool has_prepare_instance_assets() const;
+void prepare_instance_assets(void* instance, const float* param_values,
+                             const char** file_param_values,
+                             uint32_t file_param_count) const;
 ```
+
+`prepare_instance_assets()` is the runtime's per-instance warmup hook for heavyweight
+CPU-side first-use setup. The graph compiler calls it after the node's graph param and
+string/file-param values have been synchronized into the instance, both during normal
+compile and hot-reload instance recreation.
+
+Use it for:
+
+- lookup-table generation
+- waveform / wavetable bank generation
+- CPU-side cache construction
+- initial file-backed asset loading when the graph already provides a file param
+- other one-time preparation that should not happen from `draw_thumbnail()` or another
+  UI-adjacent late-use path
+
+Do not use it for:
+
+- direct GPU resource creation that depends on a live render/device context
+- AppKit / window-system calls
+- audio-device lifecycle work
 
 ### Shader-Backed Operators
 

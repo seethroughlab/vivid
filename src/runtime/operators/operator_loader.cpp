@@ -96,6 +96,7 @@ OperatorLoader::OperatorLoader(OperatorLoader&& other) noexcept
     , draw_thumb_fn_(other.draw_thumb_fn_)
     , file_drop_fn_(other.file_drop_fn_)
     , main_update_fn_(other.main_update_fn_)
+    , prepare_assets_fn_(other.prepare_assets_fn_)
     , draw_insp_fn_(other.draw_insp_fn_)
     , insp_mode_fn_(other.insp_mode_fn_)
     , dd_config_(std::move(other.dd_config_))
@@ -119,6 +120,7 @@ OperatorLoader::OperatorLoader(OperatorLoader&& other) noexcept
     other.draw_thumb_fn_ = nullptr;
     other.file_drop_fn_   = nullptr;
     other.main_update_fn_   = nullptr;
+    other.prepare_assets_fn_ = nullptr;
     other.draw_insp_fn_     = nullptr;
     other.insp_mode_fn_     = nullptr;
     other.dd_desc_ = {};
@@ -141,6 +143,7 @@ OperatorLoader& OperatorLoader::operator=(OperatorLoader&& other) noexcept {
         draw_thumb_fn_ = other.draw_thumb_fn_;
         file_drop_fn_ = other.file_drop_fn_;
         main_update_fn_   = other.main_update_fn_;
+        prepare_assets_fn_ = other.prepare_assets_fn_;
         draw_insp_fn_     = other.draw_insp_fn_;
         insp_mode_fn_     = other.insp_mode_fn_;
         dd_config_        = std::move(other.dd_config_);
@@ -163,6 +166,7 @@ OperatorLoader& OperatorLoader::operator=(OperatorLoader&& other) noexcept {
         other.draw_thumb_fn_ = nullptr;
         other.file_drop_fn_ = nullptr;
         other.main_update_fn_   = nullptr;
+        other.prepare_assets_fn_ = nullptr;
         other.draw_insp_fn_     = nullptr;
         other.insp_mode_fn_     = nullptr;
         other.dd_desc_ = {};
@@ -313,6 +317,8 @@ bool OperatorLoader::load(const char* path) {
     file_drop_fn_ =
         reinterpret_cast<VividFileDropDescriptorFn>(dlsym(new_handle, "vivid_file_drop_descriptor"));
     main_update_fn_ = reinterpret_cast<VividMainThreadUpdateFn>(dlsym(new_handle, "vivid_main_thread_update"));
+    prepare_assets_fn_ = reinterpret_cast<VividPrepareInstanceAssetsFn>(
+        dlsym(new_handle, "vivid_prepare_instance_assets"));
     draw_insp_fn_   = reinterpret_cast<VividDrawInspectorFn>(dlsym(new_handle, "vivid_draw_inspector"));
     insp_mode_fn_   = reinterpret_cast<VividInspectorModeFn>(dlsym(new_handle, "vivid_inspector_mode"));
 
@@ -450,6 +456,7 @@ void OperatorLoader::unload() {
         draw_thumb_fn_ = nullptr;
         file_drop_fn_ = nullptr;
         main_update_fn_   = nullptr;
+        prepare_assets_fn_ = nullptr;
         draw_insp_fn_     = nullptr;
         insp_mode_fn_     = nullptr;
     }
@@ -526,6 +533,15 @@ void OperatorLoader::main_thread_update(void* instance, double time,
                                          uint32_t file_param_count) const {
     if (main_update_fn_ && instance) {
         main_update_fn_(instance, time, file_param_values, file_param_count);
+    }
+}
+
+void OperatorLoader::prepare_instance_assets(void* instance,
+                                             const float* param_values,
+                                             const char** file_param_values,
+                                             uint32_t file_param_count) const {
+    if (prepare_assets_fn_ && instance) {
+        prepare_assets_fn_(instance, param_values, file_param_values, file_param_count);
     }
 }
 

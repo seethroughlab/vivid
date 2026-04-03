@@ -98,6 +98,8 @@ int main() {
               "control template includes semantic_tag example");
         check(src.find("semantic_shape(amount, \"scalar\")") != std::string::npos,
               "control template includes semantic_shape example");
+        check(src.find("prepare_instance_assets()") != std::string::npos,
+              "control template guidance mentions prepare_instance_assets");
 
         // Verify CMakeLists.txt was patched
         std::string cmake = read_file(tmp + "/CMakeLists.txt");
@@ -141,6 +143,8 @@ int main() {
               "audio template includes semantic_tag example");
         check(src.find("semantic_shape(gain, \"scalar\")") != std::string::npos,
               "audio template includes semantic_shape example");
+        check(src.find("prepare_instance_assets()") != std::string::npos,
+              "audio template guidance mentions prepare_instance_assets");
 
         fs::remove_all(tmp);
     }
@@ -180,6 +184,8 @@ int main() {
               "gpu template includes semantic_tag example");
         check(src.find("semantic_shape(amount, \"scalar\")") != std::string::npos,
               "gpu template includes semantic_shape example");
+        check(src.find("prepare_instance_assets()") != std::string::npos,
+              "gpu template guidance mentions prepare_instance_assets");
 
         // Verify cmake patching added EXTRA_LIBS webgpu
         std::string cmake = read_file(tmp + "/CMakeLists.txt");

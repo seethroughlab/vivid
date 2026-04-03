@@ -90,6 +90,7 @@ Common intents: `input_gain`, `dc_offset`, `animation_rate`, `modulation_depth`
 5. **Semantic metadata** — add `semantic_tag`, `semantic_shape`, `semantic_unit` to params for MCP/tooling integration
 6. **Audio thread safety** — no allocations, locks, or I/O in `process_audio()`
 7. **GPU resource cleanup** — use RAII handles (`vivid::gpu::PipelineHandle` etc.) or explicit cleanup in destructor
+8. **Warm up expensive CPU-side assets in `prepare_instance_assets()`** — use it for one-time lookup-table generation, decoded preview caches, or initial file-backed asset prep after params are synced. Do not put heavyweight first-use work in `draw_thumbnail()` or use this hook for GPU/device/window-thread setup.
 
 ## Factory Presets
 

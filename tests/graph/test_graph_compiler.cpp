@@ -10,6 +10,7 @@
 #include "runtime/graph/graph.h"
 #include "runtime/graph/lane_types.h"
 #include <cstdio>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <string>
@@ -627,6 +628,114 @@ static void test_bridge_kind_unknown_warns() {
 }
 
 // ---------------------------------------------------------------------------
+// Test: prepare_instance_assets runs during compile with synced graph values
+// ---------------------------------------------------------------------------
+
+static void test_prepare_instance_assets_compile(const std::string& build_dir) {
+    std::fprintf(stderr, "\n--- compile: prepare_instance_assets warmup ---\n");
+
+    const std::string staging = build_dir + "/.test_prepare_assets_staging";
+    std::filesystem::remove_all(staging);
+    std::filesystem::create_directories(staging);
+    std::filesystem::copy_file(build_dir + "/prepare_assets_test_op.dylib",
+                               staging + "/prepare_assets_test_op.dylib",
+                               std::filesystem::copy_options::overwrite_existing);
+
+    vivid::OperatorRegistry registry;
+    registry.scan_deferred(staging.c_str());
+
+    vivid::Graph g;
+    g.load_from_string(R"({
+        "nodes": {
+            "warm": {
+                "type": "PrepareAssetsTestOp",
+                "params": {
+                    "scale": 7.0,
+                    "path": "/tmp/prepared.txt"
+                }
+            }
+        }
+    })");
+
+    vivid::GraphCompiler::Options opts;
+    auto cg = vivid::GraphCompiler::compile(g, registry, opts);
+    check(cg != nullptr, "prepare-assets graph compiles");
+    if (cg) {
+        auto* node = cg->find_node("warm");
+        check(node != nullptr, "prepare-assets node found");
+        if (node && node->loader && node->instance) {
+            float outputs[] = {0.0f};
+            VividFrameContext ctx{};
+            ctx.param_values = node->param_values.data();
+            ctx.output_values = outputs;
+            ctx.file_param_values = node->file_param_ptrs.data();
+            ctx.file_param_count = static_cast<uint32_t>(node->file_param_ptrs.size());
+            node->loader->process_frame(node->instance, &ctx);
+            check(std::fabs(outputs[0] - 1007.0f) < 1e-4f,
+                  "prepare_instance_assets captured synced compile-time values");
+        }
+    }
+
+    std::filesystem::remove_all(staging);
+}
+
+// ---------------------------------------------------------------------------
+// Test: prepare_instance_assets runs during hot-reload recreation
+// ---------------------------------------------------------------------------
+
+static void test_prepare_instance_assets_reload(const std::string& build_dir) {
+    std::fprintf(stderr, "\n--- reload: prepare_instance_assets warmup ---\n");
+
+    const std::string staging = build_dir + "/.test_prepare_assets_reload_staging";
+    std::filesystem::remove_all(staging);
+    std::filesystem::create_directories(staging);
+    const std::string staged_dylib = staging + "/prepare_assets_test_op.dylib";
+    std::filesystem::copy_file(build_dir + "/prepare_assets_test_op.dylib",
+                               staged_dylib,
+                               std::filesystem::copy_options::overwrite_existing);
+
+    vivid::OperatorRegistry registry;
+    registry.scan_deferred(staging.c_str());
+
+    vivid::Graph g;
+    g.load_from_string(R"({
+        "nodes": {
+            "warm": {
+                "type": "PrepareAssetsTestOp",
+                "params": {
+                    "scale": 11.0,
+                    "path": "/tmp/reloaded.txt"
+                }
+            }
+        }
+    })");
+
+    vivid::GraphCompiler::Options opts;
+    auto cg = vivid::GraphCompiler::compile(g, registry, opts);
+    check(cg != nullptr, "prepare-assets reload graph compiles");
+    if (cg) {
+        check(vivid::GraphCompiler::reload_operator(*cg, "PrepareAssetsTestOp",
+                                                    registry, staged_dylib, {}),
+              "reload_operator succeeds");
+        auto* node = cg->find_node("warm");
+        check(node != nullptr, "reloaded prepare-assets node found");
+        if (node && node->loader && node->instance) {
+            float outputs[] = {0.0f};
+            VividFrameContext ctx{};
+            ctx.param_values = node->param_values.data();
+            ctx.output_values = outputs;
+            ctx.file_param_values = node->file_param_ptrs.data();
+            ctx.file_param_count = static_cast<uint32_t>(node->file_param_ptrs.size());
+            node->loader->process_frame(node->instance, &ctx);
+            check(std::fabs(outputs[0] - 1011.0f) < 1e-4f,
+                  "prepare_instance_assets reruns during hot-reload recreation");
+        }
+    }
+
+    std::filesystem::remove_all(staging);
+}
+
+// ---------------------------------------------------------------------------
 
 int main(int argc, char* argv[]) {
     std::string build_dir = ".";
@@ -650,6 +759,8 @@ int main(int argc, char* argv[]) {
     test_bridge_same_cadence_no_bridge();
     test_bridge_same_cadence_with_bridge_rejected();
     test_bridge_kind_unknown_warns();
+    test_prepare_instance_assets_compile(build_dir);
+    test_prepare_instance_assets_reload(build_dir);
 
     std::fprintf(stderr, "\n%s (%d failures)\n", failures == 0 ? "PASSED" : "FAILED", failures);
     return failures > 0 ? 1 : 0;

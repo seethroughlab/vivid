@@ -5,9 +5,11 @@
 #include <cstdio>
 #include <cstring>
 #include <cmath>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <thread>
 #include "test_helpers.h"
 
 // --- Builtin test helpers (no dylib needed) ---
@@ -68,6 +70,12 @@ int main() {
         std::filesystem::copy_options::overwrite_existing);
     std::filesystem::copy_file(build_dir + "/test_op_bad_custom_type.dylib",
         staging_bad_custom + "/test_op_bad_custom_type.dylib",
+        std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/prepare_assets_test_op.dylib",
+        staging + "/prepare_assets_test_op.dylib",
+        std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/prepare_assets_legacy_op.dylib",
+        staging + "/prepare_assets_legacy_op.dylib",
         std::filesystem::copy_options::overwrite_existing);
 
     std::fprintf(stderr, "\n=== Test: OperatorLoader + OperatorRegistry ===\n\n");
@@ -191,6 +199,39 @@ int main() {
         std::string path = staging + "/test_op_v1.dylib";
         loader.load(path.c_str());
         check(!loader.has_draw_thumbnail(), "test_op_v1 has no draw_thumbnail");
+    }
+
+    // Test 9b: prepare_instance_assets symbol is optional and callable
+    {
+        vivid::OperatorLoader loader;
+        std::string path = staging + "/prepare_assets_test_op.dylib";
+        check(loader.load(path.c_str()), "prepare_assets_test_op loads");
+        check(loader.has_prepare_instance_assets(),
+              "prepare_assets_test_op exposes prepare_instance_assets");
+        void* instance = loader.create_instance();
+        check(instance != nullptr, "prepare_assets_test_op instance created");
+        const float params[] = {7.0f, 0.0f};
+        const char* files[] = {"/tmp/warmup.txt"};
+        loader.prepare_instance_assets(instance, params, files, 1);
+        float outputs[] = {0.0f};
+        VividFrameContext ctx{};
+        ctx.param_values = const_cast<float*>(params);
+        ctx.output_values = outputs;
+        ctx.file_param_values = files;
+        ctx.file_param_count = 1;
+        loader.process_frame(instance, &ctx);
+        check(std::fabs(outputs[0] - 1007.0f) < 1e-4f,
+              "prepare_instance_assets sees synced float and file params");
+        loader.destroy_instance(instance);
+    }
+
+    // Test 9c: legacy plugin without prepare_instance_assets still loads
+    {
+        vivid::OperatorLoader loader;
+        std::string path = staging + "/prepare_assets_legacy_op.dylib";
+        check(loader.load(path.c_str()), "prepare_assets_legacy_op loads");
+        check(!loader.has_prepare_instance_assets(),
+              "legacy plugin has no prepare_instance_assets symbol");
     }
 
     // Test 10: move semantics
@@ -505,6 +546,37 @@ int main() {
             }
         }
         check(found_bad_custom, "loader failure diagnostics include bad custom-type plugin");
+    }
+
+    // Test 22f: read-side registry APIs remain available while lazy load is in flight
+    {
+        vivid::OperatorRegistry reg;
+        check(reg.scan_deferred(staging.c_str()), "scan_deferred succeeds before in-flight find");
+        setenv("VIVID_TEST_REGISTRY_LOAD_DELAY_MS", "150", 1);
+        bool worker_ok = false;
+
+        std::thread worker([&]() {
+            worker_ok = (reg.find("TestOp") != nullptr);
+        });
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(30));
+        const auto* desc = reg.probe_descriptor("TestOp");
+        check(desc != nullptr, "probe_descriptor remains available during in-flight lazy load");
+        auto names = reg.type_names();
+        bool found = false;
+        for (const auto& name : names) {
+            if (name == "TestOp") {
+                found = true;
+                break;
+            }
+        }
+        check(found, "type_names still includes deferred type during in-flight lazy load");
+        check(reg.find("TestOp") == nullptr, "second find does not start a duplicate in-flight lazy load");
+
+        worker.join();
+        unsetenv("VIVID_TEST_REGISTRY_LOAD_DELAY_MS");
+        check(worker_ok, "background lazy find succeeds");
+        check(reg.find_loaded("TestOp") != nullptr, "loaded operator is published after in-flight lazy load");
     }
 
     // Test 23: Shader operator register/unregister cycle

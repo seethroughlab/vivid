@@ -59,29 +59,12 @@ struct MidiFilePlayer : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::append_analysis_ports(out);
     }
 
+    void prepare_instance_assets() override {
+        refresh_sequence();
+    }
+
     void main_thread_update(double /*time*/) override {
-        delete deferred_delete_;
-        deferred_delete_ = nullptr;
-
-        const std::string& path = file.str_value;
-        if (path == last_path_) return;
-        last_path_ = path;
-
-        SequenceData* new_seq = nullptr;
-        if (!path.empty()) {
-            auto parsed = vivid::midi_file::parse_file(path);
-            if (!parsed.ok()) {
-                std::fprintf(stderr, "[midi_file_player] Failed to parse %s: %s\n",
-                             path.c_str(), parsed.error.c_str());
-            } else {
-                new_seq = new SequenceData();
-                new_seq->sequence = std::move(parsed);
-            }
-        }
-
-        SequenceData* old = sequence_.exchange(new_seq, std::memory_order_acq_rel);
-        deferred_delete_ = old;
-        sequence_generation_.fetch_add(1, std::memory_order_acq_rel);
+        refresh_sequence();
     }
 
     void process_audio(const VividAudioContext* ctx) override {
@@ -165,6 +148,31 @@ private:
     bool active_notes_[16][128] = {};
     double transport_seconds_ = 0.0;
     size_t next_event_index_ = 0;
+
+    void refresh_sequence() {
+        delete deferred_delete_;
+        deferred_delete_ = nullptr;
+
+        const std::string& path = file.str_value;
+        if (path == last_path_) return;
+        last_path_ = path;
+
+        SequenceData* new_seq = nullptr;
+        if (!path.empty()) {
+            auto parsed = vivid::midi_file::parse_file(path);
+            if (!parsed.ok()) {
+                std::fprintf(stderr, "[midi_file_player] Failed to parse %s: %s\n",
+                             path.c_str(), parsed.error.c_str());
+            } else {
+                new_seq = new SequenceData();
+                new_seq->sequence = std::move(parsed);
+            }
+        }
+
+        SequenceData* old = sequence_.exchange(new_seq, std::memory_order_acq_rel);
+        deferred_delete_ = old;
+        sequence_generation_.fetch_add(1, std::memory_order_acq_rel);
+    }
 
     void emit_message(uint8_t status, uint8_t data1, uint8_t data2, uint32_t frame_offset) {
         if (midi_out_.count >= VIVID_MIDI_BUFFER_CAPACITY) return;

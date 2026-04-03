@@ -17,7 +17,7 @@ ALLOWED_HEADERS = {
     "operator.h", "types.h", "gpu_operator.h",
     "gpu_common.h", "gpu_types.h", "wgsl_filter.h", "wgsl_preprocessor.h",
     "audio_dsp.h", "adsr.h", "child_op.h", "midi_types.h",
-    "input_state.h", "media_stream.h", "media_clock.h", "type_id.h",
+    "input_state.h", "type_id.h",
     "create_request.h", "data_driven_filter.h",
 }
 
@@ -70,6 +70,7 @@ Start with the discovery tools before scaffolding:
 - **VIVID_REGISTER(ClassName)**: Macro at end of .cpp generates all extern "C" entry points.
 - **WgslFilterBase**: For GPU filters, write only the fragment shader in a .wgsl file — the base class handles everything else (vertex shader, uniforms, pipeline, hot-reload).
 - **ChildOp<T>**: Embed operators as members for internal modulation (frame-cadence only).
+- **prepare_instance_assets()**: Use for expensive one-time CPU prep after graph params/file params have been synced into the instance. Do not hide heavyweight first-use work in `draw_thumbnail()` or use this hook for GPU/window-thread setup.
 
 ## Three Envs
 
@@ -129,7 +130,7 @@ CAPABILITY_GUIDANCE = {
         ),
     },
     "file_drop": {
-        "explanation": "File drop parameters let users drag files onto an operator. Declare a Param<vivid::FilePath> and the runtime handles the file picker / drag-drop UI.",
+        "explanation": "File drop parameters let users drag files onto an operator. Declare a Param<vivid::FilePath> and the runtime handles the file picker / drag-drop UI. Use prepare_instance_assets() for expensive initial file-backed prep when the graph already provides a path; keep main_thread_update() for work that truly needs the live main thread or later file changes.",
         "doc_topic": "core",
         "example_operators": [
             {"env": "gpu", "name": "texture_loader"},
@@ -146,7 +147,7 @@ CAPABILITY_GUIDANCE = {
         ),
     },
     "thumbnail": {
-        "explanation": "Custom thumbnails let operators render a visual preview in the node graph. Override render_thumbnail() to draw into the provided context.",
+        "explanation": "Custom thumbnails let operators render a visual preview in the node graph. Override draw_thumbnail() for the fast draw path, and move heavyweight one-time CPU prep into prepare_instance_assets().",
         "doc_topic": "advanced",
         "example_operators": [
             {"env": "control", "name": "envelope"},
@@ -154,7 +155,7 @@ CAPABILITY_GUIDANCE = {
             {"env": "control", "name": "smooth"},
         ],
         "code_snippet": (
-            'void render_thumbnail(VividThumbnailContext* ctx) override {\n'
+            'void draw_thumbnail(const VividThumbnailContext* ctx) override {\n'
             '    // Draw into ctx using the thumbnail API\n'
             '}'
         ),

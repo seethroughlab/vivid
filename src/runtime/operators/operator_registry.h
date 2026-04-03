@@ -201,6 +201,7 @@ private:
     std::unordered_map<std::string, AbiMismatchDiagnostic> abi_mismatch_by_path_;   // plugin path -> mismatch info
     std::unordered_map<std::string, LoaderFailureDiagnostic> loader_failure_by_path_; // plugin path -> load failure
     std::unordered_map<std::string, OperatorProvenance> expected_operators_;  // type_name → manifest provenance
+    std::unordered_set<std::string> in_flight_loads_;  // type_name -> lazy load currently materializing
     ProgressCallback progress_cb_;
     mutable std::recursive_mutex mutex_;
 };

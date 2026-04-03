@@ -411,6 +411,14 @@ typedef void (*VividMainThreadUpdateFn)(void* instance, double time,
                                         const char** file_param_values,
                                         uint32_t file_param_count);
 
+// Optional per-instance warmup hook for CPU-side one-time preparation that
+// should happen after graph params/file params have been synced into the
+// instance, but before runtime/UI code relies on first-use caches.
+typedef void (*VividPrepareInstanceAssetsFn)(void* instance,
+                                             const float* param_values,
+                                             const char** file_param_values,
+                                             uint32_t file_param_count);
+
 // ---------------------------------------------------------------------------
 // Port type compatibility helpers
 // ---------------------------------------------------------------------------

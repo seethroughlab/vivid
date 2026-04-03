@@ -88,24 +88,12 @@ struct Sampler : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::append_analysis_ports(out);
     }
 
+    void prepare_instance_assets() override {
+        refresh_sample_bank();
+    }
+
     void main_thread_update(double /*time*/) override {
-        // Deferred delete of old bank (safe — audio thread has moved on)
-        delete deferred_delete_;
-        deferred_delete_ = nullptr;
-
-        const std::string& path = file.str_value;
-        if (path == last_path_) return;
-        last_path_ = path;
-
-        if (path.empty()) {
-            SampleBank* old = bank_.exchange(nullptr, std::memory_order_acq_rel);
-            deferred_delete_ = old;
-            return;
-        }
-
-        SampleBank* new_bank = load_sample_bank(path);
-        SampleBank* old = bank_.exchange(new_bank, std::memory_order_acq_rel);
-        deferred_delete_ = old;
+        refresh_sample_bank();
     }
 
     void process_audio(const VividAudioContext* ctx) override {
@@ -269,6 +257,22 @@ struct Sampler : vivid::OperatorBase, vivid::AudioProcessable {
 
             frame_counter_++;
         }
+    }
+
+    void refresh_sample_bank() {
+        // Old banks are always retired on the caller's thread. During async
+        // prepare_instance_assets() there is no live audio thread yet, and
+        // main_thread_update() preserves the existing safe handoff behavior.
+        delete deferred_delete_;
+        deferred_delete_ = nullptr;
+
+        const std::string& path = file.str_value;
+        if (path == last_path_) return;
+        last_path_ = path;
+
+        SampleBank* new_bank = path.empty() ? nullptr : load_sample_bank(path);
+        SampleBank* old = bank_.exchange(new_bank, std::memory_order_acq_rel);
+        deferred_delete_ = old;
     }
 };
 

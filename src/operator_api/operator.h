@@ -231,6 +231,11 @@ struct OperatorBase {
     virtual ~OperatorBase() = default;
     virtual void collect_params(std::vector<ParamBase*>& out) = 0;
     virtual void collect_ports(std::vector<VividPortDescriptor>& out) = 0;
+    // Optional one-time CPU-side warmup hook. The runtime calls this after
+    // graph param/file-param values have been synced into the instance.
+    // Heavy first-use cache building or initial file-backed asset decoding
+    // belongs here, not in draw_thumbnail() or another UI-adjacent path.
+    virtual void prepare_instance_assets() {}
     virtual void draw_thumbnail(const VividThumbnailContext*) {}  // optional override
     virtual void draw_inspector(VividInspectorContext*) {}        // optional override
     virtual void main_thread_update(double time) {}               // optional override
@@ -508,6 +513,17 @@ extern "C" void vivid_main_thread_update(void* instance, double time,         \
     _vivid_sync_params(inst, nullptr,                                         \
                        file_param_values, file_param_count);                   \
     inst->op.main_thread_update(time);                                        \
+}                                                                             \
+                                                                              \
+extern "C" void vivid_prepare_instance_assets(                                \
+    void* instance,                                                           \
+    const float* param_values,                                                \
+    const char** file_param_values,                                           \
+    uint32_t file_param_count) {                                              \
+    auto* inst = static_cast<_VividInstance*>(instance);                      \
+    _vivid_sync_params(inst, const_cast<float*>(param_values),                \
+                       file_param_values, file_param_count);                  \
+    inst->op.prepare_instance_assets();                                       \
 }
 
 // ---------------------------------------------------------------------------

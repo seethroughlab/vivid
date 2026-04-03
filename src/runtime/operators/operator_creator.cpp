@@ -30,6 +30,12 @@ static std::string to_pascal_case(const std::string& snake) {
     return result;
 }
 
+static void emit_starter_comment(std::ostringstream& s) {
+    s << "// Starter template. For advanced features (custom ports, file drops,\n";
+    s << "// inspectors, thumbnails, or expensive one-time CPU prep via\n";
+    s << "// prepare_instance_assets()), see examples in operators/ or use MCP opdev tools.\n\n";
+}
+
 static bool is_valid_identifier(const std::string& name) {
     if (name.empty()) return false;
     // Must start with lowercase letter
@@ -283,8 +289,7 @@ static std::string control_template(const std::string& name, const std::string& 
 
     std::ostringstream s;
     s << "#include \"operator_api/operator.h\"\n\n";
-    s << "// Starter template. For advanced features (custom ports, file drops,\n";
-    s << "// inspectors, thumbnails), see examples in operators/ or use MCP opdev tools.\n\n";
+    emit_starter_comment(s);
     emit_custom_type_support(s, effective_ports);
     s << "struct " << struct_name << " : vivid::OperatorBase, vivid::FrameProcessable {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
@@ -362,8 +367,7 @@ static std::string audio_template(const std::string& name, const std::string& st
 
     std::ostringstream s;
     s << "#include \"operator_api/operator.h\"\n\n";
-    s << "// Starter template. For advanced features (custom ports, file drops,\n";
-    s << "// inspectors, thumbnails), see examples in operators/ or use MCP opdev tools.\n\n";
+    emit_starter_comment(s);
     emit_custom_type_support(s, effective_ports);
     s << "struct " << struct_name << " : vivid::OperatorBase, vivid::AudioProcessable {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
@@ -441,8 +445,7 @@ static std::string gpu_template(const std::string& name, const std::string& stru
 
     std::ostringstream s;
     s << "#include \"operator_api/wgsl_filter.h\"\n\n";
-    s << "// Starter template. For advanced features (custom ports, file drops,\n";
-    s << "// inspectors, thumbnails), see examples in operators/ or use MCP opdev tools.\n\n";
+    emit_starter_comment(s);
     emit_custom_type_support(s, effective_ports);
     s << "struct " << struct_name << " : vivid::WgslFilterBase {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
@@ -483,8 +486,7 @@ static std::string composite_control_template(const std::string& name, const std
     s << "#include \"operator_api/child_op.h\"\n";
     s << "#include \"control/lfo/lfo.h\"\n";
     s << "#include \"control/smooth/smooth.h\"\n\n";
-    s << "// Starter template. For advanced features (custom ports, file drops,\n";
-    s << "// inspectors, thumbnails), see examples in operators/ or use MCP opdev tools.\n\n";
+    emit_starter_comment(s);
     s << "// ChildOp<T> only works with operators documented as embeddable.\n";
     s << "// Embeddables are either fully header-defined or backed by\n";
     s << "// vivid_composable_ops through a *_composable.cpp support file.\n\n";
@@ -547,8 +549,7 @@ static std::string composite_control_template(const std::string& name, const std
 static std::string empty_control_template(const std::string& struct_name) {
     std::ostringstream s;
     s << "#include \"operator_api/operator.h\"\n\n";
-    s << "// Starter template. For advanced features (custom ports, file drops,\n";
-    s << "// inspectors, thumbnails), see examples in operators/ or use MCP opdev tools.\n\n";
+    emit_starter_comment(s);
     s << "struct " << struct_name << " : vivid::OperatorBase, vivid::FrameProcessable {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
     s << "    static constexpr bool kTimeDependent = false;\n";
@@ -569,8 +570,7 @@ static std::string empty_control_template(const std::string& struct_name) {
 static std::string empty_audio_template(const std::string& struct_name) {
     std::ostringstream s;
     s << "#include \"operator_api/operator.h\"\n\n";
-    s << "// Starter template. For advanced features (custom ports, file drops,\n";
-    s << "// inspectors, thumbnails), see examples in operators/ or use MCP opdev tools.\n\n";
+    emit_starter_comment(s);
     s << "struct " << struct_name << " : vivid::OperatorBase, vivid::AudioProcessable {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
     s << "    static constexpr bool kTimeDependent = true;\n";
@@ -596,8 +596,7 @@ static std::string empty_audio_template(const std::string& struct_name) {
 static std::string empty_gpu_template(const std::string& name, const std::string& struct_name) {
     std::ostringstream s;
     s << "#include \"operator_api/wgsl_filter.h\"\n\n";
-    s << "// Starter template. For advanced features (custom ports, file drops,\n";
-    s << "// inspectors, thumbnails), see examples in operators/ or use MCP opdev tools.\n\n";
+    emit_starter_comment(s);
     s << "struct " << struct_name << " : vivid::WgslFilterBase {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
     s << "    static constexpr bool kTimeDependent = true;\n";

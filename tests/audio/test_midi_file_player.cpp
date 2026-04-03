@@ -106,6 +106,20 @@ int main() {
     {
         MidiFilePlayer op;
         op.file.str_value = midi_path.string();
+        op.prepare_instance_assets();
+
+        void* custom_outputs[1] = {nullptr};
+        auto ctx = make_ctx(16, 1000, custom_outputs);
+        op.process_audio(&ctx);
+
+        check(custom_outputs[0] != nullptr, "warmup path publishes midi output without main_thread_update");
+        auto* midi = static_cast<VividMidiBuffer*>(custom_outputs[0]);
+        check(midi->count >= 2, "prepare_instance_assets preloads midi sequence before audio starts");
+    }
+
+    {
+        MidiFilePlayer op;
+        op.file.str_value = midi_path.string();
         op.loop.value = 1.0f;
         op.main_thread_update(0.0);
 

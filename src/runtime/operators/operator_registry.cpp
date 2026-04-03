@@ -16,6 +16,7 @@
 #include <fstream>
 #include <optional>
 #include <sstream>
+#include <thread>
 #include <unordered_set>
 #include <filesystem>
 
@@ -94,6 +95,15 @@ static std::string normalized_extension(std::string ext) {
     for (auto& c : ext)
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     return ext;
+}
+
+static void maybe_delay_registry_lazy_load_for_tests() {
+    const char* env = std::getenv("VIVID_TEST_REGISTRY_LOAD_DELAY_MS");
+    if (!env || !*env) return;
+    char* end = nullptr;
+    long delay_ms = std::strtol(env, &end, 10);
+    if (end == env || delay_ms <= 0) return;
+    std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
 }
 
 template<typename DiagnosticT>
@@ -607,7 +617,7 @@ bool OperatorRegistry::scan_shader_operators(const std::string& directory,
 }
 
 void OperatorRegistry::register_target_mapping(const std::string& dylib_path,
-                                                const std::string& type_name) {
+                                               const std::string& type_name) {
     std::string filename = dylib_path;
     auto slash = filename.rfind('/');
     if (slash != std::string::npos) filename = filename.substr(slash + 1);
@@ -625,26 +635,74 @@ void OperatorRegistry::register_target_mapping(const std::string& dylib_path,
     }
 }
 
+namespace {
+enum class DeferredLoadClaimState {
+    MissingOrLoaded,
+    Busy,
+    Claimed,
+};
+
+struct ClaimedDeferredLoad {
+    DeferredLoadClaimState state = DeferredLoadClaimState::MissingOrLoaded;
+    std::string resolved_type;
+    std::string dylib_path;
+};
+
+ClaimedDeferredLoad claim_deferred_load_locked(
+        std::recursive_mutex& mutex,
+        std::unordered_map<std::string, std::unique_ptr<OperatorLoader>>& loaders,
+        std::unordered_map<std::string, DeferredEntry>& deferred,
+        std::unordered_set<std::string>& in_flight_loads,
+        const std::unordered_map<std::string, std::string>& aliases,
+        const std::string& type_name) {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    const std::string resolved = resolve_alias_once(aliases, type_name);
+    if (loaders.count(resolved)) return {};
+    auto dit = deferred.find(resolved);
+    if (dit == deferred.end()) return {};
+    if (in_flight_loads.count(resolved)) {
+        return ClaimedDeferredLoad{DeferredLoadClaimState::Busy, resolved, {}};
+    }
+    in_flight_loads.insert(resolved);
+    return ClaimedDeferredLoad{DeferredLoadClaimState::Claimed, resolved, dit->second.dylib_path};
+}
+} // namespace
+
 bool OperatorRegistry::load_for_graph(const Graph& graph) {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    bool had_busy_type = false;
+    std::unordered_set<std::string> seen;
     for (const auto& ndef : graph.nodes()) {
-        const std::string resolved = resolve_alias_once(aliases_, ndef.type);
-        if (loaders_.count(resolved)) continue;      // already loaded
-        auto dit = deferred_.find(resolved);
-        if (dit == deferred_.end()) continue;          // builtin or unknown
+        auto claim = claim_deferred_load_locked(mutex_, loaders_, deferred_, in_flight_loads_, aliases_,
+                                                ndef.type);
+        if (claim.state == DeferredLoadClaimState::MissingOrLoaded) continue;
+        if (!seen.insert(claim.resolved_type).second) continue;
+        if (claim.state == DeferredLoadClaimState::Busy) {
+            had_busy_type = true;
+            continue;
+        }
 
         auto loader = std::make_unique<OperatorLoader>();
-        if (!loader->load(dit->second.dylib_path.c_str())) {
-            std::fprintf(stderr, "[vivid] Registry: failed to load %s\n", resolved.c_str());
+        maybe_delay_registry_lazy_load_for_tests();
+        if (!loader->load(claim.dylib_path.c_str())) {
+            std::lock_guard<std::recursive_mutex> lock(mutex_);
+            in_flight_loads_.erase(claim.resolved_type);
+            const std::filesystem::path p(claim.dylib_path);
+            record_loader_failure(claim.dylib_path, p.filename().string(), loader->last_error());
+            std::fprintf(stderr, "[vivid] Registry: failed to load %s\n", claim.resolved_type.c_str());
             return false;
         }
 
-        register_target_mapping(dit->second.dylib_path, resolved);
-        loaders_[resolved] = std::move(loader);
-        deferred_.erase(dit);
-        std::fprintf(stderr, "[vivid] Registry: loaded %s (on demand)\n", resolved.c_str());
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        in_flight_loads_.erase(claim.resolved_type);
+        if (auto lit = loaders_.find(claim.resolved_type); lit != loaders_.end()) continue;
+        register_target_mapping(claim.dylib_path, claim.resolved_type);
+        loaders_[claim.resolved_type] = std::move(loader);
+        deferred_.erase(claim.resolved_type);
+        abi_mismatch_by_path_.erase(claim.dylib_path);
+        loader_failure_by_path_.erase(claim.dylib_path);
+        std::fprintf(stderr, "[vivid] Registry: loaded %s (on demand)\n", claim.resolved_type.c_str());
     }
-    return true;
+    return !had_busy_type;
 }
 
 OperatorLoader* OperatorRegistry::find_loaded(const std::string& type_name) {
@@ -685,30 +743,35 @@ void OperatorRegistry::register_alias(const std::string& alias_name,
 }
 
 OperatorLoader* OperatorRegistry::find(const std::string& type_name) {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
-    const std::string resolved = resolve_alias_once(aliases_, type_name);
-    auto it = loaders_.find(resolved);
-    if (it != loaders_.end()) return it->second.get();
-
-    // Try deferred loading
-    auto dit = deferred_.find(resolved);
-    if (dit == deferred_.end()) return nullptr;
+    auto claim = claim_deferred_load_locked(mutex_, loaders_, deferred_, in_flight_loads_, aliases_,
+                                            type_name);
+    if (claim.state != DeferredLoadClaimState::Claimed) {
+        return find_loaded(type_name);
+    }
 
     auto loader = std::make_unique<OperatorLoader>();
-    if (!loader->load(dit->second.dylib_path.c_str())) {
-        const std::filesystem::path p(dit->second.dylib_path);
-        record_loader_failure(dit->second.dylib_path, p.filename().string(), loader->last_error());
+    maybe_delay_registry_lazy_load_for_tests();
+    if (!loader->load(claim.dylib_path.c_str())) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        in_flight_loads_.erase(claim.resolved_type);
+        const std::filesystem::path p(claim.dylib_path);
+        record_loader_failure(claim.dylib_path, p.filename().string(), loader->last_error());
         return nullptr;
     }
 
-    const std::string loaded_path = dit->second.dylib_path;
-    register_target_mapping(loaded_path, resolved);
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    in_flight_loads_.erase(claim.resolved_type);
+    if (auto it = loaders_.find(claim.resolved_type); it != loaders_.end()) {
+        return it->second.get();
+    }
+
+    register_target_mapping(claim.dylib_path, claim.resolved_type);
     auto* ptr = loader.get();
-    loaders_[resolved] = std::move(loader);
-    deferred_.erase(dit);
-    abi_mismatch_by_path_.erase(loaded_path);
-    loader_failure_by_path_.erase(loaded_path);
-    std::fprintf(stderr, "[vivid] Registry: loaded %s (lazy)\n", resolved.c_str());
+    loaders_[claim.resolved_type] = std::move(loader);
+    deferred_.erase(claim.resolved_type);
+    abi_mismatch_by_path_.erase(claim.dylib_path);
+    loader_failure_by_path_.erase(claim.dylib_path);
+    std::fprintf(stderr, "[vivid] Registry: loaded %s (lazy)\n", claim.resolved_type.c_str());
     return ptr;
 }
 

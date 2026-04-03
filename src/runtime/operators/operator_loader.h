@@ -53,6 +53,11 @@ public:
     void main_thread_update(void* instance, double time,
                             const char** file_param_values, uint32_t file_param_count) const;
 
+    bool has_prepare_instance_assets() const { return prepare_assets_fn_ != nullptr; }
+    void prepare_instance_assets(void* instance, const float* param_values,
+                                 const char** file_param_values,
+                                 uint32_t file_param_count) const;
+
     bool is_loaded() const { return handle_ != nullptr || desc_fn_ != nullptr || dd_config_ != nullptr; }
     bool is_shader_operator() const { return dd_config_ != nullptr; }
     const LastError& last_error() const { return last_error_; }
@@ -71,6 +76,7 @@ private:
     VividDrawThumbnailFn    draw_thumb_fn_     = nullptr;
     VividFileDropDescriptorFn file_drop_fn_    = nullptr;
     VividMainThreadUpdateFn main_update_fn_    = nullptr;
+    VividPrepareInstanceAssetsFn prepare_assets_fn_ = nullptr;
     VividDrawInspectorFn   draw_insp_fn_      = nullptr;
     VividInspectorModeFn   insp_mode_fn_      = nullptr;
     void fixup_dd_pointers();  // re-point all C string pointers after move

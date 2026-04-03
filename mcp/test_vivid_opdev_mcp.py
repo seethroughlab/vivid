@@ -293,6 +293,22 @@ class TestGetCapabilityGuidance:
         assert result["ok"]
         assert result["capability"] == "file_drop"
 
+    @pytest.mark.anyio
+    async def test_thumbnail_guidance_mentions_warmup_hook(self):
+        result = json.loads(await opdev.get_capability_guidance("thumbnail"))
+        assert result["ok"]
+        assert "draw_thumbnail" in result["explanation"]
+        assert "prepare_instance_assets" in result["explanation"]
+        assert "draw_thumbnail" in result["code_snippet"]
+        assert "render_thumbnail" not in result["code_snippet"]
+
+    @pytest.mark.anyio
+    async def test_file_drop_guidance_mentions_initial_warmup(self):
+        result = json.loads(await opdev.get_capability_guidance("file_drop"))
+        assert result["ok"]
+        assert "prepare_instance_assets" in result["explanation"]
+        assert "main_thread_update" in result["explanation"]
+
 
 # ---------------------------------------------------------------------------
 # recommend_starting_point

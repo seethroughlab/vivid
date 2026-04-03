@@ -165,6 +165,15 @@ static float remap_to_scale(const ConnectionDef& c) {
     return (range != 0.0f) ? (c.to_max - c.to_min) / range : 1.0f;
 }
 
+static void warm_up_instance_assets(CompiledNode& cn) {
+    if (!cn.loader || !cn.instance || !cn.loader->has_prepare_instance_assets()) return;
+    cn.loader->prepare_instance_assets(
+        cn.instance,
+        cn.param_values.empty() ? nullptr : cn.param_values.data(),
+        cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data(),
+        static_cast<uint32_t>(cn.file_param_ptrs.size()));
+}
+
 // ---------------------------------------------------------------------------
 // Node initialization helpers
 // ---------------------------------------------------------------------------
@@ -537,6 +546,8 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             if (cn.active_cadence == Cadence::Audio) {
                 init_audio_state(cn, desc, options.audio_buffer_size);
             }
+
+            warm_up_instance_assets(cn);
 
             // Param lock flags
             for (const auto& [pname, flags] : ndef.param_lock_flags) {
@@ -1321,6 +1332,7 @@ bool GraphCompiler::reload_operator(CompiledGraph& cg,
                     init_frame_state(cn, old_desc, &sp.values,
                                      sp.string_values.empty() ? nullptr : &sp.string_values,
                                      graph_base_dir);
+                    warm_up_instance_assets(cn);
                     for (const auto& [pname, flags] : sp.lock_flags) {
                         auto pi = cn.param_indices.find(pname);
                         if (pi != cn.param_indices.end())
@@ -1346,6 +1358,7 @@ bool GraphCompiler::reload_operator(CompiledGraph& cg,
         init_frame_state(cn, new_desc, &sp.values,
                          sp.string_values.empty() ? nullptr : &sp.string_values,
                          graph_base_dir);
+        warm_up_instance_assets(cn);
 
         // Restore lock flags
         for (const auto& [pname, flags] : sp.lock_flags) {

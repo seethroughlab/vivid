@@ -74,6 +74,12 @@ Rules:
 - render only into `thumbnail_texture_view`
 - do not mutate the main graph output texture
 - keep the pass deterministic and lightweight
+- treat `draw_thumbnail()` as a fast draw path, not a first-use setup hook
+- move heavyweight one-time CPU preparation into `prepare_instance_assets()` so async
+  add/load compile work absorbs it before the node becomes visible
+- use `main_thread_update()` for work that truly requires the live main thread; do not
+  use it as the default place for initial heavy asset prep when `prepare_instance_assets()`
+  can prewarm from synced graph values instead
 - report initialization/render errors with `vivid_report_thumbnail_error(ctx, "...")`
 - fail closed: if shader/pipeline/bind resources are not valid, report the error and let the UI fall back to the default thumbnail instead of attempting to encode a partial pass
 - thumbnail WGSL must follow current WGSL identifier rules; avoid reserved identifiers in struct fields and bindings
@@ -133,7 +139,12 @@ See [clock.h](/Users/jeff/Developer/vivid/operators/control/clock/clock.h) for a
 ## Performance Guidance
 
 - treat thumbnail rendering like UI-adjacent work, not a full effect pass
+- assume slow thumbnail draws will be surfaced by runtime warnings; keep main-thread
+  thumbnail work comfortably under a frame budget
 - prefer one tiny fullscreen pass over complex multi-pass pipelines
 - reuse thumbnail pipelines and buffers across frames
 - rebuild only when the thumbnail format changes
 - avoid per-frame resource allocation inside the hot path
+- if a thumbnail needs expensive CPU-side asset generation first, do it in
+  `prepare_instance_assets()` and let the UI keep showing the default thumbnail until
+  the custom path is ready

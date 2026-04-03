@@ -9,6 +9,11 @@ set(VIVID_SPARKLE_PUBLIC_KEY "" CACHE STRING
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# --- Compiler warnings ---
+if(NOT MSVC)
+    add_compile_options(-Wall -Wextra -Wno-unused-parameter)
+endif()
+
 # --- Sanitizer instrumentation (opt-in) ---
 option(VIVID_SANITIZE "Enable AddressSanitizer + UndefinedBehaviorSanitizer" OFF)
 option(VIVID_SANITIZE_THREAD "Enable ThreadSanitizer (mutually exclusive with VIVID_SANITIZE)" OFF)
@@ -1157,6 +1162,8 @@ add_vivid_operator(string_sink_op tests/operators/string_sink_op.cpp)
 add_vivid_operator(file_drop_test_op tests/operators/file_drop_test_op.cpp)
 add_vivid_operator(file_drop_test_op_alt tests/operators/file_drop_test_op_alt.cpp)
 add_vivid_operator(file_drop_bad_param_op tests/operators/file_drop_bad_param_op.cpp)
+add_vivid_operator(prepare_assets_test_op tests/operators/prepare_assets_test_op.cpp)
+add_vivid_operator(prepare_assets_legacy_op tests/operators/prepare_assets_legacy_op.cpp)
 add_vivid_operator(semantic_ms_source_op tests/operators/semantic_ms_source_op.cpp)
 add_vivid_operator(semantic_s_dest_op    tests/operators/semantic_s_dest_op.cpp)
 add_vivid_operator(semantic_unknown_source_op tests/operators/semantic_unknown_source_op.cpp)
@@ -1505,7 +1512,7 @@ add_executable(test_operator_loader
 )
 target_include_directories(test_operator_loader PRIVATE src tests)
 target_link_libraries(test_operator_loader PRIVATE vivid_runtime_testlib vivid_operator_api webgpu nlohmann_json::nlohmann_json)
-add_dependencies(test_operator_loader test_op_v1 test_op_v2 test_op_abi_v4 test_op_incompatible_port test_op_null_desc test_op_bad_custom_type control_pass_op audio_test_op export_custom_port_op control_thumb_op file_drop_test_op particles)
+add_dependencies(test_operator_loader test_op_v1 test_op_v2 test_op_abi_v4 test_op_incompatible_port test_op_null_desc test_op_bad_custom_type control_pass_op audio_test_op export_custom_port_op control_thumb_op file_drop_test_op prepare_assets_test_op prepare_assets_legacy_op particles)
 add_test(NAME test_operator_loader COMMAND test_operator_loader WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_operator_loader PROPERTIES LABELS "LOADER")
 
@@ -2168,8 +2175,8 @@ add_executable(test_graph_compiler
 )
 target_include_directories(test_graph_compiler PRIVATE src tests)
 target_link_libraries(test_graph_compiler PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json webgpu)
-add_dependencies(test_graph_compiler lfo_fr gain lane_source_op lane_metadata_audio_op lane_slew_op)
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_dependencies(test_graph_compiler lfo_fr gain lane_source_op lane_metadata_audio_op lane_slew_op prepare_assets_test_op)
 add_test(NAME test_graph_compiler
     COMMAND test_graph_compiler ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

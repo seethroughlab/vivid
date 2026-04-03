@@ -28,6 +28,7 @@
 #include <fstream>
 #include <cctype>
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 
 using vivid::to_sv;
@@ -471,6 +472,8 @@ void draw_custom_thumbnails(const vivid::RuntimeCore& runtime,
     if (thumb_draw_renderer)
         thumb_draw_renderer->reset_ring();
 
+    constexpr auto kSlowThumbnailWarn = std::chrono::milliseconds(16);
+
     std::unordered_set<std::string> custom_thumb_ids;
     for (const auto& cn : cg_thumb->nodes) {
         if (!cn.loader || !cn.instance || cn.missing_operator) continue;
@@ -534,7 +537,18 @@ void draw_custom_thumbnails(const vivid::RuntimeCore& runtime,
             wgpuRenderPassEncoderRelease(clear_pass);
         }
 
+        const auto thumb_start = std::chrono::steady_clock::now();
         cn.loader->draw_thumbnail(cn.instance, &tctx);
+        const auto thumb_elapsed = std::chrono::steady_clock::now() - thumb_start;
+        if (thumb_elapsed > kSlowThumbnailWarn) {
+            const auto millis =
+                std::chrono::duration_cast<std::chrono::milliseconds>(thumb_elapsed).count();
+            std::fprintf(stderr,
+                         "[vivid] slow thumbnail draw for '%s' (%s): %lld ms\n",
+                         cn.node_id.c_str(),
+                         cn.type_name.c_str(),
+                         static_cast<long long>(millis));
+        }
 
         // Flush any 2D draw API calls onto the thumbnail texture
         if (thumb_draw_renderer)

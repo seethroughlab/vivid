@@ -37,7 +37,7 @@ Connections must match types: `gpu_texture` → `gpu_texture`, `data` → `data`
 2. `list_types` — discover available operators (compact catalog). Use `operator_docs(name)` to get full param/port/doc details for a specific operator.
 3. **Compose first** — build the graph from existing operators before considering custom ones. Most goals are achievable by wiring existing operators together.
 4. `add_node` → `connect` → `set_param` — assemble and configure the graph
-5. `scaffold_operator` — scaffold a starter template when no existing operator achieves the goal. Creates a minimal working operator; use the opdev MCP server for advanced features (custom ports, params, inspectors).
+5. `scaffold_operator` — scaffold a starter template when no existing operator achieves the goal. Creates a minimal working operator; use the opdev MCP server for advanced features (custom ports, params, inspectors, thumbnails, and `prepare_instance_assets()` warmup guidance).
 6. `inspect_graph` — verify the graph state, check live output values
 
 ## Analyzing an Existing Graph
@@ -61,7 +61,8 @@ a gain stage) without exposing child operators as graph nodes. Control env only.
 ## Custom Operators
 If you need to create a custom operator, use `scaffold_operator` to generate the template.
 For deeper operator development guidance (API docs, DSP utilities, GPU shader patterns),
-the dedicated operator development MCP server provides comprehensive resources.
+the dedicated operator development MCP server provides comprehensive resources, including
+when to use `prepare_instance_assets()` for expensive one-time CPU-side setup.
 """)
 
 
