@@ -35,6 +35,7 @@
 #include "operator_api/types.h"
 #include "operator_api/input_state.h"
 #include "common/gpu_util.h"
+#include "operator_api/gpu_common.h"
 #include "export/export_pipeline.h"
 #include "runtime/package_compiler.h"
 #include "runtime/package_manager.h"
@@ -61,6 +62,7 @@
 #include <algorithm>
 #include <chrono>
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -2360,7 +2362,7 @@ int main(int argc, char* argv[]) {
     vivid::ui::ThumbnailRenderer thumb_renderer;
     bool thumb_renderer_ok = thumb_renderer.init(gpu.device(), gpu.queue(), gpu.surface_format());
 
-    // --- Text renderer (initialized early for loading screen) ---
+    // --- Text renderer (initialized early for splash screen) ---
     vivid::ui::Renderer2D text_renderer;
     bool text_renderer_ok = false;
     {
@@ -2376,29 +2378,218 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // Helper to render a loading frame with a status message during blocking startup phases.
-    // Keeps the window visually responsive instead of frozen.
-    auto render_loading_frame = [&](const char* status) {
+    // --- Animated splash screen shader pipeline ---
+    // Subtle dark animated background with slow-moving noise/gradient.
+    WGPURenderPipeline splash_pipeline = nullptr;
+    WGPUBindGroup splash_bind_group = nullptr;
+    WGPUBuffer splash_uniform_buf = nullptr;
+    {
+        // Fragment shader: animated nebula-like background
+        static constexpr const char* kSplashFragSrc = R"(
+@group(0) @binding(0) var<uniform> u: vec4f; // x=time, y=aspect
+
+fn hash(p: vec2f) -> f32 {
+    var h = dot(p, vec2f(127.1, 311.7));
+    return fract(sin(h) * 43758.5453123);
+}
+
+fn noise(p: vec2f) -> f32 {
+    let i = floor(p);
+    let f = fract(p);
+    let u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i + vec2f(0.0, 0.0)), hash(i + vec2f(1.0, 0.0)), u.x),
+               mix(hash(i + vec2f(0.0, 1.0)), hash(i + vec2f(1.0, 1.0)), u.x), u.y);
+}
+
+fn fbm(p_in: vec2f) -> f32 {
+    var p = p_in;
+    var v = 0.0;
+    var a = 0.5;
+    let shift = vec2f(100.0);
+    let rot = mat2x2f(cos(0.5), sin(0.5), -sin(0.5), cos(0.5));
+    for (var i = 0; i < 5; i++) {
+        v += a * noise(p);
+        p = rot * p * 2.0 + shift;
+        a *= 0.5;
+    }
+    return v;
+}
+
+@vertex fn vs_main(@builtin(vertex_index) vi: u32) -> FullscreenOutput {
+    return fullscreenTriangle(vi, true);
+}
+
+@fragment fn fs_main(in: FullscreenOutput) -> @location(0) vec4f {
+    let t = u.x;
+    let aspect = u.y;
+    var uv = in.uv;
+    uv.x *= aspect;
+
+    // Warped domain for organic flow
+    let warp = vec2f(
+        fbm(uv * 3.0 + vec2f(t * 0.08, t * 0.06)),
+        fbm(uv * 3.0 + vec2f(t * -0.05, t * 0.09) + vec2f(5.2, 1.3))
+    );
+    let n = fbm(uv * 2.0 + warp * 1.5 + vec2f(t * 0.02));
+
+    // Radial vignette — dark at edges, brighter near center
+    let d = length(in.uv - vec2f(0.5));
+    let vignette = 1.0 - smoothstep(0.1, 0.85, d);
+
+    // Color palette: dark base with blue/purple/teal accents
+    let deep    = vec3f(0.02, 0.02, 0.04);
+    let blue    = vec3f(0.06, 0.10, 0.22);
+    let purple  = vec3f(0.12, 0.06, 0.18);
+    let teal    = vec3f(0.04, 0.14, 0.16);
+
+    // Blend colors based on noise layers
+    var color = deep;
+    color = mix(color, blue,   smoothstep(0.25, 0.55, n) * vignette);
+    color = mix(color, purple, smoothstep(0.45, 0.70, warp.x) * vignette * 0.6);
+    color = mix(color, teal,   smoothstep(0.50, 0.75, warp.y) * vignette * 0.4);
+
+    // Faint bright wisps in the central region
+    let wisp = smoothstep(0.62, 0.72, n) * vignette * vignette;
+    color += vec3f(0.08, 0.10, 0.15) * wisp;
+
+    return vec4f(color, 1.0);
+}
+)";
+        auto shader = vivid::gpu::create_shader(gpu.device(), kSplashFragSrc, "Splash Shader");
+        if (shader) {
+            // Uniform buffer: vec4f(time, aspect, 0, 0)
+            splash_uniform_buf = vivid::gpu::create_uniform_buffer(gpu.device(), 16, "Splash Uniforms");
+
+            // Bind group layout + pipeline layout
+            WGPUBindGroupLayoutEntry bgl_entry{};
+            bgl_entry.binding = 0;
+            bgl_entry.visibility = WGPUShaderStage_Fragment;
+            bgl_entry.buffer.type = WGPUBufferBindingType_Uniform;
+            bgl_entry.buffer.minBindingSize = 16;
+
+            WGPUBindGroupLayoutDescriptor bgl_desc{};
+            bgl_desc.label = to_sv("Splash BGL");
+            bgl_desc.entryCount = 1;
+            bgl_desc.entries = &bgl_entry;
+            auto bgl = wgpuDeviceCreateBindGroupLayout(gpu.device(), &bgl_desc);
+
+            WGPUPipelineLayoutDescriptor pl_desc{};
+            pl_desc.label = to_sv("Splash PL");
+            pl_desc.bindGroupLayoutCount = 1;
+            pl_desc.bindGroupLayouts = &bgl;
+            auto layout = wgpuDeviceCreatePipelineLayout(gpu.device(), &pl_desc);
+
+            splash_pipeline = vivid::gpu::create_pipeline(
+                gpu.device(), shader, layout, gpu.surface_format(), "Splash Pipeline");
+
+            WGPUBindGroupEntry bg_entry{};
+            bg_entry.binding = 0;
+            bg_entry.buffer = splash_uniform_buf;
+            bg_entry.size = 16;
+
+            WGPUBindGroupDescriptor bg_desc{};
+            bg_desc.label = to_sv("Splash BG");
+            bg_desc.layout = bgl;
+            bg_desc.entryCount = 1;
+            bg_desc.entries = &bg_entry;
+            splash_bind_group = wgpuDeviceCreateBindGroup(gpu.device(), &bg_desc);
+
+            wgpuPipelineLayoutRelease(layout);
+            wgpuBindGroupLayoutRelease(bgl);
+            wgpuShaderModuleRelease(shader);
+        }
+    }
+
+    // Splash screen state
+    auto splash_start_time = std::chrono::steady_clock::now();
+
+    // Render an animated splash frame with status text during blocking startup phases.
+    auto render_splash_frame = [&](const char* status) {
         vivid::FrameState frame;
         if (!gpu.begin_frame(frame)) return;
-        emit_clear_pass(frame.encoder, frame.view, kClearLinear);
-        if (text_renderer_ok) {
-            float scale = 1.0f;
-            float tw = text_renderer.text_width(status, scale);
-            float lx = (static_cast<float>(fb_width) / dpi_scale - tw) * 0.5f;
-            float ly = static_cast<float>(fb_height) / dpi_scale * 0.5f;
-            text_renderer.draw_text(lx, ly, status, 0.5f, 0.5f, 0.5f, 0.6f, scale);
-            text_renderer.flush(frame.encoder, frame.view,
-                                static_cast<uint32_t>(fb_width),
-                                static_cast<uint32_t>(fb_height));
+
+        int win_w, win_h;
+        glfwGetWindowSize(window, &win_w, &win_h);
+        float wf = static_cast<float>(win_w);
+        float hf = static_cast<float>(win_h);
+        float aspect = (hf > 0.0f) ? wf / hf : 1.0f;
+
+        // 1. Render animated background shader
+        if (splash_pipeline && splash_bind_group) {
+            float elapsed = std::chrono::duration<float>(
+                std::chrono::steady_clock::now() - splash_start_time).count();
+            float uniforms[4] = { elapsed, aspect, 0.0f, 0.0f };
+            wgpuQueueWriteBuffer(gpu.queue(), splash_uniform_buf, 0, uniforms, 16);
+            vivid::gpu::run_pass(frame.encoder, splash_pipeline, splash_bind_group,
+                                 frame.view, "Splash BG");
+        } else {
+            emit_clear_pass(frame.encoder, frame.view, kClearLinear);
         }
+
+        // 2. Overlay info panel and status text
+        if (text_renderer_ok) {
+            float cx = wf * 0.5f;
+            float cy = hf * 0.5f;
+
+            // Panel dimensions
+            float panel_w = 320.0f;
+            float panel_h = 160.0f;
+            float panel_x = cx - panel_w * 0.5f;
+            float panel_y = cy - panel_h * 0.5f;
+
+            // Semi-transparent rounded panel
+            text_renderer.draw_rounded_rect(panel_x, panel_y, panel_w, panel_h,
+                                            8.0f, 0.0f, 0.0f, 0.0f, 0.55f);
+
+            // Title
+            float title_scale = 1.5f;
+            const char* title = "Vivid";
+            float tw = text_renderer.text_width(title, title_scale);
+            text_renderer.draw_text(cx - tw * 0.5f, panel_y + 30.0f,
+                                    title, 0.85f, 0.88f, 0.92f, 1.0f, title_scale);
+
+            // Version
+            float info_scale = 0.85f;
+            float lh = text_renderer.line_height() * info_scale;
+            char version_str[64];
+            std::snprintf(version_str, sizeof(version_str), "v%s", VIVID_CORE_VERSION);
+            float vw = text_renderer.text_width(version_str, info_scale);
+            text_renderer.draw_text(cx - vw * 0.5f, panel_y + 62.0f,
+                                    version_str, 0.5f, 0.53f, 0.58f, 0.8f, info_scale);
+
+            // Copyright
+            const char* copyright = "\xC2\xA9 2025-2026 Jeff Crouse";
+            float cw = text_renderer.text_width(copyright, info_scale);
+            text_renderer.draw_text(cx - cw * 0.5f, panel_y + 62.0f + lh + 4.0f,
+                                    copyright, 0.4f, 0.42f, 0.45f, 0.6f, info_scale);
+
+            // Subtle separator line
+            float sep_y = panel_y + panel_h - 40.0f;
+            text_renderer.draw_rect(panel_x + 20.0f, sep_y, panel_w - 40.0f, 1.0f,
+                                    0.3f, 0.32f, 0.35f, 0.25f);
+
+            // Status text (loading phase)
+            float status_scale = 0.8f;
+            float sw = text_renderer.text_width(status, status_scale);
+            text_renderer.draw_text(cx - sw * 0.5f, sep_y + 10.0f,
+                                    status, 0.45f, 0.48f, 0.52f, 0.7f, status_scale);
+
+            text_renderer.flush(frame.encoder, frame.view,
+                                static_cast<uint32_t>(win_w),
+                                static_cast<uint32_t>(win_h));
+        }
+
         gpu.end_frame(frame);
         glfwPollEvents();
     };
 
     // --- Load operator plugins ---
-    render_loading_frame("Scanning plugins...");
+    // The progress callback renders a splash frame after each plugin probe,
+    // keeping the animation smooth during the ~2s scan_deferred phase.
     vivid::OperatorRegistry registry;
+    registry.set_progress_callback([&]() {
+        render_splash_frame("Scanning plugins...");
+    });
     {
         PhaseTimer t("scan_deferred (core plugins)");
 #ifdef __APPLE__
@@ -2410,17 +2601,12 @@ int main(int argc, char* argv[]) {
     register_builtin_operators(registry);
 
     // --- Load self-describing .wgsl filter presets ---
-    render_loading_frame("Loading presets...");
+    render_splash_frame("Loading presets...");
     std::string filters_dir = (resources_dir / "filters").string();
     {
-        PhaseTimer t("scan_wgsl_presets");
+        PhaseTimer t("scan_wgsl_presets + scan_factory_presets");
         registry.scan_wgsl_presets(filters_dir);
-    }
-
-    // --- Load factory presets for operators ---
-    std::string factory_presets_dir = (resources_dir / "factory_presets").string();
-    {
-        PhaseTimer t("scan_factory_presets");
+        std::string factory_presets_dir = (resources_dir / "factory_presets").string();
         registry.scan_factory_presets(factory_presets_dir);
     }
 
@@ -2433,7 +2619,10 @@ int main(int argc, char* argv[]) {
     }
 
     // --- Package management (needs to outlive main loop for catalog/install) ---
-    render_loading_frame("Scanning packages...");
+    // Reuse the progress callback for the package scan phase.
+    registry.set_progress_callback([&]() {
+        render_splash_frame("Scanning packages...");
+    });
     vivid::PackageCompiler pkg_compiler(build_paths.source_dir, build_paths.build_dir);
     vivid::PackageManager pkg_manager(pkg_compiler, registry);
     pkg_manager.set_subgraph_module_registry(&subgraph_modules);
@@ -2443,6 +2632,7 @@ int main(int argc, char* argv[]) {
         PhaseTimer t("scan_installed (packages)");
         pkg_manager.scan_installed();
     }
+    registry.set_progress_callback(nullptr);
     vivid::PackageCatalog pkg_catalog(pkg_manager);
     pkg_manager.set_resolver([&pkg_catalog](const std::string& name) -> std::string {
         for (const auto& e : pkg_catalog.entries())
@@ -2593,7 +2783,7 @@ int main(int argc, char* argv[]) {
         }
 
         // Load only the operators this graph actually uses
-        render_loading_frame("Building graph...");
+        render_splash_frame("Building graph...");
         {
             PhaseTimer t("load_for_graph");
             registry.load_for_graph(graph);
@@ -3293,7 +3483,7 @@ int main(int argc, char* argv[]) {
             std::fprintf(stderr, "[vivid] %s: failed to load %s\n", label, resolved.c_str());
             return false;
         }
-        render_loading_frame("Loading graph...");
+        render_splash_frame("Loading graph...");
         run_graph_package_diagnostics(graph);
         registry.load_for_graph(graph);
         auto result = runtime_api.reload(has_gpu_ops, has_audio);

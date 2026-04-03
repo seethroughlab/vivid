@@ -418,7 +418,7 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
         if (trace_probe) {
             std::fprintf(stderr, "[vivid] Registry: probing %s\n", name);
         }
-        void* handle = dlopen(path.c_str(), RTLD_LAZY | RTLD_LOCAL);
+        void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
         if (!handle) {
             const char* dl_err = dlerror();
             std::fprintf(stderr, "[vivid] probe dlopen failed: %s\n", dl_err ? dl_err : "unknown error");
@@ -512,6 +512,8 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
         } else {
             std::fprintf(stderr, "[vivid] Registry: probed %s from %s\n", type_name.c_str(), name);
         }
+
+        if (progress_cb_) progress_cb_();
     });
 }
 

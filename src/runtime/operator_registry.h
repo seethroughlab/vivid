@@ -6,6 +6,7 @@
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
+#include <functional>
 #include <memory>
 
 namespace vivid {
@@ -90,6 +91,11 @@ struct FileDropRegistration {
 class OperatorRegistry {
 public:
     ~OperatorRegistry();
+
+    // Optional callback invoked after each plugin probe during scan_deferred.
+    // Can be used to update a loading screen between dlopen calls.
+    using ProgressCallback = std::function<void()>;
+    void set_progress_callback(ProgressCallback cb) { progress_cb_ = std::move(cb); }
 
     bool scan(const char* directory);
     bool scan_deferred(const char* directory);       // probe-only scan (no full load)
@@ -191,6 +197,7 @@ private:
     std::unordered_map<std::string, AbiMismatchDiagnostic> abi_mismatch_by_path_;   // plugin path -> mismatch info
     std::unordered_map<std::string, LoaderFailureDiagnostic> loader_failure_by_path_; // plugin path -> load failure
     std::unordered_map<std::string, OperatorProvenance> expected_operators_;  // type_name → manifest provenance
+    ProgressCallback progress_cb_;
 };
 
 } // namespace vivid
