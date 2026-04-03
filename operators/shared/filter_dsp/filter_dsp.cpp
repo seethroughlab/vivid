@@ -1,4 +1,4 @@
-#include "operator_api/filter_dsp.h"
+#include "shared/filter_dsp/filter_dsp.h"
 
 #include <algorithm>
 #include <cmath>

@@ -620,7 +620,7 @@ add_vivid_operator(bitcrush       operators/audio/bitcrush/bitcrush.cpp
 add_vivid_operator(distortion     operators/audio/distortion/distortion.cpp
                    FACTORY_PRESETS operators/audio/distortion/factory_presets.json)
 add_vivid_operator(filter         operators/audio/filter/filter.cpp         EXTRA_LIBS webgpu)
-target_sources(filter PRIVATE src/operator_api/filter_dsp.cpp)
+target_sources(filter PRIVATE operators/shared/filter_dsp/filter_dsp.cpp)
 add_vivid_operator(audio_noise    operators/audio/noise/noise.cpp    EXTRA_LIBS webgpu)
 add_vivid_operator(mixer          operators/audio/mixer/mixer.cpp          EXTRA_LIBS webgpu)
 add_vivid_operator(compressor     operators/audio/compressor/compressor.cpp)
@@ -738,12 +738,14 @@ add_library(vivid_ui STATIC
     src/ui/rendering/thumbnail_cache.cpp
     src/ui/style/i18n.cpp
     src/ui/graph/node_graph.cpp
+    src/ui/graph/node_graph_update.cpp
     src/ui/graph/node_graph_draw.cpp
     src/ui/graph/node_graph_draw_inspector.cpp
     src/ui/graph/node_graph_draw_connections.cpp
     src/ui/graph/node_graph_draw_overlays.cpp
     src/ui/graph/node_graph_draw_elements.cpp
     src/ui/graph/node_graph_input.cpp
+    src/ui/graph/node_graph_input_click.cpp
     src/ui/inspector/inspector_controller.cpp
     src/ui/rendering/overlay_layouts.cpp
     src/ui/dialogs/dialog_manager.cpp
@@ -802,6 +804,8 @@ add_executable(vivid
     src/runtime/operators/builtin_operators.cpp
     src/runtime/core/runtime_bootstrap.cpp
     src/runtime/control/control_server.cpp
+    src/runtime/control/control_server_query.cpp
+    src/runtime/control/control_server_dispatch.cpp
     src/runtime/control/control_server_checks.cpp
     src/runtime/operators/operator_source_docs.cpp
     src/runtime/debug/capture_coordinator.cpp
@@ -1228,6 +1232,8 @@ add_executable(test_control_server
     src/runtime/packages/package_manager.cpp
     src/runtime/core/undo_manager.cpp
     src/runtime/control/control_server.cpp
+    src/runtime/control/control_server_query.cpp
+    src/runtime/control/control_server_dispatch.cpp
     src/runtime/control/control_server_checks.cpp
     src/runtime/operators/operator_source_docs.cpp
     src/runtime/debug/capture_coordinator.cpp
@@ -1275,6 +1281,8 @@ add_executable(test_perception_introspection
     src/runtime/packages/package_manager.cpp
     src/runtime/core/undo_manager.cpp
     src/runtime/control/control_server.cpp
+    src/runtime/control/control_server_query.cpp
+    src/runtime/control/control_server_dispatch.cpp
     src/runtime/control/control_server_checks.cpp
     src/runtime/operators/operator_source_docs.cpp
     src/runtime/debug/capture_coordinator.cpp

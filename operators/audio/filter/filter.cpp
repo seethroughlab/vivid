@@ -1,5 +1,5 @@
 #include "operator_api/operator.h"
-#include "operator_api/filter_dsp.h"
+#include "shared/filter_dsp/filter_dsp.h"
 #include "operator_api/thumbnail.h"
 
 #include <cmath>

@@ -1,5 +1,5 @@
 #include "operator_api/operator.h"
-#include "operator_api/drum_dsp.h"
+#include "shared/drum_dsp/drum_dsp.h"
 #include "operator_api/midi_types.h"
 #include "operator_api/type_id.h"
 

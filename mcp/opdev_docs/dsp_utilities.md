@@ -42,7 +42,7 @@ Returns `true` when phase wraps (delta < -0.5).
 ## drum_dsp.h — Percussion Building Blocks
 
 ```cpp
-#include "operator_api/drum_dsp.h"
+#include "shared/drum_dsp/drum_dsp.h"
 ```
 
 ### DecayEnvelope
