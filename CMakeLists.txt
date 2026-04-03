@@ -1982,7 +1982,7 @@ add_test(NAME test_lane_metadata COMMAND test_lane_metadata WORKING_DIRECTORY ${
 # Non-header-only embeddables have separate loader regressions in
 # test_operator_loader; this test uses stubs so it stays focused on ChildOp
 # call semantics and persistent state behavior.
-add_executable(test_child_op tests/test_child_op.cpp tests/stubs/smooth_stubs.cpp)
+add_executable(test_child_op tests/test_child_op.cpp tests/stubs/smooth_stubs.cpp tests/stubs/lfo_stubs.cpp)
 target_include_directories(test_child_op PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
 target_link_libraries(test_child_op PRIVATE vivid_operator_api)
 add_test(NAME test_child_op COMMAND test_child_op WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
