@@ -643,12 +643,14 @@ bool OperatorRegistry::load_for_graph(const Graph& graph) {
 }
 
 OperatorLoader* OperatorRegistry::find_loaded(const std::string& type_name) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     const std::string resolved = resolve_alias_once(aliases_, type_name);
     auto it = loaders_.find(resolved);
     return (it != loaders_.end()) ? it->second.get() : nullptr;
 }
 
 const VividOperatorDescriptor* OperatorRegistry::probe_descriptor(const std::string& type_name) const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     const std::string resolved = resolve_alias_once(aliases_, type_name);
     auto lit = loaders_.find(resolved);
     if (lit != loaders_.end() && lit->second) {
@@ -678,6 +680,7 @@ void OperatorRegistry::register_alias(const std::string& alias_name,
 }
 
 OperatorLoader* OperatorRegistry::find(const std::string& type_name) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     const std::string resolved = resolve_alias_once(aliases_, type_name);
     auto it = loaders_.find(resolved);
     if (it != loaders_.end()) return it->second.get();
@@ -765,6 +768,7 @@ bool OperatorRegistry::register_loaded_operator(const std::string& dylib_path) {
 }
 
 std::vector<std::string> OperatorRegistry::type_names() const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     std::vector<std::string> names;
     names.reserve(loaders_.size() + deferred_.size() + aliases_.size());
     for (const auto& [name, _] : loaders_) names.push_back(name);
@@ -791,6 +795,7 @@ std::string OperatorRegistry::type_to_target(const std::string& type_name) const
 
 const std::shared_ptr<DataDrivenFilterConfig>* OperatorRegistry::wgsl_config(
         const std::string& name) const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     auto it = wgsl_configs_.find(name);
     if (it == wgsl_configs_.end()) return nullptr;
     return &it->second;
@@ -805,6 +810,7 @@ std::vector<std::string> OperatorRegistry::wgsl_preset_names() const {
 }
 
 bool OperatorRegistry::is_wgsl_preset(const std::string& name) const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     return wgsl_configs_.count(name) > 0;
 }
 
@@ -1054,6 +1060,7 @@ void OperatorRegistry::register_expected_operator(const std::string& type_name,
 }
 
 const OperatorProvenance* OperatorRegistry::operator_provenance(const std::string& type_name) const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     auto it = expected_operators_.find(type_name);
     if (it != expected_operators_.end()) return &it->second;
     return nullptr;

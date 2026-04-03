@@ -107,6 +107,162 @@ using namespace vivid;
 
 namespace fs = std::filesystem;
 
+namespace {
+
+struct AsyncAddPreparedResult {
+    bool success = false;
+    std::string user_message;
+    std::string node_id;
+    vivid::Graph graph;
+    vivid::RuntimeCore::PreparedBuild prepared;
+};
+
+static bool split_async_add_addr(const std::string& addr,
+                                 std::string& node, std::string& port) {
+    auto slash = addr.find('/');
+    if (slash == std::string::npos || slash == 0 || slash == addr.size() - 1)
+        return false;
+    node = addr.substr(0, slash);
+    port = addr.substr(slash + 1);
+    return !node.empty() && !port.empty();
+}
+
+static bool apply_async_add_request_to_graph(
+    vivid::Graph& graph,
+    const vivid::ui::NodeGraphUI::AsyncAddOperatorRequest& request,
+    std::string& error) {
+    if (!graph.add_node(request.node_id, request.type_name, {}, request.string_params)) {
+        error = "node '" + request.node_id + "' already exists";
+        return false;
+    }
+
+    auto* ndef = graph.find_node(request.node_id);
+    if (!ndef) {
+        error = "failed to find newly added node";
+        return false;
+    }
+    ndef->layout_x = request.graph_x;
+    ndef->layout_y = request.graph_y;
+
+    for (const auto& mut : request.connection_mutations) {
+        std::string from_node, from_port, to_node, to_port;
+        if (!split_async_add_addr(mut.from_addr, from_node, from_port) ||
+            !split_async_add_addr(mut.to_addr, to_node, to_port)) {
+            error = "invalid connection address in async add request";
+            return false;
+        }
+        bool ok = false;
+        if (mut.kind == vivid::ui::NodeGraphUI::AsyncAddConnectionMutation::Kind::Connect) {
+            ok = graph.add_connection(from_node, from_port, to_node, to_port);
+            if (!ok) error = "failed to connect " + mut.from_addr + " -> " + mut.to_addr;
+        } else {
+            ok = graph.remove_connection(from_node, from_port, to_node, to_port);
+            if (!ok) error = "failed to disconnect " + mut.from_addr + " -> " + mut.to_addr;
+        }
+        if (!ok) return false;
+    }
+
+    return true;
+}
+
+class AsyncAddCoordinator {
+public:
+    enum class Stage {
+        Idle,
+        Preparing,
+        Compiling,
+    };
+
+    ~AsyncAddCoordinator() {
+        if (worker_.joinable()) worker_.join();
+    }
+
+    bool begin(const vivid::ui::NodeGraphUI::AsyncAddOperatorRequest& request,
+               const vivid::Graph& live_graph,
+               const vivid::RuntimeCore& runtime,
+               vivid::OperatorRegistry& registry,
+               std::string& error) {
+        if (active_) {
+            error = "another operator is already being added";
+            return false;
+        }
+        if (worker_.joinable()) worker_.join();
+
+        active_ = true;
+        stage_ = Stage::Preparing;
+        completed_ = false;
+        result_ = {};
+
+        worker_ = std::thread([this, request, live_graph, &runtime, &registry]() mutable {
+            AsyncAddPreparedResult result;
+            result.node_id = request.node_id;
+
+            auto finish = [&](bool success, std::string message) {
+                result.success = success;
+                result.user_message = std::move(message);
+                {
+                    std::lock_guard<std::mutex> lock(result_mutex_);
+                    result_ = std::move(result);
+                    completed_ = true;
+                }
+                active_ = false;
+                if (!success) stage_ = Stage::Idle;
+            };
+
+            if (!registry.find(request.type_name) &&
+                !registry.is_wgsl_preset(request.type_name) &&
+                !(runtime.subgraph_modules() && runtime.subgraph_modules()->find(request.type_name))) {
+                finish(false, "unknown operator type '" + request.type_name + "'");
+                return;
+            }
+
+            vivid::Graph candidate = live_graph;
+            std::string error;
+            if (!apply_async_add_request_to_graph(candidate, request, error)) {
+                finish(false, error);
+                return;
+            }
+
+            result.graph = std::move(candidate);
+            stage_ = Stage::Compiling;
+            if (!runtime.prepare_build(result.graph, registry, result.prepared, &error)) {
+                if (error.empty())
+                    error = "failed to compile graph after adding " + request.type_name;
+                finish(false, error);
+                return;
+            }
+
+            finish(true, {});
+        });
+
+        return true;
+    }
+
+    bool active() const { return active_; }
+    Stage stage() const { return stage_; }
+
+    bool take_completed(AsyncAddPreparedResult& out) {
+        if (!completed_) return false;
+        if (worker_.joinable()) worker_.join();
+        std::lock_guard<std::mutex> lock(result_mutex_);
+        if (!completed_) return false;
+        out = std::move(result_);
+        completed_ = false;
+        stage_ = Stage::Idle;
+        return true;
+    }
+
+private:
+    std::thread worker_;
+    std::atomic<bool> active_{false};
+    std::atomic<Stage> stage_{Stage::Idle};
+    std::mutex result_mutex_;
+    std::atomic<bool> completed_{false};
+    AsyncAddPreparedResult result_;
+};
+
+} // namespace
+
 int main(int argc, char* argv[]) {
     vivid::install_crash_handlers();
 
@@ -1224,6 +1380,36 @@ fn fbm(p_in: vec2f) -> f32 {
         return true;
     };
 
+    auto adopt_prepared_runtime_build = [&](AsyncAddPreparedResult prepared) -> bool {
+        if (has_audio) {
+            audio_engine.shutdown();
+            has_audio = false;
+        }
+        runtime.shutdown();
+        thumb_cache.clear();
+
+        graph = std::move(prepared.graph);
+        runtime.adopt_prepared_build(std::move(prepared.prepared));
+
+        graph_loaded = runtime.compiled_graph() && !runtime.compiled_graph()->nodes.empty();
+        has_gpu_ops = runtime.has_gpu_operators();
+        if (has_gpu_ops) {
+            runtime.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
+            video_out_idx = runtime.find_effective_gpu_sink();
+        } else {
+            video_out_idx = -1;
+        }
+
+        if (runtime.has_audio_operators()) {
+            if (audio_engine.build(runtime) && audio_engine.start())
+                has_audio = true;
+        }
+
+        runtime_api.notify_external_graph_mutation();
+        capture_coordinator.set_audio_engine(has_audio ? &audio_engine : nullptr);
+        return true;
+    };
+
     // (text_renderer was initialized earlier for the loading screen)
 
     // Thumbnail 2D renderer — targets RGBA16Float thumbnail textures.
@@ -1266,6 +1452,15 @@ fn fbm(p_in: vec2f) -> f32 {
         auto mcp_dir = resources_dir / "mcp";
         graph_ui.set_mcp_dir(mcp_dir.string());
     }
+    AsyncAddCoordinator async_add_coordinator;
+    graph_ui.set_async_add_callback(
+        [&](const vivid::ui::NodeGraphUI::AsyncAddOperatorRequest& request, std::string& error) {
+            if (!graph_loaded || !runtime.compiled_graph()) {
+                error = "runtime is not ready for adding operators";
+                return false;
+            }
+            return async_add_coordinator.begin(request, graph, runtime, registry, error);
+        });
     auto refresh_discovered_examples = [&]() {
         discovered_examples = discover_examples_with_packages(graphs_root, &pkg_manager);
         graph_ui.set_examples(discovered_examples);
@@ -1888,32 +2083,16 @@ fn fbm(p_in: vec2f) -> f32 {
     auto create_file_drop_node = [&](const vivid::FileDropMatch& match,
                                      const std::string& dropped_path,
                                      float graph_x, float graph_y) {
-        if (!registry.find(match.type_name)) {
-            std::fprintf(stderr, "[vivid] Drop: failed to load operator %s\n",
-                         match.type_name.c_str());
-            return false;
-        }
-
-        std::string id;
-        for (int n = 1; ; ++n) {
-            id = match.type_name + std::to_string(n);
-            if (!graph.find_node(id)) break;
-        }
-
-        std::string add_error;
-        if (!command_sink.try_add_node(match.type_name, id, &add_error)) {
-            std::fprintf(stderr, "[vivid] Drop: failed to add %s: %s\n",
-                         match.type_name.c_str(), add_error.c_str());
-            return false;
-        }
-        command_sink.set_node_layout(id, graph_x, graph_y);
-        runtime_api.apply_pending(has_gpu_ops, has_audio);
-        auto set_result = runtime_api.set_string_param(id, match.file_param, dropped_path);
-        if (!set_result.ok) {
-            std::fprintf(stderr, "[vivid] Drop: failed to set %s/%s: %s\n",
-                         id.c_str(), match.file_param.c_str(), set_result.message.c_str());
-            return false;
-        }
+        vivid::ui::FileDropChooserAction action;
+        action.label = match.label.empty() ? match.type_name : match.label;
+        action.subtitle = match.package_name.empty()
+            ? match.type_name
+            : (match.type_name + "  [" + match.package_name + "]");
+        action.type_name = match.type_name;
+        action.file_param = match.file_param;
+        action.dropped_path = dropped_path;
+        graph_ui.open_file_drop_chooser({action}, graph_x, graph_y);
+        graph_ui.confirm_chooser_selection(action.type_name);
         return true;
     };
 
@@ -2424,9 +2603,31 @@ fn fbm(p_in: vec2f) -> f32 {
             return true;
         }
 
-        // Drain control server requests (may set pending topology changes)
-        control_server.process_requests(runtime_api, graph, runtime, registry,
-                                        has_gpu_ops, has_audio);
+        AsyncAddPreparedResult async_add_result;
+        if (async_add_coordinator.take_completed(async_add_result)) {
+            if (async_add_result.success) {
+                std::string added_node_id = async_add_result.node_id;
+                graph_ui.set_async_add_stage(vivid::ui::NodeGraphUI::AsyncAddStage::Applying);
+                adopt_prepared_runtime_build(std::move(async_add_result));
+                command_sink.capture_external_undo_snapshot();
+                graph_ui.notify_async_add_success(added_node_id);
+            } else {
+                graph_ui.notify_async_add_failure(async_add_result.user_message);
+            }
+        } else if (async_add_coordinator.active()) {
+            auto stage = async_add_coordinator.stage();
+            graph_ui.set_async_add_stage(
+                stage == AsyncAddCoordinator::Stage::Compiling
+                    ? vivid::ui::NodeGraphUI::AsyncAddStage::Compiling
+                    : vivid::ui::NodeGraphUI::AsyncAddStage::Preparing);
+        }
+
+        // Drain control server requests (may set pending topology changes).
+        // Keep the live graph stable while an async add transaction is preparing.
+        if (!async_add_coordinator.active()) {
+            control_server.process_requests(runtime_api, graph, runtime, registry,
+                                            has_gpu_ops, has_audio);
+        }
         static uint64_t last_reload_serial = 0;
         if (runtime_api.reload_serial() != last_reload_serial) {
             last_reload_serial = runtime_api.reload_serial();
@@ -2435,7 +2636,7 @@ fn fbm(p_in: vec2f) -> f32 {
             }
         }
 
-        if (runtime_api.has_pending()) {
+        if (!async_add_coordinator.active() && runtime_api.has_pending()) {
             runtime_api.apply_pending(has_gpu_ops, has_audio);
             // Re-allocate per-node GPU textures after topology change
             if (has_gpu_ops) {
@@ -2608,7 +2809,7 @@ fn fbm(p_in: vec2f) -> f32 {
             gpu_state.output_format   = kOffscreenFormat;
 
             // --- Hot-reload polling ---
-            if (hot_reload_enabled) {
+            if (hot_reload_enabled && !async_add_coordinator.active()) {
                 auto now_scan = std::chrono::steady_clock::now();
                 if (now_scan >= next_package_watch_rescan_at) {
                     refresh_package_watches();
@@ -2844,40 +3045,44 @@ fn fbm(p_in: vec2f) -> f32 {
 
             // --- Node graph UI overlay (2-pass rendering) ---
             if (text_renderer_ok && (graph_ui.visible() || interface_capture_requested)) {
-                auto snapshot = build_graph_snapshot(
-                    graph, runtime, has_audio ? &audio_engine : nullptr,
-                    registry, op_info_cache, &system_midi, &runtime_api,
-                    &capture_coordinator, &control_server, &subgraph_modules);
+                if (async_add_coordinator.active()) {
+                    graph_ui.update_modal_only();
+                } else {
+                    auto snapshot = build_graph_snapshot(
+                        graph, runtime, has_audio ? &audio_engine : nullptr,
+                        registry, op_info_cache, &system_midi, &runtime_api,
+                        &capture_coordinator, &control_server, &subgraph_modules);
 
-                if (!test_ui_script.actions.empty()) {
-                    run_ui_test_script_frame(test_ui_script, graph_ui, window_user_data,
-                                             screenshot_path, screenshot_delay, frame_count);
-                }
-                graph_ui.update(snapshot);
-                if (!test_dump_ui_state_path.empty()) {
-                    test_dump_state.final_state =
-                        vivid::capture_ui_test_observed_state(snapshot, graph_ui);
-                    test_dump_state.has_final_state = true;
-                    for (const auto& label : test_ui_script.pending_checkpoint_labels) {
-                        test_dump_state.checkpoints.push_back(
-                            vivid::UITestCheckpointState{
-                                label,
-                                vivid::capture_ui_test_observed_state(snapshot, graph_ui),
-                            });
+                    if (!test_ui_script.actions.empty()) {
+                        run_ui_test_script_frame(test_ui_script, graph_ui, window_user_data,
+                                                 screenshot_path, screenshot_delay, frame_count);
                     }
-                    test_ui_script.pending_checkpoint_labels.clear();
-                }
-                if (interface_capture_requested) {
-                    capture_coordinator.prepare_pending_interface_capture(graph_ui);
-                }
-                if (!screenshot_select_applied && !screenshot_select_node.empty()) {
-                    if (graph_ui.select_single_node_for_review(screenshot_select_node)) {
-                        screenshot_select_applied = true;
-                    } else if (!screenshot_select_warned) {
-                        std::fprintf(stderr,
-                                     "[vivid] --select-node could not find node id '%s' in the current graph yet\n",
-                                     screenshot_select_node.c_str());
-                        screenshot_select_warned = true;
+                    graph_ui.update(snapshot);
+                    if (!test_dump_ui_state_path.empty()) {
+                        test_dump_state.final_state =
+                            vivid::capture_ui_test_observed_state(snapshot, graph_ui);
+                        test_dump_state.has_final_state = true;
+                        for (const auto& label : test_ui_script.pending_checkpoint_labels) {
+                            test_dump_state.checkpoints.push_back(
+                                vivid::UITestCheckpointState{
+                                    label,
+                                    vivid::capture_ui_test_observed_state(snapshot, graph_ui),
+                                });
+                        }
+                        test_ui_script.pending_checkpoint_labels.clear();
+                    }
+                    if (interface_capture_requested) {
+                        capture_coordinator.prepare_pending_interface_capture(graph_ui);
+                    }
+                    if (!screenshot_select_applied && !screenshot_select_node.empty()) {
+                        if (graph_ui.select_single_node_for_review(screenshot_select_node)) {
+                            screenshot_select_applied = true;
+                        } else if (!screenshot_select_warned) {
+                            std::fprintf(stderr,
+                                         "[vivid] --select-node could not find node id '%s' in the current graph yet\n",
+                                         screenshot_select_node.c_str());
+                            screenshot_select_warned = true;
+                        }
                     }
                 }
                 if (graph_ui.visible()) {

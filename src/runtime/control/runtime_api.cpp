@@ -1710,6 +1710,15 @@ void RuntimeAPI::mark_graph_dirty() {
     graph_dirty_ = true;
 }
 
+void RuntimeAPI::notify_external_graph_mutation() {
+    pending_topology_change_ = false;
+    active_crossfades_.clear();
+    preserve_undo_history_on_reload_ = true;
+    reload_serial_++;
+    needs_gpu_realloc_ = false;
+    refresh_graph_dirty_from_saved_snapshot();
+}
+
 void RuntimeAPI::capture_saved_snapshot() {
     std::string current;
     if (graph_.save_to_string(current)) {

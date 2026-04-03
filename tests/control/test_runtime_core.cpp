@@ -68,6 +68,35 @@ int main() {
     }
 
     // =====================================================================
+    // Test 1b: prepare_build/adopt_prepared_build
+    // Prepared builds should compile without mutating live runtime state and
+    // then adopt into RuntimeCore with the same execution results as build().
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 1b: Prepared build adoption ===\n");
+        vivid::Graph g;
+        g.add_node("a", "TestOp", {{"scale", 2.0f}});
+        g.add_node("b", "ControlPassOp", {{"gain", 4.0f}});
+        g.add_connection("a", "out", "b", "in");
+
+        vivid::RuntimeCore runtime;
+        vivid::RuntimeCore::PreparedBuild prepared;
+        check(runtime.prepare_build(g, registry, prepared), "prepare_build succeeds");
+        check(prepared.compiled_graph != nullptr, "prepare_build returns compiled graph");
+        check(runtime.compiled_graph() == nullptr, "prepare_build leaves live runtime untouched");
+
+        runtime.adopt_prepared_build(std::move(prepared));
+        runtime.tick(0.0, 0.016, 0);
+
+        auto* na = runtime.compiled_graph()->find_node("a");
+        auto* nb = runtime.compiled_graph()->find_node("b");
+        check(na && nb, "prepared-build nodes found");
+        check_float(na->output_values[0], 4.0f, "prepared a output = 4.0");
+        check_float(nb->output_values[0], 16.0f, "prepared b output = 16.0");
+        runtime.shutdown();
+    }
+
+    // =====================================================================
     // Test 2: Diamond topology
     // a(TestOp,scale=3) → b(gain=2), a → c(gain=5), b→d/in, c→d/gain
     // a: output = 3*2 = 6

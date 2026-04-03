@@ -11,11 +11,19 @@ namespace vivid {
 // ---------------------------------------------------------------------------
 
 bool RuntimeCore::build(const Graph& graph, OperatorRegistry& registry) {
-    solo_node_idx_ = -1;
-    solo_active_set_.clear();
+    PreparedBuild prepared;
+    if (!prepare_build(graph, registry, prepared))
+        return false;
+    adopt_prepared_build(std::move(prepared));
+    return true;
+}
+
+bool RuntimeCore::prepare_build(const Graph& graph, OperatorRegistry& registry,
+                                PreparedBuild& out, std::string* error) const {
+    out = {};
 
     // Extract graph base directory for resolving relative file paths
-    graph_base_dir_ = std::filesystem::path(graph.source_path()).parent_path();
+    std::filesystem::path graph_base_dir = std::filesystem::path(graph.source_path()).parent_path();
 
     // Flatten subgraph modules before compilation (if any are registered)
     const Graph* compile_target = &graph;
@@ -26,15 +34,24 @@ bool RuntimeCore::build(const Graph& graph, OperatorRegistry& registry) {
         compile_target = &flattened;
     }
 
-    // Compile the graph
     GraphCompiler::Options opts;
-    opts.graph_base_dir = graph_base_dir_;
+    opts.graph_base_dir = graph_base_dir;
     opts.operators_src_dir = operators_src_dir_;
-    compiled_graph_ = GraphCompiler::compile(*compile_target, registry, opts);
-    if (!compiled_graph_) {
+    out.compiled_graph = GraphCompiler::compile(*compile_target, registry, opts);
+    if (!out.compiled_graph) {
+        if (error) *error = "graph compile failed";
         std::fprintf(stderr, "[vivid] CompiledGraph: compile failed\n");
         return false;
     }
+    out.graph_base_dir = std::move(graph_base_dir);
+    return true;
+}
+
+void RuntimeCore::adopt_prepared_build(PreparedBuild prepared) {
+    solo_node_idx_ = -1;
+    solo_active_set_.clear();
+    graph_base_dir_ = std::move(prepared.graph_base_dir);
+    compiled_graph_ = std::move(prepared.compiled_graph);
 
     audio_frame_bridge_.build(*compiled_graph_);
     frame_executor_.set_operators_src_dir(operators_src_dir_);
@@ -55,8 +72,6 @@ bool RuntimeCore::build(const Graph& graph, OperatorRegistry& registry) {
                      compiled_graph_->frame_to_audio_edges.size() +
                      compiled_graph_->audio_to_frame_edges.size());
     }
-
-    return true;
 }
 
 // ---------------------------------------------------------------------------

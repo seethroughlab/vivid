@@ -73,6 +73,32 @@ inline float lerp_toward(float current, float target, float speed, float dt) {
 
 class NodeGraphUI {
 public:
+    struct AsyncAddConnectionMutation {
+        enum class Kind {
+            Connect,
+            Disconnect,
+        };
+        Kind kind = Kind::Connect;
+        std::string from_addr;
+        std::string to_addr;
+    };
+
+    struct AsyncAddOperatorRequest {
+        std::string type_name;
+        std::string node_id;
+        std::string display_name;
+        float graph_x = 0.0f;
+        float graph_y = 0.0f;
+        std::unordered_map<std::string, std::string> string_params;
+        std::vector<AsyncAddConnectionMutation> connection_mutations;
+    };
+
+    enum class AsyncAddStage {
+        Preparing,
+        Compiling,
+        Applying,
+    };
+
     NodeGraphUI(UICommandSink& commands);
 
     // GLFW callbacks
@@ -90,6 +116,7 @@ public:
     // Returns true when a popup is open and wants keyboard focus
     bool wants_keyboard() const {
         return dialogs_.wants_keyboard()
+            || async_add_active_
             || chooser_open_
             || context_menu_open_
             || patch_ctx_open_
@@ -120,6 +147,16 @@ public:
     void open_file_drop_chooser(std::vector<FileDropChooserAction> actions,
                                 float graph_x, float graph_y);
     void confirm_chooser_selection(const std::string& type);
+    using AsyncAddOperatorCallback =
+        std::function<bool(const AsyncAddOperatorRequest&, std::string& error)>;
+    void set_async_add_callback(AsyncAddOperatorCallback cb) {
+        async_add_callback_ = std::move(cb);
+    }
+    bool async_add_active() const { return async_add_active_; }
+    void set_async_add_stage(AsyncAddStage stage) { async_add_stage_ = stage; }
+    void update_modal_only();
+    void notify_async_add_success(const std::string& node_id);
+    void notify_async_add_failure(const std::string& summary);
 
     // State queries (used by menu bar for checkmarks)
     bool session_grid_open() const { return session_grid_open_; }
@@ -298,6 +335,7 @@ private:
     void draw_param_tooltip(Renderer2D& tr);
     void draw_inspector_scrollbar(Renderer2D& tr);
     void draw_midi_map_banner(Renderer2D& tr);
+    void draw_async_add_overlay(Renderer2D& tr);
     // draw_core_update_banner moved to DialogManager
 
     // --- Session grid ---
@@ -317,6 +355,9 @@ private:
 
     // --- Chooser ---
     void rebuild_chooser_items();
+    bool build_async_add_request_for_selection(int idx, AsyncAddOperatorRequest& request);
+    void stash_chooser_restore_state();
+    void restore_chooser_after_async_failure();
     void confirm_chooser_selection_idx(int idx);
     void reset_chooser_state();
 
@@ -575,6 +616,7 @@ private:
     std::vector<std::string> chooser_subtitles_;
     std::vector<FileDropChooserAction> chooser_drop_actions_;
     float chooser_cursor_gx_ = 0, chooser_cursor_gy_ = 0;
+    std::string chooser_error_;
 
     // Insert-on-wire state (chooser opened from wire context menu)
     bool chooser_insert_wire_ = false;
@@ -677,6 +719,32 @@ private:
     // Active UI style
     UIStyle style_;
     BuildConsolePanel build_console_panel_;
+    AsyncAddOperatorCallback async_add_callback_;
+    struct AsyncAddChooserRestoreState {
+        bool valid = false;
+        ChooserMode mode = ChooserMode::Operators;
+        std::string filter;
+        int sel = 0;
+        float scroll = 0.0f;
+        std::vector<std::string> items;
+        std::vector<std::string> subtitles;
+        std::vector<FileDropChooserAction> drop_actions;
+        float cursor_gx = 0.0f;
+        float cursor_gy = 0.0f;
+        bool insert_wire = false;
+        ConnectionSnapshot insert_conn;
+        VividPortType insert_wire_source_type = VIVID_PORT_SCALAR;
+        VividPortType insert_wire_dest_type = VIVID_PORT_SCALAR;
+        bool wire_connect = false;
+        std::string wire_connect_node_id;
+        std::string wire_connect_port;
+        bool wire_connect_from_output = true;
+        VividPortType wire_connect_type = VIVID_PORT_SCALAR;
+    };
+    AsyncAddChooserRestoreState async_add_restore_;
+    bool async_add_active_ = false;
+    AsyncAddStage async_add_stage_ = AsyncAddStage::Preparing;
+    std::string async_add_display_name_;
 
     // Wire rendering style toggle (B key)
     bool bezier_wires_ = false;

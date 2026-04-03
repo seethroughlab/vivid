@@ -179,7 +179,8 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
 
     int visible = std::min(static_cast<int>(chooser_items_.size()), kChooserMaxVisible);
     if (visible == 0) visible = 1; // show at least the header area
-    float panel_h = kChooserHeaderH + visible * kChooserItemH + 4;
+    float error_h = chooser_error_.empty() ? 0.0f : 18.0f;
+    float panel_h = kChooserHeaderH + visible * kChooserItemH + 4 + error_h;
 
     float px = chooser_x();
     float py = kChooserY;
@@ -257,6 +258,15 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
     // Show "no matches" if empty
     if (chooser_items_.empty()) {
         tr.draw_text(px + 8, iy + 3, T("no_matches", "no matches"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    }
+
+    if (!chooser_error_.empty()) {
+        float err_y = py + panel_h - error_h + 1.0f;
+        tr.draw_rect(px + 1, err_y - 2.0f, kChooserW - 2.0f, error_h,
+                     style_.inspector_bg[0], style_.inspector_bg[1], style_.inspector_bg[2], 0.98f);
+        tr.push_clip_rect(px + 8.0f, err_y, kChooserW - 16.0f, error_h);
+        tr.draw_text(px + 8.0f, err_y, chooser_error_.c_str(), 0.95f, 0.36f, 0.36f);
+        tr.pop_clip_rect();
     }
 
     // Scrollbar when items overflow

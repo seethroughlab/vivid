@@ -147,6 +147,7 @@ public:
     bool needs_gpu_realloc() const { return needs_gpu_realloc_; }
     void clear_gpu_realloc() { needs_gpu_realloc_ = false; }
     uint64_t reload_serial() const { return reload_serial_; }
+    void notify_external_graph_mutation();
     bool consume_preserve_undo_history_reload() {
         bool preserve = preserve_undo_history_on_reload_;
         preserve_undo_history_on_reload_ = false;

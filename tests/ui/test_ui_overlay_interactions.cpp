@@ -122,6 +122,46 @@ int main() {
         check(opened, "second missing-package Open click proceeds");
     }
 
+    // Async operator add: chooser submits a prepared-build request and restores on failure
+    {
+        DummySink sink;
+        NodeGraphUI ui(sink);
+        NodeGraphUI::AsyncAddOperatorRequest submitted;
+        int submit_calls = 0;
+        ui.set_async_add_callback(
+            [&](const NodeGraphUI::AsyncAddOperatorRequest& request, std::string& error) {
+                ++submit_calls;
+                submitted = request;
+                error.clear();
+                return true;
+            });
+
+        ui.chooser_open_ = true;
+        ui.chooser_mode_ = NodeGraphUI::ChooserMode::Operators;
+        ui.chooser_items_ = {"Math"};
+        ui.chooser_filter_ = "ma";
+        ui.chooser_sel_ = 0;
+        ui.chooser_scroll_ = 12.0f;
+        ui.chooser_cursor_gx_ = 42.0f;
+        ui.chooser_cursor_gy_ = 84.0f;
+
+        ui.confirm_chooser_selection_idx(0);
+        check(submit_calls == 1, "Chooser confirm submits async add request");
+        check(ui.async_add_active_, "Async add becomes active after submission");
+        check(!ui.chooser_open_, "Chooser closes while async add is running");
+        check(submitted.type_name == "Math", "Async add request keeps selected type");
+        check(submitted.node_id == "Math1", "Async add request generates unique node id");
+        check_float(submitted.graph_x, 42.0f, "Async add request keeps graph x");
+        check_float(submitted.graph_y, 84.0f, "Async add request keeps graph y");
+
+        ui.notify_async_add_failure("failed to compile graph after adding Math");
+        check(!ui.async_add_active_, "Async add clears active state on failure");
+        check(ui.chooser_open_, "Chooser reopens after async add failure");
+        check(ui.chooser_filter_ == "ma", "Chooser filter is restored after async add failure");
+        check(ui.chooser_error_ == "failed to compile graph after adding Math",
+              "Chooser shows compact async add failure summary");
+    }
+
     // Package browser: install action dispatch
     {
         DummySink sink;

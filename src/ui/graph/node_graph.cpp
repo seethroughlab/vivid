@@ -1038,6 +1038,7 @@ void NodeGraphUI::reset_chooser_state() {
     chooser_subtitles_.clear();
     chooser_drop_actions_.clear();
     chooser_mode_ = ChooserMode::Operators;
+    chooser_error_.clear();
 }
 
 bool NodeGraphUI::graph_position_for_screen(float sx, float sy, float& gx, float& gy) const {
@@ -1055,6 +1056,7 @@ void NodeGraphUI::graph_center_position(float& gx, float& gy) const {
 
 void NodeGraphUI::open_file_drop_chooser(std::vector<FileDropChooserAction> actions,
                                          float graph_x, float graph_y) {
+    if (async_add_active_) return;
     chooser_mode_ = ChooserMode::FileDrop;
     chooser_items_.clear();
     chooser_subtitles_.clear();
@@ -1071,6 +1073,75 @@ void NodeGraphUI::open_file_drop_chooser(std::vector<FileDropChooserAction> acti
     chooser_insert_wire_ = false;
     chooser_wire_connect_ = false;
     chooser_open_ = !chooser_items_.empty();
+    chooser_error_.clear();
+}
+
+void NodeGraphUI::stash_chooser_restore_state() {
+    async_add_restore_.valid = true;
+    async_add_restore_.mode = chooser_mode_;
+    async_add_restore_.filter = chooser_filter_;
+    async_add_restore_.sel = chooser_sel_;
+    async_add_restore_.scroll = chooser_scroll_;
+    async_add_restore_.items = chooser_items_;
+    async_add_restore_.subtitles = chooser_subtitles_;
+    async_add_restore_.drop_actions = chooser_drop_actions_;
+    async_add_restore_.cursor_gx = chooser_cursor_gx_;
+    async_add_restore_.cursor_gy = chooser_cursor_gy_;
+    async_add_restore_.insert_wire = chooser_insert_wire_;
+    async_add_restore_.insert_conn = chooser_insert_conn_;
+    async_add_restore_.insert_wire_source_type = insert_wire_source_type_;
+    async_add_restore_.insert_wire_dest_type = insert_wire_dest_type_;
+    async_add_restore_.wire_connect = chooser_wire_connect_;
+    async_add_restore_.wire_connect_node_id = wire_connect_node_id_;
+    async_add_restore_.wire_connect_port = wire_connect_port_;
+    async_add_restore_.wire_connect_from_output = wire_connect_from_output_;
+    async_add_restore_.wire_connect_type = wire_connect_type_;
+}
+
+void NodeGraphUI::restore_chooser_after_async_failure() {
+    if (!async_add_restore_.valid) return;
+    chooser_mode_ = async_add_restore_.mode;
+    chooser_filter_ = async_add_restore_.filter;
+    chooser_sel_ = async_add_restore_.sel;
+    chooser_scroll_ = async_add_restore_.scroll;
+    chooser_items_ = async_add_restore_.items;
+    chooser_subtitles_ = async_add_restore_.subtitles;
+    chooser_drop_actions_ = async_add_restore_.drop_actions;
+    chooser_cursor_gx_ = async_add_restore_.cursor_gx;
+    chooser_cursor_gy_ = async_add_restore_.cursor_gy;
+    chooser_insert_wire_ = async_add_restore_.insert_wire;
+    chooser_insert_conn_ = async_add_restore_.insert_conn;
+    insert_wire_source_type_ = async_add_restore_.insert_wire_source_type;
+    insert_wire_dest_type_ = async_add_restore_.insert_wire_dest_type;
+    chooser_wire_connect_ = async_add_restore_.wire_connect;
+    wire_connect_node_id_ = async_add_restore_.wire_connect_node_id;
+    wire_connect_port_ = async_add_restore_.wire_connect_port;
+    wire_connect_from_output_ = async_add_restore_.wire_connect_from_output;
+    wire_connect_type_ = async_add_restore_.wire_connect_type;
+    chooser_open_ = !chooser_items_.empty();
+}
+
+void NodeGraphUI::update_modal_only() {
+    build_console_panel_.sync_from_model();
+    clear_frame_flags();
+}
+
+void NodeGraphUI::notify_async_add_success(const std::string& node_id) {
+    async_add_active_ = false;
+    async_add_display_name_.clear();
+    async_add_restore_ = {};
+    chooser_error_.clear();
+    selected_node_ids_.clear();
+    if (!node_id.empty())
+        selected_node_ids_.insert(node_id);
+    selected_wire_idx_ = -1;
+}
+
+void NodeGraphUI::notify_async_add_failure(const std::string& summary) {
+    async_add_active_ = false;
+    async_add_display_name_.clear();
+    restore_chooser_after_async_failure();
+    chooser_error_ = summary;
 }
 
 void NodeGraphUI::confirm_chooser_selection(const std::string& type) {
@@ -1104,8 +1175,136 @@ void NodeGraphUI::confirm_chooser_selection(const std::string& type) {
     confirm_chooser_selection_idx(static_cast<int>(std::distance(chooser_items_.begin(), it)));
 }
 
+bool NodeGraphUI::build_async_add_request_for_selection(int idx, AsyncAddOperatorRequest& request) {
+    request = {};
+    if (idx < 0 || idx >= static_cast<int>(chooser_items_.size()))
+        return false;
+
+    if (chooser_mode_ == ChooserMode::FileDrop) {
+        if (idx >= static_cast<int>(chooser_drop_actions_.size()))
+            return false;
+        const auto& action = chooser_drop_actions_[idx];
+        std::string id;
+        for (int n = 1; ; ++n) {
+            id = action.type_name + std::to_string(n);
+            if (!snap_.has_node(id)) break;
+        }
+        request.type_name = action.type_name;
+        request.node_id = id;
+        request.display_name = action.label.empty() ? action.type_name : action.label;
+        request.graph_x = chooser_cursor_gx_;
+        request.graph_y = chooser_cursor_gy_;
+        request.string_params[action.file_param] = action.dropped_path;
+        return true;
+    }
+
+    const std::string& type = chooser_items_[idx];
+    if (type == "+ New Operator...")
+        return false;
+
+    std::string id;
+    for (int n = 1; ; ++n) {
+        id = type + std::to_string(n);
+        if (!snap_.has_node(id)) break;
+    }
+
+    request.type_name = type;
+    request.node_id = id;
+    request.display_name = type;
+    request.graph_x = chooser_cursor_gx_;
+    request.graph_y = chooser_cursor_gy_;
+
+    if (chooser_insert_wire_) {
+        auto cat_it = snap_.operator_catalog.find(type);
+        if (cat_it != snap_.operator_catalog.end() && cat_it->second) {
+            const auto& op = *cat_it->second;
+            std::string source_tag =
+                semantic_tag_for_snapshot_endpoint(snap_, chooser_insert_conn_.from_node,
+                                                   chooser_insert_conn_.from_port);
+            std::string dest_tag =
+                semantic_tag_for_snapshot_endpoint(snap_, chooser_insert_conn_.to_node,
+                                                   chooser_insert_conn_.to_port);
+            std::string src_addr =
+                chooser_insert_conn_.from_node + "/" + chooser_insert_conn_.from_port;
+            std::string dst_addr =
+                chooser_insert_conn_.to_node + "/" + chooser_insert_conn_.to_port;
+            std::string in_port =
+                find_compatible_port(op, insert_wire_source_type_, VIVID_PORT_INPUT, source_tag);
+            std::string out_port =
+                find_compatible_port(op, insert_wire_dest_type_, VIVID_PORT_OUTPUT, dest_tag);
+            if (!in_port.empty() && !out_port.empty()) {
+                request.connection_mutations.push_back(
+                    {AsyncAddConnectionMutation::Kind::Connect, src_addr, id + "/" + in_port});
+                request.connection_mutations.push_back(
+                    {AsyncAddConnectionMutation::Kind::Connect, id + "/" + out_port, dst_addr});
+                request.connection_mutations.push_back(
+                    {AsyncAddConnectionMutation::Kind::Disconnect, src_addr, dst_addr});
+            }
+        }
+    }
+
+    if (chooser_wire_connect_) {
+        auto cat_it = snap_.operator_catalog.find(type);
+        if (cat_it != snap_.operator_catalog.end() && cat_it->second) {
+            const auto& op = *cat_it->second;
+            std::string sem_tag = semantic_tag_for_snapshot_endpoint(
+                snap_, wire_connect_node_id_, wire_connect_port_);
+            if (wire_connect_from_output_) {
+                std::string in_port = find_compatible_port(
+                    op, wire_connect_type_, VIVID_PORT_INPUT, sem_tag);
+                if (!in_port.empty()) {
+                    request.connection_mutations.push_back(
+                        {AsyncAddConnectionMutation::Kind::Connect,
+                         wire_connect_node_id_ + "/" + wire_connect_port_,
+                         id + "/" + in_port});
+                }
+            } else {
+                std::string out_port = find_compatible_port(
+                    op, wire_connect_type_, VIVID_PORT_OUTPUT, sem_tag);
+                if (!out_port.empty()) {
+                    request.connection_mutations.push_back(
+                        {AsyncAddConnectionMutation::Kind::Connect,
+                         id + "/" + out_port,
+                         wire_connect_node_id_ + "/" + wire_connect_port_});
+                }
+            }
+        }
+    }
+
+    return true;
+}
+
 void NodeGraphUI::confirm_chooser_selection_idx(int idx) {
     if (idx < 0 || idx >= static_cast<int>(chooser_items_.size())) {
+        reset_chooser_state();
+        return;
+    }
+
+    if (async_add_callback_) {
+        const std::string& selected = chooser_items_[idx];
+        if (selected == "+ New Operator...") {
+            dialogs_.open_create_popup();
+            text_edit_.reset(0);
+            reset_chooser_state();
+            return;
+        }
+
+        AsyncAddOperatorRequest request;
+        if (!build_async_add_request_for_selection(idx, request)) {
+            reset_chooser_state();
+            return;
+        }
+
+        std::string error;
+        if (!async_add_callback_(request, error)) {
+            chooser_error_ = error.empty() ? "Failed to start operator add" : error;
+            return;
+        }
+
+        stash_chooser_restore_state();
+        async_add_active_ = true;
+        async_add_stage_ = AsyncAddStage::Preparing;
+        async_add_display_name_ = request.display_name;
         reset_chooser_state();
         return;
     }

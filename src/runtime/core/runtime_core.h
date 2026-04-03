@@ -24,12 +24,20 @@ class SubgraphModuleRegistry;
 
 class RuntimeCore {
 public:
+    struct PreparedBuild {
+        std::unique_ptr<CompiledGraph> compiled_graph;
+        std::filesystem::path graph_base_dir;
+    };
+
     // ── Build / lifecycle ───────────────────────────────────────────────────
 
     void set_subgraph_modules(const SubgraphModuleRegistry* reg) { subgraph_modules_ = reg; }
     const SubgraphModuleRegistry* subgraph_modules() const { return subgraph_modules_; }
 
     bool build(const Graph& graph, OperatorRegistry& registry);
+    bool prepare_build(const Graph& graph, OperatorRegistry& registry,
+                       PreparedBuild& out, std::string* error = nullptr) const;
+    void adopt_prepared_build(PreparedBuild prepared);
     void tick(double time, double delta_time, uint64_t frame, void* gpu_state = nullptr,
               PostNodeFn on_gpu_node = nullptr,
               const VividInputState* input = nullptr);

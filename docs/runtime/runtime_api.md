@@ -86,6 +86,16 @@ CommandResult apply_snapshot_json(const std::string& graph_json, ...);
 `capture_saved_snapshot()` stores the current serialized form; `refresh_graph_dirty_from_saved_snapshot()`
 recomputes the dirty flag without modifying anything.
 
+For runtime-owned topology commits that happen outside the normal buffered mutation path
+(for example, prepared-build adoption in the graph UI), `RuntimeAPI` exposes:
+
+```cpp
+void notify_external_graph_mutation();
+```
+
+This clears pending topology/crossfade state, bumps `reload_serial_`, preserves undo history
+for the caller, and refreshes the dirty flag against the last saved graph snapshot.
+
 Recent hardening guarantees in this area:
 
 - `save_as()` retargets the live graph/source identity instead of only writing bytes

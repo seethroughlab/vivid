@@ -8,6 +8,7 @@
 #include <unordered_set>
 #include <functional>
 #include <memory>
+#include <mutex>
 
 namespace vivid {
 
@@ -198,6 +199,7 @@ private:
     std::unordered_map<std::string, LoaderFailureDiagnostic> loader_failure_by_path_; // plugin path -> load failure
     std::unordered_map<std::string, OperatorProvenance> expected_operators_;  // type_name → manifest provenance
     ProgressCallback progress_cb_;
+    mutable std::recursive_mutex mutex_;
 };
 
 } // namespace vivid

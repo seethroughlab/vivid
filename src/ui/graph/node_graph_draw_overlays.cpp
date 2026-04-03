@@ -210,6 +210,47 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
     dialogs_.mcp_setup.graph_path             = dialogs_.graph_meta_data().path;
     dialogs_.set_frame_counter(perf_frame_counter_);
     dialogs_.draw(tr, mouse_, style_, popup_opacity_, win_w_, win_h_, text_edit_, cursor_blink_on());
+    draw_async_add_overlay(tr);
+}
+
+void NodeGraphUI::draw_async_add_overlay(Renderer2D& tr) {
+    if (!async_add_active_) return;
+
+    tr.draw_rect(0.0f, 0.0f, static_cast<float>(win_w_), static_cast<float>(win_h_),
+                 0.02f, 0.03f, 0.04f, 0.55f);
+
+    const float panel_w = 360.0f;
+    const float panel_h = 132.0f;
+    const float px = (static_cast<float>(win_w_) - panel_w) * 0.5f;
+    const float py = (static_cast<float>(win_h_) - panel_h) * 0.5f;
+    draw_popup_bg(tr, style_, px, py, panel_w, panel_h);
+    tr.draw_rect(px, py, panel_w, 2.0f, style_.accent[0], style_.accent[1], style_.accent[2]);
+
+    const char* title = "Adding Operator";
+    const char* stage = "Preparing operator...";
+    switch (async_add_stage_) {
+        case AsyncAddStage::Preparing: stage = "Preparing operator..."; break;
+        case AsyncAddStage::Compiling: stage = "Compiling graph..."; break;
+        case AsyncAddStage::Applying: stage = "Applying graph..."; break;
+    }
+
+    static const char* spinner_frames[] = {"...", ".  ", ".. "};
+    int spinner_idx = static_cast<int>(cursor_blink_time_ * 6.0f) % 3;
+
+    tr.draw_text(px + 16.0f, py + 16.0f, title,
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    tr.draw_text(px + 16.0f, py + 50.0f, spinner_frames[spinner_idx],
+                 style_.accent[0], style_.accent[1], style_.accent[2]);
+    tr.draw_text(px + 52.0f, py + 50.0f, stage,
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+
+    std::string body = async_add_display_name_.empty()
+        ? "Please wait while Vivid prepares the selected operator."
+        : ("Please wait while Vivid prepares " + async_add_display_name_ + ".");
+    tr.push_clip_rect(px + 16.0f, py + 78.0f, panel_w - 32.0f, 24.0f);
+    tr.draw_text(px + 16.0f, py + 78.0f, body.c_str(),
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    tr.pop_clip_rect();
 }
 
 // -----------------------------------------------------------------------

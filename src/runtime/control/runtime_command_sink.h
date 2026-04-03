@@ -299,6 +299,10 @@ public:
     void set_hot_reloader(vivid::HotReloader* hr) { hot_reloader_ = hr; }
     void set_package_manager(vivid::PackageManager* pm) { package_manager_ = pm; }
     void set_build_console(vivid::BuildConsole* bc) { build_console_ = bc; }
+    void capture_external_undo_snapshot() {
+        last_coalesce_key_.clear();
+        capture_undo_snapshot();
+    }
 
 private:
     void capture_undo_snapshot(const std::string& coalesce_key = "");

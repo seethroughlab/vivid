@@ -16,6 +16,24 @@ bool build(const Graph& graph, OperatorRegistry& registry);
 2. Builds `AudioFrameBridge` snapshot buffers from the compiled graph
 3. Configures `FrameExecutor` with source directory for file param resolution
 
+For async/UI-driven topology work, `RuntimeCore` also exposes a split prepare/adopt path:
+
+```cpp
+struct PreparedBuild {
+    std::unique_ptr<CompiledGraph> compiled_graph;
+    std::filesystem::path graph_base_dir;
+};
+
+bool prepare_build(const Graph& graph, OperatorRegistry& registry,
+                   PreparedBuild& out, std::string* error = nullptr) const;
+void adopt_prepared_build(PreparedBuild prepared);
+```
+
+This lets callers compile a candidate graph off the main interaction path, then
+adopt the prepared result on the main thread without recompiling. `adopt_prepared_build()`
+rebuilds the `AudioFrameBridge`, reapplies `operators_src_dir`, and resets solo state
+exactly like a normal `build()`.
+
 ## Tick
 
 ```cpp
