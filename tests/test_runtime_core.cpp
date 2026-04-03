@@ -269,6 +269,7 @@ int main() {
         g.add_node("ctrl", "TestOp", {{"scale", 0.8f}});
         g.add_node("audio", "AudioTestOp", {{"level", 0.5f}});
         g.add_connection("ctrl", "out", "audio", "level");  // param wire
+        g.set_connection_bridge("ctrl", "out", "audio", "level", "hold");
 
         vivid::RuntimeCore runtime;
         check(runtime.build(g, registry), "build succeeds");

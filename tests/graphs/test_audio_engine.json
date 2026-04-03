@@ -6,6 +6,6 @@
   },
   "connections": [
     { "from": "src/out", "to": "dst/in" },
-    { "from": "ctrl/out", "to": "dst/level" }
+    { "from": "ctrl/out", "to": "dst/level", "bridge": "hold" }
   ]
 }

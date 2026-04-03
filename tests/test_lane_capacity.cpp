@@ -36,6 +36,7 @@ static std::unique_ptr<vivid::CompiledGraph> compile_with_limit(
     g.add_node("src", "LaneSourceOp");
     g.add_node("slew", "LaneSlewOp");
     g.add_connection("src", "out", "slew", "input");
+    g.set_connection_bridge("src", "out", "slew", "input", "snapshot");
 
     vivid::GraphCompiler::Options opts;
     opts.max_loop_lanes = max_loop_lanes;
@@ -105,6 +106,7 @@ static void test_default_limit(const std::string& staging) {
     g.add_node("src", "LaneSourceOp");
     g.add_node("slew", "LaneSlewOp");
     g.add_connection("src", "out", "slew", "input");
+    g.set_connection_bridge("src", "out", "slew", "input", "snapshot");
 
     vivid::GraphCompiler::Options opts;  // default: max_loop_lanes = 16
     auto cg = vivid::GraphCompiler::compile(g, registry, opts);

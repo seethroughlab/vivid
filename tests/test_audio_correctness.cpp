@@ -36,6 +36,13 @@ static void check_float(float actual, float expected, float tol, const char* msg
 // Test context — extended for spectral analysis (2048 frames for FFT)
 // ---------------------------------------------------------------------------
 
+// Stub lane-state service: returns a zeroed buffer for any lane_id.
+// Operators that call vivid_lane_state() need this to avoid null dereference.
+static void* stub_lane_state(void* /*service*/, uint32_t /*lane_id*/, uint32_t /*byte_size*/) {
+    static thread_local uint8_t buf[4096] = {};
+    return buf;
+}
+
 struct TestContext {
     static constexpr int kFrames = 2048;
     static constexpr uint32_t kSampleRate = 48000;
@@ -55,6 +62,9 @@ struct TestContext {
         ctx.input_buffers      = input_bufs;
         ctx.output_buffers     = output_bufs;
         ctx.param_values       = nullptr;
+        ctx.lane_state_fn      = stub_lane_state;
+        ctx.lane_state_service = nullptr;
+        ctx.lane_id            = 1;
     }
 
     void fill_sine(float freq, float amp) {
