@@ -17,6 +17,12 @@ constexpr float kMinConsoleH = 120.0f;
 constexpr float kMaxConsoleH = 360.0f;
 constexpr float kHeaderPadX = 10.0f;
 constexpr float kTextPadX = 8.0f;
+constexpr float kColumnGap = 12.0f;
+constexpr float kMinTaskLabelW = 64.0f;
+constexpr float kMaxTaskLabelW = 180.0f;
+constexpr float kMinMessageW = 120.0f;
+constexpr float kMinGutterW = 112.0f;
+constexpr const char* kEllipsis = "\xe2\x80\xa6";
 
 std::string timestamp_label(uint64_t timestamp_ms) {
     std::time_t secs = static_cast<std::time_t>(timestamp_ms / 1000);
@@ -29,6 +35,19 @@ std::string timestamp_label(uint64_t timestamp_ms) {
     char buf[16];
     std::snprintf(buf, sizeof(buf), "%02d:%02d:%02d", tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec);
     return buf;
+}
+
+std::string truncate_text(Renderer2D& tr, const std::string& text, float max_w, float scale = 1.0f) {
+    if (text.empty() || max_w <= 0.0f) return {};
+    if (tr.text_width(text.c_str(), scale) <= max_w) return text;
+
+    const float ell_w = tr.text_width(kEllipsis, scale);
+    if (ell_w > max_w) return {};
+
+    std::string out = text;
+    while (!out.empty() && tr.text_width((out + kEllipsis).c_str(), scale) > max_w)
+        out.pop_back();
+    return out.empty() ? std::string(kEllipsis) : out + kEllipsis;
 }
 
 }  // namespace
@@ -53,6 +72,33 @@ BuildConsolePanel::Layout BuildConsolePanel::layout_for(uint32_t win_w, uint32_t
     layout.content_y = layout.y + layout.header_h;
     layout.content_w = layout.w;
     layout.content_h = layout.h - layout.header_h;
+
+    const float row_left = layout.x + kTextPadX;
+    const float row_right = layout.x + layout.w - kTextPadX;
+    const float available_w = std::max(0.0f, row_right - row_left);
+
+    layout.gutter_w = std::clamp(layout.gutter_w, kMinGutterW, 136.0f);
+    float task_w = std::clamp(available_w * 0.18f, kMinTaskLabelW, kMaxTaskLabelW);
+    float message_w = available_w - layout.gutter_w - task_w - kColumnGap * 2.0f;
+    if (message_w < kMinMessageW) {
+        const float deficit = kMinMessageW - message_w;
+        const float shrink_task = std::min(std::max(0.0f, task_w - kMinTaskLabelW), deficit);
+        task_w -= shrink_task;
+        message_w += shrink_task;
+    }
+    if (message_w < kMinMessageW) {
+        const float deficit = kMinMessageW - message_w;
+        const float shrink_gutter = std::min(std::max(0.0f, layout.gutter_w - kMinGutterW), deficit);
+        layout.gutter_w -= shrink_gutter;
+        message_w += shrink_gutter;
+    }
+    message_w = std::max(0.0f, available_w - layout.gutter_w - task_w - kColumnGap * 2.0f);
+
+    layout.gutter_x = row_left;
+    layout.task_x = layout.gutter_x + layout.gutter_w + kColumnGap;
+    layout.task_w = std::max(0.0f, task_w);
+    layout.message_x = layout.task_x + layout.task_w + kColumnGap;
+    layout.message_w = std::max(0.0f, row_right - layout.message_x);
     return layout;
 }
 
@@ -138,11 +184,11 @@ std::string BuildConsolePanel::selected_text() const {
 
 bool BuildConsolePanel::handle_scroll(float mouse_x, float mouse_y, float x_offset, float y_offset,
                                       uint32_t win_w, uint32_t win_h, float bottom_offset) {
+    (void)x_offset;
     if (!contains(mouse_x, mouse_y, win_w, win_h, bottom_offset)) return false;
     auto layout = layout_for(win_w, win_h, bottom_offset);
     float line_h = 18.0f;
     scroll_y_ = std::max(0.0f, scroll_y_ - y_offset * line_h * 2.0f);
-    scroll_x_ = std::max(0.0f, scroll_x_ - x_offset * 24.0f);
     update_bottom_pin(line_h, layout);
     focused_ = true;
     return true;
@@ -282,14 +328,19 @@ void BuildConsolePanel::draw(Renderer2D& tr, const UIStyle& style, uint32_t win_
         }
 
         std::string gutter = format_gutter(line);
-        tr.draw_text(layout.x + kTextPadX - scroll_x_, draw_y,
+        tr.draw_text(layout.gutter_x, draw_y,
                      gutter.c_str(), style.dim_text[0], style.dim_text[1], style.dim_text[2]);
 
-        float tag_x = layout.x + layout.gutter_w - scroll_x_;
-        tr.draw_text(tag_x, draw_y, line.task_label.c_str(),
-                     style.bright_text[0], style.bright_text[1], style.bright_text[2], 0.85f, 0.9f);
+        std::string task_text = truncate_text(tr, line.task_label, layout.task_w, 0.9f);
+        if (!task_text.empty()) {
+            tr.push_clip_rect(layout.task_x, draw_y, layout.task_w, line_h);
+            tr.draw_text(layout.task_x, draw_y, task_text.c_str(),
+                         style.bright_text[0], style.bright_text[1], style.bright_text[2], 0.85f, 0.9f);
+            tr.pop_clip_rect();
+        }
 
-        float text_x = layout.x + layout.gutter_w + 90.0f - scroll_x_;
+        std::string message_text = truncate_text(tr, line.text, layout.message_w);
+        float text_x = layout.message_x;
         float r = style.bright_text[0];
         float g = style.bright_text[1];
         float b = style.bright_text[2];
@@ -298,7 +349,11 @@ void BuildConsolePanel::draw(Renderer2D& tr, const UIStyle& style, uint32_t win_
         } else if (line.stream_kind == vivid::BuildConsoleStreamKind::Stderr) {
             r = 0.95f; g = 0.55f; b = 0.55f;
         }
-        tr.draw_text(text_x, draw_y, line.text.c_str(), r, g, b);
+        if (!message_text.empty()) {
+            tr.push_clip_rect(layout.message_x, draw_y, layout.message_w, line_h);
+            tr.draw_text(text_x, draw_y, message_text.c_str(), r, g, b);
+            tr.pop_clip_rect();
+        }
         draw_y += line_h;
     }
     tr.pop_clip_rect();

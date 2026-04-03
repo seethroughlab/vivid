@@ -44,6 +44,11 @@ private:
         float header_h = 24.0f;
         float resize_h = 6.0f;
         float gutter_w = 136.0f;
+        float gutter_x = 0.0f;
+        float task_x = 0.0f;
+        float task_w = 0.0f;
+        float message_x = 0.0f;
+        float message_w = 0.0f;
         float content_x = 0.0f;
         float content_y = 0.0f;
         float content_w = 0.0f;
@@ -68,7 +73,6 @@ private:
     bool selection_dragged_ = false;
     float height_ = 180.0f;
     float scroll_y_ = 0.0f;
-    float scroll_x_ = 0.0f;
     int selection_anchor_line_ = -1;
     int selection_current_line_ = -1;
     uint64_t seen_auto_reveal_generation_ = 0;
