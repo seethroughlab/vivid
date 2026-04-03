@@ -663,6 +663,10 @@ bool NodeGraphUI::handle_graph_global_key(int key, int action, int mods, bool mo
             return true;
         }
     }
+    if (key == GLFW_KEY_B && action == GLFW_PRESS && mod_key && (mods & GLFW_MOD_SHIFT)) {
+        toggle_build_console();
+        return true;
+    }
     if (key == GLFW_KEY_B && action == GLFW_PRESS) {
         bezier_wires_ = !bezier_wires_;
         return true;

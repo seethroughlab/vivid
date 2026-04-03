@@ -68,6 +68,7 @@ struct PackageBrowserCallbacks {
     std::function<bool(const std::string&, std::string&)> unlink;
     std::function<bool(const std::string&, std::string&)> link;
     std::function<bool(const std::string&, std::string&)> rebuild;
+    std::function<void()> open_build_console;
 };
 
 enum class SaveConfirmAction { kNewGraph, kNewProject };

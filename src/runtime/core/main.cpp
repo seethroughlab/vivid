@@ -1489,6 +1489,9 @@ fn fbm(p_in: vec2f) -> f32 {
         });
         return true;
     };
+    pkg_browser_cbs.open_build_console = [&graph_ui]() {
+        if (!graph_ui.build_console_open()) graph_ui.toggle_build_console();
+    };
     graph_ui.set_package_browser_callbacks(std::move(pkg_browser_cbs));
     if (registry.has_abi_mismatch_diagnostics()) {
         auto mismatches = registry.abi_mismatch_diagnostics();
@@ -2196,6 +2199,7 @@ fn fbm(p_in: vec2f) -> f32 {
             settings.show_analysis = next;
         };
         menu_cbs.on_toggle_session_grid = [&]() { graph_ui.toggle_session_grid(); };
+        menu_cbs.on_toggle_build_console = [&]() { graph_ui.toggle_build_console(); };
         menu_cbs.on_toggle_midi_map = [&]() { graph_ui.toggle_midi_map_mode(); };
 
         // Insert menu
@@ -2208,6 +2212,7 @@ fn fbm(p_in: vec2f) -> f32 {
         menu_cbs.is_show_param_wires = [&]() { return graph_ui.show_param_wires(); };
         menu_cbs.is_analysis_enabled = [&]() { return runtime.frame_executor().analysis_enabled(); };
         menu_cbs.is_session_grid_open = [&]() { return graph_ui.session_grid_open(); };
+        menu_cbs.is_build_console_open = [&]() { return graph_ui.build_console_open(); };
         menu_cbs.is_midi_map_mode = [&]() { return graph_ui.midi_map_mode(); };
         menu_cbs.has_selection = [&]() { return graph_ui.has_selection(); };
         menu_cbs.can_edit_meta = [&]() { return !graph.source_path().empty(); };

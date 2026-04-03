@@ -748,12 +748,14 @@ void DialogManager::update_package_browser(MouseState& mouse, uint32_t win_w, ui
     }
     pkg_browser.search_focused = false;
 
-    // Error copy button
+    // Footer action button
     if (!pkg_browser.action_error.empty()) {
-        const auto& btn = pkg_browser.error_copy_btn;
+        const auto& btn = pkg_browser.footer_action_btn;
         if (btn.w > 0 && mouse.x >= btn.x && mouse.x <= btn.x + btn.w &&
             mouse.y >= btn.y && mouse.y <= btn.y + btn.h) {
-            glfwSetClipboardString(nullptr, pkg_browser.action_error.c_str());
+            if (pkg_browser.action_error_console_backed && pkg_browser.callbacks.open_build_console) {
+                pkg_browser.callbacks.open_build_console();
+            }
             mouse.left_clicked = false;
             mouse.left_released = false;
             return;
@@ -770,9 +772,7 @@ void DialogManager::update_package_browser(MouseState& mouse, uint32_t win_w, ui
         mouse.left_released = false;
         std::string path = open_directory_dialog();
         if (!path.empty() && pkg_browser.callbacks.link && !pkg_browser.action_pending) {
-            pkg_browser.action_error.clear();
-            pkg_browser.action_pending = true;
-            pkg_browser.action_name = path;
+            begin_pkg_action(PkgBrowserState::ActionKind::Link, path);
             pkg_browser.callbacks.link(path, pkg_browser.action_error);
         }
         return;
@@ -815,40 +815,39 @@ void DialogManager::update_package_browser(MouseState& mouse, uint32_t win_w, ui
         if (overlay_contains(btn, mouse.x, mouse.y)) {
             if (!pkg_browser.action_pending) {
                 const auto& entry = pkg_browser.entries[i];
-                pkg_browser.action_error.clear();
-                pkg_browser.action_pending = true;
-                pkg_browser.action_name = entry.name;
                 if (entry.needs_rebuild) {
+                    begin_pkg_action(PkgBrowserState::ActionKind::Rebuild, entry.name);
                     if (!pkg_browser.callbacks.rebuild ||
                         !pkg_browser.callbacks.rebuild(entry.name, pkg_browser.action_error)) {
-                        pkg_browser.action_pending = false;
-                        pkg_browser.action_name.clear();
-                        if (pkg_browser.action_error.empty())
-                            pkg_browser.action_error = "Failed to rebuild " + entry.name;
+                        set_pkg_action_failure(pkg_browser.action_error.empty()
+                            ? "Failed to rebuild " + entry.name
+                            : pkg_browser.action_error);
                     }
                 } else if (entry.installed) {
                     if (entry.linked) {
+                        begin_pkg_action(PkgBrowserState::ActionKind::Unlink, entry.name);
                         if (!pkg_browser.callbacks.unlink ||
                             !pkg_browser.callbacks.unlink(entry.name, pkg_browser.action_error)) {
-                            pkg_browser.action_pending = false;
-                            pkg_browser.action_name.clear();
-                            if (pkg_browser.action_error.empty())
-                                pkg_browser.action_error = "Failed to unlink " + entry.name;
+                            set_pkg_action_failure(pkg_browser.action_error.empty()
+                                ? "Failed to unlink " + entry.name
+                                : pkg_browser.action_error);
                         }
-                    } else if (!pkg_browser.callbacks.uninstall ||
-                               !pkg_browser.callbacks.uninstall(entry.name, pkg_browser.action_error)) {
-                        pkg_browser.action_pending = false;
-                        pkg_browser.action_name.clear();
-                        if (pkg_browser.action_error.empty())
-                            pkg_browser.action_error = "Failed to uninstall " + entry.name;
+                    } else {
+                        begin_pkg_action(PkgBrowserState::ActionKind::Uninstall, entry.name);
+                        if (!pkg_browser.callbacks.uninstall ||
+                            !pkg_browser.callbacks.uninstall(entry.name, pkg_browser.action_error)) {
+                            set_pkg_action_failure(pkg_browser.action_error.empty()
+                                ? "Failed to uninstall " + entry.name
+                                : pkg_browser.action_error);
+                        }
                     }
                 } else {
+                    begin_pkg_action(PkgBrowserState::ActionKind::Install, entry.name);
                     if (!pkg_browser.callbacks.install ||
                         !pkg_browser.callbacks.install(entry.name, pkg_browser.action_error)) {
-                        pkg_browser.action_pending = false;
-                        pkg_browser.action_name.clear();
-                        if (pkg_browser.action_error.empty())
-                            pkg_browser.action_error = "Failed to install " + entry.name;
+                        set_pkg_action_failure(pkg_browser.action_error.empty()
+                            ? "Failed to install " + entry.name
+                            : pkg_browser.action_error);
                     }
                 }
             }

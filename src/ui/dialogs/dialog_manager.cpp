@@ -179,6 +179,42 @@ void DialogManager::set_style_options(std::vector<UIStyle> styles, int current_i
 // Package browser
 // -----------------------------------------------------------------------
 
+bool DialogManager::pkg_action_uses_build_console(PkgBrowserState::ActionKind kind) {
+    return kind == PkgBrowserState::ActionKind::Install ||
+           kind == PkgBrowserState::ActionKind::Link ||
+           kind == PkgBrowserState::ActionKind::Rebuild;
+}
+
+void DialogManager::clear_pkg_action_feedback() {
+    pkg_browser.action_error.clear();
+    pkg_browser.action_error_display.clear();
+    pkg_browser.action_error_console_backed = false;
+    pkg_browser.footer_action_btn = {};
+}
+
+void DialogManager::begin_pkg_action(PkgBrowserState::ActionKind kind, const std::string& action_name) {
+    pkg_browser.action_pending = true;
+    pkg_browser.action_name = action_name;
+    pkg_browser.action_kind = kind;
+    clear_pkg_action_feedback();
+}
+
+void DialogManager::set_pkg_action_failure(const std::string& error) {
+    const std::string fallback = error.empty() ? "Package action failed" : error;
+    pkg_browser.action_pending = false;
+    pkg_browser.action_name.clear();
+    pkg_browser.action_error = fallback;
+    if (pkg_action_uses_build_console(pkg_browser.action_kind)) {
+        pkg_browser.action_error_display = "Build failed \xe2\x80\x94 see Build Console";
+        pkg_browser.action_error_console_backed = true;
+    } else {
+        pkg_browser.action_error_display = fallback;
+        pkg_browser.action_error_console_backed = false;
+    }
+    pkg_browser.footer_action_btn = {};
+    pkg_browser.action_kind = PkgBrowserState::ActionKind::None;
+}
+
 void DialogManager::toggle_package_browser() {
     pkg_browser.open = !pkg_browser.open;
     if (pkg_browser.open) example_browser.open = false;
@@ -197,7 +233,10 @@ void DialogManager::toggle_package_browser() {
         rebuild_pkg_browser_items();
         pkg_browser.sel = 0;
         pkg_browser.scroll = 0;
-        pkg_browser.action_error.clear();
+        pkg_browser.action_pending = false;
+        pkg_browser.action_name.clear();
+        pkg_browser.action_kind = PkgBrowserState::ActionKind::None;
+        clear_pkg_action_feedback();
     }
 }
 
@@ -209,9 +248,10 @@ void DialogManager::notify_pkg_action_complete(bool success, const std::string& 
     pkg_browser.action_pending = false;
     pkg_browser.action_name.clear();
     if (success) {
-        pkg_browser.action_error.clear();
-    } else if (!error.empty()) {
-        pkg_browser.action_error = error;
+        pkg_browser.action_kind = PkgBrowserState::ActionKind::None;
+        clear_pkg_action_feedback();
+    } else {
+        set_pkg_action_failure(error);
     }
     if (pkg_browser.callbacks.list_entries)
         pkg_browser.all = pkg_browser.callbacks.list_entries();

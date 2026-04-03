@@ -29,6 +29,7 @@ enum MenuTag : NSInteger {
     kMenuTagToggleShowParamWires,
     kMenuTagToggleAnalysis,
     kMenuTagToggleSessionGrid,
+    kMenuTagToggleBuildConsole,
     kMenuTagToggleMidiMap,
     // Insert
     kMenuTagAddNode,
@@ -77,6 +78,7 @@ enum MenuTag : NSInteger {
         case kMenuTagToggleShowParamWires: if (_callbacks.on_toggle_show_param_wires) _callbacks.on_toggle_show_param_wires(); break;
         case kMenuTagToggleAnalysis: if (_callbacks.on_toggle_analysis) _callbacks.on_toggle_analysis(); break;
         case kMenuTagToggleSessionGrid: if (_callbacks.on_toggle_session_grid) _callbacks.on_toggle_session_grid(); break;
+        case kMenuTagToggleBuildConsole: if (_callbacks.on_toggle_build_console) _callbacks.on_toggle_build_console(); break;
         case kMenuTagToggleMidiMap:     if (_callbacks.on_toggle_midi_map) _callbacks.on_toggle_midi_map(); break;
         case kMenuTagAddNode:           if (_callbacks.on_add_node) _callbacks.on_add_node(); break;
     }
@@ -125,6 +127,10 @@ enum MenuTag : NSInteger {
         case kMenuTagToggleSessionGrid:
             item.state = (_callbacks.is_session_grid_open && _callbacks.is_session_grid_open()) ? NSControlStateValueOn : NSControlStateValueOff;
             return YES;
+
+        case kMenuTagToggleBuildConsole:
+            item.state = (_callbacks.is_build_console_open && _callbacks.is_build_console_open()) ? NSControlStateValueOn : NSControlStateValueOff;
+            return (_callbacks.is_ui_visible && _callbacks.is_ui_visible()) ? YES : NO;
 
         case kMenuTagToggleMidiMap:
             item.state = (_callbacks.is_midi_map_mode && _callbacks.is_midi_map_mode()) ? NSControlStateValueOn : NSControlStateValueOff;
@@ -403,6 +409,15 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         toggleGridItem.target = sDelegate;
         toggleGridItem.tag = kMenuTagToggleSessionGrid;
         [viewMenu addItem:toggleGridItem];
+
+        NSMenuItem* toggleBuildConsoleItem = [[NSMenuItem alloc]
+            initWithTitle:@"Build Console"
+                   action:@selector(menuAction:)
+            keyEquivalent:@"B"];
+        toggleBuildConsoleItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
+        toggleBuildConsoleItem.target = sDelegate;
+        toggleBuildConsoleItem.tag = kMenuTagToggleBuildConsole;
+        [viewMenu addItem:toggleBuildConsoleItem];
 
         NSMenuItem* toggleMidiItem = [[NSMenuItem alloc]
             initWithTitle:@"Toggle MIDI Map"

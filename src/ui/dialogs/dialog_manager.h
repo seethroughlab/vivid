@@ -91,6 +91,14 @@ public:
     };
 
     struct PkgBrowserState {
+        enum class ActionKind {
+            None,
+            Install,
+            Uninstall,
+            Unlink,
+            Link,
+            Rebuild,
+        };
         bool open = false;
         bool search_focused = false;
         std::string filter;
@@ -103,8 +111,11 @@ public:
         PackageBrowserCallbacks callbacks{};
         bool action_pending = false;
         std::string action_name;
+        ActionKind action_kind = ActionKind::None;
         std::string action_error;
-        OverlayRect error_copy_btn{};  // populated during draw
+        std::string action_error_display;
+        bool action_error_console_backed = false;
+        OverlayRect footer_action_btn{};  // populated during draw
     };
 
     struct ExampleBrowserState {
@@ -271,6 +282,10 @@ private:
     void rebuild_pkg_browser_items();
     void rebuild_example_items();
     void refresh_package_browser_snapshot_if_ready();
+    void clear_pkg_action_feedback();
+    void begin_pkg_action(PkgBrowserState::ActionKind kind, const std::string& action_name);
+    void set_pkg_action_failure(const std::string& error);
+    static bool pkg_action_uses_build_console(PkgBrowserState::ActionKind kind);
 
     // --- Drawing (dialog_manager_draw.cpp) ---
     void draw_about(Renderer2D& tr, const MouseState& mouse, const UIStyle& style,

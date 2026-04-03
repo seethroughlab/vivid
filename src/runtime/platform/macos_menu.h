@@ -37,6 +37,7 @@ struct MenuCallbacks {
     std::function<void()> on_toggle_show_param_wires;
     std::function<void()> on_toggle_analysis;
     std::function<void()> on_toggle_session_grid;
+    std::function<void()> on_toggle_build_console;
     std::function<void()> on_toggle_midi_map;
 
     // Insert menu
@@ -49,6 +50,7 @@ struct MenuCallbacks {
     std::function<bool()> is_show_param_wires;
     std::function<bool()> is_analysis_enabled;
     std::function<bool()> is_session_grid_open;
+    std::function<bool()> is_build_console_open;
     std::function<bool()> is_midi_map_mode;
     std::function<bool()> has_selection;
     std::function<bool()> can_edit_meta;

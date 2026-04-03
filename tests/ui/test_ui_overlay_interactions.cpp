@@ -197,6 +197,105 @@ int main() {
               "Package browser refreshes cached metadata even when entry count is unchanged");
     }
 
+    // Package browser: compile-related failures collapse to a single-line console-first footer
+    {
+        DummySink sink;
+        NodeGraphUI ui(sink);
+        int install_calls = 0;
+        int open_console_calls = 0;
+        ui.set_package_browser_callbacks(PackageBrowserCallbacks{
+            []() {},
+            []() {
+                return std::vector<PackageBrowserEntry>{
+                    PackageBrowserEntry{"vivid-demo", "demo", "0.1.0", "dev", "", {}, false}
+                };
+            },
+            []() { return PackageBrowserFetchState::Ready; },
+            []() { return std::string(); },
+            []() { return PackageBrowserUpdateSummary{}; },
+            [&](const std::string& name, std::string& err) {
+                if (name == "vivid-demo") ++install_calls;
+                err = "cmake build failed:\nvery long compiler output that should not be rendered inline";
+                return false;
+            },
+            [](const std::string&, std::string&) { return true; },
+            [](const std::string&, std::string&) { return true; },
+            [](const std::string&, std::string&) { return true; },
+            [](const std::string&, std::string&) { return true; },
+            [&]() { ++open_console_calls; },
+        });
+        ui.toggle_package_browser();
+        OverlayPanelLayout pkg_layout = compute_package_browser_layout(1280, 720, 1);
+        OverlayRect pkg_btn = compute_package_action_button_rect(pkg_layout, pkg_layout.list_top);
+        ui.on_mouse_move(pkg_btn.x + pkg_btn.w * 0.5f, pkg_btn.y + pkg_btn.h * 0.5f);
+        ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
+        ui.update(snap);
+        check(install_calls == 1, "Package install failure still invokes install callback");
+        check(ui.dialogs_.pkg_browser.action_error_display == "Build failed — see Build Console",
+              "Compile-related package failure collapses to compact console-first summary");
+        check(ui.dialogs_.pkg_browser.action_error_console_backed,
+              "Compile-related package failure is marked console-backed");
+
+        ui.dialogs_.pkg_browser.footer_action_btn = {pkg_layout.cx + pkg_layout.inner_w - 96.0f,
+                                                     pkg_layout.status_y - 1.0f, 96.0f, 20.0f};
+        const auto& footer_btn = ui.dialogs_.pkg_browser.footer_action_btn;
+        ui.on_mouse_move(footer_btn.x + footer_btn.w * 0.5f, footer_btn.y + footer_btn.h * 0.5f);
+        ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
+        ui.update(snap);
+        check(open_console_calls == 1, "Package failure footer opens the Build Console");
+    }
+
+    // Package browser: non-build failures stay inline and do not expose the console footer action
+    {
+        DummySink sink;
+        NodeGraphUI ui(sink);
+        int uninstall_calls = 0;
+        int open_console_calls = 0;
+        ui.set_package_browser_callbacks(PackageBrowserCallbacks{
+            []() {},
+            []() {
+                return std::vector<PackageBrowserEntry>{
+                    PackageBrowserEntry{"vivid-demo", "demo", "0.1.0", "dev", "", {}, true}
+                };
+            },
+            []() { return PackageBrowserFetchState::Ready; },
+            []() { return std::string(); },
+            []() { return PackageBrowserUpdateSummary{}; },
+            [](const std::string&, std::string&) { return true; },
+            [&](const std::string& name, std::string& err) {
+                if (name == "vivid-demo") ++uninstall_calls;
+                err = "Failed to uninstall vivid-demo because the package directory is locked";
+                return false;
+            },
+            [](const std::string&, std::string&) { return true; },
+            [](const std::string&, std::string&) { return true; },
+            [](const std::string&, std::string&) { return true; },
+            [&]() { ++open_console_calls; },
+        });
+        ui.toggle_package_browser();
+        OverlayPanelLayout pkg_layout = compute_package_browser_layout(1280, 720, 1);
+        OverlayRect pkg_btn = compute_package_action_button_rect(pkg_layout, pkg_layout.list_top);
+        ui.on_mouse_move(pkg_btn.x + pkg_btn.w * 0.5f, pkg_btn.y + pkg_btn.h * 0.5f);
+        ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
+        ui.update(snap);
+        check(uninstall_calls == 1, "Package uninstall failure still invokes uninstall callback");
+        check(ui.dialogs_.pkg_browser.action_error_display ==
+                  "Failed to uninstall vivid-demo because the package directory is locked",
+              "Non-build package failures keep their inline summary");
+        check(!ui.dialogs_.pkg_browser.action_error_console_backed,
+              "Non-build package failures do not become console-backed");
+        check(ui.dialogs_.pkg_browser.footer_action_btn.w == 0.0f,
+              "Non-build package failures do not expose a footer action button before draw");
+
+        ui.dialogs_.pkg_browser.footer_action_btn = {pkg_layout.cx + pkg_layout.inner_w - 96.0f,
+                                                     pkg_layout.status_y - 1.0f, 96.0f, 20.0f};
+        const auto& footer_btn = ui.dialogs_.pkg_browser.footer_action_btn;
+        ui.on_mouse_move(footer_btn.x + footer_btn.w * 0.5f, footer_btn.y + footer_btn.h * 0.5f);
+        ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
+        ui.update(snap);
+        check(open_console_calls == 0, "Non-build package failures do not open the Build Console");
+    }
+
     // Meta editor: save click dispatch
     {
         DummySink sink;
