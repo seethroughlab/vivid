@@ -208,8 +208,11 @@ void DialogManager::set_package_browser_callbacks(PackageBrowserCallbacks callba
 void DialogManager::notify_pkg_action_complete(bool success, const std::string& error) {
     pkg_browser.action_pending = false;
     pkg_browser.action_name.clear();
-    if (!success && !error.empty())
+    if (success) {
+        pkg_browser.action_error.clear();
+    } else if (!error.empty()) {
         pkg_browser.action_error = error;
+    }
     if (pkg_browser.callbacks.list_entries)
         pkg_browser.all = pkg_browser.callbacks.list_entries();
     rebuild_pkg_browser_items();

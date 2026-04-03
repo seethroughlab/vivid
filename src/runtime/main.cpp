@@ -4230,7 +4230,7 @@ int main(int argc, char* argv[]) {
                         }
                     }
                     refresh_package_browser_entries_cache();
-                    graph_ui.notify_pkg_action_complete(needs_refresh, err);
+                    graph_ui.notify_pkg_action_complete(err.empty(), err);
                 }
             }
 

@@ -748,6 +748,18 @@ void DialogManager::update_package_browser(MouseState& mouse, uint32_t win_w, ui
     }
     pkg_browser.search_focused = false;
 
+    // Error copy button
+    if (!pkg_browser.action_error.empty()) {
+        const auto& btn = pkg_browser.error_copy_btn;
+        if (btn.w > 0 && mouse.x >= btn.x && mouse.x <= btn.x + btn.w &&
+            mouse.y >= btn.y && mouse.y <= btn.y + btn.h) {
+            glfwSetClipboardString(nullptr, pkg_browser.action_error.c_str());
+            mouse.left_clicked = false;
+            mouse.left_released = false;
+            return;
+        }
+    }
+
     // Hit-test "Link Local..." button
     static const float kLinkBtnW = 96.0f;
     float link_btn_x = cx + inner_w - kLinkBtnW;

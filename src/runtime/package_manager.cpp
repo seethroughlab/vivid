@@ -941,7 +941,14 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
 
         if (!all_ok) {
             result.error_code = "compile_failed";
-            result.error = "Some operators failed to compile";
+            std::string detail;
+            for (const auto& cr : result.compile_results) {
+                if (!cr.success) {
+                    if (!detail.empty()) detail += "\n";
+                    detail += cr.operator_name + ": " + cr.error_output;
+                }
+            }
+            result.error = detail.empty() ? "Some operators failed to compile" : detail;
             return false;
         }
     }

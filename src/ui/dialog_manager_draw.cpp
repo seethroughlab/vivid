@@ -1237,8 +1237,28 @@ void DialogManager::draw_package_browser(Renderer2D& tr, const MouseState& mouse
         }
     }
     if (!pkg_browser.action_error.empty()) {
-        tr.draw_text(cx, layout.status_y, pkg_browser.action_error.c_str(),
-                     kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.9f);
+        static constexpr float kCopyBtnW = 48.0f;
+        static constexpr float kCopyBtnH = 20.0f;
+        static constexpr float kCopyGap = 6.0f;
+        float err_text_w = inner_w - kCopyBtnW - kCopyGap;
+        tr.draw_text_wrapped(cx, layout.status_y, pkg_browser.action_error.c_str(),
+                             err_text_w, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.9f);
+        // "Copy" button at top-right of error area
+        float copy_bx = cx + inner_w - kCopyBtnW;
+        float copy_by = layout.status_y;
+        bool copy_hov = mouse.x >= copy_bx && mouse.x <= copy_bx + kCopyBtnW &&
+                        mouse.y >= copy_by && mouse.y <= copy_by + kCopyBtnH;
+        tr.draw_rounded_rect(copy_bx, copy_by, kCopyBtnW, kCopyBtnH, style.corner_radius,
+                             copy_hov ? style.button_hover[0] : style.button_bg[0],
+                             copy_hov ? style.button_hover[1] : style.button_bg[1],
+                             copy_hov ? style.button_hover[2] : style.button_bg[2], 0.9f);
+        const char* copy_lbl = "Copy";
+        float copy_lbl_w = tr.text_width(copy_lbl);
+        tr.draw_text(copy_bx + (kCopyBtnW - copy_lbl_w) * 0.5f,
+                     copy_by + (kCopyBtnH - tr.line_height()) * 0.5f,
+                     copy_lbl,
+                     style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+        pkg_browser.error_copy_btn = {copy_bx, copy_by, kCopyBtnW, kCopyBtnH};
     } else if (!status.empty()) {
         tr.draw_text(cx, layout.status_y, status.c_str(),
                      style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.7f);
