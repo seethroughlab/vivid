@@ -63,7 +63,11 @@ bool AudioExecutor::build(AudioFrameBridge& bridge, CompiledGraph& cg) {
         group.lane_count = lanes;
         group.lane_set_id = cn.audio->lane_lift_set_id;
 
-        // Create additional instances (lane 0 uses primary instance)
+        // Create additional instances (lane 0 uses primary instance).
+        // INVARIANT: The audio engine must be stopped before this code runs.
+        // These instance pointers are read by the audio callback thread without
+        // synchronization, so the engine must not be executing callbacks during
+        // graph rebuild.
         group.instances.resize(lanes);
         group.instances[0] = cn.instance;
         for (uint32_t c = 1; c < lanes; ++c)
