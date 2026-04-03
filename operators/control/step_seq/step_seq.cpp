@@ -115,4 +115,3 @@ void StepSeq::draw_inspector(VividInspectorContext* ctx) {
 }
 
 // Shared implementation only; public registration lives in _fr/_au wrappers.
-VIVID_INSPECTOR(StepSeq)
