@@ -789,6 +789,7 @@ add_executable(vivid
     src/runtime/screenshot.cpp
     src/runtime/builtin_operators.cpp
     src/runtime/control_server.cpp
+    src/runtime/control_server_checks.cpp
     src/runtime/operator_source_docs.cpp
     src/runtime/capture_coordinator.cpp
     src/runtime/output_analyzer.cpp
@@ -1214,6 +1215,7 @@ add_executable(test_control_server
     src/runtime/package_manager.cpp
     src/runtime/undo_manager.cpp
     src/runtime/control_server.cpp
+    src/runtime/control_server_checks.cpp
     src/runtime/operator_source_docs.cpp
     src/runtime/capture_coordinator.cpp
     src/runtime/output_analyzer.cpp
@@ -1260,6 +1262,7 @@ add_executable(test_perception_introspection
     src/runtime/package_manager.cpp
     src/runtime/undo_manager.cpp
     src/runtime/control_server.cpp
+    src/runtime/control_server_checks.cpp
     src/runtime/operator_source_docs.cpp
     src/runtime/capture_coordinator.cpp
     src/runtime/output_analyzer.cpp

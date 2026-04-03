@@ -729,106 +729,13 @@ VIVID_REGISTER(TestOp)
                     check(t0.contains("lane_behavior_help") && t0["lane_behavior_help"].is_string() &&
                               !t0["lane_behavior_help"].get<std::string>().empty(),
                           "list_types exposes lane_behavior_help");
-                    auto& params = t0["params"];
-                    check(params.is_array() && params.size() > 0, "TestOp has params");
-                    if (params.is_array() && params.size() > 0) {
-                        auto& p0 = params[0];
-                        check(p0.contains("semantic_tag") && p0["semantic_tag"].is_string() &&
-                                  p0["semantic_tag"].get<std::string>() == "frequency_hz",
-                              "list_types param exposes semantic_tag");
-                        check(p0.contains("semantic_shape") && p0["semantic_shape"].is_string() &&
-                                  p0["semantic_shape"].get<std::string>() == "scalar",
-                              "list_types param exposes semantic_shape");
-                        check(p0.contains("semantic_unit") && p0["semantic_unit"].is_string() &&
-                                  p0["semantic_unit"].get<std::string>() == "Hz",
-                              "list_types param exposes semantic_unit");
-                        check(p0.contains("semantic_intent") && p0["semantic_intent"].is_string() &&
-                                  p0["semantic_intent"].get<std::string>() == "test_scale",
-                              "list_types param exposes semantic_intent");
-                    }
-                    auto& outputs = t0["outputs"];
-                    check(outputs.is_array() && outputs.size() > 0, "TestOp has ports");
-                    if (outputs.is_array() && outputs.size() > 0) {
-                        auto& port0 = outputs[0];
-                        check(port0.contains("semantic_tag") && port0["semantic_tag"].is_string() &&
-                                  port0["semantic_tag"].get<std::string>() == "test_scalar_out",
-                              "list_types port exposes semantic_tag");
-                        check(port0.contains("semantic_shape") && port0["semantic_shape"].is_string() &&
-                                  port0["semantic_shape"].get<std::string>() == "scalar",
-                              "list_types port exposes semantic_shape");
-                        check(port0.contains("semantic_intent") && port0["semantic_intent"].is_string() &&
-                                  port0["semantic_intent"].get<std::string>() == "test_output",
-                              "list_types port exposes semantic_intent");
-                        check(port0.contains("description") && port0["description"].is_string() &&
-                                  port0["description"].get<std::string>() ==
-                                      "Scaled test output used by loader and control-server tests.",
-                              "list_types port exposes description");
-                    }
-
-                    auto check_first_param_tag = [&](const json& type_obj, const char* expected_tag,
-                                                     const char* label) {
-                        check(!type_obj.is_null(), label);
-                        const auto& params_obj = type_obj.contains("params") ? type_obj["params"] : json();
-                        json p0_val;
-                        if (params_obj.is_array() && params_obj.size() > 0)
-                            p0_val = params_obj[0];
-                        std::string tag_label = std::string(label) + " tag";
-                        check(!p0_val.is_null() && p0_val.contains("semantic_tag") &&
-                                  p0_val["semantic_tag"].is_string() &&
-                                  p0_val["semantic_tag"].get<std::string>() == expected_tag,
-                              tag_label.c_str());
-                    };
-                    check_first_param_tag(ms_type, "time_milliseconds",
-                                          "MsSourceOp semantic_tag is time_milliseconds");
-                    check_first_param_tag(sec_type, "time_seconds",
-                                          "SecDestOp semantic_tag is time_seconds");
-                    check_first_param_tag(unknown_type, "x_test_unknown_scalar",
-                                          "UnknownTagSourceOp semantic_tag preserves extension tag");
+                    check(!t0.contains("params") && !t0.contains("outputs"),
+                          "list_types stays compact and omits rich descriptor arrays");
+                    check(!ms_type.is_null(), "contains MsSourceOp");
+                    check(!sec_type.is_null(), "contains SecDestOp");
+                    check(!unknown_type.is_null(), "contains UnknownTagSourceOp");
                     check(!untagged_type.is_null(), "contains UntaggedDestOp");
-                    if (!untagged_type.is_null()) {
-                        const auto& params_obj = untagged_type["params"];
-                        json p0_val;
-                        if (params_obj.is_array() && params_obj.size() > 0)
-                            p0_val = params_obj[0];
-                        check(p0_val.is_null() || !p0_val.contains("semantic_tag"),
-                              "UntaggedDestOp param omits semantic_tag");
-                    }
-
                     check(!custom_type.is_null(), "contains ExportCustomPortOp");
-                    if (!custom_type.is_null()) {
-                        const auto& outputs_obj = custom_type["outputs"];
-                        json p0_val;
-                        if (outputs_obj.is_array() && outputs_obj.size() > 0)
-                            p0_val = outputs_obj[0];
-                        check(!p0_val.is_null() && p0_val.contains("type") &&
-                                  p0_val["type"].is_string() &&
-                                  p0_val["type"].get<std::string>() == "custom",
-                              "list_types custom port exposes custom type kind");
-                        check(!p0_val.is_null() && p0_val.contains("transport") &&
-                                  p0_val["transport"].is_string() &&
-                                  p0_val["transport"].get<std::string>() == "custom_ref",
-                              "list_types custom port exposes transport");
-                        check(!p0_val.is_null() && p0_val.contains("type_name") &&
-                                  p0_val["type_name"].is_string() &&
-                                  p0_val["type_name"].get<std::string>() == "TestCustomRef",
-                              "list_types custom port exposes type_name");
-                        check(!p0_val.is_null() && p0_val.contains("stable_type_id") &&
-                                  p0_val["stable_type_id"].is_string() &&
-                                  p0_val["stable_type_id"].get<std::string>() ==
-                                      "seethroughlab.vivid.test_custom_ref",
-                              "list_types custom port exposes stable_type_id");
-                        check(!p0_val.is_null() && p0_val.contains("payload_size") &&
-                                  p0_val["payload_size"].is_number_unsigned() &&
-                                  p0_val["payload_size"].get<uint64_t>() > 0,
-                              "list_types custom port exposes payload_size");
-                        check(!p0_val.is_null() && p0_val.contains("custom_type_registered") &&
-                                  p0_val["custom_type_registered"].is_boolean() &&
-                                  p0_val["custom_type_registered"].get<bool>(),
-                              "list_types custom port reports registry presence");
-                        check(!p0_val.is_null() && p0_val.contains("audio_safe") &&
-                                  p0_val["audio_safe"].is_boolean(),
-                              "list_types custom port exposes audio_safe");
-                    }
                 }
             }
         }
