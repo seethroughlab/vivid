@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <algorithm>
+#include <chrono>
 #include <fstream>
 #include <optional>
 #include <sstream>
@@ -413,10 +414,11 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
     const uint32_t runtime_abi = runtime_abi_override();
     return scan_plugin_dir(directory, [&](const std::string& path, const char* name, size_t /*stem_len*/) {
         // Probe only: open, read descriptor, close
+        auto probe_start = std::chrono::steady_clock::now();
         if (trace_probe) {
             std::fprintf(stderr, "[vivid] Registry: probing %s\n", name);
         }
-        void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
+        void* handle = dlopen(path.c_str(), RTLD_LAZY | RTLD_LOCAL);
         if (!handle) {
             const char* dl_err = dlerror();
             std::fprintf(stderr, "[vivid] probe dlopen failed: %s\n", dl_err ? dl_err : "unknown error");
@@ -502,7 +504,14 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
         // Map cmake target name → descriptor type name
         register_target_mapping(path, type_name);
 
-        std::fprintf(stderr, "[vivid] Registry: probed %s from %s\n", type_name.c_str(), name);
+        if (trace_probe) {
+            auto probe_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - probe_start).count();
+            std::fprintf(stderr, "[vivid] Registry: probed %s from %s (%lldms)\n",
+                         type_name.c_str(), name, probe_ms);
+        } else {
+            std::fprintf(stderr, "[vivid] Registry: probed %s from %s\n", type_name.c_str(), name);
+        }
     });
 }
 

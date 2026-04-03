@@ -1055,6 +1055,18 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
     return snap;
 }
 
+// RAII timer that prints elapsed milliseconds to stderr on destruction.
+struct PhaseTimer {
+    const char* label;
+    std::chrono::steady_clock::time_point start;
+    PhaseTimer(const char* l) : label(l), start(std::chrono::steady_clock::now()) {}
+    ~PhaseTimer() {
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start).count();
+        std::fprintf(stderr, "[vivid] TIMING: %s took %lldms\n", label, ms);
+    }
+};
+
 static void emit_clear_pass(WGPUCommandEncoder encoder, WGPUTextureView view, const double clear[4]) {
     WGPURenderPassColorAttachment color_att{};
     color_att.view = view;
@@ -2348,22 +2360,69 @@ int main(int argc, char* argv[]) {
     vivid::ui::ThumbnailRenderer thumb_renderer;
     bool thumb_renderer_ok = thumb_renderer.init(gpu.device(), gpu.queue(), gpu.surface_format());
 
+    // --- Text renderer (initialized early for loading screen) ---
+    vivid::ui::Renderer2D text_renderer;
+    bool text_renderer_ok = false;
+    {
+        std::string font_path = (resources_dir / "JetBrainsMono-Regular.ttf").string();
+        if (!std::filesystem::exists(font_path)) {
+            auto alt = exe_dir.parent_path() / "fonts" / "JetBrainsMono-Regular.ttf";
+            if (std::filesystem::exists(alt)) font_path = alt.string();
+        }
+        if (text_renderer.init(gpu.device(), gpu.surface_format(), font_path.c_str(), 16.0f, dpi_scale)) {
+            text_renderer_ok = true;
+        } else {
+            std::fprintf(stderr, "[vivid] Text renderer disabled (font not found)\n");
+        }
+    }
+
+    // Helper to render a loading frame with a status message during blocking startup phases.
+    // Keeps the window visually responsive instead of frozen.
+    auto render_loading_frame = [&](const char* status) {
+        vivid::FrameState frame;
+        if (!gpu.begin_frame(frame)) return;
+        emit_clear_pass(frame.encoder, frame.view, kClearLinear);
+        if (text_renderer_ok) {
+            float scale = 1.0f;
+            float tw = text_renderer.text_width(status, scale);
+            float lx = (static_cast<float>(fb_width) / dpi_scale - tw) * 0.5f;
+            float ly = static_cast<float>(fb_height) / dpi_scale * 0.5f;
+            text_renderer.draw_text(lx, ly, status, 0.5f, 0.5f, 0.5f, 0.6f, scale);
+            text_renderer.flush(frame.encoder, frame.view,
+                                static_cast<uint32_t>(fb_width),
+                                static_cast<uint32_t>(fb_height));
+        }
+        gpu.end_frame(frame);
+        glfwPollEvents();
+    };
+
     // --- Load operator plugins ---
+    render_loading_frame("Scanning plugins...");
     vivid::OperatorRegistry registry;
+    {
+        PhaseTimer t("scan_deferred (core plugins)");
 #ifdef __APPLE__
-    registry.scan_deferred(plugins_dir.string().c_str());
+        registry.scan_deferred(plugins_dir.string().c_str());
 #else
-    registry.scan_deferred(exe_dir.string().c_str());
+        registry.scan_deferred(exe_dir.string().c_str());
 #endif
+    }
     register_builtin_operators(registry);
 
     // --- Load self-describing .wgsl filter presets ---
+    render_loading_frame("Loading presets...");
     std::string filters_dir = (resources_dir / "filters").string();
-    registry.scan_wgsl_presets(filters_dir);
+    {
+        PhaseTimer t("scan_wgsl_presets");
+        registry.scan_wgsl_presets(filters_dir);
+    }
 
     // --- Load factory presets for operators ---
     std::string factory_presets_dir = (resources_dir / "factory_presets").string();
-    registry.scan_factory_presets(factory_presets_dir);
+    {
+        PhaseTimer t("scan_factory_presets");
+        registry.scan_factory_presets(factory_presets_dir);
+    }
 
     // --- Subgraph module registry ---
     vivid::SubgraphModuleRegistry subgraph_modules;
@@ -2374,12 +2433,14 @@ int main(int argc, char* argv[]) {
     }
 
     // --- Package management (needs to outlive main loop for catalog/install) ---
+    render_loading_frame("Scanning packages...");
     vivid::PackageCompiler pkg_compiler(build_paths.source_dir, build_paths.build_dir);
     vivid::PackageManager pkg_manager(pkg_compiler, registry);
     pkg_manager.set_subgraph_module_registry(&subgraph_modules);
     if (std::getenv("VIVID_SKIP_PACKAGE_SCAN")) {
         std::fprintf(stderr, "[vivid] Skipping installed package scan (VIVID_SKIP_PACKAGE_SCAN)\n");
     } else {
+        PhaseTimer t("scan_installed (packages)");
         pkg_manager.scan_installed();
     }
     vivid::PackageCatalog pkg_catalog(pkg_manager);
@@ -2532,12 +2593,19 @@ int main(int argc, char* argv[]) {
         }
 
         // Load only the operators this graph actually uses
-        registry.load_for_graph(graph);
+        render_loading_frame("Building graph...");
+        {
+            PhaseTimer t("load_for_graph");
+            registry.load_for_graph(graph);
+        }
 
-        if (runtime.build(graph, registry)) {
-            graph_loaded = true;
-        } else {
-            std::fprintf(stderr, "[vivid] Runtime build failed (non-fatal, continuing)\n");
+        {
+            PhaseTimer t("runtime.build");
+            if (runtime.build(graph, registry)) {
+                graph_loaded = true;
+            } else {
+                std::fprintf(stderr, "[vivid] Runtime build failed (non-fatal, continuing)\n");
+            }
         }
     }
 
@@ -2554,6 +2622,7 @@ int main(int argc, char* argv[]) {
     audio_engine.set_analysis_enabled(settings.show_analysis);
     bool has_audio = false;
     if (graph_loaded && runtime.has_audio_operators()) {
+        PhaseTimer t("audio_engine build+start");
         if (audio_engine.build(runtime)) {
             if (audio_engine.start()) {
                 has_audio = true;
@@ -2623,21 +2692,7 @@ int main(int argc, char* argv[]) {
         return true;
     };
 
-    vivid::ui::Renderer2D text_renderer;
-    bool text_renderer_ok = false;
-    {
-        // Look for font next to executable, or in source tree
-        std::string font_path = (resources_dir / "JetBrainsMono-Regular.ttf").string();
-        if (!std::filesystem::exists(font_path)) {
-            auto alt = exe_dir.parent_path() / "fonts" / "JetBrainsMono-Regular.ttf";
-            if (std::filesystem::exists(alt)) font_path = alt.string();
-        }
-        if (text_renderer.init(gpu.device(), gpu.surface_format(), font_path.c_str(), 16.0f, dpi_scale)) {
-            text_renderer_ok = true;
-        } else {
-            std::fprintf(stderr, "[vivid] Text renderer disabled (font not found)\n");
-        }
-    }
+    // (text_renderer was initialized earlier for the loading screen)
 
     // Thumbnail 2D renderer — targets RGBA16Float thumbnail textures.
     // Operators can use ctx->draw for simple 2D shapes instead of custom GPU pipelines.
@@ -3238,6 +3293,7 @@ int main(int argc, char* argv[]) {
             std::fprintf(stderr, "[vivid] %s: failed to load %s\n", label, resolved.c_str());
             return false;
         }
+        render_loading_frame("Loading graph...");
         run_graph_package_diagnostics(graph);
         registry.load_for_graph(graph);
         auto result = runtime_api.reload(has_gpu_ops, has_audio);
