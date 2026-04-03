@@ -1,81 +1,83 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "transform_demo",
-    "title": "Transform",
-    "description": "Rotation and scale transforms applied to a shape with LFO-driven animation.",
-    "tags": [
-      "transform",
-      "demo"
-    ],
-    "difficulty": "intermediate",
-    "domains": [
-      "gpu"
-    ],
-    "requires_packages": [],
-    "featured_rank": 32
-  },
-  "nodes": {
-    "shape": {
-      "type": "Shape",
-      "params": {
-        "shape": 0,
-        "fill": 1.0,
-        "edge_width": 0.02,
-        "size": 0.4
-      },
-      "resolution": [
-        800,
-        600
-      ]
+    "schema_version": 1,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "transform_demo",
+        "title": "Transform",
+        "description": "Rotation and scale transforms applied to a shape with LFO-driven animation.",
+        "tags": [
+            "transform",
+            "rotation",
+            "scale",
+            "demo"
+        ],
+        "difficulty": "intermediate",
+        "domains": [
+            "gpu"
+        ],
+        "requires_packages": [],
+        "featured_rank": 32
     },
-    "xform": {
-      "type": "Transform",
-      "params": {
-        "scale_x": 1.0,
-        "scale_y": 1.0,
-        "rotation": 0.0,
-        "pivot_x": 0.5,
-        "pivot_y": 0.5
-      }
+    "nodes": {
+        "shape": {
+            "type": "Shape",
+            "params": {
+                "shape": 0,
+                "fill": 1.0,
+                "edge_width": 0.02,
+                "size": 0.4
+            },
+            "resolution": [
+                800,
+                600
+            ]
+        },
+        "xform": {
+            "type": "Transform",
+            "params": {
+                "scale_x": 1.0,
+                "scale_y": 1.0,
+                "rotation": 0.0,
+                "pivot_x": 0.5,
+                "pivot_y": 0.5
+            }
+        },
+        "lfo_rot": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.08,
+                "amplitude": 180.0,
+                "offset": 0.0
+            }
+        },
+        "lfo_sx": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.12,
+                "amplitude": 0.5,
+                "offset": 1.2
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        }
     },
-    "lfo_rot": {
-      "type": "LfoFr",
-      "params": {
-        "frequency": 0.08,
-        "amplitude": 180.0,
-        "offset": 0.0
-      }
-    },
-    "lfo_sx": {
-      "type": "LfoFr",
-      "params": {
-        "frequency": 0.12,
-        "amplitude": 0.5,
-        "offset": 1.2
-      }
-    },
-    "vout": {
-      "type": "video_out"
-    }
-  },
-  "connections": [
-    {
-      "from": "shape/texture",
-      "to": "xform/input"
-    },
-    {
-      "from": "lfo_rot/value",
-      "to": "xform/rotation"
-    },
-    {
-      "from": "lfo_sx/value",
-      "to": "xform/scale_x"
-    },
-    {
-      "from": "xform/texture",
-      "to": "vout/input"
-    }
-  ]
+    "connections": [
+        {
+            "from": "shape/texture",
+            "to": "xform/input"
+        },
+        {
+            "from": "lfo_rot/value",
+            "to": "xform/rotation"
+        },
+        {
+            "from": "lfo_sx/value",
+            "to": "xform/scale_x"
+        },
+        {
+            "from": "xform/texture",
+            "to": "vout/input"
+        }
+    ]
 }

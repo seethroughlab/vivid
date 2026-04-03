@@ -1,140 +1,142 @@
 {
-  "meta": {
-    "title": "Four on the Floor",
-    "description": "Classic dance beat: kick every quarter, snare on 2/4, hats on every 8th, clap on 4.",
-    "tags": [
-      "drums",
-      "sequencer",
-      "beat",
-      "dance"
-    ],
-    "difficulty": "beginner",
-    "domains": [
-      "audio"
-    ],
-    "featured_rank": 27
-  },
-  "nodes": {
-    "clock1": {
-      "type": "ClockAu",
-      "params": {
-        "bpm": 120.0
-      }
+    "meta": {
+        "title": "Four on the Floor",
+        "description": "Classic dance beat: kick every quarter, snare on 2/4, hats on every 8th, clap on 4.",
+        "tags": [
+            "drums",
+            "sequencer",
+            "beat",
+            "dance"
+        ],
+        "difficulty": "beginner",
+        "domains": [
+            "audio"
+        ],
+        "featured_rank": 27,
+        "id": "four_on_the_floor",
+        "requires_packages": []
     },
-    "seq1": {
-      "type": "DrumSequencerAu",
-      "params": {
-        "steps": 16,
-        "swing": 0.0,
-        "kick_0": 1,
-        "kick_4": 1,
-        "kick_8": 1,
-        "kick_12": 1,
-        "snare_4": 1,
-        "snare_12": 1,
-        "hat_0": 1,
-        "hat_2": 1,
-        "hat_4": 1,
-        "hat_6": 1,
-        "hat_8": 1,
-        "hat_10": 1,
-        "hat_12": 1,
-        "hat_14": 1,
-        "clap_12": 1
-      }
+    "nodes": {
+        "clock1": {
+            "type": "ClockAu",
+            "params": {
+                "bpm": 120.0
+            }
+        },
+        "seq1": {
+            "type": "DrumSequencerAu",
+            "params": {
+                "steps": 16,
+                "swing": 0.0,
+                "kick_0": 1,
+                "kick_4": 1,
+                "kick_8": 1,
+                "kick_12": 1,
+                "snare_4": 1,
+                "snare_12": 1,
+                "hat_0": 1,
+                "hat_2": 1,
+                "hat_4": 1,
+                "hat_6": 1,
+                "hat_8": 1,
+                "hat_10": 1,
+                "hat_12": 1,
+                "hat_14": 1,
+                "clap_12": 1
+            }
+        },
+        "kick1": {
+            "type": "DrumKick",
+            "params": {
+                "pitch": 55.0,
+                "pitch_env": 200.0,
+                "decay": 0.35,
+                "click": 0.2,
+                "volume": 0.5
+            }
+        },
+        "snare1": {
+            "type": "DrumSnare",
+            "params": {
+                "pitch": 200.0,
+                "tone": 0.4,
+                "noise": 0.7,
+                "tone_decay": 0.1,
+                "noise_decay": 0.2,
+                "snappy": 0.6,
+                "volume": 0.3
+            }
+        },
+        "hat1": {
+            "type": "DrumHiHat",
+            "params": {
+                "decay": 0.05,
+                "tone": 0.7,
+                "ring": 0.3,
+                "volume": 0.15
+            }
+        },
+        "clap1": {
+            "type": "DrumClap",
+            "params": {
+                "decay": 0.15,
+                "tone": 0.6,
+                "sloppy": 0.2,
+                "tail": 0.15,
+                "volume": 0.12
+            }
+        },
+        "kit1": {
+            "type": "DrumKitAu",
+            "params": {}
+        },
+        "aout": {
+            "type": "audio_out",
+            "params": {}
+        }
     },
-    "kick1": {
-      "type": "DrumKick",
-      "params": {
-        "pitch": 55.0,
-        "pitch_env": 200.0,
-        "decay": 0.35,
-        "click": 0.2,
-        "volume": 0.5
-      }
-    },
-    "snare1": {
-      "type": "DrumSnare",
-      "params": {
-        "pitch": 200.0,
-        "tone": 0.4,
-        "noise": 0.7,
-        "tone_decay": 0.1,
-        "noise_decay": 0.2,
-        "snappy": 0.6,
-        "volume": 0.3
-      }
-    },
-    "hat1": {
-      "type": "DrumHiHat",
-      "params": {
-        "decay": 0.05,
-        "tone": 0.7,
-        "ring": 0.3,
-        "volume": 0.15
-      }
-    },
-    "clap1": {
-      "type": "DrumClap",
-      "params": {
-        "decay": 0.15,
-        "tone": 0.6,
-        "sloppy": 0.2,
-        "tail": 0.15,
-        "volume": 0.12
-      }
-    },
-    "kit1": {
-      "type": "DrumKitAu",
-      "params": {}
-    },
-    "aout": {
-      "type": "audio_out",
-      "params": {}
-    }
-  },
-  "connections": [
-    {
-      "from": "clock1/bar_phase",
-      "to": "seq1/beat_phase"
-    },
-    {
-      "from": "seq1/midi_out",
-      "to": "kit1/midi_in"
-    },
-    {
-      "from": "kit1/slot_0",
-      "to": "kick1/midi_in"
-    },
-    {
-      "from": "kit1/slot_1",
-      "to": "snare1/midi_in"
-    },
-    {
-      "from": "kit1/slot_2",
-      "to": "hat1/midi_in",
-      "bridge": "last_sample"
-    },
-    {
-      "from": "kit1/slot_4",
-      "to": "clap1/midi_in"
-    },
-    {
-      "from": "kick1/output",
-      "to": "aout/input"
-    },
-    {
-      "from": "snare1/output",
-      "to": "aout/input"
-    },
-    {
-      "from": "hat1/output",
-      "to": "aout/input",
-      "bridge": "hold"
-    },
-    {
-      "from": "clap1/output",
-      "to": "aout/input"
-    }
-  ]
+    "connections": [
+        {
+            "from": "clock1/bar_phase",
+            "to": "seq1/beat_phase"
+        },
+        {
+            "from": "seq1/midi_out",
+            "to": "kit1/midi_in"
+        },
+        {
+            "from": "kit1/slot_0",
+            "to": "kick1/midi_in"
+        },
+        {
+            "from": "kit1/slot_1",
+            "to": "snare1/midi_in"
+        },
+        {
+            "from": "kit1/slot_2",
+            "to": "hat1/midi_in",
+            "bridge": "last_sample"
+        },
+        {
+            "from": "kit1/slot_4",
+            "to": "clap1/midi_in"
+        },
+        {
+            "from": "kick1/output",
+            "to": "aout/input"
+        },
+        {
+            "from": "snare1/output",
+            "to": "aout/input"
+        },
+        {
+            "from": "hat1/output",
+            "to": "aout/input",
+            "bridge": "hold"
+        },
+        {
+            "from": "clap1/output",
+            "to": "aout/input"
+        }
+    ]
 }

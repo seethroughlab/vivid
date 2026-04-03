@@ -1,6 +1,25 @@
 {
     "schema_version": 2,
     "vivid_version": "0.1.0",
+    "meta": {
+        "id": "lanes_intro_demo",
+        "title": "Lanes: Repeat",
+        "description": "Introduction to lanes (variable-length arrays): the Repeat operator broadcasts a scalar LFO to multiple metaball positions with spread offsets, demonstrating auto-broadcasting and repeat modes.",
+        "tags": [
+            "lanes",
+            "repeat",
+            "broadcasting",
+            "intro",
+            "metaball"
+        ],
+        "difficulty": "beginner",
+        "domains": [
+            "gpu",
+            "control"
+        ],
+        "requires_packages": [],
+        "featured_rank": 6
+    },
     "nodes": {
         "lfo_r": {
             "type": "LfoFr",
@@ -118,7 +137,7 @@
         },
         {
             "id": "note_repeat",
-            "text": "**Repeat (linear, spread=0.6)** The X LFO drives 8 lanes, each offset by a linear spread. Ball 0 is at (center−0.6), ball 7 at (center+0.6). All drift together but stay spaced out.",
+            "text": "**Repeat (linear, spread=0.6)** The X LFO drives 8 lanes, each offset by a linear spread. Ball 0 is at (center\u22120.6), ball 7 at (center+0.6). All drift together but stay spaced out.",
             "x": -220.0,
             "y": 200.0,
             "width": 300.0,
@@ -127,7 +146,7 @@
         },
         {
             "id": "note_scalar",
-            "text": "**Scalar auto-broadcast** Y and radius LFOs connect as scalars — they automatically apply to all 8 lanes. No Repeat needed for shared values.",
+            "text": "**Scalar auto-broadcast** Y and radius LFOs connect as scalars \u2014 they automatically apply to all 8 lanes. No Repeat needed for shared values.",
             "x": 90.0,
             "y": 200.0,
             "width": 260.0,

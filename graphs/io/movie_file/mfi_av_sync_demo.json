@@ -1,92 +1,94 @@
 {
-  "schema_version": 2,
-  "vivid_version": "0.1.0",
-  "nodes": {
-    "aout": {
-      "type": "audio_out",
-      "layout": {
-        "x": 693.7050170898438,
-        "y": 466.9637756347656
-      }
+    "schema_version": 2,
+    "vivid_version": "0.1.0",
+    "nodes": {
+        "aout": {
+            "type": "audio_out",
+            "layout": {
+                "x": 693.7050170898438,
+                "y": 466.9637756347656
+            }
+        },
+        "audio": {
+            "type": "MovieFileAudio",
+            "params": {
+                "file": "../../../assets/camera.mp4"
+            },
+            "layout": {
+                "x": -247.70474243164062,
+                "y": 428.48748779296875
+            }
+        },
+        "rev": {
+            "type": "Reverb",
+            "params": {
+                "room_size": 0.5,
+                "damping": 0.4000000059604645
+            },
+            "layout": {
+                "x": 430.0,
+                "y": 451.0
+            }
+        },
+        "vid": {
+            "type": "MovieFileIn",
+            "params": {
+                "file": "../../../assets/camera.mp4"
+            },
+            "layout": {
+                "x": 54.689491271972656,
+                "y": 590.5892333984375
+            }
+        },
+        "vout": {
+            "type": "video_out",
+            "layout": {
+                "x": 664.1022338867188,
+                "y": 669.5669555664062
+            }
+        }
     },
-    "audio": {
-      "type": "MovieFileAudio",
-      "params": {
-        "file": "../../../assets/camera.mp4"
-      },
-      "layout": {
-        "x": -247.70474243164062,
-        "y": 428.48748779296875
-      }
-    },
-    "rev": {
-      "type": "Reverb",
-      "params": {
-        "room_size": 0.5,
-        "damping": 0.4000000059604645
-      },
-      "layout": {
-        "x": 430.0,
-        "y": 451.0
-      }
-    },
-    "vid": {
-      "type": "MovieFileIn",
-      "params": {
-        "file": "../../../assets/camera.mp4"
-      },
-      "layout": {
-        "x": 54.689491271972656,
-        "y": 590.5892333984375
-      }
-    },
-    "vout": {
-      "type": "video_out",
-      "layout": {
-        "x": 664.1022338867188,
-        "y": 669.5669555664062
-      }
-    }
-  },
-  "connections": [
-    {
-      "from": "vid/texture",
-      "to": "vout/input"
-    },
-    {
-      "from": "audio/time",
-      "to": "vid/audio_time",
-      "bridge": "last_sample"
-    },
-    {
-      "from": "audio/output",
-      "to": "rev/input"
-    },
-    {
-      "from": "rev/output",
-      "to": "aout/input"
-    }
-  ],
-  "viewport": {
-    "pan_x": 403.2991027832031,
-    "pan_y": 400.3992919921875,
-    "zoom": 0.4422111213207245
-  },
-  "meta": {
-    "id": "mfi_av_sync_demo",
-    "title": "Movie File: AV Sync",
-    "description": "Audio-synced video playback with reverb. MovieFileAudio's time output drives MovieFileIn via the cadence bridge.",
-    "tags": [
-      "movie",
-      "audio-visual",
-      "reverb",
-      "demo"
+    "connections": [
+        {
+            "from": "vid/texture",
+            "to": "vout/input"
+        },
+        {
+            "from": "audio/time",
+            "to": "vid/audio_time",
+            "bridge": "last_sample"
+        },
+        {
+            "from": "audio/output",
+            "to": "rev/input"
+        },
+        {
+            "from": "rev/output",
+            "to": "aout/input"
+        }
     ],
-    "difficulty": "beginner",
-    "domains": [
-      "io",
-      "audio",
-      "gpu"
-    ]
-  }
+    "viewport": {
+        "pan_x": 403.2991027832031,
+        "pan_y": 400.3992919921875,
+        "zoom": 0.4422111213207245
+    },
+    "meta": {
+        "id": "mfi_av_sync_demo",
+        "title": "Movie File: AV Sync",
+        "description": "Audio-synced video playback with reverb. MovieFileAudio's time output drives MovieFileIn via the cadence bridge.",
+        "tags": [
+            "movie",
+            "audio-visual",
+            "reverb",
+            "demo"
+        ],
+        "difficulty": "beginner",
+        "domains": [
+            "io",
+            "audio",
+            "gpu"
+        ],
+        "requires_packages": [],
+        "featured_rank": 40
+    }
 }

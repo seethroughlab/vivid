@@ -1,6 +1,29 @@
 {
     "schema_version": 2,
     "vivid_version": "0.1.0",
+    "meta": {
+        "id": "chromatic_ghosts",
+        "title": "Chromatic Ghosts",
+        "description": "Euclidean polyrhythms drive three voices (lead, bass, noise) through bitcrush and delay, while RMS-reactive visuals layer noise, text, pixelation, block displacement, and glitch effects with slow hue drift.",
+        "tags": [
+            "euclidean",
+            "polyrhythm",
+            "audio-visual",
+            "glitch",
+            "bitcrush",
+            "generative"
+        ],
+        "difficulty": "advanced",
+        "domains": [
+            "audio",
+            "gpu",
+            "control"
+        ],
+        "requires_packages": [
+            "vivid-glitch"
+        ],
+        "featured_rank": 12
+    },
     "nodes": {
         "bitcrush": {
             "type": "Bitcrush",
@@ -212,8 +235,8 @@
                 "amplitude": 0.5
             },
             "layout": {
-                "x": 900.3049926757813,
-                "y": 156.81936645507813
+                "x": 900.3049926757812,
+                "y": 156.81936645507812
             }
         },
         "out": {
@@ -429,7 +452,7 @@
     ],
     "viewport": {
         "pan_x": 343.11004638671875,
-        "pan_y": -12.442581176757813,
+        "pan_y": -12.442581176757812,
         "zoom": 0.6909933090209961
     }
 }

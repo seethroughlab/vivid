@@ -1,94 +1,96 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "gradient_demo",
-    "title": "Gradient Generator",
-    "description": "Two animated gradients (linear and radial) with LFO-driven angle and scale, blended together.",
-    "tags": [
-      "gradient",
-      "demo"
-    ],
-    "difficulty": "intermediate",
-    "domains": [
-      "gpu"
-    ],
-    "requires_packages": [],
-    "featured_rank": 26
-  },
-  "nodes": {
-    "grad1": {
-      "type": "Gradient",
-      "params": {
-        "mode": 0,
-        "angle": 45.0,
-        "scale": 1.0
-      },
-      "resolution": [
-        800,
-        600
-      ]
+    "schema_version": 1,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "gradient_demo",
+        "title": "Gradient Generator",
+        "description": "Two animated gradients (linear and radial) with LFO-driven angle and scale, blended together.",
+        "tags": [
+            "gradient",
+            "animation",
+            "lfo",
+            "demo"
+        ],
+        "difficulty": "intermediate",
+        "domains": [
+            "gpu"
+        ],
+        "requires_packages": [],
+        "featured_rank": 26
     },
-    "grad2": {
-      "type": "Gradient",
-      "params": {
-        "mode": 1,
-        "center_x": 0.5,
-        "center_y": 0.5,
-        "scale": 1.5
-      },
-      "resolution": [
-        800,
-        600
-      ]
+    "nodes": {
+        "grad1": {
+            "type": "Gradient",
+            "params": {
+                "mode": 0,
+                "angle": 45.0,
+                "scale": 1.0
+            },
+            "resolution": [
+                800,
+                600
+            ]
+        },
+        "grad2": {
+            "type": "Gradient",
+            "params": {
+                "mode": 1,
+                "center_x": 0.5,
+                "center_y": 0.5,
+                "scale": 1.5
+            },
+            "resolution": [
+                800,
+                600
+            ]
+        },
+        "comp": {
+            "type": "Composite",
+            "params": {
+                "blend_mode": 3,
+                "opacity": 0.6
+            }
+        },
+        "lfo_angle": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.08,
+                "amplitude": 180.0,
+                "offset": 90.0
+            }
+        },
+        "lfo_scale": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.15,
+                "amplitude": 2.0,
+                "offset": 1.5
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        }
     },
-    "comp": {
-      "type": "Composite",
-      "params": {
-        "blend_mode": 3,
-        "opacity": 0.6
-      }
-    },
-    "lfo_angle": {
-      "type": "LfoFr",
-      "params": {
-        "frequency": 0.08,
-        "amplitude": 180.0,
-        "offset": 90.0
-      }
-    },
-    "lfo_scale": {
-      "type": "LfoFr",
-      "params": {
-        "frequency": 0.15,
-        "amplitude": 2.0,
-        "offset": 1.5
-      }
-    },
-    "vout": {
-      "type": "video_out"
-    }
-  },
-  "connections": [
-    {
-      "from": "lfo_angle/value",
-      "to": "grad1/angle"
-    },
-    {
-      "from": "lfo_scale/value",
-      "to": "grad2/scale"
-    },
-    {
-      "from": "grad1/texture",
-      "to": "comp/a"
-    },
-    {
-      "from": "grad2/texture",
-      "to": "comp/b"
-    },
-    {
-      "from": "comp/texture",
-      "to": "vout/input"
-    }
-  ]
+    "connections": [
+        {
+            "from": "lfo_angle/value",
+            "to": "grad1/angle"
+        },
+        {
+            "from": "lfo_scale/value",
+            "to": "grad2/scale"
+        },
+        {
+            "from": "grad1/texture",
+            "to": "comp/a"
+        },
+        {
+            "from": "grad2/texture",
+            "to": "comp/b"
+        },
+        {
+            "from": "comp/texture",
+            "to": "vout/input"
+        }
+    ]
 }

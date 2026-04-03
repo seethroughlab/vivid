@@ -1,81 +1,83 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "mirror_demo",
-    "title": "Kaleidoscope Mirror",
-    "description": "Kaleidoscopic mirror effect with LFO-animated rotation and configurable segment count.",
-    "tags": [
-      "mirror",
-      "demo"
-    ],
-    "difficulty": "intermediate",
-    "domains": [
-      "gpu"
-    ],
-    "requires_packages": [],
-    "featured_rank": 28
-  },
-  "nodes": {
-    "vid": {
-      "type": "MovieFileIn",
-      "params": {
-        "file": "../../assets/lake.mp4",
-        "play_mode": 0,
-        "speed": 1.0
-      }
+    "schema_version": 1,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "mirror_demo",
+        "title": "Kaleidoscope Mirror",
+        "description": "Kaleidoscopic mirror effect with LFO-animated rotation and configurable segment count.",
+        "tags": [
+            "mirror",
+            "symmetry",
+            "kaleidoscope",
+            "demo"
+        ],
+        "difficulty": "intermediate",
+        "domains": [
+            "gpu"
+        ],
+        "requires_packages": [],
+        "featured_rank": 28
     },
-    "audio": {
-      "type": "MovieFileAudio",
-      "params": {
-        "file": "../../assets/lake.mp4"
-      }
+    "nodes": {
+        "vid": {
+            "type": "MovieFileIn",
+            "params": {
+                "file": "../../assets/lake.mp4",
+                "play_mode": 0,
+                "speed": 1.0
+            }
+        },
+        "audio": {
+            "type": "MovieFileAudio",
+            "params": {
+                "file": "../../assets/lake.mp4"
+            }
+        },
+        "mirror": {
+            "type": "Mirror",
+            "params": {
+                "mode": 3,
+                "segments": 8.0,
+                "angle": 0.0
+            }
+        },
+        "lfo_angle": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.05,
+                "amplitude": 180.0,
+                "offset": 0.0
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        },
+        "aout": {
+            "type": "audio_out"
+        }
     },
-    "mirror": {
-      "type": "Mirror",
-      "params": {
-        "mode": 3,
-        "segments": 8.0,
-        "angle": 0.0
-      }
-    },
-    "lfo_angle": {
-      "type": "LfoFr",
-      "params": {
-        "frequency": 0.05,
-        "amplitude": 180.0,
-        "offset": 0.0
-      }
-    },
-    "vout": {
-      "type": "video_out"
-    },
-    "aout": {
-      "type": "audio_out"
-    }
-  },
-  "connections": [
-    {
-      "from": "vid/texture",
-      "to": "mirror/input",
-      "bridge": "last_sample"
-    },
-    {
-      "from": "lfo_angle/value",
-      "to": "mirror/angle"
-    },
-    {
-      "from": "mirror/texture",
-      "to": "vout/input"
-    },
-    {
-      "from": "audio/time",
-      "to": "vid/audio_time",
-      "bridge": "last_sample"
-    },
-    {
-      "from": "audio/output",
-      "to": "aout/input"
-    }
-  ]
+    "connections": [
+        {
+            "from": "vid/texture",
+            "to": "mirror/input",
+            "bridge": "last_sample"
+        },
+        {
+            "from": "lfo_angle/value",
+            "to": "mirror/angle"
+        },
+        {
+            "from": "mirror/texture",
+            "to": "vout/input"
+        },
+        {
+            "from": "audio/time",
+            "to": "vid/audio_time",
+            "bridge": "last_sample"
+        },
+        {
+            "from": "audio/output",
+            "to": "aout/input"
+        }
+    ]
 }

@@ -1,6 +1,25 @@
 {
     "schema_version": 2,
     "vivid_version": "0.1.0",
+    "meta": {
+        "id": "mfi_blur_demo",
+        "title": "Movie File: Blur",
+        "description": "LFO-modulated blur radius on a MovieFileIn source, demonstrating basic video processing with animated parameters.",
+        "tags": [
+            "movie",
+            "blur",
+            "lfo",
+            "demo"
+        ],
+        "difficulty": "beginner",
+        "domains": [
+            "io",
+            "gpu",
+            "control"
+        ],
+        "requires_packages": [],
+        "featured_rank": 41
+    },
     "nodes": {
         "blur": {
             "type": "Blur",

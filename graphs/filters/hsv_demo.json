@@ -1,81 +1,83 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "hsv_demo",
-    "title": "HSV Color Adjust",
-    "description": "Hue, saturation, and brightness adjustments with an LFO continuously rotating the hue.",
-    "tags": [
-      "hsv",
-      "demo"
-    ],
-    "difficulty": "intermediate",
-    "domains": [
-      "gpu"
-    ],
-    "requires_packages": [],
-    "featured_rank": 27
-  },
-  "nodes": {
-    "vid": {
-      "type": "MovieFileIn",
-      "params": {
-        "file": "../../assets/camera.mp4",
-        "play_mode": 0,
-        "speed": 1.0
-      }
+    "schema_version": 1,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "hsv_demo",
+        "title": "HSV Color Adjust",
+        "description": "Hue, saturation, and brightness adjustments with an LFO continuously rotating the hue.",
+        "tags": [
+            "hsv",
+            "color-science",
+            "hue-shift",
+            "demo"
+        ],
+        "difficulty": "intermediate",
+        "domains": [
+            "gpu"
+        ],
+        "requires_packages": [],
+        "featured_rank": 27
     },
-    "audio": {
-      "type": "MovieFileAudio",
-      "params": {
-        "file": "../../assets/camera.mp4"
-      }
+    "nodes": {
+        "vid": {
+            "type": "MovieFileIn",
+            "params": {
+                "file": "../../assets/camera.mp4",
+                "play_mode": 0,
+                "speed": 1.0
+            }
+        },
+        "audio": {
+            "type": "MovieFileAudio",
+            "params": {
+                "file": "../../assets/camera.mp4"
+            }
+        },
+        "hsv": {
+            "type": "HSV",
+            "params": {
+                "hue_shift": 0.0,
+                "saturation": 0.2,
+                "value": 0.0
+            }
+        },
+        "lfo_hue": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.1,
+                "amplitude": 180.0,
+                "offset": 180.0
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        },
+        "aout": {
+            "type": "audio_out"
+        }
     },
-    "hsv": {
-      "type": "HSV",
-      "params": {
-        "hue_shift": 0.0,
-        "saturation": 0.2,
-        "value": 0.0
-      }
-    },
-    "lfo_hue": {
-      "type": "LfoFr",
-      "params": {
-        "frequency": 0.1,
-        "amplitude": 180.0,
-        "offset": 180.0
-      }
-    },
-    "vout": {
-      "type": "video_out"
-    },
-    "aout": {
-      "type": "audio_out"
-    }
-  },
-  "connections": [
-    {
-      "from": "vid/texture",
-      "to": "hsv/input",
-      "bridge": "last_sample"
-    },
-    {
-      "from": "lfo_hue/value",
-      "to": "hsv/hue_shift"
-    },
-    {
-      "from": "hsv/texture",
-      "to": "vout/input"
-    },
-    {
-      "from": "audio/time",
-      "to": "vid/audio_time",
-      "bridge": "last_sample"
-    },
-    {
-      "from": "audio/output",
-      "to": "aout/input"
-    }
-  ]
+    "connections": [
+        {
+            "from": "vid/texture",
+            "to": "hsv/input",
+            "bridge": "last_sample"
+        },
+        {
+            "from": "lfo_hue/value",
+            "to": "hsv/hue_shift"
+        },
+        {
+            "from": "hsv/texture",
+            "to": "vout/input"
+        },
+        {
+            "from": "audio/time",
+            "to": "vid/audio_time",
+            "bridge": "last_sample"
+        },
+        {
+            "from": "audio/output",
+            "to": "aout/input"
+        }
+    ]
 }

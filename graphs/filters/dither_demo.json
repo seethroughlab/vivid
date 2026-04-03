@@ -1,67 +1,69 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "dither_demo",
-    "title": "Dithering",
-    "description": "Pattern-based color reduction applied to a gradient, with LFO-animated quantization levels.",
-    "tags": [
-      "dither",
-      "demo"
-    ],
-    "difficulty": "intermediate",
-    "domains": [
-      "gpu"
-    ],
-    "requires_packages": [],
-    "featured_rank": 24
-  },
-  "nodes": {
-    "grad": {
-      "type": "Gradient",
-      "params": {
-        "mode": 1,
-        "center_x": 0.5,
-        "center_y": 0.5,
-        "scale": 1.2
-      },
-      "resolution": [
-        800,
-        600
-      ]
+    "schema_version": 1,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "dither_demo",
+        "title": "Dithering",
+        "description": "Pattern-based color reduction applied to a gradient, with LFO-animated quantization levels.",
+        "tags": [
+            "dither",
+            "color-reduction",
+            "retro",
+            "demo"
+        ],
+        "difficulty": "intermediate",
+        "domains": [
+            "gpu"
+        ],
+        "requires_packages": [],
+        "featured_rank": 24
     },
-    "dither": {
-      "type": "Dither",
-      "params": {
-        "pattern": 2,
-        "levels": 4.0,
-        "strength": 1.0
-      }
+    "nodes": {
+        "grad": {
+            "type": "Gradient",
+            "params": {
+                "mode": 1,
+                "center_x": 0.5,
+                "center_y": 0.5,
+                "scale": 1.2
+            },
+            "resolution": [
+                800,
+                600
+            ]
+        },
+        "dither": {
+            "type": "Dither",
+            "params": {
+                "pattern": 2,
+                "levels": 4.0,
+                "strength": 1.0
+            }
+        },
+        "lfo_levels": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.1,
+                "amplitude": 6.0,
+                "offset": 8.0
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        }
     },
-    "lfo_levels": {
-      "type": "LfoFr",
-      "params": {
-        "frequency": 0.1,
-        "amplitude": 6.0,
-        "offset": 8.0
-      }
-    },
-    "vout": {
-      "type": "video_out"
-    }
-  },
-  "connections": [
-    {
-      "from": "grad/texture",
-      "to": "dither/input"
-    },
-    {
-      "from": "lfo_levels/value",
-      "to": "dither/levels"
-    },
-    {
-      "from": "dither/texture",
-      "to": "vout/input"
-    }
-  ]
+    "connections": [
+        {
+            "from": "grad/texture",
+            "to": "dither/input"
+        },
+        {
+            "from": "lfo_levels/value",
+            "to": "dither/levels"
+        },
+        {
+            "from": "dither/texture",
+            "to": "vout/input"
+        }
+    ]
 }

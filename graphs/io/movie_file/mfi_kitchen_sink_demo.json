@@ -1,117 +1,118 @@
 {
-  "schema_version": 2,
-  "vivid_version": "0.1.0",
-  "nodes": {
-    "aout": {
-      "type": "audio_out",
-      "layout": {
-        "x": 315.9631042480469,
-        "y": 77.70099639892578
-      }
+    "schema_version": 2,
+    "vivid_version": "0.1.0",
+    "nodes": {
+        "aout": {
+            "type": "audio_out",
+            "layout": {
+                "x": 315.9631042480469,
+                "y": 77.70099639892578
+            }
+        },
+        "audio": {
+            "type": "MovieFileAudio",
+            "params": {
+                "file": "../../../assets/camera.mp4"
+            }
+        },
+        "blur": {
+            "type": "Blur",
+            "params": {
+                "radius": 2.0,
+                "quality": 6.0
+            }
+        },
+        "halftone": {
+            "type": "Halftone",
+            "params": {
+                "dot_size": 6.0,
+                "angle": 0.7799999713897705
+            }
+        },
+        "levels": {
+            "type": "Levels",
+            "params": {
+                "gamma": 0.8500000238418579,
+                "contrast": 1.7999999523162842,
+                "brightness": -0.05000000074505806
+            }
+        },
+        "posterize": {
+            "type": "Posterize",
+            "params": {
+                "levels": 10.0
+            }
+        },
+        "vid": {
+            "type": "MovieFileIn",
+            "params": {
+                "speed": 1.0,
+                "play_mode": 0.0,
+                "file": "../../../assets/camera.mp4"
+            },
+            "layout": {
+                "x": 250.86392211914062,
+                "y": 459.2413635253906
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        }
     },
-    "audio": {
-      "type": "MovieFileAudio",
-      "params": {
-        "file": "../../../assets/camera.mp4"
-      }
-    },
-    "blur": {
-      "type": "Blur",
-      "params": {
-        "radius": 2.0,
-        "quality": 6.0
-      }
-    },
-    "halftone": {
-      "type": "Halftone",
-      "params": {
-        "dot_size": 6.0,
-        "angle": 0.7799999713897705
-      }
-    },
-    "levels": {
-      "type": "Levels",
-      "params": {
-        "gamma": 0.8500000238418579,
-        "contrast": 1.7999999523162842,
-        "brightness": -0.05000000074505806
-      }
-    },
-    "posterize": {
-      "type": "Posterize",
-      "params": {
-        "levels": 10.0
-      }
-    },
-    "vid": {
-      "type": "MovieFileIn",
-      "params": {
-        "speed": 1.0,
-        "play_mode": 0.0,
-        "file": "../../../assets/camera.mp4"
-      },
-      "layout": {
-        "x": 250.86392211914062,
-        "y": 459.2413635253906
-      }
-    },
-    "vout": {
-      "type": "video_out"
-    }
-  },
-  "connections": [
-    {
-      "from": "vid/texture",
-      "to": "levels/input",
-      "bridge": "last_sample"
-    },
-    {
-      "from": "levels/texture",
-      "to": "posterize/input"
-    },
-    {
-      "from": "posterize/texture",
-      "to": "halftone/input"
-    },
-    {
-      "from": "halftone/texture",
-      "to": "blur/input"
-    },
-    {
-      "from": "blur/texture",
-      "to": "vout/input"
-    },
-    {
-      "from": "audio/time",
-      "to": "vid/audio_time",
-      "bridge": "last_sample"
-    },
-    {
-      "from": "audio/output",
-      "to": "aout/input"
-    }
-  ],
-  "viewport": {
-    "pan_x": -320.12274169921875,
-    "pan_y": -47.829833984375,
-    "zoom": 1.266577124595642
-  },
-  "meta": {
-    "id": "mfi_kitchen_sink_demo",
-    "title": "Movie File: Kitchen Sink",
-    "description": "Stacked effect chain on video: Levels, Posterize, Halftone, and Blur combined for a heavily stylized look.",
-    "tags": [
-      "movie",
-      "effects",
-      "chain",
-      "demo"
+    "connections": [
+        {
+            "from": "vid/texture",
+            "to": "levels/input",
+            "bridge": "last_sample"
+        },
+        {
+            "from": "levels/texture",
+            "to": "posterize/input"
+        },
+        {
+            "from": "posterize/texture",
+            "to": "halftone/input"
+        },
+        {
+            "from": "halftone/texture",
+            "to": "blur/input"
+        },
+        {
+            "from": "blur/texture",
+            "to": "vout/input"
+        },
+        {
+            "from": "audio/time",
+            "to": "vid/audio_time",
+            "bridge": "last_sample"
+        },
+        {
+            "from": "audio/output",
+            "to": "aout/input"
+        }
     ],
-    "difficulty": "advanced",
-    "domains": [
-      "io",
-      "audio",
-      "gpu"
-    ],
-    "featured_rank": 43
-  }
+    "viewport": {
+        "pan_x": -320.12274169921875,
+        "pan_y": -47.829833984375,
+        "zoom": 1.266577124595642
+    },
+    "meta": {
+        "id": "mfi_kitchen_sink_demo",
+        "title": "Movie File: Kitchen Sink",
+        "description": "Stacked effect chain on video: Levels, Posterize, Halftone, and Blur combined for a heavily stylized look.",
+        "tags": [
+            "movie",
+            "effects",
+            "chain",
+            "demo"
+        ],
+        "difficulty": "advanced",
+        "domains": [
+            "io",
+            "audio",
+            "gpu"
+        ],
+        "featured_rank": 43,
+        "requires_packages": []
+    }
 }

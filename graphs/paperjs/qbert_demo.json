@@ -1,6 +1,25 @@
 {
     "schema_version": 2,
     "vivid_version": "0.1.0",
+    "meta": {
+        "id": "qbert_demo",
+        "title": "Q*bert Hex Mosaic",
+        "description": "A photo is rendered through a HexGrid filter with LFO-animated cell size, creating a shifting mosaic of 3D-lit hexagonal tiles.",
+        "tags": [
+            "hexgrid",
+            "mosaic",
+            "pixelation",
+            "animation",
+            "demo"
+        ],
+        "difficulty": "beginner",
+        "domains": [
+            "gpu",
+            "control"
+        ],
+        "requires_packages": [],
+        "featured_rank": 32
+    },
     "nodes": {
         "hex": {
             "type": "HexGrid",

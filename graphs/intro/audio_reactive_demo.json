@@ -1,82 +1,85 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "audio_reactive_demo",
-    "title": "Audio-Reactive Visuals",
-    "description": "Audio RMS level drives visual noise texture scale, demonstrating how audio analysis can make visuals react to sound.",
-    "tags": [
-      "reactive",
-      "demo"
-    ],
-    "difficulty": "beginner",
-    "domains": [
-      "audio",
-      "gpu",
-      "control"
-    ],
-    "requires_packages": [],
-    "featured_rank": 3
-  },
-  "nodes": {
-    "lfo1": {
-      "type": "LfoFr",
-      "params": {
-        "frequency": 0.5,
-        "amplitude": 0.4,
-        "offset": 0.5
-      }
+    "schema_version": 1,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "audio_reactive_demo",
+        "title": "Audio-Reactive Visuals",
+        "description": "Audio RMS level drives visual noise texture scale, demonstrating how audio analysis can make visuals react to sound.",
+        "tags": [
+            "audio-reactive",
+            "rms",
+            "visual",
+            "intro",
+            "demo"
+        ],
+        "difficulty": "beginner",
+        "domains": [
+            "audio",
+            "gpu",
+            "control"
+        ],
+        "requires_packages": [],
+        "featured_rank": 3
     },
-    "osc1": {
-      "type": "Oscillator",
-      "params": {
-        "frequency": 220.0,
-        "amplitude": 0.8
-      }
+    "nodes": {
+        "lfo1": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.5,
+                "amplitude": 0.4,
+                "offset": 0.5
+            }
+        },
+        "osc1": {
+            "type": "Oscillator",
+            "params": {
+                "frequency": 220.0,
+                "amplitude": 0.8
+            }
+        },
+        "gain1": {
+            "type": "Gain",
+            "params": {
+                "gain": 1.0
+            }
+        },
+        "out1": {
+            "type": "audio_out",
+            "params": {}
+        },
+        "noise1": {
+            "type": "NoiseTexture",
+            "params": {
+                "speed": 1.0
+            }
+        },
+        "vout": {
+            "type": "video_out",
+            "params": {}
+        }
     },
-    "gain1": {
-      "type": "Gain",
-      "params": {
-        "gain": 1.0
-      }
-    },
-    "out1": {
-      "type": "audio_out",
-      "params": {}
-    },
-    "noise1": {
-      "type": "NoiseTexture",
-      "params": {
-        "speed": 1.0
-      }
-    },
-    "vout": {
-      "type": "video_out",
-      "params": {}
-    }
-  },
-  "connections": [
-    {
-      "from": "lfo1/value",
-      "to": "osc1/amplitude",
-      "bridge": "hold"
-    },
-    {
-      "from": "osc1/output",
-      "to": "gain1/input"
-    },
-    {
-      "from": "gain1/output",
-      "to": "out1/input"
-    },
-    {
-      "from": "gain1/rms",
-      "to": "noise1/scale",
-      "bridge": "rms"
-    },
-    {
-      "from": "noise1/texture",
-      "to": "vout/input"
-    }
-  ]
+    "connections": [
+        {
+            "from": "lfo1/value",
+            "to": "osc1/amplitude",
+            "bridge": "hold"
+        },
+        {
+            "from": "osc1/output",
+            "to": "gain1/input"
+        },
+        {
+            "from": "gain1/output",
+            "to": "out1/input"
+        },
+        {
+            "from": "gain1/rms",
+            "to": "noise1/scale",
+            "bridge": "rms"
+        },
+        {
+            "from": "noise1/texture",
+            "to": "vout/input"
+        }
+    ]
 }

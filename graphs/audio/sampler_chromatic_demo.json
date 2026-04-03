@@ -1,119 +1,121 @@
 {
-  "meta": {
-    "title": "Chromatic Sampler with Arpeggiator",
-    "description": "ChordProgression feeds an Arpeggiator that drives a chromatic Sampler with lapsteel samples.",
-    "tags": [
-      "sampler",
-      "chromatic",
-      "arpeggiator",
-      "melodic"
-    ],
-    "difficulty": "intermediate",
-    "domains": [
-      "audio"
-    ],
-    "featured_rank": 28
-  },
-  "nodes": {
-    "clock1": {
-      "type": "ClockAu",
-      "params": {
-        "bpm": 120.0
-      }
+    "meta": {
+        "title": "Chromatic Sampler with Arpeggiator",
+        "description": "ChordProgression feeds an Arpeggiator that drives a chromatic Sampler with lapsteel samples.",
+        "tags": [
+            "sampler",
+            "chromatic",
+            "arpeggiator",
+            "melodic"
+        ],
+        "difficulty": "intermediate",
+        "domains": [
+            "audio"
+        ],
+        "featured_rank": 28,
+        "id": "sampler_chromatic_demo",
+        "requires_packages": []
     },
-    "cp1": {
-      "type": "ChordProgressionAu",
-      "params": {
-        "steps": 4,
-        "key_root": 0,
-        "mode": 0,
-        "octave": 3,
-        "beats_per_step": 4,
-        "gate_length": 0.95,
-        "velocity": 0.8,
-        "degree_0": 0,
-        "voicing_0": 0,
-        "ext_0": 1,
-        "degree_1": 3,
-        "voicing_1": 0,
-        "ext_1": 1,
-        "degree_2": 4,
-        "voicing_2": 0,
-        "ext_2": 0,
-        "degree_3": 0,
-        "voicing_3": 1,
-        "ext_3": 0
-      }
+    "nodes": {
+        "clock1": {
+            "type": "ClockAu",
+            "params": {
+                "bpm": 120.0
+            }
+        },
+        "cp1": {
+            "type": "ChordProgressionAu",
+            "params": {
+                "steps": 4,
+                "key_root": 0,
+                "mode": 0,
+                "octave": 3,
+                "beats_per_step": 4,
+                "gate_length": 0.95,
+                "velocity": 0.8,
+                "degree_0": 0,
+                "voicing_0": 0,
+                "ext_0": 1,
+                "degree_1": 3,
+                "voicing_1": 0,
+                "ext_1": 1,
+                "degree_2": 4,
+                "voicing_2": 0,
+                "ext_2": 0,
+                "degree_3": 0,
+                "voicing_3": 1,
+                "ext_3": 0
+            }
+        },
+        "arp1": {
+            "type": "ArpeggiatorAu",
+            "params": {
+                "mode": 0,
+                "octaves": 2,
+                "rate": 3,
+                "gate_length": 0.6,
+                "swing": 0.0,
+                "latch": false,
+                "mod_steps": 4,
+                "vel_0": 1.0,
+                "vel_1": 0.5,
+                "vel_2": 0.7,
+                "vel_3": 0.4,
+                "tr_0": 0,
+                "tr_1": 0,
+                "tr_2": 0,
+                "tr_3": 0
+            }
+        },
+        "samp1": {
+            "type": "Sampler",
+            "params": {
+                "file": "../../assets/audio/lapsteel-articulations/lapsteel-combined.json",
+                "voices": 8,
+                "volume": 0.6
+            }
+        },
+        "out1": {
+            "type": "audio_out",
+            "params": {}
+        }
     },
-    "arp1": {
-      "type": "ArpeggiatorAu",
-      "params": {
-        "mode": 0,
-        "octaves": 2,
-        "rate": 3,
-        "gate_length": 0.6,
-        "swing": 0.0,
-        "latch": false,
-        "mod_steps": 4,
-        "vel_0": 1.0,
-        "vel_1": 0.5,
-        "vel_2": 0.7,
-        "vel_3": 0.4,
-        "tr_0": 0,
-        "tr_1": 0,
-        "tr_2": 0,
-        "tr_3": 0
-      }
-    },
-    "samp1": {
-      "type": "Sampler",
-      "params": {
-        "file": "../../assets/audio/lapsteel-articulations/lapsteel-combined.json",
-        "voices": 8,
-        "volume": 0.6
-      }
-    },
-    "out1": {
-      "type": "audio_out",
-      "params": {}
-    }
-  },
-  "connections": [
-    {
-      "from": "clock1/beat_phase",
-      "to": "cp1/beat_phase"
-    },
-    {
-      "from": "clock1/beat_phase",
-      "to": "arp1/beat_phase"
-    },
-    {
-      "from": "cp1/notes",
-      "to": "arp1/notes"
-    },
-    {
-      "from": "cp1/gates",
-      "to": "arp1/gates"
-    },
-    {
-      "from": "cp1/velocities",
-      "to": "arp1/velocities"
-    },
-    {
-      "from": "arp1/notes",
-      "to": "samp1/notes"
-    },
-    {
-      "from": "arp1/gates",
-      "to": "samp1/gates"
-    },
-    {
-      "from": "arp1/velocities",
-      "to": "samp1/velocities"
-    },
-    {
-      "from": "samp1/output",
-      "to": "out1/input"
-    }
-  ]
+    "connections": [
+        {
+            "from": "clock1/beat_phase",
+            "to": "cp1/beat_phase"
+        },
+        {
+            "from": "clock1/beat_phase",
+            "to": "arp1/beat_phase"
+        },
+        {
+            "from": "cp1/notes",
+            "to": "arp1/notes"
+        },
+        {
+            "from": "cp1/gates",
+            "to": "arp1/gates"
+        },
+        {
+            "from": "cp1/velocities",
+            "to": "arp1/velocities"
+        },
+        {
+            "from": "arp1/notes",
+            "to": "samp1/notes"
+        },
+        {
+            "from": "arp1/gates",
+            "to": "samp1/gates"
+        },
+        {
+            "from": "arp1/velocities",
+            "to": "samp1/velocities"
+        },
+        {
+            "from": "samp1/output",
+            "to": "out1/input"
+        }
+    ]
 }

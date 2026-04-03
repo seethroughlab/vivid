@@ -1,71 +1,73 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "bloom_demo",
-    "title": "Bloom Glow",
-    "description": "Soft glow bloom effect applied to a rotating star shape, spreading light beyond bright areas.",
-    "tags": [
-      "bloom",
-      "demo"
-    ],
-    "difficulty": "intermediate",
-    "domains": [
-      "gpu"
-    ],
-    "requires_packages": [],
-    "featured_rank": 33
-  },
-  "nodes": {
-    "star": {
-      "type": "Shape",
-      "params": {
-        "sides": 5,
-        "star": 0.5,
-        "radius": 0.25,
-        "softness": 0.01,
-        "r": 1.0,
-        "g": 0.9,
-        "b": 0.5
-      },
-      "resolution": [
-        800,
-        600
-      ]
+    "schema_version": 1,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "bloom_demo",
+        "title": "Bloom Glow",
+        "description": "Soft glow bloom effect applied to a rotating star shape, spreading light beyond bright areas.",
+        "tags": [
+            "bloom",
+            "glow",
+            "post-processing",
+            "demo"
+        ],
+        "difficulty": "intermediate",
+        "domains": [
+            "gpu"
+        ],
+        "requires_packages": [],
+        "featured_rank": 33
     },
-    "lfo_rot": {
-      "type": "LfoFr",
-      "params": {
-        "frequency": 0.1,
-        "amplitude": 3.14,
-        "offset": 0.0
-      }
+    "nodes": {
+        "star": {
+            "type": "Shape",
+            "params": {
+                "sides": 5,
+                "star": 0.5,
+                "radius": 0.25,
+                "softness": 0.01,
+                "r": 1.0,
+                "g": 0.9,
+                "b": 0.5
+            },
+            "resolution": [
+                800,
+                600
+            ]
+        },
+        "lfo_rot": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.1,
+                "amplitude": 3.14,
+                "offset": 0.0
+            }
+        },
+        "bloom": {
+            "type": "Bloom",
+            "params": {
+                "threshold": 0.3,
+                "intensity": 1.5,
+                "radius": 1.5,
+                "passes": 4
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        }
     },
-    "bloom": {
-      "type": "Bloom",
-      "params": {
-        "threshold": 0.3,
-        "intensity": 1.5,
-        "radius": 1.5,
-        "passes": 4
-      }
-    },
-    "vout": {
-      "type": "video_out"
-    }
-  },
-  "connections": [
-    {
-      "from": "lfo_rot/value",
-      "to": "star/rotation"
-    },
-    {
-      "from": "star/texture",
-      "to": "bloom/input"
-    },
-    {
-      "from": "bloom/texture",
-      "to": "vout/input"
-    }
-  ]
+    "connections": [
+        {
+            "from": "lfo_rot/value",
+            "to": "star/rotation"
+        },
+        {
+            "from": "star/texture",
+            "to": "bloom/input"
+        },
+        {
+            "from": "bloom/texture",
+            "to": "vout/input"
+        }
+    ]
 }

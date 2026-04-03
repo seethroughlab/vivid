@@ -1,6 +1,24 @@
 {
     "schema_version": 2,
     "vivid_version": "0.1.0",
+    "meta": {
+        "id": "particle_envelope_demo",
+        "title": "Particle Envelopes",
+        "description": "Demonstrates the Particles operator's internal per-particle ADSR envelope controlling fade-in and fade-out, with Bloom for glow.",
+        "tags": [
+            "particles",
+            "envelope",
+            "animation",
+            "bloom",
+            "demo"
+        ],
+        "difficulty": "beginner",
+        "domains": [
+            "gpu"
+        ],
+        "requires_packages": [],
+        "featured_rank": 30
+    },
     "nodes": {
         "bloom": {
             "type": "Bloom",

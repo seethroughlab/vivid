@@ -1,130 +1,132 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "av_demo",
-    "title": "Audio-Visual Sync",
-    "description": "A shared Clock drives both a visual noise texture and an audio oscillator sweep, showing how audio and video stay in sync.",
-    "tags": [
-      "av",
-      "demo"
+    "schema_version": 1,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "av_demo",
+        "title": "Audio-Visual Sync",
+        "description": "A shared Clock drives both a visual noise texture and an audio oscillator sweep, showing how audio and video stay in sync.",
+        "tags": [
+            "audio-visual",
+            "intro",
+            "sync",
+            "demo"
+        ],
+        "difficulty": "beginner",
+        "domains": [
+            "audio",
+            "gpu",
+            "control"
+        ],
+        "requires_packages": [],
+        "featured_rank": 0
+    },
+    "nodes": {
+        "clock1": {
+            "type": "ClockFr",
+            "params": {
+                "bpm": 120.0
+            }
+        },
+        "lfo_vis": {
+            "type": "LfoFr",
+            "params": {
+                "amplitude": 3.0,
+                "offset": 5.0
+            }
+        },
+        "lfo_aud": {
+            "type": "LfoFr",
+            "params": {
+                "amplitude": 100.0,
+                "offset": 330.0
+            }
+        },
+        "noise1": {
+            "type": "NoiseTexture",
+            "params": {
+                "speed": 1.0
+            }
+        },
+        "osc1": {
+            "type": "Oscillator",
+            "params": {
+                "frequency": 330.0,
+                "amplitude": 0.5
+            }
+        },
+        "gain1": {
+            "type": "Gain",
+            "params": {
+                "gain": 0.3
+            }
+        },
+        "out1": {
+            "type": "audio_out",
+            "params": {}
+        },
+        "vout": {
+            "type": "video_out",
+            "params": {}
+        }
+    },
+    "connections": [
+        {
+            "from": "clock1/beat_phase",
+            "to": "lfo_vis/beat_phase"
+        },
+        {
+            "from": "clock1/beat_phase",
+            "to": "lfo_aud/beat_phase"
+        },
+        {
+            "from": "lfo_vis/value",
+            "to": "noise1/scale"
+        },
+        {
+            "from": "lfo_aud/value",
+            "to": "osc1/frequency",
+            "bridge": "hold"
+        },
+        {
+            "from": "osc1/output",
+            "to": "gain1/input"
+        },
+        {
+            "from": "gain1/output",
+            "to": "out1/input"
+        },
+        {
+            "from": "noise1/texture",
+            "to": "vout/input"
+        }
     ],
-    "difficulty": "beginner",
-    "domains": [
-      "audio",
-      "gpu",
-      "control"
-    ],
-    "requires_packages": [],
-    "featured_rank": 0
-  },
-  "nodes": {
-    "clock1": {
-      "type": "ClockFr",
-      "params": {
-        "bpm": 120.0
-      }
-    },
-    "lfo_vis": {
-      "type": "LfoFr",
-      "params": {
-        "amplitude": 3.0,
-        "offset": 5.0
-      }
-    },
-    "lfo_aud": {
-      "type": "LfoFr",
-      "params": {
-        "amplitude": 100.0,
-        "offset": 330.0
-      }
-    },
-    "noise1": {
-      "type": "NoiseTexture",
-      "params": {
-        "speed": 1.0
-      }
-    },
-    "osc1": {
-      "type": "Oscillator",
-      "params": {
-        "frequency": 330.0,
-        "amplitude": 0.5
-      }
-    },
-    "gain1": {
-      "type": "Gain",
-      "params": {
-        "gain": 0.3
-      }
-    },
-    "out1": {
-      "type": "audio_out",
-      "params": {}
-    },
-    "vout": {
-      "type": "video_out",
-      "params": {}
-    }
-  },
-  "connections": [
-    {
-      "from": "clock1/beat_phase",
-      "to": "lfo_vis/beat_phase"
-    },
-    {
-      "from": "clock1/beat_phase",
-      "to": "lfo_aud/beat_phase"
-    },
-    {
-      "from": "lfo_vis/value",
-      "to": "noise1/scale"
-    },
-    {
-      "from": "lfo_aud/value",
-      "to": "osc1/frequency",
-      "bridge": "hold"
-    },
-    {
-      "from": "osc1/output",
-      "to": "gain1/input"
-    },
-    {
-      "from": "gain1/output",
-      "to": "out1/input"
-    },
-    {
-      "from": "noise1/texture",
-      "to": "vout/input"
-    }
-  ],
-  "sticky_notes": [
-    {
-      "id": "note_1",
-      "text": "**Shared Clock** drives both domains One Clock syncs audio and visuals via two separate LFOs",
-      "x": -100.0,
-      "y": -80.0,
-      "width": 260.0,
-      "height": 80.0,
-      "color": 0
-    },
-    {
-      "id": "note_2",
-      "text": "**Visual path**: LFO modulates noise texture scale",
-      "x": 250.0,
-      "y": -80.0,
-      "width": 220.0,
-      "height": 60.0,
-      "color": 3
-    },
-    {
-      "id": "note_3",
-      "text": "**Audio path**: LFO sweeps oscillator frequency 230\u2013430 Hz",
-      "x": 250.0,
-      "y": 120.0,
-      "width": 230.0,
-      "height": 60.0,
-      "color": 1
-    }
-  ]
+    "sticky_notes": [
+        {
+            "id": "note_1",
+            "text": "**Shared Clock** drives both domains One Clock syncs audio and visuals via two separate LFOs",
+            "x": -100.0,
+            "y": -80.0,
+            "width": 260.0,
+            "height": 80.0,
+            "color": 0
+        },
+        {
+            "id": "note_2",
+            "text": "**Visual path**: LFO modulates noise texture scale",
+            "x": 250.0,
+            "y": -80.0,
+            "width": 220.0,
+            "height": 60.0,
+            "color": 3
+        },
+        {
+            "id": "note_3",
+            "text": "**Audio path**: LFO sweeps oscillator frequency 230\u2013430 Hz",
+            "x": 250.0,
+            "y": 120.0,
+            "width": 230.0,
+            "height": 60.0,
+            "color": 1
+        }
+    ]
 }
