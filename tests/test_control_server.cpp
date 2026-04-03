@@ -682,6 +682,197 @@ VIVID_REGISTER(TestOp)
             }
         }
 
+        // get_graph_load_diagnostics
+        std::fprintf(stderr, "\n--- get_graph_load_diagnostics ---\n");
+        {
+            auto r = post(client, base_url, "get_graph_load_diagnostics");
+            check(r.ok, "get_graph_load_diagnostics ok");
+            if (!r.j.is_null()) {
+                check(r.j.contains("result") && r.j["result"].is_object(),
+                      "get_graph_load_diagnostics has result");
+                auto& result = r.j["result"];
+                check(result.contains("graph_load_diagnostics") && result["graph_load_diagnostics"].is_array(),
+                      "result has graph_load_diagnostics array");
+                check(result["graph_load_diagnostics"].size() == 0,
+                      "healthy graph has empty load diagnostics");
+            }
+        }
+
+        // Extended checks: comparison operators
+        std::fprintf(stderr, "\n--- checks: comparison operators ---\n");
+        {
+            auto r = post(client, base_url, "run_checks",
+                R"({"checks":[
+                    {"id":"neq","type":"state_check","path":"graph.node_count","op":"!=","value":99},
+                    {"id":"gt","type":"state_check","path":"graph.node_count","op":">","value":1},
+                    {"id":"gte","type":"state_check","path":"graph.node_count","op":">=","value":2},
+                    {"id":"lt","type":"state_check","path":"graph.node_count","op":"<","value":99},
+                    {"id":"lte","type":"state_check","path":"graph.node_count","op":"<=","value":2}
+                ]})");
+            check(r.ok, "run_checks comparison ops ok");
+            if (!r.j.is_null()) {
+                auto& result = r.j["result"];
+                check(result["all_passed"].get<bool>(), "all comparison ops pass");
+                check(result["results"].size() == 5, "5 comparison results");
+            }
+        }
+
+        // Extended checks: between operator
+        {
+            auto r = post(client, base_url, "run_checks",
+                R"({"checks":[
+                    {"id":"a_between_pass","type":"state_check","path":"graph.node_count","op":"between","value":[1,5]},
+                    {"id":"b_between_fail","type":"state_check","path":"graph.node_count","op":"between","value":[10,20]}
+                ]})");
+            check(r.ok, "run_checks between ok");
+            if (!r.j.is_null()) {
+                auto& result = r.j["result"];
+                check(!result["all_passed"].get<bool>(), "between: not all passed (one should fail)");
+                auto& rows = result["results"];
+                // Results sorted by id: a_between_pass, b_between_fail
+                if (rows.is_array() && rows.size() == 2) {
+                    check(rows[0]["passed"].get<bool>(), "between [1,5] passes for node_count=2");
+                    check(!rows[1]["passed"].get<bool>(), "between [10,20] fails for node_count=2");
+                }
+            }
+        }
+
+        // Extended checks: exists / not_exists
+        {
+            auto r = post(client, base_url, "run_checks",
+                R"({"checks":[
+                    {"id":"a_exists_ok","type":"state_check","path":"nodes.a.kind","op":"exists"},
+                    {"id":"b_not_exists_ok","type":"state_check","path":"nodes.zzz.kind","op":"not_exists"},
+                    {"id":"c_exists_fail","type":"state_check","path":"nodes.zzz.kind","op":"exists"}
+                ]})");
+            check(r.ok, "run_checks exists/not_exists ok");
+            if (!r.j.is_null()) {
+                auto& rows = r.j["result"]["results"];
+                // Results sorted by id: a_exists_ok, b_not_exists_ok, c_exists_fail
+                if (rows.is_array() && rows.size() == 3) {
+                    check(rows[0]["passed"].get<bool>(), "exists on nodes.a.kind passes");
+                    check(rows[1]["passed"].get<bool>(), "not_exists on nodes.zzz.kind passes");
+                    check(!rows[2]["passed"].get<bool>(), "exists on nodes.zzz.kind fails");
+                }
+            }
+        }
+
+        // Extended checks: state paths
+        std::fprintf(stderr, "\n--- checks: state paths ---\n");
+        {
+            auto r = post(client, base_url, "run_checks",
+                R"({"checks":[
+                    {"id":"kind","type":"state_check","path":"nodes.a.kind","op":"==","value":"control"},
+                    {"id":"health_err","type":"state_check","path":"nodes.a.health.errored","op":"==","value":false},
+                    {"id":"health_miss","type":"state_check","path":"nodes.a.health.missing_operator","op":"==","value":false},
+                    {"id":"param_val","type":"state_check","path":"nodes.a.params.scale","op":"==","value":3.0},
+                    {"id":"output_val","type":"state_check","path":"nodes.a.outputs.out.scalar","op":"==","value":6.0},
+                    {"id":"a_out_wires","type":"state_check","path":"nodes.a.outgoing_wires","op":"==","value":1},
+                    {"id":"b_in_wires","type":"state_check","path":"nodes.b.incoming_wires","op":"==","value":1}
+                ]})");
+            check(r.ok, "run_checks state paths ok");
+            if (!r.j.is_null()) {
+                auto& result = r.j["result"];
+                check(result["all_passed"].get<bool>(), "all state path checks pass");
+                check(result["results"].size() == 7, "7 state path results");
+            }
+        }
+
+        // Extended checks: tolerance
+        {
+            auto r = post(client, base_url, "run_checks",
+                R"({"checks":[
+                    {"id":"a_tol_pass","type":"state_check","path":"nodes.a.params.scale","op":"==","value":3.01,"tolerance":0.1},
+                    {"id":"b_tol_fail","type":"state_check","path":"nodes.a.params.scale","op":"==","value":4.0,"tolerance":0.1}
+                ]})");
+            check(r.ok, "run_checks tolerance ok");
+            if (!r.j.is_null()) {
+                auto& rows = r.j["result"]["results"];
+                // Results sorted by id: a_tol_pass, b_tol_fail
+                if (rows.is_array() && rows.size() == 2) {
+                    check(rows[0]["passed"].get<bool>(), "tolerance 0.1: 3.0 == 3.01 passes");
+                    check(!rows[1]["passed"].get<bool>(), "tolerance 0.1: 3.0 == 4.0 fails");
+                }
+            }
+        }
+
+        // Extended checks: when guards
+        {
+            auto r = post(client, base_url, "run_checks",
+                R"({"checks":[
+                    {"id":"guard_pass","type":"state_check","path":"nodes.a.params.scale","op":"==","value":3.0,
+                     "when":{"path":"nodes.a.kind","op":"==","value":"control"}},
+                    {"id":"guard_skip","type":"state_check","path":"nodes.a.params.scale","op":"==","value":3.0,
+                     "when":{"path":"nodes.a.kind","op":"==","value":"audio"}}
+                ]})");
+            check(r.ok, "run_checks when guards ok");
+            if (!r.j.is_null()) {
+                auto& rows = r.j["result"]["results"];
+                if (rows.is_array() && rows.size() == 2) {
+                    check(rows[0]["passed"].get<bool>(), "guard met: check passes");
+                    check(!rows[0].value("skipped", true), "guard met: check not skipped");
+                    check(rows[1].value("skipped", false), "guard not met: check skipped");
+                }
+            }
+        }
+
+        // Extended checks: failing checks with severity reporting
+        std::fprintf(stderr, "\n--- checks: failure reporting ---\n");
+        {
+            auto r = post(client, base_url, "run_checks",
+                R"({"checks":[
+                    {"id":"crit_fail","type":"state_check","path":"graph.node_count","op":"==","value":999,"severity":"critical","message":"custom failure msg"},
+                    {"id":"warn_fail","type":"state_check","path":"graph.node_count","op":"==","value":999,"severity":"warning"}
+                ]})");
+            check(r.ok, "run_checks failure reporting ok");
+            if (!r.j.is_null()) {
+                auto& result = r.j["result"];
+                check(!result["all_passed"].get<bool>(), "all_passed=false when checks fail");
+                check(!result["all_critical_passed"].get<bool>(), "all_critical_passed=false when critical fails");
+                auto& summary = result["summary"];
+                check(summary["critical_failed"].get<int>() == 1, "critical_failed=1");
+                check(summary["warning_failed"].get<int>() == 1, "warning_failed=1");
+                auto& rows = result["results"];
+                if (rows.is_array() && rows.size() == 2) {
+                    check(!rows[0]["passed"].get<bool>(), "critical check reports passed=false");
+                    check(rows[0]["severity"].get<std::string>() == "critical", "result has severity=critical");
+                    check(rows[0]["message"].get<std::string>() == "custom failure msg", "result has custom message");
+                }
+            }
+        }
+        // Warning-only failure preserves all_critical_passed
+        {
+            auto r = post(client, base_url, "run_checks",
+                R"({"checks":[
+                    {"id":"warn_only","type":"state_check","path":"graph.node_count","op":"==","value":999,"severity":"warning"}
+                ]})");
+            check(r.ok, "run_checks warning-only failure ok");
+            if (!r.j.is_null()) {
+                auto& result = r.j["result"];
+                check(!result["all_passed"].get<bool>(), "all_passed=false for warning failure");
+                check(result["all_critical_passed"].get<bool>(), "all_critical_passed=true when only warning fails");
+            }
+        }
+
+        // Extended checks: diagnostic_check finding_present
+        // (missing_fixture was removed, so use finding_absent for isolated_node on current graph)
+        // We'll test count_by_severity ops on the healthy graph
+        std::fprintf(stderr, "\n--- checks: diagnostic_check ops ---\n");
+        {
+            auto r = post(client, base_url, "run_checks",
+                R"({"checks":[
+                    {"id":"count_eq_zero","type":"diagnostic_check","op":"count_by_severity_eq","check_severity":"critical","value":0},
+                    {"id":"count_lte","type":"diagnostic_check","op":"count_by_severity_lte","check_severity":"warning","value":100},
+                    {"id":"count_gte","type":"diagnostic_check","op":"count_by_severity_gte","check_severity":"warning","value":0},
+                    {"id":"finding_absent_ok","type":"diagnostic_check","op":"finding_absent","finding_id":"missing_operator_type"}
+                ]})");
+            check(r.ok, "run_checks diagnostic ops ok");
+            if (!r.j.is_null()) {
+                auto& result = r.j["result"];
+                check(result["all_passed"].get<bool>(), "all diagnostic checks pass on healthy graph");
+            }
+        }
+
         // Phase 2: list_types
         std::fprintf(stderr, "\n--- list_types ---\n");
         {
@@ -861,6 +1052,34 @@ VIVID_REGISTER(TestOp)
             }
         }
 
+        // operator_map
+        std::fprintf(stderr, "\n--- operator_map ---\n");
+        {
+            auto r = post(client, base_url, "operator_map");
+            check(r.ok, "operator_map ok");
+            if (!r.j.is_null()) {
+                check(r.j.contains("result") && r.j["result"].is_array(),
+                      "operator_map result is array");
+                auto& result = r.j["result"];
+                bool found_test_op = false;
+                bool found_abi_mismatch = false;
+                for (const auto& entry : result) {
+                    check(entry.contains("type") && entry["type"].is_string(),
+                          "operator_map entry has type");
+                    check(entry.contains("status") && entry["status"].is_string(),
+                          "operator_map entry has status");
+                    if (entry["type"].get<std::string>() == "TestOp" &&
+                        entry["status"].get<std::string>() == "loaded")
+                        found_test_op = true;
+                    if (entry.contains("status") && entry["status"].is_string() &&
+                        entry["status"].get<std::string>() == "abi_mismatch")
+                        found_abi_mismatch = true;
+                }
+                check(found_test_op, "operator_map contains TestOp with status=loaded");
+                check(found_abi_mismatch, "operator_map contains abi_mismatch entry");
+            }
+        }
+
         // Phase 3: set_param — set a/scale=9
         std::fprintf(stderr, "\n--- set_param ---\n");
         {
@@ -906,6 +1125,55 @@ VIVID_REGISTER(TestOp)
                           std::fabs(rg2.j["value"].get<double>() - 9.0) < 1e-4,
                       "value restored to 9.0 after redo");
             }
+        }
+
+        // set_string_param
+        std::fprintf(stderr, "\n--- set_string_param ---\n");
+        {
+            // TestOp has no string/file params, so this should fail
+            auto r = post(client, base_url, "set_string_param",
+                R"({"node_id":"a","param":"scale","value":"hello"})");
+            check(!r.ok, "set_string_param on float param fails");
+
+            auto r2 = post(client, base_url, "set_string_param",
+                R"({"node_id":"nonexistent","param":"x","value":"y"})");
+            check(!r2.ok, "set_string_param on nonexistent node fails");
+
+            auto r3 = post(client, base_url, "set_string_param", R"({})");
+            check(!r3.ok, "set_string_param with empty body fails");
+        }
+
+        // sample_node_outputs
+        std::fprintf(stderr, "\n--- sample_node_outputs ---\n");
+        {
+            auto r = post(client, base_url, "sample_node_outputs",
+                R"({"node_id":"a","duration_seconds":0.05,"interval_ms":10})");
+            check(r.ok, "sample_node_outputs ok");
+            if (!r.j.is_null()) {
+                auto& result = r.j["result"];
+                check(result["node_id"].get<std::string>() == "a", "sample result node_id=a");
+                check(result["type"].get<std::string>() == "TestOp", "sample result type=TestOp");
+                check(result["kind"].get<std::string>() == "control", "sample result kind=control");
+                check(result["sample_count"].get<int>() >= 1, "sample_count >= 1");
+                check(result["samples"].is_array() && result["samples"].size() >= 1,
+                      "samples array non-empty");
+                if (result["samples"].is_array() && result["samples"].size() > 0) {
+                    auto& s0 = result["samples"][0];
+                    check(s0.contains("time_seconds") && s0["time_seconds"].is_number(),
+                          "sample has time_seconds");
+                    check(s0.contains("outputs") && s0["outputs"].is_object(),
+                          "sample has outputs object");
+                    if (s0["outputs"].contains("out")) {
+                        check(s0["outputs"]["out"].contains("scalar"),
+                              "sample output has scalar field");
+                    }
+                }
+            }
+
+            // Error: nonexistent node
+            auto r2 = post(client, base_url, "sample_node_outputs",
+                R"({"node_id":"nonexistent","duration_seconds":0.01,"interval_ms":10})");
+            check(!r2.ok, "sample_node_outputs on nonexistent node fails");
         }
 
         // Phase 5: add_node — add TestOp as "c"
@@ -2010,6 +2278,179 @@ VIVID_REGISTER(TestOp)
             auto res = post(client, base_url, "set_resolution",
                 R"({"node_id":"test_ep","width":1920,"height":1080})");
             check(res.ok, "set_resolution ok");
+        }
+
+        // =============================================================
+        // set_analysis
+        // =============================================================
+        {
+            std::fprintf(stderr, "\n  set_analysis\n");
+
+            auto r1 = post(client, base_url, "set_analysis", R"({"enabled":true})");
+            check(r1.ok, "set_analysis enabled=true ok");
+            if (!r1.j.is_null()) {
+                check(r1.j.value("message", "").find("enabled") != std::string::npos,
+                      "set_analysis response mentions enabled");
+            }
+
+            auto r2 = post(client, base_url, "set_analysis", R"({"enabled":false})");
+            check(r2.ok, "set_analysis enabled=false ok");
+
+            auto r3 = post(client, base_url, "set_analysis", R"({})");
+            check(!r3.ok, "set_analysis missing enabled fails");
+
+            auto r4 = post(client, base_url, "set_analysis", R"({"enabled":"yes"})");
+            check(!r4.ok, "set_analysis non-boolean enabled fails");
+        }
+
+        // =============================================================
+        // set_connection_remap
+        // =============================================================
+        {
+            std::fprintf(stderr, "\n  set_connection_remap\n");
+
+            // Add a second node and connect to test_ep so we have a connection to remap
+            auto add_remap_dst = post(client, base_url, "add_node",
+                R"({"type":"TestOp","node_id":"remap_dst"})");
+            check(add_remap_dst.ok, "add_node remap_dst ok");
+
+            auto conn = post(client, base_url, "connect",
+                R"({"from_addr":"test_ep/out","to_addr":"remap_dst/scale"})");
+            check(conn.ok, "connect test_ep/out -> remap_dst/scale ok");
+
+            auto remap = post(client, base_url, "set_connection_remap",
+                R"({"from_addr":"test_ep/out","to_addr":"remap_dst/scale","from_min":0.0,"from_max":1.0,"to_min":0.0,"to_max":10.0,"clamp":true})");
+            check(remap.ok, "set_connection_remap ok");
+
+            // Error: non-existent connection
+            auto r2 = post(client, base_url, "set_connection_remap",
+                R"({"from_addr":"nonexist/out","to_addr":"nonexist/in","from_min":0,"from_max":1,"to_min":0,"to_max":1})");
+            check(!r2.ok, "set_connection_remap on nonexistent connection fails");
+
+            // Clean up
+            post(client, base_url, "disconnect",
+                R"({"from_addr":"test_ep/out","to_addr":"remap_dst/scale"})");
+            post(client, base_url, "remove_node", R"({"node_id":"remap_dst"})");
+        }
+
+        // =============================================================
+        // MIDI mapping lifecycle
+        // =============================================================
+        {
+            std::fprintf(stderr, "\n  midi mapping lifecycle\n");
+
+            auto add = post(client, base_url, "add_midi_mapping",
+                R"({"node_id":"test_ep","param":"scale","cc":1,"channel":1,"range_min":0.0,"range_max":1.0})");
+            check(add.ok, "add_midi_mapping ok");
+
+            auto update = post(client, base_url, "update_midi_mapping",
+                R"({"node_id":"test_ep","param":"scale","range_min":0.2,"range_max":0.8})");
+            check(update.ok, "update_midi_mapping ok");
+
+            auto remove = post(client, base_url, "remove_midi_mapping",
+                R"({"node_id":"test_ep","param":"scale"})");
+            check(remove.ok, "remove_midi_mapping ok");
+
+            // Remove again should fail
+            auto remove2 = post(client, base_url, "remove_midi_mapping",
+                R"({"node_id":"test_ep","param":"scale"})");
+            check(!remove2.ok, "remove_midi_mapping already removed fails");
+
+            // Update non-existent should fail
+            auto update2 = post(client, base_url, "update_midi_mapping",
+                R"({"node_id":"test_ep","param":"scale","range_min":0.0,"range_max":1.0})");
+            check(!update2.ok, "update_midi_mapping non-existent fails");
+        }
+
+        // =============================================================
+        // State machine presets
+        // =============================================================
+        {
+            std::fprintf(stderr, "\n  state machine presets\n");
+
+            auto set1 = post(client, base_url, "set_state_preset",
+                R"({"sm_node":"test_ep","state_idx":0,"target_node":"b","name":"sp1"})");
+            check(set1.ok, "set_state_preset ok");
+
+            auto inspect = post(client, base_url, "inspect_state_presets",
+                R"({"sm_node":"test_ep"})");
+            check(inspect.ok, "inspect_state_presets ok");
+
+            // Invalid state_idx (must be 0-7)
+            auto set_bad = post(client, base_url, "set_state_preset",
+                R"({"sm_node":"test_ep","state_idx":8,"target_node":"b","name":"sp2"})");
+            check(!set_bad.ok, "set_state_preset state_idx=8 fails");
+
+            auto rem = post(client, base_url, "remove_state_preset",
+                R"({"sm_node":"test_ep","state_idx":0,"target_node":"b"})");
+            check(rem.ok, "remove_state_preset ok");
+
+            // Set again and clear
+            auto set2 = post(client, base_url, "set_state_preset",
+                R"({"sm_node":"test_ep","state_idx":1,"target_node":"b","name":"sp3"})");
+            check(set2.ok, "set_state_preset state_idx=1 ok");
+
+            auto clear = post(client, base_url, "clear_state_presets",
+                R"({"sm_node":"test_ep"})");
+            check(clear.ok, "clear_state_presets ok");
+
+            // Inspect after clear should show nothing
+            auto inspect2 = post(client, base_url, "inspect_state_presets",
+                R"({"sm_node":"test_ep"})");
+            check(inspect2.ok, "inspect_state_presets after clear ok");
+        }
+
+        // =============================================================
+        // get_discovery_report
+        // =============================================================
+        {
+            std::fprintf(stderr, "\n  get_discovery_report\n");
+
+            auto r = post(client, base_url, "get_discovery_report");
+            check(r.ok, "get_discovery_report ok");
+            if (!r.j.is_null()) {
+                check(r.j.contains("result") && r.j["result"].is_object(),
+                      "get_discovery_report has result");
+                auto& result = r.j["result"];
+                check(result.contains("scopes") && result["scopes"].is_array(),
+                      "discovery_report has scopes array");
+                check(result.contains("loaded") && result["loaded"].is_array(),
+                      "discovery_report has loaded array");
+                check(result.contains("skipped") && result["skipped"].is_array(),
+                      "discovery_report has skipped array");
+            }
+        }
+
+        // =============================================================
+        // new_graph — MUST BE LAST (destroys graph state)
+        // =============================================================
+        {
+            std::fprintf(stderr, "\n  new_graph\n");
+
+            // Write minimal default_graph.json so new_graph has a template
+            std::string config_dir = test_home + "/Library/Application Support/Vivid";
+            std::filesystem::create_directories(config_dir);
+            {
+                std::ofstream ofs(config_dir + "/default_graph.json");
+                ofs << R"({"nodes":{"default_a":{"type":"TestOp","params":{"scale":1.0}}},"connections":[]})";
+            }
+
+            auto r = post(client, base_url, "new_graph");
+            check(r.ok, "new_graph ok");
+
+            // Verify graph was reset
+            auto ig = post(client, base_url, "inspect_graph");
+            check(ig.ok, "inspect_graph after new_graph ok");
+            if (!ig.j.is_null()) {
+                auto& result = ig.j["result"];
+                auto& nodes = result["nodes"];
+                check(nodes.is_array() && nodes.size() == 1,
+                      "new_graph produced 1-node default graph");
+                if (nodes.is_array() && nodes.size() == 1) {
+                    check(nodes[0]["id"].get<std::string>() == "default_a",
+                          "new_graph default node is default_a");
+                }
+            }
         }
 
         done.store(true);
