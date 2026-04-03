@@ -40,8 +40,8 @@ int main(int argc, char* argv[]) {
     // ==================================================================
     std::fprintf(stderr, "\n--- Case A: scaffold to project package ---\n");
     {
-        fs::path sandbox = fs::path("/tmp/vivid_team_regression_a");
-        fs::remove_all(sandbox);
+        ScopedTempDir sandbox_a("team_reg_a");
+        fs::path sandbox = sandbox_a.path;
 
         // Create core_root with operators/control/ tree and core CMakeLists.txt
         fs::path core_root = sandbox / "core_root";
@@ -90,7 +90,7 @@ int main(int argc, char* argv[]) {
         check(!fs::exists(core_root / "operators" / "control" / "team_op"),
               "Case A: no team_op dir created in core operators");
 
-        fs::remove_all(sandbox);
+        // ScopedTempDir handles cleanup
     }
 
     // ==================================================================
@@ -98,8 +98,8 @@ int main(int argc, char* argv[]) {
     // ==================================================================
     std::fprintf(stderr, "\n--- Case C: fallback-to-core, no project package ---\n");
     {
-        fs::path sandbox = fs::path("/tmp/vivid_team_regression_c");
-        fs::remove_all(sandbox);
+        ScopedTempDir sandbox_c("team_reg_c");
+        fs::path sandbox = sandbox_c.path;
 
         fs::path core_root = sandbox / "core_root";
         fs::create_directories(core_root / "operators" / "control");
@@ -132,7 +132,7 @@ int main(int argc, char* argv[]) {
         check(fs::exists(core_root / "operators" / "control" / "solo_op" / "solo_op.cpp"),
               "Case C: operator landed in core_root/operators/control/solo_op/");
 
-        fs::remove_all(sandbox);
+        // ScopedTempDir handles cleanup
     }
 
     // ==================================================================

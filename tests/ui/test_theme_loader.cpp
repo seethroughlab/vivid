@@ -52,17 +52,17 @@ struct TempHome {
     TempHome() {
         const char* h = std::getenv("HOME");
         if (h) old_home = h;
-        tmp_dir = "/tmp/vivid_test_theme_loader";
-        fs::remove_all(tmp_dir);
-        fs::create_directories(tmp_dir);
+        scoped_dir_ = std::make_unique<ScopedTempDir>("theme_loader");
+        tmp_dir = scoped_dir_->str();
         setenv("HOME", tmp_dir.c_str(), 1);
     }
 
     ~TempHome() {
         if (!old_home.empty())
             setenv("HOME", old_home.c_str(), 1);
-        fs::remove_all(tmp_dir);
     }
+
+    std::unique_ptr<ScopedTempDir> scoped_dir_;
 
     std::string themes_dir() const {
 #if defined(__APPLE__)

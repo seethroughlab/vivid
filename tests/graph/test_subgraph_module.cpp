@@ -9,6 +9,8 @@
 #include <cstring>
 #include "test_helpers.h"
 
+static ScopedTempDir* g_tmp = nullptr;
+
 // ---------------------------------------------------------------------------
 // Test JSON strings
 // ---------------------------------------------------------------------------
@@ -73,7 +75,7 @@ static void test_parse_simple_module() {
     std::fprintf(stderr, "\n--- parse: simple synth module ---\n");
 
     vivid::SubgraphModuleRegistry registry;
-    std::string tmp_path = "/tmp/test_synth.vivid-module.json";
+    std::string tmp_path = (g_tmp->path / "test_synth.vivid-module.json").string();
     {
         FILE* f = std::fopen(tmp_path.c_str(), "w");
         std::fputs(kSimpleModule, f);
@@ -119,14 +121,13 @@ static void test_parse_simple_module() {
     check(mod->find_param("volume") != nullptr, "find_param works");
     check(mod->find_preset("Bright") != nullptr, "find_preset works");
 
-    std::remove(tmp_path.c_str());
 }
 
 static void test_parse_effects_module() {
     std::fprintf(stderr, "\n--- parse: effects chain module ---\n");
 
     vivid::SubgraphModuleRegistry registry;
-    std::string tmp_path = "/tmp/test_fx.vivid-module.json";
+    std::string tmp_path = (g_tmp->path / "test_fx.vivid-module.json").string();
     {
         FILE* f = std::fopen(tmp_path.c_str(), "w");
         std::fputs(kEffectsModule, f);
@@ -144,7 +145,6 @@ static void test_parse_effects_module() {
     check(mod->ports[1].type == VIVID_PORT_AUDIO_BUFFER, "output port is audio");
     check(mod->ports[1].direction == VIVID_PORT_OUTPUT, "output port direction");
 
-    std::remove(tmp_path.c_str());
 }
 
 // ---------------------------------------------------------------------------
@@ -156,7 +156,7 @@ static void test_flatten_single_instance() {
 
     // Register the module
     vivid::SubgraphModuleRegistry registry;
-    std::string tmp_path = "/tmp/test_flatten.vivid-module.json";
+    std::string tmp_path = (g_tmp->path / "test_flatten.vivid-module.json").string();
     {
         FILE* f = std::fopen(tmp_path.c_str(), "w");
         std::fputs(kSimpleModule, f);
@@ -230,14 +230,13 @@ static void test_flatten_single_instance() {
     check(has_conn("synth1.__mixer", "output", "out", "input"),
           "boundary output rewritten (mixer/output -> out/input)");
 
-    std::remove(tmp_path.c_str());
 }
 
 static void test_flatten_multiple_instances() {
     std::fprintf(stderr, "\n--- flatten: multiple instances of same module ---\n");
 
     vivid::SubgraphModuleRegistry registry;
-    std::string tmp_path = "/tmp/test_multi.vivid-module.json";
+    std::string tmp_path = (g_tmp->path / "test_multi.vivid-module.json").string();
     {
         FILE* f = std::fopen(tmp_path.c_str(), "w");
         std::fputs(kSimpleModule, f);
@@ -275,7 +274,6 @@ static void test_flatten_multiple_instances() {
     // Total nodes: 2 instances * 2 internal nodes + 1 external = 5
     check(flat.nodes().size() == 5, "5 total nodes after flattening");
 
-    std::remove(tmp_path.c_str());
 }
 
 static void test_flatten_no_modules() {
@@ -300,7 +298,7 @@ static void test_flatten_effects_chain() {
     std::fprintf(stderr, "\n--- flatten: effects chain (audio in -> audio out) ---\n");
 
     vivid::SubgraphModuleRegistry registry;
-    std::string tmp_path = "/tmp/test_fx_flatten.vivid-module.json";
+    std::string tmp_path = (g_tmp->path / "test_fx_flatten.vivid-module.json").string();
     {
         FILE* f = std::fopen(tmp_path.c_str(), "w");
         std::fputs(kEffectsModule, f);
@@ -344,7 +342,6 @@ static void test_flatten_effects_chain() {
     check(has_conn("fx.__reverb", "output", "out", "input"),
           "audio output rewritten from internal reverb");
 
-    std::remove(tmp_path.c_str());
 }
 
 static void test_registry_type_names() {
@@ -352,8 +349,8 @@ static void test_registry_type_names() {
 
     vivid::SubgraphModuleRegistry registry;
 
-    std::string tmp1 = "/tmp/test_type1.vivid-module.json";
-    std::string tmp2 = "/tmp/test_type2.vivid-module.json";
+    std::string tmp1 = (g_tmp->path / "test_type1.vivid-module.json").string();
+    std::string tmp2 = (g_tmp->path / "test_type2.vivid-module.json").string();
     {
         FILE* f = std::fopen(tmp1.c_str(), "w");
         std::fputs(kSimpleModule, f);
@@ -374,15 +371,13 @@ static void test_registry_type_names() {
     check(names[0] == "FXChain", "first type alphabetically");
     check(names[1] == "TestSynth", "second type alphabetically");
 
-    std::remove(tmp1.c_str());
-    std::remove(tmp2.c_str());
 }
 
 static void test_flatten_midi_mapping_remap() {
     std::fprintf(stderr, "\n--- flatten: MIDI mapping remapped through param binding ---\n");
 
     vivid::SubgraphModuleRegistry registry;
-    std::string tmp_path = "/tmp/test_midi.vivid-module.json";
+    std::string tmp_path = (g_tmp->path / "test_midi.vivid-module.json").string();
     {
         FILE* f = std::fopen(tmp_path.c_str(), "w");
         std::fputs(kSimpleModule, f);
@@ -416,14 +411,13 @@ static void test_flatten_midi_mapping_remap() {
     check(found_remapped, "module MIDI mapping remapped to synth1.__mixer/gain");
     check(found_external, "external MIDI mapping preserved unchanged");
 
-    std::remove(tmp_path.c_str());
 }
 
 static void test_flatten_variation_remap() {
     std::fprintf(stderr, "\n--- flatten: variation params remapped through param binding ---\n");
 
     vivid::SubgraphModuleRegistry registry;
-    std::string tmp_path = "/tmp/test_var.vivid-module.json";
+    std::string tmp_path = (g_tmp->path / "test_var.vivid-module.json").string();
     {
         FILE* f = std::fopen(tmp_path.c_str(), "w");
         std::fputs(kSimpleModule, f);
@@ -461,15 +455,14 @@ static void test_flatten_variation_remap() {
     check(v.params.count("out") == 1, "external node preserved");
     check(v.params.at("out").at("master_vol") == 0.8f, "external param unchanged");
 
-    std::remove(tmp_path.c_str());
 }
 
 static void test_flatten_cross_instance_connection() {
     std::fprintf(stderr, "\n--- flatten: connection between two module instances ---\n");
 
     vivid::SubgraphModuleRegistry registry;
-    std::string tmp1 = "/tmp/test_cross1.vivid-module.json";
-    std::string tmp2 = "/tmp/test_cross2.vivid-module.json";
+    std::string tmp1 = (g_tmp->path / "test_cross1.vivid-module.json").string();
+    std::string tmp2 = (g_tmp->path / "test_cross2.vivid-module.json").string();
     {
         FILE* f = std::fopen(tmp1.c_str(), "w");
         std::fputs(kSimpleModule, f);
@@ -513,8 +506,6 @@ static void test_flatten_cross_instance_connection() {
     check(has_conn("fx1.__reverb", "output", "out", "input"),
           "fx output -> audio_out rewritten");
 
-    std::remove(tmp1.c_str());
-    std::remove(tmp2.c_str());
 }
 
 // ---------------------------------------------------------------------------
@@ -522,6 +513,8 @@ static void test_flatten_cross_instance_connection() {
 // ---------------------------------------------------------------------------
 
 int main() {
+    ScopedTempDir tmp("subgraph");
+    g_tmp = &tmp;
     std::fprintf(stderr, "=== test_subgraph_module ===\n");
 
     test_parse_simple_module();
