@@ -1,0 +1,519 @@
+#include "runtime/main_helpers.h"
+#include "runtime/file_watcher.h"
+#include "runtime/hot_reload.h"
+#include "runtime/runtime_core.h"
+#include "runtime/operator_registry.h"
+#include "runtime/audio_engine.h"
+#include "runtime/operator_info_cache.h"
+#include "runtime/build_console.h"
+#include "runtime/compiled_graph.h"
+#include "runtime/gpu_context.h"
+#include "runtime/package_manager.h"
+#include "ui/node_graph.h"
+#include "ui/thumbnail_cache.h"
+#include "ui/renderer_2d.h"
+#include "operator_api/gpu_operator.h"
+#include "operator_api/thumbnail.h"
+#include "operator_api/types.h"
+#include "operator_api/gpu_common.h"
+#include "common/gpu_util.h"
+#include <webgpu/wgpu.h>
+#include <GLFW/glfw3.h>
+#include <stb_image_write.h>
+#include <filesystem>
+#include <fstream>
+#include <cctype>
+#include <algorithm>
+#include <cstring>
+
+using vivid::to_sv;
+
+namespace vivid {
+
+bool is_srgb_format(WGPUTextureFormat fmt) {
+    switch (fmt) {
+        case WGPUTextureFormat_RGBA8UnormSrgb:
+        case WGPUTextureFormat_BGRA8UnormSrgb:
+            return true;
+        default:
+            return false;
+    }
+}
+
+
+
+std::string url_encode(const std::string& text) {
+    static const char kHex[] = "0123456789ABCDEF";
+    std::string out;
+    out.reserve(text.size() * 3);
+    for (unsigned char c : text) {
+        if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+            out.push_back(static_cast<char>(c));
+            continue;
+        }
+        out.push_back('%');
+        out.push_back(kHex[(c >> 4) & 0x0F]);
+        out.push_back(kHex[c & 0x0F]);
+    }
+    return out;
+}
+
+std::string platform_label() {
+#if defined(__APPLE__)
+    return "macOS";
+#elif defined(_WIN32)
+    return "Windows";
+#elif defined(__linux__)
+    return "Linux";
+#else
+    return "Unknown";
+#endif
+}
+
+static void stbi_write_to_vec(void* context, void* data, int size) {
+    auto* vec = static_cast<std::vector<uint8_t>*>(context);
+    auto* bytes = static_cast<const uint8_t*>(data);
+    vec->insert(vec->end(), bytes, bytes + size);
+}
+
+std::string now_epoch_seconds_str() {
+    auto now = std::chrono::system_clock::now();
+    auto sec = std::chrono::time_point_cast<std::chrono::seconds>(now)
+                   .time_since_epoch().count();
+    return std::to_string(static_cast<long long>(sec));
+}
+
+std::vector<std::string> json_str_array(const nlohmann::json& arr) {
+    std::vector<std::string> out;
+    if (!arr.is_array()) return out;
+    for (const auto& v : arr) {
+        if (v.is_string()) out.emplace_back(v.get<std::string>());
+    }
+    return out;
+}
+
+std::string trim_copy(const std::string& s) {
+    size_t b = 0;
+    while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b]))) ++b;
+    size_t e = s.size();
+    while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1]))) --e;
+    return s.substr(b, e - b);
+}
+
+std::vector<std::string> split_csv(const std::string& csv) {
+    std::vector<std::string> out;
+    size_t pos = 0;
+    while (pos <= csv.size()) {
+        size_t comma = csv.find(',', pos);
+        if (comma == std::string::npos) comma = csv.size();
+        std::string tok = trim_copy(csv.substr(pos, comma - pos));
+        if (!tok.empty()) out.push_back(tok);
+        pos = comma + 1;
+    }
+    return out;
+}
+
+std::string join_csv(const std::vector<std::string>& items) {
+    std::string out;
+    for (size_t i = 0; i < items.size(); ++i) {
+        if (i) out += ", ";
+        out += items[i];
+    }
+    return out;
+}
+
+void emit_clear_pass(WGPUCommandEncoder encoder, WGPUTextureView view, const double clear[4]) {
+    WGPURenderPassColorAttachment color_att{};
+    color_att.view = view;
+    color_att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+    color_att.resolveTarget = nullptr;
+    color_att.loadOp = WGPULoadOp_Clear;
+    color_att.storeOp = WGPUStoreOp_Store;
+    color_att.clearValue = { clear[0], clear[1], clear[2], clear[3] };
+    WGPURenderPassDescriptor rp_desc{};
+    rp_desc.label = to_sv("Clear Pass");
+    rp_desc.colorAttachmentCount = 1;
+    rp_desc.colorAttachments = &color_att;
+    WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &rp_desc);
+    wgpuRenderPassEncoderEnd(pass);
+    wgpuRenderPassEncoderRelease(pass);
+}
+
+void poll_hot_reload(vivid::FileWatcher& fw, vivid::HotReloader& hr,
+                            vivid::RuntimeCore& runtime, vivid::OperatorRegistry& registry,
+                            vivid::AudioEngine& audio_engine, bool has_audio,
+                            OperatorInfoCache* op_cache,
+                            const std::string& operators_dir) {
+    auto changes = fw.poll_changes();
+    for (const auto& change : changes) {
+        hr.queue_rebuild(change.target_name);
+    }
+
+    auto ready = hr.poll_ready();
+    for (const auto& result : ready) {
+        if (!result.success) {
+            // Propagate compile errors to all nodes of this type so the UI can surface them.
+            // Nodes keep running (old dylib still live); errored=true is NOT set.
+            const std::string* type_name_ptr = registry.type_name_for_target(result.target_name);
+            if (type_name_ptr) {
+                const std::string& err = result.error_output.empty()
+                    ? "Build failed (no output captured)" : result.error_output;
+                if (auto* cg = runtime.compiled_graph()) {
+                    for (auto& cn : cg->nodes) {
+                        if (cn.type_name == *type_name_ptr)
+                            cn.error_message = err;
+                    }
+                }
+            }
+            continue;
+        }
+
+        const std::string* type_name_ptr = registry.type_name_for_target(result.target_name);
+        if (!type_name_ptr) {
+            // New operator (just scaffolded) — load its dylib into the registry
+            if (registry.register_loaded_operator(result.staged_dylib_path)) {
+                // Register file watch for the new operator's source files
+                if (!operators_dir.empty()) {
+                    // Scan all env subdirs for the target directory
+                    for (const char* domain : {"control", "audio", "gpu"}) {
+                        std::string cpp_path = operators_dir + "/" + domain + "/" +
+                                               result.target_name + "/" + result.target_name + ".cpp";
+                        if (std::filesystem::exists(cpp_path)) {
+                            fw.add_watch(cpp_path, result.target_name);
+                            break;
+                        }
+                    }
+                }
+                std::fprintf(stderr, "[vivid] New operator '%s' loaded\n",
+                    result.target_name.c_str());
+            } else {
+                std::fprintf(stderr, "[vivid] Hot-reload: failed to load new target '%s'\n",
+                    result.target_name.c_str());
+            }
+            continue;
+        }
+        const std::string& tn = *type_name_ptr;
+
+        std::fprintf(stderr, "[vivid] Hot-reload: reloading %s...\n", tn.c_str());
+
+        bool is_audio_op = runtime.has_audio_cadence_type(tn);
+
+        // Two-phase audio reload: destroy old instances BEFORE the dylib swap
+        // so we can safely call the old dylib's destroy function.
+        if (is_audio_op && has_audio) {
+            audio_engine.pre_reload_operator(tn);
+        }
+
+        if (runtime.reload_operator(tn, registry, result.staged_dylib_path)) {
+            bool audio_reload_ok = true;
+            if (is_audio_op && has_audio) {
+                audio_reload_ok = audio_engine.post_reload_operator(tn, registry);
+            }
+            if (!audio_reload_ok) {
+                std::fprintf(stderr, "[vivid] Hot-reload: %s audio reload FAILED\n", tn.c_str());
+            } else {
+                if (auto* cg = runtime.compiled_graph()) {
+                    for (auto& cn : cg->nodes) {
+                        if (cn.type_name == tn)
+                            cn.error_message.clear();
+                    }
+                }
+                if (op_cache) op_cache->invalidate(tn);
+                std::fprintf(stderr, "[vivid] Hot-reload: %s reloaded successfully\n", tn.c_str());
+            }
+        } else {
+            std::fprintf(stderr, "[vivid] Hot-reload: %s reload FAILED\n", tn.c_str());
+            // Recreate audio instances from the old (still-loaded) dylib
+            if (is_audio_op && has_audio) {
+                audio_engine.post_reload_operator(tn, registry);
+            }
+        }
+    }
+}
+
+int add_watch_for_resolved_package(vivid::FileWatcher& fw, const vivid::PackageInfo& pkg) {
+    namespace fs = std::filesystem;
+    int count = 0;
+    fs::path ops_dir = fs::path(pkg.path) / "operators";
+    if (fs::exists(ops_dir)) {
+        std::error_code ec_domain;
+        for (const auto& domain_entry : fs::directory_iterator(ops_dir, ec_domain)) {
+            if (ec_domain) break;
+            if (!domain_entry.is_directory()) continue;
+
+            std::error_code ec_op;
+            for (const auto& op_entry : fs::directory_iterator(domain_entry.path(), ec_op)) {
+                if (ec_op) break;
+                if (!op_entry.is_directory()) continue;
+
+                std::string op_name = op_entry.path().filename().string();
+                std::string target = "pkg:" + pkg.name + ":" + op_name;
+
+                std::error_code ec_file;
+                for (const auto& file_entry : fs::directory_iterator(op_entry.path(), ec_file)) {
+                    if (ec_file) break;
+                    if (!file_entry.is_regular_file()) continue;
+                    std::string fname = file_entry.path().filename().string();
+                    if (fname.size() < 5 || fname.substr(fname.size() - 4) != ".cpp") continue;
+                    if (fw.add_watch(file_entry.path().string(), target)) count++;
+                }
+            }
+        }
+    }
+
+    fs::path src_dir = fs::path(pkg.path) / "src";
+    if (fs::exists(src_dir)) {
+        std::error_code ec;
+        for (const auto& entry : fs::recursive_directory_iterator(src_dir, ec)) {
+            if (ec) break;
+            if (!entry.is_regular_file()) continue;
+            if (entry.path().extension() != ".cpp") continue;
+            std::string op_name = entry.path().stem().string();
+            std::string target = "pkg:" + pkg.name + ":" + op_name;
+            if (fw.add_watch(entry.path().string(), target)) count++;
+        }
+    }
+    return count;
+}
+
+void draw_custom_thumbnails(const vivid::RuntimeCore& runtime,
+                                   vivid::ui::ThumbnailCache& cache,
+                                   vivid::ui::NodeGraphUI& graph_ui,
+                                   vivid::ui::Renderer2D* thumb_draw_renderer,
+                                   WGPUDevice device,
+                                   WGPUQueue queue,
+                                   WGPUCommandEncoder encoder,
+                                   double time,
+                                   double delta_time,
+                                   uint64_t frame,
+                                   uint32_t thumb_w,
+                                   uint32_t thumb_h,
+                                   uint32_t thumb_logical_w,
+                                   uint32_t thumb_logical_h,
+                                   WGPUTextureFormat thumb_format) {
+    const auto* cg_thumb = runtime.compiled_graph();
+    if (!cg_thumb) return;
+
+    if (thumb_draw_renderer)
+        thumb_draw_renderer->reset_ring();
+
+    std::unordered_set<std::string> custom_thumb_ids;
+    for (const auto& cn : cg_thumb->nodes) {
+        if (!cn.loader || !cn.instance || cn.missing_operator) continue;
+        if (!cn.loader->has_draw_thumbnail()) continue;
+        WGPUTextureView thumb_view = cache.get_or_create(cn.node_id);
+        if (!thumb_view) continue;
+        WGPUTexture thumb_tex = cache.get_texture(cn.node_id);
+
+        VividThumbnailContext tctx{};
+        tctx.time = time;
+        tctx.delta_time = delta_time;
+        tctx.frame = frame;
+        tctx.param_values = cn.param_values.data();
+        tctx.param_count = static_cast<uint32_t>(cn.param_values.size());
+        tctx.output_values = cn.output_values.data();
+        tctx.output_count = cn.output_port_count;
+        tctx.string_param_values = cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data();
+        tctx.string_param_count = static_cast<uint32_t>(cn.file_param_ptrs.size());
+        tctx.file_param_values = cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data();
+        tctx.file_param_count = static_cast<uint32_t>(cn.file_param_ptrs.size());
+        tctx.device = device;
+        tctx.queue = queue;
+        tctx.command_encoder = encoder;
+        tctx.thumbnail_texture = thumb_tex;
+        tctx.thumbnail_texture_view = thumb_view;
+        tctx.thumbnail_width = thumb_w;
+        tctx.thumbnail_height = thumb_h;
+        tctx.thumbnail_format = thumb_format;
+        tctx.thumbnail_logical_width = thumb_logical_w;
+        tctx.thumbnail_logical_height = thumb_logical_h;
+        tctx.source_output_texture = cn.gpu ? cn.gpu->texture : nullptr;
+        tctx.source_output_texture_view = cn.gpu ? cn.gpu->texture_view : nullptr;
+        tctx.source_output_width = cn.gpu ? cn.gpu->tex_width : 0;
+        tctx.source_output_height = cn.gpu ? cn.gpu->tex_height : 0;
+        tctx.source_output_format = thumb_format;
+        tctx.input_texture_views =
+            (cn.gpu && !cn.gpu->resolved_tex_inputs.empty()) ? const_cast<WGPUTextureView*>(cn.gpu->resolved_tex_inputs.data())
+                                                             : nullptr;
+        tctx.input_texture_count = cn.gpu ? static_cast<uint32_t>(cn.gpu->resolved_tex_inputs.size()) : 0;
+        tctx.operator_errored = 0;
+        tctx.operator_error_msg = nullptr;
+
+        // Populate 2D draw API if thumbnail renderer is available
+        if (thumb_draw_renderer)
+            vivid::ui::populate_draw_api(tctx.draw, *thumb_draw_renderer);
+
+        // Clear thumbnail texture before operator draws
+        {
+            WGPURenderPassColorAttachment clear_att{};
+            clear_att.view = thumb_view;
+            clear_att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+            clear_att.loadOp = WGPULoadOp_Clear;
+            clear_att.storeOp = WGPUStoreOp_Store;
+            clear_att.clearValue = {0.0, 0.0, 0.0, 0.0};
+            WGPURenderPassDescriptor clear_desc{};
+            clear_desc.label = vivid_sv("Thumb Clear");
+            clear_desc.colorAttachmentCount = 1;
+            clear_desc.colorAttachments = &clear_att;
+            WGPURenderPassEncoder clear_pass = wgpuCommandEncoderBeginRenderPass(encoder, &clear_desc);
+            wgpuRenderPassEncoderEnd(clear_pass);
+            wgpuRenderPassEncoderRelease(clear_pass);
+        }
+
+        cn.loader->draw_thumbnail(cn.instance, &tctx);
+
+        // Flush any 2D draw API calls onto the thumbnail texture
+        if (thumb_draw_renderer)
+            thumb_draw_renderer->flush(encoder, thumb_view, thumb_logical_w, thumb_logical_h);
+
+        if (tctx.operator_errored) {
+            std::fprintf(stderr, "[vivid] thumbnail render error for '%s': %s\n",
+                         cn.node_id.c_str(),
+                         tctx.operator_error_msg ? tctx.operator_error_msg : "unknown error");
+            continue;  // fall back to default thumbnail
+        }
+        custom_thumb_ids.insert(cn.node_id);
+    }
+    graph_ui.set_custom_thumbnail_nodes(std::move(custom_thumb_ids));
+}
+
+
+bool capture_surface_png(vivid::GpuContext& gpu,
+                                vivid::FrameState& frame,
+                                int fb_w, int fb_h,
+                                SurfaceCaptureResult& out,
+                                std::string& error) {
+    if (!gpu.surface_supports_copy_src()) {
+        error = "surface does not support interface capture";
+        return false;
+    }
+    const uint32_t ss_w = static_cast<uint32_t>(fb_w);
+    const uint32_t ss_h = static_cast<uint32_t>(fb_h);
+    const uint32_t bpp = 4;
+    const uint32_t unpadded_row = ss_w * bpp;
+    static constexpr uint32_t kGpuRowAlignment = 256;
+    const uint32_t aligned_row = (unpadded_row + kGpuRowAlignment - 1) & ~(kGpuRowAlignment - 1);
+    const uint64_t buf_size = static_cast<uint64_t>(aligned_row) * ss_h;
+
+    WGPUBufferDescriptor staging_desc{};
+    staging_desc.label = to_sv("Screenshot Staging");
+    staging_desc.size = buf_size;
+    staging_desc.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead;
+    staging_desc.mappedAtCreation = false;
+    WGPUBuffer staging = wgpuDeviceCreateBuffer(gpu.device(), &staging_desc);
+    if (!staging) {
+        error = "failed to allocate screenshot staging buffer";
+        return false;
+    }
+
+    WGPUTexelCopyTextureInfo src{};
+    src.texture = frame.texture;
+    src.mipLevel = 0;
+    src.origin = { 0, 0, 0 };
+    src.aspect = WGPUTextureAspect_All;
+
+    WGPUTexelCopyBufferInfo dst{};
+    dst.buffer = staging;
+    dst.layout.offset = 0;
+    dst.layout.bytesPerRow = aligned_row;
+    dst.layout.rowsPerImage = ss_h;
+
+    WGPUExtent3D copy_size = { ss_w, ss_h, 1 };
+    wgpuCommandEncoderCopyTextureToBuffer(frame.encoder, &src, &dst, &copy_size);
+
+    gpu.end_frame(frame);
+
+    // Wait for GPU work to complete
+    {
+        bool work_done = false;
+        WGPUQueueWorkDoneCallbackInfo work_cb{};
+        work_cb.mode = WGPUCallbackMode_AllowSpontaneous;
+        work_cb.callback = [](WGPUQueueWorkDoneStatus, void* ud1, void*) {
+            *static_cast<bool*>(ud1) = true;
+        };
+        work_cb.userdata1 = &work_done;
+        wgpuQueueOnSubmittedWorkDone(gpu.queue(), work_cb);
+        while (!work_done)
+            wgpuDevicePoll(gpu.device(), true, nullptr);
+    }
+
+    bool map_done = false;
+    WGPUBufferMapCallbackInfo map_cb{};
+    map_cb.mode = WGPUCallbackMode_AllowSpontaneous;
+    map_cb.callback = [](WGPUMapAsyncStatus, WGPUStringView, void* ud1, void*) {
+        *static_cast<bool*>(ud1) = true;
+    };
+    map_cb.userdata1 = &map_done;
+    wgpuBufferMapAsync(staging, WGPUMapMode_Read, 0, buf_size, map_cb);
+    while (!map_done)
+        wgpuDevicePoll(gpu.device(), true, nullptr);
+
+    const uint8_t* mapped = static_cast<const uint8_t*>(
+        wgpuBufferGetConstMappedRange(staging, 0, buf_size));
+    if (!mapped) {
+        wgpuBufferUnmap(staging);
+        wgpuBufferRelease(staging);
+        error = "failed to map screenshot staging buffer";
+        return false;
+    }
+
+    std::vector<uint8_t> pixels(ss_w * ss_h * bpp);
+    for (uint32_t y = 0; y < ss_h; ++y) {
+        const uint8_t* src_row = mapped + y * aligned_row;
+        uint8_t* dst_row = pixels.data() + y * unpadded_row;
+        for (uint32_t x = 0; x < ss_w; ++x) {
+            dst_row[x * 4 + 0] = src_row[x * 4 + 2]; // R <- B
+            dst_row[x * 4 + 1] = src_row[x * 4 + 1]; // G <- G
+            dst_row[x * 4 + 2] = src_row[x * 4 + 0]; // B <- R
+            dst_row[x * 4 + 3] = src_row[x * 4 + 3]; // A <- A
+        }
+    }
+
+    wgpuBufferUnmap(staging);
+    wgpuBufferRelease(staging);
+
+    out.width = ss_w;
+    out.height = ss_h;
+    out.png_data.clear();
+    out.png_data.reserve(ss_w * ss_h);
+    stbi_write_png_to_func(stbi_write_to_vec, &out.png_data, ss_w, ss_h, 4,
+                           pixels.data(), static_cast<int>(ss_w * bpp));
+    if (out.png_data.empty()) {
+        error = "PNG encoding failed";
+        return false;
+    }
+    return true;
+}
+
+bool try_capture_screenshot(const std::string& path, vivid::GpuContext& gpu,
+                                   vivid::FrameState& frame, int fb_w, int fb_h,
+                                   uint64_t frame_count, int delay, GLFWwindow* window) {
+    if (path.empty() || static_cast<int>(frame_count) < delay) {
+        return false;
+    }
+
+    SurfaceCaptureResult capture;
+    std::string error;
+    if (!capture_surface_png(gpu, frame, fb_w, fb_h, capture, error)) {
+        std::fprintf(stderr, "[vivid] Screenshot FAILED: %s\n", error.c_str());
+        glfwSetWindowShouldClose(window, 1);
+        return true;
+    }
+
+    std::ofstream out(path, std::ios::binary);
+    if (out) {
+        out.write(reinterpret_cast<const char*>(capture.png_data.data()),
+                  static_cast<std::streamsize>(capture.png_data.size()));
+    }
+
+    if (out.good()) {
+        std::fprintf(stderr, "[vivid] Screenshot saved: %s\n", path.c_str());
+    } else {
+        std::fprintf(stderr, "[vivid] Screenshot FAILED: %s\n", path.c_str());
+    }
+
+    glfwSetWindowShouldClose(window, 1);
+    return true;  // frame already submitted
+}
+
+} // namespace vivid

@@ -739,6 +739,10 @@ add_library(vivid_ui STATIC
     src/ui/i18n.cpp
     src/ui/node_graph.cpp
     src/ui/node_graph_draw.cpp
+    src/ui/node_graph_draw_inspector.cpp
+    src/ui/node_graph_draw_connections.cpp
+    src/ui/node_graph_draw_overlays.cpp
+    src/ui/node_graph_draw_elements.cpp
     src/ui/node_graph_input.cpp
     src/ui/inspector_controller.cpp
     src/ui/overlay_layouts.cpp
@@ -760,6 +764,12 @@ target_compile_definitions(vivid_ui PRIVATE "VIVID_CORE_VERSION=\"${PROJECT_VERS
 # --- Vivid executable ---
 add_executable(vivid
     src/runtime/main.cpp
+    src/runtime/graph_file_io.cpp
+    src/runtime/workspace_manager.cpp
+    src/runtime/window_manager.cpp
+    src/runtime/graph_snapshot_builder.cpp
+    src/runtime/main_helpers.cpp
+    src/runtime/runtime_command_sink.cpp
     src/runtime/ui_test_runner.cpp
     src/runtime/gpu_context.cpp
     src/runtime/fullscreen_blit.cpp
@@ -2751,6 +2761,7 @@ add_executable(test_undo_mutation_types
     src/runtime/av_exporter.mm
     src/runtime/platform.cpp
     src/runtime/system_midi.cpp
+    src/runtime/runtime_command_sink.cpp
 )
 target_include_directories(test_undo_mutation_types PRIVATE src tests)
 target_link_libraries(test_undo_mutation_types PRIVATE
@@ -2792,6 +2803,7 @@ add_executable(test_team_workflow_regression
     src/runtime/av_exporter.mm
     src/runtime/platform.cpp
     src/runtime/system_midi.cpp
+    src/runtime/runtime_command_sink.cpp
 )
 target_include_directories(test_team_workflow_regression PRIVATE src tests)
 target_link_libraries(test_team_workflow_regression PRIVATE
