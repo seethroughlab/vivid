@@ -28,6 +28,7 @@ static void  builtin_process(void*, VividFrameContext*) {}
 
 int main() {
     std::string build_dir = ".";
+    ScopedTempDir sandbox("operator_loader_paths");
 
     // Setup staging directories
     std::string staging       = build_dir + "/.test_loader_staging";
@@ -211,7 +212,8 @@ int main() {
         void* instance = loader.create_instance();
         check(instance != nullptr, "prepare_assets_test_op instance created");
         const float params[] = {7.0f, 0.0f};
-        const char* files[] = {"/tmp/warmup.txt"};
+        std::string warmup_path = sandbox.file_str("warmup.txt");
+        const char* files[] = {warmup_path.c_str()};
         loader.prepare_instance_assets(instance, params, files, 1);
         float outputs[] = {0.0f};
         VividFrameContext ctx{};
@@ -586,7 +588,7 @@ int main() {
 
         auto config = std::make_shared<vivid::WgslOperatorConfig>();
         config->name = "MyFilter";
-        config->shader_path = "/tmp/my_filter.wgsl";
+        config->shader_path = sandbox.file_str("my_filter.wgsl");
 
         reg.register_shader_operator(config, true);
         check(reg.is_user_shader_operator("MyFilter"), "is_user_shader_operator after register");
@@ -771,7 +773,7 @@ int main() {
         std::fprintf(stderr, "\n--- destroy_instance(nullptr) on shader-operator loader ---\n");
         auto config = std::make_shared<vivid::WgslOperatorConfig>();
         config->name = "NullSafetyFilter";
-        config->shader_path = "/tmp/null_safety.wgsl";
+        config->shader_path = sandbox.file_str("null_safety.wgsl");
 
         vivid::OperatorLoader loader;
         loader.init_wgsl_operator(std::move(config));
@@ -787,7 +789,7 @@ int main() {
         std::fprintf(stderr, "\n--- process(nullptr, ctx) on shader-operator loader ---\n");
         auto config = std::make_shared<vivid::WgslOperatorConfig>();
         config->name = "NullSafetyFilter2";
-        config->shader_path = "/tmp/null_safety2.wgsl";
+        config->shader_path = sandbox.file_str("null_safety2.wgsl");
 
         vivid::OperatorLoader loader;
         loader.init_wgsl_operator(std::move(config));

@@ -69,6 +69,7 @@ struct DummySink : UICommandSink {
 };
 
 int main() {
+    ScopedTempDir sandbox("ui_overlay_paths");
     GraphSnapshot snap;
     ExampleEntry ex;
     ex.id = "demo";
@@ -357,7 +358,7 @@ int main() {
             return true;
         });
         GraphMetaEditData meta;
-        meta.path = "/tmp/demo.json";
+        meta.path = sandbox.file_str("demo.json");
         meta.id = "demo";
         ui.open_graph_meta_editor(meta);
         OverlayPanelLayout meta_layout = compute_graph_meta_editor_layout(1280, 720);
@@ -381,7 +382,7 @@ int main() {
             return true;
         });
         GraphMetaEditData meta;
-        meta.path = "/tmp/demo.json";
+        meta.path = sandbox.file_str("demo.json");
         meta.id = "demo";
         meta.title = "Title";
         ui.open_graph_meta_editor(meta);
@@ -408,13 +409,14 @@ int main() {
     {
         DummySink sink;
         NodeGraphUI ui(sink);
+        const std::string dropped_path = sandbox.file_str("example.dropx");
         ui.open_file_drop_chooser({
             FileDropChooserAction{
                 "Create Test Asset Node",
                 "FileDropTestOp  [tests]",
                 "FileDropTestOp",
                 "file",
-                "/tmp/example.dropx"
+                dropped_path
             }
         }, 123.0f, 456.0f);
 
@@ -431,7 +433,7 @@ int main() {
         check(!sink.string_param_calls.empty(), "file-drop chooser sets dropped path");
         if (!sink.string_param_calls.empty())
             check(std::get<1>(sink.string_param_calls[0]) == "file" &&
-                  std::get<2>(sink.string_param_calls[0]) == "/tmp/example.dropx",
+                  std::get<2>(sink.string_param_calls[0]) == dropped_path,
                   "file-drop chooser sets declared file param");
     }
 

@@ -239,13 +239,14 @@ int main(int argc, char* argv[]) {
 
                 vivid::HotReloader hr;
                 fs::path hr_build = fs::path(build_dir) / ".test_team_wf_hr_build";
+                fs::path staged_dylib_path = hr_build / "fake_team_wf.dylib";
                 fs::create_directories(hr_build);
                 check(hr.start(hr_build.string()), "Case B: hot reloader started");
-                hr.set_package_compiler([](const std::string& target) {
+                hr.set_package_compiler([staged_dylib_path](const std::string& target) {
                     vivid::ReloadResult r;
                     r.target_name = target;
                     r.success = true;
-                    r.staged_dylib_path = "/tmp/fake_team_wf.dylib";
+                    r.staged_dylib_path = staged_dylib_path.string();
                     return r;
                 });
                 sink.set_hot_reloader(&hr);

@@ -17,6 +17,7 @@ static std::string fixture_path(const char* root, const char* name) {
 
 int main(int argc, char** argv) {
     const char* root = (argc > 1) ? argv[1] : ".";
+    ScopedTempDir sandbox("movie_decode_route");
 
     const std::string hap1 = fixture_path(root, "sync-test-hap.mov");
     const std::string hap5 = fixture_path(root, "sync-test-hap-alpha.mov");
@@ -60,7 +61,7 @@ int main(int argc, char** argv) {
     check(d_notch.backend == DecoderBackend::AVF, "NotchLC routes to AVF");
     check(d_notch.probe_notchlc, "NotchLC probe bit retained");
 
-    const auto bad = load_video_decoder_for_path("/tmp/vivid_movie_missing_notch.mov",
+    const auto bad = load_video_decoder_for_path(sandbox.file_str("vivid_movie_missing_notch.mov"),
                                                   true, nullptr);
     check(!bad.success, "missing file load fails deterministically");
     check(bad.diagnostics.find("avf_open_failed") != std::string::npos,

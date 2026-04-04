@@ -19,6 +19,8 @@
 #include <fstream>
 #include <string>
 #include <thread>
+#define VIVID_TEST_HELPERS_NO_CHECK
+#include "test_helpers.h"
 
 using json = nlohmann::json;
 
@@ -1806,6 +1808,8 @@ VIVID_REGISTER(TestOp)
         // --- input validation: recording path traversal ---
         std::fprintf(stderr, "\n--- recording path traversal rejection ---\n");
         {
+            ScopedTempDir sandbox("control_server_paths");
+            const std::string valid_recording_path = sandbox.file_str("ok.mov");
             // No capture coordinator in this test harness, so start_recording routes
             // through the path-validation guard before reaching the coordinator check.
             // A traversal path must be rejected with ok:false before coordinator dispatch.
@@ -1814,7 +1818,7 @@ VIVID_REGISTER(TestOp)
             check(!r1.ok, "start_recording traversal path rejected");
 
             auto r2 = post(client, base_url, "start_recording",
-                R"({"path":"/tmp/ok.mov"})");
+                std::string("{\"path\":\"") + valid_recording_path + "\"}");
             // No coordinator attached, so this either times out or errors — but must NOT
             // be the traversal rejection (i.e. it should not fail with the traversal guard).
             // We verify the path guard passed by checking the response is not the

@@ -10,24 +10,9 @@ namespace fs = std::filesystem;
 // Redirect settings to a temp directory by overriding HOME.
 // get_config_dir() uses HOME on macOS → ~/Library/Application Support/Vivid/
 struct TempHome {
-    std::string old_home;
-    std::string tmp_dir;
-
-    TempHome() {
-        const char* h = std::getenv("HOME");
-        if (h) old_home = h;
-        scoped_dir_ = std::make_unique<ScopedTempDir>("settings");
-        tmp_dir = scoped_dir_->str();
-        setenv("HOME", tmp_dir.c_str(), 1);
-    }
-
-    ~TempHome() {
-        if (!old_home.empty())
-            setenv("HOME", old_home.c_str(), 1);
-        // ScopedTempDir handles cleanup
-    }
-
-    std::unique_ptr<ScopedTempDir> scoped_dir_;
+    ScopedTempDir scoped_dir{"settings"};
+    ScopedEnvVar home_override{"HOME", scoped_dir.str()};
+    std::string tmp_dir = scoped_dir.str();
 
     std::string config_dir() const {
 #if defined(__APPLE__)
@@ -60,7 +45,7 @@ int main() {
         s.editor_command = "code {file}";
         s.style_id = "midnight";
         s.operator_clone_destination_mode = "core_explicit";
-        s.project_operator_root = "/tmp/vivid_project_ops";
+        s.project_operator_root = home.scoped_dir.file_str("vivid_project_ops");
         s.project_package_name = "vivid-project";
 
         vivid::save_settings(s);
@@ -77,7 +62,7 @@ int main() {
         check(loaded.style_id == "midnight", "style_id preserved");
         check(loaded.operator_clone_destination_mode == "core_explicit",
               "operator_clone_destination_mode preserved");
-        check(loaded.project_operator_root == "/tmp/vivid_project_ops",
+        check(loaded.project_operator_root == home.scoped_dir.file_str("vivid_project_ops"),
               "project_operator_root preserved");
         check(loaded.project_package_name == "vivid-project",
               "project_package_name preserved");

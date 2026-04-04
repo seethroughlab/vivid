@@ -3,16 +3,9 @@
 #include <fstream>
 #include <string>
 #include <vector>
-#include <unistd.h>
 #include "test_helpers.h"
 
 namespace fs = std::filesystem;
-
-static fs::path make_sandbox() {
-    char tmpl[] = "/tmp/vivid_test_dest_policy_XXXXXX";
-    char* out = mkdtemp(tmpl);
-    return out ? fs::path(out) : fs::path("/tmp/vivid_test_dest_policy_fallback");
-}
 
 static void write_text(const fs::path& p, const char* text) {
     fs::create_directories(p.parent_path());
@@ -51,9 +44,7 @@ static vivid::PackageInfo make_pkg(const std::string& name,
 }
 
 int main() {
-    fs::path sandbox = make_sandbox();
-    fs::remove_all(sandbox);
-    fs::create_directories(sandbox);
+    ScopedTempDir sandbox("dest_policy");
     auto core = sandbox / "vivid-core";
     fs::create_directories(core);
 
@@ -133,9 +124,7 @@ int main() {
           "relative explicit destination rejects");
     check(!error.empty(), "relative destination provides error");
 
-    fs::remove_all(sandbox);
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",
                  failures == 0 ? "ALL PASSED" : "SOME FAILED", failures);
     return failures == 0 ? 0 : 1;
 }
-

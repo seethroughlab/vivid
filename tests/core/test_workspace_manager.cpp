@@ -83,7 +83,8 @@ static void test_copy_tree_overwrite_newer() {
 static void test_copy_tree_missing_nonexistent_src() {
     std::fprintf(stderr, "\n--- copy_tree_missing: nonexistent source ---\n");
 
-    bool ok = vivid::copy_tree_missing("/nonexistent_src_dir", "/tmp/dst");
+    ScopedTempDir tmp("copy_missing_none");
+    bool ok = vivid::copy_tree_missing(tmp / "nonexistent_src_dir", tmp / "dst");
     check(!ok, "returns false for nonexistent source");
 }
 

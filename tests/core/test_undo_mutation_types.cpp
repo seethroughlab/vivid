@@ -318,13 +318,14 @@ int main(int argc, char* argv[]) {
 
         vivid::HotReloader hr;
         fs::path hr_build = fs::path(build_dir) / ".test_clone_hr_build";
+        fs::path staged_dylib_path = hr_build / "fake_clone_e2e.dylib";
         fs::create_directories(hr_build);
         check(hr.start(hr_build.string()), "hot reloader started for clone e2e");
-        hr.set_package_compiler([](const std::string& target) {
+        hr.set_package_compiler([staged_dylib_path](const std::string& target) {
             vivid::ReloadResult r;
             r.target_name = target;
             r.success = true;
-            r.staged_dylib_path = "/tmp/fake_clone_e2e.dylib";
+            r.staged_dylib_path = staged_dylib_path.string();
             return r;
         });
         sink.set_hot_reloader(&hr);

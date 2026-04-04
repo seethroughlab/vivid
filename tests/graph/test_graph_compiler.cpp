@@ -633,6 +633,7 @@ static void test_bridge_kind_unknown_warns() {
 
 static void test_prepare_instance_assets_compile(const std::string& build_dir) {
     std::fprintf(stderr, "\n--- compile: prepare_instance_assets warmup ---\n");
+    ScopedTempDir sandbox("graph_compiler_prepare_assets");
 
     const std::string staging = build_dir + "/.test_prepare_assets_staging";
     std::filesystem::remove_all(staging);
@@ -645,17 +646,18 @@ static void test_prepare_instance_assets_compile(const std::string& build_dir) {
     registry.scan_deferred(staging.c_str());
 
     vivid::Graph g;
-    g.load_from_string(R"({
+    std::string graph_json = std::string(R"({
         "nodes": {
             "warm": {
                 "type": "PrepareAssetsTestOp",
                 "params": {
                     "scale": 7.0,
-                    "path": "/tmp/prepared.txt"
+                    "path": ")") + sandbox.file_str("prepared.txt") + R"("
                 }
             }
         }
-    })");
+    })";
+    g.load_from_string(graph_json.c_str());
 
     vivid::GraphCompiler::Options opts;
     auto cg = vivid::GraphCompiler::compile(g, registry, opts);
@@ -685,6 +687,7 @@ static void test_prepare_instance_assets_compile(const std::string& build_dir) {
 
 static void test_prepare_instance_assets_reload(const std::string& build_dir) {
     std::fprintf(stderr, "\n--- reload: prepare_instance_assets warmup ---\n");
+    ScopedTempDir sandbox("graph_compiler_prepare_assets_reload");
 
     const std::string staging = build_dir + "/.test_prepare_assets_reload_staging";
     std::filesystem::remove_all(staging);
@@ -698,17 +701,18 @@ static void test_prepare_instance_assets_reload(const std::string& build_dir) {
     registry.scan_deferred(staging.c_str());
 
     vivid::Graph g;
-    g.load_from_string(R"({
+    std::string graph_json = std::string(R"({
         "nodes": {
             "warm": {
                 "type": "PrepareAssetsTestOp",
                 "params": {
                     "scale": 11.0,
-                    "path": "/tmp/reloaded.txt"
+                    "path": ")") + sandbox.file_str("reloaded.txt") + R"("
                 }
             }
         }
-    })");
+    })";
+    g.load_from_string(graph_json.c_str());
 
     vivid::GraphCompiler::Options opts;
     auto cg = vivid::GraphCompiler::compile(g, registry, opts);

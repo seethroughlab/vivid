@@ -144,9 +144,7 @@ add_executable(test_control_server
 )
 target_include_directories(test_control_server PRIVATE src tests)
 target_link_libraries(test_control_server PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json miniaudio ixwebsocket webgpu rtmidi stb_truetype
-    "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
-    "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
+    vivid_runtime_testlib)
 add_dependencies(test_control_server test_op_v1 semantic_ms_source_op semantic_s_dest_op
     semantic_unknown_source_op untagged_dest_op export_custom_port_op test_op_bad_custom_type)
 add_test(NAME test_control_server COMMAND test_control_server ${CMAKE_BINARY_DIR}
@@ -919,9 +917,7 @@ add_executable(test_capture_coordinator
 )
 target_include_directories(test_capture_coordinator PRIVATE src tests)
 target_link_libraries(test_capture_coordinator PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json webgpu miniaudio stb_truetype
-    "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
-    "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
+    vivid_runtime_testlib)
 add_test(NAME test_capture_coordinator COMMAND test_capture_coordinator
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -1166,9 +1162,7 @@ add_executable(test_undo_mutation_types
 )
 target_include_directories(test_undo_mutation_types PRIVATE src tests)
 target_link_libraries(test_undo_mutation_types PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi stb_truetype
-    "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
-    "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
+    vivid_runtime_testlib)
 add_dependencies(test_undo_mutation_types test_op_v1)
 add_test(NAME test_undo_mutation_types
     COMMAND test_undo_mutation_types ${CMAKE_BINARY_DIR}
@@ -1181,9 +1175,7 @@ add_executable(test_team_workflow_regression
 )
 target_include_directories(test_team_workflow_regression PRIVATE src tests)
 target_link_libraries(test_team_workflow_regression PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi stb_truetype
-    "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
-    "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
+    vivid_runtime_testlib)
 add_dependencies(test_team_workflow_regression test_op_v1)
 add_test(NAME test_team_workflow_regression
     COMMAND test_team_workflow_regression ${CMAKE_BINARY_DIR}
@@ -1224,4 +1216,3 @@ add_test(NAME test_i18n COMMAND test_i18n WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 add_test(NAME test_semantic_tags
     COMMAND ${CMAKE_SOURCE_DIR}/scripts/validate_semantic_tags.sh
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-

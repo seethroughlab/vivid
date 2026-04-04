@@ -10,15 +10,26 @@ namespace {
 struct FakeFailingExporter : vivid::AVExporter {
     explicit FakeFailingExporter(std::string path) : path_(std::move(path)) {}
 
+    bool start(const std::string&, uint32_t, uint32_t, double, uint32_t) override { return true; }
+    bool write_video_frame(const uint8_t*, uint32_t, uint32_t) override { return true; }
+    bool write_audio_samples(const float*, uint64_t, uint32_t) override { return true; }
     bool finish() override { return false; }
     bool is_recording() const override { return true; }
     const std::string& output_path() const override { return path_; }
+    uint64_t frame_count() const override { return 0; }
+    double fps() const override { return 30.0; }
+    double elapsed_sec() const override { return 0.0; }
 
     std::string path_;
 };
 } // namespace
 
 int main() {
+    ScopedTempDir sandbox("capture_coordinator");
+    const std::string recording_path = sandbox.file_str("test_rec.mov");
+    const std::string snapshot_path = sandbox.file_str("test_snap.png");
+    const std::string failed_recording_path = sandbox.file_str("fail_recording.mov");
+
     // =====================================================================
     // Test 1: Fresh state
     // =====================================================================
@@ -84,7 +95,7 @@ int main() {
     {
         std::fprintf(stderr, "\n=== Test 6: request_start_recording enqueues ===\n");
         vivid::CaptureCoordinator cc;
-        auto future = cc.request_start_recording("/tmp/test_rec.mov", 30.0);
+        auto future = cc.request_start_recording(recording_path, 30.0);
         check(future.valid(), "future is valid");
         check(cc.has_pending(), "has_pending after start_recording");
     }
@@ -106,7 +117,7 @@ int main() {
     {
         std::fprintf(stderr, "\n=== Test 8: request_snapshot_to_file enqueues ===\n");
         vivid::CaptureCoordinator cc;
-        auto future = cc.request_snapshot_to_file("/tmp/test_snap.png");
+        auto future = cc.request_snapshot_to_file(snapshot_path);
         check(future.valid(), "future is valid");
         check(cc.has_pending(), "has_pending after snapshot_to_file");
     }
@@ -116,7 +127,7 @@ int main() {
     // =====================================================================
     {
         std::fprintf(stderr, "\n=== Test 9: stop recording finalize failure ===\n");
-        vivid::CaptureCoordinator cc(std::make_unique<FakeFailingExporter>("/tmp/fail_recording.mov"));
+        vivid::CaptureCoordinator cc(std::make_unique<FakeFailingExporter>(failed_recording_path));
         auto future = cc.request_stop_recording();
         check(future.valid(), "future is valid");
         cc.process_pending(nullptr, nullptr, nullptr, 0, 0);
@@ -124,7 +135,7 @@ int main() {
         check(result.find("\"ok\":false") != std::string::npos, "returns ok:false on finalize failure");
         check(result.find("failed to finalize recording") != std::string::npos,
               "error mentions finalize failure");
-        check(result.find("/tmp/fail_recording.mov") != std::string::npos,
+        check(result.find(failed_recording_path) != std::string::npos,
               "response includes recording path on finalize failure");
     }
 
