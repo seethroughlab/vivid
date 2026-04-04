@@ -9,6 +9,8 @@ add_library(vivid_ui STATIC
     src/ui/graph/node_graph_update.cpp
     src/ui/graph/node_graph_draw.cpp
     src/ui/graph/node_graph_draw_inspector.cpp
+    src/ui/graph/node_graph_draw_inspector_params.cpp
+    src/ui/graph/node_graph_draw_inspector_sections.cpp
     src/ui/graph/node_graph_draw_connections.cpp
     src/ui/graph/node_graph_draw_overlays.cpp
     src/ui/graph/node_graph_draw_elements.cpp
