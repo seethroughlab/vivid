@@ -5,6 +5,7 @@
 
 #include "runtime/graph/subgraph_module.h"
 #include "runtime/graph/graph.h"
+#include "ui/graph/graph_snapshot.h"
 #include <cstdio>
 #include <cstring>
 #include "test_helpers.h"
@@ -509,6 +510,402 @@ static void test_flatten_cross_instance_connection() {
 }
 
 // ---------------------------------------------------------------------------
+// Param metadata parsing tests
+// ---------------------------------------------------------------------------
+
+static const char* kModuleWithParamMetadata = R"({
+    "schema_version": 2,
+    "module": {
+        "name": "RichSynth",
+        "description": "A synth with rich param metadata",
+        "category": "Synthesizer",
+        "ports": [
+            { "name": "output", "type": "audio", "direction": "output", "bind": "mixer/output" }
+        ],
+        "params": [
+            {
+                "name": "cutoff", "bind": "filter/cutoff",
+                "type": "float",
+                "group": "Filter",
+                "description": "Lowpass filter cutoff frequency",
+                "min": 20.0, "max": 20000.0, "default": 1000.0,
+                "display_hint": "knob",
+                "semantic_tag": "frequency_hz",
+                "semantic_shape": "scalar",
+                "semantic_unit": "Hz",
+                "semantic_intent": "filter_cutoff",
+                "layout_columns": 2,
+                "layout_column_index": 0
+            },
+            {
+                "name": "mode", "bind": "filter/mode",
+                "type": "int",
+                "group": "Filter",
+                "description": "Filter mode",
+                "choices": ["Lowpass", "Highpass", "Bandpass"],
+                "default": 0, "min": 0, "max": 2
+            },
+            {
+                "name": "bypass", "bind": "filter/bypass",
+                "type": "bool",
+                "display_hint": "hidden"
+            },
+            {
+                "name": "volume", "bind": "mixer/gain"
+            }
+        ]
+    },
+    "nodes": {
+        "filter": { "type": "Filter", "params": { "cutoff": 500, "mode": 0, "bypass": 0 } },
+        "mixer":  { "type": "VoiceMixer", "params": { "gain": 0.7 } }
+    },
+    "connections": [
+        { "from": "filter/output", "to": "mixer/input" }
+    ]
+})";
+
+static void test_parse_param_metadata() {
+    std::fprintf(stderr, "\n--- parse: param metadata ---\n");
+
+    vivid::SubgraphModuleRegistry registry;
+    std::string tmp_path = (g_tmp->path / "rich_synth.vivid-module.json").string();
+    {
+        FILE* f = std::fopen(tmp_path.c_str(), "w");
+        std::fputs(kModuleWithParamMetadata, f);
+        std::fclose(f);
+    }
+    check(registry.load(tmp_path), "load succeeds");
+    const auto* mod = registry.find("RichSynth");
+    check(mod != nullptr, "module found");
+    if (!mod) return;
+    check(mod->params.size() == 4, "4 params defined");
+
+    // cutoff — fully specified
+    const auto& cutoff = mod->params[0];
+    check(cutoff.name == "cutoff", "cutoff name");
+    check(cutoff.type.has_value() && *cutoff.type == VIVID_PARAM_FLOAT, "cutoff type = float");
+    check(cutoff.group == "Filter", "cutoff group");
+    check(cutoff.description == "Lowpass filter cutoff frequency", "cutoff description");
+    check(cutoff.min_value.has_value() && *cutoff.min_value == 20.0f, "cutoff min");
+    check(cutoff.max_value.has_value() && *cutoff.max_value == 20000.0f, "cutoff max");
+    check(cutoff.default_value.has_value() && *cutoff.default_value == 1000.0f, "cutoff default");
+    check(cutoff.display_hint.has_value() && *cutoff.display_hint == VIVID_DISPLAY_KNOB, "cutoff display_hint = knob");
+    check(cutoff.semantic_tag == "frequency_hz", "cutoff semantic_tag");
+    check(cutoff.semantic_shape == "scalar", "cutoff semantic_shape");
+    check(cutoff.semantic_unit == "Hz", "cutoff semantic_unit");
+    check(cutoff.semantic_intent == "filter_cutoff", "cutoff semantic_intent");
+    check(cutoff.layout_columns == 2, "cutoff layout_columns");
+    check(cutoff.layout_column_index == 0, "cutoff layout_column_index");
+
+    // mode — int with choices
+    const auto& mode = mod->params[1];
+    check(mode.type.has_value() && *mode.type == VIVID_PARAM_INT, "mode type = int");
+    check(mode.group == "Filter", "mode group");
+    check(mode.choice_labels.size() == 3, "mode has 3 choices");
+    check(mode.choice_labels[0] == "Lowpass", "mode choice 0");
+    check(mode.choice_labels[2] == "Bandpass", "mode choice 2");
+
+    // bypass — bool, hidden
+    const auto& bypass = mod->params[2];
+    check(bypass.type.has_value() && *bypass.type == VIVID_PARAM_BOOL, "bypass type = bool");
+    check(bypass.display_hint.has_value() && *bypass.display_hint == VIVID_DISPLAY_HIDDEN, "bypass display_hint = hidden");
+
+    // volume — no metadata (backward compat)
+    const auto& volume = mod->params[3];
+    check(!volume.type.has_value(), "volume type not specified");
+    check(!volume.default_value.has_value(), "volume default not specified");
+    check(!volume.min_value.has_value(), "volume min not specified");
+    check(!volume.max_value.has_value(), "volume max not specified");
+    check(volume.group.empty(), "volume group empty");
+    check(volume.description.empty(), "volume description empty");
+    check(!volume.display_hint.has_value(), "volume display_hint not specified");
+    check(volume.choice_labels.empty(), "volume no choices");
+}
+
+static void test_parse_param_metadata_absent() {
+    std::fprintf(stderr, "\n--- parse: existing module unchanged ---\n");
+
+    // Load the original kSimpleModule and verify params have no metadata
+    vivid::SubgraphModuleRegistry registry;
+    std::string tmp_path = (g_tmp->path / "simple_compat.vivid-module.json").string();
+    {
+        FILE* f = std::fopen(tmp_path.c_str(), "w");
+        std::fputs(kSimpleModule, f);
+        std::fclose(f);
+    }
+    check(registry.load(tmp_path), "load succeeds");
+    const auto* mod = registry.find("TestSynth");
+    check(mod != nullptr, "module found");
+    if (!mod) return;
+
+    for (const auto& pb : mod->params) {
+        check(!pb.type.has_value(), (pb.name + " type not specified").c_str());
+        check(!pb.default_value.has_value(), (pb.name + " default not specified").c_str());
+        check(!pb.min_value.has_value(), (pb.name + " min not specified").c_str());
+        check(!pb.max_value.has_value(), (pb.name + " max not specified").c_str());
+        check(pb.group.empty(), (pb.name + " group empty").c_str());
+        check(pb.description.empty(), (pb.name + " description empty").c_str());
+        check(!pb.display_hint.has_value(), (pb.name + " display_hint not specified").c_str());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// make_operator_info tests
+// ---------------------------------------------------------------------------
+
+static void test_make_operator_info_with_metadata() {
+    std::fprintf(stderr, "\n--- make_operator_info: rich metadata ---\n");
+
+    vivid::SubgraphModuleRegistry registry;
+    std::string tmp_path = (g_tmp->path / "rich_opinfo.vivid-module.json").string();
+    {
+        FILE* f = std::fopen(tmp_path.c_str(), "w");
+        std::fputs(kModuleWithParamMetadata, f);
+        std::fclose(f);
+    }
+    check(registry.load(tmp_path), "load succeeds");
+    const auto* mod = registry.find("RichSynth");
+    check(mod != nullptr, "module found");
+    if (!mod) return;
+
+    auto info = vivid::make_operator_info(*mod);
+    check(info != nullptr, "operator info created");
+    check(info->is_module, "is_module = true");
+    check(info->name == "RichSynth", "info name");
+    check(info->params.size() == 4, "4 params in info");
+
+    // cutoff — full metadata propagated
+    const auto& cutoff = info->params[0];
+    check(cutoff.name == "cutoff", "cutoff name");
+    check(cutoff.type == VIVID_PARAM_FLOAT, "cutoff type");
+    check(cutoff.min_value == 20.0f, "cutoff min");
+    check(cutoff.max_value == 20000.0f, "cutoff max");
+    check(cutoff.default_value == 1000.0f, "cutoff default (explicit override)");
+    check(cutoff.group == "Filter", "cutoff group");
+    check(cutoff.description == "Lowpass filter cutoff frequency", "cutoff description");
+    check(cutoff.display_hint == VIVID_DISPLAY_KNOB, "cutoff display_hint");
+    check(cutoff.semantic_tag == "frequency_hz", "cutoff semantic_tag");
+    check(cutoff.semantic_unit == "Hz", "cutoff semantic_unit");
+    check(cutoff.layout_columns == 2, "cutoff layout_columns");
+
+    // mode — int with choices
+    const auto& mode = info->params[1];
+    check(mode.type == VIVID_PARAM_INT, "mode type = int");
+    check(mode.choice_count == 3, "mode choice_count");
+    check(mode.choice_labels.size() == 3, "mode choice_labels size");
+    check(mode.choice_labels[1] == "Highpass", "mode choice 1");
+    check(mode.group == "Filter", "mode group");
+
+    // volume — no metadata, inherits internal default
+    const auto& volume = info->params[3];
+    check(volume.type == VIVID_PARAM_FLOAT, "volume type defaults to float");
+    check(volume.default_value == 0.7f, "volume default inherited from internal node");
+    check(volume.min_value == 0.0f, "volume min defaults to 0");
+    check(volume.max_value == 1.0f, "volume max defaults to 1");
+    check(volume.group.empty(), "volume group empty");
+}
+
+static void test_make_operator_info_backward_compat() {
+    std::fprintf(stderr, "\n--- make_operator_info: backward compat ---\n");
+
+    vivid::SubgraphModuleRegistry registry;
+    std::string tmp_path = (g_tmp->path / "compat_opinfo.vivid-module.json").string();
+    {
+        FILE* f = std::fopen(tmp_path.c_str(), "w");
+        std::fputs(kSimpleModule, f);
+        std::fclose(f);
+    }
+    check(registry.load(tmp_path), "load succeeds");
+    const auto* mod = registry.find("TestSynth");
+    check(mod != nullptr, "module found");
+    if (!mod) return;
+
+    auto info = vivid::make_operator_info(*mod);
+    check(info->is_module, "is_module = true");
+    check(info->params.size() == 2, "2 params");
+
+    // volume — should inherit default 0.7 from mixer/gain internal node
+    const auto& volume = info->params[0];
+    check(volume.name == "volume", "volume name");
+    check(volume.type == VIVID_PARAM_FLOAT, "volume type = float");
+    check(volume.default_value == 0.7f, "volume default from internal node");
+    check(volume.min_value == 0.0f, "volume min = 0");
+    check(volume.max_value == 1.0f, "volume max = 1");
+    check(volume.group.empty(), "volume no group");
+    check(volume.description.empty(), "volume no description");
+    check(volume.display_hint == VIVID_DISPLAY_DEFAULT, "volume display_hint = default");
+    check(volume.choice_labels.empty(), "volume no choices");
+}
+
+// ---------------------------------------------------------------------------
+// to_operator_preset tests
+// ---------------------------------------------------------------------------
+
+static void test_to_operator_preset_basic() {
+    std::fprintf(stderr, "\n--- to_operator_preset: basic translation ---\n");
+
+    vivid::SubgraphModuleRegistry registry;
+    std::string tmp_path = (g_tmp->path / "preset_test.vivid-module.json").string();
+    {
+        FILE* f = std::fopen(tmp_path.c_str(), "w");
+        std::fputs(kSimpleModule, f);
+        std::fclose(f);
+    }
+    check(registry.load(tmp_path), "load succeeds");
+    const auto* mod = registry.find("TestSynth");
+    check(mod != nullptr, "module found");
+    if (!mod) return;
+
+    // "Bright" preset: osc/waveform -> 1, mixer/gain -> 0.8
+    const auto* sp = mod->find_preset("Bright");
+    check(sp != nullptr, "Bright preset found");
+    if (!sp) return;
+
+    auto op = vivid::to_operator_preset(*sp, *mod);
+    check(op.name == "Bright", "preset name preserved");
+    check(op.params.size() == 2, "2 params translated");
+
+    // "osc/waveform" -> exposed name "waveform"
+    auto wf_it = op.params.find("waveform");
+    check(wf_it != op.params.end(), "waveform param mapped");
+    if (wf_it != op.params.end())
+        check(wf_it->second == 1.0f, "waveform value = 1");
+
+    // "mixer/gain" -> exposed name "volume"
+    auto vol_it = op.params.find("volume");
+    check(vol_it != op.params.end(), "volume param mapped");
+    if (vol_it != op.params.end())
+        check(vol_it->second == 0.8f, "volume value = 0.8");
+}
+
+static void test_to_operator_preset_unmapped() {
+    std::fprintf(stderr, "\n--- to_operator_preset: unmapped keys dropped ---\n");
+
+    // Create a module def with a preset that has an internal-only override
+    vivid::SubgraphModuleDef def;
+    def.name = "TestDrop";
+    vivid::SubgraphParamBinding pb;
+    pb.name = "volume";
+    pb.internal_node = "mixer";
+    pb.internal_param = "gain";
+    def.params.push_back(pb);
+
+    vivid::SubgraphPreset sp;
+    sp.name = "Mixed";
+    sp.param_overrides["mixer/gain"] = 0.5f;       // mapped
+    sp.param_overrides["osc/detune"] = 0.1f;        // unmapped — should be dropped
+
+    auto op = vivid::to_operator_preset(sp, def);
+    check(op.params.size() == 1, "only mapped param kept");
+    check(op.params.count("volume") == 1, "volume param present");
+    check(op.params.count("detune") == 0, "unmapped detune dropped");
+}
+
+// ---------------------------------------------------------------------------
+// Validation tests
+// ---------------------------------------------------------------------------
+
+static const char* kModuleBadParamBinding = R"({
+    "schema_version": 2,
+    "module": {
+        "name": "BadParamBind",
+        "ports": [
+            { "name": "output", "type": "audio", "direction": "output", "bind": "mixer/output" }
+        ],
+        "params": [
+            { "name": "volume", "bind": "nonexistent_node/gain" }
+        ]
+    },
+    "nodes": {
+        "mixer": { "type": "VoiceMixer", "params": { "gain": 0.7 } }
+    },
+    "connections": []
+})";
+
+static const char* kModuleBadPortBinding = R"({
+    "schema_version": 2,
+    "module": {
+        "name": "BadPortBind",
+        "ports": [
+            { "name": "output", "type": "audio", "direction": "output", "bind": "nonexistent/output" }
+        ],
+        "params": [
+            { "name": "volume", "bind": "mixer/gain" }
+        ]
+    },
+    "nodes": {
+        "mixer": { "type": "VoiceMixer", "params": { "gain": 0.7 } }
+    },
+    "connections": []
+})";
+
+static const char* kModuleBadPresetRef = R"({
+    "schema_version": 2,
+    "module": {
+        "name": "BadPresetRef",
+        "ports": [
+            { "name": "output", "type": "audio", "direction": "output", "bind": "mixer/output" }
+        ],
+        "params": [
+            { "name": "volume", "bind": "mixer/gain" }
+        ],
+        "presets": {
+            "Test": { "also_missing/param": 0.5 }
+        }
+    },
+    "nodes": {
+        "mixer": { "type": "VoiceMixer", "params": { "gain": 0.7 } }
+    },
+    "connections": []
+})";
+
+static void test_validation_bad_param_binding_fails() {
+    std::fprintf(stderr, "\n--- validation: bad param binding fails to load ---\n");
+
+    vivid::SubgraphModuleRegistry registry;
+    std::string tmp_path = (g_tmp->path / "bad_param.vivid-module.json").string();
+    {
+        FILE* f = std::fopen(tmp_path.c_str(), "w");
+        std::fputs(kModuleBadParamBinding, f);
+        std::fclose(f);
+    }
+    check(!registry.load(tmp_path), "load fails for bad param binding");
+    check(registry.find("BadParamBind") == nullptr, "module not registered");
+}
+
+static void test_validation_bad_port_binding_fails() {
+    std::fprintf(stderr, "\n--- validation: bad port binding fails to load ---\n");
+
+    vivid::SubgraphModuleRegistry registry;
+    std::string tmp_path = (g_tmp->path / "bad_port.vivid-module.json").string();
+    {
+        FILE* f = std::fopen(tmp_path.c_str(), "w");
+        std::fputs(kModuleBadPortBinding, f);
+        std::fclose(f);
+    }
+    check(!registry.load(tmp_path), "load fails for bad port binding");
+    check(registry.find("BadPortBind") == nullptr, "module not registered");
+}
+
+static void test_validation_bad_preset_ref_warns() {
+    std::fprintf(stderr, "\n--- validation: bad preset ref warns but loads ---\n");
+
+    vivid::SubgraphModuleRegistry registry;
+    std::string tmp_path = (g_tmp->path / "bad_preset.vivid-module.json").string();
+    {
+        FILE* f = std::fopen(tmp_path.c_str(), "w");
+        std::fputs(kModuleBadPresetRef, f);
+        std::fclose(f);
+    }
+    check(registry.load(tmp_path), "load succeeds despite bad preset ref");
+    const auto* mod = registry.find("BadPresetRef");
+    check(mod != nullptr, "module found");
+    if (!mod) return;
+    check(mod->params.size() == 1, "param preserved");
+    check(mod->presets.size() == 1, "preset preserved");
+}
+
+// ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
 
@@ -527,6 +924,15 @@ int main() {
     test_flatten_midi_mapping_remap();
     test_flatten_variation_remap();
     test_flatten_cross_instance_connection();
+    test_parse_param_metadata();
+    test_parse_param_metadata_absent();
+    test_make_operator_info_with_metadata();
+    test_make_operator_info_backward_compat();
+    test_to_operator_preset_basic();
+    test_to_operator_preset_unmapped();
+    test_validation_bad_param_binding_fails();
+    test_validation_bad_port_binding_fails();
+    test_validation_bad_preset_ref_warns();
 
     std::fprintf(stderr, "\n=== %s (%d failure%s) ===\n",
                  failures == 0 ? "ALL PASSED" : "FAILURES",

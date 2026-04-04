@@ -378,7 +378,7 @@ add_executable(test_subgraph_module
 )
 target_include_directories(test_subgraph_module PRIVATE src tests)
 target_link_libraries(test_subgraph_module PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_test(NAME test_subgraph_module COMMAND test_subgraph_module WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_graph_compiler

@@ -707,3 +707,212 @@
                 check(found_abi_mismatch, "operator_map contains abi_mismatch entry");
             }
         }
+
+        // Module query-surface parity
+        std::fprintf(stderr, "\n--- module query surfaces ---\n");
+        {
+            auto add_src = post(client, base_url, "add_node",
+                R"({"type":"StringSourceOp","node_id":"module_src"})");
+            check(add_src.ok, "add_node module_src ok");
+
+            auto add_mod = post(client, base_url, "add_node",
+                R"({"type":"QuerySurfaceModule","node_id":"mod1"})");
+            check(add_mod.ok, "add_node QuerySurfaceModule mod1 ok");
+
+            auto connect_echo = post(client, base_url, "connect",
+                R"({"from_addr":"module_src/out","to_addr":"mod1/echo_in"})");
+            check(connect_echo.ok, "connect module_src/out -> mod1/echo_in ok");
+
+            auto connect_list = post(client, base_url, "connect",
+                R"({"from_addr":"module_src/list","to_addr":"mod1/echo_list_in"})");
+            check(connect_list.ok, "connect module_src/list -> mod1/echo_list_in ok");
+
+            phase.store(23);
+            while (phase.load() < 24) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+            auto ig = post(client, base_url, "inspect_graph");
+            check(ig.ok, "inspect_graph with module ok");
+            if (!ig.j.is_null()) {
+                auto mod = inspect_graph_node_by_id(ig.j, "mod1");
+                check(!mod.is_null(), "inspect_graph returns authored module node");
+                if (!mod.is_null()) {
+                    check(mod.contains("type") && mod["type"].is_string() &&
+                              mod["type"].get<std::string>() == "QuerySurfaceModule",
+                          "module node reports module type");
+                    auto scale = find_named_entry(mod.value("params", json::array()), "scale");
+                    auto label = find_named_entry(mod.value("params", json::array()), "label");
+                    check(!scale.is_null(), "module numeric param present");
+                    check(!label.is_null(), "module text param present");
+                    if (!scale.is_null()) {
+                        check(scale.contains("value") && scale["value"].is_number() &&
+                                  std::fabs(scale["value"].get<double>() - 2.5) < 1e-4,
+                              "module numeric param exposes live value");
+                        check(scale.contains("min") && scale["min"].is_number() &&
+                                  std::fabs(scale["min"].get<double>() - 0.0) < 1e-6,
+                              "module numeric param exposes min");
+                        check(scale.contains("max") && scale["max"].is_number() &&
+                                  std::fabs(scale["max"].get<double>() - 100.0) < 1e-6,
+                              "module numeric param exposes max");
+                        check(scale.contains("default") && scale["default"].is_number() &&
+                                  std::fabs(scale["default"].get<double>() - 2.5) < 1e-6,
+                              "module numeric param exposes default");
+                    }
+                    if (!label.is_null()) {
+                        check(label.contains("string_value") && label["string_value"].is_string() &&
+                                  label["string_value"].get<std::string>() == "module-label",
+                              "module text param exposes string_value");
+                    }
+
+                    auto echo_in = find_named_entry(mod.value("inputs", json::array()), "echo_in");
+                    auto echo_list_in = find_named_entry(mod.value("inputs", json::array()), "echo_list_in");
+                    auto scaled = find_named_entry(mod.value("outputs", json::array()), "scaled");
+                    auto label_out = find_named_entry(mod.value("outputs", json::array()), "label_out");
+                    auto label_list = find_named_entry(mod.value("outputs", json::array()), "label_list");
+                    auto echo_out = find_named_entry(mod.value("outputs", json::array()), "echo_out");
+                    auto echo_list_out = find_named_entry(mod.value("outputs", json::array()), "echo_list_out");
+
+                    check(!echo_in.is_null(), "module input port present");
+                    check(!echo_list_in.is_null(), "module string-lanes input port present");
+                    check(!scaled.is_null(), "module scalar output port present");
+                    check(!label_out.is_null(), "module string output port present");
+                    check(!label_list.is_null(), "module string-lanes output port present");
+                    check(!echo_out.is_null(), "module echoed string output present");
+                    check(!echo_list_out.is_null(), "module echoed string-lanes output present");
+
+                    if (!echo_in.is_null()) {
+                        check(echo_in.contains("current_string") && echo_in["current_string"].is_string() &&
+                                  echo_in["current_string"].get<std::string>() == "alpha",
+                              "module input exposes current_string");
+                    }
+                    if (!echo_list_in.is_null()) {
+                        check(echo_list_in.contains("string_lanes") && echo_list_in["string_lanes"].is_array() &&
+                                  echo_list_in["string_lanes"].size() == 3,
+                              "module input exposes string_lanes");
+                    }
+                    if (!scaled.is_null()) {
+                        check(scaled.contains("current_value") && scaled["current_value"].is_number() &&
+                                  std::fabs(scaled["current_value"].get<double>() - 5.0) < 1e-4,
+                              "module scalar output exposes current_value");
+                    }
+                    if (!label_out.is_null()) {
+                        check(label_out.contains("current_string") && label_out["current_string"].is_string() &&
+                                  label_out["current_string"].get<std::string>() == "module-label",
+                              "module string output exposes current_string");
+                    }
+                    if (!label_list.is_null()) {
+                        check(label_list.contains("string_lanes") && label_list["string_lanes"].is_array() &&
+                                  label_list["string_lanes"].size() == 3,
+                              "module string-lanes output exposes string_lanes");
+                    }
+                    if (!echo_out.is_null()) {
+                        check(echo_out.contains("current_string") && echo_out["current_string"].is_string() &&
+                                  echo_out["current_string"].get<std::string>() == "alpha",
+                              "module echoed output exposes current_string");
+                    }
+                    if (!echo_list_out.is_null()) {
+                        check(echo_list_out.contains("string_lanes") && echo_list_out["string_lanes"].is_array() &&
+                                  echo_list_out["string_lanes"].size() == 3,
+                              "module echoed output exposes string_lanes");
+                    }
+                }
+            }
+
+            auto intro = post(client, base_url, "introspect_nodes");
+            check(intro.ok, "introspect_nodes with module ok");
+            if (!intro.j.is_null()) {
+                auto mod = introspect_node_by_id(intro.j, "mod1");
+                check(!mod.is_null(), "introspect_nodes returns module instance");
+                if (!mod.is_null()) {
+                    check(mod.contains("is_module") && mod["is_module"].is_boolean() &&
+                              mod["is_module"].get<bool>(),
+                          "module introspection marks is_module");
+                    check(mod.contains("kind") && mod["kind"].is_string() &&
+                              mod["kind"].get<std::string>() == "module",
+                          "module introspection kind=module");
+                    check(mod.contains("params") && mod["params"].is_object(),
+                          "module introspection has params object");
+                    if (mod.contains("params") && mod["params"].is_object()) {
+                        auto params = mod["params"];
+                        check(params.contains("scale") && params["scale"].is_number() &&
+                                  std::fabs(params["scale"].get<double>() - 2.5) < 1e-4,
+                              "module introspection exposes numeric param");
+                        check(params.contains("label") && params["label"].is_string() &&
+                                  params["label"].get<std::string>() == "module-label",
+                              "module introspection exposes string param");
+                    }
+                    auto meta = find_named_entry(mod.value("param_meta", json::array()), "scale");
+                    check(!meta.is_null(), "module introspection param_meta present");
+                    if (!meta.is_null()) {
+                        check(meta.contains("semantic_intent") && meta["semantic_intent"].is_string() &&
+                                  meta["semantic_intent"].get<std::string>() == "module_scale",
+                              "module introspection exposes param metadata");
+                    }
+
+                    auto echo_in = find_named_entry(mod.value("inputs", json::array()), "echo_in");
+                    auto echo_list_in = find_named_entry(mod.value("inputs", json::array()), "echo_list_in");
+                    auto scaled = find_named_entry(mod.value("outputs", json::array()), "scaled");
+                    auto label_out = find_named_entry(mod.value("outputs", json::array()), "label_out");
+                    auto label_list = find_named_entry(mod.value("outputs", json::array()), "label_list");
+                    auto echo_out = find_named_entry(mod.value("outputs", json::array()), "echo_out");
+                    auto echo_list_out = find_named_entry(mod.value("outputs", json::array()), "echo_list_out");
+
+                    if (!echo_in.is_null()) {
+                        check(echo_in.contains("string") && echo_in["string"].is_string() &&
+                                  echo_in["string"].get<std::string>() == "alpha",
+                              "module introspection input exposes string");
+                        check(echo_in.contains("connected_wires") && echo_in["connected_wires"].is_number_integer() &&
+                                  echo_in["connected_wires"].get<int>() == 1,
+                              "module introspection input exposes wire count");
+                    }
+                    if (!echo_list_in.is_null()) {
+                        check(echo_list_in.contains("string_lanes") && echo_list_in["string_lanes"].is_object() &&
+                                  echo_list_in["string_lanes"].value("length", -1) == 3,
+                              "module introspection input exposes string_lanes length");
+                    }
+                    if (!scaled.is_null()) {
+                        check(scaled.contains("scalar") && scaled["scalar"].is_number() &&
+                                  std::fabs(scaled["scalar"].get<double>() - 5.0) < 1e-4,
+                              "module introspection output exposes scalar");
+                    }
+                    if (!label_out.is_null()) {
+                        check(label_out.contains("string") && label_out["string"].is_string() &&
+                                  label_out["string"].get<std::string>() == "module-label",
+                              "module introspection output exposes string");
+                    }
+                    if (!label_list.is_null()) {
+                        check(label_list.contains("string_lanes") && label_list["string_lanes"].is_object() &&
+                                  label_list["string_lanes"].value("length", -1) == 3,
+                              "module introspection output exposes string_lanes length");
+                    }
+                    if (!echo_out.is_null()) {
+                        check(echo_out.contains("string") && echo_out["string"].is_string() &&
+                                  echo_out["string"].get<std::string>() == "alpha",
+                              "module introspection echoed output exposes string");
+                    }
+                    if (!echo_list_out.is_null()) {
+                        check(echo_list_out.contains("string_lanes") && echo_list_out["string_lanes"].is_object() &&
+                                  echo_list_out["string_lanes"].value("length", -1) == 3,
+                              "module introspection echoed output exposes string_lanes length");
+                    }
+                }
+            }
+
+            auto remove_mod = post(client, base_url, "remove_node",
+                R"({"node_id":"mod1"})");
+            check(remove_mod.ok, "remove_node mod1 ok");
+            auto remove_src = post(client, base_url, "remove_node",
+                R"({"node_id":"module_src"})");
+            check(remove_src.ok, "remove_node module_src ok");
+
+            phase.store(25);
+            while (phase.load() < 26) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+            auto cleanup = post(client, base_url, "inspect_graph");
+            check(cleanup.ok, "inspect_graph after module cleanup ok");
+            if (!cleanup.j.is_null()) {
+                check(inspect_graph_node_by_id(cleanup.j, "mod1").is_null(),
+                      "module cleanup removes authored module node");
+                check(inspect_graph_node_by_id(cleanup.j, "module_src").is_null(),
+                      "module cleanup removes external source node");
+            }
+        }

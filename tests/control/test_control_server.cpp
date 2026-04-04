@@ -4,6 +4,7 @@
 #include "runtime/audio/audio_engine.h"
 #include "runtime/control/runtime_api.h"
 #include "runtime/control/control_server.h"
+#include "runtime/graph/subgraph_module.h"
 #include "runtime/packages/package_compiler.h"
 #include "runtime/packages/package_manager.h"
 #include "runtime/packages/package_catalog.h"
@@ -91,6 +92,16 @@ static json inspect_graph_node_by_id(const json& root, const char* node_id) {
     return nullptr;
 }
 
+static json find_named_entry(const json& arr, const char* name) {
+    if (!arr.is_array()) return nullptr;
+    for (const auto& entry : arr) {
+        if (entry.contains("name") && entry["name"].is_string() &&
+            entry["name"].get<std::string>() == name)
+            return entry;
+    }
+    return nullptr;
+}
+
 int main(int argc, char* argv[]) {
     std::string build_dir = ".";
     if (argc > 1) build_dir = argv[1];
@@ -139,6 +150,12 @@ int main(int argc, char* argv[]) {
     std::filesystem::copy_file(build_dir + "/envelope_fr.dylib",
         staging + "/envelope_fr.dylib",
         std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/string_source_op.dylib",
+        staging + "/string_source_op.dylib",
+        std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/string_sink_op.dylib",
+        staging + "/string_sink_op.dylib",
+        std::filesystem::copy_options::overwrite_existing);
 
     std::string abi_probe_dir = build_dir + "/.test_cs_abi_probe";
     std::filesystem::create_directories(abi_probe_dir);
@@ -154,10 +171,62 @@ int main(int argc, char* argv[]) {
     unsetenv("VIVID_MOCK_RUNTIME_ABI");
     check(registry.scan(staging.c_str()), "registry.scan()");
 
+    vivid::SubgraphModuleRegistry subgraph_modules;
+    std::string module_path = build_dir + "/.test_cs_query_surface.vivid-module.json";
+    {
+        std::ofstream ofs(module_path);
+        ofs <<
+            R"({
+  "schema_version": 2,
+  "module": {
+    "name": "QuerySurfaceModule",
+    "description": "Fixture module for control-server query parity tests.",
+    "ports": [
+      { "name": "echo_in", "type": "string", "direction": "input", "bind": "sink/in" },
+      { "name": "echo_list_in", "type": "string_lanes", "direction": "input", "bind": "sink/in_list" },
+      { "name": "scaled", "type": "signal", "direction": "output", "bind": "math/out" },
+      { "name": "label_out", "type": "string", "direction": "output", "bind": "text_src/out" },
+      { "name": "label_list", "type": "string_lanes", "direction": "output", "bind": "text_src/list" },
+      { "name": "echo_out", "type": "string", "direction": "output", "bind": "sink/out" },
+      { "name": "echo_list_out", "type": "string_lanes", "direction": "output", "bind": "sink/out_list" }
+    ],
+    "params": [
+      {
+        "name": "scale",
+        "bind": "math/scale",
+        "type": "float",
+        "min": 0.0,
+        "max": 100.0,
+        "default": 2.5,
+        "semantic_tag": "frequency_hz",
+        "semantic_shape": "scalar",
+        "semantic_unit": "Hz",
+        "semantic_intent": "module_scale"
+      },
+      {
+        "name": "label",
+        "bind": "text_src/value",
+        "type": "text",
+        "description": "Text label echoed by the fixture module."
+      }
+    ]
+  },
+  "nodes": {
+    "math": { "type": "TestOp", "params": { "scale": 2.5 } },
+    "text_src": { "type": "StringSourceOp", "params": { "value": "module-label" } },
+    "sink": { "type": "StringSinkOp" }
+  },
+  "connections": []
+}
+)";
+    }
+    check(subgraph_modules.load(module_path), "subgraph module fixture loads");
+
     vivid::Graph graph;
     check(graph.load(graph_path.c_str()), "graph.load()");
 
     vivid::RuntimeCore runtime;
+    runtime.set_subgraph_modules(&subgraph_modules);
     check(runtime.build(graph, registry), "runtime.build()");
 
     vivid::AudioEngine audio_engine;
@@ -165,6 +234,7 @@ int main(int argc, char* argv[]) {
     bool has_audio = false;
 
     vivid::RuntimeAPI api(graph, runtime, audio_engine, registry);
+    api.set_subgraph_modules(&subgraph_modules);
 
     {
         std::filesystem::create_directories(vivid::PackageManager::packages_dir());
@@ -418,6 +488,14 @@ VIVID_REGISTER(TestOp)
             api.apply_pending(has_gpu_ops, has_audio);
             runtime.tick(0.0, 0.016, 11);
             phase.store(22);
+        } else if (p == 23) {
+            api.apply_pending(has_gpu_ops, has_audio);
+            runtime.tick(0.0, 0.016, 12);
+            phase.store(24);
+        } else if (p == 25) {
+            api.apply_pending(has_gpu_ops, has_audio);
+            runtime.tick(0.0, 0.016, 13);
+            phase.store(26);
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
