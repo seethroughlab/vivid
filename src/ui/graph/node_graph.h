@@ -341,6 +341,7 @@ private:
     void draw_custom_inspector(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_state_presets(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
+    void draw_inspector_performance(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_chooser(Renderer2D& tr);
     void draw_preview_wire(Renderer2D& tr);
     void draw_box_select(Renderer2D& tr);

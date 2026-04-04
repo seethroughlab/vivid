@@ -369,6 +369,10 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
             draw_inspector_params(tr, *sel_node, px, py);
         }
     }
+    // --- Performance section (module instances with performance-tagged params) ---
+    if (sel_node->is_module_instance) {
+        draw_inspector_performance(tr, *sel_node, px, py);
+    }
     // --- Technical section ---
     {
         bool has_resolution = sel_node->is_gpu && sel_node->gpu_tex_width > 0;

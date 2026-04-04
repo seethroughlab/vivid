@@ -1483,6 +1483,147 @@ static void test_flatten_existing_tests_still_work() {
 }
 
 // ---------------------------------------------------------------------------
+// Performance surface metadata tests (Step 5)
+// ---------------------------------------------------------------------------
+
+static const char* kModuleWithPerformance = R"({
+    "schema_version": 3,
+    "module": {
+        "name": "PerfSynth",
+        "description": "Test module with performance-tagged params",
+        "category": "Synthesizer",
+        "ports": [
+            { "name": "output", "type": "signal", "direction": "output", "bind": "osc/value" }
+        ],
+        "params": [
+            { "name": "cutoff", "bind": "filter/cutoff", "type": "float", "min": 20, "max": 20000, "default": 1000 },
+            { "name": "macro1", "bind": "macro/a", "type": "float", "min": 0, "max": 1, "default": 0.5,
+              "performance_page": "Performance", "performance_order": 0, "performance_role": "macro" },
+            { "name": "macro2", "bind": "macro/b", "type": "float", "min": 0, "max": 1, "default": 0.5,
+              "performance_page": "Performance", "performance_order": 1, "performance_role": "macro" },
+            { "name": "brightness", "bind": "timbre/bright", "type": "float", "min": 0, "max": 1, "default": 0.3,
+              "performance_page": "Timbre", "performance_order": 0, "performance_role": "expression" }
+        ]
+    },
+    "nodes": {
+        "osc": { "type": "LFO" },
+        "filter": { "type": "Math" },
+        "macro": { "type": "Math" },
+        "timbre": { "type": "Math" }
+    },
+    "connections": []
+})";
+
+static void test_parse_performance_metadata() {
+    std::fprintf(stderr, "\n--- parse: performance metadata ---\n");
+
+    vivid::SubgraphModuleRegistry registry;
+    std::string path = (g_tmp->path / "perf_synth.vivid-module.json").string();
+    {
+        FILE* f = std::fopen(path.c_str(), "w");
+        std::fputs(kModuleWithPerformance, f);
+        std::fclose(f);
+    }
+
+    check(registry.load(path), "load succeeds");
+    const auto* mod = registry.find("PerfSynth");
+    check(mod != nullptr, "module found");
+    if (!mod) return;
+
+    check(mod->params.size() == 4, "4 params");
+
+    // cutoff has no performance metadata
+    check(mod->params[0].performance_page.empty(), "cutoff: no perf page");
+    check(mod->params[0].performance_order == -1, "cutoff: perf order default");
+    check(mod->params[0].performance_role.empty(), "cutoff: no perf role");
+
+    // macro1
+    check(mod->params[1].performance_page == "Performance", "macro1: perf page");
+    check(mod->params[1].performance_order == 0, "macro1: perf order = 0");
+    check(mod->params[1].performance_role == "macro", "macro1: perf role = macro");
+
+    // macro2
+    check(mod->params[2].performance_page == "Performance", "macro2: perf page");
+    check(mod->params[2].performance_order == 1, "macro2: perf order = 1");
+
+    // brightness
+    check(mod->params[3].performance_page == "Timbre", "brightness: perf page = Timbre");
+    check(mod->params[3].performance_role == "expression", "brightness: perf role = expression");
+}
+
+static void test_performance_metadata_defaults() {
+    std::fprintf(stderr, "\n--- parse: performance metadata defaults (absent fields) ---\n");
+
+    // Use an existing module JSON that doesn't have performance fields
+    vivid::SubgraphModuleRegistry registry;
+    std::string path = (g_tmp->path / "no_perf.vivid-module.json").string();
+    {
+        FILE* f = std::fopen(path.c_str(), "w");
+        // Minimal module without any performance fields
+        std::fputs(R"({
+            "schema_version": 3,
+            "module": {
+                "name": "NoPerf",
+                "ports": [
+                    { "name": "output", "type": "signal", "direction": "output", "bind": "gain/output" }
+                ],
+                "params": [
+                    { "name": "level", "bind": "gain/level", "type": "float", "min": 0, "max": 1, "default": 0.5 }
+                ]
+            },
+            "nodes": { "gain": { "type": "Math" } },
+            "connections": []
+        })", f);
+        std::fclose(f);
+    }
+
+    check(registry.load(path), "load succeeds");
+    const auto* mod = registry.find("NoPerf");
+    check(mod != nullptr, "module found");
+    if (!mod) return;
+
+    check(mod->params[0].performance_page.empty(), "empty perf page default");
+    check(mod->params[0].performance_order == -1, "perf order default = -1");
+    check(mod->params[0].performance_role.empty(), "empty perf role default");
+}
+
+static void test_performance_metadata_in_operator_info() {
+    std::fprintf(stderr, "\n--- make_operator_info: performance metadata propagation ---\n");
+
+    vivid::SubgraphModuleRegistry registry;
+    std::string path = (g_tmp->path / "perf_synth_oi.vivid-module.json").string();
+    {
+        FILE* f = std::fopen(path.c_str(), "w");
+        std::fputs(kModuleWithPerformance, f);
+        std::fclose(f);
+    }
+
+    check(registry.load(path), "load succeeds");
+    const auto* mod = registry.find("PerfSynth");
+    check(mod != nullptr, "module found");
+    if (!mod) return;
+
+    auto info = vivid::make_operator_info(*mod);
+    check(info != nullptr, "operator info created");
+    if (!info) return;
+
+    check(info->params.size() == 4, "4 params in OperatorInfo");
+
+    // cutoff — no performance metadata
+    check(info->params[0].performance_page.empty(), "OI cutoff: no perf page");
+    check(info->params[0].performance_order == -1, "OI cutoff: perf order default");
+
+    // macro1 — has performance metadata
+    check(info->params[1].performance_page == "Performance", "OI macro1: perf page");
+    check(info->params[1].performance_order == 0, "OI macro1: perf order");
+    check(info->params[1].performance_role == "macro", "OI macro1: perf role");
+
+    // brightness
+    check(info->params[3].performance_page == "Timbre", "OI brightness: perf page");
+    check(info->params[3].performance_role == "expression", "OI brightness: perf role");
+}
+
+// ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
 
@@ -1527,6 +1668,11 @@ int main() {
     test_flatten_zero_amount();
     test_flatten_no_assignments_unchanged();
     test_flatten_existing_tests_still_work();
+
+    // Performance surface metadata tests (Step 5)
+    test_parse_performance_metadata();
+    test_performance_metadata_defaults();
+    test_performance_metadata_in_operator_info();
 
     std::fprintf(stderr, "\n=== %s (%d failure%s) ===\n",
                  failures == 0 ? "ALL PASSED" : "FAILURES",

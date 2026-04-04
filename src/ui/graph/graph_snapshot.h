@@ -38,6 +38,11 @@ struct ParamInfo {
     std::string semantic_unit;
     std::string semantic_intent;
     std::string description;
+
+    // Performance surface metadata (Step 5)
+    std::string performance_page;
+    int performance_order = -1;
+    std::string performance_role;
 };
 
 // Owned copy of port metadata

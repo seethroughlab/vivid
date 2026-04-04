@@ -42,6 +42,11 @@ struct SubgraphParamBinding {
     std::string semantic_shape;
     std::string semantic_unit;
     std::string semantic_intent;
+
+    // Performance surface metadata (Step 5)
+    std::string performance_page;      // e.g. "Performance" (empty = not on perf page)
+    int performance_order = -1;        // sort order within page (-1 = unset)
+    std::string performance_role;      // "macro", "mod_wheel", "expression", etc.
 };
 
 struct SubgraphPreset {

@@ -666,4 +666,58 @@ void NodeGraphUI::draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& nod
     }
 }
 
+// ---------------------------------------------------------------------------
+// Performance surface section — curated view of performance-tagged params
+// ---------------------------------------------------------------------------
+
+void NodeGraphUI::draw_inspector_performance(Renderer2D& tr, const NodeSnapshot& node,
+                                              float px, float& py) {
+    if (!node.op_info) return;
+    const auto& params = node.op_info->params;
+
+    // Collect indices of params that have a performance_page set
+    struct PerfEntry {
+        uint32_t param_idx;
+        const std::string* page;
+        int order;
+    };
+    std::vector<PerfEntry> entries;
+    for (uint32_t i = 0; i < static_cast<uint32_t>(params.size()); ++i) {
+        if (!params[i].performance_page.empty()) {
+            entries.push_back({i, &params[i].performance_page, params[i].performance_order});
+        }
+    }
+    if (entries.empty()) return;
+
+    // Sort by (page, order, original_index)
+    std::sort(entries.begin(), entries.end(), [](const PerfEntry& a, const PerfEntry& b) {
+        if (*a.page != *b.page) return *a.page < *b.page;
+        // -1 (unset) sorts after valid orders
+        int oa = (a.order >= 0) ? a.order : 0x7FFFFFFF;
+        int ob = (b.order >= 0) ? b.order : 0x7FFFFFFF;
+        if (oa != ob) return oa < ob;
+        return a.param_idx < b.param_idx;
+    });
+
+    draw_section_separator(tr, px, py, kInspContentW, "Performance");
+
+    // Draw page sub-headers if there are multiple pages
+    bool multi_page = false;
+    for (size_t i = 1; i < entries.size(); ++i) {
+        if (*entries[i].page != *entries[0].page) { multi_page = true; break; }
+    }
+
+    std::string current_page;
+    for (const auto& e : entries) {
+        if (multi_page && *e.page != current_page) {
+            current_page = *e.page;
+            tr.draw_text(px, py, current_page.c_str(),
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2],
+                         1.0f, kSectionLabelScale);
+            py += kLineH;
+        }
+        draw_one_inspector_param_simple(tr, node, px, py, e.param_idx);
+    }
+}
+
 } // namespace vivid::ui
