@@ -158,6 +158,12 @@ add_vivid_operator(sequencer_fr       operators/control/sequencer/sequencer_fr.c
 add_vivid_operator(sequencer_au       operators/control/sequencer/sequencer_au.cpp)
 add_vivid_operator(drum_sequencer_fr  operators/control/drum_sequencer/drum_sequencer_fr.cpp  EXTRA_LIBS webgpu)
 add_vivid_operator(drum_sequencer_au  operators/control/drum_sequencer/drum_sequencer_au.cpp  EXTRA_LIBS webgpu)
+target_sources(drum_sequencer_fr PRIVATE
+    operators/control/drum_sequencer/drum_sequencer_core.cpp
+    operators/control/drum_sequencer/drum_sequencer_inspector.cpp)
+target_sources(drum_sequencer_au PRIVATE
+    operators/control/drum_sequencer/drum_sequencer_core.cpp
+    operators/control/drum_sequencer/drum_sequencer_inspector.cpp)
 add_vivid_operator(pattern_seq_fr     operators/control/pattern_seq/pattern_seq_fr.cpp)
 add_vivid_operator(pattern_seq_au     operators/control/pattern_seq/pattern_seq_au.cpp)
 add_vivid_operator(note_pattern_fr    operators/control/note_pattern/note_pattern_fr.cpp    EXTRA_LIBS webgpu)
