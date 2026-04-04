@@ -114,6 +114,15 @@ target_link_libraries(test_audio_correctness PRIVATE vivid_runtime_testlib vivid
 add_dependencies(test_audio_correctness audio_noise fm_synth filter gain)
 add_test(NAME test_audio_correctness COMMAND test_audio_correctness WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# DualFilter operator correctness tests
+add_executable(test_dual_filter
+    tests/audio/test_dual_filter.cpp
+)
+target_include_directories(test_dual_filter PRIVATE src tests)
+target_link_libraries(test_dual_filter PRIVATE vivid_runtime_testlib vivid_operator_api webgpu nlohmann_json::nlohmann_json)
+add_dependencies(test_dual_filter dual_filter filter)
+add_test(NAME test_dual_filter COMMAND test_dual_filter WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # GPU operator plugin for testing (solid color fill)
 
 # GPU operator integration tests (headless WebGPU, no window)
