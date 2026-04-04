@@ -7,6 +7,8 @@ add_library(vivid_ui STATIC
     src/ui/style/i18n.cpp
     src/ui/graph/node_graph.cpp
     src/ui/graph/node_graph_update.cpp
+    src/ui/graph/node_graph_update_drag.cpp
+    src/ui/graph/node_graph_update_hover.cpp
     src/ui/graph/node_graph_draw.cpp
     src/ui/graph/node_graph_draw_inspector.cpp
     src/ui/graph/node_graph_draw_inspector_params.cpp

@@ -1,0 +1,249 @@
+#include "ui/graph/node_graph.h"
+#include "ui/graph/node_graph_constants.h"
+#include "ui/graph/node_graph_util.h"
+#include "common/string_util.h"
+#include <algorithm>
+#include <unordered_map>
+#include <cmath>
+#include <cstdio>
+
+namespace vivid::ui {
+
+using vivid::format_float;
+using vivid::format_int;
+
+void NodeGraphUI::update_pan() {
+    if (panning_) {
+        pan_x_ = pan_start_px_ + (mouse_.x - pan_start_mx_);
+        pan_y_ = pan_start_py_ + (mouse_.y - pan_start_my_);
+        // Keep targets synced during direct pan
+        pan_target_x_ = pan_x_;
+        pan_target_y_ = pan_y_;
+        zoom_target_ = zoom_;
+    }
+}
+
+void NodeGraphUI::update_node_drag() {
+    if (dragging_node_idx_ < 0) return;
+    if (mouse_.left_down) {
+        // Detect real drag vs jittery click (2px threshold)
+        if (!did_drag_ && !pending_select_node_id_.empty()) {
+            float dx = mouse_.x - drag_start_sx_;
+            float dy = mouse_.y - drag_start_sy_;
+            if (dx * dx + dy * dy > 4.0f)
+                did_drag_ = true;
+        }
+
+        float mgx = sx_to_gx(mouse_.x);
+        float mgy = sy_to_gy(mouse_.y);
+
+        if (group_drag_offsets_.size() > 1) {
+            // Group drag: move all selected nodes
+            for (auto& nr : node_rects_) {
+                auto it = group_drag_offsets_.find(nr.node_id);
+                if (it == group_drag_offsets_.end()) continue;
+                nr.x = mgx - it->second.dx;
+                nr.y = mgy - it->second.dy;
+                const auto* ns = snap_.find_node(nr.node_id);
+                if (ns) recompute_ports(nr, *ns);
+            }
+        } else {
+            // Single drag
+            auto& rect = node_rects_[dragging_node_idx_];
+            rect.x = mgx - drag_offset_x_;
+            rect.y = mgy - drag_offset_y_;
+            const auto* ns = snap_.find_node(rect.node_id);
+            if (ns) recompute_ports(rect, *ns);
+        }
+    }
+    if (mouse_.left_released) {
+        if (group_drag_offsets_.size() > 1) {
+            for (const auto& nr : node_rects_) {
+                if (group_drag_offsets_.count(nr.node_id))
+                    commands_.set_node_layout(nr.node_id, nr.x, nr.y);
+            }
+            group_drag_offsets_.clear();
+        } else {
+            auto& rect = node_rects_[dragging_node_idx_];
+            commands_.set_node_layout(rect.node_id, rect.x, rect.y);
+        }
+        dragging_node_idx_ = -1;
+
+        // Deferred deselection: narrow to clicked node if no drag occurred
+        if (!pending_select_node_id_.empty() && !did_drag_) {
+            selected_node_ids_ = { pending_select_node_id_ };
+        }
+        pending_select_node_id_.clear();
+    }
+}
+
+void NodeGraphUI::update_box_select() {
+    if (!box_selecting_) return;
+    if (mouse_.left_released) {
+        // Compute graph-space AABB from anchor + current mouse
+        float cur_gx = sx_to_gx(mouse_.x);
+        float cur_gy = sy_to_gy(mouse_.y);
+        float min_gx = std::min(box_start_gx_, cur_gx);
+        float max_gx = std::max(box_start_gx_, cur_gx);
+        float min_gy = std::min(box_start_gy_, cur_gy);
+        float max_gy = std::max(box_start_gy_, cur_gy);
+
+        // If not shift, start fresh
+        if (!box_shift_held_)
+            selected_node_ids_.clear();
+
+        // Test intersection against all node_rects_
+        for (const auto& r : node_rects_) {
+            if (r.x + r.w >= min_gx && r.x <= max_gx &&
+                r.y + r.h >= min_gy && r.y <= max_gy) {
+                selected_node_ids_.insert(r.node_id);
+            }
+        }
+        box_selecting_ = false;
+    }
+}
+
+void NodeGraphUI::update_wire_drag() {
+    if (mouse_.left_released && dragging_wire_) {
+        PortHit ph = hit_test_port(mouse_.x, mouse_.y);
+        if (ph.node_idx >= 0 && !ph.is_output) {
+            // Dropped on an input port — connect directly
+            std::string to_node = node_rects_[ph.node_idx].node_id;
+            commands_.connect(wire_from_node_id_ + "/" + wire_from_port_,
+                         to_node + "/" + ph.port_name);
+        } else {
+            // Check if dropped on a node body (not a port, not the source node)
+            int ni = hit_test_node(mouse_.x, mouse_.y);
+            if (ni >= 0 && node_rects_[ni].node_id != wire_from_node_id_) {
+                // Open parameter picker for the target node's input params
+                inspector_.param_picker_node_id = node_rects_[ni].node_id;
+                inspector_.param_picker_wire_from_node = wire_from_node_id_;
+                inspector_.param_picker_wire_from_port = wire_from_port_;
+                inspector_.param_picker_is_output = false; // picking a destination param
+                inspector_.param_picker_x = mouse_.x;
+                inspector_.param_picker_y = mouse_.y;
+                inspector_.param_picker_sel = 0;
+                inspector_.param_picker_scroll = 0;
+                rebuild_param_picker_items();
+                if (!inspector_.param_picker_items.empty())
+                    inspector_.param_picker_open = true;
+            }
+        }
+        dragging_wire_ = false;
+    }
+}
+
+void NodeGraphUI::update_slider_drag() {
+    if (inspector_.active_slider_idx < 0 || dragging_node_idx_ >= 0) return;
+    if (mouse_.left_down) {
+        if (inspector_.active_slider_idx >= static_cast<int>(inspector_.slider_rects.size())) {
+            std::fprintf(stderr, "[UI DEBUG] slider drag: idx=%d out of range (size=%d), resetting\n",
+                         inspector_.active_slider_idx, static_cast<int>(inspector_.slider_rects.size()));
+            inspector_.active_slider_idx = -1;
+            return;
+        }
+        const auto& s = inspector_.slider_rects[inspector_.active_slider_idx];
+        const auto* ns = snap_.find_node(inspector_.active_slider_node_id);
+        if (!ns) {
+            std::fprintf(stderr, "[UI DEBUG] slider drag: node '%s' not found in snapshot\n",
+                         inspector_.active_slider_node_id.c_str());
+        }
+        if (ns) {
+            const ParamInfo* pd = ns->find_param(inspector_.active_slider_param_name);
+            if (!pd) {
+                std::fprintf(stderr, "[UI DEBUG] slider drag: param '%s' not found on node '%s'\n",
+                             inspector_.active_slider_param_name.c_str(), inspector_.active_slider_node_id.c_str());
+            }
+            if (pd) {
+                float val;
+                if (pd->display_hint == VIVID_DISPLAY_KNOB) {
+                    // Vertical drag: up = increase
+                    float dy = mouse_.prev_y - mouse_.y;
+                    float range = pd->max_value - pd->min_value;
+                    float sensitivity = range / 200.0f;
+                    auto pi_it = ns->param_indices.find(pd->name);
+                    float cur = (pi_it != ns->param_indices.end())
+                        ? ns->param_values[pi_it->second] : pd->min_value;
+                    val = cur + dy * sensitivity;
+                    val = std::max(pd->min_value, std::min(pd->max_value, val));
+                } else {
+                    float t = (mouse_.x - s.x) / s.w;
+                    t = std::max(0.0f, std::min(1.0f, t));
+                    val = pd->min_value + t * (pd->max_value - pd->min_value);
+                }
+                if (pd->type == VIVID_PARAM_INT) {
+                    val = std::round(val);
+                }
+                commands_.set_param(inspector_.active_slider_node_id, inspector_.active_slider_param_name, val);
+            }
+        }
+    }
+    if (mouse_.left_released) {
+        inspector_.active_slider_idx = -1;
+    }
+}
+
+void NodeGraphUI::update_xy_pad_drag() {
+    if (inspector_.active_xy_pad_idx < 0 || dragging_node_idx_ >= 0) return;
+    if (mouse_.left_down && inspector_.active_xy_pad_idx < static_cast<int>(inspector_.xy_pad_rects.size())) {
+        const auto& pad = inspector_.xy_pad_rects[inspector_.active_xy_pad_idx];
+        const auto* ns = snap_.find_node(inspector_.active_xy_node_id);
+        if (ns) {
+            const ParamInfo* pdx = ns->find_param(inspector_.active_xy_param_x);
+            const ParamInfo* pdy = ns->find_param(inspector_.active_xy_param_y);
+            if (pdx && pdy) {
+                float tx = (mouse_.x - pad.x) / pad.w;
+                float ty = (mouse_.y - pad.y) / pad.h;
+                tx = std::max(0.0f, std::min(1.0f, tx));
+                ty = std::max(0.0f, std::min(1.0f, ty));
+                float val_x = pdx->min_value + tx * (pdx->max_value - pdx->min_value);
+                float val_y = pdy->min_value + (1.0f - ty) * (pdy->max_value - pdy->min_value);
+                commands_.set_param(inspector_.active_xy_node_id, inspector_.active_xy_param_x, val_x);
+                commands_.set_param(inspector_.active_xy_node_id, inspector_.active_xy_param_y, val_y);
+            }
+        }
+    }
+    if (mouse_.left_released) {
+        inspector_.active_xy_pad_idx = -1;
+    }
+}
+
+void NodeGraphUI::update_color_drag() {
+    if (!inspector_.color_popup_open) return;
+    if (!inspector_.color_dragging_sv && !inspector_.color_dragging_hue) return;
+    if (mouse_.left_down) {
+        float pad = kColorPopupPad;
+        float sv_size = kColorPopupSVSize;
+        float sv_x = inspector_.color_popup_x + pad;
+        float sv_y = inspector_.color_popup_y + pad;
+        float hue_y = sv_y;
+
+        if (inspector_.color_dragging_sv) {
+            inspector_.color_popup_s = std::max(0.0f, std::min(1.0f, (mouse_.x - sv_x) / sv_size));
+            inspector_.color_popup_v = std::max(0.0f, std::min(1.0f, 1.0f - (mouse_.y - sv_y) / sv_size));
+        }
+        if (inspector_.color_dragging_hue) {
+            inspector_.color_popup_h = std::max(0.0f, std::min(360.0f,
+                (mouse_.y - hue_y) / sv_size * 360.0f));
+        }
+        float r, g, b;
+        hsv_to_rgb(inspector_.color_popup_h, inspector_.color_popup_s, inspector_.color_popup_v, r, g, b);
+        commands_.set_param(inspector_.color_popup_node_id, inspector_.color_popup_param_r, r);
+        commands_.set_param(inspector_.color_popup_node_id, inspector_.color_popup_param_g, g);
+        commands_.set_param(inspector_.color_popup_node_id, inspector_.color_popup_param_b, b);
+    }
+    if (mouse_.left_released) {
+        inspector_.color_dragging_sv = false;
+        inspector_.color_dragging_hue = false;
+    }
+}
+
+
+void NodeGraphUI::update_pan_release() {
+    if (mouse_.left_released && panning_ && dragging_node_idx_ < 0) {
+        panning_ = false;
+    }
+}
+
+
+} // namespace vivid::ui
