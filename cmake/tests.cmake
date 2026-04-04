@@ -31,6 +31,9 @@ add_library(vivid_runtime_testlib STATIC
     src/runtime/graph/frame_executor.cpp
     src/runtime/graph/graph.cpp
     src/runtime/graph/graph_compiler.cpp
+    src/runtime/graph/graph_compiler_init.cpp
+    src/runtime/graph/graph_compiler_planning.cpp
+    src/runtime/graph/graph_compiler_reload.cpp
     src/runtime/graph/port_type_registry.cpp
     src/runtime/graph/subgraph_module.cpp
     src/runtime/operators/builtin_operators.cpp

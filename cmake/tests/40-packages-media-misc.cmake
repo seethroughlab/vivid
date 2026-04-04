@@ -356,7 +356,7 @@ add_executable(test_graph_compiler_init
 )
 target_include_directories(test_graph_compiler_init PRIVATE src tests)
 target_link_libraries(test_graph_compiler_init PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_test(NAME test_graph_compiler_init COMMAND test_graph_compiler_init WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_frame_executor_queries

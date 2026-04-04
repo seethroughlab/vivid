@@ -1,4 +1,5 @@
 #include "runtime/graph/graph_compiler.h"
+#include "runtime/graph/graph_compiler_internal.h"
 #include "runtime/core/crash_guard.h"
 #include "runtime/core/shared_handle_registry.h"
 #include "common/topo_sort.h"
@@ -6,469 +7,9 @@
 #include "operator_api/port_type_registry.h"
 #include <algorithm>
 #include <cstdio>
-#include <cstring>
 #include <filesystem>
 
 namespace vivid {
-
-static constexpr uint32_t kMaxLaneCapacity = 1024;
-
-// ---------------------------------------------------------------------------
-// Lane execution planner — formal boundary for strategy selection.
-//
-// These functions examine a node's lane behavior, port configuration,
-// upstream provenance, and operator opt-in flags, and return all the
-// data needed to apply an execution strategy. Pass 4c/4d call these
-// and apply the result to the CompiledNode.
-// ---------------------------------------------------------------------------
-
-struct AudioLanePlan {
-    LaneExecutionStrategy strategy = LaneExecutionStrategy::Scalar;
-    uint32_t lane_lift_count = 0;       // N for InstancePerLane
-    uint32_t lane_lift_set_id = 0;      // provenance of the lane set
-    int32_t  lane_id_port = -1;  // identity-bearing lane_ids port
-    bool     override_channel_counts = false;  // true → set all ch counts to 1
-};
-
-struct FrameLanePlan {
-    LaneExecutionStrategy strategy = LaneExecutionStrategy::Scalar;
-    int32_t  lane_id_port = -1;
-};
-
-// Detect the lane_ids lane-array port on a node (shared logic).
-static int32_t detect_lane_id_port(const CompiledNode& cn) {
-    auto li_it = cn.input_port_indices.find("lane_ids");
-    if (li_it != cn.input_port_indices.end()) {
-        uint32_t pi = li_it->second;
-        if (pi < cn.input_port_types.size() &&
-            cn.input_port_types[pi] == VIVID_PORT_LANE_ARRAY) {
-            return static_cast<int32_t>(pi);
-        }
-    }
-    return -1;
-}
-
-// Find the first non-scalar input lane set and return its set ID (0 = none found).
-static uint32_t find_structural_input(const CompiledNode& cn) {
-    for (const auto& ils : cn.input_lane_sets) {
-        if (!ils.is_scalar()) return ils.lane_set_id;
-    }
-    return 0;
-}
-
-static AudioLanePlan plan_audio_lane_strategy(
-    const CompiledNode& cn,
-    const AudioNodeState& a,
-    const CompiledGraph& cg,
-    uint32_t node_idx)
-{
-    AudioLanePlan plan;
-
-    // Only pointwise operators are lane-liftable.
-    if (cn.lane_behavior != LaneBehavior::Pointwise) return plan;
-
-    // Check that all audio ports are mono (descriptor says 1 channel).
-    bool all_mono = true;
-    for (uint32_t p = 0; p < cn.input_port_count && all_mono; ++p) {
-        if (p < a.descriptor_input_channels.size() &&
-            cn.input_port_types[p] == VIVID_PORT_AUDIO_BUFFER &&
-            a.descriptor_input_channels[p] > 1)
-            all_mono = false;
-    }
-    for (uint32_t p = 0; p < cn.output_port_count && all_mono; ++p) {
-        if (p < a.descriptor_output_channels.size() &&
-            cn.output_port_types[p] == VIVID_PORT_AUDIO_BUFFER &&
-            a.descriptor_output_channels[p] > 1)
-            all_mono = false;
-    }
-    if (!all_mono) return plan;
-
-    // InstancePerLane: multi-channel audio input to mono-declared operator.
-    uint8_t max_wire_ch = 1;
-    for (const auto& e : cg.edges) {
-        if (e.to_node == node_idx && e.transport == EdgeTransport::Direct &&
-            !e.targets_param) {
-            uint8_t src_ch = 1;
-            auto& from_a = cg.nodes[e.from_node].audio;
-            if (from_a && e.from_port < from_a->output_channel_counts.size())
-                src_ch = from_a->output_channel_counts[e.from_port];
-            if (src_ch > max_wire_ch) max_wire_ch = src_ch;
-        }
-    }
-
-    if (max_wire_ch > 1) {
-        plan.strategy = LaneExecutionStrategy::InstancePerLane;
-        plan.lane_lift_count = max_wire_ch;
-        plan.lane_lift_set_id = find_structural_input(cn);
-        plan.override_channel_counts = true;
-        return plan;
-    }
-
-    // LoopBased: strategy_independent operator with structural upstream.
-    const auto* desc = cn.loader ? cn.loader->descriptor() : nullptr;
-    bool opt_in = desc && desc->strategy_independent;
-    if (!opt_in) return plan;
-
-    // Check Direct edges
-    uint32_t structural_set_id = find_structural_input(cn);
-    // Also check Snapshot edges for cross-cadence structural provenance
-    if (structural_set_id == 0) {
-        for (const auto& e : cg.edges) {
-            if (e.to_node == node_idx && e.transport == EdgeTransport::Snapshot &&
-                e.lane_set_id != 0) {
-                structural_set_id = e.lane_set_id;
-                break;
-            }
-        }
-    }
-
-    if (structural_set_id != 0) {
-        plan.strategy = LaneExecutionStrategy::LoopBased;
-        plan.lane_lift_set_id = structural_set_id;
-        plan.lane_id_port = detect_lane_id_port(cn);
-    }
-
-    return plan;
-}
-
-static FrameLanePlan plan_frame_lane_strategy(const CompiledNode& cn) {
-    FrameLanePlan plan;
-
-    if (cn.lane_behavior != LaneBehavior::Pointwise) return plan;
-
-    const auto* desc = cn.loader ? cn.loader->descriptor() : nullptr;
-    if (!desc || !desc->strategy_independent) return plan;
-
-    uint32_t structural_set_id = find_structural_input(cn);
-    if (structural_set_id != 0) {
-        plan.strategy = LaneExecutionStrategy::LoopBased;
-        plan.lane_id_port = detect_lane_id_port(cn);
-    }
-
-    return plan;
-}
-
-// Parse explicit bridge kind string from ConnectionDef into BridgeKind enum.
-static BridgeKind parse_bridge_kind(const std::string& s) {
-    if (s == "hold")        return BridgeKind::Hold;
-    if (s == "snapshot")    return BridgeKind::Snapshot;
-    if (s == "last_sample") return BridgeKind::LastSample;
-    if (s == "rms")         return BridgeKind::Rms;
-    if (s == "peak")        return BridgeKind::Peak;
-    if (s == "waveform")    return BridgeKind::Waveform;
-    return BridgeKind::None;
-}
-
-// Compute a linear scale equivalent from ConnectionDef remap fields.
-static float remap_to_scale(const ConnectionDef& c) {
-    float range = c.from_max - c.from_min;
-    return (range != 0.0f) ? (c.to_max - c.to_min) / range : 1.0f;
-}
-
-static void warm_up_instance_assets(CompiledNode& cn) {
-    if (!cn.loader || !cn.instance || !cn.loader->has_prepare_instance_assets()) return;
-    cn.loader->prepare_instance_assets(
-        cn.instance,
-        cn.param_values.empty() ? nullptr : cn.param_values.data(),
-        cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data(),
-        static_cast<uint32_t>(cn.file_param_ptrs.size()));
-}
-
-// ---------------------------------------------------------------------------
-// Node initialization helpers
-// ---------------------------------------------------------------------------
-
-// Initialize the frame-side state on a CompiledNode (ports, params, lanes,
-// strings, custom ports, file params, GPU resources).
-void GraphCompiler::init_frame_state(CompiledNode& cn,
-                                     const VividOperatorDescriptor* desc,
-                                     const std::unordered_map<std::string, float>* param_overrides,
-                                     const std::unordered_map<std::string, std::string>* string_overrides,
-                                     const std::filesystem::path& graph_base_dir) {
-    // Count and index ports
-    cn.input_port_count = 0;
-    cn.output_port_count = 0;
-    cn.input_port_indices.clear();
-    cn.output_port_indices.clear();
-    cn.param_indices.clear();
-    cn.input_port_types.clear();
-    cn.output_port_types.clear();
-
-    for (uint32_t i = 0; i < desc->port_count; ++i) {
-        if (desc->ports[i].direction == VIVID_PORT_INPUT) {
-            cn.input_port_indices[desc->ports[i].name] = cn.input_port_count++;
-            cn.input_port_types.push_back(desc->ports[i].type);
-        } else {
-            cn.output_port_indices[desc->ports[i].name] = cn.output_port_count++;
-            cn.output_port_types.push_back(desc->ports[i].type);
-        }
-    }
-
-    cn.input_values.assign(cn.input_port_count, 0.0f);
-    cn.bridge_input_values.assign(cn.input_port_count, 0.0f);
-    cn.bridge_input_dirty.assign(cn.input_port_count, 0);
-    cn.input_connected.assign(cn.input_port_count, 0);
-    cn.output_values.assign(cn.output_port_count, 0.0f);
-    cn.input_string_values.assign(cn.input_port_count, "");
-    cn.output_string_values.assign(cn.output_port_count, "");
-    cn.c_input_string_values.assign(cn.input_port_count, nullptr);
-    cn.c_output_string_values.assign(cn.output_port_count, nullptr);
-    cn.input_lanes.resize(cn.input_port_count);
-    cn.output_lanes.resize(cn.output_port_count);
-    cn.input_string_lanes.resize(cn.input_port_count);
-    cn.output_string_lanes.resize(cn.output_port_count);
-
-    // Params
-    cn.param_values.resize(desc->param_count);
-    cn.param_lock_flags.assign(desc->param_count, 0);
-    for (uint32_t i = 0; i < desc->param_count; ++i) {
-        cn.param_values[i] = desc->params[i].default_value;
-        cn.param_indices[desc->params[i].name] = i;
-    }
-    if (param_overrides) {
-        for (const auto& [pname, pval] : *param_overrides) {
-            auto pi = cn.param_indices.find(pname);
-            if (pi != cn.param_indices.end())
-                cn.param_values[pi->second] = pval;
-        }
-    }
-
-    // Execution flags
-    cn.time_dependent = desc->time_dependent != 0;
-    bool node_is_gpu = (desc->has_process_gpu != 0);
-
-    // Discover analysis ports from descriptor (tagged with semantic_tag "analysis")
-    if (cn.active_cadence == Cadence::Audio) {
-        for (uint32_t i = 0; i < desc->port_count; ++i) {
-            const auto& p = desc->ports[i];
-            if (p.direction == VIVID_PORT_OUTPUT && p.semantic_tag &&
-                std::strcmp(p.semantic_tag, "analysis") == 0) {
-                auto it = cn.output_port_indices.find(p.name);
-                if (it != cn.output_port_indices.end())
-                    cn.audio->analysis_output_port_indices[p.name] = it->second;
-            }
-        }
-    }
-
-    // Auto-inject GPU analysis output ports (frame_hash, brightness, contrast, dominant_hue).
-    // These are owned by the runtime — operators don't declare them.
-    if (node_is_gpu && cn.gpu) {
-        auto inject = [&](const char* name) -> uint32_t {
-            uint32_t idx = cn.output_port_count++;
-            cn.output_port_indices[name] = idx;
-            cn.output_port_types.push_back(VIVID_PORT_SCALAR);
-            return idx;
-        };
-        cn.gpu->analysis_frame_hash_idx   = inject("frame_hash");
-        cn.gpu->analysis_brightness_idx   = inject("brightness");
-        cn.gpu->analysis_contrast_idx     = inject("contrast");
-        cn.gpu->analysis_dominant_hue_idx = inject("dominant_hue");
-
-        // Resize output arrays to accommodate the injected ports.
-        cn.output_values.resize(cn.output_port_count, 0.0f);
-        cn.output_string_values.resize(cn.output_port_count, "");
-        cn.c_output_string_values.resize(cn.output_port_count, nullptr);
-        cn.output_lanes.resize(cn.output_port_count);
-        cn.output_string_lanes.resize(cn.output_port_count);
-    }
-
-    // Lane metadata (sized to port count, populated by Pass 2.6).
-    cn.input_lane_sets.resize(cn.input_port_count);
-    cn.output_lane_sets.resize(cn.output_port_count);
-
-    // Spread port staging buffers
-    cn.c_in_lanes.resize(cn.input_port_count);
-    cn.c_out_lanes.resize(cn.output_port_count);
-    cn.out_lane_buf.resize(cn.output_port_count);
-    cn.c_in_string_lanes.resize(cn.input_port_count);
-    cn.c_out_string_lanes.resize(cn.output_port_count);
-    cn.in_string_lane_ptrs.resize(cn.input_port_count);
-    cn.out_string_lane_ptr_buf.resize(cn.output_port_count);
-    for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-        cn.out_lane_buf[p].resize(kMaxLaneCapacity, 0.0f);
-        cn.out_string_lane_ptr_buf[p].resize(kMaxLaneCapacity, nullptr);
-    }
-    for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-        cn.in_string_lane_ptrs[p].resize(kMaxLaneCapacity, nullptr);
-    }
-
-    // File params
-    cn.file_param_storage.clear();
-    cn.file_param_ptrs.clear();
-    cn.file_param_indices.clear();
-    cn.file_param_is_path.clear();
-    for (uint32_t i = 0; i < desc->param_count; ++i) {
-        if (desc->params[i].type == VIVID_PARAM_FILE ||
-            desc->params[i].type == VIVID_PARAM_TEXT) {
-            uint32_t fidx = static_cast<uint32_t>(cn.file_param_storage.size());
-            cn.file_param_indices[desc->params[i].name] = fidx;
-            const char* def = desc->params[i].default_string;
-            cn.file_param_storage.push_back(def ? def : "");
-            cn.file_param_is_path.push_back(desc->params[i].type == VIVID_PARAM_FILE ? 1 : 0);
-        }
-    }
-    if (string_overrides) {
-        for (const auto& [pname, pval] : *string_overrides) {
-            auto fi = cn.file_param_indices.find(pname);
-            if (fi != cn.file_param_indices.end())
-                cn.file_param_storage[fi->second] = pval;
-        }
-    }
-    // Resolve relative file paths
-    if (!graph_base_dir.empty()) {
-        for (size_t i = 0; i < cn.file_param_storage.size(); ++i) {
-            if (!cn.file_param_is_path.empty() && !cn.file_param_is_path[i]) continue;
-            auto& val = cn.file_param_storage[i];
-            if (!val.empty() && std::filesystem::path(val).is_relative()) {
-                auto resolved = graph_base_dir / val;
-                if (std::filesystem::exists(resolved))
-                    val = std::filesystem::canonical(resolved).string();
-                else
-                    val = resolved.lexically_normal().string();
-            }
-        }
-    }
-    cn.file_param_ptrs.resize(cn.file_param_storage.size());
-    for (size_t i = 0; i < cn.file_param_storage.size(); ++i)
-        cn.file_param_ptrs[i] = cn.file_param_storage[i].c_str();
-
-    // Identify special port indices
-    cn.custom_input_port_indices.clear();
-    cn.custom_output_port_indices.clear();
-    cn.string_input_port_indices.clear();
-    cn.string_lane_input_port_indices.clear();
-    cn.has_string_output = false;
-    cn.has_string_lane_output = false;
-
-    // GPU-specific port scanning
-    if (node_is_gpu) {
-        if (!cn.gpu) cn.gpu = std::make_unique<GpuNodeState>();
-        cn.gpu->texture_input_port_indices.clear();
-        cn.gpu->is_sink = false;
-        cn.gpu->has_texture_output = false;
-        cn.gpu->aux_texture_output_port_indices.clear();
-        cn.gpu->aux_gpu_textures.clear();
-        cn.gpu->aux_gpu_texture_views.clear();
-    }
-
-    uint32_t input_idx = 0, out_idx = 0, gpu_tex_out_count = 0;
-    for (uint32_t i = 0; i < desc->port_count; ++i) {
-        if (desc->ports[i].direction == VIVID_PORT_INPUT) {
-            switch (desc->ports[i].type) {
-                case VIVID_PORT_TEXTURE:
-                    if (cn.gpu) cn.gpu->texture_input_port_indices.push_back(input_idx);
-                    break;
-                case VIVID_PORT_STRING:
-                    cn.string_input_port_indices.push_back(input_idx); break;
-                case VIVID_PORT_STRING_LANES:
-                    cn.string_lane_input_port_indices.push_back(input_idx); break;
-                default:
-                    if (vivid_is_custom_port_type(desc->ports[i].type))
-                        cn.custom_input_port_indices.push_back(input_idx);
-                    break;
-            }
-            input_idx++;
-        } else {
-            switch (desc->ports[i].type) {
-                case VIVID_PORT_TEXTURE:
-                    if (cn.gpu) {
-                        cn.gpu->has_texture_output = true;
-                        if (gpu_tex_out_count > 0) {
-                            cn.gpu->aux_texture_output_port_indices.push_back(static_cast<int32_t>(out_idx));
-                            cn.gpu->aux_gpu_textures.push_back(nullptr);
-                            cn.gpu->aux_gpu_texture_views.push_back(nullptr);
-                        }
-                        ++gpu_tex_out_count;
-                    }
-                    break;
-                case VIVID_PORT_STRING:
-                    cn.has_string_output = true; break;
-                case VIVID_PORT_STRING_LANES:
-                    cn.has_string_lane_output = true; break;
-                default:
-                    if (vivid_is_custom_port_type(desc->ports[i].type))
-                        cn.custom_output_port_indices.push_back(out_idx);
-                    break;
-            }
-            out_idx++;
-        }
-    }
-    if (cn.gpu) {
-        cn.gpu->is_sink = !cn.gpu->texture_input_port_indices.empty()
-                       && !cn.gpu->has_texture_output
-                       && cn.custom_output_port_indices.empty();
-    }
-
-    cn.custom_output_buf.assign(cn.custom_output_port_indices.size(), nullptr);
-    cn.custom_outputs.assign(cn.custom_output_port_indices.size(), nullptr);
-    cn.resolved_custom_inputs.assign(cn.custom_input_port_indices.size(), nullptr);
-}
-
-// Initialize audio-specific state on a CompiledNode that has Cadence::Audio.
-void GraphCompiler::init_audio_state(CompiledNode& cn,
-                                     const VividOperatorDescriptor* desc,
-                                     uint32_t buffer_size) {
-    // cn.audio must already be allocated by the caller
-    auto& a = *cn.audio;
-
-    // Channel descriptors
-    a.descriptor_input_channels.clear();
-    a.descriptor_output_channels.clear();
-    a.has_lane_ports = false;
-    a.has_string_input_ports = false;
-    a.has_custom_input_ports = false;
-    a.has_custom_output_ports = false;
-
-    for (uint32_t i = 0; i < desc->port_count; ++i) {
-        if (desc->ports[i].direction == VIVID_PORT_INPUT) {
-            a.descriptor_input_channels.push_back(desc->ports[i].channels);
-            if (desc->ports[i].type == VIVID_PORT_LANE_ARRAY)
-                a.has_lane_ports = true;
-            if (desc->ports[i].type == VIVID_PORT_STRING)
-                a.has_string_input_ports = true;
-            if (vivid_is_custom_port_type(desc->ports[i].type))
-                a.has_custom_input_ports = true;
-        } else {
-            a.descriptor_output_channels.push_back(desc->ports[i].channels);
-            if (vivid_is_custom_port_type(desc->ports[i].type))
-                a.has_custom_output_ports = true;
-        }
-    }
-
-    // Channel counts default to 1; channel negotiation (Pass 4) will override
-    a.input_channel_counts.assign(cn.input_port_count, 1);
-    a.output_channel_counts.assign(cn.output_port_count, 1);
-    a.execution_strategy = LaneExecutionStrategy::Scalar;
-    a.lane_lift_count = 0;
-    a.lane_lift_set_id = 0;
-
-    // Audio buffers (will be resized during channel negotiation)
-    a.buffers_in.resize(cn.input_port_count,
-                               std::vector<float>(buffer_size, 0.0f));
-    a.buffers_out.resize(cn.output_port_count,
-                                std::vector<float>(buffer_size, 0.0f));
-    a.in_ptrs.resize(cn.input_port_count);
-    a.out_ptrs.resize(cn.output_port_count);
-
-    // Port default values (for resetting unconnected scalar inputs each tick)
-    a.input_port_defaults.resize(cn.input_port_count, 0.0f);
-    for (uint32_t i = 0, inp = 0; i < desc->port_count; ++i) {
-        if (desc->ports[i].direction == VIVID_PORT_INPUT) {
-            a.input_port_defaults[inp] = desc->ports[i].default_value;
-            ++inp;
-        }
-    }
-
-    // Custom output ptrs
-    a.custom_output_ptrs.clear();
-    a.custom_output_count = 0;
-    for (uint32_t i = 0; i < desc->port_count; ++i) {
-        if (desc->ports[i].direction == VIVID_PORT_OUTPUT &&
-            vivid_is_custom_port_type(desc->ports[i].type))
-            a.custom_output_count++;
-    }
-    a.custom_output_ptrs.resize(a.custom_output_count, nullptr);
-}
 
 // ---------------------------------------------------------------------------
 // GraphCompiler::compile()
@@ -547,7 +88,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                 init_audio_state(cn, desc, options.audio_buffer_size);
             }
 
-            warm_up_instance_assets(cn);
+            graph_compiler_internal::warm_up_instance_assets(cn);
 
             // Param lock flags
             for (const auto& [pname, flags] : ndef.param_lock_flags) {
@@ -636,11 +177,11 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             cn.in_string_lane_ptrs.resize(cn.input_port_count);
             cn.out_string_lane_ptr_buf.resize(cn.output_port_count);
             for (uint32_t p = 0; p < cn.output_port_count; ++p)
-                cn.out_lane_buf[p].resize(kMaxLaneCapacity, 0.0f);
+                cn.out_lane_buf[p].resize(graph_compiler_internal::kMaxLaneCapacity, 0.0f);
             for (uint32_t p = 0; p < cn.input_port_count; ++p)
-                cn.in_string_lane_ptrs[p].resize(kMaxLaneCapacity, nullptr);
+                cn.in_string_lane_ptrs[p].resize(graph_compiler_internal::kMaxLaneCapacity, nullptr);
             for (uint32_t p = 0; p < cn.output_port_count; ++p)
-                cn.out_string_lane_ptr_buf[p].resize(kMaxLaneCapacity, nullptr);
+                cn.out_string_lane_ptr_buf[p].resize(graph_compiler_internal::kMaxLaneCapacity, nullptr);
 
             std::fprintf(stderr, "[vivid] GraphCompiler: missing operator '%s' (node '%s') — placeholder\n",
                          ndef.type.c_str(), ndef.id.c_str());
@@ -747,7 +288,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         e.to_min   = conn.to_min;
         e.to_max   = conn.to_max;
         e.clamp    = conn.clamp;
-        e.bridge_kind = parse_bridge_kind(conn.bridge);
+        e.bridge_kind = graph_compiler_internal::parse_bridge_kind(conn.bridge);
         if (!conn.bridge.empty() && e.bridge_kind == BridgeKind::None) {
             std::fprintf(stderr, "[vivid] warning: unknown bridge kind '%s' on connection %s/%s → %s/%s\n",
                          conn.bridge.c_str(),
@@ -1126,7 +667,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         auto& a = *cg->nodes[idx].audio;
         auto& cn = cg->nodes[idx];
 
-        AudioLanePlan plan = plan_audio_lane_strategy(cn, a, *cg, idx);
+        auto plan = graph_compiler_internal::plan_audio_lane_strategy(cn, a, *cg, idx);
         a.execution_strategy = plan.strategy;
         a.lane_lift_count = plan.lane_lift_count;
         a.lane_lift_set_id = plan.lane_lift_set_id;
@@ -1140,7 +681,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
     // Pass 4d: Apply frame lane execution strategy via planner.
     for (uint32_t idx : cg->frame_order) {
         auto& cn = cg->nodes[idx];
-        FrameLanePlan plan = plan_frame_lane_strategy(cn);
+        auto plan = graph_compiler_internal::plan_frame_lane_strategy(cn);
         cn.frame_execution_strategy = plan.strategy;
         cn.frame_lane_id_port = plan.lane_id_port;
     }
@@ -1268,114 +809,6 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
     }
 
     return cg;
-}
-
-// ---------------------------------------------------------------------------
-// reload_operator — hot-reload a single operator type in-place
-// ---------------------------------------------------------------------------
-
-bool GraphCompiler::reload_operator(CompiledGraph& cg,
-                                    const std::string& type_name,
-                                    OperatorRegistry& registry,
-                                    const std::string& new_dylib_path,
-                                    const std::filesystem::path& graph_base_dir) {
-    // 1. Find all CompiledNodes of this type and save their param values by name
-    struct SavedParams {
-        uint32_t node_idx;
-        std::unordered_map<std::string, float> values;
-        std::unordered_map<std::string, std::string> string_values;
-        std::unordered_map<std::string, uint8_t> lock_flags;
-    };
-    std::vector<SavedParams> saved;
-
-    for (uint32_t i = 0; i < static_cast<uint32_t>(cg.nodes.size()); ++i) {
-        auto& cn = cg.nodes[i];
-        if (!cn.loader) continue;
-        const auto* desc = cn.loader->descriptor();
-        if (!desc || std::string(desc->name) != type_name) continue;
-
-        SavedParams sp;
-        sp.node_idx = i;
-        for (const auto& [name, idx] : cn.param_indices) {
-            sp.values[name] = cn.param_values[idx];
-            if (cn.param_lock_flags[idx] != PARAM_LOCK_NONE)
-                sp.lock_flags[name] = cn.param_lock_flags[idx];
-        }
-        for (const auto& [name, idx] : cn.file_param_indices) {
-            sp.string_values[name] = cn.file_param_storage[idx];
-        }
-        saved.push_back(std::move(sp));
-    }
-
-    if (saved.empty()) return true;  // no instances to reload
-
-    // 2. Destroy old instances while the old dylib is still loaded
-    for (const auto& sp : saved) {
-        auto& cn = cg.nodes[sp.node_idx];
-        if (cn.instance) {
-            cn.loader->destroy_instance(cn.instance);
-            cn.instance = nullptr;
-        }
-    }
-
-    // 3. Reload the dylib
-    if (!registry.reload_operator(type_name, new_dylib_path)) {
-        std::fprintf(stderr, "[vivid] GraphCompiler: dylib reload failed for '%s'\n", type_name.c_str());
-        // Old dylib is still loaded. Recreate instances using old loader so nodes keep running.
-        OperatorLoader* old_loader = registry.find_loaded(type_name);
-        if (old_loader && old_loader->is_loaded()) {
-            const auto* old_desc = old_loader->descriptor();
-            if (old_desc) {
-                for (const auto& sp : saved) {
-                    auto& cn = cg.nodes[sp.node_idx];
-                    cn.instance = old_loader->create_instance();
-                    init_frame_state(cn, old_desc, &sp.values,
-                                     sp.string_values.empty() ? nullptr : &sp.string_values,
-                                     graph_base_dir);
-                    warm_up_instance_assets(cn);
-                    for (const auto& [pname, flags] : sp.lock_flags) {
-                        auto pi = cn.param_indices.find(pname);
-                        if (pi != cn.param_indices.end())
-                            cn.param_lock_flags[pi->second] = flags;
-                    }
-                    cn.dirty = true;
-                }
-            }
-        }
-        return false;
-    }
-
-    // 4. Update loader pointer and recreate instances with param reconciliation
-    OperatorLoader* new_loader = registry.find_loaded(type_name);
-    if (!new_loader) return false;
-    const auto* new_desc = new_loader->descriptor();
-    if (!new_desc) return false;
-
-    for (const auto& sp : saved) {
-        auto& cn = cg.nodes[sp.node_idx];
-        cn.loader = new_loader;
-        cn.instance = new_loader->create_instance();
-        init_frame_state(cn, new_desc, &sp.values,
-                         sp.string_values.empty() ? nullptr : &sp.string_values,
-                         graph_base_dir);
-        warm_up_instance_assets(cn);
-
-        // Restore lock flags
-        for (const auto& [pname, flags] : sp.lock_flags) {
-            auto pi = cn.param_indices.find(pname);
-            if (pi != cn.param_indices.end())
-                cn.param_lock_flags[pi->second] = flags;
-        }
-
-        // Clear error state on successful reload
-        cn.errored = false;
-        cn.error_message.clear();
-
-        // Force downstream recompute
-        cn.dirty = true;
-    }
-
-    return true;
 }
 
 } // namespace vivid
