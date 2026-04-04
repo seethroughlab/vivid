@@ -43,6 +43,7 @@ public:
     virtual void update_midi_mapping(const std::string& node_id, const std::string& param,
                                      float range_min, float range_max) = 0;
     virtual void open_shader(const std::string& type_name) {}
+    virtual void open_module_source(const std::string& type_name) {}
     virtual void clone_and_edit(const std::string& type_name) {
         clone_and_edit(type_name, "auto");
     }

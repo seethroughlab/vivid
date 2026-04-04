@@ -1,4 +1,5 @@
 #include "runtime/control/runtime_command_sink.h"
+#include "runtime/graph/subgraph_module.h"
 #include "runtime/operators/operator_registry.h"
 #include "runtime/operators/operator_creator.h"
 #include "runtime/core/hot_reload.h"
@@ -44,6 +45,14 @@ void RuntimeCommandSink::open_shader(const std::string& type_name) {
         if (std::filesystem::exists(cpp_path)) {
             vivid::open_in_editor(cpp_path, settings_ ? *settings_ : vivid::Settings{});
         }
+    }
+}
+
+void RuntimeCommandSink::open_module_source(const std::string& type_name) {
+    if (!subgraph_modules_) return;
+    const auto* mod = subgraph_modules_->find(type_name);
+    if (mod && !mod->source_path.empty() && std::filesystem::exists(mod->source_path)) {
+        vivid::open_in_editor(mod->source_path, settings_ ? *settings_ : vivid::Settings{});
     }
 }
 

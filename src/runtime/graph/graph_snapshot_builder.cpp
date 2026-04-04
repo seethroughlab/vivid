@@ -118,6 +118,13 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         // Per-operator presets
         sn.preset_names = graph.list_presets(cn.node_id);
         sn.factory_preset_names = registry.factory_preset_names(sn.type_name);
+        if (sn.factory_preset_names.empty() && subgraph_modules) {
+            const auto* mod = subgraph_modules->find(sn.type_name);
+            if (mod) {
+                for (const auto& p : mod->presets)
+                    sn.factory_preset_names.push_back(p.name);
+            }
+        }
         if (runtime_api)
             sn.active_preset = runtime_api->active_preset(cn.node_id);
 
@@ -128,6 +135,111 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
 
         // Index
         snap.node_index[cn.node_id] = i;
+    }
+
+    // -----------------------------------------------------------------------
+    // Synthesize module instance nodes from authored graph
+    // -----------------------------------------------------------------------
+    if (subgraph_modules) {
+        for (const auto& ndef : graph.nodes()) {
+            const auto* mod = subgraph_modules->find(ndef.type);
+            if (!mod) continue;
+            // This is a module instance in the authored graph — synthesize a snapshot
+            vivid::ui::NodeSnapshot msn;
+            msn.node_id = ndef.id;
+            msn.type_name = mod->name;
+            msn.is_module_instance = true;
+
+            // Layout from authored node
+            if (ndef.has_layout()) {
+                msn.layout_x = ndef.layout_x;
+                msn.layout_y = ndef.layout_y;
+                msn.has_layout = true;
+            }
+
+            // Operator info (rich metadata from make_operator_info)
+            if (!snap.operator_catalog.count(mod->name)) {
+                snap.operator_catalog[mod->name] = vivid::make_operator_info(*mod);
+            }
+            msn.op_info = snap.operator_catalog[mod->name];
+
+            // Build param_indices and gather live param_values from internal nodes
+            for (size_t pi = 0; pi < mod->params.size(); ++pi) {
+                const auto& pb = mod->params[pi];
+                msn.param_indices[pb.name] = static_cast<uint32_t>(pi);
+
+                float live_val = 0.0f;
+                std::string flat_id = ndef.id + ".__" + pb.internal_node;
+                const auto* icn = cg->find_node(flat_id);
+                if (icn) {
+                    auto iit = icn->param_indices.find(pb.internal_param);
+                    if (iit != icn->param_indices.end() && iit->second < icn->param_values.size())
+                        live_val = icn->param_values[iit->second];
+                }
+                // Fall back to authored graph value if not found in compiled
+                if (!icn) {
+                    auto ait = ndef.params.find(pb.name);
+                    if (ait != ndef.params.end()) live_val = ait->second;
+                }
+                msn.param_values.push_back(live_val);
+
+                // Lock flags: read from internal compiled node, fall back to authored node
+                uint8_t lock = 0;
+                if (icn) {
+                    auto iit = icn->param_indices.find(pb.internal_param);
+                    if (iit != icn->param_indices.end() && iit->second < icn->param_lock_flags.size())
+                        lock = icn->param_lock_flags[iit->second];
+                }
+                if (!lock) {
+                    auto lit = ndef.param_lock_flags.find(pb.name);
+                    if (lit != ndef.param_lock_flags.end())
+                        lock = lit->second;
+                }
+                msn.param_lock_flags.push_back(lock);
+            }
+
+            // Gather file/string param values from internal nodes
+            for (const auto& pb : mod->params) {
+                std::string flat_id = ndef.id + ".__" + pb.internal_node;
+                const auto* icn = cg->find_node(flat_id);
+                if (icn) {
+                    auto fi = icn->file_param_indices.find(pb.internal_param);
+                    if (fi != icn->file_param_indices.end() && fi->second < icn->file_param_storage.size()) {
+                        msn.file_param_values[pb.name] = icn->file_param_storage[fi->second];
+                    }
+                }
+            }
+
+            // Build port indices from module port bindings
+            uint32_t in_idx = 0, out_idx = 0;
+            for (const auto& port : mod->ports) {
+                if (port.direction == VIVID_PORT_INPUT)
+                    msn.input_port_indices[port.name] = in_idx++;
+                else
+                    msn.output_port_indices[port.name] = out_idx++;
+            }
+
+            // Presets
+            msn.preset_names = graph.list_presets(ndef.id);
+            for (const auto& p : mod->presets)
+                msn.factory_preset_names.push_back(p.name);
+            if (runtime_api)
+                msn.active_preset = runtime_api->active_preset(ndef.id);
+
+            snap.node_index[ndef.id] = snap.nodes.size();
+            snap.nodes.push_back(std::move(msn));
+        }
+
+        // Filter out internal subgraph-member nodes (they still execute but are hidden)
+        std::vector<vivid::ui::NodeSnapshot> visible;
+        visible.reserve(snap.nodes.size());
+        snap.node_index.clear();
+        for (auto& sn : snap.nodes) {
+            if (sn.is_subgraph_member) continue;
+            snap.node_index[sn.node_id] = visible.size();
+            visible.push_back(std::move(sn));
+        }
+        snap.nodes = std::move(visible);
     }
 
     // Connections — preserve graph truth even when an endpoint no longer resolves.

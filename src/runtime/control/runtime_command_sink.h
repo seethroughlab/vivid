@@ -10,6 +10,7 @@
 // Forward declarations — these types are used only as pointers in this header
 namespace vivid {
 class OperatorRegistry;
+class SubgraphModuleRegistry;
 class HotReloader;
 class Graph;
 class CaptureCoordinator;
@@ -178,6 +179,7 @@ public:
     }
 
     void open_shader(const std::string& type_name) override;
+    void open_module_source(const std::string& type_name) override;
 
     void clone_and_edit(const std::string& type_name) override {
         clone_and_edit(type_name, "auto");
@@ -245,6 +247,7 @@ public:
     void set_settings(vivid::Settings* s) { settings_ = s; }
     void set_hot_reloader(vivid::HotReloader* hr) { hot_reloader_ = hr; }
     void set_package_manager(vivid::PackageManager* pm) { package_manager_ = pm; }
+    void set_subgraph_modules(const vivid::SubgraphModuleRegistry* m) { subgraph_modules_ = m; }
     void set_build_console(vivid::BuildConsole* bc) { build_console_ = bc; }
     void set_shader_watch_callback(std::function<void(const std::string&)> cb) {
         shader_watch_callback_ = std::move(cb);
@@ -282,6 +285,7 @@ private:
     vivid::Settings* settings_ = nullptr;
     vivid::HotReloader* hot_reloader_ = nullptr;
     vivid::PackageManager* package_manager_ = nullptr;
+    const vivid::SubgraphModuleRegistry* subgraph_modules_ = nullptr;
     vivid::BuildConsole* build_console_ = nullptr;
     std::function<void(const std::string&)> shader_watch_callback_;
 };

@@ -1194,8 +1194,12 @@ void NodeGraphUI::handle_graph_click() {
                 auto cat_it = snap_.operator_catalog.find(type_name);
                 bool is_user = cat_it != snap_.operator_catalog.end() &&
                                cat_it->second && cat_it->second->is_user;
+                bool is_module = cat_it != snap_.operator_catalog.end() &&
+                                 cat_it->second && cat_it->second->is_module;
                 if (is_user) {
                     commands_.open_shader(type_name);
+                } else if (is_module) {
+                    commands_.open_module_source(type_name);
                 } else {
                     open_clone_confirm_dialog(type_name, node_id);
                 }

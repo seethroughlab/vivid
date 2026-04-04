@@ -1040,6 +1040,7 @@ fn fbm(p_in: vec2f) -> f32 {
     // --- RuntimeAPI ---
     vivid::RuntimeAPI runtime_api(graph, runtime, audio_engine, registry, &system_midi);
     runtime_api.set_resources_dir(resources_dir.string());
+    runtime_api.set_subgraph_modules(&subgraph_modules);
 
     // --- Control server (MCP HTTP bridge) ---
     vivid::CaptureCoordinator capture_coordinator;
@@ -1086,6 +1087,7 @@ fn fbm(p_in: vec2f) -> f32 {
     command_sink.set_capture_coordinator(&capture_coordinator);
     command_sink.set_runtime_flags(&has_gpu_ops, &has_audio);
     command_sink.set_package_manager(&pkg_manager);
+    command_sink.set_subgraph_modules(&subgraph_modules);
     command_sink.set_build_console(build_console.get());
     vivid::ui::NodeGraphUI graph_ui(command_sink);
     graph_ui.set_build_console(build_console);
