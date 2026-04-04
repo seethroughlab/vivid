@@ -49,6 +49,10 @@ add_executable(vivid
     src/runtime/debug/output_window.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp
+    src/runtime/operators/operator_registry_scan.cpp
+    src/runtime/operators/operator_registry_lookup.cpp
+    src/runtime/operators/operator_registry_metadata.cpp
+    src/runtime/operators/operator_registry_diagnostics.cpp
     src/runtime/graph/port_type_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
     src/runtime/graph/graph.cpp
