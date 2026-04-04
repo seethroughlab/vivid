@@ -369,6 +369,77 @@ static void test_split_routing(vivid::OperatorLoader& loader) {
 }
 
 // ---------------------------------------------------------------------------
+// Test: split_freq meaningfully shifts energy between low and high branches
+// ---------------------------------------------------------------------------
+static void test_split_freq_mapping(vivid::OperatorLoader& loader) {
+    std::fprintf(stderr, "\n--- DualFilter: split_freq mapping ---\n");
+
+    const auto* desc = loader.descriptor();
+    constexpr float kMidFreq = 1500.0f;  // Above 500 Hz, below 4000 Hz
+
+    auto params_low_branch = [&](float split_hz) {
+        return make_params(desc, {
+            {"routing", 3.0f},
+            {"split_freq", split_hz},
+            {"a_cutoff", 20000.0f},
+            {"a_mode", 0.0f},
+            {"a_enabled", 1.0f},
+            {"b_enabled", 0.0f},
+            {"output_gain", 1.0f},
+        });
+    };
+
+    auto params_high_branch = [&](float split_hz) {
+        return make_params(desc, {
+            {"routing", 3.0f},
+            {"split_freq", split_hz},
+            {"b_cutoff", 20000.0f},
+            {"b_mode", 0.0f},
+            {"a_enabled", 0.0f},
+            {"b_enabled", 1.0f},
+            {"output_gain", 1.0f},
+        });
+    };
+
+    auto run_rms = [&](std::vector<float>& params, uint32_t lane_id) {
+        reset_lane_states();
+        void* inst = loader.create_instance();
+        TestContext tc;
+        tc.ctx.param_values = params.data();
+        tc.ctx.lane_id = lane_id;
+        for (int b = 0; b < 6; b++) {
+            tc.fill_sine(kMidFreq, 0.8f);
+            tc.clear_output();
+            loader.process_audio(inst, &tc.ctx);
+        }
+        float rms = tc.rms_output();
+        loader.destroy_instance(inst);
+        return rms;
+    };
+
+    auto low_split_low_branch = params_low_branch(500.0f);
+    auto high_split_low_branch = params_low_branch(4000.0f);
+    float rms_low_branch_500 = run_rms(low_split_low_branch, 1);
+    float rms_low_branch_4000 = run_rms(high_split_low_branch, 2);
+
+    auto low_split_high_branch = params_high_branch(500.0f);
+    auto high_split_high_branch = params_high_branch(4000.0f);
+    float rms_high_branch_500 = run_rms(low_split_high_branch, 3);
+    float rms_high_branch_4000 = run_rms(high_split_high_branch, 4);
+
+    std::fprintf(stderr,
+                 "  low-branch rms: split=500 -> %.4f, split=4000 -> %.4f\n"
+                 "  high-branch rms: split=500 -> %.4f, split=4000 -> %.4f\n",
+                 rms_low_branch_500, rms_low_branch_4000,
+                 rms_high_branch_500, rms_high_branch_4000);
+
+    check(rms_low_branch_4000 > rms_low_branch_500 * 1.5f,
+          "raising split_freq increases low-branch energy for a mid-band sine");
+    check(rms_high_branch_500 > rms_high_branch_4000 * 1.5f,
+          "raising split_freq decreases high-branch energy for a mid-band sine");
+}
+
+// ---------------------------------------------------------------------------
 // Test: Stage disable in serial = passthrough
 // ---------------------------------------------------------------------------
 static void test_serial_disable_passthrough(vivid::OperatorLoader& loader) {
@@ -552,6 +623,7 @@ int main() {
     test_serial_ordering(dual_loader);
     test_parallel_balance(dual_loader);
     test_split_routing(dual_loader);
+    test_split_freq_mapping(dual_loader);
     test_serial_disable_passthrough(dual_loader);
     test_output_gain(dual_loader);
     test_parallel_disable_silence(dual_loader);

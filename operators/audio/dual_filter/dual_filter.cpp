@@ -74,7 +74,7 @@ struct DualFilter : vivid::OperatorBase, vivid::AudioProcessable {
     struct LaneState {
         audio_dsp::FilterState filter_a;
         audio_dsp::FilterState filter_b;
-        // LR2 crossover state (two cascaded 1-pole lowpass filters)
+        // Complementary split state: two cascaded one-pole lowpass sections.
         float xover_z1 = 0.f;
         float xover_z2 = 0.f;
     };
@@ -335,8 +335,7 @@ struct DualFilter : vivid::OperatorBase, vivid::AudioProcessable {
         float xover_g = 0.0f;
         if (route == SPLIT) {
             float fc = std::clamp(split_freq.value, 20.0f, sr * 0.45f);
-            float w = 3.14159265f * fc / sr;
-            xover_g = w / (1.0f + w);  // 1-pole LP coefficient
+            xover_g = 1.0f - std::exp(-2.0f * 3.14159265f * fc / sr);
         }
 
         for (uint32_t i = 0; i < frames; i++) {
@@ -364,7 +363,7 @@ struct DualFilter : vivid::OperatorBase, vivid::AudioProcessable {
                     break;
                 }
                 case SPLIT: {
-                    // LR2 crossover: two cascaded 1-pole lowpass filters
+                    // Complementary low/high split using two cascaded one-pole lowpass sections.
                     float lp1 = ls.xover_z1 + xover_g * (s - ls.xover_z1);
                     ls.xover_z1 = lp1;
                     float lp2 = ls.xover_z2 + xover_g * (lp1 - ls.xover_z2);
