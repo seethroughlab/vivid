@@ -1,5 +1,24 @@
 #include "runtime/control/runtime_command_sink.h"
+#include "runtime/operators/operator_registry.h"
+#include "runtime/operators/operator_creator.h"
+#include "runtime/core/hot_reload.h"
+#include "runtime/gpu/wgsl_header_parser.h"
+#include "runtime/graph/graph.h"
+#include "runtime/operators/operator_info_cache.h"
+#include "runtime/debug/capture_coordinator.h"
+#include "runtime/core/settings.h"
+#include "runtime/core/editor_detect.h"
+#include "runtime/packages/package_manager.h"
+#include "runtime/core/build_console.h"
+#include "runtime/operators/operator_destination_policy.h"
 #include <nlohmann/json.hpp>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+#include <cstdio>
+#include <cstdlib>
+#include <ctime>
+#include <array>
 
 void RuntimeCommandSink::open_shader(const std::string& type_name) {
     // User C++ operator → open its source .cpp
@@ -583,4 +602,65 @@ void RuntimeCommandSink::clone_cpp_operator(const std::string& type_name, const 
     vivid::open_in_editor(new_cpp, settings_ ? *settings_ : vivid::Settings{});
 
     std::fprintf(stderr, "[vivid] Cloned '%s' as '%s'\n", type_name.c_str(), new_type.c_str());
+}
+
+void RuntimeCommandSink::set_editor_preference(const std::string& editor_id,
+                                               const std::string& custom_command) {
+    if (!settings_) return;
+    settings_->editor = editor_id;
+    settings_->editor_command = custom_command;
+    vivid::save_settings(*settings_);
+}
+
+void RuntimeCommandSink::set_style_preference(const std::string& style_id) {
+    if (!settings_) return;
+    settings_->style_id = style_id;
+    vivid::save_settings(*settings_);
+}
+
+void RuntimeCommandSink::set_pan_gesture_preference(const std::string& gesture) {
+    if (!settings_) return;
+    settings_->pan_gesture = gesture;
+    vivid::save_settings(*settings_);
+}
+
+std::string RuntimeCommandSink::validate_operator_name(const std::string& name) {
+    if (!registry_) return "registry not available";
+    return vivid::OperatorCreator::validate_name(name, *registry_);
+}
+
+void RuntimeCommandSink::add_sticky_note(const std::string& id, const std::string& text,
+                                         float x, float y, float w, float h, int color) {
+    if (!graph_) return;
+    vivid::StickyNoteDef note;
+    note.id = id; note.text = text;
+    note.x = x; note.y = y; note.width = w; note.height = h; note.color = color;
+    graph_->add_sticky_note(std::move(note));
+    capture_undo_snapshot();
+}
+
+void RuntimeCommandSink::remove_sticky_note(const std::string& id) {
+    if (!graph_) return;
+    if (graph_->remove_sticky_note(id))
+        capture_undo_snapshot();
+}
+
+void RuntimeCommandSink::update_sticky_note(const std::string& id, const std::string& text,
+                                            float x, float y, float w, float h, int color) {
+    if (!graph_) return;
+    auto* sn = graph_->find_sticky_note(id);
+    if (!sn) return;
+    sn->text = text; sn->x = x; sn->y = y;
+    sn->width = w; sn->height = h; sn->color = color;
+    capture_undo_snapshot("sticky:" + id);
+}
+
+void RuntimeCommandSink::capture_snapshot() {
+    if (!capture_coordinator_) return;
+    capture_coordinator_->request_snapshot_to_file("");
+}
+
+void RuntimeCommandSink::stop_recording() {
+    if (!capture_coordinator_) return;
+    capture_coordinator_->request_stop_recording();
 }

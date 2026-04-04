@@ -2,29 +2,22 @@
 
 #include "ui/ui_command_sink.h"
 #include "runtime/control/runtime_api.h"
-#include "runtime/operators/operator_registry.h"
-#include "runtime/operators/operator_creator.h"
-#include "runtime/core/hot_reload.h"
-#include "runtime/gpu/wgsl_header_parser.h"
-#include "runtime/graph/graph.h"
-#include "runtime/operators/operator_info_cache.h"
-#include "runtime/debug/capture_coordinator.h"
-#include "runtime/core/settings.h"
-#include "runtime/core/editor_detect.h"
 #include "runtime/core/undo_manager.h"
-#include "runtime/packages/package_manager.h"
-#include "runtime/core/build_console.h"
-#include "runtime/operators/operator_destination_policy.h"
-#include <filesystem>
-#include <fstream>
-#include <sstream>
-#include <cstdio>
-#include <cstdlib>
-#include <ctime>
 #include <string>
 #include <chrono>
-#include <array>
 #include <functional>
+
+// Forward declarations — these types are used only as pointers in this header
+namespace vivid {
+class OperatorRegistry;
+class HotReloader;
+class Graph;
+class CaptureCoordinator;
+struct Settings;
+class PackageManager;
+class BuildConsole;
+} // namespace vivid
+class OperatorInfoCache;
 
 class RuntimeCommandSink : public vivid::ui::UICommandSink {
 public:
@@ -198,33 +191,15 @@ public:
     bool has_project_clone_destination() override;
 
     void set_editor_preference(const std::string& editor_id,
-                               const std::string& custom_command) override {
-        if (!settings_) return;
-        settings_->editor = editor_id;
-        settings_->editor_command = custom_command;
-        vivid::save_settings(*settings_);
-    }
-
-    void set_style_preference(const std::string& style_id) override {
-        if (!settings_) return;
-        settings_->style_id = style_id;
-        vivid::save_settings(*settings_);
-    }
-
-    void set_pan_gesture_preference(const std::string& gesture) override {
-        if (!settings_) return;
-        settings_->pan_gesture = gesture;
-        vivid::save_settings(*settings_);
-    }
+                               const std::string& custom_command) override;
+    void set_style_preference(const std::string& style_id) override;
+    void set_pan_gesture_preference(const std::string& gesture) override;
 
     bool can_create_operator() const override {
         return !operators_dir_.empty() && !build_dir_.empty();
     }
 
-    std::string validate_operator_name(const std::string& name) override {
-        if (!registry_) return "registry not available";
-        return vivid::OperatorCreator::validate_name(name, *registry_);
-    }
+    std::string validate_operator_name(const std::string& name) override;
 
     bool create_operator(const VividCreateOperatorRequest& request,
                          std::string* error = nullptr) override;
@@ -234,41 +209,14 @@ public:
     }
 
     void add_sticky_note(const std::string& id, const std::string& text,
-                         float x, float y, float w, float h, int color) override {
-        if (!graph_) return;
-        vivid::StickyNoteDef note;
-        note.id = id; note.text = text;
-        note.x = x; note.y = y; note.width = w; note.height = h; note.color = color;
-        graph_->add_sticky_note(std::move(note));
-        capture_undo_snapshot();
-    }
-    void remove_sticky_note(const std::string& id) override {
-        if (!graph_) return;
-        if (graph_->remove_sticky_note(id))
-            capture_undo_snapshot();
-    }
+                         float x, float y, float w, float h, int color) override;
+    void remove_sticky_note(const std::string& id) override;
     void update_sticky_note(const std::string& id, const std::string& text,
-                            float x, float y, float w, float h, int color) override {
-        if (!graph_) return;
-        auto* sn = graph_->find_sticky_note(id);
-        if (!sn) return;
-        sn->text = text; sn->x = x; sn->y = y;
-        sn->width = w; sn->height = h; sn->color = color;
-        capture_undo_snapshot("sticky:" + id);
-    }
+                            float x, float y, float w, float h, int color) override;
 
-    void capture_snapshot() override {
-        if (!capture_coordinator_) return;
-        // Fire-and-forget — PNG is saved to disk
-        capture_coordinator_->request_snapshot_to_file("");
-    }
-
+    void capture_snapshot() override;
     void start_recording(const std::string& path, const std::string& codec, double fps) override;
-
-    void stop_recording() override {
-        if (!capture_coordinator_) return;
-        capture_coordinator_->request_stop_recording();
-    }
+    void stop_recording() override;
 
     bool undo() override;
 
