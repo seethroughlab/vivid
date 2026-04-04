@@ -3,7 +3,13 @@ add_library(vivid_runtime_testlib STATIC
     src/runtime/audio/audio_engine.cpp
     src/runtime/audio/audio_frame_bridge.cpp
     src/runtime/audio/system_midi.cpp
+    src/runtime/assets/asset_library.cpp
+    src/runtime/assets/asset_library_internal.cpp
+    src/runtime/assets/asset_library_discovery.cpp
+    src/runtime/assets/asset_library_metadata.cpp
+    src/runtime/assets/asset_library_import.cpp
     src/runtime/control/control_server.cpp
+    src/runtime/control/control_server_assets.cpp
     src/runtime/control/control_server_checks.cpp
     src/runtime/control/control_server_dispatch.cpp
     src/runtime/control/control_server_query.cpp
@@ -129,3 +135,4 @@ include(cmake/tests/10-runtime-control-graph.cmake)
 include(cmake/tests/20-ui-and-common.cmake)
 include(cmake/tests/30-ops-stability-domains.cmake)
 include(cmake/tests/40-packages-media-misc.cmake)
+include(cmake/tests/50-assets.cmake)

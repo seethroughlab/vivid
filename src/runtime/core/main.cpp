@@ -39,6 +39,7 @@
 #include "common/gpu_util.h"
 #include "operator_api/gpu_common.h"
 #include "export/export_pipeline.h"
+#include "runtime/assets/asset_library.h"
 #include "runtime/packages/package_compiler.h"
 #include "runtime/packages/package_manager.h"
 #include "runtime/core/build_console.h"
@@ -959,6 +960,13 @@ fn fbm(p_in: vec2f) -> f32 {
     vivid::PackageManager pkg_manager(pkg_compiler, registry);
     auto build_console = std::make_shared<vivid::BuildConsole>();
     pkg_manager.set_build_console(build_console.get());
+
+    // --- Asset library (import/index/cache for package and workspace assets) ---
+    vivid::AssetLibrary asset_library;
+    asset_library.set_workspace_root(workspace_root);
+    asset_library.discover_workspace_assets(workspace_root);
+    pkg_manager.set_asset_library(&asset_library);
+
     vivid::RegistryBootstrapOptions bootstrap_opts;
     bootstrap_opts.scan_factory_presets = true;
     bootstrap_opts.subgraph_modules = &subgraph_modules;
@@ -1054,6 +1062,7 @@ fn fbm(p_in: vec2f) -> f32 {
     control_server.set_app_update_manager(&app_updates);
     control_server.set_settings(&settings);
     control_server.set_audio_engine(&audio_engine);
+    control_server.set_asset_library(&asset_library);
     if (!control_server.start(9876)) {
         std::fprintf(stderr, "[vivid] Control server unavailable (port 9876 in use?)\n");
     }

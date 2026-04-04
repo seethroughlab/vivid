@@ -1,5 +1,6 @@
 #pragma once
 
+#include "runtime/assets/asset_library.h"
 #include "runtime/control/control_server.h"
 #include "runtime/control/control_server_checks.h"
 #include "runtime/graph/subgraph_module.h"
@@ -547,6 +548,13 @@ std::string dispatch(const std::string& method, const std::string& body,
                             PackageManager* package_manager,
                             PackageCompiler* package_compiler,
                             Settings* settings,
-                            AudioEngine* audio_engine);
+                            AudioEngine* audio_engine,
+                            AssetLibrary* asset_library = nullptr);
+
+// Asset library handlers (defined in control_server_assets.cpp)
+std::string handle_list_assets(AssetLibrary& lib, const nlohmann::json& root);
+std::string handle_inspect_asset(AssetLibrary& lib, const nlohmann::json& root);
+std::string handle_import_asset(AssetLibrary& lib, const nlohmann::json& root);
+std::string handle_refresh_assets(AssetLibrary& lib);
 
 } // namespace vivid

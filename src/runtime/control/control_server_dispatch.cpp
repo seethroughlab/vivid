@@ -12,7 +12,8 @@ std::string dispatch(const std::string& method, const std::string& body,
                             PackageManager* package_manager,
                             PackageCompiler* package_compiler,
                             Settings* settings,
-                            AudioEngine* audio_engine) {
+                            AudioEngine* audio_engine,
+                            AssetLibrary* asset_library) {
     // Read-only queries (no body needed)
     if (method == "inspect_graph") return handle_inspect_graph(graph, core, core.subgraph_modules());
     if (method == "introspect_nodes") return handle_introspect_nodes(graph, core, core.subgraph_modules());
@@ -1256,6 +1257,24 @@ std::string dispatch(const std::string& method, const std::string& body,
                 else result = json_err("sticky note not found");
             }
         }
+    } else if (method == "list_assets") {
+        if (!asset_library) return json_err("asset library not available");
+        auto root = body.empty() ? nlohmann::json::object() : nlohmann::json::parse(body, nullptr, false);
+        if (root.is_discarded()) root = nlohmann::json::object();
+        result = handle_list_assets(*asset_library, root);
+    } else if (method == "inspect_asset") {
+        if (!asset_library) return json_err("asset library not available");
+        auto root = nlohmann::json::parse(body, nullptr, false);
+        if (root.is_discarded()) return json_err("invalid JSON body");
+        result = handle_inspect_asset(*asset_library, root);
+    } else if (method == "import_asset") {
+        if (!asset_library) return json_err("asset library not available");
+        auto root = nlohmann::json::parse(body, nullptr, false);
+        if (root.is_discarded()) return json_err("invalid JSON body");
+        result = handle_import_asset(*asset_library, root);
+    } else if (method == "refresh_assets") {
+        if (!asset_library) return json_err("asset library not available");
+        result = handle_refresh_assets(*asset_library);
     } else {
         result = json_err("unknown method '" + method + "'");
     }

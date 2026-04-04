@@ -168,6 +168,14 @@ All requests are POSTs. The URL path is the method name (e.g. `POST /add_node`).
 | `update_sticky_note` | `id`, `text`, `x`, `y`, `width`, `height`, `color` | Update note (all fields optional except `id`) |
 | `remove_sticky_note` | `id` | Delete note |
 
+### Assets
+| Method | Key params | Description |
+|--------|-----------|-------------|
+| `list_assets` | `kind` (optional), `scope` (optional) | List merged package and workspace asset-library entries |
+| `inspect_asset` | `asset_id` | Inspect one asset entry, including generic `kind_meta` payload |
+| `import_asset` | `source_path`, `kind` (optional) | Import a file into the workspace asset library using the built-in handler for that kind |
+| `refresh_assets` | — | Rebuild the merged asset-library view from workspace sidecars and remembered package asset sources |
+
 ### Utility
 | Method | Key params | Description |
 |--------|-----------|-------------|
@@ -204,6 +212,20 @@ All requests are POSTs. The URL path is the method name (e.g. `POST /add_node`).
 MIDI/variation/preset mutations, `load_graph`.
 
 Non-topology commands (`inspect_graph`, `list_types`, etc.) can execute immediately on the main thread.
+
+The asset endpoints are also immediate. `refresh_assets` rebuilds both workspace and package entries;
+it is not limited to workspace sidecars only.
+
+Asset entries are content-agnostic at the control-server layer. The shared fields are:
+
+- `asset_id`, `kind`, `display_name`, `scope`, `package_name`
+- `canonical_path`, `relative_path`, `source_hash`
+- `imported_at`, `discovered_at`, `file_size`, `file_format`
+- `kind_meta`
+
+`kind_meta` carries the kind-specific extracted metadata owned by the built-in handler for that asset
+kind. In v1, the only built-in kind is `wavetable`, so `kind_meta` contains wavetable metadata such
+as sample rate, channel count, frame count, samples per frame, total samples, and peak amplitude.
 
 ## Pimpl / Impl
 

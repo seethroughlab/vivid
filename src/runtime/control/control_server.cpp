@@ -45,6 +45,7 @@ void ControlServer::set_package_catalog(PackageCatalog* cat) { assert(!impl_); p
 void ControlServer::set_app_update_manager(AppUpdateManager* aum) { assert(!impl_); app_update_manager_ = aum; }
 void ControlServer::set_settings(Settings* settings) { assert(!impl_); settings_ = settings; }
 void ControlServer::set_audio_engine(AudioEngine* ae) { audio_engine_ = ae; }
+void ControlServer::set_asset_library(AssetLibrary* lib) { asset_library_ = lib; }
 
 uint64_t ControlServer::mcp_last_ping_ms(const std::string& name) const {
     std::lock_guard<std::mutex> lk(mcp_ping_mutex_);
@@ -619,7 +620,8 @@ void ControlServer::process_requests(RuntimeAPI& api, Graph& graph,
                                         package_manager_,
                                         package_compiler_,
                                         settings_,
-                                        audio_engine_);
+                                        audio_engine_,
+                                        asset_library_);
 
         if (track_for_undo && response_is_ok(response)) {
             if (req.method == "load_graph") {

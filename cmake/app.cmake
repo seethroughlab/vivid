@@ -94,10 +94,16 @@ add_executable(vivid
     src/runtime/gpu/screenshot.cpp
     src/runtime/operators/builtin_operators.cpp
     src/runtime/core/runtime_bootstrap.cpp
+    src/runtime/assets/asset_library.cpp
+    src/runtime/assets/asset_library_internal.cpp
+    src/runtime/assets/asset_library_discovery.cpp
+    src/runtime/assets/asset_library_metadata.cpp
+    src/runtime/assets/asset_library_import.cpp
     src/runtime/control/control_server.cpp
     src/runtime/control/control_server_query.cpp
     src/runtime/control/control_server_dispatch.cpp
     src/runtime/control/control_server_checks.cpp
+    src/runtime/control/control_server_assets.cpp
     src/runtime/operators/operator_source_docs.cpp
     src/runtime/debug/capture_coordinator.cpp
     src/runtime/debug/output_analyzer.cpp

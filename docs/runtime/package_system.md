@@ -13,6 +13,7 @@ Two classes handle different concerns:
 A package is a directory containing:
 - `vivid-package.json` — manifest (name, version, operators list, dependencies)
 - `audio/`, `control/`, `gpu/` subdirectories with `.cpp` operator files
+- optional `assets/wavetables/` directory for factory wavetable content
 - Optional `tests/` directory with C++ test sources and/or graph test files
 
 ## Package Test Contract
@@ -55,6 +56,9 @@ with explicit classification instead of ambiguous compile noise.
   "author": "Someone",
   "operators": ["control/glitch_switcher"],
   "gpu_operators": ["gpu/pixel_sort"],
+  "assets": {
+    "wavetables": ["assets/wavetables"]
+  },
   "dependencies": {
     "packages": ["vivid-base"],
     "vendor": [{ "name": "stb_image", "include": "deps/stb" }]
@@ -87,6 +91,23 @@ consumed by the Vivid site build, not by package install/load behavior.
 Operator-level docs are not declared here. They are derived from source doc block comments in the
 operator code (`/** ... */`, `@brief`, `@param`) and merged into the published package operator pages.
 
+The optional `assets` block is generic:
+
+- keys are asset-kind names
+- values are arrays of package-relative directories
+- the runtime only acts on keys for supported built-in asset kinds
+- unsupported kinds are ignored safely by the runtime, but still parse into the generic manifest map
+
+In v1, the only built-in supported kind is `wavetable`:
+
+- `assets.wavetables`
+  - array of package-relative directories
+  - scanned as read-only factory asset roots by the asset library
+  - if omitted, the runtime falls back to the conventional package path `assets/wavetables/` for the built-in wavetable handler
+
+Imported user assets do not live in package directories. They are copied into the workspace asset
+library and remain idempotent by normalized source path in v1.
+
 ## `PackageInfo`
 
 ```cpp
@@ -96,6 +117,7 @@ struct PackageInfo {
     std::vector<std::string> tags;
     std::vector<std::string> operators;      // e.g. "audio/drum_kick"
     std::vector<std::string> gpu_operators;  // operators needing Dawn
+    PackageAssets assets;
     std::string path;           // absolute path on disk
     std::string source_scope;   // local|workspace|user|extra
     std::string build_type;     // "" = clang++ (default), "cmake" = cmake build
@@ -104,6 +126,11 @@ struct PackageInfo {
     PackageTests tests;
 };
 ```
+
+`PackageAssets` is a generic kind-to-directories map. Package loading resolves that map against the
+runtime asset-kind registry, then asks the asset library to discover entries for each supported kind.
+The asset library remains content-agnostic at its core layer; kind-specific validation, metadata
+extraction, directory naming, and conventional fallback rules belong to built-in asset-kind handlers.
 
 ## `PackageCompiler`
 

@@ -1,5 +1,6 @@
 #include "runtime/packages/package_manager_internal.h"
 
+#include "runtime/assets/asset_library.h"
 #include "runtime/graph/subgraph_module.h"
 #include "runtime/operators/operator_registry.h"
 #include "runtime/platform/platform.h"
@@ -406,6 +407,9 @@ void PackageManager::scan_installed() {
     namespace fs = std::filesystem;
     discovery_report_ = {};
 
+    // Clear stale package-scoped assets before re-scanning
+    if (asset_library_) asset_library_->clear_package_assets();
+
     // Record scopes searched
     auto scope_roots = discover_scope_roots();
     for (const auto& sr : scope_roots) {
@@ -519,6 +523,25 @@ void PackageManager::scan_installed() {
         registry_.register_package(info.name, build_dir);
         registry_.scan_shader_operators(info.path + "/filters", false, info.name);
         registry_.scan_factory_presets(info.path + "/factory_presets");
+
+        // Discover package assets for the asset library
+        if (asset_library_) {
+            for (const auto& handler_ptr : asset_library_->kind_registry().handlers()) {
+                const AssetKindHandler& handler = *handler_ptr;
+                std::vector<std::string> dirs;
+
+                auto declared = info.assets.dirs_by_kind.find(handler.kind_name());
+                if (declared != info.assets.dirs_by_kind.end())
+                    dirs = declared->second;
+                else
+                    dirs = handler.conventional_package_dirs();
+
+                if (!dirs.empty()) {
+                    asset_library_->discover_package_assets(
+                        info.name, info.path, handler.kind(), dirs);
+                }
+            }
+        }
 
         // Load subgraph modules declared in package manifest
         if (subgraph_modules_ && !info.modules.empty()) {

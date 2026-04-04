@@ -5,11 +5,13 @@
 #include <functional>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 namespace vivid {
 
+class AssetLibrary;
 class OperatorRegistry;
 class SubgraphModuleRegistry;
 class BuildConsole;
@@ -29,6 +31,10 @@ struct PackageTests {
     std::vector<std::string> cpp;     // relative paths to C++ test sources
 };
 
+struct PackageAssets {
+    std::unordered_map<std::string, std::vector<std::string>> dirs_by_kind;
+};
+
 struct PackageInfo {
     std::string name;
     std::string version;
@@ -46,6 +52,7 @@ struct PackageInfo {
     bool linked = false;                     // true if symlinked (vivid link)
     PackageDependencies dependencies;
     PackageTests tests;
+    PackageAssets assets;
 };
 
 struct SkippedPackage {
@@ -128,6 +135,9 @@ public:
     // Set the subgraph module registry for loading package modules.
     void set_subgraph_module_registry(SubgraphModuleRegistry* reg) { subgraph_modules_ = reg; }
 
+    // Set the asset library for discovering package assets during scan.
+    void set_asset_library(AssetLibrary* lib) { asset_library_ = lib; }
+
     // Returns <config_dir>/packages (platform-specific config dir)
     static std::string packages_dir();
 
@@ -183,6 +193,7 @@ private:
     BuildConsole* build_console_ = nullptr;
     PackageResolver resolver_;
     SubgraphModuleRegistry* subgraph_modules_ = nullptr;
+    AssetLibrary* asset_library_ = nullptr;
     DiscoveryReport discovery_report_;
 };
 

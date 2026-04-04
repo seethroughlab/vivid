@@ -182,6 +182,18 @@ std::pair<std::string, std::string> PackageManager::parse_manifest(const std::st
         parse_string_array(tests, "cpp", info.tests.cpp);
     }
 
+    // assets (optional object — keys are asset kinds, values are directory arrays)
+    if (root.contains("assets") && root["assets"].is_object()) {
+        const auto& assets_obj = root["assets"];
+        for (auto it = assets_obj.begin(); it != assets_obj.end(); ++it) {
+            if (!it.value().is_array()) continue;
+            auto& dirs = info.assets.dirs_by_kind[it.key()];
+            for (const auto& v : it.value()) {
+                if (v.is_string()) dirs.push_back(v.get<std::string>());
+            }
+        }
+    }
+
     return {"", ""};  // success
 }
 

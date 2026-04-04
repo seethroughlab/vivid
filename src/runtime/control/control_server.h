@@ -8,6 +8,7 @@
 
 namespace vivid {
 
+class AssetLibrary;
 class RuntimeAPI;
 class Graph;
 class RuntimeCore;
@@ -45,6 +46,7 @@ public:
     void set_app_update_manager(AppUpdateManager* aum);
     void set_settings(Settings* settings);
     void set_audio_engine(AudioEngine* ae);
+    void set_asset_library(AssetLibrary* lib);
 
     // Returns the wall-clock ms timestamp of the last /mcp_ping from a given
     // server name ("vivid" or "opdev").  Returns 0 if never pinged.
@@ -76,6 +78,7 @@ private:
     AppUpdateManager* app_update_manager_ = nullptr;
     Settings* settings_ = nullptr;
     AudioEngine* audio_engine_ = nullptr;
+    AssetLibrary* asset_library_ = nullptr;
 };
 
 } // namespace vivid
