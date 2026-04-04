@@ -81,6 +81,16 @@ All requests are POSTs. The URL path is the method name (e.g. `POST /add_node`).
 | `disconnect` | `from_addr`, `to_addr` | Disconnect ports |
 | `set_connection_remap` | `from_addr`, `to_addr`, `from_min/max`, `to_min/max`, `clamp` | Set wire remap |
 
+### Module Modulation
+| Method | Key params | Description |
+|--------|-----------|-------------|
+| `add_mod_assignment` | `node_id`, `source`, `destination`, `amount`, `polarity`, `curve` | Add a named modulation assignment on a module instance |
+| `remove_mod_assignment` | `node_id`, `source`, `destination` | Remove a modulation assignment from a module instance |
+| `update_mod_assignment` | `node_id`, `source`, `destination`, `amount`, `polarity`, `curve` | Update an existing modulation assignment |
+| `list_mod_sources` | `node_id` | List the module's declared modulation sources |
+| `list_mod_destinations` | `node_id` | List the module's declared modulation destinations |
+| `list_mod_assignments` | `node_id` | List active authored modulation assignments on the module instance |
+
 ### Parameters
 | Method | Key params | Description |
 |--------|-----------|-------------|
