@@ -4,7 +4,7 @@
 #include <vector>
 #include <functional>
 
-namespace vivid::ui {
+namespace vivid {
 
 struct ExampleEntry {
     std::string id;
@@ -72,5 +72,17 @@ struct PackageBrowserCallbacks {
 };
 
 enum class SaveConfirmAction { kNewGraph, kNewProject };
+
+} // namespace vivid
+
+namespace vivid::ui {
+
+using ::vivid::ExampleEntry;
+using ::vivid::GraphMetaEditData;
+using ::vivid::PackageBrowserFetchState;
+using ::vivid::PackageBrowserEntry;
+using ::vivid::PackageBrowserUpdateSummary;
+using ::vivid::PackageBrowserCallbacks;
+using ::vivid::SaveConfirmAction;
 
 } // namespace vivid::ui

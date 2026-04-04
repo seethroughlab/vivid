@@ -1,16 +1,60 @@
 #include "runtime/control/graph_file_io.h"
-#include "runtime/core/main_helpers.h"
 #include "runtime/packages/package_manager.h"
 #include <nlohmann/json.hpp>
-#include <fstream>
+#include <cstdlib>
 #include <algorithm>
+#include <cctype>
+#include <fstream>
 #include <unordered_set>
 
 namespace vivid {
 
+namespace {
+
+std::vector<std::string> json_str_array(const nlohmann::json& arr) {
+    std::vector<std::string> out;
+    if (!arr.is_array()) return out;
+    for (const auto& v : arr) {
+        if (v.is_string()) out.emplace_back(v.get<std::string>());
+    }
+    return out;
+}
+
+std::string trim_copy(const std::string& s) {
+    size_t b = 0;
+    while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b]))) ++b;
+    size_t e = s.size();
+    while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1]))) --e;
+    return s.substr(b, e - b);
+}
+
+std::vector<std::string> split_csv(const std::string& csv) {
+    std::vector<std::string> out;
+    size_t pos = 0;
+    while (pos <= csv.size()) {
+        size_t comma = csv.find(',', pos);
+        if (comma == std::string::npos) comma = csv.size();
+        std::string tok = trim_copy(csv.substr(pos, comma - pos));
+        if (!tok.empty()) out.push_back(tok);
+        pos = comma + 1;
+    }
+    return out;
+}
+
+std::string join_csv(const std::vector<std::string>& items) {
+    std::string out;
+    for (size_t i = 0; i < items.size(); ++i) {
+        if (i) out += ", ";
+        out += items[i];
+    }
+    return out;
+}
+
+} // namespace
+
 bool load_example_entry_from_graph(const std::filesystem::path& graph_path,
-                                          const std::filesystem::path& graphs_root,
-                                          vivid::ui::ExampleEntry& out) {
+                                   const std::filesystem::path& graphs_root,
+                                   vivid::ExampleEntry& out) {
     nlohmann::json root;
     try {
         std::ifstream ifs(graph_path);
@@ -53,8 +97,8 @@ bool load_example_entry_from_graph(const std::filesystem::path& graph_path,
 }
 
 bool load_graph_meta_edit_data(const std::string& graph_path,
-                                      vivid::ui::GraphMetaEditData& out,
-                                      std::string& error) {
+                               vivid::GraphMetaEditData& out,
+                               std::string& error) {
     nlohmann::json root;
     try {
         std::ifstream ifs(graph_path);
@@ -93,7 +137,7 @@ bool load_graph_meta_edit_data(const std::string& graph_path,
     return true;
 }
 
-bool save_graph_meta_edit_data(const vivid::ui::GraphMetaEditData& in, std::string& error) {
+bool save_graph_meta_edit_data(const vivid::GraphMetaEditData& in, std::string& error) {
     nlohmann::json root;
     try {
         std::ifstream ifs(in.path);
@@ -143,31 +187,31 @@ bool save_graph_meta_edit_data(const vivid::ui::GraphMetaEditData& in, std::stri
     }
 }
 
-static std::vector<vivid::ui::ExampleEntry>
+static std::vector<vivid::ExampleEntry>
 discover_examples_recursive(const std::filesystem::path& graphs_root) {
-    std::vector<vivid::ui::ExampleEntry> out;
+    std::vector<vivid::ExampleEntry> out;
     std::error_code ec;
     if (!std::filesystem::is_directory(graphs_root, ec)) return out;
     for (const auto& e : std::filesystem::recursive_directory_iterator(graphs_root, ec)) {
         if (ec) break;
         if (!e.is_regular_file()) continue;
         if (e.path().extension() != ".json") continue;
-        vivid::ui::ExampleEntry item;
+        vivid::ExampleEntry item;
         if (load_example_entry_from_graph(e.path(), graphs_root, item))
             out.push_back(std::move(item));
     }
-    std::sort(out.begin(), out.end(), [](const vivid::ui::ExampleEntry& a,
-                                         const vivid::ui::ExampleEntry& b) {
+    std::sort(out.begin(), out.end(), [](const vivid::ExampleEntry& a,
+                                         const vivid::ExampleEntry& b) {
         if (a.featured_rank != b.featured_rank) return a.featured_rank < b.featured_rank;
         return a.title < b.title;
     });
     return out;
 }
 
-std::vector<vivid::ui::ExampleEntry>
+std::vector<vivid::ExampleEntry>
 discover_examples_with_packages(const std::filesystem::path& graphs_root,
                                 vivid::PackageManager* pkg_manager) {
-    std::vector<vivid::ui::ExampleEntry> out = discover_examples_recursive(graphs_root);
+    std::vector<vivid::ExampleEntry> out = discover_examples_recursive(graphs_root);
     if (!pkg_manager) return out;
 
     std::unordered_set<std::string> seen_paths;
@@ -193,8 +237,8 @@ discover_examples_with_packages(const std::filesystem::path& graphs_root,
         }
     }
 
-    std::sort(out.begin(), out.end(), [](const vivid::ui::ExampleEntry& a,
-                                         const vivid::ui::ExampleEntry& b) {
+    std::sort(out.begin(), out.end(), [](const vivid::ExampleEntry& a,
+                                         const vivid::ExampleEntry& b) {
         if (a.featured_rank != b.featured_rank) return a.featured_rank < b.featured_rank;
         return a.title < b.title;
     });
@@ -202,8 +246,8 @@ discover_examples_with_packages(const std::filesystem::path& graphs_root,
 }
 
 std::string resolve_graph_input_path(const std::string& input,
-                                            const std::filesystem::path& graphs_root,
-                                            const std::vector<vivid::ui::ExampleEntry>& examples) {
+                                     const std::filesystem::path& graphs_root,
+                                     const std::vector<vivid::ExampleEntry>& examples) {
     if (input.empty()) return input;
     std::filesystem::path p(input);
     std::error_code ec;
@@ -226,7 +270,7 @@ std::string resolve_graph_input_path(const std::string& input,
 std::filesystem::path expand_tilde_path(const std::string& input) {
     if (input.empty()) return {};
     if (input[0] != '~') return std::filesystem::path(input);
-    const char* home = std::getenv("HOME");
+    const char* home = ::getenv("HOME");
     if (!home) return std::filesystem::path(input);
     if (input.size() == 1) return std::filesystem::path(home);
     if (input[1] == '/' || input[1] == '\\')

@@ -1390,7 +1390,7 @@ fn fbm(p_in: vec2f) -> f32 {
     if (!std::filesystem::is_directory(graphs_root)) {
         graphs_root = bundle_graphs_root;
     }
-    std::vector<vivid::ui::ExampleEntry> discovered_examples =
+    std::vector<vivid::ExampleEntry> discovered_examples =
         discover_examples_with_packages(graphs_root, &pkg_manager);
     graph_file = resolve_graph_input_path(graph_file, graphs_root, discovered_examples);
 
@@ -1688,14 +1688,14 @@ fn fbm(p_in: vec2f) -> f32 {
     bool                pkg_action_needs_refresh{false};
     std::thread         pkg_action_thread;
 
-    std::vector<vivid::ui::PackageBrowserEntry> pkg_browser_entries_cache;
+    std::vector<vivid::PackageBrowserEntry> pkg_browser_entries_cache;
     auto refresh_package_browser_entries_cache = [&]() {
         {
             std::lock_guard<std::mutex> lk(pkg_action_mutex);
             if (pkg_action_state == PkgActionState::Running)
                 return;
         }
-        std::vector<vivid::ui::PackageBrowserEntry> out;
+        std::vector<vivid::PackageBrowserEntry> out;
         std::unordered_map<std::string, vivid::PackageInfo> installed_map;
         for (const auto& p : pkg_manager.list()) {
             installed_map[p.name] = p;
@@ -1711,7 +1711,7 @@ fn fbm(p_in: vec2f) -> f32 {
         auto entries = pkg_catalog.entries();
         out.reserve(entries.size() + installed_map.size());
         for (const auto& e : entries) {
-            vivid::ui::PackageBrowserEntry ui_e;
+            vivid::PackageBrowserEntry ui_e;
             ui_e.name = e.name;
             ui_e.description = e.description;
             ui_e.version = e.version;
@@ -1731,7 +1731,7 @@ fn fbm(p_in: vec2f) -> f32 {
             out.push_back(std::move(ui_e));
         }
         for (const auto& [name, info] : installed_map) {
-            vivid::ui::PackageBrowserEntry ui_e;
+            vivid::PackageBrowserEntry ui_e;
             ui_e.name = info.name;
             ui_e.description = info.description;
             ui_e.version = info.version;
@@ -1750,7 +1750,7 @@ fn fbm(p_in: vec2f) -> f32 {
     };
     refresh_package_browser_entries_cache();
 
-    vivid::ui::PackageBrowserCallbacks pkg_browser_cbs;
+    vivid::PackageBrowserCallbacks pkg_browser_cbs;
     pkg_browser_cbs.refresh = [&pkg_catalog]() {
         pkg_catalog.refresh();
     };
@@ -1759,19 +1759,19 @@ fn fbm(p_in: vec2f) -> f32 {
     };
     pkg_browser_cbs.fetch_state = [&pkg_catalog]() {
         switch (pkg_catalog.fetch_state()) {
-            case vivid::CatalogFetchState::Idle: return vivid::ui::PackageBrowserFetchState::Idle;
-            case vivid::CatalogFetchState::Fetching: return vivid::ui::PackageBrowserFetchState::Fetching;
-            case vivid::CatalogFetchState::Ready: return vivid::ui::PackageBrowserFetchState::Ready;
-            case vivid::CatalogFetchState::Error: return vivid::ui::PackageBrowserFetchState::Error;
+            case vivid::CatalogFetchState::Idle: return vivid::PackageBrowserFetchState::Idle;
+            case vivid::CatalogFetchState::Fetching: return vivid::PackageBrowserFetchState::Fetching;
+            case vivid::CatalogFetchState::Ready: return vivid::PackageBrowserFetchState::Ready;
+            case vivid::CatalogFetchState::Error: return vivid::PackageBrowserFetchState::Error;
         }
-        return vivid::ui::PackageBrowserFetchState::Error;
+        return vivid::PackageBrowserFetchState::Error;
     };
     pkg_browser_cbs.fetch_error = [&pkg_catalog]() {
         return pkg_catalog.fetch_error();
     };
     pkg_browser_cbs.update_summary = [&pkg_catalog]() {
         auto s = pkg_catalog.summarize_updates(VIVID_CORE_VERSION);
-        vivid::ui::PackageBrowserUpdateSummary out;
+        vivid::PackageBrowserUpdateSummary out;
         out.installed_packages = s.installed_packages;
         out.updates_available = s.updates_available;
         out.incompatible_updates = s.incompatible_updates;
@@ -2312,7 +2312,7 @@ fn fbm(p_in: vec2f) -> f32 {
         request.update_recent_files = true;
         request_graph_load(std::move(request), "Open Example");
     });
-    graph_ui.set_graph_meta_save_callback([&](const vivid::ui::GraphMetaEditData& data,
+    graph_ui.set_graph_meta_save_callback([&](const vivid::GraphMetaEditData& data,
                                               std::string& error) {
         if (!save_graph_meta_edit_data(data, error)) return false;
         refresh_discovered_examples();
@@ -2564,7 +2564,7 @@ fn fbm(p_in: vec2f) -> f32 {
         menu_cbs.on_delete_selected = [&]() { graph_ui.delete_selected(); };
         menu_cbs.on_edit_meta = [&]() {
             if (graph.source_path().empty()) return;
-            vivid::ui::GraphMetaEditData data;
+            vivid::GraphMetaEditData data;
             std::string error;
             if (!load_graph_meta_edit_data(graph.source_path(), data, error)) {
                 std::fprintf(stderr, "[vivid] Edit Meta: %s\n", error.c_str());

@@ -414,7 +414,7 @@ private:
 
     // --- Save confirmation dialog (forwarded to DialogManager) ---
 public:
-    using SaveConfirmAction = vivid::ui::SaveConfirmAction;
+    using SaveConfirmAction = vivid::SaveConfirmAction;
     void open_save_confirm_dialog(SaveConfirmAction action);
     // Callbacks forwarded to DialogManager
     std::function<void()>& on_save_confirm_save = dialogs_.on_save_confirm_save;

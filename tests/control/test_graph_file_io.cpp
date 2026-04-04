@@ -10,17 +10,23 @@ namespace fs = std::filesystem;
 static void test_expand_tilde() {
     std::fprintf(stderr, "\n--- expand_tilde_path ---\n");
 
-    const char* home = std::getenv("HOME");
-    if (!home) { std::fprintf(stderr, "  SKIP: HOME not set\n"); return; }
+    ScopedTempDir tmp("graph_file_io_home");
+    fs::path home_root = tmp / "home";
+    std::filesystem::create_directories(home_root);
+    ScopedEnvVar home_env("HOME", home_root.string());
 
     auto result = vivid::expand_tilde_path("~/Documents");
-    check(result == fs::path(home) / "Documents", "~/Documents expands correctly");
+    check(result == home_root / "Documents", "~/Documents expands correctly");
 
     auto abs = vivid::expand_tilde_path("/absolute/path");
     check(abs == "/absolute/path", "absolute path unchanged");
 
     auto empty = vivid::expand_tilde_path("");
     check(empty.empty(), "empty string returns empty");
+
+    ScopedEnvVar unset_home("HOME", nullptr);
+    auto unresolved = vivid::expand_tilde_path("~/Documents");
+    check(unresolved == "~/Documents", "tilde path stays unchanged when HOME is unset");
 }
 
 static void test_load_example_entry() {
@@ -35,17 +41,19 @@ static void test_load_example_entry() {
         std::ofstream ofs(graph_path);
         ofs << R"({
             "schema_version": 3,
-            "title": "My Test Graph",
-            "description": "A test",
-            "tags": ["audio", "demo"],
-            "difficulty": "beginner",
-            "envs": ["audio"],
+            "meta": {
+                "title": "My Test Graph",
+                "description": "A test",
+                "tags": ["audio", "demo"],
+                "difficulty": "beginner",
+                "envs": ["audio"]
+            },
             "nodes": [],
             "connections": []
         })";
     }
 
-    vivid::ui::ExampleEntry entry;
+    vivid::ExampleEntry entry;
     bool ok = vivid::load_example_entry_from_graph(graph_path, graphs_root, entry);
     check(ok, "load succeeds for valid graph");
     check(entry.title == "My Test Graph", "title parsed");
@@ -56,7 +64,7 @@ static void test_load_example_entry() {
 static void test_load_example_entry_missing() {
     std::fprintf(stderr, "\n--- load_example_entry: missing file ---\n");
 
-    vivid::ui::ExampleEntry entry;
+    vivid::ExampleEntry entry;
     bool ok = vivid::load_example_entry_from_graph("/nonexistent.json", "/tmp", entry);
     check(!ok, "load fails for missing file");
 }
@@ -93,18 +101,20 @@ static void test_save_load_meta_roundtrip() {
         std::ofstream ofs(graph_path);
         ofs << R"({
             "schema_version": 3,
-            "title": "Original Title",
-            "description": "Original desc",
-            "tags": ["tag1"],
-            "difficulty": "intermediate",
-            "envs": ["gpu"],
+            "meta": {
+                "title": "Original Title",
+                "description": "Original desc",
+                "tags": ["tag1"],
+                "difficulty": "intermediate",
+                "envs": ["gpu"]
+            },
             "nodes": [],
             "connections": []
         })";
     }
 
     // Load metadata
-    vivid::ui::GraphMetaEditData data;
+    vivid::GraphMetaEditData data;
     std::string error;
     bool loaded = vivid::load_graph_meta_edit_data(graph_path.string(), data, error);
     check(loaded, "load metadata succeeds");
@@ -117,7 +127,7 @@ static void test_save_load_meta_roundtrip() {
     check(saved, "save metadata succeeds");
 
     // Reload and verify
-    vivid::ui::GraphMetaEditData reloaded;
+    vivid::GraphMetaEditData reloaded;
     bool reloaded_ok = vivid::load_graph_meta_edit_data(graph_path.string(), reloaded, error);
     check(reloaded_ok, "reload metadata succeeds");
     check(reloaded.title == "Updated Title", "title updated after save");

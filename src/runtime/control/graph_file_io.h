@@ -11,22 +11,22 @@ namespace vivid {
 
 bool load_example_entry_from_graph(const std::filesystem::path& graph_path,
                                    const std::filesystem::path& graphs_root,
-                                   vivid::ui::ExampleEntry& out);
+                                   vivid::ExampleEntry& out);
 
 bool load_graph_meta_edit_data(const std::string& graph_path,
-                               vivid::ui::GraphMetaEditData& data,
+                               vivid::GraphMetaEditData& data,
                                std::string& error);
 
-bool save_graph_meta_edit_data(const vivid::ui::GraphMetaEditData& data,
+bool save_graph_meta_edit_data(const vivid::GraphMetaEditData& data,
                                std::string& error);
 
-std::vector<vivid::ui::ExampleEntry> discover_examples_with_packages(
+std::vector<vivid::ExampleEntry> discover_examples_with_packages(
     const std::filesystem::path& graphs_root,
     vivid::PackageManager* pkg_manager);
 
 std::string resolve_graph_input_path(const std::string& input,
                                      const std::filesystem::path& graphs_root,
-                                     const std::vector<vivid::ui::ExampleEntry>& examples);
+                                     const std::vector<vivid::ExampleEntry>& examples);
 
 std::filesystem::path expand_tilde_path(const std::string& input);
 
