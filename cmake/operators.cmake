@@ -170,6 +170,12 @@ add_vivid_operator(chord_progression_au operators/control/chord_progression/chor
 add_vivid_operator(state_machine      operators/control/state_machine/state_machine.cpp)
 add_vivid_operator(tracker_fr         operators/control/tracker/tracker_fr.cpp         EXTRA_LIBS webgpu)
 add_vivid_operator(tracker_au         operators/control/tracker/tracker_au.cpp         EXTRA_LIBS webgpu)
+target_sources(tracker_fr PRIVATE
+    operators/control/tracker/tracker_core.cpp
+    operators/control/tracker/tracker_inspector.cpp)
+target_sources(tracker_au PRIVATE
+    operators/control/tracker/tracker_core.cpp
+    operators/control/tracker/tracker_inspector.cpp)
 add_vivid_operator(euclidean_fr       operators/control/euclidean/euclidean_fr.cpp       EXTRA_LIBS webgpu vivid_composable_ops)
 add_vivid_operator(euclidean_au       operators/control/euclidean/euclidean_au.cpp       EXTRA_LIBS webgpu vivid_composable_ops)
 add_vivid_operator(pat_transform      operators/control/pat_transform/pat_transform.cpp)
@@ -510,4 +516,3 @@ endif()
 # --- Operators meta-target (for package smoke CI: builds all operator dylibs without the app) ---
 get_property(_vivid_op_targets GLOBAL PROPERTY VIVID_OPERATOR_TARGETS)
 add_custom_target(operators DEPENDS ${_vivid_op_targets})
-
