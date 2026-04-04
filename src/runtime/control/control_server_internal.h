@@ -2,6 +2,8 @@
 
 #include "runtime/control/control_server.h"
 #include "runtime/control/control_server_checks.h"
+#include "runtime/graph/subgraph_module.h"
+#include "ui/graph/graph_snapshot.h"
 #include "runtime/debug/capture_coordinator.h"
 #include "runtime/graph/compiled_graph.h"
 #include "runtime/control/runtime_api.h"
@@ -46,6 +48,8 @@
 
 
 namespace vivid {
+
+class SubgraphModuleRegistry;
 
 // ---------------------------------------------------------------------------
 // Timeout constants (seconds)
@@ -321,6 +325,68 @@ inline nlohmann::json build_operator_docs_response(const VividOperatorDescriptor
     return op;
 }
 
+// Build operator-docs-style JSON from a subgraph module definition + its
+// synthetic OperatorInfo.  The output matches the shape of
+// build_operator_docs_response so consumers need not distinguish.
+inline nlohmann::json build_module_docs_response(const SubgraphModuleDef& mod,
+                                                  const ui::OperatorInfo& info) {
+    nlohmann::json op = nlohmann::json::object();
+    op["name"] = mod.name;
+    op["kind"] = "module";
+    op["is_module"] = true;
+    if (!mod.description.empty()) op["brief"] = mod.description;
+    if (!mod.category.empty()) op["category"] = mod.category;
+    op["has_docs"] = false;
+
+    nlohmann::json params_arr = nlohmann::json::array();
+    for (const auto& pi : info.params) {
+        nlohmann::json p = nlohmann::json::object();
+        p["name"] = pi.name;
+        p["type"] = param_type_str(pi.type);
+        p["default"] = static_cast<double>(pi.default_value);
+        p["min"] = static_cast<double>(pi.min_value);
+        p["max"] = static_cast<double>(pi.max_value);
+        if (!pi.group.empty()) p["group"] = pi.group;
+        if (!pi.description.empty()) p["description"] = pi.description;
+        if (!pi.semantic_tag.empty()) p["semantic_tag"] = pi.semantic_tag;
+        if (!pi.semantic_shape.empty()) p["semantic_shape"] = pi.semantic_shape;
+        if (!pi.semantic_unit.empty()) p["semantic_unit"] = pi.semantic_unit;
+        if (!pi.semantic_intent.empty()) p["semantic_intent"] = pi.semantic_intent;
+        if (!pi.choice_labels.empty()) {
+            nlohmann::json choices = nlohmann::json::array();
+            for (const auto& c : pi.choice_labels)
+                choices.push_back(c);
+            p["choices"] = std::move(choices);
+        }
+        params_arr.push_back(std::move(p));
+    }
+    op["params"] = std::move(params_arr);
+
+    nlohmann::json inputs_arr = nlohmann::json::array();
+    nlohmann::json outputs_arr = nlohmann::json::array();
+    for (const auto& pi : info.ports) {
+        nlohmann::json p = nlohmann::json::object();
+        p["name"] = pi.name;
+        p["type"] = port_type_str(pi.type);
+        if (pi.direction == VIVID_PORT_INPUT)
+            inputs_arr.push_back(std::move(p));
+        else
+            outputs_arr.push_back(std::move(p));
+    }
+    op["inputs"] = std::move(inputs_arr);
+    op["outputs"] = std::move(outputs_arr);
+
+    // Include factory preset names if any
+    if (!mod.presets.empty()) {
+        nlohmann::json presets_arr = nlohmann::json::array();
+        for (const auto& pr : mod.presets)
+            presets_arr.push_back(pr.name);
+        op["factory_presets"] = std::move(presets_arr);
+    }
+
+    return op;
+}
+
 inline const char* update_class_str(PackageUpdateClass c) {
     switch (c) {
         case PackageUpdateClass::UpToDate: return "up_to_date";
@@ -461,13 +527,13 @@ inline bool is_undo_tracked_method(const std::string& method) {
 // ---------------------------------------------------------------------------
 
 // Query handlers (defined in control_server_query.cpp)
-std::string handle_inspect_graph(Graph& graph, RuntimeCore& core);
+std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const SubgraphModuleRegistry* modules = nullptr);
 nlohmann::json sample_node_outputs_snapshot(const CompiledNode& ns, bool include_lanes);
 std::string handle_sample_node_outputs(Graph& graph, RuntimeCore& core, const nlohmann::json& root);
-std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core);
+std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core, const SubgraphModuleRegistry* modules = nullptr);
 std::string handle_get_graph_load_diagnostics(const Graph& graph);
-std::string handle_list_types(OperatorRegistry& registry, PackageManager* package_manager, OperatorSourceDocs& source_docs, const nlohmann::json& root);
-std::string handle_operator_docs(OperatorRegistry& registry, PackageManager* package_manager, OperatorSourceDocs& source_docs, const nlohmann::json& root);
+std::string handle_list_types(OperatorRegistry& registry, PackageManager* package_manager, OperatorSourceDocs& source_docs, const nlohmann::json& root, const SubgraphModuleRegistry* modules = nullptr);
+std::string handle_operator_docs(OperatorRegistry& registry, PackageManager* package_manager, OperatorSourceDocs& source_docs, const nlohmann::json& root, const SubgraphModuleRegistry* modules = nullptr);
 std::string handle_get_registry_diagnostics(OperatorRegistry& registry);
 
 // Dispatch router (defined in control_server_dispatch.cpp)

@@ -14,8 +14,8 @@ std::string dispatch(const std::string& method, const std::string& body,
                             Settings* settings,
                             AudioEngine* audio_engine) {
     // Read-only queries (no body needed)
-    if (method == "inspect_graph") return handle_inspect_graph(graph, core);
-    if (method == "introspect_nodes") return handle_introspect_nodes(graph, core);
+    if (method == "inspect_graph") return handle_inspect_graph(graph, core, core.subgraph_modules());
+    if (method == "introspect_nodes") return handle_introspect_nodes(graph, core, core.subgraph_modules());
     if (method == "run_diagnostics")
         return control_server_checks::handle_run_diagnostics(graph, core, registry);
     if (method == "get_registry_diagnostics") return handle_get_registry_diagnostics(registry);
@@ -71,7 +71,7 @@ std::string dispatch(const std::string& method, const std::string& body,
     std::string result;
 
     if (method == "list_types") {
-        result = handle_list_types(registry, package_manager, source_docs, root_valid ? root : nlohmann::json::object());
+        result = handle_list_types(registry, package_manager, source_docs, root_valid ? root : nlohmann::json::object(), core.subgraph_modules());
     } else if (method == "validate_checks") {
         if (!root_valid) result = json_err("invalid JSON body");
         else result = control_server_checks::handle_validate_checks(root);
@@ -1023,7 +1023,7 @@ std::string dispatch(const std::string& method, const std::string& body,
         if (!root_valid) {
             result = json_err("invalid JSON body");
         } else {
-            result = handle_operator_docs(registry, package_manager, source_docs, root);
+            result = handle_operator_docs(registry, package_manager, source_docs, root, core.subgraph_modules());
         }
     } else if (method == "package_operator_docs") {
         if (!package_manager) {
