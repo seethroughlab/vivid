@@ -53,6 +53,11 @@ The metadata is authored in operator code/metadata, not in user parameter values
 - `trigger`
 - `midi_note`
 - `midi_velocity`
+- `midi_pitch_bend`
+- `midi_pressure`
+- `midi_expression`
+- `midi_slide`
+- `midi_channel`
 
 ### Visual and Spatial
 - `color_rgba`

@@ -3,10 +3,11 @@
   "id": "midi_input",
   "domain": "control",
   "source_file": "operators/control/midi_input/midi_input.cpp",
-  "brief": "MIDI device listener outputting notes, velocity, gates, and CCs.",
-  "description": "Connects to a MIDI input device and outputs note/velocity/gate as both\nscalar signals (latest note) and polyphonic spreads (up to 16 held notes).\nAlso provides pitch bend, mod wheel, and a learnable CC value.",
+  "brief": "MIDI device listener with per-note expression and MPE support.",
+  "description": "Connects to a MIDI input device and outputs note/velocity/gate as both\nscalar signals (latest note) and polyphonic lane arrays (up to 16 held notes).\nAlso provides pitch bend, mod wheel, a learnable CC value, and per-note\nexpression lanes (bend, pressure, slide, expression) with three routing modes:\npoly_shared broadcasts shared expression to all notes, mpe_lower and mpe_upper\nroute per-channel expression to individual note lanes for MPE controllers.",
   "tips": [
-    "Enable learn mode and move a controller to auto-assign the CC number."
+    "Enable learn mode and move a controller to auto-assign the CC number.",
+    "Use mpe_lower or mpe_upper mode with an MPE controller for per-note expression."
   ],
   "related": [
     "DrumKit",
@@ -18,8 +19,32 @@
     {
       "name": "channel",
       "doc": "MIDI channel filter. 0 = omni (all channels)."
+    },
+    {
+      "name": "mode",
+      "doc": "Expression routing mode: poly_shared (broadcast), mpe_lower (manager ch1, members ch2-15), mpe_upper (manager ch16, members ch15-2)."
     }
   ],
   "inputs": [],
-  "outputs": []
+  "outputs": [
+    { "name": "note", "type": "scalar", "doc": "Latest MIDI note number (0-127)." },
+    { "name": "velocity", "type": "scalar", "doc": "Latest velocity (0-1)." },
+    { "name": "gate", "type": "scalar", "doc": "1 if any notes held, 0 otherwise." },
+    { "name": "trigger", "type": "scalar", "doc": "1 on note-on frame, 0 otherwise." },
+    { "name": "pitch_bend", "type": "scalar", "doc": "Global pitch bend (-1 to 1)." },
+    { "name": "mod_wheel", "type": "scalar", "doc": "CC1 mod wheel (0-1)." },
+    { "name": "cc_value", "type": "scalar", "doc": "Learnable CC value (0-1)." },
+    { "name": "notes", "type": "lane_array", "doc": "Held note numbers as lane array." },
+    { "name": "velocities", "type": "lane_array", "doc": "Per-note velocities (0-1)." },
+    { "name": "gates", "type": "lane_array", "doc": "Per-note gates (always 1 for held notes)." },
+    { "name": "midi_out", "type": "custom", "doc": "Raw MIDI buffer passthrough." },
+    { "name": "aftertouch", "type": "scalar", "doc": "Channel aftertouch (0-1)." },
+    { "name": "expression", "type": "scalar", "doc": "CC11 expression (0-1)." },
+    { "name": "lane_ids", "type": "lane_array", "doc": "Stable identity token per active note." },
+    { "name": "pitch_bends", "type": "lane_array", "doc": "Per-note pitch bend (-1 to 1)." },
+    { "name": "pressures", "type": "lane_array", "doc": "Per-note pressure (0-1)." },
+    { "name": "slides", "type": "lane_array", "doc": "Per-note slide/CC74 (0-1)." },
+    { "name": "expressions", "type": "lane_array", "doc": "Per-note expression/CC11 (0-1)." },
+    { "name": "channels", "type": "lane_array", "doc": "Per-note MIDI channel (1-16)." }
+  ]
 }

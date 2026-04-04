@@ -123,6 +123,17 @@ target_link_libraries(test_dual_filter PRIVATE vivid_runtime_testlib vivid_opera
 add_dependencies(test_dual_filter dual_filter filter)
 add_test(NAME test_dual_filter COMMAND test_dual_filter WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# MidiInput per-note expression and MPE tests
+add_executable(test_midi_input_expression
+    tests/audio/test_midi_input_expression.cpp
+)
+target_include_directories(test_midi_input_expression PRIVATE src tests deps/rtmidi)
+target_link_libraries(test_midi_input_expression PRIVATE vivid_operator_api rtmidi nlohmann_json::nlohmann_json)
+if(APPLE)
+    target_link_libraries(test_midi_input_expression PRIVATE "-framework CoreMIDI" "-framework CoreAudio" "-framework CoreFoundation")
+endif()
+add_test(NAME test_midi_input_expression COMMAND test_midi_input_expression WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # GPU operator plugin for testing (solid color fill)
 
 # GPU operator integration tests (headless WebGPU, no window)
