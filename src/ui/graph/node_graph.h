@@ -8,7 +8,7 @@
 #include "ui/style/theme_loader.h"
 #include "ui/text_edit.h"
 #include "ui/graph/node_graph_util.h"
-#include "ui/graph/dialog_types.h"
+#include "common/dialog_types.h"
 #include "ui/dialogs/dialog_manager.h"
 #include "ui/inspector/inspector_controller.h"
 #include "ui/build_console_panel.h"

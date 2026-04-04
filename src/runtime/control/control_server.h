@@ -33,6 +33,7 @@ public:
 
     bool start(int port = 9876);
     void stop();
+    int port() const;
 
     // Set context needed by scaffold_operator (call before main loop)
     void set_src_dir(const std::string& src_dir);

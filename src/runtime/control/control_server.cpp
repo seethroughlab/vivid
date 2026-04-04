@@ -50,6 +50,10 @@ uint64_t ControlServer::mcp_last_ping_ms(const std::string& name) const {
     return (it != mcp_last_ping_ms_.end()) ? it->second : 0;
 }
 
+int ControlServer::port() const {
+    return impl_ ? impl_->server.getPort() : 0;
+}
+
 bool ControlServer::start(int port) {
     impl_ = std::make_unique<Impl>(port);
 

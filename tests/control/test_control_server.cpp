@@ -104,8 +104,8 @@ int main(int argc, char* argv[]) {
     std::filesystem::current_path(isolated_cwd);
 
     std::string graph_path = build_dir + "/test_runtime_api.json";
-    constexpr int kPort = 19876;
-    const std::string base_url = "http://127.0.0.1:19876";
+    constexpr int kPort = 0;  // OS-assigned port (avoids conflicts in parallel runs)
+    std::string base_url;     // set after server.start() reads back actual port
 
     // Isolate package/catalog test state from the user's real config dir.
     std::string test_home = build_dir + "/.test_cs_home";
@@ -361,6 +361,8 @@ VIVID_REGISTER(TestOp)
     server.set_src_dir(scaffold_core_src);
     server.set_settings(&settings);
     check(server.start(kPort), "server.start()");
+    base_url = "http://127.0.0.1:" + std::to_string(server.port());
+    std::fprintf(stderr, "  Control server listening on port %d\n", server.port());
 
     // Coordination between main and client threads
     std::atomic<bool> done{false};

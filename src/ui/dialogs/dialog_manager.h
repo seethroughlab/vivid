@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ui/graph/dialog_types.h"
+#include "common/dialog_types.h"
 #include "ui/rendering/overlay_layouts.h"
 #include "ui/active_text_field.h"
 #include "ui/style/ui_style.h"
