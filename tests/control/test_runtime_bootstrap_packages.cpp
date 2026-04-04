@@ -15,15 +15,6 @@
 
 namespace fs = std::filesystem;
 
-struct ScopedPackageDir {
-    fs::path path;
-    explicit ScopedPackageDir(fs::path p) : path(std::move(p)) {}
-    ~ScopedPackageDir() {
-        std::error_code ec;
-        fs::remove_all(path, ec);
-    }
-};
-
 static std::string find_source_dir(const std::string& build_dir) {
     fs::path candidate = fs::path(build_dir).parent_path();
     for (int i = 0; i < 4; ++i) {
@@ -37,34 +28,100 @@ static std::string find_source_dir(const std::string& build_dir) {
     return {};
 }
 
-static fs::path make_plugin_path(const std::string& build_dir, const std::string& stem) {
-    return fs::path(build_dir) / (stem + vivid::kPluginSuffix);
-}
-
-static fs::path write_test_package(const std::string& build_dir, const std::string& package_name) {
-    fs::path pkg_dir = fs::path(vivid::PackageManager::packages_dir()) / package_name;
-    std::error_code ec;
-    fs::remove_all(pkg_dir, ec);
-    fs::create_directories(pkg_dir / "build");
+static fs::path write_test_package_source(const fs::path& package_root) {
+    fs::create_directories(package_root / "operators" / "control" / "bootstrap_lane_source");
+    fs::create_directories(package_root / "operators" / "control" / "bootstrap_lane_sink");
 
     {
-        std::ofstream ofs(pkg_dir / "vivid-package.json");
+        std::ofstream ofs(package_root / "vivid-package.json");
         ofs << R"json({
   "name": "test-runtime-bootstrap-package",
   "version": "0.0.1",
   "description": "Headless bootstrap package visibility test",
-  "operators": ["control/lane_source_op", "control/lane_sink_op"],
+  "operators": ["control/bootstrap_lane_source", "control/bootstrap_lane_sink"],
   "gpu_operators": []
 })json";
     }
 
-    fs::copy_file(make_plugin_path(build_dir, "lane_source_op"),
-                  pkg_dir / "build" / (std::string("lane_source_op") + vivid::kPluginSuffix),
-                  fs::copy_options::overwrite_existing);
-    fs::copy_file(make_plugin_path(build_dir, "lane_sink_op"),
-                  pkg_dir / "build" / (std::string("lane_sink_op") + vivid::kPluginSuffix),
-                  fs::copy_options::overwrite_existing);
-    return pkg_dir;
+    {
+        std::ofstream ofs(package_root / "operators" / "control" / "bootstrap_lane_source" / "bootstrap_lane_source.cpp");
+        ofs << R"cpp(
+#include "operator_api/operator.h"
+
+struct BootstrapLaneSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
+    static constexpr const char* kName   = "BootstrapLaneSourceOp";
+    static constexpr bool kTimeDependent = false;
+    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
+
+    vivid::Param<float> base{"base", 1.0f, 0.0f, 100.0f};
+    vivid::Param<int>   count{"count", 4, 1, 64};
+
+    void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        out.push_back(&base);
+        out.push_back(&count);
+    }
+
+    void collect_ports(std::vector<VividPortDescriptor>& out) override {
+        out.push_back({"out", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+    }
+
+    void process_frame(const VividFrameContext* ctx) override {
+        float b = ctx->param_values[0];
+        int n = static_cast<int>(ctx->param_values[1]);
+        ctx->output_values[0] = b;
+        if (ctx->output_lanes) {
+            auto& osp = ctx->output_lanes[0];
+            uint32_t len = static_cast<uint32_t>(n);
+            if (osp.capacity >= len) {
+                osp.length = len;
+                for (uint32_t i = 0; i < len; ++i) {
+                    osp.data[i] = b * static_cast<float>(i + 1);
+                }
+            }
+        }
+    }
+};
+
+VIVID_REGISTER(BootstrapLaneSourceOp)
+)cpp";
+    }
+
+    {
+        std::ofstream ofs(package_root / "operators" / "control" / "bootstrap_lane_sink" / "bootstrap_lane_sink.cpp");
+        ofs << R"cpp(
+#include "operator_api/operator.h"
+
+struct BootstrapLaneSinkOp : vivid::OperatorBase, vivid::FrameProcessable {
+    static constexpr const char* kName   = "BootstrapLaneSinkOp";
+    static constexpr bool kTimeDependent = false;
+
+    void collect_params(std::vector<vivid::ParamBase*>&) override {}
+
+    void collect_ports(std::vector<VividPortDescriptor>& out) override {
+        out.push_back({"in",  VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"out", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+    }
+
+    void process_frame(const VividFrameContext* ctx) override {
+        ctx->output_values[0] = ctx->input_values[0];
+        if (ctx->input_lanes && ctx->output_lanes) {
+            const auto& isp = ctx->input_lanes[0];
+            auto& osp = ctx->output_lanes[0];
+            uint32_t len = isp.length;
+            if (len > osp.capacity) len = osp.capacity;
+            osp.length = len;
+            for (uint32_t i = 0; i < len; ++i) {
+                osp.data[i] = isp.data[i];
+            }
+        }
+    }
+};
+
+VIVID_REGISTER(BootstrapLaneSinkOp)
+)cpp";
+    }
+
+    return package_root;
 }
 
 static bool discovery_loaded_package(const vivid::DiscoveryReport& report, const std::string& name) {
@@ -85,8 +142,8 @@ static bool discovery_skipped_package(const vivid::DiscoveryReport& report,
 
 static vivid::Graph make_graph() {
     vivid::Graph graph;
-    graph.add_node("src", "LaneSourceOp", {{"base", 2.0f}, {"count", 4.0f}});
-    graph.add_node("sink", "LaneSinkOp");
+    graph.add_node("src", "BootstrapLaneSourceOp", {{"base", 2.0f}, {"count", 4.0f}});
+    graph.add_node("sink", "BootstrapLaneSinkOp");
     graph.add_connection("src", "out", "sink", "in");
     return graph;
 }
@@ -111,7 +168,23 @@ int main(int argc, char* argv[]) {
     }
 
     const std::string package_name = "test-runtime-bootstrap-package";
-    ScopedPackageDir scoped_pkg(write_test_package(build_dir, package_name));
+    ScopedTempDir temp_home("runtime_bootstrap_home");
+    ScopedEnvVar scoped_home("HOME", temp_home.path.string());
+    ScopedEnvVar scoped_extra_paths("VIVID_PACKAGE_PATHS", nullptr);
+    ScopedTempDir package_source("runtime_bootstrap_pkg_src");
+    fs::path package_root = write_test_package_source(package_source.path);
+
+    {
+        vivid::OperatorRegistry install_registry;
+        vivid::PackageCompiler compiler(source_dir, build_dir);
+        vivid::PackageManager pm(compiler, install_registry);
+        auto install_result = pm.link(package_root.string());
+        check(install_result.success, "local bootstrap test package links");
+        if (!install_result.success) {
+            std::fprintf(stderr, "Link error: %s\n", install_result.error.c_str());
+            return 1;
+        }
+    }
 
     std::fprintf(stderr, "\n=== Test: Runtime bootstrap package visibility ===\n\n");
 
@@ -128,8 +201,8 @@ int main(int argc, char* argv[]) {
         check(result.package_scan_attempted, "package scan attempted");
         check(discovery_loaded_package(result.package_discovery, package_name),
               "bootstrap loaded the test package");
-        check(registry.find("LaneSourceOp") != nullptr, "LaneSourceOp visible after bootstrap");
-        check(registry.find("LaneSinkOp") != nullptr, "LaneSinkOp visible after bootstrap");
+        check(registry.find("BootstrapLaneSourceOp") != nullptr, "BootstrapLaneSourceOp visible after bootstrap");
+        check(registry.find("BootstrapLaneSinkOp") != nullptr, "BootstrapLaneSinkOp visible after bootstrap");
 
         vivid::Graph graph = make_graph();
         registry.load_for_graph(graph);
@@ -144,7 +217,7 @@ int main(int argc, char* argv[]) {
 
     {
         std::error_code ec;
-        fs::remove_all(scoped_pkg.path / "build", ec);
+        fs::remove_all(package_root / "build", ec);
         vivid::OperatorRegistry registry;
         vivid::PackageCompiler compiler(source_dir, build_dir);
         vivid::PackageManager pm(compiler, registry);

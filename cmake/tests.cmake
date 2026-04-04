@@ -41,6 +41,10 @@ add_library(vivid_runtime_testlib STATIC
     src/runtime/packages/package_catalog.cpp
     src/runtime/packages/package_compiler.cpp
     src/runtime/packages/package_manager.cpp
+    src/runtime/packages/package_manager_discovery.cpp
+    src/runtime/packages/package_manager_manifest.cpp
+    src/runtime/packages/package_manager_install.cpp
+    src/runtime/packages/package_manager_build.cpp
     src/runtime/packages/package_scaffolder.cpp
     src/runtime/packages/package_test_runner.cpp
     src/runtime/platform/app_update_manager.cpp

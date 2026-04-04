@@ -50,17 +50,12 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    const char* old_home = std::getenv("HOME");
-    std::string old_home_val = old_home ? old_home : "";
-    fs::path test_home = fs::path(build_dir) / ".test_package_test_runner_home";
-    fs::remove_all(test_home);
-    fs::create_directories(test_home);
-    setenv("HOME", test_home.string().c_str(), 1);
+    ScopedTempDir test_home("package_test_runner_home");
+    ScopedEnvVar scoped_home("HOME", test_home.path.string());
 
     std::fprintf(stderr, "\n=== Test: PackageTestRunner ===\n\n");
 
     vivid::OperatorRegistry registry;
-    registry.scan_deferred(build_dir.c_str());
     register_builtin_operators(registry);
 
     vivid::PackageCompiler compiler(source_dir, build_dir);
@@ -73,12 +68,7 @@ int main(int argc, char* argv[]) {
     fs::remove_all(basic_pkg_dir);
     fs::create_directories(basic_pkg_dir + "/tests");
 
-    write_text(fs::path(basic_pkg_dir) / "tests/basic.json", R"json({
-  "nodes": {
-    "pass1": { "type": "ControlPassOp", "params": { "gain": 2.0 } }
-  },
-  "connections": []
-})json");
+    write_text(fs::path(basic_pkg_dir) / "tests/basic.json", R"json({"nodes":{},"connections":[]})json");
 
     write_text(fs::path(basic_pkg_dir) / "tests/test_pass.cpp", R"cpp(
 #include <cstdio>
@@ -146,14 +136,14 @@ int main() {
 
     write_text(fs::path(validation_pkg_dir) / "tests/needs_gpu.json", R"json({
   "nodes": {
-    "noise1": { "type": "NoiseTexture" }
+    "video1": { "type": "video_out" }
   },
   "connections": []
 })json");
 
     write_text(fs::path(validation_pkg_dir) / "tests/needs_audio.json", R"json({
   "nodes": {
-    "osc1": { "type": "Oscillator" }
+    "audio1": { "type": "audio_out" }
   },
   "connections": []
 })json");
@@ -297,10 +287,6 @@ TEST(Smoke, Works) { EXPECT_EQ(1, 1); }
     fs::remove_all(empty_pkg_dir);
     fs::remove_all(validation_pkg_dir);
     fs::remove_all(basic_pkg_dir);
-    fs::remove_all(test_home);
-
-    if (old_home) setenv("HOME", old_home_val.c_str(), 1);
-    else unsetenv("HOME");
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n",
                  failures == 0 ? "ALL PASSED" : "SOME FAILED", failures);

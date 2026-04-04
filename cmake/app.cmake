@@ -70,6 +70,10 @@ add_executable(vivid
     src/runtime/packages/package_compiler.cpp
     src/runtime/core/tool_discovery.cpp
     src/runtime/packages/package_manager.cpp
+    src/runtime/packages/package_manager_discovery.cpp
+    src/runtime/packages/package_manager_manifest.cpp
+    src/runtime/packages/package_manager_install.cpp
+    src/runtime/packages/package_manager_build.cpp
     src/runtime/core/undo_manager.cpp
     src/runtime/gpu/screenshot.cpp
     src/runtime/operators/builtin_operators.cpp
@@ -342,4 +346,3 @@ if(APPLE)
 endif()
 
 enable_testing()
-

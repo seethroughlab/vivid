@@ -175,8 +175,7 @@ add_executable(test_package_test_runner
 )
 target_include_directories(test_package_test_runner PRIVATE src tests)
 target_link_libraries(test_package_test_runner PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json webgpu)
-add_dependencies(test_package_test_runner control_pass_op)
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_test(NAME test_package_test_runner
     COMMAND test_package_test_runner ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -187,7 +186,7 @@ add_executable(test_package_contract_ecosystem
 )
 target_include_directories(test_package_contract_ecosystem PRIVATE src tests)
 target_link_libraries(test_package_contract_ecosystem PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_dependencies(test_package_contract_ecosystem control_pass_op)
 add_test(NAME test_package_contract_ecosystem
     COMMAND test_package_contract_ecosystem ${CMAKE_BINARY_DIR}
