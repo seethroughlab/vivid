@@ -70,8 +70,8 @@ static std::string get_str(const json& v) {
 int main(int argc, char* argv[]) {
     std::string build_dir = ".";
     if (argc > 1) build_dir = argv[1];
-    constexpr int kPort = 19877;
-    const std::string base_url = "http://127.0.0.1:19877";
+    constexpr int kPort = 0;  // OS-assigned port (avoids conflicts in parallel runs)
+    std::string base_url;
 
     std::string test_home = build_dir + "/.test_perception_home";
     std::filesystem::create_directories(test_home);
@@ -106,6 +106,7 @@ int main(int argc, char* argv[]) {
 
     vivid::ControlServer server;
     check(server.start(kPort), "server.start()");
+    base_url = "http://127.0.0.1:" + std::to_string(server.port());
 
     std::atomic<bool> done{false};
     std::thread pump([&]() {

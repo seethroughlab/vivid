@@ -7,6 +7,8 @@
 
 namespace fs = std::filesystem;
 
+static ScopedTempDir* g_tmp = nullptr;
+
 static std::string read_file(const std::string& path) {
     std::ifstream ifs(path);
     return {std::istreambuf_iterator<char>(ifs), std::istreambuf_iterator<char>()};
@@ -38,6 +40,8 @@ static vivid::CreateOperatorResult create_op(const std::string& name, VividOpera
 }
 
 int main() {
+    ScopedTempDir tmp_dir("op_creator");
+    g_tmp = &tmp_dir;
     vivid::OperatorRegistry reg;  // empty registry — no collisions
 
     // =================================================================
@@ -75,8 +79,7 @@ int main() {
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 3: create() control env ===\n");
-        std::string tmp = "/tmp/vivid_test_creator_control";
-        fs::remove_all(tmp);
+        std::string tmp = (g_tmp->path / "vivid_test_creator_control").string();
         fs::create_directories(tmp);
         write_full_cmake(tmp);
 
@@ -109,8 +112,6 @@ int main() {
         auto my_op_pos = cmake.find("add_vivid_operator(my_op");
         auto gpu_marker_pos = cmake.find("# --- GPU operator plugins ---");
         check(my_op_pos < gpu_marker_pos, "inserted before GPU marker");
-
-        fs::remove_all(tmp);
     }
 
     // =================================================================
@@ -118,8 +119,7 @@ int main() {
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 4: create() audio env ===\n");
-        std::string tmp = "/tmp/vivid_test_creator_audio";
-        fs::remove_all(tmp);
+        std::string tmp = (g_tmp->path / "vivid_test_creator_audio").string();
         fs::create_directories(tmp);
 
         {
@@ -145,8 +145,6 @@ int main() {
               "audio template includes semantic_shape example");
         check(src.find("prepare_instance_assets()") != std::string::npos,
               "audio template guidance mentions prepare_instance_assets");
-
-        fs::remove_all(tmp);
     }
 
     // =================================================================
@@ -154,8 +152,7 @@ int main() {
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 5: create() GPU env ===\n");
-        std::string tmp = "/tmp/vivid_test_creator_gpu";
-        fs::remove_all(tmp);
+        std::string tmp = (g_tmp->path / "vivid_test_creator_gpu").string();
         fs::create_directories(tmp);
 
         {
@@ -191,8 +188,6 @@ int main() {
         std::string cmake = read_file(tmp + "/CMakeLists.txt");
         check(cmake.find("EXTRA_LIBS webgpu") != std::string::npos,
               "cmake includes EXTRA_LIBS webgpu for gpu op");
-
-        fs::remove_all(tmp);
     }
 
     // =================================================================
@@ -200,8 +195,7 @@ int main() {
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 6: Directory collision ===\n");
-        std::string tmp = "/tmp/vivid_test_creator_collision";
-        fs::remove_all(tmp);
+        std::string tmp = (g_tmp->path / "vivid_test_creator_collision").string();
         fs::create_directories(tmp + "/operators/control/foo");
 
         {
@@ -213,8 +207,6 @@ int main() {
         check(!result.success, "collision detected");
         check(result.error.find("already exists") != std::string::npos,
               "error mentions 'already exists'");
-
-        fs::remove_all(tmp);
     }
 
     // =================================================================
@@ -222,8 +214,7 @@ int main() {
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 7: Missing cmake marker ===\n");
-        std::string tmp = "/tmp/vivid_test_creator_no_marker";
-        fs::remove_all(tmp);
+        std::string tmp = (g_tmp->path / "vivid_test_creator_no_marker").string();
         fs::create_directories(tmp);
 
         {
@@ -235,8 +226,6 @@ int main() {
         check(!result.success, "fails when marker missing");
         check(result.error.find("insertion marker") != std::string::npos,
               "error mentions insertion marker");
-
-        fs::remove_all(tmp);
     }
 
     // =================================================================
@@ -244,8 +233,7 @@ int main() {
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 8: PascalCase in generated code ===\n");
-        std::string tmp = "/tmp/vivid_test_creator_pascal";
-        fs::remove_all(tmp);
+        std::string tmp = (g_tmp->path / "vivid_test_creator_pascal").string();
         fs::create_directories(tmp);
 
         {
@@ -259,8 +247,6 @@ int main() {
         std::string src = read_file(tmp + "/operators/control/lo_fi_delay/lo_fi_delay.cpp");
         check(src.find("struct LoFiDelay") != std::string::npos,
               "lo_fi_delay -> LoFiDelay PascalCase");
-
-        fs::remove_all(tmp);
     }
 
     // =================================================================
@@ -268,8 +254,7 @@ int main() {
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 9: create() composite variant ===\n");
-        std::string tmp = "/tmp/vivid_test_creator_composite";
-        fs::remove_all(tmp);
+        std::string tmp = (g_tmp->path / "vivid_test_creator_composite").string();
         fs::create_directories(tmp);
 
         {
@@ -308,8 +293,6 @@ int main() {
         std::string cmake = read_file(tmp + "/CMakeLists.txt");
         check(cmake.find("EXTRA_LIBS vivid_composable_ops") != std::string::npos,
               "cmake includes EXTRA_LIBS vivid_composable_ops");
-
-        fs::remove_all(tmp);
     }
 
     // =================================================================
@@ -317,8 +300,7 @@ int main() {
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 10: Reject composite for GPU env ===\n");
-        std::string tmp = "/tmp/vivid_test_creator_composite_gpu";
-        fs::remove_all(tmp);
+        std::string tmp = (g_tmp->path / "vivid_test_creator_composite_gpu").string();
         fs::create_directories(tmp);
 
         {
@@ -332,8 +314,6 @@ int main() {
         check(!result.success, "composite GPU rejected");
         check(result.error.find("control operators") != std::string::npos,
               "error mentions 'control operators'");
-
-        fs::remove_all(tmp);
     }
 
     // =================================================================
@@ -341,8 +321,7 @@ int main() {
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 11: create() package layout ===\n");
-        std::string tmp = "/tmp/vivid_test_creator_package_layout";
-        fs::remove_all(tmp);
+        std::string tmp = (g_tmp->path / "vivid_test_creator_package_layout").string();
         fs::create_directories(tmp + "/src");
 
         {
@@ -365,8 +344,6 @@ int main() {
         std::string cmake = read_file(tmp + "/CMakeLists.txt");
         check(cmake.find("team_gain") != std::string::npos,
               "package CMake ops list includes new target");
-
-        fs::remove_all(tmp);
     }
 
     // =================================================================
@@ -374,8 +351,7 @@ int main() {
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 12: empty variant control ===\n");
-        std::string tmp = "/tmp/vivid_test_creator_empty_ctrl";
-        fs::remove_all(tmp);
+        std::string tmp = (g_tmp->path / "vivid_test_creator_empty_ctrl").string();
         fs::create_directories(tmp);
         write_full_cmake(tmp);
 
@@ -390,8 +366,6 @@ int main() {
         // Empty variant should NOT have Param declarations, but must have empty collect_params
         check(src.find("Param<") == std::string::npos, "no Param declarations");
         check(src.find("collect_params") != std::string::npos, "has empty collect_params override");
-
-        fs::remove_all(tmp);
     }
 
     // =================================================================
@@ -399,8 +373,7 @@ int main() {
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 13: empty variant audio ===\n");
-        std::string tmp = "/tmp/vivid_test_creator_empty_audio";
-        fs::remove_all(tmp);
+        std::string tmp = (g_tmp->path / "vivid_test_creator_empty_audio").string();
         fs::create_directories(tmp);
         write_full_cmake(tmp);
 
@@ -413,8 +386,6 @@ int main() {
         check(src.find("process_audio") != std::string::npos, "has process_audio");
         check(src.find("Param<") == std::string::npos, "no Param declarations");
         check(src.find("collect_params") != std::string::npos, "has empty collect_params override");
-
-        fs::remove_all(tmp);
     }
 
     // =================================================================
@@ -422,8 +393,7 @@ int main() {
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 14: empty variant gpu ===\n");
-        std::string tmp = "/tmp/vivid_test_creator_empty_gpu";
-        fs::remove_all(tmp);
+        std::string tmp = (g_tmp->path / "vivid_test_creator_empty_gpu").string();
         fs::create_directories(tmp);
         write_full_cmake(tmp);
 
@@ -438,8 +408,6 @@ int main() {
         // Should have .wgsl
         std::string wgsl = tmp + "/operators/gpu/bare_gpu/bare_gpu.wgsl";
         check(fs::exists(wgsl), "empty gpu has wgsl file");
-
-        fs::remove_all(tmp);
     }
 
     // =================================================================
@@ -447,8 +415,7 @@ int main() {
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 15: Custom ports ===\n");
-        std::string tmp = "/tmp/vivid_test_creator_custom_ports";
-        fs::remove_all(tmp);
+        std::string tmp = (g_tmp->path / "vivid_test_creator_custom_ports").string();
         fs::create_directories(tmp);
         write_full_cmake(tmp);
 
@@ -473,8 +440,6 @@ int main() {
         check(src.find("VIVID_PORT_INPUT") != std::string::npos, "has VIVID_PORT_INPUT");
         check(src.find("VIVID_PORT_OUTPUT") != std::string::npos, "has VIVID_PORT_OUTPUT");
         check(src.find("VIVID_PORT_SCALAR") != std::string::npos, "has float port type (int maps to float)");
-
-        fs::remove_all(tmp);
     }
 
     // =================================================================
@@ -482,8 +447,7 @@ int main() {
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 15b: Custom typed ports ===\n");
-        std::string tmp = "/tmp/vivid_test_creator_custom_typed_ports";
-        fs::remove_all(tmp);
+        std::string tmp = (g_tmp->path / "vivid_test_creator_custom_typed_ports").string();
         fs::create_directories(tmp);
         write_full_cmake(tmp);
 
@@ -509,8 +473,6 @@ int main() {
               "custom ref input port emitted");
         check(src.find("vivid_describe_custom_types") != std::string::npos,
               "custom type registration boilerplate emitted");
-
-        fs::remove_all(tmp);
     }
 
     // =================================================================
@@ -518,8 +480,7 @@ int main() {
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 16: Custom params ===\n");
-        std::string tmp = "/tmp/vivid_test_creator_custom_params";
-        fs::remove_all(tmp);
+        std::string tmp = (g_tmp->path / "vivid_test_creator_custom_params").string();
         fs::create_directories(tmp);
         write_full_cmake(tmp);
 
@@ -552,8 +513,6 @@ int main() {
         check(src.find("\"active\", true") != std::string::npos, "bool param default true");
         // Text default
         check(src.find("\"label\", \"hello\"") != std::string::npos, "text param default");
-
-        fs::remove_all(tmp);
     }
 
     // =================================================================
@@ -561,8 +520,7 @@ int main() {
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 16b: Custom typed ports require payload_size ===\n");
-        std::string tmp = "/tmp/vivid_test_creator_custom_typed_ports_invalid";
-        fs::remove_all(tmp);
+        std::string tmp = (g_tmp->path / "vivid_test_creator_custom_typed_ports_invalid").string();
         fs::create_directories(tmp);
         write_full_cmake(tmp);
 
@@ -578,8 +536,6 @@ int main() {
         check(!result.success, "create with zero-size custom port fails");
         check(result.error.find("payload_size") != std::string::npos,
               "error mentions payload_size");
-
-        fs::remove_all(tmp);
     }
 
     // =================================================================
@@ -587,8 +543,7 @@ int main() {
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 16c: Custom typed ports require valid stable_type_id ===\n");
-        std::string tmp = "/tmp/vivid_test_creator_custom_typed_ports_bad_stable_id";
-        fs::remove_all(tmp);
+        std::string tmp = (g_tmp->path / "vivid_test_creator_custom_typed_ports_bad_stable_id").string();
         fs::create_directories(tmp);
         write_full_cmake(tmp);
 
@@ -604,8 +559,6 @@ int main() {
         check(!result.success, "create with invalid stable_type_id fails");
         check(result.error.find("stable_type_id") != std::string::npos,
               "error mentions stable_type_id validation");
-
-        fs::remove_all(tmp);
     }
 
     // =================================================================
@@ -613,8 +566,7 @@ int main() {
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 16d: Custom typed ports require valid type_name ===\n");
-        std::string tmp = "/tmp/vivid_test_creator_custom_typed_ports_bad_type_name";
-        fs::remove_all(tmp);
+        std::string tmp = (g_tmp->path / "vivid_test_creator_custom_typed_ports_bad_type_name").string();
         fs::create_directories(tmp);
         write_full_cmake(tmp);
 
@@ -630,8 +582,6 @@ int main() {
         check(!result.success, "create with invalid type_name fails");
         check(result.error.find("type_name") != std::string::npos,
               "error mentions type_name validation");
-
-        fs::remove_all(tmp);
     }
 
     // =================================================================
@@ -639,8 +589,7 @@ int main() {
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 16e: Custom typed ports require consistent metadata ===\n");
-        std::string tmp = "/tmp/vivid_test_creator_custom_typed_ports_conflict";
-        fs::remove_all(tmp);
+        std::string tmp = (g_tmp->path / "vivid_test_creator_custom_typed_ports_conflict").string();
         fs::create_directories(tmp);
         write_full_cmake(tmp);
 
@@ -658,8 +607,6 @@ int main() {
         check(!result.success, "create with conflicting stable_type_id metadata fails");
         check(result.error.find("stable_type_id") != std::string::npos,
               "error mentions conflicting stable_type_id metadata");
-
-        fs::remove_all(tmp);
     }
 
     // =================================================================
@@ -667,8 +614,7 @@ int main() {
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 16f: Built-in ports reject custom metadata ===\n");
-        std::string tmp = "/tmp/vivid_test_creator_builtin_port_custom_metadata";
-        fs::remove_all(tmp);
+        std::string tmp = (g_tmp->path / "vivid_test_creator_builtin_port_custom_metadata").string();
         fs::create_directories(tmp);
         write_full_cmake(tmp);
 
@@ -684,8 +630,6 @@ int main() {
         check(!result.success, "built-in port with custom metadata fails");
         check(result.error.find("custom port metadata") != std::string::npos,
               "error mentions custom port metadata on built-in port");
-
-        fs::remove_all(tmp);
     }
 
     // =================================================================
@@ -693,8 +637,7 @@ int main() {
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 17: Mixed ports + params ===\n");
-        std::string tmp = "/tmp/vivid_test_creator_mixed";
-        fs::remove_all(tmp);
+        std::string tmp = (g_tmp->path / "vivid_test_creator_mixed").string();
         fs::create_directories(tmp);
         write_full_cmake(tmp);
 
@@ -720,8 +663,6 @@ int main() {
         check(src.find("Param<float> gain") != std::string::npos, "custom param gain");
         check(src.find("collect_params") != std::string::npos, "has collect_params");
         check(src.find("collect_ports") != std::string::npos, "has collect_ports");
-
-        fs::remove_all(tmp);
     }
 
     // =================================================================
@@ -729,8 +670,7 @@ int main() {
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 18: Duplicate port names ===\n");
-        std::string tmp = "/tmp/vivid_test_creator_dup_ports";
-        fs::remove_all(tmp);
+        std::string tmp = (g_tmp->path / "vivid_test_creator_dup_ports").string();
         fs::create_directories(tmp);
         write_full_cmake(tmp);
 
@@ -745,8 +685,6 @@ int main() {
         auto result = vivid::OperatorCreator::create(req, tmp);
         check(!result.success, "duplicate port names rejected");
         check(result.error.find("duplicate") != std::string::npos, "error mentions duplicate");
-
-        fs::remove_all(tmp);
     }
 
     // =================================================================
@@ -754,8 +692,7 @@ int main() {
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 19: Empty port name ===\n");
-        std::string tmp = "/tmp/vivid_test_creator_empty_port_name";
-        fs::remove_all(tmp);
+        std::string tmp = (g_tmp->path / "vivid_test_creator_empty_port_name").string();
         fs::create_directories(tmp);
         write_full_cmake(tmp);
 
@@ -769,8 +706,6 @@ int main() {
         auto result = vivid::OperatorCreator::create(req, tmp);
         check(!result.success, "empty port name rejected");
         check(result.error.find("empty") != std::string::npos, "error mentions empty");
-
-        fs::remove_all(tmp);
     }
 
     // =================================================================
@@ -778,8 +713,7 @@ int main() {
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 20: GPU mixed-type inputs ===\n");
-        std::string tmp = "/tmp/vivid_test_creator_gpu_mixed";
-        fs::remove_all(tmp);
+        std::string tmp = (g_tmp->path / "vivid_test_creator_gpu_mixed").string();
         fs::create_directories(tmp);
         write_full_cmake(tmp);
 
@@ -798,8 +732,6 @@ int main() {
         check(src.find("\"texture_in\"") != std::string::npos, "texture_in port");
         check(src.find("\"texture_out\"") != std::string::npos, "texture_out port");
         check(src.find("VIVID_PORT_TEXTURE") != std::string::npos, "texture type");
-
-        fs::remove_all(tmp);
     }
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",

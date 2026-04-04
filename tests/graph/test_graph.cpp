@@ -7,14 +7,18 @@
 #include <unistd.h>
 #include "test_helpers.h"
 
+static ScopedTempDir* g_tmp = nullptr;
+
 static std::string write_temp(const char* name, const char* content) {
-    std::string path = std::string("/tmp/vivid_test_") + name + ".json";
+    std::string path = (g_tmp->path / (std::string(name) + ".json")).string();
     std::ofstream f(path);
     f << content;
     return path;
 }
 
 int main() {
+    ScopedTempDir tmp("graph");
+    g_tmp = &tmp;
     // =====================================================================
     // Test 1: Load valid graph
     // =====================================================================
@@ -102,7 +106,7 @@ int main() {
     {
         std::fprintf(stderr, "\n=== Test 4: Load non-existent file ===\n");
         vivid::Graph g;
-        check(!g.load("/tmp/vivid_test_does_not_exist_12345.json"), "load returns false");
+        check(!g.load("/nonexistent/does_not_exist_12345.json"), "load returns false");
     }
 
     // =====================================================================
@@ -244,7 +248,7 @@ int main() {
 
         g1.add_connection("a", "out", "b", "in");
 
-        std::string path = "/tmp/vivid_test_roundtrip.json";
+        std::string path = (g_tmp->path / "roundtrip.json").string();
         check(g1.save(path.c_str()), "save succeeds");
 
         vivid::Graph g2;
@@ -294,7 +298,7 @@ int main() {
         check(!na->has_layout(), "new node has no layout (NaN)");
         check(std::isnan(na->layout_x), "layout_x is NaN");
 
-        std::string path = "/tmp/vivid_test_nan_layout.json";
+        std::string path = (g_tmp->path / "nan_layout.json").string();
         check(g1.save(path.c_str()), "save succeeds");
 
         vivid::Graph g2;
@@ -373,7 +377,7 @@ int main() {
         g2.add_node("synth1", "Synth");
         g2.add_midi_mapping("synth1", "cutoff", 71, 2, 100.0f, 8000.0f);
 
-        std::string rt_path = "/tmp/vivid_test_midi_rt.json";
+        std::string rt_path = (g_tmp->path / "midi_rt.json").string();
         check(g2.save(rt_path.c_str()), "save with midi mapping");
 
         vivid::Graph g3;
@@ -575,7 +579,7 @@ int main() {
         g1.set_active_variation(0);
         g1.set_quantize_clock_node("clk1");
 
-        std::string path = "/tmp/vivid_test_var_roundtrip.json";
+        std::string path = (g_tmp->path / "var_roundtrip.json").string();
         check(g1.save(path.c_str()), "save with variations succeeds");
 
         vivid::Graph g2;
@@ -601,7 +605,7 @@ int main() {
         // Also verify a graph with 0 variations saves/loads cleanly
         vivid::Graph g3;
         g3.add_node("x", "X");
-        std::string path2 = "/tmp/vivid_test_var_empty.json";
+        std::string path2 = (g_tmp->path / "var_empty.json").string();
         check(g3.save(path2.c_str()), "save empty variations succeeds");
 
         vivid::Graph g4;
@@ -752,7 +756,7 @@ int main() {
         check(conn.clamp == true, "remap clamp = true");
 
         // Round-trip
-        std::string path = "/tmp/vivid_test_remap_rt.json";
+        std::string path = (g_tmp->path / "remap_rt.json").string();
         check(g.save(path.c_str()), "save with remap");
         vivid::Graph g2;
         check(g2.load(path.c_str()), "load with remap");
@@ -872,7 +876,7 @@ int main() {
 
         // Round-trip
         g.save_preset("osc", {"Low", {{"freq", 110.0f}}, {{"waveform", "sine"}}});
-        std::string path = "/tmp/vivid_test_preset_rt.json";
+        std::string path = (g_tmp->path / "preset_rt.json").string();
         check(g.save(path.c_str()), "save with presets");
         vivid::Graph g2;
         check(g2.load(path.c_str()), "load with presets");
@@ -952,7 +956,7 @@ int main() {
         g.set_state_preset("sm1", 0, "filt", "Open");
         g.set_state_preset("sm1", 1, "osc", "Dark");
 
-        std::string path = "/tmp/vivid_test_state_rt.json";
+        std::string path = (g_tmp->path / "state_rt.json").string();
         check(g.save(path.c_str()), "save with state mappings");
         vivid::Graph g2;
         check(g2.load(path.c_str()), "load with state mappings");
@@ -991,7 +995,7 @@ int main() {
         check_float(g.viewport_zoom, 1.5f, "viewport zoom = 1.5");
 
         // Round-trip
-        std::string path = "/tmp/vivid_test_viewport_rt.json";
+        std::string path = (g_tmp->path / "viewport_rt.json").string();
         check(g.save(path.c_str()), "save with viewport");
         vivid::Graph g2;
         check(g2.load(path.c_str()), "load with viewport");
@@ -1003,7 +1007,7 @@ int main() {
         // Graph with no viewport round-trips cleanly
         vivid::Graph g3;
         g3.add_node("b", "Bar");
-        std::string path2 = "/tmp/vivid_test_viewport_none.json";
+        std::string path2 = (g_tmp->path / "viewport_none.json").string();
         check(g3.save(path2.c_str()), "save without viewport");
         vivid::Graph g4;
         check(g4.load(path2.c_str()), "load without viewport");
@@ -1030,7 +1034,7 @@ int main() {
         check(g.find_node("x") == nullptr, "find_node on empty graph = null");
 
         // Load/save round-trip with zero nodes
-        std::string path = "/tmp/vivid_test_empty_graph.json";
+        std::string path = (g_tmp->path / "empty_graph.json").string();
         check(g.save(path.c_str()), "save empty graph succeeds");
 
         vivid::Graph g2;
@@ -1066,7 +1070,7 @@ int main() {
         check(g.connections()[0].to_node   == "ghost_b", "dangling to_node stored");
 
         // Round-trip: dangling connections survive save/load
-        std::string path = "/tmp/vivid_test_dangling.json";
+        std::string path = (g_tmp->path / "dangling.json").string();
         check(g.save(path.c_str()), "save with dangling connection succeeds");
         vivid::Graph g2;
         check(g2.load(path.c_str()), "load with dangling connection succeeds");
@@ -1106,7 +1110,7 @@ int main() {
         check(g.connections().size() == 4, "still 4 connections");
 
         // Save/load round-trip for cyclic graph
-        std::string path = "/tmp/vivid_test_cycle.json";
+        std::string path = (g_tmp->path / "cycle.json").string();
         check(g.save(path.c_str()), "save cyclic graph succeeds");
         vivid::Graph g2;
         check(g2.load(path.c_str()), "load cyclic graph succeeds");
@@ -1142,7 +1146,7 @@ int main() {
         check(g.connections().size() == 3, "3 connections stored");
 
         // Round-trip preserves all port names exactly
-        std::string path = "/tmp/vivid_test_port_types.json";
+        std::string path = (g_tmp->path / "port_types.json").string();
         check(g.save(path.c_str()), "save port-agnostic graph");
         vivid::Graph g2;
         check(g2.load(path.c_str()), "load port-agnostic graph");
@@ -1547,7 +1551,7 @@ int main() {
         g1.move_variation("B", 0);
         g1.set_active_variation(1); // "A" after move
 
-        std::string path = "/tmp/vivid_test_dup_move_rt.json";
+        std::string path = (g_tmp->path / "dup_move_rt.json").string();
         check(g1.save(path.c_str()), "save after dup+move succeeds");
 
         vivid::Graph g2;
@@ -1731,16 +1735,6 @@ int main() {
     }
 
     // --- Cleanup temp files ---
-    std::remove("/tmp/vivid_test_valid.json");
-    std::remove("/tmp/vivid_test_layout.json");
-    std::remove("/tmp/vivid_test_resolution.json");
-    std::remove("/tmp/vivid_test_malformed.json");
-    std::remove("/tmp/vivid_test_notype.json");
-    std::remove("/tmp/vivid_test_srcpath.json");
-    std::remove("/tmp/vivid_test_roundtrip.json");
-    std::remove("/tmp/vivid_test_nan_layout.json");
-    std::remove("/tmp/vivid_test_midi_map.json");
-    std::remove("/tmp/vivid_test_variations_load.json");
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",
         failures == 0 ? "ALL PASSED" : "SOME FAILED", failures);
