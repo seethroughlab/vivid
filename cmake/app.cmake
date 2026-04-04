@@ -34,6 +34,9 @@ target_compile_definitions(vivid_ui PRIVATE "VIVID_CORE_VERSION=\"${PROJECT_VERS
 # --- Vivid executable ---
 add_executable(vivid
     src/runtime/core/main.cpp
+    src/runtime/core/main_async_graph.cpp
+    src/runtime/core/main_package_browser.cpp
+    src/runtime/core/main_menu_actions.cpp
     src/runtime/control/graph_file_io.cpp
     src/runtime/core/workspace_manager.cpp
     src/runtime/core/window_manager.cpp

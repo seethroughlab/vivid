@@ -84,6 +84,7 @@
 #include "runtime/core/window_manager.h"
 #include "runtime/graph/graph_snapshot_builder.h"
 #include "runtime/core/main_helpers.h"
+#include "runtime/core/main_internal.h"
 
 
 // #16191D in sRGB → linear: pow(x/255, 2.2)
@@ -107,394 +108,7 @@ using namespace vivid;
 #endif
 
 namespace fs = std::filesystem;
-
-namespace {
-
-struct AsyncAddPreparedResult {
-    bool success = false;
-    std::string user_message;
-    std::string node_id;
-    vivid::Graph graph;
-    vivid::RuntimeCore::PreparedBuild prepared;
-};
-
-struct AsyncGraphLoadRequest {
-    enum class Kind {
-        StartupInitial,
-        Open,
-        OpenRecent,
-        OpenExample,
-        DropGraph,
-        Reload,
-    };
-
-    Kind kind = Kind::Open;
-    std::string requested_path;
-    std::string resolved_path;
-    std::string display_name;
-    bool clear_source_path = false;
-    bool update_recent_files = false;
-};
-
-struct AsyncGraphLoadPreparedResult {
-    bool success = false;
-    std::string user_message;
-    AsyncGraphLoadRequest request;
-    vivid::RuntimeAPI::PreservedRuntimeState preserved_state;
-    vivid::Graph graph;
-    vivid::RuntimeCore::PreparedBuild prepared;
-};
-
-static std::string derive_project_shader_dir(const vivid::Graph& graph) {
-    if (graph.source_path().empty()) return {};
-    return (std::filesystem::path(graph.source_path()).parent_path() / "filters").string();
-}
-
-static bool prepare_graph_shader_operators(const vivid::Graph& graph,
-                                           vivid::OperatorRegistry& registry,
-                                           std::string& error) {
-    const std::string shader_dir = derive_project_shader_dir(graph);
-    if (shader_dir.empty() || !std::filesystem::exists(shader_dir))
-        return true;
-    if (!registry.scan_shader_operators(shader_dir, true)) {
-        error = "failed to register project shader operators from " + shader_dir;
-        return false;
-    }
-    return true;
-}
-
-static void populate_graph_package_diagnostics(
-    vivid::Graph& graph,
-    const std::vector<vivid::PackageInfo>& packages) {
-    graph.load_diagnostics.clear();
-    std::unordered_map<std::string, std::string> installed_map;
-    for (const auto& pkg : packages) installed_map[pkg.name] = pkg.version;
-    for (const auto& node : graph.nodes()) {
-        if (node.pkg_name.empty()) continue;
-        auto it = installed_map.find(node.pkg_name);
-        if (it == installed_map.end() || it->second.empty()) continue;
-        const std::string& installed_ver = it->second;
-        auto cls = vivid::PackageManager::classify_version_delta(node.pkg_version, installed_ver);
-        if (cls == vivid::PackageUpdateClass::CompatibleUpdate ||
-            cls == vivid::PackageUpdateClass::IncompatibleUpdate) {
-            vivid::Graph::LoadDiagnostic diag;
-            diag.node_id = node.id;
-            diag.pkg_name = node.pkg_name;
-            diag.saved_version = node.pkg_version;
-            diag.installed_version = installed_ver;
-            diag.classification = (cls == vivid::PackageUpdateClass::IncompatibleUpdate)
-                ? "incompatible_update"
-                : "compatible_update";
-            graph.load_diagnostics.push_back(std::move(diag));
-            if (cls == vivid::PackageUpdateClass::IncompatibleUpdate) {
-                std::fprintf(stderr,
-                             "[graph] Package version mismatch (incompatible): node '%s' saved with %s@%s, installed %s\n",
-                             node.id.c_str(), node.pkg_name.c_str(),
-                             node.pkg_version.c_str(), installed_ver.c_str());
-            } else {
-                std::fprintf(stderr,
-                             "[graph] Package update: node '%s' %s saved=%s installed=%s\n",
-                             node.id.c_str(), node.pkg_name.c_str(),
-                             node.pkg_version.c_str(), installed_ver.c_str());
-            }
-        }
-    }
-}
-
-static bool split_async_add_addr(const std::string& addr,
-                                 std::string& node, std::string& port) {
-    auto slash = addr.find('/');
-    if (slash == std::string::npos || slash == 0 || slash == addr.size() - 1)
-        return false;
-    node = addr.substr(0, slash);
-    port = addr.substr(slash + 1);
-    return !node.empty() && !port.empty();
-}
-
-static bool apply_async_add_request_to_graph(
-    vivid::Graph& graph,
-    const vivid::ui::NodeGraphUI::AsyncAddOperatorRequest& request,
-    std::string& error) {
-    if (!graph.add_node(request.node_id, request.type_name, {}, request.string_params)) {
-        error = "node '" + request.node_id + "' already exists";
-        return false;
-    }
-
-    auto* ndef = graph.find_node(request.node_id);
-    if (!ndef) {
-        error = "failed to find newly added node";
-        return false;
-    }
-    ndef->layout_x = request.graph_x;
-    ndef->layout_y = request.graph_y;
-
-    for (const auto& mut : request.connection_mutations) {
-        std::string from_node, from_port, to_node, to_port;
-        if (!split_async_add_addr(mut.from_addr, from_node, from_port) ||
-            !split_async_add_addr(mut.to_addr, to_node, to_port)) {
-            error = "invalid connection address in async add request";
-            return false;
-        }
-        bool ok = false;
-        if (mut.kind == vivid::ui::NodeGraphUI::AsyncAddConnectionMutation::Kind::Connect) {
-            ok = graph.add_connection(from_node, from_port, to_node, to_port);
-            if (!ok) error = "failed to connect " + mut.from_addr + " -> " + mut.to_addr;
-        } else {
-            ok = graph.remove_connection(from_node, from_port, to_node, to_port);
-            if (!ok) error = "failed to disconnect " + mut.from_addr + " -> " + mut.to_addr;
-        }
-        if (!ok) return false;
-    }
-
-    return true;
-}
-
-class AsyncAddCoordinator {
-public:
-    enum class Stage {
-        Idle,
-        Preparing,
-        Compiling,
-    };
-
-    ~AsyncAddCoordinator() {
-        if (worker_.joinable()) worker_.join();
-    }
-
-    bool begin(const vivid::ui::NodeGraphUI::AsyncAddOperatorRequest& request,
-               const vivid::Graph& live_graph,
-               const vivid::RuntimeCore& runtime,
-               vivid::OperatorRegistry& registry,
-               std::string& error) {
-        if (active_) {
-            error = "another operator is already being added";
-            return false;
-        }
-        if (worker_.joinable()) worker_.join();
-
-        active_ = true;
-        stage_ = Stage::Preparing;
-        completed_ = false;
-        result_ = {};
-
-        worker_ = std::thread([this, request, live_graph, &runtime, &registry]() mutable {
-            AsyncAddPreparedResult result;
-            result.node_id = request.node_id;
-
-            auto finish = [&](bool success, std::string message) {
-                result.success = success;
-                result.user_message = std::move(message);
-                {
-                    std::lock_guard<std::mutex> lock(result_mutex_);
-                    result_ = std::move(result);
-                    completed_ = true;
-                }
-                active_ = false;
-                if (!success) stage_ = Stage::Idle;
-            };
-
-            const bool is_non_registry_type =
-                (runtime.subgraph_modules() && runtime.subgraph_modules()->find(request.type_name));
-            if (!is_non_registry_type) {
-                auto prep_task_id = operator_preparation_service().submit(
-                    make_prepare_operator_type_request(registry, request.type_name, true));
-                prep_task_id_ = prep_task_id;
-                auto prepared = operator_preparation_service().wait(prep_task_id);
-                prep_task_id_ = 0;
-                if (!prepared.success) {
-                    finish(false, prepared.user_message.empty()
-                                      ? "unknown operator type '" + request.type_name + "'"
-                                      : prepared.user_message);
-                    return;
-                }
-            }
-
-            vivid::Graph candidate = live_graph;
-            std::string error;
-            if (!apply_async_add_request_to_graph(candidate, request, error)) {
-                finish(false, error);
-                return;
-            }
-
-            result.graph = std::move(candidate);
-            stage_ = Stage::Compiling;
-            if (!runtime.prepare_build(result.graph, registry, result.prepared, &error)) {
-                if (error.empty())
-                    error = "failed to compile graph after adding " + request.type_name;
-                finish(false, error);
-                return;
-            }
-
-            finish(true, {});
-        });
-
-        return true;
-    }
-
-    bool active() const { return active_; }
-    Stage stage() const { return stage_; }
-
-    bool take_completed(AsyncAddPreparedResult& out) {
-        if (!completed_) return false;
-        if (worker_.joinable()) worker_.join();
-        std::lock_guard<std::mutex> lock(result_mutex_);
-        if (!completed_) return false;
-        out = std::move(result_);
-        completed_ = false;
-        prep_task_id_ = 0;
-        stage_ = Stage::Idle;
-        return true;
-    }
-
-private:
-    std::thread worker_;
-    std::atomic<bool> active_{false};
-    std::atomic<Stage> stage_{Stage::Idle};
-    std::atomic<vivid::OperatorPreparationService::TaskId> prep_task_id_{0};
-    std::mutex result_mutex_;
-    std::atomic<bool> completed_{false};
-    AsyncAddPreparedResult result_;
-};
-
-class AsyncGraphLoadCoordinator {
-public:
-    enum class Stage {
-        Idle,
-        Loading,
-        PreparingOperators,
-        Compiling,
-    };
-
-    ~AsyncGraphLoadCoordinator() {
-        if (worker_.joinable()) worker_.join();
-    }
-
-    bool begin(const AsyncGraphLoadRequest& request,
-               const std::vector<vivid::PackageInfo>& packages,
-               const vivid::RuntimeAPI::PreservedRuntimeState& preserved_state,
-               const vivid::RuntimeCore& runtime,
-               vivid::OperatorRegistry& registry,
-               std::string& error) {
-        if (active_) {
-            error = "another graph load is already in progress";
-            return false;
-        }
-        if (worker_.joinable()) worker_.join();
-
-        active_ = true;
-        completed_ = false;
-        result_ = {};
-        stage_ = Stage::Loading;
-        request_ = request;
-
-        worker_ = std::thread([this, request, packages, preserved_state, &runtime, &registry]() mutable {
-            AsyncGraphLoadPreparedResult result;
-            result.request = request;
-            result.preserved_state = preserved_state;
-
-            auto finish = [&](bool success, std::string message) {
-                result.success = success;
-                result.user_message = std::move(message);
-                {
-                    std::lock_guard<std::mutex> lock(result_mutex_);
-                    result_ = std::move(result);
-                    completed_ = true;
-                }
-                active_ = false;
-                if (!success) stage_ = Stage::Idle;
-            };
-
-            vivid::Graph candidate;
-            if (!candidate.load(request.resolved_path.c_str())) {
-                finish(false, "failed to load " + request.resolved_path);
-                return;
-            }
-            if (request.clear_source_path)
-                candidate.set_source_path("");
-
-            populate_graph_package_diagnostics(candidate, packages);
-            std::string prep_error;
-            if (!prepare_graph_shader_operators(candidate, registry, prep_error)) {
-                finish(false, prep_error);
-                return;
-            }
-
-            stage_ = Stage::PreparingOperators;
-            auto prep_task_id = operator_preparation_service().submit(
-                make_prepare_graph_request(registry, candidate, true));
-            prep_task_id_ = prep_task_id;
-            auto prepared = operator_preparation_service().wait(prep_task_id);
-            prep_task_id_ = 0;
-            if (!prepared.success) {
-                finish(false, prepared.user_message.empty()
-                                  ? "failed to prepare operators for " + request.resolved_path
-                                  : prepared.user_message);
-                return;
-            }
-
-            result.graph = std::move(candidate);
-            stage_ = Stage::Compiling;
-            if (!runtime.prepare_build(result.graph, registry, result.prepared, &prep_error)) {
-                if (prep_error.empty())
-                    prep_error = "failed to compile " + request.resolved_path;
-                finish(false, prep_error);
-                return;
-            }
-
-            finish(true, {});
-        });
-
-        return true;
-    }
-
-    bool active() const { return active_; }
-    Stage stage() const { return stage_; }
-    bool startup_active() const {
-        return active_ && request_.kind == AsyncGraphLoadRequest::Kind::StartupInitial;
-    }
-
-    const char* stage_text() const {
-        switch (stage_) {
-            case Stage::Loading: return "Loading graph...";
-            case Stage::PreparingOperators: {
-                auto prep_task_id = prep_task_id_.load();
-                if (prep_task_id != 0) {
-                    return operator_prepare_stage_text(
-                        operator_preparation_service().task_stage(prep_task_id));
-                }
-                return "Preparing operators...";
-            }
-            case Stage::Compiling: return "Compiling graph...";
-            case Stage::Idle: break;
-        }
-        return "Loading graph...";
-    }
-
-    bool take_completed(AsyncGraphLoadPreparedResult& out) {
-        if (!completed_) return false;
-        if (worker_.joinable()) worker_.join();
-        std::lock_guard<std::mutex> lock(result_mutex_);
-        if (!completed_) return false;
-        out = std::move(result_);
-        completed_ = false;
-        prep_task_id_ = 0;
-        stage_ = Stage::Idle;
-        request_ = {};
-        return true;
-    }
-
-private:
-    std::thread worker_;
-    std::atomic<bool> active_{false};
-    std::atomic<Stage> stage_{Stage::Idle};
-    std::atomic<vivid::OperatorPreparationService::TaskId> prep_task_id_{0};
-    std::mutex result_mutex_;
-    std::atomic<bool> completed_{false};
-    AsyncGraphLoadPreparedResult result_;
-    AsyncGraphLoadRequest request_{};
-};
-
-} // namespace
+namespace mi = vivid::main_internal;
 
 int main(int argc, char* argv[]) {
     vivid::install_crash_handlers();
@@ -1048,18 +662,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    struct DisplayState {
-        bool fullscreen = false;
-        GLFWmonitor* fullscreen_monitor = nullptr;
-        int windowed_x = 100;
-        int windowed_y = 100;
-        int windowed_w = 1280;
-        int windowed_h = 800;
-        uint64_t seen_monitor_serial = 0;
-        int sink_target = -1;
-        bool surface_reconfigure_pending = false;
-        int surface_settle_frames = 0;
-    } display_state;
+    mi::DisplayState display_state;
 
     // --- Query physical framebuffer size and DPI scale ---
     int fb_width, fb_height;
@@ -1394,26 +997,6 @@ fn fbm(p_in: vec2f) -> f32 {
         discover_examples_with_packages(graphs_root, &pkg_manager);
     graph_file = resolve_graph_input_path(graph_file, graphs_root, discovered_examples);
 
-    // Helper: populate graph.load_diagnostics by comparing saved pkg versions to installed.
-    // Must be called after a successful graph.load().
-    auto run_graph_package_diagnostics = [&](vivid::Graph& g) {
-        populate_graph_package_diagnostics(g, pkg_manager.list());
-    };
-
-    // Helper: annotate graph nodes with their package provenance (called before save).
-    auto annotate_graph_packages = [&](vivid::Graph& g) {
-        auto packages = pkg_manager.list();
-        std::unordered_map<std::string, std::string> pkg_ver_map;
-        for (const auto& p : packages) pkg_ver_map[p.name] = p.version;
-        for (auto& node : g.nodes_mut()) {
-            const auto* pkg = registry.package_for_type(node.type);
-            if (pkg) {
-                node.pkg_name    = *pkg;
-                node.pkg_version = pkg_ver_map.count(*pkg) ? pkg_ver_map[*pkg] : "";
-            }
-        }
-    };
-
     // --- Load graph ---
     vivid::Graph graph;
     vivid::RuntimeCore runtime;
@@ -1421,34 +1004,12 @@ fn fbm(p_in: vec2f) -> f32 {
     runtime.frame_executor().set_analysis_enabled(settings.show_analysis);
     bool graph_loaded = false;
 
-    AsyncGraphLoadRequest initial_graph_request;
+    mi::AsyncGraphLoadRequest initial_graph_request;
     bool have_initial_graph_request = false;
-    if (graph_file.empty()) {
-        auto user_template = std::filesystem::path(vivid::get_config_dir()) / "default_graph.json";
-        auto bundled_template = resources_dir / "default_graph.json";
-        std::filesystem::path template_path;
-        if (std::filesystem::exists(user_template)) {
-            template_path = user_template;
-        } else if (std::filesystem::exists(bundled_template)) {
-            template_path = bundled_template;
-        } else {
-            std::fprintf(stderr, "[vivid] Error: could not load default graph template\n");
-        }
-        if (!template_path.empty()) {
-            initial_graph_request.kind = AsyncGraphLoadRequest::Kind::StartupInitial;
-            initial_graph_request.requested_path = template_path.string();
-            initial_graph_request.resolved_path = template_path.string();
-            initial_graph_request.display_name = "the default graph";
-            initial_graph_request.clear_source_path = true;
-            have_initial_graph_request = true;
-        }
-    } else {
-        initial_graph_request.kind = AsyncGraphLoadRequest::Kind::StartupInitial;
-        initial_graph_request.requested_path = graph_file;
-        initial_graph_request.resolved_path = graph_file;
-        initial_graph_request.display_name =
-            std::filesystem::path(graph_file).filename().string();
+    if (mi::make_initial_graph_load_request(graph_file, resources_dir, initial_graph_request)) {
         have_initial_graph_request = true;
+    } else if (graph_file.empty()) {
+        std::fprintf(stderr, "[vivid] Error: could not load default graph template\n");
     }
 
     bool has_gpu_ops = graph_loaded && runtime.has_gpu_operators();
@@ -1498,103 +1059,6 @@ fn fbm(p_in: vec2f) -> f32 {
     if (!src_dir.empty())
         control_server.set_src_dir(src_dir);
 
-    auto rebuild_live_runtime_from_graph = [&]() -> bool {
-        if (has_audio) {
-            audio_engine.shutdown();
-            has_audio = false;
-        }
-        runtime.shutdown();
-        thumb_cache.clear();
-
-        if (!runtime.build(graph, registry)) {
-            std::fprintf(stderr, "[vivid] Runtime rebuild failed after registry refresh\n");
-            graph_loaded = false;
-            has_gpu_ops = false;
-            video_out_idx = -1;
-            capture_coordinator.set_audio_engine(nullptr);
-            return false;
-        }
-
-        graph_loaded = runtime.compiled_graph() && !runtime.compiled_graph()->nodes.empty();
-        has_gpu_ops = runtime.has_gpu_operators();
-        if (has_gpu_ops) {
-            runtime.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
-            video_out_idx = runtime.find_effective_gpu_sink();
-        } else {
-            video_out_idx = -1;
-        }
-
-        if (runtime.has_audio_operators()) {
-            if (audio_engine.build(runtime) && audio_engine.start()) {
-                has_audio = true;
-            }
-        }
-
-        capture_coordinator.set_audio_engine(has_audio ? &audio_engine : nullptr);
-        return true;
-    };
-
-    auto adopt_prepared_graph = [&](vivid::Graph&& next_graph,
-                                    vivid::RuntimeCore::PreparedBuild&& prepared_build) -> bool {
-        if (has_audio) {
-            audio_engine.shutdown();
-            has_audio = false;
-        }
-        runtime.shutdown();
-        thumb_cache.clear();
-
-        graph = std::move(next_graph);
-        runtime.adopt_prepared_build(std::move(prepared_build));
-
-        graph_loaded = runtime.compiled_graph() && !runtime.compiled_graph()->nodes.empty();
-        has_gpu_ops = runtime.has_gpu_operators();
-        if (has_gpu_ops) {
-            runtime.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
-            video_out_idx = runtime.find_effective_gpu_sink();
-        } else {
-            video_out_idx = -1;
-        }
-
-        if (runtime.has_audio_operators()) {
-            if (audio_engine.build(runtime) && audio_engine.start())
-                has_audio = true;
-        }
-
-        capture_coordinator.set_audio_engine(has_audio ? &audio_engine : nullptr);
-        return true;
-    };
-
-    auto adopt_prepared_runtime_build = [&](AsyncAddPreparedResult prepared) -> bool {
-        if (!adopt_prepared_graph(std::move(prepared.graph), std::move(prepared.prepared)))
-            return false;
-        runtime_api.notify_external_graph_mutation();
-        return true;
-    };
-
-    auto adopt_prepared_graph_load = [&](AsyncGraphLoadPreparedResult prepared) -> bool {
-        const std::string previous_shader_dir = derive_project_shader_dir(graph);
-        const std::string next_shader_dir = derive_project_shader_dir(prepared.graph);
-
-        if (!adopt_prepared_graph(std::move(prepared.graph), std::move(prepared.prepared)))
-            return false;
-
-        if (prepared.preserved_state.active)
-            runtime_api.apply_preserved_runtime_state(prepared.preserved_state);
-
-        if (!previous_shader_dir.empty() && previous_shader_dir != next_shader_dir)
-            registry.clear_shader_operators_in_dir(previous_shader_dir);
-        runtime_api.finalize_external_graph_load();
-
-        if (prepared.request.update_recent_files && !prepared.request.resolved_path.empty()) {
-            vivid::add_recent_file(settings, prepared.request.resolved_path);
-            vivid::save_settings(settings);
-#ifdef __APPLE__
-            vivid::macos_update_recent_files_menu(settings.recent_files);
-#endif
-        }
-        return true;
-    };
-
     // (text_renderer was initialized earlier for the loading screen)
 
     // Thumbnail 2D renderer — targets RGBA16Float thumbnail textures.
@@ -1636,8 +1100,38 @@ fn fbm(p_in: vec2f) -> f32 {
         auto mcp_dir = resources_dir / "mcp";
         graph_ui.set_mcp_dir(mcp_dir.string());
     }
-    AsyncAddCoordinator async_add_coordinator;
-    AsyncGraphLoadCoordinator async_graph_load_coordinator;
+    mi::MainAppContext app_ctx{
+        graph,
+        runtime,
+        audio_engine,
+        registry,
+        runtime_api,
+        command_sink,
+        capture_coordinator,
+        settings,
+        graph_ui,
+        thumb_cache,
+        gpu,
+        pkg_manager,
+        pkg_catalog,
+        app_updates,
+        control_server,
+        system_midi,
+        subgraph_modules,
+        build_console,
+        resources_dir,
+        exe_dir,
+        graphs_root,
+        discovered_examples,
+        graph_loaded,
+        has_gpu_ops,
+        has_audio,
+        video_out_idx,
+    };
+
+    mi::AsyncAddCoordinator async_add_coordinator;
+    mi::AsyncGraphLoadCoordinator async_graph_load_coordinator;
+    mi::PackageBrowserState package_browser_state;
     graph_ui.set_async_add_callback(
         [&](const vivid::ui::NodeGraphUI::AsyncAddOperatorRequest& request, std::string& error) {
             if (!graph_loaded || !runtime.compiled_graph()) {
@@ -1650,7 +1144,7 @@ fn fbm(p_in: vec2f) -> f32 {
             }
             return async_add_coordinator.begin(request, graph, runtime, registry, error);
         });
-    auto queue_graph_load = [&](AsyncGraphLoadRequest request, std::string* error = nullptr) -> bool {
+    auto queue_graph_load = [&](mi::AsyncGraphLoadRequest request, std::string* error = nullptr) -> bool {
         if (async_add_coordinator.active() || async_graph_load_coordinator.active() ||
             operator_preparation_service().has_graph_affecting_task()) {
             if (error) *error = "another graph transaction is already running";
@@ -1675,246 +1169,8 @@ fn fbm(p_in: vec2f) -> f32 {
         if (error) error->clear();
         return true;
     };
-    auto refresh_discovered_examples = [&]() {
-        discovered_examples = discover_examples_with_packages(graphs_root, &pkg_manager);
-        graph_ui.set_examples(discovered_examples);
-    };
-
-    // Async package action state — mirrors PackageCatalog::refresh() pattern
-    std::mutex          pkg_action_mutex;
-    enum class PkgActionState { Idle, Running, Done, Error };
-    PkgActionState      pkg_action_state{PkgActionState::Idle};
-    std::string         pkg_action_error_msg;
-    bool                pkg_action_needs_refresh{false};
-    std::thread         pkg_action_thread;
-
-    std::vector<vivid::PackageBrowserEntry> pkg_browser_entries_cache;
-    auto refresh_package_browser_entries_cache = [&]() {
-        {
-            std::lock_guard<std::mutex> lk(pkg_action_mutex);
-            if (pkg_action_state == PkgActionState::Running)
-                return;
-        }
-        std::vector<vivid::PackageBrowserEntry> out;
-        std::unordered_map<std::string, vivid::PackageInfo> installed_map;
-        for (const auto& p : pkg_manager.list()) {
-            installed_map[p.name] = p;
-        }
-
-        // Collect per-package ABI mismatch and loader failure diagnostics
-        std::unordered_set<std::string> packages_needing_rebuild;
-        for (const auto& d : registry.abi_mismatch_diagnostics())
-            if (!d.package_name.empty()) packages_needing_rebuild.insert(d.package_name);
-        for (const auto& d : registry.loader_failure_diagnostics())
-            if (!d.package_name.empty()) packages_needing_rebuild.insert(d.package_name);
-
-        auto entries = pkg_catalog.entries();
-        out.reserve(entries.size() + installed_map.size());
-        for (const auto& e : entries) {
-            vivid::PackageBrowserEntry ui_e;
-            ui_e.name = e.name;
-            ui_e.description = e.description;
-            ui_e.version = e.version;
-            ui_e.author = e.author;
-            auto it = installed_map.find(e.name);
-            if (it != installed_map.end()) {
-                ui_e.installed = true;
-                ui_e.linked = it->second.linked;
-                ui_e.category = it->second.category;
-                ui_e.tags = it->second.tags;
-                if (packages_needing_rebuild.count(ui_e.name))  {
-                    ui_e.needs_rebuild = true;
-                    ui_e.health_detail = "ABI mismatch \xe2\x80\x94 try rebuild";
-                }
-                installed_map.erase(it);
-            }
-            out.push_back(std::move(ui_e));
-        }
-        for (const auto& [name, info] : installed_map) {
-            vivid::PackageBrowserEntry ui_e;
-            ui_e.name = info.name;
-            ui_e.description = info.description;
-            ui_e.version = info.version;
-            ui_e.author = info.author;
-            ui_e.category = info.category;
-            ui_e.tags = info.tags;
-            ui_e.installed = true;
-            ui_e.linked = info.linked;
-            if (packages_needing_rebuild.count(ui_e.name)) {
-                ui_e.needs_rebuild = true;
-                ui_e.health_detail = "ABI mismatch \xe2\x80\x94 try rebuild";
-            }
-            out.push_back(std::move(ui_e));
-        }
-        pkg_browser_entries_cache = std::move(out);
-    };
-    refresh_package_browser_entries_cache();
-
-    vivid::PackageBrowserCallbacks pkg_browser_cbs;
-    pkg_browser_cbs.refresh = [&pkg_catalog]() {
-        pkg_catalog.refresh();
-    };
-    pkg_browser_cbs.list_entries = [&pkg_browser_entries_cache]() {
-            return pkg_browser_entries_cache;
-    };
-    pkg_browser_cbs.fetch_state = [&pkg_catalog]() {
-        switch (pkg_catalog.fetch_state()) {
-            case vivid::CatalogFetchState::Idle: return vivid::PackageBrowserFetchState::Idle;
-            case vivid::CatalogFetchState::Fetching: return vivid::PackageBrowserFetchState::Fetching;
-            case vivid::CatalogFetchState::Ready: return vivid::PackageBrowserFetchState::Ready;
-            case vivid::CatalogFetchState::Error: return vivid::PackageBrowserFetchState::Error;
-        }
-        return vivid::PackageBrowserFetchState::Error;
-    };
-    pkg_browser_cbs.fetch_error = [&pkg_catalog]() {
-        return pkg_catalog.fetch_error();
-    };
-    pkg_browser_cbs.update_summary = [&pkg_catalog]() {
-        auto s = pkg_catalog.summarize_updates(VIVID_CORE_VERSION);
-        vivid::PackageBrowserUpdateSummary out;
-        out.installed_packages = s.installed_packages;
-        out.updates_available = s.updates_available;
-        out.incompatible_updates = s.incompatible_updates;
-        return out;
-    };
-    pkg_browser_cbs.install = [&pkg_catalog,
-                               &pkg_action_mutex, &pkg_action_state,
-                               &pkg_action_error_msg, &pkg_action_needs_refresh,
-                               &pkg_action_thread](
-                                   const std::string& name, std::string&) -> bool {
-        {
-            std::lock_guard<std::mutex> lk(pkg_action_mutex);
-            if (pkg_action_state == PkgActionState::Running) return false;
-            pkg_action_state = PkgActionState::Running;
-            pkg_action_error_msg.clear();
-            pkg_action_needs_refresh = false;
-        }
-        if (pkg_action_thread.joinable()) pkg_action_thread.join();
-        pkg_action_thread = std::thread([&pkg_catalog, name,
-                     &pkg_action_mutex, &pkg_action_state,
-                     &pkg_action_error_msg, &pkg_action_needs_refresh]() {
-            auto r = pkg_catalog.install(name);
-            std::lock_guard<std::mutex> lk(pkg_action_mutex);
-            pkg_action_error_msg = r.success ? "" : r.error;
-            pkg_action_needs_refresh = r.success;
-            pkg_action_state = r.success ? PkgActionState::Done : PkgActionState::Error;
-        });
-        return true;
-    };
-    pkg_browser_cbs.uninstall = [&pkg_catalog,
-                                 &pkg_action_mutex, &pkg_action_state,
-                                 &pkg_action_error_msg, &pkg_action_needs_refresh,
-                                 &pkg_action_thread](
-                                     const std::string& name, std::string&) -> bool {
-        {
-            std::lock_guard<std::mutex> lk(pkg_action_mutex);
-            if (pkg_action_state == PkgActionState::Running) return false;
-            pkg_action_state = PkgActionState::Running;
-            pkg_action_error_msg.clear();
-            pkg_action_needs_refresh = false;
-        }
-        if (pkg_action_thread.joinable()) pkg_action_thread.join();
-        pkg_action_thread = std::thread([&pkg_catalog, name,
-                     &pkg_action_mutex, &pkg_action_state,
-                     &pkg_action_error_msg, &pkg_action_needs_refresh]() {
-            bool ok = pkg_catalog.uninstall(name);
-            std::lock_guard<std::mutex> lk(pkg_action_mutex);
-            pkg_action_error_msg = ok ? "" : "Failed to uninstall " + name;
-            pkg_action_needs_refresh = ok;
-            pkg_action_state = ok ? PkgActionState::Done : PkgActionState::Error;
-        });
-        return true;
-    };
-    pkg_browser_cbs.unlink = [&pkg_manager,
-                              &pkg_action_mutex, &pkg_action_state,
-                              &pkg_action_error_msg, &pkg_action_needs_refresh,
-                              &pkg_action_thread](
-                                  const std::string& name, std::string&) -> bool {
-        {
-            std::lock_guard<std::mutex> lk(pkg_action_mutex);
-            if (pkg_action_state == PkgActionState::Running) return false;
-            pkg_action_state = PkgActionState::Running;
-            pkg_action_error_msg.clear();
-            pkg_action_needs_refresh = false;
-        }
-        if (pkg_action_thread.joinable()) pkg_action_thread.join();
-        pkg_action_thread = std::thread([&pkg_manager, name,
-                     &pkg_action_mutex, &pkg_action_state,
-                     &pkg_action_error_msg, &pkg_action_needs_refresh]() {
-            bool ok = pkg_manager.unlink(name);
-            std::lock_guard<std::mutex> lk(pkg_action_mutex);
-            pkg_action_error_msg = ok ? "" : "Failed to unlink " + name;
-            pkg_action_needs_refresh = ok;
-            pkg_action_state = ok ? PkgActionState::Done : PkgActionState::Error;
-        });
-        return true;
-    };
-    pkg_browser_cbs.link = [&pkg_manager,
-                            &pkg_action_mutex, &pkg_action_state,
-                            &pkg_action_error_msg, &pkg_action_needs_refresh,
-                            &pkg_action_thread](
-                                const std::string& path, std::string&) -> bool {
-        {
-            std::lock_guard<std::mutex> lk(pkg_action_mutex);
-            if (pkg_action_state == PkgActionState::Running) return false;
-            pkg_action_state = PkgActionState::Running;
-            pkg_action_error_msg.clear();
-            pkg_action_needs_refresh = false;
-        }
-        if (pkg_action_thread.joinable()) pkg_action_thread.join();
-        pkg_action_thread = std::thread([&pkg_manager, path,
-                     &pkg_action_mutex, &pkg_action_state,
-                     &pkg_action_error_msg, &pkg_action_needs_refresh]() {
-            auto r = pkg_manager.link(path);
-            std::lock_guard<std::mutex> lk(pkg_action_mutex);
-            pkg_action_error_msg = r.success ? "" : r.error;
-            // Refresh examples if the symlink was created (graphs/ dir may exist even if compile failed)
-            pkg_action_needs_refresh = r.success || !r.info.path.empty();
-            pkg_action_state = r.success ? PkgActionState::Done : PkgActionState::Error;
-        });
-        return true;
-    };
-    pkg_browser_cbs.rebuild = [&pkg_manager,
-                                &pkg_action_mutex, &pkg_action_state,
-                                &pkg_action_error_msg, &pkg_action_needs_refresh,
-                                &pkg_action_thread](
-                                    const std::string& name, std::string&) -> bool {
-        {
-            std::lock_guard<std::mutex> lk(pkg_action_mutex);
-            if (pkg_action_state == PkgActionState::Running) return false;
-            pkg_action_state = PkgActionState::Running;
-            pkg_action_error_msg.clear();
-            pkg_action_needs_refresh = false;
-        }
-        if (pkg_action_thread.joinable()) pkg_action_thread.join();
-        pkg_action_thread = std::thread([&pkg_manager, name,
-                     &pkg_action_mutex, &pkg_action_state,
-                     &pkg_action_error_msg, &pkg_action_needs_refresh]() {
-            auto r = pkg_manager.rebuild(name);
-            std::lock_guard<std::mutex> lk(pkg_action_mutex);
-            pkg_action_error_msg = r.success ? "" : r.error;
-            pkg_action_needs_refresh = true;
-            pkg_action_state = r.success ? PkgActionState::Done : PkgActionState::Error;
-        });
-        return true;
-    };
-    pkg_browser_cbs.open_build_console = [&graph_ui]() {
-        if (!graph_ui.build_console_open()) graph_ui.toggle_build_console();
-    };
-    graph_ui.set_package_browser_callbacks(std::move(pkg_browser_cbs));
-    if (registry.has_abi_mismatch_diagnostics()) {
-        auto mismatches = registry.abi_mismatch_diagnostics();
-        std::string msg = "Plugin ABI mismatch detected. Rebuild vivid and rerun package rebuild.";
-        if (!mismatches.empty()) {
-            msg += " First mismatch: ";
-            msg += mismatches.front().plugin_name.empty()
-                       ? mismatches.front().plugin_path
-                       : mismatches.front().plugin_name;
-            msg += " (plugin ABI " + std::to_string(mismatches.front().plugin_abi) +
-                   ", runtime ABI " + std::to_string(mismatches.front().runtime_abi) + ")";
-        }
-        graph_ui.notify_pkg_action_complete(false, msg);
-    }
+    mi::refresh_package_browser_entries_cache(app_ctx, package_browser_state);
+    mi::configure_package_browser(app_ctx, package_browser_state);
     graph_ui.set_examples(discovered_examples);
     graph_ui.set_example_package_checker(
         [&pkg_manager](const std::vector<std::string>& requires, std::string& missing) {
@@ -2057,7 +1313,7 @@ fn fbm(p_in: vec2f) -> f32 {
                 std::fprintf(stderr, "[vivid] Hot-reload enabled (watching %s)\n", operators_dir.c_str());
 
                 file_watcher.add_shader_operator_watches(src_dir + "/filters");
-                file_watcher.add_shader_operator_watches(derive_project_shader_dir(graph));
+                file_watcher.add_shader_operator_watches(mi::derive_project_shader_dir(graph));
 
                 // Also watch package source files (both operators/ and src/ layouts).
                 refresh_package_watches();
@@ -2254,7 +1510,7 @@ fn fbm(p_in: vec2f) -> f32 {
         }
     };
 
-    auto request_graph_load = [&](AsyncGraphLoadRequest request, const char* label) {
+    auto request_graph_load = [&](mi::AsyncGraphLoadRequest request, const char* label) {
         std::string error;
         bool ok = queue_graph_load(std::move(request), &error);
         if (!ok) {
@@ -2280,22 +1536,6 @@ fn fbm(p_in: vec2f) -> f32 {
     };
     refresh_file_drop_registry();
 
-    auto create_file_drop_node = [&](const vivid::FileDropMatch& match,
-                                     const std::string& dropped_path,
-                                     float graph_x, float graph_y) {
-        vivid::ui::FileDropChooserAction action;
-        action.label = match.label.empty() ? match.type_name : match.label;
-        action.subtitle = match.package_name.empty()
-            ? match.type_name
-            : (match.type_name + "  [" + match.package_name + "]");
-        action.type_name = match.type_name;
-        action.file_param = match.file_param;
-        action.dropped_path = dropped_path;
-        graph_ui.open_file_drop_chooser({action}, graph_x, graph_y);
-        graph_ui.confirm_chooser_selection(action.type_name);
-        return true;
-    };
-
     if (have_initial_graph_request) {
         std::string startup_error;
         if (!queue_graph_load(initial_graph_request, &startup_error)) {
@@ -2305,8 +1545,8 @@ fn fbm(p_in: vec2f) -> f32 {
     }
 
     graph_ui.set_example_open_callback([&](const std::string& rel_path) {
-        AsyncGraphLoadRequest request;
-        request.kind = AsyncGraphLoadRequest::Kind::OpenExample;
+        mi::AsyncGraphLoadRequest request;
+        request.kind = mi::AsyncGraphLoadRequest::Kind::OpenExample;
         request.requested_path = rel_path;
         request.display_name = std::filesystem::path(rel_path).filename().string();
         request.update_recent_files = true;
@@ -2315,312 +1555,15 @@ fn fbm(p_in: vec2f) -> f32 {
     graph_ui.set_graph_meta_save_callback([&](const vivid::GraphMetaEditData& data,
                                               std::string& error) {
         if (!save_graph_meta_edit_data(data, error)) return false;
-        refresh_discovered_examples();
+        mi::refresh_discovered_examples(app_ctx);
         return true;
     });
-
-    // Helper: save current graph
-    auto do_save = [&]() {
-        if (graph_ui.visible())
-            graph.set_viewport(graph_ui.pan_x(), graph_ui.pan_y(), graph_ui.zoom());
-        annotate_graph_packages(graph);
-        auto result = runtime_api.save();
-        std::fprintf(stderr, "[vivid] Save: %s\n", result.message.c_str());
-        return result.ok;
-    };
-
-    // Helper: open save-as dialog and save, returns true if saved
-    auto do_save_as_dialog = [&]() -> bool {
-        std::string path = vivid::ui::save_file_dialog();
-        if (path.empty()) return false;
-        if (graph_ui.visible())
-            graph.set_viewport(graph_ui.pan_x(), graph_ui.pan_y(), graph_ui.zoom());
-        annotate_graph_packages(graph);
-        auto result = runtime_api.save_as(path);
-        std::fprintf(stderr, "[vivid] Save As: %s\n", result.message.c_str());
-        return result.ok;
-    };
-
-    // Helper: execute the pending action after save-confirm resolves
-    auto execute_pending_action = [&](vivid::ui::NodeGraphUI::SaveConfirmAction action) {
-        if (action == vivid::ui::NodeGraphUI::SaveConfirmAction::kNewGraph) {
-            new_graph_runtime();
-        } else {
-            // kNewProject — open directory save dialog then create project
-            std::string dir = vivid::ui::save_directory_dialog("MyProject");
-            if (dir.empty()) return;
-            auto result = runtime_api.new_project(dir, has_gpu_ops, has_audio);
-            if (result.ok) {
-                graph_loaded = true;
-                command_sink.reset_undo_history();
-            }
-            std::fprintf(stderr, "[vivid] New Project: %s\n", result.message.c_str());
-        }
-    };
-
-    // Save-confirm dialog callbacks
-    graph_ui.on_save_confirm_cancel = [&]() {
-        // do nothing — dialog already closed
-    };
-    graph_ui.on_save_confirm_dont_save = [&]() {
-        execute_pending_action(graph_ui.save_confirm_action());
-    };
-    graph_ui.on_save_confirm_save = [&]() {
-        auto action = graph_ui.save_confirm_action();
-        bool saved;
-        if (graph.source_path().empty())
-            saved = do_save_as_dialog();
-        else
-            saved = do_save();
-        if (saved)
-            execute_pending_action(action);
-    };
+    mi::setup_save_confirm_callbacks(app_ctx);
 
     // --- macOS native menu bar ---
 #ifdef __APPLE__
-    {
-        vivid::MenuCallbacks menu_cbs;
-
-        menu_cbs.on_about = [&]() { graph_ui.open_about(); };
-        menu_cbs.on_new = [&]() {
-            if (runtime_api.graph_dirty()) {
-                graph_ui.open_save_confirm_dialog(
-                    vivid::ui::NodeGraphUI::SaveConfirmAction::kNewGraph);
-            } else {
-                new_graph_runtime();
-            }
-        };
-        menu_cbs.on_new_project = [&]() {
-            if (runtime_api.graph_dirty()) {
-                graph_ui.open_save_confirm_dialog(
-                    vivid::ui::NodeGraphUI::SaveConfirmAction::kNewProject);
-            } else {
-                std::string dir = vivid::ui::save_directory_dialog("MyProject");
-                if (dir.empty()) return;
-                auto result = runtime_api.new_project(dir, has_gpu_ops, has_audio);
-                if (result.ok) {
-                    graph_loaded = true;
-                    command_sink.reset_undo_history();
-                }
-                std::fprintf(stderr, "[vivid] New Project: %s\n", result.message.c_str());
-            }
-        };
-        menu_cbs.on_preferences = [&]() {
-            graph_ui.toggle_preferences();
-        };
-
-        menu_cbs.on_save = [&]() {
-            if (graph.source_path().empty())
-                do_save_as_dialog();
-            else
-                do_save();
-        };
-
-        menu_cbs.on_save_as = [&]() {
-            do_save_as_dialog();
-        };
-
-        menu_cbs.on_open = [&]() {
-            std::string path = vivid::ui::open_file_dialog();
-            if (path.empty()) return;
-            AsyncGraphLoadRequest request;
-            request.kind = AsyncGraphLoadRequest::Kind::Open;
-            request.requested_path = path;
-            request.display_name = std::filesystem::path(path).filename().string();
-            request.update_recent_files = true;
-            request_graph_load(std::move(request), "Open");
-        };
-
-        menu_cbs.on_open_example = [&]() {
-            graph_ui.toggle_example_browser();
-        };
-
-        menu_cbs.on_open_graph_folder = [&]() {
-            auto folder = std::filesystem::path(graph.source_path()).parent_path().string();
-            if (!folder.empty())
-                vivid::open_url(folder);
-        };
-
-        menu_cbs.has_graph_path = [&]() -> bool {
-            return !graph.source_path().empty();
-        };
-
-        menu_cbs.on_export = [&]() {
-            if (graph.source_path().empty()) {
-                std::fprintf(stderr, "[vivid] Export: no graph loaded\n");
-                return;
-            }
-
-            std::string output_path = vivid::ui::save_file_dialog("my_app");
-            if (output_path.empty()) return;
-
-            auto out = std::filesystem::path(output_path);
-            std::string output_name = out.stem().string();
-            std::string output_dir = (out.parent_path() / (output_name + "_export")).string();
-
-            if (runtime_paths.source_dir.empty()) {
-                std::fprintf(stderr, "[vivid] Export: cannot determine source directory\n");
-                return;
-            }
-
-            vivid::ExportOptions opts;
-            opts.graph_path = graph.source_path();
-            opts.output_name = output_name;
-            opts.output_path = output_path;
-            opts.output_dir = output_dir;
-
-            vivid::ExportPipeline pipeline(runtime_paths.source_dir, runtime_paths.build_dir);
-            if (pipeline.run(opts, registry)) {
-                std::fprintf(stderr, "[vivid] Export succeeded: %s\n", output_name.c_str());
-            } else {
-                std::fprintf(stderr, "[vivid] Export failed\n");
-            }
-        };
-
-        menu_cbs.on_browse_packages = [&]() {
-            graph_ui.toggle_package_browser();
-        };
-
-        menu_cbs.on_open_package_catalog_website = [&]() {
-            const char* env_url = std::getenv("VIVID_PACKAGE_DISCOVERY_URL");
-            const std::string url =
-                (env_url && env_url[0] != '\0')
-                    ? std::string(env_url)
-                    : std::string("https://vivid.seethroughlab.com");
-            std::string err;
-            if (!vivid::open_url(url, &err)) {
-                std::fprintf(stderr, "[vivid] Failed to open package catalog URL '%s': %s\n",
-                             url.c_str(), err.c_str());
-            } else {
-                std::fprintf(stderr, "[vivid] Opened package catalog website: %s\n",
-                             url.c_str());
-            }
-        };
-
-        menu_cbs.on_check_for_updates = [&]() {
-#ifdef __APPLE__
-            std::string err;
-            if (vivid::SparkleBridge::available() &&
-                vivid::SparkleBridge::check_for_updates(&err)) {
-                settings.core_update_last_checked_at = now_epoch_seconds_str();
-                vivid::save_settings(settings);
-                return;
-            }
-#endif
-            app_updates.refresh();
-            settings.core_update_last_checked_at = now_epoch_seconds_str();
-            vivid::save_settings(settings);
-            std::fprintf(stderr, "[vivid] Checking for core updates via appcast...\n");
-        };
-
-        menu_cbs.on_toggle_auto_check_updates = [&]() {
-            settings.core_update_auto_check = !settings.core_update_auto_check;
-            vivid::save_settings(settings);
-            std::fprintf(stderr, "[vivid] Core auto-update checks: %s\n",
-                         settings.core_update_auto_check ? "enabled" : "disabled");
-        };
-
-        menu_cbs.on_report_issue = [&]() {
-            const auto packages = pkg_manager.list();
-            const auto operators = registry.type_names();
-            const char* graph_path = graph.source_path().empty() ? "<unsaved>" : graph.source_path().c_str();
-#ifdef NDEBUG
-            const char* build_mode = "Release";
-#else
-            const char* build_mode = "Debug";
-#endif
-
-            std::ostringstream body;
-            body << "## What happened?\n";
-            body << "<!-- Describe expected vs actual behavior -->\n\n";
-            body << "## Steps to reproduce\n";
-            body << "1. \n";
-            body << "2. \n";
-            body << "3. \n\n";
-            body << "## Runtime diagnostics\n";
-            body << "- Core version: " << VIVID_CORE_VERSION << "\n";
-            body << "- Platform: " << platform_label() << "\n";
-            body << "- Build mode: " << build_mode << "\n";
-            body << "- Graph: " << graph_path << "\n";
-            body << "- Registered operator types: " << operators.size() << "\n";
-            body << "- Installed packages: " << packages.size() << "\n";
-            body << "- Audio enabled: " << (has_audio ? "yes" : "no") << "\n";
-            body << "- GPU operators enabled: " << (has_gpu_ops ? "yes" : "no") << "\n";
-
-            const std::string issue_url =
-                "https://github.com/seethroughlab/vivid/issues/new"
-                "?title=" + url_encode("[Bug] ") +
-                "&body=" + url_encode(body.str());
-
-            std::string err;
-            if (!vivid::open_url(issue_url, &err)) {
-                std::fprintf(stderr, "[vivid] Failed to open issue URL: %s\n", err.c_str());
-            } else {
-                std::fprintf(stderr, "[vivid] Opened issue reporter URL\n");
-            }
-        };
-
-        // Edit menu
-        menu_cbs.on_delete_selected = [&]() { graph_ui.delete_selected(); };
-        menu_cbs.on_edit_meta = [&]() {
-            if (graph.source_path().empty()) return;
-            vivid::GraphMetaEditData data;
-            std::string error;
-            if (!load_graph_meta_edit_data(graph.source_path(), data, error)) {
-                std::fprintf(stderr, "[vivid] Edit Meta: %s\n", error.c_str());
-                return;
-            }
-            graph_ui.open_graph_meta_editor(data);
-        };
-
-        // View menu
-        menu_cbs.on_toggle_ui = [&]() { graph_ui.toggle_visible(); };
-        menu_cbs.on_toggle_fullscreen = [&]() { toggle_fullscreen(); };
-        menu_cbs.on_toggle_bezier_wires = [&]() { graph_ui.set_bezier_wires(!graph_ui.bezier_wires()); };
-        menu_cbs.on_toggle_show_param_wires = [&]() { graph_ui.set_show_param_wires(!graph_ui.show_param_wires()); };
-        menu_cbs.on_toggle_analysis = [&]() {
-            bool next = !runtime.frame_executor().analysis_enabled();
-            runtime.frame_executor().set_analysis_enabled(next);
-            audio_engine.set_analysis_enabled(next);
-            settings.show_analysis = next;
-        };
-        menu_cbs.on_toggle_session_grid = [&]() { graph_ui.toggle_session_grid(); };
-        menu_cbs.on_toggle_build_console = [&]() { graph_ui.toggle_build_console(); };
-        menu_cbs.on_toggle_midi_map = [&]() { graph_ui.toggle_midi_map_mode(); };
-
-        // Insert menu
-        menu_cbs.on_add_node = [&]() { graph_ui.open_chooser(); };
-
-        // State queries for checkmarks / enable states
-        menu_cbs.is_ui_visible = [&]() { return graph_ui.visible(); };
-        menu_cbs.is_fullscreen = [&]() { return display_state.fullscreen; };
-        menu_cbs.is_bezier_wires = [&]() { return graph_ui.bezier_wires(); };
-        menu_cbs.is_show_param_wires = [&]() { return graph_ui.show_param_wires(); };
-        menu_cbs.is_analysis_enabled = [&]() { return runtime.frame_executor().analysis_enabled(); };
-        menu_cbs.is_session_grid_open = [&]() { return graph_ui.session_grid_open(); };
-        menu_cbs.is_build_console_open = [&]() { return graph_ui.build_console_open(); };
-        menu_cbs.is_midi_map_mode = [&]() { return graph_ui.midi_map_mode(); };
-        menu_cbs.has_selection = [&]() { return graph_ui.has_selection(); };
-        menu_cbs.can_edit_meta = [&]() { return !graph.source_path().empty(); };
-        menu_cbs.is_auto_check_updates = [&]() { return settings.core_update_auto_check; };
-
-        menu_cbs.on_open_recent = [&](const std::string& path) {
-            AsyncGraphLoadRequest request;
-            request.kind = AsyncGraphLoadRequest::Kind::OpenRecent;
-            request.requested_path = path;
-            request.display_name = std::filesystem::path(path).filename().string();
-            request.update_recent_files = true;
-            request_graph_load(std::move(request), "Open Recent");
-        };
-        menu_cbs.on_clear_recent = [&]() {
-            settings.recent_files.clear();
-            vivid::save_settings(settings);
-            vivid::macos_update_recent_files_menu(settings.recent_files);
-        };
-
-        vivid::macos_setup_menu(menu_cbs);
-        vivid::macos_update_recent_files_menu(settings.recent_files);
-    }
+    mi::setup_macos_menu(app_ctx, runtime_paths, display_state, toggle_fullscreen,
+                         request_graph_load, new_graph_runtime);
 #endif
 
     double prev_time = glfwGetTime();
@@ -2761,8 +1704,8 @@ fn fbm(p_in: vec2f) -> f32 {
                 c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 
             if (ext == ".json") {
-                AsyncGraphLoadRequest request;
-                request.kind = AsyncGraphLoadRequest::Kind::DropGraph;
+                mi::AsyncGraphLoadRequest request;
+                request.kind = mi::AsyncGraphLoadRequest::Kind::DropGraph;
                 request.requested_path = path;
                 request.display_name = std::filesystem::path(path).filename().string();
                 request.update_recent_files = true;
@@ -2782,7 +1725,7 @@ fn fbm(p_in: vec2f) -> f32 {
                     }
 
                     if (matches.size() == 1) {
-                        create_file_drop_node(matches.front(), path, graph_x, graph_y);
+                        mi::create_file_drop_node(graph_ui, matches.front(), path, graph_x, graph_y);
                     } else {
                         std::vector<vivid::ui::FileDropChooserAction> actions;
                         actions.reserve(matches.size());
@@ -2820,12 +1763,12 @@ fn fbm(p_in: vec2f) -> f32 {
             return true;
         }
 
-        AsyncAddPreparedResult async_add_result;
+        mi::AsyncAddPreparedResult async_add_result;
         if (async_add_coordinator.take_completed(async_add_result)) {
             if (async_add_result.success) {
                 std::string added_node_id = async_add_result.node_id;
                 graph_ui.set_async_add_stage(vivid::ui::NodeGraphUI::AsyncAddStage::Applying);
-                adopt_prepared_runtime_build(std::move(async_add_result));
+                mi::adopt_prepared_runtime_build(app_ctx, std::move(async_add_result));
                 command_sink.capture_external_undo_snapshot();
                 graph_ui.notify_async_add_success(added_node_id);
             } else {
@@ -2834,20 +1777,20 @@ fn fbm(p_in: vec2f) -> f32 {
         } else if (async_add_coordinator.active()) {
             auto stage = async_add_coordinator.stage();
             graph_ui.set_async_add_stage(
-                stage == AsyncAddCoordinator::Stage::Compiling
+                stage == mi::AsyncAddCoordinator::Stage::Compiling
                     ? vivid::ui::NodeGraphUI::AsyncAddStage::Compiling
                     : vivid::ui::NodeGraphUI::AsyncAddStage::Preparing);
         }
 
-        AsyncGraphLoadPreparedResult async_graph_load_result;
+        mi::AsyncGraphLoadPreparedResult async_graph_load_result;
         if (async_graph_load_coordinator.take_completed(async_graph_load_result)) {
             if (async_graph_load_result.success) {
                 const bool had_graph_before_commit = graph_loaded;
                 graph_ui.set_async_graph_load_stage(
                     vivid::ui::NodeGraphUI::AsyncGraphLoadStage::Applying);
-                adopt_prepared_graph_load(std::move(async_graph_load_result));
+                mi::adopt_prepared_graph_load(app_ctx, std::move(async_graph_load_result));
                 if (hot_reload_enabled)
-                    file_watcher.add_shader_operator_watches(derive_project_shader_dir(graph));
+                    file_watcher.add_shader_operator_watches(mi::derive_project_shader_dir(graph));
                 if (!had_graph_before_commit && graph.has_viewport()) {
                     graph_ui.set_viewport(graph.viewport_pan_x, graph.viewport_pan_y, graph.viewport_zoom);
                 }
@@ -2860,16 +1803,16 @@ fn fbm(p_in: vec2f) -> f32 {
             auto stage = async_graph_load_coordinator.stage();
             GraphLoadStage ui_stage = GraphLoadStage::Loading;
             switch (stage) {
-                case AsyncGraphLoadCoordinator::Stage::Loading:
+                case mi::AsyncGraphLoadCoordinator::Stage::Loading:
                     ui_stage = GraphLoadStage::Loading;
                     break;
-                case AsyncGraphLoadCoordinator::Stage::PreparingOperators:
+                case mi::AsyncGraphLoadCoordinator::Stage::PreparingOperators:
                     ui_stage = GraphLoadStage::PreparingOperators;
                     break;
-                case AsyncGraphLoadCoordinator::Stage::Compiling:
+                case mi::AsyncGraphLoadCoordinator::Stage::Compiling:
                     ui_stage = GraphLoadStage::Compiling;
                     break;
-                case AsyncGraphLoadCoordinator::Stage::Idle:
+                case mi::AsyncGraphLoadCoordinator::Stage::Idle:
                     ui_stage = GraphLoadStage::Loading;
                     break;
             }
@@ -3226,43 +2169,8 @@ fn fbm(p_in: vec2f) -> f32 {
 
         if (have_surface) {
             // Poll async package action completion (main thread only).
-            {
-                bool done = false, needs_refresh = false;
-                std::string err;
-                {
-                    std::lock_guard<std::mutex> lk(pkg_action_mutex);
-                    if (!graph_transaction_active &&
-                        (pkg_action_state == PkgActionState::Done ||
-                         pkg_action_state == PkgActionState::Error)) {
-                        done = true;
-                        needs_refresh = pkg_action_needs_refresh;
-                        err = pkg_action_error_msg;
-                        pkg_action_state = PkgActionState::Idle;
-                        pkg_action_needs_refresh = false;
-                    }
-                }
-                if (done) {
-                    if (needs_refresh) {
-                        refresh_discovered_examples();
-                        auto prepared = prepare_graph_operators_sync(registry, graph, true);
-                        if (!prepared.success) {
-                            err = prepared.user_message.empty()
-                                ? "Failed to prepare operators after package refresh"
-                                : prepared.user_message;
-                        } else if (rebuild_live_runtime_from_graph()) {
-                            if (auto* cg_pkg = runtime.compiled_graph()) {
-                                std::unordered_set<std::string> active_ids;
-                                for (const auto& cn : cg_pkg->nodes) {
-                                    active_ids.insert(cn.node_id);
-                                }
-                                thumb_cache.retain_only(active_ids);
-                            }
-                        }
-                    }
-                    refresh_package_browser_entries_cache();
-                    graph_ui.notify_pkg_action_complete(err.empty(), err);
-                }
-            }
+            mi::poll_package_browser_actions(app_ctx, package_browser_state,
+                                             graph_transaction_active);
 
             // --- Surface presentation path ---
             if (has_gpu_ops && video_out_idx >= 0) {
@@ -3457,7 +2365,6 @@ fn fbm(p_in: vec2f) -> f32 {
     }
 
     // --- Shutdown ---
-    if (pkg_action_thread.joinable()) pkg_action_thread.join();
     system_midi.close();
     control_server.stop();
     if (hot_reload_enabled) {
