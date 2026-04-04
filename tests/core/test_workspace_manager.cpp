@@ -1,6 +1,6 @@
 // Tests for workspace manager: tree copying, workspace seeding.
 #include "runtime/core/workspace_manager.h"
-#include "runtime/control/graph_file_io.h"
+#include "runtime/platform/platform.h"
 #include <cstdio>
 #include <fstream>
 #include <filesystem>
@@ -11,15 +11,19 @@ namespace fs = std::filesystem;
 static void test_default_workspace_root() {
     std::fprintf(stderr, "\n--- default_workspace_root ---\n");
 
-    auto root = vivid::default_workspace_root();
-    check(!root.empty(), "returns non-empty path");
-    // On macOS/Linux, should be under HOME
-    const char* home = std::getenv("HOME");
-    if (home) {
-        std::string root_s = root.string();
-        check(root_s.find(home) != std::string::npos ||
-              root_s.find("Documents") != std::string::npos,
-              "path is under HOME or Documents");
+    {
+        ScopedTempDir home_tmp("workspace_home");
+        ScopedEnvVar scoped_home("HOME", home_tmp.str());
+        auto root = vivid::default_workspace_root();
+        check(root == (home_tmp.path / "Documents" / "Vivid"),
+              "HOME-set root is <HOME>/Documents/Vivid");
+    }
+
+    {
+        ScopedEnvVar scoped_home("HOME", nullptr);
+        auto root = vivid::default_workspace_root();
+        auto expected = std::filesystem::path(vivid::get_config_dir()) / "workspace";
+        check(root == expected, "HOME-unset fallback uses config_dir/workspace");
     }
 }
 

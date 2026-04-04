@@ -18,6 +18,7 @@ add_library(vivid_runtime_testlib STATIC
     src/runtime/core/settings.cpp
     src/runtime/core/tool_discovery.cpp
     src/runtime/core/undo_manager.cpp
+    src/runtime/core/workspace_manager.cpp
     src/runtime/debug/capture_coordinator.cpp
     src/runtime/debug/output_analyzer.cpp
     src/runtime/gpu/screenshot.cpp
@@ -156,7 +157,7 @@ add_executable(test_perception_introspection
 )
 target_include_directories(test_perception_introspection PRIVATE src tests)
 target_link_libraries(test_perception_introspection PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json miniaudio ixwebsocket webgpu rtmidi stb_truetype
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio ixwebsocket webgpu rtmidi stb_truetype
     "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
     "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
 add_dependencies(test_perception_introspection test_op_v1)

@@ -106,7 +106,7 @@ int main(int argc, char* argv[]) {
     std::filesystem::current_path(isolated_cwd);
 
     std::string graph_path = build_dir + "/test_runtime_api.json";
-    constexpr int kPort = 0;  // OS-assigned port (avoids conflicts in parallel runs)
+    const int kPort = find_free_loopback_port();
     std::string base_url;     // set after server.start() reads back actual port
 
     // Isolate package/catalog test state from the user's real config dir.
@@ -362,6 +362,7 @@ VIVID_REGISTER(TestOp)
     server.set_package_catalog(&pkg_catalog);
     server.set_src_dir(scaffold_core_src);
     server.set_settings(&settings);
+    check(kPort > 0, "find_free_loopback_port()");
     check(server.start(kPort), "server.start()");
     base_url = "http://127.0.0.1:" + std::to_string(server.port());
     std::fprintf(stderr, "  Control server listening on port %d\n", server.port());

@@ -1,4 +1,5 @@
 #include "runtime/control/control_server_internal.h"
+#include <ixwebsocket/IXGetFreePort.h>
 
 namespace vivid {
 
@@ -14,6 +15,7 @@ struct ControlServer::Impl {
     };
 
     ix::HttpServer server;
+    int bound_port = 0;
     std::mutex queue_mutex;
     std::deque<PendingRequest> queue;
     std::atomic<bool> running{false};
@@ -51,11 +53,12 @@ uint64_t ControlServer::mcp_last_ping_ms(const std::string& name) const {
 }
 
 int ControlServer::port() const {
-    return impl_ ? impl_->server.getPort() : 0;
+    return impl_ ? impl_->bound_port : 0;
 }
 
 bool ControlServer::start(int port) {
-    impl_ = std::make_unique<Impl>(port);
+    const int listen_port = (port == 0) ? ix::getFreePort() : port;
+    impl_ = std::make_unique<Impl>(listen_port);
 
     impl_->server.setOnConnectionCallback(
         [this](ix::HttpRequestPtr request,
@@ -495,9 +498,10 @@ bool ControlServer::start(int port) {
     }
 
     impl_->server.start();
+    impl_->bound_port = listen_port;
     impl_->running = true;
     std::fprintf(stderr,
-        "[vivid] Control server listening on http://127.0.0.1:%d\n", port);
+        "[vivid] Control server listening on http://127.0.0.1:%d\n", listen_port);
     return true;
 }
 

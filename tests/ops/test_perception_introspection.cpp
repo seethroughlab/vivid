@@ -12,6 +12,8 @@
 #include <filesystem>
 #include <string>
 #include <thread>
+#define VIVID_TEST_HELPERS_NO_CHECK
+#include "test_helpers.h"
 
 using json = nlohmann::json;
 
@@ -70,7 +72,7 @@ static std::string get_str(const json& v) {
 int main(int argc, char* argv[]) {
     std::string build_dir = ".";
     if (argc > 1) build_dir = argv[1];
-    constexpr int kPort = 0;  // OS-assigned port (avoids conflicts in parallel runs)
+    const int kPort = find_free_loopback_port();
     std::string base_url;
 
     std::string test_home = build_dir + "/.test_perception_home";
@@ -82,12 +84,17 @@ int main(int argc, char* argv[]) {
     std::filesystem::copy_file(build_dir + "/test_op_v1.dylib",
                                staging + "/test_op_v1.dylib",
                                std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/oscillator.dylib",
+                               staging + "/oscillator.dylib",
+                               std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/shape.dylib",
+                               staging + "/shape.dylib",
+                               std::filesystem::copy_options::overwrite_existing);
 
     std::fprintf(stderr, "\n=== Test: Perception Introspection ===\n\n");
 
     vivid::OperatorRegistry registry;
     check(registry.scan(staging.c_str()), "registry.scan(staging)");
-    check(registry.scan(build_dir.c_str()), "registry.scan(build_dir)");
 
     vivid::Graph graph;
     check(graph.add_node("ctrl1", "TestOp"), "add control node");
@@ -105,6 +112,7 @@ int main(int argc, char* argv[]) {
     vivid::RuntimeAPI api(graph, runtime, audio_engine, registry);
 
     vivid::ControlServer server;
+    check(kPort > 0, "find_free_loopback_port()");
     check(server.start(kPort), "server.start()");
     base_url = "http://127.0.0.1:" + std::to_string(server.port());
 
