@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -12,6 +13,7 @@ class Graph;
 class RuntimeCore;
 class AudioEngine;
 class OperatorRegistry;
+class SubgraphModuleRegistry;
 class SystemMidiListener;
 struct CompiledNode;
 
@@ -150,6 +152,7 @@ public:
     std::string solo_node_id() const;
 
     void set_resources_dir(const std::string& dir) { resources_dir_ = dir; }
+    void set_subgraph_modules(const SubgraphModuleRegistry* modules) { subgraph_modules_ = modules; }
 
     bool has_pending() const { return pending_topology_change_; }
     bool needs_gpu_realloc() const { return needs_gpu_realloc_; }
@@ -168,11 +171,22 @@ public:
 private:
     static bool split_addr(const std::string& addr, std::string& node, std::string& port);
 
+    // Module param proxy: resolve an exposed module param to the internal compiled node
+    struct ResolvedModuleParam {
+        CompiledNode* cn;
+        uint32_t param_idx;
+        std::string flat_node_id;
+        std::string internal_param;
+    };
+    std::optional<ResolvedModuleParam> resolve_module_param(
+        const std::string& node_id, const std::string& param);
+
     Graph& graph_;
     RuntimeCore& core_;
     AudioEngine& audio_engine_;
     OperatorRegistry& registry_;
     SystemMidiListener* system_midi_ = nullptr;
+    const SubgraphModuleRegistry* subgraph_modules_ = nullptr;
     bool pending_topology_change_ = false;
     bool needs_gpu_realloc_ = false;
     uint64_t reload_serial_ = 0;

@@ -1,5 +1,6 @@
 #include "runtime/control/runtime_api.h"
 #include "runtime/graph/graph.h"
+#include "runtime/graph/subgraph_module.h"
 #include "runtime/core/runtime_core.h"
 #include "runtime/graph/compiled_graph.h"
 #include "runtime/operators/operator_registry.h"
@@ -347,6 +348,35 @@ const std::string& RuntimeAPI::active_preset(const std::string& node_id) const {
 
 CommandResult RuntimeAPI::save_preset(const std::string& node_id, const std::string& name) {
     auto* cn = core_.compiled_graph()->find_node(node_id);
+
+    // Module preset proxy: read live values from internal nodes
+    if (!cn && subgraph_modules_) {
+        const auto* ndef = graph_.find_node(node_id);
+        if (!ndef) return {false, "unknown node '" + node_id + "'"};
+        const auto* mod = subgraph_modules_->find(ndef->type);
+        if (!mod) return {false, "unknown node '" + node_id + "'"};
+
+        OperatorPreset preset;
+        preset.name = name;
+        for (const auto& pb : mod->params) {
+            auto resolved = resolve_module_param(node_id, pb.name);
+            if (resolved) {
+                preset.params[pb.name] = resolved->cn->param_values[resolved->param_idx];
+                auto fi = resolved->cn->file_param_indices.find(resolved->internal_param);
+                if (fi != resolved->cn->file_param_indices.end() &&
+                    fi->second < resolved->cn->file_param_storage.size()) {
+                    preset.string_params[pb.name] = to_persisted_string_value(
+                        *resolved->cn, resolved->internal_param,
+                        resolved->cn->file_param_storage[fi->second]);
+                }
+            }
+        }
+        graph_.save_preset(node_id, preset);
+        active_presets_[node_id] = name;
+        mark_graph_dirty();
+        return {true, "saved preset '" + name + "' on " + node_id};
+    }
+
     if (!cn) return {false, "unknown node '" + node_id + "'"};
 
     OperatorPreset preset;
@@ -367,6 +397,7 @@ CommandResult RuntimeAPI::recall_preset(const std::string& node_id, const std::s
     const auto* preset = graph_.find_preset(node_id, name);
 
     const OperatorPreset* factory_hit = nullptr;
+    OperatorPreset translated_module_preset;
     if (!preset) {
         const auto* ndef = graph_.find_node(node_id);
         if (ndef) {
@@ -376,6 +407,17 @@ CommandResult RuntimeAPI::recall_preset(const std::string& node_id, const std::s
                     if (fp.name == name) { factory_hit = &fp; break; }
                 }
             }
+            // Fall back to module presets
+            if (!factory_hit && subgraph_modules_) {
+                const auto* mod = subgraph_modules_->find(ndef->type);
+                if (mod) {
+                    const auto* sp = mod->find_preset(name);
+                    if (sp) {
+                        translated_module_preset = to_operator_preset(*sp, *mod);
+                        factory_hit = &translated_module_preset;
+                    }
+                }
+            }
         }
         preset = factory_hit;
     }
@@ -383,7 +425,39 @@ CommandResult RuntimeAPI::recall_preset(const std::string& node_id, const std::s
     if (!preset) return {false, "preset '" + name + "' not found on " + node_id};
 
     auto* cn = core_.compiled_graph()->find_node(node_id);
-    if (!cn) return {false, "unknown node '" + node_id + "'"};
+
+    // Module preset proxy: apply preset by routing each param to its internal node
+    if (!cn) {
+        NodeDef* ndef = graph_.find_node(node_id);
+        if (!ndef) return {false, "unknown node '" + node_id + "'"};
+        for (const auto& [pname, pval] : preset->params) {
+            auto resolved = resolve_module_param(node_id, pname);
+            if (resolved) {
+                if (!(resolved->cn->param_lock_flags[resolved->param_idx] & PARAM_LOCK_PRESETS)) {
+                    resolved->cn->param_values[resolved->param_idx] = pval;
+                    resolved->cn->dirty = true;
+                    ndef->params[pname] = pval;
+                }
+            }
+        }
+        for (const auto& [pname, pval] : preset->string_params) {
+            auto resolved = resolve_module_param(node_id, pname);
+            if (resolved) {
+                auto fi = resolved->cn->file_param_indices.find(resolved->internal_param);
+                if (fi != resolved->cn->file_param_indices.end()) {
+                    resolved->cn->file_param_storage[fi->second] =
+                        to_runtime_string_value(*resolved->cn, resolved->internal_param, pval);
+                    resolved->cn->file_param_ptrs[fi->second] =
+                        resolved->cn->file_param_storage[fi->second].c_str();
+                    resolved->cn->dirty = true;
+                    ndef->string_params[pname] = pval;
+                }
+            }
+        }
+        active_presets_[node_id] = name;
+        mark_graph_dirty();
+        return {true, "recalled preset '" + name + "' on " + node_id};
+    }
 
     for (const auto& [pname, pval] : preset->params) {
         auto pi = cn->param_indices.find(pname);
@@ -432,6 +506,32 @@ CommandResult RuntimeAPI::update_preset(const std::string& node_id, const std::s
     }
 
     auto* cn = core_.compiled_graph()->find_node(node_id);
+
+    // Module preset proxy: read live values from internal nodes
+    if (!cn && subgraph_modules_) {
+        const auto* ndef = graph_.find_node(node_id);
+        if (!ndef) return {false, "unknown node '" + node_id + "'"};
+        const auto* mod = subgraph_modules_->find(ndef->type);
+        if (!mod) return {false, "unknown node '" + node_id + "'"};
+        preset->params.clear();
+        preset->string_params.clear();
+        for (const auto& pb : mod->params) {
+            auto resolved = resolve_module_param(node_id, pb.name);
+            if (resolved) {
+                preset->params[pb.name] = resolved->cn->param_values[resolved->param_idx];
+                auto fi = resolved->cn->file_param_indices.find(resolved->internal_param);
+                if (fi != resolved->cn->file_param_indices.end() &&
+                    fi->second < resolved->cn->file_param_storage.size()) {
+                    preset->string_params[pb.name] = to_persisted_string_value(
+                        *resolved->cn, resolved->internal_param,
+                        resolved->cn->file_param_storage[fi->second]);
+                }
+            }
+        }
+        mark_graph_dirty();
+        return {true, "updated preset '" + name + "' on " + node_id};
+    }
+
     if (!cn) return {false, "unknown node '" + node_id + "'"};
 
     preset->params.clear();
@@ -498,6 +598,14 @@ CommandResult RuntimeAPI::list_factory_presets(const std::string& node_id) {
     const auto* ndef = graph_.find_node(node_id);
     if (!ndef) return {false, "unknown node '" + node_id + "'"};
     auto names = registry_.factory_preset_names(ndef->type);
+    // Fall back to module presets
+    if (names.empty() && subgraph_modules_) {
+        const auto* mod = subgraph_modules_->find(ndef->type);
+        if (mod) {
+            for (const auto& p : mod->presets)
+                names.push_back(p.name);
+        }
+    }
     if (names.empty()) return {true, "(no factory presets for " + ndef->type + ")"};
     std::ostringstream oss;
     for (size_t i = 0; i < names.size(); ++i) {

@@ -119,10 +119,44 @@ std::string node_display_name(const CompiledNode& cn,
 }
 } // namespace
 
+std::optional<RuntimeAPI::ResolvedModuleParam> RuntimeAPI::resolve_module_param(
+        const std::string& node_id, const std::string& param) {
+    if (!subgraph_modules_) return std::nullopt;
+    const auto* ndef = graph_.find_node(node_id);
+    if (!ndef) return std::nullopt;
+    const auto* mod = subgraph_modules_->find(ndef->type);
+    if (!mod) return std::nullopt;
+    const auto* pb = mod->find_param(param);
+    if (!pb) return std::nullopt;
+    std::string flat_id = node_id + ".__" + pb->internal_node;
+    auto* cg = core_.compiled_graph();
+    if (!cg) return std::nullopt;
+    auto* cn = cg->find_node(flat_id);
+    if (!cn) return std::nullopt;
+    auto pi = cn->param_indices.find(pb->internal_param);
+    if (pi == cn->param_indices.end()) return std::nullopt;
+    return ResolvedModuleParam{cn, pi->second, flat_id, pb->internal_param};
+}
+
 CommandResult RuntimeAPI::set_param(const std::string& node_id, const std::string& param, float value) {
     auto* cg = core_.compiled_graph();
     auto* cn = cg->find_node(node_id);
-    if (!cn) return {false, "unknown node '" + node_id + "'"};
+
+    // Module param proxy: route to internal node
+    if (!cn) {
+        auto resolved = resolve_module_param(node_id, param);
+        if (!resolved) return {false, "unknown node '" + node_id + "'"};
+        resolved->cn->param_values[resolved->param_idx] = value;
+        resolved->cn->dirty = true;
+        // Sync to authored graph's module node (not internal node)
+        NodeDef* ndef = graph_.find_node(node_id);
+        if (ndef) ndef->params[param] = value;
+        if (graph_.active_variation() >= 0) variation_dirty_ = true;
+        mark_graph_dirty();
+        std::ostringstream oss;
+        oss << node_id << "/" << param << " = " << value;
+        return {true, oss.str()};
+    }
 
     auto pi = cn->param_indices.find(param);
     if (pi == cn->param_indices.end()) {
@@ -170,7 +204,18 @@ CommandResult RuntimeAPI::set_string_param(const std::string& node_id, const std
                                            const std::string& value) {
     auto* cg = core_.compiled_graph();
     auto* cn = cg->find_node(node_id);
-    if (!cn) return {false, "unknown node '" + node_id + "'"};
+
+    // Module param proxy: route to internal node
+    if (!cn) {
+        auto resolved = resolve_module_param(node_id, param);
+        if (!resolved) return {false, "unknown node '" + node_id + "'"};
+        set_file_param_internal(*resolved->cn, resolved->internal_param, value);
+        NodeDef* ndef = graph_.find_node(node_id);
+        if (ndef) ndef->string_params[param] = value;
+        if (graph_.active_variation() >= 0) variation_dirty_ = true;
+        mark_graph_dirty();
+        return {true, node_id + "/" + param + " = " + value};
+    }
 
     auto fi = cn->file_param_indices.find(param);
     if (fi == cn->file_param_indices.end()) {
@@ -190,7 +235,19 @@ CommandResult RuntimeAPI::set_string_param(const std::string& node_id, const std
 
 CommandResult RuntimeAPI::get_param(const std::string& node_id, const std::string& param) {
     auto* cn = core_.compiled_graph()->find_node(node_id);
-    if (!cn) return {false, "unknown node '" + node_id + "'"};
+    if (!cn) {
+        auto resolved = resolve_module_param(node_id, param);
+        if (!resolved) return {false, "unknown node '" + node_id + "'"};
+        cn = resolved->cn;
+        // Fall through with resolved cn — param name is the internal param
+        auto pi = cn->param_indices.find(resolved->internal_param);
+        if (pi == cn->param_indices.end())
+            return {false, "unknown param '" + param + "' on " + node_id};
+        float val = cn->param_values[pi->second];
+        std::ostringstream oss;
+        oss << val;
+        return {true, oss.str()};
+    }
     auto pi = cn->param_indices.find(param);
     if (pi == cn->param_indices.end()) {
         return {false, "unknown param '" + param + "' on " + node_id};
@@ -203,7 +260,24 @@ CommandResult RuntimeAPI::get_param(const std::string& node_id, const std::strin
 CommandResult RuntimeAPI::set_param_lock(const std::string& node_id, const std::string& param, uint8_t flags) {
     auto* cg = core_.compiled_graph();
     auto* cn = cg->find_node(node_id);
-    if (!cn) return {false, "unknown node '" + node_id + "'"};
+
+    // Module param proxy
+    if (!cn) {
+        auto resolved = resolve_module_param(node_id, param);
+        if (!resolved) return {false, "unknown node '" + node_id + "'"};
+        resolved->cn->param_lock_flags[resolved->param_idx] = flags;
+        NodeDef* ndef = graph_.find_node(node_id);
+        if (ndef) {
+            if (flags != PARAM_LOCK_NONE)
+                ndef->param_lock_flags[param] = flags;
+            else
+                ndef->param_lock_flags.erase(param);
+        }
+        std::ostringstream oss;
+        oss << node_id << "/" << param << " lock = " << static_cast<int>(flags);
+        mark_graph_dirty();
+        return {true, oss.str()};
+    }
 
     auto pi = cn->param_indices.find(param);
     if (pi == cn->param_indices.end())
