@@ -817,6 +817,103 @@ async def update_midi_mapping(node_id: str, param: str,
 
 
 @mcp.tool()
+async def add_mod_assignment(node_id: str, source: str, destination: str,
+                              amount: float, polarity: str = "unipolar",
+                              curve: str = "linear") -> str:
+    """Create a modulation assignment on a module instance.
+
+    Assigns a named modulation source to a named destination with a given
+    amount. The assignment is lowered into ordinary graph routing at compile
+    time (additive: base_value + source * amount).
+
+    Args:
+        node_id: Module instance node ID
+        source: Name of a mod_source declared by the module
+        destination: Name of a mod_destination declared by the module
+        amount: Modulation depth (scaled by source signal range)
+        polarity: "unipolar" (0..amount) or "bipolar" (-amount..+amount)
+        curve: "linear" (v1 only supports linear)
+    """
+    return await _post("add_mod_assignment", {
+        "node_id": node_id, "source": source, "destination": destination,
+        "amount": amount, "polarity": polarity, "curve": curve,
+    })
+
+
+@mcp.tool()
+async def remove_mod_assignment(node_id: str, source: str, destination: str) -> str:
+    """Remove a modulation assignment from a module instance.
+
+    Args:
+        node_id: Module instance node ID
+        source: Name of the mod_source in the assignment
+        destination: Name of the mod_destination in the assignment
+    """
+    return await _post("remove_mod_assignment", {
+        "node_id": node_id, "source": source, "destination": destination,
+    })
+
+
+@mcp.tool()
+async def update_mod_assignment(node_id: str, source: str, destination: str,
+                                 amount: float, polarity: str = "unipolar",
+                                 curve: str = "linear") -> str:
+    """Update the amount, polarity, or curve of an existing modulation assignment.
+
+    Args:
+        node_id: Module instance node ID
+        source: Name of the mod_source in the assignment
+        destination: Name of the mod_destination in the assignment
+        amount: New modulation depth
+        polarity: "unipolar" or "bipolar"
+        curve: "linear" (v1 only supports linear)
+    """
+    return await _post("update_mod_assignment", {
+        "node_id": node_id, "source": source, "destination": destination,
+        "amount": amount, "polarity": polarity, "curve": curve,
+    })
+
+
+@mcp.tool()
+async def list_mod_sources(node_id: str) -> str:
+    """List the modulation sources declared by a module.
+
+    Returns the named sources available for modulation assignments on
+    this module instance (e.g. LFOs, envelopes, velocity).
+
+    Args:
+        node_id: Module instance node ID
+    """
+    return await _post("list_mod_sources", {"node_id": node_id})
+
+
+@mcp.tool()
+async def list_mod_destinations(node_id: str) -> str:
+    """List the modulation destinations declared by a module.
+
+    Returns the named destinations that can receive modulation on
+    this module instance (e.g. filter_cutoff, wt_position).
+
+    Args:
+        node_id: Module instance node ID
+    """
+    return await _post("list_mod_destinations", {"node_id": node_id})
+
+
+@mcp.tool()
+async def list_mod_assignments(node_id: str) -> str:
+    """List active modulation assignments on a module instance.
+
+    Returns the current source→destination assignments with their
+    amount, polarity, and curve settings.
+
+    Args:
+        node_id: Module instance node ID
+    """
+    return await _post("list_mod_assignments", {"node_id": node_id})
+
+
+@mcp.tool()
 async def add_sticky_note(text: str, x: float, y: float,
                           width: float = 200.0, height: float = 120.0,
                           color: int = 0, id: str = "") -> str:

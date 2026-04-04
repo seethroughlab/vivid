@@ -91,6 +91,19 @@ public:
     // Per-frame: apply MIDI CC values to mapped params
     void apply_midi_mappings();
 
+    // --- Modulation Assignments ---
+    CommandResult add_mod_assignment(const std::string& node_id, const std::string& source,
+                                     const std::string& destination, float amount,
+                                     const std::string& polarity, const std::string& curve);
+    CommandResult remove_mod_assignment(const std::string& node_id,
+                                        const std::string& source, const std::string& destination);
+    CommandResult update_mod_assignment(const std::string& node_id,
+                                        const std::string& source, const std::string& destination,
+                                        float amount, const std::string& polarity, const std::string& curve);
+    CommandResult list_mod_sources(const std::string& node_id);
+    CommandResult list_mod_destinations(const std::string& node_id);
+    CommandResult list_mod_assignments(const std::string& node_id);
+
     // --- Variations ---
     CommandResult save_variation(const std::string& name);
     CommandResult recall_variation(const std::string& name);

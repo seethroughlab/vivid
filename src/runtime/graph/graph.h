@@ -86,6 +86,14 @@ struct StatePresetMapping {
     std::vector<std::unordered_map<std::string, std::string>> state_presets;
 };
 
+struct ModAssignmentDef {
+    std::string source;       // mod_source name
+    std::string destination;  // mod_destination name
+    float amount = 0.0f;
+    std::string polarity;     // "unipolar" (default) or "bipolar"
+    std::string curve;        // "linear" (default); v1 only supports linear
+};
+
 struct StickyNoteDef {
     std::string id;
     std::string text;
@@ -166,6 +174,18 @@ public:
     const StatePresetMapping* find_state_mapping(const std::string& sm_node) const;
     const std::vector<StatePresetMapping>& state_preset_mappings() const { return state_preset_mappings_; }
 
+    // Modulation assignment CRUD
+    const std::unordered_map<std::string, std::vector<ModAssignmentDef>>& mod_assignments() const {
+        return mod_assignments_;
+    }
+    const std::vector<ModAssignmentDef>* find_mod_assignments(const std::string& node_id) const;
+    bool add_mod_assignment(const std::string& node_id, ModAssignmentDef a);
+    bool remove_mod_assignment(const std::string& node_id,
+                               const std::string& source, const std::string& destination);
+    bool update_mod_assignment(const std::string& node_id,
+                               const std::string& source, const std::string& destination,
+                               float amount, const std::string& polarity, const std::string& curve);
+
     // Sticky note CRUD
     const std::vector<StickyNoteDef>& sticky_notes() const { return sticky_notes_; }
     std::vector<StickyNoteDef>& sticky_notes_mut() { return sticky_notes_; }
@@ -219,6 +239,7 @@ private:
     std::unordered_map<std::string, std::vector<OperatorPreset>> node_presets_;
     std::vector<StatePresetMapping> state_preset_mappings_;
     std::vector<StickyNoteDef> sticky_notes_;
+    std::unordered_map<std::string, std::vector<ModAssignmentDef>> mod_assignments_;
 };
 
 } // namespace vivid

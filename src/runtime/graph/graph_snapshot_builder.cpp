@@ -171,13 +171,26 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
                 float live_val = 0.0f;
                 std::string flat_id = ndef.id + ".__" + pb.internal_node;
                 const auto* icn = cg->find_node(flat_id);
-                if (icn) {
+
+                // Check if this param targets a modulated destination.
+                // If so, use the authored value (the user's base value)
+                // rather than the wire-driven compiled node value.
+                bool is_modulated = false;
+                for (const auto& rec : runtime.modulation_records()) {
+                    if (rec.instance_id == ndef.id && rec.exposed_param == pb.name) {
+                        is_modulated = true;
+                        break;
+                    }
+                }
+
+                if (is_modulated) {
+                    auto ait = ndef.params.find(pb.name);
+                    if (ait != ndef.params.end()) live_val = ait->second;
+                } else if (icn) {
                     auto iit = icn->param_indices.find(pb.internal_param);
                     if (iit != icn->param_indices.end() && iit->second < icn->param_values.size())
                         live_val = icn->param_values[iit->second];
-                }
-                // Fall back to authored graph value if not found in compiled
-                if (!icn) {
+                } else {
                     auto ait = ndef.params.find(pb.name);
                     if (ait != ndef.params.end()) live_val = ait->second;
                 }
@@ -225,6 +238,16 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
                 msn.factory_preset_names.push_back(p.name);
             if (runtime_api)
                 msn.active_preset = runtime_api->active_preset(ndef.id);
+
+            // Modulation sources, destinations, and assignments
+            for (const auto& s : mod->mod_sources)
+                msn.mod_sources.push_back({s.name, s.description, s.shape, s.polarity, s.group});
+            for (const auto& d : mod->mod_destinations)
+                msn.mod_destinations.push_back({d.name, d.description, d.shape, d.group});
+            if (const auto* assigns = graph.find_mod_assignments(ndef.id)) {
+                for (const auto& a : *assigns)
+                    msn.mod_assignments.push_back({a.source, a.destination, a.amount, a.polarity, a.curve});
+            }
 
             snap.node_index[ndef.id] = snap.nodes.size();
             snap.nodes.push_back(std::move(msn));

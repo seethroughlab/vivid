@@ -175,7 +175,7 @@ static void test_flatten_single_instance() {
     parent.add_connection("synth1", "output", "out", "input");
 
     // Flatten
-    vivid::Graph flat = vivid::flatten_subgraphs(parent, registry);
+    vivid::Graph flat = vivid::flatten_subgraphs(parent, registry).graph;
 
     // Verify: module node "synth1" should be gone, replaced by prefixed internal nodes
     check(flat.find_node("synth1") == nullptr, "module placeholder removed");
@@ -252,7 +252,7 @@ static void test_flatten_multiple_instances() {
     parent.add_node("out", "audio_out", {});
     parent.add_connection("synth_a", "output", "out", "input");
 
-    vivid::Graph flat = vivid::flatten_subgraphs(parent, registry);
+    vivid::Graph flat = vivid::flatten_subgraphs(parent, registry).graph;
 
     // Both instances should have their own prefixed nodes
     check(flat.find_node("synth_a.__osc") != nullptr, "instance A osc exists");
@@ -287,7 +287,7 @@ static void test_flatten_no_modules() {
     parent.add_node("b", "TypeB", {});
     parent.add_connection("a", "out", "b", "in");
 
-    vivid::Graph flat = vivid::flatten_subgraphs(parent, registry);
+    vivid::Graph flat = vivid::flatten_subgraphs(parent, registry).graph;
 
     check(flat.nodes().size() == 2, "nodes preserved");
     check(flat.connections().size() == 1, "connections preserved");
@@ -314,7 +314,7 @@ static void test_flatten_effects_chain() {
     parent.add_connection("osc", "output", "fx", "input");
     parent.add_connection("fx", "output", "out", "input");
 
-    vivid::Graph flat = vivid::flatten_subgraphs(parent, registry);
+    vivid::Graph flat = vivid::flatten_subgraphs(parent, registry).graph;
 
     check(flat.find_node("fx") == nullptr, "module placeholder removed");
     check(flat.find_node("fx.__filter") != nullptr, "internal filter node exists");
@@ -395,7 +395,7 @@ static void test_flatten_midi_mapping_remap() {
     // MIDI mapping on an external node (should be unaffected)
     parent.add_midi_mapping("out", "gain", 11, 0, 0.0f, 1.0f);
 
-    vivid::Graph flat = vivid::flatten_subgraphs(parent, registry);
+    vivid::Graph flat = vivid::flatten_subgraphs(parent, registry).graph;
 
     const auto& mappings = flat.midi_mappings();
     check(mappings.size() == 2, "2 MIDI mappings preserved");
@@ -439,7 +439,7 @@ static void test_flatten_variation_remap() {
     var.params["out"]["master_vol"] = 0.8f;
     parent.add_variation(var);
 
-    vivid::Graph flat = vivid::flatten_subgraphs(parent, registry);
+    vivid::Graph flat = vivid::flatten_subgraphs(parent, registry).graph;
 
     check(flat.variations().size() == 1, "1 variation preserved");
     const auto& v = flat.variations()[0];
@@ -485,7 +485,7 @@ static void test_flatten_cross_instance_connection() {
     parent.add_connection("synth1", "output", "fx1", "input");
     parent.add_connection("fx1", "output", "out", "input");
 
-    vivid::Graph flat = vivid::flatten_subgraphs(parent, registry);
+    vivid::Graph flat = vivid::flatten_subgraphs(parent, registry).graph;
 
     // synth1 internal: osc + mixer = 2 nodes
     // fx1 internal: filter + reverb = 2 nodes
@@ -906,6 +906,562 @@ static void test_validation_bad_preset_ref_warns() {
 }
 
 // ---------------------------------------------------------------------------
+// Modulation source/destination parsing tests
+// ---------------------------------------------------------------------------
+
+static const char* kModuleWithModulation = R"({
+    "schema_version": 3,
+    "module": {
+        "name": "ModSynth",
+        "description": "Synth with mod sources and destinations",
+        "category": "Synthesizer",
+        "ports": [
+            { "name": "vel_in",  "type": "signal", "direction": "input",  "bind": "osc/gate" },
+            { "name": "output",  "type": "audio",  "direction": "output", "bind": "mixer/output" }
+        ],
+        "params": [
+            { "name": "cutoff",   "bind": "filter/cutoff" },
+            { "name": "position", "bind": "osc/position" }
+        ],
+        "mod_sources": [
+            { "name": "lfo1",     "bind": "lfo1/value",  "description": "LFO 1", "polarity": "bipolar", "shape": "scalar" },
+            { "name": "env2",     "bind": "env2/value",   "description": "Envelope 2" },
+            { "name": "velocity", "bind": "vel_in",       "kind": "port", "description": "Note velocity" }
+        ],
+        "mod_destinations": [
+            { "name": "filter_cutoff", "bind": "filter/cutoff", "description": "Filter cutoff", "group": "Filter" },
+            { "name": "wt_position",   "bind": "osc/position",  "description": "WT position" }
+        ]
+    },
+    "nodes": {
+        "osc":    { "type": "Oscillator", "params": { "frequency": 440, "position": 0.5 } },
+        "filter": { "type": "Filter",     "params": { "cutoff": 1000, "resonance": 0.5 } },
+        "lfo1":   { "type": "LFO",        "params": { "rate": 2 } },
+        "env2":   { "type": "Envelope",   "params": { "attack": 0.1 } },
+        "mixer":  { "type": "VoiceMixer", "params": { "gain": 0.7 } }
+    },
+    "connections": [
+        { "from": "osc/output", "to": "filter/input" },
+        { "from": "filter/output", "to": "mixer/input" }
+    ]
+})";
+
+static void test_parse_mod_sources_destinations() {
+    std::fprintf(stderr, "\n--- parse: mod_sources and mod_destinations ---\n");
+
+    vivid::SubgraphModuleRegistry registry;
+    std::string tmp_path = (g_tmp->path / "mod_synth.vivid-module.json").string();
+    {
+        FILE* f = std::fopen(tmp_path.c_str(), "w");
+        std::fputs(kModuleWithModulation, f);
+        std::fclose(f);
+    }
+
+    check(registry.load(tmp_path), "load succeeds");
+    const auto* mod = registry.find("ModSynth");
+    check(mod != nullptr, "module found");
+    if (!mod) return;
+
+    // Sources
+    check(mod->mod_sources.size() == 3, "3 mod_sources");
+    check(mod->mod_sources[0].name == "lfo1", "source 0 name");
+    check(mod->mod_sources[0].polarity == "bipolar", "source 0 polarity");
+    check(mod->mod_sources[0].shape == "scalar", "source 0 shape");
+    check(mod->mod_sources[0].internal_node == "lfo1", "source 0 internal_node");
+    check(mod->mod_sources[0].internal_port == "value", "source 0 internal_port");
+    check(mod->mod_sources[0].kind == "internal", "source 0 kind");
+    check(mod->mod_sources[1].name == "env2", "source 1 name");
+    check(mod->mod_sources[1].polarity == "unipolar", "source 1 polarity default");
+    check(mod->mod_sources[1].shape == "scalar", "source 1 shape default");
+    check(mod->mod_sources[2].name == "velocity", "source 2 name");
+    check(mod->mod_sources[2].kind == "port", "source 2 kind");
+    check(mod->mod_sources[2].internal_port == "vel_in", "source 2 port name");
+    check(mod->mod_sources[2].internal_node.empty(), "source 2 no internal_node for port kind");
+
+    // Destinations
+    check(mod->mod_destinations.size() == 2, "2 mod_destinations");
+    check(mod->mod_destinations[0].name == "filter_cutoff", "dest 0 name");
+    check(mod->mod_destinations[0].internal_node == "filter", "dest 0 internal_node");
+    check(mod->mod_destinations[0].internal_param == "cutoff", "dest 0 internal_param");
+    check(mod->mod_destinations[0].group == "Filter", "dest 0 group");
+    check(mod->mod_destinations[1].name == "wt_position", "dest 1 name");
+
+    // Lookup helpers
+    check(mod->find_mod_source("lfo1") != nullptr, "find_mod_source lfo1");
+    check(mod->find_mod_source("nonexistent") == nullptr, "find_mod_source nonexistent");
+    check(mod->find_mod_destination("filter_cutoff") != nullptr, "find_mod_destination");
+    check(mod->find_mod_destination("nonexistent") == nullptr, "find_mod_destination nonexistent");
+}
+
+static const char* kModuleBadModSourceBind = R"({
+    "schema_version": 3,
+    "module": {
+        "name": "BadModSource",
+        "category": "Test",
+        "ports": [
+            { "name": "output", "type": "audio", "direction": "output", "bind": "mixer/output" }
+        ],
+        "mod_sources": [
+            { "name": "ghost", "bind": "nonexistent/value" }
+        ]
+    },
+    "nodes": {
+        "mixer": { "type": "VoiceMixer", "params": { "gain": 0.7 } }
+    },
+    "connections": []
+})";
+
+static void test_parse_bad_mod_source_bind() {
+    std::fprintf(stderr, "\n--- parse: bad mod_source bind rejected ---\n");
+
+    vivid::SubgraphModuleRegistry registry;
+    std::string tmp_path = (g_tmp->path / "bad_mod_source.vivid-module.json").string();
+    {
+        FILE* f = std::fopen(tmp_path.c_str(), "w");
+        std::fputs(kModuleBadModSourceBind, f);
+        std::fclose(f);
+    }
+
+    check(!registry.load(tmp_path), "load fails for bad mod_source bind");
+}
+
+static const char* kModuleDuplicateModSourceName = R"({
+    "schema_version": 3,
+    "module": {
+        "name": "DupModSource",
+        "category": "Test",
+        "ports": [
+            { "name": "output", "type": "audio", "direction": "output", "bind": "mixer/output" }
+        ],
+        "mod_sources": [
+            { "name": "lfo1", "bind": "lfo/value" },
+            { "name": "lfo1", "bind": "lfo/value" }
+        ]
+    },
+    "nodes": {
+        "mixer": { "type": "VoiceMixer", "params": {} },
+        "lfo": { "type": "LFO", "params": {} }
+    },
+    "connections": []
+})";
+
+static void test_parse_duplicate_mod_source_name() {
+    std::fprintf(stderr, "\n--- parse: duplicate mod_source name rejected ---\n");
+
+    vivid::SubgraphModuleRegistry registry;
+    std::string tmp_path = (g_tmp->path / "dup_mod_source.vivid-module.json").string();
+    {
+        FILE* f = std::fopen(tmp_path.c_str(), "w");
+        std::fputs(kModuleDuplicateModSourceName, f);
+        std::fclose(f);
+    }
+
+    check(!registry.load(tmp_path), "load fails for duplicate mod_source name");
+}
+
+static const char* kModuleBadPortKindSource = R"({
+    "schema_version": 3,
+    "module": {
+        "name": "BadPortSource",
+        "category": "Test",
+        "ports": [
+            { "name": "output", "type": "audio", "direction": "output", "bind": "mixer/output" }
+        ],
+        "mod_sources": [
+            { "name": "ghost_port", "bind": "nonexistent_port", "kind": "port" }
+        ]
+    },
+    "nodes": {
+        "mixer": { "type": "VoiceMixer", "params": {} }
+    },
+    "connections": []
+})";
+
+static void test_parse_bad_port_kind_source() {
+    std::fprintf(stderr, "\n--- parse: bad port-kind mod_source rejected ---\n");
+
+    vivid::SubgraphModuleRegistry registry;
+    std::string tmp_path = (g_tmp->path / "bad_port_source.vivid-module.json").string();
+    {
+        FILE* f = std::fopen(tmp_path.c_str(), "w");
+        std::fputs(kModuleBadPortKindSource, f);
+        std::fclose(f);
+    }
+
+    check(!registry.load(tmp_path), "load fails for bad port-kind mod_source");
+}
+
+// ---------------------------------------------------------------------------
+// Modulation assignment serialization tests
+// ---------------------------------------------------------------------------
+
+static void test_mod_assignment_graph_crud() {
+    std::fprintf(stderr, "\n--- mod_assignment: graph CRUD ---\n");
+
+    vivid::Graph g;
+    g.add_node("synth1", "ModSynth", {});
+
+    vivid::ModAssignmentDef a1;
+    a1.source = "lfo1";
+    a1.destination = "filter_cutoff";
+    a1.amount = 0.7f;
+    a1.polarity = "bipolar";
+
+    check(g.add_mod_assignment("synth1", a1), "add assignment succeeds");
+
+    // Reject duplicate
+    check(!g.add_mod_assignment("synth1", a1), "duplicate rejected");
+
+    // Find
+    auto* assignments = g.find_mod_assignments("synth1");
+    check(assignments != nullptr, "assignments found");
+    check(assignments->size() == 1, "1 assignment");
+    check((*assignments)[0].source == "lfo1", "source matches");
+    check((*assignments)[0].amount == 0.7f, "amount matches");
+    check((*assignments)[0].polarity == "bipolar", "polarity matches");
+    check((*assignments)[0].curve == "linear", "curve defaults to linear");
+
+    // Update
+    check(g.update_mod_assignment("synth1", "lfo1", "filter_cutoff", 0.3f, "unipolar", "linear"),
+          "update succeeds");
+    check((*g.find_mod_assignments("synth1"))[0].amount == 0.3f, "amount updated");
+    check((*g.find_mod_assignments("synth1"))[0].polarity == "unipolar", "polarity updated");
+
+    // Add a second
+    vivid::ModAssignmentDef a2;
+    a2.source = "env2";
+    a2.destination = "wt_position";
+    a2.amount = 0.5f;
+    check(g.add_mod_assignment("synth1", a2), "add second assignment");
+    check(g.find_mod_assignments("synth1")->size() == 2, "2 assignments");
+
+    // Remove first
+    check(g.remove_mod_assignment("synth1", "lfo1", "filter_cutoff"), "remove succeeds");
+    check(g.find_mod_assignments("synth1")->size() == 1, "1 assignment after remove");
+
+    // Remove second
+    check(g.remove_mod_assignment("synth1", "env2", "wt_position"), "remove last succeeds");
+    check(g.find_mod_assignments("synth1") == nullptr, "empty map cleaned up");
+}
+
+static void test_mod_assignment_serialization() {
+    std::fprintf(stderr, "\n--- mod_assignment: round-trip serialization ---\n");
+
+    vivid::Graph g;
+    g.add_node("synth1", "ModSynth", {});
+
+    vivid::ModAssignmentDef a1;
+    a1.source = "lfo1";
+    a1.destination = "filter_cutoff";
+    a1.amount = 0.7f;
+    a1.polarity = "bipolar";
+    g.add_mod_assignment("synth1", a1);
+
+    vivid::ModAssignmentDef a2;
+    a2.source = "env2";
+    a2.destination = "wt_position";
+    a2.amount = 0.3f;
+    g.add_mod_assignment("synth1", a2);
+
+    // Save to string
+    std::string json;
+    check(g.save_to_string(json), "save_to_string succeeds");
+
+    // Verify JSON contains mod_assignments
+    check(json.find("\"mod_assignments\"") != std::string::npos, "JSON contains mod_assignments");
+
+    // Reload
+    vivid::Graph g2;
+    check(g2.load_from_string(json.c_str(), json.size()), "reload succeeds");
+
+    auto* loaded = g2.find_mod_assignments("synth1");
+    check(loaded != nullptr, "assignments loaded");
+    check(loaded->size() == 2, "2 assignments loaded");
+
+    // Check first assignment
+    check((*loaded)[0].source == "lfo1", "loaded source 0");
+    check((*loaded)[0].destination == "filter_cutoff", "loaded dest 0");
+    check((*loaded)[0].amount == 0.7f, "loaded amount 0");
+    check((*loaded)[0].polarity == "bipolar", "loaded polarity 0");
+    check((*loaded)[0].curve == "linear", "loaded curve 0");
+
+    // Check second assignment
+    check((*loaded)[1].source == "env2", "loaded source 1");
+    check((*loaded)[1].destination == "wt_position", "loaded dest 1");
+    check((*loaded)[1].amount == 0.3f, "loaded amount 1");
+    check((*loaded)[1].polarity == "unipolar", "loaded polarity 1 default");
+}
+
+// ---------------------------------------------------------------------------
+// Modulation lowering tests
+// ---------------------------------------------------------------------------
+
+// Helper: find a connection in a graph
+static const vivid::ConnectionDef* find_conn(const vivid::Graph& g,
+                                              const std::string& fn, const std::string& fp,
+                                              const std::string& tn, const std::string& tp) {
+    for (const auto& c : g.connections())
+        if (c.from_node == fn && c.from_port == fp && c.to_node == tn && c.to_port == tp)
+            return &c;
+    return nullptr;
+}
+
+static void test_flatten_single_mod_assignment() {
+    std::fprintf(stderr, "\n--- flatten: single modulation assignment ---\n");
+
+    vivid::SubgraphModuleRegistry registry;
+    std::string tmp_path = (g_tmp->path / "mod_synth_flatten.vivid-module.json").string();
+    {
+        FILE* f = std::fopen(tmp_path.c_str(), "w");
+        std::fputs(kModuleWithModulation, f);
+        std::fclose(f);
+    }
+    registry.load(tmp_path);
+
+    vivid::Graph parent;
+    parent.add_node("synth1", "ModSynth", {{"cutoff", 880.0f}});
+
+    // Add a single assignment: lfo1 -> filter_cutoff, amount 0.7, bipolar
+    vivid::ModAssignmentDef a;
+    a.source = "lfo1";
+    a.destination = "filter_cutoff";
+    a.amount = 0.7f;
+    a.polarity = "bipolar";
+    parent.add_mod_assignment("synth1", a);
+
+    auto result = vivid::flatten_subgraphs(parent, registry);
+    const auto& flat = result.graph;
+
+    // No Math(add) nodes for single assignment
+    bool has_math = false;
+    for (const auto& n : flat.nodes())
+        if (n.type == "Math" && n.subgraph_owner == "synth1") has_math = true;
+    check(!has_math, "no synthesized Math node for single assignment");
+
+    // Should have a connection: synth1.__lfo1/value -> synth1.__filter/cutoff
+    auto* conn = find_conn(flat, "synth1.__lfo1", "value", "synth1.__filter", "cutoff");
+    check(conn != nullptr, "modulation connection exists");
+    if (conn) {
+        check(conn->has_remap(), "connection has remap");
+        // Base=880, amount=0.7, bipolar: to_min=880-0.7=879.3, to_max=880+0.7=880.7
+        check_float(conn->to_min, 879.3f, "remap to_min = base - amount");
+        check_float(conn->to_max, 880.7f, "remap to_max = base + amount");
+        check_float(conn->from_min, 0.0f, "remap from_min = 0");
+        check_float(conn->from_max, 1.0f, "remap from_max = 1");
+    }
+
+    // Check lowering record
+    check(result.modulation_records.size() == 1, "1 lowering record");
+    if (!result.modulation_records.empty()) {
+        const auto& rec = result.modulation_records[0];
+        check(rec.instance_id == "synth1", "record instance_id");
+        check(rec.exposed_param == "cutoff", "record exposed_param");
+        check(rec.bipolar == true, "record bipolar");
+        check_float(rec.amount, 0.7f, "record amount");
+    }
+}
+
+static void test_flatten_two_mod_assignments_same_dest() {
+    std::fprintf(stderr, "\n--- flatten: two mod assignments to same destination ---\n");
+
+    vivid::SubgraphModuleRegistry registry;
+    std::string tmp_path = (g_tmp->path / "mod_synth_multi.vivid-module.json").string();
+    {
+        FILE* f = std::fopen(tmp_path.c_str(), "w");
+        std::fputs(kModuleWithModulation, f);
+        std::fclose(f);
+    }
+    registry.load(tmp_path);
+
+    vivid::Graph parent;
+    parent.add_node("synth1", "ModSynth", {{"cutoff", 500.0f}});
+
+    vivid::ModAssignmentDef a1;
+    a1.source = "lfo1";
+    a1.destination = "filter_cutoff";
+    a1.amount = 100.0f;
+    a1.polarity = "unipolar";
+    parent.add_mod_assignment("synth1", a1);
+
+    vivid::ModAssignmentDef a2;
+    a2.source = "env2";
+    a2.destination = "filter_cutoff";
+    a2.amount = 200.0f;
+    a2.polarity = "bipolar";
+    parent.add_mod_assignment("synth1", a2);
+
+    auto result = vivid::flatten_subgraphs(parent, registry);
+    const auto& flat = result.graph;
+
+    // Should have one Math(add) node
+    int math_count = 0;
+    std::string math_id;
+    for (const auto& n : flat.nodes()) {
+        if (n.type == "Math" && n.subgraph_owner == "synth1") {
+            math_count++;
+            math_id = n.id;
+        }
+    }
+    check(math_count == 1, "1 synthesized Math(add) node");
+
+    if (!math_id.empty()) {
+        // Check Math node is hidden (subgraph_owner set)
+        auto* mn = flat.find_node(math_id);
+        check(mn != nullptr, "Math node exists");
+        check(mn->subgraph_owner == "synth1", "Math subgraph_owner");
+        check(mn->subgraph_type == "ModSynth", "Math subgraph_type");
+
+        // Check connections:
+        // lfo1/value -> math/a with remap (base=500, amount=100, unipolar)
+        auto* conn_a = find_conn(flat, "synth1.__lfo1", "value", math_id, "a");
+        check(conn_a != nullptr, "source 1 -> math/a connection");
+        if (conn_a) {
+            check_float(conn_a->to_min, 500.0f, "conn_a to_min = base");
+            check_float(conn_a->to_max, 600.0f, "conn_a to_max = base + amount");
+        }
+
+        // env2/value -> math/b with remap (amount=200, bipolar)
+        auto* conn_b = find_conn(flat, "synth1.__env2", "value", math_id, "b");
+        check(conn_b != nullptr, "source 2 -> math/b connection");
+        if (conn_b) {
+            check_float(conn_b->to_min, -200.0f, "conn_b to_min = -amount (bipolar)");
+            check_float(conn_b->to_max, 200.0f, "conn_b to_max = amount");
+        }
+
+        // math/result -> filter/cutoff
+        auto* conn_out = find_conn(flat, math_id, "result",
+                                    "synth1.__filter", "cutoff");
+        check(conn_out != nullptr, "math/result -> dest connection");
+    }
+
+    // Should have 1 lowering record (for the base-carrying connection)
+    check(result.modulation_records.size() == 1, "1 lowering record for multi-assignment");
+}
+
+static void test_flatten_unipolar_remap() {
+    std::fprintf(stderr, "\n--- flatten: unipolar remap values ---\n");
+
+    vivid::SubgraphModuleRegistry registry;
+    std::string tmp_path = (g_tmp->path / "mod_synth_unipolar.vivid-module.json").string();
+    {
+        FILE* f = std::fopen(tmp_path.c_str(), "w");
+        std::fputs(kModuleWithModulation, f);
+        std::fclose(f);
+    }
+    registry.load(tmp_path);
+
+    vivid::Graph parent;
+    parent.add_node("synth1", "ModSynth", {{"position", 0.5f}});
+
+    vivid::ModAssignmentDef a;
+    a.source = "env2";
+    a.destination = "wt_position";
+    a.amount = 0.3f;
+    a.polarity = "unipolar";
+    parent.add_mod_assignment("synth1", a);
+
+    auto result = vivid::flatten_subgraphs(parent, registry);
+    const auto& flat = result.graph;
+
+    auto* conn = find_conn(flat, "synth1.__env2", "value", "synth1.__osc", "position");
+    check(conn != nullptr, "unipolar connection exists");
+    if (conn) {
+        check_float(conn->to_min, 0.5f, "unipolar to_min = base");
+        check_float(conn->to_max, 0.8f, "unipolar to_max = base + amount");
+    }
+}
+
+static void test_flatten_zero_amount() {
+    std::fprintf(stderr, "\n--- flatten: zero amount ---\n");
+
+    vivid::SubgraphModuleRegistry registry;
+    std::string tmp_path = (g_tmp->path / "mod_synth_zero.vivid-module.json").string();
+    {
+        FILE* f = std::fopen(tmp_path.c_str(), "w");
+        std::fputs(kModuleWithModulation, f);
+        std::fclose(f);
+    }
+    registry.load(tmp_path);
+
+    vivid::Graph parent;
+    parent.add_node("synth1", "ModSynth", {{"cutoff", 440.0f}});
+
+    vivid::ModAssignmentDef a;
+    a.source = "lfo1";
+    a.destination = "filter_cutoff";
+    a.amount = 0.0f;
+    parent.add_mod_assignment("synth1", a);
+
+    auto result = vivid::flatten_subgraphs(parent, registry);
+    const auto& flat = result.graph;
+
+    auto* conn = find_conn(flat, "synth1.__lfo1", "value", "synth1.__filter", "cutoff");
+    check(conn != nullptr, "zero-amount connection exists");
+    if (conn) {
+        check_float(conn->to_min, 440.0f, "zero amount: to_min = base");
+        check_float(conn->to_max, 440.0f, "zero amount: to_max = base (no modulation)");
+    }
+}
+
+static void test_flatten_no_assignments_unchanged() {
+    std::fprintf(stderr, "\n--- flatten: no assignments leaves graph unchanged ---\n");
+
+    vivid::SubgraphModuleRegistry registry;
+    std::string tmp_path = (g_tmp->path / "mod_synth_nomod.vivid-module.json").string();
+    {
+        FILE* f = std::fopen(tmp_path.c_str(), "w");
+        std::fputs(kModuleWithModulation, f);
+        std::fclose(f);
+    }
+    registry.load(tmp_path);
+
+    vivid::Graph parent;
+    parent.add_node("synth1", "ModSynth", {{"cutoff", 1000.0f}});
+    // No mod_assignments
+
+    auto result = vivid::flatten_subgraphs(parent, registry);
+    const auto& flat = result.graph;
+
+    // Should have no Math nodes
+    for (const auto& n : flat.nodes())
+        check(n.type != "Math", "no Math nodes without assignments");
+
+    // No lowering records
+    check(result.modulation_records.empty(), "no lowering records");
+}
+
+static void test_flatten_existing_tests_still_work() {
+    std::fprintf(stderr, "\n--- flatten: existing MIDI/variation remap unaffected by mod feature ---\n");
+
+    // This test uses the TestSynth module (no mod_sources) with MIDI mappings
+    // to verify the new code doesn't break existing behavior
+    vivid::SubgraphModuleRegistry registry;
+    std::string tmp_path = (g_tmp->path / "test_synth_compat.vivid-module.json").string();
+    {
+        FILE* f = std::fopen(tmp_path.c_str(), "w");
+        std::fputs(kSimpleModule, f);
+        std::fclose(f);
+    }
+    registry.load(tmp_path);
+
+    vivid::Graph parent;
+    parent.add_node("synth1", "TestSynth", {{"volume", 0.9f}});
+    parent.add_midi_mapping("synth1", "volume", 7, 0, 0.0f, 1.0f);
+
+    auto result = vivid::flatten_subgraphs(parent, registry);
+    const auto& flat = result.graph;
+
+    // MIDI mapping should be remapped to internal node
+    check(flat.midi_mappings().size() == 1, "1 MIDI mapping preserved");
+    if (!flat.midi_mappings().empty()) {
+        check(flat.midi_mappings()[0].node_id == "synth1.__mixer", "MIDI mapping remapped");
+        check(flat.midi_mappings()[0].param_name == "gain", "MIDI param remapped");
+    }
+
+    check(result.modulation_records.empty(), "no modulation records for module without mod_sources");
+}
+
+// ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
 
@@ -933,6 +1489,22 @@ int main() {
     test_validation_bad_param_binding_fails();
     test_validation_bad_port_binding_fails();
     test_validation_bad_preset_ref_warns();
+
+    // Modulation source/destination tests
+    test_parse_mod_sources_destinations();
+    test_parse_bad_mod_source_bind();
+    test_parse_duplicate_mod_source_name();
+    test_parse_bad_port_kind_source();
+    test_mod_assignment_graph_crud();
+    test_mod_assignment_serialization();
+
+    // Modulation lowering tests
+    test_flatten_single_mod_assignment();
+    test_flatten_two_mod_assignments_same_dest();
+    test_flatten_unipolar_remap();
+    test_flatten_zero_amount();
+    test_flatten_no_assignments_unchanged();
+    test_flatten_existing_tests_still_work();
 
     std::fprintf(stderr, "\n=== %s (%d failure%s) ===\n",
                  failures == 0 ? "ALL PASSED" : "FAILURES",

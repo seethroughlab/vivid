@@ -119,6 +119,14 @@ struct NodeSnapshot {
     // state_index → { target_node_id → preset_name }
     std::vector<std::unordered_map<std::string, std::string>> state_preset_map;
 
+    // Modulation assignment metadata (module instances only)
+    struct ModSourceInfo { std::string name, description, shape, polarity, group; };
+    struct ModDestInfo   { std::string name, description, shape, group; };
+    struct ModAssignInfo { std::string source, destination; float amount; std::string polarity, curve; };
+    std::vector<ModSourceInfo> mod_sources;
+    std::vector<ModDestInfo> mod_destinations;
+    std::vector<ModAssignInfo> mod_assignments;
+
     // Operator metadata (shared across nodes of same type, cached across frames)
     std::shared_ptr<const OperatorInfo> op_info;
 

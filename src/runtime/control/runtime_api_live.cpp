@@ -144,6 +144,55 @@ CommandResult RuntimeAPI::set_param(const std::string& node_id, const std::strin
 
     // Module param proxy: route to internal node
     if (!cn) {
+        // Check if this param targets a modulated destination — if so, update
+        // the base-carrying connection remap instead of the (wire-driven) param.
+        for (const auto& rec : core_.modulation_records()) {
+            if (rec.instance_id == node_id && rec.exposed_param == param) {
+                // Find and update the base-carrying CompiledEdge
+                auto from_it = cg->node_id_to_index.find(rec.base_conn_from_node);
+                auto to_it   = cg->node_id_to_index.find(rec.base_conn_to_node);
+                if (from_it != cg->node_id_to_index.end() && to_it != cg->node_id_to_index.end()) {
+                    auto* to_cn = &cg->nodes[to_it->second];
+                    // Determine the target port index (could be an input port or a param)
+                    uint32_t to_port_idx = UINT32_MAX;
+                    bool targets_param = false;
+                    auto ipi = to_cn->input_port_indices.find(rec.base_conn_to_port);
+                    if (ipi != to_cn->input_port_indices.end()) {
+                        to_port_idx = ipi->second;
+                    } else {
+                        auto ppi = to_cn->param_indices.find(rec.base_conn_to_port);
+                        if (ppi != to_cn->param_indices.end()) {
+                            to_port_idx = ppi->second;
+                            targets_param = true;
+                        }
+                    }
+                    if (to_port_idx != UINT32_MAX) {
+                        for (auto& edge : cg->edges) {
+                            if (edge.from_node == from_it->second &&
+                                edge.to_node == to_it->second &&
+                                edge.to_port == to_port_idx &&
+                                edge.targets_param == targets_param) {
+                                // Update remap: to_min/to_max encode base ± amount
+                                float new_to_min = rec.bipolar ? (value - rec.amount) : value;
+                                float new_to_max = value + rec.amount;
+                                edge.to_min = new_to_min;
+                                edge.to_max = new_to_max;
+                                break;
+                            }
+                        }
+                    }
+                }
+                // Update authored graph (for persistence)
+                NodeDef* ndef = graph_.find_node(node_id);
+                if (ndef) ndef->params[param] = value;
+                if (graph_.active_variation() >= 0) variation_dirty_ = true;
+                mark_graph_dirty();
+                std::ostringstream oss;
+                oss << node_id << "/" << param << " = " << value << " (modulated base)";
+                return {true, oss.str()};
+            }
+        }
+
         auto resolved = resolve_module_param(node_id, param);
         if (!resolved) return {false, "unknown node '" + node_id + "'"};
         resolved->cn->param_values[resolved->param_idx] = value;

@@ -4,6 +4,7 @@
 #include "runtime/audio/audio_frame_bridge.h"
 #include "runtime/graph/frame_executor.h"
 #include "runtime/graph/graph_compiler.h"
+#include "runtime/graph/subgraph_module.h"
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -27,6 +28,7 @@ public:
     struct PreparedBuild {
         std::unique_ptr<CompiledGraph> compiled_graph;
         std::filesystem::path graph_base_dir;
+        std::vector<ModulationLoweringRecord> modulation_records;
     };
 
     // ── Build / lifecycle ───────────────────────────────────────────────────
@@ -89,6 +91,9 @@ public:
     FrameExecutor& frame_executor() { return frame_executor_; }
     const FrameExecutor& frame_executor() const { return frame_executor_; }
 
+    // Modulation lowering records from the most recent flatten pass
+    const std::vector<ModulationLoweringRecord>& modulation_records() const { return modulation_records_; }
+
 private:
     std::unique_ptr<CompiledGraph> compiled_graph_;
     AudioFrameBridge audio_frame_bridge_;
@@ -97,6 +102,7 @@ private:
     std::string operators_src_dir_;
     std::filesystem::path graph_base_dir_;
     const SubgraphModuleRegistry* subgraph_modules_ = nullptr;
+    std::vector<ModulationLoweringRecord> modulation_records_;
     bool needs_gpu_realloc_ = false;
 
     int solo_node_idx_ = -1;

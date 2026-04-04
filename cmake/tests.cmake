@@ -11,6 +11,7 @@ add_library(vivid_runtime_testlib STATIC
     src/runtime/control/runtime_api.cpp
     src/runtime/control/runtime_api_live.cpp
     src/runtime/control/runtime_api_variations.cpp
+    src/runtime/control/runtime_api_modulation.cpp
     src/runtime/control/runtime_api_persistence.cpp
     src/runtime/control/runtime_command_sink.cpp
     src/runtime/core/editor_detect.cpp

@@ -102,6 +102,16 @@ public:
     virtual void update_sticky_note(const std::string& id, const std::string& text,
                                     float x, float y, float w, float h, int color) {}
 
+    // Modulation assignment operations (defaults are no-ops for headless/test sinks)
+    virtual void add_mod_assignment(const std::string& node_id, const std::string& source,
+                                    const std::string& destination, float amount,
+                                    const std::string& polarity, const std::string& curve) {}
+    virtual void remove_mod_assignment(const std::string& node_id,
+                                       const std::string& source, const std::string& destination) {}
+    virtual void update_mod_assignment(const std::string& node_id,
+                                       const std::string& source, const std::string& destination,
+                                       float amount, const std::string& polarity, const std::string& curve) {}
+
     // Solo mode (session-only UI affordance)
     virtual void set_solo(const std::string& node_id) {}
 

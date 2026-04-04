@@ -206,6 +206,24 @@ public:
     bool create_operator(const VividCreateOperatorRequest& request,
                          std::string* error = nullptr) override;
 
+    void add_mod_assignment(const std::string& node_id, const std::string& source,
+                            const std::string& destination, float amount,
+                            const std::string& polarity, const std::string& curve) override {
+        auto r = api_.add_mod_assignment(node_id, source, destination, amount, polarity, curve);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void remove_mod_assignment(const std::string& node_id,
+                               const std::string& source, const std::string& destination) override {
+        auto r = api_.remove_mod_assignment(node_id, source, destination);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void update_mod_assignment(const std::string& node_id,
+                               const std::string& source, const std::string& destination,
+                               float amount, const std::string& polarity, const std::string& curve) override {
+        auto r = api_.update_mod_assignment(node_id, source, destination, amount, polarity, curve);
+        if (r.ok) capture_undo_snapshot("mod_amount:" + node_id + "/" + source + "/" + destination);
+    }
+
     void set_solo(const std::string& node_id) override {
         api_.set_solo(node_id);
     }

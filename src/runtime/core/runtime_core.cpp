@@ -29,7 +29,9 @@ bool RuntimeCore::prepare_build(const Graph& graph, OperatorRegistry& registry,
     const Graph* compile_target = &graph;
     Graph flattened;
     if (subgraph_modules_ && !subgraph_modules_->empty()) {
-        flattened = flatten_subgraphs(graph, *subgraph_modules_);
+        auto result = flatten_subgraphs(graph, *subgraph_modules_);
+        flattened = std::move(result.graph);
+        out.modulation_records = std::move(result.modulation_records);
         flattened.set_source_path(std::string(graph.source_path()));
         compile_target = &flattened;
     }
@@ -52,6 +54,7 @@ void RuntimeCore::adopt_prepared_build(PreparedBuild prepared) {
     solo_active_set_.clear();
     graph_base_dir_ = std::move(prepared.graph_base_dir);
     compiled_graph_ = std::move(prepared.compiled_graph);
+    modulation_records_ = std::move(prepared.modulation_records);
 
     audio_frame_bridge_.build(*compiled_graph_);
     frame_executor_.set_operators_src_dir(operators_src_dir_);

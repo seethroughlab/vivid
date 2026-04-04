@@ -313,6 +313,91 @@ std::string dispatch(const std::string& method, const std::string& body,
                                             root["range_min"].get<float>(),
                                             root["range_max"].get<float>()));
         }
+    } else if (method == "add_mod_assignment") {
+        if (!root_valid) { result = json_err("invalid JSON body"); }
+        else {
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("source") || !root["source"].is_string() ||
+                !root.contains("destination") || !root["destination"].is_string() ||
+                !root.contains("amount") || !root["amount"].is_number())
+                result = json_err("missing or invalid params for add_mod_assignment");
+            else {
+                std::string polarity = (root.contains("polarity") && root["polarity"].is_string())
+                    ? root["polarity"].get<std::string>() : "unipolar";
+                std::string curve = (root.contains("curve") && root["curve"].is_string())
+                    ? root["curve"].get<std::string>() : "linear";
+                result = command_result_to_json(
+                    api.add_mod_assignment(root["node_id"].get<std::string>(),
+                                           root["source"].get<std::string>(),
+                                           root["destination"].get<std::string>(),
+                                           root["amount"].get<float>(),
+                                           polarity, curve));
+            }
+        }
+    } else if (method == "remove_mod_assignment") {
+        if (!root_valid) { result = json_err("invalid JSON body"); }
+        else {
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("source") || !root["source"].is_string() ||
+                !root.contains("destination") || !root["destination"].is_string())
+                result = json_err("missing 'node_id', 'source', or 'destination'");
+            else
+                result = command_result_to_json(
+                    api.remove_mod_assignment(root["node_id"].get<std::string>(),
+                                              root["source"].get<std::string>(),
+                                              root["destination"].get<std::string>()));
+        }
+    } else if (method == "update_mod_assignment") {
+        if (!root_valid) { result = json_err("invalid JSON body"); }
+        else {
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("source") || !root["source"].is_string() ||
+                !root.contains("destination") || !root["destination"].is_string() ||
+                !root.contains("amount") || !root["amount"].is_number())
+                result = json_err("missing or invalid params for update_mod_assignment");
+            else {
+                std::string polarity = (root.contains("polarity") && root["polarity"].is_string())
+                    ? root["polarity"].get<std::string>() : "unipolar";
+                std::string curve = (root.contains("curve") && root["curve"].is_string())
+                    ? root["curve"].get<std::string>() : "linear";
+                result = command_result_to_json(
+                    api.update_mod_assignment(root["node_id"].get<std::string>(),
+                                              root["source"].get<std::string>(),
+                                              root["destination"].get<std::string>(),
+                                              root["amount"].get<float>(),
+                                              polarity, curve));
+            }
+        }
+    } else if (method == "list_mod_sources") {
+        if (!root_valid) { result = json_err("invalid JSON body"); }
+        else {
+            if (!root.contains("node_id") || !root["node_id"].is_string())
+                result = json_err("missing 'node_id'");
+            else {
+                auto r = api.list_mod_sources(root["node_id"].get<std::string>());
+                result = r.ok ? r.message : json_err(r.message);
+            }
+        }
+    } else if (method == "list_mod_destinations") {
+        if (!root_valid) { result = json_err("invalid JSON body"); }
+        else {
+            if (!root.contains("node_id") || !root["node_id"].is_string())
+                result = json_err("missing 'node_id'");
+            else {
+                auto r = api.list_mod_destinations(root["node_id"].get<std::string>());
+                result = r.ok ? r.message : json_err(r.message);
+            }
+        }
+    } else if (method == "list_mod_assignments") {
+        if (!root_valid) { result = json_err("invalid JSON body"); }
+        else {
+            if (!root.contains("node_id") || !root["node_id"].is_string())
+                result = json_err("missing 'node_id'");
+            else {
+                auto r = api.list_mod_assignments(root["node_id"].get<std::string>());
+                result = r.ok ? r.message : json_err(r.message);
+            }
+        }
     } else if (method == "get_graph_errors") {
         nlohmann::json res = nlohmann::json::object();
         nlohmann::json errs = nlohmann::json::array();

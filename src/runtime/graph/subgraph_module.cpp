@@ -31,6 +31,18 @@ const SubgraphPreset* SubgraphModuleDef::find_preset(const std::string& preset_n
     return nullptr;
 }
 
+const ModSourceBinding* SubgraphModuleDef::find_mod_source(const std::string& name) const {
+    for (const auto& s : mod_sources)
+        if (s.name == name) return &s;
+    return nullptr;
+}
+
+const ModDestinationBinding* SubgraphModuleDef::find_mod_destination(const std::string& name) const {
+    for (const auto& d : mod_destinations)
+        if (d.name == name) return &d;
+    return nullptr;
+}
+
 // ---------------------------------------------------------------------------
 // Parsing helpers
 // ---------------------------------------------------------------------------
@@ -209,6 +221,94 @@ static bool parse_module_def(const nlohmann::json& root, SubgraphModuleDef& def)
         }
     }
 
+    // Modulation sources (optional)
+    auto mod_src_it = mod.find("mod_sources");
+    if (mod_src_it != mod.end() && mod_src_it->is_array()) {
+        std::unordered_set<std::string> seen_names;
+        for (const auto& sval : *mod_src_it) {
+            ModSourceBinding msb;
+            auto sn = sval.find("name");
+            auto sb = sval.find("bind");
+            if (sn == sval.end() || !sn->is_string() || sb == sval.end() || !sb->is_string()) {
+                std::fprintf(stderr, "[vivid] SubgraphModule '%s': mod_source entry missing 'name' or 'bind'\n",
+                             def.name.c_str());
+                return false;
+            }
+            msb.name = sn->get<std::string>();
+            if (!seen_names.insert(msb.name).second) {
+                std::fprintf(stderr, "[vivid] SubgraphModule '%s': duplicate mod_source name '%s'\n",
+                             def.name.c_str(), msb.name.c_str());
+                return false;
+            }
+
+            // Determine kind
+            if (auto it = sval.find("kind"); it != sval.end() && it->is_string())
+                msb.kind = it->get<std::string>();
+            if (msb.kind.empty()) msb.kind = "internal";
+
+            if (msb.kind == "port") {
+                // bind is the exposed port name (no slash)
+                msb.internal_port = sb->get<std::string>();
+            } else {
+                if (!split_bind(sb->get<std::string>(), msb.internal_node, msb.internal_port)) {
+                    std::fprintf(stderr, "[vivid] SubgraphModule '%s': mod_source '%s' has invalid bind '%s'\n",
+                                 def.name.c_str(), msb.name.c_str(), sb->get<std::string>().c_str());
+                    return false;
+                }
+            }
+
+            if (auto it = sval.find("description"); it != sval.end() && it->is_string())
+                msb.description = it->get<std::string>();
+            if (auto it = sval.find("shape"); it != sval.end() && it->is_string())
+                msb.shape = it->get<std::string>();
+            if (msb.shape.empty()) msb.shape = "scalar";
+            if (auto it = sval.find("polarity"); it != sval.end() && it->is_string())
+                msb.polarity = it->get<std::string>();
+            if (msb.polarity.empty()) msb.polarity = "unipolar";
+            if (auto it = sval.find("group"); it != sval.end() && it->is_string())
+                msb.group = it->get<std::string>();
+
+            def.mod_sources.push_back(std::move(msb));
+        }
+    }
+
+    // Modulation destinations (optional)
+    auto mod_dst_it = mod.find("mod_destinations");
+    if (mod_dst_it != mod.end() && mod_dst_it->is_array()) {
+        std::unordered_set<std::string> seen_names;
+        for (const auto& dval : *mod_dst_it) {
+            ModDestinationBinding mdb;
+            auto dn = dval.find("name");
+            auto db = dval.find("bind");
+            if (dn == dval.end() || !dn->is_string() || db == dval.end() || !db->is_string()) {
+                std::fprintf(stderr, "[vivid] SubgraphModule '%s': mod_destination entry missing 'name' or 'bind'\n",
+                             def.name.c_str());
+                return false;
+            }
+            mdb.name = dn->get<std::string>();
+            if (!seen_names.insert(mdb.name).second) {
+                std::fprintf(stderr, "[vivid] SubgraphModule '%s': duplicate mod_destination name '%s'\n",
+                             def.name.c_str(), mdb.name.c_str());
+                return false;
+            }
+            if (!split_bind(db->get<std::string>(), mdb.internal_node, mdb.internal_param)) {
+                std::fprintf(stderr, "[vivid] SubgraphModule '%s': mod_destination '%s' has invalid bind '%s'\n",
+                             def.name.c_str(), mdb.name.c_str(), db->get<std::string>().c_str());
+                return false;
+            }
+
+            if (auto it = dval.find("description"); it != dval.end() && it->is_string())
+                mdb.description = it->get<std::string>();
+            if (auto it = dval.find("shape"); it != dval.end() && it->is_string())
+                mdb.shape = it->get<std::string>();
+            if (mdb.shape.empty()) mdb.shape = "scalar";
+            if (auto it = dval.find("group"); it != dval.end() && it->is_string())
+                mdb.group = it->get<std::string>();
+
+            def.mod_destinations.push_back(std::move(mdb));
+        }
+    }
+
     return true;
 }
 
@@ -266,6 +366,42 @@ bool SubgraphModuleRegistry::load(const std::string& path) {
                 return false;
             }
         }
+        // Validate mod_source bindings
+        for (const auto& msb : def.mod_sources) {
+            if (msb.kind == "port") {
+                // Must reference an existing exposed input port
+                bool found = false;
+                for (const auto& pb : def.ports) {
+                    if (pb.name == msb.internal_port && pb.direction == VIVID_PORT_INPUT) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    std::fprintf(stderr, "[vivid] SubgraphModule '%s': mod_source '%s' references "
+                                 "non-existent input port '%s'\n",
+                                 def.name.c_str(), msb.name.c_str(), msb.internal_port.c_str());
+                    return false;
+                }
+            } else {
+                if (!def.internal_graph.find_node(msb.internal_node)) {
+                    std::fprintf(stderr, "[vivid] SubgraphModule '%s': mod_source '%s' binds to "
+                                 "non-existent internal node '%s'\n",
+                                 def.name.c_str(), msb.name.c_str(), msb.internal_node.c_str());
+                    return false;
+                }
+            }
+        }
+        // Validate mod_destination bindings
+        for (const auto& mdb : def.mod_destinations) {
+            if (!def.internal_graph.find_node(mdb.internal_node)) {
+                std::fprintf(stderr, "[vivid] SubgraphModule '%s': mod_destination '%s' binds to "
+                             "non-existent internal node '%s'\n",
+                             def.name.c_str(), mdb.name.c_str(), mdb.internal_node.c_str());
+                return false;
+            }
+        }
+
         // Preset references are non-fatal — bad keys are silently dropped at apply time.
         for (const auto& preset : def.presets) {
             for (const auto& [key, _] : preset.param_overrides) {
@@ -286,9 +422,11 @@ bool SubgraphModuleRegistry::load(const std::string& path) {
             }
         }
 
-        std::fprintf(stderr, "[vivid] SubgraphModule: loaded '%s' (%zu ports, %zu params, %zu presets, %zu internal nodes)\n",
+        std::fprintf(stderr, "[vivid] SubgraphModule: loaded '%s' (%zu ports, %zu params, %zu presets, "
+                     "%zu mod_sources, %zu mod_destinations, %zu internal nodes)\n",
                      def.name.c_str(), def.ports.size(), def.params.size(),
-                     def.presets.size(), def.internal_graph.nodes().size());
+                     def.presets.size(), def.mod_sources.size(), def.mod_destinations.size(),
+                     def.internal_graph.nodes().size());
 
         std::string name = def.name;
         modules_[name] = std::move(def);
@@ -442,8 +580,8 @@ static std::string prefixed_id(const std::string& instance_id, const std::string
     return instance_id + ".__" + internal_id;
 }
 
-Graph flatten_subgraphs(const Graph& authored, const SubgraphModuleRegistry& registry) {
-    if (registry.empty()) return authored;
+FlattenResult flatten_subgraphs(const Graph& authored, const SubgraphModuleRegistry& registry) {
+    if (registry.empty()) return {authored, {}};
 
     // Collect which authored nodes are module instances
     struct ModuleInstance {
@@ -456,7 +594,7 @@ Graph flatten_subgraphs(const Graph& authored, const SubgraphModuleRegistry& reg
         if (def) instances.push_back({i, def});
     }
 
-    if (instances.empty()) return authored;
+    if (instances.empty()) return {authored, {}};
 
     // Build a set of module node IDs for quick lookup
     std::unordered_set<std::string> module_node_ids;
@@ -465,6 +603,7 @@ Graph flatten_subgraphs(const Graph& authored, const SubgraphModuleRegistry& reg
 
     // Start building the flat graph.
     // Copy schema metadata.
+    std::vector<ModulationLoweringRecord> mod_records;
     Graph flat;
     flat.schema_version = authored.schema_version;
     flat.vivid_version = authored.vivid_version;
@@ -559,6 +698,195 @@ Graph flatten_subgraphs(const Graph& authored, const SubgraphModuleRegistry& reg
                 flat.set_connection_remap(from, conn.from_port, to, conn.to_port,
                                           conn.from_min, conn.from_max,
                                           conn.to_min, conn.to_max, conn.clamp);
+            }
+        }
+
+        // ---------------------------------------------------------------
+        // Lower modulation assignments into connections + Math(add) nodes
+        // ---------------------------------------------------------------
+        const auto* mod_assigns = authored.mod_assignments().count(instance_id)
+            ? &authored.mod_assignments().at(instance_id) : nullptr;
+        if (mod_assigns && !mod_assigns->empty()) {
+            // Group assignments by destination
+            std::unordered_map<std::string, std::vector<const ModAssignmentDef*>> by_dest;
+            for (const auto& ma : *mod_assigns)
+                by_dest[ma.destination].push_back(&ma);
+
+            for (const auto& [dest_name, assigns] : by_dest) {
+                const auto* dest_binding = def.find_mod_destination(dest_name);
+                if (!dest_binding) {
+                    std::fprintf(stderr, "[vivid] SubgraphModule '%s' instance '%s': "
+                                 "unknown mod_destination '%s' — skipping\n",
+                                 def.name.c_str(), instance_id.c_str(), dest_name.c_str());
+                    continue;
+                }
+
+                // Check if destination is already wire-driven in internal graph
+                std::string dest_flat_node = prefixed_id(instance_id, dest_binding->internal_node);
+                bool dest_already_wired = false;
+                for (const auto& conn : def.internal_graph.connections()) {
+                    if (conn.to_node == dest_binding->internal_node &&
+                        conn.to_port == dest_binding->internal_param) {
+                        dest_already_wired = true;
+                        break;
+                    }
+                }
+                if (dest_already_wired) {
+                    std::fprintf(stderr, "[vivid] SubgraphModule '%s' instance '%s': "
+                                 "destination '%s' already has an incoming connection — skipping mod assignments\n",
+                                 def.name.c_str(), instance_id.c_str(), dest_name.c_str());
+                    continue;
+                }
+
+                // Read base value from the merged internal node params
+                float base_value = 0.0f;
+                const auto* inode = flat.find_node(dest_flat_node);
+                if (inode) {
+                    auto pit = inode->params.find(dest_binding->internal_param);
+                    if (pit != inode->params.end())
+                        base_value = pit->second;
+                }
+
+                // Find exposed param name that maps to this destination (for live updates)
+                std::string exposed_param_name;
+                for (const auto& pb : def.params) {
+                    if (pb.internal_node == dest_binding->internal_node &&
+                        pb.internal_param == dest_binding->internal_param) {
+                        exposed_param_name = pb.name;
+                        break;
+                    }
+                }
+
+                // Process assignments for this destination
+                // current_output tracks the last node/port in the chain
+                std::string current_node;
+                std::string current_port;
+
+                for (size_t j = 0; j < assigns.size(); ++j) {
+                    const auto& ma = *assigns[j];
+
+                    // Validate lane rules
+                    const auto* src_binding = def.find_mod_source(ma.source);
+                    if (!src_binding) {
+                        std::fprintf(stderr, "[vivid] SubgraphModule '%s' instance '%s': "
+                                     "unknown mod_source '%s' — skipping\n",
+                                     def.name.c_str(), instance_id.c_str(), ma.source.c_str());
+                        continue;
+                    }
+                    if (src_binding->shape == "lane_aware" && dest_binding->shape != "lane_aware") {
+                        std::fprintf(stderr, "[vivid] SubgraphModule '%s' instance '%s': "
+                                     "lane_aware source '%s' -> scalar destination '%s' is not allowed — skipping\n",
+                                     def.name.c_str(), instance_id.c_str(),
+                                     ma.source.c_str(), ma.destination.c_str());
+                        continue;
+                    }
+
+                    // Resolve source address
+                    std::string src_node, src_port;
+                    if (src_binding->kind == "port") {
+                        // Resolve through port binding
+                        const auto* port_bind = def.find_port(src_binding->internal_port);
+                        if (port_bind) {
+                            src_node = prefixed_id(instance_id, port_bind->internal_node);
+                            src_port = port_bind->internal_port;
+                        } else {
+                            std::fprintf(stderr, "[vivid] SubgraphModule '%s' instance '%s': "
+                                         "mod_source '%s' port '%s' not found — skipping\n",
+                                         def.name.c_str(), instance_id.c_str(),
+                                         ma.source.c_str(), src_binding->internal_port.c_str());
+                            continue;
+                        }
+                    } else {
+                        src_node = prefixed_id(instance_id, src_binding->internal_node);
+                        src_port = src_binding->internal_port;
+                    }
+
+                    bool bipolar = (ma.polarity == "bipolar");
+
+                    if (assigns.size() == 1) {
+                        // Single assignment: direct connection with remap, no Math node
+                        flat.add_connection(src_node, src_port,
+                                            dest_flat_node, dest_binding->internal_param);
+                        float to_min = bipolar ? (base_value - ma.amount) : base_value;
+                        float to_max = base_value + ma.amount;
+                        flat.set_connection_remap(src_node, src_port,
+                                                  dest_flat_node, dest_binding->internal_param,
+                                                  0.0f, 1.0f, to_min, to_max, false);
+
+                        mod_records.push_back({
+                            instance_id, exposed_param_name,
+                            src_node, src_port,
+                            dest_flat_node, dest_binding->internal_param,
+                            ma.amount, bipolar
+                        });
+                    } else {
+                        // Multiple assignments: use Math(add) chain
+                        if (j == 0) {
+                            // First assignment: create Math(add), wire source to input a
+                            std::string math_id = prefixed_id(instance_id,
+                                "mod_" + ma.source + "_to_" + dest_name);
+                            flat.add_node(math_id, "Math", {{"operation", 0.0f}});
+                            auto* math_node = flat.find_node(math_id);
+                            if (math_node) {
+                                math_node->subgraph_owner = instance_id;
+                                math_node->subgraph_type = def.name;
+                            }
+
+                            // Wire source -> math/a with remap encoding base + amount
+                            flat.add_connection(src_node, src_port, math_id, "a");
+                            float to_min = bipolar ? (base_value - ma.amount) : base_value;
+                            float to_max = base_value + ma.amount;
+                            flat.set_connection_remap(src_node, src_port, math_id, "a",
+                                                      0.0f, 1.0f, to_min, to_max, false);
+
+                            mod_records.push_back({
+                                instance_id, exposed_param_name,
+                                src_node, src_port,
+                                math_id, "a",
+                                ma.amount, bipolar
+                            });
+
+                            current_node = math_id;
+                            current_port = "result";
+                        } else if (j == 1) {
+                            // Second assignment: wire to the first Math(add)'s b input
+                            std::string math_id = current_node;  // reuse first Math
+                            flat.add_connection(src_node, src_port, math_id, "b");
+                            float to_min = bipolar ? -ma.amount : 0.0f;
+                            float to_max = ma.amount;
+                            flat.set_connection_remap(src_node, src_port, math_id, "b",
+                                                      0.0f, 1.0f, to_min, to_max, false);
+                        } else {
+                            // j >= 2: chain a new Math(add)
+                            std::string math_id = prefixed_id(instance_id,
+                                "mod_" + ma.source + "_to_" + dest_name);
+                            flat.add_node(math_id, "Math", {{"operation", 0.0f}});
+                            auto* math_node = flat.find_node(math_id);
+                            if (math_node) {
+                                math_node->subgraph_owner = instance_id;
+                                math_node->subgraph_type = def.name;
+                            }
+
+                            // Wire previous chain output -> new math/a
+                            flat.add_connection(current_node, current_port, math_id, "a");
+                            // Wire source -> new math/b with remap
+                            flat.add_connection(src_node, src_port, math_id, "b");
+                            float to_min = bipolar ? -ma.amount : 0.0f;
+                            float to_max = ma.amount;
+                            flat.set_connection_remap(src_node, src_port, math_id, "b",
+                                                      0.0f, 1.0f, to_min, to_max, false);
+
+                            current_node = math_id;
+                            current_port = "result";
+                        }
+
+                        // After last assignment: wire chain output to destination param
+                        if (j == assigns.size() - 1) {
+                            flat.add_connection(current_node, current_port,
+                                                dest_flat_node, dest_binding->internal_param);
+                        }
+                    }
+                }
             }
         }
     }
@@ -688,7 +1016,7 @@ Graph flatten_subgraphs(const Graph& authored, const SubgraphModuleRegistry& reg
     for (const auto& sn : authored.sticky_notes())
         flat.add_sticky_note(sn);
 
-    return flat;
+    return {std::move(flat), std::move(mod_records)};
 }
 
 } // namespace vivid

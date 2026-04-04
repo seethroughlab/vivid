@@ -144,6 +144,7 @@ bool Graph::parse_doc(const nlohmann::json& root) {
     node_presets_.clear();
     state_preset_mappings_.clear();
     sticky_notes_.clear();
+    mod_assignments_.clear();
     load_diagnostics.clear();
     active_variation_ = -1;
     quantize_clock_node_.clear();
@@ -420,6 +421,33 @@ bool Graph::parse_doc(const nlohmann::json& root) {
             if (sn_color != snval.end() && sn_color->is_number_integer())
                 sn.color = static_cast<int>(sn_color->get<int64_t>());
             sticky_notes_.push_back(std::move(sn));
+        }
+    }
+
+    // Parse modulation assignments
+    auto ma_it = root.find("mod_assignments");
+    if (ma_it != root.end() && ma_it->is_object()) {
+        for (const auto& [node_id, arr] : ma_it->items()) {
+            if (!arr.is_array()) continue;
+            for (const auto& aval : arr) {
+                ModAssignmentDef a;
+                auto src = aval.find("source");
+                auto dst = aval.find("destination");
+                if (src == aval.end() || !src->is_string() ||
+                    dst == aval.end() || !dst->is_string())
+                    continue;
+                a.source = src->get<std::string>();
+                a.destination = dst->get<std::string>();
+                if (auto it = aval.find("amount"); it != aval.end() && it->is_number())
+                    a.amount = static_cast<float>(it->get<double>());
+                if (auto it = aval.find("polarity"); it != aval.end() && it->is_string())
+                    a.polarity = it->get<std::string>();
+                if (a.polarity.empty()) a.polarity = "unipolar";
+                if (auto it = aval.find("curve"); it != aval.end() && it->is_string())
+                    a.curve = it->get<std::string>();
+                if (a.curve.empty()) a.curve = "linear";
+                mod_assignments_[node_id].push_back(std::move(a));
+            }
         }
     }
 
@@ -831,6 +859,56 @@ StickyNoteDef* Graph::find_sticky_note(const std::string& id) {
     return nullptr;
 }
 
+// --- Modulation assignment CRUD ---
+
+const std::vector<ModAssignmentDef>* Graph::find_mod_assignments(const std::string& node_id) const {
+    auto it = mod_assignments_.find(node_id);
+    return it != mod_assignments_.end() ? &it->second : nullptr;
+}
+
+bool Graph::add_mod_assignment(const std::string& node_id, ModAssignmentDef a) {
+    if (a.polarity.empty()) a.polarity = "unipolar";
+    if (a.curve.empty()) a.curve = "linear";
+    auto& vec = mod_assignments_[node_id];
+    // Reject duplicates (same source + destination)
+    for (const auto& existing : vec) {
+        if (existing.source == a.source && existing.destination == a.destination)
+            return false;
+    }
+    vec.push_back(std::move(a));
+    return true;
+}
+
+bool Graph::remove_mod_assignment(const std::string& node_id,
+                                  const std::string& source, const std::string& destination) {
+    auto it = mod_assignments_.find(node_id);
+    if (it == mod_assignments_.end()) return false;
+    auto& vec = it->second;
+    auto ait = std::find_if(vec.begin(), vec.end(), [&](const ModAssignmentDef& a) {
+        return a.source == source && a.destination == destination;
+    });
+    if (ait == vec.end()) return false;
+    vec.erase(ait);
+    if (vec.empty()) mod_assignments_.erase(it);
+    return true;
+}
+
+bool Graph::update_mod_assignment(const std::string& node_id,
+                                  const std::string& source, const std::string& destination,
+                                  float amount, const std::string& polarity, const std::string& curve) {
+    auto it = mod_assignments_.find(node_id);
+    if (it == mod_assignments_.end()) return false;
+    for (auto& a : it->second) {
+        if (a.source == source && a.destination == destination) {
+            a.amount = amount;
+            a.polarity = polarity.empty() ? "unipolar" : polarity;
+            a.curve = curve.empty() ? "linear" : curve;
+            return true;
+        }
+    }
+    return false;
+}
+
 // --- Serialization ---
 
 static void serialize_node_fields(nlohmann::ordered_json& node_obj, const NodeDef& node) {
@@ -1036,6 +1114,27 @@ static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
             sn_arr.push_back(std::move(sn_obj));
         }
         root["sticky_notes"] = std::move(sn_arr);
+    }
+
+    // Modulation assignments
+    if (!graph.mod_assignments().empty()) {
+        nlohmann::ordered_json ma_obj = nlohmann::ordered_json::object();
+        for (const auto& [node_id, assignments] : graph.mod_assignments()) {
+            nlohmann::ordered_json arr = nlohmann::ordered_json::array();
+            for (const auto& a : assignments) {
+                nlohmann::ordered_json a_obj = nlohmann::ordered_json::object();
+                a_obj["source"] = a.source;
+                a_obj["destination"] = a.destination;
+                a_obj["amount"] = static_cast<double>(a.amount);
+                if (a.polarity != "unipolar")
+                    a_obj["polarity"] = a.polarity;
+                if (a.curve != "linear")
+                    a_obj["curve"] = a.curve;
+                arr.push_back(std::move(a_obj));
+            }
+            ma_obj[node_id] = std::move(arr);
+        }
+        root["mod_assignments"] = std::move(ma_obj);
     }
 
     return root;

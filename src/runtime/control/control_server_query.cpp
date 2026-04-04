@@ -94,9 +94,24 @@ std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const Subgraph
                 // Read live value from internal compiled node
                 float value = pi.default_value;
                 const auto& pb = mod_def->params[i];
+
                 std::string flat_id = ndef.id + ".__" + pb.internal_node;
                 const auto* icn = cg ? cg->find_node(flat_id) : nullptr;
-                if (icn) {
+
+                // Check if this param targets a modulated destination.
+                // If so, use authored value (user's base value) instead of wire-driven value.
+                bool is_modulated = false;
+                for (const auto& rec : core.modulation_records()) {
+                    if (rec.instance_id == ndef.id && rec.exposed_param == pb.name) {
+                        is_modulated = true;
+                        break;
+                    }
+                }
+
+                if (is_modulated) {
+                    auto ait = ndef.params.find(pb.name);
+                    if (ait != ndef.params.end()) value = ait->second;
+                } else if (icn) {
                     auto iit = icn->param_indices.find(pb.internal_param);
                     if (iit != icn->param_indices.end() && iit->second < icn->param_values.size())
                         value = icn->param_values[iit->second];
@@ -301,6 +316,50 @@ std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const Subgraph
 
         node["inputs"] = std::move(inputs_arr);
         node["outputs"] = std::move(outputs_arr);
+
+        // Modulation sources, destinations, and assignments (module instances only)
+        if (mod_def) {
+            if (!mod_def->mod_sources.empty()) {
+                nlohmann::json src_arr = nlohmann::json::array();
+                for (const auto& s : mod_def->mod_sources) {
+                    nlohmann::json obj;
+                    obj["name"] = s.name;
+                    if (!s.description.empty()) obj["description"] = s.description;
+                    obj["shape"] = s.shape;
+                    obj["polarity"] = s.polarity;
+                    obj["kind"] = s.kind;
+                    if (!s.group.empty()) obj["group"] = s.group;
+                    src_arr.push_back(std::move(obj));
+                }
+                node["mod_sources"] = std::move(src_arr);
+            }
+            if (!mod_def->mod_destinations.empty()) {
+                nlohmann::json dst_arr = nlohmann::json::array();
+                for (const auto& d : mod_def->mod_destinations) {
+                    nlohmann::json obj;
+                    obj["name"] = d.name;
+                    if (!d.description.empty()) obj["description"] = d.description;
+                    obj["shape"] = d.shape;
+                    if (!d.group.empty()) obj["group"] = d.group;
+                    dst_arr.push_back(std::move(obj));
+                }
+                node["mod_destinations"] = std::move(dst_arr);
+            }
+            const auto* assigns = graph.find_mod_assignments(ndef.id);
+            if (assigns && !assigns->empty()) {
+                nlohmann::json assign_arr = nlohmann::json::array();
+                for (const auto& a : *assigns) {
+                    nlohmann::json obj;
+                    obj["source"] = a.source;
+                    obj["destination"] = a.destination;
+                    obj["amount"] = static_cast<double>(a.amount);
+                    obj["polarity"] = a.polarity;
+                    obj["curve"] = a.curve;
+                    assign_arr.push_back(std::move(obj));
+                }
+                node["mod_assignments"] = std::move(assign_arr);
+            }
+        }
 
         // Lane metadata
         if (ns) {
