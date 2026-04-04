@@ -9,6 +9,9 @@ add_library(vivid_runtime_testlib STATIC
     src/runtime/control/control_server_query.cpp
     src/runtime/control/graph_file_io.cpp
     src/runtime/control/runtime_api.cpp
+    src/runtime/control/runtime_api_live.cpp
+    src/runtime/control/runtime_api_variations.cpp
+    src/runtime/control/runtime_api_persistence.cpp
     src/runtime/control/runtime_command_sink.cpp
     src/runtime/core/editor_detect.cpp
     src/runtime/core/file_drop_registry.cpp

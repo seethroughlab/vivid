@@ -64,6 +64,9 @@ add_executable(vivid
     src/runtime/core/hot_reload.cpp
     src/runtime/core/tool_discovery.cpp
     src/runtime/control/runtime_api.cpp
+    src/runtime/control/runtime_api_live.cpp
+    src/runtime/control/runtime_api_variations.cpp
+    src/runtime/control/runtime_api_persistence.cpp
     src/runtime/packages/package_compiler.cpp
     src/runtime/core/tool_discovery.cpp
     src/runtime/packages/package_manager.cpp
@@ -339,5 +342,4 @@ if(APPLE)
 endif()
 
 enable_testing()
-
 
