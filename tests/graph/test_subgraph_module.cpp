@@ -118,10 +118,31 @@ static void test_parse_simple_module() {
 
     // Find helpers
     check(mod->find_port("freq_in") != nullptr, "find_port works");
-    check(mod->find_port("nonexistent") == nullptr, "find_port returns null for missing");
+   check(mod->find_port("nonexistent") == nullptr, "find_port returns null for missing");
     check(mod->find_param("volume") != nullptr, "find_param works");
     check(mod->find_preset("Bright") != nullptr, "find_preset works");
 
+}
+
+static void test_registry_scan_directory() {
+    std::fprintf(stderr, "\n--- registry: scan directory ---\n");
+
+    vivid::SubgraphModuleRegistry registry;
+    std::string module_path = (g_tmp->path / "scan_test.vivid-module.json").string();
+    {
+        FILE* f = std::fopen(module_path.c_str(), "w");
+        std::fputs(kSimpleModule, f);
+        std::fclose(f);
+    }
+    {
+        FILE* f = std::fopen((g_tmp->path / "ignore.json").string().c_str(), "w");
+        std::fputs("{}", f);
+        std::fclose(f);
+    }
+
+    int count = registry.scan(g_tmp->path.string());
+    check(count == 1, "scan loads one module file");
+    check(registry.find("TestSynth") != nullptr, "scanned module registered");
 }
 
 static void test_parse_effects_module() {
@@ -1471,6 +1492,7 @@ int main() {
     std::fprintf(stderr, "=== test_subgraph_module ===\n");
 
     test_parse_simple_module();
+    test_registry_scan_directory();
     test_parse_effects_module();
     test_flatten_single_instance();
     test_flatten_multiple_instances();

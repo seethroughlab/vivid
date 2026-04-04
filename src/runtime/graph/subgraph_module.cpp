@@ -442,6 +442,8 @@ bool SubgraphModuleRegistry::load(const std::string& path) {
 int SubgraphModuleRegistry::scan(const std::string& directory) {
     // Use std::filesystem to find .vivid-module.json files
     int count = 0;
+    static constexpr const char* kModuleSuffix = ".vivid-module.json";
+    static constexpr size_t kModuleSuffixLen = 18;
     // Iterate directory entries looking for the module extension
     namespace fs = std::filesystem;
     std::error_code ec;
@@ -450,7 +452,8 @@ int SubgraphModuleRegistry::scan(const std::string& directory) {
         const auto& p = entry.path();
         // Check for .vivid-module.json suffix
         auto filename = p.filename().string();
-        if (filename.size() > 20 && filename.substr(filename.size() - 20) == ".vivid-module.json") {
+        if (filename.size() >= kModuleSuffixLen &&
+            filename.compare(filename.size() - kModuleSuffixLen, kModuleSuffixLen, kModuleSuffix) == 0) {
             if (load(p.string()))
                 ++count;
         }
