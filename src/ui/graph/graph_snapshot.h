@@ -53,11 +53,11 @@ struct OperatorInfo {
     bool is_gpu = false;
     bool has_shader = false;
     bool is_user = false;
+    bool is_module = false;
     bool has_custom_inspector = false;
     uint32_t inspector_mode = 0;
     std::vector<ParamInfo> params;
     std::vector<PortInfo> ports;
-
 };
 
 // Per-node snapshot data
@@ -69,6 +69,7 @@ struct NodeSnapshot {
     bool is_subgraph_member = false;
     std::string subgraph_owner;  // instance ID of owning module node
     std::string subgraph_type;   // module type name
+    bool is_module_instance = false;  // true for synthesized module-instance nodes
 
     Cadence active_cadence = Cadence::Frame;
     bool is_gpu = false;

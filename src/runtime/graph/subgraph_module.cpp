@@ -51,6 +51,26 @@ static VividPortDirection parse_port_direction(const std::string& s) {
     return VIVID_PORT_INPUT;
 }
 
+static VividParamType parse_param_type(const std::string& s) {
+    if (s == "float")  return VIVID_PARAM_FLOAT;
+    if (s == "int")    return VIVID_PARAM_INT;
+    if (s == "bool")   return VIVID_PARAM_BOOL;
+    if (s == "file")   return VIVID_PARAM_FILE;
+    if (s == "text")   return VIVID_PARAM_TEXT;
+    std::fprintf(stderr, "[vivid] SubgraphModule: unknown param type '%s', defaulting to float\n", s.c_str());
+    return VIVID_PARAM_FLOAT;
+}
+
+static VividDisplayHint parse_display_hint(const std::string& s) {
+    if (s == "default") return VIVID_DISPLAY_DEFAULT;
+    if (s == "knob")    return VIVID_DISPLAY_KNOB;
+    if (s == "xy_pad")  return VIVID_DISPLAY_XY_PAD;
+    if (s == "color")   return VIVID_DISPLAY_COLOR;
+    if (s == "hidden")  return VIVID_DISPLAY_HIDDEN;
+    std::fprintf(stderr, "[vivid] SubgraphModule: unknown display_hint '%s', defaulting to default\n", s.c_str());
+    return VIVID_DISPLAY_DEFAULT;
+}
+
 // Split "node_id/port_or_param" into two parts. Returns false on bad format.
 static bool split_bind(const std::string& bind, std::string& node, std::string& name) {
     auto slash = bind.find('/');
@@ -134,6 +154,40 @@ static bool parse_module_def(const nlohmann::json& root, SubgraphModuleDef& def)
                              def.name.c_str(), pb.name.c_str(), pbind->get<std::string>().c_str());
                 return false;
             }
+
+            // Optional metadata fields
+            if (auto it = pval.find("type"); it != pval.end() && it->is_string())
+                pb.type = parse_param_type(it->get<std::string>());
+            if (auto it = pval.find("default"); it != pval.end() && it->is_number())
+                pb.default_value = static_cast<float>(it->get<double>());
+            if (auto it = pval.find("min"); it != pval.end() && it->is_number())
+                pb.min_value = static_cast<float>(it->get<double>());
+            if (auto it = pval.find("max"); it != pval.end() && it->is_number())
+                pb.max_value = static_cast<float>(it->get<double>());
+            if (auto it = pval.find("choices"); it != pval.end() && it->is_array()) {
+                for (const auto& c : *it) {
+                    if (c.is_string()) pb.choice_labels.push_back(c.get<std::string>());
+                }
+            }
+            if (auto it = pval.find("group"); it != pval.end() && it->is_string())
+                pb.group = it->get<std::string>();
+            if (auto it = pval.find("description"); it != pval.end() && it->is_string())
+                pb.description = it->get<std::string>();
+            if (auto it = pval.find("display_hint"); it != pval.end() && it->is_string())
+                pb.display_hint = parse_display_hint(it->get<std::string>());
+            if (auto it = pval.find("layout_columns"); it != pval.end() && it->is_number_unsigned())
+                pb.layout_columns = static_cast<uint8_t>(it->get<unsigned>());
+            if (auto it = pval.find("layout_column_index"); it != pval.end() && it->is_number_unsigned())
+                pb.layout_column_index = static_cast<uint8_t>(it->get<unsigned>());
+            if (auto it = pval.find("semantic_tag"); it != pval.end() && it->is_string())
+                pb.semantic_tag = it->get<std::string>();
+            if (auto it = pval.find("semantic_shape"); it != pval.end() && it->is_string())
+                pb.semantic_shape = it->get<std::string>();
+            if (auto it = pval.find("semantic_unit"); it != pval.end() && it->is_string())
+                pb.semantic_unit = it->get<std::string>();
+            if (auto it = pval.find("semantic_intent"); it != pval.end() && it->is_string())
+                pb.semantic_intent = it->get<std::string>();
+
             def.params.push_back(std::move(pb));
         }
     }
@@ -192,6 +246,44 @@ bool SubgraphModuleRegistry::load(const std::string& path) {
             std::fprintf(stderr, "[vivid] SubgraphModule '%s': failed to parse internal graph\n",
                          def.name.c_str());
             return false;
+        }
+
+        // Validate param/port bindings — these are structural and must reference
+        // existing internal nodes, otherwise flattening will silently break.
+        for (const auto& pb : def.params) {
+            if (!def.internal_graph.find_node(pb.internal_node)) {
+                std::fprintf(stderr, "[vivid] SubgraphModule '%s': param '%s' binds to "
+                             "non-existent internal node '%s'\n",
+                             def.name.c_str(), pb.name.c_str(), pb.internal_node.c_str());
+                return false;
+            }
+        }
+        for (const auto& pb : def.ports) {
+            if (!def.internal_graph.find_node(pb.internal_node)) {
+                std::fprintf(stderr, "[vivid] SubgraphModule '%s': port '%s' binds to "
+                             "non-existent internal node '%s'\n",
+                             def.name.c_str(), pb.name.c_str(), pb.internal_node.c_str());
+                return false;
+            }
+        }
+        // Preset references are non-fatal — bad keys are silently dropped at apply time.
+        for (const auto& preset : def.presets) {
+            for (const auto& [key, _] : preset.param_overrides) {
+                std::string node, param;
+                if (split_bind(key, node, param) && !def.internal_graph.find_node(node)) {
+                    std::fprintf(stderr, "[vivid] SubgraphModule '%s': preset '%s' references "
+                                 "non-existent internal node '%s' (will be ignored)\n",
+                                 def.name.c_str(), preset.name.c_str(), node.c_str());
+                }
+            }
+            for (const auto& [key, _] : preset.string_param_overrides) {
+                std::string node, param;
+                if (split_bind(key, node, param) && !def.internal_graph.find_node(node)) {
+                    std::fprintf(stderr, "[vivid] SubgraphModule '%s': preset '%s' references "
+                                 "non-existent internal node '%s' (will be ignored)\n",
+                                 def.name.c_str(), preset.name.c_str(), node.c_str());
+                }
+            }
         }
 
         std::fprintf(stderr, "[vivid] SubgraphModule: loaded '%s' (%zu ports, %zu params, %zu presets, %zu internal nodes)\n",
@@ -262,12 +354,8 @@ std::shared_ptr<const ui::OperatorInfo> make_operator_info(const SubgraphModuleD
     auto info = std::make_shared<ui::OperatorInfo>();
     info->name = def.name;
     info->is_gpu = false;
+    info->is_module = true;
 
-    // Check if the module has audio-cadence ports.
-    bool has_audio_port = false;
-    for (const auto& pb : def.ports) {
-        if (pb.type == VIVID_PORT_AUDIO_BUFFER) { has_audio_port = true; break; }
-    }
     // Ports from module definition
     info->ports.reserve(def.ports.size());
     for (const auto& pb : def.ports) {
@@ -279,17 +367,20 @@ std::shared_ptr<const ui::OperatorInfo> make_operator_info(const SubgraphModuleD
     }
 
     // Params from module definition.
-    // Inherit default value from the bound internal node's graph params.
+    // Use explicit metadata when provided, otherwise fall back to internal node
+    // defaults (for default_value) or sensible defaults (0..1 for range).
     info->params.reserve(def.params.size());
     for (const auto& pb : def.params) {
         ui::ParamInfo pi;
         pi.name = pb.name;
-        pi.type = VIVID_PARAM_FLOAT;
+        pi.type = pb.type.value_or(VIVID_PARAM_FLOAT);
+
+        // Start with fallback defaults
         pi.default_value = 0.0f;
         pi.min_value = 0.0f;
         pi.max_value = 1.0f;
 
-        // Look up the bound internal node's param default from the internal graph
+        // Inherit default from internal node's graph params
         const auto* inode = def.internal_graph.find_node(pb.internal_node);
         if (inode) {
             auto it = inode->params.find(pb.internal_param);
@@ -297,10 +388,48 @@ std::shared_ptr<const ui::OperatorInfo> make_operator_info(const SubgraphModuleD
                 pi.default_value = it->second;
         }
 
+        // Override with explicit metadata where specified
+        if (pb.default_value.has_value()) pi.default_value = *pb.default_value;
+        if (pb.min_value.has_value())     pi.min_value = *pb.min_value;
+        if (pb.max_value.has_value())     pi.max_value = *pb.max_value;
+
+        pi.choice_labels = pb.choice_labels;
+        pi.choice_count = static_cast<uint32_t>(pb.choice_labels.size());
+        pi.group = pb.group;
+        pi.description = pb.description;
+        pi.display_hint = pb.display_hint.value_or(VIVID_DISPLAY_DEFAULT);
+        pi.layout_columns = pb.layout_columns;
+        pi.layout_column_index = pb.layout_column_index;
+        pi.semantic_tag = pb.semantic_tag;
+        pi.semantic_shape = pb.semantic_shape;
+        pi.semantic_unit = pb.semantic_unit;
+        pi.semantic_intent = pb.semantic_intent;
+
         info->params.push_back(std::move(pi));
     }
 
     return info;
+}
+
+OperatorPreset to_operator_preset(const SubgraphPreset& sp, const SubgraphModuleDef& def) {
+    // Build reverse map: "internal_node/internal_param" -> exposed param name
+    std::unordered_map<std::string, std::string> internal_to_exposed;
+    for (const auto& pb : def.params)
+        internal_to_exposed[pb.internal_node + "/" + pb.internal_param] = pb.name;
+
+    OperatorPreset op;
+    op.name = sp.name;
+    for (const auto& [key, val] : sp.param_overrides) {
+        auto it = internal_to_exposed.find(key);
+        if (it != internal_to_exposed.end())
+            op.params[it->second] = val;
+    }
+    for (const auto& [key, val] : sp.string_param_overrides) {
+        auto it = internal_to_exposed.find(key);
+        if (it != internal_to_exposed.end())
+            op.string_params[it->second] = val;
+    }
+    return op;
 }
 
 // ---------------------------------------------------------------------------

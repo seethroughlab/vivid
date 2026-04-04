@@ -2,6 +2,7 @@
 
 #include "runtime/graph/graph.h"
 #include "operator_api/types.h"
+#include <optional>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -25,6 +26,22 @@ struct SubgraphParamBinding {
     std::string name;           // external param name (e.g. "cutoff")
     std::string internal_node;  // internal node ID (e.g. "filter")
     std::string internal_param; // internal param name (e.g. "cutoff")
+
+    // Optional metadata overrides (absent = inherit from bound internal node or use defaults)
+    std::optional<VividParamType> type;
+    std::optional<float> default_value;
+    std::optional<float> min_value;
+    std::optional<float> max_value;
+    std::vector<std::string> choice_labels;
+    std::string group;
+    std::string description;
+    std::optional<VividDisplayHint> display_hint;
+    uint8_t layout_columns = 0;
+    uint8_t layout_column_index = 0;
+    std::string semantic_tag;
+    std::string semantic_shape;
+    std::string semantic_unit;
+    std::string semantic_intent;
 };
 
 struct SubgraphPreset {
@@ -86,6 +103,11 @@ namespace ui { struct OperatorInfo; }
 // Build a synthetic OperatorInfo from a module definition for the UI catalog.
 // The returned info lists the module's exposed ports and params.
 std::shared_ptr<const ui::OperatorInfo> make_operator_info(const SubgraphModuleDef& def);
+
+// Convert a SubgraphPreset (keyed by internal "node/param" paths) to an
+// OperatorPreset (keyed by exposed param names). Overrides that don't match
+// any exposed param binding are silently dropped.
+OperatorPreset to_operator_preset(const SubgraphPreset& sp, const SubgraphModuleDef& def);
 
 // ---------------------------------------------------------------------------
 // Graph flattening — expands module nodes into their internal graphs
