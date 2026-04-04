@@ -16,6 +16,8 @@ add_library(vivid_ui STATIC
     src/ui/graph/node_graph_draw_elements.cpp
     src/ui/graph/node_graph_input.cpp
     src/ui/graph/node_graph_input_click.cpp
+    src/ui/graph/node_graph_input_click_context.cpp
+    src/ui/graph/node_graph_input_click_widgets.cpp
     src/ui/inspector/inspector_controller.cpp
     src/ui/rendering/overlay_layouts.cpp
     src/ui/dialogs/dialog_manager.cpp
