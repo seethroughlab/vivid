@@ -1376,6 +1376,19 @@ target_include_directories(test_graph_snapshot_contract PRIVATE src tests)
 target_link_libraries(test_graph_snapshot_contract PRIVATE vivid_runtime_testlib)
 add_test(NAME test_graph_snapshot_contract COMMAND test_graph_snapshot_contract WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+add_executable(test_graph_snapshot_builder tests/graph/test_graph_snapshot_builder.cpp)
+target_link_libraries(test_graph_snapshot_builder PRIVATE vivid_runtime_testlib)
+add_test(NAME test_graph_snapshot_builder COMMAND test_graph_snapshot_builder ${CMAKE_BINARY_DIR})
+add_dependencies(test_graph_snapshot_builder test_op_v1)
+
+add_executable(test_graph_file_io tests/control/test_graph_file_io.cpp)
+target_link_libraries(test_graph_file_io PRIVATE vivid_runtime_testlib)
+add_test(NAME test_graph_file_io COMMAND test_graph_file_io)
+
+add_executable(test_workspace_manager tests/core/test_workspace_manager.cpp)
+target_link_libraries(test_workspace_manager PRIVATE vivid_runtime_testlib)
+add_test(NAME test_workspace_manager COMMAND test_workspace_manager)
+
 # Inspector layout normalization tests
 add_executable(test_inspector_layout
     tests/ui/test_inspector_layout.cpp
