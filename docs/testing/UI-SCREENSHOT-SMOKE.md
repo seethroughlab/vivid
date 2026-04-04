@@ -165,6 +165,26 @@ directly, so it exercises the same bridge surface that Codex uses:
 - `introspect_nodes(include_payload=true)`
 - `capture_image(mode="interface", ...)`
 
+For Step 2 modulation validation, use the dedicated bridge preset:
+
+```bash
+./.venv-mcp/bin/python scripts/mcp_bridge_smoke.py \
+  --preset step2_modulation \
+  --summary-json step2-modulation-summary.json
+```
+
+This preset stages the checked-in module fixture into the dev runtime's `build/modules/`
+directory, launches or reuses the MCP-managed runtime, and validates:
+
+- `list_mod_sources(...)`
+- `list_mod_destinations(...)`
+- `add_mod_assignment(...)`
+- `update_mod_assignment(...)`
+- `list_mod_assignments(...)`
+- `remove_mod_assignment(...)`
+- `inspect_graph()` / `introspect_nodes(...)` parity for the authored module node
+- live `set_param(...)` behavior for a modulated exposed destination param
+
 For one-off graph investigations, add explicit capture cases:
 
 ```bash
@@ -175,6 +195,10 @@ For one-off graph investigations, add explicit capture cases:
 ```
 
 Use raw control-server HTTP only when the bridge itself is the thing under suspicion.
+
+If another Vivid runtime is already active before the preset starts, that existing process may not
+have scanned the staged module fixture yet. In that case, restart into a bridge-managed runtime and
+rerun the preset.
 
 **Isolated debug repro**
 

@@ -7,6 +7,7 @@ import argparse
 import asyncio
 import json
 import pathlib
+import shutil
 import sys
 from dataclasses import asdict, dataclass
 
@@ -15,6 +16,13 @@ from vivid_mcp_session import VividMCPSession
 
 DEFAULT_ARTIFACT_DIR = pathlib.Path("/tmp/vivid_live_ui_review")
 _CHORD_SAMPLE_EPSILON = 0.01
+REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+STEP2_MODULE_FIXTURE = pathlib.Path("tests/fixtures/step2_modulation_smoke.vivid-module.json")
+STEP2_GRAPH_FIXTURE = pathlib.Path("tests/fixtures/step2_modulation_smoke_graph.json")
+STEP2_STAGED_MODULE_PATHS = [
+    pathlib.Path("build/modules/step2_modulation_smoke.vivid-module.json"),
+    pathlib.Path("build/vivid.app/Contents/Resources/modules/step2_modulation_smoke.vivid-module.json"),
+]
 
 
 @dataclass
@@ -38,6 +46,11 @@ def _require_ok(payload: dict, label: str) -> dict:
     return payload
 
 
+def _expect(condition: bool, label: str) -> None:
+    if not condition:
+        raise RuntimeError(label)
+
+
 def _node_from_introspection(payload: dict, node_id: str) -> dict:
     result = payload.get("result")
     nodes = result.get("nodes", []) if isinstance(result, dict) else []
@@ -54,6 +67,95 @@ def _node_from_graph(payload: dict, node_id: str) -> dict:
         if isinstance(node, dict) and node.get("id") == node_id:
             return node
     raise RuntimeError(f"node '{node_id}' not found in inspect_graph payload")
+
+
+def _result_list(payload: dict, label: str) -> list[dict]:
+    result = payload.get("result")
+    if isinstance(result, list):
+        return result
+    if isinstance(result, str):
+        try:
+            parsed = json.loads(result)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"{label} returned invalid JSON list: {exc}") from exc
+        if isinstance(parsed, list):
+            return parsed
+    raise RuntimeError(f"{label} returned unexpected result payload: {json.dumps(payload, indent=2, sort_keys=True)}")
+
+
+def _find_named_entry(entries: list[dict] | object, name: str) -> dict:
+    if not isinstance(entries, list):
+        raise RuntimeError(f"expected list of named entries when looking for '{name}'")
+    for entry in entries:
+        if isinstance(entry, dict) and entry.get("name") == name:
+            return entry
+    raise RuntimeError(f"named entry '{name}' not found")
+
+
+def _graph_param_value(node: dict, param_name: str) -> float:
+    param = _find_named_entry(node.get("params", []), param_name)
+    value = param.get("value")
+    if not isinstance(value, (float, int)):
+        raise RuntimeError(f"graph param '{param_name}' is missing numeric value")
+    return float(value)
+
+
+def _graph_output_value(node: dict, port_name: str) -> float:
+    port = _find_named_entry(node.get("outputs", []), port_name)
+    value = port.get("current_value")
+    if not isinstance(value, (float, int)):
+        raise RuntimeError(f"graph output '{port_name}' is missing numeric current_value")
+    return float(value)
+
+
+def _intro_param_value(node: dict, param_name: str) -> float:
+    params = node.get("params", {})
+    if not isinstance(params, dict):
+        raise RuntimeError("introspect_nodes params payload is not an object")
+    value = params.get(param_name)
+    if not isinstance(value, (float, int)):
+        raise RuntimeError(f"introspection param '{param_name}' is missing numeric value")
+    return float(value)
+
+
+def _intro_output_value(node: dict, port_name: str) -> float:
+    port = _find_named_entry(node.get("outputs", []), port_name)
+    value = port.get("scalar")
+    if not isinstance(value, (float, int)):
+        raise RuntimeError(f"introspection output '{port_name}' is missing numeric scalar")
+    return float(value)
+
+
+def _close_enough(actual: float, expected: float, *, eps: float = 1e-4) -> bool:
+    return abs(actual - expected) <= eps
+
+
+def _stage_step2_module_fixture() -> list[str]:
+    src = REPO_ROOT / STEP2_MODULE_FIXTURE
+    _expect(src.exists(), f"step2 fixture missing: {src}")
+    staged: list[str] = []
+    for rel_dst in STEP2_STAGED_MODULE_PATHS:
+        dst = REPO_ROOT / rel_dst
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+        staged.append(str(dst))
+    return staged
+
+
+async def _poll_until(label: str,
+                      fetch,
+                      predicate,
+                      timeout_seconds: float = 2.0,
+                      interval_seconds: float = 0.05):
+    deadline = asyncio.get_running_loop().time() + timeout_seconds
+    last_value = None
+    while True:
+        last_value = await fetch()
+        if predicate(last_value):
+            return last_value
+        if asyncio.get_running_loop().time() >= deadline:
+            raise RuntimeError(f"{label}: timeout waiting for expected state")
+        await asyncio.sleep(interval_seconds)
 
 
 def _phase4_cases(artifact_dir: pathlib.Path) -> list[CaptureCase]:
@@ -381,13 +483,204 @@ async def _run_generic_sampling(session: VividMCPSession,
         })
 
 
+async def _run_step2_modulation_flow(session: VividMCPSession, summary: dict) -> None:
+    staged_modules = _stage_step2_module_fixture()
+    graph_path = (REPO_ROOT / STEP2_GRAPH_FIXTURE).resolve()
+    _expect(graph_path.exists(), f"step2 graph fixture missing: {graph_path}")
+
+    ensure = _require_ok(
+        await session.call_tool("ensure_runtime", {"graph_path": str(graph_path)}),
+        "ensure_runtime(step2_modulation)",
+    )
+    print(
+        "step2_modulation ensure_runtime: "
+        f"launched={ensure.get('launched')} "
+        f"reused_existing={ensure.get('reused_existing')} "
+        f"graph_loaded={ensure.get('graph_loaded')}"
+    )
+
+    summary["step2_modulation"] = {
+        "fixture_graph": str(graph_path),
+        "staged_modules": staged_modules,
+        "ensure_runtime": ensure,
+    }
+
+    async def fetch_graph_node() -> dict:
+        inspect = _require_ok(await session.call_tool("inspect_graph"), "inspect_graph(step2_modulation)")
+        return _node_from_graph(inspect, "step2_mod")
+
+    async def fetch_intro_node() -> dict:
+        intro = _require_ok(await session.call_tool("introspect_nodes"), "introspect_nodes(step2_modulation)")
+        return _node_from_introspection(intro, "step2_mod")
+
+    baseline_graph = await fetch_graph_node()
+    baseline_intro = await fetch_intro_node()
+
+    _expect("mod_sources" in baseline_graph, "baseline query mismatch: module mod_sources missing")
+    _expect("mod_destinations" in baseline_graph, "baseline query mismatch: module mod_destinations missing")
+    _expect("mod_assignments" not in baseline_graph, "baseline query mismatch: mod_assignments should start empty")
+    _expect(_close_enough(_graph_param_value(baseline_graph, "level"), 0.4), "baseline query mismatch: module param level should start at 0.4")
+    _expect(_close_enough(_graph_output_value(baseline_graph, "value"), 0.4), "baseline query mismatch: module output value should start at 0.4")
+    _expect(baseline_intro.get("is_module") is True, "baseline query mismatch: introspect_nodes should mark module instance")
+    _expect(_close_enough(_intro_param_value(baseline_intro, "level"), 0.4), "baseline query mismatch: introspection param level should start at 0.4")
+    _expect(_close_enough(_intro_output_value(baseline_intro, "value"), 0.4), "baseline query mismatch: introspection output value should start at 0.4")
+
+    sources_payload = _require_ok(await session.call_tool("list_mod_sources", {"node_id": "step2_mod"}), "list_mod_sources")
+    dests_payload = _require_ok(await session.call_tool("list_mod_destinations", {"node_id": "step2_mod"}), "list_mod_destinations")
+    sources = _result_list(sources_payload, "list_mod_sources")
+    dests = _result_list(dests_payload, "list_mod_destinations")
+    internal_src = _find_named_entry(sources, "internal_dc")
+    external_src = _find_named_entry(sources, "external_mod")
+    level_dest = _find_named_entry(dests, "level_dest")
+    _expect(internal_src.get("shape") == "scalar", "mod source metadata mismatch: internal_dc shape")
+    _expect(internal_src.get("polarity") == "unipolar", "mod source metadata mismatch: internal_dc polarity")
+    _expect(external_src.get("kind") == "port", "mod source metadata mismatch: external_mod kind")
+    _expect(level_dest.get("shape") == "scalar", "mod destination metadata mismatch: level_dest shape")
+
+    summary["step2_modulation"]["baseline"] = {
+        "graph_node": baseline_graph,
+        "intro_node": baseline_intro,
+        "sources": sources,
+        "destinations": dests,
+    }
+
+    add_payload = _require_ok(
+        await session.call_tool(
+            "add_mod_assignment",
+            {
+                "node_id": "step2_mod",
+                "source": "internal_dc",
+                "destination": "level_dest",
+                "amount": 0.2,
+                "polarity": "unipolar",
+                "curve": "linear",
+            },
+        ),
+        "add_mod_assignment",
+    )
+    print(f"step2_modulation add_mod_assignment: {add_payload.get('message', 'ok')}")
+
+    assignments_after_add = await _poll_until(
+        "assignment CRUD mismatch after add",
+        lambda: session.call_tool("list_mod_assignments", {"node_id": "step2_mod"}),
+        lambda payload: _require_ok(payload, "list_mod_assignments(after add)") and len(_result_list(payload, "list_mod_assignments(after add)")) == 1,
+    )
+    assignments_list = _result_list(assignments_after_add, "list_mod_assignments(after add)")
+    _expect(assignments_list[0].get("source") == "internal_dc", "assignment CRUD mismatch after add: wrong source")
+    _expect(assignments_list[0].get("destination") == "level_dest", "assignment CRUD mismatch after add: wrong destination")
+    _expect(_close_enough(float(assignments_list[0].get("amount", -1.0)), 0.2), "assignment CRUD mismatch after add: wrong amount")
+
+    graph_after_add = await _poll_until(
+        "module query-surface mismatch after add",
+        fetch_graph_node,
+        lambda node: "mod_assignments" in node and len(node["mod_assignments"]) == 1 and _close_enough(_graph_output_value(node, "value"), 0.6),
+    )
+
+    update_payload = _require_ok(
+        await session.call_tool(
+            "update_mod_assignment",
+            {
+                "node_id": "step2_mod",
+                "source": "internal_dc",
+                "destination": "level_dest",
+                "amount": 0.35,
+                "polarity": "bipolar",
+                "curve": "linear",
+            },
+        ),
+        "update_mod_assignment",
+    )
+    print(f"step2_modulation update_mod_assignment: {update_payload.get('message', 'ok')}")
+
+    assignments_after_update = await _poll_until(
+        "assignment CRUD mismatch after update",
+        lambda: session.call_tool("list_mod_assignments", {"node_id": "step2_mod"}),
+        lambda payload: _require_ok(payload, "list_mod_assignments(after update)") and (
+            len(_result_list(payload, "list_mod_assignments(after update)")) == 1 and
+            _close_enough(float(_result_list(payload, "list_mod_assignments(after update)")[0].get("amount", -1.0)), 0.35) and
+            _result_list(payload, "list_mod_assignments(after update)")[0].get("polarity") == "bipolar"
+        ),
+    )
+
+    graph_after_update = await _poll_until(
+        "live modulation mismatch after update",
+        fetch_graph_node,
+        lambda node: _close_enough(_graph_output_value(node, "value"), 0.75),
+    )
+
+    _require_ok(
+        await session.call_tool("set_param", {"node_id": "step2_mod", "param": "level", "value": 0.8}),
+        "set_param(step2_mod/level)",
+    )
+
+    graph_after_set = await _poll_until(
+        "live base-value mismatch after set_param",
+        fetch_graph_node,
+        lambda node: _close_enough(_graph_param_value(node, "level"), 0.8) and _close_enough(_graph_output_value(node, "value"), 1.15),
+    )
+    intro_after_set = await _poll_until(
+        "introspection mismatch after set_param",
+        fetch_intro_node,
+        lambda node: _close_enough(_intro_param_value(node, "level"), 0.8) and _close_enough(_intro_output_value(node, "value"), 1.15),
+    )
+
+    remove_payload = _require_ok(
+        await session.call_tool(
+            "remove_mod_assignment",
+            {
+                "node_id": "step2_mod",
+                "source": "internal_dc",
+                "destination": "level_dest",
+            },
+        ),
+        "remove_mod_assignment",
+    )
+    print(f"step2_modulation remove_mod_assignment: {remove_payload.get('message', 'ok')}")
+
+    assignments_after_remove = await _poll_until(
+        "assignment CRUD mismatch after remove",
+        lambda: session.call_tool("list_mod_assignments", {"node_id": "step2_mod"}),
+        lambda payload: _require_ok(payload, "list_mod_assignments(after remove)") and len(_result_list(payload, "list_mod_assignments(after remove)")) == 0,
+    )
+    graph_after_remove = await _poll_until(
+        "module query-surface mismatch after remove",
+        fetch_graph_node,
+        lambda node: "mod_assignments" not in node and _close_enough(_graph_output_value(node, "value"), 0.8),
+    )
+    intro_after_remove = await _poll_until(
+        "live output mismatch after remove",
+        fetch_intro_node,
+        lambda node: _close_enough(_intro_output_value(node, "value"), 0.8),
+    )
+
+    summary["step2_modulation"].update({
+        "after_add": {
+            "assignments": _result_list(assignments_after_add, "list_mod_assignments(after add)"),
+            "graph_node": graph_after_add,
+        },
+        "after_update": {
+            "assignments": _result_list(assignments_after_update, "list_mod_assignments(after update)"),
+            "graph_node": graph_after_update,
+        },
+        "after_set_param": {
+            "graph_node": graph_after_set,
+            "intro_node": intro_after_set,
+        },
+        "after_remove": {
+            "assignments": _result_list(assignments_after_remove, "list_mod_assignments(after remove)"),
+            "graph_node": graph_after_remove,
+            "intro_node": intro_after_remove,
+        },
+    })
+
+
 async def _run(args: argparse.Namespace) -> int:
     artifact_dir = pathlib.Path(args.artifact_dir).expanduser()
     artifact_dir.mkdir(parents=True, exist_ok=True)
 
     capture_cases = _build_capture_cases(args, artifact_dir)
     sample_cases = _build_sample_cases(args)
-    if not capture_cases and not sample_cases and args.preset != "dream_keys":
+    if not capture_cases and not sample_cases and args.preset not in {"dream_keys", "step2_modulation"}:
         raise RuntimeError("no work specified; use --preset, --capture, or --sample-node")
 
     summary: dict = {
@@ -407,6 +700,8 @@ async def _run(args: argparse.Namespace) -> int:
                 await _run_generic_sampling(session, sample_cases, summary)
             if args.preset == "dream_keys":
                 await _run_dream_keys_flow(session, artifact_dir, summary)
+            if args.preset == "step2_modulation":
+                await _run_step2_modulation_flow(session, summary)
         finally:
             status_after = _require_ok(await session.call_tool("runtime_status"), "runtime_status(after)")
             summary["runtime_after"] = status_after
@@ -438,7 +733,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--preset",
-        choices=["phase4", "dream_keys"],
+        choices=["phase4", "dream_keys", "step2_modulation"],
         help="Run a built-in bridge investigation preset",
     )
     parser.add_argument(
