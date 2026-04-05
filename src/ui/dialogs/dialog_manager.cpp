@@ -119,9 +119,14 @@ void DialogManager::open_graph_meta_editor(const GraphMetaEditData& data,
         &graph_meta.data.description,
         &graph_meta.data.tags_csv,
         &graph_meta.data.difficulty,
-        &graph_meta.data.envs_csv,
+        &graph_meta.data.domains_csv,
         &graph_meta.data.requires_packages_csv,
-        &graph_meta.data.featured_rank
+        &graph_meta.data.featured_rank,
+        &graph_meta.data.content_kind,
+        &graph_meta.data.category,
+        &graph_meta.data.family,
+        &graph_meta.data.role,
+        &graph_meta.data.playability
     };
     text_edit.reset(static_cast<int>(graph_meta.fields[graph_meta.active_field]->size()));
 }
@@ -337,6 +342,7 @@ void DialogManager::toggle_example_browser() {
         example_browser.filter.clear();
         example_browser.sel = 0;
         example_browser.scroll = 0;
+        example_browser.kind = 0;
         example_browser.env = 0;
         example_browser.difficulty = 0;
         example_browser.sort = 0;
@@ -362,6 +368,20 @@ void DialogManager::set_example_package_checker(
     example_browser.package_checker = std::move(cb);
 }
 
+const ExampleEntry* DialogManager::selected_example_entry() const {
+    if (example_browser.sel < 0 ||
+        example_browser.sel >= static_cast<int>(example_browser.entries.size()))
+        return nullptr;
+    return &example_browser.entries[example_browser.sel];
+}
+
+size_t DialogManager::selected_example_preview_row_count() const {
+    const auto* entry = selected_example_entry();
+    if (!entry || entry->content_kind != "instrument")
+        return 0;
+    return entry->preview_rows.size();
+}
+
 void DialogManager::rebuild_example_items() {
     example_browser.entries.clear();
 
@@ -380,11 +400,17 @@ void DialogManager::rebuild_example_items() {
         if (example_browser.core_only && !e.requires_packages.empty()) continue;
         if (example_browser.package_only && e.requires_packages.empty()) continue;
 
+        if (example_browser.kind == 1) {
+            if (e.content_kind != "instrument") continue;
+        } else if (example_browser.kind == 2) {
+            if (e.content_kind == "instrument") continue;
+        }
+
         if (example_browser.env != 0) {
             static const char* kEnvNames[] = {"", "gpu", "audio", "control", "io"};
             const std::string target = kEnvNames[example_browser.env];
             bool found = false;
-            for (const auto& d : e.envs) {
+            for (const auto& d : e.domains) {
                 if (icontains(d, target)) { found = true; break; }
             }
             if (!found) continue;
@@ -399,7 +425,10 @@ void DialogManager::rebuild_example_items() {
             bool match = icontains(e.title, example_browser.filter) ||
                          icontains(e.summary, example_browser.filter) ||
                          icontains(e.id, example_browser.filter) ||
-                         icontains(e.path, example_browser.filter);
+                         icontains(e.path, example_browser.filter) ||
+                         icontains(e.category, example_browser.filter) ||
+                         icontains(e.family, example_browser.filter) ||
+                         icontains(e.package_name, example_browser.filter);
             if (!match) {
                 for (const auto& t : e.tags) {
                     if (icontains(t, example_browser.filter)) {
@@ -417,6 +446,15 @@ void DialogManager::rebuild_example_items() {
     if (example_browser.sort == 0) {
         std::sort(example_browser.entries.begin(), example_browser.entries.end(),
                   [](const ExampleEntry& a, const ExampleEntry& b) {
+                      bool a_inst = (a.content_kind == "instrument");
+                      bool b_inst = (b.content_kind == "instrument");
+                      if (a_inst != b_inst) return !a_inst;
+                      if (a_inst) {
+                          if (a.package_name != b.package_name) return a.package_name < b.package_name;
+                          if (a.category != b.category) return a.category < b.category;
+                          if (a.family != b.family) return a.family < b.family;
+                          return a.title < b.title;
+                      }
                       if (a.featured_rank != b.featured_rank)
                           return a.featured_rank < b.featured_rank;
                       return a.title < b.title;

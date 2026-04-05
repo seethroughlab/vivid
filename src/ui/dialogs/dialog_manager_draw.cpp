@@ -469,7 +469,8 @@ void DialogManager::draw_graph_meta_editor(Renderer2D& tr, const MouseState& mou
 
     static const char* labels[] = {
         "id", "title", "description", "tags (csv)", "difficulty",
-        "envs (csv)", "requires_packages (csv)", "featured_rank"
+        "domains (csv)", "requires_packages (csv)", "featured_rank",
+        "content_kind", "category", "family", "role", "playability"
     };
     const std::string values[] = {
         graph_meta.data.id,
@@ -477,9 +478,14 @@ void DialogManager::draw_graph_meta_editor(Renderer2D& tr, const MouseState& mou
         graph_meta.data.description,
         graph_meta.data.tags_csv,
         graph_meta.data.difficulty,
-        graph_meta.data.envs_csv,
+        graph_meta.data.domains_csv,
         graph_meta.data.requires_packages_csv,
-        graph_meta.data.featured_rank
+        graph_meta.data.featured_rank,
+        graph_meta.data.content_kind,
+        graph_meta.data.category,
+        graph_meta.data.family,
+        graph_meta.data.role,
+        graph_meta.data.playability
     };
 
     float cx = px + 16.0f;
@@ -488,7 +494,7 @@ void DialogManager::draw_graph_meta_editor(Renderer2D& tr, const MouseState& mou
     float field_h = 24.0f;
     float field_w = pw - 32.0f - label_w;
     float row_gap = 8.0f;
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < 13; ++i) {
         float fy = cy + i * (field_h + row_gap);
         float fx = cx + label_w;
         tr.draw_text(cx, fy + 4, labels[i],
@@ -1284,13 +1290,13 @@ void DialogManager::draw_example_browser(Renderer2D& tr, const MouseState& mouse
     if (!example_browser.open) return;
 
     OverlayPanelLayout layout =
-        compute_example_browser_layout(win_w, win_h, example_browser.entries.size());
+        compute_example_browser_layout(win_w, win_h, example_browser.entries.size(),
+                                       selected_example_preview_row_count());
     float wf = layout.wf;
     float hf = layout.hf;
     tr.draw_rect(0, 0, wf, hf,
                  style.scrim[0], style.scrim[1], style.scrim[2], style.scrim[3] * popup_opacity);
 
-    int visible_count = layout.visible_count;
     float ph = layout.ph;
     float pw = layout.pw;
     float px = layout.px;
@@ -1332,8 +1338,18 @@ void DialogManager::draw_example_browser(Renderer2D& tr, const MouseState& mouse
     }
     cy += kPkgBrowserSearchH + 6;
 
-    static const char* env_tabs[] = { "All", "GPU", "Audio", "Control", "I/O" };
+    static const char* kind_tabs[] = { "All", "Instruments", "Examples" };
     float tx = cx;
+    for (int i = 0; i < 3; ++i) {
+        bool sel = (i == example_browser.kind);
+        float tw = draw_tab_button(tr, style, tx, cy, kPkgBrowserTabH, kind_tabs[i], sel, false);
+        example_browser.kind_tab_widths[i] = tw;
+        tx += tw + 4.0f;
+    }
+    cy += kPkgBrowserTabH + 8;
+
+    static const char* env_tabs[] = { "All", "GPU", "Audio", "Control", "I/O" };
+    tx = cx;
     for (int i = 0; i < 5; ++i) {
         bool sel = (i == example_browser.env);
         float tw = draw_tab_button(tr, style, tx, cy, kPkgBrowserTabH, env_tabs[i], sel, false);
@@ -1427,10 +1443,29 @@ void DialogManager::draw_example_browser(Renderer2D& tr, const MouseState& mouse
         const std::string title = fit_text_to_width(tr, e.title, text_w);
         tr.draw_text(text_left, iy + 6, title.c_str(),
                      style.bright_text[0], style.bright_text[1], style.bright_text[2]);
-        std::string emeta = e.id + " · " + e.path;
+        std::string emeta;
+        if (e.content_kind == "instrument") {
+            std::string parts;
+            auto append = [&](const std::string& s) {
+                if (s.empty()) return;
+                if (!parts.empty()) parts += " · ";
+                parts += s;
+            };
+            append(e.category);
+            append(e.family);
+            append(e.role);
+            append(e.playability);
+            if (!e.package_name.empty()) append(e.package_name);
+            emeta = parts.empty() ? "instrument" : parts;
+        } else {
+            emeta = e.id + " · " + e.path;
+        }
         emeta = fit_text_to_width(tr, emeta, text_w);
-        tr.draw_text(text_left, iy + 22, emeta.c_str(),
-                     style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.7f);
+        float meta_r = (e.content_kind == "instrument") ? style.accent[0] : style.dim_text[0];
+        float meta_g = (e.content_kind == "instrument") ? style.accent[1] : style.dim_text[1];
+        float meta_b = (e.content_kind == "instrument") ? style.accent[2] : style.dim_text[2];
+        float meta_a = (e.content_kind == "instrument") ? 0.6f : 0.7f;
+        tr.draw_text(text_left, iy + 22, emeta.c_str(), meta_r, meta_g, meta_b, meta_a);
         std::string summary = fit_text_to_width(tr, e.summary, text_w);
         tr.draw_text(text_left, iy + 37, summary.c_str(),
                      style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.5f);
@@ -1462,6 +1497,35 @@ void DialogManager::draw_example_browser(Renderer2D& tr, const MouseState& mouse
                      style.slider_track[0], style.slider_track[1], style.slider_track[2], 0.3f);
         tr.draw_rect(sb_x, thumb_y, 4, thumb_h,
                      style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.5f);
+    }
+
+    if (layout.preview_h > 0.0f) {
+        const auto* selected = selected_example_entry();
+        if (selected && selected->content_kind == "instrument" && !selected->preview_rows.empty()) {
+            const float panel_x = cx;
+            const float panel_y = layout.preview_top;
+            const float panel_w = inner_w;
+            const float panel_h = layout.preview_h;
+            tr.draw_rect(panel_x, panel_y, panel_w, panel_h,
+                         style.input_field_bg[0], style.input_field_bg[1], style.input_field_bg[2], 0.85f);
+            tr.draw_rect(panel_x, panel_y, panel_w, 1.0f,
+                         style.accent[0], style.accent[1], style.accent[2], 0.7f);
+            tr.draw_text(panel_x + 8.0f, panel_y + 6.0f, T("preview_controls", "Preview Controls"),
+                         style.bright_text[0], style.bright_text[1], style.bright_text[2], 0.9f);
+
+            const size_t rows_to_draw = std::min<size_t>(selected->preview_rows.size(), 3);
+            for (size_t i = 0; i < rows_to_draw; ++i) {
+                const auto& row = selected->preview_rows[i];
+                const float row_y = panel_y + 24.0f + static_cast<float>(i) * 18.0f;
+                const float label_w = std::max(80.0f, panel_w * 0.38f);
+                const std::string label = fit_text_to_width(tr, row.label, label_w - 8.0f);
+                const std::string value = fit_text_to_width(tr, row.value, panel_w - label_w - 16.0f);
+                tr.draw_text(panel_x + 8.0f, row_y, label.c_str(),
+                             style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.85f);
+                tr.draw_text(panel_x + label_w, row_y, value.c_str(),
+                             style.bright_text[0], style.bright_text[1], style.bright_text[2], 0.88f);
+            }
+        }
     }
 
     if (!example_browser.action_error.empty()) {

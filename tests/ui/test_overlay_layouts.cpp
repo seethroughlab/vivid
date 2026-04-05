@@ -35,9 +35,12 @@ int main() {
     check(e_large.ph >= e_small.ph || nearly(e_large.ph, e_small.ph),
           "example panel height increases or saturates on larger windows");
 
+    auto e_preview = compute_example_browser_layout(1280, 720, 5, 2);
+    check(e_preview.preview_h > 0.0f, "example preview panel height appears when preview rows exist");
+    check(e_preview.status_y > e_preview.preview_top, "status line moves below preview panel");
+
     std::fprintf(stderr, "%s (%d failures)\n",
                  failures == 0 ? "ALL PASSED" : "SOME FAILED",
                  failures);
     return failures == 0 ? 0 : 1;
 }
-

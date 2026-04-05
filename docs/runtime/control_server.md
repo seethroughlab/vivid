@@ -213,6 +213,11 @@ MIDI/variation/preset mutations, `load_graph`.
 
 Non-topology commands (`inspect_graph`, `list_types`, etc.) can execute immediately on the main thread.
 
+`inspect_graph` now also returns `result.meta` when the loaded graph carries graph-owned content
+metadata. This mirrors the persisted `GraphContentMeta` contract from `Graph::load()` / `save()`
+and includes Step 6 fields such as `domains`, `content_kind`, `category`, `family`, `role`,
+`playability`, and raw `preview_controls`.
+
 The asset endpoints are also immediate. `refresh_assets` rebuilds both workspace and package entries;
 it is not limited to workspace sidecars only.
 

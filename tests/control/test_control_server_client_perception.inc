@@ -9,6 +9,18 @@
                 auto& conns = result["connections"];
                 check(nodes.is_array() && nodes.size() == 2, "2 nodes");
                 check(conns.is_array() && conns.size() == 1, "1 connection");
+                check(result.contains("meta") && result["meta"].is_object(), "inspect_graph returns graph meta");
+                if (result.contains("meta") && result["meta"].is_object()) {
+                    auto& meta = result["meta"];
+                    check(meta.contains("content_kind") && meta["content_kind"] == "instrument",
+                          "inspect_graph meta exposes content_kind");
+                    check(meta.contains("domains") && meta["domains"].is_array() &&
+                              meta["domains"].size() == 2,
+                          "inspect_graph meta exposes canonical domains");
+                    check(meta.contains("preview_controls") && meta["preview_controls"].is_array() &&
+                              meta["preview_controls"].size() == 2,
+                          "inspect_graph meta exposes raw preview_controls");
+                }
 
                 // Check that params have values
                 auto& first_node = nodes[0];

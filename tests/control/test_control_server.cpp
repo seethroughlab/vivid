@@ -224,6 +224,28 @@ int main(int argc, char* argv[]) {
 
     vivid::Graph graph;
     check(graph.load(graph_path.c_str()), "graph.load()");
+    {
+        auto& meta = graph.meta_mut();
+        meta = {};
+        meta.id = "control-server-fixture";
+        meta.title = "Control Server Fixture";
+        meta.description = "Fixture graph with instrument metadata.";
+        meta.tags = {"audio", "fixture"};
+        meta.difficulty = "intermediate";
+        meta.domains = {"audio", "control"};
+        meta.requires_packages = {"vivid-wavetable"};
+        meta.featured_rank = 7;
+        meta.estimated_minutes = 3;
+        meta.content_kind = "instrument";
+        meta.category = "synth";
+        meta.family = "pads";
+        meta.role = "reference";
+        meta.playability = "midi";
+        meta.preview_controls = {
+            {"a", "scale", "Drive"},
+            {"b", "scale", ""}
+        };
+    }
 
     vivid::RuntimeCore runtime;
     runtime.set_subgraph_modules(&subgraph_modules);

@@ -482,7 +482,7 @@ void DialogManager::update_graph_meta_editor(MouseState& mouse, uint32_t win_w, 
     float field_h = 24.0f;
     float field_w = pw - 32.0f - label_w;
     float row_gap = 8.0f;
-    const int kFieldCount = 8;
+    const int kFieldCount = 13;
     for (int i = 0; i < kFieldCount; ++i) {
         float fy = cy + i * (field_h + row_gap);
         float fx = cx + label_w;
@@ -879,9 +879,9 @@ void DialogManager::update_example_browser(MouseState& mouse, uint32_t win_w, ui
     if (!example_browser.open) return;
 
     OverlayPanelLayout layout =
-        compute_example_browser_layout(win_w, win_h, example_browser.entries.size());
+        compute_example_browser_layout(win_w, win_h, example_browser.entries.size(),
+                                       selected_example_preview_row_count());
     int visible_count = layout.visible_count;
-    float px = layout.px;
     float py = layout.py;
     float cx = layout.cx;
     float inner_w = layout.inner_w;
@@ -908,8 +908,27 @@ void DialogManager::update_example_browser(MouseState& mouse, uint32_t win_w, ui
     example_browser.search_focused = false;
 
     float cy = py + kPkgBrowserPadY + kPkgBrowserHeaderH + kPkgBrowserSearchH + 6;
-    static const char* env_tabs[] = { "All", "GPU", "Audio", "Control", "I/O" };
+
+    static const char* kind_tabs[] = { "All", "Instruments", "Examples" };
     float tx = cx;
+    for (int i = 0; i < 3; ++i) {
+        float tw = example_browser.kind_tab_widths[i] > 0 ? example_browser.kind_tab_widths[i]
+                 : static_cast<float>(std::strlen(kind_tabs[i])) * 8.0f + 16.0f;
+        if (mouse.x >= tx && mouse.x <= tx + tw && mouse.y >= cy && mouse.y <= cy + kPkgBrowserTabH) {
+            example_browser.kind = i;
+            example_browser.scroll = 0;
+            example_browser.sel = 0;
+            rebuild_example_items();
+            mouse.left_clicked = false;
+            mouse.left_released = false;
+            return;
+        }
+        tx += tw + 4.0f;
+    }
+    cy += kPkgBrowserTabH + 8;
+
+    static const char* env_tabs[] = { "All", "GPU", "Audio", "Control", "I/O" };
+    tx = cx;
     for (int i = 0; i < 5; ++i) {
         float tw = example_browser.env_tab_widths[i] > 0 ? example_browser.env_tab_widths[i]
                  : static_cast<float>(std::strlen(env_tabs[i])) * 8.0f + 16.0f;

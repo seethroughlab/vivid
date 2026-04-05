@@ -6,6 +6,17 @@
 
 namespace vivid {
 
+struct PreviewControl {
+    std::string node;
+    std::string param;
+    std::string label;
+};
+
+struct PreviewSnapshotRow {
+    std::string label;
+    std::string value;
+};
+
 struct ExampleEntry {
     std::string id;
     std::string title;
@@ -13,10 +24,18 @@ struct ExampleEntry {
     std::string summary;
     std::vector<std::string> tags;
     std::string difficulty;
-    std::vector<std::string> envs;
+    std::vector<std::string> domains;
     std::vector<std::string> requires_packages;
     int featured_rank = 1000;
     int estimated_minutes = 0;
+    std::string content_kind;
+    std::string category;
+    std::string family;
+    std::string role;
+    std::string playability;
+    std::vector<PreviewControl> preview_controls;
+    std::vector<PreviewSnapshotRow> preview_rows;
+    std::string package_name;
 };
 
 struct GraphMetaEditData {
@@ -26,9 +45,15 @@ struct GraphMetaEditData {
     std::string description;
     std::string tags_csv;
     std::string difficulty;
-    std::string envs_csv;
+    std::string domains_csv;
     std::string requires_packages_csv;
     std::string featured_rank;
+    std::string content_kind;
+    std::string category;
+    std::string family;
+    std::string role;
+    std::string playability;
+    std::string preview_controls_json;
 };
 
 enum class PackageBrowserFetchState {
@@ -77,6 +102,8 @@ enum class SaveConfirmAction { kNewGraph, kNewProject };
 
 namespace vivid::ui {
 
+using ::vivid::PreviewControl;
+using ::vivid::PreviewSnapshotRow;
 using ::vivid::ExampleEntry;
 using ::vivid::GraphMetaEditData;
 using ::vivid::PackageBrowserFetchState;

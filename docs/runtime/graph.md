@@ -51,6 +51,31 @@ Stored in `node_presets_[node_id]`.
 Maps StateMachine operator state transitions to preset recalls.
 `state_machine_node` + `state_presets[state_idx][target_node_id] = preset_name`.
 
+### `GraphContentMeta`
+Graph-owned content metadata persisted in the top-level `meta` block.
+
+```cpp
+struct GraphPreviewControl {
+    std::string node;
+    std::string param;
+    std::string label;  // optional
+};
+
+struct GraphContentMeta {
+    std::string id, title, description, difficulty;
+    std::vector<std::string> tags;
+    std::vector<std::string> domains;
+    std::vector<std::string> requires_packages;
+    int featured_rank;
+    int estimated_minutes;
+    std::string content_kind, category, family, role, playability;
+    std::vector<GraphPreviewControl> preview_controls;
+};
+```
+
+This metadata is part of `Graph` itself, so ordinary `load()`, `save()`, `save_to_string()`,
+and `RuntimeAPI::save_as()` preserve it without going through a separate helper path.
+
 ## `Graph` Class API
 
 ### Load / Save
@@ -62,6 +87,10 @@ bool save_to_string(std::string& out_json) const;
 ```
 Uses nlohmann/json for JSON parsing. Schema version checked against `GRAPH_SCHEMA_VERSION` (currently 3).
 `load_diagnostics` is populated with package version mismatches after load.
+
+The top-level `meta` block is parsed into `GraphContentMeta`. For backward compatibility,
+`meta.envs` is accepted on load as an alias for `meta.domains`, but save paths always write the
+canonical `domains` field.
 
 ### Mutation
 ```cpp
@@ -104,6 +133,14 @@ differs from the installed version. Each entry has: `node_id`, `pkg_name`, `save
 {
   "schema_version": 3,
   "vivid_version": "1.2.3",
+  "meta": {
+    "title": "Wavetable Pad",
+    "domains": ["audio", "control"],
+    "content_kind": "instrument",
+    "preview_controls": [
+      { "node": "osc1", "param": "frequency", "label": "Freq" }
+    ]
+  },
   "nodes": [
     { "id": "lfo1", "type": "lfo", "params": {"freq": 1.5}, "x": 100, "y": 200 }
   ],

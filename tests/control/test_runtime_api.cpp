@@ -175,6 +175,20 @@ int main(int argc, char* argv[]) {
     // --- Test save + reload ---
     std::fprintf(stderr, "\n--- save + reload ---\n");
     {
+        auto& meta = graph.meta_mut();
+        meta = {};
+        meta.title = "Runtime API Save Fixture";
+        meta.domains = {"audio", "control"};
+        meta.content_kind = "instrument";
+        meta.category = "synth";
+        meta.family = "pads";
+        meta.role = "hero";
+        meta.playability = "hybrid";
+        meta.preview_controls = {
+            {"a", "scale", "Drive"},
+            {"b", "scale", ""}
+        };
+
         std::string save_path = build_dir + "/test_api_saved.json";
         auto r1 = api.save_as(save_path);
         check(r1.ok, "save_as");
@@ -184,6 +198,14 @@ int main(int argc, char* argv[]) {
         vivid::Graph g2;
         check(g2.load(save_path.c_str()), "reload saved graph");
         check(g2.nodes().size() == 2, "saved graph has 2 nodes");
+        check(g2.meta().content_kind == "instrument", "save_as preserves content_kind");
+        check(g2.meta().category == "synth", "save_as preserves category");
+        check(g2.meta().family == "pads", "save_as preserves family");
+        check(g2.meta().role == "hero", "save_as preserves role");
+        check(g2.meta().playability == "hybrid", "save_as preserves playability");
+        check(g2.meta().domains.size() == 2, "save_as preserves canonical domains");
+        check(g2.meta().preview_controls.size() == 2, "save_as preserves preview controls");
+        check(g2.meta().preview_controls[0].label == "Drive", "save_as preserves preview labels");
 
         std::filesystem::remove(save_path);
     }

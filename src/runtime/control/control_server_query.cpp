@@ -434,6 +434,50 @@ std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const Subgraph
     }
     result["connections"] = std::move(conns_arr);
 
+    // -- Graph metadata --
+    if (!graph.meta().empty()) {
+        const auto& gm = graph.meta();
+        nlohmann::json meta = nlohmann::json::object();
+        if (!gm.id.empty()) meta["id"] = gm.id;
+        if (!gm.title.empty()) meta["title"] = gm.title;
+        if (!gm.description.empty()) meta["description"] = gm.description;
+        if (!gm.tags.empty()) {
+            nlohmann::json tags_arr = nlohmann::json::array();
+            for (const auto& t : gm.tags) tags_arr.push_back(t);
+            meta["tags"] = std::move(tags_arr);
+        }
+        if (!gm.difficulty.empty()) meta["difficulty"] = gm.difficulty;
+        if (!gm.domains.empty()) {
+            nlohmann::json dom_arr = nlohmann::json::array();
+            for (const auto& d : gm.domains) dom_arr.push_back(d);
+            meta["domains"] = std::move(dom_arr);
+        }
+        if (!gm.requires_packages.empty()) {
+            nlohmann::json req_arr = nlohmann::json::array();
+            for (const auto& pkg : gm.requires_packages) req_arr.push_back(pkg);
+            meta["requires_packages"] = std::move(req_arr);
+        }
+        if (gm.featured_rank >= 0) meta["featured_rank"] = gm.featured_rank;
+        if (gm.estimated_minutes >= 0) meta["estimated_minutes"] = gm.estimated_minutes;
+        if (!gm.content_kind.empty()) meta["content_kind"] = gm.content_kind;
+        if (!gm.category.empty()) meta["category"] = gm.category;
+        if (!gm.family.empty()) meta["family"] = gm.family;
+        if (!gm.role.empty()) meta["role"] = gm.role;
+        if (!gm.playability.empty()) meta["playability"] = gm.playability;
+        if (!gm.preview_controls.empty()) {
+            nlohmann::json preview_arr = nlohmann::json::array();
+            for (const auto& ctrl : gm.preview_controls) {
+                nlohmann::json item = nlohmann::json::object();
+                item["node"] = ctrl.node;
+                item["param"] = ctrl.param;
+                if (!ctrl.label.empty()) item["label"] = ctrl.label;
+                preview_arr.push_back(std::move(item));
+            }
+            meta["preview_controls"] = std::move(preview_arr);
+        }
+        result["meta"] = std::move(meta);
+    }
+
     return json_ok(std::move(result));
 }
 

@@ -125,11 +125,13 @@ public:
         std::string filter;
         int sel = 0;
         float scroll = 0.0f;
+        int kind = 0;
         int env = 0;
         int difficulty = 0;
         int sort = 0;
         bool core_only = true;
         bool package_only = false;
+        std::array<float, 3> kind_tab_widths{};
         std::array<float, 5> env_tab_widths{};
         std::array<float, 4> diff_tab_widths{};
         std::array<float, 2> sort_tab_widths{};
@@ -282,6 +284,8 @@ private:
     // --- Package browser helpers ---
     void rebuild_pkg_browser_items();
     void rebuild_example_items();
+    const ExampleEntry* selected_example_entry() const;
+    size_t selected_example_preview_row_count() const;
     void refresh_package_browser_snapshot_if_ready();
     void clear_pkg_action_feedback();
     void begin_pkg_action(PkgBrowserState::ActionKind kind, const std::string& action_name);

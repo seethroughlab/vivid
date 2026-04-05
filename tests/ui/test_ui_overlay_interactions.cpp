@@ -77,6 +77,15 @@ int main() {
     ex.path = "intro/demo.json";
     ex.summary = "demo graph";
     ex.featured_rank = 1;
+    ExampleEntry instrument = ex;
+    instrument.id = "instrument-demo";
+    instrument.title = "Instrument Demo";
+    instrument.path = "library/instrument-demo.json";
+    instrument.content_kind = "instrument";
+    instrument.preview_rows = {
+        {"Drive", "0.72"},
+        {"Color", "warm"}
+    };
 
     // Example browser: Open click dispatches callback
     {
@@ -97,6 +106,24 @@ int main() {
         ui.update(snap);
         check(opened, "Open Example click invokes callback");
         check(opened_path == "intro/demo.json", "Open Example callback path matches selected graph");
+    }
+
+    // Example browser: selected instrument entry exposes preview rows for the detail panel
+    {
+        DummySink sink;
+        NodeGraphUI ui(sink);
+        ui.set_examples({instrument});
+        ui.toggle_example_browser();
+        check(ui.dialogs_.selected_example_preview_row_count() == 2,
+              "Selected instrument entry exposes preview snapshot rows");
+
+        OverlayPanelLayout preview_layout =
+            compute_example_browser_layout(1280, 720, 1, ui.dialogs_.selected_example_preview_row_count());
+        check(preview_layout.preview_h > 0.0f, "Instrument selection reserves preview panel height");
+
+        ui.set_examples({ex});
+        check(ui.dialogs_.selected_example_preview_row_count() == 0,
+              "Plain example selection hides preview panel model");
     }
 
     // Missing package warning then second confirm

@@ -20,6 +20,15 @@ static bool split_address(const char* addr, std::string& node, std::string& port
     return !node.empty() && !port.empty();
 }
 
+static std::vector<std::string> json_str_array(const nlohmann::json& arr) {
+    std::vector<std::string> out;
+    if (!arr.is_array()) return out;
+    for (const auto& v : arr) {
+        if (v.is_string()) out.push_back(v.get<std::string>());
+    }
+    return out;
+}
+
 bool Graph::load(const char* path) {
     source_path_ = path;
     try {
@@ -29,7 +38,7 @@ bool Graph::load(const char* path) {
             return false;
         }
         auto root = nlohmann::json::parse(ifs);
-        bool ok = parse_doc(root);
+        bool ok = load_from_json_doc(root, true, false);
         if (ok) {
             std::fprintf(stderr, "[vivid] Loaded graph: %s (%zu nodes, %zu connections)\n",
                 path, nodes_.size(), connections_.size());
@@ -49,7 +58,7 @@ bool Graph::load_from_string(const char* json, size_t len, bool preserve_source_
 
     try {
         auto root = nlohmann::json::parse(json, json + len);
-        bool ok = parse_doc(root);
+        bool ok = load_from_json_doc(root, true, false);
         if (ok) {
             std::fprintf(stderr, "[vivid] Loaded graph from string (%zu nodes, %zu connections)\n",
                 nodes_.size(), connections_.size());
@@ -59,6 +68,15 @@ bool Graph::load_from_string(const char* json, size_t len, bool preserve_source_
         std::fprintf(stderr, "[vivid] Graph: failed to parse JSON string: %s\n", e.what());
         return false;
     }
+}
+
+bool Graph::load_from_json_doc(const nlohmann::json& root,
+                               bool preserve_source_path,
+                               bool quiet) {
+    if (!preserve_source_path)
+        source_path_.clear();
+    (void)quiet;
+    return parse_doc(root);
 }
 
 // Parse common NodeDef fields from a JSON object. Does NOT set node.id (caller's job).
@@ -148,6 +166,7 @@ bool Graph::parse_doc(const nlohmann::json& root) {
     load_diagnostics.clear();
     active_variation_ = -1;
     quantize_clock_node_.clear();
+    meta_ = {};
 
     // Schema version — hard-reject if from the future
     auto sv_it = root.find("schema_version");
@@ -168,6 +187,55 @@ bool Graph::parse_doc(const nlohmann::json& root) {
                      "[vivid] Graph: schema %d uses removed graph-level filters; this format is no longer supported.\n",
                      schema_version);
         return false;
+    }
+
+    auto meta_it = root.find("meta");
+    if (meta_it != root.end() && meta_it->is_object()) {
+        const auto& meta = *meta_it;
+        auto set_string = [&](const char* key, std::string& dest) {
+            auto it = meta.find(key);
+            if (it != meta.end() && it->is_string())
+                dest = it->get<std::string>();
+        };
+        set_string("id", meta_.id);
+        set_string("title", meta_.title);
+        set_string("description", meta_.description);
+        set_string("difficulty", meta_.difficulty);
+        meta_.tags = json_str_array(meta.value("tags", nlohmann::json()));
+        if (meta.contains("domains"))
+            meta_.domains = json_str_array(meta["domains"]);
+        else
+            meta_.domains = json_str_array(meta.value("envs", nlohmann::json()));
+        meta_.requires_packages = json_str_array(meta.value("requires_packages", nlohmann::json()));
+        auto fr_it = meta.find("featured_rank");
+        if (fr_it != meta.end() && fr_it->is_number_integer())
+            meta_.featured_rank = fr_it->get<int>();
+        auto em_it = meta.find("estimated_minutes");
+        if (em_it != meta.end() && em_it->is_number_integer())
+            meta_.estimated_minutes = em_it->get<int>();
+        set_string("content_kind", meta_.content_kind);
+        set_string("category", meta_.category);
+        set_string("family", meta_.family);
+        set_string("role", meta_.role);
+        set_string("playability", meta_.playability);
+        auto pc_it = meta.find("preview_controls");
+        if (pc_it != meta.end() && pc_it->is_array()) {
+            for (const auto& pc : *pc_it) {
+                if (!pc.is_object()) continue;
+                GraphPreviewControl ctrl;
+                auto node_it = pc.find("node");
+                auto param_it = pc.find("param");
+                auto label_it = pc.find("label");
+                if (node_it != pc.end() && node_it->is_string())
+                    ctrl.node = node_it->get<std::string>();
+                if (param_it != pc.end() && param_it->is_string())
+                    ctrl.param = param_it->get<std::string>();
+                if (label_it != pc.end() && label_it->is_string())
+                    ctrl.label = label_it->get<std::string>();
+                if (!ctrl.node.empty() && !ctrl.param.empty())
+                    meta_.preview_controls.push_back(std::move(ctrl));
+            }
+        }
     }
 
     // Parse nodes
@@ -957,6 +1025,37 @@ static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
     // Schema metadata
     root["schema_version"] = GRAPH_SCHEMA_VERSION;
     root["vivid_version"] = VIVID_CORE_VERSION;
+
+    if (!graph.meta().empty()) {
+        nlohmann::ordered_json meta = nlohmann::ordered_json::object();
+        const auto& gm = graph.meta();
+        if (!gm.id.empty()) meta["id"] = gm.id;
+        if (!gm.title.empty()) meta["title"] = gm.title;
+        if (!gm.description.empty()) meta["description"] = gm.description;
+        if (!gm.tags.empty()) meta["tags"] = gm.tags;
+        if (!gm.difficulty.empty()) meta["difficulty"] = gm.difficulty;
+        if (!gm.domains.empty()) meta["domains"] = gm.domains;
+        if (!gm.requires_packages.empty()) meta["requires_packages"] = gm.requires_packages;
+        if (gm.featured_rank >= 0) meta["featured_rank"] = gm.featured_rank;
+        if (gm.estimated_minutes >= 0) meta["estimated_minutes"] = gm.estimated_minutes;
+        if (!gm.content_kind.empty()) meta["content_kind"] = gm.content_kind;
+        if (!gm.category.empty()) meta["category"] = gm.category;
+        if (!gm.family.empty()) meta["family"] = gm.family;
+        if (!gm.role.empty()) meta["role"] = gm.role;
+        if (!gm.playability.empty()) meta["playability"] = gm.playability;
+        if (!gm.preview_controls.empty()) {
+            nlohmann::ordered_json preview = nlohmann::ordered_json::array();
+            for (const auto& ctrl : gm.preview_controls) {
+                nlohmann::ordered_json item = nlohmann::ordered_json::object();
+                item["node"] = ctrl.node;
+                item["param"] = ctrl.param;
+                if (!ctrl.label.empty()) item["label"] = ctrl.label;
+                preview.push_back(std::move(item));
+            }
+            meta["preview_controls"] = std::move(preview);
+        }
+        root["meta"] = std::move(meta);
+    }
 
     // Nodes
     nlohmann::ordered_json nodes_obj = nlohmann::ordered_json::object();

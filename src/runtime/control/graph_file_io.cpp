@@ -1,5 +1,7 @@
 #include "runtime/control/graph_file_io.h"
+#include "runtime/graph/graph.h"
 #include "runtime/packages/package_manager.h"
+#include "common/string_util.h"
 #include <nlohmann/json.hpp>
 #include <cstdlib>
 #include <algorithm>
@@ -10,15 +12,6 @@
 namespace vivid {
 
 namespace {
-
-std::vector<std::string> json_str_array(const nlohmann::json& arr) {
-    std::vector<std::string> out;
-    if (!arr.is_array()) return out;
-    for (const auto& v : arr) {
-        if (v.is_string()) out.emplace_back(v.get<std::string>());
-    }
-    return out;
-}
 
 std::string trim_copy(const std::string& s) {
     size_t b = 0;
@@ -50,141 +43,185 @@ std::string join_csv(const std::vector<std::string>& items) {
     return out;
 }
 
+bool load_graph_quiet(const std::filesystem::path& graph_path,
+                      vivid::Graph& graph,
+                      std::string* error = nullptr) {
+    nlohmann::json root;
+    try {
+        std::ifstream ifs(graph_path);
+        if (!ifs) {
+            if (error) *error = "Failed to read graph JSON";
+            return false;
+        }
+        root = nlohmann::json::parse(ifs);
+    } catch (const std::exception&) {
+        if (error) *error = "Failed to read graph JSON";
+        return false;
+    }
+    graph.set_source_path(graph_path.string());
+    if (!graph.load_from_json_doc(root, true, true)) {
+        if (error) *error = "Graph JSON failed validation";
+        return false;
+    }
+    return true;
+}
+
+nlohmann::json preview_controls_to_json(const vivid::GraphContentMeta& meta) {
+    nlohmann::json out = nlohmann::json::array();
+    for (const auto& ctrl : meta.preview_controls) {
+        nlohmann::json item = nlohmann::json::object();
+        item["node"] = ctrl.node;
+        item["param"] = ctrl.param;
+        if (!ctrl.label.empty()) item["label"] = ctrl.label;
+        out.push_back(std::move(item));
+    }
+    return out;
+}
+
+void populate_example_entry_from_graph(const vivid::Graph& graph,
+                                       const std::filesystem::path& graph_path,
+                                       const std::filesystem::path& graphs_root,
+                                       vivid::ExampleEntry& out) {
+    const auto& meta = graph.meta();
+    std::string rel = std::filesystem::relative(graph_path, graphs_root).generic_string();
+    std::string stem = graph_path.stem().string();
+    out = {};
+    out.path = rel;
+    out.id = meta.id.empty() ? stem : meta.id;
+    out.title = meta.title.empty() ? stem : meta.title;
+    out.summary = meta.description;
+    out.tags = meta.tags;
+    out.difficulty = meta.difficulty.empty() ? "intermediate" : meta.difficulty;
+    out.domains = meta.domains;
+    out.requires_packages = meta.requires_packages;
+    out.featured_rank = meta.featured_rank >= 0 ? meta.featured_rank : 1000;
+    out.estimated_minutes = meta.estimated_minutes >= 0 ? meta.estimated_minutes : 0;
+    out.content_kind = meta.content_kind;
+    out.category = meta.category;
+    out.family = meta.family;
+    out.role = meta.role;
+    out.playability = meta.playability;
+    for (const auto& ctrl : meta.preview_controls) {
+        out.preview_controls.push_back({ctrl.node, ctrl.param, ctrl.label});
+
+        const auto* node = graph.find_node(ctrl.node);
+        if (!node) continue;
+
+        vivid::PreviewSnapshotRow row;
+        row.label = ctrl.label.empty() ? ctrl.param : ctrl.label;
+
+        auto fit = node->params.find(ctrl.param);
+        if (fit != node->params.end()) {
+            row.value = vivid::format_float(fit->second, 2);
+        } else {
+            auto sit = node->string_params.find(ctrl.param);
+            if (sit == node->string_params.end()) continue;
+            row.value = sit->second;
+        }
+        out.preview_rows.push_back(std::move(row));
+    }
+}
+
 } // namespace
 
 bool load_example_entry_from_graph(const std::filesystem::path& graph_path,
                                    const std::filesystem::path& graphs_root,
                                    vivid::ExampleEntry& out) {
-    nlohmann::json root;
-    try {
-        std::ifstream ifs(graph_path);
-        if (!ifs) return false;
-        root = nlohmann::json::parse(ifs);
-    } catch (const std::exception&) {
-        return false;
-    }
-    if (!root.is_object()) return false;
-
-    std::string rel = std::filesystem::relative(graph_path, graphs_root).generic_string();
-    std::string stem = graph_path.stem().string();
-    out.path = rel;
-    out.id = stem;
-    out.title = stem;
-    out.summary = "";
-    out.difficulty = "intermediate";
-    out.featured_rank = 1000;
-
-    if (root.contains("meta") && root["meta"].is_object()) {
-        const auto& meta = root["meta"];
-        if (meta.contains("id") && meta["id"].is_string()) out.id = meta["id"].get<std::string>();
-        if (meta.contains("title") && meta["title"].is_string()) out.title = meta["title"].get<std::string>();
-        if (meta.contains("description") && meta["description"].is_string()) out.summary = meta["description"].get<std::string>();
-        if (meta.contains("difficulty") && meta["difficulty"].is_string()) out.difficulty = meta["difficulty"].get<std::string>();
-        if (meta.contains("featured_rank") && meta["featured_rank"].is_number_integer()) {
-            out.featured_rank = meta["featured_rank"].get<int>();
-        }
-        if (meta.contains("estimated_minutes") && meta["estimated_minutes"].is_number_integer()) {
-            out.estimated_minutes = meta["estimated_minutes"].get<int>();
-        }
-        out.tags = json_str_array(meta.value("tags", nlohmann::json()));
-        out.envs = json_str_array(meta.value("envs", nlohmann::json()));
-        out.requires_packages = json_str_array(meta.value("requires_packages", nlohmann::json()));
-    }
-
-    if (out.title.empty()) out.title = stem;
-    if (out.id.empty()) out.id = stem;
+    vivid::Graph graph;
+    if (!load_graph_quiet(graph_path, graph)) return false;
+    populate_example_entry_from_graph(graph, graph_path, graphs_root, out);
     return true;
 }
 
 bool load_graph_meta_edit_data(const std::string& graph_path,
                                vivid::GraphMetaEditData& out,
                                std::string& error) {
-    nlohmann::json root;
-    try {
-        std::ifstream ifs(graph_path);
-        if (!ifs) {
-            error = "Failed to read graph JSON";
-            return false;
-        }
-        root = nlohmann::json::parse(ifs);
-    } catch (const std::exception&) {
-        error = "Failed to read graph JSON";
-        return false;
-    }
-    if (!root.is_object()) {
-        error = "Graph JSON root must be an object";
-        return false;
-    }
+    vivid::Graph graph;
+    if (!load_graph_quiet(graph_path, graph, &error)) return false;
+
+    const auto& meta = graph.meta();
     out = {};
     out.path = graph_path;
     auto stem = std::filesystem::path(graph_path).stem().string();
-    out.id = stem;
-    out.title = stem;
-    out.difficulty = "intermediate";
-    out.featured_rank = "1000";
-    if (root.contains("meta") && root["meta"].is_object()) {
-        const auto& meta = root["meta"];
-        if (meta.contains("id") && meta["id"].is_string()) out.id = meta["id"].get<std::string>();
-        if (meta.contains("title") && meta["title"].is_string()) out.title = meta["title"].get<std::string>();
-        if (meta.contains("description") && meta["description"].is_string()) out.description = meta["description"].get<std::string>();
-        if (meta.contains("difficulty") && meta["difficulty"].is_string()) out.difficulty = meta["difficulty"].get<std::string>();
-        if (meta.contains("featured_rank") && meta["featured_rank"].is_number_integer())
-            out.featured_rank = std::to_string(meta["featured_rank"].get<int>());
-        out.tags_csv = join_csv(json_str_array(meta.value("tags", nlohmann::json())));
-        out.envs_csv = join_csv(json_str_array(meta.value("envs", nlohmann::json())));
-        out.requires_packages_csv = join_csv(json_str_array(meta.value("requires_packages", nlohmann::json())));
-    }
+    out.id = meta.id.empty() ? stem : meta.id;
+    out.title = meta.title.empty() ? stem : meta.title;
+    out.description = meta.description;
+    out.tags_csv = join_csv(meta.tags);
+    out.difficulty = meta.difficulty.empty() ? "intermediate" : meta.difficulty;
+    out.domains_csv = join_csv(meta.domains);
+    out.requires_packages_csv = join_csv(meta.requires_packages);
+    out.featured_rank = std::to_string(meta.featured_rank >= 0 ? meta.featured_rank : 1000);
+    out.content_kind = meta.content_kind;
+    out.category = meta.category;
+    out.family = meta.family;
+    out.role = meta.role;
+    out.playability = meta.playability;
+    if (!meta.preview_controls.empty())
+        out.preview_controls_json = preview_controls_to_json(meta).dump();
     return true;
 }
 
 bool save_graph_meta_edit_data(const vivid::GraphMetaEditData& in, std::string& error) {
-    nlohmann::json root;
-    try {
-        std::ifstream ifs(in.path);
-        if (!ifs) {
-            error = "Failed to read graph JSON for save";
-            return false;
-        }
-        root = nlohmann::json::parse(ifs);
-    } catch (const std::exception&) {
+    vivid::Graph graph;
+    if (!load_graph_quiet(in.path, graph, &error)) {
         error = "Failed to read graph JSON for save";
         return false;
     }
-    if (!root.is_object()) {
-        error = "Graph JSON root must be an object";
-        return false;
-    }
 
-    if (!root.contains("meta") || !root["meta"].is_object()) {
-        root["meta"] = nlohmann::json::object();
-    }
-    auto& meta = root["meta"];
-
-    meta["id"] = trim_copy(in.id);
-    meta["title"] = trim_copy(in.title);
-    meta["description"] = trim_copy(in.description);
-    meta["difficulty"] = trim_copy(in.difficulty);
-    meta["tags"] = split_csv(in.tags_csv);
-    meta["envs"] = split_csv(in.envs_csv);
-    meta["requires_packages"] = split_csv(in.requires_packages_csv);
+    auto& meta = graph.meta_mut();
+    meta = {};
+    meta.id = trim_copy(in.id);
+    meta.title = trim_copy(in.title);
+    meta.description = trim_copy(in.description);
+    meta.difficulty = trim_copy(in.difficulty);
+    meta.tags = split_csv(in.tags_csv);
+    meta.domains = split_csv(in.domains_csv);
+    meta.requires_packages = split_csv(in.requires_packages_csv);
     int rank = 1000;
     try {
         if (!trim_copy(in.featured_rank).empty()) rank = std::stoi(trim_copy(in.featured_rank));
     } catch (...) {}
-    meta["featured_rank"] = rank;
+    meta.featured_rank = rank;
 
-    try {
-        std::ofstream ofs(in.path);
-        if (!ofs) {
-            error = "Failed to write graph JSON";
-            return false;
-        }
-        ofs << root.dump(4) << '\n';
-        return true;
-    } catch (const std::exception&) {
+    auto set_or_erase = [&](const char* key, const std::string& val) {
+        std::string v = trim_copy(val);
+        if (std::string(key) == "content_kind") meta.content_kind = v;
+        else if (std::string(key) == "category") meta.category = v;
+        else if (std::string(key) == "family") meta.family = v;
+        else if (std::string(key) == "role") meta.role = v;
+        else if (std::string(key) == "playability") meta.playability = v;
+    };
+    set_or_erase("content_kind", in.content_kind);
+    set_or_erase("category", in.category);
+    set_or_erase("family", in.family);
+    set_or_erase("role", in.role);
+    set_or_erase("playability", in.playability);
+
+    if (!in.preview_controls_json.empty()) {
+        try {
+            auto preview = nlohmann::json::parse(in.preview_controls_json);
+            if (preview.is_array()) {
+                for (const auto& item : preview) {
+                    if (!item.is_object()) continue;
+                    vivid::GraphPreviewControl ctrl;
+                    if (item.contains("node") && item["node"].is_string())
+                        ctrl.node = item["node"].get<std::string>();
+                    if (item.contains("param") && item["param"].is_string())
+                        ctrl.param = item["param"].get<std::string>();
+                    if (item.contains("label") && item["label"].is_string())
+                        ctrl.label = item["label"].get<std::string>();
+                    if (!ctrl.node.empty() && !ctrl.param.empty())
+                        meta.preview_controls.push_back(std::move(ctrl));
+                }
+            }
+        } catch (...) {}
+    }
+
+    if (!graph.save(in.path.c_str())) {
         error = "Failed to write graph JSON";
         return false;
     }
+    return true;
 }
 
 static std::vector<vivid::ExampleEntry>
@@ -230,6 +267,7 @@ discover_examples_with_packages(const std::filesystem::path& graphs_root,
             if (!seen_paths.insert(open_path).second) continue;
             e.path = open_path;
 
+            e.package_name = pkg.name;
             if (e.requires_packages.empty()) {
                 e.requires_packages.push_back(pkg.name);
             }

@@ -13,6 +13,48 @@
 
 namespace vivid {
 
+struct GraphPreviewControl {
+    std::string node;
+    std::string param;
+    std::string label;
+};
+
+struct GraphContentMeta {
+    std::string id;
+    std::string title;
+    std::string description;
+    std::vector<std::string> tags;
+    std::string difficulty;
+    std::vector<std::string> domains;
+    std::vector<std::string> requires_packages;
+    int featured_rank = -1;
+    int estimated_minutes = -1;
+    std::string content_kind;
+    std::string category;
+    std::string family;
+    std::string role;
+    std::string playability;
+    std::vector<GraphPreviewControl> preview_controls;
+
+    bool empty() const {
+        return id.empty() &&
+               title.empty() &&
+               description.empty() &&
+               tags.empty() &&
+               difficulty.empty() &&
+               domains.empty() &&
+               requires_packages.empty() &&
+               featured_rank < 0 &&
+               estimated_minutes < 0 &&
+               content_kind.empty() &&
+               category.empty() &&
+               family.empty() &&
+               role.empty() &&
+               playability.empty() &&
+               preview_controls.empty();
+    }
+};
+
 struct NodeDef {
     std::string id;
     std::string type;
@@ -112,6 +154,8 @@ public:
     const std::vector<VariationDef>& variations() const { return variations_; }
     const std::string& source_path() const { return source_path_; }
     void set_source_path(std::string path) { source_path_ = std::move(path); }
+    const GraphContentMeta& meta() const { return meta_; }
+    GraphContentMeta& meta_mut() { return meta_; }
 
     // Mutation
     bool add_node(const std::string& id, const std::string& type,
@@ -225,6 +269,9 @@ public:
     // Serialization
     bool save(const char* path) const;
     bool save_to_string(std::string& out_json) const;
+    bool load_from_json_doc(const nlohmann::json& root,
+                            bool preserve_source_path = false,
+                            bool quiet = false);
 
 private:
     bool parse_doc(const nlohmann::json& root);
@@ -236,6 +283,7 @@ private:
     int active_variation_ = -1;
     std::string quantize_clock_node_;
     std::string source_path_;
+    GraphContentMeta meta_;
     std::unordered_map<std::string, std::vector<OperatorPreset>> node_presets_;
     std::vector<StatePresetMapping> state_preset_mappings_;
     std::vector<StickyNoteDef> sticky_notes_;

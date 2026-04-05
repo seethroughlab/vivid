@@ -24,16 +24,21 @@ struct OverlayPanelLayout {
     int visible_count = 0;
     float list_h = 0.0f;
     float list_top = 0.0f;
+    float preview_top = 0.0f;
+    float preview_h = 0.0f;
     float status_y = 0.0f;
-    float tabs_y = 0.0f;
-    float tabs2_y = 0.0f;
-    float tabs3_y = 0.0f;
+    float tabs_y = 0.0f;   // kind tabs (All/Instruments/Examples)
+    float tabs2_y = 0.0f;  // env tabs
+    float tabs3_y = 0.0f;  // difficulty + toggles
+    float tabs4_y = 0.0f;  // sort tabs
 };
 
 OverlayPanelLayout compute_create_operator_layout(uint32_t win_w, uint32_t win_h,
                                                    bool show_composite);
 OverlayPanelLayout compute_package_browser_layout(uint32_t win_w, uint32_t win_h, size_t entry_count);
-OverlayPanelLayout compute_example_browser_layout(uint32_t win_w, uint32_t win_h, size_t entry_count);
+OverlayPanelLayout compute_example_browser_layout(uint32_t win_w, uint32_t win_h,
+                                                  size_t entry_count,
+                                                  size_t preview_row_count = 0);
 OverlayPanelLayout compute_graph_meta_editor_layout(uint32_t win_w, uint32_t win_h);
 OverlayPanelLayout compute_about_layout(uint32_t win_w, uint32_t win_h);
 OverlayRect compute_example_open_button_rect(const OverlayPanelLayout& layout, float item_y);

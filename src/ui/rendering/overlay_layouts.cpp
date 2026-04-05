@@ -53,15 +53,23 @@ OverlayPanelLayout compute_package_browser_layout(uint32_t win_w, uint32_t win_h
     return l;
 }
 
-OverlayPanelLayout compute_example_browser_layout(uint32_t win_w, uint32_t win_h, size_t entry_count) {
+OverlayPanelLayout compute_example_browser_layout(uint32_t win_w, uint32_t win_h,
+                                                  size_t entry_count,
+                                                  size_t preview_row_count) {
     OverlayPanelLayout l;
     l.wf = static_cast<float>(win_w);
     l.hf = static_cast<float>(win_h);
     l.visible_count = std::min(static_cast<int>(entry_count), kPkgBrowserMaxVisible);
     l.list_h = l.visible_count * kPkgBrowserItemH;
+    const size_t visible_preview_rows = std::min<size_t>(preview_row_count, 3);
+    l.preview_h = visible_preview_rows == 0 ? 0.0f
+                : (8.0f + 16.0f + static_cast<float>(visible_preview_rows) * 18.0f + 8.0f);
     float content_h = kPkgBrowserPadY + kPkgBrowserHeaderH + kPkgBrowserSearchH + 6.0f
-                    + kPkgBrowserTabH + 8.0f + kPkgBrowserTabH + 8.0f + kPkgBrowserTabH + 8.0f
-                    + l.list_h + 8.0f + 18.0f + kPkgBrowserPadY;
+                    + kPkgBrowserTabH + 8.0f + kPkgBrowserTabH + 8.0f
+                    + kPkgBrowserTabH + 8.0f + kPkgBrowserTabH + 8.0f
+                    + l.list_h
+                    + (l.preview_h > 0.0f ? 8.0f + l.preview_h : 0.0f)
+                    + 8.0f + 18.0f + kPkgBrowserPadY;
     l.pw = kPkgBrowserW + 120.0f;
     l.ph = std::min(kPkgBrowserMaxH + 70.0f, std::min(content_h, l.hf - 40.0f));
     l.px = (l.wf - l.pw) * 0.5f;
@@ -71,8 +79,10 @@ OverlayPanelLayout compute_example_browser_layout(uint32_t win_w, uint32_t win_h
     l.tabs_y = l.py + kPkgBrowserPadY + kPkgBrowserHeaderH + kPkgBrowserSearchH + 6.0f;
     l.tabs2_y = l.tabs_y + kPkgBrowserTabH + 8.0f;
     l.tabs3_y = l.tabs2_y + kPkgBrowserTabH + 8.0f;
-    l.list_top = l.tabs3_y + kPkgBrowserTabH + 8.0f;
-    l.status_y = l.list_top + l.visible_count * kPkgBrowserItemH + 8.0f;
+    l.tabs4_y = l.tabs3_y + kPkgBrowserTabH + 8.0f;
+    l.list_top = l.tabs4_y + kPkgBrowserTabH + 8.0f;
+    l.preview_top = l.list_top + l.visible_count * kPkgBrowserItemH + 8.0f;
+    l.status_y = l.preview_top + (l.preview_h > 0.0f ? l.preview_h + 8.0f : 0.0f);
     return l;
 }
 
@@ -81,7 +91,7 @@ OverlayPanelLayout compute_graph_meta_editor_layout(uint32_t win_w, uint32_t win
     l.wf = static_cast<float>(win_w);
     l.hf = static_cast<float>(win_h);
     l.pw = 720.0f;
-    l.ph = 420.0f;
+    l.ph = 580.0f;
     l.px = (l.wf - l.pw) * 0.5f;
     l.py = (l.hf - l.ph) * 0.5f;
     return l;
