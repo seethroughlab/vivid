@@ -1051,19 +1051,22 @@ std::string dispatch(const std::string& method, const std::string& body,
                             if (entry.path().extension() != ".json") continue;
                             nlohmann::json ex = nlohmann::json::object();
                             ex["filename"] = entry.path().filename().string();
-                            std::string desc_str;
-                            std::ifstream f(entry.path());
-                            if (f.is_open()) {
-                                std::ostringstream ss;
-                                ss << f.rdbuf();
-                                auto content = ss.str();
-                                try {
-                                    auto gdoc = nlohmann::json::parse(content);
-                                    if (gdoc.contains("description") && gdoc["description"].is_string())
-                                        desc_str = gdoc["description"].get<std::string>();
-                                } catch (...) {}
+                            vivid::ExampleEntry edata;
+                            if (load_example_entry_from_graph(entry.path(), graphs_dir, edata)) {
+                                ex["description"] = edata.summary;
+                                if (!edata.content_kind.empty()) ex["content_kind"] = edata.content_kind;
+                                if (!edata.category.empty()) ex["category"] = edata.category;
+                                if (!edata.family.empty()) ex["family"] = edata.family;
+                                if (!edata.role.empty()) ex["role"] = edata.role;
+                                if (!edata.playability.empty()) ex["playability"] = edata.playability;
+                                if (!edata.domains.empty()) {
+                                    nlohmann::json darr = nlohmann::json::array();
+                                    for (const auto& d : edata.domains) darr.push_back(d);
+                                    ex["domains"] = std::move(darr);
+                                }
+                            } else {
+                                ex["description"] = "";
                             }
-                            ex["description"] = desc_str;
                             arr.push_back(std::move(ex));
                         }
                     }

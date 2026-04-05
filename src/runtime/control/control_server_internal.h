@@ -3,6 +3,7 @@
 #include "runtime/assets/asset_library.h"
 #include "runtime/control/control_server.h"
 #include "runtime/control/control_server_checks.h"
+#include "runtime/control/graph_file_io.h"
 #include "runtime/graph/subgraph_module.h"
 #include "ui/graph/graph_snapshot.h"
 #include "runtime/debug/capture_coordinator.h"
