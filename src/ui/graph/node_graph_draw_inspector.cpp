@@ -162,14 +162,16 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
         tr.draw_text(px, py, label.c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.85f);
         py += 20;
         if (c.invalid) {
-            std::string broken = c.invalid_reason.empty() ? "Broken connection" : c.invalid_reason;
+            std::string broken = c.invalid_reason.empty() ? T("broken_connection", "Broken connection") : c.invalid_reason;
             tr.draw_text(px, py, broken.c_str(), 1.0f, 0.45f, 0.38f, 0.85f);
             py += 20;
         }
 
         if (!c.dropped) {
         // Remap fields
-        static const char* field_labels[4] = { "From Min", "From Max", "To Min", "To Max" };
+        const char* field_labels[4] = {
+            T("from_min", "From Min"), T("from_max", "From Max"),
+            T("to_min", "To Min"), T("to_max", "To Max") };
         float vals[4] = { c.from_min, c.from_max, c.to_min, c.to_max };
         float field_w = kInspectorW - kInspPadX * 2 - 80;
 
@@ -340,7 +342,8 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
 
     // Error banner for errored nodes (includes compile errors where errored=false)
     if (!sel_node->error_message.empty()) {
-        tr.draw_text(px, py, ("ERROR: " + sel_node->error_message).c_str(),
+        const std::string label = std::string(T("error_label", "Error:")) + " " + sel_node->error_message;
+        tr.draw_text(px, py, label.c_str(),
                      kErrorAccent[0], kErrorAccent[1], kErrorAccent[2]);
         py += kLineH + 4;
     }
@@ -358,16 +361,16 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
 
     if (sel_node->op_info && sel_node->op_info->has_custom_inspector) {
         if (sel_node->op_info->inspector_mode == VIVID_INSPECTOR_STANDARD && has_visible_standard_params) {
-            draw_section_separator(tr, px, py, kInspContentW, "Controls");
+            draw_section_separator(tr, px, py, kInspContentW, T("controls", "Controls"));
             draw_inspector_params(tr, *sel_node, px, py);
         }
         if (has_custom_inspector) {
-            draw_section_separator(tr, px, py, kInspContentW, "Custom");
+            draw_section_separator(tr, px, py, kInspContentW, T("custom", "Custom"));
         }
         draw_custom_inspector(tr, *sel_node, px, py);
     } else {
         if (has_visible_standard_params) {
-            draw_section_separator(tr, px, py, kInspContentW, "Controls");
+            draw_section_separator(tr, px, py, kInspContentW, T("controls", "Controls"));
             draw_inspector_params(tr, *sel_node, px, py);
         }
     }
@@ -384,7 +387,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
         bool has_state_presets = sel_node->param_indices.count("states") > 0;
         bool has_outputs = !sel_node->output_port_indices.empty();
         if (has_resolution || has_state_presets || has_outputs)
-            draw_section_separator(tr, px, py, kInspContentW, "Technical");
+            draw_section_separator(tr, px, py, kInspContentW, T("technical", "Technical"));
         draw_inspector_resolution(tr, *sel_node, px, py);
         draw_inspector_state_presets(tr, *sel_node, px, py);
         draw_inspector_outputs(tr, *sel_node, px, py);

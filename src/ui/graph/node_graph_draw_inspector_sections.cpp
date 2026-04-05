@@ -163,8 +163,8 @@ void NodeGraphUI::draw_midi_map_banner(Renderer2D& tr) {
                  kMidiMapBanner[0], kMidiMapBanner[1], kMidiMapBanner[2], kMidiMapBanner[3]);
 
     const char* status = midi_map_waiting_
-        ? "MIDI MAP: Wiggle a knob..."
-        : "MIDI MAP: Click a parameter...";
+        ? T("midi_map_wiggle", "MIDI MAP: Wiggle a knob...")
+        : T("midi_map_click", "MIDI MAP: Click a parameter...");
     tr.draw_text(10, banner_y + 4, status, 0.9f, 0.95f, 1.0f);
 }
 
@@ -201,7 +201,7 @@ void NodeGraphUI::draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node
                 ? node.active_preset.substr(slash + 1) : node.active_preset;
         }
         const char* label = preset_display.empty()
-            ? "(none)" : preset_display.c_str();
+            ? T("preset_none", "(none)") : preset_display.c_str();
         tr.draw_text(px + 6, py + 3, label,
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
 
@@ -593,7 +593,9 @@ void NodeGraphUI::draw_inspector_state_presets(Renderer2D& tr, const NodeSnapsho
                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.8f);
         }
 
-        std::string header_label = "State " + std::to_string(si);
+        char header_buf[64];
+        std::snprintf(header_buf, sizeof(header_buf), T("state_header", "State %d"), si);
+        std::string header_label = header_buf;
         tr.draw_text(cx + cs + 6.0f, hy + 3.0f, header_label.c_str(),
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.9f);
 
@@ -621,7 +623,7 @@ void NodeGraphUI::draw_inspector_state_presets(Renderer2D& tr, const NodeSnapsho
             tr.draw_rect(dd_x, py, dd_w, dd_h,
                          style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
 
-            const char* label = current_preset.empty() ? "(none)" : current_preset.c_str();
+            const char* label = current_preset.empty() ? T("preset_none", "(none)") : current_preset.c_str();
             tr.draw_text(dd_x + 6, py + 3, label,
                          style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
 
@@ -642,7 +644,7 @@ void NodeGraphUI::draw_inspector_modulation(Renderer2D& tr, const NodeSnapshot& 
     if (!node.is_module_instance) return;
     if (node.mod_sources.empty() || node.mod_destinations.empty()) return;
 
-    draw_section_separator(tr, px, py, kInspContentW, "Modulation");
+    draw_section_separator(tr, px, py, kInspContentW, T("modulation", "Modulation"));
 
     float row_h = 20.0f;
     float source_w = 100.0f;
@@ -709,7 +711,7 @@ void NodeGraphUI::draw_inspector_modulation(Renderer2D& tr, const NodeSnapshot& 
     float add_w = 92.0f;
     tr.draw_rect(px, py, add_w, row_h,
                  style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.85f);
-    tr.draw_text(px + 8.0f, py + 3.0f, "+ assignment",
+    tr.draw_text(px + 8.0f, py + 3.0f, T("add_assignment", "+ assignment"),
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.72f);
     inspector_.mod_assign_rects.push_back({px, py, add_w, row_h, node.node_id, "", "", 4});
     py += row_h + 6.0f;
@@ -777,7 +779,7 @@ void NodeGraphUI::draw_inspector_performance(Renderer2D& tr, const NodeSnapshot&
         return a.param_idx < b.param_idx;
     });
 
-    draw_section_separator(tr, px, py, kInspContentW, "Performance");
+    draw_section_separator(tr, px, py, kInspContentW, T("performance", "Performance"));
 
     // Draw page sub-headers if there are multiple pages
     bool multi_page = false;

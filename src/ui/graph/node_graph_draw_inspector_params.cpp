@@ -540,7 +540,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         if (fp_it != node.file_param_values.end())
             file_path = fp_it->second;
 
-        std::string display_name = "Browse\xe2\x80\xa6";
+        std::string display_name = T("browse_file", "Browse\xe2\x80\xa6");
         if (!file_path.empty()) {
             auto slash = file_path.rfind('/');
             display_name = (slash != std::string::npos) ? file_path.substr(slash + 1) : file_path;
@@ -811,7 +811,7 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
 
                 if (!current_group.empty()) {
                     if (!drew_secondary_controls) {
-                        draw_section_separator(tr, px, layout.y, kInspContentW, "Secondary Controls");
+                        draw_section_separator(tr, px, layout.y, kInspContentW, T("secondary_controls", "Secondary Controls"));
                         drew_secondary_controls = true;
                     }
                     bool collapsed = is_group_collapsed(node.type_name, current_group);

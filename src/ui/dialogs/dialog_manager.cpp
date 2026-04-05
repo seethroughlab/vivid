@@ -1,9 +1,11 @@
 #include "ui/dialogs/dialog_manager.h"
 #include "ui/graph/node_graph_constants.h"
+#include "ui/style/i18n.h"
 #include "ui/text_edit.h"
 #include "ui/ui_command_sink.h"
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 
 namespace vivid::ui {
 
@@ -26,6 +28,10 @@ bool same_package_browser_entries(const std::vector<PackageBrowserEntry>& a,
         }
     }
     return true;
+}
+
+std::string localized_string(const char* key, const char* fallback) {
+    return T(key, fallback);
 }
 } // namespace
 
@@ -260,12 +266,14 @@ void DialogManager::begin_pkg_action(PkgBrowserState::ActionKind kind, const std
 }
 
 void DialogManager::set_pkg_action_failure(const std::string& error) {
-    const std::string fallback = error.empty() ? "Package action failed" : error;
+    const std::string fallback = error.empty() ? localized_string("pkg_action_failed", "Package action failed")
+                                               : error;
     pkg_browser.action_pending = false;
     pkg_browser.action_name.clear();
     pkg_browser.action_error = fallback;
     if (pkg_action_uses_build_console(pkg_browser.action_kind)) {
-        pkg_browser.action_error_display = "Build failed \xe2\x80\x94 see Build Console";
+        pkg_browser.action_error_display =
+            localized_string("pkg_build_failed_open_console", "Build failed - see Build Console");
         pkg_browser.action_error_console_backed = true;
     } else {
         pkg_browser.action_error_display = fallback;
@@ -273,6 +281,20 @@ void DialogManager::set_pkg_action_failure(const std::string& error) {
     }
     pkg_browser.footer_action_btn = {};
     pkg_browser.action_kind = PkgBrowserState::ActionKind::None;
+}
+
+std::string DialogManager::localized_format(const char* key, const char* fallback,
+                                            const std::string& value) {
+    char buf[512];
+    std::snprintf(buf, sizeof(buf), T(key, fallback), value.c_str());
+    return buf;
+}
+
+std::string DialogManager::localized_format(const char* key, const char* fallback,
+                                            int value) {
+    char buf[128];
+    std::snprintf(buf, sizeof(buf), T(key, fallback), value);
+    return buf;
 }
 
 void DialogManager::toggle_package_browser() {

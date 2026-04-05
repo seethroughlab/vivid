@@ -199,6 +199,14 @@ foreach(f ${WGSL_PRESETS})
     configure_file(${f} ${CMAKE_BINARY_DIR}/filters/${fname} COPYONLY)
 endforeach()
 
+# Copy locale files to build directory
+file(GLOB LOCALE_FILES locales/*.json)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/locales)
+foreach(f ${LOCALE_FILES})
+    get_filename_component(fname ${f} NAME)
+    configure_file(${f} ${CMAKE_BINARY_DIR}/locales/${fname} COPYONLY)
+endforeach()
+
 # --- Bundle resources (font, graphs, WGSL filters → Resources/) ---
 if(APPLE)
     function(vivid_bundle_source_tree base_dir rel_root)
@@ -264,6 +272,14 @@ if(APPLE)
         PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
     set_target_properties(vivid PROPERTIES
         MACOSX_BUNDLE_ICON_FILE Vivid.icns)
+
+    # Locale files → Resources/locales/
+    file(GLOB _BUNDLE_LOCALES locales/*.json)
+    foreach(f ${_BUNDLE_LOCALES})
+        target_sources(vivid PRIVATE ${f})
+        set_source_files_properties(${f}
+            PROPERTIES MACOSX_PACKAGE_LOCATION Resources/locales)
+    endforeach()
 
     # WGSL filter presets → Resources/filters/
     file(GLOB _BUNDLE_FILTERS filters/*.wgsl)

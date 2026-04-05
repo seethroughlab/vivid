@@ -88,6 +88,7 @@
 #include "runtime/graph/graph_snapshot_builder.h"
 #include "runtime/core/main_helpers.h"
 #include "runtime/core/main_internal.h"
+#include "ui/style/i18n.h"  // must follow nlohmann/json includes (T macro conflicts)
 
 
 // #16191D in sRGB → linear: pow(x/255, 2.2)
@@ -351,6 +352,9 @@ int main(int argc, char* argv[]) {
 
     // Resolve build/source directories once (used by export, packages, hot-reload)
     vivid::Settings settings = vivid::load_settings();
+
+    // Load locale strings (auto-detect OS language, fall back to English)
+    vivid::ui::I18n::instance().load_best((resources_dir / "locales").string());
 
     // --- Handle export subcommand (early exit, no GLFW) ---
     if (export_cmd->parsed()) {

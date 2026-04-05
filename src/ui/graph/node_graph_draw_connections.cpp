@@ -417,7 +417,7 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
     {
         float cur_y = start_y;
         if (left_has_ports) {
-            draw_section_header(px, cur_y, kPatchColW, "PORTS", clr_a, true);
+            draw_section_header(px, cur_y, kPatchColW, T("ports", "PORTS"), clr_a, true);
             cur_y += kPatchRowH;
         }
         for (int i = 0; i < static_cast<int>(left_pl.ports.size()); ++i) {
@@ -457,7 +457,7 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
             cur_y += kPatchRowH;
         }
         if (left_has_params) {
-            draw_section_header(px, cur_y, kPatchColW, "PARAMS", clr_a, true);
+            draw_section_header(px, cur_y, kPatchColW, T("params", "PARAMS"), clr_a, true);
             cur_y += kPatchRowH;
         }
         for (int i = 0; i < static_cast<int>(left_pl.params.size()); ++i) {
@@ -498,7 +498,7 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
     {
         float cur_y = start_y;
         if (right_has_ports) {
-            draw_section_header(right_col_x, cur_y, kPatchColW, "PORTS", clr_b, false);
+            draw_section_header(right_col_x, cur_y, kPatchColW, T("ports", "PORTS"), clr_b, false);
             cur_y += kPatchRowH;
         }
         for (int i = 0; i < static_cast<int>(right_pl.ports.size()); ++i) {
@@ -538,7 +538,7 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
             cur_y += kPatchRowH;
         }
         if (right_has_params) {
-            draw_section_header(right_col_x, cur_y, kPatchColW, "PARAMS", clr_b, false);
+            draw_section_header(right_col_x, cur_y, kPatchColW, T("params", "PARAMS"), clr_b, false);
             cur_y += kPatchRowH;
         }
         for (int i = 0; i < static_cast<int>(right_pl.params.size()); ++i) {

@@ -3,6 +3,7 @@
 #include "ui/graph/node_graph_util.h"
 #include "ui/active_text_field.h"
 #include "ui/rendering/overlay_layouts.h"
+#include "ui/style/i18n.h"
 #include "ui/dialogs/file_dialog.h"
 #include "runtime/platform/platform.h"
 #include "common/string_util.h"
@@ -430,7 +431,7 @@ bool NodeGraphUI::handle_inspector_click() {
             if (target && (!target->preset_names.empty() || !target->factory_preset_names.empty())) {
                 inspector_.dropdown_labels.clear();
                 inspector_.dropdown_factory_count = 0;
-                inspector_.dropdown_labels.push_back("(none)");
+                inspector_.dropdown_labels.push_back(T("preset_none", "(none)"));
                 // Factory presets first
                 for (const auto& pn : target->factory_preset_names)
                     inspector_.dropdown_labels.push_back(pn);
@@ -464,7 +465,7 @@ bool NodeGraphUI::handle_inspector_click() {
                     target->factory_preset_names, target->preset_names);
                 // Insert "(none)" as first entry for state-preset clearing
                 inspector_.dropdown_menu_tree.insert(inspector_.dropdown_menu_tree.begin(),
-                    ui::PresetMenuNode{"(none)", "", false, false, {}});
+                    ui::PresetMenuNode{T("preset_none", "(none)"), "", false, false, {}});
                 inspector_.dropdown_submenu_stack.clear();
                 inspector_.dropdown_submenu_stack.push_back({&inspector_.dropdown_menu_tree, -1,
                     inspector_.dropdown_x, inspector_.dropdown_y, inspector_.dropdown_w});

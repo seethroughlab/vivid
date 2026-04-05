@@ -12,7 +12,12 @@
 // Derive fixture path from source file location.
 static std::string fixture_path() {
     std::filesystem::path src(__FILE__);
-    return (src.parent_path() / "fixtures" / "test_locale_en.json").string();
+    return (src.parent_path().parent_path() / "fixtures" / "test_locale_en.json").string();
+}
+
+static std::string fixture_dir() {
+    std::filesystem::path src(__FILE__);
+    return (src.parent_path().parent_path() / "fixtures").string();
 }
 
 int main() {
@@ -55,7 +60,25 @@ int main() {
     // 9. locale() returns 'en'
     check(i18n.locale() == "en", "locale() returns 'en'");
 
-    // 10. load invalid path returns false
+    // 10. detect_os_locale returns a non-empty alphabetic string
+    {
+        std::string lang = vivid::ui::detect_os_locale();
+        check(!lang.empty(), "detect_os_locale returns non-empty string");
+        bool all_alpha = true;
+        for (char c : lang) { if (!std::isalpha(static_cast<unsigned char>(c))) all_alpha = false; }
+        check(all_alpha, "detect_os_locale returns alphabetic string");
+    }
+
+    // 11. load_best finds en.json in fixture directory
+    check(i18n.load_best(fixture_dir()), "load_best succeeds with fixture dir");
+    check(i18n.locale() == "en", "load_best loaded en.json");
+    check(std::strcmp(i18n.get("save", "fb"), "Save") == 0,
+          "load_best: get('save') returns 'Save'");
+
+    // 12. load_best with nonexistent directory returns false
+    check(!i18n.load_best("/nonexistent/dir"), "load_best fails with bad dir");
+
+    // 13. load invalid path returns false
     check(!i18n.load("/nonexistent/path.json"), "load invalid path returns false");
 
     // 11. after failed load, get returns fallback (strings cleared)

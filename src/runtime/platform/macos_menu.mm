@@ -1,6 +1,8 @@
 #ifdef __APPLE__
 #import <Cocoa/Cocoa.h>
 #include "runtime/platform/macos_menu.h"
+#include "ui/style/i18n.h"
+#include <cstdio>
 
 // Tag values for menu items
 enum MenuTag : NSInteger {
@@ -152,6 +154,20 @@ static NSMenu* sRecentMenu = nil;
 
 namespace vivid {
 
+namespace {
+
+NSString* ns_localized(const char* key, const char* fallback) {
+    return [NSString stringWithUTF8String:ui::I18n::instance().get(key, fallback)];
+}
+
+NSString* ns_localized_vivid(const char* key, const char* fallback) {
+    char buf[256];
+    std::snprintf(buf, sizeof(buf), ui::I18n::instance().get(key, fallback), "Vivid");
+    return [NSString stringWithUTF8String:buf];
+}
+
+} // namespace
+
 void macos_setup_menu(const MenuCallbacks& callbacks) {
     @autoreleasepool {
         sDelegate = [[VividMenuDelegate alloc] init];
@@ -166,7 +182,7 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         if (appMenu) {
             // Insert "About Vivid" as the first item (standard macOS convention)
             NSMenuItem* aboutItem = [[NSMenuItem alloc]
-                initWithTitle:@"About Vivid"
+                initWithTitle:ns_localized_vivid("menu_about_vivid", "About %s")
                        action:@selector(menuAction:)
                 keyEquivalent:@""];
             aboutItem.target = sDelegate;
@@ -189,7 +205,7 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
                 [appMenu insertItem:[NSMenuItem separatorItem] atIndex:servicesIdx];
 
                 NSMenuItem* checkUpdatesItem = [[NSMenuItem alloc]
-                    initWithTitle:@"Check for Updates..."
+                    initWithTitle:ns_localized("menu_check_for_updates", "Check for Updates...")
                            action:@selector(menuAction:)
                     keyEquivalent:@""];
                 checkUpdatesItem.target = sDelegate;
@@ -197,7 +213,7 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
                 [appMenu insertItem:checkUpdatesItem atIndex:servicesIdx];
 
                 NSMenuItem* autoCheckUpdatesItem = [[NSMenuItem alloc]
-                    initWithTitle:@"Automatically Check for Updates"
+                    initWithTitle:ns_localized("menu_auto_check_updates", "Automatically Check for Updates")
                            action:@selector(menuAction:)
                     keyEquivalent:@""];
                 autoCheckUpdatesItem.target = sDelegate;
@@ -205,7 +221,7 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
                 [appMenu insertItem:autoCheckUpdatesItem atIndex:servicesIdx];
 
                 NSMenuItem* prefsItem = [[NSMenuItem alloc]
-                    initWithTitle:@"Preferences..."
+                    initWithTitle:ns_localized("menu_preferences", "Preferences...")
                            action:@selector(menuAction:)
                     keyEquivalent:@","];
                 prefsItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
@@ -216,10 +232,10 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         }
 
         // --- Create "File" menu and insert at index 1 ---
-        NSMenu* fileMenu = [[NSMenu alloc] initWithTitle:@"File"];
+        NSMenu* fileMenu = [[NSMenu alloc] initWithTitle:ns_localized("menu_file", "File")];
 
         NSMenuItem* newItem = [[NSMenuItem alloc]
-            initWithTitle:@"New"
+            initWithTitle:ns_localized("menu_new", "New")
                    action:@selector(menuAction:)
             keyEquivalent:@"n"];
         newItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
@@ -228,7 +244,7 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         [fileMenu addItem:newItem];
 
         NSMenuItem* newProjectItem = [[NSMenuItem alloc]
-            initWithTitle:@"New Project..."
+            initWithTitle:ns_localized("menu_new_project", "New Project...")
                    action:@selector(menuAction:)
             keyEquivalent:@"N"];
         newProjectItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
@@ -238,7 +254,7 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         [fileMenu addItem:[NSMenuItem separatorItem]];
 
         NSMenuItem* openItem = [[NSMenuItem alloc]
-            initWithTitle:@"Open..."
+            initWithTitle:ns_localized("menu_open", "Open...")
                    action:@selector(menuAction:)
             keyEquivalent:@"o"];
         openItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
@@ -247,7 +263,7 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         [fileMenu addItem:openItem];
 
         NSMenuItem* openExampleItem = [[NSMenuItem alloc]
-            initWithTitle:@"Open Example..."
+            initWithTitle:ns_localized("menu_open_example", "Open Example...")
                    action:@selector(menuAction:)
             keyEquivalent:@"O"];
         openExampleItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
@@ -256,7 +272,7 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         [fileMenu addItem:openExampleItem];
 
         NSMenuItem* openGraphFolderItem = [[NSMenuItem alloc]
-            initWithTitle:@"Open Graph Folder"
+            initWithTitle:ns_localized("menu_open_graph_folder", "Open Graph Folder")
                    action:@selector(menuAction:)
             keyEquivalent:@""];
         openGraphFolderItem.target = sDelegate;
@@ -264,9 +280,9 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         [fileMenu addItem:openGraphFolderItem];
 
         // Open Recent submenu
-        sRecentMenu = [[NSMenu alloc] initWithTitle:@"Open Recent"];
+        sRecentMenu = [[NSMenu alloc] initWithTitle:ns_localized("menu_open_recent", "Open Recent")];
         NSMenuItem* recentMenuItem = [[NSMenuItem alloc]
-            initWithTitle:@"Open Recent"
+            initWithTitle:ns_localized("menu_open_recent", "Open Recent")
                    action:nil
             keyEquivalent:@""];
         [recentMenuItem setSubmenu:sRecentMenu];
@@ -275,7 +291,7 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         [fileMenu addItem:[NSMenuItem separatorItem]];
 
         NSMenuItem* saveItem = [[NSMenuItem alloc]
-            initWithTitle:@"Save"
+            initWithTitle:ns_localized("save", "Save")
                    action:@selector(menuAction:)
             keyEquivalent:@"s"];
         saveItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
@@ -284,7 +300,7 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         [fileMenu addItem:saveItem];
 
         NSMenuItem* saveAsItem = [[NSMenuItem alloc]
-            initWithTitle:@"Save As..."
+            initWithTitle:ns_localized("menu_save_as", "Save As...")
                    action:@selector(menuAction:)
             keyEquivalent:@"S"];
         saveAsItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
@@ -295,7 +311,7 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         [fileMenu addItem:[NSMenuItem separatorItem]];
 
         NSMenuItem* exportItem = [[NSMenuItem alloc]
-            initWithTitle:@"Export Standalone..."
+            initWithTitle:ns_localized("menu_export_standalone", "Export Standalone...")
                    action:@selector(menuAction:)
             keyEquivalent:@""];
         exportItem.target = sDelegate;
@@ -305,7 +321,7 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         [fileMenu addItem:[NSMenuItem separatorItem]];
 
         NSMenuItem* browseItem = [[NSMenuItem alloc]
-            initWithTitle:@"Browse Packages..."
+            initWithTitle:ns_localized("menu_browse_packages", "Browse Packages...")
                    action:@selector(menuAction:)
             keyEquivalent:@"P"];
         browseItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
@@ -314,24 +330,24 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         [fileMenu addItem:browseItem];
 
         NSMenuItem* openCatalogSiteItem = [[NSMenuItem alloc]
-            initWithTitle:@"Open Package Catalog Website..."
+            initWithTitle:ns_localized("menu_open_package_catalog_website", "Open Package Catalog Website...")
                    action:@selector(menuAction:)
             keyEquivalent:@""];
         openCatalogSiteItem.target = sDelegate;
         openCatalogSiteItem.tag = kMenuTagOpenPackageCatalogWebsite;
         [fileMenu addItem:openCatalogSiteItem];
 
-        NSMenuItem* fileMenuItem = [[NSMenuItem alloc] initWithTitle:@"File"
+        NSMenuItem* fileMenuItem = [[NSMenuItem alloc] initWithTitle:ns_localized("menu_file", "File")
                                                              action:nil
                                                       keyEquivalent:@""];
         [fileMenuItem setSubmenu:fileMenu];
         [mainMenu insertItem:fileMenuItem atIndex:1];
 
         // --- Create "Edit" menu and insert at index 2 ---
-        NSMenu* editMenu = [[NSMenu alloc] initWithTitle:@"Edit"];
+        NSMenu* editMenu = [[NSMenu alloc] initWithTitle:ns_localized("menu_edit", "Edit")];
 
         NSMenuItem* deleteItem = [[NSMenuItem alloc]
-            initWithTitle:@"Delete Selected"
+            initWithTitle:ns_localized("menu_delete_selected", "Delete Selected")
                    action:@selector(menuAction:)
             keyEquivalent:[NSString stringWithFormat:@"%C", (unichar)NSBackspaceCharacter]];
         deleteItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
@@ -340,7 +356,7 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         [editMenu addItem:deleteItem];
 
         NSMenuItem* editMetaItem = [[NSMenuItem alloc]
-            initWithTitle:@"Edit Meta..."
+            initWithTitle:ns_localized("menu_edit_meta", "Edit Meta...")
                    action:@selector(menuAction:)
             keyEquivalent:@"i"];
         editMetaItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
@@ -348,17 +364,17 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         editMetaItem.tag = kMenuTagEditMeta;
         [editMenu addItem:editMetaItem];
 
-        NSMenuItem* editMenuItem = [[NSMenuItem alloc] initWithTitle:@"Edit"
+        NSMenuItem* editMenuItem = [[NSMenuItem alloc] initWithTitle:ns_localized("menu_edit", "Edit")
                                                               action:nil
                                                        keyEquivalent:@""];
         [editMenuItem setSubmenu:editMenu];
         [mainMenu insertItem:editMenuItem atIndex:2];
 
         // --- Create "View" menu and insert at index 3 ---
-        NSMenu* viewMenu = [[NSMenu alloc] initWithTitle:@"View"];
+        NSMenu* viewMenu = [[NSMenu alloc] initWithTitle:ns_localized("menu_view", "View")];
 
         NSMenuItem* toggleUIItem = [[NSMenuItem alloc]
-            initWithTitle:@"Toggle Graph UI"
+            initWithTitle:ns_localized("menu_toggle_graph_ui", "Toggle Graph UI")
                    action:@selector(menuAction:)
             keyEquivalent:@"`"];
         toggleUIItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
@@ -367,7 +383,7 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         [viewMenu addItem:toggleUIItem];
 
         NSMenuItem* toggleFullscreenItem = [[NSMenuItem alloc]
-            initWithTitle:@"Toggle Fullscreen"
+            initWithTitle:ns_localized("menu_toggle_fullscreen", "Toggle Fullscreen")
                    action:@selector(menuAction:)
             keyEquivalent:@"f"];
         toggleFullscreenItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagControl;
@@ -376,7 +392,7 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         [viewMenu addItem:toggleFullscreenItem];
 
         NSMenuItem* toggleBezierItem = [[NSMenuItem alloc]
-            initWithTitle:@"Toggle Bezier Wires"
+            initWithTitle:ns_localized("menu_toggle_bezier_wires", "Toggle Bezier Wires")
                    action:@selector(menuAction:)
             keyEquivalent:@"b"];
         toggleBezierItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
@@ -385,7 +401,7 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         [viewMenu addItem:toggleBezierItem];
 
         NSMenuItem* toggleParamWiresItem = [[NSMenuItem alloc]
-            initWithTitle:@"Show Param Wires"
+            initWithTitle:ns_localized("menu_show_param_wires", "Show Param Wires")
                    action:@selector(menuAction:)
             keyEquivalent:@"p"];
         toggleParamWiresItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
@@ -394,7 +410,7 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         [viewMenu addItem:toggleParamWiresItem];
 
         NSMenuItem* toggleAnalysisItem = [[NSMenuItem alloc]
-            initWithTitle:@"Enable Analysis"
+            initWithTitle:ns_localized("menu_enable_analysis", "Enable Analysis")
                    action:@selector(menuAction:)
             keyEquivalent:@""];
         toggleAnalysisItem.target = sDelegate;
@@ -402,7 +418,7 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         [viewMenu addItem:toggleAnalysisItem];
 
         NSMenuItem* toggleGridItem = [[NSMenuItem alloc]
-            initWithTitle:@"Toggle Session Grid"
+            initWithTitle:ns_localized("menu_toggle_session_grid", "Toggle Session Grid")
                    action:@selector(menuAction:)
             keyEquivalent:@"g"];
         toggleGridItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
@@ -411,7 +427,7 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         [viewMenu addItem:toggleGridItem];
 
         NSMenuItem* toggleBuildConsoleItem = [[NSMenuItem alloc]
-            initWithTitle:@"Build Console"
+            initWithTitle:ns_localized("build_console", "Build Console")
                    action:@selector(menuAction:)
             keyEquivalent:@"B"];
         toggleBuildConsoleItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
@@ -420,7 +436,7 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         [viewMenu addItem:toggleBuildConsoleItem];
 
         NSMenuItem* toggleMidiItem = [[NSMenuItem alloc]
-            initWithTitle:@"Toggle MIDI Map"
+            initWithTitle:ns_localized("menu_toggle_midi_map", "Toggle MIDI Map")
                    action:@selector(menuAction:)
             keyEquivalent:@"m"];
         toggleMidiItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
@@ -428,17 +444,17 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         toggleMidiItem.tag = kMenuTagToggleMidiMap;
         [viewMenu addItem:toggleMidiItem];
 
-        NSMenuItem* viewMenuItem = [[NSMenuItem alloc] initWithTitle:@"View"
+        NSMenuItem* viewMenuItem = [[NSMenuItem alloc] initWithTitle:ns_localized("menu_view", "View")
                                                               action:nil
                                                        keyEquivalent:@""];
         [viewMenuItem setSubmenu:viewMenu];
         [mainMenu insertItem:viewMenuItem atIndex:3];
 
         // --- Create "Insert" menu and insert at index 4 ---
-        NSMenu* insertMenu = [[NSMenu alloc] initWithTitle:@"Insert"];
+        NSMenu* insertMenu = [[NSMenu alloc] initWithTitle:ns_localized("menu_insert", "Insert")];
 
         NSMenuItem* addNodeItem = [[NSMenuItem alloc]
-            initWithTitle:@"Add Node..."
+            initWithTitle:ns_localized("menu_add_node", "Add Node...")
                    action:@selector(menuAction:)
             keyEquivalent:@"t"];
         addNodeItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
@@ -446,24 +462,24 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         addNodeItem.tag = kMenuTagAddNode;
         [insertMenu addItem:addNodeItem];
 
-        NSMenuItem* insertMenuItem = [[NSMenuItem alloc] initWithTitle:@"Insert"
+        NSMenuItem* insertMenuItem = [[NSMenuItem alloc] initWithTitle:ns_localized("menu_insert", "Insert")
                                                                 action:nil
                                                          keyEquivalent:@""];
         [insertMenuItem setSubmenu:insertMenu];
         [mainMenu insertItem:insertMenuItem atIndex:4];
 
         // --- Create "Help" menu and append ---
-        NSMenu* helpMenu = [[NSMenu alloc] initWithTitle:@"Help"];
+        NSMenu* helpMenu = [[NSMenu alloc] initWithTitle:ns_localized("menu_help", "Help")];
 
         NSMenuItem* reportIssueItem = [[NSMenuItem alloc]
-            initWithTitle:@"Report an Issue..."
+            initWithTitle:ns_localized("menu_report_issue", "Report an Issue...")
                    action:@selector(menuAction:)
             keyEquivalent:@""];
         reportIssueItem.target = sDelegate;
         reportIssueItem.tag = kMenuTagReportIssue;
         [helpMenu addItem:reportIssueItem];
 
-        NSMenuItem* helpMenuItem = [[NSMenuItem alloc] initWithTitle:@"Help"
+        NSMenuItem* helpMenuItem = [[NSMenuItem alloc] initWithTitle:ns_localized("menu_help", "Help")
                                                               action:nil
                                                        keyEquivalent:@""];
         [helpMenuItem setSubmenu:helpMenu];
@@ -489,13 +505,13 @@ void macos_update_recent_files_menu(const std::vector<std::string>& paths) {
         }
         if (paths.empty()) {
             NSMenuItem* noneItem = [[NSMenuItem alloc]
-                initWithTitle:@"No Recent Files" action:nil keyEquivalent:@""];
+                initWithTitle:ns_localized("menu_no_recent_files", "No Recent Files") action:nil keyEquivalent:@""];
             [noneItem setEnabled:NO];
             [sRecentMenu addItem:noneItem];
         }
         [sRecentMenu addItem:[NSMenuItem separatorItem]];
         NSMenuItem* clearItem = [[NSMenuItem alloc]
-            initWithTitle:@"Clear Recent"
+            initWithTitle:ns_localized("menu_clear_recent", "Clear Recent")
                    action:@selector(clearRecentAction:)
             keyEquivalent:@""];
         clearItem.target = sDelegate;

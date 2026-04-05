@@ -167,26 +167,30 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
             menu_h = kCtxMenuPadTop + item_count * kCtxMenuItemH + 2.0f;
         }
         if (context_bg_menu_) {
-            labels[label_idx++] = "Re-layout All";
-            labels[label_idx++] = "Add Sticky Note";
+            labels[label_idx++] = T("relayout_all", "Re-layout All");
+            labels[label_idx++] = T("add_sticky_note", "Add Sticky Note");
         } else if (is_sticky_ctx) {
-            labels[label_idx++] = "Delete Note";
-            labels[label_idx++] = "Change Color";
+            labels[label_idx++] = T("delete_note", "Delete Note");
+            labels[label_idx++] = T("change_color", "Change Color");
         } else if (!context_node_id_.empty()) {
             if (selected_node_ids_.count(context_node_id_) && selected_node_ids_.size() > 1) {
-                delete_label = "Delete " + std::to_string(selected_node_ids_.size()) + " Nodes";
+                char delete_buf[64];
+                std::snprintf(delete_buf, sizeof(delete_buf),
+                              T("delete_n_nodes", "Delete %d Nodes"),
+                              static_cast<int>(selected_node_ids_.size()));
+                delete_label = delete_buf;
                 labels[label_idx++] = delete_label.c_str();
             } else {
-                labels[label_idx++] = "Delete Node";
+                labels[label_idx++] = T("delete_node", "Delete Node");
             }
             if (context_node_has_shader_)
-                labels[label_idx++] = "Clone & Edit";
+                labels[label_idx++] = T("clone_and_edit", "Clone & Edit");
             // Solo/Unsolo
             bool is_soloed = (!snap_.solo_node_id.empty() && snap_.solo_node_id == context_node_id_);
-            labels[label_idx++] = is_soloed ? "Unsolo" : "Solo";
+            labels[label_idx++] = is_soloed ? T("unsolo", "Unsolo") : T("solo", "Solo");
         } else {
-            labels[label_idx++] = "Delete Wire";
-            labels[label_idx++] = "Insert Node";
+            labels[label_idx++] = T("delete_wire", "Delete Wire");
+            labels[label_idx++] = T("insert_node", "Insert Node");
         }
 
         for (int i = 0; i < item_count; ++i) {
@@ -228,12 +232,12 @@ void NodeGraphUI::draw_async_add_overlay(Renderer2D& tr) {
     draw_popup_bg(tr, style_, px, py, panel_w, panel_h);
     tr.draw_rect(px, py, panel_w, 2.0f, style_.accent[0], style_.accent[1], style_.accent[2]);
 
-    const char* title = "Adding Operator";
-    const char* stage = "Preparing operator...";
+    const char* title = T("adding_operator", "Adding Operator");
+    const char* stage = T("preparing_operator", "Preparing operator...");
     switch (async_add_stage_) {
-        case AsyncAddStage::Preparing: stage = "Preparing operator..."; break;
-        case AsyncAddStage::Compiling: stage = "Compiling graph..."; break;
-        case AsyncAddStage::Applying: stage = "Applying graph..."; break;
+        case AsyncAddStage::Preparing: stage = T("preparing_operator", "Preparing operator..."); break;
+        case AsyncAddStage::Compiling: stage = T("compiling_graph", "Compiling graph..."); break;
+        case AsyncAddStage::Applying: stage = T("applying_graph", "Applying graph..."); break;
     }
 
     static const char* spinner_frames[] = {"...", ".  ", ".. "};
@@ -246,9 +250,16 @@ void NodeGraphUI::draw_async_add_overlay(Renderer2D& tr) {
     tr.draw_text(px + 52.0f, py + 50.0f, stage,
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
 
-    std::string body = async_add_display_name_.empty()
-        ? "Please wait while Vivid prepares the selected operator."
-        : ("Please wait while Vivid prepares " + async_add_display_name_ + ".");
+    std::string body;
+    if (async_add_display_name_.empty()) {
+        body = T("wait_operator", "Please wait while Vivid prepares the selected operator.");
+    } else {
+        char buf_body[256];
+        std::snprintf(buf_body, sizeof(buf_body),
+                      T("wait_operator_named", "Please wait while Vivid prepares %s."),
+                      async_add_display_name_.c_str());
+        body = buf_body;
+    }
     tr.push_clip_rect(px + 16.0f, py + 78.0f, panel_w - 32.0f, 24.0f);
     tr.draw_text(px + 16.0f, py + 78.0f, body.c_str(),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
@@ -268,13 +279,13 @@ void NodeGraphUI::draw_async_graph_load_overlay(Renderer2D& tr) {
     draw_popup_bg(tr, style_, px, py, panel_w, panel_h);
     tr.draw_rect(px, py, panel_w, 2.0f, style_.accent[0], style_.accent[1], style_.accent[2]);
 
-    const char* title = "Loading Graph";
-    const char* stage = "Loading graph...";
+    const char* title = T("loading_graph", "Loading Graph");
+    const char* stage = T("loading_graph_stage", "Loading graph...");
     switch (async_graph_load_stage_) {
-        case AsyncGraphLoadStage::Loading: stage = "Loading graph..."; break;
-        case AsyncGraphLoadStage::PreparingOperators: stage = "Preparing operators..."; break;
-        case AsyncGraphLoadStage::Compiling: stage = "Compiling graph..."; break;
-        case AsyncGraphLoadStage::Applying: stage = "Applying graph..."; break;
+        case AsyncGraphLoadStage::Loading: stage = T("loading_graph_stage", "Loading graph..."); break;
+        case AsyncGraphLoadStage::PreparingOperators: stage = T("preparing_operators", "Preparing operators..."); break;
+        case AsyncGraphLoadStage::Compiling: stage = T("compiling_graph", "Compiling graph..."); break;
+        case AsyncGraphLoadStage::Applying: stage = T("applying_graph", "Applying graph..."); break;
     }
 
     static const char* spinner_frames[] = {"...", ".  ", ".. "};
@@ -287,9 +298,16 @@ void NodeGraphUI::draw_async_graph_load_overlay(Renderer2D& tr) {
     tr.draw_text(px + 52.0f, py + 50.0f, stage,
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
 
-    std::string body = async_graph_load_display_name_.empty()
-        ? "Please wait while Vivid prepares the requested graph."
-        : ("Please wait while Vivid prepares " + async_graph_load_display_name_ + ".");
+    std::string body;
+    if (async_graph_load_display_name_.empty()) {
+        body = T("wait_graph", "Please wait while Vivid prepares the requested graph.");
+    } else {
+        char buf_body[256];
+        std::snprintf(buf_body, sizeof(buf_body),
+                      T("wait_graph_named", "Please wait while Vivid prepares %s."),
+                      async_graph_load_display_name_.c_str());
+        body = buf_body;
+    }
     tr.push_clip_rect(px + 16.0f, py + 78.0f, panel_w - 32.0f, 24.0f);
     tr.draw_text(px + 16.0f, py + 78.0f, body.c_str(),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
@@ -495,7 +513,7 @@ void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
 
         // Snapshot button
         {
-            const char* snap_label = "Snap";
+            const char* snap_label = T("snap", "Snap");
             float tw = tr.text_width(snap_label);
             float btn_w = tw + kPerfBtnPadX * 2;
             rx -= btn_w;
@@ -513,7 +531,7 @@ void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
 
         // Build console toggle
         {
-            const char* build_label = "Build";
+            const char* build_label = T("build", "Build");
             float tw = tr.text_width(build_label);
             float btn_w = tw + kPerfBtnPadX * 2;
             rx -= btn_w;
@@ -533,7 +551,7 @@ void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
 
         // Redo button
         {
-            const char* redo_label = "Redo";
+            const char* redo_label = T("redo", "Redo");
             float tw = tr.text_width(redo_label);
             float btn_w = tw + kPerfBtnPadX * 2;
             rx -= btn_w;
@@ -553,7 +571,7 @@ void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
 
         // Undo button
         {
-            const char* undo_label = "Undo";
+            const char* undo_label = T("undo", "Undo");
             float tw = tr.text_width(undo_label);
             float btn_w = tw + kPerfBtnPadX * 2;
             rx -= btn_w;
@@ -626,7 +644,7 @@ void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
                                                      : snap_.mcp_opdev_last_ping_ms;
                     bool connected = (ping_ms > 0 && now_ms - ping_ms < kMcpStaleMs);
                     const char* srv = (dr.idx == 0) ? "vivid" : "opdev";
-                    const char* status = connected ? "connected" : "not connected";
+                    const char* status = connected ? T("connected", "connected") : T("not_connected", "not connected");
                     char tip[64];
                     std::snprintf(tip, sizeof(tip), "%s \xe2\x80\x94 %s", srv, status);
                     float tip_w = tr.text_width(tip) + 12.0f;
@@ -643,7 +661,7 @@ void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
 
         // Unsaved graph badge (non-interactive)
         if (snap_.graph_dirty) {
-            const char* dirty_label = "Unsaved";
+            const char* dirty_label = T("unsaved", "Unsaved");
             float tw = tr.text_width(dirty_label);
             float badge_w = tw + kPerfBtnPadX * 2;
             rx -= badge_w;
@@ -660,7 +678,7 @@ void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
 
             // Stop button
             {
-                const char* stop_label = "Stop";
+                const char* stop_label = T("stop", "Stop");
                 float tw = tr.text_width(stop_label);
                 float btn_w = tw + kPerfBtnPadX * 2;
                 rx -= btn_w;

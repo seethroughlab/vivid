@@ -6,6 +6,7 @@
 #include "ui/graph/node_graph_constants.h"
 #include "ui/graph/node_graph_util.h"
 #include "ui/style/i18n.h"
+#include <cstdio>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -60,7 +61,9 @@ void DialogManager::draw_about(Renderer2D& tr, const MouseState& mouse, const UI
     tr.draw_text(hx, hy, "Vivid",
                  style.bright_text[0], style.bright_text[1], style.bright_text[2], 1.0f, 1.4f);
     hy += 22.0f;
-    tr.draw_text(hx, hy, "Version " VIVID_CORE_VERSION,
+    char version_buf[128];
+    std::snprintf(version_buf, sizeof(version_buf), T("about_version", "Version %s"), VIVID_CORE_VERSION);
+    tr.draw_text(hx, hy, version_buf,
                  style.dim_text[0], style.dim_text[1], style.dim_text[2]);
     hy += 16.0f;
     tr.draw_text(hx, hy, "\xC2\xA9 2024-present See-Through Lab LLC",
@@ -375,7 +378,9 @@ void DialogManager::draw_clone_confirm(Renderer2D& tr, const MouseState& mouse, 
     tr.draw_rect(dx, dy, dw, 2, style.accent[0], style.accent[1], style.accent[2]);
 
     // Label text
-    std::string label = "Clone " + clone_confirm.type + " for editing";
+    char clone_buf[128];
+    std::snprintf(clone_buf, sizeof(clone_buf), T("clone_for_editing", "Clone %s for editing"), clone_confirm.type.c_str());
+    std::string label = clone_buf;
     tr.draw_text(dx + 12, dy + 10, label.c_str(), style.bright_text[0], style.bright_text[1], style.bright_text[2]);
 
     float toggle_x = dx + 12.0f;
@@ -533,7 +538,7 @@ void DialogManager::draw_graph_meta_editor(Renderer2D& tr, const MouseState& mou
     }
 
     float section_y = cy + kSimpleFieldCount * (field_h + row_gap) + 8.0f;
-    tr.draw_text(cx, section_y, "preview_controls",
+    tr.draw_text(cx, section_y, T("preview_controls", "preview_controls"),
                  style.dim_text[0], style.dim_text[1], style.dim_text[2]);
     section_y += 18.0f;
 
@@ -548,11 +553,11 @@ void DialogManager::draw_graph_meta_editor(Renderer2D& tr, const MouseState& mou
     float label_x = param_x + param_w + 6.0f;
     float btn_x = label_x + label_field_w + 6.0f;
 
-    tr.draw_text(node_x, section_y - 14.0f, "node",
+    tr.draw_text(node_x, section_y - 14.0f, T("col_node", "node"),
                  style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.75f);
-    tr.draw_text(param_x, section_y - 14.0f, "param",
+    tr.draw_text(param_x, section_y - 14.0f, T("col_param", "param"),
                  style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.75f);
-    tr.draw_text(label_x, section_y - 14.0f, "label",
+    tr.draw_text(label_x, section_y - 14.0f, T("col_label", "label"),
                  style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.75f);
 
     for (int i = 0; i < static_cast<int>(graph_meta.data.preview_controls.size()); ++i) {
@@ -562,7 +567,7 @@ void DialogManager::draw_graph_meta_editor(Renderer2D& tr, const MouseState& mou
         tr.draw_rect(node_x, fy, node_w, field_h,
                      style.input_field_bg[0], style.input_field_bg[1], style.input_field_bg[2], 0.85f);
         tr.draw_text(node_x + 6.0f, fy + 4.0f,
-                     truncate_text(tr, ctrl.node.empty() ? "(choose node)" : ctrl.node, node_w - 20.0f).c_str(),
+                     truncate_text(tr, ctrl.node.empty() ? T("choose_node", "(choose node)") : ctrl.node, node_w - 20.0f).c_str(),
                      style.bright_text[0], style.bright_text[1], style.bright_text[2]);
         tr.draw_text(node_x + node_w - 14.0f, fy + 4.0f, "\xE2\x96\xBE",
                      style.dim_text[0], style.dim_text[1], style.dim_text[2]);
@@ -571,7 +576,7 @@ void DialogManager::draw_graph_meta_editor(Renderer2D& tr, const MouseState& mou
         tr.draw_rect(param_x, fy, param_w, field_h,
                      style.input_field_bg[0], style.input_field_bg[1], style.input_field_bg[2], 0.85f);
         tr.draw_text(param_x + 6.0f, fy + 4.0f,
-                     truncate_text(tr, ctrl.param.empty() ? "(choose param)" : ctrl.param, param_w - 20.0f).c_str(),
+                     truncate_text(tr, ctrl.param.empty() ? T("choose_param", "(choose param)") : ctrl.param, param_w - 20.0f).c_str(),
                      style.bright_text[0], style.bright_text[1], style.bright_text[2]);
         tr.draw_text(param_x + param_w - 14.0f, fy + 4.0f, "\xE2\x96\xBE",
                      style.dim_text[0], style.dim_text[1], style.dim_text[2]);
@@ -609,7 +614,7 @@ void DialogManager::draw_graph_meta_editor(Renderer2D& tr, const MouseState& mou
     float add_w = 88.0f;
     tr.draw_rect(cx, add_y, add_w, field_h,
                  style.button_bg[0], style.button_bg[1], style.button_bg[2], 0.85f);
-    tr.draw_text(cx + 10.0f, add_y + 4.0f, "+ add row",
+    tr.draw_text(cx + 10.0f, add_y + 4.0f, T("add_row", "+ add row"),
                  style.bright_text[0], style.bright_text[1], style.bright_text[2], 0.75f);
     graph_meta.preview_button_rects.push_back({cx, add_y, add_w, field_h, -1, 3});
 
@@ -670,7 +675,10 @@ void DialogManager::draw_asset_browser(Renderer2D& tr, const MouseState& mouse, 
                          style.popup_bg[0], style.popup_bg[1], style.popup_bg[2], style.popup_bg[3]);
     tr.draw_rect(px, py, pw, 2, style.accent[0], style.accent[1], style.accent[2]);
 
-    std::string title = "Select " + asset_browser.asset_kind + " asset";
+    char asset_title_buf[128];
+    std::snprintf(asset_title_buf, sizeof(asset_title_buf),
+                  T("select_asset", "Select %s asset"), asset_browser.asset_kind.c_str());
+    std::string title = asset_title_buf;
     tr.draw_text(cx, py + 16.0f, title.c_str(),
                  style.bright_text[0], style.bright_text[1], style.bright_text[2]);
     if (!asset_browser.current_value.empty()) {
@@ -717,7 +725,8 @@ void DialogManager::draw_asset_browser(Renderer2D& tr, const MouseState& mouse, 
     float btn_h = 22.0f;
     float btn_w = 72.0f;
     float x = px + pw - 16.0f - (btn_w * 5.0f + 8.0f * 4.0f);
-    const char* labels[] = {"Refresh", "Import", "Clear", "Select", "Cancel"};
+    const char* labels[] = {T("refresh", "Refresh"), T("import", "Import"),
+                             T("clear", "Clear"), T("select", "Select"), T("cancel", "Cancel")};
     for (int i = 0; i < 5; ++i) {
         tr.draw_rect(x, by, btn_w, btn_h,
                      (i == 3) ? style.accent[0] : style.button_bg[0],
@@ -829,8 +838,8 @@ void DialogManager::draw_mcp_setup(Renderer2D& tr, const MouseState& mouse, cons
     bool opdev_connected = (mcp_setup.mcp_opdev_last_ping_ms > 0 && now_ms - mcp_setup.mcp_opdev_last_ping_ms < kMcpStaleMs);
 
     ServerDef servers[2] = {
-        { "Graph Server",   "Controls the Vivid node graph via AI.",  &vivid_json, mcp_setup.mcp_main_last_ping_ms,  0, mcp_setup.project_config.vivid_configured },
-        { "Operator Dev",   "Helps build custom operators.",           &opdev_json, mcp_setup.mcp_opdev_last_ping_ms, 1, mcp_setup.project_config.opdev_configured },
+        { T("graph_server", "Graph Server"),   T("graph_server_desc", "Controls the Vivid node graph via AI."),  &vivid_json, mcp_setup.mcp_main_last_ping_ms,  0, mcp_setup.project_config.vivid_configured },
+        { T("operator_dev", "Operator Dev"),   T("operator_dev_desc", "Helps build custom operators."),           &opdev_json, mcp_setup.mcp_opdev_last_ping_ms, 1, mcp_setup.project_config.opdev_configured },
     };
     bool connected[2] = { vivid_connected, opdev_connected };
 
@@ -892,12 +901,12 @@ void DialogManager::draw_mcp_setup(Renderer2D& tr, const MouseState& mouse, cons
         tr.draw_text(cx + dot_diam + 5.0f, cy,
                      s.label,
                      style.bright_text[0], style.bright_text[1], style.bright_text[2]);
-        const char* status_str = conn ? "connected" : "not connected";
+        const char* status_str = conn ? T("connected", "connected") : T("not_connected", "not connected");
         float status_x = dlg_x + kDlgW - kDlgPadX - tr.text_width(status_str);
 
         // "configured" badge (muted blue, drawn left of connection status)
         if (s.configured) {
-            const char* cfg_str = "configured";
+            const char* cfg_str = T("configured", "configured");
             float cfg_tw = tr.text_width(cfg_str);
             float cfg_x = status_x - cfg_tw - 10.0f;
             tr.draw_text(cfg_x, cy, cfg_str, 0.45f, 0.65f, 0.90f);
@@ -934,7 +943,7 @@ void DialogManager::draw_mcp_setup(Renderer2D& tr, const MouseState& mouse, cons
                              copy_hov ? style.button_hover[0] : style.button_bg[0],
                              copy_hov ? style.button_hover[1] : style.button_bg[1],
                              copy_hov ? style.button_hover[2] : style.button_bg[2], 0.9f);
-        const char* copy_lbl = "Copy";
+        const char* copy_lbl = T("copy", "Copy");
         float copy_lbl_w = tr.text_width(copy_lbl);
         tr.draw_text(copy_bx + (kCopyBtnW - copy_lbl_w) * 0.5f,
                      copy_by + (kBtnH - tr.line_height()) * 0.5f,
@@ -1096,7 +1105,7 @@ void DialogManager::draw_preferences(Renderer2D& tr, const MouseState& mouse, co
     // "Open Themes Folder" link
     cy += 4;
     {
-        const char* label = "Open Themes Folder...";
+        const char* label = T("open_themes_folder", "Open Themes Folder...");
         bool link_hover = mouse.x >= cx + 18 && mouse.x <= cx + 18 + tr.text_width(label) &&
                           mouse.y >= cy && mouse.y <= cy + kRowH;
         float alpha = link_hover ? 1.0f : 0.7f;
@@ -1112,7 +1121,7 @@ void DialogManager::draw_preferences(Renderer2D& tr, const MouseState& mouse, co
                  style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.7f);
     cy += kRowH;
 
-    const char* pan_labels[] = { "Middle drag", "Left drag (empty canvas)", "Right drag" };
+    const char* pan_labels[] = { T("pan_middle", "Middle drag"), T("pan_left", "Left drag (empty canvas)"), T("pan_right", "Right drag") };
     for (int i = 0; i < 3; ++i) {
         bool sel = (i == prefs.pan_gesture_sel);
         float radio_x = cx + 2;
@@ -1256,7 +1265,7 @@ void DialogManager::draw_package_browser(Renderer2D& tr, const MouseState& mouse
     }
     cy += kPkgBrowserSearchH + 6;
 
-    static const char* tab_labels[] = { "All", "Audio", "GPU", "Control", "Utility", "Installed" };
+    const char* tab_labels[] = { T("tab_all", "All"), T("tab_audio", "Audio"), T("tab_gpu", "GPU"), T("tab_control", "Control"), T("tab_utility", "Utility"), T("installed", "Installed") };
     static const int tab_count = 6;
     float tab_x = cx;
     float tab_gap = 4.0f;
@@ -1422,17 +1431,29 @@ void DialogManager::draw_package_browser(Renderer2D& tr, const MouseState& mouse
         } else if (fstate == PackageBrowserFetchState::Error) {
             if (pkg_browser.callbacks.fetch_error) status = pkg_browser.callbacks.fetch_error();
         } else {
-            status = std::to_string(pkg_browser.entries.size()) + " package" +
-                     (pkg_browser.entries.size() != 1 ? "s" : "");
+            {
+                int n = static_cast<int>(pkg_browser.entries.size());
+                char pkg_buf[64];
+                std::snprintf(pkg_buf, sizeof(pkg_buf),
+                              T_PLURAL("package", n, "%d package", "%d packages"), n);
+                status = pkg_buf;
+            }
             PackageBrowserUpdateSummary summary{};
             if (pkg_browser.callbacks.update_summary) summary = pkg_browser.callbacks.update_summary();
             if (summary.updates_available > 0) {
-                status += " • " + std::to_string(summary.updates_available) + " update";
-                if (summary.updates_available != 1) status += "s";
+                char upd_buf[64];
+                int nu = summary.updates_available;
+                std::snprintf(upd_buf, sizeof(upd_buf),
+                              T_PLURAL("update", nu, "%d update", "%d updates"), nu);
+                status += std::string(" \xe2\x80\xa2 ") + upd_buf;
                 if (summary.incompatible_updates > 0) {
-                    status += " (" + std::to_string(summary.incompatible_updates) + " incompatible)";
+                    char inc_buf[64];
+                    std::snprintf(inc_buf, sizeof(inc_buf),
+                                  T("incompatible_suffix", "(%d incompatible)"),
+                                  summary.incompatible_updates);
+                    status += std::string(" ") + inc_buf;
                 }
-                status += " • run `vivid package-check-updates`";
+                status += " \xe2\x80\xa2 run `vivid package-check-updates`";
             }
         }
     }
@@ -1444,7 +1465,7 @@ void DialogManager::draw_package_browser(Renderer2D& tr, const MouseState& mouse
 
         float text_w = inner_w;
         if (pkg_browser.action_error_console_backed) {
-            const char* btn_label = "Open Console";
+            const char* btn_label = T("open_console", "Open Console");
             float btn_w = tr.text_width(btn_label) + kFooterBtnPadX * 2.0f;
             float btn_x = cx + inner_w - btn_w;
             float btn_y = layout.status_y - 1.0f;
@@ -1532,7 +1553,7 @@ void DialogManager::draw_example_browser(Renderer2D& tr, const MouseState& mouse
     }
     cy += kPkgBrowserSearchH + 6;
 
-    static const char* kind_tabs[] = { "All", "Instruments", "Examples" };
+    const char* kind_tabs[] = { T("tab_all", "All"), T("tab_instruments", "Instruments"), T("tab_examples", "Examples") };
     float tx = cx;
     for (int i = 0; i < 3; ++i) {
         bool sel = (i == example_browser.kind);
@@ -1542,7 +1563,7 @@ void DialogManager::draw_example_browser(Renderer2D& tr, const MouseState& mouse
     }
     cy += kPkgBrowserTabH + 8;
 
-    static const char* env_tabs[] = { "All", "GPU", "Audio", "Control", "I/O" };
+    const char* env_tabs[] = { T("tab_all", "All"), T("tab_gpu", "GPU"), T("tab_audio", "Audio"), T("tab_control", "Control"), T("tab_io", "I/O") };
     tx = cx;
     for (int i = 0; i < 5; ++i) {
         bool sel = (i == example_browser.env);
@@ -1552,7 +1573,7 @@ void DialogManager::draw_example_browser(Renderer2D& tr, const MouseState& mouse
     }
     cy += kPkgBrowserTabH + 8;
 
-    static const char* diff_tabs[] = { "All", "Beginner", "Intermediate", "Advanced" };
+    const char* diff_tabs[] = { T("tab_all", "All"), T("tab_beginner", "Beginner"), T("tab_intermediate", "Intermediate"), T("tab_advanced", "Advanced") };
     tx = cx;
     for (int i = 0; i < 4; ++i) {
         bool sel = (i == example_browser.difficulty);
@@ -1583,7 +1604,7 @@ void DialogManager::draw_example_browser(Renderer2D& tr, const MouseState& mouse
                  example_browser.package_only ? 0.0f : style.dim_text[2]);
     cy += kPkgBrowserTabH + 8;
 
-    static const char* sort_tabs[] = { "Featured", "A-Z" };
+    const char* sort_tabs[] = { T("tab_featured", "Featured"), T("tab_az", "A-Z") };
     tx = cx;
     for (int i = 0; i < 2; ++i) {
         bool sel = (i == example_browser.sort);
@@ -1726,9 +1747,11 @@ void DialogManager::draw_example_browser(Renderer2D& tr, const MouseState& mouse
         tr.draw_text(cx, layout.status_y, example_browser.action_error.c_str(),
                      kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.9f);
     } else {
-        std::string status = std::to_string(example_browser.entries.size()) + " graph";
-        if (example_browser.entries.size() != 1) status += "s";
-        status += " · Enter opens selection";
+        int ng = static_cast<int>(example_browser.entries.size());
+        char graph_buf[64];
+        std::snprintf(graph_buf, sizeof(graph_buf),
+                      T_PLURAL("graph", ng, "%d graph", "%d graphs"), ng);
+        std::string status = std::string(graph_buf) + " \xc2\xb7 " + T("enter_opens_selection", "Enter opens selection");
         tr.draw_text(cx, layout.status_y, status.c_str(),
                      style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.7f);
     }
@@ -1771,7 +1794,7 @@ void DialogManager::draw_create_popup(Renderer2D& tr, const MouseState& mouse,
     cy += 24.0f;
 
     // 2. Env selector buttons
-    const char* env_labels[] = { "control", "audio", "gpu" };
+    const char* env_labels[] = { T("env_control", "control"), T("env_audio", "audio"), T("env_gpu", "gpu") };
     const std::array<float, 3>* env_colors[] = { &kControlAccent, &kAudioAccent, &kGpuAccent };
     float btn_gap = 8.0f;
     float total_btn_w = 3 * kCreateEnvBtnW + 2 * btn_gap;
@@ -1804,20 +1827,20 @@ void DialogManager::draw_create_popup(Renderer2D& tr, const MouseState& mouse,
     draw_editing_text_field(tr, style, cx, cy, inner_w, 22.0f,
                            create_popup.name_buf, text_edit, blink_on);
     if (create_popup.name_buf.empty()) {
-        tr.draw_text(cx + 4, cy + 2, "operator_name",
+        tr.draw_text(cx + 4, cy + 2, T("operator_name_placeholder", "operator_name"),
                      style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.5f);
     }
     cy += kCreateModalFieldH + kCreateModalRowGap;
 
     // 5. MCP hint
     cy += kCreateModalSectionGap;
-    tr.draw_text(cx, cy, "Use MCP opdev tools for custom ports and parameters",
+    tr.draw_text(cx, cy, T("scaffold_mcp_hint", "Use MCP opdev tools for custom ports and parameters"),
                  style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.6f);
     cy += 18.0f + kCreateModalRowGap;
 
     // 6. Destination radio buttons
     cy += kCreateModalSectionGap;
-    const char* dest_labels[] = { "Auto", "Project", "Core" };
+    const char* dest_labels[] = { T("dest_auto", "Auto"), T("dest_project", "Project"), T("dest_core", "Core") };
     float dest_x = cx;
     bool project_available = commands_.has_project_clone_destination();
     for (int i = 0; i < 3; ++i) {
@@ -1910,7 +1933,7 @@ void DialogManager::draw_preset_name_popup(Renderer2D& tr, const MouseState& /*m
                  style.accent[0], style.accent[1], style.accent[2]);
 
     if (preset_name.buffer.empty()) {
-        tr.draw_text(cx + 4, cy + 3, "Folder/Name",
+        tr.draw_text(cx + 4, cy + 3, T("folder_name_placeholder", "Folder/Name"),
                      style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.5f);
     } else {
         tr.draw_text(cx + 4, cy + 3, preset_name.buffer.c_str(),
@@ -1938,7 +1961,11 @@ void DialogManager::draw_core_update_banner(Renderer2D& tr, const UIStyle& /*sty
     tr.draw_rect(0.0f, banner_y, w, h, 0.14f, 0.20f, 0.26f, 0.95f);
     tr.draw_rect(0.0f, banner_y, w, 1.0f, 0.28f, 0.46f, 0.58f, 0.8f);
 
-    std::string label = "Core update available: v" + core_update.version;
+    char update_buf[256];
+    std::snprintf(update_buf, sizeof(update_buf),
+                  T("core_update_available", "Core update available: v%s"),
+                  core_update.version.c_str());
+    std::string label = update_buf;
     if (!core_update.summary.empty()) label += " - " + core_update.summary;
     tr.draw_text(10.0f, banner_y + 6.0f, label.c_str(), 0.86f, 0.92f, 0.98f);
 
@@ -1952,9 +1979,9 @@ void DialogManager::draw_core_update_banner(Renderer2D& tr, const UIStyle& /*sty
         bx -= 6.0f;
     };
 
-    draw_btn("Later", 2, 0.26f, 0.30f, 0.34f);
-    draw_btn("Skip", 1, 0.33f, 0.25f, 0.23f);
-    draw_btn("Install", 0, 0.22f, 0.42f, 0.28f);
+    draw_btn(T("later", "Later"), 2, 0.26f, 0.30f, 0.34f);
+    draw_btn(T("skip", "Skip"), 1, 0.33f, 0.25f, 0.23f);
+    draw_btn(T("install", "Install"), 0, 0.22f, 0.42f, 0.28f);
 }
 
 } // namespace vivid::ui

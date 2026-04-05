@@ -1,6 +1,8 @@
 #include <nlohmann/json.hpp>
 #include "ui/style/i18n.h"
+#include <filesystem>
 #include <fstream>
+#include <locale>
 #include <cstdio>
 
 namespace vivid::ui {
@@ -66,6 +68,40 @@ const char* I18n::get_plural(const char* key, int n,
     if (it != strings_.end()) return it->second.c_str();
 
     return (n == 1) ? singular_fb : plural_fb;
+}
+
+bool I18n::load_best(const std::string& locales_dir) {
+    std::string lang = detect_os_locale();
+    std::string path = locales_dir + "/" + lang + ".json";
+
+    if (!std::filesystem::exists(path)) {
+        if (lang == "en") return false;  // no en.json either
+        path = locales_dir + "/en.json";
+        if (!std::filesystem::exists(path)) return false;
+    }
+
+    return load(path.c_str());
+}
+
+std::string detect_os_locale() {
+    try {
+        std::string name = std::locale("").name();
+        if (name.empty() || name == "C" || name == "POSIX")
+            return "en";
+
+        // Extract language code before '_' or '.' (e.g. "fr_FR.UTF-8" -> "fr")
+        auto end = name.find_first_of("_.");
+        std::string lang = (end != std::string::npos) ? name.substr(0, end) : name;
+
+        // Sanity: should be a short alphabetic string
+        if (lang.empty() || lang.size() > 8) return "en";
+        for (char c : lang) {
+            if (!std::isalpha(static_cast<unsigned char>(c))) return "en";
+        }
+        return lang;
+    } catch (...) {
+        return "en";
+    }
 }
 
 } // namespace vivid::ui

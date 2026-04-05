@@ -22,11 +22,19 @@ public:
 
     const std::string& locale() const { return locale_; }
 
+    // Load the best matching locale file from a directory.
+    // Detects OS language, tries exact match, falls back to en.json.
+    bool load_best(const std::string& locales_dir);
+
 private:
     I18n() = default;
     std::unordered_map<std::string, std::string> strings_;
     std::string locale_;
 };
+
+// Detect OS language as a two-letter ISO 639-1 code (e.g. "en", "fr").
+// Falls back to "en" if detection fails.
+std::string detect_os_locale();
 
 } // namespace vivid::ui
 

@@ -110,7 +110,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
                          sw - g_to_s(4), s_body_h - g_to_s(4),
                          kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.15f);
             // Centered "MISSING" label (shifted up to make room for sub-label)
-            const char* label = "MISSING";
+            const char* label = T("node_missing_label", "MISSING");
             float lw = tr.text_width(label, zoom_);
             float lx = sx + (sw - lw) * 0.5f;
             float ly = s_body_y + (s_body_h - tr.line_height() * zoom_) * 0.5f - g_to_s(6);
@@ -118,8 +118,10 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
             // Sub-label with reason
             if (sn && !sn->error_message.empty()) {
                 const char* sub = sn->error_message.find("rebuild") != std::string::npos
-                                  ? "try rebuild" : sn->error_message.find("ABI") != std::string::npos
-                                  ? "ABI mismatch" : "not installed";
+                                  ? T("node_missing_try_rebuild", "try rebuild")
+                                  : sn->error_message.find("ABI") != std::string::npos
+                                      ? T("node_missing_abi_mismatch", "ABI mismatch")
+                                      : T("node_missing_not_installed", "not installed");
                 float sub_scale = zoom_ * 0.75f;
                 float sub_w = tr.text_width(sub, sub_scale);
                 float sub_x = sx + (sw - sub_w) * 0.5f;

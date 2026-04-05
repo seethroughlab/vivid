@@ -1,6 +1,7 @@
 #include "ui/build_console_panel.h"
 
 #include "ui/rendering/renderer_2d.h"
+#include "ui/style/i18n.h"
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <chrono>
@@ -287,7 +288,9 @@ void BuildConsolePanel::draw(Renderer2D& tr, const UIStyle& style, uint32_t win_
     tr.draw_rect(layout.x, layout.y + layout.resize_h - 1.0f, layout.w, 1.0f,
                  0.30f, 0.32f, 0.35f, 0.6f);
 
-    const char* title = snapshot_.running_task_count > 0 ? "Build Console  LIVE" : "Build Console";
+    std::string title_str = T("build_console", "Build Console");
+    if (snapshot_.running_task_count > 0) title_str += "  LIVE";
+    const char* title = title_str.c_str();
     tr.draw_text(layout.x + kHeaderPadX, layout.y + 4.0f, title,
                  style.bright_text[0], style.bright_text[1], style.bright_text[2]);
 

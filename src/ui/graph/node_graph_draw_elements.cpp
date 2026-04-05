@@ -660,7 +660,9 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
     hx += 70;
 
     // Quantize buttons
-    static const char* quantize_labels[] = { "Off", "Beat", "Bar", "4Bar" };
+    const char* quantize_labels[] = {
+        T("quantize_off", "Off"), T("quantize_beat", "Beat"),
+        T("quantize_bar", "Bar"), T("quantize_4bar", "4Bar") };
     tr.draw_text(hx, hy + 2, T("quantize", "Quantize:"),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     hx += 72;
@@ -840,7 +842,9 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
 
     // --- Context menu ---
     if (session_ctx_menu_open_ && session_ctx_menu_idx_ >= 0) {
-        static const char* ctx_labels[] = { "Rename", "Duplicate", "Delete", "Branch From" };
+        const char* ctx_labels[] = {
+            T("variation_rename", "Rename"), T("variation_duplicate", "Duplicate"),
+            T("variation_delete", "Delete"), T("variation_branch_from", "Branch From") };
         int item_count = 4;
         float menu_w = kSessionCtxMenuW;
         float menu_h = item_count * kSessionCtxMenuItemH + 4;

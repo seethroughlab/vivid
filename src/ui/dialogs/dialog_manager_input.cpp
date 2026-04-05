@@ -1,6 +1,7 @@
 #include "ui/dialogs/dialog_manager.h"
 #include "ui/graph/node_graph.h"
 #include "ui/rendering/overlay_layouts.h"
+#include "ui/style/i18n.h"
 #include "ui/style/theme_loader.h"
 #include "ui/ui_command_sink.h"
 #include "ui/graph/node_graph_constants.h"
@@ -76,13 +77,18 @@ bool DialogManager::on_key(int key, int /*action*/, int /*mods*/,
                     example_browser.open_callback(e.path);
                     example_browser.open = false;
                 } else if (example_browser.warn_id == e.id) {
-                    example_browser.action_error = "Opening anyway with missing package: " + missing;
+                    example_browser.action_error = localized_format(
+                        "example_opening_anyway_missing_package",
+                        "Opening anyway with missing package: %s",
+                        missing);
                     example_browser.open_callback(e.path);
                     example_browser.open = false;
                 } else {
                     example_browser.warn_id = e.id;
-                    example_browser.action_error =
-                        "Missing package: " + missing + " (press Enter again to open anyway)";
+                    example_browser.action_error = localized_format(
+                        "example_missing_package_press_enter",
+                        "Missing package: %s (press Enter again to open anyway)",
+                        missing);
                 }
             }
         }
@@ -118,14 +124,16 @@ bool DialogManager::on_key(int key, int /*action*/, int /*mods*/,
                             pkg_browser.action_pending = false;
                             pkg_browser.action_name.clear();
                             if (pkg_browser.action_error.empty())
-                                pkg_browser.action_error = "Failed to unlink " + entry.name;
+                                pkg_browser.action_error = localized_format(
+                                    "pkg_unlink_failed", "Failed to unlink %s", entry.name);
                         }
                     } else if (!pkg_browser.callbacks.uninstall ||
                                !pkg_browser.callbacks.uninstall(entry.name, pkg_browser.action_error)) {
                         pkg_browser.action_pending = false;
                         pkg_browser.action_name.clear();
                         if (pkg_browser.action_error.empty())
-                            pkg_browser.action_error = "Failed to uninstall " + entry.name;
+                            pkg_browser.action_error = localized_format(
+                                "pkg_uninstall_failed", "Failed to uninstall %s", entry.name);
                     }
                 } else {
                     if (!pkg_browser.callbacks.install ||
@@ -133,7 +141,8 @@ bool DialogManager::on_key(int key, int /*action*/, int /*mods*/,
                         pkg_browser.action_pending = false;
                         pkg_browser.action_name.clear();
                         if (pkg_browser.action_error.empty())
-                            pkg_browser.action_error = "Failed to install " + entry.name;
+                            pkg_browser.action_error = localized_format(
+                                "pkg_install_failed", "Failed to install %s", entry.name);
                     }
                 }
                 }
@@ -192,7 +201,7 @@ bool DialogManager::on_key(int key, int /*action*/, int /*mods*/,
                     graph_meta.open = false;
                     graph_meta.error.clear();
                 } else {
-                    graph_meta.error = err.empty() ? "Failed to save meta" : err;
+                    graph_meta.error = err.empty() ? T("graph_meta_save_failed", "Failed to save meta") : err;
                 }
             }
         }
@@ -656,7 +665,8 @@ void DialogManager::update_graph_meta_editor(MouseState& mouse, uint32_t win_w, 
                 break;
             }
             if (!valid) {
-                graph_meta.error = "Preview controls must reference a valid node/param pair";
+                graph_meta.error = T("graph_meta_invalid_preview_controls",
+                                     "Preview controls must reference a valid node/param pair");
                 mouse.left_clicked = false;
                 mouse.left_released = false;
                 return;
@@ -669,7 +679,7 @@ void DialogManager::update_graph_meta_editor(MouseState& mouse, uint32_t win_w, 
                 graph_meta.error.clear();
                 graph_meta.preview_picker = {};
             } else {
-                graph_meta.error = err.empty() ? "Failed to save meta" : err;
+                graph_meta.error = err.empty() ? T("graph_meta_save_failed", "Failed to save meta") : err;
             }
         }
         mouse.left_clicked = false;
@@ -1069,7 +1079,7 @@ void DialogManager::update_package_browser(MouseState& mouse, uint32_t win_w, ui
                     if (!pkg_browser.callbacks.rebuild ||
                         !pkg_browser.callbacks.rebuild(entry.name, pkg_browser.action_error)) {
                         set_pkg_action_failure(pkg_browser.action_error.empty()
-                            ? "Failed to rebuild " + entry.name
+                            ? localized_format("pkg_rebuild_failed", "Failed to rebuild %s", entry.name)
                             : pkg_browser.action_error);
                     }
                 } else if (entry.installed) {
@@ -1078,7 +1088,7 @@ void DialogManager::update_package_browser(MouseState& mouse, uint32_t win_w, ui
                         if (!pkg_browser.callbacks.unlink ||
                             !pkg_browser.callbacks.unlink(entry.name, pkg_browser.action_error)) {
                             set_pkg_action_failure(pkg_browser.action_error.empty()
-                                ? "Failed to unlink " + entry.name
+                                ? localized_format("pkg_unlink_failed", "Failed to unlink %s", entry.name)
                                 : pkg_browser.action_error);
                         }
                     } else {
@@ -1086,7 +1096,7 @@ void DialogManager::update_package_browser(MouseState& mouse, uint32_t win_w, ui
                         if (!pkg_browser.callbacks.uninstall ||
                             !pkg_browser.callbacks.uninstall(entry.name, pkg_browser.action_error)) {
                             set_pkg_action_failure(pkg_browser.action_error.empty()
-                                ? "Failed to uninstall " + entry.name
+                                ? localized_format("pkg_uninstall_failed", "Failed to uninstall %s", entry.name)
                                 : pkg_browser.action_error);
                         }
                     }
@@ -1095,7 +1105,7 @@ void DialogManager::update_package_browser(MouseState& mouse, uint32_t win_w, ui
                     if (!pkg_browser.callbacks.install ||
                         !pkg_browser.callbacks.install(entry.name, pkg_browser.action_error)) {
                         set_pkg_action_failure(pkg_browser.action_error.empty()
-                            ? "Failed to install " + entry.name
+                            ? localized_format("pkg_install_failed", "Failed to install %s", entry.name)
                             : pkg_browser.action_error);
                     }
                 }
@@ -1272,13 +1282,18 @@ void DialogManager::update_example_browser(MouseState& mouse, uint32_t win_w, ui
                     example_browser.open_callback(e.path);
                     example_browser.open = false;
                 } else if (example_browser.warn_id == e.id) {
-                    example_browser.action_error = "Opening anyway with missing package: " + missing;
+                    example_browser.action_error = localized_format(
+                        "example_opening_anyway_missing_package",
+                        "Opening anyway with missing package: %s",
+                        missing);
                     example_browser.open_callback(e.path);
                     example_browser.open = false;
                 } else {
                     example_browser.warn_id = e.id;
-                    example_browser.action_error =
-                        "Missing package: " + missing + " (click Open again to continue)";
+                    example_browser.action_error = localized_format(
+                        "example_missing_package_click_open",
+                        "Missing package: %s (click Open again to continue)",
+                        missing);
                 }
             }
             mouse.left_clicked = false;

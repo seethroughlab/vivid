@@ -323,6 +323,10 @@ private:
     void begin_pkg_action(PkgBrowserState::ActionKind kind, const std::string& action_name);
     void set_pkg_action_failure(const std::string& error);
     static bool pkg_action_uses_build_console(PkgBrowserState::ActionKind kind);
+    static std::string localized_format(const char* key, const char* fallback,
+                                        const std::string& value);
+    static std::string localized_format(const char* key, const char* fallback,
+                                        int value);
     void rebuild_graph_meta_fields();
     void refresh_asset_browser_entries();
 

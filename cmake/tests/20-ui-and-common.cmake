@@ -94,6 +94,18 @@ target_include_directories(test_ui_arch_guard PRIVATE src tests)
 target_link_libraries(test_ui_arch_guard PRIVATE vivid_runtime_testlib)
 add_test(NAME test_ui_arch_guard COMMAND test_ui_arch_guard ${CMAKE_SOURCE_DIR} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Locale coverage/parity guard for desktop UI strings
+add_executable(test_locale_catalog_parity tests/ui/test_locale_catalog_parity.cpp)
+target_include_directories(test_locale_catalog_parity PRIVATE src tests)
+target_link_libraries(test_locale_catalog_parity PRIVATE vivid_runtime_testlib nlohmann_json::nlohmann_json)
+add_test(NAME test_locale_catalog_parity COMMAND test_locale_catalog_parity ${CMAKE_SOURCE_DIR} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Guard against reintroducing raw desktop UI strings outside allowed exceptions
+add_executable(test_ui_localization_guard tests/ui/test_ui_localization_guard.cpp)
+target_include_directories(test_ui_localization_guard PRIVATE src tests)
+target_link_libraries(test_ui_localization_guard PRIVATE vivid_runtime_testlib)
+add_test(NAME test_ui_localization_guard COMMAND test_ui_localization_guard ${CMAKE_SOURCE_DIR} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Repo hygiene guard: removed runtime-polymorphic composition must not return outside explicit anti-return docs.
 add_executable(test_removed_pattern_guard tests/ui/test_removed_pattern_guard.cpp)
 target_include_directories(test_removed_pattern_guard PRIVATE src tests)
