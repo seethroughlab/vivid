@@ -155,4 +155,4 @@ An operator implementing both `FrameProcessable` and `AudioProcessable` is "fixe
 
 ## ABI Version
 
-Current ABI version: `VIVID_OPERATOR_ABI_VERSION = 4`. The runtime checks this on load.
+Current ABI version: `VIVID_OPERATOR_ABI_VERSION = 7`. The runtime checks this on load.

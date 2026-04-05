@@ -19,6 +19,8 @@ ALLOWED_HEADERS = {
     "audio_dsp.h", "adsr.h", "child_op.h", "midi_types.h",
     "input_state.h", "type_id.h",
     "create_request.h", "data_driven_filter.h",
+    "thumbnail.h", "draw_ui_helpers.h", "draw_plot_helpers.h",
+    "embedded_op.h", "adsr_inspector.h", "texture_readback.h",
 }
 
 # Doc topic mapping
@@ -30,6 +32,7 @@ DOC_TOPICS = {
     "dsp": "dsp_utilities.md",
     "advanced": "advanced.md",
     "conventions": "conventions.md",
+    "data_driven": "data_driven.md",
 }
 
 # Valid operator envs
@@ -62,6 +65,7 @@ Start with the discovery tools before scaffolding:
 - `"dsp"` — Oscillators, waveforms, noise generators, SVF filter, decay envelope, ADSR
 - `"advanced"` — ChildOp<T> composites, handle ports, MIDI, input events, media streams
 - `"conventions"` — Naming, file layout, semantic tags, CMakeLists, package manifest
+- `"data_driven"` — Pure-WGSL operators with JSON metadata headers (no C++ needed)
 
 ## Key Patterns
 
@@ -89,9 +93,9 @@ CAPABILITY_GUIDANCE = {
         "explanation": "Typed opaque data ports for passing complex payloads between operators. Two transports: CUSTOM_VALUE (small structs copied by value) and CUSTOM_REF (shared handle registry for any size).",
         "doc_topic": "advanced",
         "example_operators": [
-            {"env": "gpu", "name": "movie_loaded"},
-            {"env": "gpu", "name": "movie_video_out"},
-            {"env": "audio", "name": "movie_audio_out"},
+            {"env": "control", "name": "midi_input"},
+            {"env": "control", "name": "drum_kit"},
+            {"env": "audio", "name": "sampler"},
         ],
         "code_snippet": (
             '#include "operator_api/type_id.h"\n'
@@ -116,11 +120,11 @@ CAPABILITY_GUIDANCE = {
         ),
     },
     "custom_ref_port": {
-        "explanation": "Shared-handle ports for large or opaque data (media streams, GPU resources). Use VIVID_CUSTOM_REF_PORT macro and VIVID_DECLARE_CUSTOM_REF_TYPE at file scope.",
+        "explanation": "Shared-handle ports for large or opaque data (MIDI buffers, media handles). Use VIVID_CUSTOM_REF_PORT macro and VIVID_DESCRIBE_REF_TYPE at file scope.",
         "doc_topic": "advanced",
         "example_operators": [
-            {"env": "gpu", "name": "movie_loaded"},
-            {"env": "audio", "name": "movie_audio_out"},
+            {"env": "control", "name": "sequencer"},
+            {"env": "control", "name": "drum_kit"},
         ],
         "code_snippet": (
             'VIVID_DECLARE_CUSTOM_REF_TYPE(MyHandle, "com.example.my_handle", "MyHandle", false);\n\n'
@@ -177,6 +181,20 @@ CAPABILITY_GUIDANCE = {
             '}'
         ),
     },
+    "embedded_op": {
+        "explanation": "EmbeddedOp is like ChildOp<T> but the operator type is selected at runtime. Use this when a slot can hold different modulator types (e.g. LFO, Envelope, MSEG). Supports has_param/has_input/has_output for duck-typing safety.",
+        "doc_topic": "advanced",
+        "example_operators": [
+            {"env": "control", "name": "modulated_gain"},
+        ],
+        "code_snippet": (
+            '#include "operator_api/embedded_op.h"\n\n'
+            'vivid::EmbeddedOp slot(std::make_unique<Envelope>());\n'
+            'slot.set_param("attack", 0.1f);\n'
+            'slot.process(parent_ctx);\n'
+            'float val = slot.output("value");'
+        ),
+    },
     "midi": {
         "explanation": "MIDI input via VividMidiBuffer. Operators receive a buffer of timestamped MIDI messages each audio frame.",
         "doc_topic": "advanced",
@@ -209,17 +227,17 @@ CAPABILITY_GUIDANCE = {
         ),
     },
     "media_stream": {
-        "explanation": "MediaStreamV1 carries playback state (time, duration, speed, loop) across cadences. Used by movie operators to synchronize audio and video.",
+        "explanation": "Cross-cadence AV sync pattern. MovieFileAudio (audio thread) outputs scalar time/duration ports. MovieFileIn (GPU thread) receives audio_time via the cadence bridge to sync video frames. Shared decode/audio libraries live in operators/shared/.",
         "doc_topic": "advanced",
         "example_operators": [
-            {"env": "shared", "name": "media_session"},
-            {"env": "gpu", "name": "movie_loaded"},
-            {"env": "audio", "name": "movie_audio_out"},
+            {"env": "gpu", "name": "movie_file_in"},
+            {"env": "audio", "name": "movie_file_audio"},
         ],
         "code_snippet": (
-            '#include "operator_api/media_stream.h"\n\n'
-            '// Produce or consume a MediaStreamV1 via custom ref port.\n'
-            '// See shared/media_session for the canonical producer.'
+            '// Cross-cadence sync uses standard scalar ports + cadence bridge.\n'
+            '// MovieFileAudio outputs "time" and "duration" scalar ports.\n'
+            '// MovieFileIn receives "audio_time" scalar input via cadence bridge.\n'
+            '// See gpu/movie_file_in and audio/movie_file_audio for the full pattern.'
         ),
     },
     "gpu_compute": {
@@ -516,9 +534,10 @@ async def recommend_starting_point(goal: str) -> str:
         "file_drop": ["file drop", "file picker", "drag drop", "drag and drop", "load file", "file_drop", "file param"],
         "thumbnail": ["thumbnail", "preview", "custom thumbnail"],
         "child_op": ["child op", "child_op", "composite", "embed operator", "internal modulation"],
+        "embedded_op": ["embedded op", "embedded_op", "runtime polymorphic", "dynamic slot", "modulator slot"],
         "midi": ["midi", "note on", "note off", "midi input"],
         "input_events": ["mouse", "keyboard", "click", "input event", "key press"],
-        "media_stream": ["media stream", "video playback", "movie", "media_stream"],
+        "media_stream": ["media stream", "video playback", "movie", "media_stream", "av sync", "cross-cadence"],
         "gpu_compute": ["compute", "gpu compute", "compute buffer", "gpu_compute"],
     }
 
@@ -765,9 +784,7 @@ async def introspect_nodes(include_payload: bool = False) -> str:
     Args:
         include_payload: Include full result data (default false)
     """
-    raw = await _post("introspect_nodes")
-    # Return raw for simplicity in opdev context
-    return raw
+    return await _post("introspect_nodes", {"include_payload": include_payload})
 
 
 @mcp.tool()
@@ -777,8 +794,7 @@ async def run_diagnostics(include_payload: bool = False) -> str:
     Args:
         include_payload: Include full findings (default false)
     """
-    raw = await _post("run_diagnostics")
-    return raw
+    return await _post("run_diagnostics", {"include_payload": include_payload})
 
 
 def _start_heartbeat() -> None:
