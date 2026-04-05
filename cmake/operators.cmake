@@ -23,6 +23,7 @@ add_vivid_embeddable_composable_support(Smooth   operators/control/smooth/smooth
 add_vivid_embeddable_composable_support(Envelope operators/control/envelope/envelope_composable.cpp)
 target_sources(vivid_composable_ops PRIVATE operators/control/clock/clock.cpp)
 target_sources(vivid_composable_ops PRIVATE operators/control/euclidean/euclidean.cpp)
+add_vivid_embeddable_composable_support(LFO      operators/control/lfo/lfo.cpp)
 
 # --- Operator plugin suffix (platform-aware) ---
 if(APPLE)
@@ -150,6 +151,7 @@ add_vivid_operator(mseg_au           operators/control/mseg/mseg_au.cpp
 target_sources(mseg_au PRIVATE operators/control/mseg/mseg.cpp)
 add_vivid_operator(step_seq_fr       operators/control/step_seq/step_seq_fr.cpp
                    FACTORY_PRESETS operators/control/step_seq/factory_presets.json)
+target_sources(step_seq_fr PRIVATE operators/control/step_seq/step_seq.cpp)
 add_vivid_operator(step_seq_au       operators/control/step_seq/step_seq_au.cpp)
 target_sources(step_seq_au PRIVATE operators/control/step_seq/step_seq.cpp)
 
@@ -210,12 +212,12 @@ add_vivid_operator(feedback             operators/gpu/feedback/feedback.cpp     
                    FACTORY_PRESETS operators/gpu/feedback/factory_presets.json)
 add_vivid_operator(metaball              operators/gpu/metaball/metaball.cpp                       EXTRA_LIBS webgpu)
 add_vivid_operator(particles             operators/gpu/particles/particles.cpp                     EXTRA_LIBS webgpu vivid_composable_ops)
-add_vivid_operator(instanced_shapes      operators/gpu/instanced_shapes/instanced_shapes.cpp      EXTRA_LIBS webgpu)
-add_vivid_operator(flocking              operators/gpu/flocking/flocking.cpp                       EXTRA_LIBS webgpu)
-add_vivid_operator(trails                operators/gpu/trails/trails.cpp                           EXTRA_LIBS webgpu)
-add_vivid_operator(reaction_diffusion    operators/gpu/reaction_diffusion/reaction_diffusion.cpp   EXTRA_LIBS webgpu)
-add_vivid_operator(cellular_automata     operators/gpu/cellular_automata/cellular_automata.cpp     EXTRA_LIBS webgpu)
-add_vivid_operator(fluid                 operators/gpu/fluid/fluid.cpp                             EXTRA_LIBS webgpu)
+add_vivid_operator(instanced_shapes      operators/gpu/instanced_shapes/instanced_shapes.cpp      EXTRA_LIBS webgpu vivid_composable_ops)
+add_vivid_operator(flocking              operators/gpu/flocking/flocking.cpp                       EXTRA_LIBS webgpu vivid_composable_ops)
+add_vivid_operator(trails                operators/gpu/trails/trails.cpp                           EXTRA_LIBS webgpu vivid_composable_ops)
+add_vivid_operator(reaction_diffusion    operators/gpu/reaction_diffusion/reaction_diffusion.cpp   EXTRA_LIBS webgpu vivid_composable_ops)
+add_vivid_operator(cellular_automata     operators/gpu/cellular_automata/cellular_automata.cpp     EXTRA_LIBS webgpu vivid_composable_ops)
+add_vivid_operator(fluid                 operators/gpu/fluid/fluid.cpp                             EXTRA_LIBS webgpu vivid_composable_ops)
 add_vivid_operator(time_machine          operators/gpu/time_machine/time_machine.cpp               EXTRA_LIBS webgpu)
 add_vivid_operator(text                  operators/gpu/text/text.cpp                               EXTRA_LIBS webgpu stb_truetype)
 add_vivid_operator(mesh_warp             operators/gpu/mesh_warp/mesh_warp.cpp                     EXTRA_LIBS webgpu)

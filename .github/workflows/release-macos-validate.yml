@@ -53,8 +53,8 @@ jobs:
           set -euo pipefail
           APP="build/vivid.app"
           [[ -d "$APP/Contents/Resources/graphs" ]] || { echo "Missing bundled graphs" >&2; exit 1; }
-          [[ -d "$APP/Contents/Resources/media" ]] || { echo "Missing bundled media" >&2; exit 1; }
-          [[ -f "$APP/Contents/Resources/media/camera.mp4" ]] || { echo "Missing expected demo media file camera.mp4" >&2; exit 1; }
+          [[ -d "$APP/Contents/Resources/assets" ]] || { echo "Missing bundled assets" >&2; exit 1; }
+          [[ -f "$APP/Contents/Resources/assets/camera.mp4" ]] || { echo "Missing expected demo asset file camera.mp4" >&2; exit 1; }
 
       - name: Normalize WebGPU dylib linkage
         shell: bash
