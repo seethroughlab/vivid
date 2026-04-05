@@ -31,7 +31,7 @@ This is the most LLM-friendly design: the LLM reads JSON, writes JSON. No code g
 **Operator Authoring Layers**
 
 - **Bootstrap layer (UI + CLI):** `scaffold_operator` creates a starter template with name, domain, and variant. The UI modal and CLI provide quick access to this. The generated template includes guiding comments pointing to examples and MCP tools for next steps.
-- **Advanced authoring layer (MCP/opdev):** Full-featured operator development — custom ports, typed parameters, file drops, inspectors, thumbnails. The opdev MCP server provides discovery tools (`search_example_operators`, `get_capability_guidance`, `recommend_starting_point`), API documentation, and example operator source. The control server's `scaffold_operator` endpoint also accepts `inputs`, `outputs`, and `params` for programmatic use by MCP tools.
+- **Advanced authoring layer (MCP/opdev):** Full-featured operator development — custom ports, typed parameters, file drops, inspectors, thumbnails, and deeper API guidance. The opdev MCP server (`mcp/vivid_opdev_mcp.py`) provides discovery tools (`search_example_operators`, `get_capability_guidance`, `recommend_starting_point`), API documentation, and example operator source. The control server's `scaffold_operator` endpoint also accepts `inputs`, `outputs`, and `params` for programmatic use by MCP tools.
 
 **Routing layer — LLM as architect.** "Build me a patch with 3 audio analysis bands driving 3 visual layers with independent particle systems." The LLM generates graph structure as JSON that the user then explores. This is the scaffolding role — often combined with operator authoring when the scaffold requires new operators that don't yet exist.
 
@@ -45,7 +45,7 @@ The LLM connects to Vivid through two complementary paths, both built on a share
 
 **The Runtime API** is an internal interface exposing all LLM-relevant operations: inspect graph structure, read and write parameters, capture frames and audio, run analysis tools, evaluate checks, scaffold starter templates, and modify graph topology. This is the single source of truth for what the LLM can do. Both integration paths below call into the same API.
 
-**Path 1: Python MCP bridge.** A separate MCP (Model Context Protocol) bridge process, `mcp/vivid_mcp.py`, connects to the running Vivid instance over the local HTTP control server and re-exposes that runtime as MCP tools. Claude Code, Cursor, or any MCP-capable LLM connects to the Python bridge externally. This is the primary LLM integration path — it provides the complete tool surface (inspect, add, connect, set_param, scaffold_operator (bootstrap starter template; opdev server handles advanced authoring), introspection/diagnostics/checks) with streaming, multi-turn context, and tool use UIs that external clients already provide. It also enables non-interactive use cases: CI pipelines running checks, scripts generating patch variations, installation monitors watching for drift.
+**Path 1: Python MCP bridge.** A separate MCP (Model Context Protocol) bridge process, `mcp/vivid_mcp.py`, connects to the running Vivid instance over the local HTTP control server and re-exposes the runtime/control surface as MCP tools. Claude Code, Cursor, or any MCP-capable LLM connects to the Python bridge externally. This is the primary graph/runtime integration path — graph inspection and mutation, parameter control, capture, diagnostics, checks, package/runtime management, and starter scaffolding all flow through it. Advanced operator-authoring guidance and example discovery live in the separate opdev MCP server, `mcp/vivid_opdev_mcp.py`. Together, those two MCP bridges cover the shipped external LLM workflow. The regular bridge also enables non-interactive use cases: CI pipelines running checks, scripts generating patch variations, installation monitors watching for drift.
 
 ```text
 LLM client -> Python MCP bridge (stdio) -> Vivid HTTP control server -> running Vivid instance
@@ -55,6 +55,7 @@ The ownership model matters:
 - the **running Vivid app** owns the live graph and embeds the HTTP control server
 - the **HTTP control server** is the local runtime transport, defaulting to `127.0.0.1:9876`
 - the **Python MCP bridge** is a separate process that can launch/reuse the runtime, then forwards MCP tool calls to that running runtime
+- the **Python opdev MCP bridge** is a separate process focused on operator-authoring docs, examples, and capability guidance rather than live graph ownership
 
 Core/package update MCP tool surface (current):
 - `ensure_runtime(graph_path="")` — ensures a GUI Vivid runtime is reachable, launching `build/vivid` when needed and optionally opening a graph at startup.

@@ -46,43 +46,9 @@ struct ModulatedGain : vivid::OperatorBase, vivid::FrameProcessable {
 | `output_lane_length(name)` | Read child lane output length |
 | `op()` | Direct access to underlying operator instance |
 
-## EmbeddedOp — Runtime-Polymorphic Composition
+### Choosing the right composition surface
 
-Like `ChildOp<T>` but the operator type is selected at runtime. Use this when the embedded operator type isn't known at compile time (e.g., a synth slot that can hold an Envelope, LFO, MSEG, or other modulator).
-
-```cpp
-#include "operator_api/embedded_op.h"
-
-vivid::EmbeddedOp slot(std::make_unique<Envelope>());
-slot.set_param("attack", 0.1f);
-slot.process(parent_ctx);  // inherits time/frame from parent
-float val = slot.output("value");
-```
-
-### EmbeddedOp API
-
-| Method | Description |
-|--------|-------------|
-| `set_param(name, value)` | Set param by name (silently ignores unknown names) |
-| `set_param(index, value)` | Set param by index |
-| `param(name)` | Read param value by name |
-| `has_param(name)` | Check if param exists |
-| `set_input(name, value)` | Set float input by name |
-| `has_input(name)` | Check if input exists |
-| `output(name)` | Read float output by name |
-| `has_output(name)` | Check if output exists |
-| `process(parent_ctx)` | Run embedded op (inherits time/frame) |
-| `op()` | Direct access to underlying `OperatorBase` |
-| `has_audio_interface()` | True if the embedded op implements `AudioProcessable` |
-
-### ChildOp\<T\> vs EmbeddedOp
-
-| | ChildOp\<T\> | EmbeddedOp |
-|---|---|---|
-| Type known at | Compile time | Runtime |
-| Include | `child_op.h` + operator header | `embedded_op.h` |
-| Overhead | Minimal (direct calls) | Name lookups via `unordered_map` |
-| Use when | You always embed the same type | The slot can hold different types |
+Use `ChildOp<T>` when the host privately owns a fixed internal helper such as an LFO, Envelope, or Smooth. If a value needs to travel through the graph or fan out across many voices/elements, expose an ordinary port and rely on lanes for multiplicity. If host-local behavior must become visible to the rest of the graph, expose an explicit output instead of leaking the internal mechanism.
 
 ## Custom Port Types
 
@@ -95,9 +61,14 @@ Typed opaque data for passing complex payloads between operators (e.g. media str
 #include "operator_api/type_id.h"
 #include "operator_api/port_type_registry.h"
 
+VIVID_DECLARE_CUSTOM_REF_TYPE(vivid::MediaStreamV1,
+                              "com.example.media_stream_v1",
+                              "MediaStreamV1",
+                              false);
+
 // Producer
 void collect_ports(std::vector<VividPortDescriptor>& out) override {
-    out.push_back(VIVID_CUSTOM_PORT("media_stream", VIVID_PORT_OUTPUT, vivid::MediaStreamV1, VIVID_PORT_TRANSPORT_CUSTOM_REF));
+    out.push_back(VIVID_CUSTOM_REF_PORT("media_stream", VIVID_PORT_OUTPUT, vivid::MediaStreamV1));
 }
 
 void process_frame(const VividFrameContext* ctx) override {
@@ -107,7 +78,7 @@ void process_frame(const VividFrameContext* ctx) override {
 
 // Consumer
 void collect_ports(std::vector<VividPortDescriptor>& out) override {
-    out.push_back(VIVID_CUSTOM_PORT("media_stream", VIVID_PORT_INPUT, vivid::MediaStreamV1, VIVID_PORT_TRANSPORT_CUSTOM_REF));
+    out.push_back(VIVID_CUSTOM_REF_PORT("media_stream", VIVID_PORT_INPUT, vivid::MediaStreamV1));
 }
 
 void process_frame(const VividFrameContext* ctx) override {
@@ -115,11 +86,11 @@ void process_frame(const VividFrameContext* ctx) override {
     if (stream) { /* read stream */ }
 }
 
-// Register the type (at file scope)
+// Optionally export the type metadata directly from this dylib
 VIVID_DESCRIBE_REF_TYPE(vivid::MediaStreamV1)
 ```
 
-Type safety: `vivid_port_type<T>()` produces a compile-time FNV-1a hash of the C++ type with a high-bit marker. The runtime rejects connections between incompatible custom types.
+Type safety: `VIVID_DECLARE_CUSTOM_*_TYPE(...)` gives the type a stable namespaced id, and `vivid_port_type<T>()` derives the custom port token from that id. The runtime rejects connections between incompatible custom types.
 
 ## MIDI Types
 
@@ -176,7 +147,7 @@ See `gpu/movie_file_in` and `audio/movie_file_audio` for the canonical implement
 
 ## Shared Handle Service
 
-Process-wide handle lifecycle management for cross-operator data sharing:
+Process-wide handle lifecycle management for `CUSTOM_REF` payloads:
 
 ```cpp
 const VividSharedHandleService* svc = ctx->shared_handles;
@@ -189,7 +160,7 @@ svc->invalidate(id, new_generation);
 
 ## GPU Types (gpu_types.h)
 
-Structured GPU resource types for handle ports:
+Structured GPU resource types commonly used with `CUSTOM_REF` ports:
 
 - `VividGpuBuffer` — GPU buffer with usage flags
 - `VividComputeBuffer` — Compute buffer with element count/stride

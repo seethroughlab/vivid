@@ -108,7 +108,7 @@ struct MyEffect : vivid::OperatorBase, vivid::FrameProcessable {
 VIVID_REGISTER(MyEffect)
 ```
 
-Three domain-specific mix-in interfaces exist: `vivid::FrameProcessable` (implements `process_frame(const VividFrameContext*)`), `vivid::AudioProcessable` (implements `process_audio(const VividAudioContext*)`), and `vivid::GpuProcessable` (implements `process_gpu(const VividGpuContext*)`). All operators inherit `vivid::OperatorBase` and exactly one of these interfaces — operators are single-cadence (`_fr` for frame-only, `_au` for audio-only). The `VIVID_REGISTER` macro generates `extern "C"` entry points (`vivid_abi_version`, `vivid_descriptor`, `vivid_create`, `vivid_destroy`, and domain-specific dispatch functions). It infers the operator's domain from its mix-ins, and emits a `vivid_abi_version()` function returning `VIVID_OPERATOR_ABI_VERSION` (currently 9). The runtime checks this on `dlopen` to reject stale dylibs left over from a previous build — it is not a cross-version compatibility contract. Operators always compile against the current headers.
+Three domain-specific mix-in interfaces exist: `vivid::FrameProcessable` (implements `process_frame(const VividFrameContext*)`), `vivid::AudioProcessable` (implements `process_audio(const VividAudioContext*)`), and `vivid::GpuProcessable` (implements `process_gpu(const VividGpuContext*)`). All operators inherit `vivid::OperatorBase` and exactly one of these interfaces — operators are single-cadence (`_fr` for frame-only, `_au` for audio-only). The `VIVID_REGISTER` macro generates `extern "C"` entry points (`vivid_abi_version`, `vivid_descriptor`, `vivid_create`, `vivid_destroy`, and domain-specific dispatch functions). It emits a `vivid_abi_version()` function returning `VIVID_OPERATOR_ABI_VERSION`, with the source-of-truth value defined in `src/operator_api/types.h`. The runtime checks that value on `dlopen` to reject stale dylibs left over from a previous build — it is not a cross-version compatibility contract. Operators always compile against the current headers.
 
 For statically linked export builds (§5.16), the `extern "C"` boundary is unnecessary — everything links together as one C++ binary. The macro handles both cases.
 
@@ -442,7 +442,6 @@ vivid/
 │   │   ├── audio_dsp.h         # WhiteNoise, PinkNoise, waveform(), detect_trigger()
 │   │   └── midi_types.h        # VividMidiBuffer type (reserved)
 │   ├── cli/                    # CLI tooling
-│   │   └── mcp_server.cpp      # MCP tool handlers (~4000 lines)
 │   └── export/                 # Standalone export build
 │       └── standalone_main.cpp
 ├── operators/                  # Built-in operators (each a directory)
@@ -459,7 +458,7 @@ vivid/
 ├── graphs/                     # Demo graphs organized by category
 │   ├── intro/   ├── filters/   ├── gpu/   ├── audio/   └── io/
 ├── tests/                      # CTest suite
-├── mcp/                        # Python MCP server (vivid_mcp.py)
+├── mcp/                        # Python MCP bridges (vivid_mcp.py, vivid_opdev_mcp.py)
 ├── site/                       # Website & package catalog
 ├── fonts/                      # Bundled fonts
 ├── assets/                     # Demo assets (videos, images)
@@ -654,13 +653,15 @@ Every intermediate result is a lane-bearing value visible on a wire. Every step 
 
 ## 5.22 MCP / LLM Integration
 
-Vivid exposes its full runtime API through two integration surfaces:
+Vivid exposes its runtime and operator-authoring surfaces through two complementary external bridges on top of the same in-process runtime.
 
 **Control Server** (`src/runtime/control_server.cpp`) — an HTTP server (powered by IXWebSocket) running inside the Vivid runtime on `127.0.0.1:9876` by default. It handles OSC messages, MIDI input, and the HTTP JSON-RPC runtime endpoint. Graph inspection and mutation, operator scaffolding and compilation, parameter read/write, capture, analysis, package management, and undo/redo all flow through this surface.
 
-**Python MCP Server** (`mcp/vivid_mcp.py`) — a Python wrapper that connects to the control server and re-exposes its tools as a standard MCP stdio server. This allows any MCP client (Claude Desktop, custom agents) to interact with a running Vivid instance without direct HTTP calls. The running Vivid app owns the live graph and the HTTP port; the Python process owns the MCP stdio layer.
+**Python runtime MCP bridge** (`mcp/vivid_mcp.py`) — a Python wrapper that connects to the control server and re-exposes the live runtime/control surface as a standard MCP stdio server. This is the graph/runtime bridge used for graph mutation, inspection, capture, diagnostics, checks, package/runtime management, and starter scaffolding. The running Vivid app owns the live graph and the HTTP port; the Python process owns the MCP stdio layer.
 
-**Runtime API** (`src/runtime/runtime_api.cpp/.h`) — the internal C++ API that both the control server and the built-in chat interface call into. All graph mutations, operator creation, capture, and analysis operations are implemented here. The Runtime API operates on the same in-process data structures as the runtime and graph — no serialization overhead.
+**Python opdev MCP bridge** (`mcp/vivid_opdev_mcp.py`) — a separate Python MCP stdio server focused on operator authoring. It exposes API docs, example operators, capability guidance, and operator-lifecycle helpers that sit alongside the runtime bridge rather than inside it.
+
+**Runtime API** (`src/runtime/runtime_api.cpp/.h`) — the internal C++ API that the control server and related runtime-facing surfaces call into. All graph mutations, operator creation, capture, and analysis operations are implemented here. The Runtime API operates on the same in-process data structures as the runtime and graph — no serialization overhead.
 
 ## 5.23 Media Pipeline
 

@@ -20,7 +20,7 @@ const LastError& last_error() const;
 ### ABI Check (performed inside `load()`)
 
 On load, the runtime calls `vivid_abi_version()` from the dylib and compares it to
-`VIVID_OPERATOR_ABI_VERSION` (currently **13**). This is a staleness check, not a binary-compatibility
+`VIVID_OPERATOR_ABI_VERSION` as defined in `src/operator_api/types.h`. This is a staleness check, not a binary-compatibility
 contract — operators always compile from source against the current headers. Mismatching ABI → load
 failure, diagnostic stored in `OperatorRegistry::abi_mismatch_by_path_`.
 
@@ -38,7 +38,7 @@ Representative `LastError::code` values:
 - `hot_reload_incompatible_descriptor`
 - `custom_type_registration_failed`
 
-Authoring note for embedded operators:
+Authoring note for `ChildOp<T>` embeddables:
 
 - `ChildOp<T>` consumers instantiate the concrete C++ type directly inside another plugin.
 - If an operator is intended to be embeddable and still has out-of-line destructor / virtual / thumbnail definitions, those definitions must be supplied through the composable-support path (`*_composable.cpp` linked via `vivid_composable_ops`).

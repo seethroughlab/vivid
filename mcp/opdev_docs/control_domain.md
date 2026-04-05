@@ -1,6 +1,6 @@
 # Control Domain
 
-Control operators run on the main thread at frame rate (~60 Hz). They process scalar values, lane arrays, strings, and handles.
+Control operators run on the main thread at frame rate (~60 Hz). They process scalar values, lane arrays, strings, and custom ports.
 
 ## Capability Interface
 
@@ -23,8 +23,8 @@ struct MyControlOp : vivid::OperatorBase, vivid::FrameProcessable {
 | `output_values` | `float*` | Float output ports, indexed by output port order — **write your outputs here** |
 | `input_lanes` | `VividLanePort*` | Lane array input ports (`.data`, `.length`) |
 | `output_lanes` | `VividLanePort*` | Lane array output ports (write `.data`, set `.length`) |
-| `input_handles` | `void**` | Handle input ports |
-| `output_handles` | `void**` | Handle output ports |
+| `custom_inputs` | `void**` | Custom-port inputs (`CUSTOM_VALUE` / `CUSTOM_REF`) |
+| `custom_outputs` | `void**` | Custom-port outputs (`CUSTOM_VALUE` / `CUSTOM_REF`) |
 | `input_string_values` | `const char**` | String input ports |
 | `output_string_values` | `const char**` | String output ports (write pointers here) |
 | `input_string_lanes` | `VividStringLanePort*` | String lane array inputs |
@@ -49,7 +49,7 @@ Port indices are counted separately for inputs and outputs, in the order declare
 - Float ports → `input_values[i]` / `output_values[i]`
 - Lane array ports → `input_lanes[i]` / `output_lanes[i]`
 - String ports → `input_string_values[i]` / `output_string_values[i]`
-- Handle ports → `input_handles[i]` / `output_handles[i]`
+- Custom ports → `custom_inputs[i]` / `custom_outputs[i]`
 
 ## Lane Array Ports
 

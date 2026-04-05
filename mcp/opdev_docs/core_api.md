@@ -77,7 +77,7 @@ Params are declared as member variables. The runtime syncs `ctx->param_values` i
 
 ### Custom Types
 
-Operators can define custom port types for exchanging arbitrary typed data (media streams, meshes, compute buffers, etc.) through the graph. Custom type IDs are generated at compile time via `vivid_port_type<T>()`.
+Operators can define custom port types for exchanging arbitrary typed data (media streams, meshes, compute buffers, etc.) through the graph. Custom type IDs are generated from a stable namespaced type id via the `VIVID_DECLARE_CUSTOM_*_TYPE(...)` macros and surfaced to ports through `vivid_port_type<T>()`.
 
 Two transport modes are available:
 
@@ -86,12 +86,17 @@ Two transport modes are available:
 | **CUSTOM_VALUE** | `VIVID_PORT_TRANSPORT_CUSTOM_VALUE` | Small structs copied by value (≤256 bytes) |
 | **CUSTOM_REF** | `VIVID_PORT_TRANSPORT_CUSTOM_REF` | Opaque pointer via shared handle registry (any size) |
 
-Declare custom ports with the `VIVID_CUSTOM_PORT` macro:
+Declare custom type traits first, then declare custom ports:
 ```cpp
-VIVID_CUSTOM_PORT("media_stream", VIVID_PORT_INPUT, vivid::MediaStreamV1, VIVID_PORT_TRANSPORT_CUSTOM_REF)
+VIVID_DECLARE_CUSTOM_REF_TYPE(vivid::MediaStreamV1,
+                              "com.example.media_stream_v1",
+                              "MediaStreamV1",
+                              false);
+
+VIVID_CUSTOM_REF_PORT("media_stream", VIVID_PORT_INPUT, vivid::MediaStreamV1)
 ```
 
-Register custom types by adding `VIVID_DESCRIBE_REF_TYPE(T)` at file scope (for `CUSTOM_REF` types):
+If the operator dylib needs to export the type metadata directly, add `VIVID_DESCRIBE_REF_TYPE(T)` at file scope for the convenience path:
 ```cpp
 VIVID_DESCRIBE_REF_TYPE(vivid::MediaStreamV1)
 ```
@@ -108,7 +113,9 @@ VividPortDescriptor {
     VividPortTransport transport,  // how the payload is conveyed
     uint32_t payload_size,         // sizeof(T) for custom types
     const char* type_name,         // human-readable type name for custom types
-    uint8_t channels               // audio: 0=auto, 1=mono, 2=stereo
+    uint8_t channels,              // audio: 0=auto, 1=mono, 2=stereo
+    float default_value,           // scalar input default
+    const char* stable_type_id     // stable namespaced id for custom types
 };
 ```
 
@@ -155,4 +162,4 @@ An operator implementing both `FrameProcessable` and `AudioProcessable` is "fixe
 
 ## ABI Version
 
-Current ABI version: `VIVID_OPERATOR_ABI_VERSION = 7`. The runtime checks this on load.
+`VIVID_OPERATOR_ABI_VERSION` lives in `src/operator_api/types.h`, which is the source of truth the runtime checks on load.

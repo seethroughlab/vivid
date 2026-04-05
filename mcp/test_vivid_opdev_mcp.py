@@ -42,6 +42,17 @@ class TestGetOperatorApiDocs:
         assert "VIVID_REGISTER" in content
         assert "Param<float>" in content
         assert "collect_params" in content
+        assert "VIVID_DECLARE_CUSTOM_REF_TYPE" in content
+        assert "VIVID_CUSTOM_REF_PORT" in content
+
+    @pytest.mark.anyio
+    async def test_control_uses_custom_port_fields(self):
+        result = json.loads(await opdev.get_operator_api_docs("control"))
+        content = result["content"]
+        assert "custom_inputs" in content
+        assert "custom_outputs" in content
+        assert "input_handles" not in content
+        assert "output_handles" not in content
 
     @pytest.mark.anyio
     async def test_gpu_has_wgsl_filter(self):
@@ -49,6 +60,14 @@ class TestGetOperatorApiDocs:
         content = result["content"]
         assert "WgslFilterBase" in content
         assert "process_gpu" in content
+
+    @pytest.mark.anyio
+    async def test_audio_has_current_channel_count_example(self):
+        result = json.loads(await opdev.get_operator_api_docs("audio"))
+        content = result["content"]
+        assert "VIVID_PORT_TRANSPORT_AUDIO_BUFFER" in content
+        assert 'nullptr, 1' in content
+        assert "input_handles" not in content
 
     @pytest.mark.anyio
     async def test_dsp_has_utilities(self):
@@ -195,6 +214,19 @@ class TestStructure:
         for header in opdev.ALLOWED_HEADERS:
             path = opdev.OPERATOR_API_DIR / header
             assert path.is_file(), f"Allowlisted header missing: {header}"
+
+    def test_opdev_docs_regression_scan(self):
+        monitored = [
+            opdev.OPDEV_DOCS_DIR / "core_api.md",
+            opdev.OPDEV_DOCS_DIR / "control_domain.md",
+            opdev.OPDEV_DOCS_DIR / "audio_domain.md",
+            opdev.OPDEV_DOCS_DIR / "gpu_domain.md",
+            opdev.OPDEV_DOCS_DIR / "advanced.md",
+        ]
+        contents = "\n".join(path.read_text(encoding="utf-8") for path in monitored)
+        assert "input_handles" not in contents
+        assert "output_handles" not in contents
+        assert "Current ABI version:" not in contents
 
 
 # ---------------------------------------------------------------------------

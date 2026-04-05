@@ -28,7 +28,7 @@ struct MyAudioOp : vivid::OperatorBase, vivid::AudioProcessable {
 | `output_channel_counts` | `const uint8_t*` | Per-port channel count (NULL = all mono) |
 | `input_lanes` | `VividLanePort*` | Cross-cadence lane inputs from control |
 | `output_lanes` | `VividLanePort*` | Lane outputs |
-| `input_handles` | `void**` | Handle inputs |
+| `custom_inputs` | `void**` | Custom-port inputs (`CUSTOM_VALUE` / `CUSTOM_REF`) |
 | `input_string_values` | `const char**` | String inputs |
 | `file_param_values` | `const char**` | File/text param values |
 | `shared_handles` | `VividSharedHandleService*` | Process-wide handle service |
@@ -74,11 +74,14 @@ for (uint8_t ch = 0; ch < ch_count; ch++) {
 ```cpp
 void collect_ports(std::vector<VividPortDescriptor>& out) override {
     // Mono input/output (channels = 1)
-    out.push_back({"input",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  0, 1});
-    out.push_back({"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, 0, 1});
+    out.push_back({"input",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,
+                   VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1});
+    out.push_back({"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT,
+                   VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1});
 
     // Stereo (channels = 2)
-    out.push_back({"stereo_out", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, 0, 2});
+    out.push_back({"stereo_out", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT,
+                   VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2});
 }
 ```
 
@@ -98,8 +101,10 @@ struct Gain : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  0, 1});
-        out.push_back({"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, 0, 1});
+        out.push_back({"input",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,
+                       VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1});
+        out.push_back({"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT,
+                       VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1});
     }
 
     void process_audio(const VividAudioContext* ctx) override {

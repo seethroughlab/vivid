@@ -20,7 +20,7 @@ ALLOWED_HEADERS = {
     "input_state.h", "type_id.h",
     "create_request.h", "data_driven_filter.h",
     "thumbnail.h", "draw_ui_helpers.h", "draw_plot_helpers.h",
-    "embedded_op.h", "adsr_inspector.h", "texture_readback.h",
+    "adsr_inspector.h", "texture_readback.h",
 }
 
 # Doc topic mapping
@@ -51,7 +51,7 @@ Start with the discovery tools before scaffolding:
 
 1. **Research** — use `get_operator_api_docs(topic)` to learn the relevant API surface
 2. **Study examples** — use `list_example_operators()` and `get_example_operator()` to see real implementations
-3. **Scaffold** — use `scaffold_operator(name, env)` to generate a starter template. Then edit the source to add custom ports, params, and behavior.
+3. **Scaffold** — use `scaffold_operator(name, env)` to generate a starter template, not a full advanced-authoring implementation. Then edit the source to add custom ports, params, and behavior.
 4. **Implement** — edit the generated source, using API docs and examples as reference
 5. **Build & Test** — use `rebuild_package()` and `test_package()` to iterate
 6. **Wire up** — use graph tools (`add_node`, `connect`, `set_param`) to test in context
@@ -59,11 +59,11 @@ Start with the discovery tools before scaffolding:
 ## API Documentation Topics
 
 - `"core"` — Param<T>, OperatorBase, VIVID_REGISTER, collect_params/ports, semantic metadata
-- `"control"` — VividFrameContext, float/lane-array/string/handle ports, frame-rate processing
+- `"control"` — VividFrameContext, float/lane-array/string/custom ports, frame-rate processing
 - `"audio"` — VividAudioContext, planar buffers, sample rate, channel counts, thread safety
 - `"gpu"` — VividGpuContext, WgslFilterBase, gpu_common helpers, WGSL patterns, hot-reload
 - `"dsp"` — Oscillators, waveforms, noise generators, SVF filter, decay envelope, ADSR
-- `"advanced"` — ChildOp<T> composites, handle ports, MIDI, input events, media streams
+- `"advanced"` — ChildOp<T> composites, custom ports, MIDI, input events, media streams
 - `"conventions"` — Naming, file layout, semantic tags, CMakeLists, package manifest
 - `"data_driven"` — Pure-WGSL operators with JSON metadata headers (no C++ needed)
 
@@ -78,9 +78,14 @@ Start with the discovery tools before scaffolding:
 
 ## Three Envs
 
-- **Control** (OperatorBase + FrameProcessable) — main thread, ~60 Hz, scalar/lane-array/string/handle ports
+- **Control** (OperatorBase + FrameProcessable) — main thread, ~60 Hz, scalar/lane-array/string/custom ports
 - **Audio** (OperatorBase + AudioProcessable) — audio thread, per-buffer, planar float buffers
 - **GPU** (OperatorBase + GpuProcessable) — main thread, ~60 Hz, WebGPU textures
+
+## Example Discovery vs Scaffolding
+
+- Example discovery can include `"shared"` because the repo contains reusable helpers under `operators/shared/`.
+- `scaffold_operator(name, env)` targets only `"control"`, `"audio"`, or `"gpu"` starter templates.
 """)
 
 
@@ -90,7 +95,7 @@ Start with the discovery tools before scaffolding:
 
 CAPABILITY_GUIDANCE = {
     "custom_port": {
-        "explanation": "Typed opaque data ports for passing complex payloads between operators. Two transports: CUSTOM_VALUE (small structs copied by value) and CUSTOM_REF (shared handle registry for any size).",
+        "explanation": "Typed opaque data ports for passing complex payloads between operators. Two transports: CUSTOM_VALUE (small structs copied by value) and CUSTOM_REF (shared-handle-backed refs for any size).",
         "doc_topic": "advanced",
         "example_operators": [
             {"env": "control", "name": "midi_input"},
@@ -100,6 +105,7 @@ CAPABILITY_GUIDANCE = {
         "code_snippet": (
             '#include "operator_api/type_id.h"\n'
             '#include "operator_api/port_type_registry.h"\n\n'
+            'VIVID_DECLARE_CUSTOM_REF_TYPE(MyType, "com.example.my_type", "MyType", false);\n\n'
             'void collect_ports(std::vector<VividPortDescriptor>& out) override {\n'
             '    out.push_back(VIVID_CUSTOM_REF_PORT("my_data", VIVID_PORT_OUTPUT, MyType));\n'
             '}'
@@ -120,7 +126,7 @@ CAPABILITY_GUIDANCE = {
         ),
     },
     "custom_ref_port": {
-        "explanation": "Shared-handle ports for large or opaque data (MIDI buffers, media handles). Use VIVID_CUSTOM_REF_PORT macro and VIVID_DESCRIBE_REF_TYPE at file scope.",
+        "explanation": "Shared-handle-backed custom ports for large or opaque data (MIDI buffers, media handles). Declare the type with VIVID_DECLARE_CUSTOM_REF_TYPE, use VIVID_CUSTOM_REF_PORT for the port, and export metadata with VIVID_DESCRIBE_REF_TYPE when you want the convenience path.",
         "doc_topic": "advanced",
         "example_operators": [
             {"env": "control", "name": "sequencer"},
@@ -179,20 +185,6 @@ CAPABILITY_GUIDANCE = {
             '    lfo.process(ctx);\n'
             '    float mod = lfo.output("value");\n'
             '}'
-        ),
-    },
-    "embedded_op": {
-        "explanation": "EmbeddedOp is like ChildOp<T> but the operator type is selected at runtime. Use this when a slot can hold different modulator types (e.g. LFO, Envelope, MSEG). Supports has_param/has_input/has_output for duck-typing safety.",
-        "doc_topic": "advanced",
-        "example_operators": [
-            {"env": "control", "name": "modulated_gain"},
-        ],
-        "code_snippet": (
-            '#include "operator_api/embedded_op.h"\n\n'
-            'vivid::EmbeddedOp slot(std::make_unique<Envelope>());\n'
-            'slot.set_param("attack", 0.1f);\n'
-            'slot.process(parent_ctx);\n'
-            'float val = slot.output("value");'
         ),
     },
     "midi": {
@@ -323,7 +315,7 @@ async def list_example_operators(env: str | None = None) -> str:
     """List all example operators in the codebase.
 
     Args:
-        env: Optional filter — "control", "audio", "gpu", or "shared". Omit to list all.
+        env: Optional filter — "control", "audio", "gpu", or "shared". "shared" is for example discovery only. Omit to list all.
     """
     operators = []
     envs_to_scan = OPERATOR_ENVS
@@ -352,7 +344,7 @@ async def get_example_operator(env: str, name: str) -> str:
     """Get the full source code of an example operator.
 
     Args:
-        env: Operator env ("control", "audio", "gpu", "shared")
+        env: Operator env ("control", "audio", "gpu", "shared"). "shared" is discovery-only, not a scaffold target.
         name: Operator directory name (e.g. "lfo", "gain", "noise")
     """
     env_name = env.lower().strip()
@@ -405,7 +397,7 @@ async def search_example_operators(query: str, env: str | None = None) -> str:
 
     Args:
         query: Search keyword (case-insensitive)
-        env: Optional env filter — "control", "audio", "gpu", or "shared"
+        env: Optional env filter — "control", "audio", "gpu", or "shared". "shared" is discovery-only.
     """
     query = query.strip()
     if not query:
@@ -534,7 +526,6 @@ async def recommend_starting_point(goal: str) -> str:
         "file_drop": ["file drop", "file picker", "drag drop", "drag and drop", "load file", "file_drop", "file param"],
         "thumbnail": ["thumbnail", "preview", "custom thumbnail"],
         "child_op": ["child op", "child_op", "composite", "embed operator", "internal modulation"],
-        "embedded_op": ["embedded op", "embedded_op", "runtime polymorphic", "dynamic slot", "modulator slot"],
         "midi": ["midi", "note on", "note off", "midi input"],
         "input_events": ["mouse", "keyboard", "click", "input event", "key press"],
         "media_stream": ["media stream", "video playback", "movie", "media_stream", "av sync", "cross-cadence"],
@@ -605,6 +596,7 @@ async def scaffold_operator(name: str, env: str, variant: str = "") -> str:
 
     This is typically step 3 in the workflow — after researching docs and studying examples.
     After scaffolding, edit the generated source to add custom ports, params, and behavior.
+    This is a starter-template tool, not the full advanced-authoring API.
 
     Writes source, patches CMakeLists, triggers build.
 
