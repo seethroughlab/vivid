@@ -300,6 +300,11 @@
             {},
             R"([
   {"type":"wait","frames":2},
+  {"type":"mouse_move","x":360,"y":372},
+  {"type":"mouse_button","button":"left","action":"press"},
+  {"type":"wait","frames":1},
+  {"type":"mouse_button","button":"left","action":"release"},
+  {"type":"wait","frames":1},
   {"type":"mouse_move","x":260,"y":264},
   {"type":"mouse_button","button":"left","action":"press"},
   {"type":"wait","frames":1},
