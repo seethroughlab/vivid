@@ -67,6 +67,7 @@
 #include <algorithm>
 #include <chrono>
 #include <atomic>
+#include <random>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -953,13 +954,16 @@ int main(int argc, char* argv[]) {
 
     // --- Animated splash screen shader pipeline ---
     // Subtle dark animated background with slow-moving noise/gradient.
+    // Random seed so the nebula pattern differs each launch.
+    std::random_device rd;
+    const float splash_seed = std::uniform_real_distribution<float>(0.0f, 100.0f)(rd);
     WGPURenderPipeline splash_pipeline = nullptr;
     WGPUBindGroup splash_bind_group = nullptr;
     WGPUBuffer splash_uniform_buf = nullptr;
     {
         // Fragment shader: animated nebula-like background
         static constexpr const char* kSplashFragSrc = R"(
-@group(0) @binding(0) var<uniform> u: vec4f; // x=time, y=aspect
+@group(0) @binding(0) var<uniform> u: vec4f; // x=time, y=aspect, z=seed
 
 // Logo V geometry: 5 nodes, 4 edges (normalized 0–1 coords)
 const NODE0 = vec2f(0.300, 0.250);
@@ -1030,7 +1034,7 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
         // Flow coordinate: position along edge scrolls with time
         let flow_coord = (t_offsets[i] + t) * 4.0 - time * 0.35;
         let cross_coord = d * 20.0;
-        let flow_noise = fbm(vec2f(flow_coord, cross_coord) + vec2f(f32(i) * 7.3));
+        let flow_noise = fbm(vec2f(flow_coord, cross_coord) + vec2f(f32(i) * 7.3) + vec2f(u.z * 0.7));
 
         brightness = max(brightness, mask * flow_noise);
     }
@@ -1045,15 +1049,19 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
 @fragment fn fs_main(in: FullscreenOutput) -> @location(0) vec4f {
     let t = u.x;
     let aspect = u.y;
+    let seed = u.z;
     var uv = in.uv;
     uv.x *= aspect;
 
+    // Seed-based offset so each launch looks different
+    let seed_off = vec2f(seed, seed * 1.7 + 3.1);
+
     // --- Base nebula (original, untouched) ---
     let warp = vec2f(
-        fbm(uv * 3.0 + vec2f(t * 0.08, t * 0.06)),
-        fbm(uv * 3.0 + vec2f(t * -0.05, t * 0.09) + vec2f(5.2, 1.3))
+        fbm(uv * 3.0 + vec2f(t * 0.08, t * 0.06) + seed_off),
+        fbm(uv * 3.0 + vec2f(t * -0.05, t * 0.09) + vec2f(5.2, 1.3) + seed_off)
     );
-    let n = fbm(uv * 2.0 + warp * 1.5 + vec2f(t * 0.02));
+    let n = fbm(uv * 2.0 + warp * 1.5 + vec2f(t * 0.02) + seed_off);
 
     let d = length(in.uv - vec2f(0.5));
     let vignette = 1.0 - smoothstep(0.1, 0.85, d);
@@ -1160,7 +1168,7 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
         if (splash_pipeline && splash_bind_group) {
             float elapsed = std::chrono::duration<float>(
                 std::chrono::steady_clock::now() - splash_start_time).count();
-            float uniforms[4] = { elapsed, aspect, 0.0f, 0.0f };
+            float uniforms[4] = { elapsed, aspect, splash_seed, 0.0f };
             wgpuQueueWriteBuffer(gpu.queue(), splash_uniform_buf, 0, uniforms, 16);
             vivid::gpu::run_pass(frame.encoder, splash_pipeline, splash_bind_group,
                                  frame.view, "Splash BG");
