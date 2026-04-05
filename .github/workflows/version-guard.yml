@@ -22,8 +22,8 @@ jobs:
             exit 1
           fi
 
-          runtime_fallback=$(grep -E '^#define VIVID_CORE_VERSION "' src/runtime/main.cpp | head -n1 | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/')
-          ui_fallback=$(grep -E '^#define VIVID_CORE_VERSION "' src/ui/node_graph_draw.cpp | head -n1 | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/')
+          runtime_fallback=$(grep -E '^#define VIVID_CORE_VERSION "' src/runtime/core/main.cpp | head -n1 | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/')
+          ui_fallback=$(grep -E '^#define VIVID_CORE_VERSION "' src/ui/graph/node_graph_draw.cpp | head -n1 | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/')
 
           for v in "$runtime_fallback" "$ui_fallback"; do
             if [[ -z "${v}" ]]; then
