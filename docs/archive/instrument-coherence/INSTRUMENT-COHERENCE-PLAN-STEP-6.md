@@ -3,6 +3,8 @@
 ## Summary
 Implement `#6` by making graph content metadata a first-class core concept, then extending the existing example browser to recognize instrument-ready graph entries without introducing a new preset file format or a separate instrument runtime.
 
+Current state: `v1` shipped; items below under `V2 Follow-Up` remain deferred.
+
 V1 should keep the browseable unit as a graph file. Instrument libraries become an opt-in metadata profile on top of ordinary graph JSON, and the browser reads saved graph state, active variation, and selected preview controls as the "preset snapshot" for that entry.
 
 ## Story
@@ -141,11 +143,11 @@ For non-instrument use cases, existing graph browsing should remain intact. Ordi
 - No requirement that non-instrument graphs adopt any of the new fields
 
 ## V2 Follow-Up
-- richer browser grouping and visual affordances for instrument libraries
-- authoring UI for selecting `preview_controls`
-- optional favorites, ratings, or library curation fields
-- per-variation or exposed-control snapshot browsing if real usage proves it is worth the added complexity
-- tighter integration between Step 5 performance pages and browser preview surfaces
+- Richer browser grouping and instrument-library visual affordances
+- Authoring UI for selecting `preview_controls`
+- Favorites, ratings, and library-curation fields
+- Per-variation or exposed-control snapshot browsing if usage proves it worthwhile
+- Step 5 performance-page and browser-preview integration
 
 ## Test Plan
 - Graph save/load round-trip preserves old and new `meta` fields through normal `Graph::save()` and `Graph::load()`

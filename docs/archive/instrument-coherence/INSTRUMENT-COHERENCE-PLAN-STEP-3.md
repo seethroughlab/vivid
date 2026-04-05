@@ -3,6 +3,8 @@
 ## Summary
 Implement `#3` as a **new synth-oriented dual-filter core operator** built on the existing shared filter DSP, not as a replacement for the current `Filter` operator.
 
+Current state: `v1` shipped; items below under `V2 Follow-Up` remain deferred.
+
 V1 should be **operator-first** and **routing-first**:
 - add one strong reusable audio primitive for instrument-style filter authoring,
 - preserve the existing `Filter` as the stable single-stage primitive,
@@ -117,11 +119,11 @@ Key boundaries:
 - No filter-morph matrix, routing CV, or per-stage tap outputs in v1
 
 ## V2 Follow-Up
-- stereo-aware or mid/side variants
-- optional stage tap outputs for advanced graph composition
-- richer crossover types and routing morphing
-- more explicit visual routing affordances or custom inspector UX
-- broader filter-flavor expansion only if package use shows a real gap beyond the current shared DSP set
+- Stereo-aware or mid/side variants
+- Stage tap outputs for advanced graph composition
+- Richer crossover types and routing morphing
+- Visual routing affordances or custom inspector UX
+- Broader filter-flavor expansion if package use shows a real gap
 
 ## Test Plan
 - DSP parity:

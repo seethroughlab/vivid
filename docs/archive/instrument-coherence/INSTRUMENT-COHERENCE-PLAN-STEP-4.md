@@ -3,6 +3,8 @@
 ## Summary
 Implement `#4` as a **generic asset-library and import/index/cache layer** with a **wavetable-first** v1, not as wavetable synthesis logic in core.
 
+Current state: `v1` shipped; items below under `V2 Follow-Up` remain deferred.
+
 V1 should be **library-first** and **path-compatible**:
 - package-owned assets remain ordinary files in package repos,
 - user-imported assets are copied into a workspace-owned asset library,
@@ -155,12 +157,12 @@ The same pattern should still help non-wavetable packages later. A sampler, gran
 - No replacement of `prepare_instance_assets()` with a global asset execution model
 
 ## V2 Follow-Up
-- richer asset picker UI integrated directly into module/file-param inspector controls
-- broader asset kinds such as samples, impulse responses, or LUTs if package usage proves the need
-- optional graph persistence by `asset_id` if path-based persistence becomes a real limitation
-- batch import, duplicate detection, and rename/delete workflows
-- author-defined tags, favorites, and richer preview metadata
-- better audition/preview actions for sound-design workflows
+- Asset picker UI integrated into module and file-param controls
+- Broader asset kinds such as samples, impulse responses, or LUTs
+- Optional graph persistence by `asset_id`
+- Batch import, duplicate detection, and rename/delete workflows
+- Author-defined tags, favorites, and richer preview metadata
+- Audition and preview actions for sound-design workflows
 
 ## Test Plan
 - manifest parsing for valid and invalid `assets` blocks

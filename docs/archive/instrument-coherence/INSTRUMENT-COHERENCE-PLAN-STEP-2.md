@@ -3,6 +3,8 @@
 ## Summary
 Implement `#2` as a **composite-local** modulation assignment layer that builds on Step 1's exposed control surface.
 
+Current state: `v1` shipped; items below under `V2 Follow-Up` remain deferred.
+
 V1 should be:
 - available to any composite/module, not just synths,
 - centered on named modulation sources and named modulation destinations,
@@ -114,12 +116,12 @@ Per-note and per-lane modulation should reuse Vivid's existing lane semantics, n
 - No attempt to solve macro pages or expressive performance plumbing beyond what is needed for local modulation assignment
 
 ## V2 Follow-Up
-- richer curve and scaling options
-- destination bundles with author-defined weighting behavior
-- better visual overlays for assignment visibility in the graph
-- optional assignment gestures such as "select source, click knob"
-- broader lane-aware authoring helpers
-- possible embedded-graph authoring support if Step 1 v2 lands first
+- Richer curve and scaling options
+- Destination bundles with author-defined weighting
+- Graph overlays for assignment visibility
+- Assignment gestures such as select-source-click-control
+- Broader lane-aware authoring helpers
+- Embedded-graph authoring support if Step 1 `v2` lands first
 
 ## Test Plan
 - parsing valid and invalid module modulation metadata

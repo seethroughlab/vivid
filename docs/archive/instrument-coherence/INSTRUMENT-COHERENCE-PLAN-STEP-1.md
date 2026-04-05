@@ -3,6 +3,8 @@
 ## Summary
 Implement `#1` as a maturation of the existing subgraph-module system, not as a separate instrument architecture.
 
+Current state: `v1` shipped; items below under `V2 Follow-Up` remain deferred.
+
 V1 should be **module-file-first** and **surface-first**:
 - composite/instrument definitions live in `.vivid-module.json`
 - instances behave like a single node with a curated exposed control surface
@@ -53,10 +55,10 @@ V2 can extend the same model to embedded graph authoring and richer nested editi
 - No attempt to solve modulation assignment, browser taxonomy, or performance pages in this slice beyond what is strictly needed for module surfaces and presets
 
 ## V2 Follow-Up
-- Add embedded subgraph definitions inside regular graph JSON, backed by the same runtime/module abstraction rather than a parallel system.
-- Add optional “peek inside” visualization for internal nodes of a selected module instance.
-- Add nested editing workflows only after the module-file-first surface and preset path are stable.
-- Consider recursive module flattening only after single-level authoring, debugging, and save/load semantics are solid.
+- Embedded subgraph definitions inside regular graph JSON
+- Peek-inside visualization for selected module instances
+- Nested module editing workflows
+- Recursive module flattening after single-level semantics are stable
 
 ## Test Plan
 - Parsing:

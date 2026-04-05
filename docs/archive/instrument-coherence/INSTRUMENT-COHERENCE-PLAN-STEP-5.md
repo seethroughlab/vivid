@@ -3,6 +3,8 @@
 ## Summary
 Implement `#5` as two linked additions built on Step 1 and Step 2, not as a separate instrument runtime:
 
+Current state: `v1` shipped; items below under `V2 Follow-Up` remain deferred.
+
 - a standard expressive-note contract centered on `MidiInput`, lane arrays, and existing `lane_id` semantics,
 - a curated module performance page generated from exposed params, so instrument modules can present macro/performance controls without separate state.
 
@@ -139,11 +141,11 @@ For non-synth modules, the same structure should still help. A hybrid AV module 
 - No new graph schema change requirement for authored graph JSON in v1
 
 ## V2 Follow-Up
-- richer performance-page widgets or gestures
-- tighter integration between performance controls and local modulation assignment UI
-- stronger package/browser affordances for performance-ready modules
-- broader controller-learn workflows for performance surfaces
-- deeper MPE configuration if real package usage proves the need
+- Richer performance-page widgets or gestures
+- Performance-control and local-modulation UI integration
+- Stronger package and browser affordances for performance-ready modules
+- Broader controller-learn workflows for performance surfaces
+- Deeper MPE configuration if real package usage proves the need
 
 ## Test Plan
 - `MidiInput` regression coverage proving current note/velocity/gate behavior remains unchanged
