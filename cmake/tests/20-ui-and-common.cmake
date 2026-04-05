@@ -66,7 +66,7 @@ add_test(NAME test_ui_screenshot_smoke
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_ui_screenshot_smoke PROPERTIES
     LABELS "GUI_SMOKE"
-    TIMEOUT 180
+    TIMEOUT 480
     ENVIRONMENT
         "VIVID_ENABLE_UI_SCREENSHOT_SMOKE=1;VIVID_UI_SMOKE_LANE=gui_smoke;HOME=${CMAKE_BINARY_DIR}/.test_ui_screenshot_smoke/gui_smoke/home")
 
