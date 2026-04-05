@@ -484,3 +484,39 @@ class TestBuildActivityTools:
     async def test_explain_build_failure_rejects_bad_task_id(self):
         result = json.loads(await opdev.explain_build_failure("oops"))
         assert not result["ok"]
+
+
+class TestCliRouting:
+    @pytest.mark.anyio
+    async def test_list_types_uses_cli(self, monkeypatch):
+        async def fake_cli(args):
+            assert args == ["list-types", "--json"]
+            return json.dumps({"ok": True, "result": {"types": []}})
+
+        monkeypatch.setattr(opdev, "_run_vivid_cli_json", fake_cli)
+        result = json.loads(await opdev.list_types())
+        assert result["ok"]
+
+    @pytest.mark.anyio
+    async def test_scaffold_operator_falls_back_to_cli(self, monkeypatch):
+        async def fake_reachable():
+            return False
+
+        async def fake_cli(args):
+            assert args == ["scaffold-operator", "test_op", "--env", "control", "--json"]
+            return json.dumps({"ok": True})
+
+        monkeypatch.setattr(opdev, "_runtime_is_reachable", fake_reachable)
+        monkeypatch.setattr(opdev, "_run_vivid_cli_json", fake_cli)
+        result = json.loads(await opdev.scaffold_operator("test_op", "control"))
+        assert result["ok"]
+
+    @pytest.mark.anyio
+    async def test_runtime_only_tool_reports_clear_error(self, monkeypatch):
+        async def fake_reachable():
+            return False
+
+        monkeypatch.setattr(opdev, "_runtime_is_reachable", fake_reachable)
+        result = json.loads(await opdev.inspect_graph())
+        assert not result["ok"]
+        assert "requires a running Vivid runtime" in result["error"]

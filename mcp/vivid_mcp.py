@@ -33,8 +33,8 @@ Connections must match types: `gpu_texture` → `gpu_texture`, `data` → `data`
 
 ## Workflow
 
-1. `ensure_runtime` — make sure a GUI Vivid runtime is running before using the rest of the tool surface
-2. `list_types` — discover available operators (compact catalog). Use `operator_docs(name)` to get full param/port/doc details for a specific operator.
+1. `list_types` / `operator_docs` / package lookup tools — use these first for static discovery; they can run without a live runtime
+2. `ensure_runtime` — only when you need to inspect, mutate, capture, or analyze a live graph/session
 3. **Compose first** — build the graph from existing operators before considering custom ones. Most goals are achievable by wiring existing operators together.
 4. `add_node` → `connect` → `set_param` — assemble and configure the graph
 5. `scaffold_operator` — scaffold a starter template when no existing operator achieves the goal. Creates a minimal working operator; use the opdev MCP server for advanced features (custom ports, params, inspectors, thumbnails, and `prepare_instance_assets()` warmup guidance).
@@ -152,6 +152,28 @@ def _launch_runtime_process(graph_path: str = "") -> tuple[subprocess.Popen, str
         start_new_session=True,
     )
     return proc, log_path
+
+
+async def _run_vivid_cli_json(args: list[str]) -> str:
+    vivid_bin = _resolve_vivid_bin()
+    proc = await asyncio.create_subprocess_exec(
+        str(vivid_bin),
+        *args,
+        cwd=str(REPO_ROOT),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    out = stdout.decode("utf-8", errors="replace").strip()
+    err = stderr.decode("utf-8", errors="replace").strip()
+    if out:
+        try:
+            json.loads(out)
+            return out
+        except Exception:
+            pass
+    message = err or out or f"CLI command failed with exit code {proc.returncode}"
+    return _json_response({"ok": False, "error": message})
 
 
 async def _wait_for_runtime_ready(proc: subprocess.Popen | None, timeout_sec: float) -> bool:
@@ -303,15 +325,13 @@ async def run_diagnostics(include_payload: bool = False) -> str:
 @mcp.tool()
 async def operator_map() -> str:
     """Show every operator the runtime knows about: dylib path, package, status (loaded/deferred/abi_mismatch), and ABI version. Use this to debug operator loading issues."""
-    raw = await _post("operator_map")
-    return _json_response(raw)
+    return await _run_vivid_cli_json(["operator-map", "--json"])
 
 
 @mcp.tool()
 async def discovery_report() -> str:
     """Show the package discovery report: scopes searched, packages loaded, packages skipped (with reasons). Use this to debug missing operators or package loading issues."""
-    raw = await _post("get_discovery_report")
-    return _json_response(raw)
+    return await _run_vivid_cli_json(["discovery-report", "--json"])
 
 
 @mcp.tool()
@@ -577,10 +597,11 @@ async def list_types(domain: str = "") -> str:
     Args:
         domain: Optional filter — "gpu", "audio", or "control". Omit to list all domains.
     """
-    body: dict = {}
+    args = ["list-types"]
     if domain:
-        body["domain"] = domain
-    return await _post("list_types", body or None)
+        args.extend(["--domain", domain])
+    args.append("--json")
+    return await _run_vivid_cli_json(args)
 
 
 @mcp.tool()
@@ -1008,10 +1029,16 @@ async def scaffold_operator(name: str, env: str, variant: str = "") -> str:
         env: One of "control", "audio", "gpu"
         variant: Template variant. Use "composite" for a ChildOp-based control operator with internal LFO + Smooth.
     """
-    body: dict = {"name": name, "env": env}
+    if await _runtime_is_reachable():
+        body: dict = {"name": name, "env": env}
+        if variant:
+            body["variant"] = variant
+        return await _post("scaffold_operator", body)
+    args = ["scaffold-operator", name, "--env", env]
     if variant:
-        body["variant"] = variant
-    return await _post("scaffold_operator", body)
+        args.extend(["--variant", variant])
+    args.append("--json")
+    return await _run_vivid_cli_json(args)
 
 
 @mcp.tool()
@@ -1225,7 +1252,7 @@ async def inspect_state_presets(sm_node: str) -> str:
 @mcp.tool()
 async def browse_packages() -> str:
     """Browse the package catalog. Returns available packages with install status, category, and tags."""
-    return await _post("package_catalog")
+    return await _run_vivid_cli_json(["package-catalog", "--json"])
 
 
 @mcp.tool()
@@ -1235,7 +1262,9 @@ async def install_package(url: str) -> str:
     Args:
         url: Git URL (e.g. "https://github.com/user/vivid-drums") or local directory path
     """
-    return await _post("install_package", {"url": url})
+    if await _runtime_is_reachable():
+        return await _post("install_package", {"url": url})
+    return await _run_vivid_cli_json(["install", url, "--json"])
 
 
 @mcp.tool()
@@ -1245,7 +1274,9 @@ async def uninstall_package(name: str) -> str:
     Args:
         name: Package name (e.g. "vivid-drums")
     """
-    return await _post("uninstall_package", {"name": name})
+    if await _runtime_is_reachable():
+        return await _post("uninstall_package", {"name": name})
+    return await _run_vivid_cli_json(["uninstall", name, "--json"])
 
 
 @mcp.tool()
@@ -1256,7 +1287,9 @@ async def link_package(path: str) -> str:
     Args:
         path: Absolute or relative path to the package directory (must contain vivid-package.json)
     """
-    return await _post("link_package", {"path": path})
+    if await _runtime_is_reachable():
+        return await _post("link_package", {"path": path})
+    return await _run_vivid_cli_json(["link", path, "--json"])
 
 
 @mcp.tool()
@@ -1266,7 +1299,9 @@ async def unlink_package(name: str) -> str:
     Args:
         name: Package name (e.g. "vivid-glitch")
     """
-    return await _post("unlink_package", {"name": name})
+    if await _runtime_is_reachable():
+        return await _post("unlink_package", {"name": name})
+    return await _run_vivid_cli_json(["unlink", name, "--json"])
 
 
 @mcp.tool()
@@ -1277,13 +1312,15 @@ async def rebuild_package(name: str) -> str:
     Args:
         name: Package name (e.g. "vivid-glitch")
     """
-    return await _post("rebuild_package", {"name": name})
+    if await _runtime_is_reachable():
+        return await _post("rebuild_package", {"name": name})
+    return await _run_vivid_cli_json(["rebuild", name, "--json"])
 
 
 @mcp.tool()
 async def list_packages() -> str:
     """List installed operator packages with their operators."""
-    return await _post("list_packages")
+    return await _run_vivid_cli_json(["list-packages", "--json"])
 
 
 @mcp.tool()
@@ -1294,10 +1331,11 @@ async def check_package_updates(core_version: str = "0.1.0", include_all_install
         core_version: Core version string used for compatibility checks (default "0.1.0")
         include_all_installed: If true, include installed packages even when no update is available
     """
-    return await _post("check_package_updates", {
-        "core_version": core_version,
-        "include_all_installed": include_all_installed,
-    })
+    args = ["package-check-updates", "--core-version", core_version]
+    if include_all_installed:
+        args.append("--all")
+    args.append("--json")
+    return await _run_vivid_cli_json(args)
 
 
 @mcp.tool()
@@ -1307,51 +1345,56 @@ async def check_core_updates(force_refresh: bool = False) -> str:
     Args:
         force_refresh: If true, bypass cached state and fetch immediately
     """
-    return await _post("check_core_updates", {
-        "force_refresh": force_refresh,
-    })
+    args = ["check-core-updates"]
+    if force_refresh:
+        args.append("--force")
+    args.append("--json")
+    return await _run_vivid_cli_json(args)
 
 
 @mcp.tool()
 async def read_package_docs(name: str) -> str:
     """Read the README documentation for an installed package."""
-    return await _post("read_package_docs", {"name": name})
+    return await _run_vivid_cli_json(["read-package-docs", name, "--json"])
 
 
 @mcp.tool()
 async def list_package_examples(name: str) -> str:
     """List example graphs included with an installed package."""
-    return await _post("list_package_examples", {"name": name})
+    return await _run_vivid_cli_json(["list-package-examples", name, "--json"])
 
 
 @mcp.tool()
 async def read_package_example(name: str, filename: str) -> str:
     """Read the content of an example graph from an installed package."""
-    return await _post("read_package_example", {"name": name, "filename": filename})
+    return await _run_vivid_cli_json(["read-package-example", name, filename, "--json"])
 
 
 @mcp.tool()
 async def operator_docs(name: str, package: str = "") -> str:
     """Get merged operator docs from source comments plus runtime metadata for one operator. Set package for installed package operators when needed."""
-    body = {"name": name}
+    args = ["operator-docs", name]
     if package:
-        body["package"] = package
-    return await _post("operator_docs", body)
+        args.extend(["--package", package])
+    args.append("--json")
+    return await _run_vivid_cli_json(args)
 
 
 @mcp.tool()
 async def package_operator_docs(name: str) -> str:
     """Get source-comment-derived operator docs plus runtime metadata for every operator in an installed package."""
-    return await _post("package_operator_docs", {"name": name})
+    return await _run_vivid_cli_json(["package-operator-docs", name, "--json"])
 
 
 @mcp.tool()
 async def test_package(name: str) -> str:
     """Run tests for an installed package (graph + C++ tests). Returns per-test pass/fail/skip."""
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(f"{VIVID_URL}/test_package",
-                                  json={"name": name}, timeout=90.0)
-        return resp.text
+    if await _runtime_is_reachable():
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(f"{VIVID_URL}/test_package",
+                                      json={"name": name}, timeout=90.0)
+            return resp.text
+    return await _run_vivid_cli_json(["test-package", name, "--json"])
 
 
 def _start_heartbeat() -> None:

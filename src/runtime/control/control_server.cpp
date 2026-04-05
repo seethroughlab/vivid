@@ -299,35 +299,10 @@ bool ControlServer::start(int port) {
 
             // Package catalog — thread-safe, no main-thread dispatch needed
             if (method == "package_catalog" && package_catalog_) {
-                auto entries = package_catalog_->entries();
-                nlohmann::json resp = nlohmann::json::object();
-                resp["ok"] = true;
-                nlohmann::json arr = nlohmann::json::array();
-                for (const auto& e : entries) {
-                    nlohmann::json obj = nlohmann::json::object();
-                    obj["name"] = e.name;
-                    obj["description"] = e.description;
-                    obj["version"] = e.version;
-                    if (!e.vivid_core.empty()) obj["vivid_core"] = e.vivid_core;
-                    obj["author"] = e.author;
-                    obj["url"] = e.url;
-                    if (!e.category.empty()) obj["category"] = e.category;
-                    if (!e.description_short.empty()) obj["description_short"] = e.description_short;
-                    if (!e.status.empty()) obj["status"] = e.status;
-                    if (!e.status_note.empty()) obj["status_note"] = e.status_note;
-                    if (!e.preview_image_url.empty()) obj["preview_image_url"] = e.preview_image_url;
-                    if (!e.repo_url.empty()) obj["repo_url"] = e.repo_url;
-                    if (!e.homepage_url.empty()) obj["homepage_url"] = e.homepage_url;
-                    if (!e.install_url.empty()) obj["install_url"] = e.install_url;
-                    obj["installed"] = e.installed;
-                    if (e.installed) obj["installed_version"] = e.installed_version;
-                    arr.push_back(std::move(obj));
-                }
-                resp["packages"] = std::move(arr);
                 return std::make_shared<ix::HttpResponse>(
                     200, "OK", ix::HttpErrorCode::Ok,
                     ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
-                    resp.dump());
+                    handle_package_catalog(package_catalog_));
             }
 
             // Check package updates using catalog metadata + installed package versions
@@ -344,51 +319,15 @@ bool ControlServer::start(int port) {
                     } catch (...) {}
                 }
 
-                auto entries = package_catalog_->entries();
-                nlohmann::json resp = nlohmann::json::object();
-                resp["ok"] = true;
-                resp["core_version"] = core_version;
-
-                nlohmann::json updates = nlohmann::json::array();
-                int64_t update_count = 0;
-                int64_t incompatible_count = 0;
-                for (const auto& e : entries) {
-                    if (!e.installed) continue;
-
-                    PackageInfo installed;
-                    installed.name = e.name;
-                    installed.version = e.installed_version;
-                    auto assessment = PackageManager::assess_update(
-                        installed, e.version, e.vivid_core, core_version);
-
-                    if (!include_all_installed && !assessment.update_available) continue;
-
-                    nlohmann::json obj = nlohmann::json::object();
-                    obj["name"] = assessment.package_name;
-                    obj["installed_version"] = assessment.installed_version;
-                    obj["remote_version"] = assessment.remote_version;
-                    if (!assessment.remote_vivid_core.empty())
-                        obj["vivid_core"] = assessment.remote_vivid_core;
-                    obj["update_available"] = assessment.update_available;
-                    obj["compatible"] = assessment.compatible;
-                    obj["constraint_valid"] = assessment.constraint_valid;
-                    obj["classification"] = update_class_str(assessment.classification);
-                    obj["message"] = assessment.message;
-
-                    if (assessment.update_available) update_count++;
-                    if (assessment.classification == PackageUpdateClass::IncompatibleUpdate)
-                        incompatible_count++;
-
-                    updates.push_back(std::move(obj));
-                }
-                resp["updates_available"] = update_count;
-                resp["incompatible_updates"] = incompatible_count;
-                resp["packages"] = std::move(updates);
+                nlohmann::json root = {
+                    {"core_version", core_version},
+                    {"include_all_installed", include_all_installed},
+                };
 
                 return std::make_shared<ix::HttpResponse>(
                     200, "OK", ix::HttpErrorCode::Ok,
                     ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
-                    resp.dump());
+                    handle_check_package_updates(package_catalog_, package_manager_, root));
             }
 
             // Check core app updates using appcast metadata.
@@ -399,53 +338,15 @@ bool ControlServer::start(int port) {
                         ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
                         R"({"ok":false,"error":"core update manager unavailable"})");
                 }
-                bool force_refresh = false;
+                nlohmann::json root = nlohmann::json::object();
                 if (!request->body.empty()) {
-                    try {
-                        auto doc = nlohmann::json::parse(request->body);
-                        if (doc.contains("force_refresh") && doc["force_refresh"].is_boolean())
-                            force_refresh = doc["force_refresh"].get<bool>();
-                    } catch (...) {}
+                    try { root = nlohmann::json::parse(request->body); }
+                    catch (...) { root = nlohmann::json::object(); }
                 }
-                if (force_refresh) app_update_manager_->refresh();
-                if (app_update_manager_->fetch_state() == AppUpdateFetchState::Idle)
-                    app_update_manager_->refresh();
-                for (int i = 0; i < 200; ++i) {
-                    auto st = app_update_manager_->fetch_state();
-                    if (st != AppUpdateFetchState::Fetching) break;
-                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-                }
-
-                nlohmann::json resp = nlohmann::json::object();
-                resp["ok"] = true;
-
-                const auto st = app_update_manager_->fetch_state();
-                switch (st) {
-                    case AppUpdateFetchState::Idle:     resp["state"] = "idle"; break;
-                    case AppUpdateFetchState::Fetching: resp["state"] = "fetching"; break;
-                    case AppUpdateFetchState::Ready:    resp["state"] = "ready"; break;
-                    case AppUpdateFetchState::Error:    resp["state"] = "error"; break;
-                }
-
-                auto info = app_update_manager_->latest();
-                resp["update_available"] = info.update_available;
-                resp["current_version"] = info.current_version;
-                resp["latest_version"] = info.latest_version;
-                resp["download_url"] = info.download_url;
-                resp["release_notes_url"] = info.release_notes_url;
-                resp["title"] = info.title;
-                resp["publication_date"] = info.publication_date;
-                resp["minimum_system_version"] = info.minimum_system_version;
-                resp["appcast_url"] = AppUpdateManager::appcast_url();
-                if (st == AppUpdateFetchState::Error) {
-                    resp["error"] = app_update_manager_->fetch_error();
-                }
-
-                std::string response_body = resp.dump();
                 return std::make_shared<ix::HttpResponse>(
                     200, "OK", ix::HttpErrorCode::Ok,
                     ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
-                    response_body);
+                    handle_check_core_updates(app_update_manager_, root));
             }
 
             // test_package needs longer timeout (compiles + runs tests)

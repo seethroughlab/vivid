@@ -42,6 +42,7 @@
 #include "runtime/assets/asset_library.h"
 #include "runtime/packages/package_compiler.h"
 #include "runtime/packages/package_manager.h"
+#include "runtime/packages/package_test_runner.h"
 #include "runtime/core/build_console.h"
 #include "runtime/packages/package_catalog.h"
 #include "runtime/packages/package_scaffolder.h"
@@ -80,6 +81,7 @@
 #include "runtime/platform/macos_menu.h"
 #include "runtime/platform/sparkle_bridge.h"
 #endif
+#include "runtime/control/control_server_internal.h"
 #include "runtime/control/graph_file_io.h"
 #include "runtime/core/workspace_manager.h"
 #include "runtime/core/window_manager.h"
@@ -252,6 +254,71 @@ int main(int argc, char* argv[]) {
     check_core_updates_cmd->add_flag("--force", check_core_force,
                                      "Force immediate network refresh");
 
+    std::string list_types_domain;
+    auto* list_types_cmd = app.add_subcommand("list-types",
+        "List available operator types as JSON");
+    list_types_cmd->add_option("--domain", list_types_domain,
+                               "Optional filter: control|audio|gpu");
+
+    std::string operator_docs_name;
+    std::string operator_docs_package;
+    auto* operator_docs_cmd = app.add_subcommand("operator-docs",
+        "Read one operator's merged docs/descriptor payload as JSON");
+    operator_docs_cmd->add_option("name", operator_docs_name, "Operator type name")->required();
+    operator_docs_cmd->add_option("--package", operator_docs_package,
+                                  "Optional package name for package operator docs");
+
+    std::string package_operator_docs_name;
+    auto* package_operator_docs_cmd = app.add_subcommand("package-operator-docs",
+        "Read merged docs/descriptor payloads for one package as JSON");
+    package_operator_docs_cmd->add_option("name", package_operator_docs_name, "Package name")->required();
+
+    auto* operator_map_cmd = app.add_subcommand("operator-map",
+        "List the runtime operator map as JSON");
+
+    auto* discovery_report_cmd = app.add_subcommand("discovery-report",
+        "Show the package discovery report as JSON");
+
+    std::string read_package_docs_name;
+    auto* read_package_docs_cmd = app.add_subcommand("read-package-docs",
+        "Read a package README as JSON");
+    read_package_docs_cmd->add_option("name", read_package_docs_name, "Package name")->required();
+
+    std::string list_package_examples_name;
+    auto* list_package_examples_cmd = app.add_subcommand("list-package-examples",
+        "List example graphs for a package as JSON");
+    list_package_examples_cmd->add_option("name", list_package_examples_name, "Package name")->required();
+
+    std::string read_package_example_name;
+    std::string read_package_example_filename;
+    auto* read_package_example_cmd = app.add_subcommand("read-package-example",
+        "Read one package example graph as JSON");
+    read_package_example_cmd->add_option("name", read_package_example_name, "Package name")->required();
+    read_package_example_cmd->add_option("filename", read_package_example_filename, "Example filename")->required();
+
+    auto* package_catalog_cmd = app.add_subcommand("package-catalog",
+        "Fetch the package catalog as JSON");
+
+    std::string test_package_name;
+    auto* test_package_cmd = app.add_subcommand("test-package",
+        "Run package tests and emit JSON results");
+    test_package_cmd->add_option("name", test_package_name, "Package name")->required();
+
+    bool cli_json = false;
+    auto add_json_flag = [&](CLI::App* cmd) {
+        cmd->add_flag("--json", cli_json, "Emit JSON output");
+    };
+    for (CLI::App* cmd : {
+            install_cmd, uninstall_cmd, list_pkg_cmd, link_cmd, unlink_cmd, rebuild_cmd,
+            scaffold_op_cmd, check_updates_cmd, check_core_updates_cmd,
+            list_types_cmd, operator_docs_cmd, package_operator_docs_cmd,
+            operator_map_cmd, discovery_report_cmd, read_package_docs_cmd,
+            list_package_examples_cmd, read_package_example_cmd, package_catalog_cmd,
+            test_package_cmd
+        }) {
+        add_json_flag(cmd);
+    }
+
     app.require_subcommand(0, 1);
 
     try {
@@ -316,11 +383,26 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    // --- Handle package management subcommands (early exit, no GLFW) ---
+    // --- Handle CLI query/admin subcommands (early exit, no GLFW) ---
     if (install_cmd->parsed() || uninstall_cmd->parsed() || list_pkg_cmd->parsed() ||
         link_cmd->parsed() || unlink_cmd->parsed() || rebuild_cmd->parsed() ||
         check_updates_cmd->parsed() || check_core_updates_cmd->parsed() ||
-        scaffold_pkg_cmd->parsed() || scaffold_op_cmd->parsed()) {
+        scaffold_pkg_cmd->parsed() || scaffold_op_cmd->parsed() ||
+        list_types_cmd->parsed() || operator_docs_cmd->parsed() ||
+        package_operator_docs_cmd->parsed() || operator_map_cmd->parsed() ||
+        discovery_report_cmd->parsed() || read_package_docs_cmd->parsed() ||
+        list_package_examples_cmd->parsed() || read_package_example_cmd->parsed() ||
+        package_catalog_cmd->parsed() || test_package_cmd->parsed()) {
+        auto emit_json = [](const std::string& payload) -> int {
+            std::printf("%s\n", payload.c_str());
+            try {
+                auto root = nlohmann::json::parse(payload);
+                return root.value("ok", false) ? 0 : 1;
+            } catch (...) {
+                return 1;
+            }
+        };
+
         if (scaffold_pkg_cmd->parsed()) {
             vivid::PackageScaffoldOptions opts;
             opts.name = scaffold_pkg_name;
@@ -345,16 +427,86 @@ int main(int argc, char* argv[]) {
         }
 
         vivid::OperatorRegistry registry;
-        vivid::RegistryBootstrapOptions bootstrap_opts;
-        bootstrap_opts.scan_packages = false;
-        vivid::bootstrap_operator_registry(registry, nullptr, runtime_paths, bootstrap_opts);
-
         vivid::PackageCompiler compiler(runtime_paths.source_dir, runtime_paths.build_dir);
         vivid::PackageManager pm(compiler, registry);
+        vivid::SubgraphModuleRegistry subgraph_modules;
+        vivid::OperatorSourceDocs source_docs;
+        if (!runtime_paths.source_dir.empty())
+            source_docs.set_core_source_root(runtime_paths.source_dir);
+
+        const bool needs_package_scan =
+            list_types_cmd->parsed() || operator_docs_cmd->parsed() ||
+            package_operator_docs_cmd->parsed() || operator_map_cmd->parsed() ||
+            discovery_report_cmd->parsed() || test_package_cmd->parsed();
+        vivid::RegistryBootstrapOptions bootstrap_opts;
+        bootstrap_opts.scan_packages = needs_package_scan;
+        bootstrap_opts.subgraph_modules = needs_package_scan ? &subgraph_modules : nullptr;
+        vivid::bootstrap_operator_registry(registry, &pm, runtime_paths, bootstrap_opts);
+
+        if (list_types_cmd->parsed()) {
+            nlohmann::json root = nlohmann::json::object();
+            if (!list_types_domain.empty())
+                root["domain"] = list_types_domain;
+            return emit_json(handle_list_types(registry, &pm, source_docs, root, &subgraph_modules));
+        } else if (operator_docs_cmd->parsed()) {
+            nlohmann::json root = {{"name", operator_docs_name}};
+            if (!operator_docs_package.empty())
+                root["package"] = operator_docs_package;
+            return emit_json(handle_operator_docs(registry, &pm, source_docs, root, &subgraph_modules));
+        } else if (package_operator_docs_cmd->parsed()) {
+            return emit_json(handle_package_operator_docs(
+                registry, &pm, source_docs, nlohmann::json{{"name", package_operator_docs_name}}));
+        } else if (operator_map_cmd->parsed()) {
+            return emit_json(handle_operator_map(registry));
+        } else if (discovery_report_cmd->parsed()) {
+            return emit_json(handle_get_discovery_report(&pm));
+        } else if (read_package_docs_cmd->parsed()) {
+            return emit_json(handle_read_package_docs(&pm, nlohmann::json{{"name", read_package_docs_name}}));
+        } else if (list_package_examples_cmd->parsed()) {
+            return emit_json(handle_list_package_examples(&pm, nlohmann::json{{"name", list_package_examples_name}}));
+        } else if (read_package_example_cmd->parsed()) {
+            return emit_json(handle_read_package_example(
+                &pm,
+                nlohmann::json{{"name", read_package_example_name}, {"filename", read_package_example_filename}}));
+        } else if (package_catalog_cmd->parsed()) {
+            vivid::PackageCatalog catalog(pm);
+            catalog.refresh();
+            for (int i = 0; i < 200; ++i) {
+                auto st = catalog.fetch_state();
+                if (st != vivid::CatalogFetchState::Fetching) break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+            if (catalog.entries().empty() && catalog.fetch_state() == vivid::CatalogFetchState::Error)
+                return emit_json(json_err(catalog.fetch_error()));
+            return emit_json(handle_package_catalog(&catalog));
+        } else if (test_package_cmd->parsed()) {
+            auto tr = run_package_tests(test_package_name, pm, compiler, registry);
+            if (!tr.error.empty())
+                return emit_json(json_err(tr.error));
+
+            nlohmann::json res = nlohmann::json::object();
+            res["package"] = tr.package_name;
+            res["summary"] = {{"total", tr.total}, {"passed", tr.passed}, {"failed", tr.failed}, {"skipped", tr.skipped}};
+            if (!tr.notes.empty()) res["notes"] = tr.notes;
+            nlohmann::json tests_arr = nlohmann::json::array();
+            for (const auto& t : tr.tests) {
+                nlohmann::json obj = nlohmann::json::object();
+                obj["name"] = t.name;
+                obj["type"] = t.type;
+                obj["status"] = t.status;
+                if (!t.code.empty()) obj["code"] = t.code;
+                if (!t.reason.empty()) obj["reason"] = t.reason;
+                if (!t.output.empty()) obj["output"] = t.output;
+                tests_arr.push_back(std::move(obj));
+            }
+            res["tests"] = std::move(tests_arr);
+            return emit_json(json_ok(std::move(res)));
+        }
 
         if (scaffold_op_cmd->parsed()) {
             std::string validation_error = vivid::OperatorCreator::validate_name(scaffold_op_name, registry);
             if (!validation_error.empty()) {
+                if (cli_json) return emit_json(json_err(validation_error));
                 std::fprintf(stderr, "Scaffold failed: %s\n", validation_error.c_str());
                 return 1;
             }
@@ -370,6 +522,7 @@ int main(int argc, char* argv[]) {
             if (!resolve_scaffold_destination(scaffold_op_dest, runtime_paths.source_dir, pm,
                                               &settings,
                                               destination, dest_error)) {
+                if (cli_json) return emit_json(json_err(dest_error));
                 std::fprintf(stderr, "Scaffold failed: %s\n", dest_error.c_str());
                 return 1;
             }
@@ -383,11 +536,25 @@ int main(int argc, char* argv[]) {
             auto result = vivid::OperatorCreator::create(req, destination.root,
                                                          destination.package_layout);
             if (!result.success) {
+                if (cli_json) return emit_json(json_err(result.error));
                 std::fprintf(stderr, "Scaffold failed: %s\n", result.error.c_str());
                 return 1;
             }
 
             vivid::OperatorCreator::open_in_editor(result.cpp_path);
+            if (cli_json) {
+                nlohmann::json res = nlohmann::json::object();
+                res["cpp_path"] = result.cpp_path;
+                res["target_name"] = result.target_name;
+                res["destination_root"] = destination.root;
+                res["destination_is_package"] = destination.package_layout;
+                if (!destination.package_name.empty())
+                    res["destination_package"] = destination.package_name;
+                if (!destination.warning.empty())
+                    res["destination_warning"] = destination.warning;
+                return emit_json(json_ok(std::move(res)));
+            }
+
             std::printf("Scaffolded operator: %s\n", result.target_name.c_str());
             std::printf("Source file: %s\n", result.cpp_path.c_str());
             std::printf("Destination root: %s\n", destination.root.c_str());
@@ -406,29 +573,43 @@ int main(int argc, char* argv[]) {
 
         if (install_cmd->parsed()) {
             auto result = pm.install(install_url);
+            if (cli_json) {
+                if (!result.success) return emit_json(json_err(result.error));
+                nlohmann::json res = {
+                    {"name", result.info.name},
+                    {"version", result.info.version},
+                    {"operator_count", static_cast<int64_t>(result.info.operators.size() + result.info.gpu_operators.size())}
+                };
+                if (!result.info.vivid_core.empty())
+                    res["vivid_core"] = result.info.vivid_core;
+                return emit_json(json_ok(std::move(res)));
+            }
             if (result.success) {
                 std::fprintf(stderr, "Installed %s v%s (%zu operators)\n",
                              result.info.name.c_str(), result.info.version.c_str(),
                              result.info.operators.size() + result.info.gpu_operators.size());
                 return 0;
-            } else {
-                std::fprintf(stderr, "Install failed: %s\n", result.error.c_str());
-                for (const auto& cr : result.compile_results) {
-                    if (!cr.success)
-                        std::fprintf(stderr, "  %s: %s\n", cr.operator_name.c_str(),
-                                     cr.error_output.c_str());
-                }
-                return 1;
             }
+            std::fprintf(stderr, "Install failed: %s\n", result.error.c_str());
+            for (const auto& cr : result.compile_results) {
+                if (!cr.success)
+                    std::fprintf(stderr, "  %s: %s\n", cr.operator_name.c_str(),
+                                 cr.error_output.c_str());
+            }
+            return 1;
         } else if (uninstall_cmd->parsed()) {
-            if (pm.uninstall(uninstall_name)) {
+            const bool ok = pm.uninstall(uninstall_name);
+            if (cli_json)
+                return emit_json(ok ? json_ok_msg("uninstalled") : json_err("failed to uninstall package"));
+            if (ok) {
                 std::fprintf(stderr, "Uninstalled %s\n", uninstall_name.c_str());
                 return 0;
-            } else {
-                std::fprintf(stderr, "Failed to uninstall %s\n", uninstall_name.c_str());
-                return 1;
             }
+            std::fprintf(stderr, "Failed to uninstall %s\n", uninstall_name.c_str());
+            return 1;
         } else if (list_pkg_cmd->parsed()) {
+            if (cli_json)
+                return emit_json(handle_list_packages(&pm));
             auto packages = pm.list();
             if (packages.empty()) {
                 std::printf("No packages installed.\n");
@@ -458,49 +639,72 @@ int main(int argc, char* argv[]) {
             return 0;
         } else if (link_cmd->parsed()) {
             auto result = pm.link(link_path);
+            if (cli_json) {
+                if (!result.success) return emit_json(json_err(result.error));
+                nlohmann::json res = {
+                    {"name", result.info.name},
+                    {"version", result.info.version},
+                    {"operator_count", static_cast<int64_t>(result.info.operators.size() + result.info.gpu_operators.size())},
+                    {"linked", true}
+                };
+                if (!result.info.vivid_core.empty())
+                    res["vivid_core"] = result.info.vivid_core;
+                return emit_json(json_ok(std::move(res)));
+            }
             if (result.success) {
                 std::fprintf(stderr, "Linked %s v%s (%zu operators)\n",
                              result.info.name.c_str(), result.info.version.c_str(),
                              result.info.operators.size() + result.info.gpu_operators.size());
                 return 0;
-            } else {
-                std::fprintf(stderr, "Link failed: %s\n", result.error.c_str());
-                for (const auto& cr : result.compile_results) {
-                    if (!cr.success)
-                        std::fprintf(stderr, "  %s: %s\n", cr.operator_name.c_str(),
-                                     cr.error_output.c_str());
-                }
-                return 1;
             }
+            std::fprintf(stderr, "Link failed: %s\n", result.error.c_str());
+            for (const auto& cr : result.compile_results) {
+                if (!cr.success)
+                    std::fprintf(stderr, "  %s: %s\n", cr.operator_name.c_str(),
+                                 cr.error_output.c_str());
+            }
+            return 1;
         } else if (unlink_cmd->parsed()) {
-            if (pm.unlink(unlink_name)) {
+            const bool ok = pm.unlink(unlink_name);
+            if (cli_json)
+                return emit_json(ok ? json_ok_msg("unlinked") : json_err("failed to unlink package"));
+            if (ok) {
                 std::fprintf(stderr, "Unlinked %s\n", unlink_name.c_str());
                 return 0;
-            } else {
-                std::fprintf(stderr, "Failed to unlink %s\n", unlink_name.c_str());
-                return 1;
             }
+            std::fprintf(stderr, "Failed to unlink %s\n", unlink_name.c_str());
+            return 1;
         } else if (rebuild_cmd->parsed()) {
             auto result = pm.rebuild(rebuild_name);
+            if (cli_json) {
+                if (!result.success) return emit_json(json_err(result.error));
+                nlohmann::json res = {
+                    {"name", result.info.name},
+                    {"operator_count", static_cast<int64_t>(result.info.operators.size() + result.info.gpu_operators.size())},
+                    {"linked", result.info.linked}
+                };
+                return emit_json(json_ok(std::move(res)));
+            }
             if (result.success) {
                 std::fprintf(stderr, "Rebuilt %s (%zu operators)\n",
                              result.info.name.c_str(),
                              result.info.operators.size() + result.info.gpu_operators.size());
                 return 0;
-            } else {
-                std::fprintf(stderr, "Rebuild failed: %s\n", result.error.c_str());
-                for (const auto& cr : result.compile_results) {
-                    if (!cr.success)
-                        std::fprintf(stderr, "  %s: %s\n", cr.operator_name.c_str(),
-                                     cr.error_output.c_str());
-                }
-                return 1;
             }
+            std::fprintf(stderr, "Rebuild failed: %s\n", result.error.c_str());
+            for (const auto& cr : result.compile_results) {
+                if (!cr.success)
+                    std::fprintf(stderr, "  %s: %s\n", cr.operator_name.c_str(),
+                                 cr.error_output.c_str());
+            }
+            return 1;
         } else if (check_core_updates_cmd->parsed()) {
             vivid::AppUpdateManager updates(VIVID_CORE_VERSION);
+            if (cli_json)
+                return emit_json(handle_check_core_updates(&updates, nlohmann::json{{"force_refresh", check_core_force}}));
+
             if (check_core_force || updates.fetch_state() == vivid::AppUpdateFetchState::Idle)
                 updates.refresh();
-
             for (int i = 0; i < 200; ++i) {
                 auto st = updates.fetch_state();
                 if (st != vivid::AppUpdateFetchState::Fetching) break;
@@ -547,8 +751,17 @@ int main(int argc, char* argv[]) {
             auto entries = catalog.entries();
             auto state = catalog.fetch_state();
             if (entries.empty() && state == vivid::CatalogFetchState::Error) {
+                if (cli_json) return emit_json(json_err(catalog.fetch_error()));
                 std::fprintf(stderr, "Update check failed: %s\n", catalog.fetch_error().c_str());
                 return 1;
+            }
+
+            if (cli_json) {
+                nlohmann::json root = {
+                    {"core_version", update_core_version},
+                    {"include_all_installed", update_include_all},
+                };
+                return emit_json(handle_check_package_updates(&catalog, &pm, root));
             }
 
             auto class_str = [](vivid::PackageUpdateClass c) -> const char* {

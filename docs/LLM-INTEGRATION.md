@@ -45,17 +45,19 @@ The LLM connects to Vivid through two complementary paths, both built on a share
 
 **The Runtime API** is an internal interface exposing all LLM-relevant operations: inspect graph structure, read and write parameters, capture frames and audio, run analysis tools, evaluate checks, scaffold starter templates, and modify graph topology. This is the single source of truth for what the LLM can do. Both integration paths below call into the same API.
 
-**Path 1: Python MCP bridge.** A separate MCP (Model Context Protocol) bridge process, `mcp/vivid_mcp.py`, connects to the running Vivid instance over the local HTTP control server and re-exposes the runtime/control surface as MCP tools. Claude Code, Cursor, or any MCP-capable LLM connects to the Python bridge externally. This is the primary graph/runtime integration path — graph inspection and mutation, parameter control, capture, diagnostics, checks, package/runtime management, and starter scaffolding all flow through it. Advanced operator-authoring guidance and example discovery live in the separate opdev MCP server, `mcp/vivid_opdev_mcp.py`. Together, those two MCP bridges cover the shipped external LLM workflow. The regular bridge also enables non-interactive use cases: CI pipelines running checks, scripts generating patch variations, installation monitors watching for drift.
+**Path 1: Python MCP bridge.** A separate MCP (Model Context Protocol) bridge process, `mcp/vivid_mcp.py`, connects to the running Vivid instance over the local HTTP control server and re-exposes the runtime/control surface as MCP tools. Claude Code, Cursor, or any MCP-capable LLM connects to the Python bridge externally. This is the primary graph/runtime integration path for live-session work — graph inspection and mutation, parameter control, capture, diagnostics, checks, package/runtime management, and starter scaffolding all flow through it. For lookup-only tasks that do not need a live graph, the bridge now prefers one-shot `vivid` CLI JSON subcommands (`list-types`, `operator-docs`, package/docs/example queries, catalog/update queries) instead of launching or reusing a runtime. Advanced operator-authoring guidance and example discovery live in the separate opdev MCP server, `mcp/vivid_opdev_mcp.py`. Together, those two MCP bridges cover the shipped external LLM workflow. The regular bridge also enables non-interactive use cases: CI pipelines running checks, scripts generating patch variations, installation monitors watching for drift.
 
 ```text
 LLM client -> Python MCP bridge (stdio) -> Vivid HTTP control server -> running Vivid instance
 ```
 
-The ownership model matters:
+The ownership model matters for live-session tools:
 - the **running Vivid app** owns the live graph and embeds the HTTP control server
 - the **HTTP control server** is the local runtime transport, defaulting to `127.0.0.1:9876`
 - the **Python MCP bridge** is a separate process that can launch/reuse the runtime, then forwards MCP tool calls to that running runtime
 - the **Python opdev MCP bridge** is a separate process focused on operator-authoring docs, examples, read-only codebase access, and build/test inspection rather than live graph ownership
+
+For static discovery/docs/package lookups, the bridges can bypass that ownership path entirely by invoking the `vivid` binary once, reading JSON from stdout, and exiting.
 
 The server split is intentional:
 - `mcp/vivid_mcp.py` owns live runtime control: graph mutation, capture, diagnostics, checks, package operations, and runtime lifecycle.
@@ -67,7 +69,7 @@ Checkout and release builds expose that opdev source surface through the same al
 - path access remains allowlisted and read-only; opdev is not a general filesystem bridge
 
 Core/package update MCP tool surface (current):
-- `ensure_runtime(graph_path="")` — ensures a GUI Vivid runtime is reachable, launching `build/vivid` when needed and optionally opening a graph at startup.
+- `ensure_runtime(graph_path="")` — ensures a GUI Vivid runtime is reachable for live graph/session work, launching `build/vivid` when needed and optionally opening a graph at startup.
 - `runtime_status()` — reports whether a runtime is reachable and whether it is bridge-managed.
 - `stop_runtime()` — stops only the runtime process launched by the Python MCP bridge.
 - `check_core_updates(force_refresh=false)` — checks Vivid core app update availability from appcast metadata.

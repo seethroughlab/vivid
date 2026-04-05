@@ -1,9 +1,11 @@
 """Vivid Operator Development MCP Server — API docs, examples, and operator lifecycle tools."""
 
+import asyncio
 import fnmatch
 import os
 import json
 import re
+import subprocess
 import httpx
 from functools import lru_cache
 from pathlib import Path
@@ -283,6 +285,56 @@ async def _post(method: str, body: dict | None = None) -> str:
             timeout=10.0,
         )
         return resp.text
+
+
+def _resolve_vivid_bin() -> Path:
+    env_bin = os.environ.get("VIVID_BIN")
+    if env_bin:
+        candidate = Path(env_bin).expanduser()
+        if candidate.exists():
+            return candidate.resolve()
+    default_bin = PROJECT_ROOT / "build" / "vivid"
+    if default_bin.exists():
+        return default_bin.resolve()
+    raise FileNotFoundError(
+        "no launchable Vivid runtime binary found; set VIVID_BIN or build ./build/vivid"
+    )
+
+
+async def _runtime_is_reachable() -> bool:
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(f"{VIVID_URL}/list_nodes", json={}, timeout=1.0)
+        payload = json.loads(resp.text)
+        return bool(payload.get("ok", False))
+    except Exception:
+        return False
+
+
+async def _run_vivid_cli_json(args: list[str]) -> str:
+    vivid_bin = _resolve_vivid_bin()
+    proc = await asyncio.create_subprocess_exec(
+        str(vivid_bin),
+        *args,
+        cwd=str(PROJECT_ROOT),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    out = stdout.decode("utf-8", errors="replace").strip()
+    err = stderr.decode("utf-8", errors="replace").strip()
+    if out:
+        try:
+            json.loads(out)
+            return out
+        except Exception:
+            pass
+    message = err or out or f"CLI command failed with exit code {proc.returncode}"
+    return json.dumps({"ok": False, "error": message})
+
+
+def _runtime_required_error(tool_name: str) -> str:
+    return json.dumps({"ok": False, "error": f"{tool_name} requires a running Vivid runtime"})
 
 
 def _selected_root_path(root_name: str) -> tuple[Path | None, str | None]:
@@ -945,10 +997,16 @@ async def scaffold_operator(name: str, env: str, variant: str = "") -> str:
         env: One of "control", "audio", "gpu"
         variant: Template variant. Use "composite" for a ChildOp-based control operator.
     """
-    body: dict = {"name": name, "env": env}
+    if await _runtime_is_reachable():
+        body: dict = {"name": name, "env": env}
+        if variant:
+            body["variant"] = variant
+        return await _post("scaffold_operator", body)
+    args = ["scaffold-operator", name, "--env", env]
     if variant:
-        body["variant"] = variant
-    return await _post("scaffold_operator", body)
+        args.extend(["--variant", variant])
+    args.append("--json")
+    return await _run_vivid_cli_json(args)
 
 
 @mcp.tool()
@@ -958,7 +1016,9 @@ async def rebuild_package(name: str) -> str:
     Args:
         name: Package name (e.g. "vivid-glitch")
     """
-    return await _post("rebuild_package", {"name": name})
+    if await _runtime_is_reachable():
+        return await _post("rebuild_package", {"name": name})
+    return await _run_vivid_cli_json(["rebuild", name, "--json"])
 
 
 @mcp.tool()
@@ -968,7 +1028,9 @@ async def link_package(path: str) -> str:
     Args:
         path: Path to package directory (must contain vivid-package.json)
     """
-    return await _post("link_package", {"path": path})
+    if await _runtime_is_reachable():
+        return await _post("link_package", {"path": path})
+    return await _run_vivid_cli_json(["link", path, "--json"])
 
 
 @mcp.tool()
@@ -978,7 +1040,9 @@ async def unlink_package(name: str) -> str:
     Args:
         name: Package name
     """
-    return await _post("unlink_package", {"name": name})
+    if await _runtime_is_reachable():
+        return await _post("unlink_package", {"name": name})
+    return await _run_vivid_cli_json(["unlink", name, "--json"])
 
 
 @mcp.tool()
@@ -988,10 +1052,12 @@ async def test_package(name: str) -> str:
     Args:
         name: Package name
     """
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(f"{VIVID_URL}/test_package",
-                                  json={"name": name}, timeout=90.0)
-        return resp.text
+    if await _runtime_is_reachable():
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(f"{VIVID_URL}/test_package",
+                                      json={"name": name}, timeout=90.0)
+            return resp.text
+    return await _run_vivid_cli_json(["test-package", name, "--json"])
 
 
 @mcp.tool()
@@ -1000,6 +1066,8 @@ async def get_build_activity(scope: str = "recent", limit: int = 10) -> str:
     scope = scope.strip().lower() or "recent"
     if scope not in {"recent", "active"}:
         return json.dumps({"ok": False, "error": "scope must be 'recent' or 'active'"})
+    if not await _runtime_is_reachable():
+        return _runtime_required_error("get_build_activity")
     try:
         return await _post("get_build_activity", {"scope": scope, "limit": max(1, min(limit, MAX_BUILD_TASKS))})
     except Exception as exc:
@@ -1018,6 +1086,8 @@ async def explain_build_failure(task_id: str = "latest", max_lines: int = 40) ->
                 return json.dumps({"ok": False, "error": "task_id must be 'latest' or an integer string"})
         else:
             body["task_id"] = "latest"
+    if not await _runtime_is_reachable():
+        return _runtime_required_error("explain_build_failure")
     try:
         return await _post("explain_build_failure", body)
     except Exception as exc:
@@ -1036,6 +1106,8 @@ async def add_node(type: str, id: str) -> str:
         type: Operator type name (e.g. "lfo", "shape", "oscillator")
         id: Unique node identifier
     """
+    if not await _runtime_is_reachable():
+        return _runtime_required_error("add_node")
     return await _post("add_node", {"type": type, "id": id})
 
 
@@ -1046,6 +1118,8 @@ async def remove_node(node_id: str) -> str:
     Args:
         node_id: The node to remove
     """
+    if not await _runtime_is_reachable():
+        return _runtime_required_error("remove_node")
     return await _post("remove_node", {"node_id": node_id})
 
 
@@ -1058,6 +1132,8 @@ async def connect(from_addr: str, to_addr: str, semantic_defaults: bool = True) 
         to_addr: Destination port (e.g. "shape1/rotation")
         semantic_defaults: Apply semantic-tag-based default remap (default true)
     """
+    if not await _runtime_is_reachable():
+        return _runtime_required_error("connect")
     return await _post("connect", {
         "from_addr": from_addr,
         "to_addr": to_addr,
@@ -1073,6 +1149,8 @@ async def disconnect(from_addr: str, to_addr: str) -> str:
         from_addr: Source port
         to_addr: Destination port
     """
+    if not await _runtime_is_reachable():
+        return _runtime_required_error("disconnect")
     return await _post("disconnect", {"from_addr": from_addr, "to_addr": to_addr})
 
 
@@ -1085,6 +1163,8 @@ async def set_param(node_id: str, param: str, value: float) -> str:
         param: Parameter name
         value: New value (float)
     """
+    if not await _runtime_is_reachable():
+        return _runtime_required_error("set_param")
     return await _post("set_param", {"node_id": node_id, "param": param, "value": value})
 
 
@@ -1096,6 +1176,8 @@ async def get_param(node_id: str, param: str) -> str:
         node_id: Target node
         param: Parameter name
     """
+    if not await _runtime_is_reachable():
+        return _runtime_required_error("get_param")
     return await _post("get_param", {"node_id": node_id, "param": param})
 
 
@@ -1108,12 +1190,16 @@ async def set_string_param(node_id: str, param: str, value: str) -> str:
         param: Parameter name
         value: String value
     """
+    if not await _runtime_is_reachable():
+        return _runtime_required_error("set_string_param")
     return await _post("set_string_param", {"node_id": node_id, "param": param, "value": value})
 
 
 @mcp.tool()
 async def inspect_graph() -> str:
     """Get the full graph state: nodes with params, ports, and connections."""
+    if not await _runtime_is_reachable():
+        return _runtime_required_error("inspect_graph")
     return await _post("inspect_graph")
 
 
@@ -1124,18 +1210,22 @@ async def inspect_node(node_id: str) -> str:
     Args:
         node_id: The node to inspect
     """
+    if not await _runtime_is_reachable():
+        return _runtime_required_error("inspect_node")
     return await _post("inspect", {"node_id": node_id})
 
 
 @mcp.tool()
 async def list_types() -> str:
     """List all available operator types with params and ports."""
-    return await _post("list_types")
+    return await _run_vivid_cli_json(["list-types", "--json"])
 
 
 @mcp.tool()
 async def list_nodes() -> str:
     """List all nodes in the graph (id and type)."""
+    if not await _runtime_is_reachable():
+        return _runtime_required_error("list_nodes")
     return await _post("list_nodes")
 
 
@@ -1146,6 +1236,8 @@ async def introspect_nodes(include_payload: bool = False) -> str:
     Args:
         include_payload: Include full result data (default false)
     """
+    if not await _runtime_is_reachable():
+        return _runtime_required_error("introspect_nodes")
     return await _post("introspect_nodes", {"include_payload": include_payload})
 
 
@@ -1156,6 +1248,8 @@ async def run_diagnostics(include_payload: bool = False) -> str:
     Args:
         include_payload: Include full findings (default false)
     """
+    if not await _runtime_is_reachable():
+        return _runtime_required_error("run_diagnostics")
     return await _post("run_diagnostics", {"include_payload": include_payload})
 
 

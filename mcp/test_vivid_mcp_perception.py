@@ -233,6 +233,51 @@ class PerceptionMCPTests(unittest.TestCase):
             self.mod._resolve_graph_path = original_resolve
         self.assertEqual(out, '{"ok":true}')
 
+    def test_list_types_uses_cli(self):
+        async def fake_cli(args):
+            self.assertEqual(args, ["list-types", "--domain", "audio", "--json"])
+            return '{"ok":true,"result":{"types":[]}}'
+
+        original = self.mod._run_vivid_cli_json
+        self.mod._run_vivid_cli_json = fake_cli
+        try:
+            out = asyncio.run(self.mod.list_types("audio"))
+        finally:
+            self.mod._run_vivid_cli_json = original
+        self.assertEqual(out, '{"ok":true,"result":{"types":[]}}')
+
+    def test_operator_docs_uses_cli(self):
+        async def fake_cli(args):
+            self.assertEqual(args, ["operator-docs", "LfoAu", "--json"])
+            return '{"ok":true}'
+
+        original = self.mod._run_vivid_cli_json
+        self.mod._run_vivid_cli_json = fake_cli
+        try:
+            out = asyncio.run(self.mod.operator_docs("LfoAu"))
+        finally:
+            self.mod._run_vivid_cli_json = original
+        self.assertEqual(out, '{"ok":true}')
+
+    def test_install_package_falls_back_to_cli_when_runtime_is_absent(self):
+        async def fake_reachable():
+            return False
+
+        async def fake_cli(args):
+            self.assertEqual(args, ["install", "https://example.com/pkg.git", "--json"])
+            return '{"ok":true}'
+
+        original_reachable = self.mod._runtime_is_reachable
+        original_cli = self.mod._run_vivid_cli_json
+        self.mod._runtime_is_reachable = fake_reachable
+        self.mod._run_vivid_cli_json = fake_cli
+        try:
+            out = asyncio.run(self.mod.install_package("https://example.com/pkg.git"))
+        finally:
+            self.mod._runtime_is_reachable = original_reachable
+            self.mod._run_vivid_cli_json = original_cli
+        self.assertEqual(out, '{"ok":true}')
+
     def test_runtime_status_external_runtime(self):
         original = self.mod._runtime_is_reachable
         async def fake_reachable():

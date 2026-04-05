@@ -24,47 +24,8 @@ std::string dispatch(const std::string& method, const std::string& body,
     if (method == "get_registry_diagnostics") return handle_get_registry_diagnostics(registry);
     if (method == "get_graph_load_diagnostics") return handle_get_graph_load_diagnostics(graph);
     if (method == "list_source_roots") return handle_list_source_roots(source_index);
-    if (method == "operator_map") {
-        nlohmann::json entries = nlohmann::json::array();
-        for (const auto& e : registry.operator_map()) {
-            nlohmann::json j;
-            j["type"] = e.type_name;
-            if (!e.dylib_path.empty()) j["path"] = e.dylib_path;
-            if (!e.package_name.empty()) j["package"] = e.package_name;
-            j["status"] = e.status;
-            if (e.abi_version > 0) j["abi_version"] = e.abi_version;
-            entries.push_back(std::move(j));
-        }
-        return json_ok(std::move(entries));
-    }
-    if (method == "get_discovery_report" && package_manager) {
-        const auto& report = package_manager->last_discovery_report();
-        nlohmann::json result = nlohmann::json::object();
-        result["workspace_detected"] = report.workspace_detected;
-        nlohmann::json scopes = nlohmann::json::array();
-        for (const auto& s : report.scopes_searched) {
-            scopes.push_back({{"scope", s.scope}, {"root", s.root}, {"exists", s.exists}});
-        }
-        result["scopes"] = std::move(scopes);
-        nlohmann::json loaded = nlohmann::json::array();
-        for (const auto& p : report.loaded_packages) {
-            loaded.push_back({
-                {"name", p.name}, {"version", p.version},
-                {"scope", p.source_scope}, {"path", p.path},
-                {"operators", p.operators.size() + p.gpu_operators.size()}
-            });
-        }
-        result["loaded"] = std::move(loaded);
-        nlohmann::json skipped = nlohmann::json::array();
-        for (const auto& s : report.skipped_packages) {
-            skipped.push_back({
-                {"name", s.name}, {"path", s.path}, {"scope", s.source_scope},
-                {"reason", s.reason}, {"detail", s.detail}
-            });
-        }
-        result["skipped"] = std::move(skipped);
-        return json_ok(std::move(result));
-    }
+    if (method == "operator_map") return handle_operator_map(registry);
+    if (method == "get_discovery_report") return handle_get_discovery_report(package_manager);
 
     // Parse body JSON (may be empty for some commands)
     nlohmann::json root;
@@ -994,142 +955,16 @@ std::string dispatch(const std::string& method, const std::string& body,
             }
         }
     } else if (method == "list_packages") {
-        if (!package_manager) {
-            result = json_err("package manager not available");
-        } else {
-            auto packages = package_manager->list();
-            nlohmann::json res = nlohmann::json::object();
-            nlohmann::json arr = nlohmann::json::array();
-            for (const auto& pkg : packages) {
-                nlohmann::json p = nlohmann::json::object();
-                p["name"] = pkg.name;
-                p["version"] = pkg.version;
-                if (!pkg.vivid_core.empty()) p["vivid_core"] = pkg.vivid_core;
-                if (!pkg.source_scope.empty()) p["source_scope"] = pkg.source_scope;
-                if (!pkg.path.empty()) p["path"] = pkg.path;
-                if (!pkg.build_type.empty()) p["build_type"] = pkg.build_type;
-                p["description"] = pkg.description;
-                p["author"] = pkg.author;
-                nlohmann::json ops = nlohmann::json::array();
-                for (const auto& op : pkg.operators) ops.push_back(op);
-                for (const auto& op : pkg.gpu_operators) ops.push_back(op);
-                p["operators"] = std::move(ops);
-                p["linked"] = pkg.linked;
-                arr.push_back(std::move(p));
-            }
-            res["packages"] = std::move(arr);
-            result = json_ok(std::move(res));
-        }
+        result = handle_list_packages(package_manager);
     } else if (method == "read_package_docs") {
-        if (!package_manager) {
-            result = json_err("package manager not available");
-        } else if (!root_valid) {
-            result = json_err("invalid JSON body");
-        } else {
-            if (!root.contains("name") || !root["name"].is_string())
-                result = json_err("missing 'name'");
-            else {
-                std::string name = root["name"].get<std::string>();
-                if (!is_safe_package_name(name)) {
-                    result = json_err("invalid package name");
-                } else if (!package_manager->is_installed(name)) {
-                    result = json_err("package not installed: " + name);
-                } else {
-                    auto readme_path = std::filesystem::path(PackageManager::packages_dir()) / name / "README.md";
-                    std::ifstream f(readme_path);
-                    if (!f.is_open()) {
-                        result = json_ok_msg("No README.md found for package '" + name + "'");
-                    } else {
-                        std::ostringstream ss;
-                        ss << f.rdbuf();
-                        result = json_ok(nlohmann::json{{"name", name}, {"content", ss.str()}});
-                    }
-                }
-            }
-        }
+        if (!root_valid) result = json_err("invalid JSON body");
+        else result = handle_read_package_docs(package_manager, root);
     } else if (method == "list_package_examples") {
-        if (!package_manager) {
-            result = json_err("package manager not available");
-        } else if (!root_valid) {
-            result = json_err("invalid JSON body");
-        } else {
-            if (!root.contains("name") || !root["name"].is_string())
-                result = json_err("missing 'name'");
-            else {
-                std::string name = root["name"].get<std::string>();
-                if (!is_safe_package_name(name)) {
-                    result = json_err("invalid package name");
-                } else if (!package_manager->is_installed(name)) {
-                    result = json_err("package not installed: " + name);
-                } else {
-                    auto graphs_dir = std::filesystem::path(PackageManager::packages_dir()) / name / "graphs";
-                    nlohmann::json res = nlohmann::json::object();
-                    res["name"] = name;
-                    nlohmann::json arr = nlohmann::json::array();
-                    std::error_code ec;
-                    if (std::filesystem::is_directory(graphs_dir, ec)) {
-                        for (const auto& entry : std::filesystem::directory_iterator(graphs_dir, ec)) {
-                            if (!entry.is_regular_file()) continue;
-                            if (entry.path().extension() != ".json") continue;
-                            nlohmann::json ex = nlohmann::json::object();
-                            ex["filename"] = entry.path().filename().string();
-                            vivid::ExampleEntry edata;
-                            if (load_example_entry_from_graph(entry.path(), graphs_dir, edata)) {
-                                ex["description"] = edata.summary;
-                                if (!edata.content_kind.empty()) ex["content_kind"] = edata.content_kind;
-                                if (!edata.category.empty()) ex["category"] = edata.category;
-                                if (!edata.family.empty()) ex["family"] = edata.family;
-                                if (!edata.role.empty()) ex["role"] = edata.role;
-                                if (!edata.playability.empty()) ex["playability"] = edata.playability;
-                                if (!edata.domains.empty()) {
-                                    nlohmann::json darr = nlohmann::json::array();
-                                    for (const auto& d : edata.domains) darr.push_back(d);
-                                    ex["domains"] = std::move(darr);
-                                }
-                            } else {
-                                ex["description"] = "";
-                            }
-                            arr.push_back(std::move(ex));
-                        }
-                    }
-                    res["examples"] = std::move(arr);
-                    result = json_ok(std::move(res));
-                }
-            }
-        }
+        if (!root_valid) result = json_err("invalid JSON body");
+        else result = handle_list_package_examples(package_manager, root);
     } else if (method == "read_package_example") {
-        if (!package_manager) {
-            result = json_err("package manager not available");
-        } else if (!root_valid) {
-            result = json_err("invalid JSON body");
-        } else {
-            if (!root.contains("name") || !root["name"].is_string() ||
-                !root.contains("filename") || !root["filename"].is_string())
-                result = json_err("missing 'name' or 'filename'");
-            else {
-                std::string name = root["name"].get<std::string>();
-                std::string filename = root["filename"].get<std::string>();
-                if (!is_safe_package_name(name)) {
-                    result = json_err("invalid package name");
-                } else if (filename.find('/') != std::string::npos ||
-                    filename.find('\\') != std::string::npos ||
-                    filename.find("..") != std::string::npos) {
-                    result = json_err("invalid filename");
-                } else if (!package_manager->is_installed(name)) {
-                    result = json_err("package not installed: " + name);
-                } else {
-                    auto file_path = std::filesystem::path(PackageManager::packages_dir()) / name / "graphs" / filename;
-                    std::ifstream f(file_path);
-                    if (!f.is_open()) {
-                        result = json_err("example not found: " + filename);
-                    } else {
-                        std::ostringstream ss;
-                        ss << f.rdbuf();
-                        result = json_ok(nlohmann::json{{"name", name}, {"filename", filename}, {"content", ss.str()}});
-                    }
-                }
-            }
-        }
+        if (!root_valid) result = json_err("invalid JSON body");
+        else result = handle_read_package_example(package_manager, root);
     } else if (method == "operator_docs") {
         if (!root_valid) {
             result = json_err("invalid JSON body");
@@ -1137,39 +972,8 @@ std::string dispatch(const std::string& method, const std::string& body,
             result = handle_operator_docs(registry, package_manager, source_docs, root, core.subgraph_modules());
         }
     } else if (method == "package_operator_docs") {
-        if (!package_manager) {
-            result = json_err("package manager not available");
-        } else if (!root_valid) {
-            result = json_err("invalid JSON body");
-        } else {
-            if (!root.contains("name") || !root["name"].is_string())
-                result = json_err("missing 'name'");
-            else {
-                std::string name = root["name"].get<std::string>();
-                if (!package_manager->is_installed(name)) {
-                    result = json_err("package not installed: " + name);
-                } else {
-                    nlohmann::json res = nlohmann::json::object();
-                    res["package"] = name;
-                    nlohmann::json ops_arr = nlohmann::json::array();
-                    for (const auto& type_name : registry.type_names()) {
-                        const auto* pkg = registry.package_for_type(type_name);
-                        if (!pkg || *pkg != name) continue;
-                        const auto* desc = registry.probe_descriptor(type_name);
-                        if (!desc) continue;
-                        nlohmann::json detail = source_docs.resolve_package(
-                            name,
-                            package_manager->resolve_package_path(name),
-                            type_name);
-                        nlohmann::json op = build_operator_docs_response(*desc,
-                            detail.is_null() ? nullptr : &detail, name);
-                        ops_arr.push_back(std::move(op));
-                    }
-                    res["operators"] = std::move(ops_arr);
-                    result = json_ok(std::move(res));
-                }
-            }
-        }
+        if (!root_valid) result = json_err("invalid JSON body");
+        else result = handle_package_operator_docs(registry, package_manager, source_docs, root);
     } else if (method == "test_package") {
         if (!package_manager || !package_compiler) {
             result = json_err("package manager/compiler not available");

@@ -27,12 +27,18 @@ The control server is **not** itself an MCP server.
 - `mcp/vivid_mcp.py` is a separate Python MCP bridge process
 - the bridge can launch or reuse a Vivid runtime, then translates MCP stdio tool calls into HTTP requests against this control server
 - MCP clients therefore operate on the current live runtime instance through the bridge layered on top of the HTTP control server
+- for static lookup-only tasks, the MCP bridges may bypass the control server entirely and invoke one-shot `vivid` CLI JSON queries instead
 
 Interface capture, graph inspection, and live analysis are conceptually operations on the running runtime, even if some isolated debug/repro workflows still describe direct CLI screenshot runs.
 
 `capture_interface` is the live-session whole-window capture path. Unlike `capture_frame`, it runs after the graph UI, thumbnails, and overlays have been composed, so the returned PNG reflects the actual inspector/window state of the running instance.
 
 Read-only source browsing belongs to the separate opdev MCP bridge, not to the main `vivid` MCP bridge. The control server still exposes a compact source/build query surface so `mcp/vivid_opdev_mcp.py` can reuse the running runtime's source-root discovery and build-console state, but those methods are intended for opdev workflows rather than general live-graph authoring.
+
+The practical boundary is:
+
+- use the control server for commands that need a live graph, live runtime state, or the visible session
+- use one-shot CLI JSON queries for operator/package/docs/catalog lookup that does not need a running session
 
 ## HTTP Protocol
 

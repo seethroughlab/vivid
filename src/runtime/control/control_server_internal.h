@@ -538,8 +538,18 @@ nlohmann::json sample_node_outputs_snapshot(const CompiledNode& ns, bool include
 std::string handle_sample_node_outputs(Graph& graph, RuntimeCore& core, const nlohmann::json& root);
 std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core, const SubgraphModuleRegistry* modules = nullptr);
 std::string handle_get_graph_load_diagnostics(const Graph& graph);
+std::string handle_operator_map(OperatorRegistry& registry);
+std::string handle_get_discovery_report(PackageManager* package_manager);
 std::string handle_list_types(OperatorRegistry& registry, PackageManager* package_manager, OperatorSourceDocs& source_docs, const nlohmann::json& root, const SubgraphModuleRegistry* modules = nullptr);
 std::string handle_operator_docs(OperatorRegistry& registry, PackageManager* package_manager, OperatorSourceDocs& source_docs, const nlohmann::json& root, const SubgraphModuleRegistry* modules = nullptr);
+std::string handle_list_packages(PackageManager* package_manager);
+std::string handle_read_package_docs(PackageManager* package_manager, const nlohmann::json& root);
+std::string handle_list_package_examples(PackageManager* package_manager, const nlohmann::json& root);
+std::string handle_read_package_example(PackageManager* package_manager, const nlohmann::json& root);
+std::string handle_package_operator_docs(OperatorRegistry& registry, PackageManager* package_manager, OperatorSourceDocs& source_docs, const nlohmann::json& root);
+std::string handle_package_catalog(PackageCatalog* package_catalog);
+std::string handle_check_package_updates(PackageCatalog* package_catalog, PackageManager* package_manager, const nlohmann::json& root);
+std::string handle_check_core_updates(AppUpdateManager* app_update_manager, const nlohmann::json& root);
 std::string handle_list_source_roots(SourceIndex& source_index);
 std::string handle_search_source(SourceIndex& source_index, const nlohmann::json& root);
 std::string handle_read_source_file(SourceIndex& source_index, const nlohmann::json& root);
