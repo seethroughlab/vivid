@@ -48,10 +48,10 @@ int main() {
     auto core = sandbox / "vivid-core";
     fs::create_directories(core);
 
-    auto pkg_local = make_package_layout(sandbox, "pkg_local");
-    auto pkg_workspace = make_package_layout(sandbox, "pkg_workspace");
-    auto pkg_user = make_package_layout(sandbox, "pkg_user");
-    auto root_hint = make_package_layout(sandbox, "root_hint");
+    auto pkg_local = make_package_layout(sandbox.path, "pkg_local");
+    auto pkg_workspace = make_package_layout(sandbox.path, "pkg_workspace");
+    auto pkg_user = make_package_layout(sandbox.path, "pkg_user");
+    auto root_hint = make_package_layout(sandbox.path, "root_hint");
 
     std::vector<vivid::PackageInfo> packages;
     packages.push_back(make_pkg("pkg_local", pkg_local.string(), "local", true));

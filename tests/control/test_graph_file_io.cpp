@@ -343,7 +343,7 @@ static void test_preview_controls_roundtrip() {
     vivid::GraphMetaEditData data;
     std::string error;
     vivid::load_graph_meta_edit_data(graph_path.string(), data, error);
-    check(!data.preview_controls_json.empty(), "preview_controls_json populated");
+    check(!data.preview_controls.empty(), "preview_controls populated");
     vivid::save_graph_meta_edit_data(data, error);
 
     vivid::ExampleEntry entry2;
