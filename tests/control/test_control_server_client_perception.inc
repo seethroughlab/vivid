@@ -739,6 +739,14 @@
                 R"({"from_addr":"module_src/list","to_addr":"mod1/echo_list_in"})");
             check(connect_list.ok, "connect module_src/list -> mod1/echo_list_in ok");
 
+            auto connect_mod = post(client, base_url, "connect",
+                R"({"from_addr":"a/out","to_addr":"mod1/mod_in"})");
+            check(connect_mod.ok, "connect a/out -> mod1/mod_in ok");
+
+            auto add_mod_assignment = post(client, base_url, "add_mod_assignment",
+                R"({"node_id":"mod1","source":"motion","destination":"scale","amount":1.0,"polarity":"unipolar","curve":"linear"})");
+            check(add_mod_assignment.ok, "add_mod_assignment motion -> scale ok");
+
             phase.store(23);
             while (phase.load() < 24) std::this_thread::sleep_for(std::chrono::milliseconds(5));
 
@@ -757,8 +765,8 @@
                     check(!label.is_null(), "module text param present");
                     if (!scale.is_null()) {
                         check(scale.contains("value") && scale["value"].is_number() &&
-                                  std::fabs(scale["value"].get<double>() - 2.5) < 1e-4,
-                              "module numeric param exposes live value");
+                                  std::fabs(scale["value"].get<double>() - 4.0) < 1e-4,
+                              "module numeric param exposes authored base value when modulated");
                         check(scale.contains("min") && scale["min"].is_number() &&
                                   std::fabs(scale["min"].get<double>() - 0.0) < 1e-6,
                               "module numeric param exposes min");
@@ -766,7 +774,7 @@
                                   std::fabs(scale["max"].get<double>() - 100.0) < 1e-6,
                               "module numeric param exposes max");
                         check(scale.contains("default") && scale["default"].is_number() &&
-                                  std::fabs(scale["default"].get<double>() - 2.5) < 1e-6,
+                                  std::fabs(scale["default"].get<double>() - 4.0) < 1e-6,
                               "module numeric param exposes default");
                     }
                     if (!label.is_null()) {
@@ -803,8 +811,8 @@
                     }
                     if (!scaled.is_null()) {
                         check(scaled.contains("current_value") && scaled["current_value"].is_number() &&
-                                  std::fabs(scaled["current_value"].get<double>() - 5.0) < 1e-4,
-                              "module scalar output exposes current_value");
+                                  std::fabs(scaled["current_value"].get<double>() - 20.0) < 1e-4,
+                              "module scalar output exposes modulated live output");
                     }
                     if (!label_out.is_null()) {
                         check(label_out.contains("current_string") && label_out["current_string"].is_string() &&
@@ -846,8 +854,8 @@
                     if (mod.contains("params") && mod["params"].is_object()) {
                         auto params = mod["params"];
                         check(params.contains("scale") && params["scale"].is_number() &&
-                                  std::fabs(params["scale"].get<double>() - 2.5) < 1e-4,
-                              "module introspection exposes numeric param");
+                                  std::fabs(params["scale"].get<double>() - 4.0) < 1e-4,
+                              "module introspection exposes authored base value when modulated");
                         check(params.contains("label") && params["label"].is_string() &&
                                   params["label"].get<std::string>() == "module-label",
                               "module introspection exposes string param");
@@ -883,8 +891,8 @@
                     }
                     if (!scaled.is_null()) {
                         check(scaled.contains("scalar") && scaled["scalar"].is_number() &&
-                                  std::fabs(scaled["scalar"].get<double>() - 5.0) < 1e-4,
-                              "module introspection output exposes scalar");
+                                  std::fabs(scaled["scalar"].get<double>() - 20.0) < 1e-4,
+                              "module introspection output exposes modulated live scalar");
                     }
                     if (!label_out.is_null()) {
                         check(label_out.contains("string") && label_out["string"].is_string() &&

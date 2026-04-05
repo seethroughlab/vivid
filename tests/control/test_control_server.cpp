@@ -156,6 +156,9 @@ int main(int argc, char* argv[]) {
     std::filesystem::copy_file(build_dir + "/string_sink_op.dylib",
         staging + "/string_sink_op.dylib",
         std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/control_pass_op.dylib",
+        staging + "/control_pass_op.dylib",
+        std::filesystem::copy_options::overwrite_existing);
 
     std::string abi_probe_dir = build_dir + "/.test_cs_abi_probe";
     std::filesystem::create_directories(abi_probe_dir);
@@ -182,6 +185,7 @@ int main(int argc, char* argv[]) {
     "name": "QuerySurfaceModule",
     "description": "Fixture module for control-server query parity tests.",
     "ports": [
+      { "name": "mod_in", "type": "signal", "direction": "input", "bind": "mod_src/in" },
       { "name": "echo_in", "type": "string", "direction": "input", "bind": "sink/in" },
       { "name": "echo_list_in", "type": "string_lanes", "direction": "input", "bind": "sink/in_list" },
       { "name": "scaled", "type": "signal", "direction": "output", "bind": "math/out" },
@@ -190,6 +194,12 @@ int main(int argc, char* argv[]) {
       { "name": "echo_out", "type": "string", "direction": "output", "bind": "sink/out" },
       { "name": "echo_list_out", "type": "string_lanes", "direction": "output", "bind": "sink/out_list" }
     ],
+    "mod_sources": [
+      { "name": "motion", "bind": "mod_src/out", "description": "Numeric motion source" }
+    ],
+    "mod_destinations": [
+      { "name": "scale", "bind": "math/scale", "description": "Scale modulation target", "group": "Main" }
+    ],
     "params": [
       {
         "name": "scale",
@@ -197,7 +207,7 @@ int main(int argc, char* argv[]) {
         "type": "float",
         "min": 0.0,
         "max": 100.0,
-        "default": 2.5,
+        "default": 4.0,
         "semantic_tag": "frequency_hz",
         "semantic_shape": "scalar",
         "semantic_unit": "Hz",
@@ -212,7 +222,8 @@ int main(int argc, char* argv[]) {
     ]
   },
   "nodes": {
-    "math": { "type": "TestOp", "params": { "scale": 2.5 } },
+    "math": { "type": "TestOp", "params": { "scale": 4.0 } },
+    "mod_src": { "type": "ControlPassOp", "params": { "gain": 1.0 } },
     "text_src": { "type": "StringSourceOp", "params": { "value": "module-label" } },
     "sink": { "type": "StringSinkOp" }
   },

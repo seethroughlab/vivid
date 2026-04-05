@@ -3,6 +3,80 @@
 
 namespace vivid {
 
+namespace {
+
+struct ResolvedModuleParamValue {
+    float numeric_value = 0.0f;
+    std::string string_value;
+    bool has_string_value = false;
+};
+
+static bool is_modulated_module_param(const NodeDef& authored_node,
+                                      const std::string& exposed_param,
+                                      const std::vector<ModulationLoweringRecord>& modulation_records) {
+    for (const auto& rec : modulation_records) {
+        if (rec.instance_id == authored_node.id && rec.exposed_param == exposed_param)
+            return true;
+    }
+    return false;
+}
+
+static ResolvedModuleParamValue resolve_module_param_value(
+        const NodeDef& authored_node,
+        const SubgraphParamBinding& binding,
+        const ui::ParamInfo& param_info,
+        const CompiledGraph* compiled_graph,
+        const std::vector<ModulationLoweringRecord>& modulation_records) {
+    ResolvedModuleParamValue resolved;
+    resolved.numeric_value = param_info.default_value;
+
+    const std::string flat_id = authored_node.id + ".__" + binding.internal_node;
+    const CompiledNode* internal_node = compiled_graph ? compiled_graph->find_node(flat_id) : nullptr;
+
+    // File/text params keep their current string lookup behavior.
+    if (param_info.type == VIVID_PARAM_FILE || param_info.type == VIVID_PARAM_TEXT) {
+        if (internal_node) {
+            auto fi = internal_node->file_param_indices.find(binding.internal_param);
+            if (fi != internal_node->file_param_indices.end() &&
+                fi->second < internal_node->file_param_storage.size()) {
+                resolved.string_value = internal_node->file_param_storage[fi->second];
+                resolved.has_string_value = true;
+                return resolved;
+            }
+        }
+        auto sit = authored_node.string_params.find(binding.name);
+        if (sit != authored_node.string_params.end()) {
+            resolved.string_value = sit->second;
+            resolved.has_string_value = true;
+            return resolved;
+        }
+    }
+
+    if (is_modulated_module_param(authored_node, binding.name, modulation_records)) {
+        auto ait = authored_node.params.find(binding.name);
+        if (ait != authored_node.params.end())
+            resolved.numeric_value = ait->second;
+        return resolved;
+    }
+
+    if (internal_node) {
+        auto iit = internal_node->param_indices.find(binding.internal_param);
+        if (iit != internal_node->param_indices.end() &&
+            iit->second < internal_node->param_values.size()) {
+            resolved.numeric_value = internal_node->param_values[iit->second];
+            return resolved;
+        }
+    }
+
+    auto ait = authored_node.params.find(binding.name);
+    if (ait != authored_node.params.end())
+        resolved.numeric_value = ait->second;
+
+    return resolved;
+}
+
+} // namespace
+
 std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const SubgraphModuleRegistry* modules) {
     const auto* cg = core.compiled_graph();
     std::unordered_map<std::string, const CompiledNode*> state_map;
@@ -91,35 +165,9 @@ std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const Subgraph
                 nlohmann::json p = nlohmann::json::object();
                 p["name"] = pi.name;
                 p["type"] = param_type_str(pi.type);
-                // Read live value from internal compiled node
-                float value = pi.default_value;
                 const auto& pb = mod_def->params[i];
-
-                std::string flat_id = ndef.id + ".__" + pb.internal_node;
-                const auto* icn = cg ? cg->find_node(flat_id) : nullptr;
-
-                // Check if this param targets a modulated destination.
-                // If so, use authored value (user's base value) instead of wire-driven value.
-                bool is_modulated = false;
-                for (const auto& rec : core.modulation_records()) {
-                    if (rec.instance_id == ndef.id && rec.exposed_param == pb.name) {
-                        is_modulated = true;
-                        break;
-                    }
-                }
-
-                if (is_modulated) {
-                    auto ait = ndef.params.find(pb.name);
-                    if (ait != ndef.params.end()) value = ait->second;
-                } else if (icn) {
-                    auto iit = icn->param_indices.find(pb.internal_param);
-                    if (iit != icn->param_indices.end() && iit->second < icn->param_values.size())
-                        value = icn->param_values[iit->second];
-                } else {
-                    auto ait = ndef.params.find(pb.name);
-                    if (ait != ndef.params.end()) value = ait->second;
-                }
-                p["value"] = static_cast<double>(value);
+                auto resolved = resolve_module_param_value(ndef, pb, pi, cg, core.modulation_records());
+                p["value"] = static_cast<double>(resolved.numeric_value);
                 p["min"] = static_cast<double>(pi.min_value);
                 p["max"] = static_cast<double>(pi.max_value);
                 p["default"] = static_cast<double>(pi.default_value);
@@ -137,18 +185,8 @@ std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const Subgraph
                     for (const auto& c : pi.choice_labels) choices.push_back(c);
                     p["choices"] = std::move(choices);
                 }
-                // File/text string value from internal node
-                if ((pi.type == VIVID_PARAM_FILE || pi.type == VIVID_PARAM_TEXT) && icn) {
-                    auto fi = icn->file_param_indices.find(pb.internal_param);
-                    if (fi != icn->file_param_indices.end() &&
-                        fi->second < icn->file_param_storage.size()) {
-                        p["string_value"] = icn->file_param_storage[fi->second];
-                    }
-                } else if (pi.type == VIVID_PARAM_FILE || pi.type == VIVID_PARAM_TEXT) {
-                    auto sit = ndef.string_params.find(pb.name);
-                    if (sit != ndef.string_params.end())
-                        p["string_value"] = sit->second;
-                }
+                if (resolved.has_string_value)
+                    p["string_value"] = resolved.string_value;
                 params_arr.push_back(std::move(p));
             }
         }
@@ -887,31 +925,13 @@ std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core, const Subgr
             nlohmann::json params_obj = nlohmann::json::object();
             for (size_t i = 0; i < mod->params.size(); ++i) {
                 const auto& pb = mod->params[i];
-                float value = info->params[i].default_value;
-                std::string flat_id = ndef.id + ".__" + pb.internal_node;
-                const auto* icn = cg->find_node(flat_id);
-                if (icn) {
-                    auto iit = icn->param_indices.find(pb.internal_param);
-                    if (iit != icn->param_indices.end() && iit->second < icn->param_values.size())
-                        value = icn->param_values[iit->second];
-                    // String/file params
-                    auto fi = icn->file_param_indices.find(pb.internal_param);
-                    if (fi != icn->file_param_indices.end() &&
-                        fi->second < icn->file_param_storage.size()) {
-                        params_obj[pb.name] = icn->file_param_storage[fi->second];
-                        continue;  // string value takes precedence
-                    }
-                } else {
-                    auto ait = ndef.params.find(pb.name);
-                    if (ait != ndef.params.end()) value = ait->second;
-                    // Check authored string params
-                    auto sit = ndef.string_params.find(pb.name);
-                    if (sit != ndef.string_params.end()) {
-                        params_obj[pb.name] = sit->second;
-                        continue;
-                    }
+                auto resolved = resolve_module_param_value(
+                    ndef, pb, info->params[i], cg, core.modulation_records());
+                if (resolved.has_string_value) {
+                    params_obj[pb.name] = resolved.string_value;
+                    continue;
                 }
-                params_obj[pb.name] = static_cast<double>(value);
+                params_obj[pb.name] = static_cast<double>(resolved.numeric_value);
             }
             node["params"] = std::move(params_obj);
 
