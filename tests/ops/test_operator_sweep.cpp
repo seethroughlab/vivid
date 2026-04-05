@@ -98,19 +98,6 @@ static uint32_t count_scalar_ports(const VividOperatorDescriptor* desc,
 // and audio-buffer outputs. We mirror that allocation pattern here so smoke
 // tests exercise the same memory layout the audio executor uses.
 
-// Count ports that need audio buffer allocation.
-static uint32_t count_buffer_ports(const VividOperatorDescriptor* desc,
-                                    VividPortDirection dir) {
-    uint32_t n = 0;
-    for (uint32_t i = 0; i < desc->port_count; i++) {
-        if (desc->ports[i].direction != dir) continue;
-        auto t = desc->ports[i].type;
-        auto tr = desc->ports[i].transport;
-        if (t == VIVID_PORT_AUDIO_BUFFER || tr == VIVID_PORT_TRANSPORT_AUDIO_BUFFER)
-            n++;
-    }
-    return n;
-}
 
 // ============================================================================
 // Skip lists
@@ -312,50 +299,55 @@ static bool smoke_audio(vivid::OperatorLoader& loader, void* inst,
     constexpr int kFrames = 512;
     constexpr uint32_t kSampleRate = 44100;
 
-    // Count all input/output ports by type for buffer allocation.
-    uint32_t n_buf_in = 0, n_buf_out = 0;
+    // Count input/output ports.  The runtime indexes input_buffers and
+    // output_buffers by total port ordinal (one slot per port, regardless of
+    // type), so we must allocate the same way to avoid out-of-bounds access
+    // from operators that offset into the buffer array by port index.
     uint32_t n_in_total = 0, n_out_total = 0;
     for (uint32_t i = 0; i < desc->port_count; i++) {
-        auto& p = desc->ports[i];
-        bool is_in = (p.direction == VIVID_PORT_INPUT);
-        bool is_audio_buf = (p.type == VIVID_PORT_AUDIO_BUFFER ||
-                             p.transport == VIVID_PORT_TRANSPORT_AUDIO_BUFFER);
-        bool is_signal = (p.type == VIVID_PORT_SCALAR);
-
-        if (is_in) {
-            n_in_total++;
-            if (is_audio_buf || is_signal) n_buf_in++;
-        } else {
-            n_out_total++;
-            // Audio operators can write to output_buffers for ANY output port.
-            // Allocate a buffer for every non-lane, non-string, non-custom output.
-            if (is_audio_buf || is_signal) n_buf_out++;
-        }
+        if (desc->ports[i].direction == VIVID_PORT_INPUT) n_in_total++;
+        else n_out_total++;
     }
 
-    // Allocate planar buffers, filled with port default values.
-    std::vector<std::vector<float>> in_bufs(n_buf_in, std::vector<float>(kFrames, 0.0f));
-    // Fill scalar input buffers with their declared default values
+    // Allocate one planar buffer per port slot.  Multi-channel audio ports
+    // (channels > 1) use a single contiguous buffer of channels * kFrames
+    // floats, so we must size each slot accordingly.
+    auto buf_size_for_port = [&](const VividPortDescriptor& p) -> uint32_t {
+        uint32_t ch = (p.channels > 1) ? p.channels : 1;
+        return ch * kFrames;
+    };
+    std::vector<std::vector<float>> in_bufs;
+    in_bufs.reserve(n_in_total);
     {
-        uint32_t buf_idx = 0;
-        for (uint32_t i = 0; i < desc->port_count && buf_idx < n_buf_in; i++) {
+        for (uint32_t i = 0; i < desc->port_count; i++) {
             auto& p = desc->ports[i];
             if (p.direction != VIVID_PORT_INPUT) continue;
-            bool is_buf = (p.type == VIVID_PORT_AUDIO_BUFFER ||
-                           p.transport == VIVID_PORT_TRANSPORT_AUDIO_BUFFER ||
-                           p.type == VIVID_PORT_SCALAR);
-            if (!is_buf) continue;
-            if (p.default_value != 0.0f)
-                std::fill(in_bufs[buf_idx].begin(), in_bufs[buf_idx].end(), p.default_value);
-            buf_idx++;
+            uint32_t sz = buf_size_for_port(p);
+            in_bufs.emplace_back(sz, p.default_value);
         }
     }
-    std::vector<std::vector<float>> out_bufs(n_buf_out, std::vector<float>(kFrames, 0.0f));
+    std::vector<std::vector<float>> out_bufs;
+    out_bufs.reserve(n_out_total);
+    for (uint32_t i = 0; i < desc->port_count; i++) {
+        auto& p = desc->ports[i];
+        if (p.direction == VIVID_PORT_INPUT) continue;
+        out_bufs.emplace_back(buf_size_for_port(p), 0.0f);
+    }
     std::vector<float*> in_ptrs, out_ptrs;
     for (auto& b : in_bufs)  in_ptrs.push_back(b.data());
     for (auto& b : out_bufs) out_ptrs.push_back(b.data());
     std::vector<VividLanePort> input_lanes(n_in_total, {nullptr, 0, 0});
     std::vector<VividLanePort> output_lanes(n_out_total, {nullptr, 0, 0});
+
+    // Build per-port channel count arrays so multi-channel operators
+    // can read input_channel_counts / output_channel_counts safely.
+    std::vector<uint8_t> in_ch_counts, out_ch_counts;
+    for (uint32_t i = 0; i < desc->port_count; i++) {
+        auto& p = desc->ports[i];
+        uint8_t ch = (p.channels > 1) ? p.channels : 1;
+        if (p.direction == VIVID_PORT_INPUT) in_ch_counts.push_back(ch);
+        else out_ch_counts.push_back(ch);
+    }
 
     std::vector<float> params(desc->param_count);
     for (uint32_t i = 0; i < desc->param_count; i++)
@@ -370,6 +362,8 @@ static bool smoke_audio(vivid::OperatorLoader& loader, void* inst,
     ctx.param_values        = params.empty()         ? nullptr : params.data();
     ctx.input_lanes         = input_lanes.empty()    ? nullptr : input_lanes.data();
     ctx.output_lanes        = output_lanes.empty()   ? nullptr : output_lanes.data();
+    ctx.input_channel_counts  = in_ch_counts.data();
+    ctx.output_channel_counts = out_ch_counts.data();
     ctx.shared_handles      = vivid::shared_handle_service();
     ctx.lane_count          = 1;
     ctx.lane_index          = 0;
@@ -383,9 +377,9 @@ static bool smoke_audio(vivid::OperatorLoader& loader, void* inst,
         loader.process_audio(inst, &ctx);
     }
 
-    // Check all output buffers are finite.
+    // Check all output buffers are finite (full extent including extra channels).
     for (auto& buf : out_bufs) {
-        if (!is_finite_buf(buf.data(), kFrames)) return false;
+        if (!is_finite_buf(buf.data(), static_cast<int>(buf.size()))) return false;
     }
     return true;
 }
@@ -515,33 +509,33 @@ static bool test_param_boundary(vivid::OperatorLoader& loader, void* inst,
             return true;
         } else if (vivid_operator_kind(desc) == VIVID_OP_AUDIO) {
             constexpr int kF = 512;
-            // Mirror smoke_audio port counting.
-            uint32_t nbi = 0, nbo = 0;
+            // Mirror smoke_audio: one buffer slot per port, multi-channel aware.
             uint32_t ni = 0, no = 0;
             for (uint32_t pi = 0; pi < desc->port_count; pi++) {
+                if (desc->ports[pi].direction == VIVID_PORT_INPUT) ni++;
+                else no++;
+            }
+            auto buf_sz = [&](const VividPortDescriptor& pp) -> uint32_t {
+                uint32_t ch = (pp.channels > 1) ? pp.channels : 1;
+                return ch * kF;
+            };
+            std::vector<std::vector<float>> ibs;
+            std::vector<uint8_t> ich, och;
+            ibs.reserve(ni);
+            for (uint32_t pi = 0; pi < desc->port_count; pi++) {
                 auto& pp = desc->ports[pi];
-                bool is_in = (pp.direction == VIVID_PORT_INPUT);
-                bool is_ab = (pp.type == VIVID_PORT_AUDIO_BUFFER || pp.transport == VIVID_PORT_TRANSPORT_AUDIO_BUFFER);
-                bool is_sg = (pp.type == VIVID_PORT_SCALAR);
-                if (is_in) { ni++; if (is_ab || is_sg) nbi++; }
-                else { no++; if (is_ab || is_sg) nbo++; }
+                if (pp.direction != VIVID_PORT_INPUT) continue;
+                ibs.emplace_back(buf_sz(pp), pp.default_value);
+                ich.push_back((pp.channels > 1) ? pp.channels : 1);
             }
-            std::vector<std::vector<float>> ibs(nbi, std::vector<float>(kF, 0.0f));
-            // Fill scalar input buffers with port default values
-            {
-                uint32_t bi = 0;
-                for (uint32_t pi = 0; pi < desc->port_count && bi < nbi; pi++) {
-                    auto& pp = desc->ports[pi];
-                    if (pp.direction != VIVID_PORT_INPUT) continue;
-                    bool is_ab = (pp.type == VIVID_PORT_AUDIO_BUFFER || pp.transport == VIVID_PORT_TRANSPORT_AUDIO_BUFFER);
-                    bool is_sg = (pp.type == VIVID_PORT_SCALAR);
-                    if (!is_ab && !is_sg) continue;
-                    if (pp.default_value != 0.0f)
-                        std::fill(ibs[bi].begin(), ibs[bi].end(), pp.default_value);
-                    bi++;
-                }
+            std::vector<std::vector<float>> obs;
+            obs.reserve(no);
+            for (uint32_t pi = 0; pi < desc->port_count; pi++) {
+                auto& pp = desc->ports[pi];
+                if (pp.direction == VIVID_PORT_INPUT) continue;
+                obs.emplace_back(buf_sz(pp), 0.0f);
+                och.push_back((pp.channels > 1) ? pp.channels : 1);
             }
-            std::vector<std::vector<float>> obs(nbo, std::vector<float>(kF, 0.0f));
             std::vector<float*> ip, op;
             for (auto& b : ibs) ip.push_back(b.data());
             for (auto& b : obs) op.push_back(b.data());
@@ -556,6 +550,8 @@ static bool test_param_boundary(vivid::OperatorLoader& loader, void* inst,
             ctx.param_values        = params.empty() ? nullptr : params.data();
             ctx.input_lanes         = in_lanes.empty() ? nullptr : in_lanes.data();
             ctx.output_lanes        = out_lanes.empty() ? nullptr : out_lanes.data();
+            ctx.input_channel_counts  = ich.data();
+            ctx.output_channel_counts = och.data();
             ctx.shared_handles      = vivid::shared_handle_service();
             ctx.lane_count          = 1;
             ctx.lane_index          = 0;
@@ -565,7 +561,7 @@ static bool test_param_boundary(vivid::OperatorLoader& loader, void* inst,
             ctx.lane_state_service  = &lane_state;
             loader.process_audio(inst, &ctx);
             for (auto& b : obs)
-                if (!is_finite_buf(b.data(), kF)) return false;
+                if (!is_finite_buf(b.data(), static_cast<int>(b.size()))) return false;
             return true;
         }
         // GPU: skip boundary test (too expensive per-param).
