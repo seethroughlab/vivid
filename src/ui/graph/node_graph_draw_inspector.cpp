@@ -140,6 +140,8 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     inspector_.label_rects.clear();
     inspector_.wire_remap_rects.clear();
     inspector_.wire_clamp_rects.clear();
+    inspector_.mod_assign_rects.clear();
+    inspector_.mod_amount_rects.clear();
 
     // Wire inspector (when a wire is selected and no nodes are)
     if (selected_node_ids_.empty() && wire_inspector_visible()) {
@@ -368,6 +370,9 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
             draw_section_separator(tr, px, py, kInspContentW, "Controls");
             draw_inspector_params(tr, *sel_node, px, py);
         }
+    }
+    if (sel_node->is_module_instance) {
+        draw_inspector_modulation(tr, *sel_node, px, py);
     }
     // --- Performance section (module instances with performance-tagged params) ---
     if (sel_node->is_module_instance) {

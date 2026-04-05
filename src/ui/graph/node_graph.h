@@ -234,6 +234,9 @@ public:
     void set_package_browser_callbacks(PackageBrowserCallbacks callbacks) {
         dialogs_.set_package_browser_callbacks(std::move(callbacks));
     }
+    void set_asset_browser_callbacks(AssetBrowserCallbacks callbacks) {
+        dialogs_.set_asset_browser_callbacks(std::move(callbacks));
+    }
     void notify_pkg_action_complete(bool success, const std::string& error) {
         dialogs_.notify_pkg_action_complete(success, error);
     }
@@ -248,7 +251,19 @@ public:
         std::function<bool(const std::vector<std::string>&, std::string&)> cb) {
         dialogs_.set_example_package_checker(std::move(cb));
     }
-    void open_graph_meta_editor(const GraphMetaEditData& data) {
+    void open_graph_meta_editor(GraphMetaEditData data) {
+        data.preview_options.clear();
+        for (const auto& node : snap_.nodes) {
+            if (!node.op_info) continue;
+            PreviewControlOption opt;
+            opt.node = node.node_id;
+            for (const auto& param : node.op_info->params) {
+                if (param.display_hint == VIVID_DISPLAY_HIDDEN) continue;
+                opt.params.push_back(param.name);
+            }
+            if (!opt.params.empty())
+                data.preview_options.push_back(std::move(opt));
+        }
         dialogs_.open_graph_meta_editor(data, text_edit_);
     }
     void set_graph_meta_save_callback(
@@ -341,6 +356,7 @@ private:
     void draw_custom_inspector(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_state_presets(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
+    void draw_inspector_modulation(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_performance(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_chooser(Renderer2D& tr);
     void draw_preview_wire(Renderer2D& tr);
@@ -454,6 +470,7 @@ private:
     void update_node_drag();
     void update_wire_drag();
     void update_slider_drag();
+    void update_modulation_drag();
     void update_xy_pad_drag();
     void update_color_drag();
     void update_chooser_hover();

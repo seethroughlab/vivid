@@ -14,6 +14,15 @@ namespace vivid::ui {
 
 static constexpr uint64_t kMcpStaleMs = 30000;
 
+static std::string truncate_text(Renderer2D& tr, const std::string& text,
+                                 float max_w, float scale = 1.0f) {
+    if (tr.text_width(text.c_str(), scale) <= max_w) return text;
+    std::string result = text;
+    while (result.size() > 1 && tr.text_width((result + "\xe2\x80\xa6").c_str(), scale) > max_w)
+        result.pop_back();
+    return result + "\xe2\x80\xa6";
+}
+
 void DialogManager::draw(Renderer2D& tr, const MouseState& mouse, const UIStyle& style,
                          float popup_opacity, uint32_t win_w, uint32_t win_h,
                          const TextEditState& text_edit, bool cursor_blink) {
@@ -21,6 +30,7 @@ void DialogManager::draw(Renderer2D& tr, const MouseState& mouse, const UIStyle&
     draw_clone_confirm(tr, mouse, style, popup_opacity, win_w, win_h);
     draw_mcp_setup(tr, mouse, style, popup_opacity, win_w, win_h);
     draw_graph_meta_editor(tr, mouse, style, popup_opacity, win_w, win_h, text_edit, cursor_blink);
+    draw_asset_browser(tr, mouse, style, popup_opacity, win_w, win_h);
     draw_preferences(tr, mouse, style, popup_opacity, win_w, win_h, text_edit, cursor_blink);
     draw_package_browser(tr, mouse, style, popup_opacity, win_w, win_h);
     draw_example_browser(tr, mouse, style, popup_opacity, win_w, win_h);
@@ -488,13 +498,19 @@ void DialogManager::draw_graph_meta_editor(Renderer2D& tr, const MouseState& mou
         graph_meta.data.playability
     };
 
+    graph_meta.preview_node_rects.clear();
+    graph_meta.preview_param_rects.clear();
+    graph_meta.preview_label_rects.clear();
+    graph_meta.preview_button_rects.clear();
+
     float cx = px + 16.0f;
     float cy = py + 52.0f;
-    float label_w = 160.0f;
-    float field_h = 24.0f;
+    float label_w = 150.0f;
+    float field_h = 22.0f;
     float field_w = pw - 32.0f - label_w;
-    float row_gap = 8.0f;
-    for (int i = 0; i < 13; ++i) {
+    float row_gap = 4.0f;
+    constexpr int kSimpleFieldCount = 13;
+    for (int i = 0; i < kSimpleFieldCount; ++i) {
         float fy = cy + i * (field_h + row_gap);
         float fx = cx + label_w;
         tr.draw_text(cx, fy + 4, labels[i],
@@ -505,8 +521,7 @@ void DialogManager::draw_graph_meta_editor(Renderer2D& tr, const MouseState& mou
                      active ? style.node_sel_bg[1] : style.input_field_bg[1],
                      active ? style.node_sel_bg[2] : style.input_field_bg[2],
                      active ? 0.95f : 0.85f);
-        std::string txt = values[i];
-        if (txt.size() > 94) txt = txt.substr(0, 91) + "...";
+        std::string txt = truncate_text(tr, values[i], field_w - 12.0f);
         tr.draw_text(fx + 6.0f, fy + 4.0f, txt.c_str(),
                      style.bright_text[0], style.bright_text[1], style.bright_text[2]);
         if (active && cursor_blink) {
@@ -514,6 +529,108 @@ void DialogManager::draw_graph_meta_editor(Renderer2D& tr, const MouseState& mou
             float cur_x = fx + 6.0f + tr.text_width(values[i].substr(0, cpos).c_str());
             tr.draw_rect(cur_x, fy + 1.0f, 1.0f, field_h - 2.0f,
                          style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+        }
+    }
+
+    float section_y = cy + kSimpleFieldCount * (field_h + row_gap) + 8.0f;
+    tr.draw_text(cx, section_y, "preview_controls",
+                 style.dim_text[0], style.dim_text[1], style.dim_text[2]);
+    section_y += 18.0f;
+
+    float node_w = 150.0f;
+    float param_w = 140.0f;
+    float label_field_w = 150.0f;
+    float button_w = 18.0f;
+    float buttons_total_w = button_w * 3.0f + 8.0f;
+    float row_x = cx;
+    float node_x = row_x;
+    float param_x = node_x + node_w + 6.0f;
+    float label_x = param_x + param_w + 6.0f;
+    float btn_x = label_x + label_field_w + 6.0f;
+
+    tr.draw_text(node_x, section_y - 14.0f, "node",
+                 style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.75f);
+    tr.draw_text(param_x, section_y - 14.0f, "param",
+                 style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.75f);
+    tr.draw_text(label_x, section_y - 14.0f, "label",
+                 style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.75f);
+
+    for (int i = 0; i < static_cast<int>(graph_meta.data.preview_controls.size()); ++i) {
+        const auto& ctrl = graph_meta.data.preview_controls[i];
+        float fy = section_y + i * (field_h + row_gap);
+
+        tr.draw_rect(node_x, fy, node_w, field_h,
+                     style.input_field_bg[0], style.input_field_bg[1], style.input_field_bg[2], 0.85f);
+        tr.draw_text(node_x + 6.0f, fy + 4.0f,
+                     truncate_text(tr, ctrl.node.empty() ? "(choose node)" : ctrl.node, node_w - 20.0f).c_str(),
+                     style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+        tr.draw_text(node_x + node_w - 14.0f, fy + 4.0f, "\xE2\x96\xBE",
+                     style.dim_text[0], style.dim_text[1], style.dim_text[2]);
+        graph_meta.preview_node_rects.push_back({node_x, fy, node_w, field_h, i});
+
+        tr.draw_rect(param_x, fy, param_w, field_h,
+                     style.input_field_bg[0], style.input_field_bg[1], style.input_field_bg[2], 0.85f);
+        tr.draw_text(param_x + 6.0f, fy + 4.0f,
+                     truncate_text(tr, ctrl.param.empty() ? "(choose param)" : ctrl.param, param_w - 20.0f).c_str(),
+                     style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+        tr.draw_text(param_x + param_w - 14.0f, fy + 4.0f, "\xE2\x96\xBE",
+                     style.dim_text[0], style.dim_text[1], style.dim_text[2]);
+        graph_meta.preview_param_rects.push_back({param_x, fy, param_w, field_h, i});
+
+        bool active = (kSimpleFieldCount + i == graph_meta.active_field);
+        tr.draw_rect(label_x, fy, label_field_w, field_h,
+                     active ? style.node_sel_bg[0] : style.input_field_bg[0],
+                     active ? style.node_sel_bg[1] : style.input_field_bg[1],
+                     active ? style.node_sel_bg[2] : style.input_field_bg[2],
+                     active ? 0.95f : 0.85f);
+        std::string txt = truncate_text(tr, ctrl.label, label_field_w - 12.0f);
+        tr.draw_text(label_x + 6.0f, fy + 4.0f, txt.c_str(),
+                     style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+        if (active && cursor_blink) {
+            int cpos = std::max(0, std::min(text_edit.cursor, static_cast<int>(ctrl.label.size())));
+            float cur_x = label_x + 6.0f + tr.text_width(ctrl.label.substr(0, cpos).c_str());
+            tr.draw_rect(cur_x, fy + 1.0f, 1.0f, field_h - 2.0f,
+                         style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+        }
+        graph_meta.preview_label_rects.push_back({label_x, fy, label_field_w, field_h, i});
+
+        const char* button_labels[] = {"^", "v", "x"};
+        for (int bi = 0; bi < 3; ++bi) {
+            float bx = btn_x + bi * (button_w + 4.0f);
+            tr.draw_rect(bx, fy, button_w, field_h,
+                         style.button_bg[0], style.button_bg[1], style.button_bg[2], 0.85f);
+            tr.draw_text(bx + 5.0f, fy + 4.0f, button_labels[bi],
+                         style.bright_text[0], style.bright_text[1], style.bright_text[2], 0.75f);
+            graph_meta.preview_button_rects.push_back({bx, fy, button_w, field_h, i, bi});
+        }
+    }
+
+    float add_y = section_y + static_cast<float>(graph_meta.data.preview_controls.size()) * (field_h + row_gap);
+    float add_w = 88.0f;
+    tr.draw_rect(cx, add_y, add_w, field_h,
+                 style.button_bg[0], style.button_bg[1], style.button_bg[2], 0.85f);
+    tr.draw_text(cx + 10.0f, add_y + 4.0f, "+ add row",
+                 style.bright_text[0], style.bright_text[1], style.bright_text[2], 0.75f);
+    graph_meta.preview_button_rects.push_back({cx, add_y, add_w, field_h, -1, 3});
+
+    if (graph_meta.preview_picker.open) {
+        const auto& picker = graph_meta.preview_picker;
+        float item_h = 20.0f;
+        int visible = std::min<int>(8, picker.options.size());
+        float picker_h = visible * item_h + 4.0f;
+        tr.draw_rect(picker.x, picker.y, picker.w, picker_h,
+                     style.popup_bg[0], style.popup_bg[1], style.popup_bg[2], 0.96f);
+        for (int i = 0; i < visible; ++i) {
+            float iy = picker.y + 2.0f + i * item_h;
+            bool hovered = mouse.x >= picker.x && mouse.x <= picker.x + picker.w &&
+                           mouse.y >= iy && mouse.y <= iy + item_h;
+            if (hovered || i == picker.sel) {
+                tr.draw_rect(picker.x + 2.0f, iy, picker.w - 4.0f, item_h,
+                             style.node_sel_bg[0], style.node_sel_bg[1], style.node_sel_bg[2], 0.9f);
+            }
+            tr.draw_text(picker.x + 6.0f, iy + 4.0f,
+                         truncate_text(tr, picker.options[i], picker.w - 12.0f).c_str(),
+                         style.bright_text[0], style.bright_text[1], style.bright_text[2], 0.85f);
         }
     }
 
@@ -534,6 +651,83 @@ void DialogManager::draw_graph_meta_editor(Renderer2D& tr, const MouseState& mou
                  style.bright_text[0], style.bright_text[1], style.bright_text[2]);
     tr.draw_text(cancel_x + 18.0f, by + 4.0f, T("cancel", "Cancel"),
                  style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+}
+
+void DialogManager::draw_asset_browser(Renderer2D& tr, const MouseState& mouse, const UIStyle& style,
+                                       float popup_opacity, uint32_t win_w, uint32_t win_h) {
+    if (!asset_browser.open) return;
+
+    OverlayPanelLayout layout = compute_package_browser_layout(win_w, win_h, asset_browser.entries.size());
+    float wf = layout.wf, hf = layout.hf;
+    float px = layout.px, py = layout.py;
+    float pw = layout.pw, ph = layout.ph;
+    float cx = px + 16.0f;
+    float inner_w = pw - 32.0f;
+
+    tr.draw_rect(0, 0, wf, hf, style.scrim[0], style.scrim[1], style.scrim[2], style.scrim[3] * popup_opacity);
+    draw_shadow(tr, px, py, pw, ph, style.corner_radius);
+    tr.draw_rounded_rect(px, py, pw, ph, style.corner_radius,
+                         style.popup_bg[0], style.popup_bg[1], style.popup_bg[2], style.popup_bg[3]);
+    tr.draw_rect(px, py, pw, 2, style.accent[0], style.accent[1], style.accent[2]);
+
+    std::string title = "Select " + asset_browser.asset_kind + " asset";
+    tr.draw_text(cx, py + 16.0f, title.c_str(),
+                 style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+    if (!asset_browser.current_value.empty()) {
+        tr.draw_text(cx, py + 32.0f,
+                     truncate_text(tr, asset_browser.current_value, inner_w, 0.75f).c_str(),
+                     style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.75f);
+    }
+
+    float list_top = py + 56.0f;
+    float list_h = ph - 110.0f;
+    tr.draw_rect(cx, list_top, inner_w, list_h,
+                 style.input_field_bg[0], style.input_field_bg[1], style.input_field_bg[2], 0.65f);
+
+    int first = std::max(0, static_cast<int>(std::floor(asset_browser.scroll / kPkgBrowserItemH)));
+    float offset = asset_browser.scroll - first * kPkgBrowserItemH;
+    int visible = std::min<int>(kPkgBrowserMaxVisible, asset_browser.entries.size());
+    for (int vi = 0; vi < visible; ++vi) {
+        int idx = first + vi;
+        if (idx >= static_cast<int>(asset_browser.entries.size())) break;
+        const auto& entry = asset_browser.entries[idx];
+        float iy = list_top - offset + vi * kPkgBrowserItemH;
+        bool hovered = mouse.x >= cx && mouse.x <= cx + inner_w &&
+                       mouse.y >= iy && mouse.y <= iy + kPkgBrowserItemH;
+        if (idx == asset_browser.sel || hovered) {
+            tr.draw_rect(cx + 2.0f, iy + 2.0f, inner_w - 4.0f, kPkgBrowserItemH - 4.0f,
+                         style.node_sel_bg[0], style.node_sel_bg[1], style.node_sel_bg[2], 0.9f);
+        }
+        tr.draw_text(cx + 8.0f, iy + 6.0f, entry.display_name.c_str(),
+                     style.bright_text[0], style.bright_text[1], style.bright_text[2], 0.9f);
+        std::string meta = entry.scope;
+        if (!entry.package_name.empty()) meta += " / " + entry.package_name;
+        if (!entry.file_format.empty()) meta += " / " + entry.file_format;
+        tr.draw_text(cx + 8.0f, iy + 24.0f,
+                     truncate_text(tr, meta, inner_w - 16.0f, 0.75f).c_str(),
+                     style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.75f);
+    }
+
+    if (!asset_browser.error.empty()) {
+        tr.draw_text(cx, py + ph - 68.0f, asset_browser.error.c_str(),
+                     kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.9f);
+    }
+
+    float by = py + ph - 36.0f;
+    float btn_h = 22.0f;
+    float btn_w = 72.0f;
+    float x = px + pw - 16.0f - (btn_w * 5.0f + 8.0f * 4.0f);
+    const char* labels[] = {"Refresh", "Import", "Clear", "Select", "Cancel"};
+    for (int i = 0; i < 5; ++i) {
+        tr.draw_rect(x, by, btn_w, btn_h,
+                     (i == 3) ? style.accent[0] : style.button_bg[0],
+                     (i == 3) ? style.accent[1] : style.button_bg[1],
+                     (i == 3) ? style.accent[2] : style.button_bg[2],
+                     0.9f);
+        tr.draw_text(x + 10.0f, by + 4.0f, labels[i],
+                     style.bright_text[0], style.bright_text[1], style.bright_text[2], 0.75f);
+        x += btn_w + 8.0f;
+    }
 }
 
 // -----------------------------------------------------------------------

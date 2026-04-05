@@ -38,6 +38,7 @@ bool DialogManager::wants_keyboard() const {
         || clone_confirm.open
         || mcp_setup.open
         || graph_meta.open
+        || asset_browser.open
         || prefs.open
         || pkg_browser.open
         || example_browser.open
@@ -52,6 +53,7 @@ bool DialogManager::any_open() const {
         || clone_confirm.open
         || mcp_setup.open
         || graph_meta.open
+        || asset_browser.open
         || prefs.open
         || pkg_browser.open
         || example_browser.open
@@ -113,6 +115,34 @@ void DialogManager::open_graph_meta_editor(const GraphMetaEditData& data,
     graph_meta.open = true;
     graph_meta.active_field = 0;
     graph_meta.error.clear();
+    graph_meta.preview_picker = {};
+    rebuild_graph_meta_fields();
+    text_edit.reset(static_cast<int>(graph_meta.fields[graph_meta.active_field]->size()));
+}
+
+void DialogManager::set_graph_meta_save_callback(
+    std::function<bool(const GraphMetaEditData&, std::string&)> cb) {
+    graph_meta.save_callback = std::move(cb);
+}
+
+void DialogManager::open_asset_browser(const std::string& node_id, const std::string& param_name,
+                                       const std::string& asset_kind, const std::string& current_value) {
+    asset_browser.node_id = node_id;
+    asset_browser.param_name = param_name;
+    asset_browser.asset_kind = asset_kind;
+    asset_browser.current_value = current_value;
+    asset_browser.error.clear();
+    asset_browser.sel = 0;
+    asset_browser.scroll = 0.0f;
+    asset_browser.open = true;
+    refresh_asset_browser_entries();
+}
+
+void DialogManager::set_asset_browser_callbacks(AssetBrowserCallbacks callbacks) {
+    asset_browser.callbacks = std::move(callbacks);
+}
+
+void DialogManager::rebuild_graph_meta_fields() {
     graph_meta.fields = {
         &graph_meta.data.id,
         &graph_meta.data.title,
@@ -128,12 +158,36 @@ void DialogManager::open_graph_meta_editor(const GraphMetaEditData& data,
         &graph_meta.data.role,
         &graph_meta.data.playability
     };
-    text_edit.reset(static_cast<int>(graph_meta.fields[graph_meta.active_field]->size()));
+    for (auto& ctrl : graph_meta.data.preview_controls)
+        graph_meta.fields.push_back(&ctrl.label);
+    if (graph_meta.active_field < 0) graph_meta.active_field = 0;
+    if (graph_meta.active_field >= static_cast<int>(graph_meta.fields.size()))
+        graph_meta.active_field = static_cast<int>(graph_meta.fields.size()) - 1;
 }
 
-void DialogManager::set_graph_meta_save_callback(
-    std::function<bool(const GraphMetaEditData&, std::string&)> cb) {
-    graph_meta.save_callback = std::move(cb);
+void DialogManager::refresh_asset_browser_entries() {
+    asset_browser.entries.clear();
+    if (asset_browser.callbacks.list_entries) {
+        asset_browser.entries = asset_browser.callbacks.list_entries(asset_browser.asset_kind);
+        std::sort(asset_browser.entries.begin(), asset_browser.entries.end(),
+                  [](const AssetBrowserEntry& a, const AssetBrowserEntry& b) {
+            if (a.scope != b.scope) return a.scope < b.scope;
+            if (a.package_name != b.package_name) return a.package_name < b.package_name;
+            return a.display_name < b.display_name;
+        });
+    }
+    if (!asset_browser.entries.empty()) {
+        int selected = 0;
+        for (int i = 0; i < static_cast<int>(asset_browser.entries.size()); ++i) {
+            if (asset_browser.entries[i].canonical_path == asset_browser.current_value) {
+                selected = i;
+                break;
+            }
+        }
+        asset_browser.sel = std::max(0, std::min(selected, static_cast<int>(asset_browser.entries.size()) - 1));
+    } else {
+        asset_browser.sel = 0;
+    }
 }
 
 void DialogManager::toggle_preferences() {

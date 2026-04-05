@@ -75,6 +75,9 @@ struct GraphContentMeta {
 
 This metadata is part of `Graph` itself, so ordinary `load()`, `save()`, `save_to_string()`,
 and `RuntimeAPI::save_as()` preserve it without going through a separate helper path.
+`preview_controls` remain compact metadata references to existing node params (`node`, `param`,
+optional `label`); editor-side structured authoring should round-trip that shape directly rather
+than storing a second serialized helper payload.
 
 ## `Graph` Class API
 

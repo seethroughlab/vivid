@@ -66,18 +66,6 @@ bool load_graph_quiet(const std::filesystem::path& graph_path,
     return true;
 }
 
-nlohmann::json preview_controls_to_json(const vivid::GraphContentMeta& meta) {
-    nlohmann::json out = nlohmann::json::array();
-    for (const auto& ctrl : meta.preview_controls) {
-        nlohmann::json item = nlohmann::json::object();
-        item["node"] = ctrl.node;
-        item["param"] = ctrl.param;
-        if (!ctrl.label.empty()) item["label"] = ctrl.label;
-        out.push_back(std::move(item));
-    }
-    return out;
-}
-
 void populate_example_entry_from_graph(const vivid::Graph& graph,
                                        const std::filesystem::path& graph_path,
                                        const std::filesystem::path& graphs_root,
@@ -156,8 +144,8 @@ bool load_graph_meta_edit_data(const std::string& graph_path,
     out.family = meta.family;
     out.role = meta.role;
     out.playability = meta.playability;
-    if (!meta.preview_controls.empty())
-        out.preview_controls_json = preview_controls_to_json(meta).dump();
+    for (const auto& ctrl : meta.preview_controls)
+        out.preview_controls.push_back({ctrl.node, ctrl.param, ctrl.label});
     return true;
 }
 
@@ -197,24 +185,13 @@ bool save_graph_meta_edit_data(const vivid::GraphMetaEditData& in, std::string& 
     set_or_erase("role", in.role);
     set_or_erase("playability", in.playability);
 
-    if (!in.preview_controls_json.empty()) {
-        try {
-            auto preview = nlohmann::json::parse(in.preview_controls_json);
-            if (preview.is_array()) {
-                for (const auto& item : preview) {
-                    if (!item.is_object()) continue;
-                    vivid::GraphPreviewControl ctrl;
-                    if (item.contains("node") && item["node"].is_string())
-                        ctrl.node = item["node"].get<std::string>();
-                    if (item.contains("param") && item["param"].is_string())
-                        ctrl.param = item["param"].get<std::string>();
-                    if (item.contains("label") && item["label"].is_string())
-                        ctrl.label = item["label"].get<std::string>();
-                    if (!ctrl.node.empty() && !ctrl.param.empty())
-                        meta.preview_controls.push_back(std::move(ctrl));
-                }
-            }
-        } catch (...) {}
+    for (const auto& item : in.preview_controls) {
+        vivid::GraphPreviewControl ctrl;
+        ctrl.node = trim_copy(item.node);
+        ctrl.param = trim_copy(item.param);
+        ctrl.label = trim_copy(item.label);
+        if (!ctrl.node.empty() && !ctrl.param.empty())
+            meta.preview_controls.push_back(std::move(ctrl));
     }
 
     if (!graph.save(in.path.c_str())) {

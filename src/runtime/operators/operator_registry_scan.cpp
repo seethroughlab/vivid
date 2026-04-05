@@ -50,6 +50,7 @@ static std::shared_ptr<WgslOperatorConfig> make_wgsl_operator_config(
         pd.group = hp.group;
         pd.layout_columns = hp.layout_columns;
         pd.layout_column_index = hp.layout_column_index;
+        pd.asset_kind = hp.asset_kind;
         config->params.push_back(std::move(pd));
     }
     return config;
@@ -95,6 +96,7 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
     entry.semantic_units.resize(param_count);
     entry.semantic_intents.resize(param_count);
     entry.descriptions.resize(param_count);
+    entry.asset_kinds.resize(param_count);
     entry.choice_labels.resize(param_count);
     entry.choice_label_ptrs.resize(param_count);
     for (uint32_t i = 0; i < param_count; ++i) {
@@ -160,6 +162,12 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
             dp.description = entry.descriptions[i].c_str();
         } else {
             dp.description = nullptr;
+        }
+        if (sp.asset_kind) {
+            entry.asset_kinds[i] = sp.asset_kind;
+            dp.asset_kind = entry.asset_kinds[i].c_str();
+        } else {
+            dp.asset_kind = nullptr;
         }
     }
 

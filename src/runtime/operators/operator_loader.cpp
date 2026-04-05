@@ -374,6 +374,7 @@ void OperatorLoader::init_wgsl_operator(std::shared_ptr<WgslOperatorConfig> conf
         dp.semantic_unit = nullptr;
         dp.semantic_intent = nullptr;
         dp.description = nullptr;
+        dp.asset_kind = sp.asset_kind.empty() ? nullptr : sp.asset_kind.c_str();
 
         // Group
         dd_group_strings_[i] = sp.group;

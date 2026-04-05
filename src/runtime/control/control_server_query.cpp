@@ -144,6 +144,8 @@ std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const Subgraph
                     p["semantic_intent"] = pd.semantic_intent;
                 if (pd.description)
                     p["description"] = pd.description;
+                if (pd.asset_kind)
+                    p["asset_kind"] = pd.asset_kind;
                 if (pd.choice_count > 0 && pd.choice_labels) {
                     nlohmann::json choices = nlohmann::json::array();
                     for (uint32_t c = 0; c < pd.choice_count; ++c)
@@ -177,6 +179,7 @@ std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const Subgraph
                 if (!pi.semantic_shape.empty()) p["semantic_shape"] = pi.semantic_shape;
                 if (!pi.semantic_unit.empty()) p["semantic_unit"] = pi.semantic_unit;
                 if (!pi.semantic_intent.empty()) p["semantic_intent"] = pi.semantic_intent;
+                if (!pi.asset_kind.empty()) p["asset_kind"] = pi.asset_kind;
                 if (!pi.performance_page.empty()) p["performance_page"] = pi.performance_page;
                 if (pi.performance_order >= 0) p["performance_order"] = pi.performance_order;
                 if (!pi.performance_role.empty()) p["performance_role"] = pi.performance_role;
@@ -758,6 +761,8 @@ std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core, const Subgr
                     pm["semantic_intent"] = pd.semantic_intent;
                 if (pd.description)
                     pm["description"] = pd.description;
+                if (pd.asset_kind)
+                    pm["asset_kind"] = pd.asset_kind;
                 param_meta_arr.push_back(std::move(pm));
             }
         }
@@ -950,6 +955,7 @@ std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core, const Subgr
                 if (!pi.semantic_shape.empty()) pm["semantic_shape"] = pi.semantic_shape;
                 if (!pi.semantic_unit.empty()) pm["semantic_unit"] = pi.semantic_unit;
                 if (!pi.semantic_intent.empty()) pm["semantic_intent"] = pi.semantic_intent;
+                if (!pi.asset_kind.empty()) pm["asset_kind"] = pi.asset_kind;
                 if (!pi.performance_page.empty()) pm["performance_page"] = pi.performance_page;
                 if (pi.performance_order >= 0) pm["performance_order"] = pi.performance_order;
                 if (!pi.performance_role.empty()) pm["performance_role"] = pi.performance_role;

@@ -19,6 +19,7 @@ struct WgslHeaderParam {
     std::string group;                        // collapsible group name
     uint8_t layout_columns = 0;              // 0 = full-width
     uint8_t layout_column_index = 0;
+    std::string asset_kind;
 };
 
 struct WgslHeaderInput {

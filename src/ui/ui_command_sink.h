@@ -106,11 +106,34 @@ public:
     virtual void add_mod_assignment(const std::string& node_id, const std::string& source,
                                     const std::string& destination, float amount,
                                     const std::string& polarity, const std::string& curve) {}
+    virtual bool try_add_mod_assignment(const std::string& node_id, const std::string& source,
+                                        const std::string& destination, float amount,
+                                        const std::string& polarity, const std::string& curve,
+                                        std::string* error = nullptr) {
+        add_mod_assignment(node_id, source, destination, amount, polarity, curve);
+        if (error) error->clear();
+        return true;
+    }
     virtual void remove_mod_assignment(const std::string& node_id,
                                        const std::string& source, const std::string& destination) {}
+    virtual bool try_remove_mod_assignment(const std::string& node_id,
+                                           const std::string& source, const std::string& destination,
+                                           std::string* error = nullptr) {
+        remove_mod_assignment(node_id, source, destination);
+        if (error) error->clear();
+        return true;
+    }
     virtual void update_mod_assignment(const std::string& node_id,
                                        const std::string& source, const std::string& destination,
                                        float amount, const std::string& polarity, const std::string& curve) {}
+    virtual bool try_update_mod_assignment(const std::string& node_id,
+                                           const std::string& source, const std::string& destination,
+                                           float amount, const std::string& polarity, const std::string& curve,
+                                           std::string* error = nullptr) {
+        update_mod_assignment(node_id, source, destination, amount, polarity, curve);
+        if (error) error->clear();
+        return true;
+    }
 
     // Solo mode (session-only UI affordance)
     virtual void set_solo(const std::string& node_id) {}

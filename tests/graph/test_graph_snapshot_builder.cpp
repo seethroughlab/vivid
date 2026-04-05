@@ -39,7 +39,7 @@ int main(int argc, char* argv[]) {
 
     // Create a graph with one node
     vivid::Graph graph;
-    graph.add_node("n1", "TestOpV1");
+    graph.add_node("n1", "TestOp");
 
     vivid::RuntimeCore runtime;
     bool built = runtime.build(graph, registry);

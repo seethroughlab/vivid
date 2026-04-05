@@ -63,8 +63,10 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         sn.output_lanes = cn.output_lanes;
         sn.output_string_values = cn.output_string_values;
         sn.output_string_lanes = cn.output_string_lanes;
-        for (const auto& [name, idx] : cn.file_param_indices)
-            sn.file_param_values[name] = cn.file_param_storage[idx];
+        for (const auto& [name, idx] : cn.file_param_indices) {
+            if (idx < cn.file_param_storage.size())
+                sn.file_param_values[name] = cn.file_param_storage[idx];
+        }
         sn.gpu_tex_width = cn.gpu ? cn.gpu->tex_width : 0;
         sn.gpu_tex_height = cn.gpu ? cn.gpu->tex_height : 0;
         sn.gpu_tex_inherited = cn.gpu ? cn.gpu->tex_inherited : false;

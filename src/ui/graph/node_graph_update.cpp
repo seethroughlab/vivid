@@ -229,6 +229,7 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     update_wire_drag();
     update_scrollbar_drag();
     update_slider_drag();
+    update_modulation_drag();
     update_xy_pad_drag();
     update_color_drag();
     update_patch_drag();

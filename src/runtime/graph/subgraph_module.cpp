@@ -199,6 +199,8 @@ static bool parse_module_def(const nlohmann::json& root, SubgraphModuleDef& def)
                 pb.semantic_unit = it->get<std::string>();
             if (auto it = pval.find("semantic_intent"); it != pval.end() && it->is_string())
                 pb.semantic_intent = it->get<std::string>();
+            if (auto it = pval.find("asset_kind"); it != pval.end() && it->is_string())
+                pb.asset_kind = it->get<std::string>();
             if (auto it = pval.find("performance_page"); it != pval.end() && it->is_string())
                 pb.performance_page = it->get<std::string>();
             if (auto it = pval.find("performance_order"); it != pval.end() && it->is_number_integer())
@@ -551,6 +553,7 @@ std::shared_ptr<const ui::OperatorInfo> make_operator_info(const SubgraphModuleD
         pi.semantic_shape = pb.semantic_shape;
         pi.semantic_unit = pb.semantic_unit;
         pi.semantic_intent = pb.semantic_intent;
+        pi.asset_kind = pb.asset_kind;
         pi.performance_page = pb.performance_page;
         pi.performance_order = pb.performance_order;
         pi.performance_role = pb.performance_role;

@@ -218,6 +218,10 @@ metadata. This mirrors the persisted `GraphContentMeta` contract from `Graph::lo
 and includes Step 6 fields such as `domains`, `content_kind`, `category`, `family`, `role`,
 `playability`, and raw `preview_controls`.
 
+Param metadata returned through `inspect_graph`, `list_types`, and `operator_docs` may also include
+an optional `asset_kind` string. When present, it marks a file/string-backed param as asset-bound
+and declares which asset-library kind the UI should browse for that param.
+
 The asset endpoints are also immediate. `refresh_assets` rebuilds both workspace and package entries;
 it is not limited to workspace sidecars only.
 
@@ -265,7 +269,7 @@ The operator introspection endpoints are intended to serve MCP planning, authori
 
 `list_types` returns the registered operator catalog with descriptor metadata for:
 
-- params: type/default/range plus semantic metadata and descriptions when present
+- params: type/default/range plus semantic metadata, optional `asset_kind`, and descriptions when present
 - ports: type/transport plus semantic metadata, defaults/channels, and custom-type registry info when present
 
 When the runtime can resolve operator docs from source comments in the core source tree or an installed

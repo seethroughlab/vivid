@@ -24,6 +24,7 @@ struct WgslOperatorConfig {
         std::string group;                        // collapsible group name
         uint8_t layout_columns = 0;
         uint8_t layout_column_index = 0;
+        std::string asset_kind;
     };
 
     struct InputDef {
@@ -69,6 +70,7 @@ public:
             p.display_hint = pd.display_hint;
             p.layout_columns = pd.layout_columns;
             p.layout_column_index = pd.layout_column_index;
+            p.asset_kind = pd.asset_kind.empty() ? nullptr : pd.asset_kind.c_str();
             params_.push_back(p);
         }
 

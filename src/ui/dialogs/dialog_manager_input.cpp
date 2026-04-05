@@ -6,6 +6,7 @@
 #include "ui/graph/node_graph_constants.h"
 #include "ui/dialogs/file_dialog.h"
 #include <GLFW/glfw3.h>
+#include <algorithm>
 #include <cstring>
 #include <cmath>
 
@@ -167,6 +168,7 @@ bool DialogManager::on_key(int key, int /*action*/, int /*mods*/,
         if (key == GLFW_KEY_ESCAPE) {
             graph_meta.open = false;
             graph_meta.error.clear();
+            graph_meta.preview_picker = {};
         } else if (key == GLFW_KEY_TAB || key == GLFW_KEY_DOWN) {
             graph_meta.active_field =
                 (graph_meta.active_field + 1) % static_cast<int>(graph_meta.fields.size());
@@ -192,6 +194,27 @@ bool DialogManager::on_key(int key, int /*action*/, int /*mods*/,
                 } else {
                     graph_meta.error = err.empty() ? "Failed to save meta" : err;
                 }
+            }
+        }
+        return true;
+    }
+
+    if (asset_browser.open) {
+        if (key == GLFW_KEY_ESCAPE) {
+            asset_browser.open = false;
+            asset_browser.error.clear();
+        } else if (key == GLFW_KEY_UP) {
+            asset_browser.sel = std::max(0, asset_browser.sel - 1);
+        } else if (key == GLFW_KEY_DOWN) {
+            asset_browser.sel = std::min(std::max(0, static_cast<int>(asset_browser.entries.size()) - 1),
+                                         asset_browser.sel + 1);
+        } else if (key == GLFW_KEY_ENTER) {
+            if (asset_browser.sel >= 0 &&
+                asset_browser.sel < static_cast<int>(asset_browser.entries.size())) {
+                commands_.set_string_param(asset_browser.node_id, asset_browser.param_name,
+                                           asset_browser.entries[asset_browser.sel].canonical_path);
+                asset_browser.open = false;
+                asset_browser.error.clear();
             }
         }
         return true;
@@ -273,6 +296,12 @@ bool DialogManager::on_scroll(float y_offset) {
         pkg_browser.scroll = std::max(0.0f, std::min(pkg_browser.scroll, max_scroll));
         return true;
     }
+    if (asset_browser.open && !asset_browser.entries.empty()) {
+        asset_browser.scroll -= y_offset * kPkgBrowserItemH;
+        float max_scroll = std::max(0.0f, (static_cast<int>(asset_browser.entries.size()) - kPkgBrowserMaxVisible) * kPkgBrowserItemH);
+        asset_browser.scroll = std::max(0.0f, std::min(asset_browser.scroll, max_scroll));
+        return true;
+    }
     if (about.open) {
         about.scroll -= y_offset * 20.0f;
         about.scroll = std::max(0.0f, std::min(about.scroll, about.max_scroll));
@@ -289,6 +318,7 @@ void DialogManager::update(MouseState& mouse, uint32_t win_w, uint32_t win_h) {
     update_clone_confirm(mouse, win_w, win_h);
     update_mcp_setup(mouse, win_w, win_h);
     update_graph_meta_editor(mouse, win_w, win_h);
+    update_asset_browser(mouse, win_w, win_h);
     update_preferences(mouse, win_w, win_h);
     update_about(mouse, win_w, win_h);
     update_create_popup(mouse, win_w, win_h);
@@ -471,17 +501,52 @@ void DialogManager::update_graph_meta_editor(MouseState& mouse, uint32_t win_w, 
     if (!overlay_contains(layout, mouse.x, mouse.y)) {
         graph_meta.open = false;
         graph_meta.error.clear();
+        graph_meta.preview_picker = {};
         mouse.left_clicked = false;
         mouse.left_released = false;
         return;
     }
 
+    if (graph_meta.preview_picker.open) {
+        auto& picker = graph_meta.preview_picker;
+        float item_h = 20.0f;
+        int visible = std::min<int>(8, picker.options.size());
+        float picker_h = visible * item_h + 4.0f;
+        if (mouse.x >= picker.x && mouse.x <= picker.x + picker.w &&
+            mouse.y >= picker.y && mouse.y <= picker.y + picker_h) {
+            int idx = static_cast<int>((mouse.y - picker.y - 2.0f) / item_h);
+            idx = std::max(0, std::min(idx, visible - 1));
+            if (picker.row >= 0 &&
+                picker.row < static_cast<int>(graph_meta.data.preview_controls.size()) &&
+                idx < static_cast<int>(picker.options.size())) {
+                auto& ctrl = graph_meta.data.preview_controls[picker.row];
+                if (picker.kind == 0) {
+                    ctrl.node = picker.options[idx];
+                    ctrl.param.clear();
+                    for (const auto& opt : graph_meta.data.preview_options) {
+                        if (opt.node == ctrl.node && !opt.params.empty()) {
+                            ctrl.param = opt.params.front();
+                            break;
+                        }
+                    }
+                } else {
+                    ctrl.param = picker.options[idx];
+                }
+            }
+            picker.open = false;
+            mouse.left_clicked = false;
+            mouse.left_released = false;
+            return;
+        }
+        picker.open = false;
+    }
+
     float cx = px + 16.0f;
     float cy = py + 52.0f;
-    float label_w = 160.0f;
-    float field_h = 24.0f;
+    float label_w = 150.0f;
+    float field_h = 22.0f;
     float field_w = pw - 32.0f - label_w;
-    float row_gap = 8.0f;
+    float row_gap = 4.0f;
     const int kFieldCount = 13;
     for (int i = 0; i < kFieldCount; ++i) {
         float fy = cy + i * (field_h + row_gap);
@@ -489,6 +554,86 @@ void DialogManager::update_graph_meta_editor(MouseState& mouse, uint32_t win_w, 
         if (mouse.x >= fx && mouse.x <= fx + field_w &&
             mouse.y >= fy && mouse.y <= fy + field_h) {
             graph_meta.active_field = i;
+            mouse.left_clicked = false;
+            mouse.left_released = false;
+            return;
+        }
+    }
+
+    for (const auto& r : graph_meta.preview_node_rects) {
+        if (mouse.x >= r.x && mouse.x <= r.x + r.w &&
+            mouse.y >= r.y && mouse.y <= r.y + r.h) {
+            graph_meta.preview_picker = {};
+            graph_meta.preview_picker.open = true;
+            graph_meta.preview_picker.row = r.row;
+            graph_meta.preview_picker.kind = 0;
+            graph_meta.preview_picker.x = r.x;
+            graph_meta.preview_picker.y = r.y + r.h + 2.0f;
+            graph_meta.preview_picker.w = r.w;
+            for (const auto& opt : graph_meta.data.preview_options)
+                graph_meta.preview_picker.options.push_back(opt.node);
+            mouse.left_clicked = false;
+            mouse.left_released = false;
+            return;
+        }
+    }
+
+    for (const auto& r : graph_meta.preview_param_rects) {
+        if (mouse.x >= r.x && mouse.x <= r.x + r.w &&
+            mouse.y >= r.y && mouse.y <= r.y + r.h) {
+            graph_meta.preview_picker = {};
+            graph_meta.preview_picker.open = true;
+            graph_meta.preview_picker.row = r.row;
+            graph_meta.preview_picker.kind = 1;
+            graph_meta.preview_picker.x = r.x;
+            graph_meta.preview_picker.y = r.y + r.h + 2.0f;
+            graph_meta.preview_picker.w = r.w;
+            const auto& node = graph_meta.data.preview_controls[r.row].node;
+            for (const auto& opt : graph_meta.data.preview_options) {
+                if (opt.node == node) {
+                    graph_meta.preview_picker.options = opt.params;
+                    break;
+                }
+            }
+            mouse.left_clicked = false;
+            mouse.left_released = false;
+            return;
+        }
+    }
+
+    for (const auto& r : graph_meta.preview_label_rects) {
+        if (mouse.x >= r.x && mouse.x <= r.x + r.w &&
+            mouse.y >= r.y && mouse.y <= r.y + r.h) {
+            graph_meta.active_field = kFieldCount + r.row;
+            mouse.left_clicked = false;
+            mouse.left_released = false;
+            return;
+        }
+    }
+
+    for (const auto& b : graph_meta.preview_button_rects) {
+        if (mouse.x >= b.x && mouse.x <= b.x + b.w &&
+            mouse.y >= b.y && mouse.y <= b.y + b.h) {
+            if (b.action == 0 && b.row > 0) {
+                std::swap(graph_meta.data.preview_controls[b.row], graph_meta.data.preview_controls[b.row - 1]);
+            } else if (b.action == 1 &&
+                       b.row >= 0 &&
+                       b.row + 1 < static_cast<int>(graph_meta.data.preview_controls.size())) {
+                std::swap(graph_meta.data.preview_controls[b.row], graph_meta.data.preview_controls[b.row + 1]);
+            } else if (b.action == 2 &&
+                       b.row >= 0 &&
+                       b.row < static_cast<int>(graph_meta.data.preview_controls.size())) {
+                graph_meta.data.preview_controls.erase(graph_meta.data.preview_controls.begin() + b.row);
+            } else if (b.action == 3) {
+                PreviewControl ctrl;
+                if (!graph_meta.data.preview_options.empty()) {
+                    ctrl.node = graph_meta.data.preview_options.front().node;
+                    if (!graph_meta.data.preview_options.front().params.empty())
+                        ctrl.param = graph_meta.data.preview_options.front().params.front();
+                }
+                graph_meta.data.preview_controls.push_back(std::move(ctrl));
+            }
+            rebuild_graph_meta_fields();
             mouse.left_clicked = false;
             mouse.left_released = false;
             return;
@@ -503,11 +648,26 @@ void DialogManager::update_graph_meta_editor(MouseState& mouse, uint32_t win_w, 
 
     if (mouse.x >= save_x && mouse.x <= save_x + save_w &&
         mouse.y >= by && mouse.y <= by + 24.0f) {
+        for (const auto& ctrl : graph_meta.data.preview_controls) {
+            bool valid = false;
+            for (const auto& opt : graph_meta.data.preview_options) {
+                if (opt.node != ctrl.node) continue;
+                valid = std::find(opt.params.begin(), opt.params.end(), ctrl.param) != opt.params.end();
+                break;
+            }
+            if (!valid) {
+                graph_meta.error = "Preview controls must reference a valid node/param pair";
+                mouse.left_clicked = false;
+                mouse.left_released = false;
+                return;
+            }
+        }
         if (graph_meta.save_callback) {
             std::string err;
             if (graph_meta.save_callback(graph_meta.data, err)) {
                 graph_meta.open = false;
                 graph_meta.error.clear();
+                graph_meta.preview_picker = {};
             } else {
                 graph_meta.error = err.empty() ? "Failed to save meta" : err;
             }
@@ -520,9 +680,92 @@ void DialogManager::update_graph_meta_editor(MouseState& mouse, uint32_t win_w, 
         mouse.y >= by && mouse.y <= by + 24.0f) {
         graph_meta.open = false;
         graph_meta.error.clear();
+        graph_meta.preview_picker = {};
         mouse.left_clicked = false;
         mouse.left_released = false;
         return;
+    }
+
+    mouse.left_clicked = false;
+    mouse.left_released = false;
+}
+
+void DialogManager::update_asset_browser(MouseState& mouse, uint32_t win_w, uint32_t win_h) {
+    if (!asset_browser.open || !mouse.left_clicked) return;
+
+    OverlayPanelLayout layout = compute_package_browser_layout(win_w, win_h, asset_browser.entries.size());
+    float px = layout.px, py = layout.py, pw = layout.pw, ph = layout.ph;
+    float cx = px + 16.0f;
+    float inner_w = pw - 32.0f;
+    float list_top = py + 56.0f;
+    float list_h = ph - 110.0f;
+
+    if (!overlay_contains(layout, mouse.x, mouse.y)) {
+        asset_browser.open = false;
+        asset_browser.error.clear();
+        mouse.left_clicked = false;
+        mouse.left_released = false;
+        return;
+    }
+
+    if (mouse.x >= cx && mouse.x <= cx + inner_w &&
+        mouse.y >= list_top && mouse.y <= list_top + list_h) {
+        int first = std::max(0, static_cast<int>(std::floor(asset_browser.scroll / kPkgBrowserItemH)));
+        float offset = asset_browser.scroll - first * kPkgBrowserItemH;
+        int row = static_cast<int>((mouse.y - list_top + offset) / kPkgBrowserItemH);
+        int idx = first + row;
+        if (idx >= 0 && idx < static_cast<int>(asset_browser.entries.size()))
+            asset_browser.sel = idx;
+        mouse.left_clicked = false;
+        mouse.left_released = false;
+        return;
+    }
+
+    float by = py + ph - 36.0f;
+    float btn_h = 22.0f;
+    float btn_w = 72.0f;
+    float x = px + pw - 16.0f - (btn_w * 5.0f + 8.0f * 4.0f);
+    for (int i = 0; i < 5; ++i) {
+        if (mouse.x >= x && mouse.x <= x + btn_w &&
+            mouse.y >= by && mouse.y <= by + btn_h) {
+            if (i == 0) {
+                if (asset_browser.callbacks.refresh) asset_browser.callbacks.refresh();
+                refresh_asset_browser_entries();
+            } else if (i == 1) {
+                std::string source = vivid::ui::open_file_dialog();
+                if (!source.empty() && asset_browser.callbacks.import_asset) {
+                    AssetBrowserEntry imported;
+                    std::string error;
+                    if (asset_browser.callbacks.import_asset(asset_browser.asset_kind, source, imported, error)) {
+                        commands_.set_string_param(asset_browser.node_id, asset_browser.param_name,
+                                                   imported.canonical_path);
+                        asset_browser.open = false;
+                        asset_browser.error.clear();
+                    } else {
+                        asset_browser.error = error.empty() ? "Import failed" : error;
+                    }
+                }
+            } else if (i == 2) {
+                commands_.set_string_param(asset_browser.node_id, asset_browser.param_name, "");
+                asset_browser.open = false;
+                asset_browser.error.clear();
+            } else if (i == 3) {
+                if (asset_browser.sel >= 0 &&
+                    asset_browser.sel < static_cast<int>(asset_browser.entries.size())) {
+                    commands_.set_string_param(asset_browser.node_id, asset_browser.param_name,
+                                               asset_browser.entries[asset_browser.sel].canonical_path);
+                    asset_browser.open = false;
+                    asset_browser.error.clear();
+                }
+            } else if (i == 4) {
+                asset_browser.open = false;
+                asset_browser.error.clear();
+            }
+            mouse.left_clicked = false;
+            mouse.left_released = false;
+            return;
+        }
+        x += btn_w + 8.0f;
     }
 
     mouse.left_clicked = false;

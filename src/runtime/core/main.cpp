@@ -1182,6 +1182,53 @@ fn fbm(p_in: vec2f) -> f32 {
     };
     mi::refresh_package_browser_entries_cache(app_ctx, package_browser_state);
     mi::configure_package_browser(app_ctx, package_browser_state);
+    graph_ui.set_asset_browser_callbacks({
+        [&asset_library]() {
+            asset_library.refresh();
+        },
+        [&asset_library](const std::string& kind_name) {
+            std::vector<vivid::AssetBrowserEntry> out;
+            std::optional<vivid::AssetKind> kind;
+            if (!kind_name.empty())
+                kind = vivid::parse_asset_kind(kind_name);
+            for (const auto& entry : asset_library.list(kind)) {
+                vivid::AssetBrowserEntry item;
+                item.asset_id = entry.asset_id;
+                item.kind = vivid::asset_kind_str(entry.kind);
+                item.display_name = entry.display_name;
+                item.scope = vivid::asset_scope_str(entry.scope);
+                item.package_name = entry.package_name;
+                item.canonical_path = entry.canonical_path;
+                item.relative_path = entry.relative_path;
+                item.file_format = entry.file_format;
+                out.push_back(std::move(item));
+            }
+            return out;
+        },
+        [&asset_library](const std::string& kind_name, const std::string& source_path,
+                         vivid::AssetBrowserEntry& out_entry, std::string& error) {
+            auto kind = vivid::parse_asset_kind(kind_name);
+            if (!kind) {
+                error = "Unsupported asset kind: " + kind_name;
+                return false;
+            }
+            auto result = asset_library.import_asset(*kind, source_path);
+            if (!result.ok) {
+                error = result.error;
+                return false;
+            }
+            out_entry.asset_id = result.entry.asset_id;
+            out_entry.kind = vivid::asset_kind_str(result.entry.kind);
+            out_entry.display_name = result.entry.display_name;
+            out_entry.scope = vivid::asset_scope_str(result.entry.scope);
+            out_entry.package_name = result.entry.package_name;
+            out_entry.canonical_path = result.entry.canonical_path;
+            out_entry.relative_path = result.entry.relative_path;
+            out_entry.file_format = result.entry.file_format;
+            error.clear();
+            return true;
+        }
+    });
     graph_ui.set_examples(discovered_examples);
     graph_ui.set_example_package_checker(
         [&pkg_manager](const std::vector<std::string>& requires, std::string& missing) {

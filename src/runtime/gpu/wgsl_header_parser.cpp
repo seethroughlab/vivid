@@ -193,6 +193,10 @@ std::optional<WgslHeader> parse_wgsl_header(const std::string& file_contents,
             if (pcol != param_val.end() && pcol->is_number_integer())
                 p.layout_column_index = static_cast<uint8_t>(pcol->get<int>());
 
+            auto passet = param_val.find("asset_kind");
+            if (passet != param_val.end() && passet->is_string())
+                p.asset_kind = passet->get<std::string>();
+
             header.params.push_back(std::move(p));
         }
     }

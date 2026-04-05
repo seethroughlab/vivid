@@ -17,6 +17,11 @@ struct PreviewSnapshotRow {
     std::string value;
 };
 
+struct PreviewControlOption {
+    std::string node;
+    std::vector<std::string> params;
+};
+
 struct ExampleEntry {
     std::string id;
     std::string title;
@@ -53,7 +58,25 @@ struct GraphMetaEditData {
     std::string family;
     std::string role;
     std::string playability;
-    std::string preview_controls_json;
+    std::vector<PreviewControl> preview_controls;
+    std::vector<PreviewControlOption> preview_options;
+};
+
+struct AssetBrowserEntry {
+    std::string asset_id;
+    std::string kind;
+    std::string display_name;
+    std::string scope;
+    std::string package_name;
+    std::string canonical_path;
+    std::string relative_path;
+    std::string file_format;
+};
+
+struct AssetBrowserCallbacks {
+    std::function<void()> refresh;
+    std::function<std::vector<AssetBrowserEntry>(const std::string&)> list_entries;
+    std::function<bool(const std::string&, const std::string&, AssetBrowserEntry&, std::string&)> import_asset;
 };
 
 enum class PackageBrowserFetchState {
@@ -103,9 +126,12 @@ enum class SaveConfirmAction { kNewGraph, kNewProject };
 namespace vivid::ui {
 
 using ::vivid::PreviewControl;
+using ::vivid::PreviewControlOption;
 using ::vivid::PreviewSnapshotRow;
 using ::vivid::ExampleEntry;
 using ::vivid::GraphMetaEditData;
+using ::vivid::AssetBrowserEntry;
+using ::vivid::AssetBrowserCallbacks;
 using ::vivid::PackageBrowserFetchState;
 using ::vivid::PackageBrowserEntry;
 using ::vivid::PackageBrowserUpdateSummary;

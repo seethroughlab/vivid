@@ -183,6 +183,43 @@ void NodeGraphUI::update_slider_drag() {
     }
 }
 
+void NodeGraphUI::update_modulation_drag() {
+    if (!inspector_.modulation_amount_dragging || dragging_node_idx_ >= 0) return;
+    if (mouse_.left_down) {
+        const auto* ns = snap_.find_node(inspector_.modulation_amount_node_id);
+        if (ns) {
+            auto rit = std::find_if(inspector_.mod_amount_rects.begin(), inspector_.mod_amount_rects.end(),
+                                    [&](const InspectorController::ModAmountRect& r) {
+                return r.node_id == inspector_.modulation_amount_node_id &&
+                       r.source == inspector_.modulation_amount_source &&
+                       r.destination == inspector_.modulation_amount_destination;
+            });
+            auto ait = std::find_if(ns->mod_assignments.begin(), ns->mod_assignments.end(),
+                                    [&](const NodeSnapshot::ModAssignInfo& a) {
+                return a.source == inspector_.modulation_amount_source &&
+                       a.destination == inspector_.modulation_amount_destination;
+            });
+            if (rit != inspector_.mod_amount_rects.end() && ait != ns->mod_assignments.end()) {
+                float t = std::clamp((mouse_.x - rit->x) / rit->w, 0.0f, 1.0f);
+                float range = std::max(0.01f, inspector_.modulation_amount_range);
+                float amount = -range + t * (range * 2.0f);
+                std::string error;
+                if (!commands_.try_update_mod_assignment(inspector_.modulation_amount_node_id,
+                                                         inspector_.modulation_amount_source,
+                                                         inspector_.modulation_amount_destination,
+                                                         amount, ait->polarity, ait->curve, &error)) {
+                    inspector_.modulation_error = error;
+                } else {
+                    inspector_.modulation_error.clear();
+                }
+            }
+        }
+    }
+    if (mouse_.left_released) {
+        inspector_.modulation_amount_dragging = false;
+    }
+}
+
 void NodeGraphUI::update_xy_pad_drag() {
     if (inspector_.active_xy_pad_idx < 0 || dragging_node_idx_ >= 0) return;
     if (mouse_.left_down && inspector_.active_xy_pad_idx < static_cast<int>(inspector_.xy_pad_rects.size())) {

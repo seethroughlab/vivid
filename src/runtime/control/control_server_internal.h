@@ -195,6 +195,8 @@ inline nlohmann::json build_param_descriptor_json(const VividParamDescriptor& pd
         p["semantic_intent"] = pd.semantic_intent;
     if (pd.description && *pd.description)
         p["description"] = pd.description;
+    if (pd.asset_kind && *pd.asset_kind)
+        p["asset_kind"] = pd.asset_kind;
     if (pd.default_string && *pd.default_string)
         p["default_string"] = pd.default_string;
     if (pd.group && *pd.group)

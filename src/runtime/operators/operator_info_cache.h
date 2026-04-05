@@ -47,13 +47,13 @@ public:
         if (!desc) return nullptr;
 
         auto info = std::make_shared<vivid::ui::OperatorInfo>();
-        info->name = desc->name;
+        info->name = desc->name ? desc->name : "";
         info->is_gpu = (desc->has_process_gpu != 0);
         info->params.resize(desc->param_count);
         for (uint32_t i = 0; i < desc->param_count; ++i) {
             auto& pi = info->params[i];
             const auto& pd = desc->params[i];
-            pi.name = pd.name;
+            pi.name = pd.name ? pd.name : "";
             pi.type = pd.type;
             pi.default_value = pd.default_value;
             pi.min_value = pd.min_value;
@@ -68,17 +68,18 @@ public:
             pi.semantic_unit       = pd.semantic_unit ? pd.semantic_unit : "";
             pi.semantic_intent     = pd.semantic_intent ? pd.semantic_intent : "";
             pi.description         = pd.description ? pd.description : "";
+            pi.asset_kind          = pd.asset_kind ? pd.asset_kind : "";
             if (pd.choice_labels && pd.choice_count > 0) {
                 pi.choice_labels.reserve(pd.choice_count);
                 for (uint32_t ci = 0; ci < pd.choice_count; ++ci)
-                    pi.choice_labels.push_back(pd.choice_labels[ci]);
+                    pi.choice_labels.push_back(pd.choice_labels[ci] ? pd.choice_labels[ci] : "");
             }
         }
 
         info->ports.resize(desc->port_count);
         for (uint32_t i = 0; i < desc->port_count; ++i) {
             auto& pi = info->ports[i];
-            pi.name = desc->ports[i].name;
+            pi.name = desc->ports[i].name ? desc->ports[i].name : "";
             pi.type = desc->ports[i].type;
             pi.direction = desc->ports[i].direction;
         }

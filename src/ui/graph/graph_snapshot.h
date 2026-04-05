@@ -38,6 +38,7 @@ struct ParamInfo {
     std::string semantic_unit;
     std::string semantic_intent;
     std::string description;
+    std::string asset_kind;
 
     // Performance surface metadata (Step 5)
     std::string performance_page;

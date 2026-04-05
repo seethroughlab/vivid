@@ -475,6 +475,112 @@ bool NodeGraphUI::handle_inspector_click() {
         }
     }
 
+    // Check modulation controls
+    {
+        auto cycle_assignment = [&](const InspectorController::ModAssignRect& r,
+                                    const std::string& next_source,
+                                    const std::string& next_destination,
+                                    const std::string& next_polarity) {
+            const auto* ns = snap_.find_node(r.node_id);
+            if (!ns) return true;
+            auto it = std::find_if(ns->mod_assignments.begin(), ns->mod_assignments.end(),
+                                   [&](const NodeSnapshot::ModAssignInfo& a) {
+                return a.source == r.source && a.destination == r.destination;
+            });
+            if (it == ns->mod_assignments.end()) return true;
+
+            std::string error;
+            if (next_source != r.source || next_destination != r.destination) {
+                if (!commands_.try_add_mod_assignment(r.node_id, next_source, next_destination,
+                                                      it->amount, next_polarity, it->curve, &error)) {
+                    inspector_.modulation_error = error;
+                    return true;
+                }
+                commands_.try_remove_mod_assignment(r.node_id, r.source, r.destination, nullptr);
+                inspector_.modulation_error.clear();
+                return true;
+            }
+
+            if (!commands_.try_update_mod_assignment(r.node_id, r.source, r.destination,
+                                                     it->amount, next_polarity, it->curve, &error)) {
+                inspector_.modulation_error = error;
+            } else {
+                inspector_.modulation_error.clear();
+            }
+            return true;
+        };
+
+        for (const auto& r : inspector_.mod_assign_rects) {
+            if (mouse_.x < r.x || mouse_.x > r.x + r.w ||
+                mouse_.y < r.y || mouse_.y > r.y + r.h) {
+                continue;
+            }
+
+            const auto* ns = snap_.find_node(r.node_id);
+            if (!ns) return true;
+
+            if (r.action == 4) {
+                if (!ns->mod_sources.empty() && !ns->mod_destinations.empty()) {
+                    std::string error;
+                    if (!commands_.try_add_mod_assignment(r.node_id, ns->mod_sources.front().name,
+                                                          ns->mod_destinations.front().name,
+                                                          1.0f, "unipolar", "linear", &error)) {
+                        inspector_.modulation_error = error;
+                    } else {
+                        inspector_.modulation_error.clear();
+                    }
+                }
+                return true;
+            }
+
+            auto ait = std::find_if(ns->mod_assignments.begin(), ns->mod_assignments.end(),
+                                    [&](const NodeSnapshot::ModAssignInfo& a) {
+                return a.source == r.source && a.destination == r.destination;
+            });
+            if (ait == ns->mod_assignments.end()) return true;
+
+            if (r.action == 0 && !ns->mod_sources.empty()) {
+                int idx = 0;
+                for (int i = 0; i < static_cast<int>(ns->mod_sources.size()); ++i)
+                    if (ns->mod_sources[i].name == r.source) { idx = i; break; }
+                idx = (idx + 1) % static_cast<int>(ns->mod_sources.size());
+                return cycle_assignment(r, ns->mod_sources[idx].name, r.destination, ait->polarity);
+            }
+            if (r.action == 1 && !ns->mod_destinations.empty()) {
+                int idx = 0;
+                for (int i = 0; i < static_cast<int>(ns->mod_destinations.size()); ++i)
+                    if (ns->mod_destinations[i].name == r.destination) { idx = i; break; }
+                idx = (idx + 1) % static_cast<int>(ns->mod_destinations.size());
+                return cycle_assignment(r, r.source, ns->mod_destinations[idx].name, ait->polarity);
+            }
+            if (r.action == 2) {
+                std::string next = (ait->polarity == "bipolar") ? "unipolar" : "bipolar";
+                return cycle_assignment(r, r.source, r.destination, next);
+            }
+            if (r.action == 3) {
+                std::string error;
+                if (!commands_.try_remove_mod_assignment(r.node_id, r.source, r.destination, &error)) {
+                    inspector_.modulation_error = error;
+                } else {
+                    inspector_.modulation_error.clear();
+                }
+                return true;
+            }
+        }
+
+        for (const auto& r : inspector_.mod_amount_rects) {
+            if (mouse_.x >= r.x && mouse_.x <= r.x + r.w &&
+                mouse_.y >= r.y && mouse_.y <= r.y + r.h) {
+                inspector_.modulation_amount_dragging = true;
+                inspector_.modulation_amount_node_id = r.node_id;
+                inspector_.modulation_amount_source = r.source;
+                inspector_.modulation_amount_destination = r.destination;
+                inspector_.modulation_amount_range = r.range;
+                return true;
+            }
+        }
+    }
+
     // Check resolution rect click-to-edit
     int ri = hit_test_rect(inspector_.resolution_rects, mouse_.x, mouse_.y);
     if (ri >= 0) {
@@ -626,9 +732,21 @@ bool NodeGraphUI::handle_inspector_click() {
     int fi = hit_test_rect(inspector_.file_button_rects, mouse_.x, mouse_.y);
     if (fi >= 0) {
         const auto& fr = inspector_.file_button_rects[fi];
-        std::string path = vivid::ui::open_file_dialog();
-        if (!path.empty()) {
-            commands_.set_string_param(fr.node_id, fr.param_name, path);
+        const auto* ns = snap_.find_node(fr.node_id);
+        const ParamInfo* pd = ns ? ns->find_param(fr.param_name) : nullptr;
+        if (pd && !pd->asset_kind.empty()) {
+            std::string current_value;
+            if (ns) {
+                auto it = ns->file_param_values.find(fr.param_name);
+                if (it != ns->file_param_values.end())
+                    current_value = it->second;
+            }
+            dialogs_.open_asset_browser(fr.node_id, fr.param_name, pd->asset_kind, current_value);
+        } else {
+            std::string path = vivid::ui::open_file_dialog();
+            if (!path.empty()) {
+                commands_.set_string_param(fr.node_id, fr.param_name, path);
+            }
         }
         return true;
     }

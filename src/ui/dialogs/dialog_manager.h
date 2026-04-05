@@ -68,12 +68,40 @@ public:
     };
 
     struct GraphMetaState {
+        struct PreviewRowRect { float x = 0, y = 0, w = 0, h = 0; int row = -1; };
+        struct PreviewButtonRect { float x = 0, y = 0, w = 0, h = 0; int row = -1; int action = 0; };
+        struct PreviewPickerState {
+            bool open = false;
+            int row = -1;
+            int kind = 0;  // 0=node, 1=param
+            int sel = 0;
+            float x = 0, y = 0, w = 0;
+            std::vector<std::string> options;
+        };
         bool open = false;
         int active_field = 0;
         std::vector<std::string*> fields;
         GraphMetaEditData data;
         std::string error;
+        std::vector<PreviewRowRect> preview_node_rects;
+        std::vector<PreviewRowRect> preview_param_rects;
+        std::vector<PreviewRowRect> preview_label_rects;
+        std::vector<PreviewButtonRect> preview_button_rects;
+        PreviewPickerState preview_picker;
         std::function<bool(const GraphMetaEditData&, std::string&)> save_callback;
+    };
+
+    struct AssetBrowserState {
+        bool open = false;
+        int sel = 0;
+        float scroll = 0.0f;
+        std::string node_id;
+        std::string param_name;
+        std::string asset_kind;
+        std::string current_value;
+        std::string error;
+        std::vector<AssetBrowserEntry> entries;
+        AssetBrowserCallbacks callbacks{};
     };
 
     struct PrefsState {
@@ -175,6 +203,7 @@ public:
     CloneConfirmState clone_confirm;
     McpSetupState mcp_setup;
     GraphMetaState graph_meta;
+    AssetBrowserState asset_browser;
     PrefsState prefs;
     PkgBrowserState pkg_browser;
     ExampleBrowserState example_browser;
@@ -204,6 +233,9 @@ public:
     void set_graph_meta_save_callback(
         std::function<bool(const GraphMetaEditData&, std::string&)> cb);
     const GraphMetaEditData& graph_meta_data() const { return graph_meta.data; }
+    void open_asset_browser(const std::string& node_id, const std::string& param_name,
+                            const std::string& asset_kind, const std::string& current_value);
+    void set_asset_browser_callbacks(AssetBrowserCallbacks callbacks);
 
     // --- Preferences ---
     void toggle_preferences();
@@ -291,6 +323,8 @@ private:
     void begin_pkg_action(PkgBrowserState::ActionKind kind, const std::string& action_name);
     void set_pkg_action_failure(const std::string& error);
     static bool pkg_action_uses_build_console(PkgBrowserState::ActionKind kind);
+    void rebuild_graph_meta_fields();
+    void refresh_asset_browser_entries();
 
     // --- Drawing (dialog_manager_draw.cpp) ---
     void draw_about(Renderer2D& tr, const MouseState& mouse, const UIStyle& style,
@@ -304,6 +338,8 @@ private:
     void draw_graph_meta_editor(Renderer2D& tr, const MouseState& mouse, const UIStyle& style,
                                 float popup_opacity, uint32_t win_w, uint32_t win_h,
                                 const TextEditState& text_edit, bool cursor_blink);
+    void draw_asset_browser(Renderer2D& tr, const MouseState& mouse, const UIStyle& style,
+                            float popup_opacity, uint32_t win_w, uint32_t win_h);
     void draw_preferences(Renderer2D& tr, const MouseState& mouse, const UIStyle& style,
                           float popup_opacity, uint32_t win_w, uint32_t win_h,
                           const TextEditState& text_edit, bool cursor_blink);
@@ -324,6 +360,7 @@ private:
     void update_clone_confirm(MouseState& mouse, uint32_t win_w, uint32_t win_h);
     void update_mcp_setup(MouseState& mouse, uint32_t win_w, uint32_t win_h);
     void update_graph_meta_editor(MouseState& mouse, uint32_t win_w, uint32_t win_h);
+    void update_asset_browser(MouseState& mouse, uint32_t win_w, uint32_t win_h);
     void update_preferences(MouseState& mouse, uint32_t win_w, uint32_t win_h);
     void update_package_browser(MouseState& mouse, uint32_t win_w, uint32_t win_h);
     void update_example_browser(MouseState& mouse, uint32_t win_w, uint32_t win_h);

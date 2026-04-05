@@ -637,6 +637,84 @@ void NodeGraphUI::draw_inspector_state_presets(Renderer2D& tr, const NodeSnapsho
     }
 }
 
+void NodeGraphUI::draw_inspector_modulation(Renderer2D& tr, const NodeSnapshot& node,
+                                            float px, float& py) {
+    if (!node.is_module_instance) return;
+    if (node.mod_sources.empty() || node.mod_destinations.empty()) return;
+
+    draw_section_separator(tr, px, py, kInspContentW, "Modulation");
+
+    float row_h = 20.0f;
+    float source_w = 100.0f;
+    float dest_w = 100.0f;
+    float polarity_w = 64.0f;
+    float remove_w = 18.0f;
+    float gap = 4.0f;
+    float amount_x = px + source_w + gap + dest_w + gap + polarity_w + gap;
+    float amount_w = kInspContentW - (amount_x - px) - gap - remove_w;
+
+    if (!inspector_.modulation_error.empty()) {
+        tr.draw_text(px, py, inspector_.modulation_error.c_str(),
+                     kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.85f);
+        py += kLineH;
+    }
+
+    for (const auto& a : node.mod_assignments) {
+        float range = std::max(1.0f, std::ceil(std::fabs(a.amount)));
+        float t = std::clamp((a.amount + range) / (range * 2.0f), 0.0f, 1.0f);
+
+        tr.draw_rect(px, py, source_w, row_h,
+                     style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
+        tr.draw_text(px + 6.0f, py + 3.0f, truncate_text(tr, a.source, source_w - 18.0f, 0.75f).c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.75f);
+        tr.draw_text(px + source_w - 12.0f, py + 3.0f, "\xe2\x86\x92",
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.75f);
+        inspector_.mod_assign_rects.push_back({px, py, source_w, row_h, node.node_id, a.source, a.destination, 0});
+
+        float dx = px + source_w + gap;
+        tr.draw_rect(dx, py, dest_w, row_h,
+                     style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
+        tr.draw_text(dx + 6.0f, py + 3.0f, truncate_text(tr, a.destination, dest_w - 18.0f, 0.75f).c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.75f);
+        tr.draw_text(dx + dest_w - 12.0f, py + 3.0f, "\xe2\x86\x92",
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.75f);
+        inspector_.mod_assign_rects.push_back({dx, py, dest_w, row_h, node.node_id, a.source, a.destination, 1});
+
+        float pol_x = dx + dest_w + gap;
+        tr.draw_rect(pol_x, py, polarity_w, row_h,
+                     style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
+        tr.draw_text(pol_x + 6.0f, py + 3.0f, a.polarity.c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.72f);
+        inspector_.mod_assign_rects.push_back({pol_x, py, polarity_w, row_h, node.node_id, a.source, a.destination, 2});
+
+        tr.draw_rect(amount_x, py, amount_w, row_h,
+                     style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
+        const float* sc = node_accent_color(node.is_gpu, node.active_cadence);
+        tr.draw_rect(amount_x, py, amount_w * t, row_h, sc[0], sc[1], sc[2], 0.85f);
+        std::string amount_label = format_float(a.amount, 2);
+        tr.draw_text(amount_x + 4.0f, py + 3.0f, amount_label.c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.72f);
+        inspector_.mod_amount_rects.push_back({amount_x, py, amount_w, row_h, node.node_id, a.source, a.destination, range});
+
+        float rx = amount_x + amount_w + gap;
+        tr.draw_rect(rx, py, remove_w, row_h,
+                     0.45f, 0.18f, 0.18f, 0.9f);
+        tr.draw_text(rx + 5.0f, py + 3.0f, "x",
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.75f);
+        inspector_.mod_assign_rects.push_back({rx, py, remove_w, row_h, node.node_id, a.source, a.destination, 3});
+
+        py += row_h + 4.0f;
+    }
+
+    float add_w = 92.0f;
+    tr.draw_rect(px, py, add_w, row_h,
+                 style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.85f);
+    tr.draw_text(px + 8.0f, py + 3.0f, "+ assignment",
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.72f);
+    inspector_.mod_assign_rects.push_back({px, py, add_w, row_h, node.node_id, "", "", 4});
+    py += row_h + 6.0f;
+}
+
 void NodeGraphUI::draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& node,
                                          float px, float& py) {
     float panel_w = kInspContentW;

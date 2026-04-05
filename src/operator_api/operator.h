@@ -39,6 +39,7 @@ struct ParamBase {
     const char* semantic_unit   = nullptr;
     const char* semantic_intent = nullptr;
     const char* description    = nullptr;
+    const char* asset_kind     = nullptr;
 };
 
 // ---------------------------------------------------------------------------
@@ -200,6 +201,12 @@ Param<T>& semantic_intent(Param<T>& p, const char* intent) {
 template<typename T>
 Param<T>& description(Param<T>& p, const char* desc) {
     p.description = desc;
+    return p;
+}
+
+template<typename T>
+Param<T>& asset_kind(Param<T>& p, const char* kind) {
+    p.asset_kind = kind;
     return p;
 }
 
@@ -385,7 +392,8 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
             s_params[i].semantic_shape      = pbases[i]->semantic_shape;       \
             s_params[i].semantic_unit       = pbases[i]->semantic_unit;        \
             s_params[i].semantic_intent     = pbases[i]->semantic_intent;      \
-            s_params[i].description        = pbases[i]->description;         \
+            s_params[i].description         = pbases[i]->description;          \
+            s_params[i].asset_kind          = pbases[i]->asset_kind;           \
             if (pbases[i]->choice_count > 0) {                                \
                 s_label_storage[i].clear();                                   \
                 s_label_ptrs[i].clear();                                      \

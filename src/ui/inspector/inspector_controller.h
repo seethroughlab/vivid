@@ -43,6 +43,20 @@ public:
         std::string target_node;
     };
     struct StateHeaderRect { float x, y, w, h; int state_idx; };
+    struct ModAssignRect {
+        float x, y, w, h;
+        std::string node_id;
+        std::string source;
+        std::string destination;
+        int action = 0;  // 0=source, 1=destination, 2=polarity, 3=remove, 4=add
+    };
+    struct ModAmountRect {
+        float x, y, w, h;
+        std::string node_id;
+        std::string source;
+        std::string destination;
+        float range = 1.0f;
+    };
 
     bool wants_keyboard() const {
         return editing_param
@@ -149,6 +163,14 @@ public:
     std::vector<InspectorRect> preset_save_rects;
     std::vector<StatePresetRect> state_preset_rects;
     std::vector<StateHeaderRect> state_header_rects;
+    std::vector<ModAssignRect> mod_assign_rects;
+    std::vector<ModAmountRect> mod_amount_rects;
+    std::string modulation_error;
+    bool modulation_amount_dragging = false;
+    std::string modulation_amount_node_id;
+    std::string modulation_amount_source;
+    std::string modulation_amount_destination;
+    float modulation_amount_range = 1.0f;
 
     int hovered_slider_idx = -1;
     int hovered_bool_idx = -1;

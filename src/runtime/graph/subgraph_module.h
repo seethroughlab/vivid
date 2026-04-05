@@ -42,6 +42,7 @@ struct SubgraphParamBinding {
     std::string semantic_shape;
     std::string semantic_unit;
     std::string semantic_intent;
+    std::string asset_kind;
 
     // Performance surface metadata (Step 5)
     std::string performance_page;      // e.g. "Performance" (empty = not on perf page)
