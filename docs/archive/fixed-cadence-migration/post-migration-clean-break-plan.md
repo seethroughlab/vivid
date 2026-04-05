@@ -90,9 +90,8 @@ The cleanup direction should be:
 
 Follow-on polish:
 
-- `src/operator_api/embedded_op.h` still uses `uses_audio_cadence_`
-- this name is no longer wrong, but it still carries transitional wording
-- rename it only if the shared-implementation cleanup lands, so terminology stays consistent
+- the remaining child-op/shared-implementation naming should avoid transitional cadence-era wording
+- rename those terms only if the shared-implementation cleanup lands, so terminology stays consistent
 
 ## Acceptance Criteria
 

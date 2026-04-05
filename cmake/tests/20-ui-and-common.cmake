@@ -94,6 +94,12 @@ target_include_directories(test_ui_arch_guard PRIVATE src tests)
 target_link_libraries(test_ui_arch_guard PRIVATE vivid_runtime_testlib)
 add_test(NAME test_ui_arch_guard COMMAND test_ui_arch_guard ${CMAKE_SOURCE_DIR} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Repo hygiene guard: removed runtime-polymorphic composition must not return outside explicit anti-return docs.
+add_executable(test_removed_pattern_guard tests/ui/test_removed_pattern_guard.cpp)
+target_include_directories(test_removed_pattern_guard PRIVATE src tests)
+target_link_libraries(test_removed_pattern_guard PRIVATE vivid_runtime_testlib)
+add_test(NAME test_removed_pattern_guard COMMAND test_removed_pattern_guard ${CMAKE_SOURCE_DIR} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # WGSL header parser unit test
 add_executable(test_wgsl_header
     tests/common/test_wgsl_header.cpp
@@ -127,4 +133,3 @@ add_executable(test_audio_dsp_api tests/audio/test_audio_dsp_api.cpp)
 target_include_directories(test_audio_dsp_api PRIVATE src tests)
 target_link_libraries(test_audio_dsp_api PRIVATE vivid_runtime_testlib)
 add_test(NAME test_audio_dsp_api COMMAND test_audio_dsp_api WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-

@@ -29,3 +29,13 @@ Any new mechanism must justify itself beyond what these three already provide.
 Role bindings were promoted from concept to full product architecture in one step — touching graph schema, operator API, scheduler, audio engine, GPU context, registry, control server, MCP, UI snapshot, inspector, presets, tests, and docs. This made them expensive to evaluate, expensive to revert, and difficult to reason about incrementally.
 
 The correction: owned embedded composition achieves the same host-local modulation with simpler code, no graph-visible binding model, and standard param serialization. The lesson is that a simpler mechanism that reuses existing infrastructure is usually better than a novel abstraction that requires changes across every layer.
+
+## Why `EmbeddedOp` should not return
+
+`EmbeddedOp` was removed because runtime-polymorphic embedded slots added implementation and teaching overhead without current product value. The problems that originally motivated it are now handled by a split model:
+
+- ordinary ports plus lanes for graph-visible transport and multiplicity
+- `ChildOp<T>` for private host-local composition
+- explicit outputs when internal behavior must become graph-visible
+
+Reintroducing runtime-polymorphic embedded composition requires a new design doc and a concrete shipped use case that cannot be solved with those three mechanisms.

@@ -35,7 +35,7 @@ The API is well-documented through its header structure:
 - **Core:** `types.h`, `operator.h`, `input_state.h`, `midi_types.h`, `create_request.h`
 - **GPU:** `gpu_operator.h`, `gpu_common.h`, `gpu_types.h`, `texture_readback.h`
 - **Filters:** `wgsl_filter.h`, `wgsl_preprocessor.h`, `data_driven_filter.h`
-- **Composition:** `child_op.h`, `embedded_op.h`, `adsr.h`, `audio_dsp.h`
+- **Composition:** `child_op.h`, `adsr.h`, `audio_dsp.h`
 - **UI:** `draw_ui_helpers.h`, `draw_plot_helpers.h`, `adsr_inspector.h`, `thumbnail.h`
 - **Types:** `port_type_registry.h`, `type_id.h`
 

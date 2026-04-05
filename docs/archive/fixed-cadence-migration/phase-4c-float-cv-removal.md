@@ -31,9 +31,9 @@ Remove `input_float_values` and `output_float_values` from `VividAudioContext` a
   - remove float CV input paths in `push_to_audio()` (SCALAR → float_input_values)
   - remove float output paths in `pull_from_audio()` (float_output_values → frame input)
 
-### Remove from embedded operator support
+### Remove from child-op support
 
-- In `src/operator_api/embedded_op.h` / `child_op.h`:
+- In `src/operator_api/child_op.h`:
   - remove float CV references
 
 ### Update _au operators
