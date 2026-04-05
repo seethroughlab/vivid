@@ -211,14 +211,13 @@ if(APPLE)
                 continue()
             endif()
             get_filename_component(rel_dir ${rel_file} DIRECTORY)
-            if(rel_dir STREQUAL "")
-                set(dst_loc Resources/source)
-            else()
-                set(dst_loc Resources/source/${rel_dir})
-            endif()
-            target_sources(vivid PRIVATE ${src_path})
-            set_source_files_properties(${src_path}
-                PROPERTIES MACOSX_PACKAGE_LOCATION ${dst_loc})
+            set(dst_dir "${CMAKE_BINARY_DIR}/vivid.app/Contents/Resources/source/${rel_dir}")
+            get_filename_component(fname ${rel_file} NAME)
+            add_custom_command(TARGET vivid POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${dst_dir}"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different "${src_path}" "${dst_dir}/${fname}"
+                COMMENT "Bundling ${rel_file}"
+                VERBATIM)
         endforeach()
     endfunction()
 
