@@ -46,6 +46,44 @@ struct ModulatedGain : vivid::OperatorBase, vivid::FrameProcessable {
 | `output_lane_length(name)` | Read child lane output length |
 | `op()` | Direct access to underlying operator instance |
 
+## EmbeddedOp — Runtime-Polymorphic Composition
+
+Like `ChildOp<T>` but the operator type is selected at runtime. Use this when the embedded operator type isn't known at compile time (e.g., a synth slot that can hold an Envelope, LFO, MSEG, or other modulator).
+
+```cpp
+#include "operator_api/embedded_op.h"
+
+vivid::EmbeddedOp slot(std::make_unique<Envelope>());
+slot.set_param("attack", 0.1f);
+slot.process(parent_ctx);  // inherits time/frame from parent
+float val = slot.output("value");
+```
+
+### EmbeddedOp API
+
+| Method | Description |
+|--------|-------------|
+| `set_param(name, value)` | Set param by name (silently ignores unknown names) |
+| `set_param(index, value)` | Set param by index |
+| `param(name)` | Read param value by name |
+| `has_param(name)` | Check if param exists |
+| `set_input(name, value)` | Set float input by name |
+| `has_input(name)` | Check if input exists |
+| `output(name)` | Read float output by name |
+| `has_output(name)` | Check if output exists |
+| `process(parent_ctx)` | Run embedded op (inherits time/frame) |
+| `op()` | Direct access to underlying `OperatorBase` |
+| `has_audio_interface()` | True if the embedded op implements `AudioProcessable` |
+
+### ChildOp\<T\> vs EmbeddedOp
+
+| | ChildOp\<T\> | EmbeddedOp |
+|---|---|---|
+| Type known at | Compile time | Runtime |
+| Include | `child_op.h` + operator header | `embedded_op.h` |
+| Overhead | Minimal (direct calls) | Name lookups via `unordered_map` |
+| Use when | You always embed the same type | The slot can hold different types |
+
 ## Custom Port Types
 
 Typed opaque data for passing complex payloads between operators (e.g. media streams, 3D scene fragments). Two transports are available:
@@ -125,22 +163,16 @@ void process_frame(const VividFrameContext* ctx) override {
 }
 ```
 
-## Media Streams
+## Cross-Cadence AV Sync
 
-```cpp
-#include "operator_api/media_stream.h"
+Movie operators synchronize audio and video across cadences using standard scalar ports and the cadence bridge:
 
-struct vivid::MediaStreamV1 {
-    uint64_t handle_id;
-    uint64_t session_ptr;       // direct pointer to media session
-    uint64_t source_generation;
-    uint32_t schema_version;    // = 1
-    uint32_t flags;
-    MediaClockV1 clock;         // local_time_s, duration_s, speed, playing, loop_enabled
-};
-```
+- **MovieFileAudio** (audio thread) — decodes audio, outputs `time` and `duration` scalar ports
+- **MovieFileIn** (GPU thread) — receives `audio_time` scalar input via the cadence bridge, seeks video to matching frame
 
-Used by movie operators to share playback state across cadences (audio ↔ GPU).
+Shared decode/audio extraction libraries live in `operators/shared/` (`movie_decode`, `movie_audio`). No custom port types are needed — the cadence bridge handles the audio→control rate conversion automatically.
+
+See `gpu/movie_file_in` and `audio/movie_file_audio` for the canonical implementation.
 
 ## Shared Handle Service
 
@@ -175,9 +207,103 @@ void main_thread_update(double time) override {
 }
 ```
 
-## Custom Thumbnails
+## Custom Thumbnails and Inspectors
 
-See `docs/runtime/custom_thumbnails.md` for the thumbnail API.
+Operators can provide custom visual thumbnails (node graph previews) and custom inspector panels.
+
+### Thumbnail API
+
+Override `draw_thumbnail()` and add `VIVID_THUMBNAIL(ClassName)` alongside `VIVID_REGISTER`:
+
+```cpp
+#include "operator_api/thumbnail.h"
+
+void draw_thumbnail(const VividThumbnailContext* ctx) override {
+    VividDrawAPI& d = const_cast<VividDrawAPI&>(ctx->draw);
+    void* o = d.opaque;
+    if (!o) return;  // no draw backend available
+
+    float w = ctx->thumbnail_logical_width;
+    float h = ctx->thumbnail_logical_height;
+    d.draw_rect(o, 0, 0, w, h, {0.1f, 0.1f, 0.1f, 1.0f});
+    d.draw_text(o, 4, 4, "Hello", {1, 1, 1, 1}, 1.0f);
+}
+
+VIVID_REGISTER(MyOp)
+VIVID_THUMBNAIL(MyOp)
+```
+
+**VividThumbnailContext key fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `draw` | `VividDrawAPI` | 2D draw API (check `draw.opaque` before use) |
+| `thumbnail_logical_width/height` | `uint32_t` | Graph-space dimensions for draw coordinates |
+| `param_values` / `param_count` | `float*`, `uint32_t` | Current param values |
+| `output_values` / `output_count` | `float*`, `uint32_t` | Current output values |
+| `device`, `queue`, `command_encoder` | WebGPU handles | For GPU-accelerated thumbnails |
+| `thumbnail_texture` / `thumbnail_texture_view` | WebGPU handles | Target texture for GPU rendering |
+| `source_output_texture` / `source_output_texture_view` | WebGPU handles | Operator's own output texture (GPU ops) |
+
+Use `prepare_instance_assets()` for expensive one-time CPU prep — never do heavy work in `draw_thumbnail()`.
+
+### VividDrawAPI Methods
+
+The 2D draw API is shared by thumbnails and inspectors:
+
+```cpp
+void  draw_rect(opaque, x, y, w, h, color);
+void  draw_rounded_rect(opaque, x, y, w, h, radius, color);
+void  draw_text(opaque, x, y, text, color, scale);
+void  draw_line(opaque, x1, y1, x2, y2, thickness, color);
+float text_width(opaque, text, scale);
+float line_height(opaque);
+void  push_clip_rect(opaque, x, y, w, h);
+void  pop_clip_rect(opaque);
+```
+
+Higher-level helpers are available in `draw_ui_helpers.h`:
+```cpp
+#include "operator_api/draw_ui_helpers.h"
+// vivid::draw_ui::draw_panel, draw_section_header, draw_value_badge,
+// draw_button, draw_tab_strip, draw_text_row, draw_grid_cell, etc.
+```
+
+### Custom Inspector
+
+Override `draw_inspector()` and add `VIVID_INSPECTOR(ClassName)` or `VIVID_INSPECTOR_FULL_MODE(ClassName)`:
+
+```cpp
+void draw_inspector(VividInspectorContext* ctx) override {
+    VividDrawAPI& d = ctx->draw;
+    void* o = d.opaque;
+    float x = ctx->content_x, y = ctx->content_y, w = ctx->content_width;
+
+    d.draw_text(o, x, y, "Custom section", ctx->theme.bright_text, 1.0f);
+    ctx->consumed_height = 20.0f;  // report how much vertical space you used
+}
+
+VIVID_REGISTER(MyOp)
+VIVID_INSPECTOR(MyOp)          // STANDARD: core draws params first, then your draw_inspector
+// or: VIVID_INSPECTOR_FULL_MODE(MyOp)  // FULL: you handle the entire inspector
+```
+
+**Inspector modes:**
+- `VIVID_INSPECTOR_STANDARD` — core renders standard param sliders first, your `draw_inspector()` draws below
+- `VIVID_INSPECTOR_FULL` — your `draw_inspector()` handles the entire inspector area
+
+**VividInspectorContext key fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `content_x/y`, `content_width` | `float` | Layout bounds (scroll-adjusted) |
+| `draw` | `VividDrawAPI` | 2D draw API |
+| `commands` | `VividInspectorCommandAPI` | `set_param(name, value)`, `set_string_param(name, value)` |
+| `theme` | `VividInspectorTheme` | Colors: `bg`, `accent`, `dim_text`, `bright_text`, `separator`, etc. |
+| `mouse` | `VividInspectorMouse` | `x`, `y`, `left_down`, `left_clicked`, etc. |
+| `param_values` / `output_values` | `float*` | Current values |
+| `consumed_height` | `float` | Write-back: total height your drawing consumed |
+| `wants_keyboard` | `int` | Write-back: set 1 to request keyboard focus |
 
 ## Canonical Examples
 
@@ -187,7 +313,7 @@ Reference operators for advanced patterns — study these when implementing spec
 |---|---|
 | ChildOp\<T\> composites | `control/modulated_gain` |
 | Custom value ports | `control/step_counter`, `control/sample_hold` (use `VIVID_CUSTOM_VALUE_PORT`) |
-| Custom ref ports | `gpu/mesh_warp` (use `VIVID_CUSTOM_REF_PORT`) |
+| Custom ref ports | `control/drum_kit`, `audio/sampler` (use `VIVID_CUSTOM_REF_PORT`) |
 | MIDI input | `control/midi_input`, `audio/midi_file_player` |
 | File drop params | `gpu/texture_loader`, `gpu/lut_apply`, `gpu/svg_render` |
 | Input events (mouse/keyboard) | `control/mouse`, `control/keyboard` |
@@ -235,3 +361,57 @@ ctx->retire_lane_id_fn(ctx->lane_state_service, old_id);              // deferre
 ```
 
 Lane IDs are monotonic `uint32_t` values. Retirement triggers deferred cleanup on the next frame tick.
+
+## Module Authoring (`.vivid-module.json`)
+
+Modules are encapsulated subgraph instruments that appear as single nodes with curated exposed controls. A module definition lives in a `.vivid-module.json` file, typically inside a package directory.
+
+### Exposed Controls
+
+Exposed params carry the same metadata as normal operator params:
+
+| Field | Description |
+|-------|-------------|
+| `type` | Param type (float, int, bool, choice) |
+| `default`, `min`, `max` | Value range |
+| `choices` | Choice labels (for enum/choice params) |
+| `group`, `section` | Inspector grouping |
+| `display_hint` | Layout hint (`"knob"`, `"xy_pad"`, `"color"`, etc.) |
+| `semantic` | Semantic tag (`"frequency_hz"`, `"normalized"`, etc.) |
+| `description` | Human-readable description |
+
+Module instances use the flatten-before-compile execution model — internal nodes are part of graph truth at runtime. No separate execution path exists for modules.
+
+### Module Factory Presets
+
+Declare factory presets in the module definition under `module.presets`. These appear in the preset UI the same way normal operator factory presets do. Preset values are remapped through the module's exposed-param bindings during recall.
+
+### Declaring Modulation Sources and Destinations
+
+Modules can declare named modulation sources and destinations for composite-local modulation (Step 2 of instrument coherence). Authors specify these in the module definition:
+
+- **Sources**: internal signals the user can assign to destinations (e.g., `env2`, `lfo1`, `macro1`, `velocity`)
+- **Destinations**: exposed or internal params the user can target (e.g., `filter_cutoff`, `brightness`, `wt_position`)
+
+Users create assignments via the inspector or MCP tools (`add_mod_assignment`). Each assignment has:
+- `amount` — modulation depth
+- `polarity` — `"unipolar"` (0..amount) or `"bipolar"` (-amount..+amount)
+- `curve` — `"linear"` in V1
+
+Assignments are lowered into ordinary graph routing at compile time (additive mix: `base_value + source * amount`).
+
+### Performance Page Metadata
+
+Exposed params can carry performance-surface metadata to curate a live performance page:
+
+| Field | Description |
+|-------|-------------|
+| `performance_page` | Page name for grouping (e.g., `"Macros"`, `"Expression"`) |
+| `performance_order` | Sort order within the page |
+| `performance_role` | Built-in role: `macro`, `mod_wheel`, `expression`, `aftertouch`, `xy_x`, `xy_y` |
+
+Performance controls are ordinary exposed params — presets, variations, and modulation still apply to them.
+
+### Asset-Bound Params
+
+File or string params can declare an `asset_kind` to bind them to the asset library. See `data_driven.md` for the `asset_kind` field on data-driven operator params. The same annotation works on module exposed params — the UI will browse the asset library for that kind when the user edits the param.

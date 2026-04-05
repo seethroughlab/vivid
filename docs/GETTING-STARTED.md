@@ -82,6 +82,7 @@ Reference:
   - For advanced features (custom ports, params, inspectors): use MCP opdev tools
   - Operator contract + runtime architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
   - Semantic tagging guidance: [SEMANTIC-PARAM-TAGS.md](SEMANTIC-PARAM-TAGS.md)
+- **Explore instrument modules:** Packages can ship `.vivid-module.json` definitions that behave like single nodes with curated exposed controls, local modulation assignments, and factory presets. Browse instruments using the content-kind filter in the graph browser.
 - **Install more operator libraries:** [PACKAGE-LIBRARIES.md](PACKAGE-LIBRARIES.md)
 - **Author your own package repo:** [vivid-package-template](https://github.com/seethroughlab/vivid-package-template)
 
@@ -105,7 +106,7 @@ Use this order for first-run browsing:
 - `graphs/filters/`
 - `graphs/io/`
 
-Each graph file includes a top-level `meta` section (`id`, `title`, `description`, `tags`, `difficulty`, `domains`, `requires_packages`, `featured_rank`), which powers in-app discovery/search.
+Each graph file includes a top-level `meta` section (`id`, `title`, `description`, `tags`, `difficulty`, `domains`, `requires_packages`, `featured_rank`, `content_kind`, `category`, `family`, `role`, `playability`, `preview_controls`), which powers in-app discovery/search. Graphs with `content_kind: "instrument"` appear under the Instruments filter in the browser.
 
 ## Suggested Directory Convention (for new graphs)
 

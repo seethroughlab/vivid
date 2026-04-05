@@ -28,6 +28,13 @@ Major capabilities delivered for 1.0:
 - **First-class GPU port types** — buffer, mesh, compute dispatch, texture readback
 - **Spreads** — implicit vectorization with broadcasting semantics
 - **Movie playback** — MovieLoaded operator trio
+- **Instrument coherence platform** (6 steps):
+  - Subgraph instruments — module-file-first encapsulation (`.vivid-module.json`) with exposed controls, grouped inspector sections, module-level factory presets, and flatten-before-compile execution
+  - Composite-local modulation — named sources and destinations on module instances with amount, polarity, and curve; lowered into ordinary graph routing at compile time
+  - DualFilter — dual-stage synth filter operator with serial A→B, serial B→A, parallel, and frequency-split routing modes; lane-aware per-voice behavior
+  - Asset library — generic import/index/cache layer with wavetables as first supported kind; path-compatible in V1, workspace and package asset scopes
+  - Per-note expression & performance pages — lane-array expressive outputs on `MidiInput` (pitch bend, pressure, slide, expression per note), MPE mode support, and `performance_page`/`performance_role` metadata on exposed params
+  - Graph content metadata & browser — `content_kind`, `category`, `family`, `role`, `playability`, and `preview_controls` on graph meta; top-level kind filter (Instruments / Examples) in browser
 - **North Star validation** — end-to-end AV workflow validated
 
 ---
@@ -44,7 +51,7 @@ Project-local operator ownership (clone/scaffold destination policy, package CMa
 
 ## Deferred Past 1.0
 
-- Subpatches
+- Embedded subgraph authoring (module-file-based instruments shipped; embedded subgraph definitions, peek-inside visualization, and nested editing are deferred)
 - Simulation zones (frame-to-frame feedback)
 - Multi-window / multi-monitor
 - Windows / Linux

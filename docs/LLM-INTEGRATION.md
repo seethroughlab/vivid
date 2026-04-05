@@ -63,6 +63,12 @@ Core/package update MCP tool surface (current):
 - `check_core_updates(force_refresh=false)` — checks Vivid core app update availability from appcast metadata.
 - `check_package_updates(core_version, include_all_installed=false)` — checks installed package update/compatibility status.
 
+Instrument coherence MCP tool surface (current):
+- `list_mod_sources(node_id)` / `list_mod_destinations(node_id)` — discover a module's declared modulation sources and destinations.
+- `add_mod_assignment(node_id, source, destination, amount, polarity, curve)` / `remove_mod_assignment` / `update_mod_assignment` / `list_mod_assignments` — author and inspect composite-local modulation assignments on module instances.
+- `list_assets(kind, scope)` / `inspect_asset(asset_id)` / `import_asset(source_path, kind)` / `refresh_assets()` — browse, inspect, and import assets into the workspace library. V1 supports wavetables as the built-in kind.
+- Module instances appear as first-class synthetic operators in `list_types`, `inspect`, and `operator_docs` — exposed controls, grouped sections, and module-level presets are queryable through the same introspection tools used for normal operators.
+
 Perception MCP tool surface (current):
 - `capture_image(mode="interface" | "output", node_id="", save_path="", ensure_ui_visible=true)` — unified image capture from the running instance. Use `mode="interface"` for the full composed UI/window, or `mode="output"` for output-only frame capture.
 - `capture_interface(node_id="", save_path="", ensure_ui_visible=true)` — captures the full composed interface from the already-running Vivid instance, optionally selecting a node first so the inspector is visible.

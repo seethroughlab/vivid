@@ -570,7 +570,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 
 ## 5.19 State Machines & Subgraphs
 
-> **Status: Infrastructure exists, operator not yet implemented.** The graph schema supports state-preset mappings (`StatePresetMapping` in `graph.h`), and the UI can detect StateMachine nodes for preset-per-state wiring. However, the StateMachine operator itself has not been implemented. The design below is retained as planned architecture.
+> **Status: Infrastructure exists, operator not yet implemented.** The graph schema supports state-preset mappings (`StatePresetMapping` in `graph.h`), and the UI can detect StateMachine nodes for preset-per-state wiring. However, the StateMachine operator itself has not been implemented. The design below is retained as planned architecture. Note: module-file-based instruments (§5.24) shipped as a separate encapsulation model; embedded subgraph definitions inside graph JSON remain deferred.
 
 ### StateMachine Operator
 
@@ -671,3 +671,43 @@ Vivid's media pipeline handles video file playback with synchronized audio throu
 - **`MovieFileAudio`** (`operators/audio/movie_file_audio/`) — decodes audio from a movie file and outputs stereo `VIVID_PORT_AUDIO_BUFFER`. Uses a private lock-free ring buffer (~5s @ 48kHz) fed by a dedicated fill thread. Publishes monotonic playback time as a `SCALAR` output, which crosses the `AudioFrameBridge` to `MovieFileIn` for AV sync. Includes a preroll gate (~0.5s) to prevent startup clicks, volume ramping, and pitch-preserving time stretch via AVFoundation.
 
 **AV sync model:** `MovieFileAudio` is the time master. Its `time` SCALAR output crosses the `AudioFrameBridge` at ~60Hz to `MovieFileIn`'s `audio_time` input. The video operator seeks only when drift exceeds two frame durations, absorbing bridge latency cleanly. Each operator declares its own `file`, `speed`, and `play_mode` params, so either can be used independently (video-only or audio-only).
+
+## 5.24 Instrument Coherence Platform
+
+> **Status: V1 shipped.** Six additions that make Vivid a better host for instrument-like packages. V2 follow-ons for each step are deferred (see `ROADMAP.md`). Detailed design rationale lives in `docs/archive/instrument-coherence/`.
+
+The guiding principle: build reusable platform pieces that packages leverage, rather than moving synth logic into core. Every step reuses existing graph routing, lane semantics, file-param paths, and serialization patterns.
+
+### Subgraph Instruments (Step 1)
+
+Module definitions live in `.vivid-module.json` as the authored canonical source. Instances behave like single nodes with a curated exposed-control surface. Internal nodes remain part of graph truth at runtime via the existing flatten-before-compile model — no separate execution path.
+
+Exposed controls carry the same metadata as normal operator params: type, default/min/max, choice labels, group/section, display hints, semantic metadata, and description. Module instances are first-class synthetic operators: they show only exposed controls in the inspector, use grouped sections, support module-level factory presets, and provide an "open source module" action for editing internals.
+
+### Composite-Local Modulation (Step 2)
+
+A local modulation assignment layer on module instances. Authors declare named sources (e.g., `env2`, `lfo1`, `macro1`, `velocity`) and named destinations (e.g., `filter_cutoff`, `brightness`, `wt_position`). Users assign sources to destinations with amount, polarity (unipolar/bipolar), and optional curve.
+
+Assignments are lowered into ordinary internal graph routing at compile time (additive: `base_value + source * amount`). Normal wires remain the primary routing model; this does not introduce a new runtime object or a second routing substrate. Lane-aware rules apply: scalar→scalar allowed, scalar→lane-aware allowed (broadcast), lane→lane allowed if provenance-aligned, lane→scalar disallowed in V1.
+
+### DualFilter (Step 3)
+
+A new core audio operator providing dual-stage filtering with four routing modes: `serial_ab` (A→B), `serial_ba` (B→A), `parallel` (blended by balance knob), and `split` (frequency crossover, low→A, high→B, recombined). Each stage exposes enabled, mode, cutoff, resonance, drive, and keytrack params. The existing single-stage `Filter` operator is unchanged.
+
+Lane-aware: per-stage filter memory is keyed by `lane_id` for polyphonic behavior. Scalar CV inputs are shared across voices.
+
+### Asset Library (Step 4)
+
+A generic asset-library and import/index/cache layer with wavetables as the first supported kind. Graphs continue storing canonical file paths (not `asset_id`) in V1. User-imported assets are copied into `<workspace_root>/assets/library/<kind>/<asset_id>/`; package assets are discovered read-only from package directories.
+
+Asset index entries carry: `asset_id`, kind, display name, source scope (package/workspace), canonical path, source hash, timestamps, file metadata, and kind-specific `kind_meta`. The import pipeline copies files into the workspace library, computes metadata eagerly, and regenerates cache only when the source fingerprint or analyzer version changes.
+
+### Per-Note Expression & Performance Pages (Step 5)
+
+Extends `MidiInput` with lane-array outputs for expressive per-note data: `lane_ids`, `pitch_bends`, `pressures`, `slides`, `expressions`, `channels`. A `mode` param selects `poly_shared` (broadcast), `mpe_lower`, or `mpe_upper` (per-channel-to-lane mapping). Scalar outputs `aftertouch` and `expression` are also added.
+
+Performance-surface metadata on exposed params: `performance_page`, `performance_order`, `performance_role` (built-in roles: `macro`, `mod_wheel`, `expression`, `aftertouch`, `xy_x`, `xy_y`). Performance controls are ordinary exposed params — presets, variations, and modulation still apply.
+
+### Graph Content Metadata & Browser (Step 6)
+
+Extends `GraphContentMeta` with instrument-oriented fields: `content_kind` (example/instrument), `category`, `family`, `role` (hero/reference/utility), `playability` (self_playing/midi/hybrid), and `preview_controls[]` (metadata references to node params). The browser gains a top-level kind filter (All / Instruments / Examples) and sorts instrument entries by package → category → family → title. Graph files remain the browseable preset unit — no new preset format.
