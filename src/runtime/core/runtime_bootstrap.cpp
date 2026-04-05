@@ -61,6 +61,11 @@ RuntimeBootstrapPaths resolve_runtime_bootstrap_paths(const fs::path& argv0,
 
 #ifdef __APPLE__
     if (out.source_dir.empty()) {
+        auto bundled_source_dir = out.resources_dir / "source";
+        if (fs::is_directory(bundled_source_dir / "src" / "runtime"))
+            out.source_dir = bundled_source_dir.string();
+    }
+    if (out.source_dir.empty()) {
         auto sdk_dir = out.resources_dir / "sdk";
         if (fs::is_directory(sdk_dir / "src" / "operator_api"))
             out.source_dir = sdk_dir.string();

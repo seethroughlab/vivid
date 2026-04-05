@@ -28,6 +28,13 @@ static std::string find_source_dir(const std::string& build_dir) {
     return {};
 }
 
+static fs::path canonical_or_normal(const fs::path& path) {
+    std::error_code ec;
+    fs::path normalized = fs::weakly_canonical(path, ec);
+    if (ec) return path.lexically_normal();
+    return normalized;
+}
+
 static fs::path write_test_package_source(const fs::path& package_root) {
     fs::create_directories(package_root / "operators" / "control" / "bootstrap_lane_source");
     fs::create_directories(package_root / "operators" / "control" / "bootstrap_lane_sink");
@@ -239,6 +246,24 @@ int main(int argc, char* argv[]) {
                   "compiled graph uses placeholders when package operators are unavailable");
         }
         runtime.shutdown();
+    }
+
+    {
+        ScopedTempDir fake_bundle("runtime_bootstrap_bundle");
+        const fs::path exe_path = fake_bundle.path / "Vivid.app" / "Contents" / "MacOS" / "vivid";
+        const fs::path bundle_resources =
+            fake_bundle.path / "Vivid.app" / "Contents" / "Resources";
+        const fs::path bundled_source = bundle_resources / "source";
+        fs::create_directories(exe_path.parent_path());
+        std::ofstream(exe_path) << "stub";
+        fs::create_directories(bundled_source / "src" / "runtime");
+        auto paths = vivid::resolve_runtime_bootstrap_paths(exe_path, "");
+        check(canonical_or_normal(paths.resources_dir) == canonical_or_normal(bundle_resources),
+              "runtime bootstrap resolves bundle resources directory");
+        const fs::path resolved_source = canonical_or_normal(fs::path(paths.source_dir));
+        check(resolved_source == canonical_or_normal(fs::path(source_dir)) ||
+                  resolved_source == canonical_or_normal(bundled_source),
+              "runtime bootstrap prefers checkout source when present, otherwise bundled source tree");
     }
 
     if (failures != 0) {

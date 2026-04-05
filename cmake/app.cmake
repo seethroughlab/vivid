@@ -77,6 +77,7 @@ add_executable(vivid
     src/runtime/graph/audio_executor.cpp
     src/runtime/core/file_watcher.cpp
     src/runtime/core/hot_reload.cpp
+    src/runtime/core/source_index.cpp
     src/runtime/core/tool_discovery.cpp
     src/runtime/control/runtime_api.cpp
     src/runtime/control/runtime_api_live.cpp
@@ -200,6 +201,27 @@ endforeach()
 
 # --- Bundle resources (font, graphs, WGSL filters → Resources/) ---
 if(APPLE)
+    function(vivid_bundle_source_tree base_dir rel_root)
+        file(GLOB_RECURSE _bundle_files CONFIGURE_DEPENDS RELATIVE ${base_dir} ${base_dir}/${rel_root}/*)
+        list(FILTER _bundle_files EXCLUDE REGEX "^\\.")
+        list(FILTER _bundle_files EXCLUDE REGEX "/\\.")
+        foreach(rel_file ${_bundle_files})
+            set(src_path ${base_dir}/${rel_file})
+            if(IS_DIRECTORY ${src_path})
+                continue()
+            endif()
+            get_filename_component(rel_dir ${rel_file} DIRECTORY)
+            if(rel_dir STREQUAL "")
+                set(dst_loc Resources/source)
+            else()
+                set(dst_loc Resources/source/${rel_dir})
+            endif()
+            target_sources(vivid PRIVATE ${src_path})
+            set_source_files_properties(${src_path}
+                PROPERTIES MACOSX_PACKAGE_LOCATION ${dst_loc})
+        endforeach()
+    endfunction()
+
     # Font → Resources/
     target_sources(vivid PRIVATE fonts/JetBrainsMono-Regular.ttf)
     set_source_files_properties(fonts/JetBrainsMono-Regular.ttf
@@ -264,6 +286,32 @@ if(APPLE)
     target_sources(vivid PRIVATE resources/default_graph.json)
     set_source_files_properties(resources/default_graph.json
         PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+
+    # Bundled MCP scripts → Resources/mcp/
+    file(GLOB_RECURSE _BUNDLE_MCP CONFIGURE_DEPENDS RELATIVE ${CMAKE_SOURCE_DIR}/mcp mcp/*)
+    list(FILTER _BUNDLE_MCP EXCLUDE REGEX "^\\.")
+    list(FILTER _BUNDLE_MCP EXCLUDE REGEX "/\\.")
+    foreach(f ${_BUNDLE_MCP})
+        set(src_path ${CMAKE_SOURCE_DIR}/mcp/${f})
+        if(IS_DIRECTORY ${src_path})
+            continue()
+        endif()
+        get_filename_component(rel_dir ${f} DIRECTORY)
+        if(rel_dir STREQUAL "")
+            set(dst_loc Resources/mcp)
+        else()
+            set(dst_loc Resources/mcp/${rel_dir})
+        endif()
+        target_sources(vivid PRIVATE ${src_path})
+        set_source_files_properties(${src_path}
+            PROPERTIES MACOSX_PACKAGE_LOCATION ${dst_loc})
+    endforeach()
+
+    vivid_bundle_source_tree(${CMAKE_SOURCE_DIR} src)
+    vivid_bundle_source_tree(${CMAKE_SOURCE_DIR} operators)
+    vivid_bundle_source_tree(${CMAKE_SOURCE_DIR} mcp)
+    vivid_bundle_source_tree(${CMAKE_SOURCE_DIR} tests)
+    vivid_bundle_source_tree(${CMAKE_SOURCE_DIR} docs)
 
     # operator_api headers → Resources/sdk/src/operator_api/
     file(GLOB _BUNDLE_API_HEADERS src/operator_api/*.h)

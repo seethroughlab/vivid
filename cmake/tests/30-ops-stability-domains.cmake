@@ -15,6 +15,13 @@ target_include_directories(test_operator_source_docs PRIVATE src tests)
 target_link_libraries(test_operator_source_docs PRIVATE vivid_runtime_testlib nlohmann_json::nlohmann_json)
 add_test(NAME test_operator_source_docs COMMAND test_operator_source_docs WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+add_executable(test_source_index
+    tests/core/test_source_index.cpp
+)
+target_include_directories(test_source_index PRIVATE src tests)
+target_link_libraries(test_source_index PRIVATE vivid_runtime_testlib nlohmann_json::nlohmann_json)
+add_test(NAME test_source_index COMMAND test_source_index WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 add_executable(test_file_drop_registry
     tests/core/test_file_drop_registry.cpp
 )

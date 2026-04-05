@@ -21,6 +21,8 @@ class PackageCatalog;
 class AudioEngine;
 class AppUpdateManager;
 class OperatorSourceDocs;
+class BuildConsole;
+class SourceIndex;
 struct Settings;
 
 class ControlServer {
@@ -47,6 +49,8 @@ public:
     void set_settings(Settings* settings);
     void set_audio_engine(AudioEngine* ae);
     void set_asset_library(AssetLibrary* lib);
+    void set_build_console(BuildConsole* console);
+    void set_bundled_source_dir(const std::string& bundled_source_dir);
 
     // Returns the wall-clock ms timestamp of the last /mcp_ping from a given
     // server name ("vivid" or "opdev").  Returns 0 if never pinged.
@@ -69,7 +73,9 @@ private:
     std::unordered_map<std::string, uint64_t> mcp_last_ping_ms_;
 
     std::string src_dir_;
+    std::string bundled_source_dir_;
     std::unique_ptr<OperatorSourceDocs> operator_source_docs_;
+    std::unique_ptr<SourceIndex> source_index_;
     HotReloader* hot_reloader_ = nullptr;
     CaptureCoordinator* capture_coordinator_ = nullptr;
     PackageManager* package_manager_ = nullptr;
@@ -79,6 +85,7 @@ private:
     Settings* settings_ = nullptr;
     AudioEngine* audio_engine_ = nullptr;
     AssetLibrary* asset_library_ = nullptr;
+    BuildConsole* build_console_ = nullptr;
 };
 
 } // namespace vivid

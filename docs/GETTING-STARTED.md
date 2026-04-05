@@ -69,6 +69,16 @@ If you run with MCP tooling, use:
 
 to inspect current state and validate constraints while editing.
 
+For operator authoring and debugging, run the separate opdev MCP server and use:
+
+- `search_source`
+- `read_source_file`
+- `find_symbol`
+- `get_build_activity`
+- `explain_build_failure`
+
+Release builds bundle a read-only source pack for `src/`, `operators/`, `mcp/`, `tests/`, and `docs/`, so the opdev MCP surface can keep working even when you are not in a source checkout.
+
 Reference:
 - [LLM-INTEGRATION.md](LLM-INTEGRATION.md)
 - [PERCEPTION-API-SPEC.md](internal/PERCEPTION-API-SPEC.md)

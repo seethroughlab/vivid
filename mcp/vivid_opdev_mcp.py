@@ -1,16 +1,31 @@
 """Vivid Operator Development MCP Server — API docs, examples, and operator lifecycle tools."""
 
+import fnmatch
 import os
 import json
+import re
 import httpx
+from functools import lru_cache
 from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
 VIVID_URL = os.environ.get("VIVID_URL", "http://127.0.0.1:9876")
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_APP_RESOURCES_DIR = _SCRIPT_DIR.parent
+_CHECKOUT_ROOT = _APP_RESOURCES_DIR if (_APP_RESOURCES_DIR / "CMakeLists.txt").is_file() and (_APP_RESOURCES_DIR / "src" / "runtime").is_dir() else None
+_BUNDLED_SOURCE_ROOT = _APP_RESOURCES_DIR / "source" if (_APP_RESOURCES_DIR / "source" / "src").is_dir() else None
+PROJECT_ROOT = _CHECKOUT_ROOT or _BUNDLED_SOURCE_ROOT or _APP_RESOURCES_DIR
 OPERATOR_API_DIR = PROJECT_ROOT / "src" / "operator_api"
 OPERATORS_DIR = PROJECT_ROOT / "operators"
-OPDEV_DOCS_DIR = Path(__file__).resolve().parent / "opdev_docs"
+OPDEV_DOCS_DIR = _SCRIPT_DIR / "opdev_docs"
+SOURCE_ROOT_NAMES = ("src", "operators", "mcp", "tests", "docs")
+SOURCE_TEXT_EXTENSIONS = {
+    ".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".mm",
+    ".py", ".md", ".txt", ".json", ".toml", ".cmake", ".wgsl",
+    ".yaml", ".yml", ".sh", ".inc", ".in", ".plist",
+}
+MAX_SOURCE_RESULTS = 100
+MAX_BUILD_TASKS = 50
 
 # Allowlisted API headers (no path traversal)
 ALLOWED_HEADERS = {
@@ -43,6 +58,8 @@ mcp = FastMCP("vivid-opdev", instructions="""Vivid Operator Development Server �
 ## Getting Started
 
 Start with the discovery tools before scaffolding:
+- `list_source_roots()` — inspect the read-only code roots available to opdev
+- `search_source(query)` / `read_source_file(path)` — inspect runtime, operators, MCP, tests, and docs
 - `search_example_operators(query)` — find operators by keyword
 - `get_capability_guidance(capability)` — learn how to use a specific feature
 - `recommend_starting_point(goal)` — get a recommended approach for your goal
@@ -50,11 +67,12 @@ Start with the discovery tools before scaffolding:
 ## Workflow
 
 1. **Research** — use `get_operator_api_docs(topic)` to learn the relevant API surface
-2. **Study examples** — use `list_example_operators()` and `get_example_operator()` to see real implementations
-3. **Scaffold** — use `scaffold_operator(name, env)` to generate a starter template, not a full advanced-authoring implementation. Then edit the source to add custom ports, params, and behavior.
-4. **Implement** — edit the generated source, using API docs and examples as reference
-5. **Build & Test** — use `rebuild_package()` and `test_package()` to iterate
-6. **Wire up** — use graph tools (`add_node`, `connect`, `set_param`) to test in context
+2. **Read the codebase** — use `search_source()`, `read_source_file()`, and `read_source_span()` for repo-wide context
+3. **Study examples** — use `list_example_operators()` and `get_example_operator()` to see real implementations
+4. **Scaffold** — use `scaffold_operator(name, env)` to generate a starter template, not a full advanced-authoring implementation. Then edit the source to add custom ports, params, and behavior.
+5. **Implement** — edit the generated source, using API docs and examples as reference
+6. **Build & Test** — use `rebuild_package()`, `test_package()`, `get_build_activity()`, and `explain_build_failure()` to iterate
+7. **Wire up** — use graph tools (`add_node`, `connect`, `set_param`) to test in context
 
 ## API Documentation Topics
 
@@ -86,6 +104,13 @@ Start with the discovery tools before scaffolding:
 
 - Example discovery can include `"shared"` because the repo contains reusable helpers under `operators/shared/`.
 - `scaffold_operator(name, env)` targets only `"control"`, `"audio"`, or `"gpu"` starter templates.
+
+## Source Access
+
+- The opdev server has read-only access to the Vivid codebase roots: `src`, `operators`, `mcp`, `tests`, and `docs`.
+- In a source checkout, opdev reads directly from the checkout.
+- In a release app, opdev prefers bundled read-only source under `Resources/source` when available.
+- Build activity tools require a running Vivid runtime because they read the live build console over the control server.
 """)
 
 
@@ -260,9 +285,327 @@ async def _post(method: str, body: dict | None = None) -> str:
         return resp.text
 
 
+def _selected_root_path(root_name: str) -> tuple[Path | None, str | None]:
+    if root_name not in SOURCE_ROOT_NAMES:
+        return None, None
+    if _CHECKOUT_ROOT:
+        checkout_path = _CHECKOUT_ROOT / root_name
+        if checkout_path.is_dir():
+            return checkout_path, "checkout"
+    if _BUNDLED_SOURCE_ROOT:
+        bundled_path = _BUNDLED_SOURCE_ROOT / root_name
+        if bundled_path.is_dir():
+            return bundled_path, "bundle"
+    return None, None
+
+
+def _root_listing() -> list[dict]:
+    roots = []
+    for root_name in SOURCE_ROOT_NAMES:
+        checkout_available = bool(_CHECKOUT_ROOT and (_CHECKOUT_ROOT / root_name).is_dir())
+        bundle_available = bool(_BUNDLED_SOURCE_ROOT and (_BUNDLED_SOURCE_ROOT / root_name).is_dir())
+        selected_path, origin = _selected_root_path(root_name)
+        roots.append({
+            "name": root_name,
+            "checkout_available": checkout_available,
+            "bundle_available": bundle_available,
+            "selected": selected_path is not None,
+            "origin": origin or "",
+            "path": selected_path.as_posix() if selected_path else "",
+        })
+    return roots
+
+
+def _validate_root_names(roots: list[str] | None) -> tuple[list[str], str | None]:
+    if not roots:
+        return list(SOURCE_ROOT_NAMES), None
+    normalized = []
+    for root in roots:
+        root_name = root.strip()
+        if root_name not in SOURCE_ROOT_NAMES:
+            return [], f"Unknown source root '{root_name}'. Available: {', '.join(SOURCE_ROOT_NAMES)}"
+        normalized.append(root_name)
+    return normalized, None
+
+
+@lru_cache(maxsize=None)
+def _source_files_for_root(root_name: str, root_path_str: str) -> tuple[tuple[str, str], ...]:
+    root_path = Path(root_path_str)
+    files: list[tuple[str, str]] = []
+    for dirpath, dirnames, filenames in os.walk(root_path):
+        dirnames[:] = [d for d in dirnames if d not in {".git", "build", "site", "__pycache__", ".pytest_cache", ".venv", ".venv-mcp"}]
+        base = Path(dirpath)
+        for filename in sorted(filenames):
+            path = base / filename
+            if path.suffix.lower() not in SOURCE_TEXT_EXTENSIONS:
+                continue
+            rel_path = (Path(root_name) / path.relative_to(root_path)).as_posix()
+            files.append((rel_path, path.as_posix()))
+    return tuple(files)
+
+
+def _iter_source_files(roots: list[str] | None = None,
+                       file_types: list[str] | None = None,
+                       path_globs: list[str] | None = None):
+    selected_roots, err = _validate_root_names(roots)
+    if err:
+        raise ValueError(err)
+
+    normalized_exts = set()
+    for ext in file_types or []:
+        ext = ext.strip().lower()
+        if not ext:
+            continue
+        if not ext.startswith("."):
+            ext = "." + ext
+        normalized_exts.add(ext)
+
+    for root_name in selected_roots:
+        root_path, origin = _selected_root_path(root_name)
+        if not root_path or not origin:
+            continue
+        for rel_path, abs_path in _source_files_for_root(root_name, root_path.as_posix()):
+            if normalized_exts and Path(rel_path).suffix.lower() not in normalized_exts:
+                continue
+            if path_globs and not any(fnmatch.fnmatch(rel_path, glob) for glob in path_globs):
+                continue
+            yield {
+                "path": rel_path,
+                "abs_path": abs_path,
+                "root": root_name,
+                "origin": origin,
+            }
+
+
+def _resolve_source_path(path: str) -> tuple[dict | None, str | None]:
+    rel = Path(path.strip())
+    if not path.strip() or rel.is_absolute():
+        return None, "Path must be a repo-relative allowlisted path"
+    parts = rel.parts
+    if not parts:
+        return None, "Path must not be empty"
+    if any(part == ".." for part in parts):
+        return None, "Path must not escape the allowlisted source roots"
+    root_name = parts[0]
+    if root_name not in SOURCE_ROOT_NAMES:
+        return None, f"Path root '{root_name}' is not allowlisted"
+    root_path, origin = _selected_root_path(root_name)
+    if not root_path or not origin:
+        return None, f"Source root '{root_name}' is not available"
+    resolved = (root_path / Path(*parts[1:])).resolve()
+    try:
+        resolved.relative_to(root_path.resolve())
+    except ValueError:
+        return None, "Path must remain inside the allowlisted root"
+    if not resolved.is_file():
+        return None, f"Source file not found: {path}"
+    return {
+        "path": Path(*parts).as_posix(),
+        "abs_path": resolved.as_posix(),
+        "root": root_name,
+        "origin": origin,
+    }, None
+
+
+def _read_source_text(abs_path: str) -> str:
+    return Path(abs_path).read_text(encoding="utf-8", errors="replace")
+
+
+def _classify_symbol_line(line: str, name: str) -> dict | None:
+    escaped = re.escape(name)
+    if re.search(rf"^\s*#\s*define\s+{escaped}\b", line):
+        return {"kind": "macro", "is_definition": True}
+    type_match = re.search(rf"\b(class|struct|enum|namespace)\s+{escaped}\b", line)
+    if type_match:
+        return {"kind": type_match.group(1), "is_definition": True}
+    if re.search(rf"\b(using\s+{escaped}\b|typedef\b.*\b{escaped}\b)", line):
+        return {"kind": "alias", "is_definition": True}
+    if re.search(rf"(^|[^.>\w]){escaped}\s*\([^;]*\)\s*(const)?\s*(\{{|;|$)", line):
+        return {"kind": "function", "is_definition": True}
+    if re.search(rf"\b{escaped}\b", line):
+        return {"kind": "identifier", "is_definition": False}
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Resource tools — read on demand, keep context lean
 # ---------------------------------------------------------------------------
+
+@mcp.tool()
+async def list_source_roots() -> str:
+    """List the read-only Vivid source roots available to opdev."""
+    roots = _root_listing()
+    selected = sum(1 for root in roots if root["selected"])
+    return json.dumps({"ok": True, "count": selected, "roots": roots})
+
+
+@mcp.tool()
+async def search_source(query: str,
+                        roots: list[str] | None = None,
+                        limit: int = 20,
+                        file_types: list[str] | None = None,
+                        path_globs: list[str] | None = None) -> str:
+    """Search the read-only Vivid codebase by text.
+
+    Args:
+        query: Case-insensitive text query
+        roots: Optional source-root filter (`src`, `operators`, `mcp`, `tests`, `docs`)
+        limit: Maximum matches to return
+        file_types: Optional extension filter (e.g. [".cpp", ".h", ".py"])
+        path_globs: Optional path glob filter (e.g. ["src/runtime/*", "docs/runtime/*.md"])
+    """
+    query = query.strip()
+    if not query:
+        return json.dumps({"ok": False, "error": "Query must not be empty"})
+
+    try:
+        matches = []
+        lower_query = query.lower()
+        for file_info in _iter_source_files(roots=roots, file_types=file_types, path_globs=path_globs):
+            for line_no, line in enumerate(_read_source_text(file_info["abs_path"]).splitlines(), start=1):
+                lower_line = line.lower()
+                col = lower_line.find(lower_query)
+                if col < 0:
+                    continue
+                snippet = line.strip()
+                if len(snippet) > 200:
+                    snippet = snippet[:200] + "..."
+                matches.append({
+                    "path": file_info["path"],
+                    "root": file_info["root"],
+                    "origin": file_info["origin"],
+                    "line": line_no,
+                    "column": col + 1,
+                    "match_kind": "text",
+                    "snippet": snippet,
+                })
+                if len(matches) >= max(1, min(limit, MAX_SOURCE_RESULTS)):
+                    return json.dumps({"ok": True, "query": query, "count": len(matches), "matches": matches})
+        return json.dumps({"ok": True, "query": query, "count": len(matches), "matches": matches})
+    except ValueError as exc:
+        return json.dumps({"ok": False, "error": str(exc)})
+
+
+@mcp.tool()
+async def read_source_file(path: str, max_bytes: int = 200000) -> str:
+    """Read a source file from the read-only allowlisted code roots."""
+    file_info, err = _resolve_source_path(path)
+    if err:
+        return json.dumps({"ok": False, "error": err})
+
+    content = _read_source_text(file_info["abs_path"])
+    max_bytes = max(1, min(max_bytes, 2 * 1024 * 1024))
+    truncated = len(content.encode("utf-8")) > max_bytes
+    if truncated:
+        encoded = content.encode("utf-8")[:max_bytes]
+        content = encoded.decode("utf-8", errors="ignore")
+
+    return json.dumps({
+        "ok": True,
+        "path": file_info["path"],
+        "root": file_info["root"],
+        "origin": file_info["origin"],
+        "content": content,
+        "truncated": truncated,
+        "bytes_returned": len(content.encode("utf-8")),
+    })
+
+
+@mcp.tool()
+async def read_source_span(path: str, start_line: int, end_line: int) -> str:
+    """Read a specific inclusive line span from a source file."""
+    if start_line <= 0 or end_line <= 0 or end_line < start_line:
+        return json.dumps({"ok": False, "error": "Invalid line range"})
+
+    file_info, err = _resolve_source_path(path)
+    if err:
+        return json.dumps({"ok": False, "error": err})
+
+    lines = _read_source_text(file_info["abs_path"]).splitlines()
+    if start_line > len(lines):
+        return json.dumps({"ok": False, "error": "start_line out of range"})
+
+    actual_end = min(end_line, len(lines))
+    selected = [{"line": idx, "text": lines[idx - 1]} for idx in range(start_line, actual_end + 1)]
+    content = "\n".join(item["text"] for item in selected)
+    return json.dumps({
+        "ok": True,
+        "path": file_info["path"],
+        "root": file_info["root"],
+        "origin": file_info["origin"],
+        "start_line": start_line,
+        "end_line": actual_end,
+        "content": content,
+        "lines": selected,
+    })
+
+
+@mcp.tool()
+async def find_symbol(name: str, roots: list[str] | None = None, limit: int = 20) -> str:
+    """Find likely symbol definitions, with fallback to token hits if no definitions match."""
+    name = name.strip()
+    if not name:
+        return json.dumps({"ok": False, "error": "Name must not be empty"})
+
+    try:
+        matches = []
+        fallback = []
+        for file_info in _iter_source_files(roots=roots):
+            for line_no, line in enumerate(_read_source_text(file_info["abs_path"]).splitlines(), start=1):
+                classification = _classify_symbol_line(line, name)
+                if not classification:
+                    continue
+                entry = {
+                    "path": file_info["path"],
+                    "root": file_info["root"],
+                    "origin": file_info["origin"],
+                    "line": line_no,
+                    "kind": classification["kind"],
+                    "is_definition": classification["is_definition"],
+                    "snippet": line.strip(),
+                }
+                if classification["is_definition"]:
+                    matches.append(entry)
+                else:
+                    fallback.append(entry)
+                if len(matches) >= max(1, min(limit, MAX_SOURCE_RESULTS)):
+                    return json.dumps({"ok": True, "name": name, "count": len(matches), "matches": matches})
+        final_matches = matches if matches else fallback[:max(1, min(limit, MAX_SOURCE_RESULTS))]
+        return json.dumps({"ok": True, "name": name, "count": len(final_matches), "matches": final_matches})
+    except ValueError as exc:
+        return json.dumps({"ok": False, "error": str(exc)})
+
+
+@mcp.tool()
+async def find_references(name: str, roots: list[str] | None = None, limit: int = 50) -> str:
+    """Find token references to a symbol across the read-only code roots."""
+    name = name.strip()
+    if not name:
+        return json.dumps({"ok": False, "error": "Name must not be empty"})
+
+    try:
+        matches = []
+        token_re = re.compile(rf"\b{re.escape(name)}\b")
+        for file_info in _iter_source_files(roots=roots):
+            for line_no, line in enumerate(_read_source_text(file_info["abs_path"]).splitlines(), start=1):
+                if not token_re.search(line):
+                    continue
+                classification = _classify_symbol_line(line, name) or {"kind": "identifier", "is_definition": False}
+                matches.append({
+                    "path": file_info["path"],
+                    "root": file_info["root"],
+                    "origin": file_info["origin"],
+                    "line": line_no,
+                    "kind": classification["kind"],
+                    "is_definition": classification["is_definition"],
+                    "snippet": line.strip(),
+                })
+                if len(matches) >= max(1, min(limit, MAX_SOURCE_RESULTS * 2)):
+                    return json.dumps({"ok": True, "name": name, "count": len(matches), "matches": matches})
+        return json.dumps({"ok": True, "name": name, "count": len(matches), "matches": matches})
+    except ValueError as exc:
+        return json.dumps({"ok": False, "error": str(exc)})
+
 
 @mcp.tool()
 async def get_operator_api_docs(topic: str) -> str:
@@ -301,13 +644,10 @@ async def get_api_header(header: str) -> str:
             "ok": False,
             "error": f"Header '{basename}' not in allowlist. Available: {', '.join(sorted(ALLOWED_HEADERS))}"
         })
-
-    header_path = OPERATOR_API_DIR / basename
-    if not header_path.is_file():
-        return json.dumps({"ok": False, "error": f"Header file not found: {basename}"})
-
-    content = header_path.read_text(encoding="utf-8")
-    return json.dumps({"ok": True, "header": basename, "content": content})
+    raw = json.loads(await read_source_file(f"src/operator_api/{basename}"))
+    if not raw["ok"]:
+        return json.dumps({"ok": False, "error": raw["error"]})
+    return json.dumps({"ok": True, "header": basename, "content": raw["content"]})
 
 
 @mcp.tool()
@@ -652,6 +992,36 @@ async def test_package(name: str) -> str:
         resp = await client.post(f"{VIVID_URL}/test_package",
                                   json={"name": name}, timeout=90.0)
         return resp.text
+
+
+@mcp.tool()
+async def get_build_activity(scope: str = "recent", limit: int = 10) -> str:
+    """Get structured recent or active build/test activity from the running Vivid build console."""
+    scope = scope.strip().lower() or "recent"
+    if scope not in {"recent", "active"}:
+        return json.dumps({"ok": False, "error": "scope must be 'recent' or 'active'"})
+    try:
+        return await _post("get_build_activity", {"scope": scope, "limit": max(1, min(limit, MAX_BUILD_TASKS))})
+    except Exception as exc:
+        return json.dumps({"ok": False, "error": f"build activity unavailable: {exc}"})
+
+
+@mcp.tool()
+async def explain_build_failure(task_id: str = "latest", max_lines: int = 40) -> str:
+    """Explain the latest or a specific failed build/test task from the running Vivid build console."""
+    body: dict = {"max_lines": max(5, min(max_lines, 200))}
+    if task_id:
+        if task_id != "latest":
+            try:
+                body["task_id"] = int(task_id)
+            except ValueError:
+                return json.dumps({"ok": False, "error": "task_id must be 'latest' or an integer string"})
+        else:
+            body["task_id"] = "latest"
+    try:
+        return await _post("explain_build_failure", body)
+    except Exception as exc:
+        return json.dumps({"ok": False, "error": f"build failure explanation unavailable: {exc}"})
 
 
 # ---------------------------------------------------------------------------

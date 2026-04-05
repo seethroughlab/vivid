@@ -243,6 +243,13 @@ target_include_directories(test_build_console PRIVATE src tests)
 target_link_libraries(test_build_console PRIVATE vivid_runtime_testlib)
 add_test(NAME test_build_console COMMAND test_build_console WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+add_executable(test_build_activity_queries
+    tests/control/test_build_activity_queries.cpp
+)
+target_include_directories(test_build_activity_queries PRIVATE src tests)
+target_link_libraries(test_build_activity_queries PRIVATE vivid_runtime_testlib nlohmann_json::nlohmann_json)
+add_test(NAME test_build_activity_queries COMMAND test_build_activity_queries WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # path_util unit tests (header-only, no extra deps)
 add_executable(test_path_util
     tests/common/test_path_util.cpp

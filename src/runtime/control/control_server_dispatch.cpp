@@ -9,11 +9,13 @@ std::string dispatch(const std::string& method, const std::string& body,
                             HotReloader* hot_reloader,
                             const std::string& src_dir,
                             OperatorSourceDocs& source_docs,
+                            SourceIndex& source_index,
                             PackageManager* package_manager,
                             PackageCompiler* package_compiler,
                             Settings* settings,
                             AudioEngine* audio_engine,
-                            AssetLibrary* asset_library) {
+                            AssetLibrary* asset_library,
+                            BuildConsole* build_console) {
     // Read-only queries (no body needed)
     if (method == "inspect_graph") return handle_inspect_graph(graph, core, core.subgraph_modules());
     if (method == "introspect_nodes") return handle_introspect_nodes(graph, core, core.subgraph_modules());
@@ -21,6 +23,7 @@ std::string dispatch(const std::string& method, const std::string& body,
         return control_server_checks::handle_run_diagnostics(graph, core, registry);
     if (method == "get_registry_diagnostics") return handle_get_registry_diagnostics(registry);
     if (method == "get_graph_load_diagnostics") return handle_get_graph_load_diagnostics(graph);
+    if (method == "list_source_roots") return handle_list_source_roots(source_index);
     if (method == "operator_map") {
         nlohmann::json entries = nlohmann::json::array();
         for (const auto& e : registry.operator_map()) {
@@ -73,6 +76,25 @@ std::string dispatch(const std::string& method, const std::string& body,
 
     if (method == "list_types") {
         result = handle_list_types(registry, package_manager, source_docs, root_valid ? root : nlohmann::json::object(), core.subgraph_modules());
+    } else if (method == "search_source") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else result = handle_search_source(source_index, root);
+    } else if (method == "read_source_file") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else result = handle_read_source_file(source_index, root);
+    } else if (method == "read_source_span") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else result = handle_read_source_span(source_index, root);
+    } else if (method == "find_symbol") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else result = handle_find_symbol(source_index, root);
+    } else if (method == "find_references") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else result = handle_find_references(source_index, root);
+    } else if (method == "get_build_activity") {
+        result = handle_get_build_activity(build_console, root_valid ? root : nlohmann::json::object());
+    } else if (method == "explain_build_failure") {
+        result = handle_explain_build_failure(build_console, root_valid ? root : nlohmann::json::object());
     } else if (method == "validate_checks") {
         if (!root_valid) result = json_err("invalid JSON body");
         else result = control_server_checks::handle_validate_checks(root);

@@ -31,7 +31,7 @@ This is the most LLM-friendly design: the LLM reads JSON, writes JSON. No code g
 **Operator Authoring Layers**
 
 - **Bootstrap layer (UI + CLI):** `scaffold_operator` creates a starter template with name, domain, and variant. The UI modal and CLI provide quick access to this. The generated template includes guiding comments pointing to examples and MCP tools for next steps.
-- **Advanced authoring layer (MCP/opdev):** Full-featured operator development — custom ports, typed parameters, file drops, inspectors, thumbnails, and deeper API guidance. The opdev MCP server (`mcp/vivid_opdev_mcp.py`) provides discovery tools (`search_example_operators`, `get_capability_guidance`, `recommend_starting_point`), API documentation, and example operator source. The control server's `scaffold_operator` endpoint also accepts `inputs`, `outputs`, and `params` for programmatic use by MCP tools.
+- **Advanced authoring layer (MCP/opdev):** Full-featured operator development — custom ports, typed parameters, file drops, inspectors, thumbnails, and deeper API guidance. The opdev MCP server (`mcp/vivid_opdev_mcp.py`) provides repo-aware read-only source tools (`list_source_roots`, `search_source`, `read_source_file`, `read_source_span`, `find_symbol`, `find_references`), build/test inspection tools (`get_build_activity`, `explain_build_failure`), API documentation, and example operator source. The control server's `scaffold_operator` endpoint also accepts `inputs`, `outputs`, and `params` for programmatic use by MCP tools.
 
 **Routing layer — LLM as architect.** "Build me a patch with 3 audio analysis bands driving 3 visual layers with independent particle systems." The LLM generates graph structure as JSON that the user then explores. This is the scaffolding role — often combined with operator authoring when the scaffold requires new operators that don't yet exist.
 
@@ -55,7 +55,16 @@ The ownership model matters:
 - the **running Vivid app** owns the live graph and embeds the HTTP control server
 - the **HTTP control server** is the local runtime transport, defaulting to `127.0.0.1:9876`
 - the **Python MCP bridge** is a separate process that can launch/reuse the runtime, then forwards MCP tool calls to that running runtime
-- the **Python opdev MCP bridge** is a separate process focused on operator-authoring docs, examples, and capability guidance rather than live graph ownership
+- the **Python opdev MCP bridge** is a separate process focused on operator-authoring docs, examples, read-only codebase access, and build/test inspection rather than live graph ownership
+
+The server split is intentional:
+- `mcp/vivid_mcp.py` owns live runtime control: graph mutation, capture, diagnostics, checks, package operations, and runtime lifecycle.
+- `mcp/vivid_opdev_mcp.py` owns engineering context: read-only source search/reads, API headers, example operators, and recent build/test failure inspection.
+
+Checkout and release builds expose that opdev source surface through the same allowlisted roots:
+- in a source checkout, opdev reads `src/`, `operators/`, `mcp/`, `tests/`, and `docs/` directly from the repo
+- in a bundled app, opdev falls back to the read-only source pack in `Vivid.app/Contents/Resources/source`
+- path access remains allowlisted and read-only; opdev is not a general filesystem bridge
 
 Core/package update MCP tool surface (current):
 - `ensure_runtime(graph_path="")` — ensures a GUI Vivid runtime is reachable, launching `build/vivid` when needed and optionally opening a graph at startup.

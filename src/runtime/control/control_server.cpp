@@ -29,13 +29,16 @@ struct ControlServer::Impl {
 // ---------------------------------------------------------------------------
 
 ControlServer::ControlServer()
-    : operator_source_docs_(std::make_unique<OperatorSourceDocs>()) {}
+    : operator_source_docs_(std::make_unique<OperatorSourceDocs>())
+    , source_index_(std::make_unique<SourceIndex>()) {}
 ControlServer::~ControlServer() { stop(); }
 
 void ControlServer::set_src_dir(const std::string& src_dir) {
     src_dir_ = src_dir;
     if (operator_source_docs_)
         operator_source_docs_->set_core_source_root(src_dir_);
+    if (source_index_)
+        source_index_->set_checkout_root(src_dir_);
 }
 void ControlServer::set_hot_reloader(HotReloader* hr) { hot_reloader_ = hr; }
 void ControlServer::set_capture_coordinator(CaptureCoordinator* cc) { assert(!impl_); capture_coordinator_ = cc; }
@@ -46,6 +49,12 @@ void ControlServer::set_app_update_manager(AppUpdateManager* aum) { assert(!impl
 void ControlServer::set_settings(Settings* settings) { assert(!impl_); settings_ = settings; }
 void ControlServer::set_audio_engine(AudioEngine* ae) { audio_engine_ = ae; }
 void ControlServer::set_asset_library(AssetLibrary* lib) { asset_library_ = lib; }
+void ControlServer::set_build_console(BuildConsole* console) { assert(!impl_); build_console_ = console; }
+void ControlServer::set_bundled_source_dir(const std::string& bundled_source_dir) {
+    bundled_source_dir_ = bundled_source_dir;
+    if (source_index_)
+        source_index_->set_bundled_root(bundled_source_dir_);
+}
 
 uint64_t ControlServer::mcp_last_ping_ms(const std::string& name) const {
     std::lock_guard<std::mutex> lk(mcp_ping_mutex_);
@@ -617,11 +626,13 @@ void ControlServer::process_requests(RuntimeAPI& api, Graph& graph,
                                         hot_reloader_,
                                         src_dir_,
                                         *operator_source_docs_,
+                                        *source_index_,
                                         package_manager_,
                                         package_compiler_,
                                         settings_,
                                         audio_engine_,
-                                        asset_library_);
+                                        asset_library_,
+                                        build_console_);
 
         if (track_for_undo && response_is_ok(response)) {
             if (req.method == "load_graph") {

@@ -22,7 +22,9 @@
 #include "runtime/packages/package_test_runner.h"
 #include "runtime/packages/package_catalog.h"
 #include "runtime/platform/app_update_manager.h"
+#include "runtime/core/build_console.h"
 #include "runtime/core/settings.h"
+#include "runtime/core/source_index.h"
 #include "runtime/audio/audio_engine.h"
 #include "runtime/operators/operator_destination_policy.h"
 #include "operator_api/types.h"
@@ -538,6 +540,14 @@ std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core, const Subgr
 std::string handle_get_graph_load_diagnostics(const Graph& graph);
 std::string handle_list_types(OperatorRegistry& registry, PackageManager* package_manager, OperatorSourceDocs& source_docs, const nlohmann::json& root, const SubgraphModuleRegistry* modules = nullptr);
 std::string handle_operator_docs(OperatorRegistry& registry, PackageManager* package_manager, OperatorSourceDocs& source_docs, const nlohmann::json& root, const SubgraphModuleRegistry* modules = nullptr);
+std::string handle_list_source_roots(SourceIndex& source_index);
+std::string handle_search_source(SourceIndex& source_index, const nlohmann::json& root);
+std::string handle_read_source_file(SourceIndex& source_index, const nlohmann::json& root);
+std::string handle_read_source_span(SourceIndex& source_index, const nlohmann::json& root);
+std::string handle_find_symbol(SourceIndex& source_index, const nlohmann::json& root);
+std::string handle_find_references(SourceIndex& source_index, const nlohmann::json& root);
+std::string handle_get_build_activity(BuildConsole* build_console, const nlohmann::json& root);
+std::string handle_explain_build_failure(BuildConsole* build_console, const nlohmann::json& root);
 std::string handle_get_registry_diagnostics(OperatorRegistry& registry);
 
 // Dispatch router (defined in control_server_dispatch.cpp)
@@ -548,11 +558,13 @@ std::string dispatch(const std::string& method, const std::string& body,
                             HotReloader* hot_reloader,
                             const std::string& src_dir,
                             OperatorSourceDocs& source_docs,
+                            SourceIndex& source_index,
                             PackageManager* package_manager,
                             PackageCompiler* package_compiler,
                             Settings* settings,
                             AudioEngine* audio_engine,
-                            AssetLibrary* asset_library = nullptr);
+                            AssetLibrary* asset_library = nullptr,
+                            BuildConsole* build_console = nullptr);
 
 // Asset library handlers (defined in control_server_assets.cpp)
 std::string handle_list_assets(AssetLibrary& lib, const nlohmann::json& root);

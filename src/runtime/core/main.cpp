@@ -744,6 +744,14 @@ int main(int argc, char* argv[]) {
         static constexpr const char* kSplashFragSrc = R"(
 @group(0) @binding(0) var<uniform> u: vec4f; // x=time, y=aspect
 
+// Logo V geometry: 5 nodes, 4 edges (normalized 0–1 coords)
+const NODE0 = vec2f(0.232, 0.279);
+const NODE1 = vec2f(0.339, 0.455);
+const NODE2 = vec2f(0.500, 0.721);
+const NODE3 = vec2f(0.661, 0.455);
+const NODE4 = vec2f(0.768, 0.279);
+const NODE_R = array<f32, 5>(0.033, 0.025, 0.035, 0.025, 0.033);
+
 fn hash(p: vec2f) -> f32 {
     var h = dot(p, vec2f(127.1, 311.7));
     return fract(sin(h) * 43758.5453123);
@@ -771,6 +779,48 @@ fn fbm(p_in: vec2f) -> f32 {
     return v;
 }
 
+// Distance from point p to segment a→b. Returns (distance, t along segment).
+fn seg_dist(p: vec2f, a: vec2f, b: vec2f) -> vec2f {
+    let ab = b - a;
+    let t = clamp(dot(p - a, ab) / dot(ab, ab), 0.0, 1.0);
+    let closest = a + ab * t;
+    return vec2f(length(p - closest), t);
+}
+
+// Logo edge layer: flowing noise textured along each edge, masked by distance.
+// Returns (brightness, min_dist_to_edge).
+fn logo_edges(p: vec2f, time: f32) -> vec2f {
+    let nodes = array<vec2f, 5>(NODE0, NODE1, NODE2, NODE3, NODE4);
+    // Cumulative t offsets so flow is continuous across the whole V path
+    let t_offsets = array<f32, 4>(0.0, 1.0, 2.0, 3.0);
+    let edge_half_width = 0.028;
+    let soft_edge = 0.040;
+
+    var brightness = 0.0;
+    var min_d = 1.0;
+
+    for (var i = 0; i < 4; i++) {
+        let a = nodes[i];
+        let b = nodes[i + 1];
+        let sd = seg_dist(p, a, b);
+        let d = sd.x;
+        let t = sd.y;
+        min_d = min(min_d, d);
+
+        // Soft mask from edge centerline
+        let mask = smoothstep(edge_half_width + soft_edge, edge_half_width * 0.3, d);
+
+        // Flow coordinate: position along edge scrolls with time
+        let flow_coord = (t_offsets[i] + t) * 4.0 - time * 0.35;
+        let cross_coord = d * 20.0;
+        let flow_noise = fbm(vec2f(flow_coord, cross_coord) + vec2f(f32(i) * 7.3));
+
+        brightness = max(brightness, mask * flow_noise);
+    }
+
+    return vec2f(brightness, min_d);
+}
+
 @vertex fn vs_main(@builtin(vertex_index) vi: u32) -> FullscreenOutput {
     return fullscreenTriangle(vi, true);
 }
@@ -781,32 +831,49 @@ fn fbm(p_in: vec2f) -> f32 {
     var uv = in.uv;
     uv.x *= aspect;
 
-    // Warped domain for organic flow
+    // --- Base nebula (original, untouched) ---
     let warp = vec2f(
         fbm(uv * 3.0 + vec2f(t * 0.08, t * 0.06)),
         fbm(uv * 3.0 + vec2f(t * -0.05, t * 0.09) + vec2f(5.2, 1.3))
     );
     let n = fbm(uv * 2.0 + warp * 1.5 + vec2f(t * 0.02));
 
-    // Radial vignette — dark at edges, brighter near center
     let d = length(in.uv - vec2f(0.5));
     let vignette = 1.0 - smoothstep(0.1, 0.85, d);
 
-    // Color palette: dark base with blue/purple/teal accents
     let deep    = vec3f(0.02, 0.02, 0.04);
     let blue    = vec3f(0.06, 0.10, 0.22);
     let purple  = vec3f(0.12, 0.06, 0.18);
     let teal    = vec3f(0.04, 0.14, 0.16);
 
-    // Blend colors based on noise layers
     var color = deep;
     color = mix(color, blue,   smoothstep(0.25, 0.55, n) * vignette);
     color = mix(color, purple, smoothstep(0.45, 0.70, warp.x) * vignette * 0.6);
     color = mix(color, teal,   smoothstep(0.50, 0.75, warp.y) * vignette * 0.4);
 
-    // Faint bright wisps in the central region
     let wisp = smoothstep(0.62, 0.72, n) * vignette * vignette;
     color += vec3f(0.08, 0.10, 0.15) * wisp;
+
+    // --- Logo V overlay (separate layer) ---
+    let logo = logo_edges(in.uv, t);
+    let edge_bright = logo.x;
+
+    // Edge color: cyan-blue gradient along y
+    let logo_cyan = vec3f(0.15, 0.50, 0.65);
+    let logo_blue = vec3f(0.12, 0.35, 0.70);
+    let edge_color = mix(logo_cyan, logo_blue, smoothstep(0.3, 0.7, in.uv.y));
+    color += edge_color * edge_bright * vignette * 0.5;
+
+    // Node glow spots — bright core + soft halo
+    let node_positions = array<vec2f, 5>(NODE0, NODE1, NODE2, NODE3, NODE4);
+    for (var i = 0; i < 5; i++) {
+        let nd = length(in.uv - node_positions[i]);
+        let r = NODE_R[i];
+        let core = smoothstep(r, r * 0.2, nd);
+        let halo = smoothstep(r * 4.0, r * 0.5, nd);
+        let node_color = mix(logo_cyan, vec3f(0.25, 0.65, 0.80), core);
+        color += node_color * (core * 0.35 + halo * 0.08) * vignette;
+    }
 
     return vec4f(color, 1.0);
 }
@@ -974,6 +1041,16 @@ fn fbm(p_in: vec2f) -> f32 {
         PhaseTimer t("bootstrap_operator_registry");
         vivid::bootstrap_operator_registry(registry, &pkg_manager, runtime_paths, bootstrap_opts);
     }
+    // TEMP: hold splash screen until any key is pressed (for visual tuning)
+    glfwSetKeyCallback(window, [](GLFWwindow* w, int, int, int action, int) {
+        if (action == GLFW_PRESS) glfwSetWindowShouldClose(w, GLFW_TRUE);
+    });
+    while (!glfwWindowShouldClose(window)) {
+        render_splash_frame("Press any key...");
+    }
+    glfwSetWindowShouldClose(window, GLFW_FALSE);
+    glfwSetKeyCallback(window, nullptr);
+
     registry.set_progress_callback(nullptr);
     vivid::PackageCatalog pkg_catalog(pkg_manager);
     pkg_manager.set_resolver([&pkg_catalog](const std::string& name) -> std::string {
@@ -1063,11 +1140,13 @@ fn fbm(p_in: vec2f) -> f32 {
     control_server.set_settings(&settings);
     control_server.set_audio_engine(&audio_engine);
     control_server.set_asset_library(&asset_library);
+    control_server.set_build_console(build_console.get());
+    control_server.set_bundled_source_dir((resources_dir / "source").string());
     if (!control_server.start(9876)) {
         std::fprintf(stderr, "[vivid] Control server unavailable (port 9876 in use?)\n");
     }
-    if (!src_dir.empty())
-        control_server.set_src_dir(src_dir);
+    if (!runtime_paths.source_dir.empty())
+        control_server.set_src_dir(runtime_paths.source_dir);
 
     // (text_renderer was initialized earlier for the loading screen)
 

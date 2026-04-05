@@ -230,6 +230,70 @@ class TestStructure:
 
 
 # ---------------------------------------------------------------------------
+# Source access tools
+# ---------------------------------------------------------------------------
+
+class TestSourceAccess:
+    @pytest.mark.anyio
+    async def test_list_source_roots(self):
+        result = json.loads(await opdev.list_source_roots())
+        assert result["ok"]
+        names = {root["name"] for root in result["roots"]}
+        assert {"src", "operators", "mcp", "tests", "docs"}.issubset(names)
+
+    @pytest.mark.anyio
+    async def test_search_source(self):
+        result = json.loads(await opdev.search_source("VIVID_REGISTER", roots=["src", "operators"], limit=5))
+        assert result["ok"]
+        assert result["count"] >= 1
+        assert all(match["root"] in {"src", "operators"} for match in result["matches"])
+
+    @pytest.mark.anyio
+    async def test_search_source_with_glob_and_ext_filter(self):
+        result = json.loads(await opdev.search_source(
+            "Bridge",
+            roots=["docs"],
+            limit=5,
+            file_types=["md"],
+            path_globs=["docs/runtime/*.md"],
+        ))
+        assert result["ok"]
+        assert all(match["path"].startswith("docs/runtime/") for match in result["matches"])
+
+    @pytest.mark.anyio
+    async def test_read_source_file(self):
+        result = json.loads(await opdev.read_source_file("src/operator_api/operator.h", max_bytes=20000))
+        assert result["ok"]
+        assert "VIVID_REGISTER" in result["content"]
+
+    @pytest.mark.anyio
+    async def test_read_source_file_blocks_traversal(self):
+        result = json.loads(await opdev.read_source_file("../secret.txt"))
+        assert not result["ok"]
+
+    @pytest.mark.anyio
+    async def test_read_source_span(self):
+        result = json.loads(await opdev.read_source_span("src/operator_api/operator.h", 1, 5))
+        assert result["ok"]
+        assert result["start_line"] == 1
+        assert len(result["lines"]) >= 1
+
+    @pytest.mark.anyio
+    async def test_find_symbol(self):
+        result = json.loads(await opdev.find_symbol("OperatorBase", roots=["src"], limit=5))
+        assert result["ok"]
+        assert result["count"] >= 1
+        assert any(match["is_definition"] for match in result["matches"])
+
+    @pytest.mark.anyio
+    async def test_find_references(self):
+        result = json.loads(await opdev.find_references("OperatorBase", roots=["src"], limit=10))
+        assert result["ok"]
+        assert result["count"] >= 1
+        assert all(match["root"] == "src" for match in result["matches"])
+
+
+# ---------------------------------------------------------------------------
 # search_example_operators
 # ---------------------------------------------------------------------------
 
@@ -385,4 +449,38 @@ class TestRecommendStartingPoint:
     @pytest.mark.anyio
     async def test_empty_goal(self):
         result = json.loads(await opdev.recommend_starting_point(""))
+        assert not result["ok"]
+
+
+# ---------------------------------------------------------------------------
+# Build activity tools
+# ---------------------------------------------------------------------------
+
+class TestBuildActivityTools:
+    @pytest.mark.anyio
+    async def test_get_build_activity_forwards(self, monkeypatch):
+        async def fake_post(method, body=None):
+            assert method == "get_build_activity"
+            assert body["scope"] == "recent"
+            return json.dumps({"ok": True, "tasks": []})
+
+        monkeypatch.setattr(opdev, "_post", fake_post)
+        result = json.loads(await opdev.get_build_activity())
+        assert result["ok"]
+
+    @pytest.mark.anyio
+    async def test_explain_build_failure_forwards(self, monkeypatch):
+        async def fake_post(method, body=None):
+            assert method == "explain_build_failure"
+            assert body["task_id"] == "latest"
+            return json.dumps({"ok": True, "task": {"task_id": 7}})
+
+        monkeypatch.setattr(opdev, "_post", fake_post)
+        result = json.loads(await opdev.explain_build_failure())
+        assert result["ok"]
+        assert result["task"]["task_id"] == 7
+
+    @pytest.mark.anyio
+    async def test_explain_build_failure_rejects_bad_task_id(self):
+        result = json.loads(await opdev.explain_build_failure("oops"))
         assert not result["ok"]

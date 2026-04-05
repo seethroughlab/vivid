@@ -32,6 +32,8 @@ Interface capture, graph inspection, and live analysis are conceptually operatio
 
 `capture_interface` is the live-session whole-window capture path. Unlike `capture_frame`, it runs after the graph UI, thumbnails, and overlays have been composed, so the returned PNG reflects the actual inspector/window state of the running instance.
 
+Read-only source browsing belongs to the separate opdev MCP bridge, not to the main `vivid` MCP bridge. The control server still exposes a compact source/build query surface so `mcp/vivid_opdev_mcp.py` can reuse the running runtime's source-root discovery and build-console state, but those methods are intended for opdev workflows rather than general live-graph authoring.
+
 ## HTTP Protocol
 
 - **Method**: `POST /<method_name>`
@@ -183,6 +185,18 @@ All requests are POSTs. The URL path is the method name (e.g. `POST /add_node`).
 | `package_catalog` | — | Fetch remote package catalog metadata |
 | `check_package_updates` | `core_version`, `include_all_installed` | Check installed package update status |
 | `check_core_updates` | `force_refresh` | Check core app update availability |
+
+### Opdev Query Support
+| Method | Key params | Description |
+|--------|-----------|-------------|
+| `list_source_roots` | — | Report allowlisted source roots and whether checkout or bundled source is active |
+| `search_source` | `query`, `roots`, `limit`, `file_types`, `path_globs` | Full-text search across allowlisted read-only roots |
+| `read_source_file` | `path`, `max_bytes` | Read one allowlisted repo-relative file with truncation metadata |
+| `read_source_span` | `path`, `start_line`, `end_line` | Read an exact line range from one allowlisted file |
+| `find_symbol` | `name`, `roots`, `limit` | Lightweight symbol-definition lookup across allowlisted roots |
+| `find_references` | `name`, `roots`, `limit` | Lightweight token/reference lookup across allowlisted roots |
+| `get_build_activity` | `scope`, `limit` | Summarize recent or active build/test tasks from the build console |
+| `explain_build_failure` | `task_id` or `latest`, `max_lines` | Return the latest failed build/test task with top error lines and bounded raw output |
 
 ### Packages
 | Method | Key params | Description |

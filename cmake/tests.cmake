@@ -24,6 +24,7 @@ add_library(vivid_runtime_testlib STATIC
     src/runtime/core/file_drop_registry.cpp
     src/runtime/core/file_watcher.cpp
     src/runtime/core/hot_reload.cpp
+    src/runtime/core/source_index.cpp
     src/runtime/core/runtime_bootstrap.cpp
     src/runtime/core/runtime_core.cpp
     src/runtime/core/settings.cpp
