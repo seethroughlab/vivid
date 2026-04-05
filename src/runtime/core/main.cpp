@@ -745,12 +745,12 @@ int main(int argc, char* argv[]) {
 @group(0) @binding(0) var<uniform> u: vec4f; // x=time, y=aspect
 
 // Logo V geometry: 5 nodes, 4 edges (normalized 0–1 coords)
-const NODE0 = vec2f(0.232, 0.279);
-const NODE1 = vec2f(0.339, 0.455);
-const NODE2 = vec2f(0.500, 0.721);
-const NODE3 = vec2f(0.661, 0.455);
-const NODE4 = vec2f(0.768, 0.279);
-const NODE_R = array<f32, 5>(0.033, 0.025, 0.035, 0.025, 0.033);
+const NODE0 = vec2f(0.300, 0.250);
+const NODE1 = vec2f(0.380, 0.460);
+const NODE2 = vec2f(0.500, 0.780);
+const NODE3 = vec2f(0.620, 0.460);
+const NODE4 = vec2f(0.700, 0.250);
+const NODE_R = array<f32, 5>(0.028, 0.022, 0.030, 0.022, 0.028);
 
 fn hash(p: vec2f) -> f32 {
     var h = dot(p, vec2f(127.1, 311.7));
@@ -858,11 +858,13 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
     let logo = logo_edges(in.uv, t);
     let edge_bright = logo.x;
 
-    // Edge color: cyan-blue gradient along y
-    let logo_cyan = vec3f(0.15, 0.50, 0.65);
-    let logo_blue = vec3f(0.12, 0.35, 0.70);
+    // Edge color: desaturated cyan-blue gradient along y
+    let logo_cyan = vec3f(0.12, 0.40, 0.55);
+    let logo_blue = vec3f(0.10, 0.30, 0.58);
     let edge_color = mix(logo_cyan, logo_blue, smoothstep(0.3, 0.7, in.uv.y));
-    color += edge_color * edge_bright * vignette * 0.5;
+    // Modulate edge brightness by background noise — nebula bleeds through
+    let edge_modulated = edge_bright * mix(0.5, 1.0, n);
+    color += edge_color * edge_modulated * vignette * 0.30;
 
     // Node glow spots — bright core + soft halo
     let node_positions = array<vec2f, 5>(NODE0, NODE1, NODE2, NODE3, NODE4);
@@ -871,8 +873,8 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
         let r = NODE_R[i];
         let core = smoothstep(r, r * 0.2, nd);
         let halo = smoothstep(r * 4.0, r * 0.5, nd);
-        let node_color = mix(logo_cyan, vec3f(0.25, 0.65, 0.80), core);
-        color += node_color * (core * 0.35 + halo * 0.08) * vignette;
+        let node_color = mix(logo_cyan, vec3f(0.20, 0.55, 0.68), core);
+        color += node_color * (core * 0.20 + halo * 0.05) * vignette;
     }
 
     return vec4f(color, 1.0);
