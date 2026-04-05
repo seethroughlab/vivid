@@ -1257,16 +1257,16 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
         vivid::bootstrap_operator_registry(registry, &pkg_manager, runtime_paths, bootstrap_opts);
     }
     // TEMP: hold splash screen until any key is pressed (for visual tuning)
-    if (screenshot_path.empty() && test_ui_script_path.empty() && test_dump_ui_state_path.empty()) {
-        glfwSetKeyCallback(window, [](GLFWwindow* w, int, int, int action, int) {
-            if (action == GLFW_PRESS) glfwSetWindowShouldClose(w, GLFW_TRUE);
-        });
-        while (!glfwWindowShouldClose(window)) {
-            render_splash_frame("Press any key...");
-        }
-        glfwSetWindowShouldClose(window, GLFW_FALSE);
-        glfwSetKeyCallback(window, nullptr);
-    }
+    // if (screenshot_path.empty() && test_ui_script_path.empty() && test_dump_ui_state_path.empty()) {
+    //     glfwSetKeyCallback(window, [](GLFWwindow* w, int, int, int action, int) {
+    //         if (action == GLFW_PRESS) glfwSetWindowShouldClose(w, GLFW_TRUE);
+    //     });
+    //     while (!glfwWindowShouldClose(window)) {
+    //         render_splash_frame("Press any key...");
+    //     }
+    //     glfwSetWindowShouldClose(window, GLFW_FALSE);
+    //     glfwSetKeyCallback(window, nullptr);
+    // }
 
     registry.set_progress_callback(nullptr);
     vivid::PackageCatalog pkg_catalog(pkg_manager);

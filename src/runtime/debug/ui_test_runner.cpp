@@ -114,12 +114,18 @@ bool load_ui_test_script(const std::string& script_path,
         return false;
     }
 
-    if (!root.is_object() || !root.contains("actions") || !root["actions"].is_array()) {
+    // Accept both {"actions": [...]} and bare [...] formats.
+    const nlohmann::json* actions_ptr = nullptr;
+    if (root.is_array()) {
+        actions_ptr = &root;
+    } else if (root.is_object() && root.contains("actions") && root["actions"].is_array()) {
+        actions_ptr = &root["actions"];
+    } else {
         error = "UI test script must contain an 'actions' array";
         return false;
     }
 
-    for (const auto& item : root["actions"]) {
+    for (const auto& item : *actions_ptr) {
         if (!item.is_object()) {
             error = "action must be an object";
             return false;
