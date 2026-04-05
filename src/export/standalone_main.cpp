@@ -134,7 +134,7 @@ int main(int argc, char* argv[]) {
     if (!graph_override.empty()) {
         graph_loaded = graph.load(graph_override.c_str());
     } else {
-        graph_loaded = graph.load_from_string(kEmbeddedGraphJSON);
+        graph_loaded = graph.load_from_string(kEmbeddedGraphJson);
     }
 
     if (!graph_loaded) {
@@ -262,8 +262,8 @@ int main(int argc, char* argv[]) {
                 WGPUTextureView display_tex = nullptr;
                 uint32_t src_w = 0, src_h = 0;
 
-                if (!vo_cn.resolved_tex_inputs.empty()) {
-                    display_tex = vo_cn.resolved_tex_inputs[0];
+                if (!vo_cn.resolved_custom_inputs.empty()) {
+                    display_tex = static_cast<WGPUTextureView>(vo_cn.resolved_custom_inputs[0]);
                     runtime.gpu_sink_source_size(video_out_idx, src_w, src_h);
                 }
 
