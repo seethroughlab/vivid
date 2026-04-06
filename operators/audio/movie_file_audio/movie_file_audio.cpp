@@ -301,20 +301,20 @@ struct MovieFileAudio : vivid::OperatorBase, vivid::AudioProcessable {
                 extractor_.store(fresh, std::memory_order_release);
                 deferred_delete_ = old;
 
-                ring_.clear();
-                ring_.preroll_ready.store(0, std::memory_order_release);
+                ring_->clear();
+                ring_->preroll_ready.store(0, std::memory_order_release);
 
                 fill_thread_.update_extractor(fresh);
-                fill_thread_.update_ring(&ring_);
+                fill_thread_.update_ring(ring_.get());
                 if (!fill_thread_started_) {
-                    fill_thread_.start(&ring_, fresh);
+                    fill_thread_.start(ring_.get(), fresh);
                     fill_thread_started_ = true;
                 }
                 fill_thread_.notify();
 
                 // Video-only files: no audio to preroll
                 if (!fresh->has_audio()) {
-                    ring_.preroll_ready.store(1, std::memory_order_release);
+                    ring_->preroll_ready.store(1, std::memory_order_release);
                 }
 
                 // Fresh load starts at t=0; drain any stale resync
@@ -330,14 +330,14 @@ struct MovieFileAudio : vivid::OperatorBase, vivid::AudioProcessable {
         ext->set_speed(speed.value);
         ext->set_loop(play_mode.int_value() == 0);
         ext->set_pitch_preserve(pitch_preserve.int_value() != 0);
-        ring_.speed.store(speed.value, std::memory_order_release);
+        ring_->speed.store(speed.value, std::memory_order_release);
 
         // Handle seek/resync
         double requested = pending_resync_time_.exchange(-1.0, std::memory_order_acq_rel);
         if (requested >= 0.0) {
             ext->resync(requested);
-            ring_.clear(requested);
-            ring_.preroll_ready.store(0, std::memory_order_release);
+            ring_->clear(requested);
+            ring_->preroll_ready.store(0, std::memory_order_release);
             fill_thread_.notify();
         }
 
@@ -352,11 +352,11 @@ struct MovieFileAudio : vivid::OperatorBase, vivid::AudioProcessable {
         float* R = ctx->output_buffers[0] + ctx->buffer_size; // planar channel 1
         const uint32_t n = ctx->buffer_size;
 
-        ring_.sample_rate.store(static_cast<float>(ctx->sample_rate), std::memory_order_release);
+        ring_->sample_rate.store(static_cast<float>(ctx->sample_rate), std::memory_order_release);
 
-        const uint8_t preroll = ring_.preroll_ready.load(std::memory_order_acquire);
+        const uint8_t preroll = ring_->preroll_ready.load(std::memory_order_acquire);
         if (preroll != 0) {
-            ring_.read(L, R, n);
+            ring_->read(L, R, n);
         } else {
             std::memset(L, 0, n * sizeof(float));
             std::memset(R, 0, n * sizeof(float));
@@ -388,7 +388,7 @@ struct MovieFileAudio : vivid::OperatorBase, vivid::AudioProcessable {
         // Publish SIGNAL outputs: time and duration
         // These cross the cadence bridge to frame-rate operators (e.g. MovieFileIn)
         auto* ext = extractor_.load(std::memory_order_acquire);
-        double mono_time = ring_.read_head_time.load(std::memory_order_relaxed);
+        double mono_time = ring_->read_head_time.load(std::memory_order_relaxed);
         const float dur = (ext && ext->is_open()) ? ext->duration() : 0.0f;
 
         // "Hold Last" (play_mode 2): clamp time at duration so the last frame
@@ -435,8 +435,8 @@ private:
 
         pending_load_.reset();
 
-        ring_.clear();
-        ring_.preroll_ready.store(0, std::memory_order_release);
+        ring_->clear();
+        ring_->preroll_ready.store(0, std::memory_order_release);
 
         if (!last_path_.empty()) {
             auto result = std::make_shared<AsyncAudioLoad>();
@@ -457,7 +457,7 @@ private:
         }
     }
 
-    AudioRing ring_{};
+    std::unique_ptr<AudioRing> ring_ = std::make_unique<AudioRing>();
     FillThread fill_thread_;
     bool fill_thread_started_ = false;
 
