@@ -30,7 +30,7 @@ The custom approach gives zero-copy texture thumbnails trivially (same GPU conte
 
 ## 6.4 Application Layout
 
-**Decision: Output preview pinned right, tabbed workspace center-left, context-sensitive inspector below, transport strip at bottom, collapsible chat/REPL.** This is the default fixed layout; the output preview can undock to a separate window for multi-monitor setups.
+**Decision: Output preview pinned right, tabbed workspace center-left, context-sensitive inspector below, workspace header above the graph, and collapsible chat/REPL.** This is the default fixed layout; the output preview can undock to a separate window for multi-monitor setups.
 
 The visibility hierarchy driving this layout:
 
@@ -41,26 +41,31 @@ The visibility hierarchy driving this layout:
 
 The main workspace interaction pattern centers on the node graph for structure and wiring, with the session/variation surface managing branching and alternate states. Parameter exploration and modulation overlays should stay close to the graph rather than requiring a separate connection matrix view.
 
-## 6.5 Transport + Session Surface
+## 6.5 Workspace Header + Session Surface
 
-The bottom of the node-graph workspace now has two related surfaces:
+The node-graph workspace now has two related surfaces framing it:
 
-- the **transport strip**, always visible in the performance bar
+- the **workspace header**, always visible above the graph
 - the **session surface**, a collapsible bottom strip toggled with **V**
 
-The transport strip is the canonical home for graph-wide tempo state. It exposes the optional
-graph metronome, its BPM/meter, active/queued variation status, dirty state, and session toggle.
-This makes tempo and quantization discoverable even when the session surface is closed.
+The workspace header is the canonical home for graph-wide tempo state, lightweight variation
+status, and capture actions. Its transport zone exposes the optional graph metronome, BPM/meter,
+diagnostics entry point, and capture controls. Session editing and quantization live in the session
+surface rather than being duplicated in the header.
 
 The session surface manages variation branching, auditioning, and reordering. It no longer owns
-hidden timing assumptions; it consumes the graph metronome state surfaced by the transport strip.
+hidden timing assumptions; it consumes the graph metronome state surfaced by the workspace header.
 
 ### Layout
 
-- **Transport strip:** metronome pulse/status, a draggable BPM readout, meter controls, active/queued variation summary, dirty badge, quantize summary, session toggle.
-- **Collapsed affordance:** when the session surface is closed, a persistent bottom tab remains visible. It summarizes session state plus metronome state (`variation count`, `quantize mode`, `BPM/meter`, `active/queued`, `dirty`) and reopens the strip on click.
-- **Header row:** "SESSION" label, live metronome status, quantize mode buttons (Off/Beat/Bar/4Bar), Branch button (duplicates active variation), Update button (visible only when the active variation is dirty).
-- **Card row:** Horizontally scrollable row of variation cards, followed by a "+ Save New" button. Cards are 130×44px with two-line content.
+- **Workspace header:** transport-first single row with transport controls, compact variation
+  status, capture actions, and a diagnostics entry point. It does not include session controls or
+  quantize controls.
+- **Diagnostics panel:** detailed FPS, frame time, memory, audio load/XRUN, and MCP connectivity
+  live behind the `Diag` control instead of competing with transport in the header.
+- **Collapsed affordance:** when the session surface is closed, a persistent bottom tab remains visible. It summarizes session-only state (`variation count`, `active/queued`, `dirty`) and reopens the strip on click.
+- **Header row:** "SESSION" label, quantize mode buttons (Off/Beat/Bar/4Bar), Branch button (duplicates active variation), Update button (visible only when the active variation is dirty), and a close `X`.
+- **Card row:** Horizontally scrollable row of variation cards, followed by an auto-sized "+ Save New" button. Cards are 130×44px with two-line content.
 
 ### Card States
 
@@ -96,9 +101,15 @@ Card line 1 shows the variation name (truncated with ellipsis). Line 2 shows sta
 
 - **Drag BPM:** Drag the BPM readout up or down for live tempo changes. Up increases tempo, down decreases it.
 - **Shift-drag BPM:** Hold **Shift** while dragging for fine `0.1 BPM` adjustment.
-- **Double click BPM:** Opens inline text editing directly in the transport strip.
+- **Double click BPM:** Opens inline text editing directly in the workspace header.
 - **Commit BPM:** Press **Enter** or click away to apply the typed BPM.
 - **Cancel BPM:** Press **Escape** to leave the value unchanged.
+
+### Diagnostics Interaction
+
+- **Diag button:** Opens the diagnostics panel from the workspace header.
+- **Diagnostics panel:** Hosts detailed performance telemetry and MCP connectivity/setup state.
+- **Build console:** Auto-surfaces when a build starts; it is no longer a persistent workspace-header button.
 
 ### API Commands
 
@@ -154,9 +165,9 @@ hidden in transport assumptions.
 - **Wires.** Thin (1px), in the domain color of the source port, low opacity (40%). Cross-domain wires (Control→GPU, Control→Audio) are dashed to indicate the bridge crossing. Wires should never visually compete with node content.
 - **Inspector.** Dark background, parameters as horizontal rows. Slider tracks are dark with a domain-colored fill. Modulation range overlays (Bitwig-inspired) appear as subtle highlights showing the modulated range. Modulation source is indicated by a small tag next to the parameter.
   Role-binding UI should prioritize the role label, target, and available actions. Runtime implementation details such as `runtime_scope` may exist in the model, but are intentionally hidden from the main inspector surface unless a quieter advanced/debug presentation is added later.
-- **Transport bar.** Minimal but explicit. Graph metronome status, BPM, meter, current state name,
-  queued state, and session discoverability all live here. No timeline, but no hidden transport
-  state either.
+- **Workspace header.** Minimal but explicit. Graph metronome status, BPM, meter, diagnostics,
+  capture actions, and lightweight variation status live here. Session editing and quantization do
+  not; those stay in the session strip. No timeline, but no hidden transport state either.
 
 ### What This Is NOT
 

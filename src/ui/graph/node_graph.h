@@ -378,14 +378,13 @@ private:
     // --- Grid ---
     void draw_grid(Renderer2D& tr);
 
-    // --- Performance bar ---
-    void draw_perf_bar(Renderer2D& tr);
+    // --- Workspace header ---
+    void draw_workspace_header(Renderer2D& tr);
     void draw_perf_sparkline(Renderer2D& tr, const float* buf, uint32_t buf_len,
                              uint32_t write_idx, bool filled,
                              float x, float y, float w, float h,
                              float r, float g, float b, float a);
-    void draw_perf_expanded(Renderer2D& tr);
-    void draw_perf_audio_expanded(Renderer2D& tr);
+    void draw_diagnostics_panel(Renderer2D& tr);
 
     // --- Chooser ---
     void rebuild_chooser_items();
@@ -753,7 +752,7 @@ private:
     SessionCollapsedRect session_collapsed_rect_;
     struct VariationCellRect { float x, y, w, h; int idx; };
     std::vector<VariationCellRect> variation_cell_rects_;
-    struct SessionButtonRect { float x, y, w, h; int action; bool enabled = true; }; // action: 0=+New, 1=Update, 2-5=quantize, 6=Branch
+    struct SessionButtonRect { float x, y, w, h; int action; bool enabled = true; }; // action: 0=+New, 1=Update, 2-5=quantize, 6=Branch, 7=Close
     std::vector<SessionButtonRect> session_button_rects_;
     struct SessionCtxMenuRect { float x, y, w, h; int action; }; // action: 0=Rename, 1=Duplicate, 2=Delete, 3=Branch From
     std::vector<SessionCtxMenuRect> session_ctx_menu_rects_;
@@ -852,20 +851,17 @@ private:
     float perf_audio_graph_x_ = 0.0f;
     float perf_audio_graph_y_ = 0.0f;
 
-    // --- MCP status dots in perf bar ---
-    struct McpDotRect { float x, y, w, h; int idx; };  // idx: 0=vivid, 1=opdev
-    std::vector<McpDotRect> mcp_dot_rects_;
-
-    // --- Record/Snapshot buttons in perf bar ---
+    // --- Diagnostics/workspace header controls ---
     bool record_dropdown_open_ = false;
     float record_dropdown_x_ = 0.0f, record_dropdown_y_ = 0.0f;
     int record_codec_sel_ = 0;  // 0=H.264, 1=H.265, 2=ProRes 4444
 
     struct PerfButtonRect { float x, y, w, h; int action; bool enabled; };
-    // action: 0=Record/Stop, 1=Snapshot, 2=Undo, 3=Redo, 4=Build Console,
-    // 5=Metronome toggle, 6=Meter-, 7=Meter+, 8=Session toggle
+    // action: 0=Record/Stop, 1=Snapshot, 2=Diagnostics, 5=Metronome toggle,
+    // 6=Meter-, 7=Meter+
     std::vector<PerfButtonRect> perf_button_rects_;
     struct TransportValueRect { float x = 0.0f, y = 0.0f, w = 0.0f, h = 0.0f; bool visible = false; };
+    TransportValueRect diagnostics_button_rect_;
     TransportValueRect transport_bpm_rect_;
     bool transport_bpm_dragging_ = false;
     float transport_bpm_drag_start_y_ = 0.0f;
@@ -873,6 +869,11 @@ private:
     bool transport_bpm_editing_ = false;
     std::string transport_bpm_edit_buffer_;
     double transport_bpm_last_click_time_ = -1.0;
+    bool diagnostics_panel_open_ = false;
+    struct DiagnosticsPanelRect { float x = 0.0f, y = 0.0f, w = 0.0f, h = 0.0f; bool visible = false; };
+    DiagnosticsPanelRect diagnostics_panel_rect_;
+    struct DiagnosticsMcpRect { float x = 0.0f, y = 0.0f, w = 0.0f, h = 0.0f; int idx = -1; };
+    std::vector<DiagnosticsMcpRect> diagnostics_mcp_rects_;
 
     // --- Sticky notes ---
     struct StickyNoteRect { std::string id; float x, y, w, h; };

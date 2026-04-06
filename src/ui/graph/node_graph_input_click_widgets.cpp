@@ -325,7 +325,7 @@ bool NodeGraphUI::handle_inspector_click() {
         }
     }
 
-    // Reject clicks above perf bar (clipped-off content)
+    // Reject clicks above the workspace header (clipped-off content)
     if (mouse_.y < kPerfBarH) return true;
 
     // Lock badge click: cycle (none) → W → P → WP → (none)

@@ -22,9 +22,12 @@ using vivid::format_float;
 // popups (context menu, dropdown) appear on top of everything.
 // -----------------------------------------------------------------------
 void NodeGraphUI::draw_overlays(Renderer2D& tr) {
-    // Perf bar expanded panels
-    if (perf_mem_hovered_) draw_perf_expanded(tr);
-    if (perf_audio_hovered_) draw_perf_audio_expanded(tr);
+    if (diagnostics_panel_open_) {
+        draw_diagnostics_panel(tr);
+    } else {
+        diagnostics_panel_rect_ = {};
+        diagnostics_mcp_rects_.clear();
+    }
 
     // Inspector — drawn in overlay pass so it paints over GPU thumbnails
     draw_inspector(tr, win_w_, win_h_);
@@ -331,10 +334,9 @@ void NodeGraphUI::draw_status_banner(Renderer2D& tr) {
 }
 
 // -----------------------------------------------------------------------
-// Performance bar
+// Workspace header
 // -----------------------------------------------------------------------
-void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
-    // Update smoothed values (EMA)
+void NodeGraphUI::draw_workspace_header(Renderer2D& tr) {
     constexpr float kSmooth = 0.05f;
     float raw_fps = (dt_ > 0.0f) ? 1.0f / dt_ : 0.0f;
     float raw_ms = dt_ * 1000.0f;
@@ -350,158 +352,24 @@ void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
     fps_history_.push(smoothed_fps_);
     frame_time_history_.push(smoothed_ms_);
 
-    // Sample memory at lower cadence
     if (perf_frame_counter_ % kPerfMemSampleInterval == 0) {
         uint64_t mem_bytes = vivid::get_process_memory_bytes();
         float mem_mb = static_cast<float>(mem_bytes) / (1024.0f * 1024.0f);
         smoothed_mem_mb_ = mem_mb;
         memory_history_.push(mem_mb);
     }
-    constexpr int kPerfDisplayInterval = 30;  // update display text ~2x/sec at 60fps
+    constexpr int kPerfDisplayInterval = 30;
     if (perf_frame_counter_ == 0 || perf_frame_counter_ % kPerfDisplayInterval == 0) {
         display_fps_ = smoothed_fps_;
         display_ms_ = smoothed_ms_;
     }
     perf_frame_counter_++;
+    audio_load_history_.push(snap_.audio_load);
 
     float fw = static_cast<float>(win_w_);
-
-    // Bar background
     tr.draw_rect(0, 0, fw, kPerfBarH,
                  kPerfBarBg[0], kPerfBarBg[1], kPerfBarBg[2], kPerfBarBg[3]);
-
-    // Bottom separator line
     tr.draw_rect(0, kPerfBarH - 1, fw, 1, 0.20f, 0.22f, 0.25f, 0.6f);
-
-    float x = kPerfBarPadX;
-    float text_y = (kPerfBarH - tr.line_height()) * 0.5f;
-
-    // --- FPS ---
-    // Color-code: green >= 55, yellow >= 30, red < 30
-    float fr, fg, fb;
-    if (display_fps_ >= 55.0f) {
-        fr = kPerfFpsColor[0]; fg = kPerfFpsColor[1]; fb = kPerfFpsColor[2];
-    } else if (display_fps_ >= 30.0f) {
-        fr = 0.95f; fg = 0.85f; fb = 0.30f; // yellow
-    } else {
-        fr = 0.95f; fg = 0.35f; fb = 0.30f; // red
-    }
-
-    char buf[64];
-    std::snprintf(buf, sizeof(buf), "%.0f FPS", display_fps_);
-    float fps_field_w = tr.text_width("000 FPS");
-    float fps_text_w = tr.text_width(buf);
-    tr.draw_text(x + (fps_field_w - fps_text_w), text_y, buf, fr, fg, fb);
-    x += fps_field_w + kPerfSepMargin;
-
-    // Separator
-    tr.draw_rect(x, 4, kPerfSepW, kPerfBarH - 8, 0.30f, 0.32f, 0.35f, 0.5f);
-    x += kPerfSepW + kPerfSepMargin;
-
-    // --- Audio rate ---
-    audio_load_history_.push(snap_.audio_load);
-    {
-        float audio_section_start = x;
-
-        // "48kHz" label
-        char audio_buf[32];
-        if (snap_.audio_sample_rate > 0)
-            std::snprintf(audio_buf, sizeof(audio_buf), "%ukHz", snap_.audio_sample_rate / 1000);
-        else
-            std::snprintf(audio_buf, sizeof(audio_buf), "--kHz");
-        tr.draw_text(x, text_y, audio_buf,
-                     kPerfAudioColor[0], kPerfAudioColor[1], kPerfAudioColor[2]);
-        x += tr.text_width(audio_buf) + kPerfSepMargin;
-
-        // Separator
-        tr.draw_rect(x, 4, kPerfSepW, kPerfBarH - 8, 0.30f, 0.32f, 0.35f, 0.5f);
-        x += kPerfSepW + kPerfSepMargin;
-
-        // Audio load "N%" label (color-coded)
-        std::snprintf(buf, sizeof(buf), "%.0f%%", snap_.audio_load * 100.0f);
-        float load_field_w = tr.text_width("100%");
-        float load_text_w = tr.text_width(buf);
-        float load = snap_.audio_load;
-        float lr, lg, lb;
-        if (load < 0.5f) {
-            lr = kPerfAudioColor[0]; lg = kPerfAudioColor[1]; lb = kPerfAudioColor[2];
-        } else if (load < 0.8f) {
-            lr = 0.95f; lg = 0.85f; lb = 0.30f;
-        } else {
-            lr = 0.95f; lg = 0.35f; lb = 0.30f;
-        }
-        tr.draw_text(x + (load_field_w - load_text_w), text_y, buf, lr, lg, lb);
-        x += load_field_w + 4.0f;
-
-        // Mini sparkline for audio load
-        float ag_x = x;
-        float ag_y = (kPerfBarH - kPerfMiniGraphH) * 0.5f;
-        perf_audio_graph_x_ = ag_x;
-        perf_audio_graph_y_ = ag_y;
-
-        tr.draw_rect(ag_x, ag_y, kPerfMiniGraphW, kPerfMiniGraphH,
-                     0.04f, 0.05f, 0.06f, 0.8f);
-        draw_perf_sparkline(tr, audio_load_history_.values, kPerfHistoryLen,
-                            audio_load_history_.write_idx, audio_load_history_.filled,
-                            ag_x, ag_y, kPerfMiniGraphW, kPerfMiniGraphH,
-                            lr, lg, lb, 0.7f);
-        x = ag_x + kPerfMiniGraphW + kPerfSepMargin;
-
-        // Track full audio section bounds for hover
-        perf_audio_section_x_ = audio_section_start;
-        perf_audio_section_w_ = x - audio_section_start;
-    }
-
-    // Separator
-    tr.draw_rect(x, 4, kPerfSepW, kPerfBarH - 8, 0.30f, 0.32f, 0.35f, 0.5f);
-    x += kPerfSepW + kPerfSepMargin;
-
-    // --- Frame time ---
-    std::snprintf(buf, sizeof(buf), "%.1f ms", display_ms_);
-    float ms_field_w = tr.text_width("000.0 ms");
-    float ms_text_w = tr.text_width(buf);
-    tr.draw_text(x + (ms_field_w - ms_text_w), text_y, buf, kPerfMsColor[0], kPerfMsColor[1], kPerfMsColor[2]);
-    x += ms_field_w + kPerfSepMargin;
-
-    // Separator
-    tr.draw_rect(x, 4, kPerfSepW, kPerfBarH - 8, 0.30f, 0.32f, 0.35f, 0.5f);
-    x += kPerfSepW + kPerfSepMargin;
-
-    // --- Memory ---
-    char mem_buf[64];
-    vivid::format_memory(mem_buf, sizeof(mem_buf),
-                         static_cast<uint64_t>(smoothed_mem_mb_ * 1024.0f * 1024.0f));
-    std::snprintf(buf, sizeof(buf), "MEM %s", mem_buf);
-    tr.draw_text(x, text_y, buf, kPerfMemColor[0], kPerfMemColor[1], kPerfMemColor[2]);
-    x += tr.text_width(buf) + kPerfSepMargin;
-
-    // --- Mini memory sparkline ---
-    float graph_x = x;
-    float graph_y = (kPerfBarH - kPerfMiniGraphH) * 0.5f;
-    perf_mem_graph_x_ = graph_x;
-    perf_mem_graph_y_ = graph_y;
-
-    // Dark background for sparkline
-    tr.draw_rect(graph_x, graph_y, kPerfMiniGraphW, kPerfMiniGraphH,
-                 0.04f, 0.05f, 0.06f, 0.8f);
-
-    draw_perf_sparkline(tr, memory_history_.values, kPerfHistoryLen,
-                        memory_history_.write_idx, memory_history_.filled,
-                        graph_x, graph_y, kPerfMiniGraphW, kPerfMiniGraphH,
-                        kPerfMemColor[0], kPerfMemColor[1], kPerfMemColor[2], 0.7f);
-
-    x = graph_x + kPerfMiniGraphW + kPerfSepMargin;
-
-    // --- XRUN counter ---
-    if (snap_.audio_underrun_count > 0) {
-        tr.draw_rect(x, 4, kPerfSepW, kPerfBarH - 8, 0.30f, 0.32f, 0.35f, 0.5f);
-        x += kPerfSepW + kPerfSepMargin;
-        std::snprintf(buf, sizeof(buf), "XRUN %u", snap_.audio_underrun_count);
-        float xr = kErrorAccent[0], xg = kErrorAccent[1], xb = kErrorAccent[2];
-        if (snap_.audio_underrun_active) { xr = 1.0f; xg = 0.4f; xb = 0.4f; }
-        tr.draw_text(x, text_y, buf, xr, xg, xb);
-        x += tr.text_width(buf) + kPerfSepMargin;
-    }
 
     auto active_variation_name = [&]() -> std::string {
         if (snap_.active_variation >= 0 &&
@@ -517,337 +385,249 @@ void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
         }
         return "";
     };
+    auto now_ms = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+    const bool main_connected = (snap_.mcp_main_last_ping_ms > 0 &&
+                                 now_ms - snap_.mcp_main_last_ping_ms < kMcpStaleMs);
+    const bool opdev_connected = (snap_.mcp_opdev_last_ping_ms > 0 &&
+                                  now_ms - snap_.mcp_opdev_last_ping_ms < kMcpStaleMs);
 
-    // --- Right-aligned transport/session buttons ---
+    float diag_r = 0.30f, diag_g = 0.85f, diag_b = 0.40f;
+    if (snap_.audio_underrun_active || snap_.audio_underrun_count > 0) {
+        diag_r = 0.95f; diag_g = 0.35f; diag_b = 0.30f;
+    } else if (!main_connected || !opdev_connected) {
+        diag_r = 0.95f; diag_g = 0.82f; diag_b = 0.30f;
+    }
+
+    float btn_y = (kPerfBarH - kPerfBtnH) * 0.5f;
+    float text_y = (kPerfBarH - tr.line_height()) * 0.5f;
+    float left_x = kPerfBarPadX;
+    float right_x = fw - kPerfBarPadX;
+
     perf_button_rects_.clear();
+    diagnostics_button_rect_ = {};
     transport_bpm_rect_ = {};
+
+    auto draw_divider = [&](float x) {
+        tr.draw_rect(x, 4.0f, 1.0f, kPerfBarH - 8.0f, 0.30f, 0.32f, 0.35f, 0.5f);
+    };
+
+    auto draw_left_button = [&](const char* label, int action, bool enabled, bool active = false) {
+        float tw = tr.text_width(label);
+        float btn_w = tw + kPerfBtnPadX * 2;
+        bool hovered = mouse_.x >= left_x && mouse_.x <= left_x + btn_w &&
+                       mouse_.y >= btn_y && mouse_.y <= btn_y + kPerfBtnH;
+        float br = active ? style_.accent[0] : 0.30f;
+        float bg = active ? style_.accent[1] : 0.32f;
+        float bb = active ? style_.accent[2] : 0.35f;
+        float ba = !enabled ? 0.10f : (hovered ? (active ? 0.42f : 0.35f) : (active ? 0.28f : 0.20f));
+        tr.draw_rounded_rect(left_x, btn_y, btn_w, kPerfBtnH, 3.0f, br, bg, bb, ba);
+        float trr = enabled ? style_.bright_text[0] : kDimText[0];
+        float trg = enabled ? style_.bright_text[1] : kDimText[1];
+        float trb = enabled ? style_.bright_text[2] : kDimText[2];
+        tr.draw_text(left_x + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
+                     label, trr, trg, trb);
+        perf_button_rects_.push_back({left_x, btn_y, btn_w, kPerfBtnH, action, enabled});
+        left_x += btn_w + kPerfBtnMargin;
+        return btn_w;
+    };
+
+    auto draw_right_button = [&](const char* label, int action, bool enabled, bool active = false) {
+        float tw = tr.text_width(label);
+        float btn_w = tw + kPerfBtnPadX * 2;
+        right_x -= btn_w;
+        bool hovered = mouse_.x >= right_x && mouse_.x <= right_x + btn_w &&
+                       mouse_.y >= btn_y && mouse_.y <= btn_y + kPerfBtnH;
+        float br = active ? style_.accent[0] : 0.30f;
+        float bg = active ? style_.accent[1] : 0.32f;
+        float bb = active ? style_.accent[2] : 0.35f;
+        float ba = !enabled ? 0.10f : (hovered ? (active ? 0.42f : 0.35f) : (active ? 0.28f : 0.20f));
+        tr.draw_rounded_rect(right_x, btn_y, btn_w, kPerfBtnH, 3.0f, br, bg, bb, ba);
+        float trr = enabled ? style_.bright_text[0] : kDimText[0];
+        float trg = enabled ? style_.bright_text[1] : kDimText[1];
+        float trb = enabled ? style_.bright_text[2] : kDimText[2];
+        tr.draw_text(right_x + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
+                     label, trr, trg, trb);
+        perf_button_rects_.push_back({right_x, btn_y, btn_w, kPerfBtnH, action, enabled});
+        right_x -= kPerfBtnMargin;
+        return btn_w;
+    };
+
+    auto draw_chip = [&](float& x, float max_x, const std::string& label,
+                         float r, float g, float b, float alpha,
+                         bool bright_text = false, bool dirty = false) -> bool {
+        float dot_w = dirty ? 10.0f : 0.0f;
+        float chip_w = tr.text_width(label.c_str()) + kPerfBtnPadX * 2 + dot_w;
+        if (x + chip_w > max_x) return false;
+        tr.draw_rounded_rect(x, btn_y, chip_w, kPerfBtnH, 3.0f, r, g, b, alpha);
+        float tx = x + kPerfBtnPadX;
+        if (dirty) {
+            tr.draw_rounded_rect(tx, btn_y + kPerfBtnH * 0.5f - 2.0f,
+                                 4.0f, 4.0f, 1.0f, 0.78f, 0.46f, 0.14f, 0.95f);
+            tx += 10.0f;
+        }
+        const auto& tc = bright_text ? style_.bright_text : style_.dim_text;
+        tr.draw_text(tx, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
+                     label.c_str(), tc[0], tc[1], tc[2]);
+        x += chip_w + 6.0f;
+        return true;
+    };
+
     {
-        float btn_y = (kPerfBarH - kPerfBtnH) * 0.5f;
-        float rx = fw - kPerfBarPadX;  // right edge cursor
-        bool can_undo = commands_.can_undo();
-        bool can_redo = commands_.can_redo();
-        auto draw_button = [&](const char* label, int action, bool enabled, bool active = false) {
-            float tw = tr.text_width(label);
-            float btn_w = tw + kPerfBtnPadX * 2;
-            rx -= btn_w;
-            bool hovered = mouse_.x >= rx && mouse_.x <= rx + btn_w &&
+        const char* diag_label = T("diag", "Diag");
+        float label_w = tr.text_width(diag_label);
+        float btn_w = label_w + kPerfBtnPadX * 2 + 12.0f;
+        bool hovered = mouse_.x >= left_x && mouse_.x <= left_x + btn_w &&
+                       mouse_.y >= btn_y && mouse_.y <= btn_y + kPerfBtnH;
+        float alpha = diagnostics_panel_open_ ? 0.28f : (hovered ? 0.24f : 0.16f);
+        tr.draw_rounded_rect(left_x, btn_y, btn_w, kPerfBtnH, 3.0f,
+                             0.28f, 0.30f, 0.34f, alpha);
+        tr.draw_rounded_rect(left_x + kPerfBtnPadX, btn_y + kPerfBtnH * 0.5f - 3.0f,
+                             6.0f, 6.0f, 2.0f, diag_r, diag_g, diag_b, 0.95f);
+        tr.draw_text(left_x + kPerfBtnPadX + 12.0f,
+                     btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
+                     diag_label,
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        diagnostics_button_rect_ = {left_x, btn_y, btn_w, kPerfBtnH, true};
+        perf_button_rects_.push_back({left_x, btn_y, btn_w, kPerfBtnH, 2, true});
+        left_x += btn_w + kPerfBtnMargin;
+    }
+
+    if (snap_.graph_dirty && fw > 980.0f) {
+        const char* dirty_label = T("unsaved", "Unsaved");
+        float badge_w = tr.text_width(dirty_label) + kPerfBtnPadX * 2;
+        tr.draw_rounded_rect(left_x, btn_y, badge_w, kPerfBtnH, 3.0f,
+                             0.72f, 0.40f, 0.14f, 0.28f);
+        tr.draw_text(left_x + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
+                     dirty_label, 1.0f, 0.88f, 0.74f);
+        left_x += badge_w + kPerfBtnMargin;
+    }
+
+    draw_divider(left_x - kPerfBtnMargin * 0.5f);
+    left_x += 6.0f;
+
+    if (snap_.is_recording) {
+        draw_right_button(T("stop", "Stop"), 0, true, true);
+
+        char dur[16];
+        int total_sec = static_cast<int>(snap_.recording_duration_sec);
+        std::snprintf(dur, sizeof(dur), "%02d:%02d", total_sec / 60, total_sec % 60);
+        float dur_w = tr.text_width(dur);
+        right_x -= dur_w;
+        tr.draw_text(right_x, text_y, dur, style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        right_x -= kPerfBtnMargin;
+
+        const char* rec_label = "REC";
+        float rec_w = tr.text_width(rec_label) + 14.0f;
+        right_x -= rec_w;
+        float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(perf_frame_counter_) * 0.12f);
+        tr.draw_rounded_rect(right_x, btn_y + kPerfBtnH * 0.5f - 3.0f, 6.0f, 6.0f, 2.0f,
+                             0.95f, 0.18f, 0.18f, 0.5f + 0.5f * pulse);
+        tr.draw_text(right_x + 10.0f, text_y, rec_label, 0.95f, 0.30f, 0.30f);
+        right_x -= kPerfBtnMargin;
+    } else {
+        const char* rec_label = "REC";
+        float tw = tr.text_width(rec_label);
+        float arrow_w = tr.text_width("\xe2\x96\xbe");
+        float dot_space = kPerfRecDotR * 2 + 4.0f;
+        float btn_w = kPerfBtnPadX + dot_space + tw + 4.0f + arrow_w + kPerfBtnPadX;
+        right_x -= btn_w;
+
+        bool rec_hovered = mouse_.x >= right_x && mouse_.x <= right_x + btn_w &&
                            mouse_.y >= btn_y && mouse_.y <= btn_y + kPerfBtnH;
-            float br = active ? style_.accent[0] : 0.30f;
-            float bg = active ? style_.accent[1] : 0.32f;
-            float bb = active ? style_.accent[2] : 0.35f;
-            float ba = !enabled ? 0.10f : (hovered ? (active ? 0.42f : 0.35f) : (active ? 0.28f : 0.20f));
-            tr.draw_rounded_rect(rx, btn_y, btn_w, kPerfBtnH, 3.0f, br, bg, bb, ba);
-            float trr = enabled ? style_.bright_text[0] : kDimText[0];
-            float trg = enabled ? style_.bright_text[1] : kDimText[1];
-            float trb = enabled ? style_.bright_text[2] : kDimText[2];
-            tr.draw_text(rx + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
-                         label, trr, trg, trb);
-            perf_button_rects_.push_back({rx, btn_y, btn_w, kPerfBtnH, action, enabled});
-            rx -= kPerfBtnMargin;
-        };
+        float bg_a = rec_hovered ? 0.35f : 0.20f;
+        tr.draw_rounded_rect(right_x, btn_y, btn_w, kPerfBtnH, 3.0f,
+                             0.42f, 0.17f, 0.17f, bg_a);
 
-        draw_button(session_grid_open_ ? "Session Open" : "Session", 8, true, session_grid_open_);
+        float ix = right_x + kPerfBtnPadX;
+        float dot_cx = ix + kPerfRecDotR;
+        float dot_cy = kPerfBarH * 0.5f;
+        tr.draw_rounded_rect(dot_cx - kPerfRecDotR, dot_cy - kPerfRecDotR,
+                             kPerfRecDotR * 2, kPerfRecDotR * 2, kPerfRecDotR,
+                             0.85f, 0.20f, 0.20f, 0.9f);
+        ix += dot_space;
+        tr.draw_text(ix, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f, rec_label,
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        ix += tw + 4.0f;
+        tr.draw_text(ix, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f, "\xe2\x96\xbe",
+                     kDimText[0], kDimText[1], kDimText[2]);
+        perf_button_rects_.push_back({right_x, btn_y, btn_w, kPerfBtnH, 0, true});
+        right_x -= kPerfBtnMargin;
+    }
 
-        {
-            char meter_buf[16];
-            std::snprintf(meter_buf, sizeof(meter_buf), "%d/4", std::max(1, snap_.metronome_beats_per_bar));
-            float pill_w = tr.text_width(meter_buf) + kPerfBtnPadX * 2;
-            rx -= pill_w;
-            tr.draw_rounded_rect(rx, btn_y, pill_w, kPerfBtnH, 3.0f,
-                                 0.18f, 0.20f, 0.23f, snap_.metronome_enabled ? 0.70f : 0.24f);
-            tr.draw_text(rx + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
-                         meter_buf,
+    draw_right_button(T("snap", "Snap"), 1, true);
+
+    {
+        const float blink_size = 8.0f;
+        const float blink_y = btn_y + (kPerfBtnH - blink_size) * 0.5f;
+        float alpha = 0.20f;
+        if (snap_.metronome_enabled) {
+            alpha = 0.28f + 0.62f * std::max(0.0f, 1.0f - snap_.metronome_beat_phase);
+        }
+        tr.draw_rounded_rect(left_x, blink_y, blink_size, blink_size, 4.0f,
+                             style_.accent[0], style_.accent[1], style_.accent[2], alpha);
+        left_x += blink_size + 8.0f;
+    }
+
+    draw_left_button(snap_.metronome_enabled ? "Metro On" : "Metro Off", 5, true, snap_.metronome_enabled);
+
+    {
+        const float bpm = std::max(1.0f, snap_.metronome_bpm);
+        const float rounded_bpm = std::round(bpm);
+        std::string bpm_label = std::fabs(bpm - rounded_bpm) < 0.05f
+            ? (std::to_string(static_cast<int>(rounded_bpm)) + " BPM")
+            : (format_float(bpm, 1) + " BPM");
+        float pill_w = std::max(tr.text_width("300.0 BPM"), tr.text_width(bpm_label.c_str()))
+                     + kPerfBtnPadX * 2;
+        bool hovered = mouse_.x >= left_x && mouse_.x <= left_x + pill_w &&
+                       mouse_.y >= btn_y && mouse_.y <= btn_y + kPerfBtnH;
+        transport_bpm_rect_ = {left_x, btn_y, pill_w, kPerfBtnH, true};
+        if (transport_bpm_editing_) {
+            draw_editing_text_field(tr, style_, left_x, btn_y, pill_w, kPerfBtnH,
+                                    transport_bpm_edit_buffer_, text_edit_,
+                                    cursor_blink_on(), kPerfBtnPadX, 3.0f);
+        } else {
+            const float alpha = snap_.metronome_enabled ? (hovered ? 0.82f : 0.70f)
+                                                        : (hovered ? 0.32f : 0.24f);
+            tr.draw_rounded_rect(left_x, btn_y, pill_w, kPerfBtnH, 3.0f,
+                                 0.18f, 0.20f, 0.23f, alpha);
+            tr.draw_text(left_x + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
+                         bpm_label.c_str(),
                          snap_.metronome_enabled ? style_.bright_text[0] : style_.dim_text[0],
                          snap_.metronome_enabled ? style_.bright_text[1] : style_.dim_text[1],
                          snap_.metronome_enabled ? style_.bright_text[2] : style_.dim_text[2]);
-            rx -= kPerfBtnMargin;
         }
-        draw_button("+", 7, true);
-        draw_button("-", 6, true);
-
-        {
-            const float bpm = std::max(1.0f, snap_.metronome_bpm);
-            const float rounded_bpm = std::round(bpm);
-            std::string bpm_label = std::fabs(bpm - rounded_bpm) < 0.05f
-                ? (std::to_string(static_cast<int>(rounded_bpm)) + " BPM")
-                : (format_float(bpm, 1) + " BPM");
-            float pill_w = std::max(tr.text_width("300.0 BPM"),
-                                    tr.text_width(bpm_label.c_str())) + kPerfBtnPadX * 2;
-            rx -= pill_w;
-            transport_bpm_rect_ = {rx, btn_y, pill_w, kPerfBtnH, true};
-            bool hovered = mouse_.x >= rx && mouse_.x <= rx + pill_w &&
-                           mouse_.y >= btn_y && mouse_.y <= btn_y + kPerfBtnH;
-            if (transport_bpm_editing_) {
-                draw_editing_text_field(tr, style_, rx, btn_y, pill_w, kPerfBtnH,
-                                        transport_bpm_edit_buffer_, text_edit_,
-                                        cursor_blink_on(), kPerfBtnPadX, 3.0f);
-            } else {
-                const float alpha = snap_.metronome_enabled ? (hovered ? 0.82f : 0.70f)
-                                                            : (hovered ? 0.32f : 0.24f);
-                tr.draw_rounded_rect(rx, btn_y, pill_w, kPerfBtnH, 3.0f,
-                                     0.18f, 0.20f, 0.23f, alpha);
-                tr.draw_text(rx + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
-                             bpm_label.c_str(),
-                             snap_.metronome_enabled ? style_.bright_text[0] : style_.dim_text[0],
-                             snap_.metronome_enabled ? style_.bright_text[1] : style_.dim_text[1],
-                             snap_.metronome_enabled ? style_.bright_text[2] : style_.dim_text[2]);
-            }
-            rx -= kPerfBtnMargin;
-        }
-        draw_button(snap_.metronome_enabled ? "Metro On" : "Metro Off", 5, true, snap_.metronome_enabled);
-
-        // Snapshot button
-        draw_button(T("snap", "Snap"), 1, true);
-
-        // Build console toggle
-        draw_button(T("build", "Build"), 4, true, build_console_panel_.is_open());
-
-        // Redo button
-        draw_button(T("redo", "Redo"), 3, can_redo);
-
-        // Undo button
-        draw_button(T("undo", "Undo"), 2, can_undo);
-
-        // MCP status dots — [● MCP] [● DEV]
-        mcp_dot_rects_.clear();
-        {
-            // Current steady_clock time for staleness check (30 s threshold)
-            auto now_ms = static_cast<uint64_t>(
-                std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::steady_clock::now().time_since_epoch()).count());
-
-            struct McpDotDef { const char* label; uint64_t last_ping_ms; int idx; };
-            McpDotDef dots[2] = {
-                { "MCP", snap_.mcp_main_last_ping_ms,  0 },
-                { "DEV", snap_.mcp_opdev_last_ping_ms, 1 },
-            };
-
-            // Place rightmost dot first (DEV), then MCP, going left
-            for (int di = 1; di >= 0; --di) {
-                const auto& dot = dots[di];
-                bool connected = (dot.last_ping_ms > 0 &&
-                                  now_ms - dot.last_ping_ms < kMcpStaleMs);
-                float dot_r   = connected ? 0.30f : 0.40f;
-                float dot_g   = connected ? 0.85f : 0.40f;
-                float dot_b   = connected ? 0.40f : 0.45f;
-
-                float lbl_w = tr.text_width(dot.label);
-                float dot_diam = 7.0f;
-                float pill_w = kPerfBtnPadX + dot_diam + 3.0f + lbl_w + kPerfBtnPadX;
-                rx -= pill_w;
-
-                bool hovered = mouse_.x >= rx && mouse_.x <= rx + pill_w &&
-                               mouse_.y >= btn_y && mouse_.y <= btn_y + kPerfBtnH;
-                float bg_a = hovered ? 0.28f : 0.14f;
-                tr.draw_rounded_rect(rx, btn_y, pill_w, kPerfBtnH, 3.0f,
-                                     0.30f, 0.32f, 0.35f, bg_a);
-
-                float dot_cx = rx + kPerfBtnPadX + dot_diam * 0.5f;
-                float dot_cy = btn_y + kPerfBtnH * 0.5f;
-                tr.draw_rounded_rect(dot_cx - dot_diam * 0.5f, dot_cy - dot_diam * 0.5f,
-                                     dot_diam, dot_diam, dot_diam * 0.5f,
-                                     dot_r, dot_g, dot_b, 0.9f);
-                tr.draw_text(rx + kPerfBtnPadX + dot_diam + 3.0f,
-                             btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
-                             dot.label, kDimText[0], kDimText[1], kDimText[2]);
-
-                mcp_dot_rects_.push_back({rx, btn_y, pill_w, kPerfBtnH, dot.idx});
-                rx -= kPerfBtnMargin;
-            }
-
-            // Tooltip for hovered dot
-            for (const auto& dr : mcp_dot_rects_) {
-                if (mouse_.x >= dr.x && mouse_.x <= dr.x + dr.w &&
-                    mouse_.y >= dr.y && mouse_.y <= dr.y + dr.h) {
-                    uint64_t ping_ms = (dr.idx == 0) ? snap_.mcp_main_last_ping_ms
-                                                     : snap_.mcp_opdev_last_ping_ms;
-                    bool connected = (ping_ms > 0 && now_ms - ping_ms < kMcpStaleMs);
-                    const char* srv = (dr.idx == 0) ? "vivid" : "opdev";
-                    const char* status = connected ? T("connected", "connected") : T("not_connected", "not connected");
-                    char tip[64];
-                    std::snprintf(tip, sizeof(tip), "%s \xe2\x80\x94 %s", srv, status);
-                    float tip_w = tr.text_width(tip) + 12.0f;
-                    float tip_x = dr.x + dr.w * 0.5f - tip_w * 0.5f;
-                    float tip_y = kPerfBarH + 4.0f;
-                    tr.draw_rounded_rect(tip_x - 2.0f, tip_y, tip_w, tr.line_height() + 6.0f,
-                                         3.0f, 0.10f, 0.11f, 0.13f, 0.95f);
-                    tr.draw_text(tip_x + 4.0f, tip_y + 3.0f, tip,
-                                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-                    break;
-                }
-            }
-        }
-
-        // Unsaved graph badge (non-interactive)
-        if (snap_.graph_dirty) {
-            const char* dirty_label = T("unsaved", "Unsaved");
-            float tw = tr.text_width(dirty_label);
-            float badge_w = tw + kPerfBtnPadX * 2;
-            rx -= badge_w;
-            tr.draw_rounded_rect(rx, btn_y, badge_w, kPerfBtnH, 3.0f,
-                                 0.72f, 0.40f, 0.14f, 0.32f);
-            tr.draw_text(rx + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
-                         dirty_label, 1.0f, 0.88f, 0.74f);
-            rx -= kPerfBtnMargin;
-        }
-
-        // Record / Stop button
-        if (snap_.is_recording) {
-            // --- Recording active: [● REC  MM:SS  NNNf  Stop] ---
-
-            // Stop button
-            {
-                const char* stop_label = T("stop", "Stop");
-                float tw = tr.text_width(stop_label);
-                float btn_w = tw + kPerfBtnPadX * 2;
-                rx -= btn_w;
-                bool stop_hovered = mouse_.x >= rx && mouse_.x <= rx + btn_w &&
-                                    mouse_.y >= btn_y && mouse_.y <= btn_y + kPerfBtnH;
-                float bg_a = stop_hovered ? 0.50f : 0.35f;
-                tr.draw_rounded_rect(rx, btn_y, btn_w, kPerfBtnH, 3.0f,
-                                     0.60f, 0.20f, 0.20f, bg_a);
-                tr.draw_text(rx + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
-                             stop_label, 1.0f, 0.85f, 0.85f);
-                perf_button_rects_.push_back({rx, btn_y, btn_w, kPerfBtnH, 0, true});
-                rx -= kPerfBtnMargin;
-            }
-
-            // Frame count
-            {
-                char fc[32];
-                std::snprintf(fc, sizeof(fc), "%lluf",
-                              static_cast<unsigned long long>(snap_.recording_frame_count));
-                float tw = tr.text_width(fc);
-                rx -= tw;
-                tr.draw_text(rx, text_y, fc, kDimText[0], kDimText[1], kDimText[2]);
-                rx -= kPerfBtnMargin;
-            }
-
-            // Duration MM:SS
-            {
-                int total_sec = static_cast<int>(snap_.recording_duration_sec);
-                int mm = total_sec / 60;
-                int ss = total_sec % 60;
-                char dur[16];
-                std::snprintf(dur, sizeof(dur), "%02d:%02d", mm, ss);
-                float tw = tr.text_width(dur);
-                rx -= tw;
-                tr.draw_text(rx, text_y, dur, style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-                rx -= kPerfBtnMargin;
-            }
-
-            // Animated red dot + REC label
-            {
-                float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(perf_frame_counter_) * 0.12f);
-                const char* rec_label = "REC";
-                float tw = tr.text_width(rec_label);
-                float dot_space = kPerfRecDotR * 2 + 4.0f;
-                rx -= tw + dot_space;
-                float dot_cx = rx + kPerfRecDotR;
-                float dot_cy = kPerfBarH * 0.5f;
-                tr.draw_rounded_rect(dot_cx - kPerfRecDotR, dot_cy - kPerfRecDotR,
-                                     kPerfRecDotR * 2, kPerfRecDotR * 2, kPerfRecDotR,
-                                     0.95f, 0.15f, 0.15f, 0.5f + 0.5f * pulse);
-                tr.draw_text(rx + dot_space, text_y, rec_label, 0.95f, 0.30f, 0.30f);
-            }
-        } else {
-            // --- Not recording: [● REC ▾] button ---
-            const char* rec_label = "REC";
-            float tw = tr.text_width(rec_label);
-            float arrow_w = tr.text_width("\xe2\x96\xbe"); // ▾
-            float dot_space = kPerfRecDotR * 2 + 4.0f;
-            float btn_w = kPerfBtnPadX + dot_space + tw + 4.0f + arrow_w + kPerfBtnPadX;
-            rx -= btn_w;
-
-            bool rec_hovered = mouse_.x >= rx && mouse_.x <= rx + btn_w &&
-                               mouse_.y >= btn_y && mouse_.y <= btn_y + kPerfBtnH;
-            float bg_a = rec_hovered ? 0.35f : 0.20f;
-            tr.draw_rounded_rect(rx, btn_y, btn_w, kPerfBtnH, 3.0f,
-                                 0.30f, 0.32f, 0.35f, bg_a);
-
-            float ix = rx + kPerfBtnPadX;
-            // Red dot
-            float dot_cx = ix + kPerfRecDotR;
-            float dot_cy = kPerfBarH * 0.5f;
-            tr.draw_rounded_rect(dot_cx - kPerfRecDotR, dot_cy - kPerfRecDotR,
-                                 kPerfRecDotR * 2, kPerfRecDotR * 2, kPerfRecDotR,
-                                 0.85f, 0.20f, 0.20f, 0.9f);
-            ix += dot_space;
-            // REC text
-            float label_y = btn_y + (kPerfBtnH - tr.line_height()) * 0.5f;
-            tr.draw_text(ix, label_y, rec_label, style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-            ix += tw + 4.0f;
-            // Dropdown arrow
-            tr.draw_text(ix, label_y, "\xe2\x96\xbe", kDimText[0], kDimText[1], kDimText[2]);
-
-            perf_button_rects_.push_back({rx, btn_y, btn_w, kPerfBtnH, 0, true});
-        }
-
-        // Transport/session status fills the gap between perf stats and buttons.
-        const char* q_labels[] = {"Off", "Beat", "Bar", "4Bar"};
-        std::string transport_summary = snap_.metronome_enabled
-            ? ("METRO " + std::to_string(static_cast<int>(std::lround(snap_.metronome_bpm))) + " BPM " +
-               std::to_string(std::max(1, snap_.metronome_beats_per_bar)) + "/4")
-            : std::string("METRO OFF");
-        transport_summary += " | VAR ";
-        transport_summary += active_variation_name();
-        const std::string queued = queued_variation_name();
-        if (!queued.empty()) {
-            transport_summary += " | > ";
-            transport_summary += queued;
-        }
-        if (snap_.variation_dirty)
-            transport_summary += " | DIRTY";
-        transport_summary += " | Q ";
-        transport_summary += q_labels[std::clamp(session_quantize_mode_, 0, 3)];
-
-        float available_w = std::max(0.0f, rx - x - 12.0f);
-        if (available_w > 60.0f) {
-            float pulse = snap_.metronome_enabled
-                ? (0.20f + 0.45f * std::max(0.0f, 1.0f - snap_.metronome_beat_phase))
-                : 0.12f;
-            tr.draw_rect(x, btn_y + 6.0f, 7.0f, 7.0f,
-                         style_.accent[0], style_.accent[1], style_.accent[2], pulse);
-            tr.push_clip_rect(x + 12.0f, 4.0f, available_w - 12.0f, kPerfBarH - 8.0f);
-            tr.draw_text(x + 12.0f, text_y, transport_summary.c_str(),
-                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
-            tr.pop_clip_rect();
-        }
+        left_x += pill_w + kPerfBtnMargin;
     }
 
-    // Check hover over mini graph
-    bool in_mini = mouse_.x >= graph_x && mouse_.x <= graph_x + kPerfMiniGraphW &&
-                   mouse_.y >= graph_y && mouse_.y <= graph_y + kPerfMiniGraphH;
-
-    // Also check if mouse is in the expanded popup region (prevents flicker)
-    float exp_x = graph_x;
-    float exp_right = exp_x + kPerfExpandedW;
-    if (exp_right > fw - 10.0f) exp_x = fw - 10.0f - kPerfExpandedW;
-    bool in_expanded = perf_mem_hovered_ &&
-                       mouse_.x >= exp_x && mouse_.x <= exp_x + kPerfExpandedW &&
-                       mouse_.y >= kPerfBarH && mouse_.y <= kPerfBarH + kPerfExpandedH + 30.0f;
-
-    perf_mem_hovered_ = in_mini || in_expanded;
-
-    // perf_mem_hovered_ drawn in draw_overlays()
-
-    // Check hover over audio section (kHz label + load% + sparkline)
+    draw_left_button("-", 6, true);
     {
-        bool in_audio_section = mouse_.x >= perf_audio_section_x_ &&
-                                mouse_.x <= perf_audio_section_x_ + perf_audio_section_w_ &&
-                                mouse_.y >= 0 && mouse_.y <= kPerfBarH;
+        char meter_buf[16];
+        std::snprintf(meter_buf, sizeof(meter_buf), "%d/4", std::max(1, snap_.metronome_beats_per_bar));
+        float pill_w = tr.text_width(meter_buf) + kPerfBtnPadX * 2;
+        tr.draw_rounded_rect(left_x, btn_y, pill_w, kPerfBtnH, 3.0f,
+                             0.18f, 0.20f, 0.23f, snap_.metronome_enabled ? 0.70f : 0.24f);
+        tr.draw_text(left_x + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
+                     meter_buf,
+                     snap_.metronome_enabled ? style_.bright_text[0] : style_.dim_text[0],
+                     snap_.metronome_enabled ? style_.bright_text[1] : style_.dim_text[1],
+                     snap_.metronome_enabled ? style_.bright_text[2] : style_.dim_text[2]);
+        left_x += pill_w + kPerfBtnMargin;
+    }
+    draw_left_button("+", 7, true);
 
-        float audio_exp_x = perf_audio_section_x_;
-        if (audio_exp_x + kPerfExpandedW > fw - 10.0f)
-            audio_exp_x = fw - 10.0f - kPerfExpandedW;
-        constexpr float kAudioExpandedH = 200.0f;
-        bool in_audio_expanded = perf_audio_hovered_ &&
-                                 mouse_.x >= audio_exp_x && mouse_.x <= audio_exp_x + kPerfExpandedW &&
-                                 mouse_.y >= kPerfBarH && mouse_.y <= kPerfBarH + kAudioExpandedH;
-
-        perf_audio_hovered_ = in_audio_section || in_audio_expanded;
-
-        // perf_audio_hovered_ drawn in draw_overlays()
+    float session_zone_right = right_x;
+    if (left_x + 70.0f < session_zone_right) {
+        draw_divider(left_x - kPerfBtnMargin * 0.5f);
+        left_x += 8.0f;
+        draw_chip(left_x, session_zone_right, active_variation_name(),
+                  style_.accent[0], style_.accent[1], style_.accent[2], 0.20f, true, snap_.variation_dirty);
+        const std::string queued = queued_variation_name();
+        if (!queued.empty() && fw > 1080.0f) {
+            draw_chip(left_x, session_zone_right, std::string("> ") + queued,
+                      style_.accent[0], style_.accent[1], style_.accent[2], 0.12f, false, false);
+        }
     }
 }
 
@@ -882,174 +662,160 @@ void NodeGraphUI::draw_perf_sparkline(Renderer2D& tr, const float* buf, uint32_t
     }
 }
 
-void NodeGraphUI::draw_perf_expanded(Renderer2D& tr) {
+void NodeGraphUI::draw_diagnostics_panel(Renderer2D& tr) {
+    diagnostics_mcp_rects_.clear();
+    diagnostics_panel_rect_ = {};
+
     float fw = static_cast<float>(win_w_);
+    constexpr float kPanelW = 372.0f;
+    constexpr float kPanelH = 246.0f;
+    const float pad = 10.0f;
+    const float section_gap = 10.0f;
+    const float col_gap = 14.0f;
+    const float panel_w = std::min(kPanelW, fw - 20.0f);
+    float ex = diagnostics_button_rect_.visible ? diagnostics_button_rect_.x : 10.0f;
+    if (ex + panel_w > fw - 10.0f) ex = fw - 10.0f - panel_w;
+    float ey = kPerfBarH + 6.0f;
+    diagnostics_panel_rect_ = {ex, ey, panel_w, kPanelH, true};
 
-    // Position below the perf bar, aligned to the mini graph X
-    float ex = perf_mem_graph_x_;
-    if (ex + kPerfExpandedW > fw - 10.0f) {
-        ex = fw - 10.0f - kPerfExpandedW;
+    tr.draw_rect(ex, ey, panel_w, kPanelH, 0.07f, 0.08f, 0.10f, 0.97f);
+    tr.draw_rect(ex, ey, panel_w, 2.0f, style_.accent[0], style_.accent[1], style_.accent[2], 0.85f);
+    tr.draw_rect(ex, ey + kPanelH - 1.0f, panel_w, 1.0f, 0.18f, 0.20f, 0.23f, 0.8f);
+
+    const float line_h = tr.line_height();
+    float header_y = ey + pad;
+    tr.draw_text(ex + pad, header_y, T("diagnostics", "Diagnostics"),
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+
+    auto now_ms = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+    const bool main_connected = (snap_.mcp_main_last_ping_ms > 0 &&
+                                 now_ms - snap_.mcp_main_last_ping_ms < kMcpStaleMs);
+    const bool opdev_connected = (snap_.mcp_opdev_last_ping_ms > 0 &&
+                                  now_ms - snap_.mcp_opdev_last_ping_ms < kMcpStaleMs);
+    const char* status_label = (snap_.audio_underrun_active || snap_.audio_underrun_count > 0)
+        ? T("attention", "Attention")
+        : ((main_connected && opdev_connected) ? T("stable", "Stable") : T("partial", "Partial"));
+    float sr = 0.30f, sg = 0.85f, sb = 0.40f;
+    if (snap_.audio_underrun_active || snap_.audio_underrun_count > 0) {
+        sr = 0.95f; sg = 0.35f; sb = 0.30f;
+    } else if (!main_connected || !opdev_connected) {
+        sr = 0.95f; sg = 0.82f; sb = 0.30f;
     }
-    float ey = kPerfBarH;
+    float status_w = tr.text_width(status_label);
+    tr.draw_rounded_rect(ex + panel_w - pad - status_w - 10.0f, header_y + 4.0f,
+                         6.0f, 6.0f, 2.0f, sr, sg, sb, 0.95f);
+    tr.draw_text(ex + panel_w - pad - status_w, header_y, status_label, sr, sg, sb);
 
-    float pad = 8.0f;
-    float total_h = kPerfExpandedH + 30.0f; // extra for title/labels
+    float content_y = header_y + line_h + 8.0f;
+    float col_w = (panel_w - pad * 2.0f - col_gap) * 0.5f;
+    float left_x = ex + pad;
+    float right_x = left_x + col_w + col_gap;
 
-    // Panel background
-    tr.draw_rect(ex, ey, kPerfExpandedW, total_h, 0.08f, 0.09f, 0.10f, 0.95f);
-    // Top accent
-    tr.draw_rect(ex, ey, kPerfExpandedW, 2, kPerfMemColor[0], kPerfMemColor[1], kPerfMemColor[2], 0.8f);
+    auto draw_key_value = [&](float x, float y, float w, const char* label, const char* value,
+                              float vr, float vg, float vb) {
+        tr.draw_text(x, y, label, style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        float value_w = tr.text_width(value);
+        tr.draw_text(x + std::max(0.0f, w - value_w), y, value, vr, vg, vb);
+    };
 
-    // Title
-    float tx = ex + pad;
-    float ty = ey + pad;
-    tr.draw_text(tx, ty, T("memory", "Memory"), 0.85f, 0.87f, 0.90f);
-
-    // Current value
+    char value[64];
+    float row_y = content_y;
+    draw_key_value(left_x, row_y, col_w, T("fps", "FPS"),
+                   format_int(static_cast<int>(std::lround(display_fps_))).c_str(),
+                   kPerfFpsColor[0], kPerfFpsColor[1], kPerfFpsColor[2]);
+    row_y += line_h + 4.0f;
+    std::snprintf(value, sizeof(value), "%.1f ms", display_ms_);
+    draw_key_value(left_x, row_y, col_w, T("frame", "Frame"), value,
+                   kPerfMsColor[0], kPerfMsColor[1], kPerfMsColor[2]);
+    row_y += line_h + 4.0f;
     char mem_buf[64];
     vivid::format_memory(mem_buf, sizeof(mem_buf),
                          static_cast<uint64_t>(smoothed_mem_mb_ * 1024.0f * 1024.0f));
-    float val_w = tr.text_width(mem_buf);
-    tr.draw_text(ex + kPerfExpandedW - pad - val_w, ty, mem_buf,
-                 kPerfMemColor[0], kPerfMemColor[1], kPerfMemColor[2]);
+    draw_key_value(left_x, row_y, col_w, T("memory", "Memory"), mem_buf,
+                   kPerfMemColor[0], kPerfMemColor[1], kPerfMemColor[2]);
+    row_y += line_h + 4.0f;
+    std::snprintf(value, sizeof(value), "%.1f%%", snap_.audio_load * 100.0f);
+    draw_key_value(left_x, row_y, col_w, T("audio_load", "Audio Load"), value,
+                   kPerfAudioColor[0], kPerfAudioColor[1], kPerfAudioColor[2]);
+    row_y += line_h + section_gap;
 
-    // Sparkline area
-    float graph_y = ty + tr.line_height() + 4.0f;
-    float graph_h = total_h - (graph_y - ey) - pad;
-    float graph_x = tx;
-    float graph_w = kPerfExpandedW - pad * 2;
-
-    // Dark background
-    tr.draw_rect(graph_x, graph_y, graph_w, graph_h, 0.04f, 0.05f, 0.06f, 0.8f);
-
-    draw_perf_sparkline(tr, memory_history_.values, kPerfHistoryLen,
-                        memory_history_.write_idx, memory_history_.filled,
-                        graph_x, graph_y, graph_w, graph_h,
-                        kPerfMemColor[0], kPerfMemColor[1], kPerfMemColor[2], 0.7f);
-
-    // Min/max labels
-    uint32_t count = memory_history_.filled ? kPerfHistoryLen : memory_history_.write_idx;
-    if (count > 0) {
-        float vmin = memory_history_.values[0], vmax = memory_history_.values[0];
-        for (uint32_t i = 0; i < count; ++i) {
-            uint32_t idx = memory_history_.filled
-                ? (memory_history_.write_idx + i) % kPerfHistoryLen : i;
-            float v = memory_history_.values[idx];
-            if (v < vmin) vmin = v;
-            if (v > vmax) vmax = v;
-        }
-        char label[32];
-        std::snprintf(label, sizeof(label), "%.0f", vmax);
-        tr.draw_text(graph_x + 2, graph_y, label, style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
-        std::snprintf(label, sizeof(label), "%.0f", vmin);
-        tr.draw_text(graph_x + 2, graph_y + graph_h - tr.line_height(), label,
-                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
-    }
-}
-
-
-void NodeGraphUI::draw_perf_audio_expanded(Renderer2D& tr) {
-    float fw = static_cast<float>(win_w_);
-
-    float ex = perf_audio_section_x_;
-    if (ex + kPerfExpandedW > fw - 10.0f)
-        ex = fw - 10.0f - kPerfExpandedW;
-    float ey = kPerfBarH;
-
-    float pad = 8.0f;
-    float line_h = tr.line_height();
-    float row_h = line_h + 2.0f;
-
-    // Count info rows: rate, buffer, latency, channels, nodes, xruns, load
-    constexpr int kInfoRows = 7;
-    float info_h = kInfoRows * row_h;
-    float sparkline_h = 60.0f;
-    float total_h = pad + line_h + 4.0f + info_h + 4.0f + sparkline_h + pad;
-
-    // Panel background
-    tr.draw_rect(ex, ey, kPerfExpandedW, total_h, 0.08f, 0.09f, 0.10f, 0.95f);
-    // Top accent
-    tr.draw_rect(ex, ey, kPerfExpandedW, 2,
-                 kPerfAudioColor[0], kPerfAudioColor[1], kPerfAudioColor[2], 0.8f);
-
-    float tx = ex + pad;
-    float ty = ey + pad;
-    float right_x = ex + kPerfExpandedW - pad;
-
-    // Title + current load %
-    tr.draw_text(tx, ty, T("audio", "Audio"), 0.85f, 0.87f, 0.90f);
-    char load_buf[32];
-    std::snprintf(load_buf, sizeof(load_buf), "%.0f%%", snap_.audio_load * 100.0f);
-    float load_w = tr.text_width(load_buf);
-    tr.draw_text(right_x - load_w, ty, load_buf,
-                 kPerfAudioColor[0], kPerfAudioColor[1], kPerfAudioColor[2]);
-
-    ty += line_h + 4.0f;
-
-    // Helper to draw a label: value row
-    auto draw_row = [&](const char* label, const char* value) {
-        tr.draw_text(tx, ty, label, style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
-        float vw = tr.text_width(value);
-        tr.draw_text(right_x - vw, ty, value, 0.85f, 0.87f, 0.90f);
-        ty += row_h;
-    };
-
-    // Sample rate
-    char val[64];
-    std::snprintf(val, sizeof(val), "%u Hz", snap_.audio_sample_rate);
-    draw_row(T("rate", "Rate"), val);
-
-    // Buffer size
-    std::snprintf(val, sizeof(val), "%u samples", snap_.audio_buffer_size);
-    draw_row(T("buffer", "Buffer"), val);
-
-    // Latency
-    if (snap_.audio_sample_rate > 0) {
-        float latency_ms = static_cast<float>(snap_.audio_buffer_size)
-                           / static_cast<float>(snap_.audio_sample_rate) * 1000.0f;
-        std::snprintf(val, sizeof(val), "%.1f ms", latency_ms);
-    } else {
-        std::snprintf(val, sizeof(val), "-- ms");
-    }
-    draw_row(T("latency", "Latency"), val);
-
-    // Channels
-    draw_row(T("channels", "Channels"), "2");
-
-    // Nodes
-    std::snprintf(val, sizeof(val), "%u", snap_.audio_node_count);
-    draw_row(T("nodes", "Nodes"), val);
-
-    // XRUNs
-    std::snprintf(val, sizeof(val), "%u", snap_.audio_underrun_count);
-    draw_row(T("xruns", "XRUNs"), val);
-
-    // Load
-    std::snprintf(val, sizeof(val), "%.1f%%", snap_.audio_load * 100.0f);
-    draw_row(T("load", "Load"), val);
-
-    // Sparkline
-    ty += 4.0f;
-    float graph_x = tx;
-    float graph_w = kPerfExpandedW - pad * 2;
-
-    tr.draw_rect(graph_x, ty, graph_w, sparkline_h, 0.04f, 0.05f, 0.06f, 0.8f);
-
-    // Color by current load
-    float load = snap_.audio_load;
-    float lr, lg, lb;
-    if (load < 0.5f) {
-        lr = kPerfAudioColor[0]; lg = kPerfAudioColor[1]; lb = kPerfAudioColor[2];
-    } else if (load < 0.8f) {
-        lr = 0.95f; lg = 0.85f; lb = 0.30f;
-    } else {
-        lr = 0.95f; lg = 0.35f; lb = 0.30f;
-    }
-
+    float graph_w = col_w;
+    float graph_h = 44.0f;
+    tr.draw_text(left_x, row_y, T("load_history", "Load History"),
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    row_y += line_h + 3.0f;
+    tr.draw_rect(left_x, row_y, graph_w, graph_h, 0.04f, 0.05f, 0.06f, 0.85f);
     draw_perf_sparkline(tr, audio_load_history_.values, kPerfHistoryLen,
                         audio_load_history_.write_idx, audio_load_history_.filled,
-                        graph_x, ty, graph_w, sparkline_h,
-                        lr, lg, lb, 0.7f);
+                        left_x, row_y, graph_w, graph_h,
+                        kPerfAudioColor[0], kPerfAudioColor[1], kPerfAudioColor[2], 0.72f);
+
+    float right_row_y = content_y;
+    std::snprintf(value, sizeof(value), "%u Hz", snap_.audio_sample_rate);
+    draw_key_value(right_x, right_row_y, col_w, T("rate", "Rate"), value,
+                   style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    right_row_y += line_h + 4.0f;
+    std::snprintf(value, sizeof(value), "%u samp", snap_.audio_buffer_size);
+    draw_key_value(right_x, right_row_y, col_w, T("buffer", "Buffer"), value,
+                   style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    right_row_y += line_h + 4.0f;
+    if (snap_.audio_sample_rate > 0) {
+        float latency_ms = static_cast<float>(snap_.audio_buffer_size)
+                         / static_cast<float>(snap_.audio_sample_rate) * 1000.0f;
+        std::snprintf(value, sizeof(value), "%.1f ms", latency_ms);
+    } else {
+        std::snprintf(value, sizeof(value), "-- ms");
+    }
+    draw_key_value(right_x, right_row_y, col_w, T("latency", "Latency"), value,
+                   style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    right_row_y += line_h + 4.0f;
+    std::snprintf(value, sizeof(value), "%u", snap_.audio_underrun_count);
+    float xr = snap_.audio_underrun_count > 0 ? 0.95f : style_.bright_text[0];
+    float xg = snap_.audio_underrun_count > 0 ? 0.35f : style_.bright_text[1];
+    float xb = snap_.audio_underrun_count > 0 ? 0.30f : style_.bright_text[2];
+    draw_key_value(right_x, right_row_y, col_w, T("xruns", "XRUNs"), value, xr, xg, xb);
+    right_row_y += line_h + section_gap;
+
+    tr.draw_text(right_x, right_row_y, T("memory_history", "Memory History"),
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    right_row_y += line_h + 3.0f;
+    tr.draw_rect(right_x, right_row_y, graph_w, graph_h, 0.04f, 0.05f, 0.06f, 0.85f);
+    draw_perf_sparkline(tr, memory_history_.values, kPerfHistoryLen,
+                        memory_history_.write_idx, memory_history_.filled,
+                        right_x, right_row_y, graph_w, graph_h,
+                        kPerfMemColor[0], kPerfMemColor[1], kPerfMemColor[2], 0.72f);
+
+    float mcp_y = ey + kPanelH - pad - (line_h + 8.0f) * 2.0f - 8.0f;
+    tr.draw_rect(ex + pad, mcp_y - 4.0f, panel_w - pad * 2.0f, 1.0f, 0.20f, 0.22f, 0.25f, 0.8f);
+    tr.draw_text(ex + pad, mcp_y, T("connectivity", "Connectivity"),
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    mcp_y += line_h + 4.0f;
+
+    struct McpRow { const char* name; bool connected; int idx; };
+    const McpRow rows[] = {
+        {"vivid MCP", main_connected, 0},
+        {"opdev MCP", opdev_connected, 1},
+    };
+    for (const auto& row : rows) {
+        const float row_h = line_h + 6.0f;
+        tr.draw_rounded_rect(ex + pad, mcp_y - 2.0f, panel_w - pad * 2.0f, row_h, 3.0f,
+                             0.18f, 0.20f, 0.23f, 0.65f);
+        float dot_r = row.connected ? 0.30f : 0.95f;
+        float dot_g = row.connected ? 0.85f : 0.35f;
+        float dot_b = row.connected ? 0.40f : 0.30f;
+        tr.draw_rounded_rect(ex + pad + 8.0f, mcp_y + line_h * 0.5f - 1.0f,
+                             6.0f, 6.0f, 2.0f, dot_r, dot_g, dot_b, 0.95f);
+        tr.draw_text(ex + pad + 20.0f, mcp_y, row.name,
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        const char* state = row.connected ? T("connected", "Connected") : T("setup", "Setup");
+        float state_w = tr.text_width(state);
+        tr.draw_text(ex + panel_w - pad - state_w - 6.0f, mcp_y, state,
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        diagnostics_mcp_rects_.push_back({ex + pad, mcp_y - 2.0f, panel_w - pad * 2.0f, row_h, row.idx});
+        mcp_y += row_h + 4.0f;
+    }
 }
 
 // -----------------------------------------------------------------------

@@ -38,6 +38,36 @@ void NodeGraphUI::handle_left_click() {
         }
     }
 
+    const bool inside_diagnostics_button =
+        diagnostics_button_rect_.visible &&
+        mouse_.x >= diagnostics_button_rect_.x &&
+        mouse_.x <= diagnostics_button_rect_.x + diagnostics_button_rect_.w &&
+        mouse_.y >= diagnostics_button_rect_.y &&
+        mouse_.y <= diagnostics_button_rect_.y + diagnostics_button_rect_.h;
+    const bool inside_diagnostics_panel =
+        diagnostics_panel_rect_.visible &&
+        mouse_.x >= diagnostics_panel_rect_.x &&
+        mouse_.x <= diagnostics_panel_rect_.x + diagnostics_panel_rect_.w &&
+        mouse_.y >= diagnostics_panel_rect_.y &&
+        mouse_.y <= diagnostics_panel_rect_.y + diagnostics_panel_rect_.h;
+
+    if (diagnostics_panel_open_ && !inside_diagnostics_button && !inside_diagnostics_panel) {
+        diagnostics_panel_open_ = false;
+    }
+
+    if (inside_diagnostics_panel) {
+        for (const auto& dr : diagnostics_mcp_rects_) {
+            if (mouse_.x >= dr.x && mouse_.x <= dr.x + dr.w &&
+                mouse_.y >= dr.y && mouse_.y <= dr.y + dr.h) {
+                dialogs_.open_mcp_setup();
+                mouse_.left_clicked = false;
+                return;
+            }
+        }
+        mouse_.left_clicked = false;
+        return;
+    }
+
     {
         float bottom_offset = session_grid_open_ ? kSessionStripH : 0.0f;
         if (!build_console_panel_.contains(mouse_.x, mouse_.y, win_w_, win_h_, bottom_offset))
@@ -96,7 +126,7 @@ void NodeGraphUI::handle_left_click() {
         return;
     }
 
-    // Perf bar buttons (Record/Stop, Snapshot)
+    // Workspace header buttons
     for (const auto& btn : perf_button_rects_) {
         if (mouse_.x >= btn.x && mouse_.x <= btn.x + btn.w &&
             mouse_.y >= btn.y && mouse_.y <= btn.y + btn.h) {
@@ -114,12 +144,8 @@ void NodeGraphUI::handle_left_click() {
                 }
             } else if (btn.action == 1) {  // Snapshot
                 commands_.capture_snapshot();
-            } else if (btn.action == 2) {  // Undo
-                commands_.undo();
-            } else if (btn.action == 3) {  // Redo
-                commands_.redo();
-            } else if (btn.action == 4) {  // Build Console
-                build_console_panel_.toggle_open();
+            } else if (btn.action == 2) {  // Diagnostics
+                diagnostics_panel_open_ = !diagnostics_panel_open_;
             } else if (btn.action == 5) {  // Metronome toggle
                 const float bpm = snap_.metronome_bpm > 0.0f ? snap_.metronome_bpm : 120.0f;
                 const int beats_per_bar = std::max(1, snap_.metronome_beats_per_bar);
@@ -130,8 +156,6 @@ void NodeGraphUI::handle_left_click() {
             } else if (btn.action == 7) {  // Meter+
                 const int beats_per_bar = std::min(16, snap_.metronome_beats_per_bar + 1);
                 commands_.set_graph_metronome(true, snap_.metronome_bpm, beats_per_bar);
-            } else if (btn.action == 8) {  // Session toggle
-                toggle_session_grid();
             }
             mouse_.left_clicked = false;
             return;
@@ -146,16 +170,6 @@ void NodeGraphUI::handle_left_click() {
         toggle_session_grid();
         mouse_.left_clicked = false;
         return;
-    }
-
-    // MCP dot clicks (in perf bar) — open setup dialog
-    for (const auto& dr : mcp_dot_rects_) {
-        if (mouse_.x >= dr.x && mouse_.x <= dr.x + dr.w &&
-            mouse_.y >= dr.y && mouse_.y <= dr.y + dr.h) {
-            dialogs_.open_mcp_setup();
-            mouse_.left_clicked = false;
-            return;
-        }
     }
 
     {
@@ -251,7 +265,7 @@ void NodeGraphUI::handle_left_click() {
                 mouse_.y >= br.y && mouse_.y <= br.y + br.h) {
                 if (!br.enabled) {
                     if (br.action >= 3 && br.action <= 5) {
-                        status_banner_error_ = "Enable the graph metronome in the transport strip to use quantized variation switching.";
+                        status_banner_error_ = "Enable the graph metronome in the workspace header to use quantized variation switching.";
                     }
                     mouse_.left_clicked = false;
                     return;
@@ -280,6 +294,8 @@ void NodeGraphUI::handle_left_click() {
                         commands_.duplicate_variation(active_name, branch_name);
                         commands_.recall_variation(branch_name);
                     }
+                } else if (br.action == 7) {
+                    toggle_session_grid();
                 }
                 mouse_.left_clicked = false;
                 return;

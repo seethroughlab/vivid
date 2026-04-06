@@ -259,7 +259,7 @@ static constexpr float kMidiMapBannerH = 24.0f;
 static constexpr float kMidiBadgeH = 14.0f;
 static constexpr float kMidiRangeH = 18.0f;
 
-// Performance bar layout
+// Workspace header layout
 static constexpr float kPerfBarH = 28.0f;
 static constexpr float kPerfBarPadX = 10.0f;
 static constexpr float kPerfSepW = 1.0f;
@@ -269,14 +269,14 @@ static constexpr float kPerfMiniGraphH = 14.0f;
 static constexpr float kPerfExpandedW = 200.0f;
 static constexpr float kPerfExpandedH = 100.0f;
 
-// Performance bar colors
+// Workspace header colors
 static constexpr std::array<float, 3> kPerfFpsColor = { 0.40f, 0.85f, 0.45f };   // green
 static constexpr std::array<float, 3> kPerfMsColor  = { 0.45f, 0.65f, 0.95f };   // blue
 static constexpr std::array<float, 3> kPerfMemColor   = { 0.95f, 0.65f, 0.25f };   // orange
 static constexpr std::array<float, 3> kPerfAudioColor = { 0.45f, 0.85f, 0.90f };   // cyan/teal
 static constexpr std::array<float, 4> kPerfBarBg      = { 0.06f, 0.07f, 0.08f, 0.85f };
 
-// Perf bar button layout
+// Workspace header button layout
 static constexpr float kPerfBtnH = 20.0f;
 static constexpr float kPerfBtnPadX = 8.0f;
 static constexpr float kPerfBtnMargin = 6.0f;

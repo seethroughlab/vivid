@@ -643,17 +643,9 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
         session_collapsed_rect_ = {};
         session_collapsed_rect_.visible = true;
 
-        const char* quantize_labels[] = {"Off", "Beat", "Bar", "4Bar"};
         std::string summary = "SESSION";
         summary += " | ";
-        summary += snap_.metronome_enabled
-            ? (std::to_string(static_cast<int>(std::lround(snap_.metronome_bpm))) + " BPM " +
-               std::to_string(std::max(1, snap_.metronome_beats_per_bar)) + "/4")
-            : std::string("METRO OFF");
-        summary += " | ";
         summary += std::to_string(snap_.variations.size()) + " VARS";
-        summary += " | Q ";
-        summary += quantize_labels[std::clamp(session_quantize_mode_, 0, 3)];
         if (snap_.active_variation >= 0 &&
             snap_.active_variation < static_cast<int>(snap_.variations.size())) {
             summary += " | ";
@@ -674,15 +666,12 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
         const float tab_y = static_cast<float>(win_h_) - tab_h - 6.0f;
         const bool hovered = mouse_.x >= tab_x && mouse_.x <= tab_x + tab_w &&
                              mouse_.y >= tab_y && mouse_.y <= tab_y + tab_h;
-        const float pulse = snap_.metronome_enabled
-            ? (0.25f + 0.45f * std::max(0.0f, 1.0f - snap_.metronome_beat_phase))
-            : 0.16f;
         tr.draw_rounded_rect(tab_x, tab_y, tab_w, tab_h, 4.0f,
                              0.08f, 0.10f, 0.12f, hovered ? 0.96f : 0.88f);
         tr.draw_rect(tab_x, tab_y, tab_w, 1.0f,
                      style_.accent[0], style_.accent[1], style_.accent[2], hovered ? 0.80f : 0.52f);
         tr.draw_rect(tab_x + 8.0f, tab_y + 8.0f, 8.0f, 8.0f,
-                     style_.accent[0], style_.accent[1], style_.accent[2], pulse);
+                     style_.accent[0], style_.accent[1], style_.accent[2], hovered ? 0.88f : 0.58f);
         tr.push_clip_rect(tab_x + 22.0f, tab_y + 4.0f, tab_w - 28.0f, tab_h - 8.0f);
         tr.draw_text(tab_x + 22.0f, tab_y + 5.0f, summary.c_str(),
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
@@ -714,27 +703,6 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
     tr.draw_text(hx, hy + 2, T("session", "SESSION"),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     hx += 70;
-
-    {
-        char transport_label[96];
-        if (metronome_enabled) {
-            std::snprintf(transport_label, sizeof(transport_label), "METRO %d BPM %d/4",
-                          static_cast<int>(std::lround(snap_.metronome_bpm)),
-                          std::max(1, snap_.metronome_beats_per_bar));
-        } else {
-            std::snprintf(transport_label, sizeof(transport_label), "METRO OFF");
-        }
-        float pulse = metronome_enabled
-            ? (0.25f + 0.45f * std::max(0.0f, 1.0f - snap_.metronome_beat_phase))
-            : 0.16f;
-        tr.draw_rect(hx, hy + 5, 7.0f, 7.0f,
-                     style_.accent[0], style_.accent[1], style_.accent[2], pulse);
-        tr.draw_text(hx + 12.0f, hy + 2, transport_label,
-                     metronome_enabled ? style_.bright_text[0] : style_.dim_text[0],
-                     metronome_enabled ? style_.bright_text[1] : style_.dim_text[1],
-                     metronome_enabled ? style_.bright_text[2] : style_.dim_text[2]);
-        hx += 12.0f + tr.text_width(transport_label) + 14.0f;
-    }
 
     // Quantize buttons
     const char* quantize_labels[] = {
@@ -781,6 +749,20 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         session_button_rects_.push_back({hx, hy, update_w, 18.0f, 1, true});
         hx += update_w + 6;
+    }
+
+    {
+        const char* close_label = "X";
+        float close_w = 18.0f;
+        float close_x = strip_w - kSessionPadX - close_w;
+        bool hovered = mouse_.x >= close_x && mouse_.x <= close_x + close_w &&
+                       mouse_.y >= hy && mouse_.y <= hy + 18.0f;
+        tr.draw_rect(close_x, hy, close_w, 18.0f,
+                     style_.slider_track[0], style_.slider_track[1], style_.slider_track[2],
+                     hovered ? 0.82f : 0.62f);
+        tr.draw_text(close_x + 6.0f, hy + 2, close_label,
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        session_button_rects_.push_back({close_x, hy, close_w, 18.0f, 7, true});
     }
 
     // --- Card row ---
@@ -899,10 +881,11 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
     }
 
     // [+ Save New] button
-    float new_btn_w = 74.0f;
+    const char* save_new_label = T("save_new", "+ Save New");
+    float new_btn_w = tr.text_width(save_new_label) + 16.0f;
     tr.draw_rect(cx, cy, new_btn_w, kSessionCellH,
                  style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.5f);
-    tr.draw_text(cx + 8, cy + 14, T("save_new", "+ Save New"),
+    tr.draw_text(cx + 8, cy + 14, save_new_label,
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     session_button_rects_.push_back({cx, cy, new_btn_w, kSessionCellH, 0, true});
 

@@ -28,6 +28,7 @@ struct DummySink : UICommandSink {
     std::vector<StringParamCall> set_string_param_calls;
     std::vector<LayoutCall> layout_calls;
     std::vector<std::pair<std::string, int>> move_variation_calls;
+    std::vector<std::string> save_variation_calls;
     std::vector<MetronomeCall> metronome_calls;
     std::vector<int> recall_variation_idx_calls;
     int undo_calls = 0;
@@ -68,6 +69,9 @@ struct DummySink : UICommandSink {
     }
     void set_graph_metronome(bool enabled, float bpm, int beats_per_bar) override {
         metronome_calls.push_back({enabled, bpm, beats_per_bar});
+    }
+    void save_variation(const std::string& name) override {
+        save_variation_calls.push_back(name);
     }
     void recall_variation_idx(int idx) override {
         recall_variation_idx_calls.push_back(idx);
@@ -374,16 +378,18 @@ int main() {
         snap.metronome_beats_per_bar = 5;
         ui.update(snap);
         ui.perf_button_rects_ = {
-            {0.0f, 0.0f, 20.0f, 20.0f, 5, true},
-            {24.0f, 0.0f, 20.0f, 20.0f, 7, true},
-            {48.0f, 0.0f, 20.0f, 20.0f, 8, true},
+            {0.0f, 0.0f, 20.0f, 20.0f, 2, true},
+            {24.0f, 0.0f, 20.0f, 20.0f, 5, true},
+            {48.0f, 0.0f, 20.0f, 20.0f, 7, true},
         };
+        ui.diagnostics_button_rect_ = {0.0f, 0.0f, 20.0f, 20.0f, true};
 
         ui.mouse_ = {};
         ui.mouse_.x = 10.0f;
         ui.mouse_.y = 10.0f;
         ui.mouse_.left_clicked = true;
         ui.handle_left_click();
+        check(ui.diagnostics_panel_open_, "Diagnostics button opens the diagnostics panel");
 
         ui.mouse_ = {};
         ui.mouse_.x = 34.0f;
@@ -397,7 +403,7 @@ int main() {
         ui.mouse_.left_clicked = true;
         ui.handle_left_click();
 
-        check(sink.metronome_calls.size() == 2, "Transport buttons dispatch metronome mutations");
+        check(sink.metronome_calls.size() == 2, "Transport controls dispatch metronome mutations");
         if (sink.metronome_calls.size() == 2) {
             check(sink.metronome_calls[0].enabled && std::fabs(sink.metronome_calls[0].bpm - 111.0f) < 0.01f &&
                       sink.metronome_calls[0].beats_per_bar == 5,
@@ -405,7 +411,40 @@ int main() {
             check(sink.metronome_calls[1].enabled && sink.metronome_calls[1].beats_per_bar == 6,
                   "Meter+ enables metronome and increments beats per bar");
         }
-        check(ui.session_grid_open_, "Transport session button opens the session grid");
+        check(!ui.session_grid_open_, "Workspace header no longer toggles the session grid");
+    }
+
+    {
+        DummySink sink;
+        NodeGraphUI ui(sink);
+        auto snap = make_session_snapshot();
+        ui.update(snap);
+        ui.diagnostics_panel_open_ = true;
+        ui.diagnostics_panel_rect_ = {20.0f, 34.0f, 200.0f, 80.0f, true};
+        ui.diagnostics_mcp_rects_ = {{24.0f, 40.0f, 180.0f, 24.0f, 0}};
+        ui.mouse_ = {};
+        ui.mouse_.x = 60.0f;
+        ui.mouse_.y = 52.0f;
+        ui.mouse_.left_clicked = true;
+        ui.handle_left_click();
+        check(ui.dialogs_.mcp_setup.open, "Diagnostics MCP row opens MCP setup");
+        check(ui.diagnostics_panel_open_, "Diagnostics panel stays open on panel interaction");
+    }
+
+    {
+        DummySink sink;
+        NodeGraphUI ui(sink);
+        auto snap = make_session_snapshot();
+        ui.update(snap);
+        ui.diagnostics_panel_open_ = true;
+        ui.diagnostics_panel_rect_ = {20.0f, 34.0f, 200.0f, 80.0f, true};
+        ui.diagnostics_button_rect_ = {20.0f, 0.0f, 50.0f, 20.0f, true};
+        ui.mouse_ = {};
+        ui.mouse_.x = 260.0f;
+        ui.mouse_.y = 160.0f;
+        ui.mouse_.left_clicked = true;
+        ui.handle_left_click();
+        check(!ui.diagnostics_panel_open_, "Clicking outside the diagnostics panel closes it");
     }
 
     {
@@ -540,6 +579,21 @@ int main() {
         DummySink sink;
         NodeGraphUI ui(sink);
         auto snap = make_session_snapshot();
+        ui.update(snap);
+        ui.session_grid_open_ = true;
+        ui.session_button_rects_ = {{220.0f, 650.0f, 18.0f, 18.0f, 7, true}};
+        ui.mouse_ = {};
+        ui.mouse_.x = 226.0f;
+        ui.mouse_.y = 658.0f;
+        ui.mouse_.left_clicked = true;
+        ui.handle_left_click();
+        check(!ui.session_grid_open_, "Session strip close button collapses the strip");
+    }
+
+    {
+        DummySink sink;
+        NodeGraphUI ui(sink);
+        auto snap = make_session_snapshot();
         snap.metronome_enabled = false;
         ui.update(snap);
         ui.session_grid_open_ = true;
@@ -551,6 +605,22 @@ int main() {
         ui.handle_left_click();
         check(ui.session_quantize_mode_ == 0, "Disabled quantize button does not change session quantize mode");
         check(!ui.status_banner_error_.empty(), "Disabled quantize button explains missing metronome");
+    }
+
+    {
+        DummySink sink;
+        NodeGraphUI ui(sink);
+        auto snap = make_session_snapshot();
+        ui.update(snap);
+        ui.session_grid_open_ = true;
+        ui.session_button_rects_ = {{20.0f, 650.0f, 96.0f, 44.0f, 0, true}};
+        ui.mouse_ = {};
+        ui.mouse_.x = 96.0f;
+        ui.mouse_.y = 672.0f;
+        ui.mouse_.left_clicked = true;
+        ui.handle_left_click();
+        check(sink.save_variation_calls.size() == 1, "Save New button dispatches variation save through its resized hit rect");
+        check(sink.save_variation_calls.front() == "Var 4", "Save New names the new variation from the next index");
     }
 
     std::fprintf(stderr, "%s (%d failures)\n", failures == 0 ? "PASSED" : "FAILED", failures);
