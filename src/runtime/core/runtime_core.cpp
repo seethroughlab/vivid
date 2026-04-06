@@ -2,9 +2,58 @@
 #include "runtime/graph/graph.h"
 #include "runtime/operators/operator_registry.h"
 #include "runtime/graph/subgraph_module.h"
+#include <algorithm>
 #include <cstdio>
 
 namespace vivid {
+
+void RuntimeCore::write_live_metronome_state(const LiveMetronomeState& state) {
+    const uint32_t current = live_metronome_store_.active_index.load(std::memory_order_relaxed);
+    const uint32_t next = (current + 1u) % live_metronome_store_.states.size();
+    live_metronome_store_.states[next] = state;
+    live_metronome_store_.active_index.store(next, std::memory_order_release);
+}
+
+GraphMetronomeSample RuntimeCore::sample_live_metronome(double time) const {
+    return vivid::sample_live_metronome(live_metronome_store_, time);
+}
+
+RuntimeCore::LiveMetronomeUpdateOutcome
+RuntimeCore::update_live_metronome(const GraphMetronomeDef& metronome, double time) {
+    LiveMetronomeUpdateOutcome outcome;
+    GraphMetronomeDef sanitized = metronome;
+    sanitized.bpm = std::max(1.0f, sanitized.bpm);
+    sanitized.beats_per_bar = std::max(1, sanitized.beats_per_bar);
+
+    const auto current = sample_live_metronome(time);
+    LiveMetronomeState next_state{};
+    next_state.enabled = sanitized.enabled;
+    next_state.bpm = sanitized.bpm;
+    next_state.beats_per_bar = sanitized.beats_per_bar;
+    next_state.anchor_time = time;
+
+    if (!sanitized.enabled) {
+        next_state.anchor_beats_elapsed = 0.0;
+        outcome.disabled = current.enabled;
+    } else if (!current.enabled) {
+        next_state.anchor_beats_elapsed = 0.0;
+        outcome.bar_epoch_reset = true;
+    } else if (current.beats_per_bar != sanitized.beats_per_bar) {
+        next_state.anchor_beats_elapsed = 0.0;
+        outcome.bar_epoch_reset = true;
+    } else {
+        next_state.anchor_beats_elapsed = current.beats_elapsed;
+    }
+
+    write_live_metronome_state(next_state);
+    live_metronome_initialized_ = true;
+    return outcome;
+}
+
+void RuntimeCore::reset_live_metronome(const GraphMetronomeDef& metronome, double time) {
+    write_live_metronome_state(live_metronome_state_from_graph(metronome, time));
+    live_metronome_initialized_ = true;
+}
 
 // ---------------------------------------------------------------------------
 // build
@@ -75,6 +124,10 @@ void RuntimeCore::adopt_prepared_build(PreparedBuild prepared) {
                      compiled_graph_->frame_to_audio_edges.size() +
                      compiled_graph_->audio_to_frame_edges.size());
     }
+
+    if (!live_metronome_initialized_ && compiled_graph_) {
+        reset_live_metronome(compiled_graph_->metronome, last_tick_time_);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -87,7 +140,9 @@ void RuntimeCore::tick(double time, double delta_time, uint64_t frame, void* gpu
         std::fprintf(stderr, "[vivid] RuntimeCore::tick() skipped: no CompiledGraph\n");
         return;
     }
-    frame_executor_.tick(*compiled_graph_, time, delta_time, frame,
+    last_tick_time_ = time;
+    const auto metronome = sample_live_metronome(time);
+    frame_executor_.tick(*compiled_graph_, metronome, time, delta_time, frame,
                          gpu_state, on_gpu_node, input);
 
     // Update audio nodes' param_values for inspector display.

@@ -1,4 +1,5 @@
 #pragma once
+#include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
 #include "operator_api/draw_ui_helpers.h"
 #include "operator_api/midi_types.h"
@@ -36,6 +37,7 @@ struct ArpeggiatorCore : vivid::OperatorBase {
     vivid::Param<float> swing       {"swing",       0.0f, 0.0f, 1.0f};
     vivid::Param<bool>  latch       {"latch",       false};
     vivid::Param<int>   mod_steps   {"mod_steps",   8, 1, 8};
+    vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
 
     // --- Per-step velocity modifiers ---
     vivid::Param<float> vel_0 {"vel_0", 1.0f, 0.0f, 1.0f};
@@ -66,6 +68,7 @@ struct ArpeggiatorCore : vivid::OperatorBase {
         vivid::description(swing, "Timing offset between even and odd steps, 0 = straight");
         vivid::description(latch, "Keep playing the pattern after all input gates go low");
         vivid::description(mod_steps, "Number of active steps in the velocity/transpose modulation cycle");
+        vivid::description(clock_source, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
         vivid::description(vel_0, "Velocity multiplier for modulation step 1");
         vivid::description(vel_1, "Velocity multiplier for modulation step 2");
         vivid::description(vel_2, "Velocity multiplier for modulation step 3");
@@ -93,9 +96,10 @@ struct ArpeggiatorCore : vivid::OperatorBase {
     //  4       = swing
     //  5       = latch
     //  6       = mod_steps
-    //  7..14   = vel_0..vel_7
-    //  15..22  = tr_0..tr_7
-    //  23      = midi_channel
+    //  7       = clock_source
+    //  8..15   = vel_0..vel_7
+    //  16..23  = tr_0..tr_7
+    //  24      = midi_channel
 
     vivid::Param<float>* vel_params_[8] = {&vel_0,&vel_1,&vel_2,&vel_3,&vel_4,&vel_5,&vel_6,&vel_7};
     vivid::Param<int>*   tr_params_[8]  = {&tr_0,&tr_1,&tr_2,&tr_3,&tr_4,&tr_5,&tr_6,&tr_7};
@@ -108,17 +112,18 @@ struct ArpeggiatorCore : vivid::OperatorBase {
         out.push_back(&swing);        // 4
         out.push_back(&latch);        // 5
         out.push_back(&mod_steps);    // 6
+        out.push_back(&clock_source); // 7
 
         for (int i = 0; i < 8; ++i) {
             display_hint(*vel_params_[i], VIVID_DISPLAY_HIDDEN);
-            out.push_back(vel_params_[i]);   // 7..14
+            out.push_back(vel_params_[i]);   // 8..15
         }
         for (int i = 0; i < 8; ++i) {
             display_hint(*tr_params_[i], VIVID_DISPLAY_HIDDEN);
-            out.push_back(tr_params_[i]);    // 15..22
+            out.push_back(tr_params_[i]);    // 16..23
         }
 
-        out.push_back(&midi_channel); // 23
+        out.push_back(&midi_channel); // 24
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -305,8 +310,8 @@ struct ArpeggiatorCore : vivid::OperatorBase {
 
         // Per-step modifier
         int mod_idx = raw_step % msteps;
-        float vel_mod = params[7 + mod_idx];
-        int tr_mod = static_cast<int>(params[15 + mod_idx]);
+        float vel_mod = params[8 + mod_idx];
+        int tr_mod = static_cast<int>(params[16 + mod_idx]);
 
         float out_note = pool_notes[note_idx] + static_cast<float>(tr_mod);
         float out_vel = pool_vels[note_idx] * vel_mod;
@@ -355,7 +360,7 @@ struct ArpeggiatorCore : vivid::OperatorBase {
         // Velocity bars (fill from bottom)
         for (int i = 0; i < msteps; ++i) {
             float vel = (ctx->param_count > static_cast<uint32_t>(7 + i))
-                ? std::clamp(ctx->param_values[7 + i], 0.0f, 1.0f) : 1.0f;
+                ? std::clamp(ctx->param_values[8 + i], 0.0f, 1.0f) : 1.0f;
             float bx = margin + i * bar_w + gap;
             float bw = bar_w - 2 * gap;
             float bh = vel * section_h;
@@ -371,7 +376,7 @@ struct ArpeggiatorCore : vivid::OperatorBase {
 
         for (int i = 0; i < msteps; ++i) {
             float tr = (ctx->param_count > static_cast<uint32_t>(15 + i))
-                ? ctx->param_values[15 + i] : 0.0f;
+                ? ctx->param_values[16 + i] : 0.0f;
             float norm = std::clamp(tr / 24.0f, -1.0f, 1.0f);
             float bx = margin + i * bar_w + gap;
             float bw = bar_w - 2 * gap;
@@ -427,7 +432,7 @@ struct ArpeggiatorCore : vivid::OperatorBase {
 
         for (int i = 0; i < msteps; ++i) {
             float vel = (ctx->param_count > static_cast<uint32_t>(7 + i))
-                ? std::clamp(ctx->param_values[7 + i], 0.0f, 1.0f) : 1.0f;
+                ? std::clamp(ctx->param_values[8 + i], 0.0f, 1.0f) : 1.0f;
 
             float bx = vel_plot_x + static_cast<float>(i) * bar_w + bar_gap;
             float bw = bar_w - 2.0f * bar_gap;
@@ -459,7 +464,7 @@ struct ArpeggiatorCore : vivid::OperatorBase {
 
         for (int i = 0; i < msteps; ++i) {
             float tr = (ctx->param_count > static_cast<uint32_t>(15 + i))
-                ? ctx->param_values[15 + i] : 0.0f;
+                ? ctx->param_values[16 + i] : 0.0f;
             float norm = std::clamp(tr / 24.0f, -1.0f, 1.0f);
 
             float bx = tr_plot_x + static_cast<float>(i) * bar_w + bar_gap;

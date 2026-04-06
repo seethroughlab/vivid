@@ -166,6 +166,7 @@ bool Graph::parse_doc(const nlohmann::json& root) {
     load_diagnostics.clear();
     active_variation_ = -1;
     quantize_clock_node_.clear();
+    metronome_ = {};
     meta_ = {};
 
     // Schema version — hard-reject if from the future
@@ -410,6 +411,23 @@ bool Graph::parse_doc(const nlohmann::json& root) {
     auto qc_it = root.find("quantize_clock");
     if (qc_it != root.end() && qc_it->is_string())
         quantize_clock_node_ = qc_it->get<std::string>();
+
+    // Parse graph metronome
+    auto met_it = root.find("metronome");
+    if (met_it != root.end() && met_it->is_object()) {
+        const auto& met = *met_it;
+        auto enabled_it = met.find("enabled");
+        auto bpm_it = met.find("bpm");
+        auto bpb_it = met.find("beats_per_bar");
+        if (enabled_it != met.end() && enabled_it->is_boolean())
+            metronome_.enabled = enabled_it->get<bool>();
+        if (bpm_it != met.end() && bpm_it->is_number())
+            metronome_.bpm = static_cast<float>(bpm_it->get<double>());
+        if (bpb_it != met.end() && bpb_it->is_number_integer())
+            metronome_.beats_per_bar = static_cast<int>(bpb_it->get<int64_t>());
+        metronome_.bpm = std::max(1.0f, std::min(300.0f, metronome_.bpm));
+        metronome_.beats_per_bar = std::max(1, std::min(16, metronome_.beats_per_bar));
+    }
 
     // Parse per-operator presets
     auto presets_it = root.find("presets");
@@ -1145,6 +1163,13 @@ static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
         root["active_variation"] = graph.active_variation();
     if (!graph.quantize_clock_node().empty())
         root["quantize_clock"] = graph.quantize_clock_node();
+    if (graph.metronome().enabled || graph.metronome().bpm != 120.0f || graph.metronome().beats_per_bar != 4) {
+        nlohmann::ordered_json met_obj = nlohmann::ordered_json::object();
+        met_obj["enabled"] = graph.metronome().enabled;
+        met_obj["bpm"] = static_cast<double>(graph.metronome().bpm);
+        met_obj["beats_per_bar"] = graph.metronome().beats_per_bar;
+        root["metronome"] = std::move(met_obj);
+    }
 
     // Per-operator presets
     if (!graph.node_presets().empty()) {

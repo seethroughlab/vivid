@@ -1,4 +1,5 @@
 #pragma once
+#include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
 #include "operator_api/midi_types.h"
 #include "operator_api/type_id.h"
@@ -20,6 +21,7 @@ struct PatternSeqCore : vivid::OperatorBase {
     vivid::Param<int>   rate        {"rate",        2, {"1/1","1/2","1/4","1/8","1/16","1/32","1/4T","1/8T","1/16T"}};
     vivid::Param<float> gate_length {"gate_length", 0.8f, 0.01f, 1.0f};
     vivid::Param<float> probability {"probability", 1.0f, 0.0f, 1.0f};
+    vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
     vivid::Param<float> val_0  {"val_0",  0.0f, -10000.0f, 10000.0f};
     vivid::Param<float> val_1  {"val_1",  0.0f, -10000.0f, 10000.0f};
     vivid::Param<float> val_2  {"val_2",  0.0f, -10000.0f, 10000.0f};
@@ -43,6 +45,7 @@ struct PatternSeqCore : vivid::OperatorBase {
         vivid::description(rate, "Step rate relative to the beat clock");
         vivid::description(gate_length, "Fraction of each step where the gate stays high, 0 to 1");
         vivid::description(probability, "Chance each step fires, 0 = never, 1 = always");
+        vivid::description(clock_source, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
         vivid::description(val_0, "Value output when step 1 is active");
         vivid::description(val_1, "Value output when step 2 is active");
         vivid::description(val_2, "Value output when step 3 is active");
@@ -67,6 +70,7 @@ struct PatternSeqCore : vivid::OperatorBase {
         out.push_back(&rate);
         out.push_back(&gate_length);
         out.push_back(&probability);
+        out.push_back(&clock_source);
         out.push_back(&val_0);  out.push_back(&val_1);
         out.push_back(&val_2);  out.push_back(&val_3);
         out.push_back(&val_4);  out.push_back(&val_5);
@@ -107,7 +111,7 @@ struct PatternSeqCore : vivid::OperatorBase {
         int current_step = ((global_step % n) + n) % n;
         float step_phase = scaled_phase - std::floor(scaled_phase);
 
-        float value = params[4 + current_step];
+        float value = params[5 + current_step];
 
         bool new_step = (current_step != prev_step_);
         prev_step_ = current_step;
@@ -156,9 +160,9 @@ struct PatternSeqCore : vivid::OperatorBase {
             auto& sp = out_spreads[4];
             auto len = static_cast<uint32_t>(n);
             if (sp.capacity >= len) {
-                sp.length = len;
+                    sp.length = len;
                 for (uint32_t i = 0; i < len; ++i)
-                    sp.data[i] = params[4 + i];
+                    sp.data[i] = params[5 + i];
             }
         }
     }

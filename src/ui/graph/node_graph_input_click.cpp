@@ -23,6 +23,21 @@ void NodeGraphUI::handle_left_click() {
     if (handle_chooser_click()) return;
     if (handle_dropdown_click()) return;
 
+    if (transport_bpm_editing_) {
+        const bool inside_bpm_rect =
+            transport_bpm_rect_.visible &&
+            mouse_.x >= transport_bpm_rect_.x &&
+            mouse_.x <= transport_bpm_rect_.x + transport_bpm_rect_.w &&
+            mouse_.y >= transport_bpm_rect_.y &&
+            mouse_.y <= transport_bpm_rect_.y + transport_bpm_rect_.h;
+        if (!inside_bpm_rect) {
+            confirm_transport_bpm_edit();
+        } else {
+            mouse_.left_clicked = false;
+            return;
+        }
+    }
+
     {
         float bottom_offset = session_grid_open_ ? kSessionStripH : 0.0f;
         if (!build_console_panel_.contains(mouse_.x, mouse_.y, win_w_, win_h_, bottom_offset))
@@ -56,6 +71,31 @@ void NodeGraphUI::handle_left_click() {
 
     // preset_name_popup and core_update_button clicks moved to DialogManager
 
+    if (transport_bpm_rect_.visible &&
+        mouse_.x >= transport_bpm_rect_.x &&
+        mouse_.x <= transport_bpm_rect_.x + transport_bpm_rect_.w &&
+        mouse_.y >= transport_bpm_rect_.y &&
+        mouse_.y <= transport_bpm_rect_.y + transport_bpm_rect_.h) {
+        double now = glfwGetTime();
+        if (transport_bpm_last_click_time_ >= 0.0 &&
+            (now - transport_bpm_last_click_time_) < 0.4) {
+            transport_bpm_dragging_ = false;
+            transport_bpm_editing_ = true;
+            transport_bpm_edit_buffer_ = format_float(std::max(1.0f, snap_.metronome_bpm), 1);
+            text_edit_.select_all(static_cast<int>(transport_bpm_edit_buffer_.size()));
+            transport_bpm_last_click_time_ = -1.0;
+        } else {
+            transport_bpm_dragging_ = true;
+            transport_bpm_drag_start_y_ = mouse_.y;
+            transport_bpm_drag_start_bpm_ =
+                std::clamp(snap_.metronome_bpm > 0.0f ? snap_.metronome_bpm : 120.0f, 1.0f, 300.0f);
+            transport_bpm_last_click_time_ = now;
+            text_edit_.reset(0);
+        }
+        mouse_.left_clicked = false;
+        return;
+    }
+
     // Perf bar buttons (Record/Stop, Snapshot)
     for (const auto& btn : perf_button_rects_) {
         if (mouse_.x >= btn.x && mouse_.x <= btn.x + btn.w &&
@@ -80,10 +120,32 @@ void NodeGraphUI::handle_left_click() {
                 commands_.redo();
             } else if (btn.action == 4) {  // Build Console
                 build_console_panel_.toggle_open();
+            } else if (btn.action == 5) {  // Metronome toggle
+                const float bpm = snap_.metronome_bpm > 0.0f ? snap_.metronome_bpm : 120.0f;
+                const int beats_per_bar = std::max(1, snap_.metronome_beats_per_bar);
+                commands_.set_graph_metronome(!snap_.metronome_enabled, bpm, beats_per_bar);
+            } else if (btn.action == 6) {  // Meter-
+                const int beats_per_bar = std::max(1, snap_.metronome_beats_per_bar - 1);
+                commands_.set_graph_metronome(true, snap_.metronome_bpm, beats_per_bar);
+            } else if (btn.action == 7) {  // Meter+
+                const int beats_per_bar = std::min(16, snap_.metronome_beats_per_bar + 1);
+                commands_.set_graph_metronome(true, snap_.metronome_bpm, beats_per_bar);
+            } else if (btn.action == 8) {  // Session toggle
+                toggle_session_grid();
             }
             mouse_.left_clicked = false;
             return;
         }
+    }
+
+    if (!session_grid_open_ && session_collapsed_rect_.visible &&
+        mouse_.x >= session_collapsed_rect_.x &&
+        mouse_.x <= session_collapsed_rect_.x + session_collapsed_rect_.w &&
+        mouse_.y >= session_collapsed_rect_.y &&
+        mouse_.y <= session_collapsed_rect_.y + session_collapsed_rect_.h) {
+        toggle_session_grid();
+        mouse_.left_clicked = false;
+        return;
     }
 
     // MCP dot clicks (in perf bar) — open setup dialog
@@ -187,6 +249,13 @@ void NodeGraphUI::handle_left_click() {
         for (const auto& br : session_button_rects_) {
             if (mouse_.x >= br.x && mouse_.x <= br.x + br.w &&
                 mouse_.y >= br.y && mouse_.y <= br.y + br.h) {
+                if (!br.enabled) {
+                    if (br.action >= 3 && br.action <= 5) {
+                        status_banner_error_ = "Enable the graph metronome in the transport strip to use quantized variation switching.";
+                    }
+                    mouse_.left_clicked = false;
+                    return;
+                }
                 if (br.action == 0) {
                     // + Save New
                     std::string name = "Var " + std::to_string(snap_.variations.size() + 1);
@@ -201,6 +270,7 @@ void NodeGraphUI::handle_left_click() {
                 } else if (br.action >= 2 && br.action <= 5) {
                     // Quantize mode buttons
                     session_quantize_mode_ = br.action - 2;
+                    clear_status_banner();
                 } else if (br.action == 6) {
                     // Branch (duplicate active variation then recall the copy)
                     if (snap_.active_variation >= 0 &&

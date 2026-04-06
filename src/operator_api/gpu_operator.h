@@ -1,5 +1,6 @@
 #pragma once
 #include "operator_api/types.h"
+#include "operator_api/metronome_sync.h"
 #include "operator_api/gpu_types.h"
 #include <webgpu/webgpu.h>
 #include <cstring>
@@ -72,6 +73,15 @@ struct VividGpuContext {
     const VividInputState* input;
     const VividSharedHandleService* shared_handles;
 
+    // ---- Graph-wide metronome (read-only) ----------------------------------
+    uint8_t            metronome_enabled;
+    float              metronome_bpm;
+    uint32_t           metronome_beats_per_bar;
+    double             metronome_beats_elapsed;
+    float              metronome_beat_phase;
+    float              metronome_bar_phase;
+    float              metronome_beat_ms;
+
     // ---- Operator write-back ------------------------------------------------
     uint32_t           preferred_tex_width;
     uint32_t           preferred_tex_height;
@@ -82,6 +92,21 @@ struct VividGpuContext {
 #ifdef __cplusplus
 }
 #endif
+
+namespace vivid {
+inline MetronomeTransport metronome_transport(const VividGpuContext* ctx) {
+    MetronomeTransport out{};
+    if (!ctx) return out;
+    out.enabled = ctx->metronome_enabled != 0;
+    out.bpm = ctx->metronome_bpm;
+    out.beats_per_bar = static_cast<int>(ctx->metronome_beats_per_bar);
+    out.beats_elapsed = ctx->metronome_beats_elapsed;
+    out.beat_phase = ctx->metronome_beat_phase;
+    out.bar_phase = ctx->metronome_bar_phase;
+    out.beat_ms = ctx->metronome_beat_ms;
+    return out;
+}
+} // namespace vivid
 
 // Request a texture resize for the next frame. The preferred_tex_* fields are
 // write-back fields (operator → runtime), explicitly mutable through const ctx.

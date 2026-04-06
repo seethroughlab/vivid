@@ -18,6 +18,7 @@ struct DummySink : UICommandSink {
     struct ParamCall { std::string node_id, param; float value; };
     struct StringParamCall { std::string node_id, param, value; };
     struct LayoutCall { std::string node_id; float x, y; };
+    struct MetronomeCall { bool enabled; float bpm; int beats_per_bar; };
 
     std::vector<std::string> remove_calls;
     std::vector<std::pair<std::string, std::string>> connect_calls;
@@ -27,6 +28,7 @@ struct DummySink : UICommandSink {
     std::vector<StringParamCall> set_string_param_calls;
     std::vector<LayoutCall> layout_calls;
     std::vector<std::pair<std::string, int>> move_variation_calls;
+    std::vector<MetronomeCall> metronome_calls;
     std::vector<int> recall_variation_idx_calls;
     int undo_calls = 0;
     int redo_calls = 0;
@@ -63,6 +65,9 @@ struct DummySink : UICommandSink {
     void set_string_param(const std::string& node_id, const std::string& param,
                           const std::string& value) override {
         set_string_param_calls.push_back({node_id, param, value});
+    }
+    void set_graph_metronome(bool enabled, float bpm, int beats_per_bar) override {
+        metronome_calls.push_back({enabled, bpm, beats_per_bar});
     }
     void recall_variation_idx(int idx) override {
         recall_variation_idx_calls.push_back(idx);
@@ -160,6 +165,9 @@ static GraphSnapshot make_session_snapshot() {
     GraphSnapshot snap = make_editor_snapshot();
     snap.variations = {{"A"}, {"B"}, {"C"}};
     snap.active_variation = 0;
+    snap.metronome_enabled = true;
+    snap.metronome_bpm = 120.0f;
+    snap.metronome_beats_per_bar = 4;
     return snap;
 }
 
@@ -355,6 +363,194 @@ int main() {
                   sink.move_variation_calls[0].first == "A" &&
                   sink.move_variation_calls[0].second == 2,
               "Session drag reorder dispatches the moved card target index");
+    }
+
+    {
+        DummySink sink;
+        NodeGraphUI ui(sink);
+        auto snap = make_session_snapshot();
+        snap.metronome_enabled = false;
+        snap.metronome_bpm = 111.0f;
+        snap.metronome_beats_per_bar = 5;
+        ui.update(snap);
+        ui.perf_button_rects_ = {
+            {0.0f, 0.0f, 20.0f, 20.0f, 5, true},
+            {24.0f, 0.0f, 20.0f, 20.0f, 7, true},
+            {48.0f, 0.0f, 20.0f, 20.0f, 8, true},
+        };
+
+        ui.mouse_ = {};
+        ui.mouse_.x = 10.0f;
+        ui.mouse_.y = 10.0f;
+        ui.mouse_.left_clicked = true;
+        ui.handle_left_click();
+
+        ui.mouse_ = {};
+        ui.mouse_.x = 34.0f;
+        ui.mouse_.y = 10.0f;
+        ui.mouse_.left_clicked = true;
+        ui.handle_left_click();
+
+        ui.mouse_ = {};
+        ui.mouse_.x = 58.0f;
+        ui.mouse_.y = 10.0f;
+        ui.mouse_.left_clicked = true;
+        ui.handle_left_click();
+
+        check(sink.metronome_calls.size() == 2, "Transport buttons dispatch metronome mutations");
+        if (sink.metronome_calls.size() == 2) {
+            check(sink.metronome_calls[0].enabled && std::fabs(sink.metronome_calls[0].bpm - 111.0f) < 0.01f &&
+                      sink.metronome_calls[0].beats_per_bar == 5,
+                  "Metronome toggle preserves bpm and meter");
+            check(sink.metronome_calls[1].enabled && sink.metronome_calls[1].beats_per_bar == 6,
+                  "Meter+ enables metronome and increments beats per bar");
+        }
+        check(ui.session_grid_open_, "Transport session button opens the session grid");
+    }
+
+    {
+        DummySink sink;
+        NodeGraphUI ui(sink);
+        auto snap = make_session_snapshot();
+        snap.metronome_enabled = false;
+        snap.metronome_bpm = 111.0f;
+        snap.metronome_beats_per_bar = 5;
+        ui.update(snap);
+        ui.transport_bpm_rect_ = {10.0f, 10.0f, 80.0f, 20.0f, true};
+
+        ui.mouse_ = {};
+        ui.mouse_.x = 20.0f;
+        ui.mouse_.y = 20.0f;
+        ui.mouse_.left_clicked = true;
+        ui.mouse_.left_down = true;
+        ui.handle_left_click();
+
+        ui.mouse_.prev_y = 20.0f;
+        ui.mouse_.y = 12.0f;
+        ui.update_transport_bpm_drag();
+        check(!sink.metronome_calls.empty() &&
+                  sink.metronome_calls.back().enabled &&
+                  std::fabs(sink.metronome_calls.back().bpm - 112.0f) < 0.05f &&
+                  sink.metronome_calls.back().beats_per_bar == 5,
+              "BPM drag enables the metronome and updates tempo live");
+
+        const size_t coarse_calls = sink.metronome_calls.size();
+        ui.mouse_.shift_down = true;
+        ui.mouse_.y = 4.0f;
+        ui.update_transport_bpm_drag();
+        check(sink.metronome_calls.size() == coarse_calls + 1 &&
+                  std::fabs(sink.metronome_calls.back().bpm - 112.1f) < 0.05f,
+              "Shift-drag uses finer BPM increments");
+
+        ui.mouse_.left_down = false;
+        ui.mouse_.left_released = true;
+        ui.update_transport_bpm_drag();
+        check(!ui.transport_bpm_dragging_, "BPM drag stops on mouse release");
+    }
+
+    {
+        DummySink sink;
+        NodeGraphUI ui(sink);
+        auto snap = make_session_snapshot();
+        snap.metronome_enabled = false;
+        snap.metronome_bpm = 111.0f;
+        snap.metronome_beats_per_bar = 5;
+        ui.update(snap);
+        ui.transport_bpm_rect_ = {10.0f, 10.0f, 80.0f, 20.0f, true};
+
+        ui.transport_bpm_last_click_time_ = glfwGetTime();
+        ui.mouse_ = {};
+        ui.mouse_.x = 20.0f;
+        ui.mouse_.y = 20.0f;
+        ui.mouse_.left_clicked = true;
+        ui.handle_left_click();
+        check(ui.transport_bpm_editing_, "Double-click enters BPM inline edit mode");
+
+        ui.transport_bpm_edit_buffer_ = "128.5";
+        ui.on_key(GLFW_KEY_ENTER, GLFW_PRESS, 0);
+        check(!sink.metronome_calls.empty() &&
+                  sink.metronome_calls.back().enabled &&
+                  std::fabs(sink.metronome_calls.back().bpm - 128.5f) < 0.01f &&
+                  sink.metronome_calls.back().beats_per_bar == 5,
+              "Enter commits typed BPM");
+        check(!ui.transport_bpm_editing_, "BPM edit closes after Enter commit");
+    }
+
+    {
+        DummySink sink;
+        NodeGraphUI ui(sink);
+        auto snap = make_session_snapshot();
+        snap.metronome_enabled = false;
+        snap.metronome_bpm = 111.0f;
+        snap.metronome_beats_per_bar = 5;
+        ui.update(snap);
+        ui.transport_bpm_rect_ = {10.0f, 10.0f, 80.0f, 20.0f, true};
+        ui.transport_bpm_editing_ = true;
+        ui.transport_bpm_edit_buffer_ = "140";
+
+        ui.mouse_ = {};
+        ui.mouse_.x = 140.0f;
+        ui.mouse_.y = 40.0f;
+        ui.mouse_.left_clicked = true;
+        ui.handle_left_click();
+        check(!sink.metronome_calls.empty() &&
+                  std::fabs(sink.metronome_calls.back().bpm - 140.0f) < 0.01f,
+              "Clicking away commits the BPM edit");
+    }
+
+    {
+        DummySink sink;
+        NodeGraphUI ui(sink);
+        auto snap = make_session_snapshot();
+        ui.update(snap);
+        ui.transport_bpm_editing_ = true;
+        ui.transport_bpm_edit_buffer_ = "145";
+        ui.on_key(GLFW_KEY_ESCAPE, GLFW_PRESS, 0);
+        check(!ui.transport_bpm_editing_, "Escape cancels BPM edit mode");
+        check(sink.metronome_calls.empty(), "Escape does not dispatch a metronome change");
+    }
+
+    {
+        DummySink sink;
+        NodeGraphUI ui(sink);
+        auto snap = make_session_snapshot();
+        ui.update(snap);
+        ui.transport_bpm_editing_ = true;
+        ui.transport_bpm_edit_buffer_ = "abc";
+        ui.confirm_transport_bpm_edit();
+        check(sink.metronome_calls.empty(), "Invalid BPM input is discarded");
+    }
+
+    {
+        DummySink sink;
+        NodeGraphUI ui(sink);
+        auto snap = make_session_snapshot();
+        ui.update(snap);
+        ui.session_grid_open_ = false;
+        ui.session_collapsed_rect_ = {100.0f, 680.0f, 160.0f, 24.0f, true};
+        ui.mouse_ = {};
+        ui.mouse_.x = 120.0f;
+        ui.mouse_.y = 690.0f;
+        ui.mouse_.left_clicked = true;
+        ui.handle_left_click();
+        check(ui.session_grid_open_, "Collapsed session affordance reopens the session strip");
+    }
+
+    {
+        DummySink sink;
+        NodeGraphUI ui(sink);
+        auto snap = make_session_snapshot();
+        snap.metronome_enabled = false;
+        ui.update(snap);
+        ui.session_grid_open_ = true;
+        ui.session_button_rects_ = {{20.0f, 650.0f, 40.0f, 20.0f, 3, false}};
+        ui.mouse_ = {};
+        ui.mouse_.x = 30.0f;
+        ui.mouse_.y = 660.0f;
+        ui.mouse_.left_clicked = true;
+        ui.handle_left_click();
+        check(ui.session_quantize_mode_ == 0, "Disabled quantize button does not change session quantize mode");
+        check(!ui.status_banner_error_.empty(), "Disabled quantize button explains missing metronome");
     }
 
     std::fprintf(stderr, "%s (%d failures)\n", failures == 0 ? "PASSED" : "FAILED", failures);

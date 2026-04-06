@@ -6,6 +6,7 @@
 DrumSequencerCore::DrumSequencerCore() {
     vivid::description(steps, "Number of active steps in the pattern (1-16)");
     vivid::description(swing, "Swing amount, shifts even steps later (0 = straight, 0.5 = heavy triplet)");
+    vivid::description(clock_source, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
 
     vivid::description(kick_note, "MIDI note number for the kick drum");
     vivid::description(snare_note, "MIDI note number for the snare drum");
@@ -270,6 +271,7 @@ void DrumSequencerCore::collect_params(std::vector<vivid::ParamBase*>& out) {
         out[i]->display_hint = VIVID_DISPLAY_HIDDEN;
 
     out.push_back(&midi_channel); // 296
+    out.push_back(&clock_source); // 297
 }
 
 void DrumSequencerCore::collect_ports(std::vector<VividPortDescriptor>& out) {

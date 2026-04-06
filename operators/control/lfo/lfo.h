@@ -3,6 +3,7 @@
 // (e.g. ModulatedGain, GPU operators). The public operator surface uses
 // lfo_fr / lfo_au variants instead.
 
+#include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
 #include <cmath>
 
@@ -20,15 +21,19 @@
  * Supports seven waveforms including two random modes: **sample & hold**
  * (stepped random on each cycle) and **smooth random** (Catmull-Rom
  * interpolated). Use the `gate` input to reset phase and trigger fade-in;
- * use `beat_phase` with `rate_mode=sync` for tempo-locked modulation.
+ * use `beat_phase` with `rate_mode=external` for explicit sync or
+ * `rate_mode=metronome` for graph-wide transport sync.
  *
  * @tip Use unipolar mode when driving parameters that expect 0-1 (like mix knobs).
- * @tip Connect a Clock's beat_phase output and set rate_mode=sync for tempo-locked sweeps.
+ * @tip Connect a Clock's beat_phase output and set rate_mode=external for explicit sync,
+ * or choose rate_mode=metronome for graph-wide transport sync.
  * @tip The slew param smooths all waveforms — useful for softening square or S&H steps.
  * @see Envelope, Clock, Math, Smooth
- * @param frequency Oscillation rate in Hz (ignored when synced to beat_phase).
+ * @param frequency Oscillation rate in Hz (ignored when rate_mode is metronome).
  * @param waveform Shape of the output wave. sample_hold and smooth_random use the seed param.
- * @param rate_mode free = internal clock, sync = driven by beat_phase input.
+ * @param rate_mode free = internal clock, external = driven by beat_phase input,
+ * metronome = driven by the graph metronome.
+ * @param sync_division Musical note length used when rate_mode is metronome.
  * @param polarity bipolar = -1..1, unipolar = 0..1.
  * @param slew Smooths output transitions. Higher values = more lag.
  * @input gate Rising edge resets phase and starts fade-in timer.
@@ -46,7 +51,8 @@ struct LFO : vivid::OperatorBase {
     vivid::Param<float> amplitude    {"amplitude",     1.0f,  0.0f,  10.0f};
     vivid::Param<float> offset       {"offset",        0.0f, -10.0f, 10.0f};
     vivid::Param<int>   waveform     {"waveform",      0, {"sine", "saw", "square", "triangle", "sample_hold", "smooth_random", "noise"}};
-    vivid::Param<int>   rate_mode    {"rate_mode",     0, {"free", "sync"}};
+    vivid::Param<int>   rate_mode    {"rate_mode",     0, vivid::rate_mode_labels()};
+    vivid::Param<int>   sync_division{"sync_division", 2, vivid::metronome_division_labels()};
     vivid::Param<int>   polarity     {"polarity",      0, {"bipolar", "unipolar"}};
     vivid::Param<float> phase_offset {"phase_offset",  0.0f, 0.0f, 1.0f};
     vivid::Param<float> fade_in      {"fade_in",       0.0f, 0.0f, 5.0f};
@@ -90,7 +96,8 @@ struct LFO : vivid::OperatorBase {
         vivid::description(offset, "Constant value added to the output signal");
 
         vivid::description(waveform, "Shape of the oscillation cycle");
-        vivid::description(rate_mode, "Free runs independently; sync locks to the global clock");
+        vivid::description(rate_mode, "Free runs internally, follows an external beat_phase input, or locks to the graph metronome");
+        vivid::description(sync_division, "Musical note length used when rate_mode is metronome");
         vivid::description(polarity, "Bipolar swings above and below zero; unipolar stays positive");
         vivid::description(phase_offset, "Starting point in the cycle (0 = beginning, 1 = full cycle)");
         vivid::description(fade_in, "Seconds to ramp from zero to full amplitude on start");
@@ -123,10 +130,11 @@ struct LFO : vivid::OperatorBase {
         out.push_back(&offset);        // 4
         out.push_back(&waveform);      // 5
         out.push_back(&rate_mode);     // 6
-        out.push_back(&polarity);      // 7
-        out.push_back(&slew);          // 8
-        out.push_back(&distribution);  // 9
-        out.push_back(&seed);          // 10
+        out.push_back(&sync_division); // 7
+        out.push_back(&polarity);      // 8
+        out.push_back(&slew);          // 9
+        out.push_back(&distribution);  // 10
+        out.push_back(&seed);          // 11
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -171,9 +179,10 @@ struct LFO : vivid::OperatorBase {
     // Advance phase by dt seconds, apply gate/fade tracking.
     // Returns the computed output value for one time step.
     static float compute_one_sample(LaneState& st, float freq, float amp, float off,
-                                    int wf, int rm, int pol, int dist, int seed_val,
+                                    int wf, int rm, int sync_div, int pol, int dist, int seed_val,
                                     float ph_off, float fade, float gate_in, float phase_in,
-                                    double dt, float slew_amt) {
+                                    double dt, float slew_amt,
+                                    const vivid::MetronomeTransport& metronome) {
         // Seed handling: reinit RNG when seed param changes (0 = free-running)
         if (seed_val != st.prev_seed) {
             if (seed_val > 0) st.noise_seed = static_cast<uint32_t>(seed_val);
@@ -196,9 +205,13 @@ struct LFO : vivid::OperatorBase {
 
         // Phase computation
         double phase;
-        if (rm == 1 && phase_in != 0.0f) {
+        if (rm == vivid::kRateModeMetronome) {
+            phase = metronome.enabled
+                ? vivid::cycle_phase_from_total_beats(metronome.beats_elapsed, sync_div)
+                : 0.0;
+        } else if (rm == vivid::kRateModeExternal) {
             phase = std::fmod(static_cast<double>(phase_in) * static_cast<double>(freq), 1.0);
-        } else if (phase_in != 0.0f && rm == 0) {
+        } else if (phase_in != 0.0f && rm == vivid::kRateModeFree) {
             phase = std::fmod(static_cast<double>(phase_in), 1.0);
         } else {
             st.free_phase += dt * static_cast<double>(freq);
@@ -271,10 +284,11 @@ struct LFO : vivid::OperatorBase {
 
         ctx->output_values[0] = compute_one_sample(
             s, frequency.value, amplitude.value, offset.value,
-            waveform.int_value(), rate_mode.int_value(),
+            waveform.int_value(), rate_mode.int_value(), sync_division.int_value(),
             polarity.int_value(), distribution.int_value(),
             seed.int_value(), static_cast<float>(phase_offset.value),
-            fade_in.value, gate_in, phase_in, dt, slew.value);
+            fade_in.value, gate_in, phase_in, dt, slew.value,
+            vivid::metronome_transport(ctx));
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override;

@@ -244,6 +244,12 @@ struct GraphSnapshot {
     bool graph_dirty = false;
     int queued_variation = -1;
     std::string quantize_clock_node;
+    bool metronome_enabled = false;
+    float metronome_bpm = 120.0f;
+    int metronome_beats_per_bar = 4;
+    float metronome_beat_phase = 0.0f;
+    float metronome_bar_phase = 0.0f;
+    float metronome_beat_ms = 500.0f;
 
     // Sticky notes
     std::vector<StickyNoteSnapshot> sticky_notes;

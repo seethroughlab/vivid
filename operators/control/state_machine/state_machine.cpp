@@ -1,3 +1,4 @@
+#include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
 #include "control/audio_scalar_utils.h"
 #include <algorithm>
@@ -34,6 +35,7 @@ struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<float> dur_5       {"dur_5", 4.0f, 0.0f, 256.0f};
     vivid::Param<float> dur_6       {"dur_6", 4.0f, 0.0f, 256.0f};
     vivid::Param<float> dur_7       {"dur_7", 4.0f, 0.0f, 256.0f};
+    vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
 
     StateMachine() {
         vivid::description(states, "Number of active states, 1 to 8");
@@ -52,6 +54,7 @@ struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::description(dur_5, "Duration of state 6 in bars");
         vivid::description(dur_6, "Duration of state 7 in bars");
         vivid::description(dur_7, "Duration of state 8 in bars");
+        vivid::description(clock_source, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
     }
 
     // State variables
@@ -86,6 +89,7 @@ struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back(&dur_5);          // 13
         out.push_back(&dur_6);          // 14
         out.push_back(&dur_7);          // 15
+        out.push_back(&clock_source);   // 16
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -105,7 +109,8 @@ struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
 
     void process_audio(const VividAudioContext* ctx) override {
         // 1. Read inputs (scalar ports delivered as audio buffers)
-        float beat_phase = vivid::audio_scalar_block_start(ctx, 0);
+        float beat_phase = vivid::resolve_clock_phase(
+            clock_source.int_value(), vivid::audio_scalar_block_start(ctx, 0), vivid::metronome_transport(ctx));
         float trigger_in = vivid::audio_scalar_block_start(ctx, 1);
         float reset_in   = vivid::audio_scalar_block_start(ctx, 2);
         float signal_in  = vivid::audio_scalar_block_start(ctx, 3);

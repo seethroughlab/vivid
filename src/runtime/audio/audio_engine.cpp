@@ -16,6 +16,7 @@ AudioEngine::~AudioEngine() {
 }
 
 bool AudioEngine::build(RuntimeCore& core) {
+    runtime_core_ = &core;
     compiled_graph_ = core.compiled_graph();
     audio_frame_bridge_ = &core.audio_frame_bridge();
     if (!compiled_graph_ || compiled_graph_->audio_order.empty()) {
@@ -24,7 +25,8 @@ bool AudioEngine::build(RuntimeCore& core) {
     }
 
     audio_executor_ = std::make_unique<AudioExecutor>();
-    if (!audio_executor_->build(*audio_frame_bridge_, *compiled_graph_)) {
+    if (!audio_executor_->build(*audio_frame_bridge_, *compiled_graph_,
+                                core.live_metronome_store())) {
         audio_executor_.reset();
         return false;
     }
@@ -59,6 +61,7 @@ void AudioEngine::shutdown() {
     }
     compiled_graph_ = nullptr;
     audio_frame_bridge_ = nullptr;
+    runtime_core_ = nullptr;
 
     std::fprintf(stderr, "[vivid] AudioEngine: shutdown\n");
 }
@@ -160,9 +163,10 @@ bool AudioEngine::post_reload_operator(const std::string& type_name, OperatorReg
     reload_saved_.clear();
 
     // Rebuild AudioExecutor (auto-dup groups may change with new descriptor)
-    if (audio_executor_ && compiled_graph_ && audio_frame_bridge_) {
+    if (audio_executor_ && compiled_graph_ && audio_frame_bridge_ && runtime_core_) {
         audio_executor_->shutdown();
-        audio_executor_->build(*audio_frame_bridge_, *compiled_graph_);
+        audio_executor_->build(*audio_frame_bridge_, *compiled_graph_,
+                               runtime_core_->live_metronome_store());
         audio_frame_bridge_->build(*compiled_graph_);
         audio_executor_->start(false);
     }

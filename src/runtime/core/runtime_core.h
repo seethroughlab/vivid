@@ -25,6 +25,11 @@ class SubgraphModuleRegistry;
 
 class RuntimeCore {
 public:
+    struct LiveMetronomeUpdateOutcome {
+        bool bar_epoch_reset = false;
+        bool disabled = false;
+    };
+
     struct PreparedBuild {
         std::unique_ptr<CompiledGraph> compiled_graph;
         std::filesystem::path graph_base_dir;
@@ -90,6 +95,11 @@ public:
     const AudioFrameBridge& audio_frame_bridge() const { return audio_frame_bridge_; }
     FrameExecutor& frame_executor() { return frame_executor_; }
     const FrameExecutor& frame_executor() const { return frame_executor_; }
+    double last_tick_time() const { return last_tick_time_; }
+    GraphMetronomeSample sample_live_metronome(double time) const;
+    const LiveMetronomeStateStore& live_metronome_store() const { return live_metronome_store_; }
+    LiveMetronomeUpdateOutcome update_live_metronome(const GraphMetronomeDef& metronome, double time);
+    void reset_live_metronome(const GraphMetronomeDef& metronome, double time);
 
     // Modulation lowering records from the most recent flatten pass
     const std::vector<ModulationLoweringRecord>& modulation_records() const { return modulation_records_; }
@@ -107,6 +117,11 @@ private:
 
     int solo_node_idx_ = -1;
     std::vector<bool> solo_active_set_;
+    double last_tick_time_ = 0.0;
+    LiveMetronomeStateStore live_metronome_store_;
+    bool live_metronome_initialized_ = false;
+
+    void write_live_metronome_state(const LiveMetronomeState& state);
 
     // Main-thread update hook for audio-cadence operators that need it
     // (e.g. media decoding, file I/O). Called during pre_tick_audio_sync.

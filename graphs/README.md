@@ -11,6 +11,13 @@ Graphs are now organized as real folders and discovered via recursive scan.
 Each graph JSON should include a top-level `meta` object. Discovery/search uses this data.
 You can update this in runtime via **File -> Open Example... -> Edit Meta** (opens the graph file for metadata edits).
 
+Metronome-focused examples now live alongside the older clock-wired references:
+
+- `audio/arpeggiator_metronome_demo.json`
+- `audio/chorus_metronome_demo.json`
+- `intro/av_metronome_demo.json`
+- `gpu/gpu_metronome_demo.json`
+
 Example:
 
 ```json

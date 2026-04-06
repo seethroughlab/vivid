@@ -7,7 +7,15 @@ struct ClockAu : ClockCore, vivid::AudioProcessable {
     void process_audio(const VividAudioContext* ctx) override {
         double delta_time = static_cast<double>(ctx->buffer_size) / ctx->sample_rate;
         float out4[4];
-        advance(delta_time, out4);
+        MetronomeSample metronome;
+        metronome.enabled = ctx->metronome_enabled != 0;
+        metronome.bpm = ctx->metronome_bpm;
+        metronome.beats_per_bar = static_cast<int>(ctx->metronome_beats_per_bar);
+        metronome.beats_elapsed = ctx->metronome_beats_elapsed;
+        metronome.beat_phase = ctx->metronome_beat_phase;
+        metronome.bar_phase = ctx->metronome_bar_phase;
+        metronome.beat_ms = ctx->metronome_beat_ms;
+        advance(delta_time, metronome, out4);
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
             for (int j = 0; j < 4; ++j)
                 ctx->output_buffers[j][i] = out4[j];

@@ -14,6 +14,7 @@ struct ma_device;
 namespace vivid {
 
 class AudioFrameBridge;
+struct LiveMetronomeStateStore;
 
 // ---------------------------------------------------------------------------
 // AudioExecutor — processes audio-rate nodes on the audio thread.
@@ -30,7 +31,8 @@ public:
 
     // Build audio-specific state: detect sink, set up auto-dup groups, waveform rings.
     // Also stores bridge/graph references so process_audio_for_test() works before start().
-    bool build(AudioFrameBridge& bridge, CompiledGraph& cg);
+    bool build(AudioFrameBridge& bridge, CompiledGraph& cg,
+               const LiveMetronomeStateStore& metronome_store);
 
     // Start/stop audio device.
     bool start(bool use_null_device = false);
@@ -68,7 +70,8 @@ private:
                                   const void* input, unsigned int frame_count);
 
     AudioFrameBridge* bridge_ = nullptr;   // not owned
-    CompiledGraph* graph_ = nullptr;    // not owned
+    CompiledGraph* graph_ = nullptr;       // not owned
+    const LiveMetronomeStateStore* metronome_store_ = nullptr;  // not owned
 
     int sink_node_idx_ = -1;
 

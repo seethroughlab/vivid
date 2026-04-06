@@ -225,6 +225,7 @@ add_vivid_operator(lut_apply             operators/gpu/lut_apply/lut_apply.cpp  
 add_vivid_operator(scopes                operators/gpu/scopes/scopes.cpp                           EXTRA_LIBS webgpu)
 add_vivid_operator(svg_render             operators/gpu/svg_render/svg_render.cpp                   EXTRA_LIBS webgpu nanosvg)
 add_vivid_operator(rich_text              operators/gpu/rich_text/rich_text.cpp                     EXTRA_LIBS webgpu stb_truetype)
+add_vivid_operator(metronome_viz         operators/gpu/metronome_viz/metronome_viz.cpp            EXTRA_LIBS webgpu)
 # --- TextureLoader (static image → GPU texture, no video machinery) ---
 add_library(texture_loader MODULE
     operators/gpu/texture_loader/texture_loader.cpp

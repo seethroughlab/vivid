@@ -102,6 +102,7 @@ CommandResult RuntimeAPI::load_graph(const std::string& path,
     if (!core_.build(graph_, registry_)) {
         return restore_previous_state("rebuild failed after reload");
     }
+    core_.reset_live_metronome(graph_.metronome(), core_.last_tick_time());
 
     if (preserve_runtime_state) {
         apply_preserved_runtime_state(preserved_state);
@@ -171,6 +172,7 @@ CommandResult RuntimeAPI::new_graph(bool& has_gpu_ops, bool& has_audio) {
         has_gpu_ops = false;
         return {false, "runtime build failed for new graph"};
     }
+    core_.reset_live_metronome(graph_.metronome(), core_.last_tick_time());
 
     has_gpu_ops = core_.has_gpu_operators();
     if (has_gpu_ops) needs_gpu_realloc_ = true;
@@ -267,6 +269,7 @@ CommandResult RuntimeAPI::apply_snapshot_json(const std::string& graph_json,
     if (!core_.build(graph_, registry_)) {
         return restore_previous_state("rebuild failed after snapshot load");
     }
+    core_.reset_live_metronome(graph_.metronome(), core_.last_tick_time());
 
     has_gpu_ops = core_.has_gpu_operators();
     if (has_gpu_ops) needs_gpu_realloc_ = true;

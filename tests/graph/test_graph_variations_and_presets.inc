@@ -166,15 +166,18 @@
     }
 
     // =====================================================================
-    // Test 17: active_variation + quantize_clock_node
+    // Test 17: active_variation + quantize_clock_node + metronome
     // =====================================================================
     {
-        std::fprintf(stderr, "\n=== Test 17: active_variation + quantize_clock_node ===\n");
+        std::fprintf(stderr, "\n=== Test 17: active_variation + quantize_clock_node + metronome ===\n");
         vivid::Graph g;
 
         // Initial state
         check(g.active_variation() == -1, "initial active_variation = -1");
         check(g.quantize_clock_node().empty(), "initial quantize_clock_node empty");
+        check(!g.metronome().enabled, "initial metronome disabled");
+        check_float(g.metronome().bpm, 120.0f, "initial metronome bpm = 120");
+        check(g.metronome().beats_per_bar == 4, "initial beats_per_bar = 4");
 
         // set/get round-trip
         g.set_active_variation(2);
@@ -182,6 +185,15 @@
 
         g.set_quantize_clock_node("clock1");
         check(g.quantize_clock_node() == "clock1", "quantize_clock_node = clock1");
+
+        vivid::GraphMetronomeDef metronome;
+        metronome.enabled = true;
+        metronome.bpm = 96.0f;
+        metronome.beats_per_bar = 7;
+        g.set_metronome(metronome);
+        check(g.metronome().enabled, "metronome enabled round-trip");
+        check_float(g.metronome().bpm, 96.0f, "metronome bpm = 96");
+        check(g.metronome().beats_per_bar == 7, "beats_per_bar = 7");
 
         // Removing variation at active index sets active to -1
         vivid::VariationDef v1; v1.name = "A";
@@ -228,7 +240,8 @@
                 }
             ],
             "active_variation": 1,
-            "quantize_clock": "clock1"
+            "quantize_clock": "clock1",
+            "metronome": { "enabled": true, "bpm": 92.0, "beats_per_bar": 3 }
         })");
 
         vivid::Graph g;
@@ -260,6 +273,9 @@
 
         check(g.active_variation() == 1, "active_variation = 1");
         check(g.quantize_clock_node() == "clock1", "quantize_clock = clock1");
+        check(g.metronome().enabled, "metronome loaded enabled");
+        check_float(g.metronome().bpm, 92.0f, "metronome bpm = 92");
+        check(g.metronome().beats_per_bar == 3, "metronome beats_per_bar = 3");
     }
 
     // =====================================================================
@@ -286,6 +302,11 @@
 
         g1.set_active_variation(0);
         g1.set_quantize_clock_node("clk1");
+        vivid::GraphMetronomeDef metronome;
+        metronome.enabled = true;
+        metronome.bpm = 135.0f;
+        metronome.beats_per_bar = 5;
+        g1.set_metronome(metronome);
 
         std::string path = (g_tmp->path / "var_roundtrip.json").string();
         check(g1.save(path.c_str()), "save with variations succeeds");
@@ -309,6 +330,9 @@
 
         check(g2.active_variation() == 0, "active_variation preserved = 0");
         check(g2.quantize_clock_node() == "clk1", "quantize_clock preserved = clk1");
+        check(g2.metronome().enabled, "metronome preserved enabled");
+        check_float(g2.metronome().bpm, 135.0f, "metronome bpm preserved");
+        check(g2.metronome().beats_per_bar == 5, "metronome beats_per_bar preserved");
 
         // Also verify a graph with 0 variations saves/loads cleanly
         vivid::Graph g3;
@@ -321,6 +345,9 @@
         check(g4.variations().empty(), "0 variations after round-trip");
         check(g4.active_variation() == -1, "active_variation = -1 with no variations");
         check(g4.quantize_clock_node().empty(), "quantize_clock empty with no variations");
+        check(!g4.metronome().enabled, "metronome disabled with defaults");
+        check_float(g4.metronome().bpm, 120.0f, "default metronome bpm preserved");
+        check(g4.metronome().beats_per_bar == 4, "default metronome beats_per_bar preserved");
 
         std::remove(path.c_str());
         std::remove(path2.c_str());

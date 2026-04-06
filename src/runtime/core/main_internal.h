@@ -215,7 +215,8 @@ void annotate_graph_packages(vivid::Graph& graph,
 bool rebuild_live_runtime_from_graph(MainAppContext& ctx);
 bool adopt_prepared_graph(MainAppContext& ctx,
                           vivid::Graph&& next_graph,
-                          vivid::RuntimeCore::PreparedBuild&& prepared_build);
+                          vivid::RuntimeCore::PreparedBuild&& prepared_build,
+                          bool reset_live_metronome);
 bool adopt_prepared_runtime_build(MainAppContext& ctx,
                                   AsyncAddPreparedResult prepared);
 bool adopt_prepared_graph_load(MainAppContext& ctx,

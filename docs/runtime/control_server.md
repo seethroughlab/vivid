@@ -131,10 +131,16 @@ All requests are POSTs. The URL path is the method name (e.g. `POST /add_node`).
 | `rename_variation` | `old_name`, `new_name` | Rename |
 | `update_variation` | `name` | Overwrite with current params |
 | `list_variations` | — | All variation names |
-| `queue_variation` | `name`, `quantize` (`"instant"/"beat"/"bar"/"four_bar"`) | Schedule switch |
+| `queue_variation` | `name`, `quantize` (`"instant"/"beat"/"bar"/"4bar"`, legacy `"four_bar"` also accepted) | Schedule switch |
 | `duplicate_variation` | `name` | Clone an existing variation |
 | `move_variation` | `name`, `position` | Reorder variation in list |
-| `set_quantize_clock` | `node_id` | Set clock node for quantized switching |
+| `set_graph_metronome` | `enabled`, `bpm`, `beats_per_bar` | Update optional graph-wide metronome state and retime the live runtime immediately |
+| `set_quantize_clock` | `node_id` | Deprecated compatibility shim for older graphs/tools |
+
+Quantized variation switching now uses the graph metronome. If the metronome is disabled,
+`queue_variation` rejects `beat`/`bar`/`4bar` requests instead of silently falling back to an
+immediate switch. Live tempo updates are phase-continuous for BPM changes; meter changes restart
+the bar immediately and clear any queued quantized switch.
 
 ### Per-Operator Presets
 | Method | Key params | Description |

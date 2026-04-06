@@ -511,6 +511,7 @@ inline bool is_undo_tracked_method(const std::string& method) {
            method == "move_variation" ||
            method == "update_variation" ||
            method == "queue_variation" ||
+           method == "set_graph_metronome" ||
            method == "set_quantize_clock" ||
            method == "set_analysis" ||
            method == "save_preset" ||

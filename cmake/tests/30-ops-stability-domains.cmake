@@ -150,7 +150,7 @@ add_executable(test_gpu_operators
 )
 target_include_directories(test_gpu_operators PRIVATE src deps/stb tests)
 target_link_libraries(test_gpu_operators PRIVATE vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
-add_dependencies(test_gpu_operators gpu_fill_op shape control_thumb_op lfo_fr envelope_fr gain)
+add_dependencies(test_gpu_operators gpu_fill_op gpu_metronome_probe_op shape control_thumb_op lfo_fr envelope_fr gain)
 add_test(NAME test_gpu_operators COMMAND test_gpu_operators WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # GPU output correctness tests (brightness, contrast, motion property assertions)
@@ -258,6 +258,11 @@ add_executable(test_child_op tests/ops/test_child_op.cpp tests/stubs/smooth_stub
 target_include_directories(test_child_op PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
 target_link_libraries(test_child_op PRIVATE vivid_runtime_testlib vivid_operator_api)
 add_test(NAME test_child_op COMMAND test_child_op WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_metronome_sync tests/ops/test_metronome_sync.cpp)
+target_include_directories(test_metronome_sync PRIVATE src tests)
+target_link_libraries(test_metronome_sync PRIVATE vivid_runtime_testlib vivid_operator_api webgpu)
+add_test(NAME test_metronome_sync COMMAND test_metronome_sync WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # SCALAR port tests (type compatibility and audio-rate scalar routing)
 add_executable(test_scalar_port

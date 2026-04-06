@@ -112,9 +112,9 @@ namespace_ti;
     float py = ctx->content_y;
     float panel_w = ctx->content_width;
 
-    int edit_pat = (ctx->param_count > 4) ? std::clamp(static_cast<int>(ctx->param_values[4]), 0, 63) : 0;
-    int edit_ch  = (ctx->param_count > 5) ? std::clamp(static_cast<int>(ctx->param_values[5]), 0, 7) : 0;
-    int mute_mask = (ctx->param_count > 6) ? std::clamp(static_cast<int>(ctx->param_values[6]), 0, 255) : 0;
+    int edit_pat = (ctx->param_count > 5) ? std::clamp(static_cast<int>(ctx->param_values[5]), 0, 63) : 0;
+    int edit_ch  = (ctx->param_count > 6) ? std::clamp(static_cast<int>(ctx->param_values[6]), 0, 7) : 0;
+    int mute_mask = (ctx->param_count > 7) ? std::clamp(static_cast<int>(ctx->param_values[7]), 0, 255) : 0;
 
     tracker::TrackerSong disp_song;
     bool has_data = false;

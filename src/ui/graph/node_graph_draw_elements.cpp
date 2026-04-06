@@ -635,11 +635,66 @@ void NodeGraphUI::draw_sticky_notes(Renderer2D& tr) {
 // Session grid (variation strip at bottom)
 // -----------------------------------------------------------------------
 void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
-    if (!session_grid_open_) return;
-
     variation_cell_rects_.clear();
     session_button_rects_.clear();
     session_ctx_menu_rects_.clear();
+
+    if (!session_grid_open_) {
+        session_collapsed_rect_ = {};
+        session_collapsed_rect_.visible = true;
+
+        const char* quantize_labels[] = {"Off", "Beat", "Bar", "4Bar"};
+        std::string summary = "SESSION";
+        summary += " | ";
+        summary += snap_.metronome_enabled
+            ? (std::to_string(static_cast<int>(std::lround(snap_.metronome_bpm))) + " BPM " +
+               std::to_string(std::max(1, snap_.metronome_beats_per_bar)) + "/4")
+            : std::string("METRO OFF");
+        summary += " | ";
+        summary += std::to_string(snap_.variations.size()) + " VARS";
+        summary += " | Q ";
+        summary += quantize_labels[std::clamp(session_quantize_mode_, 0, 3)];
+        if (snap_.active_variation >= 0 &&
+            snap_.active_variation < static_cast<int>(snap_.variations.size())) {
+            summary += " | ";
+            summary += snap_.variations[snap_.active_variation].name;
+        }
+        if (snap_.queued_variation >= 0 &&
+            snap_.queued_variation < static_cast<int>(snap_.variations.size())) {
+            summary += " | > ";
+            summary += snap_.variations[snap_.queued_variation].name;
+        }
+        if (snap_.variation_dirty)
+            summary += " | DIRTY";
+
+        const float tab_h = 24.0f;
+        const float tab_w = std::min(static_cast<float>(win_w_) - 24.0f,
+                                     std::max(220.0f, tr.text_width(summary.c_str()) + 22.0f));
+        const float tab_x = (static_cast<float>(win_w_) - tab_w) * 0.5f;
+        const float tab_y = static_cast<float>(win_h_) - tab_h - 6.0f;
+        const bool hovered = mouse_.x >= tab_x && mouse_.x <= tab_x + tab_w &&
+                             mouse_.y >= tab_y && mouse_.y <= tab_y + tab_h;
+        const float pulse = snap_.metronome_enabled
+            ? (0.25f + 0.45f * std::max(0.0f, 1.0f - snap_.metronome_beat_phase))
+            : 0.16f;
+        tr.draw_rounded_rect(tab_x, tab_y, tab_w, tab_h, 4.0f,
+                             0.08f, 0.10f, 0.12f, hovered ? 0.96f : 0.88f);
+        tr.draw_rect(tab_x, tab_y, tab_w, 1.0f,
+                     style_.accent[0], style_.accent[1], style_.accent[2], hovered ? 0.80f : 0.52f);
+        tr.draw_rect(tab_x + 8.0f, tab_y + 8.0f, 8.0f, 8.0f,
+                     style_.accent[0], style_.accent[1], style_.accent[2], pulse);
+        tr.push_clip_rect(tab_x + 22.0f, tab_y + 4.0f, tab_w - 28.0f, tab_h - 8.0f);
+        tr.draw_text(tab_x + 22.0f, tab_y + 5.0f, summary.c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        tr.pop_clip_rect();
+        session_collapsed_rect_.x = tab_x;
+        session_collapsed_rect_.y = tab_y;
+        session_collapsed_rect_.w = tab_w;
+        session_collapsed_rect_.h = tab_h;
+        return;
+    }
+
+    session_collapsed_rect_ = {};
 
     float strip_y = static_cast<float>(win_h_) - kSessionStripH;
     float strip_w = static_cast<float>(win_w_);
@@ -654,10 +709,32 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
     // --- Header row ---
     float hx = kSessionPadX;
     float hy = strip_y + 5;
+    const bool metronome_enabled = snap_.metronome_enabled;
 
     tr.draw_text(hx, hy + 2, T("session", "SESSION"),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     hx += 70;
+
+    {
+        char transport_label[96];
+        if (metronome_enabled) {
+            std::snprintf(transport_label, sizeof(transport_label), "METRO %d BPM %d/4",
+                          static_cast<int>(std::lround(snap_.metronome_bpm)),
+                          std::max(1, snap_.metronome_beats_per_bar));
+        } else {
+            std::snprintf(transport_label, sizeof(transport_label), "METRO OFF");
+        }
+        float pulse = metronome_enabled
+            ? (0.25f + 0.45f * std::max(0.0f, 1.0f - snap_.metronome_beat_phase))
+            : 0.16f;
+        tr.draw_rect(hx, hy + 5, 7.0f, 7.0f,
+                     style_.accent[0], style_.accent[1], style_.accent[2], pulse);
+        tr.draw_text(hx + 12.0f, hy + 2, transport_label,
+                     metronome_enabled ? style_.bright_text[0] : style_.dim_text[0],
+                     metronome_enabled ? style_.bright_text[1] : style_.dim_text[1],
+                     metronome_enabled ? style_.bright_text[2] : style_.dim_text[2]);
+        hx += 12.0f + tr.text_width(transport_label) + 14.0f;
+    }
 
     // Quantize buttons
     const char* quantize_labels[] = {
@@ -668,14 +745,17 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
     hx += 72;
     for (int i = 0; i < 4; ++i) {
         float bw = 38.0f;
+        bool enabled = metronome_enabled || i == 0;
         bool active = (session_quantize_mode_ == i);
-        float r = active ? style_.accent[0] : style_.slider_track[0];
-        float g = active ? style_.accent[1] : style_.slider_track[1];
-        float b = active ? style_.accent[2] : style_.slider_track[2];
-        tr.draw_rect(hx, hy, bw, 18, r, g, b, active ? 0.9f : 0.6f);
-        tr.draw_text(hx + 4, hy + 2, quantize_labels[i],
-                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-        session_button_rects_.push_back({hx, hy, bw, 18.0f, 2 + i});
+        float r = active && enabled ? style_.accent[0] : style_.slider_track[0];
+        float g = active && enabled ? style_.accent[1] : style_.slider_track[1];
+        float b = active && enabled ? style_.accent[2] : style_.slider_track[2];
+        tr.draw_rect(hx, hy, bw, 18, r, g, b, enabled ? (active ? 0.9f : 0.6f) : 0.22f);
+        float trr = enabled ? style_.bright_text[0] : style_.dim_text[0];
+        float trg = enabled ? style_.bright_text[1] : style_.dim_text[1];
+        float trb = enabled ? style_.bright_text[2] : style_.dim_text[2];
+        tr.draw_text(hx + 4, hy + 2, quantize_labels[i], trr, trg, trb);
+        session_button_rects_.push_back({hx, hy, bw, 18.0f, 2 + i, enabled});
         hx += bw + 3;
     }
 
@@ -688,7 +768,7 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
                      style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.7f);
         tr.draw_text(hx + 6, hy + 2, T("branch", "Branch"),
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-        session_button_rects_.push_back({hx, hy, branch_w, 18.0f, 6});
+        session_button_rects_.push_back({hx, hy, branch_w, 18.0f, 6, true});
         hx += branch_w + 6;
     }
 
@@ -699,7 +779,7 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
                      style_.accent[0], style_.accent[1], style_.accent[2], 0.8f);
         tr.draw_text(hx + 6, hy + 2, T("update", "Update"),
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-        session_button_rects_.push_back({hx, hy, update_w, 18.0f, 1});
+        session_button_rects_.push_back({hx, hy, update_w, 18.0f, 1, true});
         hx += update_w + 6;
     }
 
@@ -824,7 +904,7 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
                  style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.5f);
     tr.draw_text(cx + 8, cy + 14, T("save_new", "+ Save New"),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
-    session_button_rects_.push_back({cx, cy, new_btn_w, kSessionCellH, 0});
+    session_button_rects_.push_back({cx, cy, new_btn_w, kSessionCellH, 0, true});
 
     // --- Drag ghost card ---
     if (session_drag_active_ && session_drag_idx_ >= 0 &&

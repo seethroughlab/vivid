@@ -132,6 +132,7 @@ add_vivid_operator(dc_per_lane_op            tests/operators/dc_per_lane_op.cpp)
 add_vivid_operator(lane_frame_op             tests/operators/lane_frame_op.cpp)
 add_vivid_operator(audio_lane_op    tests/operators/audio_lane_op.cpp)
 add_vivid_operator(gpu_fill_op      tests/operators/gpu_fill_op.cpp EXTRA_LIBS webgpu)
+add_vivid_operator(gpu_metronome_probe_op tests/operators/gpu_metronome_probe_op.cpp EXTRA_LIBS webgpu)
 
 include(cmake/tests/10-runtime-control-graph.cmake)
 include(cmake/tests/20-ui-and-common.cmake)

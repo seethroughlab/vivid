@@ -17,8 +17,9 @@ void StepSeq::draw_inspector(VividInspectorContext* ctx) {
     d.draw_rect(o, px, py, w, h, {th.dark_bg.r, th.dark_bg.g, th.dark_bg.b, 0.9f});
 
     // Read params from inspector context
-    // Param order: num_steps=0, frequency=1, rate_mode=2, glide=3, amplitude=4, offset=5, polarity=6
-    // step_value[0..31] at indices 7..38, step_gate[0..31] at indices 39..70
+    // Param order: num_steps=0, frequency=1, rate_mode=2, sync_division=3,
+    // glide=4, amplitude=5, offset=6, polarity=7
+    // step_value[0..31] at indices 8..39, step_gate[0..31] at indices 40..71
     int ns = 8;
     if (ctx->param_count > 0) ns = std::max(1, std::min(kMaxSteps, static_cast<int>(ctx->param_values[0])));
 
@@ -37,9 +38,9 @@ void StepSeq::draw_inspector(VividInspectorContext* ctx) {
         // We can't directly read internal state, so check which step's value best matches
         // Instead, use a simpler approach: track via the value output
         float cur_out = ctx->output_values[0];
-        float amp = (ctx->param_count > 4) ? ctx->param_values[4] : 1.0f;
-        float off = (ctx->param_count > 5) ? ctx->param_values[5] : 0.0f;
-        int pol = (ctx->param_count > 6) ? static_cast<int>(ctx->param_values[6]) : 0;
+        float amp = (ctx->param_count > 5) ? ctx->param_values[5] : 1.0f;
+        float off = (ctx->param_count > 6) ? ctx->param_values[6] : 0.0f;
+        int pol = (ctx->param_count > 7) ? static_cast<int>(ctx->param_values[7]) : 0;
 
         // Reverse the output transform to get raw value
         if (amp > 0.0001f) {
@@ -50,7 +51,7 @@ void StepSeq::draw_inspector(VividInspectorContext* ctx) {
             // Find closest matching active step
             float best_dist = 999.0f;
             for (int i = 0; i < ns; ++i) {
-                float sv = (ctx->param_count > static_cast<uint32_t>(7 + i)) ? ctx->param_values[7 + i] : 0.5f;
+                float sv = (ctx->param_count > static_cast<uint32_t>(8 + i)) ? ctx->param_values[8 + i] : 0.5f;
                 float dist = std::abs(sv - raw);
                 if (dist < best_dist) {
                     best_dist = dist;
@@ -62,8 +63,8 @@ void StepSeq::draw_inspector(VividInspectorContext* ctx) {
 
     // Draw step bars
     for (int i = 0; i < ns; ++i) {
-        float sv = (ctx->param_count > static_cast<uint32_t>(7 + i)) ? ctx->param_values[7 + i] : 0.5f;
-        float sg = (ctx->param_count > static_cast<uint32_t>(39 + i)) ? ctx->param_values[39 + i] : 1.0f;
+        float sv = (ctx->param_count > static_cast<uint32_t>(8 + i)) ? ctx->param_values[8 + i] : 0.5f;
+        float sg = (ctx->param_count > static_cast<uint32_t>(40 + i)) ? ctx->param_values[40 + i] : 1.0f;
 
         float bx = plot_x + static_cast<float>(i) * bar_w + bar_gap;
         float bw = bar_w - 2.0f * bar_gap;

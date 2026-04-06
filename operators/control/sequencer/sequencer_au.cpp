@@ -6,7 +6,8 @@ struct SequencerAu : SequencerCore, vivid::AudioProcessable {
 
     void process_audio(const VividAudioContext* ctx) override {
         float local_out[3] = {};
-        float beat_phase = vivid::audio_scalar_block_start(ctx, 0);
+        float beat_phase = vivid::resolve_clock_phase(
+            clock_source.int_value(), vivid::audio_scalar_block_start(ctx, 0), vivid::metronome_transport(ctx));
         float reset = vivid::audio_scalar_block_start(ctx, 1);
         compute(beat_phase, reset,
                 ctx->input_lanes, local_out,

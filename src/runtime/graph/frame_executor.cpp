@@ -29,6 +29,28 @@ static void frame_retire_lane_id_fn_bridge(void* ctx_ptr, uint32_t lane_id) {
     lsc->service->retire(lsc->node_idx, lane_id);
 }
 
+static void populate_metronome_context(VividFrameContext& ctx,
+                                       const GraphMetronomeSample& sample) {
+    ctx.metronome_enabled = sample.enabled ? 1u : 0u;
+    ctx.metronome_bpm = sample.bpm;
+    ctx.metronome_beats_per_bar = static_cast<uint32_t>(sample.beats_per_bar);
+    ctx.metronome_beats_elapsed = sample.beats_elapsed;
+    ctx.metronome_beat_phase = sample.beat_phase;
+    ctx.metronome_bar_phase = sample.bar_phase;
+    ctx.metronome_beat_ms = sample.beat_ms;
+}
+
+static void populate_metronome_context(VividGpuContext& ctx,
+                                       const GraphMetronomeSample& sample) {
+    ctx.metronome_enabled = sample.enabled ? 1u : 0u;
+    ctx.metronome_bpm = sample.bpm;
+    ctx.metronome_beats_per_bar = static_cast<uint32_t>(sample.beats_per_bar);
+    ctx.metronome_beats_elapsed = sample.beats_elapsed;
+    ctx.metronome_beat_phase = sample.beat_phase;
+    ctx.metronome_bar_phase = sample.bar_phase;
+    ctx.metronome_beat_ms = sample.beat_ms;
+}
+
 // tick() processes all frame-cadence nodes once per frame in topological order.
 //
 // Per-node steps: zero inputs → propagate upstream wire values (with lane
@@ -37,7 +59,8 @@ static void frame_retire_lane_id_fn_bridge(void* ctx_ptr, uint32_t lane_id) {
 // Lane contexts are reinitialized each tick because a graph rebuild can produce
 // a different node layout with the same frame_order length. Retired lane IDs
 // are swept at tick start.
-void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
+void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronome, double time,
+                         double delta_time,
                          uint64_t frame, void* gpu_state,
                          PostNodeFn on_gpu_node,
                          const VividInputState* input) {
@@ -253,6 +276,7 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             gpu_ctx.file_param_count  = static_cast<uint32_t>(cn.file_param_ptrs.size());
             gpu_ctx.input = input;
             gpu_ctx.shared_handles = vivid::shared_handle_service();
+            populate_metronome_context(gpu_ctx, metronome);
             gpu_ctx.preferred_tex_width  = 0;
             gpu_ctx.preferred_tex_height = 0;
 
@@ -460,6 +484,7 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
                 ctx.lane_state_service = &frame_lane_contexts_[fi_ord];
                 ctx.allocate_lane_id_fn = frame_allocate_lane_id_fn_bridge;
                 ctx.retire_lane_id_fn = frame_retire_lane_id_fn_bridge;
+                populate_metronome_context(ctx, metronome);
 
                 try {
                     cn.loader->process_frame(cn.instance, &ctx);
@@ -514,6 +539,7 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             ctx.shared_handles = vivid::shared_handle_service();
             ctx.preferred_tex_width = 0;
             ctx.preferred_tex_height = 0;
+            populate_metronome_context(ctx, metronome);
 
             // Lane metadata.
             uint32_t max_lane_len = 0;

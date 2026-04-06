@@ -658,6 +658,17 @@ std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const Subgraph
         result["meta"] = std::move(meta);
     }
 
+    {
+        const auto& metronome = graph.metronome();
+        nlohmann::json metro = nlohmann::json::object();
+        metro["enabled"] = metronome.enabled;
+        metro["bpm"] = metronome.bpm;
+        metro["beats_per_bar"] = metronome.beats_per_bar;
+        if (!graph.quantize_clock_node().empty())
+            metro["legacy_quantize_clock"] = graph.quantize_clock_node();
+        result["metronome"] = std::move(metro);
+    }
+
     return json_ok(std::move(result));
 }
 

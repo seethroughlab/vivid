@@ -24,7 +24,8 @@ using PostNodeFn = std::function<void(uint32_t node_idx, const std::string& node
 
 class FrameExecutor {
 public:
-    void tick(CompiledGraph& cg, double time, double delta_time, uint64_t frame,
+    void tick(CompiledGraph& cg, const GraphMetronomeSample& metronome, double time,
+              double delta_time, uint64_t frame,
               void* gpu_state = nullptr, PostNodeFn on_gpu_node = nullptr,
               const VividInputState* input = nullptr);
 

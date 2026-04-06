@@ -1,4 +1,5 @@
 #pragma once
+#include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
 #include "operator_api/midi_types.h"
 #include "operator_api/type_id.h"
@@ -53,6 +54,7 @@ struct NotePatternCore : vivid::OperatorBase {
     vivid::Param<float> gate_length  {"gate_length",    0.8f, 0.01f, 1.0f};
     vivid::Param<float> velocity     {"velocity",       0.8f, 0.0f, 1.0f};
     vivid::Param<int>   midi_channel {"midi_channel",   1, 1, 16};
+    vivid::Param<int>   clock_source {"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
 
     NotePatternCore() {
         vivid::description(steps, "Number of active chord steps in the sequence, 1 to 8");
@@ -77,6 +79,7 @@ struct NotePatternCore : vivid::OperatorBase {
         vivid::description(gate_length, "Fraction of each step where notes are held, 0 to 1");
         vivid::description(velocity, "MIDI velocity for all chord notes, 0 to 1");
         vivid::description(midi_channel, "MIDI channel for chord output, 1 to 16");
+        vivid::description(clock_source, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
     }
 
     // Internal state
@@ -118,6 +121,7 @@ struct NotePatternCore : vivid::OperatorBase {
         out.push_back(&gate_length);
         out.push_back(&velocity);
         out.push_back(&midi_channel);
+        out.push_back(&clock_source);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {

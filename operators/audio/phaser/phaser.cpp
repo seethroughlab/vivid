@@ -1,3 +1,4 @@
+#include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
 #include "operator_api/audio_dsp.h"
 
@@ -41,6 +42,8 @@ struct Phaser : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> rate    {"rate",     0.3f, 0.01f, 10.0f};
+    vivid::Param<int>   rate_mode{"rate_mode", 0, vivid::rate_mode_labels()};
+    vivid::Param<int>   sync_division{"sync_division", 2, vivid::metronome_division_labels()};
     vivid::Param<float> depth   {"depth",    0.7f, 0.0f,   1.0f};
     vivid::Param<int>   stages  {"stages",   1, {"2", "4", "6", "8", "10", "12"}};
     vivid::Param<float> feedback{"feedback", 0.3f, 0.0f,   0.95f};
@@ -48,6 +51,8 @@ struct Phaser : vivid::OperatorBase, vivid::AudioProcessable {
 
     AllPass1 allpasses_[kMaxStages];
     double   phase_       = 0.0;
+    float    prev_external_phase_ = 0.0f;
+    int      external_beat_count_ = 0;
     float    fb_state_    = 0.0f;
     bool     initialized_ = false;
     uint32_t init_rate_   = 0;
@@ -58,6 +63,8 @@ struct Phaser : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::semantic_unit(rate, "Hz");
         vivid::display_hint(rate, VIVID_DISPLAY_KNOB);
         vivid::description(rate, "Speed of the LFO sweep in Hz");
+        vivid::description(rate_mode, "Free runs internally, follows an external beat_phase input, or locks to the graph metronome");
+        vivid::description(sync_division, "Musical note length used when the phaser rate follows a clock");
 
         vivid::semantic_tag(depth, "probability_01");
         vivid::semantic_shape(depth, "scalar");
@@ -82,6 +89,8 @@ struct Phaser : vivid::OperatorBase, vivid::AudioProcessable {
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&rate);
+        out.push_back(&rate_mode);
+        out.push_back(&sync_division);
         out.push_back(&depth);
         out.push_back(&stages);
         out.push_back(&feedback);
@@ -92,6 +101,7 @@ struct Phaser : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"input",   VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
         out.push_back({"output",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
         out.push_back({"rate_cv", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
+        out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         vivid::append_analysis_ports(out);
     }
 
@@ -100,6 +110,8 @@ struct Phaser : vivid::OperatorBase, vivid::AudioProcessable {
         for (int i = 0; i < kMaxStages; i++)
             allpasses_[i].reset();
         phase_    = 0.0;
+        prev_external_phase_ = 0.0f;
+        external_beat_count_ = 0;
         fb_state_ = 0.0f;
         initialized_ = true;
         init_rate_   = sr;
@@ -113,6 +125,7 @@ struct Phaser : vivid::OperatorBase, vivid::AudioProcessable {
         uint32_t frames = ctx->buffer_size;
 
         float rate_cv_val = ctx->input_buffers[1] ? ctx->input_buffers[1][0] : 0.0f;
+        const int mode = rate_mode.int_value();
         float mod_rate = rate.value + rate_cv_val;
         if (mod_rate < 0.01f) mod_rate = 0.01f;
         if (mod_rate > 10.0f) mod_rate = 10.0f;
@@ -124,12 +137,32 @@ struct Phaser : vivid::OperatorBase, vivid::AudioProcessable {
         float d   = depth.value;
         float sr  = static_cast<float>(ctx->sample_rate);
         double inv_sr = 1.0 / static_cast<double>(ctx->sample_rate);
+        const vivid::MetronomeTransport metronome = vivid::metronome_transport(ctx);
+        const double metronome_beats_per_sample = (metronome.bpm > 0.0f)
+            ? (static_cast<double>(metronome.bpm) / 60.0) / static_cast<double>(ctx->sample_rate)
+            : 0.0;
 
         for (uint32_t i = 0; i < frames; i++) {
+            double phase = phase_;
+            if (mode == vivid::kRateModeMetronome) {
+                phase = metronome.enabled
+                    ? vivid::cycle_phase_from_total_beats(
+                          metronome.beats_elapsed + static_cast<double>(i) * metronome_beats_per_sample,
+                          sync_division.int_value())
+                    : 0.0;
+            } else if (mode == vivid::kRateModeExternal) {
+                float external_phase = ctx->input_buffers[2] ? ctx->input_buffers[2][i] : 0.0f;
+                const double total_beats = vivid::advance_external_total_beats(
+                    external_phase, prev_external_phase_, external_beat_count_);
+                phase = vivid::cycle_phase_from_total_beats(total_beats, sync_division.int_value());
+            }
+
             // Sine LFO mapped to [0,1]
-            float lfo = static_cast<float>(audio_dsp::waveform(phase_, 0)) * 0.5f + 0.5f;
-            phase_ += mod_rate * inv_sr;
-            if (phase_ >= 1.0) phase_ -= 1.0;
+            float lfo = static_cast<float>(audio_dsp::waveform(phase, 0)) * 0.5f + 0.5f;
+            if (mode == vivid::kRateModeFree) {
+                phase_ += mod_rate * inv_sr;
+                if (phase_ >= 1.0) phase_ -= 1.0;
+            }
 
             // Map LFO to sweep frequency range scaled by depth
             float sweep_freq = kMinFreq + (kMaxFreq - kMinFreq) * lfo * d;

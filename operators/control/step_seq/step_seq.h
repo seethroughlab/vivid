@@ -1,5 +1,6 @@
 #pragma once
 
+#include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
 #include <algorithm>
 #include <cmath>
@@ -24,7 +25,8 @@ struct StepSeq : vivid::OperatorBase {
     // --- Visible params (indices 0–6) ---
     vivid::Param<int>   num_steps  {"num_steps",  8,    1, 32};
     vivid::Param<float> frequency  {"frequency",  1.0f, 0.01f, 20.0f};
-    vivid::Param<int>   rate_mode  {"rate_mode",  0,    {"free", "sync"}};
+    vivid::Param<int>   rate_mode  {"rate_mode",  0,    vivid::rate_mode_labels()};
+    vivid::Param<int>   sync_division{"sync_division", 2, vivid::metronome_division_labels()};
     vivid::Param<float> glide      {"glide",      0.0f, 0.0f, 1.0f};
     vivid::Param<float> amplitude  {"amplitude",  1.0f, 0.0f, 10000.0f};
     vivid::Param<float> offset     {"offset",     0.0f, -20000.0f, 20000.0f};
@@ -87,8 +89,9 @@ struct StepSeq : vivid::OperatorBase {
         vivid::semantic_shape(glide, "scalar");
 
         vivid::description(num_steps, "Number of active steps in the sequence, 1 to 32");
-        vivid::description(frequency, "Cycle rate in Hz (free mode) or beat multiplier (sync mode)");
-        vivid::description(rate_mode, "Clock source: free-running internal clock or synced to beat_phase input");
+        vivid::description(frequency, "Cycle rate in Hz (free mode) or beat multiplier (external sync mode)");
+        vivid::description(rate_mode, "Free runs internally, follows an external beat_phase input, or locks to the graph metronome");
+        vivid::description(sync_division, "Musical note length used when rate_mode is metronome");
         vivid::description(glide, "Smoothing between step values, 0 = instant, 1 = full portamento");
         vivid::description(amplitude, "Scales the output value");
         vivid::description(offset, "DC offset added to the output after amplitude scaling");
@@ -108,6 +111,7 @@ struct StepSeq : vivid::OperatorBase {
         out.push_back(&num_steps);
         out.push_back(&frequency);
         out.push_back(&rate_mode);
+        out.push_back(&sync_division);
         out.push_back(&glide);
         out.push_back(&amplitude);
         out.push_back(&offset);
@@ -134,13 +138,14 @@ struct StepSeq : vivid::OperatorBase {
     }
 
     void process_frame_impl(const VividFrameContext* ctx) {
-        compute(ctx->input_values, ctx->delta_time, ctx->output_values);
+        compute(ctx->input_values, ctx->delta_time, ctx->output_values,
+                vivid::metronome_transport(ctx));
     }
 
     void process_audio_impl(const VividAudioContext* ctx) {
         float local_in[2] = {};
         float local_out[2] = {};
-        compute(local_in, ctx->delta_time, local_out);
+        compute(local_in, ctx->delta_time, local_out, vivid::metronome_transport(ctx));
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
             for (int j = 0; j < 2; ++j)
                 ctx->output_buffers[j][i] = local_out[j];
@@ -148,7 +153,8 @@ struct StepSeq : vivid::OperatorBase {
     }
 
 protected:
-    void compute(const float* input_values, double delta_time, float* output_values) {
+    void compute(const float* input_values, double delta_time, float* output_values,
+                 const vivid::MetronomeTransport& metronome) {
         float dt = static_cast<float>(delta_time);
         float beat_phase_in = input_values[1];
 
@@ -162,8 +168,12 @@ protected:
 
         // Phase computation
         double phase;
-        if (mode == 1) {
-            // Sync mode: derive from beat_phase input
+        if (mode == vivid::kRateModeMetronome) {
+            phase = metronome.enabled
+                ? vivid::cycle_phase_from_total_beats(metronome.beats_elapsed, sync_division.int_value())
+                : 0.0;
+        } else if (mode == vivid::kRateModeExternal) {
+            // External sync mode: preserve the existing beat-phase multiplier behavior.
             phase = std::fmod(static_cast<double>(beat_phase_in) * static_cast<double>(freq), 1.0);
             if (phase < 0.0) phase += 1.0;
         } else {

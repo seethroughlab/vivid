@@ -8,7 +8,7 @@ extern "C" {
 
 /* Bump when operator-facing C ABI changes in incompatible ways.
    Catches stale dylibs during hot-reload — not a cross-version compatibility promise. */
-#define VIVID_OPERATOR_ABI_VERSION 7u
+#define VIVID_OPERATOR_ABI_VERSION 8u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -249,6 +249,15 @@ typedef struct VividAudioContext {
     // retire_lane_id_fn: marks lane_id for deferred cleanup (node_idx is implicit).
     uint32_t (*allocate_lane_id_fn)(void* service);
     void     (*retire_lane_id_fn)(void* service, uint32_t lane_id);
+
+    // ---- Graph-wide metronome (read-only) ----
+    uint8_t   metronome_enabled;
+    float     metronome_bpm;
+    uint32_t  metronome_beats_per_bar;
+    double    metronome_beats_elapsed;
+    float     metronome_beat_phase;
+    float     metronome_bar_phase;
+    float     metronome_beat_ms;
 } VividAudioContext;
 
 // ---------------------------------------------------------------------------
@@ -289,6 +298,15 @@ typedef struct VividFrameContext {
     void*     lane_state_service;
     uint32_t  (*allocate_lane_id_fn)(void* service);
     void      (*retire_lane_id_fn)(void* service, uint32_t lane_id);
+
+    // ---- Graph-wide metronome (read-only) ----
+    uint8_t   metronome_enabled;
+    float     metronome_bpm;
+    uint32_t  metronome_beats_per_bar;
+    double    metronome_beats_elapsed;
+    float     metronome_beat_phase;
+    float     metronome_bar_phase;
+    float     metronome_beat_ms;
 
     // ---- Operator write-back: operator sets these during process_frame() ----
     // The runtime reads them after process_frame() returns and acts accordingly.

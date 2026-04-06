@@ -37,6 +37,18 @@ struct AudioTestBuffers {
     }
 };
 
+static void set_audio_metronome(AudioTestBuffers& tb, bool enabled, float bpm,
+                                uint32_t beats_per_bar, double beats_elapsed,
+                                float beat_phase, float bar_phase) {
+    tb.ctx.metronome_enabled = enabled ? 1u : 0u;
+    tb.ctx.metronome_bpm = bpm;
+    tb.ctx.metronome_beats_per_bar = beats_per_bar;
+    tb.ctx.metronome_beats_elapsed = beats_elapsed;
+    tb.ctx.metronome_beat_phase = beat_phase;
+    tb.ctx.metronome_bar_phase = bar_phase;
+    tb.ctx.metronome_beat_ms = bpm > 0.0f ? 60000.0f / bpm : 0.0f;
+}
+
 static std::vector<float> default_params(const VividOperatorDescriptor* desc) {
     std::vector<float> params(desc ? desc->param_count : 0, 0.0f);
     if (!desc) return params;
@@ -172,14 +184,15 @@ static void test_step_seq_block_start_snapshot(const std::string& build_dir) {
 
     auto params = default_params(loader.descriptor());
     params[0] = 4.0f;   // num_steps
-    params[1] = 1.0f;   // frequency multiplier in sync mode
-    params[2] = 1.0f;   // rate_mode = sync
-    params[3] = 0.0f;   // glide
-    params[4] = 1.0f;   // amplitude
-    params[5] = 0.0f;   // offset
-    params[6] = 1.0f;   // polarity = unipolar
-    params[7] = 0.2f;   // step 0 value
-    params[9] = 0.8f;   // step 2 value
+    params[1] = 1.0f;   // frequency multiplier in external mode
+    params[2] = 1.0f;   // rate_mode = external
+    params[3] = 2.0f;   // sync_division (unused in external mode)
+    params[4] = 0.0f;   // glide
+    params[5] = 1.0f;   // amplitude
+    params[6] = 0.0f;   // offset
+    params[7] = 1.0f;   // polarity = unipolar
+    params[8] = 0.2f;   // step 0 value
+    params[10] = 0.8f;  // step 2 value
 
     AudioTestBuffers tb(2, 2);
     tb.ctx.param_values = params.data();
@@ -189,6 +202,37 @@ static void test_step_seq_block_start_snapshot(const std::string& build_dir) {
 
     check_float(tb.outputs[0][0], 0.2f, 1e-5f, "step_seq_au chooses sample 0 instead of the final sample");
     check_float(tb.outputs[0][7], 0.2f, 1e-5f, "step_seq_au output stays block-constant");
+
+    loader.destroy_instance(inst);
+}
+
+static void test_step_seq_metronome_snapshot(const std::string& build_dir) {
+    std::fprintf(stderr, "\n--- step_seq_au locks to graph metronome without a beat-phase wire ---\n");
+    vivid::OperatorLoader loader;
+    check(loader.load((build_dir + "/step_seq_au.dylib").c_str()), "load step_seq_au");
+    if (!loader.is_loaded()) return;
+
+    void* inst = loader.create_instance();
+    check(inst != nullptr, "create step_seq_au instance");
+    if (!inst) return;
+
+    auto params = default_params(loader.descriptor());
+    params[0] = 4.0f;   // num_steps
+    params[2] = 2.0f;   // rate_mode = metronome
+    params[3] = 2.0f;   // sync_division = quarter notes
+    params[5] = 1.0f;   // amplitude
+    params[7] = 1.0f;   // polarity = unipolar
+    params[8] = 0.2f;   // step 0 value
+    params[10] = 0.8f;  // step 2 value
+
+    AudioTestBuffers tb(2, 2);
+    tb.ctx.param_values = params.data();
+    set_audio_metronome(tb, true, 120.0f, 4, 0.60, 0.60f, 0.15f);
+
+    loader.process_audio(inst, &tb.ctx);
+
+    check_float(tb.outputs[0][0], 0.8f, 1e-5f, "metronome mode selects the step from graph beat phase");
+    check_float(tb.outputs[0][7], 0.8f, 1e-5f, "metronome-synced output stays block-constant");
 
     loader.destroy_instance(inst);
 }
@@ -238,6 +282,7 @@ int main(int argc, char* argv[]) {
     test_step_counter_short_trigger(build_dir);
     test_phase_to_midi_midblock_wrap(build_dir);
     test_step_seq_block_start_snapshot(build_dir);
+    test_step_seq_metronome_snapshot(build_dir);
     test_euclidean_block_start_snapshot(build_dir);
 
     std::fprintf(stderr, "\n%s (%d failure%s)\n\n",

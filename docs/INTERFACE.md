@@ -41,13 +41,25 @@ The visibility hierarchy driving this layout:
 
 The main workspace interaction pattern centers on the node graph for structure and wiring, with the session/variation surface managing branching and alternate states. Parameter exploration and modulation overlays should stay close to the graph rather than requiring a separate connection matrix view.
 
-## 6.5 Session Exploration Surface
+## 6.5 Transport + Session Surface
 
-The session surface is the bottom strip of the node graph workspace (toggled with **V**). It manages variation branching, auditioning, and reordering — the core exploration workflow for building a performance set.
+The bottom of the node-graph workspace now has two related surfaces:
+
+- the **transport strip**, always visible in the performance bar
+- the **session surface**, a collapsible bottom strip toggled with **V**
+
+The transport strip is the canonical home for graph-wide tempo state. It exposes the optional
+graph metronome, its BPM/meter, active/queued variation status, dirty state, and session toggle.
+This makes tempo and quantization discoverable even when the session surface is closed.
+
+The session surface manages variation branching, auditioning, and reordering. It no longer owns
+hidden timing assumptions; it consumes the graph metronome state surfaced by the transport strip.
 
 ### Layout
 
-- **Header row:** "SESSION" label, quantize mode buttons (Off/Beat/Bar/4Bar), Branch button (duplicates active variation), Update button (visible only when the active variation is dirty).
+- **Transport strip:** metronome pulse/status, a draggable BPM readout, meter controls, active/queued variation summary, dirty badge, quantize summary, session toggle.
+- **Collapsed affordance:** when the session surface is closed, a persistent bottom tab remains visible. It summarizes session state plus metronome state (`variation count`, `quantize mode`, `BPM/meter`, `active/queued`, `dirty`) and reopens the strip on click.
+- **Header row:** "SESSION" label, live metronome status, quantize mode buttons (Off/Beat/Bar/4Bar), Branch button (duplicates active variation), Update button (visible only when the active variation is dirty).
 - **Card row:** Horizontally scrollable row of variation cards, followed by a "+ Save New" button. Cards are 130×44px with two-line content.
 
 ### Card States
@@ -78,6 +90,15 @@ Card line 1 shows the variation name (truncated with ellipsis). Line 2 shows sta
 - **Branch:** Duplicates the active variation with a " branch" suffix and recalls the copy. This is the primary exploration action — try something new without losing your current state.
 - **Update:** Overwrites the active variation with the current live state, clearing the dirty flag.
 - **+ Save New:** Saves the current live state as a new variation.
+- **Quantize buttons:** enabled only when the graph metronome is enabled. Quantized switching is explicitly tied to the graph metronome rather than an invisible clock-node binding.
+
+### Transport BPM Interaction
+
+- **Drag BPM:** Drag the BPM readout up or down for live tempo changes. Up increases tempo, down decreases it.
+- **Shift-drag BPM:** Hold **Shift** while dragging for fine `0.1 BPM` adjustment.
+- **Double click BPM:** Opens inline text editing directly in the transport strip.
+- **Commit BPM:** Press **Enter** or click away to apply the typed BPM.
+- **Cancel BPM:** Press **Escape** to leave the value unchanged.
 
 ### API Commands
 
@@ -91,6 +112,20 @@ The session surface uses these commands (available via UI, control server, and C
 - `remove_variation(name)` — delete a variation
 - `rename_variation(old_name, new_name)` — rename a variation
 - `queue_variation(name, quantize)` — queue a variation switch (instant/beat/bar/4bar)
+- `set_graph_metronome(enabled, bpm, beats_per_bar)` — update graph-wide shared pulse state
+
+The graph metronome is optional shared transport infrastructure, not a master timeline. Clocks can
+free-run independently or opt into syncing to that shared pulse.
+
+The inspector mirrors this split so time-based operators advertise shared sync consistently:
+
+- operators with their own rate expose `rate_mode` (`free`, `external`, `metronome`) plus a
+  note-division control when metronome sync is active
+- beat-driven operators keep their explicit `beat_phase` input, but expose `clock_source`
+  (`external`, `metronome`) so users can choose wiring or graph-wide sync deliberately
+
+That keeps multiple unrelated clocks first-class while making shared tempo sync visible instead of
+hidden in transport assumptions.
 
 ## 6.6 Node Thumbnails
 
@@ -119,7 +154,9 @@ The session surface uses these commands (available via UI, control server, and C
 - **Wires.** Thin (1px), in the domain color of the source port, low opacity (40%). Cross-domain wires (Control→GPU, Control→Audio) are dashed to indicate the bridge crossing. Wires should never visually compete with node content.
 - **Inspector.** Dark background, parameters as horizontal rows. Slider tracks are dark with a domain-colored fill. Modulation range overlays (Bitwig-inspired) appear as subtle highlights showing the modulated range. Modulation source is indicated by a small tag next to the parameter.
   Role-binding UI should prioritize the role label, target, and available actions. Runtime implementation details such as `runtime_scope` may exist in the model, but are intentionally hidden from the main inspector surface unless a quieter advanced/debug presentation is added later.
-- **Transport bar.** Minimal. Beat position as filled/unfilled dots. BPM as a number. Current state name. No unnecessary decoration.
+- **Transport bar.** Minimal but explicit. Graph metronome status, BPM, meter, current state name,
+  queued state, and session discoverability all live here. No timeline, but no hidden transport
+  state either.
 
 ### What This Is NOT
 

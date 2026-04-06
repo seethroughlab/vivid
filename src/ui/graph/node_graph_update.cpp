@@ -17,6 +17,9 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     snap_valid_ = true;
     build_console_panel_.sync_from_model();
 
+    if (!snap_.metronome_enabled && session_quantize_mode_ > 0)
+        session_quantize_mode_ = 0;
+
     // Deselect a param wire that becomes hidden
     if (!show_param_wires_ && selected_wire_idx_ >= 0 &&
         selected_wire_idx_ < (int)snap_.connections.size() &&
@@ -229,6 +232,7 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     update_wire_drag();
     update_scrollbar_drag();
     update_slider_drag();
+    update_transport_bpm_drag();
     update_modulation_drag();
     update_xy_pad_drag();
     update_color_drag();

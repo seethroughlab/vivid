@@ -1,5 +1,6 @@
 #pragma once
 
+#include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
 #include <cmath>
 
@@ -19,7 +20,8 @@ struct LFOCore : vivid::OperatorBase {
     vivid::Param<float> amplitude    {"amplitude",     1.0f,  0.0f,  10.0f};
     vivid::Param<float> offset       {"offset",        0.0f, -10.0f, 10.0f};
     vivid::Param<int>   waveform     {"waveform",      0, {"sine", "saw", "square", "triangle", "sample_hold", "smooth_random", "noise"}};
-    vivid::Param<int>   rate_mode    {"rate_mode",     0, {"free", "sync"}};
+    vivid::Param<int>   rate_mode    {"rate_mode",     0, vivid::rate_mode_labels()};
+    vivid::Param<int>   sync_division{"sync_division", 2, vivid::metronome_division_labels()};
     vivid::Param<int>   polarity     {"polarity",      0, {"bipolar", "unipolar"}};
     vivid::Param<float> phase_offset {"phase_offset",  0.0f, 0.0f, 1.0f};
     vivid::Param<float> fade_in      {"fade_in",       0.0f, 0.0f, 5.0f};
@@ -57,7 +59,8 @@ struct LFOCore : vivid::OperatorBase {
         vivid::description(offset, "Constant value added to the output signal");
 
         vivid::description(waveform, "Shape of the oscillation cycle");
-        vivid::description(rate_mode, "Free runs independently; sync locks to the global clock");
+        vivid::description(rate_mode, "Free runs internally, follows an external beat_phase input, or locks to the graph metronome");
+        vivid::description(sync_division, "Musical note length used when rate_mode is metronome");
         vivid::description(polarity, "Bipolar swings above and below zero; unipolar stays positive");
         vivid::description(phase_offset, "Starting point in the cycle (0 = beginning, 1 = full cycle)");
         vivid::description(fade_in, "Seconds to ramp from zero to full amplitude on start");
@@ -90,10 +93,11 @@ struct LFOCore : vivid::OperatorBase {
         out.push_back(&offset);        // 4
         out.push_back(&waveform);      // 5
         out.push_back(&rate_mode);     // 6
-        out.push_back(&polarity);      // 7
-        out.push_back(&slew);          // 8
-        out.push_back(&distribution);  // 9
-        out.push_back(&seed);          // 10
+        out.push_back(&sync_division); // 7
+        out.push_back(&polarity);      // 8
+        out.push_back(&slew);          // 9
+        out.push_back(&distribution);  // 10
+        out.push_back(&seed);          // 11
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -135,9 +139,10 @@ struct LFOCore : vivid::OperatorBase {
                (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t * t * t);
     }
 
-    float compute_one_sample(float freq, float amp, float off, int wf, int rm, int pol,
+    float compute_one_sample(float freq, float amp, float off, int wf, int rm, int sync_div, int pol,
                              float ph_off, float fade, float gate_in, float phase_in,
-                             double dt, float slew_amt) {
+                             double dt, float slew_amt,
+                             const vivid::MetronomeTransport& metronome) {
         int s = seed.int_value();
         if (s != prev_seed_) {
             if (s > 0) noise_seed_ = static_cast<uint32_t>(s);
@@ -158,9 +163,13 @@ struct LFOCore : vivid::OperatorBase {
         elapsed_time_ += static_cast<float>(dt);
 
         double phase;
-        if (rm == 1 && phase_in != 0.0f) {
+        if (rm == vivid::kRateModeMetronome) {
+            phase = metronome.enabled
+                ? vivid::cycle_phase_from_total_beats(metronome.beats_elapsed, sync_div)
+                : 0.0;
+        } else if (rm == vivid::kRateModeExternal) {
             phase = std::fmod(static_cast<double>(phase_in) * static_cast<double>(freq), 1.0);
-        } else if (phase_in != 0.0f && rm == 0) {
+        } else if (phase_in != 0.0f && rm == vivid::kRateModeFree) {
             phase = std::fmod(static_cast<double>(phase_in), 1.0);
         } else {
             free_phase_ += dt * static_cast<double>(freq);

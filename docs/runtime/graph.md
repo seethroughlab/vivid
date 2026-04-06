@@ -150,12 +150,44 @@ differs from the installed version. Each entry has: `node_id`, `pkg_name`, `save
   "connections": [
     { "from": "lfo1/value", "to": "shape1/rotation" }
   ],
+  "metronome": {
+    "enabled": true,
+    "bpm": 120.0,
+    "beats_per_bar": 4
+  },
   "midi_mappings": [...],
   "variations": [...],
   "active_variation": -1,
   "node_presets": { "lfo1": [{ "name": "slow", "params": {"freq": 0.1} }] }
 }
 ```
+
+`metronome` is optional graph-level transport metadata. It does not create a global timeline or a
+special node; it simply provides an optional shared pulse that clocks and quantized variation
+switching can follow. Graphs that omit it behave as before: no shared metronome, no forced sync.
+
+Operators opt into that pulse explicitly. Time-based operators now use one of two shared contracts:
+
+- `rate_mode = free | external | metronome` for operators with an internal oscillator/rate
+  (`LFO`, `StepSeq`, `Chorus`, `Flanger`, `Phaser`)
+- `clock_source = external | metronome` for beat-phase-driven operators that still expose a
+  `beat_phase` input for explicit wiring
+- the same metronome snapshot is now exposed on frame, audio, and GPU operator contexts, so
+  user-authored GPU operators can read graph tempo state directly too
+
+In other words, the graph metronome adds a discoverable shared pulse without replacing external
+clock wiring or forcing all temporal logic through one global source.
+
+`quantize_clock` is still read and written for backward compatibility, but quantized variation
+switching now uses the graph metronome when it is enabled.
+
+At runtime, that transport is sampled from `RuntimeCore`'s live metronome state rather than from
+the compiled graph metadata. That means:
+
+- BPM changes retime operators immediately while preserving the current beat position
+- meter changes restart the live bar at beat 0 / bar 0
+- topology rebuilds and hot reloads can preserve the current live transport instead of resetting it
+- graph load / new graph / snapshot apply reseed the live transport from the saved graph metadata
 
 Shader-backed operators are persisted exactly like any other operator: a node stores the concrete
 operator `type` (for example `"Blur"`), and the shader source lives in a real `.wgsl` file under

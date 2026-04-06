@@ -8,6 +8,7 @@ TrackerCore::TrackerCore() {
     vivid::description(speed, "Number of rows advanced per beat tick, 1 to 16");
     vivid::description(base_channel, "Starting MIDI channel for track output, 1 to 16");
     vivid::description(channel_mode, "Single sends all tracks on base_channel; Multi assigns one channel per track");
+    vivid::description(clock_source, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
     vivid::description(edit_pattern, "Index of the pattern currently shown in the editor");
     vivid::description(edit_channel, "Index of the track/channel currently focused in the editor");
     vivid::description(mute_mask, "Bitmask of muted tracks (bit 0 = track 1)");
@@ -19,6 +20,7 @@ void TrackerCore::collect_params(std::vector<vivid::ParamBase*>& out) {
     out.push_back(&speed);
     out.push_back(&base_channel);
     out.push_back(&channel_mode);
+    out.push_back(&clock_source);
     display_hint(edit_pattern, VIVID_DISPLAY_HIDDEN);
     display_hint(edit_channel, VIVID_DISPLAY_HIDDEN);
     display_hint(mute_mask, VIVID_DISPLAY_HIDDEN);
@@ -51,7 +53,7 @@ void TrackerCore::compute(const float* input_values, const float* params,
     int spd = std::clamp(static_cast<int>(params[1]), 1, 16);
     int base_ch = std::clamp(static_cast<int>(params[2]), 1, 16) - 1;
     int ch_mode = std::clamp(static_cast<int>(params[3]), 0, 1);
-    int mute = std::clamp(static_cast<int>(params[6]), 0, 255);
+    int mute = std::clamp(static_cast<int>(params[7]), 0, 255);
 
     sync_pattern_data();
 
@@ -155,7 +157,7 @@ void TrackerCore::draw_thumbnail(const VividThumbnailContext* ctx) {
     }
     if (nr <= 0) nr = 16;
 
-    int mute_mask_param = (ctx->param_count > 6) ? static_cast<int>(ctx->param_values[6]) : 0;
+    int mute_mask_param = (ctx->param_count > 7) ? static_cast<int>(ctx->param_values[7]) : 0;
 
     d.draw_rect(o, 0, 0, w, h, {0.07f, 0.08f, 0.09f, 0.9f});
 

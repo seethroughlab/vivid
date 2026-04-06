@@ -1,3 +1,4 @@
+#include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
 #include "operator_api/audio_dsp.h"
 
@@ -62,12 +63,16 @@ struct Chorus : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> rate  {"rate",   0.5f, 0.05f, 5.0f};
+    vivid::Param<int>   rate_mode{"rate_mode", 0, vivid::rate_mode_labels()};
+    vivid::Param<int>   sync_division{"sync_division", 2, vivid::metronome_division_labels()};
     vivid::Param<float> depth {"depth",  0.5f, 0.0f,  1.0f};
     vivid::Param<int>   voices{"voices", 3, 1, 6};
     vivid::Param<float> mix   {"mix",    0.5f, 0.0f,  1.0f};
 
     FractionalDelayLine delays_[kMaxVoices];
     double   phase_       = 0.0;
+    float    prev_external_phase_ = 0.0f;
+    int      external_beat_count_ = 0;
     bool     initialized_ = false;
     uint32_t init_rate_   = 0;
 
@@ -77,6 +82,8 @@ struct Chorus : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::semantic_unit(rate, "Hz");
         vivid::display_hint(rate, VIVID_DISPLAY_KNOB);
         vivid::description(rate, "LFO modulation speed in Hz");
+        vivid::description(rate_mode, "Free runs internally, follows an external beat_phase input, or locks to the graph metronome");
+        vivid::description(sync_division, "Musical note length used when the chorus rate follows a clock");
 
         vivid::semantic_tag(depth, "probability_01");
         vivid::semantic_shape(depth, "scalar");
@@ -97,6 +104,8 @@ struct Chorus : vivid::OperatorBase, vivid::AudioProcessable {
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&rate);
+        out.push_back(&rate_mode);
+        out.push_back(&sync_division);
         out.push_back(&depth);
         out.push_back(&voices);
         out.push_back(&mix);
@@ -106,6 +115,7 @@ struct Chorus : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"input",   VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
         out.push_back({"output",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
         out.push_back({"rate_cv", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
+        out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         vivid::append_analysis_ports(out);
     }
 
@@ -115,6 +125,8 @@ struct Chorus : vivid::OperatorBase, vivid::AudioProcessable {
         for (int v = 0; v < kMaxVoices; v++)
             delays_[v].init(max_samples);
         phase_ = 0.0;
+        prev_external_phase_ = 0.0f;
+        external_beat_count_ = 0;
         initialized_ = true;
         init_rate_   = sr;
     }
@@ -127,6 +139,7 @@ struct Chorus : vivid::OperatorBase, vivid::AudioProcessable {
         uint32_t frames = ctx->buffer_size;
 
         float rate_cv_val = ctx->input_buffers[1] ? ctx->input_buffers[1][0] : 0.0f;
+        const int mode = rate_mode.int_value();
         float mod_rate = rate.value + rate_cv_val;
         if (mod_rate < 0.05f) mod_rate = 0.05f;
         if (mod_rate > 5.0f)  mod_rate = 5.0f;
@@ -137,6 +150,10 @@ struct Chorus : vivid::OperatorBase, vivid::AudioProcessable {
         float d   = depth.value;
         float sr  = static_cast<float>(ctx->sample_rate);
         double inv_sr = 1.0 / static_cast<double>(ctx->sample_rate);
+        const vivid::MetronomeTransport metronome = vivid::metronome_transport(ctx);
+        const double metronome_beats_per_sample = (metronome.bpm > 0.0f)
+            ? (static_cast<double>(metronome.bpm) / 60.0) / static_cast<double>(ctx->sample_rate)
+            : 0.0;
 
         float center_samples = kCenterDelay * sr;
         float depth_samples  = kMaxDepth * d * sr;
@@ -146,9 +163,23 @@ struct Chorus : vivid::OperatorBase, vivid::AudioProcessable {
             for (int v = 0; v < kMaxVoices; v++)
                 delays_[v].push(in[i]);
 
+            double base_phase = phase_;
+            if (mode == vivid::kRateModeMetronome) {
+                base_phase = metronome.enabled
+                    ? vivid::cycle_phase_from_total_beats(
+                          metronome.beats_elapsed + static_cast<double>(i) * metronome_beats_per_sample,
+                          sync_division.int_value())
+                    : 0.0;
+            } else if (mode == vivid::kRateModeExternal) {
+                float external_phase = ctx->input_buffers[2] ? ctx->input_buffers[2][i] : 0.0f;
+                const double total_beats = vivid::advance_external_total_beats(
+                    external_phase, prev_external_phase_, external_beat_count_);
+                base_phase = vivid::cycle_phase_from_total_beats(total_beats, sync_division.int_value());
+            }
+
             float sum = 0.0f;
             for (int v = 0; v < voice_count; v++) {
-                double voice_phase = phase_ + static_cast<double>(v) / static_cast<double>(voice_count);
+                double voice_phase = base_phase + static_cast<double>(v) / static_cast<double>(voice_count);
                 if (voice_phase >= 1.0) voice_phase -= 1.0;
 
                 float lfo = static_cast<float>(audio_dsp::waveform(voice_phase, 0)) * 0.5f + 0.5f;
@@ -163,8 +194,10 @@ struct Chorus : vivid::OperatorBase, vivid::AudioProcessable {
             float wet_signal = sum / static_cast<float>(voice_count);
             out[i] = in[i] * dry + wet_signal * wet;
 
-            phase_ += mod_rate * inv_sr;
-            if (phase_ >= 1.0) phase_ -= 1.0;
+            if (mode == vivid::kRateModeFree) {
+                phase_ += mod_rate * inv_sr;
+                if (phase_ >= 1.0) phase_ -= 1.0;
+            }
         }
     }
 };

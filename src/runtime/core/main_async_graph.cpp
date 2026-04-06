@@ -395,7 +395,8 @@ bool rebuild_live_runtime_from_graph(MainAppContext& ctx) {
 
 bool adopt_prepared_graph(MainAppContext& ctx,
                           vivid::Graph&& next_graph,
-                          vivid::RuntimeCore::PreparedBuild&& prepared_build) {
+                          vivid::RuntimeCore::PreparedBuild&& prepared_build,
+                          bool reset_live_metronome) {
     if (ctx.has_audio) {
         ctx.audio_engine.shutdown();
         ctx.has_audio = false;
@@ -405,6 +406,9 @@ bool adopt_prepared_graph(MainAppContext& ctx,
 
     ctx.graph = std::move(next_graph);
     ctx.runtime.adopt_prepared_build(std::move(prepared_build));
+    if (reset_live_metronome) {
+        ctx.runtime.reset_live_metronome(ctx.graph.metronome(), ctx.runtime.last_tick_time());
+    }
 
     ctx.graph_loaded = ctx.runtime.compiled_graph() && !ctx.runtime.compiled_graph()->nodes.empty();
     ctx.has_gpu_ops = ctx.runtime.has_gpu_operators();
@@ -426,7 +430,7 @@ bool adopt_prepared_graph(MainAppContext& ctx,
 
 bool adopt_prepared_runtime_build(MainAppContext& ctx,
                                   AsyncAddPreparedResult prepared) {
-    if (!adopt_prepared_graph(ctx, std::move(prepared.graph), std::move(prepared.prepared)))
+    if (!adopt_prepared_graph(ctx, std::move(prepared.graph), std::move(prepared.prepared), false))
         return false;
     ctx.runtime_api.notify_external_graph_mutation();
     return true;
@@ -437,7 +441,7 @@ bool adopt_prepared_graph_load(MainAppContext& ctx,
     const std::string previous_shader_dir = derive_project_shader_dir(ctx.graph);
     const std::string next_shader_dir = derive_project_shader_dir(prepared.graph);
 
-    if (!adopt_prepared_graph(ctx, std::move(prepared.graph), std::move(prepared.prepared)))
+    if (!adopt_prepared_graph(ctx, std::move(prepared.graph), std::move(prepared.prepared), true))
         return false;
 
     if (prepared.preserved_state.active)

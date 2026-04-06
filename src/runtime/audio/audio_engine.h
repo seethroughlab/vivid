@@ -74,6 +74,7 @@ private:
     std::vector<ReloadSavedNode> reload_saved_;
 
     // Cadence-aware runtime references (not owned)
+    RuntimeCore* runtime_core_ = nullptr;
     CompiledGraph* compiled_graph_ = nullptr;
     AudioFrameBridge* audio_frame_bridge_ = nullptr;
     std::unique_ptr<AudioExecutor> audio_executor_;

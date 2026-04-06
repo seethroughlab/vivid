@@ -284,18 +284,31 @@ CommandResult RuntimeAPI::queue_variation(const std::string& name, const std::st
     if (quantize == "beat") q = PendingVariation::Beat;
     else if (quantize == "bar") q = PendingVariation::Bar;
     else if (quantize == "4bar") q = PendingVariation::FourBar;
+    else if (quantize == "four_bar") q = PendingVariation::FourBar;
 
     if (q == PendingVariation::Instant) {
         apply_variation(idx);
         return {true, "recalled variation '" + name + "' (instant)"};
     }
 
+    const auto metronome = current_metronome_sample();
+    if (!metronome.enabled) {
+        return {false, "graph metronome is disabled; quantized switching is unavailable"};
+    }
+    const int beats_per_bar = std::max(1, metronome.beats_per_bar);
+    const int64_t current_beat = static_cast<int64_t>(std::floor(metronome.beats_elapsed));
+    int64_t target_beat = current_beat + 1;
+    if (q == PendingVariation::Bar) {
+        target_beat = ((current_beat / beats_per_bar) + 1) * beats_per_bar;
+    } else if (q == PendingVariation::FourBar) {
+        const int four_bar = beats_per_bar * 4;
+        target_beat = ((current_beat / four_bar) + 1) * four_bar;
+    }
+
     pending_variation_.variation_idx = idx;
     pending_variation_.quantize = q;
     pending_variation_.armed = true;
-    pending_variation_.beats_remaining =
-        (q == PendingVariation::Bar) ? 4 :
-        (q == PendingVariation::FourBar) ? 16 : 1;
+    pending_variation_.target_beat_index = target_beat;
 
     return {true, "queued variation '" + name + "' (" + quantize + ")"};
 }
@@ -303,39 +316,32 @@ CommandResult RuntimeAPI::queue_variation(const std::string& name, const std::st
 CommandResult RuntimeAPI::set_quantize_clock(const std::string& node_id) {
     graph_.set_quantize_clock_node(node_id);
     mark_graph_dirty();
-    return {true, "quantize clock set to '" + node_id + "'"};
+    return {true, "quantize clock set to '" + node_id + "' (deprecated; graph metronome now drives quantized switching)"};
+}
+
+CommandResult RuntimeAPI::set_graph_metronome(bool enabled, float bpm, int beats_per_bar) {
+    GraphMetronomeDef metronome = graph_.metronome();
+    metronome.enabled = enabled;
+    metronome.bpm = std::max(1.0f, std::min(300.0f, bpm));
+    metronome.beats_per_bar = std::max(1, std::min(16, beats_per_bar));
+    graph_.set_metronome(metronome);
+    const auto outcome = core_.update_live_metronome(metronome, core_.last_tick_time());
+    mark_graph_dirty();
+    if ((outcome.disabled || outcome.bar_epoch_reset) && pending_variation_.armed)
+        pending_variation_.armed = false;
+    return {true, "graph metronome updated"};
+}
+
+GraphMetronomeSample RuntimeAPI::current_metronome_sample() const {
+    return core_.sample_live_metronome(core_.last_tick_time());
 }
 
 void RuntimeAPI::tick_quantized_switch() {
     if (!pending_variation_.armed) return;
-
-    const auto& clock_id = graph_.quantize_clock_node();
-    if (clock_id.empty()) {
-        apply_variation(pending_variation_.variation_idx);
-        return;
-    }
-
-    const auto* clock_cn = core_.compiled_graph()->find_node(clock_id);
-    if (!clock_cn) {
-        apply_variation(pending_variation_.variation_idx);
-        return;
-    }
-
-    auto bp_it = clock_cn->output_port_indices.find("beat_phase");
-    if (bp_it == clock_cn->output_port_indices.end() ||
-        bp_it->second >= clock_cn->output_values.size()) {
-        apply_variation(pending_variation_.variation_idx);
-        return;
-    }
-
-    float beat_phase = clock_cn->output_values[bp_it->second];
-    bool zero_crossing = (beat_phase < prev_beat_phase_) && (prev_beat_phase_ > 0.5f);
-    prev_beat_phase_ = beat_phase;
-
-    if (!zero_crossing) return;
-
-    pending_variation_.beats_remaining--;
-    if (pending_variation_.beats_remaining <= 0) {
+    const auto metronome = current_metronome_sample();
+    if (!metronome.enabled) return;
+    const int64_t current_beat = static_cast<int64_t>(std::floor(metronome.beats_elapsed));
+    if (current_beat >= pending_variation_.target_beat_index) {
         apply_variation(pending_variation_.variation_idx);
     }
 }

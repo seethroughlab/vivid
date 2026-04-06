@@ -232,7 +232,9 @@ static std::vector<uint8_t> readback_texture(WGPUDevice device, WGPUQueue queue,
 // Returns the encoder so the caller can record additional commands (like readback)
 // before finishing.
 static void tick_and_submit(vivid::RuntimeCore& runtime, HeadlessGpu& gpu,
-                            WGPUTextureFormat format) {
+                            WGPUTextureFormat format,
+                            double time = 0.0,
+                            uint64_t frame = 0) {
     WGPUCommandEncoderDescriptor enc_desc{};
     enc_desc.label = vivid::to_sv("Tick Encoder");
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(gpu.device, &enc_desc);
@@ -243,7 +245,7 @@ static void tick_and_submit(vivid::RuntimeCore& runtime, HeadlessGpu& gpu,
     gpu_state.command_encoder = encoder;
     gpu_state.output_format   = format;
 
-    runtime.tick(0.0, 0.016, 0, &gpu_state);
+    runtime.tick(time, 0.016, frame, &gpu_state);
 
     WGPUCommandBufferDescriptor cmd_desc{};
     cmd_desc.label = vivid::to_sv("Tick Commands");
@@ -423,6 +425,8 @@ int main() {
     std::filesystem::create_directories(staging);
     std::filesystem::copy_file("gpu_fill_op.dylib", staging + "/gpu_fill_op.dylib",
         std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file("gpu_metronome_probe_op.dylib", staging + "/gpu_metronome_probe_op.dylib",
+        std::filesystem::copy_options::overwrite_existing);
     std::filesystem::copy_file("shape.dylib", staging + "/shape.dylib",
         std::filesystem::copy_options::overwrite_existing);
     std::filesystem::copy_file("control_thumb_op.dylib", staging + "/control_thumb_op.dylib",
@@ -431,6 +435,7 @@ int main() {
     vivid::OperatorRegistry registry;
     check(registry.scan(staging.c_str()), "registry.scan() succeeds");
     check(registry.find("GpuFillOp") != nullptr, "GpuFillOp registered");
+    check(registry.find("GpuMetronomeProbeOp") != nullptr, "GpuMetronomeProbeOp registered");
     check(registry.find("Shape") != nullptr, "Shape registered");
     check(registry.find("ControlThumbOp") != nullptr, "ControlThumbOp registered");
 
@@ -468,10 +473,64 @@ int main() {
     }
 
     // =====================================================================
-    // Test 3: Param change to green
+    // Test 3: GPU metronome context propagation
     // =====================================================================
     {
-        std::fprintf(stderr, "\n=== Test 3: Param change to green ===\n");
+        std::fprintf(stderr, "\n=== Test 3: GPU metronome context propagation ===\n");
+
+        {
+            vivid::Graph g;
+            g.add_node("probe", "GpuMetronomeProbeOp", {});
+
+            vivid::RuntimeCore runtime;
+            check(runtime.build(g, registry), "build disabled metronome probe");
+            tick_and_submit(runtime, gpu, kFormat);
+
+            auto* probe = runtime.compiled_graph()->find_node("probe");
+            check(probe != nullptr, "disabled probe node found");
+            if (probe && probe->output_values.size() >= 6) {
+                check_float(probe->output_values[0], 0.0f, 1e-6f, "disabled metronome flag = 0");
+                check_float(probe->output_values[1], 120.0f, 1e-6f, "default bpm visible to GPU");
+                check_float(probe->output_values[2], 4.0f, 1e-6f, "default beats_per_bar visible to GPU");
+                check_float(probe->output_values[3], 0.0f, 1e-6f, "default beat_phase = 0");
+                check_float(probe->output_values[4], 0.0f, 1e-6f, "default bar_phase = 0");
+                check_float(probe->output_values[5], 0.0f, 1e-6f, "default beats_elapsed = 0");
+            }
+            runtime.shutdown();
+        }
+
+        {
+            vivid::Graph g;
+            g.add_node("probe", "GpuMetronomeProbeOp", {});
+            vivid::GraphMetronomeDef metronome;
+            metronome.enabled = true;
+            metronome.bpm = 90.0f;
+            metronome.beats_per_bar = 5;
+            g.set_metronome(metronome);
+
+            vivid::RuntimeCore runtime;
+            check(runtime.build(g, registry), "build enabled metronome probe");
+            tick_and_submit(runtime, gpu, kFormat, 1.5, 1);
+
+            auto* probe = runtime.compiled_graph()->find_node("probe");
+            check(probe != nullptr, "enabled probe node found");
+            if (probe && probe->output_values.size() >= 6) {
+                check_float(probe->output_values[0], 1.0f, 1e-6f, "enabled metronome flag = 1");
+                check_float(probe->output_values[1], 90.0f, 1e-6f, "enabled bpm visible to GPU");
+                check_float(probe->output_values[2], 5.0f, 1e-6f, "enabled beats_per_bar visible to GPU");
+                check_float(probe->output_values[3], 0.25f, 1e-5f, "beat_phase propagated to GPU");
+                check_float(probe->output_values[4], 0.45f, 1e-5f, "bar_phase propagated to GPU");
+                check_float(probe->output_values[5], 2.25f, 1e-5f, "beats_elapsed propagated to GPU");
+            }
+            runtime.shutdown();
+        }
+    }
+
+    // =====================================================================
+    // Test 4: Param change to green
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 4: Param change to green ===\n");
         constexpr uint32_t W = 64, H = 64;
 
         vivid::Graph g;
@@ -515,10 +574,10 @@ int main() {
     }
 
     // =====================================================================
-    // Test 4: Shape operator renders non-black
+    // Test 5: Shape operator renders non-black
     // =====================================================================
     {
-        std::fprintf(stderr, "\n=== Test 4: Shape operator render ===\n");
+        std::fprintf(stderr, "\n=== Test 5: Shape operator render ===\n");
         constexpr uint32_t W = 64, H = 64;
 
         vivid::Graph g;
@@ -549,10 +608,10 @@ int main() {
     }
 
     // =====================================================================
-    // Test 5: custom GPU thumbnail for control operator
+    // Test 6: custom GPU thumbnail for control operator
     // =====================================================================
     {
-        std::fprintf(stderr, "\n=== Test 5: Control custom GPU thumbnail ===\n");
+        std::fprintf(stderr, "\n=== Test 6: Control custom GPU thumbnail ===\n");
         vivid::OperatorLoader loader;
         check(loader.load((staging + "/control_thumb_op.dylib").c_str()), "load control_thumb_op");
         check(loader.has_draw_thumbnail(), "control_thumb_op exposes draw_thumbnail");
@@ -574,10 +633,10 @@ int main() {
     }
 
     // =====================================================================
-    // Test 6: custom GPU thumbnail for GPU operator
+    // Test 7: custom GPU thumbnail for GPU operator
     // =====================================================================
     {
-        std::fprintf(stderr, "\n=== Test 6: GPU custom thumbnail override ===\n");
+        std::fprintf(stderr, "\n=== Test 7: GPU custom thumbnail override ===\n");
         vivid::OperatorLoader loader;
         check(loader.load((staging + "/gpu_fill_op.dylib").c_str()), "load gpu_fill_op");
         check(loader.has_draw_thumbnail(), "gpu_fill_op exposes draw_thumbnail");
@@ -599,10 +658,10 @@ int main() {
     }
 
     // =====================================================================
-    // Test 6b: draw-only thumbnail for waveform operator
+    // Test 7b: draw-only thumbnail for waveform operator
     // =====================================================================
     {
-        std::fprintf(stderr, "\n=== Test 6b: Draw-only waveform thumbnail ===\n");
+        std::fprintf(stderr, "\n=== Test 7b: Draw-only waveform thumbnail ===\n");
         vivid::OperatorLoader loader;
         check(loader.load("lfo_fr.dylib"), "load lfo_fr");
         check(loader.has_draw_thumbnail(), "lfo_fr exposes draw_thumbnail");
@@ -624,10 +683,10 @@ int main() {
     }
 
     // =====================================================================
-    // Test 6c: draw-only thumbnail for envelope operator
+    // Test 7c: draw-only thumbnail for envelope operator
     // =====================================================================
     {
-        std::fprintf(stderr, "\n=== Test 6c: Draw-only envelope thumbnail ===\n");
+        std::fprintf(stderr, "\n=== Test 7c: Draw-only envelope thumbnail ===\n");
         vivid::OperatorLoader loader;
         check(loader.load("envelope_fr.dylib"), "load envelope_fr");
         check(loader.has_draw_thumbnail(), "envelope_fr exposes draw_thumbnail");
@@ -649,10 +708,10 @@ int main() {
     }
 
     // =====================================================================
-    // Test 6d: draw-only thumbnail for meter operator
+    // Test 7d: draw-only thumbnail for meter operator
     // =====================================================================
     {
-        std::fprintf(stderr, "\n=== Test 6d: Draw-only meter thumbnail ===\n");
+        std::fprintf(stderr, "\n=== Test 7d: Draw-only meter thumbnail ===\n");
         vivid::OperatorLoader loader;
         check(loader.load("gain.dylib"), "load gain");
         check(loader.has_draw_thumbnail(), "gain exposes draw_thumbnail");
@@ -674,10 +733,10 @@ int main() {
     }
 
     // =====================================================================
-    // Test 7: Resolution propagation (128x128)
+    // Test 8: Resolution propagation (128x128)
     // =====================================================================
     {
-        std::fprintf(stderr, "\n=== Test 7: Resolution propagation ===\n");
+        std::fprintf(stderr, "\n=== Test 8: Resolution propagation ===\n");
         constexpr uint32_t W = 128, H = 128;
 
         vivid::Graph g;

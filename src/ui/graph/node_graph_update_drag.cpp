@@ -183,6 +183,24 @@ void NodeGraphUI::update_slider_drag() {
     }
 }
 
+void NodeGraphUI::update_transport_bpm_drag() {
+    if (!transport_bpm_dragging_) return;
+    if (mouse_.left_down) {
+        const float delta_y = transport_bpm_drag_start_y_ - mouse_.y;
+        if (std::fabs(delta_y) > 0.0f) {
+            const float sensitivity = mouse_.shift_down ? 0.1f : 1.0f;
+            const float bpm = std::clamp(transport_bpm_drag_start_bpm_ + (delta_y / 8.0f) * sensitivity,
+                                         1.0f, 300.0f);
+            commands_.set_graph_metronome(true, bpm, std::max(1, snap_.metronome_beats_per_bar));
+            transport_bpm_drag_start_y_ = mouse_.y;
+            transport_bpm_drag_start_bpm_ = bpm;
+        }
+    }
+    if (mouse_.left_released) {
+        transport_bpm_dragging_ = false;
+    }
+}
+
 void NodeGraphUI::update_modulation_drag() {
     if (!inspector_.modulation_amount_dragging || dragging_node_idx_ >= 0) return;
     if (mouse_.left_down) {

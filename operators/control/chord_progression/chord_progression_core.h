@@ -1,4 +1,5 @@
 #pragma once
+#include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
 #include "operator_api/draw_ui_helpers.h"
 #include "operator_api/midi_types.h"
@@ -110,6 +111,7 @@ struct ChordProgressionCore : vivid::OperatorBase {
     vivid::Param<int>   ext_7 {"ext_7", 0, {"Triad","7th","Add9"}};
 
     vivid::Param<int> midi_channel {"midi_channel", 1, 1, 16};
+    vivid::Param<int> clock_source {"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
 
     // Internal state
     int beat_count_ = 0;
@@ -160,6 +162,7 @@ struct ChordProgressionCore : vivid::OperatorBase {
         vivid::description(beats_per_step, "How many beats each chord is held");
         vivid::description(gate_length, "Fraction of each step where the gate is high (0-1)");
         vivid::description(velocity, "MIDI velocity for all chord notes (0-1)");
+        vivid::description(clock_source, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
 
         vivid::description(degree_0, "Scale degree for step 1");
         vivid::description(degree_1, "Scale degree for step 2");
@@ -218,6 +221,7 @@ struct ChordProgressionCore : vivid::OperatorBase {
             out[i]->display_hint = VIVID_DISPLAY_HIDDEN;
 
         out.push_back(&midi_channel); // 31
+        out.push_back(&clock_source); // 32
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {

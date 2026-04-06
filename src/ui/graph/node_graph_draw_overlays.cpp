@@ -503,91 +503,110 @@ void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
         x += tr.text_width(buf) + kPerfSepMargin;
     }
 
-    // --- Right-aligned Record / Snapshot buttons ---
+    auto active_variation_name = [&]() -> std::string {
+        if (snap_.active_variation >= 0 &&
+            snap_.active_variation < static_cast<int>(snap_.variations.size())) {
+            return snap_.variations[snap_.active_variation].name;
+        }
+        return "none";
+    };
+    auto queued_variation_name = [&]() -> std::string {
+        if (snap_.queued_variation >= 0 &&
+            snap_.queued_variation < static_cast<int>(snap_.variations.size())) {
+            return snap_.variations[snap_.queued_variation].name;
+        }
+        return "";
+    };
+
+    // --- Right-aligned transport/session buttons ---
     perf_button_rects_.clear();
+    transport_bpm_rect_ = {};
     {
         float btn_y = (kPerfBarH - kPerfBtnH) * 0.5f;
         float rx = fw - kPerfBarPadX;  // right edge cursor
         bool can_undo = commands_.can_undo();
         bool can_redo = commands_.can_redo();
-
-        // Snapshot button
-        {
-            const char* snap_label = T("snap", "Snap");
-            float tw = tr.text_width(snap_label);
-            float btn_w = tw + kPerfBtnPadX * 2;
-            rx -= btn_w;
-            // Button background
-            bool snap_hovered = mouse_.x >= rx && mouse_.x <= rx + btn_w &&
-                                mouse_.y >= btn_y && mouse_.y <= btn_y + kPerfBtnH;
-            float bg_a = snap_hovered ? 0.35f : 0.20f;
-            tr.draw_rounded_rect(rx, btn_y, btn_w, kPerfBtnH, 3.0f,
-                                 0.30f, 0.32f, 0.35f, bg_a);
-            tr.draw_text(rx + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
-                         snap_label, style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-            perf_button_rects_.push_back({rx, btn_y, btn_w, kPerfBtnH, 1, true});
-            rx -= kPerfBtnMargin;
-        }
-
-        // Build console toggle
-        {
-            const char* build_label = T("build", "Build");
-            float tw = tr.text_width(build_label);
+        auto draw_button = [&](const char* label, int action, bool enabled, bool active = false) {
+            float tw = tr.text_width(label);
             float btn_w = tw + kPerfBtnPadX * 2;
             rx -= btn_w;
             bool hovered = mouse_.x >= rx && mouse_.x <= rx + btn_w &&
                            mouse_.y >= btn_y && mouse_.y <= btn_y + kPerfBtnH;
-            bool active = build_console_panel_.is_open();
             float br = active ? style_.accent[0] : 0.30f;
             float bg = active ? style_.accent[1] : 0.32f;
             float bb = active ? style_.accent[2] : 0.35f;
-            float ba = hovered ? (active ? 0.42f : 0.35f) : (active ? 0.28f : 0.20f);
+            float ba = !enabled ? 0.10f : (hovered ? (active ? 0.42f : 0.35f) : (active ? 0.28f : 0.20f));
             tr.draw_rounded_rect(rx, btn_y, btn_w, kPerfBtnH, 3.0f, br, bg, bb, ba);
+            float trr = enabled ? style_.bright_text[0] : kDimText[0];
+            float trg = enabled ? style_.bright_text[1] : kDimText[1];
+            float trb = enabled ? style_.bright_text[2] : kDimText[2];
             tr.draw_text(rx + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
-                         build_label, style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-            perf_button_rects_.push_back({rx, btn_y, btn_w, kPerfBtnH, 4, true});
+                         label, trr, trg, trb);
+            perf_button_rects_.push_back({rx, btn_y, btn_w, kPerfBtnH, action, enabled});
+            rx -= kPerfBtnMargin;
+        };
+
+        draw_button(session_grid_open_ ? "Session Open" : "Session", 8, true, session_grid_open_);
+
+        {
+            char meter_buf[16];
+            std::snprintf(meter_buf, sizeof(meter_buf), "%d/4", std::max(1, snap_.metronome_beats_per_bar));
+            float pill_w = tr.text_width(meter_buf) + kPerfBtnPadX * 2;
+            rx -= pill_w;
+            tr.draw_rounded_rect(rx, btn_y, pill_w, kPerfBtnH, 3.0f,
+                                 0.18f, 0.20f, 0.23f, snap_.metronome_enabled ? 0.70f : 0.24f);
+            tr.draw_text(rx + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
+                         meter_buf,
+                         snap_.metronome_enabled ? style_.bright_text[0] : style_.dim_text[0],
+                         snap_.metronome_enabled ? style_.bright_text[1] : style_.dim_text[1],
+                         snap_.metronome_enabled ? style_.bright_text[2] : style_.dim_text[2]);
             rx -= kPerfBtnMargin;
         }
+        draw_button("+", 7, true);
+        draw_button("-", 6, true);
+
+        {
+            const float bpm = std::max(1.0f, snap_.metronome_bpm);
+            const float rounded_bpm = std::round(bpm);
+            std::string bpm_label = std::fabs(bpm - rounded_bpm) < 0.05f
+                ? (std::to_string(static_cast<int>(rounded_bpm)) + " BPM")
+                : (format_float(bpm, 1) + " BPM");
+            float pill_w = std::max(tr.text_width("300.0 BPM"),
+                                    tr.text_width(bpm_label.c_str())) + kPerfBtnPadX * 2;
+            rx -= pill_w;
+            transport_bpm_rect_ = {rx, btn_y, pill_w, kPerfBtnH, true};
+            bool hovered = mouse_.x >= rx && mouse_.x <= rx + pill_w &&
+                           mouse_.y >= btn_y && mouse_.y <= btn_y + kPerfBtnH;
+            if (transport_bpm_editing_) {
+                draw_editing_text_field(tr, style_, rx, btn_y, pill_w, kPerfBtnH,
+                                        transport_bpm_edit_buffer_, text_edit_,
+                                        cursor_blink_on(), kPerfBtnPadX, 3.0f);
+            } else {
+                const float alpha = snap_.metronome_enabled ? (hovered ? 0.82f : 0.70f)
+                                                            : (hovered ? 0.32f : 0.24f);
+                tr.draw_rounded_rect(rx, btn_y, pill_w, kPerfBtnH, 3.0f,
+                                     0.18f, 0.20f, 0.23f, alpha);
+                tr.draw_text(rx + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
+                             bpm_label.c_str(),
+                             snap_.metronome_enabled ? style_.bright_text[0] : style_.dim_text[0],
+                             snap_.metronome_enabled ? style_.bright_text[1] : style_.dim_text[1],
+                             snap_.metronome_enabled ? style_.bright_text[2] : style_.dim_text[2]);
+            }
+            rx -= kPerfBtnMargin;
+        }
+        draw_button(snap_.metronome_enabled ? "Metro On" : "Metro Off", 5, true, snap_.metronome_enabled);
+
+        // Snapshot button
+        draw_button(T("snap", "Snap"), 1, true);
+
+        // Build console toggle
+        draw_button(T("build", "Build"), 4, true, build_console_panel_.is_open());
 
         // Redo button
-        {
-            const char* redo_label = T("redo", "Redo");
-            float tw = tr.text_width(redo_label);
-            float btn_w = tw + kPerfBtnPadX * 2;
-            rx -= btn_w;
-            bool hovered = mouse_.x >= rx && mouse_.x <= rx + btn_w &&
-                           mouse_.y >= btn_y && mouse_.y <= btn_y + kPerfBtnH;
-            float bg_a = can_redo ? (hovered ? 0.35f : 0.20f) : 0.10f;
-            tr.draw_rounded_rect(rx, btn_y, btn_w, kPerfBtnH, 3.0f,
-                                 0.30f, 0.32f, 0.35f, bg_a);
-            float trr = can_redo ? style_.bright_text[0] : kDimText[0];
-            float trg = can_redo ? style_.bright_text[1] : kDimText[1];
-            float trb = can_redo ? style_.bright_text[2] : kDimText[2];
-            tr.draw_text(rx + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
-                         redo_label, trr, trg, trb);
-            perf_button_rects_.push_back({rx, btn_y, btn_w, kPerfBtnH, 3, can_redo});
-            rx -= kPerfBtnMargin;
-        }
+        draw_button(T("redo", "Redo"), 3, can_redo);
 
         // Undo button
-        {
-            const char* undo_label = T("undo", "Undo");
-            float tw = tr.text_width(undo_label);
-            float btn_w = tw + kPerfBtnPadX * 2;
-            rx -= btn_w;
-            bool hovered = mouse_.x >= rx && mouse_.x <= rx + btn_w &&
-                           mouse_.y >= btn_y && mouse_.y <= btn_y + kPerfBtnH;
-            float bg_a = can_undo ? (hovered ? 0.35f : 0.20f) : 0.10f;
-            tr.draw_rounded_rect(rx, btn_y, btn_w, kPerfBtnH, 3.0f,
-                                 0.30f, 0.32f, 0.35f, bg_a);
-            float tur = can_undo ? style_.bright_text[0] : kDimText[0];
-            float tug = can_undo ? style_.bright_text[1] : kDimText[1];
-            float tub = can_undo ? style_.bright_text[2] : kDimText[2];
-            tr.draw_text(rx + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
-                         undo_label, tur, tug, tub);
-            perf_button_rects_.push_back({rx, btn_y, btn_w, kPerfBtnH, 2, can_undo});
-            rx -= kPerfBtnMargin;
-        }
+        draw_button(T("undo", "Undo"), 2, can_undo);
 
         // MCP status dots — [● MCP] [● DEV]
         mcp_dot_rects_.clear();
@@ -762,6 +781,37 @@ void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
             tr.draw_text(ix, label_y, "\xe2\x96\xbe", kDimText[0], kDimText[1], kDimText[2]);
 
             perf_button_rects_.push_back({rx, btn_y, btn_w, kPerfBtnH, 0, true});
+        }
+
+        // Transport/session status fills the gap between perf stats and buttons.
+        const char* q_labels[] = {"Off", "Beat", "Bar", "4Bar"};
+        std::string transport_summary = snap_.metronome_enabled
+            ? ("METRO " + std::to_string(static_cast<int>(std::lround(snap_.metronome_bpm))) + " BPM " +
+               std::to_string(std::max(1, snap_.metronome_beats_per_bar)) + "/4")
+            : std::string("METRO OFF");
+        transport_summary += " | VAR ";
+        transport_summary += active_variation_name();
+        const std::string queued = queued_variation_name();
+        if (!queued.empty()) {
+            transport_summary += " | > ";
+            transport_summary += queued;
+        }
+        if (snap_.variation_dirty)
+            transport_summary += " | DIRTY";
+        transport_summary += " | Q ";
+        transport_summary += q_labels[std::clamp(session_quantize_mode_, 0, 3)];
+
+        float available_w = std::max(0.0f, rx - x - 12.0f);
+        if (available_w > 60.0f) {
+            float pulse = snap_.metronome_enabled
+                ? (0.20f + 0.45f * std::max(0.0f, 1.0f - snap_.metronome_beat_phase))
+                : 0.12f;
+            tr.draw_rect(x, btn_y + 6.0f, 7.0f, 7.0f,
+                         style_.accent[0], style_.accent[1], style_.accent[2], pulse);
+            tr.push_clip_rect(x + 12.0f, 4.0f, available_w - 12.0f, kPerfBarH - 8.0f);
+            tr.draw_text(x + 12.0f, text_y, transport_summary.c_str(),
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+            tr.pop_clip_rect();
         }
     }
 

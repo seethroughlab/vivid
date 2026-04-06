@@ -6,10 +6,9 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include "runtime/graph/graph.h"
 
 namespace vivid {
-
-class Graph;
 class RuntimeCore;
 class AudioEngine;
 class OperatorRegistry;
@@ -116,6 +115,8 @@ public:
     CommandResult list_variations();
     CommandResult queue_variation(const std::string& name, const std::string& quantize);
     CommandResult set_quantize_clock(const std::string& node_id);
+    CommandResult set_graph_metronome(bool enabled, float bpm, int beats_per_bar);
+    GraphMetronomeSample current_metronome_sample() const;
 
     // Per-frame: check pending quantized variation switch
     void tick_quantized_switch();
@@ -209,11 +210,10 @@ private:
     struct PendingVariation {
         int variation_idx = -1;
         enum Quantize { Instant, Beat, Bar, FourBar } quantize = Instant;
-        int beats_remaining = 0;
+        int64_t target_beat_index = -1;
         bool armed = false;
     };
     PendingVariation pending_variation_;
-    float prev_beat_phase_ = 0.0f;
     bool variation_dirty_ = false;
     bool graph_dirty_ = false;
     std::string last_saved_graph_json_;

@@ -28,6 +28,17 @@ static void retire_lane_id_fn_bridge(void* ctx_ptr, uint32_t lane_id) {
     lsc->service->retire(lsc->node_idx, lane_id);
 }
 
+static void populate_metronome_context(VividAudioContext& ctx,
+                                       const GraphMetronomeSample& sample) {
+    ctx.metronome_enabled = sample.enabled ? 1u : 0u;
+    ctx.metronome_bpm = sample.bpm;
+    ctx.metronome_beats_per_bar = static_cast<uint32_t>(sample.beats_per_bar);
+    ctx.metronome_beats_elapsed = sample.beats_elapsed;
+    ctx.metronome_beat_phase = sample.beat_phase;
+    ctx.metronome_bar_phase = sample.bar_phase;
+    ctx.metronome_beat_ms = sample.beat_ms;
+}
+
 AudioExecutor::AudioExecutor() = default;
 
 AudioExecutor::~AudioExecutor() {
@@ -40,9 +51,11 @@ AudioExecutor::~AudioExecutor() {
 // per-lane cloned instances so each lane processes independently through its
 // own operator state. The audio engine MUST be stopped before build() runs —
 // instance pointers are read by the callback thread without synchronization.
-bool AudioExecutor::build(AudioFrameBridge& bridge, CompiledGraph& cg) {
+bool AudioExecutor::build(AudioFrameBridge& bridge, CompiledGraph& cg,
+                          const LiveMetronomeStateStore& metronome_store) {
     bridge_ = &bridge;
     graph_ = &cg;
+    metronome_store_ = &metronome_store;
     sink_node_idx_ = -1;
     lane_lift_groups_.clear();
     node_to_lift_group_.clear();
@@ -183,6 +196,7 @@ void AudioExecutor::shutdown() {
     }
     lane_lift_groups_.clear();
     node_to_lift_group_.clear();
+    metronome_store_ = nullptr;
 }
 
 void AudioExecutor::pause() {
@@ -362,6 +376,9 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 a.out_ptrs[p] = a.buffers_out[p].data();
 
             double node_time = static_cast<double>(audio_frame_ + frames_written) / kSampleRate;
+            const auto metronome = metronome_store_
+                ? sample_live_metronome(*metronome_store_, node_time)
+                : GraphMetronomeSample{};
 
             // Debug node state
             if (std::getenv("VIVID_DEBUG_AUDIO") && frames_written == 0) {
@@ -452,6 +469,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                     ctx.lane_state_service = &node_lane_contexts_[ni_ord];
                     ctx.allocate_lane_id_fn = allocate_lane_id_fn_bridge;
                     ctx.retire_lane_id_fn = retire_lane_id_fn_bridge;
+                    populate_metronome_context(ctx, metronome);
                     // Note: allocate/retire use lane_state_ directly (not per-node context)
 
                     try {
@@ -560,6 +578,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                         ctx.lane_state_service = &node_lane_contexts_[ni_ord];
                         ctx.allocate_lane_id_fn = allocate_lane_id_fn_bridge;
                         ctx.retire_lane_id_fn = retire_lane_id_fn_bridge;
+                        populate_metronome_context(ctx, metronome);
 
                         try {
                             cn.loader->process_audio(cn.instance, &ctx);
@@ -626,6 +645,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 ctx.lane_state_service = &node_lane_contexts_[ni_ord];
                 ctx.allocate_lane_id_fn = allocate_lane_id_fn_bridge;
                 ctx.retire_lane_id_fn = retire_lane_id_fn_bridge;
+                populate_metronome_context(ctx, metronome);
 
                 try {
                     cn.loader->process_audio(cn.instance, &ctx);

@@ -1,4 +1,5 @@
 #pragma once
+#include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
 #include "operator_api/midi_types.h"
 #include "operator_api/type_id.h"
@@ -48,6 +49,7 @@ struct SequencerCore : vivid::OperatorBase {
 
     vivid::Param<int> steps        {"steps",        8, 1, 128};
     vivid::Param<int> midi_channel {"midi_channel", 1, 1, 16};
+    vivid::Param<int> clock_source {"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
 
     SequencerCore() {
         vivid::semantic_tag(steps, "count");
@@ -55,11 +57,13 @@ struct SequencerCore : vivid::OperatorBase {
         vivid::semantic_intent(steps, "sequence_length");
         vivid::description(steps, "Number of active steps in the sequence (1–128)");
         vivid::description(midi_channel, "MIDI output channel (1–16)");
+        vivid::description(clock_source, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&steps);
         out.push_back(&midi_channel);
+        out.push_back(&clock_source);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {

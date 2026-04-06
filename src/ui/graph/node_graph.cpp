@@ -821,6 +821,26 @@ int NodeGraphUI::hit_test_wire(float sx, float sy) const {
 // -----------------------------------------------------------------------
 // Text editing
 // -----------------------------------------------------------------------
+void NodeGraphUI::confirm_transport_bpm_edit() {
+    if (!transport_bpm_editing_) return;
+    try {
+        float bpm = std::stof(transport_bpm_edit_buffer_);
+        bpm = std::clamp(bpm, 1.0f, 300.0f);
+        commands_.set_graph_metronome(true, bpm, std::max(1, snap_.metronome_beats_per_bar));
+    } catch (...) {
+        // Invalid input — silently discard and restore the prior display state.
+    }
+    transport_bpm_editing_ = false;
+    transport_bpm_edit_buffer_.clear();
+    text_edit_.reset(0);
+}
+
+void NodeGraphUI::cancel_transport_bpm_edit() {
+    transport_bpm_editing_ = false;
+    transport_bpm_edit_buffer_.clear();
+    text_edit_.reset(0);
+}
+
 void NodeGraphUI::confirm_param_edit() {
     if (!inspector_.editing_param) return;
     const auto* ns = snap_.find_node(inspector_.edit_node_id);

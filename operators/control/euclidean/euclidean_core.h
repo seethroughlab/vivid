@@ -1,5 +1,6 @@
 #pragma once
 
+#include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
 #include <algorithm>
 #include <cmath>
@@ -24,6 +25,7 @@ struct EuclideanCore : vivid::OperatorBase {
     vivid::Param<int>   rotation    {"rotation",    0, 0, 31};
     vivid::Param<float> gate_length {"gate_length", 0.5f, 0.01f, 1.0f};
     vivid::Param<int>   rate        {"rate",        2, {"1/1","1/2","1/4","1/8","1/16","1/32","1/4T","1/8T","1/16T"}};
+    vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
 
     EuclideanCore() {
         vivid::semantic_tag(hits, "count");
@@ -43,6 +45,7 @@ struct EuclideanCore : vivid::OperatorBase {
         vivid::description(gate_length, "Fraction of each step during which the gate stays high");
 
         vivid::description(rate, "Clock subdivision for step timing");
+        vivid::description(clock_source, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
@@ -51,6 +54,7 @@ struct EuclideanCore : vivid::OperatorBase {
         out.push_back(&rotation);    // 2
         out.push_back(&gate_length); // 3
         out.push_back(&rate);        // 4
+        out.push_back(&clock_source);// 5
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {

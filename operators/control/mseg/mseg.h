@@ -1,5 +1,6 @@
 #pragma once
 
+#include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
 #include <algorithm>
 #include <cmath>
@@ -30,6 +31,7 @@ struct MSEG : vivid::OperatorBase {
     vivid::Param<int>   loop_start   {"loop_start",   0,    0, 15};
     vivid::Param<int>   loop_end     {"loop_end",     3,    1, 15};
     vivid::Param<float> amplitude    {"amplitude",    1.0f, 0.0f, 10.0f};
+    vivid::Param<int>   clock_source {"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
 
     // --- Hidden params: breakpoint data ---
     // pt_time_0..15, pt_value_0..15, pt_curve_0..14
@@ -82,6 +84,7 @@ struct MSEG : vivid::OperatorBase {
         vivid::semantic_shape(amplitude, "scalar");
         vivid::semantic_intent(amplitude, "env_amount");
         vivid::description(amplitude, "Scales the entire envelope output");
+        vivid::description(clock_source, "Choose whether beat retrigger timing comes from the external beat_phase input or the graph metronome");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
@@ -108,6 +111,7 @@ struct MSEG : vivid::OperatorBase {
             display_hint(pt_curve[i], VIVID_DISPLAY_HIDDEN);
             out.push_back(&pt_curve[i]);
         }
+        out.push_back(&clock_source);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -145,11 +149,13 @@ struct MSEG : vivid::OperatorBase {
     // ── Frame-rate processing (used by MSEG_FR) ──────────────────────
 
     void process_frame(const VividFrameContext* ctx) {
-        compute(ctx->input_values[0], static_cast<float>(ctx->delta_time));
+        float phase_in = vivid::resolve_clock_phase(
+            clock_source.int_value(), ctx->input_values[1], vivid::metronome_transport(ctx));
+        compute(ctx->input_values[0], phase_in, static_cast<float>(ctx->delta_time));
         ctx->output_values[0] = current_value_ * amplitude.value;
     }
 
-    void compute(float gate_in, float dt) {
+    void compute(float gate_in, float phase_in, float dt) {
         bool gate_on = gate_in > 0.5f;
         int np = num_points.int_value();
         np = std::max(2, std::min(kMaxPoints, np));
@@ -161,9 +167,11 @@ struct MSEG : vivid::OperatorBase {
         // Gate edge detection
         bool gate_attack  = gate_on && !prev_gate_;
         bool gate_release = !gate_on && prev_gate_;
+        bool phase_wrap = (phase_in - prev_phase_) < -0.5f;
         prev_gate_ = gate_on;
+        prev_phase_ = phase_in;
 
-        if (gate_attack) {
+        if (gate_attack || phase_wrap) {
             stage_ = PLAYING;
             elapsed_ = 0.0f;
         } else if (gate_release && (stage_ == PLAYING || stage_ == LOOPING)) {
@@ -238,6 +246,7 @@ protected:
     float release_start_value_ = 0.0f;
     float current_value_       = 0.0f;
     bool  prev_gate_           = false;
+    float prev_phase_          = 0.0f;
 
 private:
     // Inspector interaction state

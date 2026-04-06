@@ -2,6 +2,7 @@
 
 #include "operator_api/types.h"
 #include "runtime/graph/cadence_types.h"
+#include "runtime/graph/graph.h"
 #include "runtime/operators/operator_loader.h"
 #include "runtime/gpu/gpu_frame_analysis.h"
 #include "runtime/graph/lane_types.h"
@@ -331,6 +332,9 @@ struct CompiledNode {
 // ---------------------------------------------------------------------------
 
 struct CompiledGraph {
+    // Persisted graph metadata snapshot kept for rebuild/load bookkeeping.
+    // Live execution samples metronome state from RuntimeCore instead.
+    GraphMetronomeDef metronome;
     std::vector<CompiledNode> nodes;
     std::vector<CompiledEdge> edges;
 

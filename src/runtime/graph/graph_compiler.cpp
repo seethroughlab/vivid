@@ -38,6 +38,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
 {
     auto cg = std::make_unique<CompiledGraph>();
     cg->max_loop_lanes = options.max_loop_lanes;
+    cg->metronome = graph.metronome();
     std::filesystem::path graph_base_dir;
     if (!graph.source_path().empty()) {
         graph_base_dir = std::filesystem::path(graph.source_path()).parent_path();

@@ -6,6 +6,10 @@
 `CompiledGraph`, and coordinates frame-rate execution. It delegates actual processing to
 `FrameExecutor` and cross-cadence communication to `AudioFrameBridge`.
 
+It also owns the live graph-metronome transport state. The persisted `Graph.metronome` definition
+is save/load metadata; execution-time beat/bar phase is sampled from a lock-free runtime snapshot
+that both the frame side and audio side read directly.
+
 ## Build
 
 ```cpp
@@ -15,6 +19,8 @@ bool build(const Graph& graph, OperatorRegistry& registry);
 1. Compiles `Graph` → `CompiledGraph` via `GraphCompiler::compile()` (7-pass algorithm)
 2. Builds `AudioFrameBridge` snapshot buffers from the compiled graph
 3. Configures `FrameExecutor` with source directory for file param resolution
+4. Seeds the live metronome state on first build, but later topology rebuilds preserve the current
+   transport unless a caller explicitly resets it from loaded graph metadata
 
 For async/UI-driven topology work, `RuntimeCore` also exposes a split prepare/adopt path:
 
@@ -56,8 +62,13 @@ void tick(double time, double delta_time, uint64_t frame,
 ```
 
 1. Calls `FrameExecutor::tick()` — processes all `Cadence::Frame` nodes in topological order
+   using the current live metronome sample
 2. Propagates control→audio param wires on `CompiledNode` for inspector display
 3. Checks `needs_gpu_realloc_` flag for topology-driven texture reallocation
+
+The audio side receives the same transport through `AudioExecutor`, which samples the same
+runtime-owned metronome store at audio-callback time. This is what makes BPM edits live and
+phase-continuous without recompiling the graph.
 
 ## GPU Texture Management
 

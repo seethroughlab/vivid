@@ -2,6 +2,7 @@
 // Internal frame-rate Envelope implementation used by ChildOp<Envelope>
 // consumers. The public operator surface uses envelope_fr / envelope_au variants.
 
+#include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
 #include "operator_api/adsr_inspector.h"
 #include <cmath>
@@ -42,6 +43,7 @@ struct Envelope : vivid::OperatorBase {
     vivid::Param<float> amplitude{"amplitude", 1.0f,   0.0f,   10.0f};
     vivid::Param<float> offset   {"offset",    0.0f,   0.0f,   10.0f};
     vivid::Param<int>   curve    {"curve",     1,      {"linear", "exponential", "logarithmic"}};
+    vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
 
     enum Stage : uint8_t { IDLE, ATTACK, DECAY, SUSTAIN, RELEASE };
 
@@ -91,6 +93,7 @@ struct Envelope : vivid::OperatorBase {
         vivid::description(offset, "Constant value added to the envelope output");
 
         vivid::description(curve, "Envelope shape: linear, exponential, or logarithmic");
+        vivid::description(clock_source, "Choose whether beat retrigger timing comes from the external beat_phase input or the graph metronome");
     }
 
     ~Envelope() override;
@@ -136,6 +139,7 @@ struct Envelope : vivid::OperatorBase {
         out.push_back(&offset);    // 5
         display_hint(curve, VIVID_DISPLAY_DEFAULT);
         out.push_back(&curve);     // 6
+        out.push_back(&clock_source); // 7
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -266,7 +270,8 @@ struct Envelope : vivid::OperatorBase {
 
     void process_frame(const VividFrameContext* ctx) {
         float gate_in  = ctx->input_values[0];
-        float phase_in = ctx->input_values[1];
+        float phase_in = vivid::resolve_clock_phase(
+            clock_source.int_value(), ctx->input_values[1], vivid::metronome_transport(ctx));
         float dt = static_cast<float>(ctx->delta_time);
 
         LaneState& s = ctx->lane_state_fn

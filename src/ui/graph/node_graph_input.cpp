@@ -176,6 +176,8 @@ ActiveTextField NodeGraphUI::resolve_active_text_field() {
         auto df = dialogs_.resolve_active_field();
         if (df.buf) return df;
     }
+    if (transport_bpm_editing_)
+        return {&transport_bpm_edit_buffer_, filter_numeric, 8};
     if (session_editing_name_)
         return {&session_edit_buffer_, filter_printable};
     if (inspector_.editing_midi_range || inspector_.editing_wire_remap)
@@ -198,6 +200,18 @@ ActiveTextField NodeGraphUI::resolve_active_text_field() {
     if (chooser_open_)
         return {&chooser_filter_, filter_printable};
     return {};
+}
+
+bool NodeGraphUI::handle_transport_bpm_edit_key(int key) {
+    if (!transport_bpm_editing_) return false;
+    if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
+        confirm_transport_bpm_edit();
+    } else if (key == GLFW_KEY_ESCAPE) {
+        cancel_transport_bpm_edit();
+    } else if (key == GLFW_KEY_BACKSPACE) {
+        text_edit_backspace(transport_bpm_edit_buffer_, text_edit_);
+    }
+    return true;
 }
 
 bool NodeGraphUI::handle_sticky_edit_mode_key(int key, bool mod_key) {
@@ -811,6 +825,7 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         }
     }
 
+    if (handle_transport_bpm_edit_key(key)) return;
     if (handle_sticky_edit_mode_key(key, mod_key)) return;
     if (editing_sticky_) return;
     if (dialogs_.on_key(key, action, mods, text_edit_, cursor_blink_time_)) return;

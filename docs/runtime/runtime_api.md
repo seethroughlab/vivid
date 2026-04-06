@@ -7,7 +7,8 @@ all runtime mutations. It owns references to `Graph`, `RuntimeCore`, `AudioEngin
 `OperatorRegistry`, and provides a single `CommandResult`-returning API over all of them.
 
 It also owns cross-cutting state that doesn't belong in any single subsystem:
-undo/redo, quantized variation switching, state-preset machine, crossfade state, active presets.
+undo/redo, graph metronome state, quantized variation switching, state-preset machine,
+crossfade state, active presets.
 
 ## Construction
 
@@ -131,12 +132,68 @@ CommandResult recall_variation(name);    // apply variation params to runtime no
 CommandResult recall_variation_idx(idx);
 CommandResult update_variation(name);    // overwrite with current params
 CommandResult queue_variation(name, quantize);  // schedule for next beat/bar
-CommandResult set_quantize_clock(node_id);
+CommandResult set_graph_metronome(enabled, bpm, beats_per_bar);
+CommandResult set_quantize_clock(node_id);  // deprecated compatibility shim
+GraphMetronomeSample current_metronome_sample() const;
 void tick_quantized_switch();            // call each frame to fire pending switches
 ```
 
-Quantize modes: `"instant"`, `"beat"`, `"bar"`, `"four_bar"`.
-`PendingVariation::beats_remaining` counts down each frame using `prev_beat_phase_` to detect beat crossings.
+Quantize modes: `"instant"`, `"beat"`, `"bar"`, `"4bar"` (`"four_bar"` is still accepted as a
+legacy alias).
+
+Quantized switching is now graph-metronome-backed:
+
+- when the graph metronome is disabled, non-instant `queue_variation()` calls fail with an error
+- beat/bar/4-bar boundaries are derived from the graph metronome's `bpm` and `beats_per_bar`
+- `tick_quantized_switch()` compares the current metronome beat count against the queued target
+  boundary instead of watching a hidden designated clock node
+
+`set_quantize_clock()` remains for backward compatibility with older graphs and tooling, but the
+runtime no longer uses that hidden clock-node reference to schedule variation recalls.
+
+## Graph Metronome
+
+```cpp
+CommandResult set_graph_metronome(bool enabled, float bpm, int beats_per_bar);
+GraphMetronomeSample current_metronome_sample() const;
+```
+
+The graph metronome is optional shared transport metadata stored on `Graph`. It is intentionally
+not a timeline and not a special operator. Its job is to provide a common pulse for:
+
+- quantized variation switching
+- clocks that opt into metronome sync mode
+- transport UI/status surfaces
+
+Clocks remain first-class local temporal contexts. A clock can still free-run with its own BPM, or
+it can sync to the graph metronome and derive its phase from shared BPM + meter while exposing note
+division controls instead of a local tempo knob.
+
+The same contract now extends to other time-based operators:
+
+- internal-rate operators use `rate_mode = free | external | metronome`
+- beat-driven operators use `clock_source = external | metronome`
+- metronome-synced note lengths reuse the clock operator's shared musical division vocabulary
+- the current metronome snapshot is exposed to frame, audio, and GPU operators through their
+  runtime contexts, so custom operators in any domain can read shared transport state
+
+This keeps explicit `beat_phase` wiring fully supported while making graph-metronome sync a
+first-class, discoverable option in operator inspectors.
+
+The editable `Graph` still stores the persisted metronome metadata, but live execution now reads
+from a runtime-owned transport state in `RuntimeCore`:
+
+- `set_graph_metronome()` updates the persisted graph metadata and the live runtime transport
+  immediately
+- BPM changes are phase-continuous: the current beat position is preserved and the new tempo takes
+  effect from that instant forward
+- meter changes restart the bar immediately at beat 0 / bar 0
+- enabling the metronome after it was disabled starts immediately at beat 0 / bar 0
+- disabling the metronome clears any queued quantized variation
+
+That live transport state is what frame, audio, and GPU operators now receive in their runtime
+contexts, so metronome-aware operators retime without waiting for `apply_pending()` or a graph
+rebuild.
 
 ## Per-Operator Presets
 

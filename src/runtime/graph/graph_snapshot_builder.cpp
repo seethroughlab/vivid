@@ -480,6 +480,15 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
     }
     snap.active_variation = graph.active_variation();
     snap.quantize_clock_node = graph.quantize_clock_node();
+    const auto metronome = runtime_api
+        ? runtime_api->current_metronome_sample()
+        : sample_graph_metronome(graph.metronome(), runtime.last_tick_time());
+    snap.metronome_enabled = metronome.enabled;
+    snap.metronome_bpm = metronome.bpm;
+    snap.metronome_beats_per_bar = metronome.beats_per_bar;
+    snap.metronome_beat_phase = metronome.beat_phase;
+    snap.metronome_bar_phase = metronome.bar_phase;
+    snap.metronome_beat_ms = metronome.beat_ms;
 
     // Sticky notes
     const auto& sticky = graph.sticky_notes();

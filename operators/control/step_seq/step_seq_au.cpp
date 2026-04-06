@@ -11,7 +11,7 @@ struct StepSeq_AU : StepSeq, vivid::AudioProcessable {
             vivid::audio_scalar_block_start(ctx, 1),  // beat_phase
         };
         float local_out[2] = {};
-        compute(local_in, ctx->delta_time, local_out);
+        compute(local_in, ctx->delta_time, local_out, vivid::metronome_transport(ctx));
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
             for (int j = 0; j < 2; ++j)
                 ctx->output_buffers[j][i] = local_out[j];

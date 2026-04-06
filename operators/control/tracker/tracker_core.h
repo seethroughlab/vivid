@@ -1,4 +1,5 @@
 #pragma once
+#include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
 #include "operator_api/midi_types.h"
 #include "operator_api/thumbnail.h"
@@ -25,6 +26,7 @@ struct TrackerCore : vivid::OperatorBase {
     vivid::Param<int>   speed         {"speed",         6, 1, 16};
     vivid::Param<int>   base_channel  {"base_channel",  1, 1, 16};
     vivid::Param<int>   channel_mode  {"channel_mode",  0, {"Single","Multi"}};
+    vivid::Param<int>   clock_source  {"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
     vivid::Param<int>   edit_pattern  {"edit_pattern",  0, 0, 63};
     vivid::Param<int>   edit_channel  {"edit_channel",  0, 0, 7};
     vivid::Param<int>   mute_mask     {"mute_mask",     0, 0, 255};

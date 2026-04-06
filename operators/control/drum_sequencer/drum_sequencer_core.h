@@ -1,4 +1,5 @@
 #pragma once
+#include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
 #include "operator_api/draw_ui_helpers.h"
 #include "operator_api/midi_types.h"
@@ -34,6 +35,7 @@ struct DrumSequencerCore : vivid::OperatorBase {
 
     vivid::Param<int>   steps {"steps",  16, 1, 16};
     vivid::Param<float> swing {"swing",  0.0f, 0.0f, 0.5f};
+    vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
 
     // MIDI note number per drum track (indices 2..7)
     vivid::Param<int> kick_note  {"kick_note",  36, 0, 127};

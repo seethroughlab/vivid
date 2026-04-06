@@ -1,5 +1,8 @@
 #pragma once
 
+#include <array>
+#include <atomic>
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -116,6 +119,86 @@ struct VariationDef {
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> string_params;
 };
 
+struct GraphMetronomeDef {
+    bool enabled = false;
+    float bpm = 120.0f;
+    int beats_per_bar = 4;
+};
+
+struct GraphMetronomeSample {
+    bool enabled = false;
+    float bpm = 120.0f;
+    int beats_per_bar = 4;
+    double beats_elapsed = 0.0;
+    float beat_phase = 0.0f;
+    float bar_phase = 0.0f;
+    float beat_ms = 500.0f;
+};
+
+struct LiveMetronomeState {
+    bool enabled = false;
+    float bpm = 120.0f;
+    int beats_per_bar = 4;
+    double anchor_time = 0.0;
+    double anchor_beats_elapsed = 0.0;
+};
+
+struct LiveMetronomeStateStore {
+    std::array<LiveMetronomeState, 2> states{};
+    std::atomic<uint32_t> active_index{0};
+};
+
+inline GraphMetronomeSample sample_graph_metronome(const GraphMetronomeDef& metronome, double time) {
+    GraphMetronomeSample sample;
+    sample.enabled = metronome.enabled;
+    sample.bpm = metronome.bpm;
+    sample.beats_per_bar = std::max(1, metronome.beats_per_bar);
+    sample.beat_ms = (sample.bpm > 0.0f) ? (60000.0f / sample.bpm) : 0.0f;
+    if (!sample.enabled || sample.bpm <= 0.0f) return sample;
+
+    const double beats_per_sec = static_cast<double>(sample.bpm) / 60.0;
+    sample.beats_elapsed = std::max(0.0, time * beats_per_sec);
+    sample.beat_phase = static_cast<float>(sample.beats_elapsed - std::floor(sample.beats_elapsed));
+
+    const double bars_elapsed = sample.beats_elapsed / static_cast<double>(sample.beats_per_bar);
+    sample.bar_phase = static_cast<float>(bars_elapsed - std::floor(bars_elapsed));
+    return sample;
+}
+
+inline LiveMetronomeState live_metronome_state_from_graph(const GraphMetronomeDef& metronome,
+                                                          double time) {
+    LiveMetronomeState state;
+    state.enabled = metronome.enabled;
+    state.bpm = metronome.bpm;
+    state.beats_per_bar = std::max(1, metronome.beats_per_bar);
+    state.anchor_time = time;
+    state.anchor_beats_elapsed = 0.0;
+    return state;
+}
+
+inline GraphMetronomeSample sample_live_metronome(const LiveMetronomeState& state, double time) {
+    GraphMetronomeSample sample;
+    sample.enabled = state.enabled;
+    sample.bpm = state.bpm;
+    sample.beats_per_bar = std::max(1, state.beats_per_bar);
+    sample.beat_ms = (sample.bpm > 0.0f) ? (60000.0f / sample.bpm) : 0.0f;
+    if (!sample.enabled || sample.bpm <= 0.0f) return sample;
+
+    const double beats_per_sec = static_cast<double>(sample.bpm) / 60.0;
+    const double delta_beats = (time - state.anchor_time) * beats_per_sec;
+    sample.beats_elapsed = std::max(0.0, state.anchor_beats_elapsed + delta_beats);
+    sample.beat_phase = static_cast<float>(sample.beats_elapsed - std::floor(sample.beats_elapsed));
+
+    const double bars_elapsed = sample.beats_elapsed / static_cast<double>(sample.beats_per_bar);
+    sample.bar_phase = static_cast<float>(bars_elapsed - std::floor(bars_elapsed));
+    return sample;
+}
+
+inline GraphMetronomeSample sample_live_metronome(const LiveMetronomeStateStore& store, double time) {
+    const uint32_t index = store.active_index.load(std::memory_order_acquire) % store.states.size();
+    return sample_live_metronome(store.states[index], time);
+}
+
 struct OperatorPreset {
     std::string name;
     std::unordered_map<std::string, float> params;  // param_name -> value
@@ -196,6 +279,13 @@ public:
     void set_active_variation(int idx) { active_variation_ = idx; }
     const std::string& quantize_clock_node() const { return quantize_clock_node_; }
     void set_quantize_clock_node(const std::string& node_id) { quantize_clock_node_ = node_id; }
+    const GraphMetronomeDef& metronome() const { return metronome_; }
+    void set_metronome(const GraphMetronomeDef& metronome) { metronome_ = metronome; }
+    void set_metronome(bool enabled, float bpm, int beats_per_bar) {
+        metronome_.enabled = enabled;
+        metronome_.bpm = bpm;
+        metronome_.beats_per_bar = beats_per_bar;
+    }
 
     // Per-operator preset CRUD
     void save_preset(const std::string& node_id, const OperatorPreset& preset);
@@ -282,6 +372,7 @@ private:
     std::vector<VariationDef> variations_;
     int active_variation_ = -1;
     std::string quantize_clock_node_;
+    GraphMetronomeDef metronome_;
     std::string source_path_;
     GraphContentMeta meta_;
     std::unordered_map<std::string, std::vector<OperatorPreset>> node_presets_;

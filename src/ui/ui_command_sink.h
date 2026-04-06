@@ -80,6 +80,7 @@ public:
     virtual void move_variation(const std::string& name, int to_index) {}
     virtual void queue_variation(const std::string& name, const std::string& quantize) {}
     virtual void set_quantize_clock(const std::string& node_id) {}
+    virtual void set_graph_metronome(bool enabled, float bpm, int beats_per_bar) {}
 
     // Per-parameter lock flags
     virtual void set_param_lock(const std::string& node_id, const std::string& param, uint8_t flags) {}

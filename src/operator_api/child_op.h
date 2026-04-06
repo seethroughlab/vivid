@@ -155,6 +155,13 @@ public:
             audio_ctx.file_param_values   = nullptr;
             audio_ctx.file_param_count    = 0;
             audio_ctx.shared_handles      = nullptr;
+            audio_ctx.metronome_enabled = parent_ctx->metronome_enabled;
+            audio_ctx.metronome_bpm = parent_ctx->metronome_bpm;
+            audio_ctx.metronome_beats_per_bar = parent_ctx->metronome_beats_per_bar;
+            audio_ctx.metronome_beats_elapsed = parent_ctx->metronome_beats_elapsed;
+            audio_ctx.metronome_beat_phase = parent_ctx->metronome_beat_phase;
+            audio_ctx.metronome_bar_phase = parent_ctx->metronome_bar_phase;
+            audio_ctx.metronome_beat_ms = parent_ctx->metronome_beat_ms;
 
             op_.process_audio(&audio_ctx);
 
@@ -177,6 +184,13 @@ public:
             child_ctx.file_param_count  = 0;
             child_ctx.preferred_tex_width  = 0;
             child_ctx.preferred_tex_height = 0;
+            child_ctx.metronome_enabled = parent_ctx->metronome_enabled;
+            child_ctx.metronome_bpm = parent_ctx->metronome_bpm;
+            child_ctx.metronome_beats_per_bar = parent_ctx->metronome_beats_per_bar;
+            child_ctx.metronome_beats_elapsed = parent_ctx->metronome_beats_elapsed;
+            child_ctx.metronome_beat_phase = parent_ctx->metronome_beat_phase;
+            child_ctx.metronome_bar_phase = parent_ctx->metronome_bar_phase;
+            child_ctx.metronome_beat_ms = parent_ctx->metronome_beat_ms;
 
             op_.process_frame(&child_ctx);
         }
@@ -226,6 +240,13 @@ public:
             child_ctx.lane_index          = parent_ctx->lane_index;
             child_ctx.lane_set_id         = parent_ctx->lane_set_id;
             child_ctx.lane_id             = parent_ctx->lane_id;
+            child_ctx.metronome_enabled   = parent_ctx->metronome_enabled;
+            child_ctx.metronome_bpm       = parent_ctx->metronome_bpm;
+            child_ctx.metronome_beats_per_bar = parent_ctx->metronome_beats_per_bar;
+            child_ctx.metronome_beats_elapsed = parent_ctx->metronome_beats_elapsed;
+            child_ctx.metronome_beat_phase = parent_ctx->metronome_beat_phase;
+            child_ctx.metronome_bar_phase  = parent_ctx->metronome_bar_phase;
+            child_ctx.metronome_beat_ms    = parent_ctx->metronome_beat_ms;
 
             op_.process_audio(&child_ctx);
 
@@ -247,6 +268,13 @@ public:
             child_ctx.file_param_count  = 0;
             child_ctx.preferred_tex_width  = 0;
             child_ctx.preferred_tex_height = 0;
+            child_ctx.metronome_enabled = parent_ctx->metronome_enabled;
+            child_ctx.metronome_bpm = parent_ctx->metronome_bpm;
+            child_ctx.metronome_beats_per_bar = parent_ctx->metronome_beats_per_bar;
+            child_ctx.metronome_beats_elapsed = parent_ctx->metronome_beats_elapsed;
+            child_ctx.metronome_beat_phase = parent_ctx->metronome_beat_phase;
+            child_ctx.metronome_bar_phase = parent_ctx->metronome_bar_phase;
+            child_ctx.metronome_beat_ms = parent_ctx->metronome_beat_ms;
 
             op_.process_frame(&child_ctx);
         }

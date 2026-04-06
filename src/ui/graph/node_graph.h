@@ -128,6 +128,7 @@ public:
             || chooser_open_
             || context_menu_open_
             || patch_ctx_open_
+            || transport_bpm_editing_
             || session_editing_name_
             || session_ctx_menu_open_
             || record_dropdown_open_
@@ -410,6 +411,8 @@ private:
     static int hit_test_rect(const std::vector<RectT>& rects, float mx, float my);
 
     // --- Text editing ---
+    void confirm_transport_bpm_edit();
+    void cancel_transport_bpm_edit();
     void confirm_param_edit();
     void cancel_param_edit();
     void confirm_resolution_edit();
@@ -470,6 +473,7 @@ private:
     void update_node_drag();
     void update_wire_drag();
     void update_slider_drag();
+    void update_transport_bpm_drag();
     void update_modulation_drag();
     void update_xy_pad_drag();
     void update_color_drag();
@@ -485,6 +489,7 @@ private:
 
     // --- Input handling (node_graph_input.cpp) ---
     ActiveTextField resolve_active_text_field();
+    bool handle_transport_bpm_edit_key(int key);
     bool handle_sticky_edit_mode_key(int key, bool mod_key);
     bool handle_session_mode_key(int key, int action, int mods, bool mod_key);
     bool handle_inspector_edit_mode_key(int key);
@@ -744,9 +749,11 @@ private:
     float session_ctx_menu_y_ = 0.0f;
     int session_ctx_menu_idx_ = -1;
     // Hit-test rects
+    struct SessionCollapsedRect { float x = 0.0f, y = 0.0f, w = 0.0f, h = 0.0f; bool visible = false; };
+    SessionCollapsedRect session_collapsed_rect_;
     struct VariationCellRect { float x, y, w, h; int idx; };
     std::vector<VariationCellRect> variation_cell_rects_;
-    struct SessionButtonRect { float x, y, w, h; int action; }; // action: 0=+New, 1=Update, 2-5=quantize, 6=Branch
+    struct SessionButtonRect { float x, y, w, h; int action; bool enabled = true; }; // action: 0=+New, 1=Update, 2-5=quantize, 6=Branch
     std::vector<SessionButtonRect> session_button_rects_;
     struct SessionCtxMenuRect { float x, y, w, h; int action; }; // action: 0=Rename, 1=Duplicate, 2=Delete, 3=Branch From
     std::vector<SessionCtxMenuRect> session_ctx_menu_rects_;
@@ -855,8 +862,17 @@ private:
     int record_codec_sel_ = 0;  // 0=H.264, 1=H.265, 2=ProRes 4444
 
     struct PerfButtonRect { float x, y, w, h; int action; bool enabled; };
-    // action: 0=Record/Stop, 1=Snapshot, 2=Undo, 3=Redo, 4=Build Console
+    // action: 0=Record/Stop, 1=Snapshot, 2=Undo, 3=Redo, 4=Build Console,
+    // 5=Metronome toggle, 6=Meter-, 7=Meter+, 8=Session toggle
     std::vector<PerfButtonRect> perf_button_rects_;
+    struct TransportValueRect { float x = 0.0f, y = 0.0f, w = 0.0f, h = 0.0f; bool visible = false; };
+    TransportValueRect transport_bpm_rect_;
+    bool transport_bpm_dragging_ = false;
+    float transport_bpm_drag_start_y_ = 0.0f;
+    float transport_bpm_drag_start_bpm_ = 120.0f;
+    bool transport_bpm_editing_ = false;
+    std::string transport_bpm_edit_buffer_;
+    double transport_bpm_last_click_time_ = -1.0;
 
     // --- Sticky notes ---
     struct StickyNoteRect { std::string id; float x, y, w, h; };
