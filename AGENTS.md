@@ -39,6 +39,7 @@ Read the relevant doc for your task:
 | Task | Read First |
 |------|-----------|
 | Understanding the project | `docs/PRD.md` |
+| Navigating the codebase | `CLAUDE.md` (module map, key concepts, subsystem guides) |
 | Runtime, graph, operators, build | `docs/ARCHITECTURE.md` |
 | UI, widgets, layout, visual style | `docs/INTERFACE.md` |
 | LLM chat, MCP server, perception | `docs/LLM-INTEGRATION.md` |

@@ -29,6 +29,14 @@ static void frame_retire_lane_id_fn_bridge(void* ctx_ptr, uint32_t lane_id) {
     lsc->service->retire(lsc->node_idx, lane_id);
 }
 
+// tick() processes all frame-cadence nodes once per frame in topological order.
+//
+// Per-node steps: zero inputs → propagate upstream wire values (with lane
+// merging when lane counts match) → call process_frame() or dispatch the GPU
+// callback. Solo mode zeros non-solo GPU nodes and skips their processing.
+// Lane contexts are reinitialized each tick because a graph rebuild can produce
+// a different node layout with the same frame_order length. Retired lane IDs
+// are swept at tick start.
 void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
                          uint64_t frame, void* gpu_state,
                          PostNodeFn on_gpu_node,

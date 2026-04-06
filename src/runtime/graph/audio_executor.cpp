@@ -34,6 +34,12 @@ AudioExecutor::~AudioExecutor() {
     shutdown();
 }
 
+// build() prepares audio-side execution state from a freshly compiled graph.
+// The key structure is lane lift groups: when a pointwise audio operator has
+// multi-lane inputs (e.g. polyphonic voices), the audio executor creates
+// per-lane cloned instances so each lane processes independently through its
+// own operator state. The audio engine MUST be stopped before build() runs —
+// instance pointers are read by the callback thread without synchronization.
 bool AudioExecutor::build(AudioFrameBridge& bridge, CompiledGraph& cg) {
     bridge_ = &bridge;
     graph_ = &cg;
@@ -199,6 +205,14 @@ void AudioExecutor::process_audio_for_test(float* output, uint32_t frame_count) 
 
 // ---------------------------------------------------------------------------
 // audio_callback — the real-time audio processing loop
+//
+// Called by the audio device at ~48kHz in blocks of frame_count samples.
+// Real-time constraints: no allocation, no locking, no blocking, no I/O.
+//
+// Each call: consume the latest ParamSnapshot from the frame side (atomic
+// index swap), walk audio_order processing each node, interleave the sink
+// node's output into the device buffer, then publish AnalysisSnapshot back
+// to the frame side. Lane-lifted nodes are processed per-lane-instance.
 // ---------------------------------------------------------------------------
 
 void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {

@@ -2,6 +2,13 @@
 
 namespace vivid {
 
+// dispatch() routes incoming control server requests by method name.
+//
+// Read-only queries (inspect_graph, list_types, etc.) are checked first and
+// can execute without parsing the JSON body. Mutation handlers parse the body
+// and delegate to RuntimeAPI — they never modify Graph or RuntimeCore directly.
+// Topology-mutating commands (add_node, connect, etc.) set pending_topology_change_
+// in RuntimeAPI; the actual recompile happens between frames via apply_pending().
 std::string dispatch(const std::string& method, const std::string& body,
                             RuntimeAPI& api, Graph& graph,
                             RuntimeCore& core, OperatorRegistry& registry,

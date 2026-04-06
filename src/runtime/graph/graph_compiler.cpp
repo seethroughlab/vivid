@@ -13,6 +13,22 @@ namespace vivid {
 
 // ---------------------------------------------------------------------------
 // GraphCompiler::compile()
+//
+// Transforms a Graph (pure data model) + OperatorRegistry into a CompiledGraph
+// (live execution state) via 7 passes:
+//
+//   Pass 1:   Create CompiledNodes — instantiate operators, determine cadence
+//   Pass 2:   Resolve edges — connections become CompiledEdges with port indices
+//   Pass 2.6: Lane-set propagation — walk topo order assigning lane provenance
+//   Pass 3:   Topological sort — produce frame_order and audio_order
+//   Pass 4:   Audio channel negotiation — explicit, propagated, then planner
+//   Pass 5:   Audio buffer allocation — pre-allocate per-node planar buffers
+//   Pass 6:   Partition edges — separate into frame Direct, audio Direct, Snapshot
+//   Pass 7:   Finalize — error summary, diagnostics
+//
+// The resulting CompiledGraph is shared read-only by FrameExecutor and
+// AudioExecutor. It is never mutated during execution — any topology change
+// triggers a full recompile.
 // ---------------------------------------------------------------------------
 
 std::unique_ptr<CompiledGraph> GraphCompiler::compile(
