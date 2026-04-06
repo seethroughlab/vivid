@@ -617,7 +617,7 @@ bool NodeGraphUI::handle_inspector_click() {
                     } else {
                         inspector_.edit_buffer = format_float(ns->param_values[it->second], 2);
                     }
-                    text_edit_.reset(static_cast<int>(inspector_.edit_buffer.size()));
+                    text_edit_.select_all(static_cast<int>(inspector_.edit_buffer.size()));
                     break;
                 }
             }
