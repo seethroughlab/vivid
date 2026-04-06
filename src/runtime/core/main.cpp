@@ -2535,8 +2535,16 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
 
         if (have_surface) {
             // Poll async package action completion (main thread only).
-            mi::poll_package_browser_actions(app_ctx, package_browser_state,
-                                             graph_transaction_active);
+            // Wrapped in try/catch — package browser operations are non-critical
+            // and must never crash the app (e.g. filesystem errors during example discovery).
+            try {
+                mi::poll_package_browser_actions(app_ctx, package_browser_state,
+                                                 graph_transaction_active);
+            } catch (const std::exception& ex) {
+                std::fprintf(stderr, "[vivid] package browser poll error: %s\n", ex.what());
+            } catch (...) {
+                std::fprintf(stderr, "[vivid] package browser poll: unknown error\n");
+            }
 
             // --- Surface presentation path ---
             if (has_gpu_ops && video_out_idx >= 0) {

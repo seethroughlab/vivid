@@ -206,8 +206,12 @@ discover_examples_recursive(const std::filesystem::path& graphs_root) {
     std::vector<vivid::ExampleEntry> out;
     std::error_code ec;
     if (!std::filesystem::is_directory(graphs_root, ec)) return out;
-    for (const auto& e : std::filesystem::recursive_directory_iterator(graphs_root, ec)) {
-        if (ec) break;
+    auto opts = std::filesystem::directory_options::skip_permission_denied;
+    auto it = std::filesystem::recursive_directory_iterator(graphs_root, opts, ec);
+    if (ec) return out;
+    for (auto end = std::filesystem::recursive_directory_iterator(); it != end; it.increment(ec)) {
+        if (ec) { ec.clear(); continue; }
+        const auto& e = *it;
         if (!e.is_regular_file()) continue;
         if (e.path().extension() != ".json") continue;
         vivid::ExampleEntry item;
