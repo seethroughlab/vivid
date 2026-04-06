@@ -1220,14 +1220,14 @@ void DialogManager::draw_package_browser(Renderer2D& tr, const MouseState& mouse
 
     float cx = layout.cx;
     float inner_w = layout.inner_w;
-    float cy = py + kPkgBrowserPadY;
 
-    tr.draw_text(cx, cy + 6, T("packages", "Packages"),
+    // All Y positions come from the layout struct.
+    tr.draw_text(cx, layout.header_y + 6, T("packages", "Packages"),
                  style.bright_text[0], style.bright_text[1], style.bright_text[2]);
 
     static const float kLinkBtnW = 96.0f;
     float link_btn_x = cx + inner_w - kLinkBtnW;
-    float link_btn_y = cy + (kPkgBrowserHeaderH - kPkgBrowserBtnH) / 2.0f - 2.0f;
+    float link_btn_y = layout.header_y + (kPkgBrowserHeaderH - kPkgBrowserBtnH) / 2.0f - 2.0f;
     bool link_btn_hovered = mouse.x >= link_btn_x && mouse.x <= link_btn_x + kLinkBtnW &&
                             mouse.y >= link_btn_y && mouse.y <= link_btn_y + kPkgBrowserBtnH;
     tr.draw_rect(link_btn_x, link_btn_y, kLinkBtnW, kPkgBrowserBtnH,
@@ -1239,31 +1239,31 @@ void DialogManager::draw_package_browser(Renderer2D& tr, const MouseState& mouse
     tr.draw_text(link_lbl_x, link_btn_y + 3, T("link_local", "Link Local..."),
                  style.bright_text[0], style.bright_text[1], style.bright_text[2]);
 
-    cy += kPkgBrowserHeaderH;
-
-    if (pkg_browser.search_focused) {
-        tr.draw_rect(cx - 1, cy - 1, inner_w + 2, kPkgBrowserSearchH + 2,
-                     style.accent[0], style.accent[1], style.accent[2]);
-        tr.draw_rect(cx, cy, inner_w, kPkgBrowserSearchH,
-                     style.input_field_bg[0], style.input_field_bg[1], style.input_field_bg[2]);
-        std::string search_display = pkg_browser.filter;
-        search_display += (static_cast<int>(frame_counter_ / 30) % 2 == 0) ? "_" : " ";
-        tr.draw_text(cx + 4, cy + 5, search_display.c_str(),
-                     style.bright_text[0], style.bright_text[1], style.bright_text[2]);
-    } else {
-        tr.draw_rect(cx, cy, inner_w, kPkgBrowserSearchH,
-                     style.input_field_bg[0], style.input_field_bg[1], style.input_field_bg[2]);
-        tr.draw_rect(cx, cy, inner_w, 1,
-                     style.accent[0], style.accent[1], style.accent[2]);
-        if (pkg_browser.filter.empty()) {
-            tr.draw_text(cx + 4, cy + 5, T("search_packages", "Search packages..."),
-                         style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.5f);
-        } else {
-            tr.draw_text(cx + 4, cy + 5, pkg_browser.filter.c_str(),
+    {
+        float sy = layout.search_y;
+        if (pkg_browser.search_focused) {
+            tr.draw_rect(cx - 1, sy - 1, inner_w + 2, kPkgBrowserSearchH + 2,
+                         style.accent[0], style.accent[1], style.accent[2]);
+            tr.draw_rect(cx, sy, inner_w, kPkgBrowserSearchH,
+                         style.input_field_bg[0], style.input_field_bg[1], style.input_field_bg[2]);
+            std::string search_display = pkg_browser.filter;
+            search_display += (static_cast<int>(frame_counter_ / 30) % 2 == 0) ? "_" : " ";
+            tr.draw_text(cx + 4, sy + 5, search_display.c_str(),
                          style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+        } else {
+            tr.draw_rect(cx, sy, inner_w, kPkgBrowserSearchH,
+                         style.input_field_bg[0], style.input_field_bg[1], style.input_field_bg[2]);
+            tr.draw_rect(cx, sy, inner_w, 1,
+                         style.accent[0], style.accent[1], style.accent[2]);
+            if (pkg_browser.filter.empty()) {
+                tr.draw_text(cx + 4, sy + 5, T("search_packages", "Search packages..."),
+                             style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.5f);
+            } else {
+                tr.draw_text(cx + 4, sy + 5, pkg_browser.filter.c_str(),
+                             style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+            }
         }
     }
-    cy += kPkgBrowserSearchH + 6;
 
     const char* tab_labels[] = { T("tab_all", "All"), T("tab_audio", "Audio"), T("tab_gpu", "GPU"), T("tab_control", "Control"), T("tab_utility", "Utility"), T("installed", "Installed") };
     static const int tab_count = 6;
@@ -1273,12 +1273,11 @@ void DialogManager::draw_package_browser(Renderer2D& tr, const MouseState& mouse
         bool selected = (i == pkg_browser.category);
         float approx_tw = tr.text_width(tab_labels[i]) + 16.0f;
         bool hovered = mouse.x >= tab_x && mouse.x <= tab_x + approx_tw &&
-                       mouse.y >= cy && mouse.y <= cy + kPkgBrowserTabH;
-        float tw = draw_tab_button(tr, style, tab_x, cy, kPkgBrowserTabH, tab_labels[i], selected, hovered);
+                       mouse.y >= layout.tabs_y && mouse.y <= layout.tabs_y + kPkgBrowserTabH;
+        float tw = draw_tab_button(tr, style, tab_x, layout.tabs_y, kPkgBrowserTabH, tab_labels[i], selected, hovered);
         pkg_browser.tab_widths[i] = tw;
         tab_x += tw + tab_gap;
     }
-    cy += kPkgBrowserTabH + 8;
 
     float list_top = layout.list_top;
     int total = static_cast<int>(pkg_browser.entries.size());
@@ -1315,7 +1314,7 @@ void DialogManager::draw_package_browser(Renderer2D& tr, const MouseState& mouse
         const char* state = entry.needs_rebuild ? T("needs_rebuild", "Try Rebuild")
                           : entry.linked        ? T("linked", "Linked")
                           :                       T("installed", "Installed");
-        const float chip_w = tr.text_width(state) + 16.0f;
+        const float chip_w = tr.text_width(state);
         float available_name_w = text_w - 8.0f - ver_w;
         if (entry.installed) available_name_w -= (10.0f + chip_w);
         std::string display_name = fit_text_to_width(tr, entry.name, available_name_w);
@@ -1326,16 +1325,10 @@ void DialogManager::draw_package_browser(Renderer2D& tr, const MouseState& mouse
                      style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.7f);
         if (entry.installed) {
             float state_x = text_left + name_w + 8 + ver_w + 10.0f;
-            bool error_chip = entry.needs_rebuild;
-            tr.draw_rect(state_x, iy + 4, chip_w, 16.0f,
-                         error_chip   ? kErrorAccent[0] : entry.linked ? style.accent[0] : style.button_bg[0],
-                         error_chip   ? kErrorAccent[1] : entry.linked ? style.accent[1] : style.button_bg[1],
-                         error_chip   ? kErrorAccent[2] : entry.linked ? style.accent[2] : style.button_bg[2],
-                         error_chip   ? 0.85f : entry.linked ? 0.85f : 0.75f);
-            tr.draw_text(state_x + 6.0f, iy + 6, state,
-                         error_chip   ? 1.0f : entry.linked ? 0.0f : style.bright_text[0],
-                         error_chip   ? 1.0f : entry.linked ? 0.0f : style.bright_text[1],
-                         error_chip   ? 1.0f : entry.linked ? 0.0f : style.bright_text[2],
+            tr.draw_text(state_x, iy + 6, state,
+                         entry.needs_rebuild ? kErrorAccent[0] : entry.linked ? style.accent[0] : style.dim_text[0],
+                         entry.needs_rebuild ? kErrorAccent[1] : entry.linked ? style.accent[1] : style.dim_text[1],
+                         entry.needs_rebuild ? kErrorAccent[2] : entry.linked ? style.accent[2] : style.dim_text[2],
                          0.9f);
         }
 
@@ -1524,96 +1517,94 @@ void DialogManager::draw_example_browser(Renderer2D& tr, const MouseState& mouse
 
     float cx = layout.cx;
     float inner_w = layout.inner_w;
-    float cy = py + kPkgBrowserPadY;
 
-    tr.draw_text(cx, cy + 6, T("open_example", "Open Example"),
+    // All Y positions come from the layout struct — no local cy accumulation.
+    tr.draw_text(cx, layout.header_y + 6, T("open_example", "Open Example"),
                  style.bright_text[0], style.bright_text[1], style.bright_text[2]);
-    cy += kPkgBrowserHeaderH;
 
-    if (example_browser.search_focused) {
-        tr.draw_rect(cx - 1, cy - 1, inner_w + 2, kPkgBrowserSearchH + 2,
-                     style.accent[0], style.accent[1], style.accent[2]);
-        tr.draw_rect(cx, cy, inner_w, kPkgBrowserSearchH,
-                     style.input_field_bg[0], style.input_field_bg[1], style.input_field_bg[2]);
-        std::string s = example_browser.filter;
-        s += (static_cast<int>(frame_counter_ / 30) % 2 == 0) ? "_" : " ";
-        tr.draw_text(cx + 4, cy + 5, s.c_str(),
-                     style.bright_text[0], style.bright_text[1], style.bright_text[2]);
-    } else {
-        tr.draw_rect(cx, cy, inner_w, kPkgBrowserSearchH,
-                     style.input_field_bg[0], style.input_field_bg[1], style.input_field_bg[2]);
-        tr.draw_rect(cx, cy, inner_w, 1, style.accent[0], style.accent[1], style.accent[2]);
-        if (example_browser.filter.empty()) {
-            tr.draw_text(cx + 4, cy + 5, T("search_examples", "Search by title, tags, id, path..."),
-                         style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.55f);
-        } else {
-            tr.draw_text(cx + 4, cy + 5, example_browser.filter.c_str(),
+    {
+        float sy = layout.search_y;
+        if (example_browser.search_focused) {
+            tr.draw_rect(cx - 1, sy - 1, inner_w + 2, kPkgBrowserSearchH + 2,
+                         style.accent[0], style.accent[1], style.accent[2]);
+            tr.draw_rect(cx, sy, inner_w, kPkgBrowserSearchH,
+                         style.input_field_bg[0], style.input_field_bg[1], style.input_field_bg[2]);
+            std::string s = example_browser.filter;
+            s += (static_cast<int>(frame_counter_ / 30) % 2 == 0) ? "_" : " ";
+            tr.draw_text(cx + 4, sy + 5, s.c_str(),
                          style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+        } else {
+            tr.draw_rect(cx, sy, inner_w, kPkgBrowserSearchH,
+                         style.input_field_bg[0], style.input_field_bg[1], style.input_field_bg[2]);
+            tr.draw_rect(cx, sy, inner_w, 1, style.accent[0], style.accent[1], style.accent[2]);
+            if (example_browser.filter.empty()) {
+                tr.draw_text(cx + 4, sy + 5, T("search_examples", "Search by title, tags, id, path..."),
+                             style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.55f);
+            } else {
+                tr.draw_text(cx + 4, sy + 5, example_browser.filter.c_str(),
+                             style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+            }
         }
     }
-    cy += kPkgBrowserSearchH + 6;
 
     const char* kind_tabs[] = { T("tab_all", "All"), T("tab_instruments", "Instruments"), T("tab_examples", "Examples") };
     float tx = cx;
     for (int i = 0; i < 3; ++i) {
         bool sel = (i == example_browser.kind);
-        float tw = draw_tab_button(tr, style, tx, cy, kPkgBrowserTabH, kind_tabs[i], sel, false);
+        float tw = draw_tab_button(tr, style, tx, layout.tabs_y, kPkgBrowserTabH, kind_tabs[i], sel, false);
         example_browser.kind_tab_widths[i] = tw;
         tx += tw + 4.0f;
     }
-    cy += kPkgBrowserTabH + 8;
 
     const char* env_tabs[] = { T("tab_all", "All"), T("tab_gpu", "GPU"), T("tab_audio", "Audio"), T("tab_control", "Control"), T("tab_io", "I/O") };
     tx = cx;
     for (int i = 0; i < 5; ++i) {
         bool sel = (i == example_browser.env);
-        float tw = draw_tab_button(tr, style, tx, cy, kPkgBrowserTabH, env_tabs[i], sel, false);
+        float tw = draw_tab_button(tr, style, tx, layout.tabs2_y, kPkgBrowserTabH, env_tabs[i], sel, false);
         example_browser.env_tab_widths[i] = tw;
         tx += tw + 4.0f;
     }
-    cy += kPkgBrowserTabH + 8;
 
     const char* diff_tabs[] = { T("tab_all", "All"), T("tab_beginner", "Beginner"), T("tab_intermediate", "Intermediate"), T("tab_advanced", "Advanced") };
     tx = cx;
     for (int i = 0; i < 4; ++i) {
         bool sel = (i == example_browser.difficulty);
-        float tw = draw_tab_button(tr, style, tx, cy, kPkgBrowserTabH, diff_tabs[i], sel, false);
+        float tw = draw_tab_button(tr, style, tx, layout.tabs3_y, kPkgBrowserTabH, diff_tabs[i], sel, false);
         example_browser.diff_tab_widths[i] = tw;
         tx += tw + 4.0f;
     }
 
     float toggle_w = 88.0f;
     float toggles_x = cx + inner_w - 210.0f;
-    tr.draw_rect(toggles_x, cy, toggle_w, kPkgBrowserTabH,
+    tr.draw_rect(toggles_x, layout.tabs3_y, toggle_w, kPkgBrowserTabH,
                  example_browser.core_only ? style.accent[0] : style.button_bg[0],
                  example_browser.core_only ? style.accent[1] : style.button_bg[1],
                  example_browser.core_only ? style.accent[2] : style.button_bg[2],
                  example_browser.core_only ? 0.9f : 0.65f);
-    tr.draw_text(toggles_x + 8, cy + 3, T("core_only", "Core only"),
+    tr.draw_text(toggles_x + 8, layout.tabs3_y + 3, T("core_only", "Core only"),
                  example_browser.core_only ? 0.0f : style.dim_text[0],
                  example_browser.core_only ? 0.0f : style.dim_text[1],
                  example_browser.core_only ? 0.0f : style.dim_text[2]);
-    tr.draw_rect(toggles_x + toggle_w + 6.0f, cy, toggle_w, kPkgBrowserTabH,
+    tr.draw_rect(toggles_x + toggle_w + 6.0f, layout.tabs3_y, toggle_w, kPkgBrowserTabH,
                  example_browser.package_only ? style.accent[0] : style.button_bg[0],
                  example_browser.package_only ? style.accent[1] : style.button_bg[1],
                  example_browser.package_only ? style.accent[2] : style.button_bg[2],
                  example_browser.package_only ? 0.9f : 0.65f);
-    tr.draw_text(toggles_x + toggle_w + 14.0f, cy + 3, T("package", "Package"),
+    tr.draw_text(toggles_x + toggle_w + 14.0f, layout.tabs3_y + 3, T("package", "Package"),
                  example_browser.package_only ? 0.0f : style.dim_text[0],
                  example_browser.package_only ? 0.0f : style.dim_text[1],
                  example_browser.package_only ? 0.0f : style.dim_text[2]);
-    cy += kPkgBrowserTabH + 8;
 
     const char* sort_tabs[] = { T("tab_featured", "Featured"), T("tab_az", "A-Z") };
     tx = cx;
     for (int i = 0; i < 2; ++i) {
         bool sel = (i == example_browser.sort);
-        float tw = draw_tab_button(tr, style, tx, cy, kPkgBrowserTabH, sort_tabs[i], sel, false);
+        float tw = draw_tab_button(tr, style, tx, layout.tabs4_y, kPkgBrowserTabH, sort_tabs[i], sel, false);
         example_browser.sort_tab_widths[i] = tw;
         tx += tw + 4.0f;
     }
-    cy += kPkgBrowserTabH + 8;
 
+    float cy = layout.list_top;
     int total = static_cast<int>(example_browser.entries.size());
     float ex_list_area_h = layout.visible_count * kPkgBrowserItemH;
     int ex_first = std::max(0, static_cast<int>(std::floor(example_browser.scroll / kPkgBrowserItemH)));

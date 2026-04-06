@@ -996,10 +996,9 @@ void DialogManager::update_package_browser(MouseState& mouse, uint32_t win_w, ui
         return;
     }
 
-    // Search field click-to-focus
-    float search_cy = py + kPkgBrowserPadY + kPkgBrowserHeaderH;
+    // Search field click-to-focus — use layout position
     if (mouse.x >= cx && mouse.x <= cx + inner_w &&
-        mouse.y >= search_cy && mouse.y <= search_cy + kPkgBrowserSearchH) {
+        mouse.y >= layout.search_y && mouse.y <= layout.search_y + kPkgBrowserSearchH) {
         pkg_browser.search_focused = true;
         mouse.left_clicked = false;
         mouse.left_released = false;
@@ -1021,10 +1020,10 @@ void DialogManager::update_package_browser(MouseState& mouse, uint32_t win_w, ui
         }
     }
 
-    // Hit-test "Link Local..." button
+    // Hit-test "Link Local..." button — use layout position
     static const float kLinkBtnW = 96.0f;
     float link_btn_x = cx + inner_w - kLinkBtnW;
-    float link_btn_y = py + kPkgBrowserPadY + (kPkgBrowserHeaderH - kPkgBrowserBtnH) / 2.0f - 2.0f;
+    float link_btn_y = layout.header_y + (kPkgBrowserHeaderH - kPkgBrowserBtnH) / 2.0f - 2.0f;
     if (mouse.x >= link_btn_x && mouse.x <= link_btn_x + kLinkBtnW &&
         mouse.y >= link_btn_y && mouse.y <= link_btn_y + kPkgBrowserBtnH) {
         mouse.left_clicked = false;
@@ -1037,7 +1036,7 @@ void DialogManager::update_package_browser(MouseState& mouse, uint32_t win_w, ui
         return;
     }
 
-    float cy = py + kPkgBrowserPadY + kPkgBrowserHeaderH + kPkgBrowserSearchH + 6;
+    // Tab hit-testing — use layout position
     static const char* tab_labels[] = { "All", "Audio", "GPU", "Control", "Utility", "Installed" };
     float tab_x = cx;
     float tab_gap = 4.0f;
@@ -1045,7 +1044,7 @@ void DialogManager::update_package_browser(MouseState& mouse, uint32_t win_w, ui
         float tw = pkg_browser.tab_widths[i] > 0 ? pkg_browser.tab_widths[i]
                  : static_cast<float>(std::strlen(tab_labels[i])) * 8.0f + 16.0f;
         if (mouse.x >= tab_x && mouse.x <= tab_x + tw &&
-            mouse.y >= cy && mouse.y <= cy + kPkgBrowserTabH) {
+            mouse.y >= layout.tabs_y && mouse.y <= layout.tabs_y + kPkgBrowserTabH) {
             pkg_browser.category = i;
             pkg_browser.scroll = 0;
             pkg_browser.sel = 0;
@@ -1149,10 +1148,9 @@ void DialogManager::update_example_browser(MouseState& mouse, uint32_t win_w, ui
         return;
     }
 
-    // Search field click-to-focus
-    float search_cy = py + kPkgBrowserPadY + kPkgBrowserHeaderH;
+    // Search field click-to-focus — use layout position
     if (mouse.x >= cx && mouse.x <= cx + inner_w &&
-        mouse.y >= search_cy && mouse.y <= search_cy + kPkgBrowserSearchH) {
+        mouse.y >= layout.search_y && mouse.y <= layout.search_y + kPkgBrowserSearchH) {
         example_browser.search_focused = true;
         mouse.left_clicked = false;
         mouse.left_released = false;
@@ -1160,14 +1158,13 @@ void DialogManager::update_example_browser(MouseState& mouse, uint32_t win_w, ui
     }
     example_browser.search_focused = false;
 
-    float cy = py + kPkgBrowserPadY + kPkgBrowserHeaderH + kPkgBrowserSearchH + 6;
-
+    // All tab/list Y positions come from the layout struct.
     static const char* kind_tabs[] = { "All", "Instruments", "Examples" };
     float tx = cx;
     for (int i = 0; i < 3; ++i) {
         float tw = example_browser.kind_tab_widths[i] > 0 ? example_browser.kind_tab_widths[i]
                  : static_cast<float>(std::strlen(kind_tabs[i])) * 8.0f + 16.0f;
-        if (mouse.x >= tx && mouse.x <= tx + tw && mouse.y >= cy && mouse.y <= cy + kPkgBrowserTabH) {
+        if (mouse.x >= tx && mouse.x <= tx + tw && mouse.y >= layout.tabs_y && mouse.y <= layout.tabs_y + kPkgBrowserTabH) {
             example_browser.kind = i;
             example_browser.scroll = 0;
             example_browser.sel = 0;
@@ -1178,14 +1175,13 @@ void DialogManager::update_example_browser(MouseState& mouse, uint32_t win_w, ui
         }
         tx += tw + 4.0f;
     }
-    cy += kPkgBrowserTabH + 8;
 
     static const char* env_tabs[] = { "All", "GPU", "Audio", "Control", "I/O" };
     tx = cx;
     for (int i = 0; i < 5; ++i) {
         float tw = example_browser.env_tab_widths[i] > 0 ? example_browser.env_tab_widths[i]
                  : static_cast<float>(std::strlen(env_tabs[i])) * 8.0f + 16.0f;
-        if (mouse.x >= tx && mouse.x <= tx + tw && mouse.y >= cy && mouse.y <= cy + kPkgBrowserTabH) {
+        if (mouse.x >= tx && mouse.x <= tx + tw && mouse.y >= layout.tabs2_y && mouse.y <= layout.tabs2_y + kPkgBrowserTabH) {
             example_browser.env = i;
             example_browser.scroll = 0;
             example_browser.sel = 0;
@@ -1196,14 +1192,13 @@ void DialogManager::update_example_browser(MouseState& mouse, uint32_t win_w, ui
         }
         tx += tw + 4.0f;
     }
-    cy += kPkgBrowserTabH + 8;
 
     static const char* diff_tabs[] = { "All", "Beginner", "Intermediate", "Advanced" };
     tx = cx;
     for (int i = 0; i < 4; ++i) {
         float tw = example_browser.diff_tab_widths[i] > 0 ? example_browser.diff_tab_widths[i]
                  : static_cast<float>(std::strlen(diff_tabs[i])) * 8.0f + 16.0f;
-        if (mouse.x >= tx && mouse.x <= tx + tw && mouse.y >= cy && mouse.y <= cy + kPkgBrowserTabH) {
+        if (mouse.x >= tx && mouse.x <= tx + tw && mouse.y >= layout.tabs3_y && mouse.y <= layout.tabs3_y + kPkgBrowserTabH) {
             example_browser.difficulty = i;
             example_browser.scroll = 0;
             example_browser.sel = 0;
@@ -1218,7 +1213,7 @@ void DialogManager::update_example_browser(MouseState& mouse, uint32_t win_w, ui
     float right_x = cx + inner_w - 210.0f;
     float toggle_w = 88.0f;
     if (mouse.x >= right_x && mouse.x <= right_x + toggle_w &&
-        mouse.y >= cy && mouse.y <= cy + kPkgBrowserTabH) {
+        mouse.y >= layout.tabs3_y && mouse.y <= layout.tabs3_y + kPkgBrowserTabH) {
         example_browser.core_only = !example_browser.core_only;
         if (example_browser.core_only) example_browser.package_only = false;
         rebuild_example_items();
@@ -1227,7 +1222,7 @@ void DialogManager::update_example_browser(MouseState& mouse, uint32_t win_w, ui
         return;
     }
     if (mouse.x >= right_x + toggle_w + 6.0f && mouse.x <= right_x + 2 * toggle_w + 6.0f &&
-        mouse.y >= cy && mouse.y <= cy + kPkgBrowserTabH) {
+        mouse.y >= layout.tabs3_y && mouse.y <= layout.tabs3_y + kPkgBrowserTabH) {
         example_browser.package_only = !example_browser.package_only;
         if (example_browser.package_only) example_browser.core_only = false;
         rebuild_example_items();
@@ -1235,13 +1230,12 @@ void DialogManager::update_example_browser(MouseState& mouse, uint32_t win_w, ui
         mouse.left_released = false;
         return;
     }
-    cy += kPkgBrowserTabH + 8;
 
     float sort_x = cx;
     float sort_w0 = example_browser.sort_tab_widths[0] > 0 ? example_browser.sort_tab_widths[0] : 92.0f;
     float sort_w1 = example_browser.sort_tab_widths[1] > 0 ? example_browser.sort_tab_widths[1] : 104.0f;
     if (mouse.x >= sort_x && mouse.x <= sort_x + sort_w0 &&
-        mouse.y >= cy && mouse.y <= cy + kPkgBrowserTabH) {
+        mouse.y >= layout.tabs4_y && mouse.y <= layout.tabs4_y + kPkgBrowserTabH) {
         example_browser.sort = 0;
         rebuild_example_items();
         mouse.left_clicked = false;
@@ -1249,15 +1243,15 @@ void DialogManager::update_example_browser(MouseState& mouse, uint32_t win_w, ui
         return;
     }
     if (mouse.x >= sort_x + sort_w0 + 4.0f && mouse.x <= sort_x + sort_w0 + 4.0f + sort_w1 &&
-        mouse.y >= cy && mouse.y <= cy + kPkgBrowserTabH) {
+        mouse.y >= layout.tabs4_y && mouse.y <= layout.tabs4_y + kPkgBrowserTabH) {
         example_browser.sort = 1;
         rebuild_example_items();
         mouse.left_clicked = false;
         mouse.left_released = false;
         return;
     }
-    cy += kPkgBrowserTabH + 8;
 
+    float cy = layout.list_top;
     if (!example_browser.entries.empty()) {
         float ex_list_area_h = visible_count * kPkgBrowserItemH;
         int idx = static_cast<int>(std::floor((mouse.y - cy + example_browser.scroll) / kPkgBrowserItemH));

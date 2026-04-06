@@ -23,6 +23,8 @@ struct OverlayPanelLayout {
     float inner_w = 0.0f;
     int visible_count = 0;
     float list_h = 0.0f;
+    float header_y = 0.0f;
+    float search_y = 0.0f;
     float list_top = 0.0f;
     float preview_top = 0.0f;
     float preview_h = 0.0f;

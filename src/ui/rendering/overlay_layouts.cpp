@@ -39,17 +39,33 @@ OverlayPanelLayout compute_package_browser_layout(uint32_t win_w, uint32_t win_h
     l.hf = static_cast<float>(win_h);
     l.visible_count = std::min(static_cast<int>(entry_count), kPkgBrowserMaxVisible);
     l.list_h = l.visible_count * kPkgBrowserItemH;
-    float content_h = kPkgBrowserPadY + kPkgBrowserHeaderH + kPkgBrowserSearchH + 6.0f
-                    + kPkgBrowserTabH + 8.0f + l.list_h + 8.0f + 18.0f + kPkgBrowserPadY;
+
+    // Build positions with a single cursor (relative to panel top)
+    float cy = kPkgBrowserPadY;
+    float header_y = cy;
+    cy += kPkgBrowserHeaderH;
+    float search_y = cy;
+    cy += kPkgBrowserSearchH + 6.0f;
+    float tabs_y = cy;
+    cy += kPkgBrowserTabH + 8.0f;
+    float list_top = cy;
+    cy += l.list_h;
+    cy += 8.0f + 18.0f + kPkgBrowserPadY;  // status + bottom pad
+    float content_h = cy;
+
     l.pw = kPkgBrowserW;
     l.ph = std::min(kPkgBrowserMaxH, std::min(content_h, l.hf - 40.0f));
     l.px = (l.wf - l.pw) * 0.5f;
     l.py = (l.hf - l.ph) * 0.5f;
     l.cx = l.px + kPkgBrowserPadX;
     l.inner_w = l.pw - 2.0f * kPkgBrowserPadX;
-    l.tabs_y = l.py + kPkgBrowserPadY + kPkgBrowserHeaderH + kPkgBrowserSearchH + 6.0f;
-    l.list_top = l.tabs_y + kPkgBrowserTabH + 8.0f;
-    l.status_y = l.list_top + l.visible_count * kPkgBrowserItemH + 8.0f;
+
+    // Absolute positions = panel top + relative offsets
+    l.header_y = l.py + header_y;
+    l.search_y = l.py + search_y;
+    l.tabs_y = l.py + tabs_y;
+    l.list_top = l.py + list_top;
+    l.status_y = l.list_top + l.list_h + 8.0f;
     return l;
 }
 
@@ -60,24 +76,35 @@ OverlayPanelLayout compute_example_browser_layout(uint32_t win_w, uint32_t win_h
     l.wf = static_cast<float>(win_w);
     l.hf = static_cast<float>(win_h);
     l.visible_count = std::min(static_cast<int>(entry_count), kPkgBrowserMaxVisible);
-    l.list_h = l.visible_count * kPkgBrowserItemH;
     const size_t visible_preview_rows = std::min<size_t>(preview_row_count, 3);
     l.preview_h = visible_preview_rows == 0 ? 0.0f
                 : (8.0f + 16.0f + static_cast<float>(visible_preview_rows) * 18.0f + 8.0f);
-    float content_h = kPkgBrowserPadY + kPkgBrowserHeaderH + kPkgBrowserSearchH + 6.0f
-                    + kPkgBrowserTabH + 8.0f + kPkgBrowserTabH + 8.0f
-                    + kPkgBrowserTabH + 8.0f + kPkgBrowserTabH + 8.0f
-                    + l.list_h
-                    + (l.preview_h > 0.0f ? 8.0f + l.preview_h : 0.0f)
-                    + 8.0f + 18.0f + kPkgBrowserPadY;
+
+    // Build positions with a single cursor (relative to panel top).
+    // Every element's Y is derived from this cursor — no separate sum to keep in sync.
+    float cy = kPkgBrowserPadY;
+    float header_y = cy;
+    cy += kPkgBrowserHeaderH;
+    float search_y = cy;
+    cy += kPkgBrowserSearchH + 6.0f;
+    float tabs_y = cy;
+    cy += kPkgBrowserTabH + 8.0f;
+    float tabs2_y = cy;
+    cy += kPkgBrowserTabH + 8.0f;
+    float tabs3_y = cy;
+    cy += kPkgBrowserTabH + 8.0f;
+    float tabs4_y = cy;
+    cy += kPkgBrowserTabH + 8.0f;
+    float list_top = cy;
+    // list_h filled in below after clamping
+    float fixed_above = cy;
+    float fixed_below = (l.preview_h > 0.0f ? 8.0f + l.preview_h : 0.0f)
+                      + 8.0f + 18.0f + kPkgBrowserPadY;
+
     l.pw = kPkgBrowserW + 120.0f;
     float max_ph = std::min(kPkgBrowserMaxH + 70.0f, l.hf - 40.0f);
 
-    // If panel height is constrained, reduce visible items to fit
-    float fixed_above = kPkgBrowserPadY + kPkgBrowserHeaderH + kPkgBrowserSearchH + 6.0f
-                      + 4.0f * (kPkgBrowserTabH + 8.0f);
-    float fixed_below = (l.preview_h > 0.0f ? 8.0f + l.preview_h : 0.0f)
-                      + 8.0f + 18.0f + kPkgBrowserPadY;
+    // Reduce visible items if panel height is constrained
     float avail_for_list = max_ph - fixed_above - fixed_below;
     int max_fit = std::max(1, static_cast<int>(std::floor(avail_for_list / kPkgBrowserItemH)));
     l.visible_count = std::min(l.visible_count, max_fit);
@@ -88,12 +115,16 @@ OverlayPanelLayout compute_example_browser_layout(uint32_t win_w, uint32_t win_h
     l.py = (l.hf - l.ph) * 0.5f;
     l.cx = l.px + kPkgBrowserPadX;
     l.inner_w = l.pw - 2.0f * kPkgBrowserPadX;
-    l.tabs_y = l.py + kPkgBrowserPadY + kPkgBrowserHeaderH + kPkgBrowserSearchH + 6.0f;
-    l.tabs2_y = l.tabs_y + kPkgBrowserTabH + 8.0f;
-    l.tabs3_y = l.tabs2_y + kPkgBrowserTabH + 8.0f;
-    l.tabs4_y = l.tabs3_y + kPkgBrowserTabH + 8.0f;
-    l.list_top = l.tabs4_y + kPkgBrowserTabH + 8.0f;
-    l.preview_top = l.list_top + l.visible_count * kPkgBrowserItemH + 8.0f;
+
+    // Absolute positions = panel top + relative offsets
+    l.header_y = l.py + header_y;
+    l.search_y = l.py + search_y;
+    l.tabs_y = l.py + tabs_y;
+    l.tabs2_y = l.py + tabs2_y;
+    l.tabs3_y = l.py + tabs3_y;
+    l.tabs4_y = l.py + tabs4_y;
+    l.list_top = l.py + list_top;
+    l.preview_top = l.list_top + l.list_h + 8.0f;
     l.status_y = l.preview_top + (l.preview_h > 0.0f ? l.preview_h + 8.0f : 0.0f);
     return l;
 }
@@ -119,8 +150,16 @@ OverlayPanelLayout compute_about_layout(uint32_t win_w, uint32_t win_h) {
     l.py = (l.hf - l.ph) * 0.5f;
     l.cx = l.px + 20.0f;
     l.inner_w = l.pw - 40.0f;
-    // Header: title (22px) + version (16px) + copyright (18px) + separator+gap (11px) = 67px + top pad 17px = 84px
-    l.list_top = l.py + 84.0f;
+
+    // Header cursor: title + version + copyright + separator
+    float cy = 17.0f;       // top pad
+    l.header_y = l.py + cy;
+    cy += 22.0f;             // title
+    cy += 16.0f;             // version
+    cy += 18.0f;             // copyright
+    cy += 11.0f;             // separator + gap
+
+    l.list_top = l.py + cy;
     l.status_y = l.py + l.ph - 44.0f;
     l.list_h = l.status_y - l.list_top - 8.0f;
     return l;
