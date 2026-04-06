@@ -71,7 +71,19 @@ OverlayPanelLayout compute_example_browser_layout(uint32_t win_w, uint32_t win_h
                     + (l.preview_h > 0.0f ? 8.0f + l.preview_h : 0.0f)
                     + 8.0f + 18.0f + kPkgBrowserPadY;
     l.pw = kPkgBrowserW + 120.0f;
-    l.ph = std::min(kPkgBrowserMaxH + 70.0f, std::min(content_h, l.hf - 40.0f));
+    float max_ph = std::min(kPkgBrowserMaxH + 70.0f, l.hf - 40.0f);
+
+    // If panel height is constrained, reduce visible items to fit
+    float fixed_above = kPkgBrowserPadY + kPkgBrowserHeaderH + kPkgBrowserSearchH + 6.0f
+                      + 4.0f * (kPkgBrowserTabH + 8.0f);
+    float fixed_below = (l.preview_h > 0.0f ? 8.0f + l.preview_h : 0.0f)
+                      + 8.0f + 18.0f + kPkgBrowserPadY;
+    float avail_for_list = max_ph - fixed_above - fixed_below;
+    int max_fit = std::max(1, static_cast<int>(std::floor(avail_for_list / kPkgBrowserItemH)));
+    l.visible_count = std::min(l.visible_count, max_fit);
+    l.list_h = l.visible_count * kPkgBrowserItemH;
+    l.ph = std::min(max_ph, fixed_above + l.list_h + fixed_below);
+
     l.px = (l.wf - l.pw) * 0.5f;
     l.py = (l.hf - l.ph) * 0.5f;
     l.cx = l.px + kPkgBrowserPadX;
