@@ -83,6 +83,15 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
+# --- Dragonbox (shortest float-to-decimal conversion) ---
+FetchContent_Declare(
+    dragonbox
+    GIT_REPOSITORY https://github.com/jk-jeon/dragonbox.git
+    GIT_TAG        1.1.3
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(dragonbox)
+
 # --- GLFW (submodule) ---
 set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)

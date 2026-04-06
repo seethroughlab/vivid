@@ -1,5 +1,6 @@
 #include "runtime/graph/graph.h"
 #include <nlohmann/json.hpp>
+#include <dragonbox/dragonbox_to_chars.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -997,6 +998,15 @@ bool Graph::update_mod_assignment(const std::string& node_id,
 
 // --- Serialization ---
 
+// Produce the shortest decimal that round-trips to the same float32 value.
+// Uses Dragonbox algorithm to avoid double-promotion artifacts like 0.6f → 0.6000000238418579.
+static double clean_float(float f) {
+    char buf[64];
+    char* end = jkj::dragonbox::to_chars(f, buf);
+    *end = '\0';
+    return std::strtod(buf, nullptr);
+}
+
 static void serialize_node_fields(nlohmann::ordered_json& node_obj, const NodeDef& node) {
     node_obj["type"] = node.type;
 
@@ -1007,7 +1017,7 @@ static void serialize_node_fields(nlohmann::ordered_json& node_obj, const NodeDe
     if (!node.params.empty() || !node.string_params.empty()) {
         nlohmann::ordered_json params_obj = nlohmann::ordered_json::object();
         for (const auto& [pname, pval] : node.params) {
-            params_obj[pname] = static_cast<double>(pval);
+            params_obj[pname] = clean_float(pval);
         }
         for (const auto& [pname, pval] : node.string_params) {
             params_obj[pname] = pval;
@@ -1016,7 +1026,7 @@ static void serialize_node_fields(nlohmann::ordered_json& node_obj, const NodeDe
     }
 
     if (node.has_layout()) {
-        node_obj["layout"] = nlohmann::ordered_json{{"x", static_cast<double>(node.layout_x)}, {"y", static_cast<double>(node.layout_y)}};
+        node_obj["layout"] = nlohmann::ordered_json{{"x", clean_float(node.layout_x)}, {"y", clean_float(node.layout_y)}};
     }
 
     if (node.tex_width > 0 && node.tex_height > 0) {
@@ -1093,10 +1103,10 @@ static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
         conn_obj["from"] = from_addr;
         conn_obj["to"] = to_addr;
         if (conn.has_remap()) {
-            conn_obj["from_min"] = static_cast<double>(conn.from_min);
-            conn_obj["from_max"] = static_cast<double>(conn.from_max);
-            conn_obj["to_min"]   = static_cast<double>(conn.to_min);
-            conn_obj["to_max"]   = static_cast<double>(conn.to_max);
+            conn_obj["from_min"] = clean_float(conn.from_min);
+            conn_obj["from_max"] = clean_float(conn.from_max);
+            conn_obj["to_min"]   = clean_float(conn.to_min);
+            conn_obj["to_max"]   = clean_float(conn.to_max);
             if (conn.clamp)
                 conn_obj["clamp"] = true;
         }
@@ -1116,8 +1126,8 @@ static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
             mm_obj["cc"] = mm.cc_number;
             if (mm.channel != 0)
                 mm_obj["channel"] = mm.channel;
-            mm_obj["range_min"] = static_cast<double>(mm.range_min);
-            mm_obj["range_max"] = static_cast<double>(mm.range_max);
+            mm_obj["range_min"] = clean_float(mm.range_min);
+            mm_obj["range_max"] = clean_float(mm.range_max);
             midi_arr.push_back(std::move(mm_obj));
         }
         root["midi_mappings"] = std::move(midi_arr);
@@ -1134,7 +1144,7 @@ static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
             for (const auto& [node_id, pm] : vd.params) {
                 nlohmann::ordered_json node_obj = nlohmann::ordered_json::object();
                 for (const auto& [pname, pval] : pm) {
-                    node_obj[pname] = static_cast<double>(pval);
+                    node_obj[pname] = clean_float(pval);
                 }
                 // Also add string params for this node if present
                 auto sit = vd.string_params.find(node_id);
@@ -1166,7 +1176,7 @@ static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
     if (graph.metronome().enabled || graph.metronome().bpm != 120.0f || graph.metronome().beats_per_bar != 4) {
         nlohmann::ordered_json met_obj = nlohmann::ordered_json::object();
         met_obj["enabled"] = graph.metronome().enabled;
-        met_obj["bpm"] = static_cast<double>(graph.metronome().bpm);
+        met_obj["bpm"] = clean_float(graph.metronome().bpm);
         met_obj["beats_per_bar"] = graph.metronome().beats_per_bar;
         root["metronome"] = std::move(met_obj);
     }
@@ -1181,7 +1191,7 @@ static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
                 pr_obj["name"] = p.name;
                 nlohmann::ordered_json pp_obj = nlohmann::ordered_json::object();
                 for (const auto& [pname, pval] : p.params) {
-                    pp_obj[pname] = static_cast<double>(pval);
+                    pp_obj[pname] = clean_float(pval);
                 }
                 for (const auto& [pname, pval] : p.string_params) {
                     pp_obj[pname] = pval;
@@ -1217,9 +1227,9 @@ static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
     // Viewport
     if (graph.has_viewport()) {
         nlohmann::ordered_json vp_obj = nlohmann::ordered_json::object();
-        vp_obj["pan_x"] = static_cast<double>(graph.viewport_pan_x);
-        vp_obj["pan_y"] = static_cast<double>(graph.viewport_pan_y);
-        vp_obj["zoom"]  = static_cast<double>(graph.viewport_zoom);
+        vp_obj["pan_x"] = clean_float(graph.viewport_pan_x);
+        vp_obj["pan_y"] = clean_float(graph.viewport_pan_y);
+        vp_obj["zoom"]  = clean_float(graph.viewport_zoom);
         root["viewport"] = std::move(vp_obj);
     }
 
@@ -1230,10 +1240,10 @@ static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
             nlohmann::ordered_json sn_obj = nlohmann::ordered_json::object();
             sn_obj["id"] = sn.id;
             sn_obj["text"] = sn.text;
-            sn_obj["x"] = static_cast<double>(sn.x);
-            sn_obj["y"] = static_cast<double>(sn.y);
-            sn_obj["width"] = static_cast<double>(sn.width);
-            sn_obj["height"] = static_cast<double>(sn.height);
+            sn_obj["x"] = clean_float(sn.x);
+            sn_obj["y"] = clean_float(sn.y);
+            sn_obj["width"] = clean_float(sn.width);
+            sn_obj["height"] = clean_float(sn.height);
             sn_obj["color"] = sn.color;
             sn_arr.push_back(std::move(sn_obj));
         }
@@ -1249,7 +1259,7 @@ static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
                 nlohmann::ordered_json a_obj = nlohmann::ordered_json::object();
                 a_obj["source"] = a.source;
                 a_obj["destination"] = a.destination;
-                a_obj["amount"] = static_cast<double>(a.amount);
+                a_obj["amount"] = clean_float(a.amount);
                 if (a.polarity != "unipolar")
                     a_obj["polarity"] = a.polarity;
                 if (a.curve != "linear")
