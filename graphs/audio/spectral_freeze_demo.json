@@ -1,133 +1,132 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "spectral_freeze_demo",
-    "title": "Spectral Freeze on Beat",
-    "description": "Pink noise fed into a spectral freeze that captures and holds the spectrum on each beat. An LFO crossfades the blend between live and frozen signal for an icy, evolving pad texture.",
-    "tags": [
-      "audio",
-      "spectral",
-      "freeze",
-      "fft",
-      "demo"
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "spectral_freeze_demo",
+        "title": "Spectral Freeze on Beat",
+        "description": "Pink noise fed into a spectral freeze that captures and holds the spectrum on each beat. An LFO crossfades the blend between live and frozen signal for an icy, evolving pad texture.",
+        "tags": [
+            "audio",
+            "spectral",
+            "freeze",
+            "fft",
+            "demo"
+        ],
+        "difficulty": "beginner",
+        "domains": [
+            "audio",
+            "control"
+        ],
+        "requires_packages": [],
+        "featured_rank": 30
+    },
+    "nodes": {
+        "clock": {
+            "type": "ClockAu",
+            "params": {
+                "bpm": 60.0
+            }
+        },
+        "env_freeze": {
+            "type": "EnvelopeAu",
+            "params": {
+                "attack": 0.001,
+                "decay": 0.01,
+                "sustain": 1.0,
+                "release": 0.4,
+                "amplitude": 1.0
+            }
+        },
+        "lfo_blend": {
+            "type": "LfoAu",
+            "params": {
+                "frequency": 0.1,
+                "amplitude": 0.5,
+                "offset": 0.5,
+                "waveform": 0
+            }
+        },
+        "noise": {
+            "type": "Noise",
+            "params": {
+                "color": 1,
+                "amplitude": 0.6
+            }
+        },
+        "freeze": {
+            "type": "SpectralFreeze",
+            "params": {
+                "freeze": 0.0,
+                "blend": 0.5,
+                "smoothing": 0.3,
+                "fft_size": 2,
+                "phase_mode": 0
+            }
+        },
+        "gain": {
+            "type": "Gain",
+            "params": {
+                "gain": 0.7
+            }
+        },
+        "out": {
+            "type": "audio_out",
+            "params": {}
+        }
+    },
+    "connections": [
+        {
+            "from": "clock/beat_phase",
+            "to": "env_freeze/beat_phase"
+        },
+        {
+            "from": "noise/output",
+            "to": "freeze/input"
+        },
+        {
+            "from": "env_freeze/value",
+            "to": "freeze/freeze_cv"
+        },
+        {
+            "from": "lfo_blend/value",
+            "to": "freeze/blend_cv"
+        },
+        {
+            "from": "freeze/output",
+            "to": "gain/input"
+        },
+        {
+            "from": "gain/output",
+            "to": "out/input"
+        }
     ],
-    "difficulty": "beginner",
-    "domains": [
-      "audio",
-      "control"
-    ],
-    "requires_packages": [],
-    "featured_rank": 30
-  },
-  "nodes": {
-    "clock": {
-      "type": "ClockAu",
-      "params": {
-        "bpm": 60.0
-      }
-    },
-    "env_freeze": {
-      "type": "EnvelopeAu",
-      "params": {
-        "attack": 0.001,
-        "decay": 0.01,
-        "sustain": 1.0,
-        "release": 0.4,
-        "amplitude": 1.0
-      }
-    },
-    "lfo_blend": {
-      "type": "LfoAu",
-      "params": {
-        "frequency": 0.1,
-        "amplitude": 0.5,
-        "offset": 0.5,
-        "waveform": 0
-      }
-    },
-    "noise": {
-      "type": "Noise",
-      "params": {
-        "color": 1,
-        "amplitude": 0.6
-      }
-    },
-    "freeze": {
-      "type": "SpectralFreeze",
-      "params": {
-        "freeze": 0.0,
-        "blend": 0.5,
-        "smoothing": 0.3,
-        "fft_size": 2,
-        "phase_mode": 0
-      }
-    },
-    "gain": {
-      "type": "Gain",
-      "params": {
-        "gain": 0.7
-      }
-    },
-    "out": {
-      "type": "audio_out",
-      "params": {}
-    }
-  },
-  "connections": [
-    {
-      "from": "clock/beat_phase",
-      "to": "env_freeze/beat_phase"
-    },
-    {
-      "from": "noise/output",
-      "to": "freeze/input",
-      "bridge": "hold"
-    },
-    {
-      "from": "env_freeze/value",
-      "to": "freeze/freeze_cv"
-    },
-    {
-      "from": "lfo_blend/value",
-      "to": "freeze/blend_cv"
-    },
-    {
-      "from": "freeze/output",
-      "to": "gain/input"
-    },
-    {
-      "from": "gain/output",
-      "to": "out/input"
-    }
-  ],
-  "sticky_notes": [
-    {
-      "id": "note_1",
-      "text": "**Spectral Freeze** Captures a FFT snapshot of the spectrum and holds it as a pad",
-      "x": -100.0,
-      "y": -80.0,
-      "width": 260.0,
-      "height": 80.0,
-      "color": 0
-    },
-    {
-      "id": "note_2",
-      "text": "Clock triggers envelope \u2192 freeze_cv Each beat captures a new snapshot of the pink noise spectrum",
-      "x": -100.0,
-      "y": 150.0,
-      "width": 260.0,
-      "height": 80.0,
-      "color": 2
-    },
-    {
-      "id": "note_3",
-      "text": "**Blend LFO** crossfades between live noise and frozen spectrum",
-      "x": 250.0,
-      "y": -80.0,
-      "width": 230.0,
-      "height": 60.0,
-      "color": 1
-    }
-  ]
+    "sticky_notes": [
+        {
+            "id": "note_1",
+            "text": "**Spectral Freeze** Captures a FFT snapshot of the spectrum and holds it as a pad",
+            "x": -100.0,
+            "y": -80.0,
+            "width": 260.0,
+            "height": 80.0,
+            "color": 0
+        },
+        {
+            "id": "note_2",
+            "text": "Clock triggers envelope \u2192 freeze_cv Each beat captures a new snapshot of the pink noise spectrum",
+            "x": -100.0,
+            "y": 150.0,
+            "width": 260.0,
+            "height": 80.0,
+            "color": 2
+        },
+        {
+            "id": "note_3",
+            "text": "**Blend LFO** crossfades between live noise and frozen spectrum",
+            "x": 250.0,
+            "y": -80.0,
+            "width": 230.0,
+            "height": 60.0,
+            "color": 1
+        }
+    ]
 }

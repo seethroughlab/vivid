@@ -1,144 +1,142 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "spirograph_demo",
-    "title": "Audio Spirograph",
-    "description": "Audio-reactive spirograph with feedback trails \u2014 curve parameters morph with audio.",
-    "tags": [
-      "demo",
-      "spirograph",
-      "feedback",
-      "audio-reactive"
-    ],
-    "difficulty": "intermediate",
-    "domains": [
-      "audio",
-      "gpu",
-      "control"
-    ],
-    "requires_packages": [],
-    "featured_rank": 14
-  },
-  "nodes": {
-    "osc": {
-      "type": "Oscillator",
-      "params": {
-        "frequency": 330.0,
-        "amplitude": 0.5,
-        "waveform": 0
-      }
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "spirograph_demo",
+        "title": "Audio Spirograph",
+        "description": "Audio-reactive spirograph with feedback trails \u2014 curve parameters morph with audio.",
+        "tags": [
+            "demo",
+            "spirograph",
+            "feedback",
+            "audio-reactive"
+        ],
+        "difficulty": "intermediate",
+        "domains": [
+            "audio",
+            "gpu",
+            "control"
+        ],
+        "requires_packages": [],
+        "featured_rank": 14
     },
-    "gain": {
-      "type": "Gain",
-      "params": {
-        "gain": 0.7
-      }
+    "nodes": {
+        "osc": {
+            "type": "Oscillator",
+            "params": {
+                "frequency": 330.0,
+                "amplitude": 0.5,
+                "waveform": 0
+            }
+        },
+        "gain": {
+            "type": "Gain",
+            "params": {
+                "gain": 0.7
+            }
+        },
+        "aout": {
+            "type": "audio_out",
+            "params": {}
+        },
+        "lfo_inner": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.06,
+                "amplitude": 0.12,
+                "offset": 0.15,
+                "waveform": 0
+            }
+        },
+        "lfo_rot": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.03,
+                "amplitude": 3.14,
+                "offset": 0.0
+            }
+        },
+        "math_pen": {
+            "type": "Math",
+            "params": {
+                "operation": 0,
+                "b": 0.08
+            }
+        },
+        "spirograph": {
+            "type": "Spirograph",
+            "params": {
+                "outer_r": 0.35,
+                "inner_r": 0.15,
+                "pen_dist": 0.1,
+                "thickness": 0.003,
+                "glow": 0.8,
+                "revolutions": 24.0,
+                "r": 0.3,
+                "g": 0.7,
+                "b": 1.0
+            }
+        },
+        "feedback": {
+            "type": "Feedback",
+            "params": {
+                "decay": 0.95,
+                "mix": 0.7,
+                "zoom": 1.01,
+                "rotate": 1.0
+            }
+        },
+        "bloom": {
+            "type": "Bloom",
+            "params": {
+                "threshold": 0.15,
+                "intensity": 1.5,
+                "radius": 1.5,
+                "passes": 4
+            }
+        },
+        "vout": {
+            "type": "video_out",
+            "params": {}
+        }
     },
-    "aout": {
-      "type": "audio_out",
-      "params": {}
-    },
-    "lfo_inner": {
-      "type": "LfoFr",
-      "params": {
-        "frequency": 0.06,
-        "amplitude": 0.12,
-        "offset": 0.15,
-        "waveform": 0
-      }
-    },
-    "lfo_rot": {
-      "type": "LfoFr",
-      "params": {
-        "frequency": 0.03,
-        "amplitude": 3.14,
-        "offset": 0.0
-      }
-    },
-    "math_pen": {
-      "type": "Math",
-      "params": {
-        "operation": 0,
-        "b": 0.08
-      }
-    },
-    "spirograph": {
-      "type": "Spirograph",
-      "params": {
-        "outer_r": 0.35,
-        "inner_r": 0.15,
-        "pen_dist": 0.1,
-        "thickness": 0.003,
-        "glow": 0.8,
-        "revolutions": 24.0,
-        "r": 0.3,
-        "g": 0.7,
-        "b": 1.0
-      }
-    },
-    "feedback": {
-      "type": "Feedback",
-      "params": {
-        "decay": 0.95,
-        "mix": 0.7,
-        "zoom": 1.01,
-        "rotate": 1.0
-      }
-    },
-    "bloom": {
-      "type": "Bloom",
-      "params": {
-        "threshold": 0.15,
-        "intensity": 1.5,
-        "radius": 1.5,
-        "passes": 4
-      }
-    },
-    "vout": {
-      "type": "video_out",
-      "params": {}
-    }
-  },
-  "connections": [
-    {
-      "from": "osc/output",
-      "to": "gain/input"
-    },
-    {
-      "from": "gain/output",
-      "to": "aout/input"
-    },
-    {
-      "from": "lfo_inner/value",
-      "to": "spirograph/inner_r"
-    },
-    {
-      "from": "lfo_rot/value",
-      "to": "spirograph/rotation"
-    },
-    {
-      "from": "gain/rms",
-      "to": "math_pen/a",
-      "bridge": "rms"
-    },
-    {
-      "from": "math_pen/result",
-      "to": "spirograph/pen_dist"
-    },
-    {
-      "from": "spirograph/texture",
-      "to": "feedback/input",
-      "bridge": "hold"
-    },
-    {
-      "from": "feedback/texture",
-      "to": "bloom/input",
-      "bridge": "last_sample"
-    },
-    {
-      "from": "bloom/texture",
-      "to": "vout/input"
-    }
-  ]
+    "connections": [
+        {
+            "from": "osc/output",
+            "to": "gain/input"
+        },
+        {
+            "from": "gain/output",
+            "to": "aout/input"
+        },
+        {
+            "from": "lfo_inner/value",
+            "to": "spirograph/inner_r"
+        },
+        {
+            "from": "lfo_rot/value",
+            "to": "spirograph/rotation"
+        },
+        {
+            "from": "gain/rms",
+            "to": "math_pen/a",
+            "bridge": "rms"
+        },
+        {
+            "from": "math_pen/result",
+            "to": "spirograph/pen_dist"
+        },
+        {
+            "from": "spirograph/texture",
+            "to": "feedback/input"
+        },
+        {
+            "from": "feedback/texture",
+            "to": "bloom/input"
+        },
+        {
+            "from": "bloom/texture",
+            "to": "vout/input"
+        }
+    ]
 }

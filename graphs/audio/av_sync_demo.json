@@ -1,4 +1,5 @@
 {
+    "schema_version": 3,
     "nodes": {
         "clock1": {
             "type": "ClockAu",

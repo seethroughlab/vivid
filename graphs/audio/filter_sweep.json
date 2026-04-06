@@ -1,118 +1,117 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "filter_sweep",
-    "title": "Filter Sweep",
-    "description": "White noise through a resonant low-pass filter with an envelope sweeping the cutoff on every beat. The Filter thumbnail shows the frequency response curve shifting with the cutoff.",
-    "tags": [
-      "filter",
-      "envelope",
-      "noise",
-      "subtractive",
-      "demo"
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "filter_sweep",
+        "title": "Filter Sweep",
+        "description": "White noise through a resonant low-pass filter with an envelope sweeping the cutoff on every beat. The Filter thumbnail shows the frequency response curve shifting with the cutoff.",
+        "tags": [
+            "filter",
+            "envelope",
+            "noise",
+            "subtractive",
+            "demo"
+        ],
+        "difficulty": "beginner",
+        "domains": [
+            "audio",
+            "control"
+        ],
+        "requires_packages": [],
+        "featured_rank": 26
+    },
+    "nodes": {
+        "clock": {
+            "type": "ClockAu",
+            "params": {
+                "bpm": 130.0
+            }
+        },
+        "env": {
+            "type": "EnvelopeAu",
+            "params": {
+                "attack": 0.01,
+                "decay": 0.3,
+                "sustain": 0.2,
+                "release": 0.4,
+                "amplitude": 36.0
+            }
+        },
+        "noise": {
+            "type": "Noise",
+            "params": {
+                "color": 0,
+                "amplitude": 0.6
+            }
+        },
+        "filter": {
+            "type": "Filter",
+            "params": {
+                "cutoff": 200.0,
+                "resonance": 2.5,
+                "mode": 0
+            }
+        },
+        "gain": {
+            "type": "Gain",
+            "params": {
+                "gain": 0.7
+            }
+        },
+        "out": {
+            "type": "audio_out",
+            "params": {}
+        }
+    },
+    "connections": [
+        {
+            "from": "clock/beat_phase",
+            "to": "env/beat_phase"
+        },
+        {
+            "from": "noise/output",
+            "to": "filter/input"
+        },
+        {
+            "from": "env/value",
+            "to": "filter/cutoff_cv"
+        },
+        {
+            "from": "filter/output",
+            "to": "gain/input"
+        },
+        {
+            "from": "gain/output",
+            "to": "out/input"
+        }
     ],
-    "difficulty": "beginner",
-    "domains": [
-      "audio",
-      "control"
-    ],
-    "requires_packages": [],
-    "featured_rank": 26
-  },
-  "nodes": {
-    "clock": {
-      "type": "ClockAu",
-      "params": {
-        "bpm": 130.0
-      }
-    },
-    "env": {
-      "type": "EnvelopeAu",
-      "params": {
-        "attack": 0.01,
-        "decay": 0.3,
-        "sustain": 0.2,
-        "release": 0.4,
-        "amplitude": 36.0
-      }
-    },
-    "noise": {
-      "type": "Noise",
-      "params": {
-        "color": 0,
-        "amplitude": 0.6
-      }
-    },
-    "filter": {
-      "type": "Filter",
-      "params": {
-        "cutoff": 200.0,
-        "resonance": 2.5,
-        "mode": 0
-      }
-    },
-    "gain": {
-      "type": "Gain",
-      "params": {
-        "gain": 0.7
-      }
-    },
-    "out": {
-      "type": "audio_out",
-      "params": {}
-    }
-  },
-  "connections": [
-    {
-      "from": "clock/beat_phase",
-      "to": "env/beat_phase"
-    },
-    {
-      "from": "noise/output",
-      "to": "filter/input",
-      "bridge": "hold"
-    },
-    {
-      "from": "env/value",
-      "to": "filter/cutoff_cv"
-    },
-    {
-      "from": "filter/output",
-      "to": "gain/input"
-    },
-    {
-      "from": "gain/output",
-      "to": "out/input"
-    }
-  ],
-  "sticky_notes": [
-    {
-      "id": "note_1",
-      "text": "**Filter Sweep** basics Envelope sweeps the cutoff of a resonant low-pass filter each beat",
-      "x": -100.0,
-      "y": -80.0,
-      "width": 260.0,
-      "height": 80.0,
-      "color": 0
-    },
-    {
-      "id": "note_2",
-      "text": "**Resonance=2.5** adds a peak at the cutoff frequency \u2014 higher values = more pronounced",
-      "x": -100.0,
-      "y": 150.0,
-      "width": 250.0,
-      "height": 80.0,
-      "color": 4
-    },
-    {
-      "id": "note_3",
-      "text": "Envelope amplitude=36 means cutoff sweeps up 36 semitones from the base 200 Hz",
-      "x": 250.0,
-      "y": -80.0,
-      "width": 240.0,
-      "height": 80.0,
-      "color": 2
-    }
-  ]
+    "sticky_notes": [
+        {
+            "id": "note_1",
+            "text": "**Filter Sweep** basics Envelope sweeps the cutoff of a resonant low-pass filter each beat",
+            "x": -100.0,
+            "y": -80.0,
+            "width": 260.0,
+            "height": 80.0,
+            "color": 0
+        },
+        {
+            "id": "note_2",
+            "text": "**Resonance=2.5** adds a peak at the cutoff frequency \u2014 higher values = more pronounced",
+            "x": -100.0,
+            "y": 150.0,
+            "width": 250.0,
+            "height": 80.0,
+            "color": 4
+        },
+        {
+            "id": "note_3",
+            "text": "Envelope amplitude=36 means cutoff sweeps up 36 semitones from the base 200 Hz",
+            "x": 250.0,
+            "y": -80.0,
+            "width": 240.0,
+            "height": 80.0,
+            "color": 2
+        }
+    ]
 }

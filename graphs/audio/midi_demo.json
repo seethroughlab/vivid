@@ -1,5 +1,5 @@
 {
-    "schema_version": 1,
+    "schema_version": 3,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "midi_demo",

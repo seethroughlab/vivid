@@ -1,171 +1,168 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "star_spin_demo",
-    "title": "Star Spin",
-    "description": "Audio-reactive spinning star with feedback trails and bloom.",
-    "tags": [
-      "demo",
-      "feedback",
-      "audio-reactive"
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "star_spin_demo",
+        "title": "Star Spin",
+        "description": "Audio-reactive spinning star with feedback trails and bloom.",
+        "tags": [
+            "demo",
+            "feedback",
+            "audio-reactive"
+        ],
+        "difficulty": "intermediate",
+        "domains": [
+            "audio",
+            "gpu",
+            "control"
+        ],
+        "requires_packages": [],
+        "featured_rank": 10
+    },
+    "nodes": {
+        "osc": {
+            "type": "Oscillator",
+            "params": {
+                "frequency": 110.0,
+                "amplitude": 0.6,
+                "waveform": 1
+            }
+        },
+        "gain": {
+            "type": "Gain",
+            "params": {
+                "gain": 0.8
+            }
+        },
+        "aout": {
+            "type": "audio_out",
+            "params": {}
+        },
+        "lfo_rot": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.15,
+                "amplitude": 3.14,
+                "offset": 0.0
+            }
+        },
+        "lfo_size": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.08,
+                "amplitude": 0.12,
+                "offset": 0.2,
+                "waveform": 0
+            }
+        },
+        "math_zoom": {
+            "type": "Math",
+            "params": {
+                "operation": 0,
+                "b": 1.01
+            }
+        },
+        "star": {
+            "type": "Shape",
+            "params": {
+                "sides": 5,
+                "star": 0.5,
+                "radius": 0.2,
+                "softness": 0.005,
+                "r": 1.0,
+                "g": 0.7,
+                "b": 0.2
+            }
+        },
+        "feedback": {
+            "type": "Feedback",
+            "params": {
+                "decay": 0.92,
+                "mix": 0.85,
+                "zoom": 1.02,
+                "rotate": 3.0
+            }
+        },
+        "bloom": {
+            "type": "Bloom",
+            "params": {
+                "threshold": 0.2,
+                "intensity": 1.2,
+                "radius": 1.5,
+                "passes": 4
+            }
+        },
+        "vout": {
+            "type": "video_out",
+            "params": {}
+        }
+    },
+    "connections": [
+        {
+            "from": "osc/output",
+            "to": "gain/input"
+        },
+        {
+            "from": "gain/output",
+            "to": "aout/input"
+        },
+        {
+            "from": "lfo_rot/value",
+            "to": "star/rotation"
+        },
+        {
+            "from": "lfo_size/value",
+            "to": "star/radius"
+        },
+        {
+            "from": "gain/rms",
+            "to": "math_zoom/a",
+            "bridge": "rms"
+        },
+        {
+            "from": "math_zoom/result",
+            "to": "feedback/zoom"
+        },
+        {
+            "from": "star/texture",
+            "to": "feedback/input"
+        },
+        {
+            "from": "feedback/texture",
+            "to": "bloom/input"
+        },
+        {
+            "from": "bloom/texture",
+            "to": "vout/input"
+        }
     ],
-    "difficulty": "intermediate",
-    "domains": [
-      "audio",
-      "gpu",
-      "control"
-    ],
-    "requires_packages": [],
-    "featured_rank": 10
-  },
-  "nodes": {
-    "osc": {
-      "type": "Oscillator",
-      "params": {
-        "frequency": 110.0,
-        "amplitude": 0.6,
-        "waveform": 1
-      }
-    },
-    "gain": {
-      "type": "Gain",
-      "params": {
-        "gain": 0.8
-      }
-    },
-    "aout": {
-      "type": "audio_out",
-      "params": {}
-    },
-    "lfo_rot": {
-      "type": "LfoFr",
-      "params": {
-        "frequency": 0.15,
-        "amplitude": 3.14,
-        "offset": 0.0
-      }
-    },
-    "lfo_size": {
-      "type": "LfoFr",
-      "params": {
-        "frequency": 0.08,
-        "amplitude": 0.12,
-        "offset": 0.2,
-        "waveform": 0
-      }
-    },
-    "math_zoom": {
-      "type": "Math",
-      "params": {
-        "operation": 0,
-        "b": 1.01
-      }
-    },
-    "star": {
-      "type": "Shape",
-      "params": {
-        "sides": 5,
-        "star": 0.5,
-        "radius": 0.2,
-        "softness": 0.005,
-        "r": 1.0,
-        "g": 0.7,
-        "b": 0.2
-      }
-    },
-    "feedback": {
-      "type": "Feedback",
-      "params": {
-        "decay": 0.92,
-        "mix": 0.85,
-        "zoom": 1.02,
-        "rotate": 3.0
-      }
-    },
-    "bloom": {
-      "type": "Bloom",
-      "params": {
-        "threshold": 0.2,
-        "intensity": 1.2,
-        "radius": 1.5,
-        "passes": 4
-      }
-    },
-    "vout": {
-      "type": "video_out",
-      "params": {}
-    }
-  },
-  "connections": [
-    {
-      "from": "osc/output",
-      "to": "gain/input"
-    },
-    {
-      "from": "gain/output",
-      "to": "aout/input"
-    },
-    {
-      "from": "lfo_rot/value",
-      "to": "star/rotation"
-    },
-    {
-      "from": "lfo_size/value",
-      "to": "star/radius"
-    },
-    {
-      "from": "gain/rms",
-      "to": "math_zoom/a",
-      "bridge": "rms"
-    },
-    {
-      "from": "math_zoom/result",
-      "to": "feedback/zoom",
-      "bridge": "hold"
-    },
-    {
-      "from": "star/texture",
-      "to": "feedback/input",
-      "bridge": "hold"
-    },
-    {
-      "from": "feedback/texture",
-      "to": "bloom/input",
-      "bridge": "last_sample"
-    },
-    {
-      "from": "bloom/texture",
-      "to": "vout/input"
-    }
-  ],
-  "sticky_notes": [
-    {
-      "id": "note_1",
-      "text": "**Audio-Reactive Visuals** Audio RMS level drives the feedback zoom amount via Math",
-      "x": -100.0,
-      "y": -80.0,
-      "width": 260.0,
-      "height": 80.0,
-      "color": 0
-    },
-    {
-      "id": "note_2",
-      "text": "**RMS \u2192 Math(add 1.01) \u2192 zoom** Louder audio = more zoom = faster spiral expansion",
-      "x": -100.0,
-      "y": 180.0,
-      "width": 250.0,
-      "height": 80.0,
-      "color": 2
-    },
-    {
-      "id": "note_3",
-      "text": "Bloom softens the feedback trails into a glowing halo",
-      "x": 300.0,
-      "y": -80.0,
-      "width": 220.0,
-      "height": 60.0,
-      "color": 3
-    }
-  ]
+    "sticky_notes": [
+        {
+            "id": "note_1",
+            "text": "**Audio-Reactive Visuals** Audio RMS level drives the feedback zoom amount via Math",
+            "x": -100.0,
+            "y": -80.0,
+            "width": 260.0,
+            "height": 80.0,
+            "color": 0
+        },
+        {
+            "id": "note_2",
+            "text": "**RMS \u2192 Math(add 1.01) \u2192 zoom** Louder audio = more zoom = faster spiral expansion",
+            "x": -100.0,
+            "y": 180.0,
+            "width": 250.0,
+            "height": 80.0,
+            "color": 2
+        },
+        {
+            "id": "note_3",
+            "text": "Bloom softens the feedback trails into a glowing halo",
+            "x": 300.0,
+            "y": -80.0,
+            "width": 220.0,
+            "height": 60.0,
+            "color": 3
+        }
+    ]
 }

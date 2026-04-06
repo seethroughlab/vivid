@@ -1,4 +1,5 @@
 {
+    "schema_version": 3,
     "meta": {
         "title": "Arpeggiator with FM Synth",
         "description": "ChordProgression feeds an Arpeggiator that drives an FM synth through reverb. Demonstrates the sequencer-to-synth pipeline.",
@@ -116,23 +117,19 @@
         },
         {
             "from": "arp1/notes",
-            "to": "synth1/notes",
-            "bridge": "last_sample"
+            "to": "synth1/notes"
         },
         {
             "from": "arp1/velocities",
-            "to": "synth1/velocities",
-            "bridge": "last_sample"
+            "to": "synth1/velocities"
         },
         {
             "from": "arp1/gates",
-            "to": "synth1/gates",
-            "bridge": "last_sample"
+            "to": "synth1/gates"
         },
         {
             "from": "synth1/output",
-            "to": "reverb1/input",
-            "bridge": "hold"
+            "to": "reverb1/input"
         },
         {
             "from": "reverb1/output",

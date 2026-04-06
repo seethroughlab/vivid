@@ -1,5 +1,5 @@
 {
-    "schema_version": 1,
+    "schema_version": 3,
     "vivid_version": "0.1.0",
     "nodes": {
         "kb": {
@@ -84,8 +84,7 @@
         },
         {
             "from": "pick/file",
-            "to": "movie/file",
-            "bridge": "hold"
+            "to": "movie/file"
         },
         {
             "from": "pick/file",
@@ -115,8 +114,7 @@
         },
         {
             "from": "movie/texture",
-            "to": "comp/b",
-            "bridge": "last_sample"
+            "to": "comp/b"
         },
         {
             "from": "comp/texture",

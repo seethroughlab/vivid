@@ -1,94 +1,93 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "mfi_displace_demo",
-    "title": "Movie File: Displacement",
-    "description": "Animated noise-driven displacement on video. LFO modulates the distortion amount.",
-    "tags": [
-      "file",
-      "mfi",
-      "displace",
-      "demo"
-    ],
-    "difficulty": "intermediate",
-    "domains": [
-      "io",
-      "gpu"
-    ],
-    "requires_packages": [],
-    "featured_rank": 41
-  },
-  "nodes": {
-    "vid": {
-      "type": "MovieFileIn",
-      "params": {
-        "file": "../../../assets/sword.mp4",
-        "play_mode": 0,
-        "speed": 1.0
-      }
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "mfi_displace_demo",
+        "title": "Movie File: Displacement",
+        "description": "Animated noise-driven displacement on video. LFO modulates the distortion amount.",
+        "tags": [
+            "file",
+            "mfi",
+            "displace",
+            "demo"
+        ],
+        "difficulty": "intermediate",
+        "domains": [
+            "io",
+            "gpu"
+        ],
+        "requires_packages": [],
+        "featured_rank": 41
     },
-    "audio": {
-      "type": "MovieFileAudio",
-      "params": {
-        "file": "../../../assets/sword.mp4"
-      }
+    "nodes": {
+        "vid": {
+            "type": "MovieFileIn",
+            "params": {
+                "file": "../../../assets/sword.mp4",
+                "play_mode": 0,
+                "speed": 1.0
+            }
+        },
+        "audio": {
+            "type": "MovieFileAudio",
+            "params": {
+                "file": "../../../assets/sword.mp4"
+            }
+        },
+        "noise": {
+            "type": "NoiseTexture",
+            "params": {
+                "scale": 3.0,
+                "speed": 0.5,
+                "octaves": 2
+            }
+        },
+        "displace": {
+            "type": "Displace",
+            "params": {
+                "amount": 0.05
+            }
+        },
+        "lfo1": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.1,
+                "amplitude": 0.08,
+                "offset": 0.04
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        },
+        "aout": {
+            "type": "audio_out"
+        }
     },
-    "noise": {
-      "type": "NoiseTexture",
-      "params": {
-        "scale": 3.0,
-        "speed": 0.5,
-        "octaves": 2
-      }
-    },
-    "displace": {
-      "type": "Displace",
-      "params": {
-        "amount": 0.05
-      }
-    },
-    "lfo1": {
-      "type": "LfoFr",
-      "params": {
-        "frequency": 0.1,
-        "amplitude": 0.08,
-        "offset": 0.04
-      }
-    },
-    "vout": {
-      "type": "video_out"
-    },
-    "aout": {
-      "type": "audio_out"
-    }
-  },
-  "connections": [
-    {
-      "from": "vid/texture",
-      "to": "displace/source",
-      "bridge": "last_sample"
-    },
-    {
-      "from": "noise/texture",
-      "to": "displace/map"
-    },
-    {
-      "from": "lfo1/value",
-      "to": "displace/amount"
-    },
-    {
-      "from": "displace/texture",
-      "to": "vout/input"
-    },
-    {
-      "from": "audio/time",
-      "to": "vid/audio_time",
-      "bridge": "last_sample"
-    },
-    {
-      "from": "audio/output",
-      "to": "aout/input"
-    }
-  ]
+    "connections": [
+        {
+            "from": "vid/texture",
+            "to": "displace/source"
+        },
+        {
+            "from": "noise/texture",
+            "to": "displace/map"
+        },
+        {
+            "from": "lfo1/value",
+            "to": "displace/amount"
+        },
+        {
+            "from": "displace/texture",
+            "to": "vout/input"
+        },
+        {
+            "from": "audio/time",
+            "to": "vid/audio_time",
+            "bridge": "last_sample"
+        },
+        {
+            "from": "audio/output",
+            "to": "aout/input"
+        }
+    ]
 }

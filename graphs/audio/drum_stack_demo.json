@@ -1,4 +1,5 @@
 {
+    "schema_version": 3,
     "meta": {
         "title": "Drum Stack Foundation",
         "description": "Syncopated 16-step groove showcasing all six drum voices through a DrumSequencer.",
@@ -136,8 +137,7 @@
         },
         {
             "from": "kit1/slot_2",
-            "to": "hat1/midi_in",
-            "bridge": "last_sample"
+            "to": "hat1/midi_in"
         },
         {
             "from": "kit1/slot_4",
@@ -161,8 +161,7 @@
         },
         {
             "from": "hat1/output",
-            "to": "aout/input",
-            "bridge": "hold"
+            "to": "aout/input"
         },
         {
             "from": "clap1/output",

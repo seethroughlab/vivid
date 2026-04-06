@@ -1,5 +1,5 @@
 {
-    "schema_version": 1,
+    "schema_version": 3,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "edge_demo",
@@ -71,8 +71,7 @@
     "connections": [
         {
             "from": "vid/texture",
-            "to": "edge/input",
-            "bridge": "last_sample"
+            "to": "edge/input"
         },
         {
             "from": "lfo_strength/value",

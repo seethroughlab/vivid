@@ -1,5 +1,5 @@
 {
-    "schema_version": 2,
+    "schema_version": 3,
     "vivid_version": "0.1.0",
     "nodes": {
         "aout": {
@@ -62,8 +62,7 @@
     "connections": [
         {
             "from": "vid/texture",
-            "to": "levels/input",
-            "bridge": "last_sample"
+            "to": "levels/input"
         },
         {
             "from": "levels/texture",

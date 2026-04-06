@@ -1,71 +1,96 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "quad_warp_demo",
-    "title": "Quad Warp",
-    "description": "Perspective-warps a spinning shape with animated corner points.",
-    "tags": ["demo", "projection-mapping", "warp"],
-    "difficulty": "intermediate",
-    "domains": ["gpu", "control"],
-    "requires_packages": [],
-    "featured_rank": 30
-  },
-  "nodes": {
-    "shape": {
-      "type": "Shape",
-      "params": {
-        "sides": 4,
-        "radius": 0.3,
-        "softness": 0.005,
-        "r": 0.2,
-        "g": 0.8,
-        "b": 1.0
-      },
-      "resolution": [800, 600]
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "quad_warp_demo",
+        "title": "Quad Warp",
+        "description": "Perspective-warps a spinning shape with animated corner points.",
+        "tags": [
+            "demo",
+            "projection-mapping",
+            "warp"
+        ],
+        "difficulty": "intermediate",
+        "domains": [
+            "gpu",
+            "control"
+        ],
+        "requires_packages": [],
+        "featured_rank": 30
     },
-    "lfo_rot": {
-      "type": "LfoFr",
-      "params": {
-        "frequency": 0.1,
-        "amplitude": 3.14,
-        "offset": 0.0
-      }
+    "nodes": {
+        "shape": {
+            "type": "Shape",
+            "params": {
+                "sides": 4,
+                "radius": 0.3,
+                "softness": 0.005,
+                "r": 0.2,
+                "g": 0.8,
+                "b": 1.0
+            },
+            "resolution": [
+                800,
+                600
+            ]
+        },
+        "lfo_rot": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.1,
+                "amplitude": 3.14,
+                "offset": 0.0
+            }
+        },
+        "lfo_tr": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.07,
+                "amplitude": 0.1,
+                "offset": 0.9
+            }
+        },
+        "lfo_bl": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.05,
+                "amplitude": 0.1,
+                "offset": 0.9,
+                "waveform": 0
+            }
+        },
+        "warp": {
+            "type": "Quad Warp",
+            "params": {
+                "grid_overlay": 0.3,
+                "tr_x": 0.9,
+                "bl_y": 0.9
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        }
     },
-    "lfo_tr": {
-      "type": "LfoFr",
-      "params": {
-        "frequency": 0.07,
-        "amplitude": 0.1,
-        "offset": 0.9
-      }
-    },
-    "lfo_bl": {
-      "type": "LfoFr",
-      "params": {
-        "frequency": 0.05,
-        "amplitude": 0.1,
-        "offset": 0.9,
-        "waveform": 0
-      }
-    },
-    "warp": {
-      "type": "Quad Warp",
-      "params": {
-        "grid_overlay": 0.3,
-        "tr_x": 0.9,
-        "bl_y": 0.9
-      }
-    },
-    "vout": {
-      "type": "video_out"
-    }
-  },
-  "connections": [
-    {"from": "lfo_rot/value", "to": "shape/rotation"},
-    {"from": "shape/texture", "to": "warp/input"},
-    {"from": "lfo_tr/value",  "to": "warp/tr_x"},
-    {"from": "lfo_bl/value",  "to": "warp/bl_y"},
-    {"from": "warp/texture",  "to": "vout/input"}
-  ]
+    "connections": [
+        {
+            "from": "lfo_rot/value",
+            "to": "shape/rotation"
+        },
+        {
+            "from": "shape/texture",
+            "to": "warp/input"
+        },
+        {
+            "from": "lfo_tr/value",
+            "to": "warp/tr_x"
+        },
+        {
+            "from": "lfo_bl/value",
+            "to": "warp/bl_y"
+        },
+        {
+            "from": "warp/texture",
+            "to": "vout/input"
+        }
+    ]
 }

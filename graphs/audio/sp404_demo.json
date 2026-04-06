@@ -1,4 +1,5 @@
 {
+    "schema_version": 3,
     "meta": {
         "title": "SP404 Drum Sequencer",
         "description": "DrumSequencer triggers SP404 pads with per-track MIDI note mapping for drum and percussion samples.",

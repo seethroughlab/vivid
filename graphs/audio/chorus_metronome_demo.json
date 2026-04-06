@@ -1,110 +1,111 @@
 {
-  "schema_version": 3,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "chorus_metronome_demo",
-    "title": "Chorus Transport Lock",
-    "description": "A pulsed oscillator through a metronome-synced chorus. The gain pulse makes BPM changes obvious while the chorus sweep stays locked to the same graph transport.",
-    "tags": [
-      "audio",
-      "chorus",
-      "metronome",
-      "transport",
-      "sync"
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "chorus_metronome_demo",
+        "title": "Chorus Transport Lock",
+        "description": "A pulsed oscillator through a metronome-synced chorus. The gain pulse makes BPM changes obvious while the chorus sweep stays locked to the same graph transport.",
+        "tags": [
+            "audio",
+            "chorus",
+            "metronome",
+            "transport",
+            "sync"
+        ],
+        "difficulty": "beginner",
+        "domains": [
+            "audio",
+            "control"
+        ],
+        "requires_packages": [],
+        "featured_rank": 39
+    },
+    "metronome": {
+        "enabled": true,
+        "bpm": 120.0,
+        "beats_per_bar": 4
+    },
+    "nodes": {
+        "osc": {
+            "type": "Oscillator",
+            "params": {
+                "frequency": 110.0,
+                "amplitude": 0.75,
+                "waveform": 1
+            }
+        },
+        "pulse": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 1.0,
+                "waveform": 2,
+                "rate_mode": 2,
+                "sync_division": 2,
+                "polarity": 1,
+                "amplitude": 0.78,
+                "offset": 0.18,
+                "slew": 0.12
+            }
+        },
+        "chorus": {
+            "type": "Chorus",
+            "params": {
+                "rate": 0.8,
+                "rate_mode": 2,
+                "sync_division": 0,
+                "depth": 1.0,
+                "voices": 6,
+                "mix": 0.85
+            }
+        },
+        "gain": {
+            "type": "Gain",
+            "params": {
+                "gain": 0.55
+            }
+        },
+        "out": {
+            "type": "audio_out",
+            "params": {}
+        }
+    },
+    "connections": [
+        {
+            "from": "osc/output",
+            "to": "chorus/input"
+        },
+        {
+            "from": "chorus/output",
+            "to": "gain/input"
+        },
+        {
+            "from": "pulse/value",
+            "to": "gain/amplitude_cv",
+            "bridge": "snapshot"
+        },
+        {
+            "from": "gain/output",
+            "to": "out/input"
+        }
     ],
-    "difficulty": "beginner",
-    "domains": [
-      "audio",
-      "control"
-    ],
-    "requires_packages": [],
-    "featured_rank": 39
-  },
-  "metronome": {
-    "enabled": true,
-    "bpm": 120.0,
-    "beats_per_bar": 4
-  },
-  "nodes": {
-    "osc": {
-      "type": "Oscillator",
-      "params": {
-        "frequency": 110.0,
-        "amplitude": 0.75,
-        "waveform": 1
-      }
-    },
-    "pulse": {
-      "type": "LfoFr",
-      "params": {
-        "frequency": 1.0,
-        "waveform": 2,
-        "rate_mode": 2,
-        "sync_division": 2,
-        "polarity": 1,
-        "amplitude": 0.78,
-        "offset": 0.18,
-        "slew": 0.12
-      }
-    },
-    "chorus": {
-      "type": "Chorus",
-      "params": {
-        "rate": 0.8,
-        "rate_mode": 2,
-        "sync_division": 0,
-        "depth": 1.0,
-        "voices": 6,
-        "mix": 0.85
-      }
-    },
-    "gain": {
-      "type": "Gain",
-      "params": {
-        "gain": 0.55
-      }
-    },
-    "out": {
-      "type": "audio_out",
-      "params": {}
-    }
-  },
-  "connections": [
-    {
-      "from": "osc/output",
-      "to": "chorus/input"
-    },
-    {
-      "from": "chorus/output",
-      "to": "gain/input"
-    },
-    {
-      "from": "pulse/value",
-      "to": "gain/amplitude_cv"
-    },
-    {
-      "from": "gain/output",
-      "to": "out/input"
-    }
-  ],
-  "sticky_notes": [
-    {
-      "id": "chorus_note_1",
-      "text": "**Transport-locked effect** Chorus uses `rate_mode = metronome` with a whole-note sweep, so its motion follows the graph metronome instead of a local Hz rate.",
-      "x": -120.0,
-      "y": -100.0,
-      "width": 320.0,
-      "height": 90.0,
-      "color": 0
-    },
-    {
-      "id": "chorus_note_2",
-      "text": "The square-wave `pulse` LFO is also metronome-synced and drives output level, so BPM changes are easy to hear. There is still no Clock node or beat_phase wiring.",
-      "x": 220.0,
-      "y": -100.0,
-      "width": 340.0,
-      "height": 90.0,
-      "color": 4
-    }
-  ]
+    "sticky_notes": [
+        {
+            "id": "chorus_note_1",
+            "text": "**Transport-locked effect** Chorus uses `rate_mode = metronome` with a whole-note sweep, so its motion follows the graph metronome instead of a local Hz rate.",
+            "x": -120.0,
+            "y": -100.0,
+            "width": 320.0,
+            "height": 90.0,
+            "color": 0
+        },
+        {
+            "id": "chorus_note_2",
+            "text": "The square-wave `pulse` LFO is also metronome-synced and drives output level, so BPM changes are easy to hear. There is still no Clock node or beat_phase wiring.",
+            "x": 220.0,
+            "y": -100.0,
+            "width": 340.0,
+            "height": 90.0,
+            "color": 4
+        }
+    ]
 }

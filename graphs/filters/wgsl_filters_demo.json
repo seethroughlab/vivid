@@ -1,5 +1,5 @@
 {
-    "schema_version": 1,
+    "schema_version": 3,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "wgsl_filters_demo",
@@ -192,8 +192,7 @@
     "connections": [
         {
             "from": "vid/texture",
-            "to": "hsv/input",
-            "bridge": "last_sample"
+            "to": "hsv/input"
         },
         {
             "from": "hsv/texture",

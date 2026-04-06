@@ -1,58 +1,80 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "edge_blend_demo",
-    "title": "Edge Blend",
-    "description": "Soft-edge blending for multi-projector setups with animated blend widths.",
-    "tags": ["demo", "projection-mapping", "edge-blend"],
-    "difficulty": "intermediate",
-    "domains": ["gpu", "control"],
-    "requires_packages": [],
-    "featured_rank": 32
-  },
-  "nodes": {
-    "grad": {
-      "type": "Gradient",
-      "params": {
-        "mode": 1
-      },
-      "resolution": [800, 600]
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "edge_blend_demo",
+        "title": "Edge Blend",
+        "description": "Soft-edge blending for multi-projector setups with animated blend widths.",
+        "tags": [
+            "demo",
+            "projection-mapping",
+            "edge-blend"
+        ],
+        "difficulty": "intermediate",
+        "domains": [
+            "gpu",
+            "control"
+        ],
+        "requires_packages": [],
+        "featured_rank": 32
     },
-    "lfo_left": {
-      "type": "LfoFr",
-      "params": {
-        "frequency": 0.08,
-        "amplitude": 0.15,
-        "offset": 0.15
-      }
+    "nodes": {
+        "grad": {
+            "type": "Gradient",
+            "params": {
+                "mode": 1
+            },
+            "resolution": [
+                800,
+                600
+            ]
+        },
+        "lfo_left": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.08,
+                "amplitude": 0.15,
+                "offset": 0.15
+            }
+        },
+        "lfo_right": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.06,
+                "amplitude": 0.15,
+                "offset": 0.15,
+                "waveform": 0
+            }
+        },
+        "blend": {
+            "type": "Edge Blend",
+            "params": {
+                "left": 0.15,
+                "right": 0.15,
+                "gamma": 2.2,
+                "curve": 1
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        }
     },
-    "lfo_right": {
-      "type": "LfoFr",
-      "params": {
-        "frequency": 0.06,
-        "amplitude": 0.15,
-        "offset": 0.15,
-        "waveform": 0
-      }
-    },
-    "blend": {
-      "type": "Edge Blend",
-      "params": {
-        "left": 0.15,
-        "right": 0.15,
-        "gamma": 2.2,
-        "curve": 1
-      }
-    },
-    "vout": {
-      "type": "video_out"
-    }
-  },
-  "connections": [
-    {"from": "grad/texture",     "to": "blend/input"},
-    {"from": "lfo_left/value",   "to": "blend/left"},
-    {"from": "lfo_right/value",  "to": "blend/right"},
-    {"from": "blend/texture",    "to": "vout/input"}
-  ]
+    "connections": [
+        {
+            "from": "grad/texture",
+            "to": "blend/input"
+        },
+        {
+            "from": "lfo_left/value",
+            "to": "blend/left"
+        },
+        {
+            "from": "lfo_right/value",
+            "to": "blend/right"
+        },
+        {
+            "from": "blend/texture",
+            "to": "vout/input"
+        }
+    ]
 }

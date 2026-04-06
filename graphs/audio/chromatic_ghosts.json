@@ -1,5 +1,5 @@
 {
-    "schema_version": 2,
+    "schema_version": 3,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "chromatic_ghosts",
@@ -31,23 +31,6 @@
                 "rate": 2506.0,
                 "mix": 1.0,
                 "bits": 1.7300000190734863
-            }
-        },
-        "block_disp": {
-            "type": "Block Displacement",
-            "pkg": {
-                "name": "vivid-glitch",
-                "version": "2.0.0"
-            },
-            "params": {
-                "seed": 42.0,
-                "mix": 0.8999999761581421,
-                "grid_y": 8.0,
-                "grid_x": 8.0,
-                "duplicate": 0.07999999821186066,
-                "direction": 0.0,
-                "chance": 0.4000000059604645,
-                "amount": 0.6000000238418579
             }
         },
         "clock": {
@@ -294,24 +277,6 @@
                 "text": "GHOSTS"
             }
         },
-        "vis_glitch": {
-            "type": "Visual Glitch",
-            "pkg": {
-                "name": "vivid-glitch",
-                "version": "2.0.0"
-            },
-            "params": {
-                "shift_chance": 0.20000000298023224,
-                "mix": 0.800000011920929,
-                "scan_chance": 0.20000000298023224,
-                "invert_chance": 0.0,
-                "intensity": 1.0,
-                "static_chance": 0.20000000298023224,
-                "duration": 0.11999999731779099,
-                "pixelate_chance": 0.10000000149011612,
-                "block_chance": 0.30000001192092896
-            }
-        },
         "vout": {
             "type": "video_out"
         }
@@ -422,28 +387,6 @@
         {
             "from": "lfo_hue/value",
             "to": "hsv_vis/hue_shift"
-        },
-        {
-            "from": "hsv_vis/texture",
-            "to": "block_disp/input"
-        },
-        {
-            "from": "gain_out/rms",
-            "to": "block_disp/amount",
-            "bridge": "hold"
-        },
-        {
-            "from": "block_disp/texture",
-            "to": "vis_glitch/input"
-        },
-        {
-            "from": "clock/beat_phase",
-            "to": "vis_glitch/phase",
-            "bridge": "hold"
-        },
-        {
-            "from": "vis_glitch/texture",
-            "to": "scanlines/input"
         },
         {
             "from": "scanlines/texture",

@@ -1,251 +1,251 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "parity_audio_first",
-    "title": "Parity: Audio-First",
-    "description": "Audio-first parity fixture. Starts with a subtractive synth patch (Oscillator -> Filter -> Gain -> audio_out), then adds AudioAnalysis for multi-metric audio->visual bridging: spectral centroid drives NoiseTexture speed, RMS drives Shape radius. Demonstrates symmetric analysis capability with TextureAnalysis.",
-    "tags": [
-      "parity",
-      "audio-first",
-      "fixture",
-      "validation"
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "parity_audio_first",
+        "title": "Parity: Audio-First",
+        "description": "Audio-first parity fixture. Starts with a subtractive synth patch (Oscillator -> Filter -> Gain -> audio_out), then adds AudioAnalysis for multi-metric audio->visual bridging: spectral centroid drives NoiseTexture speed, RMS drives Shape radius. Demonstrates symmetric analysis capability with TextureAnalysis.",
+        "tags": [
+            "parity",
+            "audio-first",
+            "fixture",
+            "validation"
+        ],
+        "difficulty": "intermediate",
+        "domains": [
+            "audio",
+            "gpu",
+            "control"
+        ],
+        "requires_packages": [],
+        "featured_rank": 900
+    },
+    "nodes": {
+        "lfo1": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 2.0,
+                "amplitude": 200.0,
+                "offset": 440.0,
+                "waveform": 0
+            },
+            "layout": [
+                100,
+                100
+            ]
+        },
+        "osc1": {
+            "type": "Oscillator",
+            "params": {
+                "frequency": 440.0,
+                "amplitude": 0.7,
+                "waveform": 0
+            },
+            "layout": [
+                300,
+                100
+            ]
+        },
+        "filter1": {
+            "type": "Filter",
+            "params": {
+                "cutoff": 1200.0,
+                "resonance": 1.5,
+                "mode": 0
+            },
+            "layout": [
+                500,
+                100
+            ]
+        },
+        "gain1": {
+            "type": "Gain",
+            "params": {
+                "gain": 0.6
+            },
+            "layout": [
+                700,
+                100
+            ]
+        },
+        "audio_analysis": {
+            "type": "AudioAnalysis",
+            "params": {
+                "smoothing": 0.9
+            },
+            "layout": [
+                900,
+                100
+            ]
+        },
+        "audio_out": {
+            "type": "audio_out",
+            "params": {},
+            "layout": [
+                1100,
+                100
+            ]
+        },
+        "noise_vis": {
+            "type": "NoiseTexture",
+            "params": {
+                "scale": 6.0,
+                "speed": 1.5,
+                "octaves": 4
+            },
+            "layout": [
+                500,
+                350
+            ]
+        },
+        "shape_vis": {
+            "type": "Shape",
+            "params": {
+                "radius": 0.25,
+                "sides": 6,
+                "rotation": 0.0,
+                "r": 0.3,
+                "g": 0.7,
+                "b": 1.0
+            },
+            "layout": [
+                500,
+                550
+            ]
+        },
+        "composite1": {
+            "type": "Composite",
+            "params": {
+                "blend_mode": 1,
+                "opacity": 0.8
+            },
+            "layout": [
+                750,
+                450
+            ]
+        },
+        "bloom1": {
+            "type": "Bloom",
+            "params": {
+                "threshold": 0.5,
+                "intensity": 1.2,
+                "radius": 1.5
+            },
+            "layout": [
+                950,
+                450
+            ]
+        },
+        "video_out": {
+            "type": "video_out",
+            "params": {},
+            "layout": [
+                1150,
+                450
+            ]
+        }
+    },
+    "connections": [
+        {
+            "from": "lfo1/value",
+            "to": "osc1/frequency",
+            "bridge": "hold"
+        },
+        {
+            "from": "osc1/output",
+            "to": "filter1/input"
+        },
+        {
+            "from": "filter1/output",
+            "to": "gain1/input"
+        },
+        {
+            "from": "gain1/output",
+            "to": "audio_analysis/input"
+        },
+        {
+            "from": "audio_analysis/output",
+            "to": "audio_out/input"
+        },
+        {
+            "from": "audio_analysis/spectral_centroid",
+            "to": "noise_vis/speed",
+            "from_min": 0.0,
+            "from_max": 1.0,
+            "to_min": 0.5,
+            "to_max": 8.0,
+            "bridge": "last_sample"
+        },
+        {
+            "from": "audio_analysis/rms",
+            "to": "noise_vis/scale",
+            "from_min": 0.0,
+            "from_max": 0.5,
+            "to_min": 2.0,
+            "to_max": 12.0,
+            "bridge": "rms"
+        },
+        {
+            "from": "audio_analysis/rms",
+            "to": "shape_vis/radius",
+            "from_min": 0.0,
+            "from_max": 0.5,
+            "to_min": 0.05,
+            "to_max": 0.4,
+            "bridge": "rms"
+        },
+        {
+            "from": "lfo1/value",
+            "to": "shape_vis/rotation",
+            "from_min": 240.0,
+            "from_max": 640.0,
+            "to_min": 0.0,
+            "to_max": 6.28
+        },
+        {
+            "from": "noise_vis/texture",
+            "to": "composite1/a"
+        },
+        {
+            "from": "shape_vis/texture",
+            "to": "composite1/b"
+        },
+        {
+            "from": "composite1/texture",
+            "to": "bloom1/input"
+        },
+        {
+            "from": "bloom1/texture",
+            "to": "video_out/input"
+        }
     ],
-    "difficulty": "intermediate",
-    "domains": [
-      "audio",
-      "gpu",
-      "control"
-    ],
-    "requires_packages": [],
-    "featured_rank": 900
-  },
-  "nodes": {
-    "lfo1": {
-      "type": "LfoFr",
-      "params": {
-        "frequency": 2.0,
-        "amplitude": 200.0,
-        "offset": 440.0,
-        "waveform": 0
-      },
-      "layout": [
-        100,
-        100
-      ]
-    },
-    "osc1": {
-      "type": "Oscillator",
-      "params": {
-        "frequency": 440.0,
-        "amplitude": 0.7,
-        "waveform": 0
-      },
-      "layout": [
-        300,
-        100
-      ]
-    },
-    "filter1": {
-      "type": "Filter",
-      "params": {
-        "cutoff": 1200.0,
-        "resonance": 1.5,
-        "mode": 0
-      },
-      "layout": [
-        500,
-        100
-      ]
-    },
-    "gain1": {
-      "type": "Gain",
-      "params": {
-        "gain": 0.6
-      },
-      "layout": [
-        700,
-        100
-      ]
-    },
-    "audio_analysis": {
-      "type": "AudioAnalysis",
-      "params": {
-        "smoothing": 0.9
-      },
-      "layout": [
-        900,
-        100
-      ]
-    },
-    "audio_out": {
-      "type": "audio_out",
-      "params": {},
-      "layout": [
-        1100,
-        100
-      ]
-    },
-    "noise_vis": {
-      "type": "NoiseTexture",
-      "params": {
-        "scale": 6.0,
-        "speed": 1.5,
-        "octaves": 4
-      },
-      "layout": [
-        500,
-        350
-      ]
-    },
-    "shape_vis": {
-      "type": "Shape",
-      "params": {
-        "radius": 0.25,
-        "sides": 6,
-        "rotation": 0.0,
-        "r": 0.3,
-        "g": 0.7,
-        "b": 1.0
-      },
-      "layout": [
-        500,
-        550
-      ]
-    },
-    "composite1": {
-      "type": "Composite",
-      "params": {
-        "blend_mode": 1,
-        "opacity": 0.8
-      },
-      "layout": [
-        750,
-        450
-      ]
-    },
-    "bloom1": {
-      "type": "Bloom",
-      "params": {
-        "threshold": 0.5,
-        "intensity": 1.2,
-        "radius": 1.5
-      },
-      "layout": [
-        950,
-        450
-      ]
-    },
-    "video_out": {
-      "type": "video_out",
-      "params": {},
-      "layout": [
-        1150,
-        450
-      ]
-    }
-  },
-  "connections": [
-    {
-      "from": "lfo1/value",
-      "to": "osc1/frequency",
-      "bridge": "hold"
-    },
-    {
-      "from": "osc1/output",
-      "to": "filter1/input"
-    },
-    {
-      "from": "filter1/output",
-      "to": "gain1/input"
-    },
-    {
-      "from": "gain1/output",
-      "to": "audio_analysis/input"
-    },
-    {
-      "from": "audio_analysis/output",
-      "to": "audio_out/input"
-    },
-    {
-      "from": "audio_analysis/spectral_centroid",
-      "to": "noise_vis/speed",
-      "from_min": 0.0,
-      "from_max": 1.0,
-      "to_min": 0.5,
-      "to_max": 8.0,
-      "bridge": "last_sample"
-    },
-    {
-      "from": "audio_analysis/rms",
-      "to": "noise_vis/scale",
-      "from_min": 0.0,
-      "from_max": 0.5,
-      "to_min": 2.0,
-      "to_max": 12.0,
-      "bridge": "rms"
-    },
-    {
-      "from": "audio_analysis/rms",
-      "to": "shape_vis/radius",
-      "from_min": 0.0,
-      "from_max": 0.5,
-      "to_min": 0.05,
-      "to_max": 0.4,
-      "bridge": "rms"
-    },
-    {
-      "from": "lfo1/value",
-      "to": "shape_vis/rotation",
-      "from_min": 240.0,
-      "from_max": 640.0,
-      "to_min": 0.0,
-      "to_max": 6.28
-    },
-    {
-      "from": "noise_vis/texture",
-      "to": "composite1/a"
-    },
-    {
-      "from": "shape_vis/texture",
-      "to": "composite1/b"
-    },
-    {
-      "from": "composite1/texture",
-      "to": "bloom1/input"
-    },
-    {
-      "from": "bloom1/texture",
-      "to": "video_out/input"
-    }
-  ],
-  "sticky_notes": [
-    {
-      "id": "note_1",
-      "text": "**Audio-First** analysis bridge AudioAnalysis extracts spectral metrics to drive visuals",
-      "x": -100.0,
-      "y": -80.0,
-      "width": 260.0,
-      "height": 80.0,
-      "color": 0
-    },
-    {
-      "id": "note_2",
-      "text": "**Spectral centroid** \u2192 noise speed (brighter audio = faster texture) **RMS** \u2192 noise scale + shape radius",
-      "x": -100.0,
-      "y": 200.0,
-      "width": 270.0,
-      "height": 80.0,
-      "color": 2
-    },
-    {
-      "id": "note_3",
-      "text": "Audio path is fully self-contained; visuals are a reactive overlay driven by analysis outputs",
-      "x": 350.0,
-      "y": -80.0,
-      "width": 250.0,
-      "height": 80.0,
-      "color": 1
-    }
-  ]
+    "sticky_notes": [
+        {
+            "id": "note_1",
+            "text": "**Audio-First** analysis bridge AudioAnalysis extracts spectral metrics to drive visuals",
+            "x": -100.0,
+            "y": -80.0,
+            "width": 260.0,
+            "height": 80.0,
+            "color": 0
+        },
+        {
+            "id": "note_2",
+            "text": "**Spectral centroid** \u2192 noise speed (brighter audio = faster texture) **RMS** \u2192 noise scale + shape radius",
+            "x": -100.0,
+            "y": 200.0,
+            "width": 270.0,
+            "height": 80.0,
+            "color": 2
+        },
+        {
+            "id": "note_3",
+            "text": "Audio path is fully self-contained; visuals are a reactive overlay driven by analysis outputs",
+            "x": 350.0,
+            "y": -80.0,
+            "width": 250.0,
+            "height": 80.0,
+            "color": 1
+        }
+    ]
 }

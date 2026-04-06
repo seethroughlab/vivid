@@ -1,4 +1,5 @@
 {
+    "schema_version": 3,
     "meta": {
         "title": "Chromatic Sampler with Arpeggiator",
         "description": "ChordProgression feeds an Arpeggiator that drives a chromatic Sampler with lapsteel samples.",

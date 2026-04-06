@@ -1,85 +1,83 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "path_animate_demo",
-    "title": "Path Animate",
-    "description": "Bezier path motion graphics with feedback trails showing the path a shape follows.",
-    "tags": [
-      "demo",
-      "motion-graphics",
-      "path",
-      "bezier"
-    ],
-    "difficulty": "intermediate",
-    "domains": [
-      "gpu",
-      "control"
-    ],
-    "requires_packages": [],
-    "featured_rank": 39
-  },
-  "nodes": {
-    "path": {
-      "type": "Path Animate",
-      "params": {
-        "speed": 0.5,
-        "loop_mode": 1,
-        "easing": 3
-      }
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "path_animate_demo",
+        "title": "Path Animate",
+        "description": "Bezier path motion graphics with feedback trails showing the path a shape follows.",
+        "tags": [
+            "demo",
+            "motion-graphics",
+            "path",
+            "bezier"
+        ],
+        "difficulty": "intermediate",
+        "domains": [
+            "gpu",
+            "control"
+        ],
+        "requires_packages": [],
+        "featured_rank": 39
     },
-    "shape": {
-      "type": "Shape",
-      "params": {
-        "sides": 32,
-        "radius": 0.04,
-        "softness": 0.01,
-        "r": 1.0,
-        "g": 0.4,
-        "b": 0.8
-      },
-      "resolution": [
-        800,
-        600
-      ]
+    "nodes": {
+        "path": {
+            "type": "Path Animate",
+            "params": {
+                "speed": 0.5,
+                "loop_mode": 1,
+                "easing": 3
+            }
+        },
+        "shape": {
+            "type": "Shape",
+            "params": {
+                "sides": 32,
+                "radius": 0.04,
+                "softness": 0.01,
+                "r": 1.0,
+                "g": 0.4,
+                "b": 0.8
+            },
+            "resolution": [
+                800,
+                600
+            ]
+        },
+        "xform": {
+            "type": "Transform",
+            "params": {}
+        },
+        "feedback": {
+            "type": "Feedback",
+            "params": {
+                "decay": 0.95,
+                "mix": 0.8
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        }
     },
-    "xform": {
-      "type": "Transform",
-      "params": {}
-    },
-    "feedback": {
-      "type": "Feedback",
-      "params": {
-        "decay": 0.95,
-        "mix": 0.8
-      }
-    },
-    "vout": {
-      "type": "video_out"
-    }
-  },
-  "connections": [
-    {
-      "from": "path/x",
-      "to": "xform/translate_x"
-    },
-    {
-      "from": "path/y",
-      "to": "xform/translate_y"
-    },
-    {
-      "from": "shape/texture",
-      "to": "xform/input"
-    },
-    {
-      "from": "xform/texture",
-      "to": "feedback/input",
-      "bridge": "hold"
-    },
-    {
-      "from": "feedback/texture",
-      "to": "vout/input",
-      "bridge": "last_sample"
-    }
-  ]
+    "connections": [
+        {
+            "from": "path/x",
+            "to": "xform/translate_x"
+        },
+        {
+            "from": "path/y",
+            "to": "xform/translate_y"
+        },
+        {
+            "from": "shape/texture",
+            "to": "xform/input"
+        },
+        {
+            "from": "xform/texture",
+            "to": "feedback/input"
+        },
+        {
+            "from": "feedback/texture",
+            "to": "vout/input"
+        }
+    ]
 }

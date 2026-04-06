@@ -1,64 +1,87 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "limiter_demo",
-    "title": "Limiter Ceiling Demo",
-    "description": "A saw wave driven hot through a limiter. An LFO sweeps the input gain so the limiter alternately passes clean signal and brickwall-limits the peaks.",
-    "tags": ["audio", "limiter", "dynamics", "demo"],
-    "difficulty": "beginner",
-    "domains": ["audio", "control"],
-    "requires_packages": [],
-    "featured_rank": 30
-  },
-  "nodes": {
-    "osc": {
-      "type": "Oscillator",
-      "params": {
-        "frequency": 220.0,
-        "amplitude": 0.8,
-        "waveform": 1
-      }
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "limiter_demo",
+        "title": "Limiter Ceiling Demo",
+        "description": "A saw wave driven hot through a limiter. An LFO sweeps the input gain so the limiter alternately passes clean signal and brickwall-limits the peaks.",
+        "tags": [
+            "audio",
+            "limiter",
+            "dynamics",
+            "demo"
+        ],
+        "difficulty": "beginner",
+        "domains": [
+            "audio",
+            "control"
+        ],
+        "requires_packages": [],
+        "featured_rank": 30
     },
-    "lfo": {
-      "type": "LfoAu",
-      "params": {
-        "frequency": 0.2,
-        "amplitude": 0.6,
-        "offset": 1.0,
-        "waveform": 0
-      }
+    "nodes": {
+        "osc": {
+            "type": "Oscillator",
+            "params": {
+                "frequency": 220.0,
+                "amplitude": 0.8,
+                "waveform": 1
+            }
+        },
+        "lfo": {
+            "type": "LfoAu",
+            "params": {
+                "frequency": 0.2,
+                "amplitude": 0.6,
+                "offset": 1.0,
+                "waveform": 0
+            }
+        },
+        "hot_gain": {
+            "type": "Gain",
+            "params": {
+                "gain": 1.5
+            }
+        },
+        "limiter": {
+            "type": "Limiter",
+            "params": {
+                "ceiling": -1.0,
+                "release": 50.0,
+                "lookahead": 3.0
+            }
+        },
+        "gain": {
+            "type": "Gain",
+            "params": {
+                "gain": 0.7
+            }
+        },
+        "out": {
+            "type": "audio_out",
+            "params": {}
+        }
     },
-    "hot_gain": {
-      "type": "Gain",
-      "params": {
-        "gain": 1.5
-      }
-    },
-    "limiter": {
-      "type": "Limiter",
-      "params": {
-        "ceiling": -1.0,
-        "release": 50.0,
-        "lookahead": 3.0
-      }
-    },
-    "gain": {
-      "type": "Gain",
-      "params": {
-        "gain": 0.7
-      }
-    },
-    "out": {
-      "type": "audio_out",
-      "params": {}
-    }
-  },
-  "connections": [
-    { "from": "osc/output",      "to": "hot_gain/input"       },
-    { "from": "lfo/value",       "to": "hot_gain/amplitude_cv" },
-    { "from": "hot_gain/output", "to": "limiter/input"        },
-    { "from": "limiter/output",  "to": "gain/input"           },
-    { "from": "gain/output",     "to": "out/input"            }
-  ]
+    "connections": [
+        {
+            "from": "osc/output",
+            "to": "hot_gain/input"
+        },
+        {
+            "from": "lfo/value",
+            "to": "hot_gain/amplitude_cv"
+        },
+        {
+            "from": "hot_gain/output",
+            "to": "limiter/input"
+        },
+        {
+            "from": "limiter/output",
+            "to": "gain/input"
+        },
+        {
+            "from": "gain/output",
+            "to": "out/input"
+        }
+    ]
 }

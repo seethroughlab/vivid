@@ -1,127 +1,127 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "path_animate_av_demo",
-    "title": "Path Animate AV",
-    "description": "Audio-reactive path animation where oscillator RMS drives path traversal speed.",
-    "tags": [
-      "demo",
-      "motion-graphics",
-      "path",
-      "audio-reactive"
-    ],
-    "difficulty": "advanced",
-    "domains": [
-      "audio",
-      "gpu",
-      "control"
-    ],
-    "requires_packages": [],
-    "featured_rank": 40
-  },
-  "nodes": {
-    "osc": {
-      "type": "Oscillator",
-      "params": {
-        "frequency": 110.0,
-        "amplitude": 0.6,
-        "waveform": 1
-      }
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "path_animate_av_demo",
+        "title": "Path Animate AV",
+        "description": "Audio-reactive path animation where oscillator RMS drives path traversal speed.",
+        "tags": [
+            "demo",
+            "motion-graphics",
+            "path",
+            "audio-reactive"
+        ],
+        "difficulty": "advanced",
+        "domains": [
+            "audio",
+            "gpu",
+            "control"
+        ],
+        "requires_packages": [],
+        "featured_rank": 40
     },
-    "gain": {
-      "type": "Gain",
-      "params": {
-        "gain": 0.5
-      }
+    "nodes": {
+        "osc": {
+            "type": "Oscillator",
+            "params": {
+                "frequency": 110.0,
+                "amplitude": 0.6,
+                "waveform": 1
+            }
+        },
+        "gain": {
+            "type": "Gain",
+            "params": {
+                "gain": 0.5
+            }
+        },
+        "aout": {
+            "type": "audio_out"
+        },
+        "math_speed": {
+            "type": "Math",
+            "params": {
+                "operation": 2,
+                "b": 5.0
+            }
+        },
+        "path": {
+            "type": "Path Animate",
+            "params": {
+                "speed": 1.0,
+                "loop_mode": 0,
+                "easing": 0
+            }
+        },
+        "shape": {
+            "type": "Shape",
+            "params": {
+                "sides": 32,
+                "radius": 0.05,
+                "softness": 0.01,
+                "r": 1.0,
+                "g": 0.8,
+                "b": 0.2
+            },
+            "resolution": [
+                800,
+                600
+            ]
+        },
+        "xform": {
+            "type": "Transform",
+            "params": {}
+        },
+        "bloom": {
+            "type": "Bloom",
+            "params": {
+                "threshold": 0.3,
+                "intensity": 1.0,
+                "radius": 1.5,
+                "passes": 4
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        }
     },
-    "aout": {
-      "type": "audio_out"
-    },
-    "math_speed": {
-      "type": "Math",
-      "params": {
-        "operation": 2,
-        "b": 5.0
-      }
-    },
-    "path": {
-      "type": "Path Animate",
-      "params": {
-        "speed": 1.0,
-        "loop_mode": 0,
-        "easing": 0
-      }
-    },
-    "shape": {
-      "type": "Shape",
-      "params": {
-        "sides": 32,
-        "radius": 0.05,
-        "softness": 0.01,
-        "r": 1.0,
-        "g": 0.8,
-        "b": 0.2
-      },
-      "resolution": [
-        800,
-        600
-      ]
-    },
-    "xform": {
-      "type": "Transform",
-      "params": {}
-    },
-    "bloom": {
-      "type": "Bloom",
-      "params": {
-        "threshold": 0.3,
-        "intensity": 1.0,
-        "radius": 1.5,
-        "passes": 4
-      }
-    },
-    "vout": {
-      "type": "video_out"
-    }
-  },
-  "connections": [
-    {
-      "from": "osc/output",
-      "to": "gain/input"
-    },
-    {
-      "from": "gain/output",
-      "to": "aout/input"
-    },
-    {
-      "from": "gain/rms",
-      "to": "math_speed/a",
-      "bridge": "rms"
-    },
-    {
-      "from": "math_speed/result",
-      "to": "path/speed"
-    },
-    {
-      "from": "path/x",
-      "to": "xform/translate_x"
-    },
-    {
-      "from": "path/y",
-      "to": "xform/translate_y"
-    },
-    {
-      "from": "shape/texture",
-      "to": "xform/input"
-    },
-    {
-      "from": "xform/texture",
-      "to": "bloom/input"
-    },
-    {
-      "from": "bloom/texture",
-      "to": "vout/input"
-    }
-  ]
+    "connections": [
+        {
+            "from": "osc/output",
+            "to": "gain/input"
+        },
+        {
+            "from": "gain/output",
+            "to": "aout/input"
+        },
+        {
+            "from": "gain/rms",
+            "to": "math_speed/a",
+            "bridge": "rms"
+        },
+        {
+            "from": "math_speed/result",
+            "to": "path/speed"
+        },
+        {
+            "from": "path/x",
+            "to": "xform/translate_x"
+        },
+        {
+            "from": "path/y",
+            "to": "xform/translate_y"
+        },
+        {
+            "from": "shape/texture",
+            "to": "xform/input"
+        },
+        {
+            "from": "xform/texture",
+            "to": "bloom/input"
+        },
+        {
+            "from": "bloom/texture",
+            "to": "vout/input"
+        }
+    ]
 }

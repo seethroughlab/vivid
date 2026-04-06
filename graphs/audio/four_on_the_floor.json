@@ -1,4 +1,5 @@
 {
+    "schema_version": 3,
     "meta": {
         "title": "Four on the Floor",
         "description": "Classic dance beat: kick every quarter, snare on 2/4, hats on every 8th, clap on 4.",
@@ -114,8 +115,7 @@
         },
         {
             "from": "kit1/slot_2",
-            "to": "hat1/midi_in",
-            "bridge": "last_sample"
+            "to": "hat1/midi_in"
         },
         {
             "from": "kit1/slot_4",
@@ -131,8 +131,7 @@
         },
         {
             "from": "hat1/output",
-            "to": "aout/input",
-            "bridge": "hold"
+            "to": "aout/input"
         },
         {
             "from": "clap1/output",

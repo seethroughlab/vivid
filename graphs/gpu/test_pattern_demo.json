@@ -1,81 +1,81 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "test_pattern_demo",
-    "title": "Test Pattern",
-    "description": "Calibration test patterns cycling through all available pattern types.",
-    "tags": [
-      "demo",
-      "projection-mapping",
-      "calibration",
-      "test-pattern"
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "test_pattern_demo",
+        "title": "Test Pattern",
+        "description": "Calibration test patterns cycling through all available pattern types.",
+        "tags": [
+            "demo",
+            "projection-mapping",
+            "calibration",
+            "test-pattern"
+        ],
+        "difficulty": "beginner",
+        "domains": [
+            "gpu",
+            "control"
+        ],
+        "requires_packages": [],
+        "featured_rank": 33
+    },
+    "nodes": {
+        "pattern": {
+            "type": "Test Pattern",
+            "params": {
+                "pattern": 0,
+                "density": 16.0,
+                "line_width": 2.0,
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0
+            },
+            "resolution": [
+                800,
+                600
+            ]
+        },
+        "lfo_pattern": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.1,
+                "amplitude": 2.5,
+                "offset": 2.5,
+                "waveform": 2
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        }
+    },
+    "connections": [
+        {
+            "from": "lfo_pattern/value",
+            "to": "pattern/pattern"
+        },
+        {
+            "from": "pattern/texture",
+            "to": "vout/input"
+        }
     ],
-    "difficulty": "beginner",
-    "domains": [
-      "gpu",
-      "control"
-    ],
-    "requires_packages": [],
-    "featured_rank": 33
-  },
-  "nodes": {
-    "pattern": {
-      "type": "Test Pattern",
-      "params": {
-        "pattern": 0,
-        "density": 16.0,
-        "line_width": 2.0,
-        "r": 1.0,
-        "g": 1.0,
-        "b": 1.0
-      },
-      "resolution": [
-        800,
-        600
-      ]
-    },
-    "lfo_pattern": {
-      "type": "LfoFr",
-      "params": {
-        "frequency": 0.1,
-        "amplitude": 2.5,
-        "offset": 2.5,
-        "waveform": 2
-      }
-    },
-    "vout": {
-      "type": "video_out"
-    }
-  },
-  "connections": [
-    {
-      "from": "lfo_pattern/value",
-      "to": "pattern/pattern"
-    },
-    {
-      "from": "pattern/texture",
-      "to": "vout/input"
-    }
-  ],
-  "sticky_notes": [
-    {
-      "id": "note_1",
-      "text": "**Calibration Patterns** LFO cycles through pattern types for projection/display testing",
-      "x": -100.0,
-      "y": -80.0,
-      "width": 260.0,
-      "height": 80.0,
-      "color": 0
-    },
-    {
-      "id": "note_2",
-      "text": "Square-wave LFO snaps between pattern types (grid, bars, etc.) rather than blending smoothly",
-      "x": -100.0,
-      "y": 150.0,
-      "width": 260.0,
-      "height": 80.0,
-      "color": 4
-    }
-  ]
+    "sticky_notes": [
+        {
+            "id": "note_1",
+            "text": "**Calibration Patterns** LFO cycles through pattern types for projection/display testing",
+            "x": -100.0,
+            "y": -80.0,
+            "width": 260.0,
+            "height": 80.0,
+            "color": 0
+        },
+        {
+            "id": "note_2",
+            "text": "Square-wave LFO snaps between pattern types (grid, bars, etc.) rather than blending smoothly",
+            "x": -100.0,
+            "y": 150.0,
+            "width": 260.0,
+            "height": 80.0,
+            "color": 4
+        }
+    ]
 }

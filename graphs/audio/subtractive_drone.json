@@ -1,306 +1,279 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "subtractive_drone",
-    "title": "Classic Subtractive Drone",
-    "description": "A hardware-style subtractive patch: 110 Hz saw + noise through a resonant low-pass filter swept by an ADSR envelope on every beat, with LFO vibrato. Lo-fi blocky monochrome visuals with beat-triggered glitch and slow hue drift.",
-    "tags": [
-      "audio",
-      "synthesis",
-      "subtractive",
-      "drone",
-      "demo"
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "subtractive_drone",
+        "title": "Classic Subtractive Drone",
+        "description": "A hardware-style subtractive patch: 110 Hz saw + noise through a resonant low-pass filter swept by an ADSR envelope on every beat, with LFO vibrato. Lo-fi blocky monochrome visuals with beat-triggered glitch and slow hue drift.",
+        "tags": [
+            "audio",
+            "synthesis",
+            "subtractive",
+            "drone",
+            "demo"
+        ],
+        "difficulty": "intermediate",
+        "domains": [
+            "audio",
+            "control",
+            "gpu"
+        ],
+        "requires_packages": [
+            "vivid-glitch"
+        ],
+        "featured_rank": 22
+    },
+    "nodes": {
+        "clock": {
+            "type": "ClockAu",
+            "params": {
+                "bpm": 120.0
+            }
+        },
+        "lfo": {
+            "type": "LfoAu",
+            "params": {
+                "frequency": 0.3,
+                "amplitude": 3.0,
+                "waveform": 0
+            }
+        },
+        "env_amp": {
+            "type": "EnvelopeAu",
+            "params": {
+                "attack": 0.005,
+                "decay": 0.2,
+                "sustain": 0.6,
+                "release": 0.8,
+                "amplitude": 1.0
+            }
+        },
+        "env_filter": {
+            "type": "EnvelopeAu",
+            "params": {
+                "attack": 0.005,
+                "decay": 0.2,
+                "sustain": 0.6,
+                "release": 0.8,
+                "amplitude": 12.0
+            }
+        },
+        "osc": {
+            "type": "Oscillator",
+            "params": {
+                "frequency": 110.0,
+                "amplitude": 0.7,
+                "waveform": 1
+            }
+        },
+        "noise": {
+            "type": "Noise",
+            "params": {
+                "color": 0,
+                "amplitude": 0.15
+            }
+        },
+        "mixer": {
+            "type": "Mixer",
+            "params": {
+                "gain_1": 1.0,
+                "gain_2": 1.0
+            }
+        },
+        "filter": {
+            "type": "Filter",
+            "params": {
+                "cutoff": 400.0,
+                "resonance": 0.9,
+                "mode": 0
+            }
+        },
+        "gain": {
+            "type": "Gain",
+            "params": {
+                "gain": 0.8
+            }
+        },
+        "out": {
+            "type": "audio_out",
+            "params": {}
+        },
+        "lfo_hue": {
+            "type": "LfoAu",
+            "params": {
+                "frequency": 0.05,
+                "amplitude": 180.0,
+                "offset": 180.0,
+                "waveform": 0
+            }
+        },
+        "noise_vis": {
+            "type": "NoiseTexture",
+            "params": {
+                "speed": 0.6,
+                "scale": 6.0,
+                "octaves": 3,
+                "channels": 0
+            }
+        },
+        "text_vis": {
+            "type": "Text",
+            "params": {
+                "text": "DRONE",
+                "size": 0.18,
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0,
+                "bg_r": 0.0,
+                "bg_g": 0.0,
+                "bg_b": 0.0,
+                "x": -0.65,
+                "y": 0.72
+            }
+        },
+        "comp_text": {
+            "type": "Composite",
+            "params": {
+                "blend_mode": 1
+            }
+        },
+        "pixelate": {
+            "type": "Pixelate",
+            "params": {
+                "size_x": 12.0,
+                "size_y": 12.0
+            }
+        },
+        "posterize": {
+            "type": "Posterize",
+            "params": {
+                "levels": 4.0
+            }
+        },
+        "hsv_vis": {
+            "type": "HSV",
+            "params": {
+                "hue_shift": 0.0,
+                "saturation": -0.5,
+                "value": 0.0
+            }
+        },
+        "scanlines": {
+            "type": "Scanlines",
+            "params": {
+                "spacing": 3.0,
+                "thickness": 0.5,
+                "intensity": 0.4
+            }
+        },
+        "vout": {
+            "type": "video_out",
+            "params": {}
+        }
+    },
+    "connections": [
+        {
+            "from": "clock/beat_phase",
+            "to": "env_amp/beat_phase"
+        },
+        {
+            "from": "clock/beat_phase",
+            "to": "env_filter/beat_phase"
+        },
+        {
+            "from": "lfo/value",
+            "to": "osc/freq_cv"
+        },
+        {
+            "from": "osc/output",
+            "to": "mixer/input_1"
+        },
+        {
+            "from": "noise/output",
+            "to": "mixer/input_2"
+        },
+        {
+            "from": "mixer/output",
+            "to": "filter/input"
+        },
+        {
+            "from": "env_filter/value",
+            "to": "filter/cutoff_cv"
+        },
+        {
+            "from": "filter/output",
+            "to": "gain/input"
+        },
+        {
+            "from": "env_amp/value",
+            "to": "gain/amplitude_cv"
+        },
+        {
+            "from": "gain/output",
+            "to": "out/input"
+        },
+        {
+            "from": "gain/rms",
+            "to": "noise_vis/scale",
+            "bridge": "rms"
+        },
+        {
+            "from": "noise_vis/texture",
+            "to": "comp_text/a"
+        },
+        {
+            "from": "text_vis/texture",
+            "to": "comp_text/b"
+        },
+        {
+            "from": "comp_text/texture",
+            "to": "pixelate/input"
+        },
+        {
+            "from": "pixelate/texture",
+            "to": "posterize/input"
+        },
+        {
+            "from": "posterize/texture",
+            "to": "hsv_vis/input"
+        },
+        {
+            "from": "lfo_hue/value",
+            "to": "hsv_vis/hue_shift",
+            "bridge": "last_sample"
+        },
+        {
+            "from": "scanlines/texture",
+            "to": "vout/input"
+        }
     ],
-    "difficulty": "intermediate",
-    "domains": [
-      "audio",
-      "control",
-      "gpu"
-    ],
-    "requires_packages": [
-      "vivid-glitch"
-    ],
-    "featured_rank": 22
-  },
-  "nodes": {
-    "clock": {
-      "type": "ClockAu",
-      "params": {
-        "bpm": 120.0
-      }
-    },
-    "lfo": {
-      "type": "LfoAu",
-      "params": {
-        "frequency": 0.3,
-        "amplitude": 3.0,
-        "waveform": 0
-      }
-    },
-    "env_amp": {
-      "type": "EnvelopeAu",
-      "params": {
-        "attack": 0.005,
-        "decay": 0.2,
-        "sustain": 0.6,
-        "release": 0.8,
-        "amplitude": 1.0
-      }
-    },
-    "env_filter": {
-      "type": "EnvelopeAu",
-      "params": {
-        "attack": 0.005,
-        "decay": 0.2,
-        "sustain": 0.6,
-        "release": 0.8,
-        "amplitude": 12.0
-      }
-    },
-    "osc": {
-      "type": "Oscillator",
-      "params": {
-        "frequency": 110.0,
-        "amplitude": 0.7,
-        "waveform": 1
-      }
-    },
-    "noise": {
-      "type": "Noise",
-      "params": {
-        "color": 0,
-        "amplitude": 0.15
-      }
-    },
-    "mixer": {
-      "type": "Mixer",
-      "params": {
-        "gain_1": 1.0,
-        "gain_2": 1.0
-      }
-    },
-    "filter": {
-      "type": "Filter",
-      "params": {
-        "cutoff": 400.0,
-        "resonance": 0.9,
-        "mode": 0
-      }
-    },
-    "gain": {
-      "type": "Gain",
-      "params": {
-        "gain": 0.8
-      }
-    },
-    "out": {
-      "type": "audio_out",
-      "params": {}
-    },
-    "lfo_hue": {
-      "type": "LfoAu",
-      "params": {
-        "frequency": 0.05,
-        "amplitude": 180.0,
-        "offset": 180.0,
-        "waveform": 0
-      }
-    },
-    "noise_vis": {
-      "type": "NoiseTexture",
-      "params": {
-        "speed": 0.6,
-        "scale": 6.0,
-        "octaves": 3,
-        "channels": 0
-      }
-    },
-    "text_vis": {
-      "type": "Text",
-      "params": {
-        "text": "DRONE",
-        "size": 0.18,
-        "r": 1.0,
-        "g": 1.0,
-        "b": 1.0,
-        "bg_r": 0.0,
-        "bg_g": 0.0,
-        "bg_b": 0.0,
-        "x": -0.65,
-        "y": 0.72
-      }
-    },
-    "comp_text": {
-      "type": "Composite",
-      "params": {
-        "blend_mode": 1
-      }
-    },
-    "pixelate": {
-      "type": "Pixelate",
-      "params": {
-        "size_x": 12.0,
-        "size_y": 12.0
-      }
-    },
-    "posterize": {
-      "type": "Posterize",
-      "params": {
-        "levels": 4.0
-      }
-    },
-    "hsv_vis": {
-      "type": "HSV",
-      "params": {
-        "hue_shift": 0.0,
-        "saturation": -0.5,
-        "value": 0.0
-      }
-    },
-    "vis_glitch": {
-      "type": "Visual Glitch",
-      "params": {
-        "shift_chance": 0.15,
-        "block_chance": 0.35,
-        "scan_chance": 0.25,
-        "static_chance": 0.15,
-        "pixelate_chance": 0.1,
-        "invert_chance": 0.0,
-        "intensity": 0.5,
-        "duration": 0.08,
-        "mix": 0.7
-      }
-    },
-    "scanlines": {
-      "type": "Scanlines",
-      "params": {
-        "spacing": 3.0,
-        "thickness": 0.5,
-        "intensity": 0.4
-      }
-    },
-    "vout": {
-      "type": "video_out",
-      "params": {}
-    }
-  },
-  "connections": [
-    {
-      "from": "clock/beat_phase",
-      "to": "env_amp/beat_phase"
-    },
-    {
-      "from": "clock/beat_phase",
-      "to": "env_filter/beat_phase"
-    },
-    {
-      "from": "lfo/value",
-      "to": "osc/freq_cv"
-    },
-    {
-      "from": "osc/output",
-      "to": "mixer/input_1"
-    },
-    {
-      "from": "noise/output",
-      "to": "mixer/input_2"
-    },
-    {
-      "from": "mixer/output",
-      "to": "filter/input"
-    },
-    {
-      "from": "env_filter/value",
-      "to": "filter/cutoff_cv"
-    },
-    {
-      "from": "filter/output",
-      "to": "gain/input"
-    },
-    {
-      "from": "env_amp/value",
-      "to": "gain/amplitude_cv"
-    },
-    {
-      "from": "gain/output",
-      "to": "out/input"
-    },
-    {
-      "from": "gain/rms",
-      "to": "noise_vis/scale",
-      "bridge": "rms"
-    },
-    {
-      "from": "noise_vis/texture",
-      "to": "comp_text/a"
-    },
-    {
-      "from": "text_vis/texture",
-      "to": "comp_text/b"
-    },
-    {
-      "from": "comp_text/texture",
-      "to": "pixelate/input"
-    },
-    {
-      "from": "pixelate/texture",
-      "to": "posterize/input"
-    },
-    {
-      "from": "posterize/texture",
-      "to": "hsv_vis/input"
-    },
-    {
-      "from": "lfo_hue/value",
-      "to": "hsv_vis/hue_shift",
-      "bridge": "last_sample"
-    },
-    {
-      "from": "hsv_vis/texture",
-      "to": "vis_glitch/input"
-    },
-    {
-      "from": "clock/beat_phase",
-      "to": "vis_glitch/phase",
-      "bridge": "last_sample"
-    },
-    {
-      "from": "vis_glitch/texture",
-      "to": "scanlines/input"
-    },
-    {
-      "from": "scanlines/texture",
-      "to": "vout/input"
-    }
-  ],
-  "sticky_notes": [
-    {
-      "id": "note_1",
-      "text": "**Dual-envelope technique** One envelope shapes the filter cutoff, another shapes the amplitude\u2014both triggered by the same clock",
-      "x": -100.0,
-      "y": -80.0,
-      "width": 280.0,
-      "height": 100.0,
-      "color": 0
-    },
-    {
-      "id": "note_2",
-      "text": "**LFO vibrato** adds subtle pitch drift to the 110 Hz saw",
-      "x": -100.0,
-      "y": 200.0,
-      "width": 220.0,
-      "height": 60.0,
-      "color": 2
-    },
-    {
-      "id": "note_3",
-      "text": "Audio RMS drives visual noise scale for beat-reactive visuals",
-      "x": 300.0,
-      "y": 350.0,
-      "width": 240.0,
-      "height": 60.0,
-      "color": 3
-    }
-  ]
+    "sticky_notes": [
+        {
+            "id": "note_1",
+            "text": "**Dual-envelope technique** One envelope shapes the filter cutoff, another shapes the amplitude\u2014both triggered by the same clock",
+            "x": -100.0,
+            "y": -80.0,
+            "width": 280.0,
+            "height": 100.0,
+            "color": 0
+        },
+        {
+            "id": "note_2",
+            "text": "**LFO vibrato** adds subtle pitch drift to the 110 Hz saw",
+            "x": -100.0,
+            "y": 200.0,
+            "width": 220.0,
+            "height": 60.0,
+            "color": 2
+        },
+        {
+            "id": "note_3",
+            "text": "Audio RMS drives visual noise scale for beat-reactive visuals",
+            "x": 300.0,
+            "y": 350.0,
+            "width": 240.0,
+            "height": 60.0,
+            "color": 3
+        }
+    ]
 }

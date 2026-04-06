@@ -1,4 +1,5 @@
 {
+    "schema_version": 3,
     "meta": {
         "title": "Instanced Shapes Demo",
         "description": "Demonstrates per-instance LFO modulation of scale, rotation, and color on instanced shapes.",

@@ -1,97 +1,97 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "ring_mod_demo",
-    "title": "Ring Modulator Metallic Warble",
-    "description": "A saw oscillator ring-modulated with a sine carrier whose frequency is swept by an LFO, producing a metallic, warbling texture that evolves over time.",
-    "tags": [
-      "audio",
-      "ring-mod",
-      "modulation",
-      "metallic",
-      "demo"
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "ring_mod_demo",
+        "title": "Ring Modulator Metallic Warble",
+        "description": "A saw oscillator ring-modulated with a sine carrier whose frequency is swept by an LFO, producing a metallic, warbling texture that evolves over time.",
+        "tags": [
+            "audio",
+            "ring-mod",
+            "modulation",
+            "metallic",
+            "demo"
+        ],
+        "difficulty": "beginner",
+        "domains": [
+            "audio",
+            "control"
+        ],
+        "requires_packages": [],
+        "featured_rank": 30
+    },
+    "nodes": {
+        "osc": {
+            "type": "Oscillator",
+            "params": {
+                "frequency": 165.0,
+                "amplitude": 0.7,
+                "waveform": 1
+            }
+        },
+        "lfo": {
+            "type": "LfoAu",
+            "params": {
+                "frequency": 0.15,
+                "amplitude": 150.0,
+                "waveform": 0
+            }
+        },
+        "ring": {
+            "type": "RingMod",
+            "params": {
+                "carrier_freq": 300.0,
+                "carrier_waveform": 0,
+                "mix": 0.7
+            }
+        },
+        "gain": {
+            "type": "Gain",
+            "params": {
+                "gain": 0.7
+            }
+        },
+        "out": {
+            "type": "audio_out",
+            "params": {}
+        }
+    },
+    "connections": [
+        {
+            "from": "osc/output",
+            "to": "ring/input"
+        },
+        {
+            "from": "lfo/value",
+            "to": "ring/freq_cv"
+        },
+        {
+            "from": "ring/output",
+            "to": "gain/input"
+        },
+        {
+            "from": "gain/output",
+            "to": "out/input"
+        }
     ],
-    "difficulty": "beginner",
-    "domains": [
-      "audio",
-      "control"
-    ],
-    "requires_packages": [],
-    "featured_rank": 30
-  },
-  "nodes": {
-    "osc": {
-      "type": "Oscillator",
-      "params": {
-        "frequency": 165.0,
-        "amplitude": 0.7,
-        "waveform": 1
-      }
-    },
-    "lfo": {
-      "type": "LfoAu",
-      "params": {
-        "frequency": 0.15,
-        "amplitude": 150.0,
-        "waveform": 0
-      }
-    },
-    "ring": {
-      "type": "RingMod",
-      "params": {
-        "carrier_freq": 300.0,
-        "carrier_waveform": 0,
-        "mix": 0.7
-      }
-    },
-    "gain": {
-      "type": "Gain",
-      "params": {
-        "gain": 0.7
-      }
-    },
-    "out": {
-      "type": "audio_out",
-      "params": {}
-    }
-  },
-  "connections": [
-    {
-      "from": "osc/output",
-      "to": "ring/input"
-    },
-    {
-      "from": "lfo/value",
-      "to": "ring/freq_cv"
-    },
-    {
-      "from": "ring/output",
-      "to": "gain/input"
-    },
-    {
-      "from": "gain/output",
-      "to": "out/input"
-    }
-  ],
-  "sticky_notes": [
-    {
-      "id": "note_1",
-      "text": "**Ring Modulation** Multiplies two signals \u2192 outputs sum and difference frequencies (165\u00b1300 Hz = 135 & 465 Hz)",
-      "x": -100.0,
-      "y": -80.0,
-      "width": 270.0,
-      "height": 100.0,
-      "color": 0
-    },
-    {
-      "id": "note_2",
-      "text": "LFO sweeps carrier freq \u00b1150 Hz for evolving metallic texture",
-      "x": -100.0,
-      "y": 180.0,
-      "width": 240.0,
-      "height": 60.0,
-      "color": 2
-    }
-  ]
+    "sticky_notes": [
+        {
+            "id": "note_1",
+            "text": "**Ring Modulation** Multiplies two signals \u2192 outputs sum and difference frequencies (165\u00b1300 Hz = 135 & 465 Hz)",
+            "x": -100.0,
+            "y": -80.0,
+            "width": 270.0,
+            "height": 100.0,
+            "color": 0
+        },
+        {
+            "id": "note_2",
+            "text": "LFO sweeps carrier freq \u00b1150 Hz for evolving metallic texture",
+            "x": -100.0,
+            "y": 180.0,
+            "width": 240.0,
+            "height": 60.0,
+            "color": 2
+        }
+    ]
 }

@@ -1,62 +1,87 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "rich_text_demo",
-    "title": "Rich Text",
-    "description": "Kinetic typography with wave animation composited over noise and bloom.",
-    "tags": ["demo", "typography", "text", "kinetic"],
-    "difficulty": "intermediate",
-    "domains": ["gpu"],
-    "requires_packages": [],
-    "featured_rank": 37
-  },
-  "nodes": {
-    "text": {
-      "type": "Rich Text",
-      "params": {
-        "text": "VIVID",
-        "size": 0.2,
-        "anim_mode": 1,
-        "anim_speed": 2.0,
-        "r": 0.2,
-        "g": 0.9,
-        "b": 1.0
-      },
-      "resolution": [800, 600]
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "rich_text_demo",
+        "title": "Rich Text",
+        "description": "Kinetic typography with wave animation composited over noise and bloom.",
+        "tags": [
+            "demo",
+            "typography",
+            "text",
+            "kinetic"
+        ],
+        "difficulty": "intermediate",
+        "domains": [
+            "gpu"
+        ],
+        "requires_packages": [],
+        "featured_rank": 37
     },
-    "noise": {
-      "type": "NoiseTexture",
-      "params": {
-        "scale": 4.0,
-        "speed": 0.3,
-        "octaves": 2
-      },
-      "resolution": [800, 600]
+    "nodes": {
+        "text": {
+            "type": "Rich Text",
+            "params": {
+                "text": "VIVID",
+                "size": 0.2,
+                "anim_mode": 1,
+                "anim_speed": 2.0,
+                "r": 0.2,
+                "g": 0.9,
+                "b": 1.0
+            },
+            "resolution": [
+                800,
+                600
+            ]
+        },
+        "noise": {
+            "type": "NoiseTexture",
+            "params": {
+                "scale": 4.0,
+                "speed": 0.3,
+                "octaves": 2
+            },
+            "resolution": [
+                800,
+                600
+            ]
+        },
+        "comp": {
+            "type": "Composite",
+            "params": {
+                "blend_mode": 3
+            }
+        },
+        "bloom": {
+            "type": "Bloom",
+            "params": {
+                "threshold": 0.3,
+                "intensity": 0.8,
+                "radius": 1.5,
+                "passes": 4
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        }
     },
-    "comp": {
-      "type": "Composite",
-      "params": {
-        "blend_mode": 3
-      }
-    },
-    "bloom": {
-      "type": "Bloom",
-      "params": {
-        "threshold": 0.3,
-        "intensity": 0.8,
-        "radius": 1.5,
-        "passes": 4
-      }
-    },
-    "vout": {
-      "type": "video_out"
-    }
-  },
-  "connections": [
-    {"from": "text/texture",  "to": "comp/a"},
-    {"from": "noise/texture", "to": "comp/b"},
-    {"from": "comp/texture",  "to": "bloom/input"},
-    {"from": "bloom/texture", "to": "vout/input"}
-  ]
+    "connections": [
+        {
+            "from": "text/texture",
+            "to": "comp/a"
+        },
+        {
+            "from": "noise/texture",
+            "to": "comp/b"
+        },
+        {
+            "from": "comp/texture",
+            "to": "bloom/input"
+        },
+        {
+            "from": "bloom/texture",
+            "to": "vout/input"
+        }
+    ]
 }

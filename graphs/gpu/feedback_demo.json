@@ -1,5 +1,5 @@
 {
-    "schema_version": 1,
+    "schema_version": 3,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "feedback_demo",
@@ -76,13 +76,11 @@
         },
         {
             "from": "star/texture",
-            "to": "feedback/input",
-            "bridge": "hold"
+            "to": "feedback/input"
         },
         {
             "from": "feedback/texture",
-            "to": "vout/input",
-            "bridge": "last_sample"
+            "to": "vout/input"
         }
     ],
     "sticky_notes": [

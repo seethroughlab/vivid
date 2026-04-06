@@ -1,54 +1,71 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "paperjs_radial_rainbow",
-    "title": "Radial Rainbows",
-    "description": "Faithful port of Paper.js RadialRainbows — animated concentric HSV rainbow rings with orbiting center.",
-    "tags": ["demo", "paperjs", "generative", "rainbow"],
-    "difficulty": "beginner",
-    "domains": ["gpu", "control"],
-    "requires_packages": [],
-    "featured_rank": 15
-  },
-  "nodes": {
-    "rainbow": {
-      "type": "RadialRainbow",
-      "params": {
-        "cycles": 4.0,
-        "speed": 1.0,
-        "brightness": 1.0,
-        "falloff": 1.5,
-        "center_x": 0.5,
-        "center_y": 0.5
-      }
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "paperjs_radial_rainbow",
+        "title": "Radial Rainbows",
+        "description": "Faithful port of Paper.js RadialRainbows \u2014 animated concentric HSV rainbow rings with orbiting center.",
+        "tags": [
+            "demo",
+            "paperjs",
+            "generative",
+            "rainbow"
+        ],
+        "difficulty": "beginner",
+        "domains": [
+            "gpu",
+            "control"
+        ],
+        "requires_packages": [],
+        "featured_rank": 15
     },
-    "lfo_cx": {
-      "type": "LfoFr",
-      "params": {
-        "frequency": 0.07,
-        "amplitude": 0.15,
-        "offset": 0.5,
-        "waveform": 0
-      }
+    "nodes": {
+        "rainbow": {
+            "type": "RadialRainbow",
+            "params": {
+                "cycles": 4.0,
+                "speed": 1.0,
+                "brightness": 1.0,
+                "falloff": 1.5,
+                "center_x": 0.5,
+                "center_y": 0.5
+            }
+        },
+        "lfo_cx": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.07,
+                "amplitude": 0.15,
+                "offset": 0.5,
+                "waveform": 0
+            }
+        },
+        "lfo_cy": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.11,
+                "amplitude": 0.15,
+                "offset": 0.5,
+                "waveform": 0
+            }
+        },
+        "vout": {
+            "type": "video_out",
+            "params": {}
+        }
     },
-    "lfo_cy": {
-      "type": "LfoFr",
-      "params": {
-        "frequency": 0.11,
-        "amplitude": 0.15,
-        "offset": 0.5,
-        "waveform": 0
-      }
-    },
-    "vout": {
-      "type": "video_out",
-      "params": {}
-    }
-  },
-  "connections": [
-    {"from": "lfo_cx/value",      "to": "rainbow/center_x"},
-    {"from": "lfo_cy/value",      "to": "rainbow/center_y"},
-    {"from": "rainbow/texture",   "to": "vout/input"}
-  ]
+    "connections": [
+        {
+            "from": "lfo_cx/value",
+            "to": "rainbow/center_x"
+        },
+        {
+            "from": "lfo_cy/value",
+            "to": "rainbow/center_y"
+        },
+        {
+            "from": "rainbow/texture",
+            "to": "vout/input"
+        }
+    ]
 }

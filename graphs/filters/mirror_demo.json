@@ -1,5 +1,5 @@
 {
-    "schema_version": 1,
+    "schema_version": 3,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "mirror_demo",
@@ -59,8 +59,7 @@
     "connections": [
         {
             "from": "vid/texture",
-            "to": "mirror/input",
-            "bridge": "last_sample"
+            "to": "mirror/input"
         },
         {
             "from": "lfo_angle/value",

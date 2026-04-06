@@ -1,4 +1,5 @@
 {
+    "schema_version": 3,
     "nodes": {
         "clock1": {
             "type": "ClockAu",
@@ -154,8 +155,7 @@
     "connections": [
         {
             "from": "clock1/beat_phase",
-            "to": "sm1/beat_phase",
-            "bridge": "last_sample"
+            "to": "sm1/beat_phase"
         },
         {
             "from": "clock1/beat_phase",
@@ -184,23 +184,19 @@
         },
         {
             "from": "kit1/slot_2",
-            "to": "hat1/midi_in",
-            "bridge": "last_sample"
+            "to": "hat1/midi_in"
         },
         {
             "from": "notes1/notes",
-            "to": "synth1/notes",
-            "bridge": "last_sample"
+            "to": "synth1/notes"
         },
         {
             "from": "notes1/velocities",
-            "to": "synth1/velocities",
-            "bridge": "last_sample"
+            "to": "synth1/velocities"
         },
         {
             "from": "notes1/gates",
-            "to": "synth1/gates",
-            "bridge": "last_sample"
+            "to": "synth1/gates"
         },
         {
             "from": "noise1/texture",
@@ -220,8 +216,7 @@
         },
         {
             "from": "synth1/output",
-            "to": "audio_out/input",
-            "bridge": "hold"
+            "to": "audio_out/input"
         },
         {
             "from": "kick1/output",
@@ -233,8 +228,7 @@
         },
         {
             "from": "hat1/output",
-            "to": "audio_out/input",
-            "bridge": "hold"
+            "to": "audio_out/input"
         }
     ],
     "presets": {

@@ -1,4 +1,5 @@
 {
+    "schema_version": 3,
     "nodes": {
         "shapes": {
             "type": "Instanced Shapes",
