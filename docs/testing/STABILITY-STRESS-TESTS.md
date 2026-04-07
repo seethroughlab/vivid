@@ -1,9 +1,9 @@
-# Phase 6 Stability Stress Tests
+# Stability Stress Tests
 
 ## Purpose
 
-These tests are the Phase 6 long-run reliability lane.
-They are not feature demos. They are small, repeatable seam checks for the runtime paths that were hardened in earlier phases.
+These tests are the long-run reliability lane.
+They are not feature demos. They are small, repeatable seam checks for hardened runtime paths.
 
 ## Default Automated Stress Suite
 
@@ -13,7 +13,7 @@ Build the stress executables:
 cmake --build build --target test_runtime_stress test_hot_reload_stress test_package_stress test_mixed_runtime_stability
 ```
 
-Run the default Phase 6 suite:
+Run the default stress suite:
 
 ```bash
 ctest --test-dir build --output-on-failure -R "test_runtime_stress|test_hot_reload_stress|test_package_stress|test_mixed_runtime_stability"

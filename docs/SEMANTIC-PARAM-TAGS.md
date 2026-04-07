@@ -1,7 +1,7 @@
 # Semantic Parameter Tags Spec (v1)
 
 Date: 2026-03-06
-Status: Accepted baseline (Milestone 8 follow-up, Semantic Tags Phase 0)
+Status: Accepted baseline
 
 ## Purpose
 

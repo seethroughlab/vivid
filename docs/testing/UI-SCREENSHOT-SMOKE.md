@@ -211,7 +211,7 @@ rerun the preset.
 - use `capture_image(mode=\"interface\")` for live-session screenshots when needed
 - do not treat `GUI_SMOKE` as the primary architecture for interactive control
 
-The current Phase 4 inspector signoff cases captured through that live workflow are:
+The current inspector signoff cases captured through that live workflow are:
 
 - `graphs/gpu/instanced_shapes_demo.json` → `shapes`
 - `graphs/gpu/particle_envelope_demo.json` → `env`

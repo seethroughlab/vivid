@@ -257,7 +257,7 @@ The Runtime API is an internal interface exposing all LLM-relevant operations: i
 
 Both paths were part of the original 1.0 design. The built-in chat handles creative workflows where immediacy matters. The Python MCP bridge handles development workflows where the user is already in their IDE or terminal. The underlying Runtime API is implemented once; the chat panel and MCP bridge are thin layers on top.
 
-**Future path:** WebSocket API (Phase 3) exposes the same Runtime API over WebSocket for non-LLM external processes — Python scripts, Max/MSP, show control systems. The Python MCP bridge and WebSocket API may share transport infrastructure but serve different audiences.
+**Future path:** WebSocket API (planned) exposes the same Runtime API over WebSocket for non-LLM external processes — Python scripts, Max/MSP, show control systems. The Python MCP bridge and WebSocket API may share transport infrastructure but serve different audiences.
 
 ---
 
@@ -441,15 +441,15 @@ The JSON graph is the single source of truth for the entire system. Every operat
 
 ### 5.12 Platform Target
 
-**Decision: macOS first.** Phase 1 targets macOS exclusively. This eliminates cross-platform build/test complexity and matches the primary development environment. The architecture does not paint into a corner — Dawn, GLFW, and miniaudio all support Linux and Windows, so cross-platform is a matter of build configuration, not redesign.
+**Decision: macOS first.** The initial release targets macOS exclusively. This eliminates cross-platform build/test complexity and matches the primary development environment. The architecture does not paint into a corner — Dawn, GLFW, and miniaudio all support Linux and Windows, so cross-platform is a matter of build configuration, not redesign.
 
 ### 5.13 Windowing: GLFW
 
 **Decision: GLFW 3.4** for window creation and input. GLFW creates the OS window, provides the Metal surface for Dawn, and handles keyboard/mouse input events. It is minimal (~200KB source), mature, and has proven WebGPU integration.
 
-Alternatives considered: SDL3 provides file dialogs, pen/tablet pressure, touch input, and a structured event queue, but adds ~2MB of surface area and capabilities that are not needed for Phase 1. Raw Cocoa (NSWindow + CAMetalLayer) provides maximum control but is macOS-only with no migration path.
+Alternatives considered: SDL3 provides file dialogs, pen/tablet pressure, touch input, and a structured event queue, but adds ~2MB of surface area and capabilities that are not needed for the initial release. Raw Cocoa (NSWindow + CAMetalLayer) provides maximum control but is macOS-only with no migration path.
 
-GLFW does not provide file open/save dialogs or pen/tablet pressure. File dialogs will be added via tinyfiledialogs (single-header C library) or a small Cocoa shim when save/load is implemented. Tablet pressure support is a Phase 2+ concern and can be added via platform-specific input handling without replacing the windowing library.
+GLFW does not provide file open/save dialogs or pen/tablet pressure. File dialogs will be added via tinyfiledialogs (single-header C library) or a small Cocoa shim when save/load is implemented. Tablet pressure support is deferred past 1.0 and can be added via platform-specific input handling without replacing the windowing library.
 
 ### 5.14 Dependency Manifest
 
@@ -680,11 +680,11 @@ The main workspace interaction pattern is centered on the node graph for structu
 
 ## 7. Roadmap
 
-The original 25-phase roadmap has been superseded by milestone-based planning in `docs/plans/ROADMAP.md`. See the roadmap's "Shipped" section for the full list of delivered capabilities.
+See `docs/plans/ROADMAP.md` for current planning and the full list of delivered capabilities.
 
 **Completed highlights:** Three-domain data flow, Spreads, hot-reload, 71 operators across 3 domains, Python MCP bridge (57 tools), MIDI/OSC input, WGSL shader operators, package ecosystem (install/link/scaffold/publish/test), movie playback (MovieLoaded trio), standalone export, operator versioning, first-class GPU port types (buffer/mesh/compute), multiple output ports, output analyzer (audio/visual/AV metrics + comparison), capture/recording, variations/presets, undo/redo, introspection/diagnostics/checks. North Star validation completed.
 
-**In progress:** Core stability verification (M1 exit gate), operator creation modal (M11), solo mode (M12), semantic tag rollout (M13), launch prep (M14).
+**In progress:** Core stability verification, operator creation modal, solo mode, semantic tag rollout, launch prep.
 
 **Deferred past 1.0:** Subpatches, simulation zones, multi-window, Windows/Linux, bundled compiler, WebSocket API, built-in chat panel, live REPL, parameter space explorer, pattern algebra interface, state machine interface.
 
@@ -793,7 +793,7 @@ The perception system is not a debugger bolted onto the side. It is a core archi
 
 ## 10. To Be Determined
 
-The following topics are acknowledged as important but are not yet designed. They will be addressed as the project progresses, most during or after Phase 1 implementation.
+The following topics are acknowledged as important but are not yet designed. They will be addressed as the project progresses, most during or after the initial macOS release.
 
 **Subpatches**
 
@@ -805,7 +805,7 @@ Is a Vivid project a single .json file, or a directory containing the graph JSON
 
 **Performance Targets**
 
-60fps at what node count? Audio at what buffer size / sample rate? Maximum acceptable hot-reload time? GPU memory budget? These become acceptance criteria for Phase 1.
+60fps at what node count? Audio at what buffer size / sample rate? Maximum acceptable hot-reload time? GPU memory budget? These become acceptance criteria for the initial release.
 
 **Error Handling and Recovery**
 
@@ -825,11 +825,11 @@ Whether Simulation Zones are a visible bounding box around grouped nodes (like B
 
 **Accessibility**
 
-Keyboard navigation, screen reader support, high-contrast mode. Important but not blocking Phase 1.
+Keyboard navigation, screen reader support, high-contrast mode. Important but not blocking the initial release.
 
 **Multi-Window / Multi-Monitor**
 
-Output preview undocking to a separate window for projector/LED wall output. Multiple graph views. Phase 2 concern.
+Output preview undocking to a separate window for projector/LED wall output. Multiple graph views. Deferred past 1.0.
 
 **Library Version Pinning**
 

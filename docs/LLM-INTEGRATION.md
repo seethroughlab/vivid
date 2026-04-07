@@ -99,7 +99,7 @@ Perception MCP response policy:
 
 **Path 2: Built-in chat (deferred).** Originally planned as a collapsible chat panel inside Vivid's interface calling the Anthropic API directly. Deferred because the Python MCP bridge already provides full LLM integration through external clients, and building a built-in chat would mean significant complexity to produce a worse version of what Claude Code and Cursor already offer. May be revisited if in-app chat proves essential for creative workflows where context-switching to an external client is too slow.
 
-**Future path: WebSocket API** (Phase 3) exposes the same Runtime API over WebSocket for non-LLM external processes — Python scripts, Max/MSP, show control systems. The Python MCP bridge and WebSocket API may share transport infrastructure but serve different audiences.
+**Future path: WebSocket API** (planned) exposes the same Runtime API over WebSocket for non-LLM external processes — Python scripts, Max/MSP, show control systems. The Python MCP bridge and WebSocket API may share transport infrastructure but serve different audiences.
 
 ---
 

@@ -56,7 +56,7 @@ Use the two runs together to classify ownership:
 
 ## Current Read For `rich_text_demo.json`
 
-As of the current audit follow-up:
+Current status:
 
 - headless path still skips on this machine because there is no usable headless adapter
 - windowed screenshot path succeeds cleanly

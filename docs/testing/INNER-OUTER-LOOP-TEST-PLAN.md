@@ -1,6 +1,6 @@
 # Inner/Outer Loop Test Plan
 
-This document defines manual test procedures for Milestone 1 item 4:
+This document defines manual test procedures for inner/outer loop iteration:
 
 - Inner loop: parameter tweaking in a running graph
 - Outer loop: operator source edits with hot-reload in a running graph
@@ -90,10 +90,9 @@ Expected inner-loop flow:
 - Fail criteria:
   - UI breakage, NaN/invalid state persistence, or mismatch between displayed and actual value.
 
-### IL-5 Continuous Drag Coalescing (Future Gate)
+### IL-5 Continuous Drag Coalescing
 
-- Scope note: blocked until undo/redo system exists (Milestone 1 item 8).
-- Steps (when undo is implemented):
+- Steps:
   1. Perform a long continuous slider drag.
   2. Undo once.
 - Pass criteria:
@@ -206,10 +205,10 @@ At least one operator per domain must be tested each run.
 - Fail criteria:
   - Any state resets unexpectedly due to reload.
 
-## Exit Criteria for Milestone Item 4
+## Exit Criteria
 
-Item 4 is complete when:
+Inner/outer loop testing is complete when:
 
 - This document is present and current.
-- All IL/OL checklist cases (except IL-5 undo gate) have at least one recorded pass on current `master`.
+- All IL/OL checklist cases have at least one recorded pass on current `master`.
 - Any failures have linked issues or follow-up tasks.
