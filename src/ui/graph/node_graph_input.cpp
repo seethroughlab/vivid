@@ -307,7 +307,7 @@ bool NodeGraphUI::handle_inspector_edit_mode_key(int key) {
                 const auto* mm = snap_.find_midi_mapping(node_id, param_name);
                 if (mm) {
                     inspector_.edit_buffer = format_float(mm->range_max, 2);
-                    text_edit_.reset(static_cast<int>(inspector_.edit_buffer.size()));
+                    text_edit_.select_all(static_cast<int>(inspector_.edit_buffer.size()));
                 }
             }
         } else if (key == GLFW_KEY_BACKSPACE) {
@@ -379,7 +379,7 @@ bool NodeGraphUI::handle_inspector_edit_mode_key(int key) {
                     char buf[32];
                     std::snprintf(buf, sizeof(buf), "%.3g", vals[next_field]);
                     inspector_.edit_buffer = buf;
-                    text_edit_.reset(static_cast<int>(inspector_.edit_buffer.size()));
+                    text_edit_.select_all(static_cast<int>(inspector_.edit_buffer.size()));
                 }
             } else {
                 inspector_.editing_wire_remap = false;
@@ -406,7 +406,7 @@ bool NodeGraphUI::handle_inspector_edit_mode_key(int key) {
                 const auto* ns = snap_.find_node(node_id);
                 if (ns) {
                     inspector_.edit_buffer = format_uint(ns->gpu_tex_height);
-                    text_edit_.reset(static_cast<int>(inspector_.edit_buffer.size()));
+                    text_edit_.select_all(static_cast<int>(inspector_.edit_buffer.size()));
                 }
             }
         } else if (key == GLFW_KEY_BACKSPACE) {
@@ -478,7 +478,7 @@ bool NodeGraphUI::handle_inspector_edit_mode_key(int key) {
                     if (it != ns->param_indices.end()) {
                         int v = static_cast<int>(ns->param_values[it->second] * 255.0f + 0.5f);
                         inspector_.color_rgb_buffer = std::to_string(v);
-                        text_edit_.reset(static_cast<int>(inspector_.color_rgb_buffer.size()));
+                        text_edit_.select_all(static_cast<int>(inspector_.color_rgb_buffer.size()));
                     }
                 }
             } else {

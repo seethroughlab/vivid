@@ -191,7 +191,7 @@ bool NodeGraphUI::handle_inspector_click() {
             char hex[8];
             rgb_to_hex(cr, cg, cb, hex, sizeof(hex));
             inspector_.color_hex_buffer = hex;
-            text_edit_.reset(static_cast<int>(inspector_.color_hex_buffer.size()));
+            text_edit_.select_all(static_cast<int>(inspector_.color_hex_buffer.size()));
             return true;
         }
 
@@ -215,7 +215,7 @@ bool NodeGraphUI::handle_inspector_click() {
                         if (it != ns->param_indices.end()) {
                             int v = static_cast<int>(ns->param_values[it->second] * 255.0f + 0.5f);
                             inspector_.color_rgb_buffer = std::to_string(v);
-                            text_edit_.reset(static_cast<int>(inspector_.color_rgb_buffer.size()));
+                            text_edit_.select_all(static_cast<int>(inspector_.color_rgb_buffer.size()));
                         }
                     }
                     return true;
@@ -272,7 +272,7 @@ bool NodeGraphUI::handle_inspector_click() {
             const auto* mm = snap_.find_midi_mapping(mr.node_id, mr.param_name);
             if (mm) {
                 inspector_.edit_buffer = format_float(mr.is_min ? mm->range_min : mm->range_max, 2);
-                text_edit_.reset(static_cast<int>(inspector_.edit_buffer.size()));
+                text_edit_.select_all(static_cast<int>(inspector_.edit_buffer.size()));
             } else {
                 inspector_.edit_buffer.clear();
                 text_edit_.reset(0);
@@ -592,7 +592,7 @@ bool NodeGraphUI::handle_inspector_click() {
         const auto* ns = snap_.find_node(rr.node_id);
         if (ns) {
             inspector_.edit_buffer = format_uint(rr.is_width ? ns->gpu_tex_width : ns->gpu_tex_height);
-            text_edit_.reset(static_cast<int>(inspector_.edit_buffer.size()));
+            text_edit_.select_all(static_cast<int>(inspector_.edit_buffer.size()));
         }
         return true;
     }
@@ -770,7 +770,7 @@ bool NodeGraphUI::handle_inspector_click() {
             } else {
                 inspector_.edit_buffer = "0";
             }
-            text_edit_.reset(static_cast<int>(inspector_.edit_buffer.size()));
+            text_edit_.select_all(static_cast<int>(inspector_.edit_buffer.size()));
             return true;
         }
     }
