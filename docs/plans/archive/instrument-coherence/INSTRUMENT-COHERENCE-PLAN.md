@@ -7,7 +7,7 @@ Ableton Wavetable feels complete because it combines dual-oscillator voicing, st
 
 This document describes the core additions that would most help Vivid host instrument-like packages such as `vivid-wavetable`.
 
-> Archived note (2026-04-05): This directory is historical context for the shipped `v1` instrument-coherence work. The live deferred backlog now lives in [docs/ROADMAP.md](../../ROADMAP.md). Any “canonical source of truth” wording below is historical and superseded by that roadmap backlog.
+> Archived note (2026-04-05): This directory is historical context for the shipped `v1` instrument-coherence work. The live deferred backlog now lives in [docs/plans/ROADMAP.md](../ROADMAP.md). Any “canonical source of truth” wording below is historical and superseded by that roadmap backlog.
 
 What this plan is not:
 
@@ -27,7 +27,7 @@ What this plan is not:
 | [Step 5](./INSTRUMENT-COHERENCE-PLAN-STEP-5.md) | `v1 shipped` | `MidiInput` expressive-note lanes plus module performance-page metadata | Richer performance widgets, modulation/performance UX integration, broader controller-learn workflows |
 | [Step 6](./INSTRUMENT-COHERENCE-PLAN-STEP-6.md) | `v1 shipped` | Instrument-oriented graph metadata and unified browser filtering | Richer browser grouping, preview-control authoring UI, favorites/curation, tighter performance-page/browser integration |
 
-The detailed design for each shipped `v1` slice and each deferred follow-up remains in the linked step docs in this archive. The live deferred backlog has been consolidated into [docs/ROADMAP.md](../../ROADMAP.md).
+The detailed design for each shipped `v1` slice and each deferred follow-up remains in the linked step docs in this archive. The live deferred backlog has been consolidated into [docs/plans/ROADMAP.md](../ROADMAP.md).
 
 ## 1. Graph Encapsulation With Exposed Controls
 The single highest-leverage addition is a core subgraph/composite instrument system that lets a graph-based synth voice behave like one instrument.
