@@ -1,6 +1,5 @@
 {
     "locale": "pl",
-
     "save": "Zapisz",
     "cancel": "Anuluj",
     "close": "Zamknij",
@@ -19,7 +18,6 @@
     "later": "Później",
     "skip": "Pomiń",
     "install": "Zainstaluj",
-
     "menu_about_vivid": "O programie %s",
     "menu_check_for_updates": "Sprawdź aktualizacje…",
     "menu_auto_check_updates": "Automatycznie sprawdzaj aktualizacje",
@@ -52,7 +50,6 @@
     "menu_report_issue": "Zgłoś problem…",
     "menu_no_recent_files": "Brak ostatnich plików",
     "menu_clear_recent": "Wyczyść ostatnie",
-
     "error_label": "Błąd:",
     "wire": "Kabel",
     "clamp": "Ogranicz",
@@ -60,7 +57,6 @@
     "delete_to_remove": "Delete / Backspace aby usunąć",
     "disconnect": "Rozłącz",
     "no_matches": "brak wyników",
-
     "color": "kolor",
     "min": "min",
     "max": "maks",
@@ -68,10 +64,8 @@
     "from_input": "(z wejścia)",
     "state_presets": "Presety stanu",
     "outputs": "Wyjścia",
-
     "save_changes_prompt": "Zapisać zmiany przed zamknięciem?",
     "dont_save": "Nie zapisuj",
-
     "project_package": "Pakiet projektu",
     "project_package_unavailable": "Pakiet projektu (niedostępny)",
     "core": "Rdzeń",
@@ -81,21 +75,17 @@
     "parameters": "Parametry",
     "create_empty": "Utwórz pusty",
     "save_preset": "Zapisz preset",
-
     "preferences": "Preferencje",
     "text_editor": "EDYTOR TEKSTU",
     "style": "STYL",
     "mouse": "MYSZ",
-
     "mcp_servers": "Serwery MCP",
     "memory": "Pamięć",
-
     "session": "SESJA",
     "quantize": "Kwantyzacja:",
     "branch": "Gałąź",
     "update": "Aktualizuj",
     "save_new": "+ Zapisz nowy",
-
     "packages": "Pakiety",
     "link_local": "Połącz lokalnie…",
     "search_packages": "Szukaj pakietów…",
@@ -105,13 +95,11 @@
     "unlink": "Odłącz",
     "remove": "Usuń",
     "fetching_catalog": "Pobieranie katalogu…",
-
     "open_example": "Otwórz przykład",
     "search_examples": "Szukaj po tytule, tagach, id, ścieżce…",
     "core_only": "Tylko rdzeń",
     "package": "Pakiet",
     "needs_packages": "wymaga pakietu(ów)",
-
     "edit_meta": "Edytuj metadane",
     "about_version": "Wersja %s",
     "pkg_action_failed": "Akcja pakietu nie powiodła się",
@@ -125,7 +113,6 @@
     "example_missing_package_click_open": "Brakujący pakiet: %s (kliknij Otwórz ponownie, aby kontynuować)",
     "graph_meta_save_failed": "Nie udało się zapisać metadanych",
     "graph_meta_invalid_preview_controls": "Kontrolki podglądu muszą odwoływać się do prawidłowej pary węzeł/parametr",
-
     "relayout_all": "Przeorganizuj wszystko",
     "add_sticky_note": "Dodaj notatkę",
     "delete_note": "Usuń notatkę",
@@ -137,20 +124,17 @@
     "solo": "Solo",
     "delete_wire": "Usuń kabel",
     "insert_node": "Wstaw węzeł",
-
     "adding_operator": "Dodawanie operatora",
     "preparing_operator": "Przygotowywanie operatora…",
     "compiling_graph": "Kompilacja grafu…",
     "applying_graph": "Stosowanie grafu…",
     "wait_operator": "Proszę czekać, Vivid przygotowuje wybrany operator.",
     "wait_operator_named": "Proszę czekać, Vivid przygotowuje %s.",
-
     "loading_graph": "Ładowanie grafu",
     "loading_graph_stage": "Ładowanie grafu…",
     "preparing_operators": "Przygotowywanie operatorów…",
     "wait_graph": "Proszę czekać, Vivid przygotowuje żądany graf.",
     "wait_graph_named": "Proszę czekać, Vivid przygotowuje %s.",
-
     "snap": "Zrzut",
     "build": "Buduj",
     "redo": "Ponów",
@@ -159,7 +143,6 @@
     "stop": "Stop",
     "connected": "połączony",
     "not_connected": "niepołączony",
-
     "broken_connection": "Zerwane połączenie",
     "node_missing_label": "BRAKUJĄCY",
     "node_missing_try_rebuild": "spróbuj przebudować",
@@ -169,34 +152,26 @@
     "from_max": "Od Maks",
     "to_min": "Do Min",
     "to_max": "Do Maks",
-
     "controls": "Kontrolki",
     "custom": "Niestandardowe",
     "technical": "Techniczne",
     "secondary_controls": "Kontrolki dodatkowe",
     "modulation": "Modulacja",
     "performance": "Wydajność",
-
     "midi_map_wiggle": "MIDI MAP: Pokręć pokrętłem…",
     "midi_map_click": "MIDI MAP: Kliknij parametr…",
-
     "quantize_off": "Wył",
     "quantize_beat": "Uderzenie",
     "quantize_bar": "Takt",
     "quantize_4bar": "4 takty",
-
-    "browse_file": "Przeglądaj\u2026",
-
+    "browse_file": "Przeglądaj…",
     "ports": "PORTY",
     "params": "PARAMETRY",
-
     "variation_rename": "Zmień nazwę",
     "variation_duplicate": "Duplikuj",
     "variation_delete": "Usuń",
     "variation_branch_from": "Rozgałęź od",
-
     "build_console": "Konsola budowania",
-
     "clone_for_editing": "Klonuj %s do edycji",
     "preview_controls": "Kontrolki podglądu",
     "preset_none": "(brak)",
@@ -208,20 +183,16 @@
     "choose_node": "(wybierz węzeł)",
     "choose_param": "(wybierz param)",
     "add_row": "+ dodaj wiersz",
-
     "select_asset": "Wybierz zasób %s",
-
     "graph_server": "Serwer grafu",
     "graph_server_desc": "Steruje grafem węzłów Vivid przez AI.",
     "operator_dev": "Rozwój operatorów",
     "operator_dev_desc": "Pomaga tworzyć niestandardowe operatory.",
     "configured": "skonfigurowany",
-
     "open_themes_folder": "Otwórz folder motywów…",
     "pan_middle": "Przeciąganie środkowym przyciskiem",
     "pan_left": "Przeciąganie lewym przyciskiem (puste płótno)",
     "pan_right": "Przeciąganie prawym przyciskiem",
-
     "tab_all": "Wszystko",
     "tab_audio": "Audio",
     "tab_gpu": "GPU",
@@ -235,7 +206,6 @@
     "tab_advanced": "Zaawansowany",
     "tab_featured": "Polecane",
     "tab_az": "A-Z",
-
     "open_console": "Otwórz konsolę",
     "audio": "Audio",
     "rate": "Częstotliwość",
@@ -246,14 +216,12 @@
     "xruns": "XRUNs",
     "load": "Obciążenie",
     "rebuild": "Przebuduj",
-
     "package_one": "%d pakiet",
     "package_other": "%d pakietów",
     "update_one": "%d aktualizacja",
     "update_other": "%d aktualizacji",
     "incompatible_suffix": "(%d niekompatybilnych)",
     "enter_opens_selection": "Enter otwiera zaznaczenie",
-
     "env_control": "sterowanie",
     "env_audio": "audio",
     "env_gpu": "gpu",
@@ -263,9 +231,19 @@
     "dest_project": "Projekt",
     "dest_core": "Rdzeń",
     "folder_name_placeholder": "Folder/Nazwa",
-
     "core_update_available": "Dostępna aktualizacja rdzenia: v%s",
-
     "graph_one": "%d graf",
-    "graph_other": "%d grafów"
+    "graph_other": "%d grafów",
+    "attention": "Attention",
+    "audio_load": "Audio Load",
+    "connectivity": "Connectivity",
+    "diag": "Diag",
+    "diagnostics": "Diagnostics",
+    "fps": "FPS",
+    "frame": "Frame",
+    "load_history": "Load History",
+    "memory_history": "Memory History",
+    "partial": "Partial",
+    "setup": "Setup",
+    "stable": "Stable"
 }

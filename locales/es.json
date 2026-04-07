@@ -1,6 +1,5 @@
 {
     "locale": "es",
-
     "save": "Guardar",
     "cancel": "Cancelar",
     "close": "Cerrar",
@@ -19,7 +18,6 @@
     "later": "Más tarde",
     "skip": "Omitir",
     "install": "Instalar",
-
     "menu_about_vivid": "Acerca de %s",
     "menu_check_for_updates": "Buscar actualizaciones…",
     "menu_auto_check_updates": "Buscar actualizaciones automáticamente",
@@ -52,7 +50,6 @@
     "menu_report_issue": "Informar de un problema…",
     "menu_no_recent_files": "No hay archivos recientes",
     "menu_clear_recent": "Borrar recientes",
-
     "error_label": "Error:",
     "wire": "Cable",
     "clamp": "Limitar",
@@ -60,7 +57,6 @@
     "delete_to_remove": "Supr / Retroceso para eliminar",
     "disconnect": "Desconectar",
     "no_matches": "sin resultados",
-
     "color": "color",
     "min": "mín",
     "max": "máx",
@@ -68,10 +64,8 @@
     "from_input": "(desde entrada)",
     "state_presets": "Preajustes de estado",
     "outputs": "Salidas",
-
     "save_changes_prompt": "¿Guardar cambios antes de cerrar?",
     "dont_save": "No guardar",
-
     "project_package": "Paquete del proyecto",
     "project_package_unavailable": "Paquete del proyecto (no disponible)",
     "core": "Núcleo",
@@ -81,21 +75,17 @@
     "parameters": "Parámetros",
     "create_empty": "Crear vacío",
     "save_preset": "Guardar preajuste",
-
     "preferences": "Preferencias",
     "text_editor": "EDITOR DE TEXTO",
     "style": "ESTILO",
     "mouse": "RATÓN",
-
     "mcp_servers": "Servidores MCP",
     "memory": "Memoria",
-
     "session": "SESIÓN",
     "quantize": "Cuantizar:",
     "branch": "Rama",
     "update": "Actualizar",
     "save_new": "+ Guardar nuevo",
-
     "packages": "Paquetes",
     "link_local": "Enlazar local…",
     "search_packages": "Buscar paquetes…",
@@ -105,13 +95,11 @@
     "unlink": "Desenlazar",
     "remove": "Eliminar",
     "fetching_catalog": "Obteniendo catálogo…",
-
     "open_example": "Abrir ejemplo",
     "search_examples": "Buscar por título, etiquetas, id, ruta…",
     "core_only": "Solo núcleo",
     "package": "Paquete",
     "needs_packages": "necesita paquete(s)",
-
     "edit_meta": "Editar metadatos",
     "about_version": "Versión %s",
     "pkg_action_failed": "La acción del paquete falló",
@@ -125,7 +113,6 @@
     "example_missing_package_click_open": "Falta el paquete: %s (haz clic en Abrir otra vez para continuar)",
     "graph_meta_save_failed": "No se pudieron guardar los metadatos",
     "graph_meta_invalid_preview_controls": "Los controles de vista previa deben referenciar un par nodo/parámetro válido",
-
     "relayout_all": "Reorganizar todo",
     "add_sticky_note": "Añadir nota adhesiva",
     "delete_note": "Eliminar nota",
@@ -137,20 +124,17 @@
     "solo": "Solo",
     "delete_wire": "Eliminar cable",
     "insert_node": "Insertar nodo",
-
     "adding_operator": "Añadiendo operador",
     "preparing_operator": "Preparando operador…",
     "compiling_graph": "Compilando grafo…",
     "applying_graph": "Aplicando grafo…",
     "wait_operator": "Espere mientras Vivid prepara el operador seleccionado.",
     "wait_operator_named": "Espere mientras Vivid prepara %s.",
-
     "loading_graph": "Cargando grafo",
     "loading_graph_stage": "Cargando grafo…",
     "preparing_operators": "Preparando operadores…",
     "wait_graph": "Espere mientras Vivid prepara el grafo solicitado.",
     "wait_graph_named": "Espere mientras Vivid prepara %s.",
-
     "snap": "Instantánea",
     "build": "Compilar",
     "redo": "Rehacer",
@@ -159,7 +143,6 @@
     "stop": "Detener",
     "connected": "conectado",
     "not_connected": "no conectado",
-
     "broken_connection": "Conexión rota",
     "node_missing_label": "FALTA",
     "node_missing_try_rebuild": "intenta reconstruir",
@@ -169,34 +152,26 @@
     "from_max": "Desde Máx",
     "to_min": "Hasta Mín",
     "to_max": "Hasta Máx",
-
     "controls": "Controles",
     "custom": "Personalizado",
     "technical": "Técnico",
     "secondary_controls": "Controles secundarios",
     "modulation": "Modulación",
     "performance": "Rendimiento",
-
     "midi_map_wiggle": "MIDI MAP: Mueva un potenciómetro…",
     "midi_map_click": "MIDI MAP: Haga clic en un parámetro…",
-
     "quantize_off": "Off",
     "quantize_beat": "Tiempo",
     "quantize_bar": "Compás",
     "quantize_4bar": "4 Comp.",
-
-    "browse_file": "Explorar\u2026",
-
+    "browse_file": "Explorar…",
     "ports": "PUERTOS",
     "params": "PARAMS",
-
     "variation_rename": "Renombrar",
     "variation_duplicate": "Duplicar",
     "variation_delete": "Eliminar",
     "variation_branch_from": "Derivar de",
-
     "build_console": "Consola de compilación",
-
     "clone_for_editing": "Clonar %s para editar",
     "preview_controls": "Controles de vista previa",
     "preset_none": "(ninguno)",
@@ -208,20 +183,16 @@
     "choose_node": "(elegir nodo)",
     "choose_param": "(elegir param)",
     "add_row": "+ añadir fila",
-
     "select_asset": "Seleccionar asset %s",
-
     "graph_server": "Servidor de grafo",
     "graph_server_desc": "Controla el grafo de nodos Vivid mediante IA.",
     "operator_dev": "Desarrollo de operadores",
     "operator_dev_desc": "Ayuda a crear operadores personalizados.",
     "configured": "configurado",
-
     "open_themes_folder": "Abrir carpeta de temas…",
     "pan_middle": "Arrastrar botón central",
     "pan_left": "Arrastrar botón izquierdo (lienzo vacío)",
     "pan_right": "Arrastrar botón derecho",
-
     "tab_all": "Todo",
     "tab_audio": "Audio",
     "tab_gpu": "GPU",
@@ -235,7 +206,6 @@
     "tab_advanced": "Avanzado",
     "tab_featured": "Destacados",
     "tab_az": "A-Z",
-
     "open_console": "Abrir consola",
     "audio": "Audio",
     "rate": "Frecuencia",
@@ -246,14 +216,12 @@
     "xruns": "XRUNs",
     "load": "Carga",
     "rebuild": "Reconstruir",
-
     "package_one": "%d paquete",
     "package_other": "%d paquetes",
     "update_one": "%d actualización",
     "update_other": "%d actualizaciones",
     "incompatible_suffix": "(%d incompatible(s))",
     "enter_opens_selection": "Intro abre la selección",
-
     "env_control": "control",
     "env_audio": "audio",
     "env_gpu": "gpu",
@@ -263,9 +231,19 @@
     "dest_project": "Proyecto",
     "dest_core": "Núcleo",
     "folder_name_placeholder": "Carpeta/Nombre",
-
     "core_update_available": "Actualización del núcleo disponible: v%s",
-
     "graph_one": "%d grafo",
-    "graph_other": "%d grafos"
+    "graph_other": "%d grafos",
+    "attention": "Attention",
+    "audio_load": "Audio Load",
+    "connectivity": "Connectivity",
+    "diag": "Diag",
+    "diagnostics": "Diagnostics",
+    "fps": "FPS",
+    "frame": "Frame",
+    "load_history": "Load History",
+    "memory_history": "Memory History",
+    "partial": "Partial",
+    "setup": "Setup",
+    "stable": "Stable"
 }

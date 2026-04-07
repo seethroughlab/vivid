@@ -1,6 +1,5 @@
 {
     "locale": "ro",
-
     "save": "Salvează",
     "cancel": "Anulează",
     "close": "Închide",
@@ -19,7 +18,6 @@
     "later": "Mai târziu",
     "skip": "Omite",
     "install": "Instalează",
-
     "menu_about_vivid": "Despre %s",
     "menu_check_for_updates": "Verifică actualizări…",
     "menu_auto_check_updates": "Verifică automat actualizările",
@@ -52,7 +50,6 @@
     "menu_report_issue": "Raportează o problemă…",
     "menu_no_recent_files": "Fără fișiere recente",
     "menu_clear_recent": "Golește recente",
-
     "error_label": "Eroare:",
     "wire": "Fir",
     "clamp": "Limitează",
@@ -60,7 +57,6 @@
     "delete_to_remove": "Delete / Backspace pentru a șterge",
     "disconnect": "Deconectează",
     "no_matches": "fără rezultate",
-
     "color": "culoare",
     "min": "min",
     "max": "max",
@@ -68,10 +64,8 @@
     "from_input": "(de la intrare)",
     "state_presets": "Presetări de stare",
     "outputs": "Ieșiri",
-
     "save_changes_prompt": "Salvați modificările înainte de închidere?",
     "dont_save": "Nu salva",
-
     "project_package": "Pachet proiect",
     "project_package_unavailable": "Pachet proiect (indisponibil)",
     "core": "Nucleu",
@@ -81,21 +75,17 @@
     "parameters": "Parametri",
     "create_empty": "Creează gol",
     "save_preset": "Salvează presetare",
-
     "preferences": "Preferințe",
     "text_editor": "EDITOR TEXT",
     "style": "STIL",
     "mouse": "MOUSE",
-
     "mcp_servers": "Servere MCP",
     "memory": "Memorie",
-
     "session": "SESIUNE",
     "quantize": "Cuantizare:",
     "branch": "Ramură",
     "update": "Actualizează",
     "save_new": "+ Salvează nou",
-
     "packages": "Pachete",
     "link_local": "Leagă local…",
     "search_packages": "Caută pachete…",
@@ -104,15 +94,12 @@
     "unlink": "Dezleagă",
     "remove": "Elimină",
     "fetching_catalog": "Se obține catalogul…",
-
     "open_example": "Deschide exemplu",
     "search_examples": "Caută după titlu, etichete, id, cale…",
     "core_only": "Doar nucleu",
     "package": "Pachet",
     "needs_packages": "necesită pachet(e)",
-
     "edit_meta": "Editează metadate",
-
     "needs_rebuild": "Încearcă recompilarea",
     "about_version": "Versiunea %s",
     "pkg_action_failed": "Acțiunea pachetului a eșuat",
@@ -126,7 +113,6 @@
     "example_missing_package_click_open": "Pachet lipsă: %s (faceți clic pe Deschide din nou pentru a continua)",
     "graph_meta_save_failed": "Salvarea metadatelor a eșuat",
     "graph_meta_invalid_preview_controls": "Controalele de previzualizare trebuie să refere o pereche nod/param validă",
-
     "relayout_all": "Rearanjează tot",
     "add_sticky_note": "Adaugă notă adezivă",
     "delete_note": "Șterge nota",
@@ -138,20 +124,17 @@
     "solo": "Solo",
     "delete_wire": "Șterge firul",
     "insert_node": "Inserează nod",
-
     "adding_operator": "Se adaugă operatorul",
     "preparing_operator": "Se pregătește operatorul…",
     "compiling_graph": "Se compilează graful…",
     "applying_graph": "Se aplică graful…",
     "wait_operator": "Vă rugăm așteptați, Vivid pregătește operatorul selectat.",
     "wait_operator_named": "Vă rugăm așteptați, Vivid pregătește %s.",
-
     "loading_graph": "Se încarcă graful",
     "loading_graph_stage": "Se încarcă graful…",
     "preparing_operators": "Se pregătesc operatorii…",
     "wait_graph": "Vă rugăm așteptați, Vivid pregătește graful solicitat.",
     "wait_graph_named": "Vă rugăm așteptați, Vivid pregătește %s.",
-
     "snap": "Captură",
     "build": "Compilează",
     "redo": "Refă",
@@ -160,50 +143,38 @@
     "stop": "Stop",
     "connected": "conectat",
     "not_connected": "neconectat",
-
     "broken_connection": "Conexiune întreruptă",
-
     "node_missing_label": "LIPSĂ",
     "node_missing_try_rebuild": "încearcă recompilarea",
     "node_missing_abi_mismatch": "ABI nepotrivit",
     "node_missing_not_installed": "neinstalat",
-
     "from_min": "De la Min",
     "from_max": "De la Max",
     "to_min": "La Min",
     "to_max": "La Max",
-
     "controls": "Controale",
     "custom": "Personalizat",
     "technical": "Tehnic",
     "secondary_controls": "Controale secundare",
     "modulation": "Modulație",
     "performance": "Performanță",
-
     "midi_map_wiggle": "MIDI MAP: Rotiți un buton…",
     "midi_map_click": "MIDI MAP: Faceți clic pe un parametru…",
-
     "quantize_off": "Oprit",
     "quantize_beat": "Timp",
     "quantize_bar": "Măsură",
     "quantize_4bar": "4 Măs.",
-
-    "browse_file": "Răsfoiește\u2026",
-
+    "browse_file": "Răsfoiește…",
     "ports": "PORTURI",
     "params": "PARAMETRI",
-
     "variation_rename": "Redenumește",
     "variation_duplicate": "Duplică",
     "variation_delete": "Șterge",
     "variation_branch_from": "Ramifică de la",
-
     "build_console": "Consolă compilare",
-
     "preset_none": "(niciunul)",
     "state_header": "Stare %d",
     "add_assignment": "+ atribuire",
-
     "clone_for_editing": "Clonează %s pentru editare",
     "preview_controls": "Controale previzualizare",
     "col_node": "nod",
@@ -212,20 +183,16 @@
     "choose_node": "(alege nod)",
     "choose_param": "(alege param)",
     "add_row": "+ adaugă rând",
-
     "select_asset": "Selectează resursă %s",
-
     "graph_server": "Server graf",
     "graph_server_desc": "Controlează graful de noduri Vivid prin AI.",
     "operator_dev": "Dezvoltare operatori",
     "operator_dev_desc": "Ajută la crearea de operatori personalizați.",
     "configured": "configurat",
-
     "open_themes_folder": "Deschide folderul de teme…",
     "pan_middle": "Trage cu butonul din mijloc",
     "pan_left": "Trage cu butonul stâng (pânză goală)",
     "pan_right": "Trage cu butonul drept",
-
     "tab_all": "Toate",
     "tab_audio": "Audio",
     "tab_gpu": "GPU",
@@ -239,9 +206,7 @@
     "tab_advanced": "Avansat",
     "tab_featured": "Recomandate",
     "tab_az": "A-Z",
-
     "open_console": "Deschide consola",
-
     "audio": "Audio",
     "rate": "Rată",
     "buffer": "Buffer",
@@ -251,14 +216,12 @@
     "xruns": "XRUN-uri",
     "load": "Încărcare",
     "rebuild": "Recompilează",
-
     "package_one": "%d pachet",
     "package_other": "%d pachete",
     "update_one": "%d actualizare",
     "update_other": "%d actualizări",
     "incompatible_suffix": "(%d incompatibile)",
     "enter_opens_selection": "Enter deschide selecția",
-
     "env_control": "control",
     "env_audio": "audio",
     "env_gpu": "gpu",
@@ -268,9 +231,19 @@
     "dest_project": "Proiect",
     "dest_core": "Nucleu",
     "folder_name_placeholder": "Folder/Nume",
-
     "core_update_available": "Actualizare nucleu disponibilă: v%s",
-
     "graph_one": "%d graf",
-    "graph_other": "%d grafuri"
+    "graph_other": "%d grafuri",
+    "attention": "Attention",
+    "audio_load": "Audio Load",
+    "connectivity": "Connectivity",
+    "diag": "Diag",
+    "diagnostics": "Diagnostics",
+    "fps": "FPS",
+    "frame": "Frame",
+    "load_history": "Load History",
+    "memory_history": "Memory History",
+    "partial": "Partial",
+    "setup": "Setup",
+    "stable": "Stable"
 }

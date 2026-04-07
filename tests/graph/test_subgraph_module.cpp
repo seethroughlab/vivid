@@ -127,20 +127,24 @@ static void test_parse_simple_module() {
 static void test_registry_scan_directory() {
     std::fprintf(stderr, "\n--- registry: scan directory ---\n");
 
+    // Use a fresh subdirectory so files from earlier tests don't interfere.
+    auto scan_dir = g_tmp->path / "scan_only";
+    std::filesystem::create_directories(scan_dir);
+
     vivid::SubgraphModuleRegistry registry;
-    std::string module_path = (g_tmp->path / "scan_test.vivid-module.json").string();
+    std::string module_path = (scan_dir / "scan_test.vivid-module.json").string();
     {
         FILE* f = std::fopen(module_path.c_str(), "w");
         std::fputs(kSimpleModule, f);
         std::fclose(f);
     }
     {
-        FILE* f = std::fopen((g_tmp->path / "ignore.json").string().c_str(), "w");
+        FILE* f = std::fopen((scan_dir / "ignore.json").string().c_str(), "w");
         std::fputs("{}", f);
         std::fclose(f);
     }
 
-    int count = registry.scan(g_tmp->path.string());
+    int count = registry.scan(scan_dir.string());
     check(count == 1, "scan loads one module file");
     check(registry.find("TestSynth") != nullptr, "scanned module registered");
 }

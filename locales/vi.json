@@ -1,6 +1,5 @@
 {
     "locale": "vi",
-
     "save": "Lưu",
     "cancel": "Hủy",
     "close": "Đóng",
@@ -19,7 +18,6 @@
     "later": "Để sau",
     "skip": "Bỏ qua",
     "install": "Cài đặt",
-
     "menu_about_vivid": "Giới thiệu %s",
     "menu_check_for_updates": "Kiểm tra cập nhật...",
     "menu_auto_check_updates": "Tự động kiểm tra cập nhật",
@@ -52,7 +50,6 @@
     "menu_report_issue": "Báo cáo sự cố...",
     "menu_no_recent_files": "Không có tệp gần đây",
     "menu_clear_recent": "Xóa gần đây",
-
     "error_label": "Lỗi:",
     "wire": "Dây",
     "clamp": "Giới hạn",
@@ -60,7 +57,6 @@
     "delete_to_remove": "Delete / Backspace để xóa",
     "disconnect": "Ngắt kết nối",
     "no_matches": "không khớp",
-
     "color": "màu",
     "min": "tối thiểu",
     "max": "tối đa",
@@ -68,10 +64,8 @@
     "from_input": "(từ đầu vào)",
     "state_presets": "Cài sẵn trạng thái",
     "outputs": "Đầu ra",
-
     "save_changes_prompt": "Lưu thay đổi trước khi đóng?",
     "dont_save": "Không lưu",
-
     "project_package": "Gói dự án",
     "project_package_unavailable": "Gói dự án (không khả dụng)",
     "core": "Lõi",
@@ -81,21 +75,17 @@
     "parameters": "Tham số",
     "create_empty": "Tạo rỗng",
     "save_preset": "Lưu cài sẵn",
-
     "preferences": "Tùy chọn",
     "text_editor": "TRÌNH SOẠN THẢO",
     "style": "KIỂU",
     "mouse": "CHUỘT",
-
     "mcp_servers": "Máy chủ MCP",
     "memory": "Bộ nhớ",
-
     "session": "PHIÊN",
     "quantize": "Lượng tử hóa:",
     "branch": "Nhánh",
     "update": "Cập nhật",
     "save_new": "+ Lưu mới",
-
     "packages": "Gói",
     "link_local": "Liên kết cục bộ...",
     "search_packages": "Tìm kiếm gói...",
@@ -105,13 +95,11 @@
     "unlink": "Hủy liên kết",
     "remove": "Gỡ bỏ",
     "fetching_catalog": "Đang tải danh mục...",
-
     "open_example": "Mở ví dụ",
     "search_examples": "Tìm theo tiêu đề, thẻ, id, đường dẫn...",
     "core_only": "Chỉ lõi",
     "package": "Gói",
     "needs_packages": "cần gói",
-
     "edit_meta": "Sửa siêu dữ liệu",
     "about_version": "Phiên bản %s",
     "pkg_action_failed": "Thao tác gói thất bại",
@@ -125,7 +113,6 @@
     "example_missing_package_click_open": "Thiếu gói: %s (nhấn Mở lần nữa để tiếp tục)",
     "graph_meta_save_failed": "Không thể lưu siêu dữ liệu",
     "graph_meta_invalid_preview_controls": "Điều khiển xem trước phải tham chiếu một cặp nút/tham số hợp lệ",
-
     "relayout_all": "Sắp xếp lại tất cả",
     "add_sticky_note": "Thêm ghi chú",
     "delete_note": "Xóa ghi chú",
@@ -137,20 +124,17 @@
     "solo": "Solo",
     "delete_wire": "Xóa dây",
     "insert_node": "Chèn nút",
-
     "adding_operator": "Đang thêm toán tử",
     "preparing_operator": "Đang chuẩn bị toán tử...",
     "compiling_graph": "Đang biên dịch đồ thị...",
     "applying_graph": "Đang áp dụng đồ thị...",
     "wait_operator": "Vui lòng chờ trong khi Vivid chuẩn bị toán tử đã chọn.",
     "wait_operator_named": "Vui lòng chờ trong khi Vivid chuẩn bị %s.",
-
     "loading_graph": "Đang tải đồ thị",
     "loading_graph_stage": "Đang tải đồ thị...",
     "preparing_operators": "Đang chuẩn bị toán tử...",
     "wait_graph": "Vui lòng chờ trong khi Vivid chuẩn bị đồ thị được yêu cầu.",
     "wait_graph_named": "Vui lòng chờ trong khi Vivid chuẩn bị %s.",
-
     "snap": "Bắt điểm",
     "build": "Xây dựng",
     "redo": "Làm lại",
@@ -159,7 +143,6 @@
     "stop": "Dừng",
     "connected": "đã kết nối",
     "not_connected": "chưa kết nối",
-
     "broken_connection": "Kết nối bị hỏng",
     "node_missing_label": "THIẾU",
     "node_missing_try_rebuild": "thử xây lại",
@@ -169,34 +152,26 @@
     "from_max": "Từ tối đa",
     "to_min": "Đến tối thiểu",
     "to_max": "Đến tối đa",
-
     "controls": "Điều khiển",
     "custom": "Tùy chỉnh",
     "technical": "Kỹ thuật",
     "secondary_controls": "Điều khiển phụ",
     "modulation": "Điều biến",
     "performance": "Hiệu suất",
-
     "midi_map_wiggle": "BẢN ĐỒ MIDI: Vặn một núm...",
     "midi_map_click": "BẢN ĐỒ MIDI: Nhấn một tham số...",
-
     "quantize_off": "Tắt",
     "quantize_beat": "Nhịp",
     "quantize_bar": "Ô nhịp",
     "quantize_4bar": "4 ô nhịp",
-
-    "browse_file": "Duyệt\u2026",
-
+    "browse_file": "Duyệt…",
     "ports": "CỔNG",
     "params": "THAM SỐ",
-
     "variation_rename": "Đổi tên",
     "variation_duplicate": "Nhân đôi",
     "variation_delete": "Xóa",
     "variation_branch_from": "Nhánh từ",
-
     "build_console": "Bảng điều khiển xây dựng",
-
     "clone_for_editing": "Nhân bản %s để chỉnh sửa",
     "preview_controls": "Điều khiển xem trước",
     "preset_none": "(không có)",
@@ -208,20 +183,16 @@
     "choose_node": "(chọn nút)",
     "choose_param": "(chọn tham số)",
     "add_row": "+ thêm hàng",
-
     "select_asset": "Chọn tài nguyên %s",
-
     "graph_server": "Máy chủ đồ thị",
     "graph_server_desc": "Điều khiển đồ thị nút Vivid qua AI.",
     "operator_dev": "Phát triển toán tử",
     "operator_dev_desc": "Hỗ trợ xây dựng toán tử tùy chỉnh.",
     "configured": "đã cấu hình",
-
     "open_themes_folder": "Mở thư mục giao diện...",
     "pan_middle": "Kéo chuột giữa",
     "pan_left": "Kéo chuột trái (vùng trống)",
     "pan_right": "Kéo chuột phải",
-
     "tab_all": "Tất cả",
     "tab_audio": "Âm thanh",
     "tab_gpu": "GPU",
@@ -235,7 +206,6 @@
     "tab_advanced": "Nâng cao",
     "tab_featured": "Nổi bật",
     "tab_az": "A-Z",
-
     "open_console": "Mở bảng điều khiển",
     "audio": "Âm thanh",
     "rate": "Tần số",
@@ -246,14 +216,12 @@
     "xruns": "XRUNs",
     "load": "Tải",
     "rebuild": "Xây lại",
-
     "package_one": "%d gói",
     "package_other": "%d gói",
     "update_one": "%d cập nhật",
     "update_other": "%d cập nhật",
     "incompatible_suffix": "(%d không tương thích)",
     "enter_opens_selection": "Enter mở mục đã chọn",
-
     "env_control": "điều khiển",
     "env_audio": "âm thanh",
     "env_gpu": "gpu",
@@ -263,9 +231,19 @@
     "dest_project": "Dự án",
     "dest_core": "Lõi",
     "folder_name_placeholder": "Thư_mục/Tên",
-
     "core_update_available": "Có bản cập nhật lõi: v%s",
-
     "graph_one": "%d đồ thị",
-    "graph_other": "%d đồ thị"
+    "graph_other": "%d đồ thị",
+    "attention": "Attention",
+    "audio_load": "Audio Load",
+    "connectivity": "Connectivity",
+    "diag": "Diag",
+    "diagnostics": "Diagnostics",
+    "fps": "FPS",
+    "frame": "Frame",
+    "load_history": "Load History",
+    "memory_history": "Memory History",
+    "partial": "Partial",
+    "setup": "Setup",
+    "stable": "Stable"
 }

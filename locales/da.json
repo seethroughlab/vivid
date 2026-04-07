@@ -1,6 +1,5 @@
 {
     "locale": "da",
-
     "save": "Gem",
     "cancel": "Annuller",
     "close": "Luk",
@@ -19,7 +18,6 @@
     "later": "Senere",
     "skip": "Spring over",
     "install": "Installér",
-
     "menu_about_vivid": "Om %s",
     "menu_check_for_updates": "Søg efter opdateringer...",
     "menu_auto_check_updates": "Søg automatisk efter opdateringer",
@@ -52,7 +50,6 @@
     "menu_report_issue": "Rapportér et problem...",
     "menu_no_recent_files": "Ingen seneste filer",
     "menu_clear_recent": "Ryd seneste",
-
     "error_label": "Fejl:",
     "wire": "Ledning",
     "clamp": "Begræns",
@@ -60,7 +57,6 @@
     "delete_to_remove": "Delete / Backspace for at fjerne",
     "disconnect": "Afbryd",
     "no_matches": "ingen resultater",
-
     "color": "farve",
     "min": "min",
     "max": "maks",
@@ -68,10 +64,8 @@
     "from_input": "(fra input)",
     "state_presets": "Tilstandsforudindstillinger",
     "outputs": "Udgange",
-
     "save_changes_prompt": "Gem ændringer inden lukning?",
     "dont_save": "Gem ikke",
-
     "project_package": "Projektpakke",
     "project_package_unavailable": "Projektpakke (ikke tilgængelig)",
     "core": "Kerne",
@@ -81,21 +75,17 @@
     "parameters": "Parametre",
     "create_empty": "Opret tom",
     "save_preset": "Gem forudindstilling",
-
     "preferences": "Indstillinger",
     "text_editor": "TEKSTEDITOR",
     "style": "STIL",
     "mouse": "MUS",
-
     "mcp_servers": "MCP-servere",
     "memory": "Hukommelse",
-
     "session": "SESSION",
     "quantize": "Kvantisér:",
     "branch": "Forgren",
     "update": "Opdater",
     "save_new": "+ Gem ny",
-
     "packages": "Pakker",
     "link_local": "Link lokal...",
     "search_packages": "Søg i pakker...",
@@ -105,13 +95,11 @@
     "unlink": "Fjern link",
     "remove": "Fjern",
     "fetching_catalog": "Henter katalog...",
-
     "open_example": "Åbn eksempel",
     "search_examples": "Søg efter titel, tags, id, sti...",
     "core_only": "Kun kerne",
     "package": "Pakke",
     "needs_packages": "kræver pakke(r)",
-
     "edit_meta": "Rediger metadata",
     "about_version": "Version %s",
     "pkg_action_failed": "Pakkehandling mislykkedes",
@@ -125,7 +113,6 @@
     "example_missing_package_click_open": "Manglende pakke: %s (klik Åbn igen for at fortsætte)",
     "graph_meta_save_failed": "Kunne ikke gemme metadata",
     "graph_meta_invalid_preview_controls": "Forhåndsvisningskontroller skal referere til et gyldigt node/parameter-par",
-
     "relayout_all": "Omlayout alle",
     "add_sticky_note": "Tilføj note",
     "delete_note": "Slet note",
@@ -137,20 +124,17 @@
     "solo": "Solo",
     "delete_wire": "Slet ledning",
     "insert_node": "Indsæt node",
-
     "adding_operator": "Tilføjer operator",
     "preparing_operator": "Forbereder operator...",
     "compiling_graph": "Kompilerer graf...",
     "applying_graph": "Anvender graf...",
     "wait_operator": "Vent venligst mens Vivid forbereder den valgte operator.",
     "wait_operator_named": "Vent venligst mens Vivid forbereder %s.",
-
     "loading_graph": "Indlæser graf",
     "loading_graph_stage": "Indlæser graf...",
     "preparing_operators": "Forbereder operatorer...",
     "wait_graph": "Vent venligst mens Vivid forbereder den ønskede graf.",
     "wait_graph_named": "Vent venligst mens Vivid forbereder %s.",
-
     "snap": "Fastgør",
     "build": "Byg",
     "redo": "Gentag",
@@ -159,7 +143,6 @@
     "stop": "Stop",
     "connected": "tilsluttet",
     "not_connected": "ikke tilsluttet",
-
     "broken_connection": "Brudt forbindelse",
     "node_missing_label": "MANGLER",
     "node_missing_try_rebuild": "prøv genopbyg",
@@ -169,34 +152,26 @@
     "from_max": "Fra maks",
     "to_min": "Til min",
     "to_max": "Til maks",
-
     "controls": "Kontroller",
     "custom": "Brugerdefineret",
     "technical": "Teknisk",
     "secondary_controls": "Sekundære kontroller",
     "modulation": "Modulation",
     "performance": "Ydeevne",
-
     "midi_map_wiggle": "MIDI-KORT: Drej på en knap...",
     "midi_map_click": "MIDI-KORT: Klik på en parameter...",
-
     "quantize_off": "Fra",
     "quantize_beat": "Taktslag",
     "quantize_bar": "Takt",
     "quantize_4bar": "4 takter",
-
-    "browse_file": "Gennemse\u2026",
-
+    "browse_file": "Gennemse…",
     "ports": "PORTE",
     "params": "PARAMETRE",
-
     "variation_rename": "Omdøb",
     "variation_duplicate": "Duplikér",
     "variation_delete": "Slet",
     "variation_branch_from": "Forgren fra",
-
     "build_console": "Byggekonsol",
-
     "clone_for_editing": "Klon %s til redigering",
     "preview_controls": "Forhåndsvisningskontroller",
     "preset_none": "(ingen)",
@@ -208,20 +183,16 @@
     "choose_node": "(vælg node)",
     "choose_param": "(vælg parameter)",
     "add_row": "+ tilføj række",
-
     "select_asset": "Vælg %s-ressource",
-
     "graph_server": "Grafserver",
     "graph_server_desc": "Styrer Vivid-nodegrafen via AI.",
     "operator_dev": "Operatorudvikling",
     "operator_dev_desc": "Hjælper med at bygge brugerdefinerede operatorer.",
     "configured": "konfigureret",
-
     "open_themes_folder": "Åbn temamappe...",
     "pan_middle": "Midterste museknap træk",
     "pan_left": "Venstre museknap træk (tomt lærred)",
     "pan_right": "Højre museknap træk",
-
     "tab_all": "Alle",
     "tab_audio": "Lyd",
     "tab_gpu": "GPU",
@@ -235,7 +206,6 @@
     "tab_advanced": "Avanceret",
     "tab_featured": "Fremhævet",
     "tab_az": "A-Z",
-
     "open_console": "Åbn konsol",
     "audio": "Lyd",
     "rate": "Frekvens",
@@ -246,14 +216,12 @@
     "xruns": "XRUNs",
     "load": "Belastning",
     "rebuild": "Genopbyg",
-
     "package_one": "%d pakke",
     "package_other": "%d pakker",
     "update_one": "%d opdatering",
     "update_other": "%d opdateringer",
     "incompatible_suffix": "(%d inkompatible)",
     "enter_opens_selection": "Enter åbner valget",
-
     "env_control": "kontrol",
     "env_audio": "lyd",
     "env_gpu": "gpu",
@@ -263,9 +231,19 @@
     "dest_project": "Projekt",
     "dest_core": "Kerne",
     "folder_name_placeholder": "Mappe/Navn",
-
     "core_update_available": "Kerneopdatering tilgængelig: v%s",
-
     "graph_one": "%d graf",
-    "graph_other": "%d grafer"
+    "graph_other": "%d grafer",
+    "attention": "Attention",
+    "audio_load": "Audio Load",
+    "connectivity": "Connectivity",
+    "diag": "Diag",
+    "diagnostics": "Diagnostics",
+    "fps": "FPS",
+    "frame": "Frame",
+    "load_history": "Load History",
+    "memory_history": "Memory History",
+    "partial": "Partial",
+    "setup": "Setup",
+    "stable": "Stable"
 }

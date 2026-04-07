@@ -1,6 +1,5 @@
 {
     "locale": "nl",
-
     "save": "Opslaan",
     "cancel": "Annuleren",
     "close": "Sluiten",
@@ -19,7 +18,6 @@
     "later": "Later",
     "skip": "Overslaan",
     "install": "Installeren",
-
     "menu_about_vivid": "Over %s",
     "menu_check_for_updates": "Controleren op updates…",
     "menu_auto_check_updates": "Automatisch controleren op updates",
@@ -52,7 +50,6 @@
     "menu_report_issue": "Probleem melden…",
     "menu_no_recent_files": "Geen recente bestanden",
     "menu_clear_recent": "Recente wissen",
-
     "error_label": "Fout:",
     "wire": "Draad",
     "clamp": "Begrenzen",
@@ -60,7 +57,6 @@
     "delete_to_remove": "Delete / Backspace om te verwijderen",
     "disconnect": "Ontkoppelen",
     "no_matches": "geen resultaten",
-
     "color": "kleur",
     "min": "min",
     "max": "max",
@@ -68,10 +64,8 @@
     "from_input": "(van invoer)",
     "state_presets": "Statuspresets",
     "outputs": "Uitgangen",
-
     "save_changes_prompt": "Wijzigingen opslaan voor sluiten?",
     "dont_save": "Niet opslaan",
-
     "project_package": "Projectpakket",
     "project_package_unavailable": "Projectpakket (niet beschikbaar)",
     "core": "Kern",
@@ -81,21 +75,17 @@
     "parameters": "Parameters",
     "create_empty": "Leeg aanmaken",
     "save_preset": "Preset opslaan",
-
     "preferences": "Voorkeuren",
     "text_editor": "TEKSTEDITOR",
     "style": "STIJL",
     "mouse": "MUIS",
-
     "mcp_servers": "MCP-servers",
     "memory": "Geheugen",
-
     "session": "SESSIE",
     "quantize": "Kwantiseren:",
     "branch": "Vertakking",
     "update": "Bijwerken",
     "save_new": "+ Nieuw opslaan",
-
     "packages": "Pakketten",
     "link_local": "Lokaal koppelen…",
     "search_packages": "Pakketten zoeken…",
@@ -105,13 +95,11 @@
     "unlink": "Ontkoppelen",
     "remove": "Verwijderen",
     "fetching_catalog": "Catalogus ophalen…",
-
     "open_example": "Voorbeeld openen",
     "search_examples": "Zoeken op titel, tags, id, pad…",
     "core_only": "Alleen kern",
     "package": "Pakket",
     "needs_packages": "vereist pakket(ten)",
-
     "edit_meta": "Metadata bewerken",
     "about_version": "Versie %s",
     "pkg_action_failed": "Pakketactie mislukt",
@@ -125,7 +113,6 @@
     "example_missing_package_click_open": "Ontbrekend pakket: %s (klik nogmaals op Openen om door te gaan)",
     "graph_meta_save_failed": "Opslaan van metadata mislukt",
     "graph_meta_invalid_preview_controls": "Voorbeeldbesturing moet verwijzen naar een geldig knooppunt/parameterpaar",
-
     "relayout_all": "Alles herindelen",
     "add_sticky_note": "Plaknotitie toevoegen",
     "delete_note": "Notitie verwijderen",
@@ -137,20 +124,17 @@
     "solo": "Solo",
     "delete_wire": "Draad verwijderen",
     "insert_node": "Knooppunt invoegen",
-
     "adding_operator": "Operator toevoegen",
     "preparing_operator": "Operator voorbereiden…",
     "compiling_graph": "Graaf compileren…",
     "applying_graph": "Graaf toepassen…",
     "wait_operator": "Even geduld terwijl Vivid de geselecteerde operator voorbereidt.",
     "wait_operator_named": "Even geduld terwijl Vivid %s voorbereidt.",
-
     "loading_graph": "Graaf laden",
     "loading_graph_stage": "Graaf laden…",
     "preparing_operators": "Operatoren voorbereiden…",
     "wait_graph": "Even geduld terwijl Vivid de gevraagde graaf voorbereidt.",
     "wait_graph_named": "Even geduld terwijl Vivid %s voorbereidt.",
-
     "snap": "Momentopname",
     "build": "Bouwen",
     "redo": "Opnieuw",
@@ -159,7 +143,6 @@
     "stop": "Stop",
     "connected": "verbonden",
     "not_connected": "niet verbonden",
-
     "broken_connection": "Verbroken verbinding",
     "node_missing_label": "ONTBREEKT",
     "node_missing_try_rebuild": "probeer te herbouwen",
@@ -169,34 +152,26 @@
     "from_max": "Van Max",
     "to_min": "Naar Min",
     "to_max": "Naar Max",
-
     "controls": "Besturing",
     "custom": "Aangepast",
     "technical": "Technisch",
     "secondary_controls": "Secundaire besturing",
     "modulation": "Modulatie",
     "performance": "Prestaties",
-
     "midi_map_wiggle": "MIDI MAP: Draai aan een knop…",
     "midi_map_click": "MIDI MAP: Klik op een parameter…",
-
     "quantize_off": "Uit",
     "quantize_beat": "Tel",
     "quantize_bar": "Maat",
     "quantize_4bar": "4 maten",
-
-    "browse_file": "Bladeren\u2026",
-
+    "browse_file": "Bladeren…",
     "ports": "POORTEN",
     "params": "PARAMETERS",
-
     "variation_rename": "Hernoemen",
     "variation_duplicate": "Dupliceren",
     "variation_delete": "Verwijderen",
     "variation_branch_from": "Aftakken van",
-
     "build_console": "Bouwconsole",
-
     "clone_for_editing": "%s klonen om te bewerken",
     "preview_controls": "Voorbeeldbesturing",
     "preset_none": "(geen)",
@@ -208,20 +183,16 @@
     "choose_node": "(knooppunt kiezen)",
     "choose_param": "(param kiezen)",
     "add_row": "+ rij toevoegen",
-
     "select_asset": "%s-asset selecteren",
-
     "graph_server": "Graafserver",
     "graph_server_desc": "Bestuurt de Vivid-knooppuntgraaf via AI.",
     "operator_dev": "Operatorontwikkeling",
     "operator_dev_desc": "Helpt bij het maken van aangepaste operatoren.",
     "configured": "geconfigureerd",
-
     "open_themes_folder": "Themamap openen…",
     "pan_middle": "Middelste muisknop slepen",
     "pan_left": "Linkermuisknop slepen (leeg canvas)",
     "pan_right": "Rechtermuisknop slepen",
-
     "tab_all": "Alles",
     "tab_audio": "Audio",
     "tab_gpu": "GPU",
@@ -235,7 +206,6 @@
     "tab_advanced": "Gevorderd",
     "tab_featured": "Uitgelicht",
     "tab_az": "A-Z",
-
     "open_console": "Console openen",
     "audio": "Audio",
     "rate": "Samplerate",
@@ -246,14 +216,12 @@
     "xruns": "XRUNs",
     "load": "Belasting",
     "rebuild": "Herbouwen",
-
     "package_one": "%d pakket",
     "package_other": "%d pakketten",
     "update_one": "%d update",
     "update_other": "%d updates",
     "incompatible_suffix": "(%d incompatibel)",
     "enter_opens_selection": "Enter opent selectie",
-
     "env_control": "besturing",
     "env_audio": "audio",
     "env_gpu": "gpu",
@@ -263,9 +231,19 @@
     "dest_project": "Project",
     "dest_core": "Kern",
     "folder_name_placeholder": "Map/Naam",
-
     "core_update_available": "Kernupdate beschikbaar: v%s",
-
     "graph_one": "%d graaf",
-    "graph_other": "%d grafen"
+    "graph_other": "%d grafen",
+    "attention": "Attention",
+    "audio_load": "Audio Load",
+    "connectivity": "Connectivity",
+    "diag": "Diag",
+    "diagnostics": "Diagnostics",
+    "fps": "FPS",
+    "frame": "Frame",
+    "load_history": "Load History",
+    "memory_history": "Memory History",
+    "partial": "Partial",
+    "setup": "Setup",
+    "stable": "Stable"
 }

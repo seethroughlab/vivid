@@ -1,6 +1,5 @@
 {
     "locale": "nb",
-
     "save": "Lagre",
     "cancel": "Avbryt",
     "close": "Lukk",
@@ -19,7 +18,6 @@
     "later": "Senere",
     "skip": "Hopp over",
     "install": "Installer",
-
     "menu_about_vivid": "Om %s",
     "menu_check_for_updates": "Se etter oppdateringer...",
     "menu_auto_check_updates": "Se automatisk etter oppdateringer",
@@ -52,7 +50,6 @@
     "menu_report_issue": "Rapporter et problem...",
     "menu_no_recent_files": "Ingen nylige filer",
     "menu_clear_recent": "Tøm nylige",
-
     "error_label": "Feil:",
     "wire": "Ledning",
     "clamp": "Begrens",
@@ -60,7 +57,6 @@
     "delete_to_remove": "Delete / Backspace for å fjerne",
     "disconnect": "Koble fra",
     "no_matches": "ingen treff",
-
     "color": "farge",
     "min": "min",
     "max": "maks",
@@ -68,10 +64,8 @@
     "from_input": "(fra inndata)",
     "state_presets": "Tilstandsforhåndsinnstillinger",
     "outputs": "Utganger",
-
     "save_changes_prompt": "Lagre endringer før lukking?",
     "dont_save": "Ikke lagre",
-
     "project_package": "Prosjektpakke",
     "project_package_unavailable": "Prosjektpakke (ikke tilgjengelig)",
     "core": "Kjerne",
@@ -81,21 +75,17 @@
     "parameters": "Parametere",
     "create_empty": "Opprett tom",
     "save_preset": "Lagre forhåndsinnstilling",
-
     "preferences": "Innstillinger",
     "text_editor": "TEKSTREDIGERER",
     "style": "STIL",
     "mouse": "MUS",
-
     "mcp_servers": "MCP-servere",
     "memory": "Minne",
-
     "session": "SESJON",
     "quantize": "Kvantiser:",
     "branch": "Forgrening",
     "update": "Oppdater",
     "save_new": "+ Lagre ny",
-
     "packages": "Pakker",
     "link_local": "Lenk lokal...",
     "search_packages": "Søk i pakker...",
@@ -105,13 +95,11 @@
     "unlink": "Fjern lenke",
     "remove": "Fjern",
     "fetching_catalog": "Henter katalog...",
-
     "open_example": "Åpne eksempel",
     "search_examples": "Søk etter tittel, tagger, id, sti...",
     "core_only": "Kun kjerne",
     "package": "Pakke",
     "needs_packages": "trenger pakke(r)",
-
     "edit_meta": "Rediger metadata",
     "about_version": "Versjon %s",
     "pkg_action_failed": "Pakkehandling mislyktes",
@@ -125,7 +113,6 @@
     "example_missing_package_click_open": "Manglende pakke: %s (klikk Åpne igjen for å fortsette)",
     "graph_meta_save_failed": "Kunne ikke lagre metadata",
     "graph_meta_invalid_preview_controls": "Forhåndsvisningskontroller må referere til et gyldig node/parameter-par",
-
     "relayout_all": "Ordne alle på nytt",
     "add_sticky_note": "Legg til notat",
     "delete_note": "Slett notat",
@@ -137,20 +124,17 @@
     "solo": "Solo",
     "delete_wire": "Slett ledning",
     "insert_node": "Sett inn node",
-
     "adding_operator": "Legger til operator",
     "preparing_operator": "Forbereder operator...",
     "compiling_graph": "Kompilerer graf...",
     "applying_graph": "Bruker graf...",
     "wait_operator": "Vennligst vent mens Vivid forbereder den valgte operatoren.",
     "wait_operator_named": "Vennligst vent mens Vivid forbereder %s.",
-
     "loading_graph": "Laster graf",
     "loading_graph_stage": "Laster graf...",
     "preparing_operators": "Forbereder operatorer...",
     "wait_graph": "Vennligst vent mens Vivid forbereder den forespurte grafen.",
     "wait_graph_named": "Vennligst vent mens Vivid forbereder %s.",
-
     "snap": "Fest",
     "build": "Bygg",
     "redo": "Gjør om",
@@ -159,7 +143,6 @@
     "stop": "Stopp",
     "connected": "tilkoblet",
     "not_connected": "ikke tilkoblet",
-
     "broken_connection": "Brutt tilkobling",
     "node_missing_label": "MANGLER",
     "node_missing_try_rebuild": "prøv gjenoppbygging",
@@ -169,34 +152,26 @@
     "from_max": "Fra maks",
     "to_min": "Til min",
     "to_max": "Til maks",
-
     "controls": "Kontroller",
     "custom": "Egendefinert",
     "technical": "Teknisk",
     "secondary_controls": "Sekundære kontroller",
     "modulation": "Modulasjon",
     "performance": "Ytelse",
-
     "midi_map_wiggle": "MIDI-KART: Vri på en knott...",
     "midi_map_click": "MIDI-KART: Klikk på en parameter...",
-
     "quantize_off": "Av",
     "quantize_beat": "Taktslag",
     "quantize_bar": "Takt",
     "quantize_4bar": "4 takter",
-
-    "browse_file": "Bla gjennom\u2026",
-
+    "browse_file": "Bla gjennom…",
     "ports": "PORTER",
     "params": "PARAMETERE",
-
     "variation_rename": "Gi nytt navn",
     "variation_duplicate": "Dupliser",
     "variation_delete": "Slett",
     "variation_branch_from": "Forgren fra",
-
     "build_console": "Byggekonsoll",
-
     "clone_for_editing": "Klon %s for redigering",
     "preview_controls": "Forhåndsvisningskontroller",
     "preset_none": "(ingen)",
@@ -208,20 +183,16 @@
     "choose_node": "(velg node)",
     "choose_param": "(velg parameter)",
     "add_row": "+ legg til rad",
-
     "select_asset": "Velg %s-ressurs",
-
     "graph_server": "Grafserver",
     "graph_server_desc": "Styrer Vivid-nodegrafen via AI.",
     "operator_dev": "Operatorutvikling",
     "operator_dev_desc": "Hjelper med å bygge egendefinerte operatorer.",
     "configured": "konfigurert",
-
     "open_themes_folder": "Åpne temamappe...",
     "pan_middle": "Midtre museknapp dra",
     "pan_left": "Venstre museknapp dra (tomt lerret)",
     "pan_right": "Høyre museknapp dra",
-
     "tab_all": "Alle",
     "tab_audio": "Lyd",
     "tab_gpu": "GPU",
@@ -235,7 +206,6 @@
     "tab_advanced": "Avansert",
     "tab_featured": "Utvalgte",
     "tab_az": "A-Z",
-
     "open_console": "Åpne konsoll",
     "audio": "Lyd",
     "rate": "Frekvens",
@@ -246,14 +216,12 @@
     "xruns": "XRUNs",
     "load": "Last",
     "rebuild": "Gjenoppbygg",
-
     "package_one": "%d pakke",
     "package_other": "%d pakker",
     "update_one": "%d oppdatering",
     "update_other": "%d oppdateringer",
     "incompatible_suffix": "(%d inkompatible)",
     "enter_opens_selection": "Enter åpner valget",
-
     "env_control": "kontroll",
     "env_audio": "lyd",
     "env_gpu": "gpu",
@@ -263,9 +231,19 @@
     "dest_project": "Prosjekt",
     "dest_core": "Kjerne",
     "folder_name_placeholder": "Mappe/Navn",
-
     "core_update_available": "Kjerneoppdatering tilgjengelig: v%s",
-
     "graph_one": "%d graf",
-    "graph_other": "%d grafer"
+    "graph_other": "%d grafer",
+    "attention": "Attention",
+    "audio_load": "Audio Load",
+    "connectivity": "Connectivity",
+    "diag": "Diag",
+    "diagnostics": "Diagnostics",
+    "fps": "FPS",
+    "frame": "Frame",
+    "load_history": "Load History",
+    "memory_history": "Memory History",
+    "partial": "Partial",
+    "setup": "Setup",
+    "stable": "Stable"
 }

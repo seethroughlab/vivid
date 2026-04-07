@@ -57,8 +57,11 @@ int main(int argc, char* argv[]) {
     graph.add_node("out", "audio_out");
 
     // Wire lane arrays: src.out → tracker.values, src.lane_ids → tracker.lane_ids
+    // Explicit bridge required for frame→audio cross-cadence connections.
     graph.add_connection("src", "out", "tracker", "values");
+    graph.set_connection_bridge("src", "out", "tracker", "values", "snapshot");
     graph.add_connection("src", "lane_ids", "tracker", "lane_ids");
+    graph.set_connection_bridge("src", "lane_ids", "tracker", "lane_ids", "snapshot");
     // Audio output (so audio executor has a sink)
     graph.add_connection("tracker", "output", "out", "input");
 

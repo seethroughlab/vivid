@@ -1,6 +1,5 @@
 {
     "locale": "cs",
-
     "save": "Uložit",
     "cancel": "Zrušit",
     "close": "Zavřít",
@@ -19,7 +18,6 @@
     "later": "Později",
     "skip": "Přeskočit",
     "install": "Nainstalovat",
-
     "menu_about_vivid": "O aplikaci %s",
     "menu_check_for_updates": "Zkontrolovat aktualizace…",
     "menu_auto_check_updates": "Automaticky kontrolovat aktualizace",
@@ -52,7 +50,6 @@
     "menu_report_issue": "Nahlásit problém…",
     "menu_no_recent_files": "Žádné nedávné soubory",
     "menu_clear_recent": "Vymazat nedávné",
-
     "error_label": "Chyba:",
     "wire": "Kabel",
     "clamp": "Omezit",
@@ -60,7 +57,6 @@
     "delete_to_remove": "Delete / Backspace pro smazání",
     "disconnect": "Odpojit",
     "no_matches": "žádné výsledky",
-
     "color": "barva",
     "min": "min",
     "max": "max",
@@ -68,10 +64,8 @@
     "from_input": "(ze vstupu)",
     "state_presets": "Předvolby stavu",
     "outputs": "Výstupy",
-
     "save_changes_prompt": "Uložit změny před zavřením?",
     "dont_save": "Neukládat",
-
     "project_package": "Balíček projektu",
     "project_package_unavailable": "Balíček projektu (nedostupný)",
     "core": "Jádro",
@@ -81,21 +75,17 @@
     "parameters": "Parametry",
     "create_empty": "Vytvořit prázdný",
     "save_preset": "Uložit předvolbu",
-
     "preferences": "Předvolby",
     "text_editor": "TEXTOVÝ EDITOR",
     "style": "STYL",
     "mouse": "MYŠ",
-
     "mcp_servers": "Servery MCP",
     "memory": "Paměť",
-
     "session": "RELACE",
     "quantize": "Kvantizace:",
     "branch": "Větev",
     "update": "Aktualizovat",
     "save_new": "+ Uložit nový",
-
     "packages": "Balíčky",
     "link_local": "Propojit lokálně…",
     "search_packages": "Hledat balíčky…",
@@ -104,15 +94,12 @@
     "unlink": "Odpojit",
     "remove": "Odebrat",
     "fetching_catalog": "Načítání katalogu…",
-
     "open_example": "Otevřít příklad",
     "search_examples": "Hledat podle názvu, tagů, id, cesty…",
     "core_only": "Pouze jádro",
     "package": "Balíček",
     "needs_packages": "vyžaduje balíček(ky)",
-
     "edit_meta": "Upravit metadata",
-
     "pkg_action_failed": "Akce balíčku selhala",
     "pkg_build_failed_open_console": "Sestavení selhalo — viz Konzole sestavení",
     "pkg_unlink_failed": "Nepodařilo se odpojit %s",
@@ -124,7 +111,6 @@
     "example_missing_package_click_open": "Chybějící balíček: %s (klikněte na Otevřít pro pokračování)",
     "graph_meta_save_failed": "Nepodařilo se uložit metadata",
     "graph_meta_invalid_preview_controls": "Ovládání náhledu musí odkazovat na platný pár uzel/parametr",
-
     "relayout_all": "Přeuspořádat vše",
     "add_sticky_note": "Přidat poznámku",
     "delete_note": "Smazat poznámku",
@@ -136,20 +122,17 @@
     "solo": "Sólo",
     "delete_wire": "Smazat kabel",
     "insert_node": "Vložit uzel",
-
     "adding_operator": "Přidávání operátoru",
     "preparing_operator": "Příprava operátoru…",
     "compiling_graph": "Kompilace grafu…",
     "applying_graph": "Aplikace grafu…",
     "wait_operator": "Počkejte prosím, Vivid připravuje vybraný operátor.",
     "wait_operator_named": "Počkejte prosím, Vivid připravuje %s.",
-
     "loading_graph": "Načítání grafu",
     "loading_graph_stage": "Načítání grafu…",
     "preparing_operators": "Příprava operátorů…",
     "wait_graph": "Počkejte prosím, Vivid připravuje požadovaný graf.",
     "wait_graph_named": "Počkejte prosím, Vivid připravuje %s.",
-
     "snap": "Snímek",
     "build": "Sestavit",
     "redo": "Znovu",
@@ -158,52 +141,40 @@
     "stop": "Stop",
     "connected": "připojeno",
     "not_connected": "nepřipojeno",
-
     "broken_connection": "Přerušené spojení",
-
     "node_missing_label": "CHYBÍ",
     "node_missing_try_rebuild": "zkuste přestavět",
     "node_missing_abi_mismatch": "neshoda ABI",
     "node_missing_not_installed": "není nainstalováno",
-
     "from_min": "Od Min",
     "from_max": "Od Max",
     "to_min": "Do Min",
     "to_max": "Do Max",
-
     "controls": "Ovládání",
     "custom": "Vlastní",
     "technical": "Technické",
     "secondary_controls": "Sekundární ovládání",
     "modulation": "Modulace",
     "performance": "Výkon",
-
     "midi_map_wiggle": "MIDI MAP: Otočte knoflíkem…",
     "midi_map_click": "MIDI MAP: Klikněte na parametr…",
-
     "quantize_off": "Vyp",
     "quantize_beat": "Doba",
     "quantize_bar": "Takt",
     "quantize_4bar": "4 takty",
-
-    "browse_file": "Procházet\u2026",
-
+    "browse_file": "Procházet…",
     "ports": "PORTY",
     "params": "PARAMETRY",
-
     "variation_rename": "Přejmenovat",
     "variation_duplicate": "Duplikovat",
     "variation_delete": "Smazat",
     "variation_branch_from": "Větvit od",
-
     "build_console": "Konzole sestavení",
-
     "preset_none": "(žádná)",
     "state_header": "Stav %d",
     "add_assignment": "+ přiřazení",
     "needs_rebuild": "Zkuste přestavět",
     "about_version": "Verze %s",
-
     "clone_for_editing": "Klonovat %s pro úpravu",
     "preview_controls": "Ovládání Náhledu",
     "col_node": "uzel",
@@ -212,20 +183,16 @@
     "choose_node": "(zvolit uzel)",
     "choose_param": "(zvolit param)",
     "add_row": "+ přidat řádek",
-
     "select_asset": "Vybrat %s prostředek",
-
     "graph_server": "Server grafu",
     "graph_server_desc": "Ovládá graf uzlů Vivid pomocí AI.",
     "operator_dev": "Vývoj operátorů",
     "operator_dev_desc": "Pomáhá vytvářet vlastní operátory.",
     "configured": "nakonfigurováno",
-
     "open_themes_folder": "Otevřít složku motivů…",
     "pan_middle": "Tažení prostředním tlačítkem",
     "pan_left": "Tažení levým tlačítkem (prázdné plátno)",
     "pan_right": "Tažení pravým tlačítkem",
-
     "tab_all": "Vše",
     "tab_audio": "Audio",
     "tab_gpu": "GPU",
@@ -239,9 +206,7 @@
     "tab_advanced": "Expert",
     "tab_featured": "Doporučené",
     "tab_az": "A-Z",
-
     "open_console": "Otevřít konzoli",
-
     "audio": "Zvuk",
     "rate": "Frekvence",
     "buffer": "Vyrovnávací paměť",
@@ -251,14 +216,12 @@
     "xruns": "XRUN-y",
     "load": "Zátěž",
     "rebuild": "Přestavět",
-
     "package_one": "%d balíček",
     "package_other": "%d balíčků",
     "update_one": "%d aktualizace",
     "update_other": "%d aktualizací",
     "incompatible_suffix": "(%d nekompatibilních)",
     "enter_opens_selection": "Enter otevře výběr",
-
     "env_control": "ovládání",
     "env_audio": "audio",
     "env_gpu": "gpu",
@@ -268,9 +231,19 @@
     "dest_project": "Projekt",
     "dest_core": "Jádro",
     "folder_name_placeholder": "Složka/Název",
-
     "core_update_available": "K dispozici aktualizace jádra: v%s",
-
     "graph_one": "%d graf",
-    "graph_other": "%d grafů"
+    "graph_other": "%d grafů",
+    "attention": "Attention",
+    "audio_load": "Audio Load",
+    "connectivity": "Connectivity",
+    "diag": "Diag",
+    "diagnostics": "Diagnostics",
+    "fps": "FPS",
+    "frame": "Frame",
+    "load_history": "Load History",
+    "memory_history": "Memory History",
+    "partial": "Partial",
+    "setup": "Setup",
+    "stable": "Stable"
 }

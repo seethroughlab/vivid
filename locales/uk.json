@@ -1,6 +1,5 @@
 {
     "locale": "uk",
-
     "save": "Зберегти",
     "cancel": "Скасувати",
     "close": "Закрити",
@@ -19,7 +18,6 @@
     "later": "Пізніше",
     "skip": "Пропустити",
     "install": "Встановити",
-
     "menu_about_vivid": "Про %s",
     "menu_check_for_updates": "Перевірити оновлення…",
     "menu_auto_check_updates": "Автоматично перевіряти оновлення",
@@ -52,7 +50,6 @@
     "menu_report_issue": "Повідомити про проблему…",
     "menu_no_recent_files": "Немає останніх файлів",
     "menu_clear_recent": "Очистити останні",
-
     "error_label": "Помилка:",
     "wire": "Провід",
     "clamp": "Обмежити",
@@ -60,7 +57,6 @@
     "delete_to_remove": "Delete / Backspace для видалення",
     "disconnect": "Від'єднати",
     "no_matches": "немає збігів",
-
     "color": "колір",
     "min": "мін",
     "max": "макс",
@@ -68,10 +64,8 @@
     "from_input": "(від входу)",
     "state_presets": "Пресети станів",
     "outputs": "Виходи",
-
     "save_changes_prompt": "Зберегти зміни перед закриттям?",
     "dont_save": "Не зберігати",
-
     "project_package": "Пакет проєкту",
     "project_package_unavailable": "Пакет проєкту (недоступний)",
     "core": "Ядро",
@@ -81,21 +75,17 @@
     "parameters": "Параметри",
     "create_empty": "Створити порожній",
     "save_preset": "Зберегти пресет",
-
     "preferences": "Налаштування",
     "text_editor": "ТЕКСТОВИЙ РЕДАКТОР",
     "style": "СТИЛЬ",
     "mouse": "МИША",
-
     "mcp_servers": "Сервери MCP",
     "memory": "Пам'ять",
-
     "session": "СЕСІЯ",
     "quantize": "Квантизація:",
     "branch": "Гілка",
     "update": "Оновити",
     "save_new": "+ Зберегти новий",
-
     "packages": "Пакети",
     "link_local": "Зв'язати локально…",
     "search_packages": "Пошук пакетів…",
@@ -104,15 +94,12 @@
     "unlink": "Від'єднати",
     "remove": "Видалити",
     "fetching_catalog": "Завантаження каталогу…",
-
     "open_example": "Відкрити приклад",
     "search_examples": "Пошук за назвою, тегами, id, шляхом…",
     "core_only": "Тільки ядро",
     "package": "Пакет",
     "needs_packages": "потрібні пакет(и)",
-
     "edit_meta": "Редагувати метадані",
-
     "pkg_action_failed": "Дія з пакетом не вдалася",
     "pkg_build_failed_open_console": "Збірка не вдалася — дивіться Консоль збірки",
     "pkg_unlink_failed": "Не вдалося від'єднати %s",
@@ -124,7 +111,6 @@
     "example_missing_package_click_open": "Відсутній пакет: %s (натисніть Відкрити щоб продовжити)",
     "graph_meta_save_failed": "Не вдалося зберегти метадані",
     "graph_meta_invalid_preview_controls": "Елементи попереднього перегляду мають посилатися на дійсну пару вузол/параметр",
-
     "relayout_all": "Переупорядкувати все",
     "add_sticky_note": "Додати нотатку",
     "delete_note": "Видалити нотатку",
@@ -136,20 +122,17 @@
     "solo": "Соло",
     "delete_wire": "Видалити провід",
     "insert_node": "Вставити вузол",
-
     "adding_operator": "Додавання оператора",
     "preparing_operator": "Підготовка оператора…",
     "compiling_graph": "Компіляція графа…",
     "applying_graph": "Застосування графа…",
     "wait_operator": "Зачекайте, поки Vivid підготує обраний оператор.",
     "wait_operator_named": "Зачекайте, поки Vivid підготує %s.",
-
     "loading_graph": "Завантаження графа",
     "loading_graph_stage": "Завантаження графа…",
     "preparing_operators": "Підготовка операторів…",
     "wait_graph": "Зачекайте, поки Vivid підготує запитаний граф.",
     "wait_graph_named": "Зачекайте, поки Vivid підготує %s.",
-
     "snap": "Знімок",
     "build": "Збірка",
     "redo": "Повторити",
@@ -158,52 +141,40 @@
     "stop": "Стоп",
     "connected": "підключено",
     "not_connected": "не підключено",
-
     "broken_connection": "Розірване з'єднання",
-
     "node_missing_label": "ВІДСУТНІЙ",
     "node_missing_try_rebuild": "спробуйте перезібрати",
     "node_missing_abi_mismatch": "невідповідність ABI",
     "node_missing_not_installed": "не встановлено",
-
     "from_min": "Від Мін",
     "from_max": "Від Макс",
     "to_min": "До Мін",
     "to_max": "До Макс",
-
     "controls": "Керування",
     "custom": "Користувацьке",
     "technical": "Технічне",
     "secondary_controls": "Додаткове керування",
     "modulation": "Модуляція",
     "performance": "Продуктивність",
-
     "midi_map_wiggle": "MIDI MAP: Покрутіть ручку…",
     "midi_map_click": "MIDI MAP: Натисніть на параметр…",
-
     "quantize_off": "Вимк",
     "quantize_beat": "Доля",
     "quantize_bar": "Такт",
     "quantize_4bar": "4 такти",
-
-    "browse_file": "Огляд\u2026",
-
+    "browse_file": "Огляд…",
     "ports": "ПОРТИ",
     "params": "ПАРАМЕТРИ",
-
     "variation_rename": "Перейменувати",
     "variation_duplicate": "Дублювати",
     "variation_delete": "Видалити",
     "variation_branch_from": "Відгалузити від",
-
     "build_console": "Консоль збірки",
-
     "preset_none": "(немає)",
     "state_header": "Стан %d",
     "add_assignment": "+ призначення",
     "needs_rebuild": "Спробуйте перезібрати",
     "about_version": "Версія %s",
-
     "clone_for_editing": "Клонувати %s для редагування",
     "preview_controls": "Елементи Попереднього Перегляду",
     "col_node": "вузол",
@@ -212,20 +183,16 @@
     "choose_node": "(обрати вузол)",
     "choose_param": "(обрати параметр)",
     "add_row": "+ додати рядок",
-
     "select_asset": "Обрати ресурс %s",
-
     "graph_server": "Сервер графа",
     "graph_server_desc": "Керує графом вузлів Vivid через ШІ.",
     "operator_dev": "Розробка операторів",
     "operator_dev_desc": "Допомагає створювати користувацькі оператори.",
     "configured": "налаштовано",
-
     "open_themes_folder": "Відкрити папку тем…",
     "pan_middle": "Перетягування середньою кнопкою",
     "pan_left": "Перетягування лівою кнопкою (порожнє полотно)",
     "pan_right": "Перетягування правою кнопкою",
-
     "tab_all": "Все",
     "tab_audio": "Аудіо",
     "tab_gpu": "GPU",
@@ -239,9 +206,7 @@
     "tab_advanced": "Просунутий",
     "tab_featured": "Обране",
     "tab_az": "А-Я",
-
     "open_console": "Відкрити консоль",
-
     "audio": "Аудіо",
     "rate": "Частота",
     "buffer": "Буфер",
@@ -251,14 +216,12 @@
     "xruns": "XRUN-и",
     "load": "Навантаження",
     "rebuild": "Перезібрати",
-
     "package_one": "%d пакет",
     "package_other": "%d пакетів",
     "update_one": "%d оновлення",
     "update_other": "%d оновлень",
     "incompatible_suffix": "(%d несумісних)",
     "enter_opens_selection": "Enter відкриває вибране",
-
     "env_control": "керування",
     "env_audio": "аудіо",
     "env_gpu": "gpu",
@@ -268,9 +231,19 @@
     "dest_project": "Проєкт",
     "dest_core": "Ядро",
     "folder_name_placeholder": "Папка/Ім'я",
-
     "core_update_available": "Доступне оновлення ядра: v%s",
-
     "graph_one": "%d граф",
-    "graph_other": "%d графів"
+    "graph_other": "%d графів",
+    "attention": "Attention",
+    "audio_load": "Audio Load",
+    "connectivity": "Connectivity",
+    "diag": "Diag",
+    "diagnostics": "Diagnostics",
+    "fps": "FPS",
+    "frame": "Frame",
+    "load_history": "Load History",
+    "memory_history": "Memory History",
+    "partial": "Partial",
+    "setup": "Setup",
+    "stable": "Stable"
 }

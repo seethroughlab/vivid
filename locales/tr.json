@@ -1,6 +1,5 @@
 {
     "locale": "tr",
-
     "save": "Kaydet",
     "cancel": "İptal",
     "close": "Kapat",
@@ -19,7 +18,6 @@
     "later": "Daha Sonra",
     "skip": "Atla",
     "install": "Kur",
-
     "menu_about_vivid": "%s Hakkında",
     "menu_check_for_updates": "Güncellemeleri Kontrol Et…",
     "menu_auto_check_updates": "Güncellemeleri Otomatik Kontrol Et",
@@ -52,7 +50,6 @@
     "menu_report_issue": "Sorun Bildir…",
     "menu_no_recent_files": "Son Dosya Yok",
     "menu_clear_recent": "Son Kullanılanları Temizle",
-
     "error_label": "Hata:",
     "wire": "Kablo",
     "clamp": "Sınırla",
@@ -60,7 +57,6 @@
     "delete_to_remove": "Delete / Backspace ile sil",
     "disconnect": "Bağlantıyı Kes",
     "no_matches": "eşleşme yok",
-
     "color": "renk",
     "min": "min",
     "max": "maks",
@@ -68,10 +64,8 @@
     "from_input": "(girişten)",
     "state_presets": "Durum Önayarları",
     "outputs": "Çıkışlar",
-
     "save_changes_prompt": "Kapatmadan önce değişiklikler kaydedilsin mi?",
     "dont_save": "Kaydetme",
-
     "project_package": "Proje Paketi",
     "project_package_unavailable": "Proje Paketi (kullanılamaz)",
     "core": "Çekirdek",
@@ -81,21 +75,17 @@
     "parameters": "Parametreler",
     "create_empty": "Boş Oluştur",
     "save_preset": "Önayarı Kaydet",
-
     "preferences": "Tercihler",
     "text_editor": "METİN EDİTÖRÜ",
     "style": "STİL",
     "mouse": "FARE",
-
     "mcp_servers": "MCP Sunucuları",
     "memory": "Bellek",
-
     "session": "OTURUM",
     "quantize": "Kuantize:",
     "branch": "Dal",
     "update": "Güncelle",
     "save_new": "+ Yeni Kaydet",
-
     "packages": "Paketler",
     "link_local": "Yerel Bağla…",
     "search_packages": "Paket ara…",
@@ -104,15 +94,12 @@
     "unlink": "Bağlantıyı Kaldır",
     "remove": "Kaldır",
     "fetching_catalog": "Katalog alınıyor…",
-
     "open_example": "Örnek Aç",
     "search_examples": "Başlık, etiket, id, yol ile ara…",
     "core_only": "Yalnızca çekirdek",
     "package": "Paket",
     "needs_packages": "paket(ler) gerekli",
-
     "edit_meta": "Meta Verileri Düzenle",
-
     "pkg_action_failed": "Paket işlemi başarısız oldu",
     "pkg_build_failed_open_console": "Derleme başarısız - Derleme Konsoluna bakın",
     "pkg_unlink_failed": "%s bağlantısı kaldırılamadı",
@@ -124,7 +111,6 @@
     "example_missing_package_click_open": "Eksik paket: %s (devam etmek için Aç'a tıklayın)",
     "graph_meta_save_failed": "Meta veriler kaydedilemedi",
     "graph_meta_invalid_preview_controls": "Önizleme kontrolleri geçerli bir düğüm/parametre çiftine başvurmalıdır",
-
     "relayout_all": "Tümünü Yeniden Düzenle",
     "add_sticky_note": "Yapışkan Not Ekle",
     "delete_note": "Notu Sil",
@@ -136,20 +122,17 @@
     "solo": "Solo",
     "delete_wire": "Kabloyu Sil",
     "insert_node": "Düğüm Ekle",
-
     "adding_operator": "Operatör Ekleniyor",
     "preparing_operator": "Operatör hazırlanıyor…",
     "compiling_graph": "Graf derleniyor…",
     "applying_graph": "Graf uygulanıyor…",
     "wait_operator": "Vivid seçili operatörü hazırlarken lütfen bekleyin.",
     "wait_operator_named": "Vivid %s hazırlarken lütfen bekleyin.",
-
     "loading_graph": "Graf Yükleniyor",
     "loading_graph_stage": "Graf yükleniyor…",
     "preparing_operators": "Operatörler hazırlanıyor…",
     "wait_graph": "Vivid istenen grafı hazırlarken lütfen bekleyin.",
     "wait_graph_named": "Vivid %s hazırlarken lütfen bekleyin.",
-
     "snap": "Anlık Görüntü",
     "build": "Derle",
     "redo": "Yinele",
@@ -158,52 +141,40 @@
     "stop": "Dur",
     "connected": "bağlı",
     "not_connected": "bağlı değil",
-
     "broken_connection": "Kopuk bağlantı",
-
     "node_missing_label": "EKSİK",
     "node_missing_try_rebuild": "yeniden derlemeyi dene",
     "node_missing_abi_mismatch": "ABI uyumsuzluğu",
     "node_missing_not_installed": "kurulu değil",
-
     "from_min": "Kaynak Min",
     "from_max": "Kaynak Maks",
     "to_min": "Hedef Min",
     "to_max": "Hedef Maks",
-
     "controls": "Kontroller",
     "custom": "Özel",
     "technical": "Teknik",
     "secondary_controls": "İkincil Kontroller",
     "modulation": "Modülasyon",
     "performance": "Performans",
-
     "midi_map_wiggle": "MIDI MAP: Bir düğmeyi çevirin…",
     "midi_map_click": "MIDI MAP: Bir parametreye tıklayın…",
-
     "quantize_off": "Kapalı",
     "quantize_beat": "Vuruş",
     "quantize_bar": "Ölçü",
     "quantize_4bar": "4 Ölçü",
-
-    "browse_file": "Gözat\u2026",
-
+    "browse_file": "Gözat…",
     "ports": "PORTLAR",
     "params": "PARAMETRELER",
-
     "variation_rename": "Yeniden Adlandır",
     "variation_duplicate": "Çoğalt",
     "variation_delete": "Sil",
     "variation_branch_from": "Dallandır",
-
     "build_console": "Derleme Konsolu",
-
     "preset_none": "(yok)",
     "state_header": "Durum %d",
     "add_assignment": "+ atama",
     "needs_rebuild": "Yeniden Derlemeyi Dene",
     "about_version": "Sürüm %s",
-
     "clone_for_editing": "Düzenlemek için %s klonla",
     "preview_controls": "Önizleme Kontrolleri",
     "col_node": "düğüm",
@@ -212,20 +183,16 @@
     "choose_node": "(düğüm seç)",
     "choose_param": "(param seç)",
     "add_row": "+ satır ekle",
-
     "select_asset": "%s varlığını seç",
-
     "graph_server": "Graf Sunucusu",
     "graph_server_desc": "Vivid düğüm grafını yapay zeka ile kontrol eder.",
     "operator_dev": "Operatör Geliştirme",
     "operator_dev_desc": "Özel operatörler oluşturmaya yardımcı olur.",
     "configured": "yapılandırılmış",
-
     "open_themes_folder": "Tema Klasörünü Aç…",
     "pan_middle": "Orta tuş ile sürükle",
     "pan_left": "Sol tuş ile sürükle (boş tuval)",
     "pan_right": "Sağ tuş ile sürükle",
-
     "tab_all": "Tümü",
     "tab_audio": "Ses",
     "tab_gpu": "GPU",
@@ -239,9 +206,7 @@
     "tab_advanced": "İleri",
     "tab_featured": "Öne Çıkanlar",
     "tab_az": "A-Z",
-
     "open_console": "Konsolu Aç",
-
     "audio": "Ses",
     "rate": "Hız",
     "buffer": "Arabellek",
@@ -251,14 +216,12 @@
     "xruns": "XRUN'lar",
     "load": "Yük",
     "rebuild": "Yeniden Derle",
-
     "package_one": "%d paket",
     "package_other": "%d paket",
     "update_one": "%d güncelleme",
     "update_other": "%d güncelleme",
     "incompatible_suffix": "(%d uyumsuz)",
     "enter_opens_selection": "Enter seçimi açar",
-
     "env_control": "kontrol",
     "env_audio": "ses",
     "env_gpu": "gpu",
@@ -268,9 +231,19 @@
     "dest_project": "Proje",
     "dest_core": "Çekirdek",
     "folder_name_placeholder": "Klasör/Ad",
-
     "core_update_available": "Çekirdek güncellemesi mevcut: v%s",
-
     "graph_one": "%d graf",
-    "graph_other": "%d graf"
+    "graph_other": "%d graf",
+    "attention": "Attention",
+    "audio_load": "Audio Load",
+    "connectivity": "Connectivity",
+    "diag": "Diag",
+    "diagnostics": "Diagnostics",
+    "fps": "FPS",
+    "frame": "Frame",
+    "load_history": "Load History",
+    "memory_history": "Memory History",
+    "partial": "Partial",
+    "setup": "Setup",
+    "stable": "Stable"
 }

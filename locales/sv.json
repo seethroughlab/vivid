@@ -1,6 +1,5 @@
 {
     "locale": "sv",
-
     "save": "Spara",
     "cancel": "Avbryt",
     "close": "Stäng",
@@ -19,7 +18,6 @@
     "later": "Senare",
     "skip": "Hoppa över",
     "install": "Installera",
-
     "menu_about_vivid": "Om %s",
     "menu_check_for_updates": "Sök efter uppdateringar…",
     "menu_auto_check_updates": "Sök automatiskt efter uppdateringar",
@@ -52,7 +50,6 @@
     "menu_report_issue": "Rapportera ett problem…",
     "menu_no_recent_files": "Inga senaste filer",
     "menu_clear_recent": "Rensa senaste",
-
     "error_label": "Fel:",
     "wire": "Kabel",
     "clamp": "Begränsa",
@@ -60,7 +57,6 @@
     "delete_to_remove": "Delete / Backspace för att ta bort",
     "disconnect": "Koppla från",
     "no_matches": "inga träffar",
-
     "color": "färg",
     "min": "min",
     "max": "max",
@@ -68,10 +64,8 @@
     "from_input": "(från ingång)",
     "state_presets": "Tillståndsförinställningar",
     "outputs": "Utgångar",
-
     "save_changes_prompt": "Spara ändringar innan stängning?",
     "dont_save": "Spara inte",
-
     "project_package": "Projektpaket",
     "project_package_unavailable": "Projektpaket (ej tillgängligt)",
     "core": "Kärna",
@@ -81,21 +75,17 @@
     "parameters": "Parametrar",
     "create_empty": "Skapa tom",
     "save_preset": "Spara förinställning",
-
     "preferences": "Inställningar",
     "text_editor": "TEXTREDIGERARE",
     "style": "STIL",
     "mouse": "MUS",
-
     "mcp_servers": "MCP-servrar",
     "memory": "Minne",
-
     "session": "SESSION",
     "quantize": "Kvantisera:",
     "branch": "Gren",
     "update": "Uppdatera",
     "save_new": "+ Spara ny",
-
     "packages": "Paket",
     "link_local": "Länka lokalt…",
     "search_packages": "Sök paket…",
@@ -104,15 +94,12 @@
     "unlink": "Avlänka",
     "remove": "Ta bort",
     "fetching_catalog": "Hämtar katalog…",
-
     "open_example": "Öppna exempel",
     "search_examples": "Sök efter titel, taggar, id, sökväg…",
     "core_only": "Bara kärna",
     "package": "Paket",
     "needs_packages": "kräver paket",
-
     "edit_meta": "Redigera metadata",
-
     "needs_rebuild": "Försök bygga om",
     "about_version": "Version %s",
     "pkg_action_failed": "Paketåtgärd misslyckades",
@@ -126,7 +113,6 @@
     "example_missing_package_click_open": "Saknat paket: %s (klicka Öppna igen för att fortsätta)",
     "graph_meta_save_failed": "Misslyckades att spara metadata",
     "graph_meta_invalid_preview_controls": "Förhandsvisningskontroller måste referera till ett giltigt nod/param-par",
-
     "relayout_all": "Ordna om allt",
     "add_sticky_note": "Lägg till anteckning",
     "delete_note": "Ta bort anteckning",
@@ -138,20 +124,17 @@
     "solo": "Solo",
     "delete_wire": "Ta bort kabel",
     "insert_node": "Infoga nod",
-
     "adding_operator": "Lägger till operatör",
     "preparing_operator": "Förbereder operatör…",
     "compiling_graph": "Kompilerar graf…",
     "applying_graph": "Tillämpar graf…",
     "wait_operator": "Vänta medan Vivid förbereder den valda operatören.",
     "wait_operator_named": "Vänta medan Vivid förbereder %s.",
-
     "loading_graph": "Laddar graf",
     "loading_graph_stage": "Laddar graf…",
     "preparing_operators": "Förbereder operatörer…",
     "wait_graph": "Vänta medan Vivid förbereder den begärda grafen.",
     "wait_graph_named": "Vänta medan Vivid förbereder %s.",
-
     "snap": "Ögonblicksbild",
     "build": "Bygg",
     "redo": "Gör om",
@@ -160,50 +143,38 @@
     "stop": "Stoppa",
     "connected": "ansluten",
     "not_connected": "ej ansluten",
-
     "broken_connection": "Bruten anslutning",
-
     "node_missing_label": "SAKNAS",
     "node_missing_try_rebuild": "försök bygga om",
     "node_missing_abi_mismatch": "ABI-avvikelse",
     "node_missing_not_installed": "ej installerad",
-
     "from_min": "Från Min",
     "from_max": "Från Max",
     "to_min": "Till Min",
     "to_max": "Till Max",
-
     "controls": "Kontroller",
     "custom": "Anpassad",
     "technical": "Teknisk",
     "secondary_controls": "Sekundära kontroller",
     "modulation": "Modulation",
     "performance": "Prestanda",
-
     "midi_map_wiggle": "MIDI MAP: Vrid på en ratt…",
     "midi_map_click": "MIDI MAP: Klicka på en parameter…",
-
     "quantize_off": "Av",
     "quantize_beat": "Slag",
     "quantize_bar": "Takt",
     "quantize_4bar": "4 takter",
-
-    "browse_file": "Bläddra\u2026",
-
+    "browse_file": "Bläddra…",
     "ports": "PORTAR",
     "params": "PARAMETRAR",
-
     "variation_rename": "Byt namn",
     "variation_duplicate": "Duplicera",
     "variation_delete": "Ta bort",
     "variation_branch_from": "Förgrena från",
-
     "build_console": "Byggkonsol",
-
     "preset_none": "(ingen)",
     "state_header": "Tillstånd %d",
     "add_assignment": "+ tilldelning",
-
     "clone_for_editing": "Klona %s för redigering",
     "preview_controls": "Förhandsvisningskontroller",
     "col_node": "nod",
@@ -212,20 +183,16 @@
     "choose_node": "(välj nod)",
     "choose_param": "(välj param)",
     "add_row": "+ lägg till rad",
-
     "select_asset": "Välj %s-tillgång",
-
     "graph_server": "Grafserver",
     "graph_server_desc": "Styr Vivid-nodgrafen via AI.",
     "operator_dev": "Operatörsutveckling",
     "operator_dev_desc": "Hjälper till att skapa anpassade operatörer.",
     "configured": "konfigurerad",
-
     "open_themes_folder": "Öppna temamapp…",
     "pan_middle": "Dra med mittenknappen",
     "pan_left": "Dra med vänsterknappen (tom yta)",
     "pan_right": "Dra med högerknappen",
-
     "tab_all": "Alla",
     "tab_audio": "Ljud",
     "tab_gpu": "GPU",
@@ -239,9 +206,7 @@
     "tab_advanced": "Avancerad",
     "tab_featured": "Utvalda",
     "tab_az": "A-Ö",
-
     "open_console": "Öppna konsol",
-
     "audio": "Ljud",
     "rate": "Frekvens",
     "buffer": "Buffert",
@@ -251,14 +216,12 @@
     "xruns": "XRUN:ar",
     "load": "Belastning",
     "rebuild": "Bygg om",
-
     "package_one": "%d paket",
     "package_other": "%d paket",
     "update_one": "%d uppdatering",
     "update_other": "%d uppdateringar",
     "incompatible_suffix": "(%d inkompatibla)",
     "enter_opens_selection": "Enter öppnar valt",
-
     "env_control": "styrning",
     "env_audio": "ljud",
     "env_gpu": "gpu",
@@ -268,9 +231,19 @@
     "dest_project": "Projekt",
     "dest_core": "Kärna",
     "folder_name_placeholder": "Mapp/Namn",
-
     "core_update_available": "Kärnuppdatering tillgänglig: v%s",
-
     "graph_one": "%d graf",
-    "graph_other": "%d grafer"
+    "graph_other": "%d grafer",
+    "attention": "Attention",
+    "audio_load": "Audio Load",
+    "connectivity": "Connectivity",
+    "diag": "Diag",
+    "diagnostics": "Diagnostics",
+    "fps": "FPS",
+    "frame": "Frame",
+    "load_history": "Load History",
+    "memory_history": "Memory History",
+    "partial": "Partial",
+    "setup": "Setup",
+    "stable": "Stable"
 }

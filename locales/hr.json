@@ -1,6 +1,5 @@
 {
     "locale": "hr",
-
     "save": "Spremi",
     "cancel": "Odustani",
     "close": "Zatvori",
@@ -19,7 +18,6 @@
     "later": "Kasnije",
     "skip": "Preskoci",
     "install": "Instaliraj",
-
     "menu_about_vivid": "O programu %s",
     "menu_check_for_updates": "Provjeri azuriranja...",
     "menu_auto_check_updates": "Automatski provjeri azuriranja",
@@ -52,7 +50,6 @@
     "menu_report_issue": "Prijavi problem...",
     "menu_no_recent_files": "Nema nedavnih datoteka",
     "menu_clear_recent": "Ocisti nedavne",
-
     "error_label": "Greska:",
     "wire": "Zica",
     "clamp": "Ogranici",
@@ -60,7 +57,6 @@
     "delete_to_remove": "Delete / Backspace za uklanjanje",
     "disconnect": "Odspoji",
     "no_matches": "nema rezultata",
-
     "color": "boja",
     "min": "min",
     "max": "maks",
@@ -68,10 +64,8 @@
     "from_input": "(iz ulaza)",
     "state_presets": "Predlosci stanja",
     "outputs": "Izlazi",
-
     "save_changes_prompt": "Spremiti promjene prije zatvaranja?",
     "dont_save": "Nemoj spremiti",
-
     "project_package": "Projektni paket",
     "project_package_unavailable": "Projektni paket (nedostupan)",
     "core": "Jezgra",
@@ -81,21 +75,17 @@
     "parameters": "Parametri",
     "create_empty": "Stvori prazno",
     "save_preset": "Spremi predlozak",
-
     "preferences": "Postavke",
     "text_editor": "UREDIVAC TEKSTA",
     "style": "STIL",
     "mouse": "MIS",
-
     "mcp_servers": "MCP posluzitelji",
     "memory": "Memorija",
-
     "session": "SESIJA",
     "quantize": "Kvantizacija:",
     "branch": "Grana",
     "update": "Azuriraj",
     "save_new": "+ Spremi novo",
-
     "packages": "Paketi",
     "link_local": "Povezi lokalno...",
     "search_packages": "Pretrazi pakete...",
@@ -105,13 +95,11 @@
     "unlink": "Odspoji",
     "remove": "Ukloni",
     "fetching_catalog": "Dohvacanje kataloga...",
-
     "open_example": "Otvori primjer",
     "search_examples": "Pretrazi po naslovu, oznakama, ID-u, putanji...",
     "core_only": "Samo jezgra",
     "package": "Paket",
     "needs_packages": "potrebni paketi",
-
     "edit_meta": "Uredi metapodatke",
     "about_version": "Verzija %s",
     "pkg_action_failed": "Radnja paketa nije uspjela",
@@ -125,7 +113,6 @@
     "example_missing_package_click_open": "Nedostaje paket: %s (kliknite Otvori za nastavak)",
     "graph_meta_save_failed": "Spremanje metapodataka nije uspjelo",
     "graph_meta_invalid_preview_controls": "Kontrole pregleda zahtijevaju valjan par cvor/parametar",
-
     "relayout_all": "Ponovno rasporedi sve",
     "add_sticky_note": "Dodaj ljepljivu biljesku",
     "delete_note": "Obrisi biljesku",
@@ -137,20 +124,17 @@
     "solo": "Solo",
     "delete_wire": "Obrisi zicu",
     "insert_node": "Umetni cvor",
-
     "adding_operator": "Dodavanje operatora",
     "preparing_operator": "Priprema operatora...",
     "compiling_graph": "Kompilacija grafa...",
     "applying_graph": "Primjena grafa...",
     "wait_operator": "Pricekajte dok Vivid pripremi odabrani operator.",
     "wait_operator_named": "Pricekajte dok Vivid pripremi %s.",
-
     "loading_graph": "Ucitavanje grafa",
     "loading_graph_stage": "Ucitavanje grafa...",
     "preparing_operators": "Priprema operatora...",
     "wait_graph": "Pricekajte dok Vivid pripremi trazeni graf.",
     "wait_graph_named": "Pricekajte dok Vivid pripremi %s.",
-
     "snap": "Prianjanje",
     "build": "Izgradi",
     "redo": "Ponovi",
@@ -159,7 +143,6 @@
     "stop": "Zaustavi",
     "connected": "spojeno",
     "not_connected": "nije spojeno",
-
     "broken_connection": "Prekinuta veza",
     "node_missing_label": "NEDOSTAJE",
     "node_missing_try_rebuild": "pokusaj ponovno izgraditi",
@@ -169,34 +152,26 @@
     "from_max": "Od maks",
     "to_min": "Do min",
     "to_max": "Do maks",
-
     "controls": "Kontrole",
     "custom": "Prilagodeno",
     "technical": "Tehnicko",
     "secondary_controls": "Sekundarne kontrole",
     "modulation": "Modulacija",
     "performance": "Performanse",
-
     "midi_map_wiggle": "MIDI MAPA: Pomaknite kontroler...",
     "midi_map_click": "MIDI MAPA: Kliknite parametar...",
-
     "quantize_off": "Iskljuceno",
     "quantize_beat": "Otkucaj",
     "quantize_bar": "Takt",
     "quantize_4bar": "4 takta",
-
-    "browse_file": "Pregledaj\u2026",
-
+    "browse_file": "Pregledaj…",
     "ports": "PRIKLJUCCI",
     "params": "PARAMETRI",
-
     "variation_rename": "Preimenuj",
     "variation_duplicate": "Dupliciraj",
     "variation_delete": "Obrisi",
     "variation_branch_from": "Granaj od ovoga",
-
     "build_console": "Konzola izgradnje",
-
     "clone_for_editing": "Kloniraj %s za uredivanje",
     "preview_controls": "Kontrole pregleda",
     "preset_none": "(nista)",
@@ -208,20 +183,16 @@
     "choose_node": "(odaberi cvor)",
     "choose_param": "(odaberi parametar)",
     "add_row": "+ dodaj redak",
-
     "select_asset": "Odaberi %s resurs",
-
     "graph_server": "Posluzitelj grafa",
     "graph_server_desc": "Upravlja Vivid grafom cvorova putem AI-a.",
     "operator_dev": "Razvoj operatora",
     "operator_dev_desc": "Pomaze u izgradnji prilagodenih operatora.",
     "configured": "konfigurirano",
-
     "open_themes_folder": "Otvori mapu tema...",
     "pan_middle": "Povlacenje srednjom tipkom",
     "pan_left": "Povlacenje lijevom tipkom (prazno platno)",
     "pan_right": "Povlacenje desnom tipkom",
-
     "tab_all": "Sve",
     "tab_audio": "Audio",
     "tab_gpu": "GPU",
@@ -235,7 +206,6 @@
     "tab_advanced": "Napredni",
     "tab_featured": "Istaknuto",
     "tab_az": "A-Z",
-
     "open_console": "Otvori konzolu",
     "audio": "Audio",
     "rate": "Frekvencija",
@@ -246,14 +216,12 @@
     "xruns": "Prekidi",
     "load": "Opterecenje",
     "rebuild": "Ponovno izgradi",
-
     "package_one": "%d paket",
     "package_other": "%d paketa",
     "update_one": "%d azuriranje",
     "update_other": "%d azuriranja",
     "incompatible_suffix": "(%d nekompatibilno)",
     "enter_opens_selection": "Enter otvara odabir",
-
     "env_control": "upravljanje",
     "env_audio": "audio",
     "env_gpu": "gpu",
@@ -263,9 +231,19 @@
     "dest_project": "Projekt",
     "dest_core": "Jezgra",
     "folder_name_placeholder": "Mapa/Naziv",
-
     "core_update_available": "Dostupno azuriranje jezgre: v%s",
-
     "graph_one": "%d graf",
-    "graph_other": "%d grafova"
+    "graph_other": "%d grafova",
+    "attention": "Attention",
+    "audio_load": "Audio Load",
+    "connectivity": "Connectivity",
+    "diag": "Diag",
+    "diagnostics": "Diagnostics",
+    "fps": "FPS",
+    "frame": "Frame",
+    "load_history": "Load History",
+    "memory_history": "Memory History",
+    "partial": "Partial",
+    "setup": "Setup",
+    "stable": "Stable"
 }

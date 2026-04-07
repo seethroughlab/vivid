@@ -1,6 +1,5 @@
 {
     "locale": "fi",
-
     "save": "Tallenna",
     "cancel": "Peruuta",
     "close": "Sulje",
@@ -19,7 +18,6 @@
     "later": "Myohemmin",
     "skip": "Ohita",
     "install": "Asenna",
-
     "menu_about_vivid": "Tietoja: %s",
     "menu_check_for_updates": "Tarkista paivitykset...",
     "menu_auto_check_updates": "Tarkista paivitykset automaattisesti",
@@ -52,7 +50,6 @@
     "menu_report_issue": "Ilmoita ongelmasta...",
     "menu_no_recent_files": "Ei viimeaikaisia tiedostoja",
     "menu_clear_recent": "Tyhjenna viimeaikaiset",
-
     "error_label": "Virhe:",
     "wire": "Johto",
     "clamp": "Rajaa",
@@ -60,7 +57,6 @@
     "delete_to_remove": "Delete / Backspace poistaaksesi",
     "disconnect": "Irrota",
     "no_matches": "ei osumia",
-
     "color": "vari",
     "min": "min",
     "max": "maks",
@@ -68,10 +64,8 @@
     "from_input": "(syotteesta)",
     "state_presets": "Tilaesiasetukset",
     "outputs": "Ulostulot",
-
     "save_changes_prompt": "Tallennetaanko muutokset ennen sulkemista?",
     "dont_save": "Ala tallenna",
-
     "project_package": "Projektipaketti",
     "project_package_unavailable": "Projektipaketti (ei saatavilla)",
     "core": "Ydin",
@@ -81,21 +75,17 @@
     "parameters": "Parametrit",
     "create_empty": "Luo tyhja",
     "save_preset": "Tallenna esiasetus",
-
     "preferences": "Asetukset",
     "text_editor": "TEKSTIEDITORI",
     "style": "TYYLI",
     "mouse": "HIIRI",
-
     "mcp_servers": "MCP-palvelimet",
     "memory": "Muisti",
-
     "session": "ISTUNTO",
     "quantize": "Kvantisointi:",
     "branch": "Haara",
     "update": "Paivita",
     "save_new": "+ Tallenna uusi",
-
     "packages": "Paketit",
     "link_local": "Linkita paikallinen...",
     "search_packages": "Etsi paketteja...",
@@ -105,13 +95,11 @@
     "unlink": "Poista linkki",
     "remove": "Poista",
     "fetching_catalog": "Haetaan katalogitietoja...",
-
     "open_example": "Avaa esimerkki",
     "search_examples": "Hae otsikon, tunnisteiden, tunnuksen tai polun mukaan...",
     "core_only": "Vain ydin",
     "package": "Paketti",
     "needs_packages": "tarvitsee paketteja",
-
     "edit_meta": "Muokkaa metatietoja",
     "about_version": "Versio %s",
     "pkg_action_failed": "Pakettitoiminto epaonnistui",
@@ -125,7 +113,6 @@
     "example_missing_package_click_open": "Puuttuva paketti: %s (klikkaa Avaa jatkaaksesi)",
     "graph_meta_save_failed": "Metatietojen tallennus epaonnistui",
     "graph_meta_invalid_preview_controls": "Esikatselusaatimet vaativat kelvollisen solmu/parametriparin",
-
     "relayout_all": "Asettele kaikki uudelleen",
     "add_sticky_note": "Lisaa muistilappu",
     "delete_note": "Poista muistilappu",
@@ -137,20 +124,17 @@
     "solo": "Soolo",
     "delete_wire": "Poista johto",
     "insert_node": "Lisaa solmu",
-
     "adding_operator": "Lisataan operaattoria",
     "preparing_operator": "Valmistellaan operaattoria...",
     "compiling_graph": "Kaannetaan graafia...",
     "applying_graph": "Otetaan graafia kayttoon...",
     "wait_operator": "Odota, kun Vivid valmistelee valitun operaattorin.",
     "wait_operator_named": "Odota, kun Vivid valmistelee: %s.",
-
     "loading_graph": "Ladataan graafia",
     "loading_graph_stage": "Ladataan graafia...",
     "preparing_operators": "Valmistellaan operaattoreita...",
     "wait_graph": "Odota, kun Vivid valmistelee pyydetyn graafin.",
     "wait_graph_named": "Odota, kun Vivid valmistelee: %s.",
-
     "snap": "Tarttuminen",
     "build": "Rakenna",
     "redo": "Tee uudelleen",
@@ -159,7 +143,6 @@
     "stop": "Pysayta",
     "connected": "yhdistetty",
     "not_connected": "ei yhdistetty",
-
     "broken_connection": "Rikkoutunut yhteys",
     "node_missing_label": "PUUTTUU",
     "node_missing_try_rebuild": "yrita uudelleenrakennusta",
@@ -169,34 +152,26 @@
     "from_max": "Lahtomaks",
     "to_min": "Kohdemin",
     "to_max": "Kohdemaks",
-
     "controls": "Saadinohjaimet",
     "custom": "Mukautettu",
     "technical": "Tekninen",
     "secondary_controls": "Toissijaiset saadinohjaimet",
     "modulation": "Modulaatio",
     "performance": "Suorituskyky",
-
     "midi_map_wiggle": "MIDI-KARTTA: Vaantele saadinta...",
     "midi_map_click": "MIDI-KARTTA: Klikkaa parametria...",
-
     "quantize_off": "Pois",
     "quantize_beat": "Isku",
     "quantize_bar": "Tahti",
     "quantize_4bar": "4 tahtia",
-
-    "browse_file": "Selaa\u2026",
-
+    "browse_file": "Selaa…",
     "ports": "PORTIT",
     "params": "PARAMETRIT",
-
     "variation_rename": "Nimeauudelleen",
     "variation_duplicate": "Kopioi",
     "variation_delete": "Poista",
     "variation_branch_from": "Haaraudu tasta",
-
     "build_console": "Rakennuskonsoli",
-
     "clone_for_editing": "Kloonaa %s muokattavaksi",
     "preview_controls": "Esikatselusaadinohjaimet",
     "preset_none": "(ei mitaan)",
@@ -208,20 +183,16 @@
     "choose_node": "(valitse solmu)",
     "choose_param": "(valitse parametri)",
     "add_row": "+ lisaa rivi",
-
     "select_asset": "Valitse %s-resurssi",
-
     "graph_server": "Graafipalvelin",
     "graph_server_desc": "Ohjaa Vivid-solmugraafia tekoalyn avulla.",
     "operator_dev": "Operaattorikehitys",
     "operator_dev_desc": "Auttaa rakentamaan mukautettuja operaattoreita.",
     "configured": "maaritetty",
-
     "open_themes_folder": "Avaa teemakansio...",
     "pan_middle": "Keskipainikkeen veto",
     "pan_left": "Vasen veto (tyhja pohja)",
     "pan_right": "Oikean painikkeen veto",
-
     "tab_all": "Kaikki",
     "tab_audio": "Audio",
     "tab_gpu": "GPU",
@@ -235,7 +206,6 @@
     "tab_advanced": "Edistynyt",
     "tab_featured": "Esitellyt",
     "tab_az": "A-O",
-
     "open_console": "Avaa konsoli",
     "audio": "Audio",
     "rate": "Naytteenottotaajuus",
@@ -246,14 +216,12 @@
     "xruns": "Yliajot",
     "load": "Kuorma",
     "rebuild": "Rakenna uudelleen",
-
     "package_one": "%d paketti",
     "package_other": "%d pakettia",
     "update_one": "%d paivitys",
     "update_other": "%d paivitysta",
     "incompatible_suffix": "(%d yhteensopimaton)",
     "enter_opens_selection": "Enter avaa valinnan",
-
     "env_control": "ohjaus",
     "env_audio": "audio",
     "env_gpu": "gpu",
@@ -263,9 +231,19 @@
     "dest_project": "Projekti",
     "dest_core": "Ydin",
     "folder_name_placeholder": "Kansio/Nimi",
-
     "core_update_available": "Ydinpaivitys saatavilla: v%s",
-
     "graph_one": "%d graafi",
-    "graph_other": "%d graafia"
+    "graph_other": "%d graafia",
+    "attention": "Attention",
+    "audio_load": "Audio Load",
+    "connectivity": "Connectivity",
+    "diag": "Diag",
+    "diagnostics": "Diagnostics",
+    "fps": "FPS",
+    "frame": "Frame",
+    "load_history": "Load History",
+    "memory_history": "Memory History",
+    "partial": "Partial",
+    "setup": "Setup",
+    "stable": "Stable"
 }

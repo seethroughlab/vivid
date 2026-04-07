@@ -377,7 +377,7 @@ int main() {
         ui.update(snap);
         ui.perf_button_rects_ = {
             {0.0f, 0.0f, 20.0f, 20.0f, 2, true},
-            {24.0f, 0.0f, 20.0f, 20.0f, 5, true},
+            {24.0f, 0.0f, 20.0f, 20.0f, 6, true},
             {48.0f, 0.0f, 20.0f, 20.0f, 7, true},
         };
         ui.diagnostics_button_rect_ = {0.0f, 0.0f, 20.0f, 20.0f, true};
@@ -404,8 +404,8 @@ int main() {
         check(sink.metronome_calls.size() == 2, "Transport controls dispatch metronome mutations");
         if (sink.metronome_calls.size() == 2) {
             check(std::fabs(sink.metronome_calls[0].bpm - 111.0f) < 0.01f &&
-                      sink.metronome_calls[0].beats_per_bar == 5,
-                  "Metronome toggle preserves bpm and meter");
+                      sink.metronome_calls[0].beats_per_bar == 4,
+                  "Meter- decrements beats per bar");
             check(sink.metronome_calls[1].beats_per_bar == 6,
                   "Meter+ increments beats per bar");
         }

@@ -483,13 +483,13 @@ int main() {
             g.add_node("probe", "GpuMetronomeProbeOp", {});
 
             vivid::RuntimeCore runtime;
-            check(runtime.build(g, registry), "build disabled metronome probe");
+            check(runtime.build(g, registry), "build default metronome probe");
             tick_and_submit(runtime, gpu, kFormat);
 
             auto* probe = runtime.compiled_graph()->find_node("probe");
-            check(probe != nullptr, "disabled probe node found");
+            check(probe != nullptr, "default probe node found");
             if (probe && probe->output_values.size() >= 6) {
-                check_float(probe->output_values[0], 0.0f, 1e-6f, "disabled metronome flag = 0");
+                check_float(probe->output_values[0], 1.0f, 1e-6f, "metronome always active");
                 check_float(probe->output_values[1], 120.0f, 1e-6f, "default bpm visible to GPU");
                 check_float(probe->output_values[2], 4.0f, 1e-6f, "default beats_per_bar visible to GPU");
                 check_float(probe->output_values[3], 0.0f, 1e-6f, "default beat_phase = 0");
