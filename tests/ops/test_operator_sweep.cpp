@@ -280,9 +280,9 @@ static bool smoke_control(vivid::OperatorLoader& loader, void* inst,
     std::vector<float> inputs(n_in_total, 0.0f);
     std::vector<float> outputs(n_out_total, 0.0f);
 
-    // Allocate empty lane views/outputs so operators that read them don't crash.
-    auto input_lanes = make_stub_input_lane_views(n_lane_in);
-    auto output_lanes = make_stub_output_lane_outputs(n_lane_out);
+    // Allocate lane stubs by full port count (operators index by port ordinal).
+    auto input_lanes = make_stub_input_lane_views(n_in_total);
+    auto output_lanes = make_stub_output_lane_outputs(n_out_total);
 
     VividFrameContext ctx{};
     ctx.time       = 0.0;
