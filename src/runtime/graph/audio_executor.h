@@ -1,6 +1,7 @@
 #pragma once
 
 #include "runtime/graph/compiled_graph.h"
+#include "runtime/graph/executor_common.h"
 #include "runtime/graph/lane_state.h"
 #include "runtime/graph/snapshot_types.h"
 #include <array>
@@ -62,7 +63,7 @@ public:
     static constexpr uint32_t kSampleRate = 48000;
 
     // Per-node lane state context (public for bridge callback access).
-    struct NodeLaneCtx { LaneStateService* service; uint32_t node_idx; };
+    using NodeLaneCtx = ExecutorLaneCtx;
 
 private:
     void audio_callback(float* output, uint32_t frame_count);

@@ -30,6 +30,27 @@ Vivid operators fall into three families based on the kind of data they work wit
 
 Both cadences are pull-based — frame-rate is driven by the display refresh, audio-rate by the audio device callback. Frame and audio executors process their respective nodes in topological order each tick/buffer. Operators are single-cadence: frame-only (`_fr`) or audio-only (`_au`). Cross-cadence data flows through `AudioFrameBridge` using lock-free double-buffered snapshots, so neither cadence ever waits on the other. Cross-cadence edges require an explicit `"bridge": true` field in the graph JSON.
 
+### Graph Compilation (7-Pass Pipeline)
+
+The `GraphCompiler` transforms a `Graph` (pure data model) into a `CompiledGraph` (live execution state). Topology changes trigger a full recompile — the `CompiledGraph` is never mutated during execution. The pipeline runs 7 passes:
+
+| Pass | Name | Purpose |
+|------|------|---------|
+| 1 | Create CompiledNodes | Instantiate operators via `dlopen`, determine each node's cadence (frame or audio) |
+| 2 | Resolve edges | Map JSON connections to `CompiledEdge` structs with resolved port indices |
+| 2.6 | Lane-set propagation | Walk nodes in topological order, propagating lane-set provenance through edges (see §5.9). Pointwise nodes inherit their input lane set; Structural nodes mint a fresh `lane_set_id`; Reduction nodes emit scalar. Mismatched non-scalar inputs on a Pointwise node are a compile error. |
+| 3 | Topological sort | Produce `frame_order` and `audio_order` execution sequences |
+| 4 | Audio channel negotiation | Resolve channel counts: explicit declarations → propagated from upstream → planner fallback. Includes sub-passes 4c/4d for lane execution strategy planning (see §5.9.6). |
+| 5 | Audio buffer allocation | Pre-allocate per-node planar audio buffers sized to the negotiated channel count |
+| 6 | Partition edges | Classify each edge as frame-Direct, audio-Direct, or Snapshot (cross-cadence via `AudioFrameBridge`) |
+| 7 | Finalize | Collect errors, emit diagnostics |
+
+Source: `src/runtime/graph/graph_compiler.cpp`, with planning in `graph_compiler_planning.cpp`.
+
+### Graph Metronome
+
+Each graph carries an optional metronome (`GraphMetronomeDef`: `enabled`, `bpm`, `beats_per_bar`). When enabled, the runtime maintains a `LiveMetronomeState` with an anchor timestamp, computing `beat_phase` (0–1 sawtooth per beat) and `bar_phase` (0–1 per bar) each frame. These are passed to operators via the frame/audio context, enabling beat-quantized recall, clock-synced LFOs, and sequencer timing without an explicit Clock node.
+
 ## 5.5 Cadence Bridges
 
 **Decision: Cross-cadence data flows through two bidirectional bridges.** Audio and GPU never communicate directly — everything routes through the frame-rate side. This simplifies the architecture to two boundary mechanisms:
@@ -43,6 +64,12 @@ Both cadences are pull-based — frame-rate is driven by the display refresh, au
 - **GPU → CPU:** async readback from GPU staging buffers. Frame-rate nodes receive data when it lands. Latency: 1–2 frames.
 
 **Why not direct Audio ↔ GPU?** Audio and frame-rate operators both live on the CPU. The "hop" through the frame side is just a CPU-side buffer copy (nanoseconds), followed by the same CPU→GPU upload that would happen regardless. The only real boundary is CPU↔GPU, and that crossing happens exactly once no matter how the data is routed.
+
+### Bridge Capacity Limits
+
+- `LaneSnapshot::kMaxLength = 64` — lane data crossing the `AudioFrameBridge` is copied into a fixed 64-element struct. Lane arrays exceeding 64 elements are silently truncated at the bridge boundary. This is sufficient for most control-rate lane sets (MIDI polyphony, small FFT bands) but not for high-element-count data like full 512-bin FFTs, which should remain frame-side.
+- `CustomPortSnapshot::kMaxBytes = 256` — custom port types using `VIVID_PORT_TRANSPORT_CUSTOM_VALUE` must fit within 256 bytes when crossing cadence boundaries. Larger payloads should use `VIVID_PORT_TRANSPORT_CUSTOM_REF` (opaque pointer via the shared handle registry).
+- `RecordingTap::kRingSize = 960000` — lock-free mix recording ring buffer holds ~10 seconds at 48 kHz stereo interleaved.
 
 ## 5.6 Port Type System
 
@@ -111,6 +138,8 @@ VIVID_REGISTER(MyEffect)
 Three domain-specific mix-in interfaces exist: `vivid::FrameProcessable` (implements `process_frame(const VividFrameContext*)`), `vivid::AudioProcessable` (implements `process_audio(const VividAudioContext*)`), and `vivid::GpuProcessable` (implements `process_gpu(const VividGpuContext*)`). All operators inherit `vivid::OperatorBase` and exactly one of these interfaces — operators are single-cadence (`_fr` for frame-only, `_au` for audio-only). The `VIVID_REGISTER` macro generates `extern "C"` entry points (`vivid_abi_version`, `vivid_descriptor`, `vivid_create`, `vivid_destroy`, and domain-specific dispatch functions). It emits a `vivid_abi_version()` function returning `VIVID_OPERATOR_ABI_VERSION`, with the source-of-truth value defined in `src/operator_api/types.h`. The runtime checks that value on `dlopen` to reject stale dylibs left over from a previous build — it is not a cross-version compatibility contract. Operators always compile against the current headers.
 
 For statically linked export builds (§5.16), the `extern "C"` boundary is unnecessary — everything links together as one C++ binary. The macro handles both cases.
+
+**Crash isolation:** The runtime wraps every `process_frame` / `process_audio` / `process_gpu` call in a `CrashGuard` RAII guard that tracks the current operator name in a thread-local variable. If an operator triggers a fatal signal (`SIGSEGV`, `SIGBUS`, `SIGABRT`, `SIGFPE`), the signal handler prints the operator name to stderr before re-raising for a core dump. This turns "Vivid crashed" into "Vivid crashed in MyBrokenOp" — essential for diagnosing third-party operator failures. See `src/runtime/core/crash_guard.h`.
 
 The simpler this contract, the better everything downstream works: auto-generated UI knobs, confident LLM generation, and fast compilation of small self-contained units.
 
@@ -261,7 +290,19 @@ Identity-bearing lane sets are what make polyphonic voices, persistent simulatio
 
 **Cross-cadence lane state rule:** When per-lane persistent state crosses the `AudioFrameBridge` boundary, all per-lane persistent state must be sourced through `vivid_lane_state()` in both the frame-side and audio-side operators when `ctx->lane_state_fn` is present. Any member state in such an operator is a scalar fallback only and must not be used when lane-state services are active.
 
-### 5.9.5 Capability Differences, Not Model Differences
+### 5.9.6 Lane Execution Strategies
+
+Lane behaviors (§5.9.2) describe the *semantic* relationship between an operator and its lanes. **Execution strategies** describe *how the runtime physically processes* those lanes. The compiler chooses a strategy per node during Pass 4c (audio) and Pass 4d (frame):
+
+- **`Scalar`** — `lane_count=1`. Single instance, no lifting. The common case for operators that only receive scalar inputs.
+- **`InstancePerLane`** — N cloned operator instances, one per lane. Used for audio-domain Pointwise operators with multi-lane inputs. The executor **deinterleaves** the multi-lane input buffer into N mono buffers, calls `process_audio()` on each instance independently, then **interleaves** the N mono outputs back into a multi-lane output buffer. Each instance maintains its own persistent state (filter memory, oscillator phase, etc.), which is what makes polyphonic audio work — each voice is a genuinely independent operator instance.
+- **`LoopBased`** — single instance, runtime-driven loop over lanes. Used for frame-domain Pointwise operators that declare `strategy_independent = true`. The executor loops over lanes, setting `input_values` and collecting `output_values` per iteration. More memory-efficient than `InstancePerLane` but only works for stateless-per-lane operators.
+
+**Scalar-to-lane broadcasting:** When a scalar output connects to a `VIVID_PORT_LANE_ARRAY` input, and the compiler has marked that port as non-scalar (via Pass 2.6), the frame executor broadcasts the scalar value by repeating it to match the lane count of other inputs on the same node. This is the runtime implementation of the broadcasting rule described in §5.9.
+
+**Lane count limits:** The default maximum for `LoopBased` iteration is `max_loop_lanes = 16`. `InstancePerLane` has no hardcoded limit but is bounded by available memory (each instance allocates its own audio buffers).
+
+### 5.9.7 Capability Differences, Not Model Differences
 
 Float lanes and string lanes are both first-class lane-bearing values.
 
@@ -297,7 +338,7 @@ The JSON graph is the single source of truth for the entire system. Every operat
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "vivid_version": "0.1.0",
   "meta": {
     "id": "audio_reactive_demo",

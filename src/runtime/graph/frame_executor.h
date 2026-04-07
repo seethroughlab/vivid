@@ -1,6 +1,7 @@
 #pragma once
 
 #include "runtime/graph/compiled_graph.h"
+#include "runtime/graph/executor_common.h"
 #include "runtime/graph/lane_state.h"
 #include <functional>
 #include <string>
@@ -57,7 +58,7 @@ public:
     void shutdown_gpu(CompiledGraph& cg);
 
     // Per-node lane state context for LoopBased frame operators.
-    struct NodeLaneCtx { LaneStateService* service; uint32_t node_idx; };
+    using NodeLaneCtx = ExecutorLaneCtx;
 
 private:
     int solo_node_idx_ = -1;

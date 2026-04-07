@@ -13,32 +13,6 @@
 
 namespace vivid {
 
-static void* lane_state_fn_bridge(void* ctx_ptr, uint32_t lane_id, uint32_t byte_size) {
-    auto* lsc = static_cast<AudioExecutor::NodeLaneCtx*>(ctx_ptr);
-    return lsc->service->get(lsc->node_idx, lane_id, byte_size);
-}
-
-static uint32_t allocate_lane_id_fn_bridge(void* ctx_ptr) {
-    auto* lsc = static_cast<AudioExecutor::NodeLaneCtx*>(ctx_ptr);
-    return lsc->service->allocate_lane_id();
-}
-
-static void retire_lane_id_fn_bridge(void* ctx_ptr, uint32_t lane_id) {
-    auto* lsc = static_cast<AudioExecutor::NodeLaneCtx*>(ctx_ptr);
-    lsc->service->retire(lsc->node_idx, lane_id);
-}
-
-static void populate_metronome_context(VividAudioContext& ctx,
-                                       const GraphMetronomeSample& sample) {
-    ctx.metronome_enabled = sample.enabled ? 1u : 0u;
-    ctx.metronome_bpm = sample.bpm;
-    ctx.metronome_beats_per_bar = static_cast<uint32_t>(sample.beats_per_bar);
-    ctx.metronome_beats_elapsed = sample.beats_elapsed;
-    ctx.metronome_beat_phase = sample.beat_phase;
-    ctx.metronome_bar_phase = sample.bar_phase;
-    ctx.metronome_beat_ms = sample.beat_ms;
-}
-
 AudioExecutor::AudioExecutor() = default;
 
 AudioExecutor::~AudioExecutor() {
