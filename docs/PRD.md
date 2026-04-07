@@ -125,7 +125,7 @@ When alternatives are visible (a grid of visual variations, a set of connection 
 
 ### 3.2 The Six Experimentation Interfaces
 
-> **1.0 Status:** Two of the six interfaces shipped: the node graph (strong) and the session/variation surface (functional as a linear variation strip with save/recall/queue/quantize/reorder/branch). The remaining four — live REPL, parameter space explorer, pattern algebra, and state machine — are deferred past 1.0. See `docs/ROADMAP.md` for the deferred list.
+> **1.0 Status:** Two of the six interfaces shipped: the node graph (strong) and the session/variation surface (functional as a linear variation strip with save/recall/queue/quantize/reorder/branch). The remaining four — live REPL, parameter space explorer, pattern algebra, and state machine — are deferred past 1.0. See `docs/plans/ROADMAP.md` for the deferred list.
 
 Each interface below is a lens on the same underlying patch — different views of the same data, optimized for different exploration modes.
 
@@ -255,7 +255,7 @@ The Runtime API is an internal interface exposing all LLM-relevant operations: i
 
 > **1.0 Status:** The Python MCP bridge is the shipped 1.0 LLM integration path (57 tools covering graph manipulation, introspection, packages, variations, checks, and more). The built-in chat panel is deferred past 1.0. The Runtime API and HTTP control server (61 endpoints) are fully implemented; the MCP bridge wraps most but not all of them (notable gap: `analyze_output` and `compare_outputs` are HTTP-only and should be added to the MCP bridge as a near-term 1.0 item).
 
-Both paths are Phase 1 in the original design. The built-in chat handles creative workflows where immediacy matters. The Python MCP bridge handles development workflows where the user is already in their IDE or terminal. The underlying Runtime API is implemented once; the chat panel and MCP bridge are thin layers on top.
+Both paths were part of the original 1.0 design. The built-in chat handles creative workflows where immediacy matters. The Python MCP bridge handles development workflows where the user is already in their IDE or terminal. The underlying Runtime API is implemented once; the chat panel and MCP bridge are thin layers on top.
 
 **Future path:** WebSocket API (Phase 3) exposes the same Runtime API over WebSocket for non-LLM external processes — Python scripts, Max/MSP, show control systems. The Python MCP bridge and WebSocket API may share transport infrastructure but serve different audiences.
 
@@ -680,7 +680,7 @@ The main workspace interaction pattern is centered on the node graph for structu
 
 ## 7. Roadmap
 
-The original 25-phase roadmap has been superseded by milestone-based planning in `docs/ROADMAP.md`. See the roadmap's "Shipped" section for the full list of delivered capabilities.
+The original 25-phase roadmap has been superseded by milestone-based planning in `docs/plans/ROADMAP.md`. See the roadmap's "Shipped" section for the full list of delivered capabilities.
 
 **Completed highlights:** Three-domain data flow, Spreads, hot-reload, 71 operators across 3 domains, Python MCP bridge (57 tools), MIDI/OSC input, WGSL shader operators, package ecosystem (install/link/scaffold/publish/test), movie playback (MovieLoaded trio), standalone export, operator versioning, first-class GPU port types (buffer/mesh/compute), multiple output ports, output analyzer (audio/visual/AV metrics + comparison), capture/recording, variations/presets, undo/redo, introspection/diagnostics/checks. North Star validation completed.
 

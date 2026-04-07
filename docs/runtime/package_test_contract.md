@@ -2,10 +2,9 @@
 
 ## Purpose
 
-This document is the core source of truth for package-test ownership after
-Phase 2 hardening. It explains what the manifest test surface means, what the
-generic runner supports, and when package-local CMake / CTest remains the
-correct home for package coverage.
+Source of truth for package-test ownership. Explains what the manifest test
+surface means, what the generic runner supports, and when package-local
+CMake / CTest remains the correct home for package coverage.
 
 ## Contract Summary
 

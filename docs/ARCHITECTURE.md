@@ -23,7 +23,7 @@ C++ was chosen over Zig and Rust for one overriding reason: library integration.
 Vivid operators fall into three families based on the kind of data they work with and where they appear in the UI. These are distinct from the runtime's two **cadences** (frame-rate ~60 Hz, audio-rate ~48 kHz), which determine *when* an operator executes. See the [runtime architecture](vivid-runtime-architecture.md) for the cadence model.
 
 - **Control** — floats, ints, bools, events, strings, lane arrays. Runs at frame cadence on the main thread. Control operators are frame-only (`_fr`); audio-rate modulation requires a dedicated audio operator (`_au`) with an explicit `AudioFrameBridge` edge between cadences.
-- **Audio** — sample buffers at audio cadence (48 kHz typical). Runs on a real-time audio thread managed by miniaudio. Operators produce a buffer every callback, even if silence.
+- **Audio** — sample buffers at audio cadence (48 kHz, 256-sample buffers). Runs on a real-time audio thread managed by miniaudio. Operators produce a buffer every callback, even if silence. Both sample rate and buffer size are fixed constants (`kSampleRate = 48000`, `kBufferSize = 256`), not configurable at runtime.
 - **GPU** — textures, shaders, meshes, compute buffers. Runs at frame cadence on the main thread. Operators execute as Dawn/WebGPU render/compute passes.
 
 ## 5.4 Execution Model: Dual-Cadence Pull
@@ -70,6 +70,8 @@ Each graph carries an optional metronome (`GraphMetronomeDef`: `enabled`, `bpm`,
 - `LaneSnapshot::kMaxLength = 64` — lane data crossing the `AudioFrameBridge` is copied into a fixed 64-element struct. Lane arrays exceeding 64 elements are silently truncated at the bridge boundary. This is sufficient for most control-rate lane sets (MIDI polyphony, small FFT bands) but not for high-element-count data like full 512-bin FFTs, which should remain frame-side.
 - `CustomPortSnapshot::kMaxBytes = 256` — custom port types using `VIVID_PORT_TRANSPORT_CUSTOM_VALUE` must fit within 256 bytes when crossing cadence boundaries. Larger payloads should use `VIVID_PORT_TRANSPORT_CUSTOM_REF` (opaque pointer via the shared handle registry).
 - `RecordingTap::kRingSize = 960000` — lock-free mix recording ring buffer holds ~10 seconds at 48 kHz stereo interleaved.
+- `AudioNodeState::error_message[256]` — audio-thread error messages are fixed-size 256-char buffers (no heap allocation). Messages exceeding 255 characters are silently truncated.
+- `AnalysisSnapshot::kWaveformSamples = 1024` — per-node waveform data returned from audio to frame side.
 
 ## 5.6 Port Type System
 
@@ -300,7 +302,10 @@ Lane behaviors (§5.9.2) describe the *semantic* relationship between an operato
 
 **Scalar-to-lane broadcasting:** When a scalar output connects to a `VIVID_PORT_LANE_ARRAY` input, and the compiler has marked that port as non-scalar (via Pass 2.6), the frame executor broadcasts the scalar value by repeating it to match the lane count of other inputs on the same node. This is the runtime implementation of the broadcasting rule described in §5.9.
 
-**Lane count limits:** The default maximum for `LoopBased` iteration is `max_loop_lanes = 16`. `InstancePerLane` has no hardcoded limit but is bounded by available memory (each instance allocates its own audio buffers).
+**Lane count limits:**
+- `max_loop_lanes = 16` — default maximum for `LoopBased` iteration. Exceeding this logs a warning and clamps.
+- `kMaxLaneCapacity = 1024` — pre-allocated lane buffer size for `VividLanePort` arrays in control operators.
+- `InstancePerLane` has no hardcoded limit but is bounded by available memory (each instance allocates its own audio buffers).
 
 ### 5.9.7 Capability Differences, Not Model Differences
 
@@ -396,15 +401,15 @@ The JSON graph is the single source of truth for the entire system. Every operat
 
 ## 5.12 Platform Target
 
-**Decision: macOS first.** Phase 1 targets macOS exclusively. This eliminates cross-platform build/test complexity and matches the primary development environment. The architecture does not paint into a corner — Dawn, GLFW, and miniaudio all support Linux and Windows, so cross-platform is a matter of build configuration, not redesign.
+**Decision: macOS first.** The initial release targets macOS exclusively. This eliminates cross-platform build/test complexity and matches the primary development environment. The architecture does not paint into a corner — Dawn, GLFW, and miniaudio all support Linux and Windows, so cross-platform is a matter of build configuration, not redesign.
 
 ## 5.13 Windowing: GLFW
 
 **Decision: GLFW 3.4 for window creation and input.** GLFW creates the OS window, provides the Metal surface for Dawn, and handles keyboard/mouse input events. It is minimal (~200KB source), mature, and has proven WebGPU integration.
 
-Alternatives considered: SDL3 provides file dialogs, pen/tablet pressure, touch input, and a structured event queue, but adds ~2MB of surface area and capabilities that are not needed for Phase 1. Raw Cocoa (NSWindow + CAMetalLayer) provides maximum control but is macOS-only with no migration path.
+Alternatives considered: SDL3 provides file dialogs, pen/tablet pressure, touch input, and a structured event queue, but adds ~2MB of surface area and capabilities that are not needed for the initial release. Raw Cocoa (NSWindow + CAMetalLayer) provides maximum control but is macOS-only with no migration path.
 
-GLFW does not provide file open/save dialogs or pen/tablet pressure. File dialogs will be added via tinyfiledialogs (single-header C library) or a small Cocoa shim when save/load is implemented. Tablet pressure support is a Phase 2+ concern and can be added via platform-specific input handling without replacing the windowing library.
+GLFW does not provide file open/save dialogs or pen/tablet pressure. File dialogs will be added via tinyfiledialogs (single-header C library) or a small Cocoa shim when save/load is implemented. Tablet pressure support is deferred past 1.0 and can be added via platform-specific input handling without replacing the windowing library.
 
 ## 5.14 Dependency Manifest
 
@@ -716,7 +721,7 @@ Vivid's media pipeline handles video file playback with synchronized audio throu
 
 ## 5.24 Instrument Coherence Platform
 
-> **Status: V1 shipped.** Six additions that make Vivid a better host for instrument-like packages. V2 follow-ons for each step are deferred (see `ROADMAP.md`). Detailed design rationale lives in `docs/archive/instrument-coherence/`.
+> **Status: V1 shipped.** Six additions that make Vivid a better host for instrument-like packages. V2 follow-ons for each step are deferred (see `docs/plans/ROADMAP.md`). Detailed design rationale lives in `docs/archive/instrument-coherence/`.
 
 The guiding principle: build reusable platform pieces that packages leverage, rather than moving synth logic into core. Every step reuses existing graph routing, lane semantics, file-param paths, and serialization patterns.
 

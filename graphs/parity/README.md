@@ -1,6 +1,6 @@
 # Parity Fixture Graphs
 
-Canonical fixture graphs for evaluating Vivid's audio-visual parity claim. Each graph is designed to stress-test a specific direction of cross-domain interaction using the rubric defined in `docs/internal/PARITY-RUBRIC.md`.
+Canonical fixture graphs for evaluating Vivid's audio-visual parity claim. Each graph is designed to stress-test a specific direction of cross-domain interaction.
 
 ## Fixtures
 
@@ -44,7 +44,6 @@ Canonical fixture graphs for evaluating Vivid's audio-visual parity claim. Each 
 
 1. Load each fixture graph in Vivid (`File → Open` or via MCP `load_graph`).
 2. Verify audio and visual output are both active.
-3. Score each fixture against the 5 rubric categories in `docs/internal/PARITY-RUBRIC.md`.
+3. Score each fixture against the parity rubric categories (workflow symmetry, bridge naturalness, latency perception, control sharing, cognitive load).
 4. Classify any weaknesses using the gap taxonomy.
-5. Record results in `docs/internal/PARITY-VALIDATION-REPORT.md`.
-6. Update the PRD Conformance Scorecard if the overall parity judgment changes.
+5. Update the PRD Conformance Scorecard if the overall parity judgment changes.

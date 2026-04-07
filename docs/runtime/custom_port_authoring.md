@@ -2,10 +2,9 @@
 
 ## Purpose
 
-This note is the internal source of truth for authoring custom ports after the
-ABI-v4 custom-port hardening work.
+Source of truth for authoring custom ports.
 
-It is intentionally practical. The goal is to make it easy to answer:
+The goal is to make it easy to answer:
 
 - when to use a custom port
 - how to declare one correctly

@@ -192,7 +192,7 @@ add_executable(test_lane_bridge_snapshot
 )
 target_include_directories(test_lane_bridge_snapshot PRIVATE src tests)
 target_link_libraries(test_lane_bridge_snapshot PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
 add_dependencies(test_lane_bridge_snapshot lane_source_op audio_lane_op)
 add_test(NAME test_lane_bridge_snapshot COMMAND test_lane_bridge_snapshot
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -203,7 +203,7 @@ add_executable(test_lane_broadcast
 )
 target_include_directories(test_lane_broadcast PRIVATE src tests)
 target_link_libraries(test_lane_broadcast PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_dependencies(test_lane_broadcast lane_source_op lane_sink_op lane_smooth_op)
 add_test(NAME test_lane_broadcast COMMAND test_lane_broadcast WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -222,7 +222,7 @@ add_executable(test_lane_reshape
 )
 target_include_directories(test_lane_reshape PRIVATE src tests)
 target_link_libraries(test_lane_reshape PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_dependencies(test_lane_reshape lane_source_op lane_sink_op repeat tile select math)
 add_test(NAME test_lane_reshape COMMAND test_lane_reshape WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -231,7 +231,7 @@ add_executable(test_frame_lane_lifting
 )
 target_include_directories(test_frame_lane_lifting PRIVATE src tests)
 target_link_libraries(test_frame_lane_lifting PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_dependencies(test_frame_lane_lifting lane_source_op lane_sink_op lane_frame_op identity_lane_source_op repeat envelope_fr lfo_fr)
 add_test(NAME test_frame_lane_lifting COMMAND test_frame_lane_lifting WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -240,7 +240,7 @@ add_executable(test_lane_breadth
 )
 target_include_directories(test_lane_breadth PRIVATE src tests)
 target_link_libraries(test_lane_breadth PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_dependencies(test_lane_breadth lane_source_op lane_sink_op lane_frame_op fft_analysis repeat)
 add_test(NAME test_lane_breadth COMMAND test_lane_breadth WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -256,7 +256,7 @@ add_executable(test_lane_metadata
 )
 target_include_directories(test_lane_metadata PRIVATE src tests)
 target_link_libraries(test_lane_metadata PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_dependencies(test_lane_metadata lane_source_op lane_metadata_op)
 add_test(NAME test_lane_metadata COMMAND test_lane_metadata WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -280,7 +280,7 @@ add_executable(test_scalar_port
 )
 target_include_directories(test_scalar_port PRIVATE src tests)
 target_link_libraries(test_scalar_port PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
 add_dependencies(test_scalar_port lfo_au audio_scalar_probe_op)
 add_test(NAME test_scalar_port COMMAND test_scalar_port WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 

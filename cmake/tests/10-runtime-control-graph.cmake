@@ -78,7 +78,7 @@ add_executable(test_audio_engine
 )
 target_include_directories(test_audio_engine PRIVATE src tests)
 target_link_libraries(test_audio_engine PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
 add_dependencies(test_audio_engine test_op_v1 audio_test_op)
 add_test(NAME test_audio_engine COMMAND test_audio_engine WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -87,7 +87,7 @@ add_executable(test_scalar_hold_bridge
 )
 target_include_directories(test_scalar_hold_bridge PRIVATE src tests)
 target_link_libraries(test_scalar_hold_bridge PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
 add_dependencies(test_scalar_hold_bridge test_op_v1 audio_scalar_probe_op)
 add_test(NAME test_scalar_hold_bridge COMMAND test_scalar_hold_bridge
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -98,7 +98,7 @@ add_executable(test_audio_robustness
 )
 target_include_directories(test_audio_robustness PRIVATE src tests)
 target_link_libraries(test_audio_robustness PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
 add_dependencies(test_audio_robustness audio_test_op audio_throwing_op)
 add_test(NAME test_audio_robustness COMMAND test_audio_robustness WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 

@@ -15,6 +15,7 @@ This directory contains the graph compiler and both execution engines. It transf
 | `graph_compiler_reload.cpp` | Incremental reload: preserves operator state across recompiles |
 | `graph_compiler_internal.h` | Shared constants and helpers across compiler files |
 | `compiled_graph.h` | `CompiledGraph` — the compiled execution state shared read-only by both executors |
+| `executor_common.h` | Shared helpers for both executors: lane state bridges, metronome context population |
 | `frame_executor.h/cpp` | `FrameExecutor` — processes frame-cadence nodes in topo order each tick |
 | `audio_executor.h/cpp` | `AudioExecutor` — processes audio-cadence nodes in the real-time audio callback |
 | `lane_state.h` | `LaneStateService` — identity-keyed per-lane persistent state storage |

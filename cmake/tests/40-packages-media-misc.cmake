@@ -4,7 +4,7 @@ add_executable(test_demo_graphs
 )
 target_include_directories(test_demo_graphs PRIVATE src tests)
 target_link_libraries(test_demo_graphs PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
 add_dependencies(test_demo_graphs
     # control
     lfo_fr lfo_au clock_fr clock_au math envelope_fr envelope_au midi_input fft_analysis
@@ -32,7 +32,7 @@ add_executable(test_media_headless
 )
 target_include_directories(test_media_headless PRIVATE src tests)
 target_link_libraries(test_media_headless PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
 add_dependencies(test_media_headless
     movie_file_in movie_file_audio
     lfo_fr noise composite bloom feedback
@@ -50,7 +50,7 @@ add_executable(test_audio_sequencer_graph
 )
 target_include_directories(test_audio_sequencer_graph PRIVATE src tests)
 target_link_libraries(test_audio_sequencer_graph PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
 add_dependencies(test_audio_sequencer_graph clock_au oscillator gain)
 add_test(NAME test_audio_sequencer_graph
     COMMAND test_audio_sequencer_graph ${CMAKE_BINARY_DIR}
@@ -63,7 +63,7 @@ add_executable(test_fixed_cadence_assignment
 )
 target_include_directories(test_fixed_cadence_assignment PRIVATE src tests)
 target_link_libraries(test_fixed_cadence_assignment PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
 add_dependencies(test_fixed_cadence_assignment clock_fr clock_au oscillator lfo_fr lfo_au)
 add_test(NAME test_fixed_cadence_assignment
     COMMAND test_fixed_cadence_assignment ${CMAKE_BINARY_DIR}
@@ -404,7 +404,7 @@ add_executable(test_lane_propagation
 )
 target_include_directories(test_lane_propagation PRIVATE src tests)
 target_link_libraries(test_lane_propagation PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_test(NAME test_lane_propagation COMMAND test_lane_propagation WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_lane_state tests/lanes/test_lane_state.cpp)
@@ -417,7 +417,7 @@ add_executable(test_lane_capacity
 )
 target_include_directories(test_lane_capacity PRIVATE src tests)
 target_link_libraries(test_lane_capacity PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_dependencies(test_lane_capacity lane_source_op lane_slew_op)
 add_test(NAME test_lane_capacity
     COMMAND test_lane_capacity ${CMAKE_BINARY_DIR}
@@ -428,7 +428,7 @@ add_executable(test_lane_compaction
 )
 target_include_directories(test_lane_compaction PRIVATE src tests)
 target_link_libraries(test_lane_compaction PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
 add_dependencies(test_lane_compaction identity_lane_source_op lane_state_tracker_op)
 add_test(NAME test_lane_compaction
     COMMAND test_lane_compaction ${CMAKE_BINARY_DIR}
@@ -439,7 +439,7 @@ add_executable(test_lane_equivalence
 )
 target_include_directories(test_lane_equivalence PRIVATE src tests)
 target_link_libraries(test_lane_equivalence PRIVATE
-    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
 add_dependencies(test_lane_equivalence identity_lane_source_op lane_slew_op multi_channel_dc_source_op dc_per_lane_op lane_source_op)
 add_test(NAME test_lane_equivalence
     COMMAND test_lane_equivalence ${CMAKE_BINARY_DIR}
