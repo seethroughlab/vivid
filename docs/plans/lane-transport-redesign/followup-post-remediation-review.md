@@ -11,8 +11,8 @@ Current lane verification status:
   - `test_string_ports`
   - `test_lane_capacity`
   - `test_lane_compaction`
-- Lane-related failing tests:
   - `test_midi_input_expression`
+- Lane-related failing tests:
   - `test_operator_sweep`
 
 This page supersedes the status details in `followup-implementation-review.md`, but it does not replace the five phase pages.

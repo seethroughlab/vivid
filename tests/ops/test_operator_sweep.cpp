@@ -518,8 +518,8 @@ static bool test_param_boundary(vivid::OperatorLoader& loader, void* inst,
                 }
             }
             std::vector<float> ins(ni, 0.0f), outs(no, 0.0f);
-            auto si = make_stub_input_lane_views(nsi);
-            auto so = make_stub_output_lane_outputs(nso);
+            auto si = make_stub_input_lane_views(ni);
+            auto so = make_stub_output_lane_outputs(no);
             VividFrameContext ctx{};
             ctx.time = 0.0; ctx.delta_time = 0.016; ctx.frame = 0;
             ctx.param_values   = params.empty() ? nullptr : params.data();
