@@ -192,3 +192,19 @@ the compiled graph metadata. That means:
 Shader-backed operators are persisted exactly like any other operator: a node stores the concrete
 operator `type` (for example `"Blur"`), and the shader source lives in a real `.wgsl` file under
 core `filters/`, a package `filters/`, or the project-local `<graph_dir>/filters/` directory.
+
+## Lane Transport (CompiledGraph)
+
+Lane data between compiled nodes uses `LaneBufferRef` — an intrusive-refcount reference to immutable `LaneBuffer` storage. The frame executor propagates lanes via ref sharing (zero-copy passthrough), pool-allocated buffers (remap/merge/normalization), and runtime-owned output builders.
+
+Key runtime types:
+- `LaneBuffer` — CPU-backed float array with optional GPU storage-buffer backing and intrusive refcount
+- `LaneBufferRef` — RAII reference wrapper (retain on copy, release on destroy, never deallocates)
+- `LaneBufferPool` — pre-allocated buffer pool for frame-thread lane allocation (remap, merge, normalization)
+- `BridgeLaneSlot` — pre-allocated bridge slot for cross-cadence lane data (replaces old fixed 64-element `LaneSnapshot`)
+
+Canonical lane values live in `CompiledNode::input_lane_refs` / `output_lane_refs`. The old `input_lanes` / `output_lanes` vector fields remain as bridge injection scratch for audio→frame analysis data.
+
+GPU lane promotion: `plan_gpu_lane_promotion()` conservatively promotes lane arrays feeding GPU consumers above `kGpuLanePromotionThreshold` (256) to GPU storage-buffer backing, with lazy CPU→GPU upload cached per frame.
+
+Allocation policy: `CompiledGraph::max_lane_elements` (default 16,777,216) is the hard guard. `kDefaultLaneCapacity` (1024) is the default initial buffer size; frame-thread builders can grow beyond this up to `max_lane_elements`.

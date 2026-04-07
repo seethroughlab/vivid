@@ -26,13 +26,16 @@ Communication between frame and audio worlds uses `AudioFrameBridge`, which main
 double-buffered snapshot pairs with lock-free atomic index flips:
 
 - **`ParamSnapshot`** (frame → audio): audio-node parameter snapshots, held scalar bridge values,
-  lane/string/custom snapshots, and solo active set
+  lane data via `BridgeLaneSlot` (pre-allocated flat buffers, default capacity `kDefaultLaneCapacity` = 1024),
+  string/custom snapshots, and solo active set
 - **`AnalysisSnapshot`** (audio → frame): RMS, peak, waveform ring buffers, scalar bridge
-  payloads, lane outputs, and error state
+  payloads, lane outputs via `BridgeLaneSlot`, and error state
 
 These snapshots are runtime transport, not a second multiplicity model. They carry the same
 lane-bearing values described in the top-level architecture, packaged into audio-safe transfer
-structures for the cadence boundary.
+structures for the cadence boundary. Lane data uses pre-allocated `BridgeLaneSlot` storage
+wired during `AudioFrameBridge::build()` — the audio callback reads lane data directly from
+bridge slots (zero-copy, no heap allocation).
 
 ### Frame → Audio
 
@@ -62,13 +65,13 @@ Partitioned into four index lists in `CompiledGraph`: `frame_direct_edges`, `aud
 
 `AudioExecutor::audio_callback()` processes audio-order nodes in chunks of `kBufferSize`:
 
-1. Apply `ParamSnapshot` (params, held scalar bridge values, lanes, strings, custom ports)
+1. Apply `ParamSnapshot` — populate `c_in_lane_views` directly from bridge `BridgeLaneSlot` pointers (zero-copy), apply params, strings, custom ports
 2. For each node in `audio_order`:
    - Zero input buffers
    - Route upstream audio via `audio_direct_edges` (with channel negotiation)
-   - Call `process_audio()` (or per-channel auto-dup for mono operators in stereo chains)
-     Audio-world scalar buffers may be consumed sample-by-sample by audio-rate scalar operators
-     or read once at block start by block-constant sequencing operators.
+   - Route lane data via `LaneBufferRef` sharing (zero-copy for same-cadence direct edges)
+   - Build lane views: prefer `input_lane_refs` (direct routing) > bridge views (snapshot) > empty
+   - Call `process_audio()` — lane-lifted (InstancePerLane), LoopBased (pre-allocated scratch), or normal
 3. Extract sink node output to device buffer
 4. Compute per-node analysis (RMS, peak, waveform ring buffer)
 5. Publish `AnalysisSnapshot`
@@ -90,6 +93,7 @@ bridged to the frame world via `AnalysisSnapshot`.
 - Audio thread: reads `ParamSnapshot`, writes `AnalysisSnapshot`
 - Main thread: writes `ParamSnapshot`, reads `AnalysisSnapshot`
 - All audio-thread buffers are pre-allocated; no heap allocation in `audio_callback()`
+- Lane data: bridge slots are pre-allocated flat buffers; audio reads via pointer (no copy). `LaneBufferRef` retain/release uses lock-free atomics (never deallocates). LoopBased scratch vectors (`loop_lane_ids`, `loop_in_ptrs`, `loop_out_ptrs`) are pre-allocated during `build()`.
 - Error messages use `char[256]` arrays to avoid `std::string` allocation on audio thread
 - Custom ports use bounded audio-safe snapshots; audio thread never dereferences runtime objects
 

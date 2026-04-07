@@ -1,5 +1,7 @@
 # Follow-Up: Implementation Review
 
+> **Superseded.** The findings in this document have been addressed. See `followup-post-remediation-review.md` for current status.
+
 ## Summary
 
 The first implementation pass builds, but it does not yet satisfy the clean-break lane transport target.
