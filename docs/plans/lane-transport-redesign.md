@@ -2,119 +2,81 @@
 
 ## Context
 
-The current lane transport copies flat `std::vector<float>` arrays per-tick between nodes. It has four problems:
+Lane transport should look like a native Vivid primitive, not a compatibility layer over raw `std::vector<float>` copies. This redesign is a clean break: operators, packages, tests, docs, and internal runtime APIs may change so the final system reads as if this was always the intended model.
 
-1. **Silent truncation**: `LaneSnapshot` caps at 64 elements crossing the audio bridge — data loss with no warning
-2. **Buffer overrun**: `kMaxLaneCapacity = 1024` pre-allocated buffers — writing more corrupts memory
-3. **Wasteful copying**: Pointwise operators copy the full array even though they don't modify it
-4. **No GPU backing**: Lane data is always CPU float arrays; GPU operators must upload per frame
+The redesign removes these historical constraints:
 
-The system must support 100k+ lanes (particle systems), GPU-backed lane storage, and no artificial limits.
+1. `LaneSnapshot` fixed-size 64-float bridge payloads.
+2. `kMaxLaneCapacity = 1024` staging buffers and string-lane pointer arrays.
+3. Raw operator output lane pointers with caller-owned capacity.
+4. Per-tick vector copying through pointwise chains.
+5. CPU-only lane storage that forces GPU operators to upload lane data themselves.
 
-## Design: Shared Immutable LaneBuffers with Copy-on-Write
+The target is one lane model across frame, audio, bridge, and GPU paths: immutable lane views, runtime-owned output builders, shared `LaneBuffer` storage, copy-on-write mutation, and optional GPU storage-buffer backing.
 
-**Core abstraction** — `LaneBuffer` (new, `src/runtime/graph/lane_buffer.h`):
-- Ref-counted (intrusive, not `shared_ptr` — avoids control-block allocation)
-- Immutable: `cpu_data()` returns `const float*`; mutation requires `mutable_copy()` (COW)
-- Dual-backed: CPU memory or GPU storage buffer (`WGPUBuffer`)
-- Lazy bidirectional staging: CPU-backed buffers lazily upload to GPU; GPU-backed buffers lazily readback to CPU shadow
-- Accessed via `LaneBufferRef` (retain/release pointer wrapper)
+## Target Contract
 
-**Pool** — `LaneBufferPool` (new, `src/runtime/graph/lane_buffer_pool.h`):
-- Free-list per size class (power-of-two buckets up to 16M floats)
-- Pre-warmed during `build()` for audio-thread safety
-- Lock-free acquire/release for real-time callback
+`LaneBuffer` is the runtime-owned backing store for lane data. It is reference counted, immutable once published, and may be CPU-backed, GPU-backed, or both after staging. Runtime code transports `LaneBufferRef` values between nodes instead of copying lane vectors by default.
 
-**GPU promotion threshold** — The compiler (Pass 2.6) already knows lane counts per node. A new pass adds demand-driven GPU-backing analysis:
-- Walk backward from GPU operators, marking upstream lane sources as "GPU-preferred" if `lane_count > threshold` (default ~256)
-- CPU-only chains (control→audio bridge) never promote, avoiding pointless GPU readback
-- Threshold is a graph-level option, overridable per-node via hint
+Operator-facing lane inputs are immutable views. Operator-facing lane outputs are runtime-owned builders, not raw `float*` plus `capacity`.
 
-**Dynamic cross-cadence snapshots** — Replace `LaneSnapshot { float data[64]; }` with `DynamicLaneSnapshot { float* data; uint32_t length; }` pointing into a pre-allocated arena in `ParamSnapshot`. Arena sized during `AudioFrameBridge::build()` from compiled edge metadata. Audio thread reads only; main thread writes before atomic swap.
+```cpp
+typedef struct VividLaneView {
+    const float* data;
+    uint32_t length;
+    uint32_t lane_set_id;
+    uint32_t flags;
+} VividLaneView;
 
-## Phases
+typedef struct VividLaneOutput {
+    void* handle;
+    float* (*resize)(void* handle, uint32_t length);
+    void (*commit)(void* handle, uint32_t length);
+} VividLaneOutput;
+```
 
-### Phase 1: Remove Capacity Limits (no ABI break)
+String lanes use the same contract shape with immutable `const char* const*` input views and runtime-owned output builders for pointer arrays.
 
-Ship first — solves the user-visible truncation and crash bugs.
+## Global Invariants
 
-- Remove `kMaxLaneCapacity = 1024` constant; size `out_lane_buf` per-node from Pass 2.6 lane count metadata
-- Add runtime overflow detection: if operator writes more than allocated capacity, grow buffer on main thread
-- Replace `LaneSnapshot { float data[64] }` with `DynamicLaneSnapshot` backed by pre-allocated arena in `ParamSnapshot`
-- Remove `min(length, kMaxLength)` cap in `audio_frame_bridge.cpp` and `audio_executor.cpp`
+- `VIVID_OPERATOR_ABI_VERSION` bumps as part of Phase 1; no old raw-lane ABI support is retained.
+- `LaneBufferRef` is the canonical runtime lane value; old vector staging is deleted rather than maintained in parallel.
+- Operators never mutate input lane memory.
+- Operators produce lane outputs only through runtime-owned builders.
+- `max_lane_elements` is the graph/runtime allocation guard. Initial value: 16,777,216 floats per lane buffer.
+- `gpu_lane_promotion_threshold` defaults to 256 lanes.
+- Unknown structural output counts are accepted at runtime through output builders, bounded by `max_lane_elements`.
+- The audio callback never allocates, locks, blocks, maps GPU buffers, or resizes heap vectors.
+- Graph JSON changes only where needed to express lane policy or GPU promotion policy.
 
-**Files:**
-- `src/runtime/graph/graph_compiler_internal.h` — remove `kMaxLaneCapacity`
-- `src/runtime/graph/graph_compiler_init.cpp` — dynamic buffer sizing
-- `src/runtime/graph/graph_compiler.cpp` — same
-- `src/runtime/graph/frame_executor.cpp` — dynamic capacity, overflow detection
-- `src/runtime/graph/snapshot_types.h` — `DynamicLaneSnapshot`
-- `src/runtime/audio/audio_frame_bridge.h/.cpp` — arena pre-allocation, remove 64-cap
-- `src/runtime/graph/audio_executor.cpp` — remove 64-cap on analysis output
+## Execution Rule
 
-### Phase 2: LaneBuffer + COW for Frame Executor (no ABI break)
+Implement phases in order. Each phase page must be specific enough to execute independently and must leave the repo buildable unless the page explicitly marks itself as a branch-only checkpoint.
 
-Eliminates redundant copies in pointwise chains.
+## Phase Pages
 
-- New files: `lane_buffer.h/.cpp`, `lane_buffer_pool.h/.cpp`
-- Add `LaneBufferRef` fields to `CompiledNode` alongside existing `vector<float>` (dual-write during transition)
-- Frame executor wire propagation: pointwise passthrough = ref bump (zero copy); merge = `mutable_copy()` + element-wise add
-- Structural operators get pool-acquired output buffers
-- Detection: if `c_out_lanes[p].length` stays 0 after `process_frame()` and node is Pointwise, passthrough input ref
+1. [Phase 1: New Lane Contract](lane-transport-redesign/phase-1-new-lane-contract.md)
+   Break the operator ABI, introduce immutable lane views and output builders, remove old raw lane ports, and update seed/test operators and authoring docs.
 
-**Files:**
-- New: `src/runtime/graph/lane_buffer.h`, `lane_buffer.cpp`, `lane_buffer_pool.h`, `lane_buffer_pool.cpp`
-- `src/runtime/graph/compiled_graph.h` — add `LaneBufferRef` fields
-- `src/runtime/graph/frame_executor.cpp` — ref-based propagation
-- `src/runtime/graph/graph_compiler_init.cpp` — init buffer refs
+2. [Phase 2: Runtime Transport](lane-transport-redesign/phase-2-runtime-transport.md)
+   Make `LaneBufferRef` the native frame/audio lane transport and define passthrough, remap, merge, normalization, structural output commit, and inspection behavior.
 
-### Phase 3+4: GPU-Backed Lanes + ABI Bump (ship together)
+3. [Phase 3: Cross-Cadence and Realtime Safety](lane-transport-redesign/phase-3-cross-cadence-realtime.md)
+   Rebuild frame-to-audio and audio-to-frame lane handoff around stable snapshots/views, prewarmed storage, and strict audio-callback invariants.
 
-GPU operators can bind lane data directly as storage buffers.
+4. [Phase 4: GPU Backing](lane-transport-redesign/phase-4-gpu-backing.md)
+   Add GPU storage-buffer backing, GPU context lane-buffer fields, conservative promotion, and explicit CPU readback boundaries.
 
-- Implement `LaneBuffer::make_gpu()`, lazy CPU readback via `wgpuBufferMapAsync`
-- Compiler pass: demand-driven GPU-backing analysis (backward walk from GPU operators, threshold-based promotion)
-- Add `WGPUBuffer* input_lane_gpu_buffers` to `VividGpuContext` (ABI v10)
-- Fallback: v9 operators get CPU data via `input_lanes[p].data` as before (executor calls `cpu_data()`)
-- Cross-domain safety: GPU→audio bridge path calls `cpu_data()` on main thread, copies into snapshot arena
+5. [Phase 5: Cleanup and Verification](lane-transport-redesign/phase-5-cleanup-verification.md)
+   Delete obsolete vector staging and fixed snapshots, update docs and graph/query surfaces, rebuild packages, and complete the final full test pass.
 
-**Files:**
-- `src/runtime/graph/lane_buffer.h/.cpp` — GPU backing implementation
-- `src/runtime/graph/frame_executor.cpp` — GPU lane staging
-- `src/runtime/graph/graph_compiler.cpp` — GPU-preference analysis pass
-- `src/operator_api/gpu_operator.h` — new `VividGpuContext` fields
-- `src/operator_api/types.h` — bump `VIVID_OPERATOR_ABI_VERSION` to 10
+## Final Verification Target
 
-### Phase 5: Audio Pool Pre-warming
-
-Audio-cadence structural operators can produce new lane buffers without allocation.
-
-- In `AudioExecutor::build()`: compute max output lane count per audio structural node, warm pool
-- Audio callback acquires from pool (lock-free); release returns to pool
-- Fallback: pool exhausted → use scratch buffer + diagnostic log
-
-**Files:**
-- `src/runtime/graph/lane_buffer_pool.h/.cpp`
-- `src/runtime/graph/audio_executor.cpp`
-
-## Key Design Answers
-
-**How does GPU-backed data expose `float*` to CPU operators?**
-`cpu_data()` lazily allocates a CPU shadow and does synchronous GPU readback (`wgpuBufferMapAsync` + poll). Runs on main thread at 60Hz. Shadow is cached and shared across downstream consumers of the same ref.
-
-**How does immutability interact with lane merging?**
-First source → `mutable_copy()` (returns self if refcount==1, else copies from pool). Add subsequent sources element-wise into the now-mutable buffer.
-
-**How does GPU→audio bridge work?**
-`push_to_audio()` (main thread) calls `cpu_data()` on GPU-backed ref, copies floats into pre-allocated snapshot arena. Audio thread never touches GPU resources.
-
-**When are lanes GPU-backed vs CPU?**
-Compiler demand analysis: if a lane source has `lane_count > threshold` AND feeds a downstream GPU operator (directly or transitively), allocate GPU-backed. Otherwise CPU. Threshold defaults to ~256, overridable per-graph.
-
-## Verification
-
-- **Phase 1**: Extend `test_lane_capacity` for >1024 lanes. Extend `test_lane_bridge_snapshot` for >64 lanes through audio bridge.
-- **Phase 2**: New `test_lane_buffer_cow` — verify ref passthrough for pointwise, COW for merge, pool acquire/release.
-- **Phase 3+4**: New `test_gpu_lane_buffer` — GPU storage buffer creation, lazy readback, direct binding.
-- **Phase 5**: Extend audio lane tests for pool-based allocation under multi-lane scenarios.
-- Full `ctest` pass after each phase. `rebuild_package` for linked packages after ABI bump.
+- ABI/API tests prove old raw-output lane operators fail to build or have been updated.
+- Lane transport tests cover more than 1024 lanes for frame and audio direct routing.
+- Bridge tests cover more than 64 lanes in both frame-to-audio and audio-to-frame directions.
+- Copy-on-write tests cover passthrough ref reuse, remap copy, merge, normalization, structural output commit, and lifecycle release.
+- String-lane tests cover more than 1024 entries.
+- Audio callback tests prove lane copy/routing/output builders do not allocate, resize heap vectors, lock, block, or touch GPU resources.
+- GPU lane buffer tests cover direct storage-buffer binding, conservative promotion, explicit CPU readback, and GPU-to-audio bridge readback on the main thread.
+- `ctest --test-dir build --output-on-failure` passes after the implementation milestones and final package rebuild.
