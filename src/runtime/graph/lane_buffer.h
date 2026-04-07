@@ -50,7 +50,7 @@ struct LaneBuffer {
     // Non-copyable due to atomic member, but movable for container use.
     LaneBuffer(const LaneBuffer&) = delete;
     LaneBuffer& operator=(const LaneBuffer&) = delete;
-    ~LaneBuffer() { release_gpu(); }
+    ~LaneBuffer() { if (gpu_buffer) release_gpu(); }
 
     LaneBuffer(LaneBuffer&& o) noexcept
         : data(std::move(o.data))
@@ -69,7 +69,7 @@ struct LaneBuffer {
     }
     LaneBuffer& operator=(LaneBuffer&& o) noexcept {
         if (this != &o) {
-            release_gpu();
+            if (gpu_buffer) release_gpu();
             data = std::move(o.data);
             committed_length = o.committed_length;
             lane_set_id = o.lane_set_id;
@@ -112,7 +112,7 @@ struct LaneBuffer {
 
     void reset() {
         committed_length = 0;
-        release_gpu();
+        if (gpu_buffer) release_gpu();
     }
 
     // Release GPU storage buffer. Safe to call even if no GPU buffer exists.
