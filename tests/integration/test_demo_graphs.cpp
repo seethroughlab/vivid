@@ -343,6 +343,33 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
         return 1;
     }
 
+    // ── Compilation health checks ────────────────────────────────────────
+    const auto* cg = runtime.compiled_graph();
+    if (cg) {
+        for (const auto& dc : cg->dropped_connections) {
+            std::fprintf(stderr, "dropped connection: %s/%s → %s/%s (%s)\n",
+                         dc.from_node.c_str(), dc.from_port.c_str(),
+                         dc.to_node.c_str(), dc.to_port.c_str(), dc.reason.c_str());
+            runtime.shutdown(); gpu.shutdown();
+            return 1;
+        }
+        for (const auto& node : cg->nodes) {
+            if (node.missing_operator) {
+                std::fprintf(stderr, "missing operator: node='%s' type='%s' reason='%s' detail='%s'\n",
+                             node.node_id.c_str(), node.type_name.c_str(),
+                             node.missing_operator_reason.c_str(), node.missing_operator_detail.c_str());
+                runtime.shutdown(); gpu.shutdown();
+                return 1;
+            }
+            if (node.errored) {
+                std::fprintf(stderr, "node error: node='%s' type='%s': %s\n",
+                             node.node_id.c_str(), node.type_name.c_str(), node.error_message.c_str());
+                runtime.shutdown(); gpu.shutdown();
+                return 1;
+            }
+        }
+    }
+
     bool use_gpu = runtime.has_gpu_operators();
     bool use_audio = runtime.has_audio_operators();
 
@@ -386,8 +413,43 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
 #endif
     }
 
-    // Check results
+    // ── Post-tick output validation ─────────────────────────────────────
+    // Re-read compiled graph (same pointer, but output_values are now populated)
+    cg = runtime.compiled_graph();
+
+    // Check for NaN/Inf in output values
     int result = 0;
+    if (cg) {
+        for (const auto& node : cg->nodes) {
+            if (node.missing_operator) continue;
+            for (float v : node.output_values) {
+                if (!std::isfinite(v)) {
+                    std::fprintf(stderr, "non-finite output: node='%s' type='%s'\n",
+                                 node.node_id.c_str(), node.type_name.c_str());
+                    result = 1;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Control-only output: at least one node should have a non-zero output
+    if (result == 0 && !use_gpu && !use_audio && cg) {
+        bool any_output = false;
+        for (const auto& node : cg->nodes) {
+            if (node.missing_operator) continue;
+            for (float v : node.output_values) {
+                if (v != 0.0f) { any_output = true; break; }
+            }
+            if (any_output) break;
+        }
+        if (!any_output) {
+            std::fprintf(stderr, "control-only graph produced no output\n");
+            result = 1;
+        }
+    }
+
+    // Check results
     if (audio) {
         runtime.audio_frame_bridge().pull_from_audio(*runtime.compiled_graph());
         const auto& analysis = audio->analysis_read();
