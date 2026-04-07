@@ -103,6 +103,11 @@ private:
     std::atomic<bool> last_buffer_underrun_{false};
     std::atomic<float> audio_load_{0.0f};
 
+    // Pre-allocated scratch for LoopBased lane processing (avoids audio-thread allocation).
+    std::vector<uint32_t> loop_lane_ids_scratch_;
+    std::vector<float*>   loop_in_ptrs_scratch_;
+    std::vector<float*>   loop_out_ptrs_scratch_;
+
     // Recording tap
     RecordingTap recording_tap_;
     uint32_t recording_overrun_count_ = 0;

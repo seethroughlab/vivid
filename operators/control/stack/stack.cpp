@@ -37,15 +37,15 @@ struct Stack : vivid::OperatorBase, vivid::FrameProcessable {
 
 
 private:
-    void compute(const float* params, VividLanePort* in_lanes,
-                 VividLanePort* out_lanes, float* output_values) {
+    void compute(const float* params, const VividLaneView* in_lanes,
+                 VividLaneOutput* out_lanes, float* output_values) {
         if (!in_lanes || !out_lanes) return;
 
         auto& out = out_lanes[0];
         int m = std::clamp(static_cast<int>(params[0]), 0, 1);
 
         // Collect non-empty input lane arrays
-        const VividLanePort* inputs[4];
+        const VividLaneView* inputs[4];
         int input_count = 0;
         for (int i = 0; i < 4; ++i) {
             if (in_lanes[i].length > 0)
@@ -53,7 +53,7 @@ private:
         }
 
         if (input_count == 0) {
-            out.length = 0;
+            out.commit(out.handle, 0);
             return;
         }
 
@@ -62,15 +62,19 @@ private:
             uint32_t total = 0;
             for (int i = 0; i < input_count; ++i)
                 total += inputs[i]->length;
-            total = std::min(total, out.capacity);
-            out.length = total;
+            float* buf = out.resize(out.handle, total);
+            if (!buf) return;
 
             uint32_t pos = 0;
             for (int i = 0; i < input_count && pos < total; ++i) {
                 auto& sp = *inputs[i];
                 for (uint32_t j = 0; j < sp.length && pos < total; ++j)
-                    out.data[pos++] = sp.data[j];
+                    buf[pos++] = sp.data[j];
             }
+            out.commit(out.handle, total);
+
+            if (output_values)
+                output_values[0] = (total > 0) ? buf[0] : 0.0f;
         } else {
             // Interleave: round-robin from non-empty inputs
             uint32_t max_len = 0;
@@ -80,21 +84,21 @@ private:
             uint32_t total = 0;
             for (int i = 0; i < input_count; ++i)
                 total += inputs[i]->length;
-            total = std::min(total, out.capacity);
-            out.length = total;
+            float* buf = out.resize(out.handle, total);
+            if (!buf) return;
 
             uint32_t pos = 0;
             for (uint32_t round = 0; round < max_len && pos < total; ++round) {
                 for (int i = 0; i < input_count && pos < total; ++i) {
                     if (round < inputs[i]->length)
-                        out.data[pos++] = inputs[i]->data[round];
+                        buf[pos++] = inputs[i]->data[round];
                 }
             }
-        }
+            out.commit(out.handle, total);
 
-        // Scalar output = first element of output lane array
-        if (output_values)
-            output_values[0] = (out.length > 0) ? out.data[0] : 0.0f;
+            if (output_values)
+                output_values[0] = (total > 0) ? buf[0] : 0.0f;
+        }
     }
 };
 

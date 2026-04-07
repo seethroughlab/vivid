@@ -108,20 +108,26 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
     cn.input_lane_sets.resize(cn.input_port_count);
     cn.output_lane_sets.resize(cn.output_port_count);
 
-    cn.c_in_lanes.resize(cn.input_port_count);
-    cn.c_out_lanes.resize(cn.output_port_count);
-    cn.out_lane_buf.resize(cn.output_port_count);
-    cn.c_in_string_lanes.resize(cn.input_port_count);
-    cn.c_out_string_lanes.resize(cn.output_port_count);
+    cn.input_lane_refs.resize(cn.input_port_count);
+    cn.output_lane_refs.resize(cn.output_port_count);
+
+    cn.c_in_lane_views.resize(cn.input_port_count, VividLaneView{});
+    cn.out_lane_bufs.clear();
+    cn.out_lane_bufs.reserve(cn.output_port_count);
+    for (uint32_t p = 0; p < cn.output_port_count; ++p)
+        cn.out_lane_bufs.emplace_back(graph_compiler_internal::kDefaultLaneCapacity);
+    cn.c_out_lane_outputs.resize(cn.output_port_count);
+    for (uint32_t p = 0; p < cn.output_port_count; ++p)
+        cn.c_out_lane_outputs[p] = make_lane_output(&cn.out_lane_bufs[p]);
+
+    cn.c_in_string_lane_views.resize(cn.input_port_count, VividStringLaneView{});
     cn.in_string_lane_ptrs.resize(cn.input_port_count);
-    cn.out_string_lane_ptr_buf.resize(cn.output_port_count);
-    for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-        cn.out_lane_buf[p].resize(graph_compiler_internal::kMaxLaneCapacity, 0.0f);
-        cn.out_string_lane_ptr_buf[p].resize(graph_compiler_internal::kMaxLaneCapacity, nullptr);
-    }
-    for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-        cn.in_string_lane_ptrs[p].resize(graph_compiler_internal::kMaxLaneCapacity, nullptr);
-    }
+    for (uint32_t p = 0; p < cn.input_port_count; ++p)
+        cn.in_string_lane_ptrs[p].resize(graph_compiler_internal::kDefaultLaneCapacity, nullptr);
+    cn.out_string_lane_bufs.resize(cn.output_port_count, StringLaneBuffer(graph_compiler_internal::kDefaultLaneCapacity));
+    cn.c_out_string_lane_outputs.resize(cn.output_port_count);
+    for (uint32_t p = 0; p < cn.output_port_count; ++p)
+        cn.c_out_string_lane_outputs[p] = make_string_lane_output(&cn.out_string_lane_bufs[p]);
 
     cn.file_param_storage.clear();
     cn.file_param_ptrs.clear();

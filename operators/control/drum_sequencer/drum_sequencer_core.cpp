@@ -283,7 +283,7 @@ void DrumSequencerCore::collect_ports(std::vector<VividPortDescriptor>& out) {
 
 
 void DrumSequencerCore::compute(float phase, float reset_in, const float* params,
-             float* output_values, VividLanePort* /*out_spreads*/,
+             float* output_values, VividLaneOutput* /*out_spreads*/,
              void** custom_outputs, uint32_t custom_output_count) {
     namespace layout = vivid_sequencers::drum_layout;
     bool reset = reset_in > 0.5f;

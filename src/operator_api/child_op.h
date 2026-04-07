@@ -156,8 +156,8 @@ public:
                 : 48000;
             audio_ctx.input_channel_counts  = nullptr;
             audio_ctx.output_channel_counts = nullptr;
-            audio_ctx.input_lanes  = c_input_lanes_.empty() ? nullptr : c_input_lanes_.data();
-            audio_ctx.output_lanes = c_output_lanes_.empty() ? nullptr : c_output_lanes_.data();
+            audio_ctx.input_lanes  = c_input_lane_views_.empty() ? nullptr : c_input_lane_views_.data();
+            audio_ctx.output_lanes = c_output_lane_outputs_.empty() ? nullptr : c_output_lane_outputs_.data();
             audio_ctx.custom_inputs       = nullptr;
             audio_ctx.custom_input_count  = 0;
             audio_ctx.custom_outputs      = nullptr;
@@ -183,8 +183,8 @@ public:
             child_ctx.param_values = param_values_.data();
             child_ctx.input_values = input_values_.empty() ? nullptr : input_values_.data();
             child_ctx.output_values = output_values_.empty() ? nullptr : output_values_.data();
-            child_ctx.input_lanes  = c_input_lanes_.empty() ? nullptr : c_input_lanes_.data();
-            child_ctx.output_lanes = c_output_lanes_.empty() ? nullptr : c_output_lanes_.data();
+            child_ctx.input_lanes  = c_input_lane_views_.empty() ? nullptr : c_input_lane_views_.data();
+            child_ctx.output_lanes = c_output_lane_outputs_.empty() ? nullptr : c_output_lane_outputs_.data();
             child_ctx.file_param_values = nullptr;
             child_ctx.file_param_count  = 0;
             child_ctx.preferred_tex_width  = 0;
@@ -225,8 +225,8 @@ public:
             child_ctx.sample_rate       = parent_ctx->sample_rate;
             child_ctx.input_channel_counts  = nullptr;
             child_ctx.output_channel_counts = nullptr;
-            child_ctx.input_lanes     = c_input_lanes_.empty() ? nullptr : c_input_lanes_.data();
-            child_ctx.output_lanes    = c_output_lanes_.empty() ? nullptr : c_output_lanes_.data();
+            child_ctx.input_lanes     = c_input_lane_views_.empty() ? nullptr : c_input_lane_views_.data();
+            child_ctx.output_lanes    = c_output_lane_outputs_.empty() ? nullptr : c_output_lane_outputs_.data();
             child_ctx.custom_inputs       = nullptr;
             child_ctx.custom_input_count  = 0;
             child_ctx.custom_outputs      = nullptr;
@@ -255,8 +255,8 @@ public:
             child_ctx.param_values = param_values_.data();
             child_ctx.input_values = input_values_.empty() ? nullptr : input_values_.data();
             child_ctx.output_values = output_values_.empty() ? nullptr : output_values_.data();
-            child_ctx.input_lanes  = c_input_lanes_.empty() ? nullptr : c_input_lanes_.data();
-            child_ctx.output_lanes = c_output_lanes_.empty() ? nullptr : c_output_lanes_.data();
+            child_ctx.input_lanes  = c_input_lane_views_.empty() ? nullptr : c_input_lane_views_.data();
+            child_ctx.output_lanes = c_output_lane_outputs_.empty() ? nullptr : c_output_lane_outputs_.data();
             child_ctx.file_param_values = nullptr;
             child_ctx.file_param_count  = 0;
             child_ctx.preferred_tex_width  = 0;
@@ -309,8 +309,14 @@ private:
         output_values_.resize(out_idx, 0.0f);
         input_lanes_.resize(in_idx);
         output_lanes_.resize(out_idx);
-        c_input_lanes_.resize(in_idx);
-        c_output_lanes_.resize(out_idx);
+        c_input_lane_views_.resize(in_idx, VividLaneView{});
+        c_output_lane_outputs_.resize(out_idx);
+        output_lane_bufs_.resize(out_idx);
+        for (size_t i = 0; i < out_idx; ++i) {
+            c_output_lane_outputs_[i].handle = &output_lane_bufs_[i];
+            c_output_lane_outputs_[i].resize = child_lane_resize_;
+            c_output_lane_outputs_[i].commit = child_lane_commit_;
+        }
     }
 
     T op_;
@@ -329,8 +335,21 @@ private:
     // Spread storage
     std::vector<std::vector<float>> input_lanes_;
     std::vector<std::vector<float>> output_lanes_;
-    std::vector<VividLanePort> c_input_lanes_;
-    std::vector<VividLanePort> c_output_lanes_;
+    std::vector<VividLaneView> c_input_lane_views_;
+    std::vector<VividLaneOutput> c_output_lane_outputs_;
+    std::vector<std::vector<float>> output_lane_bufs_;
+
+    // ChildOp runs on the main thread only — dynamic alloc in resize is safe.
+    static float* child_lane_resize_(void* handle, uint32_t length) {
+        auto* buf = static_cast<std::vector<float>*>(handle);
+        if (length > buf->size()) buf->resize(length, 0.0f);
+        return buf->data();
+    }
+    static void child_lane_commit_(void* handle, uint32_t length) {
+        auto* buf = static_cast<std::vector<float>*>(handle);
+        // committed length is tracked by the output_lane_bufs_ vector size
+        if (length < buf->size()) buf->resize(length);
+    }
 
     // Audio buffer storage (only used for AudioProcessable children)
     std::vector<std::vector<float>> audio_in_bufs_;
@@ -349,29 +368,20 @@ private:
 
     void sync_lanes_() {
         for (size_t i = 0; i < input_lanes_.size(); ++i) {
-            c_input_lanes_[i].data     = input_lanes_[i].empty() ? nullptr : input_lanes_[i].data();
-            c_input_lanes_[i].length   = static_cast<uint32_t>(input_lanes_[i].size());
-            c_input_lanes_[i].capacity = c_input_lanes_[i].length;
+            c_input_lane_views_[i].data = input_lanes_[i].empty() ? nullptr : input_lanes_[i].data();
+            c_input_lane_views_[i].length = static_cast<uint32_t>(input_lanes_[i].size());
+            c_input_lane_views_[i].lane_set_id = 0;
+            c_input_lane_views_[i].flags = 0;
         }
-        for (size_t i = 0; i < output_lanes_.size(); ++i) {
-            if (output_lanes_[i].capacity() < 256)
-                output_lanes_[i].reserve(256);
-            c_output_lanes_[i].data     = output_lanes_[i].data();
-            c_output_lanes_[i].length   = static_cast<uint32_t>(output_lanes_[i].size());
-            c_output_lanes_[i].capacity = static_cast<uint32_t>(output_lanes_[i].capacity());
+        for (size_t i = 0; i < output_lane_bufs_.size(); ++i) {
+            output_lane_bufs_[i].clear();
+            // handle pointer is stable (set in init_), resize/commit remain valid
         }
     }
 
     void readback_lanes_() {
         for (size_t i = 0; i < output_lanes_.size(); ++i) {
-            uint32_t len = c_output_lanes_[i].length;
-            uint32_t cap = c_output_lanes_[i].capacity;
-            if (len > cap) {
-                std::fprintf(stderr, "[vivid] ChildOp: output lane array %zu wrote %u elements "
-                             "but capacity was %u, clamping\n", i, len, cap);
-                len = cap;
-            }
-            output_lanes_[i].resize(len);
+            output_lanes_[i] = output_lane_bufs_[i];
         }
     }
 

@@ -1,4 +1,5 @@
 #include "runtime/graph/frame_executor.h"
+#include "runtime/graph/lane_buffer_gpu.h"
 #include "runtime/core/crash_guard.h"
 #include "runtime/core/shared_handle_registry.h"
 #include "common/gpu_util.h"
@@ -12,8 +13,6 @@
 #include <cstring>
 
 namespace vivid {
-
-static constexpr uint32_t kMaxLaneCapacity = 1024;
 
 // tick() processes all frame-cadence nodes once per frame in topological order.
 //
@@ -41,6 +40,7 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
         frame_lane_contexts_[i].node_idx = cg.frame_order[i];
     }
     frame_lane_state_.sweep_retired();
+    lane_pool_.sweep();
 
     for (uint32_t fi_ord = 0; fi_ord < static_cast<uint32_t>(cg.frame_order.size()); ++fi_ord) {
         uint32_t ni = cg.frame_order[fi_ord];
@@ -55,6 +55,7 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
         // Skip errored nodes — zero outputs
         if (cn.errored) {
             std::fill(cn.output_values.begin(), cn.output_values.end(), 0.0f);
+            for (auto& ref : cn.output_lane_refs) ref = {};
             for (auto& sp : cn.output_lanes) sp.clear();
             for (auto& sp : cn.output_string_lanes) sp.clear();
             std::fill(cn.output_string_values.begin(), cn.output_string_values.end(), std::string());
@@ -64,6 +65,7 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
         // Solo mode: skip non-active nodes
         if (solo_node_idx_ >= 0 && !solo_active_set_.empty() && !solo_active_set_[ni]) {
             std::fill(cn.output_values.begin(), cn.output_values.end(), 0.0f);
+            for (auto& ref : cn.output_lane_refs) ref = {};
             for (auto& sp : cn.output_lanes) sp.clear();
             continue;
         }
@@ -71,6 +73,7 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
         // Zero inputs
         std::fill(cn.input_values.begin(), cn.input_values.end(), 0.0f);
         std::fill(cn.input_string_values.begin(), cn.input_string_values.end(), std::string());
+        for (auto& ref : cn.input_lane_refs) ref = {};
         for (auto& sp : cn.input_lanes) sp.clear();
         for (auto& sp : cn.input_string_lanes) sp.clear();
 
@@ -116,50 +119,86 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
             } else {
                 cn.input_values[e.to_port] = val;
 
-                // Lane-aware lane propagation.
+                // Lane-aware ref-based propagation.
                 // No cycle-expand, no modulo indexing. Compiler legality
                 // (Pass 2.6) guarantees that non-scalar inputs sharing a
                 // port have the same lane_set_id.
-                if (!e.sources_param && e.from_port < from_cn.output_lanes.size()) {
-                    const auto& src_lane = from_cn.output_lanes[e.from_port];
-                    if (!src_lane.empty()) {
-                        auto& dst_lane = cn.input_lanes[e.to_port];
-                        if (dst_lane.empty()) {
+                if (!e.sources_param && e.from_port < from_cn.output_lane_refs.size()) {
+                    const auto& src_ref = from_cn.output_lane_refs[e.from_port];
+                    if (src_ref) {
+                        auto& dst_ref = cn.input_lane_refs[e.to_port];
+                        if (dst_ref.empty()) {
                             // First non-scalar wire: establish destination.
-                            dst_lane = src_lane;
-                            if (e.has_remap()) {
-                                for (auto& v : dst_lane) v = e.apply_remap(v);
+                            if (!e.has_remap()) {
+                                // Passthrough — share ref (zero copy).
+                                dst_ref = src_ref;
+                            } else {
+                                // Remap — materialize new buffer.
+                                LaneBuffer* buf = lane_pool_.acquire();
+                                uint32_t len = src_ref.length();
+                                float* dst = buf->resize(len);
+                                if (dst) {
+                                    const float* src = src_ref.data();
+                                    for (uint32_t j = 0; j < len; ++j)
+                                        dst[j] = e.apply_remap(src[j]);
+                                    buf->commit(len);
+                                }
+                                dst_ref = LaneBufferRef(buf);
                             }
-                        } else if (src_lane.size() == dst_lane.size()) {
-                            // Same-provenance, same length: element-wise add.
-                            for (size_t j = 0; j < dst_lane.size(); ++j) {
-                                float sv = src_lane[j];
+                        } else if (src_ref.length() == dst_ref.length()) {
+                            // Same-provenance, same length: element-wise add (COW).
+                            uint32_t len = dst_ref.length();
+                            // COW: if shared, copy first.
+                            LaneBuffer* dst_buf = dst_ref.buf;
+                            if (dst_buf->ref_count.load(std::memory_order_relaxed) > 1) {
+                                LaneBuffer* new_buf = lane_pool_.acquire();
+                                float* nd = new_buf->resize(len);
+                                if (nd) std::memcpy(nd, dst_ref.data(), len * sizeof(float));
+                                new_buf->commit(len);
+                                dst_ref = LaneBufferRef(new_buf);
+                                dst_buf = dst_ref.buf;
+                            }
+                            float* dd = dst_buf->data.data();
+                            const float* sd = src_ref.data();
+                            for (uint32_t j = 0; j < len; ++j) {
+                                float sv = sd[j];
                                 if (e.has_remap()) sv = e.apply_remap(sv);
-                                dst_lane[j] += sv;
+                                dd[j] += sv;
                             }
                         } else {
                             // Same-provenance but different runtime length.
-                            // Compiler proved lane-set compatibility; operators
-                            // emitted inconsistent sizes. Skip merge.
                             std::fprintf(stderr,
                                 "[vivid] frame_executor: lane length mismatch at node '%s' "
-                                "port %u (dst %zu vs src %zu) — skipping merge\n",
+                                "port %u (dst %u vs src %u) — skipping merge\n",
                                 cn.node_id.c_str(), e.to_port,
-                                dst_lane.size(), src_lane.size());
+                                dst_ref.length(), src_ref.length());
                             assert(false && "lane-aware lane merge: same-provenance runtime length mismatch");
                         }
-                        if (!dst_lane.empty())
-                            cn.input_values[e.to_port] = dst_lane[0];
+                        if (!dst_ref.empty())
+                            cn.input_values[e.to_port] = dst_ref.data()[0];
                     } else if (e.data_type == VIVID_PORT_LANE_ARRAY) {
                         // Scalar source → lane_array destination: lift
-                        // the scalar into a 1-element lane array so that
-                        // structural operators (e.g. Stack) see it as
-                        // lane data they can merge.
-                        auto& dst_lane = cn.input_lanes[e.to_port];
-                        if (dst_lane.empty()) {
-                            dst_lane.assign(1, val);
+                        // the scalar into a 1-element lane array.
+                        auto& dst_ref = cn.input_lane_refs[e.to_port];
+                        if (dst_ref.empty()) {
+                            LaneBuffer* buf = lane_pool_.acquire();
+                            buf->data[0] = val;
+                            buf->commit(1);
+                            dst_ref = LaneBufferRef(buf);
                         } else {
-                            for (auto& v : dst_lane) v += val;
+                            // Add scalar to all elements (COW).
+                            uint32_t len = dst_ref.length();
+                            LaneBuffer* dst_buf = dst_ref.buf;
+                            if (dst_buf->ref_count.load(std::memory_order_relaxed) > 1) {
+                                LaneBuffer* new_buf = lane_pool_.acquire();
+                                float* nd = new_buf->resize(len);
+                                if (nd) std::memcpy(nd, dst_ref.data(), len * sizeof(float));
+                                new_buf->commit(len);
+                                dst_ref = LaneBufferRef(new_buf);
+                                dst_buf = dst_ref.buf;
+                            }
+                            for (uint32_t j = 0; j < len; ++j)
+                                dst_buf->data[j] += val;
                         }
                     }
                 }
@@ -175,20 +214,31 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
         }
 
         // ── Lane count normalization ────────────────────────────────────
-        // Expand shorter input lane arrays to match the longest, repeating
+        // Expand shorter input lane refs to match the longest, repeating
         // the last element.  Ensures GPU and Kernel operators see uniform
         // lane counts across all input ports.
         {
             uint32_t max_lanes = 0;
             for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-                if (cn.input_lanes[p].size() > max_lanes)
-                    max_lanes = static_cast<uint32_t>(cn.input_lanes[p].size());
+                if (cn.input_lane_refs[p].length() > max_lanes)
+                    max_lanes = cn.input_lane_refs[p].length();
             }
             if (max_lanes > 1) {
                 for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-                    auto& lanes = cn.input_lanes[p];
-                    if (!lanes.empty() && lanes.size() < max_lanes)
-                        lanes.resize(max_lanes, lanes.back());
+                    auto& ref = cn.input_lane_refs[p];
+                    if (!ref.empty() && ref.length() < max_lanes) {
+                        // Materialize expanded buffer.
+                        LaneBuffer* buf = lane_pool_.acquire();
+                        uint32_t old_len = ref.length();
+                        float fill = ref.data()[old_len - 1];
+                        float* dst = buf->resize(max_lanes);
+                        if (dst) {
+                            std::memcpy(dst, ref.data(), old_len * sizeof(float));
+                            std::fill(dst + old_len, dst + max_lanes, fill);
+                            buf->commit(max_lanes);
+                        }
+                        ref = LaneBufferRef(buf);
+                    }
                 }
             }
         }
@@ -208,28 +258,31 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
         }
         if (!should_process) continue;
 
-        // ── Build lane port staging ───────────────────────────────────
+        // ── Build lane view/output staging ──────────────────────────────
         for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-            cn.c_in_lanes[p].data = cn.input_lanes[p].data();
-            cn.c_in_lanes[p].length = static_cast<uint32_t>(cn.input_lanes[p].size());
-            cn.c_in_lanes[p].capacity = static_cast<uint32_t>(cn.input_lanes[p].capacity());
+            const auto& ref = cn.input_lane_refs[p];
+            cn.c_in_lane_views[p].data = ref.data();
+            cn.c_in_lane_views[p].length = ref.length();
+            // Propagate lane provenance from compile-time metadata or ref.
+            cn.c_in_lane_views[p].lane_set_id =
+                (ref && ref.buf->lane_set_id != 0) ? ref.buf->lane_set_id
+                : (p < cn.input_lane_sets.size() && !cn.input_lane_sets[p].is_scalar())
+                    ? cn.input_lane_sets[p].lane_set_id : 0;
+            cn.c_in_lane_views[p].flags = 0;
         }
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-            cn.c_out_lanes[p].data = cn.out_lane_buf[p].data();
-            cn.c_out_lanes[p].length = 0;
-            cn.c_out_lanes[p].capacity = kMaxLaneCapacity;
+            cn.out_lane_bufs[p].reset();
         }
         for (uint32_t p = 0; p < cn.input_port_count; ++p) {
             for (size_t si = 0; si < cn.input_string_lanes[p].size() && si < cn.in_string_lane_ptrs[p].size(); ++si)
                 cn.in_string_lane_ptrs[p][si] = cn.input_string_lanes[p][si].c_str();
-            cn.c_in_string_lanes[p].data = cn.in_string_lane_ptrs[p].data();
-            cn.c_in_string_lanes[p].length = static_cast<uint32_t>(cn.input_string_lanes[p].size());
-            cn.c_in_string_lanes[p].capacity = kMaxLaneCapacity;
+            cn.c_in_string_lane_views[p].data = cn.in_string_lane_ptrs[p].data();
+            cn.c_in_string_lane_views[p].length = static_cast<uint32_t>(cn.input_string_lanes[p].size());
+            cn.c_in_string_lane_views[p].lane_set_id = 0;
+            cn.c_in_string_lane_views[p].flags = 0;
         }
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-            cn.c_out_string_lanes[p].data = cn.out_string_lane_ptr_buf[p].data();
-            cn.c_out_string_lanes[p].length = 0;
-            cn.c_out_string_lanes[p].capacity = kMaxLaneCapacity;
+            cn.out_string_lane_bufs[p].reset();
         }
         std::fill(cn.custom_output_buf.begin(), cn.custom_output_buf.end(), nullptr);
 
@@ -255,16 +308,41 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
             gpu_ctx.input_values     = cn.input_values.data();
             gpu_ctx.output_values    = cn.output_values.data();
             gpu_ctx.input_connected  = cn.input_connected.data();
-            gpu_ctx.input_lanes  = cn.c_in_lanes.data();
-            gpu_ctx.output_lanes = cn.c_out_lanes.data();
+            gpu_ctx.input_lanes  = cn.c_in_lane_views.empty() ? nullptr : cn.c_in_lane_views.data();
+            gpu_ctx.output_lanes = cn.c_out_lane_outputs.empty() ? nullptr : cn.c_out_lane_outputs.data();
+
+            // GPU storage-buffer lane inputs (Phase 4).
+            if (!cn.gpu->lane_input_gpu_promoted.empty()) {
+                auto* base_gpu2 = static_cast<VividGpuContext*>(gpu_state);
+                for (uint32_t p = 0; p < cn.input_port_count; ++p) {
+                    if (p < cn.gpu->lane_input_gpu_promoted.size() &&
+                        cn.gpu->lane_input_gpu_promoted[p] &&
+                        p < cn.input_lane_refs.size() && cn.input_lane_refs[p]) {
+                        lane_buffer_ensure_gpu(cn.input_lane_refs[p].buf,
+                                               base_gpu2->device, base_gpu2->queue);
+                        cn.gpu->resolved_lane_gpu_bufs[p] = cn.input_lane_refs[p].buf->gpu_buffer;
+                        cn.gpu->resolved_lane_gpu_lengths[p] = cn.input_lane_refs[p].buf->committed_length;
+                    } else if (p < cn.gpu->resolved_lane_gpu_bufs.size()) {
+                        cn.gpu->resolved_lane_gpu_bufs[p] = nullptr;
+                        cn.gpu->resolved_lane_gpu_lengths[p] = 0;
+                    }
+                }
+                gpu_ctx.input_lane_gpu_buffers = cn.gpu->resolved_lane_gpu_bufs.data();
+                gpu_ctx.input_lane_gpu_lengths = cn.gpu->resolved_lane_gpu_lengths.data();
+                gpu_ctx.input_lane_gpu_count = static_cast<uint32_t>(cn.gpu->resolved_lane_gpu_bufs.size());
+            } else {
+                gpu_ctx.input_lane_gpu_buffers = nullptr;
+                gpu_ctx.input_lane_gpu_lengths = nullptr;
+                gpu_ctx.input_lane_gpu_count = 0;
+            }
             gpu_ctx.input_string_values = cn.c_input_string_values.empty()
                                         ? nullptr : cn.c_input_string_values.data();
             gpu_ctx.output_string_values = cn.c_output_string_values.empty()
                                         ? nullptr : cn.c_output_string_values.data();
-            gpu_ctx.input_string_lanes = cn.c_in_string_lanes.empty()
-                                        ? nullptr : cn.c_in_string_lanes.data();
-            gpu_ctx.output_string_lanes = cn.c_out_string_lanes.empty()
-                                        ? nullptr : cn.c_out_string_lanes.data();
+            gpu_ctx.input_string_lanes = cn.c_in_string_lane_views.empty()
+                                        ? nullptr : cn.c_in_string_lane_views.data();
+            gpu_ctx.output_string_lanes = cn.c_out_string_lane_outputs.empty()
+                                        ? nullptr : cn.c_out_string_lane_outputs.data();
             gpu_ctx.file_param_values = cn.file_param_ptrs.empty()
                                         ? nullptr : cn.file_param_ptrs.data();
             gpu_ctx.file_param_count  = static_cast<uint32_t>(cn.file_param_ptrs.size());
@@ -395,22 +473,22 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
             }
         } else if (cn.frame_execution_strategy == LaneExecutionStrategy::LoopBased) {
             // ── LoopBased frame processing: per-lane loop ──
-            // Discover lane count from max input lane length.
+            // Discover lane count from max input lane ref length.
             uint32_t loop_lanes = 0;
             for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-                if (p < cn.input_lanes.size() && cn.input_lanes[p].size() > loop_lanes)
-                    loop_lanes = static_cast<uint32_t>(cn.input_lanes[p].size());
+                if (cn.input_lane_refs[p].length() > loop_lanes)
+                    loop_lanes = cn.input_lane_refs[p].length();
             }
 
-            // Read identity-bearing lane_ids from lane array, or fall back to positional.
+            // Read identity-bearing lane_ids from lane ref, or fall back to positional.
             std::vector<uint32_t> loop_lane_ids(loop_lanes);
             int32_t lid_port = cn.frame_lane_id_port;
             bool has_identity_ids = false;
-            if (lid_port >= 0 && static_cast<uint32_t>(lid_port) < cn.input_lanes.size()) {
-                const auto& lid_sp = cn.input_lanes[lid_port];
-                if (lid_sp.size() >= loop_lanes) {
+            if (lid_port >= 0 && static_cast<uint32_t>(lid_port) < cn.input_lane_refs.size()) {
+                const auto& lid_ref = cn.input_lane_refs[lid_port];
+                if (lid_ref.length() >= loop_lanes) {
                     for (uint32_t c = 0; c < loop_lanes; ++c)
-                        loop_lane_ids[c] = static_cast<uint32_t>(lid_sp[c]);
+                        loop_lane_ids[c] = static_cast<uint32_t>(lid_ref.data()[c]);
                     has_identity_ids = true;
                 }
             }
@@ -429,17 +507,17 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
             std::vector<float> lane_input_values(cn.input_port_count, 0.0f);
             std::vector<float> lane_output_values(cn.output_port_count, 0.0f);
 
-            // Ensure output lanes have capacity for all lanes
+            // Pre-commit output lane buffers to loop_lanes length
             for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-                if (cn.c_out_lanes[p].capacity >= loop_lanes)
-                    cn.c_out_lanes[p].length = loop_lanes;
+                if (loop_lanes <= static_cast<uint32_t>(cn.out_lane_bufs[p].data.size()))
+                    cn.out_lane_bufs[p].committed_length = loop_lanes;
             }
 
             for (uint32_t c = 0; c < loop_lanes; ++c) {
-                // Extract per-lane scalar from each input lane
+                // Extract per-lane scalar from each input lane ref
                 for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-                    if (p < cn.input_lanes.size() && c < cn.input_lanes[p].size())
-                        lane_input_values[p] = cn.input_lanes[p][c];
+                    if (cn.input_lane_refs[p] && c < cn.input_lane_refs[p].length())
+                        lane_input_values[p] = cn.input_lane_refs[p].data()[c];
                     else
                         lane_input_values[p] = cn.input_values[p];  // scalar fallback
                 }
@@ -454,16 +532,16 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
                 ctx.param_values = cn.param_values.data();
                 ctx.input_values = lane_input_values.data();
                 ctx.output_values = lane_output_values.data();
-                ctx.input_lanes = cn.c_in_lanes.data();
-                ctx.output_lanes = cn.c_out_lanes.data();
+                ctx.input_lanes = cn.c_in_lane_views.data();
+                ctx.output_lanes = cn.c_out_lane_outputs.data();
                 ctx.custom_inputs = cn.resolved_custom_inputs.data();
                 ctx.custom_input_count = static_cast<uint32_t>(cn.resolved_custom_inputs.size());
                 ctx.custom_outputs = cn.custom_output_buf.data();
                 ctx.custom_output_count = static_cast<uint32_t>(cn.custom_output_buf.size());
                 ctx.input_string_values = cn.c_input_string_values.data();
                 ctx.output_string_values = cn.c_output_string_values.data();
-                ctx.input_string_lanes = cn.c_in_string_lanes.data();
-                ctx.output_string_lanes = cn.c_out_string_lanes.data();
+                ctx.input_string_lanes = cn.c_in_string_lane_views.data();
+                ctx.output_string_lanes = cn.c_out_string_lane_outputs.data();
                 ctx.file_param_values = cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data();
                 ctx.file_param_count = static_cast<uint32_t>(cn.file_param_ptrs.size());
                 ctx.input = const_cast<void*>(static_cast<const void*>(input));
@@ -492,17 +570,17 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
                     break;
                 }
 
-                // Write per-lane output into output lane array
+                // Write per-lane output into output lane buffer
                 for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-                    if (cn.c_out_lanes[p].length > c)
-                        cn.c_out_lanes[p].data[c] = lane_output_values[p];
+                    if (cn.out_lane_bufs[p].committed_length > c)
+                        cn.out_lane_bufs[p].data[c] = lane_output_values[p];
                 }
             }
 
             // Set scalar output = first lane
             for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-                cn.output_values[p] = (loop_lanes > 0 && cn.c_out_lanes[p].length > 0)
-                    ? cn.c_out_lanes[p].data[0] : 0.0f;
+                cn.output_values[p] = (loop_lanes > 0 && cn.out_lane_bufs[p].committed_length > 0)
+                    ? cn.out_lane_bufs[p].data[0] : 0.0f;
             }
 
             if (cn.errored) {
@@ -517,16 +595,16 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
             ctx.param_values = cn.param_values.data();
             ctx.input_values = cn.input_values.data();
             ctx.output_values = cn.output_values.data();
-            ctx.input_lanes = cn.c_in_lanes.data();
-            ctx.output_lanes = cn.c_out_lanes.data();
+            ctx.input_lanes = cn.c_in_lane_views.data();
+            ctx.output_lanes = cn.c_out_lane_outputs.data();
             ctx.custom_inputs = cn.resolved_custom_inputs.data();
             ctx.custom_input_count = static_cast<uint32_t>(cn.resolved_custom_inputs.size());
             ctx.custom_outputs = cn.custom_output_buf.data();
             ctx.custom_output_count = static_cast<uint32_t>(cn.custom_output_buf.size());
             ctx.input_string_values = cn.c_input_string_values.data();
             ctx.output_string_values = cn.c_output_string_values.data();
-            ctx.input_string_lanes = cn.c_in_string_lanes.data();
-            ctx.output_string_lanes = cn.c_out_string_lanes.data();
+            ctx.input_string_lanes = cn.c_in_string_lane_views.data();
+            ctx.output_string_lanes = cn.c_out_string_lane_outputs.data();
             ctx.file_param_values = cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data();
             ctx.file_param_count = static_cast<uint32_t>(cn.file_param_ptrs.size());
             ctx.input = const_cast<void*>(static_cast<const void*>(input));
@@ -538,9 +616,8 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
             // Lane metadata.
             uint32_t max_lane_len = 0;
             for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-                if (p < cn.input_lanes.size() && !cn.input_lanes[p].empty())
-                    max_lane_len = std::max(max_lane_len,
-                        static_cast<uint32_t>(cn.input_lanes[p].size()));
+                if (cn.input_lane_refs[p].length() > max_lane_len)
+                    max_lane_len = cn.input_lane_refs[p].length();
             }
             ctx.lane_count = max_lane_len > 1 ? max_lane_len : 1;
             ctx.lane_index = 0;
@@ -571,28 +648,34 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
             }
         }
 
-        // ── Output readback ─────────────────────────────────────────────
+        // ── Output readback — publish refs ─────────────────────────────
         cn.custom_outputs = cn.custom_output_buf;
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-            if (cn.c_out_lanes[p].length > 0) {
-                cn.output_lanes[p].assign(
-                    cn.out_lane_buf[p].begin(),
-                    cn.out_lane_buf[p].begin() + cn.c_out_lanes[p].length);
+            if (cn.out_lane_bufs[p].committed_length > 0) {
+                cn.output_lane_refs[p] = make_ref_from_existing(&cn.out_lane_bufs[p]);
             } else {
-                cn.output_lanes[p].clear();
+                cn.output_lane_refs[p] = {};
             }
+        }
+        // Sync output_lane_refs → output_lanes for consumers that still read
+        // the old field (tests, bridge analysis injection display).
+        for (uint32_t p = 0; p < cn.output_port_count; ++p) {
+            const auto& ref = cn.output_lane_refs[p];
+            if (ref)
+                cn.output_lanes[p].assign(ref.data(), ref.data() + ref.length());
+            else
+                cn.output_lanes[p].clear();
         }
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
             if (cn.c_output_string_values[p])
                 cn.output_string_values[p] = cn.c_output_string_values[p];
         }
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-            if (cn.c_out_string_lanes[p].length > 0) {
-                cn.output_string_lanes[p].resize(cn.c_out_string_lanes[p].length);
-                for (uint32_t si = 0; si < cn.c_out_string_lanes[p].length; ++si) {
-                    if (cn.out_string_lane_ptr_buf[p][si])
-                        cn.output_string_lanes[p][si] = cn.out_string_lane_ptr_buf[p][si];
-                }
+            uint32_t slen = cn.out_string_lane_bufs[p].committed_length;
+            if (slen > 0) {
+                cn.output_string_lanes[p].resize(slen);
+                for (uint32_t si = 0; si < slen; ++si)
+                    cn.output_string_lanes[p][si] = cn.out_string_lane_bufs[p].owned[si];
             } else {
                 cn.output_string_lanes[p].clear();
             }

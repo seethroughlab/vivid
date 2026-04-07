@@ -361,7 +361,7 @@ struct DrumSequencerCore : vivid::OperatorBase {
     void collect_params(std::vector<vivid::ParamBase*>& out) override;
     void collect_ports(std::vector<VividPortDescriptor>& out) override;
     void compute(float phase, float reset_in, const float* params,
-                 float* output_values, VividLanePort* out_spreads,
+                 float* output_values, VividLaneOutput* out_spreads,
                  void** custom_outputs, uint32_t custom_output_count);
     void draw_inspector(VividInspectorContext* ctx) override;
     void draw_thumbnail(const VividThumbnailContext* ctx) override;

@@ -60,12 +60,18 @@ struct VividGpuContext {
     uint32_t  custom_input_count;
 
     // ---- Cross-cadence inputs from frame executor ---------------------------
-    VividLanePort*   input_lanes;
-    VividLanePort*   output_lanes;
+    const VividLaneView*  input_lanes;
+    VividLaneOutput*      output_lanes;
+
+    // GPU storage-buffer lane inputs (parallel to input_lanes, Phase 4).
+    // nullptr entries = not promoted (use input_lanes[i].data instead).
+    WGPUBuffer*  input_lane_gpu_buffers;
+    uint32_t*    input_lane_gpu_lengths;
+    uint32_t     input_lane_gpu_count;
     const char**       input_string_values;
     const char**       output_string_values;
-    VividStringLanePort* input_string_lanes;
-    VividStringLanePort* output_string_lanes;
+    const VividStringLaneView*  input_string_lanes;
+    VividStringLaneOutput*      output_string_lanes;
     const char**       file_param_values;
     uint32_t           file_param_count;
 

@@ -47,8 +47,8 @@ struct Alternate : vivid::OperatorBase, vivid::FrameProcessable {
 
 
 private:
-    void compute(float beat_phase, const float* params, VividLanePort* in_lanes,
-                 VividLanePort* out_lanes, float* output_values) {
+    void compute(float beat_phase, const float* params, const VividLaneView* in_lanes,
+                 VividLaneOutput* out_lanes, float* output_values) {
         int c = std::clamp(static_cast<int>(params[0]), 0, 4);
 
         // Cycle lengths in beats: Beat=1, 2 Beats=2, Bar=4, 2 Bars=8, 4 Bars=16
@@ -64,7 +64,7 @@ private:
 
         // Collect connected (non-empty) lane inputs
         // Lane inputs are at port indices 1..4 (a,b,c,d); port 0 is beat_phase (float)
-        const VividLanePort* inputs[4];
+        const VividLaneView* inputs[4];
         int input_indices[4];
         int input_count = 0;
         for (int i = 0; i < 4; ++i) {
@@ -78,7 +78,7 @@ private:
         auto& out = out_lanes[0];
 
         if (input_count == 0) {
-            out.length = 0;
+            out.commit(out.handle, 0);
             output_values[0] = 0.0f;
             return;
         }
@@ -89,10 +89,13 @@ private:
 
         // Pass through selected input
         auto& sel = *inputs[active];
-        uint32_t len = std::min(sel.length, out.capacity);
-        out.length = len;
-        for (uint32_t i = 0; i < len; ++i)
-            out.data[i] = sel.data[i];
+        uint32_t len = sel.length;
+        float* buf = out.resize(out.handle, len);
+        if (buf) {
+            for (uint32_t i = 0; i < len; ++i)
+                buf[i] = sel.data[i];
+            out.commit(out.handle, len);
+        }
 
         // Output the logical index (which of a,b,c,d is active)
         output_values[0] = static_cast<float>(input_indices[active]);

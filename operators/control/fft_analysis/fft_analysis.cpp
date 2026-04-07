@@ -115,16 +115,17 @@ struct FFTAnalysis : vivid::OperatorBase, vivid::FrameProcessable {
         uint32_t num_bins = N / 2;
         if (!ctx->output_lanes) return;
         auto& out = ctx->output_lanes[0];
-        if (out.capacity < num_bins) num_bins = out.capacity;
+        float* buf = out.resize(out.handle, num_bins);
+        if (!buf) return;
         float inv_N = 2.0f / N;
         for (uint32_t i = 0; i < num_bins; ++i) {
             float mag = std::sqrt(buf_real_[i] * buf_real_[i] + buf_imag_[i] * buf_imag_[i]) * inv_N;
-            out.data[i] = mag;
+            buf[i] = mag;
         }
-        out.length = num_bins;
+        out.commit(out.handle, num_bins);
 
         // Scalar fallback: DC component
-        ctx->output_values[0] = out.data[0];
+        ctx->output_values[0] = buf[0];
     }
 
 private:

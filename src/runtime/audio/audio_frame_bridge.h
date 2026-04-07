@@ -74,6 +74,12 @@ private:
     AnalysisSnapshot analysis_snapshots_[2];
     std::atomic<int> analysis_active_{0};
 
+    // Pre-allocated flat backing storage for bridge lane slots.
+    // Two buffers per direction (one per double-buffer slot).
+    std::vector<float> lane_input_storage_[2];   // frame→audio
+    std::vector<float> lane_output_storage_[2];  // audio→frame
+    uint32_t lane_overflow_count_ = 0;           // rate-limited diagnostic counter
+
     // Mapping from CompiledGraph node index → snapshot array index.
     // Indexed by graph node index; -1 for non-audio nodes.
     std::vector<int32_t> node_to_snapshot_idx_;

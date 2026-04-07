@@ -29,11 +29,10 @@ struct AudioLaneOp : vivid::OperatorBase, vivid::AudioProcessable {
             // Echo lane array to output port 1 ("echo")
             if (ctx->output_lanes) {
                 auto& osp = ctx->output_lanes[1];  // "echo" output (port 1)
-                if (osp.capacity >= isp.length) {
-                    osp.length = isp.length;
-                    if (isp.length > 0) {
-                        std::memcpy(osp.data, isp.data, isp.length * sizeof(float));
-                    }
+                float* buf = osp.resize(osp.handle, isp.length);
+                if (buf && isp.length > 0) {
+                    std::memcpy(buf, isp.data, isp.length * sizeof(float));
+                    osp.commit(osp.handle, isp.length);
                 }
             }
         }

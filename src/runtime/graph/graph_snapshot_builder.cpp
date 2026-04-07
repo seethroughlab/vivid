@@ -60,7 +60,14 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         sn.param_values = cn.param_values;
         sn.param_lock_flags = cn.param_lock_flags;
         sn.output_values = cn.output_values;
-        sn.output_lanes = cn.output_lanes;
+        sn.output_lanes.resize(cn.output_port_count);
+        for (uint32_t p = 0; p < cn.output_port_count; ++p) {
+            if (p < cn.output_lane_refs.size() && cn.output_lane_refs[p])
+                sn.output_lanes[p].assign(cn.output_lane_refs[p].data(),
+                                           cn.output_lane_refs[p].data() + cn.output_lane_refs[p].length());
+            else
+                sn.output_lanes[p].clear();
+        }
         sn.output_string_values = cn.output_string_values;
         sn.output_string_lanes = cn.output_string_lanes;
         for (const auto& [name, idx] : cn.file_param_indices) {

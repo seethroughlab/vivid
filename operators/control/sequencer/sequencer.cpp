@@ -85,7 +85,7 @@ struct Sequencer : vivid::OperatorBase {
                 ctx->custom_outputs, ctx->custom_output_count);
     }
 
-    void compute(float phase, float reset_in, VividLanePort* in_lanes,
+    void compute(float phase, float reset_in, const VividLaneView* in_lanes,
                  float* output_values, void** custom_outputs, uint32_t custom_output_count) {
         bool reset = reset_in > 0.5f;
 

@@ -8,7 +8,7 @@ extern "C" {
 
 /* Bump when operator-facing C ABI changes in incompatible ways.
    Catches stale dylibs during hot-reload — not a cross-version compatibility promise. */
-#define VIVID_OPERATOR_ABI_VERSION 9u
+#define VIVID_OPERATOR_ABI_VERSION 10u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -169,20 +169,35 @@ typedef struct VividInputState {
 } VividInputState;
 
 // ---------------------------------------------------------------------------
-// Lane port — variable-length float array
+// Lane views (immutable inputs) and output builders (runtime-owned)
 // ---------------------------------------------------------------------------
 
-typedef struct VividLanePort {
-    float*   data;      // pointer to lane data
-    uint32_t length;    // current number of floats
-    uint32_t capacity;  // allocated size (for output ports)
-} VividLanePort;
+typedef struct VividLaneView {
+    const float* data;       // immutable pointer to lane data
+    uint32_t     length;     // number of floats
+    uint32_t     lane_set_id;// provenance identifier (0 = scalar)
+    uint32_t     flags;      // reserved, must be 0
+} VividLaneView;
 
-typedef struct VividStringLanePort {
-    const char** data;    // pointer to array of UTF-8 string pointers
-    uint32_t length;      // current number of strings
-    uint32_t capacity;    // allocated size (for output ports)
-} VividStringLanePort;
+typedef struct VividLaneOutput {
+    void*    handle;                                         // runtime-owned, opaque
+    float*   (*resize)(void* handle, uint32_t length);       // returns writable buffer or NULL
+    void     (*commit)(void* handle, uint32_t length);       // publish length elements
+} VividLaneOutput;
+
+typedef struct VividStringLaneView {
+    const char* const* data; // immutable pointer to string array
+    uint32_t     length;     // number of strings
+    uint32_t     lane_set_id;// provenance identifier (0 = scalar)
+    uint32_t     flags;      // reserved, must be 0
+} VividStringLaneView;
+
+typedef struct VividStringLaneOutput {
+    void*    handle;                                         // runtime-owned, opaque
+    uint8_t  (*resize)(void* handle, uint32_t length);       // returns 1 on success, 0 on failure
+    void     (*set)(void* handle, uint32_t index, const char* value); // copy string into slot
+    void     (*commit)(void* handle, uint32_t length);       // publish length elements
+} VividStringLaneOutput;
 
 typedef struct VividSharedHandleEntry {
     const char* type;
@@ -217,8 +232,8 @@ typedef struct VividAudioContext {
     const uint8_t* input_channel_counts;   // [port_idx] — NULL when all mono
     const uint8_t* output_channel_counts;  // [port_idx] — NULL when all mono
     // Cross-cadence inputs from frame executor
-    VividLanePort*  input_lanes;
-    VividLanePort*  output_lanes;
+    const VividLaneView*  input_lanes;
+    VividLaneOutput*      output_lanes;
     void**            custom_inputs;       // [custom_input_ordinal] — opaque custom-type inputs
     uint32_t          custom_input_count;  // number of custom-transport input ports
     const char**      input_string_values;
@@ -271,16 +286,16 @@ typedef struct VividFrameContext {
     float*    param_values;   // indexed by param descriptor order
     float*    input_values;   // indexed by input port order (VIVID_PORT_INPUT only)
     float*    output_values;  // indexed by output port order (VIVID_PORT_OUTPUT only)
-    VividLanePort* input_lanes;    // [lane_port_ordinal], NULL if none
-    VividLanePort* output_lanes;   // [lane_port_ordinal], NULL if none
+    const VividLaneView*  input_lanes;    // [port_ordinal], NULL if none
+    VividLaneOutput*      output_lanes;   // [port_ordinal], NULL if none
     void**     custom_inputs;          // [custom_input_ordinal], NULL if none
     uint32_t   custom_input_count;     // number of custom-transport input ports
     void**     custom_outputs;         // [custom_output_ordinal], NULL if none
     uint32_t   custom_output_count;    // number of custom-transport output ports
     const char** input_string_values;   // [string_port_ordinal]
     const char** output_string_values;  // [string_port_ordinal]
-    VividStringLanePort* input_string_lanes;   // [string_lane_port_ordinal], NULL if none
-    VividStringLanePort* output_string_lanes;  // [string_lane_port_ordinal], NULL if none
+    const VividStringLaneView*  input_string_lanes;   // [port_ordinal], NULL if none
+    VividStringLaneOutput*      output_string_lanes;  // [port_ordinal], NULL if none
     const char** file_param_values;   // indexed by file param order, NULL if none
     uint32_t     file_param_count;
     void*     input;          // VividInputState* for interactive operators, NULL otherwise

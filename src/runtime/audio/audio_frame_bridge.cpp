@@ -1,4 +1,5 @@
 #include "runtime/audio/audio_frame_bridge.h"
+#include "runtime/graph/graph_compiler_internal.h"
 #include "operator_api/type_id.h"
 #include <algorithm>
 #include <cstdio>
@@ -16,27 +17,54 @@ void AudioFrameBridge::build(const CompiledGraph& cg) {
         node_to_snapshot_idx_[idx] = static_cast<int32_t>(audio_count++);
     }
 
-    // Allocate ParamSnapshot arrays
-    for (auto& snap : snapshots_) {
+    // Count total lane port slots for flat storage pre-allocation.
+    constexpr uint32_t kLaneCap = graph_compiler_internal::kDefaultLaneCapacity;
+    uint32_t total_input_slots = 0;
+    uint32_t total_output_slots = 0;
+    for (uint32_t i = 0; i < audio_count; ++i) {
+        uint32_t gi = cg.audio_order[i];
+        const auto& cn = cg.nodes[gi];
+        total_input_slots += cn.input_port_count;
+        total_output_slots += cn.output_port_count;
+    }
+
+    // Pre-allocate flat lane storage for both double-buffer slots.
+    for (int b = 0; b < 2; ++b) {
+        lane_input_storage_[b].assign(total_input_slots * kLaneCap, 0.0f);
+        lane_output_storage_[b].assign(total_output_slots * kLaneCap, 0.0f);
+    }
+    lane_overflow_count_ = 0;
+
+    // Allocate ParamSnapshot arrays and wire BridgeLaneSlot pointers.
+    for (int b = 0; b < 2; ++b) {
+        auto& snap = snapshots_[b];
         snap.node_params.resize(audio_count);
         snap.lane_inputs.resize(audio_count);
         snap.input_string_values.resize(audio_count);
         snap.custom_inputs.resize(audio_count);
         snap.solo_active_set.clear();
 
+        uint32_t input_offset = 0;
         for (uint32_t i = 0; i < audio_count; ++i) {
             uint32_t gi = cg.audio_order[i];
             const auto& cn = cg.nodes[gi];
-            const auto& a = *cn.audio;
             snap.node_params[i] = cn.param_values;
             snap.lane_inputs[i].resize(cn.input_port_count);
+            for (uint32_t p = 0; p < cn.input_port_count; ++p) {
+                snap.lane_inputs[i][p].data = lane_input_storage_[b].data() + input_offset;
+                snap.lane_inputs[i][p].capacity = kLaneCap;
+                snap.lane_inputs[i][p].length = 0;
+                snap.lane_inputs[i][p].lane_set_id = 0;
+                input_offset += kLaneCap;
+            }
             snap.input_string_values[i].assign(cn.input_port_count, "");
             snap.custom_inputs[i].resize(cn.input_port_count);
         }
     }
 
-    // Allocate AnalysisSnapshot arrays
-    for (auto& snap : analysis_snapshots_) {
+    // Allocate AnalysisSnapshot arrays and wire output lane slot pointers.
+    for (int b = 0; b < 2; ++b) {
+        auto& snap = analysis_snapshots_[b];
         snap.rms.assign(audio_count, 0.0f);
         snap.peak.assign(audio_count, 0.0f);
         snap.waveform.resize(audio_count);
@@ -47,10 +75,18 @@ void AudioFrameBridge::build(const CompiledGraph& cg) {
         snap.error_msgs.resize(audio_count);
         for (auto& msg : snap.error_msgs) msg.fill('\0');
 
+        uint32_t output_offset = 0;
         for (uint32_t i = 0; i < audio_count; ++i) {
             uint32_t gi = cg.audio_order[i];
             const auto& cn = cg.nodes[gi];
             snap.lane_outputs[i].resize(cn.output_port_count);
+            for (uint32_t p = 0; p < cn.output_port_count; ++p) {
+                snap.lane_outputs[i][p].data = lane_output_storage_[b].data() + output_offset;
+                snap.lane_outputs[i][p].capacity = kLaneCap;
+                snap.lane_outputs[i][p].length = 0;
+                snap.lane_outputs[i][p].lane_set_id = 0;
+                output_offset += kLaneCap;
+            }
             snap.scalar_outputs[i].assign(cn.output_port_count, 0.0f);
         }
     }
@@ -160,16 +196,24 @@ void AudioFrameBridge::push_to_audio(const CompiledGraph& cg) {
                 snap.node_params[si][e.to_port] = val;
         } else if (e.data_type == VIVID_PORT_LANE_ARRAY && !e.targets_param) {
             // Spread input
-            if (e.from_port < from_cn.output_lanes.size() &&
+            if (e.from_port < from_cn.output_lane_refs.size() &&
                 e.to_port < snap.lane_inputs[si].size()) {
-                const auto& src = from_cn.output_lanes[e.from_port];
+                const auto& ref = from_cn.output_lane_refs[e.from_port];
                 auto& dst = snap.lane_inputs[si][e.to_port];
-                dst.length = std::min(static_cast<uint32_t>(src.size()),
-                                      LaneSnapshot::kMaxLength);
-                float scale = e.remap_scale();
-                for (uint32_t j = 0; j < dst.length; ++j)
-                    dst.data[j] = src[j] * scale;
-                dst.lane_set_id = e.lane_set_id;
+                if (ref) {
+                    uint32_t src_len = ref.length();
+                    dst.length = std::min(src_len, dst.capacity);
+                    if (src_len > dst.capacity && (lane_overflow_count_++ % 600 == 0))
+                        std::fprintf(stderr, "[vivid] Bridge lane overflow: %u lanes clamped to %u\n",
+                                     src_len, dst.capacity);
+                    float scale = e.remap_scale();
+                    const float* src = ref.data();
+                    for (uint32_t j = 0; j < dst.length; ++j)
+                        dst.data[j] = src[j] * scale;
+                    dst.lane_set_id = e.lane_set_id;
+                } else {
+                    dst.length = 0;
+                }
             }
         } else if (e.data_type == VIVID_PORT_STRING) {
             // String input or file param

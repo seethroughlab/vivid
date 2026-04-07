@@ -296,7 +296,7 @@ struct ChordProgression : vivid::OperatorBase {
                 nullptr, ctx->custom_outputs, ctx->custom_output_count);
     }
 
-    void compute(float beat_phase, const float* params, VividLanePort* output_lanes,
+    void compute(float beat_phase, const float* params, VividLaneOutput* output_lanes,
                  float* output_values, void** custom_outputs, uint32_t custom_output_count) {
         int num_steps = steps.int_value();
         int kr = key_root.int_value();
@@ -343,15 +343,18 @@ struct ChordProgression : vivid::OperatorBase {
             auto& gates_lane = output_lanes[2];
 
             uint32_t len = static_cast<uint32_t>(chord_size);
-            if (notes_lane.capacity >= len) {
-                notes_lane.length = len;
-                velocity_lane.length   = len;
-                gates_lane.length = len;
+            float* notes_buf = notes_lane.resize(notes_lane.handle, len);
+            float* vel_buf   = velocity_lane.resize(velocity_lane.handle, len);
+            float* gates_buf = gates_lane.resize(gates_lane.handle, len);
+            if (notes_buf && vel_buf && gates_buf) {
                 for (uint32_t i = 0; i < len; ++i) {
-                    notes_lane.data[i] = static_cast<float>(base_note + intervals[i]);
-                    velocity_lane.data[i]   = vel;
-                    gates_lane.data[i] = gate_val;
+                    notes_buf[i] = static_cast<float>(base_note + intervals[i]);
+                    vel_buf[i]   = vel;
+                    gates_buf[i] = gate_val;
                 }
+                notes_lane.commit(notes_lane.handle, len);
+                velocity_lane.commit(velocity_lane.handle, len);
+                gates_lane.commit(gates_lane.handle, len);
             }
         }
 

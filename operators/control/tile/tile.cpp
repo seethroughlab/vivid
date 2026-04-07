@@ -41,25 +41,27 @@ struct Tile : vivid::OperatorBase, vivid::FrameProcessable {
 
 
 private:
-    void compute(VividLanePort* in_lanes, const float* params,
-                 VividLanePort* out_lanes, float* output_values) {
+    void compute(const VividLaneView* in_lanes, const float* params,
+                 VividLaneOutput* out_lanes, float* output_values) {
         if (!in_lanes || !out_lanes) return;
         auto& in = in_lanes[0];
         auto& out = out_lanes[0];
 
         if (in.length == 0) {
-            out.length = 0;
+            out.commit(out.handle, 0);
             if (output_values) output_values[0] = 0.0f;
             return;
         }
 
-        uint32_t n = std::clamp(static_cast<uint32_t>(params[0]), 1u, out.capacity);
-        out.length = n;
+        uint32_t n = std::clamp(static_cast<uint32_t>(params[0]), 1u, 1024u);
+        float* buf = out.resize(out.handle, n);
+        if (!buf) return;
         for (uint32_t i = 0; i < n; ++i)
-            out.data[i] = in.data[i % in.length];
+            buf[i] = in.data[i % in.length];
+        out.commit(out.handle, n);
 
         if (output_values)
-            output_values[0] = out.data[0];
+            output_values[0] = buf[0];
     }
 };
 

@@ -58,7 +58,7 @@ struct PatTransform : vivid::OperatorBase, vivid::FrameProcessable {
         auto& out = ctx->output_lanes[0];
 
         if (in.length == 0) {
-            out.length = 0;
+            out.commit(out.handle, 0);
             return;
         }
 
@@ -68,21 +68,22 @@ struct PatTransform : vivid::OperatorBase, vivid::FrameProcessable {
         float off = ctx->param_values[3];
         float prob = ctx->param_values[4];
 
-        uint32_t n = std::min(in.length, out.capacity);
-        out.length = n;
+        uint32_t n = in.length;
+        float* buf = out.resize(out.handle, n);
+        if (!buf) return;
 
         // Copy input to output buffer (we'll transform in-place in the output)
         for (uint32_t i = 0; i < n; ++i)
-            out.data[i] = in.data[i];
+            buf[i] = in.data[i];
 
         // Transform order: reverse -> rotate -> scale -> offset -> probability
 
         // 1. Reverse
         if (rev) {
             for (uint32_t i = 0; i < n / 2; ++i) {
-                float tmp = out.data[i];
-                out.data[i] = out.data[n - 1 - i];
-                out.data[n - 1 - i] = tmp;
+                float tmp = buf[i];
+                buf[i] = buf[n - 1 - i];
+                buf[n - 1 - i] = tmp;
             }
         }
 
@@ -92,22 +93,22 @@ struct PatTransform : vivid::OperatorBase, vivid::FrameProcessable {
             if (shift != 0) {
                 float tmp[1024];
                 for (uint32_t i = 0; i < n; ++i)
-                    tmp[i] = out.data[(i + shift) % n];
+                    tmp[i] = buf[(i + shift) % n];
                 for (uint32_t i = 0; i < n; ++i)
-                    out.data[i] = tmp[i];
+                    buf[i] = tmp[i];
             }
         }
 
         // 3. Scale
         if (sc != 1.0f) {
             for (uint32_t i = 0; i < n; ++i)
-                out.data[i] *= sc;
+                buf[i] *= sc;
         }
 
         // 4. Offset
         if (off != 0.0f) {
             for (uint32_t i = 0; i < n; ++i)
-                out.data[i] += off;
+                buf[i] += off;
         }
 
         // 5. Probability: zero out elements that don't survive.
@@ -117,12 +118,14 @@ struct PatTransform : vivid::OperatorBase, vivid::FrameProcessable {
                 uint32_t hash = (i + 1) * 2654435761u;
                 float rand01 = static_cast<float>(hash) / 4294967295.0f;
                 if (rand01 >= prob)
-                    out.data[i] = 0.0f;
+                    buf[i] = 0.0f;
             }
         }
 
+        out.commit(out.handle, n);
+
         // Scalar fallback
-        ctx->output_values[0] = (n > 0) ? out.data[0] : 0.0f;
+        ctx->output_values[0] = (n > 0) ? buf[0] : 0.0f;
     }
 };
 

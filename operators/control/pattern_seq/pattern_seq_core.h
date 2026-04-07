@@ -93,7 +93,7 @@ struct PatternSeqCore : vivid::OperatorBase {
     }
 
     void compute(float beat_phase, const float* params, float* output_values,
-                 VividLanePort* out_spreads, void** custom_outputs, uint32_t custom_output_count) {
+                 VividLaneOutput* out_spreads, void** custom_outputs, uint32_t custom_output_count) {
         int n   = std::clamp(static_cast<int>(params[0]), 1, 16);
         int r   = std::clamp(static_cast<int>(params[1]), 0, 8);
         float gl = params[2];
@@ -159,10 +159,11 @@ struct PatternSeqCore : vivid::OperatorBase {
         if (out_spreads) {
             auto& sp = out_spreads[4];
             auto len = static_cast<uint32_t>(n);
-            if (sp.capacity >= len) {
-                    sp.length = len;
+            float* buf = sp.resize(sp.handle, len);
+            if (buf) {
                 for (uint32_t i = 0; i < len; ++i)
-                    sp.data[i] = params[5 + i];
+                    buf[i] = params[5 + i];
+                sp.commit(sp.handle, len);
             }
         }
     }

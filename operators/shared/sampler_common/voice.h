@@ -196,7 +196,7 @@ struct LaneInput {
     uint32_t length = 0;
 };
 
-inline LaneInput read_lane_input(const VividLanePort* lanes, int port_index) {
+inline LaneInput read_lane_input(const VividLaneView* lanes, int port_index) {
     LaneInput result;
     if (lanes) {
         result.data = lanes[port_index].data;

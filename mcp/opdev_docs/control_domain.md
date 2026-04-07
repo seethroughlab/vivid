@@ -21,14 +21,14 @@ struct MyControlOp : vivid::OperatorBase, vivid::FrameProcessable {
 | `param_values` | `float*` | Indexed by param descriptor order (auto-synced to Param<T>.value) |
 | `input_values` | `float*` | Float input ports, indexed by input port order |
 | `output_values` | `float*` | Float output ports, indexed by output port order — **write your outputs here** |
-| `input_lanes` | `VividLanePort*` | Lane array input ports (`.data`, `.length`) |
-| `output_lanes` | `VividLanePort*` | Lane array output ports (write `.data`, set `.length`) |
+| `input_lanes` | `const VividLaneView*` | Lane array input ports (`.data`, `.length`, `.lane_set_id`, `.flags`) |
+| `output_lanes` | `VividLaneOutput*` | Lane array output ports (runtime-owned builder: `.handle`, `.resize()`, `.commit()`) |
 | `custom_inputs` | `void**` | Custom-port inputs (`CUSTOM_VALUE` / `CUSTOM_REF`) |
 | `custom_outputs` | `void**` | Custom-port outputs (`CUSTOM_VALUE` / `CUSTOM_REF`) |
 | `input_string_values` | `const char**` | String input ports |
 | `output_string_values` | `const char**` | String output ports (write pointers here) |
-| `input_string_lanes` | `VividStringLanePort*` | String lane array inputs |
-| `output_string_lanes` | `VividStringLanePort*` | String lane array outputs |
+| `input_string_lanes` | `const VividStringLaneView*` | String lane array inputs (`.data`, `.length`, `.lane_set_id`, `.flags`) |
+| `output_string_lanes` | `VividStringLaneOutput*` | String lane array outputs (runtime-owned builder: `.handle`, `.resize()`, `.set()`, `.commit()`) |
 | `file_param_values` | `const char**` | File/text param string values |
 | `input` | `void*` | Cast to `VividInputState*` for interactive operators |
 | `shared_handles` | `VividSharedHandleService*` | Process-wide handle service |
@@ -55,16 +55,17 @@ Port indices are counted separately for inputs and outputs, in the order declare
 
 ```cpp
 // Reading input lane array
-const VividLanePort& sp = ctx->input_lanes[0];
+const VividLaneView& sp = ctx->input_lanes[0];
 for (uint32_t i = 0; i < sp.length; i++) {
     float val = sp.data[i];
 }
 
-// Writing output lane array
-VividLanePort& out = ctx->output_lanes[0];
-out.length = count;  // must not exceed capacity
-for (uint32_t i = 0; i < count; i++) {
-    out.data[i] = computed_value;
+// Writing output lane array (builder pattern)
+auto& out = ctx->output_lanes[0];
+float* buf = out.resize(out.handle, count);
+if (buf) {
+    for (uint32_t i = 0; i < count; i++) buf[i] = computed_value;
+    out.commit(out.handle, count);
 }
 ```
 

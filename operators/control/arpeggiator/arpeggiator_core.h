@@ -143,8 +143,8 @@ struct ArpeggiatorCore : vivid::OperatorBase {
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
     }
 
-    void compute(float beat_phase, const float* params, VividLanePort* in_spreads,
-                 float* output_values, VividLanePort* out_spreads,
+    void compute(float beat_phase, const float* params, const VividLaneView* in_spreads,
+                 float* output_values, VividLaneOutput* out_spreads,
                  void** custom_outputs, uint32_t custom_output_count) {
         int m = mode.int_value();
         int oct = octaves.int_value();
@@ -598,7 +598,7 @@ protected:
         }
     }
 
-    void write_output(float* output_values, VividLanePort* out_spreads,
+    void write_output(float* output_values, VividLaneOutput* out_spreads,
                       void** custom_outputs, uint32_t custom_output_count,
                       float note, float vel, float gate, int step) {
         if (out_spreads) {
@@ -606,13 +606,13 @@ protected:
             auto& vel_sp   = out_spreads[1];
             auto& gates_sp = out_spreads[2];
 
-            if (notes_sp.capacity >= 1) {
-                notes_sp.length = 1;
-                vel_sp.length   = 1;
-                gates_sp.length = 1;
-                notes_sp.data[0] = note;
-                vel_sp.data[0]   = vel;
-                gates_sp.data[0] = gate;
+            float* notes_buf = notes_sp.resize(notes_sp.handle, 1);
+            float* vel_buf   = vel_sp.resize(vel_sp.handle, 1);
+            float* gates_buf = gates_sp.resize(gates_sp.handle, 1);
+            if (notes_buf && vel_buf && gates_buf) {
+                notes_buf[0] = note; notes_sp.commit(notes_sp.handle, 1);
+                vel_buf[0] = vel;    vel_sp.commit(vel_sp.handle, 1);
+                gates_buf[0] = gate; gates_sp.commit(gates_sp.handle, 1);
             }
         }
 

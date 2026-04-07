@@ -25,10 +25,13 @@ struct ControlPassOp : vivid::OperatorBase, vivid::FrameProcessable {
         if (ctx->input_lanes && ctx->output_lanes) {
             const auto& isp = ctx->input_lanes[0];
             auto& osp = ctx->output_lanes[0];
-            if (isp.length > 0 && osp.capacity >= isp.length) {
-                osp.length = isp.length;
-                for (uint32_t i = 0; i < isp.length; ++i) {
-                    osp.data[i] = isp.data[i] * g;
+            if (isp.length > 0) {
+                float* buf = osp.resize(osp.handle, isp.length);
+                if (buf) {
+                    for (uint32_t i = 0; i < isp.length; ++i) {
+                        buf[i] = isp.data[i] * g;
+                    }
+                    osp.commit(osp.handle, isp.length);
                 }
             }
         }

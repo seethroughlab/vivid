@@ -61,30 +61,31 @@ private:
     }
 
     void compute(float input, const float* params,
-                 VividLanePort* out_lanes, float* output_values) {
+                 VividLaneOutput* out_lanes, float* output_values) {
         if (!out_lanes) return;
         auto& out = out_lanes[0];
-        uint32_t n = std::clamp(static_cast<uint32_t>(params[0]), 1u, out.capacity);
+        uint32_t n = std::clamp(static_cast<uint32_t>(params[0]), 1u, 1024u);
         int   m = static_cast<int>(params[1]);
         float s = params[2];
         int   sd = static_cast<int>(params[3]);
 
-        out.length = n;
+        float* buf = out.resize(out.handle, n);
+        if (!buf) return;
 
         switch (m) {
         default: // 0 = copy
             for (uint32_t i = 0; i < n; ++i)
-                out.data[i] = input;
+                buf[i] = input;
             break;
 
         case 1: { // linear — evenly spaced from (input-s) to (input+s)
             if (n == 1) {
-                out.data[0] = input;
+                buf[0] = input;
             } else {
                 float denom = 1.0f / static_cast<float>(n - 1);
                 for (uint32_t i = 0; i < n; ++i) {
                     float t = static_cast<float>(i) * denom; // 0..1
-                    out.data[i] = input + s * (2.0f * t - 1.0f);
+                    buf[i] = input + s * (2.0f * t - 1.0f);
                 }
             }
             break;
@@ -92,23 +93,25 @@ private:
         case 2: { // random — per-lane deterministic offset within ±s
             uint32_t rng = static_cast<uint32_t>(sd) * 2654435761u + 1u;
             for (uint32_t i = 0; i < n; ++i)
-                out.data[i] = input + s * hash_float(rng);
+                buf[i] = input + s * hash_float(rng);
             break;
         }
         case 3: { // phase — evenly spaced 0..1 ramp, ignores input
             float inv_n = 1.0f / static_cast<float>(n);
             for (uint32_t i = 0; i < n; ++i)
-                out.data[i] = static_cast<float>(i) * inv_n;
+                buf[i] = static_cast<float>(i) * inv_n;
             break;
         }
         case 4: { // golden — golden-ratio offsets for maximal decorrelation
             for (uint32_t i = 0; i < n; ++i) {
                 float offset = std::fmod(static_cast<float>(i) * kGoldenRatio, 1.0f);
-                out.data[i] = input + s * (2.0f * offset - 1.0f);
+                buf[i] = input + s * (2.0f * offset - 1.0f);
             }
             break;
         }
         }
+
+        out.commit(out.handle, n);
 
         if (output_values)
             output_values[0] = input;

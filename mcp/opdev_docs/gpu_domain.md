@@ -123,7 +123,8 @@ WgslFilterBase checks shader file modification time every 30 frames. When a chan
 | `input_texture_widths` / `input_texture_heights` | `uint32_t*` | Input dimensions |
 | `operators_src_dir` | `const char*` | Path to operators/ source tree |
 | `custom_inputs` / `custom_outputs` | `void**` | Custom-port inputs/outputs (`CUSTOM_VALUE` / `CUSTOM_REF`) |
-| `input_lanes` / `output_lanes` | `VividLanePort*` | Lane-array ports |
+| `input_lanes` | `const VividLaneView*` | Lane-array input ports (`.data`, `.length`, `.lane_set_id`, `.flags`) |
+| `output_lanes` | `VividLaneOutput*` | Lane-array output ports (runtime-owned builder: `.handle`, `.resize()`, `.commit()`) |
 | `input_string_values` / `output_string_values` | `const char**` | String ports |
 | `input` | `VividInputState*` | Mouse/keyboard events |
 

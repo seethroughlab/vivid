@@ -2,6 +2,7 @@
 
 #include "runtime/graph/compiled_graph.h"
 #include "runtime/graph/executor_common.h"
+#include "runtime/graph/lane_buffer_pool.h"
 #include "runtime/graph/lane_state.h"
 #include <functional>
 #include <string>
@@ -71,6 +72,9 @@ private:
     // Lane state service for LoopBased frame operators.
     LaneStateService frame_lane_state_;
     std::vector<NodeLaneCtx> frame_lane_contexts_;
+
+    // Pool for lane buffer allocation during wire propagation.
+    LaneBufferPool lane_pool_;
 
 public:
     void set_operators_src_dir(const std::string& dir) { operators_src_dir_ = dir; }

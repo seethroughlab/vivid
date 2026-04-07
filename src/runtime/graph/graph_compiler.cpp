@@ -186,19 +186,26 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                     cn.param_lock_flags[pi->second] = flags;
             }
 
-            cn.c_in_lanes.resize(cn.input_port_count);
-            cn.c_out_lanes.resize(cn.output_port_count);
-            cn.out_lane_buf.resize(cn.output_port_count);
-            cn.c_in_string_lanes.resize(cn.input_port_count);
-            cn.c_out_string_lanes.resize(cn.output_port_count);
+            cn.input_lane_refs.resize(cn.input_port_count);
+            cn.output_lane_refs.resize(cn.output_port_count);
+
+            cn.c_in_lane_views.resize(cn.input_port_count, VividLaneView{});
+            cn.out_lane_bufs.clear();
+            cn.out_lane_bufs.reserve(cn.output_port_count);
+            for (uint32_t p = 0; p < cn.output_port_count; ++p)
+                cn.out_lane_bufs.emplace_back(graph_compiler_internal::kDefaultLaneCapacity);
+            cn.c_out_lane_outputs.resize(cn.output_port_count);
+            for (uint32_t p = 0; p < cn.output_port_count; ++p)
+                cn.c_out_lane_outputs[p] = make_lane_output(&cn.out_lane_bufs[p]);
+
+            cn.c_in_string_lane_views.resize(cn.input_port_count, VividStringLaneView{});
             cn.in_string_lane_ptrs.resize(cn.input_port_count);
-            cn.out_string_lane_ptr_buf.resize(cn.output_port_count);
-            for (uint32_t p = 0; p < cn.output_port_count; ++p)
-                cn.out_lane_buf[p].resize(graph_compiler_internal::kMaxLaneCapacity, 0.0f);
             for (uint32_t p = 0; p < cn.input_port_count; ++p)
-                cn.in_string_lane_ptrs[p].resize(graph_compiler_internal::kMaxLaneCapacity, nullptr);
+                cn.in_string_lane_ptrs[p].resize(graph_compiler_internal::kDefaultLaneCapacity, nullptr);
+            cn.out_string_lane_bufs.resize(cn.output_port_count, StringLaneBuffer(graph_compiler_internal::kDefaultLaneCapacity));
+            cn.c_out_string_lane_outputs.resize(cn.output_port_count);
             for (uint32_t p = 0; p < cn.output_port_count; ++p)
-                cn.out_string_lane_ptr_buf[p].resize(graph_compiler_internal::kMaxLaneCapacity, nullptr);
+                cn.c_out_string_lane_outputs[p] = make_string_lane_output(&cn.out_string_lane_bufs[p]);
 
             std::fprintf(stderr, "[vivid] GraphCompiler: missing operator '%s' (node '%s') — placeholder\n",
                          ndef.type.c_str(), ndef.id.c_str());
@@ -702,6 +709,9 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         cn.frame_execution_strategy = plan.strategy;
         cn.frame_lane_id_port = plan.lane_id_port;
     }
+
+    // Pass 4e: GPU lane promotion analysis (Phase 4).
+    graph_compiler_internal::plan_gpu_lane_promotion(*cg);
 
     // ===================================================================
     // Pass 5: Audio buffer allocation

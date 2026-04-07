@@ -26,8 +26,8 @@ struct MyAudioOp : vivid::OperatorBase, vivid::AudioProcessable {
 | `sample_rate` | `uint32_t` | Sample rate (typically 48000) |
 | `input_channel_counts` | `const uint8_t*` | Per-port channel count (NULL = all mono) |
 | `output_channel_counts` | `const uint8_t*` | Per-port channel count (NULL = all mono) |
-| `input_lanes` | `VividLanePort*` | Cross-cadence lane inputs from control |
-| `output_lanes` | `VividLanePort*` | Lane outputs |
+| `input_lanes` | `const VividLaneView*` | Cross-cadence lane inputs from control (`.data`, `.length`, `.lane_set_id`, `.flags`) |
+| `output_lanes` | `VividLaneOutput*` | Lane outputs (runtime-owned builder: `.handle`, `.resize()`, `.commit()`) |
 | `custom_inputs` | `void**` | Custom-port inputs (`CUSTOM_VALUE` / `CUSTOM_REF`) |
 | `input_string_values` | `const char**` | String inputs |
 | `file_param_values` | `const char**` | File/text param values |

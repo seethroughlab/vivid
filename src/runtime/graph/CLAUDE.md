@@ -21,7 +21,7 @@ This directory contains the graph compiler and both execution engines. It transf
 | `lane_state.h` | `LaneStateService` — identity-keyed per-lane persistent state storage |
 | `lane_types.h` | Lane set types, provenance, execution strategy enums |
 | `cadence_types.h` | `Cadence` enum (Frame, Audio) and `BridgeKind` |
-| `snapshot_types.h` | `ParamSnapshot`, `AnalysisSnapshot`, `LaneSnapshot` — cross-cadence data structs |
+| `snapshot_types.h` | `ParamSnapshot`, `AnalysisSnapshot`, `BridgeLaneSlot` — cross-cadence data structs |
 | `graph_snapshot_builder.h/cpp` | Builds the read-only `GraphSnapshot` consumed by the UI |
 | `subgraph_module.h/cpp` | Subgraph expansion and module instance management |
 | `port_type_registry.cpp` | Runtime custom port type registration |
@@ -56,7 +56,7 @@ Topology changes always trigger a full recompile. The `CompiledGraph` is never m
 
 `AudioExecutor` runs on the real-time audio thread. `build()` pre-computes lane lift groups — sets of `InstancePerLane` operators that need per-lane cloned instances for multi-lane audio processing. The audio callback walks `audio_order`, processes each node (or each lane instance for lifted nodes), and writes to the output device buffer. Real-time constraints apply: no allocation, no locking, no blocking.
 
-Cross-cadence data flows through `AudioFrameBridge`: frame→audio via `ParamSnapshot` (atomic index swap), audio→frame via `AnalysisSnapshot`. `LaneSnapshot` carries lane data in both directions using fixed-size 64-element structs to avoid audio-thread heap allocation.
+Cross-cadence data flows through `AudioFrameBridge`: frame→audio via `ParamSnapshot` (atomic index swap), audio→frame via `AnalysisSnapshot`. `BridgeLaneSlot` carries lane data in both directions using pre-allocated flat buffers (default capacity `kDefaultLaneCapacity` = 1024, growable up to `max_lane_elements`) wired during graph build. The audio callback reads bridge lane data directly (zero-copy, no heap allocation).
 
 ### Lane State
 

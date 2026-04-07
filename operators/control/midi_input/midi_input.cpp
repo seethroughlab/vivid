@@ -305,29 +305,39 @@ struct MidiInput : vivid::OperatorBase, vivid::FrameProcessable {
             auto& expressions_lane = ctx->output_lanes[17];
             auto& channels_lane    = ctx->output_lanes[18];
 
-            if (notes_lane.capacity >= len && lane_ids_lane.capacity >= len) {
-                notes_lane.length       = len;
-                velocity_lane.length    = len;
-                gates_lane.length       = len;
-                lane_ids_lane.length    = len;
-                pitch_bends_lane.length = len;
-                pressures_lane.length   = len;
-                slides_lane.length      = len;
-                expressions_lane.length = len;
-                channels_lane.length    = len;
+            float* notes_buf       = notes_lane.resize(notes_lane.handle, len);
+            float* vel_buf         = velocity_lane.resize(velocity_lane.handle, len);
+            float* gates_buf       = gates_lane.resize(gates_lane.handle, len);
+            float* lane_ids_buf    = lane_ids_lane.resize(lane_ids_lane.handle, len);
+            float* bends_buf       = pitch_bends_lane.resize(pitch_bends_lane.handle, len);
+            float* press_buf       = pressures_lane.resize(pressures_lane.handle, len);
+            float* slides_buf      = slides_lane.resize(slides_lane.handle, len);
+            float* expr_buf        = expressions_lane.resize(expressions_lane.handle, len);
+            float* chan_buf         = channels_lane.resize(channels_lane.handle, len);
 
+            if (notes_buf && vel_buf && gates_buf && lane_ids_buf &&
+                bends_buf && press_buf && slides_buf && expr_buf && chan_buf) {
                 for (uint32_t i = 0; i < len; ++i) {
                     const auto& h = held_buffer_[i];
-                    notes_lane.data[i]       = static_cast<float>(h.note);
-                    velocity_lane.data[i]    = h.velocity;
-                    gates_lane.data[i]       = 1.0f;
-                    lane_ids_lane.data[i]    = static_cast<float>(h.lane_id);
-                    pitch_bends_lane.data[i] = h.pitch_bend;
-                    pressures_lane.data[i]   = h.pressure;
-                    slides_lane.data[i]      = h.slide;
-                    expressions_lane.data[i] = h.expression;
-                    channels_lane.data[i]    = static_cast<float>(h.channel);
+                    notes_buf[i]    = static_cast<float>(h.note);
+                    vel_buf[i]      = h.velocity;
+                    gates_buf[i]    = 1.0f;
+                    lane_ids_buf[i] = static_cast<float>(h.lane_id);
+                    bends_buf[i]    = h.pitch_bend;
+                    press_buf[i]    = h.pressure;
+                    slides_buf[i]   = h.slide;
+                    expr_buf[i]     = h.expression;
+                    chan_buf[i]     = static_cast<float>(h.channel);
                 }
+                notes_lane.commit(notes_lane.handle, len);
+                velocity_lane.commit(velocity_lane.handle, len);
+                gates_lane.commit(gates_lane.handle, len);
+                lane_ids_lane.commit(lane_ids_lane.handle, len);
+                pitch_bends_lane.commit(pitch_bends_lane.handle, len);
+                pressures_lane.commit(pressures_lane.handle, len);
+                slides_lane.commit(slides_lane.handle, len);
+                expressions_lane.commit(expressions_lane.handle, len);
+                channels_lane.commit(channels_lane.handle, len);
             }
         }
     }

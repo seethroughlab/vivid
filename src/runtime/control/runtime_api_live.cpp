@@ -605,11 +605,12 @@ CommandResult RuntimeAPI::inspect(const std::string& node_id) {
         oss << " " << name << "=" << cn->output_values[idx];
         if (idx < cn->output_string_values.size() && !cn->output_string_values[idx].empty())
             oss << " \"" << cn->output_string_values[idx] << "\"";
-        if (idx < cn->output_lanes.size() && !cn->output_lanes[idx].empty()) {
+        if (idx < cn->output_lane_refs.size() && cn->output_lane_refs[idx]) {
+            const auto& ref = cn->output_lane_refs[idx];
             oss << " [";
-            for (size_t si = 0; si < cn->output_lanes[idx].size(); ++si) {
+            for (uint32_t si = 0; si < ref.length(); ++si) {
                 if (si > 0) oss << ",";
-                oss << cn->output_lanes[idx][si];
+                oss << ref.data()[si];
             }
             oss << "]";
         }
@@ -628,11 +629,12 @@ CommandResult RuntimeAPI::inspect(const std::string& node_id) {
             oss << " " << name << "=" << cn->input_values[idx];
             if (idx < cn->input_string_values.size() && !cn->input_string_values[idx].empty())
                 oss << " \"" << cn->input_string_values[idx] << "\"";
-            if (idx < cn->input_lanes.size() && !cn->input_lanes[idx].empty()) {
+            if (idx < cn->input_lane_refs.size() && cn->input_lane_refs[idx]) {
+                const auto& ref = cn->input_lane_refs[idx];
                 oss << " [";
-                for (size_t si = 0; si < cn->input_lanes[idx].size(); ++si) {
+                for (uint32_t si = 0; si < ref.length(); ++si) {
                     if (si > 0) oss << ",";
-                    oss << cn->input_lanes[idx][si];
+                    oss << ref.data()[si];
                 }
                 oss << "]";
             }

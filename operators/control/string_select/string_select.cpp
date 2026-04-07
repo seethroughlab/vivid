@@ -43,7 +43,7 @@ struct StringSelect : vivid::OperatorBase, vivid::FrameProcessable {
         int resolved = -1;
         bool valid = false;
 
-        const VividStringLanePort* in_lanes =
+        const VividStringLaneView* in_lanes =
             ctx->input_string_lanes ? &ctx->input_string_lanes[0] : nullptr;
         const uint32_t n = (in_lanes && in_lanes->data) ? in_lanes->length : 0;
         if (n > 0) {

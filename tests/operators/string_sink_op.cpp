@@ -1,6 +1,5 @@
 #include "operator_api/operator.h"
 
-#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -40,11 +39,13 @@ struct StringSinkOp : vivid::OperatorBase, vivid::FrameProcessable {
         for (const auto& s : last_lanes_) out_lane_ptrs_.push_back(s.c_str());
 
         if (ctx->output_string_values) ctx->output_string_values[0] = last_.c_str();
-        if (ctx->output_string_lanes && ctx->output_string_lanes[1].data) {
+        if (ctx->output_string_lanes) {
             auto& out = ctx->output_string_lanes[1];
-            uint32_t n = std::min<uint32_t>(out.capacity, static_cast<uint32_t>(out_lane_ptrs_.size()));
-            out.length = n;
-            for (uint32_t i = 0; i < n; ++i) out.data[i] = out_lane_ptrs_[i];
+            uint32_t n = static_cast<uint32_t>(out_lane_ptrs_.size());
+            if (out.resize(out.handle, n)) {
+                for (uint32_t i = 0; i < n; ++i) out.set(out.handle, i, out_lane_ptrs_[i]);
+                out.commit(out.handle, n);
+            }
         }
         if (ctx->output_values) {
             ctx->output_values[2] = last_.empty() ? 0.0f : 1.0f;

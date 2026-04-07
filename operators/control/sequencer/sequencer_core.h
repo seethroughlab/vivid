@@ -78,7 +78,7 @@ struct SequencerCore : vivid::OperatorBase {
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
     }
 
-    void compute(float phase, float reset_in, VividLanePort* in_spreads,
+    void compute(float phase, float reset_in, const VividLaneView* in_spreads,
                  float* output_values, void** custom_outputs, uint32_t custom_output_count) {
         bool reset = reset_in > 0.5f;
 

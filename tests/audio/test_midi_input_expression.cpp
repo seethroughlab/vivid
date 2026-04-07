@@ -7,6 +7,8 @@
 #include "operator_api/operator.h"
 #include "operator_api/midi_types.h"
 #include "operator_api/type_id.h"
+#include "runtime/graph/lane_buffer.h"
+#include "runtime/graph/lane_output_adapter.h"
 #include "RtMidi.h"
 #include <algorithm>
 #include <cmath>
@@ -28,11 +30,24 @@ static constexpr int kNumOutputScalars = 19;  // ports [0..18], scalars at [0-6,
 static constexpr int kNumLanePorts     = 19;  // lane port array sized to match output_lanes indexing
 static constexpr int kMaxLanes         = 16;
 
+struct TestLanePort {
+    vivid::LaneBuffer buf{kMaxLanes};
+    VividLaneOutput output{};
+
+    TestLanePort() {
+        output = vivid::make_lane_output(&buf);
+    }
+
+    // Convenience accessors for test assertions
+    uint32_t length() const { return buf.committed_length; }
+    const float* data() const { return buf.data.data(); }
+};
+
 struct TestFrameContext {
     float param_values[8]  = {};   // enough for 5 params + margin
     float output_values[kNumOutputScalars] = {};
-    VividLanePort output_lanes[kNumLanePorts] = {};
-    float lane_data[kNumLanePorts][kMaxLanes] = {};
+    TestLanePort lane_ports[kNumLanePorts];
+    VividLaneOutput output_lanes[kNumLanePorts] = {};
     void* custom_outputs[1] = {};
 
     VividFrameContext ctx = {};
@@ -40,25 +55,20 @@ struct TestFrameContext {
     TestFrameContext() {
         ctx.param_values     = param_values;
         ctx.output_values    = output_values;
+        for (int i = 0; i < kNumLanePorts; ++i)
+            output_lanes[i] = lane_ports[i].output;
         ctx.output_lanes     = output_lanes;
         ctx.custom_outputs   = custom_outputs;
         ctx.custom_output_count = 1;
         ctx.time        = 0.0;
         ctx.delta_time  = 1.0 / 60.0;
         ctx.frame       = 0;
-
-        // Set up lane port capacities
-        for (int i = 0; i < kNumLanePorts; ++i) {
-            output_lanes[i].data     = lane_data[i];
-            output_lanes[i].length   = 0;
-            output_lanes[i].capacity = kMaxLanes;
-        }
     }
 
     void reset_outputs() {
         std::memset(output_values, 0, sizeof(output_values));
         for (int i = 0; i < kNumLanePorts; ++i)
-            output_lanes[i].length = 0;
+            lane_ports[i].buf.reset();
         custom_outputs[0] = nullptr;
     }
 };
@@ -145,32 +155,32 @@ static void test_poly_shared_regression() {
     check_float(tc.output_values[3], 1.0f, "trigger = 1 (note-on this frame)");
 
     // Check lane arrays
-    check(tc.output_lanes[7].length == 1, "notes lane len = 1");
-    check_float(tc.output_lanes[7].data[0], 60.0f, "notes[0] = 60");
-    check_float(tc.output_lanes[8].data[0], 100.0f / 127.0f, "velocities[0] = 100/127");
-    check_float(tc.output_lanes[9].data[0], 1.0f, "gates[0] = 1");
+    check(tc.lane_ports[7].length() == 1, "notes lane len = 1");
+    check_float(tc.lane_ports[7].data()[0], 60.0f, "notes[0] = 60");
+    check_float(tc.lane_ports[8].data()[0], 100.0f / 127.0f, "velocities[0] = 100/127");
+    check_float(tc.lane_ports[9].data()[0], 1.0f, "gates[0] = 1");
 
     // Second note
     tc.reset_outputs();
     op.inject_events({note_on(1, 64, 80)});
     run_frame(op, tc);
-    check(tc.output_lanes[7].length == 2, "notes lane len = 2 after second note");
-    check_float(tc.output_lanes[7].data[0], 60.0f, "notes[0] still 60");
-    check_float(tc.output_lanes[7].data[1], 64.0f, "notes[1] = 64");
+    check(tc.lane_ports[7].length() == 2, "notes lane len = 2 after second note");
+    check_float(tc.lane_ports[7].data()[0], 60.0f, "notes[0] still 60");
+    check_float(tc.lane_ports[7].data()[1], 64.0f, "notes[1] = 64");
 
     // Note off first note
     tc.reset_outputs();
     op.inject_events({note_off(1, 60)});
     run_frame(op, tc);
-    check(tc.output_lanes[7].length == 1, "notes lane len = 1 after note-off");
-    check_float(tc.output_lanes[7].data[0], 64.0f, "remaining note = 64");
+    check(tc.lane_ports[7].length() == 1, "notes lane len = 1 after note-off");
+    check_float(tc.lane_ports[7].data()[0], 64.0f, "remaining note = 64");
     check_float(tc.output_values[2], 1.0f, "gate still 1 (one note held)");
 
     // Note off second
     tc.reset_outputs();
     op.inject_events({note_off(1, 64)});
     run_frame(op, tc);
-    check(tc.output_lanes[7].length == 0, "notes lane len = 0 after all off");
+    check(tc.lane_ports[7].length() == 0, "notes lane len = 0 after all off");
     check_float(tc.output_values[2], 0.0f, "gate = 0 (no notes)");
     check_float(tc.output_values[3], 0.0f, "trigger = 0 (no note-on)");
 }
@@ -203,21 +213,21 @@ static void test_poly_shared_broadcast() {
     float expected_slide = 100.0f / 127.0f;
     float expected_expression = 50.0f / 127.0f;
 
-    check(tc.output_lanes[14].length == 2, "pitch_bends lane len = 2");
-    check_float(tc.output_lanes[14].data[0], expected_bend, "pitch_bends[0] broadcast");
-    check_float(tc.output_lanes[14].data[1], expected_bend, "pitch_bends[1] broadcast");
+    check(tc.lane_ports[14].length() == 2, "pitch_bends lane len = 2");
+    check_float(tc.lane_ports[14].data()[0], expected_bend, "pitch_bends[0] broadcast");
+    check_float(tc.lane_ports[14].data()[1], expected_bend, "pitch_bends[1] broadcast");
 
-    check(tc.output_lanes[15].length == 2, "pressures lane len = 2");
-    check_float(tc.output_lanes[15].data[0], expected_pressure, "pressures[0] broadcast");
-    check_float(tc.output_lanes[15].data[1], expected_pressure, "pressures[1] broadcast");
+    check(tc.lane_ports[15].length() == 2, "pressures lane len = 2");
+    check_float(tc.lane_ports[15].data()[0], expected_pressure, "pressures[0] broadcast");
+    check_float(tc.lane_ports[15].data()[1], expected_pressure, "pressures[1] broadcast");
 
-    check(tc.output_lanes[16].length == 2, "slides lane len = 2");
-    check_float(tc.output_lanes[16].data[0], expected_slide, "slides[0] broadcast");
-    check_float(tc.output_lanes[16].data[1], expected_slide, "slides[1] broadcast");
+    check(tc.lane_ports[16].length() == 2, "slides lane len = 2");
+    check_float(tc.lane_ports[16].data()[0], expected_slide, "slides[0] broadcast");
+    check_float(tc.lane_ports[16].data()[1], expected_slide, "slides[1] broadcast");
 
-    check(tc.output_lanes[17].length == 2, "expressions lane len = 2");
-    check_float(tc.output_lanes[17].data[0], expected_expression, "expressions[0] broadcast");
-    check_float(tc.output_lanes[17].data[1], expected_expression, "expressions[1] broadcast");
+    check(tc.lane_ports[17].length() == 2, "expressions lane len = 2");
+    check_float(tc.lane_ports[17].data()[0], expected_expression, "expressions[0] broadcast");
+    check_float(tc.lane_ports[17].data()[1], expected_expression, "expressions[1] broadcast");
 
     // Scalar outputs
     check_float(tc.output_values[4], expected_bend, "scalar pitch_bend");
@@ -237,7 +247,7 @@ static void test_mpe_lower_per_note() {
     // Notes on member channels 2 and 3
     op.inject_events({note_on(2, 60, 100), note_on(3, 67, 90)});
     run_frame(op, tc);
-    check(tc.output_lanes[7].length == 2, "2 held notes");
+    check(tc.lane_ports[7].length() == 2, "2 held notes");
 
     tc.reset_outputs();
     // Per-channel expression: bend ch2, pressure ch3
@@ -251,19 +261,19 @@ static void test_mpe_lower_per_note() {
     });
     run_frame(op, tc);
 
-    check(tc.output_lanes[14].length == 2, "pitch_bends len=2");
-    check_float(tc.output_lanes[14].data[0], 4096.0f / 8192.0f, "ch2 bend = +0.5");
-    check_float(tc.output_lanes[14].data[1], -2048.0f / 8192.0f, "ch3 bend = -0.25");
+    check(tc.lane_ports[14].length() == 2, "pitch_bends len=2");
+    check_float(tc.lane_ports[14].data()[0], 4096.0f / 8192.0f, "ch2 bend = +0.5");
+    check_float(tc.lane_ports[14].data()[1], -2048.0f / 8192.0f, "ch3 bend = -0.25");
 
-    check_float(tc.output_lanes[15].data[0], 1.0f, "ch2 pressure = 1.0");
-    check_float(tc.output_lanes[15].data[1], 0.0f, "ch3 pressure = 0.0");
+    check_float(tc.lane_ports[15].data()[0], 1.0f, "ch2 pressure = 1.0");
+    check_float(tc.lane_ports[15].data()[1], 0.0f, "ch3 pressure = 0.0");
 
-    check_float(tc.output_lanes[16].data[0], 100.0f / 127.0f, "ch2 slide");
-    check_float(tc.output_lanes[16].data[1], 50.0f / 127.0f, "ch3 slide");
+    check_float(tc.lane_ports[16].data()[0], 100.0f / 127.0f, "ch2 slide");
+    check_float(tc.lane_ports[16].data()[1], 50.0f / 127.0f, "ch3 slide");
 
     // Channels lane
-    check_float(tc.output_lanes[18].data[0], 2.0f, "channels[0] = 2");
-    check_float(tc.output_lanes[18].data[1], 3.0f, "channels[1] = 3");
+    check_float(tc.lane_ports[18].data()[0], 2.0f, "channels[0] = 2");
+    check_float(tc.lane_ports[18].data()[1], 3.0f, "channels[1] = 3");
 }
 
 // ---------------------------------------------------------------------------
@@ -278,7 +288,7 @@ static void test_mpe_upper_per_note() {
     // Notes on member channels 15 and 14
     op.inject_events({note_on(15, 60, 100), note_on(14, 67, 90)});
     run_frame(op, tc);
-    check(tc.output_lanes[7].length == 2, "2 held notes");
+    check(tc.lane_ports[7].length() == 2, "2 held notes");
 
     tc.reset_outputs();
     op.inject_events({
@@ -287,8 +297,8 @@ static void test_mpe_upper_per_note() {
     });
     run_frame(op, tc);
 
-    check_float(tc.output_lanes[14].data[0], 2048.0f / 8192.0f, "ch15 bend = +0.25");
-    check_float(tc.output_lanes[14].data[1], 0.0f, "ch14 bend = 0");
+    check_float(tc.lane_ports[14].data()[0], 2048.0f / 8192.0f, "ch15 bend = +0.25");
+    check_float(tc.lane_ports[14].data()[1], 0.0f, "ch14 bend = 0");
 }
 
 // ---------------------------------------------------------------------------
@@ -303,19 +313,19 @@ static void test_duplicate_pitch_mpe() {
     // Same note 60 on two different member channels
     op.inject_events({note_on(2, 60, 100), note_on(3, 60, 80)});
     run_frame(op, tc);
-    check(tc.output_lanes[7].length == 2, "2 held notes (same pitch, different channels)");
-    check_float(tc.output_lanes[7].data[0], 60.0f, "notes[0] = 60");
-    check_float(tc.output_lanes[7].data[1], 60.0f, "notes[1] = 60");
-    check_float(tc.output_lanes[8].data[0], 100.0f / 127.0f, "vel[0] from ch2");
-    check_float(tc.output_lanes[8].data[1], 80.0f / 127.0f, "vel[1] from ch3");
+    check(tc.lane_ports[7].length() == 2, "2 held notes (same pitch, different channels)");
+    check_float(tc.lane_ports[7].data()[0], 60.0f, "notes[0] = 60");
+    check_float(tc.lane_ports[7].data()[1], 60.0f, "notes[1] = 60");
+    check_float(tc.lane_ports[8].data()[0], 100.0f / 127.0f, "vel[0] from ch2");
+    check_float(tc.lane_ports[8].data()[1], 80.0f / 127.0f, "vel[1] from ch3");
 
     // Note-off ch2 only removes the ch2 entry
     tc.reset_outputs();
     op.inject_events({note_off(2, 60)});
     run_frame(op, tc);
-    check(tc.output_lanes[7].length == 1, "1 held note after ch2 off");
-    check_float(tc.output_lanes[8].data[0], 80.0f / 127.0f, "remaining vel from ch3");
-    check_float(tc.output_lanes[18].data[0], 3.0f, "remaining channel = 3");
+    check(tc.lane_ports[7].length() == 1, "1 held note after ch2 off");
+    check_float(tc.lane_ports[8].data()[0], 80.0f / 127.0f, "remaining vel from ch3");
+    check_float(tc.lane_ports[18].data()[0], 3.0f, "remaining channel = 3");
 }
 
 // ---------------------------------------------------------------------------
@@ -330,27 +340,27 @@ static void test_lane_id_stability() {
     // Add 3 notes
     op.inject_events({note_on(1, 60, 100), note_on(1, 64, 90), note_on(1, 67, 80)});
     run_frame(op, tc);
-    check(tc.output_lanes[13].length == 3, "3 lane_ids");
+    check(tc.lane_ports[13].length() == 3, "3 lane_ids");
 
-    float id0 = tc.output_lanes[13].data[0];
-    float id1 = tc.output_lanes[13].data[1];
-    float id2 = tc.output_lanes[13].data[2];
+    float id0 = tc.lane_ports[13].data()[0];
+    float id1 = tc.lane_ports[13].data()[1];
+    float id2 = tc.lane_ports[13].data()[2];
     check(id0 != id1 && id1 != id2 && id0 != id2, "all lane_ids unique");
 
     // Remove middle note (64) — remaining IDs should be unchanged
     tc.reset_outputs();
     op.inject_events({note_off(1, 64)});
     run_frame(op, tc);
-    check(tc.output_lanes[13].length == 2, "2 lane_ids after removal");
-    check_float(tc.output_lanes[13].data[0], id0, "first lane_id preserved");
-    check_float(tc.output_lanes[13].data[1], id2, "third lane_id (now second) preserved");
+    check(tc.lane_ports[13].length() == 2, "2 lane_ids after removal");
+    check_float(tc.lane_ports[13].data()[0], id0, "first lane_id preserved");
+    check_float(tc.lane_ports[13].data()[1], id2, "third lane_id (now second) preserved");
 
     // Add new note — gets a new unique ID
     tc.reset_outputs();
     op.inject_events({note_on(1, 72, 70)});
     run_frame(op, tc);
-    check(tc.output_lanes[13].length == 3, "3 lane_ids again");
-    float new_id = tc.output_lanes[13].data[2];
+    check(tc.lane_ports[13].length() == 3, "3 lane_ids again");
+    float new_id = tc.lane_ports[13].data()[2];
     check(new_id != id0 && new_id != id1 && new_id != id2, "new note gets fresh lane_id");
 }
 

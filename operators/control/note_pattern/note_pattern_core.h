@@ -132,7 +132,7 @@ struct NotePatternCore : vivid::OperatorBase {
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
     }
 
-    void compute(float beat_phase, const float* params, VividLanePort* out_spreads,
+    void compute(float beat_phase, const float* params, VividLaneOutput* out_spreads,
                  float* output_values, void** custom_outputs, uint32_t custom_output_count) {
         int num_steps = steps.int_value();
         int oct = octave.int_value();
@@ -175,15 +175,18 @@ struct NotePatternCore : vivid::OperatorBase {
             auto& gates_sp = out_spreads[2];
 
             uint32_t len = static_cast<uint32_t>(chord_size);
-            if (notes_sp.capacity >= len) {
-                notes_sp.length = len;
-                vel_sp.length   = len;
-                gates_sp.length = len;
+            float* notes_buf = notes_sp.resize(notes_sp.handle, len);
+            float* vel_buf   = vel_sp.resize(vel_sp.handle, len);
+            float* gates_buf = gates_sp.resize(gates_sp.handle, len);
+            if (notes_buf && vel_buf && gates_buf) {
                 for (uint32_t i = 0; i < len; ++i) {
-                    notes_sp.data[i] = static_cast<float>(root + oct * 12 + intervals[i]);
-                    vel_sp.data[i]   = vel;
-                    gates_sp.data[i] = gate_val;
+                    notes_buf[i] = static_cast<float>(root + oct * 12 + intervals[i]);
+                    vel_buf[i]   = vel;
+                    gates_buf[i] = gate_val;
                 }
+                notes_sp.commit(notes_sp.handle, len);
+                vel_sp.commit(vel_sp.handle, len);
+                gates_sp.commit(gates_sp.handle, len);
             }
         }
 

@@ -44,7 +44,7 @@ void TrackerCore::collect_ports(std::vector<VividPortDescriptor>& out) {
 }
 
 void TrackerCore::compute(const float* input_values, const float* params,
-                          VividLanePort* out_spreads, float* output_values,
+                          VividLaneOutput* out_spreads, float* output_values,
                           void** custom_outputs, uint32_t custom_output_count) {
     float beat_phase = input_values[0];
     bool reset_signal = input_values[1] > 0.5f;
@@ -97,16 +97,20 @@ void TrackerCore::compute(const float* input_values, const float* params,
         auto& vels_sp  = out_spreads[1];
         auto& gates_sp = out_spreads[2];
 
-        if (notes_sp.capacity >= tracker::MAX_CHANNELS) {
-            notes_sp.length = tracker::MAX_CHANNELS;
-            vels_sp.length = tracker::MAX_CHANNELS;
-            gates_sp.length = tracker::MAX_CHANNELS;
+        uint32_t len = tracker::MAX_CHANNELS;
+        float* notes_buf = notes_sp.resize(notes_sp.handle, len);
+        float* vels_buf  = vels_sp.resize(vels_sp.handle, len);
+        float* gates_buf = gates_sp.resize(gates_sp.handle, len);
+        if (notes_buf && vels_buf && gates_buf) {
             for (int ch = 0; ch < tracker::MAX_CHANNELS; ++ch) {
                 bool muted = (mute >> ch) & 1;
-                notes_sp.data[ch] = channels_[ch].current_pitch;
-                vels_sp.data[ch] = muted ? 0.0f : static_cast<float>(channels_[ch].current_velocity) / 127.0f;
-                gates_sp.data[ch] = (channels_[ch].gate_active && !muted) ? 1.0f : 0.0f;
+                notes_buf[ch] = channels_[ch].current_pitch;
+                vels_buf[ch] = muted ? 0.0f : static_cast<float>(channels_[ch].current_velocity) / 127.0f;
+                gates_buf[ch] = (channels_[ch].gate_active && !muted) ? 1.0f : 0.0f;
             }
+            notes_sp.commit(notes_sp.handle, len);
+            vels_sp.commit(vels_sp.handle, len);
+            gates_sp.commit(gates_sp.handle, len);
         }
     }
 

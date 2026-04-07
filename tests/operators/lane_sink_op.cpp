@@ -18,13 +18,15 @@ struct LaneSinkOp : vivid::OperatorBase, vivid::FrameProcessable {
 
         // Copy input lane array to output lane array
         if (ctx->input_lanes && ctx->output_lanes) {
-            auto& isp = ctx->input_lanes[0];
+            const auto& isp = ctx->input_lanes[0];
             auto& osp = ctx->output_lanes[0];
             uint32_t len = isp.length;
-            if (len > osp.capacity) len = osp.capacity;
-            osp.length = len;
-            for (uint32_t i = 0; i < len; ++i)
-                osp.data[i] = isp.data[i];
+            float* buf = osp.resize(osp.handle, len);
+            if (buf) {
+                for (uint32_t i = 0; i < len; ++i)
+                    buf[i] = isp.data[i];
+                osp.commit(osp.handle, len);
+            }
         }
     }
 };

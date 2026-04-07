@@ -24,6 +24,29 @@
 namespace fs = std::filesystem;
 
 // ============================================================================
+// Lane stub helpers for new VividLaneView / VividLaneOutput API
+// ============================================================================
+
+// No-op output builder: discards all lane writes (tests don't inspect lane output).
+static float* noop_lane_resize(void* /*handle*/, uint32_t length) {
+    static thread_local std::vector<float> scratch;
+    if (length > scratch.size()) scratch.resize(length, 0.0f);
+    return scratch.data();
+}
+static void noop_lane_commit(void* /*handle*/, uint32_t /*length*/) {}
+
+static std::vector<VividLaneView> make_stub_input_lane_views(uint32_t count) {
+    return std::vector<VividLaneView>(count, VividLaneView{});
+}
+static std::vector<VividLaneOutput> make_stub_output_lane_outputs(uint32_t count) {
+    VividLaneOutput stub{};
+    stub.handle = nullptr;
+    stub.resize = noop_lane_resize;
+    stub.commit = noop_lane_commit;
+    return std::vector<VividLaneOutput>(count, stub);
+}
+
+// ============================================================================
 // Counters
 // ============================================================================
 
@@ -257,9 +280,9 @@ static bool smoke_control(vivid::OperatorLoader& loader, void* inst,
     std::vector<float> inputs(n_in_total, 0.0f);
     std::vector<float> outputs(n_out_total, 0.0f);
 
-    // Allocate empty lane ports so operators that read them don't crash.
-    std::vector<VividLanePort> input_lanes(n_lane_in, {nullptr, 0, 0});
-    std::vector<VividLanePort> output_lanes(n_lane_out, {nullptr, 0, 0});
+    // Allocate empty lane views/outputs so operators that read them don't crash.
+    auto input_lanes = make_stub_input_lane_views(n_lane_in);
+    auto output_lanes = make_stub_output_lane_outputs(n_lane_out);
 
     VividFrameContext ctx{};
     ctx.time       = 0.0;
@@ -336,8 +359,8 @@ static bool smoke_audio(vivid::OperatorLoader& loader, void* inst,
     std::vector<float*> in_ptrs, out_ptrs;
     for (auto& b : in_bufs)  in_ptrs.push_back(b.data());
     for (auto& b : out_bufs) out_ptrs.push_back(b.data());
-    std::vector<VividLanePort> input_lanes(n_in_total, {nullptr, 0, 0});
-    std::vector<VividLanePort> output_lanes(n_out_total, {nullptr, 0, 0});
+    auto input_lanes = make_stub_input_lane_views(n_in_total);
+    auto output_lanes = make_stub_output_lane_outputs(n_out_total);
 
     // Build per-port channel count arrays so multi-channel operators
     // can read input_channel_counts / output_channel_counts safely.
@@ -495,7 +518,8 @@ static bool test_param_boundary(vivid::OperatorLoader& loader, void* inst,
                 }
             }
             std::vector<float> ins(ni, 0.0f), outs(no, 0.0f);
-            std::vector<VividLanePort> si(nsi, {nullptr, 0, 0}), so(nso, {nullptr, 0, 0});
+            auto si = make_stub_input_lane_views(nsi);
+            auto so = make_stub_output_lane_outputs(nso);
             VividFrameContext ctx{};
             ctx.time = 0.0; ctx.delta_time = 0.016; ctx.frame = 0;
             ctx.param_values   = params.empty() ? nullptr : params.data();
@@ -539,8 +563,8 @@ static bool test_param_boundary(vivid::OperatorLoader& loader, void* inst,
             std::vector<float*> ip, op;
             for (auto& b : ibs) ip.push_back(b.data());
             for (auto& b : obs) op.push_back(b.data());
-            std::vector<VividLanePort> in_lanes(ni, {nullptr, 0, 0});
-            std::vector<VividLanePort> out_lanes(no, {nullptr, 0, 0});
+            auto in_lanes = make_stub_input_lane_views(ni);
+            auto out_lanes = make_stub_output_lane_outputs(no);
             SweepLaneStateStore lane_state;
             VividAudioContext ctx{};
             ctx.sample_rate         = 44100;

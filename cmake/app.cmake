@@ -69,6 +69,7 @@ add_executable(vivid
     src/runtime/graph/graph_compiler_init.cpp
     src/runtime/graph/graph_compiler_planning.cpp
     src/runtime/graph/graph_compiler_reload.cpp
+    src/runtime/graph/lane_buffer_gpu.cpp
     src/runtime/audio/audio_frame_bridge.cpp
     src/runtime/graph/frame_executor.cpp
     src/runtime/audio/audio_engine.cpp

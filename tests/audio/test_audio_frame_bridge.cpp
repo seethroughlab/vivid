@@ -41,6 +41,8 @@ static vivid::CompiledGraph make_audio_graph(const std::vector<AudioNodeSpec>& s
         cn.output_port_types.assign(s.output_port_count, VIVID_PORT_AUDIO_BUFFER);
         cn.input_lanes.resize(s.input_port_count);
         cn.output_lanes.resize(s.output_port_count);
+        cn.input_lane_refs.resize(s.input_port_count);
+        cn.output_lane_refs.resize(s.output_port_count);
 
         cn.audio = std::make_unique<vivid::AudioNodeState>();
         auto& a = *cn.audio;
@@ -475,8 +477,12 @@ static void test_push_lane_preserves_lane_set_id() {
     cg.nodes[0].active_cadence = vivid::Cadence::Frame;
     cg.audio_order = {1};
 
-    // gen outputs a lane array
+    // gen outputs a lane array — populate both old field and canonical ref
     cg.nodes[0].output_lanes[0] = {1.0f, 2.0f, 3.0f};
+    static vivid::LaneBuffer test_lane_buf(1024);
+    test_lane_buf.data[0] = 1.0f; test_lane_buf.data[1] = 2.0f; test_lane_buf.data[2] = 3.0f;
+    test_lane_buf.committed_length = 3;
+    cg.nodes[0].output_lane_refs[0] = vivid::LaneBufferRef(&test_lane_buf);
 
     // Snapshot edge with lane_set_id = 42
     vivid::CompiledEdge edge{};

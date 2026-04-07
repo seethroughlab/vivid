@@ -6,6 +6,8 @@
 #include "runtime/operators/operator_loader.h"
 #include "runtime/gpu/gpu_frame_analysis.h"
 #include "runtime/graph/lane_types.h"
+#include "runtime/graph/lane_buffer.h"
+#include "runtime/graph/lane_output_adapter.h"
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -206,6 +208,11 @@ struct GpuNodeState {
 
     // Per-node frame analysis (lazily initialized on first GPU tick).
     std::unique_ptr<GpuFrameAnalysis> frame_analysis;
+
+    // GPU lane promotion (Phase 4).
+    std::vector<bool> lane_input_gpu_promoted;        // [input_port] true if promoted
+    std::vector<WGPUBuffer> resolved_lane_gpu_bufs;   // scratch, populated per frame
+    std::vector<uint32_t> resolved_lane_gpu_lengths;   // scratch, populated per frame
 };
 
 // ---------------------------------------------------------------------------
@@ -252,19 +259,27 @@ struct CompiledNode {
     std::vector<const char*> c_output_string_values;
 
     // ── Spread state ────────────────────────────────────────────────────────
+    // Canonical lane transport (LaneBufferRef-based, zero-copy).
+    std::vector<LaneBufferRef> input_lane_refs;
+    std::vector<LaneBufferRef> output_lane_refs;
+
+    // Bridge injection scratch — used by pull_from_audio for analysis/waveform
+    // data injected from audio→frame. NOT the canonical lane values.
     std::vector<std::vector<float>> input_lanes;
     std::vector<std::vector<float>> output_lanes;
+
+    // String lanes remain vector-based (not yet ref-based).
     std::vector<std::vector<std::string>> input_string_lanes;
     std::vector<std::vector<std::string>> output_string_lanes;
 
-    // Pre-allocated staging buffers for VividFrameContext.
-    std::vector<VividLanePort> c_in_lanes;
-    std::vector<VividLanePort> c_out_lanes;
-    std::vector<std::vector<float>> out_lane_buf;
-    std::vector<VividStringLanePort> c_in_string_lanes;
-    std::vector<VividStringLanePort> c_out_string_lanes;
-    std::vector<std::vector<const char*>> in_string_lane_ptrs;
-    std::vector<std::vector<const char*>> out_string_lane_ptr_buf;
+    // Pre-allocated staging for lane views and output builders.
+    std::vector<VividLaneView> c_in_lane_views;
+    std::vector<VividLaneOutput> c_out_lane_outputs;
+    std::vector<LaneBuffer> out_lane_bufs;
+    std::vector<VividStringLaneView> c_in_string_lane_views;
+    std::vector<VividStringLaneOutput> c_out_string_lane_outputs;
+    std::vector<StringLaneBuffer> out_string_lane_bufs;
+    std::vector<std::vector<const char*>> in_string_lane_ptrs; // c_str() staging for input views
 
     // ── Custom ports ────────────────────────────────────────────────────────
     std::vector<uint32_t> custom_input_port_indices;
@@ -332,6 +347,10 @@ struct CompiledNode {
 // ---------------------------------------------------------------------------
 
 struct CompiledGraph {
+    // Maximum lane elements per buffer. Runtime allocation guard — no single
+    // lane buffer may exceed this count. Default 16,777,216 (16M floats = 64MB).
+    uint32_t max_lane_elements = 16'777'216;
+
     // Persisted graph metadata snapshot kept for rebuild/load bookkeeping.
     // Live execution samples metronome state from RuntimeCore instead.
     GraphMetronomeDef metronome;

@@ -22,18 +22,19 @@ struct LaneSmoothOp : vivid::OperatorBase, vivid::FrameProcessable {
 
         // Kernel behavior: read full input lane array, smooth across lanes
         if (ctx->input_lanes && ctx->output_lanes) {
-            auto& isp = ctx->input_lanes[0];
+            const auto& isp = ctx->input_lanes[0];
             auto& osp = ctx->output_lanes[0];
             uint32_t len = isp.length;
-            if (len > osp.capacity) len = osp.capacity;
-            osp.length = len;
-
-            for (uint32_t i = 0; i < len; ++i) {
-                // 3-element moving average: average with neighbors
-                float prev = (i > 0) ? isp.data[i - 1] : isp.data[i];
-                float curr = isp.data[i];
-                float next = (i + 1 < len) ? isp.data[i + 1] : isp.data[i];
-                osp.data[i] = (prev + curr + next) / 3.0f;
+            float* buf = osp.resize(osp.handle, len);
+            if (buf) {
+                for (uint32_t i = 0; i < len; ++i) {
+                    // 3-element moving average: average with neighbors
+                    float prev = (i > 0) ? isp.data[i - 1] : isp.data[i];
+                    float curr = isp.data[i];
+                    float next = (i + 1 < len) ? isp.data[i + 1] : isp.data[i];
+                    buf[i] = (prev + curr + next) / 3.0f;
+                }
+                osp.commit(osp.handle, len);
             }
         }
     }

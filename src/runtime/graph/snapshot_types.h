@@ -14,11 +14,15 @@
 
 namespace vivid {
 
-struct LaneSnapshot {
-    static constexpr uint32_t kMaxLength = 64;
-    float data[kMaxLength] = {};
-    uint32_t length = 0;
-    uint32_t lane_set_id = 0;  // provenance metadata across cadence boundary
+// Pre-allocated bridge lane slot — replaces the old fixed 64-element BridgeLaneSlot.
+// The `data` pointer is wired to a flat buffer owned by AudioFrameBridge during
+// build(). Capacity is set at build time (default kDefaultLaneCapacity = 1024).
+// Frame-thread output builders can grow beyond this; bridge slots are fixed.
+struct BridgeLaneSlot {
+    float* data = nullptr;       // points into pre-allocated bridge storage
+    uint32_t length = 0;         // current valid element count
+    uint32_t capacity = 0;       // pre-allocated max
+    uint32_t lane_set_id = 0;    // provenance metadata across cadence boundary
 };
 
 struct CustomPortSnapshot {
@@ -38,7 +42,7 @@ struct CustomPortSnapshot {
 
 struct ParamSnapshot {
     std::vector<std::vector<float>> node_params;  // [audio_node_idx][param_idx]
-    std::vector<std::vector<LaneSnapshot>> lane_inputs; // [audio_node_idx][input_port_idx]
+    std::vector<std::vector<BridgeLaneSlot>> lane_inputs; // [audio_node_idx][input_port_idx]
     std::vector<std::vector<std::string>> input_string_values; // [audio_node_idx][input_port_idx]
     std::vector<std::vector<CustomPortSnapshot>> custom_inputs; // [audio_node_idx][input_port_idx]
     std::vector<bool> solo_active_set;  // empty = no solo; [audio_node_idx] = active
@@ -49,7 +53,7 @@ struct AnalysisSnapshot {
     std::vector<float> rms;   // [audio_node_idx]
     std::vector<float> peak;  // [audio_node_idx]
     std::vector<std::array<float, kWaveformSamples>> waveform; // [audio_node_idx]
-    std::vector<std::vector<LaneSnapshot>> lane_outputs; // [audio_node_idx][output_port_idx]
+    std::vector<std::vector<BridgeLaneSlot>> lane_outputs; // [audio_node_idx][output_port_idx]
     std::vector<std::vector<float>> scalar_outputs; // [audio_node_idx][output_port_idx]
 
     // Error state propagation (audio thread → main thread)

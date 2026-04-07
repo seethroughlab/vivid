@@ -662,7 +662,7 @@ struct DrumSequencer : vivid::OperatorBase {
     }
 
     void compute(float phase, float reset_in, const float* params,
-                 float* output_values, VividLanePort* /*output_lanes*/,
+                 float* output_values, VividLaneOutput* /*output_lanes*/,
                  void** custom_outputs, uint32_t custom_output_count) {
         namespace layout = vivid_sequencers::drum_layout;
         bool reset = reset_in > 0.5f;

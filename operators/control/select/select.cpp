@@ -38,7 +38,7 @@ struct Select : vivid::OperatorBase, vivid::FrameProcessable {
 
 
 private:
-    void compute(VividLanePort* in_lanes, const float* params,
+    void compute(const VividLaneView* in_lanes, const float* params,
                  float* output_values) {
         if (!output_values) return;
         if (!in_lanes || in_lanes[0].length == 0) {

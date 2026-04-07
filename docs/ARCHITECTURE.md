@@ -56,8 +56,8 @@ Each graph carries an optional metronome (`GraphMetronomeDef`: `enabled`, `bpm`,
 **Decision: Cross-cadence data flows through two bidirectional bridges.** Audio and GPU never communicate directly — everything routes through the frame-rate side. This simplifies the architecture to two boundary mechanisms:
 
 ### Frame ↔ Audio (`AudioFrameBridge`)
-- **Frame → Audio:** `ParamSnapshot` double-buffer with atomic index swap. Lane-bearing data uses `LaneSnapshot` — a fixed-size 64-element struct copied alongside scalar params, avoiding audio-thread heap allocation. Latency: ~5ms at 256 samples / 48kHz.
-- **Audio → Frame:** `AnalysisSnapshot` double-buffer carries RMS, peak, waveform, and per-port `LaneSnapshot` data back to the frame side.
+- **Frame → Audio:** `ParamSnapshot` double-buffer with atomic index swap. Lane-bearing data uses `BridgeLaneSlot` — pre-allocated flat buffers wired during graph build, with capacity up to `kDefaultLaneCapacity` (1024). The audio thread reads lane data directly from the bridge slot (zero-copy). Latency: ~5ms at 256 samples / 48kHz.
+- **Audio → Frame:** `AnalysisSnapshot` double-buffer carries RMS, peak, waveform, and per-port `BridgeLaneSlot` data back to the frame side.
 
 ### CPU ↔ GPU
 - **CPU → GPU:** parameter store updated per frame. GPU operators upload lane data via `wgpuQueueWriteBuffer` into storage buffers. Latency: ~16ms at 60fps.
@@ -67,7 +67,7 @@ Each graph carries an optional metronome (`GraphMetronomeDef`: `enabled`, `bpm`,
 
 ### Bridge Capacity Limits
 
-- `LaneSnapshot::kMaxLength = 64` — lane data crossing the `AudioFrameBridge` is copied into a fixed 64-element struct. Lane arrays exceeding 64 elements are silently truncated at the bridge boundary. This is sufficient for most control-rate lane sets (MIDI polyphony, small FFT bands) but not for high-element-count data like full 512-bin FFTs, which should remain frame-side.
+- `kDefaultLaneCapacity = 1024` — lane data crossing the `AudioFrameBridge` is written into pre-allocated `BridgeLaneSlot` buffers (capacity set at graph build time). Lane arrays exceeding the slot capacity are clamped with a rate-limited diagnostic.
 - `CustomPortSnapshot::kMaxBytes = 256` — custom port types using `VIVID_PORT_TRANSPORT_CUSTOM_VALUE` must fit within 256 bytes when crossing cadence boundaries. Larger payloads should use `VIVID_PORT_TRANSPORT_CUSTOM_REF` (opaque pointer via the shared handle registry).
 - `RecordingTap::kRingSize = 960000` — lock-free mix recording ring buffer holds ~10 seconds at 48 kHz stereo interleaved.
 - `AudioNodeState::error_message[256]` — audio-thread error messages are fixed-size 256-char buffers (no heap allocation). Messages exceeding 255 characters are silently truncated.
@@ -243,7 +243,7 @@ Precedent: vvvv's Spreads, Houdini's per-point attribute operations, and Blender
 - **Cross-domain:** lane-bearing control values (e.g., 512 FFT bins) can connect directly to GPU operators, producing 512 visual elements driven by audio. The Control→GPU bridge handles the data; lanes handle the cardinality.
 - **LLM-friendly:** describing lane-based operations in natural language is natural. "Create 512 particles in a circle, sized by the FFT, colored by frequency" maps directly to a chain of operations on lane-bearing values.
 - **Port types:** `VIVID_PORT_LANE_ARRAY` is the port type for variable-length float lane arrays. `VIVID_PORT_STRING_LANES` is the port type for variable-length string lane arrays. Texture and audio ports don't have a lane-array variant — multiple instances use multiple ports.
-- **Cross-domain bridge implementation:** Control↔Audio uses `LaneSnapshot` (fixed 64-element struct) inside the double-buffered `ParamSnapshot`/`AnalysisSnapshot` bridges — no heap allocation on the audio thread. Control→GPU uses WebGPU storage buffers: the operator uploads lane data via `wgpuQueueWriteBuffer` into a `ReadOnlyStorage` binding that the fragment shader reads as `array<f32>`.
+- **Cross-domain bridge implementation:** Control↔Audio uses pre-allocated `BridgeLaneSlot` buffers inside the double-buffered `ParamSnapshot`/`AnalysisSnapshot` bridges — no heap allocation on the audio thread. The audio callback reads lane data directly from bridge slots (zero-copy). Control→GPU uses WebGPU storage buffers: the operator uploads lane data via `wgpuQueueWriteBuffer` into a `ReadOnlyStorage` binding that the fragment shader reads as `array<f32>`.
 - **Lane identity:** for stateful lane sets (polyphonic voices, persistent simulations), lanes carry stable identity tokens (`lane_id`) that survive reordering and compaction. Operators access per-lane persistent state via `vivid_lane_state()` keyed by `lane_id`, not positional index.
 
 ### 5.9.1 Core Value Model
@@ -304,7 +304,7 @@ Lane behaviors (§5.9.2) describe the *semantic* relationship between an operato
 
 **Lane count limits:**
 - `max_loop_lanes = 16` — default maximum for `LoopBased` iteration. Exceeding this logs a warning and clamps.
-- `kMaxLaneCapacity = 1024` — pre-allocated lane buffer size for `VividLanePort` arrays in control operators.
+- `kDefaultLaneCapacity = 1024` — default lane buffer size for `VividLaneOutput` builders in control operators.
 - `InstancePerLane` has no hardcoded limit but is bounded by available memory (each instance allocates its own audio buffers).
 
 ### 5.9.7 Capability Differences, Not Model Differences

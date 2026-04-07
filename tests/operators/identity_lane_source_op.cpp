@@ -59,21 +59,19 @@ struct IdentityLaneSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
         // Write scalar output (first active value or 0)
         ctx->output_values[0] = active_count > 0 ? values[0] : 0.0f;
 
-        // Write main lane array (out port, index 0)
+        // Write main lane array (out port, index 0) and lane_ids (index 1)
         if (ctx->output_lanes) {
             auto& osp = ctx->output_lanes[0];
-            if (osp.capacity >= active_count) {
-                osp.length = active_count;
-                for (uint32_t i = 0; i < active_count; ++i)
-                    osp.data[i] = values[i];
-            }
-
-            // Write lane_ids lane array (lane_ids port, index 1)
             auto& lid_sp = ctx->output_lanes[1];
-            if (lid_sp.capacity >= active_count) {
-                lid_sp.length = active_count;
+            float* buf = osp.resize(osp.handle, active_count);
+            float* id_buf = lid_sp.resize(lid_sp.handle, active_count);
+            if (buf && id_buf) {
                 for (uint32_t i = 0; i < active_count; ++i)
-                    lid_sp.data[i] = ids[i];
+                    buf[i] = values[i];
+                for (uint32_t i = 0; i < active_count; ++i)
+                    id_buf[i] = ids[i];
+                osp.commit(osp.handle, active_count);
+                lid_sp.commit(lid_sp.handle, active_count);
             }
         }
     }

@@ -106,6 +106,21 @@ bool AudioExecutor::build(AudioFrameBridge& bridge, CompiledGraph& cg,
         node_lane_contexts_[i].node_idx = cg.audio_order[i];
     }
 
+    // Pre-allocate LoopBased scratch vectors (avoids audio-thread allocation).
+    {
+        uint32_t max_in = 0, max_out = 0;
+        for (uint32_t idx : cg.audio_order) {
+            auto& cn2 = cg.nodes[idx];
+            if (cn2.audio && cn2.audio->execution_strategy == LaneExecutionStrategy::LoopBased) {
+                max_in = std::max(max_in, cn2.input_port_count);
+                max_out = std::max(max_out, cn2.output_port_count);
+            }
+        }
+        loop_lane_ids_scratch_.resize(cg.max_loop_lanes);
+        loop_in_ptrs_scratch_.resize(max_in);
+        loop_out_ptrs_scratch_.resize(max_out);
+    }
+
     // Allocate waveform ring buffers
     uint32_t audio_count = static_cast<uint32_t>(cg.audio_order.size());
     waveform_rings_.resize(audio_count);
@@ -231,13 +246,16 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             for (size_t p = 0; p < cn.param_values.size() && p < snap.node_params[i].size(); ++p)
                 cn.param_values[p] = snap.node_params[i][p];
         }
-        // Copy lane inputs from snapshot to CompiledNode
+        // Populate lane views directly from bridge snapshot (zero-copy).
+        // Bridge data is double-buffered and valid for the entire callback.
         if (a.has_lane_ports && i < snap.lane_inputs.size()) {
             for (size_t p = 0; p < cn.input_port_count && p < snap.lane_inputs[i].size(); ++p) {
+                if (p >= cn.c_in_lane_views.size()) continue;
                 const auto& ss = snap.lane_inputs[i][p];
-                if (p < cn.input_lanes.size()) {
-                    cn.input_lanes[p].assign(ss.data, ss.data + ss.length);
-                }
+                cn.c_in_lane_views[p].data = (ss.length > 0) ? ss.data : nullptr;
+                cn.c_in_lane_views[p].length = ss.length;
+                cn.c_in_lane_views[p].lane_set_id = ss.lane_set_id;
+                cn.c_in_lane_views[p].flags = 0;
             }
         }
         // Copy string inputs and rebuild c_str() pointers
@@ -361,11 +379,11 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             }
             // Debug lane data
             if (std::getenv("VIVID_DEBUG_AUDIO")) {
-                for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-                    if (p < cn.input_lanes.size() && !cn.input_lanes[p].empty()) {
-                        std::fprintf(stderr, "[audio-debug] node '%s' input_lane[%u] len=%zu val[0]=%.2f\n",
-                                     cn.node_id.c_str(), p, cn.input_lanes[p].size(),
-                                     cn.input_lanes[p][0]);
+                for (uint32_t p = 0; p < cn.input_port_count && p < cn.c_in_lane_views.size(); ++p) {
+                    if (cn.c_in_lane_views[p].length > 0) {
+                        std::fprintf(stderr, "[audio-debug] node '%s' input_lane[%u] len=%u val[0]=%.2f\n",
+                                     cn.node_id.c_str(), p, cn.c_in_lane_views[p].length,
+                                     cn.c_in_lane_views[p].data[0]);
                     }
                 }
             }
@@ -373,22 +391,21 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             // Process
             if (!cn.loader || !cn.instance || cn.errored) continue;
 
-            // Set up lane ports for context
-            for (uint32_t p = 0; p < cn.input_port_count && p < cn.c_in_lanes.size(); ++p) {
-                if (p < cn.input_lanes.size()) {
-                    cn.c_in_lanes[p].data = cn.input_lanes[p].empty() ? nullptr : cn.input_lanes[p].data();
-                    cn.c_in_lanes[p].length = static_cast<uint32_t>(cn.input_lanes[p].size());
-                    cn.c_in_lanes[p].capacity = static_cast<uint32_t>(cn.input_lanes[p].size());
-                } else {
-                    cn.c_in_lanes[p].data = nullptr;
-                    cn.c_in_lanes[p].length = 0;
-                    cn.c_in_lanes[p].capacity = 0;
+            // Set up lane views and output builders for context.
+            // Priority: refs (audio-direct routing) > bridge views (already
+            // populated from snapshot above) > empty.
+            for (uint32_t p = 0; p < cn.input_port_count && p < cn.c_in_lane_views.size(); ++p) {
+                if (p < cn.input_lane_refs.size() && cn.input_lane_refs[p]) {
+                    const auto& ref = cn.input_lane_refs[p];
+                    cn.c_in_lane_views[p].data = ref.data();
+                    cn.c_in_lane_views[p].length = ref.length();
+                    cn.c_in_lane_views[p].lane_set_id = 0;
+                    cn.c_in_lane_views[p].flags = 0;
                 }
+                // Otherwise keep whatever was set during snapshot unpack (or empty).
             }
-            for (uint32_t p = 0; p < cn.output_port_count && p < cn.c_out_lanes.size(); ++p) {
-                cn.c_out_lanes[p].data = cn.out_lane_buf[p].data();
-                cn.c_out_lanes[p].length = 0;
-                cn.c_out_lanes[p].capacity = static_cast<uint32_t>(cn.out_lane_buf[p].size());
+            for (uint32_t p = 0; p < cn.output_port_count && p < cn.out_lane_bufs.size(); ++p) {
+                cn.out_lane_bufs[p].reset();
             }
 
             // Check for lane-lifted processing
@@ -425,8 +442,8 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                     ctx.sample_rate = kSampleRate;
                     ctx.input_channel_counts = nullptr;  // mono view
                     ctx.output_channel_counts = nullptr;
-                    ctx.input_lanes = cn.c_in_lanes.empty() ? nullptr : cn.c_in_lanes.data();
-                    ctx.output_lanes = cn.c_out_lanes.empty() ? nullptr : cn.c_out_lanes.data();
+                    ctx.input_lanes = cn.c_in_lane_views.empty() ? nullptr : cn.c_in_lane_views.data();
+                    ctx.output_lanes = cn.c_out_lane_outputs.empty() ? nullptr : cn.c_out_lane_outputs.data();
                     ctx.input_string_values = cn.c_input_string_values.empty() ? nullptr : cn.c_input_string_values.data();
                     ctx.custom_inputs = a.has_custom_input_ports ? cn.resolved_custom_inputs.data() : nullptr;
                     ctx.custom_input_count = static_cast<uint32_t>(cn.custom_input_port_indices.size());
@@ -478,9 +495,9 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 // ── LoopBased: single instance, runtime-driven loop over lanes ──
                 // Discover lane count from lane inputs at runtime.
                 uint32_t loop_lanes = 0;
-                for (uint32_t p = 0; p < cn.input_port_count && p < cn.c_in_lanes.size(); ++p) {
-                    if (cn.c_in_lanes[p].length > loop_lanes)
-                        loop_lanes = cn.c_in_lanes[p].length;
+                for (uint32_t p = 0; p < cn.input_port_count && p < cn.c_in_lane_views.size(); ++p) {
+                    if (cn.c_in_lane_views[p].length > loop_lanes)
+                        loop_lanes = cn.c_in_lane_views[p].length;
                 }
                 uint32_t max_ll = graph_->max_loop_lanes;
                 if (loop_lanes > max_ll) {
@@ -490,12 +507,12 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 }
 
                 if (loop_lanes > 0) {
-                    // Read identity-bearing lane_ids from upstream lane array, or fall back to positional.
-                    std::vector<uint32_t> loop_lane_ids(loop_lanes);
+                    // Read identity-bearing lane_ids (pre-allocated scratch).
+                    auto* loop_lane_ids = loop_lane_ids_scratch_.data();
                     int32_t lid_port = a.lane_id_port;
                     bool has_identity_ids = false;
-                    if (lid_port >= 0 && static_cast<uint32_t>(lid_port) < cn.c_in_lanes.size()) {
-                        const auto& lid_sp = cn.c_in_lanes[lid_port];
+                    if (lid_port >= 0 && static_cast<uint32_t>(lid_port) < cn.c_in_lane_views.size()) {
+                        const auto& lid_sp = cn.c_in_lane_views[lid_port];
                         if (lid_sp.length >= loop_lanes) {
                             for (uint32_t c = 0; c < loop_lanes; ++c)
                                 loop_lane_ids[c] = static_cast<uint32_t>(lid_sp.data[c]);
@@ -507,9 +524,9 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                             loop_lane_ids[c] = c + 1;  // derived positional IDs
                     }
 
-                    // Per-lane mono buffer pointers (reused across iterations)
-                    std::vector<float*> loop_in_ptrs(cn.input_port_count);
-                    std::vector<float*> loop_out_ptrs(cn.output_port_count);
+                    // Per-lane mono buffer pointers (pre-allocated scratch)
+                    auto* loop_in_ptrs = loop_in_ptrs_scratch_.data();
+                    auto* loop_out_ptrs = loop_out_ptrs_scratch_.data();
 
                     for (uint32_t c = 0; c < loop_lanes; ++c) {
                         // Set up per-lane buffer pointers (slice into pre-allocated buffers)
@@ -528,14 +545,14 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                         ctx.delta_time = static_cast<double>(chunk) / kSampleRate;
                         ctx.frame = audio_frame_ + frames_written;
                         ctx.param_values = cn.param_values.data();
-                        ctx.input_buffers = loop_in_ptrs.data();
-                        ctx.output_buffers = loop_out_ptrs.data();
+                        ctx.input_buffers = loop_in_ptrs;
+                        ctx.output_buffers = loop_out_ptrs;
                         ctx.buffer_size = chunk;
                         ctx.sample_rate = kSampleRate;
                         ctx.input_channel_counts = nullptr;  // mono view
                         ctx.output_channel_counts = nullptr;
-                        ctx.input_lanes = cn.c_in_lanes.empty() ? nullptr : cn.c_in_lanes.data();
-                        ctx.output_lanes = cn.c_out_lanes.empty() ? nullptr : cn.c_out_lanes.data();
+                        ctx.input_lanes = cn.c_in_lane_views.empty() ? nullptr : cn.c_in_lane_views.data();
+                        ctx.output_lanes = cn.c_out_lane_outputs.empty() ? nullptr : cn.c_out_lane_outputs.data();
                         ctx.input_string_values = cn.c_input_string_values.empty() ? nullptr : cn.c_input_string_values.data();
                         ctx.custom_inputs = a.has_custom_input_ports ? cn.resolved_custom_inputs.data() : nullptr;
                         ctx.custom_input_count = static_cast<uint32_t>(cn.custom_input_port_indices.size());
@@ -578,12 +595,12 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                     for (uint32_t p = 0; p < cn.output_port_count; ++p) {
                         if (p < cn.output_port_types.size() &&
                             cn.output_port_types[p] == VIVID_PORT_SCALAR &&
-                            p < cn.c_out_lanes.size() &&
-                            cn.c_out_lanes[p].capacity >= loop_lanes) {
-                            cn.c_out_lanes[p].length = loop_lanes;
+                            p < cn.out_lane_bufs.size() &&
+                            loop_lanes <= static_cast<uint32_t>(cn.out_lane_bufs[p].data.size())) {
+                            cn.out_lane_bufs[p].committed_length = loop_lanes;
                             for (uint32_t c = 0; c < loop_lanes; ++c) {
                                 float* lane_buf = a.buffers_out[p].data() + c * kBufferSize;
-                                cn.c_out_lanes[p].data[c] = (chunk > 0) ? lane_buf[chunk - 1] : 0.0f;
+                                cn.out_lane_bufs[p].data[c] = (chunk > 0) ? lane_buf[chunk - 1] : 0.0f;
                             }
                         }
                     }
@@ -601,8 +618,8 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 ctx.sample_rate = kSampleRate;
                 ctx.input_channel_counts = a.input_channel_counts.data();
                 ctx.output_channel_counts = a.output_channel_counts.data();
-                ctx.input_lanes = cn.c_in_lanes.empty() ? nullptr : cn.c_in_lanes.data();
-                ctx.output_lanes = cn.c_out_lanes.empty() ? nullptr : cn.c_out_lanes.data();
+                ctx.input_lanes = cn.c_in_lane_views.empty() ? nullptr : cn.c_in_lane_views.data();
+                ctx.output_lanes = cn.c_out_lane_outputs.empty() ? nullptr : cn.c_out_lane_outputs.data();
                 ctx.input_string_values = cn.c_input_string_values.empty() ? nullptr : cn.c_input_string_values.data();
                 ctx.custom_inputs = a.has_custom_input_ports ? cn.resolved_custom_inputs.data() : nullptr;
                 ctx.custom_input_count = static_cast<uint32_t>(cn.custom_input_port_indices.size());
@@ -637,14 +654,15 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 }
             }
 
-            // Read back lane outputs
-            for (uint32_t p = 0; p < cn.output_port_count && p < cn.c_out_lanes.size(); ++p) {
-                if (cn.c_out_lanes[p].length > 0 && p < cn.output_lanes.size()) {
-                    cn.output_lanes[p].assign(
-                        cn.out_lane_buf[p].begin(),
-                        cn.out_lane_buf[p].begin() + cn.c_out_lanes[p].length);
+            // Publish output lane refs
+            for (uint32_t p = 0; p < cn.output_port_count && p < cn.out_lane_bufs.size(); ++p) {
+                if (cn.out_lane_bufs[p].committed_length > 0 && p < cn.output_lane_refs.size()) {
+                    cn.output_lane_refs[p] = make_ref_from_existing(&cn.out_lane_bufs[p]);
+                } else if (p < cn.output_lane_refs.size()) {
+                    cn.output_lane_refs[p] = {};
                 }
             }
+            // Note: analysis snapshot reads output_lane_refs directly (no compat sync needed).
 
             // Route float/lane/custom outputs to downstream audio nodes
             for (uint32_t ei : cg.audio_direct_edges) {
@@ -652,12 +670,11 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 if (e.from_node != ni || e.targets_param) continue;
 
                 if (e.data_type == VIVID_PORT_LANE_ARRAY) {
-                    // Lane routing between audio nodes
+                    // Lane routing between audio nodes — share ref (zero copy)
                     auto& to_cn = cg.nodes[e.to_node];
-                    if (e.from_port < cn.output_lanes.size() &&
-                        e.to_port < to_cn.input_lanes.size()) {
-                        const auto& src = cn.output_lanes[e.from_port];
-                        to_cn.input_lanes[e.to_port].assign(src.begin(), src.end());
+                    if (e.from_port < cn.output_lane_refs.size() &&
+                        e.to_port < to_cn.input_lane_refs.size()) {
+                        to_cn.input_lane_refs[e.to_port] = cn.output_lane_refs[e.from_port];
                     }
                 } else if (vivid_is_custom_port_type(e.data_type)) {
                     // Custom port routing between audio nodes
@@ -799,13 +816,13 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
         // Spread outputs
         if (i < analysis.lane_outputs.size()) {
             for (size_t p = 0; p < cn.output_port_count && p < analysis.lane_outputs[i].size(); ++p) {
-                if (p < cn.output_lanes.size()) {
-                    auto& dst = analysis.lane_outputs[i][p];
-                    const auto& src = cn.output_lanes[p];
-                    dst.length = std::min(static_cast<uint32_t>(src.size()),
-                                          LaneSnapshot::kMaxLength);
-                    for (uint32_t j = 0; j < dst.length; ++j)
-                        dst.data[j] = src[j];
+                auto& dst = analysis.lane_outputs[i][p];
+                if (p < cn.output_lane_refs.size() && cn.output_lane_refs[p]) {
+                    const auto& ref = cn.output_lane_refs[p];
+                    dst.length = std::min(ref.length(), dst.capacity);
+                    std::memcpy(dst.data, ref.data(), dst.length * sizeof(float));
+                } else {
+                    dst.length = 0;
                 }
             }
         }

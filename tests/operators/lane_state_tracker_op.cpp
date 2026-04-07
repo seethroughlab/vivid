@@ -58,7 +58,8 @@ struct LaneStateTrackerOp : vivid::OperatorBase, vivid::AudioProcessable {
         for (uint32_t i = 0; i < ctx->buffer_size; ++i)
             out[i] = s.accumulated;
 
-        // Signal outputs (last lane wins — used for quick sanity checks, not per-lane verification)
+        // Signal outputs at ports 1-4 (last lane wins — quick sanity checks).
+        // Port 0 is the main audio output (accumulated DC), ports 1-4 are diagnostics.
         {
             float vals[4];
             vals[0] = static_cast<float>(ctx->lane_count);
@@ -67,7 +68,7 @@ struct LaneStateTrackerOp : vivid::OperatorBase, vivid::AudioProcessable {
             vals[3] = static_cast<float>(s.update_count);
             for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
                 for (int j = 0; j < 4; ++j)
-                    ctx->output_buffers[j][i] = vals[j];
+                    ctx->output_buffers[1 + j][i] = vals[j];
             }
         }
     }

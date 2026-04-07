@@ -195,7 +195,7 @@ struct Tracker : vivid::OperatorBase {
     }
 
     void compute(const float* input_values, const float* params,
-                 VividLanePort* out_lanes, float* output_values,
+                 VividLaneOutput* out_lanes, float* output_values,
                  void** custom_outputs, uint32_t custom_output_count) {
         float beat_phase = input_values[0];
         bool reset_signal = input_values[1] > 0.5f;
@@ -255,16 +255,20 @@ struct Tracker : vivid::OperatorBase {
             auto& velocities_lane  = out_lanes[1];
             auto& gates_lane = out_lanes[2];
 
-            if (notes_lane.capacity >= tracker::MAX_CHANNELS) {
-                notes_lane.length = tracker::MAX_CHANNELS;
-                velocities_lane.length  = tracker::MAX_CHANNELS;
-                gates_lane.length = tracker::MAX_CHANNELS;
+            uint32_t len = tracker::MAX_CHANNELS;
+            float* notes_buf = notes_lane.resize(notes_lane.handle, len);
+            float* vels_buf  = velocities_lane.resize(velocities_lane.handle, len);
+            float* gates_buf = gates_lane.resize(gates_lane.handle, len);
+            if (notes_buf && vels_buf && gates_buf) {
                 for (int ch = 0; ch < tracker::MAX_CHANNELS; ++ch) {
                     bool muted = (mute >> ch) & 1;
-                    notes_lane.data[ch] = channels_[ch].current_pitch;
-                    velocities_lane.data[ch]  = muted ? 0.0f : static_cast<float>(channels_[ch].current_velocity) / 127.0f;
-                    gates_lane.data[ch] = (channels_[ch].gate_active && !muted) ? 1.0f : 0.0f;
+                    notes_buf[ch] = channels_[ch].current_pitch;
+                    vels_buf[ch]  = muted ? 0.0f : static_cast<float>(channels_[ch].current_velocity) / 127.0f;
+                    gates_buf[ch] = (channels_[ch].gate_active && !muted) ? 1.0f : 0.0f;
                 }
+                notes_lane.commit(notes_lane.handle, len);
+                velocities_lane.commit(velocities_lane.handle, len);
+                gates_lane.commit(gates_lane.handle, len);
             }
         }
 
