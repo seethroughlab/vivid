@@ -625,8 +625,14 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
         }
 
         // ── PostNodeFn callback ─────────────────────────────────────────
-        if (cn.is_gpu() && on_gpu_node && cn.gpu->texture_view)
-            on_gpu_node(ni, cn.node_id, cn.gpu->texture_view);
+        if (cn.is_gpu() && on_gpu_node) {
+            WGPUTextureView tex = cn.gpu->texture_view;
+            // GPU sinks (e.g. video_out) have no output — use input texture
+            if (!tex && cn.gpu->is_sink && !cn.gpu->resolved_tex_inputs.empty())
+                tex = cn.gpu->resolved_tex_inputs[0];
+            if (tex)
+                on_gpu_node(ni, cn.node_id, tex);
+        }
 
         // ── Mark processed ──────────────────────────────────────────────
         cn.dirty = false;
