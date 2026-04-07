@@ -104,6 +104,7 @@
     "about_version": "Version %s",
     "pkg_action_failed": "Paketåtgärd misslyckades",
     "pkg_build_failed_open_console": "Bygge misslyckades — se Byggkonsol",
+    "clone_name_placeholder": "operator_name",
     "pkg_unlink_failed": "Avlänkning av %s misslyckades",
     "pkg_uninstall_failed": "Avinstallation av %s misslyckades",
     "pkg_install_failed": "Installation av %s misslyckades",

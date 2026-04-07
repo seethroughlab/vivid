@@ -104,6 +104,7 @@
     "about_version": "Versie %s",
     "pkg_action_failed": "Pakketactie mislukt",
     "pkg_build_failed_open_console": "Bouwen mislukt — zie bouwconsole",
+    "clone_name_placeholder": "operator_name",
     "pkg_unlink_failed": "Ontkoppelen van %s mislukt",
     "pkg_uninstall_failed": "Verwijderen van %s mislukt",
     "pkg_install_failed": "Installeren van %s mislukt",

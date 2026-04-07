@@ -102,6 +102,7 @@
     "edit_meta": "Upravit metadata",
     "pkg_action_failed": "Akce balíčku selhala",
     "pkg_build_failed_open_console": "Sestavení selhalo — viz Konzole sestavení",
+    "clone_name_placeholder": "operator_name",
     "pkg_unlink_failed": "Nepodařilo se odpojit %s",
     "pkg_uninstall_failed": "Nepodařilo se odinstalovat %s",
     "pkg_install_failed": "Nepodařilo se nainstalovat %s",

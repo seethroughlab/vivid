@@ -104,6 +104,7 @@
     "about_version": "Wersja %s",
     "pkg_action_failed": "Akcja pakietu nie powiodła się",
     "pkg_build_failed_open_console": "Budowanie nie powiodło się — zobacz konsolę budowania",
+    "clone_name_placeholder": "operator_name",
     "pkg_unlink_failed": "Nie udało się odłączyć %s",
     "pkg_uninstall_failed": "Nie udało się odinstalować %s",
     "pkg_install_failed": "Nie udało się zainstalować %s",

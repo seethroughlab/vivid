@@ -104,6 +104,7 @@
     "about_version": "Verzió %s",
     "pkg_action_failed": "A csomagművelet sikertelen",
     "pkg_build_failed_open_console": "A fordítás sikertelen — lásd a Fordítási konzolt",
+    "clone_name_placeholder": "operator_name",
     "pkg_unlink_failed": "%s lecsatolása sikertelen",
     "pkg_uninstall_failed": "%s eltávolítása sikertelen",
     "pkg_install_failed": "%s telepítése sikertelen",

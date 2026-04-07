@@ -104,6 +104,7 @@
     "about_version": "Versão %s",
     "pkg_action_failed": "A ação do pacote falhou",
     "pkg_build_failed_open_console": "Falha na compilação - veja o Console de compilação",
+    "clone_name_placeholder": "operator_name",
     "pkg_unlink_failed": "Falha ao desvincular %s",
     "pkg_uninstall_failed": "Falha ao desinstalar %s",
     "pkg_install_failed": "Falha ao instalar %s",

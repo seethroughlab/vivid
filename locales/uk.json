@@ -102,6 +102,7 @@
     "edit_meta": "Редагувати метадані",
     "pkg_action_failed": "Дія з пакетом не вдалася",
     "pkg_build_failed_open_console": "Збірка не вдалася — дивіться Консоль збірки",
+    "clone_name_placeholder": "operator_name",
     "pkg_unlink_failed": "Не вдалося від'єднати %s",
     "pkg_uninstall_failed": "Не вдалося видалити %s",
     "pkg_install_failed": "Не вдалося встановити %s",

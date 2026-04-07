@@ -104,6 +104,7 @@
     "about_version": "Versio %s",
     "pkg_action_failed": "Pakettitoiminto epaonnistui",
     "pkg_build_failed_open_console": "Rakennus epaonnistui - katso rakennuskonsoli",
+    "clone_name_placeholder": "operator_name",
     "pkg_unlink_failed": "Linkityksen poisto epaonnistui: %s",
     "pkg_uninstall_failed": "Asennuksen poisto epaonnistui: %s",
     "pkg_install_failed": "Asennus epaonnistui: %s",

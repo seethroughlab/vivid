@@ -104,6 +104,7 @@
     "about_version": "Phiên bản %s",
     "pkg_action_failed": "Thao tác gói thất bại",
     "pkg_build_failed_open_console": "Xây dựng thất bại - xem Bảng điều khiển xây dựng",
+    "clone_name_placeholder": "operator_name",
     "pkg_unlink_failed": "Không thể hủy liên kết %s",
     "pkg_uninstall_failed": "Không thể gỡ cài đặt %s",
     "pkg_install_failed": "Không thể cài đặt %s",

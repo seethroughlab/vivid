@@ -104,6 +104,7 @@
     "about_version": "Versiunea %s",
     "pkg_action_failed": "Acțiunea pachetului a eșuat",
     "pkg_build_failed_open_console": "Compilarea a eșuat — vezi Consola de compilare",
+    "clone_name_placeholder": "operator_name",
     "pkg_unlink_failed": "Dezlegarea %s a eșuat",
     "pkg_uninstall_failed": "Dezinstalarea %s a eșuat",
     "pkg_install_failed": "Instalarea %s a eșuat",

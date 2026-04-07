@@ -104,6 +104,7 @@
     "about_version": "Version %s",
     "pkg_action_failed": "Pakkehandling mislykkedes",
     "pkg_build_failed_open_console": "Opbygning mislykkedes - se Byggekonsol",
+    "clone_name_placeholder": "operator_name",
     "pkg_unlink_failed": "Kunne ikke fjerne link til %s",
     "pkg_uninstall_failed": "Kunne ikke afinstallere %s",
     "pkg_install_failed": "Kunne ikke installere %s",

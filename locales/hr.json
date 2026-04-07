@@ -104,6 +104,7 @@
     "about_version": "Verzija %s",
     "pkg_action_failed": "Radnja paketa nije uspjela",
     "pkg_build_failed_open_console": "Izgradnja nije uspjela - pogledajte konzolu izgradnje",
+    "clone_name_placeholder": "operator_name",
     "pkg_unlink_failed": "Odvezivanje nije uspjelo: %s",
     "pkg_uninstall_failed": "Deinstalacija nije uspjela: %s",
     "pkg_install_failed": "Instalacija nije uspjela: %s",

@@ -104,6 +104,7 @@
     "about_version": "Version %s",
     "pkg_action_failed": "Paketaktion fehlgeschlagen",
     "pkg_build_failed_open_console": "Build fehlgeschlagen - siehe Build-Konsole",
+    "clone_name_placeholder": "operator_name",
     "pkg_unlink_failed": "Verknüpfung von %s konnte nicht gelöst werden",
     "pkg_uninstall_failed": "%s konnte nicht deinstalliert werden",
     "pkg_install_failed": "%s konnte nicht installiert werden",

@@ -277,7 +277,7 @@ void DialogManager::set_pkg_action_failure(const std::string& error) {
     pkg_browser.action_error = fallback;
     if (pkg_action_uses_build_console(pkg_browser.action_kind)) {
         pkg_browser.action_error_display =
-            localized_string("pkg_build_failed_open_console", "Build failed - see Build Console");
+            localized_string("pkg_build_failed_open_console", "Build failed — see Build Console");
         pkg_browser.action_error_console_backed = true;
     } else {
         pkg_browser.action_error_display = fallback;

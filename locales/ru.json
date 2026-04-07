@@ -104,6 +104,7 @@
     "about_version": "Версия %s",
     "pkg_action_failed": "Ошибка действия с пакетом",
     "pkg_build_failed_open_console": "Ошибка сборки — см. консоль сборки",
+    "clone_name_placeholder": "operator_name",
     "pkg_unlink_failed": "Не удалось отвязать %s",
     "pkg_uninstall_failed": "Не удалось удалить %s",
     "pkg_install_failed": "Не удалось установить %s",

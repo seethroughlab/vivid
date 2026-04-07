@@ -102,6 +102,7 @@
     "edit_meta": "Meta Verileri Düzenle",
     "pkg_action_failed": "Paket işlemi başarısız oldu",
     "pkg_build_failed_open_console": "Derleme başarısız - Derleme Konsoluna bakın",
+    "clone_name_placeholder": "operator_name",
     "pkg_unlink_failed": "%s bağlantısı kaldırılamadı",
     "pkg_uninstall_failed": "%s kaldırılamadı",
     "pkg_install_failed": "%s kurulamadı",
