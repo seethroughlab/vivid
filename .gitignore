@@ -82,3 +82,4 @@ GPUCache
 DawnCache
 .codex
 build-asan
+docs/ARCHITECTURE.pdf
