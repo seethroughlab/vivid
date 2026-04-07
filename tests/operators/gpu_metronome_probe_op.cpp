@@ -19,7 +19,7 @@ struct GpuMetronomeProbeOp : vivid::OperatorBase, vivid::GpuProcessable {
 
     void process_gpu(const VividGpuContext* ctx) override {
         const auto metronome = vivid::metronome_transport(ctx);
-        ctx->output_values[0] = metronome.enabled ? 1.0f : 0.0f;
+        ctx->output_values[0] = 1.0f;
         ctx->output_values[1] = metronome.bpm;
         ctx->output_values[2] = static_cast<float>(metronome.beats_per_bar);
         ctx->output_values[3] = metronome.beat_phase;

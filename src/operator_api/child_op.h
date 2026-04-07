@@ -11,7 +11,6 @@ namespace vivid {
 // Copy metronome fields between any two context structs that carry them.
 template <typename Dst, typename Src>
 inline void copy_metronome_fields(Dst& dst, const Src& src) {
-    dst.metronome_enabled        = src.metronome_enabled;
     dst.metronome_bpm            = src.metronome_bpm;
     dst.metronome_beats_per_bar  = src.metronome_beats_per_bar;
     dst.metronome_beats_elapsed  = src.metronome_beats_elapsed;

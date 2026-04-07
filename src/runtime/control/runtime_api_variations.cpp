@@ -292,9 +292,6 @@ CommandResult RuntimeAPI::queue_variation(const std::string& name, const std::st
     }
 
     const auto metronome = current_metronome_sample();
-    if (!metronome.enabled) {
-        return {false, "graph metronome is disabled; quantized switching is unavailable"};
-    }
     const int beats_per_bar = std::max(1, metronome.beats_per_bar);
     const int64_t current_beat = static_cast<int64_t>(std::floor(metronome.beats_elapsed));
     int64_t target_beat = current_beat + 1;
@@ -319,15 +316,14 @@ CommandResult RuntimeAPI::set_quantize_clock(const std::string& node_id) {
     return {true, "quantize clock set to '" + node_id + "' (deprecated; graph metronome now drives quantized switching)"};
 }
 
-CommandResult RuntimeAPI::set_graph_metronome(bool enabled, float bpm, int beats_per_bar) {
+CommandResult RuntimeAPI::set_graph_metronome(float bpm, int beats_per_bar) {
     GraphMetronomeDef metronome = graph_.metronome();
-    metronome.enabled = enabled;
     metronome.bpm = std::max(1.0f, std::min(300.0f, bpm));
     metronome.beats_per_bar = std::max(1, std::min(16, beats_per_bar));
     graph_.set_metronome(metronome);
     const auto outcome = core_.update_live_metronome(metronome, core_.last_tick_time());
     mark_graph_dirty();
-    if ((outcome.disabled || outcome.bar_epoch_reset) && pending_variation_.armed)
+    if (outcome.bar_epoch_reset && pending_variation_.armed)
         pending_variation_.armed = false;
     return {true, "graph metronome updated"};
 }
@@ -339,7 +335,6 @@ GraphMetronomeSample RuntimeAPI::current_metronome_sample() const {
 void RuntimeAPI::tick_quantized_switch() {
     if (!pending_variation_.armed) return;
     const auto metronome = current_metronome_sample();
-    if (!metronome.enabled) return;
     const int64_t current_beat = static_cast<int64_t>(std::floor(metronome.beats_elapsed));
     if (current_beat >= pending_variation_.target_beat_index) {
         apply_variation(pending_variation_.variation_idx);

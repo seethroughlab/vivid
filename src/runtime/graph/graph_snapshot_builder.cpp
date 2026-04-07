@@ -483,7 +483,6 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
     const auto metronome = runtime_api
         ? runtime_api->current_metronome_sample()
         : sample_graph_metronome(graph.metronome(), runtime.last_tick_time());
-    snap.metronome_enabled = metronome.enabled;
     snap.metronome_bpm = metronome.bpm;
     snap.metronome_beats_per_bar = metronome.beats_per_bar;
     snap.metronome_beat_phase = metronome.beat_phase;

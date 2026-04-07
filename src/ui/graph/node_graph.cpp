@@ -826,7 +826,7 @@ void NodeGraphUI::confirm_transport_bpm_edit() {
     try {
         float bpm = std::stof(transport_bpm_edit_buffer_);
         bpm = std::clamp(bpm, 1.0f, 300.0f);
-        commands_.set_graph_metronome(true, bpm, std::max(1, snap_.metronome_beats_per_bar));
+        commands_.set_graph_metronome(bpm, std::max(1, snap_.metronome_beats_per_bar));
     } catch (...) {
         // Invalid input — silently discard and restore the prior display state.
     }

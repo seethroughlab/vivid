@@ -698,8 +698,6 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
     // --- Header row ---
     float hx = kSessionPadX;
     float hy = strip_y + 5;
-    const bool metronome_enabled = snap_.metronome_enabled;
-
     tr.draw_text(hx, hy + 2, T("session", "SESSION"),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     hx += 70;
@@ -713,7 +711,7 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
     hx += 72;
     for (int i = 0; i < 4; ++i) {
         float bw = 38.0f;
-        bool enabled = metronome_enabled || i == 0;
+        bool enabled = true;
         bool active = (session_quantize_mode_ == i);
         float r = active && enabled ? style_.accent[0] : style_.slider_track[0];
         float g = active && enabled ? style_.accent[1] : style_.slider_track[1];

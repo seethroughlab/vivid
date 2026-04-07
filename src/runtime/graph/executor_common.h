@@ -35,7 +35,6 @@ inline void retire_lane_id_fn_bridge(void* ctx_ptr, uint32_t lane_id) {
 // (VividFrameContext, VividAudioContext, VividGpuContext).
 template <typename Ctx>
 inline void populate_metronome_context(Ctx& ctx, const GraphMetronomeSample& sample) {
-    ctx.metronome_enabled        = sample.enabled ? 1u : 0u;
     ctx.metronome_bpm            = sample.bpm;
     ctx.metronome_beats_per_bar  = static_cast<uint32_t>(sample.beats_per_bar);
     ctx.metronome_beats_elapsed  = sample.beats_elapsed;

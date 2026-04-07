@@ -15,10 +15,9 @@ static VividFrameContext make_ctx(double time, double dt, uint64_t frame) {
     return ctx;
 }
 
-static void set_metronome(VividFrameContext& ctx, bool enabled, float bpm,
+static void set_metronome(VividFrameContext& ctx, float bpm,
                           uint32_t beats_per_bar, double beats_elapsed,
                           float beat_phase, float bar_phase) {
-    ctx.metronome_enabled = enabled ? 1u : 0u;
     ctx.metronome_bpm = bpm;
     ctx.metronome_beats_per_bar = beats_per_bar;
     ctx.metronome_beats_elapsed = beats_elapsed;
@@ -142,17 +141,17 @@ static void test_metronome_sync() {
     lfo.set_param("sync_division", 2.0f);  // quarter notes
 
     auto ctx0 = make_ctx(0.0, 1.0 / 60.0, 0);
-    set_metronome(ctx0, true, 120.0f, 4, 0.0, 0.0f, 0.0f);
+    set_metronome(ctx0, 120.0f, 4, 0.0, 0.0f, 0.0f);
     lfo.process(&ctx0);
     check_float(lfo.output("value"), 0.0f, 0.01f, "metronome beat 0 starts at sine zero");
 
     auto ctx1 = make_ctx(0.125, 1.0 / 60.0, 1);
-    set_metronome(ctx1, true, 120.0f, 4, 0.25, 0.25f, 0.0625f);
+    set_metronome(ctx1, 120.0f, 4, 0.25, 0.25f, 0.0625f);
     lfo.process(&ctx1);
     check_float(lfo.output("value"), 1.0f, 0.05f, "quarter-beat metronome phase reaches sine peak");
 
     auto ctx2 = make_ctx(0.25, 1.0 / 60.0, 2);
-    set_metronome(ctx2, true, 120.0f, 4, 0.5, 0.5f, 0.125f);
+    set_metronome(ctx2, 120.0f, 4, 0.5, 0.5f, 0.125f);
     lfo.process(&ctx2);
     check_float(lfo.output("value"), 0.0f, 0.05f, "half-beat metronome phase returns to zero");
 }

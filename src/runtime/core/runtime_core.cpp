@@ -27,18 +27,11 @@ RuntimeCore::update_live_metronome(const GraphMetronomeDef& metronome, double ti
 
     const auto current = sample_live_metronome(time);
     LiveMetronomeState next_state{};
-    next_state.enabled = sanitized.enabled;
     next_state.bpm = sanitized.bpm;
     next_state.beats_per_bar = sanitized.beats_per_bar;
     next_state.anchor_time = time;
 
-    if (!sanitized.enabled) {
-        next_state.anchor_beats_elapsed = 0.0;
-        outcome.disabled = current.enabled;
-    } else if (!current.enabled) {
-        next_state.anchor_beats_elapsed = 0.0;
-        outcome.bar_epoch_reset = true;
-    } else if (current.beats_per_bar != sanitized.beats_per_bar) {
+    if (current.beats_per_bar != sanitized.beats_per_bar) {
         next_state.anchor_beats_elapsed = 0.0;
         outcome.bar_epoch_reset = true;
     } else {

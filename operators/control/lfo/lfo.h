@@ -206,9 +206,7 @@ struct LFO : vivid::OperatorBase {
         // Phase computation
         double phase;
         if (rm == vivid::kRateModeMetronome) {
-            phase = metronome.enabled
-                ? vivid::cycle_phase_from_total_beats(metronome.beats_elapsed, sync_div)
-                : 0.0;
+            phase = vivid::cycle_phase_from_total_beats(metronome.beats_elapsed, sync_div);
         } else if (rm == vivid::kRateModeExternal) {
             phase = std::fmod(static_cast<double>(phase_in) * static_cast<double>(freq), 1.0);
         } else if (phase_in != 0.0f && rm == vivid::kRateModeFree) {

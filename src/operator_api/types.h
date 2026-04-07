@@ -250,8 +250,7 @@ typedef struct VividAudioContext {
     uint32_t (*allocate_lane_id_fn)(void* service);
     void     (*retire_lane_id_fn)(void* service, uint32_t lane_id);
 
-    // ---- Graph-wide metronome (read-only) ----
-    uint8_t   metronome_enabled;
+    // ---- Graph-wide metronome (read-only, always active) ----
     float     metronome_bpm;
     uint32_t  metronome_beats_per_bar;
     double    metronome_beats_elapsed;
@@ -299,8 +298,7 @@ typedef struct VividFrameContext {
     uint32_t  (*allocate_lane_id_fn)(void* service);
     void      (*retire_lane_id_fn)(void* service, uint32_t lane_id);
 
-    // ---- Graph-wide metronome (read-only) ----
-    uint8_t   metronome_enabled;
+    // ---- Graph-wide metronome (read-only, always active) ----
     float     metronome_bpm;
     uint32_t  metronome_beats_per_bar;
     double    metronome_beats_elapsed;

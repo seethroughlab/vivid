@@ -18,7 +18,6 @@ constexpr int kRateModeExternal = 1;
 constexpr int kRateModeMetronome = 2;
 
 struct MetronomeTransport {
-    bool enabled = false;
     float bpm = 120.0f;
     int beats_per_bar = 4;
     double beats_elapsed = 0.0;
@@ -48,7 +47,6 @@ inline std::vector<std::string> metronome_division_labels() {
 inline MetronomeTransport metronome_transport(const VividFrameContext* ctx) {
     MetronomeTransport out{};
     if (!ctx) return out;
-    out.enabled = ctx->metronome_enabled != 0;
     out.bpm = ctx->metronome_bpm;
     out.beats_per_bar = static_cast<int>(ctx->metronome_beats_per_bar);
     out.beats_elapsed = ctx->metronome_beats_elapsed;
@@ -61,7 +59,6 @@ inline MetronomeTransport metronome_transport(const VividFrameContext* ctx) {
 inline MetronomeTransport metronome_transport(const VividAudioContext* ctx) {
     MetronomeTransport out{};
     if (!ctx) return out;
-    out.enabled = ctx->metronome_enabled != 0;
     out.bpm = ctx->metronome_bpm;
     out.beats_per_bar = static_cast<int>(ctx->metronome_beats_per_bar);
     out.beats_elapsed = ctx->metronome_beats_elapsed;
@@ -75,7 +72,7 @@ inline MetronomeTransport metronome_transport_sample(const MetronomeTransport& b
                                                      uint32_t sample_index,
                                                      uint32_t sample_rate) {
     MetronomeTransport out = base;
-    if (!out.enabled || sample_rate == 0 || out.bpm <= 0.0f) return out;
+    if (sample_rate == 0 || out.bpm <= 0.0f) return out;
 
     const double beats_per_sample =
         (static_cast<double>(out.bpm) / 60.0) / static_cast<double>(sample_rate);
@@ -125,7 +122,7 @@ inline float resolve_clock_phase(int source_mode,
                                  float external_phase,
                                  const MetronomeTransport& metronome) {
     if (source_mode == kClockSourceMetronome) {
-        return metronome.enabled ? metronome.beat_phase : 0.0f;
+        return metronome.beat_phase;
     }
     return external_phase;
 }
@@ -134,7 +131,7 @@ inline float resolve_bar_phase(int source_mode,
                                float external_bar_phase,
                                const MetronomeTransport& metronome) {
     if (source_mode == kClockSourceMetronome) {
-        return metronome.enabled ? metronome.bar_phase : 0.0f;
+        return metronome.bar_phase;
     }
     return external_bar_phase;
 }

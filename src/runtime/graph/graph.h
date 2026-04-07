@@ -120,13 +120,11 @@ struct VariationDef {
 };
 
 struct GraphMetronomeDef {
-    bool enabled = false;
     float bpm = 120.0f;
     int beats_per_bar = 4;
 };
 
 struct GraphMetronomeSample {
-    bool enabled = false;
     float bpm = 120.0f;
     int beats_per_bar = 4;
     double beats_elapsed = 0.0;
@@ -136,7 +134,6 @@ struct GraphMetronomeSample {
 };
 
 struct LiveMetronomeState {
-    bool enabled = false;
     float bpm = 120.0f;
     int beats_per_bar = 4;
     double anchor_time = 0.0;
@@ -150,11 +147,10 @@ struct LiveMetronomeStateStore {
 
 inline GraphMetronomeSample sample_graph_metronome(const GraphMetronomeDef& metronome, double time) {
     GraphMetronomeSample sample;
-    sample.enabled = metronome.enabled;
     sample.bpm = metronome.bpm;
     sample.beats_per_bar = std::max(1, metronome.beats_per_bar);
     sample.beat_ms = (sample.bpm > 0.0f) ? (60000.0f / sample.bpm) : 0.0f;
-    if (!sample.enabled || sample.bpm <= 0.0f) return sample;
+    if (sample.bpm <= 0.0f) return sample;
 
     const double beats_per_sec = static_cast<double>(sample.bpm) / 60.0;
     sample.beats_elapsed = std::max(0.0, time * beats_per_sec);
@@ -168,7 +164,6 @@ inline GraphMetronomeSample sample_graph_metronome(const GraphMetronomeDef& metr
 inline LiveMetronomeState live_metronome_state_from_graph(const GraphMetronomeDef& metronome,
                                                           double time) {
     LiveMetronomeState state;
-    state.enabled = metronome.enabled;
     state.bpm = metronome.bpm;
     state.beats_per_bar = std::max(1, metronome.beats_per_bar);
     state.anchor_time = time;
@@ -178,11 +173,10 @@ inline LiveMetronomeState live_metronome_state_from_graph(const GraphMetronomeDe
 
 inline GraphMetronomeSample sample_live_metronome(const LiveMetronomeState& state, double time) {
     GraphMetronomeSample sample;
-    sample.enabled = state.enabled;
     sample.bpm = state.bpm;
     sample.beats_per_bar = std::max(1, state.beats_per_bar);
     sample.beat_ms = (sample.bpm > 0.0f) ? (60000.0f / sample.bpm) : 0.0f;
-    if (!sample.enabled || sample.bpm <= 0.0f) return sample;
+    if (sample.bpm <= 0.0f) return sample;
 
     const double beats_per_sec = static_cast<double>(sample.bpm) / 60.0;
     const double delta_beats = (time - state.anchor_time) * beats_per_sec;
@@ -281,8 +275,7 @@ public:
     void set_quantize_clock_node(const std::string& node_id) { quantize_clock_node_ = node_id; }
     const GraphMetronomeDef& metronome() const { return metronome_; }
     void set_metronome(const GraphMetronomeDef& metronome) { metronome_ = metronome; }
-    void set_metronome(bool enabled, float bpm, int beats_per_bar) {
-        metronome_.enabled = enabled;
+    void set_metronome(float bpm, int beats_per_bar) {
         metronome_.bpm = bpm;
         metronome_.beats_per_bar = beats_per_bar;
     }

@@ -165,7 +165,7 @@ struct MetronomeViz : vivid::OperatorBase, vivid::GpuProcessable {
         u.resolution[1] = static_cast<float>(ctx->output_height);
         u.beat_phase = transport.beat_phase;
         u.bar_phase = transport.bar_phase;
-        u.enabled = transport.enabled ? 1.0f : 0.0f;
+        u.enabled = 1.0f;
         u.line_width = line_width.value;
         u.base_brightness = base_brightness.value;
         u.accent_intensity = accent_intensity.value;

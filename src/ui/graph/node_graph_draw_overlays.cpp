@@ -561,16 +561,11 @@ void NodeGraphUI::draw_workspace_header(Renderer2D& tr) {
     {
         const float blink_size = 8.0f;
         const float blink_y = btn_y + (kPerfBtnH - blink_size) * 0.5f;
-        float alpha = 0.20f;
-        if (snap_.metronome_enabled) {
-            alpha = 0.28f + 0.62f * std::max(0.0f, 1.0f - snap_.metronome_beat_phase);
-        }
+        const float alpha = 0.28f + 0.62f * std::max(0.0f, 1.0f - snap_.metronome_beat_phase);
         tr.draw_rounded_rect(left_x, blink_y, blink_size, blink_size, 4.0f,
                              style_.accent[0], style_.accent[1], style_.accent[2], alpha);
         left_x += blink_size + 8.0f;
     }
-
-    draw_left_button(snap_.metronome_enabled ? "Metro On" : "Metro Off", 5, true, snap_.metronome_enabled);
 
     {
         const float bpm = std::max(1.0f, snap_.metronome_bpm);
@@ -588,15 +583,12 @@ void NodeGraphUI::draw_workspace_header(Renderer2D& tr) {
                                     transport_bpm_edit_buffer_, text_edit_,
                                     cursor_blink_on(), kPerfBtnPadX, 3.0f);
         } else {
-            const float alpha = snap_.metronome_enabled ? (hovered ? 0.82f : 0.70f)
-                                                        : (hovered ? 0.32f : 0.24f);
+            const float alpha = hovered ? 0.82f : 0.70f;
             tr.draw_rounded_rect(left_x, btn_y, pill_w, kPerfBtnH, 3.0f,
                                  0.18f, 0.20f, 0.23f, alpha);
             tr.draw_text(left_x + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
                          bpm_label.c_str(),
-                         snap_.metronome_enabled ? style_.bright_text[0] : style_.dim_text[0],
-                         snap_.metronome_enabled ? style_.bright_text[1] : style_.dim_text[1],
-                         snap_.metronome_enabled ? style_.bright_text[2] : style_.dim_text[2]);
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         }
         left_x += pill_w + kPerfBtnMargin;
     }
@@ -607,12 +599,10 @@ void NodeGraphUI::draw_workspace_header(Renderer2D& tr) {
         std::snprintf(meter_buf, sizeof(meter_buf), "%d/4", std::max(1, snap_.metronome_beats_per_bar));
         float pill_w = tr.text_width(meter_buf) + kPerfBtnPadX * 2;
         tr.draw_rounded_rect(left_x, btn_y, pill_w, kPerfBtnH, 3.0f,
-                             0.18f, 0.20f, 0.23f, snap_.metronome_enabled ? 0.70f : 0.24f);
+                             0.18f, 0.20f, 0.23f, 0.70f);
         tr.draw_text(left_x + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
                      meter_buf,
-                     snap_.metronome_enabled ? style_.bright_text[0] : style_.dim_text[0],
-                     snap_.metronome_enabled ? style_.bright_text[1] : style_.dim_text[1],
-                     snap_.metronome_enabled ? style_.bright_text[2] : style_.dim_text[2]);
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         left_x += pill_w + kPerfBtnMargin;
     }
     draw_left_button("+", 7, true);

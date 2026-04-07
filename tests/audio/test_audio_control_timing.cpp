@@ -37,10 +37,9 @@ struct AudioTestBuffers {
     }
 };
 
-static void set_audio_metronome(AudioTestBuffers& tb, bool enabled, float bpm,
+static void set_audio_metronome(AudioTestBuffers& tb, float bpm,
                                 uint32_t beats_per_bar, double beats_elapsed,
                                 float beat_phase, float bar_phase) {
-    tb.ctx.metronome_enabled = enabled ? 1u : 0u;
     tb.ctx.metronome_bpm = bpm;
     tb.ctx.metronome_beats_per_bar = beats_per_bar;
     tb.ctx.metronome_beats_elapsed = beats_elapsed;
@@ -227,7 +226,7 @@ static void test_step_seq_metronome_snapshot(const std::string& build_dir) {
 
     AudioTestBuffers tb(2, 2);
     tb.ctx.param_values = params.data();
-    set_audio_metronome(tb, true, 120.0f, 4, 0.60, 0.60f, 0.15f);
+    set_audio_metronome(tb, 120.0f, 4, 0.60, 0.60f, 0.15f);
 
     loader.process_audio(inst, &tb.ctx);
 

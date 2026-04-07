@@ -27,7 +27,6 @@ class RuntimeCore {
 public:
     struct LiveMetronomeUpdateOutcome {
         bool bar_epoch_reset = false;
-        bool disabled = false;
     };
 
     struct PreparedBuild {

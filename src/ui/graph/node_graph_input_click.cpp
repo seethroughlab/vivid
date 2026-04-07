@@ -146,16 +146,12 @@ void NodeGraphUI::handle_left_click() {
                 commands_.capture_snapshot();
             } else if (btn.action == 2) {  // Diagnostics
                 diagnostics_panel_open_ = !diagnostics_panel_open_;
-            } else if (btn.action == 5) {  // Metronome toggle
-                const float bpm = snap_.metronome_bpm > 0.0f ? snap_.metronome_bpm : 120.0f;
-                const int beats_per_bar = std::max(1, snap_.metronome_beats_per_bar);
-                commands_.set_graph_metronome(!snap_.metronome_enabled, bpm, beats_per_bar);
             } else if (btn.action == 6) {  // Meter-
                 const int beats_per_bar = std::max(1, snap_.metronome_beats_per_bar - 1);
-                commands_.set_graph_metronome(true, snap_.metronome_bpm, beats_per_bar);
+                commands_.set_graph_metronome(snap_.metronome_bpm, beats_per_bar);
             } else if (btn.action == 7) {  // Meter+
                 const int beats_per_bar = std::min(16, snap_.metronome_beats_per_bar + 1);
-                commands_.set_graph_metronome(true, snap_.metronome_bpm, beats_per_bar);
+                commands_.set_graph_metronome(snap_.metronome_bpm, beats_per_bar);
             }
             mouse_.left_clicked = false;
             return;

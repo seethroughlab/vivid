@@ -952,31 +952,18 @@ int main(int argc, char* argv[]) {
     // --- Test metronome-backed quantized switching ---
     std::fprintf(stderr, "\n--- metronome-backed quantized switching ---\n");
     {
-        auto off = api.set_graph_metronome(false, 120.0f, 4);
-        check(off.ok, "disable graph metronome ok");
+        auto m = api.set_graph_metronome(120.0f, 3);
+        check(m.ok, "set graph metronome in 3/4 ok");
         check(!api.has_pending(), "metronome change does not queue a rebuild");
-        check(!graph.metronome().enabled, "graph metadata reflects disabled metronome state");
-        auto blocked = api.queue_variation("Intro", "beat");
-        check(!blocked.ok, "quantized queue fails while metronome disabled");
-
-        runtime.tick(0.75, 0.016, 30);
-        auto m = api.set_graph_metronome(true, 120.0f, 3);
-        check(m.ok, "enable graph metronome in 3/4 ok");
-        check(!api.has_pending(), "enabling metronome stays live");
-        check(graph.metronome().enabled, "graph metadata reflects enabled metronome state");
         check_float(graph.metronome().bpm, 120.0f, "graph metadata metronome bpm updated");
         check(graph.metronome().beats_per_bar == 3, "graph metadata meter updated");
-        check(!runtime.compiled_graph()->metronome.enabled,
-              "compiled graph metadata remains stale until an actual rebuild");
         auto enabled_sample = api.current_metronome_sample();
-        check(enabled_sample.enabled, "live metronome sample enabled immediately");
         check(enabled_sample.beats_per_bar == 3, "live metronome sample uses the new meter");
-        check_float(static_cast<float>(enabled_sample.beats_elapsed), 0.0f, 1e-5f,
-                    "enable-after-disabled restarts beat count at zero");
 
-        runtime.tick(1.00, 0.016, 31);
+        // Tick to establish a known time base, then change BPM.
+        runtime.tick(10.00, 0.016, 31);
         const auto before_bpm_change = api.current_metronome_sample();
-        auto bpm_change = api.set_graph_metronome(true, 60.0f, 3);
+        auto bpm_change = api.set_graph_metronome(60.0f, 3);
         check(bpm_change.ok, "live bpm change ok");
         const auto after_bpm_change = api.current_metronome_sample();
         check_float(static_cast<float>(after_bpm_change.beats_elapsed),
@@ -984,9 +971,11 @@ int main(int argc, char* argv[]) {
                     "bpm change preserves beat continuity");
         check_float(after_bpm_change.bpm, 60.0f, 1e-5f, "live metronome bpm updates immediately");
 
-        runtime.tick(2.00, 0.016, 32);
+        // 1 second later at 60 BPM = 1 additional beat.
+        runtime.tick(11.00, 0.016, 32);
         const auto slowed_sample = api.current_metronome_sample();
-        check_float(static_cast<float>(slowed_sample.beats_elapsed), 1.5f, 0.02f,
+        const float expected_beats = static_cast<float>(before_bpm_change.beats_elapsed) + 1.0f;
+        check_float(static_cast<float>(slowed_sample.beats_elapsed), expected_beats, 0.02f,
                     "slower bpm advances from the preserved beat anchor");
 
         auto s1 = api.set_param("a", "scale", 9.0f);
@@ -999,22 +988,21 @@ int main(int argc, char* argv[]) {
         auto v2 = api.save_variation("QuantTarget");
         check(v2.ok, "save QuantTarget ok");
 
-        auto meter_change = api.set_graph_metronome(true, 60.0f, 5);
+        auto meter_change = api.set_graph_metronome(60.0f, 5);
         check(meter_change.ok, "meter change ok");
         const auto reset_sample = api.current_metronome_sample();
         check(reset_sample.beats_per_bar == 5, "live metronome adopts new meter");
         check_float(static_cast<float>(reset_sample.beats_elapsed), 0.0f, 1e-5f,
                     "meter change resets beat count immediately");
         auto queue_then_reset = api.queue_variation("QuantBase", "bar");
-        check(queue_then_reset.ok, "queue variation before disabling metronome ok");
+        check(queue_then_reset.ok, "queue variation ok");
         check(api.pending_variation_idx() == graph.find_variation_index("QuantBase"),
-              "pending variation armed before disable");
-        auto disable_again = api.set_graph_metronome(false, 60.0f, 5);
-        check(disable_again.ok, "disable metronome after queue ok");
-        check(api.pending_variation_idx() == -1, "disabling metronome clears pending variation");
+              "pending variation armed");
 
-        auto reenable = api.set_graph_metronome(true, 120.0f, 3);
-        check(reenable.ok, "reenable metronome in 3/4 ok");
+        // Switch to 120 BPM, 3/4 — resets beats to 0 (meter changed).
+        // Use absolute times > previous tick (11.00) so metronome advances forward.
+        auto meter_update = api.set_graph_metronome(120.0f, 3);
+        check(meter_update.ok, "update metronome to 3/4 ok");
         auto q = api.queue_variation("QuantBase", "bar");
         check(q.ok, "queue QuantBase on next 3/4 bar ok");
         check(api.pending_variation_idx() == graph.find_variation_index("QuantBase"),
@@ -1036,7 +1024,8 @@ int main(int argc, char* argv[]) {
                 check_float(a_node->param_values[pi->second], 3.0f, "same-beat tick still waits for boundary");
         }
 
-        runtime.tick(3.24, 0.016, 33);
+        // At 120 BPM, 3 beats = 1.5s. Tick just before the bar boundary.
+        runtime.tick(12.24, 0.016, 33);
         api.tick_quantized_switch();
         if (a_node) {
             auto pi = a_node->param_indices.find("scale");
@@ -1044,7 +1033,8 @@ int main(int argc, char* argv[]) {
                 check_float(a_node->param_values[pi->second], 3.0f, "pre-boundary tick keeps active variation");
         }
 
-        runtime.tick(3.50, 0.016, 34);
+        // Past the 3-beat bar boundary (1.5s at 120 BPM).
+        runtime.tick(12.50, 0.016, 34);
         api.tick_quantized_switch();
         if (a_node) {
             auto pi = a_node->param_indices.find("scale");

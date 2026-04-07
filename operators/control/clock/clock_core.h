@@ -41,7 +41,6 @@ struct ClockCore : vivid::OperatorBase {
     double prev_sync_phase_ = 0.0;
 
     struct MetronomeSample {
-        bool enabled = false;
         float bpm = 120.0f;
         int beats_per_bar = 4;
         double beats_elapsed = 0.0;
@@ -111,15 +110,6 @@ struct ClockCore : vivid::OperatorBase {
         const int mode = rate_mode.int_value();
         const double offset = static_cast<double>(phase_offset.value);
         if (mode == 1) {
-            if (!metronome.enabled) {
-                prev_sync_phase_ = 0.0;
-                out4[0] = 0.0f;
-                out4[1] = 0.0f;
-                out4[2] = 0.0f;
-                out4[3] = 0.0f;
-                return;
-            }
-
             const double cycle_beats = static_cast<double>(sync_cycle_beats(sync_division.int_value()));
             const double cycle_phase = std::fmod((metronome.beats_elapsed / cycle_beats) + offset, 1.0);
             const bool wrapped = cycle_phase < prev_sync_phase_;

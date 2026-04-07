@@ -169,9 +169,7 @@ protected:
         // Phase computation
         double phase;
         if (mode == vivid::kRateModeMetronome) {
-            phase = metronome.enabled
-                ? vivid::cycle_phase_from_total_beats(metronome.beats_elapsed, sync_division.int_value())
-                : 0.0;
+            phase = vivid::cycle_phase_from_total_beats(metronome.beats_elapsed, sync_division.int_value());
         } else if (mode == vivid::kRateModeExternal) {
             // External sync mode: preserve the existing beat-phase multiplier behavior.
             phase = std::fmod(static_cast<double>(beat_phase_in) * static_cast<double>(freq), 1.0);

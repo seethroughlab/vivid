@@ -12,7 +12,6 @@ static void test_transport_parity() {
     VividAudioContext audio{};
     VividGpuContext gpu{};
 
-    frame.metronome_enabled = 1u;
     frame.metronome_bpm = 93.0f;
     frame.metronome_beats_per_bar = 5;
     frame.metronome_beats_elapsed = 7.25;
@@ -20,7 +19,6 @@ static void test_transport_parity() {
     frame.metronome_bar_phase = 0.45f;
     frame.metronome_beat_ms = 645.1613f;
 
-    audio.metronome_enabled = frame.metronome_enabled;
     audio.metronome_bpm = frame.metronome_bpm;
     audio.metronome_beats_per_bar = frame.metronome_beats_per_bar;
     audio.metronome_beats_elapsed = frame.metronome_beats_elapsed;
@@ -28,7 +26,6 @@ static void test_transport_parity() {
     audio.metronome_bar_phase = frame.metronome_bar_phase;
     audio.metronome_beat_ms = frame.metronome_beat_ms;
 
-    gpu.metronome_enabled = frame.metronome_enabled;
     gpu.metronome_bpm = frame.metronome_bpm;
     gpu.metronome_beats_per_bar = frame.metronome_beats_per_bar;
     gpu.metronome_beats_elapsed = frame.metronome_beats_elapsed;
@@ -40,7 +37,6 @@ static void test_transport_parity() {
     const auto am = vivid::metronome_transport(&audio);
     const auto gm = vivid::metronome_transport(&gpu);
 
-    check(fm.enabled == am.enabled && am.enabled == gm.enabled, "enabled parity");
     check_float(fm.bpm, am.bpm, 1e-6f, "frame/audio bpm parity");
     check_float(fm.bpm, gm.bpm, 1e-6f, "frame/gpu bpm parity");
     check(fm.beats_per_bar == am.beats_per_bar && am.beats_per_bar == gm.beats_per_bar,

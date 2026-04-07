@@ -240,10 +240,9 @@ static void test_operator(const std::string& staging, const OpInfo& info) {
     }
 }
 
-static void set_metronome(TestContext& tc, bool enabled, float bpm,
+static void set_metronome(TestContext& tc, float bpm,
                           uint32_t beats_per_bar, double beats_elapsed,
                           float beat_phase, float bar_phase) {
-    tc.ctx.metronome_enabled = enabled ? 1u : 0u;
     tc.ctx.metronome_bpm = bpm;
     tc.ctx.metronome_beats_per_bar = beats_per_bar;
     tc.ctx.metronome_beats_elapsed = beats_elapsed;
@@ -288,8 +287,8 @@ static void test_metronome_sync_ignores_free_rate(const std::string& staging,
     fast.fill_sine(220.0f, 0.5f);
     slow.clear_inputs();
     fast.clear_inputs();
-    set_metronome(slow, true, 120.0f, 4, 0.375, 0.375f, 0.09375f);
-    set_metronome(fast, true, 120.0f, 4, 0.375, 0.375f, 0.09375f);
+    set_metronome(slow, 120.0f, 4, 0.375, 0.375f, 0.09375f);
+    set_metronome(fast, 120.0f, 4, 0.375, 0.375f, 0.09375f);
 
     std::vector<float> slow_params(desc->param_count);
     std::vector<float> fast_params(desc->param_count);

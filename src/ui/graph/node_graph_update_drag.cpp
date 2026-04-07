@@ -191,7 +191,7 @@ void NodeGraphUI::update_transport_bpm_drag() {
             const float sensitivity = mouse_.shift_down ? 0.1f : 1.0f;
             const float bpm = std::clamp(transport_bpm_drag_start_bpm_ + (delta_y / 8.0f) * sensitivity,
                                          1.0f, 300.0f);
-            commands_.set_graph_metronome(true, bpm, std::max(1, snap_.metronome_beats_per_bar));
+            commands_.set_graph_metronome(bpm, std::max(1, snap_.metronome_beats_per_bar));
             transport_bpm_drag_start_y_ = mouse_.y;
             transport_bpm_drag_start_bpm_ = bpm;
         }

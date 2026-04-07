@@ -19,12 +19,10 @@ struct LfoAu : LFO, vivid::AudioProcessable {
 
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
             vivid::MetronomeTransport sample_metronome = base_metronome;
-            if (sample_metronome.enabled) {
-                const double beat_offset = static_cast<double>(i) * beats_per_sample;
-                sample_metronome.beats_elapsed += beat_offset;
-                sample_metronome.beat_phase = static_cast<float>(
-                    std::fmod(static_cast<double>(sample_metronome.beat_phase) + beat_offset, 1.0));
-            }
+            const double beat_offset = static_cast<double>(i) * beats_per_sample;
+            sample_metronome.beats_elapsed += beat_offset;
+            sample_metronome.beat_phase = static_cast<float>(
+                std::fmod(static_cast<double>(sample_metronome.beat_phase) + beat_offset, 1.0));
             ctx->output_buffers[0][i] = compute_one_sample(
                 s, frequency.value, amplitude.value, offset.value,
                 waveform.int_value(), rate_mode.int_value(), sync_division.int_value(),

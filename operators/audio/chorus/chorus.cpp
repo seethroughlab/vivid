@@ -165,11 +165,9 @@ struct Chorus : vivid::OperatorBase, vivid::AudioProcessable {
 
             double base_phase = phase_;
             if (mode == vivid::kRateModeMetronome) {
-                base_phase = metronome.enabled
-                    ? vivid::cycle_phase_from_total_beats(
-                          metronome.beats_elapsed + static_cast<double>(i) * metronome_beats_per_sample,
-                          sync_division.int_value())
-                    : 0.0;
+                base_phase = vivid::cycle_phase_from_total_beats(
+                    metronome.beats_elapsed + static_cast<double>(i) * metronome_beats_per_sample,
+                    sync_division.int_value());
             } else if (mode == vivid::kRateModeExternal) {
                 float external_phase = ctx->input_buffers[2] ? ctx->input_buffers[2][i] : 0.0f;
                 const double total_beats = vivid::advance_external_total_beats(

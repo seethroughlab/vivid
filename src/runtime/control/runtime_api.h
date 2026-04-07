@@ -115,7 +115,7 @@ public:
     CommandResult list_variations();
     CommandResult queue_variation(const std::string& name, const std::string& quantize);
     CommandResult set_quantize_clock(const std::string& node_id);
-    CommandResult set_graph_metronome(bool enabled, float bpm, int beats_per_bar);
+    CommandResult set_graph_metronome(float bpm, int beats_per_bar);
     GraphMetronomeSample current_metronome_sample() const;
 
     // Per-frame: check pending quantized variation switch

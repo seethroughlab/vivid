@@ -8,7 +8,6 @@ struct ClockAu : ClockCore, vivid::AudioProcessable {
         double delta_time = static_cast<double>(ctx->buffer_size) / ctx->sample_rate;
         float out4[4];
         MetronomeSample metronome;
-        metronome.enabled = ctx->metronome_enabled != 0;
         metronome.bpm = ctx->metronome_bpm;
         metronome.beats_per_bar = static_cast<int>(ctx->metronome_beats_per_bar);
         metronome.beats_elapsed = ctx->metronome_beats_elapsed;

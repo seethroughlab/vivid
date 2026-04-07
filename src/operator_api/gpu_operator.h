@@ -73,8 +73,7 @@ struct VividGpuContext {
     const VividInputState* input;
     const VividSharedHandleService* shared_handles;
 
-    // ---- Graph-wide metronome (read-only) ----------------------------------
-    uint8_t            metronome_enabled;
+    // ---- Graph-wide metronome (read-only, always active) --------------------
     float              metronome_bpm;
     uint32_t           metronome_beats_per_bar;
     double             metronome_beats_elapsed;
@@ -97,7 +96,6 @@ namespace vivid {
 inline MetronomeTransport metronome_transport(const VividGpuContext* ctx) {
     MetronomeTransport out{};
     if (!ctx) return out;
-    out.enabled = ctx->metronome_enabled != 0;
     out.bpm = ctx->metronome_bpm;
     out.beats_per_bar = static_cast<int>(ctx->metronome_beats_per_bar);
     out.beats_elapsed = ctx->metronome_beats_elapsed;

@@ -18,7 +18,7 @@ struct DummySink : UICommandSink {
     struct ParamCall { std::string node_id, param; float value; };
     struct StringParamCall { std::string node_id, param, value; };
     struct LayoutCall { std::string node_id; float x, y; };
-    struct MetronomeCall { bool enabled; float bpm; int beats_per_bar; };
+    struct MetronomeCall { float bpm; int beats_per_bar; };
 
     std::vector<std::string> remove_calls;
     std::vector<std::pair<std::string, std::string>> connect_calls;
@@ -67,8 +67,8 @@ struct DummySink : UICommandSink {
                           const std::string& value) override {
         set_string_param_calls.push_back({node_id, param, value});
     }
-    void set_graph_metronome(bool enabled, float bpm, int beats_per_bar) override {
-        metronome_calls.push_back({enabled, bpm, beats_per_bar});
+    void set_graph_metronome(float bpm, int beats_per_bar) override {
+        metronome_calls.push_back({bpm, beats_per_bar});
     }
     void save_variation(const std::string& name) override {
         save_variation_calls.push_back(name);
@@ -169,7 +169,6 @@ static GraphSnapshot make_session_snapshot() {
     GraphSnapshot snap = make_editor_snapshot();
     snap.variations = {{"A"}, {"B"}, {"C"}};
     snap.active_variation = 0;
-    snap.metronome_enabled = true;
     snap.metronome_bpm = 120.0f;
     snap.metronome_beats_per_bar = 4;
     return snap;
@@ -373,7 +372,6 @@ int main() {
         DummySink sink;
         NodeGraphUI ui(sink);
         auto snap = make_session_snapshot();
-        snap.metronome_enabled = false;
         snap.metronome_bpm = 111.0f;
         snap.metronome_beats_per_bar = 5;
         ui.update(snap);
@@ -405,11 +403,11 @@ int main() {
 
         check(sink.metronome_calls.size() == 2, "Transport controls dispatch metronome mutations");
         if (sink.metronome_calls.size() == 2) {
-            check(sink.metronome_calls[0].enabled && std::fabs(sink.metronome_calls[0].bpm - 111.0f) < 0.01f &&
+            check(std::fabs(sink.metronome_calls[0].bpm - 111.0f) < 0.01f &&
                       sink.metronome_calls[0].beats_per_bar == 5,
                   "Metronome toggle preserves bpm and meter");
-            check(sink.metronome_calls[1].enabled && sink.metronome_calls[1].beats_per_bar == 6,
-                  "Meter+ enables metronome and increments beats per bar");
+            check(sink.metronome_calls[1].beats_per_bar == 6,
+                  "Meter+ increments beats per bar");
         }
         check(!ui.session_grid_open_, "Workspace header no longer toggles the session grid");
     }
@@ -451,7 +449,6 @@ int main() {
         DummySink sink;
         NodeGraphUI ui(sink);
         auto snap = make_session_snapshot();
-        snap.metronome_enabled = false;
         snap.metronome_bpm = 111.0f;
         snap.metronome_beats_per_bar = 5;
         ui.update(snap);
@@ -468,10 +465,9 @@ int main() {
         ui.mouse_.y = 12.0f;
         ui.update_transport_bpm_drag();
         check(!sink.metronome_calls.empty() &&
-                  sink.metronome_calls.back().enabled &&
                   std::fabs(sink.metronome_calls.back().bpm - 112.0f) < 0.05f &&
                   sink.metronome_calls.back().beats_per_bar == 5,
-              "BPM drag enables the metronome and updates tempo live");
+              "BPM drag updates tempo live");
 
         const size_t coarse_calls = sink.metronome_calls.size();
         ui.mouse_.shift_down = true;
@@ -491,7 +487,6 @@ int main() {
         DummySink sink;
         NodeGraphUI ui(sink);
         auto snap = make_session_snapshot();
-        snap.metronome_enabled = false;
         snap.metronome_bpm = 111.0f;
         snap.metronome_beats_per_bar = 5;
         ui.update(snap);
@@ -508,7 +503,6 @@ int main() {
         ui.transport_bpm_edit_buffer_ = "128.5";
         ui.on_key(GLFW_KEY_ENTER, GLFW_PRESS, 0);
         check(!sink.metronome_calls.empty() &&
-                  sink.metronome_calls.back().enabled &&
                   std::fabs(sink.metronome_calls.back().bpm - 128.5f) < 0.01f &&
                   sink.metronome_calls.back().beats_per_bar == 5,
               "Enter commits typed BPM");
@@ -519,7 +513,6 @@ int main() {
         DummySink sink;
         NodeGraphUI ui(sink);
         auto snap = make_session_snapshot();
-        snap.metronome_enabled = false;
         snap.metronome_bpm = 111.0f;
         snap.metronome_beats_per_bar = 5;
         ui.update(snap);
@@ -594,7 +587,6 @@ int main() {
         DummySink sink;
         NodeGraphUI ui(sink);
         auto snap = make_session_snapshot();
-        snap.metronome_enabled = false;
         ui.update(snap);
         ui.session_grid_open_ = true;
         ui.session_button_rects_ = {{20.0f, 650.0f, 40.0f, 20.0f, 3, false}};

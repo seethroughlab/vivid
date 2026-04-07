@@ -151,8 +151,8 @@ public:
         auto r = api_.set_quantize_clock(node_id);
         if (r.ok) capture_undo_snapshot();
     }
-    void set_graph_metronome(bool enabled, float bpm, int beats_per_bar) override {
-        auto r = api_.set_graph_metronome(enabled, bpm, beats_per_bar);
+    void set_graph_metronome(float bpm, int beats_per_bar) override {
+        auto r = api_.set_graph_metronome(bpm, beats_per_bar);
         if (r.ok) capture_undo_snapshot();
     }
 

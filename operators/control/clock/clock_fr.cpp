@@ -7,7 +7,6 @@ struct ClockFr : ClockCore, vivid::FrameProcessable {
     void process_frame(const VividFrameContext* ctx) override {
         float out4[4];
         MetronomeSample metronome;
-        metronome.enabled = ctx->metronome_enabled != 0;
         metronome.bpm = ctx->metronome_bpm;
         metronome.beats_per_bar = static_cast<int>(ctx->metronome_beats_per_bar);
         metronome.beats_elapsed = ctx->metronome_beats_elapsed;

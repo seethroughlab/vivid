@@ -506,16 +506,11 @@ std::string dispatch(const std::string& method, const std::string& body,
     } else if (method == "set_graph_metronome") {
         if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            if (!root.contains("enabled") || !root["enabled"].is_boolean())
-                result = json_err("missing 'enabled' (boolean)");
-            else {
-                const bool enabled = root["enabled"].get<bool>();
-                const float bpm = (root.contains("bpm") && root["bpm"].is_number())
-                    ? root["bpm"].get<float>() : 120.0f;
-                const int beats_per_bar = (root.contains("beats_per_bar") && root["beats_per_bar"].is_number_integer())
-                    ? static_cast<int>(root["beats_per_bar"].get<int64_t>()) : 4;
-                result = command_result_to_json(api.set_graph_metronome(enabled, bpm, beats_per_bar));
-            }
+            const float bpm = (root.contains("bpm") && root["bpm"].is_number())
+                ? root["bpm"].get<float>() : 120.0f;
+            const int beats_per_bar = (root.contains("beats_per_bar") && root["beats_per_bar"].is_number_integer())
+                ? static_cast<int>(root["beats_per_bar"].get<int64_t>()) : 4;
+            result = command_result_to_json(api.set_graph_metronome(bpm, beats_per_bar));
         }
     } else if (method == "set_analysis") {
         if (!root_valid) { result = json_err("invalid JSON body"); }

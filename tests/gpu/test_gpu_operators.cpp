@@ -503,7 +503,6 @@ int main() {
             vivid::Graph g;
             g.add_node("probe", "GpuMetronomeProbeOp", {});
             vivid::GraphMetronomeDef metronome;
-            metronome.enabled = true;
             metronome.bpm = 90.0f;
             metronome.beats_per_bar = 5;
             g.set_metronome(metronome);
