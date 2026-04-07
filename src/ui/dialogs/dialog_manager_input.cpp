@@ -13,8 +13,9 @@
 
 namespace vivid::ui {
 
-bool DialogManager::on_key(int key, int /*action*/, int /*mods*/,
+bool DialogManager::on_key(int key, int /*action*/, int mods,
                            TextEditState& text_edit, float& /*cursor_blink_time*/) {
+    bool shift = (mods & GLFW_MOD_SHIFT) != 0;
     if (save_confirm.open) {
         if (key == GLFW_KEY_ESCAPE) {
             save_confirm.open = false;
@@ -29,17 +30,23 @@ bool DialogManager::on_key(int key, int /*action*/, int /*mods*/,
     if (clone_confirm.open) {
         if (key == GLFW_KEY_ESCAPE) {
             clone_confirm.open = false;
-        } else if (key == GLFW_KEY_LEFT || key == GLFW_KEY_RIGHT) {
-            if (clone_confirm.project_available) {
-                clone_confirm.destination = 1 - clone_confirm.destination;
-            }
-        } else if (key == GLFW_KEY_ENTER) {
-            const char* destination = (clone_confirm.destination == 0) ? "project" : "core";
-            if (!clone_confirm.node_id.empty())
-                commands_.clone_and_edit_for_node(clone_confirm.node_id, clone_confirm.type, destination);
-            else
-                commands_.clone_and_edit(clone_confirm.type, destination);
+        } else if (key == GLFW_KEY_ENTER && !clone_confirm.name_buf.empty()) {
+            commands_.clone_and_edit(clone_confirm.type, clone_confirm.name_buf,
+                                     clone_confirm.node_id);
             clone_confirm.open = false;
+        } else if (key == GLFW_KEY_BACKSPACE) {
+            text_edit_backspace(clone_confirm.name_buf, text_edit);
+        } else if (key == GLFW_KEY_DELETE) {
+            text_edit_delete_forward(clone_confirm.name_buf, text_edit);
+        } else if (key == GLFW_KEY_LEFT) {
+            if (text_edit.cursor > 0) { text_edit.cursor--; text_edit.sel_start = -1; }
+        } else if (key == GLFW_KEY_RIGHT) {
+            if (text_edit.cursor < static_cast<int>(clone_confirm.name_buf.size())) {
+                text_edit.cursor++; text_edit.sel_start = -1;
+            }
+        } else if (key == GLFW_KEY_A && (mods & GLFW_MOD_SUPER)) {
+            text_edit.sel_start = 0;
+            text_edit.cursor = static_cast<int>(clone_confirm.name_buf.size());
         }
         return true;
     }
@@ -411,7 +418,7 @@ void DialogManager::update_save_confirm(MouseState& mouse, uint32_t win_w, uint3
 void DialogManager::update_clone_confirm(MouseState& mouse, uint32_t win_w, uint32_t win_h) {
     if (!clone_confirm.open || !mouse.left_clicked) return;
 
-    float dw = 360.0f, dh = 108.0f;
+    float dw = 320.0f, dh = 100.0f;
     float dx = (static_cast<float>(win_w) - dw) * 0.5f;
     float dy = (static_cast<float>(win_h) - dh) * 0.5f;
 
@@ -420,29 +427,11 @@ void DialogManager::update_clone_confirm(MouseState& mouse, uint32_t win_w, uint
     float clone_x = dx + dw * 0.5f - btn_w - 6.0f;
     float cancel_x = dx + dw * 0.5f + 6.0f;
 
-    float toggle_y = dy + 38.0f;
-    float toggle_h = 24.0f;
-    float toggle_x = dx + 12.0f;
-    float toggle_w = dw - 24.0f;
-    float left_w = toggle_w * 0.5f;
-
-    if (clone_confirm.project_available) {
-        if (mouse.x >= toggle_x && mouse.x <= toggle_x + left_w &&
-            mouse.y >= toggle_y && mouse.y <= toggle_y + toggle_h) {
-            clone_confirm.destination = 0;
-        } else if (mouse.x >= toggle_x + left_w && mouse.x <= toggle_x + toggle_w &&
-                   mouse.y >= toggle_y && mouse.y <= toggle_y + toggle_h) {
-            clone_confirm.destination = 1;
-        }
-    }
-
     if (mouse.x >= clone_x && mouse.x <= clone_x + btn_w &&
-        mouse.y >= btn_y && mouse.y <= btn_y + btn_h) {
-        const char* destination = (clone_confirm.destination == 0) ? "project" : "core";
-        if (!clone_confirm.node_id.empty())
-            commands_.clone_and_edit_for_node(clone_confirm.node_id, clone_confirm.type, destination);
-        else
-            commands_.clone_and_edit(clone_confirm.type, destination);
+        mouse.y >= btn_y && mouse.y <= btn_y + btn_h &&
+        !clone_confirm.name_buf.empty()) {
+        commands_.clone_and_edit(clone_confirm.type, clone_confirm.name_buf,
+                                 clone_confirm.node_id);
         clone_confirm.open = false;
         mouse.left_clicked = false;
         mouse.left_released = false;

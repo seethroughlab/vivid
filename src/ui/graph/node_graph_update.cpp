@@ -457,14 +457,29 @@ void NodeGraphUI::check_relayout() {
     // Detect full graph replacement (e.g. drag-and-drop new file).
     // Normal edits reuse existing node IDs; a new graph introduces unknown IDs.
     if (first_layout_done_ && !node_rects_.empty()) {
-        std::unordered_set<std::string> rect_ids;
-        rect_ids.reserve(node_rects_.size());
-        for (const auto& r : node_rects_) rect_ids.insert(r.node_id);
+        std::unordered_map<std::string, size_t> rect_by_id;
+        rect_by_id.reserve(node_rects_.size());
+        for (size_t i = 0; i < node_rects_.size(); ++i)
+            rect_by_id[node_rects_[i].node_id] = i;
         for (const auto& n : snap_.nodes) {
-            if (!rect_ids.count(n.node_id)) {
+            if (!rect_by_id.count(n.node_id)) {
                 output_sink_positioned_ = false;
                 layout_nodes();
                 return;
+            }
+            // Sync properties that may change after recompile (placeholder → real operator)
+            auto& rect = node_rects_[rect_by_id[n.node_id]];
+            if (rect.is_gpu != n.is_gpu || rect.active_cadence != n.active_cadence) {
+                rect.is_gpu = n.is_gpu;
+                rect.active_cadence = n.active_cadence;
+                rect.type_name = n.type_name;
+                bool has_ct = custom_thumb_nodes_.count(n.node_id) > 0;
+                float body_h = node_body_height(n.is_gpu, n.active_cadence, has_ct);
+                uint32_t n_inputs = count_visible_input_ports(n, show_param_wires_);
+                uint32_t n_outputs = count_visible_output_ports(n, show_param_wires_);
+                uint32_t port_rows = std::max(n_inputs, n_outputs);
+                rect.target_h = kAccentBarH + body_h + kNodePadY + kLineH * 2 + port_rows * kLineH + kNodePadY;
+                recompute_ports(rect, n);
             }
         }
     }

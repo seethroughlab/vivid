@@ -40,8 +40,7 @@ public:
         bool open = false;
         std::string type;
         std::string node_id;
-        bool project_available = false;
-        int destination = 0; // 0=Project Package, 1=Core
+        std::string name_buf;
     };
 
     struct McpSetupState {
@@ -222,7 +221,8 @@ public:
 
     // --- Open helpers ---
     void open_save_confirm(SaveConfirmAction action);
-    void open_clone_confirm(const std::string& type_name, const std::string& node_id = {});
+    void open_clone_confirm(const std::string& type_name, TextEditState& text_edit,
+                            const std::string& node_id = {});
     void open_mcp_setup() { mcp_setup.open = true; }
 
     // --- MCP setup ---
@@ -336,7 +336,8 @@ private:
     void draw_save_confirm(Renderer2D& tr, const MouseState& mouse, const UIStyle& style,
                            float popup_opacity, uint32_t win_w, uint32_t win_h);
     void draw_clone_confirm(Renderer2D& tr, const MouseState& mouse, const UIStyle& style,
-                            float popup_opacity, uint32_t win_w, uint32_t win_h);
+                            float popup_opacity, uint32_t win_w, uint32_t win_h,
+                            const TextEditState& text_edit, bool cursor_blink);
     void draw_mcp_setup(Renderer2D& tr, const MouseState& mouse, const UIStyle& style,
                         float popup_opacity, uint32_t win_w, uint32_t win_h);
     void draw_graph_meta_editor(Renderer2D& tr, const MouseState& mouse, const UIStyle& style,

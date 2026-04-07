@@ -73,12 +73,14 @@ void DialogManager::open_save_confirm(SaveConfirmAction action) {
     save_confirm.open = true;
 }
 
-void DialogManager::open_clone_confirm(const std::string& type_name, const std::string& node_id) {
+void DialogManager::open_clone_confirm(const std::string& type_name, TextEditState& text_edit,
+                                       const std::string& node_id) {
     clone_confirm.type = type_name;
     clone_confirm.node_id = node_id;
-    clone_confirm.project_available = commands_.has_project_clone_destination();
-    clone_confirm.destination = clone_confirm.project_available ? 0 : 1;
+    clone_confirm.name_buf = type_name + "_copy";
     clone_confirm.open = true;
+    text_edit.sel_start = 0;
+    text_edit.cursor = static_cast<int>(clone_confirm.name_buf.size());
 }
 
 ActiveTextField DialogManager::resolve_active_field() {
@@ -94,6 +96,8 @@ ActiveTextField DialogManager::resolve_active_field() {
         return {&example_browser.filter, filter_printable};
     if (pkg_browser.open && pkg_browser.search_focused)
         return {&pkg_browser.filter, filter_printable};
+    if (clone_confirm.open)
+        return {&clone_confirm.name_buf, filter_identifier};
     if (preset_name.open)
         return {&preset_name.buffer, filter_preset_name, SIZE_MAX, true};
     if (create_popup.open)

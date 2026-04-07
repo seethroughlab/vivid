@@ -28,7 +28,7 @@ void DialogManager::draw(Renderer2D& tr, const MouseState& mouse, const UIStyle&
                          float popup_opacity, uint32_t win_w, uint32_t win_h,
                          const TextEditState& text_edit, bool cursor_blink) {
     draw_save_confirm(tr, mouse, style, popup_opacity, win_w, win_h);
-    draw_clone_confirm(tr, mouse, style, popup_opacity, win_w, win_h);
+    draw_clone_confirm(tr, mouse, style, popup_opacity, win_w, win_h, text_edit, cursor_blink);
     draw_mcp_setup(tr, mouse, style, popup_opacity, win_w, win_h);
     draw_graph_meta_editor(tr, mouse, style, popup_opacity, win_w, win_h, text_edit, cursor_blink);
     draw_asset_browser(tr, mouse, style, popup_opacity, win_w, win_h);
@@ -356,7 +356,8 @@ void DialogManager::draw_save_confirm(Renderer2D& tr, const MouseState& mouse, c
 // Clone confirmation dialog
 // -----------------------------------------------------------------------
 void DialogManager::draw_clone_confirm(Renderer2D& tr, const MouseState& mouse, const UIStyle& style,
-                                       float popup_opacity, uint32_t win_w, uint32_t win_h) {
+                                       float popup_opacity, uint32_t win_w, uint32_t win_h,
+                                       const TextEditState& text_edit, bool cursor_blink) {
     if (!clone_confirm.open) return;
 
     float wf = static_cast<float>(win_w);
@@ -367,7 +368,7 @@ void DialogManager::draw_clone_confirm(Renderer2D& tr, const MouseState& mouse, 
                  style.scrim[0], style.scrim[1], style.scrim[2], style.scrim[3] * popup_opacity);
 
     // Dialog panel (centered)
-    float dw = 360.0f, dh = 108.0f;
+    float dw = 320.0f, dh = 100.0f;
     float dx = (wf - dw) * 0.5f;
     float dy = (hf - dh) * 0.5f;
 
@@ -381,49 +382,44 @@ void DialogManager::draw_clone_confirm(Renderer2D& tr, const MouseState& mouse, 
     char clone_buf[128];
     std::snprintf(clone_buf, sizeof(clone_buf), T("clone_for_editing", "Clone %s for editing"), clone_confirm.type.c_str());
     std::string label = clone_buf;
-    tr.draw_text(dx + 12, dy + 10, label.c_str(), style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+    tr.draw_text(dx + 12, dy + 12, label.c_str(), style.bright_text[0], style.bright_text[1], style.bright_text[2]);
 
-    float toggle_x = dx + 12.0f;
-    float toggle_y = dy + 38.0f;
-    float toggle_w = dw - 24.0f;
-    float toggle_h = 24.0f;
-    float left_w = toggle_w * 0.5f;
+    // Name text field
+    float field_x = dx + 12.0f;
+    float field_y = dy + 34.0f;
+    float field_w = dw - 24.0f;
+    float field_h = 22.0f;
+    tr.draw_rect(field_x, field_y, field_w, field_h,
+                 style.input_field_bg[0], style.input_field_bg[1], style.input_field_bg[2]);
+    tr.draw_rect(field_x, field_y, field_w, 1,
+                 style.accent[0], style.accent[1], style.accent[2]);
 
-    float border = 0.6f;
-    tr.draw_rect(toggle_x, toggle_y, toggle_w, toggle_h,
-                 style.button_bg[0], style.button_bg[1], style.button_bg[2], 0.8f);
-    tr.draw_rect(toggle_x, toggle_y, toggle_w, 1.0f,
-                 style.separator[0], style.separator[1], style.separator[2], border);
-    tr.draw_rect(toggle_x, toggle_y + toggle_h - 1.0f, toggle_w, 1.0f,
-                 style.separator[0], style.separator[1], style.separator[2], border);
-    tr.draw_rect(toggle_x, toggle_y, 1.0f, toggle_h,
-                 style.separator[0], style.separator[1], style.separator[2], border);
-    tr.draw_rect(toggle_x + toggle_w - 1.0f, toggle_y, 1.0f, toggle_h,
-                 style.separator[0], style.separator[1], style.separator[2], border);
-    tr.draw_rect(toggle_x + left_w - 0.5f, toggle_y, 1.0f, toggle_h,
-                 style.separator[0], style.separator[1], style.separator[2], border);
-
-    if (clone_confirm.project_available && clone_confirm.destination == 0) {
-        tr.draw_rect(toggle_x + 1.0f, toggle_y + 1.0f, left_w - 2.0f, toggle_h - 2.0f,
-                     style.accent[0], style.accent[1], style.accent[2], 0.85f);
+    tr.push_clip_rect(field_x, field_y, field_w, field_h);
+    // Selection highlight
+    if (text_edit.has_selection() && !clone_confirm.name_buf.empty()) {
+        int smin = text_edit.sel_min();
+        int smax = text_edit.sel_max();
+        int len = static_cast<int>(clone_confirm.name_buf.size());
+        smin = std::max(0, std::min(smin, len));
+        smax = std::max(0, std::min(smax, len));
+        float sel_x0 = field_x + 4 + tr.text_width(clone_confirm.name_buf.substr(0, smin).c_str());
+        float sel_x1 = field_x + 4 + tr.text_width(clone_confirm.name_buf.substr(0, smax).c_str());
+        tr.draw_rect(sel_x0, field_y + 1, sel_x1 - sel_x0, field_h - 2.0f,
+                     style.accent[0], style.accent[1], style.accent[2], 0.4f);
     }
-    if (clone_confirm.destination == 1) {
-        tr.draw_rect(toggle_x + left_w + 1.0f, toggle_y + 1.0f, left_w - 2.0f, toggle_h - 2.0f,
-                     style.accent[0], style.accent[1], style.accent[2], 0.85f);
-    }
-
-    tr.push_clip_rect(toggle_x, toggle_y, left_w, toggle_h);
-    if (clone_confirm.project_available) {
-        tr.draw_text(toggle_x + 12.0f, toggle_y + 4.0f, T("project_package", "Project Package"),
-                     style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+    if (clone_confirm.name_buf.empty()) {
+        tr.draw_text(field_x + 4, field_y + 3, T("clone_name_placeholder", "operator_name"),
+                     style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.5f);
     } else {
-        tr.draw_text(toggle_x + 12.0f, toggle_y + 4.0f, T("project_package_unavailable", "Project Package (unavailable)"),
-                     style.dim_text[0], style.dim_text[1], style.dim_text[2]);
+        tr.draw_text(field_x + 4, field_y + 3, clone_confirm.name_buf.c_str(),
+                     style.bright_text[0], style.bright_text[1], style.bright_text[2]);
     }
-    tr.pop_clip_rect();
-    tr.push_clip_rect(toggle_x + left_w, toggle_y, left_w, toggle_h);
-    tr.draw_text(toggle_x + left_w + 12.0f, toggle_y + 4.0f, T("core", "Core"),
-                 style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+    if (cursor_blink && !text_edit.has_selection()) {
+        int cpos = std::max(0, std::min(text_edit.cursor, static_cast<int>(clone_confirm.name_buf.size())));
+        float cur_x = field_x + 4 + tr.text_width(clone_confirm.name_buf.substr(0, cpos).c_str());
+        tr.draw_rect(cur_x, field_y + 1, 1.0f, field_h - 2.0f,
+                     style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+    }
     tr.pop_clip_rect();
 
     // Buttons

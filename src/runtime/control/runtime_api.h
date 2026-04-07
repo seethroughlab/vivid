@@ -169,6 +169,7 @@ public:
     void set_subgraph_modules(const SubgraphModuleRegistry* modules) { subgraph_modules_ = modules; }
 
     bool has_pending() const { return pending_topology_change_; }
+    void request_recompile() { pending_topology_change_ = true; }
     bool needs_gpu_realloc() const { return needs_gpu_realloc_; }
     void clear_gpu_realloc() { needs_gpu_realloc_ = false; }
     uint64_t reload_serial() const { return reload_serial_; }

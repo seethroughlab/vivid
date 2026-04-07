@@ -21,9 +21,7 @@ inline bool filter_digits(char c) {
 }
 inline bool filter_identifier(char c) {
     auto uc = static_cast<unsigned char>(c);
-    char lc = std::isupper(uc) ? static_cast<char>(std::tolower(uc)) : c;
-    return std::islower(static_cast<unsigned char>(lc)) ||
-           std::isdigit(static_cast<unsigned char>(lc)) || lc == '_';
+    return std::isalpha(uc) || std::isdigit(uc) || c == '_';
 }
 inline bool filter_preset_name(char c) {
     auto uc = static_cast<unsigned char>(c);

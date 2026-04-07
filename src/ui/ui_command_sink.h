@@ -47,14 +47,9 @@ public:
     virtual void clone_and_edit(const std::string& type_name) {
         clone_and_edit(type_name, "auto");
     }
-    // destination: "auto", "project", or "core"
-    virtual void clone_and_edit(const std::string& type_name, const std::string& destination) {}
-    virtual void clone_and_edit_for_node(const std::string& node_id,
-                                         const std::string& type_name,
-                                         const std::string& destination) {
-        (void)node_id;
-        clone_and_edit(type_name, destination);
-    }
+    virtual void clone_and_edit(const std::string& type_name,
+                                const std::string& custom_name = {},
+                                const std::string& node_id = {}) {}
     virtual bool has_project_clone_destination() { return false; }
     virtual void set_editor_preference(const std::string& editor_id,
                                        const std::string& custom_command) {}

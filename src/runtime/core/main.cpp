@@ -24,6 +24,7 @@
 #include "runtime/core/settings.h"
 #include "runtime/core/runtime_bootstrap.h"
 #include "runtime/core/editor_detect.h"
+#include "runtime/core/tool_discovery.h"
 #include "runtime/operators/operator_info_cache.h"
 #include "runtime/operators/operator_preparation_service.h"
 #include "runtime/control/runtime_command_sink.h"
@@ -1720,12 +1721,30 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
                             vivid::BuildTaskId configure_task = 0;
 
                             // Ensure build directory exists/configured.
-                            if (!std::filesystem::exists(std::filesystem::path(pkg_build) / "CMakeCache.txt")) {
+                            std::string cmake_exe = vivid::find_tool("cmake");
+                            if (cmake_exe.empty()) {
+                                result.success = false;
+                                result.error_output = vivid::missing_tool_error("cmake");
+                                return result;
+                            }
+                            bool needs_configure = !std::filesystem::exists(
+                                std::filesystem::path(pkg_build) / "CMakeCache.txt");
+                            if (!needs_configure) {
+                                // Reconfigure if CMakeLists.txt changed (e.g. new operator added)
+                                std::error_code tc_ec;
+                                auto cache_time = std::filesystem::last_write_time(
+                                    std::filesystem::path(pkg_build) / "CMakeCache.txt", tc_ec);
+                                auto cmake_time = std::filesystem::last_write_time(
+                                    std::filesystem::path(pkg_dir) / "CMakeLists.txt", tc_ec);
+                                if (!tc_ec && cmake_time > cache_time)
+                                    needs_configure = true;
+                            }
+                            if (needs_configure) {
                                 std::filesystem::create_directories(pkg_build);
                                 configure_task = build_console->begin_task(
                                     vivid::BuildTaskKind::PackageConfigure,
                                     pkg_name + ":" + op_name);
-                                std::string cfg_cmd = "cmake"
+                                std::string cfg_cmd = quote(cmake_exe) +
                                     " -B " + quote(pkg_build) +
                                     " -S " + quote(pkg_dir) +
                                     " -DVIVID_SRC_DIR=" + quote(pkg_src_dir) +
@@ -1760,7 +1779,7 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
                             vivid::BuildTaskId build_task = build_console->begin_task(
                                 vivid::BuildTaskKind::PackageBuild,
                                 pkg_name + ":" + op_name);
-                            std::string build_cmd = "cmake --build " + quote(pkg_build) +
+                            std::string build_cmd = quote(cmake_exe) + " --build " + quote(pkg_build) +
                                                     " --target " + quote(op_name) + " 2>&1";
                             std::string build_out;
                             FILE* pipe = popen(build_cmd.c_str(), "r");

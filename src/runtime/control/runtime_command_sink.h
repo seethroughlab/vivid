@@ -185,14 +185,9 @@ public:
     void open_shader(const std::string& type_name) override;
     void open_module_source(const std::string& type_name) override;
 
-    void clone_and_edit(const std::string& type_name) override {
-        clone_and_edit(type_name, "auto");
-    }
-
-    void clone_and_edit(const std::string& type_name, const std::string& destination) override;
-    void clone_and_edit_for_node(const std::string& node_id,
-                                 const std::string& type_name,
-                                 const std::string& destination) override;
+    void clone_and_edit(const std::string& type_name,
+                        const std::string& custom_name = {},
+                        const std::string& node_id = {}) override;
 
     bool has_project_clone_destination() override;
 
@@ -316,7 +311,16 @@ private:
 
     bool patch_package_cmake_ops(const std::string& pkg_dir, const std::string& op_name);
 
-    void clone_cpp_operator(const std::string& type_name, const std::string& destination);
+    void clone_cpp_operator(const std::string& type_name, const std::string& custom_name,
+                            const std::string& node_id);
+
+    // Ensure a project-local package exists beside the graph. Scaffolds and links if needed.
+    // Returns {root_path, name} or empty strings on failure.
+    std::pair<std::string, std::string> ensure_project_package();
+
+    // Replace a node in the graph with a new type, preserving connections and layout.
+    void swap_node_type(const std::string& old_id, const std::string& new_id,
+                        const std::string& new_type);
 
     vivid::RuntimeAPI& api_;
     vivid::UndoManager undo_manager_;

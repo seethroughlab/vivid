@@ -276,7 +276,8 @@ InstallResult PackageManager::link(const std::string& path) {
 bool PackageManager::unlink(const std::string& name) {
     std::string pkg_dir = packages_dir() + "/" + name;
 
-    if (!std::filesystem::exists(pkg_dir)) {
+    // Check for symlink first (is_symlink works even when target is gone)
+    if (!std::filesystem::is_symlink(pkg_dir) && !std::filesystem::exists(pkg_dir)) {
         std::fprintf(stderr, "[vivid] PackageManager: package not found: %s\n", name.c_str());
         return false;
     }

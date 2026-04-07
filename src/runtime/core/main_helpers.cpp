@@ -359,6 +359,8 @@ void poll_hot_reload(vivid::FileWatcher& fw, vivid::HotReloader& hr,
                 }
                 std::fprintf(stderr, "[vivid] New operator '%s' loaded\n",
                     result.target_name.c_str());
+                // Trigger recompile so placeholder nodes get replaced
+                runtime_api.request_recompile();
             } else {
                 std::fprintf(stderr, "[vivid] Hot-reload: failed to load new target '%s'\n",
                     result.target_name.c_str());

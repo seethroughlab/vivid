@@ -195,24 +195,9 @@ bool RuntimeCommandSink::clone_shader_operator(const std::string& type_name,
     return true;
 }
 
-void RuntimeCommandSink::clone_and_edit(const std::string& type_name, const std::string& destination) {
-    if (!registry_ || !op_cache_) return;
-
-    if (registry_->is_shader_operator(type_name)) {
-        std::string error;
-        if (!clone_shader_operator(type_name, {}, &error) && !error.empty())
-            std::fprintf(stderr, "[vivid] %s\n", error.c_str());
-        return;
-    }
-
-    auto* loader = registry_->find(type_name);
-    if (!loader || operators_dir_.empty()) return;
-    clone_cpp_operator(type_name, destination);
-}
-
-void RuntimeCommandSink::clone_and_edit_for_node(const std::string& node_id,
-                                                 const std::string& type_name,
-                                                 const std::string& destination) {
+void RuntimeCommandSink::clone_and_edit(const std::string& type_name,
+                                        const std::string& custom_name,
+                                        const std::string& node_id) {
     if (!registry_ || !op_cache_) return;
 
     if (registry_->is_shader_operator(type_name)) {
@@ -222,7 +207,9 @@ void RuntimeCommandSink::clone_and_edit_for_node(const std::string& node_id,
         return;
     }
 
-    clone_and_edit(type_name, destination);
+    auto* loader = registry_->find(type_name);
+    if (!loader || operators_dir_.empty()) return;
+    clone_cpp_operator(type_name, custom_name, node_id);
 }
 
 bool RuntimeCommandSink::has_project_clone_destination() {
@@ -395,28 +382,190 @@ bool RuntimeCommandSink::patch_package_cmake_ops(const std::string& pkg_dir, con
     return false;
 }
 
-void RuntimeCommandSink::clone_cpp_operator(const std::string& type_name, const std::string& destination) {
-    if (build_dir_.empty()) {
-        std::fprintf(stderr, "[vivid] Clone: no build directory configured\n");
-        return;
+std::pair<std::string, std::string> RuntimeCommandSink::ensure_project_package() {
+    namespace fs = std::filesystem;
+
+    const std::vector<vivid::PackageInfo> packages = package_manager_
+        ? package_manager_->list()
+        : std::vector<vivid::PackageInfo>{};
+
+    // Use an existing workspace project package if available
+    if (const auto* pkg = vivid::select_workspace_project_package(packages))
+        return {pkg->path, pkg->name};
+
+    // Otherwise scaffold one beside the graph
+    if (!graph_ || graph_->source_path().empty()) {
+        std::fprintf(stderr, "[vivid] Clone: no project package and no saved graph — save the graph first\n");
+        return {};
+    }
+    if (!package_manager_) {
+        std::fprintf(stderr, "[vivid] Clone: no package manager available\n");
+        return {};
     }
 
+    fs::path pkg_dir = fs::path(graph_->source_path()).parent_path() / "operators";
+    static constexpr const char* kPkgName = "local-operators";
+
+    if (!vivid::is_supported_package_layout(pkg_dir.string())) {
+        fs::create_directories(pkg_dir / "src");
+
+        // vivid-package.json
+        {
+            std::ofstream ofs(pkg_dir / "vivid-package.json");
+            if (!ofs) {
+                std::fprintf(stderr, "[vivid] Clone: cannot create package manifest in %s\n",
+                             pkg_dir.string().c_str());
+                return {};
+            }
+            ofs << "{\n"
+                << "  \"name\": \"" << kPkgName << "\",\n"
+                << "  \"version\": \"0.1.0\",\n"
+                << "  \"vivid_core\": \">=0.1.0 <2.0.0\",\n"
+                << "  \"description\": \"Project-local operators\",\n"
+                << "  \"build\": \"cmake\",\n"
+                << "  \"operators\": []\n"
+                << "}\n";
+        }
+
+        // CMakeLists.txt
+        {
+            std::ofstream ofs(pkg_dir / "CMakeLists.txt");
+            if (!ofs) {
+                std::fprintf(stderr, "[vivid] Clone: cannot create CMakeLists.txt in %s\n",
+                             pkg_dir.string().c_str());
+                return {};
+            }
+            ofs << "cmake_minimum_required(VERSION 3.20)\n"
+                << "project(local_operators LANGUAGES CXX)\n\n"
+                << "if(NOT DEFINED VIVID_SRC_DIR)\n"
+                << "  message(FATAL_ERROR \"VIVID_SRC_DIR not set. Build through vivid package tooling.\")\n"
+                << "endif()\n\n"
+                << "set(CMAKE_CXX_STANDARD 17)\n"
+                << "set(CMAKE_CXX_STANDARD_REQUIRED ON)\n"
+                << "set(CMAKE_POSITION_INDEPENDENT_CODE ON)\n\n"
+                << "include_directories(${VIVID_SRC_DIR}/src)\n\n"
+                << "# Find WebGPU headers and library for GPU operators\n"
+                << "if(DEFINED VIVID_BUILD_DIR)\n"
+                << "  file(GLOB _wgpu_src_dirs \"${VIVID_BUILD_DIR}/_deps/wgpu*-src\")\n"
+                << "  foreach(_dir ${_wgpu_src_dirs})\n"
+                << "    if(EXISTS \"${_dir}/include/webgpu/webgpu.h\")\n"
+                << "      include_directories(\"${_dir}/include\")\n"
+                << "    endif()\n"
+                << "  endforeach()\n"
+                << "  # Find wgpu_native library\n"
+                << "  find_library(WGPU_NATIVE wgpu_native PATHS\n"
+                << "    \"${VIVID_BUILD_DIR}/vivid.app/Contents/MacOS\"\n"
+                << "    \"${VIVID_BUILD_DIR}\" NO_DEFAULT_PATH)\n"
+                << "endif()\n\n"
+                << "function(add_vivid_pkg_operator name src)\n"
+                << "  add_library(${name} SHARED ${src})\n"
+                << "  set_target_properties(${name} PROPERTIES PREFIX \"\" SUFFIX \".dylib\")\n"
+                << "  if(WGPU_NATIVE)\n"
+                << "    target_link_libraries(${name} PRIVATE ${WGPU_NATIVE})\n"
+                << "  endif()\n"
+                << "endfunction()\n\n"
+                << "set(PKG_OPS)\n\n"
+                << "foreach(op ${PKG_OPS})\n"
+                << "  add_vivid_pkg_operator(${op} src/${op}.cpp)\n"
+                << "endforeach()\n";
+        }
+
+        std::fprintf(stderr, "[vivid] Clone: scaffolded project package at %s\n",
+                     pkg_dir.string().c_str());
+    }
+
+    // Check if already linked (handle stale symlinks)
+    for (const auto& pkg : packages) {
+        if (pkg.name != kPkgName) continue;
+        if (pkg.linked) {
+            std::error_code ec;
+            auto target = fs::read_symlink(pkg.path, ec);
+            if (!ec && fs::weakly_canonical(target) == fs::weakly_canonical(pkg_dir))
+                return {pkg.path, pkg.name};  // already linked to the right place
+            package_manager_->unlink(pkg.name);  // stale — remove and re-link
+        } else {
+            std::fprintf(stderr, "[vivid] Clone: package '%s' already installed "
+                                 "(not linked); uninstall it first\n", kPkgName);
+            return {};
+        }
+        break;
+    }
+
+    auto link_result = package_manager_->link(pkg_dir.string());
+    if (!link_result.success) {
+        std::fprintf(stderr, "[vivid] Clone: failed to link package: %s\n",
+                     link_result.error.c_str());
+        return {};
+    }
+    std::fprintf(stderr, "[vivid] Clone: linked project package '%s'\n",
+                 link_result.info.name.c_str());
+    return {link_result.info.path, link_result.info.name};
+}
+
+void RuntimeCommandSink::swap_node_type(const std::string& old_id, const std::string& new_id,
+                                         const std::string& new_type) {
+    if (!graph_) return;
+
+    // Capture connections involving this node, remapping to new ID
+    std::vector<vivid::ConnectionDef> saved_connections;
+    for (const auto& conn : graph_->connections()) {
+        if (conn.from_node == old_id || conn.to_node == old_id) {
+            vivid::ConnectionDef remapped = conn;
+            if (remapped.from_node == old_id) remapped.from_node = new_id;
+            if (remapped.to_node == old_id) remapped.to_node = new_id;
+            saved_connections.push_back(remapped);
+        }
+    }
+
+    // Capture layout position
+    float nx = NAN, ny = NAN;
+    if (auto* node_def = graph_->find_node(old_id)) {
+        nx = node_def->layout_x;
+        ny = node_def->layout_y;
+    }
+
+    // Remove old node (auto-removes connections, sets pending_topology_change)
+    api_.remove_node(old_id);
+
+    // Add new node directly to graph (bypasses registry check — type may not be loaded yet)
+    graph_->add_node(new_id, new_type);
+
+    // Restore layout position
+    if (auto* node_def = graph_->find_node(new_id)) {
+        node_def->layout_x = nx;
+        node_def->layout_y = ny;
+    }
+
+    // Reconnect with remapped IDs
+    for (const auto& conn : saved_connections)
+        graph_->add_connection(conn.from_node, conn.from_port, conn.to_node, conn.to_port);
+
+    std::fprintf(stderr, "[vivid] Swapped node '%s' → '%s' (type '%s')\n",
+                 old_id.c_str(), new_id.c_str(), new_type.c_str());
+}
+
+void RuntimeCommandSink::clone_cpp_operator(const std::string& type_name,
+                                             const std::string& custom_name,
+                                             const std::string& node_id) {
     auto* loader = registry_->find(type_name);
     if (!loader) return;
     const auto* desc = loader->descriptor();
     if (!desc) return;
 
-    // Map operator kind → subdirectory
+    // Derive source stem from cmake target (maps type name → directory/file name)
+    std::string stem = registry_->type_to_target(type_name);
+    if (stem.empty()) {
+        stem = type_name;
+        for (auto& c : stem) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+
+    // Map operator kind → source subdirectory
     const char* kind_dir = "control";
     switch (vivid_operator_kind(desc)) {
         case VIVID_OP_AUDIO: kind_dir = "audio"; break;
         case VIVID_OP_GPU:   kind_dir = "gpu"; break;
         default: break;
     }
-
-    // Derive stem (lowercase type name)
-    std::string stem = type_name;
-    for (auto& c : stem) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 
     // Read source .cpp
     std::string src_dir = operators_dir_ + "/" + kind_dir + "/" + stem;
@@ -433,48 +582,32 @@ void RuntimeCommandSink::clone_cpp_operator(const std::string& type_name, const 
         cpp_source = ss.str();
     }
 
-    // Generate unique name
-    std::string base_name = type_name + "_copy";
-    std::string new_type = base_name;
-    for (int n = 2; registry_->find(new_type); ++n) {
-        new_type = base_name + std::to_string(n);
+    // Generate unique operator type name
+    std::string new_type = custom_name.empty() ? (type_name + "_copy") : custom_name;
+    if (registry_->find(new_type)) {
+        std::string base = new_type;
+        for (int n = 2; registry_->find(new_type); ++n)
+            new_type = base + std::to_string(n);
     }
     std::string new_stem = new_type;
     for (auto& c : new_stem) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 
-    const std::string core_src_dir = std::filesystem::path(operators_dir_).parent_path().string();
-    const std::vector<vivid::PackageInfo> packages = package_manager_
-        ? package_manager_->list()
-        : std::vector<vivid::PackageInfo>{};
-    vivid::OperatorDestination dest;
-    std::string resolve_error;
-    std::string request = destination.empty() ? "auto" : destination;
-    if (!vivid::resolve_operator_destination(request, core_src_dir, packages, settings_,
-                                             dest, resolve_error)) {
-        std::fprintf(stderr, "[vivid] Clone destination error: %s\n", resolve_error.c_str());
-        return;
-    }
-    if (!dest.warning.empty()) {
-        std::fprintf(stderr, "[vivid] %s\n", dest.warning.c_str());
-    }
-    if (dest.package_layout && dest.package_name.empty()) {
-        std::fprintf(stderr,
-                     "[vivid] Clone destination '%s' is not an active package; using core destination\n",
-                     dest.root.c_str());
-        dest = {};
-        dest.root = core_src_dir;
-    }
-    const bool use_project_package = dest.package_layout && !dest.package_name.empty();
-
-    std::string new_dir;
-    if (use_project_package) {
-        new_dir = (std::filesystem::path(dest.root) / "src").string();
-    } else {
-        new_dir = operators_dir_ + "/" + kind_dir + "/" + new_stem;
-        std::filesystem::create_directories(new_dir);
+    // Validate stem contains only safe characters
+    for (char c : new_stem) {
+        if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') {
+            std::fprintf(stderr, "[vivid] Clone: invalid character '%c' in operator name\n", c);
+            return;
+        }
     }
 
-    // Transform source: replace old type name → new type name
+    // Resolve destination package (scaffold + link if needed)
+    auto [pkg_root, pkg_name] = ensure_project_package();
+    if (pkg_root.empty()) return;
+
+    std::string new_dir = (std::filesystem::path(pkg_root) / "src").string();
+    std::filesystem::create_directories(new_dir);
+
+    // Transform source: replace type name and .wgsl references
     std::string transformed = cpp_source;
     {
         size_t pos = 0;
@@ -483,24 +616,20 @@ void RuntimeCommandSink::clone_cpp_operator(const std::string& type_name, const 
             pos += new_type.size();
         }
     }
-    // Replace old stem .wgsl references → new stem
     {
-        std::string old_wgsl_ref = stem + ".wgsl";
-        std::string new_wgsl_ref = new_stem + ".wgsl";
+        std::string old_wgsl = stem + ".wgsl", new_wgsl = new_stem + ".wgsl";
         size_t pos = 0;
-        while ((pos = transformed.find(old_wgsl_ref, pos)) != std::string::npos) {
-            transformed.replace(pos, old_wgsl_ref.size(), new_wgsl_ref);
-            pos += new_wgsl_ref.size();
+        while ((pos = transformed.find(old_wgsl, pos)) != std::string::npos) {
+            transformed.replace(pos, old_wgsl.size(), new_wgsl);
+            pos += new_wgsl.size();
         }
     }
 
-    // If a .wgsl file exists alongside the .cpp, copy it with the new name
+    // Copy .wgsl shader if present
     std::string wgsl_path = src_dir + "/" + stem + ".wgsl";
-    if (std::filesystem::exists(wgsl_path)) {
-        std::string new_wgsl = new_dir + "/" + new_stem + ".wgsl";
-        std::filesystem::copy_file(wgsl_path, new_wgsl,
+    if (std::filesystem::exists(wgsl_path))
+        std::filesystem::copy_file(wgsl_path, new_dir + "/" + new_stem + ".wgsl",
                                    std::filesystem::copy_options::overwrite_existing);
-    }
 
     // Write transformed .cpp
     std::string new_cpp = new_dir + "/" + new_stem + ".cpp";
@@ -513,104 +642,38 @@ void RuntimeCommandSink::clone_cpp_operator(const std::string& type_name, const 
         ofs << transformed;
     }
 
-    if (use_project_package) {
-        if (!patch_package_cmake_ops(dest.root, new_stem)) {
-            std::fprintf(stderr, "[vivid] Clone: cannot update package CMakeLists.txt for %s\n",
-                         dest.package_name.c_str());
-            return;
-        }
-    } else {
-        // Append CMake target
-        std::string cmake_path = operators_dir_ + "/../CMakeLists.txt";
+    // Register the new operator target in the package CMakeLists.txt
+    if (!patch_package_cmake_ops(pkg_root, new_stem)) {
+        std::string cmake_path = (std::filesystem::path(pkg_root) / "CMakeLists.txt").string();
         std::ofstream ofs(cmake_path, std::ios::app);
         if (!ofs) {
-            std::fprintf(stderr, "[vivid] Clone: cannot append to CMakeLists.txt\n");
+            std::fprintf(stderr, "[vivid] Clone: cannot update CMakeLists.txt in %s\n", pkg_root.c_str());
             return;
         }
-        ofs << "\nadd_library(" << new_stem << " MODULE operators/"
-            << kind_dir << "/" << new_stem << "/" << new_stem << ".cpp)\n";
-        ofs << "set_target_properties(" << new_stem
-            << " PROPERTIES PREFIX \"\" SUFFIX \"${VIVID_PLUGIN_SUFFIX}\")\n";
-        if (vivid_operator_kind(desc) == VIVID_OP_GPU)
-            ofs << "target_link_libraries(" << new_stem << " PRIVATE vivid_operator_api webgpu)\n";
-        else
-            ofs << "target_link_libraries(" << new_stem << " PRIVATE vivid_operator_api)\n";
+        ofs << "\nadd_vivid_pkg_operator(" << new_stem << " src/" << new_stem << ".cpp)\n";
     }
 
-    // Validate stem contains only safe characters (alphanumeric + underscore)
-    for (char c : new_stem) {
-        if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') {
-            std::fprintf(stderr, "[vivid] Clone: invalid character '%c' in operator name\n", c);
-            return;
-        }
-    }
-
-    if (use_project_package) {
-        // Package clones rebuild via package hot-reload flow.
-        registry_->register_user_operator(new_type, new_cpp);
-        op_cache_->invalidate_all();
-        if (hot_reloader_) {
-            hot_reloader_->queue_rebuild("pkg:" + dest.package_name + ":" + new_stem);
-        }
-        vivid::open_in_editor(new_cpp, settings_ ? *settings_ : vivid::Settings{});
-        std::fprintf(stderr, "[vivid] Cloned '%s' as '%s' in package '%s'\n",
-                     type_name.c_str(), new_type.c_str(), dest.package_name.c_str());
-        return;
-    }
-
-    // Build synchronously (core destination)
-    std::string build_cmd = "cmake --build \"" + build_dir_ + "\" --target \"" + new_stem + "\" 2>&1";
-    std::fprintf(stderr, "[vivid] Clone: building %s...\n", new_stem.c_str());
-    vivid::BuildTaskId task_id = build_console_
-        ? build_console_->begin_task(vivid::BuildTaskKind::PackageBuild, "clone " + new_stem)
-        : 0;
-    FILE* pipe = popen(build_cmd.c_str(), "r");
-    if (!pipe) {
-        if (build_console_)
-            build_console_->append_system_line(task_id, "Failed to execute cmake build");
-        if (build_console_)
-            build_console_->finish_task(task_id, vivid::BuildTaskState::Failed, "launch failed");
-        std::fprintf(stderr, "[vivid] Clone: failed to start build\n");
-        return;
-    }
-    std::array<char, 256> build_buf;
-    while (fgets(build_buf.data(), build_buf.size(), pipe) != nullptr) {
-        if (build_console_)
-            build_console_->append_line(task_id, vivid::BuildConsoleStreamKind::Stdout, build_buf.data());
-    }
-    int rc = pclose(pipe);
-    if (rc != 0) {
-        std::fprintf(stderr, "[vivid] Clone: build failed (exit %d)\n", rc);
-        if (build_console_)
-            build_console_->finish_task(task_id, vivid::BuildTaskState::Failed,
-                                        "failed (exit " + std::to_string(rc) + ")");
-        return;
-    }
-    if (build_console_)
-        build_console_->finish_task(task_id, vivid::BuildTaskState::Succeeded, "built");
-
-    // Load the new dylib (core destination)
-#if defined(__APPLE__)
-    std::string dylib_name = new_stem + ".dylib";
-#elif defined(_WIN32)
-    std::string dylib_name = new_stem + ".dll";
-#else
-    std::string dylib_name = new_stem + ".so";
-#endif
-    std::string dylib_path = build_dir_ + "/" + dylib_name;
-    if (!registry_->register_loaded_operator(dylib_path)) {
-        std::fprintf(stderr, "[vivid] Clone: failed to load %s\n", dylib_path.c_str());
-        return;
-    }
-
-    // Register as user operator and invalidate caches
+    // Register and queue build
     registry_->register_user_operator(new_type, new_cpp);
     op_cache_->invalidate_all();
+    if (hot_reloader_)
+        hot_reloader_->queue_rebuild("pkg:" + pkg_name + ":" + new_stem);
 
-    // Open source in editor
+    // Replace the originating node in the graph (placeholder until build completes)
+    if (!node_id.empty()) {
+        std::string new_node_id = new_stem;
+        if (graph_ && graph_->find_node(new_node_id)) {
+            for (int n = 2; ; ++n) {
+                std::string candidate = new_stem + std::to_string(n);
+                if (!graph_->find_node(candidate)) { new_node_id = candidate; break; }
+            }
+        }
+        swap_node_type(node_id, new_node_id, new_type);
+    }
+
     vivid::open_in_editor(new_cpp, settings_ ? *settings_ : vivid::Settings{});
-
-    std::fprintf(stderr, "[vivid] Cloned '%s' as '%s'\n", type_name.c_str(), new_type.c_str());
+    std::fprintf(stderr, "[vivid] Cloned '%s' as '%s' in package '%s'\n",
+                 type_name.c_str(), new_type.c_str(), pkg_name.c_str());
 }
 
 void RuntimeCommandSink::set_editor_preference(const std::string& editor_id,
