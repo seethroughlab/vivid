@@ -17,7 +17,8 @@ public:
     void set_console(std::shared_ptr<vivid::BuildConsole> console) { console_ = std::move(console); }
 
     void sync_from_model();
-    void draw(Renderer2D& tr, const UIStyle& style, uint32_t win_w, uint32_t win_h, float bottom_offset);
+    void draw(Renderer2D& tr, const UIStyle& style, uint32_t win_w, uint32_t win_h, float bottom_offset,
+              float mouse_x, float mouse_y);
 
     bool handle_scroll(float mouse_x, float mouse_y, float x_offset, float y_offset,
                        uint32_t win_w, uint32_t win_h, float bottom_offset);
@@ -73,6 +74,9 @@ private:
     bool selection_dragged_ = false;
     float height_ = 180.0f;
     float scroll_y_ = 0.0f;
+    float line_h_ = 18.0f;
+    struct Rect { float x, y, w, h; };
+    Rect close_btn_ = {};
     int selection_anchor_line_ = -1;
     int selection_current_line_ = -1;
     uint64_t seen_auto_reveal_generation_ = 0;

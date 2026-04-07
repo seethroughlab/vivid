@@ -188,7 +188,7 @@ bool BuildConsolePanel::handle_scroll(float mouse_x, float mouse_y, float x_offs
     (void)x_offset;
     if (!contains(mouse_x, mouse_y, win_w, win_h, bottom_offset)) return false;
     auto layout = layout_for(win_w, win_h, bottom_offset);
-    float line_h = 18.0f;
+    float line_h = line_h_;
     scroll_y_ = std::max(0.0f, scroll_y_ - y_offset * line_h * 2.0f);
     update_bottom_pin(line_h, layout);
     focused_ = true;
@@ -203,7 +203,12 @@ bool BuildConsolePanel::handle_left_press(float mouse_x, float mouse_y, uint32_t
         resizing_ = true;
         return true;
     }
-    float line_h = 18.0f;
+    if (mouse_x >= close_btn_.x && mouse_x <= close_btn_.x + close_btn_.w &&
+        mouse_y >= close_btn_.y && mouse_y <= close_btn_.y + close_btn_.h) {
+        set_open(false);
+        return true;
+    }
+    float line_h = line_h_;
     int line_idx = hit_line_index(layout, mouse_y, line_h);
     selecting_ = true;
     selection_dragged_ = false;
@@ -233,7 +238,7 @@ bool BuildConsolePanel::update_drag(float mouse_x, float mouse_y, bool left_down
         return true;
     }
     if (selecting_) {
-        float line_h = 18.0f;
+        float line_h = line_h_;
         int line_idx = hit_line_index(layout, mouse_y, line_h);
         if (line_idx >= 0) {
             selection_current_line_ = line_idx;
@@ -270,12 +275,14 @@ bool BuildConsolePanel::handle_key(GLFWwindow* window, int key, int action, int 
     return false;
 }
 
-void BuildConsolePanel::draw(Renderer2D& tr, const UIStyle& style, uint32_t win_w, uint32_t win_h, float bottom_offset) {
+void BuildConsolePanel::draw(Renderer2D& tr, const UIStyle& style, uint32_t win_w, uint32_t win_h, float bottom_offset,
+                             float mouse_x, float mouse_y) {
     sync_from_model();
     if (!open_) return;
 
     auto layout = layout_for(win_w, win_h, bottom_offset);
     float line_h = tr.line_height();
+    line_h_ = line_h;
     if (pinned_to_bottom_)
         scroll_to_bottom(line_h, layout);
     else
@@ -294,9 +301,23 @@ void BuildConsolePanel::draw(Renderer2D& tr, const UIStyle& style, uint32_t win_
     tr.draw_text(layout.x + kHeaderPadX, layout.y + 4.0f, title,
                  style.bright_text[0], style.bright_text[1], style.bright_text[2]);
 
+    const char* close_label = "\xe2\x9c\x95";
+    float close_tw = tr.text_width(close_label);
+    float close_pad = 4.0f;
+    float close_x = layout.x + layout.w - close_tw - kHeaderPadX;
+    float close_y = layout.y + layout.resize_h;
+    float close_h = layout.header_h - layout.resize_h;
+    close_btn_ = {close_x - close_pad, close_y, close_tw + close_pad * 2.0f, close_h};
+    bool close_hov = mouse_x >= close_btn_.x && mouse_x <= close_btn_.x + close_btn_.w &&
+                     mouse_y >= close_btn_.y && mouse_y <= close_btn_.y + close_btn_.h;
+    tr.draw_text(close_x, layout.y + 4.0f, close_label,
+                 close_hov ? style.bright_text[0] : style.dim_text[0],
+                 close_hov ? style.bright_text[1] : style.dim_text[1],
+                 close_hov ? style.bright_text[2] : style.dim_text[2]);
+
     std::string count = std::to_string(snapshot_.lines.size()) + " lines";
     float count_w = tr.text_width(count.c_str());
-    tr.draw_text(layout.x + layout.w - count_w - kHeaderPadX, layout.y + 4.0f, count.c_str(),
+    tr.draw_text(close_x - count_w - kHeaderPadX, layout.y + 4.0f, count.c_str(),
                  style.dim_text[0], style.dim_text[1], style.dim_text[2]);
 
     tr.push_clip_rect(layout.content_x, layout.content_y, layout.content_w, layout.content_h);
