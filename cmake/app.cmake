@@ -249,6 +249,22 @@ if(APPLE)
             PROPERTIES MACOSX_PACKAGE_LOCATION ${dst_loc})
     endforeach()
 
+    # Ensure graph content changes are picked up on every build (not just configure).
+    foreach(g ${_BUNDLE_GRAPHS})
+        set(src_path ${CMAKE_SOURCE_DIR}/graphs/${g})
+        get_filename_component(rel_dir ${g} DIRECTORY)
+        if(rel_dir STREQUAL "")
+            set(dst_dir "${CMAKE_BINARY_DIR}/vivid.app/Contents/Resources/graphs")
+        else()
+            set(dst_dir "${CMAKE_BINARY_DIR}/vivid.app/Contents/Resources/graphs/${rel_dir}")
+        endif()
+        get_filename_component(fname ${g} NAME)
+        add_custom_command(TARGET vivid POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${dst_dir}"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${src_path}" "${dst_dir}/${fname}"
+            VERBATIM)
+    endforeach()
+
     # Demo assets → Resources/assets/(recursive)
     file(GLOB_RECURSE _BUNDLE_ASSETS RELATIVE ${VIVID_DEMO_ASSETS_SOURCE_DIR} ${VIVID_DEMO_ASSETS_SOURCE_DIR}/*)
     list(FILTER _BUNDLE_ASSETS EXCLUDE REGEX "^\\.")

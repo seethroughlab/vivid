@@ -15,42 +15,6 @@ namespace vivid {
 
 static constexpr uint32_t kMaxLaneCapacity = 1024;
 
-// Bridge functions for lane state service (frame-thread variant).
-static void* frame_lane_state_fn_bridge(void* ctx_ptr, uint32_t lane_id, uint32_t byte_size) {
-    auto* lsc = static_cast<FrameExecutor::NodeLaneCtx*>(ctx_ptr);
-    return lsc->service->get(lsc->node_idx, lane_id, byte_size);
-}
-static uint32_t frame_allocate_lane_id_fn_bridge(void* ctx_ptr) {
-    auto* lsc = static_cast<FrameExecutor::NodeLaneCtx*>(ctx_ptr);
-    return lsc->service->allocate_lane_id();
-}
-static void frame_retire_lane_id_fn_bridge(void* ctx_ptr, uint32_t lane_id) {
-    auto* lsc = static_cast<FrameExecutor::NodeLaneCtx*>(ctx_ptr);
-    lsc->service->retire(lsc->node_idx, lane_id);
-}
-
-static void populate_metronome_context(VividFrameContext& ctx,
-                                       const GraphMetronomeSample& sample) {
-    ctx.metronome_enabled = sample.enabled ? 1u : 0u;
-    ctx.metronome_bpm = sample.bpm;
-    ctx.metronome_beats_per_bar = static_cast<uint32_t>(sample.beats_per_bar);
-    ctx.metronome_beats_elapsed = sample.beats_elapsed;
-    ctx.metronome_beat_phase = sample.beat_phase;
-    ctx.metronome_bar_phase = sample.bar_phase;
-    ctx.metronome_beat_ms = sample.beat_ms;
-}
-
-static void populate_metronome_context(VividGpuContext& ctx,
-                                       const GraphMetronomeSample& sample) {
-    ctx.metronome_enabled = sample.enabled ? 1u : 0u;
-    ctx.metronome_bpm = sample.bpm;
-    ctx.metronome_beats_per_bar = static_cast<uint32_t>(sample.beats_per_bar);
-    ctx.metronome_beats_elapsed = sample.beats_elapsed;
-    ctx.metronome_beat_phase = sample.beat_phase;
-    ctx.metronome_bar_phase = sample.bar_phase;
-    ctx.metronome_beat_ms = sample.beat_ms;
-}
-
 // tick() processes all frame-cadence nodes once per frame in topological order.
 //
 // Per-node steps: zero inputs → propagate upstream wire values (with lane
@@ -186,6 +150,17 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
                         }
                         if (!dst_lane.empty())
                             cn.input_values[e.to_port] = dst_lane[0];
+                    } else if (e.data_type == VIVID_PORT_LANE_ARRAY) {
+                        // Scalar source → lane_array destination: lift
+                        // the scalar into a 1-element lane array so that
+                        // structural operators (e.g. Stack) see it as
+                        // lane data they can merge.
+                        auto& dst_lane = cn.input_lanes[e.to_port];
+                        if (dst_lane.empty()) {
+                            dst_lane.assign(1, val);
+                        } else {
+                            for (auto& v : dst_lane) v += val;
+                        }
                     }
                 }
             }
@@ -196,6 +171,25 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
             if (cn.bridge_input_dirty[p]) {
                 cn.input_values[p] = cn.bridge_input_values[p];
                 cn.bridge_input_dirty[p] = 0;
+            }
+        }
+
+        // ── Lane count normalization ────────────────────────────────────
+        // Expand shorter input lane arrays to match the longest, repeating
+        // the last element.  Ensures GPU and Kernel operators see uniform
+        // lane counts across all input ports.
+        {
+            uint32_t max_lanes = 0;
+            for (uint32_t p = 0; p < cn.input_port_count; ++p) {
+                if (cn.input_lanes[p].size() > max_lanes)
+                    max_lanes = static_cast<uint32_t>(cn.input_lanes[p].size());
+            }
+            if (max_lanes > 1) {
+                for (uint32_t p = 0; p < cn.input_port_count; ++p) {
+                    auto& lanes = cn.input_lanes[p];
+                    if (!lanes.empty() && lanes.size() < max_lanes)
+                        lanes.resize(max_lanes, lanes.back());
+                }
             }
         }
 
@@ -480,10 +474,10 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
                 ctx.lane_index = c;
                 ctx.lane_set_id = lane_set_id;
                 ctx.lane_id = loop_lane_ids[c];
-                ctx.lane_state_fn = frame_lane_state_fn_bridge;
+                ctx.lane_state_fn = lane_state_fn_bridge;
                 ctx.lane_state_service = &frame_lane_contexts_[fi_ord];
-                ctx.allocate_lane_id_fn = frame_allocate_lane_id_fn_bridge;
-                ctx.retire_lane_id_fn = frame_retire_lane_id_fn_bridge;
+                ctx.allocate_lane_id_fn = allocate_lane_id_fn_bridge;
+                ctx.retire_lane_id_fn = retire_lane_id_fn_bridge;
                 populate_metronome_context(ctx, metronome);
 
                 try {

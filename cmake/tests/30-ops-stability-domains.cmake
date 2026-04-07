@@ -207,6 +207,16 @@ target_link_libraries(test_lane_broadcast PRIVATE
 add_dependencies(test_lane_broadcast lane_source_op lane_sink_op lane_smooth_op)
 add_test(NAME test_lane_broadcast COMMAND test_lane_broadcast WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Scalar-to-lane-array broadcast test
+add_executable(test_scalar_lane_broadcast
+    tests/lanes/test_scalar_lane_broadcast.cpp
+)
+target_include_directories(test_scalar_lane_broadcast PRIVATE src tests)
+target_link_libraries(test_scalar_lane_broadcast PRIVATE
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_dependencies(test_scalar_lane_broadcast lane_source_op scalar_source_op dual_lane_sink_op)
+add_test(NAME test_scalar_lane_broadcast COMMAND test_scalar_lane_broadcast WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 add_executable(test_lane_reshape
     tests/lanes/test_lane_reshape.cpp
 )
@@ -290,6 +300,7 @@ configure_file(tests/graphs/test_runtime_api.json ${CMAKE_BINARY_DIR}/test_runti
 configure_file(tests/graphs/test_audio_engine.json ${CMAKE_BINARY_DIR}/test_audio_engine.json COPYONLY)
 configure_file(tests/graphs/test_audio_robustness.json ${CMAKE_BINARY_DIR}/test_audio_robustness.json COPYONLY)
 configure_file(tests/graphs/test_lane_broadcast.json ${CMAKE_BINARY_DIR}/test_lane_broadcast.json COPYONLY)
+configure_file(tests/graphs/test_scalar_lane_broadcast.json ${CMAKE_BINARY_DIR}/test_scalar_lane_broadcast.json COPYONLY)
 configure_file(tests/graphs/test_lane_bridge_snapshot.json ${CMAKE_BINARY_DIR}/test_lane_bridge_snapshot.json COPYONLY)
 configure_file(tests/graphs/test_mixed_runtime_stability.json ${CMAKE_BINARY_DIR}/test_mixed_runtime_stability.json COPYONLY)
 configure_file(tests/graphs/test_package_stress.json ${CMAKE_BINARY_DIR}/test_package_stress.json COPYONLY)

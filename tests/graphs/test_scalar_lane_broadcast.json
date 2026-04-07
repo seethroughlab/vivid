@@ -1,0 +1,18 @@
+{
+    "nodes": {
+        "lane_src": { "type": "LaneSourceOp", "params": { "base": 1.0, "count": 4 } },
+        "scalar_src": { "type": "ScalarSourceOp", "params": { "value": 5.0 } },
+        "sink": { "type": "DualLaneSinkOp" },
+
+        "scalar_only_a": { "type": "ScalarSourceOp", "params": { "value": 3.0 } },
+        "scalar_only_b": { "type": "ScalarSourceOp", "params": { "value": 7.0 } },
+        "scalar_only_sink": { "type": "DualLaneSinkOp" }
+    },
+    "connections": [
+        { "from": "lane_src/out", "to": "sink/in_a" },
+        { "from": "scalar_src/out", "to": "sink/in_b" },
+
+        { "from": "scalar_only_a/out", "to": "scalar_only_sink/in_a" },
+        { "from": "scalar_only_b/out", "to": "scalar_only_sink/in_b" }
+    ]
+}

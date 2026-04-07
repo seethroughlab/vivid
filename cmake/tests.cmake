@@ -69,7 +69,7 @@ add_library(vivid_runtime_testlib STATIC
 )
 target_include_directories(vivid_runtime_testlib PUBLIC src tests)
 target_link_libraries(vivid_runtime_testlib PUBLIC
-    vivid_operator_api nlohmann_json::nlohmann_json webgpu
+    vivid_operator_api nlohmann_json::nlohmann_json dragonbox::dragonbox_to_chars webgpu
     miniaudio rtmidi snappy stb_truetype ixwebsocket)
 if(APPLE)
     target_link_libraries(vivid_runtime_testlib PUBLIC
@@ -131,6 +131,8 @@ add_vivid_operator(multi_channel_dc_source_op tests/operators/multi_channel_dc_s
 add_vivid_operator(dc_per_lane_op            tests/operators/dc_per_lane_op.cpp)
 add_vivid_operator(lane_frame_op             tests/operators/lane_frame_op.cpp)
 add_vivid_operator(audio_lane_op    tests/operators/audio_lane_op.cpp)
+add_vivid_operator(scalar_source_op  tests/operators/scalar_source_op.cpp)
+add_vivid_operator(dual_lane_sink_op tests/operators/dual_lane_sink_op.cpp)
 add_vivid_operator(gpu_fill_op      tests/operators/gpu_fill_op.cpp EXTRA_LIBS webgpu)
 add_vivid_operator(gpu_metronome_probe_op tests/operators/gpu_metronome_probe_op.cpp EXTRA_LIBS webgpu)
 
