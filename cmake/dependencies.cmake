@@ -50,6 +50,19 @@ set(USE_TLS OFF CACHE BOOL "" FORCE)
 set(IXWEBSOCKET_INSTALL OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(ixwebsocket)
 
+# efsw — cross-platform file system watcher (macOS/Windows/Linux)
+FetchContent_Declare(
+    efsw
+    GIT_REPOSITORY https://github.com/SpartanJ/efsw.git
+    GIT_TAG        1.5.1
+    GIT_SHALLOW    TRUE
+)
+set(EFSW_INSTALL OFF CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS_BAK ${BUILD_SHARED_LIBS})
+set(BUILD_SHARED_LIBS OFF)
+FetchContent_MakeAvailable(efsw)
+set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS_BAK})
+
 # CLI11 - Command-line argument parser (header-only)
 FetchContent_Declare(
     cli11

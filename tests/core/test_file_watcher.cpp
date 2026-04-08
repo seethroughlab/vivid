@@ -47,8 +47,6 @@ int main() {
 
     // --- Test 2: add_watch() + write → poll returns event with correct target ---
     {
-        // Use add_watch() directly (no start() scan needed, just need kqueue open)
-        // We must call start() so kq_ is initialised, which requires valid tree.
         fs::path root = tmp / "t2";
         fs::path cpp = make_operator_tree(root, "audio", "myop2");
 
@@ -134,8 +132,6 @@ int main() {
 
     // --- Test 7: add_package_watches skips unreadable subdirectory, still counts good ones ---
     {
-        // Build a packages dir with two packages: one good, one whose operators/ dir
-        // is not readable. The good package should still be watched.
         fs::path pkgs = tmp / "t7_pkgs";
         fs::create_directories(pkgs);
 
@@ -147,10 +143,8 @@ int main() {
         // Bad package: exists but operators/ dir has permissions 000
         fs::path bad_ops = pkgs / "bad_pkg" / "operators";
         fs::create_directories(bad_ops);
-        // Remove read permission so directory_iterator will fail
         fs::permissions(bad_ops, fs::perms::none);
 
-        // We need a running FileWatcher (start() requires a valid operators tree).
         fs::path root = tmp / "t7_root";
         make_operator_tree(root, "audio", "dummy7");
         vivid::FileWatcher fw;
@@ -167,6 +161,30 @@ int main() {
         fw.stop();
         fs::remove_all(root);
         fs::remove_all(pkgs);
+    }
+
+    // --- Test 8: rename-on-save (delete + create) produces event ---
+    {
+        fs::path root = tmp / "t8";
+        fs::path cpp = make_operator_tree(root, "audio", "myop8");
+
+        vivid::FileWatcher fw;
+        fw.start(root.string());
+
+        // Simulate editor rename-on-save: delete original, write new file at same path
+        fs::remove(cpp);
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        { std::ofstream(cpp) << "// updated\n"; }
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+        auto events = fw.poll_changes();
+        bool found = false;
+        for (auto& e : events) {
+            if (e.target_name == "myop8") { found = true; break; }
+        }
+        check(found, "rename-on-save (delete + create) produces event for target");
+        fw.stop();
+        fs::remove_all(root);
     }
 
     fs::remove_all(tmp);

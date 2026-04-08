@@ -83,9 +83,6 @@
 #include "runtime/platform/macos_menu.h"
 #include "runtime/platform/sparkle_bridge.h"
 #endif
-#if defined(__APPLE__) || defined(__linux__)
-#include <sys/resource.h>
-#endif
 #include "runtime/control/control_server_internal.h"
 #include "runtime/control/graph_file_io.h"
 #include "runtime/core/workspace_manager.h"
@@ -121,18 +118,6 @@ namespace mi = vivid::main_internal;
 
 int main(int argc, char* argv[]) {
     vivid::install_crash_handlers();
-
-    // Raise file descriptor limit — macOS GUI apps default to 256 which is
-    // too low for kqueue per-file watching + HTTP connections + build subprocesses.
-#if defined(__APPLE__) || defined(__linux__)
-    {
-        struct rlimit rl;
-        if (getrlimit(RLIMIT_NOFILE, &rl) == 0 && rl.rlim_cur < 4096) {
-            rl.rlim_cur = std::min(static_cast<rlim_t>(4096), rl.rlim_max);
-            setrlimit(RLIMIT_NOFILE, &rl);
-        }
-    }
-#endif
 
     // --- CLI argument parsing ---
     std::string graph_file;

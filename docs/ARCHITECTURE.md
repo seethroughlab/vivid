@@ -226,7 +226,7 @@ Compatibility is enforced by `tests/test_audio_dsp_api.cpp`.
 
 **Decision: Parameters survive, internal state resets.** Since parameters live outside the operator in the graph's Control-layer parameter store, they are untouched by a reload. The operator's private internal state reinitializes fresh. This avoids serialize/deserialize complexity and matches creative workflows where the user is iterating on behavior.
 
-Hot-reload flow: file system watcher (kqueue on macOS) detects operator source change → invoke system C++ compiler to build `.dylib` → `dlclose` old library → `dlopen` new library → call `vivid_create` with existing parameter values → operator resumes with new behavior, old parameter state intact.
+Hot-reload flow: file system watcher (efsw, cross-platform) detects operator source change → invoke system C++ compiler to build `.dylib` → `dlclose` old library → `dlopen` new library → call `vivid_create` with existing parameter values → operator resumes with new behavior, old parameter state intact.
 
 ## 5.9 Lanes: Implicit Vectorization
 
@@ -454,7 +454,7 @@ vivid/
 │   │   ├── audio_engine.cpp/.h # miniaudio device, audio callback, ParamSnapshot bridge
 │   │   ├── gpu_context.cpp/.h  # WebGPU device, queue, surface
 │   │   ├── hot_reload.cpp/.h   # File watch, compile, dlclose/dlopen swap
-│   │   ├── file_watcher.cpp/.h # kqueue-based file system monitoring
+│   │   ├── file_watcher.cpp/.h # Cross-platform file system monitoring (efsw)
 │   │   ├── operator_registry.cpp/.h   # Operator type registry, WGSL preset scanning
 │   │   ├── operator_loader.cpp/.h     # dlopen/dlclose, ABI version checking
 │   │   ├── operator_creator.cpp/.h    # Scaffold + compile new operators

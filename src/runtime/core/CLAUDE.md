@@ -17,7 +17,7 @@ This directory contains the application entry point, the main frame loop, and th
 | `runtime_core.h/cpp` | `RuntimeCore` — owns `CompiledGraph`, `FrameExecutor`, `AudioFrameBridge`; orchestrates build/tick |
 | `runtime_bootstrap.h/cpp` | Startup: discovers operators, initializes `OperatorRegistry`, loads packages and shader operators |
 | `hot_reload.h/cpp` | Watches for `.dylib` changes, reloads operators preserving parameter state |
-| `file_watcher.h/cpp` | Monitors graph files and operator source directories (kqueue on macOS) |
+| `file_watcher.h/cpp` | Monitors operator source directories for changes (via efsw, cross-platform) |
 | `source_index.h/cpp` | Indexes operator source files for opdev source search |
 | `tool_discovery.h/cpp` | Finds installed build tools (cmake, clang++) for package compilation |
 | `settings.h/cpp` | User preferences: theme, layout, analysis mode, hot-reload flag |

@@ -3,9 +3,11 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 #include <mutex>
-#include <thread>
-#include <atomic>
+#include <memory>
+
+namespace efsw { class FileWatcher; }
 
 namespace vivid {
 
@@ -26,7 +28,7 @@ public:
     // Called from main thread each frame; drains pending events
     std::vector<FileChangeEvent> poll_changes();
 
-    // Register a single file for watching. Thread-safe (locks watch_mutex_).
+    // Register a single file for watching. Thread-safe.
     bool add_watch(const std::string& path, const std::string& target_name);
 
     // Scan package operator directories and register them for watching.
@@ -38,21 +40,17 @@ public:
     int add_shader_operator_watches(const std::string& directory);
 
 private:
-    void watch_thread();
-    void reopen_file(const std::string& path, const std::string& target_name);
+    class Listener;
 
-    int kq_ = -1;
-    std::atomic<bool> running_{false};
-    std::thread thread_;
+    void ensure_dir_watched(const std::string& dir);
 
-    // fd → (file_path, target_name) and last_event_time_. Protected by watch_mutex_.
-    struct WatchEntry {
-        std::string path;
-        std::string target_name;
-    };
+    std::unique_ptr<efsw::FileWatcher> watcher_;
+    std::unique_ptr<Listener> listener_;
+
+    // path → target_name mapping for event filtering.  Protected by watch_mutex_.
     std::mutex watch_mutex_;
-    std::unordered_map<int, WatchEntry> watched_fds_;
-    std::unordered_map<std::string, int> path_to_fd_;  // reverse lookup: path → fd
+    std::unordered_map<std::string, std::string> path_to_target_;
+    std::unordered_set<std::string> watched_dirs_;
 
     // Debounce: target → last event time (steady_clock ms)
     std::unordered_map<std::string, uint64_t> last_event_time_;
