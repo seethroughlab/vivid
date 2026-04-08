@@ -1,9 +1,12 @@
 #include "runtime/platform/process_runner.h"
 #include "runtime/core/build_console.h"
 
-#include <cerrno>
-#include <cstring>
 #include <array>
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
+#include <system_error>
+#include <thread>
 
 #if defined(_WIN32)
 #error "ProcessRunner: Windows implementation not yet available"
@@ -63,6 +66,28 @@ static std::vector<char*> make_envp(const std::vector<std::string>& env_strings)
         envp.push_back(const_cast<char*>(s.c_str()));
     envp.push_back(nullptr);
     return envp;
+}
+
+static void reap_detached_child(pid_t pid) {
+    try {
+        std::thread([pid]() {
+            int status = 0;
+            while (waitpid(pid, &status, 0) < 0) {
+                if (errno == EINTR)
+                    continue;
+                if (errno != ECHILD) {
+                    std::fprintf(stderr,
+                                 "[vivid] ProcessRunner: failed to reap detached child %d: %s\n",
+                                 static_cast<int>(pid), std::strerror(errno));
+                }
+                return;
+            }
+        }).detach();
+    } catch (const std::system_error& e) {
+        std::fprintf(stderr,
+                     "[vivid] ProcessRunner: failed to start detached child reaper for %d: %s\n",
+                     static_cast<int>(pid), e.what());
+    }
 }
 
 ProcessRunResult run_process(const ProcessRunOptions& options) {
@@ -241,7 +266,7 @@ bool spawn_detached(const std::vector<std::string>& argv, std::string* error_out
 
     auto args = make_argv(argv);
 
-    // Use posix_spawn with no pipe setup — child inherits /dev/null or parent fds.
+    // Use posix_spawn with stdio redirected to /dev/null.
     posix_spawn_file_actions_t file_actions;
     posix_spawn_file_actions_init(&file_actions);
 
@@ -260,7 +285,8 @@ bool spawn_detached(const std::vector<std::string>& argv, std::string* error_out
         return false;
     }
 
-    // Don't wait — fire and forget. The child will be reaped by init/launchd.
+    // Fire-and-forget for callers, but still reap our direct child asynchronously.
+    reap_detached_child(pid);
     return true;
 }
 

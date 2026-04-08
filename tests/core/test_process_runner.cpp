@@ -3,6 +3,12 @@
 #include "runtime/core/build_console.h"
 
 #include <atomic>
+#include <cerrno>
+#include <chrono>
+#include <cstdlib>
+#include <fstream>
+#include <signal.h>
+#include <sys/wait.h>
 #include <thread>
 
 using namespace vivid;
@@ -137,6 +143,67 @@ static void test_spawn_detached_missing() {
     check(!err.empty(), "error message set");
 }
 
+static void test_spawn_detached_reaps_children() {
+    std::fprintf(stderr, "\n--- test_spawn_detached_reaps_children ---\n");
+    ScopedTempDir tmp("vivid_proc_reap");
+    std::vector<pid_t> pids;
+
+    for (int i = 0; i < 5; ++i) {
+        auto pid_path = tmp.path / ("pid_" + std::to_string(i) + ".txt");
+        std::string err;
+        bool ok = spawn_detached({"/bin/sh",
+                                  "-c",
+                                  "printf '%s\\n' \"$$\" > \"$1\"",
+                                  "vivid-reap-test",
+                                  pid_path.string()},
+                                 &err);
+        check(ok, "spawn_detached child launched for reap regression");
+        if (!ok) {
+            std::fprintf(stderr, "    error: %s\n", err.c_str());
+            continue;
+        }
+
+        std::string pid_text;
+        for (int attempt = 0; attempt < 50; ++attempt) {
+            std::ifstream ifs(pid_path);
+            if (ifs && (ifs >> pid_text) && !pid_text.empty())
+                break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+
+        char* end = nullptr;
+        long parsed = std::strtol(pid_text.c_str(), &end, 10);
+        check(parsed > 0 && end && *end == '\0', "detached child wrote its pid");
+        if (parsed > 0)
+            pids.push_back(static_cast<pid_t>(parsed));
+    }
+
+    bool all_reaped = false;
+    for (int attempt = 0; attempt < 100; ++attempt) {
+        all_reaped = true;
+        for (pid_t pid : pids) {
+            errno = 0;
+            if (kill(pid, 0) == 0 || errno != ESRCH) {
+                all_reaped = false;
+                break;
+            }
+        }
+        if (all_reaped)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+
+    for (pid_t pid : pids) {
+        errno = 0;
+        bool reaped = (kill(pid, 0) != 0 && errno == ESRCH);
+        if (!reaped) {
+            int status = 0;
+            waitpid(pid, &status, WNOHANG);
+        }
+        check(reaped, "detached child was reaped asynchronously");
+    }
+}
+
 static void test_build_console_streaming() {
     std::fprintf(stderr, "\n--- test_build_console_streaming ---\n");
     BuildConsole console;
@@ -194,6 +261,7 @@ int main() {
     test_stderr_captured();
     test_spawn_detached();
     test_spawn_detached_missing();
+    test_spawn_detached_reaps_children();
     test_build_console_streaming();
     test_env_overrides();
 

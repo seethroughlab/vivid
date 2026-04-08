@@ -1,15 +1,12 @@
 #include "runtime/core/settings.h"
 #include "runtime/platform/platform.h"
+#include "runtime/platform/process_runner.h"
 #include <nlohmann/json.hpp>
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
 #include <cstdio>
-#include <cstring>
-#include <spawn.h>
 #include <string>
-
-extern "C" char** environ;
 
 namespace vivid {
 
@@ -126,18 +123,6 @@ void add_recent_file(Settings& s, const std::string& path) {
         s.recent_files.resize(10);
 }
 
-// Fire-and-forget process launch via posix_spawn (no shell interpolation).
-static void spawn_detached(const char* const argv[]) {
-    pid_t pid;
-    int rc = posix_spawn(&pid, argv[0], nullptr, nullptr,
-                         const_cast<char* const*>(argv), environ);
-    if (rc != 0) {
-        std::fprintf(stderr, "[vivid] spawn_detached: posix_spawn failed for %s: %s\n",
-                     argv[0], strerror(rc));
-    }
-    // Fire-and-forget: don't waitpid — child is short-lived (open/sh).
-}
-
 // Shell-quote a path with single quotes, escaping embedded single quotes as '\''.
 static std::string shell_quote(const std::string& s) {
     std::string out = "'";
@@ -161,15 +146,17 @@ void open_in_editor(const std::string& file_path, const Settings& settings) {
         } else {
             cmd += " " + shell_quote(file_path);
         }
-        const char* argv[] = { "/bin/sh", "-c", cmd.c_str(), nullptr };
-        spawn_detached(argv);
+        std::string err;
+        if (!spawn_detached({"/bin/sh", "-c", cmd}, &err) && !err.empty())
+            std::fprintf(stderr, "[vivid] spawn_detached: %s\n", err.c_str());
     } else if (!settings.editor.empty()) {
-        const char* argv[] = { "/usr/bin/open", "-a", settings.editor.c_str(),
-                               file_path.c_str(), nullptr };
-        spawn_detached(argv);
+        std::string err;
+        if (!spawn_detached({"/usr/bin/open", "-a", settings.editor, file_path}, &err) && !err.empty())
+            std::fprintf(stderr, "[vivid] spawn_detached: %s\n", err.c_str());
     } else {
-        const char* argv[] = { "/usr/bin/open", "-t", file_path.c_str(), nullptr };
-        spawn_detached(argv);
+        std::string err;
+        if (!spawn_detached({"/usr/bin/open", "-t", file_path}, &err) && !err.empty())
+            std::fprintf(stderr, "[vivid] spawn_detached: %s\n", err.c_str());
     }
 }
 
