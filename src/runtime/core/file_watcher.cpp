@@ -107,17 +107,14 @@ void FileWatcher::stop() {
         close(fd);
     }
     watched_fds_.clear();
+    path_to_fd_.clear();
 }
 
 bool FileWatcher::add_watch(const std::string& path, const std::string& target_name) {
     {
         std::lock_guard<std::mutex> lock(watch_mutex_);
-        for (const auto& [fd, entry] : watched_fds_) {
-            (void)fd;
-            if (entry.path == path && entry.target_name == target_name) {
-                return true;
-            }
-        }
+        if (path_to_fd_.count(path))
+            return true;  // already watching this path
     }
 
     int fd = open(path.c_str(), O_RDONLY);
@@ -140,7 +137,13 @@ bool FileWatcher::add_watch(const std::string& path, const std::string& target_n
 
     {
         std::lock_guard<std::mutex> lock(watch_mutex_);
+        // Another thread may have added this path while we were opening/registering
+        if (path_to_fd_.count(path)) {
+            close(fd);
+            return true;
+        }
         watched_fds_[fd] = {path, target_name};
+        path_to_fd_[path] = fd;
     }
     return true;
 }
@@ -150,6 +153,11 @@ void FileWatcher::reopen_file(const std::string& path, const std::string& target
     // Try to reopen at the same path and re-register.
     // Retry a few times with small delays — the editor may not have finished writing yet.
     for (int attempt = 0; attempt < 5; ++attempt) {
+        {
+            // The 1-second rescan may have already re-added this path
+            std::lock_guard<std::mutex> lock(watch_mutex_);
+            if (path_to_fd_.count(path)) return;
+        }
         int fd = open(path.c_str(), O_RDONLY);
         if (fd >= 0) {
             struct kevent ev;
@@ -159,7 +167,12 @@ void FileWatcher::reopen_file(const std::string& path, const std::string& target
                    0, nullptr);
             if (kevent(kq_, &ev, 1, nullptr, 0, nullptr) >= 0) {
                 std::lock_guard<std::mutex> lock(watch_mutex_);
+                if (path_to_fd_.count(path)) {
+                    close(fd);  // race: another thread added it
+                    return;
+                }
                 watched_fds_[fd] = {path, target_name};
+                path_to_fd_[path] = fd;
                 return;
             }
             close(fd);
@@ -197,6 +210,7 @@ void FileWatcher::watch_thread() {
             if (now - last < kDebounceMs) {
                 if (ev.fflags & (NOTE_RENAME | NOTE_DELETE)) {
                     close(fd);
+                    path_to_fd_.erase(it->second.path);
                     watched_fds_.erase(it);
                     need_reopen = true;
                 }
@@ -214,6 +228,7 @@ void FileWatcher::watch_thread() {
 
                 if (ev.fflags & (NOTE_RENAME | NOTE_DELETE)) {
                     close(fd);
+                    path_to_fd_.erase(it->second.path);
                     watched_fds_.erase(it);
                     need_reopen = true;
                 }

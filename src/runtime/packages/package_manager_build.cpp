@@ -6,7 +6,9 @@
 #include "runtime/platform/platform.h"
 
 #include <array>
+#include <cerrno>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <sstream>
 #include <unordered_set>
@@ -74,7 +76,11 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
         FILE* pipe = popen(cmake_cmd.c_str(), "r");
         if (!pipe) {
             result.error_code = "cmake_configure_failed";
-            result.error = "Failed to execute cmake configure";
+            result.error = "Failed to execute cmake configure (popen: ";
+            result.error += std::strerror(errno);
+            result.error += "; cmd: ";
+            result.error += cmake_cmd;
+            result.error += ")";
             if (build_console_) {
                 build_console_->append_system_line(configure_task, result.error);
                 build_console_->finish_task(configure_task, BuildTaskState::Failed, "launch failed");

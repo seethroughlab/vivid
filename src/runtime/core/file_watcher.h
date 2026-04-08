@@ -52,6 +52,7 @@ private:
     };
     std::mutex watch_mutex_;
     std::unordered_map<int, WatchEntry> watched_fds_;
+    std::unordered_map<std::string, int> path_to_fd_;  // reverse lookup: path → fd
 
     // Debounce: target → last event time (steady_clock ms)
     std::unordered_map<std::string, uint64_t> last_event_time_;
