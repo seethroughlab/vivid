@@ -1316,6 +1316,7 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
     // --- Load graph ---
     vivid::Graph graph;
     vivid::RuntimeCore runtime;
+    runtime.set_audio_buffer_size(settings.audio_buffer_size);
     runtime.set_subgraph_modules(&subgraph_modules);
     runtime.frame_executor().set_analysis_enabled(settings.show_analysis);
     bool graph_loaded = false;
@@ -1449,6 +1450,35 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
         has_audio,
         video_out_idx,
     };
+
+    command_sink.set_audio_buffer_preference_callback(
+        [&](uint32_t old_size, uint32_t new_size, std::string& error) {
+            runtime.set_audio_buffer_size(new_size);
+
+            if (!graph_loaded || !runtime.has_audio_operators()) {
+                error.clear();
+                return true;
+            }
+
+            vivid::CommandResult rebuild_result = runtime_api.rebuild_current_graph(has_gpu_ops, has_audio);
+            capture_coordinator.set_audio_engine(has_audio ? &audio_engine : nullptr);
+            video_out_idx = has_gpu_ops ? runtime.find_effective_gpu_sink() : -1;
+            if (rebuild_result.ok) {
+                error.clear();
+                return true;
+            }
+
+            runtime.set_audio_buffer_size(old_size);
+            vivid::CommandResult restore_result = runtime_api.rebuild_current_graph(has_gpu_ops, has_audio);
+            capture_coordinator.set_audio_engine(has_audio ? &audio_engine : nullptr);
+            video_out_idx = has_gpu_ops ? runtime.find_effective_gpu_sink() : -1;
+
+            error = rebuild_result.message;
+            if (!restore_result.ok) {
+                error += " (restore failed: " + restore_result.message + ")";
+            }
+            return false;
+        });
 
     mi::AsyncAddCoordinator async_add_coordinator;
     mi::AsyncGraphLoadCoordinator async_graph_load_coordinator;
@@ -1612,6 +1642,16 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
                 style_sel = static_cast<int>(i);
         }
         graph_ui.set_style_options(std::move(styles), style_sel, std::move(themes));
+
+        const std::vector<uint32_t> audio_buffer_sizes = {128u, 256u, 512u, 1024u};
+        int audio_buffer_sel = 0;
+        for (size_t i = 0; i < audio_buffer_sizes.size(); ++i) {
+            if (audio_buffer_sizes[i] == settings.audio_buffer_size) {
+                audio_buffer_sel = static_cast<int>(i);
+                break;
+            }
+        }
+        graph_ui.set_audio_buffer_options(audio_buffer_sizes, audio_buffer_sel);
     }
 
     // Wire up custom inspector callback

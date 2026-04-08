@@ -55,6 +55,12 @@ public:
                                        const std::string& custom_command) {}
     virtual void set_style_preference(const std::string& style_id) {}
     virtual void set_pan_gesture_preference(const std::string& gesture) {}
+    virtual bool try_set_audio_buffer_preference(uint32_t buffer_size,
+                                                 std::string* error = nullptr) {
+        (void)buffer_size;
+        if (error) error->clear();
+        return true;
+    }
     virtual bool can_create_operator() const { return false; }
     virtual std::string validate_operator_name(const std::string& name) { return "not available"; }
     virtual bool create_operator(const VividCreateOperatorRequest& request,

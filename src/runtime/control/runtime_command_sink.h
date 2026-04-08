@@ -195,6 +195,8 @@ public:
                                const std::string& custom_command) override;
     void set_style_preference(const std::string& style_id) override;
     void set_pan_gesture_preference(const std::string& gesture) override;
+    bool try_set_audio_buffer_preference(uint32_t buffer_size,
+                                         std::string* error = nullptr) override;
 
     bool can_create_operator() const override {
         return !operators_dir_.empty() && !build_dir_.empty();
@@ -295,6 +297,10 @@ public:
     void set_shader_watch_callback(std::function<void(const std::string&)> cb) {
         shader_watch_callback_ = std::move(cb);
     }
+    void set_audio_buffer_preference_callback(
+        std::function<bool(uint32_t, uint32_t, std::string&)> cb) {
+        audio_buffer_preference_callback_ = std::move(cb);
+    }
     void capture_external_undo_snapshot() {
         last_coalesce_key_.clear();
         capture_undo_snapshot();
@@ -340,4 +346,5 @@ private:
     const vivid::SubgraphModuleRegistry* subgraph_modules_ = nullptr;
     vivid::BuildConsole* build_console_ = nullptr;
     std::function<void(const std::string&)> shader_watch_callback_;
+    std::function<bool(uint32_t, uint32_t, std::string&)> audio_buffer_preference_callback_;
 };

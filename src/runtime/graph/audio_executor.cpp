@@ -33,6 +33,8 @@ bool AudioExecutor::build(AudioFrameBridge& bridge, CompiledGraph& cg,
     sink_node_idx_ = -1;
     lane_lift_groups_.clear();
     node_to_lift_group_.clear();
+    buffer_size_ = cg.audio_buffer_size;
+    sample_rate_ = cg.audio_sample_rate;
 
     if (cg.audio_order.empty()) return false;
 
@@ -80,9 +82,9 @@ bool AudioExecutor::build(AudioFrameBridge& bridge, CompiledGraph& cg,
         group.per_lane_out_ptrs.resize(lanes);
         for (uint32_t c = 0; c < lanes; ++c) {
             group.per_lane_inputs[c].resize(cn.input_port_count,
-                std::vector<float>(kBufferSize, 0.0f));
+                std::vector<float>(buffer_size_, 0.0f));
             group.per_lane_outputs[c].resize(cn.output_port_count,
-                std::vector<float>(kBufferSize, 0.0f));
+                std::vector<float>(buffer_size_, 0.0f));
             group.per_lane_in_ptrs[c].resize(cn.input_port_count);
             group.per_lane_out_ptrs[c].resize(cn.output_port_count);
             for (uint32_t p = 0; p < cn.input_port_count; ++p)
@@ -138,8 +140,8 @@ bool AudioExecutor::start(bool use_null_device) {
     ma_device_config config = ma_device_config_init(ma_device_type_playback);
     config.playback.format = ma_format_f32;
     config.playback.channels = 2;
-    config.sampleRate = kSampleRate;
-    config.periodSizeInFrames = kBufferSize;
+    config.sampleRate = sample_rate_;
+    config.periodSizeInFrames = buffer_size_;
     config.dataCallback = ma_data_callback;
     config.pUserData = this;
 
@@ -282,10 +284,10 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
         }
     }
 
-    // Process in chunks of kBufferSize
+    // Process in chunks of the configured buffer size
     uint32_t frames_written = 0;
     while (frames_written < frame_count) {
-        uint32_t chunk = std::min(kBufferSize, frame_count - frames_written);
+        uint32_t chunk = std::min(buffer_size_, frame_count - frames_written);
 
         for (uint32_t ni_ord = 0; ni_ord < static_cast<uint32_t>(cg.audio_order.size()); ++ni_ord) {
             uint32_t ni = cg.audio_order[ni_ord];
@@ -327,18 +329,18 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 uint8_t tc = e.to_channels;
                 float scale = e.remap_scale();
 
-                // Channel data is laid out as [ch0_0..ch0_255][ch1_0..ch1_255]...
-                // Each channel block is kBufferSize samples, regardless of chunk size.
+                // Channel data is laid out as [ch0...][ch1...], using the configured
+                // audio buffer size as the planar stride regardless of chunk size.
                 if (fc == tc) {
                     for (uint8_t c = 0; c < fc; ++c) {
-                        float* sc = src + c * kBufferSize;
-                        float* dc = dst + c * kBufferSize;
+                        float* sc = src + c * buffer_size_;
+                        float* dc = dst + c * buffer_size_;
                         for (uint32_t s = 0; s < chunk; ++s)
                             dc[s] += sc[s] * scale;
                     }
                 } else if (fc == 1 && tc > 1) {
                     for (uint8_t c = 0; c < tc; ++c) {
-                        float* dc = dst + c * kBufferSize;
+                        float* dc = dst + c * buffer_size_;
                         for (uint32_t s = 0; s < chunk; ++s)
                             dc[s] += src[s] * scale;
                     }
@@ -347,14 +349,14 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                     for (uint32_t s = 0; s < chunk; ++s) {
                         float sum = 0.0f;
                         for (uint8_t c = 0; c < fc; ++c)
-                            sum += src[c * kBufferSize + s];
+                            sum += src[c * buffer_size_ + s];
                         dst[s] += sum * inv_n * scale;
                     }
                 } else {
                     uint8_t min_ch = std::min(fc, tc);
                     for (uint8_t c = 0; c < min_ch; ++c) {
-                        float* sc = src + c * kBufferSize;
-                        float* dc = dst + c * kBufferSize;
+                        float* sc = src + c * buffer_size_;
+                        float* dc = dst + c * buffer_size_;
                         for (uint32_t s = 0; s < chunk; ++s)
                             dc[s] += sc[s] * scale;
                     }
@@ -367,7 +369,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             for (uint32_t p = 0; p < cn.output_port_count; ++p)
                 a.out_ptrs[p] = a.buffers_out[p].data();
 
-            double node_time = static_cast<double>(audio_frame_ + frames_written) / kSampleRate;
+            double node_time = static_cast<double>(audio_frame_ + frames_written) / sample_rate_;
             const auto metronome = metronome_store_
                 ? sample_live_metronome(*metronome_store_, node_time)
                 : GraphMetronomeSample{};
@@ -419,7 +421,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 for (uint32_t c = 0; c < lanes; ++c) {
                     for (uint32_t p = 0; p < cn.input_port_count; ++p) {
                         if (p < cn.input_port_types.size() && cn.input_port_types[p] == VIVID_PORT_AUDIO_BUFFER) {
-                            const float* mc = a.buffers_in[p].data() + c * kBufferSize;
+                            const float* mc = a.buffers_in[p].data() + c * buffer_size_;
                             std::memcpy(group.per_lane_inputs[c][p].data(), mc, chunk * sizeof(float));
                         } else {
                             // Non-audio ports: broadcast same data to all lanes
@@ -433,13 +435,13 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 for (uint32_t c = 0; c < lanes; ++c) {
                     VividAudioContext ctx{};
                     ctx.time = node_time;
-                    ctx.delta_time = static_cast<double>(chunk) / kSampleRate;
+                    ctx.delta_time = static_cast<double>(chunk) / sample_rate_;
                     ctx.frame = audio_frame_ + frames_written;
                     ctx.param_values = cn.param_values.data();
                     ctx.input_buffers = group.per_lane_in_ptrs[c].data();
                     ctx.output_buffers = group.per_lane_out_ptrs[c].data();
                     ctx.buffer_size = chunk;
-                    ctx.sample_rate = kSampleRate;
+                    ctx.sample_rate = sample_rate_;
                     ctx.input_channel_counts = nullptr;  // mono view
                     ctx.output_channel_counts = nullptr;
                     ctx.input_lanes = cn.c_in_lane_views.empty() ? nullptr : cn.c_in_lane_views.data();
@@ -485,7 +487,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                             if (p < cn.output_port_types.size() &&
                                 (cn.output_port_types[p] == VIVID_PORT_AUDIO_BUFFER ||
                                  cn.output_port_types[p] == VIVID_PORT_SCALAR)) {
-                                float* mc = a.buffers_out[p].data() + c * kBufferSize;
+                                float* mc = a.buffers_out[p].data() + c * buffer_size_;
                                 std::memcpy(mc, group.per_lane_outputs[c][p].data(), chunk * sizeof(float));
                             }
                         }
@@ -532,23 +534,23 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                         // Set up per-lane buffer pointers (slice into pre-allocated buffers)
                         for (uint32_t p = 0; p < cn.input_port_count; ++p) {
                             if (p < cn.input_port_types.size() && cn.input_port_types[p] == VIVID_PORT_AUDIO_BUFFER) {
-                                loop_in_ptrs[p] = a.buffers_in[p].data() + c * kBufferSize;
+                                loop_in_ptrs[p] = a.buffers_in[p].data() + c * buffer_size_;
                             } else {
                                 loop_in_ptrs[p] = a.buffers_in[p].data();  // broadcast non-audio
                             }
                         }
                         for (uint32_t p = 0; p < cn.output_port_count; ++p)
-                            loop_out_ptrs[p] = a.buffers_out[p].data() + c * kBufferSize;
+                            loop_out_ptrs[p] = a.buffers_out[p].data() + c * buffer_size_;
 
                         VividAudioContext ctx{};
                         ctx.time = node_time;
-                        ctx.delta_time = static_cast<double>(chunk) / kSampleRate;
+                        ctx.delta_time = static_cast<double>(chunk) / sample_rate_;
                         ctx.frame = audio_frame_ + frames_written;
                         ctx.param_values = cn.param_values.data();
                         ctx.input_buffers = loop_in_ptrs;
                         ctx.output_buffers = loop_out_ptrs;
                         ctx.buffer_size = chunk;
-                        ctx.sample_rate = kSampleRate;
+                        ctx.sample_rate = sample_rate_;
                         ctx.input_channel_counts = nullptr;  // mono view
                         ctx.output_channel_counts = nullptr;
                         ctx.input_lanes = cn.c_in_lane_views.empty() ? nullptr : cn.c_in_lane_views.data();
@@ -599,7 +601,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                             loop_lanes <= static_cast<uint32_t>(cn.out_lane_bufs[p].data.size())) {
                             cn.out_lane_bufs[p].committed_length = loop_lanes;
                             for (uint32_t c = 0; c < loop_lanes; ++c) {
-                                float* lane_buf = a.buffers_out[p].data() + c * kBufferSize;
+                                float* lane_buf = a.buffers_out[p].data() + c * buffer_size_;
                                 cn.out_lane_bufs[p].data[c] = (chunk > 0) ? lane_buf[chunk - 1] : 0.0f;
                             }
                         }
@@ -609,13 +611,13 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 // ── Normal (non-lifted) processing ──
                 VividAudioContext ctx{};
                 ctx.time = node_time;
-                ctx.delta_time = static_cast<double>(chunk) / kSampleRate;
+                ctx.delta_time = static_cast<double>(chunk) / sample_rate_;
                 ctx.frame = audio_frame_ + frames_written;
                 ctx.param_values = cn.param_values.data();
                 ctx.input_buffers = a.in_ptrs.data();
                 ctx.output_buffers = a.out_ptrs.data();
                 ctx.buffer_size = chunk;
-                ctx.sample_rate = kSampleRate;
+                ctx.sample_rate = sample_rate_;
                 ctx.input_channel_counts = a.input_channel_counts.data();
                 ctx.output_channel_counts = a.output_channel_counts.data();
                 ctx.input_lanes = cn.c_in_lane_views.empty() ? nullptr : cn.c_in_lane_views.data();
@@ -716,7 +718,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 float* L = sink.audio->buffers_in[0].data();
                 uint8_t ch = sink.audio->input_channel_counts.empty() ? 1 : sink.audio->input_channel_counts[0];
                 if (ch >= 2) {
-                    float* R = L + kBufferSize;
+                    float* R = L + buffer_size_;
                     for (uint32_t s = 0; s < chunk; ++s) {
                         dst[s * 2]     = L[s];
                         dst[s * 2 + 1] = R[s];
@@ -756,7 +758,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
     // Underrun detection
     auto cb_end = std::chrono::steady_clock::now();
     double elapsed_us = std::chrono::duration<double, std::micro>(cb_end - cb_start).count();
-    double budget_us = static_cast<double>(frame_count) / kSampleRate * 1e6;
+    double budget_us = static_cast<double>(frame_count) / sample_rate_ * 1e6;
     audio_load_.store(static_cast<float>(elapsed_us / budget_us), std::memory_order_relaxed);
     if (elapsed_us > budget_us) {
         underrun_count_.fetch_add(1, std::memory_order_relaxed);

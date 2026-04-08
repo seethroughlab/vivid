@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <string>
+#include <vector>
 #include "test_helpers.h"
 
 static void test_port_type_compat() {
@@ -83,9 +84,10 @@ static void test_audio_scalar_routing(const std::string& build_dir) {
     check(probe_idx >= 0, "probe found in audio engine");
 
     runtime.audio_frame_bridge().push_to_audio(*runtime.compiled_graph());
-    float output[vivid::AudioEngine::kBufferSize * 2] = {};
+    const uint32_t audio_frames = audio_engine.buffer_size();
+    std::vector<float> output(audio_frames * 2, 0.0f);
     for (int i = 0; i < 4; ++i) {
-        audio_engine.process_audio_for_test(output, vivid::AudioEngine::kBufferSize);
+        audio_engine.process_audio_for_test(output.data(), audio_frames);
     }
 
     if (probe_idx >= 0) {

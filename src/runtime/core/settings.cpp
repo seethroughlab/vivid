@@ -10,6 +10,22 @@
 
 namespace vivid {
 
+bool is_supported_audio_buffer_size(uint32_t value) {
+    switch (value) {
+        case 128:
+        case 256:
+        case 512:
+        case 1024:
+            return true;
+        default:
+            return false;
+    }
+}
+
+uint32_t sanitize_audio_buffer_size(uint32_t value) {
+    return is_supported_audio_buffer_size(value) ? value : kDefaultAudioBufferSize;
+}
+
 static std::string settings_path() {
     return get_config_dir() + "/settings.json";
 }
@@ -47,6 +63,7 @@ Settings load_settings() {
     json_read(j, "bezier_wires", s.bezier_wires);
     json_read(j, "show_param_wires", s.show_param_wires);
     json_read(j, "show_analysis", s.show_analysis);
+    json_read(j, "audio_buffer_size", s.audio_buffer_size);
     json_read(j, "editor", s.editor);
     json_read(j, "editor_command", s.editor_command);
     json_read(j, "style_id", s.style_id);
@@ -72,6 +89,7 @@ Settings load_settings() {
     // Sanity: clamp size to something reasonable
     if (s.window_width < 320) s.window_width = 320;
     if (s.window_height < 240) s.window_height = 240;
+    s.audio_buffer_size = sanitize_audio_buffer_size(s.audio_buffer_size);
 
     return s;
 }
@@ -86,6 +104,7 @@ void save_settings(const Settings& s) {
     j["bezier_wires"] = s.bezier_wires;
     j["show_param_wires"] = s.show_param_wires;
     j["show_analysis"] = s.show_analysis;
+    j["audio_buffer_size"] = sanitize_audio_buffer_size(s.audio_buffer_size);
     if (!s.editor.empty()) j["editor"] = s.editor;
     if (!s.editor_command.empty()) j["editor_command"] = s.editor_command;
     if (!s.style_id.empty()) j["style_id"] = s.style_id;

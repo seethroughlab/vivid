@@ -5,14 +5,18 @@
 #include "runtime/graph/graph.h"
 #include "runtime/core/runtime_core.h"
 #include "runtime/audio/audio_engine.h"
+#include "runtime/control/runtime_api.h"
+#include "runtime/control/runtime_command_sink.h"
 #include "runtime/operators/builtin_operators.h"
 #include "runtime/audio/audio_frame_bridge.h"
 #include "runtime/graph/compiled_graph.h"
+#include "runtime/core/settings.h"
 #include <cstdio>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <string>
+#include <vector>
 #include "test_helpers.h"
 
 static int passes = 0;
@@ -100,6 +104,7 @@ int main(int argc, char* argv[]) {
 
     // Build runtime
     vivid::RuntimeCore runtime;
+    runtime.set_audio_buffer_size(512);
     bool build_ok = runtime.build(graph, registry);
     check(build_ok, "Runtime built");
 
@@ -107,19 +112,21 @@ int main(int argc, char* argv[]) {
     vivid::AudioEngine audio;
     bool audio_ok = audio.build(runtime);
     check(audio_ok, "Audio engine built");
+    check(audio.buffer_size() == 512, "audio engine uses configured buffer size");
 
     // Start audio with null device (no real audio output)
     bool started = audio.start(true);
     check(started, "Audio engine started (null device)");
 
     // Tick for ~0.5 seconds (30 frames at ~60Hz)
-    float audio_buf[vivid::AudioEngine::kBufferSize * 2] = {};
+    const uint32_t audio_frames = audio.buffer_size();
+    std::vector<float> audio_buf(audio_frames * 2, 0.0f);
     for (uint64_t frame = 0; frame < 30; ++frame) {
         double time = frame * 0.016;
         runtime.pre_tick_audio_sync(time);
         runtime.tick(time, 0.016, frame);
         runtime.post_tick_audio_sync();
-        audio.process_audio_for_test(audio_buf, vivid::AudioEngine::kBufferSize);
+        audio.process_audio_for_test(audio_buf.data(), audio_frames);
     }
 
     // Pull final audio results into CompiledNode for assertions below
@@ -152,6 +159,53 @@ int main(int argc, char* argv[]) {
     if (clock_cn) {
         check(clock_cn->active_cadence == vivid::Cadence::Audio,
               "Clock remains on the audio execution world");
+    }
+
+    // Change the buffer size through the same preference command path used by the UI.
+    vivid::RuntimeAPI api(graph, runtime, audio, registry);
+    RuntimeCommandSink sink(api);
+    vivid::Settings settings;
+    settings.audio_buffer_size = 512;
+    bool has_gpu_ops = false;
+    bool has_audio = true;
+    sink.set_settings(&settings);
+    sink.set_runtime_flags(&has_gpu_ops, &has_audio);
+    sink.set_audio_buffer_preference_callback(
+        [&](uint32_t old_size, uint32_t new_size, std::string& error) {
+            runtime.set_audio_buffer_size(new_size);
+            auto rebuild_result = api.rebuild_current_graph(has_gpu_ops, has_audio);
+            if (rebuild_result.ok) {
+                error.clear();
+                return true;
+            }
+
+            runtime.set_audio_buffer_size(old_size);
+            auto restore_result = api.rebuild_current_graph(has_gpu_ops, has_audio);
+            error = rebuild_result.message;
+            if (!restore_result.ok)
+                error += " (restore failed: " + restore_result.message + ")";
+            return false;
+        });
+
+    auto set_freq_result = api.set_param("osc1", "frequency", 330.0f);
+    check(set_freq_result.ok, "set_param(osc1/frequency)");
+    std::string pref_error;
+    check(sink.try_set_audio_buffer_preference(1024, &pref_error), "audio buffer preference applied");
+    check(settings.audio_buffer_size == 1024, "settings updated to new audio buffer size");
+    check(runtime.audio_buffer_size() == 1024, "runtime updated to new audio buffer size");
+    check(audio.buffer_size() == 1024, "audio engine rebuilt with new audio buffer size");
+    std::vector<float> rebuilt_audio_buf(audio.buffer_size() * 2, 0.0f);
+    audio.process_audio_for_test(rebuilt_audio_buf.data(), audio.buffer_size());
+
+    auto* osc_cn = runtime.compiled_graph()->find_node("osc1");
+    check(osc_cn != nullptr, "Oscillator node still present after audio buffer rebuild");
+    if (osc_cn) {
+        auto freq_it = osc_cn->param_indices.find("frequency");
+        check(freq_it != osc_cn->param_indices.end(), "Oscillator frequency param exists after rebuild");
+        if (freq_it != osc_cn->param_indices.end()) {
+            check_float(osc_cn->param_values[freq_it->second], 330.0f, 1e-4f,
+                        "Oscillator frequency preserved across buffer-size rebuild");
+        }
     }
 
     // Check no errors on any audio node

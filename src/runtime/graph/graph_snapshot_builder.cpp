@@ -431,8 +431,8 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         snap.audio_underrun_count = audio_engine->underrun_count();
         snap.audio_underrun_active = audio_engine->last_buffer_underrun();
         snap.audio_load = audio_engine->audio_load();
-        snap.audio_sample_rate = vivid::AudioEngine::kSampleRate;
-        snap.audio_buffer_size = vivid::AudioEngine::kBufferSize;
+        snap.audio_sample_rate = audio_engine->sample_rate();
+        snap.audio_buffer_size = audio_engine->buffer_size();
         snap.audio_node_count = audio_engine->node_count();
     }
 

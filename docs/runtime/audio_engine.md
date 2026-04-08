@@ -13,12 +13,16 @@ Both operate on the shared `CompiledGraph`. Audio-cadence nodes (`active_cadence
 store their buffer state directly in `CompiledNode` fields (`audio_buffers_in/out`, channel counts,
 bridge-accessible scalar inputs, etc.).
 
-## Constants
+## Audio Configuration
 
 ```cpp
-static constexpr uint32_t kBufferSize = 256;   // frames per audio callback chunk
-static constexpr uint32_t kSampleRate = 48000;
+CompiledGraph::audio_buffer_size  // default 256, configurable from app settings
+CompiledGraph::audio_sample_rate  // fixed at 48000 for now
 ```
+
+`AudioEngine` and `AudioExecutor` read these values from the active `CompiledGraph` at build time.
+Buffer size is persisted in `settings.json` and applied by rebuilding the live runtime; sample rate
+remains fixed.
 
 ## Cross-Cadence Communication
 
@@ -63,7 +67,8 @@ Partitioned into four index lists in `CompiledGraph`: `frame_direct_edges`, `aud
 
 ## Audio Callback
 
-`AudioExecutor::audio_callback()` processes audio-order nodes in chunks of `kBufferSize`:
+`AudioExecutor::audio_callback()` processes audio-order nodes in chunks of the configured audio
+buffer size:
 
 1. Apply `ParamSnapshot` — populate `c_in_lane_views` directly from bridge `BridgeLaneSlot` pointers (zero-copy), apply params, strings, custom ports
 2. For each node in `audio_order`:

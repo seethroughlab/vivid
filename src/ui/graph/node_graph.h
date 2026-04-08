@@ -279,6 +279,9 @@ public:
                             std::vector<ThemeInfo> themes = {}) {
         dialogs_.set_style_options(std::move(styles), current_idx, std::move(themes));
     }
+    void set_audio_buffer_options(std::vector<uint32_t> sizes, int current_idx) {
+        dialogs_.set_audio_buffer_options(std::move(sizes), current_idx);
+    }
     void show_core_update_notice(const std::string& latest_version,
                                  const std::string& summary = "") {
         dialogs_.show_core_update_notice(latest_version, summary);

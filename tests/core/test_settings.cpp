@@ -41,6 +41,7 @@ int main() {
         s.window_width = 1920;
         s.window_height = 1080;
         s.bezier_wires = true;
+        s.audio_buffer_size = 512;
         s.editor = "VSCode";
         s.editor_command = "code {file}";
         s.style_id = "midnight";
@@ -57,6 +58,7 @@ int main() {
         check(loaded.window_width == 1920, "window_width preserved");
         check(loaded.window_height == 1080, "window_height preserved");
         check(loaded.bezier_wires == true, "bezier_wires preserved");
+        check(loaded.audio_buffer_size == 512, "audio_buffer_size preserved");
         check(loaded.editor == "VSCode", "editor preserved");
         check(loaded.editor_command == "code {file}", "editor_command preserved");
         check(loaded.style_id == "midnight", "style_id preserved");
@@ -82,6 +84,8 @@ int main() {
         check(loaded.window_width == 1280, "default window_width = 1280");
         check(loaded.window_height == 800, "default window_height = 800");
         check(loaded.bezier_wires == false, "default bezier_wires = false");
+        check(loaded.audio_buffer_size == vivid::kDefaultAudioBufferSize,
+              "default audio_buffer_size = 256");
         check(loaded.editor.empty(), "default editor is empty");
         check(loaded.editor_command.empty(), "default editor_command is empty");
         check(loaded.style_id.empty(), "default style_id is empty");
@@ -92,10 +96,28 @@ int main() {
     }
 
     // =================================================================
-    // Test 3: Malformed JSON — load returns defaults without crash
+    // Test 3: Invalid audio buffer size falls back to default
     // =================================================================
     {
-        std::fprintf(stderr, "\n=== Test 3: Malformed JSON ===\n");
+        std::fprintf(stderr, "\n=== Test 3: Invalid audio buffer size ===\n");
+        TempHome home;
+        fs::create_directories(home.config_dir());
+
+        {
+            std::ofstream ofs(home.settings_path());
+            ofs << R"({"audio_buffer_size": 300})";
+        }
+
+        vivid::Settings loaded = vivid::load_settings();
+        check(loaded.audio_buffer_size == vivid::kDefaultAudioBufferSize,
+              "invalid audio_buffer_size falls back to default");
+    }
+
+    // =================================================================
+    // Test 4: Malformed JSON — load returns defaults without crash
+    // =================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 4: Malformed JSON ===\n");
         TempHome home;
         fs::create_directories(home.config_dir());
 
@@ -110,10 +132,10 @@ int main() {
     }
 
     // =================================================================
-    // Test 4: Window size clamping
+    // Test 5: Window size clamping
     // =================================================================
     {
-        std::fprintf(stderr, "\n=== Test 4: Window size clamping ===\n");
+        std::fprintf(stderr, "\n=== Test 5: Window size clamping ===\n");
         TempHome home;
         fs::create_directories(home.config_dir());
 
@@ -129,10 +151,10 @@ int main() {
     }
 
     // =================================================================
-    // Test 5: Zero-size window clamping
+    // Test 6: Zero-size window clamping
     // =================================================================
     {
-        std::fprintf(stderr, "\n=== Test 5: Zero-size clamping ===\n");
+        std::fprintf(stderr, "\n=== Test 6: Zero-size clamping ===\n");
         TempHome home;
         fs::create_directories(home.config_dir());
 
@@ -147,10 +169,10 @@ int main() {
     }
 
     // =================================================================
-    // Test 6: Empty optional fields omitted from JSON
+    // Test 7: Empty optional fields omitted from JSON
     // =================================================================
     {
-        std::fprintf(stderr, "\n=== Test 6: Empty optional fields ===\n");
+        std::fprintf(stderr, "\n=== Test 7: Empty optional fields ===\n");
         TempHome home;
 
         vivid::Settings s;
@@ -187,10 +209,10 @@ int main() {
     }
 
     // =================================================================
-    // Test 7: Negative window size clamping
+    // Test 8: Negative window size clamping
     // =================================================================
     {
-        std::fprintf(stderr, "\n=== Test 7: Negative window size ===\n");
+        std::fprintf(stderr, "\n=== Test 8: Negative window size ===\n");
         TempHome home;
         fs::create_directories(home.config_dir());
 

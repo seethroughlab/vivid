@@ -83,6 +83,9 @@ public:
 
     void set_operators_src_dir(const std::string& dir) { operators_src_dir_ = dir; }
     const std::string& operators_src_dir() const { return operators_src_dir_; }
+    void set_audio_buffer_size(uint32_t buffer_size) { audio_buffer_size_ = buffer_size; }
+    uint32_t audio_buffer_size() const { return audio_buffer_size_; }
+    uint32_t audio_sample_rate() const { return audio_sample_rate_; }
     bool needs_gpu_realloc() const { return needs_gpu_realloc_; }
     void clear_gpu_realloc() { needs_gpu_realloc_ = false; }
 
@@ -113,6 +116,8 @@ private:
     const SubgraphModuleRegistry* subgraph_modules_ = nullptr;
     std::vector<ModulationLoweringRecord> modulation_records_;
     bool needs_gpu_realloc_ = false;
+    uint32_t audio_buffer_size_ = 256;
+    uint32_t audio_sample_rate_ = 48000;
 
     int solo_node_idx_ = -1;
     std::vector<bool> solo_active_set_;

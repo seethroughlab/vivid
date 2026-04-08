@@ -26,7 +26,7 @@ main.cpp
 | Cadence | Thread            | Rate                       | Executor                       |
 |---------|-------------------|----------------------------|--------------------------------|
 | Frame   | Main              | ~60 Hz                     | `FrameExecutor::tick()`        |
-| Audio   | Audio (miniaudio) | 48 kHz / 256-sample buffer | `AudioExecutor::audio_callback()` |
+| Audio   | Audio (miniaudio) | 48 kHz / configurable buffer | `AudioExecutor::audio_callback()` |
 
 GPU nodes run at frame cadence on the main thread, with `GpuContext` providing the command encoder.
 
@@ -50,14 +50,14 @@ Each frame:
 
 ## Startup Sequence
 
-1. Parse CLI args / load settings
+1. Parse CLI args / load settings (including the persisted audio buffer size preference)
 2. `gpu_context.init(window, w, h)` — create WebGPU device
 3. `registry.scan_deferred(builtins_dir)` — probe all built-in dylibs
 4. `registry.scan_shader_operators(presets_dir)` — register built-in `.wgsl` shader operators
 5. `pm.scan_installed()` — probe user packages
 6. `graph.load(path)` — parse JSON graph
 7. if the graph has a saved path, `registry.scan_shader_operators(<graph_dir>/filters, mark_user=true)` — register project-local shader operators
-8. `runtime.build(graph, registry)` — compile graph, instantiate operators, resolve edges
+8. `runtime.build(graph, registry)` — compile graph, instantiate operators, resolve edges using the active audio buffer size
 9. `runtime.allocate_gpu_textures(device, w, h, format)` — allocate per-node textures
 10. `audio_engine.build(runtime)` — build AudioExecutor from CompiledGraph
 11. `audio_engine.start()` — start miniaudio device

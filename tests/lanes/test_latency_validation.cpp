@@ -164,8 +164,9 @@ static void scenario_hot_reload(const std::string& build_dir) {
 
     // Verify v1 output
     {
-        float output[vivid::AudioEngine::kBufferSize * 2] = {};
-        audio_engine.process_audio_for_test(output, vivid::AudioEngine::kBufferSize);
+        const uint32_t audio_frames = audio_engine.buffer_size();
+        std::vector<float> output(audio_frames * 2, 0.0f);
+        audio_engine.process_audio_for_test(output.data(), audio_frames);
         check_float(output[0], 4.0f, "s3: v1 output = level * 2.0 = 4.0");
     }
 
@@ -182,8 +183,9 @@ static void scenario_hot_reload(const std::string& build_dir) {
     check(audio_engine.post_reload_operator("AudioReloadOp", audio_registry),
           "s3: audio engine reload");
 
-    float output[vivid::AudioEngine::kBufferSize * 2] = {};
-    audio_engine.process_audio_for_test(output, vivid::AudioEngine::kBufferSize);
+    const uint32_t audio_frames = audio_engine.buffer_size();
+    std::vector<float> output(audio_frames * 2, 0.0f);
+    audio_engine.process_audio_for_test(output.data(), audio_frames);
 
     auto t1 = std::chrono::high_resolution_clock::now();
     auto us = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();

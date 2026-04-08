@@ -396,6 +396,8 @@ struct CompiledGraph {
 
     // Maximum lane count for LoopBased audio operators (from compiler options).
     uint32_t max_loop_lanes = 16;
+    uint32_t audio_buffer_size = 256;
+    uint32_t audio_sample_rate = 48000;
 
     bool has_audio_cadence_instances(const std::string& type_name) const {
         for (uint32_t ni : audio_order) {

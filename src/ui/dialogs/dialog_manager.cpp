@@ -207,8 +207,10 @@ void DialogManager::toggle_preferences() {
             prefs.saved_style_sel < static_cast<int>(prefs.styles.size())) {
             *style_ptr_ = prefs.styles[prefs.saved_style_sel];
         }
+        prefs.audio_buffer_sel = prefs.saved_audio_buffer_sel;
         prefs.open = false;
         prefs.editing_custom = false;
+        prefs.error.clear();
     } else {
         prefs.open = true;
         prefs.editing_custom = false;
@@ -220,6 +222,8 @@ void DialogManager::toggle_preferences() {
             else prefs.pan_gesture_sel = 0;
         }
         prefs.saved_pan_gesture_sel = prefs.pan_gesture_sel;
+        prefs.saved_audio_buffer_sel = prefs.audio_buffer_sel;
+        prefs.error.clear();
     }
 }
 
@@ -243,6 +247,12 @@ void DialogManager::set_style_options(std::vector<UIStyle> styles, int current_i
         current_idx < static_cast<int>(prefs.styles.size())) {
         *style_ptr_ = prefs.styles[current_idx];
     }
+}
+
+void DialogManager::set_audio_buffer_options(std::vector<uint32_t> sizes, int current_idx) {
+    prefs.audio_buffer_sizes = std::move(sizes);
+    prefs.audio_buffer_sel = current_idx;
+    prefs.saved_audio_buffer_sel = current_idx;
 }
 
 // -----------------------------------------------------------------------

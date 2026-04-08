@@ -4,6 +4,7 @@
 #include "runtime/audio/audio_engine.h"
 #include "runtime/graph/audio_executor.h"
 #include "runtime/core/runtime_core.h"
+#include "runtime/core/settings.h"
 #include "runtime/graph/graph_compiler.h"
 #include <cstdio>
 
@@ -49,7 +50,7 @@ bool AudioEngine::start(bool use_null_device) {
     bool ok = audio_executor_->start(use_null_device);
     if (ok) {
         std::fprintf(stderr, "[vivid] AudioEngine: started (%u Hz, %u frames/buffer, %zu audio nodes)\n",
-                     kSampleRate, kBufferSize, compiled_graph_->audio_order.size());
+                     sample_rate(), buffer_size(), compiled_graph_->audio_order.size());
     }
     return ok;
 }
@@ -146,7 +147,7 @@ bool AudioEngine::post_reload_operator(const std::string& type_name, OperatorReg
 
         // Reinitialize node state with new descriptor
         GraphCompiler::init_frame_state(cn, new_desc, &saved.params, nullptr, {});
-        GraphCompiler::init_audio_state(cn, new_desc, kBufferSize);
+        GraphCompiler::init_audio_state(cn, new_desc, buffer_size());
 
         // Restore saved param values
         for (const auto& [pname, pval] : saved.params) {
@@ -215,6 +216,18 @@ float AudioEngine::audio_load() const {
 uint32_t AudioEngine::node_count() const {
     if (compiled_graph_) return static_cast<uint32_t>(compiled_graph_->audio_order.size());
     return 0;
+}
+
+uint32_t AudioEngine::buffer_size() const {
+    if (audio_executor_) return audio_executor_->buffer_size();
+    if (compiled_graph_) return compiled_graph_->audio_buffer_size;
+    return vivid::kDefaultAudioBufferSize;
+}
+
+uint32_t AudioEngine::sample_rate() const {
+    if (audio_executor_) return audio_executor_->sample_rate();
+    if (compiled_graph_) return compiled_graph_->audio_sample_rate;
+    return kSampleRate;
 }
 
 void AudioEngine::process_audio_for_test(float* output, uint32_t frame_count) {

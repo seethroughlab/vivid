@@ -9,11 +9,13 @@
 #include <cstdlib>
 #include <filesystem>
 #include <string>
+#include <vector>
 #include "test_helpers.h"
 
 static float first_sample_after_process(vivid::AudioEngine& audio_engine) {
-    float output[vivid::AudioEngine::kBufferSize * 2] = {};
-    audio_engine.process_audio_for_test(output, vivid::AudioEngine::kBufferSize);
+    const uint32_t audio_frames = audio_engine.buffer_size();
+    std::vector<float> output(audio_frames * 2, 0.0f);
+    audio_engine.process_audio_for_test(output.data(), audio_frames);
     return output[0];
 }
 
@@ -46,10 +48,12 @@ int main(int argc, char* argv[]) {
           "graph.add_connection(audio/out -> out/input)");
 
     vivid::RuntimeCore runtime;
+    runtime.set_audio_buffer_size(512);
     check(runtime.build(graph, registry), "runtime.build()");
 
     vivid::AudioEngine audio_engine;
     check(audio_engine.build(runtime), "audio_engine.build()");
+    check(audio_engine.buffer_size() == 512, "configured audio buffer size applied");
 
     std::fprintf(stderr, "\n--- initial v1 processing ---\n");
     check_float(first_sample_after_process(audio_engine), 4.0f, 1e-4f,

@@ -782,6 +782,7 @@ void DialogManager::update_preferences(MouseState& mouse, uint32_t win_w, uint32
 
     int editor_count = static_cast<int>(prefs.editor_names.size());
     int style_count = static_cast<int>(prefs.styles.size());
+    int audio_count = static_cast<int>(prefs.audio_buffer_sizes.size());
     bool show_custom = (prefs.editor_sel >= 0 &&
                         prefs.editor_sel < static_cast<int>(prefs.editor_ids.size()) &&
                         prefs.editor_ids[prefs.editor_sel] == "custom");
@@ -795,6 +796,9 @@ void DialogManager::update_preferences(MouseState& mouse, uint32_t win_w, uint32
         + kPrefsRowH + 4                          // "Open Themes Folder" link
         + kPrefsSectionGap
         + kPrefsRowH + 3 * kPrefsRowH             // MOUSE section header + 3 radio items
+        + kPrefsSectionGap
+        + kPrefsRowH + audio_count * kPrefsRowH   // AUDIO section header + radio items
+        + (!prefs.error.empty() ? kPrefsRowH : 0)
         + kPrefsSectionGap + kPrefsBtnH + kPrefsPadY;
 
     float pw = kPrefsW;
@@ -812,8 +816,10 @@ void DialogManager::update_preferences(MouseState& mouse, uint32_t win_w, uint32
             prefs.style_sel = prefs.saved_style_sel;
         }
         prefs.pan_gesture_sel = prefs.saved_pan_gesture_sel;
+        prefs.audio_buffer_sel = prefs.saved_audio_buffer_sel;
         prefs.open = false;
         prefs.editing_custom = false;
+        prefs.error.clear();
         mouse.left_clicked = false;
         mouse.left_released = false;
         return;
@@ -832,6 +838,7 @@ void DialogManager::update_preferences(MouseState& mouse, uint32_t win_w, uint32
             mouse.y >= cy && mouse.y <= cy + kPrefsRowH) {
             prefs.editor_sel = i;
             prefs.editing_custom = false;
+            prefs.error.clear();
             mouse.left_clicked = false;
             mouse.left_released = false;
             return;
@@ -866,6 +873,7 @@ void DialogManager::update_preferences(MouseState& mouse, uint32_t win_w, uint32
             if (style_ptr_ && i >= 0 && i < static_cast<int>(prefs.styles.size())) {
                 *style_ptr_ = prefs.styles[i];
             }
+            prefs.error.clear();
             mouse.left_clicked = false;
             mouse.left_released = false;
             return;
@@ -894,12 +902,33 @@ void DialogManager::update_preferences(MouseState& mouse, uint32_t win_w, uint32
         if (mouse.x >= cx && mouse.x <= cx + inner_w &&
             mouse.y >= cy && mouse.y <= cy + kPrefsRowH) {
             prefs.pan_gesture_sel = i;
+            prefs.error.clear();
             mouse.left_clicked = false;
             mouse.left_released = false;
             return;
         }
         cy += kPrefsRowH;
     }
+
+    cy += kPrefsSectionGap;
+
+    // Skip AUDIO section header
+    cy += kPrefsRowH;
+
+    for (int i = 0; i < audio_count; ++i) {
+        if (mouse.x >= cx && mouse.x <= cx + inner_w &&
+            mouse.y >= cy && mouse.y <= cy + kPrefsRowH) {
+            prefs.audio_buffer_sel = i;
+            prefs.error.clear();
+            mouse.left_clicked = false;
+            mouse.left_released = false;
+            return;
+        }
+        cy += kPrefsRowH;
+    }
+
+    if (!prefs.error.empty())
+        cy += kPrefsRowH;
 
     cy += kPrefsSectionGap;
 
@@ -911,6 +940,20 @@ void DialogManager::update_preferences(MouseState& mouse, uint32_t win_w, uint32
     if (mouse.x >= save_x && mouse.x <= save_x + kPrefsBtnW &&
         mouse.y >= cy && mouse.y <= cy + kPrefsBtnH) {
         // Save
+        std::string pref_error;
+        if (prefs.audio_buffer_sel >= 0 &&
+            prefs.audio_buffer_sel < static_cast<int>(prefs.audio_buffer_sizes.size()) &&
+            !commands_.try_set_audio_buffer_preference(
+                prefs.audio_buffer_sizes[prefs.audio_buffer_sel], &pref_error)) {
+            prefs.error = pref_error.empty() ? "Failed to apply audio buffer size." : pref_error;
+            prefs.audio_buffer_sel = prefs.saved_audio_buffer_sel;
+            mouse.left_clicked = false;
+            mouse.left_released = false;
+            return;
+        }
+        prefs.saved_audio_buffer_sel = prefs.audio_buffer_sel;
+        prefs.error.clear();
+
         std::string editor_id;
         if (prefs.editor_sel >= 0 && prefs.editor_sel < static_cast<int>(prefs.editor_ids.size()))
             editor_id = prefs.editor_ids[prefs.editor_sel];
@@ -944,8 +987,10 @@ void DialogManager::update_preferences(MouseState& mouse, uint32_t win_w, uint32
             prefs.style_sel = prefs.saved_style_sel;
         }
         prefs.pan_gesture_sel = prefs.saved_pan_gesture_sel;
+        prefs.audio_buffer_sel = prefs.saved_audio_buffer_sel;
         prefs.open = false;
         prefs.editing_custom = false;
+        prefs.error.clear();
         mouse.left_clicked = false;
         mouse.left_released = false;
         return;

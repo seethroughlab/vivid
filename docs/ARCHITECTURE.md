@@ -23,7 +23,7 @@ C++ was chosen over Zig and Rust for one overriding reason: library integration.
 Vivid operators fall into three families based on the kind of data they work with and where they appear in the UI. These are distinct from the runtime's two **cadences** (frame-rate ~60 Hz, audio-rate ~48 kHz), which determine *when* an operator executes. See the [runtime architecture](vivid-runtime-architecture.md) for the cadence model.
 
 - **Control** — floats, ints, bools, events, strings, lane arrays. Runs at frame cadence on the main thread. Control operators are frame-only (`_fr`); audio-rate modulation requires a dedicated audio operator (`_au`) with an explicit `AudioFrameBridge` edge between cadences.
-- **Audio** — sample buffers at audio cadence (48 kHz, 256-sample buffers). Runs on a real-time audio thread managed by miniaudio. Operators produce a buffer every callback, even if silence. Both sample rate and buffer size are fixed constants (`kSampleRate = 48000`, `kBufferSize = 256`), not configurable at runtime.
+- **Audio** — sample buffers at audio cadence (48 kHz, configurable 128/256/512/1024-sample buffers). Runs on a real-time audio thread managed by miniaudio. Operators produce a buffer every callback, even if silence. Sample rate remains fixed at `48000`; buffer size is a persisted app preference that triggers a runtime rebuild when changed.
 - **GPU** — textures, shaders, meshes, compute buffers. Runs at frame cadence on the main thread. Operators execute as Dawn/WebGPU render/compute passes.
 
 ## 5.4 Execution Model: Dual-Cadence Pull

@@ -81,6 +81,8 @@ bool RuntimeCore::prepare_build(const Graph& graph, OperatorRegistry& registry,
     GraphCompiler::Options opts;
     opts.graph_base_dir = graph_base_dir;
     opts.operators_src_dir = operators_src_dir_;
+    opts.audio_buffer_size = audio_buffer_size_;
+    opts.audio_sample_rate = audio_sample_rate_;
     out.compiled_graph = GraphCompiler::compile(*compile_target, registry, opts);
     if (!out.compiled_graph) {
         if (error) *error = "graph compile failed";

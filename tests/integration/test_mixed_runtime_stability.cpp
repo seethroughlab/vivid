@@ -159,8 +159,9 @@ int main(int argc, char* argv[]) {
         runtime.pre_tick_audio_sync(time);
         tick_with_gpu(runtime, gpu, static_cast<uint64_t>(i), time, 1.0 / 60.0,
                       WGPUTextureFormat_RGBA8Unorm);
-        float output[vivid::AudioEngine::kBufferSize * 2] = {};
-        audio_engine.process_audio_for_test(output, vivid::AudioEngine::kBufferSize);
+        const uint32_t audio_frames = audio_engine.buffer_size();
+        std::vector<float> output(audio_frames * 2, 0.0f);
+        audio_engine.process_audio_for_test(output.data(), audio_frames);
 
         for (const auto& node : runtime.compiled_graph()->nodes) {
             if (node.errored) {

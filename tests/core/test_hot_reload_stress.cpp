@@ -9,11 +9,13 @@
 #include <cstdlib>
 #include <filesystem>
 #include <string>
+#include <vector>
 #include "test_helpers.h"
 
 static float first_sample_after_process(vivid::AudioEngine& audio_engine) {
-    float output[vivid::AudioEngine::kBufferSize * 2] = {};
-    audio_engine.process_audio_for_test(output, vivid::AudioEngine::kBufferSize);
+    const uint32_t audio_frames = audio_engine.buffer_size();
+    std::vector<float> output(audio_frames * 2, 0.0f);
+    audio_engine.process_audio_for_test(output.data(), audio_frames);
     return output[0];
 }
 

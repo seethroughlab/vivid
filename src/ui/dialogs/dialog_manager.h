@@ -116,6 +116,10 @@ public:
         int saved_style_sel = 0;
         int pan_gesture_sel = 1;       // 0=middle, 1=left, 2=right
         int saved_pan_gesture_sel = 1;
+        int audio_buffer_sel = 1;
+        int saved_audio_buffer_sel = 1;
+        std::vector<uint32_t> audio_buffer_sizes;
+        std::string error;
     };
 
     struct PkgBrowserState {
@@ -243,6 +247,7 @@ public:
                             int current_idx = 0, const std::string& custom_command = "");
     void set_style_options(std::vector<UIStyle> styles, int current_idx,
                             std::vector<ThemeInfo> themes = {});
+    void set_audio_buffer_options(std::vector<uint32_t> sizes, int current_idx);
     bool prefs_open() const { return prefs.open; }
 
     // Style/pan pointer — set during construction or via setter.

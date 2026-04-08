@@ -264,7 +264,8 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
     if (use_gpu) gpu.reset_errors();
 
     // Tick 60 frames
-    float audio_buf[vivid::AudioEngine::kBufferSize * 2] = {};
+    const uint32_t audio_frames = audio->buffer_size();
+    std::vector<float> audio_buf(audio_frames * 2, 0.0f);
     for (uint64_t frame = 0; frame < 60; ++frame) {
         double time = frame * 0.016;
         if (audio) {
@@ -277,7 +278,7 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
         }
         if (audio) {
             runtime.audio_frame_bridge().push_to_audio(*runtime.compiled_graph());
-            audio->process_audio_for_test(audio_buf, vivid::AudioEngine::kBufferSize);
+            audio->process_audio_for_test(audio_buf.data(), audio_frames);
         }
 #ifdef __APPLE__
         CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.005, false);

@@ -696,6 +696,41 @@ void RuntimeCommandSink::set_pan_gesture_preference(const std::string& gesture) 
     vivid::save_settings(*settings_);
 }
 
+bool RuntimeCommandSink::try_set_audio_buffer_preference(uint32_t buffer_size,
+                                                         std::string* error) {
+    if (!settings_) {
+        if (error) *error = "settings unavailable";
+        return false;
+    }
+
+    const uint32_t sanitized = vivid::sanitize_audio_buffer_size(buffer_size);
+    if (sanitized != buffer_size) {
+        if (error) *error = "unsupported buffer size";
+        return false;
+    }
+
+    const uint32_t previous = vivid::sanitize_audio_buffer_size(settings_->audio_buffer_size);
+    if (sanitized == previous) {
+        if (error) error->clear();
+        return true;
+    }
+
+    if (audio_buffer_preference_callback_) {
+        std::string callback_error;
+        if (!audio_buffer_preference_callback_(previous, sanitized, callback_error)) {
+            if (error) *error = callback_error.empty()
+                ? "failed to apply audio buffer size"
+                : callback_error;
+            return false;
+        }
+    }
+
+    settings_->audio_buffer_size = sanitized;
+    vivid::save_settings(*settings_);
+    if (error) error->clear();
+    return true;
+}
+
 std::string RuntimeCommandSink::validate_operator_name(const std::string& name) {
     if (!registry_) return "registry not available";
     return vivid::OperatorCreator::validate_name(name, *registry_);

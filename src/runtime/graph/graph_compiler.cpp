@@ -38,6 +38,8 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
 {
     auto cg = std::make_unique<CompiledGraph>();
     cg->max_loop_lanes = options.max_loop_lanes;
+    cg->audio_buffer_size = options.audio_buffer_size;
+    cg->audio_sample_rate = options.audio_sample_rate;
     cg->metronome = graph.metronome();
     std::filesystem::path graph_base_dir;
     if (!graph.source_path().empty()) {

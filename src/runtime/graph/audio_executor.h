@@ -55,11 +55,12 @@ public:
     uint32_t underrun_count() const { return underrun_count_.load(std::memory_order_relaxed); }
     bool last_buffer_underrun() const { return last_buffer_underrun_.load(std::memory_order_relaxed); }
     float audio_load() const { return audio_load_.load(std::memory_order_relaxed); }
+    uint32_t buffer_size() const { return buffer_size_; }
+    uint32_t sample_rate() const { return sample_rate_; }
 
     // Test-only: run the audio callback directly
     void process_audio_for_test(float* output, uint32_t frame_count);
 
-    static constexpr uint32_t kBufferSize = 256;
     static constexpr uint32_t kSampleRate = 48000;
 
     // Per-node lane state context (public for bridge callback access).
@@ -94,6 +95,8 @@ private:
 
     // Audio time tracking
     uint64_t audio_frame_ = 0;
+    uint32_t buffer_size_ = 256;
+    uint32_t sample_rate_ = kSampleRate;
 
     // Analysis toggle (set from main thread, read from audio thread)
     std::atomic<bool> analysis_enabled_{true};

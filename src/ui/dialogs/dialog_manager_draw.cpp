@@ -989,6 +989,7 @@ void DialogManager::draw_preferences(Renderer2D& tr, const MouseState& mouse, co
     // Compute panel height dynamically
     int editor_count = static_cast<int>(prefs.editor_names.size());
     int style_count = static_cast<int>(prefs.styles.size());
+    int audio_count = static_cast<int>(prefs.audio_buffer_sizes.size());
     bool show_custom = (prefs.editor_sel >= 0 &&
                         prefs.editor_sel < static_cast<int>(prefs.editor_ids.size()) &&
                         prefs.editor_ids[prefs.editor_sel] == "custom");
@@ -1006,6 +1007,10 @@ void DialogManager::draw_preferences(Renderer2D& tr, const MouseState& mouse, co
         + kSectionGap
         + kRowH                              // "MOUSE" section header
         + 3 * kRowH                          // pan gesture radio items
+        + kSectionGap
+        + kRowH                              // "AUDIO" section header
+        + audio_count * kRowH                // audio buffer radio items
+        + (!prefs.error.empty() ? kRowH : 0) // error text
         + kSectionGap
         + kBtnH                              // buttons
         + kPadY;
@@ -1130,6 +1135,35 @@ void DialogManager::draw_preferences(Renderer2D& tr, const MouseState& mouse, co
         }
         tr.draw_text(cx + 18, cy + 1, pan_labels[i],
                      style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+        cy += kRowH;
+    }
+
+    cy += kSectionGap;
+
+    // --- AUDIO section ---
+    tr.draw_text(cx, cy, T("audio", "AUDIO"),
+                 style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.7f);
+    cy += kRowH;
+
+    for (int i = 0; i < audio_count; ++i) {
+        bool sel = (i == prefs.audio_buffer_sel);
+        float radio_x = cx + 2;
+        float radio_y = cy + kRowH * 0.5f - 5;
+        tr.draw_rect(radio_x, radio_y, 10, 10,
+                     style.separator[0], style.separator[1], style.separator[2]);
+        if (sel) {
+            tr.draw_rect(radio_x + 2, radio_y + 2, 6, 6,
+                         style.accent[0], style.accent[1], style.accent[2]);
+        }
+        char label[64];
+        std::snprintf(label, sizeof(label), "%u samples", prefs.audio_buffer_sizes[i]);
+        tr.draw_text(cx + 18, cy + 1, label,
+                     style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+        cy += kRowH;
+    }
+
+    if (!prefs.error.empty()) {
+        tr.draw_text(cx, cy, prefs.error.c_str(), 0.95f, 0.38f, 0.32f);
         cy += kRowH;
     }
 

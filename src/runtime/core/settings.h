@@ -5,6 +5,11 @@
 
 namespace vivid {
 
+inline constexpr uint32_t kDefaultAudioBufferSize = 256;
+
+bool is_supported_audio_buffer_size(uint32_t value);
+uint32_t sanitize_audio_buffer_size(uint32_t value);
+
 struct Settings {
     int window_x      = -1;   // -1 means "no saved position, center it"
     int window_y      = -1;
@@ -13,6 +18,7 @@ struct Settings {
     bool bezier_wires = false;
     bool show_param_wires = false;
     bool show_analysis = true;   // GPU frame analysis + audio RMS/peak
+    uint32_t audio_buffer_size = kDefaultAudioBufferSize;
 
     std::string editor;          // app name for `open -a`, empty = system default
     std::string editor_command;  // custom command template with {file} placeholder

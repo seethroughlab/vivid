@@ -58,11 +58,12 @@ public:
     bool last_buffer_underrun() const;
     float audio_load() const;
     uint32_t node_count() const;
+    uint32_t buffer_size() const;
+    uint32_t sample_rate() const;
 
     // Test-only accessors used by headless audio integration tests.
     void  process_audio_for_test(float* output, uint32_t frame_count);
 
-    static constexpr uint32_t kBufferSize = 256;
     static constexpr uint32_t kSampleRate = 48000;
 
 private:
