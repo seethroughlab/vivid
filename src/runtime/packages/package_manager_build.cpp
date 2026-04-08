@@ -4,18 +4,14 @@
 #include "runtime/core/tool_discovery.h"
 #include "runtime/operators/operator_registry.h"
 #include "runtime/platform/platform.h"
+#include "runtime/platform/process_runner.h"
 
-#include <array>
-#include <cerrno>
 #include <cstdio>
-#include <cstring>
 #include <filesystem>
 #include <sstream>
 #include <unordered_set>
 
 namespace vivid {
-
-using package_manager_internal::quote;
 
 static std::string abi_mismatch_error_for_package(const std::string& package_name,
                                                   const std::vector<AbiMismatchDiagnostic>& mismatches) {
@@ -62,45 +58,36 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
         std::string vivid_build = compiler_.build_dir();
 
         // Configure
-        std::string cmake_cmd = quote(cmake_exe)
-            + " -B " + quote(build_dir) +
-            " -S " + quote(compile_pkg_dir) +
-            " -DVIVID_SRC_DIR=" + quote(src_dir) +
-            " -DVIVID_BUILD_DIR=" + quote(vivid_build) +
-            " -DVIVID_PLUGIN_SUFFIX=" + kPluginSuffix +
-            " 2>&1";
+        ProcessRunOptions configure_opts;
+        configure_opts.argv = {cmake_exe, "-B", build_dir, "-S", compile_pkg_dir,
+                               "-DVIVID_SRC_DIR=" + src_dir,
+                               "-DVIVID_BUILD_DIR=" + vivid_build,
+                               "-DVIVID_PLUGIN_SUFFIX=" + std::string(kPluginSuffix)};
+        std::fprintf(stderr, "[vivid] PackageManager: cmake configure %s\n", compile_pkg_dir.c_str());
 
-        std::fprintf(stderr, "[vivid] PackageManager: %s\n", cmake_cmd.c_str());
+        ProcessRunResult configure_result;
+        if (build_console_) {
+            configure_result = run_build_process(configure_opts, *build_console_, configure_task,
+                                                 BuildConsoleStreamKind::Stdout);
+        } else {
+            configure_result = run_process(configure_opts);
+        }
 
-        std::string output;
-        FILE* pipe = popen(cmake_cmd.c_str(), "r");
-        if (!pipe) {
+        if (!configure_result.launched) {
             result.error_code = "cmake_configure_failed";
-            result.error = "Failed to execute cmake configure (popen: ";
-            result.error += std::strerror(errno);
-            result.error += "; cmd: ";
-            result.error += cmake_cmd;
-            result.error += ")";
+            result.error = "Failed to execute cmake configure: " + configure_result.error;
             if (build_console_) {
                 build_console_->append_system_line(configure_task, result.error);
                 build_console_->finish_task(configure_task, BuildTaskState::Failed, "launch failed");
             }
             return false;
         }
-        std::array<char, 256> buf;
-        while (fgets(buf.data(), buf.size(), pipe) != nullptr) {
-            output += buf.data();
-            if (build_console_)
-                build_console_->append_line(configure_task, BuildConsoleStreamKind::Stdout, buf.data());
-        }
-        int status = pclose(pipe);
-
-        if (status != 0) {
+        if (configure_result.exit_code != 0) {
             result.error_code = "cmake_configure_failed";
-            result.error = "cmake configure failed:\n" + output;
+            result.error = "cmake configure failed:\n" + configure_result.output;
             if (build_console_)
                 build_console_->finish_task(configure_task, BuildTaskState::Failed,
-                                            "failed (exit " + std::to_string(status) + ")");
+                                            "failed (exit " + std::to_string(configure_result.exit_code) + ")");
             return false;
         }
         if (build_console_)
@@ -110,33 +97,33 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
         BuildTaskId build_task = build_console_
             ? build_console_->begin_task(BuildTaskKind::PackageBuild, result.info.name)
             : 0;
-        std::string build_cmd = quote(cmake_exe) + " --build " + quote(build_dir) + " 2>&1";
-        std::fprintf(stderr, "[vivid] PackageManager: %s\n", build_cmd.c_str());
+        ProcessRunOptions build_opts;
+        build_opts.argv = {cmake_exe, "--build", build_dir};
+        std::fprintf(stderr, "[vivid] PackageManager: cmake build %s\n", build_dir.c_str());
 
-        output.clear();
-        pipe = popen(build_cmd.c_str(), "r");
-        if (!pipe) {
+        ProcessRunResult build_result;
+        if (build_console_) {
+            build_result = run_build_process(build_opts, *build_console_, build_task,
+                                             BuildConsoleStreamKind::Stdout);
+        } else {
+            build_result = run_process(build_opts);
+        }
+
+        if (!build_result.launched) {
             result.error_code = "cmake_build_failed";
-            result.error = "Failed to execute cmake build";
+            result.error = "Failed to execute cmake build: " + build_result.error;
             if (build_console_) {
                 build_console_->append_system_line(build_task, result.error);
                 build_console_->finish_task(build_task, BuildTaskState::Failed, "launch failed");
             }
             return false;
         }
-        while (fgets(buf.data(), buf.size(), pipe) != nullptr) {
-            output += buf.data();
-            if (build_console_)
-                build_console_->append_line(build_task, BuildConsoleStreamKind::Stdout, buf.data());
-        }
-        status = pclose(pipe);
-
-        if (status != 0) {
+        if (build_result.exit_code != 0) {
             result.error_code = "cmake_build_failed";
-            result.error = "cmake build failed:\n" + output;
+            result.error = "cmake build failed:\n" + build_result.output;
             if (build_console_)
                 build_console_->finish_task(build_task, BuildTaskState::Failed,
-                                            "failed (exit " + std::to_string(status) + ")");
+                                            "failed (exit " + std::to_string(build_result.exit_code) + ")");
             return false;
         }
         if (build_console_)

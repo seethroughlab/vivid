@@ -8,6 +8,7 @@
 #include <fstream>
 #include <sstream>
 #include <unistd.h>
+#include "runtime/platform/process_runner.h"
 
 namespace vivid {
 namespace fs = std::filesystem;
@@ -924,17 +925,17 @@ void OperatorCreator::open_in_editor(const std::string& path) {
     const char* editor = std::getenv("VISUAL");
     if (!editor) editor = std::getenv("EDITOR");
 
-    std::string cmd;
     if (editor) {
-        cmd = std::string(editor) + " \"" + path + "\" &";
+        // $EDITOR/$VISUAL may be multi-word (e.g. "code --wait"), so we
+        // run it through the shell. This is the one intentional shell escape.
+        std::string cmd = std::string(editor) + " '" + path + "' &";
+        std::fprintf(stderr, "[vivid] Opening in editor: %s\n", cmd.c_str());
+        spawn_detached({"/bin/sh", "-c", cmd});
     } else {
-        // macOS fallback
-        cmd = "open \"" + path + "\" &";
+        // macOS fallback — no shell needed.
+        std::fprintf(stderr, "[vivid] Opening in editor: open %s\n", path.c_str());
+        spawn_detached({"/usr/bin/open", path});
     }
-
-    std::fprintf(stderr, "[vivid] Opening in editor: %s\n", cmd.c_str());
-    // Fire-and-forget
-    (void)std::system(cmd.c_str());
 }
 
 } // namespace vivid

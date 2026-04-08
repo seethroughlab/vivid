@@ -127,3 +127,32 @@ Adjust target names to the existing test targets if needed.
 - Existing build-console streaming behavior is preserved.
 - Custom editor command templates remain the only intentional shell-based escape hatch in this area.
 - libuv and Boost.Process remain documented alternatives, not required dependencies for v1.
+
+## Assessment Notes (2026-04-08)
+
+**Recommendation: worth doing. This addresses real risks, not theoretical ones.**
+
+### Current State
+
+There are ~12 distinct process execution call sites across 11 files, using a mix of `popen`/`pclose` (package compiler, build, install, test runner, hot reload) and bare `std::system()` (export pipeline, platform utilities, operator creator). Two duplicate `quote()` helpers exist for shell escaping. No TODOs or bug reports, but several `std::system()` sites pass paths without quoting — a latent bug for paths with spaces or special characters.
+
+### Why this is worth doing
+
+- **Real safety gaps.** `std::system()` in `export_pipeline.cpp` and `platform.cpp` constructs shell strings without quoting user-facing paths. These are injection/breakage vectors, not theoretical fragility.
+- **Duplicate quoting logic.** Two identical `quote()` functions in `package_compiler.cpp` and `package_manager_discovery.cpp` — a maintenance liability.
+- **Tight coupling.** All build-related call sites duplicate the same `popen` → line-buffer → `BuildConsole::append_line` → `pclose` → check exit code pattern. A shared runner would eliminate this boilerplate.
+- **No new dependencies.** The v1 plan uses `posix_spawn`/`fork+exec` directly — no added library weight.
+- **Modest scope.** The runner itself is a small, well-defined abstraction. Migration can be incremental per call site.
+
+### Risks
+
+- **Build-console streaming integration** needs care — the `on_output` callback must preserve the current line-buffered, task-scoped streaming behavior.
+- **Detached launches** (editor, browser) are a different pattern from blocking builds; the plan wisely defers these to the end.
+- **Cross-platform.** macOS-only today, but Windows `CreateProcessW` is mentioned — avoid over-engineering for a platform that isn't active yet.
+
+### Suggested prioritization
+
+1. Build the runner + tests (step 1 of the plan).
+2. Migrate the unsafe `std::system()` sites first (`export_pipeline.cpp`, `platform.cpp`) since those have the most concrete risk.
+3. Migrate `popen` build sites next for the boilerplate reduction.
+4. Defer detached launches unless they cause problems.

@@ -8,15 +8,11 @@
 #include <fstream>
 #include <sstream>
 #include <cstdio>
-#include <cstdlib>
 #include <unordered_set>
 #include <algorithm>
+#include "runtime/platform/process_runner.h"
 
 namespace vivid {
-
-static std::string quote(const std::string& s) {
-    return "'" + s + "'";
-}
 
 static std::string cpp_string_literal(const std::string& s) {
     std::string out = "\"";
@@ -541,21 +537,24 @@ bool ExportPipeline::build() {
     std::string build_path = export_dir_ + "/build";
 
     // Configure
-    std::string configure_cmd = quote(cmake_exe) + " -S " + quote(export_dir_) + " -B " + quote(build_path) +
-                                " -DCMAKE_BUILD_TYPE=Release 2>&1";
-    std::fprintf(stderr, "[export] Configuring: %s\n", configure_cmd.c_str());
-    int rc = std::system(configure_cmd.c_str());
-    if (rc != 0) {
-        std::fprintf(stderr, "[export] CMake configure failed (exit %d)\n", rc);
+    ProcessRunOptions configure_opts;
+    configure_opts.argv = {cmake_exe, "-S", export_dir_, "-B", build_path, "-DCMAKE_BUILD_TYPE=Release"};
+    std::fprintf(stderr, "[export] Configuring: %s -S %s -B %s\n", cmake_exe.c_str(), export_dir_.c_str(), build_path.c_str());
+    auto configure_result = run_process(configure_opts);
+    if (!configure_result.launched || configure_result.exit_code != 0) {
+        std::fprintf(stderr, "[export] CMake configure failed (exit %d)\n%s",
+                     configure_result.exit_code, configure_result.output.c_str());
         return false;
     }
 
     // Build
-    std::string build_cmd = quote(cmake_exe) + " --build " + quote(build_path) + " --config Release 2>&1";
-    std::fprintf(stderr, "[export] Building: %s\n", build_cmd.c_str());
-    rc = std::system(build_cmd.c_str());
-    if (rc != 0) {
-        std::fprintf(stderr, "[export] Build failed (exit %d)\n", rc);
+    ProcessRunOptions build_opts;
+    build_opts.argv = {cmake_exe, "--build", build_path, "--config", "Release"};
+    std::fprintf(stderr, "[export] Building: %s --build %s\n", cmake_exe.c_str(), build_path.c_str());
+    auto build_result = run_process(build_opts);
+    if (!build_result.launched || build_result.exit_code != 0) {
+        std::fprintf(stderr, "[export] Build failed (exit %d)\n%s",
+                     build_result.exit_code, build_result.output.c_str());
         return false;
     }
 

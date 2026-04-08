@@ -67,6 +67,7 @@ add_library(vivid_runtime_testlib STATIC
     src/runtime/platform/app_update_manager.cpp
     src/runtime/platform/av_exporter.mm
     src/runtime/platform/platform.cpp
+    src/runtime/platform/process_runner.cpp
     src/runtime/net/http_fetch.cpp
 )
 target_include_directories(vivid_runtime_testlib PUBLIC src tests)

@@ -19,14 +19,6 @@
 #include <unordered_set>
 
 namespace vivid::package_manager_internal {
-std::string quote(const std::string& s) {
-    std::string escaped;
-    for (char c : s) {
-        if (c == '\'') escaped += "'\\''";
-        else escaped += c;
-    }
-    return "'" + escaped + "'";
-}
 
 std::string trim_copy(const std::string& s) {
     size_t start = 0;

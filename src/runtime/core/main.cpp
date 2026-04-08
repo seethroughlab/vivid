@@ -49,6 +49,7 @@
 #include "runtime/packages/package_scaffolder.h"
 #include "runtime/platform/app_update_manager.h"
 #include "runtime/platform/platform.h"
+#include "runtime/platform/process_runner.h"
 #include "runtime/operators/operator_creator.h"
 #include "runtime/operators/operator_destination_policy.h"
 #include "runtime/debug/ui_test_runner.h"
@@ -1716,7 +1717,6 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
                         // supports hot-reload by building the package target directly.
                         std::filesystem::path src_cpp = std::filesystem::path(pkg_dir) / "src" / (op_name + ".cpp");
                         if (std::filesystem::exists(src_cpp)) {
-                            auto quote = [](const std::string& s) { return "'" + s + "'"; };
                             std::string pkg_build = pkg_dir + "/build";
                             vivid::BuildTaskId configure_task = 0;
 
@@ -1744,33 +1744,25 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
                                 configure_task = build_console->begin_task(
                                     vivid::BuildTaskKind::PackageConfigure,
                                     pkg_name + ":" + op_name);
-                                std::string cfg_cmd = quote(cmake_exe) +
-                                    " -B " + quote(pkg_build) +
-                                    " -S " + quote(pkg_dir) +
-                                    " -DVIVID_SRC_DIR=" + quote(pkg_src_dir) +
-                                    " -DVIVID_BUILD_DIR=" + quote(pkg_build_dir) +
-                                    " -DVIVID_PLUGIN_SUFFIX=" + std::string(vivid::kPluginSuffix) +
-                                    " 2>&1";
-                                std::string cfg_out;
-                                FILE* cfg_pipe = popen(cfg_cmd.c_str(), "r");
-                                if (!cfg_pipe) {
+                                vivid::ProcessRunOptions cfg_opts;
+                                cfg_opts.argv = {cmake_exe, "-B", pkg_build, "-S", pkg_dir,
+                                                 "-DVIVID_SRC_DIR=" + pkg_src_dir,
+                                                 "-DVIVID_BUILD_DIR=" + pkg_build_dir,
+                                                 "-DVIVID_PLUGIN_SUFFIX=" + std::string(vivid::kPluginSuffix)};
+                                auto cfg_result = vivid::run_build_process(cfg_opts, *build_console, configure_task,
+                                                                           vivid::BuildConsoleStreamKind::Stdout);
+                                if (!cfg_result.launched) {
                                     result.success = false;
-                                    result.error_output = "Failed to execute cmake configure for package target";
+                                    result.error_output = "Failed to execute cmake configure: " + cfg_result.error;
                                     build_console->append_system_line(configure_task, result.error_output);
                                     build_console->finish_task(configure_task, vivid::BuildTaskState::Failed, "launch failed");
                                     return result;
                                 }
-                                std::array<char, 256> cfg_buf;
-                                while (fgets(cfg_buf.data(), cfg_buf.size(), cfg_pipe) != nullptr) {
-                                    cfg_out += cfg_buf.data();
-                                    build_console->append_line(configure_task, vivid::BuildConsoleStreamKind::Stdout, cfg_buf.data());
-                                }
-                                int cfg_status = pclose(cfg_pipe);
-                                if (cfg_status != 0) {
+                                if (cfg_result.exit_code != 0) {
                                     result.success = false;
-                                    result.error_output = "cmake configure failed:\n" + cfg_out;
+                                    result.error_output = "cmake configure failed:\n" + cfg_result.output;
                                     build_console->finish_task(configure_task, vivid::BuildTaskState::Failed,
-                                                               "failed (exit " + std::to_string(cfg_status) + ")");
+                                                               "failed (exit " + std::to_string(cfg_result.exit_code) + ")");
                                     return result;
                                 }
                                 build_console->finish_task(configure_task, vivid::BuildTaskState::Succeeded, "configured");
@@ -1779,28 +1771,22 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
                             vivid::BuildTaskId build_task = build_console->begin_task(
                                 vivid::BuildTaskKind::PackageBuild,
                                 pkg_name + ":" + op_name);
-                            std::string build_cmd = quote(cmake_exe) + " --build " + quote(pkg_build) +
-                                                    " --target " + quote(op_name) + " 2>&1";
-                            std::string build_out;
-                            FILE* pipe = popen(build_cmd.c_str(), "r");
-                            if (!pipe) {
+                            vivid::ProcessRunOptions bld_opts;
+                            bld_opts.argv = {cmake_exe, "--build", pkg_build, "--target", op_name};
+                            auto bld_result = vivid::run_build_process(bld_opts, *build_console, build_task,
+                                                                       vivid::BuildConsoleStreamKind::Stdout);
+                            if (!bld_result.launched) {
                                 result.success = false;
-                                result.error_output = "Failed to execute cmake build for package target";
+                                result.error_output = "Failed to execute cmake build: " + bld_result.error;
                                 build_console->append_system_line(build_task, result.error_output);
                                 build_console->finish_task(build_task, vivid::BuildTaskState::Failed, "launch failed");
                                 return result;
                             }
-                            std::array<char, 256> buf;
-                            while (fgets(buf.data(), buf.size(), pipe) != nullptr) {
-                                build_out += buf.data();
-                                build_console->append_line(build_task, vivid::BuildConsoleStreamKind::Stdout, buf.data());
-                            }
-                            int status = pclose(pipe);
-                            if (status != 0) {
+                            if (bld_result.exit_code != 0) {
                                 result.success = false;
-                                result.error_output = "cmake build failed:\n" + build_out;
+                                result.error_output = "cmake build failed:\n" + bld_result.output;
                                 build_console->finish_task(build_task, vivid::BuildTaskState::Failed,
-                                                           "failed (exit " + std::to_string(status) + ")");
+                                                           "failed (exit " + std::to_string(bld_result.exit_code) + ")");
                                 return result;
                             }
                             build_console->finish_task(build_task, vivid::BuildTaskState::Succeeded, "built");

@@ -114,6 +114,7 @@ add_executable(vivid
     src/runtime/operators/operator_creator.cpp
     src/runtime/audio/system_midi.cpp
     src/runtime/platform/platform.cpp
+    src/runtime/platform/process_runner.cpp
     src/runtime/core/settings.cpp
     src/runtime/core/editor_detect.cpp
     src/runtime/platform/macos_frame_timer.cpp

@@ -1,7 +1,7 @@
 #include "runtime/packages/package_compiler.h"
 #include "runtime/core/tool_discovery.h"
 #include "runtime/platform/platform.h"
-#include <array>
+#include "runtime/platform/process_runner.h"
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -11,16 +11,6 @@
 
 namespace vivid {
 namespace fs = std::filesystem;
-
-// Shell-quote a string to handle spaces and special characters (including single quotes)
-static std::string quote(const std::string& s) {
-    std::string escaped;
-    for (char c : s) {
-        if (c == '\'') escaped += "'\\''";
-        else escaped += c;
-    }
-    return "'" + escaped + "'";
-}
 
 static bool path_within_root(const fs::path& root, const fs::path& candidate) {
     auto abs_root = fs::absolute(root).lexically_normal();
@@ -37,14 +27,6 @@ static bool path_within_root(const fs::path& root, const fs::path& candidate) {
 static std::string truncate_output(std::string output, size_t limit = 4096) {
     if (output.size() <= limit) return output;
     return output.substr(0, limit) + "\n... (truncated)";
-}
-
-static void stream_output_line(BuildConsole* console,
-                               BuildTaskId task_id,
-                               const char* text,
-                               BuildConsoleStreamKind stream_kind = BuildConsoleStreamKind::Stdout) {
-    if (!console || task_id == 0 || !text) return;
-    console->append_line(task_id, stream_kind, text);
 }
 
 static bool contains_any(const std::string& haystack, const std::initializer_list<const char*>& needles) {
@@ -196,20 +178,24 @@ CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
         return result;
     }
 
-    // Build compiler command
+    // Build compiler argv
     // -I <vivid_src>/src  — for operator_api/ headers
     // -I <package>/operators/<domain>  — for package-local shared headers
     std::string domain_include = package_dir + "/operators";
     if (!domain.empty())
         domain_include = package_dir + "/operators/" + domain;
 
-    std::string cmd = quote(compiler_exe) + " -std=c++17 -shared -fPIC -O2"
-        " -I " + quote(vivid_src_dir_ + "/src") +
-        " -I " + quote(domain_include);
+    std::vector<std::string> argv = {
+        compiler_exe, "-std=c++17", "-shared", "-fPIC", "-O2",
+        "-I", vivid_src_dir_ + "/src",
+        "-I", domain_include,
+    };
 
     // Vendor / extra include directories (e.g. bundled third-party headers)
-    for (const auto& dir : extra_include_dirs)
-        cmd += " -I " + quote(dir);
+    for (const auto& dir : extra_include_dirs) {
+        argv.push_back("-I");
+        argv.push_back(dir);
+    }
 
     // GPU operators need Dawn/WebGPU includes and library
     if (needs_gpu) {
@@ -254,23 +240,38 @@ CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
         }
 
         if (!wgpu_include.empty()) {
-            cmd += " -I " + quote(wgpu_include);
+            argv.push_back("-I");
+            argv.push_back(wgpu_include);
         }
         if (!wgpu_lib_dir.empty()) {
-            cmd += " -L " + quote(wgpu_lib_dir) + " -lwgpu_native";
+            argv.push_back("-L");
+            argv.push_back(wgpu_lib_dir);
+            argv.push_back("-lwgpu_native");
         }
     }
 
-    cmd += " -o " + quote(temp_output) + " " + quote(source_path) + " 2>&1";
+    argv.push_back("-o");
+    argv.push_back(temp_output);
+    argv.push_back(source_path);
 
-    std::fprintf(stderr, "[vivid] PackageCompiler: %s\n", cmd.c_str());
+    std::fprintf(stderr, "[vivid] PackageCompiler: %s %s\n", compiler_exe.c_str(), name.c_str());
 
     // Execute compilation
-    std::string output;
-    FILE* pipe = popen(cmd.c_str(), "r");
-    if (!pipe) {
+    ProcessRunOptions compile_opts;
+    compile_opts.argv = std::move(argv);
+    compile_opts.output_limit_bytes = 1024 * 1024;  // 1MB cap on accumulated output
+
+    ProcessRunResult compile_result;
+    if (build_console_) {
+        compile_result = run_build_process(compile_opts, *build_console_, task_id,
+                                           BuildConsoleStreamKind::Stdout);
+    } else {
+        compile_result = run_process(compile_opts);
+    }
+
+    if (!compile_result.launched) {
         result.success = false;
-        result.error_output = "Failed to execute compiler";
+        result.error_output = "Failed to execute compiler: " + compile_result.error;
         if (build_console_) {
             build_console_->append_system_line(task_id, result.error_output);
             build_console_->finish_task(task_id, BuildTaskState::Failed, "launch failed");
@@ -278,29 +279,16 @@ CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
         return result;
     }
 
-    std::array<char, 256> buf;
-    bool output_truncated = false;
-    while (fgets(buf.data(), buf.size(), pipe) != nullptr) {
-        stream_output_line(build_console_, task_id, buf.data());
-        if (output.size() < 1024 * 1024)
-            output += buf.data();
-        else if (!output_truncated) {
-            output += "\n... (compiler output truncated at 1MB) ...\n";
-            output_truncated = true;
-        }
-    }
-    int status = pclose(pipe);
-
-    if (status != 0) {
+    if (compile_result.exit_code != 0) {
         result.success = false;
-        result.error_output = output;
+        result.error_output = compile_result.output;
         std::error_code ec;
         std::filesystem::remove(temp_output, ec);
         std::fprintf(stderr, "[vivid] PackageCompiler: FAILED %s:\n%s",
-                     name.c_str(), output.c_str());
+                     name.c_str(), compile_result.output.c_str());
         if (build_console_)
             build_console_->finish_task(task_id, BuildTaskState::Failed,
-                                        "failed (exit " + std::to_string(status) + ")");
+                                        "failed (exit " + std::to_string(compile_result.exit_code) + ")");
     } else {
         std::error_code ec;
         std::filesystem::rename(temp_output, output_path, ec);
@@ -363,23 +351,38 @@ TestCompileResult PackageCompiler::compile_test(const std::string& package_dir,
         return result;
     }
 
-    // Build compiler command — executable, not shared library
-    std::string cmd = quote(compiler_exe) + " -std=c++17 -O0 -g"
-        " -I " + quote(vivid_src_dir_ + "/src") +
-        " -I " + quote(package_dir + "/operators");
+    // Build compiler argv — executable, not shared library
+    std::vector<std::string> test_argv = {
+        compiler_exe, "-std=c++17", "-O0", "-g",
+        "-I", vivid_src_dir_ + "/src",
+        "-I", package_dir + "/operators",
+    };
 
-    for (const auto& dir : extra_include_dirs)
-        cmd += " -I " + quote(dir);
+    for (const auto& dir : extra_include_dirs) {
+        test_argv.push_back("-I");
+        test_argv.push_back(dir);
+    }
 
-    cmd += " -o " + quote(output_path) + " " + quote(source_path) + " 2>&1";
+    test_argv.push_back("-o");
+    test_argv.push_back(output_path);
+    test_argv.push_back(source_path);
 
-    std::fprintf(stderr, "[vivid] PackageCompiler::compile_test: %s\n", cmd.c_str());
+    std::fprintf(stderr, "[vivid] PackageCompiler::compile_test: %s %s\n", compiler_exe.c_str(), stem.c_str());
 
-    std::string output;
-    FILE* pipe = popen(cmd.c_str(), "r");
-    if (!pipe) {
+    ProcessRunOptions test_compile_opts;
+    test_compile_opts.argv = std::move(test_argv);
+
+    ProcessRunResult test_compile_result;
+    if (build_console_) {
+        test_compile_result = run_build_process(test_compile_opts, *build_console_, task_id,
+                                                BuildConsoleStreamKind::Stdout);
+    } else {
+        test_compile_result = run_process(test_compile_opts);
+    }
+
+    if (!test_compile_result.launched) {
         result.success = false;
-        result.error_output = "Failed to execute compiler";
+        result.error_output = "Failed to execute compiler: " + test_compile_result.error;
         if (build_console_) {
             build_console_->append_system_line(task_id, result.error_output);
             build_console_->finish_task(task_id, BuildTaskState::Failed, "launch failed");
@@ -387,25 +390,18 @@ TestCompileResult PackageCompiler::compile_test(const std::string& package_dir,
         return result;
     }
 
-    std::array<char, 256> buf;
-    while (fgets(buf.data(), buf.size(), pipe) != nullptr) {
-        output += buf.data();
-        stream_output_line(build_console_, task_id, buf.data());
-    }
-    int status = pclose(pipe);
-
-    if (status != 0) {
+    if (test_compile_result.exit_code != 0) {
         result.success = false;
         result.code = "cpp_compile_failed";
         result.message = "Compilation failed";
-        result.error_output = truncate_output(output);
+        result.error_output = truncate_output(test_compile_result.output);
         std::error_code ec;
         fs::remove(output_path, ec);
         std::fprintf(stderr, "[vivid] PackageCompiler::compile_test: FAILED %s:\n%s",
-                     stem.c_str(), output.c_str());
+                     stem.c_str(), test_compile_result.output.c_str());
         if (build_console_)
             build_console_->finish_task(task_id, BuildTaskState::Failed,
-                                        "failed (exit " + std::to_string(status) + ")");
+                                        "failed (exit " + std::to_string(test_compile_result.exit_code) + ")");
     } else {
         result.success = true;
         result.code = "cpp_compiled";

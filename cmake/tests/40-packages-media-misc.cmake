@@ -243,6 +243,14 @@ target_include_directories(test_build_console PRIVATE src tests)
 target_link_libraries(test_build_console PRIVATE vivid_runtime_testlib)
 add_test(NAME test_build_console COMMAND test_build_console WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# ProcessRunner unit tests (argv-based process execution, no shell)
+add_executable(test_process_runner
+    tests/core/test_process_runner.cpp
+)
+target_include_directories(test_process_runner PRIVATE src tests)
+target_link_libraries(test_process_runner PRIVATE vivid_runtime_testlib)
+add_test(NAME test_process_runner COMMAND test_process_runner WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 add_executable(test_build_activity_queries
     tests/control/test_build_activity_queries.cpp
 )

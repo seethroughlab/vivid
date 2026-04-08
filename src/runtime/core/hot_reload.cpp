@@ -2,26 +2,14 @@
 #include "runtime/core/build_console.h"
 #include "runtime/core/tool_discovery.h"
 #include "runtime/platform/platform.h"
+#include "runtime/platform/process_runner.h"
 #include <cstdio>
-#include <cstdlib>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <array>
 #include <filesystem>
 #include <stdexcept>
 
 namespace vivid {
-
-static std::string quote(const std::string& s) {
-    // Single-quote for shell; escape embedded single quotes as '\''
-    std::string out = "'";
-    for (char c : s) {
-        if (c == '\'') out += "'\\''";
-        else out += c;
-    }
-    out += "'";
-    return out;
-}
 
 HotReloader::HotReloader() = default;
 
@@ -132,40 +120,32 @@ void HotReloader::compile_thread() {
                 }
             } else {
             // Run cmake --build and capture output.
-            std::string cmd = quote(cmake_exe) + " --build " + quote(build_dir_) + " --target " + quote(target) + " 2>&1";
-            std::string output;
-            bool compile_ok = false;
-            bool launch_ok = false;
+            ProcessRunOptions build_opts;
+            build_opts.argv = {cmake_exe, "--build", build_dir_, "--target", target};
 
-            FILE* pipe = popen(cmd.c_str(), "r");
-            if (!pipe) {
-                output = "popen failed (system error)";
-                if (build_console_)
-                    build_console_->append_system_line(task_id, output);
+            ProcessRunResult build_result;
+            if (build_console_) {
+                build_result = run_build_process(build_opts, *build_console_, task_id,
+                                                 BuildConsoleStreamKind::Stdout);
             } else {
-                launch_ok = true;
-                std::array<char, 256> buf;
-                while (fgets(buf.data(), buf.size(), pipe) != nullptr) {
-                    output += buf.data();
-                    if (build_console_)
-                        build_console_->append_line(task_id, BuildConsoleStreamKind::Stdout, buf.data());
-                }
-                int status = pclose(pipe);
-                compile_ok = (status == 0);
-                if (!compile_ok && build_console_) {
+                build_result = run_process(build_opts);
+            }
+
+            bool compile_ok = build_result.launched && build_result.exit_code == 0;
+            if (!compile_ok && build_console_) {
+                if (!build_result.launched)
+                    build_console_->finish_task(task_id, BuildTaskState::Failed, "launch failed");
+                else
                     build_console_->finish_task(task_id, BuildTaskState::Failed,
-                                                "failed (exit " + std::to_string(status) + ")");
-                }
+                                                "failed (exit " + std::to_string(build_result.exit_code) + ")");
             }
 
             result.target_name = target;
             if (!compile_ok) {
                 result.success = false;
-                result.error_output = output;
+                result.error_output = build_result.launched ? build_result.output : build_result.error;
                 std::fprintf(stderr, "[vivid] Hot-reload: compile FAILED for %s:\n%s",
-                    target.c_str(), output.c_str());
-                if (build_console_ && !launch_ok)
-                    build_console_->finish_task(task_id, BuildTaskState::Failed, "launch failed");
+                    target.c_str(), result.error_output.c_str());
             } else {
                 // Get unique counter for staging path
                 uint32_t counter;

@@ -4,8 +4,8 @@
 #include "runtime/core/tool_discovery.h"
 #include "runtime/operators/operator_registry.h"
 #include "runtime/platform/platform.h"
+#include "runtime/platform/process_runner.h"
 
-#include <array>
 #include <cstdio>
 #include <filesystem>
 #include <set>
@@ -14,7 +14,6 @@
 namespace vivid {
 
 using package_manager_internal::diagnose_non_package_dir;
-using package_manager_internal::quote;
 
 namespace {
 std::string abi_mismatch_error_for_package(const std::string& package_name,
@@ -87,34 +86,34 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
             }
             return result;
         }
-        // Git clone (quote URL and path for spaces and special characters)
-        std::string cmd = quote(git_exe) + " clone --depth 1 " + quote(normalized_url) + " " + quote(staging_dir) + " 2>&1";
-        std::fprintf(stderr, "[vivid] PackageManager: %s\n", cmd.c_str());
+        // Git clone
+        ProcessRunOptions clone_opts;
+        clone_opts.argv = {git_exe, "clone", "--depth", "1", normalized_url, staging_dir};
+        std::fprintf(stderr, "[vivid] PackageManager: git clone %s\n", normalized_url.c_str());
 
-        std::string output;
-        FILE* pipe = popen(cmd.c_str(), "r");
-        if (!pipe) {
+        ProcessRunResult clone_result;
+        if (build_console_) {
+            clone_result = run_build_process(clone_opts, *build_console_, task_id,
+                                             BuildConsoleStreamKind::Stdout);
+        } else {
+            clone_result = run_process(clone_opts);
+        }
+
+        if (!clone_result.launched) {
             result.error_code = "git_clone_failed";
-            result.error = "Failed to execute git clone";
+            result.error = "Failed to execute git clone: " + clone_result.error;
             if (build_console_) {
                 build_console_->append_system_line(task_id, result.error);
                 build_console_->finish_task(task_id, BuildTaskState::Failed, "launch failed");
             }
             return result;
         }
-        std::array<char, 256> buf;
-        while (fgets(buf.data(), buf.size(), pipe) != nullptr) {
-            output += buf.data();
-            if (build_console_)
-                build_console_->append_line(task_id, BuildConsoleStreamKind::Stdout, buf.data());
-        }
-        int status = pclose(pipe);
-        if (status != 0) {
+        if (clone_result.exit_code != 0) {
             result.error_code = "git_clone_failed";
-            result.error = "git clone failed: " + output;
+            result.error = "git clone failed: " + clone_result.output;
             if (build_console_)
                 build_console_->finish_task(task_id, BuildTaskState::Failed,
-                                            "failed (exit " + std::to_string(status) + ")");
+                                            "failed (exit " + std::to_string(clone_result.exit_code) + ")");
             std::filesystem::remove_all(staging_dir);
             return result;
         }

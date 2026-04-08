@@ -1,19 +1,17 @@
 #include "ui/style/theme_loader.h"
 #include "runtime/platform/platform.h"
+#include "runtime/platform/process_runner.h"
 #include <nlohmann/json.hpp>
 #include <filesystem>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
-#include <spawn.h>
+#include <set>
 
 #ifndef VIVID_CORE_VERSION
 #define VIVID_CORE_VERSION "0.1.0"
 #endif
-
-extern "C" char** environ;
-#include <set>
 
 namespace vivid::ui {
 
@@ -637,19 +635,11 @@ void open_themes_folder() {
     fs::create_directories(dir, ec);
 
 #if defined(__APPLE__)
-    pid_t pid;
-    const char* argv[] = { "/usr/bin/open", dir.c_str(), nullptr };
-    posix_spawn(&pid, argv[0], nullptr, nullptr,
-                const_cast<char* const*>(argv), environ);
+    vivid::spawn_detached({"/usr/bin/open", dir});
 #elif defined(_WIN32)
-    // No posix_spawn on Windows — but no shell interpolation either
-    std::string cmd = "explorer \"" + dir + "\"";
-    std::system(cmd.c_str());
+    vivid::spawn_detached({"cmd.exe", "/c", "explorer", dir});
 #else
-    pid_t pid;
-    const char* argv[] = { "xdg-open", dir.c_str(), nullptr };
-    posix_spawn(&pid, argv[0], nullptr, nullptr,
-                const_cast<char* const*>(argv), environ);
+    vivid::spawn_detached({"xdg-open", dir});
 #endif
 }
 

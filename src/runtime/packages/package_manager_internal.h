@@ -23,7 +23,6 @@ struct PackageCandidate {
     bool invalid_same_scope = false;
 };
 
-std::string quote(const std::string& s);
 std::string trim_copy(const std::string& s);
 std::vector<std::string> split_path_list(const std::string& s);
 std::string try_normalize_dir(const std::string& p);

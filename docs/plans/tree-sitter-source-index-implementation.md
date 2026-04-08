@@ -99,3 +99,31 @@ ctest --test-dir build --output-on-failure -R "operator_source_docs|source_index
 - `SourceIndex` broad search/read behavior remains line-based and multi-language.
 - C++ `find_symbol()` definition classification improves only where parsed data is available, with fallback for parse failures.
 - Tests cover operator-doc extraction, source-index classification, malformed C++ fallback, and unchanged public response shapes.
+
+## Assessment Notes (2026-04-08)
+
+**Recommendation: defer until a concrete failure motivates the work.**
+
+### Current State
+
+Both target files are modest in size (~600 lines each) and functioning without known bugs or TODOs. The regex patterns are theoretically brittle — particularly the function-definition detection in `source_index.cpp` (doesn't handle templates, trailing return types, `noexcept`, or multi-line signatures) — but no actual failures have been reported.
+
+### Benefits if implemented
+
+- Robust handling of multiline declarations, templated base classes, and complex C++ syntax in operator doc extraction and symbol classification.
+- Cleaner separation between structural parsing and text search.
+- Foundation for richer MCP symbol navigation in the future.
+
+### Reasons to defer
+
+- **No concrete pain point.** The regex approach works for the operator patterns actually in use.
+- **Dependency cost.** Tree-sitter runtime + C++ grammar adds compile-time and binary size for a narrow internal use case (opdev tooling, not user-facing).
+- **Dual-maintenance burden.** The plan requires keeping regex fallbacks for parse failures, meaning both approaches must be maintained.
+- **Scope of work.** Five migration stages for infrastructure that isn't broken.
+- **Scope creep risk.** Having a C++ AST available invites leaning on it more broadly, increasing maintenance surface.
+
+### When to revisit
+
+- An operator with a complex declaration (heavy templates, multi-line inheritance, namespace wrapping) produces wrong or missing docs.
+- Symbol classification gives wrong results that affect the MCP/opdev workflow.
+- A broader initiative (e.g., richer code navigation, refactoring tools) would benefit from AST-level understanding.

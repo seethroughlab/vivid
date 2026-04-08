@@ -1,11 +1,8 @@
 #include "runtime/platform/platform.h"
+#include "runtime/platform/process_runner.h"
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
-#if defined(__APPLE__) || defined(__linux__)
-#include <spawn.h>
-extern char** environ;
-#endif
 
 namespace vivid {
 
@@ -56,27 +53,20 @@ bool open_url(const std::string& url, std::string* error_out) {
     }
 
 #if defined(__APPLE__)
-    pid_t pid = 0;
-    const char* argv[] = { "/usr/bin/open", url.c_str(), nullptr };
-    int rc = posix_spawn(&pid, argv[0], nullptr, nullptr,
-                         const_cast<char* const*>(argv), ::environ);
-    if (rc != 0 && error_out)
-        *error_out = "Failed to launch /usr/bin/open";
-    return rc == 0;
+    std::string err;
+    bool ok = spawn_detached({"/usr/bin/open", url}, &err);
+    if (!ok && error_out) *error_out = err.empty() ? "Failed to launch /usr/bin/open" : err;
+    return ok;
 #elif defined(__linux__)
-    pid_t pid = 0;
-    const char* argv[] = { "xdg-open", url.c_str(), nullptr };
-    int rc = posix_spawn(&pid, argv[0], nullptr, nullptr,
-                         const_cast<char* const*>(argv), ::environ);
-    if (rc != 0 && error_out)
-        *error_out = "Failed to launch xdg-open";
-    return rc == 0;
+    std::string err;
+    bool ok = spawn_detached({"xdg-open", url}, &err);
+    if (!ok && error_out) *error_out = err.empty() ? "Failed to launch xdg-open" : err;
+    return ok;
 #elif defined(_WIN32)
-    std::string cmd = "start \"\" \"" + url + "\"";
-    int rc = std::system(cmd.c_str());
-    if (rc != 0 && error_out)
-        *error_out = "Failed to launch default browser";
-    return rc == 0;
+    std::string err;
+    bool ok = spawn_detached({"cmd.exe", "/c", "start", "", url}, &err);
+    if (!ok && error_out) *error_out = err.empty() ? "Failed to launch default browser" : err;
+    return ok;
 #else
     if (error_out) *error_out = "Unsupported platform";
     return false;
