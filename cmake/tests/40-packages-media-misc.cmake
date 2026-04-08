@@ -220,7 +220,7 @@ target_include_directories(test_midi PRIVATE src tests)
 target_link_libraries(test_midi PRIVATE vivid_runtime_testlib rtmidi)
 add_test(NAME test_midi COMMAND test_midi WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-# FileWatcher unit tests (kqueue, no runtime, no GPU)
+# FileWatcher unit tests (efsw, no runtime, no GPU)
 add_executable(test_file_watcher
     tests/core/test_file_watcher.cpp
 )

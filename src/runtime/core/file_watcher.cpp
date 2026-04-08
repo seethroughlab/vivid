@@ -3,10 +3,43 @@
 #include <filesystem>
 #include <cstdio>
 #include <chrono>
+#include <optional>
 
 namespace vivid {
 
 static constexpr int64_t kDebounceMs = 100;
+
+namespace {
+
+std::string normalize_path(const std::filesystem::path& path) {
+    std::error_code ec;
+    auto normalized = std::filesystem::absolute(path, ec);
+    if (ec)
+        normalized = path;
+    return normalized.lexically_normal().string();
+}
+
+bool is_under_root(const std::string& path, const std::string& root, std::filesystem::path& rel_out) {
+    if (root.empty()) return false;
+    std::error_code ec;
+    rel_out = std::filesystem::relative(path, root, ec);
+    if (ec || rel_out.empty()) return false;
+    for (const auto& part : rel_out) {
+        if (part == "..") return false;
+    }
+    return true;
+}
+
+std::optional<std::string> path_part(const std::filesystem::path& path, size_t index) {
+    size_t i = 0;
+    for (const auto& part : path) {
+        if (i++ == index)
+            return part.string();
+    }
+    return std::nullopt;
+}
+
+} // namespace
 
 // --- Listener (efsw callback → pending queue) ---
 
@@ -19,25 +52,21 @@ public:
                           std::string) override {
         if (action != efsw::Actions::Modified &&
             action != efsw::Actions::Add &&
-            action != efsw::Actions::Moved)
+            action != efsw::Actions::Moved &&
+            action != efsw::Actions::Delete)
             return;
 
         std::string path = dir;
         if (!path.empty() && path.back() != '/')
             path += '/';
         path += filename;
-
-        // Normalize to canonical if possible
-        std::error_code ec;
-        auto canonical = std::filesystem::canonical(path, ec);
-        if (!ec) path = canonical.string();
+        path = normalize_path(path);
 
         std::string target;
         {
             std::lock_guard<std::mutex> lock(owner_.watch_mutex_);
-            auto it = owner_.path_to_target_.find(path);
-            if (it == owner_.path_to_target_.end()) return;
-            target = it->second;
+            target = owner_.resolve_target_locked(path);
+            if (target.empty()) return;
 
             // Debounce: skip if within 100ms of last event for same target
             auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -68,22 +97,62 @@ FileWatcher::~FileWatcher() {
     stop();
 }
 
-void FileWatcher::ensure_dir_watched(const std::string& dir) {
-    if (!watcher_ || watched_dirs_.count(dir)) return;
-    watched_dirs_.insert(dir);
-    watcher_->addWatch(dir, listener_.get(), false);
+void FileWatcher::ensure_dir_watched(const std::string& dir, bool recursive) {
+    if (!watcher_) return;
+    std::string normalized = normalize_path(dir);
+    auto it = watched_dirs_.find(normalized);
+    if (it != watched_dirs_.end() && (it->second || !recursive))
+        return;
+    watched_dirs_[normalized] = watched_dirs_[normalized] || recursive;
+    watcher_->addWatch(normalized, listener_.get(), recursive);
+}
+
+std::string FileWatcher::resolve_target_locked(const std::string& path) const {
+    auto explicit_it = path_to_target_.find(path);
+    if (explicit_it != path_to_target_.end())
+        return explicit_it->second;
+
+    const std::filesystem::path p(path);
+    const auto ext = p.extension().string();
+    std::filesystem::path rel;
+    for (const auto& root : watch_roots_) {
+        if (!is_under_root(path, root.root, rel))
+            continue;
+
+        switch (root.kind) {
+            case WatchRootKind::SeedOperators: {
+                if (ext != ".cpp") break;
+                auto op_name = path_part(rel, 1);
+                if (op_name && !op_name->empty())
+                    return *op_name;
+                break;
+            }
+            case WatchRootKind::PackageOperators: {
+                if (ext != ".cpp") break;
+                auto op_name = path_part(rel, 1);
+                if (op_name && !op_name->empty())
+                    return "pkg:" + root.package_name + ":" + *op_name;
+                break;
+            }
+            case WatchRootKind::ShaderDirectory:
+                if (ext == ".wgsl")
+                    return "shader:" + path;
+                break;
+        }
+    }
+    return {};
 }
 
 bool FileWatcher::start(const std::string& operators_dir) {
     if (watcher_) return false;
 
-    operators_dir_ = operators_dir;
+    operators_dir_ = normalize_path(operators_dir);
     listener_ = std::make_unique<Listener>(*this);
     watcher_ = std::make_unique<efsw::FileWatcher>();
     watcher_->followSymlinks(true);
 
     namespace fs = std::filesystem;
-    if (!fs::exists(operators_dir)) {
+    if (!fs::exists(operators_dir_)) {
         std::fprintf(stderr, "[vivid] FileWatcher: cannot open %s\n", operators_dir.c_str());
         watcher_.reset();
         listener_.reset();
@@ -92,27 +161,22 @@ bool FileWatcher::start(const std::string& operators_dir) {
 
     int count = 0;
     std::error_code ec;
-    for (auto& domain_entry : fs::directory_iterator(operators_dir, ec)) {
+    for (auto& domain_entry : fs::directory_iterator(operators_dir_, ec)) {
         if (ec || !domain_entry.is_directory()) { ec.clear(); continue; }
 
         for (auto& op_entry : fs::directory_iterator(domain_entry.path(), ec)) {
             if (ec || !op_entry.is_directory()) { ec.clear(); continue; }
 
             std::string target_name = op_entry.path().filename().string();
-            std::string op_dir = op_entry.path().string();
-
+            std::string op_dir = normalize_path(op_entry.path());
             for (auto& file_entry : fs::directory_iterator(op_entry.path(), ec)) {
                 if (ec) { ec.clear(); continue; }
                 if (!file_entry.is_regular_file()) continue;
                 if (file_entry.path().extension() != ".cpp") continue;
 
-                std::error_code canon_ec;
-                std::string abs = fs::canonical(file_entry.path(), canon_ec).string();
-                if (canon_ec) abs = file_entry.path().string();
-
                 std::lock_guard<std::mutex> lock(watch_mutex_);
-                path_to_target_[abs] = target_name;
-                ensure_dir_watched(op_dir);
+                path_to_target_[normalize_path(file_entry.path())] = target_name;
+                ensure_dir_watched(op_dir, false);
                 count++;
             }
         }
@@ -126,6 +190,10 @@ bool FileWatcher::start(const std::string& operators_dir) {
         return false;
     }
 
+    {
+        std::lock_guard<std::mutex> lock(watch_mutex_);
+        watch_roots_.push_back({WatchRootKind::SeedOperators, operators_dir_, {}});
+    }
     watcher_->watch();
     std::fprintf(stderr, "[vivid] FileWatcher: watching %d files\n", count);
     return true;
@@ -137,6 +205,7 @@ void FileWatcher::stop() {
     std::lock_guard<std::mutex> lock(watch_mutex_);
     path_to_target_.clear();
     watched_dirs_.clear();
+    watch_roots_.clear();
     last_event_time_.clear();
 }
 
@@ -151,15 +220,15 @@ bool FileWatcher::add_watch(const std::string& path, const std::string& target_n
     namespace fs = std::filesystem;
     if (!fs::exists(path)) return false;
 
-    std::error_code ec;
-    std::string abs = fs::canonical(path, ec).string();
-    if (ec) abs = path;
-
+    std::string abs = normalize_path(path);
     std::string dir = fs::path(abs).parent_path().string();
+    std::string stored_target = target_name;
+    if (stored_target.rfind("shader:", 0) == 0)
+        stored_target = "shader:" + abs;
 
     std::lock_guard<std::mutex> lock(watch_mutex_);
-    path_to_target_[abs] = target_name;
-    if (watcher_) ensure_dir_watched(dir);
+    path_to_target_[abs] = stored_target;
+    if (watcher_) ensure_dir_watched(dir, false);
     return true;
 }
 
@@ -173,10 +242,12 @@ int FileWatcher::add_package_watches(const std::string& packages_dir) {
         if (ec) { ec.clear(); continue; }
         if (!pkg_entry.is_directory()) continue;
 
-        std::string ops_dir = pkg_entry.path().string() + "/operators";
+        fs::path ops_dir = pkg_entry.path() / "operators";
         if (!fs::exists(ops_dir)) continue;
 
         std::string pkg_name = pkg_entry.path().filename().string();
+        std::string normalized_ops_dir = normalize_path(ops_dir);
+        bool added_package_root = false;
 
         std::error_code ec2;
         for (auto& category_entry : fs::directory_iterator(ops_dir, ec2)) {
@@ -190,7 +261,7 @@ int FileWatcher::add_package_watches(const std::string& packages_dir) {
 
                 std::string op_name = op_entry.path().filename().string();
                 std::string target = "pkg:" + pkg_name + ":" + op_name;
-                std::string op_dir_str = op_entry.path().string();
+                std::string op_dir_str = normalize_path(op_entry.path());
 
                 std::error_code ec4;
                 for (auto& file_entry : fs::directory_iterator(op_entry.path(), ec4)) {
@@ -199,13 +270,13 @@ int FileWatcher::add_package_watches(const std::string& packages_dir) {
                     std::string fname = file_entry.path().filename().string();
                     if (fname.size() < 5 || fname.substr(fname.size() - 4) != ".cpp") continue;
 
-                    std::error_code canon_ec;
-                    std::string abs = fs::canonical(file_entry.path(), canon_ec).string();
-                    if (canon_ec) abs = file_entry.path().string();
-
                     std::lock_guard<std::mutex> lock(watch_mutex_);
-                    path_to_target_[abs] = target;
-                    ensure_dir_watched(op_dir_str);
+                    path_to_target_[normalize_path(file_entry.path())] = target;
+                    if (!added_package_root) {
+                        watch_roots_.push_back({WatchRootKind::PackageOperators, normalized_ops_dir, pkg_name});
+                        added_package_root = true;
+                    }
+                    ensure_dir_watched(op_dir_str, false);
                     count++;
                 }
             }
@@ -222,25 +293,27 @@ int FileWatcher::add_shader_operator_watches(const std::string& directory) {
     namespace fs = std::filesystem;
     if (directory.empty() || !fs::exists(directory)) return 0;
 
+    std::string normalized_dir = normalize_path(directory);
     int count = 0;
     std::error_code ec;
-    for (const auto& entry : fs::directory_iterator(directory, ec)) {
+    for (const auto& entry : fs::directory_iterator(normalized_dir, ec)) {
         if (ec) break;
         if (!entry.is_regular_file()) continue;
         if (entry.path().extension() != ".wgsl") continue;
 
-        std::error_code canon_ec;
-        std::string abs = fs::canonical(entry.path(), canon_ec).string();
-        if (canon_ec) abs = entry.path().string();
-
+        std::string abs = normalize_path(entry.path());
         std::string target = "shader:" + abs;
 
         std::lock_guard<std::mutex> lock(watch_mutex_);
         path_to_target_[abs] = target;
-        ensure_dir_watched(directory);
         count++;
     }
 
+    if (count > 0) {
+        std::lock_guard<std::mutex> lock(watch_mutex_);
+        watch_roots_.push_back({WatchRootKind::ShaderDirectory, normalized_dir, {}});
+        ensure_dir_watched(normalized_dir, false);
+    }
     if (count > 0) {
         std::fprintf(stderr, "[vivid] FileWatcher: watching %d shader files in %s\n",
                      count, directory.c_str());

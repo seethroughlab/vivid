@@ -103,9 +103,10 @@ and targeted regression tests cover:
 
 ## File Watcher Integration
 
-`FileWatcher` (file_watcher.h/cpp) monitors source directories for changes.
-On file modification, it resolves the source file → cmake target name and calls
-`hot_reloader.queue_rebuild(target_name)`.
+`FileWatcher` (file_watcher.h/cpp) monitors source directories with efsw.
+On source modification, creation, move, or deletion, it resolves the source file → cmake
+target name and calls `hot_reloader.queue_rebuild(target_name)`. Directory-level watches
+cover editor rename/delete/recreate save flows without macOS-specific kqueue reopen logic.
 
 WGSL shader files have a separate hot-reload path: they are re-read in-place by the GPU operator
 without a dylib recompile.

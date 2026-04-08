@@ -3,7 +3,6 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
-#include <unordered_set>
 #include <mutex>
 #include <memory>
 
@@ -42,7 +41,15 @@ public:
 private:
     class Listener;
 
-    void ensure_dir_watched(const std::string& dir);
+    enum class WatchRootKind { SeedOperators, PackageOperators, ShaderDirectory };
+    struct WatchRoot {
+        WatchRootKind kind;
+        std::string root;
+        std::string package_name;
+    };
+
+    void ensure_dir_watched(const std::string& dir, bool recursive);
+    std::string resolve_target_locked(const std::string& path) const;
 
     std::unique_ptr<efsw::FileWatcher> watcher_;
     std::unique_ptr<Listener> listener_;
@@ -50,7 +57,8 @@ private:
     // path → target_name mapping for event filtering.  Protected by watch_mutex_.
     std::mutex watch_mutex_;
     std::unordered_map<std::string, std::string> path_to_target_;
-    std::unordered_set<std::string> watched_dirs_;
+    std::unordered_map<std::string, bool> watched_dirs_;
+    std::vector<WatchRoot> watch_roots_;
 
     // Debounce: target → last event time (steady_clock ms)
     std::unordered_map<std::string, uint64_t> last_event_time_;
