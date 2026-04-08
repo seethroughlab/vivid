@@ -9,6 +9,8 @@
 #include <thread>
 #include <vector>
 
+#include <tinyxml2.h>
+
 #include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -51,10 +53,12 @@ static int compare_semver(const std::string& a, const std::string& b) {
     return 0;
 }
 
-static std::string first_match(const std::string& s, const std::regex& re) {
-    std::smatch m;
-    if (std::regex_search(s, m, re) && m.size() >= 2) return trim_copy(m[1].str());
-    return {};
+static std::string element_text(const tinyxml2::XMLElement* parent, const char* name) {
+    if (!parent) return {};
+    const tinyxml2::XMLElement* el = parent->FirstChildElement(name);
+    if (!el) return {};
+    const char* t = el->GetText();
+    return t ? trim_copy(t) : std::string{};
 }
 
 AppUpdateManager::AppUpdateManager(std::string current_version)
@@ -228,11 +232,16 @@ bool AppUpdateManager::parse_appcast(const std::string& xml,
                                      const std::string& current_version,
                                      AppUpdateInfo& out,
                                      std::string& error) {
-    static const std::regex kItemRe("<item\\b[^>]*>([\\s\\S]*?)</item>",
-                                    std::regex::icase);
-    std::sregex_iterator it(xml.begin(), xml.end(), kItemRe);
-    std::sregex_iterator end;
-    if (it == end) {
+    tinyxml2::XMLDocument doc;
+    if (doc.Parse(xml.c_str(), xml.size()) != tinyxml2::XML_SUCCESS) {
+        error = "failed to parse appcast XML";
+        return false;
+    }
+
+    const tinyxml2::XMLElement* rss = doc.FirstChildElement("rss");
+    const tinyxml2::XMLElement* channel = rss ? rss->FirstChildElement("channel") : nullptr;
+    const tinyxml2::XMLElement* item = channel ? channel->FirstChildElement("item") : nullptr;
+    if (!item) {
         error = "no <item> found in appcast";
         return false;
     }
@@ -244,30 +253,42 @@ bool AppUpdateManager::parse_appcast(const std::string& xml,
     std::string best_title;
     std::string best_min_os;
 
-    for (; it != end; ++it) {
-        const std::string body = (*it)[1].str();
-        std::string v = first_match(body, std::regex("sparkle:shortVersionString=\"([^\"]+)\"",
-                                                     std::regex::icase));
-        if (v.empty())
-            v = first_match(body, std::regex("sparkle:version=\"([^\"]+)\"",
-                                             std::regex::icase));
+    for (; item; item = item->NextSiblingElement("item")) {
+        const tinyxml2::XMLElement* enclosure = item->FirstChildElement("enclosure");
+
+        // Version: prefer sparkle:shortVersionString, fall back to sparkle:version.
+        // These attributes live on the enclosure element.
+        std::string v;
+        if (enclosure) {
+            const char* svs = enclosure->Attribute("sparkle:shortVersionString");
+            if (svs) v = trim_copy(svs);
+            if (v.empty()) {
+                const char* sv = enclosure->Attribute("sparkle:version");
+                if (sv) v = trim_copy(sv);
+            }
+        }
         if (v.empty()) continue;
 
-        std::string url = first_match(body, std::regex("<enclosure\\b[^>]*url=\"([^\"]+)\"",
-                                                       std::regex::icase));
+        // Enclosure URL is required.
+        std::string url;
+        if (enclosure) {
+            const char* u = enclosure->Attribute("url");
+            if (u) url = trim_copy(u);
+        }
         if (url.empty()) continue;
 
         if (best_version.empty() || compare_semver(best_version, v) < 0) {
             best_version = v;
             best_download = url;
-            best_release_notes = first_match(body, std::regex("<sparkle:releaseNotesLink>([\\s\\S]*?)</sparkle:releaseNotesLink>",
-                                                              std::regex::icase));
-            best_pub_date = first_match(body, std::regex("<pubDate>([\\s\\S]*?)</pubDate>",
-                                                         std::regex::icase));
-            best_title = first_match(body, std::regex("<title>([\\s\\S]*?)</title>",
-                                                      std::regex::icase));
-            best_min_os = first_match(body, std::regex("sparkle:minimumSystemVersion=\"([^\"]+)\"",
-                                                       std::regex::icase));
+            best_release_notes = element_text(item, "sparkle:releaseNotesLink");
+            best_pub_date = element_text(item, "pubDate");
+            best_title = element_text(item, "title");
+            if (enclosure) {
+                const char* min_os = enclosure->Attribute("sparkle:minimumSystemVersion");
+                best_min_os = min_os ? trim_copy(min_os) : std::string{};
+            } else {
+                best_min_os.clear();
+            }
         }
     }
 

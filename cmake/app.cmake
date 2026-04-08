@@ -139,7 +139,7 @@ if(APPLE)
 endif()
 
 target_include_directories(vivid PRIVATE src)
-target_link_libraries(vivid PRIVATE vivid_ui webgpu glfw glfw3webgpu vivid_operator_api nlohmann_json::nlohmann_json dragonbox::dragonbox_to_chars miniaudio stb_truetype ixwebsocket rtmidi CLI11::CLI11 efsw)
+target_link_libraries(vivid PRIVATE vivid_ui webgpu glfw glfw3webgpu vivid_operator_api nlohmann_json::nlohmann_json dragonbox::dragonbox_to_chars miniaudio stb_truetype ixwebsocket rtmidi CLI11::CLI11 efsw tinyxml2)
 if(APPLE)
     target_link_libraries(vivid PRIVATE syphon_runtime)
     # Ensure bundle-launched app resolves syphon runtime from Contents/Frameworks.

@@ -430,6 +430,7 @@ GLFW does not provide file open/save dialogs or pen/tablet pressure. File dialog
 | **Snappy** | Fast compression (used by HAP video codec) | ~50KB source | FetchContent |
 | **IXWebSocket** | HTTP server for the runtime control server endpoint | ~200KB source | FetchContent |
 | **CLI11** | Command-line argument parsing | header-only | FetchContent |
+| **TinyXML-2** (10.0.0) | Lightweight XML parsing (appcast feed) | ~100KB source | FetchContent |
 | **Sparkle** (macOS) | App auto-update framework | framework | system framework |
 
 **Note on Dawn:** The original plan called for Google's Dawn WebGPU implementation. The actual integration uses wgpu-native (a Rust-based WebGPU backend) via eliemichel's WebGPU-distribution adapter layer, with a pinned upstream commit (`gfx-rs/wgpu-native`) providing Metal interop symbols for Syphon texture sharing.

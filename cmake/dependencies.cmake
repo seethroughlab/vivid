@@ -86,6 +86,16 @@ set(SNAPPY_REQUIRE_AVX OFF CACHE BOOL "" FORCE)
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 FetchContent_MakeAvailable(snappy)
 
+# --- TinyXML-2 (lightweight XML parser, used by appcast) ---
+FetchContent_Declare(
+    tinyxml2
+    GIT_REPOSITORY https://github.com/leethomason/tinyxml2.git
+    GIT_TAG        10.0.0
+    GIT_SHALLOW    TRUE
+)
+set(tinyxml2_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(tinyxml2)
+
 # --- nlohmann/json (header-only JSON library) ---
 set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
