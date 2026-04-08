@@ -431,7 +431,7 @@ GLFW does not provide file open/save dialogs or pen/tablet pressure. File dialog
 | **IXWebSocket** | HTTP server for the runtime control server endpoint | ~200KB source | FetchContent |
 | **CLI11** | Command-line argument parsing | header-only | FetchContent |
 | **libcurl** | HTTP fetches for package catalog and appcast update checks | system library | `find_package(CURL)` |
-| **Midifile** (planned) | Standard MIDI file parsing | ~150KB source | planned FetchContent or pinned vendored source |
+| **Midifile** | Standard MIDI file parsing | ~150KB source | pinned FetchContent, custom static library target |
 | **efsw** (1.5.1) | Cross-platform file watching for hot reload | ~200KB source | FetchContent |
 | **TinyXML-2** (10.0.0) | Lightweight XML parsing (appcast feed) | ~100KB source | FetchContent |
 | **Sparkle** (macOS) | App auto-update framework | framework | system framework |

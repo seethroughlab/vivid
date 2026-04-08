@@ -469,7 +469,7 @@ Key dependencies (managed via git submodules, vendored source, or CMake FetchCon
 - **IXWebSocket**: HTTP server powering the runtime control server endpoint.
 - **CLI11**: command-line argument parsing.
 - **libcurl**: HTTP fetches for package catalog and appcast update metadata.
-- **Midifile** (planned): Standard MIDI file parsing.
+- **Midifile**: Standard MIDI file parsing via pinned FetchContent/static target.
 - **efsw**: cross-platform file watching for hot reload.
 - **TinyXML-2**: lightweight XML parsing for appcast update metadata.
 - **Sparkle**: macOS app auto-update framework.
