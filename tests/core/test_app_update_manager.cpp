@@ -5,7 +5,25 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <string>
 #include <thread>
+
+static void require(bool condition, const char* message) {
+    if (!condition) {
+        std::cerr << "FAIL: " << message << "\n";
+        std::exit(1);
+    }
+}
+
+static vivid::AppUpdateFetchState wait_for_fetch(vivid::AppUpdateManager& mgr) {
+    for (int i = 0; i < 200; ++i) {
+        auto state = mgr.fetch_state();
+        if (state != vivid::AppUpdateFetchState::Fetching)
+            return state;
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    return mgr.fetch_state();
+}
 
 int main() {
     const std::string xml = R"xml(
@@ -294,18 +312,44 @@ int main() {
         mgr.refresh();
         mgr.refresh();
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
-        assert(vivid::AppUpdateManager::max_concurrent_workers_for_test() == 1);
+        require(vivid::AppUpdateManager::max_concurrent_workers_for_test() == 1,
+                "repeated refresh calls avoid concurrent workers");
+        require(wait_for_fetch(mgr) == vivid::AppUpdateFetchState::Ready,
+                "file:// appcast fetch reaches Ready");
+        auto latest = mgr.latest();
+        require(latest.latest_version == "0.2.0",
+                "file:// appcast latest_version parsed");
+        require(latest.download_url == "https://example.com/Vivid-0.2.0.zip",
+                "file:// appcast download_url parsed");
+        require(latest.update_available,
+                "file:// appcast update_available is true");
     }
-    assert(vivid::AppUpdateManager::active_workers_for_test() == 0);
+    require(vivid::AppUpdateManager::active_workers_for_test() == 0,
+            "file:// appcast worker count returns to zero");
 
     vivid::AppUpdateManager::reset_worker_metrics_for_test();
     {
         vivid::AppUpdateManager mgr("0.1.0");
         mgr.refresh();
+        require(wait_for_fetch(mgr) == vivid::AppUpdateFetchState::Ready,
+                "file:// appcast fetch reaches Ready without test delay");
     }
-    assert(vivid::AppUpdateManager::active_workers_for_test() == 0);
+    require(vivid::AppUpdateManager::active_workers_for_test() == 0,
+            "file:// appcast worker count returns to zero after destructor join");
 
     unsetenv("VIVID_APP_UPDATE_TEST_DELAY_MS");
+    setenv("VIVID_APPCAST_URL", ("file://" + (tmp_dir / "missing-appcast.xml").string()).c_str(), 1);
+    {
+        vivid::AppUpdateManager mgr("0.1.0");
+        mgr.refresh();
+        require(wait_for_fetch(mgr) == vivid::AppUpdateFetchState::Error,
+                "missing file:// appcast fetch reaches Error");
+        const auto error = mgr.fetch_error();
+        require(!error.empty(), "missing file:// appcast fetch has error text");
+        require(error.find("fetch failed:") != std::string::npos,
+                "missing file:// appcast error includes fetch prefix");
+    }
+
     setenv("VIVID_APPCAST_URL", old_url.c_str(), 1);
     std::filesystem::remove_all(tmp_dir);
 
