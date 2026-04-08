@@ -480,7 +480,7 @@ add_library(midi_file_player MODULE
     operators/audio/midi_file_player/midi_file_player.cpp
     src/common/midi_file.cpp
 )
-target_link_libraries(midi_file_player PRIVATE vivid_operator_api)
+target_link_libraries(midi_file_player PRIVATE vivid_operator_api midifile)
 set_target_properties(midi_file_player PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 if(APPLE)
     add_custom_command(TARGET midi_file_player POST_BUILD
@@ -493,7 +493,7 @@ if(APPLE)
     )
 endif()
 set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
-    "  \"midi_file_player\": { \"sources\": [\"operators/audio/midi_file_player/midi_file_player.cpp\", \"src/common/midi_file.cpp\"], \"extra_libs\": [] }")
+    "  \"midi_file_player\": { \"sources\": [\"operators/audio/midi_file_player/midi_file_player.cpp\", \"src/common/midi_file.cpp\"], \"extra_libs\": [\"midifile\"] }")
 set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS midi_file_player)
 
 # --- MovieFileAudio (cadence-native audio operator for movie file playback) ---

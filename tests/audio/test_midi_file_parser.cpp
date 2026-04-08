@@ -181,6 +181,52 @@ int main() {
         }
     }
 
+    // --- SMPTE timing rejection ---
+    {
+        // Division with bit 15 set indicates SMPTE timing.
+        // 0xE728 = negative SMPTE frame rate in high byte, ticks-per-frame in low byte.
+        std::vector<uint8_t> track;
+        push_varlen(track, 0);
+        track.insert(track.end(), {0x90, 60, 100});
+        push_varlen(track, 0);
+        track.insert(track.end(), {0xFF, 0x2F, 0x00});
+        auto path = write_bytes(sandbox / "smpte.mid", make_midi(0, 0xE728, {track}));
+
+        auto seq = vivid::midi_file::parse_file(path.string());
+        check(!seq.ok(), "SMPTE timing is rejected");
+        check(seq.error.find("SMPTE") != std::string::npos, "SMPTE error message mentions SMPTE");
+    }
+
+    // --- Nonexistent file ---
+    {
+        auto seq = vivid::midi_file::parse_file((sandbox / "does_not_exist.mid").string());
+        check(!seq.ok(), "nonexistent file returns error");
+    }
+
+    // --- Fixture file parity (assets/sweelinck.mid) ---
+    {
+        auto fixture = fs::path(VIVID_SOURCE_DIR) / "assets" / "sweelinck.mid";
+        if (fs::exists(fixture)) {
+            auto seq = vivid::midi_file::parse_file(fixture.string());
+            check(seq.ok(), "sweelinck.mid parses successfully");
+            if (seq.ok()) {
+                check(seq.events.size() > 100, "sweelinck.mid has substantial event count");
+                check(seq.duration_seconds > 1.0, "sweelinck.mid has nonzero duration");
+                // All events should be channel messages (0x80-0xEF).
+                bool all_channel = true;
+                for (const auto& ev : seq.events) {
+                    if (ev.status < 0x80 || ev.status >= 0xF0) {
+                        all_channel = false;
+                        break;
+                    }
+                }
+                check(all_channel, "sweelinck.mid contains only channel events");
+            }
+        } else {
+            std::fprintf(stderr, "SKIP: sweelinck.mid fixture not found at %s\n", fixture.c_str());
+        }
+    }
+
     fs::remove_all(sandbox);
     std::fprintf(stderr, "\n%d failed\n", failures);
     return failures ? 1 : 0;

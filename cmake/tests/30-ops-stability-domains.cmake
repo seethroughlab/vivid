@@ -35,7 +35,8 @@ add_executable(test_midi_file_parser
     src/common/midi_file.cpp
 )
 target_include_directories(test_midi_file_parser PRIVATE src tests)
-target_link_libraries(test_midi_file_parser PRIVATE vivid_runtime_testlib vivid_operator_api)
+target_compile_definitions(test_midi_file_parser PRIVATE "VIVID_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+target_link_libraries(test_midi_file_parser PRIVATE vivid_runtime_testlib vivid_operator_api midifile)
 add_test(NAME test_midi_file_parser COMMAND test_midi_file_parser WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_midi_file_player
@@ -43,7 +44,7 @@ add_executable(test_midi_file_player
     src/common/midi_file.cpp
 )
 target_include_directories(test_midi_file_player PRIVATE src tests operators)
-target_link_libraries(test_midi_file_player PRIVATE vivid_runtime_testlib vivid_operator_api)
+target_link_libraries(test_midi_file_player PRIVATE vivid_runtime_testlib vivid_operator_api midifile)
 add_test(NAME test_midi_file_player COMMAND test_midi_file_player WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_runtime_stress
