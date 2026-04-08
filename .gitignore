@@ -59,6 +59,10 @@ docs/api/
 *.log
 /.test_*
 
+# Environment / secrets
+.env
+.env.local
+
 # OS generated files
 Thumbs.db
 ehthumbs.db

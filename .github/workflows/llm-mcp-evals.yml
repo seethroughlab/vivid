@@ -1,0 +1,67 @@
+name: LLM MCP Evals
+
+on:
+  workflow_dispatch:
+    inputs:
+      openai_model:
+        description: "OpenAI model to evaluate"
+        default: "gpt-4o"
+      anthropic_model:
+        description: "Anthropic model to evaluate"
+        default: "claude-sonnet-4-20250514"
+
+jobs:
+  eval:
+    runs-on: [self-hosted, macOS]
+    env:
+      EVAL_HOME: ${{ github.workspace }}/build/.llm_mcp_eval_home
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_OSX_ARCHITECTURES=arm64
+
+      - name: Create app bundle skeleton
+        run: mkdir -p build/vivid.app/Contents/PlugIns
+
+      - name: Build vivid CLI
+        run: cmake --build build --target vivid -j$(sysctl -n hw.logicalcpu)
+
+      - name: Install Python dependencies
+        run: uv pip install --system -r scripts/llm_mcp_eval_requirements.txt
+
+      - name: Run fake-provider smoke test
+        run: python3 scripts/llm_mcp_eval.py --provider fake --output-dir build/llm_mcp_evals/fake
+
+      - name: Run OpenAI evals
+        if: env.OPENAI_API_KEY != ''
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          HOME: ${{ env.EVAL_HOME }}
+        run: |
+          python3 scripts/llm_mcp_eval.py \
+            --provider openai \
+            --model "${{ inputs.openai_model }}" \
+            --output-dir build/llm_mcp_evals/openai
+
+      - name: Run Anthropic evals
+        if: env.ANTHROPIC_API_KEY != ''
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          HOME: ${{ env.EVAL_HOME }}
+        run: |
+          python3 scripts/llm_mcp_eval.py \
+            --provider anthropic \
+            --model "${{ inputs.anthropic_model }}" \
+            --output-dir build/llm_mcp_evals/anthropic
+
+      - name: Upload eval artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm-mcp-eval-artifacts
+          path: build/llm_mcp_evals/
+          if-no-files-found: ignore
+          retention-days: 14
