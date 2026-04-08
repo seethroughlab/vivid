@@ -413,7 +413,7 @@ GLFW does not provide file open/save dialogs or pen/tablet pressure. File dialog
 
 ## 5.14 Dependency Manifest
 
-**Decision: Seven dependencies, most of which are small C libraries.** CMake manages the build. No external package manager required.
+**Decision: Focused dependencies, most of which are small C/C++ libraries.** CMake manages the build. No external package manager required.
 
 | Dependency | Purpose | Size | Integration |
 |---|---|---|---|
@@ -430,6 +430,9 @@ GLFW does not provide file open/save dialogs or pen/tablet pressure. File dialog
 | **Snappy** | Fast compression (used by HAP video codec) | ~50KB source | FetchContent |
 | **IXWebSocket** | HTTP server for the runtime control server endpoint | ~200KB source | FetchContent |
 | **CLI11** | Command-line argument parsing | header-only | FetchContent |
+| **libcurl** | HTTP fetches for package catalog and appcast update checks | system library | `find_package(CURL)` |
+| **Midifile** (planned) | Standard MIDI file parsing | ~150KB source | planned FetchContent or pinned vendored source |
+| **efsw** (1.5.1) | Cross-platform file watching for hot reload | ~200KB source | FetchContent |
 | **TinyXML-2** (10.0.0) | Lightweight XML parsing (appcast feed) | ~100KB source | FetchContent |
 | **Sparkle** (macOS) | App auto-update framework | framework | system framework |
 
