@@ -1,4 +1,7 @@
 
+# --- libcurl (system, for HTTP fetches) ---
+find_package(CURL REQUIRED)
+
 # --- Dawn/WebGPU via eliemichel's distribution (pre-built binaries) ---
 include(FetchContent)
 FetchContent_Declare(
@@ -219,3 +222,22 @@ if(APPLE)
     )
 endif()
 
+# --- midifile (Standard MIDI File parser) ---
+FetchContent_Declare(
+    midifile
+    GIT_REPOSITORY https://github.com/craigsapp/midifile.git
+    GIT_TAG        98917df5b1bf0d6e8d4c0e5fff86d6b05343e793
+)
+FetchContent_GetProperties(midifile)
+if(NOT midifile_POPULATED)
+    FetchContent_Populate(midifile)
+endif()
+
+add_library(midifile STATIC
+    ${midifile_SOURCE_DIR}/src/MidiFile.cpp
+    ${midifile_SOURCE_DIR}/src/MidiEvent.cpp
+    ${midifile_SOURCE_DIR}/src/MidiEventList.cpp
+    ${midifile_SOURCE_DIR}/src/MidiMessage.cpp
+    ${midifile_SOURCE_DIR}/src/Binasc.cpp
+)
+target_include_directories(midifile PUBLIC ${midifile_SOURCE_DIR}/include)

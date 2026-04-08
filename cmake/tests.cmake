@@ -67,11 +67,12 @@ add_library(vivid_runtime_testlib STATIC
     src/runtime/platform/app_update_manager.cpp
     src/runtime/platform/av_exporter.mm
     src/runtime/platform/platform.cpp
+    src/runtime/net/http_fetch.cpp
 )
 target_include_directories(vivid_runtime_testlib PUBLIC src tests)
 target_link_libraries(vivid_runtime_testlib PUBLIC
     vivid_operator_api nlohmann_json::nlohmann_json dragonbox::dragonbox_to_chars webgpu
-    miniaudio rtmidi snappy stb_truetype ixwebsocket efsw tinyxml2)
+    miniaudio rtmidi snappy stb_truetype ixwebsocket efsw tinyxml2 CURL::libcurl)
 if(APPLE)
     target_link_libraries(vivid_runtime_testlib PUBLIC
         "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"

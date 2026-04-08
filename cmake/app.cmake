@@ -125,6 +125,7 @@ add_executable(vivid
     src/runtime/packages/package_test_runner.cpp
     src/runtime/packages/package_catalog.cpp
     src/runtime/platform/app_update_manager.cpp
+    src/runtime/net/http_fetch.cpp
 )
 
 if(APPLE)
@@ -139,7 +140,7 @@ if(APPLE)
 endif()
 
 target_include_directories(vivid PRIVATE src)
-target_link_libraries(vivid PRIVATE vivid_ui webgpu glfw glfw3webgpu vivid_operator_api nlohmann_json::nlohmann_json dragonbox::dragonbox_to_chars miniaudio stb_truetype ixwebsocket rtmidi CLI11::CLI11 efsw tinyxml2)
+target_link_libraries(vivid PRIVATE vivid_ui webgpu glfw glfw3webgpu vivid_operator_api nlohmann_json::nlohmann_json dragonbox::dragonbox_to_chars miniaudio stb_truetype ixwebsocket rtmidi CLI11::CLI11 efsw tinyxml2 CURL::libcurl)
 if(APPLE)
     target_link_libraries(vivid PRIVATE syphon_runtime)
     # Ensure bundle-launched app resolves syphon runtime from Contents/Frameworks.

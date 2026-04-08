@@ -1,7 +1,7 @@
 #include "runtime/packages/package_catalog.h"
+#include "runtime/net/http_fetch.h"
 #include "runtime/platform/platform.h"
 #include <nlohmann/json.hpp>
-#include <array>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -10,16 +10,6 @@
 #include <thread>
 
 namespace vivid {
-
-// Shell-quote a string (single-quote style, with embedded ' escaped).
-static std::string quote(const std::string& s) {
-    std::string escaped;
-    for (char c : s) {
-        if (c == '\'') escaped += "'\\''";
-        else escaped += c;
-    }
-    return "'" + escaped + "'";
-}
 
 static constexpr const char* kCatalogPrimaryURL =
     "https://raw.githubusercontent.com/seethroughlab/vivid/master/site/packages.json";
@@ -156,38 +146,19 @@ void PackageCatalog::fetch_thread_fn() {
     }
 
     std::vector<CatalogEntry> remote;
-    std::string fetch_error_msg = "Failed to execute curl";
+    std::string fetch_error_msg = "catalog fetch failed";
     bool fetched = false;
 
     // Try catalog URLs in deterministic order; first successful parse wins.
     for (const auto& url : catalog_urls()) {
-        std::string cmd = "curl -sS --max-time 10 " + quote(url) + " 2>&1";
-        FILE* pipe = popen(cmd.c_str(), "r");
-        if (!pipe) {
-            fetch_error_msg = "Failed to execute curl";
-            continue;
-        }
-
-        std::string output;
-        std::array<char, 4096> buf;
-        bool output_truncated = false;
-        while (fgets(buf.data(), buf.size(), pipe) != nullptr) {
-            if (output.size() < 1024 * 1024)
-                output += buf.data();
-            else if (!output_truncated) {
-                output += "\n... (catalog fetch output truncated at 1MB) ...\n";
-                output_truncated = true;
-            }
-        }
-        int status = pclose(pipe);
-
-        if (status != 0) {
-            fetch_error_msg = "curl failed: " + output.substr(0, 200);
+        auto result = http_get(url, 10);
+        if (!result.ok) {
+            fetch_error_msg = "fetch failed: " + result.error;
             continue;
         }
 
         remote.clear();
-        if (!parse_index_json(output, remote)) {
+        if (!parse_index_json(result.body, remote)) {
             fetch_error_msg = "Failed to parse catalog JSON";
             continue;
         }

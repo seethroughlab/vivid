@@ -1,21 +1,13 @@
 #include "runtime/platform/app_update_manager.h"
+#include "runtime/net/http_fetch.h"
 
-#include <array>
 #include <atomic>
 #include <cctype>
-#include <cstdio>
 #include <cstdlib>
 #include <regex>
 #include <thread>
-#include <vector>
 
 #include <tinyxml2.h>
-
-#include <spawn.h>
-#include <sys/wait.h>
-#include <unistd.h>
-
-extern char** environ;
 
 namespace vivid {
 
@@ -164,59 +156,17 @@ void AppUpdateManager::fetch_thread_fn() {
         }
     }
 
-    // Use posix_spawn instead of popen to avoid shell injection via the URL.
-    std::string url = appcast_url();
-
-    int pipe_fds[2];
-    if (::pipe(pipe_fds) != 0) {
+    auto result = http_get(appcast_url(), 10);
+    if (!result.ok) {
         std::lock_guard<std::mutex> lock(mutex_);
         state_ = AppUpdateFetchState::Error;
-        error_ = "failed to create pipe";
-        return;
-    }
-
-    posix_spawn_file_actions_t actions;
-    posix_spawn_file_actions_init(&actions);
-    posix_spawn_file_actions_adddup2(&actions, pipe_fds[1], STDOUT_FILENO);
-    posix_spawn_file_actions_adddup2(&actions, pipe_fds[1], STDERR_FILENO);
-    posix_spawn_file_actions_addclose(&actions, pipe_fds[0]);
-    posix_spawn_file_actions_addclose(&actions, pipe_fds[1]);
-
-    const char* argv[] = {"curl", "-sS", "--max-time", "10", url.c_str(), nullptr};
-    pid_t pid = 0;
-    int spawn_err = posix_spawnp(&pid, "curl",
-                                  &actions, nullptr,
-                                  const_cast<char* const*>(argv), environ);
-    posix_spawn_file_actions_destroy(&actions);
-    ::close(pipe_fds[1]);
-
-    if (spawn_err != 0) {
-        ::close(pipe_fds[0]);
-        std::lock_guard<std::mutex> lock(mutex_);
-        state_ = AppUpdateFetchState::Error;
-        error_ = "failed to execute curl";
-        return;
-    }
-
-    std::string output;
-    std::array<char, 4096> buf{};
-    ssize_t n;
-    while ((n = ::read(pipe_fds[0], buf.data(), buf.size())) > 0)
-        output.append(buf.data(), static_cast<size_t>(n));
-    ::close(pipe_fds[0]);
-
-    int wstatus = 0;
-    ::waitpid(pid, &wstatus, 0);
-    if (!WIFEXITED(wstatus) || WEXITSTATUS(wstatus) != 0) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        state_ = AppUpdateFetchState::Error;
-        error_ = "curl failed: " + output.substr(0, 200);
+        error_ = "fetch failed: " + result.error;
         return;
     }
 
     AppUpdateInfo parsed{};
     std::string parse_error;
-    if (!parse_appcast(output, current_version_, parsed, parse_error)) {
+    if (!parse_appcast(result.body, current_version_, parsed, parse_error)) {
         std::lock_guard<std::mutex> lock(mutex_);
         state_ = AppUpdateFetchState::Error;
         error_ = parse_error.empty() ? "failed to parse appcast" : parse_error;

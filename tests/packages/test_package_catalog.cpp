@@ -174,9 +174,10 @@ static void test_refresh_without_cache_and_network() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 6: VIVID_PACKAGE_CATALOG_URL with embedded single quote (M1 regression)
-// Verifies the URL is properly shell-quoted and curl fails gracefully rather
-// than causing shell injection or a crash.
+// Test 6: VIVID_PACKAGE_CATALOG_URL with embedded single quote
+// Verifies that a malformed URL is handled gracefully (fetch failure or parse
+// failure, no crash or hang). Previously tested shell-quoting; now tests that
+// libcurl rejects the URL cleanly.
 // ---------------------------------------------------------------------------
 static void test_catalog_url_with_single_quote() {
     std::fprintf(stderr, "test_catalog_url_with_single_quote...\n");
