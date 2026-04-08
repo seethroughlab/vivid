@@ -254,9 +254,9 @@ bool BuildConsolePanel::handle_key(GLFWwindow* window, int key, int action, int 
     if (action != GLFW_PRESS && action != GLFW_REPEAT) return false;
     bool mod = (mods & (GLFW_MOD_SUPER | GLFW_MOD_CONTROL)) != 0;
     if (mod && key == GLFW_KEY_A) {
-        if (last_visible_first_line_ >= 0 && last_visible_last_line_ >= last_visible_first_line_) {
-            selection_anchor_line_ = last_visible_first_line_;
-            selection_current_line_ = last_visible_last_line_;
+        if (!snapshot_.lines.empty()) {
+            selection_anchor_line_ = 0;
+            selection_current_line_ = static_cast<int>(snapshot_.lines.size()) - 1;
         }
         return true;
     }
