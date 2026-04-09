@@ -15,46 +15,70 @@
         "domains": [
             "gpu"
         ],
-        "requires_packages": [],
         "featured_rank": 30
     },
     "nodes": {
-        "vid": {
-            "type": "MovieFileIn",
-            "params": {
-                "file": "../../assets/camera.mp4",
-                "play_mode": 0,
-                "speed": 1.0
+        "aout": {
+            "type": "audio_out",
+            "layout": {
+                "x": 227.85382,
+                "y": 250.20657
             }
         },
         "audio": {
             "type": "MovieFileAudio",
             "params": {
+                "volume": 0.11149796,
                 "file": "../../assets/camera.mp4"
-            }
-        },
-        "scanlines": {
-            "type": "Scanlines",
-            "params": {
-                "spacing": 4.0,
-                "thickness": 0.5,
-                "intensity": 0.6,
-                "vertical": 0.0
+            },
+            "layout": {
+                "x": -77.825066,
+                "y": 426.40475
             }
         },
         "levels": {
             "type": "Levels",
             "params": {
-                "brightness": -0.05,
+                "gamma": 0.9,
                 "contrast": 1.3,
-                "gamma": 0.9
+                "brightness": -0.05
+            },
+            "layout": {
+                "x": 431.30438,
+                "y": 459.8674
+            }
+        },
+        "scanlines": {
+            "type": "Scanlines",
+            "params": {
+                "vertical": 0.0,
+                "thickness": 0.5,
+                "spacing": 4.0,
+                "intensity": 0.6
+            },
+            "layout": {
+                "x": 686.2756,
+                "y": 476.30344
+            }
+        },
+        "vid": {
+            "type": "MovieFileIn",
+            "params": {
+                "speed": 1.0,
+                "play_mode": 0.0,
+                "file": "../../assets/camera.mp4"
+            },
+            "layout": {
+                "x": 230.30838,
+                "y": 475.15558
             }
         },
         "vout": {
-            "type": "video_out"
-        },
-        "aout": {
-            "type": "audio_out"
+            "type": "video_out",
+            "layout": {
+                "x": 967.2081,
+                "y": 475.27258
+            }
         }
     },
     "connections": [
@@ -79,5 +103,10 @@
             "from": "audio/output",
             "to": "aout/input"
         }
-    ]
+    ],
+    "viewport": {
+        "pan_x": 292.22037,
+        "pan_y": -15.360504,
+        "zoom": 0.93735164
+    }
 }

@@ -72,6 +72,27 @@ bool movie_texture_recreate(WGPUDevice device,
     return true;
 }
 
+void movie_texture_rebuild_bind_group(WGPUDevice device,
+                                      WGPUSampler sampler,
+                                      WGPUBindGroupLayout bind_layout,
+                                      MovieTextureState& state) {
+    if (!state.view) return;
+    if (state.bind_group) wgpuBindGroupRelease(state.bind_group);
+
+    WGPUBindGroupEntry entries[2]{};
+    entries[0].binding = 0;
+    entries[0].sampler = sampler;
+    entries[1].binding = 1;
+    entries[1].textureView = state.view;
+
+    WGPUBindGroupDescriptor bg_desc{};
+    bg_desc.label = vivid_sv("MovieLoaded BG");
+    bg_desc.layout = bind_layout;
+    bg_desc.entryCount = 2;
+    bg_desc.entries = entries;
+    state.bind_group = wgpuDeviceCreateBindGroup(device, &bg_desc);
+}
+
 uint32_t movie_aligned_bpr(uint32_t src_row_bytes) {
     return (src_row_bytes + 255u) & ~255u;
 }

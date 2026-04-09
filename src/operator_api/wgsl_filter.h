@@ -114,11 +114,10 @@ public:
             input_texs[i] = v;
         }
 
-        // Recreate bind group if any input texture changed
-        if (input_texs != cached_input_texs_) {
-            bind_group_.reset(create_bind_group(ctx, input_texs));
-            cached_input_texs_ = input_texs;
-        }
+        // Recreate bind group every frame — wgpu-native bind groups do not
+        // observe texture content updates from prior render passes in the
+        // same command buffer.
+        bind_group_.reset(create_bind_group(ctx, input_texs));
 
         vivid::gpu::run_pass(ctx->command_encoder, pipeline_.get(), bind_group_.get(),
                              ctx->output_texture_view, "WgslFilter Pass");
@@ -145,7 +144,6 @@ private:
     gpu::TexViewHandle    fallback_view_;
 
     uint32_t tex_input_count_ = 0;
-    std::vector<WGPUTextureView> cached_input_texs_;
 
     // Uniform buffer
     std::vector<uint8_t> uniform_data_;
@@ -407,8 +405,6 @@ private:
         for (auto& p : ports)
             if (p.direction == VIVID_PORT_INPUT && p.type == VIVID_PORT_TEXTURE)
                 tex_input_count_++;
-        cached_input_texs_.resize(tex_input_count_, nullptr);
-
         // Generate preamble (also counts params)
         std::string preamble = generate_preamble();
         compute_uniform_size();
@@ -511,7 +507,7 @@ private:
         // Generators have 0 input textures, so the "changed" check in
         // process_gpu() would never trigger — create the bind group now.
         if (tex_input_count_ == 0)
-            bind_group_.reset(create_bind_group(ctx, cached_input_texs_));
+            bind_group_.reset(create_bind_group(ctx, {}));
 
         cached_device_ = ctx->device;
         cached_format_ = ctx->output_format;
@@ -571,8 +567,6 @@ private:
         shader_error_msg_.clear();
         shader_.reset(sm);
         pipeline_.reset(rp);
-        // Force bind group recreation on next frame
-        cached_input_texs_.assign(tex_input_count_, nullptr);
         last_mtime_ = mt;
 
         std::fprintf(stderr, "[wgsl_filter] Hot-reloaded: %s\n", shader_path_.c_str());

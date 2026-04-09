@@ -25,6 +25,14 @@ bool movie_texture_recreate(WGPUDevice device,
                             WGPUTextureFormat format,
                             bool compressed);
 
+// Recreate the bind group to pick up texture content changes.
+// wgpu-native bind groups may not observe writes from prior render passes
+// in the same command buffer, so this must be called before each blit.
+void movie_texture_rebuild_bind_group(WGPUDevice device,
+                                      WGPUSampler sampler,
+                                      WGPUBindGroupLayout bind_layout,
+                                      MovieTextureState& state);
+
 uint32_t movie_aligned_bpr(uint32_t src_row_bytes);
 
 bool movie_upload_bgra(WGPUQueue queue,
