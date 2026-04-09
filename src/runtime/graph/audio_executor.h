@@ -57,6 +57,7 @@ public:
     float audio_load() const { return audio_load_.load(std::memory_order_relaxed); }
     uint32_t buffer_size() const { return buffer_size_; }
     uint32_t sample_rate() const { return sample_rate_; }
+    bool running() const { return running_; }
 
     // Test-only: run the audio callback directly
     void process_audio_for_test(float* output, uint32_t frame_count);

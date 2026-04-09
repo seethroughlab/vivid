@@ -233,7 +233,10 @@ def _compact_envelope(raw: str) -> dict:
             "schema_version": schema_version,
             "error": {"code": "runtime_error", "message": "unknown error"},
         }
-    return {"ok": True, "schema_version": schema_version, "result": payload.get("result", {})}
+    env = {"ok": True, "schema_version": schema_version, "result": payload.get("result", {})}
+    if "health" in payload:
+        env["health"] = payload["health"]
+    return env
 
 
 def _perception_response(raw: str, kind: str, include_payload: bool = False) -> str:
@@ -275,12 +278,17 @@ def _perception_response(raw: str, kind: str, include_payload: bool = False) -> 
             for h in hints[:3]:
                 if isinstance(h, dict) and isinstance(h.get("id"), str):
                     top_hint_ids.append(h["id"])
+        health = env.get("health", {})
+        audio_h = health.get("audio", {}) if isinstance(health, dict) else {}
         summary = {
             "kind": kind,
             "critical": int(diag_summary.get("critical", 0)) if isinstance(diag_summary, dict) else 0,
             "warning": int(diag_summary.get("warning", 0)) if isinstance(diag_summary, dict) else 0,
             "info": int(diag_summary.get("info", 0)) if isinstance(diag_summary, dict) else 0,
             "top_hint_ids": top_hint_ids,
+            "audio_running": bool(audio_h.get("running", False)),
+            "audio_load": round(float(audio_h.get("load", 0.0)), 3),
+            "audio_xruns": int(audio_h.get("xruns", 0)),
         }
     elif kind == "validate_checks":
         summary = {
@@ -303,6 +311,8 @@ def _perception_response(raw: str, kind: str, include_payload: bool = False) -> 
         summary = {"kind": kind}
 
     out = {"ok": True, "schema_version": env.get("schema_version", 1), "summary": summary}
+    if "health" in env:
+        out["health"] = env["health"]
     if include_payload:
         out["result"] = result
     return json.dumps(out, separators=(",", ":"), sort_keys=True)

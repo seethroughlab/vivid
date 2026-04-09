@@ -27,7 +27,7 @@ std::string dispatch(const std::string& method, const std::string& body,
     if (method == "inspect_graph") return handle_inspect_graph(graph, core, core.subgraph_modules());
     if (method == "introspect_nodes") return handle_introspect_nodes(graph, core, core.subgraph_modules());
     if (method == "run_diagnostics")
-        return control_server_checks::handle_run_diagnostics(graph, core, registry);
+        return control_server_checks::handle_run_diagnostics(graph, core, registry, audio_engine);
     if (method == "get_registry_diagnostics") return handle_get_registry_diagnostics(registry);
     if (method == "get_graph_load_diagnostics") return handle_get_graph_load_diagnostics(graph);
     if (method == "list_source_roots") return handle_list_source_roots(source_index);

@@ -4,6 +4,7 @@
 #include "runtime/graph/graph.h"
 #include "runtime/operators/operator_registry.h"
 #include "runtime/core/runtime_core.h"
+#include "runtime/audio/audio_engine.h"
 #include "operator_api/types.h"
 #include <nlohmann/json.hpp>
 
@@ -603,8 +604,47 @@ bool parse_check_def(const nlohmann::json& obj, ParsedCheck& out, std::string& e
 
 } // namespace
 
-std::string handle_run_diagnostics(Graph& graph, RuntimeCore& core, OperatorRegistry& registry) {
+std::string handle_run_diagnostics(Graph& graph, RuntimeCore& core, OperatorRegistry& registry,
+                                   AudioEngine* audio_engine) {
     std::vector<DiagnosticFinding> findings = collect_diagnostics(graph, core, registry);
+
+    // Audio-engine-derived findings
+    if (audio_engine && audio_engine->running()) {
+        float load = audio_engine->audio_load();
+        if (load > 0.95f) {
+            findings.push_back({
+                "audio_high_load", "critical", "",
+                "Audio thread load is " + std::to_string(static_cast<int>(load * 100)) + "%; underruns are imminent.",
+                "Reduce audio node count, increase buffer size, or simplify the graph."
+            });
+        } else if (load > 0.8f) {
+            findings.push_back({
+                "audio_high_load", "warning", "",
+                "Audio thread load is " + std::to_string(static_cast<int>(load * 100)) + "%; headroom is low.",
+                "Consider reducing audio complexity or increasing buffer size."
+            });
+        }
+
+        uint32_t xruns = audio_engine->underrun_count();
+        if (xruns > 0) {
+            findings.push_back({
+                "audio_xruns_detected", "warning", "",
+                "Audio underruns detected: " + std::to_string(xruns) + " since session start.",
+                "Increase buffer size, reduce audio graph complexity, or check system load."
+            });
+        }
+    }
+
+    // Re-sort with audio findings included
+    std::sort(findings.begin(), findings.end(), [](const DiagnosticFinding& a, const DiagnosticFinding& b) {
+        int ar = severity_rank(a.severity);
+        int br = severity_rank(b.severity);
+        if (ar != br) return ar < br;
+        if (a.id != b.id) return a.id < b.id;
+        if (a.node_id != b.node_id) return a.node_id < b.node_id;
+        if (a.message != b.message) return a.message < b.message;
+        return a.suggestion < b.suggestion;
+    });
 
     nlohmann::json summary = nlohmann::json::object();
     int64_t critical_count = 0;
@@ -640,7 +680,68 @@ std::string handle_run_diagnostics(Graph& graph, RuntimeCore& core, OperatorRegi
     result_obj["findings"] = std::move(findings_arr);
     result_obj["hints"] = std::move(hints_arr);
 
-    return nlohmann::json{{"ok", true}, {"schema_version", 1}, {"result", std::move(result_obj)}}.dump();
+    // Build health telemetry
+    nlohmann::json health = nlohmann::json::object();
+
+    // Audio health
+    nlohmann::json audio_health = nlohmann::json::object();
+    if (audio_engine) {
+        audio_health["running"] = audio_engine->running();
+        audio_health["sample_rate"] = audio_engine->sample_rate();
+        audio_health["buffer_size"] = audio_engine->buffer_size();
+        audio_health["node_count"] = audio_engine->node_count();
+        audio_health["xruns"] = audio_engine->underrun_count();
+        audio_health["last_buffer_underrun"] = audio_engine->last_buffer_underrun();
+        audio_health["load"] = audio_engine->audio_load();
+    } else {
+        audio_health["running"] = false;
+    }
+    health["audio"] = std::move(audio_health);
+
+    // Graph topology health
+    nlohmann::json graph_health = nlohmann::json::object();
+    const auto* cg = core.compiled_graph();
+    graph_health["declared_nodes"] = static_cast<int64_t>(graph.nodes().size());
+    graph_health["declared_connections"] = static_cast<int64_t>(graph.connections().size());
+    if (cg) {
+        graph_health["compiled_nodes"] = static_cast<int64_t>(cg->nodes.size());
+        graph_health["frame_nodes"] = static_cast<int64_t>(cg->frame_order.size());
+        graph_health["audio_nodes"] = static_cast<int64_t>(cg->audio_order.size());
+        graph_health["total_edges"] = static_cast<int64_t>(cg->edges.size());
+        graph_health["frame_edges"] = static_cast<int64_t>(cg->frame_direct_edges.size());
+        graph_health["audio_edges"] = static_cast<int64_t>(cg->audio_direct_edges.size());
+        graph_health["snapshot_edges"] = static_cast<int64_t>(
+            cg->frame_to_audio_edges.size() + cg->audio_to_frame_edges.size());
+        graph_health["dropped_connections"] = static_cast<int64_t>(cg->dropped_connections.size());
+
+        int64_t errored = 0, missing = 0, shader_errors = 0, texture_nodes = 0;
+        for (const auto& n : cg->nodes) {
+            if (n.errored) errored++;
+            if (n.missing_operator) missing++;
+            if (n.gpu && n.gpu->shader_error) shader_errors++;
+            if (n.gpu) texture_nodes++;
+        }
+        graph_health["errored_nodes"] = errored;
+        graph_health["missing_operators"] = missing;
+
+        nlohmann::json gpu_health = nlohmann::json::object();
+        gpu_health["texture_nodes"] = texture_nodes;
+        gpu_health["shader_errors"] = shader_errors;
+        health["gpu"] = std::move(gpu_health);
+    } else {
+        graph_health["compiled_nodes"] = 0;
+    }
+    health["graph"] = std::move(graph_health);
+
+    if (!health.contains("gpu")) {
+        health["gpu"] = nlohmann::json{{"texture_nodes", 0}, {"shader_errors", 0}};
+    }
+
+    return nlohmann::json{
+        {"ok", true}, {"schema_version", 2},
+        {"health", std::move(health)},
+        {"result", std::move(result_obj)}
+    }.dump();
 }
 
 std::string handle_validate_checks(const nlohmann::json& root) {

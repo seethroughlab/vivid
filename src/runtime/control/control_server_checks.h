@@ -5,13 +5,15 @@
 
 namespace vivid {
 
+class AudioEngine;
 class Graph;
 class RuntimeCore;
 class OperatorRegistry;
 
 namespace control_server_checks {
 
-std::string handle_run_diagnostics(Graph& graph, RuntimeCore& core, OperatorRegistry& registry);
+std::string handle_run_diagnostics(Graph& graph, RuntimeCore& core, OperatorRegistry& registry,
+                                   AudioEngine* audio_engine);
 std::string handle_validate_checks(const nlohmann::json& root);
 std::string handle_run_checks(Graph& graph, RuntimeCore& core, OperatorRegistry& registry,
                               const nlohmann::json& root);

@@ -101,8 +101,8 @@
             check(r.ok, "run_diagnostics ok");
             if (!r.j.is_null()) {
                 check(r.j.contains("schema_version") && r.j["schema_version"].is_number_integer() &&
-                          r.j["schema_version"].get<int>() == 1,
-                      "run_diagnostics schema_version=1");
+                          r.j["schema_version"].get<int>() == 2,
+                      "run_diagnostics schema_version=2");
 
                 auto& result = r.j["result"];
                 auto& summary = result["summary"];
@@ -124,6 +124,32 @@
                               summary["warning"].get<int>() == 0 &&
                               summary["info"].get<int>() == 0,
                               "healthy fixture graph yields minimal diagnostics");
+                    }
+                }
+
+                // Health telemetry
+                check(r.j.contains("health") && r.j["health"].is_object(), "run_diagnostics has health");
+                if (r.j.contains("health") && r.j["health"].is_object()) {
+                    auto& health = r.j["health"];
+                    check(health.contains("audio") && health["audio"].is_object(), "health has audio");
+                    check(health.contains("graph") && health["graph"].is_object(), "health has graph");
+                    check(health.contains("gpu") && health["gpu"].is_object(), "health has gpu");
+
+                    if (health["audio"].is_object()) {
+                        auto& ah = health["audio"];
+                        check(ah.contains("xruns") && ah["xruns"].is_number_integer(), "audio health has xruns");
+                        check(ah.contains("load") && ah["load"].is_number(), "audio health has load");
+                        check(ah.contains("running") && ah["running"].is_boolean(), "audio health has running");
+                    }
+                    if (health["graph"].is_object()) {
+                        auto& gh = health["graph"];
+                        check(gh.contains("compiled_nodes") && gh["compiled_nodes"].is_number_integer(), "graph health has compiled_nodes");
+                        check(gh.contains("frame_nodes") && gh["frame_nodes"].is_number_integer(), "graph health has frame_nodes");
+                        check(gh.contains("audio_nodes") && gh["audio_nodes"].is_number_integer(), "graph health has audio_nodes");
+                    }
+                    if (health["gpu"].is_object()) {
+                        check(health["gpu"].contains("shader_errors") && health["gpu"]["shader_errors"].is_number_integer(),
+                              "gpu health has shader_errors");
                     }
                 }
             }

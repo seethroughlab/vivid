@@ -67,7 +67,16 @@ class PerceptionMCPTests(unittest.TestCase):
     def test_run_diagnostics_compact_summary(self):
         raw = json.dumps({
             "ok": True,
-            "schema_version": 1,
+            "schema_version": 2,
+            "health": {
+                "audio": {"running": True, "sample_rate": 48000, "buffer_size": 256,
+                          "node_count": 2, "xruns": 3, "last_buffer_underrun": False, "load": 0.45},
+                "graph": {"declared_nodes": 5, "declared_connections": 4, "compiled_nodes": 5,
+                          "frame_nodes": 3, "audio_nodes": 2, "total_edges": 4,
+                          "frame_edges": 2, "audio_edges": 1, "snapshot_edges": 1,
+                          "dropped_connections": 0, "errored_nodes": 0, "missing_operators": 0},
+                "gpu": {"texture_nodes": 3, "shader_errors": 0},
+            },
             "result": {
                 "summary": {"critical": 2, "warning": 1, "info": 0},
                 "hints": [{"id": "h1"}, {"id": "h2"}, {"id": "h3"}, {"id": "h4"}],
@@ -75,11 +84,16 @@ class PerceptionMCPTests(unittest.TestCase):
         })
         out = json.loads(self.mod._perception_response(raw, "run_diagnostics", False))
         self.assertTrue(out["ok"])
-        self.assertEqual(out["schema_version"], 1)
+        self.assertEqual(out["schema_version"], 2)
         self.assertEqual(out["summary"]["critical"], 2)
         self.assertEqual(out["summary"]["warning"], 1)
         self.assertEqual(out["summary"]["info"], 0)
         self.assertEqual(out["summary"]["top_hint_ids"], ["h1", "h2", "h3"])
+        self.assertEqual(out["summary"]["audio_running"], True)
+        self.assertEqual(out["summary"]["audio_load"], 0.45)
+        self.assertEqual(out["summary"]["audio_xruns"], 3)
+        self.assertIn("health", out)
+        self.assertEqual(out["health"]["audio"]["xruns"], 3)
         self.assertNotIn("result", out)
 
     def test_run_checks_include_payload(self):

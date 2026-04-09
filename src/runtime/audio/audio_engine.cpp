@@ -230,6 +230,10 @@ uint32_t AudioEngine::sample_rate() const {
     return kSampleRate;
 }
 
+bool AudioEngine::running() const {
+    return audio_executor_ && audio_executor_->running();
+}
+
 void AudioEngine::process_audio_for_test(float* output, uint32_t frame_count) {
     if (audio_executor_) {
         audio_executor_->process_audio_for_test(output, frame_count);

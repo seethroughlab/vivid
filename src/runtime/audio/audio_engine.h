@@ -60,6 +60,7 @@ public:
     uint32_t node_count() const;
     uint32_t buffer_size() const;
     uint32_t sample_rate() const;
+    bool running() const;
 
     // Test-only accessors used by headless audio integration tests.
     void  process_audio_for_test(float* output, uint32_t frame_count);
