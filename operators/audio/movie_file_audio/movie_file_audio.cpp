@@ -1,5 +1,8 @@
 #include "operator_api/operator.h"
 #include "../../shared/movie_audio/avf_audio_extractor.h"
+#include "../../shared/movie_decode/movie_playback_stats.h"
+#include "movie_transport.h"
+#include "session_registry.h"
 
 #include <atomic>
 #include <array>
@@ -273,6 +276,9 @@ struct MovieFileAudio : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"output",   VIVID_PORT_AUDIO_BUFFER,  VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2, 0.0f});
         out.push_back({"time",     VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         out.push_back({"duration", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
+        // Playback telemetry (Stage 1 instrumentation)
+        out.push_back({"buffered_ms", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "analysis"});
+        out.push_back({"underruns",   VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "analysis"});
         vivid::append_analysis_ports(out);
     }
 
@@ -317,6 +323,11 @@ struct MovieFileAudio : vivid::OperatorBase, vivid::AudioProcessable {
                     ring_->preroll_ready.store(1, std::memory_order_release);
                 }
 
+                // Inform shared session of source duration
+                if (session_) {
+                    session_->transport().set_source(static_cast<double>(fresh->duration()));
+                }
+
                 // Fresh load starts at t=0; drain any stale resync
                 pending_resync_time_.store(-1.0, std::memory_order_release);
             }
@@ -356,10 +367,21 @@ struct MovieFileAudio : vivid::OperatorBase, vivid::AudioProcessable {
 
         const uint8_t preroll = ring_->preroll_ready.load(std::memory_order_acquire);
         if (preroll != 0) {
-            ring_->read(L, R, n);
+            uint32_t got = ring_->read(L, R, n);
+            if (got < n) {
+                audio_stats_.underrun_count.fetch_add(1, std::memory_order_relaxed);
+            }
         } else {
             std::memset(L, 0, n * sizeof(float));
             std::memset(R, 0, n * sizeof(float));
+        }
+
+        // Update buffered duration gauge
+        {
+            const float sr = std::max(1.0f, static_cast<float>(ctx->sample_rate));
+            const float spd = std::max(0.001f, ring_->speed.load(std::memory_order_relaxed));
+            float buf_ms = static_cast<float>(ring_->available_read()) * spd / sr * 1000.0f;
+            audio_stats_.buffered_duration_ms.store(buf_ms, std::memory_order_relaxed);
         }
 
         // Apply volume with 64-sample ramp to avoid clicks
@@ -391,25 +413,46 @@ struct MovieFileAudio : vivid::OperatorBase, vivid::AudioProcessable {
         double mono_time = ring_->read_head_time.load(std::memory_order_relaxed);
         const float dur = (ext && ext->is_open()) ? ext->duration() : 0.0f;
 
-        // "Hold Last" (play_mode 2): clamp time at duration so the last frame
-        // stays on screen and the time signal doesn't drift past the end.
-        if (play_mode.int_value() == 2 && dur > 0.0f && mono_time > static_cast<double>(dur)) {
+        // "Hold Last": clamp time at duration so the last frame stays on screen.
+        if (static_cast<PlayMode>(play_mode.int_value()) == PlayMode::HoldLast &&
+            dur > 0.0f && mono_time > static_cast<double>(dur)) {
             mono_time = static_cast<double>(dur);
         }
 
         // Wrap by duration before float cast to preserve precision for long playback.
-        // MovieFileIn already applies wrap_time() so this is compatible.
-        double out_time = mono_time;
-        if (dur > 0.0f) {
-            out_time = std::fmod(mono_time, static_cast<double>(dur));
-            if (out_time < 0.0) out_time += static_cast<double>(dur);
-        }
+        double out_time = (dur > 0.0f) ? wrap_time(mono_time, static_cast<double>(dur)) : mono_time;
         // Floor to epsilon so the video operator's audio_master gate (> 0.0f) stays active.
         if (out_time < 1e-6 && mono_time > 0.0) out_time = 1e-6;
+
+        // Write time and duration to SIGNAL output buffers (indices 1 and 2).
+        // The audio executor extracts the last sample and snapshots it across the
+        // cadence bridge to frame-rate operators (e.g. MovieFileIn).
+        float* time_buf = ctx->output_buffers[1];
+        float* dur_buf  = ctx->output_buffers[2];
+        const float ft  = static_cast<float>(out_time);
+        const float fd  = dur;
+        for (uint32_t i = 0; i < n; ++i) {
+            time_buf[i] = ft;
+            dur_buf[i]  = fd;
+        }
+
+        // Write playback telemetry to SIGNAL output buffers (indices 3 and 4).
+        float* buf_ms_out  = ctx->output_buffers[3];
+        float* underrun_out = ctx->output_buffers[4];
+        const float buf_ms_val = audio_stats_.buffered_duration_ms.load(std::memory_order_relaxed);
+        const float underrun_val = static_cast<float>(audio_stats_.underrun_count.load(std::memory_order_relaxed));
+        for (uint32_t i = 0; i < n; ++i) {
+            buf_ms_out[i]  = buf_ms_val;
+            underrun_out[i] = underrun_val;
+        }
     }
 
     ~MovieFileAudio() override {
         fill_thread_.stop();
+        if (session_) {
+            PlaybackSessionRegistry::instance().release(session_->source_path());
+            session_.reset();
+        }
         delete deferred_delete_;
         auto* ext = extractor_.load(std::memory_order_relaxed);
         delete ext;
@@ -424,6 +467,13 @@ private:
     };
 
     void on_source_changed() {
+        audio_stats_.reset();
+
+        if (session_) {
+            PlaybackSessionRegistry::instance().release(session_->source_path());
+            session_.reset();
+        }
+
         // Stop fill thread while we swap extractors
         fill_thread_.update_ring(nullptr);
         fill_thread_.update_extractor(nullptr);
@@ -439,6 +489,7 @@ private:
         ring_->preroll_ready.store(0, std::memory_order_release);
 
         if (!last_path_.empty()) {
+            session_ = PlaybackSessionRegistry::instance().acquire(last_path_);
             auto result = std::make_shared<AsyncAudioLoad>();
             pending_load_ = result;
             std::string path = last_path_;
@@ -457,6 +508,8 @@ private:
         }
     }
 
+    MovieAudioStats audio_stats_{};
+    std::shared_ptr<PlaybackSession> session_;
     std::unique_ptr<AudioRing> ring_ = std::make_unique<AudioRing>();
     FillThread fill_thread_;
     bool fill_thread_started_ = false;

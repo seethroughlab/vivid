@@ -250,6 +250,31 @@ set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS texture_loader)
 # 3D operators are available via the vivid-3d package (see ../vivid-3d/)
 # Simple WGSL filters are loaded from filters/*.wgsl (no C++ needed)
 
+# --- Movie Session Support Library (shared between movie_file_in and movie_file_audio) ---
+if(APPLE)
+    add_library(movie_session SHARED
+        operators/shared/movie_session/movie_transport.cpp
+        operators/shared/movie_session/playback_session.cpp
+        operators/shared/movie_session/session_registry.cpp
+        operators/shared/movie_session/decoded_frame_queue.cpp
+        operators/shared/movie_session/video_decode_worker.cpp
+    )
+    target_include_directories(movie_session PUBLIC
+        ${CMAKE_SOURCE_DIR}/operators/shared/movie_session)
+    set_target_properties(movie_session PROPERTIES
+        OUTPUT_NAME "movie_session"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+    )
+    add_custom_command(TARGET movie_session POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/Frameworks
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:movie_session>
+            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/Frameworks/
+        COMMENT "Updating movie_session in Vivid.app bundle"
+    )
+endif()
+
 # --- MovieFileIn (cadence-native video file input) ---
 if(APPLE)
     add_library(movie_file_in MODULE
@@ -263,7 +288,7 @@ if(APPLE)
         deps/hap/hap.c
     )
     target_link_libraries(movie_file_in PRIVATE
-        vivid_operator_api webgpu snappy
+        vivid_operator_api webgpu snappy movie_session
         "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
         "-framework Foundation" "-framework QuartzCore"
     )
@@ -276,7 +301,9 @@ else()
     add_library(movie_file_in MODULE operators/gpu/movie_file_in/movie_file_in.cpp)
     target_link_libraries(movie_file_in PRIVATE vivid_operator_api webgpu)
 endif()
-set_target_properties(movie_file_in PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+set_target_properties(movie_file_in PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}"
+    BUILD_RPATH "@loader_path/../Frameworks"
+    INSTALL_RPATH "@loader_path/../Frameworks")
 if(APPLE)
     add_custom_command(TARGET movie_file_in POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory
@@ -503,14 +530,16 @@ if(APPLE)
         operators/shared/movie_audio/avf_audio_extractor.mm
     )
     target_link_libraries(movie_file_audio PRIVATE
-        vivid_operator_api
+        vivid_operator_api movie_session
         "-framework AVFoundation" "-framework AVFAudio" "-framework CoreMedia" "-framework Foundation"
     )
     set_source_files_properties(
         operators/shared/movie_audio/avf_audio_extractor.mm
         PROPERTIES COMPILE_FLAGS "-fobjc-arc")
     set_target_properties(movie_file_audio PROPERTIES
-        PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+        PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}"
+        BUILD_RPATH "@loader_path/../Frameworks"
+        INSTALL_RPATH "@loader_path/../Frameworks")
     add_custom_command(TARGET movie_file_audio POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory
             $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns

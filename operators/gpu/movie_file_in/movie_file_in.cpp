@@ -6,7 +6,15 @@
 #include "../../shared/movie_decode/texture_upload.h"
 #include "../../shared/movie_decode/placeholder_frame.h"
 #include "../../shared/movie_decode/load_generation.h"
+#include "../../shared/movie_decode/movie_playback_stats.h"
+#include "movie_transport.h"
+#include "session_registry.h"
+#include "decoded_frame_queue.h"
+#include "video_decode_worker.h"
+#include "../../shared/movie_decode/avf_decoder.h"
+#include "../../shared/movie_decode/hap_decoder.h"
 
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -162,6 +170,14 @@ struct MovieFileIn : vivid::OperatorBase, vivid::GpuProcessable {
 
     ~MovieFileIn() override {
         stop_loader_thread();
+        if (decode_worker_) {
+            decode_worker_->stop();
+            decode_worker_.reset();
+        }
+        if (session_) {
+            PlaybackSessionRegistry::instance().release(session_->source_path());
+            session_.reset();
+        }
         decoder_.reset();
         vivid::gpu::release(pipeline_);
         vivid::gpu::release(pipeline_ycocg_);
@@ -186,6 +202,17 @@ struct MovieFileIn : vivid::OperatorBase, vivid::GpuProcessable {
         out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
         out.push_back({"time",     VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
         out.push_back({"duration", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        // Playback telemetry (Stage 1 instrumentation)
+        out.push_back({"new_frames",      VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "analysis"});
+        out.push_back({"reused_frames",   VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "analysis"});
+        out.push_back({"nil_frames",      VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "analysis"});
+        out.push_back({"decode_time_us",  VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "analysis"});
+        out.push_back({"copy_time_us",   VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "analysis"});
+        out.push_back({"upload_time_us",  VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "analysis"});
+        out.push_back({"drift_ms",        VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "analysis"});
+        out.push_back({"seek_corrections", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "analysis"});
+        out.push_back({"seek_budget_exhausted", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "analysis"});
+        out.push_back({"drop_repeat_corrections", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "analysis"});
     }
 
     void process_gpu(const VividGpuContext* ctx) override {
@@ -225,74 +252,144 @@ struct MovieFileIn : vivid::OperatorBase, vivid::GpuProcessable {
             decoder_->set_loop(play_mode.int_value() == 0);
             decoder_->set_speed(speed.value);
 
-            // --- AV sync ---
-            // audio_time is the first input port (index 0).
-            // When connected, it receives monotonic playback seconds from
-            // MovieFileAudio/time via the cadence bridge (~60Hz snapshot).
+            // ==========================================================
+            // Clock ownership: AUDIO-MASTER vs SELF-CLOCK
+            // ==========================================================
+            // Two modes, selected by whether audio_time input is connected:
+            //
+            // SELF-CLOCK (audio_time disconnected):
+            //   AVPlayer's internal clock is authoritative.  We read its
+            //   position via decoder_->current_time() and publish it.
+            //
+            // AUDIO-MASTER (audio_time connected and > 0):
+            //   Audio pipeline's monotonic time is authoritative.  The
+            //   shared MovieTransport evaluates drift and seek policy.
+            //
+            // Seek policy is centralized in MovieTransport (shared dylib):
+            //   threshold = 2 * frame_duration, cooldown = 150ms, budget = 4/sec
+            // ==========================================================
+
             const float audio_time = ctx->input_values ? ctx->input_values[0] : 0.0f;
-            // Connected check: structural (port is wired). Started check: temporal
-            // (audio pipeline has delivered a value — MovieFileAudio floors to 1e-6
-            // so a running connection is always > 0).
             const bool audio_master = ctx->input_connected && ctx->input_connected[0]
                                       && audio_time > 0.0f;
-            const double duration_s = std::max(0.0, static_cast<double>(decoder_->duration()));
-            const double frame_dur = 1.0 / std::max(1.0, static_cast<double>(decoder_->frame_rate()));
-            const double kSeekThreshold = frame_dur * 2.0;
 
-            if (audio_master) {
-                // Audio-master: sync video position to audio playback time
-                const double phase_offset_s = static_cast<double>(video_phase_offset_ms.value) * 0.001;
-                const double desired_mono = static_cast<double>(audio_time) + phase_offset_s;
-                const double desired_local = wrap_time(desired_mono, duration_s);
-                const double video_local = std::max(0.0, static_cast<double>(decoder_->current_time()));
-                const double err = shortest_circular_diff(desired_local, video_local, duration_s);
-                constexpr double kVideoSeekCooldownSec = 0.030;
-                const bool source_changed = (last_video_sync_seek_generation_ != source_generation_);
-                const bool cooldown_ok = std::abs(desired_mono - last_video_sync_seek_mono_s_) > kVideoSeekCooldownSec;
-
-                if (source_changed || (std::abs(err) > kSeekThreshold && cooldown_ok)) {
-                    if (decoder_->seek(desired_local)) {
-                        last_video_sync_seek_mono_s_ = desired_mono;
-                        last_video_sync_seek_generation_ = source_generation_;
-                    } else {
-                        std::fprintf(stderr, "[movie_file_in] seek to %.3fs failed\n", desired_local);
-                    }
-                }
-                published_local_time = wrap_time(desired_mono, duration_s);
-            } else {
-                // Self-clock: the AVPlayer advances on its own at the rate
-                // set by set_speed(). We just read its current position.
-                double video_local = std::max(0.0, static_cast<double>(decoder_->current_time()));
-
-                // "Hold Last" (play_mode 2): clamp at duration so the last
-                // frame stays on screen and time doesn't drift past the end.
-                if (play_mode.int_value() == 2 && duration_s > 0.0 && video_local >= duration_s) {
-                    video_local = duration_s;
-                }
-                published_local_time = video_local;
+            if (session_) {
+                session_->transport().set_play_mode(static_cast<PlayMode>(play_mode.int_value()));
+                session_->transport().set_speed(speed.value);
             }
 
-            // Decode and upload frame
-            if (decoder_->decode_frame()) {
-                uint32_t w = decoder_->width();
-                uint32_t h = decoder_->height();
-                if (w > 0 && h > 0) {
-                    if (decoder_->compression_mode() == VideoFrameCompressionMode::CompressedBC) {
-                        WGPUTextureFormat fmt = compressed_format_to_texture(decoder_->compressed_format());
-                        const uint8_t* data = decoder_->compressed_data();
-                        size_t data_size = decoder_->compressed_size();
-                        if (fmt != WGPUTextureFormat_Undefined && data && data_size > 0) {
-                            ensure_texture(ctx, w, h, fmt, true);
-                            movie_upload_compressed(ctx->queue, texture_, data, data_size, w, h, fmt);
+            if (audio_master && session_) {
+                auto& transport = session_->transport();
+                const double phase_s = static_cast<double>(video_phase_offset_ms.value) * 0.001;
+                const double desired_local = transport.compute_audio_master_time(audio_time, phase_s);
+                const double decoder_time = std::max(0.0, static_cast<double>(decoder_->current_time()));
+
+                video_stats_.drift_ms.update(
+                    static_cast<float>(std::abs(transport.drift_seconds(desired_local, decoder_time)) * 1000.0));
+
+                const double desired_mono = static_cast<double>(audio_time) + phase_s;
+                auto decision = transport.evaluate_correction(desired_local, decoder_time, desired_mono, ctx->time);
+                switch (decision.type) {
+                    case CorrectionType::None:
+                        break;
+                    case CorrectionType::DropRepeat:
+                        video_stats_.drop_repeat_correction_count++;
+                        if (decision.budget_exhausted)
+                            video_stats_.seek_budget_exhausted_count++;
+                        break;
+                    case CorrectionType::Seek:
+                        if (decoder_->seek(decision.seek_target)) {
+                            video_stats_.seek_correction_count++;
+                            transport.record_seek_issued(desired_mono);
+                            if (decode_worker_) decode_worker_->flush();
+                            last_decoded_frame_.clear();
+                        } else {
+                            std::fprintf(stderr, "[movie_file_in] seek to %.3fs failed\n",
+                                         decision.seek_target);
                         }
-                    } else {
-                        const uint8_t* pixels = decoder_->pixel_data();
-                        if (pixels) {
-                            ensure_texture(ctx, w, h, WGPUTextureFormat_BGRA8Unorm, false);
-                            movie_upload_bgra(ctx->queue, texture_, pixels, w, h);
-                        }
-                    }
+                        break;
                 }
+                published_local_time = desired_local;
+            } else {
+                double video_local = std::max(0.0, static_cast<double>(decoder_->current_time()));
+                if (session_) {
+                    published_local_time = session_->transport().compute_self_clock_time(video_local);
+                } else {
+                    published_local_time = video_local;
+                }
+            }
+
+            // Decode: codec-specific submit to unified queue
+            frame_uploaded_ = false;
+            auto t_decode_start = std::chrono::steady_clock::now();
+
+            if (decoder_->compression_mode() == VideoFrameCompressionMode::CompressedBC) {
+                // HAP: synchronous decode on main thread, direct queue push
+                DecodeStatus status = decoder_->decode_frame();
+                if (status == DecodeStatus::NewFrame) {
+                    auto* hap = static_cast<HAPDecoder*>(decoder_.get());
+                    if (decode_worker_) decode_worker_->submit_decoded(hap->make_decoded_frame());
+                    video_stats_.new_frame_count++;
+                } else if (status == DecodeStatus::ReusedFrame) {
+                    video_stats_.reused_frame_count++;
+                } else {
+                    video_stats_.nil_frame_count++;
+                }
+            } else {
+                // AVF: acquire on main thread (fast), copy on worker thread
+                auto* avf = static_cast<AVFDecoder*>(decoder_.get());
+                auto acquired = avf->acquire_pixel_buffer();
+                if (acquired.valid()) {
+                    if (decode_worker_) {
+                        decode_worker_->submit_work([acq = std::move(acquired)]() mutable {
+                            return AVFDecoder::copy_pixel_buffer(std::move(acq));
+                        });
+                    }
+                    video_stats_.new_frame_count++;
+                } else if (acquired.status == DecodeStatus::ReusedFrame) {
+                    video_stats_.reused_frame_count++;
+                } else {
+                    video_stats_.nil_frame_count++;
+                }
+            }
+
+            auto t_decode_end = std::chrono::steady_clock::now();
+            video_stats_.decode_acquire_us.update(
+                std::chrono::duration<float, std::micro>(t_decode_end - t_decode_start).count());
+
+            // Unified consumption: pop latest frame from queue
+            DecodedFrame ready;
+            if (decode_worker_ && decode_worker_->pop_latest(ready)) {
+                video_stats_.decode_copy_us.update(ready.copy_time_us);
+                last_decoded_frame_ = std::move(ready);
+            }
+
+            // Unified upload: format-driven
+            if (!last_decoded_frame_.empty()) {
+                auto t_upload_start = std::chrono::steady_clock::now();
+                if (last_decoded_frame_.compressed) {
+                    WGPUTextureFormat fmt = compressed_format_to_texture(last_decoded_frame_.compressed_format);
+                    if (fmt != WGPUTextureFormat_Undefined && !last_decoded_frame_.data.empty()) {
+                        ensure_texture(ctx, last_decoded_frame_.width, last_decoded_frame_.height, fmt, true);
+                        movie_upload_compressed(ctx->queue, texture_,
+                                               last_decoded_frame_.data.data(),
+                                               last_decoded_frame_.data.size(),
+                                               last_decoded_frame_.width,
+                                               last_decoded_frame_.height, fmt);
+                        frame_uploaded_ = true;
+                    }
+                } else {
+                    ensure_texture(ctx, last_decoded_frame_.width, last_decoded_frame_.height,
+                                   WGPUTextureFormat_BGRA8Unorm, false);
+                    movie_upload_bgra(ctx->queue, texture_,
+                                     last_decoded_frame_.data.data(),
+                                     last_decoded_frame_.width,
+                                     last_decoded_frame_.height);
+                    frame_uploaded_ = true;
+                }
+                auto t_upload_end = std::chrono::steady_clock::now();
+                video_stats_.gpu_upload_us.update(
+                    std::chrono::duration<float, std::micro>(t_upload_end - t_upload_start).count());
             }
         }
 
@@ -302,39 +399,37 @@ struct MovieFileIn : vivid::OperatorBase, vivid::GpuProcessable {
 
         if (texture_.view && texture_.bind_group) {
             WGPURenderPipeline active = pipeline_;
-            if (decoder_ && decoder_->compression_mode() == VideoFrameCompressionMode::CompressedBC &&
-                decoder_->requires_ycocg_decode() && pipeline_ycocg_) {
+            if (!last_decoded_frame_.empty() && last_decoded_frame_.requires_ycocg && pipeline_ycocg_) {
                 active = pipeline_ycocg_;
             }
+            // Rebuild bind group after texture content upload — wgpu-native
+            // bind groups may not observe wgpuQueueWriteTexture updates.
+            if (frame_uploaded_)
+                movie_texture_rebuild_bind_group(ctx->device, sampler_, bind_layout_, texture_);
             vivid::gpu::run_pass(ctx->command_encoder, active, texture_.bind_group,
                                  ctx->output_texture_view, "MovieFileIn Blit");
         } else {
             clear_output(ctx);
         }
 
-        // Publish time outputs
+        // Publish time and telemetry outputs
         if (ctx->output_values) {
             ctx->output_values[1] = static_cast<float>(published_local_time);
             ctx->output_values[2] = decoder_ ? decoder_->duration() : 0.0f;
+            ctx->output_values[3] = static_cast<float>(video_stats_.new_frame_count);
+            ctx->output_values[4] = static_cast<float>(video_stats_.reused_frame_count);
+            ctx->output_values[5] = static_cast<float>(video_stats_.nil_frame_count);
+            ctx->output_values[6] = video_stats_.decode_acquire_us.value.load(std::memory_order_relaxed);
+            ctx->output_values[7] = video_stats_.decode_copy_us.value.load(std::memory_order_relaxed);
+            ctx->output_values[8] = video_stats_.gpu_upload_us.value.load(std::memory_order_relaxed);
+            ctx->output_values[9] = video_stats_.drift_ms.value.load(std::memory_order_relaxed);
+            ctx->output_values[10] = static_cast<float>(video_stats_.seek_correction_count);
+            ctx->output_values[11] = static_cast<float>(video_stats_.seek_budget_exhausted_count);
+            ctx->output_values[12] = static_cast<float>(video_stats_.drop_repeat_correction_count);
         }
     }
 
 private:
-    static double wrap_time(double t, double duration) {
-        if (duration <= 0.0) return std::max(0.0, t);
-        double out = std::fmod(t, duration);
-        if (out < 0.0) out += duration;
-        return out;
-    }
-
-    static double shortest_circular_diff(double target, double current, double duration) {
-        if (duration <= 0.0) return target - current;
-        double d = target - current;
-        const double half = duration * 0.5;
-        while (d > half) d -= duration;
-        while (d < -half) d += duration;
-        return d;
-    }
 
     // ---- Loader thread (async video decode) ---------------------------------
 
@@ -445,6 +540,17 @@ private:
             movie_texture_release(texture_);
             decoder_->set_loop(play_mode.int_value() == 0);
             decoder_->set_speed(speed.value);
+            if (session_) {
+                session_->transport().set_source(static_cast<double>(decoder_->duration()));
+                session_->transport().set_frame_rate(decoder_->frame_rate());
+            }
+            // Ensure decode worker is running for unified queue pipeline
+            if (!decode_worker_) {
+                decode_worker_ = std::make_unique<VideoDecodeWorker>();
+                decode_worker_->start();
+            } else {
+                decode_worker_->flush();
+            }
             placeholder_active_ = false;
         } else {
             decoder_.reset();
@@ -452,12 +558,19 @@ private:
         }
     }
 
-    // ---- Source tracking (simplified — no MediaSession/SharedHandle) ---------
+    // ---- Source tracking -------------------------------------------------------
 
     void on_source_changed() {
-        source_generation_++;
-        last_video_sync_seek_mono_s_ = -1000.0;
-        last_video_sync_seek_generation_ = 0;
+        if (decode_worker_) decode_worker_->flush();
+        last_decoded_frame_.clear();
+        if (session_) {
+            PlaybackSessionRegistry::instance().release(session_->source_path());
+            session_.reset();
+        }
+        if (!last_path_.empty()) {
+            session_ = PlaybackSessionRegistry::instance().acquire(last_path_);
+        }
+        video_stats_.reset();
     }
 
     // ---- Texture management -------------------------------------------------
@@ -575,9 +688,11 @@ private:
     std::string last_path_;
     std::unique_ptr<VideoDecoder> decoder_;
     bool placeholder_active_ = false;
-    uint64_t source_generation_ = 0;
-    double last_video_sync_seek_mono_s_ = -1000.0;
-    uint64_t last_video_sync_seek_generation_ = 0;
+    bool frame_uploaded_ = false;
+    MovieVideoStats video_stats_{};
+    std::shared_ptr<PlaybackSession> session_;
+    std::unique_ptr<VideoDecodeWorker> decode_worker_;
+    DecodedFrame last_decoded_frame_;
 
     std::mutex loader_mu_;
     std::condition_variable loader_cv_;
