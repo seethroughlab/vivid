@@ -448,13 +448,35 @@ DecodedFrame AVFDecoder::copy_pixel_buffer(AcquiredPixelBuffer&& acquired) {
     }
 
     CVPixelBufferUnlockBaseAddress(acquired.buffer, kCVPixelBufferLock_ReadOnly);
-    CVPixelBufferRelease(acquired.buffer);
-    acquired.buffer = nullptr;
+    acquired.release();
 
     auto t1 = std::chrono::steady_clock::now();
     frame.copy_time_us = std::chrono::duration<float, std::micro>(t1 - t0).count();
 
     return frame;
+}
+
+AcquiredPixelBuffer::~AcquiredPixelBuffer() {
+    release();
+}
+
+AcquiredPixelBuffer::AcquiredPixelBuffer(AcquiredPixelBuffer&& other) noexcept
+    : buffer(other.buffer), pts(other.pts), status(other.status) {
+    other.buffer = nullptr;
+    other.pts = 0.0;
+    other.status = DecodeStatus::NilFrame;
+}
+
+AcquiredPixelBuffer& AcquiredPixelBuffer::operator=(AcquiredPixelBuffer&& other) noexcept {
+    if (this == &other) return *this;
+    release();
+    buffer = other.buffer;
+    pts = other.pts;
+    status = other.status;
+    other.buffer = nullptr;
+    other.pts = 0.0;
+    other.status = DecodeStatus::NilFrame;
+    return *this;
 }
 
 void AcquiredPixelBuffer::release() {

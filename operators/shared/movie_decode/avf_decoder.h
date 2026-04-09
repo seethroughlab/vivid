@@ -21,6 +21,13 @@ struct AcquiredPixelBuffer {
     double pts = 0.0;
     DecodeStatus status = DecodeStatus::NilFrame;
 
+    AcquiredPixelBuffer() = default;
+    ~AcquiredPixelBuffer();
+    AcquiredPixelBuffer(const AcquiredPixelBuffer&) = delete;
+    AcquiredPixelBuffer& operator=(const AcquiredPixelBuffer&) = delete;
+    AcquiredPixelBuffer(AcquiredPixelBuffer&& other) noexcept;
+    AcquiredPixelBuffer& operator=(AcquiredPixelBuffer&& other) noexcept;
+
     bool valid() const { return buffer != nullptr; }
     void release();
 };

@@ -346,6 +346,20 @@ target_include_directories(test_video_decode_worker PRIVATE
 target_link_libraries(test_video_decode_worker PRIVATE vivid_runtime_testlib)
 add_test(NAME test_video_decode_worker COMMAND test_video_decode_worker WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+add_executable(test_avf_acquired_pixel_buffer
+    tests/media/test_avf_acquired_pixel_buffer.mm
+    operators/shared/movie_decode/avf_decoder.mm
+)
+target_include_directories(test_avf_acquired_pixel_buffer PRIVATE
+    src tests ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/operators/shared/movie_decode
+    ${CMAKE_SOURCE_DIR}/operators/shared/movie_session)
+target_link_libraries(test_avf_acquired_pixel_buffer PRIVATE
+    vivid_runtime_testlib
+    "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
+    "-framework Foundation" "-framework QuartzCore")
+add_test(NAME test_avf_acquired_pixel_buffer COMMAND test_avf_acquired_pixel_buffer WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 add_executable(test_movie_playback_modes
     tests/media/test_movie_playback_modes.cpp
     operators/shared/movie_session/movie_transport.cpp

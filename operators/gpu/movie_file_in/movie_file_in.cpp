@@ -341,8 +341,9 @@ struct MovieFileIn : vivid::OperatorBase, vivid::GpuProcessable {
                 auto acquired = avf->acquire_pixel_buffer();
                 if (acquired.valid()) {
                     if (decode_worker_) {
-                        decode_worker_->submit_work([acq = std::move(acquired)]() mutable {
-                            return AVFDecoder::copy_pixel_buffer(std::move(acq));
+                        auto acquired_ptr = std::make_shared<AcquiredPixelBuffer>(std::move(acquired));
+                        decode_worker_->submit_work([acquired_ptr]() mutable {
+                            return AVFDecoder::copy_pixel_buffer(std::move(*acquired_ptr));
                         });
                     }
                     video_stats_.new_frame_count++;
