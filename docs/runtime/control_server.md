@@ -54,8 +54,8 @@ All requests are POSTs. The URL path is the method name (e.g. `POST /add_node`).
 | Method | Key params | Description |
 |--------|-----------|-------------|
 | `inspect_graph` | — | All nodes, params, connections as JSON |
-| `introspect_nodes` | — | Compact per-node state summary, including additive per-port audio activity fields |
-| `run_diagnostics` | — | Graph-level diagnostics (port mismatches, etc.) |
+| `introspect_nodes` | — | Compact per-node state summary, including additive per-port audio activity fields and per-node audio timing/lane telemetry |
+| `run_diagnostics` | — | Graph-level diagnostics (port mismatches, etc.) plus top audio-cost and lane-state summaries |
 | `capture_interface` | `node_id` (optional), `save_path` (optional), `ensure_ui_visible` (default `true`) | Capture the full running interface after UI overlays are drawn |
 | `analyze_output` | `mode`, `window_seconds`, `include_payload`, `node_id` (optional) | Capture and analyze the current frame/audio/AV output |
 | `compare_outputs` | `mode`, `a.window_seconds`, `b.window_seconds`, `include_payload`, `node_id` (optional) | Capture two output windows and return structured comparison |
@@ -68,7 +68,7 @@ All requests are POSTs. The URL path is the method name (e.g. `POST /add_node`).
 | `inspect` | `node_id` | Single node params + port values |
 | `validate_checks` | `checks` | Validate check definitions (no graph needed) |
 | `run_checks` | `checks` | Run checks against live graph |
-| `sample_node_outputs` | `node_id`, `duration_seconds`, `interval_ms`, `include_lanes` | Time-series sampling of a node's output port values, including additive audio activity fields on audio-buffer outputs |
+| `sample_node_outputs` | `node_id`, `duration_seconds`, `interval_ms`, `include_lanes` | Time-series sampling of a node's output port values, including additive audio activity fields on audio-buffer outputs and per-sample node audio telemetry |
 
 ### Capture
 | Method | Key params | Description |
@@ -302,6 +302,26 @@ audio-buffer ports without changing the existing schema version:
 These fields are runtime telemetry written by the audio callback. They complement the existing
 node-level audio metrics (`rms`, `peak`, `waveform_preview`) and are meant to answer “is signal
 flowing through this specific port right now?” without exposing raw live audio buffers.
+
+Audio nodes also expose an additive `audio_debug` object on `introspect_nodes`, and on each sample
+returned by `sample_node_outputs`:
+
+- `last_block_total_us`
+- `last_process_us`
+- `ema_block_us`
+- `last_block_budget_pct`
+- `last_lane_count`
+- `lane_state_entries`
+
+`last_process_us` measures operator `process_audio()` time for the most recent block. `last_block_total_us`
+captures the fuller per-node callback cost, including routing and lane-lift bookkeeping. `lane_state_entries`
+counts retained `(node_idx, lane_id)` state entries for that node, which is useful when debugging voice churn
+or suspected lane-state leaks.
+
+`run_diagnostics.health.audio` now includes two additive arrays built from the same callback telemetry:
+
+- `top_nodes`: hottest recent audio nodes, sorted by `ema_block_us`
+- `top_lane_state_nodes`: nodes retaining the most lane state, sorted by `lane_state_entries`
 
 ### `list_types`
 

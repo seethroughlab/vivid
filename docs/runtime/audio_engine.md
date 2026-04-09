@@ -77,6 +77,7 @@ buffer size:
    - Route lane data via `LaneBufferRef` sharing (zero-copy for same-cadence direct edges)
    - Build lane views: prefer `input_lane_refs` (direct routing) > bridge views (snapshot) > empty
    - Call `process_audio()` — lane-lifted (InstancePerLane), LoopBased (pre-allocated scratch), or normal
+   - Publish RT-safe node telemetry (`last_block_total_us`, `last_process_us`, EMA block time, budget %, lane count, retained lane-state entry count)
 3. Extract sink node output to device buffer
 4. Compute per-node analysis (RMS, peak, waveform ring buffer)
 5. Publish `AnalysisSnapshot`
@@ -84,6 +85,10 @@ buffer size:
 Before node processing begins for a block, the executor also sweeps any lane IDs that were retired
 during the previous callback. Retirement is lane-identity-wide: reclaiming one voice ID clears the
 per-lane state that downstream audio nodes accumulated for that note.
+
+The retained lane-state entry count is tracked per node inside `LaneStateService` and surfaced through
+diagnostics/introspection. This count reflects retained `(node_idx, lane_id)` slots, not unique notes
+across the graph.
 
 ## Auto-Duplication
 
