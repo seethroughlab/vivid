@@ -132,6 +132,8 @@ int main(int argc, char* argv[]) {
           "inspect reduce shows mono audio output");
     check(inspect_reduce.message.find("active]") != std::string::npos,
           "inspect reduce shows active audio summary");
+    check(inspect_reduce.message.find("audio_debug: total=") != std::string::npos,
+          "inspect reduce shows node audio_debug summary");
 
     auto inspect_gain = api.inspect("gain1");
     check(inspect_gain.ok, "inspect gain ok");
@@ -139,6 +141,8 @@ int main(int argc, char* argv[]) {
           "inspect gain shows audio input summary");
     check(inspect_gain.message.find("output=audio[ch=1") != std::string::npos,
           "inspect gain shows audio output summary");
+    check(inspect_gain.message.find("audio_debug: total=") != std::string::npos,
+          "inspect gain shows node audio_debug summary");
 
     vivid::ControlServer server;
     bool has_gpu_ops = false;
@@ -168,10 +172,29 @@ int main(int argc, char* argv[]) {
         check(!gain.is_null(), "gain node introspected");
 
         if (!reduce.is_null()) {
+            auto reduce_debug = reduce.value("audio_debug", json{});
             auto reduce_in = find_port(reduce.value("inputs", json{}), "input");
             auto reduce_out = find_port(reduce.value("outputs", json{}), "output");
+            check(reduce_debug.is_object(), "reduce audio_debug present");
             check(!reduce_in.is_null(), "reduce input port summary present");
             check(!reduce_out.is_null(), "reduce output port summary present");
+            if (reduce_debug.is_object()) {
+                check(reduce_debug.contains("last_block_total_us") &&
+                          reduce_debug["last_block_total_us"].is_number_integer(),
+                      "reduce audio_debug has last_block_total_us");
+                check(reduce_debug.contains("last_process_us") &&
+                          reduce_debug["last_process_us"].is_number_integer(),
+                      "reduce audio_debug has last_process_us");
+                check(reduce_debug.value("last_block_total_us", 0) >=
+                          reduce_debug.value("last_process_us", 0),
+                      "reduce total block time covers process time");
+                check(reduce_debug.contains("last_lane_count") &&
+                          reduce_debug["last_lane_count"].is_number_integer(),
+                      "reduce audio_debug has last_lane_count");
+                check(reduce_debug.contains("lane_state_entries") &&
+                          reduce_debug["lane_state_entries"].is_number_integer(),
+                      "reduce audio_debug has lane_state_entries");
+            }
             if (!reduce_in.is_null()) {
                 check(reduce_in.value("channel_count", 0) == 4,
                       "reduce input channel_count preserved");
@@ -193,10 +216,17 @@ int main(int argc, char* argv[]) {
         }
 
         if (!gain.is_null()) {
+            auto gain_debug = gain.value("audio_debug", json{});
             auto gain_in = find_port(gain.value("inputs", json{}), "input");
             auto gain_out = find_port(gain.value("outputs", json{}), "output");
+            check(gain_debug.is_object(), "gain audio_debug present");
             check(!gain_in.is_null(), "gain input port summary present");
             check(!gain_out.is_null(), "gain output port summary present");
+            if (gain_debug.is_object()) {
+                check(gain_debug.contains("last_block_budget_pct") &&
+                          gain_debug["last_block_budget_pct"].is_number(),
+                      "gain audio_debug has last_block_budget_pct");
+            }
             if (!gain_out.is_null()) {
                 check(gain_out.contains("last_block_peak") &&
                           gain_out["last_block_peak"].is_number() &&
@@ -218,9 +248,19 @@ int main(int argc, char* argv[]) {
         check(sample_arr.is_array() && !sample_arr.empty(),
               "sample_node_outputs returns samples");
         if (sample_arr.is_array() && !sample_arr.empty()) {
+            auto sample_debug = sample_arr[0].value("audio_debug", json{});
             auto outputs_obj = sample_arr[0].value("outputs", json{});
             auto out = outputs_obj.value("output", json{});
+            check(sample_debug.is_object(), "sample carries node audio_debug");
             check(out.is_object(), "sampled gain output present");
+            if (sample_debug.is_object()) {
+                check(sample_debug.contains("ema_block_us") &&
+                          sample_debug["ema_block_us"].is_number_integer(),
+                      "sample audio_debug has ema_block_us");
+                check(sample_debug.contains("last_lane_count") &&
+                          sample_debug["last_lane_count"].is_number_integer(),
+                      "sample audio_debug has last_lane_count");
+            }
             if (out.is_object()) {
                 check(out.value("channel_count", 0) == 1,
                       "sampled output channel_count is mono");

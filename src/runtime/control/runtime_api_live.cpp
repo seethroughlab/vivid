@@ -677,6 +677,17 @@ CommandResult RuntimeAPI::inspect(const std::string& node_id) {
             }
         }
     }
+    if (cn->audio) {
+        auto dbg = read_audio_node_debug(*cn->audio);
+        if (dbg.valid) {
+            oss << "\n  audio_debug: total=" << dbg.last_block_total_us
+                << "us process=" << dbg.last_process_us
+                << "us ema=" << dbg.ema_block_us
+                << "us budget=" << dbg.last_block_budget_pct
+                << "% lanes=" << dbg.last_lane_count
+                << " state=" << dbg.lane_state_entries;
+        }
+    }
     return {true, oss.str()};
 }
 

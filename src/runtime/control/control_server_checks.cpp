@@ -685,6 +685,13 @@ std::string handle_run_diagnostics(Graph& graph, RuntimeCore& core, OperatorRegi
 
     // Audio health
     nlohmann::json audio_health = nlohmann::json::object();
+    audio_health["running"] = false;
+    audio_health["sample_rate"] = 0;
+    audio_health["buffer_size"] = 0;
+    audio_health["node_count"] = 0;
+    audio_health["xruns"] = 0;
+    audio_health["last_buffer_underrun"] = false;
+    audio_health["load"] = 0.0;
     if (audio_engine) {
         audio_health["running"] = audio_engine->running();
         audio_health["sample_rate"] = audio_engine->sample_rate();
@@ -693,14 +700,81 @@ std::string handle_run_diagnostics(Graph& graph, RuntimeCore& core, OperatorRegi
         audio_health["xruns"] = audio_engine->underrun_count();
         audio_health["last_buffer_underrun"] = audio_engine->last_buffer_underrun();
         audio_health["load"] = audio_engine->audio_load();
-    } else {
-        audio_health["running"] = false;
     }
+
+    nlohmann::json top_nodes = nlohmann::json::array();
+    nlohmann::json top_lane_state_nodes = nlohmann::json::array();
+    const auto* cg = core.compiled_graph();
+    if (cg) {
+        struct AudioNodeHealthRow {
+            std::string node_id;
+            std::string type_name;
+            uint32_t last_block_total_us = 0;
+            uint32_t last_process_us = 0;
+            uint32_t ema_block_us = 0;
+            float last_block_budget_pct = 0.0f;
+            uint32_t last_lane_count = 0;
+            uint32_t lane_state_entries = 0;
+        };
+
+        std::vector<AudioNodeHealthRow> rows;
+        rows.reserve(cg->audio_order.size());
+        for (uint32_t idx : cg->audio_order) {
+            const auto& ns = cg->nodes[idx];
+            if (!ns.audio) continue;
+            auto snap = read_audio_node_debug(*ns.audio);
+            if (!snap.valid) continue;
+            rows.push_back({
+                ns.node_id,
+                ns.type_name,
+                snap.last_block_total_us,
+                snap.last_process_us,
+                snap.ema_block_us,
+                snap.last_block_budget_pct,
+                snap.last_lane_count,
+                snap.lane_state_entries
+            });
+        }
+
+        auto emit_row = [](const AudioNodeHealthRow& row) {
+            return nlohmann::json{
+                {"node_id", row.node_id},
+                {"type", row.type_name},
+                {"last_block_total_us", static_cast<int64_t>(row.last_block_total_us)},
+                {"last_process_us", static_cast<int64_t>(row.last_process_us)},
+                {"ema_block_us", static_cast<int64_t>(row.ema_block_us)},
+                {"last_block_budget_pct", static_cast<double>(row.last_block_budget_pct)},
+                {"last_lane_count", static_cast<int64_t>(row.last_lane_count)},
+                {"lane_state_entries", static_cast<int64_t>(row.lane_state_entries)},
+            };
+        };
+
+        auto by_hotness = rows;
+        std::sort(by_hotness.begin(), by_hotness.end(), [](const AudioNodeHealthRow& a,
+                                                           const AudioNodeHealthRow& b) {
+            if (a.ema_block_us != b.ema_block_us) return a.ema_block_us > b.ema_block_us;
+            if (a.last_block_total_us != b.last_block_total_us) return a.last_block_total_us > b.last_block_total_us;
+            return a.node_id < b.node_id;
+        });
+        for (size_t i = 0; i < by_hotness.size() && i < 5; ++i)
+            top_nodes.push_back(emit_row(by_hotness[i]));
+
+        auto by_lane_state = rows;
+        std::sort(by_lane_state.begin(), by_lane_state.end(), [](const AudioNodeHealthRow& a,
+                                                                 const AudioNodeHealthRow& b) {
+            if (a.lane_state_entries != b.lane_state_entries) return a.lane_state_entries > b.lane_state_entries;
+            if (a.last_lane_count != b.last_lane_count) return a.last_lane_count > b.last_lane_count;
+            return a.node_id < b.node_id;
+        });
+        for (size_t i = 0; i < by_lane_state.size() && i < 5; ++i)
+            top_lane_state_nodes.push_back(emit_row(by_lane_state[i]));
+    }
+    audio_health["top_nodes"] = std::move(top_nodes);
+    audio_health["top_lane_state_nodes"] = std::move(top_lane_state_nodes);
     health["audio"] = std::move(audio_health);
 
     // Graph topology health
     nlohmann::json graph_health = nlohmann::json::object();
-    const auto* cg = core.compiled_graph();
     graph_health["declared_nodes"] = static_cast<int64_t>(graph.nodes().size());
     graph_health["declared_connections"] = static_cast<int64_t>(graph.connections().size());
     if (cg) {

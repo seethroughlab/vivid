@@ -140,6 +140,18 @@
                         check(ah.contains("xruns") && ah["xruns"].is_number_integer(), "audio health has xruns");
                         check(ah.contains("load") && ah["load"].is_number(), "audio health has load");
                         check(ah.contains("running") && ah["running"].is_boolean(), "audio health has running");
+                        check(ah.contains("top_nodes") && ah["top_nodes"].is_array(),
+                              "audio health has top_nodes");
+                        check(ah.contains("top_lane_state_nodes") && ah["top_lane_state_nodes"].is_array(),
+                              "audio health has top_lane_state_nodes");
+                        if (ah.contains("top_nodes") && ah["top_nodes"].is_array() &&
+                            ah["top_nodes"].size() > 0) {
+                            const auto& n0 = ah["top_nodes"][0];
+                            check(n0.contains("node_id") && n0["node_id"].is_string(),
+                                  "top_nodes entry has node_id");
+                            check(n0.contains("ema_block_us") && n0["ema_block_us"].is_number_integer(),
+                                  "top_nodes entry has ema_block_us");
+                        }
                     }
                     if (health["graph"].is_object()) {
                         auto& gh = health["graph"];
@@ -185,6 +197,24 @@
                 }
             }
             check(ids1 == ids2, "run_diagnostics findings order deterministic");
+            std::string audio_ids1, audio_ids2;
+            if (!r1.j.is_null()) {
+                auto audio = r1.j["health"]["audio"];
+                auto top = audio.value("top_nodes", nlohmann::json::array());
+                for (const auto& n : top) {
+                    if (!audio_ids1.empty()) audio_ids1 += ",";
+                    audio_ids1 += n.value("node_id", "");
+                }
+            }
+            if (!r2.j.is_null()) {
+                auto audio = r2.j["health"]["audio"];
+                auto top = audio.value("top_nodes", nlohmann::json::array());
+                for (const auto& n : top) {
+                    if (!audio_ids2.empty()) audio_ids2 += ",";
+                    audio_ids2 += n.value("node_id", "");
+                }
+            }
+            check(audio_ids1 == audio_ids2, "run_diagnostics top_nodes order deterministic");
         }
         // Broken fixture regression: intentionally disconnected node should emit expected warning.
         {

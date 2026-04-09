@@ -693,6 +693,20 @@ static void append_audio_port_debug_fields(nlohmann::json& port_obj,
     port_obj["active"] = snap.active;
 }
 
+static nlohmann::json make_audio_node_debug_json(const CompiledNode& ns) {
+    nlohmann::json obj = nlohmann::json::object();
+    if (!ns.audio) return obj;
+    auto snap = read_audio_node_debug(*ns.audio);
+    if (!snap.valid) return obj;
+    obj["last_block_total_us"] = static_cast<int64_t>(snap.last_block_total_us);
+    obj["last_process_us"] = static_cast<int64_t>(snap.last_process_us);
+    obj["ema_block_us"] = static_cast<int64_t>(snap.ema_block_us);
+    obj["last_block_budget_pct"] = static_cast<double>(snap.last_block_budget_pct);
+    obj["last_lane_count"] = static_cast<int64_t>(snap.last_lane_count);
+    obj["lane_state_entries"] = static_cast<int64_t>(snap.lane_state_entries);
+    return obj;
+}
+
 nlohmann::json sample_node_outputs_snapshot(const CompiledNode& ns,
                                                     bool include_lanes) {
     nlohmann::json outputs_obj = nlohmann::json::object();
@@ -816,6 +830,8 @@ std::string handle_sample_node_outputs(Graph& graph, RuntimeCore& core,
         const double t = std::chrono::duration<double>(now - start).count();
         sample["time_seconds"] = t;
         sample["outputs"] = sample_node_outputs_snapshot(*ns, include_lanes);
+        if (ns->audio)
+            sample["audio_debug"] = make_audio_node_debug_json(*ns);
         samples_arr.push_back(std::move(sample));
         ++sample_count;
 
@@ -870,6 +886,8 @@ std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core, const Subgr
         node["active_cadence"] = (ns.active_cadence == vivid::Cadence::Audio) ? "audio" : "frame";
         node["incoming_wires"] = static_cast<int64_t>(incoming_wires[ns.node_id]);
         node["outgoing_wires"] = static_cast<int64_t>(outgoing_wires[ns.node_id]);
+        if (ns.audio)
+            node["audio_debug"] = make_audio_node_debug_json(ns);
 
         // Health
         nlohmann::json health = nlohmann::json::object();
