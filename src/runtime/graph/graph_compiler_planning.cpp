@@ -6,6 +6,17 @@ namespace vivid::graph_compiler_internal {
 
 namespace {
 
+uint8_t clamp_audio_width(uint32_t width) {
+    width = std::max<uint32_t>(1, width);
+    width = std::min<uint32_t>(255, width);
+    return static_cast<uint8_t>(width);
+}
+
+bool is_audio_port(const std::vector<VividPortType>& port_types, uint32_t port_idx) {
+    return port_idx < port_types.size() &&
+           port_types[port_idx] == VIVID_PORT_AUDIO_BUFFER;
+}
+
 int32_t detect_lane_id_port(const CompiledNode& cn) {
     auto li_it = cn.input_port_indices.find("lane_ids");
     if (li_it != cn.input_port_indices.end()) {
@@ -112,6 +123,64 @@ FrameLanePlan plan_frame_lane_strategy(const CompiledNode& cn) {
     }
 
     return plan;
+}
+
+uint8_t effective_audio_output_channels(
+    const CompiledNode& cn,
+    const AudioNodeState& a,
+    uint32_t output_port,
+    uint32_t max_loop_lanes) {
+    if (!is_audio_port(cn.output_port_types, output_port)) {
+        if (output_port < a.output_channel_counts.size())
+            return clamp_audio_width(a.output_channel_counts[output_port]);
+        return 1;
+    }
+
+    switch (a.execution_strategy) {
+        case LaneExecutionStrategy::InstancePerLane:
+            if (a.lane_lift_count > 0)
+                return clamp_audio_width(a.lane_lift_count);
+            break;
+        case LaneExecutionStrategy::LoopBased:
+            if (a.lane_lift_set_id != 0)
+                return clamp_audio_width(max_loop_lanes);
+            break;
+        case LaneExecutionStrategy::Scalar:
+            break;
+    }
+
+    if (output_port < a.output_channel_counts.size())
+        return clamp_audio_width(a.output_channel_counts[output_port]);
+    return 1;
+}
+
+uint8_t effective_audio_input_channels(
+    const CompiledNode& cn,
+    const AudioNodeState& a,
+    uint32_t input_port,
+    uint32_t max_loop_lanes) {
+    if (!is_audio_port(cn.input_port_types, input_port)) {
+        if (input_port < a.input_channel_counts.size())
+            return clamp_audio_width(a.input_channel_counts[input_port]);
+        return 1;
+    }
+
+    switch (a.execution_strategy) {
+        case LaneExecutionStrategy::InstancePerLane:
+            if (a.lane_lift_count > 0)
+                return clamp_audio_width(a.lane_lift_count);
+            break;
+        case LaneExecutionStrategy::LoopBased:
+            if (a.lane_lift_set_id != 0)
+                return clamp_audio_width(max_loop_lanes);
+            break;
+        case LaneExecutionStrategy::Scalar:
+            break;
+    }
+
+    if (input_port < a.input_channel_counts.size())
+        return clamp_audio_width(a.input_channel_counts[input_port]);
+    return 1;
 }
 
 BridgeKind parse_bridge_kind(const std::string& s) {

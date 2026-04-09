@@ -38,7 +38,7 @@ This directory contains the graph compiler and both execution engines. It transf
 
 3. **Pass 2.6 — Lane-set propagation.** Walks the graph in topo order propagating lane-set provenance through edges. Determines which nodes see multi-lane inputs and what their effective lane count is.
 
-4. **Pass 4 — Audio channel negotiation.** Four sub-passes: (a) explicit channel counts from descriptors, (b) propagation via audio Direct edges, (c) audio lane execution strategy via planner, (d) frame lane execution strategy via planner.
+4. **Pass 4 — Audio channel negotiation.** Five sub-passes: (a) explicit channel counts from descriptors, (b) propagation via audio Direct edges, (c) audio lane execution strategy via planner, (c.1) effective wire-width re-propagation for lane-expanded audio edges after strategy assignment, (d) frame lane execution strategy via planner.
 
 5. **Pass 5 — Audio buffer allocation.** Pre-allocates per-node planar audio buffers based on negotiated channel counts.
 

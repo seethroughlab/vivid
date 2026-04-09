@@ -4,13 +4,18 @@
 // into their internal graphs.
 
 #include "runtime/graph/subgraph_module.h"
+#include "runtime/graph/graph_compiler.h"
 #include "runtime/graph/graph.h"
+#include "runtime/operators/operator_registry.h"
+#include "runtime/operators/builtin_operators.h"
 #include "ui/graph/graph_snapshot.h"
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include "test_helpers.h"
 
 static ScopedTempDir* g_tmp = nullptr;
+static std::string g_build_dir = ".";
 
 // ---------------------------------------------------------------------------
 // Test JSON strings
@@ -65,6 +70,27 @@ static const char* kEffectsModule = R"({
     },
     "connections": [
         { "from": "filter/output", "to": "reverb/input" }
+    ]
+})";
+
+static const char* kAudioReduceModule = R"({
+    "schema_version": 2,
+    "module": {
+        "name": "AudioReduceModule",
+        "description": "Test module with an internal pointwise audio stage feeding a reduction stage.",
+        "category": "Test",
+        "ports": [
+            { "name": "output", "type": "audio", "direction": "output", "bind": "reduce/output" }
+        ]
+    },
+    "nodes": {
+        "src":    { "type": "MultiChannelDcSourceOp" },
+        "point":  { "type": "LaneMetadataAudioOp" },
+        "reduce": { "type": "AudioReduceOp" }
+    },
+    "connections": [
+        { "from": "src/output", "to": "point/input" },
+        { "from": "point/output", "to": "reduce/input" }
     ]
 })";
 
@@ -532,6 +558,82 @@ static void test_flatten_cross_instance_connection() {
     check(has_conn("fx1.__reverb", "output", "out", "input"),
           "fx output -> audio_out rewritten");
 
+}
+
+static void test_flatten_compile_preserves_audio_reduce_chain() {
+    std::fprintf(stderr, "\n--- flatten+compile: internal pointwise audio survives into reduction ---\n");
+
+    vivid::SubgraphModuleRegistry registry;
+    std::string module_path = (g_tmp->path / "audio_reduce_module.vivid-module.json").string();
+    {
+        FILE* f = std::fopen(module_path.c_str(), "w");
+        std::fputs(kAudioReduceModule, f);
+        std::fclose(f);
+    }
+    check(registry.load(module_path), "audio reduce module loads");
+
+    const std::string staging = g_build_dir + "/.test_subgraph_audio_reduce_staging";
+    std::filesystem::remove_all(staging);
+    std::filesystem::create_directories(staging);
+    auto stage = [&](const char* name) {
+        const std::string src = g_build_dir + "/" + name;
+        const std::string dst = staging + "/" + name;
+        if (std::filesystem::exists(src))
+            std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing);
+    };
+    stage("multi_channel_dc_source_op.dylib");
+    stage("lane_metadata_audio_op.dylib");
+    stage("audio_reduce_op.dylib");
+
+    vivid::OperatorRegistry op_registry;
+    register_builtin_operators(op_registry);
+    op_registry.scan_deferred(staging.c_str());
+
+    vivid::Graph parent;
+    parent.add_node("mod", "AudioReduceModule", {});
+    parent.add_node("out", "audio_out", {});
+    parent.add_connection("mod", "output", "out", "input");
+
+    auto flattened = vivid::flatten_subgraphs(parent, registry);
+    auto* flat_point = flattened.graph.find_node("mod.__point");
+    auto* flat_reduce = flattened.graph.find_node("mod.__reduce");
+    check(flat_point != nullptr, "flattened pointwise node exists");
+    check(flat_reduce != nullptr, "flattened reduction node exists");
+
+    vivid::GraphCompiler::Options opts;
+    opts.max_loop_lanes = 4;
+    auto cg = vivid::GraphCompiler::compile(flattened.graph, op_registry, opts);
+    check(cg != nullptr, "flattened graph compiles");
+    if (cg) {
+        const vivid::CompiledEdge* point_to_reduce = nullptr;
+        const vivid::CompiledEdge* reduce_to_out = nullptr;
+        for (const auto& e : cg->edges) {
+            const auto& from = cg->nodes[e.from_node];
+            const auto& to = cg->nodes[e.to_node];
+            if (from.node_id == "mod.__point" && to.node_id == "mod.__reduce")
+                point_to_reduce = &e;
+            if (from.node_id == "mod.__reduce" && to.node_id == "out")
+                reduce_to_out = &e;
+        }
+
+        check(point_to_reduce != nullptr, "flattened point -> reduce edge exists");
+        if (point_to_reduce) {
+            check(point_to_reduce->transport == vivid::EdgeTransport::Direct,
+                  "flattened point -> reduce edge stays direct");
+            check(point_to_reduce->from_channels == 4,
+                  "flattened point -> reduce preserves source width");
+            check(point_to_reduce->to_channels == 4,
+                  "flattened point -> reduce preserves reduction input width");
+        }
+
+        check(reduce_to_out != nullptr, "flattened reduce -> out edge exists");
+        if (reduce_to_out) {
+            check(reduce_to_out->from_channels == 1, "flattened reduce output stays mono");
+            check(reduce_to_out->to_channels == 1, "flattened module boundary stays mono");
+        }
+    }
+
+    std::filesystem::remove_all(staging);
 }
 
 // ---------------------------------------------------------------------------
@@ -1631,7 +1733,8 @@ static void test_performance_metadata_in_operator_info() {
 // main
 // ---------------------------------------------------------------------------
 
-int main() {
+int main(int argc, char* argv[]) {
+    if (argc > 1) g_build_dir = argv[1];
     ScopedTempDir tmp("subgraph");
     g_tmp = &tmp;
     std::fprintf(stderr, "=== test_subgraph_module ===\n");
@@ -1647,6 +1750,7 @@ int main() {
     test_flatten_midi_mapping_remap();
     test_flatten_variation_remap();
     test_flatten_cross_instance_connection();
+    test_flatten_compile_preserves_audio_reduce_chain();
     test_parse_param_metadata();
     test_parse_param_metadata_absent();
     test_make_operator_info_with_metadata();

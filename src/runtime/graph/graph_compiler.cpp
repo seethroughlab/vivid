@@ -704,6 +704,52 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         }
     }
 
+    // Pass 4c.1: Re-propagate effective wire width after lane execution planning.
+    //
+    // InstancePerLane and LoopBased nodes process one lane at a time internally,
+    // but their direct audio edges still represent a multi-lane stream on the
+    // wire. Rebuild auto-channel counts from that effective wire width so
+    // downstream reduction consumers (for example VoiceMixer) see the full lane
+    // bundle instead of the mono-per-lane processing width.
+    for (uint32_t idx : cg->audio_order) {
+        auto& cn = cg->nodes[idx];
+        auto& a = *cn.audio;
+
+        for (uint32_t p = 0; p < cn.output_port_count; ++p) {
+            if (p < a.descriptor_output_channels.size() &&
+                a.descriptor_output_channels[p] == 0 &&
+                p < cn.output_port_types.size() &&
+                cn.output_port_types[p] == VIVID_PORT_AUDIO_BUFFER) {
+                uint8_t max_in = 1;
+                for (uint32_t ip = 0; ip < cn.input_port_count; ++ip) {
+                    if (a.input_channel_counts[ip] > max_in)
+                        max_in = a.input_channel_counts[ip];
+                }
+                a.output_channel_counts[p] = max_in;
+            }
+        }
+
+        for (const auto& e : cg->edges) {
+            if (e.from_node != idx || e.transport != EdgeTransport::Direct ||
+                e.targets_param || cg->nodes[e.to_node].active_cadence != Cadence::Audio) {
+                continue;
+            }
+
+            auto& to_cn = cg->nodes[e.to_node];
+            if (!to_cn.audio) continue;
+            auto& to_a = *to_cn.audio;
+
+            uint8_t src_ch = graph_compiler_internal::effective_audio_output_channels(
+                cn, a, e.from_port, options.max_loop_lanes);
+            if (e.to_port < to_a.input_channel_counts.size() &&
+                e.to_port < to_a.descriptor_input_channels.size() &&
+                to_a.descriptor_input_channels[e.to_port] == 0 &&
+                src_ch > to_a.input_channel_counts[e.to_port]) {
+                to_a.input_channel_counts[e.to_port] = src_ch;
+            }
+        }
+    }
+
     // Pass 4d: Apply frame lane execution strategy via planner.
     for (uint32_t idx : cg->frame_order) {
         auto& cn = cg->nodes[idx];
@@ -722,6 +768,18 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
     for (uint32_t idx : cg->audio_order) {
         auto& cn = cg->nodes[idx];
         auto& a = *cn.audio;
+
+        for (uint32_t p = 0; p < cn.input_port_count; ++p) {
+            a.debug_input_channel_counts[p] =
+                graph_compiler_internal::effective_audio_input_channels(
+                    cn, a, p, options.max_loop_lanes);
+        }
+        for (uint32_t p = 0; p < cn.output_port_count; ++p) {
+            a.debug_output_channel_counts[p] =
+                graph_compiler_internal::effective_audio_output_channels(
+                    cn, a, p, options.max_loop_lanes);
+        }
+
         uint32_t bs = options.audio_buffer_size;
 
         if (a.execution_strategy == LaneExecutionStrategy::InstancePerLane) {
@@ -761,36 +819,12 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         auto& from_a = *cg->nodes[e.from_node].audio;
         auto& to_cn = cg->nodes[e.to_node];
 
-        if (from_a.lane_lift_count > 0) {
-            // Lane-lifted: trace back to find upstream channel count
-            uint8_t ch = 1;
-            for (const auto& ue : cg->edges) {
-                if (ue.to_node == e.from_node && ue.transport == EdgeTransport::Direct && !ue.targets_param) {
-                    uint8_t src_ch = 1;
-                    auto& ue_from_a = cg->nodes[ue.from_node].audio;
-                    if (ue_from_a && ue.from_port < ue_from_a->output_channel_counts.size())
-                        src_ch = ue_from_a->output_channel_counts[ue.from_port];
-                    if (src_ch > ch) ch = src_ch;
-                }
-            }
-            e.from_channels = ch;
-        } else if (e.from_port < from_a.output_channel_counts.size()) {
-            e.from_channels = from_a.output_channel_counts[e.from_port];
-        }
+        e.from_channels = graph_compiler_internal::effective_audio_output_channels(
+            cg->nodes[e.from_node], from_a, e.from_port, options.max_loop_lanes);
 
-        if (to_cn.audio && to_cn.audio->lane_lift_count > 0) {
-            e.to_channels = e.from_channels;  // lane-lifted: matches source
-        } else if (to_cn.audio && e.to_port < to_cn.audio->input_channel_counts.size()) {
-            e.to_channels = to_cn.audio->input_channel_counts[e.to_port];
-        }
-
-        // LoopBased → LoopBased: route the full multi-lane buffer so per-lane
-        // audio data propagates between chained LoopBased operators.
-        if (from_a.execution_strategy == LaneExecutionStrategy::LoopBased &&
-            to_cn.audio && to_cn.audio->execution_strategy == LaneExecutionStrategy::LoopBased) {
-            uint8_t ml = static_cast<uint8_t>(options.max_loop_lanes);
-            e.from_channels = ml;
-            e.to_channels = ml;
+        if (to_cn.audio) {
+            e.to_channels = graph_compiler_internal::effective_audio_input_channels(
+                to_cn, *to_cn.audio, e.to_port, options.max_loop_lanes);
         }
     }
 

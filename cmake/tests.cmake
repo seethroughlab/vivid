@@ -134,6 +134,7 @@ add_vivid_operator(multi_channel_dc_source_op tests/operators/multi_channel_dc_s
 add_vivid_operator(dc_per_lane_op            tests/operators/dc_per_lane_op.cpp)
 add_vivid_operator(lane_frame_op             tests/operators/lane_frame_op.cpp)
 add_vivid_operator(audio_lane_op    tests/operators/audio_lane_op.cpp)
+add_vivid_operator(audio_reduce_op  tests/operators/audio_reduce_op.cpp)
 add_vivid_operator(scalar_source_op  tests/operators/scalar_source_op.cpp)
 add_vivid_operator(dual_lane_sink_op tests/operators/dual_lane_sink_op.cpp)
 add_vivid_operator(gpu_fill_op      tests/operators/gpu_fill_op.cpp EXTRA_LIBS webgpu)

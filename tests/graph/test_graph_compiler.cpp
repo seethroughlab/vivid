@@ -7,6 +7,7 @@
 
 #include "runtime/graph/graph_compiler.h"
 #include "runtime/operators/operator_registry.h"
+#include "runtime/operators/builtin_operators.h"
 #include "runtime/graph/graph.h"
 #include "runtime/graph/lane_types.h"
 #include <cstdio>
@@ -544,6 +545,100 @@ static void test_loop_based_strategy(const std::string& build_dir) {
 }
 
 // ---------------------------------------------------------------------------
+// Test: Lane-expanded audio width survives pointwise stage into reduction node
+// ---------------------------------------------------------------------------
+
+static void test_reduction_preserves_lane_expanded_width(const std::string& build_dir) {
+    std::fprintf(stderr, "\n--- compile: lane-expanded audio survives into reduction ---\n");
+
+    const std::string staging = build_dir + "/.test_audio_reduce_width_staging";
+    std::filesystem::remove_all(staging);
+    std::filesystem::create_directories(staging);
+
+    auto stage = [&](const char* name) {
+        std::string src = build_dir + "/" + name;
+        std::string dst = staging + "/" + name;
+        if (std::filesystem::exists(src))
+            std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing);
+    };
+    stage("lane_source_op.dylib");
+    stage("dc_per_lane_op.dylib");
+    stage("audio_reduce_op.dylib");
+
+    vivid::OperatorRegistry registry;
+    register_builtin_operators(registry);
+    registry.scan_deferred(staging.c_str());
+
+    vivid::Graph g;
+    g.load_from_string(R"({
+        "nodes": {
+            "src":    { "type": "LaneSourceOp", "params": { "count": 4 } },
+            "dc":     { "type": "DcPerLaneOp" },
+            "reduce": { "type": "AudioReduceOp" },
+            "out":    { "type": "audio_out" }
+        },
+        "connections": [
+            { "from": "src/out", "to": "dc/lanes", "bridge": "hold" },
+            { "from": "dc/output", "to": "reduce/input" },
+            { "from": "reduce/output", "to": "out/input" }
+        ]
+    })");
+
+    vivid::GraphCompiler::Options opts;
+    opts.max_loop_lanes = 4;
+    auto cg = vivid::GraphCompiler::compile(g, registry, opts);
+    check(cg != nullptr, "compiles with lane source -> pointwise -> reduction");
+    if (!cg) {
+        std::filesystem::remove_all(staging);
+        return;
+    }
+
+    auto* dc = cg->find_node("dc");
+    auto* reduce = cg->find_node("reduce");
+    auto* out = cg->find_node("out");
+    check(dc != nullptr, "DcPerLaneOp node found");
+    check(reduce != nullptr, "AudioReduceOp node found");
+    check(out != nullptr, "audio_out node found");
+
+    if (dc && dc->audio) {
+        check(dc->audio->execution_strategy == vivid::LaneExecutionStrategy::LoopBased,
+              "DcPerLaneOp assigned LoopBased strategy");
+    }
+
+    const vivid::CompiledEdge* dc_to_reduce = nullptr;
+    const vivid::CompiledEdge* reduce_to_out = nullptr;
+    for (const auto& e : cg->edges) {
+        const auto& from = cg->nodes[e.from_node];
+        const auto& to = cg->nodes[e.to_node];
+        if (from.node_id == "dc" && to.node_id == "reduce")
+            dc_to_reduce = &e;
+        if (from.node_id == "reduce" && to.node_id == "out")
+            reduce_to_out = &e;
+    }
+
+    check(dc_to_reduce != nullptr, "dc -> reduce edge exists");
+    if (dc_to_reduce) {
+        check(dc_to_reduce->transport == vivid::EdgeTransport::Direct,
+              "dc -> reduce edge stays direct");
+        check(dc_to_reduce->from_channels == 4, "dc -> reduce preserves source width");
+        check(dc_to_reduce->to_channels == 4, "dc -> reduce preserves reduction input width");
+    }
+
+    check(reduce_to_out != nullptr, "reduce -> out edge exists");
+    if (reduce_to_out) {
+        check(reduce_to_out->from_channels == 1, "reduce output is mono");
+        check(reduce_to_out->to_channels == 1, "audio_out sees mono reduced signal");
+    }
+
+    if (reduce && reduce->audio) {
+        check(reduce->audio->input_channel_counts[0] == 4,
+              "AudioReduceOp input channel count widened to lane-expanded width");
+    }
+
+    std::filesystem::remove_all(staging);
+}
+
+// ---------------------------------------------------------------------------
 // Test: Same-cadence edge without bridge compiles normally
 // ---------------------------------------------------------------------------
 
@@ -760,6 +855,7 @@ int main(int argc, char* argv[]) {
     test_lane_mismatch_fails(build_dir);
     test_audio_lane_lift_from_lane_input(build_dir);
     test_loop_based_strategy(build_dir);
+    test_reduction_preserves_lane_expanded_width(build_dir);
     test_bridge_same_cadence_no_bridge();
     test_bridge_same_cadence_with_bridge_rejected();
     test_bridge_kind_unknown_warns();

@@ -34,6 +34,18 @@ AudioLanePlan plan_audio_lane_strategy(
 
 FrameLanePlan plan_frame_lane_strategy(const CompiledNode& cn);
 
+uint8_t effective_audio_output_channels(
+    const CompiledNode& cn,
+    const AudioNodeState& a,
+    uint32_t output_port,
+    uint32_t max_loop_lanes);
+
+uint8_t effective_audio_input_channels(
+    const CompiledNode& cn,
+    const AudioNodeState& a,
+    uint32_t input_port,
+    uint32_t max_loop_lanes);
+
 BridgeKind parse_bridge_kind(const std::string& s);
 float remap_to_scale(const ConnectionDef& c);
 void warm_up_instance_assets(CompiledNode& cn);

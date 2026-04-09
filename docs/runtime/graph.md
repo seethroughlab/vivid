@@ -208,3 +208,14 @@ Canonical lane values live in `CompiledNode::input_lane_refs` / `output_lane_ref
 GPU lane promotion: `plan_gpu_lane_promotion()` conservatively promotes lane arrays feeding GPU consumers above `kGpuLanePromotionThreshold` (256) to GPU storage-buffer backing, with lazy CPU→GPU upload cached per frame.
 
 Allocation policy: `CompiledGraph::max_lane_elements` (default 16,777,216) is the hard guard. `kDefaultLaneCapacity` (1024) is the default initial buffer size; frame-thread builders can grow beyond this up to `max_lane_elements`.
+
+## Audio Lane Width Negotiation
+
+Audio compilation tracks two related but different notions of width:
+
+- `input_channel_counts` / `output_channel_counts` describe how many channels an operator instance processes on a given port.
+- direct audio edges also carry an effective wire width that can remain lane-expanded even when the upstream node processes one lane at a time internally.
+
+This distinction matters for lane-aware audio chains. `InstancePerLane` and `LoopBased` audio nodes execute with mono per-lane buffers, but a direct edge leaving those nodes can still semantically represent one audio stream per upstream lane. During Pass 4, the compiler re-propagates that effective wire width after lane execution planning so downstream reduction consumers receive the full lane-expanded bundle on their inputs instead of collapsing back to descriptor default mono.
+
+In practice, this is what lets compiled module-internal chains like pointwise lane-aware audio → reduction mixer preserve per-voice audio through flattening and route it correctly into the reducer.
