@@ -436,6 +436,66 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         snap.audio_node_count = audio_engine->node_count();
     }
 
+    struct AudioHotNodeRow {
+        std::string node_id;
+        std::string type_name;
+        uint32_t last_block_total_us = 0;
+        uint32_t last_process_us = 0;
+        uint32_t ema_block_us = 0;
+        float last_block_budget_pct = 0.0f;
+        uint32_t last_lane_count = 0;
+        uint32_t lane_state_entries = 0;
+    };
+    std::vector<AudioHotNodeRow> audio_rows;
+    audio_rows.reserve(cg->audio_order.size());
+    for (uint32_t idx : cg->audio_order) {
+        const auto& ns = compiled_nodes[idx];
+        if (!ns.audio) continue;
+        auto dbg = read_audio_node_debug(*ns.audio);
+        if (!dbg.valid) continue;
+        audio_rows.push_back({
+            ns.node_id,
+            ns.type_name,
+            dbg.last_block_total_us,
+            dbg.last_process_us,
+            dbg.ema_block_us,
+            dbg.last_block_budget_pct,
+            dbg.last_lane_count,
+            dbg.lane_state_entries,
+        });
+    }
+    auto copy_row = [](const AudioHotNodeRow& row) {
+        vivid::ui::AudioHotNodeSnapshot snap_row;
+        snap_row.node_id = row.node_id;
+        snap_row.type_name = row.type_name;
+        snap_row.last_block_total_us = row.last_block_total_us;
+        snap_row.last_process_us = row.last_process_us;
+        snap_row.ema_block_us = row.ema_block_us;
+        snap_row.last_block_budget_pct = row.last_block_budget_pct;
+        snap_row.last_lane_count = row.last_lane_count;
+        snap_row.lane_state_entries = row.lane_state_entries;
+        return snap_row;
+    };
+    auto by_hotness = audio_rows;
+    std::sort(by_hotness.begin(), by_hotness.end(), [](const AudioHotNodeRow& a,
+                                                       const AudioHotNodeRow& b) {
+        if (a.ema_block_us != b.ema_block_us) return a.ema_block_us > b.ema_block_us;
+        if (a.last_block_total_us != b.last_block_total_us) return a.last_block_total_us > b.last_block_total_us;
+        return a.node_id < b.node_id;
+    });
+    for (size_t i = 0; i < by_hotness.size() && i < 5; ++i)
+        snap.audio_top_nodes.push_back(copy_row(by_hotness[i]));
+
+    auto by_lane_state = audio_rows;
+    std::sort(by_lane_state.begin(), by_lane_state.end(), [](const AudioHotNodeRow& a,
+                                                             const AudioHotNodeRow& b) {
+        if (a.lane_state_entries != b.lane_state_entries) return a.lane_state_entries > b.lane_state_entries;
+        if (a.last_lane_count != b.last_lane_count) return a.last_lane_count > b.last_lane_count;
+        return a.node_id < b.node_id;
+    });
+    for (size_t i = 0; i < by_lane_state.size() && i < 5; ++i)
+        snap.audio_top_lane_state_nodes.push_back(copy_row(by_lane_state[i]));
+
     // Operator catalog
     snap.operator_types = registry.type_names();
     // Include subgraph module types in the catalog

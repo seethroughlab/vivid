@@ -196,6 +196,17 @@ struct AudioNodeAnalysis {
     std::array<float, kWaveformSamples> waveform{};
 };
 
+struct AudioHotNodeSnapshot {
+    std::string node_id;
+    std::string type_name;
+    uint32_t last_block_total_us = 0;
+    uint32_t last_process_us = 0;
+    uint32_t ema_block_us = 0;
+    float last_block_budget_pct = 0.0f;
+    uint32_t last_lane_count = 0;
+    uint32_t lane_state_entries = 0;
+};
+
 // Variation info for UI
 struct VariationInfo {
     std::string name;
@@ -227,6 +238,8 @@ struct GraphSnapshot {
     uint32_t audio_sample_rate = 0;
     uint32_t audio_buffer_size = 0;
     uint32_t audio_node_count = 0;
+    std::vector<AudioHotNodeSnapshot> audio_top_nodes;
+    std::vector<AudioHotNodeSnapshot> audio_top_lane_state_nodes;
 
     // MIDI mapping data
     std::vector<MidiMappingSnapshot> midi_mappings;

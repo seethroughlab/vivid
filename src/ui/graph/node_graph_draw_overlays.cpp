@@ -658,7 +658,7 @@ void NodeGraphUI::draw_diagnostics_panel(Renderer2D& tr) {
 
     float fw = static_cast<float>(win_w_);
     constexpr float kPanelW = 372.0f;
-    constexpr float kPanelH = 246.0f;
+    constexpr float kPanelH = 364.0f;
     const float pad = 10.0f;
     const float section_gap = 10.0f;
     const float col_gap = 14.0f;
@@ -708,6 +708,37 @@ void NodeGraphUI::draw_diagnostics_panel(Renderer2D& tr) {
         tr.draw_text(x, y, label, style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
         float value_w = tr.text_width(value);
         tr.draw_text(x + std::max(0.0f, w - value_w), y, value, vr, vg, vb);
+    };
+    auto draw_hot_list = [&](float x, float y, float w, const char* title,
+                             const std::vector<AudioHotNodeSnapshot>& items,
+                             bool lane_state_list) {
+        tr.draw_text(x, y, title, style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        y += line_h + 3.0f;
+        const float box_h = (line_h + 4.0f) * 3.0f + 8.0f;
+        tr.draw_rect(x, y, w, box_h, 0.04f, 0.05f, 0.06f, 0.85f);
+        if (items.empty()) {
+            tr.draw_text(x + 6.0f, y + 5.0f, T("none", "none"),
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+            return;
+        }
+        char metric[64];
+        size_t count = std::min<size_t>(3, items.size());
+        for (size_t i = 0; i < count; ++i) {
+            float row_top = y + 5.0f + static_cast<float>(i) * (line_h + 4.0f);
+            const auto& item = items[i];
+            tr.draw_text(x + 6.0f, row_top, item.node_id.c_str(),
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+            if (lane_state_list) {
+                std::snprintf(metric, sizeof(metric), "%u state / %u lanes",
+                              item.lane_state_entries, item.last_lane_count);
+            } else {
+                std::snprintf(metric, sizeof(metric), "%.1f%% / %uus",
+                              item.last_block_budget_pct, item.ema_block_us);
+            }
+            float metric_w = tr.text_width(metric);
+            tr.draw_text(x + std::max(6.0f, w - metric_w - 6.0f), row_top, metric,
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        }
     };
 
     char value[64];
@@ -776,6 +807,10 @@ void NodeGraphUI::draw_diagnostics_panel(Renderer2D& tr) {
                         memory_history_.write_idx, memory_history_.filled,
                         right_x, right_row_y, graph_w, graph_h,
                         kPerfMemColor[0], kPerfMemColor[1], kPerfMemColor[2], 0.72f);
+
+    float list_y = std::max(row_y + graph_h, right_row_y + graph_h) + section_gap;
+    draw_hot_list(left_x, list_y, col_w, T("hot_nodes", "Hot Nodes"), snap_.audio_top_nodes, false);
+    draw_hot_list(right_x, list_y, col_w, T("lane_state", "Lane State"), snap_.audio_top_lane_state_nodes, true);
 
     float mcp_y = ey + kPanelH - pad - (line_h + 8.0f) * 2.0f - 8.0f;
     tr.draw_rect(ex + pad, mcp_y - 4.0f, panel_w - pad * 2.0f, 1.0f, 0.20f, 0.22f, 0.25f, 0.8f);
