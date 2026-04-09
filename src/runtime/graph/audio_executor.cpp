@@ -437,6 +437,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                     ctx.time = node_time;
                     ctx.delta_time = static_cast<double>(chunk) / sample_rate_;
                     ctx.frame = audio_frame_ + frames_written;
+                    ctx.node_id = cn.node_id.c_str();
                     ctx.param_values = cn.param_values.data();
                     ctx.input_buffers = group.per_lane_in_ptrs[c].data();
                     ctx.output_buffers = group.per_lane_out_ptrs[c].data();
@@ -546,6 +547,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                         ctx.time = node_time;
                         ctx.delta_time = static_cast<double>(chunk) / sample_rate_;
                         ctx.frame = audio_frame_ + frames_written;
+                        ctx.node_id = cn.node_id.c_str();
                         ctx.param_values = cn.param_values.data();
                         ctx.input_buffers = loop_in_ptrs;
                         ctx.output_buffers = loop_out_ptrs;
@@ -613,6 +615,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 ctx.time = node_time;
                 ctx.delta_time = static_cast<double>(chunk) / sample_rate_;
                 ctx.frame = audio_frame_ + frames_written;
+                ctx.node_id = cn.node_id.c_str();
                 ctx.param_values = cn.param_values.data();
                 ctx.input_buffers = a.in_ptrs.data();
                 ctx.output_buffers = a.out_ptrs.data();

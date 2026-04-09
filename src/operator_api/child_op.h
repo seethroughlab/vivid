@@ -146,6 +146,7 @@ public:
             audio_ctx.time         = parent_ctx->time;
             audio_ctx.delta_time   = parent_ctx->delta_time;
             audio_ctx.frame        = parent_ctx->frame;
+            audio_ctx.node_id      = parent_ctx->node_id;
             audio_ctx.param_values = param_values_.data();
             audio_ctx.input_buffers  = audio_in_ptrs_.data();
             audio_ctx.output_buffers = audio_out_ptrs_.data();
@@ -180,6 +181,7 @@ public:
             child_ctx.time         = parent_ctx->time;
             child_ctx.delta_time   = parent_ctx->delta_time;
             child_ctx.frame        = parent_ctx->frame;
+            child_ctx.node_id      = parent_ctx->node_id;
             child_ctx.param_values = param_values_.data();
             child_ctx.input_values = input_values_.empty() ? nullptr : input_values_.data();
             child_ctx.output_values = output_values_.empty() ? nullptr : output_values_.data();
@@ -218,6 +220,7 @@ public:
             child_ctx.time              = parent_ctx->time;
             child_ctx.delta_time        = parent_ctx->delta_time;
             child_ctx.frame             = parent_ctx->frame;
+            child_ctx.node_id           = parent_ctx->node_id;
             child_ctx.param_values      = param_values_.data();
             child_ctx.input_buffers     = audio_in_ptrs_.data();
             child_ctx.output_buffers    = audio_out_ptrs_.data();
@@ -252,6 +255,7 @@ public:
             child_ctx.time         = parent_ctx->time;
             child_ctx.delta_time   = parent_ctx->delta_time;
             child_ctx.frame        = parent_ctx->frame;
+            child_ctx.node_id      = parent_ctx->node_id;
             child_ctx.param_values = param_values_.data();
             child_ctx.input_values = input_values_.empty() ? nullptr : input_values_.data();
             child_ctx.output_values = output_values_.empty() ? nullptr : output_values_.data();

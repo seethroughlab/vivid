@@ -304,6 +304,7 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
             gpu_ctx.time          = time;
             gpu_ctx.delta_time    = delta_time;
             gpu_ctx.frame         = frame;
+            gpu_ctx.node_id       = cn.node_id.c_str();
             gpu_ctx.param_values  = cn.param_values.data();
             gpu_ctx.input_values     = cn.input_values.data();
             gpu_ctx.output_values    = cn.output_values.data();
@@ -529,6 +530,7 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
                 ctx.time = time;
                 ctx.delta_time = delta_time;
                 ctx.frame = frame;
+                ctx.node_id = cn.node_id.c_str();
                 ctx.param_values = cn.param_values.data();
                 ctx.input_values = lane_input_values.data();
                 ctx.output_values = lane_output_values.data();
@@ -592,6 +594,7 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
             ctx.time = time;
             ctx.delta_time = delta_time;
             ctx.frame = frame;
+            ctx.node_id = cn.node_id.c_str();
             ctx.param_values = cn.param_values.data();
             ctx.input_values = cn.input_values.data();
             ctx.output_values = cn.output_values.data();

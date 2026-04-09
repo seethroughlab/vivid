@@ -21,6 +21,7 @@ struct VividGpuContext {
     double    time;
     double    delta_time;
     uint64_t  frame;
+    const char* node_id;
     float*    param_values;
     float*    input_values;
     float*    output_values;

@@ -93,6 +93,14 @@ CPU-side first-use setup. The graph compiler calls it after the node's graph par
 string/file-param values have been synchronized into the instance, both during normal
 compile and hot-reload instance recreation.
 
+## Process Context Identity
+
+`VividFrameContext`, `VividAudioContext`, and `VividGpuContext` all carry a `node_id`
+pointer populated from the compiled graph node's stable string id. This is part of the
+operator ABI and is intended for operator-owned subsystems that need a stable per-instance
+identity without introducing runtime-managed services. The pointer is read-only and valid
+for the duration of the process callback.
+
 Use it for:
 
 - lookup-table generation

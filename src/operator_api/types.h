@@ -8,7 +8,7 @@ extern "C" {
 
 /* Bump when operator-facing C ABI changes in incompatible ways.
    Catches stale dylibs during hot-reload — not a cross-version compatibility promise. */
-#define VIVID_OPERATOR_ABI_VERSION 10u
+#define VIVID_OPERATOR_ABI_VERSION 11u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -222,6 +222,7 @@ typedef struct VividAudioContext {
     double    time;
     double    delta_time;
     uint64_t  frame;
+    const char* node_id;
     float*    param_values;
     // Audio-specific
     float**   input_buffers;    // [port_idx][sample] — planar multi-channel: ch c at [c * buffer_size]
@@ -283,6 +284,7 @@ typedef struct VividFrameContext {
     double    time;
     double    delta_time;
     uint64_t  frame;
+    const char* node_id;
     float*    param_values;   // indexed by param descriptor order
     float*    input_values;   // indexed by input port order (VIVID_PORT_INPUT only)
     float*    output_values;  // indexed by output port order (VIVID_PORT_OUTPUT only)
