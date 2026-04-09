@@ -167,6 +167,33 @@ static void test_source_change_resets_exhausted_budget() {
     check(d_after.type == CorrectionType::Seek, "budget_reset: Seek after source change");
 }
 
+static void test_same_path_sessions_stay_independent() {
+    auto& reg = PlaybackSessionRegistry::instance();
+    auto video = reg.acquire("movie_video", "/tmp/shared.mp4");
+    auto audio = reg.acquire("movie_audio", "/tmp/shared.mp4");
+
+    check(video.get() != audio.get(), "session_isolation: same path yields distinct sessions");
+
+    video->transport().set_source(10.0);
+    audio->transport().set_source(10.0);
+    video->transport().set_speed(0.5f);
+    audio->transport().set_speed(1.5f);
+    video->transport().set_play_mode(PlayMode::HoldLast);
+    audio->transport().set_play_mode(PlayMode::Loop);
+
+    check(std::abs(video->transport().speed() - 0.5f) < kEps,
+          "session_isolation: video speed remains independent");
+    check(std::abs(audio->transport().speed() - 1.5f) < kEps,
+          "session_isolation: audio speed remains independent");
+    check(video->transport().play_mode() == PlayMode::HoldLast,
+          "session_isolation: video play mode remains independent");
+    check(audio->transport().play_mode() == PlayMode::Loop,
+          "session_isolation: audio play mode remains independent");
+
+    reg.release("movie_video");
+    reg.release("movie_audio");
+}
+
 // ============================================================================
 
 int main() {
@@ -179,6 +206,7 @@ int main() {
     test_source_change_resets_all();
     test_source_change_during_worker_flushes();
     test_source_change_resets_exhausted_budget();
+    test_same_path_sessions_stay_independent();
 
     std::fprintf(stderr, "\n========================================\n");
     std::fprintf(stderr, "Playback mode tests: %d failed\n", failures);

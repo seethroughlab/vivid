@@ -175,7 +175,7 @@ struct MovieFileIn : vivid::OperatorBase, vivid::GpuProcessable {
             decode_worker_.reset();
         }
         if (session_) {
-            PlaybackSessionRegistry::instance().release(session_->source_path());
+            PlaybackSessionRegistry::instance().release(operator_id_);
             session_.reset();
         }
         decoder_.reset();
@@ -228,7 +228,7 @@ struct MovieFileIn : vivid::OperatorBase, vivid::GpuProcessable {
 
         if (effective_path != last_path_) {
             last_path_ = effective_path;
-            on_source_changed();
+            on_source_changed(ctx->node_id);
             if (is_video_extension(last_path_)) {
                 request_video_load(last_path_, wgpuDeviceHasFeature(ctx->device,
                     WGPUFeatureName_TextureCompressionBC));
@@ -563,15 +563,18 @@ private:
 
     // ---- Source tracking -------------------------------------------------------
 
-    void on_source_changed() {
+    void on_source_changed(const char* node_id) {
         if (decode_worker_) decode_worker_->flush();
         last_decoded_frame_.clear();
+        if (node_id && *node_id) {
+            operator_id_ = node_id;
+        }
         if (session_) {
-            PlaybackSessionRegistry::instance().release(session_->source_path());
+            PlaybackSessionRegistry::instance().release(operator_id_);
             session_.reset();
         }
-        if (!last_path_.empty()) {
-            session_ = PlaybackSessionRegistry::instance().acquire(last_path_);
+        if (!operator_id_.empty() && !last_path_.empty()) {
+            session_ = PlaybackSessionRegistry::instance().acquire(operator_id_, last_path_);
         }
         video_stats_.reset();
     }
@@ -694,6 +697,7 @@ private:
     bool frame_uploaded_ = false;
     MovieVideoStats video_stats_{};
     std::shared_ptr<PlaybackSession> session_;
+    std::string operator_id_;
     std::unique_ptr<VideoDecodeWorker> decode_worker_;
     DecodedFrame last_decoded_frame_;
 

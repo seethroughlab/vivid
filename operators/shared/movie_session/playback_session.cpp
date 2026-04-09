@@ -1,9 +1,13 @@
 #include "playback_session.h"
 
-PlaybackSession::PlaybackSession(const std::string& source_path)
-    : source_path_(source_path) {}
+#include <utility>
 
+PlaybackSession::PlaybackSession(std::string operator_id, std::string source_path)
+    : operator_id_(std::move(operator_id)), source_path_(std::move(source_path)) {}
+
+const std::string& PlaybackSession::operator_id() const { return operator_id_; }
 const std::string& PlaybackSession::source_path() const { return source_path_; }
+void PlaybackSession::set_source_path(std::string source_path) { source_path_ = std::move(source_path); }
 MovieTransport& PlaybackSession::transport() { return transport_; }
 const MovieTransport& PlaybackSession::transport() const { return transport_; }
 

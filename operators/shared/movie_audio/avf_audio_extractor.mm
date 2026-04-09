@@ -39,7 +39,6 @@ struct AVFAudioExtractor::Impl {
 
     static constexpr uint32_t kRenderFrameCount  = 4096;
     static constexpr uint32_t kTimePitchLatency  = 4096;
-
     // Residual buffer: TimePitch may produce more frames than the caller wants
     // in a single render pass. We store the leftovers here.
     float residual_left[kRenderFrameCount];
@@ -431,7 +430,6 @@ struct AVFAudioExtractor::Impl {
         if (pitch_preserve_ == preserve) return;
         pitch_preserve_ = preserve;
         if (!opened || !has_audio_track) return;
-
         @autoreleasepool {
             if (preserve && !engine) {
                 setup_engine();

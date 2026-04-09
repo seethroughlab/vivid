@@ -359,6 +359,8 @@ struct MovieFileAudio : vivid::OperatorBase, vivid::AudioProcessable {
     // ---- Audio thread (real-time callback) ----------------------------------
 
     void process_audio(const VividAudioContext* ctx) override {
+        ensure_session(ctx->node_id);
+
         float* L = ctx->output_buffers[0];
         float* R = ctx->output_buffers[0] + ctx->buffer_size; // planar channel 1
         const uint32_t n = ctx->buffer_size;
@@ -450,7 +452,7 @@ struct MovieFileAudio : vivid::OperatorBase, vivid::AudioProcessable {
     ~MovieFileAudio() override {
         fill_thread_.stop();
         if (session_) {
-            PlaybackSessionRegistry::instance().release(session_->source_path());
+            PlaybackSessionRegistry::instance().release(operator_id_);
             session_.reset();
         }
         delete deferred_delete_;
@@ -470,7 +472,7 @@ private:
         audio_stats_.reset();
 
         if (session_) {
-            PlaybackSessionRegistry::instance().release(session_->source_path());
+            PlaybackSessionRegistry::instance().release(operator_id_);
             session_.reset();
         }
 
@@ -489,7 +491,6 @@ private:
         ring_->preroll_ready.store(0, std::memory_order_release);
 
         if (!last_path_.empty()) {
-            session_ = PlaybackSessionRegistry::instance().acquire(last_path_);
             auto result = std::make_shared<AsyncAudioLoad>();
             pending_load_ = result;
             std::string path = last_path_;
@@ -508,8 +509,25 @@ private:
         }
     }
 
+    void ensure_session(const char* node_id) {
+        if (!node_id || !*node_id) return;
+        if (operator_id_ == node_id && session_) return;
+        if (session_) {
+            PlaybackSessionRegistry::instance().release(operator_id_);
+            session_.reset();
+        }
+        operator_id_ = node_id;
+        if (last_path_.empty()) return;
+        session_ = PlaybackSessionRegistry::instance().acquire(operator_id_, last_path_);
+        auto* ext = extractor_.load(std::memory_order_acquire);
+        if (ext && ext->is_open()) {
+            session_->transport().set_source(static_cast<double>(ext->duration()));
+        }
+    }
+
     MovieAudioStats audio_stats_{};
     std::shared_ptr<PlaybackSession> session_;
+    std::string operator_id_;
     std::unique_ptr<AudioRing> ring_ = std::make_unique<AudioRing>();
     FillThread fill_thread_;
     bool fill_thread_started_ = false;
