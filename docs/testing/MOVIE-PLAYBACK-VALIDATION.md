@@ -2,6 +2,8 @@
 
 Manual test checklist for the movie playback system. Covers the full validation matrix from `docs/plans/movie-playback-implementation.md`.
 
+For release certification, use this together with [MOVIE-PLAYBACK-GO-NO-GO.md](MOVIE-PLAYBACK-GO-NO-GO.md) and the machine-readable runtime gate in [movie-playback-runtime-gate.json](movie-playback-runtime-gate.json).
+
 ## Prerequisites
 
 - At least one H.264/HEVC `.mp4` or `.mov` file with audio
@@ -140,6 +142,13 @@ Manual test checklist for the movie playback system. Covers the full validation 
 - Set file param to empty, run diagnostics again
 - **Pass:** `movie_file_path_empty` warning appears
 
+### 6.4 Runtime Gate Payload
+- Load `mfi_av_sync_demo.json`
+- Let playback stabilize
+- Run `validate_checks` / `run_checks` with [movie-playback-runtime-gate.json](movie-playback-runtime-gate.json)
+- **Pass:** all checks pass with no critical failures
+- **Fail:** any runtime gate check fails
+
 ## Acceptance Criteria
 
 All of the following must be true:
@@ -152,3 +161,4 @@ All of the following must be true:
 - [ ] Playback quality does not materially degrade when the output window is open
 - [ ] Instrumentation can explain late frames, reused frames, and correction events
 - [ ] The public MovieFileIn + MovieFileAudio graph surface remains intact
+- [ ] The runtime gate in [movie-playback-runtime-gate.json](movie-playback-runtime-gate.json) passes on the healthy AV-sync demo graph
