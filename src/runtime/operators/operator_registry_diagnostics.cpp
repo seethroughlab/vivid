@@ -60,4 +60,31 @@ void OperatorRegistry::record_loader_failure(const std::string& plugin_path,
     }
 }
 
+void OperatorRegistry::clear_diagnostics_for_dir(const std::string& directory) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::path dir = fs::weakly_canonical(fs::path(directory), ec);
+    if (ec) dir = fs::path(directory).lexically_normal();
+    const std::string dir_s = dir.string();
+    const std::string dir_prefix = dir_s.empty() ? dir_s : (dir_s + "/");
+
+    auto erase_matching = [&](auto& map) {
+        for (auto it = map.begin(); it != map.end(); ) {
+            fs::path plugin = fs::weakly_canonical(fs::path(it->first), ec);
+            if (ec) {
+                ec.clear();
+                plugin = fs::path(it->first).lexically_normal();
+            }
+            const std::string plugin_s = plugin.string();
+            const bool in_dir = plugin_s == dir_s || plugin_s.rfind(dir_prefix, 0) == 0;
+            if (in_dir)
+                it = map.erase(it);
+            else
+                ++it;
+        }
+    };
+    erase_matching(abi_mismatch_by_path_);
+    erase_matching(loader_failure_by_path_);
+}
+
 } // namespace vivid

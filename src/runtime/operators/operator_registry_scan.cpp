@@ -363,6 +363,7 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
             return;
         }
         abi_mismatch_by_path_.erase(path);
+        loader_failure_by_path_.erase(path);
 
         std::string type_name = desc->name;
         if (loaders_.count(type_name)) {

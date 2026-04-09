@@ -364,6 +364,7 @@ InstallResult PackageManager::rebuild(const std::string& name) {
         build_root = pkg_dir;
     std::string build_dir = build_root + "/build";
     registry_.clear_deferred_probe_handles_for_dir(build_dir);
+    registry_.clear_diagnostics_for_dir(build_dir);
     registry_.scan_deferred(build_dir.c_str());
     auto abi_mismatches = registry_.abi_mismatch_diagnostics_for_dir(build_dir);
     if (!abi_mismatches.empty()) {

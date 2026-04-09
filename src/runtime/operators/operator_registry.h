@@ -153,6 +153,7 @@ public:
     void unregister_package_operator(const std::string& type_name);
     void clear_retired_package_loaders();
     void clear_deferred_probe_handles_for_dir(const std::string& directory);
+    void clear_diagnostics_for_dir(const std::string& directory);
     const std::string* package_for_type(const std::string& type_name) const;
     bool is_package_operator(const std::string& type_name) const;
     std::vector<FileDropRegistration> file_drop_handlers() const;
