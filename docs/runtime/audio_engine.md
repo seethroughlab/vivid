@@ -81,6 +81,10 @@ buffer size:
 4. Compute per-node analysis (RMS, peak, waveform ring buffer)
 5. Publish `AnalysisSnapshot`
 
+Before node processing begins for a block, the executor also sweeps any lane IDs that were retired
+during the previous callback. Retirement is lane-identity-wide: reclaiming one voice ID clears the
+per-lane state that downstream audio nodes accumulated for that note.
+
 ## Auto-Duplication
 
 When a mono audio operator appears in a multi-channel chain, `AudioExecutor` creates per-channel

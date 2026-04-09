@@ -218,4 +218,17 @@ Audio compilation tracks two related but different notions of width:
 
 This distinction matters for lane-aware audio chains. `InstancePerLane` and `LoopBased` audio nodes execute with mono per-lane buffers, but a direct edge leaving those nodes can still semantically represent one audio stream per upstream lane. During Pass 4, the compiler re-propagates that effective wire width after lane execution planning so downstream reduction consumers receive the full lane-expanded bundle on their inputs instead of collapsing back to descriptor default mono.
 
+## Lane State Lifecycle
+
+`LaneStateService` stores per-node state keyed by `(node_idx, lane_id)`, but lane retirement is
+handled at the lane identity level. When an operator such as `PolyVoiceAllocator` retires a
+`lane_id`, the runtime clears that identity's state across every downstream node that used it, not
+just the caller's own entry. This matters for long-running polyphonic graphs: oscillators, filters,
+and envelopes all keep their own per-lane state, so reclaiming only the allocator node would leak
+voice state as notes churn.
+
+On the frame path, retired lane IDs are swept at the start of each `FrameExecutor::tick()`. On the
+audio path, retired lane IDs are swept at audio block boundaries before the next callback begins
+processing node state for that block.
+
 In practice, this is what lets compiled module-internal chains like pointwise lane-aware audio → reduction mixer preserve per-voice audio through flattening and route it correctly into the reducer.

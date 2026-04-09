@@ -279,6 +279,12 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
         std::memset(output, 0, frame_count * 2 * sizeof(float));
         return;
     }
+
+    // Reclaim per-lane state retired during the previous callback before we
+    // touch any node state for this block. This keeps long-running polyphonic
+    // sessions from accumulating stale lane-state entries indefinitely.
+    lane_state_.sweep_retired();
+
     if (std::getenv("VIVID_DEBUG_AUDIO"))
         std::fprintf(stderr, "[audio-debug] callback: audio_order=%zu nodes\n",
                      graph_->audio_order.size());

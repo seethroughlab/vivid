@@ -20,8 +20,8 @@ namespace vivid {
 //   - allocate_lane_id(): audio-thread safe (atomic counter, no heap)
 //   - get(): audio-thread safe IF the entry was pre-allocated by the frame
 //     thread. Returns per-node scratch buffer for unknown lane_ids.
-//   - retire(): audio-thread safe (marks for deferred cleanup)
-//   - sweep_retired() / pre_allocate(): frame-thread only (heap operations)
+//   - retire(): audio-thread safe (marks a lane_id for deferred global cleanup)
+//   - sweep_retired() / pre_allocate(): called at cadence boundaries, may do heap work
 // ---------------------------------------------------------------------------
 
 class LaneStateService {
@@ -51,11 +51,13 @@ public:
         return inserted_it->second.data.data();
     }
 
-    // Mark a (node_idx, lane_id) for deferred cleanup. Audio-thread safe.
-    inline void retire(uint32_t node_idx, uint32_t lane_id) {
-        uint64_t key = make_key(node_idx, lane_id);
+    // Mark a lane_id for deferred cleanup across all nodes. Audio-thread safe.
+    // node_idx is accepted for API compatibility but ignored: lane identities
+    // are graph-wide, so retiring a note should clear every downstream node's
+    // per-lane state for that identity, not just the caller's entry.
+    inline void retire(uint32_t /*node_idx*/, uint32_t lane_id) {
         std::lock_guard<std::mutex> lock(retire_mutex_);
-        pending_retirements_.push_back(key);
+        pending_retirements_.push_back(lane_id);
     }
 
     // Pre-allocate storage for a lane_id. Frame-thread only.
@@ -70,13 +72,28 @@ public:
 
     // Clean up retired state. Frame-thread only.
     inline void sweep_retired() {
-        std::vector<uint64_t> to_retire;
+        std::vector<uint32_t> to_retire;
         {
             std::lock_guard<std::mutex> lock(retire_mutex_);
             to_retire.swap(pending_retirements_);
         }
-        for (uint64_t key : to_retire)
-            entries_.erase(key);
+        if (to_retire.empty()) return;
+
+        for (auto it = entries_.begin(); it != entries_.end(); ) {
+            const uint32_t lane_id = static_cast<uint32_t>(it->first & 0xFFFFFFFFu);
+            bool should_erase = false;
+            for (uint32_t retired_lane_id : to_retire) {
+                if (lane_id == retired_lane_id) {
+                    should_erase = true;
+                    break;
+                }
+            }
+            if (should_erase) {
+                it = entries_.erase(it);
+            } else {
+                ++it;
+            }
+        }
     }
 
     // Clear all state (shutdown/rebuild).
@@ -97,7 +114,7 @@ private:
 
     std::unordered_map<uint64_t, Entry> entries_;
     std::atomic<uint32_t> next_lane_id_{1};
-    std::vector<uint64_t> pending_retirements_;
+    std::vector<uint32_t> pending_retirements_;
     std::mutex retire_mutex_;
 };
 

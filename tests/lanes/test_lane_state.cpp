@@ -78,27 +78,34 @@ static void test_different_nodes() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 5: retire + sweep frees storage
+// Test 5: retire + sweep frees storage across all nodes sharing lane_id
 // ---------------------------------------------------------------------------
 
 static void test_retire_and_sweep() {
-    std::fprintf(stderr, "\n--- lane_state: retire + sweep frees storage ---\n");
+    std::fprintf(stderr, "\n--- lane_state: retire + sweep frees storage across nodes ---\n");
 
     vivid::LaneStateService svc;
     svc.pre_allocate(0, 10, 16);
+    svc.pre_allocate(1, 10, 16);
 
     void* p1 = svc.get(0, 10, 16);
+    void* p_other_node = svc.get(1, 10, 16);
     check(p1 != nullptr, "entry exists before retire");
+    check(p_other_node != nullptr, "same lane_id exists on another node before retire");
 
     // Write a marker value
     static_cast<uint8_t*>(p1)[0] = 0xAB;
+    static_cast<uint8_t*>(p_other_node)[0] = 0xCD;
 
     svc.retire(0, 10);
     svc.sweep_retired();
 
-    // After sweep, same key returns scratch (zero-initialized), not the old data.
+    // After sweep, the lane_id is cleared for every node, not just the caller.
     void* p2 = svc.get(0, 10, 16);
+    void* p2_other_node = svc.get(1, 10, 16);
     check(static_cast<uint8_t*>(p2)[0] == 0, "after retire+sweep, get returns zero (scratch)");
+    check(static_cast<uint8_t*>(p2_other_node)[0] == 0,
+          "after retire+sweep, other-node state for same lane_id is also cleared");
 }
 
 // ---------------------------------------------------------------------------
