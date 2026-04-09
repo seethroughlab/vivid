@@ -183,6 +183,37 @@ static void test_first_access_stable() {
 }
 
 // ---------------------------------------------------------------------------
+// Test 9: live entry counts track per-node retained state
+// ---------------------------------------------------------------------------
+
+static void test_live_entry_counts() {
+    std::fprintf(stderr, "\n--- lane_state: live entry counts track retained state ---\n");
+
+    vivid::LaneStateService svc;
+    svc.set_node_capacity(4);
+    check(svc.live_entry_count(0) == 0, "initial live count is zero");
+
+    svc.pre_allocate(0, 10, 8);
+    check(svc.live_entry_count(0) == 1, "pre_allocate increments live count");
+
+    (void)svc.get(0, 10, 8);
+    check(svc.live_entry_count(0) == 1, "repeated get does not double count");
+
+    (void)svc.get(1, 10, 8);
+    check(svc.live_entry_count(1) == 1, "first access allocation increments other node count");
+
+    svc.retire(0, 10);
+    svc.sweep_retired();
+    check(svc.live_entry_count(0) == 0, "retire sweep clears node 0 count");
+    check(svc.live_entry_count(1) == 0, "retire sweep clears node 1 count");
+
+    (void)svc.get(2, 77, 8);
+    check(svc.live_entry_count(2) == 1, "new retained entry counted");
+    svc.clear();
+    check(svc.live_entry_count(2) == 0, "clear resets live counts");
+}
+
+// ---------------------------------------------------------------------------
 
 int main() {
     std::fprintf(stderr, "=== test_lane_state ===\n");
@@ -195,6 +226,7 @@ int main() {
     test_allocate_lane_id();
     test_clear();
     test_first_access_stable();
+    test_live_entry_counts();
 
     std::fprintf(stderr, "\n%s (%d failures)\n",
                  failures == 0 ? "PASSED" : "FAILED", failures);

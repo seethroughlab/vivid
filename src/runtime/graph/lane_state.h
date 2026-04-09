@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <mutex>
 #include <unordered_map>
 #include <vector>
@@ -26,6 +27,15 @@ namespace vivid {
 
 class LaneStateService {
 public:
+    void set_node_capacity(uint32_t count) {
+        live_entry_count_capacity_ = count;
+        live_entry_counts_.reset();
+        if (count == 0) return;
+        live_entry_counts_ = std::make_unique<std::atomic<uint32_t>[]>(count);
+        for (uint32_t i = 0; i < count; ++i)
+            live_entry_counts_[i].store(0, std::memory_order_relaxed);
+    }
+
     // Allocate a fresh, globally unique lane_id. Audio-thread safe.
     uint32_t allocate_lane_id() {
         return next_lane_id_.fetch_add(1, std::memory_order_relaxed);
@@ -48,6 +58,7 @@ public:
         Entry entry;
         entry.data.resize(byte_size, 0);
         auto [inserted_it, _] = entries_.emplace(key, std::move(entry));
+        increment_live_entry_count(node_idx);
         return inserted_it->second.data.data();
     }
 
@@ -67,6 +78,7 @@ public:
             Entry entry;
             entry.data.resize(byte_size, 0);
             entries_[key] = std::move(entry);
+            increment_live_entry_count(node_idx);
         }
     }
 
@@ -89,6 +101,7 @@ public:
                 }
             }
             if (should_erase) {
+                decrement_live_entry_count(static_cast<uint32_t>(it->first >> 32));
                 it = entries_.erase(it);
             } else {
                 ++it;
@@ -101,6 +114,13 @@ public:
         entries_.clear();
         pending_retirements_.clear();
         next_lane_id_.store(1, std::memory_order_relaxed);
+        for (uint32_t i = 0; i < live_entry_count_capacity_; ++i)
+            live_entry_counts_[i].store(0, std::memory_order_relaxed);
+    }
+
+    uint32_t live_entry_count(uint32_t node_idx) const {
+        if (!live_entry_counts_ || node_idx >= live_entry_count_capacity_) return 0;
+        return live_entry_counts_[node_idx].load(std::memory_order_relaxed);
     }
 
 private:
@@ -112,10 +132,24 @@ private:
         std::vector<uint8_t> data;
     };
 
+    void increment_live_entry_count(uint32_t node_idx) {
+        if (!live_entry_counts_ || node_idx >= live_entry_count_capacity_) return;
+        live_entry_counts_[node_idx].fetch_add(1, std::memory_order_relaxed);
+    }
+
+    void decrement_live_entry_count(uint32_t node_idx) {
+        if (!live_entry_counts_ || node_idx >= live_entry_count_capacity_) return;
+        uint32_t prev = live_entry_counts_[node_idx].load(std::memory_order_relaxed);
+        if (prev == 0) return;
+        live_entry_counts_[node_idx].fetch_sub(1, std::memory_order_relaxed);
+    }
+
     std::unordered_map<uint64_t, Entry> entries_;
     std::atomic<uint32_t> next_lane_id_{1};
     std::vector<uint32_t> pending_retirements_;
     std::mutex retire_mutex_;
+    std::unique_ptr<std::atomic<uint32_t>[]> live_entry_counts_;
+    uint32_t live_entry_count_capacity_ = 0;
 };
 
 } // namespace vivid
