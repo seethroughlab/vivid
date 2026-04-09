@@ -13,6 +13,11 @@ namespace {
 
 constexpr float kPi = static_cast<float>(M_PI);
 constexpr float kTwoPi = 2.0f * kPi;
+constexpr float kDenormalFloor = 1.0e-20f;
+
+inline float flush_denormal(float x) {
+    return std::fabs(x) < kDenormalFloor ? 0.0f : x;
+}
 
 } // namespace
 
@@ -99,15 +104,17 @@ static float apply_biquad(BiquadState& st, float input, float cutoff_hz, float r
 
     // Stage 1 (transposed direct form II)
     float out = b0 * input + st.z1[0];
-    st.z1[0] = b1 * input - a1 * out + st.z2[0];
-    st.z2[0] = b2 * input - a2 * out;
+    st.z1[0] = flush_denormal(b1 * input - a1 * out + st.z2[0]);
+    st.z2[0] = flush_denormal(b2 * input - a2 * out);
+    out = flush_denormal(out);
 
     // Stage 2 for 4-pole (LP24, HP24)
     if (ftype == FILTER_LP24 || ftype == FILTER_HP24) {
         float in2 = out;
         out = b0 * in2 + st.z1[1];
-        st.z1[1] = b1 * in2 - a1 * out + st.z2[1];
-        st.z2[1] = b2 * in2 - a2 * out;
+        st.z1[1] = flush_denormal(b1 * in2 - a1 * out + st.z2[1]);
+        st.z2[1] = flush_denormal(b2 * in2 - a2 * out);
+        out = flush_denormal(out);
     }
 
     return out;
@@ -135,6 +142,7 @@ float CombFilterState::process(float input, float delay_samples, float feedback)
     float delayed = buffer[read0] * (1.0f - d_frac) + buffer[read1] * d_frac;
 
     float out = input + delayed * feedback;
+    out = flush_denormal(out);
     buffer[write_pos] = out;
     write_pos = (write_pos + 1) % kMaxDelay;
     return out;
@@ -157,10 +165,10 @@ float LadderFilterState::process(float input, float cutoff_hz, float reso, float
     for (int i = 0; i < 4; ++i) {
         float v = (x - stage[i]) * g / (1.0f + g);
         float y = v + stage[i];
-        stage[i] = y + v;
-        x = y;
+        stage[i] = flush_denormal(y + v);
+        x = flush_denormal(y);
     }
-    return x;
+    return flush_denormal(x);
 }
 
 // =============================================================================
@@ -209,13 +217,13 @@ float FormantFilterState::process(float input, float morph, float reso, float sa
         ca1 *= inv_a0; ca2 *= inv_a0;
 
         float y = cb0 * input + z1[b];
-        z1[b] = -ca1 * y + z2[b];  // b1=0 for bandpass
-        z2[b] = cb2 * input - ca2 * y;
+        z1[b] = flush_denormal(-ca1 * y + z2[b]);  // b1=0 for bandpass
+        z2[b] = flush_denormal(cb2 * input - ca2 * y);
 
-        out += y * GAINS[b];
+        out += flush_denormal(y) * GAINS[b];
     }
 
-    return out;
+    return flush_denormal(out);
 }
 
 // =============================================================================
@@ -242,12 +250,12 @@ float DiodeLadderState::process(float input, float cutoff_hz, float reso, float 
     for (int i = 0; i < 4; ++i) {
         float v = (x - stage[i]) * g / (1.0f + g);
         float y = v + stage[i];
-        stage[i] = y + v;
-        x = diode_clip(y);
+        stage[i] = flush_denormal(y + v);
+        x = flush_denormal(diode_clip(y));
     }
 
-    feedback = x;
-    return x;
+    feedback = flush_denormal(x);
+    return flush_denormal(x);
 }
 
 // =============================================================================
@@ -266,14 +274,14 @@ float MS20FilterState::process(float input, float cutoff_hz, float reso, float s
 
     float fb = std::tanh(k * bp);
 
-    hp = input - lp - fb;
-    bp = hp * f + s1;
-    lp = bp * f + s2;
+    hp = flush_denormal(input - lp - fb);
+    bp = flush_denormal(hp * f + s1);
+    lp = flush_denormal(bp * f + s2);
 
     s1 = bp;
     s2 = lp;
 
-    return lp;
+    return flush_denormal(lp);
 }
 
 // =============================================================================
@@ -309,9 +317,9 @@ float FilterState::process(float input, float cutoff_hz, float reso, float drive
             float rc = 1.0f / (kTwoPi * hp_cutoff);
             float alpha_hp = rc / (rc + 1.0f / sr);
             float hp_out = alpha_hp * (biquad.z2[1] + lp - biquad.z1[1]);
-            biquad.z1[1] = lp;
-            biquad.z2[1] = hp_out;
-            return hp_out;
+            biquad.z1[1] = flush_denormal(lp);
+            biquad.z2[1] = flush_denormal(hp_out);
+            return flush_denormal(hp_out);
         }
 
         case FILTER_COMB: {

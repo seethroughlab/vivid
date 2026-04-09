@@ -4,6 +4,7 @@
 
 #include "runtime/operators/operator_loader.h"
 #include "runtime/debug/output_analyzer.h"
+#include "shared/filter_dsp/filter_dsp.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -36,6 +37,13 @@ static void* test_lane_state(void* /*service*/, uint32_t lane_id, uint32_t byte_
 }
 
 static void reset_lane_states() { g_lane_states.clear(); }
+
+struct DualFilterLaneStateMirror {
+    audio_dsp::FilterState filter_a;
+    audio_dsp::FilterState filter_b;
+    float xover_z1 = 0.0f;
+    float xover_z2 = 0.0f;
+};
 
 } // namespace
 
@@ -103,6 +111,23 @@ static int find_param(const VividOperatorDescriptor* desc, const char* name) {
             return static_cast<int>(p);
     }
     return -1;
+}
+
+static int count_subnormal_samples(const float* data, int count) {
+    int total = 0;
+    for (int i = 0; i < count; ++i) {
+        if (std::fpclassify(data[i]) == FP_SUBNORMAL) total++;
+    }
+    return total;
+}
+
+static int count_subnormal_state_floats(const DualFilterLaneStateMirror& state) {
+    const auto* values = reinterpret_cast<const float*>(&state);
+    int total = 0;
+    for (size_t i = 0; i < sizeof(DualFilterLaneStateMirror) / sizeof(float); ++i) {
+        if (std::fpclassify(values[i]) == FP_SUBNORMAL) total++;
+    }
+    return total;
 }
 
 // ---------------------------------------------------------------------------
@@ -553,6 +578,62 @@ static void test_parallel_disable_silence(vivid::OperatorLoader& loader) {
 }
 
 // ---------------------------------------------------------------------------
+// Test: long decays do not leave subnormal filter state behind
+// ---------------------------------------------------------------------------
+static void test_denormal_tail_recovery(vivid::OperatorLoader& loader) {
+    std::fprintf(stderr, "\n--- DualFilter: long tails flush denormals ---\n");
+
+    const auto* desc = loader.descriptor();
+    auto params = make_params(desc, {
+        {"routing", 3.0f},
+        {"split_freq", 1200.0f},
+        {"a_mode", 6.0f},         // Ladder
+        {"a_cutoff", 900.0f},
+        {"a_resonance", 0.94f},
+        {"b_mode", 13.0f},        // MS-20
+        {"b_cutoff", 2600.0f},
+        {"b_resonance", 0.92f},
+        {"a_enabled", 1.0f},
+        {"b_enabled", 1.0f},
+        {"output_gain", 1.0f},
+    });
+
+    reset_lane_states();
+    void* inst = loader.create_instance();
+    TestContext tc;
+    tc.ctx.param_values = params.data();
+
+    for (int b = 0; b < 8; ++b) {
+        tc.fill_noise();
+        tc.clear_output();
+        loader.process_audio(inst, &tc.ctx);
+    }
+
+    std::memset(tc.input, 0, sizeof(tc.input));
+    int output_subnormals = 0;
+    for (int b = 0; b < 320; ++b) {
+        tc.clear_output();
+        loader.process_audio(inst, &tc.ctx);
+        output_subnormals += count_subnormal_samples(tc.output, TestContext::kFrames);
+    }
+
+    int state_subnormals = 0;
+    if (!g_lane_states.empty() &&
+        g_lane_states.front().byte_size == sizeof(DualFilterLaneStateMirror)) {
+        const auto* state = reinterpret_cast<const DualFilterLaneStateMirror*>(
+            g_lane_states.front().data.data());
+        state_subnormals = count_subnormal_state_floats(*state);
+    }
+
+    std::fprintf(stderr, "  output_subnormals=%d state_subnormals=%d\n",
+                 output_subnormals, state_subnormals);
+    check(output_subnormals == 0, "long filter tails do not emit subnormal output samples");
+    check(state_subnormals == 0, "long filter tails flush subnormal recursive state");
+
+    loader.destroy_instance(inst);
+}
+
+// ---------------------------------------------------------------------------
 // Test: Descriptor has expected params and ports
 // ---------------------------------------------------------------------------
 static void test_descriptor(vivid::OperatorLoader& loader) {
@@ -627,6 +708,7 @@ int main() {
     test_serial_disable_passthrough(dual_loader);
     test_output_gain(dual_loader);
     test_parallel_disable_silence(dual_loader);
+    test_denormal_tail_recovery(dual_loader);
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",
                  failures == 0 ? "ALL PASSED" : "SOME FAILED", failures);

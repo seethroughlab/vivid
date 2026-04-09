@@ -4,6 +4,12 @@
 #include <cmath>
 #include <cstring>
 
+namespace {
+inline float flush_audio_denormal(float x) {
+    return std::fabs(x) < 1.0e-20f ? 0.0f : x;
+}
+} // namespace
+
 /**
  * @brief Dual-stage audio filter with configurable routing for instrument-style filter design.
  *
@@ -365,16 +371,16 @@ struct DualFilter : vivid::OperatorBase, vivid::AudioProcessable {
                 case SPLIT: {
                     // Complementary low/high split using two cascaded one-pole lowpass sections.
                     float lp1 = ls.xover_z1 + xover_g * (s - ls.xover_z1);
-                    ls.xover_z1 = lp1;
+                    ls.xover_z1 = flush_audio_denormal(lp1);
                     float lp2 = ls.xover_z2 + xover_g * (lp1 - ls.xover_z2);
-                    ls.xover_z2 = lp2;
+                    ls.xover_z2 = flush_audio_denormal(lp2);
 
-                    float low = lp2;
-                    float high = s - lp2;
+                    float low = flush_audio_denormal(lp2);
+                    float high = flush_audio_denormal(s - lp2);
 
                     float out_a = en_a ? ls.filter_a.process(low, mod_cutoff_a, mod_reso_a, drv_a, ftype_a, sr) : 0.0f;
                     float out_b = en_b ? ls.filter_b.process(high, mod_cutoff_b, mod_reso_b, drv_b, ftype_b, sr) : 0.0f;
-                    result = out_a + out_b;
+                    result = flush_audio_denormal(out_a + out_b);
                     break;
                 }
                 default:
@@ -382,7 +388,7 @@ struct DualFilter : vivid::OperatorBase, vivid::AudioProcessable {
                     break;
             }
 
-            out[i] = result * gain;
+            out[i] = flush_audio_denormal(result * gain);
         }
     }
 };
