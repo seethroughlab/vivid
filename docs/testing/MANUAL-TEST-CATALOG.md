@@ -226,6 +226,10 @@ For each case, record:
 - Fail criteria:
   - Crash/blank output on display changes.
 
+## Movie Playback
+
+See [MOVIE-PLAYBACK-VALIDATION.md](MOVIE-PLAYBACK-VALIDATION.md) for the full movie playback validation checklist covering video-only and AV-synced playback, loop/once/hold-last modes, HAP and H.264/HEVC paths, seek/scrub behavior, source changes, window state, and telemetry verification.
+
 ## macOS-Specific Notes
 
 - First-run permissions:

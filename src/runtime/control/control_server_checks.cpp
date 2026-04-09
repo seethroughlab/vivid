@@ -159,6 +159,57 @@ std::vector<DiagnosticFinding> collect_diagnostics(
                 }
             }
         }
+
+        // --- Movie playback checks ---
+
+        if (type_name == "MovieFileIn" || type_name == "MovieFileAudio") {
+            auto fit = ns.file_param_indices.find("file");
+            if (fit != ns.file_param_indices.end() &&
+                fit->second < ns.file_param_storage.size() &&
+                ns.file_param_storage[fit->second].empty()) {
+                findings.push_back({
+                    "movie_file_path_empty",
+                    "warning",
+                    ns.node_id,
+                    "No file path set; no media will play.",
+                    "Set the 'file' parameter to a valid media file path."
+                });
+            }
+        }
+
+        if (type_name == "MovieFileIn") {
+            auto nil_it = ns.output_port_indices.find("nil_frames");
+            auto new_it = ns.output_port_indices.find("new_frames");
+            if (nil_it != ns.output_port_indices.end() && new_it != ns.output_port_indices.end() &&
+                nil_it->second < ns.output_values.size() && new_it->second < ns.output_values.size()) {
+                float nil_frames = ns.output_values[nil_it->second];
+                float new_frames = ns.output_values[new_it->second];
+                float total = new_frames + nil_frames;
+                if (total > 60.0f && nil_frames / total > 0.5f) {
+                    findings.push_back({
+                        "movie_sustained_nil_frames",
+                        "warning",
+                        ns.node_id,
+                        "Video decode is stalling \u2014 more than 50% nil frames detected.",
+                        "Check codec compatibility and system load; consider HAP format for guaranteed performance."
+                    });
+                }
+            }
+
+            auto drift_it = ns.output_port_indices.find("drift_ms");
+            if (drift_it != ns.output_port_indices.end() && drift_it->second < ns.output_values.size()) {
+                float drift = ns.output_values[drift_it->second];
+                if (std::isfinite(drift) && drift > 200.0f) {
+                    findings.push_back({
+                        "movie_sustained_large_drift",
+                        "warning",
+                        ns.node_id,
+                        "AV sync drift exceeds 200ms; audio and video may appear out of sync.",
+                        "Check system load; sustained drift suggests decode cannot keep up with playback rate."
+                    });
+                }
+            }
+        }
     }
 
     for (const auto& dc : cg->dropped_connections) {
