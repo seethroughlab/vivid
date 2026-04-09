@@ -151,6 +151,28 @@ static void test_correction_drop_repeat_for_medium_drift() {
     check(!d1.budget_exhausted, "medium drift: budget not exhausted");
 }
 
+static void test_medium_drift_auto_phase_converges() {
+    MovieTransport t;
+    t.set_source(10.0);
+    t.set_frame_rate(30.0f);
+
+    auto d0 = t.evaluate_correction(0.0, 0.0, 0.0, 0.0);
+    check(d0.type == CorrectionType::Seek, "auto_phase: initial source-change seek");
+    t.record_seek_issued(0.0);
+
+    CorrectionDecision last{};
+    double desired_local = 0.0;
+    for (int i = 0; i < 40; ++i) {
+        desired_local = t.compute_audio_master_time(5.0f, 0.0);
+        last = t.evaluate_correction(desired_local, 4.85, 5.0, 1.0 + i * (1.0 / 60.0));
+    }
+
+    check(std::abs(t.auto_phase_offset_seconds()) > 0.05,
+          "auto_phase: steady medium drift learns a non-zero phase correction");
+    check(last.type == CorrectionType::None || last.drift_seconds < 0.08,
+          "auto_phase: steady drift converges toward the no-correction window");
+}
+
 static void test_correction_seek_for_large_drift() {
     MovieTransport t;
     t.set_source(10.0);
@@ -237,7 +259,8 @@ static void test_correction_frame_rate_affects_small_threshold() {
 // ============================================================================
 
 static void test_session_basics() {
-    PlaybackSession s("/path/to/video.mp4");
+    PlaybackSession s("video_node", "/path/to/video.mp4");
+    check(s.operator_id() == "video_node", "session: operator id");
     check(s.source_path() == "/path/to/video.mp4", "session: source path");
     check(s.ref_count() == 0, "session: initial ref_count == 0");
 
@@ -256,32 +279,34 @@ static void test_session_basics() {
 static void test_registry_acquire_release() {
     auto& reg = PlaybackSessionRegistry::instance();
 
-    auto s1 = reg.acquire("/tmp/test_a.mp4");
+    auto s1 = reg.acquire("video_a", "/tmp/test_a.mp4");
     check(s1 != nullptr, "registry: acquire returns non-null");
     check(s1->ref_count() == 1, "registry: ref_count == 1 after first acquire");
+    check(s1->operator_id() == "video_a", "registry: session keyed by operator id");
 
-    // Second acquire for same path returns same session
-    auto s2 = reg.acquire("/tmp/test_a.mp4");
-    check(s2.get() == s1.get(), "registry: same path returns same session");
+    // Second acquire for same operator returns same session even if the source changes.
+    auto s2 = reg.acquire("video_a", "/tmp/test_b.mp4");
+    check(s2.get() == s1.get(), "registry: same operator returns same session");
     check(s2->ref_count() == 2, "registry: ref_count == 2 after second acquire");
+    check(s2->source_path() == "/tmp/test_b.mp4", "registry: source path updates on reacquire");
 
-    // Different path returns different session
-    auto s3 = reg.acquire("/tmp/test_b.mp4");
-    check(s3.get() != s1.get(), "registry: different path returns different session");
+    // Different operator with the same file stays isolated.
+    auto s3 = reg.acquire("video_b", "/tmp/test_b.mp4");
+    check(s3.get() != s1.get(), "registry: different operator returns different session");
 
     // Release first session twice
-    reg.release("/tmp/test_a.mp4");
+    reg.release("video_a");
     check(s1->ref_count() == 1, "registry: ref_count == 1 after first release");
-    reg.release("/tmp/test_a.mp4");
+    reg.release("video_a");
     // After ref_count hits 0, session is removed from registry
     // A new acquire should create a fresh session
-    auto s4 = reg.acquire("/tmp/test_a.mp4");
+    auto s4 = reg.acquire("video_a", "/tmp/test_a.mp4");
     check(s4.get() != s1.get(), "registry: new session after full release");
     check(s4->ref_count() == 1, "registry: fresh session ref_count == 1");
 
     // Clean up
-    reg.release("/tmp/test_a.mp4");
-    reg.release("/tmp/test_b.mp4");
+    reg.release("video_a");
+    reg.release("video_b");
 }
 
 // ============================================================================
@@ -302,6 +327,7 @@ int main() {
     test_correction_source_change_always_seeks();
     test_correction_none_for_small_drift();
     test_correction_drop_repeat_for_medium_drift();
+    test_medium_drift_auto_phase_converges();
     test_correction_seek_for_large_drift();
     test_correction_budget_degrades_to_drop_repeat();
     test_correction_cooldown_degrades_to_drop_repeat();

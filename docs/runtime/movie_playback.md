@@ -13,6 +13,12 @@ Two independent operators provide the public graph surface:
 
 The operators are separate `.dylib` modules loaded by the graph runtime. They communicate via the `audio_time` port bridge: MovieFileAudio's `time` output crosses the cadence bridge (~60 Hz snapshot) and arrives at MovieFileIn's `audio_time` input.
 
+The production AV-sync contract is:
+
+- `MovieFileAudio/time` is the authoritative movie clock in synced playback
+- the cadence bridge must deliver that scalar to `MovieFileIn/audio_time` without port-index drift or stale-value skew
+- `MovieFileIn` may apply a bounded internal steady-state phase calibration to absorb fixed system latency, but it must not invent an independent transport clock
+
 ## Shared Session Dylib
 
 Both operator dylibs link against `libmovie_session.dylib`, deployed to `Vivid.app/Contents/Frameworks/`. The dylib is loaded automatically by `dyld` when either operator is `dlopen`'d (via `@loader_path/../Frameworks` RPATH). No graph loader changes are needed.
@@ -22,12 +28,12 @@ Both operator dylibs link against `libmovie_session.dylib`, deployed to `Vivid.a
 | File | Purpose |
 |------|---------|
 | `movie_transport.h/.cpp` | `MovieTransport` -- transport time computation, seek/correction policy, source generation |
-| `playback_session.h/.cpp` | `PlaybackSession` -- per-source session wrapping a MovieTransport |
-| `session_registry.h/.cpp` | `PlaybackSessionRegistry` -- global singleton, path-keyed session cache with ref counting |
+| `playback_session.h/.cpp` | `PlaybackSession` -- per-operator session wrapping a MovieTransport |
+| `session_registry.h/.cpp` | `PlaybackSessionRegistry` -- global singleton, operator-id-keyed session cache with ref counting |
 | `decoded_frame_queue.h/.cpp` | `DecodedFrame` struct + bounded `DecodedFrameQueue` (max 3 frames) |
 | `video_decode_worker.h/.cpp` | `VideoDecodeWorker` -- background thread for AVF pixel copy, direct queue push for HAP |
 
-When both operators open the same file path, the registry returns the same `PlaybackSession`. The shared `MovieTransport` ensures both sides use the same source generation and transport policies.
+Sessions are keyed by the runtime graph node id exposed to operators through `VividFrameContext`, `VividAudioContext`, and `VividGpuContext` as `node_id`. Two nodes that happen to reference the same media file remain independent; they do not share transport state implicitly.
 
 ## Decode Pipeline
 
@@ -44,6 +50,8 @@ AVFoundation's `copyPixelBufferForItemTime:` must run on the main thread. The ex
 1. **Main thread:** `acquire_pixel_buffer()` -- fast AVF API calls, returns retained CVPixelBuffer
 2. **Worker thread:** `copy_pixel_buffer()` -- lock, row-by-row memcpy, unlock, release
 3. **Frame thread:** `pop_latest()` from `DecodedFrameQueue`, upload to GPU
+
+`AcquiredPixelBuffer` is a move-only RAII wrapper around the retained `CVPixelBufferRef`. Replaced work items, flushes, and worker shutdown all release retained buffers automatically when pending lambdas are discarded.
 
 ### HAP Path
 
@@ -64,6 +72,8 @@ Selected automatically based on whether the `audio_time` input port is connected
 | **Self-clock** | AVPlayer's internal clock | MovieFileIn reads decoder position, no seeks issued |
 | **Audio-master** | Audio pipeline time | MovieFileIn computes desired position from audio_time, corrects via three-tier policy |
 
+In audio-master mode, `MovieTransport` now carries a bounded internal phase calibration (`±250 ms max`). Persistent medium drift of one sign is treated as a stable offset and slowly absorbed into that internal bias. This keeps audio authoritative while preventing steady-state device/bridge latency from producing endless drop/repeat churn. Large drift, source changes, explicit seeks, and loop resets still bypass calibration and use the normal seek path.
+
 ## Three-Tier Correction Policy
 
 Defined in `MovieTransport::evaluate_correction()`:
@@ -80,6 +90,8 @@ Seek rate limiters:
 - **Source change:** always seeks (bypasses cooldown and budget)
 
 When a Seek is needed but budget/cooldown prevents it, the decision degrades to DropRepeat with `budget_exhausted = true`.
+
+`VideoDecodeWorker::flush()` is generation-based. It clears pending work, empties the ready queue, and bumps a monotonic generation counter so any already-running pre-flush decode copy is discarded instead of repopulating the queue with stale frames.
 
 ## Telemetry
 
@@ -113,11 +125,13 @@ All analysis ports are tagged `"analysis"` and bridged across cadences by the ru
 - `movie_file_path_empty` -- no file path set
 - `movie_sustained_nil_frames` -- >50% nil frames over 60+ frames
 - `movie_sustained_large_drift` -- drift_ms exceeds 200ms
+- `movie_seek_churn` -- repeated AV correction seeks during steady playback
+- `movie_audio_bridge_mismatch` -- `MovieFileAudio/time` does not match bridged `audio_time`
 
 ## Source Lifecycle
 
 1. File param changes -- `on_source_changed()` fires
-2. Session released from registry, new session acquired for new path
+2. Session released from registry, new per-node session acquired for the current operator id
 3. `VideoDecodeWorker` queue flushed, `last_decoded_frame_` cleared
 4. Async decoder load begins (background thread for AVF, sync for HAP)
 5. On load completion: `session.transport().set_source(duration)` called

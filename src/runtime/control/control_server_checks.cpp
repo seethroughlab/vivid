@@ -209,6 +209,60 @@ std::vector<DiagnosticFinding> collect_diagnostics(
                     });
                 }
             }
+
+            auto seek_it = ns.output_port_indices.find("seek_corrections");
+            if (seek_it != ns.output_port_indices.end() &&
+                drift_it != ns.output_port_indices.end() &&
+                seek_it->second < ns.output_values.size() &&
+                drift_it->second < ns.output_values.size()) {
+                float seeks = ns.output_values[seek_it->second];
+                float drift = ns.output_values[drift_it->second];
+                if (std::isfinite(seeks) && std::isfinite(drift) &&
+                    seeks > 5.0f && drift > 66.0f) {
+                    findings.push_back({
+                        "movie_seek_churn",
+                        "warning",
+                        ns.node_id,
+                        "Video is issuing repeated AV correction seeks during steady playback.",
+                        "A stable AV offset or bad audio-master clock is likely; check MovieFileAudio/time against the bridged audio_time input."
+                    });
+                }
+            }
+
+            auto audio_time_in = ns.input_port_indices.find("audio_time");
+            if (audio_time_in != ns.input_port_indices.end() &&
+                audio_time_in->second < ns.input_connected.size() &&
+                ns.input_connected[audio_time_in->second]) {
+                for (const auto& conn : graph.connections()) {
+                    if (conn.to_node != ns.node_id || conn.to_port != "audio_time") continue;
+                    if (conn.from_port != "time") continue;
+
+                    const CompiledNode* src = cg->find_node(conn.from_node);
+                    if (!src || src->type_name != "MovieFileAudio") continue;
+
+                    auto src_time_it = src->output_port_indices.find("time");
+                    if (src_time_it == src->output_port_indices.end() ||
+                        src_time_it->second >= src->output_values.size()) {
+                        continue;
+                    }
+
+                    const float published = src->output_values[src_time_it->second];
+                    const float bridged = (audio_time_in->second < ns.input_values.size())
+                        ? ns.input_values[audio_time_in->second]
+                        : ns.bridge_input_values[audio_time_in->second];
+                    if (std::isfinite(published) && std::isfinite(bridged) &&
+                        std::fabs(published - bridged) > 0.050f) {
+                        findings.push_back({
+                            "movie_audio_bridge_mismatch",
+                            "warning",
+                            ns.node_id,
+                            "MovieFileAudio/time and MovieFileIn/audio_time differ by more than 50ms.",
+                            "Check the cadence bridge path first; AV sync tuning is unreliable until the bridged audio clock matches the published audio time."
+                        });
+                    }
+                    break;
+                }
+            }
         }
     }
 

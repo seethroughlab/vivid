@@ -1,5 +1,7 @@
 #include "movie_transport.h"
 
+#include <cmath>
+
 void MovieTransport::set_source(double duration) {
     duration_ = duration;
     source_generation_++;
@@ -8,6 +10,7 @@ void MovieTransport::set_source(double duration) {
     seek_budget_count_ = 0;
     seek_budget_window_start_s_ = 0.0;
     consecutive_drop_repeat_ = 0;
+    reset_sync_calibration();
 }
 
 void MovieTransport::set_frame_rate(float fps) {
@@ -25,6 +28,7 @@ void MovieTransport::clear_source() {
     seek_budget_count_ = 0;
     seek_budget_window_start_s_ = 0.0;
     consecutive_drop_repeat_ = 0;
+    reset_sync_calibration();
 }
 
 uint64_t MovieTransport::source_generation() const { return source_generation_; }
@@ -34,6 +38,7 @@ PlayMode MovieTransport::play_mode() const { return play_mode_; }
 float MovieTransport::speed() const { return speed_; }
 double MovieTransport::duration() const { return duration_; }
 float MovieTransport::frame_rate() const { return frame_rate_; }
+double MovieTransport::auto_phase_offset_seconds() const { return auto_phase_offset_s_; }
 
 double MovieTransport::compute_self_clock_time(double decoder_time) const {
     double t = std::max(0.0, decoder_time);
@@ -44,7 +49,7 @@ double MovieTransport::compute_self_clock_time(double decoder_time) const {
 }
 
 double MovieTransport::compute_audio_master_time(float audio_time, double phase_offset_s) const {
-    double desired_mono = static_cast<double>(audio_time) + phase_offset_s;
+    double desired_mono = static_cast<double>(audio_time) + phase_offset_s + auto_phase_offset_s_;
     return wrap_time(desired_mono, duration_);
 }
 
@@ -64,6 +69,7 @@ CorrectionDecision MovieTransport::evaluate_correction(double desired_local, dou
     // Source change always seeks (initial positioning after load).
     if (source_changed) {
         consecutive_drop_repeat_ = 0;
+        reset_sync_calibration();
         result.type = CorrectionType::Seek;
         result.seek_target = desired_local;
         return result;
@@ -72,18 +78,17 @@ CorrectionDecision MovieTransport::evaluate_correction(double desired_local, dou
     // Small drift: no correction needed — normal frame-level jitter.
     if (abs_err <= small_threshold) {
         consecutive_drop_repeat_ = 0;
+        if (std::abs(auto_phase_offset_s_) < 0.001) {
+            auto_phase_offset_s_ = 0.0;
+        }
         result.type = CorrectionType::None;
         return result;
     }
 
-    // Persistent medium drift: if DropRepeat hasn't resolved the drift after
-    // kDropRepeatEscalation consecutive frames, escalate to Seek.  This handles
-    // the case where AVPlayer has a persistent offset that queue-based frame
-    // selection alone cannot correct.
-    bool escalate = (consecutive_drop_repeat_ >= kDropRepeatEscalation);
-
-    // Large drift or escalated persistent drift: seek if cooldown + budget allow.
-    if (abs_err > kSeekDriftSeconds || escalate) {
+    // Large drift: seek if cooldown + budget allow.
+    // Medium drift stays in DropRepeat mode even if it persists. Repeated
+    // exact seeks against a stable offset produce visible playback stutter.
+    if (abs_err > kSeekDriftSeconds) {
         const bool cooldown_ok = std::abs(desired_mono - last_seek_mono_s_) > kSeekCooldownSec;
 
         if (graph_time - seek_budget_window_start_s_ > 1.0) {
@@ -94,6 +99,7 @@ CorrectionDecision MovieTransport::evaluate_correction(double desired_local, dou
 
         if (cooldown_ok && budget_ok) {
             consecutive_drop_repeat_ = 0;
+            reset_sync_calibration();
             result.type = CorrectionType::Seek;
             result.seek_target = desired_local;
             return result;
@@ -101,6 +107,8 @@ CorrectionDecision MovieTransport::evaluate_correction(double desired_local, dou
         // Seek needed but prevented — degrade to DropRepeat.
         result.budget_exhausted = !budget_ok;
     }
+
+    update_sync_calibration(err, small_threshold);
 
     // Medium drift: handled implicitly by queue frame selection (drop/repeat).
     consecutive_drop_repeat_++;
@@ -112,8 +120,44 @@ void MovieTransport::record_seek_issued(double mono_time) {
     seek_budget_count_++;
     last_seek_mono_s_ = mono_time;
     last_seek_generation_ = source_generation_;
+    reset_sync_calibration();
 }
 
 double MovieTransport::drift_seconds(double desired_local, double decoder_time) const {
     return shortest_circular_diff(desired_local, decoder_time, duration_);
+}
+
+void MovieTransport::reset_sync_calibration() {
+    auto_phase_drift_sign_ = 0;
+    auto_phase_stable_frames_ = 0;
+}
+
+void MovieTransport::update_sync_calibration(double signed_drift_seconds,
+                                             double small_threshold_seconds) {
+    const double abs_err = std::abs(signed_drift_seconds);
+    if (abs_err <= small_threshold_seconds || abs_err > kSeekDriftSeconds) {
+        reset_sync_calibration();
+        return;
+    }
+
+    const int sign = (signed_drift_seconds > 0.0) ? 1 : -1;
+    if (sign == auto_phase_drift_sign_) {
+        auto_phase_stable_frames_++;
+    } else {
+        auto_phase_drift_sign_ = sign;
+        auto_phase_stable_frames_ = 1;
+    }
+
+    // Only absorb drift that persists for several frame ticks; this avoids
+    // learning transient decode jitter as a phase bias.
+    if (auto_phase_stable_frames_ < 6) return;
+
+    constexpr double kMaxAdjustmentPerTick = 0.010; // 10 ms
+    constexpr double kAdjustmentGain = 0.10;        // remove 10% of stable bias per tick
+    const double adjustment = std::clamp(-signed_drift_seconds * kAdjustmentGain,
+                                         -kMaxAdjustmentPerTick,
+                                         kMaxAdjustmentPerTick);
+    auto_phase_offset_s_ = std::clamp(auto_phase_offset_s_ + adjustment,
+                                      -kAutoPhaseMaxSeconds,
+                                      kAutoPhaseMaxSeconds);
 }

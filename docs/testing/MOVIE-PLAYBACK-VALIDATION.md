@@ -56,6 +56,12 @@ Manual test checklist for the movie playback system. Covers the full validation 
 - **Pass:** `drift_ms` stays below 200ms throughout
 - **Fail:** `drift_ms` grows unbounded or exceeds 200ms
 
+### 2.4 Audio Clock Bridge Integrity
+- Inspect both `MovieFileAudio` and `MovieFileIn` while synced playback is running
+- Compare `audio/time` against the frame-side `vid/audio_time` input
+- **Pass:** the values track within ~50ms during steady playback
+- **Fail:** the values diverge materially or one value appears pinned/stale
+
 ## 3. HAP Path
 
 ### 3.1 HAP Playback
@@ -122,6 +128,7 @@ Manual test checklist for the movie playback system. Covers the full validation 
   - `drift_ms` (small value during sync)
   - `seek_corrections` (should be low/zero during steady state)
   - `drop_repeat_corrections` (may be non-zero)
+  - `seek_corrections` should not climb steadily during stable `speed=1` playback
 
 ### 6.2 MovieFileAudio Analysis Ports
 - Verify `buffered_ms` shows ring buffer fullness (~2000ms when healthy)
@@ -139,6 +146,7 @@ All of the following must be true:
 
 - [ ] Video-only demos show no obvious cadence instability
 - [ ] AV-synced demos stay within 200ms drift budget under normal load
+- [ ] `MovieFileAudio/time` and bridged `MovieFileIn/audio_time` stay within 50ms during steady playback
 - [ ] Loop and seek behavior are deterministic and visibly stable
 - [ ] Playback quality does not depend on whether the node graph UI is visible
 - [ ] Playback quality does not materially degrade when the output window is open

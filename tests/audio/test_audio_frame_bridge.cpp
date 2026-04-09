@@ -262,6 +262,53 @@ static void test_pull_analysis_data() {
     check(cg.nodes[0].dirty, "analyzer marked dirty");
 }
 
+static void test_pull_last_sample_scalar_bridge_output() {
+    std::fprintf(stderr, "\n--- pull_from_audio: LastSample scalar bridge ---\n");
+
+    auto cg = make_audio_graph({
+        {"clock", 0, 0, 2, 0, 0, false},
+    });
+    cg.nodes[0].output_port_types[0] = VIVID_PORT_AUDIO_BUFFER;
+    cg.nodes[0].output_port_types[1] = VIVID_PORT_SCALAR;
+
+    vivid::CompiledNode frame_node;
+    frame_node.node_id = "display";
+    frame_node.active_cadence = vivid::Cadence::Frame;
+    frame_node.input_port_count = 1;
+    frame_node.input_values.assign(1, 0.0f);
+    frame_node.bridge_input_values.assign(1, 0.0f);
+    frame_node.bridge_input_dirty.assign(1, 0);
+    cg.nodes.push_back(std::move(frame_node));
+    cg.node_id_to_index["display"] = 1;
+
+    vivid::CompiledEdge edge{};
+    edge.from_node = 0;
+    edge.from_port = 1; // explicit scalar port, guards against output-index drift
+    edge.to_node = 1;
+    edge.to_port = 0;
+    edge.transport = vivid::EdgeTransport::Snapshot;
+    edge.bridge_kind = vivid::BridgeKind::LastSample;
+    edge.data_type = VIVID_PORT_SCALAR;
+    cg.edges.push_back(edge);
+    cg.audio_to_frame_edges.push_back(0);
+
+    vivid::AudioFrameBridge bridge;
+    bridge.build(cg);
+
+    auto& write_buf = bridge.analysis_write_buffer();
+    write_buf.scalar_outputs[0][0] = 123.0f; // audio buffer output should be ignored
+    write_buf.scalar_outputs[0][1] = 0.42f;  // bridged scalar output
+    bridge.publish_analysis();
+
+    bridge.pull_from_audio(cg);
+
+    check(cg.nodes[1].bridge_input_values[0] == 0.42f,
+          "LastSample bridge pulls the requested scalar output port");
+    check(cg.nodes[1].bridge_input_dirty[0] == 1, "LastSample marks bridge input dirty");
+    check(cg.nodes[0].output_values[1] == 0.42f,
+          "audio output_values mirror bridged scalar snapshot for inspection");
+}
+
 static void test_pull_error_propagation() {
     std::fprintf(stderr, "\n--- pull_from_audio: error state propagation ---\n");
 
@@ -515,6 +562,7 @@ int main() {
     test_push_snapshots_params();
     // test_push_scalar_bridge_via_edge and test_pull_scalar_bridge_output were removed because the
     // dedicated scalar-side-channel behavior was replaced by explicit bridge semantics.
+    test_pull_last_sample_scalar_bridge_output();
     test_pull_analysis_data();
     test_pull_error_propagation();
     test_double_buffer_swap();
