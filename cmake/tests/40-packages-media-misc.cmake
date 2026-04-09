@@ -306,10 +306,69 @@ add_test(NAME test_movie_load_async COMMAND test_movie_load_async WORKING_DIRECT
 
 add_executable(test_movie_av_sync
     tests/media/test_movie_av_sync.cpp
+    operators/shared/movie_session/movie_transport.cpp
 )
-target_include_directories(test_movie_av_sync PRIVATE src tests ${CMAKE_SOURCE_DIR})
+target_include_directories(test_movie_av_sync PRIVATE src tests ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/operators/shared/movie_session)
 target_link_libraries(test_movie_av_sync PRIVATE vivid_runtime_testlib)
 add_test(NAME test_movie_av_sync COMMAND test_movie_av_sync WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_movie_transport
+    tests/media/test_movie_transport.cpp
+    operators/shared/movie_session/movie_transport.cpp
+    operators/shared/movie_session/playback_session.cpp
+    operators/shared/movie_session/session_registry.cpp
+)
+target_include_directories(test_movie_transport PRIVATE
+    src tests ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/operators/shared/movie_session)
+target_link_libraries(test_movie_transport PRIVATE vivid_runtime_testlib)
+add_test(NAME test_movie_transport COMMAND test_movie_transport WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_decoded_frame_queue
+    tests/media/test_decoded_frame_queue.cpp
+    operators/shared/movie_session/decoded_frame_queue.cpp
+)
+target_include_directories(test_decoded_frame_queue PRIVATE
+    src tests ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/operators/shared/movie_session)
+target_link_libraries(test_decoded_frame_queue PRIVATE vivid_runtime_testlib)
+add_test(NAME test_decoded_frame_queue COMMAND test_decoded_frame_queue WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_video_decode_worker
+    tests/media/test_video_decode_worker.cpp
+    operators/shared/movie_session/decoded_frame_queue.cpp
+    operators/shared/movie_session/video_decode_worker.cpp
+)
+target_include_directories(test_video_decode_worker PRIVATE
+    src tests ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/operators/shared/movie_session)
+target_link_libraries(test_video_decode_worker PRIVATE vivid_runtime_testlib)
+add_test(NAME test_video_decode_worker COMMAND test_video_decode_worker WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_movie_playback_modes
+    tests/media/test_movie_playback_modes.cpp
+    operators/shared/movie_session/movie_transport.cpp
+    operators/shared/movie_session/playback_session.cpp
+    operators/shared/movie_session/session_registry.cpp
+    operators/shared/movie_session/decoded_frame_queue.cpp
+    operators/shared/movie_session/video_decode_worker.cpp
+)
+target_include_directories(test_movie_playback_modes PRIVATE
+    src tests ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/operators/shared/movie_session)
+target_link_libraries(test_movie_playback_modes PRIVATE vivid_runtime_testlib)
+add_test(NAME test_movie_playback_modes COMMAND test_movie_playback_modes WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_movie_seek_stress
+    tests/media/test_movie_seek_stress.cpp
+    operators/shared/movie_session/movie_transport.cpp
+)
+target_include_directories(test_movie_seek_stress PRIVATE
+    src tests ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/operators/shared/movie_session)
+target_link_libraries(test_movie_seek_stress PRIVATE vivid_runtime_testlib)
+add_test(NAME test_movie_seek_stress COMMAND test_movie_seek_stress WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_port_type_registry
     tests/graph/test_port_type_registry.cpp

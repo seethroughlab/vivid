@@ -9,29 +9,10 @@
 #include <cstring>
 #include <algorithm>
 #include "test_helpers.h"
+#include "movie_transport.h"
 
 static int g_fail = 0;
 static int g_pass = 0;
-
-// ============================================================================
-// Sync math (copied from movie_file_in.cpp — pure functions)
-// ============================================================================
-
-static double wrap_time(double t, double duration) {
-    if (duration <= 0.0) return std::max(0.0, t);
-    double out = std::fmod(t, duration);
-    if (out < 0.0) out += duration;
-    return out;
-}
-
-static double shortest_circular_diff(double target, double current, double duration) {
-    if (duration <= 0.0) return target - current;
-    double d = target - current;
-    const double half = duration * 0.5;
-    while (d > half) d -= duration;
-    while (d < -half) d += duration;
-    return d;
-}
 
 // ============================================================================
 // AudioRing (minimal copy from movie_file_audio.cpp for isolated testing)
@@ -199,6 +180,54 @@ static void test_seek_threshold() {
     // Large drift outside threshold should trigger seek
     const double big_drift = 0.1; // 100ms
     check(big_drift > threshold, "100ms drift > 24fps threshold (seek)");
+}
+
+static void test_seek_cooldown() {
+    // Cooldown is 150ms — seeks within that window are suppressed.
+    constexpr double kCooldown = 0.150;
+
+    // Two desired positions 100ms apart — within cooldown, second seek blocked
+    const double first = 1.0;
+    const double second = 1.1;
+    check(std::abs(second - first) < kCooldown, "100ms apart < 150ms cooldown (blocked)");
+
+    // Two desired positions 200ms apart — outside cooldown, second seek allowed
+    const double third = 1.3;
+    check(std::abs(third - first) > kCooldown, "300ms apart > 150ms cooldown (allowed)");
+}
+
+static void test_seek_budget() {
+    // Budget: max 4 seeks per second.
+    constexpr uint64_t kMaxSeeks = 4;
+
+    // Simulate seeks within a 1-second window
+    uint64_t count = 0;
+    double window_start = 0.0;
+
+    // First 4 seeks should be allowed
+    for (int i = 0; i < 4; ++i) {
+        double now = 0.1 * (i + 1); // 0.1, 0.2, 0.3, 0.4
+        if (now - window_start > 1.0) { count = 0; window_start = now; }
+        bool ok = count < kMaxSeeks;
+        check(ok, "seek budget: seek allowed within budget");
+        count++;
+    }
+
+    // 5th seek in same window should be blocked
+    {
+        double now = 0.5;
+        if (now - window_start > 1.0) { count = 0; window_start = now; }
+        bool ok = count < kMaxSeeks;
+        check(!ok, "seek budget: 5th seek blocked");
+    }
+
+    // After 1 second, budget resets
+    {
+        double now = 1.5;
+        if (now - window_start > 1.0) { count = 0; window_start = now; }
+        bool ok = count < kMaxSeeks;
+        check(ok, "seek budget: reset after 1s window");
+    }
 }
 
 static void test_ring_basic_write_read() {
@@ -478,6 +507,8 @@ int main() {
     test_wrap_time();
     test_shortest_circular_diff();
     test_seek_threshold();
+    test_seek_cooldown();
+    test_seek_budget();
 
     std::fprintf(stderr, "\n=== AudioRing tests ===\n");
     test_ring_basic_write_read();
