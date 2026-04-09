@@ -138,6 +138,11 @@ struct CompiledEdge {
 // ---------------------------------------------------------------------------
 
 struct AudioNodeState {
+    struct AudioPortDebugTelemetry {
+        std::atomic<float> last_block_peak{0.0f};
+        std::atomic<uint32_t> buffer_size{0};
+    };
+
     // Audio buffers [port][sample * channels]
     std::vector<std::vector<float>> buffers_in;
     std::vector<std::vector<float>> buffers_out;
@@ -147,6 +152,8 @@ struct AudioNodeState {
     // Multi-channel negotiation.
     std::vector<uint8_t> input_channel_counts;
     std::vector<uint8_t> output_channel_counts;
+    std::vector<uint8_t> debug_input_channel_counts;
+    std::vector<uint8_t> debug_output_channel_counts;
     std::vector<uint8_t> descriptor_input_channels;
     std::vector<uint8_t> descriptor_output_channels;
     std::vector<float> input_port_defaults;   // per-input-port default_value from descriptor
@@ -171,7 +178,36 @@ struct AudioNodeState {
 
     // Analysis output port indices (rms, peak, waveform).
     std::unordered_map<std::string, uint32_t> analysis_output_port_indices;
+
+    // RT-safe per-audio-port telemetry for debugging/introspection.
+    std::unique_ptr<AudioPortDebugTelemetry[]> input_port_debug;
+    std::unique_ptr<AudioPortDebugTelemetry[]> output_port_debug;
 };
+
+struct AudioPortDebugSnapshot {
+    uint8_t channel_count = 1;
+    float last_block_peak = 0.0f;
+    uint32_t buffer_size = 0;
+    bool active = false;
+    bool valid = false;
+};
+
+inline AudioPortDebugSnapshot read_audio_port_debug(const AudioNodeState& a,
+                                                    bool input,
+                                                    uint32_t port_idx,
+                                                    float active_epsilon = 1e-6f) {
+    AudioPortDebugSnapshot snap;
+    const auto& channel_counts = input ? a.debug_input_channel_counts : a.debug_output_channel_counts;
+    const auto* telemetry = input ? a.input_port_debug.get() : a.output_port_debug.get();
+    if (port_idx >= channel_counts.size() || !telemetry) return snap;
+
+    snap.channel_count = channel_counts[port_idx];
+    snap.last_block_peak = telemetry[port_idx].last_block_peak.load(std::memory_order_relaxed);
+    snap.buffer_size = telemetry[port_idx].buffer_size.load(std::memory_order_relaxed);
+    snap.active = snap.last_block_peak > active_epsilon;
+    snap.valid = true;
+    return snap;
+}
 
 // ---------------------------------------------------------------------------
 // GpuNodeState — GPU-specific state, allocated only for GPU nodes.

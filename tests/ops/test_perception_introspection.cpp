@@ -64,6 +64,16 @@ static json find_node(const json& nodes, const std::string& node_id) {
     return nullptr;
 }
 
+static json find_port(const json& ports, const std::string& port_name) {
+    if (!ports.is_array()) return nullptr;
+    for (auto& p : ports) {
+        if (p.contains("name") && p["name"].is_string() &&
+            p["name"].get<std::string>() == port_name)
+            return p;
+    }
+    return nullptr;
+}
+
 static std::string get_str(const json& v) {
     if (v.is_null() || !v.is_string()) return "";
     return v.get<std::string>();
@@ -160,6 +170,19 @@ int main(int argc, char* argv[]) {
             bool has_opc = a.contains("output_port_count") && a["output_port_count"].is_number_integer();
             check(has_ipc, "audio metrics has input_port_count");
             check(has_opc, "audio metrics has output_port_count");
+            json outputs = aud.value("outputs", json{});
+            json out = find_port(outputs, "output");
+            check(!out.is_null(), "audio node output summary present");
+            if (!out.is_null()) {
+                check(out.contains("channel_count") && out["channel_count"].is_number_integer(),
+                      "audio output has channel_count");
+                check(out.contains("buffer_size") && out["buffer_size"].is_number_integer(),
+                      "audio output has buffer_size");
+                check(out.contains("last_block_peak") && out["last_block_peak"].is_number(),
+                      "audio output has last_block_peak");
+                check(out.contains("active") && out["active"].is_boolean(),
+                      "audio output has active flag");
+            }
         }
         if (!gpu.is_null()) {
             check(get_str(gpu["kind"]) == "gpu", "gpu node kind");

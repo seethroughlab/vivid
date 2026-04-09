@@ -54,7 +54,7 @@ All requests are POSTs. The URL path is the method name (e.g. `POST /add_node`).
 | Method | Key params | Description |
 |--------|-----------|-------------|
 | `inspect_graph` | — | All nodes, params, connections as JSON |
-| `introspect_nodes` | — | Compact per-node state summary |
+| `introspect_nodes` | — | Compact per-node state summary, including additive per-port audio activity fields |
 | `run_diagnostics` | — | Graph-level diagnostics (port mismatches, etc.) |
 | `capture_interface` | `node_id` (optional), `save_path` (optional), `ensure_ui_visible` (default `true`) | Capture the full running interface after UI overlays are drawn |
 | `analyze_output` | `mode`, `window_seconds`, `include_payload`, `node_id` (optional) | Capture and analyze the current frame/audio/AV output |
@@ -68,7 +68,7 @@ All requests are POSTs. The URL path is the method name (e.g. `POST /add_node`).
 | `inspect` | `node_id` | Single node params + port values |
 | `validate_checks` | `checks` | Validate check definitions (no graph needed) |
 | `run_checks` | `checks` | Run checks against live graph |
-| `sample_node_outputs` | `node_id`, `duration_seconds`, `interval_ms`, `include_lanes` | Time-series sampling of a node's output port values |
+| `sample_node_outputs` | `node_id`, `duration_seconds`, `interval_ms`, `include_lanes` | Time-series sampling of a node's output port values, including additive audio activity fields on audio-buffer outputs |
 
 ### Capture
 | Method | Key params | Description |
@@ -290,6 +290,18 @@ Topology-changing commands that modify the graph capture a before/after JSON sna
 ## Operator Introspection Payloads
 
 The operator introspection endpoints are intended to serve MCP planning, authoring, and docs lookup.
+
+For live audio nodes, `introspect_nodes` and `sample_node_outputs` now add per-port debug fields on
+audio-buffer ports without changing the existing schema version:
+
+- `channel_count`
+- `buffer_size`
+- `last_block_peak`
+- `active`
+
+These fields are runtime telemetry written by the audio callback. They complement the existing
+node-level audio metrics (`rms`, `peak`, `waveform_preview`) and are meant to answer “is signal
+flowing through this specific port right now?” without exposing raw live audio buffers.
 
 ### `list_types`
 

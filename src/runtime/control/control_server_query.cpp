@@ -680,6 +680,19 @@ static const CompiledNode* find_node_state(const RuntimeCore& core,
     return cg->find_node(node_id);
 }
 
+static void append_audio_port_debug_fields(nlohmann::json& port_obj,
+                                           const CompiledNode& ns,
+                                           bool input,
+                                           uint32_t port_idx) {
+    if (!ns.audio) return;
+    auto snap = read_audio_port_debug(*ns.audio, input, port_idx);
+    if (!snap.valid) return;
+    port_obj["channel_count"] = static_cast<int64_t>(snap.channel_count);
+    port_obj["buffer_size"] = static_cast<int64_t>(snap.buffer_size);
+    port_obj["last_block_peak"] = static_cast<double>(snap.last_block_peak);
+    port_obj["active"] = snap.active;
+}
+
 nlohmann::json sample_node_outputs_snapshot(const CompiledNode& ns,
                                                     bool include_lanes) {
     nlohmann::json outputs_obj = nlohmann::json::object();
@@ -725,6 +738,8 @@ nlohmann::json sample_node_outputs_snapshot(const CompiledNode& ns,
                 }
                 out["string_lanes"] = std::move(lane_arr);
             }
+            if (pd.type == VIVID_PORT_AUDIO_BUFFER)
+                append_audio_port_debug_fields(out, ns, false, oi);
         }
 
         outputs_obj[pd.name] = std::move(out);
@@ -955,6 +970,8 @@ std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core, const Subgr
                     if (ii < ns.input_string_lanes.size()) {
                         in["string_lanes"] = nlohmann::json{{"length", static_cast<int64_t>(ns.input_string_lanes[ii].size())}};
                     }
+                    if (pd.type == VIVID_PORT_AUDIO_BUFFER)
+                        append_audio_port_debug_fields(in, ns, true, ii);
                 }
                 inputs_arr.push_back(std::move(in));
             }
@@ -995,6 +1012,8 @@ std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core, const Subgr
                     if (oi < ns.output_string_lanes.size()) {
                         out["string_lanes"] = nlohmann::json{{"length", static_cast<int64_t>(ns.output_string_lanes[oi].size())}};
                     }
+                    if (pd.type == VIVID_PORT_AUDIO_BUFFER)
+                        append_audio_port_debug_fields(out, ns, false, oi);
                 }
 
                 if (pd.type == VIVID_PORT_TEXTURE && ns.gpu && ns.gpu->tex_width > 0 && ns.gpu->tex_height > 0) {

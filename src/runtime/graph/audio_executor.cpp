@@ -13,6 +13,55 @@
 
 namespace vivid {
 
+namespace {
+
+float compute_port_peak(const float* buf, uint32_t channel_count,
+                        uint32_t planar_stride, uint32_t frame_count) {
+    if (!buf || channel_count == 0 || frame_count == 0) return 0.0f;
+    float peak = 0.0f;
+    for (uint32_t ch = 0; ch < channel_count; ++ch) {
+        const float* chan = buf + ch * planar_stride;
+        for (uint32_t i = 0; i < frame_count; ++i) {
+            float mag = std::fabs(chan[i]);
+            if (mag > peak) peak = mag;
+        }
+    }
+    return peak;
+}
+
+void write_audio_port_telemetry(const CompiledNode& cn,
+                                AudioNodeState& a,
+                                bool input,
+                                uint32_t frame_count,
+                                uint32_t planar_stride) {
+    const auto& port_types = input ? cn.input_port_types : cn.output_port_types;
+    const auto& debug_counts = input ? a.debug_input_channel_counts : a.debug_output_channel_counts;
+    auto* telemetry = input ? a.input_port_debug.get() : a.output_port_debug.get();
+    const auto& buffers = input ? a.buffers_in : a.buffers_out;
+    if (!telemetry) return;
+
+    for (uint32_t p = 0; p < port_types.size() && p < debug_counts.size() && p < buffers.size(); ++p) {
+        if (port_types[p] != VIVID_PORT_AUDIO_BUFFER) continue;
+        telemetry[p].buffer_size.store(frame_count, std::memory_order_relaxed);
+        telemetry[p].last_block_peak.store(
+            compute_port_peak(buffers[p].data(), debug_counts[p], planar_stride, frame_count),
+            std::memory_order_relaxed);
+    }
+}
+
+void clear_audio_output_telemetry(const CompiledNode& cn,
+                                  AudioNodeState& a,
+                                  uint32_t frame_count) {
+    if (!a.output_port_debug) return;
+    for (uint32_t p = 0; p < cn.output_port_types.size() && p < a.debug_output_channel_counts.size(); ++p) {
+        if (cn.output_port_types[p] != VIVID_PORT_AUDIO_BUFFER) continue;
+        a.output_port_debug[p].buffer_size.store(frame_count, std::memory_order_relaxed);
+        a.output_port_debug[p].last_block_peak.store(0.0f, std::memory_order_relaxed);
+    }
+}
+
+} // namespace
+
 AudioExecutor::AudioExecutor() = default;
 
 AudioExecutor::~AudioExecutor() {
@@ -309,6 +358,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 !snap.solo_active_set[ni_ord] && ni != static_cast<uint32_t>(sink_node_idx_)) {
                 for (auto& buf : a.buffers_out)
                     std::memset(buf.data(), 0, buf.size() * sizeof(float));
+                clear_audio_output_telemetry(cn, a, chunk);
                 continue;
             }
 
@@ -368,6 +418,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 a.in_ptrs[p] = a.buffers_in[p].data();
             for (uint32_t p = 0; p < cn.output_port_count; ++p)
                 a.out_ptrs[p] = a.buffers_out[p].data();
+            write_audio_port_telemetry(cn, a, true, chunk, buffer_size_);
 
             double node_time = static_cast<double>(audio_frame_ + frames_written) / sample_rate_;
             const auto metronome = metronome_store_
@@ -391,7 +442,10 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             }
 
             // Process
-            if (!cn.loader || !cn.instance || cn.errored) continue;
+            if (!cn.loader || !cn.instance || cn.errored) {
+                clear_audio_output_telemetry(cn, a, chunk);
+                continue;
+            }
 
             // Set up lane views and output builders for context.
             // Priority: refs (audio-direct routing) > bridge views (already
@@ -667,6 +721,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                     cn.output_lane_refs[p] = {};
                 }
             }
+            write_audio_port_telemetry(cn, a, false, chunk, buffer_size_);
             // Note: analysis snapshot reads output_lane_refs directly (no compat sync needed).
 
             // Route float/lane/custom outputs to downstream audio nodes

@@ -582,6 +582,25 @@ CommandResult RuntimeAPI::inspect(const std::string& node_id) {
     const auto* cn = core_.compiled_graph()->find_node(node_id);
     if (!cn) return {false, "unknown node '" + node_id + "'"};
     const auto* desc = node_descriptor(*cn);
+    auto find_port_desc = [&](const std::string& name, VividPortDirection dir) -> const VividPortDescriptor* {
+        if (!desc) return nullptr;
+        for (uint32_t i = 0; i < desc->port_count; ++i) {
+            const auto& pd = desc->ports[i];
+            if (pd.direction == dir && pd.name == name)
+                return &pd;
+        }
+        return nullptr;
+    };
+    auto append_audio_debug = [&](std::ostringstream& out, bool input, uint32_t port_idx) {
+        if (!cn->audio) return false;
+        auto snap = read_audio_port_debug(*cn->audio, input, port_idx);
+        if (!snap.valid) return false;
+        out << "audio[ch=" << static_cast<int>(snap.channel_count)
+            << " peak=" << snap.last_block_peak
+            << " frames=" << snap.buffer_size
+            << (snap.active ? " active]" : " idle]");
+        return true;
+    };
     std::ostringstream oss;
     oss << node_id << " (" << node_display_name(*cn, desc) << ")\n";
     {
@@ -602,7 +621,12 @@ CommandResult RuntimeAPI::inspect(const std::string& node_id) {
     }
     oss << "\n  outputs:";
     for (const auto& [name, idx] : cn->output_port_indices) {
-        oss << " " << name << "=" << cn->output_values[idx];
+        oss << " " << name << "=";
+        const auto* pd = find_port_desc(name, VIVID_PORT_OUTPUT);
+        if (pd && pd->type == VIVID_PORT_AUDIO_BUFFER && append_audio_debug(oss, false, idx)) {
+            continue;
+        }
+        oss << cn->output_values[idx];
         if (idx < cn->output_string_values.size() && !cn->output_string_values[idx].empty())
             oss << " \"" << cn->output_string_values[idx] << "\"";
         if (idx < cn->output_lane_refs.size() && cn->output_lane_refs[idx]) {
@@ -626,7 +650,12 @@ CommandResult RuntimeAPI::inspect(const std::string& node_id) {
     if (!cn->input_port_indices.empty()) {
         oss << "\n  inputs:";
         for (const auto& [name, idx] : cn->input_port_indices) {
-            oss << " " << name << "=" << cn->input_values[idx];
+            oss << " " << name << "=";
+            const auto* pd = find_port_desc(name, VIVID_PORT_INPUT);
+            if (pd && pd->type == VIVID_PORT_AUDIO_BUFFER && append_audio_debug(oss, true, idx)) {
+                continue;
+            }
+            oss << cn->input_values[idx];
             if (idx < cn->input_string_values.size() && !cn->input_string_values[idx].empty())
                 oss << " \"" << cn->input_string_values[idx] << "\"";
             if (idx < cn->input_lane_refs.size() && cn->input_lane_refs[idx]) {

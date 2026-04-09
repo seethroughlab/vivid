@@ -67,8 +67,20 @@ target_link_libraries(test_perception_introspection PRIVATE
     vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio ixwebsocket webgpu rtmidi stb_truetype
     "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
     "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
-add_dependencies(test_perception_introspection test_op_v1)
+add_dependencies(test_perception_introspection test_op_v1 oscillator shape)
 add_test(NAME test_perception_introspection COMMAND test_perception_introspection WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_audio_debug_introspection
+    tests/control/test_audio_debug_introspection.cpp
+)
+target_include_directories(test_audio_debug_introspection PRIVATE src tests)
+target_link_libraries(test_audio_debug_introspection PRIVATE
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio ixwebsocket webgpu rtmidi stb_truetype
+    "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
+    "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
+add_dependencies(test_audio_debug_introspection multi_channel_dc_source_op audio_reduce_op gain)
+add_test(NAME test_audio_debug_introspection COMMAND test_audio_debug_introspection ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Test operator plugins
 
@@ -198,4 +210,3 @@ add_test(NAME test_graph_file_io COMMAND test_graph_file_io)
 add_executable(test_workspace_manager tests/core/test_workspace_manager.cpp)
 target_link_libraries(test_workspace_manager PRIVATE vivid_runtime_testlib)
 add_test(NAME test_workspace_manager COMMAND test_workspace_manager)
-

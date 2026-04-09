@@ -266,6 +266,8 @@ void GraphCompiler::init_audio_state(CompiledNode& cn,
 
     a.input_channel_counts.assign(cn.input_port_count, 1);
     a.output_channel_counts.assign(cn.output_port_count, 1);
+    a.debug_input_channel_counts.assign(cn.input_port_count, 1);
+    a.debug_output_channel_counts.assign(cn.output_port_count, 1);
     a.execution_strategy = LaneExecutionStrategy::Scalar;
     a.lane_lift_count = 0;
     a.lane_lift_set_id = 0;
@@ -274,6 +276,8 @@ void GraphCompiler::init_audio_state(CompiledNode& cn,
     a.buffers_out.resize(cn.output_port_count, std::vector<float>(buffer_size, 0.0f));
     a.in_ptrs.resize(cn.input_port_count);
     a.out_ptrs.resize(cn.output_port_count);
+    a.input_port_debug = std::make_unique<AudioNodeState::AudioPortDebugTelemetry[]>(cn.input_port_count);
+    a.output_port_debug = std::make_unique<AudioNodeState::AudioPortDebugTelemetry[]>(cn.output_port_count);
 
     a.input_port_defaults.resize(cn.input_port_count, 0.0f);
     for (uint32_t i = 0, inp = 0; i < desc->port_count; ++i) {

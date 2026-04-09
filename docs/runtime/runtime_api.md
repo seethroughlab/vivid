@@ -27,6 +27,10 @@ struct CommandResult {
 };
 ```
 
+`inspect(node_id)` is the human-readable live-state query. For audio-buffer ports it now reports a
+compact audio summary (`audio[ch=… peak=… frames=… active|idle]`) instead of a misleading scalar
+snapshot, while non-audio ports continue to print their existing scalar/string/lane values.
+
 ## Immediate vs. Buffered
 
 **Immediate** (apply to live runtime in-place, no rebuild needed):
