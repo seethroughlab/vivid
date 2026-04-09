@@ -1,5 +1,6 @@
 #import "hap_decoder.h"
 #include "hap_codec.h"
+#include "decoded_frame_queue.h"
 
 #import <AVFoundation/AVFoundation.h>
 #import <CoreMedia/CoreMedia.h>
@@ -54,6 +55,7 @@ struct HAPDecoder::Impl {
     VideoCompressedFormat format = VideoCompressedFormat::None;
     bool ycocg_encoded = false;
     float current_time_s = 0.0f;
+    uint64_t nil_frame_counter = 0;
     std::chrono::steady_clock::time_point last_decode{};
 
     void reset_reader(double start_seconds = 0.0) {
@@ -188,23 +190,24 @@ void HAPDecoder::close() {
 
 bool HAPDecoder::is_open() const { return impl_ && impl_->opened; }
 
-bool HAPDecoder::decode_frame() {
-    if (!impl_ || !impl_->opened || !impl_->playing || !impl_->video_output) return false;
+DecodeStatus HAPDecoder::decode_frame() {
+    if (!impl_ || !impl_->opened || !impl_->playing || !impl_->video_output)
+        return DecodeStatus::NilFrame;
     const float effective_fps = std::max(1.0f, impl_->frame_rate * std::max(0.01f, impl_->speed));
     const auto now = std::chrono::steady_clock::now();
     const auto min_dt = std::chrono::duration<double>(1.0 / effective_fps);
-    if (now - impl_->last_decode < min_dt) return false;
+    if (now - impl_->last_decode < min_dt) return DecodeStatus::ReusedFrame;
 
     CMSampleBufferRef sample = [impl_->video_output copyNextSampleBuffer];
     if (!sample) {
         if (impl_->loop) {
             impl_->reset_reader(0.0);
-            if (!impl_->reader || !impl_->video_output) return false;
+            if (!impl_->reader || !impl_->video_output) return DecodeStatus::NilFrame;
             sample = [impl_->video_output copyNextSampleBuffer];
-            if (!sample) return false;
+            if (!sample) { impl_->nil_frame_counter++; return DecodeStatus::NilFrame; }
         } else {
             impl_->playing = false;
-            return false;
+            return DecodeStatus::NilFrame;
         }
     }
 
@@ -214,38 +217,38 @@ bool HAPDecoder::decode_frame() {
     CMBlockBufferRef block = CMSampleBufferGetDataBuffer(sample);
     if (!block) {
         CFRelease(sample);
-        return false;
+        return DecodeStatus::NilFrame;
     }
     const size_t data_len = static_cast<size_t>(CMBlockBufferGetDataLength(block));
     if (data_len == 0) {
         CFRelease(sample);
-        return false;
+        return DecodeStatus::NilFrame;
     }
     impl_->sample_data.resize(data_len);
     OSStatus copy_err = CMBlockBufferCopyDataBytes(block, 0, data_len, impl_->sample_data.data());
     if (copy_err != noErr) {
         CFRelease(sample);
-        return false;
+        return DecodeStatus::NilFrame;
     }
 
     unsigned int texture_count = 0;
     if (HapGetFrameTextureCount(impl_->sample_data.data(), data_len, &texture_count) != HapResult_No_Error ||
         texture_count < 1) {
         CFRelease(sample);
-        return false;
+        return DecodeStatus::NilFrame;
     }
 
     unsigned int hap_fmt = 0;
     if (HapGetFrameTextureFormat(impl_->sample_data.data(), data_len, 0, &hap_fmt) != HapResult_No_Error) {
         CFRelease(sample);
-        return false;
+        return DecodeStatus::NilFrame;
     }
     impl_->format = vivid_hap_to_compressed_format(hap_fmt);
     impl_->ycocg_encoded = (hap_fmt == 0x01u); // HapTextureFormat_YCoCg_DXT5
     const size_t bpb = vivid_compressed_bytes_per_block(impl_->format);
     if (impl_->format == VideoCompressedFormat::None || bpb == 0) {
         CFRelease(sample);
-        return false;
+        return DecodeStatus::NilFrame;
     }
 
     const size_t blocks_w = (impl_->frame_width + 3) / 4;
@@ -258,13 +261,13 @@ bool HAPDecoder::decode_frame() {
                                  impl_->decoded_data.data(), out_size, &used, &out_fmt);
     CFRelease(sample);
     if (res != HapResult_No_Error || used == 0 || used > out_size) {
-        return false;
+        return DecodeStatus::NilFrame;
     }
     if (used != out_size) {
         impl_->decoded_data.resize(static_cast<size_t>(used));
     }
     impl_->last_decode = now;
-    return true;
+    return DecodeStatus::NewFrame;
 }
 
 const uint8_t* HAPDecoder::pixel_data() const { return nullptr; }
@@ -284,6 +287,7 @@ bool HAPDecoder::seek(double time_seconds) {
     return (impl_->reader && impl_->video_output);
 }
 float HAPDecoder::frame_rate() const { return impl_->frame_rate; }
+uint64_t HAPDecoder::nil_frame_count() const { return impl_->nil_frame_counter; }
 VideoFrameCompressionMode HAPDecoder::compression_mode() const {
     return VideoFrameCompressionMode::CompressedBC;
 }
@@ -291,6 +295,19 @@ VideoCompressedFormat HAPDecoder::compressed_format() const { return impl_->form
 bool HAPDecoder::requires_ycocg_decode() const { return impl_->ycocg_encoded; }
 const uint8_t* HAPDecoder::compressed_data() const { return impl_->decoded_data.data(); }
 size_t HAPDecoder::compressed_size() const { return impl_->decoded_data.size(); }
+
+DecodedFrame HAPDecoder::make_decoded_frame() const {
+    DecodedFrame frame;
+    if (!impl_ || impl_->decoded_data.empty()) return frame;
+    frame.data = impl_->decoded_data;
+    frame.width = impl_->frame_width;
+    frame.height = impl_->frame_height;
+    frame.pts = static_cast<double>(impl_->current_time_s);
+    frame.compressed = true;
+    frame.compressed_format = impl_->format;
+    frame.requires_ycocg = impl_->ycocg_encoded;
+    return frame;
+}
 
 bool is_hap_video_file(const std::string& path) {
     return HAPDecoder::is_hap_file(path);

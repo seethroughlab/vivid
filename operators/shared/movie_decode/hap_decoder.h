@@ -3,6 +3,8 @@
 #include "video_decoder.h"
 #include <memory>
 
+struct DecodedFrame;
+
 // HAP compressed-texture video decoder. Uses AVAssetReader (not AVPlayer),
 // so all methods are safe to call from any single thread.
 class HAPDecoder : public VideoDecoder {
@@ -13,7 +15,7 @@ public:
     bool open(const std::string& path) override;
     void close() override;
     bool is_open() const override;
-    bool decode_frame() override;
+    DecodeStatus decode_frame() override;
     const uint8_t* pixel_data() const override;
     uint32_t width() const override;
     uint32_t height() const override;
@@ -23,6 +25,7 @@ public:
     float current_time() const override;
     bool seek(double time_seconds) override;
     float frame_rate() const override;
+    uint64_t nil_frame_count() const override;
     VideoFrameCompressionMode compression_mode() const override;
     VideoCompressedFormat compressed_format() const override;
     bool requires_ycocg_decode() const override;
@@ -30,6 +33,10 @@ public:
     size_t compressed_size() const override;
 
     static bool is_hap_file(const std::string& path);
+
+    // Pack the most recently decoded compressed frame into a DecodedFrame
+    // for use with the unified queue infrastructure.
+    DecodedFrame make_decoded_frame() const;
 
 private:
     struct Impl;

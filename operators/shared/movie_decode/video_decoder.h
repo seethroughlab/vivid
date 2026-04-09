@@ -1,19 +1,15 @@
 #pragma once
 
+#include "video_codec_types.h"
 #include <string>
 #include <cstdint>
 #include <cstddef>
 
-enum class VideoFrameCompressionMode {
-    UncompressedBGRA,
-    CompressedBC
-};
-
-enum class VideoCompressedFormat {
-    None,
-    BC1,
-    BC3,
-    BC4
+// Result of a decode_frame() call.
+enum class DecodeStatus {
+    NewFrame,     // New frame decoded; pixel_data()/compressed_data() updated
+    ReusedFrame,  // No new frame at this display time (content unchanged)
+    NilFrame      // Decoder returned nil — stall, error, or not ready
 };
 
 // Threading contract:
@@ -27,7 +23,7 @@ public:
     virtual bool open(const std::string& path) = 0;
     virtual void close() = 0;
     virtual bool is_open() const = 0;
-    virtual bool decode_frame() = 0;  // returns true if new frame available
+    virtual DecodeStatus decode_frame() = 0;
     virtual const uint8_t* pixel_data() const = 0;  // BGRA8
     virtual uint32_t width() const = 0;
     virtual uint32_t height() const = 0;
@@ -37,6 +33,9 @@ public:
     virtual float current_time() const = 0;
     // Optional: seek decoder timeline to local media time (seconds).
     virtual bool seek(double /*time_seconds*/) { return false; }
+
+    // Cumulative count of nil/missed frame fetches from the underlying decoder.
+    virtual uint64_t nil_frame_count() const { return 0; }
 
     // Nominal frame rate (fps). Used for sync threshold calculation.
     virtual float frame_rate() const { return 30.0f; }

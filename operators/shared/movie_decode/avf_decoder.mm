@@ -1,4 +1,6 @@
 #import "avf_decoder.h"
+#include "decoded_frame_queue.h"
+#include <chrono>
 
 #import <AVFoundation/AVFoundation.h>
 #import <CoreMedia/CoreMedia.h>
@@ -232,14 +234,38 @@ struct AVFDecoder::Impl {
         }
     }
 
-    bool decode_frame() {
+    // ==========================================================================
+    // Clock ownership: SELF-CLOCK mode
+    // ==========================================================================
+    // AVPlayer owns the playback clock.  We never seek from within
+    // decode_frame(); seeking is driven externally by MovieFileIn's AV sync.
+    //
+    // Frame selection: AVPlayerItemVideoOutput translates the host monotonic
+    // clock (CACurrentMediaTime) to the item timeline via itemTimeForHostTime:.
+    // The returned display_time is the frame that should be on screen NOW.
+    //
+    // hasNewPixelBufferForItemTime: returns YES only when display_time maps
+    // to a different decoded frame than the last one returned.  This prevents
+    // redundant CPU copies when the render loop runs faster than the media
+    // frame rate (e.g. 60 Hz loop with 24 fps content).
+    //
+    // acquire_pixel_buffer_impl() — Phase 1 (main thread, fast):
+    //   AVF API calls only, returns a retained CVPixelBuffer.
+    //
+    // copy_pixel_buffer() — Phase 2 (any thread, slow):
+    //   Lock, row-by-row memcpy, unlock, release.
+    // ==========================================================================
+
+    AcquiredPixelBuffer acquire_pixel_buffer_impl() {
         assert([NSThread isMainThread]);
         @autoreleasepool {
-            if (!opened || !video_output || !player) return false;
+            AcquiredPixelBuffer result;
+            if (!opened || !video_output || !player) {
+                result.status = DecodeStatus::NilFrame;
+                return result;
+            }
 
             // Recover from transient paused/stalled state (seen after seeks/loops).
-            // Run this even when the player item isn't ready yet, so that AVPlayer
-            // can process the play request and transition to ReadyToPlay.
             if (current_speed_ > 0.0f &&
                 player.timeControlStatus != AVPlayerTimeControlStatusPlaying) {
                 [player play];
@@ -247,7 +273,7 @@ struct AVFDecoder::Impl {
             }
 
             AVPlayerItem* current_item = player.currentItem ? player.currentItem : player_item;
-            if (!current_item) return false;
+            if (!current_item) { result.status = DecodeStatus::NilFrame; return result; }
             AVPlayerItemVideoOutput* active_output = video_output;
             if (current_item != player_item) {
                 for (AVPlayerItemOutput* out in current_item.outputs) {
@@ -257,17 +283,21 @@ struct AVFDecoder::Impl {
                     }
                 }
             }
-            if (!active_output) return false;
+            if (!active_output) { result.status = DecodeStatus::NilFrame; return result; }
             CMTime display_time = [video_output itemTimeForHostTime:CACurrentMediaTime()];
             if (!CMTIME_IS_VALID(display_time) || CMTIME_IS_INDEFINITE(display_time)) {
                 display_time = current_item.currentTime;
+            }
+
+            if (![active_output hasNewPixelBufferForItemTime:display_time]) {
+                result.status = DecodeStatus::ReusedFrame;
+                return result;
             }
 
             CVPixelBufferRef cv_buf = [active_output
                 copyPixelBufferForItemTime:display_time
                 itemTimeForDisplay:nil];
             if (!cv_buf) {
-                // Fallback path for some containers/codecs where host-time lookup can miss.
                 CMTime now_time = current_item.currentTime;
                 cv_buf = [active_output copyPixelBufferForItemTime:now_time itemTimeForDisplay:nil];
             }
@@ -277,36 +307,33 @@ struct AVFDecoder::Impl {
                     std::fprintf(stderr, "[avf_decoder] no pixel buffer for ~%llu decode ticks\n",
                                  static_cast<unsigned long long>(no_frame_counter_));
                 }
-                return false;
+                result.status = DecodeStatus::NilFrame;
+                return result;
             }
             no_frame_counter_ = 0;
 
-            CVPixelBufferLockBaseAddress(cv_buf, kCVPixelBufferLock_ReadOnly);
-
-            uint32_t w = static_cast<uint32_t>(CVPixelBufferGetWidth(cv_buf));
-            uint32_t h = static_cast<uint32_t>(CVPixelBufferGetHeight(cv_buf));
-            size_t stride = CVPixelBufferGetBytesPerRow(cv_buf);
-            const uint8_t* base = static_cast<const uint8_t*>(
-                CVPixelBufferGetBaseAddress(cv_buf));
-
-            // Update dimensions if they differ (rare but possible)
-            if (w != frame_width || h != frame_height) {
-                frame_width  = w;
-                frame_height = h;
-                pixel_buffer.resize(w * h * 4);
-            }
-
-            // Copy row by row (stride may differ from w*4)
-            for (uint32_t row = 0; row < h; ++row) {
-                std::memcpy(pixel_buffer.data() + row * w * 4,
-                           base + row * stride,
-                           w * 4);
-            }
-
-            CVPixelBufferUnlockBaseAddress(cv_buf, kCVPixelBufferLock_ReadOnly);
-            CVPixelBufferRelease(cv_buf);
-            return true;
+            result.buffer = cv_buf;  // retained by copyPixelBufferForItemTime:
+            result.pts = CMTimeGetSeconds(display_time);
+            result.status = DecodeStatus::NewFrame;
+            return result;
         }
+    }
+
+    // Synchronous decode: acquire + copy in one call (backward compatible).
+    DecodeStatus decode_frame() {
+        auto acquired = acquire_pixel_buffer_impl();
+        if (!acquired.valid()) return acquired.status;
+
+        auto frame = AVFDecoder::copy_pixel_buffer(std::move(acquired));
+        if (frame.empty()) return DecodeStatus::NilFrame;
+
+        // Update Impl state for backward-compatible pixel_data() access.
+        if (frame.width != frame_width || frame.height != frame_height) {
+            frame_width = frame.width;
+            frame_height = frame.height;
+        }
+        pixel_buffer = std::move(frame.data);
+        return DecodeStatus::NewFrame;
     }
 
     void set_loop(bool loop) {
@@ -392,7 +419,51 @@ AVFDecoder::~AVFDecoder() { close(); }
 bool AVFDecoder::open(const std::string& path) { return impl_->open(path); }
 void AVFDecoder::close() { if (impl_) impl_->close(); }
 bool AVFDecoder::is_open() const { return impl_ && impl_->opened; }
-bool AVFDecoder::decode_frame() { return impl_->decode_frame(); }
+DecodeStatus AVFDecoder::decode_frame() { return impl_->decode_frame(); }
+AcquiredPixelBuffer AVFDecoder::acquire_pixel_buffer() { return impl_->acquire_pixel_buffer_impl(); }
+
+DecodedFrame AVFDecoder::copy_pixel_buffer(AcquiredPixelBuffer&& acquired) {
+    DecodedFrame frame;
+    if (!acquired.buffer) return frame;
+
+    auto t0 = std::chrono::steady_clock::now();
+
+    CVPixelBufferLockBaseAddress(acquired.buffer, kCVPixelBufferLock_ReadOnly);
+
+    uint32_t w = static_cast<uint32_t>(CVPixelBufferGetWidth(acquired.buffer));
+    uint32_t h = static_cast<uint32_t>(CVPixelBufferGetHeight(acquired.buffer));
+    size_t stride = CVPixelBufferGetBytesPerRow(acquired.buffer);
+    const uint8_t* base = static_cast<const uint8_t*>(
+        CVPixelBufferGetBaseAddress(acquired.buffer));
+
+    frame.width = w;
+    frame.height = h;
+    frame.pts = acquired.pts;
+    frame.data.resize(static_cast<size_t>(w) * h * 4);
+
+    for (uint32_t row = 0; row < h; ++row) {
+        std::memcpy(frame.data.data() + row * w * 4,
+                    base + row * stride,
+                    w * 4);
+    }
+
+    CVPixelBufferUnlockBaseAddress(acquired.buffer, kCVPixelBufferLock_ReadOnly);
+    CVPixelBufferRelease(acquired.buffer);
+    acquired.buffer = nullptr;
+
+    auto t1 = std::chrono::steady_clock::now();
+    frame.copy_time_us = std::chrono::duration<float, std::micro>(t1 - t0).count();
+
+    return frame;
+}
+
+void AcquiredPixelBuffer::release() {
+    if (buffer) {
+        CVPixelBufferRelease(buffer);
+        buffer = nullptr;
+    }
+}
+
 const uint8_t* AVFDecoder::pixel_data() const { return impl_->pixel_buffer.data(); }
 uint32_t AVFDecoder::width() const { return impl_->frame_width; }
 uint32_t AVFDecoder::height() const { return impl_->frame_height; }
@@ -402,6 +473,7 @@ void AVFDecoder::set_speed(float speed) { impl_->set_speed(speed); }
 float AVFDecoder::current_time() const { return impl_->current_time(); }
 bool AVFDecoder::seek(double time_seconds) { return impl_->seek(time_seconds); }
 float AVFDecoder::frame_rate() const { return impl_->frame_rate_; }
+uint64_t AVFDecoder::nil_frame_count() const { return impl_->no_frame_counter_; }
 
 std::unique_ptr<VideoDecoder> create_avf_decoder() {
     return std::make_unique<AVFDecoder>();
