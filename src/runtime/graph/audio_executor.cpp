@@ -8,12 +8,15 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 
 namespace vivid {
 
 namespace {
+
+using AudioClock = std::chrono::steady_clock;
 
 float compute_port_peak(const float* buf, uint32_t channel_count,
                         uint32_t planar_stride, uint32_t frame_count) {
@@ -27,6 +30,13 @@ float compute_port_peak(const float* buf, uint32_t channel_count,
         }
     }
     return peak;
+}
+
+uint32_t elapsed_us(AudioClock::time_point start, AudioClock::time_point end) {
+    auto micros = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    if (micros <= 0) return 0;
+    if (micros > static_cast<int64_t>(UINT32_MAX)) return UINT32_MAX;
+    return static_cast<uint32_t>(micros);
 }
 
 void write_audio_port_telemetry(const CompiledNode& cn,
@@ -58,6 +68,22 @@ void clear_audio_output_telemetry(const CompiledNode& cn,
         a.output_port_debug[p].buffer_size.store(frame_count, std::memory_order_relaxed);
         a.output_port_debug[p].last_block_peak.store(0.0f, std::memory_order_relaxed);
     }
+}
+
+void write_audio_node_telemetry(AudioNodeState& a,
+                                uint32_t total_us,
+                                uint32_t process_us,
+                                float budget_pct,
+                                uint32_t lane_count,
+                                uint32_t lane_state_entries) {
+    uint32_t prev_ema = a.node_debug.ema_block_us.load(std::memory_order_relaxed);
+    uint32_t next_ema = (prev_ema == 0) ? total_us : ((prev_ema * 7u) + total_us) / 8u;
+    a.node_debug.last_block_total_us.store(total_us, std::memory_order_relaxed);
+    a.node_debug.last_process_us.store(process_us, std::memory_order_relaxed);
+    a.node_debug.ema_block_us.store(next_ema, std::memory_order_relaxed);
+    a.node_debug.last_block_budget_pct.store(budget_pct, std::memory_order_relaxed);
+    a.node_debug.last_lane_count.store(lane_count, std::memory_order_relaxed);
+    a.node_debug.lane_state_entries.store(lane_state_entries, std::memory_order_relaxed);
 }
 
 } // namespace
@@ -149,6 +175,7 @@ bool AudioExecutor::build(AudioFrameBridge& bridge, CompiledGraph& cg,
 
     // Reset lane state service
     lane_state_.clear();
+    lane_state_.set_node_capacity(static_cast<uint32_t>(cg.nodes.size()));
 
     // Build per-node lane state contexts
     node_lane_contexts_.resize(cg.audio_order.size());
@@ -348,6 +375,25 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             uint32_t ni = cg.audio_order[ni_ord];
             auto& cn = cg.nodes[ni];
             auto& a = *cn.audio;
+            auto node_start = AudioClock::now();
+            uint32_t node_process_us = 0;
+            uint32_t node_lane_count = 0;
+            double node_budget_us = sample_rate_ > 0
+                ? (static_cast<double>(chunk) / sample_rate_) * 1e6
+                : 0.0;
+            auto finalize_node_debug = [&]() {
+                uint32_t total_us = elapsed_us(node_start, AudioClock::now());
+                float budget_pct = 0.0f;
+                if (node_budget_us > 0.0) {
+                    budget_pct = static_cast<float>((static_cast<double>(total_us) / node_budget_us) * 100.0);
+                }
+                write_audio_node_telemetry(a,
+                                           total_us,
+                                           node_process_us,
+                                           budget_pct,
+                                           node_lane_count,
+                                           lane_state_.live_entry_count(ni));
+            };
 
             // Reset input buffers to port default values (0 for most, 1.0 for multiplicative CVs)
             for (uint32_t bi = 0; bi < a.buffers_in.size(); ++bi) {
@@ -365,6 +411,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 for (auto& buf : a.buffers_out)
                     std::memset(buf.data(), 0, buf.size() * sizeof(float));
                 clear_audio_output_telemetry(cn, a, chunk);
+                finalize_node_debug();
                 continue;
             }
 
@@ -450,6 +497,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             // Process
             if (!cn.loader || !cn.instance || cn.errored) {
                 clear_audio_output_telemetry(cn, a, chunk);
+                finalize_node_debug();
                 continue;
             }
 
@@ -476,6 +524,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 // ── Lane-lifted: deinterleave → per-lane process → interleave ──
                 auto& group = lane_lift_groups_[lift_it->second];
                 uint32_t lanes = group.lane_count;
+                node_lane_count = lanes;
 
                 // Deinterleave: extract lane c from multi-lane buffers into per-lane mono buffers
                 for (uint32_t c = 0; c < lanes; ++c) {
@@ -526,6 +575,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                     populate_metronome_context(ctx, metronome);
                     // Note: allocate/retire use lane_state_ directly (not per-node context)
 
+                    auto process_start = AudioClock::now();
                     try {
                         cn.loader->process_audio(group.instances[c], &ctx);
                     } catch (const std::exception& ex) {
@@ -536,6 +586,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                         cn.errored = true;
                         std::strncpy(a.error_message, "unknown exception", sizeof(a.error_message) - 1);
                     }
+                    node_process_us += elapsed_us(process_start, AudioClock::now());
                 }
 
                 if (cn.errored) {
@@ -568,6 +619,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                                  cn.node_id.c_str(), loop_lanes, max_ll);
                     loop_lanes = max_ll;
                 }
+                node_lane_count = loop_lanes;
 
                 if (loop_lanes > 0) {
                     // Read identity-bearing lane_ids (pre-allocated scratch).
@@ -635,6 +687,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                         ctx.retire_lane_id_fn = retire_lane_id_fn_bridge;
                         populate_metronome_context(ctx, metronome);
 
+                        auto process_start = AudioClock::now();
                         try {
                             cn.loader->process_audio(cn.instance, &ctx);
                         } catch (const std::exception& ex) {
@@ -645,6 +698,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                             cn.errored = true;
                             std::strncpy(a.error_message, "unknown exception", sizeof(a.error_message) - 1);
                         }
+                        node_process_us += elapsed_us(process_start, AudioClock::now());
                     }
 
                     if (cn.errored) {
@@ -671,6 +725,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 }
             } else {
                 // ── Normal (non-lifted) processing ──
+                node_lane_count = 1;
                 VividAudioContext ctx{};
                 ctx.time = node_time;
                 ctx.delta_time = static_cast<double>(chunk) / sample_rate_;
@@ -703,6 +758,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 ctx.retire_lane_id_fn = retire_lane_id_fn_bridge;
                 populate_metronome_context(ctx, metronome);
 
+                auto process_start = AudioClock::now();
                 try {
                     cn.loader->process_audio(cn.instance, &ctx);
                 } catch (const std::exception& ex) {
@@ -717,6 +773,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                     for (auto& buf : a.buffers_out)
                         std::memset(buf.data(), 0, buf.size() * sizeof(float));
                 }
+                node_process_us += elapsed_us(process_start, AudioClock::now());
             }
 
             // Publish output lane refs
@@ -760,6 +817,8 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                         to_cn.resolved_custom_inputs[to_ord] = a.custom_output_ptrs[from_ord];
                 }
             }
+
+            finalize_node_debug();
         }
 
         // Sink extraction — interleave to device output

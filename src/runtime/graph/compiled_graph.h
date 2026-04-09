@@ -143,6 +143,15 @@ struct AudioNodeState {
         std::atomic<uint32_t> buffer_size{0};
     };
 
+    struct AudioNodeDebugTelemetry {
+        std::atomic<uint32_t> last_block_total_us{0};
+        std::atomic<uint32_t> last_process_us{0};
+        std::atomic<uint32_t> ema_block_us{0};
+        std::atomic<float> last_block_budget_pct{0.0f};
+        std::atomic<uint32_t> last_lane_count{0};
+        std::atomic<uint32_t> lane_state_entries{0};
+    };
+
     // Audio buffers [port][sample * channels]
     std::vector<std::vector<float>> buffers_in;
     std::vector<std::vector<float>> buffers_out;
@@ -182,6 +191,7 @@ struct AudioNodeState {
     // RT-safe per-audio-port telemetry for debugging/introspection.
     std::unique_ptr<AudioPortDebugTelemetry[]> input_port_debug;
     std::unique_ptr<AudioPortDebugTelemetry[]> output_port_debug;
+    AudioNodeDebugTelemetry node_debug;
 };
 
 struct AudioPortDebugSnapshot {
@@ -189,6 +199,16 @@ struct AudioPortDebugSnapshot {
     float last_block_peak = 0.0f;
     uint32_t buffer_size = 0;
     bool active = false;
+    bool valid = false;
+};
+
+struct AudioNodeDebugSnapshot {
+    uint32_t last_block_total_us = 0;
+    uint32_t last_process_us = 0;
+    uint32_t ema_block_us = 0;
+    float last_block_budget_pct = 0.0f;
+    uint32_t last_lane_count = 0;
+    uint32_t lane_state_entries = 0;
     bool valid = false;
 };
 
@@ -205,6 +225,18 @@ inline AudioPortDebugSnapshot read_audio_port_debug(const AudioNodeState& a,
     snap.last_block_peak = telemetry[port_idx].last_block_peak.load(std::memory_order_relaxed);
     snap.buffer_size = telemetry[port_idx].buffer_size.load(std::memory_order_relaxed);
     snap.active = snap.last_block_peak > active_epsilon;
+    snap.valid = true;
+    return snap;
+}
+
+inline AudioNodeDebugSnapshot read_audio_node_debug(const AudioNodeState& a) {
+    AudioNodeDebugSnapshot snap;
+    snap.last_block_total_us = a.node_debug.last_block_total_us.load(std::memory_order_relaxed);
+    snap.last_process_us = a.node_debug.last_process_us.load(std::memory_order_relaxed);
+    snap.ema_block_us = a.node_debug.ema_block_us.load(std::memory_order_relaxed);
+    snap.last_block_budget_pct = a.node_debug.last_block_budget_pct.load(std::memory_order_relaxed);
+    snap.last_lane_count = a.node_debug.last_lane_count.load(std::memory_order_relaxed);
+    snap.lane_state_entries = a.node_debug.lane_state_entries.load(std::memory_order_relaxed);
     snap.valid = true;
     return snap;
 }
