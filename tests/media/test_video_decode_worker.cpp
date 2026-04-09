@@ -6,6 +6,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <memory>
 #include <thread>
 
 static DecodedFrame make_frame(double pts) {
@@ -126,6 +127,56 @@ static void test_pop_empty() {
     w.stop();
 }
 
+static void test_flush_discards_in_flight_result() {
+    VideoDecodeWorker w;
+    w.start();
+
+    std::atomic<bool> release_first{false};
+    w.submit_work([&]() {
+        while (!release_first.load(std::memory_order_acquire)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return make_frame(1.0);
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    w.flush();
+    w.submit_work([]() { return make_frame(2.0); });
+    release_first.store(true, std::memory_order_release);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+
+    DecodedFrame out;
+    check(w.pop_latest(out), "flush_generation: latest frame available after recovery");
+    check(out.pts == 2.0, "flush_generation: stale pre-flush frame discarded");
+
+    w.stop();
+}
+
+static void test_replaced_work_releases_captured_resources() {
+    VideoDecodeWorker w;
+    w.start();
+
+    std::atomic<int> destroyed{0};
+    auto guard = std::shared_ptr<int>(new int(1), [&](int* value) {
+        delete value;
+        destroyed.fetch_add(1, std::memory_order_relaxed);
+    });
+    w.submit_work([guard]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        return make_frame(1.0);
+    });
+    guard.reset();
+    w.submit_work([]() { return make_frame(2.0); });
+    w.flush();
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    check(destroyed.load(std::memory_order_relaxed) >= 1,
+          "resource_release: replaced or flushed work releases captures");
+
+    w.stop();
+}
+
 int main() {
     std::fprintf(stderr, "=== VideoDecodeWorker tests ===\n");
     test_submit_and_pop();
@@ -135,6 +186,8 @@ int main() {
     test_start_stop_lifecycle();
     test_destructor_with_pending_work();
     test_pop_empty();
+    test_flush_discards_in_flight_result();
+    test_replaced_work_releases_captured_resources();
 
     std::fprintf(stderr, "\n========================================\n");
     std::fprintf(stderr, "Worker tests: %d failed\n", failures);

@@ -12,6 +12,7 @@
 // movie_session dylib stays platform-agnostic (no AVFoundation dependency).
 class VideoDecodeWorker {
 public:
+    using Generation = uint64_t;
     VideoDecodeWorker() = default;
     ~VideoDecodeWorker();
 
@@ -33,6 +34,8 @@ public:
     // Discard all pending work and queued frames.
     void flush();
 
+    Generation generation() const;
+
 private:
     void worker_loop();
 
@@ -44,8 +47,10 @@ private:
 
     // Single pending work slot — newest wins.
     WorkFunction pending_work_;
+    Generation pending_generation_ = 0;
     bool has_pending_ = false;
 
     // Output queue (worker → frame thread).
     DecodedFrameQueue ready_queue_;
+    std::atomic<Generation> generation_{0};
 };

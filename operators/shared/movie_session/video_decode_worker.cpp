@@ -11,6 +11,7 @@ void VideoDecodeWorker::start() {
         stop_ = false;
         has_pending_ = false;
         pending_work_ = nullptr;
+        pending_generation_ = generation_.load(std::memory_order_relaxed);
     }
     started_ = true;
     thread_ = std::thread([this]() { worker_loop(); });
@@ -36,6 +37,7 @@ void VideoDecodeWorker::submit_work(WorkFunction&& work) {
     std::lock_guard<std::mutex> lock(mu_);
     // Replace any unprocessed work item (newest wins).
     pending_work_ = std::move(work);
+    pending_generation_ = generation_.load(std::memory_order_acquire);
     has_pending_ = true;
     cv_.notify_one();
 }
@@ -49,28 +51,37 @@ bool VideoDecodeWorker::pop_latest(DecodedFrame& out) {
 }
 
 void VideoDecodeWorker::flush() {
+    generation_.fetch_add(1, std::memory_order_acq_rel);
     {
         std::lock_guard<std::mutex> lock(mu_);
         pending_work_ = nullptr;
+        pending_generation_ = generation_.load(std::memory_order_relaxed);
         has_pending_ = false;
     }
     ready_queue_.flush();
 }
 
+VideoDecodeWorker::Generation VideoDecodeWorker::generation() const {
+    return generation_.load(std::memory_order_acquire);
+}
+
 void VideoDecodeWorker::worker_loop() {
     for (;;) {
         WorkFunction work;
+        Generation work_generation = 0;
         {
             std::unique_lock<std::mutex> lock(mu_);
             cv_.wait(lock, [this]() { return stop_ || has_pending_; });
             if (stop_ && !has_pending_) break;
             work = std::move(pending_work_);
+            work_generation = pending_generation_;
             pending_work_ = nullptr;
             has_pending_ = false;
         }
         if (work) {
             DecodedFrame frame = work();
-            if (!frame.empty()) {
+            if (!frame.empty() &&
+                work_generation == generation_.load(std::memory_order_acquire)) {
                 ready_queue_.push(std::move(frame));
             }
         }
