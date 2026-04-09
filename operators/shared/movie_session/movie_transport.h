@@ -52,6 +52,7 @@ public:
     static constexpr uint64_t kMaxSeeksPerSecond = 4;
     static constexpr double kSmallDriftFrames = 2.0;     // drift below this = None (normal jitter)
     static constexpr double kSeekDriftSeconds = 0.200;    // drift above 200ms = Seek
+    static constexpr uint64_t kDropRepeatEscalation = 30; // escalate to Seek after 30 consecutive DropRepeats
 
     // --- Source lifecycle ---
 
@@ -112,4 +113,5 @@ private:
     uint64_t last_seek_generation_ = 0;
     uint64_t seek_budget_count_ = 0;
     double seek_budget_window_start_s_ = 0.0;
+    uint64_t consecutive_drop_repeat_ = 0;
 };

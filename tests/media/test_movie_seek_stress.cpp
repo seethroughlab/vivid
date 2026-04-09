@@ -25,7 +25,9 @@ static MovieTransport make_ready_transport(double duration, float fps) {
 static void test_rapid_drift_oscillation() {
     // 100 iterations alternating +100ms/-100ms drift at 30fps.
     // 100ms is medium drift (above small=66ms, below seek=200ms).
-    // All should be DropRepeat, never Seek.
+    // After kDropRepeatEscalation (30) consecutive DropRepeats, the policy
+    // escalates to Seek to resolve persistent offset.  Verify escalation
+    // fires and that subsequent DropRepeats restart the counter.
     auto t = make_ready_transport(10.0, 30.0f);
 
     int drop_repeat_count = 0;
@@ -36,10 +38,15 @@ static void test_rapid_drift_oscillation() {
         double mono = 2.0 + i * 0.02; // advancing monotonically
         auto d = t.evaluate_correction(desired, 5.0, mono, mono);
         if (d.type == CorrectionType::DropRepeat) drop_repeat_count++;
-        if (d.type == CorrectionType::Seek) seek_count++;
+        if (d.type == CorrectionType::Seek) {
+            seek_count++;
+            t.record_seek_issued(mono);
+        }
     }
-    check(seek_count == 0, "oscillation: no seeks for medium drift");
-    check(drop_repeat_count == 100, "oscillation: all 100 are DropRepeat");
+    // Escalation should fire a few times across 100 iterations
+    check(seek_count > 0, "oscillation: escalation fires for persistent drift");
+    check(drop_repeat_count > 50, "oscillation: most iterations are DropRepeat");
+    check(drop_repeat_count + seek_count == 100, "oscillation: all accounted for");
 }
 
 static void test_budget_exhaustion_and_recovery() {

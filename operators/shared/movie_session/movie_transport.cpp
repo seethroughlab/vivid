@@ -7,6 +7,7 @@ void MovieTransport::set_source(double duration) {
     last_seek_generation_ = 0;
     seek_budget_count_ = 0;
     seek_budget_window_start_s_ = 0.0;
+    consecutive_drop_repeat_ = 0;
 }
 
 void MovieTransport::set_frame_rate(float fps) {
@@ -23,6 +24,7 @@ void MovieTransport::clear_source() {
     last_seek_generation_ = 0;
     seek_budget_count_ = 0;
     seek_budget_window_start_s_ = 0.0;
+    consecutive_drop_repeat_ = 0;
 }
 
 uint64_t MovieTransport::source_generation() const { return source_generation_; }
@@ -61,6 +63,7 @@ CorrectionDecision MovieTransport::evaluate_correction(double desired_local, dou
 
     // Source change always seeks (initial positioning after load).
     if (source_changed) {
+        consecutive_drop_repeat_ = 0;
         result.type = CorrectionType::Seek;
         result.seek_target = desired_local;
         return result;
@@ -68,12 +71,19 @@ CorrectionDecision MovieTransport::evaluate_correction(double desired_local, dou
 
     // Small drift: no correction needed — normal frame-level jitter.
     if (abs_err <= small_threshold) {
+        consecutive_drop_repeat_ = 0;
         result.type = CorrectionType::None;
         return result;
     }
 
-    // Large drift: seek if cooldown + budget allow.
-    if (abs_err > kSeekDriftSeconds) {
+    // Persistent medium drift: if DropRepeat hasn't resolved the drift after
+    // kDropRepeatEscalation consecutive frames, escalate to Seek.  This handles
+    // the case where AVPlayer has a persistent offset that queue-based frame
+    // selection alone cannot correct.
+    bool escalate = (consecutive_drop_repeat_ >= kDropRepeatEscalation);
+
+    // Large drift or escalated persistent drift: seek if cooldown + budget allow.
+    if (abs_err > kSeekDriftSeconds || escalate) {
         const bool cooldown_ok = std::abs(desired_mono - last_seek_mono_s_) > kSeekCooldownSec;
 
         if (graph_time - seek_budget_window_start_s_ > 1.0) {
@@ -83,6 +93,7 @@ CorrectionDecision MovieTransport::evaluate_correction(double desired_local, dou
         const bool budget_ok = seek_budget_count_ < kMaxSeeksPerSecond;
 
         if (cooldown_ok && budget_ok) {
+            consecutive_drop_repeat_ = 0;
             result.type = CorrectionType::Seek;
             result.seek_target = desired_local;
             return result;
@@ -92,6 +103,7 @@ CorrectionDecision MovieTransport::evaluate_correction(double desired_local, dou
     }
 
     // Medium drift: handled implicitly by queue frame selection (drop/repeat).
+    consecutive_drop_repeat_++;
     result.type = CorrectionType::DropRepeat;
     return result;
 }

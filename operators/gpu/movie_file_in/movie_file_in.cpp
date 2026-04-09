@@ -358,14 +358,16 @@ struct MovieFileIn : vivid::OperatorBase, vivid::GpuProcessable {
                 std::chrono::duration<float, std::micro>(t_decode_end - t_decode_start).count());
 
             // Unified consumption: pop latest frame from queue
+            bool got_new_decoded = false;
             DecodedFrame ready;
             if (decode_worker_ && decode_worker_->pop_latest(ready)) {
                 video_stats_.decode_copy_us.update(ready.copy_time_us);
                 last_decoded_frame_ = std::move(ready);
+                got_new_decoded = true;
             }
 
-            // Unified upload: format-driven
-            if (!last_decoded_frame_.empty()) {
+            // Unified upload: only when a genuinely new frame was popped
+            if (got_new_decoded && !last_decoded_frame_.empty()) {
                 auto t_upload_start = std::chrono::steady_clock::now();
                 if (last_decoded_frame_.compressed) {
                     WGPUTextureFormat fmt = compressed_format_to_texture(last_decoded_frame_.compressed_format);
