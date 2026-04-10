@@ -74,6 +74,17 @@ target_include_directories(vivid_runtime_testlib PUBLIC src tests)
 target_link_libraries(vivid_runtime_testlib PUBLIC
     vivid_operator_api nlohmann_json::nlohmann_json dragonbox::dragonbox_to_chars webgpu
     miniaudio rtmidi snappy stb_truetype ixwebsocket efsw tinyxml2 CURL::libcurl)
+if(VIVID_ENABLE_HIGHWAY)
+    target_link_libraries(vivid_runtime_testlib PUBLIC hwy)
+    target_compile_definitions(vivid_runtime_testlib PUBLIC
+        VIVID_HAS_HIGHWAY=1
+        "VIVID_HIGHWAY_INCLUDE_DIR=\"${highway_SOURCE_DIR}\""
+        "VIVID_HIGHWAY_LIBRARY_PATH=\"$<TARGET_FILE:hwy>\"")
+endif()
+if(APPLE AND VIVID_ENABLE_ACCELERATE)
+    target_compile_definitions(vivid_runtime_testlib PUBLIC VIVID_HAS_ACCELERATE=1)
+    target_link_libraries(vivid_runtime_testlib PUBLIC "-framework Accelerate")
+endif()
 if(APPLE)
     target_link_libraries(vivid_runtime_testlib PUBLIC
         "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
@@ -139,6 +150,17 @@ add_vivid_operator(scalar_source_op  tests/operators/scalar_source_op.cpp)
 add_vivid_operator(dual_lane_sink_op tests/operators/dual_lane_sink_op.cpp)
 add_vivid_operator(gpu_fill_op      tests/operators/gpu_fill_op.cpp EXTRA_LIBS webgpu)
 add_vivid_operator(gpu_metronome_probe_op tests/operators/gpu_metronome_probe_op.cpp EXTRA_LIBS webgpu)
+
+# SIMD smoke operator fixture (Highway when available, scalar fallback)
+add_vivid_operator(simd_smoke_op tests/operators/simd_smoke_op.cpp)
+target_include_directories(simd_smoke_op PRIVATE tests/operators)
+if(VIVID_ENABLE_HIGHWAY)
+    target_link_libraries(simd_smoke_op PRIVATE hwy)
+    target_compile_definitions(simd_smoke_op PRIVATE
+        VIVID_HAS_HIGHWAY=1
+        "VIVID_HIGHWAY_INCLUDE_DIR=\"${highway_SOURCE_DIR}\""
+        "VIVID_HIGHWAY_LIBRARY_PATH=\"$<TARGET_FILE:hwy>\"")
+endif()
 
 include(cmake/tests/10-runtime-control-graph.cmake)
 include(cmake/tests/20-ui-and-common.cmake)

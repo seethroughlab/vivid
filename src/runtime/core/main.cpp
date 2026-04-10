@@ -1789,6 +1789,18 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
                                                  "-DVIVID_SRC_DIR=" + pkg_src_dir,
                                                  "-DVIVID_BUILD_DIR=" + pkg_build_dir,
                                                  "-DVIVID_PLUGIN_SUFFIX=" + std::string(vivid::kPluginSuffix)};
+#ifdef VIVID_HAS_HIGHWAY
+                                {
+                                    std::string hwy_include =
+                                        vivid::PackageCompiler::managed_highway_include_dir();
+                                    std::string hwy_library =
+                                        vivid::PackageCompiler::managed_highway_library_path();
+                                    if (!hwy_include.empty())
+                                        cfg_opts.argv.push_back("-DVIVID_HIGHWAY_INCLUDE_DIR=" + hwy_include);
+                                    if (!hwy_library.empty())
+                                        cfg_opts.argv.push_back("-DVIVID_HIGHWAY_LIBRARY=" + hwy_library);
+                                }
+#endif
                                 auto cfg_result = vivid::run_build_process(cfg_opts, *build_console, configure_task,
                                                                            vivid::BuildConsoleStreamKind::Stdout);
                                 if (!cfg_result.launched) {

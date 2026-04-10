@@ -318,6 +318,39 @@ VIVID_REGISTER(BadCompile, "BadCompile", "Bad compile fixture", "control")
         ofs << R"cpp(
 #include "operator_api/operator.h"
 
+#ifdef VIVID_HAS_HIGHWAY
+#undef HWY_TARGET_INCLUDE
+#define HWY_TARGET_INCLUDE "src/test_cmake_op.cpp"
+#include "hwy/foreach_target.h"
+#include "hwy/highway.h"
+
+HWY_BEFORE_NAMESPACE();
+namespace vivid_test_cmake_pkg {
+namespace HWY_NAMESPACE {
+
+namespace hn = hwy::HWY_NAMESPACE;
+
+float SimdGain(float v) {
+    const hn::ScalableTag<float> d;
+    auto vec = hn::Set(d, v);
+    return hn::GetLane(hn::Mul(vec, hn::Set(d, 2.0f)));
+}
+
+}  // namespace HWY_NAMESPACE
+}  // namespace vivid_test_cmake_pkg
+HWY_AFTER_NAMESPACE();
+
+#if HWY_ONCE
+namespace vivid_test_cmake_pkg {
+HWY_EXPORT(SimdGain);
+float CallSimdGain(float v) {
+    return HWY_DYNAMIC_DISPATCH(SimdGain)(v);
+}
+}  // namespace vivid_test_cmake_pkg
+#endif
+#endif
+
+#if !defined(VIVID_HAS_HIGHWAY) || HWY_ONCE
 struct TestCmakeOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "TestCmakeOp";
     static constexpr bool kTimeDependent = false;
@@ -333,11 +366,17 @@ struct TestCmakeOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 
     void process_frame(const VividFrameContext* ctx) override {
-        ctx->output_values[0] = ctx->param_values[0] * 2.0f;
+        float v = ctx->param_values[0];
+#ifdef VIVID_HAS_HIGHWAY
+        ctx->output_values[0] = vivid_test_cmake_pkg::CallSimdGain(v);
+#else
+        ctx->output_values[0] = v * 2.0f;
+#endif
     }
 };
 
 VIVID_REGISTER(TestCmakeOp)
+#endif
 )cpp";
     }
 
@@ -350,7 +389,15 @@ project(test-cmake-package)
 
 add_library(test_cmake_op MODULE src/test_cmake_op.cpp)
 target_include_directories(test_cmake_op PRIVATE ${VIVID_SRC_DIR}/src)
+target_include_directories(test_cmake_op PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(test_cmake_op PRIVATE cxx_std_17)
+if(DEFINED VIVID_HIGHWAY_INCLUDE_DIR)
+    target_include_directories(test_cmake_op PRIVATE ${VIVID_HIGHWAY_INCLUDE_DIR})
+    target_compile_definitions(test_cmake_op PRIVATE VIVID_HAS_HIGHWAY=1)
+endif()
+if(DEFINED VIVID_HIGHWAY_LIBRARY)
+    target_link_libraries(test_cmake_op PRIVATE "${VIVID_HIGHWAY_LIBRARY}")
+endif()
 set_target_properties(test_cmake_op PROPERTIES
     PREFIX ""
     SUFFIX "${VIVID_PLUGIN_SUFFIX}"

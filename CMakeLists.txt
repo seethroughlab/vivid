@@ -34,6 +34,11 @@ if(VIVID_SANITIZE_THREAD)
     set(VIVID_USE_WGPU_NATIVE_UPSTREAM OFF CACHE BOOL "" FORCE)
 endif()
 
+# --- Optional macOS Accelerate framework ---
+if(APPLE)
+    option(VIVID_ENABLE_ACCELERATE "Enable optional macOS Accelerate framework paths" ON)
+endif()
+
 # --- Modular build configuration ---
 include(cmake/dependencies.cmake)
 include(cmake/operators.cmake)

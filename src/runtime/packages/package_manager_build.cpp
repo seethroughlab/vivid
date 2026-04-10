@@ -63,6 +63,17 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
                                "-DVIVID_SRC_DIR=" + src_dir,
                                "-DVIVID_BUILD_DIR=" + vivid_build,
                                "-DVIVID_PLUGIN_SUFFIX=" + std::string(kPluginSuffix)};
+
+#ifdef VIVID_HAS_HIGHWAY
+        {
+            std::string hwy_include = PackageCompiler::managed_highway_include_dir();
+            std::string hwy_library = PackageCompiler::managed_highway_library_path();
+            if (!hwy_include.empty())
+                configure_opts.argv.push_back("-DVIVID_HIGHWAY_INCLUDE_DIR=" + hwy_include);
+            if (!hwy_library.empty())
+                configure_opts.argv.push_back("-DVIVID_HIGHWAY_LIBRARY=" + hwy_library);
+        }
+#endif
         std::fprintf(stderr, "[vivid] PackageManager: cmake configure %s\n", compile_pkg_dir.c_str());
 
         ProcessRunResult configure_result;

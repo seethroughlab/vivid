@@ -118,6 +118,22 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(dragonbox)
 
+# --- Google Highway (portable SIMD) ---
+option(VIVID_ENABLE_HIGHWAY "Build with Google Highway SIMD acceleration" ON)
+if(VIVID_ENABLE_HIGHWAY)
+    FetchContent_Declare(
+        highway
+        GIT_REPOSITORY https://github.com/google/highway.git
+        GIT_TAG        1.2.0
+        GIT_SHALLOW    TRUE
+    )
+    set(HWY_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+    set(HWY_ENABLE_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(HWY_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+    set(HWY_ENABLE_CONTRIB OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(highway)
+endif()
+
 # --- GLFW (submodule) ---
 set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)

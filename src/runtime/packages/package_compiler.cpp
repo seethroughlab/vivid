@@ -36,6 +36,22 @@ static bool contains_any(const std::string& haystack, const std::initializer_lis
     return false;
 }
 
+static void append_managed_highway_args(std::vector<std::string>& argv) {
+#ifdef VIVID_HAS_HIGHWAY
+    const std::string include_dir = PackageCompiler::managed_highway_include_dir();
+    const std::string library_path = PackageCompiler::managed_highway_library_path();
+    if (!include_dir.empty()) {
+        argv.push_back("-I");
+        argv.push_back(include_dir);
+        argv.push_back("-DVIVID_HAS_HIGHWAY=1");
+    }
+    if (!library_path.empty())
+        argv.push_back(library_path);
+#else
+    (void) argv;
+#endif
+}
+
 static TestCompileResult inspect_cpp_test_source(const std::string& package_dir,
                                                  const std::string& test_rel_path) {
     TestCompileResult result;
@@ -128,6 +144,30 @@ PackageCompiler::PackageCompiler(const std::string& vivid_src_dir,
     : vivid_src_dir_(vivid_src_dir)
     , vivid_build_dir_(vivid_build_dir) {}
 
+std::string PackageCompiler::managed_highway_include_dir() {
+#ifdef VIVID_HAS_HIGHWAY
+#ifdef VIVID_HIGHWAY_INCLUDE_DIR
+    return VIVID_HIGHWAY_INCLUDE_DIR;
+#else
+    return {};
+#endif
+#else
+    return {};
+#endif
+}
+
+std::string PackageCompiler::managed_highway_library_path() {
+#ifdef VIVID_HAS_HIGHWAY
+#ifdef VIVID_HIGHWAY_LIBRARY_PATH
+    return VIVID_HIGHWAY_LIBRARY_PATH;
+#else
+    return {};
+#endif
+#else
+    return {};
+#endif
+}
+
 CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
                                                  const std::string& operator_rel_path,
                                                  bool needs_gpu,
@@ -181,14 +221,17 @@ CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
     // Build compiler argv
     // -I <vivid_src>/src  — for operator_api/ headers
     // -I <package>/operators/<domain>  — for package-local shared headers
+    // -I <package>/operators/<domain>/<name> — for self-local includes such as Highway target reincludes
     std::string domain_include = package_dir + "/operators";
     if (!domain.empty())
         domain_include = package_dir + "/operators/" + domain;
+    std::string operator_include = package_dir + "/operators/" + operator_rel_path;
 
     std::vector<std::string> argv = {
         compiler_exe, "-std=c++17", "-shared", "-fPIC", "-O2",
         "-I", vivid_src_dir_ + "/src",
         "-I", domain_include,
+        "-I", operator_include,
     };
 
     // Vendor / extra include directories (e.g. bundled third-party headers)
@@ -249,6 +292,8 @@ CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
             argv.push_back("-lwgpu_native");
         }
     }
+
+    append_managed_highway_args(argv);
 
     argv.push_back("-o");
     argv.push_back(temp_output);
@@ -357,11 +402,19 @@ TestCompileResult PackageCompiler::compile_test(const std::string& package_dir,
         "-I", vivid_src_dir_ + "/src",
         "-I", package_dir + "/operators",
     };
+    fs::path test_source_path(source_path);
+    std::string test_source_dir = test_source_path.parent_path().string();
+    if (!test_source_dir.empty()) {
+        test_argv.push_back("-I");
+        test_argv.push_back(test_source_dir);
+    }
 
     for (const auto& dir : extra_include_dirs) {
         test_argv.push_back("-I");
         test_argv.push_back(dir);
     }
+
+    append_managed_highway_args(test_argv);
 
     test_argv.push_back("-o");
     test_argv.push_back(output_path);

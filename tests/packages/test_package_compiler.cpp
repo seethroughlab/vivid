@@ -80,6 +80,12 @@ VIVID_REGISTER(TestPkgOp)
     // --- Test 1: Compile single operator ---
     std::fprintf(stderr, "--- Compile single operator ---\n");
     vivid::PackageCompiler compiler(source_dir, build_dir);
+#ifdef VIVID_HAS_HIGHWAY
+    check(!vivid::PackageCompiler::managed_highway_include_dir().empty(),
+          "managed Highway include dir is exported");
+    check(!vivid::PackageCompiler::managed_highway_library_path().empty(),
+          "managed Highway library path is exported");
+#endif
     auto result = compiler.compile_operator(pkg_dir, "control/test_pkg_op", false);
     check(result.success, "compile_operator succeeds");
     check(!result.dylib_path.empty(), "dylib_path is set");
@@ -187,6 +193,92 @@ VIVID_REGISTER(TestVendorOp)
         auto no_vendor_result = compiler.compile_operator(
             pkg_dir, "control/test_vendor_op", false);
         check(!no_vendor_result.success, "compile without vendor include fails");
+    }
+
+    // --- Test 5b: Compile with managed Highway dependency ---
+    std::fprintf(stderr, "\n--- Compile with managed Highway dependency ---\n");
+    {
+        fs::create_directories(pkg_dir + "/operators/control/test_simd_pkg_op");
+        {
+            std::ofstream ofs(pkg_dir + "/operators/control/test_simd_pkg_op/test_simd_pkg_op.cpp");
+            ofs << R"cpp(
+#include "operator_api/operator.h"
+
+#ifdef VIVID_HAS_HIGHWAY
+#undef HWY_TARGET_INCLUDE
+#define HWY_TARGET_INCLUDE "test_simd_pkg_op.cpp"
+#include "hwy/foreach_target.h"
+#include "hwy/highway.h"
+
+HWY_BEFORE_NAMESPACE();
+namespace vivid_test_simd_pkg {
+namespace HWY_NAMESPACE {
+
+namespace hn = hwy::HWY_NAMESPACE;
+
+float SimdSum(const float* HWY_RESTRICT data, size_t n) {
+    const hn::ScalableTag<float> d;
+    auto acc = hn::Zero(d);
+    size_t i = 0;
+    for (; i + hn::Lanes(d) <= n; i += hn::Lanes(d))
+        acc = hn::Add(acc, hn::Load(d, data + i));
+    float result = hn::ReduceSum(d, acc);
+    for (; i < n; ++i)
+        result += data[i];
+    return result;
+}
+
+}  // namespace HWY_NAMESPACE
+}  // namespace vivid_test_simd_pkg
+HWY_AFTER_NAMESPACE();
+
+#if HWY_ONCE
+namespace vivid_test_simd_pkg {
+HWY_EXPORT(SimdSum);
+float CallSimdSum(const float* data, size_t n) {
+    return HWY_DYNAMIC_DISPATCH(SimdSum)(data, n);
+}
+}  // namespace vivid_test_simd_pkg
+#endif
+#endif
+
+#if !defined(VIVID_HAS_HIGHWAY) || HWY_ONCE
+struct TestSimdPkgOp : vivid::OperatorBase, vivid::FrameProcessable {
+    static constexpr const char* kName = "TestSimdPkgOp";
+    static constexpr bool kTimeDependent = false;
+
+    vivid::Param<float> value{"value", 1.0f, 0.0f, 10.0f};
+
+    void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        out.push_back(&value);
+    }
+
+    void collect_ports(std::vector<VividPortDescriptor>& out) override {
+        out.push_back({"out", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+    }
+
+    void process_frame(const VividFrameContext* ctx) override {
+        float v = ctx->param_values[0];
+#ifdef VIVID_HAS_HIGHWAY
+        float arr[4] = {v, v, v, v};
+        ctx->output_values[0] = vivid_test_simd_pkg::CallSimdSum(arr, 4);
+#else
+        ctx->output_values[0] = v * 4.0f;
+#endif
+    }
+};
+
+VIVID_REGISTER(TestSimdPkgOp)
+#endif
+)cpp";
+        }
+
+        auto simd_result = compiler.compile_operator(pkg_dir, "control/test_simd_pkg_op", false);
+        check(simd_result.success, "compile with managed Highway dependency succeeds");
+        if (!simd_result.success)
+            std::fprintf(stderr, "  Error: %s\n", simd_result.error_output.c_str());
+        if (simd_result.success)
+            check(fs::exists(simd_result.dylib_path), "managed Highway op dylib exists");
     }
 
     // --- Test 6: Path with single quote (quote() escaping) ---

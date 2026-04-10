@@ -27,6 +27,11 @@ class PackageCompiler {
 public:
     PackageCompiler(const std::string& vivid_src_dir, const std::string& vivid_build_dir);
 
+    // Managed core dependency locations exposed to package build plumbing.
+    // These remain runtime-internal and must not leak into operator_api.
+    static std::string managed_highway_include_dir();
+    static std::string managed_highway_library_path();
+
     // Compile a single operator from a package.
     // operator_rel_path: relative within package, e.g. "audio/drum_kick"
     // needs_gpu: if true, adds Dawn include paths and framework linkage

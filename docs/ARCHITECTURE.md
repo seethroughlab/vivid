@@ -424,6 +424,7 @@ GLFW does not provide file open/save dialogs or pen/tablet pressure. File dialog
 | **stb_truetype** | Font rasterization for UI text | single header | vendored |
 | **stb_image** | Image loading (PNG, JPEG, BMP) | single header | vendored |
 | **nlohmann/json** | JSON parsing and serialization (graph files, project files) | header-only | FetchContent |
+| **Google Highway** | Portable SIMD substrate for runtime-internal optimized kernels | header-only + static lib | FetchContent |
 | **RtMidi** | MIDI I/O (CoreMIDI on macOS) | ~50KB source | vendored |
 | **oscpack** | OSC message serialization and UDP transport | ~30KB source | vendored |
 | **Syphon** | GPU texture sharing between applications (macOS) | ~100KB source | vendored |

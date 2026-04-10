@@ -142,6 +142,17 @@ endif()
 
 target_include_directories(vivid PRIVATE src)
 target_link_libraries(vivid PRIVATE vivid_ui webgpu glfw glfw3webgpu vivid_operator_api nlohmann_json::nlohmann_json dragonbox::dragonbox_to_chars miniaudio stb_truetype ixwebsocket rtmidi CLI11::CLI11 efsw tinyxml2 CURL::libcurl)
+if(VIVID_ENABLE_HIGHWAY)
+    target_link_libraries(vivid PRIVATE hwy)
+    target_compile_definitions(vivid PRIVATE
+        VIVID_HAS_HIGHWAY=1
+        "VIVID_HIGHWAY_INCLUDE_DIR=\"${highway_SOURCE_DIR}\""
+        "VIVID_HIGHWAY_LIBRARY_PATH=\"$<TARGET_FILE:hwy>\"")
+endif()
+if(APPLE AND VIVID_ENABLE_ACCELERATE)
+    target_compile_definitions(vivid PRIVATE VIVID_HAS_ACCELERATE=1)
+    target_link_libraries(vivid PRIVATE "-framework Accelerate")
+endif()
 if(APPLE)
     target_link_libraries(vivid PRIVATE syphon_runtime)
     # Ensure bundle-launched app resolves syphon runtime from Contents/Frameworks.
@@ -364,6 +375,18 @@ if(APPLE)
         target_sources(vivid PRIVATE "${_wgpu_header}")
         set_source_files_properties("${_wgpu_header}"
             PROPERTIES MACOSX_PACKAGE_LOCATION Resources/sdk/include/webgpu)
+    endif()
+
+    # Highway headers → Resources/sdk/include/hwy/
+    if(VIVID_ENABLE_HIGHWAY)
+        file(GLOB_RECURSE _hwy_headers "${highway_SOURCE_DIR}/hwy/*.h")
+        foreach(f ${_hwy_headers})
+            file(RELATIVE_PATH _rel "${highway_SOURCE_DIR}" "${f}")
+            get_filename_component(_rel_dir "${_rel}" DIRECTORY)
+            target_sources(vivid PRIVATE "${f}")
+            set_source_files_properties("${f}"
+                PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/sdk/include/${_rel_dir}")
+        endforeach()
     endif()
 endif()
 
