@@ -87,3 +87,4 @@ DawnCache
 .codex
 build-asan
 docs/ARCHITECTURE.pdf
+build-local
