@@ -144,6 +144,22 @@ PackageCompiler::PackageCompiler(const std::string& vivid_src_dir,
     : vivid_src_dir_(vivid_src_dir)
     , vivid_build_dir_(vivid_build_dir) {}
 
+std::string PackageCompiler::managed_dragonbox_include_dir() {
+#ifdef VIVID_DRAGONBOX_INCLUDE_DIR
+    return VIVID_DRAGONBOX_INCLUDE_DIR;
+#else
+    return {};
+#endif
+}
+
+std::string PackageCompiler::managed_dragonbox_library_path() {
+#ifdef VIVID_DRAGONBOX_LIBRARY_PATH
+    return VIVID_DRAGONBOX_LIBRARY_PATH;
+#else
+    return {};
+#endif
+}
+
 std::string PackageCompiler::managed_highway_include_dir() {
 #ifdef VIVID_HAS_HIGHWAY
 #ifdef VIVID_HIGHWAY_INCLUDE_DIR

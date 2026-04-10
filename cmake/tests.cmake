@@ -78,8 +78,14 @@ if(VIVID_ENABLE_HIGHWAY)
     target_link_libraries(vivid_runtime_testlib PUBLIC hwy)
     target_compile_definitions(vivid_runtime_testlib PUBLIC
         VIVID_HAS_HIGHWAY=1
+        "VIVID_DRAGONBOX_INCLUDE_DIR=\"${dragonbox_SOURCE_DIR}/include\""
+        "VIVID_DRAGONBOX_LIBRARY_PATH=\"$<TARGET_FILE:dragonbox::dragonbox_to_chars>\""
         "VIVID_HIGHWAY_INCLUDE_DIR=\"${highway_SOURCE_DIR}\""
         "VIVID_HIGHWAY_LIBRARY_PATH=\"$<TARGET_FILE:hwy>\"")
+else()
+    target_compile_definitions(vivid_runtime_testlib PUBLIC
+        "VIVID_DRAGONBOX_INCLUDE_DIR=\"${dragonbox_SOURCE_DIR}/include\""
+        "VIVID_DRAGONBOX_LIBRARY_PATH=\"$<TARGET_FILE:dragonbox::dragonbox_to_chars>\"")
 endif()
 if(APPLE AND VIVID_ENABLE_ACCELERATE)
     target_compile_definitions(vivid_runtime_testlib PUBLIC VIVID_HAS_ACCELERATE=1)

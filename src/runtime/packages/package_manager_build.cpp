@@ -64,6 +64,15 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
                                "-DVIVID_BUILD_DIR=" + vivid_build,
                                "-DVIVID_PLUGIN_SUFFIX=" + std::string(kPluginSuffix)};
 
+        {
+            std::string dragonbox_include = PackageCompiler::managed_dragonbox_include_dir();
+            std::string dragonbox_library = PackageCompiler::managed_dragonbox_library_path();
+            if (!dragonbox_include.empty())
+                configure_opts.argv.push_back("-DVIVID_DRAGONBOX_INCLUDE_DIR=" + dragonbox_include);
+            if (!dragonbox_library.empty())
+                configure_opts.argv.push_back("-DVIVID_DRAGONBOX_LIBRARY=" + dragonbox_library);
+        }
+
 #ifdef VIVID_HAS_HIGHWAY
         {
             std::string hwy_include = PackageCompiler::managed_highway_include_dir();

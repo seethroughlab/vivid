@@ -29,6 +29,8 @@ public:
 
     // Managed core dependency locations exposed to package build plumbing.
     // These remain runtime-internal and must not leak into operator_api.
+    static std::string managed_dragonbox_include_dir();
+    static std::string managed_dragonbox_library_path();
     static std::string managed_highway_include_dir();
     static std::string managed_highway_library_path();
 

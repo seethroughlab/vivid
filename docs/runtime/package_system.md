@@ -153,12 +153,15 @@ For CMake-based packages, the core package tooling configures package builds wit
 - `VIVID_SRC_DIR`
 - `VIVID_BUILD_DIR`
 - `VIVID_PLUGIN_SUFFIX`
+- `VIVID_DRAGONBOX_INCLUDE_DIR`
+- `VIVID_DRAGONBOX_LIBRARY`
 - `VIVID_HIGHWAY_INCLUDE_DIR` when the core build has Highway enabled
 - `VIVID_HIGHWAY_LIBRARY` when the core build has Highway enabled
 
-`Highway` is a core-managed internal dependency. Linked packages may consume those exported
-variables for implementation details such as SIMD kernels, but package/operator public APIs must
-not expose `Highway` types or require package-local vendoring of the library.
+`dragonbox` and `Highway` are core-managed internal dependencies. Linked packages may consume
+those exported variables for implementation details such as graph/runtime test wiring or SIMD
+kernels, but package/operator public APIs must not expose `dragonbox` or `Highway` types or
+require package-local vendoring of those libraries.
 
 ### Compile All
 ```cpp
