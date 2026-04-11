@@ -2,7 +2,7 @@
 
 ## Read This First
 
-This directory tracks a clean-break redesign of Vivid's production wavetable path. The current `WavetableOsc + VoiceMixer` stack remains available only as a legacy/flexible surface during migration; the target architecture is a new `WavetableLayer` operator designed for batched polyphonic rendering, portable SIMD acceleration, and eventual Windows parity.
+This directory tracks a clean-break redesign of Vivid's production wavetable path. The current `WavetableOsc + VoiceMixer` stack remains available only as a legacy/flexible surface during migration; the target architecture is a new `WavetableLayer` operator designed for batched polyphonic rendering, a pluggable optimized backend boundary, and eventual Windows parity.
 
 ## Summary
 
@@ -14,8 +14,8 @@ Current runtime telemetry shows the bottleneck is architectural, not incremental
 
 This migration creates a new canonical production path with these goals:
 
-- production-capable polyphonic wavetable rendering on macOS and Windows
-- one shared renderer contract with scalar fallback and portable SIMD acceleration
+- production-capable polyphonic wavetable rendering on macOS now, with the backend boundary preserved for future Windows validation
+- one shared renderer contract with scalar fallback, portable SIMD acceleration, and optional platform-specialized backends
 - a reusable SIMD foundation in Vivid core for future dense audio operators
 - direct stereo output from the voice engine instead of per-voice audio fanout
 - a hard cutover after migration, followed by removal of superseded wavetable operators
@@ -31,7 +31,7 @@ Non-goals:
 - `Highway` is a Vivid core-managed internal SIMD dependency because Windows portability matters.
 - `WavetableLayer` is the first major consumer of that SIMD foundation, not the only intended consumer.
 - Scalar fallback is mandatory and is the correctness reference backend.
-- `Accelerate` is optional and additive only.
+- `Accelerate` is the macOS optimized backend when benchmarked to win; it remains internal and additive, with `Highway` as the portable fallback.
 - `WavetableLayer` is stereo-output-only and internally owns unison plus stereo summing.
 - External filters and envelopes remain graph operators.
 - `WavetableOsc` remains only as a legacy path for excluded advanced features.
@@ -57,7 +57,7 @@ Build the first package-side production content on `WavetableLayer` and stop tea
 
 ### [Phase 5: Validation, Benchmarks, and Cross-Platform Gates](./phase-5-validation-benchmarks-and-cross-platform-gates.md)
 
-Define correctness, equivalence, benchmark, and platform gates that must be met before cutover.
+Define correctness, equivalence, benchmark, and macOS Release gates that must be met before cutover while preserving the Windows-ready backend boundary.
 
 ### [Phase 6: Hard Cutover and Legacy Status](./phase-6-hard-cutover-and-legacy-status.md)
 
@@ -78,7 +78,7 @@ Phase 1  (dependency/build)         ─── foundation in vivid core
 Phase 2  (operator surface)         ─── freeze public interface
 Phase 3  (renderer architecture)    ─── implementable engine design
 Phase 4  (package migration)        ─── new production content in vivid-wavetable
-Phase 5  (validation/benchmarks)    ─── prove perf + correctness on macOS/Windows
+Phase 5  (validation/benchmarks)    ─── prove macOS perf + correctness, preserve Windows path
 Phase 6  (hard cutover)             ─── make WavetableLayer canonical
 Removal  (delete legacy path)       ─── remove superseded operators and content
 ```

@@ -2,7 +2,7 @@
 
 ## Summary
 
-Once `WavetableLayer` passes the benchmark and correctness gates, make it the only canonical production wavetable path in active docs, modules, and examples. This phase defines the cutover rules and constrains the legacy coexistence window to migration only. It does not require simultaneous SIMD retrofits for unrelated audio operators.
+Once `WavetableLayer` passes the macOS Release benchmark and correctness gates, make it the only canonical production wavetable path in active docs, modules, and examples. This phase defines the cutover rules and constrains the legacy coexistence window to migration only. It does not require simultaneous SIMD retrofits for unrelated audio operators or Windows-port validation.
 
 ## Implementation Changes
 
@@ -36,6 +36,7 @@ Once `WavetableLayer` passes the benchmark and correctness gates, make it the on
 - There is one canonical wavetable production path in active docs.
 - New production-oriented content uses `WavetableLayer`.
 - Legacy wavetable operators/modules are clearly marked and confined to migration or excluded-feature use.
+- The Windows port remains unblocked by the cutover because `WavetableLayer` keeps the same public surface and a portable Highway/scalar fallback boundary.
 
 ## Not In This Phase
 
@@ -48,3 +49,4 @@ Once `WavetableLayer` passes the benchmark and correctness gates, make it the on
 - The cutover happens only after Phase 5 gates are met.
 - Hard cutover is the intended strategy, not a tentative recommendation.
 - Active docs may mention legacy surfaces only to explain migration or excluded advanced features.
+- Windows validation is a future port-readiness gate, not a blocker for this macOS cutover phase.
