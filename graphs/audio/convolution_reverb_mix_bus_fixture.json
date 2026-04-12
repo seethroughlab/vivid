@@ -1,0 +1,31 @@
+{
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "convolution_reverb_mix_bus_fixture",
+        "title": "Convolution Reverb Mix Bus Fixture",
+        "description": "Listening fixture for full-mix style material through the stereo ConvolutionReverb room preset.",
+        "tags": ["audio", "reverb", "convolution", "mix-bus", "listening-fixture"],
+        "difficulty": "intermediate",
+        "domains": ["audio"],
+        "requires_packages": []
+    },
+    "nodes": {
+        "osc": { "type": "Oscillator", "params": { "frequency": 110.0, "amplitude": 0.22, "waveform": 1 } },
+        "noise": { "type": "Noise", "params": { "color": 0, "amplitude": 0.08 } },
+        "mixer": { "type": "Mixer", "params": { "gain_1": 0.8, "gain_2": 0.35 } },
+        "filter": { "type": "Filter", "params": { "cutoff": 2600.0, "resonance": 0.8, "mode": 1 } },
+        "verb": {
+            "type": "ConvolutionReverb",
+            "params": { "ir_preset": 0, "mix": 0.22, "pre_delay_ms": 8.0, "width": 1.05, "tail_seconds": 1.2 }
+        },
+        "out": { "type": "audio_out", "params": {} }
+    },
+    "connections": [
+        { "from": "osc/output", "to": "mixer/input_1" },
+        { "from": "noise/output", "to": "mixer/input_2" },
+        { "from": "mixer/output", "to": "filter/input" },
+        { "from": "filter/output", "to": "verb/input" },
+        { "from": "verb/output", "to": "out/input" }
+    ]
+}

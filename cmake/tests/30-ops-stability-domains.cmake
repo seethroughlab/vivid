@@ -198,6 +198,29 @@ add_executable(bench_reverb
 target_include_directories(bench_reverb PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
 target_link_libraries(bench_reverb PRIVATE vivid_runtime_testlib vivid_operator_api)
 
+# ConvolutionReverb DSP renderer and benchmark targets
+add_executable(test_convolution_reverb_dsp
+    tests/audio/test_convolution_reverb_dsp.cpp
+    operators/shared/convolution_reverb_dsp/convolution_reverb_dsp.cpp
+)
+target_include_directories(test_convolution_reverb_dsp PRIVATE
+    src tests ${CMAKE_SOURCE_DIR}/operators ${CMAKE_SOURCE_DIR}/deps/miniaudio)
+target_link_libraries(test_convolution_reverb_dsp PRIVATE
+    vivid_runtime_testlib vivid_operator_api sampler_miniaudio)
+vivid_enable_audio_kernels(test_convolution_reverb_dsp)
+add_dependencies(test_convolution_reverb_dsp convolution_reverb)
+add_test(NAME test_convolution_reverb_dsp COMMAND test_convolution_reverb_dsp WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(bench_convolution_reverb
+    tests/benchmarks/bench_convolution_reverb.cpp
+    operators/shared/convolution_reverb_dsp/convolution_reverb_dsp.cpp
+)
+target_include_directories(bench_convolution_reverb PRIVATE
+    src tests ${CMAKE_SOURCE_DIR}/operators ${CMAKE_SOURCE_DIR}/deps/miniaudio)
+target_link_libraries(bench_convolution_reverb PRIVATE
+    vivid_runtime_testlib vivid_operator_api sampler_miniaudio)
+vivid_enable_audio_kernels(bench_convolution_reverb)
+
 # Filter DSP prepared block rendering tests
 add_executable(test_filter_dsp_prepared
     tests/audio/test_filter_dsp_prepared.cpp

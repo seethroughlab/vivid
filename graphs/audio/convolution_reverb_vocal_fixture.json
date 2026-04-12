@@ -1,0 +1,33 @@
+{
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "convolution_reverb_vocal_fixture",
+        "title": "Convolution Reverb Vocal Fixture",
+        "description": "Listening fixture using band-limited noise as speech-like material into the stereo ConvolutionReverb hall preset.",
+        "tags": ["audio", "reverb", "convolution", "vocal", "listening-fixture"],
+        "difficulty": "intermediate",
+        "domains": ["audio", "control"],
+        "requires_packages": []
+    },
+    "nodes": {
+        "clock": { "type": "ClockAu", "params": { "bpm": 92.0 } },
+        "env": { "type": "EnvelopeAu", "params": { "attack": 0.02, "decay": 0.18, "sustain": 0.35, "release": 0.25, "amplitude": 1.0 } },
+        "noise": { "type": "Noise", "params": { "color": 1, "amplitude": 0.22 } },
+        "filter": { "type": "Filter", "params": { "cutoff": 1800.0, "resonance": 3.0, "mode": 2 } },
+        "gain": { "type": "Gain", "params": { "gain": 0.6 } },
+        "verb": {
+            "type": "ConvolutionReverb",
+            "params": { "ir_preset": 2, "mix": 0.36, "pre_delay_ms": 18.0, "width": 1.1, "tail_seconds": 3.0 }
+        },
+        "out": { "type": "audio_out", "params": {} }
+    },
+    "connections": [
+        { "from": "clock/beat_phase", "to": "env/beat_phase" },
+        { "from": "noise/output", "to": "filter/input" },
+        { "from": "env/value", "to": "gain/amplitude_cv" },
+        { "from": "filter/output", "to": "gain/input" },
+        { "from": "gain/output", "to": "verb/input" },
+        { "from": "verb/output", "to": "out/input" }
+    ]
+}

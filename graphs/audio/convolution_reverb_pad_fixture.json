@@ -1,0 +1,27 @@
+{
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "convolution_reverb_pad_fixture",
+        "title": "Convolution Reverb Pad Fixture",
+        "description": "Listening fixture for long sustained material through the stereo ConvolutionReverb cathedral preset.",
+        "tags": ["audio", "reverb", "convolution", "pad", "listening-fixture"],
+        "difficulty": "beginner",
+        "domains": ["audio"],
+        "requires_packages": []
+    },
+    "nodes": {
+        "osc": { "type": "Oscillator", "params": { "frequency": 146.83, "amplitude": 0.25, "waveform": 1 } },
+        "filter": { "type": "Filter", "params": { "cutoff": 1200.0, "resonance": 0.6, "mode": 0 } },
+        "verb": {
+            "type": "ConvolutionReverb",
+            "params": { "ir_preset": 3, "mix": 0.55, "pre_delay_ms": 24.0, "width": 1.45, "tail_seconds": 6.0, "ir_gain_db": -3.0 }
+        },
+        "out": { "type": "audio_out", "params": {} }
+    },
+    "connections": [
+        { "from": "osc/output", "to": "filter/input" },
+        { "from": "filter/output", "to": "verb/input" },
+        { "from": "verb/output", "to": "out/input" }
+    ]
+}

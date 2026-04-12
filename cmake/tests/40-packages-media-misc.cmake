@@ -16,7 +16,7 @@ add_dependencies(test_demo_graphs
     bloom feedback movie_file_in texture_analysis metronome_viz
     # audio
     oscillator gain
-    reverb delay bitcrush distortion filter audio_noise mixer
+    reverb convolution_reverb delay bitcrush distortion filter audio_noise mixer
     movie_file_audio
     webcam_in time_machine
 )

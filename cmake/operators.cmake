@@ -516,6 +516,11 @@ target_sources(vocoder PRIVATE operators/shared/vocoder_dsp/vocoder_dsp.cpp)
 add_vivid_operator(spectral_freeze  operators/audio/spectral_freeze/spectral_freeze.cpp)
 target_sources(spectral_freeze PRIVATE operators/shared/spectral_freeze_dsp/spectral_freeze_dsp.cpp)
 vivid_enable_audio_kernels(spectral_freeze)
+add_vivid_operator(convolution_reverb operators/audio/convolution_reverb/convolution_reverb.cpp
+                   EXTRA_LIBS sampler_miniaudio)
+target_sources(convolution_reverb PRIVATE operators/shared/convolution_reverb_dsp/convolution_reverb_dsp.cpp)
+target_include_directories(convolution_reverb PRIVATE ${CMAKE_SOURCE_DIR}/deps/miniaudio)
+vivid_enable_audio_kernels(convolution_reverb)
 foreach(_samp_op sp404 sampler slicer)
     target_include_directories(${_samp_op} PRIVATE
         ${CMAKE_SOURCE_DIR}/operators/shared/sampler_common

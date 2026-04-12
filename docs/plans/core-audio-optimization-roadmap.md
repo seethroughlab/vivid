@@ -21,7 +21,8 @@ expose Highway or Accelerate types through `src/operator_api`.
 | 3 | `Vocoder` | Repeated filter-bank and envelope-follower work across bands. | Band state is laid out for batch work and benchmarked before any SIMD cutover. |
 | 4 | Shared gain/mix/pan kernels | Common graph glue with contiguous multiply/add work. | `Gain`, `Mixer`, and `StereoPanWidth` route through a shared internal kernel seam with unchanged behavior. |
 | 5 | `Reverb` | Some parallel comb work, but feedback paths reduce SIMD upside. | Profiled hot path justifies an architecture review before implementation. |
-| 6 | `ParametricEQ`, compressor, limiter, and filter family | Recursive IIR and dynamics state make naive SIMD low leverage. | Only revisit after telemetry shows a real hotspot and a data-layout plan exists. |
+| 6 | `ConvolutionReverb` | High-quality stereo convolution is FFT-shaped and maps cleanly to Accelerate on macOS. | New stereo production reverb path publishes scalar/Accelerate parity and Release benchmark numbers. |
+| 7 | `ParametricEQ`, compressor, limiter, and filter family | Recursive IIR and dynamics state make naive SIMD low leverage. | Only revisit after telemetry shows a real hotspot and a data-layout plan exists. |
 
 ## Backend Contract
 
@@ -50,6 +51,7 @@ Initial fixture backlog:
 - `GranularSynth`: low, medium, and max active-grain density cases
 - `Vocoder`: 8, 16, and 32 band cases with stable carrier/modulator input
 - shared kernels: gain, four-input mix, and stereo pan/width chains
+- `ConvolutionReverb`: built-in room, hall, cathedral, and short WAV IR cases with scalar vs Accelerate comparison
 - filter/dynamics family: operator-level `ParametricEQ`, `Compressor`, `Limiter`,
   `Filter`, and `DualFilter` cases before choosing any recursive-IIR refactor target
 
@@ -258,6 +260,52 @@ Acceptance status:
 - coverage includes small room, large hall, plate, high damping, low damping, dry passthrough, impulse tail, and sample-rate reinitialization
 - operator smoke loads `reverb.dylib` and verifies finite, non-silent output
 - SIMD/Accelerate remains deferred until a deeper architecture pass is justified
+
+## ConvolutionReverb Stereo Production Path
+
+`ConvolutionReverb` is the new high-quality stereo reverb direction. It is a
+separate operator rather than a replacement implementation inside the existing
+mono `Reverb`, which remains the lightweight/simple algorithmic path.
+
+The new shared DSP engine uses a hybrid low-latency convolution design:
+the early block of the impulse response is rendered directly, while the tail is
+rendered through block-size-aware FFT partitions. Built-in generated IRs avoid
+third-party licensing risk, and a file path can override the preset with a WAV
+impulse response. Mono, stereo, and 4-channel true-stereo IR layouts are
+supported internally.
+
+Acceptance status:
+
+- scalar remains the correctness reference and fallback
+- Accelerate is the preferred macOS FFT backend when `VIVID_ENABLE_ACCELERATE=ON`
+- descriptor smoke validates a stereo input and stereo output surface
+- DSP tests compare partitioned rendering against a direct convolution reference
+- backend parity tests compare scalar and Accelerate within tolerance
+- `bench_convolution_reverb` reports backend, IR length, partition count, plan rebuild count, and scalar/preferred speedup
+
+Release benchmark on the current machine:
+
+| Frames | Case | Scalar mean | Preferred backend | Preferred mean | Speedup | Partitions |
+| ---: | --- | ---: | --- | ---: | ---: | ---: |
+| `256` | room | `176.945 ± 25.061 us` | accelerate | `162.769 ± 1.838 us` | `1.087x` | `187` |
+| `256` | hall | `475.987 ± 7.730 us` | accelerate | `478.528 ± 7.004 us` | `0.995x` | `749` |
+| `256` | cathedral | `699.716 ± 12.263 us` | accelerate | `698.835 ± 16.746 us` | `1.001x` | `1124` |
+| `1024` | room | `368.870 ± 2.845 us` | accelerate | `306.093 ± 2.711 us` | `1.205x` | `47` |
+| `1024` | hall | `718.465 ± 7.184 us` | accelerate | `658.261 ± 5.506 us` | `1.091x` | `188` |
+| `1024` | cathedral | `957.185 ± 11.356 us` | accelerate | `885.461 ± 8.288 us` | `1.081x` | `281` |
+
+Benchmark command:
+
+```bash
+./build/bench_convolution_reverb
+```
+
+Follow-up note: this first pass preserves direct-convolution correctness by using
+audio-block-sized FFT partitions. Long IRs at the 256-frame primary size are now
+partition-count dominated, so the next performance pass should explore a
+non-uniform partition plan: direct early reflections, small first tail
+partitions, and larger late-tail partitions with explicit latency and listening
+gates.
 
 ## Filter/Dynamics Family Triage Pass
 
