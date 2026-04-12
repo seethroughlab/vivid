@@ -2,6 +2,7 @@
 #include "ui/graph/node_graph.h"
 #include "ui/graph/node_graph_constants.h"
 #include "ui/graph/node_graph_util.h"
+#include "ui/inspector/inspector_widget_registry.h"
 #include "ui/rendering/renderer_2d.h"
 #include "ui/style/i18n.h"
 #include "common/string_util.h"
@@ -531,20 +532,17 @@ void NodeGraphUI::draw_inspector_adsr(Renderer2D& tr, const NodeSnapshot& node,
         { time_to_x(attack + decay + sustain_width + release), env_to_y(0.0f) }  // release end
     };
 
-    bool is_dragging = inspector_.active_adsr_idx >= 0 &&
-                       inspector_.active_adsr_node_id == single_selected_id();
+    const auto& adsr_target = inspector_.surface.add_adsr(px, py, w, h,
+        single_selected_id(),
+        op.params[pi_a].name, op.params[pi_d].name,
+        op.params[pi_s].name, op.params[pi_r].name);
+    bool is_dragging = inspector_.surface.is_active(adsr_target.id);
     for (int i = 0; i < 3; ++i) {
-        float alpha = (is_dragging && inspector_.active_adsr_point == i) ? 1.0f : 0.8f;
+        float alpha = (is_dragging && inspector_.surface.active_part() == i) ? 1.0f : 0.8f;
         tr.draw_rounded_rect(pts[i].cx - dot_r, pts[i].cy - dot_r,
                              dot_r * 2, dot_r * 2, dot_r,
                              style_.accent[0], style_.accent[1], style_.accent[2], alpha);
     }
-
-    // Hit-test rect for drag interaction
-    inspector_.adsr_rects.push_back({px, py, w, h,
-                           single_selected_id(),
-                           op.params[pi_a].name, op.params[pi_d].name,
-                           op.params[pi_s].name, op.params[pi_r].name});
 
     // --- Value labels below the curve ---
     float label_y = py + h + kADSRLabelGap;
@@ -668,7 +666,7 @@ static float lfo_waveform_sample(float phase, int waveform) {
         case 3: return 4.0f * ((p < 0.5f) ? p : 1.0f - p) - 1.0f;      // triangle
         case 4: {                                                         // sample & hold
             int step = static_cast<int>(std::floor(p * 8.0f));
-            uint32_t x = static_cast<uint32_t>(step * 1664525 + 17 * 1013904223);
+            uint32_t x = static_cast<uint32_t>(step) * 1664525u + 17u * 1013904223u;
             x ^= x >> 16; x *= 2246822519u; x ^= x >> 13;
             return static_cast<float>(x & 0xffffu) / 65535.0f * 2.0f - 1.0f;
         }
@@ -677,7 +675,7 @@ static float lfo_waveform_sample(float phase, int waveform) {
             int step = static_cast<int>(std::floor(fp));
             float t = fp - static_cast<float>(step);
             auto hash = [](int i) {
-                uint32_t x = static_cast<uint32_t>(i * 1664525 + 29 * 1013904223);
+                uint32_t x = static_cast<uint32_t>(i) * 1664525u + 29u * 1013904223u;
                 x ^= x >> 16; x *= 2246822519u; x ^= x >> 13;
                 return static_cast<float>(x & 0xffffu) / 65535.0f * 2.0f - 1.0f;
             };
@@ -686,7 +684,7 @@ static float lfo_waveform_sample(float phase, int waveform) {
         }
         case 6:                                                           // noise
         default: {
-            uint32_t x = static_cast<uint32_t>(static_cast<int>(p * 24.0f) * 1664525 + 47 * 1013904223);
+            uint32_t x = static_cast<uint32_t>(p * 24.0f) * 1664525u + 47u * 1013904223u;
             x ^= x >> 16; x *= 2246822519u; x ^= x >> 13;
             return static_cast<float>(x & 0xffffu) / 65535.0f * 2.0f - 1.0f;
         }
@@ -896,11 +894,10 @@ void NodeGraphUI::draw_inspector_step_seq(Renderer2D& tr, const NodeSnapshot& no
         }
     }
 
-    // Push hit-test rect
-    inspector_.step_seq_rects.push_back({px, py, w, h,
-                               single_selected_id(),
-                               pi_start, pi_values, value_count,
-                               pi_gates, gate_count});
+    inspector_.surface.add_step_seq(px, py, w, h,
+                                    single_selected_id(),
+                                    pi_start, pi_values, value_count,
+                                    pi_gates, gate_count);
 
     float total_h = h + 8.0f;
     layout.end_param(total_h);
@@ -1329,67 +1326,34 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
                 }
             }
 
-            // Compound widget: XY pad (two consecutive XY_PAD params)
-            if (pd.display_hint == VIVID_DISPLAY_XY_PAD &&
-                pi + 1 < param_count &&
-                op.params[pi + 1].display_hint == VIVID_DISPLAY_XY_PAD &&
-                param_run_visible(op, node, pi, 2)) {
+            InspectorWidgetRun widget_run = inspector_widget_run_at(op.params, pi);
+            if (widget_run.kind != InspectorWidgetKind::kNone &&
+                param_run_visible(op, node, pi, widget_run.length)) {
                 layout.flush_row();
                 layout.begin_param(0, 0);
-                draw_inspector_xy_pad(tr, node, layout, pi, pi + 1);
-                pi += 2;
-                continue;
-            }
 
-            // Compound widget: Color swatch (three consecutive COLOR params)
-            if (pd.display_hint == VIVID_DISPLAY_COLOR &&
-                pi + 2 < param_count &&
-                op.params[pi + 1].display_hint == VIVID_DISPLAY_COLOR &&
-                op.params[pi + 2].display_hint == VIVID_DISPLAY_COLOR &&
-                param_run_visible(op, node, pi, 3)) {
-                layout.flush_row();
-                layout.begin_param(0, 0);
-                draw_inspector_color_swatch(tr, node, layout, pi, pi + 1, pi + 2);
-                pi += 3;
-                continue;
-            }
-
-            // Compound widget: ADSR envelope (4 consecutive ADSR params)
-            if (pd.display_hint == VIVID_DISPLAY_ADSR &&
-                pi + 3 < param_count &&
-                op.params[pi + 1].display_hint == VIVID_DISPLAY_ADSR &&
-                op.params[pi + 2].display_hint == VIVID_DISPLAY_ADSR &&
-                op.params[pi + 3].display_hint == VIVID_DISPLAY_ADSR &&
-                param_run_visible(op, node, pi, 4)) {
-                layout.flush_row();
-                layout.begin_param(0, 0);
-                draw_inspector_adsr(tr, node, layout, pi, pi + 1, pi + 2, pi + 3);
-                pi += 4;
-                continue;
-            }
-
-            // Compound widget: LFO waveform preview (single enum param)
-            if (pd.display_hint == VIVID_DISPLAY_LFO && pd.choice_count > 0) {
-                layout.flush_row();
-                layout.begin_param(0, 0);
-                draw_inspector_lfo_preview(tr, node, layout, pi);
-                pi += 1;
-                continue;
-            }
-
-            // Compound widget: Step sequencer grid (run of STEP_SEQ params)
-            if (pd.display_hint == VIVID_DISPLAY_STEP_SEQ) {
-                uint32_t run = 1;
-                while (pi + run < param_count &&
-                       op.params[pi + run].display_hint == VIVID_DISPLAY_STEP_SEQ)
-                    ++run;
-                if (run >= 2 && param_run_visible(op, node, pi, run)) { // at least count + 1 value
-                    layout.flush_row();
-                    layout.begin_param(0, 0);
-                    draw_inspector_step_seq(tr, node, layout, pi, run);
-                    pi += run;
-                    continue;
+                switch (widget_run.kind) {
+                case InspectorWidgetKind::kXYPad:
+                    draw_inspector_xy_pad(tr, node, layout, pi, pi + 1);
+                    break;
+                case InspectorWidgetKind::kColor:
+                    draw_inspector_color_swatch(tr, node, layout, pi, pi + 1, pi + 2);
+                    break;
+                case InspectorWidgetKind::kADSR:
+                    draw_inspector_adsr(tr, node, layout, pi, pi + 1, pi + 2, pi + 3);
+                    break;
+                case InspectorWidgetKind::kLFO:
+                    draw_inspector_lfo_preview(tr, node, layout, pi);
+                    break;
+                case InspectorWidgetKind::kStepSeq:
+                    draw_inspector_step_seq(tr, node, layout, pi, widget_run.length);
+                    break;
+                case InspectorWidgetKind::kNone:
+                    break;
                 }
+
+                pi += widget_run.length;
+                continue;
             }
 
             ParamLayoutRequest req = build_request(pi);
@@ -1465,17 +1429,7 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
             if (pi + 1 < param_count) {
                 const auto& next_pd = op.params[pi + 1];
                 bool next_is_compound =
-                    (next_pd.display_hint == VIVID_DISPLAY_XY_PAD && pi + 2 < param_count &&
-                     op.params[pi + 2].display_hint == VIVID_DISPLAY_XY_PAD) ||
-                    (next_pd.display_hint == VIVID_DISPLAY_COLOR && pi + 3 < param_count &&
-                     op.params[pi + 2].display_hint == VIVID_DISPLAY_COLOR &&
-                     op.params[pi + 3].display_hint == VIVID_DISPLAY_COLOR) ||
-                    (next_pd.display_hint == VIVID_DISPLAY_ADSR && pi + 4 < param_count &&
-                     op.params[pi + 2].display_hint == VIVID_DISPLAY_ADSR &&
-                     op.params[pi + 3].display_hint == VIVID_DISPLAY_ADSR &&
-                     op.params[pi + 4].display_hint == VIVID_DISPLAY_ADSR) ||
-                    (next_pd.display_hint == VIVID_DISPLAY_LFO && next_pd.choice_count > 0) ||
-                    (next_pd.display_hint == VIVID_DISPLAY_STEP_SEQ);
+                    inspector_widget_run_at(op.params, pi + 1).kind != InspectorWidgetKind::kNone;
                 if (param_visible(next_pd, node) &&
                     next_pd.group == current_group &&
                     !next_is_compound) {

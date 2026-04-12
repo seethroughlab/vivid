@@ -46,6 +46,15 @@ static std::shared_ptr<OperatorInfo> make_widget_op() {
         ParamInfo{"g", VIVID_PARAM_FLOAT, 0.0f, 0.0f, 1.0f},
         ParamInfo{"b", VIVID_PARAM_FLOAT, 0.0f, 0.0f, 1.0f},
         ParamInfo{"percent", VIVID_PARAM_FLOAT, 0.0f, 0.0f, 100.0f},
+        ParamInfo{"attack", VIVID_PARAM_FLOAT, 0.1f, 0.001f, 2.0f, {}, 0, "", VIVID_DISPLAY_ADSR},
+        ParamInfo{"decay", VIVID_PARAM_FLOAT, 0.2f, 0.001f, 2.0f, {}, 0, "", VIVID_DISPLAY_ADSR},
+        ParamInfo{"sustain", VIVID_PARAM_FLOAT, 0.5f, 0.0f, 1.0f, {}, 0, "", VIVID_DISPLAY_ADSR},
+        ParamInfo{"release", VIVID_PARAM_FLOAT, 0.3f, 0.001f, 2.0f, {}, 0, "", VIVID_DISPLAY_ADSR},
+        ParamInfo{"num_steps", VIVID_PARAM_INT, 4.0f, 1.0f, 4.0f, {}, 0, "", VIVID_DISPLAY_STEP_SEQ},
+        ParamInfo{"step_0", VIVID_PARAM_FLOAT, 0.1f, 0.0f, 1.0f, {}, 0, "", VIVID_DISPLAY_STEP_SEQ},
+        ParamInfo{"step_1", VIVID_PARAM_FLOAT, 0.2f, 0.0f, 1.0f, {}, 0, "", VIVID_DISPLAY_STEP_SEQ},
+        ParamInfo{"step_2", VIVID_PARAM_FLOAT, 0.3f, 0.0f, 1.0f, {}, 0, "", VIVID_DISPLAY_STEP_SEQ},
+        ParamInfo{"step_3", VIVID_PARAM_FLOAT, 0.4f, 0.0f, 1.0f, {}, 0, "", VIVID_DISPLAY_STEP_SEQ},
     };
     return op;
 }
@@ -61,7 +70,11 @@ static GraphSnapshot make_widget_snapshot() {
     node.layout_x = 120.0f;
     node.layout_y = 120.0f;
     node.op_info = op;
-    node.param_values = {0.25f, 0.2f, 0.8f, 0.0f, 0.0f, 0.1f, 0.2f, 0.3f, 25.0f};
+    node.param_values = {
+        0.25f, 0.2f, 0.8f, 0.0f, 0.0f, 0.1f, 0.2f, 0.3f, 25.0f,
+        0.1f, 0.2f, 0.5f, 0.3f,
+        4.0f, 0.1f, 0.2f, 0.3f, 0.4f,
+    };
     node.param_lock_flags.resize(node.param_values.size(), 0);
     for (uint32_t i = 0; i < op->params.size(); ++i) {
         node.param_indices[op->params[i].name] = i;
@@ -204,6 +217,48 @@ int main() {
         check(sink.set_param_calls.back().param == "pos_y" &&
                   std::fabs(sink.set_param_calls.back().value - 0.0f) < 0.001f,
               "XY pad vertical motion maps to the Y parameter without axis swap");
+    }
+
+    {
+        DummySink sink;
+        NodeGraphUI ui(sink);
+        auto snap = make_widget_snapshot();
+        ui.selected_node_ids_ = {"widget1"};
+        auto& surface = ui.inspector_.surface;
+        surface.begin_frame();
+        surface.add_adsr(920.0f, 120.0f, 200.0f, 100.0f,
+                         "widget1", "attack", "decay", "sustain", "release");
+        ui.on_mouse_move(950.0f, 126.0f);
+        ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
+        ui.update(snap);
+        ui.on_mouse_move(970.0f, 126.0f);
+        ui.update(snap);
+        ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE, 0);
+        ui.update(snap);
+        check(!sink.set_param_calls.empty(), "ADSR rich widget drag emits a param update");
+        check(last_param(sink).param == "attack" && last_param(sink).value > 0.1f,
+              "ADSR attack handle drag updates the attack param through the generic rich surface");
+    }
+
+    {
+        DummySink sink;
+        NodeGraphUI ui(sink);
+        auto snap = make_widget_snapshot();
+        ui.selected_node_ids_ = {"widget1"};
+        auto& surface = ui.inspector_.surface;
+        surface.begin_frame();
+        surface.add_step_seq(920.0f, 120.0f, 200.0f, 100.0f,
+                             "widget1", 13, 14, 4, 0, 0);
+        ui.on_mouse_move(995.0f, 170.0f);
+        ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
+        ui.update(snap);
+        ui.on_mouse_move(995.0f, 130.0f);
+        ui.update(snap);
+        ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE, 0);
+        ui.update(snap);
+        check(!sink.set_param_calls.empty(), "Step-seq rich widget drag emits a param update");
+        check(last_param(sink).param == "step_1" && last_param(sink).value > 0.8f,
+              "Step-seq bar drag updates the selected step through the generic rich surface");
     }
 
     {

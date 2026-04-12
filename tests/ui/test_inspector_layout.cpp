@@ -1,4 +1,6 @@
 #include "ui/inspector/inspector_layout.h"
+#include "ui/inspector/inspector_surface.h"
+#include "ui/inspector/inspector_widget_registry.h"
 #include "ui/graph/graph_snapshot.h"
 #include <cstdio>
 #include "test_helpers.h"
@@ -158,8 +160,14 @@ int main() {
         auto layout = make_layout();
         auto xy = layout.plan_param(make_request(0, 0, VIVID_DISPLAY_XY_PAD, VIVID_PARAM_FLOAT));
         auto color = layout.plan_param(make_request(0, 0, VIVID_DISPLAY_COLOR, VIVID_PARAM_FLOAT));
+        auto adsr = layout.plan_param(make_request(0, 0, VIVID_DISPLAY_ADSR, VIVID_PARAM_FLOAT));
+        auto lfo = layout.plan_param(make_request(0, 0, VIVID_DISPLAY_LFO, VIVID_PARAM_INT, 7));
+        auto step_seq = layout.plan_param(make_request(0, 0, VIVID_DISPLAY_STEP_SEQ, VIVID_PARAM_FLOAT));
         check(xy.row_mode == RowMode::kCompound, "xy pad uses compound row");
         check(color.row_mode == RowMode::kCompound, "color swatch uses compound row");
+        check(adsr.row_mode == RowMode::kCompound, "adsr uses compound row");
+        check(lfo.row_mode == RowMode::kCompound, "lfo preview uses compound row");
+        check(step_seq.row_mode == RowMode::kCompound, "step seq uses compound row");
     }
 
     {
@@ -215,7 +223,6 @@ int main() {
         auto full = InspectorLayout::full_plan();
         layout.begin_param(full);
         layout.end_param(24.0f);
-        auto rogue = InspectorLayout::two_up_plan(1);
         layout.begin_param(2, 1);
         check_float(layout.y, 56.0f, "stray right-column row starts from current y");
         layout.end_param(20.0f);
@@ -245,6 +252,41 @@ int main() {
         params[0].display_hint = VIVID_DISPLAY_HIDDEN;
         check(!param_info_run_visible(params, std::vector<float>{0.0f, 0.0f, 1.0f}, 0, 1),
               "display-hidden param makes run invisible");
+    }
+
+    {
+        std::fprintf(stderr, "\n=== Test 13: Rich widget registry and surface state ===\n");
+        std::vector<ParamInfo> params(5);
+        for (auto& p : params) {
+            p.display_hint = VIVID_DISPLAY_ADSR;
+            p.choice_count = 0;
+        }
+        check(inspector_widget_run_at(params, 0).kind == InspectorWidgetKind::kADSR,
+              "ADSR run is classified");
+        check(inspector_widget_run_at(params, 0).length == 4,
+              "ADSR run length is 4");
+        params[0].display_hint = VIVID_DISPLAY_LFO;
+        params[0].choice_count = 7;
+        check(inspector_widget_run_at(params, 0).kind == InspectorWidgetKind::kLFO,
+              "LFO run is classified from choice param");
+
+        InspectorSurface surface;
+        surface.begin_frame();
+        const auto& adsr = surface.add_adsr(10.0f, 20.0f, 100.0f, 50.0f,
+                                            "env1", "attack", "decay", "sustain", "release");
+        std::string adsr_id = adsr.id;
+        check(surface.hit_rich_target(12.0f, 22.0f) != nullptr,
+              "rich target hit-test finds ADSR");
+        surface.activate(adsr, 1);
+        check(surface.is_active(adsr_id), "stable rich widget id is active");
+        check(surface.active_part() == 1, "active widget part is tracked generically");
+        surface.begin_frame();
+        check(surface.find_rich_target(adsr_id) == nullptr,
+              "per-frame target registry clears targets");
+        check(surface.is_active(adsr_id),
+              "stable active id survives target refresh");
+        surface.clear_active();
+        check(!surface.has_active(), "active rich widget clears generically");
     }
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",

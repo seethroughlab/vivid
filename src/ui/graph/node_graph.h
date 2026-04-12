@@ -495,8 +495,7 @@ private:
     void update_transport_bpm_drag();
     void update_modulation_drag();
     void update_xy_pad_drag();
-    void update_adsr_drag();
-    void update_step_seq_drag();
+    void update_rich_inspector_drag();
     void update_color_drag();
     void update_chooser_hover();
     void update_context_menu();

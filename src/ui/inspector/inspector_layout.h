@@ -52,7 +52,11 @@ struct InspectorLayout {
     float   row_max_h = 0.0f;   // tallest param in current row
 
     static bool is_compound_hint(VividDisplayHint hint) {
-        return hint == VIVID_DISPLAY_XY_PAD || hint == VIVID_DISPLAY_COLOR;
+        return hint == VIVID_DISPLAY_XY_PAD ||
+               hint == VIVID_DISPLAY_COLOR ||
+               hint == VIVID_DISPLAY_ADSR ||
+               hint == VIVID_DISPLAY_LFO ||
+               hint == VIVID_DISPLAY_STEP_SEQ;
     }
 
     static bool param_supports_two_up(const ParamLayoutRequest& req) {

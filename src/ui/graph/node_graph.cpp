@@ -225,8 +225,6 @@ template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::M
 template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::MidiRangeRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::XYPadRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::ColorSwatchRect>& rects, float mx, float my);
-template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::ADSRRect>& rects, float mx, float my);
-template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::StepSeqRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::StatePresetRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::StateHeaderRect>& rects, float mx, float my);
 

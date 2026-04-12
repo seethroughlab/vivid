@@ -232,8 +232,7 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     update_transport_bpm_drag();
     update_modulation_drag();
     update_xy_pad_drag();
-    update_adsr_drag();
-    update_step_seq_drag();
+    update_rich_inspector_drag();
     update_color_drag();
     update_patch_drag();
     update_chooser_hover();

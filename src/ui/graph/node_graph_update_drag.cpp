@@ -259,11 +259,16 @@ void NodeGraphUI::update_xy_pad_drag() {
     }
 }
 
-void NodeGraphUI::update_adsr_drag() {
-    if (inspector_.active_adsr_idx < 0 || dragging_node_idx_ >= 0) return;
-    if (mouse_.left_down && inspector_.active_adsr_idx < static_cast<int>(inspector_.adsr_rects.size())) {
-        const auto& ar = inspector_.adsr_rects[inspector_.active_adsr_idx];
-        const auto* ns = snap_.find_node(inspector_.active_adsr_node_id);
+void NodeGraphUI::update_rich_inspector_drag() {
+    if (!inspector_.surface.has_active() || dragging_node_idx_ >= 0) return;
+    const auto* target = inspector_.surface.find_rich_target(inspector_.surface.active_id());
+    if (!target) {
+        inspector_.surface.clear_active();
+        return;
+    }
+
+    if (mouse_.left_down && target->kind == InspectorSurface::WidgetKind::kADSR) {
+        const auto* ns = snap_.find_node(target->node_id);
         if (ns) {
             auto get_param = [&](const std::string& pname) -> const ParamInfo* {
                 return ns->find_param(pname);
@@ -273,98 +278,87 @@ void NodeGraphUI::update_adsr_drag() {
                 return (it != ns->param_indices.end()) ? ns->param_values[it->second] : fallback;
             };
 
-            float attack  = std::max(0.0001f, get_val(ar.param_a, 0.01f));
-            float decay   = std::max(0.001f,  get_val(ar.param_d, 0.2f));
-            float sustain = std::clamp(get_val(ar.param_s, 0.7f), 0.0f, 1.0f);
-            float release = std::max(0.001f,  get_val(ar.param_r, 0.3f));
+            float attack  = std::max(0.0001f, get_val(target->params[0], 0.01f));
+            float decay   = std::max(0.001f,  get_val(target->params[1], 0.2f));
+            float release = std::max(0.001f,  get_val(target->params[3], 0.3f));
             float sustain_width = 0.3f * (attack + decay + release);
             float total_time = attack + decay + sustain_width + release;
             float pad = kADSRPad;
-            float plot_w = ar.w - 2.0f * pad;
+            float plot_w = target->w - 2.0f * pad;
 
             // Inverse transforms: mouse position → time / env level
             auto x_to_time = [&](float mx) -> float {
-                return ((mx - ar.x - pad) / plot_w) * total_time;
+                return ((mx - target->x - pad) / plot_w) * total_time;
             };
             auto y_to_env = [&](float my) -> float {
-                return 1.0f - ((my - ar.y - pad) / (ar.h - 2.0f * pad));
+                return 1.0f - ((my - target->y - pad) / (target->h - 2.0f * pad));
             };
 
-            int pt = inspector_.active_adsr_point;
+            int pt = inspector_.surface.active_part();
 
             if (pt == 0) {
                 // Attack peak: drag X → attack time
-                const ParamInfo* pd = get_param(ar.param_a);
+                const ParamInfo* pd = get_param(target->params[0]);
                 if (pd) {
                     float t = x_to_time(mouse_.x);
                     float val = std::clamp(t, pd->min_value, pd->max_value);
-                    commands_.set_param(inspector_.active_adsr_node_id, ar.param_a, val);
+                    commands_.set_param(target->node_id, target->params[0], val);
                 }
             } else if (pt == 1) {
                 // Decay/Sustain junction: X → decay time, Y → sustain level
-                const ParamInfo* pd_d = get_param(ar.param_d);
-                const ParamInfo* pd_s = get_param(ar.param_s);
+                const ParamInfo* pd_d = get_param(target->params[1]);
+                const ParamInfo* pd_s = get_param(target->params[2]);
                 if (pd_d) {
                     float t = x_to_time(mouse_.x);
                     float decay_val = std::clamp(t - attack, pd_d->min_value, pd_d->max_value);
-                    commands_.set_param(inspector_.active_adsr_node_id, ar.param_d, decay_val);
+                    commands_.set_param(target->node_id, target->params[1], decay_val);
                 }
                 if (pd_s) {
                     float env = y_to_env(mouse_.y);
                     float sus_val = std::clamp(env, pd_s->min_value, pd_s->max_value);
-                    commands_.set_param(inspector_.active_adsr_node_id, ar.param_s, sus_val);
+                    commands_.set_param(target->node_id, target->params[2], sus_val);
                 }
             } else if (pt == 2) {
                 // Release end: drag X → release time
-                const ParamInfo* pd = get_param(ar.param_r);
+                const ParamInfo* pd = get_param(target->params[3]);
                 if (pd) {
                     float t = x_to_time(mouse_.x);
                     float release_start = attack + decay + sustain_width;
                     float release_val = std::clamp(t - release_start, pd->min_value, pd->max_value);
-                    commands_.set_param(inspector_.active_adsr_node_id, ar.param_r, release_val);
+                    commands_.set_param(target->node_id, target->params[3], release_val);
                 }
             }
         }
-    }
-    if (mouse_.left_released) {
-        inspector_.active_adsr_idx = -1;
-        inspector_.active_adsr_point = -1;
-    }
-}
-
-void NodeGraphUI::update_step_seq_drag() {
-    if (inspector_.active_step_seq_idx < 0 || dragging_node_idx_ >= 0) return;
-    if (mouse_.left_down && inspector_.active_step_seq_idx < static_cast<int>(inspector_.step_seq_rects.size())) {
-        const auto& sr = inspector_.step_seq_rects[inspector_.active_step_seq_idx];
-        const auto* ns = snap_.find_node(sr.node_id);
-        if (ns && inspector_.active_step_seq_step >= 0) {
-            int num_steps = std::max(1, static_cast<int>(ns->param_values[sr.pi_count]));
+    } else if (mouse_.left_down && target->kind == InspectorSurface::WidgetKind::kStepSeq) {
+        const auto* ns = snap_.find_node(target->node_id);
+        if (ns && inspector_.surface.active_part() >= 0) {
+            int num_steps = std::max(1, static_cast<int>(ns->param_values[target->pi_count]));
             float pad = kStepSeqPad;
-            float plot_x = sr.x + pad;
-            float plot_y = sr.y + pad;
-            float plot_w = sr.w - 2.0f * pad;
-            float plot_h = sr.h - 2.0f * pad;
+            float plot_x = target->x + pad;
+            float plot_y = target->y + pad;
+            float plot_w = target->w - 2.0f * pad;
+            float plot_h = target->h - 2.0f * pad;
             float bar_w = plot_w / static_cast<float>(num_steps);
 
             // Allow dragging across bars
             int step = static_cast<int>((mouse_.x - plot_x) / bar_w);
             step = std::max(0, std::min(step, num_steps - 1));
-            if (step < static_cast<int>(sr.value_count)) {
-                inspector_.active_step_seq_step = step;
-                uint32_t vi = sr.pi_values + static_cast<uint32_t>(step);
+            if (step < static_cast<int>(target->value_count)) {
+                inspector_.surface.activate(*target, step);
+                uint32_t vi = target->pi_values + static_cast<uint32_t>(step);
                 if (vi < ns->op_info->params.size()) {
                     const auto& vpd = ns->op_info->params[vi];
                     float norm = 1.0f - (mouse_.y - plot_y) / plot_h;
                     norm = std::max(0.0f, std::min(1.0f, norm));
                     float val = vpd.min_value + norm * (vpd.max_value - vpd.min_value);
-                    commands_.set_param(sr.node_id, vpd.name, val);
+                    commands_.set_param(target->node_id, vpd.name, val);
                 }
             }
         }
     }
+
     if (mouse_.left_released) {
-        inspector_.active_step_seq_idx = -1;
-        inspector_.active_step_seq_step = -1;
+        inspector_.surface.clear_active();
     }
 }
 

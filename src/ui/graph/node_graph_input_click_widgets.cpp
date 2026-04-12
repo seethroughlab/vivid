@@ -664,27 +664,26 @@ bool NodeGraphUI::handle_inspector_click() {
         return true;
     }
 
-    // Check ADSR envelope widget
+    // Check rich inspector widgets registered by the previous draw pass.
     {
-        int adsr_i = hit_test_rect(inspector_.adsr_rects, mouse_.x, mouse_.y);
-        if (adsr_i >= 0) {
-            const auto& ar = inspector_.adsr_rects[adsr_i];
-            const auto* ns = snap_.find_node(ar.node_id);
+        const auto* target = inspector_.surface.hit_rich_target(mouse_.x, mouse_.y);
+        if (target && target->kind == InspectorSurface::WidgetKind::kADSR) {
+            const auto* ns = snap_.find_node(target->node_id);
             if (ns) {
                 // Look up param values by index
                 auto get_val = [&](const std::string& pname, float fallback) -> float {
                     auto it = ns->param_indices.find(pname);
                     return (it != ns->param_indices.end()) ? ns->param_values[it->second] : fallback;
                 };
-                float attack  = std::max(0.0001f, get_val(ar.param_a, 0.01f));
-                float decay   = std::max(0.001f,  get_val(ar.param_d, 0.2f));
-                float sustain = std::clamp(get_val(ar.param_s, 0.7f), 0.0f, 1.0f);
-                float release = std::max(0.001f,  get_val(ar.param_r, 0.3f));
+                float attack  = std::max(0.0001f, get_val(target->params[0], 0.01f));
+                float decay   = std::max(0.001f,  get_val(target->params[1], 0.2f));
+                float sustain = std::clamp(get_val(target->params[2], 0.7f), 0.0f, 1.0f);
+                float release = std::max(0.001f,  get_val(target->params[3], 0.3f));
                 float sustain_width = 0.3f * (attack + decay + release);
                 float total_time = attack + decay + sustain_width + release;
                 float pad = kADSRPad;
-                auto t2x = [&](float t) { return ar.x + pad + (t / total_time) * (ar.w - 2.0f * pad); };
-                auto e2y = [&](float e) { return ar.y + pad + (1.0f - e) * (ar.h - 2.0f * pad); };
+                auto t2x = [&](float t) { return target->x + pad + (t / total_time) * (target->w - 2.0f * pad); };
+                auto e2y = [&](float e) { return target->y + pad + (1.0f - e) * (target->h - 2.0f * pad); };
 
                 struct Pt { float cx, cy; };
                 Pt pts[3] = {
@@ -704,38 +703,24 @@ bool NodeGraphUI::handle_inspector_click() {
                 }
 
                 if (best_pt >= 0) {
-                    inspector_.active_adsr_idx = adsr_i;
-                    inspector_.active_adsr_point = best_pt;
-                    inspector_.active_adsr_node_id = ar.node_id;
+                    inspector_.surface.activate(*target, best_pt);
                 }
             }
             return true;
-        }
-    }
-
-    // Check step sequencer grid
-    {
-        int ssi = hit_test_rect(inspector_.step_seq_rects, mouse_.x, mouse_.y);
-        if (ssi >= 0) {
-            const auto& sr = inspector_.step_seq_rects[ssi];
-            const auto* ns = snap_.find_node(sr.node_id);
+        } else if (target && target->kind == InspectorSurface::WidgetKind::kStepSeq) {
+            const auto* ns = snap_.find_node(target->node_id);
             if (ns) {
-                auto get_val = [&](const std::string& pname, float fallback) -> float {
-                    auto it = ns->param_indices.find(pname);
-                    return (it != ns->param_indices.end()) ? ns->param_values[it->second] : fallback;
-                };
-                int num_steps = std::max(1, static_cast<int>(ns->param_values[sr.pi_count]));
+                int num_steps = std::max(1, static_cast<int>(ns->param_values[target->pi_count]));
                 float pad = kStepSeqPad;
-                float plot_x = sr.x + pad;
-                float plot_w = sr.w - 2.0f * pad;
+                float plot_x = target->x + pad;
+                float plot_w = target->w - 2.0f * pad;
                 float bar_w = plot_w / static_cast<float>(num_steps);
 
                 float mx = mouse_.x;
                 if (mx >= plot_x && mx <= plot_x + plot_w) {
                     int hit = static_cast<int>((mx - plot_x) / bar_w);
-                    if (hit >= 0 && hit < num_steps && hit < static_cast<int>(sr.value_count)) {
-                        inspector_.active_step_seq_idx = ssi;
-                        inspector_.active_step_seq_step = hit;
+                    if (hit >= 0 && hit < num_steps && hit < static_cast<int>(target->value_count)) {
+                        inspector_.surface.activate(*target, hit);
                     }
                 }
             }
