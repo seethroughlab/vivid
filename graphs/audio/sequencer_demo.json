@@ -1,0 +1,86 @@
+{
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "sequencer_demo",
+        "title": "Step Sequencer Melody",
+        "description": "8-step sequencer driving an oscillator frequency. Edit the step grid in the inspector to reshape the melody.",
+        "tags": [
+            "sequencer",
+            "synthesis",
+            "modulation"
+        ],
+        "difficulty": "beginner",
+        "domains": [
+            "audio"
+        ]
+    },
+    "nodes": {
+        "osc1": {
+            "type": "Oscillator",
+            "params": {
+                "waveform": 2.0,
+                "amplitude": 0.3
+            },
+            "layout": {
+                "x": 230.0,
+                "y": 260.96875
+            }
+        },
+        "out1": {
+            "type": "audio_out"
+        },
+        "reverb1": {
+            "type": "Reverb",
+            "params": {
+                "mix": 0.25,
+                "decay": 1.5,
+                "damping": 0.5
+            }
+        },
+        "seq1": {
+            "type": "SequencerAu",
+            "params": {
+                "sync_division": 0.0,
+                "steps": 8.0,
+                "step_value_6": 0.33,
+                "step_value_5": 0.66,
+                "step_value_4": 1.0,
+                "source": 0.0,
+                "step_value_3": 0.83,
+                "step_value_0": 0.0,
+                "step_value_2": 0.5,
+                "offset": 200.0,
+                "rate_mode": 2.0,
+                "step_value_7": 0.16,
+                "polarity": 1.0,
+                "step_value_1": 0.33,
+                "glide": 0.32501936,
+                "amplitude": 400.0
+            },
+            "layout": {
+                "x": 30.0,
+                "y": 250.5
+            }
+        }
+    },
+    "connections": [
+        {
+            "from": "seq1/value",
+            "to": "osc1/frequency"
+        },
+        {
+            "from": "osc1/output",
+            "to": "reverb1/input"
+        },
+        {
+            "from": "reverb1/output",
+            "to": "out1/input"
+        }
+    ],
+    "viewport": {
+        "pan_x": 193.69922,
+        "pan_y": 91.58984,
+        "zoom": 1.0
+    }
+}

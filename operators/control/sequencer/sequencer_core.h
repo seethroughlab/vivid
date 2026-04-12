@@ -228,7 +228,11 @@ struct SequencerCore : vivid::OperatorBase {
         float freq = frequency.value;
         double phase;
         if (mode == vivid::kRateModeMetronome) {
-            phase = vivid::cycle_phase_from_total_beats(metronome.beats_elapsed, sync_division.int_value());
+            // Each step lasts one sync_division; full cycle = num_steps * division_beats
+            int ns_metro = std::clamp(steps.int_value(), 1, kMaxSteps);
+            double step_beats = static_cast<double>(vivid::sync_cycle_beats(sync_division.int_value()));
+            double cycle_beats = static_cast<double>(ns_metro) * step_beats;
+            phase = (cycle_beats > 0.0) ? std::fmod(metronome.beats_elapsed / cycle_beats, 1.0) : 0.0;
         } else if (mode == vivid::kRateModeExternal) {
             phase = std::fmod(static_cast<double>(beat_phase_in) * static_cast<double>(freq), 1.0);
             if (phase < 0.0) phase += 1.0;
