@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <vector>
 
 namespace {
 inline float flush_audio_denormal(float x) {
@@ -84,6 +85,8 @@ struct DualFilter : vivid::OperatorBase, vivid::AudioProcessable {
         float xover_z1 = 0.f;
         float xover_z2 = 0.f;
     };
+
+    std::vector<float> scratch_;
 
     DualFilter() {
         // Filter A metadata
@@ -344,32 +347,76 @@ struct DualFilter : vivid::OperatorBase, vivid::AudioProcessable {
             xover_g = 1.0f - std::exp(-2.0f * 3.14159265f * fc / sr);
         }
 
-        for (uint32_t i = 0; i < frames; i++) {
-            float s = in[i];
-            float result;
+        audio_dsp::FilterParams params_a{};
+        params_a.type = ftype_a;
+        params_a.cutoff_hz = mod_cutoff_a;
+        params_a.resonance = mod_reso_a;
+        params_a.drive = drv_a;
+        params_a.sample_rate = sr;
+        const auto plan_a = audio_dsp::prepare_filter_plan(params_a);
 
-            switch (route) {
-                case SERIAL_AB: {
-                    float after_a = en_a ? ls.filter_a.process(s, mod_cutoff_a, mod_reso_a, drv_a, ftype_a, sr) : s;
-                    result = en_b ? ls.filter_b.process(after_a, mod_cutoff_b, mod_reso_b, drv_b, ftype_b, sr) : after_a;
-                    break;
+        audio_dsp::FilterParams params_b{};
+        params_b.type = ftype_b;
+        params_b.cutoff_hz = mod_cutoff_b;
+        params_b.resonance = mod_reso_b;
+        params_b.drive = drv_b;
+        params_b.sample_rate = sr;
+        const auto plan_b = audio_dsp::prepare_filter_plan(params_b);
+
+        switch (route) {
+            case SERIAL_AB: {
+                if (en_a) {
+                    audio_dsp::process_filter_block(ls.filter_a, plan_a, in, out, frames);
+                    if (en_b)
+                        audio_dsp::process_filter_block(ls.filter_b, plan_b, out, out, frames);
+                } else if (en_b) {
+                    audio_dsp::process_filter_block(ls.filter_b, plan_b, in, out, frames);
+                } else if (out != in) {
+                    std::memcpy(out, in, sizeof(float) * frames);
                 }
-                case SERIAL_BA: {
-                    float after_b = en_b ? ls.filter_b.process(s, mod_cutoff_b, mod_reso_b, drv_b, ftype_b, sr) : s;
-                    result = en_a ? ls.filter_a.process(after_b, mod_cutoff_a, mod_reso_a, drv_a, ftype_a, sr) : after_b;
-                    break;
+                for (uint32_t i = 0; i < frames; ++i)
+                    out[i] = flush_audio_denormal(out[i] * gain);
+                break;
+            }
+            case SERIAL_BA: {
+                if (en_b) {
+                    audio_dsp::process_filter_block(ls.filter_b, plan_b, in, out, frames);
+                    if (en_a)
+                        audio_dsp::process_filter_block(ls.filter_a, plan_a, out, out, frames);
+                } else if (en_a) {
+                    audio_dsp::process_filter_block(ls.filter_a, plan_a, in, out, frames);
+                } else if (out != in) {
+                    std::memcpy(out, in, sizeof(float) * frames);
                 }
-                case PARALLEL: {
-                    float out_a = en_a ? ls.filter_a.process(s, mod_cutoff_a, mod_reso_a, drv_a, ftype_a, sr) : 0.0f;
-                    float out_b = en_b ? ls.filter_b.process(s, mod_cutoff_b, mod_reso_b, drv_b, ftype_b, sr) : 0.0f;
-                    // Normalized crossfade: equal power at center
-                    float ga = (1.0f - bal);
-                    float gb = bal;
-                    result = out_a * ga + out_b * gb;
-                    break;
+                for (uint32_t i = 0; i < frames; ++i)
+                    out[i] = flush_audio_denormal(out[i] * gain);
+                break;
+            }
+            case PARALLEL: {
+                const float ga = 1.0f - bal;
+                const float gb = bal;
+                if (en_a && en_b) {
+                    if (scratch_.size() < frames) scratch_.resize(frames);
+                    audio_dsp::process_filter_block(ls.filter_a, plan_a, in, out, frames);
+                    audio_dsp::process_filter_block(ls.filter_b, plan_b, in, scratch_.data(), frames);
+                    for (uint32_t i = 0; i < frames; ++i)
+                        out[i] = flush_audio_denormal((out[i] * ga + scratch_[i] * gb) * gain);
+                } else if (en_a) {
+                    audio_dsp::process_filter_block(ls.filter_a, plan_a, in, out, frames);
+                    for (uint32_t i = 0; i < frames; ++i)
+                        out[i] = flush_audio_denormal(out[i] * ga * gain);
+                } else if (en_b) {
+                    audio_dsp::process_filter_block(ls.filter_b, plan_b, in, out, frames);
+                    for (uint32_t i = 0; i < frames; ++i)
+                        out[i] = flush_audio_denormal(out[i] * gb * gain);
+                } else {
+                    std::memset(out, 0, sizeof(float) * frames);
                 }
-                case SPLIT: {
-                    // Complementary low/high split using two cascaded one-pole lowpass sections.
+                break;
+            }
+            case SPLIT: {
+                for (uint32_t i = 0; i < frames; i++) {
+                    float s = in[i];
                     float lp1 = ls.xover_z1 + xover_g * (s - ls.xover_z1);
                     ls.xover_z1 = flush_audio_denormal(lp1);
                     float lp2 = ls.xover_z2 + xover_g * (lp1 - ls.xover_z2);
@@ -378,17 +425,19 @@ struct DualFilter : vivid::OperatorBase, vivid::AudioProcessable {
                     float low = flush_audio_denormal(lp2);
                     float high = flush_audio_denormal(s - lp2);
 
-                    float out_a = en_a ? ls.filter_a.process(low, mod_cutoff_a, mod_reso_a, drv_a, ftype_a, sr) : 0.0f;
-                    float out_b = en_b ? ls.filter_b.process(high, mod_cutoff_b, mod_reso_b, drv_b, ftype_b, sr) : 0.0f;
-                    result = flush_audio_denormal(out_a + out_b);
-                    break;
+                    float out_a = en_a ? ls.filter_a.process_prepared(low, plan_a) : 0.0f;
+                    float out_b = en_b ? ls.filter_b.process_prepared(high, plan_b) : 0.0f;
+                    out[i] = flush_audio_denormal((out_a + out_b) * gain);
                 }
-                default:
-                    result = s;
-                    break;
+                break;
             }
-
-            out[i] = flush_audio_denormal(result * gain);
+            default: {
+                if (out != in)
+                    std::memcpy(out, in, sizeof(float) * frames);
+                for (uint32_t i = 0; i < frames; ++i)
+                    out[i] = flush_audio_denormal(out[i] * gain);
+                break;
+            }
         }
     }
 };

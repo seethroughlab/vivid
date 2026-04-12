@@ -50,6 +50,8 @@ Initial fixture backlog:
 - `GranularSynth`: low, medium, and max active-grain density cases
 - `Vocoder`: 8, 16, and 32 band cases with stable carrier/modulator input
 - shared kernels: gain, four-input mix, and stereo pan/width chains
+- filter/dynamics family: operator-level `ParametricEQ`, `Compressor`, `Limiter`,
+  `Filter`, and `DualFilter` cases before choosing any recursive-IIR refactor target
 
 ## Current First Pass
 
@@ -256,3 +258,115 @@ Acceptance status:
 - coverage includes small room, large hall, plate, high damping, low damping, dry passthrough, impulse tail, and sample-rate reinitialization
 - operator smoke loads `reverb.dylib` and verifies finite, non-silent output
 - SIMD/Accelerate remains deferred until a deeper architecture pass is justified
+
+## Filter/Dynamics Family Triage Pass
+
+The sixth target family has now been measured with an operator-level benchmark
+instead of choosing a refactor target by intuition. This pass intentionally makes
+no DSP or public-surface changes. The benchmark loads the built operators and
+includes wrapper cost, CV handling, lane-state handling, and per-block setup.
+
+Release benchmark on the current machine:
+
+| Frames | Operator | Case | Backend | Mean |
+| ---: | --- | --- | --- | ---: |
+| `256` | `ParametricEQ` | 1-band peak static | operator | `1.061 ± 0.113 us` |
+| `256` | `ParametricEQ` | 4-band static | operator | `4.238 ± 0.176 us` |
+| `256` | `ParametricEQ` | freq CV | operator | `1.028 ± 0.048 us` |
+| `256` | `ParametricEQ` | mixed types | operator | `4.002 ± 0.169 us` |
+| `256` | `Compressor` | no sidechain hard knee | operator | `1.036 ± 0.081 us` |
+| `256` | `Compressor` | active sidechain | operator | `1.056 ± 0.101 us` |
+| `256` | `Compressor` | soft knee | operator | `0.995 ± 0.043 us` |
+| `256` | `Compressor` | fast attack/release | operator | `1.097 ± 0.096 us` |
+| `256` | `Limiter` | dry/no limiting | operator | `0.404 ± 0.067 us` |
+| `256` | `Limiter` | transient limiting | operator | `0.371 ± 0.024 us` |
+| `256` | `Limiter` | steady over ceiling | operator | `0.390 ± 0.036 us` |
+| `256` | `Limiter` | max lookahead | operator | `0.407 ± 0.043 us` |
+| `256` | `Filter` | LP12 static | operator | `1.777 ± 0.076 us` |
+| `256` | `Filter` | HP24 CV | operator | `2.263 ± 0.105 us` |
+| `256` | `Filter` | ladder lane mod | operator | `9.977 ± 0.364 us` |
+| `256` | `Filter` | formant | operator | `5.236 ± 0.221 us` |
+| `256` | `Filter` | diode | operator | `20.916 ± 0.358 us` |
+| `256` | `Filter` | MS-20 | operator | `5.313 ± 0.203 us` |
+| `256` | `DualFilter` | serial LP/HP | operator | `3.911 ± 0.167 us` |
+| `256` | `DualFilter` | parallel ladder/formant | operator | `10.898 ± 0.195 us` |
+| `256` | `DualFilter` | split diode/MS-20 | operator | `21.420 ± 0.351 us` |
+| `1024` | `ParametricEQ` | 1-band peak static | operator | `3.968 ± 0.107 us` |
+| `1024` | `ParametricEQ` | 4-band static | operator | `16.128 ± 0.156 us` |
+| `1024` | `ParametricEQ` | freq CV | operator | `4.110 ± 0.153 us` |
+| `1024` | `ParametricEQ` | mixed types | operator | `16.017 ± 0.211 us` |
+| `1024` | `Compressor` | no sidechain hard knee | operator | `3.949 ± 0.136 us` |
+| `1024` | `Compressor` | active sidechain | operator | `4.069 ± 0.191 us` |
+| `1024` | `Compressor` | soft knee | operator | `3.995 ± 0.188 us` |
+| `1024` | `Compressor` | fast attack/release | operator | `4.273 ± 0.188 us` |
+| `1024` | `Limiter` | dry/no limiting | operator | `1.483 ± 0.087 us` |
+| `1024` | `Limiter` | transient limiting | operator | `1.493 ± 0.064 us` |
+| `1024` | `Limiter` | steady over ceiling | operator | `1.508 ± 0.079 us` |
+| `1024` | `Limiter` | max lookahead | operator | `1.499 ± 0.083 us` |
+| `1024` | `Filter` | LP12 static | operator | `7.092 ± 0.248 us` |
+| `1024` | `Filter` | HP24 CV | operator | `8.692 ± 0.273 us` |
+| `1024` | `Filter` | ladder lane mod | operator | `40.680 ± 1.251 us` |
+| `1024` | `Filter` | formant | operator | `22.380 ± 0.341 us` |
+| `1024` | `Filter` | diode | operator | `85.792 ± 1.540 us` |
+| `1024` | `Filter` | MS-20 | operator | `22.452 ± 0.228 us` |
+| `1024` | `DualFilter` | serial LP/HP | operator | `15.697 ± 0.349 us` |
+| `1024` | `DualFilter` | parallel ladder/formant | operator | `46.107 ± 1.817 us` |
+| `1024` | `DualFilter` | split diode/MS-20 | operator | `91.352 ± 1.151 us` |
+
+Benchmark command:
+
+```bash
+./build/bench_filter_dynamics_family
+```
+
+Acceptance status:
+
+- repeated 256-frame and 1024-frame operator-level numbers are published
+- benchmark coverage includes `ParametricEQ`, `Compressor`, `Limiter`, `Filter`, and `DualFilter`
+- dynamics processors are not the next optimization target; they are currently small relative to the filter family
+- next recommended pass is a shared `filter_dsp` refactor centered on `Filter`/`DualFilter`, with first attention to Diode, Ladder, Formant, and MS-20 modes plus coefficient/prepared-state reuse for block-stable params
+
+## Filter DSP Prepared Block Rendering Pass
+
+The first `filter_dsp` optimization keeps the public `Filter` and `DualFilter`
+surfaces unchanged while adding an internal prepared-plan/block-render path.
+`FilterState::process(...)` remains available for compatibility, but
+`Filter` and `DualFilter` now prepare block-stable filter coefficients once per
+callback and render through the prepared path.
+
+Release benchmark on the current machine, compared against the triage baseline:
+
+| Frames | Operator | Case | Triage baseline | Prepared block | Speedup |
+| ---: | --- | --- | ---: | ---: | ---: |
+| `256` | `Filter` | LP12 static | `1.777 us` | `1.594 ± 0.271 us` | `1.11x` |
+| `256` | `Filter` | HP24 CV | `2.263 us` | `1.529 ± 0.173 us` | `1.48x` |
+| `256` | `Filter` | ladder lane mod | `9.977 us` | `7.449 ± 0.403 us` | `1.34x` |
+| `256` | `Filter` | formant | `5.236 us` | `1.172 ± 0.111 us` | `4.47x` |
+| `256` | `Filter` | diode | `20.916 us` | `19.302 ± 0.306 us` | `1.08x` |
+| `256` | `Filter` | MS-20 | `5.313 us` | `5.641 ± 0.211 us` | `0.94x` |
+| `256` | `DualFilter` | serial LP/HP | `3.911 us` | `3.355 ± 0.187 us` | `1.17x` |
+| `256` | `DualFilter` | parallel ladder/formant | `10.898 us` | `7.199 ± 0.230 us` | `1.51x` |
+| `256` | `DualFilter` | split diode/MS-20 | `21.420 us` | `19.634 ± 0.334 us` | `1.09x` |
+| `1024` | `Filter` | LP12 static | `7.092 us` | `5.870 ± 0.240 us` | `1.21x` |
+| `1024` | `Filter` | HP24 CV | `8.692 us` | `5.782 ± 0.387 us` | `1.50x` |
+| `1024` | `Filter` | ladder lane mod | `40.680 us` | `28.788 ± 0.504 us` | `1.41x` |
+| `1024` | `Filter` | formant | `22.380 us` | `4.161 ± 0.213 us` | `5.38x` |
+| `1024` | `Filter` | diode | `85.792 us` | `76.434 ± 0.748 us` | `1.12x` |
+| `1024` | `Filter` | MS-20 | `22.452 us` | `22.513 ± 0.309 us` | `1.00x` |
+| `1024` | `DualFilter` | serial LP/HP | `15.697 us` | `13.348 ± 0.494 us` | `1.18x` |
+| `1024` | `DualFilter` | parallel ladder/formant | `46.107 us` | `28.311 ± 0.486 us` | `1.63x` |
+| `1024` | `DualFilter` | split diode/MS-20 | `91.352 us` | `80.213 ± 1.540 us` | `1.14x` |
+
+Benchmark command:
+
+```bash
+./build/bench_filter_dynamics_family
+```
+
+Acceptance status:
+
+- prepared block path matches the compatibility sample API across all filter modes
+- `Filter` uses one prepared plan per block
+- `DualFilter` uses prepared plans and branch-light route loops, with scratch allocation only for the parallel route when the buffer grows
+- the strongest wins are from coefficient/prepared-state reuse in Formant, Ladder, HP24, and DualFilter parallel routing
+- Diode and MS-20 remain dominated by nonlinear per-sample state work; further gains there require a separate sound-sensitive approximation or architecture pass

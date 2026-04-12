@@ -193,9 +193,14 @@ struct Filter : vivid::OperatorBase, vivid::AudioProcessable {
         float drv = drive.value;
         int ftype = mode.int_value();
 
-        for (uint32_t i = 0; i < frames; i++) {
-            out[i] = ls.filter_state.process(in[i], mod_cutoff, mod_reso, drv, ftype, sr);
-        }
+        audio_dsp::FilterParams filter_params{};
+        filter_params.type = ftype;
+        filter_params.cutoff_hz = mod_cutoff;
+        filter_params.resonance = mod_reso;
+        filter_params.drive = drv;
+        filter_params.sample_rate = sr;
+        const auto plan = audio_dsp::prepare_filter_plan(filter_params);
+        audio_dsp::process_filter_block(ls.filter_state, plan, in, out, frames);
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override {

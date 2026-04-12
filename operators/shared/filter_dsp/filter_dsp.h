@@ -29,6 +29,60 @@ enum FilterType {
     FILTER_COUNT
 };
 
+struct FilterParams {
+    int type = FILTER_LP12;
+    float cutoff_hz = 2000.0f;
+    float resonance = 0.5f;
+    float drive = 0.0f;
+    float sample_rate = 48000.0f;
+};
+
+struct BiquadCoeffs {
+    float b0 = 1.0f;
+    float b1 = 0.0f;
+    float b2 = 0.0f;
+    float a1 = 0.0f;
+    float a2 = 0.0f;
+};
+
+struct FormantBandPlan {
+    float b0 = 0.0f;
+    float b2 = 0.0f;
+    float a1 = 0.0f;
+    float a2 = 0.0f;
+    float gain = 0.0f;
+};
+
+struct PreparedFilterPlan {
+    int type = FILTER_LP12;
+    float sample_rate = 48000.0f;
+
+    bool drive_enabled = false;
+    float drive_scale = 1.0f;
+    float drive_norm = 1.0f;
+
+    BiquadCoeffs biquad;
+    bool biquad_cascade = false;
+    float bp24_hp_alpha = 0.0f;
+
+    int comb_delay_int = 1;
+    float comb_delay_frac = 0.0f;
+    float comb_feedback = 0.0f;
+
+    float ladder_g = 0.0f;
+    float ladder_feedback = 0.0f;
+
+    FormantBandPlan formant[3];
+
+    float diode_g = 0.0f;
+    float diode_feedback = 0.0f;
+
+    float ms20_f = 0.0f;
+    float ms20_feedback_scale = 0.0f;
+};
+
+PreparedFilterPlan prepare_filter_plan(const FilterParams& params);
+
 // --- Biquad state (used for LP12/LP24, HP12/HP24, BP, Notch, Peak, Allpass) ---
 struct BiquadState {
     float z1[2] = {};  // Two stages for cascaded (LP24/HP24)
@@ -101,6 +155,14 @@ struct FilterState {
     // sr: sample rate
     float process(float input, float cutoff_hz, float reso, float drive,
                   int ftype, float sr);
+
+    float process_prepared(float input, const PreparedFilterPlan& plan);
 };
+
+void process_filter_block(FilterState& state,
+                          const PreparedFilterPlan& plan,
+                          const float* input,
+                          float* output,
+                          uint32_t frames);
 
 } // namespace audio_dsp

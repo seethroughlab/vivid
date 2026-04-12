@@ -198,6 +198,24 @@ add_executable(bench_reverb
 target_include_directories(bench_reverb PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
 target_link_libraries(bench_reverb PRIVATE vivid_runtime_testlib vivid_operator_api)
 
+# Filter DSP prepared block rendering tests
+add_executable(test_filter_dsp_prepared
+    tests/audio/test_filter_dsp_prepared.cpp
+    operators/shared/filter_dsp/filter_dsp.cpp
+)
+target_include_directories(test_filter_dsp_prepared PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(test_filter_dsp_prepared PRIVATE vivid_runtime_testlib vivid_operator_api)
+add_test(NAME test_filter_dsp_prepared COMMAND test_filter_dsp_prepared WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Filter/dynamics family operator-level triage benchmark
+add_executable(bench_filter_dynamics_family
+    tests/benchmarks/bench_filter_dynamics_family.cpp
+)
+target_include_directories(bench_filter_dynamics_family PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(bench_filter_dynamics_family PRIVATE vivid_runtime_testlib vivid_operator_api webgpu nlohmann_json::nlohmann_json)
+target_compile_definitions(bench_filter_dynamics_family PRIVATE VIVID_TEST_PLUGIN_SUFFIX="${VIVID_PLUGIN_SUFFIX}")
+add_dependencies(bench_filter_dynamics_family parametric_eq compressor limiter filter dual_filter)
+
 # DualFilter operator correctness tests
 add_executable(test_dual_filter
     tests/audio/test_dual_filter.cpp
