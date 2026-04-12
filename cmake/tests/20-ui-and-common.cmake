@@ -144,4 +144,5 @@ add_test(NAME test_text_edit COMMAND test_text_edit WORKING_DIRECTORY ${CMAKE_BI
 add_executable(test_audio_dsp_api tests/audio/test_audio_dsp_api.cpp)
 target_include_directories(test_audio_dsp_api PRIVATE src tests)
 target_link_libraries(test_audio_dsp_api PRIVATE vivid_runtime_testlib)
+vivid_enable_audio_kernels(test_audio_dsp_api)
 add_test(NAME test_audio_dsp_api COMMAND test_audio_dsp_api WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

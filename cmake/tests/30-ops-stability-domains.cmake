@@ -122,6 +122,82 @@ target_link_libraries(test_audio_correctness PRIVATE vivid_runtime_testlib vivid
 add_dependencies(test_audio_correctness audio_noise fm_synth filter gain)
 add_test(NAME test_audio_correctness COMMAND test_audio_correctness WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# SpectralFreeze DSP backend equivalence and operator smoke tests
+add_executable(test_spectral_freeze_dsp
+    tests/audio/test_spectral_freeze_dsp.cpp
+    operators/shared/spectral_freeze_dsp/spectral_freeze_dsp.cpp
+)
+target_include_directories(test_spectral_freeze_dsp PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(test_spectral_freeze_dsp PRIVATE vivid_runtime_testlib vivid_operator_api)
+add_dependencies(test_spectral_freeze_dsp spectral_freeze)
+add_test(NAME test_spectral_freeze_dsp COMMAND test_spectral_freeze_dsp WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(bench_spectral_freeze
+    tests/benchmarks/bench_spectral_freeze.cpp
+    operators/shared/spectral_freeze_dsp/spectral_freeze_dsp.cpp
+)
+target_include_directories(bench_spectral_freeze PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(bench_spectral_freeze PRIVATE vivid_runtime_testlib vivid_operator_api)
+
+# GranularSynth DSP renderer and benchmark targets
+add_executable(test_granular_synth_dsp
+    tests/audio/test_granular_synth_dsp.cpp
+    operators/shared/granular_dsp/granular_dsp.cpp
+)
+target_include_directories(test_granular_synth_dsp PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(test_granular_synth_dsp PRIVATE vivid_runtime_testlib vivid_operator_api)
+add_dependencies(test_granular_synth_dsp granular_synth)
+add_test(NAME test_granular_synth_dsp COMMAND test_granular_synth_dsp WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(bench_granular_synth
+    tests/benchmarks/bench_granular_synth.cpp
+    operators/shared/granular_dsp/granular_dsp.cpp
+)
+target_include_directories(bench_granular_synth PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(bench_granular_synth PRIVATE vivid_runtime_testlib vivid_operator_api)
+
+# Vocoder DSP renderer and benchmark targets
+add_executable(test_vocoder_dsp
+    tests/audio/test_vocoder_dsp.cpp
+    operators/shared/vocoder_dsp/vocoder_dsp.cpp
+)
+target_include_directories(test_vocoder_dsp PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(test_vocoder_dsp PRIVATE vivid_runtime_testlib vivid_operator_api)
+add_dependencies(test_vocoder_dsp vocoder)
+add_test(NAME test_vocoder_dsp COMMAND test_vocoder_dsp WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(bench_vocoder
+    tests/benchmarks/bench_vocoder.cpp
+    operators/shared/vocoder_dsp/vocoder_dsp.cpp
+)
+target_include_directories(bench_vocoder PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(bench_vocoder PRIVATE vivid_runtime_testlib vivid_operator_api)
+
+# Shared audio buffer kernel benchmark target
+add_executable(bench_audio_kernels
+    tests/benchmarks/bench_audio_kernels.cpp
+)
+target_include_directories(bench_audio_kernels PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(bench_audio_kernels PRIVATE vivid_runtime_testlib vivid_operator_api)
+vivid_enable_audio_kernels(bench_audio_kernels)
+
+# Reverb DSP renderer and benchmark targets
+add_executable(test_reverb_dsp
+    tests/audio/test_reverb_dsp.cpp
+    operators/shared/reverb_dsp/reverb_dsp.cpp
+)
+target_include_directories(test_reverb_dsp PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(test_reverb_dsp PRIVATE vivid_runtime_testlib vivid_operator_api)
+add_dependencies(test_reverb_dsp reverb)
+add_test(NAME test_reverb_dsp COMMAND test_reverb_dsp WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(bench_reverb
+    tests/benchmarks/bench_reverb.cpp
+    operators/shared/reverb_dsp/reverb_dsp.cpp
+)
+target_include_directories(bench_reverb PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(bench_reverb PRIVATE vivid_runtime_testlib vivid_operator_api)
+
 # DualFilter operator correctness tests
 add_executable(test_dual_filter
     tests/audio/test_dual_filter.cpp

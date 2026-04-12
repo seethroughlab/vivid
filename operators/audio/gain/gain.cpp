@@ -1,6 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/thumbnail.h"
 #include "operator_api/draw_plot_helpers.h"
+#include "shared/audio_kernels/audio_buffer_kernels.h"
 
 #include <algorithm>
 #include <cmath>
@@ -113,8 +114,7 @@ struct Gain : vivid::OperatorBase, vivid::AudioProcessable {
         float amp_cv_val = ctx->input_buffers[1] ? ctx->input_buffers[1][0] : 1.0f;
         float g = gain.value * amp_cv_val;
 
-        for (uint32_t i = 0; i < ctx->buffer_size; i++)
-            out[i] = in[i] * g;
+        vivid::audio_kernels::scale(in, out, ctx->buffer_size, g);
     }
 };
 

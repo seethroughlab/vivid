@@ -1,5 +1,6 @@
 #include "operator_api/operator.h"
 #include "operator_api/thumbnail.h"
+#include "shared/audio_kernels/audio_buffer_kernels.h"
 
 /**
  * @brief Four-input summing mixer with per-channel gain.
@@ -67,8 +68,8 @@ struct Mixer : vivid::OperatorBase, vivid::AudioProcessable {
         float g1 = gain1.value, g2 = gain2.value;
         float g3 = gain3.value, g4 = gain4.value;
 
-        for (uint32_t i = 0; i < ctx->buffer_size; i++)
-            out[i] = in1[i] * g1 + in2[i] * g2 + in3[i] * g3 + in4[i] * g4;
+        vivid::audio_kernels::mix4(in1, in2, in3, in4, out, ctx->buffer_size,
+                                   g1, g2, g3, g4);
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override {

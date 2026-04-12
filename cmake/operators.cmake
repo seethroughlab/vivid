@@ -90,6 +90,17 @@ function(add_vivid_operator name source)
         "  \"${name}\": { \"sources\": [\"${source}\"], \"extra_libs\": [${_extra_json}] }")
 endfunction()
 
+function(vivid_enable_audio_kernels name)
+    if(VIVID_ENABLE_HIGHWAY)
+        target_link_libraries(${name} PRIVATE hwy)
+        target_compile_definitions(${name} PRIVATE VIVID_HAS_HIGHWAY=1)
+    endif()
+    if(APPLE AND VIVID_ENABLE_ACCELERATE)
+        target_link_libraries(${name} PRIVATE "-framework Accelerate")
+        target_compile_definitions(${name} PRIVATE VIVID_HAS_ACCELERATE=1)
+    endif()
+endfunction()
+
 # --- Control operator plugins ---
 add_vivid_operator(lfo_fr         operators/control/lfo/lfo_fr.cpp
                    FACTORY_PRESETS operators/control/lfo/factory_presets.json
@@ -434,8 +445,10 @@ set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS syphon_out)
 # --- Audio operator plugins ---
 add_vivid_operator(oscillator     operators/audio/oscillator/oscillator.cpp     EXTRA_LIBS webgpu)
 add_vivid_operator(gain           operators/audio/gain/gain.cpp           EXTRA_LIBS webgpu)
+vivid_enable_audio_kernels(gain)
 add_vivid_operator(reverb         operators/audio/reverb/reverb.cpp
                    FACTORY_PRESETS operators/audio/reverb/factory_presets.json)
+target_sources(reverb PRIVATE operators/shared/reverb_dsp/reverb_dsp.cpp)
 add_vivid_operator(delay          operators/audio/delay/delay.cpp
                    FACTORY_PRESETS operators/audio/delay/factory_presets.json)
 add_vivid_operator(bitcrush       operators/audio/bitcrush/bitcrush.cpp
@@ -448,6 +461,7 @@ add_vivid_operator(dual_filter    operators/audio/dual_filter/dual_filter.cpp)
 target_sources(dual_filter PRIVATE operators/shared/filter_dsp/filter_dsp.cpp)
 add_vivid_operator(audio_noise    operators/audio/noise/noise.cpp    EXTRA_LIBS webgpu)
 add_vivid_operator(mixer          operators/audio/mixer/mixer.cpp          EXTRA_LIBS webgpu)
+vivid_enable_audio_kernels(mixer)
 add_vivid_operator(compressor     operators/audio/compressor/compressor.cpp)
 add_vivid_operator(limiter        operators/audio/limiter/limiter.cpp)
 add_vivid_operator(chorus         operators/audio/chorus/chorus.cpp
@@ -458,6 +472,7 @@ add_vivid_operator(flanger        operators/audio/flanger/flanger.cpp
                    FACTORY_PRESETS operators/audio/flanger/factory_presets.json)
 add_vivid_operator(stereo_pan_width operators/audio/stereo_pan_width/stereo_pan_width.cpp
                    FACTORY_PRESETS operators/audio/stereo_pan_width/factory_presets.json)
+vivid_enable_audio_kernels(stereo_pan_width)
 add_vivid_operator(ping_pong_delay  operators/audio/ping_pong_delay/ping_pong_delay.cpp
                    FACTORY_PRESETS operators/audio/ping_pong_delay/factory_presets.json)
 add_vivid_operator(fm_synth         operators/audio/fm_synth/fm_synth.cpp
@@ -495,8 +510,12 @@ add_vivid_operator(sampler          operators/audio/sampler/sampler.cpp
 add_vivid_operator(slicer           operators/audio/slicer/slicer.cpp
                    EXTRA_LIBS sampler_miniaudio nlohmann_json::nlohmann_json)
 add_vivid_operator(granular_synth   operators/audio/granular_synth/granular_synth.cpp)
+target_sources(granular_synth PRIVATE operators/shared/granular_dsp/granular_dsp.cpp)
 add_vivid_operator(vocoder          operators/audio/vocoder/vocoder.cpp)
+target_sources(vocoder PRIVATE operators/shared/vocoder_dsp/vocoder_dsp.cpp)
 add_vivid_operator(spectral_freeze  operators/audio/spectral_freeze/spectral_freeze.cpp)
+target_sources(spectral_freeze PRIVATE operators/shared/spectral_freeze_dsp/spectral_freeze_dsp.cpp)
+vivid_enable_audio_kernels(spectral_freeze)
 foreach(_samp_op sp404 sampler slicer)
     target_include_directories(${_samp_op} PRIVATE
         ${CMAKE_SOURCE_DIR}/operators/shared/sampler_common

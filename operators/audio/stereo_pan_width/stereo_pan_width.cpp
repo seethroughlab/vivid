@@ -1,4 +1,5 @@
 #include "operator_api/operator.h"
+#include "shared/audio_kernels/audio_buffer_kernels.h"
 
 #include <cmath>
 
@@ -88,26 +89,8 @@ struct StereoPanWidth : vivid::OperatorBase, vivid::AudioProcessable {
         float pan_L = std::cos(angle);
         float pan_R = std::sin(angle);
 
-        for (uint32_t i = 0; i < frames; i++) {
-            // M/S encode
-            float mid  = (L_in[i] + R_in[i]) * 0.5f;
-            float side = (L_in[i] - R_in[i]) * 0.5f;
-
-            // M/S balance
-            mid  *= mid_gain;
-            side *= side_gain;
-
-            // Width
-            side *= w;
-
-            // M/S decode
-            float L = mid + side;
-            float R = mid - side;
-
-            // Pan law
-            L_out[i] = L * pan_L;
-            R_out[i] = R * pan_R;
-        }
+        vivid::audio_kernels::stereo_pan_width(L_in, R_in, L_out, R_out, frames,
+                                               mid_gain, side_gain, w, pan_L, pan_R);
     }
 };
 
