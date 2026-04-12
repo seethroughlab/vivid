@@ -69,6 +69,22 @@ static constexpr float kXYPadSize     = 120.0f;   // square side length
 static constexpr float kXYPadDotSize  =   6.0f;   // indicator dot diameter
 static constexpr float kXYPadLabelGap =   4.0f;   // gap between pad and labels below
 
+// ADSR envelope widget
+static constexpr float kADSRWidgetH    = 100.0f;   // envelope plot height
+static constexpr float kADSRPad        =   6.0f;   // internal padding
+static constexpr float kADSRDotRadius  =   5.0f;   // control point radius
+static constexpr float kADSRGrabRadius =  12.0f;   // grab zone radius for hit-testing
+static constexpr float kADSRLabelGap   =   4.0f;   // gap between plot and labels below
+
+// LFO waveform preview widget
+static constexpr float kLFOPreviewH    =  60.0f;   // waveform plot height
+static constexpr float kLFOPreviewPad  =   4.0f;   // internal padding
+
+// Step sequencer grid widget
+static constexpr float kStepSeqWidgetH = 100.0f;   // grid height
+static constexpr float kStepSeqPad     =   4.0f;   // internal padding
+static constexpr float kStepSeqBarGap  =   1.0f;   // gap between bars
+
 // Color picker widget
 static constexpr float kColorSwatchH     =  24.0f;   // inline swatch height
 static constexpr float kColorPopupSVSize = 160.0f;   // SV square side

@@ -79,6 +79,9 @@ static VividDisplayHint parse_display_hint(const std::string& s) {
     if (s == "xy_pad")  return VIVID_DISPLAY_XY_PAD;
     if (s == "color")   return VIVID_DISPLAY_COLOR;
     if (s == "hidden")  return VIVID_DISPLAY_HIDDEN;
+    if (s == "adsr")    return VIVID_DISPLAY_ADSR;
+    if (s == "lfo")     return VIVID_DISPLAY_LFO;
+    if (s == "step_seq") return VIVID_DISPLAY_STEP_SEQ;
     std::fprintf(stderr, "[vivid] SubgraphModule: unknown display_hint '%s', defaulting to default\n", s.c_str());
     return VIVID_DISPLAY_DEFAULT;
 }

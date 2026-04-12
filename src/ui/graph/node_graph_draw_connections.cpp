@@ -80,14 +80,14 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
         float gsy = from_rect.y + from_rect.h * 0.5f;
         bool from_port_found = false;
         for (const auto& p : from_rect.outputs) {
-            if (p.name == c.from_port) { gsx = p.x; gsy = p.y; from_port_found = true; break; }
+            if (p.name == c.from_port) { gsx = port_gx(from_rect, true); gsy = port_gy(from_rect, p); from_port_found = true; break; }
         }
         // Find input port position in graph space
         float gex = to_rect.x;
         float gey = to_rect.y + to_rect.h * 0.5f;
         bool to_port_found = false;
         for (const auto& p : to_rect.inputs) {
-            if (p.name == c.to_port) { gex = p.x; gey = p.y; to_port_found = true; break; }
+            if (p.name == c.to_port) { gex = port_gx(to_rect, false); gey = port_gy(to_rect, p); to_port_found = true; break; }
         }
 
         // Skip wires with unresolvable port endpoints (unless invalid — keep those visible)

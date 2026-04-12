@@ -8,7 +8,7 @@ extern "C" {
 
 /* Bump when operator-facing C ABI changes in incompatible ways.
    Catches stale dylibs during hot-reload — not a cross-version compatibility promise. */
-#define VIVID_OPERATOR_ABI_VERSION 11u
+#define VIVID_OPERATOR_ABI_VERSION 13u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -40,6 +40,14 @@ typedef uint32_t VividDisplayHint;
 #define VIVID_DISPLAY_XY_PAD   2u  // 2D axis pad (pair consecutive x/y params)
 #define VIVID_DISPLAY_COLOR    3u  // color swatch + popup (triple consecutive r/g/b params)
 #define VIVID_DISPLAY_HIDDEN   4u  // param exists but is not drawn by standard inspector
+#define VIVID_DISPLAY_ADSR     5u  // ADSR envelope editor (4 consecutive params: A, D, S, R)
+#define VIVID_DISPLAY_LFO      6u  // LFO waveform preview + enum selector (single enum param)
+#define VIVID_DISPLAY_STEP_SEQ 7u  // step sequencer grid (run: count + values [+ gates])
+
+typedef uint32_t VividParamVisibilityOp;
+#define VIVID_PARAM_VIS_ALWAYS 0u  // always show the param
+#define VIVID_PARAM_VIS_EQ     1u  // show when controller equals any value
+#define VIVID_PARAM_VIS_NE     2u  // show when controller does not equal any value
 
 // Channel kinds — reflect the logical data type on a port.
 typedef uint32_t VividPortType;
@@ -94,6 +102,10 @@ typedef struct VividParamDescriptor {
     const char*       semantic_intent;    /* free-form hint, e.g. "input_gain" */
     const char*       description;        /* human-readable tooltip shown in inspector on hover */
     const char*       asset_kind;         /* optional asset kind name, e.g. "wavetable" */
+    const char*       visible_when_param; /* controller param name, NULL = always visible */
+    VividParamVisibilityOp visible_when_op; /* EQ/NE against visible_when_values */
+    const int32_t*    visible_when_values;
+    uint32_t          visible_when_value_count;
 } VividParamDescriptor;
 
 typedef struct VividPortDescriptor {

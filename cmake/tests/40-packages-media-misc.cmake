@@ -407,7 +407,11 @@ if(APPLE)
         operators/shared/movie_decode/avf_decoder.mm
         operators/shared/movie_decode/hap_decoder.mm
         PROPERTIES COMPILE_FLAGS "-fobjc-arc")
-    target_include_directories(test_movie_decode_route PRIVATE src tests ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/deps/hap)
+    target_include_directories(test_movie_decode_route PRIVATE
+        src tests ${CMAKE_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/operators/shared/movie_decode
+        ${CMAKE_SOURCE_DIR}/operators/shared/movie_session
+        ${CMAKE_SOURCE_DIR}/deps/hap)
     target_link_libraries(test_movie_decode_route PRIVATE vivid_runtime_testlib snappy
         "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
         "-framework Foundation" "-framework QuartzCore")

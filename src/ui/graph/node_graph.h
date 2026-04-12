@@ -56,14 +56,22 @@ struct NodeRect {
     uint8_t lane_behavior = 0;  // 0=Pointwise, 1=Structural, 2=Reduction, 3=Kernel
     float x = 0, y = 0, w = 0, h = 0;
     float target_h = 0;  // animated height target (h lerps toward this)
-    struct PortPos { std::string name; float x, y; bool is_param = false; };
+    struct PortPos { std::string name; float dy; bool is_param = false; };
     std::vector<PortPos> inputs, outputs;
     // Multi-output expand affordance
     bool     outputs_expandable  = false;
     uint32_t hidden_output_count = 0;
     bool     outputs_expanded    = false;
-    float    affordance_gy       = 0; // graph-space Y center of affordance row
+    float    affordance_dy       = 0; // Y offset from rect.y for affordance row
 };
+
+// Resolve absolute graph-space position of a port from its parent rect.
+inline float port_gx(const NodeRect& r, bool is_output) {
+    return is_output ? r.x + r.w : r.x;
+}
+inline float port_gy(const NodeRect& r, const NodeRect::PortPos& p) {
+    return r.y + p.dy;
+}
 
 // Frame-rate-independent lerp: moves current toward target at the given speed.
 inline float lerp_toward(float current, float target, float speed, float dt) {
@@ -349,6 +357,15 @@ private:
     void draw_inspector_color_swatch(Renderer2D& tr, const NodeSnapshot& node,
                                       InspectorLayout& layout,
                                       uint32_t pi_r, uint32_t pi_g, uint32_t pi_b);
+    void draw_inspector_adsr(Renderer2D& tr, const NodeSnapshot& node,
+                              InspectorLayout& layout,
+                              uint32_t pi_a, uint32_t pi_d,
+                              uint32_t pi_s, uint32_t pi_r);
+    void draw_inspector_lfo_preview(Renderer2D& tr, const NodeSnapshot& node,
+                                     InspectorLayout& layout, uint32_t pi);
+    void draw_inspector_step_seq(Renderer2D& tr, const NodeSnapshot& node,
+                                  InspectorLayout& layout,
+                                  uint32_t pi_start, uint32_t param_run_count);
     void draw_color_popup(Renderer2D& tr);
     void draw_inspector_group_header(Renderer2D& tr, InspectorLayout& layout,
                                       const std::string& type_name,
@@ -478,6 +495,8 @@ private:
     void update_transport_bpm_drag();
     void update_modulation_drag();
     void update_xy_pad_drag();
+    void update_adsr_drag();
+    void update_step_seq_drag();
     void update_color_drag();
     void update_chooser_hover();
     void update_context_menu();

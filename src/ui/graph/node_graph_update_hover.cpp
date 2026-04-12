@@ -270,8 +270,8 @@ void NodeGraphUI::update_param_picker() {
                                 if (!is_param) {
                                     for (const auto& p : r.outputs) {
                                         if (p.name == selected) {
-                                            wire_from_gx_ = p.x;
-                                            wire_from_gy_ = p.y;
+                                            wire_from_gx_ = port_gx(r, true);
+                                            wire_from_gy_ = port_gy(r, p);
                                             break;
                                         }
                                     }

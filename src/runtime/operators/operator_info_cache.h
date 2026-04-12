@@ -3,10 +3,54 @@
 #include "runtime/operators/operator_registry.h"
 #include "runtime/operators/operator_loader.h"
 #include "ui/graph/graph_snapshot.h"
+#include <algorithm>
+#include <cstdio>
 #include <filesystem>
 #include <string>
 #include <unordered_map>
 #include <memory>
+
+inline vivid::ui::ParamVisibilityCondition resolve_param_visibility(
+        const VividParamDescriptor& pd,
+        const std::vector<vivid::ui::ParamInfo>& params)
+{
+    vivid::ui::ParamVisibilityCondition cond;
+    if (pd.visible_when_op == VIVID_PARAM_VIS_ALWAYS || !pd.visible_when_param ||
+        !*pd.visible_when_param) {
+        return cond;
+    }
+    if (pd.visible_when_op != VIVID_PARAM_VIS_EQ &&
+        pd.visible_when_op != VIVID_PARAM_VIS_NE) {
+        std::fprintf(stderr,
+                     "[vivid] invalid visible_when op %u on param '%s'; showing param\n",
+                     pd.visible_when_op, pd.name ? pd.name : "(unnamed)");
+        return cond;
+    }
+    if (!pd.visible_when_values || pd.visible_when_value_count == 0) {
+        std::fprintf(stderr,
+                     "[vivid] empty visible_when values on param '%s'; showing param\n",
+                     pd.name ? pd.name : "(unnamed)");
+        return cond;
+    }
+
+    for (size_t i = 0; i < params.size(); ++i) {
+        if (params[i].name == pd.visible_when_param) {
+            cond.param_index = static_cast<int32_t>(i);
+            break;
+        }
+    }
+    if (cond.param_index < 0) {
+        std::fprintf(stderr,
+                     "[vivid] visible_when controller '%s' not found for param '%s'; showing param\n",
+                     pd.visible_when_param, pd.name ? pd.name : "(unnamed)");
+        return {};
+    }
+
+    cond.op = pd.visible_when_op;
+    cond.values.assign(pd.visible_when_values,
+                       pd.visible_when_values + pd.visible_when_value_count);
+    return cond;
+}
 
 class OperatorInfoCache {
 public:
@@ -69,11 +113,22 @@ public:
             pi.semantic_intent     = pd.semantic_intent ? pd.semantic_intent : "";
             pi.description         = pd.description ? pd.description : "";
             pi.asset_kind          = pd.asset_kind ? pd.asset_kind : "";
+            pi.visible_when_param  = pd.visible_when_param ? pd.visible_when_param : "";
+            pi.visible_when_op     = pd.visible_when_op;
+            if (pd.visible_when_values && pd.visible_when_value_count > 0) {
+                pi.visible_when_values.assign(
+                    pd.visible_when_values,
+                    pd.visible_when_values + pd.visible_when_value_count);
+            }
             if (pd.choice_labels && pd.choice_count > 0) {
                 pi.choice_labels.reserve(pd.choice_count);
                 for (uint32_t ci = 0; ci < pd.choice_count; ++ci)
                     pi.choice_labels.push_back(pd.choice_labels[ci] ? pd.choice_labels[ci] : "");
             }
+        }
+        // Resolve visible_when conditions (needs all params built for name->index lookup)
+        for (uint32_t i = 0; i < desc->param_count; ++i) {
+            info->params[i].visibility = resolve_param_visibility(desc->params[i], info->params);
         }
 
         info->ports.resize(desc->port_count);

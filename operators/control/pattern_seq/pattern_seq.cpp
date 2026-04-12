@@ -67,20 +67,23 @@ struct PatternSeq : vivid::OperatorBase {
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
-        out.push_back(&steps);        // 0
-        out.push_back(&rate);         // 1
-        out.push_back(&gate_length);  // 2
-        out.push_back(&probability);  // 3
-        out.push_back(&val_0);  out.push_back(&val_1);   // 4..5
-        out.push_back(&val_2);  out.push_back(&val_3);   // 6..7
-        out.push_back(&val_4);  out.push_back(&val_5);   // 8..9
-        out.push_back(&val_6);  out.push_back(&val_7);   // 10..11
-        out.push_back(&val_8);  out.push_back(&val_9);   // 12..13
-        out.push_back(&val_10); out.push_back(&val_11);  // 14..15
-        out.push_back(&val_12); out.push_back(&val_13);  // 16..17
-        out.push_back(&val_14); out.push_back(&val_15);  // 18..19
+        // Step sequencer grid: steps + values as STEP_SEQ run
+        vivid::display_hint(steps, VIVID_DISPLAY_STEP_SEQ);
+        out.push_back(&steps);        // 0: step count
+        vivid::Param<float>* vals[] = {
+            &val_0, &val_1, &val_2, &val_3, &val_4, &val_5, &val_6, &val_7,
+            &val_8, &val_9, &val_10, &val_11, &val_12, &val_13, &val_14, &val_15
+        };
+        for (auto* v : vals) {
+            vivid::display_hint(*v, VIVID_DISPLAY_STEP_SEQ);
+            out.push_back(v);         // 1..16: values
+        }
 
-        out.push_back(&midi_channel); // 20
+        // Normal params below the grid
+        out.push_back(&rate);
+        out.push_back(&gate_length);
+        out.push_back(&probability);
+        out.push_back(&midi_channel);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -105,10 +108,11 @@ struct PatternSeq : vivid::OperatorBase {
 
     void compute(float beat_phase, const float* params, float* output_values,
                  VividLaneOutput* output_lanes, void** custom_outputs, uint32_t custom_output_count) {
+        // Param layout: steps=0, val_0..val_15=1..16, rate=17, gate_length=18, probability=19, midi_channel=20
         int n   = std::clamp(static_cast<int>(params[0]), 1, 16);
-        int r   = std::clamp(static_cast<int>(params[1]), 0, 8);
-        float gl = params[2];
-        float prob = params[3];
+        int r   = std::clamp(static_cast<int>(params[17]), 0, 8);
+        float gl = params[18];
+        float prob = params[19];
 
         // Beat tracking
         float delta = beat_phase - prev_phase_;
@@ -124,8 +128,8 @@ struct PatternSeq : vivid::OperatorBase {
         int current_step = ((global_step % n) + n) % n;
         float step_phase = scaled_phase - std::floor(scaled_phase);
 
-        // Step value (val_0 is param index 4)
-        float value = params[4 + current_step];
+        // Step value (val_0 is param index 1)
+        float value = params[1 + current_step];
 
         // Trigger on step change
         bool new_step = (current_step != prev_step_);
@@ -180,7 +184,7 @@ struct PatternSeq : vivid::OperatorBase {
             float* buf = pattern_lane.resize(pattern_lane.handle, len);
             if (buf) {
                 for (uint32_t i = 0; i < len; ++i)
-                    buf[i] = params[4 + i];
+                    buf[i] = params[1 + i];
                 pattern_lane.commit(pattern_lane.handle, len);
             }
         }

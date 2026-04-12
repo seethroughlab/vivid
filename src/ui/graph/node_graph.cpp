@@ -225,6 +225,8 @@ template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::M
 template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::MidiRangeRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::XYPadRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::ColorSwatchRect>& rects, float mx, float my);
+template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::ADSRRect>& rects, float mx, float my);
+template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::StepSeqRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::StatePresetRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::StateHeaderRect>& rects, float mx, float my);
 
@@ -309,13 +311,13 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
     bool expanded    = outputs_expanded_.count(ns.node_id) > 0;
     bool show_all    = few_outputs || expanded;
 
-    float port_start_y = rect.y + kAccentBarH + body_h + kNodePadY + kLineH * 2;
+    float port_start_dy = kAccentBarH + body_h + kNodePadY + kLineH * 2;
 
     // Input signal ports — always visible
     size_t pi = 0;
     for (; pi < sorted_inputs.size(); ++pi) {
-        float py = port_start_y + pi * kLineH + kLineH * 0.5f;
-        rect.inputs.push_back({sorted_inputs[pi].second, rect.x, py, false});
+        float dy = port_start_dy + pi * kLineH + kLineH * 0.5f;
+        rect.inputs.push_back({sorted_inputs[pi].second, dy, false});
     }
 
     // Parameter inputs — only visible if connected and param wires shown
@@ -327,8 +329,8 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
         for (const auto& [idx, name] : sorted_params) {
             if (!port_has_connection(snap_.connections, ns.node_id, name, false))
                 continue;
-            float py = port_start_y + pi * kLineH + kLineH * 0.5f;
-            rect.inputs.push_back({name, rect.x, py, true});
+            float dy = port_start_dy + pi * kLineH + kLineH * 0.5f;
+            rect.inputs.push_back({name, dy, true});
             ++pi;
         }
     }
@@ -340,8 +342,8 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
         bool connected = port_has_connection(snap_.connections, ns.node_id, name, true);
         if (!show_all && !connected)
             continue;
-        float py = port_start_y + oi * kLineH + kLineH * 0.5f;
-        rect.outputs.push_back({name, rect.x + rect.w, py, false});
+        float dy = port_start_dy + oi * kLineH + kLineH * 0.5f;
+        rect.outputs.push_back({name, dy, false});
         ++oi;
     }
 
@@ -349,11 +351,11 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
     rect.outputs_expandable  = !few_outputs;
     rect.outputs_expanded    = expanded;
     rect.hidden_output_count = 0;
-    rect.affordance_gy       = 0;
+    rect.affordance_dy       = 0;
     if (!few_outputs) {
         uint32_t total = static_cast<uint32_t>(regular_output_count);
         rect.hidden_output_count = expanded ? 0 : total - static_cast<uint32_t>(oi);
-        rect.affordance_gy = port_start_y + oi * kLineH + kLineH * 0.5f;
+        rect.affordance_dy = port_start_dy + oi * kLineH + kLineH * 0.5f;
         ++oi; // reserve the row so param sources appear below
     }
 
@@ -366,8 +368,8 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
         for (const auto& [idx, name] : src_params) {
             if (!port_has_connection(snap_.connections, ns.node_id, name, true))
                 continue;
-            float py = port_start_y + oi * kLineH + kLineH * 0.5f;
-            rect.outputs.push_back({name, rect.x + rect.w, py, true});
+            float dy = port_start_dy + oi * kLineH + kLineH * 0.5f;
+            rect.outputs.push_back({name, dy, true});
             ++oi;
         }
     }
@@ -380,8 +382,8 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
     for (const auto& [idx, name] : analysis_ports) {
         if (!port_has_connection(snap_.connections, ns.node_id, name, true))
             continue;
-        float py = port_start_y + oi * kLineH + kLineH * 0.5f;
-        rect.outputs.push_back({name, rect.x + rect.w, py, false});
+        float dy = port_start_dy + oi * kLineH + kLineH * 0.5f;
+        rect.outputs.push_back({name, dy, false});
         ++oi;
     }
 }
@@ -752,11 +754,12 @@ NodeGraphUI::PortHit NodeGraphUI::hit_test_port(float mx, float my) const {
     for (int i = static_cast<int>(node_rects_.size()) - 1; i >= 0; --i) {
         const auto& r = node_rects_[i];
         for (const auto& p : r.outputs) {
-            float dx = gx - p.x, dy = gy - p.y;
+            float px = port_gx(r, true), py = port_gy(r, p);
+            float dx = gx - px, dy = gy - py;
             float d2 = dx * dx + dy * dy;
             if (d2 < best_dist2) {
                 best_dist2 = d2;
-                best = {i, p.name, true, p.x, p.y};
+                best = {i, p.name, true, px, py};
             }
         }
     }
@@ -764,11 +767,12 @@ NodeGraphUI::PortHit NodeGraphUI::hit_test_port(float mx, float my) const {
     for (int i = static_cast<int>(node_rects_.size()) - 1; i >= 0; --i) {
         const auto& r = node_rects_[i];
         for (const auto& p : r.inputs) {
-            float dx = gx - p.x, dy = gy - p.y;
+            float px = port_gx(r, false), py = port_gy(r, p);
+            float dx = gx - px, dy = gy - py;
             float d2 = dx * dx + dy * dy;
             if (d2 < best_dist2) {
                 best_dist2 = d2;
-                best = {i, p.name, false, p.x, p.y};
+                best = {i, p.name, false, px, py};
             }
         }
     }
@@ -799,10 +803,10 @@ int NodeGraphUI::hit_test_wire(float sx, float sy) const {
         // Find port positions in graph space
         float gsx = from_rect.x + from_rect.w, gsy = from_rect.y + from_rect.h * 0.5f;
         for (const auto& p : from_rect.outputs)
-            if (p.name == c.from_port) { gsx = p.x; gsy = p.y; break; }
+            if (p.name == c.from_port) { gsx = port_gx(from_rect, true); gsy = port_gy(from_rect, p); break; }
         float gex = to_rect.x, gey = to_rect.y + to_rect.h * 0.5f;
         for (const auto& p : to_rect.inputs)
-            if (p.name == c.to_port) { gex = p.x; gey = p.y; break; }
+            if (p.name == c.to_port) { gex = port_gx(to_rect, false); gey = port_gy(to_rect, p); break; }
 
         float ssx = gx_to_sx(gsx), ssy = gy_to_sy(gsy);
         float sex = gx_to_sx(gex), sey = gy_to_sy(gey);

@@ -144,9 +144,31 @@ Control how params appear in the inspector:
 vivid::display_hint(param, VIVID_DISPLAY_KNOB);      // circular knob
 vivid::display_hint(param, VIVID_DISPLAY_XY_PAD);     // 2D pad (pair consecutive x/y)
 vivid::display_hint(param, VIVID_DISPLAY_COLOR);       // color swatch (triple r/g/b)
+vivid::display_hint(param, VIVID_DISPLAY_ADSR);        // ADSR envelope editor (4 consecutive: A, D, S, R)
+vivid::display_hint(param, VIVID_DISPLAY_LFO);         // LFO waveform preview + selector (single enum param)
+vivid::display_hint(param, VIVID_DISPLAY_STEP_SEQ);    // step sequencer grid (run: count + values [+ gates])
 vivid::param_group(param, "Envelope");                 // collapsible group
 vivid::layout_row(param, 2, 0);                        // 2 columns, this is column 0
 ```
+
+**ADSR envelope widget:** Mark 4 consecutive float params as `VIVID_DISPLAY_ADSR` to get an interactive envelope curve editor. Positional order: attack, decay, sustain, release. The widget draws the envelope shape with draggable control points and supports click-to-edit values, lock badges, MIDI CC badges, and connection indicators. Additional params (curve type, amplitude, etc.) should be registered outside the ADSR group as normal params.
+
+**LFO waveform preview:** Mark a single waveform enum param as `VIVID_DISPLAY_LFO`. The inspector draws a 2-cycle waveform preview above the enum dropdown selector. The preview updates when the waveform type changes. Supports 7 standard waveforms: sine, saw, square, triangle, sample & hold, smooth random, noise.
+
+**Step sequencer grid:** Mark a run of consecutive params as `VIVID_DISPLAY_STEP_SEQ`. The first param is the step count (int), followed by N value params, optionally followed by N gate params. The widget draws a bar grid with drag-to-set interaction. Gate params (named `step_gate_*`) render as semi-transparent overlays. Only the first `num_steps` bars are shown.
+
+## Conditional Visibility
+
+Params can be hidden in the standard inspector based on an integer/enum controller param. This is typed metadata, not a string expression:
+
+```cpp
+vivid::visible_when_ne(frequency, rate_mode, vivid::kRateModeMetronome);
+vivid::visible_when_eq(sync_division, rate_mode, vivid::kRateModeMetronome);
+vivid::visible_when_in(extra_param, mode, {0, 1});
+vivid::visible_when_not_in(other_param, mode, {2, 3});
+```
+
+Conditional visibility is inspector-only. Hidden params still exist in the graph, stay serialized, and can still be driven by connections or API calls.
 
 ## Capability Interfaces
 

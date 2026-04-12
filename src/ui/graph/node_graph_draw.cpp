@@ -298,7 +298,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         float s_line_h = tr.line_height() * zoom_;
         for (const auto& p : r.inputs) {
             if (p.is_param && !show_param_wires_) continue;
-            float spx = gx_to_sx(p.x), spy = gy_to_sy(p.y);
+            float spx = gx_to_sx(port_gx(r, false)), spy = gy_to_sy(port_gy(r, p));
             bool port_hov = (hovered_port_.node_id == r.node_id &&
                              hovered_port_.port_name == p.name && !hovered_port_.is_output);
             float dot_scale = p.is_param ? kParamDotScale : 1.0f;
@@ -315,7 +315,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         // Output port dots and labels (use env color)
         for (const auto& p : r.outputs) {
             if (p.is_param && !show_param_wires_) continue;
-            float spx = gx_to_sx(p.x), spy = gy_to_sy(p.y);
+            float spx = gx_to_sx(port_gx(r, true)), spy = gy_to_sy(port_gy(r, p));
             bool port_hov = (hovered_port_.node_id == r.node_id &&
                              hovered_port_.port_name == p.name && hovered_port_.is_output);
             float dot_scale = p.is_param ? kParamDotScale : 1.0f;
@@ -332,7 +332,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
 
         // Expand/collapse affordance row for nodes with >3 outputs
         if (r.outputs_expandable) {
-            float aspy = gy_to_sy(r.affordance_gy);
+            float aspy = gy_to_sy(r.y + r.affordance_dy);
             char buf[48];
             if (r.outputs_expanded)
                 snprintf(buf, sizeof(buf), "\xe2\x96\xb4 hide");

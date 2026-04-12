@@ -3,7 +3,7 @@
     {
       "name": "Rising Steps",
       "params": {
-        "num_steps": 8,
+        "steps": 8,
         "step_value_0": 0.125,
         "step_value_1": 0.25,
         "step_value_2": 0.375,
@@ -17,7 +17,7 @@
     {
       "name": "Octave Jump",
       "params": {
-        "num_steps": 2,
+        "steps": 2,
         "step_value_0": 0.0,
         "step_value_1": 1.0,
         "rate_mode": 1,
@@ -27,7 +27,7 @@
     {
       "name": "Gate Pattern",
       "params": {
-        "num_steps": 16,
+        "steps": 16,
         "step_gate_0": 0.5,
         "step_gate_1": 0.5,
         "step_gate_2": 0.5,
@@ -49,7 +49,7 @@
     {
       "name": "Smooth Ramp",
       "params": {
-        "num_steps": 8,
+        "steps": 8,
         "glide": 0.5,
         "step_value_0": 0.0,
         "step_value_1": 0.14,
@@ -64,7 +64,7 @@
     {
       "name": "Stutter Gate",
       "params": {
-        "num_steps": 16,
+        "steps": 16,
         "frequency": 8.0,
         "step_gate_0": 0.25,
         "step_gate_1": 0.0,
@@ -87,7 +87,7 @@
     {
       "name": "Descending Scale",
       "params": {
-        "num_steps": 8,
+        "steps": 8,
         "rate_mode": 1,
         "step_value_0": 1.0,
         "step_value_1": 0.875,
@@ -102,7 +102,7 @@
     {
       "name": "Alternating Octaves",
       "params": {
-        "num_steps": 4,
+        "steps": 4,
         "glide": 0.3,
         "step_value_0": 0.0,
         "step_value_1": 1.0,
@@ -113,7 +113,7 @@
     {
       "name": "Euclidean 5/8",
       "params": {
-        "num_steps": 8,
+        "steps": 8,
         "step_gate_0": 0.5,
         "step_gate_1": 0.0,
         "step_gate_2": 0.5,

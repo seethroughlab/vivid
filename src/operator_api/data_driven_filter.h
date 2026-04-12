@@ -71,6 +71,7 @@ public:
             p.layout_columns = pd.layout_columns;
             p.layout_column_index = pd.layout_column_index;
             p.asset_kind = pd.asset_kind.empty() ? nullptr : pd.asset_kind.c_str();
+            p.visible_when_op = VIVID_PARAM_VIS_ALWAYS;
             params_.push_back(p);
         }
 

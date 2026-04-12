@@ -20,6 +20,11 @@ public:
 
     struct InspectorRect { float x, y, w, h; std::string node_id; std::string param_name; };
     struct XYPadRect { float x, y, w, h; std::string node_id; std::string param_x, param_y; };
+    struct ADSRRect {
+        float x, y, w, h;
+        std::string node_id;
+        std::string param_a, param_d, param_s, param_r;
+    };
     struct ColorSwatchRect {
         float x, y, w, h;
         std::string node_id;
@@ -89,6 +94,24 @@ public:
     int active_xy_pad_idx = -1;
     std::string active_xy_node_id;
     std::string active_xy_param_x, active_xy_param_y;
+
+    std::vector<ADSRRect> adsr_rects;
+    int active_adsr_idx = -1;
+    int active_adsr_point = -1; // 0=attack, 1=decay/sustain, 2=release
+    std::string active_adsr_node_id;
+
+    struct StepSeqRect {
+        float x, y, w, h;
+        std::string node_id;
+        uint32_t pi_count;      // index of the step-count param
+        uint32_t pi_values;     // first value param index
+        uint32_t value_count;   // number of value params
+        uint32_t pi_gates;      // first gate param index (0 if none)
+        uint32_t gate_count;    // number of gate params (0 if none)
+    };
+    std::vector<StepSeqRect> step_seq_rects;
+    int active_step_seq_idx = -1;
+    int active_step_seq_step = -1; // which bar is being dragged
 
     std::vector<ColorSwatchRect> color_swatch_rects;
     bool color_popup_open = false;

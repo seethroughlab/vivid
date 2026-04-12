@@ -12,4 +12,3 @@ struct EnvelopeFr : Envelope, vivid::FrameProcessable {
 
 VIVID_REGISTER(EnvelopeFr)
 VIVID_THUMBNAIL(EnvelopeFr)
-VIVID_INSPECTOR(EnvelopeFr)

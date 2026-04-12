@@ -160,14 +160,10 @@ target_sources(mseg_fr PRIVATE operators/control/mseg/mseg.cpp)
 add_vivid_operator(mseg_au           operators/control/mseg/mseg_au.cpp
                    EXTRA_LIBS webgpu)
 target_sources(mseg_au PRIVATE operators/control/mseg/mseg.cpp)
-add_vivid_operator(step_seq_fr       operators/control/step_seq/step_seq_fr.cpp
-                   FACTORY_PRESETS operators/control/step_seq/factory_presets.json)
-target_sources(step_seq_fr PRIVATE operators/control/step_seq/step_seq.cpp)
-add_vivid_operator(step_seq_au       operators/control/step_seq/step_seq_au.cpp)
-target_sources(step_seq_au PRIVATE operators/control/step_seq/step_seq.cpp)
 
 # --- Sequencer operators (from vivid-sequencers) ---
-add_vivid_operator(sequencer_fr       operators/control/sequencer/sequencer_fr.cpp)
+add_vivid_operator(sequencer_fr       operators/control/sequencer/sequencer_fr.cpp
+                   FACTORY_PRESETS operators/control/sequencer/factory_presets.json)
 add_vivid_operator(sequencer_au       operators/control/sequencer/sequencer_au.cpp)
 add_vivid_operator(drum_sequencer_fr  operators/control/drum_sequencer/drum_sequencer_fr.cpp  EXTRA_LIBS webgpu)
 add_vivid_operator(drum_sequencer_au  operators/control/drum_sequencer/drum_sequencer_au.cpp  EXTRA_LIBS webgpu)

@@ -119,6 +119,15 @@ inline const char* param_type_str(VividParamType t) {
     }
 }
 
+inline const char* param_visibility_op_str(VividParamVisibilityOp op) {
+    switch (op) {
+        case VIVID_PARAM_VIS_ALWAYS: return "always";
+        case VIVID_PARAM_VIS_EQ:     return "eq";
+        case VIVID_PARAM_VIS_NE:     return "ne";
+        default: return "unknown";
+    }
+}
+
 inline const char* port_type_str(VividPortType t) {
     switch (t) {
         case VIVID_PORT_SCALAR:         return "float";
@@ -180,6 +189,39 @@ inline void add_port_descriptor_metadata(nlohmann::json& port_obj,
     add_port_registry_metadata(port_obj, pd);
 }
 
+inline void add_param_descriptor_visibility(nlohmann::json& p,
+                                            const VividParamDescriptor& pd) {
+    if (pd.visible_when_op == VIVID_PARAM_VIS_ALWAYS || !pd.visible_when_param ||
+        !*pd.visible_when_param || !pd.visible_when_values ||
+        pd.visible_when_value_count == 0) {
+        return;
+    }
+    nlohmann::json values = nlohmann::json::array();
+    for (uint32_t i = 0; i < pd.visible_when_value_count; ++i)
+        values.push_back(pd.visible_when_values[i]);
+    p["visible_when"] = {
+        {"param", pd.visible_when_param},
+        {"op", param_visibility_op_str(pd.visible_when_op)},
+        {"values", std::move(values)},
+    };
+}
+
+inline void add_param_info_visibility(nlohmann::json& p,
+                                      const ui::ParamInfo& pi) {
+    if (pi.visible_when_op == VIVID_PARAM_VIS_ALWAYS ||
+        pi.visible_when_param.empty() || pi.visible_when_values.empty()) {
+        return;
+    }
+    nlohmann::json values = nlohmann::json::array();
+    for (int32_t v : pi.visible_when_values)
+        values.push_back(v);
+    p["visible_when"] = {
+        {"param", pi.visible_when_param},
+        {"op", param_visibility_op_str(pi.visible_when_op)},
+        {"values", std::move(values)},
+    };
+}
+
 inline nlohmann::json build_param_descriptor_json(const VividParamDescriptor& pd) {
     nlohmann::json p = nlohmann::json::object();
     p["name"] = pd.name;
@@ -199,6 +241,7 @@ inline nlohmann::json build_param_descriptor_json(const VividParamDescriptor& pd
         p["description"] = pd.description;
     if (pd.asset_kind && *pd.asset_kind)
         p["asset_kind"] = pd.asset_kind;
+    add_param_descriptor_visibility(p, pd);
     if (pd.default_string && *pd.default_string)
         p["default_string"] = pd.default_string;
     if (pd.group && *pd.group)
@@ -358,6 +401,7 @@ inline nlohmann::json build_module_docs_response(const SubgraphModuleDef& mod,
         if (!pi.semantic_shape.empty()) p["semantic_shape"] = pi.semantic_shape;
         if (!pi.semantic_unit.empty()) p["semantic_unit"] = pi.semantic_unit;
         if (!pi.semantic_intent.empty()) p["semantic_intent"] = pi.semantic_intent;
+        add_param_info_visibility(p, pi);
         if (!pi.choice_labels.empty()) {
             nlohmann::json choices = nlohmann::json::array();
             for (const auto& c : pi.choice_labels)

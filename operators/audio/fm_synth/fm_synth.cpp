@@ -57,24 +57,24 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::semantic_tag(attack, "time_seconds");
         vivid::semantic_shape(attack, "scalar");
         vivid::semantic_unit(attack, "s");
-        vivid::display_hint(attack, VIVID_DISPLAY_KNOB);
+        vivid::display_hint(attack, VIVID_DISPLAY_ADSR);
         vivid::description(attack, "Time to reach full volume after a note-on, in seconds");
 
         vivid::semantic_tag(decay, "time_seconds");
         vivid::semantic_shape(decay, "scalar");
         vivid::semantic_unit(decay, "s");
-        vivid::display_hint(decay, VIVID_DISPLAY_KNOB);
+        vivid::display_hint(decay, VIVID_DISPLAY_ADSR);
         vivid::description(decay, "Time to fall from peak to sustain level, in seconds");
 
         vivid::semantic_tag(sustain, "probability_01");
         vivid::semantic_shape(sustain, "scalar");
-        vivid::display_hint(sustain, VIVID_DISPLAY_KNOB);
+        vivid::display_hint(sustain, VIVID_DISPLAY_ADSR);
         vivid::description(sustain, "Held volume level while the note is sustained (0-1)");
 
         vivid::semantic_tag(release, "time_seconds");
         vivid::semantic_shape(release, "scalar");
         vivid::semantic_unit(release, "s");
-        vivid::display_hint(release, VIVID_DISPLAY_KNOB);
+        vivid::display_hint(release, VIVID_DISPLAY_ADSR);
         vivid::description(release, "Fade-out time after a note-off, in seconds");
 
         vivid::semantic_tag(amplitude, "amplitude_linear");

@@ -375,6 +375,10 @@ void OperatorLoader::init_wgsl_operator(std::shared_ptr<WgslOperatorConfig> conf
         dp.semantic_intent = nullptr;
         dp.description = nullptr;
         dp.asset_kind = sp.asset_kind.empty() ? nullptr : sp.asset_kind.c_str();
+        dp.visible_when_param = nullptr;
+        dp.visible_when_op = VIVID_PARAM_VIS_ALWAYS;
+        dp.visible_when_values = nullptr;
+        dp.visible_when_value_count = 0;
 
         // Group
         dd_group_strings_[i] = sp.group;

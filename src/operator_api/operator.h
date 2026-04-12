@@ -40,6 +40,9 @@ struct ParamBase {
     const char* semantic_intent = nullptr;
     const char* description    = nullptr;
     const char* asset_kind     = nullptr;
+    const char* visible_when_param = nullptr;
+    VividParamVisibilityOp visible_when_op = VIVID_PARAM_VIS_ALWAYS;
+    std::vector<int32_t> visible_when_values;
 };
 
 // ---------------------------------------------------------------------------
@@ -210,6 +213,68 @@ Param<T>& asset_kind(Param<T>& p, const char* kind) {
     return p;
 }
 
+template<typename T, typename ControllerT>
+Param<T>& visible_when_eq(Param<T>& p, const Param<ControllerT>& controller,
+                          std::initializer_list<int32_t> values) {
+    p.visible_when_param = controller.name;
+    p.visible_when_op = VIVID_PARAM_VIS_EQ;
+    p.visible_when_values.assign(values.begin(), values.end());
+    return p;
+}
+
+template<typename T, typename ControllerT>
+Param<T>& visible_when_ne(Param<T>& p, const Param<ControllerT>& controller,
+                          std::initializer_list<int32_t> values) {
+    p.visible_when_param = controller.name;
+    p.visible_when_op = VIVID_PARAM_VIS_NE;
+    p.visible_when_values.assign(values.begin(), values.end());
+    return p;
+}
+
+template<typename T, typename ControllerT>
+Param<T>& visible_when_eq(Param<T>& p, const Param<ControllerT>& controller,
+                          int32_t value) {
+    return visible_when_eq(p, controller, {value});
+}
+
+template<typename T, typename ControllerT>
+Param<T>& visible_when_ne(Param<T>& p, const Param<ControllerT>& controller,
+                          int32_t value) {
+    return visible_when_ne(p, controller, {value});
+}
+
+template<typename T, typename ControllerT>
+Param<T>& visible_when_in(Param<T>& p, const Param<ControllerT>& controller,
+                          std::initializer_list<int32_t> values) {
+    return visible_when_eq(p, controller, values);
+}
+
+template<typename T, typename ControllerT>
+Param<T>& visible_when_not_in(Param<T>& p, const Param<ControllerT>& controller,
+                              std::initializer_list<int32_t> values) {
+    return visible_when_ne(p, controller, values);
+}
+
+template<typename T, typename ControllerT>
+Param<T>& visible_when_in(Param<T>& p, const Param<ControllerT>& controller,
+                          int32_t value) {
+    return visible_when_eq(p, controller, value);
+}
+
+template<typename T, typename ControllerT>
+Param<T>& visible_when_not_in(Param<T>& p, const Param<ControllerT>& controller,
+                              int32_t value) {
+    return visible_when_ne(p, controller, value);
+}
+
+template<typename T>
+Param<T>& clear_visible_when(Param<T>& p) {
+    p.visible_when_param = nullptr;
+    p.visible_when_op = VIVID_PARAM_VIS_ALWAYS;
+    p.visible_when_values.clear();
+    return p;
+}
+
 inline VividPortDescriptor& semantic_tag(VividPortDescriptor& p, const char* tag) {
     p.semantic_tag = tag;
     return p;
@@ -368,6 +433,7 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
     static std::vector<std::vector<std::string>> s_label_storage;             \
     static std::vector<std::vector<const char*>> s_label_ptrs;                \
     static std::vector<std::string> s_file_defaults;                          \
+    static std::vector<std::vector<int32_t>> s_visibility_values;             \
     static bool inited = false;                                               \
     if (!inited) {                                                            \
         inited = true;                                                        \
@@ -378,6 +444,7 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
         s_label_storage.resize(pbases.size());                                \
         s_label_ptrs.resize(pbases.size());                                   \
         s_file_defaults.resize(pbases.size());                                 \
+        s_visibility_values.resize(pbases.size());                            \
         for (size_t i = 0; i < pbases.size(); ++i) {                          \
             s_params[i].name          = pbases[i]->name;                      \
             s_params[i].type          = pbases[i]->type;                      \
@@ -394,6 +461,13 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
             s_params[i].semantic_intent     = pbases[i]->semantic_intent;      \
             s_params[i].description         = pbases[i]->description;          \
             s_params[i].asset_kind          = pbases[i]->asset_kind;           \
+            s_params[i].visible_when_param  = pbases[i]->visible_when_param;   \
+            s_params[i].visible_when_op     = pbases[i]->visible_when_op;      \
+            s_visibility_values[i]          = pbases[i]->visible_when_values;  \
+            s_params[i].visible_when_values = s_visibility_values[i].empty()   \
+                ? nullptr : s_visibility_values[i].data();                    \
+            s_params[i].visible_when_value_count =                            \
+                static_cast<uint32_t>(s_visibility_values[i].size());         \
             if (pbases[i]->choice_count > 0) {                                \
                 s_label_storage[i].clear();                                   \
                 s_label_ptrs[i].clear();                                      \

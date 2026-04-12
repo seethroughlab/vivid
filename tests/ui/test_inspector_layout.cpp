@@ -1,4 +1,5 @@
 #include "ui/inspector/inspector_layout.h"
+#include "ui/graph/graph_snapshot.h"
 #include <cstdio>
 #include "test_helpers.h"
 
@@ -218,6 +219,32 @@ int main() {
         layout.begin_param(2, 1);
         check_float(layout.y, 56.0f, "stray right-column row starts from current y");
         layout.end_param(20.0f);
+    }
+
+    {
+        std::fprintf(stderr, "\n=== Test 12: Visibility-aware run helper ===\n");
+        std::vector<ParamInfo> params(3);
+        params[0].name = "mode";
+        params[1].name = "sync_division";
+        params[1].visibility.param_index = 0;
+        params[1].visibility.op = VIVID_PARAM_VIS_EQ;
+        params[1].visibility.values = {2};
+        params[2].name = "frequency";
+        params[2].visibility.param_index = 0;
+        params[2].visibility.op = VIVID_PARAM_VIS_NE;
+        params[2].visibility.values = {2};
+
+        check(param_info_visible(params[1], std::vector<float>{2.0f, 0.0f, 1.0f}),
+              "EQ-visible param is visible");
+        check(!param_info_visible(params[1], std::vector<float>{0.0f, 0.0f, 1.0f}),
+              "EQ-visible param hides on mismatch");
+        check(!param_info_run_visible(params, std::vector<float>{2.0f, 0.0f, 1.0f}, 1, 2),
+              "compound run hides when any member is hidden");
+        check(param_info_run_visible(params, std::vector<float>{0.0f, 0.0f, 1.0f}, 0, 1),
+              "visible one-param run is accepted");
+        params[0].display_hint = VIVID_DISPLAY_HIDDEN;
+        check(!param_info_run_visible(params, std::vector<float>{0.0f, 0.0f, 1.0f}, 0, 1),
+              "display-hidden param makes run invisible");
     }
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",

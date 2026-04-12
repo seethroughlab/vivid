@@ -664,6 +664,85 @@ bool NodeGraphUI::handle_inspector_click() {
         return true;
     }
 
+    // Check ADSR envelope widget
+    {
+        int adsr_i = hit_test_rect(inspector_.adsr_rects, mouse_.x, mouse_.y);
+        if (adsr_i >= 0) {
+            const auto& ar = inspector_.adsr_rects[adsr_i];
+            const auto* ns = snap_.find_node(ar.node_id);
+            if (ns) {
+                // Look up param values by index
+                auto get_val = [&](const std::string& pname, float fallback) -> float {
+                    auto it = ns->param_indices.find(pname);
+                    return (it != ns->param_indices.end()) ? ns->param_values[it->second] : fallback;
+                };
+                float attack  = std::max(0.0001f, get_val(ar.param_a, 0.01f));
+                float decay   = std::max(0.001f,  get_val(ar.param_d, 0.2f));
+                float sustain = std::clamp(get_val(ar.param_s, 0.7f), 0.0f, 1.0f);
+                float release = std::max(0.001f,  get_val(ar.param_r, 0.3f));
+                float sustain_width = 0.3f * (attack + decay + release);
+                float total_time = attack + decay + sustain_width + release;
+                float pad = kADSRPad;
+                auto t2x = [&](float t) { return ar.x + pad + (t / total_time) * (ar.w - 2.0f * pad); };
+                auto e2y = [&](float e) { return ar.y + pad + (1.0f - e) * (ar.h - 2.0f * pad); };
+
+                struct Pt { float cx, cy; };
+                Pt pts[3] = {
+                    { t2x(attack), e2y(1.0f) },
+                    { t2x(attack + decay), e2y(sustain) },
+                    { t2x(attack + decay + sustain_width + release), e2y(0.0f) }
+                };
+
+                float best_d2 = 1e9f;
+                int best_pt = -1;
+                float grab_r2 = kADSRGrabRadius * kADSRGrabRadius;
+                for (int i = 0; i < 3; ++i) {
+                    float dx = mouse_.x - pts[i].cx;
+                    float dy = mouse_.y - pts[i].cy;
+                    float d2 = dx * dx + dy * dy;
+                    if (d2 < best_d2 && d2 <= grab_r2) { best_d2 = d2; best_pt = i; }
+                }
+
+                if (best_pt >= 0) {
+                    inspector_.active_adsr_idx = adsr_i;
+                    inspector_.active_adsr_point = best_pt;
+                    inspector_.active_adsr_node_id = ar.node_id;
+                }
+            }
+            return true;
+        }
+    }
+
+    // Check step sequencer grid
+    {
+        int ssi = hit_test_rect(inspector_.step_seq_rects, mouse_.x, mouse_.y);
+        if (ssi >= 0) {
+            const auto& sr = inspector_.step_seq_rects[ssi];
+            const auto* ns = snap_.find_node(sr.node_id);
+            if (ns) {
+                auto get_val = [&](const std::string& pname, float fallback) -> float {
+                    auto it = ns->param_indices.find(pname);
+                    return (it != ns->param_indices.end()) ? ns->param_values[it->second] : fallback;
+                };
+                int num_steps = std::max(1, static_cast<int>(ns->param_values[sr.pi_count]));
+                float pad = kStepSeqPad;
+                float plot_x = sr.x + pad;
+                float plot_w = sr.w - 2.0f * pad;
+                float bar_w = plot_w / static_cast<float>(num_steps);
+
+                float mx = mouse_.x;
+                if (mx >= plot_x && mx <= plot_x + plot_w) {
+                    int hit = static_cast<int>((mx - plot_x) / bar_w);
+                    if (hit >= 0 && hit < num_steps && hit < static_cast<int>(sr.value_count)) {
+                        inspector_.active_step_seq_idx = ssi;
+                        inspector_.active_step_seq_step = hit;
+                    }
+                }
+            }
+            return true;
+        }
+    }
+
     // Check color swatch
     int ci = hit_test_rect(inspector_.color_swatch_rects, mouse_.x, mouse_.y);
     if (ci >= 0) {

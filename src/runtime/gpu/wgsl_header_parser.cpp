@@ -54,6 +54,9 @@ static VividDisplayHint parse_display_hint(const char* str) {
     if (std::strcmp(str, "knob") == 0) return VIVID_DISPLAY_KNOB;
     if (std::strcmp(str, "xy_pad") == 0) return VIVID_DISPLAY_XY_PAD;
     if (std::strcmp(str, "color") == 0) return VIVID_DISPLAY_COLOR;
+    if (std::strcmp(str, "adsr") == 0) return VIVID_DISPLAY_ADSR;
+    if (std::strcmp(str, "lfo") == 0) return VIVID_DISPLAY_LFO;
+    if (std::strcmp(str, "step_seq") == 0) return VIVID_DISPLAY_STEP_SEQ;
     return VIVID_DISPLAY_DEFAULT;
 }
 

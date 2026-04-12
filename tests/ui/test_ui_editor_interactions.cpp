@@ -259,10 +259,10 @@ int main() {
         ui.update(snap);
         const auto& lfo1 = find_rect(ui, "lfo1");
         const auto& math1 = find_rect(ui, "math1");
-        ui.on_mouse_move(lfo1.outputs[0].x, lfo1.outputs[0].y);
+        ui.on_mouse_move(port_gx(lfo1, true), port_gy(lfo1, lfo1.outputs[0]));
         ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
         ui.update(snap);
-        ui.on_mouse_move(math1.inputs[0].x, math1.inputs[0].y);
+        ui.on_mouse_move(port_gx(math1, false), port_gy(math1, math1.inputs[0]));
         ui.update(snap);
         ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE, 0);
         ui.update(snap);
@@ -277,7 +277,7 @@ int main() {
         auto snap = make_editor_snapshot();
         ui.update(snap);
         const auto& math1 = find_rect(ui, "math1");
-        ui.on_mouse_move(math1.inputs[0].x, math1.inputs[0].y);
+        ui.on_mouse_move(port_gx(math1, false), port_gy(math1, math1.inputs[0]));
         ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
         ui.update(snap);
         check(sink.disconnect_calls.size() == 1, "Input-port click disconnects the existing wire");
@@ -292,7 +292,7 @@ int main() {
         snap.connections.clear();
         ui.update(snap);
         const auto& lfo1 = find_rect(ui, "lfo1");
-        ui.on_mouse_move(lfo1.outputs[0].x, lfo1.outputs[0].y);
+        ui.on_mouse_move(port_gx(lfo1, true), port_gy(lfo1, lfo1.outputs[0]));
         ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
         ui.update(snap);
         ui.on_mouse_move(720.0f, 520.0f);

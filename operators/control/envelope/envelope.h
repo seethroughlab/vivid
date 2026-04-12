@@ -4,7 +4,6 @@
 
 #include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
-#include "operator_api/adsr_inspector.h"
 #include <cmath>
 #include <cstring>
 #include <vector>
@@ -122,15 +121,10 @@ struct Envelope : vivid::OperatorBase {
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
-        display_hint(attack,  VIVID_DISPLAY_KNOB);
-        display_hint(decay,   VIVID_DISPLAY_KNOB);
-        display_hint(sustain, VIVID_DISPLAY_KNOB);
-        display_hint(release, VIVID_DISPLAY_KNOB);
-
-        layout_row(attack,  2, 0);
-        layout_row(decay,   2, 1);
-        layout_row(sustain, 2, 0);
-        layout_row(release, 2, 1);
+        display_hint(attack,  VIVID_DISPLAY_ADSR);
+        display_hint(decay,   VIVID_DISPLAY_ADSR);
+        display_hint(sustain, VIVID_DISPLAY_ADSR);
+        display_hint(release, VIVID_DISPLAY_ADSR);
 
         out.push_back(&attack);    // 0
         out.push_back(&decay);     // 1
@@ -138,8 +132,7 @@ struct Envelope : vivid::OperatorBase {
         out.push_back(&release);   // 3
         out.push_back(&amplitude); // 4
         out.push_back(&offset);    // 5
-        display_hint(curve, VIVID_DISPLAY_DEFAULT);
-        out.push_back(&curve);     // 6
+        out.push_back(&curve);     // 6  (normal dropdown, not part of ADSR widget)
         out.push_back(&clock_source); // 7
     }
 
@@ -292,16 +285,6 @@ struct Envelope : vivid::OperatorBase {
                      sustain.value, release.value, curve.int_value());
 
         ctx->output_values[0] = s.env_value * amplitude.value + offset.value;
-    }
-
-    void draw_inspector(VividInspectorContext* ctx) override {
-        // Param order: attack=0, decay=1, sustain=2, release=3, amplitude=4, offset=5, curve=6
-        float a = (ctx->param_count > 0) ? ctx->param_values[0] : 0.001f;
-        float d = (ctx->param_count > 1) ? ctx->param_values[1] : 0.2f;
-        float s = (ctx->param_count > 2) ? ctx->param_values[2] : 0.7f;
-        float r = (ctx->param_count > 3) ? ctx->param_values[3] : 0.3f;
-        int cv = (ctx->param_count > 6) ? static_cast<int>(ctx->param_values[6]) : 1;
-        vivid::adsr_inspector::draw(ctx, a, d, s, r, false, cv);
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override;

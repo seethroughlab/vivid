@@ -118,6 +118,15 @@ static ParamConnectionInfo find_param_connection(const GraphSnapshot& snap,
     return info;
 }
 
+static bool param_visible(const ParamInfo& pd, const NodeSnapshot& node) {
+    return param_info_visible(pd, node.param_values);
+}
+
+static bool param_run_visible(const OperatorInfo& op, const NodeSnapshot& node,
+                              uint32_t start, uint32_t count) {
+    return param_info_run_visible(op.params, node.param_values, start, count);
+}
+
 
 void NodeGraphUI::draw_inspector_knob(Renderer2D& tr, const NodeSnapshot& node,
                                        InspectorLayout& layout,
@@ -400,6 +409,500 @@ void NodeGraphUI::draw_inspector_color_swatch(Renderer2D& tr, const NodeSnapshot
                                    op.params[pi_r].name, op.params[pi_g].name, op.params[pi_b].name});
 
     float total_h = kLineH + kColorSwatchH + 8.0f;
+    layout.end_param(total_h);
+}
+
+// -----------------------------------------------------------------------
+// ADSR envelope widget (inline in inspector)
+// -----------------------------------------------------------------------
+
+// Curve shaping helpers (mirroring adsr_inspector.h, local to avoid header dep)
+static float adsr_shape_attack(float t, int curve) {
+    t = std::max(0.0f, std::min(1.0f, t));
+    switch (curve) {
+        case 0: return t;
+        case 1: return 1.0f - std::exp(-4.0f * t);
+        case 2: return t * t;
+        default: return t;
+    }
+}
+static float adsr_shape_decay(float t, int curve) {
+    t = std::max(0.0f, std::min(1.0f, t));
+    switch (curve) {
+        case 0: return t;
+        case 1: return 1.0f - std::exp(-4.0f * t);
+        case 2: return t * t;
+        default: return t;
+    }
+}
+
+void NodeGraphUI::draw_inspector_adsr(Renderer2D& tr, const NodeSnapshot& node,
+                                       InspectorLayout& layout,
+                                       uint32_t pi_a, uint32_t pi_d,
+                                       uint32_t pi_s, uint32_t pi_r) {
+    const auto& op = *node.op_info;
+    float attack  = std::max(0.0001f, node.param_values[pi_a]);
+    float decay   = std::max(0.001f,  node.param_values[pi_d]);
+    float sustain = std::max(0.0f, std::min(1.0f, node.param_values[pi_s]));
+    float release = std::max(0.001f,  node.param_values[pi_r]);
+
+    float px = layout.base_x;
+    float py = layout.y;
+    float w  = layout.full_w;
+    float h  = kADSRWidgetH;
+    float pad = kADSRPad;
+
+    // Dark background
+    tr.draw_rect(px, py, w, h,
+                 style_.dark_bg[0], style_.dark_bg[1], style_.dark_bg[2]);
+
+    // Envelope evaluation
+    float sustain_width = 0.3f * (attack + decay + release);
+    float total_time = attack + decay + sustain_width + release;
+
+    auto env_at = [&](float t) -> float {
+        if (t <= attack) return adsr_shape_attack(t / attack, 0);
+        t -= attack;
+        if (t <= decay) return 1.0f - (1.0f - sustain) * adsr_shape_decay(t / decay, 0);
+        t -= decay;
+        if (t <= sustain_width) return sustain;
+        t -= sustain_width;
+        if (t <= release) return sustain * (1.0f - adsr_shape_decay(t / release, 0));
+        return 0.0f;
+    };
+
+    auto time_to_x = [&](float t) -> float {
+        return px + pad + (t / total_time) * (w - 2.0f * pad);
+    };
+    auto env_to_y = [&](float e) -> float {
+        return py + pad + (1.0f - e) * (h - 2.0f * pad);
+    };
+
+    // Filled area under curve (column fill)
+    float plot_w = w - 2.0f * pad;
+    int cols = static_cast<int>(plot_w / 3.0f);
+    float col_w = plot_w / static_cast<float>(cols);
+    float bottom_y = env_to_y(0.0f);
+
+    for (int i = 0; i < cols; ++i) {
+        float fx = px + pad + static_cast<float>(i) * col_w;
+        float t = (static_cast<float>(i) / static_cast<float>(cols)) * total_time;
+        float e = env_at(t);
+        float ey = env_to_y(e);
+        float fill_h = bottom_y - ey;
+        if (fill_h > 0.0f) {
+            tr.draw_rect(fx, ey, col_w, fill_h,
+                         style_.accent[0], style_.accent[1], style_.accent[2], 0.15f);
+        }
+    }
+
+    // Envelope line
+    int segments = std::max(4, cols / 2);
+    float lx = time_to_x(0.0f);
+    float ly = env_to_y(env_at(0.0f));
+    for (int i = 1; i <= segments; ++i) {
+        float t = (static_cast<float>(i) / static_cast<float>(segments)) * total_time;
+        float cx = time_to_x(t);
+        float cy = env_to_y(env_at(t));
+        tr.draw_line(lx, ly, cx, cy, 1.5f,
+                     style_.accent[0], style_.accent[1], style_.accent[2], 0.9f);
+        lx = cx;
+        ly = cy;
+    }
+
+    // Dashed vertical markers at A, A+D, A+D+S transitions
+    float marker_times[3] = { attack, attack + decay, attack + decay + sustain_width };
+    for (float mt : marker_times) {
+        float mx = time_to_x(mt);
+        float top_y = py + pad;
+        for (float dy = top_y; dy < bottom_y; dy += 8.0f) {
+            float dash_end = std::min(dy + 4.0f, bottom_y);
+            tr.draw_line(mx, dy, mx, dash_end, 1.0f,
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.3f);
+        }
+    }
+
+    // Control points (small filled rects acting as dots)
+    float dot_r = kADSRDotRadius;
+    struct CtrlPt { float cx, cy; };
+    CtrlPt pts[3] = {
+        { time_to_x(attack), env_to_y(1.0f) },                          // attack peak
+        { time_to_x(attack + decay), env_to_y(sustain) },               // decay/sustain junction
+        { time_to_x(attack + decay + sustain_width + release), env_to_y(0.0f) }  // release end
+    };
+
+    bool is_dragging = inspector_.active_adsr_idx >= 0 &&
+                       inspector_.active_adsr_node_id == single_selected_id();
+    for (int i = 0; i < 3; ++i) {
+        float alpha = (is_dragging && inspector_.active_adsr_point == i) ? 1.0f : 0.8f;
+        tr.draw_rounded_rect(pts[i].cx - dot_r, pts[i].cy - dot_r,
+                             dot_r * 2, dot_r * 2, dot_r,
+                             style_.accent[0], style_.accent[1], style_.accent[2], alpha);
+    }
+
+    // Hit-test rect for drag interaction
+    inspector_.adsr_rects.push_back({px, py, w, h,
+                           single_selected_id(),
+                           op.params[pi_a].name, op.params[pi_d].name,
+                           op.params[pi_s].name, op.params[pi_r].name});
+
+    // --- Value labels below the curve ---
+    float label_y = py + h + kADSRLabelGap;
+    float lh = tr.line_height() * 0.85f;
+
+    uint32_t adsr_pis[4] = { pi_a, pi_d, pi_s, pi_r };
+    const char* adsr_labels[4] = { "A", "D", "S", "R" };
+
+    // Measure total label width to center it
+    float total_label_w = 0;
+    for (int i = 0; i < 4; ++i) {
+        total_label_w += tr.text_width(adsr_labels[i], 0.85f) + tr.text_width(": ", 0.85f);
+        total_label_w += tr.text_width(format_float(node.param_values[adsr_pis[i]], 2).c_str(), 0.85f);
+        if (i < 3) total_label_w += tr.text_width("  ", 0.85f);
+    }
+    float cx = px + (w - total_label_w) * 0.5f;
+
+    for (int i = 0; i < 4; ++i) {
+        uint32_t pi = adsr_pis[i];
+        float val = node.param_values[pi];
+        std::string val_str = format_float(val, 2);
+        std::string name_part = std::string(adsr_labels[i]) + ": ";
+
+        bool editing_this = inspector_.editing_param &&
+                            inspector_.edit_node_id == single_selected_id() &&
+                            inspector_.edit_param_name == op.params[pi].name;
+
+        // Name portion
+        tr.draw_text(cx, label_y, name_part.c_str(),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, 0.85f);
+        cx += tr.text_width(name_part.c_str(), 0.85f);
+
+        // Value portion (or edit field)
+        if (editing_this) {
+            float edit_w = std::max(tr.text_width(val_str.c_str(), 0.85f) + 8.0f, 40.0f);
+            draw_editing_text_field(tr, style_, cx, label_y, edit_w, lh,
+                                    inspector_.edit_buffer, text_edit_, cursor_blink_on(), 2.0f, 0.0f);
+            cx += edit_w;
+        } else {
+            float val_w = tr.text_width(val_str.c_str(), 0.85f);
+            tr.draw_text(cx, label_y, val_str.c_str(),
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, 0.85f);
+            inspector_.value_text_rects.push_back({cx, label_y, val_w, lh,
+                                         single_selected_id(), op.params[pi].name});
+            cx += val_w;
+        }
+
+        if (i < 3) {
+            tr.draw_text(cx, label_y, "  ",
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, 0.85f);
+            cx += tr.text_width("  ", 0.85f);
+        }
+    }
+
+    // --- Badges row (lock, MIDI, connection source) ---
+    float badge_y = label_y + lh + 2.0f;
+    float badge_x = px;
+    bool has_badges = false;
+
+    for (int i = 0; i < 4; ++i) {
+        uint32_t pi = adsr_pis[i];
+        const auto& pd = op.params[pi];
+
+        // Lock badge
+        uint8_t lock = (pi < node.param_lock_flags.size()) ? node.param_lock_flags[pi] : 0;
+        if (lock != kParamLockNone) {
+            const char* lock_text =
+                (lock == (kParamLockWires | kParamLockPresets)) ? "WP" :
+                (lock & kParamLockWires) ? "W" : "P";
+            std::string badge_label = std::string(adsr_labels[i]) + ":" + lock_text;
+            float bw = tr.text_width(badge_label.c_str(), 0.75f) + 6;
+            tr.draw_rect(badge_x, badge_y, bw, kMidiBadgeH,
+                         0.6f, 0.45f, 0.15f, 0.85f);
+            tr.draw_text(badge_x + 3, badge_y, badge_label.c_str(), 1.0f, 0.85f, 0.4f, 1.0f, 0.75f);
+            inspector_.lock_badge_rects.push_back({badge_x, badge_y, bw, kMidiBadgeH,
+                                         node.node_id, pd.name});
+            badge_x += bw + 3;
+            has_badges = true;
+        }
+
+        // MIDI CC badge
+        const auto* midi_mm = snap_.find_midi_mapping(single_selected_id(), pd.name);
+        if (midi_mm) {
+            std::string badge = std::string(adsr_labels[i]) + ":CC" + std::to_string(midi_mm->cc_number);
+            float bw = tr.text_width(badge.c_str(), 0.75f) + 8.0f;
+            tr.draw_rect(badge_x, badge_y, bw, kMidiBadgeH,
+                         kMidiMapBadge[0], kMidiMapBadge[1], kMidiMapBadge[2], kMidiMapBadge[3]);
+            tr.draw_text(badge_x + 4, badge_y, badge.c_str(), 0.85f, 0.90f, 1.0f, 1.0f, 0.75f);
+            badge_x += bw + 3;
+            has_badges = true;
+        }
+
+        // Connection source dot
+        auto conn = find_param_connection(snap_, node.node_id, pd.name);
+        if (conn.connected) {
+            const auto* src_ns = snap_.find_node(conn.from_node);
+            const float* dot_clr = src_ns ? node_accent_color(src_ns->is_gpu, src_ns->active_cadence)
+                                          : style_.accent.data();
+            float dot_sz = 5.0f;
+            tr.draw_rect(badge_x, badge_y + (kMidiBadgeH - dot_sz) * 0.5f, dot_sz, dot_sz,
+                         dot_clr[0], dot_clr[1], dot_clr[2], 0.9f);
+            badge_x += dot_sz + 3;
+            has_badges = true;
+        }
+    }
+
+    float total_h = h + kADSRLabelGap + lh + 2.0f + (has_badges ? kMidiBadgeH + 2.0f : 0.0f) + 8.0f;
+    layout.end_param(total_h);
+}
+
+// -----------------------------------------------------------------------
+// LFO waveform preview widget (inline in inspector)
+// -----------------------------------------------------------------------
+
+static float lfo_waveform_sample(float phase, int waveform) {
+    float p = phase - std::floor(phase);
+    switch (waveform) {
+        case 0: return std::sin(p * 2.0f * static_cast<float>(M_PI));    // sine
+        case 1: return 2.0f * p - 1.0f;                                  // saw
+        case 2: return (p < 0.5f) ? 1.0f : -1.0f;                       // square
+        case 3: return 4.0f * ((p < 0.5f) ? p : 1.0f - p) - 1.0f;      // triangle
+        case 4: {                                                         // sample & hold
+            int step = static_cast<int>(std::floor(p * 8.0f));
+            uint32_t x = static_cast<uint32_t>(step * 1664525 + 17 * 1013904223);
+            x ^= x >> 16; x *= 2246822519u; x ^= x >> 13;
+            return static_cast<float>(x & 0xffffu) / 65535.0f * 2.0f - 1.0f;
+        }
+        case 5: {                                                         // smooth random
+            float fp = p * 6.0f;
+            int step = static_cast<int>(std::floor(fp));
+            float t = fp - static_cast<float>(step);
+            auto hash = [](int i) {
+                uint32_t x = static_cast<uint32_t>(i * 1664525 + 29 * 1013904223);
+                x ^= x >> 16; x *= 2246822519u; x ^= x >> 13;
+                return static_cast<float>(x & 0xffffu) / 65535.0f * 2.0f - 1.0f;
+            };
+            float a = hash(step), b = hash(step + 1);
+            return a + (b - a) * (t * t * (3.0f - 2.0f * t));
+        }
+        case 6:                                                           // noise
+        default: {
+            uint32_t x = static_cast<uint32_t>(static_cast<int>(p * 24.0f) * 1664525 + 47 * 1013904223);
+            x ^= x >> 16; x *= 2246822519u; x ^= x >> 13;
+            return static_cast<float>(x & 0xffffu) / 65535.0f * 2.0f - 1.0f;
+        }
+    }
+}
+
+static const char* lfo_wave_name(int waveform) {
+    switch (waveform) {
+        case 0: return "SIN";  case 1: return "SAW";  case 2: return "SQR";
+        case 3: return "TRI";  case 4: return "S&H";  case 5: return "SMTH";
+        case 6: return "NOISE"; default: return "LFO";
+    }
+}
+
+void NodeGraphUI::draw_inspector_lfo_preview(Renderer2D& tr, const NodeSnapshot& node,
+                                              InspectorLayout& layout, uint32_t pi) {
+    const auto& op = *node.op_info;
+    const auto& pd = op.params[pi];
+    float val = node.param_values[pi];
+    int waveform = static_cast<int>(val);
+
+    float px = layout.base_x;
+    float py = layout.y;
+    float w  = layout.full_w;
+    float h  = kLFOPreviewH;
+    float pad = kLFOPreviewPad;
+
+    // Dark background
+    tr.draw_rect(px, py, w, h,
+                 style_.dark_bg[0], style_.dark_bg[1], style_.dark_bg[2]);
+
+    // Waveform plot: 2 cycles, sampled at ~80 points
+    float plot_x = px + pad;
+    float plot_y = py + pad;
+    float plot_w = w - 2.0f * pad;
+    float plot_h = h - 2.0f * pad;
+    float center_y = plot_y + plot_h * 0.5f;
+
+    // Center line
+    tr.draw_line(plot_x, center_y, plot_x + plot_w, center_y, 1.0f,
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.15f);
+
+    // Waveform line
+    constexpr int segments = 80;
+    float prev_x = plot_x;
+    float prev_y = center_y - lfo_waveform_sample(0.0f, waveform) * (plot_h * 0.5f - 2.0f);
+    for (int i = 1; i <= segments; ++i) {
+        float phase = (static_cast<float>(i) / static_cast<float>(segments)) * 2.0f; // 2 cycles
+        float sx = plot_x + (static_cast<float>(i) / static_cast<float>(segments)) * plot_w;
+        float sy = center_y - lfo_waveform_sample(phase, waveform) * (plot_h * 0.5f - 2.0f);
+        tr.draw_line(prev_x, prev_y, sx, sy, 1.5f,
+                     style_.accent[0], style_.accent[1], style_.accent[2], 0.9f);
+        prev_x = sx;
+        prev_y = sy;
+    }
+
+    // Waveform name label (top-left)
+    tr.draw_text(px + pad + 2, py + 2, lfo_wave_name(waveform),
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.6f, 0.75f);
+
+    py += h + 2.0f;
+
+    // Dropdown selector below the preview (reuse standard dropdown drawing)
+    float dh = kDropdownH;
+    tr.draw_rect(px, py, w, dh,
+                 style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
+    int idx = static_cast<int>(val);
+    const char* choice_label = (idx >= 0 && idx < static_cast<int>(pd.choice_labels.size()))
+        ? pd.choice_labels[idx].c_str() : "?";
+    std::string display_choice = truncate_text(tr, choice_label, w - 22.0f);
+    auto conn = find_param_connection(snap_, node.node_id, pd.name);
+    bool is_connected = conn.connected;
+    tr.draw_text(px + 6, py + 1, display_choice.c_str(),
+                 is_connected ? style_.dim_text[0] : style_.bright_text[0],
+                 is_connected ? style_.dim_text[1] : style_.bright_text[1],
+                 is_connected ? style_.dim_text[2] : style_.bright_text[2],
+                 is_connected ? 0.75f : 1.0f);
+    tr.draw_text(px + w - 16, py + 1, "\xE2\x96\xBE",
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    inspector_.dropdown_rects.push_back({px, py, w, dh, single_selected_id(), pd.name});
+    py += dh;
+
+    // Badges row (lock, MIDI, connection)
+    float badge_y = py + 2.0f;
+    float badge_x = px;
+    bool has_badges = false;
+
+    uint8_t lock = (pi < node.param_lock_flags.size()) ? node.param_lock_flags[pi] : 0;
+    if (lock != kParamLockNone) {
+        const char* lock_text =
+            (lock == (kParamLockWires | kParamLockPresets)) ? "WP" :
+            (lock & kParamLockWires) ? "W" : "P";
+        float bw = tr.text_width(lock_text, 0.8f) + 8.0f;
+        tr.draw_rect(badge_x, badge_y, bw, kMidiBadgeH,
+                     0.6f, 0.45f, 0.15f, 0.85f);
+        tr.draw_text(badge_x + 4, badge_y, lock_text, 1.0f, 0.85f, 0.4f, 1.0f, 0.8f);
+        inspector_.lock_badge_rects.push_back({badge_x, badge_y, bw, kMidiBadgeH, node.node_id, pd.name});
+        badge_x += bw + 3;
+        has_badges = true;
+    }
+
+    const auto* midi_mm = snap_.find_midi_mapping(single_selected_id(), pd.name);
+    if (midi_mm) {
+        std::string badge = "CC " + std::to_string(midi_mm->cc_number);
+        float bw = tr.text_width(badge.c_str(), 0.8f) + 8.0f;
+        tr.draw_rect(badge_x, badge_y, bw, kMidiBadgeH,
+                     kMidiMapBadge[0], kMidiMapBadge[1], kMidiMapBadge[2], kMidiMapBadge[3]);
+        tr.draw_text(badge_x + 4, badge_y, badge.c_str(), 0.85f, 0.90f, 1.0f, 1.0f, 0.8f);
+        badge_x += bw + 3;
+        has_badges = true;
+    }
+
+    if (is_connected) {
+        const auto* src_ns = snap_.find_node(conn.from_node);
+        const float* dot_clr = src_ns ? node_accent_color(src_ns->is_gpu, src_ns->active_cadence)
+                                      : style_.accent.data();
+        float dot_sz = 5.0f;
+        tr.draw_rect(badge_x, badge_y + (kMidiBadgeH - dot_sz) * 0.5f, dot_sz, dot_sz,
+                     dot_clr[0], dot_clr[1], dot_clr[2], 0.9f);
+        has_badges = true;
+    }
+
+    float total_h = h + 2.0f + dh + (has_badges ? kMidiBadgeH + 4.0f : 0.0f) + 8.0f;
+    layout.end_param(total_h);
+}
+
+// -----------------------------------------------------------------------
+// Step sequencer grid widget (inline in inspector)
+// -----------------------------------------------------------------------
+
+void NodeGraphUI::draw_inspector_step_seq(Renderer2D& tr, const NodeSnapshot& node,
+                                           InspectorLayout& layout,
+                                           uint32_t pi_start, uint32_t param_run_count) {
+    const auto& op = *node.op_info;
+    float px = layout.base_x;
+    float py = layout.y;
+    float w  = layout.full_w;
+    float h  = kStepSeqWidgetH;
+    float pad = kStepSeqPad;
+
+    // First param is the step count
+    int max_steps = static_cast<int>(param_run_count - 1);
+    int num_steps = std::max(1, std::min(max_steps, static_cast<int>(node.param_values[pi_start])));
+
+    // Identify value and gate params by naming convention
+    uint32_t pi_first_param = pi_start + 1;
+    uint32_t total_step_params = param_run_count - 1;
+    uint32_t value_count = 0;
+    uint32_t gate_count = 0;
+    uint32_t pi_values = pi_first_param;
+    uint32_t pi_gates = 0;
+
+    // Scan for gate params — they come after value params
+    for (uint32_t i = 0; i < total_step_params; ++i) {
+        const auto& pname = op.params[pi_first_param + i].name;
+        if (pname.find("gate") != std::string::npos) {
+            if (gate_count == 0) {
+                pi_gates = pi_first_param + i;
+                value_count = i;
+            }
+            gate_count++;
+        }
+    }
+    if (gate_count == 0) {
+        value_count = total_step_params;
+    }
+
+    // Dark background
+    tr.draw_rect(px, py, w, h,
+                 style_.dark_bg[0], style_.dark_bg[1], style_.dark_bg[2]);
+
+    float plot_x = px + pad;
+    float plot_y = py + pad;
+    float plot_w = w - 2.0f * pad;
+    float plot_h = h - 2.0f * pad;
+    float bar_w = plot_w / static_cast<float>(num_steps);
+
+    // Draw step bars
+    for (int i = 0; i < num_steps && i < static_cast<int>(value_count); ++i) {
+        uint32_t vi = pi_values + static_cast<uint32_t>(i);
+        float sv = node.param_values[vi];
+        // Normalize to [0, 1] using param range
+        const auto& vpd = op.params[vi];
+        float range = vpd.max_value - vpd.min_value;
+        float norm = (range > 0) ? (sv - vpd.min_value) / range : sv;
+        norm = std::max(0.0f, std::min(1.0f, norm));
+
+        float bx = plot_x + static_cast<float>(i) * bar_w + kStepSeqBarGap;
+        float bw = bar_w - 2.0f * kStepSeqBarGap;
+        if (bw < 1.0f) bw = 1.0f;
+
+        float bar_h = norm * plot_h;
+        float by = plot_y + plot_h - bar_h;
+
+        // Bar fill
+        tr.draw_rect(bx, by, bw, bar_h,
+                     style_.accent[0], style_.accent[1], style_.accent[2], 0.4f);
+
+        // Gate-off overlay
+        if (gate_count > 0 && i < static_cast<int>(gate_count)) {
+            float sg = node.param_values[pi_gates + static_cast<uint32_t>(i)];
+            if (sg < 0.99f) {
+                float gate_off_h = bar_h * (1.0f - sg);
+                tr.draw_rect(bx, by, bw, gate_off_h,
+                             style_.dark_bg[0], style_.dark_bg[1], style_.dark_bg[2], 0.5f);
+            }
+        }
+    }
+
+    // Push hit-test rect
+    inspector_.step_seq_rects.push_back({px, py, w, h,
+                               single_selected_id(),
+                               pi_start, pi_values, value_count,
+                               pi_gates, gate_count});
+
+    float total_h = h + 8.0f;
     layout.end_param(total_h);
 }
 
@@ -803,7 +1306,7 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
         for (uint32_t pi = 0; pi < param_count; ) {
             const auto& pd = op.params[pi];
 
-            if (pd.display_hint == VIVID_DISPLAY_HIDDEN) { ++pi; continue; }
+            if (!param_visible(pd, node)) { ++pi; continue; }
 
             if (pd.group != current_group) {
                 layout.flush_row();
@@ -829,7 +1332,8 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
             // Compound widget: XY pad (two consecutive XY_PAD params)
             if (pd.display_hint == VIVID_DISPLAY_XY_PAD &&
                 pi + 1 < param_count &&
-                op.params[pi + 1].display_hint == VIVID_DISPLAY_XY_PAD) {
+                op.params[pi + 1].display_hint == VIVID_DISPLAY_XY_PAD &&
+                param_run_visible(op, node, pi, 2)) {
                 layout.flush_row();
                 layout.begin_param(0, 0);
                 draw_inspector_xy_pad(tr, node, layout, pi, pi + 1);
@@ -841,12 +1345,51 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
             if (pd.display_hint == VIVID_DISPLAY_COLOR &&
                 pi + 2 < param_count &&
                 op.params[pi + 1].display_hint == VIVID_DISPLAY_COLOR &&
-                op.params[pi + 2].display_hint == VIVID_DISPLAY_COLOR) {
+                op.params[pi + 2].display_hint == VIVID_DISPLAY_COLOR &&
+                param_run_visible(op, node, pi, 3)) {
                 layout.flush_row();
                 layout.begin_param(0, 0);
                 draw_inspector_color_swatch(tr, node, layout, pi, pi + 1, pi + 2);
                 pi += 3;
                 continue;
+            }
+
+            // Compound widget: ADSR envelope (4 consecutive ADSR params)
+            if (pd.display_hint == VIVID_DISPLAY_ADSR &&
+                pi + 3 < param_count &&
+                op.params[pi + 1].display_hint == VIVID_DISPLAY_ADSR &&
+                op.params[pi + 2].display_hint == VIVID_DISPLAY_ADSR &&
+                op.params[pi + 3].display_hint == VIVID_DISPLAY_ADSR &&
+                param_run_visible(op, node, pi, 4)) {
+                layout.flush_row();
+                layout.begin_param(0, 0);
+                draw_inspector_adsr(tr, node, layout, pi, pi + 1, pi + 2, pi + 3);
+                pi += 4;
+                continue;
+            }
+
+            // Compound widget: LFO waveform preview (single enum param)
+            if (pd.display_hint == VIVID_DISPLAY_LFO && pd.choice_count > 0) {
+                layout.flush_row();
+                layout.begin_param(0, 0);
+                draw_inspector_lfo_preview(tr, node, layout, pi);
+                pi += 1;
+                continue;
+            }
+
+            // Compound widget: Step sequencer grid (run of STEP_SEQ params)
+            if (pd.display_hint == VIVID_DISPLAY_STEP_SEQ) {
+                uint32_t run = 1;
+                while (pi + run < param_count &&
+                       op.params[pi + run].display_hint == VIVID_DISPLAY_STEP_SEQ)
+                    ++run;
+                if (run >= 2 && param_run_visible(op, node, pi, run)) { // at least count + 1 value
+                    layout.flush_row();
+                    layout.begin_param(0, 0);
+                    draw_inspector_step_seq(tr, node, layout, pi, run);
+                    pi += run;
+                    continue;
+                }
             }
 
             ParamLayoutRequest req = build_request(pi);
@@ -858,7 +1401,7 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
             // suppresses secondary text anyway.
             auto is_auto_row_knob = [&](uint32_t idx) {
                 const auto& cpd = op.params[idx];
-                if (cpd.display_hint == VIVID_DISPLAY_HIDDEN) return false;
+                if (!param_visible(cpd, node)) return false;
                 if (cpd.group != current_group) return false;
                 if (cpd.display_hint != VIVID_DISPLAY_KNOB) return false;
                 if (cpd.layout_columns != 0) return false;
@@ -898,7 +1441,7 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
                 uint8_t found = 1;
                 for (uint8_t k = 1; k < target && pi + k < param_count; ++k) {
                     const auto& cpd = op.params[pi + k];
-                    if (cpd.display_hint == VIVID_DISPLAY_HIDDEN) break;
+                    if (!param_visible(cpd, node)) break;
                     if (cpd.group != current_group) break;
                     run_reqs[k] = build_request(pi + k);
                     ++found;
@@ -926,8 +1469,14 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
                      op.params[pi + 2].display_hint == VIVID_DISPLAY_XY_PAD) ||
                     (next_pd.display_hint == VIVID_DISPLAY_COLOR && pi + 3 < param_count &&
                      op.params[pi + 2].display_hint == VIVID_DISPLAY_COLOR &&
-                     op.params[pi + 3].display_hint == VIVID_DISPLAY_COLOR);
-                if (next_pd.display_hint != VIVID_DISPLAY_HIDDEN &&
+                     op.params[pi + 3].display_hint == VIVID_DISPLAY_COLOR) ||
+                    (next_pd.display_hint == VIVID_DISPLAY_ADSR && pi + 4 < param_count &&
+                     op.params[pi + 2].display_hint == VIVID_DISPLAY_ADSR &&
+                     op.params[pi + 3].display_hint == VIVID_DISPLAY_ADSR &&
+                     op.params[pi + 4].display_hint == VIVID_DISPLAY_ADSR) ||
+                    (next_pd.display_hint == VIVID_DISPLAY_LFO && next_pd.choice_count > 0) ||
+                    (next_pd.display_hint == VIVID_DISPLAY_STEP_SEQ);
+                if (param_visible(next_pd, node) &&
                     next_pd.group == current_group &&
                     !next_is_compound) {
                     ParamLayoutRequest next_req = build_request(pi + 1);

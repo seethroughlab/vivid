@@ -16,6 +16,37 @@ static constexpr uint8_t kParamLockNone    = 0;
 static constexpr uint8_t kParamLockWires   = 1;
 static constexpr uint8_t kParamLockPresets = 2;
 
+// Precomputed visibility condition resolved from VividParamDescriptor metadata.
+// Evaluated per-frame: show param when param_values[param_index] matches values.
+struct ParamVisibilityCondition {
+    int32_t param_index = -1;    // index of controlling param, -1 = always visible
+    VividParamVisibilityOp op = VIVID_PARAM_VIS_ALWAYS;
+    std::vector<int32_t> values; // values to match (OR semantics)
+};
+
+inline bool param_visibility_matches(const ParamVisibilityCondition& cond,
+                                     const std::vector<float>& param_values) {
+    if (cond.op == VIVID_PARAM_VIS_ALWAYS || cond.param_index < 0)
+        return true;
+    if (cond.values.empty())
+        return true;
+    if (static_cast<size_t>(cond.param_index) >= param_values.size())
+        return true;
+
+    int32_t current = static_cast<int32_t>(param_values[cond.param_index]);
+    bool match = false;
+    for (int32_t v : cond.values) {
+        if (current == v) {
+            match = true;
+            break;
+        }
+    }
+
+    if (cond.op == VIVID_PARAM_VIS_EQ) return match;
+    if (cond.op == VIVID_PARAM_VIS_NE) return !match;
+    return true;
+}
+
 // Owned copy of VividParamDescriptor (no C string pointers)
 struct ParamInfo {
     std::string name;
@@ -39,12 +70,37 @@ struct ParamInfo {
     std::string semantic_intent;
     std::string description;
     std::string asset_kind;
+    std::string visible_when_param;
+    VividParamVisibilityOp visible_when_op = VIVID_PARAM_VIS_ALWAYS;
+    std::vector<int32_t> visible_when_values;
+
+    // Conditional visibility (resolved from descriptor metadata)
+    ParamVisibilityCondition visibility;
 
     // Performance surface metadata (Step 5)
     std::string performance_page;
     int performance_order = -1;
     std::string performance_role;
 };
+
+inline bool param_info_visible(const ParamInfo& pd,
+                               const std::vector<float>& param_values) {
+    if (pd.display_hint == VIVID_DISPLAY_HIDDEN)
+        return false;
+    return param_visibility_matches(pd.visibility, param_values);
+}
+
+inline bool param_info_run_visible(const std::vector<ParamInfo>& params,
+                                   const std::vector<float>& param_values,
+                                   uint32_t start, uint32_t count) {
+    if (start > params.size() || count > params.size() - start)
+        return false;
+    for (uint32_t i = 0; i < count; ++i) {
+        if (!param_info_visible(params[start + i], param_values))
+            return false;
+    }
+    return true;
+}
 
 // Owned copy of port metadata
 struct PortInfo {

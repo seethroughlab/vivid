@@ -65,6 +65,16 @@ static int find_param(const VividOperatorDescriptor* desc, const char* name) {
     return -1;
 }
 
+static void set_param_by_name(std::vector<float>& params, const VividOperatorDescriptor* desc,
+                              const char* name, float value) {
+    int idx = find_param(desc, name);
+    std::string msg = std::string("find param ") + name;
+    check(idx >= 0, msg.c_str());
+    if (idx >= 0 && static_cast<size_t>(idx) < params.size()) {
+        params[static_cast<size_t>(idx)] = value;
+    }
+}
+
 static void test_gate_short_pulse(const std::string& build_dir) {
     std::fprintf(stderr, "\n--- gate_au preserves short gate pulses ---\n");
     vivid::OperatorLoader loader;
@@ -172,59 +182,63 @@ static void test_phase_to_midi_midblock_wrap(const std::string& build_dir) {
 }
 
 static void test_step_seq_block_start_snapshot(const std::string& build_dir) {
-    std::fprintf(stderr, "\n--- step_seq_au uses block-start beat phase ---\n");
+    std::fprintf(stderr, "\n--- sequencer_au uses block-start beat phase ---\n");
     vivid::OperatorLoader loader;
-    check(loader.load((build_dir + "/step_seq_au.dylib").c_str()), "load step_seq_au");
+    check(loader.load((build_dir + "/sequencer_au.dylib").c_str()), "load sequencer_au");
     if (!loader.is_loaded()) return;
 
     void* inst = loader.create_instance();
-    check(inst != nullptr, "create step_seq_au instance");
+    check(inst != nullptr, "create sequencer_au instance");
     if (!inst) return;
 
-    auto params = default_params(loader.descriptor());
-    params[0] = 4.0f;   // num_steps
-    params[1] = 1.0f;   // frequency multiplier in external mode
-    params[2] = 1.0f;   // rate_mode = external
-    params[3] = 2.0f;   // sync_division (unused in external mode)
-    params[4] = 0.0f;   // glide
-    params[5] = 1.0f;   // amplitude
-    params[6] = 0.0f;   // offset
-    params[7] = 1.0f;   // polarity = unipolar
-    params[8] = 0.2f;   // step 0 value
-    params[10] = 0.8f;  // step 2 value
+    const auto* desc = loader.descriptor();
+    auto params = default_params(desc);
+    set_param_by_name(params, desc, "source", 0.0f);
+    set_param_by_name(params, desc, "steps", 4.0f);
+    set_param_by_name(params, desc, "step_value_0", 0.2f);
+    set_param_by_name(params, desc, "step_value_2", 0.8f);
+    set_param_by_name(params, desc, "rate_mode", 1.0f);
+    set_param_by_name(params, desc, "frequency", 1.0f);
+    set_param_by_name(params, desc, "sync_division", 2.0f);
+    set_param_by_name(params, desc, "glide", 0.0f);
+    set_param_by_name(params, desc, "amplitude", 1.0f);
+    set_param_by_name(params, desc, "offset", 0.0f);
+    set_param_by_name(params, desc, "polarity", 1.0f);
 
-    AudioTestBuffers tb(2, 2);
+    AudioTestBuffers tb(3, 3);
     tb.ctx.param_values = params.data();
-    tb.inputs[1] = {0.10f, 0.20f, 0.30f, 0.40f, 0.45f, 0.50f, 0.55f, 0.60f};
+    tb.inputs[0] = {0.10f, 0.20f, 0.30f, 0.40f, 0.45f, 0.50f, 0.55f, 0.60f};
 
     loader.process_audio(inst, &tb.ctx);
 
-    check_float(tb.outputs[0][0], 0.2f, 1e-5f, "step_seq_au chooses sample 0 instead of the final sample");
-    check_float(tb.outputs[0][7], 0.2f, 1e-5f, "step_seq_au output stays block-constant");
+    check_float(tb.outputs[0][0], 0.2f, 1e-5f, "sequencer_au chooses sample 0 instead of the final sample");
+    check_float(tb.outputs[0][7], 0.2f, 1e-5f, "sequencer_au output stays block-constant");
 
     loader.destroy_instance(inst);
 }
 
 static void test_step_seq_metronome_snapshot(const std::string& build_dir) {
-    std::fprintf(stderr, "\n--- step_seq_au locks to graph metronome without a beat-phase wire ---\n");
+    std::fprintf(stderr, "\n--- sequencer_au locks to graph metronome without a beat-phase wire ---\n");
     vivid::OperatorLoader loader;
-    check(loader.load((build_dir + "/step_seq_au.dylib").c_str()), "load step_seq_au");
+    check(loader.load((build_dir + "/sequencer_au.dylib").c_str()), "load sequencer_au");
     if (!loader.is_loaded()) return;
 
     void* inst = loader.create_instance();
-    check(inst != nullptr, "create step_seq_au instance");
+    check(inst != nullptr, "create sequencer_au instance");
     if (!inst) return;
 
-    auto params = default_params(loader.descriptor());
-    params[0] = 4.0f;   // num_steps
-    params[2] = 2.0f;   // rate_mode = metronome
-    params[3] = 2.0f;   // sync_division = quarter notes
-    params[5] = 1.0f;   // amplitude
-    params[7] = 1.0f;   // polarity = unipolar
-    params[8] = 0.2f;   // step 0 value
-    params[10] = 0.8f;  // step 2 value
+    const auto* desc = loader.descriptor();
+    auto params = default_params(desc);
+    set_param_by_name(params, desc, "source", 0.0f);
+    set_param_by_name(params, desc, "steps", 4.0f);
+    set_param_by_name(params, desc, "step_value_0", 0.2f);
+    set_param_by_name(params, desc, "step_value_2", 0.8f);
+    set_param_by_name(params, desc, "rate_mode", 2.0f);
+    set_param_by_name(params, desc, "sync_division", 2.0f);
+    set_param_by_name(params, desc, "amplitude", 1.0f);
+    set_param_by_name(params, desc, "polarity", 1.0f);
 
-    AudioTestBuffers tb(2, 2);
+    AudioTestBuffers tb(3, 3);
     tb.ctx.param_values = params.data();
     set_audio_metronome(tb, 120.0f, 4, 0.60, 0.60f, 0.15f);
 

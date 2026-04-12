@@ -532,8 +532,8 @@ bool NodeGraphUI::handle_param_picker_mode_key(int key) {
                             wire_from_gy_ = r.y + r.h * 0.5f;
                             for (const auto& p : r.outputs) {
                                 if (p.name == selected) {
-                                    wire_from_gx_ = p.x;
-                                    wire_from_gy_ = p.y;
+                                    wire_from_gx_ = port_gx(r, true);
+                                    wire_from_gy_ = port_gy(r, p);
                                     break;
                                 }
                             }

@@ -70,4 +70,3 @@ struct EnvelopeAu : Envelope, vivid::AudioProcessable {
 
 VIVID_REGISTER(EnvelopeAu)
 VIVID_THUMBNAIL(EnvelopeAu)
-VIVID_INSPECTOR(EnvelopeAu)

@@ -408,7 +408,7 @@ add_executable(test_audio_control_timing
 target_include_directories(test_audio_control_timing PRIVATE src tests)
 target_link_libraries(test_audio_control_timing PRIVATE vivid_runtime_testlib vivid_operator_api webgpu)
 add_dependencies(test_audio_control_timing
-    gate_au sample_hold_au step_counter_au phase_to_midi_au step_seq_au euclidean_au)
+    gate_au sample_hold_au step_counter_au phase_to_midi_au sequencer_au euclidean_au)
 add_test(NAME test_audio_control_timing COMMAND test_audio_control_timing WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 

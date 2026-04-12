@@ -90,6 +90,8 @@ RegistryBootstrapResult bootstrap_operator_registry(OperatorRegistry& registry,
     registry.scan_deferred(paths.exe_dir.string().c_str());
 #endif
     register_builtin_operators(registry);
+    registry.register_alias("StepSeqFr", "SequencerFr");
+    registry.register_alias("StepSeqAu", "SequencerAu");
 
     if (options.scan_shader_operators)
         registry.scan_shader_operators((paths.resources_dir / "filters").string());

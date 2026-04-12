@@ -98,6 +98,8 @@ struct LFO : vivid::OperatorBase {
         vivid::description(waveform, "Shape of the oscillation cycle");
         vivid::description(rate_mode, "Free runs internally, follows an external beat_phase input, or locks to the graph metronome");
         vivid::description(sync_division, "Musical note length used when rate_mode is metronome");
+        vivid::visible_when_ne(frequency, rate_mode, vivid::kRateModeMetronome);
+        vivid::visible_when_eq(sync_division, rate_mode, vivid::kRateModeMetronome);
         vivid::description(polarity, "Bipolar swings above and below zero; unipolar stays positive");
         vivid::description(phase_offset, "Starting point in the cycle (0 = beginning, 1 = full cycle)");
         vivid::description(fade_in, "Seconds to ramp from zero to full amplitude on start");
@@ -114,6 +116,7 @@ struct LFO : vivid::OperatorBase {
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        display_hint(waveform,      VIVID_DISPLAY_LFO);
         display_hint(rate_mode,     VIVID_DISPLAY_DEFAULT);
         display_hint(polarity,      VIVID_DISPLAY_DEFAULT);
         display_hint(phase_offset,  VIVID_DISPLAY_KNOB);

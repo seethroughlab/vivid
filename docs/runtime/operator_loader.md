@@ -281,8 +281,8 @@ Stored in `target_to_type_` map, populated from dylib filename conventions.
 
 Holds the full descriptor (with all owned `std::string` storage for stable `const char*` pointers)
 for a probed-but-not-yet-loaded operator. Fields include: `dylib_path`, `desc`, `params`, `ports`,
-all the `_names`, `_type_names`, `_stable_type_ids`, `_default_strings`, `_semantic_tags`, and
-the owned file-drop metadata used by `file_drop_handlers()`.
+all the `_names`, `_type_names`, `_stable_type_ids`, `_default_strings`, `_semantic_tags`,
+conditional visibility metadata, and the owned file-drop metadata used by `file_drop_handlers()`.
 
 ### File-Drop Metadata
 

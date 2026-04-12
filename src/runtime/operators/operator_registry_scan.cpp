@@ -97,6 +97,8 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
     entry.semantic_intents.resize(param_count);
     entry.descriptions.resize(param_count);
     entry.asset_kinds.resize(param_count);
+    entry.visible_when_params.resize(param_count);
+    entry.visible_when_values.resize(param_count);
     entry.choice_labels.resize(param_count);
     entry.choice_label_ptrs.resize(param_count);
     for (uint32_t i = 0; i < param_count; ++i) {
@@ -168,6 +170,24 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
             dp.asset_kind = entry.asset_kinds[i].c_str();
         } else {
             dp.asset_kind = nullptr;
+        }
+        if (sp.visible_when_param) {
+            entry.visible_when_params[i] = sp.visible_when_param;
+            dp.visible_when_param = entry.visible_when_params[i].c_str();
+        } else {
+            dp.visible_when_param = nullptr;
+        }
+        dp.visible_when_op = sp.visible_when_op;
+        if (sp.visible_when_values && sp.visible_when_value_count > 0) {
+            entry.visible_when_values[i].assign(
+                sp.visible_when_values,
+                sp.visible_when_values + sp.visible_when_value_count);
+            dp.visible_when_values = entry.visible_when_values[i].data();
+            dp.visible_when_value_count =
+                static_cast<uint32_t>(entry.visible_when_values[i].size());
+        } else {
+            dp.visible_when_values = nullptr;
+            dp.visible_when_value_count = 0;
         }
     }
 
