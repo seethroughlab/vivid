@@ -37,24 +37,25 @@ static std::shared_ptr<OperatorInfo> make_widget_op() {
     op->name = "WidgetTest";
     op->is_gpu = false;
     op->params = {
+        // name, type, default, min, max, default_string, choice_labels, choice_count, group, display_hint
         ParamInfo{"gain", VIVID_PARAM_FLOAT, 0.0f, 0.0f, 1.0f},
-        ParamInfo{"pos_x", VIVID_PARAM_FLOAT, 0.0f, 0.0f, 1.0f, {}, 0, "", VIVID_DISPLAY_XY_PAD},
-        ParamInfo{"pos_y", VIVID_PARAM_FLOAT, 0.0f, 0.0f, 1.0f, {}, 0, "", VIVID_DISPLAY_XY_PAD},
-        ParamInfo{"mode", VIVID_PARAM_INT, 0.0f, 0.0f, 2.0f, {"Off", "On", "Auto"}, 3},
+        ParamInfo{"pos_x", VIVID_PARAM_FLOAT, 0.0f, 0.0f, 1.0f, "", {}, 0, "", VIVID_DISPLAY_XY_PAD},
+        ParamInfo{"pos_y", VIVID_PARAM_FLOAT, 0.0f, 0.0f, 1.0f, "", {}, 0, "", VIVID_DISPLAY_XY_PAD},
+        ParamInfo{"mode", VIVID_PARAM_INT, 0.0f, 0.0f, 2.0f, "", {"Off", "On", "Auto"}, 3},
         ParamInfo{"enabled", VIVID_PARAM_INT, 0.0f, 0.0f, 1.0f},
         ParamInfo{"r", VIVID_PARAM_FLOAT, 0.0f, 0.0f, 1.0f},
         ParamInfo{"g", VIVID_PARAM_FLOAT, 0.0f, 0.0f, 1.0f},
         ParamInfo{"b", VIVID_PARAM_FLOAT, 0.0f, 0.0f, 1.0f},
         ParamInfo{"percent", VIVID_PARAM_FLOAT, 0.0f, 0.0f, 100.0f},
-        ParamInfo{"attack", VIVID_PARAM_FLOAT, 0.1f, 0.001f, 2.0f, {}, 0, "", VIVID_DISPLAY_ADSR},
-        ParamInfo{"decay", VIVID_PARAM_FLOAT, 0.2f, 0.001f, 2.0f, {}, 0, "", VIVID_DISPLAY_ADSR},
-        ParamInfo{"sustain", VIVID_PARAM_FLOAT, 0.5f, 0.0f, 1.0f, {}, 0, "", VIVID_DISPLAY_ADSR},
-        ParamInfo{"release", VIVID_PARAM_FLOAT, 0.3f, 0.001f, 2.0f, {}, 0, "", VIVID_DISPLAY_ADSR},
-        ParamInfo{"num_steps", VIVID_PARAM_INT, 4.0f, 1.0f, 4.0f, {}, 0, "", VIVID_DISPLAY_STEP_SEQ},
-        ParamInfo{"step_0", VIVID_PARAM_FLOAT, 0.1f, 0.0f, 1.0f, {}, 0, "", VIVID_DISPLAY_STEP_SEQ},
-        ParamInfo{"step_1", VIVID_PARAM_FLOAT, 0.2f, 0.0f, 1.0f, {}, 0, "", VIVID_DISPLAY_STEP_SEQ},
-        ParamInfo{"step_2", VIVID_PARAM_FLOAT, 0.3f, 0.0f, 1.0f, {}, 0, "", VIVID_DISPLAY_STEP_SEQ},
-        ParamInfo{"step_3", VIVID_PARAM_FLOAT, 0.4f, 0.0f, 1.0f, {}, 0, "", VIVID_DISPLAY_STEP_SEQ},
+        ParamInfo{"attack", VIVID_PARAM_FLOAT, 0.1f, 0.001f, 2.0f, "", {}, 0, "", VIVID_DISPLAY_ADSR},
+        ParamInfo{"decay", VIVID_PARAM_FLOAT, 0.2f, 0.001f, 2.0f, "", {}, 0, "", VIVID_DISPLAY_ADSR},
+        ParamInfo{"sustain", VIVID_PARAM_FLOAT, 0.5f, 0.0f, 1.0f, "", {}, 0, "", VIVID_DISPLAY_ADSR},
+        ParamInfo{"release", VIVID_PARAM_FLOAT, 0.3f, 0.001f, 2.0f, "", {}, 0, "", VIVID_DISPLAY_ADSR},
+        ParamInfo{"num_steps", VIVID_PARAM_INT, 4.0f, 1.0f, 4.0f, "", {}, 0, "", VIVID_DISPLAY_STEP_SEQ},
+        ParamInfo{"step_0", VIVID_PARAM_FLOAT, 0.1f, 0.0f, 1.0f, "", {}, 0, "", VIVID_DISPLAY_STEP_SEQ},
+        ParamInfo{"step_1", VIVID_PARAM_FLOAT, 0.2f, 0.0f, 1.0f, "", {}, 0, "", VIVID_DISPLAY_STEP_SEQ},
+        ParamInfo{"step_2", VIVID_PARAM_FLOAT, 0.3f, 0.0f, 1.0f, "", {}, 0, "", VIVID_DISPLAY_STEP_SEQ},
+        ParamInfo{"step_3", VIVID_PARAM_FLOAT, 0.4f, 0.0f, 1.0f, "", {}, 0, "", VIVID_DISPLAY_STEP_SEQ},
     };
     return op;
 }
@@ -414,7 +415,7 @@ int main() {
         auto op = std::make_shared<OperatorInfo>();
         op->name = "Chorus";
         op->params = {
-            ParamInfo{"rate", VIVID_PARAM_FLOAT, 0.5f, 0.05f, 5.0f, {}, 0, "", VIVID_DISPLAY_KNOB},
+            ParamInfo{"rate", VIVID_PARAM_FLOAT, 0.5f, 0.05f, 5.0f, "", {}, 0, "", VIVID_DISPLAY_KNOB},
         };
         GraphSnapshot snap;
         NodeSnapshot n;
@@ -454,7 +455,7 @@ int main() {
         auto op = std::make_shared<OperatorInfo>();
         op->name = "Chorus";
         op->params = {
-            ParamInfo{"voices", VIVID_PARAM_INT, 3.0f, 1.0f, 6.0f, {}, 0, "", VIVID_DISPLAY_KNOB},
+            ParamInfo{"voices", VIVID_PARAM_INT, 3.0f, 1.0f, 6.0f, "", {}, 0, "", VIVID_DISPLAY_KNOB},
         };
         GraphSnapshot snap;
         NodeSnapshot n;
