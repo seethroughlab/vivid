@@ -23,7 +23,8 @@ struct Uniforms {
     octaves: i32,
     noiseType: i32,
     colorNoise: i32,
-    centerOrigin: i32,
+    scaleFromX: f32,
+    scaleFromY: f32,
 };
 
 struct VertexOutput {
@@ -273,11 +274,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     let aspect = uniforms.resolution.x / uniforms.resolution.y;
     var correctedUV = vec2f(input.uv.x * aspect, input.uv.y);
 
-    if (uniforms.centerOrigin != 0) {
-        correctedUV = correctedUV - vec2f(aspect * 0.5, 0.5);
-    }
-
-    let xy = correctedUV * uniforms.scale + vec2f(uniforms.offsetX, uniforms.offsetY);
+    let origin = vec2f(uniforms.scaleFromX * aspect, uniforms.scaleFromY);
+    let xy = (correctedUV - origin) * uniforms.scale + origin + vec2f(uniforms.offsetX, uniforms.offsetY);
     let z = uniforms.z + uniforms.time * uniforms.speed;
 
     let p = vec3f(xy, z);
@@ -318,7 +316,9 @@ struct NoiseUniforms {
     int   octaves;
     int   noiseType;
     int   colorNoise;
-    int   centerOrigin;
+    float scaleFromX;
+    float scaleFromY;
+    int   _pad;       // WGSL struct alignment: vec2f → align(8), so pad to 64 bytes
 };
 /**
  * @brief Perlin or Simplex noise generator with FBm octaves and animation.
@@ -342,7 +342,8 @@ struct Noise : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> persistence{"persistence", 0.5f,  0.0f, 1.0f};
     vivid::Param<int>   noise_type  {"noise_type", 0, {"Perlin", "Simplex", "Worley", "Value"}};
     vivid::Param<int>   channels    {"channels", 0, {"Mono", "2 Channel", "RGB"}};
-    vivid::Param<int>   center_origin{"center_origin", 0, {"Off", "On"}};
+    vivid::Param<float> scale_from_x {"scale_from_x", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> scale_from_y {"scale_from_y", 0.5f, 0.0f, 1.0f};
 
     Noise() {
         vivid::description(scale, "Zoom level of the noise pattern");
@@ -352,7 +353,8 @@ struct Noise : vivid::OperatorBase, vivid::GpuProcessable {
         vivid::description(persistence, "Amplitude falloff between successive octaves");
         vivid::description(noise_type, "Algorithm: Perlin, Simplex, Worley, or Value");
         vivid::description(channels, "Output channels: Mono grayscale, 2 Channel RG, or full RGB");
-        vivid::description(center_origin, "Shift UV origin to the center of the frame");
+        vivid::description(scale_from_x, "Horizontal UV origin for scaling (0=left, 1=right)");
+        vivid::description(scale_from_y, "Vertical UV origin for scaling (0=top, 1=bottom)");
 
         vivid::semantic_tag(speed, "frequency_hz");
         vivid::semantic_shape(speed, "scalar");
@@ -368,7 +370,8 @@ struct Noise : vivid::OperatorBase, vivid::GpuProcessable {
         out.push_back(&persistence);
         out.push_back(&noise_type);
         out.push_back(&channels);
-        out.push_back(&center_origin);
+        out.push_back(&scale_from_x);
+        out.push_back(&scale_from_y);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -402,7 +405,8 @@ struct Noise : vivid::OperatorBase, vivid::GpuProcessable {
         u.octaves       = octaves.int_value();
         u.noiseType     = noise_type.int_value();
         u.colorNoise    = channels.int_value();
-        u.centerOrigin  = center_origin.int_value();
+        u.scaleFromX    = scale_from_x.value;
+        u.scaleFromY    = scale_from_y.value;
 
         wgpuQueueWriteBuffer(ctx->queue, uniform_buf_, 0, &u, sizeof(u));
 

@@ -14,7 +14,7 @@
     },
     {
       "name": "Terrain",
-      "params": { "scale": 12, "speed": 0, "octaves": 8, "persistence": 0.45, "center_origin": 1 }
+      "params": { "scale": 12, "speed": 0, "octaves": 8, "persistence": 0.45 }
     },
     {
       "name": "Lava Lamp",
