@@ -24,7 +24,7 @@ std::string dispatch(const std::string& method, const std::string& body,
                             AssetLibrary* asset_library,
                             BuildConsole* build_console) {
     // Read-only queries (no body needed)
-    if (method == "inspect_graph") return handle_inspect_graph(graph, core, core.subgraph_modules());
+    // inspect_graph accepts an optional "detail" field in the body -- handled below after body parsing.
     if (method == "introspect_nodes") return handle_introspect_nodes(graph, core, core.subgraph_modules());
     if (method == "run_diagnostics")
         return control_server_checks::handle_run_diagnostics(graph, core, registry, audio_engine);
@@ -42,7 +42,12 @@ std::string dispatch(const std::string& method, const std::string& body,
 
     std::string result;
 
-    if (method == "list_types") {
+    if (method == "inspect_graph") {
+        std::string detail = "full";
+        if (root_valid && root.contains("detail") && root["detail"].is_string())
+            detail = root["detail"].get<std::string>();
+        result = handle_inspect_graph(graph, core, core.subgraph_modules(), detail);
+    } else if (method == "list_types") {
         result = handle_list_types(registry, package_manager, source_docs, root_valid ? root : nlohmann::json::object(), core.subgraph_modules());
     } else if (method == "search_source") {
         if (!root_valid) result = json_err("invalid JSON body");

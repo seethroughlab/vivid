@@ -595,9 +595,15 @@ async def stop_runtime() -> str:
 
 
 @mcp.tool()
-async def inspect_graph() -> str:
-    """Get the full graph state: nodes with params (live values + schema metadata including semantic_tag/shape/unit/intent), input/output ports (with current output values), and connections."""
-    return await _post("inspect_graph")
+async def inspect_graph(detail: str = "summary") -> str:
+    """Get graph state: nodes, params, ports, connections.
+
+    Args:
+        detail: "summary" (default) — compact overview with flat param values and port stubs.
+                "full" — complete output with param schema metadata, live port values, lane arrays.
+                Use inspect_node(node_id) for individual node detail.
+    """
+    return await _post("inspect_graph", {"detail": detail})
 
 
 @mcp.tool()

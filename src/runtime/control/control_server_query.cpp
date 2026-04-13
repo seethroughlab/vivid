@@ -216,7 +216,8 @@ static ResolvedModuleParamValue resolve_module_param_value(
 
 } // namespace
 
-std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const SubgraphModuleRegistry* modules) {
+std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const SubgraphModuleRegistry* modules, const std::string& detail) {
+    const bool summary = (detail == "summary");
     const auto* cg = core.compiled_graph();
     std::unordered_map<std::string, const CompiledNode*> state_map;
     if (cg) {
@@ -251,252 +252,315 @@ std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const Subgraph
             node["health"] = std::move(health);
         }
 
-        // Params (with live values from runtime)
-        nlohmann::json params_arr = nlohmann::json::array();
+        // Params
         const SubgraphModuleDef* mod_def = (!desc && modules) ? modules->find(ndef.type) : nullptr;
         std::shared_ptr<const ui::OperatorInfo> mod_info;
         if (mod_def) mod_info = make_operator_info(*mod_def);
 
-        if (desc) {
-            for (uint32_t i = 0; i < desc->param_count; ++i) {
-                const auto& pd = desc->params[i];
-                nlohmann::json p = nlohmann::json::object();
-                p["name"] = pd.name;
-                p["type"] = param_type_str(pd.type);
-                float value = pd.default_value;
-                if (ns) {
-                    auto pi = ns->param_indices.find(pd.name);
-                    if (pi != ns->param_indices.end())
-                        value = ns->param_values[pi->second];
-                }
-                p["value"] = static_cast<double>(value);
-                p["min"] = static_cast<double>(pd.min_value);
-                p["max"] = static_cast<double>(pd.max_value);
-                p["default"] = static_cast<double>(pd.default_value);
-                if (pd.semantic_tag)
-                    p["semantic_tag"] = pd.semantic_tag;
-                if (pd.semantic_shape)
-                    p["semantic_shape"] = pd.semantic_shape;
-                if (pd.semantic_unit)
-                    p["semantic_unit"] = pd.semantic_unit;
-                if (pd.semantic_intent)
-                    p["semantic_intent"] = pd.semantic_intent;
-                if (pd.description)
-                    p["description"] = pd.description;
-                if (pd.asset_kind)
-                    p["asset_kind"] = pd.asset_kind;
-                add_param_descriptor_visibility(p, pd);
-                if (pd.choice_count > 0 && pd.choice_labels) {
-                    nlohmann::json choices = nlohmann::json::array();
-                    for (uint32_t c = 0; c < pd.choice_count; ++c)
-                        choices.push_back(pd.choice_labels[c]);
-                    p["choices"] = std::move(choices);
-                }
-                if ((pd.type == VIVID_PARAM_FILE || pd.type == VIVID_PARAM_TEXT) && ns) {
-                    auto fi = ns->file_param_indices.find(pd.name);
-                    if (fi != ns->file_param_indices.end()) {
-                        p["string_value"] = ns->file_param_storage[fi->second];
+        if (summary) {
+            // Flat {name: value} — compact for LLM consumption
+            nlohmann::json params_obj = nlohmann::json::object();
+            if (desc) {
+                for (uint32_t i = 0; i < desc->param_count; ++i) {
+                    const auto& pd = desc->params[i];
+                    if ((pd.type == VIVID_PARAM_FILE || pd.type == VIVID_PARAM_TEXT) && ns) {
+                        auto fi = ns->file_param_indices.find(pd.name);
+                        if (fi != ns->file_param_indices.end()) {
+                            params_obj[pd.name] = ns->file_param_storage[fi->second];
+                            continue;
+                        }
                     }
+                    float value = pd.default_value;
+                    if (ns) {
+                        auto pi = ns->param_indices.find(pd.name);
+                        if (pi != ns->param_indices.end())
+                            value = ns->param_values[pi->second];
+                    }
+                    params_obj[pd.name] = static_cast<double>(value);
                 }
-                params_arr.push_back(std::move(p));
-            }
-        } else if (mod_info) {
-            // Module instance: emit params from module definition with live values
-            for (size_t i = 0; i < mod_info->params.size(); ++i) {
-                const auto& pi = mod_info->params[i];
-                nlohmann::json p = nlohmann::json::object();
-                p["name"] = pi.name;
-                p["type"] = param_type_str(pi.type);
-                const auto& pb = mod_def->params[i];
-                auto resolved = resolve_module_param_value(ndef, pb, pi, cg, core.modulation_records());
-                p["value"] = static_cast<double>(resolved.numeric_value);
-                p["min"] = static_cast<double>(pi.min_value);
-                p["max"] = static_cast<double>(pi.max_value);
-                p["default"] = static_cast<double>(pi.default_value);
-                if (!pi.group.empty()) p["group"] = pi.group;
-                if (!pi.description.empty()) p["description"] = pi.description;
-                if (!pi.semantic_tag.empty()) p["semantic_tag"] = pi.semantic_tag;
-                if (!pi.semantic_shape.empty()) p["semantic_shape"] = pi.semantic_shape;
-                if (!pi.semantic_unit.empty()) p["semantic_unit"] = pi.semantic_unit;
-                if (!pi.semantic_intent.empty()) p["semantic_intent"] = pi.semantic_intent;
-                if (!pi.asset_kind.empty()) p["asset_kind"] = pi.asset_kind;
-                add_param_info_visibility(p, pi);
-                if (!pi.performance_page.empty()) p["performance_page"] = pi.performance_page;
-                if (pi.performance_order >= 0) p["performance_order"] = pi.performance_order;
-                if (!pi.performance_role.empty()) p["performance_role"] = pi.performance_role;
-                if (!pi.choice_labels.empty()) {
-                    nlohmann::json choices = nlohmann::json::array();
-                    for (const auto& c : pi.choice_labels) choices.push_back(c);
-                    p["choices"] = std::move(choices);
+            } else if (mod_info) {
+                for (size_t i = 0; i < mod_info->params.size(); ++i) {
+                    const auto& pb = mod_def->params[i];
+                    const auto& pi = mod_info->params[i];
+                    auto resolved = resolve_module_param_value(ndef, pb, pi, cg, core.modulation_records());
+                    if (resolved.has_string_value)
+                        params_obj[pb.name] = resolved.string_value;
+                    else
+                        params_obj[pb.name] = static_cast<double>(resolved.numeric_value);
                 }
-                if (resolved.has_string_value)
-                    p["string_value"] = resolved.string_value;
-                params_arr.push_back(std::move(p));
             }
+            node["params"] = std::move(params_obj);
+        } else {
+            // Full params with schema metadata
+            nlohmann::json params_arr = nlohmann::json::array();
+            if (desc) {
+                for (uint32_t i = 0; i < desc->param_count; ++i) {
+                    const auto& pd = desc->params[i];
+                    nlohmann::json p = nlohmann::json::object();
+                    p["name"] = pd.name;
+                    p["type"] = param_type_str(pd.type);
+                    float value = pd.default_value;
+                    if (ns) {
+                        auto pi = ns->param_indices.find(pd.name);
+                        if (pi != ns->param_indices.end())
+                            value = ns->param_values[pi->second];
+                    }
+                    p["value"] = static_cast<double>(value);
+                    p["min"] = static_cast<double>(pd.min_value);
+                    p["max"] = static_cast<double>(pd.max_value);
+                    p["default"] = static_cast<double>(pd.default_value);
+                    if (pd.semantic_tag)
+                        p["semantic_tag"] = pd.semantic_tag;
+                    if (pd.semantic_shape)
+                        p["semantic_shape"] = pd.semantic_shape;
+                    if (pd.semantic_unit)
+                        p["semantic_unit"] = pd.semantic_unit;
+                    if (pd.semantic_intent)
+                        p["semantic_intent"] = pd.semantic_intent;
+                    if (pd.description)
+                        p["description"] = pd.description;
+                    if (pd.asset_kind)
+                        p["asset_kind"] = pd.asset_kind;
+                    add_param_descriptor_visibility(p, pd);
+                    if (pd.choice_count > 0 && pd.choice_labels) {
+                        nlohmann::json choices = nlohmann::json::array();
+                        for (uint32_t c = 0; c < pd.choice_count; ++c)
+                            choices.push_back(pd.choice_labels[c]);
+                        p["choices"] = std::move(choices);
+                    }
+                    if ((pd.type == VIVID_PARAM_FILE || pd.type == VIVID_PARAM_TEXT) && ns) {
+                        auto fi = ns->file_param_indices.find(pd.name);
+                        if (fi != ns->file_param_indices.end()) {
+                            p["string_value"] = ns->file_param_storage[fi->second];
+                        }
+                    }
+                    params_arr.push_back(std::move(p));
+                }
+            } else if (mod_info) {
+                // Module instance: emit params from module definition with live values
+                for (size_t i = 0; i < mod_info->params.size(); ++i) {
+                    const auto& pi = mod_info->params[i];
+                    nlohmann::json p = nlohmann::json::object();
+                    p["name"] = pi.name;
+                    p["type"] = param_type_str(pi.type);
+                    const auto& pb = mod_def->params[i];
+                    auto resolved = resolve_module_param_value(ndef, pb, pi, cg, core.modulation_records());
+                    p["value"] = static_cast<double>(resolved.numeric_value);
+                    p["min"] = static_cast<double>(pi.min_value);
+                    p["max"] = static_cast<double>(pi.max_value);
+                    p["default"] = static_cast<double>(pi.default_value);
+                    if (!pi.group.empty()) p["group"] = pi.group;
+                    if (!pi.description.empty()) p["description"] = pi.description;
+                    if (!pi.semantic_tag.empty()) p["semantic_tag"] = pi.semantic_tag;
+                    if (!pi.semantic_shape.empty()) p["semantic_shape"] = pi.semantic_shape;
+                    if (!pi.semantic_unit.empty()) p["semantic_unit"] = pi.semantic_unit;
+                    if (!pi.semantic_intent.empty()) p["semantic_intent"] = pi.semantic_intent;
+                    if (!pi.asset_kind.empty()) p["asset_kind"] = pi.asset_kind;
+                    add_param_info_visibility(p, pi);
+                    if (!pi.performance_page.empty()) p["performance_page"] = pi.performance_page;
+                    if (pi.performance_order >= 0) p["performance_order"] = pi.performance_order;
+                    if (!pi.performance_role.empty()) p["performance_role"] = pi.performance_role;
+                    if (!pi.choice_labels.empty()) {
+                        nlohmann::json choices = nlohmann::json::array();
+                        for (const auto& c : pi.choice_labels) choices.push_back(c);
+                        p["choices"] = std::move(choices);
+                    }
+                    if (resolved.has_string_value)
+                        p["string_value"] = resolved.string_value;
+                    params_arr.push_back(std::move(p));
+                }
+            }
+            node["params"] = std::move(params_arr);
         }
-        node["params"] = std::move(params_arr);
 
         // Ports split into inputs / outputs
         nlohmann::json inputs_arr = nlohmann::json::array();
         nlohmann::json outputs_arr = nlohmann::json::array();
-        if (desc) {
-            for (uint32_t i = 0; i < desc->port_count; ++i) {
-                const auto& pd = desc->ports[i];
-                nlohmann::json p = nlohmann::json::object();
-                p["name"] = pd.name;
-                p["type"] = port_type_str(pd.type);
-                p["transport"] = transport_str(pd.transport);
-                if (pd.type_name)
-                    p["type_name"] = pd.type_name;
-                if (pd.stable_type_id)
-                    p["stable_type_id"] = pd.stable_type_id;
-                if (pd.payload_size > 0)
-                    p["payload_size"] = pd.payload_size;
-
-                if (pd.direction == VIVID_PORT_OUTPUT && ns) {
-                    auto oi = ns->output_port_indices.find(pd.name);
-                    if (oi != ns->output_port_indices.end() &&
-                        oi->second < ns->output_values.size()) {
-                        p["current_value"] = static_cast<double>(ns->output_values[oi->second]);
-                    }
-                    if (oi != ns->output_port_indices.end() &&
-                        oi->second < ns->output_string_values.size() &&
-                        !ns->output_string_values[oi->second].empty()) {
-                        p["current_string"] = ns->output_string_values[oi->second];
-                    }
-                    if (oi != ns->output_port_indices.end() &&
-                        oi->second < ns->output_lanes.size() &&
-                        !ns->output_lanes[oi->second].empty()) {
-                        nlohmann::json lane_arr = nlohmann::json::array();
-                        for (float sv : ns->output_lanes[oi->second])
-                            lane_arr.push_back(static_cast<double>(sv));
-                        p["lane_array"] = std::move(lane_arr);
-                    }
-                    if (oi != ns->output_port_indices.end() &&
-                        oi->second < ns->output_string_lanes.size() &&
-                        !ns->output_string_lanes[oi->second].empty()) {
-                        nlohmann::json lane_arr = nlohmann::json::array();
-                        for (const auto& sv : ns->output_string_lanes[oi->second])
-                            lane_arr.push_back(sv);
-                        p["string_lanes"] = std::move(lane_arr);
-                    }
-                }
-
-                if (pd.direction == VIVID_PORT_INPUT && ns) {
-                    auto ii = ns->input_port_indices.find(pd.name);
-                    if (ii != ns->input_port_indices.end() &&
-                        ii->second < ns->input_values.size()) {
-                        p["current_value"] = static_cast<double>(ns->input_values[ii->second]);
-                    }
-                    if (ii != ns->input_port_indices.end() &&
-                        ii->second < ns->input_string_values.size() &&
-                        !ns->input_string_values[ii->second].empty()) {
-                        p["current_string"] = ns->input_string_values[ii->second];
-                    }
-                    if (ii != ns->input_port_indices.end() &&
-                        ii->second < ns->input_lanes.size() &&
-                        !ns->input_lanes[ii->second].empty()) {
-                        nlohmann::json lane_arr = nlohmann::json::array();
-                        for (float sv : ns->input_lanes[ii->second])
-                            lane_arr.push_back(static_cast<double>(sv));
-                        p["lane_array"] = std::move(lane_arr);
-                    }
-                    if (ii != ns->input_port_indices.end() &&
-                        ii->second < ns->input_string_lanes.size() &&
-                        !ns->input_string_lanes[ii->second].empty()) {
-                        nlohmann::json lane_arr = nlohmann::json::array();
-                        for (const auto& sv : ns->input_string_lanes[ii->second])
-                            lane_arr.push_back(sv);
-                        p["string_lanes"] = std::move(lane_arr);
-                    }
-                }
-
-                if (pd.direction == VIVID_PORT_INPUT)
-                    inputs_arr.push_back(std::move(p));
-                else
-                    outputs_arr.push_back(std::move(p));
-            }
-        } else if (mod_def) {
-            // Module instance: emit ports with live data from internal nodes
-            for (const auto& port : mod_def->ports) {
-                nlohmann::json p = nlohmann::json::object();
-                p["name"] = port.name;
-                p["type"] = port_type_str(port.type);
-
-                // Resolve internal compiled node for live port data
-                std::string flat_id = ndef.id + ".__" + port.internal_node;
-                const auto* icn = cg ? cg->find_node(flat_id) : nullptr;
-                if (icn && port.direction == VIVID_PORT_OUTPUT) {
-                    auto oi = icn->output_port_indices.find(port.internal_port);
-                    if (oi != icn->output_port_indices.end()) {
-                        if (oi->second < icn->output_values.size())
-                            p["current_value"] = static_cast<double>(icn->output_values[oi->second]);
-                        if (oi->second < icn->output_string_values.size() &&
-                            !icn->output_string_values[oi->second].empty())
-                            p["current_string"] = icn->output_string_values[oi->second];
-                        if (oi->second < icn->output_lane_refs.size() &&
-                            icn->output_lane_refs[oi->second]) {
-                            const auto& ref = icn->output_lane_refs[oi->second];
-                            nlohmann::json lane_arr = nlohmann::json::array();
-                            for (uint32_t j = 0; j < ref.length(); ++j)
-                                lane_arr.push_back(static_cast<double>(ref.data()[j]));
-                            p["lane_array"] = std::move(lane_arr);
-                        }
-                        if (oi->second < icn->output_string_lanes.size() &&
-                            !icn->output_string_lanes[oi->second].empty()) {
-                            nlohmann::json lane_arr = nlohmann::json::array();
-                            for (const auto& sv : icn->output_string_lanes[oi->second])
-                                lane_arr.push_back(sv);
-                            p["string_lanes"] = std::move(lane_arr);
-                        }
-                    }
-                } else if (icn && port.direction == VIVID_PORT_INPUT) {
-                    auto ii = icn->input_port_indices.find(port.internal_port);
-                    if (ii != icn->input_port_indices.end()) {
-                        if (ii->second < icn->input_values.size())
-                            p["current_value"] = static_cast<double>(icn->input_values[ii->second]);
-                        if (ii->second < icn->input_string_values.size() &&
-                            !icn->input_string_values[ii->second].empty())
-                            p["current_string"] = icn->input_string_values[ii->second];
-                        if (ii->second < icn->input_lane_refs.size() &&
-                            icn->input_lane_refs[ii->second]) {
-                            const auto& ref = icn->input_lane_refs[ii->second];
-                            nlohmann::json lane_arr = nlohmann::json::array();
-                            for (uint32_t j = 0; j < ref.length(); ++j)
-                                lane_arr.push_back(static_cast<double>(ref.data()[j]));
-                            p["lane_array"] = std::move(lane_arr);
-                        }
-                        if (ii->second < icn->input_string_lanes.size() &&
-                            !icn->input_string_lanes[ii->second].empty()) {
-                            nlohmann::json lane_arr = nlohmann::json::array();
-                            for (const auto& sv : icn->input_string_lanes[ii->second])
-                                lane_arr.push_back(sv);
-                            p["string_lanes"] = std::move(lane_arr);
-                        }
-                    }
-                }
-
-                if (port.direction == VIVID_PORT_INPUT)
-                    inputs_arr.push_back(std::move(p));
-                else
-                    outputs_arr.push_back(std::move(p));
-            }
-        }
-        // Append runtime-injected GPU analysis ports.
-        if (ns && ns->gpu) {
-            static const char* kGpuAnalysisPorts[] = {
-                "frame_hash", "brightness", "contrast", "dominant_hue"
-            };
-            for (const char* name : kGpuAnalysisPorts) {
-                auto oit = ns->output_port_indices.find(name);
-                if (oit != ns->output_port_indices.end() &&
-                    oit->second < ns->output_values.size()) {
+        if (summary) {
+            // Compact: just name and type, no live values or lane arrays
+            if (desc) {
+                for (uint32_t i = 0; i < desc->port_count; ++i) {
+                    const auto& pd = desc->ports[i];
                     nlohmann::json p = nlohmann::json::object();
-                    p["name"] = name;
-                    p["type"] = "float";
-                    p["transport"] = "scalar";
-                    p["current_value"] = static_cast<double>(ns->output_values[oit->second]);
-                    outputs_arr.push_back(std::move(p));
+                    p["name"] = pd.name;
+                    p["type"] = port_type_str(pd.type);
+                    if (pd.direction == VIVID_PORT_INPUT)
+                        inputs_arr.push_back(std::move(p));
+                    else
+                        outputs_arr.push_back(std::move(p));
+                }
+            } else if (mod_def) {
+                for (const auto& port : mod_def->ports) {
+                    nlohmann::json p = nlohmann::json::object();
+                    p["name"] = port.name;
+                    p["type"] = port_type_str(port.type);
+                    if (port.direction == VIVID_PORT_INPUT)
+                        inputs_arr.push_back(std::move(p));
+                    else
+                        outputs_arr.push_back(std::move(p));
+                }
+            }
+        } else {
+            // Full: all port metadata, live values, lane arrays
+            if (desc) {
+                for (uint32_t i = 0; i < desc->port_count; ++i) {
+                    const auto& pd = desc->ports[i];
+                    nlohmann::json p = nlohmann::json::object();
+                    p["name"] = pd.name;
+                    p["type"] = port_type_str(pd.type);
+                    p["transport"] = transport_str(pd.transport);
+                    if (pd.type_name)
+                        p["type_name"] = pd.type_name;
+                    if (pd.stable_type_id)
+                        p["stable_type_id"] = pd.stable_type_id;
+                    if (pd.payload_size > 0)
+                        p["payload_size"] = pd.payload_size;
+
+                    if (pd.direction == VIVID_PORT_OUTPUT && ns) {
+                        auto oi = ns->output_port_indices.find(pd.name);
+                        if (oi != ns->output_port_indices.end() &&
+                            oi->second < ns->output_values.size()) {
+                            p["current_value"] = static_cast<double>(ns->output_values[oi->second]);
+                        }
+                        if (oi != ns->output_port_indices.end() &&
+                            oi->second < ns->output_string_values.size() &&
+                            !ns->output_string_values[oi->second].empty()) {
+                            p["current_string"] = ns->output_string_values[oi->second];
+                        }
+                        if (oi != ns->output_port_indices.end() &&
+                            oi->second < ns->output_lanes.size() &&
+                            !ns->output_lanes[oi->second].empty()) {
+                            nlohmann::json lane_arr = nlohmann::json::array();
+                            for (float sv : ns->output_lanes[oi->second])
+                                lane_arr.push_back(static_cast<double>(sv));
+                            p["lane_array"] = std::move(lane_arr);
+                        }
+                        if (oi != ns->output_port_indices.end() &&
+                            oi->second < ns->output_string_lanes.size() &&
+                            !ns->output_string_lanes[oi->second].empty()) {
+                            nlohmann::json lane_arr = nlohmann::json::array();
+                            for (const auto& sv : ns->output_string_lanes[oi->second])
+                                lane_arr.push_back(sv);
+                            p["string_lanes"] = std::move(lane_arr);
+                        }
+                    }
+
+                    if (pd.direction == VIVID_PORT_INPUT && ns) {
+                        auto ii = ns->input_port_indices.find(pd.name);
+                        if (ii != ns->input_port_indices.end() &&
+                            ii->second < ns->input_values.size()) {
+                            p["current_value"] = static_cast<double>(ns->input_values[ii->second]);
+                        }
+                        if (ii != ns->input_port_indices.end() &&
+                            ii->second < ns->input_string_values.size() &&
+                            !ns->input_string_values[ii->second].empty()) {
+                            p["current_string"] = ns->input_string_values[ii->second];
+                        }
+                        if (ii != ns->input_port_indices.end() &&
+                            ii->second < ns->input_lanes.size() &&
+                            !ns->input_lanes[ii->second].empty()) {
+                            nlohmann::json lane_arr = nlohmann::json::array();
+                            for (float sv : ns->input_lanes[ii->second])
+                                lane_arr.push_back(static_cast<double>(sv));
+                            p["lane_array"] = std::move(lane_arr);
+                        }
+                        if (ii != ns->input_port_indices.end() &&
+                            ii->second < ns->input_string_lanes.size() &&
+                            !ns->input_string_lanes[ii->second].empty()) {
+                            nlohmann::json lane_arr = nlohmann::json::array();
+                            for (const auto& sv : ns->input_string_lanes[ii->second])
+                                lane_arr.push_back(sv);
+                            p["string_lanes"] = std::move(lane_arr);
+                        }
+                    }
+
+                    if (pd.direction == VIVID_PORT_INPUT)
+                        inputs_arr.push_back(std::move(p));
+                    else
+                        outputs_arr.push_back(std::move(p));
+                }
+            } else if (mod_def) {
+                // Module instance: emit ports with live data from internal nodes
+                for (const auto& port : mod_def->ports) {
+                    nlohmann::json p = nlohmann::json::object();
+                    p["name"] = port.name;
+                    p["type"] = port_type_str(port.type);
+
+                    // Resolve internal compiled node for live port data
+                    std::string flat_id = ndef.id + ".__" + port.internal_node;
+                    const auto* icn = cg ? cg->find_node(flat_id) : nullptr;
+                    if (icn && port.direction == VIVID_PORT_OUTPUT) {
+                        auto oi = icn->output_port_indices.find(port.internal_port);
+                        if (oi != icn->output_port_indices.end()) {
+                            if (oi->second < icn->output_values.size())
+                                p["current_value"] = static_cast<double>(icn->output_values[oi->second]);
+                            if (oi->second < icn->output_string_values.size() &&
+                                !icn->output_string_values[oi->second].empty())
+                                p["current_string"] = icn->output_string_values[oi->second];
+                            if (oi->second < icn->output_lane_refs.size() &&
+                                icn->output_lane_refs[oi->second]) {
+                                const auto& ref = icn->output_lane_refs[oi->second];
+                                nlohmann::json lane_arr = nlohmann::json::array();
+                                for (uint32_t j = 0; j < ref.length(); ++j)
+                                    lane_arr.push_back(static_cast<double>(ref.data()[j]));
+                                p["lane_array"] = std::move(lane_arr);
+                            }
+                            if (oi->second < icn->output_string_lanes.size() &&
+                                !icn->output_string_lanes[oi->second].empty()) {
+                                nlohmann::json lane_arr = nlohmann::json::array();
+                                for (const auto& sv : icn->output_string_lanes[oi->second])
+                                    lane_arr.push_back(sv);
+                                p["string_lanes"] = std::move(lane_arr);
+                            }
+                        }
+                    } else if (icn && port.direction == VIVID_PORT_INPUT) {
+                        auto ii = icn->input_port_indices.find(port.internal_port);
+                        if (ii != icn->input_port_indices.end()) {
+                            if (ii->second < icn->input_values.size())
+                                p["current_value"] = static_cast<double>(icn->input_values[ii->second]);
+                            if (ii->second < icn->input_string_values.size() &&
+                                !icn->input_string_values[ii->second].empty())
+                                p["current_string"] = icn->input_string_values[ii->second];
+                            if (ii->second < icn->input_lane_refs.size() &&
+                                icn->input_lane_refs[ii->second]) {
+                                const auto& ref = icn->input_lane_refs[ii->second];
+                                nlohmann::json lane_arr = nlohmann::json::array();
+                                for (uint32_t j = 0; j < ref.length(); ++j)
+                                    lane_arr.push_back(static_cast<double>(ref.data()[j]));
+                                p["lane_array"] = std::move(lane_arr);
+                            }
+                            if (ii->second < icn->input_string_lanes.size() &&
+                                !icn->input_string_lanes[ii->second].empty()) {
+                                nlohmann::json lane_arr = nlohmann::json::array();
+                                for (const auto& sv : icn->input_string_lanes[ii->second])
+                                    lane_arr.push_back(sv);
+                                p["string_lanes"] = std::move(lane_arr);
+                            }
+                        }
+                    }
+
+                    if (port.direction == VIVID_PORT_INPUT)
+                        inputs_arr.push_back(std::move(p));
+                    else
+                        outputs_arr.push_back(std::move(p));
+                }
+            }
+            // Append runtime-injected GPU analysis ports.
+            if (ns && ns->gpu) {
+                static const char* kGpuAnalysisPorts[] = {
+                    "frame_hash", "brightness", "contrast", "dominant_hue"
+                };
+                for (const char* name : kGpuAnalysisPorts) {
+                    auto oit = ns->output_port_indices.find(name);
+                    if (oit != ns->output_port_indices.end() &&
+                        oit->second < ns->output_values.size()) {
+                        nlohmann::json p = nlohmann::json::object();
+                        p["name"] = name;
+                        p["type"] = "float";
+                        p["transport"] = "scalar";
+                        p["current_value"] = static_cast<double>(ns->output_values[oit->second]);
+                        outputs_arr.push_back(std::move(p));
+                    }
                 }
             }
         }
@@ -504,54 +568,56 @@ std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const Subgraph
         node["inputs"] = std::move(inputs_arr);
         node["outputs"] = std::move(outputs_arr);
 
-        // Modulation sources, destinations, and assignments (module instances only)
-        if (mod_def) {
-            if (!mod_def->mod_sources.empty()) {
-                nlohmann::json src_arr = nlohmann::json::array();
-                for (const auto& s : mod_def->mod_sources) {
-                    nlohmann::json obj;
-                    obj["name"] = s.name;
-                    if (!s.description.empty()) obj["description"] = s.description;
-                    obj["shape"] = s.shape;
-                    obj["polarity"] = s.polarity;
-                    obj["kind"] = s.kind;
-                    if (!s.group.empty()) obj["group"] = s.group;
-                    src_arr.push_back(std::move(obj));
+        // Modulation and lane metadata (full mode only)
+        if (!summary) {
+            if (mod_def) {
+                if (!mod_def->mod_sources.empty()) {
+                    nlohmann::json src_arr = nlohmann::json::array();
+                    for (const auto& s : mod_def->mod_sources) {
+                        nlohmann::json obj;
+                        obj["name"] = s.name;
+                        if (!s.description.empty()) obj["description"] = s.description;
+                        obj["shape"] = s.shape;
+                        obj["polarity"] = s.polarity;
+                        obj["kind"] = s.kind;
+                        if (!s.group.empty()) obj["group"] = s.group;
+                        src_arr.push_back(std::move(obj));
+                    }
+                    node["mod_sources"] = std::move(src_arr);
                 }
-                node["mod_sources"] = std::move(src_arr);
-            }
-            if (!mod_def->mod_destinations.empty()) {
-                nlohmann::json dst_arr = nlohmann::json::array();
-                for (const auto& d : mod_def->mod_destinations) {
-                    nlohmann::json obj;
-                    obj["name"] = d.name;
-                    if (!d.description.empty()) obj["description"] = d.description;
-                    obj["shape"] = d.shape;
-                    if (!d.group.empty()) obj["group"] = d.group;
-                    dst_arr.push_back(std::move(obj));
+                if (!mod_def->mod_destinations.empty()) {
+                    nlohmann::json dst_arr = nlohmann::json::array();
+                    for (const auto& d : mod_def->mod_destinations) {
+                        nlohmann::json obj;
+                        obj["name"] = d.name;
+                        if (!d.description.empty()) obj["description"] = d.description;
+                        obj["shape"] = d.shape;
+                        if (!d.group.empty()) obj["group"] = d.group;
+                        dst_arr.push_back(std::move(obj));
+                    }
+                    node["mod_destinations"] = std::move(dst_arr);
                 }
-                node["mod_destinations"] = std::move(dst_arr);
-            }
-            const auto* assigns = graph.find_mod_assignments(ndef.id);
-            if (assigns && !assigns->empty()) {
-                nlohmann::json assign_arr = nlohmann::json::array();
-                for (const auto& a : *assigns) {
-                    nlohmann::json obj;
-                    obj["source"] = a.source;
-                    obj["destination"] = a.destination;
-                    obj["amount"] = static_cast<double>(a.amount);
-                    obj["polarity"] = a.polarity;
-                    obj["curve"] = a.curve;
-                    assign_arr.push_back(std::move(obj));
+                const auto* assigns = graph.find_mod_assignments(ndef.id);
+                if (assigns && !assigns->empty()) {
+                    nlohmann::json assign_arr = nlohmann::json::array();
+                    for (const auto& a : *assigns) {
+                        nlohmann::json obj;
+                        obj["source"] = a.source;
+                        obj["destination"] = a.destination;
+                        obj["amount"] = static_cast<double>(a.amount);
+                        obj["polarity"] = a.polarity;
+                        obj["curve"] = a.curve;
+                        assign_arr.push_back(std::move(obj));
+                    }
+                    node["mod_assignments"] = std::move(assign_arr);
                 }
-                node["mod_assignments"] = std::move(assign_arr);
             }
-        }
 
-        // Lane metadata
-        if (ns) {
-            node["lane_behavior"] = lane_behavior_str(
-                static_cast<VividLaneBehavior>(ns->lane_behavior));
+            // Lane metadata
+            if (ns) {
+                node["lane_behavior"] = lane_behavior_str(
+                    static_cast<VividLaneBehavior>(ns->lane_behavior));
+            }
         }
 
         nodes_arr.push_back(std::move(node));
@@ -562,55 +628,60 @@ std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const Subgraph
     nlohmann::json conns_arr = nlohmann::json::array();
     for (const auto& conn : graph.connections()) {
         nlohmann::json c = nlohmann::json::object();
-        std::string from_addr = conn.from_node + "/" + conn.from_port;
-        std::string to_addr = conn.to_node + "/" + conn.to_port;
-        c["from"] = from_addr;
-        c["to"] = to_addr;
-        if (conn.has_remap()) {
-            c["from_min"] = conn.from_min;
-            c["from_max"] = conn.from_max;
-            c["to_min"] = conn.to_min;
-            c["to_max"] = conn.to_max;
-            if (conn.clamp)
-                c["clamp"] = true;
-        }
-        if (conn.has_bridge())
-            c["bridge"] = conn.bridge;
-        // Lane metadata from compiled edge (match by node + port)
-        if (cg) {
-            for (const auto& e : cg->edges) {
-                if (e.from_node >= cg->nodes.size() || e.to_node >= cg->nodes.size())
-                    continue;
-                const auto& fn = cg->nodes[e.from_node];
-                const auto& tn = cg->nodes[e.to_node];
-                if (fn.node_id != conn.from_node || tn.node_id != conn.to_node)
-                    continue;
-                // Match port indices to port names
-                bool from_match = false, to_match = false;
-                for (const auto& [name, idx] : fn.output_port_indices)
-                    if (idx == e.from_port && name == conn.from_port) { from_match = true; break; }
-                if (!from_match) {
-                    for (const auto& [name, idx] : fn.param_indices)
+        c["from"] = conn.from_node + "/" + conn.from_port;
+        c["to"] = conn.to_node + "/" + conn.to_port;
+        if (summary) {
+            // Compact: just indicate remap/bridge presence
+            if (conn.has_remap()) c["has_remap"] = true;
+            if (conn.has_bridge()) c["bridge"] = conn.bridge;
+        } else {
+            // Full: remap values and compiled edge metadata
+            if (conn.has_remap()) {
+                c["from_min"] = conn.from_min;
+                c["from_max"] = conn.from_max;
+                c["to_min"] = conn.to_min;
+                c["to_max"] = conn.to_max;
+                if (conn.clamp)
+                    c["clamp"] = true;
+            }
+            if (conn.has_bridge())
+                c["bridge"] = conn.bridge;
+            // Lane metadata from compiled edge (match by node + port)
+            if (cg) {
+                for (const auto& e : cg->edges) {
+                    if (e.from_node >= cg->nodes.size() || e.to_node >= cg->nodes.size())
+                        continue;
+                    const auto& fn = cg->nodes[e.from_node];
+                    const auto& tn = cg->nodes[e.to_node];
+                    if (fn.node_id != conn.from_node || tn.node_id != conn.to_node)
+                        continue;
+                    // Match port indices to port names
+                    bool from_match = false, to_match = false;
+                    for (const auto& [name, idx] : fn.output_port_indices)
                         if (idx == e.from_port && name == conn.from_port) { from_match = true; break; }
-                }
-                if (e.targets_param) {
-                    for (const auto& [name, idx] : tn.param_indices)
-                        if (idx == e.to_port && name == conn.to_port) { to_match = true; break; }
-                } else {
-                    for (const auto& [name, idx] : tn.input_port_indices)
-                        if (idx == e.to_port && name == conn.to_port) { to_match = true; break; }
-                }
-                if (from_match && to_match) {
-                    c["transport"] = (e.transport == vivid::EdgeTransport::Snapshot) ? "snapshot" : "direct";
-                    if (e.bridge_kind != vivid::BridgeKind::None) {
-                        static const char* bk_names[] = {"none","hold","snapshot","last_sample","rms","peak","waveform"};
-                        c["bridge_kind"] = bk_names[static_cast<int>(e.bridge_kind)];
+                    if (!from_match) {
+                        for (const auto& [name, idx] : fn.param_indices)
+                            if (idx == e.from_port && name == conn.from_port) { from_match = true; break; }
                     }
-                    if (e.lane_set_id != 0)
-                        c["lane_set_id"] = e.lane_set_id;
-                    if (e.lane_count > 1)
-                        c["lane_count"] = e.lane_count;
-                    break;
+                    if (e.targets_param) {
+                        for (const auto& [name, idx] : tn.param_indices)
+                            if (idx == e.to_port && name == conn.to_port) { to_match = true; break; }
+                    } else {
+                        for (const auto& [name, idx] : tn.input_port_indices)
+                            if (idx == e.to_port && name == conn.to_port) { to_match = true; break; }
+                    }
+                    if (from_match && to_match) {
+                        c["transport"] = (e.transport == vivid::EdgeTransport::Snapshot) ? "snapshot" : "direct";
+                        if (e.bridge_kind != vivid::BridgeKind::None) {
+                            static const char* bk_names[] = {"none","hold","snapshot","last_sample","rms","peak","waveform"};
+                            c["bridge_kind"] = bk_names[static_cast<int>(e.bridge_kind)];
+                        }
+                        if (e.lane_set_id != 0)
+                            c["lane_set_id"] = e.lane_set_id;
+                        if (e.lane_count > 1)
+                            c["lane_count"] = e.lane_count;
+                        break;
+                    }
                 }
             }
         }
