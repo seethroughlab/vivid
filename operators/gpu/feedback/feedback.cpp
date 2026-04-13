@@ -18,8 +18,8 @@ struct Uniforms {
     offset_y: f32,
     zoom: f32,
     rotate_rad: f32,
-    _pad0: f32,
-    _pad1: f32,
+    scale_from_x: f32,
+    scale_from_y: f32,
 };
 
 struct VertexOutput {
@@ -45,8 +45,9 @@ fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     let input_color = textureSample(inputTex, texSampler, input.uv);
 
-    // Transform UV for feedback sampling: center → rotate → scale → offset → uncenter
-    var fuv = input.uv - vec2f(0.5, 0.5);
+    // Transform UV for feedback sampling: center on pivot → rotate → scale → offset → uncenter
+    let pivot = vec2f(uniforms.scale_from_x, uniforms.scale_from_y);
+    var fuv = input.uv - pivot;
 
     let c = cos(uniforms.rotate_rad);
     let s = sin(uniforms.rotate_rad);
@@ -56,7 +57,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 
     fuv = fuv + vec2f(uniforms.offset_x, uniforms.offset_y);
 
-    fuv = fuv + vec2f(0.5, 0.5);
+    fuv = fuv + pivot;
 
     let fb_color = textureSample(feedbackTex, texSampler, fuv) * uniforms.decay;
     return vec4f(input_color.rgb + fb_color.rgb * uniforms.mix_val, max(input_color.a, fb_color.a));
@@ -74,7 +75,8 @@ struct FeedbackUniforms {
     float offset_y;
     float zoom;
     float rotate_rad;
-    float _pad0, _pad1;
+    float scale_from_x;
+    float scale_from_y;
 };
 /**
  * @brief Recursive feedback loop with decay, zoom, rotation, and offset.
@@ -95,7 +97,9 @@ struct Feedback : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> offset_x {"offset_x", 0.0f, -0.5f, 0.5f};
     vivid::Param<float> offset_y {"offset_y", 0.0f, -0.5f, 0.5f};
     vivid::Param<float> zoom     {"zoom",     1.0f,  0.9f, 1.1f};
-    vivid::Param<float> rotate   {"rotate",   0.0f,  0.0f, 360.0f};
+    vivid::Param<float> rotate       {"rotate",       0.0f,  0.0f, 360.0f};
+    vivid::Param<float> scale_from_x {"scale_from_x", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> scale_from_y {"scale_from_y", 0.5f, 0.0f, 1.0f};
 
     Feedback() {
         vivid::semantic_tag(decay, "probability_01");
@@ -123,6 +127,9 @@ struct Feedback : vivid::OperatorBase, vivid::GpuProcessable {
         vivid::semantic_shape(rotate, "scalar");
         vivid::semantic_unit(rotate, "deg");
         vivid::description(rotate, "Rotation applied to the feedback each frame, in degrees");
+
+        vivid::description(scale_from_x, "Horizontal UV origin for zoom and rotation (0=left, 1=right)");
+        vivid::description(scale_from_y, "Vertical UV origin for zoom and rotation (0=top, 1=bottom)");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
@@ -135,6 +142,8 @@ struct Feedback : vivid::OperatorBase, vivid::GpuProcessable {
         out.push_back(&offset_y);
         out.push_back(&zoom);
         out.push_back(&rotate);
+        out.push_back(&scale_from_x);
+        out.push_back(&scale_from_y);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -172,7 +181,9 @@ struct Feedback : vivid::OperatorBase, vivid::GpuProcessable {
         u.offset_x   = offset_x.value;
         u.offset_y   = offset_y.value;
         u.zoom       = zoom.value;
-        u.rotate_rad = rotate.value * (3.14159265358979323846f / 180.0f);
+        u.rotate_rad    = rotate.value * (3.14159265358979323846f / 180.0f);
+        u.scale_from_x  = scale_from_x.value;
+        u.scale_from_y  = scale_from_y.value;
         wgpuQueueWriteBuffer(ctx->queue, uniform_buf_, 0, &u, sizeof(u));
 
         // Rebuild bind group if input texture or feedback texture changed
