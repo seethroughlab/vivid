@@ -16,7 +16,7 @@
             "audio",
             "control"
         ],
-        "featured_rank": 0
+        "featured_rank": 10
     },
     "nodes": {
         "gain1": {

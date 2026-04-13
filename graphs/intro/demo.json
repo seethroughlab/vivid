@@ -18,7 +18,7 @@
             "control"
         ],
         "requires_packages": [],
-        "featured_rank": 4
+        "featured_rank": 5
     },
     "nodes": {
         "clock1": {
@@ -83,7 +83,7 @@
     "sticky_notes": [
         {
             "id": "note_1",
-            "text": "**Clock \u2192 LFO \u2192 Visual** pipeline The Clock's beat_phase drives the LFO, which modulates the noise texture scale",
+            "text": "**Clock → LFO → Visual** pipeline The Clock's beat_phase drives the LFO, which modulates the noise texture scale",
             "x": -41.75,
             "y": 250.38671875,
             "width": 280.0,
@@ -92,7 +92,7 @@
         },
         {
             "id": "note_2",
-            "text": "LFO offset=4 keeps scale positive; amplitude=2 sweeps scale from 2\u20136",
+            "text": "LFO offset=4 keeps scale positive; amplitude=2 sweeps scale from 2–6",
             "x": -40.30078125,
             "y": 174.08984375,
             "width": 250.0,

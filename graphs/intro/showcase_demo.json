@@ -16,7 +16,8 @@
             "audio",
             "gpu",
             "control"
-        ]
+        ],
+        "featured_rank": -1
     },
     "nodes": {
         "aout": {

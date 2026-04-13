@@ -17,7 +17,7 @@
             "control"
         ],
         "requires_packages": [],
-        "featured_rank": 2
+        "featured_rank": 4
     },
     "nodes": {
         "osc1": {
@@ -51,7 +51,7 @@
     "sticky_notes": [
         {
             "id": "note_1",
-            "text": "**Simplest audio patch** Oscillator \u2192 Gain \u2192 audio_out A 440 Hz sine at 80% volume",
+            "text": "**Simplest audio patch** Oscillator → Gain → audio_out A 440 Hz sine at 80% volume",
             "x": -100.0,
             "y": -80.0,
             "width": 250.0,

@@ -1,149 +1,91 @@
-# Getting Started (First 10 Minutes)
+# Getting Started
 
-This is the canonical onboarding path for Vivid 1.0.
+Welcome to Vivid — a real-time engine where audio and visuals live in the same graph. Everything runs live: drag a slider and hear the change instantly.
 
-Goal: go from zero to a running audiovisual graph, make meaningful edits, and save a reusable state.
+## 1. Launch and Watch
 
-## 0. Prerequisites
+Open Vivid and go to **File → Open Example...**
 
-- macOS (primary supported platform for 1.0)
+Start with **"Welcome to Vivid"** (`showcase_demo`). Just sit back — three drum instruments drive three different visual shapes. The kick triggers an orange circle, the snare a white diamond, the hi-hat a blue hexagon. Nothing is pre-animated; the music IS the animation.
 
-## 1. Download and Launch (2-3 minutes)
+## 2. Start Tweaking
 
-Download the latest macOS release build:
+While the showcase is running, try clicking nodes in the graph and changing their parameters:
 
-- GitHub Releases: <https://github.com/seethroughlab/vivid/releases>
-- Releases are promoted as rolling-alpha checkpoints (not every CI fix appears as a new tag).
-- Open `Vivid.app`.
-- In the app, use **File → Open Example...** and start with `av_demo`.
+- **Clock** → drag **BPM** to speed up or slow down the beat
+- **DrumSequencer** → toggle grid cells to change the pattern — watch how the visuals respond instantly
+- **Feedback** → try **decay** (trail length) and **rotate** (spiral speed)
+- **Bloom** → crank **intensity** for more glow
 
-## 2. Make Your First Edit (2 minutes)
+Every change takes effect immediately. There's no "play" button — Vivid is always live.
 
-In the graph UI:
+## 3. Explore More Examples
 
-1. Select a GPU node (for example `shape`/`composite` in `av_demo`).
-2. Drag one visible parameter (size, hue, blend amount, etc.).
-3. Confirm immediate visual response.
+Use **File → Open Example...** to browse. Here's a suggested progression:
 
-Then select an audio-related parameter and confirm audible response.
+| Order | Example | What it shows |
+|-------|---------|---------------|
+| 1 | **Welcome to Vivid** | Audio-reactive visuals — drums trigger shapes |
+| 2 | **Feedback** | Dramatic visual effects from one parameter chain |
+| 3 | **Four on the Floor** | A full drum machine |
+| 4 | **Audio-Visual Sync** | One LFO drives both audio pitch and visual zoom |
+| 5 | **Hello Audio** | Simplest audio patch: oscillator → gain → output |
+| 6 | **Getting Started** | Simplest visual patch: clock → LFO → noise → output |
+| 7 | **Audio-Reactive Visuals** | Audio RMS level modulates visual brightness |
+| 8 | **Lanes: Repeat** | Multiple visual elements from one signal |
 
-Expected result: both audio and visuals react immediately without restart.
+The first three are about *experiencing*. The next five teach you *how it works*, one concept at a time. Each graph has sticky notes that explain what's happening.
 
-## 3. Save and Explore Variations (2 minutes)
+## 4. Save Variations
 
-Press **V** to open the session surface at the bottom of the graph. This is where you build a set of variation snapshots for auditioning and performance.
+Press **V** to open the variation surface at the bottom of the graph.
 
-**Canonical workflow:**
+1. Tweak parameters until you like the current state
+2. Click **+ Save New** to store it as a variation
+3. Keep tweaking — the card shows a dot when you've changed something
+4. Click **Branch** to explore a new direction without losing the original
+5. Audition between variations by clicking cards
+6. Use quantize mode (Beat / Bar / 4Bar) for tempo-synced switches
 
-1. Tweak parameters until you like the current state.
-2. Click **+ Save New** to save it as a variation (e.g. "Var 1").
-3. Keep tweaking. The active card shows a dirty dot when you've changed something.
-4. Click **Branch** to duplicate the active variation and explore a new direction without losing the original.
-5. Audition between variations by clicking cards. Use quantize mode (Beat/Bar/4Bar) for tempo-synced switches.
-6. Click **Update** to promote your live tweaks into the active variation.
-7. Drag cards to reorder your set. Right-click a card for Rename, Duplicate, Delete, or Branch From.
-8. Save the graph — variation order and state persist across sessions.
+Variations persist when you save the graph.
 
-Expected result: recalling any variation restores the exact parameter state it was saved with.
+## 5. Build Your First Graph
 
-## 4. Try a Package Operator (2-3 minutes)
+Once you're comfortable with the examples:
 
-Install one package library (from the app package manager UI or CLI):
+1. **File → New Graph** gives you an empty canvas with `audio_out` and `video_out` sinks
+2. **Double-click** the canvas (or right-click → Add Node) to open the operator browser
+3. Add an **Oscillator**, connect its output to `audio_out` — you'll hear a tone
+4. Add a **NoiseTexture**, connect its texture to `video_out` — you'll see animated noise
+5. Add an **LFO** and wire its value to both the oscillator's frequency and the noise's scale
+6. You've just built your first audio-visual patch
 
-```bash
-vivid install https://github.com/seethroughlab/vivid-glitch.git
-```
+## 6. What's in the Graph
 
-Restart or refresh operator palette as needed, then add a glitch operator to your graph.
+Every Vivid graph has three domains:
 
-Package library reference:
-- [PACKAGE-LIBRARIES.md](PACKAGE-LIBRARIES.md)
+- **Audio** (blue wires) — sample-rate processing: oscillators, filters, drums, effects
+- **GPU** (green wires) — frame-rate visuals: noise, shapes, feedback, bloom, particles
+- **Control** (orange wires) — frame-rate signals: LFOs, clocks, sequencers, math
 
-## 5. Use MCP Perception Loop (optional, 1-2 minutes)
-
-If you run with MCP tooling, use:
-
-- `introspect_nodes`
-- `run_diagnostics`
-- `run_checks`
-
-to inspect current state and validate constraints while editing.
-
-For operator authoring and debugging, run the separate opdev MCP server and use:
-
-- `search_source`
-- `read_source_file`
-- `find_symbol`
-- `get_build_activity`
-- `explain_build_failure`
-
-Release builds bundle a read-only source pack for `src/`, `operators/`, `mcp/`, `tests/`, and `docs/`, so the opdev MCP surface can keep working even when you are not in a source checkout.
-
-Reference:
-- [LLM-INTEGRATION.md](LLM-INTEGRATION.md)
-- [PERCEPTION-API-SPEC.md](internal/PERCEPTION-API-SPEC.md)
+Audio and GPU nodes can't connect directly — they run at different speeds. **Control** nodes bridge between them. When you see a dotted wire, that's a cross-domain bridge carrying a value between cadences.
 
 ---
 
 ## Next Steps
 
-- **Create your own operator (recommended):**
-  - Scaffold a starter template from the UI (+ New Operator) or CLI (`vivid scaffold-operator`)
-  - For advanced features (custom ports, params, inspectors): use MCP opdev tools
-  - Operator contract + runtime architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
-  - Semantic tagging guidance: [SEMANTIC-PARAM-TAGS.md](SEMANTIC-PARAM-TAGS.md)
-- **Explore instrument modules:** Packages can ship `.vivid-module.json` definitions that behave like single nodes with curated exposed controls, local modulation assignments, and factory presets. Browse instruments using the content-kind filter in the graph browser.
-- **Install more operator libraries:** [PACKAGE-LIBRARIES.md](PACKAGE-LIBRARIES.md)
-- **Author your own package repo:** [vivid-package-template](https://github.com/seethroughlab/vivid-package-template)
-
-## Starter Graph Set (Curated)
-
-Use this order for first-run browsing:
-
-1. `graphs/intro/av_demo.json` — fastest “audio + visual together” baseline
-2. `graphs/gpu/feedback_demo.json` — visual motion/feedback behavior
-3. `graphs/intro/audio_demo.json` — audio-only baseline
-4. `graphs/intro/audio_reactive_demo.json` — cross-domain response
-5. `graphs/filters/wgsl_filters_demo.json` — filter-chain workflow
-
-## Graph Browse Index
-
-`graphs/` is physically organized and discovered recursively:
-
-- `graphs/intro/`
-- `graphs/audio/`
-- `graphs/gpu/`
-- `graphs/filters/`
-- `graphs/io/`
-
-Each graph file includes a top-level `meta` section (`id`, `title`, `description`, `tags`, `difficulty`, `domains`, `requires_packages`, `featured_rank`, `content_kind`, `category`, `family`, `role`, `playability`, `preview_controls`), which powers in-app discovery/search. Graphs with `content_kind: "instrument"` appear under the Instruments filter in the browser.
-
-## Suggested Directory Convention (for new graphs)
-
-For new additions, prefer:
-
-- `graphs/intro/`
-- `graphs/audio/`
-- `graphs/gpu/`
-- `graphs/filters/`
-- `graphs/mfi/`
-- `graphs/control/`
-
-Keep metadata current when adding or changing graphs so search/filter remains useful.
-
----
+- **Explore the full example library** — use the tag filters in the example browser to find graphs by domain, difficulty, or style
+- **Install a package** — **File → Package Browser** to add operator libraries like `vivid-glitch`
+- **Create your own operator** — use **+ New Operator** in the node browser or `vivid scaffold-operator` from the CLI
 
 ## Build From Source (Developers)
-
-If you are developing Vivid itself (not just using release builds):
-
-- CMake 3.20+
-- C++17 toolchain (Clang recommended on macOS)
 
 ```bash
 git clone --recursive https://github.com/seethroughlab/vivid.git
 cd vivid
 cmake -B build
 cmake --build build
-./build/vivid graphs/intro/av_demo.json
+./build/vivid graphs/intro/showcase_demo.json
 ```
+
+Requires CMake 3.20+ and a C++17 toolchain (Clang recommended on macOS).
