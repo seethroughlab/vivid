@@ -2251,6 +2251,9 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
         if (!graph_transaction_active) {
             control_server.process_requests(runtime_api, graph, runtime, registry,
                                             has_gpu_ops, has_audio);
+            // Update capture coordinator's audio engine pointer — load_graph and
+            // reload may have started or stopped the audio engine.
+            capture_coordinator.set_audio_engine(has_audio ? &audio_engine : nullptr);
         }
         static uint64_t last_reload_serial = 0;
         if (runtime_api.reload_serial() != last_reload_serial) {
