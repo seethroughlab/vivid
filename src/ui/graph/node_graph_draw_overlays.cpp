@@ -150,9 +150,10 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
             item_count = 2;
         if (context_bg_menu_)
             item_count = 2;  // "Re-layout All" + "Add Sticky Note"
-        // Solo item for node context menus
+        // Solo + Reset All Params items for node context menus
         bool show_solo = !context_node_id_.empty() && !context_bg_menu_;
-        if (show_solo) item_count++;
+        bool is_sticky_ctx = (context_node_id_ == "__sticky__");
+        if (show_solo && !is_sticky_ctx) item_count += 2;  // Solo + Reset All Params
 
         float menu_h = kCtxMenuPadTop + item_count * kCtxMenuItemH + 2.0f;
         float mx = context_menu_x_, my = context_menu_y_;
@@ -162,9 +163,8 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
 
         // Item labels
         std::string delete_label;
-        const char* labels[5];
+        const char* labels[6];
         int label_idx = 0;
-        bool is_sticky_ctx = (context_node_id_ == "__sticky__");
         if (is_sticky_ctx) {
             item_count = 2;
             menu_h = kCtxMenuPadTop + item_count * kCtxMenuItemH + 2.0f;
@@ -191,6 +191,7 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
             // Solo/Unsolo
             bool is_soloed = (!snap_.solo_node_id.empty() && snap_.solo_node_id == context_node_id_);
             labels[label_idx++] = is_soloed ? T("unsolo", "Unsolo") : T("solo", "Solo");
+            labels[label_idx++] = T("reset_all_params", "Reset All Params");
         } else {
             labels[label_idx++] = T("delete_wire", "Delete Wire");
             labels[label_idx++] = T("insert_node", "Insert Node");
@@ -206,6 +207,22 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
             }
             tr.draw_text(mx + 8, item_y + 3, labels[i], style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         }
+    }
+
+    // Param right-click context menu
+    if (inspector_.param_ctx_menu_open) {
+        float mx = inspector_.param_ctx_menu_x;
+        float my = inspector_.param_ctx_menu_y;
+        float menu_h = kCtxMenuPadTop + kCtxMenuItemH + 2.0f;
+        draw_popup_bg(tr, style_, mx, my, kCtxMenuW, menu_h);
+        float item_y = my + kCtxMenuPadTop;
+        if (mouse_.x >= mx && mouse_.x <= mx + kCtxMenuW &&
+            mouse_.y >= item_y && mouse_.y <= item_y + kCtxMenuItemH) {
+            tr.draw_rect(mx + 2, item_y, kCtxMenuW - 4, kCtxMenuItemH,
+                         style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2], 0.9f);
+        }
+        tr.draw_text(mx + 8, item_y + 3, T("reset_to_default", "Reset to Default"),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
     }
 
     draw_color_popup(tr);

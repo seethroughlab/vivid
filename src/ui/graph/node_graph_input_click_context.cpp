@@ -22,6 +22,40 @@ void NodeGraphUI::update_context_menu() {
     size_t cur_nodes = snap_.nodes.size();
     size_t cur_conns = snap_.connections.size();
 
+    // Close param context menu on topology change
+    if (inspector_.param_ctx_menu_open &&
+        (cur_nodes != last_node_count_ || cur_conns != last_conn_count_)) {
+        inspector_.param_ctx_menu_open = false;
+    }
+
+    // Param context menu click handling
+    if (inspector_.param_ctx_menu_open && mouse_.left_clicked) {
+        float mx = inspector_.param_ctx_menu_x;
+        float my = inspector_.param_ctx_menu_y;
+        float menu_h = kCtxMenuPadTop + kCtxMenuItemH + 2.0f;
+        if (mouse_.x >= mx && mouse_.x <= mx + kCtxMenuW &&
+            mouse_.y >= my && mouse_.y <= my + menu_h) {
+            // "Reset to Default" clicked
+            const auto* ns = snap_.find_node(inspector_.param_ctx_node_id);
+            if (ns && ns->op_info) {
+                for (uint32_t i = 0; i < ns->op_info->params.size(); ++i) {
+                    if (ns->op_info->params[i].name == inspector_.param_ctx_param_name) {
+                        const auto& pd = ns->op_info->params[i];
+                        if (pd.type == VIVID_PARAM_FILE || pd.type == VIVID_PARAM_TEXT) {
+                            commands_.set_string_param(ns->node_id, pd.name, pd.default_string);
+                        } else {
+                            commands_.set_param(ns->node_id, pd.name, pd.default_value);
+                        }
+                        break;
+                    }
+                }
+            }
+            mouse_.left_clicked = false;
+            mouse_.left_released = false;
+        }
+        inspector_.param_ctx_menu_open = false;
+    }
+
     // Close context menu on topology change
     if (context_menu_open_ &&
         (cur_nodes != last_node_count_ || cur_conns != last_conn_count_)) {
@@ -40,9 +74,9 @@ void NodeGraphUI::update_context_menu() {
             item_count = 2;  // + "Clone & Edit"
         if (!context_bg_menu_ && !is_sticky_ctx && context_wire_idx_ >= 0 && context_node_id_.empty())
             item_count = 2;  // + "Insert Node"
-        // Solo item for node context menus
+        // Solo + Reset All Params items for node context menus
         bool show_solo = !context_node_id_.empty() && !context_bg_menu_ && !is_sticky_ctx;
-        if (show_solo) item_count++;
+        if (show_solo) item_count += 2;
 
         float menu_h = kCtxMenuPadTop + item_count * kCtxMenuItemH + 2.0f;
         if (mouse_.x >= context_menu_x_ && mouse_.x <= context_menu_x_ + kCtxMenuW &&
@@ -90,6 +124,7 @@ void NodeGraphUI::update_context_menu() {
                 int delete_idx = 0;
                 int clone_idx = context_node_has_shader_ ? 1 : -1;
                 int solo_idx = context_node_has_shader_ ? 2 : 1;
+                int reset_idx = solo_idx + 1;
 
                 if (clicked_item == delete_idx) {
                     // "Delete Node(s)"
@@ -109,6 +144,23 @@ void NodeGraphUI::update_context_menu() {
                     // "Solo" / "Unsolo"
                     bool is_soloed = (!snap_.solo_node_id.empty() && snap_.solo_node_id == context_node_id_);
                     commands_.set_solo(is_soloed ? "" : context_node_id_);
+                } else if (clicked_item == reset_idx) {
+                    // "Reset All Params"
+                    const auto* ns = snap_.find_node(context_node_id_);
+                    if (ns && ns->op_info) {
+                        for (uint32_t i = 0; i < ns->op_info->params.size(); ++i) {
+                            const auto& pd = ns->op_info->params[i];
+                            if (pd.type == VIVID_PARAM_FILE || pd.type == VIVID_PARAM_TEXT) {
+                                auto fit = ns->file_param_values.find(pd.name);
+                                std::string current = (fit != ns->file_param_values.end()) ? fit->second : "";
+                                if (current != pd.default_string)
+                                    commands_.set_string_param(ns->node_id, pd.name, pd.default_string);
+                            } else {
+                                if (i < ns->param_values.size() && ns->param_values[i] != pd.default_value)
+                                    commands_.set_param(ns->node_id, pd.name, pd.default_value);
+                            }
+                        }
+                    }
                 }
             } else if (context_wire_idx_ >= 0) {
                 const auto& conns = snap_.connections;
@@ -163,6 +215,23 @@ void NodeGraphUI::handle_right_click() {
             return;
     }
 
+    // Right-click on param label in inspector — open param context menu
+    if (mouse_.x >= graph_right()) {
+        for (int i = 0; i < static_cast<int>(inspector_.label_rects.size()); ++i) {
+            const auto& r = inspector_.label_rects[i];
+            if (mouse_.x >= r.x && mouse_.x <= r.x + r.w &&
+                mouse_.y >= r.y && mouse_.y <= r.y + r.h) {
+                inspector_.param_ctx_menu_open = true;
+                inspector_.param_ctx_menu_x = mouse_.x;
+                inspector_.param_ctx_menu_y = mouse_.y;
+                inspector_.param_ctx_node_id = r.node_id;
+                inspector_.param_ctx_param_name = r.param_name;
+                return;
+            }
+        }
+        return;  // right-click in inspector but not on a label — ignore
+    }
+
     // Session grid right-click — context menu on card
     if (session_grid_open_ && mouse_.y >= session_strip_top()) {
         session_ctx_menu_open_ = false;
@@ -180,6 +249,7 @@ void NodeGraphUI::handle_right_click() {
         return;
     }
 
+    inspector_.param_ctx_menu_open = false;  // close param menu when opening graph context menu
     context_menu_open_ = false;
     context_node_has_shader_ = false;
     context_node_type_.clear();

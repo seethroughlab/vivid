@@ -100,6 +100,7 @@ public:
             pi.name = pd.name ? pd.name : "";
             pi.type = pd.type;
             pi.default_value = pd.default_value;
+            pi.default_string = pd.default_string ? pd.default_string : "";
             pi.min_value = pd.min_value;
             pi.max_value = pd.max_value;
             pi.choice_count = pd.choice_count;

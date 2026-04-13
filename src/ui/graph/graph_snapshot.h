@@ -54,6 +54,7 @@ struct ParamInfo {
     float default_value = 0.0f;
     float min_value = 0.0f;
     float max_value = 1.0f;
+    std::string default_string;  // default for FILE/TEXT params
     std::vector<std::string> choice_labels;
     uint32_t choice_count = 0;
 

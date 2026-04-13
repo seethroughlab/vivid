@@ -174,8 +174,11 @@ void NodeGraphUI::draw_inspector_knob(Renderer2D& tr, const NodeSnapshot& node,
     std::string label_text = truncate_text(tr, pd.name, panel_w - 18.0f, 0.8f);
     float label_w = tr.text_width(label_text.c_str(), 0.8f);
     float label_x = cx - label_w * 0.5f;
+    // Brighten label for non-default params
+    const float* knob_label_clr = (val != pd.default_value) ? style_.bright_text.data()
+                                                            : style_.dim_text.data();
     tr.draw_text(label_x, label_y, label_text.c_str(),
-                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, 0.85f);
+                 knob_label_clr[0], knob_label_clr[1], knob_label_clr[2], 1.0f, 0.85f);
     inspector_.label_rects.push_back({label_x, label_y, label_w, tr.line_height() * 0.85f,
                             node.node_id, pd.name});
 
@@ -940,6 +943,16 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         py += tr.line_height() * scale + 2.0f;
     };
 
+    // Non-default check (used for label brightening)
+    bool is_non_default = false;
+    if (is_file || is_text) {
+        auto fit = node.file_param_values.find(pd.name);
+        std::string current_str = (fit != node.file_param_values.end()) ? fit->second : "";
+        is_non_default = (current_str != pd.default_string);
+    } else {
+        is_non_default = (val != pd.default_value);
+    }
+
     if (is_connected) {
         const auto* src_ns = snap_.find_node(conn.from_node);
         const float* dot_clr = src_ns ? node_accent_color(src_ns->is_gpu, src_ns->active_cadence) : style_.accent.data();
@@ -955,11 +968,14 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
     float max_label_w = panel_w * (show_inline_value ? (plan.compact ? 0.62f : 0.52f)
                                                      : (plan.compact ? 0.78f : 0.82f));
     std::string display_label = truncate_text(tr, pd.name, max_label_w, label_scale);
+    // Brighten label for non-default params; dim for connected params
+    const float* label_clr = is_connected ? style_.dim_text.data()
+                           : is_non_default ? style_.bright_text.data()
+                           : style_.dim_text.data();
+    float label_alpha = is_connected ? 0.75f : 1.0f;
     tr.draw_text(px, py, display_label.c_str(),
-                 is_connected ? style_.dim_text[0] : 0.8f,
-                 is_connected ? style_.dim_text[1] : 0.82f,
-                 is_connected ? style_.dim_text[2] : 0.85f,
-                 is_connected ? 0.75f : 1.0f, label_scale);
+                 label_clr[0], label_clr[1], label_clr[2],
+                 label_alpha, label_scale);
     inspector_.label_rects.push_back({px, py, tr.text_width(display_label.c_str(), label_scale),
                             tr.line_height() * label_scale, node.node_id, pd.name});
 

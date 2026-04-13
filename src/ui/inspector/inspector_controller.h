@@ -185,6 +185,12 @@ public:
     std::string label_hover_param_name;
     std::string label_hover_node_id;
 
+    // Param right-click context menu
+    bool param_ctx_menu_open = false;
+    float param_ctx_menu_x = 0, param_ctx_menu_y = 0;
+    std::string param_ctx_node_id;
+    std::string param_ctx_param_name;
+
     int active_slider_idx = -1;
     std::string active_slider_node_id;
     std::string active_slider_param_name;
