@@ -6,7 +6,7 @@ struct DrumSequencerAu : DrumSequencerCore, vivid::AudioProcessable {
 
     void process_audio(const VividAudioContext* ctx) override {
         float local_out[1] = {};
-        float beat_phase = vivid::resolve_clock_phase(
+        float beat_phase = vivid::resolve_bar_phase(
             clock_source.int_value(), vivid::audio_scalar_block_start(ctx, 0), vivid::metronome_transport(ctx));
         float reset = vivid::audio_scalar_block_start(ctx, 1);
         compute(beat_phase, reset, ctx->param_values,

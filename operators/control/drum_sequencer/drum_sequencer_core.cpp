@@ -73,13 +73,15 @@ DrumSequencerCore::DrumSequencerCore() {
 }
 
 void DrumSequencerCore::collect_params(std::vector<vivid::ParamBase*>& out) {
-    out.push_back(&steps);   // 0
-    out.push_back(&swing);   // 1
+    out.push_back(&steps);        // 0
+    out.push_back(&swing);        // 1
+    out.push_back(&clock_source); // 2
+    out.push_back(&midi_channel); // 3
 
     // Hide note/grid/mod params — rendered by custom inspector
     size_t hidden_start = out.size();
 
-    // Note params: 2..7
+    // Note params: 4..9
     out.push_back(&kick_note);
     out.push_back(&snare_note);
     out.push_back(&hat_note);
@@ -269,9 +271,6 @@ void DrumSequencerCore::collect_params(std::vector<vivid::ParamBase*>& out) {
 
     for (size_t i = hidden_start; i < out.size(); ++i)
         out[i]->display_hint = VIVID_DISPLAY_HIDDEN;
-
-    out.push_back(&midi_channel); // 296
-    out.push_back(&clock_source); // 297
 }
 
 void DrumSequencerCore::collect_ports(std::vector<VividPortDescriptor>& out) {
@@ -286,6 +285,14 @@ void DrumSequencerCore::compute(float phase, float reset_in, const float* params
              float* output_values, VividLaneOutput* /*out_spreads*/,
              void** custom_outputs, uint32_t custom_output_count) {
     namespace layout = vivid_sequencers::drum_layout;
+
+    // Reset phase when clock source changes so the pattern restarts immediately
+    int cs = clock_source.int_value();
+    if (cs != prev_clock_source_) {
+        phase_offset_ = phase;
+        prev_clock_source_ = cs;
+    }
+
     bool reset = reset_in > 0.5f;
 
     // Rising-edge reset: capture current phase as offset

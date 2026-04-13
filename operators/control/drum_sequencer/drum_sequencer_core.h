@@ -24,14 +24,14 @@ struct DrumSequencerCore : vivid::OperatorBase {
     static constexpr bool kTimeDependent = false;
 
     // Param index layout:
-    // [0]=steps  [1]=swing
-    // [2..7]=kick_note, snare_note, hat_note, oh_note, clap_note, tom_note
-    // [8..23]=kick_0..15  [24..39]=snare_0..15  [40..55]=hat_0..15
-    // [56..71]=oh_0..15   [72..87]=clap_0..15   [88..103]=tom_0..15
-    // Mod A: [104..119]=kick_ma_0..15  [120..135]=snare_ma_0..15  [136..151]=hat_ma_0..15
-    //        [152..167]=oh_ma_0..15    [168..183]=clap_ma_0..15   [184..199]=tom_ma_0..15
-    // Mod B: [200..215]=kick_mb_0..15  [216..231]=snare_mb_0..15  [232..247]=hat_mb_0..15
-    //        [248..263]=oh_mb_0..15    [264..279]=clap_mb_0..15   [280..295]=tom_mb_0..15
+    // [0]=steps  [1]=swing  [2]=clock_source  [3]=midi_channel
+    // [4..9]=kick_note, snare_note, hat_note, oh_note, clap_note, tom_note
+    // [10..25]=kick_0..15  [26..41]=snare_0..15  [42..57]=hat_0..15
+    // [58..73]=oh_0..15    [74..89]=clap_0..15   [90..105]=tom_0..15
+    // Mod A: [106..121]=kick_ma_0..15  [122..137]=snare_ma_0..15  [138..153]=hat_ma_0..15
+    //        [154..169]=oh_ma_0..15    [170..185]=clap_ma_0..15   [186..201]=tom_ma_0..15
+    // Mod B: [202..217]=kick_mb_0..15  [218..233]=snare_mb_0..15  [234..249]=hat_mb_0..15
+    //        [250..265]=oh_mb_0..15    [266..281]=clap_mb_0..15   [282..297]=tom_mb_0..15
 
     vivid::Param<int>   steps {"steps",  16, 1, 16};
     vivid::Param<float> swing {"swing",  0.0f, 0.0f, 0.5f};
@@ -376,5 +376,6 @@ protected:
     int prev_step_ = -1;
     float phase_offset_ = 0.0f;
     bool prev_reset_ = false;
+    int prev_clock_source_ = -1;
     VividMidiBuffer midi_buf_ = {};
 };

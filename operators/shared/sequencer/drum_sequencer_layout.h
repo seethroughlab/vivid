@@ -24,10 +24,10 @@ inline constexpr std::array<const char*, kDrumCount> kModBPrefixes = {
     "kick_mb_", "snare_mb_", "hat_mb_", "oh_mb_", "clap_mb_", "tom_mb_"
 };
 
-inline constexpr std::array<int, kDrumCount> kNoteParamIndices = {2, 3, 4, 5, 6, 7};
-inline constexpr std::array<int, kDrumCount> kTriggerParamBases = {8, 24, 40, 56, 72, 88};
-inline constexpr std::array<int, kDrumCount> kModAParamBases = {104, 120, 136, 152, 168, 184};
-inline constexpr std::array<int, kDrumCount> kModBParamBases = {200, 216, 232, 248, 264, 280};
+inline constexpr std::array<int, kDrumCount> kNoteParamIndices = {4, 5, 6, 7, 8, 9};
+inline constexpr std::array<int, kDrumCount> kTriggerParamBases = {10, 26, 42, 58, 74, 90};
+inline constexpr std::array<int, kDrumCount> kModAParamBases = {106, 122, 138, 154, 170, 186};
+inline constexpr std::array<int, kDrumCount> kModBParamBases = {202, 218, 234, 250, 266, 282};
 
 inline constexpr std::size_t kStepOutputIndex = 6;
 inline constexpr std::size_t kModAOutputBase = 7;
