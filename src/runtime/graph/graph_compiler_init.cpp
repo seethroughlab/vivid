@@ -296,6 +296,9 @@ void GraphCompiler::init_audio_state(CompiledNode& cn,
         }
     }
     a.custom_output_ptrs.resize(a.custom_output_count, nullptr);
+
+    // Pre-allocate audio-thread-local param buffer (mirrors cn.param_values).
+    a.audio_local_params = cn.param_values;
 }
 
 } // namespace vivid

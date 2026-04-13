@@ -188,6 +188,11 @@ struct AudioNodeState {
     // Analysis output port indices (rms, peak, waveform).
     std::unordered_map<std::string, uint32_t> analysis_output_port_indices;
 
+    // Audio-thread-local copy of param_values.  The audio callback writes
+    // snapshot params here instead of cn.param_values, eliminating a race
+    // where the audio thread could revert a main-thread set_param write.
+    std::vector<float> audio_local_params;
+
     // RT-safe per-audio-port telemetry for debugging/introspection.
     std::unique_ptr<AudioPortDebugTelemetry[]> input_port_debug;
     std::unique_ptr<AudioPortDebugTelemetry[]> output_port_debug;
