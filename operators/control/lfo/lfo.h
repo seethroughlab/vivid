@@ -144,6 +144,7 @@ struct LFO : vivid::OperatorBase {
         out.push_back({"gate",       VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
         out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
         out.push_back({"value",      VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"phase",      VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     // ── Shared helpers ──────────────────────────────────────────────────
@@ -185,7 +186,8 @@ struct LFO : vivid::OperatorBase {
                                     int wf, int rm, int sync_div, int pol, int dist, int seed_val,
                                     float ph_off, float fade, float gate_in, float phase_in,
                                     double dt, float slew_amt,
-                                    const vivid::MetronomeTransport& metronome) {
+                                    const vivid::MetronomeTransport& metronome,
+                                    float* phase_out = nullptr) {
         // Seed handling: reinit RNG when seed param changes (0 = free-running)
         if (seed_val != st.prev_seed) {
             if (seed_val > 0) st.noise_seed = static_cast<uint32_t>(seed_val);
@@ -269,6 +271,8 @@ struct LFO : vivid::OperatorBase {
             output *= st.elapsed_time / fade;
         }
 
+        if (phase_out) *phase_out = static_cast<float>(phase);
+
         return output;
     }
 
@@ -289,7 +293,8 @@ struct LFO : vivid::OperatorBase {
             polarity.int_value(), distribution.int_value(),
             seed.int_value(), static_cast<float>(phase_offset.value),
             fade_in.value, gate_in, phase_in, dt, slew.value,
-            vivid::metronome_transport(ctx));
+            vivid::metronome_transport(ctx),
+            &ctx->output_values[1]);
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override;

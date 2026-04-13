@@ -31,7 +31,8 @@ struct LfoAu : LFO, vivid::AudioProcessable {
                 fade_in.value,
                 vivid::audio_scalar_sample(ctx, 0, i),
                 vivid::audio_scalar_sample(ctx, 1, i),
-                sample_dt, slew.value, sample_metronome);
+                sample_dt, slew.value, sample_metronome,
+                &ctx->output_buffers[1][i]);
         }
     }
 };

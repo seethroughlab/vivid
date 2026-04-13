@@ -66,7 +66,7 @@ void LFO::draw_thumbnail(const VividThumbnailContext* ctx) {
     int waveform = (ctx->param_count > 5) ? static_cast<int>(ctx->param_values[5]) : 0;
     int polarity = (ctx->param_count > 7) ? static_cast<int>(ctx->param_values[7]) : 0;
     int distribution = (ctx->param_count > 9) ? static_cast<int>(ctx->param_values[9]) : 0;
-    float current = (ctx->output_count > 0) ? ctx->output_values[0] : 0.0f;
+    float phase = (ctx->output_count > 1) ? ctx->output_values[1] : 0.0f;
     bool unipolar = polarity > 0;
 
     vivid::draw_plot::draw_thumb_background(d, o, w, h);
@@ -80,20 +80,45 @@ void LFO::draw_thumbnail(const VividThumbnailContext* ctx) {
         return unipolar ? (raw * 0.5f + 0.5f) * 2.0f - 1.0f : raw;
     };
 
+    // Plot area geometry
+    constexpr float plot_x = 8.0f;
+    constexpr float plot_top = 22.0f;
+    constexpr float pad = 2.0f;
+    float plot_w = w - 16.0f;
+    float plot_h = h - 30.0f;
+
     vivid::draw_plot::draw_waveform_plot(d, o,
-                                         8.0f, 22.0f, w - 16.0f, h - 30.0f,
+                                         plot_x, plot_top, plot_w, plot_h,
                                          sample_fn,
                                          {0.31f, 0.51f, 0.75f, 0.35f},
                                          {0.63f, 0.78f, 0.94f, 0.95f},
                                          {0.24f, 0.25f, 0.29f, 0.7f},
                                          !unipolar,
-                                         2.0f,
-                                         2.0f);
+                                         1.0f,
+                                         pad);
 
-    float current_norm = unipolar
-        ? std::clamp(current, 0.0f, 1.0f)
-        : std::clamp(current * 0.5f + 0.5f, 0.0f, 1.0f);
-    float y = 24.0f + (1.0f - current_norm) * std::max(1.0f, h - 34.0f);
-    vivid::draw_plot::draw_playhead_line(d, o, 8.0f, y, w - 8.0f, y,
-                                         {1.0f, 0.78f, 0.31f, 0.75f}, 2.0f);
+    // Vertical playhead at current phase + dot at waveform intersection
+    float p = phase - std::floor(phase);
+    float cursor_x = plot_x + pad + p * std::max(1.0f, plot_w - 2.0f * pad);
+    float inner_top = plot_top + pad;
+    float inner_h = std::max(1.0f, plot_h - 2.0f * pad);
+    float center_y = inner_top + inner_h * 0.5f;
+
+    // Vertical cursor line
+    VividColor cursor_color = {1.0f, 0.78f, 0.31f, 0.45f};
+    vivid::draw_plot::draw_playhead_line(d, o, cursor_x, inner_top, cursor_x, inner_top + inner_h,
+                                         cursor_color, 1.0f);
+
+    // Dot at the waveform intersection
+    float sample = std::clamp(sample_fn(p), -1.0f, 1.0f);
+    float dot_y = center_y - sample * (inner_h * 0.45f);
+    constexpr float dot_r = 3.0f;
+    VividColor dot_color = {1.0f, 0.78f, 0.31f, 0.95f};
+    if (d.draw_rounded_rect) {
+        d.draw_rounded_rect(o, cursor_x - dot_r, dot_y - dot_r,
+                            dot_r * 2.0f, dot_r * 2.0f, dot_r, dot_color);
+    } else if (d.draw_rect) {
+        d.draw_rect(o, cursor_x - dot_r, dot_y - dot_r,
+                    dot_r * 2.0f, dot_r * 2.0f, dot_color);
+    }
 }
