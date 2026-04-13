@@ -26,13 +26,13 @@
             "params": {
                 "waveform": 0.0,
                 "polarity": 1.0,
-                "offset": 0.10000000149011612,
-                "frequency": 0.4000000059604645,
-                "amplitude": 0.03999999910593033
+                "offset": 0.15,
+                "frequency": 0.4,
+                "amplitude": 0.08
             },
             "layout": {
                 "x": -223.5625,
-                "y": 800.6015625
+                "y": 800.60156
             }
         },
         "lfo_x": {
@@ -40,12 +40,12 @@
             "params": {
                 "waveform": 0.0,
                 "offset": 0.0,
-                "frequency": 0.20000000298023224,
-                "amplitude": 0.4000000059604645
+                "frequency": 0.2,
+                "amplitude": 0.4
             },
             "layout": {
                 "x": -215.84375,
-                "y": 343.65234375
+                "y": 343.65234
             }
         },
         "lfo_y": {
@@ -54,21 +54,21 @@
                 "waveform": 0.0,
                 "phase_offset": 0.25,
                 "offset": 0.0,
-                "frequency": 0.15000000596046448,
-                "amplitude": 0.30000001192092896
+                "frequency": 0.15,
+                "amplitude": 0.3
             },
             "layout": {
-                "x": -242.3515625,
-                "y": 545.8515625
+                "x": -242.35156,
+                "y": 545.85156
             }
         },
         "metaball": {
             "type": "Metaball",
             "params": {
-                "softness": 0.012000000104308128,
+                "softness": 0.012,
                 "color_mode": 0.0,
-                "glow": 0.3799999952316284,
-                "threshold": 2.5,
+                "glow": 0.38,
+                "threshold": 1.5,
                 "count": 8.0,
                 "render_mode": 0.0
             },
@@ -81,9 +81,9 @@
             "type": "Repeat",
             "params": {
                 "seed": 2377.0,
-                "spread": 0.851435124874115,
-                "mode": 4.0,
-                "count": 39.0
+                "spread": 0.6,
+                "mode": 1.0,
+                "count": 8.0
             },
             "layout": {
                 "x": 60.0,
@@ -121,8 +121,8 @@
         }
     ],
     "viewport": {
-        "pan_x": 428.4453125,
-        "pan_y": -103.92578125,
+        "pan_x": 428.4453,
+        "pan_y": -103.92578,
         "zoom": 1.0
     },
     "sticky_notes": [
@@ -137,7 +137,7 @@
         },
         {
             "id": "note_repeat",
-            "text": "**Repeat (linear, spread=0.6)** The X LFO drives 8 lanes, each offset by a linear spread. Ball 0 is at (center\u22120.6), ball 7 at (center+0.6). All drift together but stay spaced out.",
+            "text": "**Repeat (linear, spread=0.6)** The X LFO drives 8 lanes, each offset by a linear spread. Ball 0 is at (center−0.6), ball 7 at (center+0.6). All drift together but stay spaced out.",
             "x": -220.0,
             "y": 200.0,
             "width": 300.0,
@@ -146,7 +146,7 @@
         },
         {
             "id": "note_scalar",
-            "text": "**Scalar auto-broadcast** Y and radius LFOs connect as scalars \u2014 they automatically apply to all 8 lanes. No Repeat needed for shared values.",
+            "text": "**Scalar auto-broadcast** Y and radius LFOs connect as scalars — they automatically apply to all 8 lanes. No Repeat needed for shared values.",
             "x": 90.0,
             "y": 200.0,
             "width": 260.0,
