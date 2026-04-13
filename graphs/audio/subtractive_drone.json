@@ -30,20 +30,18 @@
                 "bpm": 120.0
             }
         },
-        "lfo": {
-            "type": "LfoAu",
+        "comp_text": {
+            "type": "Composite",
             "params": {
-                "frequency": 0.3,
-                "amplitude": 3.0,
-                "waveform": 0
+                "blend_mode": 1.0
             }
         },
         "env_amp": {
             "type": "EnvelopeAu",
             "params": {
-                "attack": 0.005,
-                "decay": 0.2,
                 "sustain": 0.6,
+                "decay": 0.2,
+                "attack": 0.005,
                 "release": 0.8,
                 "amplitude": 1.0
             }
@@ -51,97 +49,91 @@
         "env_filter": {
             "type": "EnvelopeAu",
             "params": {
-                "attack": 0.005,
-                "decay": 0.2,
                 "sustain": 0.6,
+                "decay": 0.2,
+                "attack": 0.005,
                 "release": 0.8,
                 "amplitude": 12.0
-            }
-        },
-        "osc": {
-            "type": "Oscillator",
-            "params": {
-                "frequency": 110.0,
-                "amplitude": 0.7,
-                "waveform": 1
-            }
-        },
-        "noise": {
-            "type": "Noise",
-            "params": {
-                "color": 0,
-                "amplitude": 0.15
-            }
-        },
-        "mixer": {
-            "type": "Mixer",
-            "params": {
-                "gain_1": 1.0,
-                "gain_2": 1.0
             }
         },
         "filter": {
             "type": "Filter",
             "params": {
-                "cutoff": 400.0,
                 "resonance": 0.9,
-                "mode": 0
+                "mode": 0.0,
+                "cutoff": 400.0
             }
         },
         "gain": {
             "type": "Gain",
             "params": {
-                "gain": 0.8
+                "gain": 0.15
             }
         },
-        "out": {
-            "type": "audio_out",
-            "params": {}
+        "hsv_vis": {
+            "type": "HSV",
+            "params": {
+                "value": 0.0,
+                "saturation": -0.5,
+                "hue_shift": 0.0
+            }
+        },
+        "lfo": {
+            "type": "LfoAu",
+            "params": {
+                "waveform": 0.0,
+                "frequency": 0.3,
+                "amplitude": 3.0
+            }
         },
         "lfo_hue": {
             "type": "LfoAu",
             "params": {
-                "frequency": 0.05,
-                "amplitude": 180.0,
+                "waveform": 0.0,
                 "offset": 180.0,
-                "waveform": 0
+                "frequency": 0.05,
+                "amplitude": 180.0
+            }
+        },
+        "mixer": {
+            "type": "Mixer",
+            "params": {
+                "gain_2": 1.0,
+                "gain_1": 1.0
+            }
+        },
+        "noise": {
+            "type": "Noise",
+            "params": {
+                "color": 0.0,
+                "amplitude": 0.15
             }
         },
         "noise_vis": {
             "type": "NoiseTexture",
             "params": {
                 "speed": 0.6,
+                "octaves": 3.0,
                 "scale": 6.0,
-                "octaves": 3,
-                "channels": 0
+                "channels": 0.0
             }
         },
-        "text_vis": {
-            "type": "Text",
+        "osc": {
+            "type": "Oscillator",
             "params": {
-                "text": "DRONE",
-                "size": 0.18,
-                "r": 1.0,
-                "g": 1.0,
-                "b": 1.0,
-                "bg_r": 0.0,
-                "bg_g": 0.0,
-                "bg_b": 0.0,
-                "x": -0.65,
-                "y": 0.72
+                "waveform": 1.0,
+                "frequency": 110.0,
+                "amplitude": 0.7
             }
         },
-        "comp_text": {
-            "type": "Composite",
-            "params": {
-                "blend_mode": 1
-            }
+        "out": {
+            "type": "audio_out"
         },
         "pixelate": {
             "type": "Pixelate",
             "params": {
-                "size_x": 12.0,
-                "size_y": 12.0
+                "size_y": 12.0,
+                "size_x": 12.0
             }
         },
         "posterize": {
@@ -150,25 +142,31 @@
                 "levels": 4.0
             }
         },
-        "hsv_vis": {
-            "type": "HSV",
-            "params": {
-                "hue_shift": 0.0,
-                "saturation": -0.5,
-                "value": 0.0
-            }
-        },
         "scanlines": {
             "type": "Scanlines",
             "params": {
-                "spacing": 3.0,
                 "thickness": 0.5,
+                "spacing": 3.0,
                 "intensity": 0.4
             }
         },
+        "text_vis": {
+            "type": "Text",
+            "params": {
+                "y": 0.72,
+                "size": 0.18,
+                "g": 1.0,
+                "bg_r": 0.0,
+                "r": 1.0,
+                "bg_g": 0.0,
+                "bg_b": 0.0,
+                "x": -0.65,
+                "b": 1.0,
+                "text": "DRONE"
+            }
+        },
         "vout": {
-            "type": "video_out",
-            "params": {}
+            "type": "video_out"
         }
     },
     "connections": [
@@ -247,10 +245,15 @@
             "to": "vout/input"
         }
     ],
+    "viewport": {
+        "pan_x": 193.69922,
+        "pan_y": 91.58984,
+        "zoom": 1.0
+    },
     "sticky_notes": [
         {
             "id": "note_1",
-            "text": "**Dual-envelope technique** One envelope shapes the filter cutoff, another shapes the amplitude\u2014both triggered by the same clock",
+            "text": "**Dual-envelope technique** One envelope shapes the filter cutoff, another shapes the amplitude—both triggered by the same clock",
             "x": -100.0,
             "y": -80.0,
             "width": 280.0,

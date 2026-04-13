@@ -16,72 +16,70 @@
         "domains": [
             "audio"
         ],
-        "requires_packages": [],
         "featured_rank": 29
     },
     "nodes": {
-        "noise_white": {
-            "type": "Noise",
-            "params": {
-                "color": 0,
-                "amplitude": 0.5
-            }
-        },
-        "noise_pink": {
-            "type": "Noise",
-            "params": {
-                "color": 1,
-                "amplitude": 0.6
-            }
-        },
-        "noise_brown": {
-            "type": "Noise",
-            "params": {
-                "color": 2,
-                "amplitude": 0.7
-            }
-        },
         "filter_hi": {
             "type": "Filter",
             "params": {
-                "cutoff": 6000.0,
-                "resonance": 1.2,
-                "mode": 1
-            }
-        },
-        "filter_mid": {
-            "type": "Filter",
-            "params": {
-                "cutoff": 1200.0,
-                "resonance": 1.8,
-                "mode": 2
+                "resonance": 0.3,
+                "mode": 1.0,
+                "cutoff": 6000.0
             }
         },
         "filter_lo": {
             "type": "Filter",
             "params": {
-                "cutoff": 300.0,
                 "resonance": 0.8,
-                "mode": 0
+                "mode": 0.0,
+                "cutoff": 300.0
             }
         },
-        "mixer": {
-            "type": "Mixer",
+        "filter_mid": {
+            "type": "Filter",
             "params": {
-                "gain_1": 0.7,
-                "gain_2": 0.8,
-                "gain_3": 0.9
+                "resonance": 1.8,
+                "mode": 2.0,
+                "cutoff": 1200.0
             }
         },
         "gain": {
             "type": "Gain",
             "params": {
-                "gain": 0.5
+                "gain": 0.15
+            }
+        },
+        "mixer": {
+            "type": "Mixer",
+            "params": {
+                "gain_3": 0.9,
+                "gain_2": 0.8,
+                "gain_1": 0.7
+            }
+        },
+        "noise_brown": {
+            "type": "Noise",
+            "params": {
+                "color": 2.0,
+                "amplitude": 0.7
+            }
+        },
+        "noise_pink": {
+            "type": "Noise",
+            "params": {
+                "color": 1.0,
+                "amplitude": 0.6
+            }
+        },
+        "noise_white": {
+            "type": "Noise",
+            "params": {
+                "color": 0.0,
+                "amplitude": 0.5
             }
         },
         "out": {
-            "type": "audio_out",
-            "params": {}
+            "type": "audio_out"
         }
     },
     "connections": [
@@ -117,5 +115,10 @@
             "from": "gain/output",
             "to": "out/input"
         }
-    ]
+    ],
+    "viewport": {
+        "pan_x": 193.69922,
+        "pan_y": 91.58984,
+        "zoom": 1.0
+    }
 }

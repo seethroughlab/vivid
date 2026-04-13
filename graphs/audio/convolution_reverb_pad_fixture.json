@@ -5,23 +5,67 @@
         "id": "convolution_reverb_pad_fixture",
         "title": "Convolution Reverb Pad Fixture",
         "description": "Listening fixture for long sustained material through the stereo ConvolutionReverb cathedral preset.",
-        "tags": ["audio", "reverb", "convolution", "pad", "listening-fixture"],
+        "tags": [
+            "audio",
+            "reverb",
+            "convolution",
+            "pad",
+            "listening-fixture"
+        ],
         "difficulty": "beginner",
-        "domains": ["audio"],
-        "requires_packages": []
+        "domains": [
+            "audio"
+        ]
     },
     "nodes": {
-        "osc": { "type": "Oscillator", "params": { "frequency": 146.83, "amplitude": 0.25, "waveform": 1 } },
-        "filter": { "type": "Filter", "params": { "cutoff": 1200.0, "resonance": 0.6, "mode": 0 } },
+        "filter": {
+            "type": "Filter",
+            "params": {
+                "resonance": 0.6,
+                "mode": 0.0,
+                "cutoff": 1200.0
+            }
+        },
+        "osc": {
+            "type": "Oscillator",
+            "params": {
+                "waveform": 1.0,
+                "frequency": 146.83,
+                "amplitude": 0.12
+            }
+        },
+        "out": {
+            "type": "audio_out"
+        },
         "verb": {
             "type": "ConvolutionReverb",
-            "params": { "ir_preset": 3, "mix": 0.55, "pre_delay_ms": 24.0, "width": 1.45, "tail_seconds": 6.0, "ir_gain_db": -3.0 }
-        },
-        "out": { "type": "audio_out", "params": {} }
+            "params": {
+                "ir_gain_db": -3.0,
+                "pre_delay_ms": 24.0,
+                "mix": 0.35,
+                "width": 1.45,
+                "tail_seconds": 6.0,
+                "ir_preset": 3.0
+            }
+        }
     },
     "connections": [
-        { "from": "osc/output", "to": "filter/input" },
-        { "from": "filter/output", "to": "verb/input" },
-        { "from": "verb/output", "to": "out/input" }
-    ]
+        {
+            "from": "osc/output",
+            "to": "filter/input"
+        },
+        {
+            "from": "filter/output",
+            "to": "verb/input"
+        },
+        {
+            "from": "verb/output",
+            "to": "out/input"
+        }
+    ],
+    "viewport": {
+        "pan_x": 193.69922,
+        "pan_y": 91.58984,
+        "zoom": 1.0
+    }
 }
