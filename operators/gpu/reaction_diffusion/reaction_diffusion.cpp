@@ -349,7 +349,10 @@ struct ReactionDiffusion : vivid::OperatorBase, vivid::GpuProcessable {
             su.seed_radius   = seed_radius.value;
             wgpuQueueWriteBuffer(ctx->queue, sim_uniform_buf_, 0, &su, sizeof(su));
 
-            vivid::gpu::run_pass(ctx->command_encoder, sim_pipeline_, sim_bg_[0],
+            // Use sim_bg_[1] (reads state_view_[1]) to avoid read/write conflict
+            // on the render target state_view_[0]. The seed shader doesn't sample
+            // the texture — it generates from a distance function.
+            vivid::gpu::run_pass(ctx->command_encoder, sim_pipeline_, sim_bg_[1],
                                  state_view_[0], "RD Seed");
             ping_ = 0;
             needs_seed_ = false;

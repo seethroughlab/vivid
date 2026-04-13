@@ -410,9 +410,11 @@ struct CellularAutomata : vivid::OperatorBase, vivid::GpuProcessable {
             su.fill_density  = fill_density.value;
             wgpuQueueWriteBuffer(ctx->queue, sim_uniform_buf_, 0, &su, sizeof(su));
 
+            // Bind state_view_[1] as texture input (not sampled during randomize)
+            // to avoid read/write conflict on the render target state_view_[0].
             WGPUBindGroup rand_bg = vivid::gpu::create_standard_bind_group(
                 ctx->device, bind_layout_, sim_uniform_buf_, sizeof(SimUniforms),
-                linear_sampler_, &state_view_[0], 1, "CA Randomize BG");
+                linear_sampler_, &state_view_[1], 1, "CA Randomize BG");
             vivid::gpu::run_pass(ctx->command_encoder, sim_pipeline_, rand_bg,
                                  state_view_[0], "CA Randomize");
             vivid::gpu::release(rand_bg);
