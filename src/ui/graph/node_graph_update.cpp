@@ -475,7 +475,8 @@ void NodeGraphUI::check_relayout() {
                 rect.active_cadence = n.active_cadence;
                 rect.type_name = n.type_name;
                 bool has_ct = custom_thumb_nodes_.count(n.node_id) > 0;
-                float body_h = node_body_height(n.is_gpu, n.active_cadence, has_ct);
+                uint8_t ach = snap_.audio_channel_count(n.node_id);
+                float body_h = node_body_height(n.is_gpu, n.active_cadence, has_ct, ach);
                 uint32_t n_inputs = count_visible_input_ports(n, show_param_wires_);
                 uint32_t n_outputs = count_visible_output_ports(n, show_param_wires_);
                 uint32_t port_rows = std::max(n_inputs, n_outputs);
@@ -511,7 +512,8 @@ void NodeGraphUI::check_relayout() {
             rect.is_gpu = ns.is_gpu;
             rect.type_name = ns.type_name;
             bool has_ct = custom_thumb_nodes_.count(ns.node_id) > 0;
-            float body_h = node_body_height(ns.is_gpu, ns.active_cadence, has_ct);
+            uint8_t ach = snap_.audio_channel_count(ns.node_id);
+            float body_h = node_body_height(ns.is_gpu, ns.active_cadence, has_ct, ach);
             uint32_t n_inputs = count_visible_input_ports(ns, show_param_wires_);
             uint32_t n_outputs = count_visible_output_ports(ns, show_param_wires_);
             uint32_t port_rows = std::max(n_inputs, n_outputs);

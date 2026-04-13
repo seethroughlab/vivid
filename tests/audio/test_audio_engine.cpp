@@ -70,7 +70,7 @@ int main(int argc, char* argv[]) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             runtime.audio_frame_bridge().pull_from_audio(*runtime.compiled_graph());
             const auto& snap = audio_engine.analysis_read();
-            if (src_idx >= 0 && snap.rms[src_idx] > 0.01f) {
+            if (src_idx >= 0 && snap.rms[src_idx][0] > 0.01f) {
                 got_signal = true;
                 break;
             }
@@ -79,13 +79,13 @@ int main(int argc, char* argv[]) {
 
         const auto& snap = audio_engine.analysis_read();
         // src: no input, level=0.5 → output = 0.5 DC → RMS ≈ 0.5
-        check_float(snap.rms[src_idx], 0.5f, 0.05f, "src RMS ≈ 0.5");
-        check_float(snap.peak[src_idx], 0.5f, 0.05f, "src peak ≈ 0.5");
+        check_float(snap.rms[src_idx][0], 0.5f, 0.05f, "src RMS ≈ 0.5");
+        check_float(snap.peak[src_idx][0], 0.5f, 0.05f, "src peak ≈ 0.5");
 
         // dst: input=0.5 from src, level overridden by cross-cadence wire = 1.6
         //      output = 0.5 + 1.6 = 2.1 DC → RMS ≈ 2.1
-        check_float(snap.rms[dst_idx], 2.1f, 0.15f, "dst RMS ≈ 2.1");
-        check_float(snap.peak[dst_idx], 2.1f, 0.15f, "dst peak ≈ 2.1");
+        check_float(snap.rms[dst_idx][0], 2.1f, 0.15f, "dst RMS ≈ 2.1");
+        check_float(snap.peak[dst_idx][0], 2.1f, 0.15f, "dst peak ≈ 2.1");
     }
 
     // --- Test 4: Parameter update ---
@@ -110,7 +110,7 @@ int main(int argc, char* argv[]) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             runtime.audio_frame_bridge().pull_from_audio(*runtime.compiled_graph());
             const auto& snap = audio_engine.analysis_read();
-            if (dst_idx >= 0 && snap.rms[dst_idx] > 4.0f) {
+            if (dst_idx >= 0 && snap.rms[dst_idx][0] > 4.0f) {
                 updated = true;
                 break;
             }
@@ -118,8 +118,8 @@ int main(int argc, char* argv[]) {
         check(updated, "analysis updated after param change");
 
         const auto& snap = audio_engine.analysis_read();
-        check_float(snap.rms[src_idx], 0.5f, 0.05f, "src RMS still ≈ 0.5");
-        check_float(snap.rms[dst_idx], 4.5f, 0.25f, "dst RMS ≈ 4.5 after ctrl change");
+        check_float(snap.rms[src_idx][0], 0.5f, 0.05f, "src RMS still ≈ 0.5");
+        check_float(snap.rms[dst_idx][0], 4.5f, 0.25f, "dst RMS ≈ 4.5 after ctrl change");
     }
 
     // --- Test 5: pause/resume ---
@@ -137,7 +137,7 @@ int main(int argc, char* argv[]) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             runtime.audio_frame_bridge().pull_from_audio(*runtime.compiled_graph());
             const auto& snap = audio_engine.analysis_read();
-            if (src_idx >= 0 && snap.rms[src_idx] > 0.01f) {
+            if (src_idx >= 0 && snap.rms[src_idx][0] > 0.01f) {
                 resumed = true;
                 break;
             }

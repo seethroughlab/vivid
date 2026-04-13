@@ -50,9 +50,11 @@ struct ParamSnapshot {
 
 struct AnalysisSnapshot {
     static constexpr uint32_t kWaveformSamples = 1024;
-    std::vector<float> rms;   // [audio_node_idx]
-    std::vector<float> peak;  // [audio_node_idx]
-    std::vector<std::array<float, kWaveformSamples>> waveform; // [audio_node_idx]
+    static constexpr uint32_t kMaxWaveformChannels = 8;
+    std::vector<std::array<float, kMaxWaveformChannels>> rms;   // [audio_node_idx][channel]
+    std::vector<std::array<float, kMaxWaveformChannels>> peak;  // [audio_node_idx][channel]
+    std::vector<std::array<std::array<float, kWaveformSamples>, kMaxWaveformChannels>> waveform; // [audio_node_idx][channel]
+    std::vector<uint8_t> channel_counts; // [audio_node_idx] — actual channel count per node
     std::vector<std::vector<BridgeLaneSlot>> lane_outputs; // [audio_node_idx][output_port_idx]
     std::vector<std::vector<float>> scalar_outputs; // [audio_node_idx][output_port_idx]
 

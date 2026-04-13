@@ -1,0 +1,110 @@
+{
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "stereo_demo",
+        "title": "Hello Stereo",
+        "description": "A 440 Hz oscillator panned left-to-right by a slow LFO, demonstrating stereo audio output.",
+        "tags": [
+            "intro",
+            "audio",
+            "stereo",
+            "demo"
+        ],
+        "difficulty": "beginner",
+        "domains": [
+            "audio",
+            "control"
+        ],
+        "featured_rank": 0
+    },
+    "nodes": {
+        "gain1": {
+            "type": "Gain",
+            "params": {
+                "gain": 0.8
+            }
+        },
+        "lfo1": {
+            "type": "LfoAu",
+            "params": {
+                "waveform": 3.0,
+                "frequency": 0.5,
+                "amplitude": 1.0697606
+            },
+            "layout": {
+                "x": -33.294827,
+                "y": 563.07367
+            }
+        },
+        "osc1": {
+            "type": "Oscillator",
+            "params": {
+                "waveform": 3.0,
+                "frequency": 440.0,
+                "amplitude": 0.5
+            },
+            "layout": {
+                "x": -6.570427,
+                "y": 345.1659
+            }
+        },
+        "out1": {
+            "type": "audio_out"
+        },
+        "pan1": {
+            "type": "StereoPanWidth",
+            "params": {
+                "width": 1.0,
+                "pan": 0.0
+            },
+            "layout": {
+                "x": 240.30872,
+                "y": 468.87048
+            }
+        }
+    },
+    "connections": [
+        {
+            "from": "osc1/output",
+            "to": "pan1/input"
+        },
+        {
+            "from": "lfo1/value",
+            "to": "pan1/pan_cv"
+        },
+        {
+            "from": "pan1/output",
+            "to": "gain1/input"
+        },
+        {
+            "from": "gain1/output",
+            "to": "out1/input"
+        }
+    ],
+    "viewport": {
+        "pan_x": 332.68292,
+        "pan_y": -83.00586,
+        "zoom": 0.9221912
+    },
+    "sticky_notes": [
+        {
+            "id": "note_1",
+            "text": "**Stereo panning demo** Oscillator → StereoPanWidth → Gain → audio_out\nThe LFO slowly sweeps the pan from left to right.",
+            "x": 56.192184,
+            "y": 99.48505,
+            "width": 280.0,
+            "height": 80.0,
+            "color": 0
+        },
+        {
+            "id": "note_2",
+            "text": "Try changing the LFO **frequency** to pan faster, or adjust **width** on the panner.",
+            "x": -52.32144,
+            "y": 255.3749,
+            "width": 260.0,
+            "height": 60.0,
+            "color": 4
+        }
+    ]
+}

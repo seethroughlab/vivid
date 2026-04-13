@@ -330,7 +330,8 @@ void NodeGraphUI::handle_graph_click() {
                 const auto* ns = snap_.find_node(ar.node_id);
                 if (!ns) break;
                 bool has_ct = custom_thumb_nodes_.count(ar.node_id) > 0;
-                float body_h = node_body_height(rect.is_gpu, rect.active_cadence, has_ct);
+                uint8_t ach = snap_.audio_channel_count(ar.node_id);
+                float body_h = node_body_height(rect.is_gpu, rect.active_cadence, has_ct, ach);
                 uint32_t n_inputs  = count_visible_input_ports(*ns, show_param_wires_);
                 uint32_t n_outputs = count_visible_output_ports(*ns, show_param_wires_);
                 uint32_t port_rows = std::max(n_inputs, n_outputs);

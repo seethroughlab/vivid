@@ -92,9 +92,9 @@ static void test_audio_scalar_routing(const std::string& build_dir) {
 
     if (probe_idx >= 0) {
         const auto& analysis = audio_engine.analysis_read();
-        check(analysis.peak[probe_idx] > 0.001f,
+        check(analysis.peak[probe_idx][0] > 0.001f,
               "audio probe emits non-zero output from routed SCALAR input");
-        check(analysis.rms[probe_idx] > 0.001f,
+        check(analysis.rms[probe_idx][0] > 0.001f,
               "analysis reports non-zero output for routed SCALAR input");
     }
 

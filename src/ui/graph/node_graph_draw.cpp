@@ -101,7 +101,8 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         // --- Env body region ---
         float s_body_y = sy + s_accent_h;
         bool has_ct = custom_thumb_nodes_.count(r.node_id) > 0;
-        float body_h = node_body_height(r.is_gpu, r.active_cadence, has_ct);
+        uint8_t ach = snap_.audio_channel_count(r.node_id);
+        float body_h = node_body_height(r.is_gpu, r.active_cadence, has_ct, ach);
         float s_body_h = g_to_s(body_h);
 
         if (node_missing) {
@@ -208,53 +209,59 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
                 int ae_idx = ae_it->second;
                 if (ae_idx < static_cast<int>(snap_.audio_analysis.size())) {
                     const auto& analysis = snap_.audio_analysis[ae_idx];
+                    uint8_t ch_count = analysis.channel_count;
                     float wave_x = sx + g_to_s(4);
                     float wave_w = sw - g_to_s(8);
                     float wave_y = s_body_y + g_to_s(4);
                     float wave_h = s_body_h - g_to_s(10);
-                    float center_y = wave_y + wave_h * 0.5f;
+                    float ch_gap = (ch_count > 1) ? g_to_s(2) : 0.0f;
+                    float per_ch_h = (wave_h - ch_gap * std::max(0, static_cast<int>(ch_count) - 1))
+                                     / ch_count;
 
-                    // Center line
-                    tr.draw_rect(wave_x, center_y, wave_w, 1,
-                                 dcol[0], dcol[1], dcol[2], kWaveformCenterAlpha);
-
-                    // Waveform bars — downsample 1024 source samples to
-                    // ~256 visual bars (max-amplitude per bucket) to cut
-                    // vertex cost from 6144 to ~1536 with no visible loss.
                     constexpr uint32_t kWaveN = AudioNodeAnalysis::kWaveformSamples;
                     constexpr uint32_t kVisualBars = 256;
                     constexpr uint32_t kStride = kWaveN / kVisualBars; // 4
                     float bar_w = wave_w / kVisualBars;
 
-                    // Find peak absolute amplitude across all buckets so
-                    // signals outside [-1,1] (e.g. LFO) are scaled to fit.
-                    float max_abs = 0.0f;
-                    for (uint32_t bi = 0; bi < kVisualBars; ++bi) {
-                        for (uint32_t j = 0; j < kStride; ++j) {
-                            float a = std::fabs(analysis.waveform[bi * kStride + j]);
-                            if (a > max_abs) max_abs = a;
+                    for (uint8_t ch = 0; ch < ch_count; ++ch) {
+                        float ch_y = wave_y + ch * (per_ch_h + ch_gap);
+                        float ch_center = ch_y + per_ch_h * 0.5f;
+                        const auto& wf = analysis.waveform[ch];
+
+                        // Center line
+                        tr.draw_rect(wave_x, ch_center, wave_w, 1,
+                                     dcol[0], dcol[1], dcol[2], kWaveformCenterAlpha);
+
+                        // Find peak absolute amplitude for scaling
+                        float max_abs = 0.0f;
+                        for (uint32_t bi = 0; bi < kVisualBars; ++bi) {
+                            for (uint32_t j = 0; j < kStride; ++j) {
+                                float a = std::fabs(wf[bi * kStride + j]);
+                                if (a > max_abs) max_abs = a;
+                            }
+                        }
+                        float scale = (max_abs > 1.0f) ? 1.0f / max_abs : 1.0f;
+
+                        for (uint32_t bi = 0; bi < kVisualBars; ++bi) {
+                            float amp = wf[bi * kStride];
+                            for (uint32_t j = 1; j < kStride; ++j) {
+                                float s = wf[bi * kStride + j];
+                                if (std::fabs(s) > std::fabs(amp)) amp = s;
+                            }
+                            float bh = std::fabs(amp) * scale * per_ch_h * 0.5f;
+                            bh = std::max(0.5f, bh);
+                            float bx = wave_x + bi * bar_w;
+                            float by = (amp >= 0) ? ch_center - bh : ch_center;
+                            tr.draw_rect(bx, by, std::max(0.5f, bar_w), bh,
+                                         dcol[0], dcol[1], dcol[2], kWaveformBarAlpha);
                         }
                     }
-                    float scale = (max_abs > 1.0f) ? 1.0f / max_abs : 1.0f;
 
-                    for (uint32_t bi = 0; bi < kVisualBars; ++bi) {
-                        // Find the sample with the largest absolute amplitude in this bucket
-                        float amp = analysis.waveform[bi * kStride];
-                        for (uint32_t j = 1; j < kStride; ++j) {
-                            float s = analysis.waveform[bi * kStride + j];
-                            if (std::fabs(s) > std::fabs(amp)) amp = s;
-                        }
-                        float bh = std::fabs(amp) * scale * wave_h * 0.5f;
-                        bh = std::max(0.5f, bh);
-                        float bx = wave_x + bi * bar_w;
-                        float by = (amp >= 0) ? center_y - bh : center_y;
-                        tr.draw_rect(bx, by, std::max(0.5f, bar_w), bh,
-                                     dcol[0], dcol[1], dcol[2], kWaveformBarAlpha);
-                    }
-
-                    // Peak meter strip at bottom
+                    // Peak meter strip at bottom (max across all channels)
                     float peak_y = s_body_y + s_body_h - g_to_s(4);
-                    float pk = std::min(1.0f, analysis.peak);
+                    float pk = 0.0f;
+                    for (uint8_t ch = 0; ch < ch_count; ++ch)
+                        pk = std::max(pk, std::min(1.0f, analysis.peak[ch]));
                     tr.draw_rect(wave_x, peak_y, wave_w * pk, g_to_s(2),
                                  dcol[0], dcol[1], dcol[2], 0.9f);
                 }

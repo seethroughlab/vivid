@@ -64,7 +64,7 @@ int main(int argc, char* argv[]) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         runtime.audio_frame_bridge().pull_from_audio(*runtime.compiled_graph());
             const auto& snap = audio_engine.analysis_read();
-            if (audio_idx >= 0 && snap.rms[audio_idx] > 5.0f) {
+            if (audio_idx >= 0 && snap.rms[audio_idx][0] > 5.0f) {
             got_signal = true;
             break;
         }
@@ -72,7 +72,7 @@ int main(int argc, char* argv[]) {
     check(got_signal, "audio callback produced signal from lane array");
     {
         const auto& snap = audio_engine.analysis_read();
-        check_float(snap.rms[audio_idx], 6.0f, 0.5f, "RMS ≈ 6.0 (sum of [1,2,3])");
+        check_float(snap.rms[audio_idx][0], 6.0f, 0.5f, "RMS ≈ 6.0 (sum of [1,2,3])");
     }
 
     // --- Test 3: Lane array echoed back to the frame world ---
@@ -120,7 +120,7 @@ int main(int argc, char* argv[]) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             runtime.audio_frame_bridge().pull_from_audio(*runtime.compiled_graph());
             const auto& snap = audio_engine.analysis_read();
-            if (audio_idx >= 0 && snap.rms[audio_idx] > 11.0f) {
+            if (audio_idx >= 0 && snap.rms[audio_idx][0] > 11.0f) {
                 updated = true;
                 break;
             }
@@ -128,7 +128,7 @@ int main(int argc, char* argv[]) {
         check(updated, "RMS updated after base change");
 
         const auto& snap = audio_engine.analysis_read();
-        check_float(snap.rms[audio_idx], 12.0f, 1.0f, "RMS ≈ 12.0 (sum of [2,4,6])");
+        check_float(snap.rms[audio_idx][0], 12.0f, 1.0f, "RMS ≈ 12.0 (sum of [2,4,6])");
 
         // Check echo lane array updated
         const vivid::CompiledNode* audio_ns = runtime.compiled_graph()->find_node("audio");
@@ -166,7 +166,7 @@ int main(int argc, char* argv[]) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             runtime.audio_frame_bridge().pull_from_audio(*runtime.compiled_graph());
             const auto& snap = audio_engine.analysis_read();
-            if (audio_idx >= 0 && snap.rms[audio_idx] < 0.5f) {
+            if (audio_idx >= 0 && snap.rms[audio_idx][0] < 0.5f) {
                 zeroed = true;
                 break;
             }
@@ -174,7 +174,7 @@ int main(int argc, char* argv[]) {
         check(zeroed, "RMS dropped to ~0 with empty lane array");
 
         const auto& snap = audio_engine.analysis_read();
-        check_float(snap.rms[audio_idx], 0.0f, 0.5f, "RMS ≈ 0.0 (empty lane array)");
+        check_float(snap.rms[audio_idx][0], 0.0f, 0.5f, "RMS ≈ 0.0 (empty lane array)");
     }
 
     // --- Cleanup ---

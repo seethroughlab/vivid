@@ -199,11 +199,13 @@ bool AudioExecutor::build(AudioFrameBridge& bridge, CompiledGraph& cg,
         loop_out_ptrs_scratch_.resize(max_out);
     }
 
-    // Allocate waveform ring buffers
+    // Allocate per-channel waveform ring buffers
     uint32_t audio_count = static_cast<uint32_t>(cg.audio_order.size());
     waveform_rings_.resize(audio_count);
-    waveform_ring_pos_.assign(audio_count, 0);
-    for (auto& ring : waveform_rings_) ring.fill(0.0f);
+    waveform_ring_pos_.resize(audio_count);
+    for (auto& node_rings : waveform_rings_)
+        for (auto& ch_ring : node_rings) ch_ring.fill(0.0f);
+    for (auto& pos : waveform_ring_pos_) pos.fill(0);
 
     return true;
 }
@@ -325,10 +327,11 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
         auto& cn = cg.nodes[gi];
         auto& a = *cn.audio;
 
-        // Copy params
+        // Copy params into the audio-local buffer (not cn.param_values, which
+        // is owned by the main thread — writing there would race with set_param).
         if (i < snap.node_params.size()) {
-            for (size_t p = 0; p < cn.param_values.size() && p < snap.node_params[i].size(); ++p)
-                cn.param_values[p] = snap.node_params[i][p];
+            for (size_t p = 0; p < a.audio_local_params.size() && p < snap.node_params[i].size(); ++p)
+                a.audio_local_params[p] = snap.node_params[i][p];
         }
         // Populate lane views directly from bridge snapshot (zero-copy).
         // Bridge data is double-buffered and valid for the entire callback.
@@ -547,7 +550,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                     ctx.delta_time = static_cast<double>(chunk) / sample_rate_;
                     ctx.frame = audio_frame_ + frames_written;
                     ctx.node_id = cn.node_id.c_str();
-                    ctx.param_values = cn.param_values.data();
+                    ctx.param_values = a.audio_local_params.data();
                     ctx.input_buffers = group.per_lane_in_ptrs[c].data();
                     ctx.output_buffers = group.per_lane_out_ptrs[c].data();
                     ctx.buffer_size = chunk;
@@ -660,7 +663,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                         ctx.delta_time = static_cast<double>(chunk) / sample_rate_;
                         ctx.frame = audio_frame_ + frames_written;
                         ctx.node_id = cn.node_id.c_str();
-                        ctx.param_values = cn.param_values.data();
+                        ctx.param_values = a.audio_local_params.data();
                         ctx.input_buffers = loop_in_ptrs;
                         ctx.output_buffers = loop_out_ptrs;
                         ctx.buffer_size = chunk;
@@ -731,7 +734,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 ctx.delta_time = static_cast<double>(chunk) / sample_rate_;
                 ctx.frame = audio_frame_ + frames_written;
                 ctx.node_id = cn.node_id.c_str();
-                ctx.param_values = cn.param_values.data();
+                ctx.param_values = a.audio_local_params.data();
                 ctx.input_buffers = a.in_ptrs.data();
                 ctx.output_buffers = a.out_ptrs.data();
                 ctx.buffer_size = chunk;
@@ -901,40 +904,57 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
         // Get buffer to analyze (sink uses input, others use output)
         float* buf = nullptr;
         uint32_t buf_len = 0;
+        uint8_t ch_count = 1;
         if (gi == static_cast<uint32_t>(sink_node_idx_) && !a.buffers_in.empty()) {
             buf = a.buffers_in[0].data();
             buf_len = std::min(frame_count, static_cast<uint32_t>(a.buffers_in[0].size()));
+            ch_count = a.input_channel_counts.empty() ? 1 :
+                       std::min<uint8_t>(a.input_channel_counts[0], kMaxWaveformChannels);
         } else if (!a.buffers_out.empty()) {
             buf = a.buffers_out[0].data();
             buf_len = std::min(frame_count, static_cast<uint32_t>(a.buffers_out[0].size()));
+            ch_count = a.output_channel_counts.empty() ? 1 :
+                       std::min<uint8_t>(a.output_channel_counts[0], kMaxWaveformChannels);
+        }
+        // Per-channel sample count (planar layout: ch c at buf + c * buffer_size_)
+        uint32_t per_ch_len = std::min(buf_len, buffer_size_);
+
+        // RMS & peak per channel (gated by analysis toggle)
+        if (analysis_enabled_.load(std::memory_order_relaxed) &&
+            buf && per_ch_len > 0 && i < analysis.rms.size()) {
+            for (uint8_t ch = 0; ch < ch_count; ++ch) {
+                const float* chan = buf + ch * buffer_size_;
+                float sum_sq = 0.0f, pk = 0.0f;
+                for (uint32_t s = 0; s < per_ch_len; ++s) {
+                    float v = chan[s];
+                    sum_sq += v * v;
+                    float av = std::fabs(v);
+                    if (av > pk) pk = av;
+                }
+                analysis.rms[i][ch] = std::sqrt(sum_sq / per_ch_len);
+                analysis.peak[i][ch] = pk;
+            }
+            for (uint8_t ch = ch_count; ch < kMaxWaveformChannels; ++ch) {
+                analysis.rms[i][ch] = 0.0f;
+                analysis.peak[i][ch] = 0.0f;
+            }
         }
 
-        // RMS & peak (gated by analysis toggle)
+        // Waveform ring per channel (gated by analysis toggle)
         if (analysis_enabled_.load(std::memory_order_relaxed) &&
-            buf && buf_len > 0 && i < analysis.rms.size()) {
-            float sum_sq = 0.0f, peak = 0.0f;
-            for (uint32_t s = 0; s < buf_len; ++s) {
-                float v = buf[s];
-                sum_sq += v * v;
-                float av = std::fabs(v);
-                if (av > peak) peak = av;
-            }
-            analysis.rms[i] = std::sqrt(sum_sq / buf_len);
-            analysis.peak[i] = peak;
-        }
-
-        // Waveform ring (gated by analysis toggle)
-        if (analysis_enabled_.load(std::memory_order_relaxed) &&
-            buf && buf_len > 0 && i < waveform_rings_.size()) {
-            auto& ring = waveform_rings_[i];
-            auto& pos = waveform_ring_pos_[i];
-            for (uint32_t s = 0; s < buf_len; ++s) {
-                ring[pos] = buf[s];
-                pos = (pos + 1) % 1024;
-            }
-            if (i < analysis.waveform.size()) {
-                for (uint32_t j = 0; j < 1024; ++j)
-                    analysis.waveform[i][j] = ring[(pos + j) % 1024];
+            buf && per_ch_len > 0 && i < waveform_rings_.size()) {
+            for (uint8_t ch = 0; ch < ch_count; ++ch) {
+                const float* chan = buf + ch * buffer_size_;
+                auto& ring = waveform_rings_[i][ch];
+                auto& pos = waveform_ring_pos_[i][ch];
+                for (uint32_t s = 0; s < per_ch_len; ++s) {
+                    ring[pos] = chan[s];
+                    pos = (pos + 1) % 1024;
+                }
+                if (i < analysis.waveform.size()) {
+                    for (uint32_t j = 0; j < 1024; ++j)
+                        analysis.waveform[i][ch][j] = ring[(pos + j) % 1024];
+                }
             }
         }
 

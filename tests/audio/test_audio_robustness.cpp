@@ -81,7 +81,7 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- good node still produces audio ---\n");
     if (good_idx >= 0) {
         // The good node outputs constant level=0.5 (DC), so RMS should be ~0.5
-        float rms = analysis.rms[good_idx];
+        float rms = analysis.rms[good_idx][0];
         std::fprintf(stderr, "  INFO: good node RMS = %f\n", rms);
         check(rms > 0.1f, "good node RMS > 0.1 (still producing audio)");
     }
@@ -89,7 +89,7 @@ int main(int argc, char* argv[]) {
     // --- Test 4: Throwing node produces silence (RMS ≈ 0) ---
     std::fprintf(stderr, "\n--- throwing node produces silence ---\n");
     if (bad_idx >= 0) {
-        float rms = analysis.rms[bad_idx];
+        float rms = analysis.rms[bad_idx][0];
         std::fprintf(stderr, "  INFO: bad node RMS = %f\n", rms);
         check(rms < 0.01f, "throwing node RMS ≈ 0 (silence)");
     }

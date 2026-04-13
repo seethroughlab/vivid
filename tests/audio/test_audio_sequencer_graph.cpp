@@ -138,8 +138,8 @@ int main(int argc, char* argv[]) {
     check(gain_idx >= 0, "Gain node found in audio engine");
 
     if (gain_idx >= 0) {
-        float rms = analysis.rms[gain_idx];
-        float peak = analysis.peak[gain_idx];
+        float rms = analysis.rms[gain_idx][0];
+        float peak = analysis.peak[gain_idx][0];
         std::fprintf(stderr, "    gain1 RMS=%.6f  peak=%.6f\n", rms, peak);
         check(peak > 0.001f, "Gain produced non-zero audio output");
     }
@@ -149,7 +149,7 @@ int main(int argc, char* argv[]) {
     check(osc_idx >= 0, "Oscillator node found in audio engine");
 
     if (osc_idx >= 0) {
-        float osc_peak = analysis.peak[osc_idx];
+        float osc_peak = analysis.peak[osc_idx][0];
         std::fprintf(stderr, "    osc1 peak=%.6f\n", osc_peak);
         check(osc_peak > 0.001f, "Oscillator produced non-zero audio output");
     }

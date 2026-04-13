@@ -424,8 +424,11 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         }
         snap.audio_analysis.resize(analysis.waveform.size());
         for (size_t i = 0; i < analysis.waveform.size(); ++i) {
-            snap.audio_analysis[i].peak = (i < analysis.peak.size()) ? analysis.peak[i] : 0.0f;
-            snap.audio_analysis[i].waveform = analysis.waveform[i];
+            auto& dst = snap.audio_analysis[i];
+            dst.channel_count = (i < analysis.channel_counts.size())
+                ? analysis.channel_counts[i] : static_cast<uint8_t>(1);
+            dst.peak = (i < analysis.peak.size()) ? analysis.peak[i] : decltype(dst.peak){};
+            dst.waveform = analysis.waveform[i];
         }
 
         snap.audio_underrun_count = audio_engine->underrun_count();

@@ -86,9 +86,10 @@ private:
     LaneStateService lane_state_;
     std::vector<NodeLaneCtx> node_lane_contexts_;  // indexed by audio_order position
 
-    // Waveform ring buffers for analysis
-    std::vector<std::array<float, 1024>> waveform_rings_;
-    std::vector<uint32_t> waveform_ring_pos_;
+    // Waveform ring buffers for analysis (per-channel)
+    static constexpr uint32_t kMaxWaveformChannels = AnalysisSnapshot::kMaxWaveformChannels;
+    std::vector<std::array<std::array<float, 1024>, kMaxWaveformChannels>> waveform_rings_;
+    std::vector<std::array<uint32_t, kMaxWaveformChannels>> waveform_ring_pos_;
 
     // miniaudio device
     ma_device* device_ = nullptr;

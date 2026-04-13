@@ -56,14 +56,14 @@ int main(int argc, char* argv[]) {
     runtime.audio_frame_bridge().push_to_audio(*runtime.compiled_graph());
 
     if (probe_idx >= 0) {
-        check_float(audio_engine.analysis_read().rms[probe_idx], 0.0f, 1e-5f,
+        check_float(audio_engine.analysis_read().rms[probe_idx][0], 0.0f, 1e-5f,
                     "publishing hold data does not change audio analysis before callback");
 
         const uint32_t audio_frames = audio_engine.buffer_size();
         std::vector<float> output(audio_frames * 2, 0.0f);
         audio_engine.process_audio_for_test(output.data(), audio_frames);
 
-        check_float(audio_engine.analysis_read().rms[probe_idx], 2.0f, 0.1f,
+        check_float(audio_engine.analysis_read().rms[probe_idx][0], 2.0f, 0.1f,
                     "audio callback applies the latest held scalar value");
 
         auto* ctrl = runtime.compiled_graph()->find_node("ctrl");
@@ -79,13 +79,13 @@ int main(int argc, char* argv[]) {
         runtime.tick(0.016, 0.016, 1);
         std::fill(std::begin(output), std::end(output), 0.0f);
         audio_engine.process_audio_for_test(output.data(), audio_frames);
-        check_float(audio_engine.analysis_read().rms[probe_idx], 2.0f, 0.1f,
+        check_float(audio_engine.analysis_read().rms[probe_idx][0], 2.0f, 0.1f,
                     "held scalar remains active until the next push_to_audio()");
 
         runtime.audio_frame_bridge().push_to_audio(*runtime.compiled_graph());
         std::fill(std::begin(output), std::end(output), 0.0f);
         audio_engine.process_audio_for_test(output.data(), audio_frames);
-        check_float(audio_engine.analysis_read().rms[probe_idx], 9.0f, 0.1f,
+        check_float(audio_engine.analysis_read().rms[probe_idx][0], 9.0f, 0.1f,
                     "audio analysis updates after a new held scalar snapshot is published");
     }
 

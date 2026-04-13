@@ -251,8 +251,8 @@ static void test_pull_analysis_data() {
 
     // Simulate audio thread writing analysis values
     auto& write_buf = bridge.analysis_write_buffer();
-    write_buf.rms[0] = 0.65f;
-    write_buf.peak[0] = 0.95f;
+    write_buf.rms[0][0] = 0.65f;
+    write_buf.peak[0][0] = 0.95f;
     bridge.publish_analysis();
 
     bridge.pull_from_audio(cg);
@@ -355,18 +355,18 @@ static void test_double_buffer_swap() {
 
     // Write to inactive, publish
     auto& buf1 = bridge.analysis_write_buffer();
-    buf1.rms[0] = 0.5f;
+    buf1.rms[0][0] = 0.5f;
     bridge.publish_analysis();
 
     // Active should now show 0.5
-    check(bridge.active_analysis().rms[0] == 0.5f, "first publish: rms 0.5");
+    check(bridge.active_analysis().rms[0][0] == 0.5f, "first publish: rms 0.5");
 
     // Write to new inactive (which was the old active), publish again
     auto& buf2 = bridge.analysis_write_buffer();
-    buf2.rms[0] = 0.9f;
+    buf2.rms[0][0] = 0.9f;
     bridge.publish_analysis();
 
-    check(bridge.active_analysis().rms[0] == 0.9f, "second publish: rms 0.9");
+    check(bridge.active_analysis().rms[0][0] == 0.9f, "second publish: rms 0.9");
 }
 
 // ---------------------------------------------------------------------------

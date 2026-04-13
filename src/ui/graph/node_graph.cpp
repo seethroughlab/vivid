@@ -297,7 +297,8 @@ uint32_t NodeGraphUI::count_visible_output_ports(const NodeSnapshot& ns, bool sh
 // -----------------------------------------------------------------------
 void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
     bool has_ct = custom_thumb_nodes_.count(rect.node_id) > 0;
-    float body_h = node_body_height(rect.is_gpu, rect.active_cadence, has_ct);
+    uint8_t ach = snap_.audio_channel_count(rect.node_id);
+    float body_h = node_body_height(rect.is_gpu, rect.active_cadence, has_ct, ach);
 
     rect.inputs.clear();
     rect.outputs.clear();
@@ -490,7 +491,8 @@ void NodeGraphUI::layout_nodes(bool force) {
             const auto& ns = nodes[ni];
 
             bool has_ct = custom_thumb_nodes_.count(ns.node_id) > 0;
-            float body_h = node_body_height(ns.is_gpu, ns.active_cadence, has_ct);
+            uint8_t ach = snap_.audio_channel_count(ns.node_id);
+            float body_h = node_body_height(ns.is_gpu, ns.active_cadence, has_ct, ach);
 
             uint32_t n_inputs = count_visible_input_ports(ns, show_param_wires_);
             uint32_t n_outputs = count_visible_output_ports(ns, show_param_wires_);
@@ -567,7 +569,7 @@ void NodeGraphUI::reposition_output_sinks() {
     if (sink_indices.empty()) return;
 
     total_h += (sink_indices.size() - 1) * kRowSpacing;
-    float sx = static_cast<float>(win_w_) - kNodeW - 10.0f;
+    float sx = static_cast<float>(win_w_) - kInspectorW - kNodeW - 10.0f;
     float sy = (static_cast<float>(win_h_) - total_h) * 0.5f;
     for (size_t i : sink_indices) {
         node_rects_[i].x = sx;
@@ -610,7 +612,8 @@ void NodeGraphUI::place_new_nodes() {
     auto compute_height = [&](size_t ni) -> float {
         const auto& ns = nodes[ni];
         bool has_ct = custom_thumb_nodes_.count(ns.node_id) > 0;
-        float body_h = node_body_height(ns.is_gpu, ns.active_cadence, has_ct);
+        uint8_t ach = snap_.audio_channel_count(ns.node_id);
+        float body_h = node_body_height(ns.is_gpu, ns.active_cadence, has_ct, ach);
         uint32_t n_inputs = count_visible_input_ports(ns, show_param_wires_);
         uint32_t n_outputs = count_visible_output_ports(ns, show_param_wires_);
         uint32_t port_rows = std::max(n_inputs, n_outputs);
@@ -920,6 +923,53 @@ void NodeGraphUI::cancel_midi_range_edit() {
 }
 
 // -----------------------------------------------------------------------
+// Operator environment inference
+// -----------------------------------------------------------------------
+static OpEnvironment infer_environment(const OperatorInfo& op) {
+    if (op.is_gpu) return OpEnvironment::GPU;
+    for (const auto& p : op.ports) {
+        if (p.type == VIVID_PORT_AUDIO_BUFFER)
+            return OpEnvironment::Audio;
+    }
+    return OpEnvironment::Control;
+}
+
+// -----------------------------------------------------------------------
+// Chooser search scoring
+// -----------------------------------------------------------------------
+// Returns a score >= 0 for how well lower_name matches lower_filter.
+// Returns -1 if no match.
+static int score_match(const std::string& lower_name, const std::string& lower_filter) {
+    if (lower_filter.empty()) return 0;
+
+    // Exact match
+    if (lower_name == lower_filter) return 1000;
+
+    // Prefix match
+    if (lower_name.rfind(lower_filter, 0) == 0) return 500;
+
+    // Word-boundary initials: filter chars match at starts of underscore-delimited words
+    {
+        size_t fi = 0;
+        bool at_boundary = true;
+        for (size_t ni = 0; ni < lower_name.size() && fi < lower_filter.size(); ++ni) {
+            if (lower_name[ni] == '_') { at_boundary = true; continue; }
+            if (at_boundary && lower_name[ni] == lower_filter[fi])
+                ++fi;
+            at_boundary = false;
+        }
+        if (fi == lower_filter.size()) return 200;
+    }
+
+    // Substring match — earlier position = higher score
+    auto pos = lower_name.find(lower_filter);
+    if (pos != std::string::npos)
+        return 100 - static_cast<int>(std::min(pos, size_t(99)));
+
+    return -1;
+}
+
+// -----------------------------------------------------------------------
 // Port type compatibility helpers (for insert-on-wire)
 // -----------------------------------------------------------------------
 // is_control_type() and port_type_compatible() are in node_graph_util.h
@@ -1007,23 +1057,36 @@ void NodeGraphUI::rebuild_chooser_items() {
     const auto& all = snap_.operator_types;
     chooser_items_.clear();
 
-    // Case-insensitive substring match
     std::string lower_filter = chooser_filter_;
     for (auto& c : lower_filter) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 
+    struct ScoredItem { std::string name; int score; };
+    std::vector<ScoredItem> scored;
+
     for (const auto& name : all) {
+        // Tab filter
+        if (chooser_tab_ != ChooserTab::All) {
+            auto cat_it = snap_.operator_catalog.find(name);
+            if (cat_it == snap_.operator_catalog.end() || !cat_it->second) continue;
+            OpEnvironment env = infer_environment(*cat_it->second);
+            if (chooser_tab_ == ChooserTab::GPU && env != OpEnvironment::GPU) continue;
+            if (chooser_tab_ == ChooserTab::Audio && env != OpEnvironment::Audio) continue;
+            if (chooser_tab_ == ChooserTab::Control && env != OpEnvironment::Control) continue;
+        }
+
+        // Scored text match
         std::string lower_name = name;
         for (auto& c : lower_name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        if (lower_name.find(lower_filter) == std::string::npos)
-            continue;
-        // When inserting on a wire, filter to compatible operators
+        int s = score_match(lower_name, lower_filter);
+        if (s < 0) continue;
+
+        // Wire compatibility filters
         if (chooser_insert_wire_) {
             auto cat_it = snap_.operator_catalog.find(name);
             if (cat_it == snap_.operator_catalog.end() || !cat_it->second) continue;
             if (!can_insert_on_wire(*cat_it->second, insert_wire_source_type_, insert_wire_dest_type_))
                 continue;
         }
-        // When connecting from a wire drag, filter to operators with a compatible port
         if (chooser_wire_connect_) {
             auto cat_it = snap_.operator_catalog.find(name);
             if (cat_it == snap_.operator_catalog.end() || !cat_it->second) continue;
@@ -1031,13 +1094,23 @@ void NodeGraphUI::rebuild_chooser_items() {
             if (!has_compatible_port(*cat_it->second, wire_connect_type_, need))
                 continue;
         }
-        chooser_items_.push_back(name);
+        scored.push_back({name, s});
     }
 
-    // Prepend "New Operator" sentinel when available
-    if (commands_.can_create_operator() && !chooser_insert_wire_ && !chooser_wire_connect_) {
+    // Sort by score descending, then alphabetically for ties
+    std::sort(scored.begin(), scored.end(), [](const ScoredItem& a, const ScoredItem& b) {
+        if (a.score != b.score) return a.score > b.score;
+        return a.name < b.name;
+    });
+
+    chooser_items_.reserve(scored.size());
+    for (auto& si : scored)
+        chooser_items_.push_back(std::move(si.name));
+
+    // Prepend "New Operator" sentinel when available (All tab only)
+    if (commands_.can_create_operator() && !chooser_insert_wire_ && !chooser_wire_connect_
+        && chooser_tab_ == ChooserTab::All) {
         std::string sentinel = "+ New Operator...";
-        // Only show if it matches the current filter
         std::string lower_sentinel = sentinel;
         for (auto& c : lower_sentinel) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         if (lower_filter.empty() || lower_sentinel.find(lower_filter) != std::string::npos) {
@@ -1056,6 +1129,7 @@ void NodeGraphUI::reset_chooser_state() {
     chooser_insert_wire_ = false;
     chooser_wire_connect_ = false;
     chooser_open_ = false;
+    chooser_tab_ = ChooserTab::All;
     chooser_filter_.clear();
     chooser_subtitles_.clear();
     chooser_drop_actions_.clear();
@@ -1101,6 +1175,7 @@ void NodeGraphUI::open_file_drop_chooser(std::vector<FileDropChooserAction> acti
 void NodeGraphUI::stash_chooser_restore_state() {
     async_add_restore_.valid = true;
     async_add_restore_.mode = chooser_mode_;
+    async_add_restore_.tab = chooser_tab_;
     async_add_restore_.filter = chooser_filter_;
     async_add_restore_.sel = chooser_sel_;
     async_add_restore_.scroll = chooser_scroll_;
@@ -1123,6 +1198,7 @@ void NodeGraphUI::stash_chooser_restore_state() {
 void NodeGraphUI::restore_chooser_after_async_failure() {
     if (!async_add_restore_.valid) return;
     chooser_mode_ = async_add_restore_.mode;
+    chooser_tab_ = async_add_restore_.tab;
     chooser_filter_ = async_add_restore_.filter;
     chooser_sel_ = async_add_restore_.sel;
     chooser_scroll_ = async_add_restore_.scroll;

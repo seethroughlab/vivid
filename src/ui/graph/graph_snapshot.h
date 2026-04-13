@@ -245,11 +245,13 @@ struct MidiCCEventSnapshot {
     float value = 0.0f;
 };
 
-// Per-audio-node visualization data
+// Per-audio-node visualization data (n-channel)
 struct AudioNodeAnalysis {
-    float peak = 0.0f;
     static constexpr uint32_t kWaveformSamples = 1024;
-    std::array<float, kWaveformSamples> waveform{};
+    static constexpr uint32_t kMaxChannels = 8;
+    uint8_t channel_count = 1;
+    std::array<float, kMaxChannels> peak{};
+    std::array<std::array<float, kWaveformSamples>, kMaxChannels> waveform{};
 };
 
 struct AudioHotNodeSnapshot {
@@ -342,6 +344,13 @@ struct GraphSnapshot {
 
     bool has_node(const std::string& id) const {
         return node_index.count(id) > 0;
+    }
+
+    uint8_t audio_channel_count(const std::string& node_id) const {
+        auto it = audio_index.find(node_id);
+        if (it == audio_index.end() || it->second < 0) return 1;
+        if (it->second >= static_cast<int>(audio_analysis.size())) return 1;
+        return audio_analysis[it->second].channel_count;
     }
 
     const MidiMappingSnapshot* find_midi_mapping(const std::string& node_id,

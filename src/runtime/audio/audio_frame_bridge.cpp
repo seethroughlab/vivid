@@ -65,10 +65,26 @@ void AudioFrameBridge::build(const CompiledGraph& cg) {
     // Allocate AnalysisSnapshot arrays and wire output lane slot pointers.
     for (int b = 0; b < 2; ++b) {
         auto& snap = analysis_snapshots_[b];
-        snap.rms.assign(audio_count, 0.0f);
-        snap.peak.assign(audio_count, 0.0f);
+        snap.rms.resize(audio_count);
+        for (auto& r : snap.rms) r.fill(0.0f);
+        snap.peak.resize(audio_count);
+        for (auto& p : snap.peak) p.fill(0.0f);
         snap.waveform.resize(audio_count);
-        for (auto& w : snap.waveform) w.fill(0.0f);
+        for (auto& w : snap.waveform)
+            for (auto& ch : w) ch.fill(0.0f);
+        snap.channel_counts.resize(audio_count);
+        for (uint32_t i = 0; i < audio_count; ++i) {
+            uint32_t gi = cg.audio_order[i];
+            const auto& cn = cg.nodes[gi];
+            const auto& a = *cn.audio;
+            // Sink analyzes its input; others analyze their output
+            if (cn.type_name == "audio_out" && !a.input_channel_counts.empty())
+                snap.channel_counts[i] = a.input_channel_counts[0];
+            else if (!a.output_channel_counts.empty())
+                snap.channel_counts[i] = a.output_channel_counts[0];
+            else
+                snap.channel_counts[i] = 1;
+        }
         snap.lane_outputs.resize(audio_count);
         snap.scalar_outputs.resize(audio_count);
         snap.errored.assign(audio_count, false);
@@ -317,9 +333,9 @@ void AudioFrameBridge::pull_from_audio(CompiledGraph& cg) {
             }
         } else if (e.bridge_kind == BridgeKind::Rms &&
                    e.data_type == VIVID_PORT_SCALAR) {
-            // Rms: read RMS from analysis snapshot → frame input
+            // Rms: read RMS from analysis snapshot → frame input (channel 0)
             if (si < snap.rms.size()) {
-                float val = snap.rms[si];
+                float val = snap.rms[si][0];
                 val = e.has_remap() ? e.apply_remap(val) : val;
                 if (e.targets_param) {
                     if (e.to_port < to_cn.param_values.size())
@@ -335,9 +351,9 @@ void AudioFrameBridge::pull_from_audio(CompiledGraph& cg) {
             }
         } else if (e.bridge_kind == BridgeKind::Peak &&
                    e.data_type == VIVID_PORT_SCALAR) {
-            // Peak: read peak from analysis snapshot → frame input
+            // Peak: read peak from analysis snapshot → frame input (channel 0)
             if (si < snap.peak.size()) {
-                float val = snap.peak[si];
+                float val = snap.peak[si][0];
                 val = e.has_remap() ? e.apply_remap(val) : val;
                 if (e.targets_param) {
                     if (e.to_port < to_cn.param_values.size())
@@ -353,9 +369,9 @@ void AudioFrameBridge::pull_from_audio(CompiledGraph& cg) {
             }
         } else if (e.bridge_kind == BridgeKind::Waveform &&
                    e.data_type == VIVID_PORT_LANE_ARRAY) {
-            // Waveform: read downsampled waveform → frame lane port
+            // Waveform: read downsampled waveform → frame lane port (channel 0)
             if (si < snap.waveform.size() && e.to_port < to_cn.input_lanes.size()) {
-                const auto& wf = snap.waveform[si];
+                const auto& wf = snap.waveform[si][0];
                 to_cn.input_lanes[e.to_port].assign(wf.begin(), wf.end());
                 to_cn.dirty = true;
             }
@@ -399,12 +415,12 @@ void AudioFrameBridge::pull_from_audio(CompiledGraph& cg) {
         uint32_t si = am.snapshot_idx;
 
         if (si < snap.rms.size() && am.rms_port_idx < cn.output_values.size())
-            cn.output_values[am.rms_port_idx] = snap.rms[si];
+            cn.output_values[am.rms_port_idx] = snap.rms[si][0];
         if (si < snap.peak.size() && am.peak_port_idx < cn.output_values.size())
-            cn.output_values[am.peak_port_idx] = snap.peak[si];
+            cn.output_values[am.peak_port_idx] = snap.peak[si][0];
         if (si < snap.waveform.size() && am.waveform_port_idx < cn.output_lanes.size()) {
             auto& dst = cn.output_lanes[am.waveform_port_idx];
-            dst.assign(snap.waveform[si].begin(), snap.waveform[si].end());
+            dst.assign(snap.waveform[si][0].begin(), snap.waveform[si][0].end());
         }
         cn.dirty = true;
     }

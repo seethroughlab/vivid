@@ -23,6 +23,7 @@ static constexpr float kNodePadY = 8.0f;
 static constexpr float kAccentBarH = 3.0f;
 static constexpr float kGpuThumbH = 88.0f;     // 140 * 10/16 ~ 87.5
 static constexpr float kAudioWaveH = 56.0f;
+static constexpr float kAudioWaveExtraChannelH = 40.0f; // additional height per extra channel
 static constexpr float kControlSparkH = 30.0f;
 
 // Colors (std::array instead of C-style arrays)
@@ -132,10 +133,14 @@ static constexpr float kDensityTickAlpha = 0.35f;
 // Bezier wire rendering
 static constexpr int kBezierSegments = 30;
 
+// Operator environment classification (for chooser tabs and display)
+enum class OpEnvironment : uint8_t { GPU, Audio, Control };
+
 // Operator chooser popup
 static constexpr int kChooserMaxVisible = 12;
 static constexpr float kChooserW = 300.0f;
 static constexpr float kChooserHeaderH = 28.0f;
+static constexpr float kChooserTabH = 22.0f;
 static constexpr float kChooserItemH = 22.0f;
 static constexpr float kChooserY = 80.0f;
 
@@ -177,10 +182,15 @@ inline const float* node_accent_color(bool is_gpu, vivid::Cadence cadence) {
     return kControlAccent.data();
 }
 
-inline float node_body_height(bool is_gpu, vivid::Cadence cadence, bool has_custom_thumb = false) {
+inline float node_body_height(bool is_gpu, vivid::Cadence cadence,
+                              bool has_custom_thumb = false,
+                              uint8_t audio_channels = 1) {
     if (has_custom_thumb && !is_gpu) return kGpuThumbH;
     if (is_gpu) return kGpuThumbH;
-    if (cadence == vivid::Cadence::Audio) return kAudioWaveH;
+    if (cadence == vivid::Cadence::Audio) {
+        int extra = std::max(0, static_cast<int>(audio_channels) - 1);
+        return kAudioWaveH + extra * kAudioWaveExtraChannelH;
+    }
     return kControlSparkH;
 }
 

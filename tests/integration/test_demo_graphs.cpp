@@ -465,7 +465,7 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
         if (result == 0 && has_audio_out) {
             bool any_nonzero = false;
             for (size_t i = 0; i < analysis.peak.size(); ++i) {
-                if (analysis.peak[i] > 0.001f) { any_nonzero = true; break; }
+                if (analysis.peak[i][0] > 0.001f) { any_nonzero = true; break; }
             }
             if (!any_nonzero) {
                 std::fprintf(stderr, "audio output is silent (all peaks < 0.001)\n");
