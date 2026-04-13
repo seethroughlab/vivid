@@ -15,9 +15,21 @@
                 "animate": 1,
                 "speed": 0.8
             }
+        },
+        "vout": {
+            "type": "video_out",
+            "layout": {
+                "x": 400.0,
+                "y": 300.0
+            }
         }
     },
-    "connections": [],
+    "connections": [
+        {
+            "from": "shapes/texture",
+            "to": "vout/input"
+        }
+    ],
     "meta": {
         "id": "instanced_shapes_simple",
         "title": "Instanced Shapes: Minimal",
