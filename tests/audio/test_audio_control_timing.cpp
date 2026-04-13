@@ -240,7 +240,9 @@ static void test_step_seq_metronome_snapshot(const std::string& build_dir) {
 
     AudioTestBuffers tb(3, 3);
     tb.ctx.param_values = params.data();
-    set_audio_metronome(tb, 120.0f, 4, 0.60, 0.60f, 0.15f);
+    // With per-step division timing: 4 steps at 1/4 notes (1 beat each) = 4 beat cycle.
+    // beats_elapsed=2.5 → phase=2.5/4=0.625 → step=int(0.625*4)=2 → step_value_2=0.8
+    set_audio_metronome(tb, 120.0f, 4, 2.50, 0.50f, 0.125f);
 
     loader.process_audio(inst, &tb.ctx);
 
