@@ -9,4 +9,4 @@
 	url = https://github.com/rossbencina/oscpack.git
 [submodule "deps/syphon"]
 	path = deps/syphon
-	url = https://github.com/Syphon/Syphon-Framework.git
+	url = https://github.com/seethroughlab/Syphon-Framework.git
