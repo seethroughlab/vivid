@@ -44,10 +44,34 @@
                 "decay": 0.92
             }
         },
+        "filter": {
+            "type": "Filter",
+            "params": {
+                "resonance": 0.5,
+                "cutoff": 4000.0
+            }
+        },
         "gain": {
             "type": "Gain",
             "params": {
-                "gain": 0.8
+                "gain": 0.4
+            }
+        },
+        "lfo_cut": {
+            "type": "LfoFr",
+            "params": {
+                "polarity": 1.0,
+                "offset": 4000.0,
+                "frequency": 0.12,
+                "amplitude": 3000.0
+            }
+        },
+        "lfo_freq": {
+            "type": "LfoFr",
+            "params": {
+                "offset": 120.0,
+                "frequency": 0.07,
+                "amplitude": 40.0
             }
         },
         "lfo_rot": {
@@ -93,10 +117,6 @@
     },
     "connections": [
         {
-            "from": "osc/output",
-            "to": "gain/input"
-        },
-        {
             "from": "gain/output",
             "to": "aout/input"
         },
@@ -123,18 +143,36 @@
         {
             "from": "gain/rms",
             "to": "feedback/zoom",
-            "bridge": "rms",
             "from_min": 0.0,
             "from_max": 0.5,
             "to_min": 1.0,
             "to_max": 1.06,
-            "clamp": true
+            "clamp": true,
+            "bridge": "rms"
+        },
+        {
+            "from": "osc/output",
+            "to": "filter/input"
+        },
+        {
+            "from": "filter/output",
+            "to": "gain/input"
+        },
+        {
+            "from": "lfo_freq/value",
+            "to": "osc/frequency",
+            "bridge": "hold"
+        },
+        {
+            "from": "lfo_cut/value",
+            "to": "filter/cutoff",
+            "bridge": "hold"
         }
     ],
     "sticky_notes": [
         {
             "id": "note_1",
-            "text": "**Audio-Reactive Visuals** Audio RMS level drives the feedback zoom \u2014 louder audio = faster spiral expansion.",
+            "text": "**Audio-Reactive Visuals** Audio RMS level drives the feedback zoom — louder audio = faster spiral expansion.",
             "x": -100.0,
             "y": -80.0,
             "width": 260.0,
