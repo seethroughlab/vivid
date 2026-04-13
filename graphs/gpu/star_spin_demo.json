@@ -16,16 +16,32 @@
             "gpu",
             "control"
         ],
-        "requires_packages": [],
         "featured_rank": 10
     },
     "nodes": {
-        "osc": {
-            "type": "Oscillator",
+        "aout": {
+            "type": "audio_out",
+            "layout": {
+                "x": 857.1022,
+                "y": 710.453
+            }
+        },
+        "bloom": {
+            "type": "Bloom",
             "params": {
-                "frequency": 110.0,
-                "amplitude": 0.6,
-                "waveform": 1
+                "threshold": 0.2,
+                "radius": 1.5,
+                "passes": 4.0,
+                "intensity": 1.2
+            }
+        },
+        "feedback": {
+            "type": "Feedback",
+            "params": {
+                "rotate": 3.0,
+                "mix": 0.85,
+                "zoom": 1.02,
+                "decay": 0.92
             }
         },
         "gain": {
@@ -34,67 +50,45 @@
                 "gain": 0.8
             }
         },
-        "aout": {
-            "type": "audio_out",
-            "params": {}
-        },
         "lfo_rot": {
             "type": "LfoFr",
             "params": {
+                "offset": 0.0,
                 "frequency": 0.15,
-                "amplitude": 3.14,
-                "offset": 0.0
+                "amplitude": 3.14
             }
         },
         "lfo_size": {
             "type": "LfoFr",
             "params": {
-                "frequency": 0.08,
-                "amplitude": 0.12,
+                "waveform": 0.0,
                 "offset": 0.2,
-                "waveform": 0
+                "frequency": 0.08,
+                "amplitude": 0.12
             }
         },
-        "math_zoom": {
-            "type": "Math",
+        "osc": {
+            "type": "Oscillator",
             "params": {
-                "operation": 0,
-                "b": 1.01
+                "waveform": 1.0,
+                "frequency": 110.0,
+                "amplitude": 0.6
             }
         },
         "star": {
             "type": "Shape",
             "params": {
-                "sides": 5,
                 "star": 0.5,
-                "radius": 0.2,
                 "softness": 0.005,
+                "sides": 5.0,
+                "b": 0.2,
+                "radius": 0.2,
                 "r": 1.0,
-                "g": 0.7,
-                "b": 0.2
-            }
-        },
-        "feedback": {
-            "type": "Feedback",
-            "params": {
-                "decay": 0.92,
-                "mix": 0.85,
-                "zoom": 1.02,
-                "rotate": 3.0
-            }
-        },
-        "bloom": {
-            "type": "Bloom",
-            "params": {
-                "threshold": 0.2,
-                "intensity": 1.2,
-                "radius": 1.5,
-                "passes": 4
+                "g": 0.7
             }
         },
         "vout": {
-            "type": "video_out",
-            "params": {}
+            "type": "video_out"
         }
     },
     "connections": [
@@ -115,15 +109,6 @@
             "to": "star/radius"
         },
         {
-            "from": "gain/rms",
-            "to": "math_zoom/a",
-            "bridge": "rms"
-        },
-        {
-            "from": "math_zoom/result",
-            "to": "feedback/zoom"
-        },
-        {
             "from": "star/texture",
             "to": "feedback/input"
         },
@@ -134,12 +119,22 @@
         {
             "from": "bloom/texture",
             "to": "vout/input"
+        },
+        {
+            "from": "gain/rms",
+            "to": "feedback/zoom",
+            "bridge": "rms",
+            "from_min": 0.0,
+            "from_max": 0.5,
+            "to_min": 1.0,
+            "to_max": 1.06,
+            "clamp": true
         }
     ],
     "sticky_notes": [
         {
             "id": "note_1",
-            "text": "**Audio-Reactive Visuals** Audio RMS level drives the feedback zoom amount via Math",
+            "text": "**Audio-Reactive Visuals** Audio RMS level drives the feedback zoom \u2014 louder audio = faster spiral expansion.",
             "x": -100.0,
             "y": -80.0,
             "width": 260.0,
@@ -148,9 +143,9 @@
         },
         {
             "id": "note_2",
-            "text": "**RMS \u2192 Math(add 1.01) \u2192 zoom** Louder audio = more zoom = faster spiral expansion",
-            "x": -100.0,
-            "y": 180.0,
+            "text": "**RMS → zoom** The wire remaps RMS (0–0.5) to zoom (1.0–1.06). Even a small zoom > 1 makes the feedback spiral outward.",
+            "x": -102.52548,
+            "y": 101.78204,
             "width": 250.0,
             "height": 80.0,
             "color": 2
