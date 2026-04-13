@@ -4,7 +4,7 @@
     "meta": {
         "id": "voronoi_mosaic_demo",
         "title": "Voronoi Mosaic",
-        "description": "Image subdivision into Voronoi cells \u2014 each cell shows the average color from the source. Audio-reactive cell density.",
+        "description": "Image subdivision into Voronoi cells — each cell shows the average color from the source. Audio-reactive cell density.",
         "tags": [
             "demo",
             "voronoi",
@@ -17,19 +17,19 @@
             "gpu",
             "control"
         ],
-        "requires_packages": [],
         "featured_rank": 13
     },
     "nodes": {
-        "tex": {
-            "type": "TextureLoader",
-            "params": {}
+        "aout": {
+            "type": "audio_out"
         },
-        "osc": {
-            "type": "Oscillator",
+        "bloom": {
+            "type": "Bloom",
             "params": {
-                "frequency": 220.0,
-                "amplitude": 0.5
+                "threshold": 0.5,
+                "radius": 1.0,
+                "passes": 3.0,
+                "intensity": 0.6
             }
         },
         "gain": {
@@ -38,48 +38,47 @@
                 "gain": 0.8
             }
         },
-        "aout": {
-            "type": "audio_out",
-            "params": {}
-        },
         "lfo_scale": {
             "type": "LfoFr",
             "params": {
-                "frequency": 0.12,
-                "amplitude": 10.0,
+                "waveform": 0.0,
                 "offset": 12.0,
-                "waveform": 0
+                "frequency": 0.12,
+                "amplitude": 10.0
             }
         },
         "math_edge": {
             "type": "Math",
             "params": {
-                "operation": 1,
+                "operation": 1.0,
                 "b": 0.05
+            }
+        },
+        "osc": {
+            "type": "Oscillator",
+            "params": {
+                "frequency": 220.0,
+                "amplitude": 0.5
+            }
+        },
+        "tex": {
+            "type": "TextureLoader",
+            "params": {
+                "file": "../../assets/building.jpg"
             }
         },
         "voronoi": {
             "type": "Voronoi",
             "params": {
-                "scale": 12.0,
-                "edge_width": 0.01,
                 "speed": 0.3,
+                "scale": 12.0,
                 "jitter": 0.8,
-                "mode": 3
-            }
-        },
-        "bloom": {
-            "type": "Bloom",
-            "params": {
-                "threshold": 0.5,
-                "intensity": 0.6,
-                "radius": 1.0,
-                "passes": 3
+                "mode": 3.0,
+                "edge_width": 0.01
             }
         },
         "vout": {
-            "type": "video_out",
-            "params": {}
+            "type": "video_out"
         }
     },
     "connections": [
@@ -116,5 +115,10 @@
             "from": "bloom/texture",
             "to": "vout/input"
         }
-    ]
+    ],
+    "viewport": {
+        "pan_x": 0.0,
+        "pan_y": 0.0,
+        "zoom": 1.0
+    }
 }
