@@ -124,6 +124,13 @@ void NodeGraphUI::update_context_menu() {
                         insert_wire_dest_type_   = resolve_port_type(snap_, c.to_node, c.to_port, false);
                         chooser_insert_conn_ = c;
                         chooser_insert_wire_ = true;
+                        // Auto-select tab based on wire type
+                        if (insert_wire_source_type_ == VIVID_PORT_TEXTURE)
+                            chooser_tab_ = ChooserTab::GPU;
+                        else if (insert_wire_source_type_ == VIVID_PORT_AUDIO_BUFFER)
+                            chooser_tab_ = ChooserTab::Audio;
+                        else
+                            chooser_tab_ = ChooserTab::Control;
                         chooser_cursor_gx_ = sx_to_gx(context_menu_x_);
                         chooser_cursor_gy_ = sy_to_gy(context_menu_y_);
                         chooser_filter_.clear();
@@ -277,6 +284,7 @@ void NodeGraphUI::open_chooser() {
     text_edit_.reset(0);
     chooser_sel_ = 0;
     chooser_scroll_ = 0;
+    chooser_tab_ = ChooserTab::All;
     chooser_error_.clear();
     rebuild_chooser_items();
     chooser_open_ = true;

@@ -22,11 +22,32 @@ using vivid::format_int;
 bool NodeGraphUI::handle_chooser_click() {
     if (!chooser_open_) return false;
 
+    float px = chooser_x();
     int visible = std::min(static_cast<int>(chooser_items_.size()), kChooserMaxVisible);
     if (visible == 0) visible = 1;
-    float items_y = kChooserY + kChooserHeaderH;
+    float items_y = chooser_items_y();
 
-    if (mouse_.x >= chooser_x() && mouse_.x <= chooser_x() + kChooserW &&
+    // Tab bar click
+    if (chooser_mode_ == ChooserMode::Operators) {
+        float tab_y = kChooserY + kChooserHeaderH;
+        if (mouse_.x >= px && mouse_.x <= px + kChooserW &&
+            mouse_.y >= tab_y && mouse_.y < tab_y + kChooserTabH) {
+            float rel_x = mouse_.x - px;
+            float tab_w = kChooserW / 4.0f;
+            int tab_idx = std::min(3, static_cast<int>(rel_x / tab_w));
+            static constexpr ChooserTab tab_order[] = {
+                ChooserTab::All, ChooserTab::GPU, ChooserTab::Audio, ChooserTab::Control
+            };
+            chooser_tab_ = tab_order[tab_idx];
+            rebuild_chooser_items();
+            mouse_.left_clicked = false;
+            mouse_.left_released = false;
+            return true;
+        }
+    }
+
+    // Item list click
+    if (mouse_.x >= px && mouse_.x <= px + kChooserW &&
         mouse_.y >= items_y && mouse_.y <= items_y + visible * kChooserItemH &&
         !chooser_items_.empty()) {
         int idx = static_cast<int>(std::floor((mouse_.y - items_y + chooser_scroll_) / kChooserItemH));

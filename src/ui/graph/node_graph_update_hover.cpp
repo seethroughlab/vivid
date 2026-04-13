@@ -38,7 +38,7 @@ static std::string semantic_tag_for_snapshot_endpoint(const GraphSnapshot& snap,
 
 void NodeGraphUI::update_chooser_hover() {
     if (!chooser_open_) return;
-    float items_y = kChooserY + kChooserHeaderH;
+    float items_y = chooser_items_y();
     int visible = std::min(static_cast<int>(chooser_items_.size()), kChooserMaxVisible);
     if (mouse_.x >= chooser_x() && mouse_.x <= chooser_x() + kChooserW &&
         mouse_.y >= items_y && mouse_.y < items_y + visible * kChooserItemH &&

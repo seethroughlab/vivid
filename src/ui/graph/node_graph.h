@@ -537,6 +537,11 @@ private:
     float session_strip_top() const;
     float inspector_x() const { return static_cast<float>(win_w_) - kInspectorW; }
     float chooser_x() const { return (graph_right() - kChooserW) * 0.5f; }
+    float chooser_items_y() const {
+        float base = kChooserY + kChooserHeaderH;
+        if (chooser_mode_ == ChooserMode::Operators) base += kChooserTabH;
+        return base;
+    }
 
     UICommandSink& commands_;
     DialogManager dialogs_;
@@ -667,8 +672,10 @@ private:
         Operators,
         FileDrop,
     };
+    enum class ChooserTab : uint8_t { All = 0, GPU, Audio, Control };
     bool chooser_open_ = false;
     ChooserMode chooser_mode_ = ChooserMode::Operators;
+    ChooserTab chooser_tab_ = ChooserTab::All;
     std::string chooser_filter_;
     int chooser_sel_ = 0;
     float chooser_scroll_ = 0.0f;
@@ -785,6 +792,7 @@ private:
     struct AsyncAddChooserRestoreState {
         bool valid = false;
         ChooserMode mode = ChooserMode::Operators;
+        ChooserTab tab = ChooserTab::All;
         std::string filter;
         int sel = 0;
         float scroll = 0.0f;

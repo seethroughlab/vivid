@@ -118,7 +118,8 @@ void NodeGraphUI::on_scroll(float x_offset, float y_offset, int mods) {
         float px = chooser_x();
         float panel_top = kChooserY;
         int visible = std::min(static_cast<int>(chooser_items_.size()), kChooserMaxVisible);
-        float panel_h = kChooserHeaderH + visible * kChooserItemH + 4;
+        float tab_h = (chooser_mode_ == ChooserMode::Operators) ? kChooserTabH : 0.0f;
+        float panel_h = kChooserHeaderH + tab_h + visible * kChooserItemH + 4;
         if (mouse_.x >= px && mouse_.x <= px + kChooserW &&
             mouse_.y >= panel_top && mouse_.y <= panel_top + panel_h) {
             chooser_scroll_ -= y_offset * kChooserItemH;
@@ -688,8 +689,16 @@ bool NodeGraphUI::handle_graph_global_key(int key, int action, int mods, bool mo
                                                        wire_from_port_, wire_from_is_output_);
                 chooser_wire_connect_ = true;
                 dragging_wire_ = false;
+                // Auto-select tab based on wire type
+                if (wire_connect_type_ == VIVID_PORT_TEXTURE)
+                    chooser_tab_ = ChooserTab::GPU;
+                else if (wire_connect_type_ == VIVID_PORT_AUDIO_BUFFER)
+                    chooser_tab_ = ChooserTab::Audio;
+                else
+                    chooser_tab_ = ChooserTab::Control;
             } else {
                 chooser_wire_connect_ = false;
+                chooser_tab_ = ChooserTab::All;
             }
             rebuild_chooser_items();
             chooser_open_ = true;
@@ -875,6 +884,22 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
                 chooser_sel_++;
                 if ((chooser_sel_ + 1) * kChooserItemH > chooser_scroll_ + kChooserMaxVisible * kChooserItemH)
                     chooser_scroll_ = (chooser_sel_ - kChooserMaxVisible + 1) * kChooserItemH;
+            }
+            break;
+
+        case GLFW_KEY_LEFT:
+            if (chooser_mode_ == ChooserMode::Operators) {
+                int t = static_cast<int>(chooser_tab_);
+                chooser_tab_ = static_cast<ChooserTab>(t > 0 ? t - 1 : 3);
+                rebuild_chooser_items();
+            }
+            break;
+
+        case GLFW_KEY_RIGHT:
+            if (chooser_mode_ == ChooserMode::Operators) {
+                int t = static_cast<int>(chooser_tab_);
+                chooser_tab_ = static_cast<ChooserTab>(t < 3 ? t + 1 : 0);
+                rebuild_chooser_items();
             }
             break;
 

@@ -10,6 +10,15 @@
 
 namespace vivid::ui {
 
+static OpEnvironment infer_environment(const OperatorInfo& op) {
+    if (op.is_gpu) return OpEnvironment::GPU;
+    for (const auto& p : op.ports) {
+        if (p.type == VIVID_PORT_AUDIO_BUFFER)
+            return OpEnvironment::Audio;
+    }
+    return OpEnvironment::Control;
+}
+
 void NodeGraphUI::draw_node_error_tooltip(Renderer2D& tr) {
     if (hovered_node_id_.empty()) return;
 
@@ -177,10 +186,13 @@ void NodeGraphUI::draw_box_select(Renderer2D& tr) {
 void NodeGraphUI::draw_chooser(Renderer2D& tr) {
     if (!chooser_open_) return;
 
+    bool show_tabs = (chooser_mode_ == ChooserMode::Operators);
+    float tab_h = show_tabs ? kChooserTabH : 0.0f;
+
     int visible = std::min(static_cast<int>(chooser_items_.size()), kChooserMaxVisible);
     if (visible == 0) visible = 1; // show at least the header area
     float error_h = chooser_error_.empty() ? 0.0f : 18.0f;
-    float panel_h = kChooserHeaderH + visible * kChooserItemH + 4 + error_h;
+    float panel_h = kChooserHeaderH + tab_h + visible * kChooserItemH + 4 + error_h;
 
     float px = chooser_x();
     float py = kChooserY;
@@ -196,8 +208,39 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
     std::string display_filter = chooser_filter_ + "_";
     tr.draw_text(tx, ty, display_filter.c_str(), 1.0f, 1.0f, 1.0f);
 
+    // Tab bar
+    if (show_tabs) {
+        float tab_y = py + kChooserHeaderH;
+        float tab_w = kChooserW / 4.0f;
+
+        struct TabDef { const char* label; ChooserTab tab; const float* accent; };
+        TabDef tabs[] = {
+            {"All",   ChooserTab::All,     style_.accent.data()},
+            {"GPU",   ChooserTab::GPU,     kGpuAccent.data()},
+            {"Audio", ChooserTab::Audio,   kAudioAccent.data()},
+            {"Ctrl",  ChooserTab::Control, kControlAccent.data()},
+        };
+        for (int i = 0; i < 4; ++i) {
+            float tbx = px + i * tab_w;
+            bool active = (chooser_tab_ == tabs[i].tab);
+            // Tab label
+            float label_alpha = active ? 1.0f : 0.5f;
+            float tw = tr.text_width(tabs[i].label);
+            float label_x = tbx + (tab_w - tw) * 0.5f;
+            tr.draw_text(label_x, tab_y + 4, tabs[i].label,
+                         tabs[i].accent[0] * label_alpha + (1.0f - label_alpha) * 0.6f,
+                         tabs[i].accent[1] * label_alpha + (1.0f - label_alpha) * 0.6f,
+                         tabs[i].accent[2] * label_alpha + (1.0f - label_alpha) * 0.6f);
+            // Active underline
+            if (active) {
+                tr.draw_rect(tbx + 4, tab_y + kChooserTabH - 2, tab_w - 8, 2,
+                             tabs[i].accent[0], tabs[i].accent[1], tabs[i].accent[2]);
+            }
+        }
+    }
+
     // Items
-    float iy = py + kChooserHeaderH;
+    float iy = py + kChooserHeaderH + tab_h;
     float ch_list_area_h = visible * kChooserItemH;
     int ch_first = std::max(0, static_cast<int>(std::floor(chooser_scroll_ / kChooserItemH)));
     float ch_offset = chooser_scroll_ - ch_first * kChooserItemH;
@@ -231,22 +274,24 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
                              style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
             }
         } else {
-            // Cadence color dot
-            const float* dcol = kControlAccent.data(); // default
+            // Environment color dot
+            const float* dcol = kControlAccent.data();
             auto cat_it = snap_.operator_catalog.find(name);
+            OpEnvironment env = OpEnvironment::Control;
             if (cat_it != snap_.operator_catalog.end()) {
-                dcol = node_accent_color(cat_it->second->is_gpu,
-                    Cadence::Frame);
+                env = infer_environment(*cat_it->second);
+                dcol = (env == OpEnvironment::GPU) ? kGpuAccent.data()
+                     : (env == OpEnvironment::Audio) ? kAudioAccent.data()
+                     : kControlAccent.data();
             }
             float dot_x = px + 10;
             float dot_y = item_y + (kChooserItemH - 6) * 0.5f;
             tr.draw_rect(dot_x, dot_y, 6, 6, dcol[0], dcol[1], dcol[2]);
 
-            // Cadence tag
-            const char* tag = "[C]";
-            if (cat_it != snap_.operator_catalog.end()) {
-                tag = cat_it->second->is_gpu ? "[G]" : "[C]";
-            }
+            // Environment tag
+            const char* tag = (env == OpEnvironment::GPU) ? "[G]"
+                            : (env == OpEnvironment::Audio) ? "[A]"
+                            : "[C]";
             tr.draw_text(px + 20, item_y + 3, tag, dcol[0], dcol[1], dcol[2]);
 
             // Type name
