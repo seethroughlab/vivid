@@ -302,6 +302,39 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 
     let plot_y = uv.y;
 
+    // Cutoff cursor position on log-frequency axis
+    let cursor_col = vec4f(1.0, 0.78, 0.31, 0.45);
+    let dot_col = vec4f(1.0, 0.78, 0.31, 0.95);
+    let cutoff_x = log(cutoff / 20.0) / log(1000.0);
+
+    // Magnitude at cutoff (r=1): denom = 0 + (1/Q)^2 = 1/Q^2
+    var mag_at_cutoff = 0.0;
+    let Q_at_cutoff = 1.0 / Q;
+    if (mode == 0 || mode == 1) {
+        mag_at_cutoff = Q;
+    } else if (mode == 2 || mode == 3) {
+        mag_at_cutoff = Q;
+    } else if (mode == 4 || mode == 5) {
+        mag_at_cutoff = 1.0;
+    } else if (mode == 6) {
+        mag_at_cutoff = 0.0001;
+    } else {
+        mag_at_cutoff = Q;
+    }
+    let db_at_cutoff = 20.0 * log(max(mag_at_cutoff, 0.0001)) / log(10.0);
+    let dot_y = 1.0 - clamp((db_at_cutoff + 48.0) / 60.0, 0.0, 1.0);
+
+    // Dot at curve intersection
+    let dot_center = vec2f(cutoff_x, dot_y);
+    if (length((uv - dot_center) * vec2f(4.0, 1.0)) < 0.04) {
+        return dot_col;
+    }
+
+    // Vertical cursor line
+    if (abs(uv.x - cutoff_x) < 0.006) {
+        return cursor_col;
+    }
+
     // 0 dB reference line
     let ref_y = 1.0 - (48.0 / 60.0);  // 0dB position
     if (abs(plot_y - ref_y) < 0.005) {
