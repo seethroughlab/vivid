@@ -33,15 +33,25 @@
                 "radius": 1.5,
                 "passes": 4.0,
                 "intensity": 1.2
+            },
+            "layout": {
+                "x": 684.4951,
+                "y": 366.3446
             }
         },
         "feedback": {
             "type": "Feedback",
             "params": {
+                "zoom": 1.02,
+                "offset_x": 0.007942736,
+                "offset_y": 0.030795574,
                 "rotate": 3.0,
                 "mix": 0.85,
-                "zoom": 1.02,
                 "decay": 0.92
+            },
+            "layout": {
+                "x": 455.95514,
+                "y": 338.4938
             }
         },
         "filter": {
@@ -49,6 +59,10 @@
             "params": {
                 "resonance": 0.5,
                 "cutoff": 4000.0
+            },
+            "layout": {
+                "x": 19.808388,
+                "y": 580.05493
             }
         },
         "gain": {
@@ -64,6 +78,10 @@
                 "offset": 4000.0,
                 "frequency": 0.12,
                 "amplitude": 3000.0
+            },
+            "layout": {
+                "x": -276.87637,
+                "y": 848.46313
             }
         },
         "lfo_freq": {
@@ -72,6 +90,10 @@
                 "offset": 120.0,
                 "frequency": 0.07,
                 "amplitude": 40.0
+            },
+            "layout": {
+                "x": -488.36646,
+                "y": 614.8764
             }
         },
         "lfo_rot": {
@@ -80,6 +102,10 @@
                 "offset": 0.0,
                 "frequency": 0.15,
                 "amplitude": 3.14
+            },
+            "layout": {
+                "x": -202.44585,
+                "y": 353.53552
             }
         },
         "lfo_size": {
@@ -94,9 +120,13 @@
         "osc": {
             "type": "Oscillator",
             "params": {
-                "waveform": 1.0,
+                "waveform": 0.0,
                 "frequency": 110.0,
                 "amplitude": 0.6
+            },
+            "layout": {
+                "x": -249.8272,
+                "y": 606.00616
             }
         },
         "star": {
@@ -112,7 +142,11 @@
             }
         },
         "vout": {
-            "type": "video_out"
+            "type": "video_out",
+            "layout": {
+                "x": 1035.3684,
+                "y": 406.24252
+            }
         }
     },
     "connections": [
@@ -169,6 +203,11 @@
             "bridge": "hold"
         }
     ],
+    "viewport": {
+        "pan_x": 384.58698,
+        "pan_y": 33.657562,
+        "zoom": 0.689139
+    },
     "sticky_notes": [
         {
             "id": "note_1",
