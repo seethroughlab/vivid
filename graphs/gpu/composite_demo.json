@@ -67,7 +67,7 @@
             "type": "Composite",
             "params": {
                 "blend_mode": 3,
-                "opacity": 0.7
+                "opacity_a": 0.7
             }
         },
         "vout": {

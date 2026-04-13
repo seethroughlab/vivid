@@ -133,7 +133,7 @@
             "type": "Composite",
             "params": {
                 "blend_mode": 1,
-                "opacity": 1.0
+                "opacity_a": 1.0
             },
             "layout": [
                 900,
