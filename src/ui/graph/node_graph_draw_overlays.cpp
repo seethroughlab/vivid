@@ -874,7 +874,11 @@ void NodeGraphUI::draw_thumbnails(ThumbnailRenderer& renderer, const ThumbnailCa
         uint32_t sc_w = static_cast<uint32_t>(vis_x1 - vis_x0);
         uint32_t sc_h = static_cast<uint32_t>(vis_y1 - vis_y0);
         if (sc_w == 0 || sc_h == 0) continue;
-        renderer.draw(thumb_view, tx, ty, tw, th, sc_x, sc_y, sc_w, sc_h);
+        float source_aspect = 0.0f;
+        const auto* ns = snap_.find_node(r.node_id);
+        if (ns && ns->gpu_tex_width > 0 && ns->gpu_tex_height > 0)
+            source_aspect = static_cast<float>(ns->gpu_tex_width) / static_cast<float>(ns->gpu_tex_height);
+        renderer.draw(thumb_view, tx, ty, tw, th, sc_x, sc_y, sc_w, sc_h, source_aspect);
     }
     renderer.end();
 }

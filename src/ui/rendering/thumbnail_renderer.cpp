@@ -19,9 +19,10 @@ struct VertexOutput {
 };
 
 struct ThumbRect {
-    rect: vec4f,       // x, y, w, h in pixels
-    surface: vec2f,    // surface width, height
-    _pad: vec2f,
+    rect: vec4f,         // x, y, w, h in pixels
+    surface: vec2f,      // surface width, height
+    source_aspect: f32,  // source texture w/h (0 = unknown, skip fit)
+    thumb_aspect: f32,   // thumbnail rect w/h
 };
 
 @group(0) @binding(0) var textureSampler: sampler;
@@ -50,7 +51,21 @@ fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-    return textureSample(inputTexture, textureSampler, input.uv);
+    var uv = input.uv;
+    if (thumb.source_aspect > 0.0) {
+        var scale: vec2f;
+        if (thumb.source_aspect > thumb.thumb_aspect) {
+            scale = vec2f(1.0, thumb.thumb_aspect / thumb.source_aspect);
+        } else {
+            scale = vec2f(thumb.source_aspect / thumb.thumb_aspect, 1.0);
+        }
+        let offset = (vec2f(1.0) - scale) * 0.5;
+        uv = (uv - offset) / scale;
+        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+            return vec4f(0.0);
+        }
+    }
+    return textureSample(inputTexture, textureSampler, uv);
 }
 )";
 
@@ -105,7 +120,7 @@ bool ThumbnailRenderer::init(WGPUDevice device, WGPUQueue queue,
     // Group 1: rect uniform (dynamic offset)
     WGPUBindGroupLayoutEntry rect_entry{};
     rect_entry.binding = 0;
-    rect_entry.visibility = WGPUShaderStage_Vertex;
+    rect_entry.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
     rect_entry.buffer.type = WGPUBufferBindingType_Uniform;
     rect_entry.buffer.hasDynamicOffset = true;
     rect_entry.buffer.minBindingSize = 32;  // vec4f + vec2f + vec2f = 32 bytes
@@ -204,10 +219,11 @@ void ThumbnailRenderer::begin(WGPUCommandEncoder encoder, WGPUTextureView surfac
 
 void ThumbnailRenderer::draw(WGPUTextureView source, float x, float y, float w, float h,
                               uint32_t scissor_x, uint32_t scissor_y,
-                              uint32_t scissor_w, uint32_t scissor_h) {
+                              uint32_t scissor_w, uint32_t scissor_h,
+                              float source_aspect) {
     if (!pending_encoder_) return;
     if (pending_.size() >= kMaxThumbs) return;
-    pending_.push_back({ source, x, y, w, h, scissor_x, scissor_y, scissor_w, scissor_h });
+    pending_.push_back({ source, x, y, w, h, scissor_x, scissor_y, scissor_w, scissor_h, source_aspect });
 }
 
 void ThumbnailRenderer::end() {
@@ -217,9 +233,10 @@ void ThumbnailRenderer::end() {
         // Write all rect uniforms in one batch
         // Each entry is 32 bytes of data at kRectStride-byte intervals
         struct RectUniform {
-            float rect[4];     // x, y, w, h
-            float surface[2];  // surface_w, surface_h
-            float _pad[2];
+            float rect[4];        // x, y, w, h
+            float surface[2];     // surface_w, surface_h
+            float source_aspect;  // source texture w/h (0 = skip fit)
+            float thumb_aspect;   // thumbnail rect w/h
         };
         static_assert(sizeof(RectUniform) == 32, "RectUniform must be 32 bytes");
 
@@ -233,8 +250,9 @@ void ThumbnailRenderer::end() {
             ru.rect[3] = pending_[i].h;
             ru.surface[0] = static_cast<float>(surface_w_);
             ru.surface[1] = static_cast<float>(surface_h_);
-            ru._pad[0] = 0.0f;
-            ru._pad[1] = 0.0f;
+            ru.source_aspect = pending_[i].source_aspect;
+            ru.thumb_aspect = (pending_[i].h > 0.0f)
+                ? pending_[i].w / pending_[i].h : 0.0f;
             std::memcpy(staging.data() + i * kRectStride, &ru, sizeof(ru));
         }
         wgpuQueueWriteBuffer(queue_, rect_buf_, 0, staging.data(), staging.size());
