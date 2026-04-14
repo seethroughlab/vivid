@@ -388,9 +388,6 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
     draw_box_select(tr);
     draw_wire_tooltip(tr);
     draw_session_grid(tr);
-    build_console_panel_.draw(tr, style_, win_w_, win_h_,
-                              session_grid_open_ ? kSessionStripH : 0.0f,
-                              mouse_.x, mouse_.y);
     draw_workspace_header(tr);
     draw_midi_map_banner(tr);
     {

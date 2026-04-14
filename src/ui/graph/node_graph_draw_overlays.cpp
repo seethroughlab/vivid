@@ -22,6 +22,12 @@ using vivid::format_float;
 // popups (context menu, dropdown) appear on top of everything.
 // -----------------------------------------------------------------------
 void NodeGraphUI::draw_overlays(Renderer2D& tr) {
+    // Drawn in the post-thumbnail pass so GPU previews remain visible beneath
+    // the console's translucent surface.
+    build_console_panel_.draw(tr, style_, win_w_, win_h_,
+                              session_grid_open_ ? kSessionStripH : 0.0f,
+                              mouse_.x, mouse_.y);
+
     if (diagnostics_panel_open_) {
         draw_diagnostics_panel(tr);
     } else {
