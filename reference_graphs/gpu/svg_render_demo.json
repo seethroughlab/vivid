@@ -1,0 +1,97 @@
+{
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "svg_render_demo",
+        "title": "SVG Render",
+        "description": "SVG vector rendering with gentle floating motion over a gradient background.",
+        "tags": [
+            "demo",
+            "vector",
+            "svg"
+        ],
+        "difficulty": "beginner",
+        "domains": [
+            "gpu",
+            "control"
+        ],
+        "requires_packages": [],
+        "featured_rank": 38,
+        "content_kind": "example",
+        "category": "visual",
+        "family": "Visual reference",
+        "role": "reference",
+        "playability": "self_playing"
+    },
+    "nodes": {
+        "svg": {
+            "type": "SVG Render",
+            "params": {
+                "file": "../../platform/macos/Vivid.svg",
+                "scale": 0.5
+            },
+            "resolution": [
+                800,
+                600
+            ]
+        },
+        "grad": {
+            "type": "Gradient",
+            "params": {
+                "mode": 0
+            },
+            "resolution": [
+                800,
+                600
+            ]
+        },
+        "lfo_x": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.05,
+                "amplitude": 0.15,
+                "offset": 0.0
+            }
+        },
+        "lfo_y": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.07,
+                "amplitude": 0.1,
+                "offset": 0.0,
+                "waveform": 0
+            }
+        },
+        "comp": {
+            "type": "Composite",
+            "params": {
+                "blend_mode": 3
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        }
+    },
+    "connections": [
+        {
+            "from": "lfo_x/value",
+            "to": "svg/x"
+        },
+        {
+            "from": "lfo_y/value",
+            "to": "svg/y"
+        },
+        {
+            "from": "svg/texture",
+            "to": "comp/a"
+        },
+        {
+            "from": "grad/texture",
+            "to": "comp/b"
+        },
+        {
+            "from": "comp/texture",
+            "to": "vout/input"
+        }
+    ]
+}

@@ -4,7 +4,7 @@
     "meta": {
         "id": "path_animate_av_demo",
         "title": "Path Animate AV",
-        "description": "Audio-reactive path animation where oscillator RMS drives path traversal speed.",
+        "description": "A tone drives the speed of a shape moving along a path, tying audio level to visual motion.",
         "tags": [
             "demo",
             "motion-graphics",
@@ -18,7 +18,13 @@
             "control"
         ],
         "requires_packages": [],
-        "featured_rank": 40
+        "featured_rank": 35,
+        "estimated_minutes": 5,
+        "content_kind": "example",
+        "category": "audiovisual",
+        "family": "Audio-reactive patches",
+        "role": "creative",
+        "playability": "self_playing"
     },
     "nodes": {
         "osc": {
@@ -27,22 +33,38 @@
                 "frequency": 110.0,
                 "amplitude": 0.6,
                 "waveform": 1
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
             }
         },
         "gain": {
             "type": "Gain",
             "params": {
                 "gain": 0.5
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
             }
         },
         "aout": {
-            "type": "audio_out"
+            "type": "audio_out",
+            "layout": {
+                "x": 480.0,
+                "y": 0.0
+            }
         },
         "math_speed": {
             "type": "Math",
             "params": {
                 "operation": 2,
                 "b": 5.0
+            },
+            "layout": {
+                "x": 720.0,
+                "y": 0.0
             }
         },
         "path": {
@@ -51,6 +73,10 @@
                 "speed": 1.0,
                 "loop_mode": 0,
                 "easing": 0
+            },
+            "layout": {
+                "x": 960.0,
+                "y": 0.0
             }
         },
         "shape": {
@@ -66,11 +92,19 @@
             "resolution": [
                 800,
                 600
-            ]
+            ],
+            "layout": {
+                "x": 0.0,
+                "y": 170.0
+            }
         },
         "xform": {
             "type": "Transform",
-            "params": {}
+            "params": {},
+            "layout": {
+                "x": 240.0,
+                "y": 170.0
+            }
         },
         "bloom": {
             "type": "Bloom",
@@ -79,10 +113,18 @@
                 "intensity": 1.0,
                 "radius": 1.5,
                 "passes": 4
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 170.0
             }
         },
         "vout": {
-            "type": "video_out"
+            "type": "video_out",
+            "layout": {
+                "x": 720.0,
+                "y": 170.0
+            }
         }
     },
     "connections": [

@@ -4,7 +4,7 @@
     "meta": {
         "id": "composite_demo",
         "title": "Composite Blend",
-        "description": "Blends two sources (an animated hexagon and a noise texture) using a composite node with blend modes.",
+        "description": "An animated shape and noise texture blend together as a minimal compositing patch.",
         "tags": [
             "composite",
             "blending",
@@ -16,7 +16,13 @@
             "gpu"
         ],
         "requires_packages": [],
-        "featured_rank": 34
+        "featured_rank": 31,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "visual",
+        "family": "Visual patches",
+        "role": "creative",
+        "playability": "self_playing"
     },
     "nodes": {
         "lfo1": {
@@ -25,6 +31,10 @@
                 "frequency": 0.3,
                 "amplitude": 0.15,
                 "offset": 0.3
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
             }
         },
         "lfo2": {
@@ -33,6 +43,10 @@
                 "frequency": 0.1,
                 "amplitude": 3.14,
                 "offset": 0.0
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
             }
         },
         "shape1": {
@@ -49,7 +63,11 @@
             "resolution": [
                 800,
                 600
-            ]
+            ],
+            "layout": {
+                "x": 480.0,
+                "y": 0.0
+            }
         },
         "noise1": {
             "type": "NoiseTexture",
@@ -61,19 +79,31 @@
             "resolution": [
                 800,
                 600
-            ]
+            ],
+            "layout": {
+                "x": 720.0,
+                "y": 0.0
+            }
         },
         "comp1": {
             "type": "Composite",
             "params": {
                 "blend_mode": 3,
                 "opacity_a": 0.7
+            },
+            "layout": {
+                "x": 960.0,
+                "y": 0.0
             }
         },
         "vout": {
             "type": "video_out",
             "params": {
                 "fit_mode": 0
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 170.0
             }
         }
     },

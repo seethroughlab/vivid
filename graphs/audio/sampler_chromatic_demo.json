@@ -1,8 +1,9 @@
 {
     "schema_version": 3,
     "meta": {
+        "id": "sampler_chromatic_demo",
         "title": "Chromatic Sampler with Arpeggiator",
-        "description": "ChordProgression feeds an Arpeggiator that drives a chromatic Sampler with lapsteel samples.",
+        "description": "A chord progression drives an arpeggiated lap-steel sampler patch across chromatic notes.",
         "tags": [
             "sampler",
             "chromatic",
@@ -13,15 +14,24 @@
         "domains": [
             "audio"
         ],
-        "featured_rank": 28,
-        "id": "sampler_chromatic_demo",
-        "requires_packages": []
+        "requires_packages": [],
+        "featured_rank": 18,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "audio",
+        "family": "Audio patches",
+        "role": "creative",
+        "playability": "self_playing"
     },
     "nodes": {
         "clock1": {
             "type": "Clock",
             "params": {
                 "bpm": 120.0
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
             }
         },
         "cp1": {
@@ -46,6 +56,10 @@
                 "degree_3": 0,
                 "voicing_3": 1,
                 "ext_3": 0
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
             }
         },
         "arp1": {
@@ -66,6 +80,10 @@
                 "tr_1": 0,
                 "tr_2": 0,
                 "tr_3": 0
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 0.0
             }
         },
         "samp1": {
@@ -74,11 +92,19 @@
                 "file": "../../assets/audio/lapsteel-articulations/lapsteel-combined.json",
                 "voices": 8,
                 "volume": 0.6
+            },
+            "layout": {
+                "x": 720.0,
+                "y": 0.0
             }
         },
         "out1": {
             "type": "audio_out",
-            "params": {}
+            "params": {},
+            "layout": {
+                "x": 960.0,
+                "y": 0.0
+            }
         }
     },
     "connections": [

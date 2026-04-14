@@ -14,6 +14,10 @@
                 "layout": 2,
                 "animate": 1,
                 "speed": 0.8
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
             }
         },
         "vout": {
@@ -32,8 +36,8 @@
     ],
     "meta": {
         "id": "instanced_shapes_simple",
-        "title": "Instanced Shapes: Minimal",
-        "description": "The simplest instanced-shapes example \u2014 12 hexagons arranged in a circular pattern with basic animation.",
+        "title": "Instanced Shapes",
+        "description": "A minimal ring of instanced hexagons shows repeated geometry without extra graph clutter.",
         "tags": [
             "instanced-shapes",
             "minimal",
@@ -43,7 +47,13 @@
         "domains": [
             "gpu"
         ],
-        "featured_rank": 28,
-        "requires_packages": []
+        "requires_packages": [],
+        "featured_rank": 33,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "visual",
+        "family": "Visual patches",
+        "role": "creative",
+        "playability": "self_playing"
     }
 }

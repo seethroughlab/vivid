@@ -4,7 +4,7 @@
     "meta": {
         "id": "voronoi_cells_demo",
         "title": "Voronoi Cells",
-        "description": "Abstract colorful Voronoi tessellation that shifts and pulses.",
+        "description": "Colorful Voronoi cells drift and pulse as a compact generative visual patch.",
         "tags": [
             "demo",
             "voronoi",
@@ -16,7 +16,13 @@
             "control"
         ],
         "requires_packages": [],
-        "featured_rank": 12
+        "featured_rank": 44,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "filter",
+        "family": "Shader filters",
+        "role": "creative",
+        "playability": "self_playing"
     },
     "nodes": {
         "voronoi": {
@@ -27,6 +33,10 @@
                 "speed": 0.5,
                 "jitter": 1.0,
                 "mode": 0
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
             }
         },
         "lfo_scale": {
@@ -36,6 +46,10 @@
                 "amplitude": 6.0,
                 "offset": 10.0,
                 "waveform": 0
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
             }
         },
         "lfo_speed": {
@@ -45,6 +59,10 @@
                 "amplitude": 1.5,
                 "offset": 0.8,
                 "waveform": 0
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 0.0
             }
         },
         "bloom": {
@@ -54,11 +72,19 @@
                 "intensity": 0.8,
                 "radius": 1.2,
                 "passes": 3
+            },
+            "layout": {
+                "x": 720.0,
+                "y": 0.0
             }
         },
         "vout": {
             "type": "video_out",
-            "params": {}
+            "params": {},
+            "layout": {
+                "x": 960.0,
+                "y": 0.0
+            }
         }
     },
     "connections": [

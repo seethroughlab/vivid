@@ -161,14 +161,14 @@ async def _poll_until(label: str,
 def _phase4_cases(artifact_dir: pathlib.Path) -> list[CaptureCase]:
     return [
         CaptureCase(
-            "graphs/gpu/instanced_shapes_demo.json",
+            "graphs/gpu/instanced_shapes_simple.json",
             "shapes",
             str(artifact_dir / "instanced_shapes_shapes.png"),
         ),
         CaptureCase(
-            "graphs/gpu/instanced_shapes_demo.json",
-            "scale_lfo",
-            str(artifact_dir / "instanced_shapes_scale_lfo.png"),
+            "graphs/gpu/instanced_shapes_simple.json",
+            "vout",
+            str(artifact_dir / "instanced_shapes_output.png"),
         ),
         CaptureCase(
             "graphs/gpu/particle_envelope_demo.json",

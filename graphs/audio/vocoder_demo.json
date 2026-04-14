@@ -4,7 +4,7 @@
     "meta": {
         "id": "vocoder_demo",
         "title": "Vocoder: Noise into Saw",
-        "description": "White noise as the modulator shapes a saw-wave carrier through a 24-band vocoder. An LFO on envelope speed varies how quickly the bands track, producing a talking-robot texture.",
+        "description": "Noise shapes a saw carrier into a talking-robot texture with a slowly changing response speed.",
         "tags": [
             "audio",
             "vocoder",
@@ -17,7 +17,13 @@
             "control"
         ],
         "requires_packages": [],
-        "featured_rank": 30
+        "featured_rank": 29,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "audio",
+        "family": "Audio patches",
+        "role": "creative",
+        "playability": "self_playing"
     },
     "nodes": {
         "noise": {
@@ -25,6 +31,10 @@
             "params": {
                 "color": 0,
                 "amplitude": 0.7
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
             }
         },
         "carrier_osc": {
@@ -33,6 +43,10 @@
                 "frequency": 110.0,
                 "amplitude": 0.7,
                 "waveform": 1
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
             }
         },
         "lfo_speed": {
@@ -41,6 +55,10 @@
                 "frequency": 0.1,
                 "amplitude": 20.0,
                 "waveform": 0
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 0.0
             }
         },
         "vocoder": {
@@ -49,17 +67,29 @@
                 "bands": 24,
                 "envelope_speed": 30.0,
                 "mix": 1.0
+            },
+            "layout": {
+                "x": 720.0,
+                "y": 0.0
             }
         },
         "gain": {
             "type": "Gain",
             "params": {
                 "gain": 0.7
+            },
+            "layout": {
+                "x": 960.0,
+                "y": 0.0
             }
         },
         "out": {
             "type": "audio_out",
-            "params": {}
+            "params": {},
+            "layout": {
+                "x": 0.0,
+                "y": 170.0
+            }
         }
     },
     "connections": [

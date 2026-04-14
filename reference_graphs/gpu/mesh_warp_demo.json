@@ -1,0 +1,61 @@
+{
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "mesh_warp_demo",
+        "title": "Mesh Warp",
+        "description": "Grid-based mesh deformation driven by animated noise, creating organic warping and ripple effects on any input texture.",
+        "tags": [
+            "demo",
+            "projection-mapping",
+            "warp",
+            "mesh"
+        ],
+        "difficulty": "intermediate",
+        "domains": [
+            "gpu"
+        ],
+        "requires_packages": [],
+        "featured_rank": 31,
+        "content_kind": "example",
+        "category": "visual",
+        "family": "Visual reference",
+        "role": "reference",
+        "playability": "self_playing"
+    },
+    "nodes": {
+        "noise": {
+            "type": "NoiseTexture",
+            "params": {
+                "scale": 3.0,
+                "speed": 0.5,
+                "octaves": 3
+            },
+            "resolution": [
+                800,
+                600
+            ]
+        },
+        "mesh": {
+            "type": "MeshWarp",
+            "params": {
+                "grid_x": 4,
+                "grid_y": 4,
+                "grid_overlay": 0.5
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        }
+    },
+    "connections": [
+        {
+            "from": "noise/texture",
+            "to": "mesh/source"
+        },
+        {
+            "from": "mesh/texture",
+            "to": "vout/input"
+        }
+    ]
+}

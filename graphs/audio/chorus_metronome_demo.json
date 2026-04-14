@@ -3,8 +3,8 @@
     "vivid_version": "0.1.0",
     "meta": {
         "id": "chorus_metronome_demo",
-        "title": "Chorus Transport Lock",
-        "description": "A pulsed oscillator through a metronome-synced chorus. The gain pulse makes BPM changes obvious while the chorus sweep stays locked to the same graph transport.",
+        "title": "Transport-Locked Chorus",
+        "description": "A pulsing tone runs through chorus so tempo changes are easy to hear and the sweep stays locked to the shared transport.",
         "tags": [
             "audio",
             "chorus",
@@ -18,7 +18,13 @@
             "control"
         ],
         "requires_packages": [],
-        "featured_rank": 39
+        "featured_rank": 23,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "audio",
+        "family": "Audio patches",
+        "role": "creative",
+        "playability": "self_playing"
     },
     "metronome": {
         "enabled": true,
@@ -32,6 +38,10 @@
                 "frequency": 110.0,
                 "amplitude": 0.75,
                 "waveform": 1
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
             }
         },
         "pulse": {
@@ -45,6 +55,10 @@
                 "amplitude": 0.78,
                 "offset": 0.18,
                 "slew": 0.12
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
             }
         },
         "chorus": {
@@ -56,17 +70,29 @@
                 "depth": 1.0,
                 "voices": 6,
                 "mix": 0.85
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 0.0
             }
         },
         "gain": {
             "type": "Gain",
             "params": {
                 "gain": 0.55
+            },
+            "layout": {
+                "x": 720.0,
+                "y": 0.0
             }
         },
         "out": {
             "type": "audio_out",
-            "params": {}
+            "params": {},
+            "layout": {
+                "x": 960.0,
+                "y": 0.0
+            }
         }
     },
     "connections": [

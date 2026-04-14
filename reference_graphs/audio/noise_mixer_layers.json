@@ -1,0 +1,130 @@
+{
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "noise_mixer_layers",
+        "title": "Noise Mixer Layers",
+        "description": "Three noise colors (white, pink, brown) each filtered at different cutoffs and mixed together. The Noise thumbnails show characteristic spectrum patterns, the Mixer thumbnail shows converging inputs, and the Filters show different frequency response curves.",
+        "tags": [
+            "noise",
+            "mixer",
+            "filter",
+            "layering",
+            "demo"
+        ],
+        "difficulty": "beginner",
+        "domains": [
+            "audio"
+        ],
+        "requires_packages": [],
+        "featured_rank": 29,
+        "content_kind": "example",
+        "category": "audio",
+        "family": "Audio reference",
+        "role": "reference",
+        "playability": "self_playing"
+    },
+    "nodes": {
+        "filter_hi": {
+            "type": "Filter",
+            "params": {
+                "resonance": 0.3,
+                "mode": 1.0,
+                "cutoff": 6000.0
+            }
+        },
+        "filter_lo": {
+            "type": "Filter",
+            "params": {
+                "resonance": 0.8,
+                "mode": 0.0,
+                "cutoff": 300.0
+            }
+        },
+        "filter_mid": {
+            "type": "Filter",
+            "params": {
+                "resonance": 1.8,
+                "mode": 2.0,
+                "cutoff": 1200.0
+            }
+        },
+        "gain": {
+            "type": "Gain",
+            "params": {
+                "gain": 0.15
+            }
+        },
+        "mixer": {
+            "type": "Mixer",
+            "params": {
+                "gain_3": 0.9,
+                "gain_2": 0.8,
+                "gain_1": 0.7
+            }
+        },
+        "noise_brown": {
+            "type": "Noise",
+            "params": {
+                "color": 2.0,
+                "amplitude": 0.7
+            }
+        },
+        "noise_pink": {
+            "type": "Noise",
+            "params": {
+                "color": 1.0,
+                "amplitude": 0.6
+            }
+        },
+        "noise_white": {
+            "type": "Noise",
+            "params": {
+                "color": 0.0,
+                "amplitude": 0.5
+            }
+        },
+        "out": {
+            "type": "audio_out"
+        }
+    },
+    "connections": [
+        {
+            "from": "noise_white/output",
+            "to": "filter_hi/input"
+        },
+        {
+            "from": "noise_pink/output",
+            "to": "filter_mid/input"
+        },
+        {
+            "from": "noise_brown/output",
+            "to": "filter_lo/input"
+        },
+        {
+            "from": "filter_hi/output",
+            "to": "mixer/input_1"
+        },
+        {
+            "from": "filter_mid/output",
+            "to": "mixer/input_2"
+        },
+        {
+            "from": "filter_lo/output",
+            "to": "mixer/input_3"
+        },
+        {
+            "from": "mixer/output",
+            "to": "gain/input"
+        },
+        {
+            "from": "gain/output",
+            "to": "out/input"
+        }
+    ],
+    "viewport": {
+        "pan_x": 193.69922,
+        "pan_y": 91.58984,
+        "zoom": 1.0
+    }
+}

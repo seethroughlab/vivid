@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Generate beta readiness inventory artifacts from the Vivid repo.
 
-Scans graphs/, operators/, and filters/ to produce three markdown documents:
+Scans graphs/, optional reference/fixture graph roots, operators/, and filters/ to
+produce three markdown documents:
   - sample-graph-inventory.md
   - operator-inventory.md
   - environment-labels.md
@@ -9,6 +10,9 @@ Scans graphs/, operators/, and filters/ to produce three markdown documents:
 Usage:
     python scripts/generate_beta_inventory.py \
         --graphs-dir graphs/ \
+        --reference-graphs-dir reference_graphs/ \
+        --fixture-graphs-dir tests/graphs/listening/audio/ \
+        --fixture-graphs-dir tests/graphs/parity/ \
         --operators-dir operators/ \
         --filters-dir filters/ \
         --out-dir docs/plans/beta-release-readiness/phase-1/
@@ -50,8 +54,11 @@ FOLDER_ORDER = [
     "gpu",
     "filters",
     "io",
-    "io/movie_file",
-    "paperjs",
+    "media",
+    "media/movie_file",
+    "media/texture_loader",
+    "shader_sketches",
+    "listening/audio",
     "parity",
 ]
 
@@ -79,8 +86,9 @@ def get_commit_hash() -> str:
         return "unknown"
 
 
-def scan_graphs(graphs_dir: Path) -> list[dict]:
+def scan_graphs(graphs_dir: Path, collection: str | None = None) -> list[dict]:
     results = []
+    collection = collection or graphs_dir.name
     for json_path in sorted(graphs_dir.rglob("*.json")):
         try:
             data = json.loads(json_path.read_text())
@@ -113,9 +121,13 @@ def scan_graphs(graphs_dir: Path) -> list[dict]:
             if nt in ENV_DEPS:
                 graph_env_deps.add(ENV_DEPS[nt])
 
+        display_path = str(Path(collection) / rel)
+
         results.append(
             {
-                "path": str(rel),
+                "path": display_path,
+                "rel_path": str(rel),
+                "collection": collection,
                 "file": rel.name,
                 "folder": folder,
                 "meta": meta,
@@ -223,42 +235,49 @@ def write_graph_inventory(
         "",
     ]
 
-    # Group by folder
+    # Group by collection, then folder
     from collections import OrderedDict
 
-    by_folder: dict[str, list[dict]] = OrderedDict()
-    for f in FOLDER_ORDER:
-        by_folder[f] = []
+    by_collection: dict[str, dict[str, list[dict]]] = OrderedDict()
     for g in graphs:
+        collection = g.get("collection", "graphs")
         folder = g["folder"]
-        if folder not in by_folder:
-            by_folder[folder] = []
-        by_folder[folder].append(g)
+        if collection not in by_collection:
+            by_collection[collection] = OrderedDict((f, []) for f in FOLDER_ORDER)
+        if folder not in by_collection[collection]:
+            by_collection[collection][folder] = []
+        by_collection[collection][folder].append(g)
 
-    for folder, group in by_folder.items():
-        if not group:
-            continue
-        lines.append(f"## {folder}/ ({len(group)} graphs)")
+    for collection, by_folder in by_collection.items():
+        collection_count = sum(len(group) for group in by_folder.values())
+        lines.append(f"## {collection}/ ({collection_count} graphs)")
         lines.append("")
-        header = ["File", "Title", "Difficulty", "Domains", "Env Deps", "Packages", "Featured"]
-        lines.append(_table_row(header))
-        lines.append(_table_row(["---"] * len(header)))
-        for g in group:
-            meta = g["meta"]
-            lines.append(
-                _table_row(
-                    [
-                        g["file"],
-                        meta.get("title", "--"),
-                        meta.get("difficulty", "--"),
-                        ", ".join(meta.get("domains", [])),
-                        ", ".join(g["env_deps"]) if g["env_deps"] else "--",
-                        ", ".join(g["requires_packages"]) if g["requires_packages"] else "--",
-                        str(meta.get("featured_rank", "--")),
-                    ]
+
+        for folder, group in by_folder.items():
+            if not group:
+                continue
+            lines.append(f"### {folder}/ ({len(group)} graphs)")
+            lines.append("")
+            header = ["File", "Title", "Difficulty", "Domains", "Env Deps", "Packages", "Featured", "Role"]
+            lines.append(_table_row(header))
+            lines.append(_table_row(["---"] * len(header)))
+            for g in group:
+                meta = g["meta"]
+                lines.append(
+                    _table_row(
+                        [
+                            g["file"],
+                            meta.get("title", "--"),
+                            meta.get("difficulty", "--"),
+                            ", ".join(meta.get("domains", [])),
+                            ", ".join(g["env_deps"]) if g["env_deps"] else "--",
+                            ", ".join(g["requires_packages"]) if g["requires_packages"] else "--",
+                            str(meta.get("featured_rank", "--")),
+                            meta.get("role", "--"),
+                        ]
+                    )
                 )
-            )
-        lines.append("")
+            lines.append("")
 
     # Environment-dependent graph summary
     lines.append("## Environment-Dependent Graphs")
@@ -520,6 +539,10 @@ def write_environment_labels(
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate beta readiness inventory")
     parser.add_argument("--graphs-dir", required=True, help="Path to graphs/ directory")
+    parser.add_argument("--reference-graphs-dir", action="append", default=[],
+                        help="Optional reference_graphs/ directory to include in graph inventory")
+    parser.add_argument("--fixture-graphs-dir", action="append", default=[],
+                        help="Optional fixture graph directory to include in graph inventory")
     parser.add_argument("--operators-dir", required=True, help="Path to operators/ directory")
     parser.add_argument("--filters-dir", required=True, help="Path to filters/ directory")
     parser.add_argument("--out-dir", required=True, help="Output directory for markdown files")
@@ -534,7 +557,12 @@ def main() -> int:
     commit = get_commit_hash()
 
     print("Scanning graphs...")
-    graphs = scan_graphs(graphs_dir)
+    graphs = scan_graphs(graphs_dir, "graphs")
+    for ref_dir in args.reference_graphs_dir:
+        graphs.extend(scan_graphs(Path(ref_dir), Path(ref_dir).name))
+    for fixture_dir in args.fixture_graphs_dir:
+        fixture_path = Path(fixture_dir)
+        graphs.extend(scan_graphs(fixture_path, str(fixture_path)))
     print(f"  Found {len(graphs)} graphs")
 
     print("Scanning C++ operators...")

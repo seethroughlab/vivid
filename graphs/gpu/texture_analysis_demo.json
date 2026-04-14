@@ -4,7 +4,7 @@
     "meta": {
         "id": "texture_analysis_demo",
         "title": "Texture Analysis",
-        "description": "Texture Analysis driving audio: brightness modulates oscillator pitch, edge density modulates filter cutoff.",
+        "description": "Brightness and edge density from a visual texture drive pitch and filter cutoff.",
         "tags": [
             "texture",
             "analysis",
@@ -18,7 +18,13 @@
             "audio"
         ],
         "requires_packages": [],
-        "featured_rank": 36
+        "featured_rank": 37,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "audiovisual",
+        "family": "Audio-reactive patches",
+        "role": "creative",
+        "playability": "self_playing"
     },
     "nodes": {
         "noise": {

@@ -4,7 +4,7 @@
     "meta": {
         "id": "stereo_demo",
         "title": "Hello Stereo",
-        "description": "A 440 Hz oscillator panned left-to-right by a slow LFO, demonstrating stereo audio output.",
+        "description": "A simple oscillator pans left and right to introduce stereo movement.",
         "tags": [
             "intro",
             "audio",
@@ -16,13 +16,24 @@
             "audio",
             "control"
         ],
-        "featured_rank": 10
+        "requires_packages": [],
+        "featured_rank": 10,
+        "estimated_minutes": 1,
+        "content_kind": "example",
+        "category": "starter",
+        "family": "First steps",
+        "role": "starter",
+        "playability": "self_playing"
     },
     "nodes": {
         "gain1": {
             "type": "Gain",
             "params": {
                 "gain": 0.8
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
             }
         },
         "lfo1": {
@@ -50,7 +61,11 @@
             }
         },
         "out1": {
-            "type": "audio_out"
+            "type": "audio_out",
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
+            }
         },
         "pan1": {
             "type": "StereoPanWidth",
@@ -90,7 +105,7 @@
     "sticky_notes": [
         {
             "id": "note_1",
-            "text": "**Stereo panning demo** Oscillator → StereoPanWidth → Gain → audio_out\nThe LFO slowly sweeps the pan from left to right.",
+            "text": "**Stereo panning demo** Oscillator \u2192 StereoPanWidth \u2192 Gain \u2192 audio_out\nThe LFO slowly sweeps the pan from left to right.",
             "x": 56.192184,
             "y": 99.48505,
             "width": 280.0,

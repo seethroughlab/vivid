@@ -5,6 +5,10 @@
             "type": "Clock",
             "params": {
                 "bpm": 120.0
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
             }
         },
         "sm1": {
@@ -20,6 +24,10 @@
                 "dur_0": 4,
                 "dur_1": 4,
                 "dur_2": 4
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
             }
         },
         "lfo1": {
@@ -29,6 +37,10 @@
                 "amplitude": 3.14,
                 "offset": 3.14,
                 "waveform": 0
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 0.0
             }
         },
         "drums1": {
@@ -41,6 +53,10 @@
                 "hat_7": 1.0,
                 "hat_11": 1.0,
                 "hat_15": 1.0
+            },
+            "layout": {
+                "x": 720.0,
+                "y": 0.0
             }
         },
         "kick1": {
@@ -51,6 +67,10 @@
                 "click": 0.2,
                 "drive": 0.1,
                 "volume": 0.7
+            },
+            "layout": {
+                "x": 960.0,
+                "y": 0.0
             }
         },
         "snare1": {
@@ -61,6 +81,10 @@
                 "noise_decay": 0.2,
                 "snappy": 0.5,
                 "volume": 0.6
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 170.0
             }
         },
         "hat1": {
@@ -69,6 +93,10 @@
                 "decay": 0.15,
                 "tone": 0.4,
                 "volume": 0.35
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 170.0
             }
         },
         "notes1": {
@@ -87,6 +115,10 @@
                 "beats_per_step": 4,
                 "gate_length": 0.9,
                 "velocity": 0.6
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 170.0
             }
         },
         "synth1": {
@@ -100,6 +132,10 @@
                 "decay": 0.3,
                 "sustain": 0.8,
                 "release": 1.0
+            },
+            "layout": {
+                "x": 720.0,
+                "y": 170.0
             }
         },
         "noise1": {
@@ -109,6 +145,10 @@
                 "scale": 3.0,
                 "speed": 0.3,
                 "octaves": 2
+            },
+            "layout": {
+                "x": 960.0,
+                "y": 170.0
             }
         },
         "shape1": {
@@ -121,6 +161,10 @@
                 "r": 0.3,
                 "g": 0.5,
                 "b": 1.0
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 340.0
             }
         },
         "bloom1": {
@@ -130,6 +174,10 @@
                 "intensity": 0.3,
                 "radius": 1.5,
                 "passes": 3
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 340.0
             }
         },
         "comp1": {
@@ -137,19 +185,35 @@
             "params": {
                 "blend_mode": 1,
                 "opacity_a": 1.0
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 340.0
             }
         },
         "video_out": {
             "type": "video_out",
-            "params": {}
+            "params": {},
+            "layout": {
+                "x": 720.0,
+                "y": 340.0
+            }
         },
         "kit1": {
             "type": "DrumKit",
-            "params": {}
+            "params": {},
+            "layout": {
+                "x": 960.0,
+                "y": 340.0
+            }
         },
         "audio_out": {
             "type": "audio_out",
-            "params": {}
+            "params": {},
+            "layout": {
+                "x": 0.0,
+                "y": 510.0
+            }
         }
     },
     "connections": [
@@ -703,7 +767,7 @@
     "meta": {
         "id": "state_machine_demo",
         "title": "State Machine Music",
-        "description": "State-driven music production with three scenes (ambient, build, drop). Drums, FM synth melody, and bloom visuals all switch together via a StateMachine.",
+        "description": "Three musical scenes switch drums, synth, and bloom visuals together from one state machine.",
         "tags": [
             "state-machine",
             "drums",
@@ -717,7 +781,13 @@
             "gpu",
             "control"
         ],
+        "requires_packages": [],
         "featured_rank": 15,
-        "requires_packages": []
+        "estimated_minutes": 5,
+        "content_kind": "example",
+        "category": "audio",
+        "family": "Audio patches",
+        "role": "creative",
+        "playability": "self_playing"
     }
 }

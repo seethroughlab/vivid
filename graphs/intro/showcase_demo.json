@@ -4,7 +4,7 @@
     "meta": {
         "id": "showcase_demo",
         "title": "Welcome to Vivid",
-        "description": "Three drums, three visuals. Each drum triggers its own shape — you can see and hear the beat as one unified experience.",
+        "description": "Three drums trigger three visual shapes so the beat can be seen and heard as one live patch.",
         "tags": [
             "intro",
             "showcase",
@@ -16,7 +16,15 @@
             "audio",
             "gpu",
             "control"
-        ]
+        ],
+        "requires_packages": [],
+        "featured_rank": 1,
+        "estimated_minutes": 1,
+        "content_kind": "example",
+        "category": "starter",
+        "family": "First steps",
+        "role": "hero",
+        "playability": "self_playing"
     },
     "nodes": {
         "aout": {
@@ -280,7 +288,7 @@
     "sticky_notes": [
         {
             "id": "welcome",
-            "text": "**Welcome to Vivid!** Three drums, three shapes. Each drum directly triggers its own visual element — nothing is pre-animated. The music IS the animation.",
+            "text": "**Welcome to Vivid!** Three drums, three shapes. Each drum directly triggers its own visual element \u2014 nothing is pre-animated. The music IS the animation.",
             "x": -125.67348,
             "y": 10.489796,
             "width": 350.0,
@@ -289,7 +297,7 @@
         },
         {
             "id": "mapping",
-            "text": "**Kick** → big orange circle\n**Snare** → white diamond\n**Hi-hat** → small blue hexagon\n\nEach drum’s peak level drives the shape’s radius through an audio→visual bridge wire.",
+            "text": "**Kick** \u2192 big orange circle\n**Snare** \u2192 white diamond\n**Hi-hat** \u2192 small blue hexagon\n\nEach drum\u2019s peak level drives the shape\u2019s radius through an audio\u2192visual bridge wire.",
             "x": -107.04496,
             "y": 142.43112,
             "width": 300.0,

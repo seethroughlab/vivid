@@ -4,7 +4,7 @@
     "meta": {
         "id": "osc_av_loopback_demo",
         "title": "OSC Loopback",
-        "description": "LFO values sent via OSC Out are received back via OSC In to control audio and visuals \u2014 a self-contained OSC round-trip test.",
+        "description": "An LFO is sent out over OSC and received back into the same graph to drive sound and image.",
         "tags": [
             "osc",
             "av",
@@ -19,13 +19,23 @@
             "control"
         ],
         "requires_packages": [],
-        "featured_rank": 11
+        "featured_rank": 47,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "io",
+        "family": "Input and output",
+        "role": "creative",
+        "playability": "self_playing"
     },
     "nodes": {
         "clock1": {
             "type": "ClockFr",
             "params": {
                 "bpm": 120.0
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
             }
         },
         "lfo1": {
@@ -34,6 +44,10 @@
                 "amplitude": 0.5,
                 "offset": 0.5,
                 "frequency": 0.25
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
             }
         },
         "oscout": {
@@ -44,6 +58,10 @@
                 "address": "/vivid/value",
                 "value_type": 0,
                 "send_mode": 1
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 0.0
             }
         },
         "oscin": {
@@ -52,6 +70,10 @@
                 "listen_port": 9001,
                 "strict_address": 1,
                 "address": "/vivid/value"
+            },
+            "layout": {
+                "x": 720.0,
+                "y": 0.0
             }
         },
         "osc1": {
@@ -59,12 +81,20 @@
             "params": {
                 "frequency": 220.0,
                 "amplitude": 0.5
+            },
+            "layout": {
+                "x": 960.0,
+                "y": 0.0
             }
         },
         "gain1": {
             "type": "Gain",
             "params": {
                 "gain": 0.0
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 170.0
             }
         },
         "noise1": {
@@ -72,15 +102,27 @@
             "params": {
                 "scale": 2.0,
                 "speed": 1.0
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 170.0
             }
         },
         "out1": {
             "type": "audio_out",
-            "params": {}
+            "params": {},
+            "layout": {
+                "x": 480.0,
+                "y": 170.0
+            }
         },
         "vout": {
             "type": "video_out",
-            "params": {}
+            "params": {},
+            "layout": {
+                "x": 720.0,
+                "y": 170.0
+            }
         }
     },
     "connections": [

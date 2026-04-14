@@ -4,7 +4,7 @@
     "meta": {
         "id": "crt_effect_demo",
         "title": "CRT Monitor Effect",
-        "description": "Simulates a vintage CRT monitor with curvature, bloom, vignette, scanlines, and chromatic aberration.",
+        "description": "A video source is bent into a glowing CRT monitor look with curvature, scanlines, vignette, and color fringing.",
         "tags": [
             "crt",
             "effect",
@@ -15,7 +15,13 @@
             "gpu"
         ],
         "requires_packages": [],
-        "featured_rank": 22
+        "featured_rank": 38,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "filter",
+        "family": "Shader filters",
+        "role": "creative",
+        "playability": "self_playing"
     },
     "nodes": {
         "vid": {
@@ -62,7 +68,11 @@
             }
         },
         "aout": {
-            "type": "audio_out"
+            "type": "audio_out",
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
+            }
         }
     },
     "connections": [

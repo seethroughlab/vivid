@@ -4,7 +4,7 @@
     "meta": {
         "id": "filter_sweep",
         "title": "Filter Sweep",
-        "description": "White noise through a resonant low-pass filter with an envelope sweeping the cutoff on every beat. The Filter thumbnail shows the frequency response curve shifting with the cutoff.",
+        "description": "A resonant noise sweep pulses on the beat while the filter curve moves in the node preview.",
         "tags": [
             "filter",
             "envelope",
@@ -17,13 +17,24 @@
             "audio",
             "control"
         ],
-        "featured_rank": 26
+        "requires_packages": [],
+        "featured_rank": 25,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "audio",
+        "family": "Audio patches",
+        "role": "creative",
+        "playability": "self_playing"
     },
     "nodes": {
         "clock": {
             "type": "Clock",
             "params": {
                 "bpm": 130.0
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
             }
         },
         "env": {
@@ -34,6 +45,10 @@
                 "attack": 0.01,
                 "release": 0.4,
                 "amplitude": 36.0
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
             }
         },
         "filter": {
@@ -42,12 +57,20 @@
                 "resonance": 2.5,
                 "mode": 0.0,
                 "cutoff": 200.0
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 0.0
             }
         },
         "gain": {
             "type": "Gain",
             "params": {
                 "gain": 0.55
+            },
+            "layout": {
+                "x": 720.0,
+                "y": 0.0
             }
         },
         "noise": {
@@ -55,10 +78,18 @@
             "params": {
                 "color": 0.0,
                 "amplitude": 0.6
+            },
+            "layout": {
+                "x": 960.0,
+                "y": 0.0
             }
         },
         "out": {
-            "type": "audio_out"
+            "type": "audio_out",
+            "layout": {
+                "x": 0.0,
+                "y": 170.0
+            }
         }
     },
     "connections": [
@@ -100,7 +131,7 @@
         },
         {
             "id": "note_2",
-            "text": "**Resonance=2.5** adds a peak at the cutoff frequency — higher values = more pronounced",
+            "text": "**Resonance=2.5** adds a peak at the cutoff frequency \u2014 higher values = more pronounced",
             "x": -100.0,
             "y": 150.0,
             "width": 250.0,

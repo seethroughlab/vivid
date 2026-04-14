@@ -4,7 +4,7 @@
     "meta": {
         "id": "feedback_demo",
         "title": "Video Feedback",
-        "description": "Classic video feedback loop — each frame mixes a new star shape with a decayed, zoomed copy of the previous frame, creating spiraling trails.",
+        "description": "A star feeds back into itself to create spiraling video trails from a small graph.",
         "tags": [
             "feedback",
             "recursive",
@@ -16,7 +16,13 @@
             "gpu"
         ],
         "requires_packages": [],
-        "featured_rank": 1
+        "featured_rank": 2,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "visual",
+        "family": "Visual patches",
+        "role": "hero",
+        "playability": "self_playing"
     },
     "nodes": {
         "star": {
@@ -33,7 +39,11 @@
             "resolution": [
                 800,
                 600
-            ]
+            ],
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
+            }
         },
         "lfo_rot": {
             "type": "LfoFr",
@@ -41,6 +51,10 @@
                 "frequency": 0.15,
                 "amplitude": 3.14,
                 "offset": 0.0
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
             }
         },
         "lfo_size": {
@@ -50,6 +64,10 @@
                 "amplitude": 0.1,
                 "offset": 0.2,
                 "waveform": 0
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 0.0
             }
         },
         "feedback": {
@@ -59,10 +77,18 @@
                 "mix": 0.8,
                 "zoom": 1.02,
                 "rotate": 3.0
+            },
+            "layout": {
+                "x": 720.0,
+                "y": 0.0
             }
         },
         "vout": {
-            "type": "video_out"
+            "type": "video_out",
+            "layout": {
+                "x": 960.0,
+                "y": 0.0
+            }
         }
     },
     "connections": [
@@ -95,7 +121,7 @@
         },
         {
             "id": "note_2",
-            "text": "**decay=0.92**: previous frame fades 8% each frame **zoom=1.02**: old frame grows → creates spiraling trail effect",
+            "text": "**decay=0.92**: previous frame fades 8% each frame **zoom=1.02**: old frame grows \u2192 creates spiraling trail effect",
             "x": -100.0,
             "y": 180.0,
             "width": 260.0,

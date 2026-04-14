@@ -1,0 +1,102 @@
+{
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "shader_nyan_rainbow",
+        "title": "Nyan Rainbow",
+        "description": "Faithful port of shader NyanRainbow \u2014 6-band rainbow horizontal trail with vertical bounce.",
+        "tags": [
+            "demo",
+            "shader-sketch",
+            "rainbow",
+            "feedback"
+        ],
+        "difficulty": "intermediate",
+        "domains": [
+            "gpu",
+            "control"
+        ],
+        "requires_packages": [],
+        "featured_rank": 15,
+        "content_kind": "example",
+        "category": "visual",
+        "family": "Shader sketches",
+        "role": "reference",
+        "playability": "self_playing"
+    },
+    "nodes": {
+        "shape": {
+            "type": "Shape",
+            "params": {
+                "sides": 64,
+                "radius": 0.06,
+                "softness": 0.005,
+                "r": 1.0,
+                "g": 1.0,
+                "b": 1.0
+            }
+        },
+        "lfo_hue": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.5,
+                "amplitude": 180.0,
+                "offset": 180.0,
+                "waveform": 2
+            }
+        },
+        "lfo_bounce": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 1.5,
+                "amplitude": 0.008,
+                "offset": 0.0,
+                "waveform": 0
+            }
+        },
+        "hsv": {
+            "type": "HSV",
+            "params": {
+                "saturation": 0.9,
+                "value": 0.0
+            }
+        },
+        "feedback": {
+            "type": "Feedback",
+            "params": {
+                "decay": 0.96,
+                "mix": 0.95,
+                "offset_x": -0.008,
+                "offset_y": 0.0,
+                "zoom": 1.0,
+                "rotate": 0.0
+            }
+        },
+        "vout": {
+            "type": "video_out",
+            "params": {}
+        }
+    },
+    "connections": [
+        {
+            "from": "shape/texture",
+            "to": "hsv/input"
+        },
+        {
+            "from": "lfo_hue/value",
+            "to": "hsv/hue_shift"
+        },
+        {
+            "from": "lfo_bounce/value",
+            "to": "feedback/offset_y"
+        },
+        {
+            "from": "hsv/texture",
+            "to": "feedback/input"
+        },
+        {
+            "from": "feedback/texture",
+            "to": "vout/input"
+        }
+    ]
+}

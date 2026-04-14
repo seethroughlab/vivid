@@ -4,7 +4,7 @@
     "meta": {
         "id": "edge_demo",
         "title": "Edge Detection",
-        "description": "Detects and highlights edges in the video signal with LFO-modulated strength.",
+        "description": "Video edges are highlighted with a slowly changing strength control.",
         "tags": [
             "edge-detect",
             "filter",
@@ -16,7 +16,13 @@
             "gpu"
         ],
         "requires_packages": [],
-        "featured_rank": 25
+        "featured_rank": 41,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "filter",
+        "family": "Shader filters",
+        "role": "creative",
+        "playability": "self_playing"
     },
     "nodes": {
         "vid": {
@@ -47,6 +53,10 @@
                 "invert": 0.0,
                 "threshold": 0.05000000074505806,
                 "strength": 3.0
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
             }
         },
         "lfo_strength": {
@@ -55,6 +65,10 @@
                 "offset": 3.0,
                 "amplitude": 4.0,
                 "frequency": 0.11999999731779099
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
             }
         },
         "vout": {
@@ -65,7 +79,11 @@
             }
         },
         "aout": {
-            "type": "audio_out"
+            "type": "audio_out",
+            "layout": {
+                "x": 480.0,
+                "y": 0.0
+            }
         }
     },
     "connections": [

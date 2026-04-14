@@ -34,9 +34,10 @@ Columns:
 | audio/ | All audio graphs pass A/V review | PENDING | YES | | |
 | gpu/ | All GPU graphs pass A/V review | PENDING | YES | | |
 | filters/ | All filter graphs pass A/V review | PENDING | YES | | |
-| io/ | I/O graphs (env-dependent noted) | PENDING | CONDITIONAL | | |
-| paperjs/ | All Paper.js graphs pass A/V review | PENDING | YES | | |
-| parity/ | All parity graphs pass A/V review | PENDING | YES | | |
+| media/ | Movie-file and file-backed media graphs (env-dependent noted) | PENDING | CONDITIONAL | | |
+| io/ | Live I/O graphs: MIDI, OSC, and Syphon (env-dependent noted) | PENDING | CONDITIONAL | | |
+| reference_graphs/ | Reference graphs pass non-onboarding smoke/A/V review | PENDING | CONDITIONAL | | |
+| tests/graphs/ | Listening and parity fixtures pass fixture review | PENDING | CONDITIONAL | | |
 | Summary | No scary audio in any starter graph | PENDING | YES | | |
 | Summary | No black/silent output in any starter graph | PENDING | YES | | |
 

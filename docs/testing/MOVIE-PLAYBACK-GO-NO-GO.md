@@ -39,8 +39,8 @@ And the live state checks also pass:
 
 Run extended manual playback on:
 
-- `graphs/io/movie_file/mfi_video_only.json`
-- `graphs/io/movie_file/mfi_av_sync_demo.json`
+- `graphs/media/movie_file/mfi_video_only.json`
+- `graphs/media/movie_file/mfi_av_sync_demo.json`
 - `graphs/filters/scanlines_demo.json`
 
 Required outcomes:

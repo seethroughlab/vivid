@@ -4,7 +4,7 @@
     "meta": {
         "id": "lanes_stack_demo",
         "title": "Lanes: Stack",
-        "description": "Demonstrates Stack — combining four independent LFO signals into a 4-lane array so each metaball gets its own X position. Y and radius are scalar (broadcast to all).",
+        "description": "Several LFOs are stacked into lanes so each visual element gets its own position.",
         "tags": [
             "lanes",
             "intro",
@@ -17,7 +17,14 @@
             "control",
             "gpu"
         ],
-        "featured_rank": 8
+        "requires_packages": [],
+        "featured_rank": 9,
+        "estimated_minutes": 1,
+        "content_kind": "example",
+        "category": "starter",
+        "family": "First steps",
+        "role": "starter",
+        "playability": "self_playing"
     },
     "nodes": {
         "lfo_a": {

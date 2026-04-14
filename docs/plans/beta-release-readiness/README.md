@@ -29,7 +29,8 @@ Beta assumptions:
 
 Create a beta readiness checklist with columns for area, owner, result, blocking status, evidence, and follow-up issue. Generate authoritative inventories from the current repo rather than hand-maintained lists:
 
-- Sample graphs: `graphs/**/*.json`, grouped by intro, audio, GPU, filters, I/O, Paper.js, and parity.
+- Curated sample graphs: `graphs/**/*.json`, grouped by intro, audio, GPU, filters, media, and live I/O.
+- Reference and fixture graphs: `reference_graphs/**/*.json`, `tests/graphs/listening/**/*.json`, and `tests/graphs/parity/**/*.json`, reviewed separately from the beta onboarding surface.
 - Operators: the runtime/operator registry surface, not raw directories, so dual-cadence wrappers and registered names match what users actually see.
 - Environment-dependent cases: camera, mic, MIDI, OSC, Syphon, movie-file graphs, external display, and package-dependent examples.
 
@@ -37,7 +38,7 @@ Create a beta readiness checklist with columns for area, owner, result, blocking
 
 Run the normal build and test baseline in Debug and RelWithDebInfo. Then run the release-oriented gates that already exist:
 
-- `test_demo_graphs` across all sample graphs.
+- `test_demo_graphs` across curated graphs, then separately across reference and fixture graphs.
 - `UI_SMOKE`, `GUI_SMOKE`, and `GUI_ENV` where package/environment setup is available.
 - Movie playback go/no-go from `docs/testing/MOVIE-PLAYBACK-GO-NO-GO.md`.
 - Stability stress lanes from `docs/testing/STABILITY-STRESS-TESTS.md`, including the opt-in soak before release signoff.

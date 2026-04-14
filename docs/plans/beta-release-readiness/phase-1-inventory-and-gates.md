@@ -6,7 +6,9 @@ Create the release-hardening control surface for the beta: an authoritative inve
 
 ## Inputs
 
-- `graphs/**/*.json`
+- Curated examples: `graphs/**/*.json`
+- Reference examples: `reference_graphs/**/*.json`
+- Fixture graphs: `tests/graphs/listening/**/*.json`, `tests/graphs/parity/**/*.json`
 - Runtime/operator registry output, such as `./build/vivid list-types` or MCP `list_types`
 - Existing release/testing docs in `docs/testing/`
 - Existing beginner-facing docs and graph metadata
@@ -21,7 +23,7 @@ Create the release-hardening control surface for the beta: an authoritative inve
    - `Blocking?`
    - `Evidence`
    - `Follow-up`
-2. Generate the sample graph inventory from `graphs/**/*.json`, grouped by folder and graph metadata.
+2. Generate the sample graph inventory from curated, reference, and fixture graph roots, grouped by collection, folder, and graph metadata.
 3. Generate the operator inventory from the registered operator surface, not raw filesystem directories.
 4. Add environment labels for cases that require camera, mic, MIDI, OSC, Syphon, movie media, package operators, or an external display.
 5. Define beta blocker classes:
@@ -43,7 +45,7 @@ Create the release-hardening control surface for the beta: an authoritative inve
 
 ## Pass/Fail Criteria
 
-Pass when every graph and every registered operator has a row in the readiness artifacts, every environment-dependent case is labeled, and blocker rules are written down before review begins.
+Pass when every curated, reference, and fixture graph and every registered operator has a row in the readiness artifacts, every environment-dependent case is labeled, and blocker rules are written down before review begins.
 
 Fail if the inventory is manually guessed, misses registered operators, omits graph categories, or leaves unclear whether a failure blocks the beta.
 
@@ -70,6 +72,9 @@ To regenerate:
 ```
 uv run scripts/generate_beta_inventory.py \
     --graphs-dir graphs/ \
+    --reference-graphs-dir reference_graphs/ \
+    --fixture-graphs-dir tests/graphs/listening/audio/ \
+    --fixture-graphs-dir tests/graphs/parity/ \
     --operators-dir operators/ \
     --filters-dir filters/ \
     --out-dir docs/plans/beta-release-readiness/phase-1/

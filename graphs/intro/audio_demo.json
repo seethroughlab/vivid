@@ -4,7 +4,7 @@
     "meta": {
         "id": "audio_demo",
         "title": "Hello Audio",
-        "description": "The simplest audio patch: a single 440 Hz oscillator through a gain control into the audio output.",
+        "description": "The smallest audio patch: one oscillator through gain into the audio output.",
         "tags": [
             "intro",
             "audio",
@@ -16,26 +16,43 @@
             "audio",
             "control"
         ],
-        "requires_packages": [],
-        "featured_rank": 4
+        "featured_rank": 5,
+        "estimated_minutes": 1,
+        "content_kind": "example",
+        "category": "starter",
+        "family": "First steps",
+        "role": "starter",
+        "playability": "self_playing",
+        "requires_packages": []
     },
     "nodes": {
+        "gain1": {
+            "type": "Gain",
+            "params": {
+                "gain": 0.8
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
+            }
+        },
         "osc1": {
             "type": "Oscillator",
             "params": {
                 "frequency": 440.0,
                 "amplitude": 0.5
-            }
-        },
-        "gain1": {
-            "type": "Gain",
-            "params": {
-                "gain": 0.8
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
             }
         },
         "out1": {
             "type": "audio_out",
-            "params": {}
+            "layout": {
+                "x": 480.0,
+                "y": 0.0
+            }
         }
     },
     "connections": [
@@ -48,12 +65,17 @@
             "to": "out1/input"
         }
     ],
+    "viewport": {
+        "pan_x": 69.54773,
+        "pan_y": 0.6865845,
+        "zoom": 0.7985277
+    },
     "sticky_notes": [
         {
             "id": "note_1",
-            "text": "**Simplest audio patch** Oscillator → Gain → audio_out A 440 Hz sine at 80% volume",
-            "x": -100.0,
-            "y": -80.0,
+            "text": "**Simplest audio patch** Oscillator \u2192 Gain \u2192 audio_out A 440 Hz sine at 80% volume",
+            "x": 298.56555,
+            "y": 275.1947,
             "width": 250.0,
             "height": 80.0,
             "color": 0
@@ -61,8 +83,8 @@
         {
             "id": "note_2",
             "text": "Try changing **frequency** and **waveform** to hear the difference",
-            "x": -100.0,
-            "y": 120.0,
+            "x": 309.577,
+            "y": 368.38678,
             "width": 230.0,
             "height": 60.0,
             "color": 4

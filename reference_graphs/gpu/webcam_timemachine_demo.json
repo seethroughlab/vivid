@@ -1,0 +1,104 @@
+{
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "webcam_timemachine_demo",
+        "title": "Webcam Time Machine",
+        "description": "Temporal displacement effect: a noise map controls how many frames back each pixel looks, creating a time-smeared webcam image.",
+        "tags": [
+            "webcam",
+            "timemachine",
+            "demo"
+        ],
+        "difficulty": "intermediate",
+        "domains": [
+            "gpu",
+            "io"
+        ],
+        "requires_packages": [],
+        "featured_rank": 37,
+        "content_kind": "example",
+        "category": "visual",
+        "family": "Visual reference",
+        "role": "reference",
+        "playability": "self_playing"
+    },
+    "nodes": {
+        "webcam": {
+            "type": "WebcamIn",
+            "params": {
+                "device": 0,
+                "resolution": 1
+            }
+        },
+        "noise": {
+            "type": "NoiseTexture",
+            "params": {
+                "scale": 3.0,
+                "speed": 0.5,
+                "octaves": 3
+            },
+            "resolution": [
+                1280,
+                720
+            ]
+        },
+        "lfo": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.05,
+                "amplitude": 2.0,
+                "offset": 2.0
+            }
+        },
+        "time_machine": {
+            "type": "TimeMachine",
+            "params": {
+                "depth": 0.8,
+                "frames": 60,
+                "offset": 0.0
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        }
+    },
+    "connections": [
+        {
+            "from": "webcam/texture",
+            "to": "time_machine/source"
+        },
+        {
+            "from": "noise/texture",
+            "to": "time_machine/map"
+        },
+        {
+            "from": "lfo/value",
+            "to": "noise/speed"
+        },
+        {
+            "from": "time_machine/texture",
+            "to": "vout/input"
+        }
+    ],
+    "sticky_notes": [
+        {
+            "id": "note_1",
+            "text": "**Temporal Displacement** Each pixel looks back a different number of frames based on the noise map brightness",
+            "x": -100.0,
+            "y": -80.0,
+            "width": 260.0,
+            "height": 100.0,
+            "color": 0
+        },
+        {
+            "id": "note_2",
+            "text": "**60-frame buffer** stores ~2 sec of webcam at 30 fps; depth=0.8 means up to 48 frames of offset",
+            "x": -100.0,
+            "y": 180.0,
+            "width": 260.0,
+            "height": 80.0,
+            "color": 4
+        }
+    ]
+}

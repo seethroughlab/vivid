@@ -4,7 +4,7 @@
     "meta": {
         "id": "edge_blend_demo",
         "title": "Edge Blend",
-        "description": "Soft-edge blending for multi-projector setups with animated blend widths.",
+        "description": "A gradient demonstrates soft-edge blending for projection and multi-output alignment work.",
         "tags": [
             "demo",
             "projection-mapping",
@@ -16,7 +16,13 @@
             "control"
         ],
         "requires_packages": [],
-        "featured_rank": 32
+        "featured_rank": 32,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "visual",
+        "family": "Visual patches",
+        "role": "creative",
+        "playability": "self_playing"
     },
     "nodes": {
         "grad": {
@@ -27,7 +33,11 @@
             "resolution": [
                 800,
                 600
-            ]
+            ],
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
+            }
         },
         "lfo_left": {
             "type": "LfoFr",
@@ -35,6 +45,10 @@
                 "frequency": 0.08,
                 "amplitude": 0.15,
                 "offset": 0.15
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
             }
         },
         "lfo_right": {
@@ -44,6 +58,10 @@
                 "amplitude": 0.15,
                 "offset": 0.15,
                 "waveform": 0
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 0.0
             }
         },
         "blend": {
@@ -53,10 +71,18 @@
                 "right": 0.15,
                 "gamma": 2.2,
                 "curve": 1
+            },
+            "layout": {
+                "x": 720.0,
+                "y": 0.0
             }
         },
         "vout": {
-            "type": "video_out"
+            "type": "video_out",
+            "layout": {
+                "x": 960.0,
+                "y": 0.0
+            }
         }
     },
     "connections": [

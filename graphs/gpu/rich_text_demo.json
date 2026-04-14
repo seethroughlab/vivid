@@ -4,7 +4,7 @@
     "meta": {
         "id": "rich_text_demo",
         "title": "Rich Text",
-        "description": "Kinetic typography with wave animation composited over noise and bloom.",
+        "description": "Animated text floats over noise and bloom for a compact typography patch.",
         "tags": [
             "demo",
             "typography",
@@ -16,7 +16,13 @@
             "gpu"
         ],
         "requires_packages": [],
-        "featured_rank": 37
+        "featured_rank": 36,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "visual",
+        "family": "Visual patches",
+        "role": "creative",
+        "playability": "self_playing"
     },
     "nodes": {
         "text": {
@@ -33,7 +39,11 @@
             "resolution": [
                 800,
                 600
-            ]
+            ],
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
+            }
         },
         "noise": {
             "type": "NoiseTexture",
@@ -45,12 +55,20 @@
             "resolution": [
                 800,
                 600
-            ]
+            ],
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
+            }
         },
         "comp": {
             "type": "Composite",
             "params": {
                 "blend_mode": 3
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 0.0
             }
         },
         "bloom": {
@@ -60,10 +78,18 @@
                 "intensity": 0.8,
                 "radius": 1.5,
                 "passes": 4
+            },
+            "layout": {
+                "x": 720.0,
+                "y": 0.0
             }
         },
         "vout": {
-            "type": "video_out"
+            "type": "video_out",
+            "layout": {
+                "x": 960.0,
+                "y": 0.0
+            }
         }
     },
     "connections": [

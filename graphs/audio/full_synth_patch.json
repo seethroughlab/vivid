@@ -3,8 +3,8 @@
     "vivid_version": "0.1.0",
     "meta": {
         "id": "full_synth_patch",
-        "title": "Full Synth Patch",
-        "description": "A complete modular synth patch showcasing every newly-thumbnailed core operator: Clock drives timing, Envelope shapes amplitude, LFO through Smooth modulates filter cutoff, Noise adds texture through the Mixer, and Filter shapes the final tone.",
+        "title": "Complete Synth Voice",
+        "description": "A complete synth voice combines oscillator, noise, mixer, filter, envelope, and LFO modulation into one playable patch.",
         "tags": [
             "synthesis",
             "modular",
@@ -16,7 +16,14 @@
             "audio",
             "control"
         ],
-        "featured_rank": 20
+        "requires_packages": [],
+        "featured_rank": 16,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "audio",
+        "family": "Audio patches",
+        "role": "creative",
+        "playability": "self_playing"
     },
     "nodes": {
         "clock": {
@@ -24,6 +31,10 @@
             "params": {
                 "bpm": 128.0,
                 "beats_per_bar": 4.0
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
             }
         },
         "env": {
@@ -34,6 +45,10 @@
                 "attack": 0.01,
                 "release": 0.35,
                 "amplitude": 1.0
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
             }
         },
         "filter": {
@@ -42,12 +57,20 @@
                 "resonance": 2.0,
                 "mode": 0.0,
                 "cutoff": 800.0
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 0.0
             }
         },
         "gain": {
             "type": "Gain",
             "params": {
                 "gain": 0.25
+            },
+            "layout": {
+                "x": 720.0,
+                "y": 0.0
             }
         },
         "lfo": {
@@ -56,6 +79,10 @@
                 "waveform": 2.0,
                 "frequency": 0.3,
                 "amplitude": 12.0
+            },
+            "layout": {
+                "x": 960.0,
+                "y": 0.0
             }
         },
         "mixer": {
@@ -63,6 +90,10 @@
             "params": {
                 "gain_2": 0.4,
                 "gain_1": 1.0
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 170.0
             }
         },
         "noise": {
@@ -70,6 +101,10 @@
             "params": {
                 "color": 1.0,
                 "amplitude": 0.15
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 170.0
             }
         },
         "osc": {
@@ -78,16 +113,28 @@
                 "waveform": 1.0,
                 "frequency": 165.0,
                 "amplitude": 0.5
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 170.0
             }
         },
         "out": {
-            "type": "audio_out"
+            "type": "audio_out",
+            "layout": {
+                "x": 720.0,
+                "y": 170.0
+            }
         },
         "smooth": {
             "type": "Smooth",
             "params": {
                 "rise_time": 0.05,
                 "fall_time": 0.05
+            },
+            "layout": {
+                "x": 960.0,
+                "y": 170.0
             }
         }
     },
@@ -137,7 +184,7 @@
     "sticky_notes": [
         {
             "id": "note_1",
-            "text": "**Full Modular Synth** Clock → Envelope → amplitude shaping LFO → Smooth → filter cutoff modulation",
+            "text": "**Full Modular Synth** Clock \u2192 Envelope \u2192 amplitude shaping LFO \u2192 Smooth \u2192 filter cutoff modulation",
             "x": -100.0,
             "y": -80.0,
             "width": 280.0,
@@ -146,7 +193,7 @@
         },
         {
             "id": "note_2",
-            "text": "**Modulation path** LFO → Smooth removes zipper noise before reaching the filter cutoff CV",
+            "text": "**Modulation path** LFO \u2192 Smooth removes zipper noise before reaching the filter cutoff CV",
             "x": -100.0,
             "y": 200.0,
             "width": 260.0,
@@ -155,7 +202,7 @@
         },
         {
             "id": "note_3",
-            "text": "**Audio path** Osc + Noise → Mixer → Filter → Gain Noise adds body to the saw wave",
+            "text": "**Audio path** Osc + Noise \u2192 Mixer \u2192 Filter \u2192 Gain Noise adds body to the saw wave",
             "x": 300.0,
             "y": -80.0,
             "width": 250.0,
@@ -164,7 +211,7 @@
         },
         {
             "id": "note_4",
-            "text": "Envelope shapes volume per beat— the Gain node’s amplitude_cv input",
+            "text": "Envelope shapes volume per beat\u2014 the Gain node\u2019s amplitude_cv input",
             "x": 300.0,
             "y": 200.0,
             "width": 250.0,

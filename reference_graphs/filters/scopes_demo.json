@@ -1,0 +1,89 @@
+{
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "scopes_demo",
+        "title": "Scopes",
+        "description": "Video analysis scopes cycling through Waveform, Histogram, Vectorscope, and Parade.",
+        "tags": [
+            "demo",
+            "color-science",
+            "scopes",
+            "analysis"
+        ],
+        "difficulty": "beginner",
+        "domains": [
+            "gpu",
+            "control"
+        ],
+        "requires_packages": [],
+        "featured_rank": 36,
+        "content_kind": "example",
+        "category": "filter",
+        "family": "Shader filter reference",
+        "role": "reference",
+        "playability": "self_playing"
+    },
+    "nodes": {
+        "vid": {
+            "type": "MovieFileIn",
+            "params": {
+                "play_mode": 0.0,
+                "speed": 1.0,
+                "file": "../../assets/camera.mp4"
+            }
+        },
+        "audio": {
+            "type": "MovieFileAudio",
+            "params": {
+                "file": "../../assets/camera.mp4"
+            }
+        },
+        "scopes": {
+            "type": "Scopes",
+            "params": {
+                "scope_type": 0,
+                "overlay": 1,
+                "opacity": 0.8
+            }
+        },
+        "lfo_scope": {
+            "type": "LfoFr",
+            "params": {
+                "frequency": 0.08,
+                "amplitude": 1.5,
+                "offset": 1.5,
+                "waveform": 2
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        },
+        "aout": {
+            "type": "audio_out"
+        }
+    },
+    "connections": [
+        {
+            "from": "vid/texture",
+            "to": "scopes/input"
+        },
+        {
+            "from": "lfo_scope/value",
+            "to": "scopes/scope_type"
+        },
+        {
+            "from": "scopes/texture",
+            "to": "vout/input"
+        },
+        {
+            "from": "audio/time",
+            "to": "vid/audio_time",
+            "bridge": "last_sample"
+        },
+        {
+            "from": "audio/output",
+            "to": "aout/input"
+        }
+    ]
+}

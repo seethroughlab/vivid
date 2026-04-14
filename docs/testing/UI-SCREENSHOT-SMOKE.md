@@ -213,7 +213,7 @@ rerun the preset.
 
 The current inspector signoff cases captured through that live workflow are:
 
-- `graphs/gpu/instanced_shapes_demo.json` → `shapes`
+- `graphs/gpu/instanced_shapes_simple.json` → `shapes`
 - `graphs/gpu/particle_envelope_demo.json` → `env`
 
 If another Vivid runtime is already active for MCP on `127.0.0.1:9876`, launching additional

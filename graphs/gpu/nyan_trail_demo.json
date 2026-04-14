@@ -4,7 +4,7 @@
     "meta": {
         "id": "nyan_trail_demo",
         "title": "Nyan Trail",
-        "description": "Rainbow-cycling shape with feedback trail \u2014 a colorful nyan-style effect.",
+        "description": "A rainbow-cycling shape leaves a bright feedback trail across the frame.",
         "tags": [
             "demo",
             "feedback",
@@ -16,7 +16,13 @@
             "control"
         ],
         "requires_packages": [],
-        "featured_rank": 11
+        "featured_rank": 13,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "visual",
+        "family": "Visual patches",
+        "role": "creative",
+        "playability": "self_playing"
     },
     "nodes": {
         "shape": {
@@ -28,6 +34,10 @@
                 "r": 1.0,
                 "g": 1.0,
                 "b": 1.0
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
             }
         },
         "lfo_hue": {
@@ -36,6 +46,10 @@
                 "frequency": 0.8,
                 "amplitude": 180.0,
                 "offset": 180.0
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
             }
         },
         "lfo_y": {
@@ -45,6 +59,10 @@
                 "amplitude": 0.15,
                 "offset": 0.0,
                 "waveform": 0
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 0.0
             }
         },
         "hsv": {
@@ -52,6 +70,10 @@
             "params": {
                 "saturation": 0.8,
                 "value": 0.0
+            },
+            "layout": {
+                "x": 720.0,
+                "y": 0.0
             }
         },
         "feedback": {
@@ -63,6 +85,10 @@
                 "offset_y": 0.0,
                 "zoom": 1.0,
                 "rotate": 0.0
+            },
+            "layout": {
+                "x": 960.0,
+                "y": 0.0
             }
         },
         "bloom": {
@@ -72,11 +98,19 @@
                 "intensity": 1.0,
                 "radius": 1.2,
                 "passes": 3
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 170.0
             }
         },
         "vout": {
             "type": "video_out",
-            "params": {}
+            "params": {},
+            "layout": {
+                "x": 240.0,
+                "y": 170.0
+            }
         }
     },
     "connections": [

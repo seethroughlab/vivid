@@ -4,7 +4,7 @@
     "meta": {
         "id": "av_metronome_demo",
         "title": "Shared Metronome AV Sync",
-        "description": "A graph-wide metronome drives separate metronome-synced LFOs for audio and visuals, showing cross-domain sync without any Clock node or beat_phase wires.",
+        "description": "The graph metronome keeps separate audio and visual LFOs locked without extra clock wires.",
         "tags": [
             "intro",
             "audio-visual",
@@ -19,7 +19,13 @@
             "control"
         ],
         "requires_packages": [],
-        "featured_rank": 9
+        "featured_rank": 11,
+        "estimated_minutes": 1,
+        "content_kind": "example",
+        "category": "starter",
+        "family": "Cross-domain starters",
+        "role": "starter",
+        "playability": "self_playing"
     },
     "metronome": {
         "enabled": true,
@@ -35,6 +41,10 @@
                 "waveform": 0,
                 "rate_mode": 2,
                 "sync_division": 3
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
             }
         },
         "lfo_aud": {
@@ -45,12 +55,20 @@
                 "waveform": 3,
                 "rate_mode": 2,
                 "sync_division": 4
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
             }
         },
         "noise1": {
             "type": "NoiseTexture",
             "params": {
                 "speed": 1.0
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 0.0
             }
         },
         "osc1": {
@@ -58,21 +76,37 @@
             "params": {
                 "frequency": 330.0,
                 "amplitude": 0.45
+            },
+            "layout": {
+                "x": 720.0,
+                "y": 0.0
             }
         },
         "gain1": {
             "type": "Gain",
             "params": {
                 "gain": 0.35
+            },
+            "layout": {
+                "x": 960.0,
+                "y": 0.0
             }
         },
         "out1": {
             "type": "audio_out",
-            "params": {}
+            "params": {},
+            "layout": {
+                "x": 0.0,
+                "y": 170.0
+            }
         },
         "vout": {
             "type": "video_out",
-            "params": {}
+            "params": {},
+            "layout": {
+                "x": 240.0,
+                "y": 170.0
+            }
         }
     },
     "connections": [

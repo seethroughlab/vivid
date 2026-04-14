@@ -1,38 +1,41 @@
-# Graphs
+# Curated Graphs
 
-Graphs are now organized as real folders and discovered via recursive scan.
+This folder is the beta-facing example library used by **File -> Open Example...**.
+It is intentionally smaller than the full graph corpus.
 
-- `intro/` — first-run starter patches
-- `audio/` — audio/control-focused examples
-- `gpu/` — core GPU composition examples
-- `filters/` — focused WGSL/post-process examples
-- `io/` — OSC/Syphon/Movie File I/O examples
+- `intro/` - first-run starter patches
+- `audio/` - polished audio and music examples
+- `gpu/` - polished visual examples
+- `filters/` - approachable shader/post-process examples
+- `media/` - movie-file and file-backed media examples
+- `io/` - live external I/O examples: MIDI, OSC, and Syphon
 
-Each graph JSON should include a top-level `meta` object. Discovery/search uses this data.
-You can update this in runtime via **File -> Open Example... -> Edit Meta** (opens the graph file for metadata edits).
+Developer references, one-operator demos, older variants, environment-heavy examples, and shader
+sketches live in `../reference_graphs/`. Regression and listening fixtures live under
+`../tests/graphs/`.
 
-Metronome-focused examples now live alongside the older clock-wired references:
-
-- `audio/arpeggiator_metronome_demo.json`
-- `audio/chorus_metronome_demo.json`
-- `intro/av_metronome_demo.json`
-- `gpu/gpu_metronome_demo.json`
-
-Example:
+Every curated graph JSON should include:
 
 ```json
 {
   "meta": {
     "id": "av_demo",
-    "title": "Audio + Visual Starter",
-    "description": "Canonical first audiovisual patch.",
+    "title": "Audio-Visual Sync",
+    "description": "One shared LFO drives both visual scale and audio pitch.",
     "tags": ["starter", "av", "audio", "gpu"],
     "difficulty": "beginner",
     "domains": ["audio", "gpu", "control"],
     "requires_packages": [],
-    "featured_rank": 0
-  },
-  "nodes": {},
-  "connections": []
+    "featured_rank": 4,
+    "estimated_minutes": 1,
+    "content_kind": "example",
+    "category": "starter",
+    "family": "Cross-domain starters",
+    "role": "starter",
+    "playability": "self_playing"
+  }
 }
 ```
+
+Use `reference_graphs/` for broad operator coverage. Use this folder for graphs a beta user should
+feel comfortable opening without knowing Vivid internals.

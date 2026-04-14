@@ -4,7 +4,7 @@
     "meta": {
         "id": "sequencer_demo",
         "title": "Step Sequencer Melody",
-        "description": "8-step sequencer driving an oscillator frequency. Edit the step grid in the inspector to reshape the melody.",
+        "description": "An eight-step sequencer plays a simple melody that can be reshaped from the inspector.",
         "tags": [
             "sequencer",
             "synthesis",
@@ -13,7 +13,15 @@
         "difficulty": "beginner",
         "domains": [
             "audio"
-        ]
+        ],
+        "requires_packages": [],
+        "featured_rank": 21,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "audio",
+        "family": "Audio patches",
+        "role": "creative",
+        "playability": "self_playing"
     },
     "nodes": {
         "osc1": {
@@ -28,7 +36,11 @@
             }
         },
         "out1": {
-            "type": "audio_out"
+            "type": "audio_out",
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
+            }
         },
         "reverb1": {
             "type": "Reverb",
@@ -36,6 +48,10 @@
                 "mix": 0.25,
                 "decay": 1.5,
                 "damping": 0.5
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
             }
         },
         "seq1": {

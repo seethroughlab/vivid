@@ -4,7 +4,7 @@
     "meta": {
         "id": "scanlines_demo",
         "title": "Scanlines",
-        "description": "CRT-style horizontal scanlines overlaid on video after levels adjustment.",
+        "description": "A video source gets a simple CRT-style scanline treatment after level adjustment.",
         "tags": [
             "scanlines",
             "retro",
@@ -15,7 +15,14 @@
         "domains": [
             "gpu"
         ],
-        "featured_rank": 30
+        "requires_packages": [],
+        "featured_rank": 43,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "filter",
+        "family": "Shader filters",
+        "role": "creative",
+        "playability": "self_playing"
     },
     "nodes": {
         "aout": {

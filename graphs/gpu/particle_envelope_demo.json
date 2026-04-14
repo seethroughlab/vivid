@@ -4,7 +4,7 @@
     "meta": {
         "id": "particle_envelope_demo",
         "title": "Particle Envelopes",
-        "description": "Demonstrates the Particles operator's internal per-particle ADSR envelope controlling fade-in and fade-out, with Bloom for glow.",
+        "description": "Glowing particles fade in and out with per-particle envelopes.",
         "tags": [
             "particles",
             "envelope",
@@ -17,7 +17,13 @@
             "gpu"
         ],
         "requires_packages": [],
-        "featured_rank": 30
+        "featured_rank": 34,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "visual",
+        "family": "Visual patches",
+        "role": "creative",
+        "playability": "self_playing"
     },
     "nodes": {
         "bloom": {
@@ -26,6 +32,10 @@
                 "threshold": 0.20000000298023224,
                 "radius": 4.0,
                 "intensity": 1.5
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
             }
         },
         "particles": {
@@ -53,7 +63,11 @@
             }
         },
         "vout": {
-            "type": "video_out"
+            "type": "video_out",
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
+            }
         }
     },
     "connections": [

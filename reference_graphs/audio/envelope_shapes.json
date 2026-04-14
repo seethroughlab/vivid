@@ -1,0 +1,211 @@
+{
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "envelope_shapes",
+        "title": "Envelope Shapes",
+        "description": "Three envelopes with contrasting ADSR curves \u2014 plucky, pad, and percussive \u2014 each shaping an oscillator. The node thumbnails show each envelope's distinct curve shape.",
+        "tags": [
+            "envelope",
+            "adsr",
+            "synthesis",
+            "demo"
+        ],
+        "difficulty": "beginner",
+        "domains": [
+            "audio",
+            "control"
+        ],
+        "requires_packages": [],
+        "featured_rank": 25,
+        "content_kind": "example",
+        "category": "audio",
+        "family": "Audio reference",
+        "role": "reference",
+        "playability": "self_playing"
+    },
+    "nodes": {
+        "clock": {
+            "type": "Clock",
+            "params": {
+                "bpm": 120.0
+            }
+        },
+        "env_pluck": {
+            "type": "Envelope",
+            "params": {
+                "attack": 0.001,
+                "decay": 0.15,
+                "sustain": 0.0,
+                "release": 0.1,
+                "amplitude": 1.0
+            }
+        },
+        "env_pad": {
+            "type": "Envelope",
+            "params": {
+                "attack": 0.4,
+                "decay": 0.3,
+                "sustain": 0.8,
+                "release": 1.5,
+                "amplitude": 1.0
+            }
+        },
+        "env_perc": {
+            "type": "Envelope",
+            "params": {
+                "attack": 0.001,
+                "decay": 0.08,
+                "sustain": 0.3,
+                "release": 0.05,
+                "amplitude": 1.0
+            }
+        },
+        "osc_pluck": {
+            "type": "Oscillator",
+            "params": {
+                "frequency": 440.0,
+                "amplitude": 0.4,
+                "waveform": 1
+            }
+        },
+        "osc_pad": {
+            "type": "Oscillator",
+            "params": {
+                "frequency": 220.0,
+                "amplitude": 0.3,
+                "waveform": 0
+            }
+        },
+        "osc_perc": {
+            "type": "Oscillator",
+            "params": {
+                "frequency": 880.0,
+                "amplitude": 0.3,
+                "waveform": 2
+            }
+        },
+        "gain_pluck": {
+            "type": "Gain",
+            "params": {
+                "gain": 0.8
+            }
+        },
+        "gain_pad": {
+            "type": "Gain",
+            "params": {
+                "gain": 0.8
+            }
+        },
+        "gain_perc": {
+            "type": "Gain",
+            "params": {
+                "gain": 0.6
+            }
+        },
+        "mixer": {
+            "type": "Mixer",
+            "params": {
+                "gain_1": 1.0,
+                "gain_2": 1.0,
+                "gain_3": 1.0
+            }
+        },
+        "out": {
+            "type": "audio_out",
+            "params": {}
+        }
+    },
+    "connections": [
+        {
+            "from": "clock/beat_phase",
+            "to": "env_pluck/beat_phase"
+        },
+        {
+            "from": "clock/beat_phase",
+            "to": "env_pad/beat_phase"
+        },
+        {
+            "from": "clock/beat_phase",
+            "to": "env_perc/beat_phase"
+        },
+        {
+            "from": "osc_pluck/output",
+            "to": "gain_pluck/input"
+        },
+        {
+            "from": "osc_pad/output",
+            "to": "gain_pad/input"
+        },
+        {
+            "from": "osc_perc/output",
+            "to": "gain_perc/input"
+        },
+        {
+            "from": "env_pluck/value",
+            "to": "gain_pluck/amplitude_cv"
+        },
+        {
+            "from": "env_pad/value",
+            "to": "gain_pad/amplitude_cv"
+        },
+        {
+            "from": "env_perc/value",
+            "to": "gain_perc/amplitude_cv"
+        },
+        {
+            "from": "gain_pluck/output",
+            "to": "mixer/input_1"
+        },
+        {
+            "from": "gain_pad/output",
+            "to": "mixer/input_2"
+        },
+        {
+            "from": "gain_perc/output",
+            "to": "mixer/input_3"
+        },
+        {
+            "from": "mixer/output",
+            "to": "out/input"
+        }
+    ],
+    "sticky_notes": [
+        {
+            "id": "note_1",
+            "text": "**Three ADSR shapes compared** Same clock triggers all three\u2014 listen for the different characters",
+            "x": -100.0,
+            "y": -80.0,
+            "width": 270.0,
+            "height": 80.0,
+            "color": 0
+        },
+        {
+            "id": "note_2",
+            "text": "**Pluck**: instant attack, fast decay, no sustain \u2192 short percussive hit",
+            "x": -100.0,
+            "y": 200.0,
+            "width": 220.0,
+            "height": 80.0,
+            "color": 1
+        },
+        {
+            "id": "note_3",
+            "text": "**Pad**: slow 400ms attack, high sustain (0.8), long release \u2192 swelling, ambient tone",
+            "x": 180.0,
+            "y": 200.0,
+            "width": 230.0,
+            "height": 80.0,
+            "color": 1
+        },
+        {
+            "id": "note_4",
+            "text": "**Perc**: instant attack, very fast decay (80ms), short release \u2192 snappy click",
+            "x": 470.0,
+            "y": 200.0,
+            "width": 220.0,
+            "height": 80.0,
+            "color": 1
+        }
+    ]
+}

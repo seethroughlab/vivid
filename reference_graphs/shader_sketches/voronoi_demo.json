@@ -1,0 +1,52 @@
+{
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "shader_voronoi",
+        "title": "Voronoi",
+        "description": "Faithful port of shader Voronoi \u2014 solid red cells with black gaps, slow animation.",
+        "tags": [
+            "demo",
+            "shader-sketch",
+            "voronoi",
+            "generative"
+        ],
+        "difficulty": "beginner",
+        "domains": [
+            "gpu"
+        ],
+        "requires_packages": [],
+        "featured_rank": 15,
+        "content_kind": "example",
+        "category": "visual",
+        "family": "Shader sketches",
+        "role": "reference",
+        "playability": "self_playing"
+    },
+    "nodes": {
+        "voronoi": {
+            "type": "Voronoi",
+            "params": {
+                "scale": 8.0,
+                "edge_width": 0.02,
+                "speed": 0.2,
+                "jitter": 0.8,
+                "mode": 0,
+                "gap": 0.05,
+                "color_r": 1.0,
+                "color_g": 0.0,
+                "color_b": 0.0
+            }
+        },
+        "vout": {
+            "type": "video_out",
+            "params": {}
+        }
+    },
+    "connections": [
+        {
+            "from": "voronoi/texture",
+            "to": "vout/input"
+        }
+    ]
+}

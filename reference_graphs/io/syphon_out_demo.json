@@ -1,0 +1,57 @@
+{
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "syphon_out_demo",
+        "title": "Syphon Output",
+        "description": "Generates a noise texture and broadcasts it to other applications via Syphon while also displaying locally.",
+        "tags": [
+            "syphon",
+            "out",
+            "demo"
+        ],
+        "difficulty": "advanced",
+        "domains": [
+            "io",
+            "gpu"
+        ],
+        "requires_packages": [],
+        "featured_rank": 46,
+        "content_kind": "example",
+        "category": "io",
+        "family": "I/O reference",
+        "role": "reference",
+        "playability": "self_playing"
+    },
+    "nodes": {
+        "noise1": {
+            "type": "NoiseTexture",
+            "params": {
+                "speed": 0.2
+            }
+        },
+        "vout": {
+            "type": "video_out",
+            "params": {
+                "fit_mode": 0
+            }
+        },
+        "sout": {
+            "type": "SyphonOut",
+            "params": {
+                "active": 1,
+                "server_name": "Vivid Output"
+            }
+        }
+    },
+    "connections": [
+        {
+            "from": "noise1/texture",
+            "to": "vout/input"
+        },
+        {
+            "from": "noise1/texture",
+            "to": "sout/input"
+        }
+    ]
+}

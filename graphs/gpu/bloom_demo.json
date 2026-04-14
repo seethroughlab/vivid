@@ -4,7 +4,7 @@
     "meta": {
         "id": "bloom_demo",
         "title": "Bloom Glow",
-        "description": "Soft glow bloom effect applied to a rotating star shape, spreading light beyond bright areas.",
+        "description": "A rotating star blooms into a soft glow, showing how bright shapes spill light into the frame.",
         "tags": [
             "bloom",
             "glow",
@@ -16,7 +16,13 @@
             "gpu"
         ],
         "requires_packages": [],
-        "featured_rank": 33
+        "featured_rank": 30,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "visual",
+        "family": "Visual patches",
+        "role": "creative",
+        "playability": "self_playing"
     },
     "nodes": {
         "star": {
@@ -33,7 +39,11 @@
             "resolution": [
                 800,
                 600
-            ]
+            ],
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
+            }
         },
         "lfo_rot": {
             "type": "LfoFr",
@@ -41,6 +51,10 @@
                 "frequency": 0.1,
                 "amplitude": 3.14,
                 "offset": 0.0
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
             }
         },
         "bloom": {
@@ -50,10 +64,18 @@
                 "intensity": 1.5,
                 "radius": 1.5,
                 "passes": 4
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 0.0
             }
         },
         "vout": {
-            "type": "video_out"
+            "type": "video_out",
+            "layout": {
+                "x": 720.0,
+                "y": 0.0
+            }
         }
     },
     "connections": [

@@ -4,7 +4,7 @@
     "meta": {
         "id": "displace_demo",
         "title": "Displacement Map",
-        "description": "Warps a hexagon shape using a noise-based displacement map with LFO-animated intensity.",
+        "description": "A clean shape is warped by animated noise so the displacement effect is easy to see.",
         "tags": [
             "displace",
             "distortion",
@@ -16,7 +16,13 @@
             "gpu"
         ],
         "requires_packages": [],
-        "featured_rank": 23
+        "featured_rank": 39,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "filter",
+        "family": "Shader filters",
+        "role": "creative",
+        "playability": "self_playing"
     },
     "nodes": {
         "source": {
@@ -28,6 +34,10 @@
                 "r": 0.2,
                 "g": 0.6,
                 "b": 1.0
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
             }
         },
         "map": {
@@ -36,6 +46,10 @@
                 "scale": 2.0,
                 "speed": 0.8,
                 "octaves": 3
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
             }
         },
         "lfo1": {
@@ -44,15 +58,27 @@
                 "frequency": 0.3,
                 "amplitude": 0.4,
                 "offset": 0.5
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 0.0
             }
         },
         "displace": {
             "type": "Displace",
-            "params": {}
+            "params": {},
+            "layout": {
+                "x": 720.0,
+                "y": 0.0
+            }
         },
         "vout": {
             "type": "video_out",
-            "params": {}
+            "params": {},
+            "layout": {
+                "x": 960.0,
+                "y": 0.0
+            }
         }
     },
     "connections": [

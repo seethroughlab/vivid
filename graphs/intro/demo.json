@@ -4,7 +4,7 @@
     "meta": {
         "id": "intro_demo",
         "title": "Getting Started",
-        "description": "The simplest Vivid graph: a Clock drives an LFO that modulates noise texture scale, introducing the beat-synced modulation pipeline.",
+        "description": "The smallest visual patch: clocked modulation changes a noise texture over time.",
         "tags": [
             "intro",
             "clock",
@@ -18,7 +18,13 @@
             "control"
         ],
         "requires_packages": [],
-        "featured_rank": 5
+        "featured_rank": 6,
+        "estimated_minutes": 1,
+        "content_kind": "example",
+        "category": "starter",
+        "family": "First steps",
+        "role": "starter",
+        "playability": "self_playing"
     },
     "nodes": {
         "clock1": {
@@ -83,7 +89,7 @@
     "sticky_notes": [
         {
             "id": "note_1",
-            "text": "**Clock → LFO → Visual** pipeline The Clock's beat_phase drives the LFO, which modulates the noise texture scale",
+            "text": "**Clock \u2192 LFO \u2192 Visual** pipeline The Clock's beat_phase drives the LFO, which modulates the noise texture scale",
             "x": -41.75,
             "y": 250.38671875,
             "width": 280.0,
@@ -92,7 +98,7 @@
         },
         {
             "id": "note_2",
-            "text": "LFO offset=4 keeps scale positive; amplitude=2 sweeps scale from 2–6",
+            "text": "LFO offset=4 keeps scale positive; amplitude=2 sweeps scale from 2\u20136",
             "x": -40.30078125,
             "y": 174.08984375,
             "width": 250.0,

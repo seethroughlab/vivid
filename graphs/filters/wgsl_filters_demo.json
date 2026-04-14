@@ -4,7 +4,7 @@
     "meta": {
         "id": "wgsl_filters_demo",
         "title": "WGSL Filter Chain",
-        "description": "Comprehensive filter chain: HSV \u2192 Levels \u2192 Mirror \u2192 Displace \u2192 Transform \u2192 Posterize \u2192 Pixelate \u2192 Chroma \u2192 Scanlines \u2192 CRT. Shows every WGSL filter in sequence.",
+        "description": "A single video chain passes through several shader filters so their combined look is easy to explore.",
         "tags": [
             "wgsl",
             "custom-shader",
@@ -16,7 +16,13 @@
             "gpu"
         ],
         "requires_packages": [],
-        "featured_rank": 5
+        "featured_rank": 45,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "filter",
+        "family": "Shader filters",
+        "role": "creative",
+        "playability": "self_playing"
     },
     "nodes": {
         "vid": {
@@ -35,6 +41,10 @@
             "type": "MovieFileAudio",
             "params": {
                 "file": "../../assets/camera.mp4"
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
             }
         },
         "hsv": {
@@ -43,6 +53,10 @@
                 "value": 0.05000000074505806,
                 "saturation": 0.15000000596046448,
                 "hue_shift": 0.0
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
             }
         },
         "levels": {
@@ -51,6 +65,10 @@
                 "gamma": 0.8999999761581421,
                 "contrast": 1.399999976158142,
                 "brightness": -0.019999999552965164
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 0.0
             }
         },
         "mirror": {
@@ -61,6 +79,10 @@
                 "center_y": 0.5,
                 "center_x": 0.5,
                 "mode": 3.0
+            },
+            "layout": {
+                "x": 720.0,
+                "y": 0.0
             }
         },
         "transform": {
@@ -73,6 +95,10 @@
                 "translate_x": 0.0,
                 "rotation": 0.0,
                 "scale_x": 1.0
+            },
+            "layout": {
+                "x": 960.0,
+                "y": 0.0
             }
         },
         "edge": {
@@ -81,6 +107,10 @@
                 "invert": 0.0,
                 "threshold": 0.10000000149011612,
                 "strength": 2.5
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 170.0
             }
         },
         "chroma": {
@@ -89,6 +119,10 @@
                 "radial": 1.0,
                 "angle": 45.0,
                 "amount": 0.00800000037997961
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 170.0
             }
         },
         "scanlines": {
@@ -98,6 +132,10 @@
                 "thickness": 0.4000000059604645,
                 "intensity": 0.25,
                 "spacing": 3.0
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 170.0
             }
         },
         "pixelate": {
@@ -105,12 +143,20 @@
             "params": {
                 "size_y": 3.0,
                 "size_x": 3.0
+            },
+            "layout": {
+                "x": 720.0,
+                "y": 170.0
             }
         },
         "posterize": {
             "type": "Posterize",
             "params": {
                 "levels": 12.0
+            },
+            "layout": {
+                "x": 960.0,
+                "y": 170.0
             }
         },
         "crt": {
@@ -121,6 +167,10 @@
                 "vignette": 0.4000000059604645,
                 "bloom": 0.15000000596046448,
                 "curvature": 0.20000000298023224
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 340.0
             }
         },
         "gradient": {
@@ -132,6 +182,10 @@
                 "angle": 0.0,
                 "center_x": 0.5,
                 "mode": 1.0
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 340.0
             }
         },
         "noise": {
@@ -140,12 +194,20 @@
                 "octaves": 3.0,
                 "speed": 0.30000001192092896,
                 "scale": 4.0
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 340.0
             }
         },
         "displace": {
             "type": "Displace",
             "params": {
                 "amount": 0.029999999329447746
+            },
+            "layout": {
+                "x": 720.0,
+                "y": 340.0
             }
         },
         "lfo_hue": {
@@ -155,6 +217,10 @@
                 "offset": 0.0,
                 "amplitude": 180.0,
                 "frequency": 0.05000000074505806
+            },
+            "layout": {
+                "x": 960.0,
+                "y": 340.0
             }
         },
         "lfo_rot": {
@@ -164,6 +230,10 @@
                 "offset": 0.0,
                 "amplitude": 15.0,
                 "frequency": 0.019999999552965164
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 510.0
             }
         },
         "lfo_chroma": {
@@ -172,6 +242,10 @@
                 "offset": 0.004999999888241291,
                 "amplitude": 0.009999999776482582,
                 "frequency": 0.15000000596046448
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 510.0
             }
         },
         "lfo_pixel": {
@@ -180,13 +254,25 @@
                 "offset": 4.0,
                 "amplitude": 4.0,
                 "frequency": 0.07999999821186066
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 510.0
             }
         },
         "vout": {
-            "type": "video_out"
+            "type": "video_out",
+            "layout": {
+                "x": 720.0,
+                "y": 510.0
+            }
         },
         "aout": {
-            "type": "audio_out"
+            "type": "audio_out",
+            "layout": {
+                "x": 960.0,
+                "y": 510.0
+            }
         }
     },
     "connections": [

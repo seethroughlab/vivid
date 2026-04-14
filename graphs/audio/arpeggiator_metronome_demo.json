@@ -3,8 +3,8 @@
     "vivid_version": "0.1.0",
     "meta": {
         "id": "arpeggiator_metronome_demo",
-        "title": "Arpeggiator Transport Sync",
-        "description": "ChordProgression and Arpeggiator both follow the graph metronome instead of a wired Clock node, demonstrating beat-driven transport sync without explicit beat_phase routing.",
+        "title": "Transport-Synced Arpeggio",
+        "description": "A metronome-locked chord progression and arpeggiator play a bright FM pattern that stays synced as the graph tempo changes.",
         "tags": [
             "audio",
             "arpeggiator",
@@ -17,8 +17,14 @@
             "audio",
             "control"
         ],
-        "featured_rank": 38,
-        "requires_packages": []
+        "requires_packages": [],
+        "featured_rank": 22,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "audio",
+        "family": "Audio patches",
+        "role": "creative",
+        "playability": "self_playing"
     },
     "metronome": {
         "enabled": true,
@@ -49,6 +55,10 @@
                 "voicing_3": 1,
                 "ext_3": 0,
                 "clock_source": 1
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
             }
         },
         "arp1": {
@@ -70,6 +80,10 @@
                 "tr_1": 0,
                 "tr_2": 0,
                 "tr_3": 0
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
             }
         },
         "synth1": {
@@ -83,6 +97,10 @@
                 "sustain": 0.3,
                 "release": 0.2,
                 "amplitude": 0.25
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 0.0
             }
         },
         "reverb1": {
@@ -91,11 +109,19 @@
                 "mix": 0.3,
                 "decay": 1.5,
                 "damping": 0.5
+            },
+            "layout": {
+                "x": 720.0,
+                "y": 0.0
             }
         },
         "out1": {
             "type": "audio_out",
-            "params": {}
+            "params": {},
+            "layout": {
+                "x": 960.0,
+                "y": 0.0
+            }
         }
     },
     "connections": [

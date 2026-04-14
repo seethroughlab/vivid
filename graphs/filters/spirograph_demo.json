@@ -4,7 +4,7 @@
     "meta": {
         "id": "spirograph_demo",
         "title": "Audio Spirograph",
-        "description": "Audio-reactive spirograph with feedback trails \u2014 curve parameters morph with audio.",
+        "description": "A generated tone drives a morphing spirograph with feedback trails.",
         "tags": [
             "demo",
             "spirograph",
@@ -18,7 +18,13 @@
             "control"
         ],
         "requires_packages": [],
-        "featured_rank": 14
+        "featured_rank": 14,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "audiovisual",
+        "family": "Audio-reactive patches",
+        "role": "creative",
+        "playability": "self_playing"
     },
     "nodes": {
         "osc": {
@@ -27,17 +33,29 @@
                 "frequency": 330.0,
                 "amplitude": 0.5,
                 "waveform": 0
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
             }
         },
         "gain": {
             "type": "Gain",
             "params": {
                 "gain": 0.7
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
             }
         },
         "aout": {
             "type": "audio_out",
-            "params": {}
+            "params": {},
+            "layout": {
+                "x": 480.0,
+                "y": 0.0
+            }
         },
         "lfo_inner": {
             "type": "LfoFr",
@@ -46,6 +64,10 @@
                 "amplitude": 0.12,
                 "offset": 0.15,
                 "waveform": 0
+            },
+            "layout": {
+                "x": 720.0,
+                "y": 0.0
             }
         },
         "lfo_rot": {
@@ -54,6 +76,10 @@
                 "frequency": 0.03,
                 "amplitude": 3.14,
                 "offset": 0.0
+            },
+            "layout": {
+                "x": 960.0,
+                "y": 0.0
             }
         },
         "math_pen": {
@@ -61,6 +87,10 @@
             "params": {
                 "operation": 0,
                 "b": 0.08
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 170.0
             }
         },
         "spirograph": {
@@ -75,6 +105,10 @@
                 "r": 0.3,
                 "g": 0.7,
                 "b": 1.0
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 170.0
             }
         },
         "feedback": {
@@ -84,6 +118,10 @@
                 "mix": 0.7,
                 "zoom": 1.01,
                 "rotate": 1.0
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 170.0
             }
         },
         "bloom": {
@@ -93,11 +131,19 @@
                 "intensity": 1.5,
                 "radius": 1.5,
                 "passes": 4
+            },
+            "layout": {
+                "x": 720.0,
+                "y": 170.0
             }
         },
         "vout": {
             "type": "video_out",
-            "params": {}
+            "params": {},
+            "layout": {
+                "x": 960.0,
+                "y": 170.0
+            }
         }
     },
     "connections": [

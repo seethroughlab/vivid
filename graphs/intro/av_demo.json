@@ -4,7 +4,7 @@
     "meta": {
         "id": "av_demo",
         "title": "Audio-Visual Sync",
-        "description": "One shared LFO drives both a visual noise texture and an audio pitch sweep, showing how a single control signal can reach both domains.",
+        "description": "One shared LFO drives both visual scale and audio pitch so cross-domain wiring is immediately visible.",
         "tags": [
             "audio-visual",
             "intro",
@@ -17,7 +17,14 @@
             "gpu",
             "control"
         ],
-        "featured_rank": 3
+        "featured_rank": 4,
+        "estimated_minutes": 1,
+        "content_kind": "example",
+        "category": "starter",
+        "family": "Cross-domain starters",
+        "role": "starter",
+        "playability": "self_playing",
+        "requires_packages": []
     },
     "nodes": {
         "clock1": {
@@ -120,14 +127,14 @@
         }
     ],
     "viewport": {
-        "pan_x": 0.0,
-        "pan_y": 0.0,
-        "zoom": 1.0
+        "pan_x": 319.45398,
+        "pan_y": 81.38189,
+        "zoom": 0.7985277
     },
     "sticky_notes": [
         {
             "id": "note_shared",
-            "text": "**One LFO, two domains.** The same LFO drives both the noise scale and the oscillator pitch. When the noise zooms in, the pitch rises — they move together because they share one source.",
+            "text": "**One LFO, two domains.** The same LFO drives both the noise scale and the oscillator pitch. When the noise zooms in, the pitch rises \u2014 they move together because they share one source.",
             "x": -160.42969,
             "y": 119.640625,
             "width": 300.0,
@@ -136,7 +143,7 @@
         },
         {
             "id": "note_visual",
-            "text": "**Visual path**: LFO → noise scale (2–8). The raw LFO value controls the zoom level.",
+            "text": "**Visual path**: LFO \u2192 noise scale (2\u20138). The raw LFO value controls the zoom level.",
             "x": 350.0,
             "y": 50.0,
             "width": 240.0,
@@ -145,8 +152,8 @@
         },
         {
             "id": "note_audio",
-            "text": "**Audio path**: LFO → oscillator frequency (200–500 Hz). The wire has a remap that scales the LFO’s 2–8 range into audible pitch.",
-            "x": 393.39453,
+            "text": "**Audio path**: LFO \u2192 oscillator frequency (200\u2013500 Hz). The wire has a remap that scales the LFO\u2019s 2\u20138 range into audible pitch.",
+            "x": 400.47787,
             "y": 677.8008,
             "width": 280.0,
             "height": 80.0,

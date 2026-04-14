@@ -1,8 +1,9 @@
 {
     "schema_version": 3,
     "meta": {
+        "id": "sp404_demo",
         "title": "SP404 Drum Sequencer",
-        "description": "DrumSequencer triggers SP404 pads with per-track MIDI note mapping for drum and percussion samples.",
+        "description": "A sample-pad drum kit plays a tight sequenced groove with clear pad-to-note mapping.",
         "tags": [
             "sampler",
             "sp404",
@@ -13,15 +14,24 @@
         "domains": [
             "audio"
         ],
-        "featured_rank": 28,
-        "id": "sp404_demo",
-        "requires_packages": []
+        "requires_packages": [],
+        "featured_rank": 19,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "audio",
+        "family": "Audio patches",
+        "role": "creative",
+        "playability": "self_playing"
     },
     "nodes": {
         "clock1": {
             "type": "Clock",
             "params": {
                 "bpm": 95.0
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
             }
         },
         "ds1": {
@@ -48,6 +58,10 @@
                 "hat_12": 1,
                 "hat_14": 1,
                 "oh_6": 1
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
             }
         },
         "sp1": {
@@ -56,11 +70,19 @@
                 "file": "../../assets/audio/sp404-kit/sp404-kit.json",
                 "mode": 0,
                 "volume": 0.8
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 0.0
             }
         },
         "out1": {
             "type": "audio_out",
-            "params": {}
+            "params": {},
+            "layout": {
+                "x": 720.0,
+                "y": 0.0
+            }
         }
     },
     "connections": [

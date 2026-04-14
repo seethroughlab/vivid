@@ -4,7 +4,7 @@
     "meta": {
         "id": "compressor_demo",
         "title": "Sidechain Compression",
-        "description": "Demonstrates sidechain compression: a kick envelope ducks the main bass+noise mix, creating the classic pumping effect used in electronic music.",
+        "description": "A kick ducks the bass-and-noise layer for a classic pumping sidechain feel.",
         "tags": [
             "compressor",
             "sidechain",
@@ -18,7 +18,13 @@
             "control"
         ],
         "requires_packages": [],
-        "featured_rank": 26
+        "featured_rank": 24,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "audio",
+        "family": "Audio patches",
+        "role": "creative",
+        "playability": "self_playing"
     },
     "nodes": {
         "clock": {
@@ -64,6 +70,10 @@
             "type": "Gain",
             "params": {
                 "gain": 0.699999988079071
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
             }
         },
         "kick_env": {
@@ -84,6 +94,10 @@
             "type": "Gain",
             "params": {
                 "gain": 0.8999999761581421
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
             }
         },
         "kick_osc": {
@@ -134,7 +148,11 @@
             }
         },
         "out": {
-            "type": "audio_out"
+            "type": "audio_out",
+            "layout": {
+                "x": 480.0,
+                "y": 0.0
+            }
         }
     },
     "connections": [
