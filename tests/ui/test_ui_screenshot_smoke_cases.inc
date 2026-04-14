@@ -4,7 +4,7 @@
     std::vector<ScreenshotCase> cases = {
         {
             "instanced-shapes inspector",
-            graphs_dir / "gpu" / "instanced_shapes_demo.json",
+            graphs_dir / "gpu" / "instanced_shapes_simple.json",
             "shapes",
             "instanced_shapes.png",
             {},
@@ -55,7 +55,7 @@
             repo_root / "tests" / "fixtures" / "ui_semantic_env_graph.json",
             "shapes",
             "graph_drop_instanced_shapes.png",
-            graphs_dir / "gpu" / "instanced_shapes_demo.json",
+            repo_root / "reference_graphs" / "gpu" / "instanced_shapes_demo.json",
             5,
             {},
             30,
@@ -112,7 +112,7 @@
         },
         {
             "multi-match file drop chooser",
-            graphs_dir / "gpu" / "instanced_shapes_demo.json",
+            graphs_dir / "gpu" / "instanced_shapes_simple.json",
             "",
             "multi_drop_chooser.png",
             multi_drop_fixture,
