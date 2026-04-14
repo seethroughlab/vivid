@@ -38,6 +38,11 @@ The background thread runs `compile_thread()`:
 4. On success: copies `.dylib` to a staged path (`<staging_dir>/<target>.<counter>.dylib`)
 5. Pushes `ReloadResult` to `results_` (protected by `result_mutex_`)
 
+Build subprocesses run through `ProcessRunner`. On POSIX platforms it first uses
+`posix_spawnp`; if launch is rejected with `EACCES`/`EPERM`, it retries the same
+argv through a fork/exec path so MCP- or app-launched runtimes can still rebuild
+operators when the inherited process context rejects `posix_spawnp`.
+
 ## Deduplication
 
 - `queued_targets_` prevents re-queuing a target already in the queue

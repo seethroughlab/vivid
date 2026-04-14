@@ -117,6 +117,17 @@ static void test_working_directory() {
     check(result.output.find(resolved) != std::string::npos, "pwd matches working directory");
 }
 
+static void test_fork_exec_path() {
+    std::fprintf(stderr, "\n--- test_fork_exec_path ---\n");
+    ProcessRunOptions opts;
+    opts.argv = {"/bin/echo", "fork exec"};
+    opts.prefer_fork_exec = true;
+    auto result = run_process(opts);
+    check(result.launched, "launched");
+    check(result.exit_code == 0, "exit code 0");
+    check(result.output.find("fork exec") != std::string::npos, "fork/exec output captured");
+}
+
 static void test_stderr_captured() {
     std::fprintf(stderr, "\n--- test_stderr_captured ---\n");
     ProcessRunOptions opts;
@@ -258,6 +269,7 @@ int main() {
     test_empty_argv();
     test_timeout();
     test_working_directory();
+    test_fork_exec_path();
     test_stderr_captured();
     test_spawn_detached();
     test_spawn_detached_missing();

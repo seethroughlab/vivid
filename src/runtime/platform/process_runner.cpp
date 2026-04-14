@@ -90,6 +90,43 @@ static void reap_detached_child(pid_t pid) {
     }
 }
 
+static pid_t fork_exec_process(const ProcessRunOptions& options,
+                               const std::vector<char*>& argv,
+                               int pipe_fd[2],
+                               int* spawn_err) {
+    pid_t pid = fork();
+    if (pid == 0) {
+        close(pipe_fd[0]);
+        dup2(pipe_fd[1], STDOUT_FILENO);
+        dup2(pipe_fd[1], STDERR_FILENO);
+        close(pipe_fd[1]);
+
+        if (!options.working_directory.empty() &&
+            chdir(options.working_directory.c_str()) != 0) {
+            int err = errno;
+            std::fprintf(stderr, "chdir failed for %s: %s\n",
+                         options.working_directory.c_str(), std::strerror(err));
+            _exit(127);
+        }
+
+        for (auto& [key, value] : options.env_overrides)
+            setenv(key.c_str(), value.c_str(), 1);
+
+        execvp(argv[0], argv.data());
+        int err = errno;
+        std::fprintf(stderr, "exec failed for %s: %s\n", argv[0], std::strerror(err));
+        _exit(err == ENOENT ? 127 : 126);
+    }
+
+    if (pid < 0) {
+        *spawn_err = errno;
+        return -1;
+    }
+
+    *spawn_err = 0;
+    return pid;
+}
+
 ProcessRunResult run_process(const ProcessRunOptions& options) {
     ProcessRunResult result;
 
@@ -144,31 +181,19 @@ ProcessRunResult run_process(const ProcessRunOptions& options) {
     pid_t pid = -1;
     int spawn_err = 0;
 
-    if (need_chdir) {
-        // Fallback: fork + exec for working directory support.
-        pid = fork();
-        if (pid == 0) {
-            // Child process.
-            if (chdir(options.working_directory.c_str()) != 0)
-                _exit(127);
-            // Set up pipes.
-            close(pipe_fd[0]);
-            dup2(pipe_fd[1], STDOUT_FILENO);
-            dup2(pipe_fd[1], STDERR_FILENO);
-            close(pipe_fd[1]);
-            // Apply env overrides in child.
-            for (auto& [key, value] : options.env_overrides)
-                setenv(key.c_str(), value.c_str(), 1);
-            execvp(argv[0], argv.data());
-            _exit(127);  // exec failed
-        } else if (pid < 0) {
-            spawn_err = errno;
-        }
+    if (need_chdir || options.prefer_fork_exec) {
+        pid = fork_exec_process(options, argv, pipe_fd, &spawn_err);
         posix_spawn_file_actions_destroy(&file_actions);
     } else {
         spawn_err = posix_spawnp(&pid, options.argv[0].c_str(),
                                  &file_actions, nullptr, argv.data(), envp_ptr);
         posix_spawn_file_actions_destroy(&file_actions);
+        if (spawn_err == EACCES || spawn_err == EPERM) {
+            std::fprintf(stderr,
+                         "[vivid] ProcessRunner: posix_spawnp failed for %s: %s; retrying with fork/exec\n",
+                         options.argv[0].c_str(), std::strerror(spawn_err));
+            pid = fork_exec_process(options, argv, pipe_fd, &spawn_err);
+        }
     }
 
     // Close write end in parent.

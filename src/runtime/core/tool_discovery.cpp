@@ -9,6 +9,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #else
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
@@ -50,7 +51,9 @@ static bool is_executable(const std::string& path) {
 #ifdef _WIN32
     return _access(path.c_str(), 0) == 0;
 #else
-    return access(path.c_str(), X_OK) == 0;
+    struct stat st;
+    if (stat(path.c_str(), &st) != 0) return false;
+    return S_ISREG(st.st_mode) && access(path.c_str(), X_OK) == 0;
 #endif
 }
 

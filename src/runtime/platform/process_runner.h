@@ -16,6 +16,7 @@ struct ProcessRunOptions {
     std::vector<std::pair<std::string, std::string>> env_overrides;
     size_t output_limit_bytes = 64 * 1024;
     int timeout_ms = 0;  // 0 = no timeout
+    bool prefer_fork_exec = false;  // primarily for fallback tests/diagnostics
     std::function<void(ProcessOutputStream, std::string_view)> on_output;
 };
 
