@@ -32,8 +32,11 @@ public:
 
     // Build audio-specific state: detect sink, set up auto-dup groups, waveform rings.
     // Also stores bridge/graph references so process_audio_for_test() works before start().
+    // wall_time is the frame-tick time at the moment of build, used to align the audio
+    // sample-counter time domain with the metronome's wall-clock anchor.
     bool build(AudioFrameBridge& bridge, CompiledGraph& cg,
-               const LiveMetronomeStateStore& metronome_store);
+               const LiveMetronomeStateStore& metronome_store,
+               double wall_time = 0.0);
 
     // Start/stop audio device.
     bool start(bool use_null_device = false);
@@ -97,6 +100,7 @@ private:
 
     // Audio time tracking
     uint64_t audio_frame_ = 0;
+    double audio_start_wall_time_ = 0.0;  // wall time when audio_frame_ was 0
     uint32_t buffer_size_ = 256;
     uint32_t sample_rate_ = kSampleRate;
 

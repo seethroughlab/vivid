@@ -101,10 +101,12 @@ AudioExecutor::~AudioExecutor() {
 // own operator state. The audio engine MUST be stopped before build() runs —
 // instance pointers are read by the callback thread without synchronization.
 bool AudioExecutor::build(AudioFrameBridge& bridge, CompiledGraph& cg,
-                          const LiveMetronomeStateStore& metronome_store) {
+                          const LiveMetronomeStateStore& metronome_store,
+                          double wall_time) {
     bridge_ = &bridge;
     graph_ = &cg;
     metronome_store_ = &metronome_store;
+    audio_start_wall_time_ = wall_time;
     sink_node_idx_ = -1;
     lane_lift_groups_.clear();
     node_to_lift_group_.clear();
@@ -477,8 +479,9 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             write_audio_port_telemetry(cn, a, true, chunk, buffer_size_);
 
             double node_time = static_cast<double>(audio_frame_ + frames_written) / sample_rate_;
+            double wall_time = audio_start_wall_time_ + node_time;
             const auto metronome = metronome_store_
-                ? sample_live_metronome(*metronome_store_, node_time)
+                ? sample_live_metronome(*metronome_store_, wall_time)
                 : GraphMetronomeSample{};
 
             // Debug node state

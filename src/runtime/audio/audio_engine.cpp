@@ -27,7 +27,8 @@ bool AudioEngine::build(RuntimeCore& core) {
 
     audio_executor_ = std::make_unique<AudioExecutor>();
     if (!audio_executor_->build(*audio_frame_bridge_, *compiled_graph_,
-                                core.live_metronome_store())) {
+                                core.live_metronome_store(),
+                                core.last_tick_time())) {
         audio_executor_.reset();
         return false;
     }
@@ -167,7 +168,8 @@ bool AudioEngine::post_reload_operator(const std::string& type_name, OperatorReg
     if (audio_executor_ && compiled_graph_ && audio_frame_bridge_ && runtime_core_) {
         audio_executor_->shutdown();
         audio_executor_->build(*audio_frame_bridge_, *compiled_graph_,
-                               runtime_core_->live_metronome_store());
+                               runtime_core_->live_metronome_store(),
+                               runtime_core_->last_tick_time());
         audio_frame_bridge_->build(*compiled_graph_);
         audio_executor_->start(false);
     }
