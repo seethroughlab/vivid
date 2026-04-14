@@ -236,6 +236,48 @@ if(APPLE)
         deps/syphon/SyphonServerRendererMetal.m
         PROPERTIES COMPILE_FLAGS "-fobjc-arc"
     )
+
+    # Syphon's upstream code loads Metal shaders via newDefaultLibraryWithBundle:,
+    # which looks for default.metallib in the main app bundle's Resources/.
+    # Try to compile from source; fall back to a pre-built copy if the Metal
+    # toolchain isn't installed (newer Xcode may require:
+    #   xcodebuild -downloadComponent MetalToolchain).
+    set(SYPHON_METAL_SRC "${CMAKE_SOURCE_DIR}/deps/syphon/SyphonMetalShaders.metal")
+    set(SYPHON_METALLIB "${CMAKE_BINARY_DIR}/syphon_default.metallib")
+    set(SYPHON_METALLIB_FALLBACK "${CMAKE_SOURCE_DIR}/deps/syphon_default.metallib")
+
+    execute_process(
+        COMMAND xcrun metal -v
+        RESULT_VARIABLE _metal_result
+        OUTPUT_QUIET ERROR_QUIET
+    )
+    if(_metal_result EQUAL 0)
+        set(SYPHON_AIR "${CMAKE_BINARY_DIR}/SyphonMetalShaders.air")
+        add_custom_command(
+            OUTPUT ${SYPHON_AIR}
+            COMMAND xcrun metal -c ${SYPHON_METAL_SRC} -o ${SYPHON_AIR}
+                -I ${CMAKE_SOURCE_DIR}/deps/syphon
+            DEPENDS ${SYPHON_METAL_SRC}
+            COMMENT "Compiling Syphon Metal shaders"
+        )
+        add_custom_command(
+            OUTPUT ${SYPHON_METALLIB}
+            COMMAND xcrun metallib ${SYPHON_AIR} -o ${SYPHON_METALLIB}
+            DEPENDS ${SYPHON_AIR}
+            COMMENT "Linking Syphon metallib"
+        )
+        add_custom_target(syphon_metallib DEPENDS ${SYPHON_METALLIB})
+    else()
+        message(STATUS "Metal toolchain not available — using pre-built syphon_default.metallib")
+        add_custom_command(
+            OUTPUT ${SYPHON_METALLIB}
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${SYPHON_METALLIB_FALLBACK} ${SYPHON_METALLIB}
+            DEPENDS ${SYPHON_METALLIB_FALLBACK}
+        )
+        add_custom_target(syphon_metallib DEPENDS ${SYPHON_METALLIB})
+    endif()
+    add_dependencies(syphon_runtime syphon_metallib)
 endif()
 
 # --- midifile (Standard MIDI File parser) ---

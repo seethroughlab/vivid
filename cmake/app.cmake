@@ -439,6 +439,9 @@ if(APPLE)
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 $<TARGET_FILE:syphon_runtime>
                 $<TARGET_BUNDLE_CONTENT_DIR:vivid>/Frameworks/
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${CMAKE_BINARY_DIR}/syphon_default.metallib
+                $<TARGET_BUNDLE_CONTENT_DIR:vivid>/Resources/default.metallib
         )
     endif()
 
