@@ -917,7 +917,7 @@ async def recommend_starting_point(goal: str) -> str:
         "custom_ref_port": ["ref port", "reference port", "handle port", "custom_ref_port"],
         "file_drop": ["file drop", "file picker", "drag drop", "drag and drop", "load file", "file_drop", "file param"],
         "thumbnail": ["thumbnail", "preview", "custom thumbnail"],
-        "child_op": ["child op", "child_op", "composite", "embed operator", "internal modulation"],
+        "child_op": ["child op", "child_op", "owned child", "embed operator", "internal modulation"],
         "midi": ["midi", "note on", "note off", "midi input"],
         "input_events": ["mouse", "keyboard", "click", "input event", "key press"],
         "media_stream": ["media stream", "video playback", "movie", "media_stream", "av sync", "cross-cadence"],
@@ -995,7 +995,7 @@ async def scaffold_operator(name: str, env: str, variant: str = "") -> str:
     Args:
         name: Operator name in lowercase_with_underscores (e.g. "tone_gen")
         env: One of "control", "audio", "gpu"
-        variant: Template variant. Use "composite" for a ChildOp-based control operator.
+        variant: Template variant. Use "child_op" for a ChildOp-based control operator.
     """
     if await _runtime_is_reachable():
         body: dict = {"name": name, "env": env}

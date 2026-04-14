@@ -27,7 +27,7 @@ struct VividParamSpec {
 struct VividCreateOperatorRequest {
     std::string name;
     VividOperatorKind kind = VIVID_OP_CONTROL;
-    std::string variant;          // "", "composite", "empty"
+    std::string variant;          // "", "child_op", "empty"
     std::string destination;      // "auto", "project", "core"
     std::vector<VividPortSpec> ports;   // full port list (inputs + outputs); empty = env defaults
     std::vector<VividParamSpec> params; // empty = use template defaults

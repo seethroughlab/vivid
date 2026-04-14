@@ -238,7 +238,7 @@ int main(int argc, char* argv[]) {
         ->check(CLI::IsMember({"control", "audio", "gpu"}))
         ->default_val("control");
     scaffold_op_cmd->add_option("--variant", scaffold_op_variant,
-                                "Optional template variant (e.g. composite)");
+                                "Optional template variant (e.g. child_op)");
     scaffold_op_cmd->add_option("--dest", scaffold_op_dest,
                                 "Destination: auto|core|package:<name>|absolute path")
         ->default_val("auto");

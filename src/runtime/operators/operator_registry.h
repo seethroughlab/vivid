@@ -37,6 +37,7 @@ struct DeferredEntry {
     std::vector<std::string> semantic_intents;      // stable strings for semantic_intent pointers
     std::vector<std::string> descriptions;          // stable strings for description pointers
     std::vector<std::string> asset_kinds;           // stable strings for asset_kind pointers
+    std::vector<std::string> widget_ids;            // stable strings for widget_id pointers
     std::vector<std::string> visible_when_params;   // stable strings for visible_when_param pointers
     std::vector<std::vector<int32_t>> visible_when_values;
     std::vector<std::vector<std::string>> choice_labels;     // owned choice label strings

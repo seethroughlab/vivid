@@ -108,6 +108,8 @@ public:
             pi.display_hint        = pd.display_hint;
             pi.layout_columns      = pd.layout_columns;
             pi.layout_column_index = pd.layout_column_index;
+            pi.widget_id           = pd.widget_id ? pd.widget_id : "";
+            pi.widget_span         = pd.widget_span;
             pi.semantic_tag        = pd.semantic_tag ? pd.semantic_tag : "";
             pi.semantic_shape      = pd.semantic_shape ? pd.semantic_shape : "";
             pi.semantic_unit       = pd.semantic_unit ? pd.semantic_unit : "";

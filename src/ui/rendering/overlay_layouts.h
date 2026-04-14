@@ -36,7 +36,7 @@ struct OverlayPanelLayout {
 };
 
 OverlayPanelLayout compute_create_operator_layout(uint32_t win_w, uint32_t win_h,
-                                                   bool show_composite);
+                                                   bool show_child_op);
 OverlayPanelLayout compute_package_browser_layout(uint32_t win_w, uint32_t win_h, size_t entry_count);
 OverlayPanelLayout compute_example_browser_layout(uint32_t win_w, uint32_t win_h,
                                                   size_t entry_count,

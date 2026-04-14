@@ -250,11 +250,11 @@ int main() {
     }
 
     // =================================================================
-    // Test 9: create() composite variant — verify ChildOp template
+    // Test 9: create() child_op variant — verify ChildOp template
     // =================================================================
     {
-        std::fprintf(stderr, "\n=== Test 9: create() composite variant ===\n");
-        std::string tmp = (g_tmp->path / "vivid_test_creator_composite").string();
+        std::fprintf(stderr, "\n=== Test 9: create() child_op variant ===\n");
+        std::string tmp = (g_tmp->path / "vivid_test_creator_child_op").string();
         fs::create_directories(tmp);
 
         {
@@ -264,43 +264,43 @@ int main() {
                 << "# --- GPU operator plugins ---\n";
         }
 
-        auto result = create_op("mod_filter", VIVID_OP_CONTROL, tmp, "composite");
-        check(result.success, "create composite op succeeds");
+        auto result = create_op("mod_filter", VIVID_OP_CONTROL, tmp, "child_op");
+        check(result.success, "create child_op op succeeds");
         check(result.error.empty(), "no error");
 
         std::string cpp_path = tmp + "/operators/control/mod_filter/mod_filter.cpp";
-        check(fs::exists(cpp_path), "composite cpp file exists");
+        check(fs::exists(cpp_path), "child_op cpp file exists");
 
         std::string src = read_file(cpp_path);
         check(src.find("child_op.h") != std::string::npos, "includes child_op.h");
         check(src.find("ChildOp<LFO>") != std::string::npos, "has ChildOp<LFO>");
         check(src.find("ChildOp<Smooth>") != std::string::npos, "has ChildOp<Smooth>");
-        check(src.find("operators documented as embeddable") != std::string::npos,
-              "composite template documents embeddable ChildOp contract");
-        check(src.find("vivid_composable_ops through a *_composable.cpp support file") != std::string::npos,
-              "composite template documents composable support path");
+        check(src.find("owned, host-local behavior") != std::string::npos,
+              "child_op template documents owned ChildOp contract");
+        check(src.find("vivid_embeddable_op_support through a *_embeddable.cpp support file") != std::string::npos,
+              "child_op template documents embeddable support path");
         check(src.find("lfo_.process(ctx)") != std::string::npos, "calls lfo_.process(ctx)");
         check(src.find("smoother_.process(ctx)") != std::string::npos, "calls smoother_.process(ctx)");
         check(src.find("struct ModFilter") != std::string::npos, "struct name is ModFilter");
         check(src.find("semantic_tag(lfo_rate, \"frequency_hz\")") != std::string::npos,
-              "composite template includes semantic_tag for lfo_rate");
+              "child_op template includes semantic_tag for lfo_rate");
         check(src.find("semantic_unit(lfo_rate, \"Hz\")") != std::string::npos,
-              "composite template includes semantic_unit for lfo_rate");
+              "child_op template includes semantic_unit for lfo_rate");
         check(src.find("semantic_tag(smooth_time, \"time_seconds\")") != std::string::npos,
-              "composite template includes semantic_tag for smooth_time");
+              "child_op template includes semantic_tag for smooth_time");
 
-        // Verify CMakeLists.txt includes EXTRA_LIBS vivid_composable_ops
+        // Verify CMakeLists.txt includes EXTRA_LIBS vivid_embeddable_op_support
         std::string cmake = read_file(tmp + "/CMakeLists.txt");
-        check(cmake.find("EXTRA_LIBS vivid_composable_ops") != std::string::npos,
-              "cmake includes EXTRA_LIBS vivid_composable_ops");
+        check(cmake.find("EXTRA_LIBS vivid_embeddable_op_support") != std::string::npos,
+              "cmake includes EXTRA_LIBS vivid_embeddable_op_support");
     }
 
     // =================================================================
-    // Test 10: composite variant rejected for GPU env
+    // Test 10: child_op variant rejected for GPU env; old variant name rejected
     // =================================================================
     {
-        std::fprintf(stderr, "\n=== Test 10: Reject composite for GPU env ===\n");
-        std::string tmp = (g_tmp->path / "vivid_test_creator_composite_gpu").string();
+        std::fprintf(stderr, "\n=== Test 10: Reject child_op for GPU env ===\n");
+        std::string tmp = (g_tmp->path / "vivid_test_creator_child_op_gpu").string();
         fs::create_directories(tmp);
 
         {
@@ -310,10 +310,15 @@ int main() {
                 << "# --- SyphonOut operator ---\n";
         }
 
-        auto result = create_op("bad_comp", VIVID_OP_GPU, tmp, "composite");
-        check(!result.success, "composite GPU rejected");
+        auto result = create_op("bad_comp", VIVID_OP_GPU, tmp, "child_op");
+        check(!result.success, "child_op GPU rejected");
         check(result.error.find("control operators") != std::string::npos,
               "error mentions 'control operators'");
+
+        auto old_result = create_op("old_comp", VIVID_OP_CONTROL, tmp, "composite");
+        check(!old_result.success, "old variant name rejected");
+        check(old_result.error.find("unknown variant") != std::string::npos,
+              "old variant name reports unknown variant");
     }
 
     // =================================================================

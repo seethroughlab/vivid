@@ -571,7 +571,7 @@ void DialogManager::open_create_popup() {
     create_popup.env_sel = 0;
     create_popup.name_buf.clear();
     create_popup.error.clear();
-    create_popup.composite = false;
+    create_popup.child_op = false;
     create_popup.destination = 0;
 }
 
@@ -582,8 +582,8 @@ void DialogManager::submit_create_operator(bool empty_variant) {
 
     if (empty_variant) {
         req.variant = "empty";
-    } else if (create_popup.composite) {
-        req.variant = "composite";
+    } else if (create_popup.child_op) {
+        req.variant = "child_op";
     }
 
     const char* dest_strs[] = { "auto", "project", "core" };
@@ -595,7 +595,7 @@ void DialogManager::submit_create_operator(bool empty_variant) {
 }
 
 void DialogManager::reset_create_env_defaults() {
-    create_popup.composite = false;
+    create_popup.child_op = false;
 }
 
 // -----------------------------------------------------------------------

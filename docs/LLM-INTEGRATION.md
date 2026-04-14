@@ -77,7 +77,7 @@ Core/package update MCP tool surface (current):
 
 Instrument coherence MCP tool surface (current):
 - `list_mod_sources(node_id)` / `list_mod_destinations(node_id)` — discover a module's declared modulation sources and destinations.
-- `add_mod_assignment(node_id, source, destination, amount, polarity, curve)` / `remove_mod_assignment` / `update_mod_assignment` / `list_mod_assignments` — author and inspect composite-local modulation assignments on module instances.
+- `add_mod_assignment(node_id, source, destination, amount, polarity, curve)` / `remove_mod_assignment` / `update_mod_assignment` / `list_mod_assignments` — author and inspect module-local modulation assignments on module instances.
 - `list_assets(kind, scope)` / `inspect_asset(asset_id)` / `import_asset(source_path, kind)` / `refresh_assets()` — browse, inspect, and import assets into the workspace library. V1 supports wavetables as the built-in kind.
 - Module instances appear as first-class synthetic operators in `list_types`, `inspect`, and `operator_docs` — exposed controls, grouped sections, and module-level presets are queryable through the same introspection tools used for normal operators.
 
@@ -113,7 +113,7 @@ LLM-assisted development in Vivid follows a feedback cycle: capture the current 
 
 Typical live-session screenshot flow:
 
-1. `ensure_runtime(graph_path="graphs/gpu/instanced_shapes_demo.json")`
+1. `ensure_runtime(graph_path="graphs/gpu/instanced_shapes_simple.json")`
 2. `capture_image(mode="interface", node_id="shapes", save_path="/tmp/shapes.png")`
 3. inspect the returned PNG payload or saved file from the running instance
 

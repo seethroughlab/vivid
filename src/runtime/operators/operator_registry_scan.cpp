@@ -97,6 +97,7 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
     entry.semantic_intents.resize(param_count);
     entry.descriptions.resize(param_count);
     entry.asset_kinds.resize(param_count);
+    entry.widget_ids.resize(param_count);
     entry.visible_when_params.resize(param_count);
     entry.visible_when_values.resize(param_count);
     entry.choice_labels.resize(param_count);
@@ -115,6 +116,7 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
         dp.display_hint = sp.display_hint;
         dp.layout_columns = sp.layout_columns;
         dp.layout_column_index = sp.layout_column_index;
+        dp.widget_span = sp.widget_span;
 
         if (sp.choice_labels && sp.choice_count > 0) {
             entry.choice_labels[i].resize(sp.choice_count);
@@ -170,6 +172,12 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
             dp.asset_kind = entry.asset_kinds[i].c_str();
         } else {
             dp.asset_kind = nullptr;
+        }
+        if (sp.widget_id) {
+            entry.widget_ids[i] = sp.widget_id;
+            dp.widget_id = entry.widget_ids[i].c_str();
+        } else {
+            dp.widget_id = nullptr;
         }
         if (sp.visible_when_param) {
             entry.visible_when_params[i] = sp.visible_when_param;

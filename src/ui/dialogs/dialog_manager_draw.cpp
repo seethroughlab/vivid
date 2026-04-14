@@ -1790,9 +1790,9 @@ void DialogManager::draw_create_popup(Renderer2D& tr, const MouseState& mouse,
     float wf = static_cast<float>(win_w);
     float hf = static_cast<float>(win_h);
     bool blink_on = (static_cast<int>(frame_counter_ / 30) % 2 == 0);
-    bool show_composite = (create_popup.env_sel == 0);
+    bool show_child_op = (create_popup.env_sel == 0);
 
-    auto layout = compute_create_operator_layout(win_w, win_h, show_composite);
+    auto layout = compute_create_operator_layout(win_w, win_h, show_child_op);
 
     // Scrim
     tr.draw_rect(0, 0, wf, hf,
@@ -1836,10 +1836,10 @@ void DialogManager::draw_create_popup(Renderer2D& tr, const MouseState& mouse,
     }
     cy += kCreateEnvBtnH + 10.0f;
 
-    // 3. Composite checkbox (control env only)
-    if (show_composite) {
-        draw_checkbox(tr, style, cx, cy + 2, 16.0f, create_popup.composite);
-        tr.draw_text(cx + 22, cy + 2, T("composite_template", "Composite (ChildOp template)"),
+    // 3. ChildOp template checkbox (control env only)
+    if (show_child_op) {
+        draw_checkbox(tr, style, cx, cy + 2, 16.0f, create_popup.child_op);
+        tr.draw_text(cx + 22, cy + 2, T("child_op_template", "Owned ChildOp template"),
                      style.dim_text[0], style.dim_text[1], style.dim_text[2]);
         cy += 24.0f + kCreateModalRowGap;
     }

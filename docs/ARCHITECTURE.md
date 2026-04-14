@@ -108,6 +108,14 @@ When the user draws a connection in the graph editor, the runtime compares custo
 ### Semantic Tags (Advisory)
 Port types can carry optional semantic tags: normalized (0–1), bipolar (-1 to 1), frequency_hz, decibels, midi_note, etc. **Tags are advisory hints, not enforced by the runtime.** When connecting ports with mismatched ranges, the graph editor suggests inserting a visible Remap node with the mapping pre-configured. No silent auto-mapping.
 
+### Param Storage and Widgets
+
+`VividParamType` intentionally stays primitive: float, int, bool, file, and text. Params own persisted configuration values; they do not own executable behavior or arbitrary structured blobs. Compound inspector controls are modeled as widgets over runs of primitive params via optional `widget_id` and `widget_span` descriptor metadata.
+
+Built-in widgets such as ADSR, LFO preview, color, XY pad, and step sequencer use the same widget registry path as package-defined widgets. Existing `display_hint` values remain supported as compatibility metadata. Package operators may tag a primitive param run with a custom widget id and render that run from the operator's custom inspector callback. Graph JSON, presets, variations, locks, MIDI mapping, and `set_param` / `set_string_param` continue to address the primitive params by name.
+
+Envelope, oscillator, and LFO controls in inspectors are presentation over primitive params unless they need executable private state. Executable host-local behavior belongs in an owned `ChildOp<T>`; graph-visible data belongs on ports, including custom port types when a package needs a new wire payload.
+
 ## 5.7 Operator API Contract
 
 Each operator is a self-contained compilation unit — a shared library (`.dylib`) with a known interface. The runtime and operators share C++ types via common headers, but the hot-reload boundary uses `extern "C"` functions for `dlopen` stability:
@@ -145,26 +153,26 @@ For statically linked export builds (§5.16), the `extern "C"` boundary is unnec
 
 The simpler this contract, the better everything downstream works: auto-generated UI knobs, confident LLM generation, and fast compilation of small self-contained units.
 
-### 5.7.1 Composite Operators (ChildOp)
+### 5.7.1 Owned Child Operators
 
-Control operators can embed other operators as persistent member variables using `ChildOp<T>` (defined in `src/operator_api/child_op.h`). This enables internal modulation chains — e.g. an LFO driving a gain stage — without exposing child operators as separate graph nodes.
+Operators can embed control-domain operators as persistent member variables using `ChildOp<T>` (defined in `src/operator_api/child_op.h`). This enables internal modulation chains — e.g. an LFO driving a gain stage — without exposing child operators as separate graph nodes.
 
 **Embeddable operators** must satisfy one of two supported shapes:
 - `header-only embeddable`: every concrete definition needed by `ChildOp<T>` is available from the header
-- `composable-support-backed embeddable`: the operator keeps plugin-facing code in `.cpp`, and registers a `name_composable.cpp` support unit through `vivid_composable_ops` for any out-of-line destructor, virtual method implementation, thumbnail hook, or other non-inline definition needed by `ChildOp<T>` consumers
+- `support-backed embeddable`: the operator keeps plugin-facing code in `.cpp`, and registers a `name_embeddable.cpp` support unit through `vivid_embeddable_op_support` for any out-of-line destructor, virtual method implementation, thumbnail hook, or other non-inline definition needed by `ChildOp<T>` consumers
 
-**Composable support files** are minimal embedded-use glue only. They must not contain:
+**Embeddable support files** are minimal embedded-use glue only. They must not contain:
 - `VIVID_REGISTER(...)`
 - plugin export macros such as `VIVID_THUMBNAIL(...)`
 - full plugin-only thumbnail, inspector, or runtime wrapper behavior
 
 **Current embeddables:**
 - header-only: `LFO` (`control/lfo/lfo.h`)
-- composable-support-backed: `Smooth` (`control/smooth/smooth.h` + `smooth_composable.cpp`), `Envelope` (`control/envelope/envelope.h` + `envelope_composable.cpp`)
+- support-backed: `Smooth` (`control/smooth/smooth.h` + `smooth_embeddable.cpp`), `Envelope` (`control/envelope/envelope.h` + `envelope_embeddable.cpp`)
 
 **When to choose which style:**
 - prefer header-only for lightweight, dependency-light modulation cores
-- use composable support when the operator should still be embeddable but its plugin-facing thumbnail or other virtual behavior is better kept out-of-line
+- use embeddable support when the operator should still be embeddable but its plugin-facing thumbnail or other virtual behavior is better kept out-of-line
 
 **Usage pattern:**
 
@@ -179,10 +187,10 @@ struct MyOp : vivid::OperatorBase, vivid::FrameProcessable {
 
     void process_frame(const VividFrameContext* ctx) override {
         lfo_.set_param("frequency", 2.0f);
-        lfo_.process_frame(ctx);                 // inherits time/frame from parent
+        lfo_.process(ctx);                       // inherits time/frame from parent
 
         smoother_.set_input("input", lfo_.output("value"));
-        smoother_.process_frame(ctx);
+        smoother_.process(ctx);
 
         float mod = smoother_.output("value");   // use in parent logic
     }
@@ -194,8 +202,9 @@ struct MyOp : vivid::OperatorBase, vivid::FrameProcessable {
 - `process()` builds a child `VividFrameContext` inheriting `time`, `delta_time`, and `frame` from the parent context.
 - Children maintain persistent state across frames (e.g. LFO phase), just like top-level operators.
 - The parent's `collect_params` / `collect_ports` only expose the parent's params — child params are internal.
+- Child params should be mirrored as ordinary parent params or a compound param widget when the user needs to edit them.
 
-**Domain restriction:** ChildOp is for control-domain composition only. Audio operators need per-sample buffer processing on the audio thread, and GPU operators run as shader pipelines — neither maps to the `ChildOp` call-and-read pattern.
+**Domain restriction:** ChildOp is for owned control-domain behavior. Audio operators need per-sample buffer processing on the audio thread, and GPU operators run as shader pipelines — neither maps to the `ChildOp` call-and-read pattern.
 
 All 7 GPU operators (Particles, InstancedShapes, Flocking, Trails, Fluid, ReactionDiffusion, CellularAutomata) use `ChildOp<T>` for internal modulation — typically LFO or Envelope instances driven by `<role>_`-prefixed host params (e.g., `envelope_attack`, `scale_rate`). These child operators are private implementation details with no separate metadata layer.
 

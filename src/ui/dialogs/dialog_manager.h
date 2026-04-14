@@ -179,7 +179,7 @@ public:
         int env_sel = 0;            // 0=control, 1=audio, 2=gpu
         std::string name_buf;
         std::string error;
-        bool composite = false;     // variant checkbox, control-only
+        bool child_op = false;      // variant checkbox, control-only
         int destination = 0;        // 0=auto, 1=project, 2=core
     };
 

@@ -54,7 +54,8 @@ target_include_directories(test_control_server PRIVATE src tests)
 target_link_libraries(test_control_server PRIVATE
     vivid_runtime_testlib)
 add_dependencies(test_control_server test_op_v1 semantic_ms_source_op semantic_s_dest_op
-    semantic_unknown_source_op untagged_dest_op export_custom_port_op test_op_bad_custom_type)
+    semantic_unknown_source_op untagged_dest_op export_custom_port_op test_op_bad_custom_type
+    string_source_op string_sink_op)
 add_test(NAME test_control_server COMMAND test_control_server ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 

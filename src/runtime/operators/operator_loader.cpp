@@ -369,6 +369,8 @@ void OperatorLoader::init_wgsl_operator(std::shared_ptr<WgslOperatorConfig> conf
         dp.display_hint = sp.display_hint;
         dp.layout_columns = sp.layout_columns;
         dp.layout_column_index = sp.layout_column_index;
+        dp.widget_id = nullptr;
+        dp.widget_span = 0;
         dp.semantic_tag = nullptr;
         dp.semantic_shape = nullptr;
         dp.semantic_unit = nullptr;

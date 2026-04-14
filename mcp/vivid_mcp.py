@@ -52,10 +52,10 @@ When asked to examine, analyze, or debug an existing graph, **always call `get_g
 - Visual chains: generators → filters → `video_out`
 - Control signals modulate both GPU and audio params
 
-## Composite Operators
+## Owned Child Operators
 
 Control operators can embed other operators internally using ChildOp<T>. Use `scaffold_operator`
-with `variant="composite"` to generate a template. Useful for internal modulation (e.g. LFO driving
+with `variant="child_op"` to generate a template. Useful for internal modulation (e.g. LFO driving
 a gain stage) without exposing child operators as graph nodes. Control env only.
 
 ## Custom Operators
@@ -1043,7 +1043,7 @@ async def scaffold_operator(name: str, env: str, variant: str = "") -> str:
     Args:
         name: Operator name in lowercase_with_underscores (e.g. "tone_gen")
         env: One of "control", "audio", "gpu"
-        variant: Template variant. Use "composite" for a ChildOp-based control operator with internal LFO + Smooth.
+        variant: Template variant. Use "child_op" for a ChildOp-based control operator with internal LFO + Smooth.
     """
     if await _runtime_is_reachable():
         body: dict = {"name": name, "env": env}

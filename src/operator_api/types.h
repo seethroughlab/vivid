@@ -8,7 +8,7 @@ extern "C" {
 
 /* Bump when operator-facing C ABI changes in incompatible ways.
    Catches stale dylibs during hot-reload — not a cross-version compatibility promise. */
-#define VIVID_OPERATOR_ABI_VERSION 13u
+#define VIVID_OPERATOR_ABI_VERSION 14u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -106,6 +106,8 @@ typedef struct VividParamDescriptor {
     VividParamVisibilityOp visible_when_op; /* EQ/NE against visible_when_values */
     const int32_t*    visible_when_values;
     uint32_t          visible_when_value_count;
+    const char*       widget_id;          /* optional namespaced compound widget id */
+    uint32_t          widget_span;        /* number of primitive params claimed by widget_id */
 } VividParamDescriptor;
 
 typedef struct VividPortDescriptor {

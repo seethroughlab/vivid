@@ -269,6 +269,20 @@ int main() {
         params[0].choice_count = 7;
         check(inspector_widget_run_at(params, 0).kind == InspectorWidgetKind::kLFO,
               "LFO run is classified from choice param");
+        params[0].display_hint = VIVID_DISPLAY_DEFAULT;
+        params[0].widget_id = "seethroughlab.vivid.lfo";
+        params[0].widget_span = 1;
+        check(inspector_widget_run_at(params, 0).kind == InspectorWidgetKind::kLFO,
+              "LFO run is classified from explicit widget id");
+        check(inspector_widget_run_at(params, 0).widget_id == "seethroughlab.vivid.lfo",
+              "built-in widget id is preserved");
+        params[0].choice_count = 0;
+        params[0].widget_id = "com.example.package.curve";
+        params[0].widget_span = 3;
+        check(inspector_widget_run_at(params, 0).kind == InspectorWidgetKind::kCustom,
+              "custom widget id classifies as custom");
+        check(inspector_widget_run_at(params, 0).length == 3,
+              "custom widget span is preserved");
 
         InspectorSurface surface;
         surface.begin_frame();

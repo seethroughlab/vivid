@@ -1343,6 +1343,10 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
             }
 
             InspectorWidgetRun widget_run = inspector_widget_run_at(op.params, pi);
+            if (widget_run.kind == InspectorWidgetKind::kCustom &&
+                !node.op_info->has_custom_inspector) {
+                widget_run = {};
+            }
             if (widget_run.kind != InspectorWidgetKind::kNone &&
                 param_run_visible(op, node, pi, widget_run.length)) {
                 layout.flush_row();
@@ -1363,6 +1367,9 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
                     break;
                 case InspectorWidgetKind::kStepSeq:
                     draw_inspector_step_seq(tr, node, layout, pi, widget_run.length);
+                    break;
+                case InspectorWidgetKind::kCustom:
+                    layout.end_param(0.0f);
                     break;
                 case InspectorWidgetKind::kNone:
                     break;

@@ -1,6 +1,6 @@
 # Advanced API Features
 
-## ChildOp\<T\> — Composite Operators
+## ChildOp\<T\> — Owned Child Operators
 
 Embed an operator as a persistent member variable inside another operator. Frame-cadence only.
 
@@ -359,7 +359,7 @@ Declare factory presets in the module definition under `module.presets`. These a
 
 ### Declaring Modulation Sources and Destinations
 
-Modules can declare named modulation sources and destinations for composite-local modulation (Step 2 of instrument coherence). Authors specify these in the module definition:
+Modules can declare named modulation sources and destinations for module-local modulation. Authors specify these in the module definition:
 
 - **Sources**: internal signals the user can assign to destinations (e.g., `env2`, `lfo1`, `macro1`, `velocity`)
 - **Destinations**: exposed or internal params the user can target (e.g., `filter_cutoff`, `brightness`, `wt_position`)

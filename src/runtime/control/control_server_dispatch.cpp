@@ -686,7 +686,7 @@ std::string dispatch(const std::string& method, const std::string& body,
             else if (kind_str_val == "gpu")     kind = VIVID_OP_GPU;
             else return json_err("kind must be 'control', 'audio', or 'gpu'");
 
-            // Optional variant (e.g. "composite")
+            // Optional variant (e.g. "child_op")
             std::string variant;
             if (root.contains("variant") && root["variant"].is_string())
                 variant = root["variant"].get<std::string>();

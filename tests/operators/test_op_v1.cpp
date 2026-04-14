@@ -21,6 +21,7 @@ struct TestOp : vivid::OperatorBase, vivid::FrameProcessable {
         vivid::semantic_shape(scale, "scalar");
         vivid::semantic_unit(scale, "Hz");
         vivid::semantic_intent(scale, "test_scale");
+        vivid::param_widget(scale, "tests.vivid.scale_widget", 1);
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

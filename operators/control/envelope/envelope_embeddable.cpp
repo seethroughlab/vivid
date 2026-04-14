@@ -4,9 +4,9 @@
 
 #include <algorithm>
 
-// Composable support for ChildOp<Envelope>.
+// Embeddable support for ChildOp<Envelope>.
 //
-// Envelope's public operators link vivid_composable_ops, so the shared
+// Envelope's public operators link vivid_embeddable_op_support, so the shared
 // thumbnail implementation lives here with the out-of-line destructor.
 
 namespace {

@@ -479,18 +479,18 @@ static std::string gpu_template(const std::string& name, const std::string& stru
 }
 
 // ---------------------------------------------------------------------------
-// Composite template (unchanged — fixed ports/params)
+// Owned child-op composition template (fixed ports/params)
 // ---------------------------------------------------------------------------
 
-static std::string composite_control_template(const std::string& name, const std::string& struct_name) {
+static std::string child_op_control_template(const std::string& name, const std::string& struct_name) {
     std::ostringstream s;
     s << "#include \"operator_api/child_op.h\"\n";
     s << "#include \"control/lfo/lfo.h\"\n";
     s << "#include \"control/smooth/smooth.h\"\n\n";
     emit_starter_comment(s);
-    s << "// ChildOp<T> only works with operators documented as embeddable.\n";
+    s << "// ChildOp<T> is for owned, host-local behavior with private state.\n";
     s << "// Embeddables are either fully header-defined or backed by\n";
-    s << "// vivid_composable_ops through a *_composable.cpp support file.\n\n";
+    s << "// vivid_embeddable_op_support through a *_embeddable.cpp support file.\n\n";
     s << "struct " << struct_name << " : vivid::OperatorBase, vivid::FrameProcessable {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
     s << "    static constexpr bool kTimeDependent = true;\n";
@@ -752,12 +752,12 @@ CreateOperatorResult OperatorCreator::create(const VividCreateOperatorRequest& r
     }
 
     // Validate variant
-    if (!request.variant.empty() && request.variant != "composite" && request.variant != "empty") {
-        result.error = "unknown variant '" + request.variant + "' (supported: composite, empty)";
+    if (!request.variant.empty() && request.variant != "child_op" && request.variant != "empty") {
+        result.error = "unknown variant '" + request.variant + "' (supported: child_op, empty)";
         return result;
     }
-    if (request.variant == "composite" && request.kind != VIVID_OP_CONTROL) {
-        result.error = "composite variant is only supported for control operators";
+    if (request.variant == "child_op" && request.kind != VIVID_OP_CONTROL) {
+        result.error = "child_op variant is only supported for control operators";
         return result;
     }
 
@@ -867,8 +867,8 @@ CreateOperatorResult OperatorCreator::create(const VividCreateOperatorRequest& r
             case VIVID_OP_GPU:   source = empty_gpu_template(request.name, struct_name); break;
             default: break;
         }
-    } else if (request.variant == "composite") {
-        source = composite_control_template(request.name, struct_name);
+    } else if (request.variant == "child_op") {
+        source = child_op_control_template(request.name, struct_name);
     } else {
         switch (request.kind) {
             case VIVID_OP_CONTROL: source = control_template(request.name, struct_name, request.ports, request.params); break;
@@ -900,8 +900,8 @@ CreateOperatorResult OperatorCreator::create(const VividCreateOperatorRequest& r
 
     // Patch CMakeLists.txt
     std::string extra_libs;
-    if (request.variant == "composite")
-        extra_libs = "vivid_composable_ops";
+    if (request.variant == "child_op")
+        extra_libs = "vivid_embeddable_op_support";
 
     std::string cmake_err;
     bool patch_ok = false;

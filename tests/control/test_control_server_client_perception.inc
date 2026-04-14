@@ -41,6 +41,12 @@
                     check(p0.contains("semantic_intent") && p0["semantic_intent"].is_string() &&
                               p0["semantic_intent"].get<std::string>() == "test_scale",
                           "inspect_graph params expose semantic_intent");
+                    check(p0.contains("widget_id") && p0["widget_id"].is_string() &&
+                              p0["widget_id"].get<std::string>() == "tests.vivid.scale_widget",
+                          "inspect_graph params expose widget_id");
+                    check(p0.contains("widget_span") && p0["widget_span"].is_number_unsigned() &&
+                              p0["widget_span"].get<uint32_t>() == 1,
+                          "inspect_graph params expose widget_span");
                 }
             }
         }
@@ -82,6 +88,12 @@
                     check(pm0.contains("semantic_intent") && pm0["semantic_intent"].is_string() &&
                               pm0["semantic_intent"].get<std::string>() == "test_scale",
                           "introspection param_meta exposes semantic_intent");
+                    check(pm0.contains("widget_id") && pm0["widget_id"].is_string() &&
+                              pm0["widget_id"].get<std::string>() == "tests.vivid.scale_widget",
+                          "introspection param_meta exposes widget_id");
+                    check(pm0.contains("widget_span") && pm0["widget_span"].is_number_unsigned() &&
+                              pm0["widget_span"].get<uint32_t>() == 1,
+                          "introspection param_meta exposes widget_span");
                 }
                 check(first_node.contains("inputs") && first_node["inputs"].is_array(), "introspection node has inputs array");
                 check(first_node.contains("outputs") && first_node["outputs"].is_array(), "introspection node has outputs array");
@@ -658,6 +670,12 @@
                     check(p0.contains("doc") && p0["doc"].is_string() &&
                               p0["doc"].get<std::string>() == "Scale multiplier for the output.",
                           "operator_docs merges param doc");
+                    check(p0.contains("widget_id") && p0["widget_id"].is_string() &&
+                              p0["widget_id"].get<std::string>() == "tests.vivid.scale_widget",
+                          "operator_docs exposes param widget id");
+                    check(p0.contains("widget_span") && p0["widget_span"].is_number_unsigned() &&
+                              p0["widget_span"].get<uint32_t>() == 1,
+                          "operator_docs exposes param widget span");
                 }
                 auto& outputs_obj = op["outputs"];
                 check(outputs_obj.is_array() && outputs_obj.size() == 1, "operator_docs returns outputs");

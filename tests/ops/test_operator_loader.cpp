@@ -833,9 +833,9 @@ int main() {
         check(true, "registry teardown after scan_deferred is clean");
     }
 
-    // Test 35: composable-support-backed embeddable consumer loads cleanly
+    // Test 35: support-backed embeddable consumer loads cleanly
     {
-        std::fprintf(stderr, "\n--- composable embeddable consumer loads cleanly ---\n");
+        std::fprintf(stderr, "\n--- support-backed embeddable consumer loads cleanly ---\n");
         vivid::OperatorLoader loader;
         std::string path = build_dir + "/particles.dylib";
         check(loader.load(path.c_str()), "particles dylib loads");

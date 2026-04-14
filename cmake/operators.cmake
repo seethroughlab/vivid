@@ -7,24 +7,24 @@ if(APPLE)
     target_link_options(vivid_operator_api INTERFACE -undefined dynamic_lookup)
 endif()
 
-# --- Composable operator support (for ChildOp<T> consumers) ---
+# --- Embeddable operator support (for ChildOp<T> consumers) ---
 # Embeddable operators must either be fully header-defined or register a
-# composable support file here when they have out-of-line virtuals, thumbnail
+# support file here when they have out-of-line virtuals, thumbnail
 # hooks, or other concrete definitions that ChildOp<T> consumers must link.
-add_library(vivid_composable_ops STATIC)
-target_include_directories(vivid_composable_ops PUBLIC ${CMAKE_SOURCE_DIR}/operators)
-target_link_libraries(vivid_composable_ops PUBLIC vivid_operator_api webgpu)
+add_library(vivid_embeddable_op_support STATIC)
+target_include_directories(vivid_embeddable_op_support PUBLIC ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(vivid_embeddable_op_support PUBLIC vivid_operator_api webgpu)
 
-function(add_vivid_embeddable_composable_support name source)
-    target_sources(vivid_composable_ops PRIVATE ${source})
+function(add_vivid_embeddable_op_support name source)
+    target_sources(vivid_embeddable_op_support PRIVATE ${source})
 endfunction()
 
-add_vivid_embeddable_composable_support(Smooth   operators/control/smooth/smooth_composable.cpp)
-add_vivid_embeddable_composable_support(Envelope operators/control/envelope/envelope_composable.cpp)
-target_sources(vivid_composable_ops PRIVATE operators/control/clock/clock.cpp)
-## NOTE: euclidean.cpp was historically in composable_ops but no ChildOp<Euclidean>
+add_vivid_embeddable_op_support(Smooth   operators/control/smooth/smooth_embeddable.cpp)
+add_vivid_embeddable_op_support(Envelope operators/control/envelope/envelope_embeddable.cpp)
+target_sources(vivid_embeddable_op_support PRIVATE operators/control/clock/clock.cpp)
+## NOTE: euclidean.cpp was historically in the embeddable support library but no ChildOp<Euclidean>
 ## consumers exist. The operator now lives in euclidean.cpp as a single compilation unit.
-add_vivid_embeddable_composable_support(LFO      operators/control/lfo/lfo.cpp)
+add_vivid_embeddable_op_support(LFO      operators/control/lfo/lfo.cpp)
 
 # --- Operator plugin suffix (platform-aware) ---
 if(APPLE)
@@ -79,7 +79,7 @@ function(add_vivid_operator name source)
     set(_extra_libs "")
     foreach(_lib ${ARG_EXTRA_LIBS})
         # Skip interface/header-only targets that aren't real link deps
-        if(NOT "${_lib}" STREQUAL "vivid_composable_ops")
+        if(NOT "${_lib}" STREQUAL "vivid_embeddable_op_support")
             list(APPEND _extra_libs "${_lib}")
         endif()
     endforeach()
@@ -110,15 +110,15 @@ target_sources(lfo_fr PRIVATE operators/control/lfo/lfo.cpp)
 add_vivid_operator(lfo_au         operators/control/lfo/lfo_au.cpp
                    EXTRA_LIBS webgpu)
 target_sources(lfo_au PRIVATE operators/control/lfo/lfo.cpp)
-add_vivid_operator(clock_fr       operators/control/clock/clock_fr.cpp       EXTRA_LIBS webgpu vivid_composable_ops)
-add_vivid_operator(clock_au       operators/control/clock/clock_au.cpp       EXTRA_LIBS webgpu vivid_composable_ops)
+add_vivid_operator(clock_fr       operators/control/clock/clock_fr.cpp       EXTRA_LIBS webgpu vivid_embeddable_op_support)
+add_vivid_operator(clock_au       operators/control/clock/clock_au.cpp       EXTRA_LIBS webgpu vivid_embeddable_op_support)
 add_vivid_operator(math           operators/control/math/math.cpp           EXTRA_LIBS webgpu)
 add_vivid_operator(envelope_fr    operators/control/envelope/envelope_fr.cpp
                    FACTORY_PRESETS operators/control/envelope/factory_presets.json
-                   EXTRA_LIBS webgpu vivid_composable_ops)
+                   EXTRA_LIBS webgpu vivid_embeddable_op_support)
 target_sources(envelope_fr PRIVATE operators/control/envelope/envelope.cpp)
 add_vivid_operator(envelope_au    operators/control/envelope/envelope_au.cpp
-                   EXTRA_LIBS webgpu vivid_composable_ops)
+                   EXTRA_LIBS webgpu vivid_embeddable_op_support)
 target_sources(envelope_au PRIVATE operators/control/envelope/envelope.cpp)
 add_vivid_operator(midi_input     operators/control/midi_input/midi_input.cpp     EXTRA_LIBS rtmidi)
 add_vivid_operator(fft_analysis   operators/control/fft_analysis/fft_analysis.cpp)
@@ -133,7 +133,7 @@ add_vivid_operator(tile              operators/control/tile/tile.cpp)
 add_vivid_operator(select            operators/control/select/select.cpp)
 add_vivid_operator(alternate         operators/control/alternate/alternate.cpp)
 add_vivid_operator(modulated_gain   operators/control/modulated_gain/modulated_gain.cpp
-                                    EXTRA_LIBS vivid_composable_ops)
+                                    EXTRA_LIBS vivid_embeddable_op_support)
 add_vivid_operator(osc_in            operators/control/osc_in/osc_in.cpp      EXTRA_LIBS oscpack)
 add_vivid_operator(osc_out           operators/control/osc_out/osc_out.cpp     EXTRA_LIBS oscpack)
 add_vivid_operator(mouse             operators/control/mouse/mouse.cpp)
@@ -168,7 +168,7 @@ add_vivid_operator(tracker_au         operators/control/tracker/tracker.cpp     
 target_sources(tracker_au PRIVATE
     operators/control/tracker/tracker_core.cpp
     operators/control/tracker/tracker_inspector.cpp)
-add_vivid_operator(euclidean_au       operators/control/euclidean/euclidean.cpp       EXTRA_LIBS webgpu vivid_composable_ops)
+add_vivid_operator(euclidean_au       operators/control/euclidean/euclidean.cpp       EXTRA_LIBS webgpu vivid_embeddable_op_support)
 add_vivid_operator(pat_transform      operators/control/pat_transform/pat_transform.cpp)
 add_vivid_operator(phase_to_midi_au   operators/control/phase_to_midi/phase_to_midi.cpp)
 add_vivid_operator(drum_kit_au        operators/control/drum_kit/drum_kit.cpp)
@@ -192,13 +192,13 @@ add_vivid_operator(bloom                operators/gpu/bloom/bloom.cpp           
 add_vivid_operator(feedback             operators/gpu/feedback/feedback.cpp                       EXTRA_LIBS webgpu
                    FACTORY_PRESETS operators/gpu/feedback/factory_presets.json)
 add_vivid_operator(metaball              operators/gpu/metaball/metaball.cpp                       EXTRA_LIBS webgpu)
-add_vivid_operator(particles             operators/gpu/particles/particles.cpp                     EXTRA_LIBS webgpu vivid_composable_ops)
-add_vivid_operator(instanced_shapes      operators/gpu/instanced_shapes/instanced_shapes.cpp      EXTRA_LIBS webgpu vivid_composable_ops)
-add_vivid_operator(flocking              operators/gpu/flocking/flocking.cpp                       EXTRA_LIBS webgpu vivid_composable_ops)
-add_vivid_operator(trails                operators/gpu/trails/trails.cpp                           EXTRA_LIBS webgpu vivid_composable_ops)
-add_vivid_operator(reaction_diffusion    operators/gpu/reaction_diffusion/reaction_diffusion.cpp   EXTRA_LIBS webgpu vivid_composable_ops)
-add_vivid_operator(cellular_automata     operators/gpu/cellular_automata/cellular_automata.cpp     EXTRA_LIBS webgpu vivid_composable_ops)
-add_vivid_operator(fluid                 operators/gpu/fluid/fluid.cpp                             EXTRA_LIBS webgpu vivid_composable_ops)
+add_vivid_operator(particles             operators/gpu/particles/particles.cpp                     EXTRA_LIBS webgpu vivid_embeddable_op_support)
+add_vivid_operator(instanced_shapes      operators/gpu/instanced_shapes/instanced_shapes.cpp      EXTRA_LIBS webgpu vivid_embeddable_op_support)
+add_vivid_operator(flocking              operators/gpu/flocking/flocking.cpp                       EXTRA_LIBS webgpu vivid_embeddable_op_support)
+add_vivid_operator(trails                operators/gpu/trails/trails.cpp                           EXTRA_LIBS webgpu vivid_embeddable_op_support)
+add_vivid_operator(reaction_diffusion    operators/gpu/reaction_diffusion/reaction_diffusion.cpp   EXTRA_LIBS webgpu vivid_embeddable_op_support)
+add_vivid_operator(cellular_automata     operators/gpu/cellular_automata/cellular_automata.cpp     EXTRA_LIBS webgpu vivid_embeddable_op_support)
+add_vivid_operator(fluid                 operators/gpu/fluid/fluid.cpp                             EXTRA_LIBS webgpu vivid_embeddable_op_support)
 add_vivid_operator(time_machine          operators/gpu/time_machine/time_machine.cpp               EXTRA_LIBS webgpu)
 add_vivid_operator(text                  operators/gpu/text/text.cpp                               EXTRA_LIBS webgpu stb_truetype)
 add_vivid_operator(mesh_warp             operators/gpu/mesh_warp/mesh_warp.cpp                     EXTRA_LIBS webgpu)

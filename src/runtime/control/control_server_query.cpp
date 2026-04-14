@@ -321,6 +321,10 @@ std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const Subgraph
                         p["description"] = pd.description;
                     if (pd.asset_kind)
                         p["asset_kind"] = pd.asset_kind;
+                    if (pd.widget_id && *pd.widget_id)
+                        p["widget_id"] = pd.widget_id;
+                    if (pd.widget_span > 0)
+                        p["widget_span"] = pd.widget_span;
                     add_param_descriptor_visibility(p, pd);
                     if (pd.choice_count > 0 && pd.choice_labels) {
                         nlohmann::json choices = nlohmann::json::array();
@@ -356,6 +360,8 @@ std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const Subgraph
                     if (!pi.semantic_unit.empty()) p["semantic_unit"] = pi.semantic_unit;
                     if (!pi.semantic_intent.empty()) p["semantic_intent"] = pi.semantic_intent;
                     if (!pi.asset_kind.empty()) p["asset_kind"] = pi.asset_kind;
+                    if (!pi.widget_id.empty()) p["widget_id"] = pi.widget_id;
+                    if (pi.widget_span > 0) p["widget_span"] = pi.widget_span;
                     add_param_info_visibility(p, pi);
                     if (!pi.performance_page.empty()) p["performance_page"] = pi.performance_page;
                     if (pi.performance_order >= 0) p["performance_order"] = pi.performance_order;
@@ -1021,6 +1027,10 @@ std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core, const Subgr
                     pm["description"] = pd.description;
                 if (pd.asset_kind)
                     pm["asset_kind"] = pd.asset_kind;
+                if (pd.widget_id && *pd.widget_id)
+                    pm["widget_id"] = pd.widget_id;
+                if (pd.widget_span > 0)
+                    pm["widget_span"] = pd.widget_span;
                 add_param_descriptor_visibility(pm, pd);
                 param_meta_arr.push_back(std::move(pm));
             }
@@ -1220,6 +1230,8 @@ std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core, const Subgr
                 if (!pi.semantic_unit.empty()) pm["semantic_unit"] = pi.semantic_unit;
                 if (!pi.semantic_intent.empty()) pm["semantic_intent"] = pi.semantic_intent;
                 if (!pi.asset_kind.empty()) pm["asset_kind"] = pi.asset_kind;
+                if (!pi.widget_id.empty()) pm["widget_id"] = pi.widget_id;
+                if (pi.widget_span > 0) pm["widget_span"] = pi.widget_span;
                 add_param_info_visibility(pm, pi);
                 if (!pi.performance_page.empty()) pm["performance_page"] = pi.performance_page;
                 if (pi.performance_order >= 0) pm["performance_order"] = pi.performance_order;

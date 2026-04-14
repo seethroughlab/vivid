@@ -2,15 +2,16 @@
 
 Rules for promoting new concepts in the vivid codebase.
 
-## The three stable mechanisms
+## The four stable mechanisms
 
-The architecture supports three ways for operators to interact:
+The architecture supports four deliberately separate mechanisms:
 
 1. **Ports** — graph-visible transport between nodes (signal, audio, texture, lane array)
-2. **Owned embedded composition** — host-local reusable modulation via `ChildOp<T>` / `BoundControlInstance`, serialized as host-local state
-3. **Explicit outputs** — when host-local behavior must become graph-visible (triggers, gates, energy summaries)
+2. **Owned child operators** — host-local executable behavior with private state via `ChildOp<T>`
+3. **Primitive params with compound widgets** — persisted float/int/bool/file/text values, optionally edited through built-in or package-defined inspector widgets
+4. **Explicit outputs** — when host-local behavior must become graph-visible (triggers, gates, energy summaries)
 
-Any new mechanism must justify itself beyond what these three already provide.
+Custom port types are for graph-visible wire payloads. They are not custom param types. Any new mechanism must justify itself beyond these existing surfaces.
 
 ## Rules for new concepts
 
@@ -18,24 +19,12 @@ Any new mechanism must justify itself beyond what these three already provide.
 
 - **Prove before promoting.** A mechanism must demonstrate real value in at least one shipped operator before it becomes product architecture. Prototype in one place; generalize only when the pattern repeats.
 
-- **Prefer reuse.** Before inventing new infrastructure, check whether existing operator code, `ChildOp<T>`, ordinary ports, or inspector-first editing already solve the problem.
+- **Prefer reuse.** Before inventing new infrastructure, check whether existing operator code, `ChildOp<T>`, primitive params with a compound widget, ordinary ports, or inspector-first editing already solve the problem.
 
 - **Don't duplicate transport.** If data needs to travel between nodes, use ports. Do not encode transport semantics in naming conventions, hidden slots, or special-purpose graph concepts.
 
-- **Inspector-first editing.** Host-local behavior should be editable through the inspector as regular params or embedded op panels. Avoid designs that require graph-level manipulation for host-internal concerns.
+- **Inspector-first editing.** Host-local behavior should be editable through the inspector as primitive params, compound param widgets, or owned child-op panels. Avoid designs that require graph-level manipulation for host-internal concerns.
 
-## What went wrong with role bindings
+## Keep Host-Local Behavior Small
 
-Role bindings were promoted from concept to full product architecture in one step — touching graph schema, operator API, scheduler, audio engine, GPU context, registry, control server, MCP, UI snapshot, inspector, presets, tests, and docs. This made them expensive to evaluate, expensive to revert, and difficult to reason about incrementally.
-
-The correction: owned embedded composition achieves the same host-local modulation with simpler code, no graph-visible binding model, and standard param serialization. The lesson is that a simpler mechanism that reuses existing infrastructure is usually better than a novel abstraction that requires changes across every layer.
-
-## Why `EmbeddedOp` should not return
-
-`EmbeddedOp` was removed because runtime-polymorphic embedded slots added implementation and teaching overhead without current product value. The problems that originally motivated it are now handled by a split model:
-
-- ordinary ports plus lanes for graph-visible transport and multiplicity
-- `ChildOp<T>` for private host-local composition
-- explicit outputs when internal behavior must become graph-visible
-
-Reintroducing runtime-polymorphic embedded composition requires a new design doc and a concrete shipped use case that cannot be solved with those three mechanisms.
+Owned child-op composition covers host-local modulation with no graph-visible binding model and standard param serialization. If internal behavior needs user editing, expose ordinary parent params or compound param widgets. If internal behavior must become graph-visible, expose an explicit output port. New host-local mechanisms need a design doc and a concrete shipped use case that cannot be solved with `ChildOp<T>`, primitive params, widgets, and ports.

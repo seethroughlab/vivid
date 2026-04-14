@@ -241,6 +241,10 @@ inline nlohmann::json build_param_descriptor_json(const VividParamDescriptor& pd
         p["description"] = pd.description;
     if (pd.asset_kind && *pd.asset_kind)
         p["asset_kind"] = pd.asset_kind;
+    if (pd.widget_id && *pd.widget_id)
+        p["widget_id"] = pd.widget_id;
+    if (pd.widget_span > 0)
+        p["widget_span"] = pd.widget_span;
     add_param_descriptor_visibility(p, pd);
     if (pd.default_string && *pd.default_string)
         p["default_string"] = pd.default_string;
@@ -401,6 +405,8 @@ inline nlohmann::json build_module_docs_response(const SubgraphModuleDef& mod,
         if (!pi.semantic_shape.empty()) p["semantic_shape"] = pi.semantic_shape;
         if (!pi.semantic_unit.empty()) p["semantic_unit"] = pi.semantic_unit;
         if (!pi.semantic_intent.empty()) p["semantic_intent"] = pi.semantic_intent;
+        if (!pi.widget_id.empty()) p["widget_id"] = pi.widget_id;
+        if (pi.widget_span > 0) p["widget_span"] = pi.widget_span;
         add_param_info_visibility(p, pi);
         if (!pi.choice_labels.empty()) {
             nlohmann::json choices = nlohmann::json::array();

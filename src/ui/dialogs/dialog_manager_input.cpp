@@ -1340,9 +1340,9 @@ void DialogManager::update_example_browser(MouseState& mouse, uint32_t win_w, ui
 void DialogManager::update_create_popup(MouseState& mouse, uint32_t win_w, uint32_t win_h) {
     if (!create_popup.open || !mouse.left_clicked) return;
 
-    bool show_composite = (create_popup.env_sel == 0);
+    bool show_child_op = (create_popup.env_sel == 0);
 
-    auto layout = compute_create_operator_layout(win_w, win_h, show_composite);
+    auto layout = compute_create_operator_layout(win_w, win_h, show_child_op);
 
     // Click outside -> close
     if (!overlay_contains(layout, mouse.x, mouse.y)) {
@@ -1378,11 +1378,11 @@ void DialogManager::update_create_popup(MouseState& mouse, uint32_t win_w, uint3
     }
     cy += kCreateEnvBtnH + 10.0f;
 
-    // Composite checkbox
-    if (show_composite) {
+    // ChildOp checkbox
+    if (show_child_op) {
         if (mouse.x >= cx && mouse.x <= cx + 200 &&
             mouse.y >= cy && mouse.y <= cy + 20) {
-            create_popup.composite = !create_popup.composite;
+            create_popup.child_op = !create_popup.child_op;
             mouse.left_clicked = false;
             mouse.left_released = false;
             return;

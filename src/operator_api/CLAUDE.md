@@ -8,7 +8,7 @@ This directory contains the public headers that define the contract between the 
 
 | File | Role |
 |------|------|
-| `operator.h` | Core contract: `OperatorBase`, `FrameProcessable`, `AudioProcessable`, `GpuProcessable`, `VIVID_REGISTER` macro |
+| `operator.h` | Core contract: `OperatorBase`, `Param<T>`, compound param widget metadata, domain processable mixins, `VIVID_REGISTER` macro |
 | `types.h` | Fundamental types: `VividFrameContext`, `VividAudioContext`, `VividGpuContext`, `VividOperatorDescriptor`, port type enums, `vivid_lane_state()` macro, ABI version |
 | `wgsl_filter.h` | `WgslFilterBase` — GPU operator base class for WGSL shader-backed operators |
 | `gpu_operator.h` | `GpuOperatorBase` — GPU operator base class for programmatic WebGPU operations |
@@ -38,7 +38,7 @@ The headers form three layers:
 
 **Domain bases** (`wgsl_filter.h`, `gpu_operator.h`, `audio_dsp.h`): Specialized base classes and utilities for GPU and audio operators. `WgslFilterBase` handles the common pattern of a WGSL fragment shader with uniform params. `audio_dsp.h` provides oscillators, noise generators, and trigger detection.
 
-**Composition and extension** (`child_op.h`, `type_id.h`, `port_type_registry.h`, `midi_types.h`): Advanced features for operators that embed other operators, define custom port types, or handle MIDI. `ChildOp<T>` is control-domain only.
+**Composition and extension** (`child_op.h`, `type_id.h`, `port_type_registry.h`, `midi_types.h`): Advanced features for operators that embed owned child operators, define custom port types, or handle MIDI. `ChildOp<T>` is for owned control-domain behavior; package-defined param widgets are presentation over primitive params, not custom storage.
 
 ## Relationships
 

@@ -32,6 +32,8 @@ struct ParamBase {
     VividDisplayHint display_hint        = VIVID_DISPLAY_DEFAULT;
     uint8_t          layout_columns      = 0;
     uint8_t          layout_column_index = 0;
+    const char*      widget_id           = nullptr;
+    uint32_t         widget_span         = 0;
 
     // Optional semantic metadata for tooling/introspection.
     const char* semantic_tag    = nullptr;
@@ -161,6 +163,13 @@ struct Param<TextValue> : ParamBase {
 template<typename T>
 Param<T>& display_hint(Param<T>& p, VividDisplayHint hint) {
     p.display_hint = hint;
+    return p;
+}
+
+template<typename T>
+Param<T>& param_widget(Param<T>& p, const char* widget_id, uint32_t widget_span) {
+    p.widget_id = widget_id;
+    p.widget_span = widget_span;
     return p;
 }
 
@@ -455,6 +464,8 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
             s_params[i].display_hint        = pbases[i]->display_hint;         \
             s_params[i].layout_columns      = pbases[i]->layout_columns;       \
             s_params[i].layout_column_index = pbases[i]->layout_column_index;  \
+            s_params[i].widget_id           = pbases[i]->widget_id;            \
+            s_params[i].widget_span         = pbases[i]->widget_span;          \
             s_params[i].semantic_tag        = pbases[i]->semantic_tag;         \
             s_params[i].semantic_shape      = pbases[i]->semantic_shape;       \
             s_params[i].semantic_unit       = pbases[i]->semantic_unit;        \

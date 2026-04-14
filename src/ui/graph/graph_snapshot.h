@@ -63,6 +63,8 @@ struct ParamInfo {
     VividDisplayHint display_hint = VIVID_DISPLAY_DEFAULT;
     uint8_t layout_columns = 0;
     uint8_t layout_column_index = 0;
+    std::string widget_id;
+    uint32_t widget_span = 0;
 
     // Optional semantic metadata copied from VividParamDescriptor
     std::string semantic_tag;

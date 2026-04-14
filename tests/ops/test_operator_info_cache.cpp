@@ -33,6 +33,8 @@ static const VividOperatorDescriptor* visibility_descriptor() {
         s_visibility_params[1].visible_when_op = VIVID_PARAM_VIS_EQ;
         s_visibility_params[1].visible_when_values = s_show_when_mode_2;
         s_visibility_params[1].visible_when_value_count = 1;
+        s_visibility_params[1].widget_id = "com.example.package.sync_division";
+        s_visibility_params[1].widget_span = 1;
 
         s_visibility_params[2] = {};
         s_visibility_params[2].name = "frequency";
@@ -153,6 +155,10 @@ int main() {
         check(sync.visible_when_op == VIVID_PARAM_VIS_EQ, "visible_when EQ op copied");
         check(sync.visible_when_values.size() == 1 && sync.visible_when_values[0] == 2,
               "visible_when values copied");
+        check(sync.widget_id == "com.example.package.sync_division",
+              "widget id copied");
+        check(sync.widget_span == 1,
+              "widget span copied");
         check(sync.visibility.param_index == 0, "visible_when controller resolved to param index");
         check(sync.visibility.op == VIVID_PARAM_VIS_EQ, "visibility condition op resolved");
         check(sync.visibility.values.size() == 1 && sync.visibility.values[0] == 2,
