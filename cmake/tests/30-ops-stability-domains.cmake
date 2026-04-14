@@ -341,7 +341,7 @@ add_executable(test_lane_reshape
 target_include_directories(test_lane_reshape PRIVATE src tests)
 target_link_libraries(test_lane_reshape PRIVATE
     vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
-add_dependencies(test_lane_reshape lane_source_op lane_sink_op repeat tile select math)
+add_dependencies(test_lane_reshape lane_source_op lane_sink_op repeat tile select math metaball)
 add_test(NAME test_lane_reshape COMMAND test_lane_reshape WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_frame_lane_lifting

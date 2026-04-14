@@ -191,6 +191,7 @@ struct MetaballUniforms {
 struct Metaball : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Metaball";
     static constexpr bool kTimeDependent = true;
+    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_KERNEL;
 
     vivid::Param<int>   count      {"count",      8,    1,    16};
     vivid::Param<float> threshold  {"threshold",  1.0f, 0.1f, 5.0f};

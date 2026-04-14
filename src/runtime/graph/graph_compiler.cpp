@@ -474,6 +474,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                 bool     resolved_identity    = false;
                 bool     has_multi_lane       = false;
                 bool     lane_mismatch        = false;
+                std::string resolved_src_node;
                 std::string mismatch_src_a, mismatch_src_b;
 
                 for (const auto& e : cg->edges) {
@@ -494,10 +495,11 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                         resolved_lane_count  = src_ls.lane_count;
                         resolved_identity    = src_ls.identity_bearing;
                         has_multi_lane       = true;
+                        resolved_src_node     = cg->nodes[e.from_node].node_id;
                     } else if (src_ls.lane_set_id != resolved_lane_set_id) {
                         lane_mismatch = true;
                         if (mismatch_src_a.empty())
-                            mismatch_src_a = cg->nodes[e.from_node].node_id;
+                            mismatch_src_a = resolved_src_node;
                         mismatch_src_b = cg->nodes[e.from_node].node_id;
                     } else {
                         // Same lane_set_id — take the max count.

@@ -6,7 +6,8 @@
 // 3. Select picks one lane and reduces to scalar
 // 4. Mismatch resolution: Select (Reduction) enables mixing different lane sets
 // 5. Compiler metadata: provenance IDs on Repeat/Tile/Select
-// 6. Tile mismatch resolution: Tile makes mismatched lane sets legal
+// 6. Kernel consumers can accept independent structural lane inputs
+// 7. Tile mismatch rejection: independent Tile outputs still fail at pointwise nodes
 
 #include "runtime/operators/operator_registry.h"
 #include "runtime/graph/graph.h"
@@ -40,6 +41,7 @@ int main(int argc, char* argv[]) {
     stage("tile.dylib");
     stage("select.dylib");
     stage("math.dylib");
+    stage("metaball.dylib");
 
     std::fprintf(stderr, "\n=== test_lane_reshape ===\n\n");
 
@@ -276,7 +278,31 @@ int main(int argc, char* argv[]) {
         check(!built, "mismatched Tile outputs at pointwise Math → compile fails (expected)");
     }
 
-    // --- Test 7: Tile from same provenance is legal ---
+    // --- Test 7: Kernel consumer accepts independent structural inputs ---
+    std::fprintf(stderr, "\n--- Metaball kernel accepts independent Repeat lanes ---\n");
+    {
+        vivid::Graph graph;
+        graph.add_node("repeat_x", "Repeat", {{"count", 8.0f}, {"mode", 1.0f}, {"spread", 0.35f}});
+        graph.add_node("repeat_y", "Repeat", {{"count", 8.0f}, {"mode", 3.0f}});
+        graph.add_node("metaball", "Metaball", {{"count", 8.0f}});
+        graph.add_connection("repeat_x", "output", "metaball", "pos_x");
+        graph.add_connection("repeat_y", "output", "metaball", "pos_y");
+
+        vivid::GraphCompiler::Options opts;
+        auto cg = vivid::GraphCompiler::compile(graph, registry, opts);
+        check(cg != nullptr, "independent Repeat lanes compile into kernel Metaball");
+
+        if (cg) {
+            auto* meta = cg->find_node("metaball");
+            check(meta != nullptr, "metaball found");
+            if (meta) {
+                check(meta->lane_behavior == vivid::LaneBehavior::Kernel,
+                      "Metaball declares Kernel lane behavior");
+            }
+        }
+    }
+
+    // --- Test 8: Tile from same provenance is legal ---
     // Single lane source → Tile → alongside original source → pointwise Math
     // Both carry the SAME provenance (scalar broadcast), so this SHOULD compile.
     std::fprintf(stderr, "\n--- Tile same-provenance is legal ---\n");

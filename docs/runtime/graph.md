@@ -197,6 +197,15 @@ core `filters/`, a package `filters/`, or the project-local `<graph_dir>/filters
 
 Lane data between compiled nodes uses `LaneBufferRef` — an intrusive-refcount reference to immutable `LaneBuffer` storage. The frame executor propagates lanes via ref sharing (zero-copy passthrough), pool-allocated buffers (remap/merge/normalization), and runtime-owned output builders.
 
+Lane behavior controls how provenance is checked during compilation:
+
+- `Pointwise` operators process one lane at a time and may receive one non-scalar lane lineage plus scalar broadcasts. Multiple independent non-scalar lane sets are rejected even when their current lane counts match.
+- `Structural` operators create, reshape, reorder, or filter lanes and therefore allocate fresh lane-set provenance for their outputs.
+- `Reduction` operators collapse lane collections back to scalar outputs.
+- `Kernel` operators consume a whole lane collection or neighborhood. They may accept multiple lane-array inputs with different provenance when the operator owns the collection semantics.
+
+Operators that read `ctx->input_lanes[...]` as whole arrays should declare `VIVID_LANE_KERNEL` instead of relying on the default pointwise behavior.
+
 Key runtime types:
 - `LaneBuffer` — CPU-backed float array with optional GPU storage-buffer backing and intrusive refcount
 - `LaneBufferRef` — RAII reference wrapper (retain on copy, release on destroy, never deallocates)
