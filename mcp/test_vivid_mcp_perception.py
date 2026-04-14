@@ -1,6 +1,7 @@
 import asyncio
 import importlib.util
 import json
+import os
 import pathlib
 import sys
 import types
@@ -63,6 +64,107 @@ class PerceptionMCPTests(unittest.TestCase):
     def setUp(self):
         self.mod._managed_runtime_process = None
         self.mod._managed_runtime_log_path = ""
+
+    def test_runtime_subprocess_env_appends_toolchain_paths(self):
+        old_path = os.environ.get("PATH")
+        os.environ["PATH"] = "/opt/homebrew/share/info:"
+        try:
+            env = self.mod._runtime_subprocess_env()
+        finally:
+            if old_path is None:
+                os.environ.pop("PATH", None)
+            else:
+                os.environ["PATH"] = old_path
+
+        parts = env["PATH"].split(":")
+        self.assertEqual(parts[0], "/opt/homebrew/share/info")
+        for directory in self.mod._TOOLCHAIN_PATH_DIRS:
+            if self.mod.os.path.isdir(directory):
+                self.assertIn(directory, parts)
+
+    def test_ensure_path_dirs_does_not_duplicate_existing_entries(self):
+        env = {"PATH": "/usr/bin:/bin"}
+        self.mod._ensure_path_dirs(env, self.mod._TOOLCHAIN_PATH_DIRS)
+        parts = env["PATH"].split(":")
+        if self.mod.os.path.isdir("/usr/bin"):
+            self.assertEqual(parts.count("/usr/bin"), 1)
+        if self.mod.os.path.isdir("/bin"):
+            self.assertEqual(parts.count("/bin"), 1)
+
+    def test_launch_runtime_process_passes_repaired_env(self):
+        captured = {}
+
+        class FakePopen:
+            pid = 1212
+
+            def __init__(self, *args, **kwargs):
+                captured["args"] = args
+                captured["kwargs"] = kwargs
+                kwargs["stdout"].close()
+
+            def poll(self):
+                return None
+
+        original_popen = self.mod.subprocess.Popen
+        original_resolve = self.mod._resolve_vivid_bin
+        old_path = os.environ.get("PATH")
+        self.mod.subprocess.Popen = FakePopen
+        self.mod._resolve_vivid_bin = lambda: pathlib.Path("/bin/echo")
+        os.environ["PATH"] = "/opt/homebrew/share/info:"
+        try:
+            proc, _log_path = self.mod._launch_runtime_process()
+        finally:
+            self.mod.subprocess.Popen = original_popen
+            self.mod._resolve_vivid_bin = original_resolve
+            if old_path is None:
+                os.environ.pop("PATH", None)
+            else:
+                os.environ["PATH"] = old_path
+
+        self.assertEqual(proc.pid, 1212)
+        env = captured["kwargs"]["env"]
+        self.assertEqual(env["PATH"].split(":")[0], "/opt/homebrew/share/info")
+        for directory in self.mod._TOOLCHAIN_PATH_DIRS:
+            if self.mod.os.path.isdir(directory):
+                self.assertIn(directory, env["PATH"].split(":"))
+
+    def test_run_vivid_cli_json_passes_repaired_env(self):
+        captured = {}
+
+        class FakeProc:
+            returncode = 0
+
+            async def communicate(self):
+                return b'{"ok":true}', b""
+
+        async def fake_create_subprocess_exec(*args, **kwargs):
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+            return FakeProc()
+
+        original_create = self.mod.asyncio.create_subprocess_exec
+        original_resolve = self.mod._resolve_vivid_bin
+        old_path = os.environ.get("PATH")
+        self.mod.asyncio.create_subprocess_exec = fake_create_subprocess_exec
+        self.mod._resolve_vivid_bin = lambda: pathlib.Path("/bin/echo")
+        os.environ["PATH"] = "/opt/homebrew/share/info:"
+        try:
+            out = asyncio.run(self.mod._run_vivid_cli_json(["list-types", "--json"]))
+        finally:
+            self.mod.asyncio.create_subprocess_exec = original_create
+            self.mod._resolve_vivid_bin = original_resolve
+            if old_path is None:
+                os.environ.pop("PATH", None)
+            else:
+                os.environ["PATH"] = old_path
+
+        self.assertEqual(out, '{"ok":true}')
+        self.assertEqual(captured["args"][:3], ("/bin/echo", "list-types", "--json"))
+        env = captured["kwargs"]["env"]
+        self.assertEqual(env["PATH"].split(":")[0], "/opt/homebrew/share/info")
+        for directory in self.mod._TOOLCHAIN_PATH_DIRS:
+            if self.mod.os.path.isdir(directory):
+                self.assertIn(directory, env["PATH"].split(":"))
 
     def test_run_diagnostics_compact_summary(self):
         raw = json.dumps({

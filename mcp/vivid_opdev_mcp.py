@@ -28,6 +28,15 @@ SOURCE_TEXT_EXTENSIONS = {
 }
 MAX_SOURCE_RESULTS = 100
 MAX_BUILD_TASKS = 50
+_TOOLCHAIN_PATH_DIRS = (
+    "/opt/homebrew/bin",
+    "/opt/homebrew/sbin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+    "/usr/sbin",
+    "/sbin",
+)
 
 # Allowlisted API headers (no path traversal)
 ALLOWED_HEADERS = {
@@ -287,6 +296,21 @@ async def _post(method: str, body: dict | None = None) -> str:
         return resp.text
 
 
+def _ensure_path_dirs(env: dict, dirs: list[str] | tuple[str, ...]) -> None:
+    current = env.get("PATH", "")
+    parts = [part for part in current.split(":") if part]
+    for directory in dirs:
+        if directory not in parts and os.path.isdir(directory):
+            parts.append(directory)
+    env["PATH"] = ":".join(parts)
+
+
+def _runtime_subprocess_env() -> dict:
+    env = os.environ.copy()
+    _ensure_path_dirs(env, _TOOLCHAIN_PATH_DIRS)
+    return env
+
+
 def _resolve_vivid_bin() -> Path:
     env_bin = os.environ.get("VIVID_BIN")
     if env_bin:
@@ -319,6 +343,7 @@ async def _run_vivid_cli_json(args: list[str]) -> str:
         cwd=str(PROJECT_ROOT),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        env=_runtime_subprocess_env(),
     )
     stdout, stderr = await proc.communicate()
     out = stdout.decode("utf-8", errors="replace").strip()

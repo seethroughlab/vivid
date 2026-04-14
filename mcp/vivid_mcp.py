@@ -16,6 +16,15 @@ DEFAULT_VIVID_BIN = REPO_ROOT / "build" / "vivid"
 DEFAULT_RUNTIME_LOG = pathlib.Path(tempfile.gettempdir()) / "vivid_mcp_runtime.log"
 _RUNTIME_STARTUP_TIMEOUT_SEC = 20.0
 _RUNTIME_STARTUP_POLL_SEC = 0.25
+_TOOLCHAIN_PATH_DIRS = (
+    "/opt/homebrew/bin",
+    "/opt/homebrew/sbin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+    "/usr/sbin",
+    "/sbin",
+)
 _managed_runtime_process: subprocess.Popen | None = None
 _managed_runtime_log_path: str = ""
 
@@ -88,6 +97,21 @@ def _clear_managed_runtime_if_exited() -> None:
         _managed_runtime_log_path = ""
 
 
+def _ensure_path_dirs(env: dict, dirs: list[str] | tuple[str, ...]) -> None:
+    current = env.get("PATH", "")
+    parts = [part for part in current.split(":") if part]
+    for directory in dirs:
+        if directory not in parts and os.path.isdir(directory):
+            parts.append(directory)
+    env["PATH"] = ":".join(parts)
+
+
+def _runtime_subprocess_env() -> dict:
+    env = os.environ.copy()
+    _ensure_path_dirs(env, _TOOLCHAIN_PATH_DIRS)
+    return env
+
+
 def _resolve_vivid_bin() -> pathlib.Path:
     env_bin = os.environ.get("VIVID_BIN")
     if env_bin:
@@ -150,6 +174,7 @@ def _launch_runtime_process(graph_path: str = "") -> tuple[subprocess.Popen, str
         stdout=log_file,
         stderr=subprocess.STDOUT,
         start_new_session=True,
+        env=_runtime_subprocess_env(),
     )
     return proc, log_path
 
@@ -162,6 +187,7 @@ async def _run_vivid_cli_json(args: list[str]) -> str:
         cwd=str(REPO_ROOT),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        env=_runtime_subprocess_env(),
     )
     stdout, stderr = await proc.communicate()
     out = stdout.decode("utf-8", errors="replace").strip()

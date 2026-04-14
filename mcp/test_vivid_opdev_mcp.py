@@ -229,6 +229,56 @@ class TestStructure:
         assert "Current ABI version:" not in contents
 
 
+class TestRuntimeSubprocessEnv:
+    def test_runtime_subprocess_env_appends_toolchain_paths(self, monkeypatch):
+        monkeypatch.setenv("PATH", "/opt/homebrew/share/info:")
+        env = opdev._runtime_subprocess_env()
+        parts = env["PATH"].split(":")
+        assert parts[0] == "/opt/homebrew/share/info"
+        for directory in opdev._TOOLCHAIN_PATH_DIRS:
+            if opdev.os.path.isdir(directory):
+                assert directory in parts
+
+    def test_ensure_path_dirs_does_not_duplicate_existing_entries(self):
+        env = {"PATH": "/usr/bin:/bin"}
+        opdev._ensure_path_dirs(env, opdev._TOOLCHAIN_PATH_DIRS)
+        parts = env["PATH"].split(":")
+        if opdev.os.path.isdir("/usr/bin"):
+            assert parts.count("/usr/bin") == 1
+        if opdev.os.path.isdir("/bin"):
+            assert parts.count("/bin") == 1
+
+    @pytest.mark.anyio
+    async def test_run_vivid_cli_json_passes_repaired_env(self, monkeypatch):
+        captured = {}
+
+        class FakeProc:
+            returncode = 0
+
+            async def communicate(self):
+                return b'{"ok":true}', b""
+
+        async def fake_create_subprocess_exec(*args, **kwargs):
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+            return FakeProc()
+
+        monkeypatch.setenv("PATH", "/opt/homebrew/share/info:")
+        monkeypatch.setattr(opdev, "_resolve_vivid_bin", lambda: Path("/bin/echo"))
+        monkeypatch.setattr(opdev.asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+        out = await opdev._run_vivid_cli_json(["list-types", "--json"])
+
+        assert out == '{"ok":true}'
+        assert captured["args"][:3] == ("/bin/echo", "list-types", "--json")
+        env = captured["kwargs"]["env"]
+        parts = env["PATH"].split(":")
+        assert parts[0] == "/opt/homebrew/share/info"
+        for directory in opdev._TOOLCHAIN_PATH_DIRS:
+            if opdev.os.path.isdir(directory):
+                assert directory in parts
+
+
 # ---------------------------------------------------------------------------
 # Source access tools
 # ---------------------------------------------------------------------------
