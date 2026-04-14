@@ -19,13 +19,13 @@
     },
     "nodes": {
         "clock1": {
-            "type": "ClockAu",
+            "type": "Clock",
             "params": {
                 "bpm": 95.0
             }
         },
         "ds1": {
-            "type": "DrumSequencerAu",
+            "type": "DrumSequencer",
             "params": {
                 "steps": 16,
                 "kick_note": 36,

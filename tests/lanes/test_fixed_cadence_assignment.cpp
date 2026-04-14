@@ -52,7 +52,7 @@ int main(int argc, char* argv[]) {
                   "clock_fr is frame-only");
         }
 
-        auto* loader_au = registry.find("ClockAu");
+        auto* loader_au = registry.find("Clock");
         check(loader_au != nullptr, "clock_au loaded");
         if (loader_au) {
             const auto* desc = loader_au->descriptor();
@@ -67,7 +67,7 @@ int main(int argc, char* argv[]) {
     {
         std::fprintf(stderr, "\n=== Test 1: Audio-only clock → audio-only osc ===\n");
         vivid::Graph g;
-        g.add_node("clock", "ClockAu");
+        g.add_node("clock", "Clock");
         g.add_node("osc", "Oscillator");
         g.add_connection("clock", "beat_phase", "osc", "freq_cv");
 

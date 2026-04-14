@@ -34,7 +34,7 @@
             }
         },
         "clock": {
-            "type": "ClockAu",
+            "type": "Clock",
             "params": {
                 "bpm": 140.0
             },
@@ -58,7 +58,7 @@
             }
         },
         "env_bass": {
-            "type": "EnvelopeAu",
+            "type": "Envelope",
             "params": {
                 "sustain": 0.4,
                 "decay": 0.15,
@@ -68,7 +68,7 @@
             }
         },
         "euclid_bass": {
-            "type": "EuclideanAu",
+            "type": "Euclidean",
             "params": {
                 "rate": 2.0,
                 "hits": 3.0,
@@ -82,7 +82,7 @@
             }
         },
         "euclid_lead": {
-            "type": "EuclideanAu",
+            "type": "Euclidean",
             "params": {
                 "rate": 2.0,
                 "hits": 3.0,
@@ -96,7 +96,7 @@
             }
         },
         "euclid_noise": {
-            "type": "EuclideanAu",
+            "type": "Euclidean",
             "params": {
                 "rate": 4.0,
                 "hits": 6.0,
@@ -148,7 +148,7 @@
             }
         },
         "lfo_filter": {
-            "type": "LfoAu",
+            "type": "Lfo",
             "params": {
                 "waveform": 1.0,
                 "offset": 4.0,

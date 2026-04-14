@@ -142,3 +142,26 @@ void EuclideanCore::draw_thumbnail(const VividThumbnailContext* ctx) {
         d.draw_rounded_rect(o, cx, top_y, cell_w, cell_h, cr, fill);
     }
 }
+
+// --- Audio-rate operator ---
+
+#include "control/audio_scalar_utils.h"
+
+struct Euclidean : EuclideanCore, vivid::AudioProcessable {
+    static constexpr const char* kName = "Euclidean";
+
+    void process_audio(const VividAudioContext* ctx) override {
+        float local_out[3] = {};
+        float beat_phase = vivid::resolve_clock_phase(
+            clock_source.int_value(), vivid::audio_scalar_block_start(ctx, 0), vivid::metronome_transport(ctx));
+        compute(beat_phase, ctx->param_values,
+                ctx->output_lanes, local_out);
+        for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
+            for (int j = 0; j < 3; ++j)
+                ctx->output_buffers[j][i] = local_out[j];
+        }
+    }
+};
+
+VIVID_REGISTER(Euclidean)
+VIVID_THUMBNAIL(Euclidean)

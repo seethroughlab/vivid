@@ -2,13 +2,13 @@
     "schema_version": 3,
     "nodes": {
         "clock1": {
-            "type": "ClockAu",
+            "type": "Clock",
             "params": {
                 "bpm": 120.0
             }
         },
         "env1": {
-            "type": "EnvelopeAu",
+            "type": "Envelope",
             "params": {
                 "decay": 0.3,
                 "amplitude": 0.35,

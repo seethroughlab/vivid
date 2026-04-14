@@ -30,7 +30,7 @@
             }
         },
         "lfo_pan": {
-            "type": "LfoAu",
+            "type": "Lfo",
             "params": {
                 "frequency": 0.25,
                 "amplitude": 1.0,
@@ -38,7 +38,7 @@
             }
         },
         "lfo_width": {
-            "type": "LfoAu",
+            "type": "Lfo",
             "params": {
                 "frequency": 0.08,
                 "amplitude": 0.8,

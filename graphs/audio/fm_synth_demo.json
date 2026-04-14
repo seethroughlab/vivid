@@ -22,13 +22,13 @@
     },
     "nodes": {
         "clock": {
-            "type": "ClockAu",
+            "type": "Clock",
             "params": {
                 "bpm": 90.0
             }
         },
         "env_gate": {
-            "type": "EnvelopeAu",
+            "type": "Envelope",
             "params": {
                 "attack": 0.001,
                 "decay": 0.01,
@@ -38,7 +38,7 @@
             }
         },
         "lfo_mod": {
-            "type": "LfoAu",
+            "type": "Lfo",
             "params": {
                 "frequency": 0.12,
                 "amplitude": 3.0,

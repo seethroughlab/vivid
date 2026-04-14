@@ -5,8 +5,8 @@
 
 #include <cstring>
 
-struct EnvelopeAu : Envelope, vivid::AudioProcessable {
-    static constexpr const char* kName = "EnvelopeAu";
+struct EnvelopeAudio : Envelope, vivid::AudioProcessable {
+    static constexpr const char* kName = "Envelope";
 
     void process_audio(const VividAudioContext* ctx) override {
         uint32_t frames = ctx->buffer_size;
@@ -68,5 +68,5 @@ struct EnvelopeAu : Envelope, vivid::AudioProcessable {
     }
 };
 
-VIVID_REGISTER(EnvelopeAu)
-VIVID_THUMBNAIL(EnvelopeAu)
+VIVID_REGISTER(EnvelopeAudio)
+VIVID_THUMBNAIL(EnvelopeAudio)

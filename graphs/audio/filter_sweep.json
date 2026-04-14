@@ -21,13 +21,13 @@
     },
     "nodes": {
         "clock": {
-            "type": "ClockAu",
+            "type": "Clock",
             "params": {
                 "bpm": 130.0
             }
         },
         "env": {
-            "type": "EnvelopeAu",
+            "type": "Envelope",
             "params": {
                 "sustain": 0.2,
                 "decay": 0.3,

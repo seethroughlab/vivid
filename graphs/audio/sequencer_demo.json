@@ -39,7 +39,7 @@
             }
         },
         "seq1": {
-            "type": "SequencerAu",
+            "type": "Sequencer",
             "params": {
                 "sync_division": 0.0,
                 "steps": 8.0,

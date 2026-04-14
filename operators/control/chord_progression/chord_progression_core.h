@@ -59,11 +59,11 @@ static void chord_display_name(char* buf, int buf_size,
  * @output vel First velocity of the current chord as a scalar convenience output.
  * @output gate First gate of the current chord as a scalar convenience output.
  * @output midi_out Optional MIDI note output mirroring the generated chord notes.
- * @recipe ClockAu/beat_phase -> ChordProgressionAu/beat_phase
- * @recipe ChordProgressionAu/notes,velocities,gates -> PolyVoiceAllocator/notes_in,velocities_in,gates_in
- * @pitfall ChordProgressionAu emits note and gate lanes; downstream voice shaping should stay lane-aware until the final mixer.
+ * @recipe Clock/beat_phase -> ChordProgression/beat_phase
+ * @recipe ChordProgression/notes,velocities,gates -> PolyVoiceAllocator/notes_in,velocities_in,gates_in
+ * @pitfall ChordProgression emits note and gate lanes; downstream voice shaping should stay lane-aware until the final mixer.
  * @family note_source
- * @best_used_with ClockAu, PolyVoiceAllocator, EnvelopeAu
+ * @best_used_with Clock, PolyVoiceAllocator, Envelope
  * @common_companions Arpeggiator, WavetableOsc, VoiceMixer
  * @param mode Scale mode: Major, Minor, Dorian, Mixolydian, Harmonic Minor, Melodic Minor.
  * @see NotePattern, Arpeggiator, Sequencer

@@ -29,13 +29,13 @@ inline float flush_audio_denormal(float x) {
  * @output output Filtered audio signal.
  * @tip Use serial_ab for classic subtractive synth filter stacking.
  * @tip Use split mode to independently shape low and high frequency bands.
- * @tip In poly synth graphs, pair a_cutoff_mod / b_cutoff_mod with EnvelopeAu outputs.
- * @recipe EnvelopeAu/value -> DualFilter/a_cutoff_mod
+ * @tip In poly synth graphs, pair a_cutoff_mod / b_cutoff_mod with Envelope outputs.
+ * @recipe Envelope/value -> DualFilter/a_cutoff_mod
  * @recipe PolyVoiceAllocator/frequencies -> DualFilter/frequencies
  * @pitfall a_cutoff_cv / b_cutoff_cv are global scalar modulations; a_cutoff_mod / b_cutoff_mod are the per-lane paths for poly voices.
  * @family voice_shaper
- * @best_used_with EnvelopeAu, PolyVoiceAllocator, Gain
- * @common_companions ChordProgressionAu, WavetableOsc, VoiceMixer, Filter
+ * @best_used_with Envelope, PolyVoiceAllocator, Gain
+ * @common_companions ChordProgression, WavetableOsc, VoiceMixer, Filter
  * @param routing Signal routing between the two filter stages.
  * @param a_keytrack Scales stage A cutoff with note frequency. 1 = full tracking.
  * @param b_keytrack Scales stage B cutoff with note frequency. 1 = full tracking.

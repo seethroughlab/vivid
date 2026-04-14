@@ -1,8 +1,8 @@
 #include "clock_core.h"
 #include "operator_api/thumbnail.h"
 
-struct ClockAu : ClockCore, vivid::AudioProcessable {
-    static constexpr const char* kName = "ClockAu";
+struct Clock : ClockCore, vivid::AudioProcessable {
+    static constexpr const char* kName = "Clock";
 
     void process_audio(const VividAudioContext* ctx) override {
         double delta_time = static_cast<double>(ctx->buffer_size) / ctx->sample_rate;
@@ -22,5 +22,5 @@ struct ClockAu : ClockCore, vivid::AudioProcessable {
     }
 };
 
-VIVID_REGISTER(ClockAu)
-VIVID_THUMBNAIL(ClockAu)
+VIVID_REGISTER(Clock)
+VIVID_THUMBNAIL(Clock)

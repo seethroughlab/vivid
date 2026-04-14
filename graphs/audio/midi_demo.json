@@ -29,7 +29,7 @@
             }
         },
         "lfo1": {
-            "type": "LfoAu",
+            "type": "Lfo",
             "params": {
                 "amplitude": 2.0,
                 "offset": 4.0

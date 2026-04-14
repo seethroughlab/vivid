@@ -140,7 +140,7 @@ VIVID_REGISTER(NoDocOp)
     if (!repo_root.empty()) {
         resolver.set_core_source_root(repo_root);
 
-        auto clock_au = resolver.resolve_core("ClockAu");
+        auto clock_au = resolver.resolve_core("Clock");
         check(clock_au.is_object() && clock_au.value("has_docs", false),
               "ClockAu resolves docs from source");
         if (clock_au.is_object()) {
@@ -164,7 +164,7 @@ VIVID_REGISTER(NoDocOp)
                   "ClockFr resolves shared ClockCore docs");
         }
 
-        auto env_au = resolver.resolve_core("EnvelopeAu");
+        auto env_au = resolver.resolve_core("Envelope");
         check(env_au.is_object() && env_au.value("has_docs", false),
               "EnvelopeAu resolves docs from source");
         if (env_au.is_object()) {

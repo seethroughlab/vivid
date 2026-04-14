@@ -3,13 +3,13 @@
 #include <algorithm>
 #include <cmath>
 
-struct StepCounterAu : vivid::OperatorBase, vivid::AudioProcessable {
-    static constexpr const char* kName = "StepCounterAu";
+struct StepCounter : vivid::OperatorBase, vivid::AudioProcessable {
+    static constexpr const char* kName = "StepCounter";
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<int> initial{"initial", 0, -1000000, 1000000};
 
-    StepCounterAu() {
+    StepCounter() {
         vivid::semantic_tag(initial, "index");
         vivid::semantic_shape(initial, "int");
         vivid::description(initial, "Starting count value and reset target");
@@ -65,4 +65,4 @@ private:
     int step_ = 0;
 };
 
-VIVID_REGISTER(StepCounterAu)
+VIVID_REGISTER(StepCounter)

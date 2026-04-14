@@ -111,7 +111,7 @@
             }
         },
         "kit": {
-            "type": "DrumKitAu",
+            "type": "DrumKit",
             "layout": {
                 "x": 100.0,
                 "y": 400.0
@@ -128,7 +128,7 @@
             }
         },
         "seq": {
-            "type": "DrumSequencerAu",
+            "type": "DrumSequencer",
             "params": {
                 "kick_8": 1.0,
                 "snare_12": 1.0,

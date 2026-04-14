@@ -29,7 +29,7 @@
             }
         },
         "lfo": {
-            "type": "LfoAu",
+            "type": "Lfo",
             "params": {
                 "frequency": 0.12,
                 "amplitude": 300.0,

@@ -17,8 +17,8 @@
  * @input amplitude_cv Scalar gain multiplier applied on top of the gain param.
  * @output output Scaled audio signal.
  * @family voice_shaper
- * @best_used_with EnvelopeAu, Filter, VoiceMixer
- * @common_companions ChordProgressionAu, WavetableOsc
+ * @best_used_with Envelope, Filter, VoiceMixer
+ * @common_companions ChordProgression, WavetableOsc
  * @see Mixer, Compressor, Limiter
  */
 struct Gain : vivid::OperatorBase, vivid::AudioProcessable {

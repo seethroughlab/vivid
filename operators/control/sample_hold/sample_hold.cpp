@@ -77,3 +77,25 @@ void SampleHold::draw_thumbnail(const VividThumbnailContext* ctx) {
     float held_y = top_y + plot_h * (1.0f - (held_clamped * 0.7f + 0.15f));
     d.draw_line(o, margin, held_y, margin + plot_w, held_y, 2.0f, held_col);
 }
+
+// --- Audio-rate operator ---
+
+#include "control/audio_scalar_utils.h"
+
+struct SampleHoldAudio : SampleHold, vivid::AudioProcessable {
+    static constexpr const char* kName = "SampleHold";
+
+    void process_audio(const VividAudioContext* ctx) override {
+        int m = mode.int_value();
+
+        for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
+            float signal = vivid::audio_scalar_sample(ctx, 0, i);
+            bool trig = vivid::audio_scalar_sample(ctx, 1, i) > 0.5f;
+            advance(signal, trig, m);
+            ctx->output_buffers[0][i] = held_value_;
+        }
+    }
+};
+
+VIVID_REGISTER(SampleHoldAudio)
+VIVID_THUMBNAIL(SampleHoldAudio)

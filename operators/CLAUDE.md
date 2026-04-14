@@ -22,21 +22,20 @@ operators/gpu/noise/
     factory_presets.json    (optional)
 ```
 
-**Dual-cadence operator** — shared core logic with frame-rate and audio-rate wrappers. Many control operators need both: an LFO at frame-rate (~60 Hz) for visual modulation, and at audio-rate (~48 kHz) for sample-accurate synthesis:
+**Dual-cadence operator** — shared core logic with frame-rate and audio-rate wrappers. Only operators that genuinely serve both cadences (LFO, Clock, Envelope, StepCounter, Smooth) have both variants. The audio-rate wrapper uses the unsuffixed name; the frame-rate wrapper uses an `Fr` suffix:
 ```
 operators/control/lfo/
     lfo.h                   shared core logic
     lfo.cpp                 shared implementation
-    lfo_fr.cpp              frame-rate wrapper (~15 lines, includes lfo.h)
-    lfo_au.cpp              audio-rate wrapper (~30 lines, includes lfo.h)
+    lfo_fr.cpp              frame-rate wrapper (registers "LfoFr")
+    lfo_au.cpp              audio-rate wrapper (registers "Lfo")
     factory_presets.json
 ```
 
-**Complex operator** — multiple implementation files for large operators:
+**Audio-only control operator** — most sequencer/timing operators only need audio-rate and have a single `_au.cpp` entry point with no Fr variant:
 ```
 operators/control/drum_sequencer/
-    drum_sequencer_fr.cpp           frame-rate entry point
-    drum_sequencer_au.cpp           audio-rate entry point
+    drum_sequencer_au.cpp           audio-rate entry point (registers "DrumSequencer")
     drum_sequencer.cpp              main implementation
     drum_sequencer_core.h/cpp       extracted shared state
     drum_sequencer_inspector.cpp    custom inspector UI

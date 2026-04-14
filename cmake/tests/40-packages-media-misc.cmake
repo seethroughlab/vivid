@@ -8,7 +8,7 @@ target_link_libraries(test_demo_graphs PRIVATE
 add_dependencies(test_demo_graphs
     # control
     lfo_fr lfo_au clock_fr clock_au math envelope_fr envelope_au midi_input fft_analysis
-    logic gate_fr gate_au smooth_fr smooth_au
+    logic gate_au smooth_fr smooth_au
     stack alternate
     modulated_gain
     # gpu (compiled plugins — WGSL filter presets are loaded from filters/)

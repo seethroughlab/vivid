@@ -417,4 +417,30 @@ void MSEG::draw_inspector(VividInspectorContext* ctx) {
     ctx->consumed_height = 4.0f + h + 4.0f;
 }
 
-// Shared implementation only; public registration lives in _fr/_au wrappers.
+// --- Audio-rate operator ---
+
+#include "control/audio_scalar_utils.h"
+
+struct MsegAudio : MSEG, vivid::AudioProcessable {
+    static constexpr const char* kName = "Mseg";
+
+    void process_audio(const VividAudioContext* ctx) override {
+        float sample_dt = ctx->sample_rate > 0
+            ? 1.0f / static_cast<float>(ctx->sample_rate)
+            : static_cast<float>(ctx->delta_time);
+        const vivid::MetronomeTransport metronome = vivid::metronome_transport(ctx);
+        for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
+            float gate_in = vivid::audio_scalar_sample(ctx, 0, i);
+            vivid::MetronomeTransport sample_metronome =
+                vivid::metronome_transport_sample(metronome, i, ctx->sample_rate);
+            float phase_in = vivid::resolve_clock_phase(
+                clock_source.int_value(), vivid::audio_scalar_sample(ctx, 1, i), sample_metronome);
+            compute(gate_in, phase_in, sample_dt);
+            ctx->output_buffers[0][i] = current_value_ * amplitude.value;
+        }
+    }
+};
+
+VIVID_REGISTER(MsegAudio)
+VIVID_THUMBNAIL(MsegAudio)
+VIVID_INSPECTOR(MsegAudio)

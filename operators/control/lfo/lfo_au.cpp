@@ -3,8 +3,8 @@
 #include "control/audio_scalar_utils.h"
 #include "operator_api/thumbnail.h"
 
-struct LfoAu : LFO, vivid::AudioProcessable {
-    static constexpr const char* kName = "LfoAu";
+struct Lfo : LFO, vivid::AudioProcessable {
+    static constexpr const char* kName = "Lfo";
 
     void process_audio(const VividAudioContext* ctx) override {
         LaneState& s = ctx->lane_state_fn
@@ -37,5 +37,5 @@ struct LfoAu : LFO, vivid::AudioProcessable {
     }
 };
 
-VIVID_REGISTER(LfoAu)
-VIVID_THUMBNAIL(LfoAu)
+VIVID_REGISTER(Lfo)
+VIVID_THUMBNAIL(Lfo)

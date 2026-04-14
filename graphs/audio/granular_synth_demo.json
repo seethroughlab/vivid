@@ -44,7 +44,7 @@
             }
         },
         "lfo_pos": {
-            "type": "LfoAu",
+            "type": "Lfo",
             "params": {
                 "frequency": 0.08,
                 "amplitude": 0.5,
@@ -53,7 +53,7 @@
             }
         },
         "lfo_pitch": {
-            "type": "LfoAu",
+            "type": "Lfo",
             "params": {
                 "frequency": 0.05,
                 "amplitude": 4.0,

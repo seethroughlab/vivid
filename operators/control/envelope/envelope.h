@@ -20,12 +20,12 @@
  * @output value The computed envelope value after amplitude and offset are applied.
  * @tip Connect beat_phase from a Clock to retrigger the envelope rhythmically.
  * @tip In polyphonic graphs, drive gate from voices/gates so each lane gets its own ADSR state.
- * @recipe voices/gates -> EnvelopeAu/gate -> VoiceMixer/amp_env_audio
- * @recipe EnvelopeAu/value -> Filter/cutoff_mod with PolyVoiceAllocator/frequencies -> Filter/frequencies
+ * @recipe voices/gates -> Envelope/gate -> VoiceMixer/amp_env_audio
+ * @recipe Envelope/value -> Filter/cutoff_mod with PolyVoiceAllocator/frequencies -> Filter/frequencies
  * @pitfall beat_phase retriggers globally; use gate when you want per-note articulation.
  * @family voice_shaper
  * @best_used_with PolyVoiceAllocator, VoiceMixer, Filter
- * @common_companions ClockAu, ChordProgressionAu, WavetableOsc
+ * @common_companions Clock, ChordProgression, WavetableOsc
  * @param curve Envelope curve shape: linear, exponential, or logarithmic.
  * @see LFO, MSEG, SpreadADSR
  */

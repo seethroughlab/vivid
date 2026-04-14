@@ -19,11 +19,11 @@
  * @output beat_ms Milliseconds per beat at the current tempo.
  * @output bar_phase Sawtooth ramp 0-1 over each bar.
  * @output beat_trigger Impulse on each beat boundary.
- * @recipe ClockAu/beat_phase -> LFO/beat_phase
- * @recipe ClockAu/beat_phase -> ChordProgressionAu/beat_phase
+ * @recipe Clock/beat_phase -> LFO/beat_phase
+ * @recipe Clock/beat_phase -> ChordProgression/beat_phase
  * @pitfall beat_phase is a global transport signal; it does not create separate per-note envelope state.
  * @family note_source
- * @best_used_with ChordProgressionAu, EnvelopeAu, LFO
+ * @best_used_with ChordProgression, Envelope, LFO
  * @common_companions Arpeggiator, Sequencer, NotePattern
  * @see LFO, Envelope, Sequencer
  */

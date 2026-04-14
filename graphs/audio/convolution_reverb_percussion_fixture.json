@@ -11,9 +11,9 @@
         "requires_packages": []
     },
     "nodes": {
-        "clock": { "type": "ClockAu", "params": { "bpm": 116.0 } },
+        "clock": { "type": "Clock", "params": { "bpm": 116.0 } },
         "seq": {
-            "type": "DrumSequencerAu",
+            "type": "DrumSequencer",
             "params": {
                 "steps": 16,
                 "kick_0": 1.0,
@@ -30,7 +30,7 @@
                 "hat_14": 1.0
             }
         },
-        "kit": { "type": "DrumKitAu", "params": {} },
+        "kit": { "type": "DrumKit", "params": {} },
         "kick": { "type": "DrumKick", "params": { "volume": 0.35, "decay": 0.32 } },
         "snare": { "type": "DrumSnare", "params": { "volume": 0.22, "snappy": 0.7 } },
         "hat": { "type": "DrumHiHat", "params": { "volume": 0.14, "decay": 0.05 } },

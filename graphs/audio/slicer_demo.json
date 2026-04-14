@@ -22,7 +22,7 @@
     },
     "nodes": {
         "clock1": {
-            "type": "ClockAu",
+            "type": "Clock",
             "params": {
                 "bpm": 120.0
             },
@@ -32,7 +32,7 @@
             }
         },
         "cp1": {
-            "type": "ChordProgressionAu",
+            "type": "ChordProgression",
             "params": {
                 "voicing_3": 0.0,
                 "voicing_2": 0.0,

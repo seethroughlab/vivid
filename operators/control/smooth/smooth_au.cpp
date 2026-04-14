@@ -1,13 +1,13 @@
 #include "smooth_core.h"
 
-struct SmoothAu : vivid::OperatorBase, vivid::AudioProcessable {
-    static constexpr const char* kName   = "SmoothAu";
+struct Smooth : vivid::OperatorBase, vivid::AudioProcessable {
+    static constexpr const char* kName   = "Smooth";
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<float> rise_time{"rise_time", 0.1f, 0.0f, 10.0f};
     vivid::Param<float> fall_time{"fall_time", 0.1f, 0.0f, 10.0f};
 
-    SmoothAu() {
+    Smooth() {
         vivid::semantic_tag(rise_time, "time_seconds");
         vivid::semantic_shape(rise_time, "scalar");
         vivid::semantic_unit(rise_time, "s");
@@ -48,4 +48,4 @@ private:
     SmoothCore core_;
 };
 
-VIVID_REGISTER(SmoothAu)
+VIVID_REGISTER(Smooth)

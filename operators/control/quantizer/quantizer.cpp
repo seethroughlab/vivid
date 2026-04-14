@@ -1,17 +1,9 @@
 #include "operator_api/operator.h"
+#include "control/audio_scalar_utils.h"
 #include <cmath>
 #include <algorithm>
-/**
- * @brief Quantizes a control signal to scale degrees, range grid, or uniform steps.
- *
- * Three modes: pitch mode snaps to the nearest note in a musical scale,
- * range mode divides a min-max range into equal bins, and steps mode
- * quantizes to N uniform levels.
- *
- * @param scale Musical scale used in pitch mode: chromatic, major, minor, pentatonic, etc.
- * @see Math, NotePattern, Smooth
- */
-struct Quantizer : vivid::OperatorBase {
+
+struct Quantizer : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Quantizer";
     static constexpr bool kTimeDependent = false;
 
@@ -59,7 +51,6 @@ struct Quantizer : vivid::OperatorBase {
         out.push_back({"step",  VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
-    // Shared quantization: returns {value, step}
     struct Result { float value; float step; };
 
     Result quantize(float input) const {
@@ -71,22 +62,15 @@ struct Quantizer : vivid::OperatorBase {
         }
     }
 
-    void process_frame_impl(const VividFrameContext* ctx) {
-        auto r = quantize(ctx->input_values[0]);
-        ctx->output_values[0] = r.value;
-        ctx->output_values[1] = r.step;
-    }
-
-    void process_audio_impl(const VividAudioContext* ctx) {
-        auto r = quantize(0.0f);
+    void process_audio(const VividAudioContext* ctx) override {
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
+            auto r = quantize(vivid::audio_scalar_sample(ctx, 0, i));
             ctx->output_buffers[0][i] = r.value;
             ctx->output_buffers[1][i] = r.step;
         }
     }
 
 private:
-    // Scale intervals as semitone offsets within one octave
     static constexpr int kChromatic[]  = {0,1,2,3,4,5,6,7,8,9,10,11};
     static constexpr int kMajor[]      = {0,2,4,5,7,9,11};
     static constexpr int kMinor[]      = {0,2,3,5,7,8,10};
@@ -160,4 +144,4 @@ private:
     }
 };
 
-// Shared implementation only; public registration lives in _fr/_au wrappers.
+VIVID_REGISTER(Quantizer)

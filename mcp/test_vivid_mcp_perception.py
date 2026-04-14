@@ -262,13 +262,13 @@ class PerceptionMCPTests(unittest.TestCase):
 
     def test_operator_docs_uses_cli(self):
         async def fake_cli(args):
-            self.assertEqual(args, ["operator-docs", "LfoAu", "--json"])
+            self.assertEqual(args, ["operator-docs", "Lfo", "--json"])
             return '{"ok":true}'
 
         original = self.mod._run_vivid_cli_json
         self.mod._run_vivid_cli_json = fake_cli
         try:
-            out = asyncio.run(self.mod.operator_docs("LfoAu"))
+            out = asyncio.run(self.mod.operator_docs("Lfo"))
         finally:
             self.mod._run_vivid_cli_json = original
         self.assertEqual(out, '{"ok":true}')

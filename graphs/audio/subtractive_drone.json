@@ -25,7 +25,7 @@
     },
     "nodes": {
         "clock": {
-            "type": "ClockAu",
+            "type": "Clock",
             "params": {
                 "bpm": 120.0
             }
@@ -37,7 +37,7 @@
             }
         },
         "env_amp": {
-            "type": "EnvelopeAu",
+            "type": "Envelope",
             "params": {
                 "sustain": 0.6,
                 "decay": 0.2,
@@ -47,7 +47,7 @@
             }
         },
         "env_filter": {
-            "type": "EnvelopeAu",
+            "type": "Envelope",
             "params": {
                 "sustain": 0.6,
                 "decay": 0.2,
@@ -79,7 +79,7 @@
             }
         },
         "lfo": {
-            "type": "LfoAu",
+            "type": "Lfo",
             "params": {
                 "waveform": 0.0,
                 "frequency": 0.3,
@@ -87,7 +87,7 @@
             }
         },
         "lfo_hue": {
-            "type": "LfoAu",
+            "type": "Lfo",
             "params": {
                 "waveform": 0.0,
                 "offset": 180.0,

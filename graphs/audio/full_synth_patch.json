@@ -20,14 +20,14 @@
     },
     "nodes": {
         "clock": {
-            "type": "ClockAu",
+            "type": "Clock",
             "params": {
                 "bpm": 128.0,
                 "beats_per_bar": 4.0
             }
         },
         "env": {
-            "type": "EnvelopeAu",
+            "type": "Envelope",
             "params": {
                 "sustain": 0.6,
                 "decay": 0.2,
@@ -51,7 +51,7 @@
             }
         },
         "lfo": {
-            "type": "LfoAu",
+            "type": "Lfo",
             "params": {
                 "waveform": 2.0,
                 "frequency": 0.3,
@@ -84,7 +84,7 @@
             "type": "audio_out"
         },
         "smooth": {
-            "type": "SmoothAu",
+            "type": "Smooth",
             "params": {
                 "rise_time": 0.05,
                 "fall_time": 0.05

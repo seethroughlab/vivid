@@ -22,7 +22,7 @@
     },
     "nodes": {
         "clock": {
-            "type": "ClockAu",
+            "type": "Clock",
             "params": {
                 "bpm": 27.523683547973633
             },
@@ -47,7 +47,7 @@
             }
         },
         "env": {
-            "type": "EnvelopeAu",
+            "type": "Envelope",
             "params": {
                 "sustain": 0.6000000238418579,
                 "decay": 0.30000001192092896,
@@ -67,7 +67,7 @@
             }
         },
         "kick_env": {
-            "type": "EnvelopeAu",
+            "type": "Envelope",
             "params": {
                 "sustain": 0.0,
                 "decay": 0.07999999821186066,

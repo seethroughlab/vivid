@@ -19,13 +19,13 @@
     },
     "nodes": {
         "clock1": {
-            "type": "ClockAu",
+            "type": "Clock",
             "params": {
                 "bpm": 120.0
             }
         },
         "cp1": {
-            "type": "ChordProgressionAu",
+            "type": "ChordProgression",
             "params": {
                 "steps": 4,
                 "key_root": 0,
@@ -49,7 +49,7 @@
             }
         },
         "arp1": {
-            "type": "ArpeggiatorAu",
+            "type": "Arpeggiator",
             "params": {
                 "mode": 0,
                 "octaves": 2,
