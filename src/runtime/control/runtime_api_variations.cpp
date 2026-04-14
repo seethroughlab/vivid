@@ -13,6 +13,8 @@ namespace {
 const VividOperatorDescriptor* node_descriptor(const CompiledNode& cn) {
     return cn.loader ? cn.loader->descriptor() : nullptr;
 }
+
+constexpr const char* kNoCompiledGraph = "no compiled graph";
 } // namespace
 
 CommandResult RuntimeAPI::add_midi_mapping(const std::string& node_id, const std::string& param,
@@ -59,9 +61,12 @@ void RuntimeAPI::apply_midi_mappings() {
 }
 
 CommandResult RuntimeAPI::save_variation(const std::string& name) {
+    auto* cg = core_.compiled_graph();
+    if (!cg) return {false, kNoCompiledGraph};
+
     VariationDef vd;
     vd.name = name;
-    for (const auto& cn : core_.compiled_graph()->nodes) {
+    for (const auto& cn : cg->nodes) {
         const auto* desc = node_descriptor(cn);
         if (!desc) continue;
         auto& pm = vd.params[cn.node_id];
@@ -104,14 +109,17 @@ CommandResult RuntimeAPI::recall_variation_idx(int idx) {
     const auto& vars = graph_.variations();
     if (idx < 0 || idx >= static_cast<int>(vars.size()))
         return {false, "variation index out of range"};
+    if (!core_.compiled_graph()) return {false, kNoCompiledGraph};
     apply_variation(idx);
     return {true, "recalled variation '" + vars[idx].name + "'"};
 }
 
 void RuntimeAPI::apply_variation(int idx) {
+    auto* cg = core_.compiled_graph();
+    if (!cg) return;
+
     const auto& vd = graph_.variations()[idx];
 
-    auto* cg = core_.compiled_graph();
     for (auto& cn : cg->nodes) {
         const auto* desc = node_descriptor(cn);
         if (!desc) continue;
@@ -232,9 +240,12 @@ CommandResult RuntimeAPI::move_variation(const std::string& name, int to_index) 
 CommandResult RuntimeAPI::update_variation(const std::string& name) {
     auto* vd = graph_.find_variation(name);
     if (!vd) return {false, "unknown variation '" + name + "'"};
+    auto* cg = core_.compiled_graph();
+    if (!cg) return {false, kNoCompiledGraph};
+
     vd->params.clear();
     vd->string_params.clear();
-    for (const auto& cn : core_.compiled_graph()->nodes) {
+    for (const auto& cn : cg->nodes) {
         const auto* desc = node_descriptor(cn);
         if (!desc) continue;
         auto& pm = vd->params[cn.node_id];
@@ -279,6 +290,7 @@ CommandResult RuntimeAPI::list_variations() {
 CommandResult RuntimeAPI::queue_variation(const std::string& name, const std::string& quantize) {
     int idx = graph_.find_variation_index(name);
     if (idx < 0) return {false, "unknown variation '" + name + "'"};
+    if (!core_.compiled_graph()) return {false, kNoCompiledGraph};
 
     PendingVariation::Quantize q = PendingVariation::Instant;
     if (quantize == "beat") q = PendingVariation::Beat;
@@ -334,6 +346,7 @@ GraphMetronomeSample RuntimeAPI::current_metronome_sample() const {
 
 void RuntimeAPI::tick_quantized_switch() {
     if (!pending_variation_.armed) return;
+    if (!core_.compiled_graph()) return;
     const auto metronome = current_metronome_sample();
     const int64_t current_beat = static_cast<int64_t>(std::floor(metronome.beats_elapsed));
     if (current_beat >= pending_variation_.target_beat_index) {
@@ -348,7 +361,9 @@ const std::string& RuntimeAPI::active_preset(const std::string& node_id) const {
 }
 
 CommandResult RuntimeAPI::save_preset(const std::string& node_id, const std::string& name) {
-    auto* cn = core_.compiled_graph()->find_node(node_id);
+    auto* cg = core_.compiled_graph();
+    if (!cg) return {false, kNoCompiledGraph};
+    auto* cn = cg->find_node(node_id);
 
     // Module preset proxy: read live values from internal nodes
     if (!cn && subgraph_modules_) {
@@ -425,7 +440,9 @@ CommandResult RuntimeAPI::recall_preset(const std::string& node_id, const std::s
 
     if (!preset) return {false, "preset '" + name + "' not found on " + node_id};
 
-    auto* cn = core_.compiled_graph()->find_node(node_id);
+    auto* cg = core_.compiled_graph();
+    if (!cg) return {false, kNoCompiledGraph};
+    auto* cn = cg->find_node(node_id);
 
     // Module preset proxy: apply preset by routing each param to its internal node
     if (!cn) {
@@ -506,7 +523,9 @@ CommandResult RuntimeAPI::update_preset(const std::string& node_id, const std::s
         return {false, "preset '" + name + "' not found on " + node_id};
     }
 
-    auto* cn = core_.compiled_graph()->find_node(node_id);
+    auto* cg = core_.compiled_graph();
+    if (!cg) return {false, kNoCompiledGraph};
+    auto* cn = cg->find_node(node_id);
 
     // Module preset proxy: read live values from internal nodes
     if (!cn && subgraph_modules_) {
@@ -663,6 +682,9 @@ CommandResult RuntimeAPI::inspect_state_presets(const std::string& sm_node) {
 }
 
 void RuntimeAPI::tick_state_presets() {
+    auto* cg = core_.compiled_graph();
+    if (!cg) return;
+
     for (auto it = active_crossfades_.begin(); it != active_crossfades_.end(); ) {
         bool found = false;
         for (const auto& spm : graph_.state_preset_mappings()) {
@@ -675,7 +697,7 @@ void RuntimeAPI::tick_state_presets() {
     }
 
     for (const auto& spm : graph_.state_preset_mappings()) {
-        const auto* sm_cn = core_.compiled_graph()->find_node(spm.state_machine_node);
+        const auto* sm_cn = cg->find_node(spm.state_machine_node);
         if (!sm_cn) continue;
 
         auto oi = sm_cn->output_port_indices.find("state");
@@ -710,7 +732,7 @@ void RuntimeAPI::tick_state_presets() {
                 for (const auto& [target_node, preset_name] : spm.state_presets[state_idx]) {
                     const auto* preset = graph_.find_preset(target_node, preset_name);
                     if (!preset) continue;
-                    auto* tcn = core_.compiled_graph()->find_node(target_node);
+                    auto* tcn = cg->find_node(target_node);
                     if (!tcn) continue;
 
                     CrossfadeState cs;
@@ -748,7 +770,7 @@ void RuntimeAPI::tick_state_presets() {
         float xfade_t = sm_cn->output_values[xf_oi->second];
 
         for (auto& [target_node, cs] : acit->second.targets) {
-            auto* tcn = core_.compiled_graph()->find_node(target_node);
+            auto* tcn = cg->find_node(target_node);
             if (!tcn) continue;
             NodeDef* ndef = graph_.find_node(target_node);
             for (const auto& [pname, start_val] : cs.start_params) {
@@ -764,7 +786,7 @@ void RuntimeAPI::tick_state_presets() {
 
         if (xfade_t >= 1.0f) {
             for (auto& [target_node, cs] : acit->second.targets) {
-                auto* tcn = core_.compiled_graph()->find_node(target_node);
+                auto* tcn = cg->find_node(target_node);
                 if (tcn) {
                     NodeDef* ndef = graph_.find_node(target_node);
                     for (const auto& [pname, target_val] : cs.target_params) {

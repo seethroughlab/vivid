@@ -33,6 +33,14 @@ snapshot, while non-audio ports continue to print their existing scalar/string/l
 nodes also append an `audio_debug:` line with the latest per-node callback timing and retained
 lane-state counts.
 
+## No Compiled Graph State
+
+Some control-server requests can arrive while `RuntimeCore` has no compiled graph, such as during
+startup, reload, or after a failed rebuild. Live-state commands that require compiled nodes fail
+cleanly with `"no compiled graph"` instead of dereferencing runtime state. Graph-only commands may
+still update the authored `Graph`, and per-frame helpers such as quantized variation and
+state-preset ticks no-op until compiled state is available again.
+
 ## Immediate vs. Buffered
 
 **Immediate** (apply to live runtime in-place, no rebuild needed):

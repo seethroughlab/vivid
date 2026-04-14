@@ -117,6 +117,8 @@ std::string node_display_name(const CompiledNode& cn,
     if (!cn.type_name.empty()) return cn.type_name;
     return "missing_operator";
 }
+
+constexpr const char* kNoCompiledGraph = "no compiled graph";
 } // namespace
 
 std::optional<RuntimeAPI::ResolvedModuleParam> RuntimeAPI::resolve_module_param(
@@ -140,6 +142,7 @@ std::optional<RuntimeAPI::ResolvedModuleParam> RuntimeAPI::resolve_module_param(
 
 CommandResult RuntimeAPI::set_param(const std::string& node_id, const std::string& param, float value) {
     auto* cg = core_.compiled_graph();
+    if (!cg) return {false, kNoCompiledGraph};
     auto* cn = cg->find_node(node_id);
 
     // Module param proxy: route to internal node
@@ -252,6 +255,7 @@ CommandResult RuntimeAPI::set_param(const std::string& node_id, const std::strin
 CommandResult RuntimeAPI::set_string_param(const std::string& node_id, const std::string& param,
                                            const std::string& value) {
     auto* cg = core_.compiled_graph();
+    if (!cg) return {false, kNoCompiledGraph};
     auto* cn = cg->find_node(node_id);
 
     // Module param proxy: route to internal node
@@ -283,7 +287,9 @@ CommandResult RuntimeAPI::set_string_param(const std::string& node_id, const std
 }
 
 CommandResult RuntimeAPI::get_param(const std::string& node_id, const std::string& param) {
-    auto* cn = core_.compiled_graph()->find_node(node_id);
+    auto* cg = core_.compiled_graph();
+    if (!cg) return {false, kNoCompiledGraph};
+    auto* cn = cg->find_node(node_id);
     if (!cn) {
         auto resolved = resolve_module_param(node_id, param);
         if (!resolved) return {false, "unknown node '" + node_id + "'"};
@@ -308,6 +314,7 @@ CommandResult RuntimeAPI::get_param(const std::string& node_id, const std::strin
 
 CommandResult RuntimeAPI::set_param_lock(const std::string& node_id, const std::string& param, uint8_t flags) {
     auto* cg = core_.compiled_graph();
+    if (!cg) return {false, kNoCompiledGraph};
     auto* cn = cg->find_node(node_id);
 
     // Module param proxy
@@ -349,7 +356,9 @@ CommandResult RuntimeAPI::set_param_lock(const std::string& node_id, const std::
 }
 
 CommandResult RuntimeAPI::get_param_lock(const std::string& node_id, const std::string& param) {
-    auto* cn = core_.compiled_graph()->find_node(node_id);
+    auto* cg = core_.compiled_graph();
+    if (!cg) return {false, kNoCompiledGraph};
+    auto* cn = cg->find_node(node_id);
     if (!cn) return {false, "unknown node '" + node_id + "'"};
     auto pi = cn->param_indices.find(param);
     if (pi == cn->param_indices.end())
@@ -379,8 +388,8 @@ CommandResult RuntimeAPI::set_resolution(const std::string& node_id, uint32_t wi
     ndef->tex_width  = width;
     ndef->tex_height = height;
 
-    auto* cn = core_.compiled_graph()->find_node(node_id);
-    if (cn) {
+    auto* cg = core_.compiled_graph();
+    if (auto* cn = cg ? cg->find_node(node_id) : nullptr) {
         if (cn->gpu) {
             cn->gpu->tex_width  = width;
             cn->gpu->tex_height = height;
@@ -506,16 +515,18 @@ bool RuntimeAPI::apply_pending(bool& has_gpu_ops, bool& has_audio) {
     std::unordered_map<std::string, std::unordered_map<std::string, float>> saved_params;
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> saved_string_params;
     std::unordered_map<std::string, std::unordered_map<std::string, uint8_t>> saved_locks;
-    for (const auto& cn : core_.compiled_graph()->nodes) {
-        auto& sp = saved_params[cn.node_id];
-        for (const auto& [name, idx] : cn.param_indices) {
-            sp[name] = cn.param_values[idx];
-            if (cn.param_lock_flags[idx] != PARAM_LOCK_NONE)
-                saved_locks[cn.node_id][name] = cn.param_lock_flags[idx];
-        }
-        auto& ssp = saved_string_params[cn.node_id];
-        for (const auto& [name, idx] : cn.file_param_indices) {
-            ssp[name] = cn.file_param_storage[idx];
+    if (auto* existing_cg = core_.compiled_graph()) {
+        for (const auto& cn : existing_cg->nodes) {
+            auto& sp = saved_params[cn.node_id];
+            for (const auto& [name, idx] : cn.param_indices) {
+                sp[name] = cn.param_values[idx];
+                if (cn.param_lock_flags[idx] != PARAM_LOCK_NONE)
+                    saved_locks[cn.node_id][name] = cn.param_lock_flags[idx];
+            }
+            auto& ssp = saved_string_params[cn.node_id];
+            for (const auto& [name, idx] : cn.file_param_indices) {
+                ssp[name] = cn.file_param_storage[idx];
+            }
         }
     }
 
@@ -535,6 +546,11 @@ bool RuntimeAPI::apply_pending(bool& has_gpu_ops, bool& has_audio) {
     }
 
     auto* cg = core_.compiled_graph();
+    if (!cg) {
+        has_gpu_ops = false;
+        has_audio = false;
+        return true;
+    }
     for (auto& cn : cg->nodes) {
         auto sit = saved_params.find(cn.node_id);
         if (sit != saved_params.end()) {
@@ -579,7 +595,9 @@ bool RuntimeAPI::apply_pending(bool& has_gpu_ops, bool& has_audio) {
 }
 
 CommandResult RuntimeAPI::inspect(const std::string& node_id) {
-    const auto* cn = core_.compiled_graph()->find_node(node_id);
+    const auto* cg = core_.compiled_graph();
+    if (!cg) return {false, kNoCompiledGraph};
+    const auto* cn = cg->find_node(node_id);
     if (!cn) return {false, "unknown node '" + node_id + "'"};
     const auto* desc = node_descriptor(*cn);
     auto find_port_desc = [&](const std::string& name, VividPortDirection dir) -> const VividPortDescriptor* {
@@ -692,7 +710,9 @@ CommandResult RuntimeAPI::inspect(const std::string& node_id) {
 }
 
 CommandResult RuntimeAPI::list_nodes() {
-    const auto& nodes = core_.compiled_graph()->nodes;
+    const auto* cg = core_.compiled_graph();
+    if (!cg) return {true, "(no nodes)"};
+    const auto& nodes = cg->nodes;
     if (nodes.empty()) return {true, "(no nodes)"};
     std::ostringstream oss;
     for (const auto& cn : nodes) {
@@ -722,6 +742,7 @@ CommandResult RuntimeAPI::set_solo(const std::string& node_id) {
         return {true, "solo cleared"};
     }
     auto* cg = core_.compiled_graph();
+    if (!cg) return {false, kNoCompiledGraph};
     auto it = cg->node_id_to_index.find(node_id);
     if (it != cg->node_id_to_index.end()) {
         core_.set_solo(static_cast<int>(it->second));
@@ -732,7 +753,9 @@ CommandResult RuntimeAPI::set_solo(const std::string& node_id) {
 
 std::string RuntimeAPI::solo_node_id() const {
     int idx = core_.solo_node_idx();
-    const auto& nodes = core_.compiled_graph()->nodes;
+    const auto* cg = core_.compiled_graph();
+    if (!cg) return {};
+    const auto& nodes = cg->nodes;
     if (idx < 0 || idx >= static_cast<int>(nodes.size())) return {};
     return nodes[idx].node_id;
 }

@@ -50,6 +50,66 @@ int main(int argc, char* argv[]) {
     vivid::Graph graph;
     check(graph.load(graph_path.c_str()), "graph.load()");
 
+    // --- Test null compiled graph guards ---
+    std::fprintf(stderr, "\n--- null compiled graph guards ---\n");
+    {
+        vivid::Graph no_cg_graph;
+        check(no_cg_graph.load(graph_path.c_str()), "no_cg graph.load()");
+        vivid::RuntimeCore no_cg_runtime;
+        vivid::AudioEngine no_cg_audio;
+        vivid::RuntimeAPI no_cg_api(no_cg_graph, no_cg_runtime, no_cg_audio, registry);
+
+        vivid::VariationDef variation;
+        variation.name = "NoCompiledGraphVariation";
+        no_cg_graph.add_variation(variation);
+
+        vivid::OperatorPreset preset;
+        preset.name = "NoCompiledGraphPreset";
+        no_cg_graph.save_preset("a", preset);
+
+        auto expect_no_compiled_graph = [](const vivid::CommandResult& r, const char* msg) {
+            check(!r.ok, msg);
+            check(r.message == "no compiled graph", "error is no compiled graph");
+        };
+
+        expect_no_compiled_graph(no_cg_api.set_param("a", "scale", 1.0f), "set_param fails cleanly");
+        expect_no_compiled_graph(no_cg_api.set_string_param("a", "path", "x"), "set_string_param fails cleanly");
+        expect_no_compiled_graph(no_cg_api.get_param("a", "scale"), "get_param fails cleanly");
+        expect_no_compiled_graph(no_cg_api.set_param_lock("a", "scale", vivid::PARAM_LOCK_PRESETS),
+                                 "set_param_lock fails cleanly");
+        expect_no_compiled_graph(no_cg_api.get_param_lock("a", "scale"), "get_param_lock fails cleanly");
+        expect_no_compiled_graph(no_cg_api.inspect("a"), "inspect fails cleanly");
+        expect_no_compiled_graph(no_cg_api.save_variation("NoCompiledGraphSaved"),
+                                 "save_variation fails cleanly");
+        expect_no_compiled_graph(no_cg_api.recall_variation("NoCompiledGraphVariation"),
+                                 "recall_variation fails cleanly");
+        expect_no_compiled_graph(no_cg_api.update_variation("NoCompiledGraphVariation"),
+                                 "update_variation fails cleanly");
+        expect_no_compiled_graph(no_cg_api.queue_variation("NoCompiledGraphVariation", "bar"),
+                                 "queue_variation fails cleanly");
+        expect_no_compiled_graph(no_cg_api.save_preset("a", "NoCompiledGraphSavedPreset"),
+                                 "save_preset fails cleanly");
+        expect_no_compiled_graph(no_cg_api.recall_preset("a", "NoCompiledGraphPreset"),
+                                 "recall_preset fails cleanly");
+        expect_no_compiled_graph(no_cg_api.update_preset("a", "NoCompiledGraphPreset"),
+                                 "update_preset fails cleanly");
+        expect_no_compiled_graph(no_cg_api.set_solo("a"), "set_solo fails cleanly");
+
+        auto list = no_cg_api.list_nodes();
+        check(list.ok, "list_nodes succeeds without compiled graph");
+        check(list.message == "(no nodes)", "list_nodes reports no nodes");
+        check(no_cg_api.solo_node_id().empty(), "solo_node_id empty without compiled graph");
+
+        auto res = no_cg_api.set_resolution("a", 320, 240);
+        check(res.ok, "set_resolution updates authored graph without compiled graph");
+        check(no_cg_api.needs_gpu_realloc(), "set_resolution marks gpu realloc without compiled graph");
+        check(no_cg_api.graph_dirty(), "set_resolution marks graph dirty without compiled graph");
+
+        no_cg_api.tick_quantized_switch();
+        no_cg_api.tick_state_presets();
+        check(true, "tick helpers no-op without compiled graph");
+    }
+
     vivid::RuntimeCore runtime;
     check(runtime.build(graph, registry), "runtime.build()");
 
