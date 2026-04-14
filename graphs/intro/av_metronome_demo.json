@@ -18,7 +18,6 @@
             "gpu",
             "control"
         ],
-        "requires_packages": [],
         "featured_rank": 11,
         "estimated_minutes": 1,
         "content_kind": "example",
@@ -27,38 +26,43 @@
         "role": "starter",
         "playability": "self_playing"
     },
-    "metronome": {
-        "enabled": true,
-        "bpm": 118.0,
-        "beats_per_bar": 4
-    },
     "nodes": {
-        "lfo_vis": {
-            "type": "LfoFr",
+        "gain1": {
+            "type": "Gain",
             "params": {
-                "amplitude": 2.8,
-                "offset": 4.5,
-                "waveform": 0,
-                "rate_mode": 2,
-                "sync_division": 3
+                "gain": 0.35
             },
             "layout": {
-                "x": 0.0,
+                "x": 960.0,
                 "y": 0.0
             }
         },
         "lfo_aud": {
             "type": "LfoFr",
             "params": {
-                "amplitude": 120.0,
+                "waveform": 3.0,
+                "rate_mode": 2.0,
+                "sync_division": 1.0,
                 "offset": 320.0,
-                "waveform": 3,
-                "rate_mode": 2,
-                "sync_division": 4
+                "amplitude": 120.0
             },
             "layout": {
-                "x": 240.0,
-                "y": 0.0
+                "x": 30.0,
+                "y": 265.38693
+            }
+        },
+        "lfo_vis": {
+            "type": "LfoFr",
+            "params": {
+                "waveform": 0.0,
+                "rate_mode": 2.0,
+                "sync_division": 1.0,
+                "offset": 4.5,
+                "amplitude": 2.8
+            },
+            "layout": {
+                "x": 101.47675,
+                "y": 475.19537
             }
         },
         "noise1": {
@@ -67,8 +71,8 @@
                 "speed": 1.0
             },
             "layout": {
-                "x": 480.0,
-                "y": 0.0
+                "x": 302.8053,
+                "y": 473.75067
             }
         },
         "osc1": {
@@ -82,30 +86,18 @@
                 "y": 0.0
             }
         },
-        "gain1": {
-            "type": "Gain",
-            "params": {
-                "gain": 0.35
-            },
-            "layout": {
-                "x": 960.0,
-                "y": 0.0
-            }
-        },
         "out1": {
             "type": "audio_out",
-            "params": {},
             "layout": {
-                "x": 0.0,
-                "y": 170.0
+                "x": 660.8075,
+                "y": 306.46368
             }
         },
         "vout": {
             "type": "video_out",
-            "params": {},
             "layout": {
-                "x": 240.0,
-                "y": 170.0
+                "x": 668.8565,
+                "y": 477.22748
             }
         }
     },
@@ -132,6 +124,15 @@
             "to": "vout/input"
         }
     ],
+    "metronome": {
+        "bpm": 118.0,
+        "beats_per_bar": 4
+    },
+    "viewport": {
+        "pan_x": 221.52025,
+        "pan_y": -178.64716,
+        "zoom": 1.1055276
+    },
     "sticky_notes": [
         {
             "id": "avm_note_1",

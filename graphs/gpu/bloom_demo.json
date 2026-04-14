@@ -15,7 +15,6 @@
         "domains": [
             "gpu"
         ],
-        "requires_packages": [],
         "featured_rank": 30,
         "estimated_minutes": 3,
         "content_kind": "example",
@@ -25,50 +24,52 @@
         "playability": "self_playing"
     },
     "nodes": {
-        "star": {
-            "type": "Shape",
+        "bloom": {
+            "type": "Bloom",
             "params": {
-                "sides": 5,
-                "star": 0.5,
-                "radius": 0.25,
-                "softness": 0.01,
-                "r": 1.0,
-                "g": 0.9,
-                "b": 0.5
+                "threshold": 0.11787746,
+                "radius": 2.9181333,
+                "passes": 5.0,
+                "intensity": 2.0
             },
-            "resolution": [
-                800,
-                600
-            ],
             "layout": {
-                "x": 0.0,
-                "y": 0.0
+                "x": 430.0,
+                "y": 310.5
             }
         },
         "lfo_rot": {
             "type": "LfoFr",
             "params": {
+                "sync_division": 0.0,
+                "offset": 0.0,
+                "rate_mode": 2.0,
                 "frequency": 0.1,
-                "amplitude": 3.14,
-                "offset": 0.0
+                "amplitude": 3.14
             },
             "layout": {
-                "x": 240.0,
-                "y": 0.0
+                "x": 30.0,
+                "y": 310.39557
             }
         },
-        "bloom": {
-            "type": "Bloom",
+        "star": {
+            "type": "Shape",
             "params": {
-                "threshold": 0.3,
-                "intensity": 1.5,
-                "radius": 1.5,
-                "passes": 4
+                "star": 0.5,
+                "softness": 0.01,
+                "sides": 5.0,
+                "b": 0.5,
+                "radius": 0.25,
+                "r": 1.0,
+                "g": 0.9
             },
             "layout": {
-                "x": 480.0,
-                "y": 0.0
-            }
+                "x": 230.0,
+                "y": 310.5
+            },
+            "resolution": [
+                1920,
+                1080
+            ]
         },
         "vout": {
             "type": "video_out",
@@ -91,5 +92,14 @@
             "from": "bloom/texture",
             "to": "vout/input"
         }
-    ]
+    ],
+    "metronome": {
+        "bpm": 90.0,
+        "beats_per_bar": 4
+    },
+    "viewport": {
+        "pan_x": 151.3071,
+        "pan_y": -89.68153,
+        "zoom": 1.1968021
+    }
 }

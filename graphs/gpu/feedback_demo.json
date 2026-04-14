@@ -15,7 +15,6 @@
         "domains": [
             "gpu"
         ],
-        "requires_packages": [],
         "featured_rank": 2,
         "estimated_minutes": 3,
         "content_kind": "example",
@@ -25,63 +24,63 @@
         "playability": "self_playing"
     },
     "nodes": {
-        "star": {
-            "type": "Shape",
+        "feedback": {
+            "type": "Feedback",
             "params": {
-                "sides": 5,
-                "star": 0.5,
-                "radius": 0.15,
-                "softness": 0.01,
-                "r": 1.0,
-                "g": 0.6,
-                "b": 0.2
+                "rotate": 3.0,
+                "mix": 0.8,
+                "zoom": 1.02,
+                "decay": 0.92
             },
-            "resolution": [
-                800,
-                600
-            ],
             "layout": {
-                "x": 0.0,
+                "x": 720.0,
                 "y": 0.0
             }
         },
         "lfo_rot": {
             "type": "LfoFr",
             "params": {
+                "offset": 0.0,
                 "frequency": 0.15,
-                "amplitude": 3.14,
-                "offset": 0.0
+                "amplitude": 3.14
             },
             "layout": {
-                "x": 240.0,
-                "y": 0.0
+                "x": 5.7460938,
+                "y": 483.46094
             }
         },
         "lfo_size": {
             "type": "LfoFr",
             "params": {
-                "frequency": 0.08,
-                "amplitude": 0.1,
+                "waveform": 0.0,
                 "offset": 0.2,
-                "waveform": 0
+                "frequency": 0.08,
+                "amplitude": 0.1
             },
             "layout": {
-                "x": 480.0,
-                "y": 0.0
+                "x": 12.582031,
+                "y": 287.63672
             }
         },
-        "feedback": {
-            "type": "Feedback",
+        "star": {
+            "type": "Shape",
             "params": {
-                "decay": 0.92,
-                "mix": 0.8,
-                "zoom": 1.02,
-                "rotate": 3.0
+                "star": 0.5,
+                "softness": 0.01,
+                "sides": 5.0,
+                "b": 0.2,
+                "radius": 0.15,
+                "r": 1.0,
+                "g": 0.6
             },
             "layout": {
-                "x": 720.0,
+                "x": 0.0,
                 "y": 0.0
-            }
+            },
+            "resolution": [
+                800,
+                600
+            ]
         },
         "vout": {
             "type": "video_out",
@@ -109,21 +108,26 @@
             "to": "vout/input"
         }
     ],
+    "viewport": {
+        "pan_x": 382.58875,
+        "pan_y": 181.16106,
+        "zoom": 0.6725689
+    },
     "sticky_notes": [
         {
             "id": "note_1",
             "text": "**Feedback Loop** Each frame mixes the new star with a decayed, zoomed copy of the previous frame",
-            "x": -100.0,
-            "y": -80.0,
+            "x": 4.943939,
+            "y": 34.683876,
             "width": 260.0,
             "height": 100.0,
             "color": 0
         },
         {
             "id": "note_2",
-            "text": "**decay=0.92**: previous frame fades 8% each frame **zoom=1.02**: old frame grows \u2192 creates spiraling trail effect",
-            "x": -100.0,
-            "y": 180.0,
+            "text": "**decay=0.92**: previous frame fades 8% each frame **zoom=1.02**: old frame grows → creates spiraling trail effect",
+            "x": 8.1015625,
+            "y": 156.94922,
             "width": 260.0,
             "height": 100.0,
             "color": 4

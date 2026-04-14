@@ -15,7 +15,6 @@
         "domains": [
             "gpu"
         ],
-        "requires_packages": [],
         "featured_rank": 31,
         "estimated_minutes": 3,
         "content_kind": "example",
@@ -25,48 +24,43 @@
         "playability": "self_playing"
     },
     "nodes": {
+        "comp1": {
+            "type": "Composite",
+            "params": {
+                "opacity_a": 0.7,
+                "blend_mode": 1.0
+            },
+            "layout": {
+                "x": 544.958,
+                "y": 334.04025
+            }
+        },
         "lfo1": {
             "type": "LfoFr",
             "params": {
+                "sync_division": 1.0,
+                "offset": 0.3,
+                "rate_mode": 2.0,
                 "frequency": 0.3,
-                "amplitude": 0.15,
-                "offset": 0.3
+                "amplitude": 0.15
             },
             "layout": {
-                "x": 0.0,
-                "y": 0.0
+                "x": -93.03621,
+                "y": 111.554016
             }
         },
         "lfo2": {
             "type": "LfoFr",
             "params": {
+                "sync_division": 0.0,
+                "offset": 0.0,
+                "rate_mode": 2.0,
                 "frequency": 0.1,
-                "amplitude": 3.14,
-                "offset": 0.0
+                "amplitude": 3.14
             },
             "layout": {
-                "x": 240.0,
-                "y": 0.0
-            }
-        },
-        "shape1": {
-            "type": "Shape",
-            "params": {
-                "radius": 0.25,
-                "sides": 6,
-                "star": 0.4,
-                "r": 0.2,
-                "g": 0.8,
-                "b": 1.0,
-                "softness": 0.01
-            },
-            "resolution": [
-                800,
-                600
-            ],
-            "layout": {
-                "x": 480.0,
-                "y": 0.0
+                "x": -90.882034,
+                "y": 310.77423
             }
         },
         "noise1": {
@@ -74,36 +68,45 @@
             "params": {
                 "speed": 0.5,
                 "scale": 6.0,
-                "octaves": 5
+                "octaves": 5.0
+            },
+            "layout": {
+                "x": 177.73746,
+                "y": 586.15125
             },
             "resolution": [
                 800,
                 600
-            ],
-            "layout": {
-                "x": 720.0,
-                "y": 0.0
-            }
+            ]
         },
-        "comp1": {
-            "type": "Composite",
+        "shape1": {
+            "type": "Shape",
             "params": {
-                "blend_mode": 3,
-                "opacity_a": 0.7
+                "star": 0.4,
+                "softness": 0.01,
+                "sides": 6.0,
+                "b": 1.0,
+                "radius": 0.25,
+                "r": 0.2,
+                "g": 0.8
             },
             "layout": {
-                "x": 960.0,
-                "y": 0.0
-            }
+                "x": 230.00327,
+                "y": 234.37274
+            },
+            "resolution": [
+                800,
+                600
+            ]
         },
         "vout": {
             "type": "video_out",
             "params": {
-                "fit_mode": 0
+                "fit_mode": 0.0
             },
             "layout": {
-                "x": 0.0,
-                "y": 170.0
+                "x": 752.25616,
+                "y": 347.9777
             }
         }
     },
@@ -128,5 +131,14 @@
             "from": "comp1/texture",
             "to": "vout/input"
         }
-    ]
+    ],
+    "metronome": {
+        "bpm": 80.0,
+        "beats_per_bar": 4
+    },
+    "viewport": {
+        "pan_x": 410.1115,
+        "pan_y": 210.56436,
+        "zoom": 0.59950405
+    }
 }
