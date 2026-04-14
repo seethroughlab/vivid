@@ -83,8 +83,6 @@ docs/personal/
 docs/*.local.md
 DawnCache
 GPUCache
-DawnCache
 .codex
-build-asan
 docs/ARCHITECTURE.pdf
-build-local
+build-*
