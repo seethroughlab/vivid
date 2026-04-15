@@ -312,30 +312,33 @@ struct Composite : vivid::OperatorBase, vivid::GpuProcessable {
             }
         }
 
-        // Write connection state to hidden controller params for inspector visibility
-        for (int i = 0; i < kMaxInputs; ++i) {
-            int param_idx = 1 + i * kParamsPerLayer; // connected param index in collect_params order
-            float val = (ctx->input_connected && ctx->input_connected[i]) ? 1.0f : 0.0f;
-            ctx->param_values[param_idx] = val;
-        }
-
         // Gather input texture views, fallback for disconnected
         WGPUTextureView tex[kMaxInputs]{};
+        bool connected[kMaxInputs]{};
         for (int i = 0; i < kMaxInputs; ++i) {
-            if (ctx->input_texture_views && i < (int)ctx->input_texture_count)
+            connected[i] = ctx->input_connected && ctx->input_connected[i];
+            if (ctx->input_texture_views && i < (int)ctx->input_texture_count &&
+                ctx->input_texture_views[i]) {
                 tex[i] = ctx->input_texture_views[i];
+                connected[i] = true;
+            }
             if (!tex[i]) {
                 if (!fallback_view_) create_fallback(ctx);
                 tex[i] = fallback_view_;
             }
         }
 
+        // Write connection state to hidden controller params for inspector visibility
+        for (int i = 0; i < kMaxInputs; ++i) {
+            int param_idx = 1 + i * kParamsPerLayer; // connected param index in collect_params order
+            ctx->param_values[param_idx] = connected[i] ? 1.0f : 0.0f;
+        }
+
         // Update uniforms
         CompositeUniforms u{};
         u.blend_mode = blend_mode.int_value();
         for (int i = 0; i < kMaxInputs; ++i) {
-            bool connected = ctx->input_connected && ctx->input_connected[i];
-            u.layer[i][0] = connected ? layers[i].opacity->value : 0.0f;
+            u.layer[i][0] = connected[i] ? layers[i].opacity->value : 0.0f;
             u.layer[i][1] = layers[i].x->value;
             u.layer[i][2] = layers[i].y->value;
             u.layer[i][3] = layers[i].scale->value;
@@ -351,7 +354,20 @@ struct Composite : vivid::OperatorBase, vivid::GpuProcessable {
         // Recreate bind group when texture inputs change
         bool dirty = false;
         for (int i = 0; i < kMaxInputs; ++i) {
-            if (tex[i] != cached_tex_[i]) { dirty = true; break; }
+            const uint32_t w = (ctx->input_texture_widths &&
+                                i < static_cast<int>(ctx->input_texture_count))
+                ? ctx->input_texture_widths[i]
+                : 0;
+            const uint32_t h = (ctx->input_texture_heights &&
+                                i < static_cast<int>(ctx->input_texture_count))
+                ? ctx->input_texture_heights[i]
+                : 0;
+            if (tex[i] != cached_tex_[i] ||
+                w != cached_tex_width_[i] ||
+                h != cached_tex_height_[i]) {
+                dirty = true;
+                break;
+            }
         }
         if (dirty) {
             if (cached_bind_group_)
@@ -375,8 +391,19 @@ struct Composite : vivid::OperatorBase, vivid::GpuProcessable {
             bg_desc.entryCount = 2 + kMaxInputs;
             bg_desc.entries = bg_entries;
             cached_bind_group_ = wgpuDeviceCreateBindGroup(ctx->device, &bg_desc);
-            for (int i = 0; i < kMaxInputs; ++i)
+            for (int i = 0; i < kMaxInputs; ++i) {
+                const uint32_t w = (ctx->input_texture_widths &&
+                                    i < static_cast<int>(ctx->input_texture_count))
+                    ? ctx->input_texture_widths[i]
+                    : 0;
+                const uint32_t h = (ctx->input_texture_heights &&
+                                    i < static_cast<int>(ctx->input_texture_count))
+                    ? ctx->input_texture_heights[i]
+                    : 0;
                 cached_tex_[i] = tex[i];
+                cached_tex_width_[i] = w;
+                cached_tex_height_[i] = h;
+            }
         }
 
         vivid::gpu::run_pass(ctx->command_encoder, pipeline_, cached_bind_group_,
@@ -407,6 +434,8 @@ private:
     WGPUTextureView     fallback_view_ = nullptr;
     WGPUBindGroup       cached_bind_group_ = nullptr;
     WGPUTextureView     cached_tex_[kMaxInputs]{};
+    uint32_t            cached_tex_width_[kMaxInputs]{};
+    uint32_t            cached_tex_height_[kMaxInputs]{};
 
     void create_fallback(const VividGpuContext* gpu) {
         WGPUTextureDescriptor td{};

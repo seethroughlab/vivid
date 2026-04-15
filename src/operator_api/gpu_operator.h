@@ -25,7 +25,11 @@ struct VividGpuContext {
     float*    param_values;
     float*    input_values;
     float*    output_values;
-    const uint8_t* input_connected; // per-input-port: 1 if wired, 0 if disconnected
+    // Per-input-port connection metadata: 1 if a graph wire targets this input
+    // port, 0 otherwise. This is useful for UI/diagnostics, but texture
+    // operators should treat input_texture_views/input_textures below as
+    // authoritative for whether an input texture is actually available.
+    const uint8_t* input_connected;
 
     // ---- GPU-specific resources ---------------------------------------------
     WGPUDevice         device;
