@@ -18,6 +18,7 @@ struct DecodedFrame {
     double requested_pts = 0.0;    // requested media-local timestamp (seconds)
     uint64_t loop_generation = 0;  // increments once per loop wrap
     uint64_t request_sequence = 0; // monotonic request id for tie-breaking
+    uint64_t request_key = 0;      // internal dedupe key (loop_generation + rounded frame)
     float copy_time_us = 0.0f;    // background copy duration for telemetry
     bool cpu_fallback = false;     // true when produced by a CPU copy fallback
 
@@ -35,7 +36,7 @@ struct DecodedFrame {
     void clear() {
         data.clear(); native_pixel_buffer.reset();
         width = height = 0; pts = 0.0; requested_pts = 0.0;
-        loop_generation = 0; request_sequence = 0; copy_time_us = 0.0f;
+        loop_generation = 0; request_sequence = 0; request_key = 0; copy_time_us = 0.0f;
         cpu_fallback = false;
         compressed = false; compressed_format = VideoCompressedFormat::None;
         requires_ycocg = false;
@@ -64,6 +65,9 @@ public:
 
     // Returns true when a frame for the given loop generation is queued.
     bool has_generation(uint64_t loop_generation) const;
+
+    // Returns true when a nonzero keyed frame is already queued.
+    bool has_request_key(uint64_t request_key) const;
 
     // Discard all queued frames.
     void flush();

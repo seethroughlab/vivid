@@ -344,13 +344,16 @@ void FullscreenBlit::blit_fit(WGPUCommandEncoder encoder,
     float src_aspect = static_cast<float>(src_w) / static_cast<float>(src_h);
     float dst_aspect = static_cast<float>(dst_w) / static_cast<float>(dst_h);
 
-    if (fit_mode == FitMode::Stretch) {
+    const FitMode effective_fit_mode =
+        (ui_visible && fit_mode == FitMode::Fit) ? FitMode::Fill : fit_mode;
+
+    if (effective_fit_mode == FitMode::Stretch) {
         // Stretch: 1:1 UV mapping
         u.scale[0] = 1.0f;
         u.scale[1] = 1.0f;
         u.offset[0] = 0.0f;
         u.offset[1] = 0.0f;
-    } else if (fit_mode == FitMode::Fit) {
+    } else if (effective_fit_mode == FitMode::Fit) {
         // Fit: scale uniformly so entire source fits, letterbox remaining
         if (src_aspect > dst_aspect) {
             // Source wider → letterbox top/bottom

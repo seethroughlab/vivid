@@ -377,17 +377,61 @@ struct AVFDecoder::Impl {
 
             const double clamped = std::max(0.0, time_seconds);
             CMTime requested = CMTimeMakeWithSeconds(clamped, 600);
+            const double frame_duration =
+                1.0 / std::max(1.0f, frame_rate_);
+            const double requested_tolerance =
+                std::max(frame_duration * 1.5, 1.0 / 120.0);
             CVPixelBufferRef cv_buf = nullptr;
+            double actual_pts = clamped;
             for (AVPlayerItem* item in player.items) {
                 AVPlayerItemVideoOutput* output = ensure_video_output_for_item(item);
                 if (!output) continue;
-                cv_buf = [output copyPixelBufferForItemTime:requested itemTimeForDisplay:nil];
-                if (cv_buf) break;
+                if (![output hasNewPixelBufferForItemTime:requested]) continue;
+                CMTime display_time = kCMTimeInvalid;
+                CVPixelBufferRef candidate =
+                    [output copyPixelBufferForItemTime:requested
+                                    itemTimeForDisplay:&display_time];
+                if (!candidate) continue;
+                if (CMTIME_IS_VALID(display_time) && !CMTIME_IS_INDEFINITE(display_time)) {
+                    const double display_seconds = CMTimeGetSeconds(display_time);
+                    if (std::isfinite(display_seconds) &&
+                        std::abs(display_seconds - clamped) > requested_tolerance) {
+                        CVPixelBufferRelease(candidate);
+                        continue;
+                    }
+                    actual_pts = display_seconds;
+                }
+                cv_buf = candidate;
+                break;
             }
             if (!cv_buf && current_item) {
                 AVPlayerItemVideoOutput* output = ensure_video_output_for_item(current_item);
                 if (output) {
-                    cv_buf = [output copyPixelBufferForItemTime:requested itemTimeForDisplay:nil];
+                    if (![output hasNewPixelBufferForItemTime:requested]) {
+                        result.status = DecodeStatus::ReusedFrame;
+                        return result;
+                    }
+                    CMTime display_time = kCMTimeInvalid;
+                    CVPixelBufferRef candidate =
+                        [output copyPixelBufferForItemTime:requested
+                                        itemTimeForDisplay:&display_time];
+                    if (candidate) {
+                        bool accept = true;
+                        if (CMTIME_IS_VALID(display_time) && !CMTIME_IS_INDEFINITE(display_time)) {
+                            const double display_seconds = CMTimeGetSeconds(display_time);
+                            if (std::isfinite(display_seconds) &&
+                                std::abs(display_seconds - clamped) > requested_tolerance) {
+                                accept = false;
+                            } else {
+                                actual_pts = display_seconds;
+                            }
+                        }
+                        if (accept) {
+                            cv_buf = candidate;
+                        } else {
+                            CVPixelBufferRelease(candidate);
+                        }
+                    }
                 }
             }
             if (!cv_buf) {
@@ -396,7 +440,7 @@ struct AVFDecoder::Impl {
             }
 
             result.buffer = cv_buf;
-            result.pts = clamped;
+            result.pts = actual_pts;
             result.status = DecodeStatus::NewFrame;
             return result;
         }

@@ -585,6 +585,7 @@ inline bool is_undo_tracked_method(const std::string& method) {
 
 // Query handlers (defined in control_server_query.cpp)
 std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const SubgraphModuleRegistry* modules = nullptr, const std::string& detail = "full");
+nlohmann::json make_audio_node_debug_json(const CompiledNode& ns);
 nlohmann::json sample_node_outputs_snapshot(const CompiledNode& ns, bool include_lanes);
 std::string handle_sample_node_outputs(Graph& graph, RuntimeCore& core, const nlohmann::json& root);
 std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core, const SubgraphModuleRegistry* modules = nullptr);

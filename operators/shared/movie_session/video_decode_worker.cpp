@@ -24,7 +24,7 @@ void VideoDecodeWorker::stop() {
         // Release any pending work to avoid leaking captured resources
         // (e.g. retained CVPixelBufferRef in the lambda).
         pending_work_.clear();
-        pending_keys_.clear();
+        active_work_keys_.clear();
         cv_.notify_one();
     }
     if (thread_.joinable()) thread_.join();
@@ -37,7 +37,9 @@ bool VideoDecodeWorker::submit_work(WorkFunction&& work,
                                     uint64_t request_key) {
     if (!work) return false;
     std::lock_guard<std::mutex> lock(mu_);
-    if (request_key != 0 && pending_keys_.find(request_key) != pending_keys_.end()) {
+    if (request_key != 0 &&
+        (active_work_keys_.find(request_key) != active_work_keys_.end() ||
+         ready_queue_.has_request_key(request_key))) {
         return false;
     }
 
@@ -49,7 +51,7 @@ bool VideoDecodeWorker::submit_work(WorkFunction&& work,
         if (drop_it == pending_work_.end()) {
             drop_it = pending_work_.begin();
         }
-        if (drop_it->request_key != 0) pending_keys_.erase(drop_it->request_key);
+        if (drop_it->request_key != 0) active_work_keys_.erase(drop_it->request_key);
         pending_work_.erase(drop_it);
     }
 
@@ -58,7 +60,7 @@ bool VideoDecodeWorker::submit_work(WorkFunction&& work,
     item.generation = generation_.load(std::memory_order_acquire);
     item.loop_generation = loop_generation;
     item.request_key = request_key;
-    if (request_key != 0) pending_keys_.insert(request_key);
+    if (request_key != 0) active_work_keys_.insert(request_key);
     pending_work_.push_back(std::move(item));
     cv_.notify_one();
     return true;
@@ -88,7 +90,7 @@ void VideoDecodeWorker::flush() {
     {
         std::lock_guard<std::mutex> lock(mu_);
         pending_work_.clear();
-        pending_keys_.clear();
+        active_work_keys_.clear();
     }
     ready_queue_.flush();
 }
@@ -106,14 +108,18 @@ void VideoDecodeWorker::worker_loop() {
             if (stop_ && pending_work_.empty()) break;
             item = std::move(pending_work_.front());
             pending_work_.pop_front();
-            if (item.request_key != 0) pending_keys_.erase(item.request_key);
         }
         if (item.work) {
             DecodedFrame frame = item.work();
             if (!frame.empty() &&
                 item.generation == generation_.load(std::memory_order_acquire)) {
+                if (frame.request_key == 0) frame.request_key = item.request_key;
                 ready_queue_.push(std::move(frame));
             }
+        }
+        if (item.request_key != 0) {
+            std::lock_guard<std::mutex> lock(mu_);
+            active_work_keys_.erase(item.request_key);
         }
     }
 }

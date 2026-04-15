@@ -104,6 +104,11 @@ WGPUTexture gpu_sink_source_texture(int sink_idx) const;
 
 The main loop uses `find_effective_gpu_sink()` to locate the texture to blit to screen.
 
+When the graph UI is visible, the main-window preview presents `Fit` output as a
+filled background so the visualization remains visible behind the editor instead
+of showing only letterbox checkerboard in the exposed preview area. Dedicated
+output windows keep the selected `fit_mode` exactly.
+
 ## GPU Operator Process Call
 
 In `RuntimeCore::tick()`, GPU nodes receive `VividGpuContext*` with:
@@ -158,3 +163,7 @@ Unlike `errored`, `gpu_shader_error` does NOT permanently block processing — i
 to allow recovery when a corrected shader is loaded.
 
 GPU device errors are captured in `GpuContext::last_error_` via the WebGPU uncaptured error callback.
+
+GPU frame analysis reads the texture a node visually represents. Texture-producing
+operators analyze their own output texture; GPU sinks such as `video_out` analyze
+their resolved input texture because they do not allocate an output texture.

@@ -832,6 +832,7 @@ struct MovieFile : vivid::OperatorBase, vivid::GpuProcessable, vivid::AudioProce
                             last_decoded_frame_.pts);
                         fallback.loop_generation = last_decoded_frame_.loop_generation;
                         fallback.request_sequence = last_decoded_frame_.request_sequence;
+                        fallback.request_key = last_decoded_frame_.request_key;
                         fallback.requested_pts = last_decoded_frame_.requested_pts;
                         if (!fallback.empty()) {
                             video_stats_.cpu_fallback_frame_count++;
@@ -995,17 +996,28 @@ private:
                                     bool target_time_mode) {
         if (!avf || !decode_worker_) return DecodeStatus::NilFrame;
 
-        auto acquired = target_time_mode
-            ? avf->acquire_pixel_buffer_at_time(request.pts)
-            : avf->acquire_pixel_buffer();
+        // AVPlayerItemVideoOutput is reliable as a playback-clock video output,
+        // but in audio-master mode Vivid asks for frames by an external session
+        // time. After looper wraps, AVFoundation can return retained/stale
+        // buffers for those target-time requests while still producing a
+        // non-null CVPixelBuffer. Use the exact-frame fallback for target-time
+        // audio-master requests until this path moves to a true target-time
+        // decoder (AVAssetReader/VideoToolbox).
+        const bool use_exact_target_fallback = target_time_mode && request.allow_fallback;
+        AcquiredPixelBuffer acquired;
+        if (!use_exact_target_fallback) {
+            acquired = target_time_mode
+                ? avf->acquire_pixel_buffer_at_time(request.pts)
+                : avf->acquire_pixel_buffer();
+        }
         if (!acquired.valid() && !(target_time_mode && request.allow_fallback)) {
             return acquired.status;
         }
 
         const double requested_pts = request.pts;
         const uint64_t loop_generation = request.loop_generation;
-        const uint64_t request_sequence = ++video_request_sequence_;
         const uint64_t request_key = avf_request_key(loop_generation, requested_pts, frame_duration);
+        const uint64_t request_sequence = ++video_request_sequence_;
         std::shared_ptr<AcquiredPixelBuffer> acquired_ptr;
         if (acquired.valid()) {
             acquired_ptr = std::make_shared<AcquiredPixelBuffer>(std::move(acquired));
@@ -1018,6 +1030,7 @@ private:
                 frame.requested_pts = requested_pts;
                 frame.loop_generation = loop_generation;
                 frame.request_sequence = request_sequence;
+                frame.request_key = request_key;
                 const bool submitted = decode_worker_->submit_decoded(std::move(frame));
                 return submitted ? DecodeStatus::NewFrame : DecodeStatus::ReusedFrame;
             }
@@ -1025,13 +1038,14 @@ private:
         }
 
         const bool submitted = decode_worker_->submit_work(
-            [fallback_path, requested_pts, loop_generation, request_sequence]() mutable {
+            [fallback_path, requested_pts, loop_generation, request_sequence, request_key]() mutable {
                 auto frame = AVFDecoder::copy_frame_at_time(fallback_path, requested_pts);
                 if (!frame.empty()) {
                     frame.pts = requested_pts;
                     frame.requested_pts = requested_pts;
                     frame.loop_generation = loop_generation;
                     frame.request_sequence = request_sequence;
+                    frame.request_key = request_key;
                     frame.cpu_fallback = true;
                 }
                 return frame;
@@ -1052,7 +1066,13 @@ private:
         const bool loop = play_mode.int_value() == 0 && duration > 0.0;
         std::vector<AvfFrameRequest> requests;
         requests.reserve(10);
-        add_unique_request(requests, target_pts, loop_generation, true, false, duration, frame_duration);
+        add_unique_request(requests,
+                           target_pts,
+                           loop_generation,
+                           true,
+                           audio_master,
+                           duration,
+                           frame_duration);
 
         if (loop && audio_master) {
             const double window = std::max(4.0 * frame_duration, 0.120);

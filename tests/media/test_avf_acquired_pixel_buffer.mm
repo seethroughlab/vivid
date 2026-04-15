@@ -193,12 +193,24 @@ static void test_target_time_acquire_across_wrap() {
     for (int i = 4; i >= 1; --i) {
         const double t = std::max(0.0, duration - static_cast<double>(i) * frame);
         auto acquired = decoder.acquire_pixel_buffer_at_time(t);
-        if (acquired.valid() || !decoder.copy_frame_at_time(t).empty()) valid_end++;
+        if (acquired.valid()) {
+            check(std::abs(acquired.pts - t) <= frame * 1.5,
+                  "avf_wrap_acquire: native target-time frame reports a matching timestamp");
+            valid_end++;
+        } else if (!decoder.copy_frame_at_time(t).empty()) {
+            valid_end++;
+        }
     }
     for (int i = 0; i < 4; ++i) {
         const double t = static_cast<double>(i) * frame;
         auto acquired = decoder.acquire_pixel_buffer_at_time(t);
-        if (acquired.valid() || !decoder.copy_frame_at_time(t).empty()) valid_start++;
+        if (acquired.valid()) {
+            check(std::abs(acquired.pts - t) <= frame * 1.5,
+                  "avf_wrap_acquire: native post-wrap frame reports a matching timestamp");
+            valid_start++;
+        } else if (!decoder.copy_frame_at_time(t).empty()) {
+            valid_start++;
+        }
     }
 
     check(decoder.native_looping_enabled(),
@@ -209,6 +221,65 @@ static void test_target_time_acquire_across_wrap() {
           "avf_wrap_acquire: AVFoundation can answer at least one final pre-wrap target frame");
     check(valid_start > 0,
           "avf_wrap_acquire: AVFoundation can answer at least one post-wrap target frame");
+}
+
+static void test_target_time_acquire_across_two_loop_boundaries() {
+    auto fixture = find_h264_fixture();
+    if (fixture.empty()) {
+        std::fprintf(stderr, "  SKIP: sync-test-h264.mp4 fixture not found\n");
+        return;
+    }
+
+    AVFDecoder decoder;
+    check(decoder.open(fixture.string()), "avf_two_wraps: opens non-HAP fixture");
+    decoder.set_loop(true);
+    decoder.set_speed(1.0f);
+    pump_main_run_loop(0.25);
+
+    const double duration = decoder.duration();
+    const double frame = 1.0 / std::max(1.0f, decoder.frame_rate());
+    int valid_end = 0;
+    int valid_start = 0;
+
+    for (int boundary = 0; boundary < 2; ++boundary) {
+        check(decoder.seek(std::max(0.0, duration - 6.0 * frame)),
+              "avf_two_wraps: explicit test seek near loop boundary succeeds");
+        pump_main_run_loop(0.20);
+
+        for (int i = 4; i >= 1; --i) {
+            const double t = std::max(0.0, duration - static_cast<double>(i) * frame);
+            auto acquired = decoder.acquire_pixel_buffer_at_time(t);
+            if (acquired.valid()) {
+                check(std::abs(acquired.pts - t) <= frame * 1.5,
+                      "avf_two_wraps: native pre-wrap frame reports a matching timestamp");
+                valid_end++;
+            } else if (!decoder.copy_frame_at_time(t).empty()) {
+                valid_end++;
+            }
+        }
+        for (int i = 0; i < 4; ++i) {
+            const double t = static_cast<double>(i) * frame;
+            auto acquired = decoder.acquire_pixel_buffer_at_time(t);
+            if (acquired.valid()) {
+                check(std::abs(acquired.pts - t) <= frame * 1.5,
+                      "avf_two_wraps: native post-wrap frame reports a matching timestamp");
+                valid_start++;
+            } else if (!decoder.copy_frame_at_time(t).empty()) {
+                valid_start++;
+            }
+        }
+
+        pump_main_run_loop(8.0 * frame);
+    }
+
+    check(decoder.native_looping_enabled(),
+          "avf_two_wraps: native looper remains active across repeated loop-edge acquisition");
+    check(decoder.manual_loop_seek_count() == 0,
+          "avf_two_wraps: repeated target-time acquisition does not use manual loop seek");
+    check(valid_end > 0,
+          "avf_two_wraps: valid frames available before wrap");
+    check(valid_start > 0,
+          "avf_two_wraps: valid frames available after wrap");
 }
 
 static void test_acquired_frames_are_metal_importable(const std::filesystem::path& fixture,
@@ -245,6 +316,7 @@ int main() {
     test_move_assignment_releases_old_buffer();
     test_native_looper_replaces_manual_loop_seek();
     test_target_time_acquire_across_wrap();
+    test_target_time_acquire_across_two_loop_boundaries();
     test_acquired_frames_are_metal_importable(find_h264_fixture(), "sync-test-h264.mp4");
     test_acquired_frames_are_metal_importable(find_hevc_fixture(), "sync-test-hevc.mp4");
 

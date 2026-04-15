@@ -1,7 +1,28 @@
 #include "runtime/control/control_server_internal.h"
 #include <ixwebsocket/IXGetFreePort.h>
+#include <chrono>
 
 namespace vivid {
+
+namespace {
+
+struct ControlServerActiveSampleRequest {
+    std::string node_id;
+    std::string type;
+    std::string kind;
+    std::string active_cadence;
+    double duration_seconds = 0.0;
+    int interval_ms = 250;
+    bool include_lanes = true;
+    std::chrono::steady_clock::time_point start;
+    std::chrono::steady_clock::time_point end;
+    std::chrono::steady_clock::time_point next_sample;
+    int sample_count = 0;
+    nlohmann::json samples = nlohmann::json::array();
+    std::promise<std::string> promise;
+};
+
+} // namespace
 
 // ---------------------------------------------------------------------------
 // Pimpl
@@ -18,6 +39,7 @@ struct ControlServer::Impl {
     int bound_port = 0;
     std::mutex queue_mutex;
     std::deque<PendingRequest> queue;
+    std::deque<ControlServerActiveSampleRequest> active_samples;
     std::atomic<bool> running{false};
     vivid::UndoManager undo_history{200};
 
@@ -32,6 +54,128 @@ ControlServer::ControlServer()
     : operator_source_docs_(std::make_unique<OperatorSourceDocs>())
     , source_index_(std::make_unique<SourceIndex>()) {}
 ControlServer::~ControlServer() { stop(); }
+
+namespace {
+
+const CompiledNode* control_find_node_state(const RuntimeCore& core,
+                                            const std::string& node_id) {
+    const auto* cg = core.compiled_graph();
+    if (!cg) return nullptr;
+    return cg->find_node(node_id);
+}
+
+void append_sample_snapshot(ControlServerActiveSampleRequest& sample_req,
+                            RuntimeCore& core,
+                            std::chrono::steady_clock::time_point now) {
+    const CompiledNode* ns = control_find_node_state(core, sample_req.node_id);
+    if (!ns) return;
+
+    nlohmann::json sample = nlohmann::json::object();
+    sample["time_seconds"] = std::chrono::duration<double>(now - sample_req.start).count();
+    sample["outputs"] = sample_node_outputs_snapshot(*ns, sample_req.include_lanes);
+    if (ns->audio) {
+        sample["audio_debug"] = make_audio_node_debug_json(*ns);
+    }
+    sample_req.samples.push_back(std::move(sample));
+    sample_req.sample_count++;
+}
+
+std::string finish_sample_request(ControlServerActiveSampleRequest& sample_req) {
+    nlohmann::json result = nlohmann::json::object();
+    result["node_id"] = sample_req.node_id;
+    result["type"] = sample_req.type;
+    result["kind"] = sample_req.kind;
+    result["active_cadence"] = sample_req.active_cadence;
+    result["duration_seconds"] = sample_req.duration_seconds;
+    result["interval_ms"] = sample_req.interval_ms;
+    result["include_lanes"] = sample_req.include_lanes;
+    result["sample_count"] = sample_req.sample_count;
+    result["samples"] = std::move(sample_req.samples);
+    return json_ok(std::move(result));
+}
+
+bool begin_sample_request(const std::string& body,
+                          RuntimeCore& core,
+                          ControlServerActiveSampleRequest& out,
+                          std::string& immediate_response) {
+    nlohmann::json root;
+    try {
+        root = nlohmann::json::parse(body);
+    } catch (...) {
+        immediate_response = json_err("invalid JSON body");
+        return false;
+    }
+
+    if (!root.contains("node_id") || !root["node_id"].is_string()) {
+        immediate_response = json_err("missing 'node_id'");
+        return false;
+    }
+
+    const std::string node_id = root["node_id"].get<std::string>();
+    const CompiledNode* initial = control_find_node_state(core, node_id);
+    if (!initial) {
+        immediate_response = json_err("node not found");
+        return false;
+    }
+    if (!initial->loader || !initial->loader->descriptor()) {
+        immediate_response = json_err("node has no live descriptor");
+        return false;
+    }
+
+    double duration_seconds = 8.0;
+    int interval_ms = 250;
+    bool include_lanes = true;
+
+    if (root.contains("duration_seconds") && root["duration_seconds"].is_number()) {
+        duration_seconds = root["duration_seconds"].get<double>();
+    }
+    if (root.contains("interval_ms") && root["interval_ms"].is_number()) {
+        interval_ms = root["interval_ms"].get<int>();
+    }
+    if (root.contains("include_lanes") && root["include_lanes"].is_boolean()) {
+        include_lanes = root["include_lanes"].get<bool>();
+    }
+
+    duration_seconds = std::clamp(duration_seconds, 0.0, 60.0);
+    interval_ms = std::clamp(interval_ms, 10, 5000);
+
+    const auto now = std::chrono::steady_clock::now();
+    out.node_id = node_id;
+    out.type = initial->type_name;
+    out.kind = kind_str(initial->operator_kind);
+    out.active_cadence =
+        (initial->active_cadence == vivid::Cadence::Audio) ? "audio" : "frame";
+    out.duration_seconds = duration_seconds;
+    out.interval_ms = interval_ms;
+    out.include_lanes = include_lanes;
+    out.start = now;
+    out.end = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+        std::chrono::duration<double>(duration_seconds));
+    out.next_sample = now;
+    return true;
+}
+
+void service_active_samples(std::deque<ControlServerActiveSampleRequest>& active_samples,
+                            RuntimeCore& core) {
+    if (active_samples.empty()) return;
+
+    const auto now = std::chrono::steady_clock::now();
+    for (auto it = active_samples.begin(); it != active_samples.end();) {
+        if (now >= it->next_sample) {
+            append_sample_snapshot(*it, core, now);
+            it->next_sample = now + std::chrono::milliseconds(it->interval_ms);
+        }
+
+        if (now >= it->end) {
+            it->promise.set_value(finish_sample_request(*it));
+            it = active_samples.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+} // namespace
 
 void ControlServer::set_src_dir(const std::string& src_dir) {
     src_dir_ = src_dir;
@@ -440,6 +584,8 @@ void ControlServer::process_requests(RuntimeAPI& api, Graph& graph,
                                      bool& has_gpu_ops, bool& has_audio) {
     if (!impl_) return;
 
+    service_active_samples(impl_->active_samples, core);
+
     // Swap the queue out under lock, then process without holding it
     std::deque<Impl::PendingRequest> local;
     {
@@ -449,6 +595,22 @@ void ControlServer::process_requests(RuntimeAPI& api, Graph& graph,
     }
 
     for (auto& req : local) {
+        if (req.method == "sample_node_outputs") {
+            ControlServerActiveSampleRequest sample_req;
+            std::string immediate_response;
+            if (begin_sample_request(req.body,
+                                     core,
+                                     sample_req,
+                                     immediate_response)) {
+                sample_req.promise = std::move(req.promise);
+                impl_->active_samples.push_back(std::move(sample_req));
+                service_active_samples(impl_->active_samples, core);
+            } else {
+                req.promise.set_value(std::move(immediate_response));
+            }
+            continue;
+        }
+
         // MCP undo/redo are handled here so they can use control-server history.
         if (req.method == "undo") {
             std::string snapshot_json;

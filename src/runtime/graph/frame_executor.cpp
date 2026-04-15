@@ -702,11 +702,22 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
                        cn.gpu->analysis_brightness_idx,
                        cn.gpu->analysis_contrast_idx,
                        cn.gpu->analysis_dominant_hue_idx);
-            // Queue readback for this frame's output.
-            if (base_gpu && cn.gpu->texture_view) {
+            // Queue readback for this frame's visible texture. GPU sinks such
+            // as video_out do not own an output texture, so analyze their input.
+            WGPUTextureView analysis_view = cn.gpu->texture_view;
+            uint32_t analysis_w = cn.gpu->tex_width;
+            uint32_t analysis_h = cn.gpu->tex_height;
+            if (!analysis_view && cn.gpu->is_sink &&
+                !cn.gpu->resolved_tex_inputs.empty()) {
+                analysis_view = cn.gpu->resolved_tex_inputs[0];
+                analysis_w = cn.gpu->resolved_tex_widths.empty()
+                    ? 0 : cn.gpu->resolved_tex_widths[0];
+                analysis_h = cn.gpu->resolved_tex_heights.empty()
+                    ? 0 : cn.gpu->resolved_tex_heights[0];
+            }
+            if (base_gpu && analysis_view && analysis_w > 0 && analysis_h > 0) {
                 fa->queue_readback(base_gpu->command_encoder, base_gpu->queue,
-                                   cn.gpu->texture_view,
-                                   cn.gpu->tex_width, cn.gpu->tex_height);
+                                   analysis_view, analysis_w, analysis_h);
             }
         }
 

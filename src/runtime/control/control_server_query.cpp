@@ -772,7 +772,7 @@ static void append_audio_port_debug_fields(nlohmann::json& port_obj,
     port_obj["active"] = snap.active;
 }
 
-static nlohmann::json make_audio_node_debug_json(const CompiledNode& ns) {
+nlohmann::json make_audio_node_debug_json(const CompiledNode& ns) {
     nlohmann::json obj = nlohmann::json::object();
     if (!ns.audio) return obj;
     auto snap = read_audio_node_debug(*ns.audio);

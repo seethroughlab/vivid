@@ -20,6 +20,12 @@ static DecodedFrame make_frame(double pts) {
     return f;
 }
 
+static DecodedFrame make_keyed_frame(double pts, uint64_t request_key) {
+    DecodedFrame f = make_frame(pts);
+    f.request_key = request_key;
+    return f;
+}
+
 static void test_submit_and_pop() {
     VideoDecodeWorker w;
     w.start();
@@ -91,6 +97,42 @@ static void test_submit_decoded_bypasses_worker() {
     DecodedFrame out;
     check(w.pop_latest(out), "pop_latest returns true after submit_decoded");
     check(out.pts == 5.0, "submit_decoded bypasses worker thread");
+
+    w.stop();
+}
+
+static void test_submit_decoded_honors_duplicate_request_key() {
+    VideoDecodeWorker w;
+    w.start();
+
+    check(w.submit_decoded(make_keyed_frame(5.0, 5050)),
+          "decoded_dedupe: first keyed decoded frame accepted");
+    check(!w.submit_decoded(make_keyed_frame(5.0, 5050)),
+          "decoded_dedupe: duplicate keyed decoded frame rejected");
+
+    DecodedFrame out;
+    check(w.pop_best(5.0, 0, 0.1, out), "decoded_dedupe: frame available");
+    check(out.pts == 5.0, "decoded_dedupe: original keyed frame preserved");
+    check(!w.pop_latest(out), "decoded_dedupe: duplicate did not queue");
+
+    w.stop();
+}
+
+static void test_pending_work_rejects_ready_duplicate_key() {
+    VideoDecodeWorker w;
+    w.start();
+
+    std::atomic<int> call_count{0};
+    check(w.submit_decoded(make_keyed_frame(1.0, 6060)),
+          "ready_pending_dedupe: ready keyed frame accepted");
+    const bool accepted = w.submit_work([&]() {
+        call_count++;
+        return make_keyed_frame(1.0, 6060);
+    }, 0, 6060);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    check(!accepted, "ready_pending_dedupe: pending duplicate rejected");
+    check(call_count.load() == 0, "ready_pending_dedupe: duplicate work did not execute");
 
     w.stop();
 }
@@ -208,18 +250,44 @@ static void test_replaced_work_releases_captured_resources() {
     w.stop();
 }
 
+static void test_ready_capacity_eviction_releases_native_handles() {
+    VideoDecodeWorker w;
+    w.start();
+
+    std::atomic<int> destroyed{0};
+    for (int i = 0; i < 20; ++i) {
+        auto frame = make_keyed_frame(static_cast<double>(i) / 30.0,
+                                      7000 + static_cast<uint64_t>(i));
+        frame.native_pixel_buffer = std::shared_ptr<void>(
+            new int(i),
+            [&](void* value) {
+                delete static_cast<int*>(value);
+                destroyed.fetch_add(1, std::memory_order_relaxed);
+            });
+        w.submit_decoded(std::move(frame));
+    }
+
+    check(destroyed.load(std::memory_order_relaxed) >= 8,
+          "ready_resource_release: capacity eviction releases native handles");
+
+    w.stop();
+}
+
 int main() {
     std::fprintf(stderr, "=== VideoDecodeWorker tests ===\n");
     test_submit_and_pop();
     test_bounded_fifo_runs_multiple_pending_jobs();
     test_duplicate_pending_key_is_ignored();
     test_submit_decoded_bypasses_worker();
+    test_submit_decoded_honors_duplicate_request_key();
+    test_pending_work_rejects_ready_duplicate_key();
     test_flush();
     test_start_stop_lifecycle();
     test_destructor_with_pending_work();
     test_pop_empty();
     test_flush_discards_in_flight_result();
     test_replaced_work_releases_captured_resources();
+    test_ready_capacity_eviction_releases_native_handles();
 
     std::fprintf(stderr, "\n========================================\n");
     std::fprintf(stderr, "Worker tests: %d failed\n", failures);

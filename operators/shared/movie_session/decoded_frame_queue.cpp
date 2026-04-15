@@ -3,10 +3,45 @@
 #include <algorithm>
 #include <cmath>
 
+namespace {
+
+bool should_replace_duplicate(const DecodedFrame& existing,
+                              const DecodedFrame& incoming) {
+    const bool incoming_native = incoming.has_native_pixel_buffer();
+    const bool existing_native = existing.has_native_pixel_buffer();
+
+    if (incoming_native != existing_native) return incoming_native;
+    if (incoming.cpu_fallback != existing.cpu_fallback) return !incoming.cpu_fallback;
+    return false;
+}
+
+} // namespace
+
 bool DecodedFrameQueue::push(DecodedFrame&& frame) {
     std::lock_guard<std::mutex> lock(mu_);
+    if (frame.request_key != 0) {
+        auto duplicate = std::find_if(frames_.begin(), frames_.end(),
+            [&](const DecodedFrame& queued) {
+                return queued.request_key == frame.request_key;
+            });
+        if (duplicate != frames_.end()) {
+            if (should_replace_duplicate(*duplicate, frame)) {
+                *duplicate = std::move(frame);
+                return true;
+            }
+            return false;
+        }
+    }
+
     if (frames_.size() >= kMaxFrames) {
-        frames_.erase(frames_.begin());
+        auto drop_it = std::find_if(frames_.begin(), frames_.end(),
+            [&](const DecodedFrame& queued) {
+                return queued.loop_generation < frame.loop_generation;
+            });
+        if (drop_it == frames_.end()) {
+            drop_it = frames_.begin();
+        }
+        frames_.erase(drop_it);
     }
     frames_.push_back(std::move(frame));
     return true;
@@ -88,6 +123,15 @@ bool DecodedFrameQueue::has_generation(uint64_t loop_generation) const {
     return std::any_of(frames_.begin(), frames_.end(),
         [&](const DecodedFrame& frame) {
             return frame.loop_generation == loop_generation;
+        });
+}
+
+bool DecodedFrameQueue::has_request_key(uint64_t request_key) const {
+    if (request_key == 0) return false;
+    std::lock_guard<std::mutex> lock(mu_);
+    return std::any_of(frames_.begin(), frames_.end(),
+        [&](const DecodedFrame& frame) {
+            return frame.request_key == request_key;
         });
 }
 

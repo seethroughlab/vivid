@@ -75,6 +75,12 @@
                 check(result["sample_count"].get<int>() >= 1, "sample_count >= 1");
                 check(result["samples"].is_array() && result["samples"].size() >= 1,
                       "samples array non-empty");
+                if (result["samples"].is_array() && result["samples"].size() > 1) {
+                    double first_t = result["samples"][0]["time_seconds"].get<double>();
+                    double last_t = result["samples"][result["samples"].size() - 1]["time_seconds"].get<double>();
+                    check(last_t > first_t,
+                          "sample_node_outputs collects samples across runtime ticks");
+                }
                 if (result["samples"].is_array() && result["samples"].size() > 0) {
                     auto& s0 = result["samples"][0];
                     check(s0.contains("time_seconds") && s0["time_seconds"].is_number(),

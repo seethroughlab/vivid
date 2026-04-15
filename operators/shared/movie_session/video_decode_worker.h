@@ -63,7 +63,7 @@ private:
     bool started_ = false;
 
     std::deque<WorkItem> pending_work_;
-    std::unordered_set<uint64_t> pending_keys_;
+    std::unordered_set<uint64_t> active_work_keys_;
 
     // Output queue (worker → frame thread).
     DecodedFrameQueue ready_queue_;
