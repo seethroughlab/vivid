@@ -244,12 +244,28 @@ bool movie_upload_cv_pixel_buffer_metal(WGPUDevice device,
     }
 
     [command_buffer commit];
-    CFRelease(cv_tex);
+    [command_buffer waitUntilCompleted];
 
     auto t1 = std::chrono::steady_clock::now();
     if (elapsed_us) {
         *elapsed_us = std::chrono::duration<float, std::micro>(t1 - t0).count();
     }
+
+    const bool completed = command_buffer.status == MTLCommandBufferStatusCompleted;
+    if (!completed) {
+        NSError* error = command_buffer.error;
+        if (error) {
+            NSLog(@"[movie_metal_upload] Metal transfer failed: %@", error);
+        } else {
+            NSLog(@"[movie_metal_upload] Metal transfer failed with status %lu",
+                  static_cast<unsigned long>(command_buffer.status));
+        }
+        CFRelease(cv_tex);
+        if (import_failed) *import_failed = true;
+        return false;
+    }
+
+    CFRelease(cv_tex);
     return true;
 }
 

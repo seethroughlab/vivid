@@ -41,6 +41,8 @@ Healthy macOS non-HAP self-clock playback is GPU-native after AVFoundation acqui
 
 When audio is authoritative, non-HAP playback uses a separate `AVAssetReader` target-time path. The reader advances timestamped decoded `CVPixelBuffer`s toward the Vivid audio-clock target and feeds the bounded presentation queue by loop generation and PTS. `AVPlayerItemVideoOutput` is not used as a random-access decoder for external audio-clock timestamps.
 
+GPU-native `CVPixelBuffer` transfers are synchronized before same-frame WebGPU sampling. If Metal import or transfer completion fails, the operator reports a Metal failure and falls back to the CPU BGRA upload path for that frame rather than presenting a stale or black texture.
+
 The GPU-native diagnostics make this visible before and during soak tests. Healthy H.264/HEVC playback should show `gpu_native_frames` increasing steadily, with `cpu_fallback_frames` limited to startup or backend recovery cases. `metal_import_failures` indicates degraded Metal interop and should stay zero or bounded. `metal_blit_us` reports the GPU-side transfer cost.
 
 For HAP, frame selection follows the same session target time and uses direct compressed upload.
@@ -67,7 +69,7 @@ Seeks are not the steady-state sync mechanism. Persistent medium drift escalates
 - repeated correction seek churn
 - Metal import failure preventing GPU-native non-HAP self-clock playback
 - CPU fallback dominating a non-HAP path that is expected to be GPU-native
-- movie time/new-frame counters advancing while the visible texture hash remains frozen across diagnostic calls
+- movie time/presentation counters advancing while frame hash, brightness, and contrast stay frozen across diagnostic calls
 
 There is no bridge-mismatch diagnostic because the public movie sync bridge no longer exists.
 

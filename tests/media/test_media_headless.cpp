@@ -14,6 +14,7 @@
 #include <cstring>
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -184,6 +185,92 @@ static std::vector<std::string> discover_media_graphs(const char* graphs_dir) {
     return result;
 }
 
+static bool enforce_movie_visibility_for_graph(const char* graph_path) {
+    const std::string name = std::filesystem::path(graph_path).filename().string();
+    return name == "mfi_av_sync_demo.json" ||
+           name == "mfi_space_cycle_sync_demo.json";
+}
+
+static bool read_output_value(const vivid::CompiledNode& node,
+                              const char* name,
+                              float& out) {
+    auto it = node.output_port_indices.find(name);
+    if (it == node.output_port_indices.end() ||
+        it->second >= node.output_values.size()) {
+        return false;
+    }
+    out = node.output_values[it->second];
+    return std::isfinite(out);
+}
+
+static bool output_has_visible_pixels(const vivid::CompiledNode& node) {
+    float brightness = 0.0f;
+    float contrast = 0.0f;
+    const bool has_brightness = read_output_value(node, "brightness", brightness);
+    const bool has_contrast = read_output_value(node, "contrast", contrast);
+    return (has_brightness && brightness > 0.01f) ||
+           (has_contrast && contrast > 0.002f);
+}
+
+static bool validate_movie_visibility(const vivid::CompiledGraph& cg,
+                                      const char* graph_path) {
+    if (!enforce_movie_visibility_for_graph(graph_path)) return true;
+
+    bool movie_decoded_visible_frame = false;
+    bool has_composite = false;
+    bool composite_visible = false;
+    bool has_video_out = false;
+    bool video_out_visible = false;
+
+    float movie_new_frames = 0.0f;
+    float movie_gpu_native_frames = 0.0f;
+    float movie_brightness = 0.0f;
+    float movie_contrast = 0.0f;
+
+    for (const auto& node : cg.nodes) {
+        if (node.type_name == "MovieFile") {
+            (void)read_output_value(node, "new_frames", movie_new_frames);
+            (void)read_output_value(node, "gpu_native_frames", movie_gpu_native_frames);
+            (void)read_output_value(node, "brightness", movie_brightness);
+            (void)read_output_value(node, "contrast", movie_contrast);
+            if ((movie_new_frames > 5.0f || movie_gpu_native_frames > 5.0f) &&
+                output_has_visible_pixels(node)) {
+                movie_decoded_visible_frame = true;
+            }
+        } else if (node.type_name == "Composite") {
+            has_composite = true;
+            composite_visible = composite_visible || output_has_visible_pixels(node);
+        } else if (node.type_name == "video_out") {
+            has_video_out = true;
+            video_out_visible = video_out_visible || output_has_visible_pixels(node);
+        }
+    }
+
+    if (!movie_decoded_visible_frame) return true;
+
+    if (has_composite && !composite_visible) {
+        std::fprintf(stderr,
+                     "MovieFile decoded visible frames, but Composite output is black "
+                     "(movie new=%.0f gpu_native=%.0f brightness=%.4f contrast=%.4f)\n",
+                     movie_new_frames,
+                     movie_gpu_native_frames,
+                     movie_brightness,
+                     movie_contrast);
+        return false;
+    }
+    if (has_video_out && !video_out_visible) {
+        std::fprintf(stderr,
+                     "MovieFile decoded visible frames, but video_out input is black "
+                     "(movie new=%.0f gpu_native=%.0f brightness=%.4f contrast=%.4f)\n",
+                     movie_new_frames,
+                     movie_gpu_native_frames,
+                     movie_brightness,
+                     movie_contrast);
+        return false;
+    }
+    return true;
+}
+
 // Per-graph timeout (seconds).
 static constexpr int kTimeoutSeconds = 20;
 
@@ -262,10 +349,12 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
 
     if (use_gpu) gpu.reset_errors();
 
-    // Tick 60 frames
+    // Tick enough frames for async media decode plus one-frame-delayed GPU
+    // analysis readbacks to settle.
     const uint32_t audio_frames = audio->buffer_size();
     std::vector<float> audio_buf(audio_frames * 2, 0.0f);
-    for (uint64_t frame = 0; frame < 60; ++frame) {
+    const uint64_t tick_count = enforce_movie_visibility_for_graph(graph_path) ? 120 : 60;
+    for (uint64_t frame = 0; frame < tick_count; ++frame) {
         double time = frame * 0.016;
         if (audio) {
             runtime.pre_tick_audio_sync(time);
@@ -300,6 +389,11 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
 
     if (use_gpu && gpu.has_gpu_error) {
         std::fprintf(stderr, "GPU error: %s\n", gpu.gpu_error_msg.c_str());
+        result = 1;
+    }
+
+    if (use_gpu && runtime.compiled_graph() &&
+        !validate_movie_visibility(*runtime.compiled_graph(), graph_path)) {
         result = 1;
     }
 

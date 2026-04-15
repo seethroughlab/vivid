@@ -49,7 +49,10 @@ struct DiagnosticFinding {
 struct MovieFrozenSnapshot {
     float movie_time = 0.0f;
     float new_frames = 0.0f;
+    float gpu_native_frames = 0.0f;
     float frame_hash = 0.0f;
+    float brightness = 0.0f;
+    float contrast = 0.0f;
     std::chrono::steady_clock::time_point observed_at{};
     bool valid = false;
 };
@@ -255,12 +258,16 @@ std::vector<DiagnosticFinding> collect_diagnostics(
             float movie_time = 0.0f;
             float new_frames_for_freeze = 0.0f;
             float frame_hash = 0.0f;
+            float brightness = 0.0f;
+            float contrast = 0.0f;
             const bool has_gpu_native = read_movie_output("gpu_native_frames", gpu_native_frames);
             const bool has_cpu_fallback = read_movie_output("cpu_fallback_frames", cpu_fallback_frames);
             const bool has_import_failures = read_movie_output("metal_import_failures", metal_import_failures);
             const bool has_movie_time = read_movie_output("time", movie_time);
             const bool has_new_frames_for_freeze = read_movie_output("new_frames", new_frames_for_freeze);
             const bool has_frame_hash = read_movie_output("frame_hash", frame_hash);
+            const bool has_brightness = read_movie_output("brightness", brightness);
+            const bool has_contrast = read_movie_output("contrast", contrast);
             if (has_gpu_native && has_cpu_fallback && has_import_failures) {
                 const float gpu_path_frames = gpu_native_frames + cpu_fallback_frames;
                 if (gpu_path_frames > 120.0f && gpu_native_frames <= 0.0f &&
@@ -292,21 +299,40 @@ std::vector<DiagnosticFinding> collect_diagnostics(
                     const float dt = std::chrono::duration<float>(now - previous.observed_at).count();
                     const float movie_dt = std::abs(movie_time - previous.movie_time);
                     const float new_delta = new_frames_for_freeze - previous.new_frames;
+                    const float native_delta = has_gpu_native
+                        ? gpu_native_frames - previous.gpu_native_frames
+                        : 0.0f;
                     const bool hash_unchanged = std::abs(frame_hash - previous.frame_hash) < 0.5f;
+                    const bool brightness_unchanged =
+                        !has_brightness || std::abs(brightness - previous.brightness) < 0.005f;
+                    const bool contrast_unchanged =
+                        !has_contrast || std::abs(contrast - previous.contrast) < 0.005f;
+                    const bool visual_metrics_unchanged =
+                        hash_unchanged && brightness_unchanged && contrast_unchanged;
+                    const bool frames_advanced = new_delta >= 60.0f || native_delta >= 60.0f;
                     if (dt >= 1.0f &&
                         movie_dt >= 0.75f &&
-                        new_delta >= 60.0f &&
-                        hash_unchanged) {
+                        frames_advanced &&
+                        visual_metrics_unchanged) {
                         findings.push_back({
                             "movie_texture_frozen",
                             "warning",
                             ns.node_id,
-                            "MovieFile time and decoded-frame counters advanced while the visible texture hash stayed unchanged.",
+                            "MovieFile time and presentation counters advanced while visible texture analysis stayed unchanged.",
                             "Check the non-HAP presentation backend; this usually means stale frames are being uploaded or presentation is frozen."
                         });
                     }
                 }
-                previous = {movie_time, new_frames_for_freeze, frame_hash, now, true};
+                previous = {
+                    movie_time,
+                    new_frames_for_freeze,
+                    gpu_native_frames,
+                    frame_hash,
+                    brightness,
+                    contrast,
+                    now,
+                    true
+                };
             }
         }
     }
