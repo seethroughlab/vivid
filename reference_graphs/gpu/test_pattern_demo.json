@@ -16,7 +16,6 @@
             "gpu",
             "control"
         ],
-        "requires_packages": [],
         "featured_rank": 33,
         "content_kind": "example",
         "category": "visual",
@@ -25,32 +24,44 @@
         "playability": "self_playing"
     },
     "nodes": {
+        "lfo_pattern": {
+            "type": "LfoFr",
+            "params": {
+                "waveform": 2.0,
+                "offset": 2.5,
+                "frequency": 1.3122103,
+                "amplitude": 2.5
+            },
+            "layout": {
+                "x": 175.1914,
+                "y": 356.22656
+            }
+        },
         "pattern": {
             "type": "Test Pattern",
             "params": {
-                "pattern": 0,
-                "density": 16.0,
-                "line_width": 2.0,
                 "r": 1.0,
+                "pattern": 0.0,
+                "density": 21.130201,
+                "line_width": 2.0,
                 "g": 1.0,
                 "b": 1.0
+            },
+            "layout": {
+                "x": 409.58203,
+                "y": 354.58594
             },
             "resolution": [
                 800,
                 600
             ]
         },
-        "lfo_pattern": {
-            "type": "LfoFr",
-            "params": {
-                "frequency": 0.1,
-                "amplitude": 2.5,
-                "offset": 2.5,
-                "waveform": 2
-            }
-        },
         "vout": {
-            "type": "video_out"
+            "type": "video_out",
+            "layout": {
+                "x": 613.03516,
+                "y": 360.29688
+            }
         }
     },
     "connections": [
@@ -61,8 +72,17 @@
         {
             "from": "pattern/texture",
             "to": "vout/input"
+        },
+        {
+            "from": "lfo_pattern/phase",
+            "to": "pattern/r"
         }
     ],
+    "viewport": {
+        "pan_x": 262.5703,
+        "pan_y": 22.125,
+        "zoom": 1.0
+    },
     "sticky_notes": [
         {
             "id": "note_1",
@@ -76,8 +96,8 @@
         {
             "id": "note_2",
             "text": "Square-wave LFO snaps between pattern types (grid, bars, etc.) rather than blending smoothly",
-            "x": -100.0,
-            "y": 150.0,
+            "x": 106.58984,
+            "y": 241.89062,
             "width": 260.0,
             "height": 80.0,
             "color": 4

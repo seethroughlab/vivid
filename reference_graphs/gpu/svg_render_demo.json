@@ -15,7 +15,6 @@
             "gpu",
             "control"
         ],
-        "requires_packages": [],
         "featured_rank": 38,
         "content_kind": "example",
         "category": "visual",
@@ -24,21 +23,24 @@
         "playability": "self_playing"
     },
     "nodes": {
-        "svg": {
-            "type": "SVG Render",
+        "comp": {
+            "type": "Composite",
             "params": {
-                "file": "../../platform/macos/Vivid.svg",
-                "scale": 0.5
+                "blend_mode": 3.0
             },
-            "resolution": [
-                800,
-                600
-            ]
+            "layout": {
+                "x": 457.52792,
+                "y": 429.84555
+            }
         },
         "grad": {
             "type": "Gradient",
             "params": {
-                "mode": 0
+                "mode": 0.0
+            },
+            "layout": {
+                "x": 208.62303,
+                "y": 155.47504
             },
             "resolution": [
                 800,
@@ -48,28 +50,41 @@
         "lfo_x": {
             "type": "LfoFr",
             "params": {
+                "offset": 0.0,
                 "frequency": 0.05,
-                "amplitude": 0.15,
-                "offset": 0.0
+                "amplitude": 0.15
             }
         },
         "lfo_y": {
             "type": "LfoFr",
             "params": {
-                "frequency": 0.07,
-                "amplitude": 0.1,
+                "waveform": 0.0,
                 "offset": 0.0,
-                "waveform": 0
+                "frequency": 0.07,
+                "amplitude": 0.1
             }
         },
-        "comp": {
-            "type": "Composite",
+        "svg": {
+            "type": "SVG Render",
             "params": {
-                "blend_mode": 3
-            }
+                "scale": 0.5,
+                "file": "../../platform/macos/Vivid.svg"
+            },
+            "layout": {
+                "x": 235.55447,
+                "y": 488.78607
+            },
+            "resolution": [
+                800,
+                600
+            ]
         },
         "vout": {
-            "type": "video_out"
+            "type": "video_out",
+            "layout": {
+                "x": 659.14825,
+                "y": 440.12457
+            }
         }
     },
     "connections": [
@@ -93,5 +108,10 @@
             "from": "comp/texture",
             "to": "vout/input"
         }
-    ]
+    ],
+    "viewport": {
+        "pan_x": -22.04356,
+        "pan_y": -107.97109,
+        "zoom": 1.2333971
+    }
 }
