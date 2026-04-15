@@ -1,5 +1,8 @@
 #include "operator_api/operator.h"
 #include "operator_api/input_state.h"
+#include "operator_api/thumbnail.h"
+#include "operator_api/draw_plot_helpers.h"
+#include "operator_api/draw_ui_helpers.h"
 
 #include <cctype>
 #include <cstring>
@@ -70,6 +73,66 @@ struct Keyboard : vivid::OperatorBase, vivid::FrameProcessable {
         out.push_back({"alt",      VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
+    void draw_thumbnail(const VividThumbnailContext* ctx) override {
+        if (!ctx || !ctx->draw.opaque) return;
+        auto& d = const_cast<VividDrawAPI&>(ctx->draw);
+        void* o = d.opaque;
+        float w = static_cast<float>(ctx->thumbnail_logical_width ? ctx->thumbnail_logical_width : ctx->thumbnail_width);
+        float h = static_cast<float>(ctx->thumbnail_logical_height ? ctx->thumbnail_logical_height : ctx->thumbnail_height);
+
+        vivid::draw_plot::draw_thumb_background(d, o, w, h);
+        vivid::draw_plot::draw_thumb_label(d, o, 6.0f, 4.0f, "KEY");
+
+        // Key name from string param
+        const char* key_name = (ctx->string_param_values && ctx->string_param_count > 0)
+                               ? ctx->string_param_values[0] : "?";
+        if (!key_name || !*key_name) key_name = "?";
+
+        bool held = (ctx->output_count > 0) && ctx->output_values[0] > 0.5f;
+
+        // Key cap button
+        float cap_w = std::min(w - 24.0f, 80.0f);
+        float cap_h = 36.0f;
+        float cap_x = (w - cap_w) * 0.5f;
+        float cap_y = 20.0f;
+
+        VividColor cap_fill = held
+            ? VividColor{0.35f, 0.55f, 0.80f, 0.7f}
+            : VividColor{0.18f, 0.20f, 0.24f, 0.9f};
+        VividColor cap_border = held
+            ? VividColor{0.5f, 0.7f, 0.95f, 0.8f}
+            : VividColor{0.30f, 0.33f, 0.38f, 0.7f};
+        vivid::draw_ui::draw_panel(d, o, cap_x, cap_y, cap_w, cap_h, cap_fill, cap_border, 4.0f);
+
+        VividColor text_color = held
+            ? VividColor{1.0f, 1.0f, 1.0f, 1.0f}
+            : VividColor{0.7f, 0.75f, 0.8f, 0.9f};
+        vivid::draw_ui::draw_text_aligned(d, o, cap_x, cap_y + 8.0f, cap_w,
+                                          key_name, text_color, 1.1f, 0.5f);
+
+        // Modifier badges at bottom
+        float badge_y = h - 18.0f;
+        float badge_w = 16.0f;
+        float badge_gap = 4.0f;
+        float total_badge_w = 3 * badge_w + 2 * badge_gap;
+        float badge_x = (w - total_badge_w) * 0.5f;
+
+        const char* mod_labels[] = {"S", "C", "A"};
+        for (int i = 0; i < 3; ++i) {
+            bool active = (ctx->output_count > static_cast<uint32_t>(3 + i))
+                         && ctx->output_values[3 + i] > 0.5f;
+            VividColor mfill = active
+                ? VividColor{0.35f, 0.55f, 0.80f, 0.6f}
+                : VividColor{0.15f, 0.16f, 0.18f, 0.5f};
+            VividColor mtxt = active
+                ? VividColor{1.0f, 1.0f, 1.0f, 0.9f}
+                : VividColor{0.35f, 0.38f, 0.42f, 0.6f};
+            float mx = badge_x + i * (badge_w + badge_gap);
+            vivid::draw_ui::draw_value_badge(d, o, mx, badge_y, badge_w, 14.0f,
+                                             mod_labels[i], mfill, mtxt, 2.0f, 0.7f);
+        }
+    }
+
     void process_frame(const VividFrameContext* ctx) override {
         const VividInputState* input = vivid_input(ctx);
         if (!input) {
@@ -106,3 +169,4 @@ struct Keyboard : vivid::OperatorBase, vivid::FrameProcessable {
 };
 
 VIVID_REGISTER(Keyboard)
+VIVID_THUMBNAIL(Keyboard)

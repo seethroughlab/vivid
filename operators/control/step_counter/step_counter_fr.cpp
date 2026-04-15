@@ -1,6 +1,10 @@
 #include "operator_api/operator.h"
+#include "operator_api/thumbnail.h"
+#include "operator_api/draw_plot_helpers.h"
+#include "operator_api/draw_ui_helpers.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 struct StepCounterFr : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "StepCounterFr";
@@ -12,6 +16,40 @@ struct StepCounterFr : vivid::OperatorBase, vivid::FrameProcessable {
         vivid::semantic_tag(initial, "index");
         vivid::semantic_shape(initial, "int");
         vivid::description(initial, "Starting count value and reset target");
+    }
+
+    void draw_thumbnail(const VividThumbnailContext* ctx) override {
+        if (!ctx || !ctx->draw.opaque) return;
+        auto& d = const_cast<VividDrawAPI&>(ctx->draw);
+        void* o = d.opaque;
+        float w = static_cast<float>(ctx->thumbnail_logical_width ? ctx->thumbnail_logical_width : ctx->thumbnail_width);
+        float h = static_cast<float>(ctx->thumbnail_logical_height ? ctx->thumbnail_logical_height : ctx->thumbnail_height);
+
+        vivid::draw_plot::draw_thumb_background(d, o, w, h);
+        vivid::draw_plot::draw_thumb_label(d, o, 6.0f, 4.0f, "STEP");
+
+        int index = (ctx->output_count > 0) ? static_cast<int>(ctx->output_values[0]) : 0;
+        char idx_str[16];
+        std::snprintf(idx_str, sizeof(idx_str), "%d", index);
+
+        // Large centered index value
+        vivid::draw_ui::draw_text_aligned(d, o, 0.0f, 18.0f, w,
+                                          idx_str, {0.75f, 0.85f, 0.95f, 0.95f}, 1.6f, 0.5f);
+
+        // Step grid at bottom
+        constexpr int kGridSize = 8;
+        float grid_x = 8.0f;
+        float grid_y = h - 22.0f;
+        float grid_w = w - 16.0f;
+        float grid_h = 14.0f;
+        int current = ((index % kGridSize) + kGridSize) % kGridSize;
+
+        vivid::draw_plot::draw_step_grid(d, o, grid_x, grid_y, grid_w, grid_h,
+                                         kGridSize, nullptr, current,
+                                         {0.35f, 0.55f, 0.80f, 0.7f},
+                                         {0.15f, 0.17f, 0.20f, 0.6f},
+                                         {0.5f, 0.7f, 0.95f, 0.8f},
+                                         2.0f, 2.0f);
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
@@ -63,3 +101,4 @@ private:
 };
 
 VIVID_REGISTER(StepCounterFr)
+VIVID_THUMBNAIL(StepCounterFr)

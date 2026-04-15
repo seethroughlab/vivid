@@ -1,4 +1,7 @@
 #include "operator_api/operator.h"
+#include "operator_api/thumbnail.h"
+#include "operator_api/draw_plot_helpers.h"
+#include "operator_api/draw_ui_helpers.h"
 
 #include <algorithm>
 #include <cctype>
@@ -67,6 +70,32 @@ struct FolderList : vivid::OperatorBase, vivid::FrameProcessable {
     int last_sort_mode_ = 0;
     std::vector<std::string> files_;
     std::vector<const char*> file_ptrs_;
+
+    void draw_thumbnail(const VividThumbnailContext* ctx) override {
+        if (!ctx || !ctx->draw.opaque) return;
+        auto& d = const_cast<VividDrawAPI&>(ctx->draw);
+        void* o = d.opaque;
+        float w = static_cast<float>(ctx->thumbnail_logical_width ? ctx->thumbnail_logical_width : ctx->thumbnail_width);
+        float h = static_cast<float>(ctx->thumbnail_logical_height ? ctx->thumbnail_logical_height : ctx->thumbnail_height);
+
+        vivid::draw_plot::draw_thumb_background(d, o, w, h);
+        vivid::draw_plot::draw_thumb_label(d, o, 6.0f, 4.0f, "DIR");
+
+        int count = (ctx->output_count > 1) ? static_cast<int>(ctx->output_values[1]) : 0;
+        char count_str[16];
+        std::snprintf(count_str, sizeof(count_str), "%d", count);
+
+        if (count > 0) {
+            // Large centered count
+            vivid::draw_ui::draw_text_aligned(d, o, 0.0f, h * 0.28f, w,
+                                              count_str, {0.75f, 0.85f, 0.95f, 0.95f}, 1.6f, 0.5f);
+            vivid::draw_ui::draw_text_aligned(d, o, 0.0f, h * 0.28f + 24.0f, w,
+                                              "files", {0.40f, 0.48f, 0.56f, 0.7f}, 0.8f, 0.5f);
+        } else {
+            vivid::draw_ui::draw_text_aligned(d, o, 0.0f, h * 0.38f, w,
+                                              "empty", {0.40f, 0.42f, 0.46f, 0.6f}, 0.9f, 0.5f);
+        }
+    }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&folder);
@@ -142,3 +171,4 @@ struct FolderList : vivid::OperatorBase, vivid::FrameProcessable {
 };
 
 VIVID_REGISTER(FolderList)
+VIVID_THUMBNAIL(FolderList)
