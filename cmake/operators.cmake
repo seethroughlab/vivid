@@ -242,6 +242,7 @@ if(APPLE)
     )
     target_include_directories(movie_session PUBLIC
         ${CMAKE_SOURCE_DIR}/operators/shared/movie_session)
+    target_link_libraries(movie_session PRIVATE "-framework CoreVideo")
     set_target_properties(movie_session PROPERTIES
         OUTPUT_NAME "movie_session"
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
@@ -263,6 +264,7 @@ if(APPLE)
         operators/shared/movie_audio/avf_audio_extractor.mm
         operators/shared/movie_decode/decoder_factory.cpp
         operators/shared/movie_decode/texture_upload.cpp
+        operators/shared/movie_decode/metal_frame_upload.mm
         operators/shared/movie_decode/placeholder_frame.cpp
         operators/shared/movie_decode/avf_decoder.mm
         operators/shared/movie_decode/hap_decoder.mm
@@ -272,11 +274,12 @@ if(APPLE)
     target_link_libraries(movie_file PRIVATE
         vivid_operator_api webgpu snappy movie_session
         "-framework AVFoundation" "-framework AVFAudio" "-framework CoreMedia" "-framework CoreVideo"
-        "-framework Foundation" "-framework QuartzCore"
+        "-framework Foundation" "-framework QuartzCore" "-framework Metal" "-framework IOSurface"
     )
     set_source_files_properties(
         operators/shared/movie_audio/avf_audio_extractor.mm
         operators/shared/movie_decode/avf_decoder.mm
+        operators/shared/movie_decode/metal_frame_upload.mm
         operators/shared/movie_decode/hap_decoder.mm
         operators/shared/movie_decode/codec_probe.mm
         PROPERTIES COMPILE_FLAGS "-fobjc-arc")
@@ -303,7 +306,7 @@ target_include_directories(movie_file PRIVATE
 )
 if(APPLE)
     set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
-        "  \"movie_file\": { \"sources\": [\"operators/gpu/movie_file/movie_file.cpp\", \"operators/shared/movie_audio/avf_audio_extractor.mm\", \"operators/shared/movie_decode/decoder_factory.cpp\", \"operators/shared/movie_decode/texture_upload.cpp\", \"operators/shared/movie_decode/placeholder_frame.cpp\", \"operators/shared/movie_decode/avf_decoder.mm\", \"operators/shared/movie_decode/hap_decoder.mm\", \"operators/shared/movie_decode/codec_probe.mm\", \"deps/hap/hap.c\"], \"extra_libs\": [\"webgpu\", \"snappy\"], \"frameworks\": [\"AVFoundation\", \"AVFAudio\", \"CoreMedia\", \"CoreVideo\", \"Foundation\"], \"objc_arc\": [\"operators/shared/movie_audio/avf_audio_extractor.mm\", \"operators/shared/movie_decode/avf_decoder.mm\", \"operators/shared/movie_decode/hap_decoder.mm\", \"operators/shared/movie_decode/codec_probe.mm\"], \"include_dirs\": [\"deps/stb\", \"deps/hap\"] }")
+        "  \"movie_file\": { \"sources\": [\"operators/gpu/movie_file/movie_file.cpp\", \"operators/shared/movie_audio/avf_audio_extractor.mm\", \"operators/shared/movie_decode/decoder_factory.cpp\", \"operators/shared/movie_decode/texture_upload.cpp\", \"operators/shared/movie_decode/metal_frame_upload.mm\", \"operators/shared/movie_decode/placeholder_frame.cpp\", \"operators/shared/movie_decode/avf_decoder.mm\", \"operators/shared/movie_decode/hap_decoder.mm\", \"operators/shared/movie_decode/codec_probe.mm\", \"deps/hap/hap.c\"], \"extra_libs\": [\"webgpu\", \"snappy\"], \"frameworks\": [\"AVFoundation\", \"AVFAudio\", \"CoreMedia\", \"CoreVideo\", \"Foundation\", \"QuartzCore\", \"Metal\", \"IOSurface\"], \"objc_arc\": [\"operators/shared/movie_audio/avf_audio_extractor.mm\", \"operators/shared/movie_decode/avf_decoder.mm\", \"operators/shared/movie_decode/metal_frame_upload.mm\", \"operators/shared/movie_decode/hap_decoder.mm\", \"operators/shared/movie_decode/codec_probe.mm\"], \"include_dirs\": [\"deps/stb\", \"deps/hap\"] }")
 else()
     set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
         "  \"movie_file\": { \"sources\": [\"operators/gpu/movie_file/movie_file.cpp\"], \"extra_libs\": [\"webgpu\"], \"include_dirs\": [\"deps/stb\"] }")

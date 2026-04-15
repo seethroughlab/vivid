@@ -6,6 +6,7 @@
 #import <CoreMedia/CoreMedia.h>
 #import <CoreVideo/CoreVideo.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <IOSurface/IOSurface.h>
 #import <QuartzCore/QuartzCore.h>
 #include <vector>
 #include <cstdio>
@@ -72,7 +73,11 @@ struct AVFDecoder::Impl {
     NSDictionary* pixel_buffer_attrs() const {
         return @{
             (NSString*)kCVPixelBufferPixelFormatTypeKey:
-                @(kCVPixelFormatType_32BGRA)
+                @(kCVPixelFormatType_32BGRA),
+            (NSString*)kCVPixelBufferMetalCompatibilityKey:
+                @YES,
+            (NSString*)kCVPixelBufferIOSurfacePropertiesKey:
+                @{}
         };
     }
 
@@ -616,6 +621,38 @@ DecodedFrame AVFDecoder::copy_pixel_buffer(AcquiredPixelBuffer&& acquired) {
     auto t1 = std::chrono::steady_clock::now();
     frame.copy_time_us = std::chrono::duration<float, std::micro>(t1 - t0).count();
 
+    return frame;
+}
+
+DecodedFrame AVFDecoder::copy_pixel_buffer_ref(void* pixel_buffer, double pts) {
+    if (!pixel_buffer) return DecodedFrame{};
+    CVPixelBufferRef ref = static_cast<CVPixelBufferRef>(pixel_buffer);
+    CVPixelBufferRetain(ref);
+    AcquiredPixelBuffer acquired;
+    acquired.buffer = ref;
+    acquired.pts = pts;
+    acquired.status = DecodeStatus::NewFrame;
+    DecodedFrame frame = copy_pixel_buffer(std::move(acquired));
+    frame.cpu_fallback = true;
+    return frame;
+}
+
+DecodedFrame AVFDecoder::make_native_frame(AcquiredPixelBuffer&& acquired) {
+    DecodedFrame frame;
+    if (!acquired.buffer) return frame;
+    CVPixelBufferRef ref = acquired.buffer;
+    frame.width = static_cast<uint32_t>(CVPixelBufferGetWidth(ref));
+    frame.height = static_cast<uint32_t>(CVPixelBufferGetHeight(ref));
+    frame.pts = acquired.pts;
+    frame.requested_pts = acquired.pts;
+    frame.native_pixel_buffer = std::shared_ptr<void>(
+        ref,
+        [](void* p) {
+            if (p) CVPixelBufferRelease(static_cast<CVPixelBufferRef>(p));
+        });
+    acquired.buffer = nullptr;
+    acquired.pts = 0.0;
+    acquired.status = DecodeStatus::NilFrame;
     return frame;
 }
 

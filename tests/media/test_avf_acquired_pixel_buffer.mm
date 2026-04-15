@@ -4,6 +4,7 @@
 
 #import <CoreFoundation/CoreFoundation.h>
 #import <CoreVideo/CoreVideo.h>
+#import <Metal/Metal.h>
 #include <chrono>
 #include <cmath>
 #include <filesystem>
@@ -93,6 +94,45 @@ static std::filesystem::path find_h264_fixture() {
     return {};
 }
 
+static std::filesystem::path find_hevc_fixture() {
+    auto cwd = std::filesystem::current_path();
+    std::filesystem::path candidates[] = {
+        cwd / "../assets/sync/sync-test-hevc.mp4",
+        cwd / "assets/sync/sync-test-hevc.mp4",
+        cwd.parent_path() / "assets/sync/sync-test-hevc.mp4",
+    };
+    for (const auto& path : candidates) {
+        std::error_code ec;
+        if (std::filesystem::exists(path, ec)) return std::filesystem::weakly_canonical(path, ec);
+    }
+    return {};
+}
+
+static bool can_import_pixel_buffer_with_metal(CVPixelBufferRef pixel) {
+    if (!pixel) return false;
+    id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+    if (!device) return false;
+
+    CVMetalTextureCacheRef cache = nullptr;
+    CVReturn status = CVMetalTextureCacheCreate(kCFAllocatorDefault, nullptr, device, nullptr, &cache);
+    if (status != kCVReturnSuccess || !cache) return false;
+
+    CVMetalTextureRef tex = nullptr;
+    status = CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault,
+                                                       cache,
+                                                       pixel,
+                                                       nullptr,
+                                                       MTLPixelFormatBGRA8Unorm,
+                                                       CVPixelBufferGetWidth(pixel),
+                                                       CVPixelBufferGetHeight(pixel),
+                                                       0,
+                                                       &tex);
+    const bool ok = status == kCVReturnSuccess && tex && CVMetalTextureGetTexture(tex);
+    if (tex) CFRelease(tex);
+    CFRelease(cache);
+    return ok;
+}
+
 static void pump_main_run_loop(double seconds) {
     auto until = std::chrono::steady_clock::now() +
         std::chrono::duration_cast<std::chrono::steady_clock::duration>(
@@ -171,12 +211,42 @@ static void test_target_time_acquire_across_wrap() {
           "avf_wrap_acquire: AVFoundation can answer at least one post-wrap target frame");
 }
 
+static void test_acquired_frames_are_metal_importable(const std::filesystem::path& fixture,
+                                                      const char* label) {
+    if (fixture.empty()) {
+        std::fprintf(stderr, "  SKIP: %s fixture not found\n", label);
+        return;
+    }
+    if (!MTLCreateSystemDefaultDevice()) {
+        std::fprintf(stderr, "  SKIP: %s no default Metal device\n", label);
+        return;
+    }
+
+    AVFDecoder decoder;
+    check(decoder.open(fixture.string()), "avf_metal_import: opens fixture");
+    decoder.set_loop(true);
+    decoder.set_speed(1.0f);
+    pump_main_run_loop(0.25);
+
+    int importable = 0;
+    for (int i = 0; i < 16; ++i) {
+        pump_main_run_loop(0.04);
+        auto acquired = decoder.acquire_pixel_buffer();
+        if (acquired.valid() && can_import_pixel_buffer_with_metal(acquired.buffer)) {
+            importable++;
+        }
+    }
+    check(importable > 0, "avf_metal_import: at least one acquired frame imports as Metal texture");
+}
+
 int main() {
     std::fprintf(stderr, "=== AVF AcquiredPixelBuffer tests ===\n");
     test_move_constructor_releases_once();
     test_move_assignment_releases_old_buffer();
     test_native_looper_replaces_manual_loop_seek();
     test_target_time_acquire_across_wrap();
+    test_acquired_frames_are_metal_importable(find_h264_fixture(), "sync-test-h264.mp4");
+    test_acquired_frames_are_metal_importable(find_hevc_fixture(), "sync-test-hevc.mp4");
 
     std::fprintf(stderr, "\n========================================\n");
     std::fprintf(stderr, "AcquiredPixelBuffer tests: %d failed\n", failures);

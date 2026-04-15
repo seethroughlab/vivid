@@ -22,10 +22,14 @@ struct MovieVideoStats {
     uint64_t new_frame_count = 0;
     uint64_t reused_frame_count = 0;
     uint64_t nil_frame_count = 0;
+    uint64_t gpu_native_frame_count = 0;
+    uint64_t cpu_fallback_frame_count = 0;
+    uint64_t metal_import_failure_count = 0;
 
     StatEMA decode_acquire_us;
     StatEMA decode_copy_us;
     StatEMA gpu_upload_us;
+    StatEMA metal_blit_us;
 
     StatEMA drift_ms;
     uint64_t seek_correction_count = 0;
@@ -36,9 +40,13 @@ struct MovieVideoStats {
         new_frame_count = 0;
         reused_frame_count = 0;
         nil_frame_count = 0;
+        gpu_native_frame_count = 0;
+        cpu_fallback_frame_count = 0;
+        metal_import_failure_count = 0;
         decode_acquire_us.reset();
         decode_copy_us.reset();
         gpu_upload_us.reset();
+        metal_blit_us.reset();
         drift_ms.reset();
         seek_correction_count = 0;
         seek_budget_exhausted_count = 0;

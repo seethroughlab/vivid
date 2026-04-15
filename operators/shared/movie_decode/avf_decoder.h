@@ -69,6 +69,8 @@ public:
     // Phase 2 (any thread): lock, copy, unlock, release the pixel buffer.
     // Returns a DecodedFrame with tightly packed BGRA pixels.
     static DecodedFrame copy_pixel_buffer(AcquiredPixelBuffer&& acquired);
+    static DecodedFrame copy_pixel_buffer_ref(void* pixel_buffer, double pts);
+    static DecodedFrame make_native_frame(AcquiredPixelBuffer&& acquired);
 
     // Fallback exact-frame acquisition for sparse loop-edge prefetch. This is
     // intended for the decode worker, not the realtime audio path.

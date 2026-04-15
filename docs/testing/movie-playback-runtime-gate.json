@@ -43,6 +43,22 @@
       "message": "Steady-state playback must not be issuing repeated AV correction seeks."
     },
     {
+      "id": "gpu_native_path_available",
+      "type": "diagnostic_check",
+      "op": "finding_absent",
+      "finding_id": "movie_no_gpu_native_frames",
+      "severity": "warning",
+      "message": "Healthy macOS non-HAP playback should use the GPU-native Metal path."
+    },
+    {
+      "id": "cpu_fallback_not_dominant",
+      "type": "diagnostic_check",
+      "op": "finding_absent",
+      "finding_id": "movie_cpu_fallback_heavy",
+      "severity": "warning",
+      "message": "CPU fallback should not dominate steady non-HAP movie playback."
+    },
+    {
       "id": "video_drift_under_100ms",
       "type": "state_check",
       "path": "nodes.vid.outputs.drift_ms.scalar",

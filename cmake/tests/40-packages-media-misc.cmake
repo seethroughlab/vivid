@@ -356,7 +356,7 @@ target_include_directories(test_avf_acquired_pixel_buffer PRIVATE
 target_link_libraries(test_avf_acquired_pixel_buffer PRIVATE
     vivid_runtime_testlib
     "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
-    "-framework Foundation" "-framework QuartzCore")
+    "-framework Foundation" "-framework QuartzCore" "-framework Metal")
 add_test(NAME test_avf_acquired_pixel_buffer COMMAND test_avf_acquired_pixel_buffer WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_movie_playback_modes

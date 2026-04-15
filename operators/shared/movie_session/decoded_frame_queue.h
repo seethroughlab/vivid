@@ -3,6 +3,7 @@
 #include "../../shared/movie_decode/video_codec_types.h"
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <vector>
 
@@ -18,16 +19,24 @@ struct DecodedFrame {
     uint64_t loop_generation = 0;  // increments once per loop wrap
     uint64_t request_sequence = 0; // monotonic request id for tie-breaking
     float copy_time_us = 0.0f;    // background copy duration for telemetry
+    bool cpu_fallback = false;     // true when produced by a CPU copy fallback
 
     // Format metadata (defaults match AVF uncompressed path)
     bool compressed = false;
     VideoCompressedFormat compressed_format = VideoCompressedFormat::None;
     bool requires_ycocg = false;
 
-    bool empty() const { return data.empty(); }
+    // Optional retained native frame handle. On macOS non-HAP playback this is a
+    // CVPixelBufferRef stored as an opaque shared_ptr with a CoreVideo deleter.
+    std::shared_ptr<void> native_pixel_buffer;
+
+    bool has_native_pixel_buffer() const { return native_pixel_buffer != nullptr; }
+    bool empty() const { return data.empty() && !has_native_pixel_buffer(); }
     void clear() {
-        data.clear(); width = height = 0; pts = 0.0; requested_pts = 0.0;
+        data.clear(); native_pixel_buffer.reset();
+        width = height = 0; pts = 0.0; requested_pts = 0.0;
         loop_generation = 0; request_sequence = 0; copy_time_us = 0.0f;
+        cpu_fallback = false;
         compressed = false; compressed_format = VideoCompressedFormat::None;
         requires_ycocg = false;
     }

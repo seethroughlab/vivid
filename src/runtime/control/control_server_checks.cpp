@@ -179,6 +179,14 @@ std::vector<DiagnosticFinding> collect_diagnostics(
         }
 
         if (type_name == "MovieFile") {
+            auto read_movie_output = [&](const char* name, float& out) -> bool {
+                auto it = ns.output_port_indices.find(name);
+                if (it == ns.output_port_indices.end() || it->second >= ns.output_values.size())
+                    return false;
+                out = ns.output_values[it->second];
+                return std::isfinite(out);
+            };
+
             auto nil_it = ns.output_port_indices.find("nil_frames");
             auto new_it = ns.output_port_indices.find("new_frames");
             if (nil_it != ns.output_port_indices.end() && new_it != ns.output_port_indices.end() &&
@@ -226,6 +234,36 @@ std::vector<DiagnosticFinding> collect_diagnostics(
                         ns.node_id,
                         "Video is issuing repeated AV correction seeks during steady playback.",
                         "MovieFile should use drop/repeat for steady-state correction; repeated seeks indicate decode or loop recovery is unstable."
+                    });
+                }
+            }
+
+            float gpu_native_frames = 0.0f;
+            float cpu_fallback_frames = 0.0f;
+            float metal_import_failures = 0.0f;
+            const bool has_gpu_native = read_movie_output("gpu_native_frames", gpu_native_frames);
+            const bool has_cpu_fallback = read_movie_output("cpu_fallback_frames", cpu_fallback_frames);
+            const bool has_import_failures = read_movie_output("metal_import_failures", metal_import_failures);
+            if (has_gpu_native && has_cpu_fallback && has_import_failures) {
+                const float gpu_path_frames = gpu_native_frames + cpu_fallback_frames;
+                if (gpu_path_frames > 120.0f && gpu_native_frames <= 0.0f &&
+                    metal_import_failures > 0.0f) {
+                    findings.push_back({
+                        "movie_no_gpu_native_frames",
+                        "warning",
+                        ns.node_id,
+                        "MovieFile is falling back from Metal import instead of using GPU-native non-HAP frames.",
+                        "Check CVPixelBuffer Metal compatibility and native Metal interop; steady H.264/HEVC playback should increment gpu_native_frames."
+                    });
+                }
+                if (gpu_path_frames > 120.0f &&
+                    cpu_fallback_frames / gpu_path_frames > 0.5f) {
+                    findings.push_back({
+                        "movie_cpu_fallback_heavy",
+                        "warning",
+                        ns.node_id,
+                        "MovieFile CPU fallback frames dominate the non-HAP video path.",
+                        "Investigate Metal import failures or unsupported pixel-buffer formats; CPU fallback should be rare during healthy macOS playback."
                     });
                 }
             }

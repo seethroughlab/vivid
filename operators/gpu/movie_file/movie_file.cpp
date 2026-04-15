@@ -4,6 +4,7 @@
 #include "../../shared/movie_decode/video_decoder.h"
 #include "../../shared/movie_decode/decoder_factory.h"
 #include "../../shared/movie_decode/texture_upload.h"
+#include "../../shared/movie_decode/metal_frame_upload.h"
 #include "../../shared/movie_decode/placeholder_frame.h"
 #include "../../shared/movie_decode/load_generation.h"
 #include "../../shared/movie_decode/movie_playback_stats.h"
@@ -493,6 +494,7 @@ struct MovieFile : vivid::OperatorBase, vivid::GpuProcessable, vivid::AudioProce
             decode_worker_->stop();
             decode_worker_.reset();
         }
+        movie_metal_upload_release(metal_upload_);
         release_session();
         decoder_.reset();
         vivid::gpu::release(pipeline_);
@@ -532,6 +534,10 @@ struct MovieFile : vivid::OperatorBase, vivid::GpuProcessable, vivid::AudioProce
         out.push_back({"drop_repeat_corrections", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "analysis"});
         out.push_back({"buffered_ms", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "analysis"});
         out.push_back({"underruns",   VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "analysis"});
+        out.push_back({"gpu_native_frames", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "analysis"});
+        out.push_back({"cpu_fallback_frames", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "analysis"});
+        out.push_back({"metal_import_failures", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "analysis"});
+        out.push_back({"metal_blit_us", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "analysis"});
     }
 
     void process_audio(const VividAudioContext* ctx) override {
@@ -804,7 +810,46 @@ struct MovieFile : vivid::OperatorBase, vivid::GpuProcessable, vivid::AudioProce
                                                last_decoded_frame_.height, fmt);
                         frame_uploaded_ = true;
                     }
+                } else if (last_decoded_frame_.has_native_pixel_buffer()) {
+                    ensure_texture(ctx, last_decoded_frame_.width, last_decoded_frame_.height,
+                                   WGPUTextureFormat_BGRA8Unorm, false);
+                    bool import_failed = false;
+                    float metal_us = 0.0f;
+                    if (movie_upload_cv_pixel_buffer_metal(ctx->device,
+                                                           ctx->queue,
+                                                           texture_,
+                                                           last_decoded_frame_.native_pixel_buffer.get(),
+                                                           metal_upload_,
+                                                           &metal_us,
+                                                           &import_failed)) {
+                        frame_uploaded_ = true;
+                        video_stats_.gpu_native_frame_count++;
+                        video_stats_.metal_blit_us.update(metal_us);
+                    } else {
+                        if (import_failed) video_stats_.metal_import_failure_count++;
+                        auto fallback = AVFDecoder::copy_pixel_buffer_ref(
+                            last_decoded_frame_.native_pixel_buffer.get(),
+                            last_decoded_frame_.pts);
+                        fallback.loop_generation = last_decoded_frame_.loop_generation;
+                        fallback.request_sequence = last_decoded_frame_.request_sequence;
+                        fallback.requested_pts = last_decoded_frame_.requested_pts;
+                        if (!fallback.empty()) {
+                            video_stats_.cpu_fallback_frame_count++;
+                            video_stats_.decode_copy_us.update(fallback.copy_time_us);
+                            last_decoded_frame_ = std::move(fallback);
+                            ensure_texture(ctx, last_decoded_frame_.width, last_decoded_frame_.height,
+                                           WGPUTextureFormat_BGRA8Unorm, false);
+                            movie_upload_bgra(ctx->queue, texture_,
+                                             last_decoded_frame_.data.data(),
+                                             last_decoded_frame_.width,
+                                             last_decoded_frame_.height);
+                            frame_uploaded_ = true;
+                        }
+                    }
                 } else {
+                    if (last_decoded_frame_.cpu_fallback) {
+                        video_stats_.cpu_fallback_frame_count++;
+                    }
                     ensure_texture(ctx, last_decoded_frame_.width, last_decoded_frame_.height,
                                    WGPUTextureFormat_BGRA8Unorm, false);
                     movie_upload_bgra(ctx->queue, texture_,
@@ -857,6 +902,10 @@ struct MovieFile : vivid::OperatorBase, vivid::GpuProcessable, vivid::AudioProce
                 ctx->output_values[15] = static_cast<float>(
                     session_->audio_stats.underrun_count.load(std::memory_order_relaxed));
             }
+            ctx->output_values[16] = static_cast<float>(video_stats_.gpu_native_frame_count);
+            ctx->output_values[17] = static_cast<float>(video_stats_.cpu_fallback_frame_count);
+            ctx->output_values[18] = static_cast<float>(video_stats_.metal_import_failure_count);
+            ctx->output_values[19] = video_stats_.metal_blit_us.value.load(std::memory_order_relaxed);
         }
     }
 
@@ -962,16 +1011,28 @@ private:
             acquired_ptr = std::make_shared<AcquiredPixelBuffer>(std::move(acquired));
         }
         const std::string fallback_path = last_path_;
+        if (acquired_ptr) {
+            auto frame = AVFDecoder::make_native_frame(std::move(*acquired_ptr));
+            if (!frame.empty()) {
+                frame.pts = requested_pts;
+                frame.requested_pts = requested_pts;
+                frame.loop_generation = loop_generation;
+                frame.request_sequence = request_sequence;
+                const bool submitted = decode_worker_->submit_decoded(std::move(frame));
+                return submitted ? DecodeStatus::NewFrame : DecodeStatus::ReusedFrame;
+            }
+            return DecodeStatus::NilFrame;
+        }
+
         const bool submitted = decode_worker_->submit_work(
-            [fallback_path, acquired_ptr, requested_pts, loop_generation, request_sequence]() mutable {
-                auto frame = acquired_ptr
-                    ? AVFDecoder::copy_pixel_buffer(std::move(*acquired_ptr))
-                    : AVFDecoder::copy_frame_at_time(fallback_path, requested_pts);
+            [fallback_path, requested_pts, loop_generation, request_sequence]() mutable {
+                auto frame = AVFDecoder::copy_frame_at_time(fallback_path, requested_pts);
                 if (!frame.empty()) {
                     frame.pts = requested_pts;
                     frame.requested_pts = requested_pts;
                     frame.loop_generation = loop_generation;
                     frame.request_sequence = request_sequence;
+                    frame.cpu_fallback = true;
                 }
                 return frame;
             },
@@ -1321,6 +1382,7 @@ private:
     std::string session_node_id_;
     std::unique_ptr<VideoDecodeWorker> decode_worker_;
     DecodedFrame last_decoded_frame_;
+    MovieMetalUploadState metal_upload_{};
     uint64_t video_loop_generation_ = 0;
     uint64_t video_request_sequence_ = 0;
     double last_video_target_pts_ = 0.0;

@@ -33,6 +33,9 @@ bool movie_texture_recreate(WGPUDevice device,
     td.dimension = WGPUTextureDimension_2D;
     td.format = format;
     td.usage = WGPUTextureUsage_CopyDst | WGPUTextureUsage_TextureBinding;
+    if (!compressed) {
+        td.usage |= WGPUTextureUsage_RenderAttachment;
+    }
     state.texture = wgpuDeviceCreateTexture(device, &td);
     if (!state.texture) return false;
 
