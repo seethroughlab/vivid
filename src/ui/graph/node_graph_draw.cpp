@@ -135,6 +135,17 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
                          sw - g_to_s(4), s_body_h - g_to_s(4),
                          style_.dark_bg[0], style_.dark_bg[1], style_.dark_bg[2], 0.9f);
 
+            // Draw camel-case initials as subtle identity watermark
+            {
+                std::string initials = vivid::camel_case_initials(r.type_name);
+                float init_scale = zoom_ * 1.1f;
+                float init_w = tr.text_width(initials.c_str(), init_scale);
+                float init_x = sx + (sw - init_w) * 0.5f;
+                float init_y = s_body_y + (s_body_h - tr.line_height() * init_scale) * 0.5f;
+                tr.draw_text(init_x, init_y, initials.c_str(),
+                             dcol[0], dcol[1], dcol[2], 0.3f, init_scale);
+            }
+
             // Find sparkline data for this node's first output
             std::string spark_key;
             if (sn) {
