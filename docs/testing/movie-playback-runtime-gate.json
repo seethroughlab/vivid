@@ -1,30 +1,22 @@
 {
   "checks": [
     {
-      "id": "audio_clean_runtime",
+      "id": "movie_clean_runtime",
       "type": "state_check",
-      "path": "nodes.audio.health.errored",
+      "path": "nodes.vid.health.errored",
       "op": "==",
       "value": false,
       "severity": "critical",
-      "message": "MovieFileAudio must be healthy during AV-sync certification."
+      "message": "MovieFile must be healthy during AV-sync certification."
     },
     {
-      "id": "audio_no_underruns",
+      "id": "movie_no_underruns",
       "type": "state_check",
-      "path": "nodes.audio.outputs.underruns.scalar",
+      "path": "nodes.vid.outputs.underruns.scalar",
       "op": "==",
       "value": 0,
       "severity": "critical",
-      "message": "MovieFileAudio underruns must remain at zero in healthy synced playback."
-    },
-    {
-      "id": "no_bridge_mismatch",
-      "type": "diagnostic_check",
-      "op": "finding_absent",
-      "finding_id": "movie_audio_bridge_mismatch",
-      "severity": "critical",
-      "message": "The bridged audio clock must match MovieFileAudio's published time."
+      "message": "MovieFile underruns must remain at zero in healthy synced playback."
     },
     {
       "id": "no_large_drift_warning",
@@ -49,15 +41,6 @@
       "finding_id": "movie_seek_churn",
       "severity": "critical",
       "message": "Steady-state playback must not be issuing repeated AV correction seeks."
-    },
-    {
-      "id": "video_clean_runtime",
-      "type": "state_check",
-      "path": "nodes.vid.health.errored",
-      "op": "==",
-      "value": false,
-      "severity": "critical",
-      "message": "MovieFileIn must be healthy during AV-sync certification."
     },
     {
       "id": "video_drift_under_100ms",

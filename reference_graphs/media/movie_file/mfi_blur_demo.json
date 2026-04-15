@@ -4,7 +4,7 @@
     "meta": {
         "id": "mfi_blur_demo",
         "title": "Movie File: Blur",
-        "description": "LFO-modulated blur radius on a MovieFileIn source, demonstrating basic video processing with animated parameters.",
+        "description": "LFO-modulated blur radius on a MovieFile source, demonstrating basic video processing with animated parameters.",
         "tags": [
             "movie",
             "blur",
@@ -33,7 +33,7 @@
             }
         },
         "img": {
-            "type": "MovieFileIn",
+            "type": "MovieFile",
             "params": {
                 "file": "../../../assets/nature.jpg"
             }

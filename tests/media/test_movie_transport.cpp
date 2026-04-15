@@ -151,26 +151,27 @@ static void test_correction_drop_repeat_for_medium_drift() {
     check(!d1.budget_exhausted, "medium drift: budget not exhausted");
 }
 
-static void test_medium_drift_auto_phase_converges() {
+static void test_medium_drift_escalates_after_persistent_drop_repeat() {
     MovieTransport t;
     t.set_source(10.0);
     t.set_frame_rate(30.0f);
 
     auto d0 = t.evaluate_correction(0.0, 0.0, 0.0, 0.0);
-    check(d0.type == CorrectionType::Seek, "auto_phase: initial source-change seek");
+    check(d0.type == CorrectionType::Seek, "medium escalation: initial source-change seek");
     t.record_seek_issued(0.0);
 
     CorrectionDecision last{};
-    double desired_local = 0.0;
-    for (int i = 0; i < 40; ++i) {
-        desired_local = t.compute_audio_master_time(5.0f, 0.0);
-        last = t.evaluate_correction(desired_local, 4.85, 5.0, 1.0 + i * (1.0 / 60.0));
+    for (uint64_t i = 1; i < MovieTransport::kDropRepeatEscalation; ++i) {
+        last = t.evaluate_correction(5.15, 5.0, 1.0 + i * 0.02, 1.0 + i * 0.02);
+        check(last.type == CorrectionType::DropRepeat,
+              "medium escalation: unresolved medium drift remains DropRepeat before threshold");
     }
 
-    check(std::abs(t.auto_phase_offset_seconds()) > 0.05,
-          "auto_phase: steady medium drift learns a non-zero phase correction");
-    check(last.type == CorrectionType::None || last.drift_seconds < 0.08,
-          "auto_phase: steady drift converges toward the no-correction window");
+    last = t.evaluate_correction(5.15, 5.0, 2.0, 2.0);
+    check(last.type == CorrectionType::Seek,
+          "medium escalation: persistent unresolved medium drift escalates to Seek");
+    check(std::abs(last.seek_target - 5.15) < kEps,
+          "medium escalation: seek target remains strict audio-master target");
 }
 
 static void test_correction_seek_for_large_drift() {
@@ -327,7 +328,7 @@ int main() {
     test_correction_source_change_always_seeks();
     test_correction_none_for_small_drift();
     test_correction_drop_repeat_for_medium_drift();
-    test_medium_drift_auto_phase_converges();
+    test_medium_drift_escalates_after_persistent_drop_repeat();
     test_correction_seek_for_large_drift();
     test_correction_budget_degrades_to_drop_repeat();
     test_correction_cooldown_degrades_to_drop_repeat();

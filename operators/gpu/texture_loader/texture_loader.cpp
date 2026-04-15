@@ -72,7 +72,7 @@ static void convert_rgba_f32_to_f16(const float* src, uint16_t* dst, int pixel_c
  * Supports both LDR (JPEG/PNG via stb_image) and HDR (EXR/Radiance)
  * formats. Hot-reloads on file change.
  *
- * @see MovieFileIn, SvgRender
+ * @see MovieFile, SvgRender
  */
 struct TextureLoader : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "TextureLoader";

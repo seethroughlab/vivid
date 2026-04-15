@@ -163,7 +163,7 @@ std::vector<DiagnosticFinding> collect_diagnostics(
 
         // --- Movie playback checks ---
 
-        if (type_name == "MovieFileIn" || type_name == "MovieFileAudio") {
+        if (type_name == "MovieFile") {
             auto fit = ns.file_param_indices.find("file");
             if (fit != ns.file_param_indices.end() &&
                 fit->second < ns.file_param_storage.size() &&
@@ -178,7 +178,7 @@ std::vector<DiagnosticFinding> collect_diagnostics(
             }
         }
 
-        if (type_name == "MovieFileIn") {
+        if (type_name == "MovieFile") {
             auto nil_it = ns.output_port_indices.find("nil_frames");
             auto new_it = ns.output_port_indices.find("new_frames");
             if (nil_it != ns.output_port_indices.end() && new_it != ns.output_port_indices.end() &&
@@ -225,43 +225,8 @@ std::vector<DiagnosticFinding> collect_diagnostics(
                         "warning",
                         ns.node_id,
                         "Video is issuing repeated AV correction seeks during steady playback.",
-                        "A stable AV offset or bad audio-master clock is likely; check MovieFileAudio/time against the bridged audio_time input."
+                        "MovieFile should use drop/repeat for steady-state correction; repeated seeks indicate decode or loop recovery is unstable."
                     });
-                }
-            }
-
-            auto audio_time_in = ns.input_port_indices.find("audio_time");
-            if (audio_time_in != ns.input_port_indices.end() &&
-                audio_time_in->second < ns.input_connected.size() &&
-                ns.input_connected[audio_time_in->second]) {
-                for (const auto& conn : graph.connections()) {
-                    if (conn.to_node != ns.node_id || conn.to_port != "audio_time") continue;
-                    if (conn.from_port != "time") continue;
-
-                    const CompiledNode* src = cg->find_node(conn.from_node);
-                    if (!src || src->type_name != "MovieFileAudio") continue;
-
-                    auto src_time_it = src->output_port_indices.find("time");
-                    if (src_time_it == src->output_port_indices.end() ||
-                        src_time_it->second >= src->output_values.size()) {
-                        continue;
-                    }
-
-                    const float published = src->output_values[src_time_it->second];
-                    const float bridged = (audio_time_in->second < ns.input_values.size())
-                        ? ns.input_values[audio_time_in->second]
-                        : ns.bridge_input_values[audio_time_in->second];
-                    if (std::isfinite(published) && std::isfinite(bridged) &&
-                        std::fabs(published - bridged) > 0.050f) {
-                        findings.push_back({
-                            "movie_audio_bridge_mismatch",
-                            "warning",
-                            ns.node_id,
-                            "MovieFileAudio/time and MovieFileIn/audio_time differ by more than 50ms.",
-                            "Check the cadence bridge path first; AV sync tuning is unreliable until the bridged audio clock matches the published audio time."
-                        });
-                    }
-                    break;
                 }
             }
         }

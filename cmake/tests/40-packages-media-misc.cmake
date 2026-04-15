@@ -13,11 +13,10 @@ add_dependencies(test_demo_graphs
     modulated_gain
     # gpu (compiled plugins — WGSL filter presets are loaded from filters/)
     noise shape composite
-    bloom feedback movie_file_in texture_analysis metronome_viz
+    bloom feedback movie_file texture_analysis metronome_viz
     # audio
     oscillator gain
     reverb convolution_reverb delay bitcrush distortion filter audio_noise mixer
-    movie_file_audio
     webcam_in time_machine
 )
 add_test(NAME test_demo_graphs
@@ -34,7 +33,7 @@ target_include_directories(test_media_headless PRIVATE src tests)
 target_link_libraries(test_media_headless PRIVATE
     vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
 add_dependencies(test_media_headless
-    movie_file_in movie_file_audio
+    movie_file
     lfo_fr noise composite bloom feedback
 )
 add_test(NAME test_media_headless

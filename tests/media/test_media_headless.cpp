@@ -162,8 +162,7 @@ static void tick_gpu(vivid::RuntimeCore& runtime, HeadlessGpu& gpu,
 }
 
 // ============================================================================
-// Discover movie/media graphs — any graph containing MovieFileIn or
-// MovieFileAudio operators.
+// Discover movie/media graphs — any graph containing MovieFile operators.
 // ============================================================================
 
 static std::vector<std::string> discover_media_graphs(const char* graphs_dir) {
@@ -175,7 +174,7 @@ static std::vector<std::string> discover_media_graphs(const char* graphs_dir) {
         vivid::Graph probe;
         if (!probe.load(entry.path().string().c_str())) continue;
         for (const auto& n : probe.nodes()) {
-            if (n.type == "MovieFileIn" || n.type == "MovieFileAudio") {
+            if (n.type == "MovieFile") {
                 result.push_back(entry.path().string());
                 break;
             }

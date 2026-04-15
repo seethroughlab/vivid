@@ -26,16 +26,10 @@
     },
     "nodes": {
         "vid": {
-            "type": "MovieFileIn",
+            "type": "MovieFile",
             "params": {
                 "play_mode": 0.0,
                 "speed": 1.0,
-                "file": "../../assets/camera.mp4"
-            }
-        },
-        "audio": {
-            "type": "MovieFileAudio",
-            "params": {
                 "file": "../../assets/camera.mp4"
             }
         },
@@ -77,12 +71,7 @@
             "to": "vout/input"
         },
         {
-            "from": "audio/time",
-            "to": "vid/audio_time",
-            "bridge": "last_sample"
-        },
-        {
-            "from": "audio/output",
+            "from": "vid/audio",
             "to": "aout/input"
         }
     ]

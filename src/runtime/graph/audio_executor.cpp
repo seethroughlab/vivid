@@ -141,7 +141,7 @@ bool AudioExecutor::build(AudioFrameBridge& bridge, CompiledGraph& cg,
         // synchronization, so the engine must not be executing callbacks during
         // graph rebuild.
         group.instances.resize(lanes);
-        group.instances[0] = cn.instance;
+        group.instances[0] = cn.audio_instance ? cn.audio_instance : cn.instance;
         for (uint32_t c = 1; c < lanes; ++c)
             group.instances[c] = cn.loader->create_instance();
 
@@ -487,7 +487,8 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             // Debug node state
             if (std::getenv("VIVID_DEBUG_AUDIO") && frames_written == 0) {
                 std::fprintf(stderr, "[audio-debug] node '%s' loader=%p instance=%p errored=%d\n",
-                             cn.node_id.c_str(), (void*)cn.loader, cn.instance, cn.errored);
+                             cn.node_id.c_str(), (void*)cn.loader,
+                             cn.audio_instance ? cn.audio_instance : cn.instance, cn.errored);
             }
             // Debug lane data
             if (std::getenv("VIVID_DEBUG_AUDIO")) {
@@ -501,7 +502,8 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             }
 
             // Process
-            if (!cn.loader || !cn.instance || cn.errored) {
+            void* audio_instance = cn.audio_instance ? cn.audio_instance : cn.instance;
+            if (!cn.loader || !audio_instance || cn.errored) {
                 clear_audio_output_telemetry(cn, a, chunk);
                 finalize_node_debug();
                 continue;
@@ -695,7 +697,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
 
                         auto process_start = AudioClock::now();
                         try {
-                            cn.loader->process_audio(cn.instance, &ctx);
+                            cn.loader->process_audio(audio_instance, &ctx);
                         } catch (const std::exception& ex) {
                             cn.errored = true;
                             std::strncpy(a.error_message, ex.what(), sizeof(a.error_message) - 1);
@@ -766,7 +768,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
 
                 auto process_start = AudioClock::now();
                 try {
-                    cn.loader->process_audio(cn.instance, &ctx);
+                    cn.loader->process_audio(audio_instance, &ctx);
                 } catch (const std::exception& ex) {
                     cn.errored = true;
                     std::strncpy(a.error_message, ex.what(), sizeof(a.error_message) - 1);

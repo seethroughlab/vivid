@@ -12,7 +12,15 @@ static DecodedFrame make_frame(uint32_t w, uint32_t h, double pts) {
     f.width = w;
     f.height = h;
     f.pts = pts;
+    f.requested_pts = pts;
     f.data.resize(static_cast<size_t>(w) * h * 4, 0xAA);
+    return f;
+}
+
+static DecodedFrame make_frame(uint32_t w, uint32_t h, double pts, uint64_t loop_generation) {
+    DecodedFrame f = make_frame(w, h, pts);
+    f.loop_generation = loop_generation;
+    f.request_sequence = static_cast<uint64_t>(pts * 1000.0) + loop_generation * 1000000ULL;
     return f;
 }
 
@@ -45,14 +53,56 @@ static void test_pop_latest_returns_newest() {
 static void test_bounded_capacity() {
     DecodedFrameQueue q;
     // Push more than kMaxFrames
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < static_cast<int>(DecodedFrameQueue::kMaxFrames) + 4; ++i) {
         q.push(make_frame(320, 240, static_cast<double>(i)));
     }
     check(q.size() == DecodedFrameQueue::kMaxFrames, "queue bounded at kMaxFrames");
 
     DecodedFrame out;
     q.pop_latest(out);
-    check(out.pts == 4.0, "newest frame survives (pts=4.0)");
+    check(out.pts == static_cast<double>(DecodedFrameQueue::kMaxFrames + 3),
+          "newest frame survives capacity eviction");
+}
+
+static void test_pop_best_returns_target_frame() {
+    DecodedFrameQueue q;
+    q.push(make_frame(320, 240, 0.100, 2));
+    q.push(make_frame(320, 240, 0.133, 2));
+    q.push(make_frame(320, 240, 0.166, 2));
+
+    DecodedFrame out;
+    check(q.pop_best(0.140, 2, 1.0 / 30.0, out), "pop_best returns frame near target");
+    check(out.pts == 0.133, "pop_best chooses newest frame not past target");
+}
+
+static void test_pop_best_keeps_next_loop_until_wrap() {
+    DecodedFrameQueue q;
+    q.push(make_frame(320, 240, 9.900, 7));
+    q.push(make_frame(320, 240, 9.933, 7));
+    q.push(make_frame(320, 240, 0.000, 8));
+    q.push(make_frame(320, 240, 0.033, 8));
+
+    DecodedFrame out;
+    check(q.pop_best(9.940, 7, 1.0 / 30.0, out),
+          "pop_best returns final pre-wrap frame even when post-wrap is queued");
+    check(out.loop_generation == 7, "pop_best keeps current loop generation");
+    check(out.pts == 9.933, "pop_best does not skip to first frame of next loop");
+
+    check(q.pop_best(0.010, 8, 1.0 / 30.0, out),
+          "pop_best returns post-wrap frame after generation advances");
+    check(out.loop_generation == 8, "post-wrap frame generation selected");
+}
+
+static void test_pop_best_drops_stale_previous_generation() {
+    DecodedFrameQueue q;
+    q.push(make_frame(320, 240, 9.900, 3));
+    q.push(make_frame(320, 240, 0.000, 4));
+
+    DecodedFrame out;
+    check(q.pop_best(0.005, 4, 1.0 / 30.0, out),
+          "pop_best ignores stale previous generation");
+    check(out.loop_generation == 4, "stale generation was not selected");
+    check(q.size() == 0, "stale previous-generation frame was dropped");
 }
 
 static void test_pop_empty() {
@@ -129,6 +179,9 @@ int main() {
     test_push_pop_basic();
     test_pop_latest_returns_newest();
     test_bounded_capacity();
+    test_pop_best_returns_target_frame();
+    test_pop_best_keeps_next_loop_until_wrap();
+    test_pop_best_drops_stale_previous_generation();
     test_pop_empty();
     test_flush();
     test_compressed_frame_metadata();

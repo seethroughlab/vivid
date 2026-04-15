@@ -7,7 +7,7 @@
 enum class PlayMode { Loop, Once, HoldLast };
 
 // Time utilities — shared across both movie operators and tests.
-// Extracted from MovieFileIn (previously private statics).
+// Shared transport policy for the MovieFile playback session.
 
 inline double wrap_time(double t, double duration) {
     if (duration <= 0.0) return std::max(0.0, t);
@@ -43,7 +43,7 @@ struct CorrectionDecision {
 // Transport-time abstraction for movie playback.
 //
 // Owns transport time computation, seek policy (thresholds, cooldown, budget),
-// source generation tracking, and play-mode semantics.  The caller (MovieFileIn)
+// source generation tracking, and play-mode semantics.  The caller (MovieFile)
 // retains ownership of the VideoDecoder and issues seeks based on the returned
 // SeekDecision.
 class MovieTransport {
@@ -52,7 +52,7 @@ public:
     static constexpr uint64_t kMaxSeeksPerSecond = 4;
     static constexpr double kSmallDriftFrames = 2.0;     // drift below this = None (normal jitter)
     static constexpr double kSeekDriftSeconds = 0.200;    // drift above 200ms = Seek
-    static constexpr double kAutoPhaseMaxSeconds = 0.250; // bounded steady-state latency compensation
+    static constexpr uint64_t kDropRepeatEscalation = 30;
     // --- Source lifecycle ---
 
     // Called when a new source is loaded.  Increments source_generation_
@@ -77,7 +77,6 @@ public:
     float speed() const;
     double duration() const;
     float frame_rate() const;
-    double auto_phase_offset_seconds() const;
 
     // --- Time computation ---
 
@@ -103,10 +102,6 @@ public:
     double drift_seconds(double desired_local, double decoder_time) const;
 
 private:
-    void reset_sync_calibration();
-    void update_sync_calibration(double signed_drift_seconds,
-                                 double small_threshold_seconds);
-
     double duration_ = 0.0;
     float frame_rate_ = 30.0f;
     PlayMode play_mode_ = PlayMode::Loop;
@@ -118,7 +113,4 @@ private:
     uint64_t seek_budget_count_ = 0;
     double seek_budget_window_start_s_ = 0.0;
     uint64_t consecutive_drop_repeat_ = 0;
-    double auto_phase_offset_s_ = 0.0;
-    int auto_phase_drift_sign_ = 0;
-    uint32_t auto_phase_stable_frames_ = 0;
 };

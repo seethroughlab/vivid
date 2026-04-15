@@ -3,7 +3,7 @@
     "vivid_version": "0.1.0",
     "nodes": {
         "vid": {
-            "type": "MovieFileIn",
+            "type": "MovieFile",
             "params": {
                 "file": "../../../assets/camera.mp4"
             },

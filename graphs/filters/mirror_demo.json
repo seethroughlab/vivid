@@ -26,7 +26,7 @@
     },
     "nodes": {
         "vid": {
-            "type": "MovieFileIn",
+            "type": "MovieFile",
             "params": {
                 "file": "../../assets/lake.mp4",
                 "play_mode": 0,
@@ -34,16 +34,6 @@
             },
             "layout": {
                 "x": 0.0,
-                "y": 0.0
-            }
-        },
-        "audio": {
-            "type": "MovieFileAudio",
-            "params": {
-                "file": "../../assets/lake.mp4"
-            },
-            "layout": {
-                "x": 240.0,
                 "y": 0.0
             }
         },
@@ -100,12 +90,7 @@
             "to": "vout/input"
         },
         {
-            "from": "audio/time",
-            "to": "vid/audio_time",
-            "bridge": "last_sample"
-        },
-        {
-            "from": "audio/output",
+            "from": "vid/audio",
             "to": "aout/input"
         }
     ]

@@ -64,7 +64,7 @@ Use the full procedure in [MOVIE-PLAYBACK-VALIDATION.md](MOVIE-PLAYBACK-VALIDATI
 - all four automated tests pass
 - the runtime diagnostics gate passes on a healthy AV-sync demo graph
 - all three demo graphs pass the manual validation checklist
-- `MovieFileAudio/time` and bridged `MovieFileIn/audio_time` stay aligned within the `50 ms` tolerance documented in [MOVIE-PLAYBACK-VALIDATION.md](MOVIE-PLAYBACK-VALIDATION.md)
+- `MovieFile/time` follows the session clock within the tolerance documented in [MOVIE-PLAYBACK-VALIDATION.md](MOVIE-PLAYBACK-VALIDATION.md)
 - no audible glitches occur at unity speed with `pitch_preserve=1`
 - no movie-specific diagnostic warnings appear in healthy playback
 
@@ -73,12 +73,12 @@ Use the full procedure in [MOVIE-PLAYBACK-VALIDATION.md](MOVIE-PLAYBACK-VALIDATI
 - audible glitches at unity speed
 - visible AV desync during steady playback
 - repeated seek corrections after startup
-- bridge mismatch above the documented tolerance
+- session clock drift above the documented tolerance
 - loop instability or stale frames after source change
 - playback quality changes materially when the output window or node UI visibility changes
 
 ## Notes
 
 - Scope is macOS-first production readiness.
-- The public graph surface stays unchanged: `MovieFileIn`, `MovieFileAudio`, `audio_time`, `video_phase_offset_ms`.
+- The public graph surface is intentionally the single `MovieFile` operator. `video_phase_offset_ms` remains the only manual presentation offset.
 - Failures against this gate should feed a separate remediation plan rather than ad hoc release exceptions.

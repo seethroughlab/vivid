@@ -16,6 +16,13 @@ void warm_up_instance_assets(CompiledNode& cn) {
         cn.param_values.empty() ? nullptr : cn.param_values.data(),
         cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data(),
         static_cast<uint32_t>(cn.file_param_ptrs.size()));
+    if (cn.audio_instance && cn.audio_instance != cn.instance) {
+        cn.loader->prepare_instance_assets(
+            cn.audio_instance,
+            cn.param_values.empty() ? nullptr : cn.param_values.data(),
+            cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data(),
+            static_cast<uint32_t>(cn.file_param_ptrs.size()));
+    }
 }
 
 } // namespace graph_compiler_internal
@@ -74,7 +81,7 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
     cn.time_dependent = desc->time_dependent != 0;
     bool node_is_gpu = (desc->has_process_gpu != 0);
 
-    if (cn.active_cadence == Cadence::Audio) {
+    if (cn.audio) {
         for (uint32_t i = 0; i < desc->port_count; ++i) {
             const auto& p = desc->ports[i];
             if (p.direction == VIVID_PORT_OUTPUT && p.semantic_tag &&

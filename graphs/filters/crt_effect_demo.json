@@ -25,7 +25,7 @@
     },
     "nodes": {
         "vid": {
-            "type": "MovieFileIn",
+            "type": "MovieFile",
             "params": {
                 "play_mode": 0.0,
                 "speed": 1.0,
@@ -34,16 +34,6 @@
             "layout": {
                 "x": 30.0,
                 "y": 534.0
-            }
-        },
-        "audio": {
-            "type": "MovieFileAudio",
-            "params": {
-                "file": "../../assets/camera.mp4"
-            },
-            "layout": {
-                "x": 230.0,
-                "y": 572.0
             }
         },
         "crt": {
@@ -85,12 +75,7 @@
             "to": "vout/input"
         },
         {
-            "from": "audio/time",
-            "to": "vid/audio_time",
-            "bridge": "last_sample"
-        },
-        {
-            "from": "audio/output",
+            "from": "vid/audio",
             "to": "aout/input"
         }
     ],

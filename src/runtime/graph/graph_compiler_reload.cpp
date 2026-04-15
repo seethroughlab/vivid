@@ -41,6 +41,10 @@ bool GraphCompiler::reload_operator(CompiledGraph& cg,
 
     for (const auto& sp : saved) {
         auto& cn = cg.nodes[sp.node_idx];
+        if (cn.audio_instance && cn.audio_instance != cn.instance) {
+            cn.loader->destroy_instance(cn.audio_instance);
+            cn.audio_instance = nullptr;
+        }
         if (cn.instance) {
             cn.loader->destroy_instance(cn.instance);
             cn.instance = nullptr;
@@ -56,9 +60,17 @@ bool GraphCompiler::reload_operator(CompiledGraph& cg,
                 for (const auto& sp : saved) {
                     auto& cn = cg.nodes[sp.node_idx];
                     cn.instance = old_loader->create_instance();
+                    if (old_desc->has_process_audio &&
+                        (old_desc->has_process_gpu || old_desc->has_process_frame)) {
+                        cn.audio_instance = old_loader->create_instance();
+                    } else {
+                        cn.audio_instance = old_desc->has_process_audio ? cn.instance : nullptr;
+                    }
                     init_frame_state(cn, old_desc, &sp.values,
                                      sp.string_values.empty() ? nullptr : &sp.string_values,
                                      graph_base_dir);
+                    if (cn.audio)
+                        init_audio_state(cn, old_desc, cg.audio_buffer_size);
                     graph_compiler_internal::warm_up_instance_assets(cn);
                     for (const auto& [pname, flags] : sp.lock_flags) {
                         auto pi = cn.param_indices.find(pname);
@@ -81,9 +93,17 @@ bool GraphCompiler::reload_operator(CompiledGraph& cg,
         auto& cn = cg.nodes[sp.node_idx];
         cn.loader = new_loader;
         cn.instance = new_loader->create_instance();
+        if (new_desc->has_process_audio &&
+            (new_desc->has_process_gpu || new_desc->has_process_frame)) {
+            cn.audio_instance = new_loader->create_instance();
+        } else {
+            cn.audio_instance = new_desc->has_process_audio ? cn.instance : nullptr;
+        }
         init_frame_state(cn, new_desc, &sp.values,
                          sp.string_values.empty() ? nullptr : &sp.string_values,
                          graph_base_dir);
+        if (cn.audio)
+            init_audio_state(cn, new_desc, cg.audio_buffer_size);
         graph_compiler_internal::warm_up_instance_assets(cn);
 
         for (const auto& [pname, flags] : sp.lock_flags) {

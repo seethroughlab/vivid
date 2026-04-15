@@ -280,6 +280,11 @@ void RuntimeCore::shutdown() {
         frame_executor_.shutdown_gpu(*compiled_graph_);
 
         for (auto& cn : compiled_graph_->nodes) {
+            if (cn.audio_instance && cn.audio_instance != cn.instance) {
+                if (cn.loader)
+                    cn.loader->destroy_instance(cn.audio_instance);
+                cn.audio_instance = nullptr;
+            }
             if (cn.instance) {
                 if (cn.loader)
                     cn.loader->destroy_instance(cn.instance);

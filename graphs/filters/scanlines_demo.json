@@ -32,17 +32,6 @@
                 "y": 250.20657
             }
         },
-        "audio": {
-            "type": "MovieFileAudio",
-            "params": {
-                "volume": 0.11149796,
-                "file": "../../assets/camera.mp4"
-            },
-            "layout": {
-                "x": -77.825066,
-                "y": 426.40475
-            }
-        },
         "levels": {
             "type": "Levels",
             "params": {
@@ -69,11 +58,12 @@
             }
         },
         "vid": {
-            "type": "MovieFileIn",
+            "type": "MovieFile",
             "params": {
                 "speed": 1.0,
                 "play_mode": 0.0,
-                "file": "../../assets/camera.mp4"
+                "file": "../../assets/camera.mp4",
+                "volume": 0.11149796
             },
             "layout": {
                 "x": 230.30838,
@@ -102,12 +92,7 @@
             "to": "vout/input"
         },
         {
-            "from": "audio/time",
-            "to": "vid/audio_time",
-            "bridge": "last_sample"
-        },
-        {
-            "from": "audio/output",
+            "from": "vid/audio",
             "to": "aout/input"
         }
     ],

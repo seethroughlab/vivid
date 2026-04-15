@@ -316,7 +316,7 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
             n.type == "WebcamIn") {
             has_external_io = true;
         }
-        if (n.type == "MovieFileIn" || n.type == "MovieFileAudio")
+        if (n.type == "MovieFile")
             has_movie = true;
         if (n.type == "audio_out") has_audio_out = true;
     }

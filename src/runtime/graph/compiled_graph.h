@@ -291,9 +291,10 @@ struct GpuNodeState {
 // ---------------------------------------------------------------------------
 // CompiledNode — unified node state.
 //
-// A single CompiledNode exists per graph node. The active_cadence determines
-// which executor processes it. Audio and GPU state are factored into optional
-// sub-structs that exist only for the appropriate cadence/env.
+// A single CompiledNode exists per graph node. Most nodes execute on exactly
+// one cadence. Mixed-domain nodes expose both audio and frame/GPU capability;
+// they use separate operator instances for each cadence and share state through
+// operator-owned session objects keyed by node_id.
 // ---------------------------------------------------------------------------
 
 struct CompiledNode {
@@ -302,6 +303,7 @@ struct CompiledNode {
     std::string type_name;
     OperatorLoader* loader = nullptr;
     void* instance = nullptr;
+    void* audio_instance = nullptr;
 
     // ── Cadence ─────────────────────────────────────────────────────────────
     Cadence active_cadence = Cadence::Frame;
@@ -374,7 +376,7 @@ struct CompiledNode {
     std::vector<uint32_t> upstream_nodes;  // indices of nodes feeding into this one
 
     // ── Cadence-specific state (at most one is non-null) ─────────────────────
-    std::unique_ptr<AudioNodeState> audio;  // present iff active_cadence == Audio
+    std::unique_ptr<AudioNodeState> audio;  // present iff node has audio processing
     std::unique_ptr<GpuNodeState>   gpu;    // present iff node has GPU processing
 
     // ── Convenience queries ─────────────────────────────────────────────────

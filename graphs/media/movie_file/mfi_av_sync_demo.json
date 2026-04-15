@@ -9,16 +9,6 @@
                 "y": 466.9637756347656
             }
         },
-        "audio": {
-            "type": "MovieFileAudio",
-            "params": {
-                "file": "../../../assets/camera.mp4"
-            },
-            "layout": {
-                "x": -247.70474243164062,
-                "y": 428.48748779296875
-            }
-        },
         "rev": {
             "type": "Reverb",
             "params": {
@@ -31,7 +21,7 @@
             }
         },
         "vid": {
-            "type": "MovieFileIn",
+            "type": "MovieFile",
             "params": {
                 "file": "../../../assets/camera.mp4"
             },
@@ -54,12 +44,7 @@
             "to": "vout/input"
         },
         {
-            "from": "audio/time",
-            "to": "vid/audio_time",
-            "bridge": "last_sample"
-        },
-        {
-            "from": "audio/output",
+            "from": "vid/audio",
             "to": "rev/input"
         },
         {

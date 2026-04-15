@@ -15,7 +15,7 @@ static int g_fail = 0;
 static int g_pass = 0;
 
 // ============================================================================
-// AudioRing (minimal copy from movie_file_audio.cpp for isolated testing)
+// AudioRing (minimal copy of the MovieFile session ring for isolated testing)
 // ============================================================================
 
 struct AudioRing {

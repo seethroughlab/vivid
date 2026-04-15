@@ -231,7 +231,7 @@ set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS texture_loader)
 # 3D operators are available via the vivid-3d package (see ../vivid-3d/)
 # Simple WGSL filters are loaded from filters/*.wgsl (no C++ needed)
 
-# --- Movie Session Support Library (shared between movie_file_in and movie_file_audio) ---
+# --- Movie Session Support Library (shared by MovieFile internals and tests) ---
 if(APPLE)
     add_library(movie_session SHARED
         operators/shared/movie_session/movie_transport.cpp
@@ -256,10 +256,11 @@ if(APPLE)
     )
 endif()
 
-# --- MovieFileIn (cadence-native video file input) ---
+# --- MovieFile (single-node audio/video file playback) ---
 if(APPLE)
-    add_library(movie_file_in MODULE
-        operators/gpu/movie_file_in/movie_file_in.cpp
+    add_library(movie_file MODULE
+        operators/gpu/movie_file/movie_file.cpp
+        operators/shared/movie_audio/avf_audio_extractor.mm
         operators/shared/movie_decode/decoder_factory.cpp
         operators/shared/movie_decode/texture_upload.cpp
         operators/shared/movie_decode/placeholder_frame.cpp
@@ -268,45 +269,46 @@ if(APPLE)
         operators/shared/movie_decode/codec_probe.mm
         deps/hap/hap.c
     )
-    target_link_libraries(movie_file_in PRIVATE
+    target_link_libraries(movie_file PRIVATE
         vivid_operator_api webgpu snappy movie_session
-        "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
+        "-framework AVFoundation" "-framework AVFAudio" "-framework CoreMedia" "-framework CoreVideo"
         "-framework Foundation" "-framework QuartzCore"
     )
     set_source_files_properties(
+        operators/shared/movie_audio/avf_audio_extractor.mm
         operators/shared/movie_decode/avf_decoder.mm
         operators/shared/movie_decode/hap_decoder.mm
         operators/shared/movie_decode/codec_probe.mm
         PROPERTIES COMPILE_FLAGS "-fobjc-arc")
 else()
-    add_library(movie_file_in MODULE operators/gpu/movie_file_in/movie_file_in.cpp)
-    target_link_libraries(movie_file_in PRIVATE vivid_operator_api webgpu)
+    add_library(movie_file MODULE operators/gpu/movie_file/movie_file.cpp)
+    target_link_libraries(movie_file PRIVATE vivid_operator_api webgpu)
 endif()
-set_target_properties(movie_file_in PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}"
+set_target_properties(movie_file PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}"
     BUILD_RPATH "@loader_path/../Frameworks"
     INSTALL_RPATH "@loader_path/../Frameworks")
 if(APPLE)
-    add_custom_command(TARGET movie_file_in POST_BUILD
+    add_custom_command(TARGET movie_file POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory
             $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:movie_file_in>
+            $<TARGET_FILE:movie_file>
             $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns/
-        COMMENT "Updating movie_file_in in Vivid.app bundle"
+        COMMENT "Updating movie_file in Vivid.app bundle"
     )
 endif()
-target_include_directories(movie_file_in PRIVATE
+target_include_directories(movie_file PRIVATE
     ${CMAKE_SOURCE_DIR}/deps/stb
     ${CMAKE_SOURCE_DIR}/deps/hap
 )
 if(APPLE)
     set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
-        "  \"movie_file_in\": { \"sources\": [\"operators/gpu/movie_file_in/movie_file_in.cpp\", \"operators/shared/movie_decode/decoder_factory.cpp\", \"operators/shared/movie_decode/texture_upload.cpp\", \"operators/shared/movie_decode/placeholder_frame.cpp\", \"operators/shared/movie_decode/avf_decoder.mm\", \"operators/shared/movie_decode/hap_decoder.mm\", \"operators/shared/movie_decode/codec_probe.mm\", \"deps/hap/hap.c\"], \"extra_libs\": [\"webgpu\", \"snappy\"], \"frameworks\": [\"AVFoundation\", \"CoreMedia\", \"CoreVideo\", \"Foundation\"], \"objc_arc\": [\"operators/shared/movie_decode/avf_decoder.mm\", \"operators/shared/movie_decode/hap_decoder.mm\", \"operators/shared/movie_decode/codec_probe.mm\"], \"include_dirs\": [\"deps/stb\", \"deps/hap\"] }")
+        "  \"movie_file\": { \"sources\": [\"operators/gpu/movie_file/movie_file.cpp\", \"operators/shared/movie_audio/avf_audio_extractor.mm\", \"operators/shared/movie_decode/decoder_factory.cpp\", \"operators/shared/movie_decode/texture_upload.cpp\", \"operators/shared/movie_decode/placeholder_frame.cpp\", \"operators/shared/movie_decode/avf_decoder.mm\", \"operators/shared/movie_decode/hap_decoder.mm\", \"operators/shared/movie_decode/codec_probe.mm\", \"deps/hap/hap.c\"], \"extra_libs\": [\"webgpu\", \"snappy\"], \"frameworks\": [\"AVFoundation\", \"AVFAudio\", \"CoreMedia\", \"CoreVideo\", \"Foundation\"], \"objc_arc\": [\"operators/shared/movie_audio/avf_audio_extractor.mm\", \"operators/shared/movie_decode/avf_decoder.mm\", \"operators/shared/movie_decode/hap_decoder.mm\", \"operators/shared/movie_decode/codec_probe.mm\"], \"include_dirs\": [\"deps/stb\", \"deps/hap\"] }")
 else()
     set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
-        "  \"movie_file_in\": { \"sources\": [\"operators/gpu/movie_file_in/movie_file_in.cpp\"], \"extra_libs\": [\"webgpu\"], \"include_dirs\": [\"deps/stb\"] }")
+        "  \"movie_file\": { \"sources\": [\"operators/gpu/movie_file/movie_file.cpp\"], \"extra_libs\": [\"webgpu\"], \"include_dirs\": [\"deps/stb\"] }")
 endif()
-set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS movie_file_in)
+set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS movie_file)
 
 # --- Webcam In (live camera capture) ---
 if(APPLE)
@@ -516,36 +518,6 @@ endif()
 set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
     "  \"midi_file_player\": { \"sources\": [\"operators/audio/midi_file_player/midi_file_player.cpp\", \"src/common/midi_file.cpp\"], \"extra_libs\": [\"midifile\"] }")
 set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS midi_file_player)
-
-# --- MovieFileAudio (cadence-native audio operator for movie file playback) ---
-if(APPLE)
-    add_library(movie_file_audio MODULE
-        operators/audio/movie_file_audio/movie_file_audio.cpp
-        operators/shared/movie_audio/avf_audio_extractor.mm
-    )
-    target_link_libraries(movie_file_audio PRIVATE
-        vivid_operator_api movie_session
-        "-framework AVFoundation" "-framework AVFAudio" "-framework CoreMedia" "-framework Foundation"
-    )
-    set_source_files_properties(
-        operators/shared/movie_audio/avf_audio_extractor.mm
-        PROPERTIES COMPILE_FLAGS "-fobjc-arc")
-    set_target_properties(movie_file_audio PROPERTIES
-        PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}"
-        BUILD_RPATH "@loader_path/../Frameworks"
-        INSTALL_RPATH "@loader_path/../Frameworks")
-    add_custom_command(TARGET movie_file_audio POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory
-            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:movie_file_audio>
-            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns/
-        COMMENT "Updating movie_file_audio in Vivid.app bundle"
-    )
-    set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
-        "  \"movie_file_audio\": { \"sources\": [\"operators/audio/movie_file_audio/movie_file_audio.cpp\", \"operators/shared/movie_audio/avf_audio_extractor.mm\"], \"extra_libs\": [], \"frameworks\": [\"AVFoundation\", \"AVFAudio\", \"CoreMedia\", \"Foundation\"], \"objc_arc\": [\"operators/shared/movie_audio/avf_audio_extractor.mm\"] }")
-    set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS movie_file_audio)
-endif()
 
 # --- Operators meta-target (for package smoke CI: builds all operator dylibs without the app) ---
 get_property(_vivid_op_targets GLOBAL PROPERTY VIVID_OPERATOR_TARGETS)

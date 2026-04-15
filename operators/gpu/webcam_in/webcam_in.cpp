@@ -73,7 +73,7 @@ static float fps_for_preset(int preset) {
  * Captures video from a connected camera device. Dynamically discovers
  * available cameras on startup. Supports 480p, 720p, and 1080p presets.
  *
- * @see MovieFileIn, SyphonIn
+ * @see MovieFile, SyphonIn
  */
 struct WebcamIn : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "WebcamIn";

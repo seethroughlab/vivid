@@ -79,10 +79,15 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             cn.instance = loader->create_instance();
 
             // Determine cadence from descriptor.
-            if (desc->has_process_gpu) {
+            const bool has_audio = desc->has_process_audio != 0;
+            const bool has_gpu = desc->has_process_gpu != 0;
+            const bool has_frame = desc->has_process_frame != 0;
+            const bool mixed_audio_frame = has_audio && (has_gpu || has_frame);
+
+            if (has_gpu) {
                 cn.active_cadence = Cadence::Frame;
                 cn.gpu = std::make_unique<GpuNodeState>();
-            } else if (desc->has_process_audio && !desc->has_process_frame) {
+            } else if (has_audio && !has_frame) {
                 cn.active_cadence = Cadence::Audio;
             } else {
                 cn.active_cadence = Cadence::Frame;
@@ -93,8 +98,9 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             // Allocate audio sub-struct before init_frame_state (which uses it
             // for analysis port indices), but defer full audio init until after
             // init_frame_state sets up port counts.
-            if (cn.active_cadence == Cadence::Audio) {
+            if (has_audio) {
                 cn.audio = std::make_unique<AudioNodeState>();
+                cn.audio_instance = mixed_audio_frame ? loader->create_instance() : cn.instance;
             }
 
             // Initialize frame-side state (all nodes get this — sets port counts)
@@ -103,7 +109,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                              graph_base_dir);
 
             // Initialize audio-specific state (after frame state sets port counts)
-            if (cn.active_cadence == Cadence::Audio) {
+            if (cn.audio) {
                 init_audio_state(cn, desc, options.audio_buffer_size);
             }
 
@@ -412,7 +418,10 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         }
 
         // Determine transport from cadence mismatch
-        if (from_cn.active_cadence == to_cn.active_cadence) {
+        const bool audio_edge = e.data_type == VIVID_PORT_AUDIO_BUFFER;
+        const bool direct_audio_edge = audio_edge && from_cn.audio && to_cn.audio;
+        const bool direct_frame_edge = !audio_edge && from_cn.active_cadence == to_cn.active_cadence;
+        if (direct_audio_edge || direct_frame_edge) {
             e.transport = EdgeTransport::Direct;
         } else {
             e.transport = EdgeTransport::Snapshot;
@@ -626,9 +635,10 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
 
     // Build frame_order and audio_order from sorted nodes
     for (uint32_t i = 0; i < n; ++i) {
-        if (cg->nodes[i].active_cadence == Cadence::Audio) {
+        if (cg->nodes[i].audio) {
             cg->audio_order.push_back(i);
-        } else {
+        }
+        if (cg->nodes[i].active_cadence != Cadence::Audio) {
             cg->frame_order.push_back(i);
         }
     }
@@ -674,7 +684,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         // Propagate to downstream via edges
         for (const auto& e : cg->edges) {
             if (e.from_node == idx && e.transport == EdgeTransport::Direct &&
-                cg->nodes[e.to_node].active_cadence == Cadence::Audio &&
+                cg->nodes[e.to_node].audio &&
                 !e.targets_param) {
                 auto& to_a = *cg->nodes[e.to_node].audio;
                 uint8_t src_ch = 1;
@@ -733,7 +743,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
 
         for (const auto& e : cg->edges) {
             if (e.from_node != idx || e.transport != EdgeTransport::Direct ||
-                e.targets_param || cg->nodes[e.to_node].active_cadence != Cadence::Audio) {
+                e.targets_param || !cg->nodes[e.to_node].audio) {
                 continue;
             }
 
@@ -815,7 +825,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
     // Set from_channels/to_channels on audio Direct edges
     for (auto& e : cg->edges) {
         if (e.transport != EdgeTransport::Direct) continue;
-        if (cg->nodes[e.from_node].active_cadence != Cadence::Audio) continue;
+        if (e.data_type != VIVID_PORT_AUDIO_BUFFER || !cg->nodes[e.from_node].audio) continue;
         if (e.targets_param) continue;
 
         auto& from_a = *cg->nodes[e.from_node].audio;
@@ -837,7 +847,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
     for (uint32_t ei = 0; ei < static_cast<uint32_t>(cg->edges.size()); ++ei) {
         const auto& e = cg->edges[ei];
         if (e.transport == EdgeTransport::Direct) {
-            if (cg->nodes[e.from_node].active_cadence == Cadence::Audio)
+            if (e.data_type == VIVID_PORT_AUDIO_BUFFER && cg->nodes[e.from_node].audio)
                 cg->audio_direct_edges.push_back(ei);
             else
                 cg->frame_direct_edges.push_back(ei);

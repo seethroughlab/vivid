@@ -163,7 +163,7 @@ static const std::unordered_set<std::string>& always_skip() {
 // Operators that need external resources not available in a headless sweep.
 static const std::unordered_set<std::string>& resource_skip() {
     static const std::unordered_set<std::string> s = {
-        "movie_file_in", "movie_file_audio",
+        "movie_file",
         "midi_input", "midi_file_player",
         "syphon_in", "syphon_out",
         "keyboard", "mouse",

@@ -506,10 +506,10 @@ vivid/
 │       └── standalone_main.cpp
 ├── operators/                  # Built-in operators (each a directory)
 │   ├── gpu/                    # noise, shape, text, bloom, composite, feedback,
-│   │                           # movie_file_in, webcam_in, syphon_in, syphon_out,
+│   │                           # movie_file, webcam_in, syphon_in, syphon_out,
 │   │                           # texture_analysis, time_machine, ...
 │   ├── audio/                  # oscillator, gain, delay, reverb, distortion, bitcrush,
-│   │                           # spread_adsr, spread_lfo, movie_file_audio, ...
+│   │                           # spread_adsr, spread_lfo, ...
 │   └── control/                # lfo, clock, envelope, math, smooth, gate,
 │                               # keyboard, mouse, midi_input, osc_in, osc_out,
 │                               # fft_analysis, stack, alternate, step_counter,
@@ -725,13 +725,11 @@ Vivid exposes its runtime and operator-authoring surfaces through two complement
 
 ## 5.23 Media Pipeline
 
-Vivid's media pipeline handles video file playback with synchronized audio through two cadence-native operators that communicate exclusively through normal graph edges and the `AudioFrameBridge` — no side channels or shared state:
+Vivid's media pipeline handles video file playback with synchronized audio through one mixed-domain operator:
 
-- **`MovieFileIn`** (`operators/gpu/movie_file_in/`) — decodes video frames from a file using AVFoundation (macOS). Supports HAP (via Snappy decompression + BC GPU upload), HAPQ (YCoCg color space), HAP-alpha, H.264, HEVC codecs, and static images (via stb_image). Outputs a `VIVID_PORT_TEXTURE` (decoded frames) plus `SCALAR` outputs for playback time and duration. Accepts an optional `audio_time` SCALAR input for AV sync. A background loader thread handles async video decoder creation with generation tracking (`MovieLoadCoordinator`). Playback modes: Loop, Once, Hold Last.
+- **`MovieFile`** (`operators/gpu/movie_file/`) — decodes movie video and audio from one source identity. It exposes `texture`, `audio`, `time`, `duration`, and movie diagnostic outputs from a single node-level playback session. Params include `file`, `play_mode`, `speed`, `volume`, `pitch_preserve`, and `video_phase_offset_ms`.
 
-- **`MovieFileAudio`** (`operators/audio/movie_file_audio/`) — decodes audio from a movie file and outputs stereo `VIVID_PORT_AUDIO_BUFFER`. Uses a private lock-free ring buffer (~5s @ 48kHz) fed by a dedicated fill thread. Publishes monotonic playback time as a `SCALAR` output, which crosses the `AudioFrameBridge` to `MovieFileIn` for AV sync. Includes a preroll gate (~0.5s) to prevent startup clicks, volume ramping, and pitch-preserving time stretch via AVFoundation.
-
-**AV sync model:** `MovieFileAudio` is the time master. Its `time` SCALAR output crosses the `AudioFrameBridge` at ~60Hz to `MovieFileIn`'s `audio_time` input. The video operator seeks only when drift exceeds two frame durations, absorbing bridge latency cleanly. Each operator declares its own `file`, `speed`, and `play_mode` params, so either can be used independently (video-only or audio-only).
+**AV sync model:** `MovieFile` owns one playback session per graph node. When the source has audio and the `audio` output is active, the audio read head is the authoritative clock. Video presentation follows that session clock plus the explicit `video_phase_offset_ms` presentation offset. When there is no active audio, the session uses a monotonic host-clock transport. The runtime compiles mixed-domain nodes into cadence-specific operator instances that share the same node-level session, so the audio callback remains realtime-safe while frame/GPU execution owns video presentation, texture upload, and telemetry.
 
 ## 5.24 Instrument Coherence Platform
 

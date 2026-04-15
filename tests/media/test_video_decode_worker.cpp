@@ -14,6 +14,8 @@ static DecodedFrame make_frame(double pts) {
     f.width = 320;
     f.height = 240;
     f.pts = pts;
+    f.requested_pts = pts;
+    f.request_sequence = static_cast<uint64_t>(pts * 1000.0);
     f.data.resize(320 * 240 * 4, 0xBB);
     return f;
 }
@@ -34,26 +36,48 @@ static void test_submit_and_pop() {
     w.stop();
 }
 
-static void test_newest_wins() {
+static void test_bounded_fifo_runs_multiple_pending_jobs() {
     VideoDecodeWorker w;
     w.start();
 
-    // Submit two work items rapidly — second should replace first
     std::atomic<int> call_count{0};
-    w.submit_work([&]() { call_count++; return make_frame(1.0); });
-    w.submit_work([&]() { call_count++; return make_frame(2.0); });
+    w.submit_work([&]() { call_count++; return make_frame(1.0); }, 0, 101);
+    w.submit_work([&]() { call_count++; return make_frame(2.0); }, 0, 102);
+    w.submit_work([&]() { call_count++; return make_frame(3.0); }, 0, 103);
 
-    // Give worker time to process
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     DecodedFrame out;
-    if (w.pop_latest(out)) {
-        // The most recent result should be available
-        // (could be 1.0 or 2.0 depending on timing, but both are valid)
-        check(out.pts >= 1.0, "popped frame is one of the submitted frames");
-    }
-    // The key invariant: no crash, and at most 2 calls were made
-    check(call_count.load() <= 2, "at most 2 work items executed");
+    check(call_count.load() == 3, "bounded_fifo: all pending jobs executed");
+    check(w.pop_best(1.0, 0, 0.1, out), "bounded_fifo: first frame available");
+    check(out.pts == 1.0, "bounded_fifo: first frame pts");
+    check(w.pop_best(2.0, 0, 0.1, out), "bounded_fifo: second frame available");
+    check(out.pts == 2.0, "bounded_fifo: second frame pts");
+    check(w.pop_best(3.0, 0, 0.1, out), "bounded_fifo: third frame available");
+    check(out.pts == 3.0, "bounded_fifo: third frame pts");
+
+    w.stop();
+}
+
+static void test_duplicate_pending_key_is_ignored() {
+    VideoDecodeWorker w;
+
+    std::atomic<int> call_count{0};
+    const bool first = w.submit_work([&]() {
+        call_count++;
+        return make_frame(1.0);
+    }, 0, 999);
+    const bool duplicate = w.submit_work([&]() {
+        call_count++;
+        return make_frame(2.0);
+    }, 0, 999);
+
+    w.start();
+    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+
+    check(first, "dedupe: first keyed work accepted");
+    check(!duplicate, "dedupe: duplicate pending key ignored");
+    check(call_count.load() == 1, "dedupe: duplicate work did not execute");
 
     w.stop();
 }
@@ -157,22 +181,29 @@ static void test_replaced_work_releases_captured_resources() {
     VideoDecodeWorker w;
     w.start();
 
+    std::atomic<bool> release_first{false};
+    w.submit_work([&]() {
+        while (!release_first.load(std::memory_order_acquire)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return make_frame(0.0);
+    });
+
     std::atomic<int> destroyed{0};
-    auto guard = std::shared_ptr<int>(new int(1), [&](int* value) {
-        delete value;
-        destroyed.fetch_add(1, std::memory_order_relaxed);
-    });
-    w.submit_work([guard]() {
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        return make_frame(1.0);
-    });
-    guard.reset();
-    w.submit_work([]() { return make_frame(2.0); });
-    w.flush();
+    for (int i = 0; i < 20; ++i) {
+        auto guard = std::shared_ptr<int>(new int(i), [&](int* value) {
+            delete value;
+            destroyed.fetch_add(1, std::memory_order_relaxed);
+        });
+        w.submit_work([guard, i]() {
+            return make_frame(1.0 + static_cast<double>(i));
+        }, 0, static_cast<uint64_t>(1000 + i));
+    }
 
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    check(destroyed.load(std::memory_order_relaxed) >= 1,
-          "resource_release: replaced or flushed work releases captures");
+    check(destroyed.load(std::memory_order_relaxed) >= 8,
+          "resource_release: capacity eviction releases captures");
+    release_first.store(true, std::memory_order_release);
 
     w.stop();
 }
@@ -180,7 +211,8 @@ static void test_replaced_work_releases_captured_resources() {
 int main() {
     std::fprintf(stderr, "=== VideoDecodeWorker tests ===\n");
     test_submit_and_pop();
-    test_newest_wins();
+    test_bounded_fifo_runs_multiple_pending_jobs();
+    test_duplicate_pending_key_is_ignored();
     test_submit_decoded_bypasses_worker();
     test_flush();
     test_start_stop_lifecycle();

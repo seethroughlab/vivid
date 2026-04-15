@@ -56,16 +56,24 @@ public:
     bool seek(double time_seconds) override;
     float frame_rate() const override;
     uint64_t nil_frame_count() const override;
+    bool native_looping_enabled() const;
+    uint64_t manual_loop_seek_count() const;
 
     // --- Split decode for async pipeline (Stage 4) ---
 
     // Phase 1 (main thread only, fast): acquire a retained CVPixelBuffer
     // from AVFoundation without doing the CPU copy.
     AcquiredPixelBuffer acquire_pixel_buffer();
+    AcquiredPixelBuffer acquire_pixel_buffer_at_time(double time_seconds);
 
     // Phase 2 (any thread): lock, copy, unlock, release the pixel buffer.
     // Returns a DecodedFrame with tightly packed BGRA pixels.
     static DecodedFrame copy_pixel_buffer(AcquiredPixelBuffer&& acquired);
+
+    // Fallback exact-frame acquisition for sparse loop-edge prefetch. This is
+    // intended for the decode worker, not the realtime audio path.
+    DecodedFrame copy_frame_at_time(double time_seconds) const;
+    static DecodedFrame copy_frame_at_time(const std::string& path, double time_seconds);
 
 private:
     struct Impl;

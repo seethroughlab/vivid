@@ -1,8 +1,13 @@
 #include "avf_decoder.h"
+#include "decoded_frame_queue.h"
 #include "test_helpers.h"
 
 #import <CoreFoundation/CoreFoundation.h>
 #import <CoreVideo/CoreVideo.h>
+#include <chrono>
+#include <cmath>
+#include <filesystem>
+#include <thread>
 
 static CVPixelBufferRef make_pixel_buffer() {
     CVPixelBufferRef buffer = nullptr;
@@ -74,10 +79,104 @@ static void test_move_assignment_releases_old_buffer() {
     CFRelease(second);
 }
 
+static std::filesystem::path find_h264_fixture() {
+    auto cwd = std::filesystem::current_path();
+    std::filesystem::path candidates[] = {
+        cwd / "../assets/sync/sync-test-h264.mp4",
+        cwd / "assets/sync/sync-test-h264.mp4",
+        cwd.parent_path() / "assets/sync/sync-test-h264.mp4",
+    };
+    for (const auto& path : candidates) {
+        std::error_code ec;
+        if (std::filesystem::exists(path, ec)) return std::filesystem::weakly_canonical(path, ec);
+    }
+    return {};
+}
+
+static void pump_main_run_loop(double seconds) {
+    auto until = std::chrono::steady_clock::now() +
+        std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+            std::chrono::duration<double>(seconds));
+    while (std::chrono::steady_clock::now() < until) {
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.02, true);
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+}
+
+static void test_native_looper_replaces_manual_loop_seek() {
+    auto fixture = find_h264_fixture();
+    if (fixture.empty()) {
+        std::fprintf(stderr, "  SKIP: sync-test-h264.mp4 fixture not found\n");
+        return;
+    }
+
+    AVFDecoder decoder;
+    check(decoder.open(fixture.string()), "avf_looper: opens non-HAP fixture");
+    check(decoder.native_looping_enabled(), "avf_looper: loop mode uses native looper after open");
+    check(decoder.manual_loop_seek_count() == 0,
+          "avf_looper: open does not use manual loop seek");
+
+    decoder.set_speed(1.0f);
+    pump_main_run_loop(0.15);
+    decoder.set_loop(false);
+    check(!decoder.native_looping_enabled(),
+          "avf_looper: set_loop(false) tears down native looper");
+
+    decoder.set_loop(true);
+    check(decoder.native_looping_enabled(),
+          "avf_looper: set_loop(true) rebuilds native looper");
+    check(decoder.manual_loop_seek_count() == 0,
+          "avf_looper: loop toggles do not use manual loop seek");
+}
+
+static void test_target_time_acquire_across_wrap() {
+    auto fixture = find_h264_fixture();
+    if (fixture.empty()) {
+        std::fprintf(stderr, "  SKIP: sync-test-h264.mp4 fixture not found\n");
+        return;
+    }
+
+    AVFDecoder decoder;
+    check(decoder.open(fixture.string()), "avf_wrap_acquire: opens non-HAP fixture");
+    decoder.set_loop(true);
+    decoder.set_speed(1.0f);
+    pump_main_run_loop(0.25);
+
+    const double duration = decoder.duration();
+    const double frame = 1.0 / std::max(1.0f, decoder.frame_rate());
+    check(decoder.seek(std::max(0.0, duration - 6.0 * frame)),
+          "avf_wrap_acquire: explicit test seek near loop boundary succeeds");
+    pump_main_run_loop(0.25);
+
+    int valid_end = 0;
+    int valid_start = 0;
+    for (int i = 4; i >= 1; --i) {
+        const double t = std::max(0.0, duration - static_cast<double>(i) * frame);
+        auto acquired = decoder.acquire_pixel_buffer_at_time(t);
+        if (acquired.valid() || !decoder.copy_frame_at_time(t).empty()) valid_end++;
+    }
+    for (int i = 0; i < 4; ++i) {
+        const double t = static_cast<double>(i) * frame;
+        auto acquired = decoder.acquire_pixel_buffer_at_time(t);
+        if (acquired.valid() || !decoder.copy_frame_at_time(t).empty()) valid_start++;
+    }
+
+    check(decoder.native_looping_enabled(),
+          "avf_wrap_acquire: native looper remains active while acquiring loop-edge frames");
+    check(decoder.manual_loop_seek_count() == 0,
+          "avf_wrap_acquire: target-time acquisition across wrap does not use manual loop seek");
+    check(valid_end > 0,
+          "avf_wrap_acquire: AVFoundation can answer at least one final pre-wrap target frame");
+    check(valid_start > 0,
+          "avf_wrap_acquire: AVFoundation can answer at least one post-wrap target frame");
+}
+
 int main() {
     std::fprintf(stderr, "=== AVF AcquiredPixelBuffer tests ===\n");
     test_move_constructor_releases_once();
     test_move_assignment_releases_old_buffer();
+    test_native_looper_replaces_manual_loop_seek();
+    test_target_time_acquire_across_wrap();
 
     std::fprintf(stderr, "\n========================================\n");
     std::fprintf(stderr, "AcquiredPixelBuffer tests: %d failed\n", failures);

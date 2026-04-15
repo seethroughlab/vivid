@@ -5,6 +5,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <CoreMedia/CoreMedia.h>
 #import <CoreVideo/CoreVideo.h>
+#import <CoreGraphics/CoreGraphics.h>
 #import <QuartzCore/QuartzCore.h>
 #include <vector>
 #include <cstdio>
@@ -14,51 +15,7 @@
 #include <atomic>
 #include <memory>
 #include <cassert>
-
-// =============================================================================
-// LoopObserver — restarts playback when the item reaches end
-// =============================================================================
-
-@interface LoopObserver : NSObject
-@property (nonatomic, assign) BOOL shouldLoop;
-@property (nonatomic, weak) AVPlayer* player;
-@property (nonatomic, assign) float desiredRate;
-@property (atomic, assign) BOOL loopFired;
-@end
-
-@implementation LoopObserver
-
-- (instancetype)initWithPlayer:(AVPlayer*)player {
-    self = [super init];
-    if (self) {
-        _player = player;
-        _shouldLoop = YES;
-        _desiredRate = 1.0f;
-        _loopFired = NO;
-        [[NSNotificationCenter defaultCenter]
-            addObserver:self
-            selector:@selector(playerDidFinish:)
-            name:AVPlayerItemDidPlayToEndTimeNotification
-            object:nil];
-    }
-    return self;
-}
-
-- (void)dealloc {
-    [[NSNotificationCenter defaultCenter] removeObserver:self];
-}
-
-- (void)playerDidFinish:(NSNotification*)note {
-    if (!_shouldLoop || !_player) return;
-    [_player seekToTime:kCMTimeZero completionHandler:^(BOOL finished) {
-        if (finished && self->_shouldLoop) {
-            self->_player.rate = self->_desiredRate;
-            self.loopFired = YES;
-        }
-    }];
-}
-
-@end
+#include <algorithm>
 
 // =============================================================================
 // dispatch_to_main_with_timeout — bounded alternative to dispatch_sync
@@ -94,10 +51,12 @@ static bool dispatch_to_main_with_timeout(void (^block)(void), double timeout_se
 // =============================================================================
 
 struct AVFDecoder::Impl {
-    AVPlayer*                player       = nil;
+    AVAsset*                 asset        = nil;
+    AVQueuePlayer*           player       = nil;
     AVPlayerItem*            player_item  = nil;
+    AVPlayerLooper*          player_looper = nil;
     AVPlayerItemVideoOutput* video_output = nil;
-    LoopObserver*            loop_observer = nil;
+    std::string              source_path;
 
     std::vector<uint8_t> pixel_buffer;
     uint32_t frame_width  = 0;
@@ -108,13 +67,102 @@ struct AVFDecoder::Impl {
     bool     opened        = false;
     float    current_speed_ = 1.0f;
     uint64_t no_frame_counter_ = 0;
+    uint64_t manual_loop_seek_count_ = 0;
+
+    NSDictionary* pixel_buffer_attrs() const {
+        return @{
+            (NSString*)kCVPixelBufferPixelFormatTypeKey:
+                @(kCVPixelFormatType_32BGRA)
+        };
+    }
+
+    AVPlayerItemVideoOutput* make_video_output() const {
+        return [[AVPlayerItemVideoOutput alloc]
+            initWithPixelBufferAttributes:pixel_buffer_attrs()];
+    }
+
+    AVPlayerItemVideoOutput* ensure_video_output_for_item(AVPlayerItem* item) {
+        if (!item) return nil;
+        for (AVPlayerItemOutput* out in item.outputs) {
+            if ([out isKindOfClass:[AVPlayerItemVideoOutput class]]) {
+                video_output = (AVPlayerItemVideoOutput*)out;
+                return video_output;
+            }
+        }
+
+        AVPlayerItemVideoOutput* fresh = make_video_output();
+        [item addOutput:fresh];
+        video_output = fresh;
+        return video_output;
+    }
+
+    AVPlayerItemVideoOutput* ensure_video_output_for_current_item() {
+        AVPlayerItem* current_item = player.currentItem ? player.currentItem : player_item;
+        return ensure_video_output_for_item(current_item);
+    }
+
+    void ensure_video_outputs_for_queued_items() {
+        if (!player) return;
+        for (AVPlayerItem* item in player.items) {
+            ensure_video_output_for_item(item);
+        }
+    }
+
+    AVPlayerItem* make_template_item() const {
+        if (!asset) return nil;
+        return [AVPlayerItem playerItemWithAsset:asset];
+    }
+
+    CMTime current_queue_time() const {
+        AVPlayerItem* item = player.currentItem ? player.currentItem : player_item;
+        return item ? item.currentTime : kCMTimeZero;
+    }
+
+    void rebuild_queue_preserving_time(CMTime preserve_time) {
+        if (!player || !asset) return;
+
+        const bool should_play = current_speed_ > 0.0f;
+        [player pause];
+        player_looper = nil;
+        video_output = nil;
+        [player removeAllItems];
+
+        player_item = make_template_item();
+        if (!player_item) return;
+
+        if (is_looping) {
+            player.actionAtItemEnd = AVPlayerActionAtItemEndNone;
+            player_looper = [AVPlayerLooper playerLooperWithPlayer:player
+                                                       templateItem:player_item];
+        } else {
+            player.actionAtItemEnd = AVPlayerActionAtItemEndPause;
+            if ([player canInsertItem:player_item afterItem:nil]) {
+                [player insertItem:player_item afterItem:nil];
+            }
+        }
+
+        ensure_video_output_for_current_item();
+        ensure_video_outputs_for_queued_items();
+        if (CMTIME_IS_VALID(preserve_time) &&
+            !CMTIME_IS_INDEFINITE(preserve_time) &&
+            CMTimeCompare(preserve_time, kCMTimeZero) > 0) {
+            [player seekToTime:preserve_time
+               toleranceBefore:kCMTimeZero
+                toleranceAfter:kCMTimeZero];
+        }
+        if (should_play) {
+            [player play];
+            player.rate = current_speed_;
+        }
+    }
 
     bool open_main_thread(NSString* path_ns) {
         @autoreleasepool {
             NSURL* url = [NSURL fileURLWithPath:path_ns];
             if (!url) return false;
 
-            AVAsset* asset = [AVAsset assetWithURL:url];
+            asset = [AVAsset assetWithURL:url];
+            source_path = path_ns.UTF8String ?: "";
 
             // Synchronously load essential properties
             dispatch_semaphore_t sem = dispatch_semaphore_create(0);
@@ -161,34 +209,20 @@ struct AVFDecoder::Impl {
             CMTime dur = asset.duration;
             media_duration = static_cast<float>(CMTimeGetSeconds(dur));
 
-            // Create player item and attach video output
-            player_item = [AVPlayerItem playerItemWithAsset:asset];
-
-            NSDictionary* attrs = @{
-                (NSString*)kCVPixelBufferPixelFormatTypeKey:
-                    @(kCVPixelFormatType_32BGRA)
-            };
-            video_output = [[AVPlayerItemVideoOutput alloc]
-                initWithPixelBufferAttributes:attrs];
-            [player_item addOutput:video_output];
-
-            // Create plain AVPlayer (not queue player)
-            player = [AVPlayer playerWithPlayerItem:player_item];
-            player.actionAtItemEnd = AVPlayerActionAtItemEndPause;
+            player = [AVQueuePlayer queuePlayerWithItems:@[]];
 
             // Mute audio — we only want video frames
             player.volume = 0.0f;
 
-            // Set up looping via notification
-            loop_observer = [[LoopObserver alloc] initWithPlayer:player];
-            loop_observer.shouldLoop = is_looping;
+            rebuild_queue_preserving_time(kCMTimeZero);
 
             // Do not hard-fail on AVPlayerItemStatusUnknown during open.
             // AVFoundation can remain in Unknown briefly after attaching output;
             // decode_frame() will naturally yield no frame until ready.
-            if (player_item.status == AVPlayerItemStatusFailed) {
+            AVPlayerItem* current_item = player.currentItem ? player.currentItem : player_item;
+            if (current_item.status == AVPlayerItemStatusFailed) {
                 std::fprintf(stderr, "[avf_decoder] Player item failed during open: %s\n",
-                             player_item.error.localizedDescription.UTF8String ?: "<no error>");
+                             current_item.error.localizedDescription.UTF8String ?: "<no error>");
                 close();
                 return false;
             }
@@ -222,11 +256,14 @@ struct AVFDecoder::Impl {
         @autoreleasepool {
             if (player) {
                 [player pause];
+                [player removeAllItems];
             }
-            loop_observer = nil;
+            player_looper = nil;
             video_output = nil;
             player_item = nil;
             player = nil;
+            asset = nil;
+            source_path.clear();
             pixel_buffer.clear();
             frame_width = frame_height = 0;
             media_duration = 0.0f;
@@ -238,7 +275,7 @@ struct AVFDecoder::Impl {
     // Clock ownership: SELF-CLOCK mode
     // ==========================================================================
     // AVPlayer owns the playback clock.  We never seek from within
-    // decode_frame(); seeking is driven externally by MovieFileIn's AV sync.
+    // decode_frame(); target-time selection is driven externally by MovieFile.
     //
     // Frame selection: AVPlayerItemVideoOutput translates the host monotonic
     // clock (CACurrentMediaTime) to the item timeline via itemTimeForHostTime:.
@@ -260,7 +297,7 @@ struct AVFDecoder::Impl {
         assert([NSThread isMainThread]);
         @autoreleasepool {
             AcquiredPixelBuffer result;
-            if (!opened || !video_output || !player) {
+            if (!opened || !player) {
                 result.status = DecodeStatus::NilFrame;
                 return result;
             }
@@ -274,17 +311,9 @@ struct AVFDecoder::Impl {
 
             AVPlayerItem* current_item = player.currentItem ? player.currentItem : player_item;
             if (!current_item) { result.status = DecodeStatus::NilFrame; return result; }
-            AVPlayerItemVideoOutput* active_output = video_output;
-            if (current_item != player_item) {
-                for (AVPlayerItemOutput* out in current_item.outputs) {
-                    if ([out isKindOfClass:[AVPlayerItemVideoOutput class]]) {
-                        active_output = (AVPlayerItemVideoOutput*)out;
-                        break;
-                    }
-                }
-            }
+            AVPlayerItemVideoOutput* active_output = ensure_video_output_for_current_item();
             if (!active_output) { result.status = DecodeStatus::NilFrame; return result; }
-            CMTime display_time = [video_output itemTimeForHostTime:CACurrentMediaTime()];
+            CMTime display_time = [active_output itemTimeForHostTime:CACurrentMediaTime()];
             if (!CMTIME_IS_VALID(display_time) || CMTIME_IS_INDEFINITE(display_time)) {
                 display_time = current_item.currentTime;
             }
@@ -319,6 +348,55 @@ struct AVFDecoder::Impl {
         }
     }
 
+    AcquiredPixelBuffer acquire_pixel_buffer_at_time_impl(double time_seconds) {
+        assert([NSThread isMainThread]);
+        @autoreleasepool {
+            AcquiredPixelBuffer result;
+            if (!opened || !player) {
+                result.status = DecodeStatus::NilFrame;
+                return result;
+            }
+
+            AVPlayerItem* current_item = player.currentItem ? player.currentItem : player_item;
+            if (!current_item) {
+                result.status = DecodeStatus::NilFrame;
+                return result;
+            }
+
+            ensure_video_output_for_current_item();
+            ensure_video_outputs_for_queued_items();
+            if (!video_output) {
+                result.status = DecodeStatus::NilFrame;
+                return result;
+            }
+
+            const double clamped = std::max(0.0, time_seconds);
+            CMTime requested = CMTimeMakeWithSeconds(clamped, 600);
+            CVPixelBufferRef cv_buf = nullptr;
+            for (AVPlayerItem* item in player.items) {
+                AVPlayerItemVideoOutput* output = ensure_video_output_for_item(item);
+                if (!output) continue;
+                cv_buf = [output copyPixelBufferForItemTime:requested itemTimeForDisplay:nil];
+                if (cv_buf) break;
+            }
+            if (!cv_buf && current_item) {
+                AVPlayerItemVideoOutput* output = ensure_video_output_for_item(current_item);
+                if (output) {
+                    cv_buf = [output copyPixelBufferForItemTime:requested itemTimeForDisplay:nil];
+                }
+            }
+            if (!cv_buf) {
+                result.status = DecodeStatus::ReusedFrame;
+                return result;
+            }
+
+            result.buffer = cv_buf;
+            result.pts = clamped;
+            result.status = DecodeStatus::NewFrame;
+            return result;
+        }
+    }
+
     // Synchronous decode: acquire + copy in one call (backward compatible).
     DecodeStatus decode_frame() {
         auto acquired = acquire_pixel_buffer_impl();
@@ -339,10 +417,14 @@ struct AVFDecoder::Impl {
     void set_loop(bool loop) {
         assert([NSThread isMainThread]);
         @autoreleasepool {
-            is_looping = loop;
-            if (loop_observer) {
-                loop_observer.shouldLoop = loop;
+            if (!opened || !player) {
+                is_looping = loop;
+                return;
             }
+            if (is_looping == loop) return;
+            CMTime preserve_time = current_queue_time();
+            is_looping = loop;
+            rebuild_queue_preserving_time(preserve_time);
         }
     }
 
@@ -350,8 +432,6 @@ struct AVFDecoder::Impl {
         assert([NSThread isMainThread]);
         @autoreleasepool {
             if (!player || !opened) return;
-            bool force = loop_observer && loop_observer.loopFired;
-            if (force) loop_observer.loopFired = NO;
             current_speed_ = speed;
             if (speed > 0.0f) {
                 [player play];
@@ -359,7 +439,6 @@ struct AVFDecoder::Impl {
             } else {
                 [player pause];
             }
-            if (loop_observer) loop_observer.desiredRate = speed;
         }
     }
 
@@ -385,7 +464,8 @@ struct AVFDecoder::Impl {
         assert([NSThread isMainThread]);
         @autoreleasepool {
             if (player && opened) {
-                return static_cast<float>(CMTimeGetSeconds(player_item.currentTime));
+                AVPlayerItem* item = player.currentItem ? player.currentItem : player_item;
+                return item ? static_cast<float>(CMTimeGetSeconds(item.currentTime)) : 0.0f;
             }
             return 0.0f;
         }
@@ -393,7 +473,7 @@ struct AVFDecoder::Impl {
 
     bool seek(double time_seconds) {
         assert([NSThread isMainThread]);
-        if (!opened || !player_item || !player) return false;
+        if (!opened || !player) return false;
         const double t = std::max(0.0, time_seconds);
         @autoreleasepool {
             CMTime seek_time = CMTimeMakeWithSeconds(t, 600);
@@ -406,6 +486,71 @@ struct AVFDecoder::Impl {
             }
         }
         return true;
+    }
+
+    bool native_looping_enabled() const {
+        return opened && is_looping && player_looper != nil;
+    }
+
+    uint64_t manual_loop_seek_count() const {
+        return manual_loop_seek_count_;
+    }
+
+    static DecodedFrame copy_frame_at_time_for_asset(AVAsset* source_asset, double time_seconds) {
+        @autoreleasepool {
+            DecodedFrame frame;
+            if (!source_asset) return frame;
+
+            auto t0 = std::chrono::steady_clock::now();
+            AVAssetImageGenerator* generator =
+                [[AVAssetImageGenerator alloc] initWithAsset:source_asset];
+            generator.appliesPreferredTrackTransform = YES;
+            generator.requestedTimeToleranceBefore = kCMTimeZero;
+            generator.requestedTimeToleranceAfter = kCMTimeZero;
+
+            CMTime requested = CMTimeMakeWithSeconds(std::max(0.0, time_seconds), 600);
+            CMTime actual = kCMTimeInvalid;
+            NSError* error = nil;
+            CGImageRef image = [generator copyCGImageAtTime:requested
+                                                 actualTime:&actual
+                                                      error:&error];
+            if (!image) return frame;
+
+            const size_t width = CGImageGetWidth(image);
+            const size_t height = CGImageGetHeight(image);
+            frame.width = static_cast<uint32_t>(width);
+            frame.height = static_cast<uint32_t>(height);
+            frame.pts = CMTIME_IS_VALID(actual) ? CMTimeGetSeconds(actual) : time_seconds;
+            frame.requested_pts = time_seconds;
+            frame.data.resize(width * height * 4);
+
+            CGColorSpaceRef color_space = CGColorSpaceCreateDeviceRGB();
+            CGContextRef bitmap = CGBitmapContextCreate(frame.data.data(),
+                                                        width,
+                                                        height,
+                                                        8,
+                                                        width * 4,
+                                                        color_space,
+                                                        kCGBitmapByteOrder32Little |
+                                                            kCGImageAlphaPremultipliedFirst);
+            if (bitmap) {
+                CGContextDrawImage(bitmap, CGRectMake(0, 0, width, height), image);
+                CGContextRelease(bitmap);
+            } else {
+                frame.clear();
+            }
+            CGColorSpaceRelease(color_space);
+            CGImageRelease(image);
+
+            auto t1 = std::chrono::steady_clock::now();
+            frame.copy_time_us =
+                std::chrono::duration<float, std::micro>(t1 - t0).count();
+            return frame;
+        }
+    }
+
+    DecodedFrame copy_frame_at_time(double time_seconds) const {
+        return copy_frame_at_time_for_asset(asset, time_seconds);
     }
 };
 
@@ -421,6 +566,24 @@ void AVFDecoder::close() { if (impl_) impl_->close(); }
 bool AVFDecoder::is_open() const { return impl_ && impl_->opened; }
 DecodeStatus AVFDecoder::decode_frame() { return impl_->decode_frame(); }
 AcquiredPixelBuffer AVFDecoder::acquire_pixel_buffer() { return impl_->acquire_pixel_buffer_impl(); }
+AcquiredPixelBuffer AVFDecoder::acquire_pixel_buffer_at_time(double time_seconds) {
+    return impl_->acquire_pixel_buffer_at_time_impl(time_seconds);
+}
+
+DecodedFrame AVFDecoder::copy_frame_at_time(double time_seconds) const {
+    return impl_ ? impl_->copy_frame_at_time(time_seconds) : DecodedFrame{};
+}
+
+DecodedFrame AVFDecoder::copy_frame_at_time(const std::string& path, double time_seconds) {
+    @autoreleasepool {
+        NSString* path_ns = [NSString stringWithUTF8String:path.c_str()];
+        if (!path_ns) return DecodedFrame{};
+        NSURL* url = [NSURL fileURLWithPath:path_ns];
+        if (!url) return DecodedFrame{};
+        AVAsset* asset = [AVAsset assetWithURL:url];
+        return Impl::copy_frame_at_time_for_asset(asset, time_seconds);
+    }
+}
 
 DecodedFrame AVFDecoder::copy_pixel_buffer(AcquiredPixelBuffer&& acquired) {
     DecodedFrame frame;
@@ -496,6 +659,8 @@ float AVFDecoder::current_time() const { return impl_->current_time(); }
 bool AVFDecoder::seek(double time_seconds) { return impl_->seek(time_seconds); }
 float AVFDecoder::frame_rate() const { return impl_->frame_rate_; }
 uint64_t AVFDecoder::nil_frame_count() const { return impl_->no_frame_counter_; }
+bool AVFDecoder::native_looping_enabled() const { return impl_->native_looping_enabled(); }
+uint64_t AVFDecoder::manual_loop_seek_count() const { return impl_->manual_loop_seek_count(); }
 
 std::unique_ptr<VideoDecoder> create_avf_decoder() {
     return std::make_unique<AVFDecoder>();

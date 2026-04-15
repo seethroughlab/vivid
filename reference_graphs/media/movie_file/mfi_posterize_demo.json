@@ -3,7 +3,7 @@
     "vivid_version": "0.1.0",
     "nodes": {
         "vid": {
-            "type": "MovieFileIn",
+            "type": "MovieFile",
             "params": {
                 "speed": 1.0,
                 "play_mode": 0.0,
@@ -12,16 +12,6 @@
             "layout": {
                 "x": 15.6953125,
                 "y": 440.79296875
-            }
-        },
-        "audio": {
-            "type": "MovieFileAudio",
-            "params": {
-                "file": "../../../assets/lake.mp4"
-            },
-            "layout": {
-                "x": 235.4609375,
-                "y": 549.87890625
             }
         },
         "levels": {
@@ -63,12 +53,7 @@
             "to": "vout/input"
         },
         {
-            "from": "audio/time",
-            "to": "vid/audio_time",
-            "bridge": "last_sample"
-        },
-        {
-            "from": "audio/output",
+            "from": "vid/audio",
             "to": "aout/input"
         }
     ],

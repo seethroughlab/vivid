@@ -29,8 +29,8 @@
         "aout": {
             "type": "audio_out",
             "layout": {
-                "x": 1007.1499,
-                "y": 406.47858
+                "x": 1294.0249,
+                "y": 613.3653
             }
         },
         "bname": {
@@ -82,8 +82,9 @@
             }
         },
         "movie": {
-            "type": "MovieFileIn",
+            "type": "MovieFile",
             "params": {
+                "volume": 1.0,
                 "speed": 1.0,
                 "play_mode": 0.0,
                 "file": ""
@@ -91,17 +92,6 @@
             "layout": {
                 "x": 1010.0605,
                 "y": 599.96826
-            }
-        },
-        "movie_audio": {
-            "type": "MovieFileAudio",
-            "params": {
-                "volume": 1.0,
-                "file": ""
-            },
-            "layout": {
-                "x": 696.7044,
-                "y": 421.92294
             }
         },
         "pick": {
@@ -151,17 +141,7 @@
             "to": "movie/file"
         },
         {
-            "from": "pick/file",
-            "to": "movie_audio/file",
-            "bridge": "hold"
-        },
-        {
-            "from": "movie_audio/time",
-            "to": "movie/audio_time",
-            "bridge": "last_sample"
-        },
-        {
-            "from": "movie_audio/output",
+            "from": "movie/audio",
             "to": "aout/input"
         },
         {
@@ -186,8 +166,8 @@
         }
     ],
     "viewport": {
-        "pan_x": 220.42795,
-        "pan_y": 64.249054,
-        "zoom": 0.7435439
+        "pan_x": -388.8828,
+        "pan_y": -95.28906,
+        "zoom": 1.0
     }
 }
