@@ -1,7 +1,53 @@
 {
     "schema_version": 3,
     "vivid_version": "0.1.0",
+    "meta": {
+        "id": "mfi_posterize_demo",
+        "title": "Movie File: Posterize",
+        "description": "Color reduction on video via Levels and Posterize for a graphic-novel look.",
+        "tags": [
+            "movie",
+            "posterize",
+            "color-reduction",
+            "demo"
+        ],
+        "difficulty": "beginner",
+        "domains": [
+            "gpu"
+        ],
+        "featured_rank": 42,
+        "content_kind": "example",
+        "category": "media",
+        "family": "Movie playback reference",
+        "role": "reference",
+        "playability": "self_playing"
+    },
     "nodes": {
+        "aout": {
+            "type": "audio_out",
+            "layout": {
+                "x": 250.72656,
+                "y": 547.6875
+            }
+        },
+        "levels": {
+            "type": "Levels",
+            "params": {
+                "gamma": 0.9,
+                "contrast": 1.5,
+                "brightness": 0.1
+            },
+            "layout": {
+                "x": 243.0625,
+                "y": 282.34766
+            }
+        },
+        "posterize": {
+            "type": "Posterize",
+            "params": {
+                "levels": 6.0
+            }
+        },
         "vid": {
             "type": "MovieFile",
             "params": {
@@ -11,32 +57,11 @@
             },
             "layout": {
                 "x": 15.6953125,
-                "y": 440.79296875
-            }
-        },
-        "levels": {
-            "type": "Levels",
-            "params": {
-                "gamma": 0.8999999761581421,
-                "contrast": 1.5,
-                "brightness": 0.10000000149011612
-            },
-            "layout": {
-                "x": 243.0625,
-                "y": 282.34765625
-            }
-        },
-        "posterize": {
-            "type": "Posterize",
-            "params": {
-                "levels": 6.0
+                "y": 440.79297
             }
         },
         "vout": {
             "type": "video_out"
-        },
-        "aout": {
-            "type": "audio_out"
         }
     },
     "connections": [
@@ -58,30 +83,8 @@
         }
     ],
     "viewport": {
-        "pan_x": 0.0,
-        "pan_y": 0.0,
+        "pan_x": 263.03906,
+        "pan_y": -16.433594,
         "zoom": 1.0
-    },
-    "meta": {
-        "id": "mfi_posterize_demo",
-        "title": "Movie File: Posterize",
-        "description": "Color reduction on video via Levels and Posterize for a graphic-novel look.",
-        "tags": [
-            "movie",
-            "posterize",
-            "color-reduction",
-            "demo"
-        ],
-        "difficulty": "beginner",
-        "domains": [
-            "gpu"
-        ],
-        "requires_packages": [],
-        "featured_rank": 42,
-        "content_kind": "example",
-        "category": "media",
-        "family": "Movie playback reference",
-        "role": "reference",
-        "playability": "self_playing"
     }
 }

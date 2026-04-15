@@ -1,40 +1,63 @@
 {
     "schema_version": 3,
     "vivid_version": "0.1.0",
+    "meta": {
+        "id": "mfi_av_sync_demo",
+        "title": "Movie Playback: Audio Sync",
+        "description": "A movie plays with its audio and video locked together, then sends the sound through reverb.",
+        "tags": [
+            "movie",
+            "audio-visual",
+            "reverb",
+            "demo"
+        ],
+        "difficulty": "beginner",
+        "domains": [
+            "audio",
+            "gpu"
+        ],
+        "featured_rank": 17,
+        "estimated_minutes": 3,
+        "content_kind": "example",
+        "category": "media",
+        "family": "Movie playback",
+        "role": "creative",
+        "playability": "self_playing"
+    },
     "nodes": {
         "aout": {
             "type": "audio_out",
             "layout": {
-                "x": 693.7050170898438,
-                "y": 466.9637756347656
+                "x": 611.3261,
+                "y": 609.90125
             }
         },
         "rev": {
             "type": "Reverb",
             "params": {
                 "room_size": 0.5,
-                "damping": 0.4000000059604645
+                "damping": 0.4
             },
             "layout": {
-                "x": 430.0,
-                "y": 451.0
+                "x": 417.40625,
+                "y": 653.96094
             }
         },
         "vid": {
             "type": "MovieFile",
             "params": {
-                "file": "../../../assets/camera.mp4"
+                "file": "/Users/jeff/Developer/vivid/assets/camera.mp4"
             },
             "layout": {
-                "x": 54.689491271972656,
-                "y": 590.5892333984375
+                "x": 71.29887,
+                "y": 570.3353
             }
         },
         "vout": {
             "type": "video_out",
             "layout": {
-                "x": 664.1022338867188,
-                "y": 669.5669555664062
+                "x": 439.8874,
+                "y": 223.3443
             }
         }
     },
@@ -53,32 +76,8 @@
         }
     ],
     "viewport": {
-        "pan_x": 403.2991027832031,
-        "pan_y": 400.3992919921875,
-        "zoom": 0.4422111213207245
-    },
-    "meta": {
-        "id": "mfi_av_sync_demo",
-        "title": "Movie Playback: Audio Sync",
-        "description": "A movie plays with its audio and video locked together, then sends the sound through reverb.",
-        "tags": [
-            "movie",
-            "audio-visual",
-            "reverb",
-            "demo"
-        ],
-        "difficulty": "beginner",
-        "domains": [
-            "audio",
-            "gpu"
-        ],
-        "requires_packages": [],
-        "featured_rank": 17,
-        "estimated_minutes": 3,
-        "content_kind": "example",
-        "category": "media",
-        "family": "Movie playback",
-        "role": "creative",
-        "playability": "self_playing"
+        "pan_x": 108.85547,
+        "pan_y": -220.19531,
+        "zoom": 1.0
     }
 }
