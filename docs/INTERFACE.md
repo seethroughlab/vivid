@@ -95,7 +95,7 @@ Card line 1 shows the variation name (truncated with ellipsis). Line 2 shows sta
 - **Branch:** Duplicates the active variation with a " branch" suffix and recalls the copy. This is the primary exploration action — try something new without losing your current state.
 - **Update:** Overwrites the active variation with the current live state, clearing the dirty flag.
 - **+ Save New:** Saves the current live state as a new variation.
-- **Quantize buttons:** enabled only when the graph metronome is enabled. Quantized switching is explicitly tied to the graph metronome rather than an invisible clock-node binding.
+- **Quantize buttons:** quantized switching is tied to the graph metronome rather than an invisible clock-node binding.
 
 ### Transport BPM Interaction
 
@@ -123,7 +123,7 @@ The session surface uses these commands (available via UI, control server, and C
 - `remove_variation(name)` — delete a variation
 - `rename_variation(old_name, new_name)` — rename a variation
 - `queue_variation(name, quantize)` — queue a variation switch (instant/beat/bar/4bar)
-- `set_graph_metronome(enabled, bpm, beats_per_bar)` — update graph-wide shared pulse state
+- `set_graph_metronome(bpm, beats_per_bar)` — update graph-wide shared pulse state
 
 The graph metronome is optional shared transport infrastructure, not a master timeline. Clocks can
 free-run independently or opt into syncing to that shared pulse.

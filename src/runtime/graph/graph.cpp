@@ -419,7 +419,6 @@ bool Graph::parse_doc(const nlohmann::json& root) {
         const auto& met = *met_it;
         auto bpm_it = met.find("bpm");
         auto bpb_it = met.find("beats_per_bar");
-        // "enabled" field silently ignored for backward compat with old graphs.
         if (bpm_it != met.end() && bpm_it->is_number())
             metronome_.bpm = static_cast<float>(bpm_it->get<double>());
         if (bpb_it != met.end() && bpb_it->is_number_integer())

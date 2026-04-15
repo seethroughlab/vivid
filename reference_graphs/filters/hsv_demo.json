@@ -101,7 +101,6 @@
         }
     ],
     "metronome": {
-        "enabled": true,
         "bpm": 120.0,
         "beats_per_bar": 4
     },

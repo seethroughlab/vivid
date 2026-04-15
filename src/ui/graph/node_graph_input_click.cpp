@@ -260,9 +260,6 @@ void NodeGraphUI::handle_left_click() {
             if (mouse_.x >= br.x && mouse_.x <= br.x + br.w &&
                 mouse_.y >= br.y && mouse_.y <= br.y + br.h) {
                 if (!br.enabled) {
-                    if (br.action >= 3 && br.action <= 5) {
-                        status_banner_error_ = "Enable the graph metronome in the workspace header to use quantized variation switching.";
-                    }
                     mouse_.left_clicked = false;
                     return;
                 }

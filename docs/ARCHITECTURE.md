@@ -49,7 +49,7 @@ Source: `src/runtime/graph/graph_compiler.cpp`, with planning in `graph_compiler
 
 ### Graph Metronome
 
-Each graph carries an optional metronome (`GraphMetronomeDef`: `enabled`, `bpm`, `beats_per_bar`). When enabled, the runtime maintains a `LiveMetronomeState` with an anchor timestamp, computing `beat_phase` (0–1 sawtooth per beat) and `bar_phase` (0–1 per bar) each frame. These are passed to operators via the frame/audio context, enabling beat-quantized recall, clock-synced LFOs, and sequencer timing without an explicit Clock node.
+Each graph carries a metronome (`GraphMetronomeDef`: `bpm`, `beats_per_bar`). The runtime maintains a `LiveMetronomeState` with an anchor timestamp, computing `beat_phase` (0–1 sawtooth per beat) and `bar_phase` (0–1 per bar) each frame. These are passed to operators via the frame/audio context, enabling beat-quantized recall, clock-synced LFOs, and sequencer timing without an explicit Clock node. Operators choose whether to sync to the metronome or free-run independently.
 
 ## 5.5 Cadence Bridges
 

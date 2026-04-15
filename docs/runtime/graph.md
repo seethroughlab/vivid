@@ -179,7 +179,7 @@ In other words, the graph metronome adds a discoverable shared pulse without rep
 clock wiring or forcing all temporal logic through one global source.
 
 `quantize_clock` is still read and written for backward compatibility, but quantized variation
-switching now uses the graph metronome when it is enabled.
+switching now uses the graph metronome.
 
 At runtime, that transport is sampled from `RuntimeCore`'s live metronome state rather than from
 the compiled graph metadata. That means:

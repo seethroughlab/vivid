@@ -146,7 +146,7 @@ CommandResult recall_variation(name);    // apply variation params to runtime no
 CommandResult recall_variation_idx(idx);
 CommandResult update_variation(name);    // overwrite with current params
 CommandResult queue_variation(name, quantize);  // schedule for next beat/bar
-CommandResult set_graph_metronome(enabled, bpm, beats_per_bar);
+CommandResult set_graph_metronome(bpm, beats_per_bar);
 CommandResult set_quantize_clock(node_id);  // deprecated compatibility shim
 GraphMetronomeSample current_metronome_sample() const;
 void tick_quantized_switch();            // call each frame to fire pending switches
@@ -157,7 +157,6 @@ legacy alias).
 
 Quantized switching is now graph-metronome-backed:
 
-- when the graph metronome is disabled, non-instant `queue_variation()` calls fail with an error
 - beat/bar/4-bar boundaries are derived from the graph metronome's `bpm` and `beats_per_bar`
 - `tick_quantized_switch()` compares the current metronome beat count against the queued target
   boundary instead of watching a hidden designated clock node
@@ -168,7 +167,7 @@ runtime no longer uses that hidden clock-node reference to schedule variation re
 ## Graph Metronome
 
 ```cpp
-CommandResult set_graph_metronome(bool enabled, float bpm, int beats_per_bar);
+CommandResult set_graph_metronome(float bpm, int beats_per_bar);
 GraphMetronomeSample current_metronome_sample() const;
 ```
 
@@ -202,8 +201,6 @@ from a runtime-owned transport state in `RuntimeCore`:
 - BPM changes are phase-continuous: the current beat position is preserved and the new tempo takes
   effect from that instant forward
 - meter changes restart the bar immediately at beat 0 / bar 0
-- enabling the metronome after it was disabled starts immediately at beat 0 / bar 0
-- disabling the metronome clears any queued quantized variation
 
 That live transport state is what frame, audio, and GPU operators now receive in their runtime
 contexts, so metronome-aware operators retime without waiting for `apply_pending()` or a graph

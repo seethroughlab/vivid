@@ -238,7 +238,7 @@
             ],
             "active_variation": 1,
             "quantize_clock": "clock1",
-            "metronome": { "enabled": true, "bpm": 92.0, "beats_per_bar": 3 }
+            "metronome": { "bpm": 92.0, "beats_per_bar": 3 }
         })");
 
         vivid::Graph g;

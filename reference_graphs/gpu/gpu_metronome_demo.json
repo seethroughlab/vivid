@@ -25,7 +25,6 @@
         "playability": "self_playing"
     },
     "metronome": {
-        "enabled": true,
         "bpm": 124.0,
         "beats_per_bar": 4
     },
