@@ -23,7 +23,7 @@ struct Uniforms {
     grid_y: i32,
     grid_overlay: f32,
     tess_level: i32, // subdivisions between control points
-    _pad0: f32,
+    disp_amount: f32,
     _pad1: f32,
 };
 
@@ -41,6 +41,7 @@ struct VertexOutput {
 @group(0) @binding(1) var texSampler: sampler;
 @group(0) @binding(2) var inputTex: texture_2d<f32>;
 @group(0) @binding(3) var<storage, read> control_points: array<ControlPoint>;
+@group(0) @binding(4) var dispTex: texture_2d<f32>;
 
 // Fetch control point, clamping indices to valid range
 fn get_cp(ix: i32, iy: i32) -> vec2f {
@@ -114,7 +115,15 @@ fn vs_main(@builtin(vertex_index) vid: u32) -> VertexOutput {
     // Map to control point grid space and do bicubic interpolation
     let cp_x = src_u * f32(uniforms.grid_x);
     let cp_y = src_v * f32(uniforms.grid_y);
-    let warped = bicubic_sample(cp_x, cp_y);
+    var warped = bicubic_sample(cp_x, cp_y);
+
+    // Apply displacement from texture: R = x offset, G = y offset
+    // Values are mapped from 0..1 texture range to -1..1 displacement range
+    if (uniforms.disp_amount > 0.001) {
+        let disp = textureSampleLevel(dispTex, texSampler, vec2f(src_u, src_v), 0.0);
+        let offset = (disp.rg - 0.5) * 2.0 * uniforms.disp_amount;
+        warped = warped + offset;
+    }
 
     // Convert from 0..1 to clip space -1..1
     let clip_pos = vec2f(warped.x * 2.0 - 1.0, 1.0 - warped.y * 2.0);
@@ -161,7 +170,7 @@ struct MeshWarpUniforms {
     int   grid_y;
     float grid_overlay;
     int   tess_level;
-    float _pad0;
+    float disp_amount;
     float _pad1;
 };
 
@@ -171,11 +180,13 @@ struct ControlPointGpu {
 /**
  * @brief Warps a texture via bicubic-interpolated control point grid.
  *
- * Defines a grid of draggable control points that deform the source
- * texture using Catmull-Rom bicubic interpolation. Optional grid overlay
- * shows control points and mesh lines.
+ * Deforms the source texture using a grid of Catmull-Rom bicubic
+ * control points. A displacement texture input drives the warp:
+ * red channel offsets X, green channel offsets Y. Feed Noise, LFO
+ * textures, or any GPU output to create dynamic warping effects.
  *
- * @see Feedback, TimeMachine
+ * @param amount Displacement strength — 0 = passthrough, 1 = full displacement.
+ * @see Feedback, TimeMachine, Noise
  */
 struct MeshWarp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "MeshWarp";
@@ -183,11 +194,13 @@ struct MeshWarp : vivid::OperatorBase, vivid::GpuProcessable {
 
     vivid::Param<int>   grid_x       {"grid_x",       4, 2, 16};
     vivid::Param<int>   grid_y       {"grid_y",       4, 2, 16};
+    vivid::Param<float> amount       {"amount",        0.5f, 0.0f, 1.0f};
     vivid::Param<float> grid_overlay {"grid_overlay",  0.0f, 0.0f, 1.0f};
 
     MeshWarp() {
         vivid::description(grid_x, "Number of horizontal control point divisions");
         vivid::description(grid_y, "Number of vertical control point divisions");
+        vivid::description(amount, "Displacement strength — 0 = no warp, 1 = full displacement");
         vivid::description(grid_overlay, "Visibility of the control point grid overlay, 0 = hidden");
     }
 
@@ -196,12 +209,14 @@ struct MeshWarp : vivid::OperatorBase, vivid::GpuProcessable {
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&grid_x);
         out.push_back(&grid_y);
+        out.push_back(&amount);
         out.push_back(&grid_overlay);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"source",  VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});
-        out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
+        out.push_back({"source",       VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});
+        out.push_back({"displacement", VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});
+        out.push_back({"texture",      VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
     void process_gpu(const VividGpuContext* ctx) override {
@@ -227,12 +242,16 @@ struct MeshWarp : vivid::OperatorBase, vivid::GpuProcessable {
             cached_gy_ = gy;
         }
 
-        // Get input texture
+        // Get input textures
         WGPUTextureView input_tex = nullptr;
-        if (ctx->input_texture_views && ctx->input_texture_count >= 1)
-            input_tex = ctx->input_texture_views[0];
+        WGPUTextureView disp_tex = nullptr;
+        if (ctx->input_texture_views) {
+            if (ctx->input_texture_count >= 1) input_tex = ctx->input_texture_views[0];
+            if (ctx->input_texture_count >= 2) disp_tex = ctx->input_texture_views[1];
+        }
         if (!input_tex && !fallback_view_) create_fallback(ctx);
         if (!input_tex) input_tex = fallback_view_;
+        if (!disp_tex) disp_tex = fallback_view_;
 
         // Update uniforms
         MeshWarpUniforms u{};
@@ -242,6 +261,7 @@ struct MeshWarp : vivid::OperatorBase, vivid::GpuProcessable {
         u.grid_y        = gy;
         u.grid_overlay  = grid_overlay.value;
         u.tess_level    = kTessLevel;
+        u.disp_amount   = amount.value;
         wgpuQueueWriteBuffer(ctx->queue, uniform_buf_, 0, &u, sizeof(u));
 
         // Update control points — identity grid (can be animated via parameter automation)
@@ -257,12 +277,12 @@ struct MeshWarp : vivid::OperatorBase, vivid::GpuProcessable {
         wgpuQueueWriteBuffer(ctx->queue, storage_buf_, 0, cps.data(),
                              cp_count * sizeof(ControlPointGpu));
 
-        // Recreate bind group when input texture changes
-        if (input_tex != cached_input_tex_) {
+        // Recreate bind group when input textures change
+        if (input_tex != cached_input_tex_ || disp_tex != cached_disp_tex_) {
             if (cached_bind_group_)
                 wgpuBindGroupRelease(cached_bind_group_);
 
-            WGPUBindGroupEntry entries[4]{};
+            WGPUBindGroupEntry entries[5]{};
             entries[0].binding = 0;
             entries[0].buffer  = uniform_buf_;
             entries[0].offset  = 0;
@@ -275,14 +295,17 @@ struct MeshWarp : vivid::OperatorBase, vivid::GpuProcessable {
             entries[3].buffer  = storage_buf_;
             entries[3].offset  = 0;
             entries[3].size    = static_cast<uint64_t>(cp_count) * sizeof(ControlPointGpu);
+            entries[4].binding = 4;
+            entries[4].textureView = disp_tex;
 
             WGPUBindGroupDescriptor bg_desc{};
             bg_desc.label = vivid_sv("MeshWarp BG");
             bg_desc.layout = bind_layout_;
-            bg_desc.entryCount = 4;
+            bg_desc.entryCount = 5;
             bg_desc.entries = entries;
             cached_bind_group_ = wgpuDeviceCreateBindGroup(ctx->device, &bg_desc);
             cached_input_tex_ = input_tex;
+            cached_disp_tex_ = disp_tex;
         }
 
         // Render the tessellated mesh
@@ -329,6 +352,7 @@ private:
     WGPUTextureView     fallback_view_ = nullptr;
     WGPUBindGroup       cached_bind_group_ = nullptr;
     WGPUTextureView     cached_input_tex_  = nullptr;
+    WGPUTextureView     cached_disp_tex_   = nullptr;
     int                 cached_gx_ = 0;
     int                 cached_gy_ = 0;
     bool                init_failed_       = false;
@@ -337,6 +361,7 @@ private:
     void release_all() {
         vivid::gpu::release(cached_bind_group_);
         cached_input_tex_ = nullptr;
+        cached_disp_tex_ = nullptr;
         vivid::gpu::release(pipeline_);
         vivid::gpu::release(bind_layout_);
         vivid::gpu::release(uniform_buf_);
@@ -413,15 +438,15 @@ private:
             storage_buf_ = wgpuDeviceCreateBuffer(gpu->device, &desc);
         }
 
-        // Bind group layout: uniform(0) + sampler(1) + texture(2) + storage(3)
-        WGPUBindGroupLayoutEntry entries[4]{};
+        // Bind group layout: uniform(0) + sampler(1) + source(2) + storage(3) + displacement(4)
+        WGPUBindGroupLayoutEntry entries[5]{};
         entries[0].binding = 0;
         entries[0].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
         entries[0].buffer.type = WGPUBufferBindingType_Uniform;
         entries[0].buffer.minBindingSize = sizeof(MeshWarpUniforms);
 
         entries[1].binding = 1;
-        entries[1].visibility = WGPUShaderStage_Fragment;
+        entries[1].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
         entries[1].sampler.type = WGPUSamplerBindingType_Filtering;
 
         entries[2].binding = 2;
@@ -435,9 +460,15 @@ private:
         entries[3].buffer.type = WGPUBufferBindingType_ReadOnlyStorage;
         entries[3].buffer.minBindingSize = static_cast<uint64_t>(cp_count) * sizeof(ControlPointGpu);
 
+        entries[4].binding = 4;
+        entries[4].visibility = WGPUShaderStage_Vertex;
+        entries[4].texture.sampleType = WGPUTextureSampleType_Float;
+        entries[4].texture.viewDimension = WGPUTextureViewDimension_2D;
+        entries[4].texture.multisampled = false;
+
         WGPUBindGroupLayoutDescriptor bgl_desc{};
         bgl_desc.label = vivid_sv("MeshWarp BGL");
-        bgl_desc.entryCount = 4;
+        bgl_desc.entryCount = 5;
         bgl_desc.entries = entries;
         bind_layout_ = wgpuDeviceCreateBindGroupLayout(gpu->device, &bgl_desc);
 
