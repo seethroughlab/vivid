@@ -996,63 +996,44 @@ private:
                                     bool target_time_mode) {
         if (!avf || !decode_worker_) return DecodeStatus::NilFrame;
 
-        // AVPlayerItemVideoOutput is reliable as a playback-clock video output,
-        // but in audio-master mode Vivid asks for frames by an external session
-        // time. After looper wraps, AVFoundation can return retained/stale
-        // buffers for those target-time requests while still producing a
-        // non-null CVPixelBuffer. Use the exact-frame fallback for target-time
-        // audio-master requests until this path moves to a true target-time
-        // decoder (AVAssetReader/VideoToolbox).
-        const bool use_exact_target_fallback = target_time_mode && request.allow_fallback;
-        AcquiredPixelBuffer acquired;
-        if (!use_exact_target_fallback) {
-            acquired = target_time_mode
-                ? avf->acquire_pixel_buffer_at_time(request.pts)
-                : avf->acquire_pixel_buffer();
+        if (target_time_mode) {
+            const double lookahead = request.primary ? frame_duration : 0.0;
+            auto acquired_frames = avf->read_pixel_buffers_until(request.pts,
+                                                                 lookahead,
+                                                                 request.loop_generation);
+            bool submitted_any = false;
+            for (auto& acquired : acquired_frames) {
+                auto frame = AVFDecoder::make_native_frame(std::move(acquired));
+                if (frame.empty()) continue;
+                frame.requested_pts = request.pts;
+                frame.loop_generation = request.loop_generation;
+                frame.request_sequence = ++video_request_sequence_;
+                frame.request_key = avf_request_key(request.loop_generation,
+                                                    frame.pts,
+                                                    frame_duration);
+                submitted_any = decode_worker_->submit_decoded(std::move(frame)) || submitted_any;
+            }
+            return submitted_any ? DecodeStatus::NewFrame : DecodeStatus::ReusedFrame;
         }
-        if (!acquired.valid() && !(target_time_mode && request.allow_fallback)) {
+
+        AcquiredPixelBuffer acquired;
+        acquired = avf->acquire_pixel_buffer();
+        if (!acquired.valid()) {
             return acquired.status;
         }
 
-        const double requested_pts = request.pts;
-        const uint64_t loop_generation = request.loop_generation;
-        const uint64_t request_key = avf_request_key(loop_generation, requested_pts, frame_duration);
-        const uint64_t request_sequence = ++video_request_sequence_;
-        std::shared_ptr<AcquiredPixelBuffer> acquired_ptr;
-        if (acquired.valid()) {
-            acquired_ptr = std::make_shared<AcquiredPixelBuffer>(std::move(acquired));
+        auto frame = AVFDecoder::make_native_frame(std::move(acquired));
+        if (!frame.empty()) {
+            frame.requested_pts = request.pts;
+            frame.loop_generation = request.loop_generation;
+            frame.request_sequence = ++video_request_sequence_;
+            frame.request_key = avf_request_key(request.loop_generation,
+                                                frame.pts,
+                                                frame_duration);
+            const bool submitted = decode_worker_->submit_decoded(std::move(frame));
+            return submitted ? DecodeStatus::NewFrame : DecodeStatus::ReusedFrame;
         }
-        const std::string fallback_path = last_path_;
-        if (acquired_ptr) {
-            auto frame = AVFDecoder::make_native_frame(std::move(*acquired_ptr));
-            if (!frame.empty()) {
-                frame.pts = requested_pts;
-                frame.requested_pts = requested_pts;
-                frame.loop_generation = loop_generation;
-                frame.request_sequence = request_sequence;
-                frame.request_key = request_key;
-                const bool submitted = decode_worker_->submit_decoded(std::move(frame));
-                return submitted ? DecodeStatus::NewFrame : DecodeStatus::ReusedFrame;
-            }
-            return DecodeStatus::NilFrame;
-        }
-
-        const bool submitted = decode_worker_->submit_work(
-            [fallback_path, requested_pts, loop_generation, request_sequence, request_key]() mutable {
-                auto frame = AVFDecoder::copy_frame_at_time(fallback_path, requested_pts);
-                if (!frame.empty()) {
-                    frame.pts = requested_pts;
-                    frame.requested_pts = requested_pts;
-                    frame.loop_generation = loop_generation;
-                    frame.request_sequence = request_sequence;
-                    frame.request_key = request_key;
-                    frame.cpu_fallback = true;
-                }
-                return frame;
-            },
-            loop_generation,
-            request_key);
-        return submitted ? DecodeStatus::NewFrame : DecodeStatus::ReusedFrame;
+        return DecodeStatus::NilFrame;
     }
 
     DecodeStatus schedule_avf_requests(AVFDecoder* avf,

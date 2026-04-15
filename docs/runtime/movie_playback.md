@@ -35,13 +35,13 @@ Decoder selection is still format-driven:
 - Other movie formats use the AVFoundation decoder path.
 - Static images still load through the image path and produce a texture without audio.
 
-For AVFoundation video, requested frame times come from the session transport. AVFoundation may be used to acquire frames, but it is not the independent presentation clock for synced playback. The AVFoundation backend uses `AVQueuePlayer` + `AVPlayerLooper` for loop mode so non-HAP video stays pre-rolled across wrap instead of seeking to zero at end-of-item.
+For AVFoundation video, requested frame times come from the session transport. In self-clock mode, AVFoundation is the presentation clock and the backend uses `AVQueuePlayer` + `AVPlayerLooper` so non-HAP video stays pre-rolled across wrap instead of seeking to zero at end-of-item.
 
 Healthy macOS non-HAP self-clock playback is GPU-native after AVFoundation acquisition: the main thread acquires an IOSurface-compatible `CVPixelBuffer`, the frame side wraps it with `CVMetalTextureCache`, and Metal blits or renders it into the MovieFile WGPU texture through wgpu-native Metal interop. This preserves Apple hardware decode and avoids per-frame CPU pixel readback/copy when AVFoundation is the video presentation clock.
 
-When audio is authoritative, MovieFile currently treats `AVPlayerItemVideoOutput` target-time buffers as opportunistic only. If the target-time native path cannot prove it has a fresh buffer for the requested session timestamp, the operator uses the bounded exact-frame CPU fallback rather than presenting a stale GPU-native buffer under a false timestamp. A future production target-time backend should replace that fallback with AVAssetReader/VideoToolbox-style decode that yields timestamped `CVPixelBuffer` frames without CPU copy.
+When audio is authoritative, non-HAP playback uses a separate `AVAssetReader` target-time path. The reader advances timestamped decoded `CVPixelBuffer`s toward the Vivid audio-clock target and feeds the bounded presentation queue by loop generation and PTS. `AVPlayerItemVideoOutput` is not used as a random-access decoder for external audio-clock timestamps.
 
-The GPU-native diagnostics make this visible before and during soak tests. Healthy self-clock H.264/HEVC playback should show `gpu_native_frames` increasing steadily, with `cpu_fallback_frames` limited to startup, sparse fallback, or backend recovery cases. In audio-master mode, elevated `cpu_fallback_frames` means the exact target-time fallback is protecting sync/presentation cadence. `metal_import_failures` indicates degraded Metal interop and should stay zero or bounded. `metal_blit_us` reports the GPU-side transfer cost.
+The GPU-native diagnostics make this visible before and during soak tests. Healthy H.264/HEVC playback should show `gpu_native_frames` increasing steadily, with `cpu_fallback_frames` limited to startup or backend recovery cases. `metal_import_failures` indicates degraded Metal interop and should stay zero or bounded. `metal_blit_us` reports the GPU-side transfer cost.
 
 For HAP, frame selection follows the same session target time and uses direct compressed upload.
 
@@ -67,6 +67,7 @@ Seeks are not the steady-state sync mechanism. Persistent medium drift escalates
 - repeated correction seek churn
 - Metal import failure preventing GPU-native non-HAP self-clock playback
 - CPU fallback dominating a non-HAP path that is expected to be GPU-native
+- movie time/new-frame counters advancing while the visible texture hash remains frozen across diagnostic calls
 
 There is no bridge-mismatch diagnostic because the public movie sync bridge no longer exists.
 

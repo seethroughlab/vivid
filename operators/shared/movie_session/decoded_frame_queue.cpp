@@ -39,6 +39,17 @@ bool DecodedFrameQueue::push(DecodedFrame&& frame) {
                 return queued.loop_generation < frame.loop_generation;
             });
         if (drop_it == frames_.end()) {
+            drop_it = std::find_if(frames_.begin(), frames_.end(),
+                [&](const DecodedFrame& queued) {
+                    return queued.loop_generation == frame.loop_generation;
+                });
+        }
+        if (drop_it == frames_.end()) {
+            const bool preserves_future = std::any_of(frames_.begin(), frames_.end(),
+                [&](const DecodedFrame& queued) {
+                    return queued.loop_generation > frame.loop_generation;
+                });
+            if (preserves_future) return false;
             drop_it = frames_.begin();
         }
         frames_.erase(drop_it);

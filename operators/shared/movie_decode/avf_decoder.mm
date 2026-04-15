@@ -17,6 +17,7 @@
 #include <memory>
 #include <cassert>
 #include <algorithm>
+#include <array>
 
 // =============================================================================
 // dispatch_to_main_with_timeout — bounded alternative to dispatch_sync
@@ -59,6 +60,16 @@ struct AVFDecoder::Impl {
     AVPlayerItemVideoOutput* video_output = nil;
     std::string              source_path;
 
+    struct ReaderStream {
+        AVAssetReader* reader = nil;
+        AVAssetReaderTrackOutput* output = nil;
+        double start_time = 0.0;
+        double last_pts = -1.0;
+        bool exhausted = false;
+        AcquiredPixelBuffer pending;
+    };
+    std::array<ReaderStream, 2> reader_streams;
+
     std::vector<uint8_t> pixel_buffer;
     uint32_t frame_width  = 0;
     uint32_t frame_height = 0;
@@ -69,6 +80,33 @@ struct AVFDecoder::Impl {
     float    current_speed_ = 1.0f;
     uint64_t no_frame_counter_ = 0;
     uint64_t manual_loop_seek_count_ = 0;
+
+    void reset_reader_stream(ReaderStream& stream) {
+        if (stream.reader) {
+            [stream.reader cancelReading];
+        }
+        stream.reader = nil;
+        stream.output = nil;
+        stream.start_time = 0.0;
+        stream.last_pts = -1.0;
+        stream.exhausted = false;
+        stream.pending.release();
+    }
+
+    void reset_reader_streams() {
+        for (auto& stream : reader_streams) {
+            reset_reader_stream(stream);
+        }
+    }
+
+    static double clamp_reader_time(double time_seconds,
+                                    double duration_seconds,
+                                    double frame_duration) {
+        if (duration_seconds <= 0.0) return std::max(0.0, time_seconds);
+        const double last_reasonable =
+            std::max(0.0, duration_seconds - std::max(1e-6, frame_duration * 0.25));
+        return std::clamp(time_seconds, 0.0, last_reasonable);
+    }
 
     NSDictionary* pixel_buffer_attrs() const {
         return @{
@@ -84,6 +122,57 @@ struct AVFDecoder::Impl {
     AVPlayerItemVideoOutput* make_video_output() const {
         return [[AVPlayerItemVideoOutput alloc]
             initWithPixelBufferAttributes:pixel_buffer_attrs()];
+    }
+
+    bool create_reader_stream(ReaderStream& stream, double start_time) {
+        reset_reader_stream(stream);
+        if (!asset) return false;
+
+        NSError* error = nil;
+        stream.reader = [AVAssetReader assetReaderWithAsset:asset error:&error];
+        if (!stream.reader || error) {
+            std::fprintf(stderr, "[avf_decoder] AVAssetReader create failed: %s\n",
+                         error.localizedDescription.UTF8String ?: "<no error>");
+            reset_reader_stream(stream);
+            return false;
+        }
+
+        NSArray<AVAssetTrack*>* tracks = [asset tracksWithMediaType:AVMediaTypeVideo];
+        if (tracks.count == 0) {
+            reset_reader_stream(stream);
+            return false;
+        }
+
+        AVAssetTrack* track = tracks[0];
+        stream.output = [AVAssetReaderTrackOutput assetReaderTrackOutputWithTrack:track
+                                                                   outputSettings:pixel_buffer_attrs()];
+        if (!stream.output) {
+            reset_reader_stream(stream);
+            return false;
+        }
+        stream.output.alwaysCopiesSampleData = NO;
+        if (![stream.reader canAddOutput:stream.output]) {
+            std::fprintf(stderr, "[avf_decoder] AVAssetReader cannot add video output\n");
+            reset_reader_stream(stream);
+            return false;
+        }
+        [stream.reader addOutput:stream.output];
+
+        const double clamped_start = std::clamp(start_time, 0.0, std::max(0.0, static_cast<double>(media_duration)));
+        const CMTime start = CMTimeMakeWithSeconds(clamped_start, 600);
+        const CMTime duration = CMTimeMakeWithSeconds(
+            std::max(0.0, static_cast<double>(media_duration) - clamped_start), 600);
+        stream.reader.timeRange = CMTimeRangeMake(start, duration);
+        if (![stream.reader startReading]) {
+            std::fprintf(stderr, "[avf_decoder] AVAssetReader start failed: %s\n",
+                         stream.reader.error.localizedDescription.UTF8String ?: "<no error>");
+            reset_reader_stream(stream);
+            return false;
+        }
+        stream.start_time = clamped_start;
+        stream.last_pts = clamped_start - (1.0 / std::max(1.0f, frame_rate_));
+        stream.exhausted = false;
+        return true;
     }
 
     AVPlayerItemVideoOutput* ensure_video_output_for_item(AVPlayerItem* item) {
@@ -267,6 +356,7 @@ struct AVFDecoder::Impl {
             video_output = nil;
             player_item = nil;
             player = nil;
+            reset_reader_streams();
             asset = nil;
             source_path.clear();
             pixel_buffer.clear();
@@ -446,6 +536,86 @@ struct AVFDecoder::Impl {
         }
     }
 
+    std::vector<AcquiredPixelBuffer> read_pixel_buffers_until_impl(double time_seconds,
+                                                                   double lookahead_seconds,
+                                                                   uint64_t stream_id) {
+        assert([NSThread isMainThread]);
+        @autoreleasepool {
+            std::vector<AcquiredPixelBuffer> frames;
+            if (!opened || !asset || media_duration <= 0.0f) return frames;
+
+            const double frame_duration = 1.0 / std::max(1.0f, frame_rate_);
+            const double target = clamp_reader_time(time_seconds, media_duration, frame_duration);
+            const double read_until = clamp_reader_time(
+                target + std::max(0.0, lookahead_seconds), media_duration, frame_duration);
+            const double tolerance = std::max(frame_duration * 0.5, 1.0 / 240.0);
+            ReaderStream& stream = reader_streams[stream_id % reader_streams.size()];
+
+            const bool needs_reader =
+                !stream.reader ||
+                stream.exhausted ||
+                target + tolerance < stream.last_pts ||
+                read_until + tolerance < stream.start_time;
+            if (needs_reader) {
+                const double start_time = std::max(0.0, target - 2.0 * frame_duration);
+                if (!create_reader_stream(stream, start_time)) return frames;
+            }
+
+            if (stream.pending.valid()) {
+                if (stream.pending.pts <= read_until + tolerance) {
+                    stream.last_pts = stream.pending.pts;
+                    frames.push_back(std::move(stream.pending));
+                } else {
+                    return frames;
+                }
+            }
+
+            while (stream.reader &&
+                   stream.reader.status == AVAssetReaderStatusReading &&
+                   stream.output) {
+                CMSampleBufferRef sample = [stream.output copyNextSampleBuffer];
+                if (!sample) {
+                    stream.exhausted = true;
+                    break;
+                }
+
+                CVImageBufferRef image = CMSampleBufferGetImageBuffer(sample);
+                CMTime pts_time = CMSampleBufferGetPresentationTimeStamp(sample);
+                const double pts = CMTIME_IS_VALID(pts_time)
+                    ? CMTimeGetSeconds(pts_time)
+                    : stream.last_pts + frame_duration;
+
+                AcquiredPixelBuffer acquired;
+                if (image) {
+                    CVPixelBufferRef pixel = static_cast<CVPixelBufferRef>(image);
+                    CVPixelBufferRetain(pixel);
+                    acquired.buffer = pixel;
+                    acquired.pts = pts;
+                    acquired.status = DecodeStatus::NewFrame;
+                }
+                CFRelease(sample);
+
+                if (!acquired.valid()) continue;
+                if (pts > read_until + tolerance) {
+                    stream.pending = std::move(acquired);
+                    break;
+                }
+
+                stream.last_pts = pts;
+                frames.push_back(std::move(acquired));
+            }
+
+            if (stream.reader &&
+                stream.reader.status == AVAssetReaderStatusFailed) {
+                std::fprintf(stderr, "[avf_decoder] AVAssetReader failed: %s\n",
+                             stream.reader.error.localizedDescription.UTF8String ?: "<no error>");
+                reset_reader_stream(stream);
+            }
+
+            return frames;
+        }
+    }
+
     // Synchronous decode: acquire + copy in one call (backward compatible).
     DecodeStatus decode_frame() {
         auto acquired = acquire_pixel_buffer_impl();
@@ -617,6 +787,17 @@ DecodeStatus AVFDecoder::decode_frame() { return impl_->decode_frame(); }
 AcquiredPixelBuffer AVFDecoder::acquire_pixel_buffer() { return impl_->acquire_pixel_buffer_impl(); }
 AcquiredPixelBuffer AVFDecoder::acquire_pixel_buffer_at_time(double time_seconds) {
     return impl_->acquire_pixel_buffer_at_time_impl(time_seconds);
+}
+
+std::vector<AcquiredPixelBuffer> AVFDecoder::read_pixel_buffers_until(double time_seconds,
+                                                                      double lookahead_seconds,
+                                                                      uint64_t stream_id) {
+    return impl_ ? impl_->read_pixel_buffers_until_impl(time_seconds, lookahead_seconds, stream_id)
+                 : std::vector<AcquiredPixelBuffer>{};
+}
+
+void AVFDecoder::reset_reader_streams() {
+    if (impl_) impl_->reset_reader_streams();
 }
 
 DecodedFrame AVFDecoder::copy_frame_at_time(double time_seconds) const {

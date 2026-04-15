@@ -168,6 +168,29 @@ static void test_post_wrap_prefetch_survives_duplicate_current_submissions() {
     check(out.loop_generation == next_gen, "loop_window: selected post-wrap generation");
 }
 
+static void test_future_generation_window_rejects_current_capacity_spam() {
+    DecodedFrameQueue q;
+    constexpr uint64_t gen = 4;
+    constexpr uint64_t next_gen = gen + 1;
+
+    for (size_t i = 0; i < DecodedFrameQueue::kMaxFrames; ++i) {
+        q.push(make_keyed_frame(320,
+                                240,
+                                static_cast<double>(i) / 30.0,
+                                next_gen,
+                                9000 + i));
+    }
+
+    check(!q.push(make_keyed_frame(320, 240, 9.900, gen, 8001)),
+          "future_window: full future-generation queue rejects older current spam");
+
+    DecodedFrame out;
+    check(q.pop_best(0.010, next_gen, 1.0 / 30.0, out),
+          "future_window: first future frame remains available");
+    check(out.loop_generation == next_gen,
+          "future_window: future generation was preserved");
+}
+
 static void test_pop_best_drops_stale_previous_generation() {
     DecodedFrameQueue q;
     q.push(make_frame(320, 240, 9.900, 3));
@@ -259,6 +282,7 @@ int main() {
     test_pop_best_returns_target_frame();
     test_pop_best_keeps_next_loop_until_wrap();
     test_post_wrap_prefetch_survives_duplicate_current_submissions();
+    test_future_generation_window_rejects_current_capacity_spam();
     test_pop_best_drops_stale_previous_generation();
     test_pop_empty();
     test_flush();

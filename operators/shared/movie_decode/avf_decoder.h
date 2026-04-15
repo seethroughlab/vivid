@@ -2,6 +2,7 @@
 
 #include "video_decoder.h"
 #include <memory>
+#include <vector>
 
 #ifdef __APPLE__
 #include <CoreVideo/CVPixelBuffer.h>
@@ -65,6 +66,14 @@ public:
     // from AVFoundation without doing the CPU copy.
     AcquiredPixelBuffer acquire_pixel_buffer();
     AcquiredPixelBuffer acquire_pixel_buffer_at_time(double time_seconds);
+
+    // Audio-master path: read timestamped decoded frames from AVAssetReader
+    // instead of treating AVPlayerItemVideoOutput as a random-access decoder.
+    // stream_id separates current/next loop-generation readers.
+    std::vector<AcquiredPixelBuffer> read_pixel_buffers_until(double time_seconds,
+                                                              double lookahead_seconds,
+                                                              uint64_t stream_id);
+    void reset_reader_streams();
 
     // Phase 2 (any thread): lock, copy, unlock, release the pixel buffer.
     // Returns a DecodedFrame with tightly packed BGRA pixels.

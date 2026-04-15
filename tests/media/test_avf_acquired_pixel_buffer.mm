@@ -282,6 +282,65 @@ static void test_target_time_acquire_across_two_loop_boundaries() {
           "avf_two_wraps: valid frames available after wrap");
 }
 
+static void test_reader_backed_target_time_decode(const std::filesystem::path& fixture,
+                                                  const char* label) {
+    if (fixture.empty()) {
+        std::fprintf(stderr, "  SKIP: %s fixture not found\n", label);
+        return;
+    }
+
+    AVFDecoder decoder;
+    check(decoder.open(fixture.string()), "avf_reader: opens non-HAP fixture");
+
+    const double duration = decoder.duration();
+    const double frame = 1.0 / std::max(1.0f, decoder.frame_rate());
+    int valid_end = 0;
+    int valid_start = 0;
+    int importable = 0;
+
+    for (uint64_t generation = 0; generation < 3; ++generation) {
+        double previous_end_pts = -1.0;
+        for (int i = 4; i >= 1; --i) {
+            const double t = std::max(0.0, duration - static_cast<double>(i) * frame);
+            auto frames = decoder.read_pixel_buffers_until(t, 0.0, generation);
+            for (auto& acquired : frames) {
+                check(acquired.valid(), "avf_reader: reader returned a valid CVPixelBuffer");
+                check(acquired.pts >= previous_end_pts,
+                      "avf_reader: pre-wrap reader timestamps are monotonic");
+                check(acquired.pts <= t + frame,
+                      "avf_reader: pre-wrap reader does not run far past target time");
+                previous_end_pts = acquired.pts;
+                valid_end++;
+                if (can_import_pixel_buffer_with_metal(acquired.buffer)) importable++;
+            }
+        }
+
+        double previous_start_pts = -1.0;
+        for (int i = 0; i < 4; ++i) {
+            const double t = static_cast<double>(i) * frame;
+            auto frames = decoder.read_pixel_buffers_until(t, 0.0, generation + 1);
+            for (auto& acquired : frames) {
+                check(acquired.valid(), "avf_reader: post-wrap reader returned a valid CVPixelBuffer");
+                check(acquired.pts >= previous_start_pts,
+                      "avf_reader: post-wrap reader timestamps are monotonic");
+                check(acquired.pts <= t + frame,
+                      "avf_reader: post-wrap reader does not run far past target time");
+                previous_start_pts = acquired.pts;
+                valid_start++;
+                if (can_import_pixel_buffer_with_metal(acquired.buffer)) importable++;
+            }
+        }
+    }
+
+    check(decoder.manual_loop_seek_count() == 0,
+          "avf_reader: reader-backed target decode does not use manual loop seek");
+    check(valid_end > 0, "avf_reader: reader provided pre-wrap frames");
+    check(valid_start > 0, "avf_reader: reader provided post-wrap frames");
+    if (MTLCreateSystemDefaultDevice()) {
+        check(importable > 0, "avf_reader: at least one reader frame imports as Metal");
+    }
+}
+
 static void test_acquired_frames_are_metal_importable(const std::filesystem::path& fixture,
                                                       const char* label) {
     if (fixture.empty()) {
@@ -317,6 +376,8 @@ int main() {
     test_native_looper_replaces_manual_loop_seek();
     test_target_time_acquire_across_wrap();
     test_target_time_acquire_across_two_loop_boundaries();
+    test_reader_backed_target_time_decode(find_h264_fixture(), "sync-test-h264.mp4");
+    test_reader_backed_target_time_decode(find_hevc_fixture(), "sync-test-hevc.mp4");
     test_acquired_frames_are_metal_importable(find_h264_fixture(), "sync-test-h264.mp4");
     test_acquired_frames_are_metal_importable(find_hevc_fixture(), "sync-test-hevc.mp4");
 
