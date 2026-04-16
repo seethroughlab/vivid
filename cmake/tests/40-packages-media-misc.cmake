@@ -147,6 +147,18 @@ add_test(NAME test_package_scaffolder
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_package_scaffolder PROPERTIES LABELS "PACKAGE")
 
+# Operator descriptor hash test (stability + sensitivity of fingerprint)
+add_executable(test_operator_descriptor_hash
+    tests/operators/test_operator_descriptor_hash.cpp
+)
+target_include_directories(test_operator_descriptor_hash PRIVATE src tests)
+target_link_libraries(test_operator_descriptor_hash PRIVATE
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_test(NAME test_operator_descriptor_hash
+    COMMAND test_operator_descriptor_hash
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_operator_descriptor_hash PROPERTIES LABELS "PACKAGE" TIMEOUT 15)
+
 # ProjectLockfile JSON model + parser test (round-trip, canonical order, version validation)
 add_executable(test_project_lockfile
     tests/packages/test_project_lockfile.cpp

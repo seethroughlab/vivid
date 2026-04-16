@@ -174,6 +174,12 @@ public:
     // Developer diagnostic: full map of every known operator with provenance.
     std::vector<OperatorMapEntry> operator_map() const;
 
+    // Stable fingerprint of an operator type's public interface. Used by the
+    // project-lockfile feature to detect silent operator drift. Returns
+    // "sha256:<hex>" for a known type, empty string if the type is unknown or
+    // its descriptor is unavailable. See operator_descriptor_hash.h.
+    std::string descriptor_hash(const std::string& type_name) const;
+
     // Expected-operator provenance: tracks operators declared in package manifests,
     // even if the package isn't built. Enables "why is this operator missing?" diagnostics.
     void register_expected_operator(const std::string& type_name, OperatorProvenance provenance);
