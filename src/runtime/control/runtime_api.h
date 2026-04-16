@@ -12,6 +12,7 @@ namespace vivid {
 class RuntimeCore;
 class AudioEngine;
 class OperatorRegistry;
+class PackageManager;
 class SubgraphModuleRegistry;
 class SystemMidiListener;
 struct CompiledNode;
@@ -161,6 +162,14 @@ public:
     CommandResult apply_snapshot_json(const std::string& graph_json,
                                       bool& has_gpu_ops, bool& has_audio);
     CommandResult rebuild_current_graph(bool& has_gpu_ops, bool& has_audio);
+
+    // Write a project lockfile next to graph_path (or to output_path if non-empty).
+    // Uses the currently-loaded graph for content-hash and node walking is sourced
+    // from the graph loaded at graph_path so lockfile generation is deterministic
+    // against on-disk state.
+    CommandResult write_project_lockfile(PackageManager& package_manager,
+                                         const std::string& graph_path,
+                                         const std::string& output_path);
 
     // Solo mode (session-only, not serialized)
     CommandResult set_solo(const std::string& node_id);  // empty string = clear solo

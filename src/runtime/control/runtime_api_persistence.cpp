@@ -4,6 +4,8 @@
 #include "runtime/graph/compiled_graph.h"
 #include "runtime/audio/audio_engine.h"
 #include "runtime/operators/operator_registry.h"
+#include "runtime/packages/package_manager.h"
+#include "runtime/packages/project_lockfile.h"
 #include "common/path_util.h"
 #include "runtime/platform/platform.h"
 #include <cstdio>
@@ -473,6 +475,29 @@ void RuntimeAPI::refresh_graph_dirty_from_saved_snapshot() {
         return;
     }
     graph_dirty_ = (current != last_saved_graph_json_);
+}
+
+CommandResult RuntimeAPI::write_project_lockfile(PackageManager& package_manager,
+                                                 const std::string& graph_path,
+                                                 const std::string& output_path) {
+    if (graph_path.empty()) return {false, "missing graph_path"};
+
+    Graph graph_for_lockfile;
+    if (!graph_for_lockfile.load(graph_path.c_str())) {
+        return {false, "failed to load graph: " + graph_path};
+    }
+
+    ProjectLockfile lf = build_lockfile_for_graph(
+        graph_for_lockfile, package_manager, registry_);
+    lf.graph.path = graph_path;
+
+    std::filesystem::path out = output_path.empty()
+        ? (std::filesystem::path(graph_path).parent_path() / "vivid.lock")
+        : std::filesystem::path(output_path);
+
+    LockfileError err = save_lockfile(out, lf);
+    if (!err.ok()) return {false, err.message};
+    return {true, out.string()};
 }
 
 } // namespace vivid

@@ -3,7 +3,10 @@
 
 #include "common/hash_util.h"
 #include "operator_api/types.h"
+#include "runtime/audio/audio_engine.h"
+#include "runtime/control/runtime_api.h"
 #include "runtime/core/build_console.h"
+#include "runtime/core/runtime_core.h"
 #include "runtime/core/workspace_manager.h"
 #include "runtime/graph/graph.h"
 #include "runtime/operators/operator_registry.h"
@@ -358,6 +361,98 @@ void test_canonicalize_graph_hash_prefix_and_length() {
     check(h.size() == 7 + 64, "canonicalize_graph_hash: 7 + 64 chars total");
 }
 
+// --- Phase 2: RuntimeAPI::write_project_lockfile round-trip ---------------
+
+void test_runtime_api_write_project_lockfile_round_trip() {
+    LockfileGenFixture fx;
+
+    // Write a small graph to disk.
+    ScopedTempDir dir;
+    Graph source_graph;
+    source_graph.add_node("n1", "Foo");
+    source_graph.add_node("n2", "Bar");
+    auto graph_path = dir.file_str("demo.json");
+    check(source_graph.save(graph_path.c_str()),
+          "runtime_api round-trip: source graph saves");
+
+    // Construct a minimal RuntimeAPI (graph, core, audio_engine, registry).
+    Graph api_graph;
+    RuntimeCore runtime;
+    AudioEngine audio_engine;
+    RuntimeAPI api(api_graph, runtime, audio_engine, fx.registry);
+
+    // Default output path: sibling vivid.lock.
+    auto result = api.write_project_lockfile(fx.pm, graph_path, "");
+    check(result.ok, "runtime_api round-trip: write_project_lockfile succeeds");
+
+    auto expected_out = (dir.path / "vivid.lock").string();
+    check(result.message == expected_out,
+          "runtime_api round-trip: returned path is sibling vivid.lock");
+
+    // Load it back and verify shape.
+    auto load_result = load_lockfile(expected_out);
+    check(load_result.ok(), "runtime_api round-trip: lockfile re-loads");
+
+    const auto& lf = load_result.lockfile;
+    check(lf.lockfile_version == LOCKFILE_VERSION,
+          "round-trip: lockfile_version preserved");
+    check(lf.graph.path == graph_path,
+          "round-trip: graph.path matches input");
+    check(lf.operators.size() == 2,
+          "round-trip: 2 operator types listed");
+    check(lf.operators[0].type == "Bar",
+          "round-trip: operators[0] = Bar (sorted)");
+    check(lf.operators[1].type == "Foo",
+          "round-trip: operators[1] = Foo (sorted)");
+}
+
+void test_runtime_api_write_project_lockfile_explicit_output() {
+    LockfileGenFixture fx;
+    ScopedTempDir dir;
+
+    Graph source_graph;
+    source_graph.add_node("n1", "Foo");
+    auto graph_path = dir.file_str("demo.json");
+    source_graph.save(graph_path.c_str());
+
+    Graph api_graph;
+    RuntimeCore runtime;
+    AudioEngine audio_engine;
+    RuntimeAPI api(api_graph, runtime, audio_engine, fx.registry);
+
+    auto explicit_out = dir.file_str("custom.lock");
+    auto result = api.write_project_lockfile(fx.pm, graph_path, explicit_out);
+    check(result.ok, "runtime_api explicit output: succeeds");
+    check(result.message == explicit_out,
+          "runtime_api explicit output: returns given path");
+    check(std::filesystem::exists(explicit_out),
+          "runtime_api explicit output: file exists");
+}
+
+void test_runtime_api_write_project_lockfile_missing_graph() {
+    LockfileGenFixture fx;
+    Graph api_graph;
+    RuntimeCore runtime;
+    AudioEngine audio_engine;
+    RuntimeAPI api(api_graph, runtime, audio_engine, fx.registry);
+
+    auto result = api.write_project_lockfile(fx.pm, "/does/not/exist.json", "");
+    check(!result.ok, "runtime_api missing graph: fails");
+    check(result.message.find("failed to load graph") != std::string::npos,
+          "runtime_api missing graph: message mentions load failure");
+}
+
+void test_runtime_api_write_project_lockfile_empty_graph_path() {
+    LockfileGenFixture fx;
+    Graph api_graph;
+    RuntimeCore runtime;
+    AudioEngine audio_engine;
+    RuntimeAPI api(api_graph, runtime, audio_engine, fx.registry);
+
+    auto result = api.write_project_lockfile(fx.pm, "", "");
+    check(!result.ok, "runtime_api empty graph_path: fails");
+}
+
 }  // namespace
 
 int main() {
@@ -381,6 +476,10 @@ int main() {
     test_canonicalize_graph_hash_stable();
     test_canonicalize_graph_hash_sensitive_to_nodes();
     test_canonicalize_graph_hash_prefix_and_length();
+    test_runtime_api_write_project_lockfile_round_trip();
+    test_runtime_api_write_project_lockfile_explicit_output();
+    test_runtime_api_write_project_lockfile_missing_graph();
+    test_runtime_api_write_project_lockfile_empty_graph_path();
 
     if (failures == 0) {
         std::fprintf(stderr, "All project_lockfile tests passed.\n");
