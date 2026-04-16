@@ -12,7 +12,7 @@
 
 // Bumped when the graph JSON format changes in a backward-incompatible way.
 // Graphs saved with schema_version > GRAPH_SCHEMA_VERSION are hard-rejected.
-#define GRAPH_SCHEMA_VERSION 3
+#define GRAPH_SCHEMA_VERSION 4
 
 namespace vivid {
 

@@ -45,6 +45,10 @@ struct ParamBase {
     const char* visible_when_param = nullptr;
     VividParamVisibilityOp visible_when_op = VIVID_PARAM_VIS_ALWAYS;
     std::vector<int32_t> visible_when_values;
+
+    // Repeat-group metadata (for variadic port patterns)
+    const char* repeat_group     = nullptr;
+    uint16_t    repeat_group_idx = 0;
 };
 
 // ---------------------------------------------------------------------------
@@ -180,6 +184,13 @@ Param<T>& param_group(Param<T>& p, const char* group_name) {
 }
 
 template<typename T>
+Param<T>& repeat_group(Param<T>& p, const char* group_name, uint16_t idx) {
+    p.repeat_group = group_name;
+    p.repeat_group_idx = idx;
+    return p;
+}
+
+template<typename T>
 Param<T>& layout_row(Param<T>& p, uint8_t columns, uint8_t col) {
     p.layout_columns = columns;
     p.layout_column_index = col;
@@ -304,6 +315,12 @@ inline VividPortDescriptor& description(VividPortDescriptor& p, const char* desc
     return p;
 }
 
+inline VividPortDescriptor& repeat_group(VividPortDescriptor& p, const char* group_name, uint16_t idx) {
+    p.repeat_group = group_name;
+    p.repeat_group_idx = idx;
+    return p;
+}
+
 // ---------------------------------------------------------------------------
 // OperatorBase — abstract base class for operators (no process method)
 // ---------------------------------------------------------------------------
@@ -348,12 +365,18 @@ struct GpuProcessable {
 // Append standard audio analysis output ports (rms, peak, waveform).
 // Audio operators should call this at the end of collect_ports().
 inline void append_analysis_ports(std::vector<VividPortDescriptor>& out) {
-    out.push_back({"rms",      VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT,
-                   VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "analysis", nullptr, nullptr, nullptr});
-    out.push_back({"peak",     VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT,
-                   VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "analysis", nullptr, nullptr, nullptr});
-    out.push_back({"waveform", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT,
-                   VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, "analysis", nullptr, nullptr, nullptr});
+    auto make_analysis = [](const char* name, VividPortType type, VividPortTransport transport) {
+        VividPortDescriptor pd{};
+        pd.name = name;
+        pd.type = type;
+        pd.direction = VIVID_PORT_OUTPUT;
+        pd.transport = transport;
+        pd.semantic_tag = "analysis";
+        return pd;
+    };
+    out.push_back(make_analysis("rms",      VIVID_PORT_SCALAR,     VIVID_PORT_TRANSPORT_SIGNAL));
+    out.push_back(make_analysis("peak",     VIVID_PORT_SCALAR,     VIVID_PORT_TRANSPORT_SIGNAL));
+    out.push_back(make_analysis("waveform", VIVID_PORT_LANE_ARRAY, VIVID_PORT_TRANSPORT_LANE_ARRAY));
 }
 
 } // namespace vivid
@@ -498,6 +521,8 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
             s_params[i].semantic_intent     = pbases[i]->semantic_intent;      \
             s_params[i].description         = pbases[i]->description;          \
             s_params[i].asset_kind          = pbases[i]->asset_kind;           \
+            s_params[i].repeat_group        = pbases[i]->repeat_group;          \
+            s_params[i].repeat_group_idx    = pbases[i]->repeat_group_idx;     \
             s_params[i].visible_when_param  = pbases[i]->visible_when_param;   \
             s_params[i].visible_when_op     = pbases[i]->visible_when_op;      \
             s_visibility_values[i]          = pbases[i]->visible_when_values;  \

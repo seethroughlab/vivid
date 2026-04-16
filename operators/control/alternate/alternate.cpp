@@ -2,11 +2,16 @@
 #include "operator_api/operator.h"
 #include <algorithm>
 #include <cmath>
+
+static constexpr int kMaxInputs = 16;
+
 /**
- * @brief Cycles through up to 4 input lane arrays based on beat phase.
+ * @brief Cycles through up to 16 input lane arrays based on beat phase.
  *
- * Selects one of four lane-array inputs in round-robin order, advancing on
- * each beat wrap. Use the cycle parameter to set how many beats before advancing.
+ * Selects one of the connected lane-array inputs in round-robin order,
+ * advancing on each beat wrap. Use the cycle parameter to set how many
+ * beats before advancing. Uses repeat-group ports for grow-on-connect
+ * UI behavior.
  *
  * @param cycle Number of beats per input selection (Beat, 2 Beats, Bar, etc.).
  * @see Stack, PatTransform
@@ -19,24 +24,50 @@ struct Alternate : vivid::OperatorBase, vivid::FrameProcessable {
     vivid::Param<int> cycle {"cycle", 2, {"Beat","2 Beats","Bar","2 Bars","4 Bars"}};
     vivid::Param<int> clock_source {"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
 
+    char port_names_[kMaxInputs][16];
+
     Alternate() {
         vivid::description(cycle, "How many beats before advancing to the next input");
         vivid::description(clock_source, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
+        for (int i = 0; i < kMaxInputs; ++i)
+            std::snprintf(port_names_[i], sizeof(port_names_[i]), "input_%d", i);
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
-        out.push_back(&cycle);  // 0
-        out.push_back(&clock_source); // 1
+        out.push_back(&cycle);         // 0
+        out.push_back(&clock_source);  // 1
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"beat_phase", VIVID_PORT_SCALAR,  VIVID_PORT_INPUT});   // in float[0]
-        out.push_back({"a",          VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in lane[0]
-        out.push_back({"b",          VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in lane[1]
-        out.push_back({"c",          VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in lane[2]
-        out.push_back({"d",          VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in lane[3]
-        out.push_back({"output",     VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // out lane[0]
-        out.push_back({"index",      VIVID_PORT_SCALAR,  VIVID_PORT_OUTPUT});  // out float[0]
+        // beat_phase is a standalone scalar input (not part of the repeat group)
+        VividPortDescriptor bp{};
+        bp.name = "beat_phase";
+        bp.type = VIVID_PORT_SCALAR;
+        bp.direction = VIVID_PORT_INPUT;
+        out.push_back(bp);
+
+        // Repeating lane-array inputs
+        for (int i = 0; i < kMaxInputs; ++i) {
+            VividPortDescriptor pd{};
+            pd.name = port_names_[i];
+            pd.type = VIVID_PORT_LANE_ARRAY;
+            pd.direction = VIVID_PORT_INPUT;
+            pd.repeat_group = "input";
+            pd.repeat_group_idx = static_cast<uint16_t>(i);
+            out.push_back(pd);
+        }
+
+        VividPortDescriptor out_port{};
+        out_port.name = "output";
+        out_port.type = VIVID_PORT_LANE_ARRAY;
+        out_port.direction = VIVID_PORT_OUTPUT;
+        out.push_back(out_port);
+
+        VividPortDescriptor idx_port{};
+        idx_port.name = "index";
+        idx_port.type = VIVID_PORT_SCALAR;
+        idx_port.direction = VIVID_PORT_OUTPUT;
+        out.push_back(idx_port);
     }
 
     void process_frame(const VividFrameContext* ctx) override {
@@ -44,7 +75,6 @@ struct Alternate : vivid::OperatorBase, vivid::FrameProcessable {
             clock_source.int_value(), ctx->input_values[0], vivid::metronome_transport(ctx));
         compute(beat_phase, ctx->param_values, ctx->input_lanes, ctx->output_lanes, ctx->output_values);
     }
-
 
 private:
     void compute(float beat_phase, const float* params, const VividLaneView* in_lanes,
@@ -63,11 +93,11 @@ private:
         if (!in_lanes || !out_lanes) return;
 
         // Collect connected (non-empty) lane inputs
-        // Lane inputs are at port indices 1..4 (a,b,c,d); port 0 is beat_phase (float)
-        const VividLaneView* inputs[4];
-        int input_indices[4];
+        // Lane inputs are at port indices 1..kMaxInputs (port 0 is beat_phase scalar)
+        const VividLaneView* inputs[kMaxInputs];
+        int input_indices[kMaxInputs];
         int input_count = 0;
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 0; i < kMaxInputs; ++i) {
             if (in_lanes[1 + i].length > 0) {
                 inputs[input_count] = &in_lanes[1 + i];
                 input_indices[input_count] = i;
@@ -97,7 +127,7 @@ private:
             out.commit(out.handle, len);
         }
 
-        // Output the logical index (which of a,b,c,d is active)
+        // Output the logical index (which input is active)
         output_values[0] = static_cast<float>(input_indices[active]);
     }
 

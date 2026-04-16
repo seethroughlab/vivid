@@ -1,10 +1,14 @@
 #include "operator_api/operator.h"
 #include <algorithm>
+
+static constexpr int kMaxInputs = 16;
+
 /**
- * @brief Combines up to 4 lane arrays into one via concatenation or interleaving.
+ * @brief Combines up to 16 lane arrays into one via concatenation or interleaving.
  *
- * Merges input lane arrays A through D into a single output. Concat
+ * Merges connected input lane arrays into a single output. Concat
  * mode appends them end-to-end; interleave mode alternates elements.
+ * Uses repeat-group ports for grow-on-connect UI behavior.
  *
  * @see Alternate, PatTransform
  */
@@ -15,26 +19,38 @@ struct Stack : vivid::OperatorBase, vivid::FrameProcessable {
 
     vivid::Param<int> mode {"mode", 0, {"Concat","Interleave"}};
 
+    char port_names_[kMaxInputs][16];
+
     Stack() {
         vivid::description(mode, "Concat appends lane arrays end-to-end; Interleave alternates elements");
+        for (int i = 0; i < kMaxInputs; ++i)
+            std::snprintf(port_names_[i], sizeof(port_names_[i]), "input_%d", i);
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
-        out.push_back(&mode);  // 0
+        out.push_back(&mode);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"a",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in lane[0]
-        out.push_back({"b",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in lane[1]
-        out.push_back({"c",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in lane[2]
-        out.push_back({"d",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // in lane[3]
-        out.push_back({"output", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // out lane[0]
+        for (int i = 0; i < kMaxInputs; ++i) {
+            VividPortDescriptor pd{};
+            pd.name = port_names_[i];
+            pd.type = VIVID_PORT_LANE_ARRAY;
+            pd.direction = VIVID_PORT_INPUT;
+            pd.repeat_group = "input";
+            pd.repeat_group_idx = static_cast<uint16_t>(i);
+            out.push_back(pd);
+        }
+        VividPortDescriptor out_port{};
+        out_port.name = "output";
+        out_port.type = VIVID_PORT_LANE_ARRAY;
+        out_port.direction = VIVID_PORT_OUTPUT;
+        out.push_back(out_port);
     }
 
     void process_frame(const VividFrameContext* ctx) override {
         compute(ctx->param_values, ctx->input_lanes, ctx->output_lanes, ctx->output_values);
     }
-
 
 private:
     void compute(const float* params, const VividLaneView* in_lanes,
@@ -45,9 +61,9 @@ private:
         int m = std::clamp(static_cast<int>(params[0]), 0, 1);
 
         // Collect non-empty input lane arrays
-        const VividLaneView* inputs[4];
+        const VividLaneView* inputs[kMaxInputs];
         int input_count = 0;
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 0; i < kMaxInputs; ++i) {
             if (in_lanes[i].length > 0)
                 inputs[input_count++] = &in_lanes[i];
         }
@@ -58,7 +74,7 @@ private:
         }
 
         if (m == 0) {
-            // Concat: [a0..an, b0..bm, c0..ck, d0..dj]
+            // Concat: append all inputs end-to-end
             uint32_t total = 0;
             for (int i = 0; i < input_count; ++i)
                 total += inputs[i]->length;

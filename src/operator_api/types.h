@@ -8,7 +8,7 @@ extern "C" {
 
 /* Bump when operator-facing C ABI changes in incompatible ways.
    Catches stale dylibs during hot-reload — not a cross-version compatibility promise. */
-#define VIVID_OPERATOR_ABI_VERSION 14u
+#define VIVID_OPERATOR_ABI_VERSION 15u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -108,6 +108,10 @@ typedef struct VividParamDescriptor {
     uint32_t          visible_when_value_count;
     const char*       widget_id;          /* optional namespaced compound widget id */
     uint32_t          widget_span;        /* number of primitive params claimed by widget_id */
+
+    /* repeat-group metadata (for variadic port patterns) */
+    const char*       repeat_group;      /* NULL = standalone; non-NULL = group name (e.g. "layer") */
+    uint16_t          repeat_group_idx;  /* 0-based index within the repeat group */
 } VividParamDescriptor;
 
 typedef struct VividPortDescriptor {
@@ -124,6 +128,10 @@ typedef struct VividPortDescriptor {
     const char*        semantic_shape; // e.g. "scalar", "lane_array", "audio_buffer", NULL if unset
     const char*        semantic_intent;// free-form hint, e.g. "per_note_gate", NULL if unset
     const char*        description;    // human-readable tooltip shown in inspector/docs, NULL if unset
+
+    // repeat-group metadata (for variadic port patterns)
+    const char*        repeat_group;     // NULL = standalone; non-NULL = group name (e.g. "layer")
+    uint16_t           repeat_group_idx; // 0-based index within the repeat group
 } VividPortDescriptor;
 
 
