@@ -847,7 +847,8 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
     for (uint32_t ei = 0; ei < static_cast<uint32_t>(cg->edges.size()); ++ei) {
         const auto& e = cg->edges[ei];
         if (e.transport == EdgeTransport::Direct) {
-            if (e.data_type == VIVID_PORT_AUDIO_BUFFER && cg->nodes[e.from_node].audio)
+            if (!e.sources_param && !e.targets_param &&
+                cg->nodes[e.from_node].audio && cg->nodes[e.to_node].audio)
                 cg->audio_direct_edges.push_back(ei);
             else
                 cg->frame_direct_edges.push_back(ei);

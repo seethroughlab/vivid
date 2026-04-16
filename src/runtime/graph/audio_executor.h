@@ -22,7 +22,7 @@ struct LiveMetronomeStateStore;
 //
 // Replaces AudioEngine::audio_callback() and owns the miniaudio device,
 // recording tap, and audio timing.  Operates on a CompiledGraph, iterating
-// audio_order and routing audio buffers via audio_direct_edges.
+// audio_order and routing audio-cadence direct edges via audio_direct_edges.
 // ---------------------------------------------------------------------------
 
 class AudioExecutor {

@@ -22,6 +22,11 @@ bool build(const Graph& graph, OperatorRegistry& registry);
 4. Seeds the live metronome state on first build, but later topology rebuilds preserve the current
    transport unless a caller explicitly resets it from loaded graph metadata
 
+During graph compilation, same-cadence direct edges are partitioned by execution world. Direct
+output-port wires between two audio-cadence nodes are assigned to `audio_direct_edges`, regardless
+of whether they carry audio buffers, scalar buffers, lane refs, or custom refs. The frame executor
+keeps frame-cadence direct edges, while cross-cadence wires use the snapshot bridge paths.
+
 For async/UI-driven topology work, `RuntimeCore` also exposes a split prepare/adopt path:
 
 ```cpp
