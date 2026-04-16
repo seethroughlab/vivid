@@ -32,6 +32,8 @@ struct DeferredEntry {
     std::vector<std::string> port_semantic_shapes;  // stable strings for port semantic_shape pointers
     std::vector<std::string> port_semantic_intents; // stable strings for port semantic_intent pointers
     std::vector<std::string> port_descriptions;     // stable strings for port description pointers
+    std::vector<std::string> port_repeat_groups;   // stable strings for port repeat_group pointers
+    std::vector<std::string> param_repeat_groups;  // stable strings for param repeat_group pointers
     std::vector<std::string> semantic_shapes;       // stable strings for semantic_shape pointers
     std::vector<std::string> semantic_units;        // stable strings for semantic_unit pointers
     std::vector<std::string> semantic_intents;      // stable strings for semantic_intent pointers

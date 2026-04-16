@@ -128,6 +128,8 @@ public:
                 for (uint32_t ci = 0; ci < pd.choice_count; ++ci)
                     pi.choice_labels.push_back(pd.choice_labels[ci] ? pd.choice_labels[ci] : "");
             }
+            pi.repeat_group     = pd.repeat_group ? pd.repeat_group : "";
+            pi.repeat_group_idx = pd.repeat_group_idx;
         }
         // Resolve visible_when conditions (needs all params built for name->index lookup)
         for (uint32_t i = 0; i < desc->param_count; ++i) {
@@ -140,6 +142,8 @@ public:
             pi.name = desc->ports[i].name ? desc->ports[i].name : "";
             pi.type = desc->ports[i].type;
             pi.direction = desc->ports[i].direction;
+            pi.repeat_group     = desc->ports[i].repeat_group ? desc->ports[i].repeat_group : "";
+            pi.repeat_group_idx = desc->ports[i].repeat_group_idx;
         }
 
         // Only check shader/user status for fully-loaded operators

@@ -6,6 +6,7 @@
 #include <cstring>
 #include <algorithm>
 #include <fstream>
+#include <unordered_set>
 
 #ifndef VIVID_CORE_VERSION
 #define VIVID_CORE_VERSION "0.1.0"
@@ -328,6 +329,92 @@ bool Graph::parse_doc(const nlohmann::json& root) {
         }
     }
 
+
+    // Migrate repeat-group operator port/param names from schema v3 to v4
+    if (schema_version <= 3) {
+        // Helper: remap port and param names for nodes of a given type
+        struct PortRemap { const char* old_name; const char* new_name; };
+        auto migrate_operator = [&](const char* type_name,
+                                    const PortRemap* port_map, size_t port_count,
+                                    const PortRemap* param_map, size_t param_count) {
+            std::unordered_set<std::string> target_nodes;
+            for (const auto& n : nodes_)
+                if (n.type == type_name) target_nodes.insert(n.id);
+            if (target_nodes.empty()) return;
+
+            // Remap connection destination ports
+            for (auto& c : connections_) {
+                if (!target_nodes.count(c.to_node)) continue;
+                for (size_t i = 0; i < port_count; ++i)
+                    if (c.to_port == port_map[i].old_name) { c.to_port = port_map[i].new_name; break; }
+            }
+            // Remap param names
+            if (param_count > 0) {
+                for (auto& n : nodes_) {
+                    if (!target_nodes.count(n.id)) continue;
+                    std::unordered_map<std::string, float> new_params;
+                    for (auto& [k, v] : n.params) {
+                        bool remapped = false;
+                        for (size_t i = 0; i < param_count; ++i) {
+                            if (k == param_map[i].old_name) { new_params[param_map[i].new_name] = v; remapped = true; break; }
+                        }
+                        if (!remapped) new_params[k] = v;
+                    }
+                    n.params = std::move(new_params);
+                }
+            }
+        };
+
+        // Composite: a-f → layer_0-layer_5, params *_a-*_f → *_0-*_5
+        static const PortRemap composite_ports[] = {
+            {"a", "layer_0"}, {"b", "layer_1"}, {"c", "layer_2"},
+            {"d", "layer_3"}, {"e", "layer_4"}, {"f", "layer_5"},
+        };
+        static const PortRemap composite_params[] = {
+            {"connected_a", "connected_0"}, {"connected_b", "connected_1"},
+            {"connected_c", "connected_2"}, {"connected_d", "connected_3"},
+            {"connected_e", "connected_4"}, {"connected_f", "connected_5"},
+            {"opacity_a", "opacity_0"}, {"opacity_b", "opacity_1"},
+            {"opacity_c", "opacity_2"}, {"opacity_d", "opacity_3"},
+            {"opacity_e", "opacity_4"}, {"opacity_f", "opacity_5"},
+            {"x_a", "x_0"}, {"x_b", "x_1"}, {"x_c", "x_2"},
+            {"x_d", "x_3"}, {"x_e", "x_4"}, {"x_f", "x_5"},
+            {"y_a", "y_0"}, {"y_b", "y_1"}, {"y_c", "y_2"},
+            {"y_d", "y_3"}, {"y_e", "y_4"}, {"y_f", "y_5"},
+            {"scale_a", "scale_0"}, {"scale_b", "scale_1"},
+            {"scale_c", "scale_2"}, {"scale_d", "scale_3"},
+            {"scale_e", "scale_4"}, {"scale_f", "scale_5"},
+            {"rotation_a", "rotation_0"}, {"rotation_b", "rotation_1"},
+            {"rotation_c", "rotation_2"}, {"rotation_d", "rotation_3"},
+            {"rotation_e", "rotation_4"}, {"rotation_f", "rotation_5"},
+        };
+        migrate_operator("Composite", composite_ports, std::size(composite_ports),
+                         composite_params, std::size(composite_params));
+
+        // Mixer: input_1-input_4 → input_0-input_3, gain_1-gain_4 → gain_0-gain_3
+        static const PortRemap mixer_ports[] = {
+            {"input_1", "input_0"}, {"input_2", "input_1"},
+            {"input_3", "input_2"}, {"input_4", "input_3"},
+        };
+        static const PortRemap mixer_params[] = {
+            {"gain_1", "gain_0"}, {"gain_2", "gain_1"},
+            {"gain_3", "gain_2"}, {"gain_4", "gain_3"},
+        };
+        migrate_operator("Mixer", mixer_ports, std::size(mixer_ports),
+                         mixer_params, std::size(mixer_params));
+
+        // Stack: a-d → input_0-input_3
+        static const PortRemap stack_ports[] = {
+            {"a", "input_0"}, {"b", "input_1"}, {"c", "input_2"}, {"d", "input_3"},
+        };
+        migrate_operator("Stack", stack_ports, std::size(stack_ports), nullptr, 0);
+
+        // Alternate: a-d → input_0-input_3 (beat_phase and output unchanged)
+        static const PortRemap alternate_ports[] = {
+            {"a", "input_0"}, {"b", "input_1"}, {"c", "input_2"}, {"d", "input_3"},
+        };
+        migrate_operator("Alternate", alternate_ports, std::size(alternate_ports), nullptr, 0);
+    }
 
     // Parse MIDI mappings
     auto midi_it = root.find("midi_mappings");

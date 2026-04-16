@@ -2,147 +2,147 @@
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_common.h"
 #include <cstdio>
+#include <cstring>
 #include <string>
+#include <sstream>
 
-static constexpr int kMaxInputs = 6;
+static constexpr int kMaxInputs = 16;
 static constexpr int kParamsPerLayer = 6; // connected, opacity, x, y, scale, rotation
 
 // =============================================================================
-// Composite WGSL Fragment Shader
+// WGSL Shader Generation — produces shader for exactly N active inputs
 // =============================================================================
 
-static const char* kCompositeFragment = R"(
+static std::string generate_composite_wgsl(int n) {
+    std::ostringstream s;
 
-struct Uniforms {
-    blend_mode: i32,
-    _pad0: f32,
-    _pad1: f32,
-    _pad2: f32,
-    layer_a: vec4f,     // opacity, x, y, scale
-    layer_b: vec4f,
-    layer_c: vec4f,
-    layer_d: vec4f,
-    layer_e: vec4f,
-    layer_f: vec4f,
-    rot_abcd: vec4f,    // rotation a, b, c, d
-    rot_ef__: vec4f,    // rotation e, f, pad, pad
-};
+    // Uniform struct: blend_mode + per-layer vec4f (opacity,x,y,scale) + rotation array
+    s << "struct Uniforms {\n"
+         "    blend_mode: i32,\n"
+         "    _pad0: f32, _pad1: f32, _pad2: f32,\n";
+    for (int i = 0; i < n; ++i)
+        s << "    layer_" << i << ": vec4f,\n";
+    // Rotations packed in vec4f groups
+    int rot_vecs = (n + 3) / 4;
+    for (int v = 0; v < rot_vecs; ++v)
+        s << "    rot_" << v << ": vec4f,\n";
+    s << "};\n\n";
 
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
-}
+    // Vertex output
+    s << "struct VertexOutput {\n"
+         "    @builtin(position) position: vec4f,\n"
+         "    @location(0) uv: vec2f,\n"
+         "}\n\n";
 
-@group(0) @binding(0) var<uniform> uniforms: Uniforms;
-@group(0) @binding(1) var texSampler: sampler;
-@group(0) @binding(2) var texA: texture_2d<f32>;
-@group(0) @binding(3) var texB: texture_2d<f32>;
-@group(0) @binding(4) var texC: texture_2d<f32>;
-@group(0) @binding(5) var texD: texture_2d<f32>;
-@group(0) @binding(6) var texE: texture_2d<f32>;
-@group(0) @binding(7) var texF: texture_2d<f32>;
+    // Bindings: uniform(0), sampler(1), textures(2..2+n-1)
+    s << "@group(0) @binding(0) var<uniform> uniforms: Uniforms;\n"
+         "@group(0) @binding(1) var texSampler: sampler;\n";
+    for (int i = 0; i < n; ++i)
+        s << "@group(0) @binding(" << (2 + i) << ") var tex_" << i << ": texture_2d<f32>;\n";
+    s << "\n";
 
-@vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    let fs = fullscreenTriangle(vertexIndex, true);
-    var out: VertexOutput;
-    out.position = fs.position;
-    out.uv = fs.uv;
-    return out;
-}
+    // Vertex shader
+    s << "@vertex\n"
+         "fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {\n"
+         "    let fs = fullscreenTriangle(vertexIndex, true);\n"
+         "    var out: VertexOutput;\n"
+         "    out.position = fs.position;\n"
+         "    out.uv = fs.uv;\n"
+         "    return out;\n"
+         "}\n\n";
 
-fn transform_uv(uv: vec2f, tx: f32, ty: f32, sc: f32, rot: f32) -> vec2f {
-    var p = uv - vec2f(0.5);
-    let angle = rot * 6.283185307;
-    let c = cos(angle);
-    let s = sin(angle);
-    p = vec2f(p.x * c - p.y * s, p.x * s + p.y * c);
-    p = p / max(sc, 0.001);
-    p = p - vec2f(tx, ty);
-    return p + vec2f(0.5);
-}
+    // Transform UV helper
+    s << "fn transform_uv(uv: vec2f, tx: f32, ty: f32, sc: f32, rot: f32) -> vec2f {\n"
+         "    var p = uv - vec2f(0.5);\n"
+         "    let angle = rot * 6.283185307;\n"
+         "    let c = cos(angle);\n"
+         "    let s = sin(angle);\n"
+         "    p = vec2f(p.x * c - p.y * s, p.x * s + p.y * c);\n"
+         "    p = p / max(sc, 0.001);\n"
+         "    p = p - vec2f(tx, ty);\n"
+         "    return p + vec2f(0.5);\n"
+         "}\n\n";
 
-fn do_blend(base: vec4f, overlay: vec4f, op: f32, mode: i32) -> vec4f {
-    if (op <= 0.0) { return base; }
+    // Blend function
+    s << "fn do_blend(base: vec4f, overlay: vec4f, op: f32, mode: i32) -> vec4f {\n"
+         "    if (op <= 0.0) { return base; }\n"
+         "    switch mode {\n"
+         "        case 1: {\n"
+         "            return vec4f(base.rgb + overlay.rgb * op, max(overlay.a * op, base.a));\n"
+         "        }\n"
+         "        case 2: {\n"
+         "            return vec4f(base.rgb * mix(vec3f(1.0), overlay.rgb, op), max(overlay.a * op, base.a));\n"
+         "        }\n"
+         "        case 3: {\n"
+         "            let one = vec3f(1.0);\n"
+         "            return vec4f(one - (one - base.rgb) * (one - overlay.rgb * op), max(overlay.a * op, base.a));\n"
+         "        }\n"
+         "        case 4: {\n"
+         "            let lo = 2.0 * overlay.rgb * base.rgb;\n"
+         "            let hi = vec3f(1.0) - 2.0 * (vec3f(1.0) - overlay.rgb) * (vec3f(1.0) - base.rgb);\n"
+         "            let ov = select(hi, lo, base.rgb < vec3f(0.5));\n"
+         "            return vec4f(mix(base.rgb, ov, op), max(overlay.a * op, base.a));\n"
+         "        }\n"
+         "        default: {\n"
+         "            return vec4f(mix(base.rgb, overlay.rgb, overlay.a * op),\n"
+         "                         mix(base.a, 1.0, overlay.a * op));\n"
+         "        }\n"
+         "    }\n"
+         "}\n\n";
 
-    switch mode {
-        case 1: {
-            // Add
-            return vec4f(base.rgb + overlay.rgb * op, max(overlay.a * op, base.a));
-        }
-        case 2: {
-            // Multiply
-            return vec4f(base.rgb * mix(vec3f(1.0), overlay.rgb, op), max(overlay.a * op, base.a));
-        }
-        case 3: {
-            // Screen
-            let one = vec3f(1.0);
-            return vec4f(one - (one - base.rgb) * (one - overlay.rgb * op), max(overlay.a * op, base.a));
-        }
-        case 4: {
-            // Overlay
-            let lo = 2.0 * overlay.rgb * base.rgb;
-            let hi = vec3f(1.0) - 2.0 * (vec3f(1.0) - overlay.rgb) * (vec3f(1.0) - base.rgb);
-            let ov = select(hi, lo, base.rgb < vec3f(0.5));
-            return vec4f(mix(base.rgb, ov, op), max(overlay.a * op, base.a));
-        }
-        default: {
-            // Normal (0)
-            return vec4f(mix(base.rgb, overlay.rgb, overlay.a * op),
-                         mix(base.a, 1.0, overlay.a * op));
-        }
+    // Sample layer helper
+    s << "fn sample_layer(uv: vec2f, layer: vec4f, rot: f32,\n"
+         "                tex: texture_2d<f32>, samp: sampler) -> vec4f {\n"
+         "    let tuv = transform_uv(uv, layer.y, layer.z, layer.w, rot);\n"
+         "    return textureSample(tex, samp, tuv);\n"
+         "}\n\n";
+
+    // Fragment shader — sample and composite bottom-up
+    s << "@fragment\n"
+         "fn fs_main(input: VertexOutput) -> @location(0) vec4f {\n"
+         "    let uv = input.uv;\n"
+         "    let mode = uniforms.blend_mode;\n\n";
+
+    // Sample all layers
+    for (int i = n - 1; i >= 0; --i) {
+        int rv = i / 4;
+        int rc = i % 4;
+        const char* swizzle[] = {"x", "y", "z", "w"};
+        s << "    let s_" << i << " = sample_layer(uv, uniforms.layer_" << i
+          << ", uniforms.rot_" << rv << "." << swizzle[rc]
+          << ", tex_" << i << ", texSampler);\n";
     }
+
+    // Composite bottom-up: highest index (background) to 0 (foreground)
+    s << "\n    var result = vec4f(0.0, 0.0, 0.0, 0.0);\n";
+    for (int i = n - 1; i >= 0; --i)
+        s << "    result = do_blend(result, s_" << i << ", uniforms.layer_" << i << ".x, mode);\n";
+    s << "    return result;\n}\n";
+
+    return s.str();
 }
-
-fn sample_layer(uv: vec2f, layer: vec4f, rot: f32,
-                tex: texture_2d<f32>, samp: sampler) -> vec4f {
-    let tuv = transform_uv(uv, layer.y, layer.z, layer.w, rot);
-    return textureSample(tex, samp, tuv);
-}
-
-@fragment
-fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-    let uv = input.uv;
-    let mode = uniforms.blend_mode;
-
-    let f = sample_layer(uv, uniforms.layer_f, uniforms.rot_ef__.y, texF, texSampler);
-    let e = sample_layer(uv, uniforms.layer_e, uniforms.rot_ef__.x, texE, texSampler);
-    let d = sample_layer(uv, uniforms.layer_d, uniforms.rot_abcd.w, texD, texSampler);
-    let c = sample_layer(uv, uniforms.layer_c, uniforms.rot_abcd.z, texC, texSampler);
-    let b = sample_layer(uv, uniforms.layer_b, uniforms.rot_abcd.y, texB, texSampler);
-    let a = sample_layer(uv, uniforms.layer_a, uniforms.rot_abcd.x, texA, texSampler);
-
-    // Composite bottom-up: f (background) -> a (foreground)
-    var result = vec4f(0.0, 0.0, 0.0, 0.0);
-    result = do_blend(result, f, uniforms.layer_f.x, mode);
-    result = do_blend(result, e, uniforms.layer_e.x, mode);
-    result = do_blend(result, d, uniforms.layer_d.x, mode);
-    result = do_blend(result, c, uniforms.layer_c.x, mode);
-    result = do_blend(result, b, uniforms.layer_b.x, mode);
-    result = do_blend(result, a, uniforms.layer_a.x, mode);
-    return result;
-}
-)";
 
 // =============================================================================
-// Uniform struct matching WGSL (144 bytes, 16-byte aligned)
+// Uniform buffer size for N active layers (16-byte aligned)
 // =============================================================================
 
-struct CompositeUniforms {
-    int32_t blend_mode;
-    float   _pad0, _pad1, _pad2;
-    float   layer[6][4];     // [i] = {opacity, x, y, scale}
-    float   rot_abcd[4];     // rotation a, b, c, d
-    float   rot_ef__[4];     // rotation e, f, pad, pad
-};
-static_assert(sizeof(CompositeUniforms) == 144, "uniform buffer must be 144 bytes");
+static uint32_t uniform_buffer_size(int n) {
+    // 16 bytes (blend_mode + padding) + n * 16 (layer vec4f) + ceil(n/4) * 16 (rotation vec4f groups)
+    uint32_t size = 16 + n * 16 + ((n + 3) / 4) * 16;
+    return (size + 15) & ~15u;  // ensure 16-byte alignment
+}
+
+// =============================================================================
+// Composite Operator
+// =============================================================================
 
 /**
- * @brief Composites up to 6 texture layers with per-layer transform and opacity.
+ * @brief Composites up to 16 texture layers with per-layer transform and opacity.
  *
  * Each layer has opacity, translate (x/y), scale, and rotation controls.
- * Layers composite bottom-up: f (background) through a (foreground).
+ * Layers composite bottom-up: highest index (background) through 0 (foreground).
  * Controls for disconnected inputs are hidden automatically.
+ * Uses repeat-group ports for grow-on-connect UI behavior.
  * Supports Normal, Add, Multiply, Screen, and Overlay blend modes.
  *
  * @see Feedback, Bloom
@@ -154,173 +154,165 @@ struct Composite : vivid::OperatorBase, vivid::GpuProcessable {
     // -- Global params --------------------------------------------------------
     vivid::Param<int> blend_mode {"blend_mode", 0, {"Normal", "Add", "Multiply", "Screen", "Overlay"}};
 
-    // -- Per-layer params (6 layers × 6 params each) --------------------------
-    // Hidden controller params: written by process_gpu from input_connected
-    vivid::Param<int> connected_a {"connected_a", 0, 0, 1};
-    vivid::Param<int> connected_b {"connected_b", 0, 0, 1};
-    vivid::Param<int> connected_c {"connected_c", 0, 0, 1};
-    vivid::Param<int> connected_d {"connected_d", 0, 0, 1};
-    vivid::Param<int> connected_e {"connected_e", 0, 0, 1};
-    vivid::Param<int> connected_f {"connected_f", 0, 0, 1};
+    // -- Per-layer params (generated in constructor) --------------------------
+    // Storage for dynamically-named params (name strings must be stable)
+    struct LayerParams {
+        char connected_name[16];
+        char opacity_name[16];
+        char x_name[16];
+        char y_name[16];
+        char scale_name[16];
+        char rotation_name[16];
+        char group_name[16];
 
-    vivid::Param<float> opacity_a  {"opacity_a",  1.0f, 0.0f, 1.0f};
-    vivid::Param<float> x_a        {"x_a",        0.0f, -1.0f, 1.0f};
-    vivid::Param<float> y_a        {"y_a",        0.0f, -1.0f, 1.0f};
-    vivid::Param<float> scale_a    {"scale_a",    1.0f, 0.01f, 4.0f};
-    vivid::Param<float> rotation_a {"rotation_a", 0.0f, -1.0f, 1.0f};
-
-    vivid::Param<float> opacity_b  {"opacity_b",  1.0f, 0.0f, 1.0f};
-    vivid::Param<float> x_b        {"x_b",        0.0f, -1.0f, 1.0f};
-    vivid::Param<float> y_b        {"y_b",        0.0f, -1.0f, 1.0f};
-    vivid::Param<float> scale_b    {"scale_b",    1.0f, 0.01f, 4.0f};
-    vivid::Param<float> rotation_b {"rotation_b", 0.0f, -1.0f, 1.0f};
-
-    vivid::Param<float> opacity_c  {"opacity_c",  1.0f, 0.0f, 1.0f};
-    vivid::Param<float> x_c        {"x_c",        0.0f, -1.0f, 1.0f};
-    vivid::Param<float> y_c        {"y_c",        0.0f, -1.0f, 1.0f};
-    vivid::Param<float> scale_c    {"scale_c",    1.0f, 0.01f, 4.0f};
-    vivid::Param<float> rotation_c {"rotation_c", 0.0f, -1.0f, 1.0f};
-
-    vivid::Param<float> opacity_d  {"opacity_d",  1.0f, 0.0f, 1.0f};
-    vivid::Param<float> x_d        {"x_d",        0.0f, -1.0f, 1.0f};
-    vivid::Param<float> y_d        {"y_d",        0.0f, -1.0f, 1.0f};
-    vivid::Param<float> scale_d    {"scale_d",    1.0f, 0.01f, 4.0f};
-    vivid::Param<float> rotation_d {"rotation_d", 0.0f, -1.0f, 1.0f};
-
-    vivid::Param<float> opacity_e  {"opacity_e",  1.0f, 0.0f, 1.0f};
-    vivid::Param<float> x_e        {"x_e",        0.0f, -1.0f, 1.0f};
-    vivid::Param<float> y_e        {"y_e",        0.0f, -1.0f, 1.0f};
-    vivid::Param<float> scale_e    {"scale_e",    1.0f, 0.01f, 4.0f};
-    vivid::Param<float> rotation_e {"rotation_e", 0.0f, -1.0f, 1.0f};
-
-    vivid::Param<float> opacity_f  {"opacity_f",  1.0f, 0.0f, 1.0f};
-    vivid::Param<float> x_f        {"x_f",        0.0f, -1.0f, 1.0f};
-    vivid::Param<float> y_f        {"y_f",        0.0f, -1.0f, 1.0f};
-    vivid::Param<float> scale_f    {"scale_f",    1.0f, 0.01f, 4.0f};
-    vivid::Param<float> rotation_f {"rotation_f", 0.0f, -1.0f, 1.0f};
-
-    // Organized access
-    vivid::Param<int>* connected_params[kMaxInputs] = {
-        &connected_a, &connected_b, &connected_c,
-        &connected_d, &connected_e, &connected_f
+        vivid::Param<int>   connected{nullptr, 0, 0, 1};
+        vivid::Param<float> opacity  {nullptr, 1.0f, 0.0f, 1.0f};
+        vivid::Param<float> x        {nullptr, 0.0f, -1.0f, 1.0f};
+        vivid::Param<float> y        {nullptr, 0.0f, -1.0f, 1.0f};
+        vivid::Param<float> scale    {nullptr, 1.0f, 0.01f, 4.0f};
+        vivid::Param<float> rotation {nullptr, 0.0f, -1.0f, 1.0f};
     };
 
-    struct LayerParamSet {
-        vivid::Param<float>* opacity;
-        vivid::Param<float>* x;
-        vivid::Param<float>* y;
-        vivid::Param<float>* scale;
-        vivid::Param<float>* rotation;
-    };
+    LayerParams lp_[kMaxInputs];
 
-    LayerParamSet layers[kMaxInputs] = {
-        {&opacity_a, &x_a, &y_a, &scale_a, &rotation_a},
-        {&opacity_b, &x_b, &y_b, &scale_b, &rotation_b},
-        {&opacity_c, &x_c, &y_c, &scale_c, &rotation_c},
-        {&opacity_d, &x_d, &y_d, &scale_d, &rotation_d},
-        {&opacity_e, &x_e, &y_e, &scale_e, &rotation_e},
-        {&opacity_f, &x_f, &y_f, &scale_f, &rotation_f},
-    };
+    // Port names (stable storage for VividPortDescriptor pointers)
+    char port_names_[kMaxInputs][16];
 
     Composite() {
         vivid::semantic_tag(blend_mode, "x_blend_mode");
         vivid::semantic_shape(blend_mode, "enum");
         vivid::description(blend_mode, "How layers are combined: Normal, Add, Multiply, Screen, or Overlay");
 
-        static const char* labels[] = {"A", "B", "C", "D", "E", "F"};
-        static const char* group_names[] = {
-            "Layer A", "Layer B", "Layer C", "Layer D", "Layer E", "Layer F"
-        };
-
         for (int i = 0; i < kMaxInputs; ++i) {
-            // Hidden controller — drives visibility of the layer group
-            vivid::display_hint(*connected_params[i], VIVID_DISPLAY_HIDDEN);
+            auto& L = lp_[i];
 
-            auto& L = layers[i];
+            // Generate stable name strings
+            std::snprintf(L.connected_name, sizeof(L.connected_name), "connected_%d", i);
+            std::snprintf(L.opacity_name, sizeof(L.opacity_name), "opacity_%d", i);
+            std::snprintf(L.x_name, sizeof(L.x_name), "x_%d", i);
+            std::snprintf(L.y_name, sizeof(L.y_name), "y_%d", i);
+            std::snprintf(L.scale_name, sizeof(L.scale_name), "scale_%d", i);
+            std::snprintf(L.rotation_name, sizeof(L.rotation_name), "rotation_%d", i);
+            std::snprintf(L.group_name, sizeof(L.group_name), "Layer %d", i);
+            std::snprintf(port_names_[i], sizeof(port_names_[i]), "layer_%d", i);
+
+            // Assign names to params
+            L.connected.name = L.connected_name;
+            L.opacity.name   = L.opacity_name;
+            L.x.name         = L.x_name;
+            L.y.name         = L.y_name;
+            L.scale.name     = L.scale_name;
+            L.rotation.name  = L.rotation_name;
+
+            // Hidden controller — drives visibility of the layer group
+            vivid::display_hint(L.connected, VIVID_DISPLAY_HIDDEN);
 
             // Group all layer params under a collapsible section
-            vivid::param_group(*L.opacity,  group_names[i]);
-            vivid::param_group(*L.x,        group_names[i]);
-            vivid::param_group(*L.y,        group_names[i]);
-            vivid::param_group(*L.scale,    group_names[i]);
-            vivid::param_group(*L.rotation, group_names[i]);
+            vivid::param_group(L.opacity,  L.group_name);
+            vivid::param_group(L.x,        L.group_name);
+            vivid::param_group(L.y,        L.group_name);
+            vivid::param_group(L.scale,    L.group_name);
+            vivid::param_group(L.rotation, L.group_name);
 
             // Visibility: only show when connected
-            vivid::visible_when_eq(*L.opacity,  *connected_params[i], {1});
-            vivid::visible_when_eq(*L.x,        *connected_params[i], {1});
-            vivid::visible_when_eq(*L.y,        *connected_params[i], {1});
-            vivid::visible_when_eq(*L.scale,    *connected_params[i], {1});
-            vivid::visible_when_eq(*L.rotation, *connected_params[i], {1});
+            vivid::visible_when_eq(L.opacity,  L.connected, {1});
+            vivid::visible_when_eq(L.x,        L.connected, {1});
+            vivid::visible_when_eq(L.y,        L.connected, {1});
+            vivid::visible_when_eq(L.scale,    L.connected, {1});
+            vivid::visible_when_eq(L.rotation, L.connected, {1});
 
             // Layout: opacity full-width, then x/y side by side, scale/rotation side by side
-            vivid::layout_row(*L.x,        2, 0);
-            vivid::layout_row(*L.y,        2, 1);
-            vivid::layout_row(*L.scale,    2, 0);
-            vivid::layout_row(*L.rotation, 2, 1);
+            vivid::layout_row(L.x,        2, 0);
+            vivid::layout_row(L.y,        2, 1);
+            vivid::layout_row(L.scale,    2, 0);
+            vivid::layout_row(L.rotation, 2, 1);
 
             // Semantic metadata
-            vivid::semantic_tag(*L.opacity, "probability_01");
-            vivid::semantic_tag(*L.x, "position_xy");
-            vivid::semantic_tag(*L.y, "position_xy");
-            vivid::semantic_tag(*L.scale, "scale_factor");
-            vivid::semantic_tag(*L.rotation, "angle_turns");
+            vivid::semantic_tag(L.opacity, "probability_01");
+            vivid::semantic_tag(L.x, "position_xy");
+            vivid::semantic_tag(L.y, "position_xy");
+            vivid::semantic_tag(L.scale, "scale_factor");
+            vivid::semantic_tag(L.rotation, "angle_turns");
 
-            for (auto* p : {L.opacity, L.x, L.y, L.scale, L.rotation})
+            for (auto* p : {&L.opacity, &L.x, &L.y, &L.scale, &L.rotation})
                 vivid::semantic_shape(*p, "scalar");
 
-            char desc[96];
-            std::snprintf(desc, sizeof(desc), "Opacity of layer %s", labels[i]);
-            vivid::description(*L.opacity, desc);
-            std::snprintf(desc, sizeof(desc), "Horizontal offset of layer %s", labels[i]);
-            vivid::description(*L.x, desc);
-            std::snprintf(desc, sizeof(desc), "Vertical offset of layer %s", labels[i]);
-            vivid::description(*L.y, desc);
-            std::snprintf(desc, sizeof(desc), "Scale of layer %s (1 = original size)", labels[i]);
-            vivid::description(*L.scale, desc);
-            std::snprintf(desc, sizeof(desc), "Rotation of layer %s in turns (-1 to 1)", labels[i]);
-            vivid::description(*L.rotation, desc);
+            // Repeat-group metadata
+            uint16_t idx = static_cast<uint16_t>(i);
+            vivid::repeat_group(L.connected, "layer", idx);
+            vivid::repeat_group(L.opacity,   "layer", idx);
+            vivid::repeat_group(L.x,         "layer", idx);
+            vivid::repeat_group(L.y,         "layer", idx);
+            vivid::repeat_group(L.scale,     "layer", idx);
+            vivid::repeat_group(L.rotation,  "layer", idx);
         }
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&blend_mode);
         for (int i = 0; i < kMaxInputs; ++i) {
-            out.push_back(connected_params[i]);
-            out.push_back(layers[i].opacity);
-            out.push_back(layers[i].x);
-            out.push_back(layers[i].y);
-            out.push_back(layers[i].scale);
-            out.push_back(layers[i].rotation);
+            out.push_back(&lp_[i].connected);
+            out.push_back(&lp_[i].opacity);
+            out.push_back(&lp_[i].x);
+            out.push_back(&lp_[i].y);
+            out.push_back(&lp_[i].scale);
+            out.push_back(&lp_[i].rotation);
         }
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"a", VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});
-        out.push_back({"b", VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});
-        out.push_back({"c", VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});
-        out.push_back({"d", VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});
-        out.push_back({"e", VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});
-        out.push_back({"f", VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});
-        out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
+        for (int i = 0; i < kMaxInputs; ++i) {
+            VividPortDescriptor pd{};
+            pd.name = port_names_[i];
+            pd.type = VIVID_PORT_TEXTURE;
+            pd.direction = VIVID_PORT_INPUT;
+            pd.repeat_group = "layer";
+            pd.repeat_group_idx = static_cast<uint16_t>(i);
+            out.push_back(pd);
+        }
+        VividPortDescriptor out_port{};
+        out_port.name = "texture";
+        out_port.type = VIVID_PORT_TEXTURE;
+        out_port.direction = VIVID_PORT_OUTPUT;
+        out.push_back(out_port);
     }
 
     void process_gpu(const VividGpuContext* ctx) override {
-        if (!pipeline_) {
-            if (!lazy_init(ctx)) {
-                std::fprintf(stderr, "[composite] lazy_init FAILED\n");
-                return;
-            }
-        }
-
-        // Gather input texture views, fallback for disconnected
-        WGPUTextureView tex[kMaxInputs]{};
+        // Count active (connected) inputs
+        int active = 0;
         bool connected[kMaxInputs]{};
         for (int i = 0; i < kMaxInputs; ++i) {
             connected[i] = ctx->input_connected && ctx->input_connected[i];
             if (ctx->input_texture_views && i < (int)ctx->input_texture_count &&
                 ctx->input_texture_views[i]) {
-                tex[i] = ctx->input_texture_views[i];
                 connected[i] = true;
+            }
+            if (connected[i]) active = i + 1;  // track highest connected index + 1
+        }
+        if (active == 0) active = 1;  // always render at least 1-input shader
+
+        // Write connection state to hidden controller params for inspector visibility
+        for (int i = 0; i < kMaxInputs; ++i) {
+            int param_idx = 1 + i * kParamsPerLayer;
+            ctx->param_values[param_idx] = connected[i] ? 1.0f : 0.0f;
+        }
+
+        // Rebuild pipeline if active input count changed
+        if (active != cached_active_count_ || !pipeline_) {
+            release_pipeline();
+            if (!build_pipeline(ctx, active)) {
+                std::fprintf(stderr, "[composite] build_pipeline(%d) FAILED\n", active);
+                return;
+            }
+            cached_active_count_ = active;
+        }
+
+        // Gather texture views for active inputs
+        WGPUTextureView tex[kMaxInputs]{};
+        for (int i = 0; i < active; ++i) {
+            if (ctx->input_texture_views && i < (int)ctx->input_texture_count &&
+                ctx->input_texture_views[i]) {
+                tex[i] = ctx->input_texture_views[i];
             }
             if (!tex[i]) {
                 if (!fallback_view_) create_fallback(ctx);
@@ -328,59 +320,65 @@ struct Composite : vivid::OperatorBase, vivid::GpuProcessable {
             }
         }
 
-        // Write connection state to hidden controller params for inspector visibility
-        for (int i = 0; i < kMaxInputs; ++i) {
-            int param_idx = 1 + i * kParamsPerLayer; // connected param index in collect_params order
-            ctx->param_values[param_idx] = connected[i] ? 1.0f : 0.0f;
+        // Update uniforms — dynamically sized for active inputs
+        uint32_t usize = uniform_buffer_size(active);
+        std::vector<uint8_t> ubuf(usize, 0);
+        auto* base = ubuf.data();
+
+        // blend_mode at offset 0
+        int32_t bm = blend_mode.int_value();
+        std::memcpy(base, &bm, 4);
+
+        // Per-layer vec4f starting at offset 16
+        for (int i = 0; i < active; ++i) {
+            float layer[4] = {
+                connected[i] ? lp_[i].opacity.value : 0.0f,
+                lp_[i].x.value,
+                lp_[i].y.value,
+                lp_[i].scale.value
+            };
+            std::memcpy(base + 16 + i * 16, layer, 16);
         }
 
-        // Update uniforms
-        CompositeUniforms u{};
-        u.blend_mode = blend_mode.int_value();
-        for (int i = 0; i < kMaxInputs; ++i) {
-            u.layer[i][0] = connected[i] ? layers[i].opacity->value : 0.0f;
-            u.layer[i][1] = layers[i].x->value;
-            u.layer[i][2] = layers[i].y->value;
-            u.layer[i][3] = layers[i].scale->value;
+        // Rotation vec4f groups starting after layers
+        uint32_t rot_offset = 16 + active * 16;
+        int rot_vecs = (active + 3) / 4;
+        for (int v = 0; v < rot_vecs; ++v) {
+            float rot[4] = {0, 0, 0, 0};
+            for (int c = 0; c < 4 && v * 4 + c < active; ++c)
+                rot[c] = lp_[v * 4 + c].rotation.value;
+            std::memcpy(base + rot_offset + v * 16, rot, 16);
         }
-        for (int i = 0; i < 4; ++i)
-            u.rot_abcd[i] = layers[i].rotation->value;
-        u.rot_ef__[0] = layers[4].rotation->value;
-        u.rot_ef__[1] = layers[5].rotation->value;
-        u.rot_ef__[2] = 0.0f;
-        u.rot_ef__[3] = 0.0f;
-        wgpuQueueWriteBuffer(ctx->queue, uniform_buf_, 0, &u, sizeof(u));
+
+        wgpuQueueWriteBuffer(ctx->queue, uniform_buf_, 0, ubuf.data(), usize);
 
         // Recreate bind group when texture inputs change
-        bool dirty = false;
-        for (int i = 0; i < kMaxInputs; ++i) {
-            const uint32_t w = (ctx->input_texture_widths &&
-                                i < static_cast<int>(ctx->input_texture_count))
-                ? ctx->input_texture_widths[i]
-                : 0;
-            const uint32_t h = (ctx->input_texture_heights &&
-                                i < static_cast<int>(ctx->input_texture_count))
-                ? ctx->input_texture_heights[i]
-                : 0;
-            if (tex[i] != cached_tex_[i] ||
-                w != cached_tex_width_[i] ||
-                h != cached_tex_height_[i]) {
-                dirty = true;
-                break;
+        bool dirty = (active != cached_bind_count_);
+        if (!dirty) {
+            for (int i = 0; i < active; ++i) {
+                uint32_t w = (ctx->input_texture_widths && i < (int)ctx->input_texture_count)
+                    ? ctx->input_texture_widths[i] : 0;
+                uint32_t h = (ctx->input_texture_heights && i < (int)ctx->input_texture_count)
+                    ? ctx->input_texture_heights[i] : 0;
+                if (tex[i] != cached_tex_[i] || w != cached_tex_width_[i] || h != cached_tex_height_[i]) {
+                    dirty = true;
+                    break;
+                }
             }
         }
         if (dirty) {
-            if (cached_bind_group_)
-                wgpuBindGroupRelease(cached_bind_group_);
+            vivid::gpu::release(cached_bind_group_);
+            cached_bind_group_ = nullptr;
 
-            WGPUBindGroupEntry bg_entries[2 + kMaxInputs]{};
+            uint32_t entry_count = 2 + active;
+            std::vector<WGPUBindGroupEntry> bg_entries(entry_count, WGPUBindGroupEntry{});
             bg_entries[0].binding = 0;
             bg_entries[0].buffer  = uniform_buf_;
             bg_entries[0].offset  = 0;
-            bg_entries[0].size    = sizeof(CompositeUniforms);
+            bg_entries[0].size    = usize;
             bg_entries[1].binding = 1;
             bg_entries[1].sampler = sampler_;
-            for (int i = 0; i < kMaxInputs; ++i) {
+            for (int i = 0; i < active; ++i) {
                 bg_entries[2 + i].binding = 2 + i;
                 bg_entries[2 + i].textureView = tex[i];
             }
@@ -388,21 +386,17 @@ struct Composite : vivid::OperatorBase, vivid::GpuProcessable {
             WGPUBindGroupDescriptor bg_desc{};
             bg_desc.label = vivid_sv("Composite BG");
             bg_desc.layout = bind_layout_;
-            bg_desc.entryCount = 2 + kMaxInputs;
-            bg_desc.entries = bg_entries;
+            bg_desc.entryCount = entry_count;
+            bg_desc.entries = bg_entries.data();
             cached_bind_group_ = wgpuDeviceCreateBindGroup(ctx->device, &bg_desc);
-            for (int i = 0; i < kMaxInputs; ++i) {
-                const uint32_t w = (ctx->input_texture_widths &&
-                                    i < static_cast<int>(ctx->input_texture_count))
-                    ? ctx->input_texture_widths[i]
-                    : 0;
-                const uint32_t h = (ctx->input_texture_heights &&
-                                    i < static_cast<int>(ctx->input_texture_count))
-                    ? ctx->input_texture_heights[i]
-                    : 0;
+
+            cached_bind_count_ = active;
+            for (int i = 0; i < active; ++i) {
                 cached_tex_[i] = tex[i];
-                cached_tex_width_[i] = w;
-                cached_tex_height_[i] = h;
+                cached_tex_width_[i] = (ctx->input_texture_widths && i < (int)ctx->input_texture_count)
+                    ? ctx->input_texture_widths[i] : 0;
+                cached_tex_height_[i] = (ctx->input_texture_heights && i < (int)ctx->input_texture_count)
+                    ? ctx->input_texture_heights[i] : 0;
             }
         }
 
@@ -412,30 +406,47 @@ struct Composite : vivid::OperatorBase, vivid::GpuProcessable {
     }
 
     ~Composite() override {
-        vivid::gpu::release(cached_bind_group_);
-        vivid::gpu::release(pipeline_);
-        vivid::gpu::release(bind_layout_);
-        vivid::gpu::release(uniform_buf_);
-        vivid::gpu::release(shader_);
-        vivid::gpu::release(pipe_layout_);
+        release_pipeline();
         vivid::gpu::release(sampler_);
         vivid::gpu::release(fallback_tex_);
         vivid::gpu::release(fallback_view_);
     }
 
 private:
+    // Pipeline state (rebuilt when active input count changes)
     WGPURenderPipeline  pipeline_      = nullptr;
     WGPUBindGroupLayout bind_layout_   = nullptr;
     WGPUBuffer          uniform_buf_   = nullptr;
     WGPUShaderModule    shader_        = nullptr;
     WGPUPipelineLayout  pipe_layout_   = nullptr;
+    int                 cached_active_count_ = 0;
+
+    // Shared state (not rebuilt)
     WGPUSampler         sampler_       = nullptr;
     WGPUTexture         fallback_tex_  = nullptr;
     WGPUTextureView     fallback_view_ = nullptr;
+
+    // Bind group cache
     WGPUBindGroup       cached_bind_group_ = nullptr;
+    int                 cached_bind_count_  = 0;
     WGPUTextureView     cached_tex_[kMaxInputs]{};
     uint32_t            cached_tex_width_[kMaxInputs]{};
     uint32_t            cached_tex_height_[kMaxInputs]{};
+
+    void release_pipeline() {
+        vivid::gpu::release(cached_bind_group_);
+        cached_bind_group_ = nullptr;
+        vivid::gpu::release(pipeline_);
+        pipeline_ = nullptr;
+        vivid::gpu::release(bind_layout_);
+        bind_layout_ = nullptr;
+        vivid::gpu::release(uniform_buf_);
+        uniform_buf_ = nullptr;
+        vivid::gpu::release(shader_);
+        shader_ = nullptr;
+        vivid::gpu::release(pipe_layout_);
+        pipe_layout_ = nullptr;
+    }
 
     void create_fallback(const VividGpuContext* gpu) {
         WGPUTextureDescriptor td{};
@@ -469,25 +480,29 @@ private:
         wgpuQueueWriteTexture(gpu->queue, &dest_info, zero, sizeof(zero), &layout, &extent);
     }
 
-    bool lazy_init(const VividGpuContext* gpu) {
-        shader_ = vivid::gpu::create_shader(gpu->device, kCompositeFragment, "Composite Shader");
+    bool build_pipeline(const VividGpuContext* gpu, int active) {
+        std::string wgsl = generate_composite_wgsl(active);
+        shader_ = vivid::gpu::create_shader(gpu->device, wgsl.c_str(), "Composite Shader");
         if (!shader_) return false;
 
-        uniform_buf_ = vivid::gpu::create_uniform_buffer(gpu->device, sizeof(CompositeUniforms), "Composite Uniforms");
-        sampler_ = vivid::gpu::create_linear_sampler(gpu->device, "Composite Sampler");
+        uint32_t usize = uniform_buffer_size(active);
+        uniform_buf_ = vivid::gpu::create_uniform_buffer(gpu->device, usize, "Composite Uniforms");
+        if (!sampler_)
+            sampler_ = vivid::gpu::create_linear_sampler(gpu->device, "Composite Sampler");
 
-        // Bind group layout: uniform(0) + sampler(1) + texA..texF(2..7)
-        WGPUBindGroupLayoutEntry entries[2 + kMaxInputs]{};
+        // Bind group layout: uniform(0) + sampler(1) + tex_0..tex_{active-1}
+        uint32_t entry_count = 2 + active;
+        std::vector<WGPUBindGroupLayoutEntry> entries(entry_count, WGPUBindGroupLayoutEntry{});
         entries[0].binding = 0;
         entries[0].visibility = WGPUShaderStage_Fragment;
         entries[0].buffer.type = WGPUBufferBindingType_Uniform;
-        entries[0].buffer.minBindingSize = sizeof(CompositeUniforms);
+        entries[0].buffer.minBindingSize = usize;
 
         entries[1].binding = 1;
         entries[1].visibility = WGPUShaderStage_Fragment;
         entries[1].sampler.type = WGPUSamplerBindingType_Filtering;
 
-        for (int i = 0; i < kMaxInputs; ++i) {
+        for (int i = 0; i < active; ++i) {
             entries[2 + i].binding = 2 + i;
             entries[2 + i].visibility = WGPUShaderStage_Fragment;
             entries[2 + i].texture.sampleType = WGPUTextureSampleType_Float;
@@ -497,8 +512,8 @@ private:
 
         WGPUBindGroupLayoutDescriptor bgl_desc{};
         bgl_desc.label = vivid_sv("Composite BGL");
-        bgl_desc.entryCount = 2 + kMaxInputs;
-        bgl_desc.entries = entries;
+        bgl_desc.entryCount = entry_count;
+        bgl_desc.entries = entries.data();
         bind_layout_ = wgpuDeviceCreateBindGroupLayout(gpu->device, &bgl_desc);
 
         WGPUPipelineLayoutDescriptor pl_desc{};
@@ -507,10 +522,9 @@ private:
         pl_desc.bindGroupLayouts = &bind_layout_;
         pipe_layout_ = wgpuDeviceCreatePipelineLayout(gpu->device, &pl_desc);
 
-        pipeline_ = vivid::gpu::create_pipeline(gpu->device, shader_, pipe_layout_, gpu->output_format, "Composite Pipeline");
-        if (!pipeline_) return false;
-
-        return true;
+        pipeline_ = vivid::gpu::create_pipeline(gpu->device, shader_, pipe_layout_,
+                                                gpu->output_format, "Composite Pipeline");
+        return pipeline_ != nullptr;
     }
 };
 

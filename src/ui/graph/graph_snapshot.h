@@ -77,6 +77,10 @@ struct ParamInfo {
     VividParamVisibilityOp visible_when_op = VIVID_PARAM_VIS_ALWAYS;
     std::vector<int32_t> visible_when_values;
 
+    // Repeat-group metadata (for variadic port patterns)
+    std::string repeat_group;
+    uint16_t    repeat_group_idx = 0;
+
     // Conditional visibility (resolved from descriptor metadata)
     ParamVisibilityCondition visibility;
 
@@ -110,6 +114,10 @@ struct PortInfo {
     std::string name;
     VividPortType type = VIVID_PORT_SCALAR;
     VividPortDirection direction = VIVID_PORT_INPUT;
+
+    // Repeat-group metadata (for variadic port patterns)
+    std::string repeat_group;
+    uint16_t    repeat_group_idx = 0;
 };
 
 // Owned copy of operator metadata

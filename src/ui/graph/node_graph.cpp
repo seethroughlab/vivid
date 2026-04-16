@@ -232,6 +232,14 @@ template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::S
 // Port visibility helpers
 // -----------------------------------------------------------------------
 
+// Look up PortInfo for a given port name from the node's operator info.
+static const PortInfo* find_port_info(const NodeSnapshot& ns, const std::string& name) {
+    if (!ns.op_info) return nullptr;
+    for (const auto& p : ns.op_info->ports)
+        if (p.name == name) return &p;
+    return nullptr;
+}
+
 // Check if a port has an active wire connection
 static bool port_has_connection(const std::vector<ConnectionSnapshot>& conns,
                                 const std::string& node_id,
@@ -248,8 +256,25 @@ static bool port_has_connection(const std::vector<ConnectionSnapshot>& conns,
 }
 
 uint32_t NodeGraphUI::count_visible_input_ports(const NodeSnapshot& ns, bool show_params) const {
-    // Signal input ports are always visible
-    uint32_t count = static_cast<uint32_t>(ns.input_port_indices.size());
+    // Signal input ports — repeat-group ports are visible only if connected or
+    // the first unconnected slot in the group (grow-on-connect).
+    uint32_t count = 0;
+    std::unordered_map<std::string, bool> repeat_group_empty_shown;
+    auto sorted_inputs = sorted_ports(ns.input_port_indices);
+    for (const auto& [idx, name] : sorted_inputs) {
+        const auto* pi = find_port_info(ns, name);
+        if (pi && !pi->repeat_group.empty()) {
+            bool connected = port_has_connection(snap_.connections, ns.node_id, name, false);
+            if (connected) { count++; continue; }
+            if (!repeat_group_empty_shown[pi->repeat_group]) {
+                repeat_group_empty_shown[pi->repeat_group] = true;
+                count++;
+            }
+            // else: hidden (unconnected repeat-group port beyond the first empty slot)
+        } else {
+            count++;  // standalone ports always visible
+        }
+    }
     // Param inputs only visible if connected (and param wires shown)
     if (show_params) {
         for (const auto& [name, idx] : ns.param_indices) {
@@ -312,11 +337,23 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
 
     float port_start_dy = kAccentBarH + body_h + kNodePadY + kLineH * 2;
 
-    // Input signal ports — always visible
+    // Input signal ports — repeat-group ports visible only if connected or first empty slot
     size_t pi = 0;
-    for (; pi < sorted_inputs.size(); ++pi) {
+    std::unordered_map<std::string, bool> rg_empty_shown;
+    for (size_t si = 0; si < sorted_inputs.size(); ++si) {
+        const auto& port_name = sorted_inputs[si].second;
+        const auto* port_info = find_port_info(ns, port_name);
+        if (port_info && !port_info->repeat_group.empty()) {
+            bool connected = port_has_connection(snap_.connections, ns.node_id, port_name, false);
+            if (!connected) {
+                if (rg_empty_shown[port_info->repeat_group])
+                    continue;  // skip hidden repeat-group ports
+                rg_empty_shown[port_info->repeat_group] = true;
+            }
+        }
         float dy = port_start_dy + pi * kLineH + kLineH * 0.5f;
-        rect.inputs.push_back({sorted_inputs[pi].second, dy, false});
+        rect.inputs.push_back({port_name, dy, false});
+        ++pi;
     }
 
     // Parameter inputs — only visible if connected and param wires shown

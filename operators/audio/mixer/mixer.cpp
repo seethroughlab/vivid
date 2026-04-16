@@ -1,12 +1,15 @@
 #include "operator_api/operator.h"
 #include "operator_api/thumbnail.h"
-#include "shared/audio_kernels/audio_buffer_kernels.h"
+#include <cstring>
+
+static constexpr int kMaxInputs = 16;
 
 /**
- * @brief Four-input summing mixer with per-channel gain.
+ * @brief Summing mixer with per-channel gain for up to 16 audio inputs.
  *
- * Sums up to 4 audio inputs with independent gain controls.
- * Disconnected inputs contribute silence.
+ * Sums connected audio inputs with independent gain controls.
+ * Disconnected inputs contribute silence. Uses repeat-group ports
+ * for grow-on-connect UI behavior.
  *
  * @see Gain, Composite
  */
@@ -14,10 +17,15 @@ struct Mixer : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Mixer";
     static constexpr bool kTimeDependent = false;
 
-    vivid::Param<float> gain1{"gain_1", 1.0f, 0.0f, 2.0f};
-    vivid::Param<float> gain2{"gain_2", 1.0f, 0.0f, 2.0f};
-    vivid::Param<float> gain3{"gain_3", 1.0f, 0.0f, 2.0f};
-    vivid::Param<float> gain4{"gain_4", 1.0f, 0.0f, 2.0f};
+    // Per-input gain params (generated in constructor)
+    struct InputParams {
+        char gain_name[16];
+        char desc[80];
+        vivid::Param<float> gain{nullptr, 1.0f, 0.0f, 2.0f};
+    };
+
+    InputParams ip_[kMaxInputs];
+    char port_names_[kMaxInputs][16];
 
     WGPURenderPipeline thumb_pipeline_ = nullptr;
     WGPUBindGroup thumb_bind_group_ = nullptr;
@@ -28,48 +36,67 @@ struct Mixer : vivid::OperatorBase, vivid::AudioProcessable {
     WGPUTextureFormat thumb_pipeline_format_ = WGPUTextureFormat_Undefined;
 
     Mixer() {
-        // 2×2 knob grid
-        vivid::layout_row(gain1, 2, 0);  vivid::display_hint(gain1, VIVID_DISPLAY_KNOB);
-        vivid::layout_row(gain2, 2, 1);  vivid::display_hint(gain2, VIVID_DISPLAY_KNOB);
-        vivid::layout_row(gain3, 2, 0);  vivid::display_hint(gain3, VIVID_DISPLAY_KNOB);
-        vivid::layout_row(gain4, 2, 1);  vivid::display_hint(gain4, VIVID_DISPLAY_KNOB);
-        for (auto* p : {&gain1, &gain2, &gain3, &gain4}) {
-            vivid::semantic_tag(*p, "amplitude_linear");
-            vivid::semantic_shape(*p, "scalar");
+        for (int i = 0; i < kMaxInputs; ++i) {
+            auto& I = ip_[i];
+            std::snprintf(I.gain_name, sizeof(I.gain_name), "gain_%d", i);
+            std::snprintf(port_names_[i], sizeof(port_names_[i]), "input_%d", i);
+            std::snprintf(I.desc, sizeof(I.desc),
+                          "Level multiplier for input %d (0 = silent, 1 = unity, 2 = double)", i);
+
+            I.gain.name = I.gain_name;
+
+            vivid::display_hint(I.gain, VIVID_DISPLAY_KNOB);
+            vivid::layout_row(I.gain, 2, i % 2);
+            vivid::semantic_tag(I.gain, "amplitude_linear");
+            vivid::semantic_shape(I.gain, "scalar");
+            vivid::description(I.gain, I.desc);
+            vivid::repeat_group(I.gain, "input", static_cast<uint16_t>(i));
         }
-        vivid::description(gain1, "Level multiplier for input 1 (0 = silent, 1 = unity, 2 = double)");
-        vivid::description(gain2, "Level multiplier for input 2 (0 = silent, 1 = unity, 2 = double)");
-        vivid::description(gain3, "Level multiplier for input 3 (0 = silent, 1 = unity, 2 = double)");
-        vivid::description(gain4, "Level multiplier for input 4 (0 = silent, 1 = unity, 2 = double)");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
-        out.push_back(&gain1);
-        out.push_back(&gain2);
-        out.push_back(&gain3);
-        out.push_back(&gain4);
+        for (int i = 0; i < kMaxInputs; ++i)
+            out.push_back(&ip_[i].gain);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input_1", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
-        out.push_back({"input_2", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
-        out.push_back({"input_3", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
-        out.push_back({"input_4", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
-        out.push_back({"output",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
+        for (int i = 0; i < kMaxInputs; ++i) {
+            VividPortDescriptor pd{};
+            pd.name = port_names_[i];
+            pd.type = VIVID_PORT_AUDIO_BUFFER;
+            pd.direction = VIVID_PORT_INPUT;
+            pd.transport = VIVID_PORT_TRANSPORT_AUDIO_BUFFER;
+            pd.channels = 1;
+            pd.repeat_group = "input";
+            pd.repeat_group_idx = static_cast<uint16_t>(i);
+            out.push_back(pd);
+        }
+        VividPortDescriptor out_port{};
+        out_port.name = "output";
+        out_port.type = VIVID_PORT_AUDIO_BUFFER;
+        out_port.direction = VIVID_PORT_OUTPUT;
+        out_port.transport = VIVID_PORT_TRANSPORT_AUDIO_BUFFER;
+        out_port.channels = 1;
+        out.push_back(out_port);
         vivid::append_analysis_ports(out);
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        const float* in1 = ctx->input_buffers[0];
-        const float* in2 = ctx->input_buffers[1];
-        const float* in3 = ctx->input_buffers[2];
-        const float* in4 = ctx->input_buffers[3];
-        float*       out = ctx->output_buffers[0];
-        float g1 = gain1.value, g2 = gain2.value;
-        float g3 = gain3.value, g4 = gain4.value;
+        float* out = ctx->output_buffers[0];
+        const uint32_t n = ctx->buffer_size;
 
-        vivid::audio_kernels::mix4(in1, in2, in3, in4, out, ctx->buffer_size,
-                                   g1, g2, g3, g4);
+        // Clear output
+        std::memset(out, 0, n * sizeof(float));
+
+        // Accumulate each input × gain
+        for (int i = 0; i < kMaxInputs; ++i) {
+            const float* in = ctx->input_buffers[i];
+            if (!in) continue;
+            float g = ip_[i].gain.value;
+            if (g == 0.0f) continue;
+            for (uint32_t s = 0; s < n; ++s)
+                out[s] += in[s] * g;
+        }
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override {

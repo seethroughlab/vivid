@@ -100,6 +100,7 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
     entry.widget_ids.resize(param_count);
     entry.visible_when_params.resize(param_count);
     entry.visible_when_values.resize(param_count);
+    entry.param_repeat_groups.resize(param_count);
     entry.choice_labels.resize(param_count);
     entry.choice_label_ptrs.resize(param_count);
     for (uint32_t i = 0; i < param_count; ++i) {
@@ -197,6 +198,13 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
             dp.visible_when_values = nullptr;
             dp.visible_when_value_count = 0;
         }
+        if (sp.repeat_group) {
+            entry.param_repeat_groups[i] = sp.repeat_group;
+            dp.repeat_group = entry.param_repeat_groups[i].c_str();
+        } else {
+            dp.repeat_group = nullptr;
+        }
+        dp.repeat_group_idx = sp.repeat_group_idx;
     }
 
     entry.ports.resize(port_count);
@@ -207,6 +215,7 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
     entry.port_semantic_shapes.resize(port_count);
     entry.port_semantic_intents.resize(port_count);
     entry.port_descriptions.resize(port_count);
+    entry.port_repeat_groups.resize(port_count);
     for (uint32_t i = 0; i < port_count; ++i) {
         const auto& sp = src->ports[i];
         auto& dp = entry.ports[i];
@@ -246,6 +255,13 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
         } else {
             dp.description = nullptr;
         }
+        if (sp.repeat_group) {
+            entry.port_repeat_groups[i] = sp.repeat_group;
+            dp.repeat_group = entry.port_repeat_groups[i].c_str();
+        } else {
+            dp.repeat_group = nullptr;
+        }
+        dp.repeat_group_idx = sp.repeat_group_idx;
     }
 
     entry.desc.name = nullptr;
