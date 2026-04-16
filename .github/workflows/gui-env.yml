@@ -22,12 +22,6 @@ jobs:
           repository: seethroughlab/vivid-wavetable
           path: external-packages/vivid-wavetable
 
-      - name: Checkout vivid-sequencers
-        uses: actions/checkout@v4
-        with:
-          repository: seethroughlab/vivid-sequencers
-          path: external-packages/vivid-sequencers
-
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_OSX_ARCHITECTURES=arm64
 
@@ -51,32 +45,11 @@ jobs:
           --target operators
           -j$(sysctl -n hw.logicalcpu)
 
-      - name: Configure vivid-sequencers package
-        run: >
-          cmake
-          -S external-packages/vivid-sequencers
-          -B external-packages/vivid-sequencers/build
-          -DVIVID_SRC_DIR=${{ github.workspace }}
-          -DVIVID_BUILD_DIR=${{ github.workspace }}/build
-          -DVIVID_PLUGIN_SUFFIX=.dylib
-
-      - name: Build vivid-sequencers package
-        run: >
-          cmake --build external-packages/vivid-sequencers/build
-          --target operators
-          -j$(sysctl -n hw.logicalcpu)
-
       - name: Verify wavetable package setup
         env:
           HOME: ${{ env.VIVID_GUI_ENV_HOME }}
           VIVID_PACKAGE_PATHS: ${{ env.VIVID_GUI_ENV_PACKAGE_ROOT }}
         run: ./build/vivid list-packages | grep '^vivid-wavetable '
-
-      - name: Verify sequencers package setup
-        env:
-          HOME: ${{ env.VIVID_GUI_ENV_HOME }}
-          VIVID_PACKAGE_PATHS: ${{ env.VIVID_GUI_ENV_PACKAGE_ROOT }}
-        run: ./build/vivid list-packages | grep '^vivid-sequencers '
 
       - name: Run GUI env smoke tests
         env:

@@ -151,7 +151,7 @@ add_vivid_operator(mseg_au           operators/control/mseg/mseg.cpp
                    FACTORY_PRESETS operators/control/mseg/factory_presets.json
                    EXTRA_LIBS webgpu)
 
-# --- Sequencer operators (from vivid-sequencers) ---
+# --- Sequencer operators ---
 add_vivid_operator(sequencer_au       operators/control/sequencer/sequencer.cpp
                    FACTORY_PRESETS operators/control/sequencer/factory_presets.json)
 add_vivid_operator(drum_sequencer_au  operators/control/drum_sequencer/drum_sequencer.cpp  EXTRA_LIBS webgpu)

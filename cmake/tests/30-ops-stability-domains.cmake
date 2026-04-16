@@ -289,7 +289,7 @@ target_link_libraries(test_operator_sweep PRIVATE vivid_runtime_testlib vivid_op
 add_test(NAME test_operator_sweep COMMAND test_operator_sweep WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_operator_sweep PROPERTIES LABELS "HEADLESS_SMOKE" TIMEOUT 120)
 
-# --- Sequencer operator tests (from vivid-sequencers) ---
+# --- Sequencer operator tests ---
 add_executable(test_arpeggiator_patterns tests/ops/test_arpeggiator_patterns.cpp)
 target_include_directories(test_arpeggiator_patterns PRIVATE
     src ${CMAKE_SOURCE_DIR}/operators/shared/sequencer tests)
