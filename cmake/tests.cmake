@@ -64,6 +64,7 @@ add_library(vivid_runtime_testlib STATIC
     src/runtime/packages/package_manager_install.cpp
     src/runtime/packages/package_manager_build.cpp
     src/runtime/packages/project_lockfile.cpp
+    src/common/hash_util.cpp
     src/runtime/packages/package_scaffolder.cpp
     src/runtime/packages/package_test_runner.cpp
     src/runtime/platform/app_update_manager.cpp

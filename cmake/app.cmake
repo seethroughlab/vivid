@@ -93,6 +93,7 @@ add_executable(vivid
     src/runtime/packages/package_manager_install.cpp
     src/runtime/packages/package_manager_build.cpp
     src/runtime/packages/project_lockfile.cpp
+    src/common/hash_util.cpp
     src/runtime/core/undo_manager.cpp
     src/runtime/gpu/screenshot.cpp
     src/runtime/operators/builtin_operators.cpp

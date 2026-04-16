@@ -1,6 +1,8 @@
 // test_project_lockfile.cpp — ProjectLockfile JSON round-trip and validation
 #include "runtime/packages/project_lockfile.h"
 
+#include "common/hash_util.h"
+
 #include <cstdio>
 #include <fstream>
 #include <string>
@@ -206,6 +208,29 @@ void test_zero_version_rejected() {
           "zero version: InvalidShape reported");
 }
 
+void test_sha256_hex_abc() {
+    // FIPS 180-4 / standard NIST test vector for sha256("abc").
+    check(sha256_hex("abc") ==
+              "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+          "sha256_hex(\"abc\") matches NIST test vector");
+}
+
+void test_sha256_hex_length() {
+    // All SHA-256 digests are 64 hex characters.
+    check(sha256_hex("").size() == 64,        "sha256_hex(empty) is 64 chars");
+    check(sha256_hex("abc").size() == 64,      "sha256_hex(abc) is 64 chars");
+    check(sha256_hex(std::string(1000, 'a')).size() == 64,
+          "sha256_hex(1000 * 'a') is 64 chars");
+}
+
+void test_sha256_hex_multi_block() {
+    // FIPS 180-4 appendix test vector — two-block message.
+    // sha256 of "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"
+    check(sha256_hex("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq") ==
+              "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1",
+          "sha256_hex two-block NIST vector");
+}
+
 }  // namespace
 
 int main() {
@@ -219,6 +244,9 @@ int main() {
     test_unknown_top_level_keys_ignored();
     test_io_error_on_missing_file();
     test_zero_version_rejected();
+    test_sha256_hex_abc();
+    test_sha256_hex_length();
+    test_sha256_hex_multi_block();
 
     if (failures == 0) {
         std::fprintf(stderr, "All project_lockfile tests passed.\n");
