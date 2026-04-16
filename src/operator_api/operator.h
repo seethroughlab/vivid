@@ -384,7 +384,33 @@ constexpr bool get_strategy_independent() {
     else
         return false;
 }
+template <typename T, typename = void>
+struct has_time_dependent : std::false_type {};
+template <typename T>
+struct has_time_dependent<T, std::void_t<decltype(T::kTimeDependent)>> : std::true_type {};
+
+template <typename T>
+constexpr bool get_time_dependent() {
+    if constexpr (has_time_dependent<T>::value)
+        return T::kTimeDependent;
+    else
+        return false;
+}
 }} // namespace vivid::detail
+
+// ---------------------------------------------------------------------------
+// VIVID_PARAMS / VIVID_PORTS — shorthand for simple param/port registration
+// ---------------------------------------------------------------------------
+
+#define VIVID_PARAMS(...)                                                \
+    void collect_params(std::vector<vivid::ParamBase*>& out) override {  \
+        out = {__VA_ARGS__};                                             \
+    }
+
+#define VIVID_PORTS(...)                                                  \
+    void collect_ports(std::vector<VividPortDescriptor>& out) override {  \
+        out = {__VA_ARGS__};                                              \
+    }
 
 // Convenience macro: get identity-keyed per-lane persistent state from audio context.
 // Returns T* pointing to zero-initialized storage stable until lane retirement.
@@ -530,7 +556,8 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
         desc.params         = s_params.data();                                \
         desc.port_count     = static_cast<uint32_t>(s_ports.size());          \
         desc.ports          = s_ports.data();                                 \
-        desc.time_dependent = ClassName::kTimeDependent ? 1 : 0;              \
+        desc.time_dependent =                                              \
+            vivid::detail::get_time_dependent<ClassName>() ? 1 : 0;              \
     }                                                                         \
     return &desc;                                                             \
 }                                                                             \

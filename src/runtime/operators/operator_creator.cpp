@@ -31,11 +31,27 @@ static std::string to_pascal_case(const std::string& snake) {
     return result;
 }
 
-static void emit_starter_comment(std::ostringstream& s) {
-    s << "// Starter template. For advanced features (custom ports, file drops,\n";
-    s << "// inspectors, thumbnails, or expensive one-time CPU prep via\n";
-    s << "// prepare_instance_assets()), see examples in operators/ or use MCP opdev tools.\n\n";
+// ---------------------------------------------------------------------------
+// Template string replacement
+// ---------------------------------------------------------------------------
+
+static std::string tpl_replace(std::string s, const std::string& key, const std::string& val) {
+    for (size_t pos = 0; (pos = s.find(key, pos)) != std::string::npos; pos += val.size())
+        s.replace(pos, key.size(), val);
+    return s;
 }
+
+static constexpr const char* kOptionalFeaturesComment = R"(
+    // --- Optional features (uncomment or add as needed) ---
+    // static constexpr bool kTimeDependent = true;           // ctx->time, ctx->delta_time
+    // static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
+    //
+    // Param types:   Param<int>, Param<bool>, Param<FilePath>, Param<TextValue>
+    // Port types:    VIVID_PORT_LANE_ARRAY, VIVID_PORT_STRING, VIVID_PORT_TEXTURE
+    // Semantic tags: vivid::semantic_tag(param, "frequency_hz");
+    // Thumbnails:    void draw_thumbnail(const VividDrawContext*) override;
+    // Child ops:     vivid::ChildOp<LFO> lfo_;  vivid::ChildOp<Smooth> smoother_;
+    // Lane state:    vivid_lane_state() for per-lane persistent storage)";
 
 static bool is_valid_identifier(const std::string& name) {
     if (name.empty()) return false;
@@ -112,8 +128,7 @@ static std::string custom_port_decl(const VividPortSpec& p) {
     return "        out.push_back(VIVID_CUSTOM_REF_PORT(\"" + p.name + "\", " + dir + ", " + p.type_name + "));\n";
 }
 
-static void emit_custom_type_support(std::ostringstream& s,
-                                     const std::vector<VividPortSpec>& ports) {
+static std::string build_custom_type_support(const std::vector<VividPortSpec>& ports) {
     std::vector<VividPortSpec> custom_types;
     for (const auto& p : ports) {
         if (!is_custom_port_spec(p)) continue;
@@ -127,8 +142,9 @@ static void emit_custom_type_support(std::ostringstream& s,
         }
         if (!seen) custom_types.push_back(p);
     }
-    if (custom_types.empty()) return;
+    if (custom_types.empty()) return {};
 
+    std::ostringstream s;
     s << "#include \"operator_api/type_id.h\"\n";
     s << "#include \"operator_api/port_type_registry.h\"\n";
     s << "#include <cstdint>\n\n";
@@ -162,6 +178,7 @@ static void emit_custom_type_support(std::ostringstream& s,
     s << "    *count = static_cast<uint32_t>(sizeof(kInfos) / sizeof(kInfos[0]));\n";
     s << "    return kInfos;\n";
     s << "}\n\n";
+    return s.str();
 }
 
 static const char* kind_subdir(VividOperatorKind k) {
@@ -199,7 +216,8 @@ static std::string float_literal(float v) {
     return r;
 }
 
-static void emit_param_declaration(std::ostringstream& s, const VividParamSpec& p) {
+static std::string build_param_decl(const VividParamSpec& p) {
+    std::ostringstream s;
     s << "    vivid::Param<" << param_type_cpp(p.type) << "> " << p.name << "{\"" << p.name << "\"";
     switch (p.type) {
         case VIVID_PARAM_FLOAT:
@@ -214,39 +232,70 @@ static void emit_param_declaration(std::ostringstream& s, const VividParamSpec& 
             s << ", " << (p.default_value != 0.0f ? "true" : "false");
             break;
         case VIVID_PARAM_FILE:
-            // No extra args
             break;
         case VIVID_PARAM_TEXT:
             s << ", \"" << p.default_string << "\"";
             break;
     }
     s << "};\n";
+    return s.str();
+}
+
+static std::string build_param_decls(const std::vector<VividParamSpec>& params) {
+    std::string result;
+    for (const auto& p : params)
+        result += build_param_decl(p);
+    return result;
 }
 
 // ---------------------------------------------------------------------------
 // Port collection helpers
 // ---------------------------------------------------------------------------
 
-static void emit_collect_ports(std::ostringstream& s,
-                               const std::vector<VividPortSpec>& ports) {
-    s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
-    for (const auto& p : ports) {
-        if (is_custom_port_spec(p)) {
-            s << custom_port_decl(p);
-        } else {
-            const char* dir = (p.direction == VIVID_PORT_INPUT) ? "VIVID_PORT_INPUT" : "VIVID_PORT_OUTPUT";
-            s << "        out.push_back({\"" << p.name << "\", " << port_type_name(p.type) << ", " << dir << "});\n";
-        }
+static std::string build_params_macro(const std::vector<VividParamSpec>& params) {
+    std::ostringstream s;
+    s << "    VIVID_PARAMS(";
+    for (size_t i = 0; i < params.size(); ++i) {
+        if (i > 0) s << ", ";
+        s << "&" << params[i].name;
     }
-    s << "    }\n";
+    s << ")\n";
+    return s.str();
 }
 
-static void emit_collect_params(std::ostringstream& s,
-                                const std::vector<VividParamSpec>& params) {
-    s << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {\n";
-    for (const auto& p : params)
-        s << "        out.push_back(&" << p.name << ");\n";
-    s << "    }\n";
+static std::string build_ports_macro(const std::vector<VividPortSpec>& ports) {
+    std::ostringstream s;
+
+    // Custom port types can't use the VIVID_PORTS shorthand — fall back to manual.
+    bool has_custom = false;
+    for (const auto& p : ports)
+        if (is_custom_port_spec(p)) { has_custom = true; break; }
+
+    if (has_custom) {
+        s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
+        for (const auto& p : ports) {
+            if (is_custom_port_spec(p)) {
+                s << custom_port_decl(p);
+            } else {
+                const char* dir = (p.direction == VIVID_PORT_INPUT) ? "VIVID_PORT_INPUT" : "VIVID_PORT_OUTPUT";
+                s << "        out.push_back({\"" << p.name << "\", " << port_type_name(p.type) << ", " << dir << "});\n";
+            }
+        }
+        s << "    }\n";
+        return s.str();
+    }
+
+    s << "    VIVID_PORTS(\n";
+    for (size_t i = 0; i < ports.size(); ++i) {
+        const char* dir = (ports[i].direction == VIVID_PORT_INPUT)
+            ? "VIVID_PORT_INPUT" : "VIVID_PORT_OUTPUT";
+        s << "        {\"" << ports[i].name << "\", "
+          << port_type_name(ports[i].type) << ", " << dir << "}";
+        if (i + 1 < ports.size()) s << ",";
+        s << "\n";
+    }
+    s << "    )\n";
+    return s.str();
 }
 
 // Count ports by direction
@@ -258,17 +307,205 @@ static int count_ports(const std::vector<VividPortSpec>& ports, VividPortDirecti
 }
 
 // ---------------------------------------------------------------------------
-// Templates — standard (with configurable ports + params)
+// Raw string literal templates
+// ---------------------------------------------------------------------------
+
+static constexpr const char* kControlTemplate = R"(#include "operator_api/operator.h"
+
+// Operator guide: https://vivid.dev/docs/operator-api
+
+%CUSTOM_TYPE_SUPPORT%struct %STRUCT% : vivid::OperatorBase, vivid::FrameProcessable {
+    static constexpr const char* kName = "%STRUCT%";
+
+%PARAM_DECLS%
+%PARAMS_MACRO%
+%PORTS_MACRO%
+    void process_frame(const VividFrameContext* ctx) override {
+%PROCESS_BODY%    }
+%OPTIONAL_FEATURES%
+};
+
+VIVID_REGISTER(%STRUCT%)
+)";
+
+static constexpr const char* kAudioTemplate = R"(#include "operator_api/operator.h"
+
+// Operator guide: https://vivid.dev/docs/operator-api
+
+%CUSTOM_TYPE_SUPPORT%struct %STRUCT% : vivid::OperatorBase, vivid::AudioProcessable {
+    static constexpr const char* kName = "%STRUCT%";
+    static constexpr bool kTimeDependent = true;
+
+%PARAM_DECLS%
+%PARAMS_MACRO%
+%PORTS_MACRO%
+    // Audio-thread contract: no heap alloc, no locks, no blocking I/O.
+    void process_audio(const VividAudioContext* ctx) override {
+%PROCESS_BODY%    }
+%OPTIONAL_FEATURES%
+};
+
+VIVID_REGISTER(%STRUCT%)
+)";
+
+static constexpr const char* kGpuTemplate = R"(#include "operator_api/wgsl_filter.h"
+
+// Operator guide: https://vivid.dev/docs/operator-api
+
+%CUSTOM_TYPE_SUPPORT%struct %STRUCT% : vivid::WgslFilterBase {
+    static constexpr const char* kName = "%STRUCT%";
+    static constexpr bool kTimeDependent = true;
+
+%PARAM_DECLS%
+    %STRUCT%() : WgslFilterBase("%NAME%.wgsl") {}
+
+%PORTS_MACRO%
+%PARAMS_MACRO%
+%EXTRA_OUTPUTS%
+%OPTIONAL_FEATURES%
+};
+
+VIVID_REGISTER(%STRUCT%)
+)";
+
+static constexpr const char* kChildOpTemplate = R"(#include "operator_api/child_op.h"
+#include "control/lfo/lfo.h"
+#include "control/smooth/smooth.h"
+
+// Operator guide: https://vivid.dev/docs/operator-api
+
+// ChildOp<T> embeds another operator as a private member with its own state.
+// Embeddable operators are header-only or backed by vivid_embeddable_op_support.
+
+struct %STRUCT% : vivid::OperatorBase, vivid::FrameProcessable {
+    static constexpr const char* kName = "%STRUCT%";
+    static constexpr bool kTimeDependent = true;
+
+    vivid::Param<float> amount   {"amount",    1.0f, 0.0f, 10.0f};
+    vivid::Param<float> lfo_rate {"lfo_rate",  2.0f, 0.01f, 20.0f};
+    vivid::Param<float> lfo_depth{"lfo_depth", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> smooth_time{"smooth_time", 0.05f, 0.0f, 2.0f};
+
+    vivid::ChildOp<LFO>    lfo_;
+    vivid::ChildOp<Smooth> smoother_;
+
+    VIVID_PARAMS(&amount, &lfo_rate, &lfo_depth, &smooth_time)
+    VIVID_PORTS(
+        {"input",  VIVID_PORT_SCALAR, VIVID_PORT_INPUT},
+        {"output", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT}
+    )
+
+    void process_frame(const VividFrameContext* ctx) override {
+        float input = ctx->input_values[0];
+
+        // Drive internal LFO
+        lfo_.set_param("frequency", lfo_rate.value);
+        lfo_.set_param("amplitude", 1.0f);
+        lfo_.process(ctx);
+
+        // Smooth the LFO output
+        smoother_.set_param("rise_time", smooth_time.value);
+        smoother_.set_param("fall_time", smooth_time.value);
+        smoother_.set_input("input", lfo_.output("value"));
+        smoother_.process(ctx);
+
+        float mod = smoother_.output("value");
+        ctx->output_values[0] = input * (amount.value + lfo_depth.value * mod);
+    }
+};
+
+VIVID_REGISTER(%STRUCT%)
+)";
+
+static constexpr const char* kEmptyControlTemplate = R"(#include "operator_api/operator.h"
+
+// Operator guide: https://vivid.dev/docs/operator-api
+
+struct %STRUCT% : vivid::OperatorBase, vivid::FrameProcessable {
+    static constexpr const char* kName = "%STRUCT%";
+
+    VIVID_PARAMS()
+    VIVID_PORTS(
+        {"input",  VIVID_PORT_SCALAR, VIVID_PORT_INPUT},
+        {"output", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT}
+    )
+
+    void process_frame(const VividFrameContext* ctx) override {
+        ctx->output_values[0] = ctx->input_values[0];
+    }
+%OPTIONAL_FEATURES%
+};
+
+VIVID_REGISTER(%STRUCT%)
+)";
+
+static constexpr const char* kEmptyAudioTemplate = R"(#include "operator_api/operator.h"
+
+// Operator guide: https://vivid.dev/docs/operator-api
+
+struct %STRUCT% : vivid::OperatorBase, vivid::AudioProcessable {
+    static constexpr const char* kName = "%STRUCT%";
+    static constexpr bool kTimeDependent = true;
+
+    VIVID_PARAMS()
+    VIVID_PORTS(
+        {"input",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT},
+        {"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT}
+    )
+
+    // Audio-thread contract: no heap alloc, no locks, no blocking I/O.
+    void process_audio(const VividAudioContext* ctx) override {
+        float* in  = ctx->input_buffers[0];
+        float* out = ctx->output_buffers[0];
+        for (uint32_t i = 0; i < ctx->buffer_size; i++)
+            out[i] = in[i];
+    }
+%OPTIONAL_FEATURES%
+};
+
+VIVID_REGISTER(%STRUCT%)
+)";
+
+static constexpr const char* kEmptyGpuTemplate = R"(#include "operator_api/wgsl_filter.h"
+
+// Operator guide: https://vivid.dev/docs/operator-api
+
+struct %STRUCT% : vivid::WgslFilterBase {
+    static constexpr const char* kName = "%STRUCT%";
+    static constexpr bool kTimeDependent = true;
+
+    %STRUCT%() : WgslFilterBase("%NAME%.wgsl") {}
+
+    VIVID_PARAMS()
+    VIVID_PORTS(
+        {"input",   VIVID_PORT_TEXTURE, VIVID_PORT_INPUT},
+        {"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT}
+    )
+%OPTIONAL_FEATURES%
+};
+
+VIVID_REGISTER(%STRUCT%)
+)";
+
+static constexpr const char* kGpuShaderTemplate = R"(// Starter shader. See GPU examples in operators/gpu/ for advanced patterns.
+
+@fragment
+fn fs_main(input: VertexOutput) -> @location(0) vec4f {
+    let color = textureSample(inputTex, texSampler, input.uv);
+    return mix(color, vec4f(color.rgb * u.amount, color.a), u.amount);
+}
+)";
+
+// ---------------------------------------------------------------------------
+// Template functions — build dynamic parts and substitute into raw templates
 // ---------------------------------------------------------------------------
 
 static std::string control_template(const std::string& name, const std::string& struct_name,
                                      const std::vector<VividPortSpec>& ports,
                                      const std::vector<VividParamSpec>& params) {
-    // Determine if using custom ports/params or defaults
     bool custom_ports  = !ports.empty();
     bool custom_params = !params.empty();
 
-    // Build effective port list
     std::vector<VividPortSpec> effective_ports;
     if (custom_ports) {
         effective_ports = ports;
@@ -277,7 +514,6 @@ static std::string control_template(const std::string& name, const std::string& 
         effective_ports.push_back({"output", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
-    // Build effective param list
     std::vector<VividParamSpec> effective_params;
     if (custom_params) {
         effective_params = params;
@@ -288,52 +524,30 @@ static std::string control_template(const std::string& name, const std::string& 
     int num_inputs  = count_ports(effective_ports, VIVID_PORT_INPUT);
     int num_outputs = count_ports(effective_ports, VIVID_PORT_OUTPUT);
 
-    std::ostringstream s;
-    s << "#include \"operator_api/operator.h\"\n\n";
-    emit_starter_comment(s);
-    emit_custom_type_support(s, effective_ports);
-    s << "struct " << struct_name << " : vivid::OperatorBase, vivid::FrameProcessable {\n";
-    s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
-    s << "    static constexpr bool kTimeDependent = false;\n";
-    s << "    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;\n\n";
-
-    // Param declarations
-    for (const auto& p : effective_params)
-        emit_param_declaration(s, p);
-    s << "\n";
-
-    if (!custom_params) {
-        // Default: include semantic metadata example
-        s << "    " << struct_name << "() {\n";
-        s << "        // Semantic metadata is optional but recommended for MCP/LLM workflows.\n";
-        s << "        vivid::semantic_tag(amount, \"probability_01\");\n";
-        s << "        vivid::semantic_shape(amount, \"scalar\");\n";
-        s << "    }\n\n";
-    }
-
-    emit_collect_params(s, effective_params);
-    s << "\n";
-    emit_collect_ports(s, effective_ports);
-    s << "\n";
-
-    // process_frame()
-    s << "    void process_frame(const VividFrameContext* ctx) override {\n";
+    // Build process body
+    std::ostringstream body;
     if (num_inputs > 0 && num_outputs > 0) {
         if (custom_params) {
-            s << "        ctx->output_values[0] = ctx->input_values[0];\n";
+            body << "        ctx->output_values[0] = ctx->input_values[0];\n";
         } else {
-            s << "        ctx->output_values[0] = ctx->input_values[0] * amount.value;\n";
+            body << "        ctx->output_values[0] = ctx->input_values[0] * amount.value;\n";
         }
         for (int i = 1; i < num_outputs; ++i)
-            s << "        ctx->output_values[" << i << "] = 0.0f;  // TODO\n";
+            body << "        ctx->output_values[" << i << "] = 0.0f;  // TODO\n";
     } else if (num_outputs > 0) {
         for (int i = 0; i < num_outputs; ++i)
-            s << "        ctx->output_values[" << i << "] = 0.0f;  // TODO\n";
+            body << "        ctx->output_values[" << i << "] = 0.0f;  // TODO\n";
     }
-    s << "    }\n";
-    s << "};\n\n";
-    s << "VIVID_REGISTER(" << struct_name << ")\n";
-    return s.str();
+
+    std::string s = kControlTemplate;
+    s = tpl_replace(s, "%STRUCT%", struct_name);
+    s = tpl_replace(s, "%CUSTOM_TYPE_SUPPORT%", build_custom_type_support(effective_ports));
+    s = tpl_replace(s, "%PARAM_DECLS%", build_param_decls(effective_params));
+    s = tpl_replace(s, "%PARAMS_MACRO%", build_params_macro(effective_params));
+    s = tpl_replace(s, "%PORTS_MACRO%", build_ports_macro(effective_ports));
+    s = tpl_replace(s, "%PROCESS_BODY%", body.str());
+    s = tpl_replace(s, "%OPTIONAL_FEATURES%", kOptionalFeaturesComment);
+    return s;
 }
 
 static std::string audio_template(const std::string& name, const std::string& struct_name,
@@ -366,59 +580,38 @@ static std::string audio_template(const std::string& name, const std::string& st
         }
     }
 
-    std::ostringstream s;
-    s << "#include \"operator_api/operator.h\"\n\n";
-    emit_starter_comment(s);
-    emit_custom_type_support(s, effective_ports);
-    s << "struct " << struct_name << " : vivid::OperatorBase, vivid::AudioProcessable {\n";
-    s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
-    s << "    static constexpr bool kTimeDependent = true;\n";
-    s << "    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;\n\n";
-
-    for (const auto& p : effective_params)
-        emit_param_declaration(s, p);
-    s << "\n";
-
-    if (!custom_params) {
-        s << "    " << struct_name << "() {\n";
-        s << "        // Semantic metadata is optional but recommended for MCP/LLM workflows.\n";
-        s << "        vivid::semantic_tag(gain, \"amplitude_linear\");\n";
-        s << "        vivid::semantic_shape(gain, \"scalar\");\n";
-        s << "    }\n\n";
-    }
-
-    emit_collect_params(s, effective_params);
-    s << "\n";
-    emit_collect_ports(s, effective_ports);
-    s << "\n";
-
-    s << "    // Audio-thread contract: no heap alloc, no locks, no blocking I/O.\n";
-    s << "    // See operator_api/types.h for audio-thread safety requirements.\n";
-    s << "    void process_audio(const VividAudioContext* ctx) override {\n";
+    // Build process body
+    std::ostringstream body;
     if (num_input_bufs > 0)
-        s << "        float* in  = ctx->input_buffers[0];\n";
+        body << "        float* in  = ctx->input_buffers[0];\n";
     if (num_output_bufs > 0)
-        s << "        float* out = ctx->output_buffers[0];\n";
+        body << "        float* out = ctx->output_buffers[0];\n";
     for (int i = 1; i < num_output_bufs; ++i)
-        s << "        float* out" << i << " = ctx->output_buffers[" << i << "];  // TODO\n";
+        body << "        float* out" << i << " = ctx->output_buffers[" << i << "];  // TODO\n";
 
     if (!custom_params && num_input_bufs > 0 && num_output_bufs > 0) {
-        s << "        float g = gain.value;\n\n";
-        s << "        for (uint32_t i = 0; i < ctx->buffer_size; i++)\n";
-        s << "            out[i] = in[i] * g;\n";
+        body << "        float g = gain.value;\n\n";
+        body << "        for (uint32_t i = 0; i < ctx->buffer_size; i++)\n";
+        body << "            out[i] = in[i] * g;\n";
     } else if (num_input_bufs > 0 && num_output_bufs > 0) {
-        s << "\n        for (uint32_t i = 0; i < ctx->buffer_size; i++)\n";
-        s << "            out[i] = in[i];\n";
+        body << "\n        for (uint32_t i = 0; i < ctx->buffer_size; i++)\n";
+        body << "            out[i] = in[i];\n";
     } else if (num_output_bufs > 0) {
-        s << "\n        for (uint32_t i = 0; i < ctx->buffer_size; i++)\n";
-        s << "            out[i] = 0.0f;  // TODO\n";
+        body << "\n        for (uint32_t i = 0; i < ctx->buffer_size; i++)\n";
+        body << "            out[i] = 0.0f;  // TODO\n";
     }
     for (int i = 1; i < num_output_bufs; ++i)
-        s << "        // TODO: fill out" << i << "\n";
-    s << "    }\n";
-    s << "};\n\n";
-    s << "VIVID_REGISTER(" << struct_name << ")\n";
-    return s.str();
+        body << "        // TODO: fill out" << i << "\n";
+
+    std::string s = kAudioTemplate;
+    s = tpl_replace(s, "%STRUCT%", struct_name);
+    s = tpl_replace(s, "%CUSTOM_TYPE_SUPPORT%", build_custom_type_support(effective_ports));
+    s = tpl_replace(s, "%PARAM_DECLS%", build_param_decls(effective_params));
+    s = tpl_replace(s, "%PARAMS_MACRO%", build_params_macro(effective_params));
+    s = tpl_replace(s, "%PORTS_MACRO%", build_ports_macro(effective_ports));
+    s = tpl_replace(s, "%PROCESS_BODY%", body.str());
+    s = tpl_replace(s, "%OPTIONAL_FEATURES%", kOptionalFeaturesComment);
+    return s;
 }
 
 static std::string gpu_template(const std::string& name, const std::string& struct_name,
@@ -443,183 +636,54 @@ static std::string gpu_template(const std::string& name, const std::string& stru
     }
 
     int num_extra_outputs = count_ports(effective_ports, VIVID_PORT_OUTPUT) - 1;
-
-    std::ostringstream s;
-    s << "#include \"operator_api/wgsl_filter.h\"\n\n";
-    emit_starter_comment(s);
-    emit_custom_type_support(s, effective_ports);
-    s << "struct " << struct_name << " : vivid::WgslFilterBase {\n";
-    s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
-    s << "    static constexpr bool kTimeDependent = true;\n";
-    s << "    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;\n\n";
-
-    for (const auto& p : effective_params)
-        emit_param_declaration(s, p);
-    s << "\n";
-
-    s << "    " << struct_name << "() : WgslFilterBase(\"" << name << ".wgsl\") {\n";
-    if (!custom_params) {
-        s << "        // Semantic metadata is optional but recommended for MCP/LLM workflows.\n";
-        s << "        vivid::semantic_tag(amount, \"probability_01\");\n";
-        s << "        vivid::semantic_shape(amount, \"scalar\");\n";
-    }
-    s << "    }\n\n";
-
-    emit_collect_ports(s, effective_ports);
-    s << "\n";
-    emit_collect_params(s, effective_params);
-
+    std::string extra_outputs;
     if (num_extra_outputs > 0) {
-        s << "\n    // Extra output textures are available via g->aux_output_texture_views[0.."
-          << (num_extra_outputs - 1) << "] in a custom process() override.\n";
+        extra_outputs = "    // Extra output textures are available via g->aux_output_texture_views[0.."
+            + std::to_string(num_extra_outputs - 1) + "] in a custom process() override.\n";
     }
-    s << "};\n\n";
-    s << "VIVID_REGISTER(" << struct_name << ")\n";
-    return s.str();
-}
 
-// ---------------------------------------------------------------------------
-// Owned child-op composition template (fixed ports/params)
-// ---------------------------------------------------------------------------
+    std::string s = kGpuTemplate;
+    s = tpl_replace(s, "%STRUCT%", struct_name);
+    s = tpl_replace(s, "%NAME%", name);
+    s = tpl_replace(s, "%CUSTOM_TYPE_SUPPORT%", build_custom_type_support(effective_ports));
+    s = tpl_replace(s, "%PARAM_DECLS%", build_param_decls(effective_params));
+    s = tpl_replace(s, "%PARAMS_MACRO%", build_params_macro(effective_params));
+    s = tpl_replace(s, "%PORTS_MACRO%", build_ports_macro(effective_ports));
+    s = tpl_replace(s, "%EXTRA_OUTPUTS%", extra_outputs);
+    s = tpl_replace(s, "%OPTIONAL_FEATURES%", kOptionalFeaturesComment);
+    return s;
+}
 
 static std::string child_op_control_template(const std::string& name, const std::string& struct_name) {
-    std::ostringstream s;
-    s << "#include \"operator_api/child_op.h\"\n";
-    s << "#include \"control/lfo/lfo.h\"\n";
-    s << "#include \"control/smooth/smooth.h\"\n\n";
-    emit_starter_comment(s);
-    s << "// ChildOp<T> is for owned, host-local behavior with private state.\n";
-    s << "// Embeddables are either fully header-defined or backed by\n";
-    s << "// vivid_embeddable_op_support through a *_embeddable.cpp support file.\n\n";
-    s << "struct " << struct_name << " : vivid::OperatorBase, vivid::FrameProcessable {\n";
-    s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
-    s << "    static constexpr bool kTimeDependent = true;\n";
-    s << "    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;\n\n";
-    s << "    vivid::Param<float> amount   {\"amount\",    1.0f, 0.0f, 10.0f};\n";
-    s << "    vivid::Param<float> lfo_rate {\"lfo_rate\",  2.0f, 0.01f, 20.0f};\n";
-    s << "    vivid::Param<float> lfo_depth{\"lfo_depth\", 0.5f, 0.0f, 1.0f};\n";
-    s << "    vivid::Param<float> smooth_time{\"smooth_time\", 0.05f, 0.0f, 2.0f};\n\n";
-    s << "    vivid::ChildOp<LFO>    lfo_;\n";
-    s << "    vivid::ChildOp<Smooth> smoother_;\n\n";
-    s << "    " << struct_name << "() {\n";
-    s << "        // Semantic metadata is optional but recommended for MCP/LLM workflows.\n";
-    s << "        vivid::semantic_tag(amount, \"amplitude_linear\");\n";
-    s << "        vivid::semantic_shape(amount, \"scalar\");\n";
-    s << "        vivid::semantic_tag(lfo_rate, \"frequency_hz\");\n";
-    s << "        vivid::semantic_shape(lfo_rate, \"scalar\");\n";
-    s << "        vivid::semantic_unit(lfo_rate, \"Hz\");\n";
-    s << "        vivid::semantic_tag(lfo_depth, \"amplitude_linear\");\n";
-    s << "        vivid::semantic_shape(lfo_depth, \"scalar\");\n";
-    s << "        vivid::semantic_tag(smooth_time, \"time_seconds\");\n";
-    s << "        vivid::semantic_shape(smooth_time, \"scalar\");\n";
-    s << "        vivid::semantic_unit(smooth_time, \"s\");\n";
-    s << "    }\n\n";
-    s << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {\n";
-    s << "        out.push_back(&amount);\n";
-    s << "        out.push_back(&lfo_rate);\n";
-    s << "        out.push_back(&lfo_depth);\n";
-    s << "        out.push_back(&smooth_time);\n";
-    s << "    }\n\n";
-    s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
-    s << "        out.push_back({\"input\",  VIVID_PORT_SCALAR, VIVID_PORT_INPUT});\n";
-    s << "        out.push_back({\"output\", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});\n";
-    s << "    }\n\n";
-    s << "    void process_frame(const VividFrameContext* ctx) override {\n";
-    s << "        float input = ctx->input_values[0];\n\n";
-    s << "        // Drive internal LFO\n";
-    s << "        lfo_.set_param(\"frequency\", lfo_rate.value);\n";
-    s << "        lfo_.set_param(\"amplitude\", 1.0f);\n";
-    s << "        lfo_.process(ctx);\n\n";
-    s << "        // Smooth the LFO output\n";
-    s << "        smoother_.set_param(\"rise_time\", smooth_time.value);\n";
-    s << "        smoother_.set_param(\"fall_time\", smooth_time.value);\n";
-    s << "        smoother_.set_input(\"input\", lfo_.output(\"value\"));\n";
-    s << "        smoother_.process(ctx);\n\n";
-    s << "        float mod = smoother_.output(\"value\");\n";
-    s << "        ctx->output_values[0] = input * (amount.value + lfo_depth.value * mod);\n";
-    s << "    }\n";
-    s << "};\n\n";
-    s << "VIVID_REGISTER(" << struct_name << ")\n";
-    return s.str();
+    std::string s = kChildOpTemplate;
+    s = tpl_replace(s, "%STRUCT%", struct_name);
+    return s;
 }
 
-// ---------------------------------------------------------------------------
-// Empty templates — minimal skeleton with kind-default ports, no params
-// ---------------------------------------------------------------------------
-
 static std::string empty_control_template(const std::string& struct_name) {
-    std::ostringstream s;
-    s << "#include \"operator_api/operator.h\"\n\n";
-    emit_starter_comment(s);
-    s << "struct " << struct_name << " : vivid::OperatorBase, vivid::FrameProcessable {\n";
-    s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
-    s << "    static constexpr bool kTimeDependent = false;\n";
-    s << "    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;\n\n";
-    s << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {}\n\n";
-    s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
-    s << "        out.push_back({\"input\",  VIVID_PORT_SCALAR, VIVID_PORT_INPUT});\n";
-    s << "        out.push_back({\"output\", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});\n";
-    s << "    }\n\n";
-    s << "    void process_frame(const VividFrameContext* ctx) override {\n";
-    s << "        ctx->output_values[0] = ctx->input_values[0];\n";
-    s << "    }\n";
-    s << "};\n\n";
-    s << "VIVID_REGISTER(" << struct_name << ")\n";
-    return s.str();
+    std::string s = kEmptyControlTemplate;
+    s = tpl_replace(s, "%STRUCT%", struct_name);
+    s = tpl_replace(s, "%OPTIONAL_FEATURES%", kOptionalFeaturesComment);
+    return s;
 }
 
 static std::string empty_audio_template(const std::string& struct_name) {
-    std::ostringstream s;
-    s << "#include \"operator_api/operator.h\"\n\n";
-    emit_starter_comment(s);
-    s << "struct " << struct_name << " : vivid::OperatorBase, vivid::AudioProcessable {\n";
-    s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
-    s << "    static constexpr bool kTimeDependent = true;\n";
-    s << "    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;\n\n";
-    s << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {}\n\n";
-    s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
-    s << "        out.push_back({\"input\",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT});\n";
-    s << "        out.push_back({\"output\", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT});\n";
-    s << "    }\n\n";
-    s << "    // Audio-thread contract: no heap alloc, no locks, no blocking I/O.\n";
-    s << "    // See operator_api/types.h for audio-thread safety requirements.\n";
-    s << "    void process_audio(const VividAudioContext* ctx) override {\n";
-    s << "        float* in  = ctx->input_buffers[0];\n";
-    s << "        float* out = ctx->output_buffers[0];\n";
-    s << "        for (uint32_t i = 0; i < ctx->buffer_size; i++)\n";
-    s << "            out[i] = in[i];\n";
-    s << "    }\n";
-    s << "};\n\n";
-    s << "VIVID_REGISTER(" << struct_name << ")\n";
-    return s.str();
+    std::string s = kEmptyAudioTemplate;
+    s = tpl_replace(s, "%STRUCT%", struct_name);
+    s = tpl_replace(s, "%OPTIONAL_FEATURES%", kOptionalFeaturesComment);
+    return s;
 }
 
 static std::string empty_gpu_template(const std::string& name, const std::string& struct_name) {
-    std::ostringstream s;
-    s << "#include \"operator_api/wgsl_filter.h\"\n\n";
-    emit_starter_comment(s);
-    s << "struct " << struct_name << " : vivid::WgslFilterBase {\n";
-    s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
-    s << "    static constexpr bool kTimeDependent = true;\n";
-    s << "    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;\n\n";
-    s << "    " << struct_name << "() : WgslFilterBase(\"" << name << ".wgsl\") {}\n\n";
-    s << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {}\n\n";
-    s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
-    s << "        out.push_back({\"input\",   VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});\n";
-    s << "        out.push_back({\"texture\", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});\n";
-    s << "    }\n";
-    s << "};\n\n";
-    s << "VIVID_REGISTER(" << struct_name << ")\n";
-    return s.str();
+    std::string s = kEmptyGpuTemplate;
+    s = tpl_replace(s, "%STRUCT%", struct_name);
+    s = tpl_replace(s, "%NAME%", name);
+    s = tpl_replace(s, "%OPTIONAL_FEATURES%", kOptionalFeaturesComment);
+    return s;
 }
 
 static std::string gpu_shader_template() {
-    return "// Starter shader. See GPU examples in operators/gpu/ for advanced patterns.\n\n"
-           "@fragment\n"
-           "fn fs_main(input: VertexOutput) -> @location(0) vec4f {\n"
-           "    let color = textureSample(inputTex, texSampler, input.uv);\n"
-           "    return mix(color, vec4f(color.rgb * u.amount, color.a), u.amount);\n"
-           "}\n";
+    return kGpuShaderTemplate;
 }
 
 // ---------------------------------------------------------------------------
