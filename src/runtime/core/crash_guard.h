@@ -49,8 +49,9 @@ struct CrashGuard {
     CrashGuard& operator=(const CrashGuard&) = delete;
 };
 
-// Signal handler that prints which operator was active when the crash occurred.
-// Uses only async-signal-safe functions (write, raise, signal).
+// Signal handler that prints which operator was active when the crash occurred
+// and writes a marker file so the next startup can expand a full crash record.
+// Uses only async-signal-safe functions (open, write, close, raise, signal).
 inline void crash_signal_handler(int sig) {
     // Signal names and their lengths are compile-time constants.
     struct SigEntry { int sig; const char* name; size_t len; };
