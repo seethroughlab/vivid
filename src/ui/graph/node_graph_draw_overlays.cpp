@@ -527,6 +527,38 @@ void NodeGraphUI::draw_workspace_header(Renderer2D& tr) {
         left_x += badge_w + kPerfBtnMargin;
     }
 
+    // Phase 6b: project-lockfile status badge. Only drawn for CompatibleDrift
+    // or Mismatch with non-empty findings — Match / NoLockfile / no findings
+    // leave zero visual clutter.
+    lockfile_badge_rect_ = {};
+    {
+        const auto& lf = snap_.lockfile_status;
+        const bool draw_badge =
+            !lf.findings.empty() &&
+            (lf.overall == vivid::LockfileOverall::CompatibleDrift ||
+             lf.overall == vivid::LockfileOverall::Mismatch);
+        if (draw_badge && fw > 780.0f) {
+            float r = 0.95f, g = 0.82f, b = 0.30f;  // warning (yellow)
+            const char* label = "LOCK";
+            if (lf.overall == vivid::LockfileOverall::Mismatch) {
+                r = 0.95f; g = 0.35f; b = 0.30f;   // critical (red)
+            }
+            const std::string count_text =
+                std::string(label) + " " + std::to_string(lf.findings.size());
+            float badge_w = tr.text_width(count_text.c_str()) + kPerfBtnPadX * 2;
+            bool hovered = mouse_.x >= left_x && mouse_.x <= left_x + badge_w &&
+                           mouse_.y >= btn_y && mouse_.y <= btn_y + kPerfBtnH;
+            float alpha = hovered ? 1.0f : 0.90f;
+            tr.draw_rounded_rect(left_x, btn_y, badge_w, kPerfBtnH, 3.0f,
+                                 r, g, b, alpha);
+            tr.draw_text(left_x + kPerfBtnPadX,
+                         btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
+                         count_text.c_str(), 0.08f, 0.08f, 0.08f);
+            lockfile_badge_rect_ = {left_x, btn_y, badge_w, kPerfBtnH, true};
+            left_x += badge_w + kPerfBtnMargin;
+        }
+    }
+
     draw_divider(left_x - kPerfBtnMargin * 0.5f);
     left_x += 6.0f;
 

@@ -68,6 +68,17 @@ void NodeGraphUI::handle_left_click() {
         return;
     }
 
+    // Phase 6b: lockfile badge click → open findings modal.
+    if (lockfile_badge_rect_.visible &&
+        mouse_.x >= lockfile_badge_rect_.x &&
+        mouse_.x <= lockfile_badge_rect_.x + lockfile_badge_rect_.w &&
+        mouse_.y >= lockfile_badge_rect_.y &&
+        mouse_.y <= lockfile_badge_rect_.y + lockfile_badge_rect_.h) {
+        dialogs_.open_lockfile_findings(snap_.lockfile_status);
+        mouse_.left_clicked = false;
+        return;
+    }
+
     {
         float bottom_offset = session_grid_open_ ? kSessionStripH : 0.0f;
         if (!build_console_panel_.contains(mouse_.x, mouse_.y, win_w_, win_h_, bottom_offset))

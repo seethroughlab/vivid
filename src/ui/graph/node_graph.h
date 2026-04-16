@@ -891,6 +891,7 @@ private:
     std::vector<PerfButtonRect> perf_button_rects_;
     struct TransportValueRect { float x = 0.0f, y = 0.0f, w = 0.0f, h = 0.0f; bool visible = false; };
     TransportValueRect diagnostics_button_rect_;
+    TransportValueRect lockfile_badge_rect_;  // Phase 6b: perf-bar lockfile status badge
     TransportValueRect transport_bpm_rect_;
     bool transport_bpm_dragging_ = false;
     float transport_bpm_drag_start_y_ = 0.0f;
