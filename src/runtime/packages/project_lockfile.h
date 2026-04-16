@@ -123,4 +123,22 @@ LockfileLoadResult load_lockfile(const std::filesystem::path& path);
 LockfileError      save_lockfile(const std::filesystem::path& path,
                                  const ProjectLockfile& lockfile);
 
+// --- Phase 2 generation --------------------------------------------------
+
+class Graph;
+class PackageManager;
+class OperatorRegistry;
+
+// Build a ProjectLockfile from a loaded graph, resolving each node's
+// package/operator provenance against the live registries. Phase 2 fields
+// that depend on Phase 0 plumbing (source.url, source.commit,
+// vivid_core.commit, operator.descriptor_hash) are left empty. Assets are
+// intentionally left empty until Phase 8.
+ProjectLockfile build_lockfile_for_graph(const Graph& graph,
+                                         PackageManager& package_manager,
+                                         const OperatorRegistry& operator_registry);
+
+// Returns "sha256:<64-hex>" of the graph's canonical JSON serialization.
+std::string canonicalize_graph_hash(const Graph& graph);
+
 }  // namespace vivid

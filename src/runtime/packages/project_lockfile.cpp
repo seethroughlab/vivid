@@ -1,9 +1,21 @@
 #include "runtime/packages/project_lockfile.h"
 
+#include "common/hash_util.h"
+#include "operator_api/types.h"
+#include "runtime/core/workspace_manager.h"
+#include "runtime/graph/graph.h"
+#include "runtime/operators/operator_registry.h"
+#include "runtime/packages/package_manager.h"
+
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
+#include <chrono>
+#include <ctime>
 #include <fstream>
+#include <set>
 #include <sstream>
+#include <unordered_map>
 #include <utility>
 
 namespace vivid {
@@ -247,6 +259,111 @@ LockfileError save_lockfile(const std::filesystem::path& path,
         return make_error(LockfileError::Kind::IoError, msg.str());
     }
     return LockfileError{};
+}
+
+// --- Phase 2 generation --------------------------------------------------
+
+namespace {
+
+std::string rfc3339_utc_now() {
+    auto now = std::chrono::system_clock::now();
+    std::time_t t = std::chrono::system_clock::to_time_t(now);
+    std::tm tm{};
+#if defined(_WIN32)
+    gmtime_s(&tm, &t);
+#else
+    gmtime_r(&t, &tm);
+#endif
+    char buf[32];
+    std::strftime(buf, sizeof(buf), "%FT%TZ", &tm);
+    return buf;
+}
+
+}  // namespace
+
+std::string canonicalize_graph_hash(const Graph& graph) {
+    std::string json;
+    graph.save_to_string(json);  // deterministic via nlohmann::ordered_json
+    return "sha256:" + sha256_hex(json);
+}
+
+ProjectLockfile build_lockfile_for_graph(const Graph& graph,
+                                         PackageManager& package_manager,
+                                         const OperatorRegistry& operator_registry) {
+    ProjectLockfile lf;
+    lf.lockfile_version      = LOCKFILE_VERSION;
+    lf.generated_at          = rfc3339_utc_now();
+    lf.graph.path            = graph.source_path();
+    lf.graph.schema_version  = GRAPH_SCHEMA_VERSION;
+    lf.graph.content_hash    = canonicalize_graph_hash(graph);
+
+    lf.vivid_core.version       = VIVID_CORE_VERSION;
+    lf.vivid_core.commit        = "";  // Phase 0
+    lf.vivid_core.operator_abi  = static_cast<int>(VIVID_OPERATOR_ABI_VERSION);
+
+    // Index operator_map once for O(1) type_name lookup.
+    auto op_entries = operator_registry.operator_map();
+    std::unordered_map<std::string, const OperatorMapEntry*> op_by_type;
+    op_by_type.reserve(op_entries.size());
+    for (const auto& e : op_entries) op_by_type[e.type_name] = &e;
+
+    // Walk nodes: collect unique operator types and their owning package names.
+    std::set<std::string> seen_types;
+    std::set<std::string> pkg_names;
+    for (const auto& node : graph.nodes()) {
+        seen_types.insert(node.type);
+        if (const std::string* pkg = operator_registry.package_for_type(node.type)) {
+            if (!pkg->empty()) pkg_names.insert(*pkg);
+        } else if (!node.pkg_name.empty()) {
+            // Fallback: on-disk provenance from a previously saved graph.
+            pkg_names.insert(node.pkg_name);
+        }
+    }
+
+    // Index the installed-package list by name.
+    auto installed = package_manager.list();
+    std::unordered_map<std::string, const PackageInfo*> pkg_by_name;
+    pkg_by_name.reserve(installed.size());
+    for (const auto& info : installed) pkg_by_name[info.name] = &info;
+
+    // Populate packages[] — std::set iteration is sorted, giving deterministic order.
+    for (const auto& name : pkg_names) {
+        auto it = pkg_by_name.find(name);
+        if (it == pkg_by_name.end()) continue;  // unresolved; Phase 3 verify() classifies
+        const PackageInfo& info = *it->second;
+
+        LockfilePackage p;
+        p.name        = info.name;
+        p.version     = info.version;
+        p.vivid_core  = info.vivid_core;
+        p.linked      = info.linked;
+        p.linked_path = info.linked ? info.path : "";
+        p.source.kind   = info.linked ? "local" : "git";
+        p.source.url    = "";  // Phase 0
+        p.source.commit = "";  // Phase 0
+        lf.packages.push_back(std::move(p));
+    }
+
+    // Populate operators[] — sorted by type name.
+    for (const auto& type_name : seen_types) {
+        LockfileOperator o;
+        o.type = type_name;
+
+        auto map_it = op_by_type.find(type_name);
+        if (map_it != op_by_type.end()) {
+            o.package      = map_it->second->package_name;
+            o.operator_abi = static_cast<int>(map_it->second->abi_version);
+            if (!o.package.empty()) {
+                auto pi = pkg_by_name.find(o.package);
+                if (pi != pkg_by_name.end()) o.package_version = pi->second->version;
+            }
+        }
+        o.descriptor_hash = "";  // Phase 0
+        lf.operators.push_back(std::move(o));
+    }
+
+    // Assets intentionally empty — Phase 8.
+    return lf;
 }
 
 }  // namespace vivid

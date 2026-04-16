@@ -2,6 +2,13 @@
 #include "runtime/packages/project_lockfile.h"
 
 #include "common/hash_util.h"
+#include "operator_api/types.h"
+#include "runtime/core/build_console.h"
+#include "runtime/core/workspace_manager.h"
+#include "runtime/graph/graph.h"
+#include "runtime/operators/operator_registry.h"
+#include "runtime/packages/package_compiler.h"
+#include "runtime/packages/package_manager.h"
 
 #include <cstdio>
 #include <fstream>
@@ -231,6 +238,126 @@ void test_sha256_hex_multi_block() {
           "sha256_hex two-block NIST vector");
 }
 
+// --- Phase 2: generation + canonicalize_graph_hash ------------------------
+
+// Minimal fixture that holds a PackageCompiler + OperatorRegistry + PackageManager.
+// Uses throwaway tmp dirs so pm.list() discovers nothing by default.
+struct LockfileGenFixture {
+    ScopedTempDir workspace;
+    OperatorRegistry registry;
+    PackageCompiler compiler{workspace.str(), workspace.str()};
+    PackageManager  pm{compiler, registry};
+};
+
+void test_build_lockfile_empty_graph() {
+    LockfileGenFixture fx;
+    Graph g;
+
+    auto lf = build_lockfile_for_graph(g, fx.pm, fx.registry);
+
+    check(lf.lockfile_version == LOCKFILE_VERSION,
+          "empty graph: lockfile_version populated");
+    check(!lf.generated_at.empty(),
+          "empty graph: generated_at populated");
+    check(lf.vivid_core.version == VIVID_CORE_VERSION,
+          "empty graph: vivid_core.version populated");
+    check(lf.vivid_core.operator_abi ==
+              static_cast<int>(VIVID_OPERATOR_ABI_VERSION),
+          "empty graph: vivid_core.operator_abi populated");
+    check(lf.vivid_core.commit.empty(),
+          "empty graph: vivid_core.commit is empty (Phase 0)");
+    check(lf.packages.empty(),  "empty graph: packages empty");
+    check(lf.operators.empty(), "empty graph: operators empty");
+    check(lf.assets.empty(),    "empty graph: assets empty");
+}
+
+void test_build_lockfile_graph_hash_populated() {
+    LockfileGenFixture fx;
+    Graph g;
+
+    auto lf = build_lockfile_for_graph(g, fx.pm, fx.registry);
+    check(lf.graph.content_hash.rfind("sha256:", 0) == 0,
+          "build_lockfile: graph.content_hash starts with sha256:");
+    check(lf.graph.content_hash.size() == 7 + 64,
+          "build_lockfile: graph.content_hash is sha256: + 64 hex");
+}
+
+void test_build_lockfile_operators_unregistered_types() {
+    LockfileGenFixture fx;
+    Graph g;
+    g.add_node("n1", "ZetaOp");
+    g.add_node("n2", "AlphaOp");
+    g.add_node("n3", "ZetaOp");  // duplicate type
+
+    auto lf = build_lockfile_for_graph(g, fx.pm, fx.registry);
+
+    check(lf.operators.size() == 2,
+          "build_lockfile: dedupes operator types across nodes");
+    check(lf.operators[0].type == "AlphaOp",
+          "build_lockfile: operators sorted (AlphaOp first)");
+    check(lf.operators[1].type == "ZetaOp",
+          "build_lockfile: operators sorted (ZetaOp second)");
+    check(lf.operators[0].package.empty(),
+          "build_lockfile: unregistered type has empty package");
+    check(lf.operators[0].descriptor_hash.empty(),
+          "build_lockfile: descriptor_hash empty (Phase 0)");
+}
+
+void test_build_lockfile_sort_stability_by_insertion_order() {
+    // Two graphs with the same set of node types in different insertion
+    // orders must produce the same operators[] sequence.
+    LockfileGenFixture fx;
+
+    Graph g1;
+    g1.add_node("a", "Foo");
+    g1.add_node("b", "Bar");
+    g1.add_node("c", "Baz");
+
+    Graph g2;
+    g2.add_node("x", "Baz");
+    g2.add_node("y", "Foo");
+    g2.add_node("z", "Bar");
+
+    auto lf1 = build_lockfile_for_graph(g1, fx.pm, fx.registry);
+    auto lf2 = build_lockfile_for_graph(g2, fx.pm, fx.registry);
+
+    check(lf1.operators.size() == 3, "sort stability: 3 unique operator types");
+    bool same_order = lf1.operators.size() == lf2.operators.size();
+    for (size_t i = 0; same_order && i < lf1.operators.size(); ++i) {
+        if (lf1.operators[i].type != lf2.operators[i].type) same_order = false;
+    }
+    check(same_order,
+          "sort stability: operator order independent of node insertion order");
+}
+
+void test_canonicalize_graph_hash_stable() {
+    Graph g;
+    g.add_node("a", "Foo");
+    g.add_node("b", "Bar");
+    auto h1 = canonicalize_graph_hash(g);
+    auto h2 = canonicalize_graph_hash(g);
+    check(h1 == h2, "canonicalize_graph_hash: stable across calls");
+}
+
+void test_canonicalize_graph_hash_sensitive_to_nodes() {
+    Graph g1;
+    g1.add_node("a", "Foo");
+
+    Graph g2;
+    g2.add_node("a", "Foo");
+    g2.add_node("b", "Bar");
+
+    check(canonicalize_graph_hash(g1) != canonicalize_graph_hash(g2),
+          "canonicalize_graph_hash: changes when a node is added");
+}
+
+void test_canonicalize_graph_hash_prefix_and_length() {
+    Graph g;
+    auto h = canonicalize_graph_hash(g);
+    check(h.rfind("sha256:", 0) == 0, "canonicalize_graph_hash: has sha256: prefix");
+    check(h.size() == 7 + 64, "canonicalize_graph_hash: 7 + 64 chars total");
+}
+
 }  // namespace
 
 int main() {
@@ -247,6 +374,13 @@ int main() {
     test_sha256_hex_abc();
     test_sha256_hex_length();
     test_sha256_hex_multi_block();
+    test_build_lockfile_empty_graph();
+    test_build_lockfile_graph_hash_populated();
+    test_build_lockfile_operators_unregistered_types();
+    test_build_lockfile_sort_stability_by_insertion_order();
+    test_canonicalize_graph_hash_stable();
+    test_canonicalize_graph_hash_sensitive_to_nodes();
+    test_canonicalize_graph_hash_prefix_and_length();
 
     if (failures == 0) {
         std::fprintf(stderr, "All project_lockfile tests passed.\n");
