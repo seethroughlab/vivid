@@ -4,6 +4,7 @@
 #include "common/hash_util.h"
 #include "operator_api/types.h"
 #include "runtime/audio/audio_engine.h"
+#include "runtime/control/control_server_internal.h"
 #include "runtime/control/runtime_api.h"
 #include "runtime/core/build_console.h"
 #include "runtime/core/runtime_core.h"
@@ -710,6 +711,59 @@ void test_runtime_api_get_project_dependency_status_no_lockfile() {
           "dep status no-lockfile: findings empty");
 }
 
+// --- Phase 4: dispatch helper (unwrap_status_to_json) --------------------
+
+void test_unwrap_status_to_json_inlines_valid_status() {
+    // Simulates a CommandResult from verify_project_lockfile:
+    // message is a JSON-serialized LockfileStatus.
+    LockfileStatus st;
+    st.overall = LockfileOverall::Match;
+    CommandResult cmd;
+    cmd.ok      = true;
+    cmd.message = lockfile_status_to_json(st);
+
+    auto body = unwrap_status_to_json(cmd);
+    auto root = nlohmann::json::parse(body);
+
+    check(root["ok"].get<bool>() == true,
+          "unwrap: ok preserved");
+    check(root.contains("status") && root["status"].is_object(),
+          "unwrap: status is an inline object (not stringified)");
+    check(root["status"]["overall"].get<std::string>() == "match",
+          "unwrap: status fields addressable without second parse");
+}
+
+void test_unwrap_status_to_json_preserves_error_message() {
+    CommandResult cmd;
+    cmd.ok      = false;
+    cmd.message = "boom";
+
+    auto body = unwrap_status_to_json(cmd);
+    auto root = nlohmann::json::parse(body);
+
+    check(root["ok"].get<bool>() == false, "unwrap error: ok false");
+    check(root["error"].get<std::string>() == "boom",
+          "unwrap error: error carries message verbatim");
+    check(!root.contains("status"),
+          "unwrap error: no status key on error");
+}
+
+void test_unwrap_status_to_json_non_json_message_fallback() {
+    // Defensive: if message somehow isn't valid JSON, preserve as string.
+    CommandResult cmd;
+    cmd.ok      = true;
+    cmd.message = "not-json";
+
+    auto body = unwrap_status_to_json(cmd);
+    auto root = nlohmann::json::parse(body);
+
+    check(root["ok"].get<bool>() == true,
+          "unwrap non-json: ok preserved");
+    check(root["status"].is_string() &&
+              root["status"].get<std::string>() == "not-json",
+          "unwrap non-json: status falls through to string");
+}
+
 void test_runtime_api_get_project_dependency_status_happy_path() {
     LockfileGenFixture fx;
     ScopedTempDir dir;
@@ -782,6 +836,9 @@ int main() {
     test_runtime_api_verify_project_lockfile_missing_lockfile();
     test_runtime_api_get_project_dependency_status_no_lockfile();
     test_runtime_api_get_project_dependency_status_happy_path();
+    test_unwrap_status_to_json_inlines_valid_status();
+    test_unwrap_status_to_json_preserves_error_message();
+    test_unwrap_status_to_json_non_json_message_fallback();
 
     if (failures == 0) {
         std::fprintf(stderr, "All project_lockfile tests passed.\n");

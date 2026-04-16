@@ -222,6 +222,38 @@ std::string dispatch(const std::string& method, const std::string& body,
         } else {
             result = command_result_to_json(api.save());
         }
+    } else if (method == "write_project_lockfile") {
+        if (!root_valid) {
+            result = json_err("invalid JSON body");
+        } else if (!package_manager) {
+            result = json_err("no package manager available");
+        } else {
+            const std::string graph_path  = root.value("graph_path", std::string());
+            const std::string output_path = root.value("output_path", std::string());
+            result = command_result_to_json(
+                api.write_project_lockfile(*package_manager, graph_path, output_path));
+        }
+    } else if (method == "verify_project_lockfile") {
+        if (!root_valid) {
+            result = json_err("invalid JSON body");
+        } else if (!package_manager) {
+            result = json_err("no package manager available");
+        } else {
+            const std::string graph_path    = root.value("graph_path", std::string());
+            const std::string lockfile_path = root.value("lockfile_path", std::string());
+            result = unwrap_status_to_json(
+                api.verify_project_lockfile(*package_manager, graph_path, lockfile_path));
+        }
+    } else if (method == "get_project_dependency_status") {
+        if (!root_valid) {
+            result = json_err("invalid JSON body");
+        } else if (!package_manager) {
+            result = json_err("no package manager available");
+        } else {
+            const std::string graph_path = root.value("graph_path", std::string());
+            result = unwrap_status_to_json(
+                api.get_project_dependency_status(*package_manager, graph_path));
+        }
     } else if (method == "load_graph") {
         if (!root_valid) {
             result = json_err("invalid JSON body");
