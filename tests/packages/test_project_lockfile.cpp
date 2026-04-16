@@ -8,6 +8,7 @@
 #include "runtime/control/runtime_api.h"
 #include "runtime/core/build_console.h"
 #include "runtime/core/runtime_core.h"
+#include "runtime/core/settings.h"
 #include "runtime/core/tool_discovery.h"
 #include "runtime/core/workspace_manager.h"
 #include "runtime/graph/graph.h"
@@ -884,6 +885,57 @@ void test_capture_git_metadata_non_git_dir_is_silent() {
     check(!info.dirty,             "capture: non-git dir not dirty");
 }
 
+// --- Phase 6a: load modes ------------------------------------------------
+
+void test_parse_lockfile_load_mode_known_values() {
+    check(parse_lockfile_load_mode("studio")   == LockfileLoadMode::Studio,
+          "parse_lockfile_load_mode: studio");
+    check(parse_lockfile_load_mode("strict")   == LockfileLoadMode::Strict,
+          "parse_lockfile_load_mode: strict");
+    check(parse_lockfile_load_mode("recovery") == LockfileLoadMode::Recovery,
+          "parse_lockfile_load_mode: recovery");
+}
+
+void test_parse_lockfile_load_mode_unknown_defaults_to_studio() {
+    check(parse_lockfile_load_mode("")       == LockfileLoadMode::Studio,
+          "parse_lockfile_load_mode: empty -> Studio");
+    check(parse_lockfile_load_mode("bogus")  == LockfileLoadMode::Studio,
+          "parse_lockfile_load_mode: bogus -> Studio");
+    check(parse_lockfile_load_mode("STRICT") == LockfileLoadMode::Studio,
+          "parse_lockfile_load_mode: case-sensitive (STRICT != strict)");
+}
+
+void test_lockfile_load_mode_to_string_round_trips() {
+    for (auto m : {LockfileLoadMode::Studio, LockfileLoadMode::Strict,
+                    LockfileLoadMode::Recovery}) {
+        check(parse_lockfile_load_mode(to_string(m)) == m,
+              "lockfile_load_mode: to_string/parse round-trip");
+    }
+}
+
+void test_runtime_core_lockfile_status_default() {
+    RuntimeCore core;
+    check(core.lockfile_status().overall == LockfileOverall::Match,
+          "RuntimeCore: default lockfile_status overall is Match");
+    check(core.lockfile_status().findings.empty(),
+          "RuntimeCore: default lockfile_status has no findings");
+    check(core.package_manager() == nullptr,
+          "RuntimeCore: default package_manager is null");
+}
+
+void test_runtime_core_set_lockfile_status() {
+    RuntimeCore core;
+    LockfileStatus s;
+    s.overall = LockfileOverall::Mismatch;
+    s.findings.push_back({"missing_package", LockfileSeverity::Critical,
+                          "pkg-a", "msg", ""});
+    core.set_lockfile_status(s);
+    check(core.lockfile_status().overall == LockfileOverall::Mismatch,
+          "RuntimeCore: set_lockfile_status updates overall");
+    check(core.lockfile_status().findings.size() == 1,
+          "RuntimeCore: set_lockfile_status preserves findings");
+}
+
 // --- Phase 4: dispatch helper (unwrap_status_to_json) --------------------
 
 void test_unwrap_status_to_json_inlines_valid_status() {
@@ -1009,6 +1061,11 @@ int main() {
     test_runtime_api_verify_project_lockfile_missing_lockfile();
     test_runtime_api_get_project_dependency_status_no_lockfile();
     test_runtime_api_get_project_dependency_status_happy_path();
+    test_parse_lockfile_load_mode_known_values();
+    test_parse_lockfile_load_mode_unknown_defaults_to_studio();
+    test_lockfile_load_mode_to_string_round_trips();
+    test_runtime_core_lockfile_status_default();
+    test_runtime_core_set_lockfile_status();
     test_unwrap_status_to_json_inlines_valid_status();
     test_unwrap_status_to_json_preserves_error_message();
     test_unwrap_status_to_json_non_json_message_fallback();

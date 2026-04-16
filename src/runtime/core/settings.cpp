@@ -77,6 +77,7 @@ Settings load_settings() {
     json_read(j, "project_package_name", s.project_package_name);
     json_read(j, "pan_gesture", s.pan_gesture);
     json_read(j, "recent_files", s.recent_files);
+    json_read(j, "lockfile_load_mode", s.lockfile_load_mode);
 
     if (s.pan_gesture != "middle" && s.pan_gesture != "left" && s.pan_gesture != "right")
         s.pan_gesture = "left";
@@ -84,6 +85,12 @@ Settings load_settings() {
     if (s.operator_clone_destination_mode != "project_default" &&
         s.operator_clone_destination_mode != "core_explicit") {
         s.operator_clone_destination_mode = "project_default";
+    }
+
+    if (s.lockfile_load_mode != "studio" &&
+        s.lockfile_load_mode != "strict" &&
+        s.lockfile_load_mode != "recovery") {
+        s.lockfile_load_mode = "studio";
     }
 
     // Sanity: clamp size to something reasonable
@@ -123,6 +130,7 @@ void save_settings(const Settings& s) {
         j["project_package_name"] = s.project_package_name;
     j["pan_gesture"] = s.pan_gesture;
     if (!s.recent_files.empty()) j["recent_files"] = s.recent_files;
+    j["lockfile_load_mode"] = s.lockfile_load_mode;
 
     std::string path = settings_path();
     std::ofstream ofs(path);

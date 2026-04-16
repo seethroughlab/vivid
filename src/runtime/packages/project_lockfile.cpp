@@ -548,6 +548,21 @@ LockfileStatus verify_lockfile(const ProjectLockfile& lockfile,
     return status;
 }
 
+LockfileLoadMode parse_lockfile_load_mode(const std::string& s) {
+    if (s == "strict")   return LockfileLoadMode::Strict;
+    if (s == "recovery") return LockfileLoadMode::Recovery;
+    return LockfileLoadMode::Studio;
+}
+
+const char* to_string(LockfileLoadMode mode) {
+    switch (mode) {
+        case LockfileLoadMode::Studio:   return "studio";
+        case LockfileLoadMode::Strict:   return "strict";
+        case LockfileLoadMode::Recovery: return "recovery";
+    }
+    return "studio";
+}
+
 std::string lockfile_status_to_json(const LockfileStatus& status, int indent) {
     nlohmann::ordered_json root = nlohmann::ordered_json::object();
     root["overall"] = to_string(status.overall);

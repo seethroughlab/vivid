@@ -196,4 +196,19 @@ LockfileStatus verify_lockfile(const ProjectLockfile& lockfile,
 // so the output is diff-stable.
 std::string lockfile_status_to_json(const LockfileStatus& status, int indent = 2);
 
+// --- Phase 6a: load modes --------------------------------------------------
+
+enum class LockfileLoadMode {
+    Studio,    // default: verify runs, status stored, nothing disabled
+    Strict,    // critical findings disable matching nodes (locked_unavailable)
+    Recovery,  // currently identical to Studio; reserved for richer behavior
+};
+
+// Parse a load-mode string ("studio" | "strict" | "recovery"). Unknown or
+// empty input returns Studio.
+LockfileLoadMode parse_lockfile_load_mode(const std::string& s);
+
+// Canonical string form of a mode. Round-trips through parse_lockfile_load_mode.
+const char* to_string(LockfileLoadMode mode);
+
 }  // namespace vivid

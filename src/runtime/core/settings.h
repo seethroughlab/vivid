@@ -39,6 +39,12 @@ struct Settings {
     std::string pan_gesture = "left";          // "middle", "left", or "right"
 
     std::vector<std::string> recent_files;     // most-recent first, capped at 10
+
+    // Project lockfile load mode.
+    // studio (default): verify runs, status reported, nothing disabled.
+    // strict: critical findings disable affected nodes (locked_unavailable).
+    // recovery: currently identical to studio; reserved for later behavior.
+    std::string lockfile_load_mode = "studio";
 };
 
 Settings load_settings();
