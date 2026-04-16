@@ -44,6 +44,7 @@
 #include "runtime/assets/asset_library.h"
 #include "runtime/packages/package_compiler.h"
 #include "runtime/packages/package_manager.h"
+#include "runtime/packages/project_lockfile.h"
 #include "runtime/packages/package_test_runner.h"
 #include "runtime/core/build_console.h"
 #include "runtime/packages/package_catalog.h"
@@ -322,6 +323,29 @@ int main(int argc, char* argv[]) {
         "Run package tests and emit JSON results");
     test_package_cmd->add_option("name", test_package_name, "Package name")->required();
 
+    // --- Project lockfile subcommands (Phase 5) ---
+    std::string lock_graph_path;
+    std::string lock_output_path;
+    auto* lock_cmd = app.add_subcommand("lock",
+        "Write a project lockfile capturing the graph's package/operator provenance");
+    lock_cmd->add_option("--graph", lock_graph_path, "Graph file to lock")
+        ->required()->type_name("FILE");
+    lock_cmd->add_option("--output", lock_output_path,
+        "Lockfile destination (default: vivid.lock next to graph)")->type_name("FILE");
+
+    std::string verify_graph_path;
+    std::string verify_lockfile_path;
+    bool verify_pretty = false;
+    auto* verify_cmd = app.add_subcommand("verify-lock",
+        "Verify the environment satisfies a project lockfile "
+        "(exit 0=match, 1=drift, 2=mismatch, 3=error)");
+    verify_cmd->add_option("--graph", verify_graph_path, "Graph file to verify")
+        ->required()->type_name("FILE");
+    verify_cmd->add_option("--lockfile", verify_lockfile_path,
+        "Lockfile path (default: vivid.lock next to graph)")->type_name("FILE");
+    verify_cmd->add_flag("--pretty", verify_pretty,
+        "Emit human-readable findings to stderr (stdout stays silent)");
+
     bool cli_json = false;
     auto add_json_flag = [&](CLI::App* cmd) {
         cmd->add_flag("--json", cli_json, "Emit JSON output");
@@ -402,6 +426,108 @@ int main(int argc, char* argv[]) {
             return 1;
         }
         return 0;
+    }
+
+    // --- Handle project-lockfile subcommands (early exit, no GLFW) ---
+    if (lock_cmd->parsed() || verify_cmd->parsed()) {
+        vivid::OperatorRegistry registry;
+        vivid::PackageCompiler compiler(runtime_paths.source_dir, runtime_paths.build_dir);
+        vivid::PackageManager pm(compiler, registry);
+        vivid::SubgraphModuleRegistry subgraph_modules;
+        vivid::RegistryBootstrapOptions bootstrap_opts;
+        bootstrap_opts.scan_packages     = true;
+        bootstrap_opts.subgraph_modules  = &subgraph_modules;
+        vivid::bootstrap_operator_registry(registry, &pm, runtime_paths, bootstrap_opts);
+
+        auto emit_json_line = [](const nlohmann::json& payload) {
+            std::printf("%s\n", payload.dump().c_str());
+        };
+
+        if (lock_cmd->parsed()) {
+            vivid::Graph graph;
+            if (!graph.load(lock_graph_path.c_str())) {
+                emit_json_line({
+                    {"ok", false},
+                    {"error", "failed to load graph: " + lock_graph_path},
+                });
+                return 1;
+            }
+            auto lf = vivid::build_lockfile_for_graph(graph, pm, registry);
+            lf.graph.path = lock_graph_path;
+
+            std::filesystem::path out = lock_output_path.empty()
+                ? std::filesystem::path(lock_graph_path).parent_path() / "vivid.lock"
+                : std::filesystem::path(lock_output_path);
+
+            vivid::LockfileError err = vivid::save_lockfile(out, lf);
+            if (!err.ok()) {
+                emit_json_line({{"ok", false}, {"error", err.message}});
+                return 1;
+            }
+            emit_json_line({{"ok", true}, {"message", out.string()}});
+            return 0;
+        }
+
+        // verify-lock
+        vivid::Graph graph;
+        if (!graph.load(verify_graph_path.c_str())) {
+            emit_json_line({
+                {"ok", false},
+                {"error", "failed to load graph: " + verify_graph_path},
+            });
+            return 3;
+        }
+        std::filesystem::path lockfile_path = verify_lockfile_path.empty()
+            ? std::filesystem::path(verify_graph_path).parent_path() / "vivid.lock"
+            : std::filesystem::path(verify_lockfile_path);
+
+        auto load_result = vivid::load_lockfile(lockfile_path);
+        if (!load_result.ok()) {
+            emit_json_line({
+                {"ok", false},
+                {"error", "failed to load lockfile: " + load_result.error.message},
+            });
+            return 3;
+        }
+
+        auto status = vivid::verify_lockfile(
+            load_result.lockfile, graph, pm, registry);
+
+        if (verify_pretty) {
+            const char* overall_label = "UNKNOWN";
+            switch (status.overall) {
+                case vivid::LockfileOverall::Match:           overall_label = "MATCH";       break;
+                case vivid::LockfileOverall::CompatibleDrift: overall_label = "DRIFT";       break;
+                case vivid::LockfileOverall::Mismatch:        overall_label = "MISMATCH";    break;
+                case vivid::LockfileOverall::NoLockfile:      overall_label = "NO_LOCKFILE"; break;
+            }
+            std::fprintf(stderr, "[vivid verify-lock] %s: %s\n",
+                         overall_label, lockfile_path.string().c_str());
+            for (const auto& f : status.findings) {
+                const char* sev =
+                    (f.severity == vivid::LockfileSeverity::Critical) ? "CRIT" :
+                    (f.severity == vivid::LockfileSeverity::Warning)  ? "WARN" : "INFO";
+                std::fprintf(stderr, "  %s %-28s  %s  %s\n",
+                             sev, f.id.c_str(), f.subject.c_str(), f.message.c_str());
+                if (!f.suggestion.empty())
+                    std::fprintf(stderr, "         -> %s\n", f.suggestion.c_str());
+            }
+            if (status.findings.empty())
+                std::fprintf(stderr, "  (no findings)\n");
+        } else {
+            nlohmann::json out = nlohmann::json::object();
+            out["ok"]     = true;
+            out["status"] = nlohmann::json::parse(vivid::lockfile_status_to_json(status));
+            emit_json_line(out);
+        }
+
+        switch (status.overall) {
+            case vivid::LockfileOverall::Match:           return 0;
+            case vivid::LockfileOverall::CompatibleDrift: return 1;
+            case vivid::LockfileOverall::Mismatch:        return 2;
+            case vivid::LockfileOverall::NoLockfile:      return 3;
+        }
+        return 3;
     }
 
     // --- Handle CLI query/admin subcommands (early exit, no GLFW) ---
