@@ -6,6 +6,20 @@ target_include_directories(test_inspector_layout PRIVATE src tests)
 target_link_libraries(test_inspector_layout PRIVATE vivid_runtime_testlib)
 add_test(NAME test_inspector_layout COMMAND test_inspector_layout WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# DialogManager lockfile-findings modal state (Phase 6b, no GPU)
+add_executable(test_dialog_manager_lockfile
+    tests/ui/test_dialog_manager_lockfile.cpp
+)
+target_include_directories(test_dialog_manager_lockfile PRIVATE src tests)
+target_link_libraries(test_dialog_manager_lockfile PRIVATE
+    vivid_runtime_testlib vivid_ui webgpu glfw nlohmann_json::nlohmann_json stb_truetype)
+if(APPLE)
+    target_link_libraries(test_dialog_manager_lockfile PRIVATE
+        "-framework Cocoa" "-framework Foundation")
+endif()
+add_test(NAME test_dialog_manager_lockfile COMMAND test_dialog_manager_lockfile
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # UI overlay interaction regressions (example/package/meta overlay callbacks)
 add_executable(test_ui_overlay_interactions
     tests/ui/test_ui_overlay_interactions.cpp
