@@ -50,7 +50,8 @@ add_executable(test_audio_sequencer_graph
 target_include_directories(test_audio_sequencer_graph PRIVATE src tests)
 target_link_libraries(test_audio_sequencer_graph PRIVATE
     vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
-add_dependencies(test_audio_sequencer_graph clock_au oscillator gain)
+add_dependencies(test_audio_sequencer_graph
+    clock_au oscillator gain drum_sequencer_au drum_kit_au drum_kick)
 add_test(NAME test_audio_sequencer_graph
     COMMAND test_audio_sequencer_graph ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -478,7 +479,9 @@ add_executable(test_graph_compiler
 target_include_directories(test_graph_compiler PRIVATE src tests)
 target_link_libraries(test_graph_compiler PRIVATE
     vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
-add_dependencies(test_graph_compiler lfo_fr gain lane_source_op lane_metadata_audio_op lane_slew_op prepare_assets_test_op)
+add_dependencies(test_graph_compiler
+    lfo_fr gain lane_source_op lane_metadata_audio_op lane_slew_op prepare_assets_test_op
+    drum_sequencer_au drum_kit_au)
 add_test(NAME test_graph_compiler
     COMMAND test_graph_compiler ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

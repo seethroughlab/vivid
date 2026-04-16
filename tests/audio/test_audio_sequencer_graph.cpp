@@ -11,6 +11,7 @@
 #include "runtime/audio/audio_frame_bridge.h"
 #include "runtime/graph/compiled_graph.h"
 #include "runtime/core/settings.h"
+#include <algorithm>
 #include <cstdio>
 #include <cmath>
 #include <cstring>
@@ -36,6 +37,12 @@ int main(int argc, char* argv[]) {
     std::filesystem::copy_file(build_dir + "/oscillator.dylib", staging + "/oscillator.dylib",
                                std::filesystem::copy_options::overwrite_existing);
     std::filesystem::copy_file(build_dir + "/gain.dylib", staging + "/gain.dylib",
+                               std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/drum_sequencer_au.dylib", staging + "/drum_sequencer_au.dylib",
+                               std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/drum_kit_au.dylib", staging + "/drum_kit_au.dylib",
+                               std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/drum_kick.dylib", staging + "/drum_kick.dylib",
                                std::filesystem::copy_options::overwrite_existing);
 
     // --- Operator registry ---
@@ -219,9 +226,91 @@ int main(int argc, char* argv[]) {
     }
     check(!any_error, "No audio node errors");
 
-    // Cleanup
     audio.shutdown();
     runtime.shutdown();
+
+    // --- Regression: DrumSequencer custom MIDI must route to DrumKit on the audio path ---
+    const char* drum_graph_json = R"({
+        "metronome": { "enabled": true, "bpm": 120.0, "beats_per_bar": 4 },
+        "nodes": {
+            "seq": {
+                "type": "DrumSequencer",
+                "params": {
+                    "clock_source": 1,
+                    "kick_0": 1.0,
+                    "kick_4": 1.0,
+                    "kick_8": 1.0,
+                    "kick_12": 1.0,
+                    "kick_ma_0": 1.0,
+                    "kick_ma_4": 1.0,
+                    "kick_ma_8": 1.0,
+                    "kick_ma_12": 1.0
+                }
+            },
+            "kit": { "type": "DrumKit", "params": {} },
+            "kick": { "type": "DrumKick", "params": { "volume": 0.8 } },
+            "master": { "type": "Gain", "params": { "gain": 1.0 } },
+            "aout": { "type": "audio_out", "params": {} }
+        },
+        "connections": [
+            { "from": "seq/midi_out", "to": "kit/midi_in" },
+            { "from": "kit/slot_0", "to": "kick/midi_in" },
+            { "from": "kick/output", "to": "master/input" },
+            { "from": "master/output", "to": "aout/input" }
+        ]
+    })";
+
+    vivid::Graph drum_graph;
+    bool drum_loaded = drum_graph.load_from_string(drum_graph_json);
+    check(drum_loaded, "Drum graph loaded from JSON string");
+    if (drum_loaded) {
+        registry.load_for_graph(drum_graph);
+
+        vivid::RuntimeCore drum_runtime;
+        drum_runtime.set_audio_buffer_size(512);
+        bool drum_build_ok = drum_runtime.build(drum_graph, registry);
+        check(drum_build_ok, "Drum runtime built");
+
+        vivid::AudioEngine drum_audio;
+        bool drum_audio_ok = drum_audio.build(drum_runtime);
+        check(drum_audio_ok, "Drum audio engine built");
+
+        if (drum_build_ok && drum_audio_ok) {
+            const uint32_t drum_frames = drum_audio.buffer_size();
+            std::vector<float> drum_audio_buf(drum_frames * 2, 0.0f);
+            float max_master_peak = 0.0f;
+            float max_kick_peak = 0.0f;
+
+            for (uint64_t frame = 0; frame < 24; ++frame) {
+                double time = frame * 0.016;
+                drum_runtime.pre_tick_audio_sync(time);
+                drum_runtime.tick(time, 0.016, frame);
+                drum_runtime.post_tick_audio_sync();
+                drum_audio.process_audio_for_test(drum_audio_buf.data(), drum_frames);
+                drum_runtime.audio_frame_bridge().pull_from_audio(*drum_runtime.compiled_graph());
+
+                const auto& drum_analysis = drum_audio.analysis_read();
+                int master_idx = drum_audio.audio_node_index("master");
+                int kick_idx = drum_audio.audio_node_index("kick");
+                if (master_idx >= 0)
+                    max_master_peak = std::max(max_master_peak, drum_analysis.peak[master_idx][0]);
+                if (kick_idx >= 0)
+                    max_kick_peak = std::max(max_kick_peak, drum_analysis.peak[kick_idx][0]);
+            }
+
+            std::fprintf(stderr, "    drum master peak=%.6f  kick peak=%.6f\n",
+                         max_master_peak, max_kick_peak);
+            check(max_kick_peak > 0.001f,
+                  "DrumKick receives sequencer MIDI through DrumKit and produces audio");
+            check(max_master_peak > 0.001f,
+                  "Drum graph produces non-zero master audio");
+        }
+
+        drum_audio.shutdown();
+        drum_runtime.shutdown();
+    }
+
+    // Cleanup
     std::filesystem::remove_all(staging);
 
     std::fprintf(stderr, "\n========================================\n");

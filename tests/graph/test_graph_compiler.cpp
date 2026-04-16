@@ -639,6 +639,70 @@ static void test_reduction_preserves_lane_expanded_width(const std::string& buil
 }
 
 // ---------------------------------------------------------------------------
+// Test: Audio-cadence custom refs stay on the audio direct executor path
+// ---------------------------------------------------------------------------
+
+static void test_audio_custom_ref_direct_edge_partition(const std::string& build_dir) {
+    std::fprintf(stderr, "\n--- compile: audio custom-ref direct edge partition ---\n");
+
+    const std::string staging = build_dir + "/.test_audio_custom_ref_partition_staging";
+    std::filesystem::remove_all(staging);
+    std::filesystem::create_directories(staging);
+
+    auto stage = [&](const char* name) {
+        std::string src = build_dir + "/" + name;
+        std::string dst = staging + "/" + name;
+        if (std::filesystem::exists(src))
+            std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing);
+    };
+    stage("drum_sequencer_au.dylib");
+    stage("drum_kit_au.dylib");
+
+    vivid::OperatorRegistry registry;
+    registry.scan_deferred(staging.c_str());
+
+    vivid::Graph g;
+    g.add_node("seq", "DrumSequencer");
+    g.add_node("kit", "DrumKit");
+    g.add_connection("seq", "midi_out", "kit", "midi_in");
+
+    vivid::GraphCompiler::Options opts;
+    auto cg = vivid::GraphCompiler::compile(g, registry, opts);
+    check(cg != nullptr, "compiles with DrumSequencer -> DrumKit");
+    if (!cg) {
+        std::filesystem::remove_all(staging);
+        return;
+    }
+
+    int edge_idx = -1;
+    for (uint32_t i = 0; i < static_cast<uint32_t>(cg->edges.size()); ++i) {
+        const auto& e = cg->edges[i];
+        if (cg->nodes[e.from_node].node_id == "seq" &&
+            cg->nodes[e.to_node].node_id == "kit") {
+            edge_idx = static_cast<int>(i);
+            check(e.transport == vivid::EdgeTransport::Direct,
+                  "seq -> kit edge is direct");
+            check(vivid_is_custom_port_type(e.data_type),
+                  "seq -> kit edge carries a custom ref");
+            break;
+        }
+    }
+    check(edge_idx >= 0, "seq -> kit edge found");
+
+    bool in_audio_direct = false;
+    bool in_frame_direct = false;
+    for (uint32_t ei : cg->audio_direct_edges)
+        if (static_cast<int>(ei) == edge_idx) in_audio_direct = true;
+    for (uint32_t ei : cg->frame_direct_edges)
+        if (static_cast<int>(ei) == edge_idx) in_frame_direct = true;
+
+    check(in_audio_direct, "audio custom-ref edge is in audio_direct_edges");
+    check(!in_frame_direct, "audio custom-ref edge is not in frame_direct_edges");
+
+    std::filesystem::remove_all(staging);
+}
+
+// ---------------------------------------------------------------------------
 // Test: Same-cadence edge without bridge compiles normally
 // ---------------------------------------------------------------------------
 
@@ -856,6 +920,7 @@ int main(int argc, char* argv[]) {
     test_audio_lane_lift_from_lane_input(build_dir);
     test_loop_based_strategy(build_dir);
     test_reduction_preserves_lane_expanded_width(build_dir);
+    test_audio_custom_ref_direct_edge_partition(build_dir);
     test_bridge_same_cadence_no_bridge();
     test_bridge_same_cadence_with_bridge_rejected();
     test_bridge_kind_unknown_warns();
