@@ -1021,6 +1021,198 @@ void test_runtime_api_get_project_dependency_status_happy_path() {
           "dep status happy: overall is not no_lockfile (sibling exists)");
 }
 
+// --- Phase 6a: load_graph integration with lockfile verify ---------------
+
+// Build a hand-authored lockfile that triggers a descriptor_hash mismatch on
+// the given operator type. Returns the lockfile path.
+//
+// NOTE: built-in operators have OperatorMapEntry.abi_version == 0 (the ABI is
+// only populated for probed dylibs), so we can't use an ABI mismatch finding
+// for these tests. descriptor_hash_mismatch works for builtins because Phase 0
+// computes it from the in-memory descriptor, which is always available.
+static std::string write_descriptor_mismatch_lockfile(
+    const std::filesystem::path& dir,
+    const std::string& op_type) {
+
+    ProjectLockfile lf;
+    lf.lockfile_version   = LOCKFILE_VERSION;
+    lf.vivid_core.version = VIVID_CORE_VERSION;
+    lf.vivid_core.operator_abi = static_cast<int>(VIVID_OPERATOR_ABI_VERSION);
+    LockfileOperator o;
+    o.type            = op_type;
+    o.operator_abi    = static_cast<int>(VIVID_OPERATOR_ABI_VERSION);
+    o.descriptor_hash = "sha256:deadbeef0000000000000000000000000000000000000000000000000000dead";
+    lf.operators.push_back(o);
+
+    auto path = (dir / "vivid.lock").string();
+    save_lockfile(path, lf);
+    return path;
+}
+
+void test_load_graph_studio_mode_runs_verify_no_disabling() {
+    LockfileGenFixture fx;
+    register_builtin_operators(fx.registry);
+
+    ScopedTempDir dir("vivid_load_studio");
+    Graph source_graph;
+    source_graph.add_node("a", "audio_out");
+    auto graph_path = dir.file_str("demo.json");
+    source_graph.save(graph_path.c_str());
+    write_descriptor_mismatch_lockfile(dir.path, "audio_out");
+
+    Graph api_graph;
+    RuntimeCore runtime;
+    runtime.set_package_manager(&fx.pm);
+    AudioEngine audio_engine;
+    RuntimeAPI api(api_graph, runtime, audio_engine, fx.registry);
+
+    bool has_gpu = false;
+    bool has_aud = false;
+    auto r = api.load_graph(graph_path, has_gpu, has_aud, "studio");
+    check(r.ok, "load studio: succeeds");
+    check(runtime.lockfile_status().overall == LockfileOverall::Mismatch,
+          "load studio: verify ran, overall is Mismatch (ABI mismatch finding)");
+
+    // Studio mode never disables nodes.
+    const auto* cn = runtime.compiled_graph()
+                        ? runtime.compiled_graph()->find_node("a") : nullptr;
+    check(cn != nullptr, "load studio: compiled node 'a' exists");
+    if (cn) {
+        check(cn->missing_operator_reason != "locked_unavailable",
+              "load studio: compiled node NOT locked_unavailable");
+    }
+}
+
+void test_load_graph_strict_mode_disables_affected_node() {
+    LockfileGenFixture fx;
+    register_builtin_operators(fx.registry);
+
+    ScopedTempDir dir("vivid_load_strict");
+    Graph source_graph;
+    source_graph.add_node("a", "audio_out");
+    auto graph_path = dir.file_str("demo.json");
+    source_graph.save(graph_path.c_str());
+    write_descriptor_mismatch_lockfile(dir.path, "audio_out");
+
+    Graph api_graph;
+    RuntimeCore runtime;
+    runtime.set_package_manager(&fx.pm);
+    AudioEngine audio_engine;
+    RuntimeAPI api(api_graph, runtime, audio_engine, fx.registry);
+
+    bool has_gpu = false;
+    bool has_aud = false;
+    auto r = api.load_graph(graph_path, has_gpu, has_aud, "strict");
+    check(r.ok, "load strict: succeeds");
+
+    const auto* cn = runtime.compiled_graph()
+                        ? runtime.compiled_graph()->find_node("a") : nullptr;
+    check(cn != nullptr, "load strict: compiled node 'a' exists");
+    if (cn) {
+        check(cn->missing_operator,
+              "load strict: missing_operator = true on affected node");
+        check(cn->missing_operator_reason == "locked_unavailable",
+              "load strict: reason = locked_unavailable");
+    }
+}
+
+void test_load_graph_strict_mode_ignores_non_critical() {
+    // Info/Warning findings must not disable nodes in Strict mode.
+    LockfileGenFixture fx;
+    register_builtin_operators(fx.registry);
+
+    ScopedTempDir dir("vivid_load_noncritical");
+    Graph source_graph;
+    source_graph.add_node("a", "audio_out");
+    auto graph_path = dir.file_str("demo.json");
+    source_graph.save(graph_path.c_str());
+
+    // Write a lockfile whose only issue is a fake content_hash (Info).
+    ProjectLockfile lf;
+    lf.lockfile_version        = LOCKFILE_VERSION;
+    lf.vivid_core.version      = VIVID_CORE_VERSION;
+    lf.vivid_core.operator_abi = static_cast<int>(VIVID_OPERATOR_ABI_VERSION);
+    lf.graph.content_hash =
+        "sha256:deadbeef0000000000000000000000000000000000000000000000000000dead";
+    save_lockfile(dir.path / "vivid.lock", lf);
+
+    Graph api_graph;
+    RuntimeCore runtime;
+    runtime.set_package_manager(&fx.pm);
+    AudioEngine audio_engine;
+    RuntimeAPI api(api_graph, runtime, audio_engine, fx.registry);
+
+    bool has_gpu = false;
+    bool has_aud = false;
+    auto r = api.load_graph(graph_path, has_gpu, has_aud, "strict");
+    check(r.ok, "load strict non-critical: succeeds");
+    check(runtime.lockfile_status().overall == LockfileOverall::CompatibleDrift,
+          "load strict non-critical: overall is CompatibleDrift");
+
+    const auto* cn = runtime.compiled_graph()
+                        ? runtime.compiled_graph()->find_node("a") : nullptr;
+    if (cn) {
+        check(cn->missing_operator_reason != "locked_unavailable",
+              "load strict non-critical: NOT locked_unavailable (Info finding only)");
+    }
+}
+
+void test_load_graph_no_sibling_lockfile() {
+    LockfileGenFixture fx;
+    register_builtin_operators(fx.registry);
+
+    ScopedTempDir dir("vivid_load_nosib");
+    Graph source_graph;
+    source_graph.add_node("a", "audio_out");
+    auto graph_path = dir.file_str("demo.json");
+    source_graph.save(graph_path.c_str());
+    // No vivid.lock written.
+
+    Graph api_graph;
+    RuntimeCore runtime;
+    runtime.set_package_manager(&fx.pm);
+    AudioEngine audio_engine;
+    RuntimeAPI api(api_graph, runtime, audio_engine, fx.registry);
+
+    bool has_gpu = false;
+    bool has_aud = false;
+    auto r = api.load_graph(graph_path, has_gpu, has_aud, "strict");
+    check(r.ok, "load no-sibling: succeeds");
+    check(runtime.lockfile_status().overall == LockfileOverall::Match,
+          "load no-sibling: overall is Match (default)");
+    check(runtime.lockfile_status().findings.empty(),
+          "load no-sibling: no findings");
+}
+
+void test_load_graph_skips_verify_without_package_manager() {
+    // RuntimeCore::set_package_manager is optional; without it, verify is
+    // skipped silently (pre-Phase-6a behavior).
+    LockfileGenFixture fx;
+    register_builtin_operators(fx.registry);
+
+    ScopedTempDir dir("vivid_load_nopm");
+    Graph source_graph;
+    source_graph.add_node("a", "audio_out");
+    auto graph_path = dir.file_str("demo.json");
+    source_graph.save(graph_path.c_str());
+    write_descriptor_mismatch_lockfile(dir.path, "audio_out");
+
+    Graph api_graph;
+    RuntimeCore runtime;
+    // NOTE: not calling runtime.set_package_manager
+    AudioEngine audio_engine;
+    RuntimeAPI api(api_graph, runtime, audio_engine, fx.registry);
+
+    bool has_gpu = false;
+    bool has_aud = false;
+    auto r = api.load_graph(graph_path, has_gpu, has_aud, "strict");
+    check(r.ok, "load no-pm: succeeds");
+    check(runtime.lockfile_status().overall == LockfileOverall::Match,
+          "load no-pm: overall is Match (verify skipped)");
+    check(runtime.lockfile_status().findings.empty(),
+          "load no-pm: no findings");
+}
+
 }  // namespace
 
 int main() {
@@ -1066,6 +1258,11 @@ int main() {
     test_lockfile_load_mode_to_string_round_trips();
     test_runtime_core_lockfile_status_default();
     test_runtime_core_set_lockfile_status();
+    test_load_graph_studio_mode_runs_verify_no_disabling();
+    test_load_graph_strict_mode_disables_affected_node();
+    test_load_graph_strict_mode_ignores_non_critical();
+    test_load_graph_no_sibling_lockfile();
+    test_load_graph_skips_verify_without_package_manager();
     test_unwrap_status_to_json_inlines_valid_status();
     test_unwrap_status_to_json_preserves_error_message();
     test_unwrap_status_to_json_non_json_message_fallback();

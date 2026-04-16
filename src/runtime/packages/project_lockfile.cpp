@@ -3,6 +3,7 @@
 #include "common/hash_util.h"
 #include "operator_api/types.h"
 #include "runtime/core/workspace_manager.h"
+#include "runtime/graph/compiled_graph.h"
 #include "runtime/graph/graph.h"
 #include "runtime/operators/operator_registry.h"
 #include "runtime/packages/package_manager.h"
@@ -552,6 +553,51 @@ LockfileLoadMode parse_lockfile_load_mode(const std::string& s) {
     if (s == "strict")   return LockfileLoadMode::Strict;
     if (s == "recovery") return LockfileLoadMode::Recovery;
     return LockfileLoadMode::Studio;
+}
+
+void apply_strict_mode_to_compiled_graph(const LockfileStatus& status,
+                                         CompiledGraph& compiled,
+                                         const OperatorRegistry& registry) {
+    using namespace lockfile_finding;
+
+    auto mark_node = [](CompiledNode& cn, const std::string& detail) {
+        cn.missing_operator        = true;
+        cn.missing_operator_reason = "locked_unavailable";
+        if (cn.missing_operator_detail.empty()) cn.missing_operator_detail = detail;
+    };
+
+    auto disable_nodes_in_package = [&](const std::string& pkg_name,
+                                        const std::string& detail) {
+        if (pkg_name.empty()) return;
+        for (auto& cn : compiled.nodes) {
+            const std::string* pkg = registry.package_for_type(cn.type_name);
+            if (pkg && *pkg == pkg_name) mark_node(cn, detail);
+        }
+    };
+    auto disable_nodes_of_type = [&](const std::string& type_name,
+                                     const std::string& detail) {
+        if (type_name.empty()) return;
+        for (auto& cn : compiled.nodes) {
+            if (cn.type_name == type_name) mark_node(cn, detail);
+        }
+    };
+
+    for (const auto& f : status.findings) {
+        if (f.severity != LockfileSeverity::Critical) continue;
+
+        if (f.id == kMissingPackage || f.id == kIncompatibleUpdate) {
+            disable_nodes_in_package(f.subject, f.message);
+        } else if (f.id == kAbiMismatch || f.id == kDescriptorHashMismatch) {
+            // "vivid_core" subject affects the whole runtime; leave that to
+            // the caller (e.g. don't start audio/GPU). Per-type subjects are
+            // disabled here.
+            if (f.subject != "vivid_core") {
+                disable_nodes_of_type(f.subject, f.message);
+            }
+        }
+        // kMissingOperator: the compiler already emits "not_found" for
+        // unresolved types; no additional action needed here.
+    }
 }
 
 const char* to_string(LockfileLoadMode mode) {

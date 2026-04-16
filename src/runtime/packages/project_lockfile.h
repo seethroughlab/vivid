@@ -211,4 +211,22 @@ LockfileLoadMode parse_lockfile_load_mode(const std::string& s);
 // Canonical string form of a mode. Round-trips through parse_lockfile_load_mode.
 const char* to_string(LockfileLoadMode mode);
 
+struct CompiledGraph;
+
+// Phase 6a strict-mode enforcement. Walks `status.findings` and, for each
+// Critical finding whose subject is a package or operator-type name present
+// in `compiled`, marks the matching node(s) with missing_operator = true,
+// reason = "locked_unavailable", detail = finding.message. Non-Critical
+// findings are never acted on.
+//
+// - missing_package / incompatible_update: subject is a package name;
+//   disables every node whose type resolves to that package.
+// - abi_mismatch / descriptor_hash_mismatch: subject is an operator type
+//   (or "vivid_core" for core-level ABI — left alone by this helper).
+// - missing_operator: skipped; the graph compiler's own "not_found" reason
+//   already covers it.
+void apply_strict_mode_to_compiled_graph(const LockfileStatus& status,
+                                         CompiledGraph& compiled,
+                                         const OperatorRegistry& registry);
+
 }  // namespace vivid

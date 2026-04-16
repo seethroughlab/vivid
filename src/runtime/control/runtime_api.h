@@ -155,7 +155,15 @@ public:
     // Persistence
     CommandResult save();
     CommandResult save_as(const std::string& path);
-    CommandResult load_graph(const std::string& path, bool& has_gpu_ops, bool& has_audio);
+    // load_graph accepts an optional trailing lockfile_mode override:
+    //   ""         — no override; treated as "studio" (caller passes
+    //                Settings.lockfile_load_mode when a persisted pref exists).
+    //   "studio"   — verify runs on sibling vivid.lock; findings stored; nothing disabled.
+    //   "strict"   — critical findings mark affected nodes locked_unavailable.
+    //   "recovery" — identical to studio for now; reserved.
+    // Unknown values fall back to studio.
+    CommandResult load_graph(const std::string& path, bool& has_gpu_ops, bool& has_audio,
+                             const std::string& lockfile_mode = "");
     CommandResult reload(bool& has_gpu_ops, bool& has_audio);
     CommandResult new_graph(bool& has_gpu_ops, bool& has_audio);
     CommandResult new_project(const std::string& dir_path, bool& has_gpu_ops, bool& has_audio);

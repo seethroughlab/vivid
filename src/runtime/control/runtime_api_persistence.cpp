@@ -45,7 +45,8 @@ CommandResult RuntimeAPI::reload(bool& has_gpu_ops, bool& has_audio) {
 
 CommandResult RuntimeAPI::load_graph(const std::string& path,
                                      bool& has_gpu_ops,
-                                     bool& has_audio) {
+                                     bool& has_audio,
+                                     const std::string& lockfile_mode) {
     if (path.empty()) return {false, "missing graph path"};
     const PreservedRuntimeState preserved_state =
         capture_preserved_runtime_state_for_path(path);
@@ -105,6 +106,31 @@ CommandResult RuntimeAPI::load_graph(const std::string& path,
         return restore_previous_state("rebuild failed after reload");
     }
     core_.reset_live_metronome(graph_.metronome(), core_.last_tick_time());
+
+    // Phase 6a: verify sibling vivid.lock (if present) and apply load-mode
+    // enforcement. Done after build so CompiledGraph nodes can be marked.
+    {
+        LockfileStatus lf_status;  // default: Match, no findings
+        const std::filesystem::path sibling =
+            std::filesystem::path(path).parent_path() / "vivid.lock";
+        std::error_code sibling_ec;
+        if (std::filesystem::exists(sibling, sibling_ec) && !sibling_ec &&
+            core_.package_manager()) {
+            auto load_result = load_lockfile(sibling);
+            if (load_result.ok()) {
+                lf_status = verify_lockfile(
+                    load_result.lockfile, graph_,
+                    *core_.package_manager(), registry_);
+            }
+        }
+        core_.set_lockfile_status(lf_status);
+
+        const LockfileLoadMode mode = parse_lockfile_load_mode(lockfile_mode);
+        if (mode == LockfileLoadMode::Strict && core_.compiled_graph()) {
+            apply_strict_mode_to_compiled_graph(
+                lf_status, *core_.compiled_graph(), registry_);
+        }
+    }
 
     if (preserve_runtime_state) {
         apply_preserved_runtime_state(preserved_state);
