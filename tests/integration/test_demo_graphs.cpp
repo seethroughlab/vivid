@@ -336,6 +336,8 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
             print_package_discovery_report(bootstrap.package_discovery, required_packages);
         return 1;
     }
+    // Initialize metronome so transport-synced operators produce output
+    runtime.reset_live_metronome(graph.metronome(), 0.0);
     if (fail_if_required_package_placeholders(runtime, registry, graph,
                                               bootstrap.package_discovery, required_packages)) {
         runtime.shutdown();
