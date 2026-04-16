@@ -197,6 +197,14 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
             tr.draw_rect(fx, py + fh - 1, fw, 1, style_.separator[0], style_.separator[1], style_.separator[2], 0.5f);
 
             if (editing_this) {
+                if (text_edit_.has_selection()) {
+                    int lo = text_edit_.sel_min();
+                    int hi = text_edit_.sel_max();
+                    float sel_x0 = fx + 4 + tr.text_width(inspector_.edit_buffer.substr(0, lo).c_str());
+                    float sel_x1 = fx + 4 + tr.text_width(inspector_.edit_buffer.substr(0, hi).c_str());
+                    tr.draw_rect(sel_x0, py + 1, sel_x1 - sel_x0, fh - 2,
+                                 style_.accent[0], style_.accent[1], style_.accent[2], 0.3f);
+                }
                 tr.draw_text(fx + 4, py + 2, inspector_.edit_buffer.c_str(),
                              style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
                 if (cursor_blink_on()) {

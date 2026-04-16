@@ -868,6 +868,14 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
         // Line 1: Variation name (truncated)
         float text_y = cy + 6;
         if (session_editing_name_ && session_edit_idx_ == i) {
+            if (text_edit_.has_selection()) {
+                int lo = text_edit_.sel_min();
+                int hi = text_edit_.sel_max();
+                float sel_x0 = cx + 8 + tr.text_width(session_edit_buffer_.substr(0, lo).c_str());
+                float sel_x1 = cx + 8 + tr.text_width(session_edit_buffer_.substr(0, hi).c_str());
+                tr.draw_rect(sel_x0, text_y - 1, sel_x1 - sel_x0, 14,
+                             style_.accent[0], style_.accent[1], style_.accent[2], 0.3f);
+            }
             tr.draw_text(cx + 8, text_y, session_edit_buffer_.c_str(),
                          style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
             if (cursor_blink_on()) {

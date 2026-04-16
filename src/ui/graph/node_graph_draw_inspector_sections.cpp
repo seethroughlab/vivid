@@ -490,6 +490,14 @@ void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& 
     if (is_generator) {
         if (editing_w) {
             tr.draw_rect(val_x, py, kResInputW, kLineH, 0.12f, 0.14f, 0.18f);
+            if (text_edit_.has_selection()) {
+                int lo = text_edit_.sel_min();
+                int hi = text_edit_.sel_max();
+                float sel_x0 = val_x + tr.text_width(inspector_.edit_buffer.substr(0, lo).c_str());
+                float sel_x1 = val_x + tr.text_width(inspector_.edit_buffer.substr(0, hi).c_str());
+                tr.draw_rect(sel_x0, py + 1, sel_x1 - sel_x0, kLineH - 2,
+                             style_.accent[0], style_.accent[1], style_.accent[2], 0.3f);
+            }
         }
         tr.draw_text(val_x, py, w_str.c_str(),
                      editing_w ? 1.0f : 0.8f,
@@ -514,6 +522,14 @@ void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& 
     if (is_generator) {
         if (editing_h) {
             tr.draw_rect(h_val_x, py, kResInputW, kLineH, 0.12f, 0.14f, 0.18f);
+            if (text_edit_.has_selection()) {
+                int lo = text_edit_.sel_min();
+                int hi = text_edit_.sel_max();
+                float sel_x0 = h_val_x + tr.text_width(inspector_.edit_buffer.substr(0, lo).c_str());
+                float sel_x1 = h_val_x + tr.text_width(inspector_.edit_buffer.substr(0, hi).c_str());
+                tr.draw_rect(sel_x0, py + 1, sel_x1 - sel_x0, kLineH - 2,
+                             style_.accent[0], style_.accent[1], style_.accent[2], 0.3f);
+            }
         }
         tr.draw_text(h_val_x, py, h_str.c_str(),
                      editing_h ? 1.0f : 0.8f,
