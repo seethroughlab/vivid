@@ -159,6 +159,19 @@ add_test(NAME test_operator_descriptor_hash
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_operator_descriptor_hash PROPERTIES LABELS "PACKAGE" TIMEOUT 15)
 
+# ProjectLockfile CLI subcommand tests (subprocess-driven: vivid lock / verify-lock)
+add_executable(test_project_lockfile_cli
+    tests/packages/test_project_lockfile_cli.cpp
+)
+target_include_directories(test_project_lockfile_cli PRIVATE src tests)
+target_link_libraries(test_project_lockfile_cli PRIVATE
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_dependencies(test_project_lockfile_cli vivid)
+add_test(NAME test_project_lockfile_cli
+    COMMAND test_project_lockfile_cli ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_project_lockfile_cli PROPERTIES LABELS "PACKAGE" TIMEOUT 120)
+
 # ProjectLockfile JSON model + parser test (round-trip, canonical order, version validation)
 add_executable(test_project_lockfile
     tests/packages/test_project_lockfile.cpp
