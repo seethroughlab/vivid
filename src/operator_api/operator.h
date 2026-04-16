@@ -495,7 +495,7 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
     static bool inited = false;                                               \
     if (!inited) {                                                            \
         inited = true;                                                        \
-        ClassName tmp;                                                        \
+        static ClassName tmp;                                                  \
         std::vector<vivid::ParamBase*> pbases;                                \
         tmp.collect_params(pbases);                                           \
         s_params.resize(pbases.size());                                       \
