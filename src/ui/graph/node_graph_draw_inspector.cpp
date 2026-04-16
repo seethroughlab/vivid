@@ -367,12 +367,31 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
 
     draw_inspector_header(tr, *sel_node, px, py);
 
-    // Error banner for errored nodes (includes compile errors where errored=false)
+    // Error banner for errored nodes (includes compile errors where errored=false).
+    // Safe-mode-suppressed nodes (disabled or quarantined) get an amber prefix
+    // rather than red "Error:" — they were intentionally suppressed, not broken.
     if (!sel_node->error_message.empty()) {
-        const std::string label = std::string(T("error_label", "Error:")) + " " + sel_node->error_message;
-        tr.draw_text(px, py, label.c_str(),
-                     kErrorAccent[0], kErrorAccent[1], kErrorAccent[2]);
+        const bool quarantined = sel_node->quarantined;
+        const bool disabled    = sel_node->disabled_by_safe_mode;
+        const bool suppressed  = quarantined || disabled;
+        const char* prefix =
+              quarantined ? T("quarantined_label", "Quarantined:")
+            : disabled    ? T("disabled_label",    "Disabled:")
+            :               T("error_label",       "Error:");
+        const auto& col = suppressed ? kDisabledAccent : kErrorAccent;
+        const std::string label = std::string(prefix) + " " + sel_node->error_message;
+        tr.draw_text(px, py, label.c_str(), col[0], col[1], col[2]);
         py += kLineH + 4;
+        if (suppressed) {
+            const char* hint = quarantined
+                ? T("quarantined_hint",
+                    "This operator has crashed repeatedly. "
+                    "Launch without --safe-mode only after fixing the underlying issue.")
+                : T("disabled_hint",
+                    "Restart without --safe-mode to re-enable this operator.");
+            tr.draw_text(px, py, hint, col[0], col[1], col[2], 0.7f);
+            py += kLineH + 4;
+        }
     }
 
     bool has_visible_standard_params = false;

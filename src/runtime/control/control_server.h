@@ -23,6 +23,7 @@ class AppUpdateManager;
 class OperatorSourceDocs;
 class BuildConsole;
 class SourceIndex;
+class CrashRecoveryManager;
 struct Settings;
 
 class ControlServer {
@@ -50,6 +51,7 @@ public:
     void set_audio_engine(AudioEngine* ae);
     void set_asset_library(AssetLibrary* lib);
     void set_build_console(BuildConsole* console);
+    void set_crash_recovery_manager(CrashRecoveryManager* crm);
     void set_bundled_source_dir(const std::string& bundled_source_dir);
 
     // Returns the wall-clock ms timestamp of the last /mcp_ping from a given
@@ -86,6 +88,7 @@ private:
     AudioEngine* audio_engine_ = nullptr;
     AssetLibrary* asset_library_ = nullptr;
     BuildConsole* build_console_ = nullptr;
+    CrashRecoveryManager* crash_recovery_manager_ = nullptr;
 };
 
 } // namespace vivid

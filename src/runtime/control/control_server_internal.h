@@ -4,6 +4,7 @@
 #include "runtime/control/control_server.h"
 #include "runtime/control/control_server_checks.h"
 #include "runtime/control/graph_file_io.h"
+#include "runtime/core/crash_recovery.h"
 #include "runtime/graph/subgraph_module.h"
 #include "ui/graph/graph_snapshot.h"
 #include "runtime/debug/capture_coordinator.h"
@@ -612,6 +613,16 @@ std::string handle_get_build_activity(BuildConsole* build_console, const nlohman
 std::string handle_explain_build_failure(BuildConsole* build_console, const nlohmann::json& root);
 std::string handle_get_registry_diagnostics(OperatorRegistry& registry);
 
+// Crash-recovery handlers (defined in control_server_crash.cpp, Phase 5)
+std::string handle_get_last_crash(CrashRecoveryManager* crm);
+std::string handle_clear_last_crash(CrashRecoveryManager* crm);
+std::string handle_load_graph_safe_mode(const nlohmann::json& root,
+                                        CrashRecoveryManager* crm,
+                                        RuntimeCore& core,
+                                        RuntimeAPI& api,
+                                        bool& has_gpu_ops,
+                                        bool& has_audio);
+
 // Dispatch router (defined in control_server_dispatch.cpp)
 std::string dispatch(const std::string& method, const std::string& body,
                             RuntimeAPI& api, Graph& graph,
@@ -626,7 +637,8 @@ std::string dispatch(const std::string& method, const std::string& body,
                             Settings* settings,
                             AudioEngine* audio_engine,
                             AssetLibrary* asset_library = nullptr,
-                            BuildConsole* build_console = nullptr);
+                            BuildConsole* build_console = nullptr,
+                            CrashRecoveryManager* crash_recovery_manager = nullptr);
 
 // Asset library handlers (defined in control_server_assets.cpp)
 std::string handle_list_assets(AssetLibrary& lib, const nlohmann::json& root);

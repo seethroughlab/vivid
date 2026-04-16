@@ -77,6 +77,48 @@ int main(int argc, char* argv[]) {
     check(empty_snap.nodes.empty(), "empty graph produces empty snapshot");
     check(empty_snap.connections.empty(), "empty graph has no connections");
 
+    // --- Test: safe-mode disabled node sets disabled_by_safe_mode ---
+    std::fprintf(stderr, "\n--- safe-mode disabled_by_safe_mode snapshot flag ---\n");
+    {
+        vivid::Graph disabled_graph;
+        disabled_graph.add_node("victim", "UnknownCrashyType");
+        disabled_graph.add_node("bystander", "OtherType");
+
+        vivid::RuntimeCore disabled_runtime;
+        vivid::SafeModeConfig cfg;
+        cfg.active = true;
+        cfg.disabled_types.insert("UnknownCrashyType");
+        disabled_runtime.set_safe_mode(cfg);
+
+        // Empty registry: both nodes are missing, but only "victim" is also
+        // flagged disabled (reason="disabled" wins over "not_found").
+        disabled_runtime.build(disabled_graph, registry);
+
+        auto snap = vivid::build_graph_snapshot(
+            disabled_graph, disabled_runtime, nullptr, registry, op_cache);
+
+        check(snap.nodes.size() == 2, "snapshot has two nodes");
+        const vivid::ui::NodeSnapshot* victim = nullptr;
+        const vivid::ui::NodeSnapshot* bystander = nullptr;
+        for (const auto& n : snap.nodes) {
+            if (n.node_id == "victim")    victim    = &n;
+            if (n.node_id == "bystander") bystander = &n;
+        }
+        check(victim && bystander, "both nodes found in snapshot");
+        if (victim) {
+            check(victim->missing_operator, "victim: missing_operator");
+            check(victim->disabled_by_safe_mode, "victim: disabled_by_safe_mode");
+            check(victim->error_message.find("Disabled by safe mode") == 0,
+                  "victim: error_message begins with safe-mode explanation");
+        }
+        if (bystander) {
+            check(bystander->missing_operator, "bystander: missing_operator (not_found)");
+            check(!bystander->disabled_by_safe_mode,
+                  "bystander: disabled_by_safe_mode is false");
+        }
+        disabled_runtime.shutdown();
+    }
+
     // --- Cleanup ---
     runtime.shutdown();
     std::filesystem::remove_all(staging);

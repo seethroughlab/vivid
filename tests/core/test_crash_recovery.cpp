@@ -193,6 +193,50 @@ void test_init_expands_marker_and_snapshot() {
     check(history_count == 1, "exactly one history entry created");
 }
 
+// Regression test for the Fix #1 bug: CrashGuard records node_id in the marker,
+// but the original merge matched only on type_name, so the lookup silently
+// failed whenever node_id != type_name (which is the normal case — users name
+// nodes "blur1", "blur_fx", etc., not "blur").  The merge must resolve nodes
+// by either field.
+void test_marker_resolves_by_node_id_when_type_differs() {
+    std::fprintf(stderr, "[test] marker resolves by node_id when type differs\n");
+    ScopedTempDir dir("vivid_crash_nodeid_merge");
+
+    // Snapshot has a node whose node_id is "blur_fx1" and whose type_name
+    // is "blur" — the realistic layout.
+    nlohmann::json snapshot = {
+        {"vivid_version", "0.5.0"},
+        {"nodes", nlohmann::json::array({
+            {{"node_id", "lfo_main"}, {"type_name", "lfo"},
+             {"pkg_name", ""}, {"pkg_version", ""}},
+            {{"node_id", "blur_fx1"}, {"type_name", "blur"},
+             {"pkg_name", "fx-pack"}, {"pkg_version", "2.0.1"}},
+            {{"node_id", "blur_fx2"}, {"type_name", "blur"},
+             {"pkg_name", "fx-pack"}, {"pkg_version", "2.0.1"}},
+        })},
+    };
+    write_file(fs::path(dir.str()) / "latest-snapshot.json", snapshot.dump(2));
+
+    // Marker's operator is a node_id ("blur_fx1"), not a type name.
+    const std::string snapshot_path =
+        (fs::path(dir.str()) / "latest-snapshot.json").string();
+    const std::string marker_text =
+        "signal=11\noperator=blur_fx1\nsnapshot=" + snapshot_path + "\n";
+    write_file(fs::path(dir.str()) / "crash.marker", marker_text);
+
+    vivid::CrashRecoveryManager mgr(dir.str());
+    auto rec = mgr.init();
+
+    check(rec.has_value(),                "init returned a record");
+    if (!rec) return;
+    check(rec->operator_name == "blur_fx1", "operator_name echoed from marker");
+    // The critical assertions — these FAIL under the old type-only matcher.
+    check(rec->node_id   == "blur_fx1",    "node_id resolved by node_id match");
+    check(rec->node_type == "blur",        "node_type resolved to actual type");
+    check(rec->pkg_name  == "fx-pack",     "pkg_name resolved via node_id match");
+    check(rec->pkg_version == "2.0.1",     "pkg_version resolved via node_id match");
+}
+
 void test_init_handles_missing_snapshot() {
     std::fprintf(stderr, "[test] init tolerates missing snapshot\n");
     ScopedTempDir dir("vivid_crash_no_snapshot");
@@ -311,6 +355,7 @@ int main(int, char**) {
     test_from_json_tolerates_missing_fields();
     test_init_with_no_marker_returns_nullopt();
     test_init_expands_marker_and_snapshot();
+    test_marker_resolves_by_node_id_when_type_differs();
     test_init_handles_missing_snapshot();
     test_history_pruning();
     test_clear_latest_is_idempotent();

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "runtime/core/safe_mode.h"
 #include "runtime/graph/compiled_graph.h"
 #include "runtime/audio/audio_frame_bridge.h"
 #include "runtime/graph/frame_executor.h"
@@ -83,6 +84,12 @@ public:
 
     void set_operators_src_dir(const std::string& dir) { operators_src_dir_ = dir; }
     const std::string& operators_src_dir() const { return operators_src_dir_; }
+
+    // Crash-recovery safe-mode state.  Setting this before a build() call
+    // causes the compiler to treat matching nodes as missing with reason
+    // "disabled".  Safe to call at any time — takes effect on the next build.
+    void set_safe_mode(SafeModeConfig cfg) { safe_mode_ = std::move(cfg); }
+    const SafeModeConfig& safe_mode() const { return safe_mode_; }
     void set_audio_buffer_size(uint32_t buffer_size) { audio_buffer_size_ = buffer_size; }
     uint32_t audio_buffer_size() const { return audio_buffer_size_; }
     uint32_t audio_sample_rate() const { return audio_sample_rate_; }
@@ -112,6 +119,7 @@ private:
     FrameExecutor frame_executor_;
 
     std::string operators_src_dir_;
+    SafeModeConfig safe_mode_;
     std::filesystem::path graph_base_dir_;
     const SubgraphModuleRegistry* subgraph_modules_ = nullptr;
     std::vector<ModulationLoweringRecord> modulation_records_;

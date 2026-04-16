@@ -173,6 +173,14 @@ struct NodeSnapshot {
     bool errored = false;
     std::string error_message;
     bool missing_operator = false;
+    // Set when missing_operator_reason == "disabled" (safe-mode crash recovery).
+    // Implies missing_operator == true; UI renders an amber DISABLED badge
+    // instead of the red MISSING badge.
+    bool disabled_by_safe_mode = false;
+    // Set when missing_operator_reason == "quarantined" (crash-history scan,
+    // Phase 4).  Implies missing_operator == true; UI renders an amber
+    // QUARANTINED badge — same color as DISABLED but distinct label.
+    bool quarantined = false;
 
     // Solo state (session-only)
     bool soloed = false;        // this node is the solo target

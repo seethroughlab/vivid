@@ -194,6 +194,7 @@ void ControlServer::set_settings(Settings* settings) { assert(!impl_); settings_
 void ControlServer::set_audio_engine(AudioEngine* ae) { audio_engine_ = ae; }
 void ControlServer::set_asset_library(AssetLibrary* lib) { asset_library_ = lib; }
 void ControlServer::set_build_console(BuildConsole* console) { assert(!impl_); build_console_ = console; }
+void ControlServer::set_crash_recovery_manager(CrashRecoveryManager* crm) { crash_recovery_manager_ = crm; }
 void ControlServer::set_bundled_source_dir(const std::string& bundled_source_dir) {
     bundled_source_dir_ = bundled_source_dir;
     if (source_index_)
@@ -695,7 +696,8 @@ void ControlServer::process_requests(RuntimeAPI& api, Graph& graph,
                                         settings_,
                                         audio_engine_,
                                         asset_library_,
-                                        build_console_);
+                                        build_console_,
+                                        crash_recovery_manager_);
 
         if (track_for_undo && response_is_ok(response)) {
             if (req.method == "load_graph") {

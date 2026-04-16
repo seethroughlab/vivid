@@ -39,10 +39,17 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         bool selected = selected_node_ids_.count(r.node_id) > 0;
         const float* bg = selected ? style_.node_sel_bg.data() : style_.node_bg.data();
         const NodeSnapshot* sn = snap_.find_node(r.node_id);
-        bool node_errored = sn && sn->errored;
-        bool node_missing = sn && sn->missing_operator;
-        bool node_bad     = node_errored || node_missing || (sn && !sn->error_message.empty());
-        const float* dcol = node_bad ? kErrorAccent.data() : node_accent_color(r.is_gpu, r.active_cadence);
+        bool node_errored     = sn && sn->errored;
+        bool node_missing     = sn && sn->missing_operator;
+        bool node_disabled    = sn && sn->disabled_by_safe_mode;
+        bool node_quarantined = sn && sn->quarantined;
+        bool node_suppressed  = node_disabled || node_quarantined;
+        bool node_bad         = node_errored || node_missing || (sn && !sn->error_message.empty());
+        // Suppressed (safe-mode disabled OR quarantined) nodes use amber accent;
+        // other bad nodes use red.
+        const float* dcol = node_suppressed ? kDisabledAccent.data()
+                          : node_bad        ? kErrorAccent.data()
+                          : node_accent_color(r.is_gpu, r.active_cadence);
 
         // Transform graph-space rect to screen space
         float sx = gx_to_sx(r.x), sy = gy_to_sy(r.y);
@@ -76,13 +83,15 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
                                  0.0f, 0.0f, 0.0f, 0.65f);
         }
 
-        // Red border on errored or missing nodes
+        // Border on errored / missing / suppressed nodes (red by default,
+        // amber for safe-mode disabled OR quarantined).
         if (node_bad) {
             float bw = g_to_s(kErrorBorderW);
-            tr.draw_rect(sx, sy, sw, bw, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2]);           // top
-            tr.draw_rect(sx, sy + sh - bw, sw, bw, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2]); // bottom
-            tr.draw_rect(sx, sy, bw, sh, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2]);           // left
-            tr.draw_rect(sx + sw - bw, sy, bw, sh, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2]); // right
+            const auto& bc = node_suppressed ? kDisabledAccent : kErrorAccent;
+            tr.draw_rect(sx, sy, sw, bw, bc[0], bc[1], bc[2]);           // top
+            tr.draw_rect(sx, sy + sh - bw, sw, bw, bc[0], bc[1], bc[2]); // bottom
+            tr.draw_rect(sx, sy, bw, sh, bc[0], bc[1], bc[2]);           // left
+            tr.draw_rect(sx + sw - bw, sy, bw, sh, bc[0], bc[1], bc[2]); // right
         }
 
         // Gold border on soloed node
@@ -106,28 +115,42 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         float s_body_h = g_to_s(body_h);
 
         if (node_missing) {
-            // Dark red-tinted background
+            // Pick color + labels: amber for suppressed (disabled/quarantined),
+            // red for other missing causes.
+            const auto& col = node_suppressed ? kDisabledAccent : kErrorAccent;
+            const char* label =
+                  node_quarantined ? T("node_quarantined_label", "QUARANTINED")
+                : node_disabled    ? T("node_disabled_label",    "DISABLED")
+                :                    T("node_missing_label",     "MISSING");
+
+            // Dark tinted background
             tr.draw_rect(sx + g_to_s(2), s_body_y + g_to_s(2),
                          sw - g_to_s(4), s_body_h - g_to_s(4),
-                         kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.15f);
-            // Centered "MISSING" label (shifted up to make room for sub-label)
-            const char* label = T("node_missing_label", "MISSING");
+                         col[0], col[1], col[2], 0.15f);
+            // Centered main label (shifted up to make room for sub-label)
             float lw = tr.text_width(label, zoom_);
             float lx = sx + (sw - lw) * 0.5f;
             float ly = s_body_y + (s_body_h - tr.line_height() * zoom_) * 0.5f - g_to_s(6);
-            tr.draw_text(lx, ly, label, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.8f, zoom_);
+            tr.draw_text(lx, ly, label, col[0], col[1], col[2], 0.8f, zoom_);
             // Sub-label with reason
-            if (sn && !sn->error_message.empty()) {
-                const char* sub = sn->error_message.find("rebuild") != std::string::npos
-                                  ? T("node_missing_try_rebuild", "try rebuild")
-                                  : sn->error_message.find("ABI") != std::string::npos
-                                      ? T("node_missing_abi_mismatch", "ABI mismatch")
-                                      : T("node_missing_not_installed", "not installed");
+            const char* sub = nullptr;
+            if (node_quarantined) {
+                sub = T("node_quarantined_sub", "repeated crashes");
+            } else if (node_disabled) {
+                sub = T("node_disabled_sub", "crashed previously");
+            } else if (sn && !sn->error_message.empty()) {
+                sub = sn->error_message.find("rebuild") != std::string::npos
+                          ? T("node_missing_try_rebuild", "try rebuild")
+                          : sn->error_message.find("ABI") != std::string::npos
+                              ? T("node_missing_abi_mismatch", "ABI mismatch")
+                              : T("node_missing_not_installed", "not installed");
+            }
+            if (sub) {
                 float sub_scale = zoom_ * 0.75f;
                 float sub_w = tr.text_width(sub, sub_scale);
                 float sub_x = sx + (sw - sub_w) * 0.5f;
                 float sub_y = ly + tr.line_height() * zoom_ + g_to_s(2);
-                tr.draw_text(sub_x, sub_y, sub, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.5f, sub_scale);
+                tr.draw_text(sub_x, sub_y, sub, col[0], col[1], col[2], 0.5f, sub_scale);
             }
         } else if (!r.is_gpu && r.active_cadence == Cadence::Frame && !has_ct) {
             // Sparkline
