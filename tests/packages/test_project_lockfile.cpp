@@ -11,6 +11,7 @@
 #include "runtime/core/tool_discovery.h"
 #include "runtime/core/workspace_manager.h"
 #include "runtime/graph/graph.h"
+#include "runtime/operators/builtin_operators.h"
 #include "runtime/operators/operator_registry.h"
 #include "runtime/packages/package_compiler.h"
 #include "runtime/packages/package_manager.h"
@@ -309,7 +310,7 @@ void test_build_lockfile_operators_unregistered_types() {
     check(lf.operators[0].package.empty(),
           "build_lockfile: unregistered type has empty package");
     check(lf.operators[0].descriptor_hash.empty(),
-          "build_lockfile: descriptor_hash empty (Phase 0)");
+          "build_lockfile: descriptor_hash empty for unregistered type");
 }
 
 void test_build_lockfile_sort_stability_by_insertion_order() {
@@ -807,6 +808,71 @@ void test_capture_git_metadata_detects_dirty() {
     check(info.dirty, "capture: uncommitted changes flagged dirty");
 }
 
+void test_build_lockfile_populates_descriptor_hash() {
+    LockfileGenFixture fx;
+    register_builtin_operators(fx.registry);
+
+    Graph g;
+    g.add_node("a", "audio_out");
+
+    auto lf = build_lockfile_for_graph(g, fx.pm, fx.registry);
+    check(lf.operators.size() == 1, "descriptor hash wire: 1 operator listed");
+    if (!lf.operators.empty()) {
+        check(lf.operators[0].type == "audio_out",
+              "descriptor hash wire: type is audio_out");
+        check(lf.operators[0].descriptor_hash.rfind("sha256:", 0) == 0,
+              "descriptor hash wire: descriptor_hash populated (sha256: prefix)");
+        check(lf.operators[0].descriptor_hash.size() == 7 + 64,
+              "descriptor hash wire: 7 + 64 chars total");
+    }
+}
+
+void test_verify_emits_descriptor_hash_mismatch() {
+    LockfileGenFixture fx;
+    register_builtin_operators(fx.registry);
+
+    Graph g;
+    g.add_node("a", "audio_out");
+
+    // Hand-build a lockfile with a stale descriptor_hash.
+    ProjectLockfile lf;
+    LockfileOperator o;
+    o.type            = "audio_out";
+    o.package         = "";
+    o.operator_abi    = static_cast<int>(VIVID_OPERATOR_ABI_VERSION);
+    o.descriptor_hash = "sha256:deadbeef0000000000000000000000000000000000000000000000000000dead";
+    lf.operators.push_back(o);
+
+    auto status = verify_lockfile(lf, g, fx.pm, fx.registry);
+    const auto* f = find_finding(status, lockfile_finding::kDescriptorHashMismatch);
+    check(f != nullptr, "verify descriptor mismatch: finding emitted");
+    if (f) check(f->severity == LockfileSeverity::Critical,
+                 "verify descriptor mismatch: severity Critical");
+    check(status.overall == LockfileOverall::Mismatch,
+          "verify descriptor mismatch: overall = Mismatch");
+}
+
+void test_verify_skips_descriptor_hash_mismatch_when_empty() {
+    // Old lockfiles without descriptor_hash must not trigger the check.
+    LockfileGenFixture fx;
+    register_builtin_operators(fx.registry);
+
+    Graph g;
+    g.add_node("a", "audio_out");
+
+    ProjectLockfile lf;
+    LockfileOperator o;
+    o.type            = "audio_out";
+    o.operator_abi    = static_cast<int>(VIVID_OPERATOR_ABI_VERSION);
+    o.descriptor_hash = "";  // pre-Phase-0 lockfile
+    lf.operators.push_back(o);
+
+    auto status = verify_lockfile(lf, g, fx.pm, fx.registry);
+    const auto* f = find_finding(status, lockfile_finding::kDescriptorHashMismatch);
+    check(f == nullptr,
+          "verify descriptor skip: no finding when lockfile hash is empty");
+}
+
 void test_capture_git_metadata_non_git_dir_is_silent() {
     ScopedTempDir repo_dir("vivid_nongit");
     write_minimal_manifest(repo_dir.path, "nongit-pkg", "0.1.0");
@@ -949,6 +1015,9 @@ int main() {
     test_capture_git_metadata_reads_commit_and_url();
     test_capture_git_metadata_detects_dirty();
     test_capture_git_metadata_non_git_dir_is_silent();
+    test_build_lockfile_populates_descriptor_hash();
+    test_verify_emits_descriptor_hash_mismatch();
+    test_verify_skips_descriptor_hash_mismatch_when_empty();
 
     if (failures == 0) {
         std::fprintf(stderr, "All project_lockfile tests passed.\n");

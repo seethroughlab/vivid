@@ -338,9 +338,14 @@ ProjectLockfile build_lockfile_for_graph(const Graph& graph,
         p.vivid_core  = info.vivid_core;
         p.linked      = info.linked;
         p.linked_path = info.linked ? info.path : "";
-        p.source.kind   = info.linked ? "local" : "git";
-        p.source.url    = "";  // Phase 0
-        p.source.commit = "";  // Phase 0
+        // source.kind: linked packages are "local" (regardless of whether the
+        // linked tree has a git repo); non-linked installs are "git" if we
+        // captured a URL, otherwise "local" (installed from a bare local copy).
+        p.source.kind = info.linked
+            ? "local"
+            : (!info.source_url.empty() ? "git" : "local");
+        p.source.url    = info.source_url;
+        p.source.commit = info.git_commit;
         lf.packages.push_back(std::move(p));
     }
 
@@ -358,7 +363,7 @@ ProjectLockfile build_lockfile_for_graph(const Graph& graph,
                 if (pi != pkg_by_name.end()) o.package_version = pi->second->version;
             }
         }
-        o.descriptor_hash = "";  // Phase 0
+        o.descriptor_hash = operator_registry.descriptor_hash(type_name);
         lf.operators.push_back(std::move(o));
     }
 
@@ -473,7 +478,14 @@ LockfileStatus verify_lockfile(const ProjectLockfile& lockfile,
             case PackageUpdateClass::UpToDate:
                 break;  // shouldn't happen given the != check above
         }
-        // Phase 0 TODO: linked_unpinned when info.linked && p.source.commit.empty()
+        // linked_unpinned: linked package with no commit (non-git) or dirty worktree.
+        if (info.linked && (info.git_commit.empty() || info.dirty)) {
+            add(kLinkedUnpinned, LockfileSeverity::Warning, p.name,
+                info.git_commit.empty()
+                    ? "linked from a non-git path (no commit to pin)"
+                    : "linked worktree has uncommitted changes",
+                "commit changes or install from a stable source");
+        }
     }
 
     // --- Operators ---
@@ -501,7 +513,20 @@ LockfileStatus verify_lockfile(const ProjectLockfile& lockfile,
                 entry.package_name.empty() ? std::string("rebuild core")
                                            : "rebuild " + entry.package_name);
         }
-        // Phase 0 TODO: descriptor_hash_mismatch once descriptor_hash is populated
+        // descriptor_hash_mismatch: operator's descriptor fingerprint drifted
+        // since the lockfile was written. Only emit when both sides have a
+        // hash (old lockfiles without descriptor_hash skip this check).
+        if (!o.descriptor_hash.empty()) {
+            const std::string current =
+                operator_registry.descriptor_hash(o.type);
+            if (!current.empty() && current != o.descriptor_hash) {
+                add(kDescriptorHashMismatch, LockfileSeverity::Critical, o.type,
+                    "operator descriptor changed since lockfile was written",
+                    entry.package_name.empty()
+                        ? std::string("rebuild core")
+                        : "rebuild " + entry.package_name);
+            }
+        }
     }
 
     // --- Overall = worst severity seen ---
