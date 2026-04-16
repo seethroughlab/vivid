@@ -261,8 +261,11 @@ std::string dispatch(const std::string& method, const std::string& body,
             if (!root.contains("path") || !root["path"].is_string()) {
                 result = json_err("load_graph requires 'path' parameter");
             } else {
+                const std::string lockfile_mode =
+                    root.value("lockfile_mode", std::string());
                 result = command_result_to_json(
-                    api.load_graph(root["path"].get<std::string>(), has_gpu_ops, has_audio));
+                    api.load_graph(root["path"].get<std::string>(),
+                                   has_gpu_ops, has_audio, lockfile_mode));
             }
         }
     } else if (method == "set_resolution") {

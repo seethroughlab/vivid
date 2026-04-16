@@ -12,7 +12,9 @@
 #include "runtime/core/tool_discovery.h"
 #include "runtime/core/workspace_manager.h"
 #include "runtime/graph/graph.h"
+#include "runtime/graph/graph_snapshot_builder.h"
 #include "runtime/operators/builtin_operators.h"
+#include "runtime/operators/operator_info_cache.h"
 #include "runtime/operators/operator_registry.h"
 #include "runtime/packages/package_compiler.h"
 #include "runtime/packages/package_manager.h"
@@ -1184,6 +1186,40 @@ void test_load_graph_no_sibling_lockfile() {
           "load no-sibling: no findings");
 }
 
+void test_graph_snapshot_carries_lockfile_status() {
+    LockfileGenFixture fx;
+    register_builtin_operators(fx.registry);
+
+    ScopedTempDir dir("vivid_snap_lf");
+    Graph source_graph;
+    source_graph.add_node("a", "audio_out");
+    auto graph_path = dir.file_str("demo.json");
+    source_graph.save(graph_path.c_str());
+    write_descriptor_mismatch_lockfile(dir.path, "audio_out");
+
+    Graph api_graph;
+    RuntimeCore runtime;
+    runtime.set_package_manager(&fx.pm);
+    AudioEngine audio_engine;
+    RuntimeAPI api(api_graph, runtime, audio_engine, fx.registry);
+
+    bool has_gpu = false;
+    bool has_aud = false;
+    auto r = api.load_graph(graph_path, has_gpu, has_aud, "studio");
+    check(r.ok, "snapshot lockfile: load succeeds");
+
+    OperatorInfoCache op_cache;
+    auto snap = build_graph_snapshot(api_graph, runtime, nullptr,
+                                      fx.registry, op_cache);
+    check(snap.lockfile_status.overall == runtime.lockfile_status().overall,
+          "snapshot lockfile: overall matches RuntimeCore::lockfile_status");
+    check(snap.lockfile_status.findings.size() ==
+              runtime.lockfile_status().findings.size(),
+          "snapshot lockfile: findings count matches");
+    check(snap.lockfile_status.overall == LockfileOverall::Mismatch,
+          "snapshot lockfile: propagates Mismatch overall");
+}
+
 void test_load_graph_skips_verify_without_package_manager() {
     // RuntimeCore::set_package_manager is optional; without it, verify is
     // skipped silently (pre-Phase-6a behavior).
@@ -1263,6 +1299,7 @@ int main() {
     test_load_graph_strict_mode_ignores_non_critical();
     test_load_graph_no_sibling_lockfile();
     test_load_graph_skips_verify_without_package_manager();
+    test_graph_snapshot_carries_lockfile_status();
     test_unwrap_status_to_json_inlines_valid_status();
     test_unwrap_status_to_json_preserves_error_message();
     test_unwrap_status_to_json_non_json_message_fallback();

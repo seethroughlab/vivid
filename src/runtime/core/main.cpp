@@ -1459,6 +1459,8 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
     runtime.set_audio_buffer_size(settings.audio_buffer_size);
     runtime.set_subgraph_modules(&subgraph_modules);
     runtime.frame_executor().set_analysis_enabled(settings.show_analysis);
+    // Phase 6a: wire PackageManager so load_graph can run verify_lockfile.
+    runtime.set_package_manager(&pkg_manager);
     bool graph_loaded = false;
 
     mi::AsyncGraphLoadRequest initial_graph_request;
