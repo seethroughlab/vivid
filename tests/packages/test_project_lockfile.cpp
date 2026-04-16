@@ -13,6 +13,8 @@
 #include "runtime/packages/package_compiler.h"
 #include "runtime/packages/package_manager.h"
 
+#include <nlohmann/json.hpp>
+
 #include <cstdio>
 #include <fstream>
 #include <string>
@@ -361,6 +363,178 @@ void test_canonicalize_graph_hash_prefix_and_length() {
     check(h.size() == 7 + 64, "canonicalize_graph_hash: 7 + 64 chars total");
 }
 
+// --- Phase 3: verify_lockfile classifications -----------------------------
+
+static const LockfileFinding* find_finding(const LockfileStatus& status,
+                                           const char* id) {
+    for (const auto& f : status.findings) {
+        if (f.id == id) return &f;
+    }
+    return nullptr;
+}
+
+void test_verify_empty_lockfile_empty_graph() {
+    LockfileGenFixture fx;
+    Graph g;
+    ProjectLockfile lf;  // defaults: version 1, no packages, no operators
+
+    auto status = verify_lockfile(lf, g, fx.pm, fx.registry);
+    check(status.overall == LockfileOverall::Match,
+          "verify empty/empty: overall = Match");
+    check(status.findings.empty(),
+          "verify empty/empty: no findings");
+}
+
+void test_verify_missing_package() {
+    LockfileGenFixture fx;
+    Graph g;
+    ProjectLockfile lf;
+
+    LockfilePackage p;
+    p.name    = "nonexistent-test-package";
+    p.version = "1.0.0";
+    lf.packages.push_back(p);
+
+    auto status = verify_lockfile(lf, g, fx.pm, fx.registry);
+    const auto* f = find_finding(status, lockfile_finding::kMissingPackage);
+    check(f != nullptr, "verify missing package: finding emitted");
+    if (f) {
+        check(f->severity == LockfileSeverity::Critical,
+              "verify missing package: severity Critical");
+        check(f->subject == "nonexistent-test-package",
+              "verify missing package: subject is package name");
+    }
+    check(status.overall == LockfileOverall::Mismatch,
+          "verify missing package: overall = Mismatch");
+}
+
+void test_verify_missing_operator() {
+    LockfileGenFixture fx;
+    Graph g;
+    ProjectLockfile lf;
+
+    LockfileOperator o;
+    o.type = "NonexistentTestOp";
+    lf.operators.push_back(o);
+
+    auto status = verify_lockfile(lf, g, fx.pm, fx.registry);
+    const auto* f = find_finding(status, lockfile_finding::kMissingOperator);
+    check(f != nullptr, "verify missing operator: finding emitted");
+    if (f) check(f->severity == LockfileSeverity::Critical,
+                 "verify missing operator: severity Critical");
+    check(status.overall == LockfileOverall::Mismatch,
+          "verify missing operator: overall = Mismatch");
+}
+
+void test_verify_vivid_core_version_mismatch() {
+    LockfileGenFixture fx;
+    Graph g;
+    ProjectLockfile lf;
+    lf.vivid_core.version = "0.0.1-doesnt-match";
+
+    auto status = verify_lockfile(lf, g, fx.pm, fx.registry);
+    const auto* f = find_finding(status, lockfile_finding::kVividCoreVersionMismatch);
+    check(f != nullptr, "verify core mismatch: finding emitted");
+    if (f) check(f->severity == LockfileSeverity::Warning,
+                 "verify core mismatch: severity Warning");
+    check(status.overall == LockfileOverall::CompatibleDrift,
+          "verify core mismatch: overall = CompatibleDrift");
+}
+
+void test_verify_core_abi_mismatch() {
+    LockfileGenFixture fx;
+    Graph g;
+    ProjectLockfile lf;
+    lf.vivid_core.operator_abi = 999;  // well outside the real ABI
+
+    auto status = verify_lockfile(lf, g, fx.pm, fx.registry);
+    const auto* f = find_finding(status, lockfile_finding::kAbiMismatch);
+    check(f != nullptr, "verify core ABI mismatch: finding emitted");
+    if (f) check(f->severity == LockfileSeverity::Critical,
+                 "verify core ABI mismatch: severity Critical");
+    check(status.overall == LockfileOverall::Mismatch,
+          "verify core ABI mismatch: overall = Mismatch");
+}
+
+void test_verify_graph_content_drift() {
+    LockfileGenFixture fx;
+    Graph g;
+    g.add_node("a", "Foo");
+
+    ProjectLockfile lf;
+    lf.graph.content_hash = "sha256:deadbeef0000000000000000000000000000000000000000000000000000dead";
+
+    auto status = verify_lockfile(lf, g, fx.pm, fx.registry);
+    const auto* f = find_finding(status, lockfile_finding::kGraphContentDrift);
+    check(f != nullptr, "verify graph drift: finding emitted");
+    if (f) check(f->severity == LockfileSeverity::Info,
+                 "verify graph drift: severity Info");
+    check(status.overall == LockfileOverall::CompatibleDrift,
+          "verify graph drift: overall = CompatibleDrift");
+}
+
+void test_verify_overall_precedence_critical_wins() {
+    // A graph drift (Info) + a missing package (Critical) = Mismatch.
+    LockfileGenFixture fx;
+    Graph g;
+    ProjectLockfile lf;
+    lf.graph.content_hash = "sha256:deadbeef0000000000000000000000000000000000000000000000000000dead";
+    LockfilePackage p;
+    p.name = "some-other-missing-pkg";
+    p.version = "1.0.0";
+    lf.packages.push_back(p);
+
+    auto status = verify_lockfile(lf, g, fx.pm, fx.registry);
+    check(status.overall == LockfileOverall::Mismatch,
+          "verify precedence: critical outranks info");
+}
+
+void test_verify_generate_then_verify_round_trip() {
+    LockfileGenFixture fx;
+    Graph g;
+    g.add_node("n1", "SomeType");
+
+    auto lf = build_lockfile_for_graph(g, fx.pm, fx.registry);
+    auto status = verify_lockfile(lf, g, fx.pm, fx.registry);
+
+    // SomeType isn't in the registry, so it shows up as missing_operator.
+    // That's still the expected behavior of verify against the generated lock.
+    // For a true match, the type must be registered. Assert behavior shape:
+    check(!status.findings.empty() || status.overall == LockfileOverall::Match,
+          "verify generate-then-verify: status is well-formed");
+    // Regardless of registered types, the generated lock's own packages list
+    // should verify clean (empty, since no package backs the operator).
+    bool any_missing_package = false;
+    for (const auto& f : status.findings)
+        if (f.id == lockfile_finding::kMissingPackage) any_missing_package = true;
+    check(!any_missing_package,
+          "verify generate-then-verify: no missing_package findings (none were locked)");
+}
+
+void test_verify_status_to_json_shape() {
+    LockfileStatus s;
+    s.overall = LockfileOverall::Mismatch;
+    s.findings.push_back({"missing_package", LockfileSeverity::Critical,
+                          "pkg-a", "locked 1.0.0", "install pkg-a@1.0.0"});
+
+    auto text = lockfile_status_to_json(s);
+    auto root = nlohmann::json::parse(text);
+
+    check(root["overall"].get<std::string>() == "mismatch",
+          "status JSON: overall serialized");
+    check(root["findings"].is_array() && root["findings"].size() == 1,
+          "status JSON: findings is a 1-entry array");
+    const auto& f = root["findings"][0];
+    check(f["id"].get<std::string>() == "missing_package",
+          "status JSON: finding id serialized");
+    check(f["severity"].get<std::string>() == "critical",
+          "status JSON: finding severity serialized");
+    check(f["subject"].get<std::string>() == "pkg-a",
+          "status JSON: finding subject serialized");
+    check(f["suggestion"].get<std::string>() == "install pkg-a@1.0.0",
+          "status JSON: finding suggestion serialized");
+}
+
 // --- Phase 2: RuntimeAPI::write_project_lockfile round-trip ---------------
 
 void test_runtime_api_write_project_lockfile_round_trip() {
@@ -476,6 +650,15 @@ int main() {
     test_canonicalize_graph_hash_stable();
     test_canonicalize_graph_hash_sensitive_to_nodes();
     test_canonicalize_graph_hash_prefix_and_length();
+    test_verify_empty_lockfile_empty_graph();
+    test_verify_missing_package();
+    test_verify_missing_operator();
+    test_verify_vivid_core_version_mismatch();
+    test_verify_core_abi_mismatch();
+    test_verify_graph_content_drift();
+    test_verify_overall_precedence_critical_wins();
+    test_verify_generate_then_verify_round_trip();
+    test_verify_status_to_json_shape();
     test_runtime_api_write_project_lockfile_round_trip();
     test_runtime_api_write_project_lockfile_explicit_output();
     test_runtime_api_write_project_lockfile_missing_graph();

@@ -391,6 +391,138 @@ const char* to_string(LockfileSeverity s) {
 
 }  // namespace
 
+LockfileStatus verify_lockfile(const ProjectLockfile& lockfile,
+                               const Graph& graph,
+                               PackageManager& package_manager,
+                               const OperatorRegistry& operator_registry) {
+    using namespace lockfile_finding;
+    LockfileStatus status;
+
+    auto add = [&](const char* id, LockfileSeverity sev, std::string subject,
+                   std::string message, std::string suggestion) {
+        status.findings.push_back(LockfileFinding{
+            std::string(id), sev, std::move(subject),
+            std::move(message), std::move(suggestion)});
+    };
+
+    // --- Core version / ABI ---
+    if (!lockfile.vivid_core.version.empty() &&
+        lockfile.vivid_core.version != VIVID_CORE_VERSION) {
+        add(kVividCoreVersionMismatch, LockfileSeverity::Warning, "vivid_core",
+            "locked " + lockfile.vivid_core.version +
+                " vs installed " + std::string(VIVID_CORE_VERSION),
+            "re-lock against this core or install the locked core version");
+    }
+    if (lockfile.vivid_core.operator_abi != 0 &&
+        lockfile.vivid_core.operator_abi !=
+            static_cast<int>(VIVID_OPERATOR_ABI_VERSION)) {
+        add(kAbiMismatch, LockfileSeverity::Critical, "vivid_core",
+            "locked ABI " + std::to_string(lockfile.vivid_core.operator_abi) +
+                " vs runtime ABI " +
+                std::to_string(VIVID_OPERATOR_ABI_VERSION),
+            "operator dylibs must be rebuilt against this core");
+    }
+
+    // --- Graph content ---
+    if (!lockfile.graph.content_hash.empty()) {
+        const std::string actual = canonicalize_graph_hash(graph);
+        if (actual != lockfile.graph.content_hash) {
+            add(kGraphContentDrift, LockfileSeverity::Info,
+                lockfile.graph.path.empty() ? "graph" : lockfile.graph.path,
+                "graph content changed since lockfile was written",
+                "re-run write_project_lockfile to refresh graph.content_hash");
+        }
+    }
+
+    // --- Packages ---
+    auto installed = package_manager.list();
+    std::unordered_map<std::string, const PackageInfo*> installed_by_name;
+    installed_by_name.reserve(installed.size());
+    for (const auto& info : installed) installed_by_name[info.name] = &info;
+
+    for (const auto& p : lockfile.packages) {
+        auto it = installed_by_name.find(p.name);
+        if (it == installed_by_name.end()) {
+            add(kMissingPackage, LockfileSeverity::Critical, p.name,
+                "package not installed (locked " + p.version + ")",
+                "install " + p.name + "@" + p.version);
+            continue;
+        }
+        const PackageInfo& info = *it->second;
+        if (info.version == p.version) continue;
+
+        const PackageUpdateClass cls =
+            PackageManager::classify_version_delta(p.version, info.version);
+        std::string delta =
+            "locked " + p.version + " vs installed " + info.version;
+        switch (cls) {
+            case PackageUpdateClass::CompatibleUpdate:
+            case PackageUpdateClass::RemoteOlderOrEqual:
+                add(kCompatibleUpdate, LockfileSeverity::Info, p.name,
+                    std::move(delta), "");
+                break;
+            case PackageUpdateClass::IncompatibleUpdate:
+                add(kIncompatibleUpdate, LockfileSeverity::Critical, p.name,
+                    std::move(delta),
+                    "reinstall " + p.name + "@" + p.version);
+                break;
+            case PackageUpdateClass::InvalidVersionData:
+                add(kIncompatibleUpdate, LockfileSeverity::Warning, p.name,
+                    "cannot compare versions (invalid semver): " + delta, "");
+                break;
+            case PackageUpdateClass::UpToDate:
+                break;  // shouldn't happen given the != check above
+        }
+        // Phase 0 TODO: linked_unpinned when info.linked && p.source.commit.empty()
+    }
+
+    // --- Operators ---
+    auto op_entries = operator_registry.operator_map();
+    std::unordered_map<std::string, const OperatorMapEntry*> op_by_type;
+    op_by_type.reserve(op_entries.size());
+    for (const auto& e : op_entries) op_by_type[e.type_name] = &e;
+
+    for (const auto& o : lockfile.operators) {
+        auto it = op_by_type.find(o.type);
+        if (it == op_by_type.end()) {
+            add(kMissingOperator, LockfileSeverity::Critical, o.type,
+                "operator type not available in registry",
+                o.package.empty() ? "verify this is a core type"
+                                  : "install or rebuild " + o.package);
+            continue;
+        }
+        const OperatorMapEntry& entry = *it->second;
+        if (o.operator_abi != 0 &&
+            entry.abi_version != 0 &&
+            entry.abi_version != static_cast<uint32_t>(o.operator_abi)) {
+            add(kAbiMismatch, LockfileSeverity::Critical, o.type,
+                "locked ABI " + std::to_string(o.operator_abi) +
+                    " vs runtime ABI " + std::to_string(entry.abi_version),
+                entry.package_name.empty() ? std::string("rebuild core")
+                                           : "rebuild " + entry.package_name);
+        }
+        // Phase 0 TODO: descriptor_hash_mismatch once descriptor_hash is populated
+    }
+
+    // --- Overall = worst severity seen ---
+    for (const auto& f : status.findings) {
+        if (f.severity == LockfileSeverity::Critical) {
+            status.overall = LockfileOverall::Mismatch;
+            break;
+        }
+    }
+    if (status.overall != LockfileOverall::Mismatch) {
+        for (const auto& f : status.findings) {
+            if (f.severity == LockfileSeverity::Warning ||
+                f.severity == LockfileSeverity::Info) {
+                status.overall = LockfileOverall::CompatibleDrift;
+                break;
+            }
+        }
+    }
+    return status;
+}
+
 std::string lockfile_status_to_json(const LockfileStatus& status, int indent) {
     nlohmann::ordered_json root = nlohmann::ordered_json::object();
     root["overall"] = to_string(status.overall);
