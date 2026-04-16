@@ -141,4 +141,59 @@ ProjectLockfile build_lockfile_for_graph(const Graph& graph,
 // Returns "sha256:<64-hex>" of the graph's canonical JSON serialization.
 std::string canonicalize_graph_hash(const Graph& graph);
 
+// --- Phase 3 verification ------------------------------------------------
+
+enum class LockfileOverall {
+    Match,            // environment satisfies the lockfile
+    CompatibleDrift,  // minor/compatible deltas detected
+    Mismatch,         // at least one critical mismatch
+    NoLockfile,       // get_project_dependency_status only
+};
+
+enum class LockfileSeverity { Info, Warning, Critical };
+
+// Stable finding IDs. Align with existing PackageUpdateClass names and
+// missing_operator_reason strings; the full set is defined now so Phase 0
+// and Phase 8 can start emitting their cases without an ABI bump.
+namespace lockfile_finding {
+inline constexpr const char* kMatch                    = "match";
+inline constexpr const char* kMissingPackage           = "missing_package";
+inline constexpr const char* kMissingOperator          = "missing_operator";
+inline constexpr const char* kCompatibleUpdate         = "compatible_update";
+inline constexpr const char* kIncompatibleUpdate       = "incompatible_update";
+inline constexpr const char* kAbiMismatch              = "abi_mismatch";
+inline constexpr const char* kVividCoreVersionMismatch = "vivid_core_version_mismatch";
+inline constexpr const char* kGraphContentDrift        = "graph_content_drift";
+// Not yet emitted (Phase 0 / Phase 8 will populate source data):
+inline constexpr const char* kDescriptorHashMismatch   = "descriptor_hash_mismatch";
+inline constexpr const char* kLinkedUnpinned           = "linked_unpinned";
+inline constexpr const char* kAssetMissing             = "asset_missing";
+inline constexpr const char* kAssetChanged             = "asset_changed";
+}  // namespace lockfile_finding
+
+struct LockfileFinding {
+    std::string id;
+    LockfileSeverity severity = LockfileSeverity::Info;
+    std::string subject;     // package name, operator type, or asset id
+    std::string message;
+    std::string suggestion;  // may be empty
+};
+
+struct LockfileStatus {
+    LockfileOverall overall = LockfileOverall::Match;
+    std::vector<LockfileFinding> findings;
+};
+
+// Compare a lockfile against the live environment. Emits Phase 3 finding
+// IDs; `overall` reflects the worst severity encountered.
+LockfileStatus verify_lockfile(const ProjectLockfile& lockfile,
+                               const Graph& graph,
+                               PackageManager& package_manager,
+                               const OperatorRegistry& operator_registry);
+
+// JSON shape: {"overall": "...", "findings": [{"id", "severity", "subject",
+// "message", "suggestion"}, ...]}. Uses nlohmann::ordered_json internally
+// so the output is diff-stable.
+std::string lockfile_status_to_json(const LockfileStatus& status, int indent = 2);
+
 }  // namespace vivid

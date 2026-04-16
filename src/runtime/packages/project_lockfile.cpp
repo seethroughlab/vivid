@@ -366,4 +366,47 @@ ProjectLockfile build_lockfile_for_graph(const Graph& graph,
     return lf;
 }
 
+// --- Phase 3 verification helpers ----------------------------------------
+
+namespace {
+
+const char* to_string(LockfileOverall o) {
+    switch (o) {
+        case LockfileOverall::Match:           return "match";
+        case LockfileOverall::CompatibleDrift: return "compatible_drift";
+        case LockfileOverall::Mismatch:        return "mismatch";
+        case LockfileOverall::NoLockfile:      return "no_lockfile";
+    }
+    return "match";
+}
+
+const char* to_string(LockfileSeverity s) {
+    switch (s) {
+        case LockfileSeverity::Info:     return "info";
+        case LockfileSeverity::Warning:  return "warning";
+        case LockfileSeverity::Critical: return "critical";
+    }
+    return "info";
+}
+
+}  // namespace
+
+std::string lockfile_status_to_json(const LockfileStatus& status, int indent) {
+    nlohmann::ordered_json root = nlohmann::ordered_json::object();
+    root["overall"] = to_string(status.overall);
+
+    auto findings = nlohmann::ordered_json::array();
+    for (const auto& f : status.findings) {
+        nlohmann::ordered_json j = nlohmann::ordered_json::object();
+        j["id"]         = f.id;
+        j["severity"]   = to_string(f.severity);
+        j["subject"]    = f.subject;
+        j["message"]    = f.message;
+        j["suggestion"] = f.suggestion;
+        findings.push_back(std::move(j));
+    }
+    root["findings"] = std::move(findings);
+    return root.dump(indent);
+}
+
 }  // namespace vivid
