@@ -1,3 +1,12 @@
+# Crash recovery unit tests (pure filesystem + JSON; no GPU, no audio, no window)
+add_executable(test_crash_recovery
+    tests/core/test_crash_recovery.cpp
+)
+target_include_directories(test_crash_recovery PRIVATE src tests)
+target_link_libraries(test_crash_recovery PRIVATE vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_test(NAME test_crash_recovery COMMAND test_crash_recovery WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_crash_recovery PROPERTIES TIMEOUT 15)
+
 # Hot-reload integration test (no GPU, no audio, no window)
 add_executable(test_hot_reload
     tests/core/test_hot_reload.cpp

@@ -30,6 +30,7 @@
 #include "runtime/control/runtime_command_sink.h"
 #include "runtime/core/file_drop_registry.h"
 #include "runtime/core/crash_guard.h"
+#include "runtime/core/crash_recovery.h"
 #include "ui/style/ui_style.h"
 #include "ui/style/theme_loader.h"
 #include "operator_api/gpu_operator.h"
@@ -119,6 +120,19 @@ namespace mi = vivid::main_internal;
 
 int main(int argc, char* argv[]) {
     vivid::install_crash_handlers();
+
+    // --- Crash recovery: expand any prior-run marker, arm the signal handler ---
+    vivid::CrashRecoveryManager crash_recovery(vivid::get_crash_dir());
+    std::optional<vivid::CrashRecord> prior_crash = crash_recovery.init();
+    crash_recovery.install_signal_paths();
+    if (prior_crash) {
+        std::fprintf(stderr,
+                     "[vivid] Previous run crashed: %s in operator '%s' (node '%s'); record: %s\n",
+                     prior_crash->signal_name.c_str(),
+                     prior_crash->operator_name.c_str(),
+                     prior_crash->node_id.c_str(),
+                     crash_recovery.latest_crash_path().c_str());
+    }
 
     // --- CLI argument parsing ---
     std::string graph_file;
@@ -2545,6 +2559,9 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
                                    thumb_tex_w, thumb_tex_h,
                                    kThumbW, kThumbH,
                                    kOffscreenFormat);
+
+            // --- Snapshot runtime state for crash recovery (rate-limited internally) ---
+            crash_recovery.tick(frame_count, graph, runtime_api, audio_engine, &control_server);
 
             // --- Tick state-preset mappings (after runtime tick, state outputs are fresh) ---
             runtime_api.tick_state_presets();

@@ -18,6 +18,10 @@ inline constexpr const char* kPluginSuffix = ".so";
 // Windows: %APPDATA%/Vivid/
 std::string get_config_dir();
 
+// Returns {config_dir}/crashes, creating it if needed.  Used by
+// CrashRecoveryManager for marker + snapshot + history files.
+std::string get_crash_dir();
+
 // Opens a URL in the platform default browser.
 // Returns true when launch command is dispatched successfully.
 bool open_url(const std::string& url, std::string* error_out = nullptr);

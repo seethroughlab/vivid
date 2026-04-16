@@ -116,6 +116,7 @@ add_executable(vivid
     src/runtime/platform/platform.cpp
     src/runtime/platform/process_runner.cpp
     src/runtime/core/settings.cpp
+    src/runtime/core/crash_recovery.cpp
     src/runtime/core/editor_detect.cpp
     src/runtime/platform/macos_frame_timer.cpp
     src/export/export_pipeline.cpp

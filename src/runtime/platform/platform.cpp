@@ -46,6 +46,18 @@ std::string get_config_dir() {
     return dir.string();
 }
 
+std::string get_crash_dir() {
+    namespace fs = std::filesystem;
+    fs::path dir = fs::path(get_config_dir()) / "crashes";
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    if (ec) {
+        std::fprintf(stderr, "[vivid] Warning: failed to create crash directory '%s': %s\n",
+                     dir.string().c_str(), ec.message().c_str());
+    }
+    return dir.string();
+}
+
 bool open_url(const std::string& url, std::string* error_out) {
     if (url.empty()) {
         if (error_out) *error_out = "URL is empty";
