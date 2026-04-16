@@ -53,6 +53,13 @@ struct PackageInfo {
     PackageDependencies dependencies;
     PackageTests tests;
     PackageAssets assets;
+
+    // Provenance (populated at install/link/scan time; not read from the
+    // manifest). Empty when the package isn't a Git worktree or git is
+    // unavailable. `dirty` meaningful only when git_commit is set.
+    std::string source_url;
+    std::string git_commit;
+    bool dirty = false;
 };
 
 struct SkippedPackage {

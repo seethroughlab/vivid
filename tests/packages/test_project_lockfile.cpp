@@ -8,11 +8,14 @@
 #include "runtime/control/runtime_api.h"
 #include "runtime/core/build_console.h"
 #include "runtime/core/runtime_core.h"
+#include "runtime/core/tool_discovery.h"
 #include "runtime/core/workspace_manager.h"
 #include "runtime/graph/graph.h"
 #include "runtime/operators/operator_registry.h"
 #include "runtime/packages/package_compiler.h"
 #include "runtime/packages/package_manager.h"
+#include "runtime/packages/package_manager_internal.h"
+#include "runtime/platform/process_runner.h"
 
 #include <nlohmann/json.hpp>
 
@@ -711,6 +714,110 @@ void test_runtime_api_get_project_dependency_status_no_lockfile() {
           "dep status no-lockfile: findings empty");
 }
 
+// --- Phase 0: git-metadata capture ---------------------------------------
+
+// Initialize a throwaway git repo at `path` with one commit. Returns true on
+// success. Writes a vivid-package.json manifest if requested. Safe to call
+// only in temp dirs — runs real git commands.
+static bool init_git_repo_at(const std::filesystem::path& path,
+                             const std::string& origin_url,
+                             bool make_commit = true) {
+    const std::string git_exe = find_tool("git");
+    if (git_exe.empty()) return false;
+
+    auto run = [&](std::vector<std::string> args,
+                    const std::filesystem::path& cwd = {}) {
+        ProcessRunOptions opts;
+        opts.argv.reserve(args.size() + 1);
+        opts.argv.push_back(git_exe);
+        for (auto& a : args) opts.argv.push_back(std::move(a));
+        opts.working_directory = cwd.empty() ? path.string() : cwd.string();
+        opts.timeout_ms = 10000;
+        opts.env_overrides.push_back({"GIT_AUTHOR_NAME",  "Test"});
+        opts.env_overrides.push_back({"GIT_AUTHOR_EMAIL", "test@example.com"});
+        opts.env_overrides.push_back({"GIT_COMMITTER_NAME",  "Test"});
+        opts.env_overrides.push_back({"GIT_COMMITTER_EMAIL", "test@example.com"});
+        return run_process(opts);
+    };
+
+    auto r = run({"init", "-q"});
+    if (!r.launched || r.exit_code != 0) return false;
+    r = run({"config", "commit.gpgsign", "false"});
+    if (!r.launched || r.exit_code != 0) return false;
+    if (!origin_url.empty()) {
+        r = run({"remote", "add", "origin", origin_url});
+        if (!r.launched || r.exit_code != 0) return false;
+    }
+    if (make_commit) {
+        r = run({"add", "-A"});
+        if (!r.launched || r.exit_code != 0) return false;
+        r = run({"commit", "--allow-empty", "-q", "-m", "init"});
+        if (!r.launched || r.exit_code != 0) return false;
+    }
+    return true;
+}
+
+static void write_minimal_manifest(const std::filesystem::path& dir,
+                                   const std::string& name,
+                                   const std::string& version) {
+    std::ofstream ofs(dir / "vivid-package.json");
+    ofs << "{\n"
+           "  \"name\": \"" << name << "\",\n"
+           "  \"version\": \"" << version << "\",\n"
+           "  \"vivid_core\": \">=0.1.0 <2.0.0\",\n"
+           "  \"operators\": []\n"
+           "}\n";
+}
+
+void test_capture_git_metadata_reads_commit_and_url() {
+    ScopedTempDir repo_dir("vivid_gitcap");
+    write_minimal_manifest(repo_dir.path, "gitcap-pkg", "0.1.0");
+    const std::string origin = "https://example.test/gitcap-pkg.git";
+    if (!init_git_repo_at(repo_dir.path, origin)) {
+        std::fprintf(stderr, "  SKIP: git not available, skipping git-metadata tests\n");
+        return;
+    }
+
+    PackageInfo info;
+    package_manager_internal::capture_git_metadata(repo_dir.path.string(), info);
+
+    check(info.git_commit.size() == 40,
+          "capture: git_commit is a 40-char sha");
+    check(info.source_url == origin,
+          "capture: source_url matches remote.origin.url");
+    check(!info.dirty,
+          "capture: freshly-committed repo is not dirty");
+}
+
+void test_capture_git_metadata_detects_dirty() {
+    ScopedTempDir repo_dir("vivid_gitdirty");
+    write_minimal_manifest(repo_dir.path, "gitdirty-pkg", "0.1.0");
+    if (!init_git_repo_at(repo_dir.path, "")) {
+        std::fprintf(stderr, "  SKIP: git not available\n");
+        return;
+    }
+    // Modify a tracked file after the commit.
+    {
+        std::ofstream ofs(repo_dir.path / "vivid-package.json", std::ios::app);
+        ofs << "\n// dirty\n";
+    }
+
+    PackageInfo info;
+    package_manager_internal::capture_git_metadata(repo_dir.path.string(), info);
+    check(info.dirty, "capture: uncommitted changes flagged dirty");
+}
+
+void test_capture_git_metadata_non_git_dir_is_silent() {
+    ScopedTempDir repo_dir("vivid_nongit");
+    write_minimal_manifest(repo_dir.path, "nongit-pkg", "0.1.0");
+
+    PackageInfo info;
+    package_manager_internal::capture_git_metadata(repo_dir.path.string(), info);
+    check(info.git_commit.empty(), "capture: non-git dir leaves commit empty");
+    check(info.source_url.empty(), "capture: non-git dir leaves url empty");
+    check(!info.dirty,             "capture: non-git dir not dirty");
+}
+
 // --- Phase 4: dispatch helper (unwrap_status_to_json) --------------------
 
 void test_unwrap_status_to_json_inlines_valid_status() {
@@ -839,6 +946,9 @@ int main() {
     test_unwrap_status_to_json_inlines_valid_status();
     test_unwrap_status_to_json_preserves_error_message();
     test_unwrap_status_to_json_non_json_message_fallback();
+    test_capture_git_metadata_reads_commit_and_url();
+    test_capture_git_metadata_detects_dirty();
+    test_capture_git_metadata_non_git_dir_is_silent();
 
     if (failures == 0) {
         std::fprintf(stderr, "All project_lockfile tests passed.\n");
