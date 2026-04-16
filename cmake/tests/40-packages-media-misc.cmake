@@ -147,6 +147,18 @@ add_test(NAME test_package_scaffolder
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_package_scaffolder PROPERTIES LABELS "PACKAGE")
 
+# ProjectLockfile JSON model + parser test (round-trip, canonical order, version validation)
+add_executable(test_project_lockfile
+    tests/packages/test_project_lockfile.cpp
+)
+target_include_directories(test_project_lockfile PRIVATE src tests)
+target_link_libraries(test_project_lockfile PRIVATE
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_test(NAME test_project_lockfile
+    COMMAND test_project_lockfile
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_project_lockfile PROPERTIES LABELS "PACKAGE" TIMEOUT 15)
+
 # PackageManager update metadata logic test (semantic version + compatibility)
 add_executable(test_package_update_logic
     tests/packages/test_package_update_logic.cpp
