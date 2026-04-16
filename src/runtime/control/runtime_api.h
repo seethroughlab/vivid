@@ -171,6 +171,19 @@ public:
                                          const std::string& graph_path,
                                          const std::string& output_path);
 
+    // Verify the lockfile at lockfile_path against the graph at graph_path and
+    // the live environment. Returns ok = true on success with message =
+    // LockfileStatus JSON. ok = false only for I/O errors (missing graph/lockfile).
+    CommandResult verify_project_lockfile(PackageManager& package_manager,
+                                          const std::string& graph_path,
+                                          const std::string& lockfile_path);
+
+    // Convenience: look for a sibling vivid.lock next to graph_path and verify.
+    // Returns message = {"overall":"no_lockfile","findings":[]} when the sibling
+    // is absent so callers can render a distinct "no lockfile" state.
+    CommandResult get_project_dependency_status(PackageManager& package_manager,
+                                                const std::string& graph_path);
+
     // Solo mode (session-only, not serialized)
     CommandResult set_solo(const std::string& node_id);  // empty string = clear solo
     std::string solo_node_id() const;

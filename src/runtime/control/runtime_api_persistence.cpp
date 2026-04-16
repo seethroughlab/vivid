@@ -500,4 +500,42 @@ CommandResult RuntimeAPI::write_project_lockfile(PackageManager& package_manager
     return {true, out.string()};
 }
 
+CommandResult RuntimeAPI::verify_project_lockfile(PackageManager& package_manager,
+                                                  const std::string& graph_path,
+                                                  const std::string& lockfile_path) {
+    if (graph_path.empty())    return {false, "missing graph_path"};
+    if (lockfile_path.empty()) return {false, "missing lockfile_path"};
+
+    Graph graph_for_verify;
+    if (!graph_for_verify.load(graph_path.c_str())) {
+        return {false, "failed to load graph: " + graph_path};
+    }
+
+    auto load_result = load_lockfile(lockfile_path);
+    if (!load_result.ok()) {
+        return {false, "failed to load lockfile: " + load_result.error.message};
+    }
+
+    auto status = verify_lockfile(load_result.lockfile, graph_for_verify,
+                                  package_manager, registry_);
+    return {true, lockfile_status_to_json(status)};
+}
+
+CommandResult RuntimeAPI::get_project_dependency_status(PackageManager& package_manager,
+                                                        const std::string& graph_path) {
+    if (graph_path.empty()) return {false, "missing graph_path"};
+
+    std::filesystem::path sibling =
+        std::filesystem::path(graph_path).parent_path() / "vivid.lock";
+
+    std::error_code ec;
+    if (!std::filesystem::exists(sibling, ec) || ec) {
+        LockfileStatus absent;
+        absent.overall = LockfileOverall::NoLockfile;
+        return {true, lockfile_status_to_json(absent)};
+    }
+
+    return verify_project_lockfile(package_manager, graph_path, sibling.string());
+}
+
 } // namespace vivid

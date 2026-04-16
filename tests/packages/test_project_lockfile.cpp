@@ -627,6 +627,121 @@ void test_runtime_api_write_project_lockfile_empty_graph_path() {
     check(!result.ok, "runtime_api empty graph_path: fails");
 }
 
+// --- Phase 3: RuntimeAPI verify + dependency status -----------------------
+
+void test_runtime_api_verify_project_lockfile_round_trip() {
+    LockfileGenFixture fx;
+    ScopedTempDir dir;
+
+    Graph source_graph;
+    source_graph.add_node("n1", "Foo");
+    auto graph_path = dir.file_str("demo.json");
+    check(source_graph.save(graph_path.c_str()),
+          "verify round-trip: source graph saves");
+
+    Graph api_graph;
+    RuntimeCore runtime;
+    AudioEngine audio_engine;
+    RuntimeAPI api(api_graph, runtime, audio_engine, fx.registry);
+
+    // Write a lockfile.
+    auto write_result = api.write_project_lockfile(fx.pm, graph_path, "");
+    check(write_result.ok, "verify round-trip: write succeeded");
+    const std::string lockfile_path = write_result.message;
+
+    // Verify it.
+    auto verify_result = api.verify_project_lockfile(fx.pm, graph_path, lockfile_path);
+    check(verify_result.ok, "verify round-trip: verify call succeeded");
+
+    auto payload = nlohmann::json::parse(verify_result.message);
+    // No packages were locked (Foo isn't from a package), so no missing_package.
+    // Foo is also not in the registry, so we expect a missing_operator finding.
+    // The operator came from the generator's "operators" list, so verify against
+    // the same environment should still classify it as missing_operator.
+    // Assert the JSON shape regardless of operator resolution:
+    check(payload.contains("overall") && payload["overall"].is_string(),
+          "verify round-trip: overall present");
+    check(payload.contains("findings") && payload["findings"].is_array(),
+          "verify round-trip: findings array present");
+}
+
+void test_runtime_api_verify_project_lockfile_missing_lockfile() {
+    LockfileGenFixture fx;
+    ScopedTempDir dir;
+
+    Graph source_graph;
+    source_graph.add_node("n1", "Foo");
+    auto graph_path = dir.file_str("demo.json");
+    source_graph.save(graph_path.c_str());
+
+    Graph api_graph;
+    RuntimeCore runtime;
+    AudioEngine audio_engine;
+    RuntimeAPI api(api_graph, runtime, audio_engine, fx.registry);
+
+    auto result = api.verify_project_lockfile(fx.pm, graph_path,
+                                              dir.file_str("not-there.lock"));
+    check(!result.ok, "verify missing lockfile: call fails");
+    check(result.message.find("failed to load lockfile") != std::string::npos,
+          "verify missing lockfile: message mentions load failure");
+}
+
+void test_runtime_api_get_project_dependency_status_no_lockfile() {
+    LockfileGenFixture fx;
+    ScopedTempDir dir;
+
+    Graph source_graph;
+    source_graph.add_node("n1", "Foo");
+    auto graph_path = dir.file_str("demo.json");
+    source_graph.save(graph_path.c_str());
+
+    Graph api_graph;
+    RuntimeCore runtime;
+    AudioEngine audio_engine;
+    RuntimeAPI api(api_graph, runtime, audio_engine, fx.registry);
+
+    auto result = api.get_project_dependency_status(fx.pm, graph_path);
+    check(result.ok, "dep status no-lockfile: call succeeds");
+
+    auto payload = nlohmann::json::parse(result.message);
+    check(payload["overall"].get<std::string>() == "no_lockfile",
+          "dep status no-lockfile: overall = no_lockfile");
+    check(payload["findings"].is_array() && payload["findings"].empty(),
+          "dep status no-lockfile: findings empty");
+}
+
+void test_runtime_api_get_project_dependency_status_happy_path() {
+    LockfileGenFixture fx;
+    ScopedTempDir dir;
+
+    Graph source_graph;
+    source_graph.add_node("n1", "Foo");
+    auto graph_path = dir.file_str("demo.json");
+    source_graph.save(graph_path.c_str());
+
+    Graph api_graph;
+    RuntimeCore runtime;
+    AudioEngine audio_engine;
+    RuntimeAPI api(api_graph, runtime, audio_engine, fx.registry);
+
+    // Write the sibling lockfile first.
+    auto write_result = api.write_project_lockfile(fx.pm, graph_path, "");
+    check(write_result.ok, "dep status happy: write succeeded");
+
+    auto result = api.get_project_dependency_status(fx.pm, graph_path);
+    check(result.ok, "dep status happy: call succeeds");
+
+    auto payload = nlohmann::json::parse(result.message);
+    check(payload.contains("overall") && payload["overall"].is_string(),
+          "dep status happy: overall present");
+    // overall may be Match or CompatibleDrift depending on whether Foo resolves
+    // in the registry. Both are acceptable; what matters is it's NOT
+    // "no_lockfile" (the sibling exists).
+    const auto overall = payload["overall"].get<std::string>();
+    check(overall != "no_lockfile",
+          "dep status happy: overall is not no_lockfile (sibling exists)");
+}
+
 }  // namespace
 
 int main() {
@@ -663,6 +778,10 @@ int main() {
     test_runtime_api_write_project_lockfile_explicit_output();
     test_runtime_api_write_project_lockfile_missing_graph();
     test_runtime_api_write_project_lockfile_empty_graph_path();
+    test_runtime_api_verify_project_lockfile_round_trip();
+    test_runtime_api_verify_project_lockfile_missing_lockfile();
+    test_runtime_api_get_project_dependency_status_no_lockfile();
+    test_runtime_api_get_project_dependency_status_happy_path();
 
     if (failures == 0) {
         std::fprintf(stderr, "All project_lockfile tests passed.\n");
