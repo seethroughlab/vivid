@@ -394,6 +394,7 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
                 if (from_ok && to_ok) {
                     c.lane_set_id = e.lane_set_id;
                     c.lane_count  = e.lane_count;
+                    c.data_type   = e.data_type;
                     break;
                 }
             }

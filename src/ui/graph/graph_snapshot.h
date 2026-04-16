@@ -224,6 +224,13 @@ struct ConnectionSnapshot {
     // Lane metadata (from compiled edge)
     uint32_t lane_set_id = 0;
     uint32_t lane_count  = 1;
+    uint32_t data_type   = VIVID_PORT_SCALAR;
+
+    bool supports_remap() const {
+        return data_type == VIVID_PORT_SCALAR ||
+               data_type == VIVID_PORT_LANE_ARRAY ||
+               data_type == VIVID_PORT_AUDIO_BUFFER;
+    }
 
     bool has_remap() const {
         return from_min != 0.0f || from_max != 1.0f ||

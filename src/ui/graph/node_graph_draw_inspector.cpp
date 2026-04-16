@@ -168,7 +168,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
             py += 20;
         }
 
-        if (!c.dropped) {
+        if (!c.dropped && c.supports_remap()) {
         // Remap fields
         const char* field_labels[4] = {
             T("from_min", "From Min"), T("from_max", "From Max"),
