@@ -259,10 +259,6 @@ void NodeGraphUI::handle_left_click() {
         for (const auto& br : session_button_rects_) {
             if (mouse_.x >= br.x && mouse_.x <= br.x + br.w &&
                 mouse_.y >= br.y && mouse_.y <= br.y + br.h) {
-                if (!br.enabled) {
-                    mouse_.left_clicked = false;
-                    return;
-                }
                 if (br.action == 0) {
                     // + Save New
                     std::string name = "Var " + std::to_string(snap_.variations.size() + 1);

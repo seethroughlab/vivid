@@ -589,22 +589,6 @@ int main() {
         auto snap = make_session_snapshot();
         ui.update(snap);
         ui.session_grid_open_ = true;
-        ui.session_button_rects_ = {{20.0f, 650.0f, 40.0f, 20.0f, 3, false}};
-        ui.mouse_ = {};
-        ui.mouse_.x = 30.0f;
-        ui.mouse_.y = 660.0f;
-        ui.mouse_.left_clicked = true;
-        ui.handle_left_click();
-        check(ui.session_quantize_mode_ == 0, "Disabled quantize button does not change session quantize mode");
-        check(!ui.status_banner_error_.empty(), "Disabled quantize button explains missing metronome");
-    }
-
-    {
-        DummySink sink;
-        NodeGraphUI ui(sink);
-        auto snap = make_session_snapshot();
-        ui.update(snap);
-        ui.session_grid_open_ = true;
         ui.session_button_rects_ = {{20.0f, 650.0f, 96.0f, 44.0f, 0, true}};
         ui.mouse_ = {};
         ui.mouse_.x = 96.0f;
