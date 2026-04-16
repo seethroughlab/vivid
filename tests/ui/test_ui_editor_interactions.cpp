@@ -55,7 +55,7 @@ struct DummySink : UICommandSink {
     void disconnect(const std::string& from, const std::string& to) override {
         disconnect_calls.push_back({from, to});
     }
-    void set_connection_remap(const std::string&, const std::string&, float, float, float, float, bool) override {}
+    void set_connection_remap(const std::string&, const std::string&, float, float, float, float, bool, uint8_t) override {}
     void set_node_layout(const std::string& node_id, float x, float y) override {
         layout_calls.push_back({node_id, x, y});
     }

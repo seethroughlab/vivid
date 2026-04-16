@@ -494,12 +494,13 @@ CommandResult RuntimeAPI::disconnect(const std::string& from_addr, const std::st
 CommandResult RuntimeAPI::set_connection_remap(const std::string& from_addr,
                                                 const std::string& to_addr,
                                                 float from_min, float from_max,
-                                                float to_min, float to_max, bool clamp) {
+                                                float to_min, float to_max,
+                                                bool clamp, uint8_t curve) {
     std::string fn, fp, tn, tp;
     if (!split_addr(from_addr, fn, fp) || !split_addr(to_addr, tn, tp)) {
         return {false, "invalid address (expected node/port)"};
     }
-    if (!graph_.set_connection_remap(fn, fp, tn, tp, from_min, from_max, to_min, to_max, clamp)) {
+    if (!graph_.set_connection_remap(fn, fp, tn, tp, from_min, from_max, to_min, to_max, clamp, curve)) {
         return {false, "connection not found"};
     }
     pending_topology_change_ = true;

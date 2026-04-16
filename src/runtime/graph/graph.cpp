@@ -304,6 +304,9 @@ bool Graph::parse_doc(const nlohmann::json& root) {
                 if (clamp_it != val.end() && clamp_it->is_boolean())
                     conn.clamp = clamp_it->get<bool>();
             }
+            auto curve_it = val.find("curve");
+            if (curve_it != val.end() && curve_it->is_number_unsigned())
+                conn.curve = static_cast<uint8_t>(curve_it->get<unsigned>());
             auto bridge_it = val.find("bridge");
             if (bridge_it != val.end() && bridge_it->is_string())
                 conn.bridge = bridge_it->get<std::string>();
@@ -618,7 +621,8 @@ bool Graph::remove_connection(const std::string& from_node, const std::string& f
 
 bool Graph::set_connection_remap(const std::string& from_node, const std::string& from_port,
                                   const std::string& to_node, const std::string& to_port,
-                                  float from_min, float from_max, float to_min, float to_max, bool clamp) {
+                                  float from_min, float from_max, float to_min, float to_max,
+                                  bool clamp, uint8_t curve) {
     for (auto& c : connections_) {
         if (c.from_node == from_node && c.from_port == from_port &&
             c.to_node == to_node && c.to_port == to_port) {
@@ -627,6 +631,7 @@ bool Graph::set_connection_remap(const std::string& from_node, const std::string
             c.to_min   = to_min;
             c.to_max   = to_max;
             c.clamp    = clamp;
+            c.curve    = curve;
             return true;
         }
     }
@@ -1106,6 +1111,8 @@ static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
             conn_obj["to_max"]   = clean_float(conn.to_max);
             if (conn.clamp)
                 conn_obj["clamp"] = true;
+            if (conn.curve != 0)
+                conn_obj["curve"] = conn.curve;
         }
         if (conn.has_bridge())
             conn_obj["bridge"] = conn.bridge;

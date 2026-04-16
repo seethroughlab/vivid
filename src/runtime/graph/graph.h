@@ -92,6 +92,7 @@ struct ConnectionDef {
     float from_min = 0.0f, from_max = 1.0f;
     float to_min   = 0.0f, to_max  = 1.0f;
     bool  clamp    = false;
+    uint8_t curve  = 0;     // RemapCurve index (0 = linear)
 
     std::string bridge;  // explicit bridge kind ("hold", "snapshot", etc.), empty = none
 
@@ -99,7 +100,7 @@ struct ConnectionDef {
 
     bool has_remap() const {
         return from_min != 0.0f || from_max != 1.0f ||
-               to_min  != 0.0f || to_max  != 1.0f || clamp;
+               to_min  != 0.0f || to_max  != 1.0f || clamp || curve != 0;
     }
 };
 
@@ -245,7 +246,8 @@ public:
                            const std::string& to_node, const std::string& to_port);
     bool set_connection_remap(const std::string& from_node, const std::string& from_port,
                               const std::string& to_node, const std::string& to_port,
-                              float from_min, float from_max, float to_min, float to_max, bool clamp);
+                              float from_min, float from_max, float to_min, float to_max,
+                              bool clamp, uint8_t curve = 0);
     bool set_connection_bridge(const std::string& from_node, const std::string& from_port,
                                const std::string& to_node, const std::string& to_port,
                                const std::string& bridge);

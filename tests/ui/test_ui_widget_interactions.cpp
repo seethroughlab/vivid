@@ -23,7 +23,7 @@ struct DummySink : UICommandSink {
     void remove_node(const std::string&) override {}
     void connect(const std::string&, const std::string&) override {}
     void disconnect(const std::string&, const std::string&) override {}
-    void set_connection_remap(const std::string&, const std::string&, float, float, float, float, bool) override {}
+    void set_connection_remap(const std::string&, const std::string&, float, float, float, float, bool, uint8_t) override {}
     void set_node_layout(const std::string&, float, float) override {}
     void set_resolution(const std::string&, uint32_t, uint32_t) override {}
     void add_midi_mapping(const std::string&, const std::string&, int, int, float, float) override {}

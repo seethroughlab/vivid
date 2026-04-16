@@ -69,7 +69,8 @@ public:
                           const std::string& bridge = "");
     CommandResult disconnect(const std::string& from_addr, const std::string& to_addr);
     CommandResult set_connection_remap(const std::string& from_addr, const std::string& to_addr,
-                                       float from_min, float from_max, float to_min, float to_max, bool clamp);
+                                       float from_min, float from_max, float to_min, float to_max,
+                                       bool clamp, uint8_t curve = 0);
 
     // Apply buffered topology changes — call between frames
     // Updates has_gpu_ops and has_audio output flags after rebuild.

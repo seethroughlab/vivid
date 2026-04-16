@@ -320,6 +320,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         e.to_min   = conn.to_min;
         e.to_max   = conn.to_max;
         e.clamp    = conn.clamp;
+        e.curve    = static_cast<RemapCurve>(conn.curve);
         e.bridge_kind = graph_compiler_internal::parse_bridge_kind(conn.bridge);
         if (!conn.bridge.empty() && e.bridge_kind == BridgeKind::None) {
             std::fprintf(stderr, "[vivid] warning: unknown bridge kind '%s' on connection %s/%s → %s/%s\n",

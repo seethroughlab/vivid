@@ -5,6 +5,7 @@
 #include "ui/rendering/renderer_2d.h"
 #include "ui/style/i18n.h"
 #include "common/string_util.h"
+#include "runtime/graph/compiled_graph.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -141,6 +142,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     inspector_.label_rects.clear();
     inspector_.wire_remap_rects.clear();
     inspector_.wire_clamp_rects.clear();
+    inspector_.wire_curve_rects.clear();
     inspector_.mod_assign_rects.clear();
     inspector_.mod_amount_rects.clear();
 
@@ -228,6 +230,22 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
         inspector_.wire_clamp_rects.push_back({px, py, cb_size, cb_size});
         tr.draw_text(px + cb_size + 6, py + 1, T("clamp", "Clamp"),
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.85f);
+        py += cb_size + 8;
+
+        // Curve dropdown
+        tr.draw_text(px, py + 2, T("curve", "Curve"),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.85f);
+        float cx = px + 80;
+        float cw = kInspectorW - kInspPadX * 2 - 80;
+        float ch = 18;
+        tr.draw_rect(cx, py, cw, ch,
+                     style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
+        auto curve_enum = static_cast<RemapCurve>(c.curve);
+        tr.draw_text(cx + 6, py + 2, remap_curve_label(curve_enum),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        tr.draw_text(cx + cw - 16, py + 2, "\xE2\x96\xBE",
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        inspector_.wire_curve_rects.push_back({cx, py, cw, ch});
         } // !c.dropped
 
         inspector_.insp_content_h = 0;

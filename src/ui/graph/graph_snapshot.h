@@ -225,6 +225,7 @@ struct ConnectionSnapshot {
     uint32_t lane_set_id = 0;
     uint32_t lane_count  = 1;
     uint32_t data_type   = VIVID_PORT_SCALAR;
+    uint8_t  curve       = 0;   // RemapCurve index
 
     bool supports_remap() const {
         return data_type == VIVID_PORT_SCALAR ||
@@ -234,7 +235,7 @@ struct ConnectionSnapshot {
 
     bool has_remap() const {
         return from_min != 0.0f || from_max != 1.0f ||
-               to_min  != 0.0f || to_max  != 1.0f || clamp;
+               to_min  != 0.0f || to_max  != 1.0f || clamp || curve != 0;
     }
 
     // A connection remains part of graph truth even when an endpoint no longer resolves.

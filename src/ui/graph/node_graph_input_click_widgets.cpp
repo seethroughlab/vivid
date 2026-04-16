@@ -6,6 +6,7 @@
 #include "ui/style/i18n.h"
 #include "ui/dialogs/file_dialog.h"
 #include "runtime/platform/platform.h"
+#include "runtime/graph/compiled_graph.h"
 #include "common/string_util.h"
 #include <GLFW/glfw3.h>
 #include <algorithm>
@@ -129,17 +130,30 @@ bool NodeGraphUI::handle_dropdown_click() {
         return false;
     }
 
-    // Non-preset flat dropdown (param selectors, etc.)
+    // Non-preset flat dropdown (param selectors, wire curve, etc.)
     float popup_h = inspector_.dropdown_labels.size() * item_h + 4;
     if (mouse_.x >= inspector_.dropdown_x && mouse_.x <= inspector_.dropdown_x + inspector_.dropdown_w &&
         mouse_.y >= inspector_.dropdown_y && mouse_.y <= inspector_.dropdown_y + popup_h) {
         int idx = static_cast<int>((mouse_.y - inspector_.dropdown_y - 2) / item_h);
         if (idx >= 0 && idx < static_cast<int>(inspector_.dropdown_labels.size())) {
-            commands_.set_param(inspector_.dropdown_node_id, inspector_.dropdown_param_name,
-                           static_cast<float>(idx));
+            if (inspector_.dropdown_is_wire_curve) {
+                if (selected_wire_idx_ >= 0 &&
+                    selected_wire_idx_ < static_cast<int>(snap_.connections.size())) {
+                    const auto& c = snap_.connections[selected_wire_idx_];
+                    std::string from_addr = c.from_node + "/" + c.from_port;
+                    std::string to_addr   = c.to_node   + "/" + c.to_port;
+                    commands_.set_connection_remap(from_addr, to_addr,
+                        c.from_min, c.from_max, c.to_min, c.to_max,
+                        c.clamp, static_cast<uint8_t>(idx));
+                }
+            } else {
+                commands_.set_param(inspector_.dropdown_node_id, inspector_.dropdown_param_name,
+                               static_cast<float>(idx));
+            }
         }
         inspector_.dropdown_is_preset = false;
         inspector_.dropdown_is_state_preset = false;
+        inspector_.dropdown_is_wire_curve = false;
         inspector_.dropdown_open = false;
         mouse_.left_clicked = false;
         mouse_.left_released = false;
@@ -148,6 +162,7 @@ bool NodeGraphUI::handle_dropdown_click() {
         inspector_.dropdown_open = false;
         inspector_.dropdown_is_preset = false;
         inspector_.dropdown_is_state_preset = false;
+        inspector_.dropdown_is_wire_curve = false;
         return false;
     }
 }
@@ -870,8 +885,29 @@ bool NodeGraphUI::handle_inspector_click() {
                 std::string from_addr = c.from_node + "/" + c.from_port;
                 std::string to_addr   = c.to_node   + "/" + c.to_port;
                 commands_.set_connection_remap(from_addr, to_addr,
-                    c.from_min, c.from_max, c.to_min, c.to_max, !c.clamp);
+                    c.from_min, c.from_max, c.to_min, c.to_max, !c.clamp, c.curve);
             }
+            return true;
+        }
+    }
+
+    // Check wire curve dropdown click
+    for (const auto& cr : inspector_.wire_curve_rects) {
+        if (mouse_.x >= cr.x && mouse_.x <= cr.x + cr.w &&
+            mouse_.y >= cr.y && mouse_.y <= cr.y + cr.h) {
+            inspector_.dropdown_labels.clear();
+            for (int i = 0; i < kRemapCurveCount; ++i)
+                inspector_.dropdown_labels.push_back(remap_curve_label(static_cast<RemapCurve>(i)));
+            inspector_.dropdown_x = cr.x;
+            inspector_.dropdown_y = cr.y + cr.h;
+            inspector_.dropdown_w = cr.w;
+            inspector_.dropdown_sel = (selected_wire_idx_ >= 0 &&
+                selected_wire_idx_ < static_cast<int>(snap_.connections.size()))
+                ? snap_.connections[selected_wire_idx_].curve : 0;
+            inspector_.dropdown_is_preset = false;
+            inspector_.dropdown_is_state_preset = false;
+            inspector_.dropdown_is_wire_curve = true;
+            inspector_.dropdown_open = true;
             return true;
         }
     }

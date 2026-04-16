@@ -367,7 +367,7 @@ bool NodeGraphUI::handle_inspector_edit_mode_key(int key) {
                 std::string from_addr = c.from_node + "/" + c.from_port;
                 std::string to_addr   = c.to_node   + "/" + c.to_port;
                 commands_.set_connection_remap(from_addr, to_addr,
-                    vals[0], vals[1], vals[2], vals[3], c.clamp);
+                    vals[0], vals[1], vals[2], vals[3], c.clamp, c.curve);
             }
             if (key == GLFW_KEY_TAB && inspector_.edit_wire_remap_field < 3) {
                 int next_field = inspector_.edit_wire_remap_field + 1;
@@ -563,6 +563,7 @@ bool NodeGraphUI::handle_dropdown_mode_key(int key) {
                 inspector_.dropdown_open = false;
                 inspector_.dropdown_is_preset = false;
                 inspector_.dropdown_is_state_preset = false;
+                inspector_.dropdown_is_wire_curve = false;
                 break;
             case GLFW_KEY_UP:
                 cur.hovered_idx = (cur.hovered_idx > 0) ? cur.hovered_idx - 1 : count - 1;
@@ -604,6 +605,7 @@ bool NodeGraphUI::handle_dropdown_mode_key(int key) {
                         inspector_.dropdown_open = false;
                         inspector_.dropdown_is_preset = false;
                         inspector_.dropdown_is_state_preset = false;
+                        inspector_.dropdown_is_wire_curve = false;
                     }
                 }
                 break;
@@ -620,6 +622,7 @@ bool NodeGraphUI::handle_dropdown_mode_key(int key) {
                 inspector_.dropdown_open = false;
                 inspector_.dropdown_is_preset = false;
                 inspector_.dropdown_is_state_preset = false;
+                inspector_.dropdown_is_wire_curve = false;
                 break;
             case GLFW_KEY_UP:
                 if (inspector_.dropdown_sel > 0) inspector_.dropdown_sel--;
@@ -629,11 +632,24 @@ bool NodeGraphUI::handle_dropdown_mode_key(int key) {
                     inspector_.dropdown_sel++;
                 break;
             case GLFW_KEY_ENTER:
-                commands_.set_param(inspector_.dropdown_node_id, inspector_.dropdown_param_name,
-                                    static_cast<float>(inspector_.dropdown_sel));
+                if (inspector_.dropdown_is_wire_curve) {
+                    if (selected_wire_idx_ >= 0 &&
+                        selected_wire_idx_ < static_cast<int>(snap_.connections.size())) {
+                        const auto& c = snap_.connections[selected_wire_idx_];
+                        std::string from_addr = c.from_node + "/" + c.from_port;
+                        std::string to_addr   = c.to_node   + "/" + c.to_port;
+                        commands_.set_connection_remap(from_addr, to_addr,
+                            c.from_min, c.from_max, c.to_min, c.to_max,
+                            c.clamp, static_cast<uint8_t>(inspector_.dropdown_sel));
+                    }
+                } else {
+                    commands_.set_param(inspector_.dropdown_node_id, inspector_.dropdown_param_name,
+                                        static_cast<float>(inspector_.dropdown_sel));
+                }
                 inspector_.dropdown_open = false;
                 inspector_.dropdown_is_preset = false;
                 inspector_.dropdown_is_state_preset = false;
+                inspector_.dropdown_is_wire_curve = false;
                 break;
         }
     }

@@ -78,8 +78,9 @@ public:
     }
     void set_connection_remap(const std::string& from, const std::string& to,
                               float from_min, float from_max,
-                              float to_min, float to_max, bool clamp) override {
-        auto r = api_.set_connection_remap(from, to, from_min, from_max, to_min, to_max, clamp);
+                              float to_min, float to_max,
+                              bool clamp, uint8_t curve = 0) override {
+        auto r = api_.set_connection_remap(from, to, from_min, from_max, to_min, to_max, clamp, curve);
         if (r.ok) capture_undo_snapshot();
     }
     void set_node_layout(const std::string& node_id, float x, float y) override {

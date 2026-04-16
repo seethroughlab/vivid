@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -61,6 +62,53 @@ enum class BridgeKind : uint8_t {
 };
 
 // ---------------------------------------------------------------------------
+// RemapCurve — easing function applied to wire remap.
+// ---------------------------------------------------------------------------
+
+enum class RemapCurve : uint8_t {
+    Linear = 0,
+    Exponential,    // t²
+    Logarithmic,    // √t
+    EaseIn,         // t��
+    EaseOut,        // 1 - (1-t)³
+    EaseInOut,      // smoothstep: t²(3-2t)
+    SCurve,         // t² / (t² + (1-t)²)
+};
+
+inline constexpr int kRemapCurveCount = 7;
+
+inline const char* remap_curve_label(RemapCurve c) {
+    switch (c) {
+    case RemapCurve::Linear:      return "Linear";
+    case RemapCurve::Exponential: return "Exponential";
+    case RemapCurve::Logarithmic: return "Logarithmic";
+    case RemapCurve::EaseIn:      return "Ease In";
+    case RemapCurve::EaseOut:     return "Ease Out";
+    case RemapCurve::EaseInOut:   return "Ease In-Out";
+    case RemapCurve::SCurve:      return "S-Curve";
+    }
+    return "Linear";
+}
+
+inline float apply_remap_curve(RemapCurve c, float t) {
+    switch (c) {
+    case RemapCurve::Linear:      return t;
+    case RemapCurve::Exponential: return t * t;
+    case RemapCurve::Logarithmic: return std::sqrt(std::max(0.0f, t));
+    case RemapCurve::EaseIn:      return t * t * t;
+    case RemapCurve::EaseOut:     { float u = 1.0f - t; return 1.0f - u * u * u; }
+    case RemapCurve::EaseInOut:   return t * t * (3.0f - 2.0f * t);
+    case RemapCurve::SCurve:      {
+        float t2 = t * t;
+        float u  = 1.0f - t;
+        float denom = t2 + u * u;
+        return (denom > 1e-7f) ? t2 / denom : 0.5f;
+    }
+    }
+    return t;
+}
+
+// ---------------------------------------------------------------------------
 // CompiledEdge — unified wire representation.
 //
 // Replaces Wire, AudioWire, AudioFloatPortWire, AudioCustomWire,
@@ -98,6 +146,7 @@ struct CompiledEdge {
     float from_min = 0.0f, from_max = 1.0f;
     float to_min   = 0.0f, to_max  = 1.0f;
     bool  clamp    = false;
+    RemapCurve curve = RemapCurve::Linear;
 
     // Custom port metadata (for CUSTOM_VALUE / CUSTOM_REF edges).
     uint32_t custom_type_id = 0;
@@ -111,12 +160,14 @@ struct CompiledEdge {
     // Remap helpers.
     bool has_remap() const {
         return from_min != 0.0f || from_max != 1.0f ||
-               to_min  != 0.0f || to_max  != 1.0f || clamp;
+               to_min  != 0.0f || to_max  != 1.0f || clamp ||
+               curve != RemapCurve::Linear;
     }
 
     float apply_remap(float val) const {
         float range = from_max - from_min;
         float t = (range != 0.0f) ? (val - from_min) / range : 0.5f;
+        t = apply_remap_curve(curve, t);
         float out = to_min + t * (to_max - to_min);
         if (clamp) {
             float lo = std::min(to_min, to_max);

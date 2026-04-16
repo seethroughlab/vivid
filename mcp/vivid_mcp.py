@@ -700,6 +700,7 @@ async def set_connection_remap(
     from_min: float = 0.0, from_max: float = 1.0,
     to_min: float = 0.0, to_max: float = 1.0,
     clamp: bool = False,
+    curve: str = "linear",
 ) -> str:
     """Set the remap on a connection. Values are mapped from [from_min, from_max] to [to_min, to_max].
 
@@ -711,11 +712,18 @@ async def set_connection_remap(
         to_min: Output range minimum (default 0.0)
         to_max: Output range maximum (default 1.0)
         clamp: Whether to clamp output to [min(to_min,to_max), max(to_min,to_max)]
+        curve: Easing curve — "linear", "exponential", "logarithmic", "ease_in", "ease_out", "ease_in_out", "s_curve"
     """
+    _CURVE_MAP = {
+        "linear": 0, "exponential": 1, "logarithmic": 2,
+        "ease_in": 3, "ease_out": 4, "ease_in_out": 5, "s_curve": 6,
+    }
+    curve_idx = _CURVE_MAP.get(curve, 0)
     return await _post("set_connection_remap", {
         "from_addr": from_addr, "to_addr": to_addr,
         "from_min": from_min, "from_max": from_max,
         "to_min": to_min, "to_max": to_max, "clamp": clamp,
+        "curve": curve_idx,
     })
 
 

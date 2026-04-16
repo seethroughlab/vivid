@@ -155,9 +155,11 @@ std::string dispatch(const std::string& method, const std::string& body,
                 float tmin = root.contains("to_min") && root["to_min"].is_number() ? root["to_min"].get<float>() : 0.0f;
                 float tmax = root.contains("to_max") && root["to_max"].is_number() ? root["to_max"].get<float>() : 1.0f;
                 bool  cval = root.contains("clamp") && root["clamp"].is_boolean() ? root["clamp"].get<bool>() : false;
+                uint8_t curve = root.contains("curve") && root["curve"].is_number_unsigned()
+                    ? static_cast<uint8_t>(root["curve"].get<unsigned>()) : uint8_t(0);
                 result = command_result_to_json(
                     api.set_connection_remap(root["from_addr"].get<std::string>(), root["to_addr"].get<std::string>(),
-                                              fmin, fmax, tmin, tmax, cval));
+                                              fmin, fmax, tmin, tmax, cval, curve));
             }
         }
     } else if (method == "set_param") {

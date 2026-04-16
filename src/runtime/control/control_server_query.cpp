@@ -649,6 +649,8 @@ std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const Subgraph
                 c["to_max"] = conn.to_max;
                 if (conn.clamp)
                     c["clamp"] = true;
+                if (conn.curve != 0)
+                    c["curve"] = conn.curve;
             }
             if (conn.has_bridge())
                 c["bridge"] = conn.bridge;

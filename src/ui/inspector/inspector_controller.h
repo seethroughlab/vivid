@@ -30,6 +30,7 @@ public:
     struct ResolutionRect { float x, y, w, h; std::string node_id; bool is_width; };
     struct WireRemapRect { float x, y, w, h; int field; };
     struct WireClampRect { float x, y, w, h; };
+    struct WireCurveRect { float x, y, w, h; };
     struct MidiRemoveRect { float x, y, w, h; std::string node_id; std::string param_name; };
     struct MidiRangeRect { float x, y, w, h; std::string node_id; std::string param_name; bool is_min; };
     struct SubmenuLevel {
@@ -129,6 +130,7 @@ public:
     std::vector<ResolutionRect> resolution_rects;
     std::vector<WireRemapRect> wire_remap_rects;
     std::vector<WireClampRect> wire_clamp_rects;
+    std::vector<WireCurveRect> wire_curve_rects;
     bool editing_wire_remap = false;
     int edit_wire_remap_field = 0;
 
@@ -146,6 +148,7 @@ public:
     bool dropdown_open = false;
     bool dropdown_is_preset = false;
     bool dropdown_is_state_preset = false;
+    bool dropdown_is_wire_curve = false;
     std::string dropdown_node_id;
     std::string dropdown_param_name;
     int dropdown_sel = 0;
