@@ -7,7 +7,99 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- No unreleased changes yet.
+### Execution Model
+- Operators have a fixed cadence: each is either frame-rate (`_fr`) or audio-rate (`_au`), declared at compile time — no runtime inference
+- 20 operators (LFO, Envelope, Clock, sequencers, etc.) are dual-cadence, implementing both `process_frame` and `process_audio`
+- Cross-cadence connections use explicit `AudioFrameBridge` edges with typed dispatch
+- `RuntimeCore` owns the main loop; `FrameExecutor` and `AudioExecutor` run their respective cadences; `CompiledGraph` is the sole runtime authority
+
+### Lanes
+- Lane-aware signal propagation with structural provenance tracking across all three domains
+- `LaneStateService` provides identity-keyed per-lane persistent state
+- Structural reshape operators (Repeat, Tile, Select) with lane modes (linear, random, phase, golden)
+- Frame-domain per-lane lifting and GPU compute-backed lane evaluation
+- Wire badges show lane count; node badges show lane behavior
+- Lane metadata exposed in MCP introspection and UI snapshots
+
+### Operator ABI
+- ABI v11: `node_id` in process contexts, `VividOperatorKind` enum, `VIVID_PORT_SIGNAL` / `SCALAR` / `AUDIO_BUFFER` port naming
+- ABI hardened: `bool` → `uint8_t`, fixed-width enums throughout
+- Entry point is `vivid_process_frame`; composition via `ChildOp<T>`
+
+### New Operators
+- GPU: Cellular Automata, Reaction Diffusion, Flocking, Fluid, Instanced Shapes, Trails, MeshWarp, LUT, Scopes, SVG Render, Rich Text, Particles
+- Audio: Compressor, Limiter, Convolution Reverb, DualFilter (split crossover), DrumKit, plus 11 additional operators with factory presets
+- Control: PathAnimate, Macro, MSEG, Step Sequencer
+- Random and Random S&H consolidated into LFO (phase output, multiple waveform modes)
+- Drums, sequencers, and sampler packages merged into core
+
+### Audio
+- Multi-mode filter DSP: 14 filter types (replaces single SVF)
+- Highway SIMD foundation for DSP, exposed to package builds
+- Configurable audio buffer size; denormal flushing
+- Polyphonic lane-array gate support in Envelope
+- Per-note expression and MPE support in MidiInput
+- Clock `beat_trigger` output; metronome always active with per-step division timing
+
+### Movie Playback
+- Async video decode with `MovieFileIn` (GPU) and `MovieFileAudio` (audio) operators
+- AV sync with drift reconciliation, generation-based decoder flush, Metal frame upload sync
+- Playback diagnostics and validation
+
+### Modules & Modulation
+- Subgraph modules: composable operator groups with param/preset proxy
+- Composite-local modulation assignments
+- Module-aware control server queries and introspection
+
+### UI
+- Animated splash screen with plugin scan progress
+- Smooth scrolling/panning with animated node hover and selection glow
+- Domain tabs and scored search in operator chooser
+- Diagnostics panel with per-node audio telemetry and lane state
+- Streaming build console
+- Sticky notes with markdown rendering
+- Clone-to-edit: double-click a node to scaffold a local editable package copy
+- Multi-column inspector with param tooltips, auto-select on click, reset-to-defaults
+- Custom inspectors: arpeggiator velocity bars, chord grid, interactive waveform
+- N-channel audio waveform visualization
+- Wire reconnect drag; node copy-paste with offset positioning
+- Graph metronome transport with BPM editing
+- Save As; recent files; protected default graph
+- Session exploration surface with variation branching
+- Configurable pan gesture (middle/left/right drag)
+- `video_out` shows input texture as thumbnail; GPU thumbnails fit source aspect ratio
+
+### Localization
+- i18n with OS locale auto-detection and 21 languages
+- UTF-8 glyph baking and text wrapping in the 2D renderer
+
+### Package System
+- Clone-to-edit: double-click a node to auto-scaffold a local editable copy
+- Streaming build console for package builds
+- Machine-readable error codes; improved error display
+
+### MCP & Tooling
+- `sample_node_outputs` for live output sampling; `set_analysis` for GPU frame analysis
+- `inspect_graph` summary mode for LLM-friendly output
+- Per-node audio telemetry and system health diagnostics (schema v2)
+- Operator registry scan diagnostics
+- Operator development MCP server with source access, build diagnostics, and WGSL docs
+- Source-driven operator documentation; visual reference image analysis
+
+### Dependencies
+- nlohmann/json (replaces yyjson), efsw file watcher (replaces kqueue), libcurl (replaces shell curl), TinyXML-2 (replaces regex XML), Midifile (replaces hand-rolled MIDI parser)
+- Dragonbox for float32 serialization; NanoSVG; Snappy; Highway SIMD
+- argv-based `ProcessRunner` replaces shell-based process spawning
+- wgpu-native switched to upstream; Syphon metallib compiled at build time
+
+### Codebase
+- `src/runtime/`, `src/ui/`, and `tests/` restructured into focused subdirectories
+- Large files split; major classes (`GraphCompiler`, `RuntimeAPI`, `PackageManager`, `NodeGraphUI`) decomposed into helper files
+- All 91 example graphs updated to schema v3
+
+### Notes
+- 616 commits since alpha2
+- Major themes: fixed-cadence execution model, lanes completion, runtime architecture cleanup, movie playback rewrite, audio DSP expansion, localization, and dependency modernization
 
 ## [0.1.0-alpha2] - 2026-03-14
 
