@@ -13,6 +13,17 @@
 namespace vivid::convolution_reverb_dsp {
 namespace {
 
+// Non-uniform partitioning tunables. See docs/plans/core-audio-optimization-roadmap.md
+// "ConvolutionReverb Non-Uniform Partition Pass" for the doubling-zone design.
+// kEarlyLenTarget matches the original engine's direct-convolution length so the
+// O(early_len * block_size) inner loop cost does not regress. The correctness
+// invariant for each zone is `ir_offset - partition_size + block_size >= 0`,
+// which holds trivially regardless of early_len (zone 1 has ir_offset=early_len
+// and partition_size=block_size, so the write offset equals early_len).
+constexpr uint32_t kEarlyLenTarget = 256;
+constexpr uint32_t kZoneSizeCap = 4096;
+constexpr uint32_t kPartitionsPerZone = 4;
+
 static float clamp(float v, float lo, float hi) {
     return std::max(lo, std::min(hi, v));
 }
@@ -232,13 +243,17 @@ ImpulseResponse build_impulse_response(const IrConfig& config) {
     return ir;
 }
 
-Engine::~Engine() {
+void Engine::destroy_accel_setups() {
 #if VIVID_ACCELERATE_ENABLED
-    if (fft_setup_) {
-        vDSP_destroy_fftsetup(fft_setup_);
-        fft_setup_ = nullptr;
+    for (auto& s : fft_setups_) {
+        if (s.setup) vDSP_destroy_fftsetup(s.setup);
     }
+    fft_setups_.clear();
 #endif
+}
+
+Engine::~Engine() {
+    destroy_accel_setups();
 }
 
 void Engine::reset() {
@@ -246,12 +261,8 @@ void Engine::reset() {
     has_plan_ = false;
     plan_rebuild_count_ = 0;
     last_stats_ = {};
+    destroy_accel_setups();
 #if VIVID_ACCELERATE_ENABLED
-    if (fft_setup_) {
-        vDSP_destroy_fftsetup(fft_setup_);
-        fft_setup_ = nullptr;
-    }
-    fft_log2_ = 0;
     accel_real_.clear();
     accel_imag_.clear();
 #endif
@@ -280,9 +291,6 @@ void Engine::rebuild_plan(uint32_t frames,
     Plan next{};
     next.sample_rate = sample_rate;
     next.block_size = frames;
-    next.tail_partition_size = frames;
-    next.fft_size = next_pow2(next.tail_partition_size * 2u);
-    next.early_len = std::min<uint32_t>(frames, 256u);
     next.backend = backend;
     next.file_path = params.ir_file ? params.ir_file : "";
     next.preset = params.ir_preset;
@@ -299,12 +307,18 @@ void Engine::rebuild_plan(uint32_t frames,
     ir_config.gain_db = params.ir_gain_db;
     const ImpulseResponse ir = build_impulse_response(ir_config);
     next.layout = ir.layout;
-
     const uint32_t ir_frames = ir.frames();
-    next.early_len = std::min(next.early_len, ir_frames);
+
+    // Early-block direct convolution covers IR[0, early_len). Zone 1's
+    // ir_offset equals early_len and its partition_size equals block_size,
+    // giving write_offset = early_len >= 0 independent of block_size — so we
+    // keep early_len small to bound the O(early_len * block_size) direct loop.
+    uint32_t early_len = std::min<uint32_t>(kEarlyLenTarget, ir_frames);
+    next.early_len = early_len;
+
     auto copy_early = [&](std::vector<float>& dst, const std::vector<float>& src) {
-        dst.assign(next.early_len, 0.0f);
-        for (uint32_t i = 0; i < next.early_len; ++i)
+        dst.assign(std::max<uint32_t>(1, early_len), 0.0f);
+        for (uint32_t i = 0; i < early_len; ++i)
             dst[i] = src[i];
     };
     copy_early(next.early_ll, ir.ll);
@@ -312,40 +326,90 @@ void Engine::rebuild_plan(uint32_t frames,
     copy_early(next.early_rl, ir.rl);
     copy_early(next.early_rr, ir.rr);
 
-    const uint32_t tail_frames = ir_frames > next.early_len ? ir_frames - next.early_len : 0;
-    next.partition_count = tail_frames == 0 ? 0 : (tail_frames + next.tail_partition_size - 1u) / next.tail_partition_size;
+    // Zone schedule: doubling partition sizes capped at kZoneSizeCap, with
+    // kPartitionsPerZone partitions per zone until the last zone absorbs the
+    // remaining IR samples. Invariant upheld by construction:
+    //   ir_offset_k >= partition_size_k  for every zone
+    // which guarantees each zone's IFFT output lands at non-negative tail_accum
+    // offsets (no output-side latency introduced).
+    const uint32_t tail_frames = ir_frames > early_len ? ir_frames - early_len : 0;
+    uint32_t ir_offset = early_len;
+    uint32_t remaining = tail_frames;
+    uint32_t current_size = frames;
 
-    auto make_partitions = [&](const std::vector<float>& src) {
-        std::vector<std::vector<Complex>> partitions(next.partition_count);
-        for (uint32_t p = 0; p < next.partition_count; ++p) {
-            partitions[p].assign(next.fft_size, {});
-            const uint32_t src_offset = next.early_len + p * next.tail_partition_size;
-            const uint32_t copy_count = std::min<uint32_t>(next.tail_partition_size,
-                                                           static_cast<uint32_t>(src.size()) - src_offset);
-            for (uint32_t i = 0; i < copy_count; ++i)
-                partitions[p][i].re = src[src_offset + i];
-            fft(partitions[p].data(), next.fft_size, false, backend);
-        }
-        return partitions;
-    };
+    while (remaining > 0) {
+        Zone zone{};
+        zone.partition_size = current_size;
+        zone.fft_size = next_pow2(current_size * 2u);
+        zone.ir_offset = ir_offset;
+        const uint32_t max_parts = (remaining + current_size - 1u) / current_size;
+        // Once we reach the zone-size cap there's no further doubling win, so
+        // absorb the entire remainder into one zone. Earlier zones keep the
+        // small fixed partition count so the input/output FFT overhead per
+        // fire stays bounded and zone cadence stays fine-grained.
+        zone.partition_count = current_size >= kZoneSizeCap
+            ? max_parts
+            : std::min<uint32_t>(kPartitionsPerZone, max_parts);
 
-    next.tail_ll = make_partitions(ir.ll);
-    next.tail_lr = make_partitions(ir.lr);
-    next.tail_rl = make_partitions(ir.rl);
-    next.tail_rr = make_partitions(ir.rr);
+        auto make_partitions = [&](const std::vector<float>& src) {
+            std::vector<std::vector<Complex>> partitions(zone.partition_count);
+            for (uint32_t p = 0; p < zone.partition_count; ++p) {
+                partitions[p].assign(zone.fft_size, {});
+                const uint32_t src_offset = zone.ir_offset + p * zone.partition_size;
+                if (src_offset >= src.size()) break;
+                const uint32_t copy_count = std::min<uint32_t>(
+                    zone.partition_size,
+                    static_cast<uint32_t>(src.size()) - src_offset);
+                for (uint32_t i = 0; i < copy_count; ++i)
+                    partitions[p][i].re = src[src_offset + i];
+                fft(partitions[p].data(), zone.fft_size, false, backend);
+            }
+            return partitions;
+        };
 
-    next.input_history_l.assign(std::max<uint32_t>(1, next.partition_count), std::vector<Complex>(next.fft_size));
-    next.input_history_r.assign(std::max<uint32_t>(1, next.partition_count), std::vector<Complex>(next.fft_size));
-    next.prev_l.assign(std::max<uint32_t>(1, next.early_len), 0.0f);
-    next.prev_r.assign(std::max<uint32_t>(1, next.early_len), 0.0f);
-    next.input_accum_l.assign(next.tail_partition_size, 0.0f);
-    next.input_accum_r.assign(next.tail_partition_size, 0.0f);
-    next.tail_accum_l.assign(next.fft_size + next.early_len + frames, 0.0f);
-    next.tail_accum_r.assign(next.fft_size + next.early_len + frames, 0.0f);
-    next.fft_l.assign(next.fft_size, {});
-    next.fft_r.assign(next.fft_size, {});
-    next.fft_sum_l.assign(next.fft_size, {});
-    next.fft_sum_r.assign(next.fft_size, {});
+        zone.tail_ll = make_partitions(ir.ll);
+        zone.tail_lr = make_partitions(ir.lr);
+        zone.tail_rl = make_partitions(ir.rl);
+        zone.tail_rr = make_partitions(ir.rr);
+
+        zone.input_history_l.assign(zone.partition_count, std::vector<Complex>(zone.fft_size));
+        zone.input_history_r.assign(zone.partition_count, std::vector<Complex>(zone.fft_size));
+        zone.input_accum_l.assign(zone.partition_size, 0.0f);
+        zone.input_accum_r.assign(zone.partition_size, 0.0f);
+        zone.fft_l.assign(zone.fft_size, {});
+        zone.fft_r.assign(zone.fft_size, {});
+        zone.fft_sum_l.assign(zone.fft_size, {});
+        zone.fft_sum_r.assign(zone.fft_size, {});
+
+        next.max_fft_size = std::max(next.max_fft_size, zone.fft_size);
+        next.total_partition_count += zone.partition_count;
+        next.latency_samples = std::max(next.latency_samples, zone.partition_size);
+
+        const uint32_t consumed = zone.partition_count * zone.partition_size;
+        ir_offset += consumed;
+        remaining = remaining > consumed ? remaining - consumed : 0;
+        next.zones.push_back(std::move(zone));
+
+        if (current_size < kZoneSizeCap)
+            current_size = std::min(current_size * 2u, kZoneSizeCap);
+    }
+
+    // Shared tail accumulator. Every zone overlap-adds into this buffer at
+    // offset `ir_offset - partition_size + block_size`, and the head `block_size`
+    // samples are emitted every block before a left-shift. Size must cover the
+    // farthest write a zone can make, which is (ir_offset_k + partition_size_k)
+    // for the last zone, plus block_size headroom for the per-block shift.
+    uint32_t tail_accum_size = frames;
+    for (const auto& z : next.zones) {
+        const uint32_t max_end = z.ir_offset + z.partition_size + frames;
+        tail_accum_size = std::max(tail_accum_size, max_end);
+    }
+    next.tail_accum_size = tail_accum_size;
+    next.tail_accum_l.assign(tail_accum_size, 0.0f);
+    next.tail_accum_r.assign(tail_accum_size, 0.0f);
+
+    next.prev_l.assign(std::max<uint32_t>(1, early_len), 0.0f);
+    next.prev_r.assign(std::max<uint32_t>(1, early_len), 0.0f);
     next.wet_l.assign(frames, 0.0f);
     next.wet_r.assign(frames, 0.0f);
 
@@ -354,17 +418,20 @@ void Engine::rebuild_plan(uint32_t frames,
     ++plan_rebuild_count_;
 
 #if VIVID_ACCELERATE_ENABLED
-    const int log2n = log2_size(plan_.fft_size);
-    if (fft_setup_ && fft_log2_ != log2n) {
-        vDSP_destroy_fftsetup(fft_setup_);
-        fft_setup_ = nullptr;
+    // Create one Accelerate FFT setup per distinct log2(fft_size) across zones.
+    destroy_accel_setups();
+    for (const auto& zone : plan_.zones) {
+        const int log2n = log2_size(zone.fft_size);
+        bool have = false;
+        for (const auto& s : fft_setups_) if (s.log2n == log2n) { have = true; break; }
+        if (have) continue;
+        AccelSetup s{};
+        s.log2n = log2n;
+        s.setup = vDSP_create_fftsetup(static_cast<vDSP_Length>(log2n), kFFTRadix2);
+        fft_setups_.push_back(s);
     }
-    if (!fft_setup_) {
-        fft_setup_ = vDSP_create_fftsetup(static_cast<vDSP_Length>(log2n), kFFTRadix2);
-    }
-    fft_log2_ = log2n;
-    accel_real_.assign(plan_.fft_size, 0.0f);
-    accel_imag_.assign(plan_.fft_size, 0.0f);
+    accel_real_.assign(plan_.max_fft_size, 0.0f);
+    accel_imag_.assign(plan_.max_fft_size, 0.0f);
 #endif
 }
 
@@ -416,7 +483,11 @@ void Engine::fft_scalar(Complex* data, uint32_t n, bool inverse) {
 bool Engine::fft_accelerate(Complex* data, uint32_t n, bool inverse) {
 #if VIVID_ACCELERATE_ENABLED
     const int log2n = log2_size(n);
-    if (!fft_setup_ || fft_log2_ != log2n) return false;
+    FFTSetup setup = nullptr;
+    for (const auto& s : fft_setups_) {
+        if (s.log2n == log2n) { setup = s.setup; break; }
+    }
+    if (!setup) return false;
     if (accel_real_.size() < n) {
         accel_real_.assign(n, 0.0f);
         accel_imag_.assign(n, 0.0f);
@@ -426,7 +497,7 @@ bool Engine::fft_accelerate(Complex* data, uint32_t n, bool inverse) {
         accel_imag_[i] = data[i].im;
     }
     DSPSplitComplex split{accel_real_.data(), accel_imag_.data()};
-    vDSP_fft_zip(fft_setup_, &split, 1, static_cast<vDSP_Length>(log2n),
+    vDSP_fft_zip(setup, &split, 1, static_cast<vDSP_Length>(log2n),
                  inverse ? FFT_INVERSE : FFT_FORWARD);
     const float scale = inverse ? (1.0f / static_cast<float>(n)) : 1.0f;
     for (uint32_t i = 0; i < n; ++i) {
@@ -462,82 +533,101 @@ void Engine::render_direct(const float* in_l, const float* in_r, uint32_t frames
 }
 
 void Engine::render_tail(const float* in_l, const float* in_r, uint32_t frames, Backend backend) {
-    if (plan_.partition_count == 0) return;
+    if (plan_.zones.empty()) return;
 
-    uint32_t consumed = 0;
-    while (consumed < frames) {
-        const uint32_t room = plan_.tail_partition_size - plan_.input_fill;
-        const uint32_t n = std::min(room, frames - consumed);
-        std::copy(in_l + consumed, in_l + consumed + n, plan_.input_accum_l.begin() + plan_.input_fill);
-        std::copy(in_r + consumed, in_r + consumed + n, plan_.input_accum_r.begin() + plan_.input_fill);
-        plan_.input_fill += n;
-        consumed += n;
-        if (plan_.input_fill == plan_.tail_partition_size)
-            submit_tail_partition(backend);
+    // Feed this block's input into every zone. Zones with partition_size == block_size
+    // fire every block; larger zones fire every (partition_size / block_size) blocks.
+    for (auto& zone : plan_.zones) {
+        uint32_t consumed = 0;
+        while (consumed < frames) {
+            const uint32_t room = zone.partition_size - zone.input_fill;
+            const uint32_t n = std::min(room, frames - consumed);
+            std::copy(in_l + consumed, in_l + consumed + n,
+                      zone.input_accum_l.begin() + zone.input_fill);
+            std::copy(in_r + consumed, in_r + consumed + n,
+                      zone.input_accum_r.begin() + zone.input_fill);
+            zone.input_fill += n;
+            consumed += n;
+            if (zone.input_fill == zone.partition_size)
+                submit_zone_partition(zone, backend);
+        }
     }
 
+    // Emit head of tail_accum into wet, then shift left by block_size.
     for (uint32_t i = 0; i < frames; ++i) {
         plan_.wet_l[i] += plan_.tail_accum_l[i];
         plan_.wet_r[i] += plan_.tail_accum_r[i];
     }
-
-    std::move(plan_.tail_accum_l.begin() + frames, plan_.tail_accum_l.end(), plan_.tail_accum_l.begin());
+    std::move(plan_.tail_accum_l.begin() + frames, plan_.tail_accum_l.end(),
+              plan_.tail_accum_l.begin());
     std::fill(plan_.tail_accum_l.end() - frames, plan_.tail_accum_l.end(), 0.0f);
-    std::move(plan_.tail_accum_r.begin() + frames, plan_.tail_accum_r.end(), plan_.tail_accum_r.begin());
+    std::move(plan_.tail_accum_r.begin() + frames, plan_.tail_accum_r.end(),
+              plan_.tail_accum_r.begin());
     std::fill(plan_.tail_accum_r.end() - frames, plan_.tail_accum_r.end(), 0.0f);
 }
 
-void Engine::submit_tail_partition(Backend backend) {
-    if (plan_.partition_count == 0) return;
+void Engine::submit_zone_partition(Zone& zone, Backend backend) {
+    if (zone.partition_count == 0) return;
 
-    std::fill(plan_.fft_l.begin(), plan_.fft_l.end(), Complex{});
-    std::fill(plan_.fft_r.begin(), plan_.fft_r.end(), Complex{});
-    for (uint32_t i = 0; i < plan_.tail_partition_size; ++i) {
-        plan_.fft_l[i].re = plan_.input_accum_l[i];
-        plan_.fft_r[i].re = plan_.input_accum_r[i];
+    // FFT the newly-filled input_accum (zero-padded to fft_size) and store in
+    // the zone's frequency-delay-line history ring.
+    std::fill(zone.fft_l.begin(), zone.fft_l.end(), Complex{});
+    std::fill(zone.fft_r.begin(), zone.fft_r.end(), Complex{});
+    for (uint32_t i = 0; i < zone.partition_size; ++i) {
+        zone.fft_l[i].re = zone.input_accum_l[i];
+        zone.fft_r[i].re = zone.input_accum_r[i];
     }
-    fft(plan_.fft_l.data(), plan_.fft_size, false, backend);
-    fft(plan_.fft_r.data(), plan_.fft_size, false, backend);
+    fft(zone.fft_l.data(), zone.fft_size, false, backend);
+    fft(zone.fft_r.data(), zone.fft_size, false, backend);
 
-    plan_.input_history_l[plan_.history_pos] = plan_.fft_l;
-    plan_.input_history_r[plan_.history_pos] = plan_.fft_r;
+    zone.input_history_l[zone.history_pos] = zone.fft_l;
+    zone.input_history_r[zone.history_pos] = zone.fft_r;
 
-    std::fill(plan_.fft_sum_l.begin(), plan_.fft_sum_l.end(), Complex{});
-    std::fill(plan_.fft_sum_r.begin(), plan_.fft_sum_r.end(), Complex{});
+    std::fill(zone.fft_sum_l.begin(), zone.fft_sum_l.end(), Complex{});
+    std::fill(zone.fft_sum_r.begin(), zone.fft_sum_r.end(), Complex{});
 
     auto madd = [](Complex x, Complex h, Complex& y) {
         y.re += x.re * h.re - x.im * h.im;
         y.im += x.re * h.im + x.im * h.re;
     };
 
-    for (uint32_t p = 0; p < plan_.partition_count; ++p) {
-        const uint32_t hist = (plan_.history_pos + plan_.partition_count - p) % plan_.partition_count;
-        const auto& xl = plan_.input_history_l[hist];
-        const auto& xr = plan_.input_history_r[hist];
-        const auto& hll = plan_.tail_ll[p];
-        const auto& hlr = plan_.tail_lr[p];
-        const auto& hrl = plan_.tail_rl[p];
-        const auto& hrr = plan_.tail_rr[p];
-        for (uint32_t i = 0; i < plan_.fft_size; ++i) {
-            madd(xl[i], hll[i], plan_.fft_sum_l[i]);
-            madd(xr[i], hrl[i], plan_.fft_sum_l[i]);
-            madd(xl[i], hlr[i], plan_.fft_sum_r[i]);
-            madd(xr[i], hrr[i], plan_.fft_sum_r[i]);
+    for (uint32_t p = 0; p < zone.partition_count; ++p) {
+        const uint32_t hist = (zone.history_pos + zone.partition_count - p) % zone.partition_count;
+        const auto& xl = zone.input_history_l[hist];
+        const auto& xr = zone.input_history_r[hist];
+        const auto& hll = zone.tail_ll[p];
+        const auto& hlr = zone.tail_lr[p];
+        const auto& hrl = zone.tail_rl[p];
+        const auto& hrr = zone.tail_rr[p];
+        for (uint32_t i = 0; i < zone.fft_size; ++i) {
+            madd(xl[i], hll[i], zone.fft_sum_l[i]);
+            madd(xr[i], hrl[i], zone.fft_sum_l[i]);
+            madd(xl[i], hlr[i], zone.fft_sum_r[i]);
+            madd(xr[i], hrr[i], zone.fft_sum_r[i]);
         }
     }
 
-    fft(plan_.fft_sum_l.data(), plan_.fft_size, true, backend);
-    fft(plan_.fft_sum_r.data(), plan_.fft_size, true, backend);
+    fft(zone.fft_sum_l.data(), zone.fft_size, true, backend);
+    fft(zone.fft_sum_r.data(), zone.fft_size, true, backend);
 
-    for (uint32_t i = 0; i < plan_.fft_size; ++i) {
-        plan_.tail_accum_l[plan_.early_len + i] += plan_.fft_sum_l[i].re;
-        plan_.tail_accum_r[plan_.early_len + i] += plan_.fft_sum_r[i].re;
+    // Overlap-add the IFFT output into the shared tail_accum. Derivation:
+    //   tail_accum[i] at emit time of host block k represents the deferred
+    //   contribution to output at absolute time kB + i (invariant preserved by
+    //   the per-block left-shift of tail_accum). A zone firing at block k with
+    //   partition_size N contributes output at time kB + ir_offset + n + (B - N)
+    //   for n in [0, 2N-1], so the zone writes at offset (ir_offset - N + B).
+    //   With ir_offset >= N (enforced by the zone schedule), the write offset
+    //   is always >= 0.
+    const uint32_t write_offset = zone.ir_offset + plan_.block_size - zone.partition_size;
+    for (uint32_t i = 0; i < zone.fft_size; ++i) {
+        plan_.tail_accum_l[write_offset + i] += zone.fft_sum_l[i].re;
+        plan_.tail_accum_r[write_offset + i] += zone.fft_sum_r[i].re;
     }
 
-    plan_.history_pos = (plan_.history_pos + 1u) % plan_.partition_count;
-    plan_.input_fill = 0;
-    std::fill(plan_.input_accum_l.begin(), plan_.input_accum_l.end(), 0.0f);
-    std::fill(plan_.input_accum_r.begin(), plan_.input_accum_r.end(), 0.0f);
+    zone.history_pos = (zone.history_pos + 1u) % zone.partition_count;
+    zone.input_fill = 0;
+    std::fill(zone.input_accum_l.begin(), zone.input_accum_l.end(), 0.0f);
+    std::fill(zone.input_accum_r.begin(), zone.input_accum_r.end(), 0.0f);
 }
 
 void Engine::update_previous_input(const float* in_l, const float* in_r, uint32_t frames) {
@@ -598,8 +688,13 @@ void Engine::process(const float* input_stereo,
     last_stats_.layout = plan_.layout;
     last_stats_.sample_rate = sample_rate;
     last_stats_.block_size = frames;
-    last_stats_.ir_frames = static_cast<uint32_t>(plan_.early_ll.size() + plan_.partition_count * plan_.tail_partition_size);
-    last_stats_.partition_count = plan_.partition_count;
+    uint32_t ir_frames_total = plan_.early_len;
+    for (const auto& z : plan_.zones)
+        ir_frames_total += z.partition_count * z.partition_size;
+    last_stats_.ir_frames = ir_frames_total;
+    last_stats_.partition_count = plan_.total_partition_count;
+    last_stats_.zone_count = static_cast<uint32_t>(plan_.zones.size());
+    last_stats_.latency_samples = plan_.latency_samples;
     last_stats_.plan_rebuild_count = plan_rebuild_count_;
 }
 

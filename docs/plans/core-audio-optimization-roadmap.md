@@ -307,6 +307,66 @@ non-uniform partition plan: direct early reflections, small first tail
 partitions, and larger late-tail partitions with explicit latency and listening
 gates.
 
+## ConvolutionReverb Non-Uniform Partition Pass
+
+The second `ConvolutionReverb` pass implements the follow-up called for above:
+a Gardner-style doubling-zone schedule under `operators/shared/convolution_reverb_dsp/`.
+The public operator surface, WAV override, preset set, mono/stereo/true-stereo
+IR handling, and both backends stay unchanged.
+
+Zone schedule (compile-time tunables in the DSP source):
+
+- direct early block for `IR[0, 256)` (unchanged from the prior pass)
+- zone 1 at partition size = `block_size`, up to 4 partitions
+- zones 2..K with partition size doubling each step, up to 4 partitions per zone
+- zone-size cap at 4096 samples; once reached, one final zone absorbs every
+  remaining partition so the per-zone FFT/IFFT overhead is shared across the
+  long tail
+
+Latency contract: each zone satisfies `write_offset = ir_offset - partition_size + block_size >= 0`
+by construction, so no output latency is introduced relative to the uniform
+scheme — the DSP test confirms bit-level parity with direct convolution across
+a 3.0-second hall IR that engages all five zones. `ProcessStats.latency_samples`
+reports the largest zone partition size (4096 at steady state) as a diagnostic
+for the coarsest zone-fire cadence.
+
+Release benchmark on the current machine, compared against the prior uniform pass:
+
+| Frames | Case | Scalar mean | Preferred mean | Speedup | Zones | Partitions | Latency samples | vs prior preferred |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `256` | room | `170.01 ± 17.59 us` | `84.97 ± 0.69 us` | `2.00x` | `5` | `24` | `4096` | `1.92x faster` |
+| `256` | hall | `180.72 ± 2.69 us` | `104.28 ± 0.52 us` | `1.73x` | `5` | `60` | `4096` | `4.59x faster` |
+| `256` | cathedral | `193.56 ± 1.97 us` | `117.48 ± 1.23 us` | `1.65x` | `5` | `83` | `4096` | `5.95x faster` |
+| `1024` | room | `466.04 ± 3.20 us` | `247.87 ± 0.36 us` | `1.88x` | `3` | `17` | `4096` | `1.23x faster` |
+| `1024` | hall | `551.50 ± 3.16 us` | `358.85 ± 35.47 us` | `1.54x` | `3` | `52` | `4096` | `1.83x faster` |
+| `1024` | cathedral | `618.41 ± 3.18 us` | `393.32 ± 4.63 us` | `1.57x` | `3` | `76` | `4096` | `2.25x faster` |
+
+Benchmark command:
+
+```bash
+./build-release/bench_convolution_reverb
+```
+
+Acceptance status:
+
+- scalar vs direct-convolution reference passes both the short-IR test and the
+  new 3.0-second hall non-uniform test (80 blocks, 5 zones, 48 partitions)
+- scalar vs Accelerate parity test passes within the prior tolerance
+- operator smoke, WAV-fallback, and descriptor tests unchanged and passing
+- 256-frame hall and cathedral both clear the ≥1.5x acceptance bar; in fact
+  Accelerate mean drops from ~479us to ~104us (hall) and ~699us to ~117us
+  (cathedral)
+- 1024-frame cases all improve; none regress
+- `ProcessStats` exposes `zone_count` and `latency_samples` for downstream
+  visibility; no new types cross `src/operator_api`
+
+Follow-up note: per-zone FFT input is duplicated (each zone maintains its own
+frequency-domain input history), which limits the 1024-frame win to ~2x. A
+future pass could share a single large FFT and derive smaller-zone frequency
+bins via subband decomposition, or amortize large-zone FFT work across multiple
+blocks (Gardner's algorithm). Both are deferred pending profiling evidence that
+the current peak-block CPU is a problem on the target hardware.
+
 ## Filter/Dynamics Family Triage Pass
 
 The sixth target family has now been measured with an operator-level benchmark

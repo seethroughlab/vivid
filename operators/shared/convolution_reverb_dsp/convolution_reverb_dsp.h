@@ -39,6 +39,8 @@ struct ProcessStats {
     uint32_t block_size = 0;
     uint32_t ir_frames = 0;
     uint32_t partition_count = 0;
+    uint32_t zone_count = 0;
+    uint32_t latency_samples = 0;
     int plan_rebuild_count = 0;
 };
 
@@ -88,13 +90,39 @@ private:
         float im = 0.0f;
     };
 
+    struct Zone {
+        uint32_t partition_size = 0;
+        uint32_t fft_size = 0;
+        uint32_t partition_count = 0;
+        uint32_t ir_offset = 0;
+
+        std::vector<std::vector<Complex>> tail_ll;
+        std::vector<std::vector<Complex>> tail_lr;
+        std::vector<std::vector<Complex>> tail_rl;
+        std::vector<std::vector<Complex>> tail_rr;
+
+        std::vector<std::vector<Complex>> input_history_l;
+        std::vector<std::vector<Complex>> input_history_r;
+        uint32_t history_pos = 0;
+        uint32_t input_fill = 0;
+
+        std::vector<float> input_accum_l;
+        std::vector<float> input_accum_r;
+
+        std::vector<Complex> fft_l;
+        std::vector<Complex> fft_r;
+        std::vector<Complex> fft_sum_l;
+        std::vector<Complex> fft_sum_r;
+    };
+
     struct Plan {
         uint32_t sample_rate = 0;
         uint32_t block_size = 0;
-        uint32_t tail_partition_size = 0;
-        uint32_t fft_size = 0;
         uint32_t early_len = 0;
-        uint32_t partition_count = 0;
+        uint32_t tail_accum_size = 0;
+        uint32_t max_fft_size = 0;
+        uint32_t latency_samples = 0;
+        uint32_t total_partition_count = 0;
         IrLayout layout = IrLayout::Stereo;
         Backend backend = Backend::Scalar;
 
@@ -109,26 +137,12 @@ private:
         std::vector<float> early_rl;
         std::vector<float> early_rr;
 
-        std::vector<std::vector<Complex>> tail_ll;
-        std::vector<std::vector<Complex>> tail_lr;
-        std::vector<std::vector<Complex>> tail_rl;
-        std::vector<std::vector<Complex>> tail_rr;
-
-        std::vector<std::vector<Complex>> input_history_l;
-        std::vector<std::vector<Complex>> input_history_r;
-        uint32_t history_pos = 0;
-        uint32_t input_fill = 0;
+        std::vector<Zone> zones;
 
         std::vector<float> prev_l;
         std::vector<float> prev_r;
-        std::vector<float> input_accum_l;
-        std::vector<float> input_accum_r;
         std::vector<float> tail_accum_l;
         std::vector<float> tail_accum_r;
-        std::vector<Complex> fft_l;
-        std::vector<Complex> fft_r;
-        std::vector<Complex> fft_sum_l;
-        std::vector<Complex> fft_sum_r;
         std::vector<float> wet_l;
         std::vector<float> wet_r;
     };
@@ -148,8 +162,10 @@ private:
 
     void render_direct(const float* in_l, const float* in_r, uint32_t frames);
     void render_tail(const float* in_l, const float* in_r, uint32_t frames, Backend backend);
-    void submit_tail_partition(Backend backend);
+    void submit_zone_partition(Zone& zone, Backend backend);
     void update_previous_input(const float* in_l, const float* in_r, uint32_t frames);
+
+    void destroy_accel_setups();
 
     Plan plan_{};
     bool has_plan_ = false;
@@ -157,8 +173,11 @@ private:
     ProcessStats last_stats_{};
 
 #if VIVID_ACCELERATE_ENABLED
-    FFTSetup fft_setup_ = nullptr;
-    int fft_log2_ = 0;
+    struct AccelSetup {
+        int log2n = 0;
+        FFTSetup setup = nullptr;
+    };
+    std::vector<AccelSetup> fft_setups_;
     std::vector<float> accel_real_;
     std::vector<float> accel_imag_;
 #endif
