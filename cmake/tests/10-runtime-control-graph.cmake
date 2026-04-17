@@ -8,6 +8,15 @@ target_link_libraries(test_simd_fft PRIVATE vivid_runtime_testlib vivid_operator
 add_test(NAME test_simd_fft COMMAND test_simd_fft WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_simd_fft PROPERTIES TIMEOUT 15)
 
+# audio_smoke.h relaxed-correctness helper — used across optimization passes.
+add_executable(test_audio_smoke
+    tests/common/test_audio_smoke.cpp
+)
+target_include_directories(test_audio_smoke PRIVATE src tests tests/audio)
+target_link_libraries(test_audio_smoke PRIVATE vivid_runtime_testlib vivid_operator_api webgpu)
+add_test(NAME test_audio_smoke COMMAND test_audio_smoke WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_audio_smoke PROPERTIES TIMEOUT 15)
+
 # Crash recovery unit tests (pure filesystem + JSON; no GPU, no audio, no window)
 add_executable(test_crash_recovery
     tests/core/test_crash_recovery.cpp

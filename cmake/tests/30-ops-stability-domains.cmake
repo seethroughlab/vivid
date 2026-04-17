@@ -243,6 +243,22 @@ target_link_libraries(bench_filter_dynamics_family PRIVATE vivid_runtime_testlib
 target_compile_definitions(bench_filter_dynamics_family PRIVATE VIVID_TEST_PLUGIN_SUFFIX="${VIVID_PLUGIN_SUFFIX}")
 add_dependencies(bench_filter_dynamics_family parametric_eq compressor limiter filter dual_filter)
 
+# Full audio operator sweep — loads every audio operator dylib and reports
+# mean ± stddev us/block at 256 and 1024 frames. Baseline for the audio
+# optimization campaign; see docs/plans/core-audio-optimization-roadmap.md.
+add_executable(bench_audio_operators_sweep
+    tests/benchmarks/bench_audio_operators_sweep.cpp
+)
+target_include_directories(bench_audio_operators_sweep PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(bench_audio_operators_sweep PRIVATE vivid_runtime_testlib vivid_operator_api webgpu nlohmann_json::nlohmann_json)
+target_compile_definitions(bench_audio_operators_sweep PRIVATE VIVID_TEST_PLUGIN_SUFFIX="${VIVID_PLUGIN_SUFFIX}")
+add_dependencies(bench_audio_operators_sweep
+    oscillator gain reverb delay bitcrush distortion filter dual_filter audio_noise mixer
+    compressor limiter chorus phaser flanger stereo_pan_width ping_pong_delay fm_synth
+    ring_mod parametric_eq audio_analysis drum_kick drum_snare drum_hihat drum_clap
+    drum_cymbal drum_tom sp404 sampler slicer granular_synth vocoder spectral_freeze
+    convolution_reverb)
+
 # DualFilter operator correctness tests
 add_executable(test_dual_filter
     tests/audio/test_dual_filter.cpp
