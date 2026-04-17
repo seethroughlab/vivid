@@ -28,6 +28,45 @@ file(MAKE_DIRECTORY ${_pg_reports_dir})
 set(_pg_runner ${CMAKE_SOURCE_DIR}/scripts/run_production_gate_profile.sh)
 set(_pg_budgets ${CMAKE_SOURCE_DIR}/tools/production_gate_budgets.toml)
 
+# Helper: enumerate all test targets whose CTest LABELS intersect the given
+# set. Returns a deduped list of real build targets (skips tests whose
+# command isn't a target, e.g. pytest/uv wrappers like
+# test_production_gate_report — the runner script invokes those directly
+# through ctest, so they don't need explicit build deps).
+#
+# This replaces a hand-maintained DEPENDS list that silently went out of
+# sync every time a test with HEADLESS_SMOKE / UI_SMOKE / PACKAGE / GUI_SMOKE
+# / GUI_ENV labels was added elsewhere in the tree — ctest would pick the
+# test up via label filter, but the target wouldn't be built, producing
+# "Not Run" ctest failures on CI.
+#
+# Must be called AFTER all test registrations for the labels of interest;
+# 90-production-gate.cmake is included last in cmake/tests.cmake precisely
+# so every label-tagged test is visible here.
+function(_pg_targets_with_labels out_var)
+    get_property(_all_tests DIRECTORY . PROPERTY TESTS)
+    set(_targets)
+    foreach(_test ${_all_tests})
+        get_test_property(${_test} LABELS _test_labels)
+        if(_test_labels)
+            foreach(_want ${ARGN})
+                if("${_want}" IN_LIST _test_labels)
+                    if(TARGET ${_test})
+                        list(APPEND _targets ${_test})
+                    endif()
+                    break()
+                endif()
+            endforeach()
+        endif()
+    endforeach()
+    list(REMOVE_DUPLICATES _targets)
+    set(${out_var} ${_targets} PARENT_SCOPE)
+endfunction()
+
+_pg_targets_with_labels(_pg_core_deps HEADLESS_SMOKE UI_SMOKE PACKAGE)
+_pg_targets_with_labels(_pg_gui_deps GUI_SMOKE)
+_pg_targets_with_labels(_pg_env_deps GUI_ENV)
+
 # Pre-step: semantic-tag validator. Runs before any test so a tag violation
 # fails fast without burning a full test cycle.
 add_custom_target(production_gate_pretest
@@ -44,27 +83,7 @@ add_custom_target(production_gate_core
     VERBATIM
     DEPENDS
         production_gate_pretest
-        # HEADLESS_SMOKE
-        test_demo_graphs
-        test_operator_sweep
-        test_movie_seek_stress
-        # UI_SMOKE
-        test_ui_overlay_interactions
-        test_ui_editor_interactions
-        test_ui_widget_interactions
-        test_ui_screenshot_smoke
-        # PACKAGE
-        test_package_compiler
-        test_package_catalog
-        test_package_manager
-        test_runtime_bootstrap_packages
-        test_package_scope_resolver
-        test_package_scope_registry
-        test_package_scaffolder
-        test_package_update_logic
-        test_app_update_manager
-        test_package_test_runner
-        test_package_contract_ecosystem
+        ${_pg_core_deps}
 )
 
 # --- gui: core + GUI_SMOKE ----------------------------------------------------
@@ -76,7 +95,7 @@ add_custom_target(production_gate_gui
     COMMAND ${CMAKE_COMMAND} -E echo "[production_gate_gui] running GUI_SMOKE"
     COMMAND ${_pg_runner} gui ${CMAKE_BINARY_DIR} ${CMAKE_SOURCE_DIR} ${_pg_budgets} ${CMAKE_BUILD_TYPE}
     VERBATIM
-    DEPENDS production_gate_core test_ui_screenshot_smoke
+    DEPENDS production_gate_core ${_pg_gui_deps}
 )
 
 # --- env: gui + GUI_ENV -------------------------------------------------------
@@ -86,7 +105,7 @@ add_custom_target(production_gate_env
     COMMAND ${CMAKE_COMMAND} -E echo "[production_gate_env] running GUI_ENV"
     COMMAND ${_pg_runner} env ${CMAKE_BINARY_DIR} ${CMAKE_SOURCE_DIR} ${_pg_budgets} ${CMAKE_BUILD_TYPE}
     VERBATIM
-    DEPENDS production_gate_gui test_ui_screenshot_smoke
+    DEPENDS production_gate_gui ${_pg_env_deps}
 )
 
 # --- soak: core + phase6 stress + soak ---------------------------------------
