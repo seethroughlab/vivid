@@ -144,6 +144,7 @@ public:
 
     // Set the asset library for discovering package assets during scan.
     void set_asset_library(AssetLibrary* lib) { asset_library_ = lib; }
+    AssetLibrary* asset_library() const { return asset_library_; }
 
     // Returns <config_dir>/packages (platform-specific config dir)
     static std::string packages_dir();

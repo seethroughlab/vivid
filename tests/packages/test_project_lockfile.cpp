@@ -11,6 +11,7 @@
 #include "runtime/core/settings.h"
 #include "runtime/core/tool_discovery.h"
 #include "runtime/core/workspace_manager.h"
+#include "runtime/assets/asset_library.h"
 #include "runtime/graph/graph.h"
 #include "runtime/graph/graph_snapshot_builder.h"
 #include "runtime/operators/builtin_operators.h"
@@ -1249,6 +1250,211 @@ void test_load_graph_skips_verify_without_package_manager() {
           "load no-pm: no findings");
 }
 
+// --- Phase 8: asset content hashing --------------------------------------
+//
+// Tests use a hand-built test operator with one asset-bearing param (emulates
+// wavetable_osc's "wavetable" input). Registered via register_builtin so
+// probe_descriptor returns the descriptor. Data is file-local; never touches
+// real operator dylibs.
+
+namespace asset_fixture {
+
+static const VividParamDescriptor kAssetOpParams[] = {
+    { "wavetable", VIVID_PARAM_FILE, 0, 0, 0,
+      nullptr, 0, "",
+      "", VIVID_DISPLAY_DEFAULT, 0, 0,
+      "", "", "", "", "",
+      "wavetable",  // asset_kind — this is the field we're testing against
+      "", VIVID_PARAM_VIS_ALWAYS, nullptr, 0,
+      "", 0, "", 0 },
+    { "gain", VIVID_PARAM_FLOAT, 0.5f, 0.0f, 1.0f,
+      nullptr, 0, "",
+      "", VIVID_DISPLAY_DEFAULT, 0, 0,
+      "", "", "", "", "",
+      nullptr,  // no asset_kind — this param must be ignored by enumeration
+      "", VIVID_PARAM_VIS_ALWAYS, nullptr, 0,
+      "", 0, "", 0 },
+    { "extra_file", VIVID_PARAM_FILE, 0, 0, 0,
+      nullptr, 0, "",
+      "", VIVID_DISPLAY_DEFAULT, 0, 0,
+      "", "", "", "", "",
+      nullptr,  // file param without asset_kind — also ignored
+      "", VIVID_PARAM_VIS_ALWAYS, nullptr, 0,
+      "", 0, "", 0 },
+};
+
+static const VividPortDescriptor kAssetOpPorts[] = {
+    { "out", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT },
+};
+
+static const VividOperatorDescriptor kAssetOpDesc = {
+    "AssetTestOp",
+    3,
+    kAssetOpParams,
+    1,
+    kAssetOpPorts,
+    0, 0, 0, 1,
+    VIVID_LANE_POINTWISE,
+    0,
+};
+
+static const VividOperatorDescriptor* asset_op_descriptor() { return &kAssetOpDesc; }
+static void* asset_op_create()  { return new char; }
+static void  asset_op_destroy(void* p) { delete static_cast<char*>(p); }
+static void  asset_op_process(void*, VividFrameContext*) {}
+
+void register_asset_test_op(OperatorRegistry& reg) {
+    reg.register_builtin("AssetTestOp", asset_op_descriptor, asset_op_create,
+                          asset_op_destroy, asset_op_process);
+}
+
+}  // namespace asset_fixture
+
+// Write `contents` to `path` in text mode.
+static void write_text(const std::filesystem::path& path, const std::string& contents) {
+    std::ofstream ofs(path);
+    ofs << contents;
+}
+
+void test_sha256_file_matches_sha256_hex() {
+    ScopedTempDir dir("vivid_sha256_file");
+    auto path = dir.path / "bytes.bin";
+    const std::string contents = "hello lockfile assets!";
+    write_text(path, contents);
+
+    check(sha256_file(path) == sha256_hex(contents),
+          "sha256_file: matches sha256_hex on same bytes");
+    check(sha256_file(path).size() == 64,
+          "sha256_file: returns 64 hex chars");
+}
+
+void test_sha256_file_missing_returns_empty() {
+    check(sha256_file("/does/not/exist.bin").empty(),
+          "sha256_file: returns empty on missing file");
+}
+
+void test_build_lockfile_assets_empty_without_asset_library() {
+    LockfileGenFixture fx;
+    asset_fixture::register_asset_test_op(fx.registry);
+
+    ScopedTempDir dir("vivid_assets_no_al");
+    auto asset_path = (dir.path / "sample.wav").string();
+    write_text(asset_path, "pretend-wav");
+
+    Graph g;
+    g.add_node("n1", "AssetTestOp");
+
+    auto lf = build_lockfile_for_graph(g, fx.pm, fx.registry);
+    check(lf.assets.empty(),
+          "no AssetLibrary: assets[] stays empty");
+}
+
+void test_build_lockfile_assets_populated_with_content_hash() {
+    LockfileGenFixture fx;
+    asset_fixture::register_asset_test_op(fx.registry);
+
+    AssetLibrary al;
+    fx.pm.set_asset_library(&al);
+
+    ScopedTempDir dir("vivid_assets_lock");
+    auto asset_path = (dir.path / "wt.wav").string();
+    const std::string contents = "wavetable-bytes";
+    write_text(asset_path, contents);
+
+    Graph g;
+    g.add_node("n1", "AssetTestOp",
+               {},
+               {{"wavetable", asset_path}, {"extra_file", "/some/other.cfg"}});
+
+    auto lf = build_lockfile_for_graph(g, fx.pm, fx.registry);
+    check(lf.assets.size() == 1,
+          "asset enum: exactly one asset entry for the asset_kind param");
+    if (!lf.assets.empty()) {
+        check(lf.assets[0].kind == "wavetable",
+              "asset enum: kind carried through from descriptor");
+        check(lf.assets[0].path.find("wt.wav") != std::string::npos,
+              "asset enum: path includes the filename");
+        check(lf.assets[0].content_hash == "sha256:" + sha256_hex(contents),
+              "asset enum: content_hash matches file bytes");
+    }
+}
+
+void test_build_lockfile_assets_missing_file_produces_empty_hash() {
+    LockfileGenFixture fx;
+    asset_fixture::register_asset_test_op(fx.registry);
+
+    AssetLibrary al;
+    fx.pm.set_asset_library(&al);
+
+    Graph g;
+    g.add_node("n1", "AssetTestOp", {}, {{"wavetable", "/does/not/exist.wav"}});
+
+    auto lf = build_lockfile_for_graph(g, fx.pm, fx.registry);
+    check(lf.assets.size() == 1,
+          "asset enum missing file: still produces an entry");
+    if (!lf.assets.empty()) {
+        check(lf.assets[0].content_hash.empty(),
+              "asset enum missing file: content_hash stays empty");
+    }
+}
+
+void test_build_lockfile_assets_dedup_across_nodes() {
+    LockfileGenFixture fx;
+    asset_fixture::register_asset_test_op(fx.registry);
+
+    AssetLibrary al;
+    fx.pm.set_asset_library(&al);
+
+    ScopedTempDir dir("vivid_assets_dedup");
+    auto asset_path = (dir.path / "shared.wav").string();
+    write_text(asset_path, "shared");
+
+    Graph g;
+    g.add_node("n1", "AssetTestOp", {}, {{"wavetable", asset_path}});
+    g.add_node("n2", "AssetTestOp", {}, {{"wavetable", asset_path}});
+    g.add_node("n3", "AssetTestOp", {}, {{"wavetable", asset_path}});
+
+    auto lf = build_lockfile_for_graph(g, fx.pm, fx.registry);
+    check(lf.assets.size() == 1,
+          "asset enum dedup: one shared asset referenced by three nodes → one entry");
+}
+
+void test_build_lockfile_assets_sort_stability() {
+    LockfileGenFixture fx;
+    asset_fixture::register_asset_test_op(fx.registry);
+
+    AssetLibrary al;
+    fx.pm.set_asset_library(&al);
+
+    ScopedTempDir dir("vivid_assets_sort");
+    auto p_a = (dir.path / "a.wav").string();
+    auto p_b = (dir.path / "b.wav").string();
+    auto p_c = (dir.path / "c.wav").string();
+    write_text(p_a, "a");
+    write_text(p_b, "b");
+    write_text(p_c, "c");
+
+    Graph g1;
+    g1.add_node("n1", "AssetTestOp", {}, {{"wavetable", p_c}});
+    g1.add_node("n2", "AssetTestOp", {}, {{"wavetable", p_a}});
+    g1.add_node("n3", "AssetTestOp", {}, {{"wavetable", p_b}});
+
+    Graph g2;
+    g2.add_node("n1", "AssetTestOp", {}, {{"wavetable", p_a}});
+    g2.add_node("n2", "AssetTestOp", {}, {{"wavetable", p_b}});
+    g2.add_node("n3", "AssetTestOp", {}, {{"wavetable", p_c}});
+
+    auto lf1 = build_lockfile_for_graph(g1, fx.pm, fx.registry);
+    auto lf2 = build_lockfile_for_graph(g2, fx.pm, fx.registry);
+    check(lf1.assets.size() == 3 && lf2.assets.size() == 3,
+          "asset sort: both graphs produce 3 entries");
+    bool same = lf1.assets.size() == lf2.assets.size();
+    for (size_t i = 0; same && i < lf1.assets.size(); ++i) {
+        if (lf1.assets[i].path != lf2.assets[i].path) same = false;
+    }
+    check(same, "asset sort: order independent of node insertion order");
+}
+
 }  // namespace
 
 int main() {
@@ -1300,6 +1506,13 @@ int main() {
     test_load_graph_no_sibling_lockfile();
     test_load_graph_skips_verify_without_package_manager();
     test_graph_snapshot_carries_lockfile_status();
+    test_sha256_file_matches_sha256_hex();
+    test_sha256_file_missing_returns_empty();
+    test_build_lockfile_assets_empty_without_asset_library();
+    test_build_lockfile_assets_populated_with_content_hash();
+    test_build_lockfile_assets_missing_file_produces_empty_hash();
+    test_build_lockfile_assets_dedup_across_nodes();
+    test_build_lockfile_assets_sort_stability();
     test_unwrap_status_to_json_inlines_valid_status();
     test_unwrap_status_to_json_preserves_error_message();
     test_unwrap_status_to_json_non_json_message_fallback();

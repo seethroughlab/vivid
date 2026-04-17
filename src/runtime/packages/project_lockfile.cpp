@@ -2,6 +2,7 @@
 
 #include "common/hash_util.h"
 #include "operator_api/types.h"
+#include "runtime/assets/asset_library.h"
 #include "runtime/core/workspace_manager.h"
 #include "runtime/graph/compiled_graph.h"
 #include "runtime/graph/graph.h"
@@ -368,7 +369,66 @@ ProjectLockfile build_lockfile_for_graph(const Graph& graph,
         lf.operators.push_back(std::move(o));
     }
 
-    // Assets intentionally empty — Phase 8.
+    // Phase 8: enumerate assets referenced by graph nodes via params whose
+    // VividParamDescriptor.asset_kind is non-null. Skipped when
+    // PackageManager has no AssetLibrary wired (backward compat).
+    if (AssetLibrary* al = package_manager.asset_library()) {
+        const std::filesystem::path graph_dir =
+            std::filesystem::path(graph.source_path()).parent_path();
+
+        std::set<std::string> seen_asset_paths;
+
+        for (const auto& node : graph.nodes()) {
+            const VividOperatorDescriptor* desc =
+                operator_registry.probe_descriptor(node.type);
+            if (!desc) continue;
+            for (uint32_t i = 0; i < desc->param_count; ++i) {
+                const VividParamDescriptor& p = desc->params[i];
+                if (!p.asset_kind || !*p.asset_kind) continue;
+                const std::string pname = p.name ? p.name : "";
+                auto it = node.string_params.find(pname);
+                if (it == node.string_params.end() || it->second.empty()) continue;
+                const std::string& raw = it->second;
+
+                std::filesystem::path path;
+                std::string asset_id;
+
+                // Try AssetLibrary resolution first — the raw value might be
+                // an asset_id. Fall through to direct filesystem path.
+                if (const AssetEntry* entry = al->find(raw)) {
+                    path     = entry->canonical_path;
+                    asset_id = entry->asset_id;
+                } else {
+                    std::filesystem::path candidate = raw;
+                    if (candidate.is_relative() && !graph_dir.empty()) {
+                        candidate = graph_dir / candidate;
+                    }
+                    path = candidate.lexically_normal();
+                }
+                if (path.empty()) continue;
+
+                const std::string canonical = path.string();
+                if (!seen_asset_paths.insert(canonical).second) continue;
+
+                LockfileAsset la;
+                la.asset_id = asset_id;
+                la.kind     = p.asset_kind;
+                la.path     = canonical;
+                std::error_code ec;
+                if (std::filesystem::exists(path, ec) && !ec) {
+                    const std::string hex = sha256_file(path);
+                    if (!hex.empty()) la.content_hash = "sha256:" + hex;
+                }
+                lf.assets.push_back(std::move(la));
+            }
+        }
+
+        std::sort(lf.assets.begin(), lf.assets.end(),
+                  [](const LockfileAsset& a, const LockfileAsset& b) {
+                      return a.path < b.path;
+                  });
+    }
+
     return lf;
 }
 

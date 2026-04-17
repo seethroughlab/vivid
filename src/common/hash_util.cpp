@@ -7,6 +7,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <fstream>
 
 namespace vivid {
 
@@ -121,6 +122,28 @@ std::string sha256_hex(std::string_view input) {
         }
     }
     return out;
+}
+
+std::string sha256_file(const std::filesystem::path& path) {
+    std::ifstream ifs(path, std::ios::binary);
+    if (!ifs) return {};
+
+    // Accumulate the whole file into memory and defer to sha256_hex. This
+    // duplicates the streaming-reader approach that asset_library_internal.cpp
+    // uses for FNV hashing (8 KB chunks) but keeps the SHA-256 transform
+    // centralized — no need to expose the internal state machine here.
+    std::string bytes;
+    bytes.reserve(64 * 1024);  // most asset files are small; avoid tiny resizes
+
+    char buf[8192];
+    while (ifs) {
+        ifs.read(buf, sizeof(buf));
+        std::streamsize n = ifs.gcount();
+        if (n > 0) bytes.append(buf, static_cast<size_t>(n));
+    }
+    if (ifs.bad()) return {};  // read error partway through
+
+    return sha256_hex(bytes);
 }
 
 }  // namespace vivid
