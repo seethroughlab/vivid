@@ -1,6 +1,6 @@
 # Project Lockfile and Reproducibility Plan
 
-Status: proposal and implementation plan. This fills the roadmap gap around library/package version pinning without changing the graph JSON contract in the first pass.
+Status: shipped. All nine phases (0 - 8) landed on `worktree-project-lockfile`. Finalization (CLI asset wiring, core-commit capture, doc alignment) completed 2026-04-17. See the Rollout Notes appendix for deviations from this plan and deferred follow-ups.
 
 ## Goal
 
@@ -68,68 +68,55 @@ Suggested top-level shape:
 
 Keep optional fields optional. For example, linked local packages may not have a stable remote URL, but they should still record absolute path, package version, and current commit if the path is a Git repo.
 
-## Implementation Shape
+## Implementation Phases (as shipped)
 
-### Lockfile model and parser
+The feature landed across nine commits/phases on `worktree-project-lockfile`. Per-phase execution plans live alongside this doc under `docs/plans/project-lockfile-phase-*.md`.
 
-Add a small runtime package/project module, for example:
-
-- `src/runtime/packages/project_lockfile.h`
-- `src/runtime/packages/project_lockfile.cpp`
-
-Responsibilities:
-
-- load and save `vivid.lock`
-- validate lockfile version
-- normalize package entries
-- compute a dependency status report against installed packages
-- produce user-facing and machine-readable diagnostics
-
-Do not couple lockfile parsing directly to the UI. The UI, control server, CLI, and MCP tools should all consume the same status object.
+| Phase | Subject | Key artifacts |
+|-------|---------|---------------|
+| 1 | Lockfile model + JSON parser. | `src/runtime/packages/project_lockfile.{h,cpp}`, `tests/packages/test_project_lockfile.cpp`. Pure data module, canonical key order, diff-stable round-trip. |
+| 2 | Lockfile generation + RuntimeAPI write path. | `build_lockfile_for_graph`, `RuntimeAPI::write_project_lockfile`. Inspects active graph + registry only. |
+| 3 | Verify + classifications + RuntimeAPI read path. | `verify_project_lockfile`, `LockfileStatus` (`Match` / `CompatibleDrift` / `Mismatch` / `NoLockfile`), severity levels (`Info` / `Warning` / `Critical`), finding classifications (`missing_package`, `missing_operator`, `compatible_update`, `incompatible_update`, `linked_unpinned`, `abi_mismatch`, `asset_missing`, `asset_changed`, `descriptor_drift`). |
+| 4 | Control-server dispatch + MCP tools. | `/lockfile/write`, `/lockfile/verify`, `/lockfile/status` endpoints and matching MCP tool handlers. All consumers share one `LockfileStatus` object. |
+| 5 | CLI subcommands. | `vivid lock`, `vivid verify-lock`, with `--pretty`, `--graph`, `--output`. Exit codes `0` / `1` / `2` / `3` for match / drift / mismatch / io. |
+| 0 | Provenance plumbing (landed **after** 5). | Descriptor hashing (`OperatorRegistry::descriptor_hash`), git metadata via `cmake/git_version.cmake` → `VIVID_CORE_COMMIT`. Ordered last because earlier phases did not strictly depend on it. |
+| 6a | Strict-mode loader: per-node disabling on critical findings. | `LoadMode::{Studio, Strict, Recovery}` applied before `load_manifest`. |
+| 6b | UI indicator + findings modal. | `DialogManager::open_lockfile_findings`, findings banner on the graph view, per-node drift indicator in the inspector. |
+| 7 | `vivid export --strict` gate. | `ExportPipeline` checks the lockfile first; returns exit 2 with structured JSON on mismatch. |
+| 8 | Asset content hashing. | `asset_changed` classification, `AssetLibrary`-backed sha256 of referenced workspace/package assets. |
+| — | Finalization (2026-04-17). | CLI `AssetLibrary` wiring for `vivid lock` / `verify-lock` / `export --strict`; `VIVID_CORE_COMMIT` capture via configure-time git; full ctest pass; doc rewrite. |
 
 ### Dependency resolution modes
 
-Add three load modes:
+Three modes landed in Phase 6a, applied at the earliest point in `GraphLoader` (before `load_manifest`):
 
-- Studio mode: current behavior plus warnings for mismatches.
-- Strict mode: missing or incompatible locked dependencies block graph execution or disable affected nodes.
-- Recovery mode: load everything possible, leave missing operators visible, and produce a complete dependency report.
-
-Strict mode should be used by production gates and export. Studio mode should remain the default while authoring so experimentation stays fluid.
+- **Studio** — default authoring mode. Warnings surface in the findings banner; nothing is disabled.
+- **Strict** — used by `vivid export --strict` and the production gate. Critical findings disable affected nodes so the graph cannot silently drift in production.
+- **Recovery** — best-effort load, preserves missing-operator placeholders, and produces a complete dependency report for the user to act on.
 
 ### Lockfile generation
 
-Add commands through CLI and RuntimeAPI:
-
 ```bash
 vivid lock --graph path/to/graph.json
-vivid verify-lock --graph path/to/graph.json
+vivid verify-lock --graph path/to/graph.json [--pretty]
+vivid export --strict --graph path/to/graph.json --output <dir>
 ```
 
-Runtime/control server methods:
+RuntimeAPI methods:
 
 - `write_project_lockfile`
 - `verify_project_lockfile`
 - `get_project_dependency_status`
 
-Lockfile generation should inspect the active graph and registry rather than scanning every installed package. Only packages/operators/assets actually referenced by the graph belong in the project lock.
+Generation inspects the active graph + registry only — never the full installed package set. Only what the graph actually references is captured.
 
 ### Package install integration
 
-When a graph with a lockfile is opened and dependencies are missing, Vivid should be able to offer a guided install path:
-
-- list missing packages with source URLs when known
-- install exact commits where possible
-- warn when only a version range is available
-- preserve linked-package workflows for development
-
-Do not automatically install network dependencies on graph open. Make that an explicit user action.
+Install integration is **out of scope** for this feature. The lockfile surfaces what is missing and why; installing is the user's action via existing package flows. Lockfile findings expose source URLs and commits when known, but `verify-lock` will not trigger network work on its own.
 
 ### Asset integration
 
-For v1, record only assets referenced by loaded graph params or module metadata. Content hashes are useful for production, but they can be optional initially to avoid blocking the lockfile on every asset handler.
-
-Later, asset handlers can provide kind-specific lock metadata: sample rate, channel count, wavetable frame count, media duration, codec, and so on.
+Asset capture landed in Phase 8. The lockfile records assets referenced by graph params whose descriptors declare `asset_kind`. The `AssetLibrary` provides sha256 content hashes for workspace and package assets. `asset_changed` is a Warning, not a Critical — a content-hash drift should not freeze a graph in strict mode because benign edits are the norm.
 
 ## UI and API Behavior
 
@@ -181,4 +168,36 @@ Adjust target names to match the final test layout.
 - Strict mode prevents silent production drift.
 - Studio mode preserves current fast authoring behavior while surfacing warnings.
 - Missing packages/operators/assets are reported with actionable, structured diagnostics.
+
+## Rollout Notes
+
+Tracks deviations from the original plan, known gotchas, and deferred follow-ups surfaced during implementation.
+
+### Deviations from the original plan
+
+- **Phase ordering.** Phase 0 (provenance plumbing) originally ran first but landed last — Phase 1 did not need descriptor hashing or git metadata to produce a valid lockfile, so shipping 1 - 5 first kept each phase small and reviewable.
+- **Phase 6 split.** The "load modes + UI" phase split into **6a** (strict-mode per-node disabling in the loader) and **6b** (findings banner + modal). 6a is a pure behavior change; 6b is pure UI. Splitting kept each review focused.
+- **Strict gate placement.** `vivid export --strict` runs the lockfile check **before** `load_manifest` (the earliest possible point), not before `resolve_operators` as the plan suggested. Running earlier means strict-mode failures are reported without any partial graph construction happening first.
+- **`asset_changed` severity.** Landed as Warning rather than Critical. Content hash drift on an asset (a wavetable edit, a movie re-render) is benign during authoring; freezing the graph would fight normal use. Strict export still tolerates `asset_changed`.
+- **Descriptor hashing.** Uniform sha256 over the serialized `VividOperatorDescriptor` rather than a per-`AssetKindHandler` hook. Simpler, stable, and good enough for silent drift detection.
+- **CLI `AssetLibrary` wiring.** Deferred to finalization. Initially the three CLI subcommands left `AssetLibrary` unset on their local `PackageManager`, so `assets[]` from the CLI was silently empty. Fixed in the 2026-04-17 finalization pass.
+
+### Known gotchas
+
+- Built-in (seed) operators carry `OperatorMapEntry.abi_version == 0`. The ABI-mismatch classification tolerates zero for built-ins and compares exact values for installed packages.
+- `vivid_core` findings (e.g., `abi_mismatch` on the core subject) are intentionally not node-disabling in strict mode — a core-level drift freezes the whole graph, which is worse than surfacing the warning and letting the user choose.
+- `VIVID_CORE_COMMIT` falls back to empty string on non-git builds (release tarballs, third-party distros). Don't compare `lf.vivid_core.commit` as a strict equality when it's empty on either side.
+- Lockfile generation holds the `RuntimeAPI` mutex. Do not call it from inside another `RuntimeAPI` method on the same thread.
+
+### Deferred follow-ups
+
+Tracked for later work; not blocking the v1 release.
+
+- **Per-`AssetKindHandler` fingerprint hook.** Today we sha256 the asset bytes. Kind-specific metadata (sample rate, frame count, codec) would produce more actionable drift messages.
+- **Streaming sha256.** Large assets are read into RAM before hashing. A streaming implementation would make the lockfile safe for multi-GB samples.
+- **WGSL shader source hashing.** GPU operator descriptors don't include shader source, so hot-edited filters can drift silently. Hash shader source alongside the descriptor.
+- **Richer Recovery mode.** Today Recovery preserves missing-operator placeholders. A curated "drift dashboard" with explicit remediation affordances (install this package, rebuild that operator, open lockfile) would close the loop.
+- **Modal action buttons.** The findings modal reports drift but doesn't act on it. Action buttons for `install`, `rebuild`, and `open-lockfile` would make remediation one-click.
+- **`linked_unpinned` integration tests.** Unit coverage exists; end-to-end coverage of linked-package drift does not. Add when a linked-package regression suite is justified.
+- **Workspace-level lockfiles.** Today the lockfile lives next to a single graph. A project-root `vivid.lock` that aggregates multiple graphs would support directory-project layouts once that format exists.
 
