@@ -114,13 +114,25 @@ CommandResult RuntimeAPI::load_graph(const std::string& path,
         const std::filesystem::path sibling =
             std::filesystem::path(path).parent_path() / "vivid.lock";
         std::error_code sibling_ec;
-        if (std::filesystem::exists(sibling, sibling_ec) && !sibling_ec &&
-            core_.package_manager()) {
+        if (std::filesystem::exists(sibling, sibling_ec) && !sibling_ec) {
             auto load_result = load_lockfile(sibling);
-            if (load_result.ok()) {
+            if (load_result.ok() && core_.package_manager()) {
                 lf_status = verify_lockfile(
                     load_result.lockfile, graph_,
                     *core_.package_manager(), registry_);
+            } else if (!load_result.ok()) {
+                // A broken sibling lockfile must not silently bypass strict
+                // mode. Synthesize a Critical finding so the mode-handling
+                // branch below can lock the whole graph down.
+                lf_status.overall = LockfileOverall::Mismatch;
+                LockfileFinding f;
+                f.id         = lockfile_finding::kLockfileUnreadable;
+                f.severity   = LockfileSeverity::Critical;
+                f.subject    = sibling.string();
+                f.message    = "failed to parse vivid.lock: " +
+                               load_result.error.message;
+                f.suggestion = "regenerate with 'vivid lock' or repair the lockfile";
+                lf_status.findings.push_back(std::move(f));
             }
         }
         core_.set_lockfile_status(lf_status);

@@ -685,6 +685,12 @@ void apply_strict_mode_to_compiled_graph(const LockfileStatus& status,
     for (const auto& f : status.findings) {
         if (f.severity != LockfileSeverity::Critical) continue;
 
+        if (f.id == kLockfileUnreadable) {
+            // Environment is unverifiable. Lock down every node so strict
+            // mode cannot be bypassed by a corrupt or malformed vivid.lock.
+            for (auto& cn : compiled.nodes) mark_node(cn, f.message);
+            return;
+        }
         if (f.id == kMissingPackage || f.id == kIncompatibleUpdate) {
             disable_nodes_in_package(f.subject, f.message);
         } else if (f.id == kAbiMismatch || f.id == kDescriptorHashMismatch) {

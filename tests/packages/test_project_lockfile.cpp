@@ -1217,6 +1217,101 @@ void test_load_graph_no_sibling_lockfile() {
           "load no-sibling: no findings");
 }
 
+void test_load_graph_strict_mode_malformed_sibling_locks_graph() {
+    // A sibling vivid.lock that exists but fails to parse must not
+    // silently bypass strict-mode enforcement. Instead the load path
+    // synthesizes a Critical "lockfile_unreadable" finding and strict
+    // mode disables every node because the environment is unverifiable.
+    LockfileGenFixture fx;
+    register_builtin_operators(fx.registry);
+
+    ScopedTempDir dir("vivid_load_bad_lf");
+    Graph source_graph;
+    source_graph.add_node("a", "audio_out");
+    source_graph.add_node("b", "audio_out");
+    auto graph_path = dir.file_str("demo.json");
+    source_graph.save(graph_path.c_str());
+
+    // Write a malformed lockfile next to the graph.
+    std::ofstream(dir.path / "vivid.lock") << "{ this is not valid json ";
+
+    Graph api_graph;
+    RuntimeCore runtime;
+    runtime.set_package_manager(&fx.pm);
+    AudioEngine audio_engine;
+    RuntimeAPI api(api_graph, runtime, audio_engine, fx.registry);
+
+    bool has_gpu = false;
+    bool has_aud = false;
+    auto r = api.load_graph(graph_path, has_gpu, has_aud, "strict");
+    check(r.ok, "load strict bad-lf: succeeds");
+
+    const auto& status = runtime.lockfile_status();
+    check(status.overall == LockfileOverall::Mismatch,
+          "load strict bad-lf: overall is Mismatch");
+    bool saw_unreadable = false;
+    for (const auto& f : status.findings) {
+        if (f.id == lockfile_finding::kLockfileUnreadable &&
+            f.severity == LockfileSeverity::Critical) {
+            saw_unreadable = true;
+            break;
+        }
+    }
+    check(saw_unreadable,
+          "load strict bad-lf: Critical lockfile_unreadable finding emitted");
+
+    // Every node must be disabled with reason = locked_unavailable.
+    const auto* cg = runtime.compiled_graph();
+    check(cg != nullptr, "load strict bad-lf: compiled graph exists");
+    if (cg) {
+        size_t locked = 0;
+        for (const auto& cn : cg->nodes) {
+            if (cn.missing_operator &&
+                cn.missing_operator_reason == "locked_unavailable") {
+                ++locked;
+            }
+        }
+        check(locked == cg->nodes.size(),
+              "load strict bad-lf: every node marked locked_unavailable");
+    }
+}
+
+void test_load_graph_studio_mode_malformed_sibling_records_finding_only() {
+    // Studio mode records the Critical finding but MUST NOT disable nodes
+    // - the strict-mode lockdown is gated on the caller's mode selection.
+    LockfileGenFixture fx;
+    register_builtin_operators(fx.registry);
+
+    ScopedTempDir dir("vivid_load_bad_lf_studio");
+    Graph source_graph;
+    source_graph.add_node("a", "audio_out");
+    auto graph_path = dir.file_str("demo.json");
+    source_graph.save(graph_path.c_str());
+    std::ofstream(dir.path / "vivid.lock") << "garbage";
+
+    Graph api_graph;
+    RuntimeCore runtime;
+    runtime.set_package_manager(&fx.pm);
+    AudioEngine audio_engine;
+    RuntimeAPI api(api_graph, runtime, audio_engine, fx.registry);
+
+    bool has_gpu = false;
+    bool has_aud = false;
+    auto r = api.load_graph(graph_path, has_gpu, has_aud, "studio");
+    check(r.ok, "load studio bad-lf: succeeds");
+
+    const auto& status = runtime.lockfile_status();
+    check(status.overall == LockfileOverall::Mismatch,
+          "load studio bad-lf: overall is Mismatch");
+
+    const auto* cg = runtime.compiled_graph();
+    if (cg && !cg->nodes.empty()) {
+        const auto& cn = cg->nodes[0];
+        check(cn.missing_operator_reason != "locked_unavailable",
+              "load studio bad-lf: node NOT disabled (studio mode)");
+    }
+}
+
 void test_graph_snapshot_carries_lockfile_status() {
     LockfileGenFixture fx;
     register_builtin_operators(fx.registry);
@@ -1640,6 +1735,8 @@ int main() {
     test_load_graph_strict_mode_disables_affected_node();
     test_load_graph_strict_mode_ignores_non_critical();
     test_load_graph_no_sibling_lockfile();
+    test_load_graph_strict_mode_malformed_sibling_locks_graph();
+    test_load_graph_studio_mode_malformed_sibling_records_finding_only();
     test_load_graph_skips_verify_without_package_manager();
     test_graph_snapshot_carries_lockfile_status();
     test_sha256_file_matches_sha256_hex();

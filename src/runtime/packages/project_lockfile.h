@@ -169,6 +169,11 @@ inline constexpr const char* kDescriptorHashMismatch   = "descriptor_hash_mismat
 inline constexpr const char* kLinkedUnpinned           = "linked_unpinned";
 inline constexpr const char* kAssetMissing             = "asset_missing";
 inline constexpr const char* kAssetChanged             = "asset_changed";
+// Emitted by the graph-load path when a sibling vivid.lock exists but
+// cannot be parsed. Strict-mode enforcement treats this as a whole-graph
+// lockdown (no node is trusted to run) because the environment is
+// unverifiable. Never produced by verify_lockfile itself.
+inline constexpr const char* kLockfileUnreadable       = "lockfile_unreadable";
 }  // namespace lockfile_finding
 
 struct LockfileFinding {
@@ -225,6 +230,8 @@ struct CompiledGraph;
 //   (or "vivid_core" for core-level ABI — left alone by this helper).
 // - missing_operator: skipped; the graph compiler's own "not_found" reason
 //   already covers it.
+// - lockfile_unreadable: subject is the path. Disables every node in the
+//   graph because the environment is unverifiable.
 void apply_strict_mode_to_compiled_graph(const LockfileStatus& status,
                                          CompiledGraph& compiled,
                                          const OperatorRegistry& registry);
