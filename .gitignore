@@ -57,6 +57,7 @@ docs/api/
 *.tmp
 *.temp
 *.log
+!tests/cli/fixtures/**/*.log
 /.test_*
 
 # Environment / secrets
