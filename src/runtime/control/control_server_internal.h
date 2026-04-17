@@ -659,6 +659,9 @@ std::string dispatch(const std::string& method, const std::string& body,
                             AudioEngine* audio_engine,
                             AssetLibrary* asset_library = nullptr,
                             BuildConsole* build_console = nullptr,
+                            GpuContext* gpu_context = nullptr,
+                            PackageCatalog* package_catalog = nullptr,
+                            const ControlServer* control_server = nullptr,
                             CrashRecoveryManager* crash_recovery_manager = nullptr);
 
 // Asset library handlers (defined in control_server_assets.cpp)

@@ -324,6 +324,10 @@ void poll_hot_reload(vivid::FileWatcher& fw, vivid::HotReloader& hr,
 
     auto ready = hr.poll_ready();
     for (const auto& result : ready) {
+        // Cache for runtime_health (Phase 8a). Always store, even on success,
+        // so a previous failure stops looking like the current state once a
+        // subsequent reload succeeds.
+        runtime.set_last_reload(result);
         if (!result.success) {
             // Propagate compile errors to all nodes of this type so the UI can surface them.
             // Nodes keep running (old dylib still live); errored=true is NOT set.

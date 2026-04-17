@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "graph": "silent_synth",
+  "graph_path": "audio/silent_synth.json",
+  "domains": ["audio"],
+  "test_outcome": "passed",
+  "health": {
+    "severity": "warning",
+    "findings": [],
+    "audio": {"running": true, "xruns": 0, "load": 0.05,
+              "peak_max": 0.0, "clipping_count": 0,
+              "silence_window_seconds": 4.5, "silence_active": true},
+    "graph": {"declared_nodes": 3, "compiled_nodes": 3,
+              "errored_nodes": 0, "missing_operators": 0,
+              "dropped_connections": 0, "audio_nodes": 2,
+              "missing_operator_types": []},
+    "gpu": {"shader_errors": 0, "device_lost": false,
+            "black_window_seconds": 0, "black_active": false},
+    "mcp": {"main_last_ping_ms": 0, "opdev_last_ping_ms": 0,
+            "now_ms": 0, "main_connected": false, "opdev_connected": false}
+  }
+}

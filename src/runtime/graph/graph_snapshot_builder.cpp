@@ -3,6 +3,7 @@
 #include "runtime/graph/subgraph_module.h"
 #include "runtime/graph/graph.h"
 #include "runtime/core/runtime_core.h"
+#include "runtime/core/runtime_health.h"
 #include "runtime/audio/audio_engine.h"
 #include "runtime/operators/operator_registry.h"
 #include "runtime/audio/system_midi.h"
@@ -29,8 +30,23 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         const vivid::RuntimeAPI* runtime_api,
         vivid::CaptureCoordinator* capture_coordinator,
         const vivid::ControlServer* control_server,
-        const vivid::SubgraphModuleRegistry* subgraph_modules) {
+        const vivid::SubgraphModuleRegistry* subgraph_modules,
+        const vivid::GpuContext* gpu_context) {
     vivid::ui::GraphSnapshot snap;
+
+    // Build the MCP-status bundle for the per-frame health summary so the UI
+    // pill reflects MCP server reachability. We read the same ping timestamps
+    // that get written into snap.mcp_*_last_ping_ms below.
+    vivid::runtime_health::McpStatus mcp_status;
+    if (control_server) {
+        mcp_status.main_ping_ms  = control_server->mcp_last_ping_ms("vivid");
+        mcp_status.opdev_ping_ms = control_server->mcp_last_ping_ms("opdev");
+    }
+
+    // Per-frame runtime health summary for the UI pill / status-bar dot.
+    snap.runtime_health = vivid::runtime_health::collect_summary(
+        graph, runtime, registry, audio_engine, gpu_context,
+        /*package_catalog=*/nullptr, mcp_status);
 
     const auto* cg = runtime.compiled_graph();
     if (!cg) return snap;

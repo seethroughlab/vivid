@@ -65,6 +65,8 @@ add_executable(vivid
     src/runtime/graph/graph.cpp
     src/runtime/graph/subgraph_module.cpp
     src/runtime/core/runtime_core.cpp
+    src/runtime/core/runtime_health.cpp
+    src/runtime/core/runtime_health_samplers.cpp
     src/runtime/graph/subgraph_module.cpp
     src/runtime/graph/graph_compiler.cpp
     src/runtime/graph/graph_compiler_init.cpp

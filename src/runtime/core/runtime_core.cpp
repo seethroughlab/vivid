@@ -1,8 +1,10 @@
 #include "runtime/core/runtime_core.h"
 #include "runtime/graph/graph.h"
+#include "runtime/gpu/gpu_frame_analysis.h"
 #include "runtime/operators/operator_registry.h"
 #include "runtime/graph/subgraph_module.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 
 namespace vivid {
@@ -109,6 +111,8 @@ void RuntimeCore::adopt_prepared_build(PreparedBuild prepared) {
 
     audio_frame_bridge_.build(*compiled_graph_);
     frame_executor_.set_operators_src_dir(operators_src_dir_);
+    // Topology change invalidates accumulated silence/black evidence.
+    health_samplers_.clear();
 
     if (std::getenv("VIVID_VERBOSE")) {
         std::fprintf(stderr, "[vivid] Evaluation order:");
@@ -271,6 +275,38 @@ int RuntimeCore::find_effective_gpu_sink() const {
     if (compiled_graph_)
         return frame_executor_.find_effective_gpu_sink(*compiled_graph_);
     return -1;
+}
+
+// ---------------------------------------------------------------------------
+// runtime health sampling — Phase 8c
+// ---------------------------------------------------------------------------
+
+void RuntimeCore::sample_runtime_health(double time) {
+    // Audio: max |peak| across all nodes/channels in the active analysis.
+    // Empty when audio analysis is disabled or no audio nodes exist — peak
+    // stays at 0, sampler treats as silent.
+    float audio_peak = 0.0f;
+    const auto& a = audio_frame_bridge_.active_analysis();
+    for (const auto& nodes : a.peak) {
+        for (float v : nodes) {
+            const float av = std::fabs(v);
+            if (av > audio_peak) audio_peak = av;
+        }
+    }
+
+    // Visual: brightness from the effective GPU sink. nullopt means "no sink"
+    // or "frame_analysis not yet populated" — sampler treats as not_applicable.
+    std::optional<float> brightness;
+    const int sink = find_effective_gpu_sink();
+    if (sink >= 0 && compiled_graph_ &&
+        sink < static_cast<int>(compiled_graph_->nodes.size())) {
+        const auto& n = compiled_graph_->nodes[sink];
+        if (n.gpu && n.gpu->frame_analysis) {
+            brightness = n.gpu->frame_analysis->brightness();
+        }
+    }
+
+    health_samplers_.sample(time, audio_peak, brightness);
 }
 
 // ---------------------------------------------------------------------------

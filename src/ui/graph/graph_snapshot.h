@@ -1,6 +1,7 @@
 #pragma once
 
 #include "operator_api/types.h"
+#include "runtime/core/runtime_health.h"
 #include "runtime/graph/cadence_types.h"
 #include "runtime/packages/project_lockfile.h"
 #include <string>
@@ -326,6 +327,10 @@ struct GraphSnapshot {
     uint32_t audio_node_count = 0;
     std::vector<AudioHotNodeSnapshot> audio_top_nodes;
     std::vector<AudioHotNodeSnapshot> audio_top_lane_state_nodes;
+
+    // Runtime health rolled up from runtime_health::collect_summary().
+    // Drives the diagnostics-panel pill and the status-bar dot.
+    runtime_health::RuntimeHealthSummary runtime_health;
 
     // MIDI mapping data
     std::vector<MidiMappingSnapshot> midi_mappings;

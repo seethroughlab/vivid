@@ -1,0 +1,51 @@
+{
+  "schema_version": 4,
+  "timestamp": "2026-04-16T12:00:00Z",
+  "profile": "core",
+  "git": {"commit": "db8868f62036d75e58f6e6f9c6de63980ca69503", "branch": "feature-x"},
+  "build": {"build_type": "RelWithDebInfo", "macos_version": "26.3.1",
+            "hardware": {"cpu": "Apple M4 Max", "machine": "arm64"}},
+  "tests": {
+    "run": 21, "passed": 21, "failed": 0, "skipped": 0,
+    "duration_seconds": 33.5,
+    "failures": []
+  },
+  "signals": {
+    "webgpu_validation_errors": 0,
+    "audio_init_failures": 0,
+    "graph_load_failures": 0,
+    "missing_operators": [],
+    "budget_breaches": [
+      {"budget_code": "no_sustained_black", "graph": "spirograph_demo",
+       "severity": "warning", "message": "video black for 4.0s"},
+      {"budget_code": "no_sustained_black", "graph": "edge_demo",
+       "severity": "warning", "message": "video black for 4.0s"},
+      {"budget_code": "no_sustained_black", "graph": "scanlines_demo",
+       "severity": "warning", "message": "video black for 4.0s"},
+      {"budget_code": "no_sustained_black", "graph": "crt_effect_demo",
+       "severity": "warning", "message": "video black for 4.0s"},
+      {"budget_code": "no_sustained_black", "graph": "wgsl_filters_demo",
+       "severity": "warning", "message": "video black for 4.0s"},
+      {"budget_code": "no_sustained_black", "graph": "av_demo",
+       "severity": "warning", "message": "video black for 4.0s"},
+      {"budget_code": "no_sustained_black", "graph": "audio_reactive_demo",
+       "severity": "warning", "message": "video black for 4.0s"},
+      {"budget_code": "no_audio_clipping", "graph": "filter_sweep",
+       "severity": "warning", "message": "2 audio sample(s) at clipping (peak_max=35.7)"},
+      {"budget_code": "no_audio_clipping", "graph": "four_on_the_floor",
+       "severity": "warning", "message": "1 audio sample(s) at clipping (peak_max=7.0)"},
+      {"budget_code": "no_audio_clipping", "graph": "drum_stack_demo",
+       "severity": "warning", "message": "1 audio sample(s) at clipping (peak_max=6.0)"},
+      {"budget_code": "no_audio_clipping", "graph": "granular_synth_demo",
+       "severity": "warning", "message": "1 audio sample(s) at clipping (peak_max=3.2)"},
+      {"budget_code": "no_audio_clipping", "graph": "fm_synth_demo",
+       "severity": "warning", "message": "1 audio sample(s) at clipping (peak_max=2.6)"},
+      {"budget_code": "no_audio_clipping", "graph": "full_synth_patch",
+       "severity": "warning", "message": "2 audio sample(s) at clipping (peak_max=12.0)"},
+      {"budget_code": "no_audio_underruns", "graph": "granular_synth_demo",
+       "severity": "warning", "message": "4 underrun(s)"}
+    ]
+  },
+  "stress": {"phase6_stress_seconds": 0, "phase6_soak_seconds": 0},
+  "status": "degraded"
+}

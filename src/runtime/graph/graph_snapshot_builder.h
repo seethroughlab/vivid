@@ -10,6 +10,7 @@ namespace vivid {
 class Graph;
 class RuntimeCore;
 class AudioEngine;
+class GpuContext;
 class OperatorRegistry;
 class SystemMidiListener;
 class RuntimeAPI;
@@ -27,6 +28,7 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
     const RuntimeAPI* runtime_api = nullptr,
     CaptureCoordinator* capture_coordinator = nullptr,
     const ControlServer* control_server = nullptr,
-    const SubgraphModuleRegistry* subgraph_modules = nullptr);
+    const SubgraphModuleRegistry* subgraph_modules = nullptr,
+    const GpuContext* gpu_context = nullptr);
 
 } // namespace vivid

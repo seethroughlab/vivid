@@ -1,0 +1,29 @@
+Start testing: Apr 16 19:00 EDT
+----------------------------------------------------------
+1/1 Testing: test_truncated_failure
+1/1 Test: test_truncated_failure
+Command: "/path/to/test_truncated_failure"
+Directory: "/path/to/build"
+"test_truncated_failure" start time: Apr 16 19:00 EDT
+Output:
+----------------------------------------------------------
+[wgpu] starting up
+[wgpu] device requested
+[wgpu] preparing pipeline
+... (lots of intervening output that pushes the WebGPU error past the 1KB JUnit cap)
+... (lots of intervening output that pushes the WebGPU error past the 1KB JUnit cap)
+... (lots of intervening output that pushes the WebGPU error past the 1KB JUnit cap)
+... (lots of intervening output that pushes the WebGPU error past the 1KB JUnit cap)
+... (lots of intervening output that pushes the WebGPU error past the 1KB JUnit cap)
+[wgpu] Validation error: Bind group layout mismatch in pipeline 'noise'
+... (more output after the error)
+&lt;end of test failure&gt;
+----------------------------------------------------------
+Test time =   0.30 sec
+----------------------------------------------------------
+Test Failed.
+"test_truncated_failure" end time: Apr 16 19:00 EDT
+"test_truncated_failure" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Apr 16 19:00 EDT

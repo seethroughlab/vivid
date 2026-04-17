@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "graph": "demo",
+  "graph_path": "intro/demo.json",
+  "domains": ["audio"],
+  "test_outcome": "passed",
+  "health": {
+    "severity": "warning",
+    "findings": [],
+    "audio": {"running": true, "xruns": 0, "load": 0.1},
+    "graph": {"declared_nodes": 2, "compiled_nodes": 2,
+              "errored_nodes": 0, "missing_operators": 0,
+              "dropped_connections": 0, "audio_nodes": 1,
+              "missing_operator_types": []},
+    "gpu": {"shader_errors": 0, "device_lost": false},
+    "hot_reload": {"last_attempt_succeeded": true, "last_target": "",
+                   "last_error": "", "affects_current_graph": false},
+    "packages": {"installed": 3, "updates_available": 2, "incompatible_updates": 1}
+  }
+}

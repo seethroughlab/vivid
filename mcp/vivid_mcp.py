@@ -1119,6 +1119,18 @@ async def get_graph_errors() -> str:
 
 
 @mcp.tool()
+async def get_runtime_health() -> str:
+    """Get the runtime's health snapshot: rolled-up severity (ok/warning/error/fatal),
+    structured findings, audio engine state, graph compile state, and GPU state.
+
+    Use this for a quick "is the runtime safe to operate?" check before deeper introspection.
+    The same snapshot drives the diagnostics-panel pill in the UI, so the MCP and UI views agree.
+    Findings carry stable `code` identifiers (e.g. `missing_required_operators`,
+    `gpu_device_lost`, `recovered_from_crash`) suitable for switching on without parsing prose."""
+    return await _post("get_runtime_health")
+
+
+@mcp.tool()
 async def scaffold_operator(name: str, env: str, variant: str = "") -> str:
     """Scaffold a starter operator template. Only use after confirming via list_types that no
     existing operator (seed or installed package) achieves the goal, alone or in combination.

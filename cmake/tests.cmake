@@ -28,6 +28,8 @@ add_library(vivid_runtime_testlib STATIC
     src/runtime/core/source_index.cpp
     src/runtime/core/runtime_bootstrap.cpp
     src/runtime/core/runtime_core.cpp
+    src/runtime/core/runtime_health.cpp
+    src/runtime/core/runtime_health_samplers.cpp
     src/runtime/core/settings.cpp
     src/runtime/core/crash_recovery.cpp
     src/runtime/core/quarantine.cpp
@@ -93,6 +95,8 @@ else()
         "VIVID_DRAGONBOX_INCLUDE_DIR=\"${dragonbox_SOURCE_DIR}/include\""
         "VIVID_DRAGONBOX_LIBRARY_PATH=\"$<TARGET_FILE:dragonbox::dragonbox_to_chars>\"")
 endif()
+target_compile_definitions(vivid_runtime_testlib PRIVATE
+    "VIVID_CORE_VERSION=\"${PROJECT_VERSION}\"")
 if(APPLE AND VIVID_ENABLE_ACCELERATE)
     target_compile_definitions(vivid_runtime_testlib PUBLIC VIVID_HAS_ACCELERATE=1)
     target_link_libraries(vivid_runtime_testlib PUBLIC "-framework Accelerate")
@@ -183,3 +187,4 @@ include(cmake/tests/20-ui-and-common.cmake)
 include(cmake/tests/30-ops-stability-domains.cmake)
 include(cmake/tests/40-packages-media-misc.cmake)
 include(cmake/tests/50-assets.cmake)
+include(cmake/tests/90-production-gate.cmake)

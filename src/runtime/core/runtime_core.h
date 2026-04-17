@@ -3,12 +3,15 @@
 #include "runtime/core/safe_mode.h"
 #include "runtime/graph/compiled_graph.h"
 #include "runtime/audio/audio_frame_bridge.h"
+#include "runtime/core/hot_reload.h"
+#include "runtime/core/runtime_health_samplers.h"
 #include "runtime/graph/frame_executor.h"
 #include "runtime/graph/graph_compiler.h"
 #include "runtime/graph/subgraph_module.h"
 #include "runtime/packages/project_lockfile.h"
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -98,6 +101,29 @@ public:
     bool needs_gpu_realloc() const { return needs_gpu_realloc_; }
     void clear_gpu_realloc() { needs_gpu_realloc_ = false; }
 
+    // Operator name from the previous session's crash, set by main.cpp at
+    // startup if CrashRecoveryManager recovered a CrashRecord. Empty when no
+    // prior crash was recovered. Surfaced as a `recovered_from_crash` finding
+    // by runtime_health::collect().
+    void set_prior_crash_operator(std::string op_name) { prior_crash_operator_ = std::move(op_name); }
+    const std::string& prior_crash_operator() const { return prior_crash_operator_; }
+
+    // Most recent hot-reload outcome. Set by main_helpers' poll_hot_reload()
+    // after each ReloadResult drains from HotReloader::poll_ready(). Surfaced
+    // as `hot_reload_failed_required` (Error) or `hot_reload_failed_stale`
+    // (Warning) findings by runtime_health::collect(), depending on whether
+    // the failed target's operator type still appears in the compiled graph.
+    void set_last_reload(ReloadResult r) { last_reload_ = std::move(r); }
+    const std::optional<ReloadResult>& last_reload() const { return last_reload_; }
+
+    // Per-frame sampler for sustained silence/black detection. Call once per
+    // frame after `tick()` (so the sample reflects this frame's analysis
+    // output). `time` is caller-domain — wall-clock from main.cpp, sim time
+    // from tests; window queries on the samplers use the same domain.
+    void sample_runtime_health(double time);
+    const RuntimeHealthSamplers& health_samplers() const { return health_samplers_; }
+    RuntimeHealthSamplers& health_samplers() { return health_samplers_; }
+
     // ── Direct access to owned state ────────────────────────────────────────
 
     CompiledGraph* compiled_graph() { return compiled_graph_.get(); }
@@ -133,6 +159,9 @@ private:
     FrameExecutor frame_executor_;
 
     std::string operators_src_dir_;
+    std::string prior_crash_operator_;
+    std::optional<ReloadResult> last_reload_;
+    RuntimeHealthSamplers health_samplers_;
     SafeModeConfig safe_mode_;
     std::filesystem::path graph_base_dir_;
     const SubgraphModuleRegistry* subgraph_modules_ = nullptr;

@@ -36,6 +36,27 @@ static bool contains_any(const std::string& haystack, const std::initializer_lis
     return false;
 }
 
+// Pin the package's clang invocation to the runtime's compile-time arch.
+// Without this, clang inherits its default from the parent process: on a
+// Rosetta-translated x86_64 host process (e.g. an actions-runner binary that
+// was installed as the Intel build) it produces x86_64 dylibs that the
+// arm64 runtime then fails to dlopen with "incompatible architecture". The
+// runtime was compiled for one arch — the package must match.
+static void append_arch_args(std::vector<std::string>& argv) {
+#ifdef __APPLE__
+    argv.push_back("-arch");
+#  if defined(__arm64__) || defined(__aarch64__)
+    argv.push_back("arm64");
+#  elif defined(__x86_64__)
+    argv.push_back("x86_64");
+#  else
+    argv.pop_back();  // unknown — let clang pick its default
+#  endif
+#else
+    (void) argv;
+#endif
+}
+
 static void append_managed_highway_args(std::vector<std::string>& argv) {
 #ifdef VIVID_HAS_HIGHWAY
     const std::string include_dir = PackageCompiler::managed_highway_include_dir();
@@ -249,6 +270,7 @@ CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
         "-I", domain_include,
         "-I", operator_include,
     };
+    append_arch_args(argv);
 
     // Vendor / extra include directories (e.g. bundled third-party headers)
     for (const auto& dir : extra_include_dirs) {
@@ -418,6 +440,7 @@ TestCompileResult PackageCompiler::compile_test(const std::string& package_dir,
         "-I", vivid_src_dir_ + "/src",
         "-I", package_dir + "/operators",
     };
+    append_arch_args(test_argv);
     fs::path test_source_path(source_path);
     std::string test_source_dir = test_source_path.parent_path().string();
     if (!test_source_dir.empty()) {

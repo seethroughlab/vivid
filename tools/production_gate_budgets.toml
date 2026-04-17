@@ -1,0 +1,105 @@
+# Production-gate budgets.
+#
+# Each [[budget]] is evaluated by tools/production_gate_report.py against
+# per-graph health JSONs in build/reports/health/*.json. A breach contributes
+# to signals.budget_breaches and may flip the report's overall status:
+#   warning  -> pass becomes degraded
+#   error    -> pass/degraded becomes fail
+#   fatal    -> same as error today (reserved for runtime-can't-recover cases)
+#
+# applies_to: comma-separated list of graph domains (audio, gpu, control, av)
+#             the budget applies to, or "*" for every graph. Match is "any-of"
+#             against the graph's meta.domains array.
+#
+# To relax a budget temporarily, change severity_on_breach to "warning".
+# To disable one for an investigation, comment it out and note the date.
+
+[[budget]]
+code = "no_graph_load_failures"
+applies_to = "*"
+severity_on_breach = "error"
+description = "Graph must compile cleanly: no errored nodes, no nodes left uncompiled."
+
+[[budget]]
+code = "no_missing_core_operators"
+applies_to = "*"
+severity_on_breach = "error"
+description = "Every operator referenced by the graph must be loadable."
+
+[[budget]]
+code = "no_dropped_connections"
+applies_to = "*"
+severity_on_breach = "warning"
+description = "All declared connections must compile (no port-type mismatches)."
+
+[[budget]]
+code = "no_audio_init_failure"
+applies_to = "audio,av"
+severity_on_breach = "error"
+description = "Audio engine must be running for graphs that produce sound."
+
+[[budget]]
+code = "no_audio_underruns"
+applies_to = "audio,av"
+severity_on_breach = "warning"
+description = "Audio callbacks must keep up during the gate's tick window."
+
+[[budget]]
+code = "no_shader_errors"
+applies_to = "gpu,av"
+severity_on_breach = "warning"
+description = "GPU operators must compile their WGSL shaders cleanly."
+
+# ---------------------------------------------------------------------------
+# Phase 8a: hot-reload + package-version budgets.
+# ---------------------------------------------------------------------------
+
+[[budget]]
+code = "no_required_operator_reload_failures"
+applies_to = "*"
+severity_on_breach = "error"
+description = "Hot reload must not have failed for an operator currently in the graph."
+
+[[budget]]
+code = "no_hot_reload_failures"
+applies_to = "*"
+severity_on_breach = "warning"
+description = "Hot reload must not have failed for any operator (even stale ones)."
+
+[[budget]]
+code = "no_package_version_mismatches"
+applies_to = "*"
+severity_on_breach = "warning"
+description = "Installed packages must be compatible with the current core build."
+
+# ---------------------------------------------------------------------------
+# Phase 8b: audio clipping + MCP liveness budgets.
+# ---------------------------------------------------------------------------
+
+[[budget]]
+code = "no_audio_clipping"
+applies_to = "audio,av"
+severity_on_breach = "warning"
+description = "Audio output must not clip (peak >= 0.99) during the gate's tick window."
+
+[[budget]]
+code = "mcp_servers_connected"
+applies_to = "*"
+severity_on_breach = "warning"
+description = "MCP servers (vivid, opdev) must remain reachable when they have been seen at least once."
+
+# ---------------------------------------------------------------------------
+# Phase 8c: sustained-silence + sustained-black budgets.
+# ---------------------------------------------------------------------------
+
+[[budget]]
+code = "no_sustained_silence"
+applies_to = "audio,av"
+severity_on_breach = "warning"
+description = "Audio-producing graphs must not output sustained silence (>0.5s of <0.001 peak)."
+
+[[budget]]
+code = "no_sustained_black"
+applies_to = "gpu,av"
+severity_on_breach = "warning"
+description = "Visual-producing graphs must not output sustained black frames (>0.5s of <4 brightness)."

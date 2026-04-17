@@ -38,6 +38,7 @@ public:
     bool surface_supports_copy_src() const { return surface_copy_src_; }
     bool bc_texture_compression_enabled() const { return bc_texture_compression_enabled_; }
     bool device_lost() const { return device_lost_; }
+    const std::string& last_error() const { return last_error_; }
     uint32_t width() const { return width_; }
     uint32_t height() const { return height_; }
 

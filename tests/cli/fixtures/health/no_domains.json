@@ -1,0 +1,18 @@
+{
+  "_comment": "Graph with empty domains — only `*`-applicable budgets should fire.",
+  "schema_version": 1,
+  "graph": "untagged_demo",
+  "graph_path": "misc/untagged_demo.json",
+  "domains": [],
+  "test_outcome": "passed",
+  "health": {
+    "severity": "warning",
+    "findings": [],
+    "audio": {"running": true, "xruns": 7, "load": 0.4},
+    "graph": {"declared_nodes": 1, "compiled_nodes": 1,
+              "errored_nodes": 0, "missing_operators": 0,
+              "dropped_connections": 1, "audio_nodes": 0,
+              "missing_operator_types": []},
+    "gpu": {"shader_errors": 1, "device_lost": false}
+  }
+}

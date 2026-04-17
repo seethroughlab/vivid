@@ -1540,6 +1540,12 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
     // Phase 6a: wire PackageManager so load_graph can run verify_lockfile.
     runtime.set_package_manager(&pkg_manager);
 
+    // Wire prior-crash identity into runtime_health so the snapshot can
+    // surface "recovered_from_crash" findings.
+    if (prior_crash) {
+        runtime.set_prior_crash_operator(prior_crash->operator_name);
+    }
+
     // Phase 4: scan crash history for repeat offenders.  Used in both safe
     // and normal mode — in safe mode we merge into the disabled set; in
     // normal mode we log a warning per quarantined identity.
@@ -1644,6 +1650,7 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
     control_server.set_audio_engine(&audio_engine);
     control_server.set_asset_library(&asset_library);
     control_server.set_build_console(build_console.get());
+    control_server.set_gpu_context(&gpu);
     control_server.set_crash_recovery_manager(&crash_recovery);
     control_server.set_bundled_source_dir((resources_dir / "source").string());
     if (!control_server.start(9876)) {
@@ -2844,6 +2851,11 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
                 },
                 input_ptr);
 
+            // Phase 8c: feed the runtime-health samplers with this frame's
+            // analysis output. Must come after tick() so peak/brightness are
+            // current.
+            runtime.sample_runtime_health(now);
+
             // Clear consumed input events
             window_user_data.pending_events.clear();
 
@@ -2973,7 +2985,7 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
                     auto snapshot = build_graph_snapshot(
                         graph, runtime, has_audio ? &audio_engine : nullptr,
                         registry, op_info_cache, &system_midi, &runtime_api,
-                        &capture_coordinator, &control_server, &subgraph_modules);
+                        &capture_coordinator, &control_server, &subgraph_modules, &gpu);
 
                     if (!test_ui_script.actions.empty()) {
                         run_ui_test_script_frame(test_ui_script, graph_ui, window_user_data,

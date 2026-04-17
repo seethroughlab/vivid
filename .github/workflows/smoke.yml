@@ -21,24 +21,24 @@ jobs:
       - name: Create app bundle skeleton
         run: mkdir -p build/vivid.app/Contents/PlugIns
 
-      - name: Build smoke tests
-        run: cmake --build build --target test_demo_graphs test_operator_sweep test_ui_overlay_interactions test_ui_editor_interactions test_ui_widget_interactions test_ui_screenshot_smoke -j$(sysctl -n hw.logicalcpu)
-
-      - name: Validate semantic tags
-        run: ./scripts/validate_semantic_tags.sh
-
-      - name: Run headless smoke tests
-        run: cd build && ctest -L '^HEADLESS_SMOKE$' --output-on-failure
-
-      - name: Run deterministic UI smoke tests
-        run: cd build && ctest -L '^UI_SMOKE$' --output-on-failure
-
-      - name: Run GUI smoke tests
+      - name: Run production gate (gui profile)
         env:
           VIVID_ENABLE_UI_SCREENSHOT_SMOKE: "1"
           VIVID_UI_SMOKE_LANE: "gui_smoke"
           HOME: ${{ env.VIVID_GUI_SMOKE_HOME }}
-        run: cd build && ctest -L '^GUI_SMOKE$' --output-on-failure
+        run: cmake --build build --target production_gate_gui -j$(sysctl -n hw.logicalcpu)
+
+      - name: Upload production gate reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-gate-reports-smoke-${{ github.sha }}
+          path: |
+            build/reports/ctest-*.xml
+            build/reports/production-gate.json
+            build/reports/health/*.json
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Upload GUI smoke artifacts on failure
         if: failure()

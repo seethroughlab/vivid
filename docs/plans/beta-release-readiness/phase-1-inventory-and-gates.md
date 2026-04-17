@@ -10,8 +10,12 @@ Create the release-hardening control surface for the beta: an authoritative inve
 - Reference examples: `reference_graphs/**/*.json`
 - Fixture graphs: `tests/graphs/listening/**/*.json`, `tests/graphs/parity/**/*.json`
 - Runtime/operator registry output, such as `./build/vivid list-types` or MCP `list_types`
-- Existing release/testing docs in `docs/testing/`
+- Existing release/testing docs in `docs/testing/` — in particular `docs/testing/production-gate.md`
 - Existing beginner-facing docs and graph metadata
+
+## Canonical automated baseline
+
+The automated portion of the readiness review runs through the **production gate** (`cmake --build build --target production_gate_*`). The gate emits `build/reports/production-gate.json` with a stable `status` (pass/degraded/fail), classified test failures, and runtime-health budget breaches. See `docs/testing/production-gate.md` for profile semantics and how to interpret the report. Cite the JSON path + commit in the readiness checklist's Evidence column rather than enumerating individual ctest commands.
 
 ## Steps
 

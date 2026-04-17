@@ -28,8 +28,8 @@ jobs:
       - name: Create app bundle skeleton
         run: mkdir -p build/vivid.app/Contents/PlugIns
 
-      - name: Build GUI env smoke tests
-        run: cmake --build build --target test_ui_screenshot_smoke -j$(sysctl -n hw.logicalcpu)
+      - name: Build vivid binary (needed for package verify step)
+        run: cmake --build build --target vivid -j$(sysctl -n hw.logicalcpu)
 
       - name: Configure vivid-wavetable package
         run: >
@@ -51,7 +51,7 @@ jobs:
           VIVID_PACKAGE_PATHS: ${{ env.VIVID_GUI_ENV_PACKAGE_ROOT }}
         run: ./build/vivid list-packages | grep '^vivid-wavetable '
 
-      - name: Run GUI env smoke tests
+      - name: Run production gate (env profile)
         env:
           VIVID_ENABLE_UI_SCREENSHOT_SMOKE: "1"
           VIVID_ENABLE_GUI_ENV_SMOKE: "1"
@@ -59,7 +59,19 @@ jobs:
           VIVID_GUI_ENV_PACKAGE_ROOT: "${{ env.VIVID_GUI_ENV_PACKAGE_ROOT }}/vivid-wavetable"
           VIVID_PACKAGE_PATHS: ${{ env.VIVID_GUI_ENV_PACKAGE_ROOT }}
           HOME: ${{ env.VIVID_GUI_ENV_HOME }}
-        run: cd build && ctest -L '^GUI_ENV$' --output-on-failure
+        run: cmake --build build --target production_gate_env -j$(sysctl -n hw.logicalcpu)
+
+      - name: Upload production gate reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-gate-reports-env-${{ github.sha }}
+          path: |
+            build/reports/ctest-*.xml
+            build/reports/production-gate.json
+            build/reports/health/*.json
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Upload GUI env artifacts on failure
         if: failure()

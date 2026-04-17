@@ -1,4 +1,5 @@
 #include "ui/graph/node_graph.h"
+#include "ui/graph/health_color.h"
 #include "ui/graph/node_graph_constants.h"
 #include "ui/graph/node_graph_util.h"
 #include "ui/rendering/renderer_2d.h"
@@ -8,14 +9,21 @@
 #include "common/system_info.h"
 #include "common/string_util.h"
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <string>
 
 namespace vivid::ui {
 
-static constexpr uint64_t kMcpStaleMs = 30000;
+// Use the shared MCP staleness threshold so the panel agrees with
+// runtime_health::collect().
+using vivid::runtime_health::kMcpStaleMs;
 
 using vivid::format_float;
+
+// `health_color()` and `HealthRgb` live in src/ui/graph/health_color.h so the
+// same color mapping is testable without a Renderer2D / GPU context.
 
 // -----------------------------------------------------------------------
 // Overlays — rendered in a separate pass after GPU thumbnails so that
@@ -416,10 +424,13 @@ void NodeGraphUI::draw_workspace_header(Renderer2D& tr) {
     const bool opdev_connected = (snap_.mcp_opdev_last_ping_ms > 0 &&
                                   now_ms - snap_.mcp_opdev_last_ping_ms < kMcpStaleMs);
 
-    float diag_r = 0.30f, diag_g = 0.85f, diag_b = 0.40f;
-    if (snap_.audio_underrun_active || snap_.audio_underrun_count > 0) {
-        diag_r = 0.95f; diag_g = 0.35f; diag_b = 0.30f;
-    } else if (!main_connected || !opdev_connected) {
+    auto diag_rgb = health_color(snap_.runtime_health.overall);
+    float diag_r = diag_rgb.r, diag_g = diag_rgb.g, diag_b = diag_rgb.b;
+    // MCP disconnect surfaces as amber when health is otherwise OK — preserves
+    // the existing not-fully-connected indicator that runtime_health doesn't
+    // model directly.
+    if (snap_.runtime_health.overall == vivid::runtime_health::Severity::Ok &&
+        (!main_connected || !opdev_connected)) {
         diag_r = 0.95f; diag_g = 0.82f; diag_b = 0.30f;
     }
 
@@ -739,19 +750,56 @@ void NodeGraphUI::draw_diagnostics_panel(Renderer2D& tr) {
                                  now_ms - snap_.mcp_main_last_ping_ms < kMcpStaleMs);
     const bool opdev_connected = (snap_.mcp_opdev_last_ping_ms > 0 &&
                                   now_ms - snap_.mcp_opdev_last_ping_ms < kMcpStaleMs);
-    const char* status_label = (snap_.audio_underrun_active || snap_.audio_underrun_count > 0)
-        ? T("attention", "Attention")
-        : ((main_connected && opdev_connected) ? T("stable", "Stable") : T("partial", "Partial"));
+
+    // MCP-only state on the right side. Audio/graph/GPU health is owned by
+    // the left-side runtime_health pill (below); this indicator is just for
+    // MCP server reachability so the two channels are obviously distinct.
+    const char* mcp_label;
     float sr = 0.30f, sg = 0.85f, sb = 0.40f;
-    if (snap_.audio_underrun_active || snap_.audio_underrun_count > 0) {
-        sr = 0.95f; sg = 0.35f; sb = 0.30f;
-    } else if (!main_connected || !opdev_connected) {
+    if (main_connected && opdev_connected) {
+        mcp_label = T("mcp_ready", "MCP ready");
+    } else if (main_connected || opdev_connected) {
+        mcp_label = T("mcp_partial", "MCP partial");
         sr = 0.95f; sg = 0.82f; sb = 0.30f;
+    } else {
+        mcp_label = T("mcp_offline", "MCP offline");
+        sr = 0.55f; sg = 0.55f; sb = 0.58f;
     }
-    float status_w = tr.text_width(status_label);
+    float status_w = tr.text_width(mcp_label);
     tr.draw_rounded_rect(ex + panel_w - pad - status_w - 10.0f, header_y + 4.0f,
                          6.0f, 6.0f, 2.0f, sr, sg, sb, 0.95f);
-    tr.draw_text(ex + panel_w - pad - status_w, header_y, status_label, sr, sg, sb);
+    tr.draw_text(ex + panel_w - pad - status_w, header_y, mcp_label, sr, sg, sb);
+
+    // Health severity pill (left side, after the "Diagnostics" title). Reads
+    // from the per-frame runtime_health summary populated by GraphSnapshotBuilder.
+    {
+        const char* hlabel = vivid::runtime_health::severity_name(
+            snap_.runtime_health.overall);
+        // Uppercase for the pill — small visual distinction from the text status.
+        std::string hlabel_upper(hlabel);
+        for (auto& c : hlabel_upper) c = static_cast<char>(std::toupper(c));
+        auto hrgb = health_color(snap_.runtime_health.overall);
+        const char* title = T("diagnostics", "Diagnostics");
+        float title_w = tr.text_width(title);
+        float pill_pad_x = 8.0f;
+        float pill_h = line_h + 2.0f;
+        float pill_w = tr.text_width(hlabel_upper.c_str()) + pill_pad_x * 2.0f;
+        float pill_x = ex + pad + title_w + 10.0f;
+        float pill_y = header_y - 1.0f;
+        tr.draw_rounded_rect(pill_x, pill_y, pill_w, pill_h, 4.0f,
+                             hrgb.r, hrgb.g, hrgb.b, 0.22f);
+        tr.draw_text(pill_x + pill_pad_x,
+                     pill_y + (pill_h - tr.line_height()) * 0.5f,
+                     hlabel_upper.c_str(), hrgb.r, hrgb.g, hrgb.b);
+        if (snap_.runtime_health.finding_count > 0) {
+            std::string fcount = std::to_string(snap_.runtime_health.finding_count)
+                + (snap_.runtime_health.finding_count == 1
+                       ? std::string(" finding")
+                       : std::string(" findings"));
+            tr.draw_text(pill_x + pill_w + 6.0f, header_y, fcount.c_str(),
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        }
+    }
 
     float content_y = header_y + line_h + 8.0f;
     float col_w = (panel_w - pad * 2.0f - col_gap) * 0.5f;
