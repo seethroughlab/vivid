@@ -111,6 +111,51 @@ const VividOperatorDescriptor* node_descriptor(const CompiledNode& cn) {
     return cn.loader ? cn.loader->descriptor() : nullptr;
 }
 
+// Infer a bridge kind string for a cross-cadence connection. Returns "" for
+// same-cadence edges (no bridge needed) or when descriptors are unavailable.
+// Rules:
+//   audio → frame: "rms"/"peak"/"waveform" if the source port name matches
+//                  (audio analysis ports from append_analysis_ports),
+//                  "waveform" for any other lane-array source,
+//                  "last_sample" for plain scalar audio outputs.
+//   frame → audio: "snapshot" for lane-array sources, "hold" for scalars.
+std::string infer_bridge_kind(const vivid::Graph& graph,
+                              vivid::OperatorRegistry& registry,
+                              const std::string& from_node,
+                              const std::string& from_port,
+                              const std::string& to_node) {
+    const NodeDef* from_def = graph.find_node(from_node);
+    const NodeDef* to_def   = graph.find_node(to_node);
+    if (!from_def || !to_def) return "";
+
+    const VividOperatorDescriptor* from_desc = registry.probe_descriptor(from_def->type);
+    const VividOperatorDescriptor* to_desc   = registry.probe_descriptor(to_def->type);
+    if (!from_desc || !to_desc) return "";
+
+    bool from_is_audio = (vivid_operator_kind(from_desc) == VIVID_OP_AUDIO);
+    bool to_is_audio   = (vivid_operator_kind(to_desc)   == VIVID_OP_AUDIO);
+    if (from_is_audio == to_is_audio) return "";
+
+    const VividPortDescriptor* src_port = nullptr;
+    for (uint32_t i = 0; i < from_desc->port_count; ++i) {
+        const auto& pd = from_desc->ports[i];
+        if (pd.direction != VIVID_PORT_OUTPUT) continue;
+        if (pd.name && from_port == pd.name) { src_port = &pd; break; }
+    }
+    if (!src_port) return "";
+
+    if (from_is_audio) {
+        std::string name = src_port->name ? src_port->name : "";
+        if (name == "rms")      return "rms";
+        if (name == "peak")     return "peak";
+        if (name == "waveform") return "waveform";
+        if (src_port->type == VIVID_PORT_LANE_ARRAY) return "waveform";
+        return "last_sample";
+    }
+    if (src_port->type == VIVID_PORT_LANE_ARRAY) return "snapshot";
+    return "hold";
+}
+
 std::string node_display_name(const CompiledNode& cn,
                               const VividOperatorDescriptor* desc) {
     if (desc && desc->name && desc->name[0] != '\0') return desc->name;
@@ -449,8 +494,14 @@ CommandResult RuntimeAPI::connect(const std::string& from_addr, const std::strin
         return {false, "connection already exists"};
     }
 
-    if (!bridge.empty()) {
-        graph_.set_connection_bridge(fn, fp, tn, tp, bridge);
+    std::string chosen_bridge = bridge;
+    bool inferred_bridge = false;
+    if (chosen_bridge.empty()) {
+        chosen_bridge = infer_bridge_kind(graph_, registry_, fn, fp, tn);
+        inferred_bridge = !chosen_bridge.empty();
+    }
+    if (!chosen_bridge.empty()) {
+        graph_.set_connection_bridge(fn, fp, tn, tp, chosen_bridge);
     }
 
     bool applied_semantic_remap = false;
@@ -473,6 +524,8 @@ CommandResult RuntimeAPI::connect(const std::string& from_addr, const std::strin
     pending_topology_change_ = true;
     mark_graph_dirty();
     std::string msg = "connected " + from_addr + " -> " + to_addr;
+    if (inferred_bridge)
+        msg += " (bridge: " + chosen_bridge + ")";
     if (applied_semantic_remap)
         msg += " (semantic default remap applied)";
     return {true, msg};

@@ -81,6 +81,20 @@ target_link_libraries(test_runtime_api PRIVATE vivid_runtime_testlib vivid_opera
 add_dependencies(test_runtime_api test_op_v1 test_state_carry_op)
 add_test(NAME test_runtime_api COMMAND test_runtime_api WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Cross-cadence bridge auto-inference in RuntimeAPI::connect
+add_executable(test_connect_bridge_inference
+    tests/control/test_connect_bridge_inference.cpp
+)
+target_include_directories(test_connect_bridge_inference PRIVATE src tests)
+target_link_libraries(test_connect_bridge_inference PRIVATE
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
+add_dependencies(test_connect_bridge_inference
+    test_op_v1 control_pass_op audio_test_op identity_lane_source_op)
+add_test(NAME test_connect_bridge_inference
+    COMMAND test_connect_bridge_inference ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_connect_bridge_inference PROPERTIES TIMEOUT 15)
+
 # Latency validation test (PRD responsiveness claims)
 add_executable(test_latency_validation
     tests/lanes/test_latency_validation.cpp
