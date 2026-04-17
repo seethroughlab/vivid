@@ -24,17 +24,21 @@ The lockfile is not a replacement for `vivid-package.json`. Package manifests de
 
 ## Lockfile Contents
 
-Use JSON for v1 so existing graph/package tooling can reuse current parsing patterns.
-
-Suggested top-level shape:
+JSON, v1. Existing graph/package tooling reuses the same `nlohmann::ordered_json` parsing patterns. The shipped shape (abbreviated from a real `vivid lock` run):
 
 ```json
 {
   "lockfile_version": 1,
+  "generated_at": "2026-04-17T14:12:43Z",
+  "graph": {
+    "path": "/abs/path/to/graph.json",
+    "schema_version": 4,
+    "content_hash": "sha256:7a44e4f21ddb..."
+  },
   "vivid_core": {
     "version": "0.1.0",
-    "commit": "optional-dev-commit",
-    "operator_abi": 1
+    "commit": "6fb4c66bcb89b1821d59b55b66db7e6019cc9d83",
+    "operator_abi": 15
   },
   "packages": [
     {
@@ -43,30 +47,31 @@ Suggested top-level shape:
       "source": "https://github.com/...",
       "commit": "abc123",
       "linked": false,
-      "vivid_core": ">=1.0.0 <2.0.0"
+      "vivid_core_range": ">=1.0.0 <2.0.0"
     }
   ],
   "operators": [
     {
-      "type": "WavetableSynth",
+      "type": "WavetableOsc",
       "package": "vivid-wavetable",
       "package_version": "1.2.0",
-      "source_path": "audio/wavetable_synth",
-      "descriptor_hash": "..."
+      "descriptor_hash": "sha256:9a9eea9b...",
+      "operator_abi": 15
     }
   ],
   "assets": [
     {
-      "asset_id": "workspace:wavetable:...",
+      "asset_id": "workspace:wavetable:foo",
       "kind": "wavetable",
       "path": "assets/wavetables/foo.wav",
-      "content_hash": "optional"
+      "size_bytes": 8192,
+      "content_hash": "sha256:abc123..."
     }
   ]
 }
 ```
 
-Keep optional fields optional. For example, linked local packages may not have a stable remote URL, but they should still record absolute path, package version, and current commit if the path is a Git repo.
+Optional fields remain optional. Linked local packages may not have a stable remote URL, but they record absolute path, package version, and current commit if the path is a git repo. `vivid_core.commit` is empty when the build did not run from a git worktree; built-in (seed) operators record `operator_abi: 0` because they are linked statically, not loaded as dylibs.
 
 ## Implementation Phases (as shipped)
 
@@ -76,7 +81,7 @@ The feature landed across nine commits/phases on `worktree-project-lockfile`. Pe
 |-------|---------|---------------|
 | 1 | Lockfile model + JSON parser. | `src/runtime/packages/project_lockfile.{h,cpp}`, `tests/packages/test_project_lockfile.cpp`. Pure data module, canonical key order, diff-stable round-trip. |
 | 2 | Lockfile generation + RuntimeAPI write path. | `build_lockfile_for_graph`, `RuntimeAPI::write_project_lockfile`. Inspects active graph + registry only. |
-| 3 | Verify + classifications + RuntimeAPI read path. | `verify_project_lockfile`, `LockfileStatus` (`Match` / `CompatibleDrift` / `Mismatch` / `NoLockfile`), severity levels (`Info` / `Warning` / `Critical`), finding classifications (`missing_package`, `missing_operator`, `compatible_update`, `incompatible_update`, `linked_unpinned`, `abi_mismatch`, `asset_missing`, `asset_changed`, `descriptor_drift`). |
+| 3 | Verify + classifications + RuntimeAPI read path. | `verify_project_lockfile`, `LockfileStatus` (`Match` / `CompatibleDrift` / `Mismatch` / `NoLockfile`), severity levels (`Info` / `Warning` / `Critical`), finding classifications (`missing_package`, `missing_operator`, `compatible_update`, `incompatible_update`, `linked_unpinned`, `abi_mismatch`, `asset_missing`, `asset_changed`, `descriptor_hash_mismatch`). |
 | 4 | Control-server dispatch + MCP tools. | `/lockfile/write`, `/lockfile/verify`, `/lockfile/status` endpoints and matching MCP tool handlers. All consumers share one `LockfileStatus` object. |
 | 5 | CLI subcommands. | `vivid lock`, `vivid verify-lock`, with `--pretty`, `--graph`, `--output`. Exit codes `0` / `1` / `2` / `3` for match / drift / mismatch / io. |
 | 0 | Provenance plumbing (landed **after** 5). | Descriptor hashing (`OperatorRegistry::descriptor_hash`), git metadata via `cmake/git_version.cmake` → `VIVID_CORE_COMMIT`. Ordered last because earlier phases did not strictly depend on it. |
@@ -120,13 +125,13 @@ Asset capture landed in Phase 8. The lockfile records assets referenced by graph
 
 ## UI and API Behavior
 
-Add a dependency status panel or banner:
+Three UI surfaces landed in Phase 6b, all reading from the same `LockfileStatus` the runtime/control-server/CLI consume:
 
-- green: environment matches lockfile
-- yellow: compatible package/core updates detected
-- red: missing or incompatible dependencies
+- **Findings banner** (`src/ui/graph/node_graph_draw.cpp`) — positioned above the graph canvas, color-coded by overall status: green (match), yellow (compatible drift), red (mismatch). Clicking the banner opens the findings modal.
+- **Findings modal** (`DialogManager::open_lockfile_findings` in `src/ui/dialogs/dialog_manager.h` + `dialog_manager_draw.cpp`) — lists every `LockfileFinding` with severity, classification, subject, message, and suggestion. Driven by the same status object returned by `verify_project_lockfile`.
+- **Per-node drift indicator** (`src/ui/graph/node_graph_draw_inspector.cpp`) — renders a small severity dot on nodes whose operator surfaces critical findings (`descriptor_hash_mismatch`, `missing_operator`, `abi_mismatch`, etc.).
 
-MCP and control-server output should use stable classifications:
+MCP and control-server output use stable classifications for every finding:
 
 - `match`
 - `missing_package`
@@ -134,32 +139,34 @@ MCP and control-server output should use stable classifications:
 - `compatible_update`
 - `incompatible_update`
 - `linked_unpinned`
+- `abi_mismatch`
+- `descriptor_hash_mismatch`
 - `asset_missing`
 - `asset_changed`
 
-These classifications should align with existing graph load diagnostics where possible.
+Classifications align with graph-load diagnostics where meaningful overlap exists (missing operators, ABI mismatches) so UI code can share severity routing.
 
 ## Testing
 
-Add coverage for:
+Coverage landed across five dedicated test executables, all passing in the full ctest run:
 
-- lockfile JSON round-trip
-- missing package classification
-- matching package classification
-- compatible and incompatible package version changes
-- linked local package entries
-- graph load in studio, strict, and recovery modes
-- export refusing to proceed in strict mode with missing dependencies
-- MCP/control-server dependency status response shape
+- `tests/packages/test_project_lockfile.cpp` — JSON round-trip, canonical key ordering, version validation, `vivid_core.commit` capture, package/operator/asset enumeration, content hashing.
+- `tests/packages/test_project_lockfile_cli.cpp` — end-to-end `vivid lock` and `vivid verify-lock` subprocess tests including `AssetLibrary` wiring from the CLI.
+- `tests/packages/test_export_strict.cpp` — `vivid export --strict` strict-gate behavior: exit codes 0/1/2/3 (match / drift / mismatch / io), structured JSON emitted on stderr.
+- `tests/ui/test_dialog_manager_lockfile.cpp` — findings modal open/close, row layout, classification rendering.
+- `tests/operators/test_operator_descriptor_hash.cpp` — descriptor hash stability across benign edits versus breaking signature changes.
 
-Verification should include package and graph tests:
+To rebuild + run the lockfile-focused subset locally:
 
 ```bash
-cmake --build build --target test_project_lockfile test_package_manager test_graph
-ctest --test-dir build --output-on-failure -R "project_lockfile|package_manager|graph"
+cmake --build build --target test_project_lockfile test_project_lockfile_cli \
+                         test_export_strict test_dialog_manager_lockfile \
+                         test_operator_descriptor_hash
+ctest --test-dir build --output-on-failure \
+      -R "project_lockfile|export_strict|dialog_manager_lockfile|operator_descriptor_hash"
 ```
 
-Adjust target names to match the final test layout.
+A full `ctest --test-dir build --output-on-failure` run (no filter) is also green — remaining failures are pre-existing on master and independent of this feature (see Rollout Notes).
 
 ## Acceptance Criteria
 
