@@ -419,6 +419,18 @@ int main(int argc, char* argv[]) {
         vivid::OperatorRegistry registry;
         vivid::PackageCompiler compiler(runtime_paths.source_dir, runtime_paths.build_dir);
         vivid::PackageManager pm(compiler, registry);
+        // AssetLibrary must be wired before bootstrap so scan_installed()
+        // can populate package-scoped asset entries. Setting it only when
+        // --strict is active keeps non-strict exports lean.
+        vivid::AssetLibrary asset_library;
+        if (export_strict) {
+            std::filesystem::path workspace_root = settings.workspace_root.empty()
+                ? vivid::default_workspace_root()
+                : std::filesystem::path(settings.workspace_root);
+            asset_library.set_workspace_root(workspace_root);
+            asset_library.discover_workspace_assets(workspace_root);
+            pm.set_asset_library(&asset_library);
+        }
         vivid::RegistryBootstrapOptions bootstrap_opts;
         bootstrap_opts.scan_packages = export_strict;
         vivid::bootstrap_operator_registry(registry,
@@ -483,6 +495,17 @@ int main(int argc, char* argv[]) {
         vivid::OperatorRegistry registry;
         vivid::PackageCompiler compiler(runtime_paths.source_dir, runtime_paths.build_dir);
         vivid::PackageManager pm(compiler, registry);
+        // Wire AssetLibrary before bootstrap so workspace + package assets
+        // get enumerated into the lockfile (Phase 8 CLI support).
+        vivid::AssetLibrary asset_library;
+        {
+            std::filesystem::path workspace_root = settings.workspace_root.empty()
+                ? vivid::default_workspace_root()
+                : std::filesystem::path(settings.workspace_root);
+            asset_library.set_workspace_root(workspace_root);
+            asset_library.discover_workspace_assets(workspace_root);
+            pm.set_asset_library(&asset_library);
+        }
         vivid::SubgraphModuleRegistry subgraph_modules;
         vivid::RegistryBootstrapOptions bootstrap_opts;
         bootstrap_opts.scan_packages     = true;
