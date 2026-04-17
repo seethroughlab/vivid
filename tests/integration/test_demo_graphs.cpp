@@ -28,6 +28,7 @@
 #include <unistd.h>
 #include <spawn.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/wait.h>
 #include <thread>
 #ifdef __APPLE__
@@ -805,28 +806,56 @@ int main(int argc, char* argv[]) {
 
     try_spawn_next();
     while (!running.empty()) {
-        // Opportunistically drain in-flight pipes so children's stderr
-        // doesn't fill the pipe buffer (default ~16KB on macOS) and block.
+        // Wait until at least one running child has stderr to drain OR
+        // the timeout elapses. The timeout bounds the worst-case latency
+        // for noticing a silent child that exited without writing.
+        //
+        // The previous implementation drained pipes once and then called
+        // waitpid(-1, ..., 0) (blocking). With multiple noisy children
+        // that filled their ~16KB pipe buffers between the drain and the
+        // waitpid call, all parties deadlocked: children blocked in
+        // write(), parent blocked in waitpid().
+        std::vector<pollfd> pfds;
+        pfds.reserve(running.size());
+        for (size_t idx : running) {
+            if (jobs[idx].read_fd >= 0) {
+                pfds.push_back({jobs[idx].read_fd, POLLIN, 0});
+            }
+        }
+        if (!pfds.empty()) {
+            int pr = ::poll(pfds.data(), static_cast<nfds_t>(pfds.size()),
+                            /*timeout_ms=*/100);
+            if (pr < 0 && errno != EINTR) break;
+        }
+
+        // Drain every running pipe — cheap, idempotent on EAGAIN, and
+        // catches data that arrived between poll's return and now.
         for (size_t idx : running) drain_pipe_nonblocking(jobs[idx]);
 
-        int status = 0;
-        pid_t finished = ::waitpid(-1, &status, 0);
-        if (finished < 0) {
-            if (errno == EINTR) continue;
-            break;
+        // Harvest any exited children non-blockingly. Loop because more
+        // than one may have exited between iterations.
+        while (!running.empty()) {
+            int status = 0;
+            pid_t finished = ::waitpid(-1, &status, WNOHANG);
+            if (finished == 0) break;             // none exited yet
+            if (finished < 0) {
+                if (errno == EINTR) continue;
+                break;                            // ECHILD or fatal
+            }
+            auto it = std::find_if(running.begin(), running.end(),
+                [&](size_t idx) { return jobs[idx].pid == finished; });
+            if (it == running.end()) continue;
+            size_t idx = *it;
+            Job& j = jobs[idx];
+            // Final drain after exit so we capture everything written
+            // before the child closed its stderr.
+            drain_pipe_nonblocking(j);
+            ::close(j.read_fd);
+            j.read_fd = -1;
+            j.exit_status = status;
+            j.completed = true;
+            running.erase(it);
         }
-        auto it = std::find_if(running.begin(), running.end(),
-            [&](size_t idx) { return jobs[idx].pid == finished; });
-        if (it == running.end()) continue;
-        size_t idx = *it;
-        Job& j = jobs[idx];
-        // Final drain after exit so we capture everything written before close.
-        drain_pipe_nonblocking(j);
-        ::close(j.read_fd);
-        j.read_fd = -1;
-        j.exit_status = status;
-        j.completed = true;
-        running.erase(it);
 
         print_completed_in_order();
         try_spawn_next();
