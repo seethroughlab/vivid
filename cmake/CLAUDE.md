@@ -17,6 +17,9 @@ CMake modules that define the application target, operator plugin compilation, t
 | `tests/30-ops-stability-domains.cmake` | Test partition: operator stability across cadences |
 | `tests/40-packages-media-misc.cmake` | Test partition: packages, export, assets |
 | `tests/50-assets.cmake` | Test partition: asset discovery and metadata |
+| `tests/90-production-gate.cmake` | Tiered `production_gate*` targets (core/gui/env/soak) wrapping the release-critical labels; chains `tools/production_gate_report.py` to emit `build/reports/production-gate.json` |
+
+The production-gate self-test (`test_production_gate_report`) runs the report tool's pytest suite via `uv` — install with `brew install uv` if missing locally; CI already has it.
 
 ## How It's Organized
 

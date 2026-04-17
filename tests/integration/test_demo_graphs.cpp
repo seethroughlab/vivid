@@ -3,6 +3,7 @@
 #include "runtime/packages/package_manager.h"
 #include "runtime/graph/graph.h"
 #include "runtime/core/runtime_core.h"
+#include "runtime/core/runtime_health.h"
 #include "runtime/audio/audio_engine.h"
 #include "runtime/operators/builtin_operators.h"
 #include "runtime/audio/audio_frame_bridge.h"
@@ -26,7 +27,9 @@
 #include <signal.h>
 #include <unistd.h>
 #include <spawn.h>
+#include <fcntl.h>
 #include <sys/wait.h>
+#include <thread>
 #ifdef __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
 #endif
@@ -275,7 +278,90 @@ static bool fail_if_required_package_placeholders(vivid::RuntimeCore& runtime,
 //   2 = skip (needs GPU, external I/O, etc.)
 // ============================================================================
 
-static int run_single_graph(const char* exe_path, const char* graph_path) {
+// Compute the per-graph health JSON filename from the graph's path relative
+// to the graphs root, with directory separators flattened to underscores.
+// `intro/showcase_demo.json` → `intro_showcase_demo.json`. Eliminates collisions
+// when two graphs share a basename across directories.
+static std::string flat_filename_for_graph(const std::filesystem::path& graph_path,
+                                           const std::filesystem::path& graphs_root) {
+    std::error_code ec;
+    auto abs_graph = std::filesystem::absolute(graph_path, ec);
+    auto abs_root  = std::filesystem::absolute(graphs_root, ec);
+    auto rel = std::filesystem::relative(abs_graph, abs_root, ec);
+    std::string flat = (ec || rel.empty()) ? graph_path.filename().string() : rel.string();
+    std::replace(flat.begin(), flat.end(), '/', '_');
+    return flat;
+}
+
+// Write a per-graph health JSON dump under <health_dir>/<rel_path_flattened>.
+// Consumed by tools/production_gate_report.py budget evaluation. Failures here
+// are non-fatal — we do not want a disk error to mask the test result.
+static void write_health_dump(const vivid::Graph& graph,
+                              const vivid::RuntimeCore* runtime,
+                              vivid::OperatorRegistry& registry,
+                              vivid::AudioEngine* audio,
+                              const char* graph_path,
+                              const std::filesystem::path& graphs_root,
+                              const std::filesystem::path& health_dir,
+                              const char* test_outcome) {
+    std::error_code ec;
+    std::filesystem::create_directories(health_dir, ec);
+    if (ec) return;
+
+    nlohmann::json doc = nlohmann::json::object();
+    doc["schema_version"] = 1;
+    std::filesystem::path gp(graph_path);
+    doc["graph"] = gp.stem().string();
+    doc["graph_path"] = graph_path;
+    doc["domains"] = graph.meta().domains;
+    doc["test_outcome"] = test_outcome;
+
+    if (runtime) {
+        auto snapshot = vivid::runtime_health::collect(graph, *runtime, registry, audio,
+                                                      /*gpu_context=*/nullptr);
+        doc["health"] = vivid::runtime_health::to_json(snapshot);
+    } else {
+        // Build failed before runtime exists; emit a minimal stub so the
+        // budget evaluator can still see the graph.
+        nlohmann::json health = nlohmann::json::object();
+        nlohmann::json graph_blk = nlohmann::json::object();
+        graph_blk["declared_nodes"] = static_cast<int64_t>(graph.nodes().size());
+        graph_blk["declared_connections"] = static_cast<int64_t>(graph.connections().size());
+        graph_blk["compiled_nodes"] = 0;
+        graph_blk["errored_nodes"] = 0;
+        graph_blk["missing_operators"] = 0;
+        graph_blk["dropped_connections"] = 0;
+        graph_blk["audio_nodes"] = 0;
+        health["graph"] = std::move(graph_blk);
+        health["audio"] = nlohmann::json::object();
+        health["gpu"] = nlohmann::json::object();
+        health["severity"] = "error";
+        health["findings"] = nlohmann::json::array({{
+            {"code", "graph_load_failed"},
+            {"severity", "error"},
+            {"subject", ""},
+            {"message", "RuntimeCore::build() failed for this graph."},
+        }});
+        doc["health"] = std::move(health);
+    }
+
+    auto out_path = health_dir / flat_filename_for_graph(gp, graphs_root);
+    std::ofstream out(out_path);
+    if (out) {
+        out << doc.dump(2) << "\n";
+        std::fprintf(stderr, "[health] wrote %s\n", out_path.string().c_str());
+    }
+}
+
+// Default health-dump directory: sibling of the graphs root, under reports/health.
+// Resolves to `<build>/reports/health` when the gate runs `test_demo_graphs <build>/graphs`.
+static std::filesystem::path default_health_dir(const std::filesystem::path& graphs_root) {
+    return std::filesystem::absolute(graphs_root) / ".." / "reports" / "health";
+}
+
+static int run_single_graph(const char* exe_path, const char* graph_path,
+                            const std::filesystem::path& graphs_root,
+                            const std::filesystem::path& health_dir) {
     // Catch fatal signals gracefully
     signal(SIGABRT, [](int) { _exit(2); });
     signal(SIGSEGV, [](int) { _exit(2); });
@@ -334,12 +420,14 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
         std::fprintf(stderr, "runtime.build() failed\n");
         if (!required_packages.empty())
             print_package_discovery_report(bootstrap.package_discovery, required_packages);
+        write_health_dump(graph, nullptr, registry, nullptr, graph_path, graphs_root, health_dir, "failed");
         return 1;
     }
     // Initialize metronome so transport-synced operators produce output
     runtime.reset_live_metronome(graph.metronome(), 0.0);
     if (fail_if_required_package_placeholders(runtime, registry, graph,
                                               bootstrap.package_discovery, required_packages)) {
+        write_health_dump(graph, &runtime, registry, nullptr, graph_path, graphs_root, health_dir, "failed");
         runtime.shutdown();
         gpu.shutdown();
         return 1;
@@ -352,6 +440,7 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
             std::fprintf(stderr, "dropped connection: %s/%s → %s/%s (%s)\n",
                          dc.from_node.c_str(), dc.from_port.c_str(),
                          dc.to_node.c_str(), dc.to_port.c_str(), dc.reason.c_str());
+            write_health_dump(graph, &runtime, registry, nullptr, graph_path, graphs_root, health_dir, "failed");
             runtime.shutdown(); gpu.shutdown();
             return 1;
         }
@@ -360,12 +449,14 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
                 std::fprintf(stderr, "missing operator: node='%s' type='%s' reason='%s' detail='%s'\n",
                              node.node_id.c_str(), node.type_name.c_str(),
                              node.missing_operator_reason.c_str(), node.missing_operator_detail.c_str());
+                write_health_dump(graph, &runtime, registry, nullptr, graph_path, graphs_root, health_dir, "failed");
                 runtime.shutdown(); gpu.shutdown();
                 return 1;
             }
             if (node.errored) {
                 std::fprintf(stderr, "node error: node='%s' type='%s': %s\n",
                              node.node_id.c_str(), node.type_name.c_str(), node.error_message.c_str());
+                write_health_dump(graph, &runtime, registry, nullptr, graph_path, graphs_root, health_dir, "failed");
                 runtime.shutdown(); gpu.shutdown();
                 return 1;
             }
@@ -377,6 +468,7 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
 
     if (use_gpu && !have_gpu) {
         std::fprintf(stderr, "needs GPU\n");
+        write_health_dump(graph, &runtime, registry, nullptr, graph_path, graphs_root, health_dir, "skipped");
         runtime.shutdown();
         return 2;
     }
@@ -411,6 +503,8 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
             runtime.audio_frame_bridge().push_to_audio(*runtime.compiled_graph());
             audio->process_audio_for_test(audio_buf.data(), audio_frames);
         }
+        // Phase 8c: feed runtime-health samplers with this frame's analysis.
+        runtime.sample_runtime_health(time);
 #ifdef __APPLE__
         CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.005, false);
 #endif
@@ -481,6 +575,9 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
         result = 1;
     }
 
+    const char* outcome = (result == 0) ? "passed" : (result == 2) ? "skipped" : "failed";
+    write_health_dump(graph, &runtime, registry, audio, graph_path, graphs_root, health_dir, outcome);
+
     if (audio) { audio->shutdown(); delete audio; }
     runtime.shutdown();
     gpu.shutdown();
@@ -494,25 +591,53 @@ static int run_single_graph(const char* exe_path, const char* graph_path) {
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        std::fprintf(stderr, "Usage: test_demo_graphs <build_dir> [graph-filter] [--single <path>]\n");
+        std::fprintf(stderr, "Usage: test_demo_graphs <graphs_dir> [graph-filter] [--health-dir PATH] [--single <path>]\n");
         return 1;
+    }
+
+    // Parse --health-dir (may appear anywhere). Default: <graphs_dir>/../reports/health,
+    // which resolves to <build>/reports/health when invoked by the gate.
+    std::filesystem::path graphs_root(argv[1]);
+    std::filesystem::path health_dir;
+    int max_jobs = 0;  // 0 = use default below
+    for (int i = 1; i < argc - 1; ++i) {
+        if (std::strcmp(argv[i], "--health-dir") == 0) {
+            health_dir = argv[i + 1];
+        } else if (std::strcmp(argv[i], "--jobs") == 0) {
+            max_jobs = std::max(1, std::atoi(argv[i + 1]));
+        }
+    }
+    if (health_dir.empty()) {
+        health_dir = default_health_dir(graphs_root);
+    }
+    if (max_jobs == 0) {
+        // Env override (CI sets this), then default = (nproc + 3) / 4 (≥ 1).
+        const char* env_jobs = std::getenv("VIVID_DEMO_GRAPH_JOBS");
+        if (env_jobs && *env_jobs) max_jobs = std::max(1, std::atoi(env_jobs));
+        else {
+            unsigned hw = std::max(1u, std::thread::hardware_concurrency());
+            max_jobs = std::max(1, static_cast<int>((hw + 3) / 4));
+        }
     }
 
     // --single mode: run one graph and exit
     for (int i = 1; i < argc - 1; ++i) {
         if (std::strcmp(argv[i], "--single") == 0) {
-            return run_single_graph(argv[0], argv[i + 1]);
+            return run_single_graph(argv[0], argv[i + 1], graphs_root, health_dir);
         }
     }
 
     const char* graphs_dir = argv[1];
-    std::string graph_filter = argc >= 3 ? argv[2] : "";
+    std::string graph_filter;
+    // Positional filter: argv[2] if it doesn't look like a flag.
+    if (argc >= 3 && argv[2][0] != '-') graph_filter = argv[2];
     if (graph_filter.empty()) {
         const char* env_filter = std::getenv("VIVID_DEMO_GRAPH_FILTER");
         if (env_filter && *env_filter) graph_filter = env_filter;
     }
 
     std::string exe_path = std::filesystem::absolute(argv[0]).string();
+    std::string health_dir_str = health_dir.string();
 
     // --- Collect graph files ---
     std::vector<std::string> graph_files;
@@ -544,49 +669,170 @@ int main(int argc, char* argv[]) {
     };
 
     // --- Run each graph in an isolated child process ---
+    //
+    // Worker pool with bounded concurrency (--jobs / VIVID_DEMO_GRAPH_JOBS).
+    // Each child's stderr is captured to a buffer so output can be printed
+    // in graph-list order even though execution is concurrent. The fixture
+    // path is collision-safe (Phase 7) so children writing per-graph health
+    // JSONs to the same dir don't conflict.
+    std::fprintf(stderr, "[demo_graphs] running with --jobs %d\n", max_jobs);
+
+    enum ChildExitKind { CHILD_PIPE_FAIL = -1, CHILD_SPAWN_FAIL = -2 };
+    struct Job {
+        std::string path;
+        std::string filename;
+        bool        skipped_pre = false;
+        pid_t       pid = 0;
+        int         read_fd = -1;
+        bool        completed = false;
+        int         exit_status = 0;     // raw waitpid status, or CHILD_*_FAIL sentinel
+        std::string captured_stderr;
+    };
+    std::vector<Job> jobs;
+    jobs.reserve(graph_files.size());
     for (const auto& path : graph_files) {
-        std::string filename = std::filesystem::path(path).filename().string();
+        Job j;
+        j.path = path;
+        j.filename = std::filesystem::path(path).filename().string();
+        j.skipped_pre = headless_skip.count(j.filename) > 0;
+        jobs.push_back(std::move(j));
+    }
 
-        if (headless_skip.count(filename)) {
-            skip(filename.c_str(), "headless skip list");
-            continue;
+    auto drain_pipe_nonblocking = [](Job& j) {
+        if (j.read_fd < 0) return;
+        char buf[4096];
+        while (true) {
+            ssize_t n = ::read(j.read_fd, buf, sizeof(buf));
+            if (n > 0) {
+                j.captured_stderr.append(buf, static_cast<size_t>(n));
+            } else if (n == 0) {
+                break;
+            } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                break;
+            } else {
+                break;
+            }
         }
+    };
 
-        std::fprintf(stderr, "=== %s ===\n", filename.c_str());
+    std::vector<size_t> running;
+    size_t next_to_spawn = 0;
+    size_t next_to_print = 0;
 
-        const char* child_argv[] = {
-            exe_path.c_str(),
-            graphs_dir,
-            "--single",
-            path.c_str(),
-            nullptr
-        };
-
-        pid_t pid = 0;
-        int rc = posix_spawn(&pid, exe_path.c_str(), nullptr, nullptr,
-                             const_cast<char**>(child_argv), environ);
-        if (rc != 0) {
-            skip(filename.c_str(), "posix_spawn failed");
-            continue;
+    auto try_spawn_next = [&]() {
+        while (running.size() < static_cast<size_t>(max_jobs) &&
+               next_to_spawn < jobs.size()) {
+            Job& j = jobs[next_to_spawn];
+            if (j.skipped_pre) {
+                j.completed = true;
+                ++next_to_spawn;
+                continue;
+            }
+            int fds[2];
+            if (::pipe(fds) != 0) {
+                j.completed = true;
+                j.exit_status = CHILD_PIPE_FAIL;
+                ++next_to_spawn;
+                continue;
+            }
+            ::fcntl(fds[0], F_SETFL, O_NONBLOCK);
+            posix_spawn_file_actions_t actions;
+            posix_spawn_file_actions_init(&actions);
+            posix_spawn_file_actions_addclose(&actions, fds[0]);
+            posix_spawn_file_actions_adddup2(&actions, fds[1], STDERR_FILENO);
+            posix_spawn_file_actions_addclose(&actions, fds[1]);
+            const char* child_argv[] = {
+                exe_path.c_str(), graphs_dir,
+                "--health-dir", health_dir_str.c_str(),
+                "--single", j.path.c_str(),
+                nullptr
+            };
+            pid_t pid = 0;
+            int rc = posix_spawn(&pid, exe_path.c_str(), &actions, nullptr,
+                                 const_cast<char**>(child_argv), environ);
+            posix_spawn_file_actions_destroy(&actions);
+            ::close(fds[1]);  // parent only reads
+            if (rc != 0) {
+                ::close(fds[0]);
+                j.completed = true;
+                j.exit_status = CHILD_SPAWN_FAIL;
+                ++next_to_spawn;
+                continue;
+            }
+            j.pid = pid;
+            j.read_fd = fds[0];
+            running.push_back(next_to_spawn);
+            ++next_to_spawn;
         }
+    };
+
+    auto record_outcome = [](Job& j) {
+        if (j.exit_status == CHILD_SPAWN_FAIL) {
+            skip(j.filename.c_str(), "posix_spawn failed");
+        } else if (j.exit_status == CHILD_PIPE_FAIL) {
+            skip(j.filename.c_str(), "pipe() failed");
+        } else if (WIFEXITED(j.exit_status)) {
+            int code = WEXITSTATUS(j.exit_status);
+            if (code == 0)      pass(j.filename.c_str());
+            else if (code == 2) skip(j.filename.c_str(), "child reported skip");
+            else                fail(j.filename.c_str(), "child reported failure");
+        } else if (WIFSIGNALED(j.exit_status)) {
+            int sig = WTERMSIG(j.exit_status);
+            char reason[64];
+            std::snprintf(reason, sizeof(reason), "killed by signal %d", sig);
+            skip(j.filename.c_str(), reason);
+        } else {
+            skip(j.filename.c_str(), "unknown child exit");
+        }
+    };
+
+    auto print_completed_in_order = [&]() {
+        while (next_to_print < jobs.size() && jobs[next_to_print].completed) {
+            Job& j = jobs[next_to_print];
+            if (j.skipped_pre) {
+                skip(j.filename.c_str(), "headless skip list");
+            } else {
+                std::fprintf(stderr, "=== %s ===\n", j.filename.c_str());
+                if (!j.captured_stderr.empty()) {
+                    std::fwrite(j.captured_stderr.data(), 1,
+                                j.captured_stderr.size(), stderr);
+                }
+                record_outcome(j);
+            }
+            ++next_to_print;
+        }
+    };
+
+    try_spawn_next();
+    while (!running.empty()) {
+        // Opportunistically drain in-flight pipes so children's stderr
+        // doesn't fill the pipe buffer (default ~16KB on macOS) and block.
+        for (size_t idx : running) drain_pipe_nonblocking(jobs[idx]);
 
         int status = 0;
-        waitpid(pid, &status, 0);
-
-        if (WIFEXITED(status)) {
-            int code = WEXITSTATUS(status);
-            if (code == 0)      pass(filename.c_str());
-            else if (code == 2) skip(filename.c_str(), "child reported skip");
-            else                fail(filename.c_str(), "child reported failure");
-        } else if (WIFSIGNALED(status)) {
-            int sig = WTERMSIG(status);
-            char reason[64];
-            snprintf(reason, sizeof(reason), "killed by signal %d", sig);
-            skip(filename.c_str(), reason);
-        } else {
-            skip(filename.c_str(), "unknown child exit");
+        pid_t finished = ::waitpid(-1, &status, 0);
+        if (finished < 0) {
+            if (errno == EINTR) continue;
+            break;
         }
+        auto it = std::find_if(running.begin(), running.end(),
+            [&](size_t idx) { return jobs[idx].pid == finished; });
+        if (it == running.end()) continue;
+        size_t idx = *it;
+        Job& j = jobs[idx];
+        // Final drain after exit so we capture everything written before close.
+        drain_pipe_nonblocking(j);
+        ::close(j.read_fd);
+        j.read_fd = -1;
+        j.exit_status = status;
+        j.completed = true;
+        running.erase(it);
+
+        print_completed_in_order();
+        try_spawn_next();
     }
+    // Catch any trailing skipped-pre jobs that never spawned.
+    print_completed_in_order();
 
     // Summary
     std::fprintf(stderr, "\n========================================\n");

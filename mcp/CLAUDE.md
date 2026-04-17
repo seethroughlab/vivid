@@ -35,7 +35,7 @@ For static lookups (operator catalog, docs, package metadata), the MCP servers c
 **vivid_mcp.py** — the primary server for graph authoring:
 - Graph topology: add_node, connect, disconnect, remove_node
 - Parameters: set_param, get_param, set_string_param
-- Inspection: inspect_graph, list_nodes, list_types, operator_docs
+- Inspection: inspect_graph, list_nodes, list_types, operator_docs, get_runtime_health
 - Capture: capture_image, analyze_output, compare_outputs
 - Persistence: save_graph, load_graph, new_graph
 - Packages: install_package, list_packages, rebuild_package

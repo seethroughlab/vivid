@@ -1,6 +1,33 @@
 # Production Gate and Runtime Health Plan
 
-Status: proposal and implementation plan. This consolidates existing release-hardening work into a first-class production readiness workflow.
+**Status: implemented as Phases 1–9c (Apr 2026).** User-facing reference: [`docs/testing/production-gate.md`](../testing/production-gate.md). Per-phase implementation plans: [phase 1](production-gate-phase1.md), [2](production-gate-phase2.md), [3](production-gate-phase3.md), [4](production-gate-phase4.md), [5](production-gate-phase5.md), [6+7](production-gate-followups.md), [8](production-gate-phase8.md), [8b](production-gate-phase8b.md), [8c](production-gate-phase8c.md), [9](production-gate-phase9.md), [9b](production-gate-phase9b.md), [9c](production-gate-phase9c.md). Follow-up planning index: [production-gate-followups.md](production-gate-followups.md).
+
+### Deviations and resolutions
+
+- **`expected_output` graph metadata → `meta.domains` reuse.** Phase 4/5 chose to derive expected output from the existing `domains` taxonomy (`audio` / `gpu` / `control` / `av`) instead of introducing a new graph-side metadata key. No demo-graph edits required.
+- **Sustained-silence and sustained-black detection** — initially deferred; **closed in Phase 8c** with `RuntimeHealthSamplers` (sliding-window probes on `RuntimeCore`) and the previously-commented budget entries activated.
+- **Hot-reload failure caching** — initially deferred; **closed in Phase 8a** via `RuntimeCore::last_reload_` plus `no_hot_reload_failures` / `no_required_operator_reload_failures` budgets.
+- **Package/core version mismatch detection** — initially deferred; **closed in Phase 8a** via `PackageCatalog::summarize_updates(...)` plumbing and the `no_package_version_mismatches` budget.
+- **Peak/RMS clipping** — initially deferred; **closed in Phase 8b** via `AnalysisSnapshot::peak` exposure and the `no_audio_clipping` budget.
+- **Control server / MCP liveness in `runtime_health`** — initially deferred; **closed in Phase 8b** via `McpStatus` (built from `ControlServer::mcp_last_ping_ms()`) and the `mcp_servers_connected` budget.
+
+### Beyond the original plan
+
+The audit-driven follow-ups (Phases 6–9c, tracked in `production-gate-followups.md`) added items not in the original proposal:
+
+- **CTest `LastTest.log` fallback for unknown-classified failures** (Phase 7).
+- **Parallel demo-graph execution** with bounded worker pool (Phase 9a) — `production_gate_core` from ~95s → ~33s.
+- **PR-only workflow** (`production-gate-pr.yml`) with single-comment upsert and inline `::warning::`/`::error::` annotations (Phase 9b).
+- **Trend tool** (`tools/show_recent_gate_runs.py`) over per-commit-named CI artifacts (Phase 9c).
+- **Documented runtime budget**: `_core` ≤ 60s, `_gui` ≤ 180s (Phase 9c).
+
+### What was originally a plan
+
+What follows is the original proposal — preserved as written so the rationale and intent are still readable. See the per-phase plans for what actually shipped.
+
+---
+
+This consolidates existing release-hardening work into a first-class production readiness workflow.
 
 ## Goal
 

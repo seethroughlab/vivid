@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "graph": "broken_demo",
+  "graph_path": "intro/broken_demo.json",
+  "domains": ["control"],
+  "test_outcome": "failed",
+  "health": {
+    "severity": "error",
+    "findings": [],
+    "audio": {"running": false, "xruns": 0, "load": 0.0},
+    "graph": {"declared_nodes": 2, "compiled_nodes": 1,
+              "errored_nodes": 0, "missing_operators": 1,
+              "dropped_connections": 0, "audio_nodes": 0,
+              "missing_operator_types": ["GhostOperator"]},
+    "gpu": {"shader_errors": 0, "device_lost": false}
+  }
+}

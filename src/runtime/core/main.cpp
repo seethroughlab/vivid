@@ -1333,6 +1333,9 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
     runtime.set_audio_buffer_size(settings.audio_buffer_size);
     runtime.set_subgraph_modules(&subgraph_modules);
     runtime.frame_executor().set_analysis_enabled(settings.show_analysis);
+    if (prior_crash) {
+        runtime.set_prior_crash_operator(prior_crash->operator_name);
+    }
     bool graph_loaded = false;
 
     mi::AsyncGraphLoadRequest initial_graph_request;
@@ -1387,6 +1390,7 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
     control_server.set_audio_engine(&audio_engine);
     control_server.set_asset_library(&asset_library);
     control_server.set_build_console(build_console.get());
+    control_server.set_gpu_context(&gpu);
     control_server.set_bundled_source_dir((resources_dir / "source").string());
     if (!control_server.start(9876)) {
         std::fprintf(stderr, "[vivid] Control server unavailable (port 9876 in use?)\n");
@@ -2549,6 +2553,11 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
                 },
                 input_ptr);
 
+            // Phase 8c: feed the runtime-health samplers with this frame's
+            // analysis output. Must come after tick() so peak/brightness are
+            // current.
+            runtime.sample_runtime_health(now);
+
             // Clear consumed input events
             window_user_data.pending_events.clear();
 
@@ -2678,7 +2687,7 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
                     auto snapshot = build_graph_snapshot(
                         graph, runtime, has_audio ? &audio_engine : nullptr,
                         registry, op_info_cache, &system_midi, &runtime_api,
-                        &capture_coordinator, &control_server, &subgraph_modules);
+                        &capture_coordinator, &control_server, &subgraph_modules, &gpu);
 
                     if (!test_ui_script.actions.empty()) {
                         run_ui_test_script_frame(test_ui_script, graph_ui, window_user_data,

@@ -1,9 +1,11 @@
 #include "runtime/control/control_server_checks.h"
 
+#include "runtime/control/control_server.h"
 #include "runtime/graph/compiled_graph.h"
 #include "runtime/graph/graph.h"
 #include "runtime/operators/operator_registry.h"
 #include "runtime/core/runtime_core.h"
+#include "runtime/core/runtime_health.h"
 #include "runtime/audio/audio_engine.h"
 #include "operator_api/types.h"
 #include <nlohmann/json.hpp>
@@ -674,8 +676,25 @@ bool parse_check_def(const nlohmann::json& obj, ParsedCheck& out, std::string& e
 
 } // namespace
 
+// Build an McpStatus from a (nullable) ControlServer. Reads ping timestamps
+// from the live server and stamps a fresh now_ms — both endpoints share this.
+static runtime_health::McpStatus build_mcp_status(const ControlServer* server) {
+    runtime_health::McpStatus mcp;
+    if (server) {
+        mcp.main_ping_ms = server->mcp_last_ping_ms("vivid");
+        mcp.opdev_ping_ms = server->mcp_last_ping_ms("opdev");
+    }
+    mcp.now_ms = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+    return mcp;
+}
+
 std::string handle_run_diagnostics(Graph& graph, RuntimeCore& core, OperatorRegistry& registry,
-                                   AudioEngine* audio_engine) {
+                                   AudioEngine* audio_engine,
+                                   GpuContext* gpu_context,
+                                   PackageCatalog* package_catalog,
+                                   const ControlServer* control_server) {
     std::vector<DiagnosticFinding> findings = collect_diagnostics(graph, core, registry);
 
     // Audio-engine-derived findings
@@ -750,141 +769,32 @@ std::string handle_run_diagnostics(Graph& graph, RuntimeCore& core, OperatorRegi
     result_obj["findings"] = std::move(findings_arr);
     result_obj["hints"] = std::move(hints_arr);
 
-    // Build health telemetry
-    nlohmann::json health = nlohmann::json::object();
-
-    // Audio health
-    nlohmann::json audio_health = nlohmann::json::object();
-    audio_health["running"] = false;
-    audio_health["sample_rate"] = 0;
-    audio_health["buffer_size"] = 0;
-    audio_health["node_count"] = 0;
-    audio_health["xruns"] = 0;
-    audio_health["last_buffer_underrun"] = false;
-    audio_health["load"] = 0.0;
-    if (audio_engine) {
-        audio_health["running"] = audio_engine->running();
-        audio_health["sample_rate"] = audio_engine->sample_rate();
-        audio_health["buffer_size"] = audio_engine->buffer_size();
-        audio_health["node_count"] = audio_engine->node_count();
-        audio_health["xruns"] = audio_engine->underrun_count();
-        audio_health["last_buffer_underrun"] = audio_engine->last_buffer_underrun();
-        audio_health["load"] = audio_engine->audio_load();
-    }
-
-    nlohmann::json top_nodes = nlohmann::json::array();
-    nlohmann::json top_lane_state_nodes = nlohmann::json::array();
-    const auto* cg = core.compiled_graph();
-    if (cg) {
-        struct AudioNodeHealthRow {
-            std::string node_id;
-            std::string type_name;
-            uint32_t last_block_total_us = 0;
-            uint32_t last_process_us = 0;
-            uint32_t ema_block_us = 0;
-            float last_block_budget_pct = 0.0f;
-            uint32_t last_lane_count = 0;
-            uint32_t lane_state_entries = 0;
-        };
-
-        std::vector<AudioNodeHealthRow> rows;
-        rows.reserve(cg->audio_order.size());
-        for (uint32_t idx : cg->audio_order) {
-            const auto& ns = cg->nodes[idx];
-            if (!ns.audio) continue;
-            auto snap = read_audio_node_debug(*ns.audio);
-            if (!snap.valid) continue;
-            rows.push_back({
-                ns.node_id,
-                ns.type_name,
-                snap.last_block_total_us,
-                snap.last_process_us,
-                snap.ema_block_us,
-                snap.last_block_budget_pct,
-                snap.last_lane_count,
-                snap.lane_state_entries
-            });
-        }
-
-        auto emit_row = [](const AudioNodeHealthRow& row) {
-            return nlohmann::json{
-                {"node_id", row.node_id},
-                {"type", row.type_name},
-                {"last_block_total_us", static_cast<int64_t>(row.last_block_total_us)},
-                {"last_process_us", static_cast<int64_t>(row.last_process_us)},
-                {"ema_block_us", static_cast<int64_t>(row.ema_block_us)},
-                {"last_block_budget_pct", static_cast<double>(row.last_block_budget_pct)},
-                {"last_lane_count", static_cast<int64_t>(row.last_lane_count)},
-                {"lane_state_entries", static_cast<int64_t>(row.lane_state_entries)},
-            };
-        };
-
-        auto by_hotness = rows;
-        std::sort(by_hotness.begin(), by_hotness.end(), [](const AudioNodeHealthRow& a,
-                                                           const AudioNodeHealthRow& b) {
-            if (a.ema_block_us != b.ema_block_us) return a.ema_block_us > b.ema_block_us;
-            if (a.last_block_total_us != b.last_block_total_us) return a.last_block_total_us > b.last_block_total_us;
-            return a.node_id < b.node_id;
-        });
-        for (size_t i = 0; i < by_hotness.size() && i < 5; ++i)
-            top_nodes.push_back(emit_row(by_hotness[i]));
-
-        auto by_lane_state = rows;
-        std::sort(by_lane_state.begin(), by_lane_state.end(), [](const AudioNodeHealthRow& a,
-                                                                 const AudioNodeHealthRow& b) {
-            if (a.lane_state_entries != b.lane_state_entries) return a.lane_state_entries > b.lane_state_entries;
-            if (a.last_lane_count != b.last_lane_count) return a.last_lane_count > b.last_lane_count;
-            return a.node_id < b.node_id;
-        });
-        for (size_t i = 0; i < by_lane_state.size() && i < 5; ++i)
-            top_lane_state_nodes.push_back(emit_row(by_lane_state[i]));
-    }
-    audio_health["top_nodes"] = std::move(top_nodes);
-    audio_health["top_lane_state_nodes"] = std::move(top_lane_state_nodes);
-    health["audio"] = std::move(audio_health);
-
-    // Graph topology health
-    nlohmann::json graph_health = nlohmann::json::object();
-    graph_health["declared_nodes"] = static_cast<int64_t>(graph.nodes().size());
-    graph_health["declared_connections"] = static_cast<int64_t>(graph.connections().size());
-    if (cg) {
-        graph_health["compiled_nodes"] = static_cast<int64_t>(cg->nodes.size());
-        graph_health["frame_nodes"] = static_cast<int64_t>(cg->frame_order.size());
-        graph_health["audio_nodes"] = static_cast<int64_t>(cg->audio_order.size());
-        graph_health["total_edges"] = static_cast<int64_t>(cg->edges.size());
-        graph_health["frame_edges"] = static_cast<int64_t>(cg->frame_direct_edges.size());
-        graph_health["audio_edges"] = static_cast<int64_t>(cg->audio_direct_edges.size());
-        graph_health["snapshot_edges"] = static_cast<int64_t>(
-            cg->frame_to_audio_edges.size() + cg->audio_to_frame_edges.size());
-        graph_health["dropped_connections"] = static_cast<int64_t>(cg->dropped_connections.size());
-
-        int64_t errored = 0, missing = 0, shader_errors = 0, texture_nodes = 0;
-        for (const auto& n : cg->nodes) {
-            if (n.errored) errored++;
-            if (n.missing_operator) missing++;
-            if (n.gpu && n.gpu->shader_error) shader_errors++;
-            if (n.gpu) texture_nodes++;
-        }
-        graph_health["errored_nodes"] = errored;
-        graph_health["missing_operators"] = missing;
-
-        nlohmann::json gpu_health = nlohmann::json::object();
-        gpu_health["texture_nodes"] = texture_nodes;
-        gpu_health["shader_errors"] = shader_errors;
-        health["gpu"] = std::move(gpu_health);
-    } else {
-        graph_health["compiled_nodes"] = 0;
-    }
-    health["graph"] = std::move(graph_health);
-
-    if (!health.contains("gpu")) {
-        health["gpu"] = nlohmann::json{{"texture_nodes", 0}, {"shader_errors", 0}};
-    }
+    // Build health telemetry via the shared aggregator.
+    auto mcp = build_mcp_status(control_server);
+    auto health_snapshot = runtime_health::collect(graph, core, registry, audio_engine,
+                                                   gpu_context, package_catalog, mcp);
+    auto health = runtime_health::to_json(health_snapshot);
 
     return nlohmann::json{
         {"ok", true}, {"schema_version", 2},
         {"health", std::move(health)},
         {"result", std::move(result_obj)}
+    }.dump();
+}
+
+std::string handle_get_runtime_health(Graph& graph, RuntimeCore& core, OperatorRegistry& registry,
+                                      AudioEngine* audio_engine,
+                                      GpuContext* gpu_context,
+                                      PackageCatalog* package_catalog,
+                                      const ControlServer* control_server) {
+    auto mcp = build_mcp_status(control_server);
+    auto snapshot = runtime_health::collect(graph, core, registry, audio_engine,
+                                            gpu_context, package_catalog, mcp);
+    auto health = runtime_health::to_json(snapshot);
+    return nlohmann::json{
+        {"ok", true},
+        {"schema_version", 2},
+        {"health", std::move(health)},
     }.dump();
 }
 

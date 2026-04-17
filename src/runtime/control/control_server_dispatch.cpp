@@ -22,12 +22,17 @@ std::string dispatch(const std::string& method, const std::string& body,
                             Settings* settings,
                             AudioEngine* audio_engine,
                             AssetLibrary* asset_library,
-                            BuildConsole* build_console) {
+                            BuildConsole* build_console,
+                            GpuContext* gpu_context,
+                            PackageCatalog* package_catalog,
+                            const ControlServer* control_server) {
     // Read-only queries (no body needed)
     // inspect_graph accepts an optional "detail" field in the body -- handled below after body parsing.
     if (method == "introspect_nodes") return handle_introspect_nodes(graph, core, core.subgraph_modules());
     if (method == "run_diagnostics")
-        return control_server_checks::handle_run_diagnostics(graph, core, registry, audio_engine);
+        return control_server_checks::handle_run_diagnostics(graph, core, registry, audio_engine, gpu_context, package_catalog, control_server);
+    if (method == "get_runtime_health")
+        return control_server_checks::handle_get_runtime_health(graph, core, registry, audio_engine, gpu_context, package_catalog, control_server);
     if (method == "get_registry_diagnostics") return handle_get_registry_diagnostics(registry);
     if (method == "get_graph_load_diagnostics") return handle_get_graph_load_diagnostics(graph);
     if (method == "list_source_roots") return handle_list_source_roots(source_index);

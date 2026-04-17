@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "graph": "dark_filter",
+  "graph_path": "gpu/dark_filter.json",
+  "domains": ["gpu"],
+  "test_outcome": "passed",
+  "health": {
+    "severity": "warning",
+    "findings": [],
+    "audio": {"running": false, "xruns": 0, "load": 0.0,
+              "peak_max": 0.0, "clipping_count": 0,
+              "silence_window_seconds": 0, "silence_active": false},
+    "graph": {"declared_nodes": 2, "compiled_nodes": 2,
+              "errored_nodes": 0, "missing_operators": 0,
+              "dropped_connections": 0, "audio_nodes": 0,
+              "missing_operator_types": []},
+    "gpu": {"shader_errors": 0, "device_lost": false,
+            "black_window_seconds": 4.0, "black_active": true},
+    "mcp": {"main_last_ping_ms": 0, "opdev_last_ping_ms": 0,
+            "now_ms": 0, "main_connected": false, "opdev_connected": false}
+  }
+}

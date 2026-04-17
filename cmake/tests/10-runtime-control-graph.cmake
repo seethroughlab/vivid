@@ -133,6 +133,35 @@ target_link_libraries(test_runtime_core PRIVATE vivid_runtime_testlib vivid_oper
 add_dependencies(test_runtime_core test_op_v1 control_pass_op lane_source_op audio_test_op)
 add_test(NAME test_runtime_core COMMAND test_runtime_core WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Runtime health snapshot — aggregator + JSON serializer + severity rollup
+add_executable(test_runtime_health_snapshot
+    tests/control/test_runtime_health_snapshot.cpp
+)
+target_include_directories(test_runtime_health_snapshot PRIVATE src tests)
+target_link_libraries(test_runtime_health_snapshot PRIVATE
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_dependencies(test_runtime_health_snapshot test_op_v1 control_pass_op)
+add_test(NAME test_runtime_health_snapshot
+    COMMAND test_runtime_health_snapshot
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_runtime_health_snapshot PROPERTIES
+    LABELS "HEADLESS_SMOKE"
+    TIMEOUT 15)
+
+# Runtime-health samplers — sustained-silence/black ring buffer + reducers
+add_executable(test_runtime_health_samplers
+    tests/control/test_runtime_health_samplers.cpp
+)
+target_include_directories(test_runtime_health_samplers PRIVATE src tests)
+target_link_libraries(test_runtime_health_samplers PRIVATE
+    vivid_runtime_testlib vivid_operator_api webgpu)
+add_test(NAME test_runtime_health_samplers
+    COMMAND test_runtime_health_samplers
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_runtime_health_samplers PROPERTIES
+    LABELS "HEADLESS_SMOKE"
+    TIMEOUT 5)
+
 # Graph data-model unit test (no operators, no runtime, no GPU)
 add_executable(test_graph
     tests/graph/test_graph.cpp

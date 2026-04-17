@@ -383,6 +383,7 @@ target_include_directories(test_movie_seek_stress PRIVATE
     ${CMAKE_SOURCE_DIR}/operators/shared/movie_session)
 target_link_libraries(test_movie_seek_stress PRIVATE vivid_runtime_testlib)
 add_test(NAME test_movie_seek_stress COMMAND test_movie_seek_stress WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_movie_seek_stress PROPERTIES LABELS "HEADLESS_SMOKE" TIMEOUT 120)
 
 add_executable(test_port_type_registry
     tests/graph/test_port_type_registry.cpp

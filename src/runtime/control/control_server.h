@@ -22,6 +22,7 @@ class AudioEngine;
 class AppUpdateManager;
 class OperatorSourceDocs;
 class BuildConsole;
+class GpuContext;
 class SourceIndex;
 struct Settings;
 
@@ -50,6 +51,8 @@ public:
     void set_audio_engine(AudioEngine* ae);
     void set_asset_library(AssetLibrary* lib);
     void set_build_console(BuildConsole* console);
+    // Borrows; main.cpp owns the GpuContext and outlives ControlServer.
+    void set_gpu_context(GpuContext* ctx);
     void set_bundled_source_dir(const std::string& bundled_source_dir);
 
     // Returns the wall-clock ms timestamp of the last /mcp_ping from a given
@@ -86,6 +89,7 @@ private:
     AudioEngine* audio_engine_ = nullptr;
     AssetLibrary* asset_library_ = nullptr;
     BuildConsole* build_console_ = nullptr;
+    GpuContext* gpu_context_ = nullptr;
 };
 
 } // namespace vivid

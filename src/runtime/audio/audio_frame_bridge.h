@@ -65,6 +65,13 @@ public:
 
     void set_solo_active_set(const std::vector<bool>& set);
 
+    // ── Diagnostics ─────────────────────────────────────────────────────────
+
+    // Cumulative count of lane-slot overflows since build(). Rate-limited
+    // counter incremented on the main thread when a snapshot would exceed
+    // the pre-allocated lane storage; surfaced via runtime_health.
+    uint32_t lane_overflow_count() const { return lane_overflow_count_; }
+
 private:
     // Double-buffered param bridge (frame → audio)
     ParamSnapshot snapshots_[2];

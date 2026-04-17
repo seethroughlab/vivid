@@ -2,7 +2,9 @@
 #include "ui/graph/node_graph.h"
 #undef private
 #include "ui/graph/graph_snapshot.h"
+#include "ui/graph/health_color.h"
 #include "ui/rendering/overlay_layouts.h"
+#include "runtime/core/runtime_health.h"
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <cstdio>
@@ -521,6 +523,34 @@ int main() {
         check(std::none_of(sink.disconnect_calls.begin(), sink.disconnect_calls.end(),
                            [](const auto& call) { return call.first == "src/out" && call.second == "dst/in"; }),
               "Chooser insert preserves the original wire when the replacement splice fails");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Diagnostics-panel health pill — color mapping (Phase 7)
+    // ─────────────────────────────────────────────────────────────────────
+    {
+        std::fprintf(stderr, "\n=== health_color severity mapping ===\n");
+        using vivid::ui::health_color;
+        using S = vivid::runtime_health::Severity;
+
+        auto ok = health_color(S::Ok);
+        check(ok.r < 0.4f && ok.g > 0.7f && ok.b < 0.5f, "Ok pill is green");
+
+        auto warn = health_color(S::Warning);
+        check(warn.r > 0.9f && warn.g > 0.7f && warn.b < 0.4f, "Warning pill is amber");
+
+        auto err = health_color(S::Error);
+        check(err.r > 0.9f && err.g > 0.5f && err.g < 0.6f, "Error pill is orange");
+
+        auto fatal = health_color(S::Fatal);
+        check(fatal.r > 0.9f && fatal.g < 0.4f && fatal.b < 0.4f, "Fatal pill is red");
+
+        // Severities differ — no two pills share the same RGB triple.
+        auto same = [](vivid::ui::HealthRgb a, vivid::ui::HealthRgb b) {
+            return a.r == b.r && a.g == b.g && a.b == b.b;
+        };
+        check(!same(ok, warn) && !same(warn, err) && !same(err, fatal) && !same(ok, fatal),
+              "All severities map to distinct pill colors");
     }
 
     std::fprintf(stderr, "%s (%d failures)\n",

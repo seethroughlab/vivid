@@ -198,6 +198,56 @@ class PerceptionMCPTests(unittest.TestCase):
         self.assertEqual(out["health"]["audio"]["xruns"], 3)
         self.assertNotIn("result", out)
 
+    def test_get_runtime_health_passes_through_envelope(self):
+        """The MCP tool should return the control-server envelope verbatim
+        — no compaction, no perception summarization. Matches get_graph_errors."""
+        envelope = {
+            "ok": True,
+            "schema_version": 1,
+            "health": {
+                "severity": "warning",
+                "findings": [{"code": "audio_underruns", "severity": "warning",
+                              "subject": "", "message": "Audio underruns since session start: 3."}],
+                "audio": {"running": True, "sample_rate": 48000, "buffer_size": 256,
+                          "node_count": 1, "xruns": 3, "load": 0.42,
+                          "last_buffer_underrun": False, "lane_overflow_count": 0,
+                          "top_nodes": [], "top_lane_state_nodes": []},
+                "graph": {"declared_nodes": 1, "declared_connections": 0,
+                          "compiled_nodes": 1, "frame_nodes": 0, "audio_nodes": 1,
+                          "total_edges": 0, "frame_edges": 0, "audio_edges": 0,
+                          "snapshot_edges": 0, "dropped_connections": 0,
+                          "errored_nodes": 0, "missing_operators": 0,
+                          "missing_operator_types": []},
+                "gpu": {"texture_nodes": 0, "shader_errors": 0,
+                        "device_lost": False, "last_error": ""},
+                "vivid_version": "",
+            },
+        }
+        raw_envelope = json.dumps(envelope)
+
+        captured = {}
+
+        async def fake_post(method, body=None):
+            captured["method"] = method
+            captured["body"] = body
+            return raw_envelope
+
+        original_post = self.mod._post
+        self.mod._post = fake_post
+        try:
+            out_raw = asyncio.run(self.mod.get_runtime_health())
+        finally:
+            self.mod._post = original_post
+
+        self.assertEqual(captured["method"], "get_runtime_health")
+        out = json.loads(out_raw)
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["schema_version"], 1)
+        self.assertEqual(out["health"]["severity"], "warning")
+        self.assertEqual(out["health"]["audio"]["xruns"], 3)
+        self.assertEqual(out["health"]["findings"][0]["code"], "audio_underruns")
+        self.assertEqual(out["health"]["gpu"]["device_lost"], False)
+
     def test_run_checks_include_payload(self):
         raw = json.dumps({
             "ok": True,

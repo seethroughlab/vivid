@@ -174,10 +174,53 @@
                     if (health["gpu"].is_object()) {
                         check(health["gpu"].contains("shader_errors") && health["gpu"]["shader_errors"].is_number_integer(),
                               "gpu health has shader_errors");
+                        check(health["gpu"].contains("device_lost") && health["gpu"]["device_lost"].is_boolean(),
+                              "gpu health has device_lost (Phase 3 addition)");
+                    }
+                    // Phase 3 additions: severity rollup + findings + new fields.
+                    check(health.contains("severity") && health["severity"].is_string(),
+                          "health has severity (Phase 3)");
+                    check(health.contains("findings") && health["findings"].is_array(),
+                          "health has findings (Phase 3)");
+                    if (health["audio"].is_object()) {
+                        check(health["audio"].contains("lane_overflow_count") &&
+                              health["audio"]["lane_overflow_count"].is_number_integer(),
+                              "audio health has lane_overflow_count (Phase 3)");
                     }
                 }
             }
         }
+
+        // Phase 4: get_runtime_health endpoint — same health body, no result/findings extras.
+        std::fprintf(stderr, "\n--- get_runtime_health ---\n");
+        {
+            auto r = post(client, base_url, "get_runtime_health");
+            check(r.ok, "get_runtime_health ok");
+            if (!r.j.is_null()) {
+                check(r.j.contains("schema_version") && r.j["schema_version"].is_number_integer() &&
+                          r.j["schema_version"].get<int>() == 2,
+                      "get_runtime_health schema_version=2");
+                check(r.j.contains("health") && r.j["health"].is_object(),
+                      "get_runtime_health has health");
+                if (r.j["health"].is_object()) {
+                    auto& health = r.j["health"];
+                    check(health.contains("severity") && health["severity"].is_string(),
+                          "health has severity string");
+                    check(health.contains("findings") && health["findings"].is_array(),
+                          "health has findings array");
+                    check(health.contains("audio") && health["audio"].is_object(),
+                          "health has audio sub-block");
+                    check(health.contains("graph") && health["graph"].is_object(),
+                          "health has graph sub-block");
+                    check(health.contains("gpu") && health["gpu"].is_object(),
+                          "health has gpu sub-block");
+                }
+                // Endpoint is read-only — no `result` field.
+                check(!r.j.contains("result"),
+                      "get_runtime_health envelope omits diagnostics-only result block");
+            }
+        }
+
         // Deterministic ordering regression: repeated diagnostics return stable finding id order.
         {
             auto r1 = post(client, base_url, "run_diagnostics");

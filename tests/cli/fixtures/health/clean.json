@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "graph": "clean_demo",
+  "graph_path": "intro/clean_demo.json",
+  "domains": ["audio", "gpu", "av"],
+  "test_outcome": "passed",
+  "health": {
+    "severity": "ok",
+    "findings": [],
+    "audio": {"running": true, "xruns": 0, "load": 0.1},
+    "graph": {"declared_nodes": 3, "compiled_nodes": 3,
+              "errored_nodes": 0, "missing_operators": 0,
+              "dropped_connections": 0, "audio_nodes": 1,
+              "missing_operator_types": []},
+    "gpu": {"shader_errors": 0, "device_lost": false}
+  }
+}

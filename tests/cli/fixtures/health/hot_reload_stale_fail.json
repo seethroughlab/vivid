@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "graph": "small_demo",
+  "graph_path": "intro/small_demo.json",
+  "domains": ["control"],
+  "test_outcome": "passed",
+  "health": {
+    "severity": "warning",
+    "findings": [],
+    "audio": {"running": true, "xruns": 0, "load": 0.05},
+    "graph": {"declared_nodes": 2, "compiled_nodes": 2,
+              "errored_nodes": 0, "missing_operators": 0,
+              "dropped_connections": 0, "audio_nodes": 0,
+              "missing_operator_types": []},
+    "gpu": {"shader_errors": 0, "device_lost": false},
+    "hot_reload": {
+      "last_attempt_succeeded": false,
+      "last_target": "pkg:vivid-extras:unused_op",
+      "last_error": "operator.cpp:99: type mismatch",
+      "affects_current_graph": false
+    },
+    "packages": {"installed": 1, "updates_available": 0, "incompatible_updates": 0}
+  }
+}

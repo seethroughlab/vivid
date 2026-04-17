@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="(empty)" tests="1" failures="1" disabled="0" skipped="0" hostname="" time="100" timestamp="2026-04-16T13:44:32">
+	<testcase name="test_demo_graphs" classname="test_demo_graphs" time="99.500" status="run">
+		<properties>
+			<property name="cmake_labels" value="HEADLESS_SMOKE"/>
+		</properties>
+		<failure type="Failed" message="8 demo graphs failed to load">
+  FAIL: composite_demo.json — child reported failure
+  FAIL: showcase_demo.json — child reported failure
+Demo graphs: 27 passed, 8 failed, 13 skipped (of 48 total)
+		</failure>
+		<system-out>  FAIL: composite_demo.json — child reported failure
+  FAIL: showcase_demo.json — child reported failure
+Demo graphs: 27 passed, 8 failed, 13 skipped (of 48 total)</system-out>
+	</testcase>
+</testsuite>
