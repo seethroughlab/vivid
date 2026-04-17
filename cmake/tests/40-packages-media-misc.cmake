@@ -159,6 +159,22 @@ add_test(NAME test_operator_descriptor_hash
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_operator_descriptor_hash PROPERTIES LABELS "PACKAGE" TIMEOUT 15)
 
+# ExportPipeline strict-mode gate tests (Phase 7)
+# ExportPipeline lives in the `vivid` executable, not in vivid_runtime_testlib,
+# so the test target compiles export_pipeline.cpp directly (same pattern as
+# test_export_pipeline in the 10-runtime partition).
+add_executable(test_export_strict
+    tests/packages/test_export_strict.cpp
+    src/export/export_pipeline.cpp
+)
+target_include_directories(test_export_strict PRIVATE src tests)
+target_link_libraries(test_export_strict PRIVATE
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_test(NAME test_export_strict
+    COMMAND test_export_strict
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_export_strict PROPERTIES LABELS "PACKAGE" TIMEOUT 30)
+
 # ProjectLockfile CLI subcommand tests (subprocess-driven: vivid lock / verify-lock)
 add_executable(test_project_lockfile_cli
     tests/packages/test_project_lockfile_cli.cpp

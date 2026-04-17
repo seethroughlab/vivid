@@ -2,6 +2,8 @@
 #include "runtime/operators/operator_registry.h"
 #include "runtime/core/tool_discovery.h"
 #include "runtime/graph/graph.h"
+#include "runtime/packages/package_manager.h"
+#include "runtime/packages/project_lockfile.h"
 #include "operator_api/port_type_registry.h"
 #include <nlohmann/json.hpp>
 #include <filesystem>
@@ -38,9 +40,14 @@ static bool str_ends_with(const std::string& s, const std::string& suffix) {
 ExportPipeline::ExportPipeline(const std::string& source_dir, const std::string& build_dir)
     : source_dir_(source_dir), build_dir_(build_dir) {}
 
-bool ExportPipeline::run(const ExportOptions& opts, OperatorRegistry& registry) {
+bool ExportPipeline::run(const ExportOptions& opts, OperatorRegistry& registry,
+                         PackageManager* pm) {
     headless_ = opts.headless;
     control_server_ = opts.control_server;
+
+    strict_verify_failed_ = false;
+    last_strict_verify_status_ = LockfileStatus{};
+    last_strict_verify_error_kind_.clear();
 
     // Determine export directory
     export_dir_ = opts.output_dir.empty()
@@ -51,16 +58,69 @@ bool ExportPipeline::run(const ExportOptions& opts, OperatorRegistry& registry) 
     std::fprintf(stderr, "[export] Build dir:  %s\n", build_dir_.c_str());
     std::fprintf(stderr, "[export] Export dir: %s\n", export_dir_.c_str());
 
-    // 1. Load manifest
-    if (!load_manifest()) return false;
-
-    // 2. Load graph and resolve operators
+    // 0. Load graph first — strict-mode verify (Phase 7) runs against it
+    //    before any manifest loading or operator resolution.
     Graph graph;
     if (!graph.load(opts.graph_path.c_str())) {
         std::fprintf(stderr, "[export] Failed to load graph: %s\n", opts.graph_path.c_str());
         return false;
     }
 
+    // 0a. Phase 7: lockfile strict-mode gate. Runs before any pipeline setup
+    //     so --strict fails fast on drift without touching the manifest,
+    //     registry resolution, or export tree.
+    if (opts.strict) {
+        if (!pm) {
+            strict_verify_failed_ = true;
+            last_strict_verify_error_kind_ = "no_pm";
+            std::fprintf(stderr,
+                "[export] --strict requires a PackageManager (none passed)\n");
+            return false;
+        }
+        std::filesystem::path lf_path = opts.lockfile_path.empty()
+            ? std::filesystem::path(opts.graph_path).parent_path() / "vivid.lock"
+            : std::filesystem::path(opts.lockfile_path);
+
+        std::error_code ec;
+        if (!std::filesystem::exists(lf_path, ec) || ec) {
+            strict_verify_failed_ = true;
+            last_strict_verify_error_kind_ = "no_lockfile";
+            std::fprintf(stderr,
+                "[export] --strict: no lockfile at %s\n",
+                lf_path.string().c_str());
+            return false;
+        }
+
+        auto load_result = load_lockfile(lf_path);
+        if (!load_result.ok()) {
+            strict_verify_failed_ = true;
+            last_strict_verify_error_kind_ = "io_error";
+            std::fprintf(stderr,
+                "[export] --strict: failed to load lockfile: %s\n",
+                load_result.error.message.c_str());
+            return false;
+        }
+
+        last_strict_verify_status_ = verify_lockfile(
+            load_result.lockfile, graph, *pm, registry);
+
+        if (last_strict_verify_status_.overall == LockfileOverall::Mismatch) {
+            strict_verify_failed_ = true;
+            last_strict_verify_error_kind_ = "mismatch";
+            std::fprintf(stderr,
+                "[export] --strict: lockfile reports Mismatch; refusing to export\n");
+            return false;
+        }
+        if (last_strict_verify_status_.overall == LockfileOverall::CompatibleDrift) {
+            std::fprintf(stderr,
+                "[export] --strict: lockfile reports compatible drift; proceeding\n");
+        }
+    }
+
+    // 1. Load manifest
+    if (!load_manifest()) return false;
+
+    // 2. Resolve operators
     if (!resolve_operators(graph, opts, registry)) return false;
 
     // 3. Create export directory structure
