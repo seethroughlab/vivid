@@ -182,6 +182,108 @@ void test_vivid_verify_lock_pretty_writes_stderr() {
           "verify-lock --pretty: stderr carries the header line");
 }
 
+// --- Phase 7: vivid export --strict CLI tests -----------------------------
+//
+// Fail-path tests only — they exit before any pipeline work, so they're
+// fast (~seconds). A true happy-path test would actually run the export
+// build (minutes), so we rely on the pipeline-level test_export_strict
+// for the "strict gate clears" assertion.
+
+static void write_stale_lockfile(const std::string& path,
+                                 const std::string& op_type) {
+    // Mimics write_descriptor_mismatch_lockfile from test_project_lockfile.cpp:
+    // a lockfile with one operator whose descriptor_hash will never match.
+    std::string body;
+    body += "{\n";
+    body += "  \"lockfile_version\": 1,\n";
+    body += "  \"generated_at\": \"2026-01-01T00:00:00Z\",\n";
+    body += "  \"graph\": {\"path\": \"\", \"schema_version\": 4, \"content_hash\": \"\"},\n";
+    body += "  \"vivid_core\": {\"version\": \"0.1.0\", \"commit\": \"\", \"operator_abi\": 15},\n";
+    body += "  \"packages\": [],\n";
+    body += "  \"operators\": [{\n";
+    body += "    \"type\": \"" + op_type + "\",\n";
+    body += "    \"package\": \"\",\n";
+    body += "    \"package_version\": \"\",\n";
+    body += "    \"descriptor_hash\": \"sha256:deadbeef0000000000000000000000000000000000000000000000000000dead\",\n";
+    body += "    \"operator_abi\": 15\n";
+    body += "  }],\n";
+    body += "  \"assets\": []\n";
+    body += "}\n";
+    std::ofstream ofs(path);
+    ofs << body;
+}
+
+void test_vivid_export_strict_no_sibling_lockfile() {
+    ScopedTempDir dir("vivid_export_strict_nosib");
+    auto graph_path = (dir.path / "demo.json").string();
+    save_small_graph(graph_path);
+    // No sibling vivid.lock.
+
+    auto r = run_vivid({"export", "--strict",
+                         "--graph", graph_path,
+                         "--output", "strict_test_out"});
+    check(r.exit_code == 3,
+          "export --strict no-sibling: exit 3 (io error)");
+    check(r.stderr_text.find("no lockfile") != std::string::npos ||
+              r.stderr_text.find("No lockfile") != std::string::npos ||
+              r.stderr_text.find("--strict") != std::string::npos,
+          "export --strict no-sibling: stderr mentions missing lockfile");
+
+    // Stdout JSON.
+    if (!r.stdout_text.empty()) {
+        auto root = nlohmann::json::parse(r.stdout_text);
+        check(root["ok"].get<bool>() == false,
+              "export --strict no-sibling: stdout JSON has ok:false");
+        check(root["error"].get<std::string>().find("no_lockfile") != std::string::npos,
+              "export --strict no-sibling: error mentions no_lockfile");
+    }
+}
+
+void test_vivid_export_strict_mismatch() {
+    ScopedTempDir dir("vivid_export_strict_mismatch");
+    auto graph_path = (dir.path / "demo.json").string();
+    save_small_graph(graph_path);
+    // Stale sibling lockfile referencing audio_out with wrong descriptor_hash.
+    write_stale_lockfile((dir.path / "vivid.lock").string(), "audio_out");
+
+    auto r = run_vivid({"export", "--strict",
+                         "--graph", graph_path,
+                         "--output", "strict_test_out"});
+    check(r.exit_code == 2,
+          "export --strict mismatch: exit 2");
+
+    auto root = nlohmann::json::parse(r.stdout_text);
+    check(root["ok"].get<bool>() == false,
+          "export --strict mismatch: stdout JSON ok:false");
+    check(root["error"].get<std::string>().find("mismatch") != std::string::npos,
+          "export --strict mismatch: error mentions mismatch");
+    check(root.contains("status") && root["status"].is_object(),
+          "export --strict mismatch: status object inlined");
+    check(root["status"]["overall"].get<std::string>() == "mismatch",
+          "export --strict mismatch: status.overall = mismatch");
+    check(r.stderr_text.find("CRIT") != std::string::npos,
+          "export --strict mismatch: stderr contains CRIT");
+}
+
+void test_vivid_export_strict_explicit_lockfile() {
+    ScopedTempDir dir("vivid_export_strict_explicit");
+    auto graph_path = (dir.path / "demo.json").string();
+    save_small_graph(graph_path);
+    // No sibling; --lockfile points at a stale lockfile in a custom path.
+    auto explicit_lf = (dir.path / "custom.lock").string();
+    write_stale_lockfile(explicit_lf, "audio_out");
+
+    auto r = run_vivid({"export", "--strict",
+                         "--graph", graph_path,
+                         "--lockfile", explicit_lf,
+                         "--output", "strict_test_out"});
+    check(r.exit_code == 2,
+          "export --strict explicit-lockfile: exit 2 (mismatch from override)");
+    auto root = nlohmann::json::parse(r.stdout_text);
+    check(root["status"]["overall"].get<std::string>() == "mismatch",
+          "export --strict explicit-lockfile: honors --lockfile");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -203,6 +305,9 @@ int main(int argc, char** argv) {
     test_vivid_verify_lock_no_sibling();
     test_vivid_verify_lock_missing_lockfile_path();
     test_vivid_verify_lock_pretty_writes_stderr();
+    test_vivid_export_strict_no_sibling_lockfile();
+    test_vivid_export_strict_mismatch();
+    test_vivid_export_strict_explicit_lockfile();
 
     if (failures == 0) {
         std::fprintf(stderr, "All vivid-lock CLI tests passed.\n");

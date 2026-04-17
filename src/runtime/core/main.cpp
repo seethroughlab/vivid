@@ -194,6 +194,14 @@ int main(int argc, char* argv[]) {
     export_cmd->add_flag("--control-server", export_control_server, "Include HTTP control server");
     export_cmd->add_option("--extra-operators", export_extra_ops,
         "Additional operator types to include (comma-separated)")->delimiter(',');
+    bool export_strict = false;
+    std::string export_lockfile_path;
+    export_cmd->add_flag("--strict", export_strict,
+        "Require the sibling vivid.lock to match the current environment "
+        "(exit 2=mismatch, 3=io)");
+    export_cmd->add_option("--lockfile", export_lockfile_path,
+        "Explicit lockfile for --strict (default: vivid.lock next to graph)")
+        ->type_name("FILE");
 
     // --- Package management subcommands ---
     std::string install_url;
@@ -405,11 +413,17 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        // Build registry to get type→target mappings
+        // Build registry to get type→target mappings. When --strict is set,
+        // we also scan packages so PackageManager::list() sees installed
+        // packages for verify_lockfile (Phase 7).
         vivid::OperatorRegistry registry;
+        vivid::PackageCompiler compiler(runtime_paths.source_dir, runtime_paths.build_dir);
+        vivid::PackageManager pm(compiler, registry);
         vivid::RegistryBootstrapOptions bootstrap_opts;
-        bootstrap_opts.scan_packages = false;
-        vivid::bootstrap_operator_registry(registry, nullptr, runtime_paths, bootstrap_opts);
+        bootstrap_opts.scan_packages = export_strict;
+        vivid::bootstrap_operator_registry(registry,
+                                            export_strict ? &pm : nullptr,
+                                            runtime_paths, bootstrap_opts);
 
         vivid::ExportOptions opts;
         opts.graph_path = export_graph_path;
@@ -419,9 +433,45 @@ int main(int argc, char* argv[]) {
         opts.headless = export_headless;
         opts.control_server = export_control_server;
         opts.extra_operators = export_extra_ops;
+        opts.strict = export_strict;
+        opts.lockfile_path = export_lockfile_path;
 
         vivid::ExportPipeline pipeline(runtime_paths.source_dir, runtime_paths.build_dir);
-        if (!pipeline.run(opts, registry)) {
+        const bool run_ok = pipeline.run(opts, registry,
+                                          export_strict ? &pm : nullptr);
+        if (!run_ok) {
+            if (pipeline.strict_verify_failed()) {
+                const std::string kind = pipeline.last_strict_verify_error_kind();
+
+                // Structured JSON to stdout for CI.
+                nlohmann::json root = nlohmann::json::object();
+                root["ok"]    = false;
+                root["error"] = "export blocked by --strict: " + kind;
+                if (kind == "mismatch") {
+                    root["status"] = nlohmann::json::parse(
+                        vivid::lockfile_status_to_json(
+                            pipeline.last_strict_verify_status()));
+                }
+                std::printf("%s\n", root.dump().c_str());
+
+                // Pretty summary to stderr for humans.
+                const auto& status = pipeline.last_strict_verify_status();
+                for (const auto& f : status.findings) {
+                    const char* sev =
+                        (f.severity == vivid::LockfileSeverity::Critical) ? "CRIT"
+                      : (f.severity == vivid::LockfileSeverity::Warning)  ? "WARN"
+                                                                          : "INFO";
+                    std::fprintf(stderr, "  %s %-28s  %s  %s\n",
+                                 sev, f.id.c_str(), f.subject.c_str(),
+                                 f.message.c_str());
+                    if (!f.suggestion.empty())
+                        std::fprintf(stderr, "         -> %s\n", f.suggestion.c_str());
+                }
+                // Match verify-lock exit-code convention:
+                //   2 = Mismatch (critical findings)
+                //   3 = I/O or configuration error
+                return (kind == "mismatch") ? 2 : 3;
+            }
             std::fprintf(stderr, "[vivid] Export failed\n");
             return 1;
         }
