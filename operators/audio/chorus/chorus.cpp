@@ -1,47 +1,22 @@
 #include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
 #include "operator_api/audio_dsp.h"
+#include "runtime/simd/simd_config.h"
 
+#include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <vector>
 
 // ---------------------------------------------------------------------------
 // Chorus — multi-voice fractional delay lines with phase-offset LFOs (mono)
+//
+// Hot path: one shared delay history (not per-voice), six concurrent
+// fractional reads per block. On macOS the per-voice reads batch into a
+// single vDSP_vlint call each; scalar fallback preserved for non-Apple.
+// The shared-history layout also eliminates 5× redundant per-sample pushes
+// that the prior per-voice design needed for seamless voice-count changes.
 // ---------------------------------------------------------------------------
-
-struct FractionalDelayLine {
-    std::vector<float> buffer;
-    int size  = 0;
-    int write = 0;
-
-    void init(int max_samples) {
-        size  = max_samples;
-        write = 0;
-        if (static_cast<int>(buffer.size()) < size) {
-            buffer.assign(size, 0.0f);
-        } else {
-            std::fill_n(buffer.data(), size, 0.0f);
-        }
-    }
-
-    void push(float v) {
-        buffer[write] = v;
-        if (++write >= size) write = 0;
-    }
-
-    float read(float delay_samples) const {
-        float idx_f = static_cast<float>(write) - delay_samples;
-        if (idx_f < 0.0f) idx_f += static_cast<float>(size);
-        int idx0 = static_cast<int>(idx_f);
-        int idx1 = idx0 + 1;
-        if (idx0 >= size) idx0 -= size;
-        if (idx1 >= size) idx1 -= size;
-        if (idx0 < 0) idx0 += size;
-        if (idx1 < 0) idx1 += size;
-        float frac = idx_f - std::floor(idx_f);
-        return buffer[idx0] * (1.0f - frac) + buffer[idx1] * frac;
-    }
-};
 
 static constexpr int   kMaxVoices   = 6;
 static constexpr float kCenterDelay = 0.007f;  // 7ms
@@ -69,7 +44,19 @@ struct Chorus : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<int>   voices{"voices", 3, 1, 6};
     vivid::Param<float> mix   {"mix",    0.5f, 0.0f,  1.0f};
 
-    FractionalDelayLine delays_[kMaxVoices];
+    // Shared delay history: oldest samples at index 0, newest at tail.
+    // Sized ring_samples + block_headroom so that after each block's tail
+    // write the last valid sample sits at delay_history_.size()-1.
+    std::vector<float> delay_history_;
+    int ring_samples_ = 0;
+    int block_headroom_ = 0;
+
+    // Per-block scratch (resized as needed — off the audio hot path only on
+    // block-size change).
+    std::vector<float> indices_scratch_;       // frames
+    std::vector<float> voice_out_scratch_;     // frames
+    std::vector<float> wet_scratch_;           // frames
+
     double   phase_       = 0.0;
     float    prev_external_phase_ = 0.0f;
     int      external_beat_count_ = 0;
@@ -119,24 +106,56 @@ struct Chorus : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::append_analysis_ports(out);
     }
 
-    void lazy_init(uint32_t sr) {
-        if (initialized_ && init_rate_ == sr) return;
-        int max_samples = static_cast<int>(kMaxDelay * sr) + 2;
-        for (int v = 0; v < kMaxVoices; v++)
-            delays_[v].init(max_samples);
-        phase_ = 0.0;
-        prev_external_phase_ = 0.0f;
-        external_beat_count_ = 0;
-        initialized_ = true;
-        init_rate_   = sr;
+    void lazy_init(uint32_t sr, uint32_t frames) {
+        const int needed_ring = static_cast<int>(kMaxDelay * static_cast<float>(sr)) + 2;
+        const int needed_headroom = static_cast<int>(frames) + 2;
+        const bool rate_changed = !initialized_ || init_rate_ != sr;
+        const bool buffer_too_small =
+            ring_samples_ != needed_ring ||
+            block_headroom_ < needed_headroom;
+
+        if (rate_changed || buffer_too_small) {
+            ring_samples_ = needed_ring;
+            block_headroom_ = std::max(needed_headroom, block_headroom_);
+            // Ensure at least the current block fits, with some slack for
+            // future slightly-larger blocks (grow-only to avoid reallocs).
+            if (block_headroom_ < needed_headroom) block_headroom_ = needed_headroom;
+            delay_history_.assign(ring_samples_ + block_headroom_, 0.0f);
+        }
+
+        if (rate_changed) {
+            phase_ = 0.0;
+            prev_external_phase_ = 0.0f;
+            external_beat_count_ = 0;
+            initialized_ = true;
+            init_rate_ = sr;
+        }
+    }
+
+    // Shift history left by `frames` and append the new block at the tail.
+    // After this call, delay_history_[hist_size - 1] is the newest sample.
+    void push_block(const float* in, uint32_t frames) {
+        const size_t hist_size = delay_history_.size();
+        if (hist_size == 0 || frames == 0) return;
+        if (frames >= hist_size) {
+            std::memcpy(delay_history_.data(), in + (frames - hist_size),
+                        hist_size * sizeof(float));
+            return;
+        }
+        std::memmove(delay_history_.data(),
+                     delay_history_.data() + frames,
+                     (hist_size - frames) * sizeof(float));
+        std::memcpy(delay_history_.data() + hist_size - frames,
+                    in, frames * sizeof(float));
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        lazy_init(ctx->sample_rate);
+        const uint32_t frames = ctx->buffer_size;
+        if (frames == 0) return;
+        lazy_init(ctx->sample_rate, frames);
 
         float* in  = ctx->input_buffers[0];
         float* out = ctx->output_buffers[0];
-        uint32_t frames = ctx->buffer_size;
 
         float rate_cv_val = ctx->input_buffers[1] ? ctx->input_buffers[1][0] : 0.0f;
         const int mode = rate_mode.int_value();
@@ -145,6 +164,8 @@ struct Chorus : vivid::OperatorBase, vivid::AudioProcessable {
         if (mod_rate > 5.0f)  mod_rate = 5.0f;
 
         int   voice_count = voices.int_value();
+        if (voice_count < 1) voice_count = 1;
+        if (voice_count > kMaxVoices) voice_count = kMaxVoices;
         float wet = mix.value;
         float dry = 1.0f - wet;
         float d   = depth.value;
@@ -155,48 +176,129 @@ struct Chorus : vivid::OperatorBase, vivid::AudioProcessable {
             ? (static_cast<double>(metronome.bpm) / 60.0) / static_cast<double>(ctx->sample_rate)
             : 0.0;
 
-        float center_samples = kCenterDelay * sr;
-        float depth_samples  = kMaxDepth * d * sr;
+        const float center_samples = kCenterDelay * sr;
+        const float depth_samples  = kMaxDepth * d * sr;
+        const float max_delay_clamp = static_cast<float>(ring_samples_ - 2);
 
-        for (uint32_t i = 0; i < frames; i++) {
-            // Write input to all delay lines (for seamless voice-count changes)
-            for (int v = 0; v < kMaxVoices; v++)
-                delays_[v].push(in[i]);
+        push_block(in, frames);
 
-            double base_phase = phase_;
-            if (mode == vivid::kRateModeMetronome) {
-                base_phase = vivid::cycle_phase_from_total_beats(
-                    metronome.beats_elapsed + static_cast<double>(i) * metronome_beats_per_sample,
-                    sync_division.int_value());
-            } else if (mode == vivid::kRateModeExternal) {
-                float external_phase = ctx->input_buffers[2] ? ctx->input_buffers[2][i] : 0.0f;
-                const double total_beats = vivid::advance_external_total_beats(
-                    external_phase, prev_external_phase_, external_beat_count_);
-                base_phase = vivid::cycle_phase_from_total_beats(total_beats, sync_division.int_value());
-            }
+        if (indices_scratch_.size() < frames)   indices_scratch_.assign(frames, 0.0f);
+        if (voice_out_scratch_.size() < frames) voice_out_scratch_.assign(frames, 0.0f);
+        if (wet_scratch_.size() < frames)       wet_scratch_.assign(frames, 0.0f);
 
-            float sum = 0.0f;
-            for (int v = 0; v < voice_count; v++) {
-                double voice_phase = base_phase + static_cast<double>(v) / static_cast<double>(voice_count);
+        // The tail of delay_history_ corresponds to the last sample of this
+        // block. Sample i of the block is at absolute history index
+        //     tail_base + i,  where tail_base = hist_size - frames.
+        const uint32_t hist_size = static_cast<uint32_t>(delay_history_.size());
+        const uint32_t tail_base = hist_size - frames;
+        const float tail_base_f = static_cast<float>(tail_base);
+
+        std::fill_n(wet_scratch_.data(), frames, 0.0f);
+
+        // Capture phase state so Free mode advances only once across the
+        // block (matches the prior per-sample increment but expressed up
+        // front so we can read it per-voice).
+        double phase_start = phase_;
+        const double phase_inc = static_cast<double>(mod_rate) * inv_sr;
+        const float inv_voice_count = 1.0f / static_cast<float>(voice_count);
+
+        for (int v = 0; v < voice_count; ++v) {
+            // Fill indices_scratch_ with absolute history indices for this
+            // voice across the block. Scalar phase/LFO/delay computation —
+            // the three rate modes keep the loop branchy, and the work is
+            // tiny compared to the downstream vectorized read.
+            const double voice_offset = static_cast<double>(v) * static_cast<double>(inv_voice_count);
+            double phase = phase_start;
+            for (uint32_t i = 0; i < frames; ++i) {
+                double base_phase;
+                if (mode == vivid::kRateModeMetronome) {
+                    base_phase = vivid::cycle_phase_from_total_beats(
+                        metronome.beats_elapsed + static_cast<double>(i) * metronome_beats_per_sample,
+                        sync_division.int_value());
+                } else if (mode == vivid::kRateModeExternal) {
+                    const float external_phase = ctx->input_buffers[2]
+                        ? ctx->input_buffers[2][i] : 0.0f;
+                    // advance_external_total_beats is stateful; only the last
+                    // voice's iteration should mutate the instance state, so
+                    // snapshot counters into locals and restore state at end.
+                    float local_prev = prev_external_phase_;
+                    int   local_count = external_beat_count_;
+                    const double total_beats = vivid::advance_external_total_beats(
+                        external_phase, local_prev, local_count);
+                    if (v == voice_count - 1 && i == frames - 1) {
+                        prev_external_phase_ = local_prev;
+                        external_beat_count_ = local_count;
+                    }
+                    base_phase = vivid::cycle_phase_from_total_beats(
+                        total_beats, sync_division.int_value());
+                } else { // Free
+                    base_phase = phase;
+                    phase += phase_inc;
+                    if (phase >= 1.0) phase -= 1.0;
+                }
+
+                double voice_phase = base_phase + voice_offset;
                 if (voice_phase >= 1.0) voice_phase -= 1.0;
 
-                float lfo = static_cast<float>(audio_dsp::waveform(voice_phase, 0)) * 0.5f + 0.5f;
+                const float lfo = static_cast<float>(audio_dsp::waveform(voice_phase, 0)) * 0.5f + 0.5f;
                 float delay_samples = center_samples + depth_samples * lfo;
                 if (delay_samples < 1.0f) delay_samples = 1.0f;
-                if (delay_samples >= static_cast<float>(delays_[v].size - 1))
-                    delay_samples = static_cast<float>(delays_[v].size - 2);
+                if (delay_samples >= max_delay_clamp) delay_samples = max_delay_clamp;
 
-                sum += delays_[v].read(delay_samples);
+                // Absolute index into delay_history_: current-sample position
+                // is (tail_base + i); go back by delay_samples. With
+                // delay_samples >= 1 and delay_samples <= ring_samples_ - 2,
+                // the result is always in [tail_base - ring_samples_ + 2,
+                // tail_base + i - 1], well inside [0, hist_size - 1].
+                indices_scratch_[i] = tail_base_f + static_cast<float>(i) - delay_samples;
             }
 
-            float wet_signal = sum / static_cast<float>(voice_count);
-            out[i] = in[i] * dry + wet_signal * wet;
-
-            if (mode == vivid::kRateModeFree) {
-                phase_ += mod_rate * inv_sr;
-                if (phase_ >= 1.0) phase_ -= 1.0;
+#if VIVID_ACCELERATE_ENABLED
+            vDSP_vlint(delay_history_.data(),
+                       indices_scratch_.data(), 1,
+                       voice_out_scratch_.data(), 1,
+                       static_cast<vDSP_Length>(frames),
+                       static_cast<vDSP_Length>(hist_size));
+            vDSP_vadd(voice_out_scratch_.data(), 1,
+                      wet_scratch_.data(), 1,
+                      wet_scratch_.data(), 1,
+                      static_cast<vDSP_Length>(frames));
+#else
+            for (uint32_t i = 0; i < frames; ++i) {
+                const float idx_f = indices_scratch_[i];
+                int i0 = static_cast<int>(idx_f);
+                int i1 = i0 + 1;
+                const float frac = idx_f - static_cast<float>(i0);
+                if (i0 < 0) i0 = 0;
+                if (i1 < 0) i1 = 0;
+                if (i0 >= static_cast<int>(hist_size)) i0 = static_cast<int>(hist_size) - 1;
+                if (i1 >= static_cast<int>(hist_size)) i1 = static_cast<int>(hist_size) - 1;
+                wet_scratch_[i] += delay_history_[i0] * (1.0f - frac)
+                                 + delay_history_[i1] * frac;
             }
+#endif
         }
+
+        // Advance Free-mode phase once across the block (matches pre-refactor
+        // behavior where phase_ advanced by phase_inc per sample).
+        if (mode == vivid::kRateModeFree) {
+            double p = phase_start + phase_inc * static_cast<double>(frames);
+            p -= std::floor(p);
+            phase_ = p;
+        }
+
+        // Mix: out = in * dry + (wet_scratch / voice_count) * wet_mix.
+#if VIVID_ACCELERATE_ENABLED
+        const float wet_scale = wet * inv_voice_count;
+        vDSP_vsmul(in, 1, &dry, out, 1, static_cast<vDSP_Length>(frames));
+        vDSP_vsma(wet_scratch_.data(), 1, &wet_scale,
+                  out, 1, out, 1, static_cast<vDSP_Length>(frames));
+#else
+        const float wet_scale = wet * inv_voice_count;
+        for (uint32_t i = 0; i < frames; ++i) {
+            out[i] = in[i] * dry + wet_scratch_[i] * wet_scale;
+        }
+#endif
     }
 };
 
