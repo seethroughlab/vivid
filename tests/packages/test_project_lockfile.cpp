@@ -278,11 +278,41 @@ void test_build_lockfile_empty_graph() {
     check(lf.vivid_core.operator_abi ==
               static_cast<int>(VIVID_OPERATOR_ABI_VERSION),
           "empty graph: vivid_core.operator_abi populated");
-    check(lf.vivid_core.commit.empty(),
-          "empty graph: vivid_core.commit is empty (Phase 0)");
+    // Finalization pass populates vivid_core.commit from VIVID_CORE_COMMIT
+    // (git sha at configure time). Non-git builds still see an empty
+    // string; both shapes are valid here — the stronger 40-char assertion
+    // lives in test_build_lockfile_vivid_core_commit.
+    check(lf.vivid_core.commit.empty() || lf.vivid_core.commit.size() == 40,
+          "empty graph: vivid_core.commit is either empty or a 40-char sha");
     check(lf.packages.empty(),  "empty graph: packages empty");
     check(lf.operators.empty(), "empty graph: operators empty");
     check(lf.assets.empty(),    "empty graph: assets empty");
+}
+
+void test_build_lockfile_vivid_core_commit() {
+    // Finalization pass: cmake/git_version.cmake should define
+    // VIVID_CORE_COMMIT at configure time. When built from a git worktree,
+    // lf.vivid_core.commit is a 40-char sha. Non-git builds leave it empty
+    // (still valid — tarball users don't get a commit pin).
+    LockfileGenFixture fx;
+    Graph g;
+    auto lf = build_lockfile_for_graph(g, fx.pm, fx.registry);
+
+    const std::string& commit = lf.vivid_core.commit;
+    if (commit.empty()) {
+        std::fprintf(stderr, "  SKIP: VIVID_CORE_COMMIT unset (non-git build)\n");
+        return;
+    }
+    check(commit.size() == 40,
+          "build_lockfile: vivid_core.commit is a 40-char sha when built from git");
+    for (char c : commit) {
+        const bool is_hex = (c >= '0' && c <= '9') ||
+                            (c >= 'a' && c <= 'f') ||
+                            (c >= 'A' && c <= 'F');
+        check(is_hex,
+              "build_lockfile: vivid_core.commit contains only hex characters");
+        if (!is_hex) break;
+    }
 }
 
 void test_build_lockfile_graph_hash_populated() {
@@ -1577,6 +1607,7 @@ int main() {
     test_sha256_hex_length();
     test_sha256_hex_multi_block();
     test_build_lockfile_empty_graph();
+    test_build_lockfile_vivid_core_commit();
     test_build_lockfile_graph_hash_populated();
     test_build_lockfile_operators_unregistered_types();
     test_build_lockfile_sort_stability_by_insertion_order();

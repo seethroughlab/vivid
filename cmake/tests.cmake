@@ -95,6 +95,10 @@ if(APPLE AND VIVID_ENABLE_ACCELERATE)
     target_compile_definitions(vivid_runtime_testlib PUBLIC VIVID_HAS_ACCELERATE=1)
     target_link_libraries(vivid_runtime_testlib PUBLIC "-framework Accelerate")
 endif()
+# Core git metadata (for project_lockfile.cpp's lf.vivid_core.commit field).
+target_compile_definitions(vivid_runtime_testlib PUBLIC
+    "VIVID_CORE_COMMIT=\"${VIVID_CORE_COMMIT}\""
+    "VIVID_CORE_REPO_URL=\"${VIVID_CORE_REPO_URL}\"")
 if(APPLE)
     target_link_libraries(vivid_runtime_testlib PUBLIC
         "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"

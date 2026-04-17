@@ -174,11 +174,15 @@ endif()
 if(APPLE)
     target_compile_definitions(vivid PRIVATE
         "VIVID_CORE_VERSION=\"${PROJECT_VERSION}\""
+        "VIVID_CORE_COMMIT=\"${VIVID_CORE_COMMIT}\""
+        "VIVID_CORE_REPO_URL=\"${VIVID_CORE_REPO_URL}\""
         "VIVID_BUILD_DIR=\"${CMAKE_BINARY_DIR}\""
         "VIVID_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
 else()
     target_compile_definitions(vivid PRIVATE
-        "VIVID_CORE_VERSION=\"${PROJECT_VERSION}\"")
+        "VIVID_CORE_VERSION=\"${PROJECT_VERSION}\""
+        "VIVID_CORE_COMMIT=\"${VIVID_CORE_COMMIT}\""
+        "VIVID_CORE_REPO_URL=\"${VIVID_CORE_REPO_URL}\"")
 endif()
 
 # macOS native menu bar

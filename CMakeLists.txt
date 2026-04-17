@@ -40,6 +40,7 @@ if(APPLE)
 endif()
 
 # --- Modular build configuration ---
+include(cmake/git_version.cmake)    # defines VIVID_CORE_COMMIT, VIVID_CORE_REPO_URL
 include(cmake/dependencies.cmake)
 include(cmake/operators.cmake)
 include(cmake/app.cmake)

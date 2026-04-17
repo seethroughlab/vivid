@@ -300,7 +300,11 @@ ProjectLockfile build_lockfile_for_graph(const Graph& graph,
     lf.graph.content_hash    = canonicalize_graph_hash(graph);
 
     lf.vivid_core.version       = VIVID_CORE_VERSION;
-    lf.vivid_core.commit        = "";  // Phase 0
+#ifdef VIVID_CORE_COMMIT
+    lf.vivid_core.commit        = VIVID_CORE_COMMIT;
+#else
+    lf.vivid_core.commit        = "";
+#endif
     lf.vivid_core.operator_abi  = static_cast<int>(VIVID_OPERATOR_ABI_VERSION);
 
     // Index operator_map once for O(1) type_name lookup.
