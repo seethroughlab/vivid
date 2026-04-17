@@ -64,6 +64,19 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
                                "-DVIVID_BUILD_DIR=" + vivid_build,
                                "-DVIVID_PLUGIN_SUFFIX=" + std::string(kPluginSuffix)};
 
+        // Pin the cmake-built package to the runtime's compile-time arch.
+        // Same rationale as the clang -arch flag in PackageCompiler: cmake
+        // inherits its host arch from its parent process, so a Rosetta-
+        // translated x86_64 actions-runner produces x86_64 dylibs that the
+        // arm64 vivid runtime can't dlopen.
+#ifdef __APPLE__
+#  if defined(__arm64__) || defined(__aarch64__)
+        configure_opts.argv.push_back("-DCMAKE_OSX_ARCHITECTURES=arm64");
+#  elif defined(__x86_64__)
+        configure_opts.argv.push_back("-DCMAKE_OSX_ARCHITECTURES=x86_64");
+#  endif
+#endif
+
         {
             std::string dragonbox_include = PackageCompiler::managed_dragonbox_include_dir();
             std::string dragonbox_library = PackageCompiler::managed_dragonbox_library_path();
