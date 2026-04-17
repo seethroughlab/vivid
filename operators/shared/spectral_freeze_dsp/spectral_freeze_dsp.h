@@ -1,6 +1,7 @@
 #pragma once
 
 #include "operator_api/audio_dsp.h"
+#include "runtime/simd/fft.h"
 #include "runtime/simd/simd_config.h"
 
 #include <cstdint>
@@ -20,7 +21,7 @@ int resolve_fft_size(int param_index);
 class Engine {
 public:
     Engine() = default;
-    ~Engine();
+    ~Engine() = default;
 
     Engine(const Engine&) = delete;
     Engine& operator=(const Engine&) = delete;
@@ -43,8 +44,6 @@ private:
     void lazy_init(uint32_t sample_rate, int fft_size_param);
     void process_fft_frame_scalar(int N, float freeze, float blend, float smoothing, int phase_mode);
     bool process_fft_frame_accelerate(int N, float freeze, float blend, float smoothing, int phase_mode);
-    void fft_forward_scalar(int N);
-    void fft_inverse_scalar(int N);
 
     std::vector<float> input_ring_;
     std::vector<float> output_accum_;
@@ -57,11 +56,11 @@ private:
     std::vector<float> frozen_phase_;
     std::vector<float> smoothed_mag_;
 
-    std::vector<float> accel_real_;
-    std::vector<float> accel_imag_;
     std::vector<float> cos_buf_;
     std::vector<float> sin_buf_;
     std::vector<float> scratch_;
+
+    vivid::simd::FftPlanCache fft_cache_;
 
     int ring_pos_ = 0;
     int hop_counter_ = 0;
@@ -70,14 +69,9 @@ private:
     bool initialized_ = false;
     uint32_t init_rate_ = 0;
     int init_fft_ = -1;
-    int init_log2_ = 0;
     Backend last_backend_ = Backend::Scalar;
 
     audio_dsp::WhiteNoise rng_;
-
-#if VIVID_ACCELERATE_ENABLED
-    FFTSetup fft_setup_ = nullptr;
-#endif
 };
 
 } // namespace vivid::spectral_freeze_dsp
