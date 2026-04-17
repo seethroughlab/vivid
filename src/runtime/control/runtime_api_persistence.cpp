@@ -110,6 +110,7 @@ CommandResult RuntimeAPI::load_graph(const std::string& path,
     // Phase 6a: verify sibling vivid.lock (if present) and apply load-mode
     // enforcement. Done after build so CompiledGraph nodes can be marked.
     {
+        const LockfileLoadMode mode = parse_lockfile_load_mode(lockfile_mode);
         LockfileStatus lf_status;  // default: Match, no findings
         const std::filesystem::path sibling =
             std::filesystem::path(path).parent_path() / "vivid.lock";
@@ -134,10 +135,22 @@ CommandResult RuntimeAPI::load_graph(const std::string& path,
                 f.suggestion = "regenerate with 'vivid lock' or repair the lockfile";
                 lf_status.findings.push_back(std::move(f));
             }
+        } else if (mode == LockfileLoadMode::Strict) {
+            // Strict mode with no sibling lockfile: surface the reproducibility
+            // gap as a Warning (not Critical) so the UI banner shows but
+            // authoring of just-created graphs isn't blocked.
+            lf_status.overall = LockfileOverall::NoLockfile;
+            LockfileFinding f;
+            f.id         = lockfile_finding::kLockfileMissing;
+            f.severity   = LockfileSeverity::Warning;
+            f.subject    = sibling.string();
+            f.message    = "no vivid.lock next to graph; strict mode has "
+                           "nothing to enforce against";
+            f.suggestion = "run 'vivid lock' to capture the current environment";
+            lf_status.findings.push_back(std::move(f));
         }
         core_.set_lockfile_status(lf_status);
 
-        const LockfileLoadMode mode = parse_lockfile_load_mode(lockfile_mode);
         if (mode == LockfileLoadMode::Strict && core_.compiled_graph()) {
             apply_strict_mode_to_compiled_graph(
                 lf_status, *core_.compiled_graph(), registry_);

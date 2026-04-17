@@ -174,6 +174,13 @@ inline constexpr const char* kAssetChanged             = "asset_changed";
 // lockdown (no node is trusted to run) because the environment is
 // unverifiable. Never produced by verify_lockfile itself.
 inline constexpr const char* kLockfileUnreadable       = "lockfile_unreadable";
+// Emitted by the graph-load path in strict mode when no sibling
+// vivid.lock exists at all. Severity Warning, not Critical: opening a
+// freshly-authored graph in strict mode before running `vivid lock`
+// should not block authoring, but the UI must surface the
+// reproducibility gap. Never produced in Studio/Recovery or by
+// verify_lockfile itself.
+inline constexpr const char* kLockfileMissing          = "lockfile_missing";
 }  // namespace lockfile_finding
 
 struct LockfileFinding {

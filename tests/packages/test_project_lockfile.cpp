@@ -1191,6 +1191,8 @@ void test_load_graph_strict_mode_ignores_non_critical() {
 }
 
 void test_load_graph_no_sibling_lockfile() {
+    // Studio mode with no sibling lockfile stays quiet: opening a freshly
+    // authored graph before running `vivid lock` must not show a banner.
     LockfileGenFixture fx;
     register_builtin_operators(fx.registry);
 
@@ -1209,12 +1211,66 @@ void test_load_graph_no_sibling_lockfile() {
 
     bool has_gpu = false;
     bool has_aud = false;
-    auto r = api.load_graph(graph_path, has_gpu, has_aud, "strict");
-    check(r.ok, "load no-sibling: succeeds");
+    auto r = api.load_graph(graph_path, has_gpu, has_aud, "studio");
+    check(r.ok, "load no-sibling studio: succeeds");
     check(runtime.lockfile_status().overall == LockfileOverall::Match,
-          "load no-sibling: overall is Match (default)");
+          "load no-sibling studio: overall is Match (default)");
     check(runtime.lockfile_status().findings.empty(),
-          "load no-sibling: no findings");
+          "load no-sibling studio: no findings");
+}
+
+void test_load_graph_strict_mode_missing_sibling_warns() {
+    // Strict mode with no sibling vivid.lock must surface the
+    // reproducibility gap as a Warning finding (so the UI banner shows),
+    // but must NOT disable any node: opening a freshly authored graph
+    // in strict mode before `vivid lock` runs is a legitimate workflow.
+    LockfileGenFixture fx;
+    register_builtin_operators(fx.registry);
+
+    ScopedTempDir dir("vivid_load_strict_nosib");
+    Graph source_graph;
+    source_graph.add_node("a", "audio_out");
+    source_graph.add_node("b", "audio_out");
+    auto graph_path = dir.file_str("demo.json");
+    source_graph.save(graph_path.c_str());
+    // No vivid.lock written.
+
+    Graph api_graph;
+    RuntimeCore runtime;
+    runtime.set_package_manager(&fx.pm);
+    AudioEngine audio_engine;
+    RuntimeAPI api(api_graph, runtime, audio_engine, fx.registry);
+
+    bool has_gpu = false;
+    bool has_aud = false;
+    auto r = api.load_graph(graph_path, has_gpu, has_aud, "strict");
+    check(r.ok, "load strict no-sibling: succeeds");
+
+    const auto& status = runtime.lockfile_status();
+    check(status.overall == LockfileOverall::NoLockfile,
+          "load strict no-sibling: overall is NoLockfile");
+    check(status.findings.size() == 1,
+          "load strict no-sibling: exactly one finding emitted");
+
+    bool saw_missing_warning = false;
+    for (const auto& f : status.findings) {
+        if (f.id == lockfile_finding::kLockfileMissing &&
+            f.severity == LockfileSeverity::Warning) {
+            saw_missing_warning = true;
+            break;
+        }
+    }
+    check(saw_missing_warning,
+          "load strict no-sibling: Warning lockfile_missing finding emitted");
+
+    const auto* cg = runtime.compiled_graph();
+    check(cg != nullptr, "load strict no-sibling: compiled graph exists");
+    if (cg) {
+        for (const auto& cn : cg->nodes) {
+            check(cn.missing_operator_reason != "locked_unavailable",
+                  "load strict no-sibling: node NOT locked_unavailable");
+        }
+    }
 }
 
 void test_load_graph_strict_mode_malformed_sibling_locks_graph() {
@@ -1735,6 +1791,7 @@ int main() {
     test_load_graph_strict_mode_disables_affected_node();
     test_load_graph_strict_mode_ignores_non_critical();
     test_load_graph_no_sibling_lockfile();
+    test_load_graph_strict_mode_missing_sibling_warns();
     test_load_graph_strict_mode_malformed_sibling_locks_graph();
     test_load_graph_studio_mode_malformed_sibling_records_finding_only();
     test_load_graph_skips_verify_without_package_manager();
