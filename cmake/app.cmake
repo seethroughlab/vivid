@@ -59,6 +59,7 @@ add_executable(vivid
     src/runtime/operators/operator_registry_lookup.cpp
     src/runtime/operators/operator_registry_metadata.cpp
     src/runtime/operators/operator_registry_diagnostics.cpp
+    src/runtime/operators/operator_descriptor_hash.cpp
     src/runtime/graph/port_type_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
     src/runtime/graph/graph.cpp
@@ -92,6 +93,8 @@ add_executable(vivid
     src/runtime/packages/package_manager_manifest.cpp
     src/runtime/packages/package_manager_install.cpp
     src/runtime/packages/package_manager_build.cpp
+    src/runtime/packages/project_lockfile.cpp
+    src/common/hash_util.cpp
     src/runtime/core/undo_manager.cpp
     src/runtime/gpu/screenshot.cpp
     src/runtime/operators/builtin_operators.cpp
@@ -173,11 +176,15 @@ endif()
 if(APPLE)
     target_compile_definitions(vivid PRIVATE
         "VIVID_CORE_VERSION=\"${PROJECT_VERSION}\""
+        "VIVID_CORE_COMMIT=\"${VIVID_CORE_COMMIT}\""
+        "VIVID_CORE_REPO_URL=\"${VIVID_CORE_REPO_URL}\""
         "VIVID_BUILD_DIR=\"${CMAKE_BINARY_DIR}\""
         "VIVID_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
 else()
     target_compile_definitions(vivid PRIVATE
-        "VIVID_CORE_VERSION=\"${PROJECT_VERSION}\"")
+        "VIVID_CORE_VERSION=\"${PROJECT_VERSION}\""
+        "VIVID_CORE_COMMIT=\"${VIVID_CORE_COMMIT}\""
+        "VIVID_CORE_REPO_URL=\"${VIVID_CORE_REPO_URL}\"")
 endif()
 
 # macOS native menu bar

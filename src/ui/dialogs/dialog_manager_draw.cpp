@@ -38,6 +38,7 @@ void DialogManager::draw(Renderer2D& tr, const MouseState& mouse, const UIStyle&
     draw_create_popup(tr, mouse, style, popup_opacity, win_w, win_h, text_edit, cursor_blink);
     draw_preset_name_popup(tr, mouse, style, popup_opacity, win_w, win_h, text_edit, cursor_blink);
     draw_about(tr, mouse, style, popup_opacity, win_w, win_h);
+    draw_lockfile_findings(tr, mouse, style, popup_opacity, win_w, win_h);
     draw_crash_recovery(tr, mouse, style, popup_opacity, win_w, win_h);
 }
 
@@ -2004,6 +2005,153 @@ void DialogManager::draw_core_update_banner(Renderer2D& tr, const UIStyle& /*sty
     draw_btn(T("later", "Later"), 2, 0.26f, 0.30f, 0.34f);
     draw_btn(T("skip", "Skip"), 1, 0.33f, 0.25f, 0.23f);
     draw_btn(T("install", "Install"), 0, 0.22f, 0.42f, 0.28f);
+}
+
+// -----------------------------------------------------------------------
+// Lockfile findings modal (Phase 6b)
+//
+// Read-only list of LockfileStatus findings. Opened via
+// open_lockfile_findings(status) when the user clicks the perf-bar badge
+// in the graph view. No action buttons — just an overview and a close
+// button. Dismisses on outside-click or close-button click.
+// -----------------------------------------------------------------------
+void DialogManager::draw_lockfile_findings(Renderer2D& tr, const MouseState& mouse,
+                                           const UIStyle& style, float popup_opacity,
+                                           uint32_t win_w, uint32_t win_h) {
+    if (!lockfile_findings.open) return;
+
+    const auto& lf = lockfile_findings.status;
+    const float wf = static_cast<float>(win_w);
+    const float hf = static_cast<float>(win_h);
+
+    // Scrim
+    tr.draw_rect(0, 0, wf, hf,
+                 style.scrim[0], style.scrim[1], style.scrim[2],
+                 style.scrim[3] * popup_opacity);
+
+    // Panel sizing — 560w × clamped height based on findings count.
+    const float pw = 560.0f;
+    const float header_h = 52.0f;
+    const float row_h    = 72.0f;
+    const float pad_bot  = 48.0f;  // close button area
+    const float max_list_h = hf - 120.0f - header_h - pad_bot;
+    const float content_h  = static_cast<float>(lf.findings.size()) * row_h;
+    const float list_h     = std::min(max_list_h, std::max(content_h, 72.0f));
+    const float ph         = header_h + list_h + pad_bot;
+    const float px         = (wf - pw) * 0.5f;
+    const float py         = (hf - ph) * 0.5f;
+
+    draw_shadow(tr, px, py, pw, ph, style.corner_radius);
+    tr.draw_rounded_rect(px, py, pw, ph, style.corner_radius,
+                         style.popup_bg[0], style.popup_bg[1], style.popup_bg[2], style.popup_bg[3]);
+    // Accent bar
+    tr.draw_rect(px, py, pw, 2,
+                 style.accent[0], style.accent[1], style.accent[2]);
+
+    // Header: title + overall pill.
+    const char* title = "Lockfile verification";
+    tr.draw_text(px + 20.0f, py + 16.0f, title,
+                 style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+
+    const char* overall_label = "match";
+    float or_ = 0.30f, og_ = 0.85f, ob_ = 0.40f;
+    switch (lf.overall) {
+        case vivid::LockfileOverall::Match:
+            overall_label = "match";           break;
+        case vivid::LockfileOverall::CompatibleDrift:
+            overall_label = "compatible drift";
+            or_ = 0.95f; og_ = 0.82f; ob_ = 0.30f; break;
+        case vivid::LockfileOverall::Mismatch:
+            overall_label = "mismatch";
+            or_ = 0.95f; og_ = 0.35f; ob_ = 0.30f; break;
+        case vivid::LockfileOverall::NoLockfile:
+            overall_label = "no lockfile";
+            or_ = 0.55f; og_ = 0.55f; ob_ = 0.55f; break;
+    }
+    const float pill_text_w = tr.text_width(overall_label);
+    const float pill_w = pill_text_w + 20.0f;
+    const float pill_h = 20.0f;
+    const float pill_x = px + pw - 20.0f - pill_w;
+    const float pill_y = py + 14.0f;
+    tr.draw_rounded_rect(pill_x, pill_y, pill_w, pill_h, 4.0f, or_, og_, ob_, 0.90f);
+    tr.draw_text(pill_x + 10.0f, pill_y + 4.0f, overall_label, 0.08f, 0.08f, 0.08f);
+
+    // Findings list body.
+    const float list_x = px + 16.0f;
+    const float list_y = py + header_h;
+    const float list_w = pw - 32.0f;
+
+    tr.push_clip_rect(list_x, list_y, list_w, list_h);
+    if (lf.findings.empty()) {
+        tr.draw_text(list_x + 8.0f, list_y + 24.0f,
+                     "No findings — lockfile matches the current environment.",
+                     style.dim_text[0], style.dim_text[1], style.dim_text[2]);
+    } else {
+        float row_y = list_y - lockfile_findings.scroll_y;
+        for (const auto& f : lf.findings) {
+            float r = style.accent[0], g = style.accent[1], b = style.accent[2];
+            switch (f.severity) {
+                case vivid::LockfileSeverity::Info:
+                    r = 0.35f; g = 0.55f; b = 0.85f; break;  // blue
+                case vivid::LockfileSeverity::Warning:
+                    r = 0.95f; g = 0.82f; b = 0.30f; break;  // yellow
+                case vivid::LockfileSeverity::Critical:
+                    r = 0.95f; g = 0.35f; b = 0.30f; break;  // red
+            }
+            // Severity chip.
+            const char* sev = (f.severity == vivid::LockfileSeverity::Critical) ? "CRIT"
+                             : (f.severity == vivid::LockfileSeverity::Warning) ? "WARN" : "INFO";
+            const float chip_w = tr.text_width(sev) + 14.0f;
+            const float chip_h = 16.0f;
+            tr.draw_rounded_rect(list_x + 4.0f, row_y + 6.0f, chip_w, chip_h, 3.0f, r, g, b, 0.9f);
+            tr.draw_text(list_x + 4.0f + 7.0f, row_y + 6.0f + 2.0f, sev,
+                         0.08f, 0.08f, 0.08f);
+
+            // Finding id.
+            tr.draw_text(list_x + 4.0f + chip_w + 8.0f, row_y + 6.0f + 2.0f, f.id.c_str(),
+                         style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+
+            // Subject on same line, right of id.
+            if (!f.subject.empty()) {
+                const float id_w  = tr.text_width(f.id.c_str());
+                const float sub_x = list_x + 4.0f + chip_w + 8.0f + id_w + 12.0f;
+                tr.draw_text(sub_x, row_y + 6.0f + 2.0f, f.subject.c_str(),
+                             style.dim_text[0], style.dim_text[1], style.dim_text[2]);
+            }
+
+            // Message on a new line.
+            if (!f.message.empty()) {
+                tr.draw_text(list_x + 8.0f, row_y + 30.0f, f.message.c_str(),
+                             style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+            }
+            // Suggestion on next line, dim.
+            if (!f.suggestion.empty()) {
+                const std::string arrow = "-> " + f.suggestion;
+                tr.draw_text(list_x + 8.0f, row_y + 50.0f, arrow.c_str(),
+                             style.dim_text[0], style.dim_text[1], style.dim_text[2]);
+            }
+
+            row_y += row_h;
+        }
+    }
+    tr.pop_clip_rect();
+
+    // Close button (bottom-right).
+    const float btn_w = 72.0f;
+    const float btn_h = 22.0f;
+    const float btn_x = px + pw - btn_w - 16.0f;
+    const float btn_y = py + ph - btn_h - 14.0f;
+    const bool btn_hover =
+        mouse.x >= btn_x && mouse.x <= btn_x + btn_w &&
+        mouse.y >= btn_y && mouse.y <= btn_y + btn_h;
+    tr.draw_rect(btn_x, btn_y, btn_w, btn_h,
+                 btn_hover ? style.button_hover[0] : style.button_bg[0],
+                 btn_hover ? style.button_hover[1] : style.button_bg[1],
+                 btn_hover ? style.button_hover[2] : style.button_bg[2], 0.9f);
+    const float close_text_w = tr.text_width("Close");
+    tr.draw_text(btn_x + (btn_w - close_text_w) * 0.5f, btn_y + 3.0f, "Close",
+                 style.dim_text[0], style.dim_text[1], style.dim_text[2]);
+    lockfile_findings.close_btn = {btn_x, btn_y, btn_w, btn_h};
 }
 
 // -----------------------------------------------------------------------

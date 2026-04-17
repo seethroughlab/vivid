@@ -613,6 +613,10 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         snap.mcp_opdev_last_ping_ms = control_server->mcp_last_ping_ms("opdev");
     }
 
+    // Phase 6a: expose the last verify_lockfile result at graph level so the
+    // UI (Phase 6b) can render an indicator / findings panel.
+    snap.lockfile_status = runtime.lockfile_status();
+
     return snap;
 }
 

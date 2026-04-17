@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/dialog_types.h"
+#include "runtime/packages/project_lockfile.h"
 #include "ui/rendering/overlay_layouts.h"
 #include "ui/active_text_field.h"
 #include "ui/style/ui_style.h"
@@ -204,6 +205,17 @@ public:
         std::function<void()> on_later;
     };
 
+    // Phase 6b: project-lockfile findings modal. Opened via
+    // open_lockfile_findings() from the perf-bar badge click. Status is
+    // copied at open time so the modal stays stable even if the underlying
+    // snapshot churns while the modal is visible.
+    struct LockfileFindingsState {
+        bool open = false;
+        vivid::LockfileStatus status;
+        float scroll_y = 0.0f;
+        OverlayRect close_btn{};  // populated during draw
+    };
+
     // Crash-recovery dialog — shown at startup when the previous session
     // crashed and the user has not forced safe mode from the CLI.
     struct CrashRecoveryState {
@@ -227,6 +239,7 @@ public:
     CreatePopupState create_popup;
     PresetNameState preset_name;
     CoreUpdateState core_update;
+    LockfileFindingsState lockfile_findings;
     CrashRecoveryState crash_recovery;
 
     // --- Save confirm callbacks (set by main.cpp via NodeGraphUI forwarding) ---
@@ -299,6 +312,11 @@ public:
     // --- Preset name popup ---
     void open_preset_name_popup(const std::string& node_id);
     bool preset_name_open() const { return preset_name.open; }
+
+    // --- Lockfile findings modal ---
+    void open_lockfile_findings(const vivid::LockfileStatus& status);
+    void close_lockfile_findings();
+    bool lockfile_findings_open() const { return lockfile_findings.open; }
 
     // --- Core update notice (banner, not modal) ---
     void show_core_update_notice(const std::string& version,
@@ -385,6 +403,8 @@ private:
     void draw_preset_name_popup(Renderer2D& tr, const MouseState& mouse, const UIStyle& style,
                                 float popup_opacity, uint32_t win_w, uint32_t win_h,
                                 const TextEditState& text_edit, bool cursor_blink);
+    void draw_lockfile_findings(Renderer2D& tr, const MouseState& mouse, const UIStyle& style,
+                                float popup_opacity, uint32_t win_w, uint32_t win_h);
     void draw_crash_recovery(Renderer2D& tr, const MouseState& mouse, const UIStyle& style,
                              float popup_opacity, uint32_t win_w, uint32_t win_h);
 

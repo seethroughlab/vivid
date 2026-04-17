@@ -53,6 +53,13 @@ struct PackageInfo {
     PackageDependencies dependencies;
     PackageTests tests;
     PackageAssets assets;
+
+    // Provenance (populated at install/link/scan time; not read from the
+    // manifest). Empty when the package isn't a Git worktree or git is
+    // unavailable. `dirty` meaningful only when git_commit is set.
+    std::string source_url;
+    std::string git_commit;
+    bool dirty = false;
 };
 
 struct SkippedPackage {
@@ -137,6 +144,7 @@ public:
 
     // Set the asset library for discovering package assets during scan.
     void set_asset_library(AssetLibrary* lib) { asset_library_ = lib; }
+    AssetLibrary* asset_library() const { return asset_library_; }
 
     // Returns <config_dir>/packages (platform-specific config dir)
     static std::string packages_dir();

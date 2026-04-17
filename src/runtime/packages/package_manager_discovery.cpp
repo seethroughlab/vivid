@@ -252,6 +252,10 @@ std::vector<PackageInfo> PackageManager::resolve_packages(bool emit_warnings) {
             info.path = entry.path().string();
             info.linked = entry.is_symlink();
             info.source_scope = sr.scope;
+            // Capture git provenance from the package dir — follows symlinks
+            // naturally (filesystem path resolves through the symlink), so
+            // linked packages get their source-tree commit here too.
+            package_manager_internal::capture_git_metadata(info.path, info);
             candidates.push_back({std::move(info), sr.scope, sr.root, sr.precedence});
         }
     }

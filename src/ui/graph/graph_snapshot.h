@@ -2,6 +2,7 @@
 
 #include "operator_api/types.h"
 #include "runtime/graph/cadence_types.h"
+#include "runtime/packages/project_lockfile.h"
 #include <string>
 #include <vector>
 #include <array>
@@ -362,6 +363,11 @@ struct GraphSnapshot {
     // MCP server last-ping timestamps (steady_clock ms; 0 = never pinged)
     uint64_t mcp_main_last_ping_ms  = 0;  // "vivid" graph server
     uint64_t mcp_opdev_last_ping_ms = 0;  // "opdev" operator-dev server
+
+    // Project lockfile status. overall = Match / empty findings when no
+    // sibling vivid.lock exists or the runtime has no PackageManager set.
+    // Populated by graph_snapshot_builder.cpp from RuntimeCore::lockfile_status().
+    LockfileStatus lockfile_status;
 
     const NodeSnapshot* find_node(const std::string& id) const {
         auto it = node_index.find(id);

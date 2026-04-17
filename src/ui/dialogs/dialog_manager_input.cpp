@@ -300,6 +300,13 @@ bool DialogManager::on_key(int key, int /*action*/, int mods,
 }
 
 bool DialogManager::on_scroll(float y_offset) {
+    if (lockfile_findings.open && !lockfile_findings.status.findings.empty()) {
+        lockfile_findings.scroll_y -= y_offset * 24.0f;
+        // Don't know exact max_scroll without window size; clamp in draw's
+        // clip-rect logic. Negative is invalid.
+        if (lockfile_findings.scroll_y < 0.0f) lockfile_findings.scroll_y = 0.0f;
+        return true;
+    }
     if (example_browser.open && !example_browser.entries.empty()) {
         example_browser.scroll -= y_offset * kPkgBrowserItemH;
         float max_scroll = std::max(0.0f, (static_cast<int>(example_browser.entries.size()) - kPkgBrowserMaxVisible) * kPkgBrowserItemH);
@@ -326,7 +333,52 @@ bool DialogManager::on_scroll(float y_offset) {
     return false;
 }
 
+namespace {
+// Phase 6b: handle close-button + outside-click for the lockfile modal.
+// Defined here rather than as a DialogManager method because it only touches
+// state, nothing shared with the broader update loop.
+void update_lockfile_findings_local(DialogManager::LockfileFindingsState& state,
+                                    const MouseState& mouse,
+                                    uint32_t win_w, uint32_t win_h) {
+    if (!state.open) return;
+    if (!mouse.left_clicked) return;
+
+    // Panel rect (must match draw_lockfile_findings).
+    const float wf = static_cast<float>(win_w);
+    const float hf = static_cast<float>(win_h);
+    const float pw = 560.0f;
+    const float header_h = 52.0f, row_h = 72.0f, pad_bot = 48.0f;
+    const float max_list_h = hf - 120.0f - header_h - pad_bot;
+    const float content_h  = static_cast<float>(state.status.findings.size()) * row_h;
+    const float list_h     = std::min(max_list_h, std::max(content_h, 72.0f));
+    const float ph         = header_h + list_h + pad_bot;
+    const float px         = (wf - pw) * 0.5f;
+    const float py         = (hf - ph) * 0.5f;
+
+    // Close button hit-test (uses rect captured at draw time; w > 0 implies
+    // the button was actually drawn this frame).
+    const auto& cb = state.close_btn;
+    if (cb.w > 0.0f &&
+        mouse.x >= cb.x && mouse.x <= cb.x + cb.w &&
+        mouse.y >= cb.y && mouse.y <= cb.y + cb.h) {
+        state.open = false;
+        state.scroll_y = 0.0f;
+        return;
+    }
+
+    // Outside-click dismisses.
+    const bool inside_panel =
+        mouse.x >= px && mouse.x <= px + pw &&
+        mouse.y >= py && mouse.y <= py + ph;
+    if (!inside_panel) {
+        state.open = false;
+        state.scroll_y = 0.0f;
+    }
+}
+}  // namespace
+
 void DialogManager::update(MouseState& mouse, uint32_t win_w, uint32_t win_h) {
+    update_lockfile_findings_local(lockfile_findings, mouse, win_w, win_h);
     refresh_package_browser_snapshot_if_ready();
     update_package_browser(mouse, win_w, win_h);
     update_example_browser(mouse, win_w, win_h);

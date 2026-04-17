@@ -27,7 +27,50 @@ std::string abi_mismatch_error_for_package(const std::string& package_name,
     }
     return oss.str();
 }
+
+std::string trim_trailing_ws(std::string s) {
+    while (!s.empty() && (s.back() == '\n' || s.back() == '\r' ||
+                           s.back() == ' ' || s.back() == '\t')) {
+        s.pop_back();
+    }
+    return s;
+}
 } // namespace
+
+namespace package_manager_internal {
+void capture_git_metadata(const std::string& repo_dir, PackageInfo& info) {
+    const std::string git_exe = find_tool("git");
+    if (git_exe.empty()) return;
+
+    auto run_git = [&](std::vector<std::string> args) -> ProcessRunResult {
+        ProcessRunOptions opts;
+        opts.argv.reserve(args.size() + 3);
+        opts.argv.push_back(git_exe);
+        opts.argv.push_back("-C");
+        opts.argv.push_back(repo_dir);
+        for (auto& a : args) opts.argv.push_back(std::move(a));
+        opts.timeout_ms = 5000;  // defensive; git commands should be instant
+        return run_process(opts);
+    };
+
+    // rev-parse HEAD — fails fast if not a git repo.
+    auto head = run_git({"rev-parse", "HEAD"});
+    if (!head.launched || head.exit_code != 0) return;
+    info.git_commit = trim_trailing_ws(head.output);
+
+    // remote.origin.url — optional, only present when there's a remote.
+    auto remote = run_git({"config", "--get", "remote.origin.url"});
+    if (remote.launched && remote.exit_code == 0) {
+        info.source_url = trim_trailing_ws(remote.output);
+    }
+
+    // status --porcelain — any non-empty output means dirty.
+    auto status = run_git({"status", "--porcelain"});
+    if (status.launched && status.exit_code == 0) {
+        info.dirty = !trim_trailing_ws(status.output).empty();
+    }
+}
+} // namespace package_manager_internal
 
 InstallResult PackageManager::install(const std::string& url) {
     std::set<std::string> chain;
@@ -187,6 +230,11 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
     std::filesystem::rename(staging_dir, pkg_dir);
     result.info.path = pkg_dir;
 
+    // Capture git provenance from the freshly cloned (or copied) repo.
+    // A fresh clone is always clean; if the user installed from a local
+    // path that happens to be a git worktree, we still record its HEAD.
+    package_manager_internal::capture_git_metadata(pkg_dir, result.info);
+
     if (!compile_package(pkg_dir, result)) {
         // Roll back failed installs so partial packages don't remain on disk.
         std::error_code ec;
@@ -260,6 +308,10 @@ InstallResult PackageManager::link(const std::string& path) {
 
     result.info.path = pkg_dir;
     result.info.linked = true;
+
+    // Capture git provenance from the original source tree (linked path).
+    // Silently leaves fields empty when the linked dir is not a git repo.
+    package_manager_internal::capture_git_metadata(canonical.string(), result.info);
 
     // Compile (build/ dir ends up in the original source tree through the symlink)
     if (!compile_package(pkg_dir, result))

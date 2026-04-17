@@ -43,4 +43,8 @@ bool is_core_version_compatible(const std::string& core_version,
                                 bool& constraint_valid);
 std::string diagnose_non_package_dir(const std::string& dir);
 
+// Populate info.source_url / git_commit / dirty from the repo at repo_dir.
+// Silently no-ops when the path isn't a Git worktree or git is unavailable.
+void capture_git_metadata(const std::string& repo_dir, PackageInfo& info);
+
 } // namespace vivid::package_manager_internal

@@ -1,10 +1,17 @@
 #include "runtime/operators/operator_registry.h"
+#include "runtime/operators/operator_descriptor_hash.h"
 #include "runtime/platform/platform.h"
 
 #include <cstdio>
 #include <cstring>
 
 namespace vivid {
+
+std::string OperatorRegistry::descriptor_hash(const std::string& type_name) const {
+    const VividOperatorDescriptor* desc = probe_descriptor(type_name);
+    if (!desc) return {};
+    return operator_descriptor_hash(desc);
+}
 
 OperatorRegistry::~OperatorRegistry() {
     deferred_.clear();

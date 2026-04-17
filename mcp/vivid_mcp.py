@@ -776,6 +776,62 @@ async def new_graph() -> str:
 
 
 @mcp.tool()
+async def write_project_lockfile(graph_path: str,
+                                 output_path: str | None = None) -> str:
+    """Write a project lockfile recording the packages, operators, and
+    assets referenced by a graph. The lockfile is produced from the
+    on-disk graph (not the currently-loaded runtime state), so it is
+    deterministic.
+
+    Args:
+        graph_path: Path to the graph file.
+        output_path: Optional destination for the lockfile. If omitted,
+            writes <graph_dir>/vivid.lock.
+
+    Returns JSON: {"ok": true, "message": "<absolute path to vivid.lock>"}.
+    """
+    resolved = _resolve_graph_path(graph_path)
+    body: dict = {"graph_path": resolved}
+    if output_path is not None:
+        body["output_path"] = output_path
+    return await _post("write_project_lockfile", body)
+
+
+@mcp.tool()
+async def verify_project_lockfile(graph_path: str,
+                                  lockfile_path: str) -> str:
+    """Verify that the current environment satisfies an existing lockfile.
+
+    Args:
+        graph_path: Path to the graph to compare against.
+        lockfile_path: Path to the lockfile to verify.
+
+    Returns JSON: {"ok": true, "status": {"overall": ..., "findings": [...]}}.
+    overall is one of: "match", "compatible_drift", "mismatch".
+    """
+    return await _post("verify_project_lockfile", {
+        "graph_path": _resolve_graph_path(graph_path),
+        "lockfile_path": lockfile_path,
+    })
+
+
+@mcp.tool()
+async def get_project_dependency_status(graph_path: str) -> str:
+    """Report dependency status for a graph using its sibling vivid.lock.
+
+    Args:
+        graph_path: Path to the graph file. Looks for a sibling
+            vivid.lock in the same directory.
+
+    Returns JSON: {"ok": true, "status": {"overall": ..., "findings": [...]}}.
+    overall is "no_lockfile" when no sibling vivid.lock exists, otherwise
+    one of "match", "compatible_drift", "mismatch".
+    """
+    return await _post("get_project_dependency_status",
+                       {"graph_path": _resolve_graph_path(graph_path)})
+
+
+@mcp.tool()
 async def undo() -> str:
     """Undo the last graph mutation made through MCP/control-server commands."""
     return await _post("undo")

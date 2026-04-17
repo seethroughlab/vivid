@@ -68,6 +68,7 @@ bool DialogManager::any_open() const {
         || example_browser.open
         || create_popup.open
         || preset_name.open
+        || lockfile_findings.open
         || crash_recovery.open;
     // Note: core_update is a banner, not a modal — not included in any_open
 }
@@ -75,6 +76,18 @@ bool DialogManager::any_open() const {
 void DialogManager::open_save_confirm(SaveConfirmAction action) {
     save_confirm.action = action;
     save_confirm.open = true;
+}
+
+void DialogManager::open_lockfile_findings(const vivid::LockfileStatus& status) {
+    lockfile_findings.status    = status;
+    lockfile_findings.scroll_y  = 0.0f;
+    lockfile_findings.close_btn = {};
+    lockfile_findings.open      = true;
+}
+
+void DialogManager::close_lockfile_findings() {
+    lockfile_findings.open     = false;
+    lockfile_findings.scroll_y = 0.0f;
 }
 
 void DialogManager::open_crash_recovery(const vivid::CrashRecord& rec,

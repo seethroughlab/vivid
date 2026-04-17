@@ -12,6 +12,7 @@ namespace vivid {
 class RuntimeCore;
 class AudioEngine;
 class OperatorRegistry;
+class PackageManager;
 class SubgraphModuleRegistry;
 class SystemMidiListener;
 struct CompiledNode;
@@ -154,13 +155,42 @@ public:
     // Persistence
     CommandResult save();
     CommandResult save_as(const std::string& path);
-    CommandResult load_graph(const std::string& path, bool& has_gpu_ops, bool& has_audio);
+    // load_graph accepts an optional trailing lockfile_mode override:
+    //   ""         — no override; treated as "studio" (caller passes
+    //                Settings.lockfile_load_mode when a persisted pref exists).
+    //   "studio"   — verify runs on sibling vivid.lock; findings stored; nothing disabled.
+    //   "strict"   — critical findings mark affected nodes locked_unavailable.
+    //   "recovery" — identical to studio for now; reserved.
+    // Unknown values fall back to studio.
+    CommandResult load_graph(const std::string& path, bool& has_gpu_ops, bool& has_audio,
+                             const std::string& lockfile_mode = "");
     CommandResult reload(bool& has_gpu_ops, bool& has_audio);
     CommandResult new_graph(bool& has_gpu_ops, bool& has_audio);
     CommandResult new_project(const std::string& dir_path, bool& has_gpu_ops, bool& has_audio);
     CommandResult apply_snapshot_json(const std::string& graph_json,
                                       bool& has_gpu_ops, bool& has_audio);
     CommandResult rebuild_current_graph(bool& has_gpu_ops, bool& has_audio);
+
+    // Write a project lockfile next to graph_path (or to output_path if non-empty).
+    // Uses the currently-loaded graph for content-hash and node walking is sourced
+    // from the graph loaded at graph_path so lockfile generation is deterministic
+    // against on-disk state.
+    CommandResult write_project_lockfile(PackageManager& package_manager,
+                                         const std::string& graph_path,
+                                         const std::string& output_path);
+
+    // Verify the lockfile at lockfile_path against the graph at graph_path and
+    // the live environment. Returns ok = true on success with message =
+    // LockfileStatus JSON. ok = false only for I/O errors (missing graph/lockfile).
+    CommandResult verify_project_lockfile(PackageManager& package_manager,
+                                          const std::string& graph_path,
+                                          const std::string& lockfile_path);
+
+    // Convenience: look for a sibling vivid.lock next to graph_path and verify.
+    // Returns message = {"overall":"no_lockfile","findings":[]} when the sibling
+    // is absent so callers can render a distinct "no lockfile" state.
+    CommandResult get_project_dependency_status(PackageManager& package_manager,
+                                                const std::string& graph_path);
 
     // Solo mode (session-only, not serialized)
     CommandResult set_solo(const std::string& node_id);  // empty string = clear solo

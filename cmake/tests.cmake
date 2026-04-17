@@ -57,6 +57,7 @@ add_library(vivid_runtime_testlib STATIC
     src/runtime/operators/operator_registry_lookup.cpp
     src/runtime/operators/operator_registry_metadata.cpp
     src/runtime/operators/operator_registry_diagnostics.cpp
+    src/runtime/operators/operator_descriptor_hash.cpp
     src/runtime/operators/operator_source_docs.cpp
     src/runtime/packages/package_catalog.cpp
     src/runtime/packages/package_compiler.cpp
@@ -65,6 +66,8 @@ add_library(vivid_runtime_testlib STATIC
     src/runtime/packages/package_manager_manifest.cpp
     src/runtime/packages/package_manager_install.cpp
     src/runtime/packages/package_manager_build.cpp
+    src/runtime/packages/project_lockfile.cpp
+    src/common/hash_util.cpp
     src/runtime/packages/package_scaffolder.cpp
     src/runtime/packages/package_test_runner.cpp
     src/runtime/platform/app_update_manager.cpp
@@ -94,6 +97,10 @@ if(APPLE AND VIVID_ENABLE_ACCELERATE)
     target_compile_definitions(vivid_runtime_testlib PUBLIC VIVID_HAS_ACCELERATE=1)
     target_link_libraries(vivid_runtime_testlib PUBLIC "-framework Accelerate")
 endif()
+# Core git metadata (for project_lockfile.cpp's lf.vivid_core.commit field).
+target_compile_definitions(vivid_runtime_testlib PUBLIC
+    "VIVID_CORE_COMMIT=\"${VIVID_CORE_COMMIT}\""
+    "VIVID_CORE_REPO_URL=\"${VIVID_CORE_REPO_URL}\"")
 if(APPLE)
     target_link_libraries(vivid_runtime_testlib PUBLIC
         "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"

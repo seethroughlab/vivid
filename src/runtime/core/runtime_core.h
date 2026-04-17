@@ -6,6 +6,7 @@
 #include "runtime/graph/frame_executor.h"
 #include "runtime/graph/graph_compiler.h"
 #include "runtime/graph/subgraph_module.h"
+#include "runtime/packages/project_lockfile.h"
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -15,6 +16,7 @@ namespace vivid {
 
 class Graph;
 class OperatorRegistry;
+class PackageManager;
 class SubgraphModuleRegistry;
 
 // ---------------------------------------------------------------------------
@@ -113,6 +115,18 @@ public:
     // Modulation lowering records from the most recent flatten pass
     const std::vector<ModulationLoweringRecord>& modulation_records() const { return modulation_records_; }
 
+    // ── Project lockfile (Phase 6a) ─────────────────────────────────────────
+
+    // Optional package-manager pointer used by load_graph to run verify.
+    // Not owned. When null, verify is skipped (pre-Phase-6a behavior).
+    void set_package_manager(PackageManager* pm) { package_manager_ = pm; }
+    PackageManager* package_manager() const { return package_manager_; }
+
+    // Latest verify_lockfile result. Set by RuntimeAPI::load_graph; reset to
+    // a default LockfileStatus{} on each load. Consumed by the snapshot builder.
+    const LockfileStatus& lockfile_status() const { return lockfile_status_; }
+    void set_lockfile_status(LockfileStatus status) { lockfile_status_ = std::move(status); }
+
 private:
     std::unique_ptr<CompiledGraph> compiled_graph_;
     AudioFrameBridge audio_frame_bridge_;
@@ -132,6 +146,10 @@ private:
     double last_tick_time_ = 0.0;
     LiveMetronomeStateStore live_metronome_store_;
     bool live_metronome_initialized_ = false;
+
+    // Phase 6a: lockfile verify state (optional).
+    PackageManager* package_manager_ = nullptr;
+    LockfileStatus lockfile_status_;
 
     void write_live_metronome_state(const LiveMetronomeState& state);
 

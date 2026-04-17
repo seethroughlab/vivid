@@ -53,6 +53,10 @@ void RuntimeCore::reset_live_metronome(const GraphMetronomeDef& metronome, doubl
 // ---------------------------------------------------------------------------
 
 bool RuntimeCore::build(const Graph& graph, OperatorRegistry& registry) {
+    // Reset lockfile status on each build; the caller (RuntimeAPI::load_graph)
+    // repopulates it after a successful build via set_lockfile_status.
+    lockfile_status_ = LockfileStatus{};
+
     PreparedBuild prepared;
     if (!prepare_build(graph, registry, prepared))
         return false;
