@@ -22,7 +22,8 @@ std::string dispatch(const std::string& method, const std::string& body,
                             Settings* settings,
                             AudioEngine* audio_engine,
                             AssetLibrary* asset_library,
-                            BuildConsole* build_console) {
+                            BuildConsole* build_console,
+                            CrashRecoveryManager* crash_recovery_manager) {
     // Read-only queries (no body needed)
     // inspect_graph accepts an optional "detail" field in the body -- handled below after body parsing.
     if (method == "introspect_nodes") return handle_introspect_nodes(graph, core, core.subgraph_modules());
@@ -267,6 +268,17 @@ std::string dispatch(const std::string& method, const std::string& body,
                     api.load_graph(root["path"].get<std::string>(),
                                    has_gpu_ops, has_audio, lockfile_mode));
             }
+        }
+    } else if (method == "get_last_crash") {
+        result = handle_get_last_crash(crash_recovery_manager);
+    } else if (method == "clear_last_crash") {
+        result = handle_clear_last_crash(crash_recovery_manager);
+    } else if (method == "load_graph_safe_mode") {
+        if (!root_valid) {
+            result = json_err("invalid JSON body");
+        } else {
+            result = handle_load_graph_safe_mode(
+                root, crash_recovery_manager, core, api, has_gpu_ops, has_audio);
         }
     } else if (method == "set_resolution") {
         if (!root_valid) { result = json_err("invalid JSON body"); }

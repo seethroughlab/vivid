@@ -58,6 +58,15 @@ struct GranularSynth : vivid::OperatorBase, vivid::AudioProcessable {
     DoubleBufferedSnapshot insp_snapshot_;
     bool insp_dragging_ = false;
 
+    // Inspector snapshot rate-limiting. fill_inspector_snapshot scans the
+    // entire 4-second capture buffer (~192k samples at 48kHz) into 280
+    // waveform bins; doing that every audio block was the dominant cost in
+    // this operator (~170us at 256 frames, ~95% of it pure UI work). UI
+    // only refreshes at ~60Hz, so publishing every 8 audio blocks — ~43ms
+    // period at 48kHz/256-frame blocks — is still faster than the display.
+    static constexpr int kSnapshotEveryNBlocks = 8;
+    int snapshot_counter_ = 0;
+
     GranularSynth() {
         vivid::semantic_tag(grain_size, "time_milliseconds");
         vivid::semantic_shape(grain_size, "scalar");
@@ -138,7 +147,10 @@ struct GranularSynth : vivid::OperatorBase, vivid::AudioProcessable {
         params.mix = mix.value;
 
         engine_.process(in, out, ctx->buffer_size, ctx->sample_rate, params);
-        insp_snapshot_.write(engine_, params.position, params.window_type);
+        if (++snapshot_counter_ >= kSnapshotEveryNBlocks) {
+            snapshot_counter_ = 0;
+            insp_snapshot_.write(engine_, params.position, params.window_type);
+        }
     }
 
     void draw_inspector(VividInspectorContext* ctx) override {

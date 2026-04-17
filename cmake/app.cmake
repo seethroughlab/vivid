@@ -109,6 +109,7 @@ add_executable(vivid
     src/runtime/control/control_server_dispatch.cpp
     src/runtime/control/control_server_checks.cpp
     src/runtime/control/control_server_assets.cpp
+    src/runtime/control/control_server_crash.cpp
     src/runtime/operators/operator_source_docs.cpp
     src/runtime/debug/capture_coordinator.cpp
     src/runtime/debug/output_analyzer.cpp
@@ -120,6 +121,7 @@ add_executable(vivid
     src/runtime/platform/process_runner.cpp
     src/runtime/core/settings.cpp
     src/runtime/core/crash_recovery.cpp
+    src/runtime/core/quarantine.cpp
     src/runtime/core/editor_detect.cpp
     src/runtime/platform/macos_frame_timer.cpp
     src/export/export_pipeline.cpp
@@ -488,5 +490,12 @@ if(APPLE)
         COMMENT "Creating convenience symlink build/vivid"
     )
 endif()
+
+# --- Watchdog (optional supervisor for unattended deployments) ---
+add_executable(vivid-watchdog
+    src/watchdog/main.cpp
+)
+target_include_directories(vivid-watchdog PRIVATE src)
+# Plain CLI binary — no UI, no runtime, no bundle, no code signing.
 
 enable_testing()

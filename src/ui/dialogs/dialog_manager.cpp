@@ -1,4 +1,5 @@
 #include "ui/dialogs/dialog_manager.h"
+#include "runtime/core/crash_recovery.h"
 #include "ui/graph/node_graph_constants.h"
 #include "ui/style/i18n.h"
 #include "ui/text_edit.h"
@@ -6,6 +7,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <utility>
 
 namespace vivid::ui {
 
@@ -49,7 +51,8 @@ bool DialogManager::wants_keyboard() const {
         || pkg_browser.open
         || example_browser.open
         || create_popup.open
-        || preset_name.open;
+        || preset_name.open
+        || crash_recovery.open;
     // Note: core_update is a banner, not a modal — it does NOT want keyboard
 }
 
@@ -65,7 +68,8 @@ bool DialogManager::any_open() const {
         || example_browser.open
         || create_popup.open
         || preset_name.open
-        || lockfile_findings.open;
+        || lockfile_findings.open
+        || crash_recovery.open;
     // Note: core_update is a banner, not a modal — not included in any_open
 }
 
@@ -84,6 +88,15 @@ void DialogManager::open_lockfile_findings(const vivid::LockfileStatus& status) 
 void DialogManager::close_lockfile_findings() {
     lockfile_findings.open     = false;
     lockfile_findings.scroll_y = 0.0f;
+}
+
+void DialogManager::open_crash_recovery(const vivid::CrashRecord& rec,
+                                        std::string crash_report_path) {
+    crash_recovery.signal_name       = rec.signal_name;
+    crash_recovery.operator_name     = rec.operator_name;
+    crash_recovery.node_id           = rec.node_id;
+    crash_recovery.crash_report_path = std::move(crash_report_path);
+    crash_recovery.open              = true;
 }
 
 void DialogManager::open_clone_confirm(const std::string& type_name, TextEditState& text_edit,

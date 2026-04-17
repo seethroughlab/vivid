@@ -391,6 +391,7 @@ void DialogManager::update(MouseState& mouse, uint32_t win_w, uint32_t win_h) {
     update_about(mouse, win_w, win_h);
     update_create_popup(mouse, win_w, win_h);
     update_preset_name_popup(mouse, win_w, win_h);
+    update_crash_recovery(mouse, win_w, win_h);
     update_core_update_buttons(mouse);
 }
 
@@ -1556,6 +1557,50 @@ void DialogManager::update_core_update_buttons(MouseState& mouse) {
             return;
         }
     }
+}
+
+// -----------------------------------------------------------------------
+// Crash-recovery dialog interaction
+// -----------------------------------------------------------------------
+void DialogManager::update_crash_recovery(MouseState& mouse, uint32_t win_w, uint32_t win_h) {
+    if (!crash_recovery.open) return;
+    if (!mouse.left_clicked) return;
+
+    const float dw = 520.0f;
+    const float dh = 150.0f;
+    const float dx = (static_cast<float>(win_w) - dw) * 0.5f;
+    const float dy = (static_cast<float>(win_h) - dh) * 0.5f;
+
+    const float btn_w = 150.0f;
+    const float btn_h = 24.0f;
+    const float btn_y = dy + dh - btn_h - 10.0f;
+    const float gap = 10.0f;
+    const float total_btn_w = btn_w * 3 + gap * 2;
+    const float btn_start_x = dx + (dw - total_btn_w) * 0.5f;
+    const float reveal_x = btn_start_x;
+    const float normal_x = btn_start_x + btn_w + gap;
+    const float safe_x   = btn_start_x + (btn_w + gap) * 2;
+
+    auto hit = [&](float bx) {
+        return mouse.x >= bx && mouse.x <= bx + btn_w &&
+               mouse.y >= btn_y && mouse.y <= btn_y + btn_h;
+    };
+
+    if (hit(reveal_x)) {
+        // Does NOT dismiss the dialog — the user still needs to choose a mode.
+        if (on_crash_recovery_reveal_report) on_crash_recovery_reveal_report();
+    } else if (hit(normal_x)) {
+        crash_recovery.open = false;
+        if (on_crash_recovery_open_normally) on_crash_recovery_open_normally();
+    } else if (hit(safe_x)) {
+        crash_recovery.open = false;
+        if (on_crash_recovery_open_safe_mode) on_crash_recovery_open_safe_mode();
+    }
+    // Outside-click does nothing: the user must pick Normal or Safe Mode
+    // to proceed.  This is intentional — the dialog blocks the graph load.
+
+    mouse.left_clicked = false;
+    mouse.left_released = false;
 }
 
 } // namespace vivid::ui

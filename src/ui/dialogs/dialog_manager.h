@@ -13,6 +13,10 @@
 #include <array>
 #include <functional>
 
+namespace vivid {
+struct CrashRecord;  // runtime/core/crash_recovery.h
+}
+
 namespace vivid::ui {
 
 class Renderer2D;
@@ -212,6 +216,16 @@ public:
         OverlayRect close_btn{};  // populated during draw
     };
 
+    // Crash-recovery dialog — shown at startup when the previous session
+    // crashed and the user has not forced safe mode from the CLI.
+    struct CrashRecoveryState {
+        bool        open = false;
+        std::string signal_name;         // e.g. "SIGSEGV"
+        std::string operator_name;       // crashed operator type
+        std::string node_id;             // crashed node (may be empty)
+        std::string crash_report_path;   // absolute path to latest-crash.json
+    };
+
     // --- Per-dialog state (public for NodeGraphUI forwarding during migration) ---
     AboutState about;
     SaveConfirmState save_confirm;
@@ -226,11 +240,17 @@ public:
     PresetNameState preset_name;
     CoreUpdateState core_update;
     LockfileFindingsState lockfile_findings;
+    CrashRecoveryState crash_recovery;
 
     // --- Save confirm callbacks (set by main.cpp via NodeGraphUI forwarding) ---
     std::function<void()> on_save_confirm_save;
     std::function<void()> on_save_confirm_dont_save;
     std::function<void()> on_save_confirm_cancel;
+
+    // --- Crash-recovery callbacks (set by main.cpp) ---
+    std::function<void()> on_crash_recovery_open_normally;
+    std::function<void()> on_crash_recovery_open_safe_mode;
+    std::function<void()> on_crash_recovery_reveal_report;
 
     // --- Save confirm queries ---
     bool save_confirm_open() const { return save_confirm.open; }
@@ -241,6 +261,8 @@ public:
     void open_clone_confirm(const std::string& type_name, TextEditState& text_edit,
                             const std::string& node_id = {});
     void open_mcp_setup() { mcp_setup.open = true; }
+    void open_crash_recovery(const vivid::CrashRecord& rec,
+                             std::string crash_report_path);
 
     // --- MCP setup ---
     void set_mcp_dir(const std::string& dir) { mcp_setup.mcp_dir = dir; }
@@ -383,6 +405,8 @@ private:
                                 const TextEditState& text_edit, bool cursor_blink);
     void draw_lockfile_findings(Renderer2D& tr, const MouseState& mouse, const UIStyle& style,
                                 float popup_opacity, uint32_t win_w, uint32_t win_h);
+    void draw_crash_recovery(Renderer2D& tr, const MouseState& mouse, const UIStyle& style,
+                             float popup_opacity, uint32_t win_w, uint32_t win_h);
 
     // --- Input (dialog_manager_input.cpp) ---
     void update_about(MouseState& mouse, uint32_t win_w, uint32_t win_h);
@@ -396,6 +420,7 @@ private:
     void update_example_browser(MouseState& mouse, uint32_t win_w, uint32_t win_h);
     void update_create_popup(MouseState& mouse, uint32_t win_w, uint32_t win_h);
     void update_preset_name_popup(MouseState& mouse, uint32_t win_w, uint32_t win_h);
+    void update_crash_recovery(MouseState& mouse, uint32_t win_w, uint32_t win_h);
     void update_core_update_buttons(MouseState& mouse);
     void submit_create_operator(bool empty_variant);
     void reset_create_env_defaults();

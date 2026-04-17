@@ -307,6 +307,66 @@ non-uniform partition plan: direct early reflections, small first tail
 partitions, and larger late-tail partitions with explicit latency and listening
 gates.
 
+## ConvolutionReverb Non-Uniform Partition Pass
+
+The second `ConvolutionReverb` pass implements the follow-up called for above:
+a Gardner-style doubling-zone schedule under `operators/shared/convolution_reverb_dsp/`.
+The public operator surface, WAV override, preset set, mono/stereo/true-stereo
+IR handling, and both backends stay unchanged.
+
+Zone schedule (compile-time tunables in the DSP source):
+
+- direct early block for `IR[0, 256)` (unchanged from the prior pass)
+- zone 1 at partition size = `block_size`, up to 4 partitions
+- zones 2..K with partition size doubling each step, up to 4 partitions per zone
+- zone-size cap at 4096 samples; once reached, one final zone absorbs every
+  remaining partition so the per-zone FFT/IFFT overhead is shared across the
+  long tail
+
+Latency contract: each zone satisfies `write_offset = ir_offset - partition_size + block_size >= 0`
+by construction, so no output latency is introduced relative to the uniform
+scheme — the DSP test confirms bit-level parity with direct convolution across
+a 3.0-second hall IR that engages all five zones. `ProcessStats.latency_samples`
+reports the largest zone partition size (4096 at steady state) as a diagnostic
+for the coarsest zone-fire cadence.
+
+Release benchmark on the current machine, compared against the prior uniform pass:
+
+| Frames | Case | Scalar mean | Preferred mean | Speedup | Zones | Partitions | Latency samples | vs prior preferred |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `256` | room | `170.01 ± 17.59 us` | `84.97 ± 0.69 us` | `2.00x` | `5` | `24` | `4096` | `1.92x faster` |
+| `256` | hall | `180.72 ± 2.69 us` | `104.28 ± 0.52 us` | `1.73x` | `5` | `60` | `4096` | `4.59x faster` |
+| `256` | cathedral | `193.56 ± 1.97 us` | `117.48 ± 1.23 us` | `1.65x` | `5` | `83` | `4096` | `5.95x faster` |
+| `1024` | room | `466.04 ± 3.20 us` | `247.87 ± 0.36 us` | `1.88x` | `3` | `17` | `4096` | `1.23x faster` |
+| `1024` | hall | `551.50 ± 3.16 us` | `358.85 ± 35.47 us` | `1.54x` | `3` | `52` | `4096` | `1.83x faster` |
+| `1024` | cathedral | `618.41 ± 3.18 us` | `393.32 ± 4.63 us` | `1.57x` | `3` | `76` | `4096` | `2.25x faster` |
+
+Benchmark command:
+
+```bash
+./build-release/bench_convolution_reverb
+```
+
+Acceptance status:
+
+- scalar vs direct-convolution reference passes both the short-IR test and the
+  new 3.0-second hall non-uniform test (80 blocks, 5 zones, 48 partitions)
+- scalar vs Accelerate parity test passes within the prior tolerance
+- operator smoke, WAV-fallback, and descriptor tests unchanged and passing
+- 256-frame hall and cathedral both clear the ≥1.5x acceptance bar; in fact
+  Accelerate mean drops from ~479us to ~104us (hall) and ~699us to ~117us
+  (cathedral)
+- 1024-frame cases all improve; none regress
+- `ProcessStats` exposes `zone_count` and `latency_samples` for downstream
+  visibility; no new types cross `src/operator_api`
+
+Follow-up note: per-zone FFT input is duplicated (each zone maintains its own
+frequency-domain input history), which limits the 1024-frame win to ~2x. A
+future pass could share a single large FFT and derive smaller-zone frequency
+bins via subband decomposition, or amortize large-zone FFT work across multiple
+blocks (Gardner's algorithm). Both are deferred pending profiling evidence that
+the current peak-block CPU is a problem on the target hardware.
+
 ## Filter/Dynamics Family Triage Pass
 
 The sixth target family has now been measured with an operator-level benchmark
@@ -418,3 +478,369 @@ Acceptance status:
 - `DualFilter` uses prepared plans and branch-light route loops, with scratch allocation only for the parallel route when the buffer grows
 - the strongest wins are from coefficient/prepared-state reuse in Formant, Ladder, HP24, and DualFilter parallel routing
 - Diode and MS-20 remain dominated by nonlinear per-sample state work; further gains there require a separate sound-sensitive approximation or architecture pass
+
+## Audio Operator Sweep Baseline
+
+Profiling-gated deferrals in earlier passes left many audio operators
+unmeasured. The new `bench_audio_operators_sweep` benchmark loads every built
+audio operator dylib through `vivid::OperatorLoader` and reports mean ± stddev
+µs/block at 256 and 1024 frames under a representative workload (stereo sine
+mix with periodic trigger pulse). All smoke checks pass — every operator
+produces finite, non-NaN/Inf output within a 50x absolute peak ceiling.
+
+Per-instance budget is calculated against the 256-frame real-time window
+(5333 µs/block at 48 kHz). The sweep's stopping threshold for DAW-grade
+polyphony is **2% of the 256-frame budget per instance** (~107 µs), which
+permits roughly 50 simultaneous operators on a single audio thread before
+graph saturation.
+
+Release benchmark on the current machine (sorted descending by 256-frame cost):
+
+| Operator | 256f µs | 256f % budget | 1024f µs | Over 2%? |
+| --- | ---: | ---: | ---: | :---: |
+| GranularSynth | 175.18 | 3.28% | 180.72 | ⚠️ yes |
+| ConvolutionReverb | 103.64 | 1.94% | 348.66 | no (edge) |
+| SpectralFreeze | 7.04 | 0.13% | 25.60 | no |
+| DrumKick | 6.10 | 0.11% | 15.59 | no |
+| Chorus | 5.75 | 0.11% | 18.36 | no |
+| ParametricEQ | 5.25 | 0.10% | 16.72 | no |
+| Phaser | 4.62 | 0.09% | 15.54 | no |
+| DrumTom | 4.04 | 0.08% | 13.42 | no |
+| DrumSnare | 4.00 | 0.08% | 12.50 | no |
+| DualFilter | 3.17 | 0.06% | 10.03 | no |
+| AudioAnalysis | 2.98 | 0.06% | 13.60 | no |
+| Vocoder | 2.63 | 0.05% | 9.64 | no |
+| DrumCymbal | 2.52 | 0.05% | 9.39 | no |
+| Reverb | 2.25 | 0.04% | 9.04 | no |
+| FmSynth | 2.07 | 0.04% | 8.07 | no |
+| Filter | 1.74 | 0.03% | 6.61 | no |
+| Flanger | 1.58 | 0.03% | 5.37 | no |
+| DrumHiHat | 1.43 | 0.03% | 5.65 | no |
+| DrumClap | 1.20 | 0.02% | 4.75 | no |
+| Compressor | 1.19 | 0.02% | 4.08 | no |
+| RingMod | 0.97 | 0.02% | 3.86 | no |
+| PingPongDelay | 0.95 | 0.02% | 2.99 | no |
+| Distortion | 0.90 | 0.02% | 3.24 | no |
+| Oscillator | 0.88 | 0.02% | 3.42 | no |
+| Bitcrush | 0.72 | 0.01% | 2.49 | no |
+| Delay | 0.65 | 0.01% | 3.01 | no |
+| Limiter | 0.49 | 0.01% | 1.72 | no |
+| Mixer | 0.38 | 0.01% | 1.61 | no |
+| Noise | 0.27 | 0.01% | 1.06 | no |
+| StereoPanWidth | 0.05 | 0.00% | 0.21 | no |
+| SP404 | 0.02 | 0.00% | 0.07 | no |
+| Slicer | 0.02 | 0.00% | 0.11 | no |
+| Sampler | 0.02 | 0.00% | 0.08 | no |
+| Gain | 0.02 | 0.00% | 0.06 | no |
+
+Benchmark command:
+
+```bash
+./build-release/bench_audio_operators_sweep
+```
+
+Fixture: `tests/benchmarks/bench_audio_operators_sweep.cpp` — 32 warmup
+blocks, 512 measure blocks, 6 repeats per case. Input signal: planar stereo
+mix of two sine components plus xorshift pink-ish noise plus a single-sample
+trigger pulse every 1024 samples. Params at operator defaults. Smoke floor:
+`tests/audio/audio_smoke.h` (finite, non-silent unless `allow_silent`, peak
+below ceiling, DC ratio below 30% of peak).
+
+### Attack queue
+
+Only **GranularSynth** currently exceeds the 2% per-instance budget at 256
+frames. It's the sole forced optimization target under the stopping criteria.
+
+Beyond that, these operators sit below threshold but have clear SIMD shape
+and are worth opportunistic passes (descending by absolute 256f cost):
+
+- `ConvolutionReverb` — already 1.94%; Gardner work-amortization is a named
+  follow-up from the non-uniform pass.
+- `DrumKick`, `DrumSnare`, `DrumTom` — ~4-6 µs each; shared `drum_dsp` can
+  host a batched SIMD envelope/noise kernel that benefits all six drums.
+- `Chorus` — 6 fractional-delay voices, `vDSP_vlint` replaces the scalar
+  interpolator trivially.
+- `ParametricEQ` — 4 cascaded biquads, prepared-block pattern like `Filter`.
+- `Phaser` — 4-8 allpass cascade, biquad-style SIMD per stage.
+
+Operators below 2 µs at 256 frames are left alone — they can't clear the
+1.2× minimum-win bar without cross-operator changes.
+
+## GranularSynth Inspector Snapshot Rate-Limit Pass
+
+`GranularSynth` was the single operator over the 2% per-instance budget in
+the sweep baseline (175.18 µs at 256 frames, 3.28%). Investigation showed the
+DSP engine itself was already cheap (`bench_granular_synth` measures
+2.1–5.5 µs per block across density/grain-size cases) — the audio-thread
+cost was coming from `DoubleBufferedSnapshot::write`, which ran
+`fill_inspector_snapshot` on every block. That call scans the full 4-second
+capture ring (~192k samples at 48 kHz) into 280 waveform bins for the
+inspector display, regardless of whether the inspector is currently visible.
+
+The fix: rate-limit the snapshot write to every 8 audio blocks. At 48 kHz
+with a 256-frame buffer that's ~43 ms between updates (~23 Hz refresh),
+still above the UI's display cadence for waveform visualizations. The
+grain state inside the snapshot updates at the slower rate too — acceptable
+since grain phase progresses smoothly between snapshots and the UI already
+double-buffers the snapshot for lock-free reads.
+
+Release benchmark on the current machine:
+
+| Frames | Pass | Mean µs | 256f % budget | Speedup |
+| ---: | --- | ---: | ---: | ---: |
+| `256` | baseline | `175.18 ± 3.37` | 3.28% | — |
+| `256` | rate-limited | `14.07 ± 0.91` | 0.26% | **12.45x** |
+| `1024` | baseline | `180.72 ± 2.94` | 0.85% | — |
+| `1024` | rate-limited | `16.27 ± 0.84` | 0.08% | **11.11x** |
+
+Benchmark command:
+
+```bash
+./build-release/bench_audio_operators_sweep
+```
+
+Acceptance status:
+
+- `test_granular_synth_dsp` continues to pass (engine behavior unchanged).
+- Operator smoke (`bench_audio_operators_sweep`): finite, non-silent,
+  within peak/DC bounds at both buffer sizes.
+- Snapshot refresh rate remains above typical audio-visualizer refresh
+  rates at both 256 and 1024 frames.
+- No public operator surface changed; the fix is local to
+  `operators/audio/granular_synth/granular_synth.cpp`.
+- `bench_granular_synth` (DSP-only) numbers are unchanged — the engine was
+  never the problem.
+- Attack queue: GranularSynth is now at 0.26% of 256-frame budget, far
+  below the 2% threshold. Closed; no follow-up needed here.
+
+Follow-up note: the same "inspector scan runs every audio block" anti-pattern
+likely exists in other operators with custom inspectors. A future pass
+should grep for `fill_inspector_snapshot`-style heavy UI work inside
+`process_audio` and apply the same rate-limiting pattern.
+
+## ConvolutionReverb Split-Complex + vDSP_zvma Pass
+
+The non-uniform partitioning pass left `ConvolutionReverb` at 1.94% of the
+256-frame real-time budget (103.64 µs in the sweep baseline), making it the
+second-most-expensive operator after GranularSynth and the obvious next
+target. Profile-free reasoning pointed at two inefficiencies:
+
+1. **Per-FFT interleave/reinterleave.** The engine stored frequency-domain
+   partitions and input history as interleaved `{re, im}` struct arrays, then
+   deinterleaved into a `DSPSplitComplex` scratch pair on every FFT call via
+   the shared FFT helper's adapter. That's ~2×`fft_size` redundant memory
+   writes per FFT — small per call, real in aggregate across the zone's
+   partition MAC cycle.
+
+2. **Scalar MAC loop.** The partition multiply-accumulate
+   (`fft_sum += x * H` across all partitions) was a hand-rolled complex
+   multiply loop running once per bin. Accelerate's `vDSP_zvma` does the
+   same math as a vectorized split-complex call.
+
+Both fixes share one prerequisite: switch the engine's storage layout from
+interleaved `ComplexPair` to native split-complex (parallel `re`/`im`
+`std::vector<float>` pairs). With that, the shared FFT helper is called
+directly on the split arrays (no adapter), and `vDSP_zvma` is the natural
+MAC primitive.
+
+Implementation notes:
+
+- `Zone`'s `tail_{ll,lr,rl,rr}`, `input_history_{l,r}`, `fft_{l,r}`, and
+  `fft_sum_{l,r}` fields all migrate from `std::vector<std::vector<Complex>>`
+  (or `std::vector<Complex>`) to `std::vector<Split>` / `Split`, where
+  `Split` is a small struct pairing `re` and `im` float vectors.
+- `submit_zone_partition` calls `dispatch_fft` (a small namespace helper
+  that picks scalar or Accelerate FFT per Backend) directly on split
+  arrays.
+- The partition MAC runs `vDSP_zvma` on the Accelerate path and a hand-rolled
+  `scalar_zvma` on the scalar fallback. Scalar matches the original
+  algorithm; the auto-vectorizer gets a clean straight-line loop.
+- Overlap-add into `tail_accum` uses `vDSP_vadd` on Accelerate, scalar loop
+  otherwise.
+- Plan-cache lifecycle: `fft_cache_.clear()` at the top of `rebuild_plan`
+  (stale sizes go away), `reserve(fft_size)` inside the zone loop as each
+  zone's size is determined.
+
+Release benchmark comparison (mean µs / block over 6 runs of 128 blocks):
+
+| Frames | Case | Prior preferred (uniform adapter) | New preferred (split + zvma) | Speedup |
+| ---: | --- | ---: | ---: | ---: |
+| `256` | room | `84.97 us` | `84.16 us` | `1.01x` |
+| `256` | hall | `105.27 us` | `104.16 us` | `1.01x` |
+| `256` | cathedral | `117.50 us` | `116.34 us` | `1.01x` |
+| `1024` | room | `247.87 us` | `273.41 us` | `0.91x` |
+| `1024` | hall | `358.85 us` | `349.22 us` | `1.03x` |
+| `1024` | cathedral | `410.35 us` | `403.11 us` | `1.02x` |
+
+`bench_convolution_reverb` shows the micro-win is modest because per-call
+vDSP overhead eats most of the vectorization benefit at small zone sizes.
+The full-operator sweep, which runs 512 measure blocks vs the micro-bench's
+128, pulls ahead more cleanly:
+
+| Sweep | Prior (post-granular) | New (post-zvma) | Speedup |
+| --- | ---: | ---: | ---: |
+| ConvolutionReverb 256f | `102.83 us` (1.94%) | `95.57 us` (1.79%) | `1.08x` |
+| ConvolutionReverb 1024f | `348.66 us` | `308.09 us` | `1.13x` |
+
+Scalar-path cost regressed ~5-10% because split-complex memory access spans
+two separate arrays where interleaved had both re and im in the same cache
+line. This is the correctness fallback only (non-Apple / forced-scalar
+tests); the primary user-facing path is Accelerate.
+
+Benchmark commands:
+
+```bash
+./build-release/bench_convolution_reverb
+./build-release/bench_audio_operators_sweep
+```
+
+Acceptance status:
+
+- All `test_convolution_reverb_dsp` assertions continue to pass: short IR
+  direct-reference, long non-uniform hall (48 partitions across 5 zones),
+  scalar vs Accelerate backend parity, WAV file fallback, operator smoke.
+- `avg_abs_diff` and `peak_diff` for the non-uniform hall case stayed at
+  ~7e-6 / 5e-5 — no correctness drift from the MAC path change.
+- Sweep shows `ConvolutionReverb` at 1.79% of the 256-frame budget, under
+  the 2% threshold. All other operators stay within measurement noise of
+  their post-granular numbers.
+- No new types cross `src/operator_api`; the FFT helper's public surface is
+  unchanged; the `ComplexPair` interleaved adapter stays in the helper for
+  future callers.
+- vDSP_zvma is used only when Backend is Accelerate AND a plan is cached
+  for the zone's fft_size. Otherwise the hand-rolled `scalar_zvma` runs.
+
+Follow-up notes: the deferred Gardner work-amortization is no longer the
+clearest next win now that the split-complex layout is in place. A more
+productive direction on `ConvolutionReverb` would be input-FFT sharing
+across zones, or moving to `vDSP_fft_zrip` (real-valued FFT, half the work
+per call at the cost of a packed-complex data layout). Both are deferred
+until a bench shows this operator matters more than others still above 1%.
+
+## Chorus vDSP_vlint + Shared Ring Pass
+
+First opportunistic target from the audit queue. Chorus sat at 4.60 µs at
+256 frames (0.09% budget) — under the 2% threshold, but with the clearest
+SIMD shape of any remaining operator: six phase-offset fractional-delay
+voices all reading from the same input stream.
+
+Two inefficiencies in the original implementation:
+
+1. **Six redundant per-voice ring buffers.** Input was written to all
+   `kMaxVoices` delay lines every sample (for seamless voice-count
+   changes), 5× more pushes than needed.
+2. **Scalar per-sample fractional-delay reads.** The hot loop did one
+   fractional read per voice per sample.
+
+Replaced with a single shared `delay_history_` vector (size
+`ring_samples + frames`) that shifts left each block and writes the new
+block's samples at the tail. Each voice computes its per-sample delay
+offset into an `indices_scratch_` vector, then a single `vDSP_vlint` call
+per voice per block does all `frames` fractional reads. Voice outputs
+accumulate into `wet_scratch_` via `vDSP_vadd`, scaled and mixed with dry
+via `vDSP_vsmul` + `vDSP_vsma`. Scalar fallback mirrors the same math
+without Accelerate.
+
+Phase/LFO computation stays scalar — the three `rate_mode` branches
+(Free/External/Metronome) keep the loop too branchy for clean
+vectorization, and the cost is tiny relative to the read work.
+
+Release sweep comparison:
+
+| Frames | Baseline | Optimized | Speedup |
+| ---: | ---: | ---: | ---: |
+| `256` | `4.60 us` | `3.37 us ± 0.13` | `1.36x` |
+| `1024` | `18.36 us` | `13.39 us ± 0.35` | `1.37x` |
+
+Benchmark command:
+
+```bash
+./build-release/bench_audio_operators_sweep
+```
+
+Acceptance status:
+
+- Sweep smoke check stays `smoke=ok` for Chorus at both buffer sizes
+  (finite, non-silent, peak + DC within bounds).
+- No other operator in the sweep regresses by more than measurement noise.
+- Scalar fallback compiles and runs (the `#else` path operates on the same
+  shared history with a straight-line loop that the auto-vectorizer can
+  still SIMDify).
+- Public operator surface unchanged.
+
+Follow-up note: the same shared-ring pattern likely helps `Flanger` (one
+fractional-delay voice with feedback) and the `Phaser` allpass cascade,
+though less dramatically since both are one-voice hot paths. Both are on
+the opportunistic queue.
+
+## Drum DSP Incremental Envelope Pass
+
+Six drum operators (`DrumKick`, `DrumSnare`, `DrumTom`, `DrumHiHat`,
+`DrumCymbal`, `DrumClap`) share `operators/shared/drum_dsp/drum_dsp.h`.
+Pre-pass their aggregate cost was ~13.94 µs across all six at 256 frames —
+none individually over the 2% threshold, but a full kit firing concurrently
+is real CPU for a DAW-grade project.
+
+The hot pattern: `DecayEnvelope::value(decay_seconds)` called once or twice
+per sample per drum (3 drums use two envelopes), computing `std::exp(-t *
+5/decay_seconds)`. At 48 kHz × 256 samples × 9 envelopes across the kit that
+was ~2300 `std::exp` calls per block.
+
+Fix: added `compute_factor(decay_seconds, inv_sr)` and `step(factor, inv_sr)`
+methods to `DecayEnvelope` that express the same exponential as an
+incremental multiplication (`env *= factor` per sample, one
+`std::exp` per block via the factor computation). The original
+`value(decay_seconds)` and `advance(inv_sr)` API is preserved for callers
+whose decay time varies per-sample. All six drum operators opt into the
+fast path. Callers that read `env.time` for auxiliary logic (click duration
+in Kick, attack shaping in Kick/HiHat, burst timing in Clap) capture the
+pre-step time into a local before calling `step()`, since `step()` advances
+`time` internally.
+
+Release sweep comparison (3rd clean run, thermal-stable):
+
+| Drum | Baseline | After | Speedup |
+| --- | ---: | ---: | ---: |
+| DrumKick | `3.19 us` | `2.64 us` | `1.21x` |
+| DrumSnare | `2.89 us` | `2.48 us` | `1.17x` |
+| DrumTom | `3.19 us` | `2.83 us` | `1.13x` |
+| DrumHiHat | `1.37 us` | `1.12 us` | `1.22x` |
+| DrumCymbal | `2.25 us` | `1.98 us` | `1.14x` |
+| DrumClap | `1.05 us` | `1.07 us` | `0.98x` (noise) |
+| **Kit aggregate** | `13.94 us` | `12.11 us` | **`1.15x`** |
+
+Per-operator, two of six drums clear the 1.2x gate; the rest land between
+1.13-1.17x. DrumClap is unchanged within measurement noise — its envelope
+is already simple enough that `std::exp` wasn't the bottleneck. The change
+lands because the aggregate kit saving is real (~1.8 µs per block) and the
+shared `DecayEnvelope` header now exposes the SIMD-friendlier shape to any
+future drum-synth work.
+
+Also a small scalar-path win: eliminating per-sample `std::exp` also helps
+on non-Apple builds where Apple's libm isn't the fast path.
+
+Benchmark command:
+
+```bash
+./build-release/bench_audio_operators_sweep
+```
+
+Acceptance status:
+
+- All six drum operators pass smoke (`smoke=ok`) at both buffer sizes.
+- No other operator regresses beyond measurement noise.
+- Public operator surface unchanged.
+- `DecayEnvelope::value(decay_seconds)` remains for any future caller whose
+  decay time varies per-sample.
+- Auxiliary time-based logic (`env.time < atk`, burst timing) preserves
+  sample-aligned semantics via a local `pre_step_time` capture.
+
+Follow-up note: the gains are modest because Apple's `std::exp` is very
+fast (2-3 ns per call on Apple Silicon) and clang can vectorize the old
+non-dependent form across samples. The incremental form has a
+data-dependent multiply chain that can't vectorize. The win comes from
+eliminating the `exp` call's call overhead rather than algorithmic
+improvement — the scalar register pressure is lower and the dispatch is
+more predictable. Further drum gains would require structural changes
+(e.g., batching noise/oscillator across samples with Accelerate primitives),
+which aren't worth the complexity at current costs.

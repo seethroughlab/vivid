@@ -39,6 +39,7 @@ void DialogManager::draw(Renderer2D& tr, const MouseState& mouse, const UIStyle&
     draw_preset_name_popup(tr, mouse, style, popup_opacity, win_w, win_h, text_edit, cursor_blink);
     draw_about(tr, mouse, style, popup_opacity, win_w, win_h);
     draw_lockfile_findings(tr, mouse, style, popup_opacity, win_w, win_h);
+    draw_crash_recovery(tr, mouse, style, popup_opacity, win_w, win_h);
 }
 
 void DialogManager::draw_about(Renderer2D& tr, const MouseState& mouse, const UIStyle& style,
@@ -2151,6 +2152,101 @@ void DialogManager::draw_lockfile_findings(Renderer2D& tr, const MouseState& mou
     tr.draw_text(btn_x + (btn_w - close_text_w) * 0.5f, btn_y + 3.0f, "Close",
                  style.dim_text[0], style.dim_text[1], style.dim_text[2]);
     lockfile_findings.close_btn = {btn_x, btn_y, btn_w, btn_h};
+}
+
+// -----------------------------------------------------------------------
+// Crash-recovery dialog — shown at startup when the previous session
+// crashed (Phase 1 wrote latest-crash.json) and --safe-mode was not
+// passed on the CLI.  Three choices: Open Normally / Open Safe Mode /
+// Reveal Crash Report.  The first two dismiss the dialog; Reveal leaves
+// it up so the user can still pick a mode after inspecting the JSON.
+// -----------------------------------------------------------------------
+void DialogManager::draw_crash_recovery(Renderer2D& tr, const MouseState& mouse, const UIStyle& style,
+                                        float popup_opacity, uint32_t win_w, uint32_t win_h) {
+    if (!crash_recovery.open) return;
+
+    float wf = static_cast<float>(win_w);
+    float hf = static_cast<float>(win_h);
+
+    // Scrim
+    tr.draw_rect(0, 0, wf, hf,
+                 style.scrim[0], style.scrim[1], style.scrim[2], style.scrim[3] * popup_opacity);
+
+    // Dialog panel (wider than save-confirm to fit the crash summary).
+    const float dw = 520.0f;
+    const float dh = 150.0f;
+    const float dx = (wf - dw) * 0.5f;
+    const float dy = (hf - dh) * 0.5f;
+
+    draw_shadow(tr, dx, dy, dw, dh, style.corner_radius);
+    tr.draw_rounded_rect(dx, dy, dw, dh, style.corner_radius,
+                         style.popup_bg[0], style.popup_bg[1], style.popup_bg[2], style.popup_bg[3]);
+    tr.draw_rect(dx, dy, dw, 2, style.accent[0], style.accent[1], style.accent[2]);
+
+    // Title
+    tr.draw_text(dx + 16, dy + 14,
+                 T("crash_recovery_title", "Vivid crashed during the previous session"),
+                 style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+
+    // Body: "Fatal signal X in operator 'Y' (node 'Z')"
+    char body[256];
+    const std::string& sig = crash_recovery.signal_name.empty() ? std::string("signal")
+                                                                : crash_recovery.signal_name;
+    if (!crash_recovery.operator_name.empty() && !crash_recovery.node_id.empty()) {
+        std::snprintf(body, sizeof(body), "%s in operator '%s' (node '%s')",
+                      sig.c_str(),
+                      crash_recovery.operator_name.c_str(),
+                      crash_recovery.node_id.c_str());
+    } else if (!crash_recovery.operator_name.empty()) {
+        std::snprintf(body, sizeof(body), "%s in operator '%s'",
+                      sig.c_str(), crash_recovery.operator_name.c_str());
+    } else {
+        std::snprintf(body, sizeof(body), "%s (no operator context captured)", sig.c_str());
+    }
+    tr.draw_text(dx + 16, dy + 40, body,
+                 style.dim_text[0], style.dim_text[1], style.dim_text[2]);
+
+    tr.draw_text(dx + 16, dy + 60,
+                 T("crash_recovery_prompt",
+                   "Open the graph with the suspect operator disabled, or continue normally?"),
+                 style.dim_text[0], style.dim_text[1], style.dim_text[2]);
+
+    // Three buttons: Reveal | Open Normally | Open Safe Mode
+    const float btn_w = 150.0f;
+    const float btn_h = 24.0f;
+    const float btn_y = dy + dh - btn_h - 10.0f;
+    const float gap = 10.0f;
+    const float total_btn_w = btn_w * 3 + gap * 2;
+    const float btn_start_x = dx + (dw - total_btn_w) * 0.5f;
+    const float reveal_x = btn_start_x;
+    const float normal_x = btn_start_x + btn_w + gap;
+    const float safe_x   = btn_start_x + (btn_w + gap) * 2;
+
+    auto btn_hover = [&](float bx) {
+        return mouse.x >= bx && mouse.x <= bx + btn_w &&
+               mouse.y >= btn_y && mouse.y <= btn_y + btn_h;
+    };
+    auto draw_btn = [&](float bx, const char* label, bool accent) {
+        const bool hover = btn_hover(bx);
+        if (accent) {
+            float a = hover ? 1.0f : 0.85f;
+            tr.draw_rect(bx, btn_y, btn_w, btn_h,
+                         style.accent[0], style.accent[1], style.accent[2], a);
+        } else {
+            tr.draw_rect(bx, btn_y, btn_w, btn_h,
+                         hover ? style.button_hover[0] : style.button_bg[0],
+                         hover ? style.button_hover[1] : style.button_bg[1],
+                         hover ? style.button_hover[2] : style.button_bg[2], 0.9f);
+        }
+        float lw = tr.text_width(label, 1.0f);
+        float lx = bx + (btn_w - lw) * 0.5f;
+        const auto& tc = accent ? style.bright_text : style.dim_text;
+        tr.draw_text(lx, btn_y + 3, label, tc[0], tc[1], tc[2]);
+    };
+
+    draw_btn(reveal_x, T("crash_recovery_reveal", "Reveal Crash Report"), false);
+    draw_btn(normal_x, T("crash_recovery_open_normally", "Open Normally"), false);
+    draw_btn(safe_x,   T("crash_recovery_open_safe_mode", "Open Safe Mode"), true);
 }
 
 } // namespace vivid::ui

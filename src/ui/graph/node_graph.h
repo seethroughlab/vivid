@@ -461,6 +461,14 @@ public:
     std::function<void()>& on_save_confirm_cancel = dialogs_.on_save_confirm_cancel;
     bool save_confirm_open() const { return dialogs_.save_confirm_open(); }
     SaveConfirmAction save_confirm_action() const { return dialogs_.save_confirm_action(); }
+
+    // --- Crash-recovery dialog (forwarded to DialogManager) ---
+    void open_crash_recovery(const vivid::CrashRecord& rec, std::string report_path) {
+        dialogs_.open_crash_recovery(rec, std::move(report_path));
+    }
+    std::function<void()>& on_crash_recovery_open_normally  = dialogs_.on_crash_recovery_open_normally;
+    std::function<void()>& on_crash_recovery_open_safe_mode = dialogs_.on_crash_recovery_open_safe_mode;
+    std::function<void()>& on_crash_recovery_reveal_report  = dialogs_.on_crash_recovery_reveal_report;
 private:
 
     // Create operator modal, preset name popup moved to DialogManager

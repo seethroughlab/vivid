@@ -561,6 +561,7 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
                 populate_metronome_context(ctx, metronome);
 
                 try {
+                    vivid::CrashGuard guard(cn.node_id.c_str());
                     cn.loader->process_frame(cn.instance, &ctx);
                 } catch (const std::exception& ex) {
                     cn.errored = true;
@@ -630,6 +631,7 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
             }
 
             try {
+                vivid::CrashGuard guard(cn.node_id.c_str());
                 cn.loader->process_frame(cn.instance, &ctx);
             } catch (const std::exception& ex) {
                 cn.errored = true;

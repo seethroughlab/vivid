@@ -385,14 +385,19 @@ CrashRecord CrashRecoveryManager::merge_marker_and_snapshot(
     rec.gpu_adapter         = json_get_or<std::string>(snapshot, "gpu_adapter", "");
     rec.last_mutation       = json_get_or<std::string>(snapshot, "last_mutation", "");
 
-    // Resolve the operator name against the node map: first match wins.
+    // Resolve the operator name against the node map.  CrashGuard records
+    // cn.node_id (see frame_executor / audio_executor process_*), so match
+    // node_id first.  Fall back to type_name so a future CrashGuard payload
+    // change — or a marker hand-authored by a tool — still resolves cleanly.
+    // First hit wins.
     if (!operator_name.empty() && snapshot.is_object()) {
         auto it = snapshot.find("nodes");
         if (it != snapshot.end() && it->is_array()) {
             for (const auto& n : *it) {
+                const std::string node_id   = json_get_or<std::string>(n, "node_id", "");
                 const std::string type_name = json_get_or<std::string>(n, "type_name", "");
-                if (type_name == operator_name) {
-                    rec.node_id     = json_get_or<std::string>(n, "node_id", "");
+                if (node_id == operator_name || type_name == operator_name) {
+                    rec.node_id     = node_id;
                     rec.node_type   = type_name;
                     rec.pkg_name    = json_get_or<std::string>(n, "pkg_name", "");
                     rec.pkg_version = json_get_or<std::string>(n, "pkg_version", "");
