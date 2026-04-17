@@ -203,6 +203,70 @@ ActiveTextField NodeGraphUI::resolve_active_text_field() {
     return {};
 }
 
+void NodeGraphUI::sticky_undo_seed() {
+    sticky_undo_.clear();
+    sticky_redo_.clear();
+    sticky_undo_.push_back({sticky_edit_buffer_, text_edit_.cursor, text_edit_.sel_start});
+    sticky_undo_dirty_ = false;
+    sticky_undo_idle_time_ = 0.0f;
+}
+
+void NodeGraphUI::sticky_undo_mark_dirty() {
+    sticky_undo_dirty_ = true;
+    sticky_undo_idle_time_ = 0.0f;
+}
+
+void NodeGraphUI::sticky_undo_commit() {
+    if (!sticky_undo_dirty_) return;
+    StickyUndoSnap snap{sticky_edit_buffer_, text_edit_.cursor, text_edit_.sel_start};
+    if (!sticky_undo_.empty()) {
+        const auto& top = sticky_undo_.back();
+        if (top.buf == snap.buf) {
+            sticky_undo_dirty_ = false;
+            sticky_undo_idle_time_ = 0.0f;
+            return;
+        }
+    }
+    sticky_undo_.push_back(std::move(snap));
+    sticky_redo_.clear();
+    sticky_undo_dirty_ = false;
+    sticky_undo_idle_time_ = 0.0f;
+    if (sticky_undo_.size() > 200)
+        sticky_undo_.erase(sticky_undo_.begin());
+}
+
+void NodeGraphUI::sticky_undo_apply(bool redo) {
+    if (sticky_undo_dirty_) sticky_undo_commit();
+    if (!redo) {
+        if (sticky_undo_.size() < 2) return;
+        StickyUndoSnap cur = sticky_undo_.back();
+        sticky_undo_.pop_back();
+        sticky_redo_.push_back(std::move(cur));
+        const auto& prev = sticky_undo_.back();
+        sticky_edit_buffer_ = prev.buf;
+        text_edit_.cursor = prev.cursor;
+        text_edit_.sel_start = prev.sel_start;
+    } else {
+        if (sticky_redo_.empty()) return;
+        StickyUndoSnap next = sticky_redo_.back();
+        sticky_redo_.pop_back();
+        sticky_undo_.push_back(next);
+        sticky_edit_buffer_ = next.buf;
+        text_edit_.cursor = next.cursor;
+        text_edit_.sel_start = next.sel_start;
+    }
+    sticky_undo_dirty_ = false;
+    sticky_undo_idle_time_ = 0.0f;
+    cursor_blink_time_ = 0.0f;
+}
+
+void NodeGraphUI::sticky_undo_clear() {
+    sticky_undo_.clear();
+    sticky_redo_.clear();
+    sticky_undo_dirty_ = false;
+    sticky_undo_idle_time_ = 0.0f;
+}
+
 bool NodeGraphUI::handle_transport_bpm_edit_key(int key) {
     if (!transport_bpm_editing_) return false;
     if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
@@ -215,21 +279,29 @@ bool NodeGraphUI::handle_transport_bpm_edit_key(int key) {
     return true;
 }
 
-bool NodeGraphUI::handle_sticky_edit_mode_key(int key, bool mod_key) {
+bool NodeGraphUI::handle_sticky_edit_mode_key(int key, bool mod_key, bool shift) {
     if (!editing_sticky_) return false;
     if (key == GLFW_KEY_ESCAPE) {
         editing_sticky_ = false;
         sticky_edit_id_.clear();
+        sticky_undo_clear();
+        return true;
+    }
+    if (mod_key && key == GLFW_KEY_Z) {
+        // Cmd+Shift+Z = redo; Cmd+Z = undo.
+        sticky_undo_apply(shift);
         return true;
     }
     if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
         text_edit_insert(sticky_edit_buffer_, text_edit_, std::string(1, '\n'), nullptr);
         cursor_blink_time_ = 0.0f;
+        sticky_undo_mark_dirty();
         return true;
     }
     if (key == GLFW_KEY_BACKSPACE && !mod_key) {
         text_edit_backspace(sticky_edit_buffer_, text_edit_);
         cursor_blink_time_ = 0.0f;
+        sticky_undo_mark_dirty();
         return true;
     }
     return true;
@@ -791,28 +863,45 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         text_edit_.clamp(len);
 
         if (key == GLFW_KEY_LEFT && !mod_key) {
+            if (editing_sticky_) sticky_undo_commit();
             text_edit_move_left(text_edit_, shift);
             cursor_blink_time_ = 0.0f;
             return;
         }
         if (key == GLFW_KEY_RIGHT && !mod_key) {
+            if (editing_sticky_) sticky_undo_commit();
             text_edit_move_right(text_edit_, len, shift);
             cursor_blink_time_ = 0.0f;
             return;
         }
         if ((key == GLFW_KEY_LEFT && mod_key) || key == GLFW_KEY_HOME) {
+            if (editing_sticky_) sticky_undo_commit();
             text_edit_home(text_edit_, shift);
             cursor_blink_time_ = 0.0f;
             return;
         }
         if ((key == GLFW_KEY_RIGHT && mod_key) || key == GLFW_KEY_END) {
+            if (editing_sticky_) sticky_undo_commit();
             text_edit_end(text_edit_, len, shift);
+            cursor_blink_time_ = 0.0f;
+            return;
+        }
+        if (editing_sticky_ && key == GLFW_KEY_UP && !mod_key) {
+            sticky_undo_commit();
+            text_edit_move_up(*atf.buf, text_edit_, shift);
+            cursor_blink_time_ = 0.0f;
+            return;
+        }
+        if (editing_sticky_ && key == GLFW_KEY_DOWN && !mod_key) {
+            sticky_undo_commit();
+            text_edit_move_down(*atf.buf, text_edit_, shift);
             cursor_blink_time_ = 0.0f;
             return;
         }
         if (key == GLFW_KEY_DELETE) {
             text_edit_delete_forward(*atf.buf, text_edit_);
             cursor_blink_time_ = 0.0f;
+            if (editing_sticky_) sticky_undo_mark_dirty();
         }
         if (mod_key && key == GLFW_KEY_A) {
             text_edit_select_all(text_edit_, len);
@@ -830,6 +919,7 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
             if (!cut.empty())
                 glfwSetClipboardString(nullptr, cut.c_str());
             cursor_blink_time_ = 0.0f;
+            if (editing_sticky_ && !cut.empty()) sticky_undo_mark_dirty();
         }
         if (action == GLFW_PRESS && mod_key && key == GLFW_KEY_V) {
             const char* clip = glfwGetClipboardString(nullptr);
@@ -841,8 +931,10 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
                         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
                     paste_text += c;
                 }
+                if (editing_sticky_) sticky_undo_commit();  // paste is a discrete step
                 text_edit_insert(*atf.buf, text_edit_, paste_text, atf.filter, atf.max_len);
                 cursor_blink_time_ = 0.0f;
+                if (editing_sticky_) sticky_undo_mark_dirty();
                 dialogs_.on_char_post_insert();
                 if (chooser_open_) rebuild_chooser_items();
                 return;
@@ -851,7 +943,7 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
     }
 
     if (handle_transport_bpm_edit_key(key)) return;
-    if (handle_sticky_edit_mode_key(key, mod_key)) return;
+    if (handle_sticky_edit_mode_key(key, mod_key, shift)) return;
     if (editing_sticky_) return;
     if (dialogs_.on_key(key, action, mods, text_edit_, cursor_blink_time_)) return;
     if (dialogs_.prefs_open()) return;
@@ -947,6 +1039,7 @@ void NodeGraphUI::on_char(unsigned int codepoint) {
 
     text_edit_insert(*atf.buf, text_edit_, std::string(1, ch), atf.filter, atf.max_len);
     cursor_blink_time_ = 0.0f;
+    if (editing_sticky_) sticky_undo_mark_dirty();
 
     // Per-field callbacks after character insert
     dialogs_.on_char_post_insert();

@@ -136,6 +136,63 @@ inline void text_edit_end(TextEditState& st, int len, bool shift) {
     st.cursor = len;
 }
 
+// Move cursor up one logical line, preserving column. Shift extends selection.
+inline void text_edit_move_up(const std::string& buf, TextEditState& st, bool shift) {
+    int cur = st.cursor;
+    int cur_line_start = 0;
+    for (int i = cur - 1; i >= 0; --i) {
+        if (buf[i] == '\n') { cur_line_start = i + 1; break; }
+    }
+    int col = cur - cur_line_start;
+    if (shift) {
+        if (st.sel_start < 0) st.sel_start = st.cursor;
+    } else {
+        st.sel_start = -1;
+    }
+    if (cur_line_start == 0) {
+        st.cursor = 0;
+        return;
+    }
+    int prev_line_end = cur_line_start - 1;
+    int prev_line_start = 0;
+    for (int i = prev_line_end - 1; i >= 0; --i) {
+        if (buf[i] == '\n') { prev_line_start = i + 1; break; }
+    }
+    int prev_line_len = prev_line_end - prev_line_start;
+    st.cursor = prev_line_start + std::min(col, prev_line_len);
+}
+
+// Move cursor down one logical line, preserving column. Shift extends selection.
+inline void text_edit_move_down(const std::string& buf, TextEditState& st, bool shift) {
+    int cur = st.cursor;
+    int len = static_cast<int>(buf.size());
+    int cur_line_start = 0;
+    for (int i = cur - 1; i >= 0; --i) {
+        if (buf[i] == '\n') { cur_line_start = i + 1; break; }
+    }
+    int col = cur - cur_line_start;
+    int cur_line_end = len;
+    for (int i = cur; i < len; ++i) {
+        if (buf[i] == '\n') { cur_line_end = i; break; }
+    }
+    if (shift) {
+        if (st.sel_start < 0) st.sel_start = st.cursor;
+    } else {
+        st.sel_start = -1;
+    }
+    if (cur_line_end == len) {
+        st.cursor = len;
+        return;
+    }
+    int next_line_start = cur_line_end + 1;
+    int next_line_end = len;
+    for (int i = next_line_start; i < len; ++i) {
+        if (buf[i] == '\n') { next_line_end = i; break; }
+    }
+    int next_line_len = next_line_end - next_line_start;
+    st.cursor = next_line_start + std::min(col, next_line_len);
+}
+
 // Select all
 inline void text_edit_select_all(TextEditState& st, int len) {
     st.sel_start = 0;

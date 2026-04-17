@@ -106,6 +106,7 @@ void NodeGraphUI::update_context_menu() {
                     sticky_edit_buffer_.clear();
                     text_edit_.reset(0);
                     cursor_blink_time_ = 0.0f;
+                    sticky_undo_seed();
                 }
             } else if (context_node_id_ == "__sticky__") {
                 if (clicked_item == 0) {

@@ -191,7 +191,15 @@ public:
     }
 
     // Called by main loop each frame with delta time
-    void set_dt(float dt) { dt_ = dt; cursor_blink_time_ += dt; wire_flow_time_ += dt; }
+    void set_dt(float dt) {
+        dt_ = dt;
+        cursor_blink_time_ += dt;
+        wire_flow_time_ += dt;
+        if (editing_sticky_ && sticky_undo_dirty_) {
+            sticky_undo_idle_time_ += dt;
+            if (sticky_undo_idle_time_ > 0.4f) sticky_undo_commit();
+        }
+    }
 
     // Per-frame
     void update(const GraphSnapshot& snapshot);
@@ -518,7 +526,7 @@ private:
     // --- Input handling (node_graph_input.cpp) ---
     ActiveTextField resolve_active_text_field();
     bool handle_transport_bpm_edit_key(int key);
-    bool handle_sticky_edit_mode_key(int key, bool mod_key);
+    bool handle_sticky_edit_mode_key(int key, bool mod_key, bool shift);
     bool handle_session_mode_key(int key, int action, int mods, bool mod_key);
     bool handle_inspector_edit_mode_key(int key);
     bool handle_param_picker_mode_key(int key);
@@ -930,6 +938,19 @@ private:
     std::string sticky_edit_buffer_;
     std::string sticky_edit_id_;
     int sticky_note_id_counter_ = 0;
+
+    // Local text-edit undo for sticky editor (separate from graph undo).
+    // Snapshots are committed on idle (~400ms) or on navigation/Enter.
+    struct StickyUndoSnap { std::string buf; int cursor = 0; int sel_start = -1; };
+    std::vector<StickyUndoSnap> sticky_undo_;
+    std::vector<StickyUndoSnap> sticky_redo_;
+    float sticky_undo_idle_time_ = 0.0f;
+    bool sticky_undo_dirty_ = false;
+    void sticky_undo_seed();
+    void sticky_undo_mark_dirty();
+    void sticky_undo_commit();
+    void sticky_undo_apply(bool redo);
+    void sticky_undo_clear();
     // Sticky note color picker context menu state
     bool sticky_color_menu_open_ = false;
     std::string sticky_color_menu_id_;

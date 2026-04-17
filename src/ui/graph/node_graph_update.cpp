@@ -157,6 +157,7 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
             }
             editing_sticky_ = false;
             sticky_edit_id_.clear();
+            sticky_undo_clear();
         }
     }
 

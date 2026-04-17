@@ -525,6 +525,7 @@ void NodeGraphUI::handle_graph_click() {
                         }
                         text_edit_.reset(static_cast<int>(sticky_edit_buffer_.size()));
                         cursor_blink_time_ = 0.0f;
+                        sticky_undo_seed();
                         last_sticky_click_id.clear();
                     } else {
                         last_sticky_click_id = sr.id;
