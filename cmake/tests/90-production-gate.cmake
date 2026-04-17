@@ -51,22 +51,15 @@ function(_pg_targets_with_labels out_var)
         if(_test_labels)
             foreach(_want ${ARGN})
                 if("${_want}" IN_LIST _test_labels)
-                    # Primary: test NAME matches a target (the common case).
                     if(TARGET ${_test})
                         list(APPEND _targets ${_test})
-                    else()
-                        # Fallback: the test's NAME doesn't match a target,
-                        # but its COMMAND's first token often does — e.g.
-                        # test_ui_screenshot_smoke_harness (UI_SMOKE label)
-                        # invokes the test_ui_screenshot_smoke binary.
-                        get_test_property(${_test} COMMAND _test_command)
-                        if(_test_command)
-                            list(GET _test_command 0 _cmd0)
-                            if(TARGET ${_cmd0})
-                                list(APPEND _targets ${_cmd0})
-                            endif()
-                        endif()
                     endif()
+                    # Tests whose NAME differs from the underlying binary
+                    # target (e.g. test_ui_screenshot_smoke_harness invokes
+                    # test_ui_screenshot_smoke) need an explicit edge-case
+                    # entry below — CMake's get_test_property doesn't expose
+                    # the COMMAND, so we can't deduce the binary at configure
+                    # time.
                     break()
                 endif()
             endforeach()
@@ -79,6 +72,25 @@ endfunction()
 _pg_targets_with_labels(_pg_core_deps HEADLESS_SMOKE UI_SMOKE PACKAGE)
 _pg_targets_with_labels(_pg_gui_deps GUI_SMOKE)
 _pg_targets_with_labels(_pg_env_deps GUI_ENV)
+
+# Edge cases: tests whose ctest NAME doesn't match their underlying binary
+# target. CMake stores add_test(... COMMAND <target>) as a $<TARGET_FILE:...>
+# generator expression, but get_test_property(... COMMAND ...) returns
+# NOTFOUND — so we can't auto-derive the mapping. Keep this list short;
+# if it grows, consider a FIXTURES_REQUIRED-based convention in the test
+# declarations.
+if(TARGET test_ui_screenshot_smoke)
+    # test_ui_screenshot_smoke_harness (UI_SMOKE)
+    # test_ui_screenshot_smoke       (GUI_SMOKE)
+    # test_ui_screenshot_smoke_env   (GUI_ENV)
+    # All three ctest names share the same binary.
+    list(APPEND _pg_core_deps test_ui_screenshot_smoke)
+    list(APPEND _pg_gui_deps test_ui_screenshot_smoke)
+    list(APPEND _pg_env_deps test_ui_screenshot_smoke)
+    list(REMOVE_DUPLICATES _pg_core_deps)
+    list(REMOVE_DUPLICATES _pg_gui_deps)
+    list(REMOVE_DUPLICATES _pg_env_deps)
+endif()
 
 # Pre-step: semantic-tag validator. Runs before any test so a tag violation
 # fails fast without burning a full test cycle.
