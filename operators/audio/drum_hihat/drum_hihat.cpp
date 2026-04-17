@@ -106,6 +106,8 @@ struct DrumHiHat : vivid::OperatorBase, vivid::AudioProcessable {
         float vel_scale = midi_vel_scale;
         const float* trig_buf = ctx->input_buffers[0];
 
+        const float env_factor = drum::DecayEnvelope::compute_factor(dec, inv_sr);
+
         for (uint32_t i = 0; i < ctx->buffer_size; i++) {
             // Wire trigger: rising-edge detection
             float tv = trig_buf ? trig_buf[i] : 0.0f;
@@ -118,11 +120,12 @@ struct DrumHiHat : vivid::OperatorBase, vivid::AudioProcessable {
                 for (int r = 0; r < 6; r++) ring_phases_[r] = 0.0;
             }
 
-            float env = env_.value(dec);
+            const double env_time = env_.time;
+            float env = env_.step(env_factor, inv_sr);
 
-            // Attack shaping
-            if (atk > 0.0f && env_.time < atk) {
-                env *= static_cast<float>(env_.time / atk);
+            // Attack shaping — compare against the pre-step time.
+            if (atk > 0.0f && env_time < atk) {
+                env *= static_cast<float>(env_time / atk);
             }
 
             // Ring oscillators: square waves
@@ -139,8 +142,6 @@ struct DrumHiHat : vivid::OperatorBase, vivid::AudioProcessable {
                                                  static_cast<float>(sr), drum::SVF::HP);
 
             out[i] = filtered * env * vol * vel_scale;
-
-            env_.advance(inv_sr);
         }
 
     }

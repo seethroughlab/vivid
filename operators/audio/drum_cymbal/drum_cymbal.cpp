@@ -108,6 +108,8 @@ struct DrumCymbal : vivid::OperatorBase, vivid::AudioProcessable {
         float vel_scale = midi_vel_scale;
         const float* trig_buf = ctx->input_buffers[0];
 
+        const float env_factor = drum::DecayEnvelope::compute_factor(dec, inv_sr);
+
         for (uint32_t i = 0; i < ctx->buffer_size; i++) {
             // Wire trigger: rising-edge detection
             float tv = trig_buf ? trig_buf[i] : 0.0f;
@@ -121,7 +123,7 @@ struct DrumCymbal : vivid::OperatorBase, vivid::AudioProcessable {
                 lfo_phase_ = 0.0;
             }
 
-            float env = env_.value(dec);
+            float env = env_.step(env_factor, inv_sr);
 
             // Ring oscillators: square waves
             float ring_sum = audio_dsp::ring_osc_bank(ring_phases_, kOscFreqs, kNumOsc, p_mult, inv_sr);
@@ -147,8 +149,6 @@ struct DrumCymbal : vivid::OperatorBase, vivid::AudioProcessable {
             }
 
             out[i] = filtered * env * lfo_mod * vol * vel_scale;
-
-            env_.advance(inv_sr);
         }
 
     }

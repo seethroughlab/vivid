@@ -118,6 +118,9 @@ struct DrumSnare : vivid::OperatorBase, vivid::AudioProcessable {
         float vel_scale = midi_vel_scale;
         const float* trig_buf = ctx->input_buffers[0];
 
+        const float tone_factor  = drum::DecayEnvelope::compute_factor(t_dec, inv_sr);
+        const float noise_factor = drum::DecayEnvelope::compute_factor(n_dec, inv_sr);
+
         for (uint32_t i = 0; i < ctx->buffer_size; i++) {
             // Wire trigger: rising-edge detection
             float tv = trig_buf ? trig_buf[i] : 0.0f;
@@ -131,8 +134,8 @@ struct DrumSnare : vivid::OperatorBase, vivid::AudioProcessable {
                 osc_phase_ = 0.0;
             }
 
-            float t_env = tone_env_.value(t_dec);
-            float n_env = noise_env_.value(n_dec);
+            float t_env = tone_env_.step(tone_factor, inv_sr);
+            float n_env = noise_env_.step(noise_factor, inv_sr);
 
             // Tone body: sine + harmonics controlled by color
             double body = audio_dsp::harmonics_3(osc_phase_, col);
@@ -150,8 +153,6 @@ struct DrumSnare : vivid::OperatorBase, vivid::AudioProcessable {
 
             osc_phase_ += p * inv_sr;
             if (osc_phase_ >= 1.0) osc_phase_ -= 1.0;
-            tone_env_.advance(inv_sr);
-            noise_env_.advance(inv_sr);
         }
 
     }

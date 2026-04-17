@@ -129,6 +129,8 @@ struct DrumClap : vivid::OperatorBase, vivid::AudioProcessable {
         float vel_scale = midi_vel_scale;
         const float* trig_buf = ctx->input_buffers[0];
 
+        const float env_factor = drum::DecayEnvelope::compute_factor(dec, inv_sr);
+
         for (uint32_t i = 0; i < ctx->buffer_size; i++) {
             // Wire trigger: rising-edge detection
             float tv = trig_buf ? trig_buf[i] : 0.0f;
@@ -141,8 +143,10 @@ struct DrumClap : vivid::OperatorBase, vivid::AudioProcessable {
                 randomize_bursts(slop, width);
             }
 
-            float env = env_.value(dec);
+            // Capture pre-step time — burst timing checks below need the
+            // sample-aligned value, not the advanced one.
             double t  = env_.time;
+            float env = env_.step(env_factor, inv_sr);
 
             // Sum burst contributions
             float burst_l = 0.0f;

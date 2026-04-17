@@ -126,6 +126,11 @@ struct DrumKick : vivid::OperatorBase, vivid::AudioProcessable {
         float vel_scale = midi_vel_scale;
         const float* trig_buf = ctx->input_buffers[0];
 
+        // Block-rate decay factors — envelope steps become one multiply per
+        // sample instead of an exp call.
+        const float amp_factor   = drum::DecayEnvelope::compute_factor(a_decay, inv_sr);
+        const float pitch_factor = drum::DecayEnvelope::compute_factor(p_decay, inv_sr);
+
         for (uint32_t i = 0; i < ctx->buffer_size; i++) {
             // Wire trigger: rising-edge detection
             float tv = trig_buf ? trig_buf[i] : 0.0f;
@@ -139,13 +144,17 @@ struct DrumKick : vivid::OperatorBase, vivid::AudioProcessable {
                 osc_phase_ = 0.0;
             }
 
-            // Envelopes
-            float amp  = amp_env_.value(a_decay);
-            float penv = pitch_env_.value(p_decay);
+            // Capture current time before step() advances it — other branches
+            // below compare against the envelope time at this sample.
+            const double amp_time = amp_env_.time;
+
+            // Envelopes (step = value-then-advance in one call).
+            float amp  = amp_env_.step(amp_factor, inv_sr);
+            float penv = pitch_env_.step(pitch_factor, inv_sr);
 
             // Attack shaping: ramp up over attack time
-            if (atk > 0.0f && amp_env_.time < atk) {
-                float att = static_cast<float>(amp_env_.time / atk);
+            if (atk > 0.0f && amp_time < atk) {
+                float att = static_cast<float>(amp_time / atk);
                 amp *= att;
             }
 
@@ -157,8 +166,8 @@ struct DrumKick : vivid::OperatorBase, vivid::AudioProcessable {
 
             // Noise click transient (2ms burst)
             float click_sample = 0.0f;
-            if (clk > 0.0f && amp_env_.time < click_dur) {
-                float click_env = static_cast<float>(1.0 - amp_env_.time / click_dur);
+            if (clk > 0.0f && amp_time < click_dur) {
+                float click_env = static_cast<float>(1.0 - amp_time / click_dur);
                 click_sample = noise_.next() * clk * click_env;
             }
 
@@ -169,11 +178,9 @@ struct DrumKick : vivid::OperatorBase, vivid::AudioProcessable {
 
             out[i] = sample * vol * vel_scale;
 
-            // Advance
+            // Advance oscillator phase; envelope step() already advanced time.
             osc_phase_ += freq * inv_sr;
             if (osc_phase_ >= 1.0) osc_phase_ -= 1.0;
-            amp_env_.advance(inv_sr);
-            pitch_env_.advance(inv_sr);
         }
 
     }

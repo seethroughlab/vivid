@@ -33,16 +33,40 @@ struct PinkNoise {
 };
 
 // ---------------------------------------------------------------------------
-// Exponential decay envelope: exp(-t * 5.0 / decay_seconds)
+// Exponential decay envelope: exp(-t * 5.0 / decay_seconds).
+//
+// Two APIs:
+//   - value(decay_seconds): call std::exp per sample. Use when the decay
+//     time varies per-sample.
+//   - step(factor, inv_sr): multiply by a precomputed factor. Use when the
+//     decay time is block-stable (the common case for drum synths); caller
+//     calls compute_factor(decay_seconds, inv_sr) once per block before the
+//     sample loop. Shifts the per-sample std::exp off the hot path — a
+//     typical drum block goes from ~256 exp calls to 1.
 // ---------------------------------------------------------------------------
 struct DecayEnvelope {
     double time = 1000.0; // large = silence at startup
+    float env_val = 0.0f;
 
-    void trigger() { time = 0.0; }
+    void trigger() { time = 0.0; env_val = 1.0f; }
     void advance(double inv_sr) { time += inv_sr; }
 
     float value(float decay_seconds) const {
         return static_cast<float>(std::exp(-time * 5.0 / decay_seconds));
+    }
+
+    // Fast path: returns current envelope value, then advances by one sample.
+    // Replaces both value() and advance() in the caller's loop. Requires
+    // trigger() to have set env_val = 1.0 (done automatically).
+    float step(float factor, double inv_sr) {
+        float v = env_val;
+        env_val *= factor;
+        time += inv_sr;
+        return v;
+    }
+
+    static float compute_factor(float decay_seconds, double inv_sr) {
+        return static_cast<float>(std::exp(-5.0 * inv_sr / decay_seconds));
     }
 };
 
