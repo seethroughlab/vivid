@@ -51,8 +51,21 @@ function(_pg_targets_with_labels out_var)
         if(_test_labels)
             foreach(_want ${ARGN})
                 if("${_want}" IN_LIST _test_labels)
+                    # Primary: test NAME matches a target (the common case).
                     if(TARGET ${_test})
                         list(APPEND _targets ${_test})
+                    else()
+                        # Fallback: the test's NAME doesn't match a target,
+                        # but its COMMAND's first token often does — e.g.
+                        # test_ui_screenshot_smoke_harness (UI_SMOKE label)
+                        # invokes the test_ui_screenshot_smoke binary.
+                        get_test_property(${_test} COMMAND _test_command)
+                        if(_test_command)
+                            list(GET _test_command 0 _cmd0)
+                            if(TARGET ${_cmd0})
+                                list(APPEND _targets ${_cmd0})
+                            endif()
+                        endif()
                     endif()
                     break()
                 endif()
