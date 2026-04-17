@@ -585,6 +585,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
 
                     auto process_start = AudioClock::now();
                     try {
+                        vivid::CrashGuard guard(cn.node_id.c_str());
                         cn.loader->process_audio(group.instances[c], &ctx);
                     } catch (const std::exception& ex) {
                         cn.errored = true;
@@ -697,6 +698,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
 
                         auto process_start = AudioClock::now();
                         try {
+                            vivid::CrashGuard guard(cn.node_id.c_str());
                             cn.loader->process_audio(audio_instance, &ctx);
                         } catch (const std::exception& ex) {
                             cn.errored = true;
@@ -768,6 +770,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
 
                 auto process_start = AudioClock::now();
                 try {
+                    vivid::CrashGuard guard(cn.node_id.c_str());
                     cn.loader->process_audio(audio_instance, &ctx);
                 } catch (const std::exception& ex) {
                     cn.errored = true;

@@ -110,7 +110,7 @@ int main() {
         const auto scalar = run_case(tc, Backend::Scalar);
         const auto preferred = run_case(tc, vivid::convolution_reverb_dsp::preferred_backend());
         const double speedup = preferred.mean_us > 0.0 ? scalar.mean_us / preferred.mean_us : 0.0;
-        std::printf("frames=%u case=%s scalar_us=%.3f±%.3f preferred_backend=%s preferred_us=%.3f±%.3f speedup=%.3fx partitions=%u ir_frames=%u rebuilds=%d\n",
+        std::printf("frames=%u case=%s scalar_us=%.3f±%.3f preferred_backend=%s preferred_us=%.3f±%.3f speedup=%.3fx zones=%u partitions=%u latency_samples=%u ir_frames=%u rebuilds=%d\n",
                     tc.frames,
                     tc.name,
                     scalar.mean_us,
@@ -119,7 +119,9 @@ int main() {
                     preferred.mean_us,
                     preferred.stddev_us,
                     speedup,
+                    preferred.stats.zone_count,
                     preferred.stats.partition_count,
+                    preferred.stats.latency_samples,
                     preferred.stats.ir_frames,
                     preferred.stats.plan_rebuild_count);
     }

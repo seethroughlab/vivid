@@ -1,5 +1,6 @@
 #pragma once
 
+#include "runtime/simd/fft.h"
 #include "runtime/simd/simd_config.h"
 
 #include <cstdint>
@@ -39,6 +40,8 @@ struct ProcessStats {
     uint32_t block_size = 0;
     uint32_t ir_frames = 0;
     uint32_t partition_count = 0;
+    uint32_t zone_count = 0;
+    uint32_t latency_samples = 0;
     int plan_rebuild_count = 0;
 };
 
@@ -67,7 +70,7 @@ ImpulseResponse build_impulse_response(const IrConfig& config);
 class Engine {
 public:
     Engine() = default;
-    ~Engine();
+    ~Engine() = default;
 
     Engine(const Engine&) = delete;
     Engine& operator=(const Engine&) = delete;
@@ -83,18 +86,64 @@ public:
     ProcessStats last_stats() const { return last_stats_; }
 
 private:
-    struct Complex {
-        float re = 0.0f;
-        float im = 0.0f;
+    // Split-complex buffer pair. Matches the layout Accelerate's vDSP_fft_zip
+    // and vDSP_zvma consume natively — no per-call deinterleave/reinterleave
+    // overhead, and the partition MAC can run as vectorized complex
+    // multiply-accumulate across fft_size elements in one vDSP call.
+    struct Split {
+        std::vector<float> re;
+        std::vector<float> im;
+
+        void assign(size_t n, float v = 0.0f) {
+            re.assign(n, v);
+            im.assign(n, v);
+        }
+        void zero() {
+            std::fill(re.begin(), re.end(), 0.0f);
+            std::fill(im.begin(), im.end(), 0.0f);
+        }
+        size_t size() const { return re.size(); }
+    };
+
+    struct Zone {
+        uint32_t partition_size = 0;
+        uint32_t fft_size = 0;
+        uint32_t partition_count = 0;
+        uint32_t ir_offset = 0;
+
+        // IR partitions, 4 channels × partition_count × fft_size split-complex.
+        std::vector<Split> tail_ll;
+        std::vector<Split> tail_lr;
+        std::vector<Split> tail_rl;
+        std::vector<Split> tail_rr;
+
+        // Frequency-delay-line input history, 2 channels × partition_count.
+        std::vector<Split> input_history_l;
+        std::vector<Split> input_history_r;
+        uint32_t history_pos = 0;
+        uint32_t input_fill = 0;
+
+        // Time-domain per-zone input accumulator (fills to partition_size
+        // before firing).
+        std::vector<float> input_accum_l;
+        std::vector<float> input_accum_r;
+
+        // Per-zone FFT scratch. fft_l/r hold the current input FFT; fft_sum_l/r
+        // hold the partitioned MAC accumulator before IFFT.
+        Split fft_l;
+        Split fft_r;
+        Split fft_sum_l;
+        Split fft_sum_r;
     };
 
     struct Plan {
         uint32_t sample_rate = 0;
         uint32_t block_size = 0;
-        uint32_t tail_partition_size = 0;
-        uint32_t fft_size = 0;
         uint32_t early_len = 0;
-        uint32_t partition_count = 0;
+        uint32_t tail_accum_size = 0;
+        uint32_t max_fft_size = 0;
+        uint32_t latency_samples = 0;
+        uint32_t total_partition_count = 0;
         IrLayout layout = IrLayout::Stereo;
         Backend backend = Backend::Scalar;
 
@@ -109,26 +158,12 @@ private:
         std::vector<float> early_rl;
         std::vector<float> early_rr;
 
-        std::vector<std::vector<Complex>> tail_ll;
-        std::vector<std::vector<Complex>> tail_lr;
-        std::vector<std::vector<Complex>> tail_rl;
-        std::vector<std::vector<Complex>> tail_rr;
-
-        std::vector<std::vector<Complex>> input_history_l;
-        std::vector<std::vector<Complex>> input_history_r;
-        uint32_t history_pos = 0;
-        uint32_t input_fill = 0;
+        std::vector<Zone> zones;
 
         std::vector<float> prev_l;
         std::vector<float> prev_r;
-        std::vector<float> input_accum_l;
-        std::vector<float> input_accum_r;
         std::vector<float> tail_accum_l;
         std::vector<float> tail_accum_r;
-        std::vector<Complex> fft_l;
-        std::vector<Complex> fft_r;
-        std::vector<Complex> fft_sum_l;
-        std::vector<Complex> fft_sum_r;
         std::vector<float> wet_l;
         std::vector<float> wet_r;
     };
@@ -142,13 +177,9 @@ private:
                       const ProcessParams& params,
                       Backend backend);
 
-    void fft(Complex* data, uint32_t n, bool inverse, Backend backend);
-    void fft_scalar(Complex* data, uint32_t n, bool inverse);
-    bool fft_accelerate(Complex* data, uint32_t n, bool inverse);
-
     void render_direct(const float* in_l, const float* in_r, uint32_t frames);
     void render_tail(const float* in_l, const float* in_r, uint32_t frames, Backend backend);
-    void submit_tail_partition(Backend backend);
+    void submit_zone_partition(Zone& zone, Backend backend);
     void update_previous_input(const float* in_l, const float* in_r, uint32_t frames);
 
     Plan plan_{};
@@ -156,12 +187,7 @@ private:
     int plan_rebuild_count_ = 0;
     ProcessStats last_stats_{};
 
-#if VIVID_ACCELERATE_ENABLED
-    FFTSetup fft_setup_ = nullptr;
-    int fft_log2_ = 0;
-    std::vector<float> accel_real_;
-    std::vector<float> accel_imag_;
-#endif
+    vivid::simd::FftPlanCache fft_cache_;
 };
 
 } // namespace vivid::convolution_reverb_dsp

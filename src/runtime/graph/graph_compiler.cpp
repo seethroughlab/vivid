@@ -64,7 +64,19 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
     std::unordered_map<std::string, uint32_t> node_index;
 
     for (const auto& ndef : graph.nodes()) {
-        OperatorLoader* loader = registry.find(ndef.type);
+        // Safe-mode / crash-recovery: skip loader lookup for disabled or
+        // quarantined nodes so the placeholder path below runs with the right
+        // reason.  "disabled" wins over "quarantined" when a type is in both.
+        const bool is_disabled =
+            options.disabled_node_ids.count(ndef.id) != 0 ||
+            options.disabled_types.count(ndef.type)  != 0;
+        const bool is_quarantined =
+            !is_disabled &&
+            options.quarantined_types.count(ndef.type) != 0;
+
+        OperatorLoader* loader = (is_disabled || is_quarantined)
+                                     ? nullptr
+                                     : registry.find(ndef.type);
         const VividOperatorDescriptor* desc = loader ? loader->descriptor() : nullptr;
 
         CompiledNode cn;
@@ -134,8 +146,18 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             cn.time_dependent = false;
             cn.active_cadence = Cadence::Frame;
 
-            // Classify why the operator is missing
-            if (const auto* prov = registry.operator_provenance(ndef.type)) {
+            // Classify why the operator is missing.  "disabled" and
+            // "quarantined" both win over provenance so explicit safe-mode
+            // intent or crash-history evidence is not masked by a pre-existing
+            // package-load failure.  Disabled is checked first so it wins over
+            // quarantined when a type happens to be in both sets.
+            if (is_disabled) {
+                cn.missing_operator_reason = "disabled";
+                cn.missing_operator_detail = "Disabled by safe mode (crash recovery)";
+            } else if (is_quarantined) {
+                cn.missing_operator_reason = "quarantined";
+                cn.missing_operator_detail = "Quarantined after repeated crashes";
+            } else if (const auto* prov = registry.operator_provenance(ndef.type)) {
                 if (!prov->package_built) {
                     cn.missing_operator_reason = "not_built";
                     cn.missing_operator_detail = "Package '" + prov->package_name +
@@ -215,8 +237,19 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             for (uint32_t p = 0; p < cn.output_port_count; ++p)
                 cn.c_out_string_lane_outputs[p] = make_string_lane_output(&cn.out_string_lane_bufs[p]);
 
-            std::fprintf(stderr, "[vivid] GraphCompiler: missing operator '%s' (node '%s') — placeholder\n",
-                         ndef.type.c_str(), ndef.id.c_str());
+            if (is_disabled) {
+                std::fprintf(stderr,
+                             "[vivid] GraphCompiler: node '%s' (type '%s') disabled by safe mode — placeholder\n",
+                             ndef.id.c_str(), ndef.type.c_str());
+            } else if (is_quarantined) {
+                std::fprintf(stderr,
+                             "[vivid] GraphCompiler: node '%s' (type '%s') quarantined after repeated crashes — placeholder\n",
+                             ndef.id.c_str(), ndef.type.c_str());
+            } else {
+                std::fprintf(stderr,
+                             "[vivid] GraphCompiler: missing operator '%s' (node '%s') — placeholder\n",
+                             ndef.type.c_str(), ndef.id.c_str());
+            }
         }
 
         node_index[ndef.id] = static_cast<uint32_t>(cg->nodes.size());

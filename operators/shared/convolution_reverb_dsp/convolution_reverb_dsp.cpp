@@ -13,6 +13,17 @@
 namespace vivid::convolution_reverb_dsp {
 namespace {
 
+// Non-uniform partitioning tunables. See docs/plans/core-audio-optimization-roadmap.md
+// "ConvolutionReverb Non-Uniform Partition Pass" for the doubling-zone design.
+// kEarlyLenTarget matches the original engine's direct-convolution length so the
+// O(early_len * block_size) inner loop cost does not regress. The correctness
+// invariant for each zone is `ir_offset - partition_size + block_size >= 0`,
+// which holds trivially regardless of early_len (zone 1 has ir_offset=early_len
+// and partition_size=block_size, so the write offset equals early_len).
+constexpr uint32_t kEarlyLenTarget = 256;
+constexpr uint32_t kZoneSizeCap = 4096;
+constexpr uint32_t kPartitionsPerZone = 4;
+
 static float clamp(float v, float lo, float hi) {
     return std::max(lo, std::min(hi, v));
 }
@@ -20,15 +31,6 @@ static float clamp(float v, float lo, float hi) {
 static uint32_t next_pow2(uint32_t v) {
     uint32_t out = 1;
     while (out < v) out <<= 1u;
-    return out;
-}
-
-static int log2_size(uint32_t n) {
-    int out = 0;
-    while (n > 1) {
-        n >>= 1u;
-        ++out;
-    }
     return out;
 }
 
@@ -232,30 +234,31 @@ ImpulseResponse build_impulse_response(const IrConfig& config) {
     return ir;
 }
 
-Engine::~Engine() {
-#if VIVID_ACCELERATE_ENABLED
-    if (fft_setup_) {
-        vDSP_destroy_fftsetup(fft_setup_);
-        fft_setup_ = nullptr;
-    }
-#endif
-}
-
 void Engine::reset() {
     plan_ = {};
     has_plan_ = false;
     plan_rebuild_count_ = 0;
     last_stats_ = {};
-#if VIVID_ACCELERATE_ENABLED
-    if (fft_setup_) {
-        vDSP_destroy_fftsetup(fft_setup_);
-        fft_setup_ = nullptr;
-    }
-    fft_log2_ = 0;
-    accel_real_.clear();
-    accel_imag_.clear();
-#endif
+    fft_cache_.clear();
 }
+
+namespace {
+// Dispatch split-complex FFT through the shared helper: Backend::Accelerate
+// routes to vDSP_fft_zip via FftPlanCache; Backend::Scalar forces the shared
+// scalar Cooley-Tukey even if a cached plan exists. Matches the per-call
+// backend selection used by the scalar/Accelerate parity test.
+inline void dispatch_fft(float* re, float* im, uint32_t n,
+                         const vivid::simd::FftPlanCache& cache,
+                         Backend backend, bool inverse) {
+    if (backend == Backend::Accelerate) {
+        if (inverse) vivid::simd::fft_inverse(re, im, n, cache);
+        else         vivid::simd::fft_forward(re, im, n, cache);
+    } else {
+        if (inverse) vivid::simd::fft_inverse_scalar(re, im, n);
+        else         vivid::simd::fft_forward_scalar(re, im, n);
+    }
+}
+} // namespace
 
 bool Engine::plan_matches(uint32_t frames,
                           uint32_t sample_rate,
@@ -277,12 +280,16 @@ void Engine::rebuild_plan(uint32_t frames,
                           uint32_t sample_rate,
                           const ProcessParams& params,
                           Backend backend) {
+    // Rebuild may change the zone FFT-size set (different tail length, new
+    // IR, different block size). Clear the plan cache first so stale sizes
+    // from the previous plan don't leak; plans are cheap to recreate off the
+    // audio thread. Zone-size plans are reserved lazily inside the zone loop
+    // below as each zone's fft_size is determined.
+    fft_cache_.clear();
+
     Plan next{};
     next.sample_rate = sample_rate;
     next.block_size = frames;
-    next.tail_partition_size = frames;
-    next.fft_size = next_pow2(next.tail_partition_size * 2u);
-    next.early_len = std::min<uint32_t>(frames, 256u);
     next.backend = backend;
     next.file_path = params.ir_file ? params.ir_file : "";
     next.preset = params.ir_preset;
@@ -299,12 +306,18 @@ void Engine::rebuild_plan(uint32_t frames,
     ir_config.gain_db = params.ir_gain_db;
     const ImpulseResponse ir = build_impulse_response(ir_config);
     next.layout = ir.layout;
-
     const uint32_t ir_frames = ir.frames();
-    next.early_len = std::min(next.early_len, ir_frames);
+
+    // Early-block direct convolution covers IR[0, early_len). Zone 1's
+    // ir_offset equals early_len and its partition_size equals block_size,
+    // giving write_offset = early_len >= 0 independent of block_size — so we
+    // keep early_len small to bound the O(early_len * block_size) direct loop.
+    uint32_t early_len = std::min<uint32_t>(kEarlyLenTarget, ir_frames);
+    next.early_len = early_len;
+
     auto copy_early = [&](std::vector<float>& dst, const std::vector<float>& src) {
-        dst.assign(next.early_len, 0.0f);
-        for (uint32_t i = 0; i < next.early_len; ++i)
+        dst.assign(std::max<uint32_t>(1, early_len), 0.0f);
+        for (uint32_t i = 0; i < early_len; ++i)
             dst[i] = src[i];
     };
     copy_early(next.early_ll, ir.ll);
@@ -312,134 +325,105 @@ void Engine::rebuild_plan(uint32_t frames,
     copy_early(next.early_rl, ir.rl);
     copy_early(next.early_rr, ir.rr);
 
-    const uint32_t tail_frames = ir_frames > next.early_len ? ir_frames - next.early_len : 0;
-    next.partition_count = tail_frames == 0 ? 0 : (tail_frames + next.tail_partition_size - 1u) / next.tail_partition_size;
+    // Zone schedule: doubling partition sizes capped at kZoneSizeCap, with
+    // kPartitionsPerZone partitions per zone until the last zone absorbs the
+    // remaining IR samples. Invariant upheld by construction:
+    //   ir_offset_k >= partition_size_k  for every zone
+    // which guarantees each zone's IFFT output lands at non-negative tail_accum
+    // offsets (no output-side latency introduced).
+    const uint32_t tail_frames = ir_frames > early_len ? ir_frames - early_len : 0;
+    uint32_t ir_offset = early_len;
+    uint32_t remaining = tail_frames;
+    uint32_t current_size = frames;
 
-    auto make_partitions = [&](const std::vector<float>& src) {
-        std::vector<std::vector<Complex>> partitions(next.partition_count);
-        for (uint32_t p = 0; p < next.partition_count; ++p) {
-            partitions[p].assign(next.fft_size, {});
-            const uint32_t src_offset = next.early_len + p * next.tail_partition_size;
-            const uint32_t copy_count = std::min<uint32_t>(next.tail_partition_size,
-                                                           static_cast<uint32_t>(src.size()) - src_offset);
-            for (uint32_t i = 0; i < copy_count; ++i)
-                partitions[p][i].re = src[src_offset + i];
-            fft(partitions[p].data(), next.fft_size, false, backend);
+    while (remaining > 0) {
+        Zone zone{};
+        zone.partition_size = current_size;
+        zone.fft_size = next_pow2(current_size * 2u);
+        zone.ir_offset = ir_offset;
+        const uint32_t max_parts = (remaining + current_size - 1u) / current_size;
+        // Once we reach the zone-size cap there's no further doubling win, so
+        // absorb the entire remainder into one zone. Earlier zones keep the
+        // small fixed partition count so the input/output FFT overhead per
+        // fire stays bounded and zone cadence stays fine-grained.
+        zone.partition_count = current_size >= kZoneSizeCap
+            ? max_parts
+            : std::min<uint32_t>(kPartitionsPerZone, max_parts);
+
+        // Reserve Accelerate plan before partition FFTs (used by dispatch_fft).
+        fft_cache_.reserve(zone.fft_size);
+
+        auto make_partitions = [&](const std::vector<float>& src) {
+            std::vector<Split> partitions(zone.partition_count);
+            for (uint32_t p = 0; p < zone.partition_count; ++p) {
+                partitions[p].assign(zone.fft_size, 0.0f);
+                const uint32_t src_offset = zone.ir_offset + p * zone.partition_size;
+                if (src_offset >= src.size()) break;
+                const uint32_t copy_count = std::min<uint32_t>(
+                    zone.partition_size,
+                    static_cast<uint32_t>(src.size()) - src_offset);
+                for (uint32_t i = 0; i < copy_count; ++i)
+                    partitions[p].re[i] = src[src_offset + i];
+                // Imag already zero from assign(); forward-FFT into split form.
+                dispatch_fft(partitions[p].re.data(), partitions[p].im.data(),
+                             zone.fft_size, fft_cache_, backend, /*inverse=*/false);
+            }
+            return partitions;
+        };
+
+        zone.tail_ll = make_partitions(ir.ll);
+        zone.tail_lr = make_partitions(ir.lr);
+        zone.tail_rl = make_partitions(ir.rl);
+        zone.tail_rr = make_partitions(ir.rr);
+
+        zone.input_history_l.assign(zone.partition_count, Split{});
+        zone.input_history_r.assign(zone.partition_count, Split{});
+        for (uint32_t p = 0; p < zone.partition_count; ++p) {
+            zone.input_history_l[p].assign(zone.fft_size, 0.0f);
+            zone.input_history_r[p].assign(zone.fft_size, 0.0f);
         }
-        return partitions;
-    };
+        zone.input_accum_l.assign(zone.partition_size, 0.0f);
+        zone.input_accum_r.assign(zone.partition_size, 0.0f);
+        zone.fft_l.assign(zone.fft_size, 0.0f);
+        zone.fft_r.assign(zone.fft_size, 0.0f);
+        zone.fft_sum_l.assign(zone.fft_size, 0.0f);
+        zone.fft_sum_r.assign(zone.fft_size, 0.0f);
 
-    next.tail_ll = make_partitions(ir.ll);
-    next.tail_lr = make_partitions(ir.lr);
-    next.tail_rl = make_partitions(ir.rl);
-    next.tail_rr = make_partitions(ir.rr);
+        next.max_fft_size = std::max(next.max_fft_size, zone.fft_size);
+        next.total_partition_count += zone.partition_count;
+        next.latency_samples = std::max(next.latency_samples, zone.partition_size);
 
-    next.input_history_l.assign(std::max<uint32_t>(1, next.partition_count), std::vector<Complex>(next.fft_size));
-    next.input_history_r.assign(std::max<uint32_t>(1, next.partition_count), std::vector<Complex>(next.fft_size));
-    next.prev_l.assign(std::max<uint32_t>(1, next.early_len), 0.0f);
-    next.prev_r.assign(std::max<uint32_t>(1, next.early_len), 0.0f);
-    next.input_accum_l.assign(next.tail_partition_size, 0.0f);
-    next.input_accum_r.assign(next.tail_partition_size, 0.0f);
-    next.tail_accum_l.assign(next.fft_size + next.early_len + frames, 0.0f);
-    next.tail_accum_r.assign(next.fft_size + next.early_len + frames, 0.0f);
-    next.fft_l.assign(next.fft_size, {});
-    next.fft_r.assign(next.fft_size, {});
-    next.fft_sum_l.assign(next.fft_size, {});
-    next.fft_sum_r.assign(next.fft_size, {});
+        const uint32_t consumed = zone.partition_count * zone.partition_size;
+        ir_offset += consumed;
+        remaining = remaining > consumed ? remaining - consumed : 0;
+        next.zones.push_back(std::move(zone));
+
+        if (current_size < kZoneSizeCap)
+            current_size = std::min(current_size * 2u, kZoneSizeCap);
+    }
+
+    // Shared tail accumulator. Every zone overlap-adds into this buffer at
+    // offset `ir_offset - partition_size + block_size`, and the head `block_size`
+    // samples are emitted every block before a left-shift. Size must cover the
+    // farthest write a zone can make, which is (ir_offset_k + partition_size_k)
+    // for the last zone, plus block_size headroom for the per-block shift.
+    uint32_t tail_accum_size = frames;
+    for (const auto& z : next.zones) {
+        const uint32_t max_end = z.ir_offset + z.partition_size + frames;
+        tail_accum_size = std::max(tail_accum_size, max_end);
+    }
+    next.tail_accum_size = tail_accum_size;
+    next.tail_accum_l.assign(tail_accum_size, 0.0f);
+    next.tail_accum_r.assign(tail_accum_size, 0.0f);
+
+    next.prev_l.assign(std::max<uint32_t>(1, early_len), 0.0f);
+    next.prev_r.assign(std::max<uint32_t>(1, early_len), 0.0f);
     next.wet_l.assign(frames, 0.0f);
     next.wet_r.assign(frames, 0.0f);
 
     plan_ = std::move(next);
     has_plan_ = true;
     ++plan_rebuild_count_;
-
-#if VIVID_ACCELERATE_ENABLED
-    const int log2n = log2_size(plan_.fft_size);
-    if (fft_setup_ && fft_log2_ != log2n) {
-        vDSP_destroy_fftsetup(fft_setup_);
-        fft_setup_ = nullptr;
-    }
-    if (!fft_setup_) {
-        fft_setup_ = vDSP_create_fftsetup(static_cast<vDSP_Length>(log2n), kFFTRadix2);
-    }
-    fft_log2_ = log2n;
-    accel_real_.assign(plan_.fft_size, 0.0f);
-    accel_imag_.assign(plan_.fft_size, 0.0f);
-#endif
-}
-
-void Engine::fft(Complex* data, uint32_t n, bool inverse, Backend backend) {
-    if (backend == Backend::Accelerate && fft_accelerate(data, n, inverse))
-        return;
-    fft_scalar(data, n, inverse);
-}
-
-void Engine::fft_scalar(Complex* data, uint32_t n, bool inverse) {
-    const int log2n = log2_size(n);
-    for (uint32_t i = 0; i < n; ++i) {
-        uint32_t j = 0;
-        for (int b = 0; b < log2n; ++b)
-            j |= ((i >> b) & 1u) << (log2n - 1 - b);
-        if (j > i) std::swap(data[i], data[j]);
-    }
-
-    for (uint32_t len = 2; len <= n; len <<= 1u) {
-        const float angle = (inverse ? 2.0f : -2.0f) * static_cast<float>(M_PI) / static_cast<float>(len);
-        const float wlen_re = std::cos(angle);
-        const float wlen_im = std::sin(angle);
-        for (uint32_t i = 0; i < n; i += len) {
-            float w_re = 1.0f;
-            float w_im = 0.0f;
-            for (uint32_t j = 0; j < len / 2; ++j) {
-                Complex& u = data[i + j];
-                Complex& v_src = data[i + j + len / 2];
-                const Complex v{v_src.re * w_re - v_src.im * w_im,
-                                v_src.re * w_im + v_src.im * w_re};
-                v_src = {u.re - v.re, u.im - v.im};
-                u = {u.re + v.re, u.im + v.im};
-                const float next_re = w_re * wlen_re - w_im * wlen_im;
-                w_im = w_re * wlen_im + w_im * wlen_re;
-                w_re = next_re;
-            }
-        }
-    }
-
-    if (inverse) {
-        const float inv = 1.0f / static_cast<float>(n);
-        for (uint32_t i = 0; i < n; ++i) {
-            data[i].re *= inv;
-            data[i].im *= inv;
-        }
-    }
-}
-
-bool Engine::fft_accelerate(Complex* data, uint32_t n, bool inverse) {
-#if VIVID_ACCELERATE_ENABLED
-    const int log2n = log2_size(n);
-    if (!fft_setup_ || fft_log2_ != log2n) return false;
-    if (accel_real_.size() < n) {
-        accel_real_.assign(n, 0.0f);
-        accel_imag_.assign(n, 0.0f);
-    }
-    for (uint32_t i = 0; i < n; ++i) {
-        accel_real_[i] = data[i].re;
-        accel_imag_[i] = data[i].im;
-    }
-    DSPSplitComplex split{accel_real_.data(), accel_imag_.data()};
-    vDSP_fft_zip(fft_setup_, &split, 1, static_cast<vDSP_Length>(log2n),
-                 inverse ? FFT_INVERSE : FFT_FORWARD);
-    const float scale = inverse ? (1.0f / static_cast<float>(n)) : 1.0f;
-    for (uint32_t i = 0; i < n; ++i) {
-        data[i].re = accel_real_[i] * scale;
-        data[i].im = accel_imag_[i] * scale;
-    }
-    return true;
-#else
-    (void)data;
-    (void)n;
-    (void)inverse;
-    return false;
-#endif
 }
 
 void Engine::render_direct(const float* in_l, const float* in_r, uint32_t frames) {
@@ -462,82 +446,176 @@ void Engine::render_direct(const float* in_l, const float* in_r, uint32_t frames
 }
 
 void Engine::render_tail(const float* in_l, const float* in_r, uint32_t frames, Backend backend) {
-    if (plan_.partition_count == 0) return;
+    if (plan_.zones.empty()) return;
 
-    uint32_t consumed = 0;
-    while (consumed < frames) {
-        const uint32_t room = plan_.tail_partition_size - plan_.input_fill;
-        const uint32_t n = std::min(room, frames - consumed);
-        std::copy(in_l + consumed, in_l + consumed + n, plan_.input_accum_l.begin() + plan_.input_fill);
-        std::copy(in_r + consumed, in_r + consumed + n, plan_.input_accum_r.begin() + plan_.input_fill);
-        plan_.input_fill += n;
-        consumed += n;
-        if (plan_.input_fill == plan_.tail_partition_size)
-            submit_tail_partition(backend);
+    // Feed this block's input into every zone. Zones with partition_size == block_size
+    // fire every block; larger zones fire every (partition_size / block_size) blocks.
+    for (auto& zone : plan_.zones) {
+        uint32_t consumed = 0;
+        while (consumed < frames) {
+            const uint32_t room = zone.partition_size - zone.input_fill;
+            const uint32_t n = std::min(room, frames - consumed);
+            std::copy(in_l + consumed, in_l + consumed + n,
+                      zone.input_accum_l.begin() + zone.input_fill);
+            std::copy(in_r + consumed, in_r + consumed + n,
+                      zone.input_accum_r.begin() + zone.input_fill);
+            zone.input_fill += n;
+            consumed += n;
+            if (zone.input_fill == zone.partition_size)
+                submit_zone_partition(zone, backend);
+        }
     }
 
+    // Emit head of tail_accum into wet, then shift left by block_size.
     for (uint32_t i = 0; i < frames; ++i) {
         plan_.wet_l[i] += plan_.tail_accum_l[i];
         plan_.wet_r[i] += plan_.tail_accum_r[i];
     }
-
-    std::move(plan_.tail_accum_l.begin() + frames, plan_.tail_accum_l.end(), plan_.tail_accum_l.begin());
+    std::move(plan_.tail_accum_l.begin() + frames, plan_.tail_accum_l.end(),
+              plan_.tail_accum_l.begin());
     std::fill(plan_.tail_accum_l.end() - frames, plan_.tail_accum_l.end(), 0.0f);
-    std::move(plan_.tail_accum_r.begin() + frames, plan_.tail_accum_r.end(), plan_.tail_accum_r.begin());
+    std::move(plan_.tail_accum_r.begin() + frames, plan_.tail_accum_r.end(),
+              plan_.tail_accum_r.begin());
     std::fill(plan_.tail_accum_r.end() - frames, plan_.tail_accum_r.end(), 0.0f);
 }
 
-void Engine::submit_tail_partition(Backend backend) {
-    if (plan_.partition_count == 0) return;
+namespace {
 
-    std::fill(plan_.fft_l.begin(), plan_.fft_l.end(), Complex{});
-    std::fill(plan_.fft_r.begin(), plan_.fft_r.end(), Complex{});
-    for (uint32_t i = 0; i < plan_.tail_partition_size; ++i) {
-        plan_.fft_l[i].re = plan_.input_accum_l[i];
-        plan_.fft_r[i].re = plan_.input_accum_r[i];
+// Scalar split-complex vector multiply-accumulate: y += x * h (complex).
+// Matches vDSP_zvma's mathematical semantic; used as the Backend::Scalar
+// fallback when Accelerate is off or the caller forces scalar. Hand-rolled
+// in split form so the hot loop auto-vectorizes cleanly even without
+// Accelerate.
+inline void scalar_zvma(const float* x_re, const float* x_im,
+                        const float* h_re, const float* h_im,
+                        float* y_re, float* y_im, uint32_t n) {
+    for (uint32_t i = 0; i < n; ++i) {
+        const float xr = x_re[i];
+        const float xi = x_im[i];
+        const float hr = h_re[i];
+        const float hi = h_im[i];
+        y_re[i] += xr * hr - xi * hi;
+        y_im[i] += xr * hi + xi * hr;
     }
-    fft(plan_.fft_l.data(), plan_.fft_size, false, backend);
-    fft(plan_.fft_r.data(), plan_.fft_size, false, backend);
+}
 
-    plan_.input_history_l[plan_.history_pos] = plan_.fft_l;
-    plan_.input_history_r[plan_.history_pos] = plan_.fft_r;
+} // namespace
 
-    std::fill(plan_.fft_sum_l.begin(), plan_.fft_sum_l.end(), Complex{});
-    std::fill(plan_.fft_sum_r.begin(), plan_.fft_sum_r.end(), Complex{});
+void Engine::submit_zone_partition(Zone& zone, Backend backend) {
+    if (zone.partition_count == 0) return;
 
-    auto madd = [](Complex x, Complex h, Complex& y) {
-        y.re += x.re * h.re - x.im * h.im;
-        y.im += x.re * h.im + x.im * h.re;
-    };
+    // Pack the filled input_accum into the zone's split-complex FFT scratch
+    // (zero-padded imag, real samples up to partition_size, zero the rest).
+    zone.fft_l.zero();
+    zone.fft_r.zero();
+    std::copy(zone.input_accum_l.begin(),
+              zone.input_accum_l.begin() + zone.partition_size,
+              zone.fft_l.re.begin());
+    std::copy(zone.input_accum_r.begin(),
+              zone.input_accum_r.begin() + zone.partition_size,
+              zone.fft_r.re.begin());
 
-    for (uint32_t p = 0; p < plan_.partition_count; ++p) {
-        const uint32_t hist = (plan_.history_pos + plan_.partition_count - p) % plan_.partition_count;
-        const auto& xl = plan_.input_history_l[hist];
-        const auto& xr = plan_.input_history_r[hist];
-        const auto& hll = plan_.tail_ll[p];
-        const auto& hlr = plan_.tail_lr[p];
-        const auto& hrl = plan_.tail_rl[p];
-        const auto& hrr = plan_.tail_rr[p];
-        for (uint32_t i = 0; i < plan_.fft_size; ++i) {
-            madd(xl[i], hll[i], plan_.fft_sum_l[i]);
-            madd(xr[i], hrl[i], plan_.fft_sum_l[i]);
-            madd(xl[i], hlr[i], plan_.fft_sum_r[i]);
-            madd(xr[i], hrr[i], plan_.fft_sum_r[i]);
+    dispatch_fft(zone.fft_l.re.data(), zone.fft_l.im.data(),
+                 zone.fft_size, fft_cache_, backend, /*inverse=*/false);
+    dispatch_fft(zone.fft_r.re.data(), zone.fft_r.im.data(),
+                 zone.fft_size, fft_cache_, backend, /*inverse=*/false);
+
+    // Store current-block FFT in the FDL history ring (split-complex copy).
+    {
+        auto& hist_l = zone.input_history_l[zone.history_pos];
+        auto& hist_r = zone.input_history_r[zone.history_pos];
+        hist_l.re = zone.fft_l.re;
+        hist_l.im = zone.fft_l.im;
+        hist_r.re = zone.fft_r.re;
+        hist_r.im = zone.fft_r.im;
+    }
+
+    zone.fft_sum_l.zero();
+    zone.fft_sum_r.zero();
+
+    // Partitioned frequency-domain MAC. For each partition p:
+    //   fft_sum_l += x_L * H_LL  +  x_R * H_RL
+    //   fft_sum_r += x_L * H_LR  +  x_R * H_RR
+    // where x is the input-history bin at position (history_pos - p) mod P.
+    // vDSP_zvma runs one complex MAC across all fft_size bins as a single
+    // vectorized call; the scalar fallback mirrors the same math in a
+    // straight-line loop.
+    for (uint32_t p = 0; p < zone.partition_count; ++p) {
+        const uint32_t hist = (zone.history_pos + zone.partition_count - p) % zone.partition_count;
+        const auto& xl = zone.input_history_l[hist];
+        const auto& xr = zone.input_history_r[hist];
+        const auto& hll = zone.tail_ll[p];
+        const auto& hlr = zone.tail_lr[p];
+        const auto& hrl = zone.tail_rl[p];
+        const auto& hrr = zone.tail_rr[p];
+
+#if VIVID_ACCELERATE_ENABLED
+        if (backend == Backend::Accelerate && fft_cache_.has(zone.fft_size)) {
+            DSPSplitComplex a{const_cast<float*>(xl.re.data()), const_cast<float*>(xl.im.data())};
+            DSPSplitComplex b_ll{const_cast<float*>(hll.re.data()), const_cast<float*>(hll.im.data())};
+            DSPSplitComplex b_lr{const_cast<float*>(hlr.re.data()), const_cast<float*>(hlr.im.data())};
+            DSPSplitComplex a_r{const_cast<float*>(xr.re.data()), const_cast<float*>(xr.im.data())};
+            DSPSplitComplex b_rl{const_cast<float*>(hrl.re.data()), const_cast<float*>(hrl.im.data())};
+            DSPSplitComplex b_rr{const_cast<float*>(hrr.re.data()), const_cast<float*>(hrr.im.data())};
+            DSPSplitComplex y_l{zone.fft_sum_l.re.data(), zone.fft_sum_l.im.data()};
+            DSPSplitComplex y_r{zone.fft_sum_r.re.data(), zone.fft_sum_r.im.data()};
+            // fft_sum_l += xl * hll
+            vDSP_zvma(&a, 1, &b_ll, 1, &y_l, 1, &y_l, 1, zone.fft_size);
+            // fft_sum_l += xr * hrl
+            vDSP_zvma(&a_r, 1, &b_rl, 1, &y_l, 1, &y_l, 1, zone.fft_size);
+            // fft_sum_r += xl * hlr
+            vDSP_zvma(&a, 1, &b_lr, 1, &y_r, 1, &y_r, 1, zone.fft_size);
+            // fft_sum_r += xr * hrr
+            vDSP_zvma(&a_r, 1, &b_rr, 1, &y_r, 1, &y_r, 1, zone.fft_size);
+            continue;
+        }
+#endif
+        scalar_zvma(xl.re.data(), xl.im.data(), hll.re.data(), hll.im.data(),
+                    zone.fft_sum_l.re.data(), zone.fft_sum_l.im.data(), zone.fft_size);
+        scalar_zvma(xr.re.data(), xr.im.data(), hrl.re.data(), hrl.im.data(),
+                    zone.fft_sum_l.re.data(), zone.fft_sum_l.im.data(), zone.fft_size);
+        scalar_zvma(xl.re.data(), xl.im.data(), hlr.re.data(), hlr.im.data(),
+                    zone.fft_sum_r.re.data(), zone.fft_sum_r.im.data(), zone.fft_size);
+        scalar_zvma(xr.re.data(), xr.im.data(), hrr.re.data(), hrr.im.data(),
+                    zone.fft_sum_r.re.data(), zone.fft_sum_r.im.data(), zone.fft_size);
+    }
+
+    dispatch_fft(zone.fft_sum_l.re.data(), zone.fft_sum_l.im.data(),
+                 zone.fft_size, fft_cache_, backend, /*inverse=*/true);
+    dispatch_fft(zone.fft_sum_r.re.data(), zone.fft_sum_r.im.data(),
+                 zone.fft_size, fft_cache_, backend, /*inverse=*/true);
+
+    // Overlap-add the real part of the IFFT output into the shared tail_accum.
+    // Derivation: tail_accum[i] at emit time of host block k represents the
+    // deferred contribution to output at absolute time kB + i (invariant held
+    // by the per-block left-shift of tail_accum). A zone firing at block k
+    // with partition_size N contributes output at time kB + ir_offset + n +
+    // (B - N) for n in [0, 2N-1], so the zone writes at offset
+    // (ir_offset - N + B). With ir_offset >= N (enforced by the zone
+    // schedule), the write offset is always >= 0.
+    const uint32_t write_offset = zone.ir_offset + plan_.block_size - zone.partition_size;
+    const float* y_l_re = zone.fft_sum_l.re.data();
+    const float* y_r_re = zone.fft_sum_r.re.data();
+    float* tail_l = plan_.tail_accum_l.data() + write_offset;
+    float* tail_r = plan_.tail_accum_r.data() + write_offset;
+#if VIVID_ACCELERATE_ENABLED
+    if (backend == Backend::Accelerate && fft_cache_.has(zone.fft_size)) {
+        // tail += y_re, vectorized.
+        vDSP_vadd(tail_l, 1, y_l_re, 1, tail_l, 1, zone.fft_size);
+        vDSP_vadd(tail_r, 1, y_r_re, 1, tail_r, 1, zone.fft_size);
+    } else
+#endif
+    {
+        for (uint32_t i = 0; i < zone.fft_size; ++i) {
+            tail_l[i] += y_l_re[i];
+            tail_r[i] += y_r_re[i];
         }
     }
 
-    fft(plan_.fft_sum_l.data(), plan_.fft_size, true, backend);
-    fft(plan_.fft_sum_r.data(), plan_.fft_size, true, backend);
-
-    for (uint32_t i = 0; i < plan_.fft_size; ++i) {
-        plan_.tail_accum_l[plan_.early_len + i] += plan_.fft_sum_l[i].re;
-        plan_.tail_accum_r[plan_.early_len + i] += plan_.fft_sum_r[i].re;
-    }
-
-    plan_.history_pos = (plan_.history_pos + 1u) % plan_.partition_count;
-    plan_.input_fill = 0;
-    std::fill(plan_.input_accum_l.begin(), plan_.input_accum_l.end(), 0.0f);
-    std::fill(plan_.input_accum_r.begin(), plan_.input_accum_r.end(), 0.0f);
+    zone.history_pos = (zone.history_pos + 1u) % zone.partition_count;
+    zone.input_fill = 0;
+    std::fill(zone.input_accum_l.begin(), zone.input_accum_l.end(), 0.0f);
+    std::fill(zone.input_accum_r.begin(), zone.input_accum_r.end(), 0.0f);
 }
 
 void Engine::update_previous_input(const float* in_l, const float* in_r, uint32_t frames) {
@@ -598,8 +676,13 @@ void Engine::process(const float* input_stereo,
     last_stats_.layout = plan_.layout;
     last_stats_.sample_rate = sample_rate;
     last_stats_.block_size = frames;
-    last_stats_.ir_frames = static_cast<uint32_t>(plan_.early_ll.size() + plan_.partition_count * plan_.tail_partition_size);
-    last_stats_.partition_count = plan_.partition_count;
+    uint32_t ir_frames_total = plan_.early_len;
+    for (const auto& z : plan_.zones)
+        ir_frames_total += z.partition_count * z.partition_size;
+    last_stats_.ir_frames = ir_frames_total;
+    last_stats_.partition_count = plan_.total_partition_count;
+    last_stats_.zone_count = static_cast<uint32_t>(plan_.zones.size());
+    last_stats_.latency_samples = plan_.latency_samples;
     last_stats_.plan_rebuild_count = plan_rebuild_count_;
 }
 

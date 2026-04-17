@@ -31,6 +31,7 @@
 #include "runtime/core/file_drop_registry.h"
 #include "runtime/core/crash_guard.h"
 #include "runtime/core/crash_recovery.h"
+#include "runtime/core/quarantine.h"
 #include "ui/style/ui_style.h"
 #include "ui/style/theme_loader.h"
 #include "operator_api/gpu_operator.h"
@@ -145,6 +146,7 @@ int main(int argc, char* argv[]) {
     std::string test_ui_script_path;
     std::string test_dump_ui_state_path;
     bool headless = false;
+    bool safe_mode = false;
     std::string src_dir;
 
     CLI::App app{"Vivid - Real-time audio-visual graph engine\n\n"
@@ -173,6 +175,9 @@ int main(int argc, char* argv[]) {
                    "Write a machine-readable final UI/runtime state snapshot (testing seam)")
         ->type_name("FILE");
     app.add_flag("--headless", headless, "Run without displaying a window");
+    app.add_flag("--safe-mode", safe_mode,
+                 "Crash recovery: disable operators from the previous crash, "
+                 "skip audio device start, skip hot-reload");
     app.add_option("--src-dir", src_dir, "Source directory for operator hot-reload")->type_name("PATH");
 
     // --- Export subcommand ---
@@ -1333,8 +1338,59 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
     runtime.set_audio_buffer_size(settings.audio_buffer_size);
     runtime.set_subgraph_modules(&subgraph_modules);
     runtime.frame_executor().set_analysis_enabled(settings.show_analysis);
+
+    // Wire prior-crash identity into runtime_health so the snapshot can
+    // surface "recovered_from_crash" findings.
     if (prior_crash) {
         runtime.set_prior_crash_operator(prior_crash->operator_name);
+    }
+
+    // Phase 4: scan crash history for repeat offenders.  Used in both safe
+    // and normal mode — in safe mode we merge into the disabled set; in
+    // normal mode we log a warning per quarantined identity.
+    const std::vector<vivid::QuarantineEntry> quarantined =
+        vivid::scan_quarantine(vivid::get_crash_dir());
+
+    // Crash-recovery safe-mode: disable suspect operator(s) at compile time.
+    if (safe_mode) {
+        vivid::SafeModeConfig cfg =
+            vivid::compute_safe_mode_config(prior_crash ? &*prior_crash : nullptr);
+        // Merge quarantined identities.  Quarantine wins over a same-type
+        // disabled entry so the UI shows one consistent label.
+        for (const auto& q : quarantined) {
+            cfg.quarantined_types.insert(q.identity.type_name);
+            cfg.disabled_types.erase(q.identity.type_name);
+        }
+        runtime.set_safe_mode(cfg);
+        std::fprintf(stderr, "[vivid] Safe mode active.");
+        if (prior_crash) {
+            const std::string& disabled_type =
+                !prior_crash->node_type.empty() ? prior_crash->node_type
+                                                : prior_crash->operator_name;
+            std::fprintf(stderr,
+                         " Disabling type '%s' after %s in node '%s'.",
+                         disabled_type.c_str(),
+                         prior_crash->signal_name.c_str(),
+                         prior_crash->node_id.c_str());
+        }
+        if (!quarantined.empty()) {
+            std::fprintf(stderr, " Quarantined %zu operator type(s) from crash history.",
+                         quarantined.size());
+        }
+        std::fprintf(stderr, " Audio device start and hot-reload are skipped.\n");
+    } else {
+        // Normal mode: warn about quarantined identities but do not auto-disable.
+        for (const auto& q : quarantined) {
+            const std::string pkg_hint = q.identity.pkg_name.empty()
+                ? std::string()
+                : std::string(" (pkg '") + q.identity.pkg_name + "')";
+            std::fprintf(stderr,
+                         "[vivid] WARNING: operator '%s'%s has crashed %zu times in the last 24h. "
+                         "Launch with --safe-mode to suppress it.\n",
+                         q.identity.type_name.c_str(),
+                         pkg_hint.c_str(),
+                         q.crash_count);
+        }
     }
     bool graph_loaded = false;
 
@@ -1361,7 +1417,10 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
     if (graph_loaded && runtime.has_audio_operators()) {
         PhaseTimer t("audio_engine build+start");
         if (audio_engine.build(runtime)) {
-            if (audio_engine.start()) {
+            // Safe mode: keep build() so cross-cadence bridge buffers are
+            // allocated, but skip start() so a bad audio operator can't
+            // re-crash the real-time thread on relaunch.
+            if (!safe_mode && audio_engine.start()) {
                 has_audio = true;
             }
         }
@@ -1391,6 +1450,7 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
     control_server.set_asset_library(&asset_library);
     control_server.set_build_console(build_console.get());
     control_server.set_gpu_context(&gpu);
+    control_server.set_crash_recovery_manager(&crash_recovery);
     control_server.set_bundled_source_dir((resources_dir / "source").string());
     if (!control_server.start(9876)) {
         std::fprintf(stderr, "[vivid] Control server unavailable (port 9876 in use?)\n");
@@ -1727,7 +1787,7 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
             command_sink.set_operators_dir(operators_dir);
             command_sink.set_build_dir(runtime_paths.build_dir);
             op_info_cache.set_operators_dir(operators_dir);
-            if (file_watcher.start(operators_dir) && hot_reloader.start(runtime_paths.build_dir)) {
+            if (!safe_mode && file_watcher.start(operators_dir) && hot_reloader.start(runtime_paths.build_dir)) {
                 hot_reload_enabled = true;
                 hot_reloader.set_build_console(build_console.get());
                 control_server.set_hot_reloader(&hot_reloader);
@@ -1977,12 +2037,49 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
     };
     refresh_file_drop_registry();
 
-    if (have_initial_graph_request) {
+    // Phase 3: set by the "Open Safe Mode" dialog callback so the crashed
+    // node gets auto-selected once the graph finishes loading (snap sees it).
+    std::string pending_select_crashed_node;
+
+    auto proceed_with_initial_load = [&]() {
+        if (!have_initial_graph_request) return;
         std::string startup_error;
         if (!queue_graph_load(initial_graph_request, &startup_error)) {
             std::fprintf(stderr, "[vivid] Startup graph load: %s\n", startup_error.c_str());
             graph_ui.notify_async_graph_load_failure(startup_error);
         }
+    };
+
+    // Phase 3: if the previous session crashed and the user didn't force
+    // safe mode from the CLI, defer the initial graph load behind a recovery
+    // dialog.  The frame loop ticks with an empty graph; control server and
+    // UI stay responsive.  Dialog callbacks decide what to do next.
+    if (prior_crash && !safe_mode) {
+        graph_ui.on_crash_recovery_open_normally = [&]() {
+            std::fprintf(stderr, "[vivid] Crash recovery: opening graph normally.\n");
+            proceed_with_initial_load();
+        };
+        graph_ui.on_crash_recovery_open_safe_mode = [&, crash = *prior_crash]() {
+            runtime.set_safe_mode(vivid::compute_safe_mode_config(&crash));
+            pending_select_crashed_node = crash.node_id;
+            std::fprintf(stderr,
+                         "[vivid] Crash recovery: opening in safe mode; "
+                         "disabling type '%s' after %s.\n",
+                         (!crash.node_type.empty() ? crash.node_type
+                                                    : crash.operator_name).c_str(),
+                         crash.signal_name.c_str());
+            proceed_with_initial_load();
+        };
+        graph_ui.on_crash_recovery_reveal_report = [&]() {
+            std::string err;
+            if (!vivid::open_url(crash_recovery.latest_crash_path(), &err)) {
+                std::fprintf(stderr, "[vivid] Failed to open crash report: %s\n",
+                             err.c_str());
+            }
+        };
+        graph_ui.open_crash_recovery(*prior_crash, crash_recovery.latest_crash_path());
+    } else {
+        proceed_with_initial_load();
     }
 
     graph_ui.set_example_open_callback([&](const std::string& rel_path) {
@@ -2694,6 +2791,15 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
                                                  screenshot_path, screenshot_delay, frame_count);
                     }
                     graph_ui.update(snapshot);
+                    // Safe-mode auto-select: once the graph load completes
+                    // and the snapshot includes the crashed node, select it
+                    // so the inspector shows the disabled-context banner.
+                    if (!pending_select_crashed_node.empty()) {
+                        if (graph_ui.select_single_node_for_review(
+                                pending_select_crashed_node)) {
+                            pending_select_crashed_node.clear();
+                        }
+                    }
                     if (!test_dump_ui_state_path.empty()) {
                         test_dump_state.final_state =
                             vivid::capture_ui_test_observed_state(snapshot, graph_ui);

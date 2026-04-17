@@ -98,7 +98,20 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
                          : (cn.gpu && cn.gpu->shader_error) ? cn.gpu->shader_error_msg
                          : cn.error_message;   // compile/build error (node still running)
         sn.missing_operator = cn.missing_operator;
-        if (cn.missing_operator) {
+        sn.disabled_by_safe_mode = (cn.missing_operator_reason == "disabled");
+        sn.quarantined           = (cn.missing_operator_reason == "quarantined");
+        if (cn.missing_operator && sn.disabled_by_safe_mode) {
+            // Safe-mode disabled: overrides the generic missing-operator message
+            // with the crash-recovery explanation.  Detail mirrors what the
+            // compiler set in Pass 1.
+            sn.error_message = cn.missing_operator_detail.empty()
+                ? std::string("Disabled by safe mode (crash recovery).")
+                : cn.missing_operator_detail;
+        } else if (cn.missing_operator && sn.quarantined) {
+            sn.error_message = cn.missing_operator_detail.empty()
+                ? std::string("Quarantined after repeated crashes.")
+                : cn.missing_operator_detail;
+        } else if (cn.missing_operator) {
             // Try to find the specific package with an ABI mismatch for this operator
             std::string pkg_name;
             for (const auto& d : registry.abi_mismatch_diagnostics()) {

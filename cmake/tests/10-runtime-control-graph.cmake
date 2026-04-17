@@ -1,3 +1,22 @@
+# Shared SIMD FFT helper — scalar vs Accelerate parity, round-trip, known-answer.
+add_executable(test_simd_fft
+    tests/common/test_simd_fft.cpp
+    src/runtime/simd/fft.cpp
+)
+target_include_directories(test_simd_fft PRIVATE src tests)
+target_link_libraries(test_simd_fft PRIVATE vivid_runtime_testlib vivid_operator_api webgpu)
+add_test(NAME test_simd_fft COMMAND test_simd_fft WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_simd_fft PROPERTIES TIMEOUT 15)
+
+# audio_smoke.h relaxed-correctness helper — used across optimization passes.
+add_executable(test_audio_smoke
+    tests/common/test_audio_smoke.cpp
+)
+target_include_directories(test_audio_smoke PRIVATE src tests tests/audio)
+target_link_libraries(test_audio_smoke PRIVATE vivid_runtime_testlib vivid_operator_api webgpu)
+add_test(NAME test_audio_smoke COMMAND test_audio_smoke WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_audio_smoke PROPERTIES TIMEOUT 15)
+
 # Crash recovery unit tests (pure filesystem + JSON; no GPU, no audio, no window)
 add_executable(test_crash_recovery
     tests/core/test_crash_recovery.cpp
@@ -6,6 +25,24 @@ target_include_directories(test_crash_recovery PRIVATE src tests)
 target_link_libraries(test_crash_recovery PRIVATE vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_test(NAME test_crash_recovery COMMAND test_crash_recovery WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_crash_recovery PROPERTIES TIMEOUT 15)
+
+# Safe-mode (crash recovery Phase 2) compiler tests — empty registry, no fixtures
+add_executable(test_graph_compiler_safe_mode
+    tests/graph/test_graph_compiler_safe_mode.cpp
+)
+target_include_directories(test_graph_compiler_safe_mode PRIVATE src tests)
+target_link_libraries(test_graph_compiler_safe_mode PRIVATE vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_test(NAME test_graph_compiler_safe_mode COMMAND test_graph_compiler_safe_mode WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_graph_compiler_safe_mode PROPERTIES TIMEOUT 15)
+
+# Quarantine scan tests (crash recovery Phase 4) — pure filesystem + JSON
+add_executable(test_quarantine
+    tests/core/test_quarantine.cpp
+)
+target_include_directories(test_quarantine PRIVATE src tests)
+target_link_libraries(test_quarantine PRIVATE vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_test(NAME test_quarantine COMMAND test_quarantine WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_quarantine PROPERTIES TIMEOUT 15)
 
 # Hot-reload integration test (no GPU, no audio, no window)
 add_executable(test_hot_reload
@@ -67,6 +104,16 @@ add_dependencies(test_control_server test_op_v1 semantic_ms_source_op semantic_s
     string_source_op string_sink_op)
 add_test(NAME test_control_server COMMAND test_control_server ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Phase 5 crash-recovery HTTP endpoints (focused test; no operators needed)
+add_executable(test_control_server_crash
+    tests/control/test_control_server_crash.cpp
+)
+target_include_directories(test_control_server_crash PRIVATE src tests)
+target_link_libraries(test_control_server_crash PRIVATE vivid_runtime_testlib)
+add_test(NAME test_control_server_crash COMMAND test_control_server_crash
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_control_server_crash PROPERTIES TIMEOUT 30)
 
 # Perception introspection matrix test (domain snapshots + deterministic health)
 add_executable(test_perception_introspection

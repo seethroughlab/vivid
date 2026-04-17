@@ -113,6 +113,9 @@ struct DrumTom : vivid::OperatorBase, vivid::AudioProcessable {
         float vel_scale = midi_vel_scale;
         const float* trig_buf = ctx->input_buffers[0];
 
+        const float amp_factor  = drum::DecayEnvelope::compute_factor(dec, inv_sr);
+        const float bend_factor = drum::DecayEnvelope::compute_factor(bnd_time, inv_sr);
+
         for (uint32_t i = 0; i < ctx->buffer_size; i++) {
             // Wire trigger: rising-edge detection
             float tv = trig_buf ? trig_buf[i] : 0.0f;
@@ -126,8 +129,8 @@ struct DrumTom : vivid::OperatorBase, vivid::AudioProcessable {
                 osc_phase_ = 0.0;
             }
 
-            float amp  = amp_env_.value(dec);
-            float benv = bend_env_.value(bnd_time);
+            float amp  = amp_env_.step(amp_factor, inv_sr);
+            float benv = bend_env_.step(bend_factor, inv_sr);
 
             // Pitch bend: starts high, drops to base
             double freq = p_base * (1.0 + bnd * benv);
@@ -146,8 +149,6 @@ struct DrumTom : vivid::OperatorBase, vivid::AudioProcessable {
 
             osc_phase_ += freq * inv_sr;
             if (osc_phase_ >= 1.0) osc_phase_ -= 1.0;
-            amp_env_.advance(inv_sr);
-            bend_env_.advance(inv_sr);
         }
 
     }

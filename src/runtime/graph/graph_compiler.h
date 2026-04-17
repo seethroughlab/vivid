@@ -5,6 +5,7 @@
 #include "runtime/operators/operator_registry.h"
 #include <filesystem>
 #include <string>
+#include <unordered_set>
 
 namespace vivid {
 
@@ -36,6 +37,19 @@ public:
         // Maximum lane count for LoopBased audio operators.
         // Buffers are pre-allocated to this capacity at compile time.
         uint32_t max_loop_lanes = 16;
+
+        // Crash-recovery / safe-mode: nodes whose instances must not be
+        // created.  The compiler treats them as missing operators with reason
+        // "disabled", port stubs are still allocated, and Pass 2 drops all
+        // edges touching them into CompiledGraph::dropped_connections.
+        std::unordered_set<std::string> disabled_node_ids;
+        std::unordered_set<std::string> disabled_types;
+
+        // Quarantine: types flagged by the crash-history scan (Phase 4) as
+        // repeat offenders.  Classification chain prefers "disabled" when a
+        // type appears in both; otherwise the compiler uses reason
+        // "quarantined" so the UI can distinguish the two suppression causes.
+        std::unordered_set<std::string> quarantined_types;
     };
 
     // Compile a Graph into a ready-to-execute CompiledGraph.

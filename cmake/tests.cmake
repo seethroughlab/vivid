@@ -11,6 +11,7 @@ add_library(vivid_runtime_testlib STATIC
     src/runtime/control/control_server.cpp
     src/runtime/control/control_server_assets.cpp
     src/runtime/control/control_server_checks.cpp
+    src/runtime/control/control_server_crash.cpp
     src/runtime/control/control_server_dispatch.cpp
     src/runtime/control/control_server_query.cpp
     src/runtime/control/graph_file_io.cpp
@@ -31,6 +32,7 @@ add_library(vivid_runtime_testlib STATIC
     src/runtime/core/runtime_health_samplers.cpp
     src/runtime/core/settings.cpp
     src/runtime/core/crash_recovery.cpp
+    src/runtime/core/quarantine.cpp
     src/runtime/core/tool_discovery.cpp
     src/runtime/core/undo_manager.cpp
     src/runtime/core/workspace_manager.cpp

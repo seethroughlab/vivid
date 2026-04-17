@@ -145,16 +145,213 @@ Initial defaults:
 
 Graph-specific expected-output checks should use existing metadata where possible. If a graph does not declare expected audio or visual output, the gate should avoid guessing and classify that portion as `not_applicable` rather than failing.
 
-## Implementation Steps
+## Implementation Phases
 
-1. Add a report utility that can run or consume CTest results and produce `production-gate.json`.
-2. Add CMake targets for `production_gate_core`, `production_gate_gui`, `production_gate_env`, `production_gate_soak`, and `production_gate`.
-3. Add `RuntimeHealthSnapshot` and populate it from existing diagnostics, graph errors, build console state, audio engine state, and output analyzer signals.
-4. Expose `get_runtime_health` through the control server and MCP bridge.
-5. Add a concise health indicator to the diagnostics panel.
-6. Update release docs to point at `production_gate` as the canonical automated gate.
+The work breaks into five phases. Each phase is independently shippable: earlier phases give value before later phases land, and later phases can slip without unwinding earlier work. The order is chosen so that the gate exists before health is wired into it, and health is aggregated before it's surfaced to clients.
 
-Keep this incremental. The first version can classify existing tests and diagnostics before adding new probes.
+The phase breakdown reuses these existing pieces — find them before adding new code:
+
+- **Test labels and targets**: `HEADLESS_SMOKE` (`cmake/tests/30-ops-stability-domains.cmake:284`), `UI_SMOKE` (`cmake/tests/20-ui-and-common.cmake:20`), `GUI_SMOKE`/`GUI_ENV` (`cmake/tests/20-ui-and-common.cmake:46`), `test_demo_graphs` (`cmake/tests/40-packages-media-misc.cmake:1`), package tests (`cmake/tests/40-packages-media-misc.cmake:70`), `phase6_stress`/`phase6_soak` custom targets (`cmake/tests/30-ops-stability-domains.cmake:426`).
+- **CI**: `.github/workflows/smoke.yml`, `.github/workflows/gui-env.yml`.
+- **Health signals already tracked** (do not duplicate): `CompiledNode::missing_operator*` and `CompiledGraph::dropped_connections` (`src/runtime/graph/compiled_graph.h:126`); `AudioEngine::underrun_count`/`audio_load`/`running` (`src/runtime/audio/audio_engine.h:57`); `AudioFrameBridge::lane_overflow_count_` (`audio_frame_bridge.h:79`); `GpuContext::device_lost`/`last_error_` (`src/runtime/gpu/gpu_context.h:40`); `BuildConsole` last-failure state; `ReloadResult` (`src/runtime/core/hot_reload.h:18`); `SafeModeConfig` (`src/runtime/core/safe_mode.h:23`); `CrashRecoveryManager`/`CrashRecord` (`src/runtime/core/crash_recovery.h:38`); `OutputAnalyzer::AudioMetrics`/`VisualMetrics` (`src/runtime/debug/output_analyzer.h:10`).
+- **Aggregation seam to extend**: `control_server_checks.cpp` already builds a `health` JSON object inside the `run_diagnostics` response (~line 270). `get_runtime_health` should share its building blocks, not invent a parallel surface.
+- **Control-server pattern**: register in `src/runtime/control/control_server_dispatch.cpp:12-25`; read-only handlers live in `control_server_checks.cpp` / `control_server_query.cpp`. Standard envelope: `{"ok": true, "schema_version": N, "health": {...}, "result": ...}`.
+- **MCP pattern**: `@mcp.tool()` async wrapper in `mcp/vivid_mcp.py` calling `await _post("method")`, passing through the envelope (mirror `runtime_status` at `mcp/vivid_mcp.py:492`).
+- **UI surface**: `diagnostics_panel_open_` in `src/ui/graph/node_graph.h` and `draw_diagnostics_panel()` in `src/ui/graph/node_graph_draw_overlays.cpp` already exist — extend, do not create a parallel panel.
+- **Test pattern**: `tests/control/test_control_server.cpp` has a `post()` helper, registered in test partition 10 (no GPU/audio/window).
+
+### Phase 1 — CMake gate targets
+
+Goal: one command surfaces the existing release-critical lanes. No new tests in this phase — only orchestration.
+
+- Add `cmake/tests/90-production-gate.cmake` defining:
+  - `production_gate_core` — wraps the `HEADLESS_SMOKE` and deterministic `PACKAGE` labels plus the `test_demo_graphs` target. Implemented as `add_custom_target` that invokes `ctest -L '^(HEADLESS_SMOKE|PACKAGE)$' --output-on-failure --output-junit ${CMAKE_BINARY_DIR}/reports/ctest-core.xml` then runs the report tool from Phase 2. Includes the automated movie subset (`test_movie_seek_stress` under `cmake/tests/40-packages-media-misc.cmake:377`); the manual go/no-go portion stays in the release checklist.
+  - `production_gate_gui` — depends on `production_gate_core` plus `ctest -L '^GUI_SMOKE$'` with `VIVID_ENABLE_UI_SCREENSHOT_SMOKE=1`.
+  - `production_gate_env` — depends on `production_gate_gui` plus `ctest -L '^GUI_ENV$'`.
+  - `production_gate_soak` — depends on `production_gate_core` plus `phase6_stress` and `phase6_soak`.
+  - `production_gate` — alias for `production_gate_core` (the dev-friendly default).
+- Wire the new module into the existing partition include list in `cmake/tests/CMakeLists.txt`.
+- Update `.github/workflows/smoke.yml` to call `cmake --build build --target production_gate_core` instead of bespoke ctest invocations, and `.github/workflows/gui-env.yml` to call `production_gate_env`. Underlying labels keep working for ad-hoc use.
+
+Out of scope: changing what the underlying tests do, adding new tests, generating the report (Phase 2).
+
+Verification:
+- `cmake --build build --target production_gate_core` exits 0 on a clean tree.
+- `ctest -L '^HEADLESS_SMOKE$'` continues to work standalone.
+- CI workflows turn green with the new invocation.
+
+### Phase 2 — Production-gate report generator
+
+Goal: every gate run drops a stable, machine-readable classification at `build/reports/production-gate.json`.
+
+- New tool `tools/production_gate_report.py` (Python; the repo already ships Python under `mcp/`, no new build dep).
+- Inputs:
+  - One or more JUnit XML files emitted by `ctest --output-junit` (Phase 1 already writes these).
+  - `--profile {core,gui,env,soak}` and `--git-meta` (commit, branch, build type) passed in by CMake.
+  - Optional `--health-json <path>` to merge `RuntimeHealthSnapshot` dumps captured during `test_demo_graphs` (Phase 5 produces these; Phase 2 just leaves the field empty).
+- Output schema:
+  ```json
+  {
+    "schema_version": 1,
+    "timestamp": "...", "branch": "...", "commit": "...",
+    "build_type": "...", "macos_version": "...", "hardware": {...},
+    "profile": "core",
+    "tests": {
+      "run": N, "passed": N, "failed": N, "skipped": N,
+      "failures": [{"name": "...", "classification": "..."}],
+      "skipped_reasons": {"requires_gui": N, "requires_package": N}
+    },
+    "signals": {
+      "webgpu_validation_errors": N,
+      "audio_init_failures": N,
+      "graph_load_failures": N,
+      "missing_operators": [...]
+    },
+    "stress": {"phase6_stress_seconds": N, "phase6_soak_seconds": N},
+    "status": "pass" | "degraded" | "fail"
+  }
+  ```
+- Classification rules — each failure maps to exactly one bucket so trends are stable:
+  - `webgpu_error` — log matches `/Validation error|device lost/`.
+  - `audio_init` — log matches `/audio device|miniaudio init/`.
+  - `graph_load` — failure name starts with `test_demo_graphs` or log matches `/failed to load graph/`.
+  - `missing_operator` — log matches `/operator .* (not_found|not_built|abi_mismatch)/`.
+  - `crash` — non-zero exit plus signal name in log.
+  - `timeout` — ctest reports timeout.
+  - `unknown` — fallback.
+- Status mapping: any `failed > 0` → `fail`; signals trip a documented budget → `degraded`; otherwise `pass`. Skipped-only on `core` profile (e.g. only `requires_gui` skips) still counts as `pass`.
+- Tests: `tests/cli/test_production_gate_report.py` with golden-file fixtures — one passing JUnit, one failing JUnit per classification, one skipped-only run.
+
+Out of scope: real-time test orchestration (CTest still drives), historical trend storage, runtime-health budget evaluation (Phase 5).
+
+Verification:
+- `python tools/production_gate_report.py --junit build/reports/ctest-core.xml --profile core` produces JSON matching the schema.
+- `pytest tests/cli/test_production_gate_report.py` passes against golden files.
+- Running `production_gate_core` end-to-end leaves `build/reports/production-gate.json` on disk.
+
+### Phase 3 — `RuntimeHealthSnapshot` aggregation
+
+Goal: one in-process struct that aggregates health signals already tracked across the runtime. No new probes in this phase.
+
+- New header `src/runtime/core/runtime_health.h` with a POD snapshot:
+  ```cpp
+  enum class HealthSeverity { Ok, Warning, Error, Fatal };
+  struct HealthFinding {
+      std::string code;
+      HealthSeverity severity;
+      std::string message;
+      std::string subject;
+  };
+  struct RuntimeHealthSnapshot {
+      HealthSeverity overall;
+      std::vector<HealthFinding> findings;
+      struct { bool compiled_ok; int dropped_connections;
+               std::vector<std::string> missing_operators; } graph;
+      struct { bool running; uint32_t underruns; float load;
+               int sample_rate; int buffer_size; } audio;
+      struct { bool device_lost; std::string last_error; } gpu;
+      struct { bool active; std::string crash_operator;
+               std::vector<std::string> disabled_node_ids; } safe_mode;
+      struct { bool last_reload_failed; std::string last_error; } hot_reload;
+      // Output-analysis hints; populated only if analysis enabled
+      struct { bool sustained_silence; bool sustained_black;
+               int window_seconds; } output;
+      uint64_t reload_serial;
+      std::string vivid_version;
+      int64_t timestamp_ms;
+  };
+  ```
+- New free function `runtime_health::collect(const RuntimeCore&)` in `src/runtime/core/runtime_health.cpp`. Pulls from:
+  - `CompiledGraph` (`compiled_graph.h:126`) for `graph.*`.
+  - `AudioEngine` (`audio_engine.h:57`) for `audio.*`; `AudioFrameBridge::lane_overflow_count_` rolls into a `Warning` finding.
+  - `GpuContext` (`gpu_context.h:40`) for `gpu.*`.
+  - `RuntimeCore::safe_mode()` accessor (introduced by the in-flight `safe_mode.h` work) for `safe_mode.*`.
+  - Last `ReloadResult` from `RuntimeCore` (`hot_reload.h:18`) for `hot_reload.*`.
+  - `OutputAnalyzer` (`output_analyzer.h:10`) only when `set_analysis_enabled(true)`; otherwise leave `output.window_seconds = 0` and skip silence/black checks.
+- Severity rollup:
+  - `Fatal` — `safe_mode.active` with non-empty `crash_operator` (recovered from this session's crash) or `gpu.device_lost`.
+  - `Error` — graph compile failure, missing required operator, audio init failure.
+  - `Warning` — dropped connections, underruns over budget, hot-reload failure on a non-required operator, sustained-silence/black when applicable.
+  - `Ok` otherwise.
+- Refactor the existing `health` JSON builder in `src/runtime/control/control_server_checks.cpp` (~line 270) into `runtime_health::to_json(const RuntimeHealthSnapshot&)` so `run_diagnostics` and `get_runtime_health` (Phase 4) share serialization. The existing `run_diagnostics` `health` block must remain a strict subset for back-compat.
+- Tests: `tests/runtime/test_runtime_health_snapshot.cpp` drives a stub `RuntimeCore` and asserts severity rollup for each transition listed in the plan's Testing section. Register in partition 10 (no GPU/audio/window).
+
+Out of scope: new probes (sustained-silence/black detection, GPU error categorization), client exposure (Phase 4), gate integration (Phase 5).
+
+Verification:
+- `ctest --test-dir build -R runtime_health` passes.
+- The JSON output of `runtime_health::to_json` is a strict superset of the existing `run_diagnostics` `health` block.
+
+### Phase 4 — Surface health (control server, MCP, UI)
+
+Goal: every client surface that already reads runtime state can also read `RuntimeHealthSnapshot`.
+
+- **Control server endpoint**:
+  - Register `get_runtime_health` in `src/runtime/control/control_server_dispatch.cpp` next to `run_diagnostics`.
+  - Handler `handle_get_runtime_health()` in `control_server_checks.cpp` calls `runtime_health::collect()` then `runtime_health::to_json()`, wrapped in `{"ok": true, "schema_version": 1, "health": {...}}`.
+- **MCP tool**:
+  - Add `get_runtime_health` to `mcp/vivid_mcp.py` mirroring `runtime_status` (`mcp/vivid_mcp.py:492`). One async function, no body, passes through `_perception_response`.
+  - Update `mcp/CLAUDE.md` tool list.
+- **UI**:
+  - Extend `draw_diagnostics_panel()` in `src/ui/graph/node_graph_draw_overlays.cpp` to show a top "Health: OK / WARNING / ERROR / FATAL" pill backed by `runtime_health::collect()` (in-process, no HTTP).
+  - Add a small status-bar dot near `diagnostics_button_rect_` so health is visible without opening the panel; clicking opens the panel.
+- **Crash-recovery integration**:
+  - When `CrashRecoveryManager` stages a `SafeModeConfig` after a crash, the next `collect()` call already sees `safe_mode.active`. Emit a one-shot `Fatal`-severity finding `code="recovered_from_crash"` naming the offending operator so the user sees why nodes are disabled.
+- **Tests**:
+  - `tests/control/test_control_server.cpp` adds a `get_runtime_health returns ok with health block` case using the existing `post()` helper. Partition 10.
+  - Add an MCP-side assertion in the nearest existing harness (or `tests/mcp/test_vivid_mcp.py` if absent) that the tool registers and the envelope passes through.
+
+Out of scope: new health budgets, gate-report integration (Phase 5).
+
+Verification:
+- `curl -X POST http://localhost:9876/get_runtime_health` returns the documented envelope.
+- MCP `get_runtime_health` returns the same `health` structure.
+- Diagnostics panel shows the pill; status-bar dot renders rolled-up severity.
+
+### Phase 5 — Health budgets and gate integration
+
+Goal: the production-gate report reflects runtime health, not just test exit codes.
+
+- New `tools/production_gate_budgets.toml` lists default budgets from §Health Budgets (no graph load failures; no missing core operators; no WebGPU validation errors; no audio init failure; no sustained underruns; no sustained silence/black on graphs marked A/V). Each budget has `code`, `applies_to` (graph-tag filter or `*`), and `severity_on_breach`.
+- Extend `test_demo_graphs` (`cmake/tests/40-packages-media-misc.cmake:1`):
+  - After each graph's tick window, call `runtime_health::collect()` and write `build/reports/health/<graph>.json`.
+  - Honor a graph-side metadata key `expected_output: {"audio": true, "visual": true}` (or `"none"`) in the graph JSON so silence/black checks classify as `not_applicable` when undeclared. Use the existing graph metadata loader; default to `not_applicable` if absent.
+- Extend `tools/production_gate_report.py`:
+  - Glob `build/reports/health/*.json`, evaluate against `production_gate_budgets.toml`, populate `signals` and `status`. A breach with `severity_on_breach=warning` flips `pass`→`degraded`; `error`/`fatal` flips to `fail`.
+- Release docs:
+  - Update `docs/plans/beta-release-readiness/phase-1-inventory-and-gates.md` to point at `production_gate` as the canonical automated baseline.
+  - New `docs/testing/production-gate.md` covering: how to run, where the report lands, how to interpret status/signals, how to add a new budget.
+
+Out of scope: trend dashboards, historical regression detection, automatic PR comments.
+
+Verification:
+- Running `production_gate_core` with a deliberately broken demo graph produces `status: "fail"` with a `graph_load` failure entry.
+- Running on a healthy tree produces `status: "pass"`.
+- Synthetically lowering a budget (e.g. underrun budget to 0) flips status to `degraded` without flipping any test from passed to failed.
+
+## Files Touched
+
+New:
+- `cmake/tests/90-production-gate.cmake`
+- `tools/production_gate_report.py`
+- `tools/production_gate_budgets.toml`
+- `src/runtime/core/runtime_health.{h,cpp}`
+- `tests/runtime/test_runtime_health_snapshot.cpp`
+- `tests/cli/test_production_gate_report.py`
+- `docs/testing/production-gate.md`
+
+Modified:
+- `cmake/tests/CMakeLists.txt`
+- `cmake/tests/40-packages-media-misc.cmake` (`test_demo_graphs` health dump)
+- `src/runtime/control/control_server_dispatch.cpp`
+- `src/runtime/control/control_server_checks.cpp` (refactor health-block builder)
+- `src/ui/graph/node_graph_draw_overlays.cpp` (pill + status-bar dot)
+- `mcp/vivid_mcp.py`, `mcp/CLAUDE.md`
+- `tests/control/test_control_server.cpp`
+- `.github/workflows/smoke.yml`, `.github/workflows/gui-env.yml`
+- `docs/plans/beta-release-readiness/phase-1-inventory-and-gates.md`
+
+Keep this incremental. Phases 1–2 deliver the gate without touching runtime code; Phase 3 lands health aggregation without exposing it; Phases 4–5 surface and enforce.
 
 ## Testing
 
@@ -170,14 +367,10 @@ Verification should include:
 
 ```bash
 cmake --build build --target production_gate_core
+cmake --build build --target production_gate_gui    # before release
+cmake --build build --target production_gate_env    # before release, with packages installed
+cmake --build build --target production_gate_soak   # nightly / pre-release
 ctest --test-dir build --output-on-failure -R "runtime_health|production_gate"
-```
-
-Run heavier profiles before release:
-
-```bash
-cmake --build build --target production_gate_gui
-cmake --build build --target production_gate_soak
 ```
 
 ## Acceptance Criteria
@@ -187,4 +380,5 @@ cmake --build build --target production_gate_soak
 - Runtime health is available through UI, control server, and MCP.
 - Existing smoke, stress, and go/no-go lanes remain usable independently.
 - Release docs treat the production gate as the canonical automated baseline.
+- Crash-recovery state surfaces as a `fatal` finding naming the offending operator, so the user can decide whether to re-enable safe-moded nodes.
 

@@ -16,6 +16,7 @@ namespace {
 constexpr uint32_t kSampleRate = 48000;
 constexpr uint32_t kFrames = 256;
 constexpr int kBlocks = 20;
+constexpr int kLongBlocks = 80;
 
 struct DiffStats {
     float rms_a = 0.0f;
@@ -146,6 +147,75 @@ void run_reference_case(int preset,
     check(stats.rms_a > 1.0e-5f && stats.rms_b > 1.0e-5f, "ConvolutionReverb reference case non-silent");
     check(stats.avg_abs_diff < 0.0025f, "ConvolutionReverb partitioned average diff near direct reference");
     check(stats.peak_diff < 0.05f, "ConvolutionReverb partitioned peak diff near direct reference");
+}
+
+// Exercise all zones of the non-uniform schedule (early + 5 doubling zones)
+// by running a multi-second hall IR and comparing against direct convolution.
+// This gates the ir_offset_k >= partition_size_k invariant end-to-end and
+// confirms the tail_accum write-offset derivation for zones with
+// partition_size > block_size.
+void run_non_uniform_case() {
+    vivid::convolution_reverb_dsp::ProcessParams params{};
+    params.ir_preset = 2;             // hall
+    params.mix = 0.6f;
+    params.width = 1.0f;
+    params.tail_seconds = 3.0f;       // fills zones 1..5 fully
+    params.pre_delay_ms = 0.0f;
+
+    vivid::convolution_reverb_dsp::IrConfig config{};
+    config.preset = params.ir_preset;
+    config.sample_rate = kSampleRate;
+    config.tail_seconds = params.tail_seconds;
+    config.pre_delay_ms = params.pre_delay_ms;
+    config.gain_db = params.ir_gain_db;
+    auto ir = vivid::convolution_reverb_dsp::build_impulse_response(config);
+
+    vivid::convolution_reverb_dsp::Engine engine;
+    std::vector<float> block_in(kFrames * 2u);
+    std::vector<float> block_engine(kFrames * 2u);
+    std::vector<float> block_ref(kFrames * 2u);
+    std::vector<float> out_engine;
+    std::vector<float> out_ref;
+    std::vector<float> all_l(kFrames * kLongBlocks);
+    std::vector<float> all_r(kFrames * kLongBlocks);
+
+    for (int block = 0; block < kLongBlocks; ++block) {
+        fill_signal(block_in, block);
+        std::copy(block_in.begin(), block_in.begin() + kFrames, all_l.begin() + block * kFrames);
+        std::copy(block_in.begin() + kFrames, block_in.end(), all_r.begin() + block * kFrames);
+    }
+
+    for (int block = 0; block < kLongBlocks; ++block) {
+        std::copy(all_l.begin() + block * kFrames, all_l.begin() + (block + 1) * kFrames, block_in.begin());
+        std::copy(all_r.begin() + block * kFrames, all_r.begin() + (block + 1) * kFrames, block_in.begin() + kFrames);
+        engine.process(block_in.data(), block_engine.data(), kFrames, kSampleRate, params,
+                       vivid::convolution_reverb_dsp::Backend::Scalar);
+        direct_convolve_block(ir, all_l, all_r, block * kFrames, kFrames,
+                              params.mix, params.width, block_ref);
+        out_engine.insert(out_engine.end(), block_engine.begin(), block_engine.end());
+        out_ref.insert(out_ref.end(), block_ref.begin(), block_ref.end());
+    }
+
+    const auto stats = compare(out_engine, out_ref);
+    const auto engine_stats = engine.last_stats();
+    std::fprintf(stderr,
+                 "  non_uniform_hall_3s zones=%u partitions=%u latency_samples=%u rms_engine=%.6f rms_ref=%.6f avg_diff=%.6f peak_diff=%.6f rebuilds=%d\n",
+                 engine_stats.zone_count,
+                 engine_stats.partition_count,
+                 engine_stats.latency_samples,
+                 stats.rms_a,
+                 stats.rms_b,
+                 stats.avg_abs_diff,
+                 stats.peak_diff,
+                 engine_stats.plan_rebuild_count);
+
+    check(engine_stats.zone_count >= 5, "Non-uniform schedule engages five or more zones at 3.0s hall");
+    check(engine_stats.latency_samples >= 4096u,
+          "Non-uniform schedule reports last-zone partition size as latency diagnostic");
+    check(engine_stats.plan_rebuild_count == 1, "Non-uniform plan rebuilt once in steady state");
+    check(stats.rms_a > 1.0e-5f && stats.rms_b > 1.0e-5f, "Non-uniform output non-silent");
+    check(stats.avg_abs_diff < 0.0025f, "Non-uniform avg diff stays within direct-convolution tolerance");
+    check(stats.peak_diff < 0.05f, "Non-uniform peak diff stays within direct-convolution tolerance");
 }
 
 void run_backend_parity_case() {
@@ -283,6 +353,7 @@ int main() {
     std::fprintf(stderr, "\n=== test_convolution_reverb_dsp ===\n");
     run_reference_case(0, vivid::convolution_reverb_dsp::IrLayout::TrueStereo, "room_builtin_true_stereo");
     run_reference_case(2, vivid::convolution_reverb_dsp::IrLayout::TrueStereo, "hall_builtin_true_stereo");
+    run_non_uniform_case();
     run_backend_parity_case();
     run_file_fallback_case();
     run_operator_smoke();
