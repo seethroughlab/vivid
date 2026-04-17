@@ -18,9 +18,9 @@
 # scripts/run_production_gate_profile.sh — extracted from inline bash to keep
 # CMake and shell escaping cleanly separated.
 #
-# See docs/plans/production-gate-and-health-plan.md for the full design and
-# docs/plans/production-gate-phase{1..5}.md + production-gate-followups.md for
-# per-phase plans.
+# See docs/plans/archive/production-gate/production-gate-and-health-plan.md
+# for the full design and docs/plans/archive/production-gate/production-gate-phase{1..5}.md
+# + production-gate-followups.md for per-phase plans.
 
 set(_pg_reports_dir ${CMAKE_BINARY_DIR}/reports)
 file(MAKE_DIRECTORY ${_pg_reports_dir})

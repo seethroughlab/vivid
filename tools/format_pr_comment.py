@@ -9,7 +9,7 @@ still updates with a useful diagnostic).
 The leading hidden HTML marker (``<!-- production-gate -->``) lets the
 upserting workflow find an existing comment and edit it in place.
 
-See docs/plans/production-gate-phase9b.md for the design.
+See docs/plans/archive/production-gate/production-gate-phase9b.md for the design.
 """
 from __future__ import annotations
 

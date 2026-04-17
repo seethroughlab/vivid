@@ -227,7 +227,7 @@ Requires `gh` on PATH and `gh auth login` (or `GITHUB_TOKEN` set). Workflow arti
 
 ## See also
 
-- `docs/plans/production-gate-and-health-plan.md` — high-level design.
-- `docs/plans/production-gate-phase{1..5}.md` — per-phase implementation plans.
+- `docs/plans/archive/production-gate/production-gate-and-health-plan.md` — high-level design.
+- `docs/plans/archive/production-gate/production-gate-phase{1..9c}.md` — per-phase implementation plans (Phases 1–9c).
 - `cmake/tests/90-production-gate.cmake` — gate-target definitions.
 - `src/runtime/core/runtime_health.{h,cpp}` — snapshot aggregator + serializer.

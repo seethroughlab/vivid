@@ -9,7 +9,7 @@ Requires ``gh`` on PATH, authenticated via ``gh auth login`` (or with
 ``GITHUB_TOKEN`` set). Workflow artifacts retain for 14 days, so older runs
 drop off the bottom of the list.
 
-See docs/plans/production-gate-phase9c.md for the design.
+See docs/plans/archive/production-gate/production-gate-phase9c.md for the design.
 """
 from __future__ import annotations
 

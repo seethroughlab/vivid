@@ -7,7 +7,7 @@ classified, machine-readable summary at the requested output path.
 This tool is a pure transformer: it always exits 0 on a successful report
 write. The gate target's exit code reflects ctest, not this tool.
 
-See docs/plans/production-gate-phase2.md for the schema and design.
+See docs/plans/archive/production-gate/production-gate-phase2.md for the schema and design.
 """
 from __future__ import annotations
 
@@ -117,7 +117,7 @@ class LastTestLog:
     section is delimited by a `N/M Testing: <name>` header and an `Output:`
     block bracketed by dashed lines. We use this when JUnit's `<system-out>`
     (capped at 1KB) doesn't carry enough text for `classify()` to bucket a
-    failure — see Phase 7 plan in docs/plans/production-gate-phase7.md.
+    failure — see Phase 7 plan in docs/plans/archive/production-gate/production-gate-phase7.md.
     """
 
     _SECTION_RE = re.compile(
