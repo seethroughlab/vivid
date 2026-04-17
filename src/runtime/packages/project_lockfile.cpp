@@ -590,6 +590,42 @@ LockfileStatus verify_lockfile(const ProjectLockfile& lockfile,
         }
     }
 
+    // --- Assets (Phase 8) ---
+    // Iterate every locked asset, resolve to a live file path (preferring
+    // AssetLibrary when asset_id is set), then emit kAssetMissing or
+    // kAssetChanged based on existence + content_hash comparison.
+    AssetLibrary* asset_library_ptr = package_manager.asset_library();
+    for (const auto& a : lockfile.assets) {
+        std::filesystem::path path = a.path;
+        if (!a.asset_id.empty() && asset_library_ptr) {
+            if (const AssetEntry* entry = asset_library_ptr->find(a.asset_id)) {
+                path = entry->canonical_path;
+            }
+        }
+
+        std::error_code ec;
+        if (!std::filesystem::exists(path, ec) || ec) {
+            add(kAssetMissing, LockfileSeverity::Critical, a.path,
+                "asset file is no longer reachable",
+                "restore " + a.path + " or re-lock");
+            continue;
+        }
+
+        // Empty content_hash = pre-Phase-8 lockfile; skip the drift check so
+        // old lockfiles verify cleanly (same backward-compat pattern used
+        // for operator.descriptor_hash).
+        if (a.content_hash.empty()) continue;
+
+        const std::string current_hex = sha256_file(path);
+        if (current_hex.empty()) continue;  // unreadable mid-verify; not our call
+        const std::string current = "sha256:" + current_hex;
+        if (current != a.content_hash) {
+            add(kAssetChanged, LockfileSeverity::Warning, a.path,
+                "asset content changed since lockfile was written",
+                "re-lock or restore the original " + a.path);
+        }
+    }
+
     // --- Overall = worst severity seen ---
     for (const auto& f : status.findings) {
         if (f.severity == LockfileSeverity::Critical) {

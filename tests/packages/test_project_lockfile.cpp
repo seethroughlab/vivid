@@ -1419,6 +1419,111 @@ void test_build_lockfile_assets_dedup_across_nodes() {
           "asset enum dedup: one shared asset referenced by three nodes → one entry");
 }
 
+// --- Phase 8: verify_lockfile asset findings -----------------------------
+
+void test_verify_asset_missing_emits_critical() {
+    LockfileGenFixture fx;
+    register_builtin_operators(fx.registry);
+    AssetLibrary al;
+    fx.pm.set_asset_library(&al);
+
+    Graph g;
+    ProjectLockfile lf;
+    LockfileAsset a;
+    a.kind         = "wavetable";
+    a.path         = "/does/not/exist/sample.wav";
+    a.content_hash = "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    lf.assets.push_back(a);
+
+    auto status = verify_lockfile(lf, g, fx.pm, fx.registry);
+    const auto* f = find_finding(status, lockfile_finding::kAssetMissing);
+    check(f != nullptr, "verify asset missing: finding emitted");
+    if (f) check(f->severity == LockfileSeverity::Critical,
+                 "verify asset missing: severity Critical");
+    check(status.overall == LockfileOverall::Mismatch,
+          "verify asset missing: overall = Mismatch");
+}
+
+void test_verify_asset_changed_emits_warning() {
+    LockfileGenFixture fx;
+    register_builtin_operators(fx.registry);
+    AssetLibrary al;
+    fx.pm.set_asset_library(&al);
+
+    ScopedTempDir dir("vivid_verify_asset_changed");
+    auto asset_path = (dir.path / "w.wav").string();
+    write_text(asset_path, "CURRENT CONTENTS");
+
+    Graph g;
+    ProjectLockfile lf;
+    LockfileAsset a;
+    a.kind         = "wavetable";
+    a.path         = asset_path;
+    // deliberately wrong hash (sha of a different string)
+    a.content_hash = "sha256:" + sha256_hex("OLD CONTENTS");
+    lf.assets.push_back(a);
+
+    auto status = verify_lockfile(lf, g, fx.pm, fx.registry);
+    const auto* f = find_finding(status, lockfile_finding::kAssetChanged);
+    check(f != nullptr, "verify asset changed: finding emitted");
+    if (f) check(f->severity == LockfileSeverity::Warning,
+                 "verify asset changed: severity Warning");
+    // Warning → CompatibleDrift; strict-export (Phase 7) would still pass.
+    check(status.overall == LockfileOverall::CompatibleDrift,
+          "verify asset changed: overall = CompatibleDrift");
+}
+
+void test_verify_asset_untouched_no_finding() {
+    LockfileGenFixture fx;
+    register_builtin_operators(fx.registry);
+    AssetLibrary al;
+    fx.pm.set_asset_library(&al);
+
+    ScopedTempDir dir("vivid_verify_asset_clean");
+    auto asset_path = (dir.path / "clean.wav").string();
+    const std::string contents = "untouched";
+    write_text(asset_path, contents);
+
+    Graph g;
+    ProjectLockfile lf;
+    LockfileAsset a;
+    a.kind         = "wavetable";
+    a.path         = asset_path;
+    a.content_hash = "sha256:" + sha256_hex(contents);
+    lf.assets.push_back(a);
+
+    auto status = verify_lockfile(lf, g, fx.pm, fx.registry);
+    check(find_finding(status, lockfile_finding::kAssetMissing) == nullptr,
+          "verify asset untouched: no missing finding");
+    check(find_finding(status, lockfile_finding::kAssetChanged) == nullptr,
+          "verify asset untouched: no changed finding");
+}
+
+void test_verify_asset_empty_content_hash_skips_check() {
+    // Pre-Phase-8 lockfile has content_hash == "". We must NOT emit
+    // asset_changed just because current content differs from empty.
+    LockfileGenFixture fx;
+    register_builtin_operators(fx.registry);
+    AssetLibrary al;
+    fx.pm.set_asset_library(&al);
+
+    ScopedTempDir dir("vivid_verify_asset_prephase8");
+    auto asset_path = (dir.path / "w.wav").string();
+    write_text(asset_path, "anything");
+
+    Graph g;
+    ProjectLockfile lf;
+    LockfileAsset a;
+    a.kind         = "wavetable";
+    a.path         = asset_path;
+    a.content_hash = "";  // pre-Phase-8
+    lf.assets.push_back(a);
+
+    auto status = verify_lockfile(lf, g, fx.pm, fx.registry);
+    check(find_finding(status, lockfile_finding::kAssetChanged) == nullptr,
+          "verify empty-hash skip: no asset_changed finding");
+}
+
 void test_build_lockfile_assets_sort_stability() {
     LockfileGenFixture fx;
     asset_fixture::register_asset_test_op(fx.registry);
@@ -1513,6 +1618,10 @@ int main() {
     test_build_lockfile_assets_missing_file_produces_empty_hash();
     test_build_lockfile_assets_dedup_across_nodes();
     test_build_lockfile_assets_sort_stability();
+    test_verify_asset_missing_emits_critical();
+    test_verify_asset_changed_emits_warning();
+    test_verify_asset_untouched_no_finding();
+    test_verify_asset_empty_content_hash_skips_check();
     test_unwrap_status_to_json_inlines_valid_status();
     test_unwrap_status_to_json_preserves_error_message();
     test_unwrap_status_to_json_non_json_message_fallback();
