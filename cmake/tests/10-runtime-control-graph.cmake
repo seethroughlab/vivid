@@ -1,3 +1,13 @@
+# Shared SIMD FFT helper — scalar vs Accelerate parity, round-trip, known-answer.
+add_executable(test_simd_fft
+    tests/common/test_simd_fft.cpp
+    src/runtime/simd/fft.cpp
+)
+target_include_directories(test_simd_fft PRIVATE src tests)
+target_link_libraries(test_simd_fft PRIVATE vivid_runtime_testlib vivid_operator_api webgpu)
+add_test(NAME test_simd_fft COMMAND test_simd_fft WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_simd_fft PROPERTIES TIMEOUT 15)
+
 # Crash recovery unit tests (pure filesystem + JSON; no GPU, no audio, no window)
 add_executable(test_crash_recovery
     tests/core/test_crash_recovery.cpp

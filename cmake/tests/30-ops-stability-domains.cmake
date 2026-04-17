@@ -126,6 +126,7 @@ add_test(NAME test_audio_correctness COMMAND test_audio_correctness WORKING_DIRE
 add_executable(test_spectral_freeze_dsp
     tests/audio/test_spectral_freeze_dsp.cpp
     operators/shared/spectral_freeze_dsp/spectral_freeze_dsp.cpp
+    src/runtime/simd/fft.cpp
 )
 target_include_directories(test_spectral_freeze_dsp PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
 target_link_libraries(test_spectral_freeze_dsp PRIVATE vivid_runtime_testlib vivid_operator_api)
@@ -135,6 +136,7 @@ add_test(NAME test_spectral_freeze_dsp COMMAND test_spectral_freeze_dsp WORKING_
 add_executable(bench_spectral_freeze
     tests/benchmarks/bench_spectral_freeze.cpp
     operators/shared/spectral_freeze_dsp/spectral_freeze_dsp.cpp
+    src/runtime/simd/fft.cpp
 )
 target_include_directories(bench_spectral_freeze PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
 target_link_libraries(bench_spectral_freeze PRIVATE vivid_runtime_testlib vivid_operator_api)
@@ -202,6 +204,7 @@ target_link_libraries(bench_reverb PRIVATE vivid_runtime_testlib vivid_operator_
 add_executable(test_convolution_reverb_dsp
     tests/audio/test_convolution_reverb_dsp.cpp
     operators/shared/convolution_reverb_dsp/convolution_reverb_dsp.cpp
+    src/runtime/simd/fft.cpp
 )
 target_include_directories(test_convolution_reverb_dsp PRIVATE
     src tests ${CMAKE_SOURCE_DIR}/operators ${CMAKE_SOURCE_DIR}/deps/miniaudio)
@@ -214,6 +217,7 @@ add_test(NAME test_convolution_reverb_dsp COMMAND test_convolution_reverb_dsp WO
 add_executable(bench_convolution_reverb
     tests/benchmarks/bench_convolution_reverb.cpp
     operators/shared/convolution_reverb_dsp/convolution_reverb_dsp.cpp
+    src/runtime/simd/fft.cpp
 )
 target_include_directories(bench_convolution_reverb PRIVATE
     src tests ${CMAKE_SOURCE_DIR}/operators ${CMAKE_SOURCE_DIR}/deps/miniaudio)
