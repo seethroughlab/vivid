@@ -189,7 +189,7 @@ For one-off graph investigations, add explicit capture cases:
 
 ```bash
 ./.venv-mcp/bin/python scripts/mcp_bridge_smoke.py \
-  --capture /Users/jeff/Developer/vivid-wavetable/graphs/extended/wavetable_dream_keys_demo.json \
+  --capture /Users/jeff/Developer/vivid-wavetable/archive/graphs/wavetable_dream_keys_demo.json \
             cp1 \
             /tmp/vivid_live_ui_review/wavetable_dream_keys_cp1.png
 ```

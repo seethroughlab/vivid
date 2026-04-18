@@ -179,7 +179,7 @@ def _phase4_cases(artifact_dir: pathlib.Path) -> list[CaptureCase]:
 
 
 def _dream_keys_graph() -> str:
-    path = "/Users/jeff/Developer/vivid-wavetable/graphs/extended/wavetable_dream_keys_demo.json"
+    path = "/Users/jeff/Developer/vivid-wavetable/archive/graphs/wavetable_dream_keys_demo.json"
     if not pathlib.Path(path).exists():
         raise FileNotFoundError(
             f"dream_keys graph not found: {path}\n"
