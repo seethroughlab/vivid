@@ -192,6 +192,31 @@ jobs:
           echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
           echo "size=$size" >> "$GITHUB_OUTPUT"
 
+      - name: Validate final artifact (extracted from zip)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Re-extract the artifact and validate what an end-user actually
+          # downloads. The earlier `Validate signature and stapling` step
+          # runs on `build/vivid.app` in-place; it would not have caught the
+          # 2026-04-18 regression where the staple ticket was missing from
+          # the zipped artifact even though it was present on the in-tree
+          # bundle. Extract to a scratch dir and assert on that copy.
+          ZIP='${{ steps.artifact.outputs.zip }}'
+          EXTRACT="$RUNNER_TEMP/final_artifact_check"
+          rm -rf "$EXTRACT"
+          mkdir -p "$EXTRACT"
+          ditto -xk "$ZIP" "$EXTRACT"
+          APP="$EXTRACT/vivid.app"
+          [[ -d "$APP" ]] || { echo "vivid.app not found after extract of $ZIP" >&2; exit 1; }
+          echo "--- stapler validate ---"
+          xcrun stapler validate "$APP"
+          echo "--- codesign verify ---"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          echo "--- spctl assess ---"
+          spctl --assess --type execute --verbose=4 "$APP"
+          rm -rf "$EXTRACT"
+
       - name: Generate appcast XML
         id: appcast
         shell: bash

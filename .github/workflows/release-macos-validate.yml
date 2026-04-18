@@ -183,6 +183,27 @@ jobs:
           ditto -c -k --keepParent build/vivid.app "$ZIP"
           echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
 
+      - name: Validate final artifact (extracted from zip)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Validate what an end-user would actually download. Mirrors the
+          # same-named step in release-macos.yml.
+          ZIP='${{ steps.artifact.outputs.zip }}'
+          EXTRACT="$RUNNER_TEMP/final_artifact_check"
+          rm -rf "$EXTRACT"
+          mkdir -p "$EXTRACT"
+          ditto -xk "$ZIP" "$EXTRACT"
+          APP="$EXTRACT/vivid.app"
+          [[ -d "$APP" ]] || { echo "vivid.app not found after extract of $ZIP" >&2; exit 1; }
+          echo "--- stapler validate ---"
+          xcrun stapler validate "$APP"
+          echo "--- codesign verify ---"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          echo "--- spctl assess ---"
+          spctl --assess --type execute --verbose=4 "$APP"
+          rm -rf "$EXTRACT"
+
       - name: Upload validation artifact
         uses: actions/upload-artifact@v4
         with:
