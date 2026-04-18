@@ -25,6 +25,7 @@ struct MenuCallbacks {
     std::function<void()> on_check_for_updates;
     std::function<void()> on_toggle_auto_check_updates;
     std::function<void()> on_report_issue;
+    std::function<void()> on_check_system_requirements;
 
     // Edit menu
     std::function<void()> on_delete_selected;

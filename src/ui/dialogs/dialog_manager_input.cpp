@@ -330,6 +330,12 @@ bool DialogManager::on_scroll(float y_offset) {
         about.scroll = std::max(0.0f, std::min(about.scroll, about.max_scroll));
         return true;
     }
+    if (system_requirements.open) {
+        system_requirements.scroll_y -= y_offset * 24.0f;
+        system_requirements.scroll_y = std::max(0.0f,
+            std::min(system_requirements.scroll_y, system_requirements.max_scroll));
+        return true;
+    }
     return false;
 }
 
@@ -392,6 +398,7 @@ void DialogManager::update(MouseState& mouse, uint32_t win_w, uint32_t win_h) {
     update_create_popup(mouse, win_w, win_h);
     update_preset_name_popup(mouse, win_w, win_h);
     update_crash_recovery(mouse, win_w, win_h);
+    update_system_requirements(mouse, win_w, win_h);
     update_core_update_buttons(mouse);
 }
 
@@ -1601,6 +1608,43 @@ void DialogManager::update_crash_recovery(MouseState& mouse, uint32_t win_w, uin
 
     mouse.left_clicked = false;
     mouse.left_released = false;
+}
+
+// -----------------------------------------------------------------------
+// System-requirements dialog interaction. See draw_system_requirements()
+// for the button_rects action-code scheme:
+//   100        -> Close
+//   101        -> Recheck
+//   1000 + i   -> Copy install hint for tool[i]
+// -----------------------------------------------------------------------
+void DialogManager::update_system_requirements(MouseState& mouse,
+                                               uint32_t /*win_w*/, uint32_t /*win_h*/) {
+    if (!system_requirements.open || !mouse.left_clicked) return;
+
+    for (const auto& btn : system_requirements.button_rects) {
+        if (mouse.x < btn.x || mouse.x > btn.x + btn.w ||
+            mouse.y < btn.y || mouse.y > btn.y + btn.h) continue;
+
+        if (btn.action == 100) {
+            system_requirements.open = false;
+            system_requirements.auto_opened = false;
+        } else if (btn.action == 101) {
+            refresh_system_requirements();
+        } else if (btn.action >= 1000) {
+            int idx = btn.action - 1000;
+            const auto& tools = system_requirements.report.tools;
+            if (idx >= 0 && idx < static_cast<int>(tools.size())) {
+                const auto& t = tools[idx];
+                if (!t.install_hint.empty()) {
+                    glfwSetClipboardString(nullptr, t.install_hint.c_str());
+                }
+            }
+        }
+
+        mouse.left_clicked = false;
+        mouse.left_released = false;
+        return;
+    }
 }
 
 } // namespace vivid::ui

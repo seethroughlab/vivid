@@ -251,5 +251,9 @@
     "memory_history": "Memory History",
     "partial": "Partial",
     "setup": "Setup",
-    "stable": "Stable"
+    "stable": "Stable",
+    "menu_check_system_requirements": "Kiểm tra yêu cầu hệ thống...",
+    "sysreq_title": "Yêu cầu hệ thống",
+    "sysreq_recheck": "Kiểm tra lại",
+    "sysreq_close": "Đóng"
 }

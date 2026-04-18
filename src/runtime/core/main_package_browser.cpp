@@ -254,6 +254,18 @@ void poll_package_browser_actions(MainAppContext& ctx,
 
     refresh_package_browser_entries_cache(ctx, state);
     ctx.graph_ui.notify_pkg_action_complete(err.empty(), err);
+
+    // If the failure was a missing-tool error, auto-open the system-
+    // requirements dialog so the user has a clear next step. The package
+    // manager always prefixes these with the same literal.
+    if (!err.empty() &&
+        err.find("Missing required build tool") != std::string::npos &&
+        !ctx.graph_ui.system_requirements_open()) {
+        ctx.graph_ui.open_system_requirements(
+            /*auto_opened=*/true,
+            "A required build tool is missing, so the package action could not complete. "
+            "Install the missing tool(s) below, then try again.");
+    }
 }
 
 } // namespace vivid::main_internal

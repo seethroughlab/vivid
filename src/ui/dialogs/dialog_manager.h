@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/dialog_types.h"
+#include "runtime/core/system_requirements.h"
 #include "runtime/packages/project_lockfile.h"
 #include "ui/rendering/overlay_layouts.h"
 #include "ui/active_text_field.h"
@@ -226,6 +227,21 @@ public:
         std::string crash_report_path;   // absolute path to latest-crash.json
     };
 
+    // System-requirements dialog — shown when the user opens Help → Check
+    // System Requirements, or auto-triggered when a package install/build
+    // fails because a tool is missing.
+    struct SystemRequirementsState {
+        bool open = false;
+        bool auto_opened = false;                 // true when triggered by a failed build task
+        std::string header_note;                  // optional extra text above the tool list
+        vivid::SystemRequirementsReport report;   // populated when opened
+        struct ButtonRect { float x = 0, y = 0, w = 0, h = 0; int action = 0; };
+        std::vector<ButtonRect> button_rects;
+        float scroll_y = 0.0f;
+        float max_scroll = 0.0f;
+        float content_height = 0.0f;
+    };
+
     // --- Per-dialog state (public for NodeGraphUI forwarding during migration) ---
     AboutState about;
     SaveConfirmState save_confirm;
@@ -241,6 +257,7 @@ public:
     CoreUpdateState core_update;
     LockfileFindingsState lockfile_findings;
     CrashRecoveryState crash_recovery;
+    SystemRequirementsState system_requirements;
 
     // --- Save confirm callbacks (set by main.cpp via NodeGraphUI forwarding) ---
     std::function<void()> on_save_confirm_save;
@@ -263,6 +280,14 @@ public:
     void open_mcp_setup() { mcp_setup.open = true; }
     void open_crash_recovery(const vivid::CrashRecord& rec,
                              std::string crash_report_path);
+
+    // Open the system-requirements dialog. Re-runs check_system_requirements()
+    // every time so "Recheck" is just another call. When auto_opened is true,
+    // a header note explains that the dialog was triggered by a failed build.
+    void open_system_requirements(bool auto_opened = false,
+                                  std::string header_note = {});
+    void refresh_system_requirements();
+    bool system_requirements_open() const { return system_requirements.open; }
 
     // --- MCP setup ---
     void set_mcp_dir(const std::string& dir) { mcp_setup.mcp_dir = dir; }
@@ -407,6 +432,8 @@ private:
                                 float popup_opacity, uint32_t win_w, uint32_t win_h);
     void draw_crash_recovery(Renderer2D& tr, const MouseState& mouse, const UIStyle& style,
                              float popup_opacity, uint32_t win_w, uint32_t win_h);
+    void draw_system_requirements(Renderer2D& tr, const MouseState& mouse, const UIStyle& style,
+                                  float popup_opacity, uint32_t win_w, uint32_t win_h);
 
     // --- Input (dialog_manager_input.cpp) ---
     void update_about(MouseState& mouse, uint32_t win_w, uint32_t win_h);
@@ -421,6 +448,7 @@ private:
     void update_create_popup(MouseState& mouse, uint32_t win_w, uint32_t win_h);
     void update_preset_name_popup(MouseState& mouse, uint32_t win_w, uint32_t win_h);
     void update_crash_recovery(MouseState& mouse, uint32_t win_w, uint32_t win_h);
+    void update_system_requirements(MouseState& mouse, uint32_t win_w, uint32_t win_h);
     void update_core_update_buttons(MouseState& mouse);
     void submit_create_operator(bool empty_variant);
     void reset_create_env_defaults();

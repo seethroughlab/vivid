@@ -477,6 +477,12 @@ public:
     std::function<void()>& on_crash_recovery_open_normally  = dialogs_.on_crash_recovery_open_normally;
     std::function<void()>& on_crash_recovery_open_safe_mode = dialogs_.on_crash_recovery_open_safe_mode;
     std::function<void()>& on_crash_recovery_reveal_report  = dialogs_.on_crash_recovery_reveal_report;
+
+    // --- System-requirements dialog (forwarded to DialogManager) ---
+    void open_system_requirements(bool auto_opened = false, std::string header_note = {}) {
+        dialogs_.open_system_requirements(auto_opened, std::move(header_note));
+    }
+    bool system_requirements_open() const { return dialogs_.system_requirements_open(); }
 private:
 
     // Create operator modal, preset name popup moved to DialogManager

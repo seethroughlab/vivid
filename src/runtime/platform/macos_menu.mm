@@ -21,6 +21,7 @@ enum MenuTag : NSInteger {
     kMenuTagCheckForUpdates,
     kMenuTagToggleAutoCheckUpdates,
     kMenuTagReportIssue,
+    kMenuTagCheckSystemRequirements,
     // Edit
     kMenuTagDeleteSelected,
     kMenuTagEditMeta,
@@ -71,6 +72,9 @@ enum MenuTag : NSInteger {
             break;
         case kMenuTagReportIssue:
             if (_callbacks.on_report_issue) _callbacks.on_report_issue();
+            break;
+        case kMenuTagCheckSystemRequirements:
+            if (_callbacks.on_check_system_requirements) _callbacks.on_check_system_requirements();
             break;
         case kMenuTagDeleteSelected:    if (_callbacks.on_delete_selected) _callbacks.on_delete_selected(); break;
         case kMenuTagEditMeta:          if (_callbacks.on_edit_meta) _callbacks.on_edit_meta(); break;
@@ -470,6 +474,17 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
 
         // --- Create "Help" menu and append ---
         NSMenu* helpMenu = [[NSMenu alloc] initWithTitle:ns_localized("menu_help", "Help")];
+
+        NSMenuItem* checkRequirementsItem = [[NSMenuItem alloc]
+            initWithTitle:ns_localized("menu_check_system_requirements",
+                                        "Check System Requirements...")
+                   action:@selector(menuAction:)
+            keyEquivalent:@""];
+        checkRequirementsItem.target = sDelegate;
+        checkRequirementsItem.tag = kMenuTagCheckSystemRequirements;
+        [helpMenu addItem:checkRequirementsItem];
+
+        [helpMenu addItem:[NSMenuItem separatorItem]];
 
         NSMenuItem* reportIssueItem = [[NSMenuItem alloc]
             initWithTitle:ns_localized("menu_report_issue", "Report an Issue...")

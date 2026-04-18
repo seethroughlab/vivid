@@ -251,5 +251,9 @@
     "memory_history": "Memory History",
     "partial": "Partial",
     "setup": "Setup",
-    "stable": "Stable"
+    "stable": "Stable",
+    "menu_check_system_requirements": "Verifica requisiti di sistema...",
+    "sysreq_title": "Requisiti di sistema",
+    "sysreq_recheck": "Ricontrolla",
+    "sysreq_close": "Chiudi"
 }

@@ -82,6 +82,7 @@ add_executable(vivid
     src/runtime/core/file_watcher.cpp
     src/runtime/core/hot_reload.cpp
     src/runtime/core/source_index.cpp
+    src/runtime/core/system_requirements.cpp
     src/runtime/core/tool_discovery.cpp
     src/runtime/control/runtime_api.cpp
     src/runtime/control/runtime_api_live.cpp

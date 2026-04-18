@@ -48,6 +48,19 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
             }
             return false;
         }
+        // cmake itself can be installed without a C++ compiler. Failing at the
+        // configure step dumps cryptic cmake stderr; fail here with a friendly
+        // hint instead.
+        if (find_cxx_compiler().empty()) {
+            result.error_code = "missing_tool";
+            result.error = missing_tool_error("clang++");
+            if (build_console_) {
+                auto task_id = build_console_->begin_task(BuildTaskKind::PackageConfigure, result.info.name);
+                build_console_->append_system_line(task_id, result.error);
+                build_console_->finish_task(task_id, BuildTaskState::Failed, "missing c++ compiler");
+            }
+            return false;
+        }
         BuildTaskId configure_task = build_console_
             ? build_console_->begin_task(BuildTaskKind::PackageConfigure, result.info.name)
             : 0;

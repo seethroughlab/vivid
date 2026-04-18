@@ -50,8 +50,13 @@
     "menu_add_node": "Add Node...",
     "menu_help": "Help",
     "menu_report_issue": "Report an Issue...",
+    "menu_check_system_requirements": "Check System Requirements...",
     "menu_no_recent_files": "No Recent Files",
     "menu_clear_recent": "Clear Recent",
+
+    "sysreq_title": "System Requirements",
+    "sysreq_recheck": "Recheck",
+    "sysreq_close": "Close",
 
     "error_label": "Error:",
     "wire": "Wire",

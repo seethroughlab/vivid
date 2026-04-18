@@ -135,32 +135,62 @@ std::string find_tool(const char* tool) {
     return {};
 }
 
+std::string find_cxx_compiler() {
+    if (const char* env = std::getenv("VIVID_CXX"); env && *env) {
+        return env;
+    }
+    for (const char* candidate : {"clang++", "c++", "g++"}) {
+        std::string path = find_tool(candidate);
+        if (!path.empty()) return path;
+    }
+    return {};
+}
+
 std::string missing_tool_error(const char* tool) {
     std::string msg = "Missing required build tool: ";
     msg += tool;
     if (std::string(tool) == "clang++") {
-#ifdef _WIN32
-        msg += ". Install Visual Studio or LLVM/Clang,"
+#if defined(_WIN32)
+        msg += ". Install Visual Studio Build Tools or LLVM/Clang,"
+               " or set VIVID_CXX to a custom compiler path.";
+#elif defined(__APPLE__)
+        msg += ". Install Xcode Command Line Tools with `xcode-select --install`,"
                " or set VIVID_CXX to a custom compiler path.";
 #else
-        msg += ". Install Xcode Command Line Tools with `xcode-select --install`,"
+        msg += ". Install a C++ compiler (e.g. `sudo apt install build-essential`"
+               " on Debian/Ubuntu or `sudo dnf install gcc-c++` on Fedora/RHEL),"
                " or set VIVID_CXX to a custom compiler path.";
 #endif
     } else if (std::string(tool) == "cmake") {
-#ifdef _WIN32
+#if defined(_WIN32)
         msg += ". Install CMake from https://cmake.org/download/,"
                " or set VIVID_CMAKE to a custom cmake path.";
-#else
+#elif defined(__APPLE__)
         msg += ". Install CMake (e.g. `brew install cmake`),"
+               " or set VIVID_CMAKE to a custom cmake path.";
+#else
+        msg += ". Install CMake (e.g. `sudo apt install cmake` or `sudo dnf install cmake`),"
                " or set VIVID_CMAKE to a custom cmake path.";
 #endif
     } else if (std::string(tool) == "git") {
-#ifdef _WIN32
+#if defined(_WIN32)
         msg += ". Install Git from https://git-scm.com/download/win,"
                " or set VIVID_GIT to a custom git path.";
-#else
-        msg += ". Install Git (included with Xcode Command Line Tools),"
+#elif defined(__APPLE__)
+        msg += ". Install Git (included with Xcode Command Line Tools, or `brew install git`),"
                " or set VIVID_GIT to a custom git path.";
+#else
+        msg += ". Install Git (e.g. `sudo apt install git` or `sudo dnf install git`),"
+               " or set VIVID_GIT to a custom git path.";
+#endif
+    } else if (std::string(tool) == "ninja") {
+#if defined(_WIN32)
+        msg += ". Install Ninja from https://ninja-build.org/ (optional — speeds up builds).";
+#elif defined(__APPLE__)
+        msg += ". Install Ninja with `brew install ninja` (optional — speeds up builds).";
+#else
+        msg += ". Install Ninja with `sudo apt install ninja-build`"
+               " or `sudo dnf install ninja-build` (optional — speeds up builds).";
 #endif
     }
     return msg;

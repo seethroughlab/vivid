@@ -52,7 +52,8 @@ bool DialogManager::wants_keyboard() const {
         || example_browser.open
         || create_popup.open
         || preset_name.open
-        || crash_recovery.open;
+        || crash_recovery.open
+        || system_requirements.open;
     // Note: core_update is a banner, not a modal — it does NOT want keyboard
 }
 
@@ -69,7 +70,8 @@ bool DialogManager::any_open() const {
         || create_popup.open
         || preset_name.open
         || lockfile_findings.open
-        || crash_recovery.open;
+        || crash_recovery.open
+        || system_requirements.open;
     // Note: core_update is a banner, not a modal — not included in any_open
 }
 
@@ -97,6 +99,19 @@ void DialogManager::open_crash_recovery(const vivid::CrashRecord& rec,
     crash_recovery.node_id           = rec.node_id;
     crash_recovery.crash_report_path = std::move(crash_report_path);
     crash_recovery.open              = true;
+}
+
+void DialogManager::open_system_requirements(bool auto_opened, std::string header_note) {
+    system_requirements.report       = vivid::check_system_requirements();
+    system_requirements.auto_opened  = auto_opened;
+    system_requirements.header_note  = std::move(header_note);
+    system_requirements.button_rects.clear();
+    system_requirements.scroll_y     = 0.0f;
+    system_requirements.open         = true;
+}
+
+void DialogManager::refresh_system_requirements() {
+    system_requirements.report = vivid::check_system_requirements();
 }
 
 void DialogManager::open_clone_confirm(const std::string& type_name, TextEditState& text_edit,

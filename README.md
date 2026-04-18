@@ -94,9 +94,27 @@ cmake --build build
 
 ### Requirements
 
-- macOS (primary supported platform for 1.0 release builds)
-- Developer/source-build only: CMake 3.20+ and C++17 compiler (Clang or GCC)
-- Linux/Windows builds may work from source but are not currently first-class targets
+Vivid itself launches without additional tools, but **installing, linking, or building operator packages** requires a working C++ toolchain (cmake, git, and a C++ compiler). After installing, run `vivid doctor` to confirm your setup, or use **Help → Check System Requirements...** inside the app.
+
+**macOS** (primary supported platform):
+- Xcode Command Line Tools: `xcode-select --install`
+- Homebrew (recommended): [brew.sh](https://brew.sh)
+- `brew install cmake git`
+
+**Linux (Debian/Ubuntu):**
+- `sudo apt install build-essential cmake git`
+
+**Linux (Fedora/RHEL):**
+- `sudo dnf install gcc-c++ make cmake git`
+
+**Windows:**
+- Visual Studio 2022 with the "Desktop development with C++" workload (provides the MSVC compiler)
+- [Git for Windows](https://git-scm.com/download/win)
+- [CMake](https://cmake.org/download/)
+
+Developer/source builds additionally need CMake 3.20+ and a C++17-capable compiler. macOS is the only first-class release target; Linux/Windows builds from source may work but aren't officially supported yet.
+
+You can point Vivid at non-standard tool paths via the `VIVID_CXX`, `VIVID_CMAKE`, and `VIVID_GIT` environment variables.
 
 Dependencies are vendored or fetched automatically: WebGPU (Dawn), GLFW, miniaudio, RtMidi, nlohmann/json, stb_image_write, stb_truetype, IXWebSocket, CLI11, oscpack, hap.
 

@@ -24,6 +24,7 @@
 #include "runtime/core/settings.h"
 #include "runtime/core/runtime_bootstrap.h"
 #include "runtime/core/editor_detect.h"
+#include "runtime/core/system_requirements.h"
 #include "runtime/core/tool_discovery.h"
 #include "runtime/operators/operator_info_cache.h"
 #include "runtime/operators/operator_preparation_service.h"
@@ -359,6 +360,10 @@ int main(int argc, char* argv[]) {
     verify_cmd->add_flag("--pretty", verify_pretty,
         "Emit human-readable findings to stderr (stdout stays silent)");
 
+    // --- Doctor: inspect system build requirements ---
+    auto* doctor_cmd = app.add_subcommand("doctor",
+        "Check that build requirements (cmake, git, C++ compiler) are installed");
+
     bool cli_json = false;
     auto add_json_flag = [&](CLI::App* cmd) {
         cmd->add_flag("--json", cli_json, "Emit JSON output");
@@ -369,7 +374,7 @@ int main(int argc, char* argv[]) {
             list_types_cmd, operator_docs_cmd, package_operator_docs_cmd,
             operator_map_cmd, discovery_report_cmd, read_package_docs_cmd,
             list_package_examples_cmd, read_package_example_cmd, package_catalog_cmd,
-            test_package_cmd
+            test_package_cmd, doctor_cmd
         }) {
         add_json_flag(cmd);
     }
@@ -606,6 +611,56 @@ int main(int argc, char* argv[]) {
             case vivid::LockfileOverall::NoLockfile:      return 3;
         }
         return 3;
+    }
+
+    // --- Handle doctor subcommand (early exit, no GLFW) ---
+    if (doctor_cmd->parsed()) {
+        auto report = vivid::check_system_requirements();
+
+        if (cli_json) {
+            nlohmann::json root = nlohmann::json::object();
+            root["ok"]       = report.all_required_present();
+            root["platform"] = report.platform;
+            nlohmann::json tools = nlohmann::json::array();
+            for (const auto& t : report.tools) {
+                nlohmann::json obj = nlohmann::json::object();
+                obj["name"]         = t.name;
+                obj["required"]     = t.required;
+                obj["found"]        = t.found;
+                obj["path"]         = t.path;
+                obj["version"]      = t.version;
+                obj["install_hint"] = t.install_hint;
+                tools.push_back(std::move(obj));
+            }
+            root["tools"] = std::move(tools);
+            std::printf("%s\n", root.dump().c_str());
+            return report.all_required_present() ? 0 : 1;
+        }
+
+        std::printf("Vivid doctor — platform: %s\n", report.platform.c_str());
+        std::printf("\n");
+        for (const auto& t : report.tools) {
+            const char* mark = t.found ? "ok " : (t.required ? "!! " : "-- ");
+            std::printf("  [%s] %-6s", mark, t.name.c_str());
+            if (t.found) {
+                std::printf("  %s", t.path.c_str());
+                if (!t.version.empty()) std::printf("  (%s)", t.version.c_str());
+                std::printf("\n");
+            } else if (t.required) {
+                std::printf("  MISSING\n        %s\n", t.install_hint.c_str());
+            } else {
+                std::printf("  not found (optional)\n        %s\n", t.install_hint.c_str());
+            }
+        }
+        std::printf("\n");
+        if (report.all_required_present()) {
+            std::printf("All required build tools are available. "
+                        "You can install and build operator packages.\n");
+            return 0;
+        }
+        std::printf("Some required build tools are missing. "
+                    "Installing or building operator packages will fail until they are installed.\n");
+        return 1;
     }
 
     // --- Handle CLI query/admin subcommands (early exit, no GLFW) ---

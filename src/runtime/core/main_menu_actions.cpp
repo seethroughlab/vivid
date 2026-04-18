@@ -199,6 +199,9 @@ void setup_macos_menu(MainAppContext& ctx,
         std::fprintf(stderr, "[vivid] Core auto-update checks: %s\n",
                      ctx.settings.core_update_auto_check ? "enabled" : "disabled");
     };
+    menu_cbs.on_check_system_requirements = [&ctx]() {
+        ctx.graph_ui.open_system_requirements(/*auto_opened=*/false);
+    };
     menu_cbs.on_report_issue = [&ctx]() {
         const auto packages = ctx.pkg_manager.list();
         const auto operators = ctx.registry.type_names();

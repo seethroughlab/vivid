@@ -33,6 +33,7 @@ add_library(vivid_runtime_testlib STATIC
     src/runtime/core/settings.cpp
     src/runtime/core/crash_recovery.cpp
     src/runtime/core/quarantine.cpp
+    src/runtime/core/system_requirements.cpp
     src/runtime/core/tool_discovery.cpp
     src/runtime/core/undo_manager.cpp
     src/runtime/core/workspace_manager.cpp

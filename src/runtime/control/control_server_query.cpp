@@ -137,17 +137,48 @@ static nlohmann::json top_error_lines_json(const BuildTaskSummary& task, std::si
                            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
             return tmp;
         }();
+        // Include "missing required build tool" hints (from the package
+        // manager) alongside conventional compiler/linker error markers. The
+        // friendly hint doesn't contain the words error/failed/fatal, so the
+        // keyword filter would otherwise drop it.
         const bool looks_error =
             line.stream_kind == BuildConsoleStreamKind::Stderr ||
             lower_copy.find("error") != std::string::npos ||
             lower_copy.find("failed") != std::string::npos ||
-            lower_copy.find("fatal") != std::string::npos;
+            lower_copy.find("fatal") != std::string::npos ||
+            lower_copy.find("missing required build tool") != std::string::npos;
         if (!looks_error) continue;
         if (!seen.insert(line.text).second) continue;
         lines.push_back(build_console_line_json(line));
         if (lines.size() >= max_lines) break;
     }
     return lines;
+}
+
+// Scan a task for the package manager's missing_tool hint line. When found,
+// extract the tool name (e.g. "cmake") and the full hint string so the
+// explainer can surface a structured remediation object.
+struct MissingToolRemediation {
+    bool present = false;
+    std::string tool;
+    std::string hint;
+};
+
+static MissingToolRemediation detect_missing_tool_remediation(const BuildTaskSummary& task) {
+    MissingToolRemediation out;
+    static const std::string kPrefix = "Missing required build tool: ";
+    for (const auto& line : task.lines) {
+        auto pos = line.text.find(kPrefix);
+        if (pos == std::string::npos) continue;
+        out.present = true;
+        out.hint = line.text;
+        std::string tail = line.text.substr(pos + kPrefix.size());
+        // Tool name ends at the first '.' in the hint.
+        auto dot = tail.find('.');
+        out.tool = (dot == std::string::npos) ? tail : tail.substr(0, dot);
+        break;
+    }
+    return out;
 }
 
 static bool is_modulated_module_param(const NodeDef& authored_node,
@@ -1903,7 +1934,7 @@ std::string handle_explain_build_failure(BuildConsole* build_console, const nloh
         joined << chosen->lines[i].text;
     }
 
-    return nlohmann::json{
+    auto result = nlohmann::json{
         {"ok", true},
         {"task", {
             {"task_id", chosen->task_id},
@@ -1916,7 +1947,18 @@ std::string handle_explain_build_failure(BuildConsole* build_console, const nloh
         {"top_error_lines", top_error_lines_json(*chosen, 8)},
         {"lines", std::move(excerpt)},
         {"output_excerpt", joined.str()},
-    }.dump();
+    };
+
+    auto remediation = detect_missing_tool_remediation(*chosen);
+    if (remediation.present) {
+        result["remediation"] = nlohmann::json{
+            {"kind", "install_tool"},
+            {"tool", remediation.tool},
+            {"hint", remediation.hint},
+        };
+    }
+
+    return result.dump();
 }
 
 std::string handle_get_registry_diagnostics(OperatorRegistry& registry) {

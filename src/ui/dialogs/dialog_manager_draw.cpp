@@ -40,6 +40,7 @@ void DialogManager::draw(Renderer2D& tr, const MouseState& mouse, const UIStyle&
     draw_about(tr, mouse, style, popup_opacity, win_w, win_h);
     draw_lockfile_findings(tr, mouse, style, popup_opacity, win_w, win_h);
     draw_crash_recovery(tr, mouse, style, popup_opacity, win_w, win_h);
+    draw_system_requirements(tr, mouse, style, popup_opacity, win_w, win_h);
 }
 
 void DialogManager::draw_about(Renderer2D& tr, const MouseState& mouse, const UIStyle& style,
@@ -2247,6 +2248,174 @@ void DialogManager::draw_crash_recovery(Renderer2D& tr, const MouseState& mouse,
     draw_btn(reveal_x, T("crash_recovery_reveal", "Reveal Crash Report"), false);
     draw_btn(normal_x, T("crash_recovery_open_normally", "Open Normally"), false);
     draw_btn(safe_x,   T("crash_recovery_open_safe_mode", "Open Safe Mode"), true);
+}
+
+// -----------------------------------------------------------------------
+// System-requirements dialog — lists the toolchain checks run by
+// check_system_requirements() and offers copyable install commands.
+// Shown either from Help → Check System Requirements or auto-opened when
+// a package install/build fails with a missing-tool error.
+//
+// Button action codes:
+//   100         -> Close
+//   101         -> Recheck
+//   1000 + i    -> Copy install hint for tool index i
+// -----------------------------------------------------------------------
+void DialogManager::draw_system_requirements(Renderer2D& tr, const MouseState& mouse, const UIStyle& style,
+                                             float popup_opacity, uint32_t win_w, uint32_t win_h) {
+    if (!system_requirements.open) return;
+
+    float wf = static_cast<float>(win_w);
+    float hf = static_cast<float>(win_h);
+
+    tr.draw_rect(0, 0, wf, hf,
+                 style.scrim[0], style.scrim[1], style.scrim[2], style.scrim[3] * popup_opacity);
+
+    const float dw = 620.0f;
+    const float dh = std::min(hf - 80.0f, 520.0f);
+    const float dx = (wf - dw) * 0.5f;
+    const float dy = (hf - dh) * 0.5f;
+
+    draw_shadow(tr, dx, dy, dw, dh, style.corner_radius);
+    tr.draw_rounded_rect(dx, dy, dw, dh, style.corner_radius,
+                         style.popup_bg[0], style.popup_bg[1], style.popup_bg[2], style.popup_bg[3]);
+    tr.draw_rect(dx, dy, dw, 2, style.accent[0], style.accent[1], style.accent[2]);
+
+    system_requirements.button_rects.clear();
+
+    // Title
+    tr.draw_text(dx + 16, dy + 14,
+                 T("sysreq_title", "System Requirements"),
+                 style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+
+    float y = dy + 40;
+
+    // Optional header note (non-empty when auto-opened from a build failure).
+    if (!system_requirements.header_note.empty()) {
+        tr.draw_text(dx + 16, y, system_requirements.header_note.c_str(),
+                     style.dim_text[0], style.dim_text[1], style.dim_text[2]);
+        y += 18;
+    } else {
+        char sub[160];
+        std::snprintf(sub, sizeof(sub),
+                      "Vivid runs fine without these, but installing or building packages needs them. "
+                      "Platform: %s.",
+                      system_requirements.report.platform.c_str());
+        tr.draw_text(dx + 16, y, sub,
+                     style.dim_text[0], style.dim_text[1], style.dim_text[2]);
+        y += 18;
+    }
+    y += 8;
+
+    // Scrollable tool list.
+    const float list_x = dx + 16;
+    const float list_w = dw - 32;
+    const float list_top = y;
+    const float list_bottom = dy + dh - 48;  // footer button row
+    const float list_h = list_bottom - list_top;
+
+    float cy = list_top - system_requirements.scroll_y;
+    int tool_idx = 0;
+    for (const auto& t : system_requirements.report.tools) {
+        const float row_h = t.found ? 44.0f : 76.0f;
+        if (cy + row_h >= list_top && cy <= list_bottom) {
+            // Status badge
+            const float badge_w = 40.0f;
+            const char* badge;
+            float br, bg, bb;
+            if (t.found) {
+                badge = "OK"; br = 0.32f; bg = 0.72f; bb = 0.40f;
+            } else if (t.required) {
+                badge = "MISSING"; br = 0.80f; bg = 0.30f; bb = 0.30f;
+            } else {
+                badge = "OPT"; br = 0.55f; bg = 0.55f; bb = 0.55f;
+            }
+            tr.draw_rect(list_x, cy + 2, badge_w, 16, br, bg, bb, 0.9f);
+            tr.draw_text(list_x + 4, cy + 2, badge,
+                         style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+
+            // Tool name
+            tr.draw_text(list_x + badge_w + 10, cy,
+                         t.name.c_str(),
+                         style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+
+            // Details
+            if (t.found) {
+                std::string detail = t.path;
+                if (!t.version.empty()) {
+                    detail += "   ";
+                    detail += t.version;
+                }
+                tr.draw_text(list_x + badge_w + 10, cy + 18,
+                             truncate_text(tr, detail, list_w - badge_w - 20).c_str(),
+                             style.dim_text[0], style.dim_text[1], style.dim_text[2]);
+            } else {
+                // Install hint — wrap on a single line via truncate; user can
+                // click Copy to get the full text.
+                tr.draw_text(list_x + badge_w + 10, cy + 18,
+                             truncate_text(tr, t.install_hint, list_w - badge_w - 110).c_str(),
+                             style.dim_text[0], style.dim_text[1], style.dim_text[2]);
+
+                // Copy button
+                const float cbw = 70.0f;
+                const float cbh = 20.0f;
+                const float cbx = list_x + list_w - cbw;
+                const float cby = cy + 16;
+                const bool hover =
+                    mouse.x >= cbx && mouse.x <= cbx + cbw &&
+                    mouse.y >= cby && mouse.y <= cby + cbh;
+                tr.draw_rect(cbx, cby, cbw, cbh,
+                             hover ? style.button_hover[0] : style.button_bg[0],
+                             hover ? style.button_hover[1] : style.button_bg[1],
+                             hover ? style.button_hover[2] : style.button_bg[2],
+                             0.9f);
+                float lw = tr.text_width("Copy", 1.0f);
+                tr.draw_text(cbx + (cbw - lw) * 0.5f, cby + 2, "Copy",
+                             style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+                system_requirements.button_rects.push_back({cbx, cby, cbw, cbh, 1000 + tool_idx});
+            }
+        }
+        cy += row_h + 6;
+        ++tool_idx;
+    }
+
+    // Update scroll extents — cy at end is the total laid-out y.
+    system_requirements.content_height = (cy + system_requirements.scroll_y) - list_top;
+    system_requirements.max_scroll = std::max(0.0f, system_requirements.content_height - list_h);
+
+    // Footer: Recheck + Close buttons
+    const float btn_w = 110.0f;
+    const float btn_h = 26.0f;
+    const float btn_y = dy + dh - btn_h - 10.0f;
+    const float gap = 10.0f;
+    const float total_w = btn_w * 2 + gap;
+    const float btn_start_x = dx + (dw - total_w) * 0.5f;
+    const float recheck_x = btn_start_x;
+    const float close_x = btn_start_x + btn_w + gap;
+
+    auto draw_footer_btn = [&](float bx, const char* label, bool accent, int action) {
+        const bool hover =
+            mouse.x >= bx && mouse.x <= bx + btn_w &&
+            mouse.y >= btn_y && mouse.y <= btn_y + btn_h;
+        if (accent) {
+            float a = hover ? 1.0f : 0.85f;
+            tr.draw_rect(bx, btn_y, btn_w, btn_h,
+                         style.accent[0], style.accent[1], style.accent[2], a);
+        } else {
+            tr.draw_rect(bx, btn_y, btn_w, btn_h,
+                         hover ? style.button_hover[0] : style.button_bg[0],
+                         hover ? style.button_hover[1] : style.button_bg[1],
+                         hover ? style.button_hover[2] : style.button_bg[2], 0.9f);
+        }
+        float lw = tr.text_width(label, 1.0f);
+        float lx = bx + (btn_w - lw) * 0.5f;
+        const auto& tc = accent ? style.bright_text : style.dim_text;
+        tr.draw_text(lx, btn_y + 4, label, tc[0], tc[1], tc[2]);
+        system_requirements.button_rects.push_back({bx, btn_y, btn_w, btn_h, action});
+    };
+
+    draw_footer_btn(recheck_x, T("sysreq_recheck", "Recheck"), false, 101);
+    draw_footer_btn(close_x,   T("sysreq_close",   "Close"),   true,  100);
 }
 
 } // namespace vivid::ui
