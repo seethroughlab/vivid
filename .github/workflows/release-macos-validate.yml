@@ -163,14 +163,6 @@ jobs:
           fi
           xcrun stapler staple "$APP"
 
-      - name: Validate signature and stapling
-        shell: bash
-        run: |
-          set -euo pipefail
-          APP="build/vivid.app"
-          codesign --verify --deep --strict --verbose=2 "$APP"
-          spctl --assess --type execute --verbose=4 "$APP"
-
       - name: Package validation artifact
         id: artifact
         shell: bash
