@@ -1,5 +1,5 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "stereo_demo",
@@ -105,7 +105,7 @@
     "sticky_notes": [
         {
             "id": "note_1",
-            "text": "**Stereo panning demo** Oscillator \u2192 StereoPanWidth \u2192 Gain \u2192 audio_out\nThe LFO slowly sweeps the pan from left to right.",
+            "text": "**Stereo panning demo** Oscillator → StereoPanWidth → Gain → audio_out\nThe LFO slowly sweeps the pan from left to right.",
             "x": 56.192184,
             "y": 99.48505,
             "width": 280.0,

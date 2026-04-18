@@ -45,7 +45,7 @@ ProjectLockfile make_full_fixture() {
 
     lf.vivid_core.version       = "0.1.0";
     lf.vivid_core.commit        = "dev-commit";
-    lf.vivid_core.operator_abi  = 15;
+    lf.vivid_core.operator_abi  = 1;
 
     LockfilePackage pkg;
     pkg.name         = "vivid-wavetable";
@@ -63,7 +63,7 @@ ProjectLockfile make_full_fixture() {
     op.package          = "vivid-wavetable";
     op.package_version  = "1.2.0";
     op.descriptor_hash  = "sha256:desc";
-    op.operator_abi     = 15;
+    op.operator_abi     = 1;
     lf.operators.push_back(op);
 
     LockfileAsset asset;

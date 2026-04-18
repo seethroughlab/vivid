@@ -1,5 +1,5 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "vocoder_demo",
@@ -117,7 +117,7 @@
     "sticky_notes": [
         {
             "id": "note_1",
-            "text": "**Vocoder** \u2014 talking-robot effect The modulator\u2019s spectral shape is imprinted onto the carrier",
+            "text": "**Vocoder** — talking-robot effect The modulator’s spectral shape is imprinted onto the carrier",
             "x": -100.0,
             "y": -80.0,
             "width": 260.0,

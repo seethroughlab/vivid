@@ -1,5 +1,5 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "parity_cross_domain",
@@ -133,7 +133,7 @@
             "type": "Composite",
             "params": {
                 "blend_mode": 1,
-                "opacity_a": 1.0
+                "opacity_0": 1.0
             },
             "layout": [
                 900,
@@ -231,11 +231,11 @@
         },
         {
             "from": "shape1/texture",
-            "to": "composite1/a"
+            "to": "composite1/layer_0"
         },
         {
             "from": "noise_bg/texture",
-            "to": "composite1/b"
+            "to": "composite1/layer_1"
         },
         {
             "from": "composite1/texture",
@@ -249,7 +249,7 @@
     "sticky_notes": [
         {
             "id": "note_1",
-            "text": "**Shared Control Hub** Clock \u2192 LFO + Envelope drive both audio and visual paths symmetrically",
+            "text": "**Shared Control Hub** Clock → LFO + Envelope drive both audio and visual paths symmetrically",
             "x": -100.0,
             "y": -80.0,
             "width": 260.0,
@@ -258,7 +258,7 @@
         },
         {
             "id": "note_2",
-            "text": "**Audio path**: LFO \u2192 osc freq, Envelope \u2192 gain + filter cutoff",
+            "text": "**Audio path**: LFO → osc freq, Envelope → gain + filter cutoff",
             "x": 400.0,
             "y": -80.0,
             "width": 240.0,
@@ -267,7 +267,7 @@
         },
         {
             "id": "note_3",
-            "text": "**Visual path**: LFO \u2192 rotation + noise scale, Env \u2192 shape radius",
+            "text": "**Visual path**: LFO → rotation + noise scale, Env → shape radius",
             "x": 400.0,
             "y": 250.0,
             "width": 250.0,
@@ -276,7 +276,7 @@
         },
         {
             "id": "note_4",
-            "text": "Range mapping (from_min/max \u2192 to_min/max) scales control signals to each domain\u2019s natural units",
+            "text": "Range mapping (from_min/max → to_min/max) scales control signals to each domain’s natural units",
             "x": -100.0,
             "y": 250.0,
             "width": 260.0,

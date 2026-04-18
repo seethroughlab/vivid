@@ -1,5 +1,5 @@
 {
-    "schema_version": 4,
+    "schema_version": 1,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "av_metronome_demo",
@@ -154,7 +154,7 @@
         },
         {
             "id": "avm_note_2",
-            "text": "**Visual path**: eighth-note saw LFO pops the star big then shrinks it \u2014 snap back every 8th note.",
+            "text": "**Visual path**: eighth-note saw LFO pops the star big then shrinks it — snap back every 8th note.",
             "x": 220.0,
             "y": -90.0,
             "width": 260.0,
@@ -163,7 +163,7 @@
         },
         {
             "id": "avm_note_3",
-            "text": "**Audio path**: sixteenth-note square LFO alternates the pitch between 220 and 440 Hz \u2014 two pitch changes per visual pop.",
+            "text": "**Audio path**: sixteenth-note square LFO alternates the pitch between 220 and 440 Hz — two pitch changes per visual pop.",
             "x": 220.0,
             "y": 120.0,
             "width": 260.0,

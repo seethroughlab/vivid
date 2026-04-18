@@ -1,5 +1,5 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "filter_sweep",
@@ -131,7 +131,7 @@
         },
         {
             "id": "note_2",
-            "text": "**Resonance=2.5** adds a peak at the cutoff frequency \u2014 higher values = more pronounced",
+            "text": "**Resonance=2.5** adds a peak at the cutoff frequency — higher values = more pronounced",
             "x": -100.0,
             "y": 150.0,
             "width": 250.0,

@@ -1,10 +1,10 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "shader_radial_rainbow",
         "title": "Radial Rainbows",
-        "description": "Faithful port of shader RadialRainbows \u2014 animated concentric HSV rainbow rings with orbiting center.",
+        "description": "Faithful port of shader RadialRainbows — animated concentric HSV rainbow rings with orbiting center.",
         "tags": [
             "demo",
             "shader-sketch",

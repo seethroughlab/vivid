@@ -1,5 +1,5 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "meta": {
         "id": "instanced_shapes_demo",
         "title": "Instanced Shapes Demo",

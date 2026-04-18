@@ -1,10 +1,10 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "shader_voronoi",
         "title": "Voronoi",
-        "description": "Faithful port of shader Voronoi \u2014 solid red cells with black gaps, slow animation.",
+        "description": "Faithful port of shader Voronoi — solid red cells with black gaps, slow animation.",
         "tags": [
             "demo",
             "shader-sketch",

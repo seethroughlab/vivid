@@ -1,5 +1,5 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "noise_mixer_layers",
@@ -58,9 +58,9 @@
         "mixer": {
             "type": "Mixer",
             "params": {
-                "gain_3": 0.9,
-                "gain_2": 0.8,
-                "gain_1": 0.7
+                "gain_2": 0.9,
+                "gain_1": 0.8,
+                "gain_0": 0.7
             }
         },
         "noise_brown": {
@@ -103,15 +103,15 @@
         },
         {
             "from": "filter_hi/output",
-            "to": "mixer/input_1"
+            "to": "mixer/input_0"
         },
         {
             "from": "filter_mid/output",
-            "to": "mixer/input_2"
+            "to": "mixer/input_1"
         },
         {
             "from": "filter_lo/output",
-            "to": "mixer/input_3"
+            "to": "mixer/input_2"
         },
         {
             "from": "mixer/output",

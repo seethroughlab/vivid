@@ -1,5 +1,5 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "fm_synth_demo",
@@ -124,7 +124,7 @@
     "sticky_notes": [
         {
             "id": "note_1",
-            "text": "**FM Synthesis** bell tones Carrier=220 Hz, mod_ratio=3\u00d7 mod_index controls brightness",
+            "text": "**FM Synthesis** bell tones Carrier=220 Hz, mod_ratio=3× mod_index controls brightness",
             "x": -100.0,
             "y": -80.0,
             "width": 260.0,
@@ -133,7 +133,7 @@
         },
         {
             "id": "note_2",
-            "text": "**Modulation index** is swept by an LFO \u2014 higher index = more overtones = brighter timbre",
+            "text": "**Modulation index** is swept by an LFO — higher index = more overtones = brighter timbre",
             "x": -100.0,
             "y": 150.0,
             "width": 250.0,

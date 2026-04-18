@@ -1,5 +1,5 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "slicer_demo",
@@ -137,7 +137,7 @@
         },
         {
             "id": "sticky_4",
-            "text": "**Slicer** chops the piano loop into 16 slices. Incoming notes select which slice plays \u2014 low notes trigger early slices, higher notes trigger later ones. Mode is set to loop.",
+            "text": "**Slicer** chops the piano loop into 16 slices. Incoming notes select which slice plays — low notes trigger early slices, higher notes trigger later ones. Mode is set to loop.",
             "x": 505.7525634765625,
             "y": 262.30712890625,
             "width": 225.45703125,

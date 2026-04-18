@@ -88,7 +88,7 @@ bool load_from_string(const char* json, size_t len);  // parse in-memory JSON
 bool save(const char* path) const;
 bool save_to_string(std::string& out_json) const;
 ```
-Uses nlohmann/json for JSON parsing. Schema version checked against `GRAPH_SCHEMA_VERSION` (currently 3).
+Uses nlohmann/json for JSON parsing. Schema version checked against `GRAPH_SCHEMA_VERSION` (currently 1).
 `load_diagnostics` is populated with package version mismatches after load.
 
 The top-level `meta` block is parsed into `GraphContentMeta`. For backward compatibility,
@@ -121,7 +121,7 @@ Viewport is UI-only state, persisted but ignored by the runtime.
 
 ## Schema Version
 
-`GRAPH_SCHEMA_VERSION` is defined as `3` in graph.h. Graphs saved with a newer schema version
+`GRAPH_SCHEMA_VERSION` is defined as `1` in graph.h. Graphs saved with a newer schema version
 are hard-rejected on load. Graphs without a `schema_version` field are treated as version 1.
 
 ## Load Diagnostics

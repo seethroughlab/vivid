@@ -22,7 +22,7 @@ static std::string g_build_dir = ".";
 // ---------------------------------------------------------------------------
 
 static const char* kSimpleModule = R"({
-    "schema_version": 2,
+    "schema_version": 1,
     "module": {
         "name": "TestSynth",
         "description": "A test synthesizer module",
@@ -51,7 +51,7 @@ static const char* kSimpleModule = R"({
 })";
 
 static const char* kEffectsModule = R"({
-    "schema_version": 2,
+    "schema_version": 1,
     "module": {
         "name": "FXChain",
         "description": "Audio effects chain",
@@ -74,7 +74,7 @@ static const char* kEffectsModule = R"({
 })";
 
 static const char* kAudioReduceModule = R"({
-    "schema_version": 2,
+    "schema_version": 1,
     "module": {
         "name": "AudioReduceModule",
         "description": "Test module with an internal pointwise audio stage feeding a reduction stage.",
@@ -641,7 +641,7 @@ static void test_flatten_compile_preserves_audio_reduce_chain() {
 // ---------------------------------------------------------------------------
 
 static const char* kModuleWithParamMetadata = R"({
-    "schema_version": 2,
+    "schema_version": 1,
     "module": {
         "name": "RichSynth",
         "description": "A synth with rich param metadata",
@@ -933,7 +933,7 @@ static void test_to_operator_preset_unmapped() {
 // ---------------------------------------------------------------------------
 
 static const char* kModuleBadParamBinding = R"({
-    "schema_version": 2,
+    "schema_version": 1,
     "module": {
         "name": "BadParamBind",
         "ports": [
@@ -950,7 +950,7 @@ static const char* kModuleBadParamBinding = R"({
 })";
 
 static const char* kModuleBadPortBinding = R"({
-    "schema_version": 2,
+    "schema_version": 1,
     "module": {
         "name": "BadPortBind",
         "ports": [
@@ -967,7 +967,7 @@ static const char* kModuleBadPortBinding = R"({
 })";
 
 static const char* kModuleBadPresetRef = R"({
-    "schema_version": 2,
+    "schema_version": 1,
     "module": {
         "name": "BadPresetRef",
         "ports": [
@@ -1037,7 +1037,7 @@ static void test_validation_bad_preset_ref_warns() {
 // ---------------------------------------------------------------------------
 
 static const char* kModuleWithModulation = R"({
-    "schema_version": 3,
+    "schema_version": 1,
     "module": {
         "name": "ModSynth",
         "description": "Synth with mod sources and destinations",
@@ -1121,7 +1121,7 @@ static void test_parse_mod_sources_destinations() {
 }
 
 static const char* kModuleBadModSourceBind = R"({
-    "schema_version": 3,
+    "schema_version": 1,
     "module": {
         "name": "BadModSource",
         "category": "Test",
@@ -1153,7 +1153,7 @@ static void test_parse_bad_mod_source_bind() {
 }
 
 static const char* kModuleDuplicateModSourceName = R"({
-    "schema_version": 3,
+    "schema_version": 1,
     "module": {
         "name": "DupModSource",
         "category": "Test",
@@ -1187,7 +1187,7 @@ static void test_parse_duplicate_mod_source_name() {
 }
 
 static const char* kModuleBadPortKindSource = R"({
-    "schema_version": 3,
+    "schema_version": 1,
     "module": {
         "name": "BadPortSource",
         "category": "Test",
@@ -1593,7 +1593,7 @@ static void test_flatten_existing_tests_still_work() {
 // ---------------------------------------------------------------------------
 
 static const char* kModuleWithPerformance = R"({
-    "schema_version": 3,
+    "schema_version": 1,
     "module": {
         "name": "PerfSynth",
         "description": "Test module with performance-tagged params",
@@ -1667,7 +1667,7 @@ static void test_performance_metadata_defaults() {
         FILE* f = std::fopen(path.c_str(), "w");
         // Minimal module without any performance fields
         std::fputs(R"({
-            "schema_version": 3,
+            "schema_version": 1,
             "module": {
                 "name": "NoPerf",
                 "ports": [

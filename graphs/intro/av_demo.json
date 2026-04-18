@@ -1,5 +1,5 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "av_demo",
@@ -146,7 +146,7 @@
     "sticky_notes": [
         {
             "id": "note_shared",
-            "text": "**One LFO, two domains.** The same LFO drives the ball's horizontal position AND the oscillator's pitch. When the ball slides right, the pitch rises \u2014 they move together because they share one source.",
+            "text": "**One LFO, two domains.** The same LFO drives the ball's horizontal position AND the oscillator's pitch. When the ball slides right, the pitch rises — they move together because they share one source.",
             "x": -160.42969,
             "y": 119.640625,
             "width": 300.0,
@@ -155,7 +155,7 @@
         },
         {
             "id": "note_visual",
-            "text": "**Visual path**: LFO \u2192 metaball pos_x. The wire remaps the LFO's 2\u20138 range into screen-X 0.15\u20130.85 so the ball bounces across the frame.",
+            "text": "**Visual path**: LFO → metaball pos_x. The wire remaps the LFO's 2–8 range into screen-X 0.15–0.85 so the ball bounces across the frame.",
             "x": 350.0,
             "y": 40.0,
             "width": 280.0,
@@ -164,7 +164,7 @@
         },
         {
             "id": "note_audio",
-            "text": "**Audio path**: LFO \u2192 oscillator frequency (200\u2013500 Hz). The same remap wire trick scales the LFO into audible pitch.",
+            "text": "**Audio path**: LFO → oscillator frequency (200–500 Hz). The same remap wire trick scales the LFO into audible pitch.",
             "x": 400.47787,
             "y": 677.8008,
             "width": 280.0,

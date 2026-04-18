@@ -1,10 +1,10 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "midi_demo",
         "title": "MIDI Control",
-        "description": "MIDI CC values modulate LFO frequency, which drives noise texture generation \u2014 a template for MIDI-controlled patches.",
+        "description": "MIDI CC values modulate LFO frequency, which drives noise texture generation — a template for MIDI-controlled patches.",
         "tags": [
             "midi",
             "keyboard",

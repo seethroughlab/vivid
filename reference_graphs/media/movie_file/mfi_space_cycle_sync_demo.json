@@ -1,5 +1,5 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "mfi_space_cycle_sync_demo",
@@ -164,11 +164,11 @@
         },
         {
             "from": "movie/texture",
-            "to": "comp/a"
+            "to": "comp/layer_0"
         },
         {
             "from": "label/texture",
-            "to": "comp/b"
+            "to": "comp/layer_1"
         }
     ],
     "viewport": {

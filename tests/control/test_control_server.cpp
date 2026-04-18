@@ -180,7 +180,7 @@ int main(int argc, char* argv[]) {
         std::ofstream ofs(module_path);
         ofs <<
             R"({
-  "schema_version": 2,
+  "schema_version": 1,
   "module": {
     "name": "QuerySurfaceModule",
     "description": "Fixture module for control-server query parity tests.",

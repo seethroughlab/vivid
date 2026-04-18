@@ -1,5 +1,5 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "convolution_reverb_mix_bus_fixture",
@@ -29,8 +29,8 @@
         "mixer": {
             "type": "Mixer",
             "params": {
-                "gain_2": 0.35,
-                "gain_1": 0.8
+                "gain_1": 0.35,
+                "gain_0": 0.8
             }
         },
         "noise": {
@@ -65,11 +65,11 @@
     "connections": [
         {
             "from": "osc/output",
-            "to": "mixer/input_1"
+            "to": "mixer/input_0"
         },
         {
             "from": "noise/output",
-            "to": "mixer/input_2"
+            "to": "mixer/input_1"
         },
         {
             "from": "mixer/output",

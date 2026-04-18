@@ -1,5 +1,5 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "parity_audio_first",
@@ -117,7 +117,7 @@
             "type": "Composite",
             "params": {
                 "blend_mode": 1,
-                "opacity_a": 0.8
+                "opacity_0": 0.8
             },
             "layout": [
                 750,
@@ -204,11 +204,11 @@
         },
         {
             "from": "noise_vis/texture",
-            "to": "composite1/a"
+            "to": "composite1/layer_0"
         },
         {
             "from": "shape_vis/texture",
-            "to": "composite1/b"
+            "to": "composite1/layer_1"
         },
         {
             "from": "composite1/texture",
@@ -231,7 +231,7 @@
         },
         {
             "id": "note_2",
-            "text": "**Spectral centroid** \u2192 noise speed (brighter audio = faster texture) **RMS** \u2192 noise scale + shape radius",
+            "text": "**Spectral centroid** → noise speed (brighter audio = faster texture) **RMS** → noise scale + shape radius",
             "x": -100.0,
             "y": 200.0,
             "width": 270.0,

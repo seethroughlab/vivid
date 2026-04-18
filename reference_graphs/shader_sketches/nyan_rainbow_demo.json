@@ -1,10 +1,10 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "shader_nyan_rainbow",
         "title": "Nyan Rainbow",
-        "description": "Faithful port of shader NyanRainbow \u2014 6-band rainbow horizontal trail with vertical bounce.",
+        "description": "Faithful port of shader NyanRainbow — 6-band rainbow horizontal trail with vertical bounce.",
         "tags": [
             "demo",
             "shader-sketch",

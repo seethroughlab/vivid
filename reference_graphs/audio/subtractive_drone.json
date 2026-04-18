@@ -1,5 +1,5 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "subtractive_drone",
@@ -107,8 +107,8 @@
         "mixer": {
             "type": "Mixer",
             "params": {
-                "gain_2": 1.0,
-                "gain_1": 1.0
+                "gain_1": 1.0,
+                "gain_0": 1.0
             }
         },
         "noise": {
@@ -193,11 +193,11 @@
         },
         {
             "from": "osc/output",
-            "to": "mixer/input_1"
+            "to": "mixer/input_0"
         },
         {
             "from": "noise/output",
-            "to": "mixer/input_2"
+            "to": "mixer/input_1"
         },
         {
             "from": "mixer/output",
@@ -226,11 +226,11 @@
         },
         {
             "from": "noise_vis/texture",
-            "to": "comp_text/a"
+            "to": "comp_text/layer_0"
         },
         {
             "from": "text_vis/texture",
-            "to": "comp_text/b"
+            "to": "comp_text/layer_1"
         },
         {
             "from": "comp_text/texture",

@@ -1,5 +1,5 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "nodes": {
         "clock1": {
             "type": "Clock",
@@ -70,7 +70,7 @@
     "meta": {
         "id": "av_sync_demo",
         "title": "AV Sync",
-        "description": "Clock-triggered drum kick synced with an expanding shape \u2014 the simplest audio-visual synchronization demo.",
+        "description": "Clock-triggered drum kick synced with an expanding shape — the simplest audio-visual synchronization demo.",
         "tags": [
             "audio-visual",
             "sync",

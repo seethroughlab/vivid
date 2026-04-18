@@ -1,5 +1,5 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "chromatic_ghosts",
@@ -177,10 +177,10 @@
         "mixer": {
             "type": "Mixer",
             "params": {
-                "gain_3": 0.13707031,
-                "gain_4": 0.06800781,
-                "gain_2": 0.09804687,
-                "gain_1": 1.0391792
+                "gain_2": 0.13707031,
+                "gain_3": 0.06800781,
+                "gain_1": 0.09804687,
+                "gain_0": 1.0391792
             },
             "layout": {
                 "x": 830.0,
@@ -334,15 +334,15 @@
         },
         {
             "from": "osc_lead/output",
-            "to": "mixer/input_1"
+            "to": "mixer/input_0"
         },
         {
             "from": "gain_bass/output",
-            "to": "mixer/input_2"
+            "to": "mixer/input_1"
         },
         {
             "from": "gain_noise/output",
-            "to": "mixer/input_3"
+            "to": "mixer/input_2"
         },
         {
             "from": "mixer/output",
@@ -371,11 +371,11 @@
         },
         {
             "from": "noise_vis/texture",
-            "to": "comp_text/a"
+            "to": "comp_text/layer_0"
         },
         {
             "from": "text_vis/texture",
-            "to": "comp_text/b"
+            "to": "comp_text/layer_1"
         },
         {
             "from": "comp_text/texture",

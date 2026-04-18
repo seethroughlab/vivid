@@ -8,7 +8,7 @@ extern "C" {
 
 /* Bump when operator-facing C ABI changes in incompatible ways.
    Catches stale dylibs during hot-reload — not a cross-version compatibility promise. */
-#define VIVID_OPERATOR_ABI_VERSION 15u
+#define VIVID_OPERATOR_ABI_VERSION 1u
 
 // ---------------------------------------------------------------------------
 // Enums

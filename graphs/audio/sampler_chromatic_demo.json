@@ -1,5 +1,5 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "meta": {
         "id": "sampler_chromatic_demo",
         "title": "Chromatic Sampler with Arpeggiator",

@@ -1,5 +1,5 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "nodes": {
         "clock1": {
             "type": "Clock",
@@ -184,7 +184,7 @@
             "type": "Composite",
             "params": {
                 "blend_mode": 1,
-                "opacity_a": 1.0
+                "opacity_0": 1.0
             },
             "layout": {
                 "x": 480.0,
@@ -264,7 +264,7 @@
         },
         {
             "from": "noise1/texture",
-            "to": "comp1/a"
+            "to": "comp1/layer_0"
         },
         {
             "from": "shape1/texture",
@@ -272,7 +272,7 @@
         },
         {
             "from": "bloom1/texture",
-            "to": "comp1/b"
+            "to": "comp1/layer_1"
         },
         {
             "from": "comp1/texture",

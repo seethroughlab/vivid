@@ -1,5 +1,5 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "lanes_stack_demo",
@@ -149,19 +149,19 @@
     "connections": [
         {
             "from": "lfo_a/value",
-            "to": "stack_x/a"
+            "to": "stack_x/input_0"
         },
         {
             "from": "lfo_b/value",
-            "to": "stack_x/b"
+            "to": "stack_x/input_1"
         },
         {
             "from": "lfo_c/value",
-            "to": "stack_x/c"
+            "to": "stack_x/input_2"
         },
         {
             "from": "lfo_d/value",
-            "to": "stack_x/d"
+            "to": "stack_x/input_3"
         },
         {
             "from": "stack_x/output",

@@ -1,5 +1,5 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "compressor_demo",
@@ -115,9 +115,9 @@
         "mixer": {
             "type": "Mixer",
             "params": {
-                "gain_3": 0.9605075120925903,
-                "gain_2": 0.387382835149765,
-                "gain_1": 1.0
+                "gain_2": 0.9605075120925903,
+                "gain_1": 0.387382835149765,
+                "gain_0": 1.0
             },
             "layout": {
                 "x": 630.0,
@@ -170,11 +170,11 @@
         },
         {
             "from": "osc/output",
-            "to": "mixer/input_1"
+            "to": "mixer/input_0"
         },
         {
             "from": "noise/output",
-            "to": "mixer/input_2"
+            "to": "mixer/input_1"
         },
         {
             "from": "mixer/output",
@@ -218,7 +218,7 @@
         },
         {
             "id": "note_2",
-            "text": "**Main signal path** Bass osc + noise \u2192 Mixer \u2192 Compressor This is the audio being compressed",
+            "text": "**Main signal path** Bass osc + noise → Mixer → Compressor This is the audio being compressed",
             "x": -35.83203125,
             "y": 184.60546875,
             "width": 260.0,
@@ -227,7 +227,7 @@
         },
         {
             "id": "note_3",
-            "text": "**Sidechain path** Kick osc \u2192 envelope \u2192 gain \u2192 compressor sidechain input Louder kick = more ducking",
+            "text": "**Sidechain path** Kick osc → envelope → gain → compressor sidechain input Louder kick = more ducking",
             "x": 300.0,
             "y": -80.0,
             "width": 240.0,

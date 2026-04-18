@@ -352,7 +352,7 @@ The JSON graph is the single source of truth for the entire system. Every operat
 
 ```json
 {
-  "schema_version": 3,
+  "schema_version": 1,
   "vivid_version": "0.1.0",
   "meta": {
     "id": "audio_reactive_demo",

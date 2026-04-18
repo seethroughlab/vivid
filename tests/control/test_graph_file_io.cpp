@@ -42,7 +42,7 @@ static void test_load_example_entry() {
     {
         std::ofstream ofs(graph_path);
         ofs << R"({
-            "schema_version": 3,
+            "schema_version": 1,
             "meta": {
                 "title": "My Test Graph",
                 "description": "A test",
@@ -102,7 +102,7 @@ static void test_save_load_meta_roundtrip() {
     {
         std::ofstream ofs(graph_path);
         ofs << R"({
-            "schema_version": 3,
+            "schema_version": 1,
             "meta": {
                 "title": "Original Title",
                 "description": "Original desc",
@@ -143,7 +143,7 @@ static void test_domains_loading() {
     {
         std::ofstream ofs(graph_path);
         ofs << R"({
-            "schema_version": 3,
+            "schema_version": 1,
             "meta": {
                 "title": "Dom Test",
                 "domains": ["gpu", "audio"]
@@ -168,7 +168,7 @@ static void test_envs_legacy_loading() {
     {
         std::ofstream ofs(graph_path);
         ofs << R"({
-            "schema_version": 3,
+            "schema_version": 1,
             "meta": {
                 "title": "Legacy",
                 "envs": ["control"]
@@ -192,7 +192,7 @@ static void test_domains_preferred_over_envs() {
     {
         std::ofstream ofs(graph_path);
         ofs << R"({
-            "schema_version": 3,
+            "schema_version": 1,
             "meta": {
                 "title": "Both",
                 "domains": ["gpu"],
@@ -217,7 +217,7 @@ static void test_save_writes_domains_not_envs() {
     {
         std::ofstream ofs(graph_path);
         ofs << R"({
-            "schema_version": 3,
+            "schema_version": 1,
             "meta": {
                 "title": "SaveTest",
                 "envs": ["audio"]
@@ -252,7 +252,7 @@ static void test_instrument_fields_roundtrip() {
     {
         std::ofstream ofs(graph_path);
         ofs << R"({
-            "schema_version": 3,
+            "schema_version": 1,
             "meta": {
                 "title": "Synth Pad",
                 "domains": ["audio"],
@@ -302,7 +302,7 @@ static void test_preview_controls_roundtrip() {
     {
         std::ofstream ofs(graph_path);
         ofs << R"({
-            "schema_version": 3,
+            "schema_version": 1,
             "meta": {
                 "title": "Preview Test",
                 "preview_controls": [
@@ -360,7 +360,7 @@ static void test_invalid_preview_controls() {
     {
         std::ofstream ofs(graph_path);
         ofs << R"({
-            "schema_version": 3,
+            "schema_version": 1,
             "meta": {
                 "title": "Invalid Preview",
                 "preview_controls": [
@@ -391,7 +391,7 @@ static void test_no_instrument_fields() {
     {
         std::ofstream ofs(graph_path);
         ofs << R"({
-            "schema_version": 3,
+            "schema_version": 1,
             "meta": {
                 "title": "Plain Graph",
                 "domains": ["gpu"]
@@ -417,7 +417,7 @@ static void test_graph_core_meta_roundtrip() {
 
     vivid::Graph graph;
     check(graph.load_from_string(R"({
-        "schema_version": 3,
+        "schema_version": 1,
         "meta": {
             "id": "wavetable-pad",
             "title": "Wavetable Pad",

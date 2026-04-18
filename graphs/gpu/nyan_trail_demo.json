@@ -1,5 +1,5 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "nyan_trail_demo",
@@ -142,7 +142,7 @@
     "sticky_notes": [
         {
             "id": "note_1",
-            "text": "**Nyan Trail** \u2014 rainbow feedback HSV hue cycles rapidly (0.8 Hz) while feedback trails drift left",
+            "text": "**Nyan Trail** — rainbow feedback HSV hue cycles rapidly (0.8 Hz) while feedback trails drift left",
             "x": -100.0,
             "y": -80.0,
             "width": 260.0,
@@ -151,7 +151,7 @@
         },
         {
             "id": "note_2",
-            "text": "**offset_x=\u22120.01** moves old frames leftward, creating a nyan-cat\u2013style rainbow trail",
+            "text": "**offset_x=−0.01** moves old frames leftward, creating a nyan-cat–style rainbow trail",
             "x": -100.0,
             "y": 150.0,
             "width": 250.0,

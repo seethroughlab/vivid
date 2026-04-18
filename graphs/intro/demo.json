@@ -1,5 +1,5 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "intro_demo",
@@ -94,7 +94,7 @@
     "sticky_notes": [
         {
             "id": "note_1",
-            "text": "**Clock \u2192 LFO \u2192 Shape** pipeline The Clock's beat_phase drives the LFO, which pulses the circle's radius",
+            "text": "**Clock → LFO → Shape** pipeline The Clock's beat_phase drives the LFO, which pulses the circle's radius",
             "x": -41.75,
             "y": 250.38671875,
             "width": 280.0,
@@ -103,7 +103,7 @@
         },
         {
             "id": "note_2",
-            "text": "LFO offset=0.25, amplitude=0.15 sweeps radius 0.10 \u2192 0.40 so the circle breathes with the beat",
+            "text": "LFO offset=0.25, amplitude=0.15 sweeps radius 0.10 → 0.40 so the circle breathes with the beat",
             "x": -40.30078125,
             "y": 174.08984375,
             "width": 250.0,

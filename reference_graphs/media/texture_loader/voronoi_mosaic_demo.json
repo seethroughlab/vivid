@@ -1,10 +1,10 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "voronoi_mosaic_demo",
         "title": "Voronoi Mosaic",
-        "description": "Image subdivision into Voronoi cells \u2014 each cell shows the average color from the source. Audio-reactive cell density.",
+        "description": "Image subdivision into Voronoi cells — each cell shows the average color from the source. Audio-reactive cell density.",
         "tags": [
             "demo",
             "voronoi",

@@ -1,5 +1,5 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "showcase_demo",
@@ -48,13 +48,13 @@
         "comp1": {
             "type": "Composite",
             "params": {
-                "y_b": 0.31307316,
-                "y_a": -0.30436903,
+                "y_1": 0.31307316,
+                "y_0": -0.30436903,
                 "blend_mode": 0.0,
-                "x_b": -0.3081692,
-                "x_a": 0.25581694,
-                "rotation_b": 0.0080884695,
-                "opacity_a": 1.0
+                "x_1": -0.3081692,
+                "x_0": 0.25581694,
+                "rotation_1": 0.0080884695,
+                "opacity_0": 1.0
             },
             "layout": {
                 "x": 755.52484,
@@ -265,15 +265,15 @@
         },
         {
             "from": "kick_shape/texture",
-            "to": "comp1/a"
+            "to": "comp1/layer_0"
         },
         {
             "from": "snare_shape/texture",
-            "to": "comp1/b"
+            "to": "comp1/layer_1"
         },
         {
             "from": "hat_shape/texture",
-            "to": "comp1/c"
+            "to": "comp1/layer_2"
         }
     ],
     "metronome": {
@@ -288,7 +288,7 @@
     "sticky_notes": [
         {
             "id": "welcome",
-            "text": "**Welcome to Vivid!** Three drums, three shapes. Each drum directly triggers its own visual element \u2014 nothing is pre-animated. The music IS the animation.",
+            "text": "**Welcome to Vivid!** Three drums, three shapes. Each drum directly triggers its own visual element — nothing is pre-animated. The music IS the animation.",
             "x": -125.67348,
             "y": 10.489796,
             "width": 350.0,
@@ -297,7 +297,7 @@
         },
         {
             "id": "mapping",
-            "text": "**Kick** \u2192 big orange circle\n**Snare** \u2192 white diamond\n**Hi-hat** \u2192 small blue hexagon\n\nEach drum\u2019s peak level drives the shape\u2019s radius through an audio\u2192visual bridge wire.",
+            "text": "**Kick** → big orange circle\n**Snare** → white diamond\n**Hi-hat** → small blue hexagon\n\nEach drum’s peak level drives the shape’s radius through an audio→visual bridge wire.",
             "x": -107.04496,
             "y": 142.43112,
             "width": 300.0,

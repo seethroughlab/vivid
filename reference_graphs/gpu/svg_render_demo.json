@@ -1,5 +1,5 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "svg_render_demo",
@@ -98,11 +98,11 @@
         },
         {
             "from": "svg/texture",
-            "to": "comp/a"
+            "to": "comp/layer_0"
         },
         {
             "from": "grad/texture",
-            "to": "comp/b"
+            "to": "comp/layer_1"
         },
         {
             "from": "comp/texture",

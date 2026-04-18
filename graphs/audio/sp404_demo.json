@@ -1,5 +1,5 @@
 {
-    "schema_version": 3,
+    "schema_version": 1,
     "meta": {
         "id": "sp404_demo",
         "title": "SP404 Drum Sequencer",
