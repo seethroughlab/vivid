@@ -176,10 +176,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Re-zip AFTER stapling so the uploaded artifact includes the
+          # staple ticket. Same reasoning as the main release workflow.
           ZIP="build/${APP_NAME}-${{ steps.ver.outputs.version }}-validate-${{ steps.ver.outputs.short_sha }}-macos-arm64.zip"
-          if [[ ! -f "$ZIP" ]]; then
-            ditto -c -k --keepParent build/vivid.app "$ZIP"
-          fi
+          rm -f "$ZIP"
+          ditto -c -k --keepParent build/vivid.app "$ZIP"
           echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
 
       - name: Upload validation artifact

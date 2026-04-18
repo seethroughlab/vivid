@@ -179,10 +179,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Re-zip AFTER stapling. The notarize step creates a zip under the
+          # same name for Apple submission, but that zip predates the staple
+          # ticket; without this `rm + ditto` the uploaded artifact would
+          # lack the ticket and first-time launches would hit Gatekeeper's
+          # "Apple could not verify" dialog offline. See staple validation
+          # at `Validate signature and stapling`.
           ZIP="build/${APP_NAME}-${{ steps.ver.outputs.version }}-macos-arm64.zip"
-          if [[ ! -f "$ZIP" ]]; then
-            ditto -c -k --keepParent build/vivid.app "$ZIP"
-          fi
+          rm -f "$ZIP"
+          ditto -c -k --keepParent build/vivid.app "$ZIP"
           size=$(stat -f "%z" "$ZIP")
           echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
           echo "size=$size" >> "$GITHUB_OUTPUT"
