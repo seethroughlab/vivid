@@ -74,7 +74,7 @@
                 "star": 0.3,
                 "radius": 0.35,
                 "rotation": 0.785,
-                "softness": 0.04,
+                "softness": 0.0,
                 "r": 1.0,
                 "g": 1.0,
                 "b": 0.5

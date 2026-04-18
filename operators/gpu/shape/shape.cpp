@@ -133,7 +133,7 @@ struct Shape : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<int>   sides    {"sides",    4,     3,     64};
     vivid::Param<float> star     {"star",     0.0f,  0.0f,  0.9f};
     vivid::Param<float> rotation {"rotation", 0.0f,  0.0f,  6.28f};
-    vivid::Param<float> softness {"softness", 0.005f, 0.0f, 0.1f};
+    vivid::Param<float> softness {"softness", 0.0f, 0.0f, 0.1f};
     vivid::Param<float> r        {"r",        1.0f,  0.0f,  1.0f};
     vivid::Param<float> g        {"g",        1.0f,  0.0f,  1.0f};
     vivid::Param<float> b        {"b",        1.0f,  0.0f,  1.0f};

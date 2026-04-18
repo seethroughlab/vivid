@@ -30,7 +30,7 @@
             "params": {
                 "sides": 6,
                 "radius": 0.35,
-                "softness": 0.01,
+                "softness": 0.0,
                 "r": 0.2,
                 "g": 0.6,
                 "b": 1.0

@@ -344,7 +344,7 @@
                     "radius": 0.22,
                     "sides": 5,
                     "star": 0.4,
-                    "softness": 0.005,
+                    "softness": 0.0,
                     "r": 0.2,
                     "g": 1.0,
                     "b": 0.3
@@ -356,7 +356,7 @@
                     "radius": 0.35,
                     "sides": 8,
                     "star": 0.6,
-                    "softness": 0.005,
+                    "softness": 0.0,
                     "r": 1.0,
                     "g": 0.4,
                     "b": 0.1

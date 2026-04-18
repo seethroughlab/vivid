@@ -177,7 +177,7 @@ struct InstancedShapes : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<int>   count     {"count",     16,    1,     kMaxInstances};
     vivid::Param<int>   shape     {"shape",     0,     {"Circle", "Triangle", "Square", "Pentagon", "Hexagon", "Star"}};
     vivid::Param<float> base_size {"base_size", 0.08f, 0.01f, 0.5f};
-    vivid::Param<float> softness  {"softness",  0.005f, 0.0f, 0.05f};
+    vivid::Param<float> softness  {"softness",  0.0f,   0.0f, 0.05f};
     vivid::Param<float> color_r   {"color_r",   1.0f,  0.0f,  1.0f};
     vivid::Param<float> color_g   {"color_g",   1.0f,  0.0f,  1.0f};
     vivid::Param<float> color_b   {"color_b",   1.0f,  0.0f,  1.0f};

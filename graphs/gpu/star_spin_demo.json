@@ -148,7 +148,7 @@
             "type": "Shape",
             "params": {
                 "star": 0.5,
-                "softness": 0.005,
+                "softness": 0.0,
                 "sides": 5.0,
                 "b": 0.2,
                 "radius": 0.2,
