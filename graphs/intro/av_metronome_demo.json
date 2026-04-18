@@ -1,16 +1,17 @@
 {
-    "schema_version": 3,
+    "schema_version": 4,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "av_metronome_demo",
         "title": "Shared Metronome AV Sync",
-        "description": "The graph metronome keeps separate audio and visual LFOs locked without extra clock wires.",
+        "description": "The graph metronome drives a two-note sixteenth-note bass line and an eighth-note shape pulse so the beat divisions can be heard and seen.",
         "tags": [
             "intro",
             "audio-visual",
             "metronome",
             "transport",
-            "sync"
+            "sync",
+            "shape"
         ],
         "difficulty": "beginner",
         "domains": [
@@ -33,18 +34,18 @@
                 "gain": 0.35
             },
             "layout": {
-                "x": 960.0,
-                "y": 0.0
+                "x": 522.56396,
+                "y": 235.71613
             }
         },
         "lfo_aud": {
             "type": "LfoFr",
             "params": {
-                "waveform": 3.0,
+                "waveform": 2.0,
                 "rate_mode": 2.0,
-                "sync_division": 1.0,
-                "offset": 320.0,
-                "amplitude": 120.0
+                "sync_division": 4.0,
+                "offset": 330.0,
+                "amplitude": 110.0
             },
             "layout": {
                 "x": 30.0,
@@ -54,25 +55,33 @@
         "lfo_vis": {
             "type": "LfoFr",
             "params": {
-                "waveform": 0.0,
+                "waveform": 1.0,
                 "rate_mode": 2.0,
-                "sync_division": 1.0,
-                "offset": 4.5,
-                "amplitude": 2.8
+                "sync_division": 3.0,
+                "polarity": 1.0,
+                "offset": 0.35,
+                "amplitude": -0.25
             },
             "layout": {
-                "x": 101.47675,
-                "y": 475.19537
+                "x": 39.707153,
+                "y": 493.3661
             }
         },
-        "noise1": {
-            "type": "NoiseTexture",
+        "shape1": {
+            "type": "Shape",
             "params": {
-                "speed": 1.0
+                "sides": 4.0,
+                "star": 0.3,
+                "radius": 0.35,
+                "rotation": 0.785,
+                "softness": 0.04,
+                "r": 1.0,
+                "g": 1.0,
+                "b": 0.5
             },
             "layout": {
-                "x": 302.8053,
-                "y": 473.75067
+                "x": 263.92108,
+                "y": 486.8512
             }
         },
         "osc1": {
@@ -82,29 +91,29 @@
                 "amplitude": 0.45
             },
             "layout": {
-                "x": 720.0,
-                "y": 0.0
+                "x": 307.16858,
+                "y": 234.37744
             }
         },
         "out1": {
             "type": "audio_out",
             "layout": {
-                "x": 660.8075,
-                "y": 306.46368
+                "x": 718.6332,
+                "y": 281.68698
             }
         },
         "vout": {
             "type": "video_out",
             "layout": {
-                "x": 668.8565,
-                "y": 477.22748
+                "x": 482.1952,
+                "y": 482.4677
             }
         }
     },
     "connections": [
         {
             "from": "lfo_vis/value",
-            "to": "noise1/scale"
+            "to": "shape1/radius"
         },
         {
             "from": "lfo_aud/value",
@@ -120,7 +129,7 @@
             "to": "out1/input"
         },
         {
-            "from": "noise1/texture",
+            "from": "shape1/texture",
             "to": "vout/input"
         }
     ],
@@ -129,9 +138,9 @@
         "beats_per_bar": 4
     },
     "viewport": {
-        "pan_x": 221.52025,
-        "pan_y": -178.64716,
-        "zoom": 1.1055276
+        "pan_x": 295.29932,
+        "pan_y": 247.4338,
+        "zoom": 0.7528421
     },
     "sticky_notes": [
         {
@@ -145,20 +154,20 @@
         },
         {
             "id": "avm_note_2",
-            "text": "**Visual path**: eighth-note LFO modulates noise scale",
+            "text": "**Visual path**: eighth-note saw LFO pops the star big then shrinks it \u2014 snap back every 8th note.",
             "x": 220.0,
             "y": -90.0,
-            "width": 230.0,
-            "height": 60.0,
+            "width": 260.0,
+            "height": 70.0,
             "color": 3
         },
         {
             "id": "avm_note_3",
-            "text": "**Audio path**: sixteenth-note LFO sweeps oscillator pitch",
+            "text": "**Audio path**: sixteenth-note square LFO alternates the pitch between 220 and 440 Hz \u2014 two pitch changes per visual pop.",
             "x": 220.0,
             "y": 120.0,
-            "width": 235.0,
-            "height": 60.0,
+            "width": 260.0,
+            "height": 80.0,
             "color": 1
         }
     ]

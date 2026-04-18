@@ -1,5 +1,5 @@
 {
-    "schema_version": 3,
+    "schema_version": 4,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "audio_demo",
@@ -22,8 +22,7 @@
         "category": "starter",
         "family": "First steps",
         "role": "starter",
-        "playability": "self_playing",
-        "requires_packages": []
+        "playability": "self_playing"
     },
     "nodes": {
         "gain1": {
@@ -66,16 +65,16 @@
         }
     ],
     "viewport": {
-        "pan_x": 69.54773,
-        "pan_y": 0.6865845,
-        "zoom": 0.7985277
+        "pan_x": 398.7539,
+        "pan_y": 460.47266,
+        "zoom": 1.0
     },
     "sticky_notes": [
         {
             "id": "note_1",
-            "text": "**Simplest audio patch** Oscillator \u2192 Gain \u2192 audio_out A 440 Hz sine at 80% volume",
-            "x": 298.56555,
-            "y": 275.1947,
+            "text": "**Simplest audio patch** Oscillator → Gain → audio_out A 440 Hz sine at 80% volume",
+            "x": 177.23743,
+            "y": -204.84827,
             "width": 250.0,
             "height": 80.0,
             "color": 0
@@ -83,8 +82,8 @@
         {
             "id": "note_2",
             "text": "Try changing **frequency** and **waveform** to hear the difference",
-            "x": 309.577,
-            "y": 368.38678,
+            "x": 16.93637,
+            "y": -80.44525,
             "width": 230.0,
             "height": 60.0,
             "color": 4

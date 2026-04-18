@@ -1,14 +1,15 @@
 {
-    "schema_version": 3,
+    "schema_version": 4,
     "vivid_version": "0.1.0",
     "meta": {
         "id": "audio_reactive_demo",
         "title": "Audio-Reactive Visuals",
-        "description": "Audio level changes the scale of a noise texture so sound and image move together.",
+        "description": "Audio level warps a hexagon through a displacement map so sound physically distorts the shape.",
         "tags": [
             "audio-reactive",
             "rms",
-            "visual",
+            "displace",
+            "distortion",
             "intro",
             "demo"
         ],
@@ -24,18 +25,27 @@
         "category": "starter",
         "family": "Cross-domain starters",
         "role": "starter",
-        "playability": "self_playing",
-        "requires_packages": []
+        "playability": "self_playing"
     },
     "nodes": {
+        "displace1": {
+            "type": "Displace",
+            "params": {
+                "amount": 0.0
+            },
+            "layout": {
+                "x": 1082.3406,
+                "y": 261.97574
+            }
+        },
         "gain1": {
             "type": "Gain",
             "params": {
                 "gain": 1.0
             },
             "layout": {
-                "x": 480.0,
-                "y": 0.0
+                "x": 337.16696,
+                "y": -68.754074
             }
         },
         "lfo1": {
@@ -46,43 +56,71 @@
                 "amplitude": 0.4
             },
             "layout": {
-                "x": 0.0,
-                "y": 0.0
+                "x": -211.91553,
+                "y": -72.60478
             }
         },
         "noise1": {
             "type": "NoiseTexture",
             "params": {
-                "speed": 1.0
+                "octaves": 5.0,
+                "speed": 1.5126104,
+                "persistence": 0.24134894,
+                "lacunarity": 2.2183042,
+                "scale": 2.0,
+                "channels": 1.0
             },
             "layout": {
-                "x": 960.0,
-                "y": 0.0
-            }
+                "x": 162.29688,
+                "y": 442.9375
+            },
+            "resolution": [
+                1920,
+                1080
+            ]
         },
         "osc1": {
             "type": "Oscillator",
             "params": {
-                "frequency": 220.0,
+                "frequency": 300.0,
                 "amplitude": 0.8
             },
             "layout": {
-                "x": 240.0,
-                "y": 0.0
+                "x": 22.179688,
+                "y": -99.05469
             }
         },
         "out1": {
             "type": "audio_out",
             "layout": {
-                "x": 720.0,
-                "y": 0.0
+                "x": 1539.6862,
+                "y": -43.236298
             }
+        },
+        "shape1": {
+            "type": "Shape",
+            "params": {
+                "softness": 0.0,
+                "sides": 6.0,
+                "b": 0.9,
+                "radius": 0.35,
+                "r": 0.2,
+                "g": 0.8
+            },
+            "layout": {
+                "x": 160.67969,
+                "y": 245.19531
+            },
+            "resolution": [
+                1920,
+                1080
+            ]
         },
         "vout": {
             "type": "video_out",
             "layout": {
-                "x": 1190.1737,
-                "y": 26.366531
+                "x": 1386.524,
+                "y": 249.7229
             }
         }
     },
@@ -97,26 +135,59 @@
             "to": "gain1/input"
         },
         {
+            "from": "shape1/texture",
+            "to": "displace1/source"
+        },
+        {
+            "from": "noise1/texture",
+            "to": "displace1/map"
+        },
+        {
+            "from": "displace1/texture",
+            "to": "vout/input"
+        },
+        {
             "from": "gain1/output",
             "to": "out1/input"
         },
         {
             "from": "gain1/rms",
-            "to": "noise1/scale",
-            "from_min": 0.0,
-            "from_max": 0.5,
-            "to_min": 0.0,
-            "to_max": 5.0,
+            "to": "displace1/amount",
             "bridge": "rms"
-        },
-        {
-            "from": "noise1/texture",
-            "to": "vout/input"
         }
     ],
     "viewport": {
-        "pan_x": 41.89148,
-        "pan_y": 299.6397,
-        "zoom": 0.7985277
-    }
+        "pan_x": -1506.4465,
+        "pan_y": -193.21294,
+        "zoom": 2.5
+    },
+    "sticky_notes": [
+        {
+            "id": "ar_note_1",
+            "text": "**Audio distorts a shape** The hexagon is the **source**, noise is the **map**, and the audio envelope drives the **amount** of distortion.",
+            "x": 872.7887,
+            "y": 154.98683,
+            "width": 320.0,
+            "height": 90.0,
+            "color": 0
+        },
+        {
+            "id": "ar_note_2",
+            "text": "**Noise as a map, not a background.** Bright pixels in the noise push source pixels further. When audio is silent, amount=0 and the hexagon is crisp.",
+            "x": 86.546875,
+            "y": 634.65625,
+            "width": 300.0,
+            "height": 100.0,
+            "color": 3
+        },
+        {
+            "id": "ar_note_3",
+            "text": "**Audio → visual bridge.** The Gain's **rms** output is a smoothed audio envelope. The wire remap scales 0.0–0.5 RMS into 0.0–0.6 displacement amount.",
+            "x": 324.3678,
+            "y": 182.85748,
+            "width": 261.91772,
+            "height": 104.10666,
+            "color": 1
+        }
+    ]
 }

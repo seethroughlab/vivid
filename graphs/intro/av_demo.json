@@ -4,11 +4,12 @@
     "meta": {
         "id": "av_demo",
         "title": "Audio-Visual Sync",
-        "description": "One shared LFO drives both visual scale and audio pitch so cross-domain wiring is immediately visible.",
+        "description": "One shared LFO slides a ball left-right and sweeps the oscillator's pitch so the two domains visibly move as one.",
         "tags": [
             "audio-visual",
             "intro",
             "sync",
+            "metaball",
             "demo"
         ],
         "difficulty": "beginner",
@@ -59,10 +60,17 @@
                 "y": 300.0
             }
         },
-        "noise1": {
-            "type": "NoiseTexture",
+        "metaball1": {
+            "type": "Metaball",
             "params": {
-                "speed": 1.0
+                "count": 1.0,
+                "color_mode": 0.0,
+                "threshold": 1.2,
+                "softness": 0.02,
+                "glow": 0.6,
+                "r": 1.0,
+                "g": 0.6,
+                "b": 0.2
             },
             "layout": {
                 "x": 350.0,
@@ -102,7 +110,11 @@
         },
         {
             "from": "lfo1/value",
-            "to": "noise1/scale"
+            "to": "metaball1/pos_x",
+            "from_min": 2.0,
+            "from_max": 8.0,
+            "to_min": 0.15,
+            "to_max": 0.85
         },
         {
             "from": "lfo1/value",
@@ -122,7 +134,7 @@
             "to": "out1/input"
         },
         {
-            "from": "noise1/texture",
+            "from": "metaball1/texture",
             "to": "vout/input"
         }
     ],
@@ -134,25 +146,25 @@
     "sticky_notes": [
         {
             "id": "note_shared",
-            "text": "**One LFO, two domains.** The same LFO drives both the noise scale and the oscillator pitch. When the noise zooms in, the pitch rises \u2014 they move together because they share one source.",
+            "text": "**One LFO, two domains.** The same LFO drives the ball's horizontal position AND the oscillator's pitch. When the ball slides right, the pitch rises \u2014 they move together because they share one source.",
             "x": -160.42969,
             "y": 119.640625,
             "width": 300.0,
-            "height": 120.0,
+            "height": 140.0,
             "color": 0
         },
         {
             "id": "note_visual",
-            "text": "**Visual path**: LFO \u2192 noise scale (2\u20138). The raw LFO value controls the zoom level.",
+            "text": "**Visual path**: LFO \u2192 metaball pos_x. The wire remaps the LFO's 2\u20138 range into screen-X 0.15\u20130.85 so the ball bounces across the frame.",
             "x": 350.0,
-            "y": 50.0,
-            "width": 240.0,
-            "height": 60.0,
+            "y": 40.0,
+            "width": 280.0,
+            "height": 80.0,
             "color": 3
         },
         {
             "id": "note_audio",
-            "text": "**Audio path**: LFO \u2192 oscillator frequency (200\u2013500 Hz). The wire has a remap that scales the LFO\u2019s 2\u20138 range into audible pitch.",
+            "text": "**Audio path**: LFO \u2192 oscillator frequency (200\u2013500 Hz). The same remap wire trick scales the LFO into audible pitch.",
             "x": 400.47787,
             "y": 677.8008,
             "width": 280.0,
