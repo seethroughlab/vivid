@@ -8,6 +8,7 @@
 #include "ui/style/theme_loader.h"
 #include "ui/text_edit.h"
 #include "ui/graph/node_graph_util.h"
+#include "ui/graph/operator_layout.h"
 #include "common/dialog_types.h"
 #include "common/perf_trend.h"
 #include "ui/dialogs/dialog_manager.h"
@@ -191,6 +192,11 @@ public:
         build_console_panel_.set_console(std::move(console));
     }
 
+    // Loads precomputed 2D positions for the operator-chooser Map tab.
+    // Called once at startup; silently no-ops if no file is found.
+    void load_operator_layout(const std::string& resources_dir,
+                              const std::string& config_dir);
+
     // Called by main loop each frame with delta time
     void set_dt(float dt) {
         dt_ = dt;
@@ -363,6 +369,11 @@ private:
                               const ParamLayoutPlan& plan, uint32_t pi);
     void draw_inspector_xy_pad(Renderer2D& tr, const NodeSnapshot& node,
                                 InspectorLayout& layout, uint32_t pi_x, uint32_t pi_y);
+    void draw_inspector_xy_pad_compact(Renderer2D& tr, const NodeSnapshot& node,
+                                        InspectorLayout& layout, uint32_t pi_x, uint32_t pi_y);
+    void draw_inspector_xy_pad_group(Renderer2D& tr, const NodeSnapshot& node,
+                                      InspectorLayout& layout,
+                                      uint32_t pi_start, uint32_t param_run_count);
     void draw_inspector_color_swatch(Renderer2D& tr, const NodeSnapshot& node,
                                       InspectorLayout& layout,
                                       uint32_t pi_r, uint32_t pi_g, uint32_t pi_b);
@@ -389,6 +400,7 @@ private:
     void draw_inspector_modulation(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_performance(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_chooser(Renderer2D& tr);
+    void draw_chooser_map(Renderer2D& tr, float px, float py, float pw, float ph);
     void draw_preview_wire(Renderer2D& tr);
     void draw_box_select(Renderer2D& tr);
     void draw_wire_tooltip(Renderer2D& tr);
@@ -458,6 +470,13 @@ private:
     void paste_copied_nodes();
     std::string next_available_node_id(const std::string& base,
                                        const std::unordered_set<std::string>& reserved = {}) const;
+
+    // True for operators whose canonical output is a VividDrawable2D and which
+    // haven't already been routed through Instancer2D. Drives the "Make many…"
+    // context-menu shortcut which inserts InstanceGrid2D + Instancer2D
+    // downstream of such a node.
+    static bool is_drawable_emitter_type(const std::string& type_name);
+    void make_many_from_node(const std::string& node_id);
 
     // --- Sorted port indices helper ---
     static std::vector<std::pair<uint32_t, std::string>> sorted_ports(
@@ -566,7 +585,12 @@ private:
     float graph_bottom() const;
     float session_strip_top() const;
     float inspector_x() const { return static_cast<float>(win_w_) - kInspectorW; }
-    float chooser_x() const { return (graph_right() - kChooserW) * 0.5f; }
+    float chooser_panel_w() const {
+        bool map = chooser_mode_ == ChooserMode::Operators
+                   && chooser_tab_ == ChooserTab::Map;
+        return map ? kChooserMapW : kChooserW;
+    }
+    float chooser_x() const { return (graph_right() - chooser_panel_w()) * 0.5f; }
     float chooser_items_y() const {
         float base = kChooserY + kChooserHeaderH;
         if (chooser_mode_ == ChooserMode::Operators) base += kChooserTabH;
@@ -702,7 +726,7 @@ private:
         Operators,
         FileDrop,
     };
-    enum class ChooserTab : uint8_t { All = 0, GPU, Audio, Control };
+    enum class ChooserTab : uint8_t { All = 0, GPU, Audio, Control, Instancing, Map };
     bool chooser_open_ = false;
     ChooserMode chooser_mode_ = ChooserMode::Operators;
     ChooserTab chooser_tab_ = ChooserTab::All;
@@ -714,6 +738,19 @@ private:
     std::vector<FileDropChooserAction> chooser_drop_actions_;
     float chooser_cursor_gx_ = 0, chooser_cursor_gy_ = 0;
     std::string chooser_error_;
+
+    // Semantic-map tab state (5th tab in the chooser).
+    // Positions come from OperatorLayout (loaded at startup from the bundled
+    // operator_embeddings.json). Pan/zoom are independent of the main graph
+    // canvas viewport; they reset when the chooser closes.
+    OperatorLayout chooser_map_layout_;
+    bool chooser_map_loaded_ = false;
+    float chooser_map_pan_x_ = 0.0f;
+    float chooser_map_pan_y_ = 0.0f;
+    float chooser_map_zoom_ = 1.0f;
+    std::string chooser_map_hover_name_;
+    struct MapDot { std::string name; float sx, sy; };
+    std::vector<MapDot> chooser_map_dots_;  // rebuilt each frame for hit-testing
 
     // Insert-on-wire state (chooser opened from wire context menu)
     bool chooser_insert_wire_ = false;

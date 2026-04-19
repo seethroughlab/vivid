@@ -31,6 +31,17 @@ NodeGraphUI::NodeGraphUI(UICommandSink& commands)
     dialogs_.set_pan_gesture_ptr(&pan_gesture_);
 }
 
+void NodeGraphUI::load_operator_layout(const std::string& resources_dir,
+                                       const std::string& config_dir) {
+    chooser_map_loaded_ = chooser_map_layout_.load(resources_dir, config_dir);
+    if (!chooser_map_loaded_) {
+        std::fprintf(stderr,
+            "[vivid] operator_embeddings.json not found (searched %s, %s); "
+            "Map tab will be empty until the file is generated.\n",
+            resources_dir.c_str(), config_dir.c_str());
+    }
+}
+
 bool NodeGraphUI::select_single_node_for_review(const std::string& node_id) {
     if (!snap_.has_node(node_id))
         return false;
@@ -61,6 +72,59 @@ std::string NodeGraphUI::next_available_node_id(
         if (id_available(candidate))
             return candidate;
     }
+}
+
+// Drawable-pipeline emitter whitelist. Kept deliberately narrow so "Make many…"
+// only shows up on operators where inserting Instancer2D+InstanceGrid2D makes
+// pedagogical sense. Extend when new drawable-producing operators ship.
+bool NodeGraphUI::is_drawable_emitter_type(const std::string& type_name) {
+    return type_name == "Shape2D"       ||
+           type_name == "Sprite2D"      ||
+           type_name == "Text2D"        ||
+           type_name == "Transform2D"   ||
+           type_name == "DrawableMerge";
+}
+
+void NodeGraphUI::make_many_from_node(const std::string& node_id) {
+    // Collect outgoing drawable connections BEFORE we mutate anything.
+    struct Edge { std::string to_node; std::string to_port; };
+    std::vector<Edge> out_edges;
+    for (const auto& c : snap_.connections) {
+        if (c.from_node == node_id && c.from_port == "drawable") {
+            out_edges.push_back({c.to_node, c.to_port});
+        }
+    }
+
+    // Generate unique IDs; reserve them across the pair so the second call
+    // can't collide with the first even before the snapshot refreshes.
+    std::unordered_set<std::string> reserved;
+    const std::string grid_id = next_available_node_id("grid", reserved);
+    reserved.insert(grid_id);
+    const std::string inst_id = next_available_node_id("inst", reserved);
+
+    // Place the new nodes to the right of the source.
+    const NodeRect* src_rect = nullptr;
+    for (const auto& nr : node_rects_) {
+        if (nr.node_id == node_id) { src_rect = &nr; break; }
+    }
+    const float sx = src_rect ? src_rect->x : 0.0f;
+    const float sy = src_rect ? src_rect->y : 0.0f;
+    const float w  = src_rect ? src_rect->w : 120.0f;
+
+    commands_.add_node("InstanceGrid2D", grid_id);
+    commands_.add_node("Instancer2D",    inst_id);
+    commands_.set_node_layout(grid_id, sx + w + 60.0f, sy + 140.0f);
+    commands_.set_node_layout(inst_id, sx + w + 240.0f, sy);
+
+    // Rewire: for each existing drawable edge out of the source, tear it
+    // down and restore it from Instancer2D's output. Then hook the source
+    // and grid into Instancer2D's inputs.
+    for (const auto& e : out_edges) {
+        commands_.disconnect(node_id + "/drawable", e.to_node + "/" + e.to_port);
+        commands_.connect   (inst_id + "/drawable", e.to_node + "/" + e.to_port);
+    }
+    commands_.connect(node_id + "/drawable",  inst_id + "/drawable");
+    commands_.connect(grid_id + "/instances", inst_id + "/instances");
 }
 
 void NodeGraphUI::copy_selected_nodes() {
@@ -224,6 +288,8 @@ template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::R
 template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::MidiRemoveRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::MidiRangeRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::XYPadRect>& rects, float mx, float my);
+template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::XYToggleRect>& rects, float mx, float my);
+template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::XYTabRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::ColorSwatchRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::StatePresetRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<InspectorController::StateHeaderRect>& rects, float mx, float my);
@@ -1101,14 +1167,34 @@ void NodeGraphUI::rebuild_chooser_items() {
     std::vector<ScoredItem> scored;
 
     for (const auto& name : all) {
-        // Tab filter
-        if (chooser_tab_ != ChooserTab::All) {
+        // Tab filter (Map tab: no domain filter — the scatter view shows all
+        // operators that have a precomputed position and dims non-matches in
+        // place rather than removing them).
+        if (chooser_tab_ != ChooserTab::All && chooser_tab_ != ChooserTab::Map) {
             auto cat_it = snap_.operator_catalog.find(name);
             if (cat_it == snap_.operator_catalog.end() || !cat_it->second) continue;
-            OpEnvironment env = infer_environment(*cat_it->second);
-            if (chooser_tab_ == ChooserTab::GPU && env != OpEnvironment::GPU) continue;
-            if (chooser_tab_ == ChooserTab::Audio && env != OpEnvironment::Audio) continue;
-            if (chooser_tab_ == ChooserTab::Control && env != OpEnvironment::Control) continue;
+            if (chooser_tab_ == ChooserTab::Instancing) {
+                // Curated set of the drawable-pipeline + 3D instancing family.
+                // Grouped so a new user can find every piece of the instancing
+                // story in one place without cross-domain hunting.
+                static const std::unordered_set<std::string> kInstancing = {
+                    // 2D drawable pipeline
+                    "Shape2D", "Sprite2D", "Text2D", "DrawableMerge",
+                    "Transform2D", "Render2D", "Instancer2D",
+                    "InstanceGrid2D", "InstanceNoise2D", "InstancesFromLanes2D",
+                    "Particles2D", "Flocking2D", "ShapeField",
+                    // 3D instancing (vivid-3d)
+                    "Shape3D", "Transform3D", "MeshDraw", "Instancer3D",
+                    "InstanceGrid", "InstanceNoise", "InstancesFromLanes",
+                    "Particles3D",
+                };
+                if (!kInstancing.count(name)) continue;
+            } else {
+                OpEnvironment env = infer_environment(*cat_it->second);
+                if (chooser_tab_ == ChooserTab::GPU && env != OpEnvironment::GPU) continue;
+                if (chooser_tab_ == ChooserTab::Audio && env != OpEnvironment::Audio) continue;
+                if (chooser_tab_ == ChooserTab::Control && env != OpEnvironment::Control) continue;
+            }
         }
 
         // Scored text match
@@ -1324,7 +1410,14 @@ void NodeGraphUI::confirm_chooser_selection(const std::string& type) {
 
     auto it = std::find(chooser_items_.begin(), chooser_items_.end(), type);
     if (it == chooser_items_.end()) {
-        reset_chooser_state();
+        // Target isn't in the current scored list (common for Map-tab clicks
+        // when a filter is active and the clicked operator didn't match it).
+        // Insert via the single-item bootstrap path instead of closing.
+        chooser_mode_ = ChooserMode::Operators;
+        chooser_items_ = {type};
+        chooser_sel_ = 0;
+        chooser_scroll_ = 0;
+        confirm_chooser_selection_idx(0);
         return;
     }
     confirm_chooser_selection_idx(static_cast<int>(std::distance(chooser_items_.begin(), it)));

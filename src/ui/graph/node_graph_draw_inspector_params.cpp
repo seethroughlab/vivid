@@ -232,6 +232,72 @@ void NodeGraphUI::draw_inspector_knob(Renderer2D& tr, const NodeSnapshot& node,
 
 
 // -----------------------------------------------------------------------
+// XY Pad — header toggle button (shared by compact + expanded variants)
+// -----------------------------------------------------------------------
+namespace {
+constexpr float kXYToggleBtnSize = 14.0f;
+constexpr float kXYToggleHeaderH = kXYToggleBtnSize + 2.0f;
+} // namespace
+
+static void draw_xy_pad_toggle_header(Renderer2D& tr, const UIStyle& style,
+                                      float hx, float hy, float hw,
+                                      bool expanded) {
+    tr.draw_text(hx, hy + 1.0f, "XY pad",
+                 style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.7f, 0.75f);
+
+    float btn_size = kXYToggleBtnSize;
+    float btn_x = hx + hw - btn_size;
+    float btn_y = hy;
+
+    float bg_a = expanded ? 0.45f : 0.35f;
+    tr.draw_rect(btn_x, btn_y, btn_size, btn_size,
+                 style.slider_track[0], style.slider_track[1], style.slider_track[2], bg_a);
+    // Frame crosshair
+    tr.draw_rect(btn_x + 2, btn_y + btn_size * 0.5f, btn_size - 4, 1,
+                 style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.55f);
+    tr.draw_rect(btn_x + btn_size * 0.5f, btn_y + 2, 1, btn_size - 4,
+                 style.dim_text[0], style.dim_text[1], style.dim_text[2], 0.55f);
+    // Center indicator dot — bright when expanded, dim when collapsed
+    float dot = 3.0f;
+    float dot_a = expanded ? 1.0f : 0.65f;
+    tr.draw_rect(btn_x + btn_size * 0.5f - dot * 0.5f,
+                 btn_y + btn_size * 0.5f - dot * 0.5f,
+                 dot, dot,
+                 style.accent[0], style.accent[1], style.accent[2], dot_a);
+}
+
+
+// -----------------------------------------------------------------------
+// XY Pad widget — compact (collapsed) variant
+// -----------------------------------------------------------------------
+void NodeGraphUI::draw_inspector_xy_pad_compact(Renderer2D& tr, const NodeSnapshot& node,
+                                                 InspectorLayout& layout,
+                                                 uint32_t pi_x, uint32_t pi_y) {
+    const auto& op = *node.op_info;
+    const auto& pd_x = op.params[pi_x];
+
+    float start_y = layout.y;
+    float px = layout.base_x;
+    float py = layout.y;
+    float panel_w = layout.full_w;
+
+    draw_xy_pad_toggle_header(tr, style_, px, py, panel_w, /*expanded=*/false);
+    float btn_x = px + panel_w - kXYToggleBtnSize;
+    inspector_.xy_toggle_rects.push_back({btn_x, py, kXYToggleBtnSize, kXYToggleBtnSize,
+                                          node.node_id, pd_x.name});
+    py += kXYToggleHeaderH;
+
+    // Draw the two params as standard float sliders — XY_PAD hint falls
+    // through to the default slider path in draw_one_inspector_param.
+    draw_one_inspector_param_simple(tr, node, px, py, pi_x);
+    draw_one_inspector_param_simple(tr, node, px, py, pi_y);
+
+    float total_h = py - start_y;
+    layout.end_param(total_h);
+}
+
+
+// -----------------------------------------------------------------------
 // XY Pad widget
 // -----------------------------------------------------------------------
 void NodeGraphUI::draw_inspector_xy_pad(Renderer2D& tr, const NodeSnapshot& node,
@@ -242,7 +308,17 @@ void NodeGraphUI::draw_inspector_xy_pad(Renderer2D& tr, const NodeSnapshot& node
     const auto& pd_y = op.params[pi_y];
     float val_x = node.param_values[pi_x];
     float val_y = node.param_values[pi_y];
-    float py = layout.y;
+
+    // Collapse-toggle header row
+    float header_y = layout.y;
+    float header_x = layout.base_x;
+    float content_w_header = layout.full_w;
+    draw_xy_pad_toggle_header(tr, style_, header_x, header_y, content_w_header, /*expanded=*/true);
+    float btn_x_header = header_x + content_w_header - kXYToggleBtnSize;
+    inspector_.xy_toggle_rects.push_back({btn_x_header, header_y, kXYToggleBtnSize, kXYToggleBtnSize,
+                                          node.node_id, pd_x.name});
+
+    float py = layout.y + kXYToggleHeaderH;
 
     float pad_size = kXYPadSize;
     float content_w = layout.full_w;
@@ -369,7 +445,221 @@ void NodeGraphUI::draw_inspector_xy_pad(Renderer2D& tr, const NodeSnapshot& node
     inspector_.xy_pad_rects.push_back({pad_x, pad_y, pad_size, pad_size,
                              single_selected_id(), pd_x.name, pd_y.name});
 
-    float total_h = pad_size + kXYPadLabelGap + lh + 8.0f;
+    float total_h = kXYToggleHeaderH + pad_size + kXYPadLabelGap + lh + 8.0f;
+    layout.end_param(total_h);
+}
+
+
+// -----------------------------------------------------------------------
+// XY Pad group — N points rendered as one tabbed pad with path overlay
+// -----------------------------------------------------------------------
+void NodeGraphUI::draw_inspector_xy_pad_group(Renderer2D& tr, const NodeSnapshot& node,
+                                               InspectorLayout& layout,
+                                               uint32_t pi_start, uint32_t param_run_count) {
+    const auto& op = *node.op_info;
+
+    // We consume params in pairs. Truncate any trailing odd param defensively.
+    uint32_t pair_count = param_run_count / 2u;
+    if (pair_count < 2) {
+        // Fall back to single-pad rendering if the opt-in was malformed.
+        draw_inspector_xy_pad(tr, node, layout, pi_start, pi_start + 1);
+        return;
+    }
+
+    const std::string& first_name = op.params[pi_start].name;
+    std::string group_key = node.node_id + ":" + first_name;
+
+    size_t active_tab = 0;
+    auto tab_it = inspector_.xy_group_active_tab.find(group_key);
+    if (tab_it != inspector_.xy_group_active_tab.end())
+        active_tab = std::min(tab_it->second, static_cast<size_t>(pair_count - 1));
+
+    uint32_t pi_ax = pi_start + static_cast<uint32_t>(active_tab) * 2u;
+    uint32_t pi_ay = pi_ax + 1u;
+    const auto& pd_ax = op.params[pi_ax];
+    const auto& pd_ay = op.params[pi_ay];
+    float val_ax = node.param_values[pi_ax];
+    float val_ay = node.param_values[pi_ay];
+
+    float start_y = layout.y;
+    float px = layout.base_x;
+    float panel_w = layout.full_w;
+
+    // --- Tab bar ---
+    float tab_h = 18.0f;
+    float tab_gap = 2.0f;
+    float tab_w = (panel_w - tab_gap * (pair_count - 1)) / static_cast<float>(pair_count);
+    if (tab_w < 28.0f) tab_w = 28.0f;
+    float tab_y = start_y;
+    for (size_t i = 0; i < pair_count; ++i) {
+        float tx = px + i * (tab_w + tab_gap);
+        bool is_active = (i == active_tab);
+        float bg_a = is_active ? 0.85f : 0.45f;
+        tr.draw_rect(tx, tab_y, tab_w, tab_h,
+                     style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], bg_a);
+        if (is_active) {
+            tr.draw_rect(tx, tab_y + tab_h - 2.0f, tab_w, 2.0f,
+                         style_.accent[0], style_.accent[1], style_.accent[2]);
+        }
+
+        // Tab label — derive from common prefix of x/y param names (e.g. "p0_x" → "p0")
+        const std::string& xn = op.params[pi_start + i * 2].name;
+        std::string label = xn;
+        if (label.size() >= 2 && label[label.size() - 2] == '_' &&
+            (label.back() == 'x' || label.back() == 'X')) {
+            label.resize(label.size() - 2);
+        } else {
+            label = "P" + std::to_string(i);
+        }
+        float lw = tr.text_width(label.c_str(), 0.8f);
+        float ly = tab_y + (tab_h - tr.line_height() * 0.8f) * 0.5f;
+        const float* lclr = is_active ? style_.bright_text.data() : style_.dim_text.data();
+        tr.draw_text(tx + (tab_w - lw) * 0.5f, ly, label.c_str(),
+                     lclr[0], lclr[1], lclr[2], is_active ? 1.0f : 0.8f, 0.8f);
+
+        inspector_.xy_tab_rects.push_back({tx, tab_y, tab_w, tab_h,
+                                           node.node_id, first_name, i});
+    }
+
+    float py = tab_y + tab_h + 4.0f;
+
+    // --- Square pad ---
+    float pad_size = kXYPadSize;
+    float pad_x = px + (panel_w - pad_size) * 0.5f;
+    float pad_y = py;
+    tr.draw_rect(pad_x, pad_y, pad_size, pad_size,
+                 style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
+
+    float center_x = pad_x + pad_size * 0.5f;
+    float center_y = pad_y + pad_size * 0.5f;
+    tr.draw_rect(center_x, pad_y, 1, pad_size,
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.15f);
+    tr.draw_rect(pad_x, center_y, pad_size, 1,
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.15f);
+
+    // --- Path overlay: project every pair to pad coords (active pair uses
+    // its own param ranges; other pairs reuse the active pair's range so
+    // all points share one coordinate system) ---
+    float range_ax = pd_ax.max_value - pd_ax.min_value;
+    float range_ay = pd_ay.max_value - pd_ay.min_value;
+
+    auto project = [&](float vx, float vy, float& out_sx, float& out_sy) {
+        float tx = (range_ax > 0) ? (vx - pd_ax.min_value) / range_ax : 0.5f;
+        float ty = (range_ay > 0) ? 1.0f - (vy - pd_ay.min_value) / range_ay : 0.5f;
+        tx = std::max(0.0f, std::min(1.0f, tx));
+        ty = std::max(0.0f, std::min(1.0f, ty));
+        out_sx = pad_x + tx * pad_size;
+        out_sy = pad_y + ty * pad_size;
+    };
+
+    std::vector<std::pair<float,float>> pts;
+    pts.reserve(pair_count);
+    for (size_t i = 0; i < pair_count; ++i) {
+        float vx = node.param_values[pi_start + i * 2];
+        float vy = node.param_values[pi_start + i * 2 + 1];
+        float sx, sy;
+        project(vx, vy, sx, sy);
+        pts.emplace_back(sx, sy);
+    }
+
+    // Dim polyline connecting all points
+    for (size_t i = 1; i < pts.size(); ++i) {
+        float x0 = pts[i - 1].first, y0 = pts[i - 1].second;
+        float x1 = pts[i].first,     y1 = pts[i].second;
+        // Simple line via small rectangles along the segment
+        float dx = x1 - x0, dy = y1 - y0;
+        float len = std::sqrt(dx * dx + dy * dy);
+        if (len < 0.5f) continue;
+        int steps = std::max(2, static_cast<int>(len / 3.0f));
+        for (int s = 0; s <= steps; ++s) {
+            float t = static_cast<float>(s) / steps;
+            float lx = x0 + dx * t;
+            float ly = y0 + dy * t;
+            tr.draw_rect(lx, ly, 1.5f, 1.5f,
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
+        }
+    }
+
+    // Dim dots for inactive points
+    float inactive_r = kXYPadDotSize * 0.35f;
+    for (size_t i = 0; i < pts.size(); ++i) {
+        if (i == active_tab) continue;
+        tr.draw_rect(pts[i].first - inactive_r, pts[i].second - inactive_r,
+                     inactive_r * 2, inactive_r * 2,
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.75f);
+    }
+
+    // Bright crosshair + dot for active point
+    float adot_sx = pts[active_tab].first;
+    float adot_sy = pts[active_tab].second;
+    tr.draw_rect(adot_sx, pad_y, 1, pad_size,
+                 style_.accent[0], style_.accent[1], style_.accent[2], 0.5f);
+    tr.draw_rect(pad_x, adot_sy, pad_size, 1,
+                 style_.accent[0], style_.accent[1], style_.accent[2], 0.5f);
+    float active_r = kXYPadDotSize * 0.5f;
+    tr.draw_rect(adot_sx - active_r, adot_sy - active_r, kXYPadDotSize, kXYPadDotSize,
+                 style_.accent[0], style_.accent[1], style_.accent[2]);
+
+    // --- Labels for active pair (segment-drawn for click-to-edit) ---
+    float label_y = pad_y + pad_size + kXYPadLabelGap;
+    float lh = tr.line_height() * 0.85f;
+
+    bool editing_ax = inspector_.editing_param && inspector_.edit_node_id == single_selected_id()
+                      && inspector_.edit_param_name == pd_ax.name;
+    bool editing_ay = inspector_.editing_param && inspector_.edit_node_id == single_selected_id()
+                      && inspector_.edit_param_name == pd_ay.name;
+
+    std::string val_x_str = format_float(val_ax, 2);
+    std::string val_y_str = format_float(val_ay, 2);
+    std::string name_x_str = std::string(pd_ax.name) + ": ";
+    std::string sep_name_y_str = "  " + std::string(pd_ay.name) + ": ";
+
+    float name_x_w    = tr.text_width(name_x_str.c_str(), 0.85f);
+    float val_x_str_w = tr.text_width(val_x_str.c_str(), 0.85f);
+    float name_y_w    = tr.text_width(sep_name_y_str.c_str(), 0.85f);
+    float val_y_str_w = tr.text_width(val_y_str.c_str(), 0.85f);
+
+    float label_w = name_x_w + val_x_str_w + name_y_w + val_y_str_w;
+    float label_lx = px + (panel_w - label_w) * 0.5f;
+    float cx = label_lx;
+
+    tr.draw_text(cx, label_y, name_x_str.c_str(),
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, 0.85f);
+    cx += name_x_w;
+
+    if (editing_ax) {
+        float edit_w = std::max(val_x_str_w + 8.0f, pad_size * 0.45f);
+        draw_editing_text_field(tr, style_, cx, label_y, edit_w, lh,
+                                inspector_.edit_buffer, text_edit_, cursor_blink_on(), 2.0f, 0.0f);
+        cx += edit_w;
+    } else {
+        tr.draw_text(cx, label_y, val_x_str.c_str(),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, 0.85f);
+        inspector_.value_text_rects.push_back({cx, label_y, val_x_str_w, lh,
+                                     single_selected_id(), pd_ax.name});
+        cx += val_x_str_w;
+    }
+
+    tr.draw_text(cx, label_y, sep_name_y_str.c_str(),
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, 0.85f);
+    cx += name_y_w;
+
+    if (editing_ay) {
+        float edit_w = std::max(val_y_str_w + 8.0f, pad_size * 0.45f);
+        draw_editing_text_field(tr, style_, cx, label_y, edit_w, lh,
+                                inspector_.edit_buffer, text_edit_, cursor_blink_on(), 2.0f, 0.0f);
+    } else {
+        tr.draw_text(cx, label_y, val_y_str.c_str(),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, 0.85f);
+        inspector_.value_text_rects.push_back({cx, label_y, val_y_str_w, lh,
+                                     single_selected_id(), pd_ay.name});
+    }
+
+    // Hit-test rect for active pair drag — reuses the existing single-pad flow
+    inspector_.xy_pad_rects.push_back({pad_x, pad_y, pad_size, pad_size,
+                             single_selected_id(), pd_ax.name, pd_ay.name});
+
+    float total_h = (py - start_y) + pad_size + kXYPadLabelGap + lh + 8.0f;
     layout.end_param(total_h);
 }
 
@@ -1353,8 +1643,18 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
                 layout.begin_param(0, 0);
 
                 switch (widget_run.kind) {
-                case InspectorWidgetKind::kXYPad:
-                    draw_inspector_xy_pad(tr, node, layout, pi, pi + 1);
+                case InspectorWidgetKind::kXYPad: {
+                    std::string key = node.node_id + ":" + op.params[pi].name;
+                    auto it = inspector_.xy_pad_expanded.find(key);
+                    bool expanded = (it != inspector_.xy_pad_expanded.end() && it->second);
+                    if (expanded)
+                        draw_inspector_xy_pad(tr, node, layout, pi, pi + 1);
+                    else
+                        draw_inspector_xy_pad_compact(tr, node, layout, pi, pi + 1);
+                    break;
+                }
+                case InspectorWidgetKind::kXYPadGroup:
+                    draw_inspector_xy_pad_group(tr, node, layout, pi, widget_run.length);
                     break;
                 case InspectorWidgetKind::kColor:
                     draw_inspector_color_swatch(tr, node, layout, pi, pi + 1, pi + 2);

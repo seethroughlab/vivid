@@ -1756,6 +1756,7 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
         auto mcp_dir = resources_dir / "mcp";
         graph_ui.set_mcp_dir(mcp_dir.string());
     }
+    graph_ui.load_operator_layout(resources_dir.string(), vivid::get_config_dir());
     mi::MainAppContext app_ctx{
         graph,
         runtime,

@@ -21,6 +21,8 @@ public:
 
     struct InspectorRect { float x, y, w, h; std::string node_id; std::string param_name; };
     struct XYPadRect { float x, y, w, h; std::string node_id; std::string param_x, param_y; };
+    struct XYToggleRect { float x, y, w, h; std::string node_id; std::string param_x; };
+    struct XYTabRect { float x, y, w, h; std::string node_id; std::string first_param; size_t tab_index; };
     struct ColorSwatchRect {
         float x, y, w, h;
         std::string node_id;
@@ -88,9 +90,14 @@ public:
     std::vector<InspectorRect> slider_rects;
     std::vector<InspectorRect> lock_badge_rects;
     std::vector<XYPadRect> xy_pad_rects;
+    std::vector<XYToggleRect> xy_toggle_rects;
+    std::vector<XYTabRect> xy_tab_rects;
     int active_xy_pad_idx = -1;
     std::string active_xy_node_id;
     std::string active_xy_param_x, active_xy_param_y;
+
+    std::unordered_map<std::string, bool> xy_pad_expanded;
+    std::unordered_map<std::string, size_t> xy_group_active_tab;
 
     InspectorSurface surface;
 

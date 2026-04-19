@@ -220,19 +220,22 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
 
     bool show_tabs = (chooser_mode_ == ChooserMode::Operators);
     float tab_h = show_tabs ? kChooserTabH : 0.0f;
+    bool map_view = show_tabs && chooser_tab_ == ChooserTab::Map;
+    float panel_w = chooser_panel_w();
 
     int visible = std::min(static_cast<int>(chooser_items_.size()), kChooserMaxVisible);
     if (visible == 0) visible = 1; // show at least the header area
     float error_h = chooser_error_.empty() ? 0.0f : 18.0f;
-    float panel_h = kChooserHeaderH + tab_h + visible * kChooserItemH + 4 + error_h;
+    float body_h = map_view ? kChooserMapH : (visible * kChooserItemH);
+    float panel_h = kChooserHeaderH + tab_h + body_h + 4 + error_h;
 
     float px = chooser_x();
     float py = kChooserY;
 
     // Background
-    tr.draw_rect(px, py, kChooserW, panel_h, style_.inspector_bg[0], style_.inspector_bg[1], style_.inspector_bg[2], 0.97f);
+    tr.draw_rect(px, py, panel_w, panel_h, style_.inspector_bg[0], style_.inspector_bg[1], style_.inspector_bg[2], 0.97f);
     // Top accent bar
-    tr.draw_rect(px, py, kChooserW, 2, style_.accent[0], style_.accent[1], style_.accent[2]);
+    tr.draw_rect(px, py, panel_w, 2, style_.accent[0], style_.accent[1], style_.accent[2]);
 
     // Filter text
     float tx = px + 8;
@@ -243,16 +246,19 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
     // Tab bar
     if (show_tabs) {
         float tab_y = py + kChooserHeaderH;
-        float tab_w = kChooserW / 4.0f;
+        constexpr int kTabCount = 6;
+        float tab_w = panel_w / static_cast<float>(kTabCount);
 
         struct TabDef { const char* label; ChooserTab tab; const float* accent; };
         TabDef tabs[] = {
-            {"All",   ChooserTab::All,     style_.accent.data()},
-            {"GPU",   ChooserTab::GPU,     kGpuAccent.data()},
-            {"Audio", ChooserTab::Audio,   kAudioAccent.data()},
-            {"Ctrl",  ChooserTab::Control, kControlAccent.data()},
+            {"All",   ChooserTab::All,        style_.accent.data()},
+            {"GPU",   ChooserTab::GPU,        kGpuAccent.data()},
+            {"Audio", ChooserTab::Audio,      kAudioAccent.data()},
+            {"Ctrl",  ChooserTab::Control,    kControlAccent.data()},
+            {"Inst",  ChooserTab::Instancing, kGpuAccent.data()},
+            {"Map",   ChooserTab::Map,        style_.accent.data()},
         };
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 0; i < kTabCount; ++i) {
             float tbx = px + i * tab_w;
             bool active = (chooser_tab_ == tabs[i].tab);
             // Tab label
@@ -271,14 +277,27 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
         }
     }
 
-    // Items
+    // Body: either the scatter-plot map (Map tab) or the scored item list.
     float iy = py + kChooserHeaderH + tab_h;
+    if (map_view) {
+        draw_chooser_map(tr, px, iy, panel_w, kChooserMapH);
+        if (!chooser_error_.empty()) {
+            float err_y = py + panel_h - error_h + 1.0f;
+            tr.draw_rect(px + 1, err_y - 2.0f, panel_w - 2.0f, error_h,
+                         style_.inspector_bg[0], style_.inspector_bg[1], style_.inspector_bg[2], 0.98f);
+            tr.push_clip_rect(px + 8.0f, err_y, panel_w - 16.0f, error_h);
+            tr.draw_text(px + 8.0f, err_y, chooser_error_.c_str(), 0.95f, 0.36f, 0.36f);
+            tr.pop_clip_rect();
+        }
+        return;
+    }
+
     float ch_list_area_h = visible * kChooserItemH;
     int ch_first = std::max(0, static_cast<int>(std::floor(chooser_scroll_ / kChooserItemH)));
     float ch_offset = chooser_scroll_ - ch_first * kChooserItemH;
     int ch_draw_count = std::min(static_cast<int>(chooser_items_.size()) - ch_first, kChooserMaxVisible + 1);
 
-    tr.push_clip_rect(px, iy, kChooserW, ch_list_area_h);
+    tr.push_clip_rect(px, iy, panel_w, ch_list_area_h);
     for (int vi = 0; vi < ch_draw_count; ++vi) {
         int idx = ch_first + vi;
         if (idx >= static_cast<int>(chooser_items_.size())) break;
@@ -287,7 +306,7 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
 
         // Highlight selected
         if (idx == chooser_sel_) {
-            tr.draw_rect(px + 2, item_y, kChooserW - 4, kChooserItemH,
+            tr.draw_rect(px + 2, item_y, panel_w - 4, kChooserItemH,
                          style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2], 0.9f);
         }
 
@@ -339,9 +358,9 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
 
     if (!chooser_error_.empty()) {
         float err_y = py + panel_h - error_h + 1.0f;
-        tr.draw_rect(px + 1, err_y - 2.0f, kChooserW - 2.0f, error_h,
+        tr.draw_rect(px + 1, err_y - 2.0f, panel_w - 2.0f, error_h,
                      style_.inspector_bg[0], style_.inspector_bg[1], style_.inspector_bg[2], 0.98f);
-        tr.push_clip_rect(px + 8.0f, err_y, kChooserW - 16.0f, error_h);
+        tr.push_clip_rect(px + 8.0f, err_y, panel_w - 16.0f, error_h);
         tr.draw_text(px + 8.0f, err_y, chooser_error_.c_str(), 0.95f, 0.36f, 0.36f);
         tr.pop_clip_rect();
     }
@@ -349,7 +368,7 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
     // Scrollbar when items overflow
     int total_items = static_cast<int>(chooser_items_.size());
     if (total_items > kChooserMaxVisible) {
-        float track_x = px + kChooserW - kInspScrollbarW - 2.0f;
+        float track_x = px + panel_w - kInspScrollbarW - 2.0f;
         float track_y = iy;
         float track_h = visible * kChooserItemH;
 
@@ -1146,5 +1165,284 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
     }
 }
 
+
+namespace {
+
+// Word-wrap `text` into lines no wider than `max_w` pixels (tr's font).
+// Breaks at spaces; an overlong single word gets its own clipped line.
+std::vector<std::string> wrap_text(Renderer2D& tr, const std::string& text,
+                                   float max_w) {
+    std::vector<std::string> lines;
+    std::string line;
+    size_t i = 0;
+    while (i < text.size()) {
+        size_t nl = text.find('\n', i);
+        std::string paragraph = text.substr(
+            i, nl == std::string::npos ? text.size() - i : nl - i);
+        i = nl == std::string::npos ? text.size() : nl + 1;
+
+        std::string cur;
+        size_t j = 0;
+        while (j < paragraph.size()) {
+            size_t sp = paragraph.find(' ', j);
+            std::string word = paragraph.substr(
+                j, sp == std::string::npos ? paragraph.size() - j : sp - j);
+            j = sp == std::string::npos ? paragraph.size() : sp + 1;
+
+            std::string candidate = cur.empty() ? word : cur + " " + word;
+            if (tr.text_width(candidate.c_str()) <= max_w) {
+                cur = std::move(candidate);
+            } else {
+                if (!cur.empty()) lines.push_back(std::move(cur));
+                cur = word;
+            }
+        }
+        if (!cur.empty()) lines.push_back(std::move(cur));
+        if (nl != std::string::npos && cur.empty())
+            lines.push_back(std::string());
+    }
+    return lines;
+}
+
+}  // namespace
+
+// Semantic operator map: renders a scatter plot of all operators with
+// precomputed 2D positions, plus crosshair axes and a right-hand preview
+// column showing rich details for the hovered operator.
+//
+// Layout inside the tab body:
+//   ┌──────────────────────────┬──────────────┐
+//   │                          │  preview     │
+//   │    scatter + axes        │  panel       │
+//   │                          │              │
+//   └──────────────────────────┴──────────────┘
+void NodeGraphUI::draw_chooser_map(Renderer2D& tr, float px, float py,
+                                   float pw, float ph) {
+    constexpr float kInset = 8.0f;
+    constexpr float kGap = 8.0f;
+    constexpr float kAxisLabelH = 14.0f;
+
+    float scatter_x = px + kInset;
+    float scatter_y = py + kInset;
+    float scatter_w = pw - 2 * kInset - kGap - kChooserMapPreviewW;
+    float scatter_h = ph - 2 * kInset;
+
+    float preview_x = scatter_x + scatter_w + kGap;
+    float preview_y = scatter_y;
+    float preview_w = kChooserMapPreviewW;
+    float preview_h = scatter_h;
+
+    // Scatter background (slightly recessed from the panel).
+    tr.draw_rect(scatter_x, scatter_y, scatter_w, scatter_h,
+                 style_.inspector_bg[0] * 0.78f,
+                 style_.inspector_bg[1] * 0.78f,
+                 style_.inspector_bg[2] * 0.78f, 1.0f);
+
+    chooser_map_dots_.clear();
+
+    if (chooser_map_layout_.empty()) {
+        tr.draw_text(scatter_x + 8, scatter_y + 8,
+                     T("map_unavailable", "semantic map unavailable"),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        return;
+    }
+
+    // ---- Axes ------------------------------------------------------------
+    // The generator rotates UMAP output so X ≈ (audio → control → gpu) and
+    // (after a sign flip) Y ≈ (source-like → sink-like) based on port
+    // counts. Draw faint crosshairs + end labels to make that readable.
+    const float axis_alpha = 0.18f;
+    tr.draw_rect(scatter_x, scatter_y + scatter_h * 0.5f - 0.5f, scatter_w, 1.0f,
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2],
+                 axis_alpha);
+    tr.draw_rect(scatter_x + scatter_w * 0.5f - 0.5f, scatter_y, 1.0f, scatter_h,
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2],
+                 axis_alpha);
+
+    auto draw_axis_label = [&](const char* text, float cx, float cy,
+                               const float* col) {
+        float tw = tr.text_width(text);
+        tr.draw_text(cx - tw * 0.5f, cy, text, col[0], col[1], col[2]);
+    };
+
+    // X axis: audio on the left, gpu on the right; control sits in the middle.
+    draw_axis_label("audio", scatter_x + 18,
+                    scatter_y + scatter_h - kAxisLabelH - 2,
+                    kAudioAccent.data());
+    draw_axis_label("ctrl", scatter_x + scatter_w * 0.5f,
+                    scatter_y + scatter_h - kAxisLabelH - 2,
+                    kControlAccent.data());
+    draw_axis_label("gpu", scatter_x + scatter_w - 18,
+                    scatter_y + scatter_h - kAxisLabelH - 2,
+                    kGpuAccent.data());
+
+    // Y axis: source-like (few inputs) toward the top; sink/analyzer
+    // (many inputs) toward the bottom.
+    draw_axis_label("source", scatter_x + 24, scatter_y + 2,
+                    style_.dim_text.data());
+    draw_axis_label("sink", scatter_x + 24, scatter_y + scatter_h - kAxisLabelH - 2 - 12,
+                    style_.dim_text.data());
+
+    // ---- Dots ------------------------------------------------------------
+    std::string lower_filter = chooser_filter_;
+    for (auto& c : lower_filter)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+    tr.push_clip_rect(scatter_x, scatter_y, scatter_w, scatter_h);
+
+    const auto& active_types = snap_.operator_types;
+    std::string hovered_name;
+    float hover_best_d2 = 1e9f;
+
+    for (const auto& type_name : active_types) {
+        const auto* entry = chooser_map_layout_.find(type_name);
+        if (!entry) continue;
+
+        float dx = scatter_x + (entry->x * chooser_map_zoom_ + chooser_map_pan_x_) * scatter_w;
+        float dy = scatter_y + (entry->y * chooser_map_zoom_ + chooser_map_pan_y_) * scatter_h;
+
+        bool dim = false;
+        if (!lower_filter.empty()) {
+            std::string lname = type_name;
+            for (auto& c : lname)
+                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            dim = lname.find(lower_filter) == std::string::npos;
+        }
+
+        const float* col = kControlAccent.data();
+        if (entry->kind == "gpu") col = kGpuAccent.data();
+        else if (entry->kind == "audio") col = kAudioAccent.data();
+
+        float alpha = dim ? 0.18f : 0.95f;
+        float r = dim ? 2.5f : 4.0f;
+        tr.draw_rect(dx - r, dy - r, r * 2, r * 2, col[0], col[1], col[2], alpha);
+
+        chooser_map_dots_.push_back({type_name, dx, dy});
+
+        float mdx = mouse_.x - dx;
+        float mdy = mouse_.y - dy;
+        float d2 = mdx * mdx + mdy * mdy;
+        if (d2 < hover_best_d2 && d2 < 144.0f) {  // 12px hit radius
+            hover_best_d2 = d2;
+            hovered_name = type_name;
+        }
+    }
+
+    // Emphasize the hovered dot with a ring.
+    if (!hovered_name.empty()) {
+        for (const auto& dot : chooser_map_dots_) {
+            if (dot.name != hovered_name) continue;
+            float rr = 8.0f;
+            tr.draw_rect(dot.sx - rr, dot.sy - rr, rr * 2, 1.0f,
+                         style_.bright_text[0], style_.bright_text[1],
+                         style_.bright_text[2], 0.85f);
+            tr.draw_rect(dot.sx - rr, dot.sy + rr - 1, rr * 2, 1.0f,
+                         style_.bright_text[0], style_.bright_text[1],
+                         style_.bright_text[2], 0.85f);
+            tr.draw_rect(dot.sx - rr, dot.sy - rr, 1.0f, rr * 2,
+                         style_.bright_text[0], style_.bright_text[1],
+                         style_.bright_text[2], 0.85f);
+            tr.draw_rect(dot.sx + rr - 1, dot.sy - rr, 1.0f, rr * 2,
+                         style_.bright_text[0], style_.bright_text[1],
+                         style_.bright_text[2], 0.85f);
+            break;
+        }
+    }
+
+    tr.pop_clip_rect();
+    chooser_map_hover_name_ = hovered_name;
+
+    // ---- Preview panel ---------------------------------------------------
+    tr.draw_rect(preview_x, preview_y, preview_w, preview_h,
+                 style_.inspector_bg[0] * 0.9f,
+                 style_.inspector_bg[1] * 0.9f,
+                 style_.inspector_bg[2] * 0.9f, 1.0f);
+
+    tr.push_clip_rect(preview_x, preview_y, preview_w, preview_h);
+
+    const OperatorLayoutEntry* entry = hovered_name.empty()
+        ? nullptr : chooser_map_layout_.find(hovered_name);
+
+    float inner_x = preview_x + 10;
+    float cursor_y = preview_y + 10;
+    float text_w = preview_w - 20;
+
+    if (!entry) {
+        tr.draw_text(inner_x, cursor_y,
+                     T("map_hover_hint", "Hover a dot to preview"),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        tr.pop_clip_rect();
+        return;
+    }
+
+    // Name (large-ish — just use normal text; this font is small enough)
+    tr.draw_text(inner_x, cursor_y, hovered_name.c_str(),
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    cursor_y += 16;
+
+    // Domain tag (colored chip)
+    const float* kind_col = kControlAccent.data();
+    const char* kind_label = "Control";
+    if (entry->kind == "gpu") {
+        kind_col = kGpuAccent.data();
+        kind_label = "GPU";
+    } else if (entry->kind == "audio") {
+        kind_col = kAudioAccent.data();
+        kind_label = "Audio";
+    }
+    tr.draw_text(inner_x, cursor_y, kind_label, kind_col[0], kind_col[1], kind_col[2]);
+    if (!entry->lane_behavior.empty()) {
+        std::string lb = " · " + entry->lane_behavior;
+        float kw = tr.text_width(kind_label);
+        tr.draw_text(inner_x + kw, cursor_y, lb.c_str(),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    }
+    cursor_y += 18;
+
+    // Port counts
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "%d in / %d out",
+                  entry->num_inputs, entry->num_outputs);
+    tr.draw_text(inner_x, cursor_y, buf,
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    cursor_y += 16;
+
+    // Brief, wrapped
+    if (!entry->brief.empty()) {
+        cursor_y += 4;
+        for (const auto& line : wrap_text(tr, entry->brief, text_w)) {
+            if (cursor_y + 12 > preview_y + preview_h) break;
+            tr.draw_text(inner_x, cursor_y, line.c_str(),
+                         style_.bright_text[0] * 0.9f,
+                         style_.bright_text[1] * 0.9f,
+                         style_.bright_text[2] * 0.9f);
+            cursor_y += 14;
+        }
+    }
+
+    // Related (@see) operators
+    if (!entry->related.empty() && cursor_y + 30 < preview_y + preview_h) {
+        cursor_y += 6;
+        tr.draw_text(inner_x, cursor_y,
+                     T("map_related", "Related:"),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        cursor_y += 14;
+        std::string joined;
+        for (size_t i = 0; i < entry->related.size(); ++i) {
+            if (i > 0) joined += ", ";
+            joined += entry->related[i];
+        }
+        for (const auto& line : wrap_text(tr, joined, text_w)) {
+            if (cursor_y + 12 > preview_y + preview_h) break;
+            tr.draw_text(inner_x, cursor_y, line.c_str(),
+                         style_.bright_text[0] * 0.8f,
+                         style_.bright_text[1] * 0.8f,
+                         style_.bright_text[2] * 0.8f);
+            cursor_y += 14;
+        }
+    }
+
+    tr.pop_clip_rect();
+}
 
 } // namespace vivid::ui

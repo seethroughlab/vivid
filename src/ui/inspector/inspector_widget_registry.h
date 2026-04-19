@@ -11,6 +11,7 @@ namespace vivid::ui {
 enum class InspectorWidgetKind : uint8_t {
     kNone,
     kXYPad,
+    kXYPadGroup,
     kColor,
     kADSR,
     kLFO,
@@ -36,6 +37,7 @@ struct InspectorWidgetRegistryEntry {
 inline const std::vector<InspectorWidgetRegistryEntry>& inspector_widget_registry_entries() {
     static const std::vector<InspectorWidgetRegistryEntry> entries = {
         {"seethroughlab.vivid.xy_pad", InspectorWidgetKind::kXYPad, VIVID_DISPLAY_XY_PAD, 2},
+        {"seethroughlab.vivid.xy_pad_group", InspectorWidgetKind::kXYPadGroup, VIVID_DISPLAY_XY_PAD, 4, false, true},
         {"seethroughlab.vivid.color", InspectorWidgetKind::kColor, VIVID_DISPLAY_COLOR, 3},
         {"seethroughlab.vivid.adsr", InspectorWidgetKind::kADSR, VIVID_DISPLAY_ADSR, 4},
         {"seethroughlab.vivid.lfo", InspectorWidgetKind::kLFO, VIVID_DISPLAY_LFO, 1, true},

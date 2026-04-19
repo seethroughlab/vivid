@@ -113,6 +113,8 @@ static ParamConnectionInfo find_param_connection(const GraphSnapshot& snap,
 void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     inspector_.slider_rects.clear();
     inspector_.xy_pad_rects.clear();
+    inspector_.xy_toggle_rects.clear();
+    inspector_.xy_tab_rects.clear();
     inspector_.surface.begin_frame();
     inspector_.color_swatch_rects.clear();
     inspector_.bool_rects.clear();

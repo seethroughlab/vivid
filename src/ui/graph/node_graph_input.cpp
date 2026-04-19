@@ -117,11 +117,20 @@ void NodeGraphUI::on_scroll(float x_offset, float y_offset, int mods) {
     if (chooser_open_) {
         float px = chooser_x();
         float panel_top = kChooserY;
+        bool map_view = chooser_mode_ == ChooserMode::Operators
+                        && chooser_tab_ == ChooserTab::Map;
+        float panel_w = chooser_panel_w();
         int visible = std::min(static_cast<int>(chooser_items_.size()), kChooserMaxVisible);
         float tab_h = (chooser_mode_ == ChooserMode::Operators) ? kChooserTabH : 0.0f;
-        float panel_h = kChooserHeaderH + tab_h + visible * kChooserItemH + 4;
-        if (mouse_.x >= px && mouse_.x <= px + kChooserW &&
+        float body_h = map_view ? kChooserMapH : (visible * kChooserItemH);
+        float panel_h = kChooserHeaderH + tab_h + body_h + 4;
+        if (mouse_.x >= px && mouse_.x <= px + panel_w &&
             mouse_.y >= panel_top && mouse_.y <= panel_top + panel_h) {
+            if (map_view) {
+                // Map view has no scrolling yet; swallow scroll events to
+                // avoid unintended chooser-list scroll state changes.
+                return;
+            }
             chooser_scroll_ -= y_offset * kChooserItemH;
             float max_scroll = std::max(0.0f, (static_cast<int>(chooser_items_.size()) - kChooserMaxVisible) * kChooserItemH);
             chooser_scroll_ = std::max(0.0f, std::min(chooser_scroll_, max_scroll));
@@ -998,7 +1007,7 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         case GLFW_KEY_LEFT:
             if (chooser_mode_ == ChooserMode::Operators) {
                 int t = static_cast<int>(chooser_tab_);
-                chooser_tab_ = static_cast<ChooserTab>(t > 0 ? t - 1 : 3);
+                chooser_tab_ = static_cast<ChooserTab>(t > 0 ? t - 1 : 5);
                 rebuild_chooser_items();
             }
             break;
@@ -1006,7 +1015,7 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         case GLFW_KEY_RIGHT:
             if (chooser_mode_ == ChooserMode::Operators) {
                 int t = static_cast<int>(chooser_tab_);
-                chooser_tab_ = static_cast<ChooserTab>(t < 3 ? t + 1 : 0);
+                chooser_tab_ = static_cast<ChooserTab>(t < 5 ? t + 1 : 0);
                 rebuild_chooser_items();
             }
             break;

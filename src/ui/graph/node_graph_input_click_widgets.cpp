@@ -24,6 +24,7 @@ bool NodeGraphUI::handle_chooser_click() {
     if (!chooser_open_) return false;
 
     float px = chooser_x();
+    float panel_w = chooser_panel_w();
     int visible = std::min(static_cast<int>(chooser_items_.size()), kChooserMaxVisible);
     if (visible == 0) visible = 1;
     float items_y = chooser_items_y();
@@ -31,13 +32,15 @@ bool NodeGraphUI::handle_chooser_click() {
     // Tab bar click
     if (chooser_mode_ == ChooserMode::Operators) {
         float tab_y = kChooserY + kChooserHeaderH;
-        if (mouse_.x >= px && mouse_.x <= px + kChooserW &&
+        if (mouse_.x >= px && mouse_.x <= px + panel_w &&
             mouse_.y >= tab_y && mouse_.y < tab_y + kChooserTabH) {
             float rel_x = mouse_.x - px;
-            float tab_w = kChooserW / 4.0f;
-            int tab_idx = std::min(3, static_cast<int>(rel_x / tab_w));
+            constexpr int kTabCount = 6;
+            float tab_w = panel_w / static_cast<float>(kTabCount);
+            int tab_idx = std::min(kTabCount - 1, static_cast<int>(rel_x / tab_w));
             static constexpr ChooserTab tab_order[] = {
-                ChooserTab::All, ChooserTab::GPU, ChooserTab::Audio, ChooserTab::Control
+                ChooserTab::All, ChooserTab::GPU, ChooserTab::Audio,
+                ChooserTab::Control, ChooserTab::Instancing, ChooserTab::Map
             };
             chooser_tab_ = tab_order[tab_idx];
             rebuild_chooser_items();
@@ -47,8 +50,37 @@ bool NodeGraphUI::handle_chooser_click() {
         }
     }
 
+    // Map tab: hit-test precomputed scatter-plot dots. Uses the cache the
+    // draw pass populated this frame so positions stay in sync.
+    if (chooser_mode_ == ChooserMode::Operators && chooser_tab_ == ChooserTab::Map) {
+        std::string hit;
+        float best_d2 = 1e9f;
+        for (const auto& dot : chooser_map_dots_) {
+            float dx = mouse_.x - dot.sx;
+            float dy = mouse_.y - dot.sy;
+            float d2 = dx * dx + dy * dy;
+            if (d2 < best_d2 && d2 < 100.0f) {  // 10px radius
+                best_d2 = d2;
+                hit = dot.name;
+            }
+        }
+        if (!hit.empty()) {
+            confirm_chooser_selection(hit);
+            mouse_.left_clicked = false;
+            mouse_.left_released = false;
+            return true;
+        }
+        // Clicked inside the panel but not on a dot: keep the chooser open.
+        if (mouse_.x >= px && mouse_.x <= px + panel_w &&
+            mouse_.y >= items_y && mouse_.y <= items_y + kChooserMapH) {
+            mouse_.left_clicked = false;
+            mouse_.left_released = false;
+            return true;
+        }
+    }
+
     // Item list click
-    if (mouse_.x >= px && mouse_.x <= px + kChooserW &&
+    if (mouse_.x >= px && mouse_.x <= px + panel_w &&
         mouse_.y >= items_y && mouse_.y <= items_y + visible * kChooserItemH &&
         !chooser_items_.empty()) {
         int idx = static_cast<int>(std::floor((mouse_.y - items_y + chooser_scroll_) / kChooserItemH));
@@ -688,6 +720,29 @@ bool NodeGraphUI::handle_inspector_click() {
         inspector_.dropdown_is_state_preset = false;
         inspector_.dropdown_open = !inspector_.dropdown_labels.empty();
         return true;
+    }
+
+    // Check XY pad expand/collapse toggle (compact ↔ expanded)
+    {
+        int ti = hit_test_rect(inspector_.xy_toggle_rects, mouse_.x, mouse_.y);
+        if (ti >= 0) {
+            const auto& rect = inspector_.xy_toggle_rects[ti];
+            std::string key = rect.node_id + ":" + rect.param_x;
+            bool& expanded = inspector_.xy_pad_expanded[key];
+            expanded = !expanded;
+            return true;
+        }
+    }
+
+    // Check XY pad group tab click
+    {
+        int ti = hit_test_rect(inspector_.xy_tab_rects, mouse_.x, mouse_.y);
+        if (ti >= 0) {
+            const auto& rect = inspector_.xy_tab_rects[ti];
+            std::string key = rect.node_id + ":" + rect.first_param;
+            inspector_.xy_group_active_tab[key] = rect.tab_index;
+            return true;
+        }
     }
 
     // Check XY pad

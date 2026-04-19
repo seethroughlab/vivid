@@ -77,6 +77,10 @@ void NodeGraphUI::update_context_menu() {
         // Solo + Reset All Params items for node context menus
         bool show_solo = !context_node_id_.empty() && !context_bg_menu_ && !is_sticky_ctx;
         if (show_solo) item_count += 2;
+        // "Make many…" appears on drawable-pipeline emitter nodes.
+        bool show_make_many = !context_node_id_.empty() && !context_bg_menu_ && !is_sticky_ctx
+                              && is_drawable_emitter_type(context_node_type_);
+        if (show_make_many) item_count += 1;
 
         float menu_h = kCtxMenuPadTop + item_count * kCtxMenuItemH + 2.0f;
         if (mouse_.x >= context_menu_x_ && mouse_.x <= context_menu_x_ + kCtxMenuW &&
@@ -122,10 +126,12 @@ void NodeGraphUI::update_context_menu() {
                 }
             } else if (!context_node_id_.empty()) {
                 // Build the item index map to match draw order
+                const bool show_make_many_click = is_drawable_emitter_type(context_node_type_);
                 int delete_idx = 0;
                 int clone_idx = context_node_has_shader_ ? 1 : -1;
                 int solo_idx = context_node_has_shader_ ? 2 : 1;
                 int reset_idx = solo_idx + 1;
+                int make_many_idx = show_make_many_click ? (reset_idx + 1) : -1;
 
                 if (clicked_item == delete_idx) {
                     // "Delete Node(s)"
@@ -162,6 +168,9 @@ void NodeGraphUI::update_context_menu() {
                             }
                         }
                     }
+                } else if (clicked_item == make_many_idx) {
+                    // "Make many…" — insert Instancer2D + InstanceGrid2D downstream.
+                    make_many_from_node(context_node_id_);
                 }
             } else if (context_wire_idx_ >= 0) {
                 const auto& conns = snap_.connections;
