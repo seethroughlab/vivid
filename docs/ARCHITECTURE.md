@@ -231,6 +231,55 @@ Compatibility is enforced by `tests/test_audio_dsp_api.cpp`.
 
 **Canonical example:** `operators/control/modulated_gain/modulated_gain.cpp` — LFO → Smooth → gain modulation.
 
+## 5.7.3 2D Drawable Pipeline
+
+**Decision: A split drawable-pipeline sits alongside the legacy texture-chain for 2D GPU work.** Instead of every 2D operator rendering to its own texture with a fullscreen fragment pass, the drawable pipeline moves a lightweight `VividDrawable2D` record between operators and terminates at `Render2D`, which rasterises all accumulated drawables in one pass. This unlocks TD-grade instancing (10K+ shapes in a single draw call), cross-operator batching, and compute-shader-driven content — things the texture-chain model structurally can't do.
+
+**`VividDrawable2D` is a tagged-union record** (312 bytes, ABI-padded) transported via `VIVID_PORT_TRANSPORT_CUSTOM_REF`. Its `type` field selects one of SHAPE (SDF primitive), SPRITE (textured quad), TEXT (glyph run), MESH (future), or CUSTOM. A drawable carries its transform, color, blend mode, optional `z_layer`, and either a single-instance fallback or a pointer to an `instance_buffer` holding an `InstanceData2D[N]` array. An `InstanceArray2D` is a separate custom-ref bundle (`{data, count}`) produced by generators and consumed by `Instancer2D`.
+
+**The pipeline shape is Emitter → Modifier → Instancer → Render.** Types of operator:
+
+| Role | Operators | Produces / Consumes |
+|------|-----------|---------------------|
+| Emitter (source) | `ShapeEmitter`, `SpriteEmitter`, `TextLabel`, `Particles2D`, `Flocking2D` | Emit a `VividDrawable2D`. `TextLabel` carries a persistent glyph atlas + per-glyph buffer; `Particles2D`/`Flocking2D` own a compute-shader instance buffer. |
+| Layout generator | `InstanceGrid2D`, `InstancesFromLanes2D` | Emit an `InstanceArray2D` (grid/circle/line positions, or packed from lane arrays). |
+| Modifier | `InstanceNoise2D`, `Transform2D` | Accept a bundle (or drawable), add jitter or compose a TRS transform, emit the modified bundle/drawable. |
+| Combiner | `DrawableMerge` | Merge multiple drawables into one bundle for ordered rendering. |
+| Instancer | `Instancer2D` | Attach an `InstanceArray2D` to a drawable template — N instances of one shape in one draw call. |
+| Terminal | `Render2D` | Rasterises drawables into a texture. Output is a standard `gpu_texture` port. |
+
+**Canonical recipes:**
+
+```
+# One shape on screen.
+ShapeEmitter → Render2D → video_out
+
+# N tiled shapes (CPU-driven positions).
+InstanceGrid2D → Instancer2D ← ShapeEmitter
+                       ↓
+                     Render2D → video_out
+
+# Tiled + time-varying jitter.
+InstanceGrid2D → InstanceNoise2D → Instancer2D ← ShapeEmitter → Render2D
+
+# Lane-driven placement (per-attribute control sources).
+SpreadNoise × N → InstancesFromLanes2D → Instancer2D ← ShapeEmitter → Render2D
+
+# Compute-shader particles.
+Particles2D → Render2D → video_out
+
+# Legacy SDF shape-field (self-contained, pre-E pipeline).
+ShapeField → Render2D → video_out
+```
+
+**Mixing with the texture chain is expected.** `Render2D` outputs a regular `gpu_texture`, so any post-processing operator (`Bloom`, `Feedback`, `TimeMachine`, `LutApply`) continues the chain from there. Operators whose state *is* a texture (Fluid, CellularAutomata) stay texture-chain native — the drawable pipeline doesn't try to absorb them.
+
+**Ordering semantics:** drawables render in traversal order by default; assign a non-NaN `z_layer` to override via stable sort. Depth test is OFF (alpha-blended 2D); `z_layer` is a sort key, not a depth value. Per-drawable `DrawIndexed` keeps the draw loop tight; `Render2D` sorts by pipeline + bindgroup to minimise state switches rather than merging into a single mega-shader.
+
+**Worked demos live in `graphs/gpu/*_demo.json`**: `shape_emitter_intro`, `instancer_2d_grid_demo`, `instancer_2d_noise_demo`, `instances_from_lanes_2d_demo`, `particles_2d_demo`, `flocking_2d_demo`.
+
+Full design history lives under `docs/plans/2d-pipeline-redesign.md` and its E.1–E.6 detail files.
+
 ## 5.8 Hot-Reload Behavior
 
 **Decision: Parameters survive, internal state resets.** Since parameters live outside the operator in the graph's Control-layer parameter store, they are untouched by a reload. The operator's private internal state reinitializes fresh. This avoids serialize/deserialize complexity and matches creative workflows where the user is iterating on behavior.
