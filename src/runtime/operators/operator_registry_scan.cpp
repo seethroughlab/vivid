@@ -90,6 +90,7 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
 
     entry.params.resize(param_count);
     entry.param_names.resize(param_count);
+    entry.param_groups.resize(param_count);
     entry.default_strings.resize(param_count);
     entry.semantic_tags.resize(param_count);
     entry.semantic_shapes.resize(param_count);
@@ -113,7 +114,12 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
         dp.min_value = sp.min_value;
         dp.max_value = sp.max_value;
         dp.choice_count = sp.choice_count;
-        dp.group = sp.group;
+        if (sp.group) {
+            entry.param_groups[i] = sp.group;
+            dp.group = entry.param_groups[i].c_str();
+        } else {
+            dp.group = nullptr;
+        }
         dp.display_hint = sp.display_hint;
         dp.layout_columns = sp.layout_columns;
         dp.layout_column_index = sp.layout_column_index;
@@ -422,13 +428,22 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
         deferred_probe_handles_.push_back({path, handle});
         if (!de_opt) return;
 
-        auto [it, inserted] = deferred_.emplace(type_name, std::move(*de_opt));
-        if (!inserted) {
-            std::fprintf(stderr,
-                "[vivid] warning: deferred operator type '%s' already registered; "
-                "ignoring %s. Check for duplicate kName across operators.\n",
-                type_name.c_str(), name);
-            return;
+        // Upsert: if an existing entry was probed from the same dylib path, replace
+        // it so its string pointers track the freshly-loaded dylib memory. If the
+        // entry came from a different dylib, keep the first registration (real
+        // kName conflict) and warn.
+        auto it = deferred_.find(type_name);
+        if (it != deferred_.end()) {
+            if (it->second.dylib_path != path) {
+                std::fprintf(stderr,
+                    "[vivid] warning: deferred operator type '%s' already registered; "
+                    "ignoring %s. Check for duplicate kName across operators.\n",
+                    type_name.c_str(), name);
+                return;
+            }
+            it->second = std::move(*de_opt);
+        } else {
+            it = deferred_.emplace(type_name, std::move(*de_opt)).first;
         }
         it->second.desc.name = it->first.c_str();
 

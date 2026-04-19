@@ -23,6 +23,7 @@ struct DeferredEntry {
     std::vector<VividParamDescriptor> params;       // owned param descriptors
     std::vector<VividPortDescriptor> ports;         // owned port descriptors
     std::vector<std::string> param_names;           // stable strings for param name pointers
+    std::vector<std::string> param_groups;          // stable strings for param group pointers
     std::vector<std::string> port_names;            // stable strings for port name pointers
     std::vector<std::string> port_type_names;       // stable storage for VividPortDescriptor::type_name
     std::vector<std::string> port_stable_type_ids;  // stable storage for VividPortDescriptor::stable_type_id
