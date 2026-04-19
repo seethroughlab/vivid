@@ -166,13 +166,17 @@ int main(int argc, char* argv[]) {
             check(has_testop, "Case B: TestOp registered from compiled dylib");
 
             if (has_testop) {
-                // Create core_root with TestOp source at the expected operator location
+                // Create core_root with TestOp source at the expected operator location.
+                // Directory/filename stem must match the registry's target name
+                // (derived from the loaded dylib: test_op_v1.dylib → "test_op_v1"),
+                // since clone_cpp_operator resolves source via
+                //   operators_dir_/<kind>/<stem>/<stem>.cpp
                 fs::path core_root = fs::path(build_dir) / ".test_team_wf_core";
                 fs::remove_all(core_root);
-                fs::create_directories(core_root / "operators" / "control" / "testop");
+                fs::create_directories(core_root / "operators" / "control" / "test_op_v1");
                 {
                     std::ofstream ofs(
-                        core_root / "operators" / "control" / "testop" / "testop.cpp");
+                        core_root / "operators" / "control" / "test_op_v1" / "test_op_v1.cpp");
                     ofs << "#include \"operator_api/operator.h\"\n"
                            "struct TestOp : vivid::OperatorBase, vivid::FrameProcessable {\n"
                            "  static constexpr const char* kName = \"TestOp\";\n"
@@ -252,7 +256,9 @@ int main(int argc, char* argv[]) {
                 sink.set_hot_reloader(&hr);
 
                 // Clone TestOp into project package
-                sink.clone_and_edit("TestOp", "package:team-proj");
+                // Empty custom_name → auto-named TestOp_copy (testop_copy.cpp).
+                // Destination routing is configured via sink_settings above.
+                sink.clone_and_edit("TestOp", "");
 
                 // Assert: cloned .cpp exists in proj package src/
                 check(fs::exists(proj_src / "src" / "testop_copy.cpp"),

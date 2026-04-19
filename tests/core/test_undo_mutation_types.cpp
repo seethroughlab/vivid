@@ -283,9 +283,13 @@ int main(int argc, char* argv[]) {
 
         fs::path core_ops = fs::path(build_dir) / ".test_clone_core_ops";
         fs::remove_all(core_ops);
-        fs::create_directories(core_ops / "control" / "testop");
+        // Directory/filename stem must match the registry's target name
+        // (derived from the loaded dylib: test_op_v1.dylib → "test_op_v1"),
+        // since clone_cpp_operator resolves source via
+        //   operators_dir_/<kind>/<stem>/<stem>.cpp
+        fs::create_directories(core_ops / "control" / "test_op_v1");
         {
-            std::ofstream ofs(core_ops / "control" / "testop" / "testop.cpp");
+            std::ofstream ofs(core_ops / "control" / "test_op_v1" / "test_op_v1.cpp");
             ofs << "#include \"operator_api/operator.h\"\n"
                    "struct TestOp : vivid::OperatorBase, vivid::FrameProcessable {\n"
                    "  static constexpr const char* kName = \"TestOp\";\n"
@@ -336,7 +340,10 @@ int main(int argc, char* argv[]) {
         OperatorInfoCache op_cache;
         sink.set_op_cache(&op_cache);
 
-        sink.clone_and_edit("TestOp", "package:vivid-clone-e2e");
+        // Pass empty custom_name so the new op is auto-named TestOp_copy.
+        // Destination routing is already set via operator_clone_destination_mode
+        // in sink_settings above.
+        sink.clone_and_edit("TestOp", "");
 
         fs::path cloned_cpp = pkg_src / "src" / "testop_copy.cpp";
         check(fs::exists(cloned_cpp), "clone wrote source into linked package src/");
