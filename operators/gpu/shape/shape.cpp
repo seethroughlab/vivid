@@ -20,6 +20,8 @@ struct Uniforms {
     color_r: f32,
     color_g: f32,
     color_b: f32,
+    position_x: f32,
+    position_y: f32,
 };
 
 struct VertexOutput {
@@ -83,7 +85,11 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     // Center UV so (0,0) is at screen center, aspect-corrected
     let uv = vec2f((input.uv.x - 0.5) * aspect, input.uv.y - 0.5);
 
-    let d = sdShape(uv);
+    // Recenter sample point on the requested position. +x = right, +y = down;
+    // one full position unit spans the full frame, so ±0.5 places the shape
+    // center at the left/right or top/bottom edge regardless of aspect ratio.
+    let pos = vec2f(uniforms.position_x * aspect, uniforms.position_y);
+    let d = sdShape(uv - pos);
     let alpha = 1.0 - smoothstep(-uniforms.softness, uniforms.softness, d);
 
     let color = vec3f(uniforms.color_r, uniforms.color_g, uniforms.color_b);
@@ -105,21 +111,26 @@ struct ShapeUniforms {
     float color_r;
     float color_g;
     float color_b;
+    float position_x;
+    float position_y;
 };
 
 /**
  * @brief SDF polygon/star shape generator with soft edges.
  *
  * Renders a regular polygon or star using a signed-distance-field evaluated
- * in a fragment shader. The shape is always centered and aspect-corrected.
- * Increase `sides` for rounder shapes (64 = near-circle). Enable `star`
- * to pull alternating vertices inward, creating star patterns.
+ * in a fragment shader. The shape is aspect-corrected; use `position_x` and
+ * `position_y` to place it off-center (±0.5 places the center at an edge)
+ * without needing a separate Transform node. Increase `sides` for rounder
+ * shapes (64 = near-circle). Enable `star` to pull alternating vertices
+ * inward, creating star patterns.
  *
  * Output is premultiplied-alpha — composite it with Composite or layer
  * it over other generators.
  *
  * @tip Set sides=64 and star=0 for a soft circle. Pair with Trails for motion blur.
  * @tip Modulate rotation with an LFO for spinning shapes.
+ * @tip Drive position_x/y from control signals to move the shape musically.
  * @see Noise, Composite, Trails
  * @param star How far inner vertices pull inward. 0 = regular polygon, 0.9 = extreme spikes.
  * @param softness Width of the antialiased edge. Higher values give a glow-like falloff.
@@ -129,14 +140,16 @@ struct Shape : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Shape";
     static constexpr bool kTimeDependent = false;
 
-    vivid::Param<float> radius   {"radius",   0.3f,  0.01f, 1.0f};
-    vivid::Param<int>   sides    {"sides",    4,     3,     64};
-    vivid::Param<float> star     {"star",     0.0f,  0.0f,  0.9f};
-    vivid::Param<float> rotation {"rotation", 0.0f,  0.0f,  6.28f};
-    vivid::Param<float> softness {"softness", 0.0f, 0.0f, 0.1f};
-    vivid::Param<float> r        {"r",        1.0f,  0.0f,  1.0f};
-    vivid::Param<float> g        {"g",        1.0f,  0.0f,  1.0f};
-    vivid::Param<float> b        {"b",        1.0f,  0.0f,  1.0f};
+    vivid::Param<float> radius     {"radius",     0.3f,  0.01f, 1.0f};
+    vivid::Param<int>   sides      {"sides",      4,     3,     64};
+    vivid::Param<float> star       {"star",       0.0f,  0.0f,  0.9f};
+    vivid::Param<float> rotation   {"rotation",   0.0f,  0.0f,  6.28f};
+    vivid::Param<float> softness   {"softness",   0.0f,  0.0f,  0.1f};
+    vivid::Param<float> position_x {"position_x", 0.0f, -1.0f,  1.0f};
+    vivid::Param<float> position_y {"position_y", 0.0f, -1.0f,  1.0f};
+    vivid::Param<float> r          {"r",          1.0f,  0.0f,  1.0f};
+    vivid::Param<float> g          {"g",          1.0f,  0.0f,  1.0f};
+    vivid::Param<float> b          {"b",          1.0f,  0.0f,  1.0f};
 
     Shape() {
         vivid::description(radius, "Size of the shape from center to edge");
@@ -144,6 +157,8 @@ struct Shape : vivid::OperatorBase, vivid::GpuProcessable {
         vivid::description(star, "How far inner vertices pull inward, 0 = regular polygon");
         vivid::description(rotation, "Shape rotation in radians");
         vivid::description(softness, "Width of the antialiased edge, higher values add glow");
+        vivid::description(position_x, "Horizontal position. 0 = center, -0.5 = left edge, +0.5 = right edge");
+        vivid::description(position_y, "Vertical position. 0 = center, -0.5 = top edge, +0.5 = bottom edge");
         vivid::description(r, "Red component of the shape color");
         vivid::description(g, "Green component of the shape color");
         vivid::description(b, "Blue component of the shape color");
@@ -151,6 +166,13 @@ struct Shape : vivid::OperatorBase, vivid::GpuProcessable {
         vivid::semantic_tag(rotation, "rotation_radians");
         vivid::semantic_shape(rotation, "scalar");
         vivid::semantic_unit(rotation, "rad");
+
+        vivid::semantic_tag(position_x, "position_xy");
+        vivid::semantic_shape(position_x, "scalar");
+        vivid::semantic_intent(position_x, "x_component");
+        vivid::semantic_tag(position_y, "position_xy");
+        vivid::semantic_shape(position_y, "scalar");
+        vivid::semantic_intent(position_y, "y_component");
 
         vivid::semantic_tag(r, "color_rgba");
         vivid::semantic_shape(r, "scalar");
@@ -164,6 +186,8 @@ struct Shape : vivid::OperatorBase, vivid::GpuProcessable {
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        display_hint(position_x, VIVID_DISPLAY_XY_PAD);
+        display_hint(position_y, VIVID_DISPLAY_XY_PAD);
         display_hint(r, VIVID_DISPLAY_COLOR);
         display_hint(g, VIVID_DISPLAY_COLOR);
         display_hint(b, VIVID_DISPLAY_COLOR);
@@ -173,6 +197,8 @@ struct Shape : vivid::OperatorBase, vivid::GpuProcessable {
         out.push_back(&star);
         out.push_back(&rotation);
         out.push_back(&softness);
+        out.push_back(&position_x);
+        out.push_back(&position_y);
         out.push_back(&r);
         out.push_back(&g);
         out.push_back(&b);
@@ -206,6 +232,8 @@ struct Shape : vivid::OperatorBase, vivid::GpuProcessable {
         u.color_r     = r.value;
         u.color_g     = g.value;
         u.color_b     = b.value;
+        u.position_x  = position_x.value;
+        u.position_y  = position_y.value;
 
         wgpuQueueWriteBuffer(ctx->queue, uniform_buf_, 0, &u, sizeof(u));
 
