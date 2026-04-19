@@ -174,6 +174,9 @@ public:
 
     std::vector<InspectorRect> preset_dropdown_rects;
     std::vector<InspectorRect> preset_save_rects;
+    // node_id is the selected node; param_name carries the operator type slug
+    // used to build the docs URL.
+    std::vector<InspectorRect> docs_link_rects;
     std::vector<StatePresetRect> state_preset_rects;
     std::vector<StateHeaderRect> state_header_rects;
     std::vector<ModAssignRect> mod_assign_rects;

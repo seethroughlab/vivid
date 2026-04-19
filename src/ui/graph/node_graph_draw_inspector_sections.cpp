@@ -174,6 +174,21 @@ void NodeGraphUI::draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node
                                         float px, float& py) {
     const auto& op = *node.op_info;
     tr.draw_text(px, py, op.name.c_str(), 1.0f, 1.0f, 1.0f);
+
+    // Docs link: small "?" button to the right of the operator name. The
+    // hit-rect carries the operator type slug so the click handler can build
+    // the URL without re-looking up the node snapshot.
+    if (!node.type_name.empty()) {
+        float name_w = tr.text_width(op.name.c_str(), 1.0f);
+        float docs_h = 16.0f;
+        float docs_x = px + name_w + 8.0f;
+        float docs_y = py - 1.0f;
+        float docs_w = draw_inspector_text_button(tr, style_, docs_x, docs_y,
+                                                  "?", 0.85f, 5.0f, docs_h);
+        inspector_.docs_link_rects.push_back(
+            { docs_x, docs_y, docs_w, docs_h, node.node_id, node.type_name });
+    }
+
     py += kLineH;
     tr.draw_text(px, py, single_selected_id().c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     py += kLineH + 8;

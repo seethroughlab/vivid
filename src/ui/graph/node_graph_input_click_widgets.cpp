@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cctype>
+#include <cstdlib>
 #include <cstring>
 
 namespace vivid::ui {
@@ -418,6 +419,40 @@ bool NodeGraphUI::handle_inspector_click() {
     // Confirm any active text edit when clicking in inspector
     if (inspector_.editing_param) confirm_param_edit();
     if (inspector_.editing_resolution) confirm_resolution_edit();
+
+    // Check docs link ("?" button next to operator name in inspector header).
+    // Slug rule mirrors site/build_site.py::slugify — lowercase, then collapse
+    // any run of non-[a-z0-9] into a single '-' and strip leading/trailing.
+    {
+        int doci = hit_test_rect(inspector_.docs_link_rects, mouse_.x, mouse_.y);
+        if (doci >= 0) {
+            const auto& dr = inspector_.docs_link_rects[doci];
+            if (!dr.param_name.empty()) {
+                std::string slug;
+                slug.reserve(dr.param_name.size());
+                bool last_dash = true;
+                for (char c : dr.param_name) {
+                    char lc = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                    if ((lc >= 'a' && lc <= 'z') || (lc >= '0' && lc <= '9')) {
+                        slug.push_back(lc);
+                        last_dash = false;
+                    } else if (!last_dash) {
+                        slug.push_back('-');
+                        last_dash = true;
+                    }
+                }
+                while (!slug.empty() && slug.back() == '-') slug.pop_back();
+                if (!slug.empty()) {
+                    const char* env_base = std::getenv("VIVID_DOCS_URL");
+                    std::string base = (env_base && env_base[0] != '\0')
+                        ? std::string(env_base)
+                        : std::string("https://vivid.seethroughlab.com/operators");
+                    vivid::open_url(base + "/" + slug + "/");
+                }
+            }
+            return true;
+        }
+    }
 
     // Check preset dropdown click
     {

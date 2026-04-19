@@ -124,6 +124,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     inspector_.resolution_rects.clear();
     inspector_.preset_dropdown_rects.clear();
     inspector_.preset_save_rects.clear();
+    inspector_.docs_link_rects.clear();
     inspector_.midi_remove_rects.clear();
     inspector_.midi_range_rects.clear();
     patch_jacks_.clear();
