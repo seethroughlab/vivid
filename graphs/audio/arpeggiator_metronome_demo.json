@@ -17,7 +17,6 @@
             "audio",
             "control"
         ],
-        "requires_packages": [],
         "featured_rank": 22,
         "estimated_minutes": 3,
         "content_kind": "example",
@@ -26,79 +25,64 @@
         "role": "creative",
         "playability": "self_playing"
     },
-    "metronome": {
-        "bpm": 120.0,
-        "beats_per_bar": 4
-    },
     "nodes": {
+        "arp1": {
+            "type": "Arpeggiator",
+            "params": {
+                "vel_1": 0.5,
+                "tr_3": 0.0,
+                "vel_0": 1.0,
+                "clock_source": 1.0,
+                "swing": 0.0,
+                "tr_1": 0.0,
+                "mod_steps": 4.0,
+                "tr_2": 0.0,
+                "tr_0": 0.0,
+                "vel_3": 0.4,
+                "gate_length": 0.6,
+                "mode": 0.0,
+                "vel_2": 0.7,
+                "rate": 3.0,
+                "octaves": 2.0
+            },
+            "layout": {
+                "x": 238.5,
+                "y": 1.5625
+            }
+        },
         "cp1": {
             "type": "ChordProgression",
             "params": {
-                "steps": 4,
-                "key_root": 0,
-                "mode": 0,
-                "octave": 4,
-                "beats_per_step": 4,
-                "gate_length": 0.95,
+                "voicing_3": 1.0,
+                "voicing_2": 0.0,
+                "voicing_0": 0.0,
                 "velocity": 0.8,
-                "degree_0": 0,
-                "voicing_0": 0,
-                "ext_0": 1,
-                "degree_1": 3,
-                "voicing_1": 0,
-                "ext_1": 1,
-                "degree_2": 4,
-                "voicing_2": 0,
-                "ext_2": 0,
-                "degree_3": 0,
-                "voicing_3": 1,
-                "ext_3": 0,
-                "clock_source": 1
+                "steps": 4.0,
+                "octave": 4.0,
+                "key_root": 0.0,
+                "ext_2": 0.0,
+                "voicing_1": 0.0,
+                "gate_length": 0.95,
+                "degree_2": 4.0,
+                "mode": 0.0,
+                "ext_1": 1.0,
+                "ext_3": 0.0,
+                "degree_1": 3.0,
+                "ext_0": 1.0,
+                "degree_3": 0.0,
+                "degree_0": 0.0,
+                "clock_source": 1.0,
+                "beats_per_step": 4.0
             },
             "layout": {
                 "x": 0.0,
                 "y": 0.0
             }
         },
-        "arp1": {
-            "type": "Arpeggiator",
-            "params": {
-                "mode": 0,
-                "octaves": 2,
-                "rate": 3,
-                "gate_length": 0.6,
-                "swing": 0.0,
-                "latch": false,
-                "mod_steps": 4,
-                "clock_source": 1,
-                "vel_0": 1.0,
-                "vel_1": 0.5,
-                "vel_2": 0.7,
-                "vel_3": 0.4,
-                "tr_0": 0,
-                "tr_1": 0,
-                "tr_2": 0,
-                "tr_3": 0
-            },
+        "out1": {
+            "type": "audio_out",
             "layout": {
-                "x": 240.0,
-                "y": 0.0
-            }
-        },
-        "synth1": {
-            "type": "FmSynth",
-            "params": {
-                "algorithm": 1,
-                "ratio": 2.0,
-                "mod_index": 1.5,
-                "attack": 0.01,
-                "decay": 0.15,
-                "sustain": 0.3,
-                "release": 0.2,
-                "amplitude": 0.25
-            },
-            "layout": {
-                "x": 480.0,
+                "x": 960.0,
                 "y": 0.0
             }
         },
@@ -114,12 +98,79 @@
                 "y": 0.0
             }
         },
-        "out1": {
-            "type": "audio_out",
-            "params": {},
+        "synth1": {
+            "type": "FmSynth",
+            "params": {
+                "sustain": 0.32121795,
+                "ratio": 2.0,
+                "algorithm": 1.0,
+                "mod_index": 1.5,
+                "release": 0.2,
+                "decay": 0.028448561,
+                "carrier_freq": 2971.7332,
+                "amplitude": 0.33255804,
+                "attack": 0.001
+            },
             "layout": {
-                "x": 960.0,
+                "x": 480.0,
                 "y": 0.0
+            }
+        },
+        "head_shape1": {
+            "type": "Shape",
+            "params": {
+                "g": 0.2,
+                "r": 1.0,
+                "softness": 0.0,
+                "b": 0.2,
+                "radius": 0.04,
+                "sides": 64.0
+            },
+            "layout": {
+                "x": 631.2358,
+                "y": 325.13837
+            }
+        },
+        "smooth1": {
+            "type": "SmoothFr",
+            "params": {
+                "fall_time": 0.08,
+                "rise_time": 0.003
+            },
+            "layout": {
+                "x": 430.0,
+                "y": 329.0
+            }
+        },
+        "xform1": {
+            "type": "Transform",
+            "layout": {
+                "x": 829.83356,
+                "y": 352.54105
+            }
+        },
+        "feedback1": {
+            "type": "Feedback",
+            "params": {
+                "mix": 0.4,
+                "decay": 0.78
+            },
+            "layout": {
+                "x": 1218.4915,
+                "y": 435.36142
+            }
+        },
+        "vout": {
+            "type": "video_out",
+            "layout": {
+                "x": 1424.6486,
+                "y": 435.0271
+            }
+        },
+        "hsv1": {
+            "type": "HSV",
+            "params": {
+                "saturation": 0.15
             }
         }
     },
@@ -155,14 +206,70 @@
         {
             "from": "reverb1/output",
             "to": "out1/input"
+        },
+        {
+            "from": "arp1/gate",
+            "to": "smooth1/input",
+            "bridge": "last_sample"
+        },
+        {
+            "from": "smooth1/value",
+            "to": "head_shape1/radius",
+            "from_min": 0.0,
+            "from_max": 1.0,
+            "to_min": 0.035,
+            "to_max": 0.085,
+            "clamp": true,
+            "curve": 4
+        },
+        {
+            "from": "head_shape1/texture",
+            "to": "xform1/input"
+        },
+        {
+            "from": "feedback1/texture",
+            "to": "vout/input"
+        },
+        {
+            "from": "arp1/note",
+            "to": "xform1/translate_x",
+            "from_min": 48.0,
+            "from_max": 84.0,
+            "to_min": -0.8,
+            "to_max": 0.8,
+            "clamp": true,
+            "bridge": "last_sample"
+        },
+        {
+            "from": "xform1/texture",
+            "to": "hsv1/input"
+        },
+        {
+            "from": "arp1/note",
+            "to": "hsv1/hue_shift",
+            "from_min": 48.0,
+            "from_max": 84.0,
+            "to_min": 0.0,
+            "to_max": 360.0,
+            "clamp": true,
+            "bridge": "last_sample"
+        },
+        {
+            "from": "hsv1/texture",
+            "to": "feedback1/input"
         }
     ],
+    "viewport": {
+        "pan_x": 253.05942,
+        "pan_y": 283.76,
+        "zoom": 0.6202371
+    },
     "sticky_notes": [
         {
             "id": "metro_note_1",
             "text": "**Graph metronome demo** No Clock node is required here. ChordProgression and Arpeggiator both read the graph transport directly.",
-            "x": -120.0,
-            "y": -110.0,
+            "x": -12.297989,
+            "y": 135.5966,
             "width": 320.0,
             "height": 95.0,
             "color": 0
@@ -170,8 +277,8 @@
         {
             "id": "metro_note_2",
             "text": "Change BPM or meter in the transport strip to retime the whole phrase immediately.",
-            "x": 220.0,
-            "y": -110.0,
+            "x": 385.36646,
+            "y": 146.80072,
             "width": 260.0,
             "height": 70.0,
             "color": 2
