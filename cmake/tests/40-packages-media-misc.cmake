@@ -12,7 +12,7 @@ add_dependencies(test_demo_graphs
     stack alternate
     modulated_gain
     # gpu (compiled plugins — WGSL filter presets are loaded from filters/)
-    noise shape composite
+    noise shape_2d composite
     bloom feedback movie_file texture_analysis metronome_viz
     # audio
     oscillator gain

@@ -1,0 +1,55 @@
+{
+    "schema_version": 1,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "text_2d_demo",
+        "title": "Text2D",
+        "description": "TextLabel rasterises glyphs via a persistent atlas and emits them as a 2D drawable — one DrawIndexed per frame regardless of string length. Part of the 2D drawable pipeline (Phase E.4).",
+        "tags": ["demo", "text", "typography", "2d"],
+        "difficulty": "beginner",
+        "domains": ["gpu"],
+        "requires_packages": [],
+        "featured_rank": 55,
+        "estimated_minutes": 1,
+        "content_kind": "example",
+        "category": "instancing",
+        "family": "2D drawable pipeline",
+        "role": "starter",
+        "playability": "self_playing"
+    },
+    "nodes": {
+        "text": {
+            "type": "Text2D",
+            "params": {
+                "text": "vivid 0.1",
+                "font_size": 0.25,
+                "position_x": 0.0,
+                "position_y": 0.0,
+                "anchor": 4.0,
+                "r": 0.95,
+                "g": 0.92,
+                "b": 0.85,
+                "a": 1.0
+            },
+            "layout": { "x": 60.0,  "y": 200.0 }
+        },
+        "render": {
+            "type": "Render2D",
+            "params": {
+                "bg_r": 0.02,
+                "bg_g": 0.02,
+                "bg_b": 0.05,
+                "bg_a": 1.0
+            },
+            "layout": { "x": 330.0, "y": 200.0 }
+        },
+        "vout": {
+            "type": "video_out",
+            "layout": { "x": 580.0, "y": 200.0 }
+        }
+    },
+    "connections": [
+        { "from": "text/drawable",   "to": "render/drawable" },
+        { "from": "render/texture",  "to": "vout/input" }
+    ]
+}

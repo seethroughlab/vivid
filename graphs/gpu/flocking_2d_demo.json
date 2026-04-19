@@ -1,0 +1,97 @@
+{
+    "schema_version": 1,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "flocking_2d_demo",
+        "title": "Flocking Boids (2D)",
+        "description": "Reynolds boids rendered as velocity-aligned arrows — separation, alignment, and cohesion on the GPU. Compute-shader force model, drawable-pipeline rendering.",
+        "tags": ["demo", "flocking", "boids", "compute", "instancing", "2d"],
+        "difficulty": "beginner",
+        "domains": ["gpu"],
+        "requires_packages": [],
+        "featured_rank": 51,
+        "estimated_minutes": 2,
+        "content_kind": "example",
+        "category": "instancing",
+        "family": "2D drawable pipeline",
+        "role": "creative",
+        "playability": "self_playing"
+    },
+    "nodes": {
+        "bloom": {
+            "type": "Bloom",
+            "layout": {
+                "x": 560.0,
+                "y": 200.0
+            }
+        },
+        "flock": {
+            "type": "Flocking2D",
+            "params": {
+                "view_radius": 0.17645296,
+                "softness": 0.0,
+                "size": 0.02,
+                "separation": 4.264606,
+                "wrap": 1.0,
+                "r": 0.65,
+                "b": 1.0,
+                "count": 600.0,
+                "max_speed": 0.5,
+                "cohesion": 1.2,
+                "g": 0.9,
+                "alignment": 2.3747454,
+                "sep_radius": 0.06,
+                "seed": 42.0,
+                "min_speed": 0.2,
+                "a": 0.95
+            },
+            "layout": {
+                "x": 29.46875,
+                "y": 201.11328
+            }
+        },
+        "render": {
+            "type": "Render2D",
+            "params": {
+                "bg_r": 0.01,
+                "bg_g": 0.01,
+                "bg_b": 0.04,
+                "bg_a": 1.0
+            },
+            "layout": {
+                "x": 298.83594,
+                "y": 200.0
+            },
+            "resolution": [
+                1920,
+                1080
+            ]
+        },
+        "vout": {
+            "type": "video_out",
+            "layout": {
+                "x": 800.0,
+                "y": 200.0
+            }
+        }
+    },
+    "connections": [
+        {
+            "from": "flock/drawable",
+            "to": "render/drawable"
+        },
+        {
+            "from": "render/texture",
+            "to": "bloom/input"
+        },
+        {
+            "from": "bloom/texture",
+            "to": "vout/input"
+        }
+    ],
+    "viewport": {
+        "pan_x": 37.101562,
+        "pan_y": 57.910156,
+        "zoom": 1.0
+    }
+}

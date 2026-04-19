@@ -138,7 +138,7 @@ target_link_libraries(test_perception_introspection PRIVATE
     vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio ixwebsocket webgpu rtmidi stb_truetype
     "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
     "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
-add_dependencies(test_perception_introspection test_op_v1 oscillator shape)
+add_dependencies(test_perception_introspection test_op_v1 oscillator shape_2d)
 add_test(NAME test_perception_introspection COMMAND test_perception_introspection WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_audio_debug_introspection
@@ -265,16 +265,53 @@ add_test(NAME test_math_op COMMAND test_math_op ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_math_op PROPERTIES TIMEOUT 10)
 
-# Shape operator descriptor tests (position_x/y params — Phase 2 of operator-gaps plan)
-add_executable(test_shape_op
-    tests/ops/test_shape_op.cpp
+# test_shape_op deleted 2026-04-19 — legacy Shape operator removed in the
+# 2D pipeline clean break; its drawable-pipeline replacement (Shape2D) is
+# covered by test_demo_graphs and test_gpu_operators.
+
+# Colormap operator tests (Phase 3 of operator-gaps plan: scalar → palette RGB)
+add_executable(test_colormap_op
+    tests/ops/test_colormap_op.cpp
 )
-target_include_directories(test_shape_op PRIVATE src tests)
-target_link_libraries(test_shape_op PRIVATE vivid_runtime_testlib vivid_operator_api webgpu)
-add_dependencies(test_shape_op shape)
-add_test(NAME test_shape_op COMMAND test_shape_op ${CMAKE_BINARY_DIR}
+target_include_directories(test_colormap_op PRIVATE src tests)
+target_link_libraries(test_colormap_op PRIVATE vivid_runtime_testlib vivid_operator_api webgpu)
+add_dependencies(test_colormap_op colormap)
+add_test(NAME test_colormap_op COMMAND test_colormap_op ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-set_tests_properties(test_shape_op PROPERTIES TIMEOUT 10)
+set_tests_properties(test_colormap_op PROPERTIES TIMEOUT 10)
+
+# EnvelopeFr frame-rate scalar port (Phase 4 of operator-gaps plan)
+add_executable(test_envelope_fr_port
+    tests/ops/test_envelope_fr_port.cpp
+)
+target_include_directories(test_envelope_fr_port PRIVATE src tests)
+target_link_libraries(test_envelope_fr_port PRIVATE vivid_runtime_testlib vivid_operator_api webgpu)
+add_dependencies(test_envelope_fr_port envelope_fr envelope_au)
+add_test(NAME test_envelope_fr_port COMMAND test_envelope_fr_port ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_envelope_fr_port PROPERTIES TIMEOUT 10)
+
+# Instanced Shapes lane-array inputs (Phase 5 of operator-gaps plan)
+add_executable(test_instanced_shapes_lanes
+    tests/ops/test_instanced_shapes_lanes.cpp
+)
+target_include_directories(test_instanced_shapes_lanes PRIVATE src tests)
+target_link_libraries(test_instanced_shapes_lanes PRIVATE vivid_runtime_testlib vivid_operator_api webgpu)
+add_dependencies(test_instanced_shapes_lanes shape_field)
+add_test(NAME test_instanced_shapes_lanes COMMAND test_instanced_shapes_lanes ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_instanced_shapes_lanes PROPERTIES TIMEOUT 10)
+
+# Instanced Shapes rotation + shape_idx lanes (Phase 6 of operator-gaps plan)
+add_executable(test_instanced_shapes_phase6
+    tests/ops/test_instanced_shapes_phase6.cpp
+)
+target_include_directories(test_instanced_shapes_phase6 PRIVATE src tests)
+target_link_libraries(test_instanced_shapes_phase6 PRIVATE vivid_runtime_testlib vivid_operator_api webgpu)
+add_dependencies(test_instanced_shapes_phase6 shape_field)
+add_test(NAME test_instanced_shapes_phase6 COMMAND test_instanced_shapes_phase6 ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_instanced_shapes_phase6 PROPERTIES TIMEOUT 10)
 
 # Settings round-trip unit test
 add_executable(test_settings

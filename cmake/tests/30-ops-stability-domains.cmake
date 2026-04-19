@@ -4,7 +4,7 @@ add_executable(test_operator_loader
 )
 target_include_directories(test_operator_loader PRIVATE src tests)
 target_link_libraries(test_operator_loader PRIVATE vivid_runtime_testlib vivid_operator_api webgpu nlohmann_json::nlohmann_json)
-add_dependencies(test_operator_loader test_op_v1 test_op_v2 test_op_abi_v4 test_op_incompatible_port test_op_null_desc test_op_bad_custom_type control_pass_op audio_test_op export_custom_port_op control_thumb_op file_drop_test_op prepare_assets_test_op prepare_assets_legacy_op particles)
+add_dependencies(test_operator_loader test_op_v1 test_op_v2 test_op_abi_v4 test_op_incompatible_port test_op_null_desc test_op_bad_custom_type control_pass_op audio_test_op export_custom_port_op control_thumb_op file_drop_test_op prepare_assets_test_op prepare_assets_legacy_op shape_field)
 add_test(NAME test_operator_loader COMMAND test_operator_loader WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_operator_loader PROPERTIES LABELS "LOADER")
 
@@ -288,7 +288,7 @@ add_executable(test_gpu_operators
 )
 target_include_directories(test_gpu_operators PRIVATE src deps/stb tests)
 target_link_libraries(test_gpu_operators PRIVATE vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
-add_dependencies(test_gpu_operators gpu_fill_op gpu_metronome_probe_op shape control_thumb_op lfo_fr envelope_fr gain)
+add_dependencies(test_gpu_operators gpu_fill_op gpu_metronome_probe_op shape_2d control_thumb_op lfo_fr envelope_fr gain)
 add_test(NAME test_gpu_operators COMMAND test_gpu_operators WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # GPU output correctness tests (brightness, contrast, motion property assertions)
@@ -297,7 +297,7 @@ add_executable(test_gpu_correctness
 )
 target_include_directories(test_gpu_correctness PRIVATE src tests)
 target_link_libraries(test_gpu_correctness PRIVATE vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
-add_dependencies(test_gpu_correctness gpu_fill_op shape noise)
+add_dependencies(test_gpu_correctness gpu_fill_op shape_2d noise)
 add_test(NAME test_gpu_correctness COMMAND test_gpu_correctness WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Per-operator smoke sweep — discovers all dylibs and validates load/desc/process/boundary

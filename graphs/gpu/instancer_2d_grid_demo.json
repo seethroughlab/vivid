@@ -1,0 +1,70 @@
+{
+    "schema_version": 1,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "instancer_2d_grid_demo",
+        "title": "Instanced Grid (2D)",
+        "description": "Clean tiling: InstanceGrid2D lays out 64 positions, Instancer2D multiplies a single ShapeEmitter into all of them in one draw call. No jitter — the starter for learning 2D instancing.",
+        "tags": ["demo", "instancing", "grid", "2d", "starter"],
+        "difficulty": "beginner",
+        "domains": ["gpu"],
+        "requires_packages": [],
+        "featured_rank": 49,
+        "estimated_minutes": 1,
+        "content_kind": "example",
+        "category": "instancing",
+        "family": "2D drawable pipeline",
+        "role": "starter",
+        "playability": "self_playing"
+    },
+    "nodes": {
+        "shape": {
+            "type": "Shape2D",
+            "params": {
+                "sides": 0.0,
+                "softness": 0.008,
+                "scale_x": 0.08,
+                "scale_y": 0.08,
+                "r": 0.95,
+                "g": 0.6,
+                "b": 0.35,
+                "a": 1.0
+            },
+            "layout": { "x": 30.0,  "y": 120.0 }
+        },
+        "grid": {
+            "type": "InstanceGrid2D",
+            "params": {
+                "count": 64.0,
+                "layout": 0.0,
+                "spacing": 0.22,
+                "scale": 1.0
+            },
+            "layout": { "x": 30.0,  "y": 280.0 }
+        },
+        "inst": {
+            "type": "Instancer2D",
+            "layout": { "x": 300.0, "y": 200.0 }
+        },
+        "render": {
+            "type": "Render2D",
+            "params": {
+                "bg_r": 0.02,
+                "bg_g": 0.02,
+                "bg_b": 0.05,
+                "bg_a": 1.0
+            },
+            "layout": { "x": 550.0, "y": 200.0 }
+        },
+        "vout": {
+            "type": "video_out",
+            "layout": { "x": 790.0, "y": 200.0 }
+        }
+    },
+    "connections": [
+        { "from": "shape/drawable",  "to": "inst/drawable" },
+        { "from": "grid/instances",  "to": "inst/instances" },
+        { "from": "inst/drawable",   "to": "render/drawable" },
+        { "from": "render/texture",  "to": "vout/input" }
+    ]
+}

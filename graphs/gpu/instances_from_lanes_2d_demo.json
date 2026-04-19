@@ -1,0 +1,163 @@
+{
+    "schema_version": 1,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "instances_from_lanes_2d_demo",
+        "title": "Per-Lane Driven Instances (2D)",
+        "description": "Three independent lane sources feed position and scale into InstancesFromLanes2D, wiring control signals directly to per-instance transforms. Migration bridge from lane-array patterns to the drawable pipeline.",
+        "tags": [
+            "demo",
+            "instancing",
+            "lanes",
+            "control",
+            "2d"
+        ],
+        "difficulty": "intermediate",
+        "domains": [
+            "gpu",
+            "control"
+        ],
+        "featured_rank": 53,
+        "estimated_minutes": 2,
+        "content_kind": "example",
+        "category": "instancing",
+        "family": "2D drawable pipeline",
+        "role": "creative",
+        "playability": "self_playing"
+    },
+    "nodes": {
+        "from_lanes": {
+            "type": "InstancesFromLanes2D",
+            "layout": {
+                "x": 330.0,
+                "y": 320.0
+            }
+        },
+        "inst": {
+            "type": "Instancer2D",
+            "layout": {
+                "x": 592.71094,
+                "y": 211.57031
+            }
+        },
+        "pos_x_noise": {
+            "type": "SpreadNoise",
+            "params": {
+                "speed": 0.3,
+                "seed": 101.0,
+                "offset": -0.8,
+                "count": 200.0,
+                "amplitude": 1.6
+            },
+            "layout": {
+                "x": -63.661407,
+                "y": 285.93814
+            }
+        },
+        "pos_y_noise": {
+            "type": "SpreadNoise",
+            "params": {
+                "speed": 0.3,
+                "seed": 202.0,
+                "offset": -0.8,
+                "count": 200.0,
+                "amplitude": 1.6
+            },
+            "layout": {
+                "x": -64.25761,
+                "y": 398.87164
+            }
+        },
+        "render": {
+            "type": "Render2D",
+            "params": {
+                "bg_r": 0.01,
+                "bg_g": 0.01,
+                "bg_b": 0.03,
+                "bg_a": 1.0
+            },
+            "layout": {
+                "x": 850.0,
+                "y": 200.0
+            }
+        },
+        "scale_noise": {
+            "type": "SpreadNoise",
+            "params": {
+                "speed": 2.0461109,
+                "seed": 33869.0,
+                "offset": 0.01,
+                "count": 200.0,
+                "amplitude": 1.0
+            },
+            "layout": {
+                "x": -66.32205,
+                "y": 513.3799
+            }
+        },
+        "shape": {
+            "type": "Shape2D",
+            "params": {
+                "star_factor": 0.46706223,
+                "softness": 0.0,
+                "sides": 5.0,
+                "scale_x": 0.04,
+                "scale_y": 0.04,
+                "g": 0.50092775,
+                "b": 1.0,
+                "r": 0.5329727,
+                "a": 0.9
+            },
+            "layout": {
+                "x": 377.06052,
+                "y": 89.01419
+            }
+        },
+        "vout": {
+            "type": "video_out",
+            "layout": {
+                "x": 1090.0,
+                "y": 200.0
+            }
+        }
+    },
+    "connections": [
+        {
+            "from": "shape/drawable",
+            "to": "inst/drawable"
+        },
+        {
+            "from": "pos_x_noise/values",
+            "to": "from_lanes/pos_x"
+        },
+        {
+            "from": "pos_y_noise/values",
+            "to": "from_lanes/pos_y"
+        },
+        {
+            "from": "scale_noise/values",
+            "to": "from_lanes/scale_x"
+        },
+        {
+            "from": "scale_noise/values",
+            "to": "from_lanes/scale_y"
+        },
+        {
+            "from": "from_lanes/instances",
+            "to": "inst/instances"
+        },
+        {
+            "from": "inst/drawable",
+            "to": "render/drawable"
+        },
+        {
+            "from": "render/texture",
+            "to": "vout/input"
+        }
+    ],
+    "viewport": {
+        "pan_x": 545.53186,
+        "pan_y": 309.4108,
+        "zoom": 0.56705976
+    }
+}
