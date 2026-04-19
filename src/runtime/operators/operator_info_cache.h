@@ -144,6 +144,7 @@ public:
             pi.direction = desc->ports[i].direction;
             pi.repeat_group     = desc->ports[i].repeat_group ? desc->ports[i].repeat_group : "";
             pi.repeat_group_idx = desc->ports[i].repeat_group_idx;
+            pi.description      = desc->ports[i].description ? desc->ports[i].description : "";
         }
 
         // Only check shader/user status for fully-loaded operators

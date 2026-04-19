@@ -120,6 +120,8 @@ struct PortInfo {
     // Repeat-group metadata (for variadic port patterns)
     std::string repeat_group;
     uint16_t    repeat_group_idx = 0;
+
+    std::string description;  // human-readable tooltip shown on port hover
 };
 
 // Owned copy of operator metadata

@@ -80,23 +80,11 @@ void NodeGraphUI::draw_node_error_tooltip(Renderer2D& tr) {
     }
 }
 
-void NodeGraphUI::draw_param_tooltip(Renderer2D& tr) {
-    if (inspector_.hovered_label_idx < 0) return;
-    static constexpr float kParamTooltipDelay = 1.0f;
-    if (inspector_.label_hover_time < kParamTooltipDelay) return;
-    if (inspector_.hovered_label_idx >= static_cast<int>(inspector_.label_rects.size())) return;
+static constexpr float kDescriptionTooltipDelay = 1.0f;
+static constexpr float kMaxDescriptionTooltipW  = 300.0f;
 
-    const auto& r = inspector_.label_rects[inspector_.hovered_label_idx];
-    const auto* ns = snap_.find_node(r.node_id);
-    if (!ns || !ns->op_info) return;
-
-    std::string desc;
-    for (const auto& pi : ns->op_info->params) {
-        if (pi.name == r.param_name) { desc = pi.description; break; }
-    }
+void NodeGraphUI::draw_description_popup(Renderer2D& tr, const std::string& desc) {
     if (desc.empty()) return;
-
-    static constexpr float kMaxParamTooltipW = 300.0f;
 
     // Word-wrap into lines
     std::vector<std::string> lines;
@@ -106,7 +94,7 @@ void NodeGraphUI::draw_param_tooltip(Renderer2D& tr) {
         if (ch == ' ' || ch == '\n' || ci == desc.size()) {
             if (!word.empty()) {
                 std::string test = line.empty() ? word : line + " " + word;
-                if (tr.text_width(test.c_str()) > kMaxParamTooltipW && !line.empty()) {
+                if (tr.text_width(test.c_str()) > kMaxDescriptionTooltipW && !line.empty()) {
                     lines.push_back(line);
                     line = word;
                 } else {
@@ -147,6 +135,50 @@ void NodeGraphUI::draw_param_tooltip(Renderer2D& tr) {
         tr.draw_text(px + pad, py + pad + line_h * static_cast<float>(k), lines[k].c_str(),
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
     }
+}
+
+void NodeGraphUI::draw_param_tooltip(Renderer2D& tr) {
+    if (inspector_.hovered_label_idx < 0) return;
+    if (inspector_.label_hover_time < kDescriptionTooltipDelay) return;
+    if (inspector_.hovered_label_idx >= static_cast<int>(inspector_.label_rects.size())) return;
+
+    const auto& r = inspector_.label_rects[inspector_.hovered_label_idx];
+    const auto* ns = snap_.find_node(r.node_id);
+    if (!ns || !ns->op_info) return;
+
+    std::string desc;
+    for (const auto& pi : ns->op_info->params) {
+        if (pi.name == r.param_name) { desc = pi.description; break; }
+    }
+    draw_description_popup(tr, desc);
+}
+
+void NodeGraphUI::draw_port_tooltip(Renderer2D& tr) {
+    if (hovered_port_.node_id.empty()) return;
+    if (port_hover_time_ < kDescriptionTooltipDelay) return;
+
+    const auto* ns = snap_.find_node(hovered_port_.node_id);
+    if (!ns || !ns->op_info) return;
+
+    const VividPortDirection want_dir = hovered_port_.is_output ? VIVID_PORT_OUTPUT : VIVID_PORT_INPUT;
+
+    std::string desc;
+    for (const auto& pi : ns->op_info->ports) {
+        if (pi.name == hovered_port_.port_name && pi.direction == want_dir) {
+            desc = pi.description;
+            break;
+        }
+    }
+    if (desc.empty()) {
+        // Param-ports (inputs marked is_param in the NodeRect) share the param description.
+        for (const auto& pi : ns->op_info->params) {
+            if (pi.name == hovered_port_.port_name) {
+                desc = pi.description;
+                break;
+            }
+        }
+    }
+    draw_description_popup(tr, desc);
 }
 
 void NodeGraphUI::draw_box_select(Renderer2D& tr) {

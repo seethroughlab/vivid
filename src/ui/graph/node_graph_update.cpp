@@ -265,6 +265,24 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
         }
     }
 
+    // Port tooltip hover timer
+    if (!hovered_port_.node_id.empty()) {
+        if (hovered_port_.node_id == port_hover_node_id_ &&
+            hovered_port_.port_name == port_hover_name_ &&
+            hovered_port_.is_output == port_hover_is_output_) {
+            port_hover_time_ += dt_;
+        } else {
+            port_hover_node_id_ = hovered_port_.node_id;
+            port_hover_name_ = hovered_port_.port_name;
+            port_hover_is_output_ = hovered_port_.is_output;
+            port_hover_time_ = 0.0f;
+        }
+    } else {
+        port_hover_time_ = 0.0f;
+        port_hover_node_id_.clear();
+        port_hover_name_.clear();
+    }
+
     // Inspector widget hover
     inspector_.hovered_slider_idx = -1;
     inspector_.hovered_bool_idx = -1;

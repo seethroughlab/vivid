@@ -53,6 +53,9 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
     // Param description tooltip — shown after hovering a param label for ~1s
     draw_param_tooltip(tr);
 
+    // Port description tooltip — shown after hovering a port dot in the graph for ~1s
+    draw_port_tooltip(tr);
+
     // Operator chooser — drawn here (overlay pass) so it appears above GPU thumbnails
     draw_chooser(tr);
 

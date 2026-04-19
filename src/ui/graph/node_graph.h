@@ -393,6 +393,8 @@ private:
     void draw_wire_tooltip(Renderer2D& tr);
     void draw_node_error_tooltip(Renderer2D& tr);
     void draw_param_tooltip(Renderer2D& tr);
+    void draw_port_tooltip(Renderer2D& tr);
+    void draw_description_popup(Renderer2D& tr, const std::string& desc);
     void draw_inspector_scrollbar(Renderer2D& tr);
     void draw_midi_map_banner(Renderer2D& tr);
     void draw_async_add_overlay(Renderer2D& tr);
@@ -738,6 +740,11 @@ private:
         bool is_output = false;
     };
     HoveredPort hovered_port_;
+
+    float port_hover_time_ = 0.0f;
+    std::string port_hover_node_id_;
+    std::string port_hover_name_;
+    bool port_hover_is_output_ = false;
 
     // Multi-output expand state (keyed by node_id)
     std::unordered_set<std::string> outputs_expanded_;
