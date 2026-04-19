@@ -41,17 +41,32 @@ static std::string tpl_replace(std::string s, const std::string& key, const std:
     return s;
 }
 
+// Shared tail comment included at the end of every generated operator. Gives
+// authors concrete examples they can uncomment / adapt instead of hunting
+// through the reference docs.
+//
+// The semantic-tag example is parameterised per-environment because the
+// default Param name differs (amount for control/gpu, gain for audio).
+//   %SEMANTIC_TAG_EXAMPLE_PARAM%  — param identifier (no quotes).
+//   %SEMANTIC_TAG_EXAMPLE_TAG%    — canonical tag string (quoted in the output).
 static constexpr const char* kOptionalFeaturesComment = R"(
     // --- Optional features (uncomment or add as needed) ---
     // static constexpr bool kTimeDependent = true;           // ctx->time, ctx->delta_time
     // static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
     //
-    // Param types:   Param<int>, Param<bool>, Param<FilePath>, Param<TextValue>
+    // Param types:   int, bool, FilePath, TextValue (e.g. vivid::Param[T])
     // Port types:    VIVID_PORT_LANE_ARRAY, VIVID_PORT_STRING, VIVID_PORT_TEXTURE
-    // Semantic tags: vivid::semantic_tag(param, "frequency_hz");
+    //
+    // Semantic metadata (populated in the ctor or collect_params):
+    //   vivid::semantic_tag(%SEMANTIC_TAG_EXAMPLE_PARAM%, "%SEMANTIC_TAG_EXAMPLE_TAG%");
+    //   vivid::semantic_shape(%SEMANTIC_TAG_EXAMPLE_PARAM%, "scalar");
+    //
     // Thumbnails:    void draw_thumbnail(const VividDrawContext*) override;
     // Child ops:     vivid::ChildOp<LFO> lfo_;  vivid::ChildOp<Smooth> smoother_;
-    // Lane state:    vivid_lane_state() for per-lane persistent storage)";
+    // Lane state:    vivid_lane_state() for per-lane persistent storage
+    //
+    // One-shot setup (called once per instance before first process_*):
+    //   void prepare_instance_assets() override { /* load dylib assets, …*/ })";
 
 static bool is_valid_identifier(const std::string& name) {
     if (name.empty()) return false;
@@ -253,13 +268,15 @@ static std::string build_param_decls(const std::vector<VividParamSpec>& params) 
 // ---------------------------------------------------------------------------
 
 static std::string build_params_macro(const std::vector<VividParamSpec>& params) {
+    // Emit an explicit collect_params override (not the VIVID_PARAMS shorthand
+    // macro) so the scaffolded source reads the same way seasoned operators do
+    // and tooling that greps for collect_params finds it.
     std::ostringstream s;
-    s << "    VIVID_PARAMS(";
-    for (size_t i = 0; i < params.size(); ++i) {
-        if (i > 0) s << ", ";
-        s << "&" << params[i].name;
+    s << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {\n";
+    for (const auto& p : params) {
+        s << "        out.push_back(&" << p.name << ");\n";
     }
-    s << ")\n";
+    s << "    }\n";
     return s.str();
 }
 
@@ -285,16 +302,16 @@ static std::string build_ports_macro(const std::vector<VividPortSpec>& ports) {
         return s.str();
     }
 
-    s << "    VIVID_PORTS(\n";
-    for (size_t i = 0; i < ports.size(); ++i) {
-        const char* dir = (ports[i].direction == VIVID_PORT_INPUT)
+    // Simple case — explicit collect_ports, same shape as the custom branch
+    // above. Keeps the scaffolded source readable and greppable.
+    s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
+    for (const auto& p : ports) {
+        const char* dir = (p.direction == VIVID_PORT_INPUT)
             ? "VIVID_PORT_INPUT" : "VIVID_PORT_OUTPUT";
-        s << "        {\"" << ports[i].name << "\", "
-          << port_type_name(ports[i].type) << ", " << dir << "}";
-        if (i + 1 < ports.size()) s << ",";
-        s << "\n";
+        s << "        out.push_back({\"" << p.name << "\", "
+          << port_type_name(p.type) << ", " << dir << "});\n";
     }
-    s << "    )\n";
+    s << "    }\n";
     return s.str();
 }
 
@@ -374,8 +391,15 @@ static constexpr const char* kChildOpTemplate = R"(#include "operator_api/child_
 
 // Operator guide: https://vivid.dev/docs/operator-api
 
-// ChildOp<T> embeds another operator as a private member with its own state.
-// Embeddable operators are header-only or backed by vivid_embeddable_op_support.
+// ChildOp<T> embeds another operator as a private member with its own state,
+// giving this operator owned, host-local behavior from the embedded type
+// (phase, smoothing history, etc.) without going through the graph.
+//
+// Embeddable operators are either header-only or exposed via
+// vivid_embeddable_op_support through a *_embeddable.cpp support file — see
+// operators/control/lfo/ and operators/control/smooth/ for the pattern. When
+// building this operator, add EXTRA_LIBS vivid_embeddable_op_support to its
+// cmake entry.
 
 struct %STRUCT% : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "%STRUCT%";
@@ -388,6 +412,14 @@ struct %STRUCT% : vivid::OperatorBase, vivid::FrameProcessable {
 
     vivid::ChildOp<LFO>    lfo_;
     vivid::ChildOp<Smooth> smoother_;
+
+    %STRUCT%() {
+        // Semantic metadata — drives UI formatting and modulation routing.
+        vivid::semantic_tag(lfo_rate, "frequency_hz");
+        vivid::semantic_unit(lfo_rate, "Hz");
+        vivid::semantic_tag(smooth_time, "time_seconds");
+        vivid::semantic_unit(smooth_time, "s");
+    }
 
     VIVID_PARAMS(&amount, &lfo_rate, &lfo_depth, &smooth_time)
     VIVID_PORTS(
@@ -424,11 +456,15 @@ static constexpr const char* kEmptyControlTemplate = R"(#include "operator_api/o
 struct %STRUCT% : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "%STRUCT%";
 
-    VIVID_PARAMS()
-    VIVID_PORTS(
-        {"input",  VIVID_PORT_SCALAR, VIVID_PORT_INPUT},
-        {"output", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT}
-    )
+    void collect_params(std::vector<vivid::ParamBase*>& /*out*/) override {
+        // No params in the empty variant — add Param members above and
+        // push_back them here.
+    }
+
+    void collect_ports(std::vector<VividPortDescriptor>& out) override {
+        out.push_back({"input",  VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"output", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+    }
 
     void process_frame(const VividFrameContext* ctx) override {
         ctx->output_values[0] = ctx->input_values[0];
@@ -447,11 +483,14 @@ struct %STRUCT% : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName = "%STRUCT%";
     static constexpr bool kTimeDependent = true;
 
-    VIVID_PARAMS()
-    VIVID_PORTS(
-        {"input",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT},
-        {"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT}
-    )
+    void collect_params(std::vector<vivid::ParamBase*>& /*out*/) override {
+        // No params in the empty variant.
+    }
+
+    void collect_ports(std::vector<VividPortDescriptor>& out) override {
+        out.push_back({"input",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT});
+        out.push_back({"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT});
+    }
 
     // Audio-thread contract: no heap alloc, no locks, no blocking I/O.
     void process_audio(const VividAudioContext* ctx) override {
@@ -476,11 +515,14 @@ struct %STRUCT% : vivid::WgslFilterBase {
 
     %STRUCT%() : WgslFilterBase("%NAME%.wgsl") {}
 
-    VIVID_PARAMS()
-    VIVID_PORTS(
-        {"input",   VIVID_PORT_TEXTURE, VIVID_PORT_INPUT},
-        {"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT}
-    )
+    void collect_params(std::vector<vivid::ParamBase*>& /*out*/) override {
+        // No params in the empty variant.
+    }
+
+    void collect_ports(std::vector<VividPortDescriptor>& out) override {
+        out.push_back({"input",   VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});
+        out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
+    }
 %OPTIONAL_FEATURES%
 };
 
@@ -547,6 +589,8 @@ static std::string control_template(const std::string& name, const std::string& 
     s = tpl_replace(s, "%PORTS_MACRO%", build_ports_macro(effective_ports));
     s = tpl_replace(s, "%PROCESS_BODY%", body.str());
     s = tpl_replace(s, "%OPTIONAL_FEATURES%", kOptionalFeaturesComment);
+    s = tpl_replace(s, "%SEMANTIC_TAG_EXAMPLE_PARAM%", effective_params[0].name);
+    s = tpl_replace(s, "%SEMANTIC_TAG_EXAMPLE_TAG%", "probability_01");
     return s;
 }
 
@@ -611,6 +655,8 @@ static std::string audio_template(const std::string& name, const std::string& st
     s = tpl_replace(s, "%PORTS_MACRO%", build_ports_macro(effective_ports));
     s = tpl_replace(s, "%PROCESS_BODY%", body.str());
     s = tpl_replace(s, "%OPTIONAL_FEATURES%", kOptionalFeaturesComment);
+    s = tpl_replace(s, "%SEMANTIC_TAG_EXAMPLE_PARAM%", effective_params[0].name);
+    s = tpl_replace(s, "%SEMANTIC_TAG_EXAMPLE_TAG%", "amplitude_linear");
     return s;
 }
 
@@ -651,6 +697,8 @@ static std::string gpu_template(const std::string& name, const std::string& stru
     s = tpl_replace(s, "%PORTS_MACRO%", build_ports_macro(effective_ports));
     s = tpl_replace(s, "%EXTRA_OUTPUTS%", extra_outputs);
     s = tpl_replace(s, "%OPTIONAL_FEATURES%", kOptionalFeaturesComment);
+    s = tpl_replace(s, "%SEMANTIC_TAG_EXAMPLE_PARAM%", effective_params[0].name);
+    s = tpl_replace(s, "%SEMANTIC_TAG_EXAMPLE_TAG%", "probability_01");
     return s;
 }
 
@@ -660,10 +708,15 @@ static std::string child_op_control_template(const std::string& name, const std:
     return s;
 }
 
+// The empty variant has no default Param — the semantic-tag example still
+// shows up as a guidance comment, but references a placeholder name the
+// author will replace.
 static std::string empty_control_template(const std::string& struct_name) {
     std::string s = kEmptyControlTemplate;
     s = tpl_replace(s, "%STRUCT%", struct_name);
     s = tpl_replace(s, "%OPTIONAL_FEATURES%", kOptionalFeaturesComment);
+    s = tpl_replace(s, "%SEMANTIC_TAG_EXAMPLE_PARAM%", "my_param");
+    s = tpl_replace(s, "%SEMANTIC_TAG_EXAMPLE_TAG%", "probability_01");
     return s;
 }
 
@@ -671,6 +724,8 @@ static std::string empty_audio_template(const std::string& struct_name) {
     std::string s = kEmptyAudioTemplate;
     s = tpl_replace(s, "%STRUCT%", struct_name);
     s = tpl_replace(s, "%OPTIONAL_FEATURES%", kOptionalFeaturesComment);
+    s = tpl_replace(s, "%SEMANTIC_TAG_EXAMPLE_PARAM%", "gain");
+    s = tpl_replace(s, "%SEMANTIC_TAG_EXAMPLE_TAG%", "amplitude_linear");
     return s;
 }
 
@@ -679,6 +734,8 @@ static std::string empty_gpu_template(const std::string& name, const std::string
     s = tpl_replace(s, "%STRUCT%", struct_name);
     s = tpl_replace(s, "%NAME%", name);
     s = tpl_replace(s, "%OPTIONAL_FEATURES%", kOptionalFeaturesComment);
+    s = tpl_replace(s, "%SEMANTIC_TAG_EXAMPLE_PARAM%", "my_param");
+    s = tpl_replace(s, "%SEMANTIC_TAG_EXAMPLE_TAG%", "probability_01");
     return s;
 }
 
