@@ -6,7 +6,7 @@
 // texture-chain operators (Bloom, Feedback, etc.) can consume as usual.
 //
 // Phase E foundation — header-only, follows conventions of gpu_common.h and gpu_3d.h.
-// See docs/plans/2d-pipeline-redesign.md for the broader context.
+// See docs/plans/archive/2d-pipeline/ for the broader design history.
 
 #include "operator_api/gpu_common.h"
 #include "operator_api/type_id.h"

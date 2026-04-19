@@ -278,7 +278,7 @@ ShapeField → Render2D → video_out
 
 **Worked demos live in `graphs/gpu/*_demo.json`**: `shape_emitter_intro`, `instancer_2d_grid_demo`, `instancer_2d_noise_demo`, `instances_from_lanes_2d_demo`, `particles_2d_demo`, `flocking_2d_demo`.
 
-Full design history lives under `docs/plans/2d-pipeline-redesign.md` and its E.1–E.6 detail files.
+Full design history lives under `docs/plans/archive/2d-pipeline/` (master plan + E.1–E.7 detail files).
 
 ## 5.8 Hot-Reload Behavior
 
