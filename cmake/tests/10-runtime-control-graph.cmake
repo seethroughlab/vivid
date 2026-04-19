@@ -254,6 +254,17 @@ target_include_directories(test_operator_creator PRIVATE src tests)
 target_link_libraries(test_operator_creator PRIVATE vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_test(NAME test_operator_creator COMMAND test_operator_creator WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Math operator unit tests (all seven ops, divide/modulo zero safety, Euclidean mod)
+add_executable(test_math_op
+    tests/ops/test_math_op.cpp
+)
+target_include_directories(test_math_op PRIVATE src tests)
+target_link_libraries(test_math_op PRIVATE vivid_runtime_testlib vivid_operator_api webgpu)
+add_dependencies(test_math_op math)
+add_test(NAME test_math_op COMMAND test_math_op ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_math_op PROPERTIES TIMEOUT 10)
+
 # Settings round-trip unit test
 add_executable(test_settings
     tests/core/test_settings.cpp
