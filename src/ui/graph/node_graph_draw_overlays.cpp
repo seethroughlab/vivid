@@ -3,6 +3,7 @@
 #include "ui/graph/node_graph_constants.h"
 #include "ui/graph/node_graph_util.h"
 #include "ui/rendering/renderer_2d.h"
+#include "ui/rendering/text_util.h"
 #include "ui/rendering/thumbnail_cache.h"
 #include "ui/rendering/thumbnail_renderer.h"
 #include "ui/style/i18n.h"
@@ -829,16 +830,20 @@ void NodeGraphUI::draw_diagnostics_panel(Renderer2D& tr) {
         for (size_t i = 0; i < count; ++i) {
             float row_top = y + 5.0f + static_cast<float>(i) * (line_h + 4.0f);
             const auto& item = items[i];
-            tr.draw_text(x + 6.0f, row_top, item.node_id.c_str(),
-                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
             if (lane_state_list) {
-                std::snprintf(metric, sizeof(metric), "%u state / %u lanes",
+                std::snprintf(metric, sizeof(metric), "%u / %u",
                               item.lane_state_entries, item.last_lane_count);
             } else {
-                std::snprintf(metric, sizeof(metric), "%.1f%% / %uus",
+                std::snprintf(metric, sizeof(metric), "%.1f%% %uus",
                               item.last_block_budget_pct, item.ema_block_us);
             }
-            float metric_w = tr.text_width(metric);
+            const float metric_w = tr.text_width(metric);
+            // Reserve 6 px of gutter at each end plus 10 px between id and metric
+            // so a long node id truncates with ellipsis rather than colliding.
+            const float id_max_w = std::max(0.0f, w - 6.0f - metric_w - 10.0f - 6.0f);
+            const std::string id_trimmed = vivid::ui::truncate_text(tr, item.node_id, id_max_w);
+            tr.draw_text(x + 6.0f, row_top, id_trimmed.c_str(),
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
             tr.draw_text(x + std::max(6.0f, w - metric_w - 6.0f), row_top, metric,
                          style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
         }

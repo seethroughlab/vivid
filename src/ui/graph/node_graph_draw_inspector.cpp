@@ -3,6 +3,7 @@
 #include "ui/graph/node_graph_constants.h"
 #include "ui/graph/node_graph_util.h"
 #include "ui/rendering/renderer_2d.h"
+#include "ui/rendering/text_util.h"
 #include "ui/style/i18n.h"
 #include "common/string_util.h"
 #include "runtime/graph/compiled_graph.h"
@@ -38,16 +39,6 @@ static std::string build_semantic_hint(const ParamInfo& pd) {
         hint += pd.semantic_intent;
     }
     return hint;
-}
-
-// Truncate text with ellipsis if it exceeds max_w at the given scale.
-static std::string truncate_text(Renderer2D& tr, const std::string& text,
-                                 float max_w, float scale = 1.0f) {
-    if (tr.text_width(text.c_str(), scale) <= max_w) return text;
-    std::string result = text;
-    while (result.size() > 1 && tr.text_width((result + "\xe2\x80\xa6").c_str(), scale) > max_w)
-        result.pop_back();
-    return result + "\xe2\x80\xa6";
 }
 
 struct InspectorCardBox {

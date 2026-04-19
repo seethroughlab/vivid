@@ -1,6 +1,7 @@
 #include "ui/build_console_panel.h"
 
 #include "ui/rendering/renderer_2d.h"
+#include "ui/rendering/text_util.h"
 #include "ui/style/i18n.h"
 #include <GLFW/glfw3.h>
 #include <algorithm>
@@ -23,7 +24,6 @@ constexpr float kMinTaskLabelW = 64.0f;
 constexpr float kMaxTaskLabelW = 180.0f;
 constexpr float kMinMessageW = 120.0f;
 constexpr float kMinGutterW = 112.0f;
-constexpr const char* kEllipsis = "\xe2\x80\xa6";
 
 std::string timestamp_label(uint64_t timestamp_ms) {
     std::time_t secs = static_cast<std::time_t>(timestamp_ms / 1000);
@@ -36,19 +36,6 @@ std::string timestamp_label(uint64_t timestamp_ms) {
     char buf[16];
     std::snprintf(buf, sizeof(buf), "%02d:%02d:%02d", tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec);
     return buf;
-}
-
-std::string truncate_text(Renderer2D& tr, const std::string& text, float max_w, float scale = 1.0f) {
-    if (text.empty() || max_w <= 0.0f) return {};
-    if (tr.text_width(text.c_str(), scale) <= max_w) return text;
-
-    const float ell_w = tr.text_width(kEllipsis, scale);
-    if (ell_w > max_w) return {};
-
-    std::string out = text;
-    while (!out.empty() && tr.text_width((out + kEllipsis).c_str(), scale) > max_w)
-        out.pop_back();
-    return out.empty() ? std::string(kEllipsis) : out + kEllipsis;
 }
 
 }  // namespace
