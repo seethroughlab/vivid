@@ -265,6 +265,17 @@ add_test(NAME test_math_op COMMAND test_math_op ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_math_op PROPERTIES TIMEOUT 10)
 
+# Shape operator descriptor tests (position_x/y params — Phase 2 of operator-gaps plan)
+add_executable(test_shape_op
+    tests/ops/test_shape_op.cpp
+)
+target_include_directories(test_shape_op PRIVATE src tests)
+target_link_libraries(test_shape_op PRIVATE vivid_runtime_testlib vivid_operator_api webgpu)
+add_dependencies(test_shape_op shape)
+add_test(NAME test_shape_op COMMAND test_shape_op ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_shape_op PROPERTIES TIMEOUT 10)
+
 # Settings round-trip unit test
 add_executable(test_settings
     tests/core/test_settings.cpp
