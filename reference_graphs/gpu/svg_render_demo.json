@@ -3,7 +3,7 @@
     "vivid_version": "0.1.0",
     "meta": {
         "id": "svg_render_demo",
-        "title": "SVG Render",
+        "title": "SvgRender",
         "description": "SVG vector rendering with gentle floating motion over a gradient background.",
         "tags": [
             "demo",
@@ -61,7 +61,7 @@
             }
         },
         "svg": {
-            "type": "SVG Render",
+            "type": "SvgRender",
             "params": {
                 "scale": 0.5,
                 "file": "../../platform/macos/Vivid.svg"

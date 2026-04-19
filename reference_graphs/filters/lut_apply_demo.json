@@ -3,7 +3,7 @@
     "vivid_version": "0.1.0",
     "meta": {
         "id": "lut_apply_demo",
-        "title": "LUT Apply",
+        "title": "LutApply",
         "description": "3D LUT color grading with animated intensity showing before/after.",
         "tags": [
             "demo",
@@ -34,7 +34,7 @@
             }
         },
         "lut": {
-            "type": "LUT Apply",
+            "type": "LutApply",
             "params": {
                 "file": "../../assets/warm_tone.cube",
                 "intensity": 1.0

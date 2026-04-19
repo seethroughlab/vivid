@@ -3,7 +3,7 @@
     "vivid_version": "0.1.0",
     "meta": {
         "id": "rich_text_demo",
-        "title": "Rich Text",
+        "title": "RichText",
         "description": "Animated text floats over noise and bloom for a compact typography patch.",
         "tags": [
             "demo",
@@ -26,7 +26,7 @@
     },
     "nodes": {
         "text": {
-            "type": "Rich Text",
+            "type": "RichText",
             "params": {
                 "text": "VIVID",
                 "size": 0.2,

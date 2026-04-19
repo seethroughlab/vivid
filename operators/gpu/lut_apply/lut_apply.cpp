@@ -272,7 +272,7 @@ static bool parse_3dl(const std::string& path, LutData& lut) {
  * @see Composite, TextureLoader
  */
 struct LutApply : vivid::OperatorBase, vivid::GpuProcessable {
-    static constexpr const char* kName   = "LUT Apply";
+    static constexpr const char* kName   = "LutApply";
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<vivid::FilePath> file {"file"};
@@ -343,7 +343,7 @@ struct LutApply : vivid::OperatorBase, vivid::GpuProcessable {
         if (!cached_bind_group_) return;
 
         vivid::gpu::run_pass(ctx->command_encoder, pipeline_, cached_bind_group_,
-                             ctx->output_texture_view, "LUT Apply");
+                             ctx->output_texture_view, "LutApply");
     }
 
     ~LutApply() override {

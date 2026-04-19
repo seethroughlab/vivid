@@ -170,7 +170,7 @@ struct SimUniforms {
  * @see CellularAutomata, Fluid
  */
 struct ReactionDiffusion : vivid::OperatorBase, vivid::GpuProcessable {
-    static constexpr const char* kName   = "Reaction Diffusion";
+    static constexpr const char* kName   = "ReactionDiffusion";
     static constexpr bool kTimeDependent = true;
 
     // Reaction parameters

@@ -134,7 +134,7 @@ struct RichTextUniforms {
  * @see Text
  */
 struct RichText : vivid::OperatorBase, vivid::GpuProcessable {
-    static constexpr const char* kName   = "Rich Text";
+    static constexpr const char* kName   = "RichText";
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<vivid::TextValue> text {"text", ""};

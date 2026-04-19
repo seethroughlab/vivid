@@ -87,7 +87,7 @@ struct SvgUniforms {
  * @see TextureLoader, Text
  */
 struct SvgRender : vivid::OperatorBase, vivid::GpuProcessable {
-    static constexpr const char* kName   = "SVG Render";
+    static constexpr const char* kName   = "SvgRender";
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<vivid::FilePath> file {"file", ""};

@@ -16,7 +16,7 @@
  * @see LFO, Mouse
  */
 struct PathAnimate : vivid::OperatorBase, vivid::FrameProcessable {
-    static constexpr const char* kName   = "Path Animate";
+    static constexpr const char* kName   = "PathAnimate";
     static constexpr bool kTimeDependent = true;
 
     // Bezier control points
@@ -44,6 +44,7 @@ struct PathAnimate : vivid::OperatorBase, vivid::FrameProcessable {
         vivid::semantic_shape(p0_y, "scalar");
         vivid::display_hint(p0_x, VIVID_DISPLAY_XY_PAD);
         vivid::display_hint(p0_y, VIVID_DISPLAY_XY_PAD);
+        vivid::param_widget(p0_x, "seethroughlab.vivid.xy_pad_group", 8);
         vivid::description(p0_x, "X position of the first control point (curve start)");
         vivid::description(p0_y, "Y position of the first control point (curve start)");
 
