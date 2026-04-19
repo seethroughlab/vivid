@@ -8,6 +8,13 @@ port/param renames the C++ loader used to do at src/runtime/graph/graph.cpp
 every processed file's schema_version to 1.
 
 Idempotent: a second run produces no diff.
+
+Canonical invocation covering every graph-bearing location in-repo
+(external packages are committed in their own repos):
+
+    python3 scripts/reset_graph_schema_to_v1.py \\
+        graphs reference_graphs resources \\
+        tests/fixtures tests/graphs
 """
 
 from __future__ import annotations
