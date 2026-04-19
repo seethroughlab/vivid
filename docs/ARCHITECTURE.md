@@ -84,7 +84,7 @@ Six built-in port types reflect the runtime's routing mechanisms:
 - `VIVID_PORT_LANE_ARRAY` — variable-length float array with broadcast semantics.
 - `VIVID_PORT_STRING` — UTF-8 string.
 - `VIVID_PORT_STRING_LANES` — variable-length string array.
-- `VIVID_PORT_TEXTURE` — 2D RGBA8 `WGPUTextureView` with per-node configurable resolution (default 800×600).
+- `VIVID_PORT_TEXTURE` — 2D RGBA8 `WGPUTextureView` with per-node configurable resolution (default 1280×720).
 
 ### Custom Port Types and the Port Type Registry
 

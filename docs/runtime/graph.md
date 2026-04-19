@@ -18,7 +18,7 @@ struct NodeDef {
     std::unordered_map<std::string, float> params;
     std::unordered_map<std::string, std::string> string_params;
     float layout_x, layout_y;       // NaN = auto-layout
-    uint32_t tex_width, tex_height;  // GPU resolution (0 = inherit default 800x600)
+    uint32_t tex_width, tex_height;  // GPU resolution (0 = inherit default 1280x720)
     std::unordered_map<std::string, uint8_t> param_lock_flags; // sparse
     std::string pkg_name, pkg_version; // provenance (empty for core operators)
 };

@@ -27,8 +27,8 @@ public:
         std::string operators_src_dir;
 
         // Default GPU texture dimensions.
-        uint32_t default_tex_width  = 800;
-        uint32_t default_tex_height = 600;
+        uint32_t default_tex_width  = 1280;
+        uint32_t default_tex_height = 720;
 
         // Audio buffer size and sample rate.
         uint32_t audio_buffer_size = 256;

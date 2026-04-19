@@ -76,11 +76,7 @@
             "layout": {
                 "x": 0.0,
                 "y": 0.0
-            },
-            "resolution": [
-                800,
-                600
-            ]
+            }
         },
         "vout": {
             "type": "video_out",

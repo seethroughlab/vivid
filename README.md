@@ -125,7 +125,7 @@ Vivid evaluates a directed acyclic graph across three domains every frame:
 | Domain | Rate | Data type | Examples |
 |--------|------|-----------|---------|
 | **Control** | Per-frame (~60 Hz) | Scalar values, spreads | Clock, LFO, Envelope, MIDI, Mouse |
-| **GPU** | Per-frame | Textures (800x600) | Shape, Filters, Composite |
+| **GPU** | Per-frame | Textures (1280x720) | Shape, Filters, Composite |
 | **Audio** | Per-sample (48 kHz) | Float buffers (256 frames) | Oscillator, Drums, Effects |
 
 Control outputs can drive both GPU and Audio parameters. GPU and Audio operators expose analysis outputs (peak, RMS, spectrum) back to the control domain. Spreads propagate automatically — connect a 16-voice chord to a synth and you get 16-voice polyphony; connect those envelopes to a shape and you get 16 instances.

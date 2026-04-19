@@ -50,11 +50,7 @@
             "layout": {
                 "x": 409.58203,
                 "y": 354.58594
-            },
-            "resolution": [
-                800,
-                600
-            ]
+            }
         },
         "vout": {
             "type": "video_out",

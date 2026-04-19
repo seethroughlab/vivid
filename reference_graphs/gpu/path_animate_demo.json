@@ -42,11 +42,7 @@
                 "r": 1.0,
                 "g": 0.4,
                 "b": 0.8
-            },
-            "resolution": [
-                800,
-                600
-            ]
+            }
         },
         "xform": {
             "type": "Transform",

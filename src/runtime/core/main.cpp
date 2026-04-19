@@ -108,8 +108,8 @@ static constexpr uint32_t kThumbW = 140;
 static constexpr uint32_t kThumbH = 88;
 
 // Default GPU texture resolution for nodes without explicit size
-static constexpr uint32_t kDefaultTexW = 800;
-static constexpr uint32_t kDefaultTexH = 600;
+static constexpr uint32_t kDefaultTexW = 1280;
+static constexpr uint32_t kDefaultTexH = 720;
 
 using vivid::to_sv;
 using namespace vivid;

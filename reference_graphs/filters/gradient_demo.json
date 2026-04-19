@@ -30,11 +30,7 @@
                 "mode": 0,
                 "angle": 45.0,
                 "scale": 1.0
-            },
-            "resolution": [
-                800,
-                600
-            ]
+            }
         },
         "grad2": {
             "type": "Gradient",
@@ -43,11 +39,7 @@
                 "center_x": 0.5,
                 "center_y": 0.5,
                 "scale": 1.5
-            },
-            "resolution": [
-                800,
-                600
-            ]
+            }
         },
         "comp": {
             "type": "Composite",

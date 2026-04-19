@@ -35,11 +35,7 @@
                 "hue_range": 1.0,
                 "saturation": 1.0,
                 "brightness": 1.0
-            },
-            "resolution": [
-                800,
-                600
-            ]
+            }
         },
         "lfo_hue": {
             "type": "LfoFr",

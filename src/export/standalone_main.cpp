@@ -42,8 +42,8 @@ void register_embedded_shader_operators(vivid::OperatorRegistry& registry);
 
 using vivid::to_sv;
 
-static constexpr uint32_t kDefaultTexW = 800;
-static constexpr uint32_t kDefaultTexH = 600;
+static constexpr uint32_t kDefaultTexW = 1280;
+static constexpr uint32_t kDefaultTexH = 720;
 static constexpr WGPUTextureFormat kOffscreenFormat = WGPUTextureFormat_RGBA16Float;
 
 static void emit_clear_pass(WGPUCommandEncoder encoder, WGPUTextureView view) {

@@ -85,7 +85,7 @@ void allocate_gpu_textures(WGPUDevice device, uint32_t default_w, uint32_t defau
                            WGPUTextureUsage extra_usage = 0);
 ```
 
-Resolution per node: `NodeDef::tex_width/height` if non-zero, otherwise `default_w/h` (800×600 default).
+Resolution per node: `NodeDef::tex_width/height` if non-zero, otherwise `default_w/h` (1280×720 default).
 `extra_usage` is OR'd into `WGPUTextureUsage` — used by the main app to request `CopySrc` for screenshot.
 
 `needs_gpu_realloc_` is set when a topology change adds/removes GPU nodes or resolution changes.

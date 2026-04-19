@@ -33,10 +33,6 @@
                 "center_y": 0.5,
                 "scale": 1.2
             },
-            "resolution": [
-                800,
-                600
-            ],
             "layout": {
                 "x": 0.0,
                 "y": 0.0
