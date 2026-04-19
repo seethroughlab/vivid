@@ -115,10 +115,16 @@ void AudioEngine::pre_reload_operator(const std::string& type_name) {
         // Destroy auto-dup extra instances via AudioExecutor
         // (AudioExecutor owns them; they'll be recreated on rebuild)
 
-        // Destroy primary instance using the still-valid old loader
+        // Destroy primary instance using the still-valid old loader.
+        // For audio-only operators graph_compiler.cpp:115 aliases
+        // cn.audio_instance = cn.instance (same pointer). If we don't clear
+        // the alias here, GraphCompiler::reload_operator's subsequent cleanup
+        // will try to destroy_instance() it a second time (UAF / double-free).
         if (cn.instance) {
+            void* dead = cn.instance;
             cn.loader->destroy_instance(cn.instance);
             cn.instance = nullptr;
+            if (cn.audio_instance == dead) cn.audio_instance = nullptr;
         }
     }
     // Note: audio remains paused until post_reload_operator
