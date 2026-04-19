@@ -148,6 +148,12 @@ target_include_directories(test_string_util PRIVATE src tests)
 target_link_libraries(test_string_util PRIVATE vivid_runtime_testlib)
 add_test(NAME test_string_util COMMAND test_string_util WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Perf trend (linear regression) unit test (header-only, no dependencies)
+add_executable(test_perf_trend tests/common/test_perf_trend.cpp)
+target_include_directories(test_perf_trend PRIVATE src tests)
+target_link_libraries(test_perf_trend PRIVATE vivid_runtime_testlib)
+add_test(NAME test_perf_trend COMMAND test_perf_trend WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Text editing unit test (header-only, no dependencies)
 add_executable(test_text_edit tests/ui/test_text_edit.cpp)
 target_include_directories(test_text_edit PRIVATE src tests)

@@ -312,7 +312,11 @@ static constexpr float kPerfCodecDropW = 120.0f;
 
 // Performance ring buffer
 static constexpr uint32_t kPerfHistoryLen = 128;
-static constexpr uint32_t kPerfMemSampleInterval = 30;
+// Memory history is sampled at 1 s cadence (60 frames @ 60 fps) so the
+// 2048-sample buffer covers roughly 34 min — long enough to spot a slow
+// leak in the diagnostics panel without dominating RAM (~8 KB).
+static constexpr uint32_t kPerfMemSampleInterval = 60;
+static constexpr uint32_t kPerfMemHistoryLen = 2048;
 
 // Preferences panel layout
 static constexpr float kPrefsW = 360.0f;

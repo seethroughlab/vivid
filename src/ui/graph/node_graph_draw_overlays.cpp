@@ -7,6 +7,7 @@
 #include "ui/rendering/thumbnail_cache.h"
 #include "ui/rendering/thumbnail_renderer.h"
 #include "ui/style/i18n.h"
+#include "common/perf_trend.h"
 #include "common/system_info.h"
 #include "common/string_util.h"
 #include <algorithm>
@@ -390,7 +391,7 @@ void NodeGraphUI::draw_workspace_header(Renderer2D& tr) {
     if (perf_frame_counter_ % kPerfMemSampleInterval == 0) {
         uint64_t mem_bytes = vivid::get_process_memory_bytes();
         float mem_mb = static_cast<float>(mem_bytes) / (1024.0f * 1024.0f);
-        smoothed_mem_mb_ = mem_mb;
+        latest_mem_mb_ = mem_mb;
         memory_history_.push(mem_mb);
     }
     constexpr int kPerfDisplayInterval = 30;
@@ -678,11 +679,16 @@ void NodeGraphUI::draw_workspace_header(Renderer2D& tr) {
     draw_left_button("+", 7, true);
 
     float session_zone_right = right_x;
-    if (left_x + 70.0f < session_zone_right) {
+    if (!snap_.variations.empty() && left_x + 70.0f < session_zone_right) {
+        const bool has_active = snap_.active_variation >= 0 &&
+                                snap_.active_variation < static_cast<int>(snap_.variations.size());
         draw_divider(left_x - kPerfBtnMargin * 0.5f);
         left_x += 8.0f;
         draw_chip(left_x, session_zone_right, active_variation_name(),
-                  style_.accent[0], style_.accent[1], style_.accent[2], 0.20f, true, snap_.variation_dirty);
+                  style_.accent[0], style_.accent[1], style_.accent[2],
+                  has_active ? 0.20f : 0.10f,
+                  has_active,
+                  has_active && snap_.variation_dirty);
         const std::string queued = queued_variation_name();
         if (!queued.empty() && fw > 1080.0f) {
             draw_chip(left_x, session_zone_right, std::string("> ") + queued,
@@ -710,16 +716,66 @@ void NodeGraphUI::draw_perf_sparkline(Renderer2D& tr, const float* buf, uint32_t
     float range = vmax - vmin;
     if (range < 0.001f) range = 1.0f;
 
-    float bar_w = w / static_cast<float>(buf_len);
-    for (uint32_t i = 0; i < count; ++i) {
-        uint32_t idx = filled ? (write_idx + i) % buf_len : i;
-        float v = buf[idx];
+    // When the sample count exceeds the pixel width, bucket samples into
+    // per-column averages so long-window buffers (memory history) still read
+    // as a sparkline rather than sub-pixel mush.
+    const uint32_t max_cols = std::max(1u, static_cast<uint32_t>(std::floor(w)));
+    const uint32_t cols = std::min(count, max_cols);
+    const float bar_w = w / static_cast<float>(cols);
+    for (uint32_t c = 0; c < cols; ++c) {
+        uint32_t bucket_start = static_cast<uint32_t>(
+            (static_cast<uint64_t>(c) * count) / cols);
+        uint32_t bucket_end = static_cast<uint32_t>(
+            (static_cast<uint64_t>(c + 1) * count) / cols);
+        if (bucket_end <= bucket_start) bucket_end = bucket_start + 1;
+        float sum = 0.0f;
+        uint32_t n = 0;
+        for (uint32_t i = bucket_start; i < bucket_end; ++i) {
+            uint32_t idx = filled ? (write_idx + i) % buf_len : i;
+            sum += buf[idx];
+            ++n;
+        }
+        float v = sum / static_cast<float>(n);
         float t = (v - vmin) / range;
         float bh = std::max(1.0f, t * h);
-        float bx = x + static_cast<float>(i) * bar_w;
+        float bx = x + static_cast<float>(c) * bar_w;
         float by = y + h - bh;
         tr.draw_rect(bx, by, std::max(1.0f, bar_w - 0.3f), bh, r, g, b, a);
     }
+}
+
+void NodeGraphUI::draw_perf_trend_line(Renderer2D& tr, const float* buf, uint32_t buf_len,
+                                       uint32_t write_idx, bool filled,
+                                       const vivid::PerfTrend& trend,
+                                       float x, float y, float w, float h,
+                                       float r, float g, float b, float a) {
+    if (!trend.valid) return;
+    const uint32_t count = filled ? buf_len : write_idx;
+    if (count < 2) return;
+
+    // Recompute vmin/vmax the same way draw_perf_sparkline does so the trend
+    // line aligns with the bars beneath it.
+    const uint32_t first_idx = filled ? write_idx % buf_len : 0;
+    float vmin = buf[first_idx], vmax = buf[first_idx];
+    for (uint32_t i = 0; i < count; ++i) {
+        const uint32_t idx = filled ? (write_idx + i) % buf_len : i;
+        const float v = buf[idx];
+        if (v < vmin) vmin = v;
+        if (v > vmax) vmax = v;
+    }
+    float range = vmax - vmin;
+    if (range < 0.001f) range = 1.0f;
+
+    auto to_py = [&](float v) {
+        float t = (v - vmin) / range;
+        if (t < 0.0f) t = 0.0f;
+        if (t > 1.0f) t = 1.0f;
+        return y + h - t * h;
+    };
+
+    const float y0 = to_py(trend.intercept);
+    const float y1 = to_py(trend.y_at_newest);
+    tr.draw_line(x, y0, x + w, y1, 1.25f, r, g, b, a);
 }
 
 void NodeGraphUI::draw_diagnostics_panel(Renderer2D& tr) {
@@ -728,7 +784,7 @@ void NodeGraphUI::draw_diagnostics_panel(Renderer2D& tr) {
 
     float fw = static_cast<float>(win_w_);
     constexpr float kPanelW = 372.0f;
-    constexpr float kPanelH = 364.0f;
+    constexpr float kPanelH = 404.0f;
     const float pad = 10.0f;
     const float section_gap = 10.0f;
     const float col_gap = 14.0f;
@@ -862,11 +918,54 @@ void NodeGraphUI::draw_diagnostics_panel(Renderer2D& tr) {
     draw_key_value(left_x, row_y, col_w, T("frame", "Frame"), value,
                    kPerfMsColor[0], kPerfMsColor[1], kPerfMsColor[2]);
     row_y += line_h + 4.0f;
+    // Compute memory trend once — reused by the inline chip next to the
+    // Memory value and the regression line overlay on the sparkline below.
+    const float kMemSecsPerSample =
+        static_cast<float>(kPerfMemSampleInterval) / 60.0f;
+    const vivid::PerfTrend mem_trend = vivid::compute_perf_trend(
+        memory_history_.values, kPerfMemHistoryLen,
+        memory_history_.write_idx, memory_history_.filled,
+        kMemSecsPerSample);
+
+    // Direction-coloured trend chip: green = stable/falling, amber = mild
+    // rise, orange = concerning, red = leak-rate. Thresholds are in MB/min so
+    // the ladder reads the way a human reasons about leaks.
+    const float mem_slope_mb_per_min = mem_trend.slope_per_second * 60.0f;
+    auto mem_trend_color = [&]() {
+        using vivid::runtime_health::Severity;
+        if (!mem_trend.valid)             return health_color(Severity::Ok);
+        if (mem_slope_mb_per_min <= 0.1f) return health_color(Severity::Ok);
+        if (mem_slope_mb_per_min <= 1.0f) return health_color(Severity::Warning);
+        if (mem_slope_mb_per_min <= 10.0f) return health_color(Severity::Error);
+        return health_color(Severity::Fatal);
+    }();
+    char mem_trend_buf[48];
+    if (!mem_trend.valid) {
+        std::snprintf(mem_trend_buf, sizeof(mem_trend_buf), "--");
+    } else if (mem_slope_mb_per_min > 0.1f) {
+        std::snprintf(mem_trend_buf, sizeof(mem_trend_buf), "^ +%.1f MB/min",
+                      mem_slope_mb_per_min);
+    } else if (mem_slope_mb_per_min < -0.1f) {
+        std::snprintf(mem_trend_buf, sizeof(mem_trend_buf), "v %.1f MB/min",
+                      mem_slope_mb_per_min);
+    } else {
+        std::snprintf(mem_trend_buf, sizeof(mem_trend_buf), "= stable");
+    }
+
     char mem_buf[64];
     vivid::format_memory(mem_buf, sizeof(mem_buf),
-                         static_cast<uint64_t>(smoothed_mem_mb_ * 1024.0f * 1024.0f));
+                         static_cast<uint64_t>(latest_mem_mb_ * 1024.0f * 1024.0f));
+    // Memory on its own row, then a dim "Trend" sub-row with the direction
+    // chip right-aligned. Splitting these lets the MB/min unit spell out
+    // without crowding the Memory value.
     draw_key_value(left_x, row_y, col_w, T("memory", "Memory"), mem_buf,
                    kPerfMemColor[0], kPerfMemColor[1], kPerfMemColor[2]);
+    row_y += line_h + 4.0f;
+    tr.draw_text(left_x, row_y, T("trend", "Trend"),
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    const float mem_trend_w = tr.text_width(mem_trend_buf);
+    tr.draw_text(left_x + std::max(0.0f, col_w - mem_trend_w), row_y, mem_trend_buf,
+                 mem_trend_color.r, mem_trend_color.g, mem_trend_color.b);
     row_y += line_h + 4.0f;
     std::snprintf(value, sizeof(value), "%.1f%%", snap_.audio_load * 100.0f);
     draw_key_value(left_x, row_y, col_w, T("audio_load", "Audio Load"), value,
@@ -914,16 +1013,26 @@ void NodeGraphUI::draw_diagnostics_panel(Renderer2D& tr) {
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     right_row_y += line_h + 3.0f;
     tr.draw_rect(right_x, right_row_y, graph_w, graph_h, 0.04f, 0.05f, 0.06f, 0.85f);
-    draw_perf_sparkline(tr, memory_history_.values, kPerfHistoryLen,
+    draw_perf_sparkline(tr, memory_history_.values, kPerfMemHistoryLen,
                         memory_history_.write_idx, memory_history_.filled,
                         right_x, right_row_y, graph_w, graph_h,
                         kPerfMemColor[0], kPerfMemColor[1], kPerfMemColor[2], 0.72f);
+    draw_perf_trend_line(tr, memory_history_.values, kPerfMemHistoryLen,
+                         memory_history_.write_idx, memory_history_.filled,
+                         mem_trend,
+                         right_x, right_row_y, graph_w, graph_h,
+                         mem_trend_color.r, mem_trend_color.g,
+                         mem_trend_color.b, 0.9f);
 
     float list_y = std::max(row_y + graph_h, right_row_y + graph_h) + section_gap;
     draw_hot_list(left_x, list_y, col_w, T("hot_nodes", "Hot Nodes"), snap_.audio_top_nodes, false);
     draw_hot_list(right_x, list_y, col_w, T("lane_state", "Lane State"), snap_.audio_top_lane_state_nodes, true);
 
-    float mcp_y = ey + kPanelH - pad - (line_h + 8.0f) * 2.0f - 8.0f;
+    // Connectivity block height (from label top to bottom of the second row
+    // rect): label row (line_h + 4) + two row rects drawn at mcp_y-2 with
+    // height line_h+6 and a 4 px gap between them = 3*line_h + 18. Keep `pad`
+    // below so the rows don't kiss the panel edge.
+    float mcp_y = ey + kPanelH - pad - (3.0f * line_h + 18.0f);
     tr.draw_rect(ex + pad, mcp_y - 4.0f, panel_w - pad * 2.0f, 1.0f, 0.20f, 0.22f, 0.25f, 0.8f);
     tr.draw_text(ex + pad, mcp_y, T("connectivity", "Connectivity"),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);

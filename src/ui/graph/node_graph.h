@@ -9,6 +9,7 @@
 #include "ui/text_edit.h"
 #include "ui/graph/node_graph_util.h"
 #include "common/dialog_types.h"
+#include "common/perf_trend.h"
 #include "ui/dialogs/dialog_manager.h"
 #include "ui/inspector/inspector_controller.h"
 #include "ui/build_console_panel.h"
@@ -414,6 +415,11 @@ private:
                              uint32_t write_idx, bool filled,
                              float x, float y, float w, float h,
                              float r, float g, float b, float a);
+    void draw_perf_trend_line(Renderer2D& tr, const float* buf, uint32_t buf_len,
+                              uint32_t write_idx, bool filled,
+                              const vivid::PerfTrend& trend,
+                              float x, float y, float w, float h,
+                              float r, float g, float b, float a);
     void draw_diagnostics_panel(Renderer2D& tr);
 
     // --- Chooser ---
@@ -867,26 +873,30 @@ private:
     bool visible_ = true;
 
     // --- Performance stats ---
-    struct PerfRingBuffer {
-        float values[kPerfHistoryLen]{};
+    template <uint32_t N>
+    struct PerfRingBufferT {
+        float values[N]{};
         uint32_t write_idx = 0;
         bool filled = false;
 
         void push(float v) {
             values[write_idx] = v;
-            write_idx = (write_idx + 1) % kPerfHistoryLen;
+            write_idx = (write_idx + 1) % N;
             if (write_idx == 0) filled = true;
         }
-        uint32_t count() const { return filled ? kPerfHistoryLen : write_idx; }
+        uint32_t count() const { return filled ? N : write_idx; }
         float newest() const {
-            uint32_t idx = (write_idx == 0) ? kPerfHistoryLen - 1 : write_idx - 1;
+            uint32_t idx = (write_idx == 0) ? N - 1 : write_idx - 1;
             return values[idx];
         }
+        static constexpr uint32_t capacity() { return N; }
     };
+    using PerfRingBuffer = PerfRingBufferT<kPerfHistoryLen>;
+    using PerfMemRingBuffer = PerfRingBufferT<kPerfMemHistoryLen>;
 
     PerfRingBuffer fps_history_;
     PerfRingBuffer frame_time_history_;
-    PerfRingBuffer memory_history_;
+    PerfMemRingBuffer memory_history_;
     PerfRingBuffer audio_load_history_;
 
     float dt_ = 0.0f;
@@ -896,7 +906,7 @@ private:
     float smoothed_ms_ = 0.0f;
     float display_fps_ = 0.0f;
     float display_ms_ = 0.0f;
-    float smoothed_mem_mb_ = 0.0f;
+    float latest_mem_mb_ = 0.0f;
     uint64_t perf_frame_counter_ = 0;
 
     bool perf_mem_hovered_ = false;
