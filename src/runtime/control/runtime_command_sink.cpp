@@ -568,13 +568,6 @@ void RuntimeCommandSink::clone_cpp_operator(const std::string& type_name,
     const auto* desc = loader->descriptor();
     if (!desc) return;
 
-    // Derive source stem from cmake target (maps type name → directory/file name)
-    std::string stem = registry_->type_to_target(type_name);
-    if (stem.empty()) {
-        stem = type_name;
-        for (auto& c : stem) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    }
-
     // Map operator kind → source subdirectory
     const char* kind_dir = "control";
     switch (vivid_operator_kind(desc)) {
@@ -583,9 +576,44 @@ void RuntimeCommandSink::clone_cpp_operator(const std::string& type_name,
         default: break;
     }
 
-    // Read source .cpp
-    std::string src_dir = operators_dir_ + "/" + kind_dir + "/" + stem;
-    std::string cpp_path = src_dir + "/" + stem + ".cpp";
+    // Resolve source path: user-registered explicit path, then dylib-stem
+    // convention, then lowercase(type_name) convention. Dylib stem and source
+    // dir don't always match (e.g. dual-cadence ops build lfo_au.dylib from
+    // operators/control/lfo/).
+    std::string stem;
+    std::string src_dir;
+    std::string cpp_path;
+    auto try_candidate = [&](const std::string& candidate_stem,
+                             const std::string& candidate_dir) -> bool {
+        std::string candidate_cpp = candidate_dir + "/" + candidate_stem + ".cpp";
+        if (!std::filesystem::exists(candidate_cpp)) return false;
+        stem = candidate_stem;
+        src_dir = candidate_dir;
+        cpp_path = std::move(candidate_cpp);
+        return true;
+    };
+
+    if (const std::string* user_src = registry_->user_operator_source(type_name)) {
+        std::filesystem::path p(*user_src);
+        try_candidate(p.stem().string(), p.parent_path().string());
+    }
+    if (cpp_path.empty()) {
+        std::string target = registry_->type_to_target(type_name);
+        if (!target.empty())
+            try_candidate(target, operators_dir_ + "/" + kind_dir + "/" + target);
+    }
+    if (cpp_path.empty()) {
+        std::string lower = type_name;
+        for (auto& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (!lower.empty())
+            try_candidate(lower, operators_dir_ + "/" + kind_dir + "/" + lower);
+    }
+    if (cpp_path.empty()) {
+        std::fprintf(stderr, "[vivid] Clone: cannot locate source for type '%s' under %s/%s\n",
+                     type_name.c_str(), operators_dir_.c_str(), kind_dir);
+        return;
+    }
+
     std::string cpp_source;
     {
         std::ifstream ifs(cpp_path);
