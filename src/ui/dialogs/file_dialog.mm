@@ -43,11 +43,17 @@ std::string open_directory_dialog() {
     }
 }
 
-std::string save_file_dialog(const std::string& default_name) {
+std::string save_file_dialog(const std::string& default_name,
+                             const std::string& allowed_extension) {
     note_dialog_invocation(&g_file_dialog_test_stats.save_file_count);
     @autoreleasepool {
         NSSavePanel* panel = [NSSavePanel savePanel];
         [panel setCanCreateDirectories:YES];
+        if (!allowed_extension.empty()) {
+            [panel setAllowedFileTypes:@[
+                [NSString stringWithUTF8String:allowed_extension.c_str()]
+            ]];
+        }
         if (!default_name.empty()) {
             [panel setNameFieldStringValue:
                 [NSString stringWithUTF8String:default_name.c_str()]];

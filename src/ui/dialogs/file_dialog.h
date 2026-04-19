@@ -14,7 +14,8 @@ struct FileDialogTestStats {
 
 std::string open_file_dialog();
 std::string open_directory_dialog();
-std::string save_file_dialog(const std::string& default_name = {});
+std::string save_file_dialog(const std::string& default_name = {},
+                             const std::string& allowed_extension = {});
 std::string save_directory_dialog(const std::string& default_name = {});
 void reset_file_dialog_test_stats();
 FileDialogTestStats file_dialog_test_stats();

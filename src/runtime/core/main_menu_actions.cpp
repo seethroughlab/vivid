@@ -35,7 +35,7 @@ bool do_save_graph(MainAppContext& ctx) {
 }
 
 bool do_save_as_dialog(MainAppContext& ctx) {
-    std::string path = vivid::ui::save_file_dialog();
+    std::string path = vivid::ui::save_file_dialog("Untitled.json", "json");
     if (path.empty()) return false;
     if (ctx.graph_ui.visible()) {
         ctx.graph.set_viewport(ctx.graph_ui.pan_x(), ctx.graph_ui.pan_y(), ctx.graph_ui.zoom());
