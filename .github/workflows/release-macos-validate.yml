@@ -133,7 +133,7 @@ jobs:
           done
           codesign --force --deep --options runtime --timestamp --sign "$APPLE_CODESIGN_IDENTITY" "$APP"
 
-      - name: Notarize and staple
+      - name: Notarize and staple .app
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -148,58 +148,104 @@ jobs:
           [[ -n "${APPLE_TEAM_ID}" ]] || { echo "Missing APPLE_TEAM_ID" >&2; exit 1; }
           [[ -n "${APPLE_APP_PASSWORD}" ]] || { echo "Missing APPLE_APP_PASSWORD" >&2; exit 1; }
           APP="build/vivid.app"
-          ZIP="build/${APP_NAME}-${{ steps.ver.outputs.version }}-validate-${{ steps.ver.outputs.short_sha }}-macos-arm64.zip"
-          ditto -c -k --keepParent "$APP" "$ZIP"
-          NOTARY_JSON="$RUNNER_TEMP/notary-result.json"
-          xcrun notarytool submit "$ZIP" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait --output-format json > "$NOTARY_JSON"
+          SUBMIT_ZIP="$RUNNER_TEMP/vivid-app-for-notary.zip"
+          rm -f "$SUBMIT_ZIP"
+          ditto -c -k --keepParent "$APP" "$SUBMIT_ZIP"
+          NOTARY_JSON="$RUNNER_TEMP/notary-app-result.json"
+          xcrun notarytool submit "$SUBMIT_ZIP" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait --output-format json > "$NOTARY_JSON"
           NOTARY_ID="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("id",""))' "$NOTARY_JSON")"
           NOTARY_STATUS="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("status",""))' "$NOTARY_JSON")"
           if [[ "$NOTARY_STATUS" != "Accepted" ]]; then
-            echo "Notarization status: $NOTARY_STATUS (id: $NOTARY_ID)" >&2
+            echo "App notarization status: $NOTARY_STATUS (id: $NOTARY_ID)" >&2
             if [[ -n "$NOTARY_ID" ]]; then
               xcrun notarytool log "$NOTARY_ID" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" || true
             fi
             exit 1
           fi
           xcrun stapler staple "$APP"
+          rm -f "$SUBMIT_ZIP"
+
+      - name: Build DMG
+        env:
+          APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "${APPLE_CODESIGN_IDENTITY}" ]] || { echo "Missing APPLE_CODESIGN_IDENTITY" >&2; exit 1; }
+          APP="build/vivid.app"
+          DMG="build/${APP_NAME}-${{ steps.ver.outputs.version }}-validate-${{ steps.ver.outputs.short_sha }}-macos-arm64.dmg"
+          STAGING="$RUNNER_TEMP/dmg_staging"
+          rm -rf "$STAGING"
+          mkdir -p "$STAGING"
+          cp -R "$APP" "$STAGING/"
+          ln -s /Applications "$STAGING/Applications"
+          rm -f "$DMG"
+          hdiutil create -format UDZO -fs HFS+ -volname "Vivid" \
+                         -srcfolder "$STAGING" -ov "$DMG"
+          codesign --force --sign "$APPLE_CODESIGN_IDENTITY" --timestamp "$DMG"
+
+      - name: Notarize and staple DMG
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APPLE_ID="$(echo "${APPLE_ID:-}" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+          APPLE_TEAM_ID="$(echo "${APPLE_TEAM_ID:-}" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+          APPLE_APP_PASSWORD="$(echo "${APPLE_APP_PASSWORD:-}" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+          DMG="build/${APP_NAME}-${{ steps.ver.outputs.version }}-validate-${{ steps.ver.outputs.short_sha }}-macos-arm64.dmg"
+          NOTARY_JSON="$RUNNER_TEMP/notary-dmg-result.json"
+          xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait --output-format json > "$NOTARY_JSON"
+          NOTARY_ID="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("id",""))' "$NOTARY_JSON")"
+          NOTARY_STATUS="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("status",""))' "$NOTARY_JSON")"
+          if [[ "$NOTARY_STATUS" != "Accepted" ]]; then
+            echo "DMG notarization status: $NOTARY_STATUS (id: $NOTARY_ID)" >&2
+            if [[ -n "$NOTARY_ID" ]]; then
+              xcrun notarytool log "$NOTARY_ID" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" || true
+            fi
+            exit 1
+          fi
+          xcrun stapler staple "$DMG"
 
       - name: Package validation artifact
         id: artifact
         shell: bash
         run: |
           set -euo pipefail
-          # Re-zip AFTER stapling so the uploaded artifact includes the
-          # staple ticket. Same reasoning as the main release workflow.
-          ZIP="build/${APP_NAME}-${{ steps.ver.outputs.version }}-validate-${{ steps.ver.outputs.short_sha }}-macos-arm64.zip"
-          rm -f "$ZIP"
-          ditto -c -k --keepParent build/vivid.app "$ZIP"
-          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
+          DMG="build/${APP_NAME}-${{ steps.ver.outputs.version }}-validate-${{ steps.ver.outputs.short_sha }}-macos-arm64.dmg"
+          [[ -f "$DMG" ]] || { echo "Expected DMG not found: $DMG" >&2; exit 1; }
+          echo "dmg=$DMG" >> "$GITHUB_OUTPUT"
 
-      - name: Validate final artifact (extracted from zip)
+      - name: Validate final artifact (mounted DMG)
         shell: bash
         run: |
           set -euo pipefail
-          # Validate what an end-user would actually download. Mirrors the
-          # same-named step in release-macos.yml.
-          ZIP='${{ steps.artifact.outputs.zip }}'
-          EXTRACT="$RUNNER_TEMP/final_artifact_check"
-          rm -rf "$EXTRACT"
-          mkdir -p "$EXTRACT"
-          ditto -xk "$ZIP" "$EXTRACT"
-          APP="$EXTRACT/vivid.app"
-          [[ -d "$APP" ]] || { echo "vivid.app not found after extract of $ZIP" >&2; exit 1; }
-          echo "--- stapler validate ---"
+          # Mirrors the same-named step in release-macos.yml — mount the
+          # DMG and assert on both the DMG and the .app inside.
+          DMG='${{ steps.artifact.outputs.dmg }}'
+          MOUNT="$RUNNER_TEMP/vivid_dmg_mount"
+          rm -rf "$MOUNT"
+          hdiutil attach "$DMG" -mountpoint "$MOUNT" -nobrowse -quiet -readonly
+          trap 'hdiutil detach "$MOUNT" -force -quiet || true' EXIT
+          APP="$MOUNT/vivid.app"
+          [[ -d "$APP" ]] || { echo "vivid.app not found in DMG mount" >&2; exit 1; }
+          echo "--- dmg stapler validate ---"
+          xcrun stapler validate "$DMG"
+          echo "--- dmg codesign verify ---"
+          codesign --verify --verbose=2 "$DMG"
+          echo "--- app stapler validate ---"
           xcrun stapler validate "$APP"
-          echo "--- codesign verify ---"
+          echo "--- app codesign verify ---"
           codesign --verify --deep --strict --verbose=2 "$APP"
-          echo "--- spctl assess ---"
+          echo "--- app spctl assess ---"
           spctl --assess --type execute --verbose=4 "$APP"
-          rm -rf "$EXTRACT"
 
       - name: Upload validation artifact
         uses: actions/upload-artifact@v4
         with:
           name: vivid-macos-validate-${{ steps.ver.outputs.version }}-${{ steps.ver.outputs.short_sha }}
-          path: ${{ steps.artifact.outputs.zip }}
+          path: ${{ steps.artifact.outputs.dmg }}
           if-no-files-found: error
           retention-days: 14
