@@ -7,9 +7,9 @@
     <language>en</language>
     <item>
       <title>Vivid 0.1.0-alpha.1</title>
-      <pubDate>Sat, 18 Apr 2026 19:00:07 +0000</pubDate>
+      <pubDate>Sun, 19 Apr 2026 01:11:59 +0000</pubDate>
     <sparkle:releaseNotesLink>https://github.com/seethroughlab/vivid/releases/tag/v0.1.0-alpha.1</sparkle:releaseNotesLink>
-      <enclosure url="https://github.com/seethroughlab/vivid/releases/download/v0.1.0-alpha.1/Vivid-0.1.0-alpha.1-macos-arm64.zip" sparkle:version="0.1.0-alpha.1" sparkle:shortVersionString="0.1.0-alpha.1" length="134454151" type="application/octet-stream" />
+      <enclosure url="https://github.com/seethroughlab/vivid/releases/download/v0.1.0-alpha.1/Vivid-0.1.0-alpha.1-macos-arm64.dmg" sparkle:version="0.1.0-alpha.1" sparkle:shortVersionString="0.1.0-alpha.1" length="137534932" type="application/octet-stream" />
     </item>
   </channel>
 </rss>
