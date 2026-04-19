@@ -40,7 +40,7 @@ void NodeGraphUI::update_chooser_hover() {
     if (!chooser_open_) return;
     float items_y = chooser_items_y();
     int visible = std::min(static_cast<int>(chooser_items_.size()), kChooserMaxVisible);
-    if (mouse_.x >= chooser_x() && mouse_.x <= chooser_x() + kChooserW &&
+    if (mouse_.x >= chooser_x() && mouse_.x <= chooser_x() + chooser_panel_w() &&
         mouse_.y >= items_y && mouse_.y < items_y + visible * kChooserItemH &&
         !chooser_items_.empty()) {
         int idx = static_cast<int>(std::floor((mouse_.y - items_y + chooser_scroll_) / kChooserItemH));

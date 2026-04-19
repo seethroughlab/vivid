@@ -138,12 +138,19 @@ static constexpr int kBezierSegments = 30;
 enum class OpEnvironment : uint8_t { GPU, Audio, Control };
 
 // Operator chooser popup
-static constexpr int kChooserMaxVisible = 12;
-static constexpr float kChooserW = 300.0f;
+static constexpr int kChooserMaxVisible = 14;
+static constexpr float kChooserW = 340.0f;
 static constexpr float kChooserHeaderH = 28.0f;
 static constexpr float kChooserTabH = 22.0f;
 static constexpr float kChooserItemH = 22.0f;
 static constexpr float kChooserY = 80.0f;
+
+// Map-tab view uses a wider, taller panel so the scatter plot and
+// side-by-side preview column both get enough room. The panel re-centers
+// to this width (larger than kChooserW) when Map is the active tab.
+static constexpr float kChooserMapW      = 680.0f;
+static constexpr float kChooserMapH      = 500.0f;  // body-only; excludes header+tab rows
+static constexpr float kChooserMapPreviewW = 220.0f; // right-hand preview column width
 
 // Parameter picker popup
 static constexpr float kPickerItemH = 22.0f;
