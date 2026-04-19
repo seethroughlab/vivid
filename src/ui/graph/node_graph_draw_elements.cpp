@@ -1266,22 +1266,19 @@ void NodeGraphUI::draw_chooser_map(Renderer2D& tr, float px, float py,
     };
 
     // X axis: audio on the left, gpu on the right; control sits in the middle.
-    draw_axis_label("audio", scatter_x + 18,
+    // This matches the alignment target used by the generator and gives the
+    // map an interpretable left-right gradient. The Y axis is UMAP-native
+    // (perpendicular to X) and doesn't carry a strong enough single-word
+    // signal to justify a label — the crosshair alone is enough anchor.
+    draw_axis_label("audio", scatter_x + 22,
                     scatter_y + scatter_h - kAxisLabelH - 2,
                     kAudioAccent.data());
     draw_axis_label("ctrl", scatter_x + scatter_w * 0.5f,
                     scatter_y + scatter_h - kAxisLabelH - 2,
                     kControlAccent.data());
-    draw_axis_label("gpu", scatter_x + scatter_w - 18,
+    draw_axis_label("gpu", scatter_x + scatter_w - 22,
                     scatter_y + scatter_h - kAxisLabelH - 2,
                     kGpuAccent.data());
-
-    // Y axis: source-like (few inputs) toward the top; sink/analyzer
-    // (many inputs) toward the bottom.
-    draw_axis_label("source", scatter_x + 24, scatter_y + 2,
-                    style_.dim_text.data());
-    draw_axis_label("sink", scatter_x + 24, scatter_y + scatter_h - kAxisLabelH - 2 - 12,
-                    style_.dim_text.data());
 
     // ---- Dots ------------------------------------------------------------
     std::string lower_filter = chooser_filter_;
