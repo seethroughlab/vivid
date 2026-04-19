@@ -3,8 +3,8 @@
     "vivid_version": "0.1.0",
     "meta": {
         "id": "rich_text_demo",
-        "title": "RichText",
-        "description": "Animated text floats over noise and bloom for a compact typography patch.",
+        "title": "Kinetic Text",
+        "description": "Wave-animated typography over a noise wash and bloom. Demonstrates Text2D's animation modes (Phase E.7 subsumed RichText into Text2D).",
         "tags": [
             "demo",
             "typography",
@@ -26,20 +26,32 @@
     },
     "nodes": {
         "text": {
-            "type": "RichText",
+            "type": "Text2D",
             "params": {
                 "text": "VIVID",
-                "size": 0.2,
-                "anim_mode": 1,
-                "anim_speed": 2.0,
+                "font_size": 0.4,
+                "position_x": 0.0,
+                "position_y": 0.0,
+                "anchor": 4,
                 "r": 0.2,
                 "g": 0.9,
-                "b": 1.0
+                "b": 1.0,
+                "a": 1.0,
+                "anim_mode": 1,
+                "anim_speed": 2.0,
+                "anim_amount": 0.6
             },
-            "layout": {
-                "x": 0.0,
-                "y": 0.0
-            }
+            "layout": { "x": 30.0, "y": 80.0 }
+        },
+        "render": {
+            "type": "Render2D",
+            "params": {
+                "bg_r": 0.0,
+                "bg_g": 0.0,
+                "bg_b": 0.0,
+                "bg_a": 0.0
+            },
+            "layout": { "x": 290.0, "y": 80.0 }
         },
         "noise": {
             "type": "NoiseTexture",
@@ -48,20 +60,12 @@
                 "speed": 0.3,
                 "octaves": 2
             },
-            "layout": {
-                "x": 240.0,
-                "y": 0.0
-            }
+            "layout": { "x": 290.0, "y": 260.0 }
         },
         "comp": {
             "type": "Composite",
-            "params": {
-                "blend_mode": 3
-            },
-            "layout": {
-                "x": 480.0,
-                "y": 0.0
-            }
+            "params": { "blend_mode": 3 },
+            "layout": { "x": 560.0, "y": 160.0 }
         },
         "bloom": {
             "type": "Bloom",
@@ -71,35 +75,18 @@
                 "radius": 1.5,
                 "passes": 4
             },
-            "layout": {
-                "x": 720.0,
-                "y": 0.0
-            }
+            "layout": { "x": 820.0, "y": 160.0 }
         },
         "vout": {
             "type": "video_out",
-            "layout": {
-                "x": 960.0,
-                "y": 0.0
-            }
+            "layout": { "x": 1070.0, "y": 160.0 }
         }
     },
     "connections": [
-        {
-            "from": "text/texture",
-            "to": "comp/layer_0"
-        },
-        {
-            "from": "noise/texture",
-            "to": "comp/layer_1"
-        },
-        {
-            "from": "comp/texture",
-            "to": "bloom/input"
-        },
-        {
-            "from": "bloom/texture",
-            "to": "vout/input"
-        }
+        { "from": "text/drawable",   "to": "render/drawable" },
+        { "from": "render/texture",  "to": "comp/layer_0" },
+        { "from": "noise/texture",   "to": "comp/layer_1" },
+        { "from": "comp/texture",    "to": "bloom/input" },
+        { "from": "bloom/texture",   "to": "vout/input" }
     ]
 }

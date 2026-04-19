@@ -21,7 +21,7 @@ Meanwhile, 3D already ships a split pipeline: `VividSceneFragment` (a tagged-uni
 | **B** — unify 3D instancing API | Complete 2026-04-19. Shim retired 2026-04-19. | Introduced `InstanceArray3D` custom-ref port type in vivid-3d. Added `InstanceGrid`, `InstanceNoise`, `InstancesFromLanes` operators. `Instancer3D` gained a unified `instances` input. Renamed `InstancedRender` → `MeshDraw`. Canonical recipe is `Shape3D → Instancer3D ← InstanceGrid`. **Clean-break follow-up:** deleted the 7 deprecated lane-array ports + `count`/`layout`/`spacing`/`palette` params from `Instancer3D` (~180 LOC). Dropped `"Instanced Shapes" → "ShapeField"` runtime alias. |
 | **C** — 2D parity (original plan) | **Subsumed into E.5 — Complete 2026-04-19** | Delivered via E.5 on the new drawable pipeline: `InstanceNoise2D`, `InstancesFromLanes2D`, shared `instance_algorithms.h`, `InstancedShapes → ShapeField` rename + JSON alias. See `docs/plans/2d-pipeline-e5-parity.md`. |
 | **D** — UX polish | Deferred | "Make many…" node shortcut, lane-count wire badges, operator browser "Instancing" category. Ships after E. |
-| **E** — 2D pipeline redesign | **This document. E.1–E.6 Complete 2026-04-19.** | Full split-pipeline redesign for 2D. All sub-phases shipped. |
+| **E** — 2D pipeline redesign | **This document. E.1–E.7 Complete 2026-04-19.** | Full split-pipeline redesign for 2D. All sub-phases shipped, including the E.7 architectural polish that retired ShapeField's fragment shader and subsumed RichText into Text2D. See `docs/plans/2d-pipeline-e7-architectural-polish.md`. |
 
 Full context and completion memory lives at `~/.claude/projects/-Users-jeff-Developer-vivid/memory/project_instancing_ux.md`.
 

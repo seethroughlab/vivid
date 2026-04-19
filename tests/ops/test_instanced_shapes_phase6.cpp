@@ -85,7 +85,7 @@ void test_port_counts(const VividOperatorDescriptor& desc) {
         if (desc.ports[i].direction == VIVID_PORT_OUTPUT) ++outputs;
     }
     check(inputs  == 7, "7 input ports (5 from Phase 5 + 2 from Phase 6)");
-    check(outputs == 1, "1 output port (texture)");
+    check(outputs == 1, "1 output port (drawable)");
 }
 
 void test_phase5_lanes_preserved(const VividOperatorDescriptor& desc) {

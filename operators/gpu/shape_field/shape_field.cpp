@@ -1,22 +1,28 @@
-// ShapeField — GPU SDF geometry with owned internal LFO pools.
+// ShapeField — self-contained SDF emitter for the 2D drawable pipeline.
 //
-// Renders N instances of a chosen SDF shape (circle, triangle, square, pentagon,
-// hexagon, star) in configurable spatial layouts. Three owned LFO pools
-// (scale, rotation, color_mod) provide per-instance modulation via ChildOp<LFO>.
+// Emits a tree of VividDrawable2D records (one leaf per SDF shape kind) so
+// Render2D's shape-instanced pipeline draws all N instances in ≤ 6 draw calls.
+// Keeps the operator's unique capabilities: owned ChildOp<LFO> pools for per-
+// instance scale/rotation/color modulation, plus 7 lane-array overrides.
+//
+// 64-instance cap is intentional — positions ShapeField as "self-contained SDF
+// field with internal modulation" vs the Shape2D + Instancer2D + external LFO
+// composition path which scales to 4096 but requires explicit wiring.
 
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_common.h"
+#include "operator_api/gpu_2d.h"
 #include "operator_api/child_op.h"
 #include "control/lfo/lfo.h"
+#include <algorithm>
 #include <cmath>
-#include <cstdio>
-#include <cstring>
-#include <memory>
+#include <cstdint>
 #include <string>
 #include <vector>
 
 static constexpr int kMaxInstances = 64;
+static constexpr int kShapeBuckets = 6;   // Circle / Triangle / Square / Pentagon / Hexagon / Star
 
 // Lane-array input port indices. Phase 5 added the first five; Phase 6
 // appended `rotation` and `shape_idx` (keep Phase-5 ordinals unchanged so
@@ -54,139 +60,21 @@ static void hsv_to_rgb(float h, float s, float v, float* r, float* g, float* b) 
     *r = rr + m; *g = gg + m; *b = bb + m;
 }
 
-// ── WGSL fragment shader ────────────────────────────────────────────────
-
-static const char* kShapeFieldFragment = R"(
-
-struct Uniforms {
-    resolution: vec2f,
-    time: f32,
-    active_count: f32,
-    softness: f32,
-    _pad0: f32,
-    _pad1: f32,
-    _pad2: f32,
-    instances_geo:   array<vec4f, 64>,   // xy=position, z=size, w=rotation
-    instances_color: array<vec4f, 64>,   // rgb=color, a=alpha
-    instances_shape: array<vec4f, 16>,   // 4 shape indices per vec4, 64 total
-};
-
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
-}
-
-@group(0) @binding(0) var<uniform> u: Uniforms;
-
-@vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    let fs = fullscreenTriangle(vertexIndex, true);
-    var out: VertexOutput;
-    out.position = fs.position;
-    out.uv = fs.uv;
-    return out;
-}
-
-// Phase 6: per-instance shape dispatch. `shape_idx` in [0,5] selects a
-// primitive; unknown values fall through to Square.
-fn sd_for_shape(p_in: vec2f, size: f32, rot: f32, shape_idx: i32) -> f32 {
-    // Apply per-instance rotation
-    let c = cos(rot);
-    let s = sin(rot);
-    let p = vec2f(c * p_in.x + s * p_in.y, -s * p_in.x + c * p_in.y);
-
-    // Circle has no polygon math — early-out.
-    if (shape_idx == 0) {
-        return length(p) - size;
-    }
-
-    var sides = 4.0;
-    var sf    = 0.0;
+// Shape-idx → (shape_sides, shape_star_factor) for Render2D's SDF. Matches
+// the mapping the fragment shader used historically; see docstring above the
+// struct.
+static void shape_idx_to_sdf_params(int shape_idx,
+                                    uint32_t* out_sides, float* out_star_factor) {
     switch (shape_idx) {
-        case 1: { sides = 3.0; }              // Triangle
-        case 2: { sides = 4.0; }              // Square
-        case 3: { sides = 5.0; }              // Pentagon
-        case 4: { sides = 6.0; }              // Hexagon
-        case 5: { sides = 5.0; sf = 0.5; }    // Star (5-pointed)
-        default: { sides = 4.0; }
-    }
-
-    let an = PI / sides;
-    let angle = atan2(p.y, p.x);
-
-    if (sf < 0.001) {
-        // Regular polygon via sector folding
-        let sector = round(angle / (2.0 * an));
-        let folded = angle - sector * 2.0 * an;
-        let q = length(p) * vec2f(cos(folded), abs(sin(folded)));
-        return q.x - size * cos(an);
-    } else {
-        // Star — alternating outer/inner vertices
-        let inner_r = size * (1.0 - sf);
-        let sector = round(angle / (2.0 * an));
-        let folded = abs(angle - sector * 2.0 * an);
-
-        let lp = length(p);
-        let q = vec2f(lp * cos(folded), lp * sin(folded));
-
-        let v0 = vec2f(size, 0.0);
-        let v1 = vec2f(inner_r * cos(an), inner_r * sin(an));
-        let edge = v1 - v0;
-        let normal = normalize(vec2f(edge.y, -edge.x));
-        return dot(q - v0, normal);
+        case 0: *out_sides = 0; *out_star_factor = 0.0f; return;  // Circle
+        case 1: *out_sides = 3; *out_star_factor = 0.0f; return;  // Triangle
+        case 2: *out_sides = 4; *out_star_factor = 0.0f; return;  // Square
+        case 3: *out_sides = 5; *out_star_factor = 0.0f; return;  // Pentagon
+        case 4: *out_sides = 6; *out_star_factor = 0.0f; return;  // Hexagon
+        case 5: *out_sides = 5; *out_star_factor = 0.5f; return;  // Star
+        default:*out_sides = 4; *out_star_factor = 0.0f; return;  // fallback = square
     }
 }
-
-// Unpack shape index for instance `i` from the vec4-packed array.
-// Explicit switch avoids any uniform-vector dynamic-indexing portability gotcha.
-fn get_shape_idx(i: i32) -> i32 {
-    let v = u.instances_shape[i / 4];
-    switch (i % 4) {
-        case 0:  { return i32(v.x); }
-        case 1:  { return i32(v.y); }
-        case 2:  { return i32(v.z); }
-        default: { return i32(v.w); }
-    }
-}
-
-@fragment
-fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-    let aspect = u.resolution.x / u.resolution.y;
-    let uv = vec2f(input.uv.x * aspect, input.uv.y);
-    let n = i32(u.active_count);
-
-    var accum = vec4f(0.0);
-
-    for (var i = 0; i < n; i++) {
-        let geo = u.instances_geo[i];
-        let col = u.instances_color[i];
-        let sidx = get_shape_idx(i);
-
-        let ppos = vec2f(geo.x * aspect, geo.y);
-        let d = sd_for_shape(uv - ppos, geo.z, geo.w, sidx);
-        let alpha = (1.0 - smoothstep(-u.softness, u.softness, d)) * col.a;
-
-        accum += vec4f(col.rgb * alpha, alpha);
-    }
-
-    return vec4f(min(accum.rgb, vec3f(1.0)), min(accum.a, 1.0));
-}
-)";
-
-// ── Uniform struct (must match WGSL layout exactly) ─────────────────────
-
-struct ShapeFieldUniforms {
-    float resolution[2];
-    float time;
-    float active_count;
-    float softness;
-    float _pad0;
-    float _pad1;
-    float _pad2;
-    float instances_geo[kMaxInstances * 4];    // array<vec4f, 64>
-    float instances_color[kMaxInstances * 4];  // array<vec4f, 64>
-    float instances_shape[kMaxInstances];      // flat 64 f32; WGSL array<vec4f, 16>
-};
 
 // ── Instance state ──────────────────────────────────────────────────────
 
@@ -214,20 +102,26 @@ static int host_waveform_to_lfo(int host) {
         default: return 0;
     }
 }
+
 /**
- * @brief Renders N SDF shapes with per-instance layout and LFO modulation.
+ * @brief Self-contained SDF field: emits up to 64 shape instances as a drawable tree.
  *
- * Draws up to 64 instances of a chosen SDF shape (circle, polygon, star)
- * arranged in grid, circle, line, or random layouts. Per-instance LFO
- * modulation on scale, rotation, and color.
+ * Unlike the Shape2D → Instancer2D recipe, ShapeField owns three `ChildOp<LFO>`
+ * pools (scale, rotation, color_mod) that produce independent per-instance
+ * modulation — one LFO per instance, each with its own phase. Lane-array inputs
+ * override the LFO values when connected. Output is a VividDrawable2D tree;
+ * Render2D draws each of the six SDF shape kinds (circle, triangle, square,
+ * pentagon, hexagon, star) with a single instanced draw call per kind.
  *
  * @param layout Arrangement: Random, Grid, Circle, or Line.
  *
- * @tip Self-contained — no Instancer2D needed. Outputs a texture directly.
- * @tip For more flexible instancing, use Shape2D → Instancer2D with an InstanceArray2D bundle.
- * @recipe ShapeField -> Bloom -> video_out
- * @common_companions Bloom, video_out
- * @best_used_with video_out, Bloom
+ * @tip Drop-in drawable source — wire `drawable` straight into Render2D.
+ * @tip For large instance counts or compute-driven sources, use Particles2D /
+ *      Shape2D → Instancer2D instead; ShapeField caps at 64 on purpose.
+ * @recipe ShapeField -> Render2D -> Bloom -> video_out
+ * @common_companions Render2D, Bloom
+ * @best_used_with Render2D
+ * @family 2D drawable pipeline
  * @see Shape2D, Instancer2D, Particles2D
  */
 struct ShapeField : vivid::OperatorBase, vivid::GpuProcessable {
@@ -290,16 +184,23 @@ struct ShapeField : vivid::OperatorBase, vivid::GpuProcessable {
         vivid::description(color_mod_rate, "Frequency of the color modulation LFO in Hz");
         vivid::description(color_mod_waveform, "Waveform shape for the color modulation LFO");
         vivid::description(color_mod_offset, "DC offset added to the color modulation LFO");
+
+        instances_.resize(kMaxInstances);
+
+        // Wire the tree: children[] points at child drawables in a fixed order
+        // matching shape_idx. Unused buckets keep instance_count=0 so Render2D
+        // skips them (collect_recursive only draws leaves with non-zero work).
+        for (int k = 0; k < kShapeBuckets; ++k) {
+            children_ptrs_[k] = &output_children_[k];
+        }
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         vivid::layout_row(count,     2, 0);
         vivid::layout_row(shape,     2, 1);
-        // base_size, softness, layout: full-width sliders
         vivid::display_hint(color_r, VIVID_DISPLAY_COLOR);
         vivid::display_hint(color_g, VIVID_DISPLAY_COLOR);
         vivid::display_hint(color_b, VIVID_DISPLAY_COLOR);
-        // color: compound widget handles COLOR triplet automatically
         vivid::layout_row(animate,   2, 0);
         vivid::layout_row(speed,     2, 1);
         out.push_back(&count);
@@ -313,7 +214,6 @@ struct ShapeField : vivid::OperatorBase, vivid::GpuProcessable {
         out.push_back(&animate);
         out.push_back(&speed);
 
-        // Scale modulation params
         vivid::layout_row(scale_enabled,  2, 0);
         vivid::layout_row(scale_waveform, 2, 1);
         out.push_back(&scale_enabled);
@@ -322,7 +222,6 @@ struct ShapeField : vivid::OperatorBase, vivid::GpuProcessable {
         out.push_back(&scale_waveform);
         out.push_back(&scale_offset);
 
-        // Rotation modulation params
         vivid::layout_row(rotation_enabled,  2, 0);
         vivid::layout_row(rotation_waveform, 2, 1);
         out.push_back(&rotation_enabled);
@@ -331,7 +230,6 @@ struct ShapeField : vivid::OperatorBase, vivid::GpuProcessable {
         out.push_back(&rotation_waveform);
         out.push_back(&rotation_offset);
 
-        // Color mod modulation params
         vivid::layout_row(color_mod_enabled,  2, 0);
         vivid::layout_row(color_mod_waveform, 2, 1);
         out.push_back(&color_mod_enabled);
@@ -343,8 +241,7 @@ struct ShapeField : vivid::OperatorBase, vivid::GpuProcessable {
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         // Phase 5 — lane-array inputs. Each is optional; unconnected lanes
-        // fall back to the static/LFO-driven values computed elsewhere, so
-        // pre-Phase-5 graphs render bit-identically.
+        // fall back to the static/LFO-driven values.
         VividPortDescriptor pos_x_port{"pos_x", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT};
         vivid::semantic_tag(pos_x_port, "position_xy");
         vivid::semantic_shape(pos_x_port, "lane_array");
@@ -403,10 +300,8 @@ struct ShapeField : vivid::OperatorBase, vivid::GpuProcessable {
             "Overrides the global shape param when connected; clamped to [0, 5].");
         out.push_back(shape_port);   // 6 = kLaneShapeIdx
 
-        out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
+        out.push_back(vivid::gpu::drawable_port("drawable", VIVID_PORT_OUTPUT));
     }
-
-
 
     // Fetch lane data + length for input port `idx`. Returns data=nullptr
     // when the port is disconnected or the lane is empty.
@@ -419,13 +314,7 @@ struct ShapeField : vivid::OperatorBase, vivid::GpuProcessable {
     }
 
     void process_gpu(const VividGpuContext* ctx) override {
-        if (!pipeline_ && !lazy_init(ctx)) return;
-
         // ── Phase 5: lane-driven effective count ─────────────────────
-        // When any lane input is connected and non-empty, the max of its
-        // lengths wins. Users can drive just one lane (e.g. hue) without
-        // touching count; or drive pos_x with 8 lanes and render 8 shapes
-        // regardless of the static count.
         const LaneSlot lane_pos_x    = lane_slot(ctx, kLanePosX);
         const LaneSlot lane_pos_y    = lane_slot(ctx, kLanePosY);
         const LaneSlot lane_size     = lane_slot(ctx, kLaneSize);
@@ -459,133 +348,159 @@ struct ShapeField : vivid::OperatorBase, vivid::GpuProcessable {
             prev_layout_ = layout_mode;
         }
 
-        // ── Pack uniforms ────────────────────────────────────────────
-        // Phase 6: shape is per-instance. The global `shape` param is the
-        // fallback when the shape_idx lane isn't connected; per-instance
-        // dispatch now lives in the shader's sd_for_shape().
         int default_shape_idx = std::clamp(shape.int_value(), 0, 5);
-
-        ShapeFieldUniforms u{};
-        u.resolution[0] = static_cast<float>(ctx->output_width);
-        u.resolution[1] = static_cast<float>(ctx->output_height);
-        u.time          = t;
-        u.active_count  = static_cast<float>(n);
-        u.softness      = softness.value;
-
-        // Shared process context for all child LFO instances
-        VividFrameContext ctrl_ctx{};
-        ctrl_ctx.time       = ctx->time;
-        ctrl_ctx.delta_time = ctx->delta_time;
-        ctrl_ctx.frame      = ctx->frame;
 
         // Process all LFO pools
         float scale_vals[kMaxInstances];
         float rotation_vals[kMaxInstances];
         float color_mod_vals[kMaxInstances];
-
+        VividFrameContext ctrl_ctx{};
+        ctrl_ctx.time       = ctx->time;
+        ctrl_ctx.delta_time = ctx->delta_time;
+        ctrl_ctx.frame      = ctx->frame;
         process_lfo_pool(scale_pool_,     &ctrl_ctx, n, scale_amount.value,     scale_vals);
         process_lfo_pool(rotation_pool_,  &ctrl_ctx, n, rotation_amount.value,  rotation_vals);
         process_lfo_pool(color_mod_pool_, &ctrl_ctx, n, color_mod_amount.value, color_mod_vals);
 
-        float cr = color_r.value;
-        float cg = color_g.value;
-        float cb = color_b.value;
-        float bs = base_size.value;
+        // ── Clear per-bucket scratch vectors ─────────────────────────
+        for (int k = 0; k < kShapeBuckets; ++k) bucket_instances_[k].clear();
 
+        const float cr = color_r.value;
+        const float cg = color_g.value;
+        const float cb = color_b.value;
+        const float bs = base_size.value;
+
+        // ── Compose N instances, bucket each into its shape-kind array ─
         for (int i = 0; i < n; ++i) {
-            auto& inst = instances_[i];
+            const auto& inst = instances_[i];
 
-            // Animated position
+            // Animated position (UV [0,1] space).
             float px = inst.x;
             float py = inst.y;
             if (animating) {
                 switch (layout_mode) {
-                    case 0: // Random: slow drift
+                    case 0:
                         px += std::cos(inst.phase + t * spd) * 0.02f;
                         py += std::sin(inst.phase + t * spd) * 0.02f;
                         break;
-                    case 1: // Grid: oscillation
+                    case 1:
                         px += std::sin(inst.phase + t * spd) * 0.015f;
                         py += std::cos(inst.phase + t * spd * 0.7f) * 0.015f;
                         break;
-                    case 2: { // Circle: rotate ring
+                    case 2: {
                         float angle = inst.phase + t * spd * 0.5f;
                         float radius = 0.3f;
                         px = 0.5f + radius * std::cos(angle);
                         py = 0.5f + radius * std::sin(angle);
                         break;
                     }
-                    case 3: // Line: sine wave
+                    case 3:
                         py += std::sin(inst.phase + t * spd) * 0.05f;
                         break;
                 }
             }
 
-            // Phase 5 — per-instance lane overrides. Each override fires
-            // only if the corresponding lane is connected and has an entry
-            // for this instance index. Connected lanes bypass the animated
-            // layout; partial connections compose cleanly.
-            if (lane_pos_x.data && static_cast<uint32_t>(i) < lane_pos_x.length) {
+            // Lane overrides (stay in [0, 1] UV space here; NDC conversion below).
+            if (lane_pos_x.data && static_cast<uint32_t>(i) < lane_pos_x.length)
                 px = lane_pos_x.data[i];
-            }
-            if (lane_pos_y.data && static_cast<uint32_t>(i) < lane_pos_y.length) {
+            if (lane_pos_y.data && static_cast<uint32_t>(i) < lane_pos_y.length)
                 py = lane_pos_y.data[i];
-            }
 
-            // Pack geometry: xy=position, z=size, w=rotation
-            // scale_vals: bipolar [-1,1] → remap to [0,2] so 0 = default size
+            // Size in UV scale. scale_vals is bipolar [-1,1] → remap to [0,2].
             float sz = bs * std::max(0.0f, 1.0f + scale_vals[i]);
-            if (lane_size.data && static_cast<uint32_t>(i) < lane_size.length) {
+            if (lane_size.data && static_cast<uint32_t>(i) < lane_size.length)
                 sz = bs * std::max(0.0f, lane_size.data[i]);
-            }
-            // Rotation: lane drives in turns [0,1]; LFO pool drives in turns
-            // already. Convert to radians for the shader either way.
+
+            // Rotation. Lane gives turns [0,1]; LFO pool outputs turns too.
             float rot_turns = rotation_vals[i];
-            if (lane_rotation.data && static_cast<uint32_t>(i) < lane_rotation.length) {
+            if (lane_rotation.data && static_cast<uint32_t>(i) < lane_rotation.length)
                 rot_turns = lane_rotation.data[i];
-            }
-            u.instances_geo[i * 4 + 0] = px;
-            u.instances_geo[i * 4 + 1] = py;
-            u.instances_geo[i * 4 + 2] = sz;
-            u.instances_geo[i * 4 + 3] = rot_turns * 6.2831853f;
+            const float rot_rad = rot_turns * 6.2831853f;
 
-            // Phase 6: per-instance shape dispatch.
-            int shape_idx_i = default_shape_idx;
-            if (lane_shape.data && static_cast<uint32_t>(i) < lane_shape.length) {
-                shape_idx_i = std::clamp(
-                    static_cast<int>(lane_shape.data[i]), 0, 5);
-            }
-            u.instances_shape[i] = static_cast<float>(shape_idx_i);
-
-            // Pack color: rgb=modulated color, a=alpha
-            // color_mod_vals: bipolar [-1,1] → brightness range [0.5, 1.5]
+            // Colour (brightness × HSV/RGB × color_mod).
             float mod = std::max(0.0f, 1.0f + color_mod_vals[i] * 0.5f);
             float cr_i = cr, cg_i = cg, cb_i = cb;
-            if (lane_hue.data && static_cast<uint32_t>(i) < lane_hue.length) {
+            if (lane_hue.data && static_cast<uint32_t>(i) < lane_hue.length)
                 hsv_to_rgb(lane_hue.data[i], 1.0f, 1.0f, &cr_i, &cg_i, &cb_i);
-            }
             float bright_i = 1.0f;
-            if (lane_bright.data && static_cast<uint32_t>(i) < lane_bright.length) {
+            if (lane_bright.data && static_cast<uint32_t>(i) < lane_bright.length)
                 bright_i = std::max(0.0f, std::min(1.0f, lane_bright.data[i]));
-            }
-            u.instances_color[i * 4 + 0] = cr_i * mod * bright_i;
-            u.instances_color[i * 4 + 1] = cg_i * mod * bright_i;
-            u.instances_color[i * 4 + 2] = cb_i * mod * bright_i;
-            u.instances_color[i * 4 + 3] = bright_i;
+
+            // Per-instance shape_idx.
+            int shape_idx_i = default_shape_idx;
+            if (lane_shape.data && static_cast<uint32_t>(i) < lane_shape.length)
+                shape_idx_i = std::clamp(static_cast<int>(lane_shape.data[i]), 0, 5);
+
+            // ── Convert UV → NDC + build mat3x2 transform ─────────────
+            // UV (y grows down) → NDC (y up). Size in UV units maps to a
+            // half-extent of 2*sz in NDC (unit quad is [-1,1] = 2 units wide).
+            const float ndc_x = (px - 0.5f) * 2.0f;
+            const float ndc_y = (0.5f - py) * 2.0f;
+            const float half  = sz * 2.0f;
+            const float c_ = std::cos(rot_rad);
+            const float s_ = std::sin(rot_rad);
+
+            vivid::gpu::InstanceData2D rec{};
+            // T · R · S, column-major mat3x2:
+            // linear block = R · S = [[c*sx, -s*sy], [s*sx, c*sy]]
+            rec.transform[0] =  c_ * half;  // col0.x (a = coeff of local x in world x)
+            rec.transform[1] =  s_ * half;  // col0.y (c = coeff of local x in world y)
+            rec.transform[2] = -s_ * half;  // col1.x (b)
+            rec.transform[3] =  c_ * half;  // col1.y (d)
+            rec.transform[4] = ndc_x;
+            rec.transform[5] = ndc_y;
+            rec.color[0] = cr_i * mod * bright_i;
+            rec.color[1] = cg_i * mod * bright_i;
+            rec.color[2] = cb_i * mod * bright_i;
+            rec.color[3] = bright_i;
+
+            bucket_instances_[shape_idx_i].push_back(rec);
         }
 
-        wgpuQueueWriteBuffer(ctx->queue, uniform_buf_, 0, &u, sizeof(u));
-        vivid::gpu::run_pass(ctx->command_encoder, pipeline_, bind_group_,
-                             ctx->output_texture_view, "ShapeField Pass");
+        // ── Upload per-bucket instance buffers + wire child drawables ─
+        uint32_t child_n = 0;
+        for (int k = 0; k < kShapeBuckets; ++k) {
+            auto& bucket = bucket_instances_[k];
+            if (bucket.empty()) {
+                output_children_[k].instance_count = 0;
+                continue;  // will be skipped in parent's children[] below
+            }
+
+            ensure_bucket_capacity(ctx, k, static_cast<uint32_t>(bucket.size()));
+            wgpuQueueWriteBuffer(ctx->queue, bucket_buffers_[k], 0,
+                                 bucket.data(),
+                                 bucket.size() * sizeof(vivid::gpu::InstanceData2D));
+
+            uint32_t sides = 0;
+            float star_factor = 0.0f;
+            shape_idx_to_sdf_params(k, &sides, &star_factor);
+
+            auto& child = output_children_[k];
+            vivid::gpu::drawable_identity(child);
+            child.type              = vivid::gpu::VIVID_DRAWABLE2D_SHAPE;
+            child.blend_mode        = vivid::gpu::VIVID_BLEND_ALPHA;
+            child.shape_sides       = sides;
+            child.shape_star_factor = star_factor;
+            child.shape_softness    = softness.value;
+            child.instance_buffer   = bucket_buffers_[k];
+            child.instance_count    = static_cast<uint32_t>(bucket.size());
+
+            live_children_[child_n++] = &output_children_[k];
+        }
+
+        // Root: composition node (no own geometry — child_count > 0 signals
+        // Render2D's collect_recursive to walk and skip).
+        vivid::gpu::drawable_identity(output_root_);
+        output_root_.children    = live_children_;
+        output_root_.child_count = child_n;
+
+        ctx->custom_outputs[0] = &output_root_;
     }
 
     ~ShapeField() override {
-        vivid::gpu::release(pipeline_);
-        vivid::gpu::release(bind_group_);
-        vivid::gpu::release(bind_layout_);
-        vivid::gpu::release(uniform_buf_);
-        vivid::gpu::release(shader_);
-        vivid::gpu::release(pipe_layout_);
+        for (int k = 0; k < kShapeBuckets; ++k) {
+            vivid::gpu::release(bucket_buffers_[k]);
+        }
     }
 
 private:
@@ -599,62 +514,34 @@ private:
     LfoPool rotation_pool_;
     LfoPool color_mod_pool_;
 
-    // GPU handles
-    WGPURenderPipeline  pipeline_    = nullptr;
-    WGPUBindGroup       bind_group_  = nullptr;
-    WGPUBindGroupLayout bind_layout_ = nullptr;
-    WGPUBuffer          uniform_buf_ = nullptr;
-    WGPUShaderModule    shader_      = nullptr;
-    WGPUPipelineLayout  pipe_layout_ = nullptr;
-    bool lazy_init(const VividGpuContext* gpu) {
-        std::string frag = std::string(vivid::gpu::WGSL_CONSTANTS) + kShapeFieldFragment;
-        shader_ = vivid::gpu::create_shader(gpu->device, frag.c_str(), "ShapeField Shader");
-        if (!shader_) return false;
+    // Drawable tree output: 1 root + 6 children (one per shape kind).
+    vivid::gpu::VividDrawable2D output_root_{};
+    vivid::gpu::VividDrawable2D output_children_[kShapeBuckets]{};
+    // Stable pointer array used by output_root_.children. Populated each frame
+    // with the subset of children_ptrs_ whose instance_count > 0.
+    vivid::gpu::VividDrawable2D* children_ptrs_[kShapeBuckets]{};  // all children, stable order
+    vivid::gpu::VividDrawable2D* live_children_[kShapeBuckets]{};  // per-frame live subset
 
-        uniform_buf_ = vivid::gpu::create_uniform_buffer(
-            gpu->device, sizeof(ShapeFieldUniforms), "ShapeField Uniforms");
+    // Per-bucket GPU storage buffer for InstanceData2D[N]. Grown with slack.
+    WGPUBuffer bucket_buffers_[kShapeBuckets]   = {};
+    uint32_t   bucket_capacities_[kShapeBuckets] = {};
 
-        WGPUBindGroupLayoutEntry bgl_entry{};
-        bgl_entry.binding = 0;
-        bgl_entry.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
-        bgl_entry.buffer.type = WGPUBufferBindingType_Uniform;
-        bgl_entry.buffer.minBindingSize = sizeof(ShapeFieldUniforms);
+    // Per-bucket CPU scratch for the per-frame instance partition.
+    std::vector<vivid::gpu::InstanceData2D> bucket_instances_[kShapeBuckets];
 
-        WGPUBindGroupLayoutDescriptor bgl_desc{};
-        bgl_desc.label = vivid_sv("ShapeField BGL");
-        bgl_desc.entryCount = 1;
-        bgl_desc.entries = &bgl_entry;
-        bind_layout_ = wgpuDeviceCreateBindGroupLayout(gpu->device, &bgl_desc);
-
-        WGPUPipelineLayoutDescriptor pl_desc{};
-        pl_desc.label = vivid_sv("ShapeField Pipeline Layout");
-        pl_desc.bindGroupLayoutCount = 1;
-        pl_desc.bindGroupLayouts = &bind_layout_;
-        pipe_layout_ = wgpuDeviceCreatePipelineLayout(gpu->device, &pl_desc);
-
-        WGPUBindGroupEntry bg_entry{};
-        bg_entry.binding = 0;
-        bg_entry.buffer  = uniform_buf_;
-        bg_entry.offset  = 0;
-        bg_entry.size    = sizeof(ShapeFieldUniforms);
-
-        WGPUBindGroupDescriptor bg_desc{};
-        bg_desc.label = vivid_sv("ShapeField Bind Group");
-        bg_desc.layout = bind_layout_;
-        bg_desc.entryCount = 1;
-        bg_desc.entries = &bg_entry;
-        bind_group_ = wgpuDeviceCreateBindGroup(gpu->device, &bg_desc);
-
-        pipeline_ = vivid::gpu::create_pipeline(
-            gpu->device, shader_, pipe_layout_, gpu->output_format, "ShapeField Pipeline");
-        if (!pipeline_) return false;
-
-        instances_.resize(kMaxInstances);
-        return true;
+    void ensure_bucket_capacity(const VividGpuContext* ctx, int bucket, uint32_t needed) {
+        if (bucket_buffers_[bucket] && bucket_capacities_[bucket] >= needed) return;
+        vivid::gpu::release(bucket_buffers_[bucket]);
+        uint32_t new_cap = needed + 8;  // small slack to avoid churn on small deltas
+        bucket_capacities_[bucket] = new_cap;
+        WGPUBufferDescriptor bd{};
+        bd.label = vivid_sv("ShapeField bucket buffer");
+        bd.size  = static_cast<uint64_t>(new_cap) * sizeof(vivid::gpu::InstanceData2D);
+        bd.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst;
+        bucket_buffers_[bucket] = wgpuDeviceCreateBuffer(ctx->device, &bd);
     }
 
     // ── Layout computation ──────────────────────────────────────────
-
     void compute_base_layout(int n, int layout_mode) {
         constexpr float TAU = 6.2831853f;
         constexpr float margin = 0.1f;
@@ -664,7 +551,7 @@ private:
         }
 
         switch (layout_mode) {
-            case 0: { // Random — deterministic from fixed seed
+            case 0: {
                 uint32_t seed = 42;
                 for (int i = 0; i < n; ++i) {
                     instances_[i].x = margin + hash_float(seed) * (1.0f - 2.0f * margin);
@@ -672,7 +559,7 @@ private:
                 }
                 break;
             }
-            case 1: { // Grid
+            case 1: {
                 int cols = static_cast<int>(std::ceil(std::sqrt(static_cast<float>(n))));
                 int rows = (n + cols - 1) / cols;
                 for (int i = 0; i < n; ++i) {
@@ -687,7 +574,7 @@ private:
                 }
                 break;
             }
-            case 2: { // Circle
+            case 2: {
                 float radius = 0.3f;
                 for (int i = 0; i < n; ++i) {
                     float angle = TAU * static_cast<float>(i) / static_cast<float>(n);
@@ -696,7 +583,7 @@ private:
                 }
                 break;
             }
-            case 3: { // Line
+            case 3: {
                 for (int i = 0; i < n; ++i) {
                     instances_[i].x = (n > 1)
                         ? margin + static_cast<float>(i) * (1.0f - 2.0f * margin) / static_cast<float>(n - 1)
@@ -709,7 +596,6 @@ private:
     }
 
     // ── LFO pool management ─────────────────────────────────────────
-
     void sync_lfo_pool(LfoPool& pool, int n,
                        const vivid::Param<int>& enabled_param,
                        const vivid::Param<float>& rate_param,
@@ -723,20 +609,16 @@ private:
             return;
         }
 
-        // Resize pool if instance count changed
         if (n != pool.cached_count) {
             pool.instances.clear();
             pool.instances.resize(n);
             pool.cached_count = n;
-
-            // Set staggered phase offset on each new instance
             for (int i = 0; i < n; ++i) {
                 pool.instances[i].set_param("phase_offset",
                     static_cast<float>(i) / static_cast<float>(n));
             }
         }
 
-        // Sync host params → child LFO params each frame
         float freq = rate_param.value;
         int   wf   = host_waveform_to_lfo(waveform_param.int_value());
         float off  = offset_param.value;
@@ -763,3 +645,5 @@ private:
 };
 
 VIVID_REGISTER(ShapeField)
+
+VIVID_DESCRIBE_REF_TYPE(vivid::gpu::VividDrawable2D)

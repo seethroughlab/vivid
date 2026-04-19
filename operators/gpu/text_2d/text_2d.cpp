@@ -3,6 +3,8 @@
 #include "operator_api/gpu_common.h"
 #include "operator_api/gpu_2d.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
@@ -50,7 +52,10 @@
  */
 struct Text2D : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName               = "Text2D";
-    static constexpr bool kTimeDependent             = false;
+    // Time-dependent: the per-frame glyph rebuild is cheap when
+    // anim_mode=None (fast-path hits when nothing changed), but when an
+    // animation is active we need a fresh glyph run each frame.
+    static constexpr bool kTimeDependent             = true;
     static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
 
     vivid::Param<vivid::TextValue> text {"text", "vivid"};
@@ -66,6 +71,13 @@ struct Text2D : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> g {"g", 1.0f, 0.0f, 1.0f};
     vivid::Param<float> b {"b", 1.0f, 0.0f, 1.0f};
     vivid::Param<float> a {"a", 1.0f, 0.0f, 1.0f};
+
+    // Animation (subsumed from the legacy RichText operator, Phase E.7).
+    // All five modes are stateless functions of (char_idx, time, speed, amount).
+    vivid::Param<int>   anim_mode   {"anim_mode", 0, {
+        "None", "Wave", "Typewriter", "Scatter", "Fade"}};
+    vivid::Param<float> anim_speed  {"anim_speed",  1.0f, 0.0f, 10.0f};
+    vivid::Param<float> anim_amount {"anim_amount", 0.5f, 0.0f, 2.0f};
 
     Text2D() {
         vivid::description(text, "The text string to render.");
@@ -84,6 +96,9 @@ struct Text2D : vivid::OperatorBase, vivid::GpuProcessable {
         vivid::param_group(g, "Color");
         vivid::param_group(b, "Color");
         vivid::param_group(a, "Color");
+        vivid::param_group(anim_mode,   "Animation");
+        vivid::param_group(anim_speed,  "Animation");
+        vivid::param_group(anim_amount, "Animation");
         out.push_back(&text);
         out.push_back(&font_size);
         out.push_back(&position_x);
@@ -93,6 +108,9 @@ struct Text2D : vivid::OperatorBase, vivid::GpuProcessable {
         out.push_back(&g);
         out.push_back(&b);
         out.push_back(&a);
+        out.push_back(&anim_mode);
+        out.push_back(&anim_speed);
+        out.push_back(&anim_amount);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -110,28 +128,39 @@ struct Text2D : vivid::OperatorBase, vivid::GpuProcessable {
 
         const std::string& t = text.str_value;
         const float size_ndc = font_size.value;
+        const int   am       = anim_mode.int_value();
+        const float time_s   = static_cast<float>(ctx->time);
 
-        // Rebuild glyph run if text, size, position, colour, or anchor changed.
+        // Rebuild glyph run if text, layout, colour, or animation params changed.
+        // When animation is active, rebuild every frame — the per-glyph
+        // transforms depend on time.
         bool need_rebuild =
+            (am != 0) ||
             (t != last_text_) ||
             (size_ndc != last_size_) ||
             (position_x.value != last_px_) ||
             (position_y.value != last_py_) ||
             (anchor.int_value() != last_anchor_) ||
             (r.value != last_r_) || (g.value != last_g_) ||
-            (b.value != last_b_) || (a.value != last_a_);
+            (b.value != last_b_) || (a.value != last_a_) ||
+            (am != last_anim_mode_) ||
+            (anim_speed.value  != last_anim_speed_) ||
+            (anim_amount.value != last_anim_amount_);
 
         if (need_rebuild) {
-            rebuild_glyph_run(ctx, t, size_ndc);
-            last_text_   = t;
-            last_size_   = size_ndc;
-            last_px_     = position_x.value;
-            last_py_     = position_y.value;
-            last_anchor_ = anchor.int_value();
-            last_r_      = r.value;
-            last_g_      = g.value;
-            last_b_      = b.value;
-            last_a_      = a.value;
+            rebuild_glyph_run(ctx, t, size_ndc, am, time_s);
+            last_text_        = t;
+            last_size_        = size_ndc;
+            last_px_          = position_x.value;
+            last_py_          = position_y.value;
+            last_anchor_      = anchor.int_value();
+            last_r_           = r.value;
+            last_g_           = g.value;
+            last_b_           = b.value;
+            last_a_           = a.value;
+            last_anim_mode_   = am;
+            last_anim_speed_  = anim_speed.value;
+            last_anim_amount_ = anim_amount.value;
         }
 
         vivid::gpu::drawable_identity(output_);
@@ -183,6 +212,9 @@ private:
     float last_py_     =  0.0f;
     int   last_anchor_ = -1;
     float last_r_ = -1.0f, last_g_ = -1.0f, last_b_ = -1.0f, last_a_ = -1.0f;
+    int   last_anim_mode_   = -1;
+    float last_anim_speed_  = -1.0f;
+    float last_anim_amount_ = -1.0f;
 
     vivid::gpu::VividDrawable2D output_{};
 
@@ -344,9 +376,20 @@ private:
         glyph_buffer_ = wgpuDeviceCreateBuffer(ctx->device, &bd);
     }
 
+    // Deterministic 32-bit PCG-style hash for per-character scatter offsets.
+    static uint32_t scatter_hash(uint32_t i) {
+        uint32_t state  = i * 747796405u + 2891336453u;
+        uint32_t word   = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+        return (word >> 22u) ^ word;
+    }
+
     void rebuild_glyph_run(const VividGpuContext* ctx,
-                            const std::string& str, float size_ndc) {
+                            const std::string& str, float size_ndc,
+                            int anim_mode_i, float t) {
         if (str.empty()) { last_glyph_count_ = 0; return; }
+
+        const float aspeed  = anim_speed.value;
+        const float aamount = anim_amount.value;
 
         // NDC-per-raster-pixel scale factor.
         const float line_px  = kRasterPx;
@@ -405,13 +448,46 @@ private:
                 vivid::gpu::GlyphInstance2D gi{};
                 const float half_w = 0.5f * m.w * ndc_per_px;
                 const float half_h = 0.5f * m.h * ndc_per_px;
-                // Glyph centre in NDC. y0 is in raster pixels (DOWN-positive),
-                // so subtract it to move in the +NDC-Y direction. The glyph's
-                // vertical extent in NDC is [baseline - y1*nps, baseline - y0*nps],
-                // i.e. bottom = baseline - y1*nps, top = baseline - y0*nps,
-                // centre = baseline - (y0 + h/2)*nps.
-                const float cx = pen_x_origin_ndc + (pen_x_px + m.x0) * ndc_per_px + half_w;
-                const float cy = baseline_y_ndc - (m.y0 * ndc_per_px + half_h);
+                float cx = pen_x_origin_ndc + (pen_x_px + m.x0) * ndc_per_px + half_w;
+                float cy = baseline_y_ndc - (m.y0 * ndc_per_px + half_h);
+                float alpha_mul = 1.0f;
+
+                // Per-glyph animation modulation. Stateless functions of
+                // (char_idx, time, speed, amount). Mirrors the RichText
+                // operator's animation modes (subsumed in Phase E.7).
+                const float idx_f = static_cast<float>(i);
+                switch (anim_mode_i) {
+                    case 1: {  // Wave — sine-decorrelated y-offset per char
+                        cy += std::sin(t * aspeed + idx_f * 6.2831853f * 2.0f)
+                              * aamount * 0.05f;
+                        break;
+                    }
+                    case 2: {  // Typewriter — progressive alpha reveal
+                        const float s = std::clamp(t * aspeed * 0.1f - idx_f, 0.0f, 1.0f);
+                        alpha_mul *= s * s * (3.0f - 2.0f * s);  // smoothstep
+                        break;
+                    }
+                    case 3: {  // Scatter — fly-in from a random direction
+                        const float progress = std::clamp(t * aspeed * 0.1f - idx_f,
+                                                          0.0f, 1.0f);
+                        const float decay = 1.0f - progress;
+                        const uint32_t hx = scatter_hash(static_cast<uint32_t>(i) * 2u);
+                        const uint32_t hy = scatter_hash(static_cast<uint32_t>(i) * 2u + 1u);
+                        const float dx = (static_cast<float>(hx >> 8) / 16777216.0f) * 2.0f - 1.0f;
+                        const float dy = (static_cast<float>(hy >> 8) / 16777216.0f) * 2.0f - 1.0f;
+                        cx += dx * decay * aamount * 0.8f;
+                        cy += dy * decay * aamount * 0.8f;
+                        alpha_mul *= progress;
+                        break;
+                    }
+                    case 4: {  // Fade — progressive alpha reveal with pre-roll
+                        alpha_mul *= std::clamp(t * aspeed * 0.1f - idx_f + 0.5f,
+                                                0.0f, 1.0f);
+                        break;
+                    }
+                    default: break;
+                }
+
                 // Column-major mat3x2: x-scale (half_w), y-scale (+half_h, not
                 // negated — local +Y = visual top, UV atlas v=0 also = top).
                 gi.transform[0] = half_w;  gi.transform[1] = 0.0f;
@@ -426,7 +502,7 @@ private:
                 gi.color[0] = r.value;
                 gi.color[1] = g.value;
                 gi.color[2] = b.value;
-                gi.color[3] = a.value;
+                gi.color[3] = a.value * alpha_mul;
 
                 glyphs.push_back(gi);
             }

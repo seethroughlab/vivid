@@ -79,10 +79,11 @@ void test_descriptor_basics(const VividOperatorDescriptor& desc) {
     check(std::strcmp(desc.name, "ShapeField") == 0,
           "operator name is \"Instanced Shapes\"");
 
-    // Output `texture` still present.
-    const auto* tex = find_port(desc, "texture", VIVID_PORT_OUTPUT);
-    check(tex != nullptr, "has output port \"texture\"");
-    if (tex) check(tex->type == VIVID_PORT_TEXTURE, "texture output is TEXTURE");
+    // Output `drawable` present (Phase E.7: moved to drawable pipeline).
+    const auto* drw = find_port(desc, "drawable", VIVID_PORT_OUTPUT);
+    check(drw != nullptr, "has output port \"drawable\"");
+    if (drw) check(drw->transport == VIVID_PORT_TRANSPORT_CUSTOM_REF,
+                   "drawable output is custom-ref (VividDrawable2D)");
 }
 
 void test_new_lane_inputs(const VividOperatorDescriptor& desc) {
@@ -150,7 +151,7 @@ void test_port_counts(const VividOperatorDescriptor& desc) {
         if (desc.ports[i].direction == VIVID_PORT_OUTPUT) ++outputs;
     }
     check(inputs  == 7, "7 input ports (pos_x, pos_y, size, hue, brightness, rotation, shape_idx)");
-    check(outputs == 1, "1 output port (texture)");
+    check(outputs == 1, "1 output port (drawable)");
 }
 
 } // namespace
