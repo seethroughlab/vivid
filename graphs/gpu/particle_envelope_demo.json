@@ -39,7 +39,7 @@
             }
         },
         "particles": {
-            "type": "Particles",
+            "type": "Particles2D",
             "params": {
                 "spread": 0.3499999940395355,
                 "size": 0.08790962398052216,
@@ -68,16 +68,27 @@
                 "x": 240.0,
                 "y": 0.0
             }
+        },
+        "particles_render": {
+            "type": "Render2D",
+            "layout": {
+                "x": 210.0,
+                "y": 459.5
+            }
         }
     },
     "connections": [
         {
-            "from": "particles/texture",
+            "from": "particles_render/texture",
             "to": "bloom/input"
         },
         {
             "from": "bloom/texture",
             "to": "vout/input"
+        },
+        {
+            "from": "particles/drawable",
+            "to": "particles_render/drawable"
         }
     ],
     "viewport": {

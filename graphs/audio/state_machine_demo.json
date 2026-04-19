@@ -152,11 +152,12 @@
             }
         },
         "shape1": {
-            "type": "Shape",
+            "type": "Shape2D",
             "params": {
-                "radius": 0.12,
+                "scale_x": 0.12,
+                "scale_y": 0.12,
                 "sides": 32,
-                "star": 0.0,
+                "star_factor": 0.0,
                 "softness": 0.02,
                 "r": 0.3,
                 "g": 0.5,
@@ -214,6 +215,13 @@
                 "x": 0.0,
                 "y": 510.0
             }
+        },
+        "shape1_render": {
+            "type": "Render2D",
+            "layout": {
+                "x": 180.0,
+                "y": 340.0
+            }
         }
     },
     "connections": [
@@ -267,7 +275,7 @@
             "to": "comp1/layer_0"
         },
         {
-            "from": "shape1/texture",
+            "from": "shape1_render/texture",
             "to": "bloom1/input"
         },
         {
@@ -293,6 +301,10 @@
         {
             "from": "hat1/output",
             "to": "audio_out/input"
+        },
+        {
+            "from": "shape1/drawable",
+            "to": "shape1_render/drawable"
         }
     ],
     "presets": {

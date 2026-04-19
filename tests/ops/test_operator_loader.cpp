@@ -837,13 +837,13 @@ int main() {
     {
         std::fprintf(stderr, "\n--- support-backed embeddable consumer loads cleanly ---\n");
         vivid::OperatorLoader loader;
-        std::string path = build_dir + "/particles.dylib";
-        check(loader.load(path.c_str()), "particles dylib loads");
-        check(loader.is_loaded(), "particles loader reports loaded");
+        std::string path = build_dir + "/shape_field.dylib";
+        check(loader.load(path.c_str()), "shape_field dylib loads");
+        check(loader.is_loaded(), "shape_field loader reports loaded");
         const auto* desc = loader.descriptor();
-        check(desc != nullptr, "particles descriptor not null");
+        check(desc != nullptr, "shape_field descriptor not null");
         if (desc) {
-            check(std::strcmp(desc->name, "Particles") == 0, "particles descriptor name = Particles");
+            check(std::strcmp(desc->name, "ShapeField") == 0, "shape_field descriptor name = ShapeField");
         }
     }
 

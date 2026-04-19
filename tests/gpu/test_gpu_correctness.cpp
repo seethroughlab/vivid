@@ -294,10 +294,10 @@ int main() {
     // =================================================================
     // Test 3: Shape — non-zero brightness and contrast
     // =================================================================
-    if (registry.find("Shape")) {
+    if (registry.find("Shape2D")) {
         std::fprintf(stderr, "\n--- Shape: geometry produces brightness/contrast ---\n");
         vivid::Graph g;
-        g.add_node("shape", "Shape", {});
+        g.add_node("shape", "Shape2D", {});
 
         vivid::RuntimeCore runtime;
         check(runtime.build(g, registry), "build shape");

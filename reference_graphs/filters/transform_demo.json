@@ -25,7 +25,7 @@
     },
     "nodes": {
         "shape": {
-            "type": "Shape",
+            "type": "Shape2D",
             "params": {
                 "shape": 0,
                 "fill": 1.0,
@@ -61,11 +61,18 @@
         },
         "vout": {
             "type": "video_out"
+        },
+        "shape_render": {
+            "type": "Render2D",
+            "layout": {
+                "x": 180.0,
+                "y": 0.0
+            }
         }
     },
     "connections": [
         {
-            "from": "shape/texture",
+            "from": "shape_render/texture",
             "to": "xform/input"
         },
         {
@@ -79,6 +86,10 @@
         {
             "from": "xform/texture",
             "to": "vout/input"
+        },
+        {
+            "from": "shape/drawable",
+            "to": "shape_render/drawable"
         }
     ]
 }

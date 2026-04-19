@@ -427,7 +427,7 @@ int main() {
         std::filesystem::copy_options::overwrite_existing);
     std::filesystem::copy_file("gpu_metronome_probe_op.dylib", staging + "/gpu_metronome_probe_op.dylib",
         std::filesystem::copy_options::overwrite_existing);
-    std::filesystem::copy_file("shape.dylib", staging + "/shape.dylib",
+    std::filesystem::copy_file("shape_2d.dylib", staging + "/shape_2d.dylib",
         std::filesystem::copy_options::overwrite_existing);
     std::filesystem::copy_file("control_thumb_op.dylib", staging + "/control_thumb_op.dylib",
         std::filesystem::copy_options::overwrite_existing);
@@ -436,7 +436,7 @@ int main() {
     check(registry.scan(staging.c_str()), "registry.scan() succeeds");
     check(registry.find("GpuFillOp") != nullptr, "GpuFillOp registered");
     check(registry.find("GpuMetronomeProbeOp") != nullptr, "GpuMetronomeProbeOp registered");
-    check(registry.find("Shape") != nullptr, "Shape registered");
+    check(registry.find("Shape2D") != nullptr, "Shape2D registered");
     check(registry.find("ControlThumbOp") != nullptr, "ControlThumbOp registered");
 
     // =====================================================================
@@ -573,38 +573,10 @@ int main() {
     }
 
     // =====================================================================
-    // Test 5: Shape operator renders non-black
+    // Test 5: (retired) Legacy Shape texture-chain op deleted in clean-break
+    // 2026-04-19. End-to-end Shape2D → Render2D rendering is covered by the
+    // headless demo-graph loader (`test_demo_graphs`).
     // =====================================================================
-    {
-        std::fprintf(stderr, "\n=== Test 5: Shape operator render ===\n");
-        constexpr uint32_t W = 64, H = 64;
-
-        vivid::Graph g;
-        g.add_node("shape", "Shape", {});
-
-        vivid::RuntimeCore runtime;
-        check(runtime.build(g, registry), "build succeeds");
-        runtime.allocate_gpu_textures(gpu.device, W, H, kFormat, WGPUTextureUsage_CopySrc);
-
-        tick_and_submit(runtime, gpu, kFormat);
-
-        auto pixels = readback_texture(gpu.device, gpu.queue,
-                                        runtime.compiled_graph()->nodes[0].gpu->texture, W, H);
-        check(!pixels.empty(), "readback returned pixels");
-
-        if (!pixels.empty()) {
-            // Center pixel should be non-black (Shape renders white geometry at center by default)
-            uint32_t cx = W / 2, cy = H / 2;
-            size_t idx = (cy * W + cx) * 4;
-            uint8_t r = pixels[idx], g_ = pixels[idx+1], b = pixels[idx+2];
-            std::fprintf(stderr, "  Center pixel: (%u, %u, %u, %u)\n",
-                         r, g_, b, pixels[idx+3]);
-            check(r > 0 || g_ > 0 || b > 0,
-                  "center pixel is non-black (Shape produces visible geometry)");
-        }
-
-        runtime.shutdown();
-    }
 
     // =====================================================================
     // Test 6: custom GPU thumbnail for control operator

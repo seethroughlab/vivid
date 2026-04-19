@@ -63,13 +63,14 @@
             }
         },
         "star": {
-            "type": "Shape",
+            "type": "Shape2D",
             "params": {
-                "star": 0.5,
+                "star_factor": 0.5,
                 "softness": 0.0,
                 "sides": 5.0,
                 "b": 0.2,
-                "radius": 0.15,
+                "scale_x": 0.15,
+                "scale_y": 0.15,
                 "r": 1.0,
                 "g": 0.6
             },
@@ -84,6 +85,13 @@
                 "x": 960.0,
                 "y": 0.0
             }
+        },
+        "star_render": {
+            "type": "Render2D",
+            "layout": {
+                "x": 180.0,
+                "y": 0.0
+            }
         }
     },
     "connections": [
@@ -93,15 +101,19 @@
         },
         {
             "from": "lfo_size/value",
-            "to": "star/radius"
+            "to": "star/scale_x"
         },
         {
-            "from": "star/texture",
+            "from": "star_render/texture",
             "to": "feedback/input"
         },
         {
             "from": "feedback/texture",
             "to": "vout/input"
+        },
+        {
+            "from": "star/drawable",
+            "to": "star_render/drawable"
         }
     ],
     "viewport": {
@@ -121,7 +133,7 @@
         },
         {
             "id": "note_2",
-            "text": "**decay=0.92**: previous frame fades 8% each frame **zoom=1.02**: old frame grows → creates spiraling trail effect",
+            "text": "**decay=0.92**: previous frame fades 8% each frame **zoom=1.02**: old frame grows \u2192 creates spiraling trail effect",
             "x": 8.1015625,
             "y": 156.94922,
             "width": 260.0,

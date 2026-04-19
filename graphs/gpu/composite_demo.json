@@ -76,13 +76,14 @@
             }
         },
         "shape1": {
-            "type": "Shape",
+            "type": "Shape2D",
             "params": {
-                "star": 0.4,
+                "star_factor": 0.4,
                 "softness": 0.0,
                 "sides": 6.0,
                 "b": 1.0,
-                "radius": 0.25,
+                "scale_x": 0.25,
+                "scale_y": 0.25,
                 "r": 0.2,
                 "g": 0.8
             },
@@ -100,19 +101,26 @@
                 "x": 752.25616,
                 "y": 347.9777
             }
+        },
+        "shape1_render": {
+            "type": "Render2D",
+            "layout": {
+                "x": 410.00327,
+                "y": 234.37274
+            }
         }
     },
     "connections": [
         {
             "from": "lfo1/value",
-            "to": "shape1/radius"
+            "to": "shape1/scale_x"
         },
         {
             "from": "lfo2/value",
             "to": "shape1/rotation"
         },
         {
-            "from": "shape1/texture",
+            "from": "shape1_render/texture",
             "to": "comp1/layer_0"
         },
         {
@@ -122,6 +130,10 @@
         {
             "from": "comp1/texture",
             "to": "vout/input"
+        },
+        {
+            "from": "shape1/drawable",
+            "to": "shape1_render/drawable"
         }
     ],
     "metronome": {

@@ -35,11 +35,12 @@
             ]
         },
         "shape1": {
-            "type": "Shape",
+            "type": "Shape2D",
             "params": {
-                "radius": 0.2,
+                "scale_x": 0.2,
+                "scale_y": 0.2,
                 "sides": 5,
-                "star": 0.4,
+                "star_factor": 0.4,
                 "rotation": 0.0,
                 "r": 1.0,
                 "g": 0.4,
@@ -134,6 +135,13 @@
                 1100,
                 500
             ]
+        },
+        "shape1_render": {
+            "type": "Render2D",
+            "layout": [
+                480.0,
+                100.0
+            ]
         }
     },
     "connections": [
@@ -142,7 +150,7 @@
             "to": "shape1/rotation"
         },
         {
-            "from": "shape1/texture",
+            "from": "shape1_render/texture",
             "to": "feedback1/input"
         },
         {
@@ -186,12 +194,16 @@
         {
             "from": "gain1/output",
             "to": "audio_out/input"
+        },
+        {
+            "from": "shape1/drawable",
+            "to": "shape1_render/drawable"
         }
     ],
     "sticky_notes": [
         {
             "id": "note_1",
-            "text": "**Visual-First** with audio coupling Shape → Feedback → Bloom forms the core visual loop",
+            "text": "**Visual-First** with audio coupling Shape \u2192 Feedback \u2192 Bloom forms the core visual loop",
             "x": -100.0,
             "y": -80.0,
             "width": 260.0,
@@ -200,7 +212,7 @@
         },
         {
             "id": "note_2",
-            "text": "**TextureAnalysis** extracts brightness → osc frequency edge_density → filter cutoff Visuals drive the audio!",
+            "text": "**TextureAnalysis** extracts brightness \u2192 osc frequency edge_density \u2192 filter cutoff Visuals drive the audio!",
             "x": -100.0,
             "y": 200.0,
             "width": 260.0,
@@ -209,7 +221,7 @@
         },
         {
             "id": "note_3",
-            "text": "Audio path: Osc → Filter → Gain Modulated entirely by what’s happening on screen",
+            "text": "Audio path: Osc \u2192 Filter \u2192 Gain Modulated entirely by what\u2019s happening on screen",
             "x": 300.0,
             "y": 200.0,
             "width": 240.0,

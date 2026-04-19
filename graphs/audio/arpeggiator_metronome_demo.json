@@ -46,8 +46,28 @@
                 "octaves": 2.0
             },
             "layout": {
-                "x": 238.5,
-                "y": 1.5625
+                "x": 21.073074,
+                "y": 274.46265
+            }
+        },
+        "cmap1": {
+            "type": "Colormap",
+            "params": {
+                "palette": 1.0
+            },
+            "layout": {
+                "x": 398.28052,
+                "y": 487.3936
+            }
+        },
+        "comp1": {
+            "type": "Composite",
+            "params": {
+                "blend_mode": 1.0
+            },
+            "layout": {
+                "x": 830.0,
+                "y": 336.0
             }
         },
         "cp1": {
@@ -75,15 +95,67 @@
                 "beats_per_step": 4.0
             },
             "layout": {
-                "x": 0.0,
-                "y": 0.0
+                "x": -270.2227,
+                "y": 329.19522
+            }
+        },
+        "env1": {
+            "type": "EnvelopeFr",
+            "params": {
+                "sustain": 0.3,
+                "amplitude": 6.3719645,
+                "release": 0.12,
+                "decay": 0.08,
+                "attack": 0.013575306
+            },
+            "layout": {
+                "x": 323.40515,
+                "y": 242.01166
+            }
+        },
+        "feedback1": {
+            "type": "Feedback",
+            "params": {
+                "mix": 0.25,
+                "decay": 0.7
+            },
+            "layout": {
+                "x": 1038.2192,
+                "y": 341.89264
+            }
+        },
+        "hero1": {
+            "type": "Shape2D",
+            "params": {
+                "softness": 0.0,
+                "sides": 64.0,
+                "scale_x": 0.08,
+                "scale_y": 0.08
+            },
+            "layout": {
+                "x": 638.0863,
+                "y": 307.1214
+            },
+            "resolution": [
+                1920,
+                1080
+            ]
+        },
+        "note_mod": {
+            "type": "Math",
+            "params": {
+                "operation": 6.0
+            },
+            "layout": {
+                "x": 24.474983,
+                "y": 588.9946
             }
         },
         "out1": {
             "type": "audio_out",
             "layout": {
-                "x": 960.0,
-                "y": 0.0
+                "x": 1095.8113,
+                "y": 759.0067
             }
         },
         "reverb1": {
@@ -94,8 +166,20 @@
                 "damping": 0.5
             },
             "layout": {
-                "x": 720.0,
-                "y": 0.0
+                "x": 837.36755,
+                "y": 788.03156
+            }
+        },
+        "six_const": {
+            "type": "Macro",
+            "params": {
+                "value": 1.0,
+                "offset": 0.0,
+                "amplitude": 6.0
+            },
+            "layout": {
+                "x": -291.66098,
+                "y": 645.0724
             }
         },
         "synth1": {
@@ -103,74 +187,31 @@
             "params": {
                 "sustain": 0.32121795,
                 "ratio": 2.0,
-                "algorithm": 1.0,
-                "mod_index": 1.5,
                 "release": 0.2,
                 "decay": 0.028448561,
                 "carrier_freq": 2971.7332,
                 "amplitude": 0.33255804,
-                "attack": 0.001
+                "attack": 0.001,
+                "mod_index": 1.5,
+                "algorithm": 1.0
             },
             "layout": {
-                "x": 480.0,
-                "y": 0.0
-            }
-        },
-        "head_shape1": {
-            "type": "Shape",
-            "params": {
-                "g": 0.2,
-                "r": 1.0,
-                "softness": 0.0,
-                "b": 0.2,
-                "radius": 0.04,
-                "sides": 64.0
-            },
-            "layout": {
-                "x": 631.2358,
-                "y": 325.13837
-            }
-        },
-        "smooth1": {
-            "type": "SmoothFr",
-            "params": {
-                "fall_time": 0.08,
-                "rise_time": 0.003
-            },
-            "layout": {
-                "x": 430.0,
-                "y": 329.0
-            }
-        },
-        "xform1": {
-            "type": "Transform",
-            "layout": {
-                "x": 829.83356,
-                "y": 352.54105
-            }
-        },
-        "feedback1": {
-            "type": "Feedback",
-            "params": {
-                "mix": 0.4,
-                "decay": 0.78
-            },
-            "layout": {
-                "x": 1218.4915,
-                "y": 435.36142
+                "x": 604.6589,
+                "y": 737.2366
             }
         },
         "vout": {
             "type": "video_out",
             "layout": {
-                "x": 1424.6486,
-                "y": 435.0271
+                "x": 1250.3832,
+                "y": 386.28394
             }
         },
-        "hsv1": {
-            "type": "HSV",
-            "params": {
-                "saturation": 0.15
+        "hero1_render": {
+            "type": "Render2D",
+            "layout": {
+                "x": 818.0863,
+                "y": 307.1214
             }
         }
     },
@@ -208,68 +249,88 @@
             "to": "out1/input"
         },
         {
-            "from": "arp1/gate",
-            "to": "smooth1/input",
-            "bridge": "last_sample"
-        },
-        {
-            "from": "smooth1/value",
-            "to": "head_shape1/radius",
-            "from_min": 0.0,
-            "from_max": 1.0,
-            "to_min": 0.035,
-            "to_max": 0.085,
-            "clamp": true,
-            "curve": 4
-        },
-        {
-            "from": "head_shape1/texture",
-            "to": "xform1/input"
-        },
-        {
             "from": "feedback1/texture",
             "to": "vout/input"
         },
         {
-            "from": "arp1/note",
-            "to": "xform1/translate_x",
-            "from_min": 48.0,
-            "from_max": 84.0,
-            "to_min": -0.8,
-            "to_max": 0.8,
-            "clamp": true,
+            "from": "arp1/gate",
+            "to": "env1/gate",
             "bridge": "last_sample"
         },
         {
-            "from": "xform1/texture",
-            "to": "hsv1/input"
+            "from": "env1/value",
+            "to": "hero1/scale_x",
+            "from_min": 0.0,
+            "from_max": 1.0,
+            "to_min": 0.02,
+            "to_max": 0.07,
+            "clamp": true
         },
         {
             "from": "arp1/note",
-            "to": "hsv1/hue_shift",
+            "to": "cmap1/value",
             "from_min": 48.0,
             "from_max": 84.0,
             "to_min": 0.0,
-            "to_max": 360.0,
+            "to_max": 1.0,
             "clamp": true,
             "bridge": "last_sample"
         },
         {
-            "from": "hsv1/texture",
+            "from": "arp1/note",
+            "to": "hero1/position_x",
+            "from_min": 48.0,
+            "from_max": 84.0,
+            "to_min": -0.4,
+            "to_max": 0.4,
+            "clamp": true,
+            "bridge": "last_sample"
+        },
+        {
+            "from": "cmap1/r",
+            "to": "hero1/r"
+        },
+        {
+            "from": "cmap1/g",
+            "to": "hero1/g"
+        },
+        {
+            "from": "cmap1/b",
+            "to": "hero1/b"
+        },
+        {
+            "from": "cp1/notes",
+            "to": "note_mod/a",
+            "bridge": "waveform"
+        },
+        {
+            "from": "six_const/value",
+            "to": "note_mod/b"
+        },
+        {
+            "from": "hero1_render/texture",
+            "to": "comp1/layer_0"
+        },
+        {
+            "from": "comp1/texture",
             "to": "feedback1/input"
+        },
+        {
+            "from": "hero1/drawable",
+            "to": "hero1_render/drawable"
         }
     ],
     "viewport": {
-        "pan_x": 253.05942,
-        "pan_y": 283.76,
-        "zoom": 0.6202371
+        "pan_x": 81.01111,
+        "pan_y": -78.51141,
+        "zoom": 1.1852971
     },
     "sticky_notes": [
         {
             "id": "metro_note_1",
             "text": "**Graph metronome demo** No Clock node is required here. ChordProgression and Arpeggiator both read the graph transport directly.",
-            "x": -12.297989,
-            "y": 135.5966,
+            "x": -28.717255,
+            "y": 106.77905,
             "width": 320.0,
             "height": 95.0,
             "color": 0
@@ -277,8 +338,8 @@
         {
             "id": "metro_note_2",
             "text": "Change BPM or meter in the transport strip to retime the whole phrase immediately.",
-            "x": 385.36646,
-            "y": 146.80072,
+            "x": 383.54764,
+            "y": -74.44,
             "width": 260.0,
             "height": 70.0,
             "color": 2

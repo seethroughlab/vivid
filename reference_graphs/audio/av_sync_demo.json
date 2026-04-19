@@ -16,10 +16,10 @@
             }
         },
         "shape1": {
-            "type": "Shape",
+            "type": "Shape2D",
             "params": {
                 "sides": 5,
-                "star": 0.4,
+                "star_factor": 0.4,
                 "r": 0.2,
                 "g": 0.6,
                 "b": 1.0
@@ -42,6 +42,13 @@
         "vout": {
             "type": "video_out",
             "params": {}
+        },
+        "shape1_render": {
+            "type": "Render2D",
+            "layout": {
+                "x": 180.0,
+                "y": 0.0
+            }
         }
     },
     "connections": [
@@ -51,7 +58,7 @@
         },
         {
             "from": "env1/value",
-            "to": "shape1/radius",
+            "to": "shape1/scale_x",
             "bridge": "last_sample"
         },
         {
@@ -63,14 +70,18 @@
             "to": "out1/input"
         },
         {
-            "from": "shape1/texture",
+            "from": "shape1_render/texture",
             "to": "vout/input"
+        },
+        {
+            "from": "shape1/drawable",
+            "to": "shape1_render/drawable"
         }
     ],
     "meta": {
         "id": "av_sync_demo",
         "title": "AV Sync",
-        "description": "Clock-triggered drum kick synced with an expanding shape — the simplest audio-visual synchronization demo.",
+        "description": "Clock-triggered drum kick synced with an expanding shape \u2014 the simplest audio-visual synchronization demo.",
         "tags": [
             "audio-visual",
             "sync",

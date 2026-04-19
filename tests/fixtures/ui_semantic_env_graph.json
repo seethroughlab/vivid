@@ -39,7 +39,7 @@
       }
     },
     "shape1": {
-      "type": "Shape",
+      "type": "Shape2D",
       "params": {
         "radius": 0.28,
         "sides": 5,

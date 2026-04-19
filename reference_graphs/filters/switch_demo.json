@@ -3,13 +3,14 @@
     "vivid_version": "0.1.0",
     "nodes": {
         "src0": {
-            "type": "Shape",
+            "type": "Shape2D",
             "params": {
                 "g": 0.20000000298023224,
                 "r": 1.0,
                 "softness": 0.009999999776482582,
                 "b": 0.20000000298023224,
-                "radius": 0.30000001192092896,
+                "scale_x": 0.30000001192092896,
+                "scale_y": 0.30000001192092896,
                 "sides": 4.0
             }
         },
@@ -22,14 +23,15 @@
             }
         },
         "src2": {
-            "type": "Shape",
+            "type": "Shape2D",
             "params": {
                 "g": 1.0,
                 "r": 0.20000000298023224,
                 "softness": 0.009999999776482582,
-                "star": 0.5,
+                "star_factor": 0.5,
                 "b": 0.4000000059604645,
-                "radius": 0.3499999940395355,
+                "scale_x": 0.3499999940395355,
+                "scale_y": 0.3499999940395355,
                 "sides": 6.0
             }
         },
@@ -37,13 +39,14 @@
             "type": "Gradient"
         },
         "src4": {
-            "type": "Shape",
+            "type": "Shape2D",
             "params": {
                 "g": 0.5,
                 "r": 0.30000001192092896,
                 "softness": 0.009999999776482582,
                 "b": 1.0,
-                "radius": 0.4000000059604645,
+                "scale_x": 0.4000000059604645,
+                "scale_y": 0.4000000059604645,
                 "sides": 3.0
             }
         },
@@ -64,13 +67,14 @@
             }
         },
         "src7": {
-            "type": "Shape",
+            "type": "Shape2D",
             "params": {
                 "g": 0.0,
                 "r": 1.0,
                 "softness": 0.019999999552965164,
                 "b": 1.0,
-                "radius": 0.25,
+                "scale_x": 0.25,
+                "scale_y": 0.25,
                 "sides": 64.0
             }
         },
@@ -97,11 +101,39 @@
         },
         "vout": {
             "type": "video_out"
+        },
+        "src0_render": {
+            "type": "Render2D",
+            "layout": {
+                "x": 180.0,
+                "y": 0.0
+            }
+        },
+        "src2_render": {
+            "type": "Render2D",
+            "layout": {
+                "x": 180.0,
+                "y": 0.0
+            }
+        },
+        "src4_render": {
+            "type": "Render2D",
+            "layout": {
+                "x": 180.0,
+                "y": 0.0
+            }
+        },
+        "src7_render": {
+            "type": "Render2D",
+            "layout": {
+                "x": 180.0,
+                "y": 0.0
+            }
         }
     },
     "connections": [
         {
-            "from": "src0/texture",
+            "from": "src0_render/texture",
             "to": "switch/in0"
         },
         {
@@ -109,7 +141,7 @@
             "to": "switch/in1"
         },
         {
-            "from": "src2/texture",
+            "from": "src2_render/texture",
             "to": "switch/in2"
         },
         {
@@ -117,7 +149,7 @@
             "to": "switch/in3"
         },
         {
-            "from": "src4/texture",
+            "from": "src4_render/texture",
             "to": "switch/in4"
         },
         {
@@ -129,7 +161,7 @@
             "to": "switch/in6"
         },
         {
-            "from": "src7/texture",
+            "from": "src7_render/texture",
             "to": "switch/in7"
         },
         {
@@ -143,6 +175,22 @@
         {
             "from": "switch/texture",
             "to": "vout/input"
+        },
+        {
+            "from": "src0/drawable",
+            "to": "src0_render/drawable"
+        },
+        {
+            "from": "src2/drawable",
+            "to": "src2_render/drawable"
+        },
+        {
+            "from": "src4/drawable",
+            "to": "src4_render/drawable"
+        },
+        {
+            "from": "src7/drawable",
+            "to": "src7_render/drawable"
         }
     ],
     "viewport": {

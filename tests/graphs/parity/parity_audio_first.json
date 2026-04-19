@@ -99,9 +99,10 @@
             ]
         },
         "shape_vis": {
-            "type": "Shape",
+            "type": "Shape2D",
             "params": {
-                "radius": 0.25,
+                "scale_x": 0.25,
+                "scale_y": 0.25,
                 "sides": 6,
                 "rotation": 0.0,
                 "r": 0.3,
@@ -142,6 +143,13 @@
             "layout": [
                 1150,
                 450
+            ]
+        },
+        "shape_vis_render": {
+            "type": "Render2D",
+            "layout": [
+                680.0,
+                550.0
             ]
         }
     },
@@ -187,7 +195,7 @@
         },
         {
             "from": "audio_analysis/rms",
-            "to": "shape_vis/radius",
+            "to": "shape_vis/scale_x",
             "from_min": 0.0,
             "from_max": 0.5,
             "to_min": 0.05,
@@ -207,7 +215,7 @@
             "to": "composite1/layer_0"
         },
         {
-            "from": "shape_vis/texture",
+            "from": "shape_vis_render/texture",
             "to": "composite1/layer_1"
         },
         {
@@ -217,6 +225,10 @@
         {
             "from": "bloom1/texture",
             "to": "video_out/input"
+        },
+        {
+            "from": "shape_vis/drawable",
+            "to": "shape_vis_render/drawable"
         }
     ],
     "sticky_notes": [
@@ -231,7 +243,7 @@
         },
         {
             "id": "note_2",
-            "text": "**Spectral centroid** → noise speed (brighter audio = faster texture) **RMS** → noise scale + shape radius",
+            "text": "**Spectral centroid** \u2192 noise speed (brighter audio = faster texture) **RMS** \u2192 noise scale + shape radius",
             "x": -100.0,
             "y": 200.0,
             "width": 270.0,

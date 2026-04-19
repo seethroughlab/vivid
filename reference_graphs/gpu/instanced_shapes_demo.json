@@ -24,7 +24,7 @@
     },
     "nodes": {
         "shapes": {
-            "type": "Instanced Shapes",
+            "type": "ShapeField",
             "params": {
                 "count": 16,
                 "shape": 4,

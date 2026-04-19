@@ -26,10 +26,11 @@
     },
     "nodes": {
         "source": {
-            "type": "Shape",
+            "type": "Shape2D",
             "params": {
                 "sides": 6,
-                "radius": 0.35,
+                "scale_x": 0.35,
+                "scale_y": 0.35,
                 "softness": 0.0,
                 "r": 0.2,
                 "g": 0.6,
@@ -79,11 +80,18 @@
                 "x": 960.0,
                 "y": 0.0
             }
+        },
+        "source_render": {
+            "type": "Render2D",
+            "layout": {
+                "x": 180.0,
+                "y": 0.0
+            }
         }
     },
     "connections": [
         {
-            "from": "source/texture",
+            "from": "source_render/texture",
             "to": "displace/source"
         },
         {
@@ -97,6 +105,10 @@
         {
             "from": "displace/texture",
             "to": "vout/input"
+        },
+        {
+            "from": "source/drawable",
+            "to": "source_render/drawable"
         }
     ],
     "sticky_notes": [

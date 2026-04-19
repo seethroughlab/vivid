@@ -52,13 +52,14 @@
             }
         },
         "star": {
-            "type": "Shape",
+            "type": "Shape2D",
             "params": {
-                "star": 0.5,
+                "star_factor": 0.5,
                 "softness": 0.01,
                 "sides": 5.0,
                 "b": 0.5,
-                "radius": 0.25,
+                "scale_x": 0.25,
+                "scale_y": 0.25,
                 "r": 1.0,
                 "g": 0.9
             },
@@ -77,6 +78,13 @@
                 "x": 720.0,
                 "y": 0.0
             }
+        },
+        "star_render": {
+            "type": "Render2D",
+            "layout": {
+                "x": 410.0,
+                "y": 310.5
+            }
         }
     },
     "connections": [
@@ -85,12 +93,16 @@
             "to": "star/rotation"
         },
         {
-            "from": "star/texture",
+            "from": "star_render/texture",
             "to": "bloom/input"
         },
         {
             "from": "bloom/texture",
             "to": "vout/input"
+        },
+        {
+            "from": "star/drawable",
+            "to": "star_render/drawable"
         }
     ],
     "metronome": {

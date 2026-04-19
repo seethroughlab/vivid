@@ -4,7 +4,7 @@
     "meta": {
         "id": "shader_nyan_rainbow",
         "title": "Nyan Rainbow",
-        "description": "Faithful port of shader NyanRainbow — 6-band rainbow horizontal trail with vertical bounce.",
+        "description": "Faithful port of shader NyanRainbow \u2014 6-band rainbow horizontal trail with vertical bounce.",
         "tags": [
             "demo",
             "shader-sketch",
@@ -26,10 +26,11 @@
     },
     "nodes": {
         "shape": {
-            "type": "Shape",
+            "type": "Shape2D",
             "params": {
                 "sides": 64,
-                "radius": 0.06,
+                "scale_x": 0.06,
+                "scale_y": 0.06,
                 "softness": 0.005,
                 "r": 1.0,
                 "g": 1.0,
@@ -75,11 +76,18 @@
         "vout": {
             "type": "video_out",
             "params": {}
+        },
+        "shape_render": {
+            "type": "Render2D",
+            "layout": {
+                "x": 180.0,
+                "y": 0.0
+            }
         }
     },
     "connections": [
         {
-            "from": "shape/texture",
+            "from": "shape_render/texture",
             "to": "hsv/input"
         },
         {
@@ -97,6 +105,10 @@
         {
             "from": "feedback/texture",
             "to": "vout/input"
+        },
+        {
+            "from": "shape/drawable",
+            "to": "shape_render/drawable"
         }
     ]
 }

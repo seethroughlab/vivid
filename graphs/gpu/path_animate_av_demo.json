@@ -68,7 +68,7 @@
             }
         },
         "path": {
-            "type": "Path Animate",
+            "type": "PathAnimate",
             "params": {
                 "speed": 1.0,
                 "loop_mode": 0,
@@ -80,10 +80,11 @@
             }
         },
         "shape": {
-            "type": "Shape",
+            "type": "Shape2D",
             "params": {
                 "sides": 32,
-                "radius": 0.05,
+                "scale_x": 0.05,
+                "scale_y": 0.05,
                 "softness": 0.01,
                 "r": 1.0,
                 "g": 0.8,
@@ -121,6 +122,13 @@
                 "x": 720.0,
                 "y": 170.0
             }
+        },
+        "shape_render": {
+            "type": "Render2D",
+            "layout": {
+                "x": 180.0,
+                "y": 170.0
+            }
         }
     },
     "connections": [
@@ -150,7 +158,7 @@
             "to": "xform/translate_y"
         },
         {
-            "from": "shape/texture",
+            "from": "shape_render/texture",
             "to": "xform/input"
         },
         {
@@ -160,6 +168,10 @@
         {
             "from": "bloom/texture",
             "to": "vout/input"
+        },
+        {
+            "from": "shape/drawable",
+            "to": "shape_render/drawable"
         }
     ]
 }

@@ -97,8 +97,8 @@ int main(int argc, char* argv[]) {
     std::filesystem::copy_file(build_dir + "/oscillator.dylib",
                                staging + "/oscillator.dylib",
                                std::filesystem::copy_options::overwrite_existing);
-    std::filesystem::copy_file(build_dir + "/shape.dylib",
-                               staging + "/shape.dylib",
+    std::filesystem::copy_file(build_dir + "/shape_2d.dylib",
+                               staging + "/shape_2d.dylib",
                                std::filesystem::copy_options::overwrite_existing);
 
     std::fprintf(stderr, "\n=== Test: Perception Introspection ===\n\n");
@@ -109,7 +109,7 @@ int main(int argc, char* argv[]) {
     vivid::Graph graph;
     check(graph.add_node("ctrl1", "TestOp"), "add control node");
     check(graph.add_node("aud1", "Oscillator"), "add audio node");
-    check(graph.add_node("gpu1", "Shape"), "add gpu node");
+    check(graph.add_node("gpu1", "Shape2D"), "add gpu node");
     check(graph.add_node("missing1", "DefinitelyMissingOp"), "add missing-operator node");
 
     vivid::RuntimeCore runtime;

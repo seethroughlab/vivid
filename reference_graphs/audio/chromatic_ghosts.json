@@ -268,22 +268,26 @@
             }
         },
         "text_vis": {
-            "type": "Text",
+            "type": "Text2D",
             "params": {
-                "y": 0.74,
-                "size": 0.16,
+                "position_y": 0.74,
+                "font_size": 0.16,
                 "g": 1.0,
-                "bg_r": 0.0,
                 "r": 1.0,
-                "bg_g": 0.0,
-                "bg_b": 0.0,
-                "x": -0.6,
+                "position_x": -0.6,
                 "b": 1.0,
                 "text": "GHOSTS"
             }
         },
         "vout": {
             "type": "video_out"
+        },
+        "text_vis_render": {
+            "type": "Render2D",
+            "layout": {
+                "x": 180.0,
+                "y": 0.0
+            }
         }
     },
     "connections": [
@@ -374,7 +378,7 @@
             "to": "comp_text/layer_0"
         },
         {
-            "from": "text_vis/texture",
+            "from": "text_vis_render/texture",
             "to": "comp_text/layer_1"
         },
         {
@@ -396,6 +400,10 @@
         {
             "from": "scanlines/texture",
             "to": "vout/input"
+        },
+        {
+            "from": "text_vis/drawable",
+            "to": "text_vis_render/drawable"
         }
     ],
     "viewport": {

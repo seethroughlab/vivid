@@ -73,11 +73,10 @@
             }
         },
         "label": {
-            "type": "Text",
+            "type": "Text2D",
             "params": {
-                "size": 0.06,
-                "y": -0.9,
-                "bg_a": 0.5
+                "font_size": 0.06,
+                "position_y": -0.9
             },
             "layout": {
                 "x": 1073.9022,
@@ -123,6 +122,13 @@
                 "x": 1599.2075,
                 "y": 322.1367
             }
+        },
+        "label_render": {
+            "type": "Render2D",
+            "layout": {
+                "x": 1253.9022,
+                "y": 339.82806
+            }
         }
     },
     "connections": [
@@ -167,8 +173,12 @@
             "to": "comp/layer_0"
         },
         {
-            "from": "label/texture",
+            "from": "label_render/texture",
             "to": "comp/layer_1"
+        },
+        {
+            "from": "label/drawable",
+            "to": "label_render/drawable"
         }
     ],
     "viewport": {

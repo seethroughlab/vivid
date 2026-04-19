@@ -25,10 +25,11 @@
     },
     "nodes": {
         "shape": {
-            "type": "Shape",
+            "type": "Shape2D",
             "params": {
                 "sides": 4,
-                "radius": 0.3,
+                "scale_x": 0.3,
+                "scale_y": 0.3,
                 "softness": 0.005,
                 "r": 0.2,
                 "g": 0.8,
@@ -70,6 +71,13 @@
         },
         "vout": {
             "type": "video_out"
+        },
+        "shape_render": {
+            "type": "Render2D",
+            "layout": {
+                "x": 180.0,
+                "y": 0.0
+            }
         }
     },
     "connections": [
@@ -78,7 +86,7 @@
             "to": "shape/rotation"
         },
         {
-            "from": "shape/texture",
+            "from": "shape_render/texture",
             "to": "warp/input"
         },
         {
@@ -92,6 +100,10 @@
         {
             "from": "warp/texture",
             "to": "vout/input"
+        },
+        {
+            "from": "shape/drawable",
+            "to": "shape_render/drawable"
         }
     ]
 }

@@ -758,7 +758,7 @@ static int run_harness_selftest(const std::filesystem::path& build_dir) {
     doc.final_state.has_file_dialog_stats_field = true;
     doc.final_state.declared_node_count = 1;
     doc.final_state.declared_connection_count = 0;
-    doc.final_state.nodes.push_back({"node_a", "Shape", false, true, 10.0f, 20.0f, {}});
+    doc.final_state.nodes.push_back({"node_a", "Shape2D", false, true, 10.0f, 20.0f, {}});
     check_dump_state_health(doc.final_state, "final state", case_spec, report);
     auto it = doc.checkpoints.find("after_missing_checkpoint");
     report_check(report, FailureKind::Harness, it == doc.checkpoints.end(),

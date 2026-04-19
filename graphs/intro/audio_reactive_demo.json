@@ -98,12 +98,13 @@
             }
         },
         "shape1": {
-            "type": "Shape",
+            "type": "Shape2D",
             "params": {
                 "softness": 0.0,
                 "sides": 6.0,
                 "b": 0.9,
-                "radius": 0.35,
+                "scale_x": 0.35,
+                "scale_y": 0.35,
                 "r": 0.2,
                 "g": 0.8
             },
@@ -122,6 +123,13 @@
                 "x": 1386.524,
                 "y": 249.7229
             }
+        },
+        "shape1_render": {
+            "type": "Render2D",
+            "layout": {
+                "x": 340.67969,
+                "y": 245.19531
+            }
         }
     },
     "connections": [
@@ -135,7 +143,7 @@
             "to": "gain1/input"
         },
         {
-            "from": "shape1/texture",
+            "from": "shape1_render/texture",
             "to": "displace1/source"
         },
         {
@@ -154,6 +162,10 @@
             "from": "gain1/rms",
             "to": "displace1/amount",
             "bridge": "rms"
+        },
+        {
+            "from": "shape1/drawable",
+            "to": "shape1_render/drawable"
         }
     ],
     "viewport": {
@@ -182,7 +194,7 @@
         },
         {
             "id": "ar_note_3",
-            "text": "**Audio → visual bridge.** The Gain's **rms** output is a smoothed audio envelope. The wire remap scales 0.0–0.5 RMS into 0.0–0.6 displacement amount.",
+            "text": "**Audio \u2192 visual bridge.** The Gain's **rms** output is a smoothed audio envelope. The wire remap scales 0.0\u20130.5 RMS into 0.0\u20130.6 displacement amount.",
             "x": 324.3678,
             "y": 182.85748,
             "width": 261.91772,
