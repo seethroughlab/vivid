@@ -10,6 +10,7 @@
 #include "runtime/core/build_console.h"
 #include "runtime/graph/compiled_graph.h"
 #include "runtime/gpu/gpu_context.h"
+#include "runtime/gpu/mipmap_generator.h"
 #include "runtime/gpu/wgsl_header_parser.h"
 #include "runtime/packages/package_manager.h"
 #include "ui/graph/node_graph.h"
@@ -471,7 +472,8 @@ void draw_custom_thumbnails(const vivid::RuntimeCore& runtime,
                                    uint32_t thumb_h,
                                    uint32_t thumb_logical_w,
                                    uint32_t thumb_logical_h,
-                                   WGPUTextureFormat thumb_format) {
+                                   WGPUTextureFormat thumb_format,
+                                   vivid::MipmapGenerator* mip_gen) {
     const auto* cg_thumb = runtime.compiled_graph();
     if (!cg_thumb) return;
 
@@ -484,7 +486,7 @@ void draw_custom_thumbnails(const vivid::RuntimeCore& runtime,
     for (const auto& cn : cg_thumb->nodes) {
         if (!cn.loader || !cn.instance || cn.missing_operator) continue;
         if (!cn.loader->has_draw_thumbnail()) continue;
-        WGPUTextureView thumb_view = cache.get_or_create(cn.node_id);
+        WGPUTextureView thumb_view = cache.get_or_create_render_view(cn.node_id);
         if (!thumb_view) continue;
         WGPUTexture thumb_tex = cache.get_texture(cn.node_id);
 
@@ -565,6 +567,14 @@ void draw_custom_thumbnails(const vivid::RuntimeCore& runtime,
                          cn.node_id.c_str(),
                          tctx.operator_error_msg ? tctx.operator_error_msg : "unknown error");
             continue;  // fall back to default thumbnail
+        }
+
+        // mip 0 is now complete (operator draw + any 2D flush) — fill the
+        // rest of the chain so display sampling has pre-filtered levels.
+        if (mip_gen) {
+            mip_gen->generate(encoder,
+                              cache.mip_render_views(cn.node_id),
+                              cache.mip_sample_views(cn.node_id));
         }
         custom_thumb_ids.insert(cn.node_id);
     }

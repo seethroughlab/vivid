@@ -1079,7 +1079,7 @@ void NodeGraphUI::draw_thumbnails(ThumbnailRenderer& renderer, const ThumbnailCa
         bool should_draw_thumb = (r.is_gpu) ||
                                  (custom_thumb_nodes_.count(r.node_id) > 0);
         if (!should_draw_thumb) continue;
-        WGPUTextureView thumb_view = cache.get_view(r.node_id);
+        WGPUTextureView thumb_view = cache.get_sample_view(r.node_id);
         if (!thumb_view) continue;
         // Viewport units are physical pixels — apply zoom/pan then dpi_scale
         float tx = gx_to_sx(r.x) * dpi_scale_;

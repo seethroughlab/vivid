@@ -1,5 +1,6 @@
 #include "runtime/gpu/gpu_context.h"
 #include "runtime/gpu/fullscreen_blit.h"
+#include "runtime/gpu/mipmap_generator.h"
 #include "runtime/debug/output_window.h"
 #include "ui/rendering/thumbnail_cache.h"
 #include "ui/rendering/thumbnail_renderer.h"
@@ -103,9 +104,15 @@ static constexpr double kClearLinear[4]  = { 0.00699, 0.00821, 0.01041, 1.0 };
 // #16191D as raw unorm (no gamma conversion)
 static constexpr double kClearRaw[4]     = { 0.0863, 0.0980, 0.1137, 1.0 };
 
-// Thumbnail size: node width × 16:10 aspect
+// Thumbnail size: node width × 16:10 aspect.
+// kThumbW/kThumbH are the *logical* (display-space) dimensions passed through
+// to custom-thumbnail operators so their 2D draw coordinate system stays
+// stable. The actual capture texture is supersampled on top of that (see
+// kThumbSupersample) and carries a full mip chain — giving us detail when the
+// graph is zoomed in and pre-filtered shrinks when it's zoomed out.
 static constexpr uint32_t kThumbW = 140;
 static constexpr uint32_t kThumbH = 88;
+static constexpr uint32_t kThumbSupersample = 2;
 
 // Default GPU texture resolution for nodes without explicit size
 static constexpr uint32_t kDefaultTexW = 1280;
@@ -1194,11 +1201,12 @@ int main(int argc, char* argv[]) {
     vivid::OutputWindow output_window;
 
     // --- Thumbnail cache + renderer ---
-    // Scale thumbnail textures by DPI for crisp rendering on Retina displays.
-    // Operators use logical coordinates (kThumbW x kThumbH); the Renderer2D
-    // and ThumbnailRenderer handle the pixel scaling transparently.
-    uint32_t thumb_tex_w = static_cast<uint32_t>(kThumbW * dpi_scale);
-    uint32_t thumb_tex_h = static_cast<uint32_t>(kThumbH * dpi_scale);
+    // Capture texture is DPI-scaled AND supersampled (kThumbSupersample) so
+    // we have headroom on zoom-in; display sampling picks the right mip level
+    // via the MipmapGenerator chain. Operators still receive kThumbW/kThumbH
+    // as the logical coordinate space.
+    uint32_t thumb_tex_w = static_cast<uint32_t>(kThumbW * kThumbSupersample * dpi_scale);
+    uint32_t thumb_tex_h = static_cast<uint32_t>(kThumbH * kThumbSupersample * dpi_scale);
     vivid::ui::ThumbnailCache thumb_cache;
     thumb_cache.init(gpu.device(), gpu.queue(), thumb_tex_w, thumb_tex_h);
 
@@ -1206,6 +1214,13 @@ int main(int argc, char* argv[]) {
     vivid::FullscreenBlit thumb_blit;
     if (!thumb_blit.init(gpu.device(), kOffscreenFormat)) {
         std::fprintf(stderr, "[vivid] Failed to init thumbnail blit\n");
+    }
+
+    // Fills mip levels 1..N-1 of each thumbnail texture after mip 0 is written.
+    vivid::MipmapGenerator thumb_mip_gen;
+    bool thumb_mip_gen_ok = thumb_mip_gen.init(gpu.device(), kOffscreenFormat);
+    if (thumb_mip_gen_ok) {
+        thumb_cache.set_mipmap_generator(&thumb_mip_gen);
     }
 
     vivid::ui::ThumbnailRenderer thumb_renderer;
@@ -2898,11 +2913,17 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
             // Tick with thumbnail capture callback for GPU nodes
             runtime.tick(now, dt, frame_count, &gpu_state,
                 [&](uint32_t, const std::string& node_id, WGPUTextureView node_tex_view) {
-                    // Blit per-node texture → thumbnail (uses RGBA16Float pipeline)
+                    // Blit per-node texture → mip 0 of the thumbnail, then
+                    // populate the rest of the mip chain so display-time
+                    // sampling has a pre-filtered level at every zoom.
                     if (!node_tex_view) return;
-                    auto* thumb_view = thumb_cache.get_or_create(node_id);
-                    if (thumb_view) {
-                        thumb_blit.blit(tick_encoder, node_tex_view, thumb_view);
+                    auto* thumb_view = thumb_cache.get_or_create_render_view(node_id);
+                    if (!thumb_view) return;
+                    thumb_blit.blit(tick_encoder, node_tex_view, thumb_view);
+                    if (thumb_mip_gen_ok) {
+                        thumb_mip_gen.generate(tick_encoder,
+                                               thumb_cache.mip_render_views(node_id),
+                                               thumb_cache.mip_sample_views(node_id));
                     }
                 },
                 input_ptr);
@@ -2921,7 +2942,8 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
                                    now, dt, frame_count,
                                    thumb_tex_w, thumb_tex_h,
                                    kThumbW, kThumbH,
-                                   kOffscreenFormat);
+                                   kOffscreenFormat,
+                                   thumb_mip_gen_ok ? &thumb_mip_gen : nullptr);
 
             // --- Snapshot runtime state for crash recovery (rate-limited internally) ---
             crash_recovery.tick(frame_count, graph, runtime_api, audio_engine, &control_server);
@@ -3206,6 +3228,7 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
     }
     thumb_renderer.shutdown();
     thumb_cache.shutdown();
+    thumb_mip_gen.shutdown();
     thumb_blit.shutdown();
     blit.shutdown();
     output_window.close();

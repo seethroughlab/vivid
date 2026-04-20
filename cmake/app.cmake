@@ -53,6 +53,7 @@ add_executable(vivid
     src/runtime/debug/ui_test_runner.cpp
     src/runtime/gpu/gpu_context.cpp
     src/runtime/gpu/fullscreen_blit.cpp
+    src/runtime/gpu/mipmap_generator.cpp
     src/runtime/debug/output_window.cpp
     src/runtime/operators/operator_loader.cpp
     src/runtime/operators/operator_registry.cpp

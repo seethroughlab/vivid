@@ -19,6 +19,7 @@ class OperatorRegistry;
 class AudioEngine;
 class RuntimeAPI;
 class BuildConsole;
+class MipmapGenerator;
 
 } // namespace vivid
 
@@ -76,7 +77,8 @@ void draw_custom_thumbnails(const RuntimeCore& runtime,
                             double time, double delta_time, uint64_t frame,
                             uint32_t thumb_w, uint32_t thumb_h,
                             uint32_t thumb_logical_w, uint32_t thumb_logical_h,
-                            WGPUTextureFormat thumb_format);
+                            WGPUTextureFormat thumb_format,
+                            MipmapGenerator* mip_gen = nullptr);
 
 // --- Screenshot / capture ---
 struct SurfaceCaptureResult {

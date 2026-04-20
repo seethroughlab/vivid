@@ -87,7 +87,10 @@ bool ThumbnailRenderer::init(WGPUDevice device, WGPUQueue queue,
         return false;
     }
 
-    // Sampler (bilinear, clamp)
+    // Sampler (trilinear, clamp) — thumbnail textures carry a full mip chain
+    // (see ThumbnailCache + MipmapGenerator), so shrinking the thumb on zoom-out
+    // or displaying it below native size picks a pre-filtered mip rather than
+    // aliasing a single level.
     WGPUSamplerDescriptor sampler_desc{};
     sampler_desc.label = to_sv("Thumb Sampler");
     sampler_desc.addressModeU = WGPUAddressMode_ClampToEdge;
@@ -95,7 +98,9 @@ bool ThumbnailRenderer::init(WGPUDevice device, WGPUQueue queue,
     sampler_desc.addressModeW = WGPUAddressMode_ClampToEdge;
     sampler_desc.magFilter = WGPUFilterMode_Linear;
     sampler_desc.minFilter = WGPUFilterMode_Linear;
-    sampler_desc.mipmapFilter = WGPUMipmapFilterMode_Nearest;
+    sampler_desc.mipmapFilter = WGPUMipmapFilterMode_Linear;
+    sampler_desc.lodMinClamp = 0.0f;
+    sampler_desc.lodMaxClamp = 32.0f;
     sampler_desc.maxAnisotropy = 1;
     sampler_ = wgpuDeviceCreateSampler(device_, &sampler_desc);
 
