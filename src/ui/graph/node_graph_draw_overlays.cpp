@@ -32,6 +32,10 @@ using vivid::format_float;
 // popups (context menu, dropdown) appear on top of everything.
 // -----------------------------------------------------------------------
 void NodeGraphUI::draw_overlays(Renderer2D& tr) {
+    // Session panel — drawn in the overlay pass so its translucent background
+    // sits above GPU thumbnails (same layering as the inspector).
+    draw_session_grid(tr);
+
     // Drawn in the post-thumbnail pass so GPU previews remain visible beneath
     // the console's translucent surface.
     build_console_panel_.draw(tr, style_, win_w_, win_h_,
