@@ -185,7 +185,34 @@ struct AudioAnalysis : vivid::OperatorBase, vivid::AudioProcessable {
         flux_     = alpha * flux_     + (1.0f - alpha) * flux_raw;
         zcr_      = alpha * zcr_      + (1.0f - alpha) * zcr_raw;
 
-        // Write control float outputs (indices match float output port order)
+        // Emit smoothed values into each scalar output port's buffer. The
+        // audio executor reads the final sample (`.back()`) of each output
+        // buffer to bridge scalar outputs across to the frame cadence, so
+        // writing index [N-1] is what downstream consumers see.
+        //
+        // Output port order (matches collect_ports insertion):
+        //   [0] output              audio passthrough (written above)
+        //   [1] rms                 → rms_
+        //   [2] peak                → peak_
+        //   [3] spectral_centroid   → centroid_
+        //   [4] spectral_flux       → flux_
+        //   [5] zero_crossing_rate  → zcr_
+        //   [6] rms  (dup from append_analysis_ports)   → rms_
+        //   [7] peak (dup from append_analysis_ports)   → peak_
+        //   [8] waveform            lane_array — not in output_buffers
+        const uint32_t last = N - 1;
+        auto emit = [&](int port_idx, float value) {
+            if (ctx->output_buffers && ctx->output_buffers[port_idx]) {
+                ctx->output_buffers[port_idx][last] = value;
+            }
+        };
+        emit(1, rms_);
+        emit(2, peak_);
+        emit(3, centroid_);
+        emit(4, flux_);
+        emit(5, zcr_);
+        emit(6, rms_);
+        emit(7, peak_);
     }
 
 private:
