@@ -171,6 +171,10 @@ std::optional<WgslHeader> parse_wgsl_header(const std::string& file_contents,
             if (plabel != param_val.end() && plabel->is_string())
                 p.label = plabel->get<std::string>();
 
+            auto pdesc = param_val.find("description");
+            if (pdesc != param_val.end() && pdesc->is_string())
+                p.description = pdesc->get<std::string>();
+
             auto pchoices = param_val.find("choices");
             if (pchoices != param_val.end() && pchoices->is_array()) {
                 p.type = VIVID_PARAM_INT;  // choices implies int type

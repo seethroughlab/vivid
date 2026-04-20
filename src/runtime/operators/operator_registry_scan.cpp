@@ -33,6 +33,7 @@ static std::shared_ptr<WgslOperatorConfig> make_wgsl_operator_config(
         const WgslHeader& header) {
     auto config = std::make_shared<WgslOperatorConfig>();
     config->name = header.name;
+    config->description = header.description;
     config->shader_path = path;
     config->time_dependent = header.time_dependent;
     config->inputs_specified = header.inputs_specified;
@@ -46,6 +47,7 @@ static std::shared_ptr<WgslOperatorConfig> make_wgsl_operator_config(
         pd.min_value = hp.min_value;
         pd.max_value = hp.max_value;
         pd.label = hp.label;
+        pd.description = hp.description;
         pd.choices = hp.choices;
         pd.display_hint = hp.display_hint;
         pd.group = hp.group;

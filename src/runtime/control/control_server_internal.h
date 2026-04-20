@@ -13,6 +13,7 @@
 #include "runtime/graph/graph.h"
 #include "runtime/core/runtime_core.h"
 #include "runtime/operators/operator_registry.h"
+#include "operator_api/data_driven_filter.h"
 #include "runtime/operators/operator_loader.h"
 #include "runtime/operators/operator_creator.h"
 #include "runtime/operators/operator_source_docs.h"

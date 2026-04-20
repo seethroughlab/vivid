@@ -14,6 +14,7 @@ struct WgslHeaderParam {
     float min_value = 0.0f;
     float max_value = 1.0f;
     std::string label;                        // display label (empty = use name)
+    std::string description;                  // surfaced via operator_docs
     std::vector<std::string> choices;         // for int enums
     VividDisplayHint display_hint = VIVID_DISPLAY_DEFAULT;
     std::string group;                        // collapsible group name

@@ -375,7 +375,9 @@ void OperatorLoader::init_wgsl_operator(std::shared_ptr<WgslOperatorConfig> conf
         dp.semantic_shape = nullptr;
         dp.semantic_unit = nullptr;
         dp.semantic_intent = nullptr;
-        dp.description = nullptr;
+        // Description c_str is stable for the loader's lifetime (sp lives in
+        // dd_config_->params[i] and dd_config_ is held by shared_ptr).
+        dp.description = sp.description.empty() ? nullptr : sp.description.c_str();
         dp.asset_kind = sp.asset_kind.empty() ? nullptr : sp.asset_kind.c_str();
         dp.visible_when_param = nullptr;
         dp.visible_when_op = VIVID_PARAM_VIS_ALWAYS;

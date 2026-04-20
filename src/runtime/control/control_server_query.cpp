@@ -1494,6 +1494,20 @@ std::string handle_operator_docs(OperatorRegistry& registry,
         package_name = *pkg;
     nlohmann::json detail = resolve_operator_source_doc(source_docs, registry,
                                                         package_manager, name, package_name);
+
+    // For shader operators (self-describing .wgsl filters in filters/), the
+    // C++ source-comment extractor returns nothing — synthesize a minimal
+    // doc from the WGSL header's top-level `description` field. Per-param
+    // descriptions are already plumbed through the descriptor at this point
+    // (operator_loader.cpp), so build_operator_docs_response will emit them.
+    if (detail.is_null() && registry.is_shader_operator(name)) {
+        if (const auto* cfg = registry.shader_operator_config(name);
+            cfg && !cfg->description.empty()) {
+            detail = nlohmann::json::object();
+            detail["body"] = cfg->description;
+        }
+    }
+
     return json_ok(build_operator_docs_response(*desc, detail.is_null() ? nullptr : &detail, package_name));
 }
 

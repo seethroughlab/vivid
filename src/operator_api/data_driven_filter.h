@@ -19,6 +19,7 @@ struct WgslOperatorConfig {
         float min_value = 0.0f;
         float max_value = 1.0f;
         std::string label;                        // display label (empty = use name)
+        std::string description;                  // surfaced via operator_docs
         std::vector<std::string> choices;         // for int enums
         VividDisplayHint display_hint = VIVID_DISPLAY_DEFAULT;
         std::string group;                        // collapsible group name
@@ -32,6 +33,7 @@ struct WgslOperatorConfig {
     };
 
     std::string name;
+    std::string description;       // top-level operator description, surfaced via operator_docs
     std::string shader_path;       // absolute path to working .wgsl file
     std::string source_builtin;    // which built-in it was copied from
     bool time_dependent = false;
