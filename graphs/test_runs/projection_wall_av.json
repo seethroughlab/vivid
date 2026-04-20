@@ -1,0 +1,223 @@
+{
+    "schema_version": 1,
+    "vivid_version": "0.1.0",
+    "nodes": {
+        "audio_out": {
+            "type": "audio_out"
+        },
+        "bloom": {
+            "type": "Bloom",
+            "params": {
+                "threshold": 0.15,
+                "passes": 4.0,
+                "intensity": 1.6
+            },
+            "layout": {
+                "x": 1752.9498,
+                "y": 1112.4839
+            }
+        },
+        "mirror": {
+            "type": "Mirror",
+            "params": {
+                "angle": 0.0,
+                "segments": 2.0,
+                "mode": 0.0
+            },
+            "layout": {
+                "x": 1355.7339,
+                "y": 1057.3895
+            },
+            "locks": {
+                "segments": 1
+            }
+        },
+        "scan": {
+            "type": "Scanlines",
+            "params": {
+                "vertical": 1.0,
+                "thickness": 0.1,
+                "spacing": 28.0,
+                "intensity": 0.4
+            },
+            "layout": {
+                "x": 1552.9498,
+                "y": 1112.4839
+            }
+        },
+        "video_out": {
+            "type": "video_out",
+            "layout": {
+                "x": 1952.9498,
+                "y": 1121.4839
+            }
+        },
+        "src": {
+            "type": "ColorBands",
+            "params": {
+                "softness": 0.6,
+                "scroll_speed": 0.04,
+                "band_count": 6.0,
+                "c0_r": 0.18802013
+            },
+            "layout": {
+                "x": 1152.9498,
+                "y": 1112.4839
+            }
+        },
+        "seq": {
+            "type": "DrumSequencer",
+            "params": {
+                "hat_14": 1.0,
+                "hat_10": 1.0,
+                "hat_6": 1.0,
+                "hat_2": 1.0,
+                "snare_4": 1.0,
+                "kick_8": 1.0,
+                "kick_4": 1.0,
+                "snare_12": 1.0,
+                "kick_0": 1.0,
+                "bar_sync": 3.0,
+                "kick_12": 1.0,
+                "clock_source": 1.0
+            },
+            "layout": {
+                "x": 19.61393,
+                "y": 1220.2528
+            }
+        },
+        "kit": {
+            "type": "DrumKit"
+        },
+        "kick": {
+            "type": "DrumKick"
+        },
+        "snare": {
+            "type": "DrumSnare"
+        },
+        "hat": {
+            "type": "DrumHiHat"
+        },
+        "master": {
+            "type": "Gain",
+            "params": {
+                "gain": 0.5
+            }
+        },
+        "smooth_kick": {
+            "type": "SmoothFr",
+            "params": {
+                "fall_time": 0.4,
+                "rise_time": 0.005
+            }
+        },
+        "smooth_snare": {
+            "type": "SmoothFr",
+            "params": {
+                "fall_time": 0.4,
+                "rise_time": 0.005
+            }
+        },
+        "smooth_hat": {
+            "type": "SmoothFr",
+            "params": {
+                "fall_time": 0.25,
+                "rise_time": 0.005
+            }
+        }
+    },
+    "connections": [
+        {
+            "from": "mirror/texture",
+            "to": "scan/input"
+        },
+        {
+            "from": "scan/texture",
+            "to": "bloom/input"
+        },
+        {
+            "from": "bloom/texture",
+            "to": "video_out/input"
+        },
+        {
+            "from": "src/texture",
+            "to": "mirror/input"
+        },
+        {
+            "from": "seq/midi_out",
+            "to": "kit/midi_in"
+        },
+        {
+            "from": "kit/slot_0",
+            "to": "kick/midi_in"
+        },
+        {
+            "from": "kit/slot_1",
+            "to": "snare/midi_in"
+        },
+        {
+            "from": "kit/slot_2",
+            "to": "hat/midi_in"
+        },
+        {
+            "from": "kick/output",
+            "to": "master/input"
+        },
+        {
+            "from": "snare/output",
+            "to": "master/input"
+        },
+        {
+            "from": "hat/output",
+            "to": "master/input"
+        },
+        {
+            "from": "master/output",
+            "to": "audio_out/input"
+        },
+        {
+            "from": "kick/peak",
+            "to": "smooth_kick/input",
+            "bridge": "peak"
+        },
+        {
+            "from": "snare/peak",
+            "to": "smooth_snare/input",
+            "bridge": "peak"
+        },
+        {
+            "from": "hat/peak",
+            "to": "smooth_hat/input",
+            "bridge": "peak"
+        },
+        {
+            "from": "smooth_kick/value",
+            "to": "bloom/intensity",
+            "from_min": 0.0,
+            "from_max": 1.0,
+            "to_min": 1.4,
+            "to_max": 3.5
+        },
+        {
+            "from": "smooth_snare/value",
+            "to": "mirror/center_y",
+            "from_min": 0.0,
+            "from_max": 1.0,
+            "to_min": 0.5,
+            "to_max": 0.6
+        },
+        {
+            "from": "smooth_hat/value",
+            "to": "scan/intensity",
+            "from_min": 0.0,
+            "from_max": 1.0,
+            "to_min": 0.3,
+            "to_max": 0.7
+        }
+    ],
+    "viewport": {
+        "pan_x": 521.20337,
+        "pan_y": 415.97653,
+        "zoom": 0.5006478
+    }
+}

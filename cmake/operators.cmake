@@ -162,6 +162,7 @@ add_vivid_operator(basename          operators/control/basename/basename.cpp    
 add_vivid_operator(step_counter_fr   operators/control/step_counter/step_counter_fr.cpp EXTRA_LIBS webgpu)
 add_vivid_operator(step_counter_au   operators/control/step_counter/step_counter_au.cpp)
 add_vivid_operator(phrase_pulse      operators/control/phrase_pulse/phrase_pulse.cpp)
+add_vivid_operator(color_bands       operators/gpu/color_bands/color_bands.cpp           EXTRA_LIBS webgpu)
 add_vivid_operator(path_animate      operators/control/path_animate/path_animate.cpp)
 add_vivid_operator(sample_hold_au    operators/control/sample_hold/sample_hold.cpp    EXTRA_LIBS webgpu)
 add_vivid_operator(quantizer_au      operators/control/quantizer/quantizer.cpp)
