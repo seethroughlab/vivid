@@ -82,5 +82,6 @@ Each operator compiles to a separate `.dylib` for hot-reload during development.
 
 - `AGENTS.md` §Operators — file conventions, scaffolding patterns, ChildOp usage
 - `docs/ARCHITECTURE.md` §5.7 — operator API contract
+- `docs/COMPOSITION-GUIDE.md` — patterns/anti-patterns for AV graphs; useful when designing example graphs for a new operator
 - `src/operator_api/CLAUDE.md` — the public headers operators include
 - `cmake/operators.cmake` — build registration for all seed operators

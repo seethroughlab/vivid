@@ -11,6 +11,7 @@ Vivid is a real-time audiovisual graph engine where audio and visuals are peers 
 | `docs/runtime/*.md` | Per-subsystem engineering docs (graph, audio engine, control server, packages, etc.) |
 | `docs/INTERFACE.md` | UI architecture, visual style, session/variation surface |
 | `docs/LLM-INTEGRATION.md` | MCP server design and LLM integration roles |
+| `docs/COMPOSITION-GUIDE.md` | Mechanical primitives + reference-translation workflow for AV graphs. Opens with how to turn a user-supplied precedent (URL, YouTube, image, artist) into an operator graph; the rest is value-neutral mechanics (anti-patterns, metric thresholds, diagnostic tree). Not a menu of "good" patterns — what's compelling depends on the project. |
 
 ## Module Map
 
