@@ -8,13 +8,25 @@
 
 struct SmoothThumbState;
 /**
- * @brief Exponential smoothing with separate rise and fall times.
+ * @brief Exponential smoother / envelope follower with separate rise and
+ * fall times.
  *
- * First-order low-pass filter with independent time constants for rising
- * and falling signals. Use it to smooth stepped or noisy control signals,
- * or to add slew to abrupt parameter changes.
+ * Asymmetric first-order low-pass filter — independent time constants when
+ * the signal is rising vs. falling. Most common uses:
  *
- * @tip Set rise_time=0 and a long fall_time for a peak-hold-then-decay effect.
+ * - **Envelope follower for percussive audio** (rise=0.005, fall=0.2-0.6):
+ *   feed a drum's `peak` port to `input`, get a sustained pulse on `value`
+ *   that drives shape scale, brightness, color, etc. Without it, drum
+ *   triggers flash too briefly to register visually.
+ * - **Slew limiter** (rise=fall=0.05): smooth abrupt parameter jumps so
+ *   stepped signals (e.g., from quantizers) feel continuous.
+ * - **Pitch glide** (rise=fall=0.15): add portamento to discrete pitch
+ *   changes for a synth-style legato.
+ * - **Peak hold + slow decay** (rise=0, long fall): instantaneous attack
+ *   then exponential decay — classic peak-meter behavior.
+ *
+ * @tip Use the `Envelope follower (snappy)` factory preset as a starting
+ * point for audio-reactive visuals.
  * @see LFO, SampleHold, Envelope
  */
 struct Smooth : vivid::OperatorBase, vivid::FrameProcessable {

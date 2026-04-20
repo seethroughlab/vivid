@@ -125,9 +125,11 @@ add_vivid_operator(midi_input     operators/control/midi_input/midi_input.cpp   
 add_vivid_operator(fft_analysis   operators/control/fft_analysis/fft_analysis.cpp)
 add_vivid_operator(logic             operators/control/logic/logic.cpp             EXTRA_LIBS webgpu)
 add_vivid_operator(gate_au           operators/control/gate/gate.cpp           EXTRA_LIBS webgpu)
-add_vivid_operator(smooth_fr          operators/control/smooth/smooth_fr.cpp          EXTRA_LIBS webgpu)
+add_vivid_operator(smooth_fr          operators/control/smooth/smooth_fr.cpp          EXTRA_LIBS webgpu
+                   FACTORY_PRESETS operators/control/smooth/factory_presets.json)
 target_sources(smooth_fr PRIVATE operators/control/smooth/smooth.cpp)
-add_vivid_operator(smooth_au          operators/control/smooth/smooth_au.cpp          EXTRA_LIBS webgpu)
+add_vivid_operator(smooth_au          operators/control/smooth/smooth_au.cpp          EXTRA_LIBS webgpu
+                   FACTORY_PRESETS operators/control/smooth/factory_presets.json)
 add_vivid_operator(stack             operators/control/stack/stack.cpp)
 add_vivid_operator(repeat            operators/control/repeat/repeat.cpp)
 add_vivid_operator(spread_noise      operators/control/spread_noise/spread_noise.cpp      EXTRA_LIBS webgpu)

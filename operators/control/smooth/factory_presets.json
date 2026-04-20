@@ -1,0 +1,24 @@
+{
+  "presets": [
+    {
+      "name": "Envelope follower (snappy)",
+      "params": { "rise_time": 0.005, "fall_time": 0.2 }
+    },
+    {
+      "name": "Envelope follower (long tail)",
+      "params": { "rise_time": 0.005, "fall_time": 0.6 }
+    },
+    {
+      "name": "Peak hold + slow decay",
+      "params": { "rise_time": 0.0, "fall_time": 1.0 }
+    },
+    {
+      "name": "Slew limiter",
+      "params": { "rise_time": 0.05, "fall_time": 0.05 }
+    },
+    {
+      "name": "Pitch glide",
+      "params": { "rise_time": 0.15, "fall_time": 0.15 }
+    }
+  ]
+}
