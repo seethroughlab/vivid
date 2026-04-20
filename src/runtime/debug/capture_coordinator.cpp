@@ -811,7 +811,24 @@ std::string CaptureCoordinator::serialize_analysis(const AnalysisResult& result)
     if (result.mode == AnalysisMode::AV) {
         json += R"(,"av_reactivity":{)";
         json += R"("energy_brightness_correlation":)" + float_str(result.av_reactivity.energy_brightness_correlation);
+        json += R"(,"energy_motion_correlation":)" + float_str(result.av_reactivity.energy_motion_correlation);
+        json += R"(,"energy_contrast_correlation":)" + float_str(result.av_reactivity.energy_contrast_correlation);
         json += R"(,"window_seconds":)" + float_str(result.av_reactivity.window_seconds);
+        json += R"(,"visual_samples":)" + std::to_string(result.av_reactivity.visual_samples);
+        json += R"(,"detected_onsets":)" + std::to_string(result.av_reactivity.detected_onsets);
+        json += R"(,"onset_response_rate":)" + float_str(result.av_reactivity.onset_response_rate);
+        json += R"(,"reactivity_latency_ms":)" + float_str(result.av_reactivity.reactivity_latency_ms);
+
+        auto band_obj = [&](const char* key, const BandCorrelations& b) {
+            json += R"(,")" + std::string(key) + R"(":{)";
+            json += R"("bass":)" + float_str(b.bass);
+            json += R"(,"mid":)" + float_str(b.mid);
+            json += R"(,"treble":)" + float_str(b.treble);
+            json += "}";
+        };
+        band_obj("band_brightness_correlations", result.av_reactivity.band_brightness_correlations);
+        band_obj("band_motion_correlations",     result.av_reactivity.band_motion_correlations);
+        band_obj("band_contrast_correlations",   result.av_reactivity.band_contrast_correlations);
         json += "}";
     }
     json += "}";
@@ -923,6 +940,10 @@ void CaptureCoordinator::tick_analysis(WGPUDevice device, WGPUQueue queue,
 
     // Process pending analyses (deferred multi-frame state machine)
     auto now = std::chrono::steady_clock::now();
+    // Sample intermediate frames during AV analysis at this cadence (160ms ≈
+    // 6 fps). Gives 6 samples for a 1s window, 18+ for 3s — enough for
+    // meaningful per-axis correlation without saturating GPU readback.
+    constexpr float kAvSampleIntervalSec = 0.16f;
     auto it = pending_analyses_.begin();
     while (it != pending_analyses_.end()) {
         auto& pa = *it;
@@ -935,15 +956,27 @@ void CaptureCoordinator::tick_analysis(WGPUDevice device, WGPUQueue queue,
                     pa.solo_set = true;
                 }
                 pa.start_time = now;
+                pa.last_sample_time = now;
                 pa.frame_a_captured = true;
 
                 if (pa.mode == AnalysisMode::Frame || pa.mode == AnalysisMode::AV) {
                     if (capture_tex && tex_width > 0 && tex_height > 0) {
                         std::vector<uint8_t> pixels;
                         if (gpu_readback_rgba8(device, queue, capture_tex, tex_width, tex_height, pixels)) {
-                            pa.frame_a_pixels = std::move(pixels);
                             pa.frame_w = tex_width;
                             pa.frame_h = tex_height;
+                            if (pa.mode == AnalysisMode::AV) {
+                                // Seed visual time series with the first sample
+                                VisualMetrics vm = analyze_frame(pixels.data(), tex_width, tex_height);
+                                VisualSample vs;
+                                vs.timestamp_seconds = 0.0f;
+                                vs.brightness = vm.mean_brightness;
+                                vs.contrast = vm.contrast;
+                                vs.motion = 0.0f;
+                                pa.visual_samples.push_back(vs);
+                                pa.last_frame_pixels = pixels;  // copy for inter-sample motion
+                            }
+                            pa.frame_a_pixels = std::move(pixels);
                         }
                     }
                 }
@@ -959,6 +992,31 @@ void CaptureCoordinator::tick_analysis(WGPUDevice device, WGPUQueue queue,
 
             // Check if window has elapsed
             auto elapsed = std::chrono::duration<float>(now - pa.start_time).count();
+
+            // For AV mode, capture intermediate frames during the window
+            if (pa.mode == AnalysisMode::AV && elapsed < pa.window_seconds) {
+                auto since_last = std::chrono::duration<float>(now - pa.last_sample_time).count();
+                if (since_last >= kAvSampleIntervalSec &&
+                    capture_tex && tex_width == pa.frame_w && tex_height == pa.frame_h) {
+                    std::vector<uint8_t> sample_pixels;
+                    if (gpu_readback_rgba8(device, queue, capture_tex, tex_width, tex_height, sample_pixels)) {
+                        VisualMetrics vm = analyze_frame(sample_pixels.data(), tex_width, tex_height);
+                        VisualSample vs;
+                        vs.timestamp_seconds = elapsed;
+                        vs.brightness = vm.mean_brightness;
+                        vs.contrast = vm.contrast;
+                        vs.motion = pa.last_frame_pixels.empty() ? 0.0f
+                            : compute_motion(pa.last_frame_pixels.data(), sample_pixels.data(),
+                                             tex_width, tex_height);
+                        pa.visual_samples.push_back(vs);
+                        pa.last_frame_pixels = std::move(sample_pixels);
+                        pa.last_sample_time = now;
+                    }
+                }
+                ++it;
+                continue;
+            }
+
             if (elapsed < pa.window_seconds) {
                 ++it;
                 continue;
@@ -981,18 +1039,34 @@ void CaptureCoordinator::tick_analysis(WGPUDevice device, WGPUQueue queue,
                                 tex_width, tex_height);
 
                             if (pa.mode == AnalysisMode::AV) {
-                                // AV reactivity needs both frames + audio
+                                // Push frame_b as the final visual sample so the
+                                // time series spans the full window before correlation.
+                                {
+                                    VisualSample vs;
+                                    vs.timestamp_seconds = elapsed;
+                                    vs.brightness = result.visual.mean_brightness;
+                                    vs.contrast = result.visual.contrast;
+                                    vs.motion = pa.last_frame_pixels.empty() ? 0.0f
+                                        : compute_motion(pa.last_frame_pixels.data(), frame_b_pixels.data(),
+                                                         tex_width, tex_height);
+                                    pa.visual_samples.push_back(vs);
+                                }
                                 if (pa.audio_tap_started && audio_) {
                                     uint64_t avail = audio_->available_recorded_samples();
+                                    std::vector<float> samples;
+                                    uint64_t popped = 0;
                                     if (avail > 0) {
-                                        std::vector<float> samples(avail);
-                                        uint64_t popped = audio_->pop_recorded_samples(samples.data(), avail);
+                                        samples.resize(avail);
+                                        popped = audio_->pop_recorded_samples(samples.data(), avail);
                                         result.audio = analyze_audio(samples.data(), popped, AudioEngine::kSampleRate, 2);
-                                        result.av_reactivity = analyze_av_reactivity(
-                                            samples.data(), popped, AudioEngine::kSampleRate, 2,
-                                            pa.frame_a_pixels.data(), frame_b_pixels.data(),
-                                            tex_width, tex_height, pa.window_seconds);
                                     }
+                                    // Always call reactivity so visual_samples and window_seconds
+                                    // are populated even when audio is silent — caller can then
+                                    // distinguish "no audio" from "no analysis ran."
+                                    result.av_reactivity = analyze_av_reactivity(
+                                        samples.empty() ? nullptr : samples.data(), popped,
+                                        AudioEngine::kSampleRate, 2,
+                                        pa.visual_samples, pa.window_seconds);
                                 }
                             }
                         }

@@ -40,9 +40,12 @@ struct PendingAnalysis {
     AnalysisMode mode;
     float window_seconds;
     bool include_payload;
-    std::vector<uint8_t> frame_a_pixels;
-    uint32_t frame_w = 0, frame_h = 0;
+    std::vector<uint8_t> frame_a_pixels;       // first sampled frame
+    std::vector<uint8_t> last_frame_pixels;    // for inter-sample motion
+    std::vector<VisualSample> visual_samples;  // intra-window time series (AV mode only)
     std::chrono::steady_clock::time_point start_time;
+    std::chrono::steady_clock::time_point last_sample_time;
+    uint32_t frame_w = 0, frame_h = 0;
     bool frame_a_captured = false;
     bool audio_tap_started = false;
     std::string node_id;

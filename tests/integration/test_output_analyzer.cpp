@@ -203,31 +203,291 @@ int main() {
     }
 
     // =====================================================================
-    // AV Reactivity: basic correlation
+    // AV Reactivity: brightness correlation (audio energy ramps up,
+    // brightness ramps up — should give strong positive correlation)
     // =====================================================================
     {
-        std::fprintf(stderr, "\n=== AV Reactivity: basic ===\n");
-        // Create correlated audio and frames: loud audio + bright frame
+        std::fprintf(stderr, "\n=== AV Reactivity: brightness correlation ===\n");
         uint32_t rate = 48000;
         float window = 1.0f;
-        uint64_t num_samples = rate; // 1 second mono
+        uint64_t num_samples = rate;
         std::vector<float> audio(num_samples);
-        // Audio ramps up over 1 second
         for (uint64_t i = 0; i < num_samples; ++i)
             audio[i] = 0.5f * static_cast<float>(i) / num_samples;
 
-        // Frame A: dark, Frame B: bright (correlated with ramping audio)
-        uint32_t w = 2, h = 2;
-        std::vector<uint8_t> dark(w * h * 4, 0);
-        std::vector<uint8_t> bright(w * h * 4, 255);
+        // Visual time series: brightness ramps up linearly across the window
+        std::vector<vivid::VisualSample> visual;
+        for (int i = 0; i < 10; ++i) {
+            vivid::VisualSample s;
+            s.timestamp_seconds = window * i / 9.0f;
+            s.brightness = static_cast<float>(i) / 9.0f;
+            s.contrast = 0.0f;
+            s.motion = 0.0f;
+            visual.push_back(s);
+        }
 
         auto m = vivid::analyze_av_reactivity(
-            audio.data(), num_samples, rate, 1,
-            dark.data(), bright.data(), w, h, window);
+            audio.data(), num_samples, rate, 1, visual, window);
 
-        check(m.energy_brightness_correlation > 0.5f,
-              "correlated audio+brightness gives positive correlation");
+        check(m.energy_brightness_correlation > 0.9f,
+              "energy + brightness ramp give strong positive correlation");
         check_near(m.window_seconds, 1.0f, 0.001f, "window_seconds preserved");
+        check(m.visual_samples == 10, "visual_samples count reflects time series");
+    }
+
+    // =====================================================================
+    // AV Reactivity: motion-only correlation (constant brightness, only
+    // motion tracks audio energy — exercises the case Phase 0 surfaced
+    // where displacement-driven reactivity was invisible to the brightness
+    // metric)
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== AV Reactivity: motion-only correlation ===\n");
+        uint32_t rate = 48000;
+        float window = 1.0f;
+        uint64_t num_samples = rate;
+        std::vector<float> audio(num_samples);
+        for (uint64_t i = 0; i < num_samples; ++i)
+            audio[i] = 0.5f * static_cast<float>(i) / num_samples;
+
+        // Brightness flat; motion ramps with audio energy
+        std::vector<vivid::VisualSample> visual;
+        for (int i = 0; i < 10; ++i) {
+            vivid::VisualSample s;
+            s.timestamp_seconds = window * i / 9.0f;
+            s.brightness = 0.5f;  // constant
+            s.contrast = 0.5f;    // constant
+            s.motion = static_cast<float>(i) / 9.0f;  // ramps
+            visual.push_back(s);
+        }
+
+        auto m = vivid::analyze_av_reactivity(
+            audio.data(), num_samples, rate, 1, visual, window);
+
+        check(std::fabs(m.energy_brightness_correlation) < 0.1f,
+              "flat brightness gives near-zero brightness correlation");
+        check(m.energy_motion_correlation > 0.9f,
+              "energy + motion ramp give strong positive motion correlation");
+    }
+
+    // =====================================================================
+    // Onset detection: pulses at known intervals
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Onset detection: 4 pulses ===\n");
+        uint32_t rate = 48000;
+        // 2 seconds; pulses at 0.3, 0.8, 1.3, 1.8 sec
+        std::vector<float> audio(rate * 2, 0.0f);
+        const float pulse_times[] = {0.3f, 0.8f, 1.3f, 1.8f};
+        for (float t : pulse_times) {
+            uint64_t i0 = static_cast<uint64_t>(t * rate);
+            // 50ms decaying sine burst at 1kHz
+            for (uint32_t i = 0; i < rate / 20; ++i) {
+                if (i0 + i >= audio.size()) break;
+                float env = std::exp(-static_cast<float>(i) / (rate / 100.0f));
+                audio[i0 + i] = 0.7f * env * std::sin(2.0f * M_PI * 1000.0f * i / rate);
+            }
+        }
+        auto onsets = vivid::detect_audio_onsets(audio.data(), audio.size(), rate, 1);
+        std::fprintf(stderr, "  detected %zu onsets at:", onsets.size());
+        for (float o : onsets) std::fprintf(stderr, " %.3f", o);
+        std::fprintf(stderr, "\n");
+        check(onsets.size() == 4, "detected exactly 4 onsets");
+        if (onsets.size() == 4) {
+            for (int i = 0; i < 4; ++i)
+                check_near(onsets[i], pulse_times[i], 0.05f,
+                           "onset i within 50ms of expected");
+        }
+    }
+
+    // =====================================================================
+    // Onset detection: silence → no onsets
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Onset detection: silence ===\n");
+        std::vector<float> silence(48000, 0.0f);
+        auto onsets = vivid::detect_audio_onsets(silence.data(), silence.size(), 48000, 1);
+        check(onsets.empty(), "silence produces zero onsets");
+    }
+
+    // =====================================================================
+    // AV Reactivity: onset response rate (onsets + correlated visual peaks)
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== AV Reactivity: onset response rate ===\n");
+        uint32_t rate = 48000;
+        float window = 2.0f;
+        std::vector<float> audio(static_cast<uint64_t>(rate * window), 0.0f);
+        const float pulse_times[] = {0.3f, 0.8f, 1.3f, 1.8f};
+        for (float t : pulse_times) {
+            uint64_t i0 = static_cast<uint64_t>(t * rate);
+            for (uint32_t i = 0; i < rate / 20; ++i) {
+                if (i0 + i >= audio.size()) break;
+                float env = std::exp(-static_cast<float>(i) / (rate / 100.0f));
+                audio[i0 + i] = 0.7f * env * std::sin(2.0f * M_PI * 1000.0f * i / rate);
+            }
+        }
+
+        // Visual: brightness ramps up after each onset (decays back to baseline
+        // by next onset, so brightness is highly responsive to each pulse).
+        std::vector<vivid::VisualSample> visual;
+        for (int i = 0; i < 40; ++i) {
+            vivid::VisualSample s;
+            s.timestamp_seconds = window * i / 39.0f;
+            s.brightness = 0.05f;
+            for (float p : pulse_times) {
+                float dt = s.timestamp_seconds - p;
+                if (dt >= 0.0f && dt < 0.3f)
+                    s.brightness = std::max(s.brightness, 0.05f + 0.5f * std::exp(-dt / 0.1f));
+            }
+            s.contrast = 0.0f;
+            s.motion = (i > 0 ? std::fabs(s.brightness - visual.back().brightness) : 0.0f);
+            visual.push_back(s);
+        }
+
+        auto m = vivid::analyze_av_reactivity(audio.data(), audio.size(), rate, 1, visual, window);
+        std::fprintf(stderr, "  detected_onsets=%u response_rate=%.3f latency_ms=%.1f\n",
+                     m.detected_onsets, m.onset_response_rate, m.reactivity_latency_ms);
+        check(m.detected_onsets >= 3, "detected at least 3 of 4 onsets");
+        check(m.onset_response_rate > 0.7f,
+              "responsive visual gives onset_response_rate > 0.7");
+        check(m.reactivity_latency_ms > 0.0f && m.reactivity_latency_ms < 200.0f,
+              "median latency in 0-200ms range");
+    }
+
+    // =====================================================================
+    // AV Reactivity: onset response rate — silent visual after onsets
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== AV Reactivity: onsets + flat visual ===\n");
+        uint32_t rate = 48000;
+        float window = 2.0f;
+        std::vector<float> audio(static_cast<uint64_t>(rate * window), 0.0f);
+        const float pulse_times[] = {0.3f, 0.8f, 1.3f, 1.8f};
+        for (float t : pulse_times) {
+            uint64_t i0 = static_cast<uint64_t>(t * rate);
+            for (uint32_t i = 0; i < rate / 20; ++i) {
+                if (i0 + i >= audio.size()) break;
+                float env = std::exp(-static_cast<float>(i) / (rate / 100.0f));
+                audio[i0 + i] = 0.7f * env * std::sin(2.0f * M_PI * 1000.0f * i / rate);
+            }
+        }
+        // Flat visual — no response
+        std::vector<vivid::VisualSample> visual;
+        for (int i = 0; i < 40; ++i) {
+            vivid::VisualSample s;
+            s.timestamp_seconds = window * i / 39.0f;
+            s.brightness = 0.5f;
+            s.contrast = 0.5f;
+            s.motion = 0.0f;
+            visual.push_back(s);
+        }
+        auto m = vivid::analyze_av_reactivity(audio.data(), audio.size(), rate, 1, visual, window);
+        std::fprintf(stderr, "  detected_onsets=%u response_rate=%.3f\n",
+                     m.detected_onsets, m.onset_response_rate);
+        check(m.detected_onsets >= 3, "still detects onsets");
+        check_near(m.onset_response_rate, 0.0f, 0.01f,
+                   "flat visual → zero onset response rate");
+    }
+
+    // =====================================================================
+    // AV Reactivity: per-band — bass and treble with OPPOSING envelopes.
+    // Brightness tracks the bass envelope. We expect bass→brightness strongly
+    // positive, treble→brightness strongly negative (anti-correlated) since
+    // treble fades as brightness rises.
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== AV Reactivity: per-band (opposing bass/treble envelopes) ===\n");
+        uint32_t rate = 48000;
+        float window = 2.0f;
+        uint64_t num_samples = static_cast<uint64_t>(rate * window);
+        // Bass ramps UP, treble ramps DOWN, simultaneously in the same buffer.
+        std::vector<float> audio(num_samples);
+        for (uint64_t i = 0; i < num_samples; ++i) {
+            float env_bass   = static_cast<float>(i) / num_samples;        // 0 → 1
+            float env_treble = 1.0f - static_cast<float>(i) / num_samples; // 1 → 0
+            audio[i] = 0.5f * env_bass   * std::sin(2.0f * M_PI *   80.0f * i / rate)
+                     + 0.5f * env_treble * std::sin(2.0f * M_PI * 6000.0f * i / rate);
+        }
+        // Brightness ramps UP, following the bass envelope.
+        std::vector<vivid::VisualSample> visual;
+        for (int i = 0; i < 20; ++i) {
+            vivid::VisualSample s;
+            s.timestamp_seconds = window * i / 19.0f;
+            s.brightness = static_cast<float>(i) / 19.0f;
+            s.contrast = 0.5f;
+            s.motion = 0.0f;
+            visual.push_back(s);
+        }
+        auto m = vivid::analyze_av_reactivity(audio.data(), audio.size(),
+                                              rate, 1, visual, window);
+        std::fprintf(stderr, "  bass→brightness=%.2f mid→brightness=%.2f treble→brightness=%.2f\n",
+                     m.band_brightness_correlations.bass,
+                     m.band_brightness_correlations.mid,
+                     m.band_brightness_correlations.treble);
+        check(m.band_brightness_correlations.bass > 0.7f,
+              "bass envelope rises with brightness → positive bass→brightness");
+        check(m.band_brightness_correlations.treble < -0.7f,
+              "treble envelope falls as brightness rises → negative treble→brightness");
+    }
+
+    // =====================================================================
+    // AV Reactivity: per-band — band-selective motion coupling.
+    // Audio has bass all the time but a treble burst in the second half.
+    // Visual motion only rises during the treble burst. Expect treble→motion
+    // strongly positive while bass→motion stays flat.
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== AV Reactivity: per-band (selective treble→motion) ===\n");
+        uint32_t rate = 48000;
+        float window = 2.0f;
+        uint64_t num_samples = static_cast<uint64_t>(rate * window);
+        std::vector<float> audio(num_samples);
+        for (uint64_t i = 0; i < num_samples; ++i) {
+            float t = static_cast<float>(i) / num_samples;
+            float bass = 0.4f * std::sin(2.0f * M_PI * 80.0f * i / rate);
+            // Treble is only present in the second half (t >= 0.5) and ramps.
+            float treble_env = (t < 0.5f) ? 0.0f : 2.0f * (t - 0.5f);
+            float treble = 0.4f * treble_env * std::sin(2.0f * M_PI * 6000.0f * i / rate);
+            audio[i] = bass + treble;
+        }
+        // Motion is zero in the first half, ramps in the second half.
+        std::vector<vivid::VisualSample> visual;
+        for (int i = 0; i < 20; ++i) {
+            vivid::VisualSample s;
+            s.timestamp_seconds = window * i / 19.0f;
+            s.brightness = 0.5f;
+            s.contrast = 0.5f;
+            float t = i / 19.0f;
+            s.motion = (t < 0.5f) ? 0.0f : 2.0f * (t - 0.5f);
+            visual.push_back(s);
+        }
+        auto m = vivid::analyze_av_reactivity(audio.data(), audio.size(),
+                                              rate, 1, visual, window);
+        std::fprintf(stderr, "  bass→motion=%.2f mid→motion=%.2f treble→motion=%.2f\n",
+                     m.band_motion_correlations.bass,
+                     m.band_motion_correlations.mid,
+                     m.band_motion_correlations.treble);
+        check(m.band_motion_correlations.treble > 0.7f,
+              "treble burst + motion burst → strong treble→motion");
+        // Bass→motion should be weaker than treble→motion (bass is constant-ish)
+        check(m.band_motion_correlations.treble > m.band_motion_correlations.bass + 0.2f,
+              "treble→motion should exceed bass→motion when motion aligns with treble burst");
+    }
+
+    // =====================================================================
+    // AV Reactivity: empty / degenerate inputs
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== AV Reactivity: degenerate inputs ===\n");
+        std::vector<vivid::VisualSample> empty;
+        std::vector<float> audio(48000, 0.5f);
+        auto m = vivid::analyze_av_reactivity(audio.data(), audio.size(), 48000, 1, empty, 1.0f);
+        check_near(m.energy_brightness_correlation, 0.0f, 0.001f,
+                   "empty visual series → zero brightness correlation");
+        check_near(m.energy_motion_correlation, 0.0f, 0.001f,
+                   "empty visual series → zero motion correlation");
+        check(m.visual_samples == 0, "visual_samples = 0 for empty input");
     }
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",
