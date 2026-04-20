@@ -42,7 +42,14 @@ struct AliasEntry {
 //   Offset a param value:       {"OldName", {"NewName", {}, {}, {{"index", 7.0f}}}}
 const std::unordered_map<std::string, AliasEntry>& alias_table() {
     static const std::unordered_map<std::string, AliasEntry> table = {
-        // (no aliases yet)
+        // EnvelopeFollower → SmoothFr
+        // Smooth is functionally an envelope follower with separate rise/fall
+        // time constants. The "EnvelopeFollower" name was the discoverable
+        // search term that Phase 0 of the compelling-AV-demos work surfaced
+        // (see docs/plans/compelling-demos/02-phase-2-envelope-follower.md).
+        // Maps to the frame-cadence variant since envelope-following for
+        // visual modulation is the dominant use case.
+        {"EnvelopeFollower", {"SmoothFr", {}, {}, {}}},
     };
     return table;
 }
