@@ -512,13 +512,30 @@ def _analyze_melodic(
 
     import soundfile as sf
 
+    # scipy 1.15+ moved signal.gaussian → signal.windows.gaussian.
+    # basic-pitch 0.3.0's note_creation.py still calls the old name. Shim so
+    # predict() doesn't crash on modern scipy. Harmless if scipy already has it.
+    import scipy.signal as _scipy_signal
+    if not hasattr(_scipy_signal, "gaussian"):
+        _scipy_signal.gaussian = _scipy_signal.windows.gaussian
+
     try:
+        from basic_pitch import FilenameSuffix, build_icassp_2022_model_path
         from basic_pitch.inference import predict
     except ImportError:
         return {
             "degraded": True,
             "error": "basic-pitch not installed. Install with: pip install 'basic-pitch[onnx]'",
         }
+
+    # basic-pitch 0.3+ requires model_or_model_path as a positional argument.
+    # Prefer ONNX (matches our [onnx] extra). Fall back to default ICASSP path
+    # if ONNX artifact isn't present in the install.
+    try:
+        model_path = build_icassp_2022_model_path(FilenameSuffix.onnx)
+    except Exception:
+        from basic_pitch import ICASSP_2022_MODEL_PATH
+        model_path = ICASSP_2022_MODEL_PATH
 
     # For long tracks, write truncated audio to a temp WAV so basic-pitch
     # doesn't load the full file into memory
@@ -536,7 +553,7 @@ def _analyze_melodic(
 
     try:
         # Run basic-pitch prediction
-        _model_output, midi_data, note_events = predict(predict_path)
+        _model_output, midi_data, note_events = predict(predict_path, model_path)
     finally:
         # Clean up temp file
         if tmp_file is not None:

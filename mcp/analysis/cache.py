@@ -14,7 +14,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-CACHE_VERSION = 1
+CACHE_VERSION = 3  # bump: v3 stores the LLM-optimized report (YAML front-matter, Notable + Vivid translation-hints sections, compacted section map, no chord-sequence/MFCC tables) instead of the Familiar-style compact report cached under v2.
 CACHE_SUFFIX = ".vivid-analysis.json"
 
 
@@ -137,51 +137,47 @@ def has_melodic(source_path: str) -> bool:
     return bool(melodic) and not melodic.get("degraded", False)
 
 
+def _unwrap_tag(value: Any) -> str:
+    """Normalize a mutagen tag value to a single string.
+
+    Handles Vorbis list-valued tags (e.g. ['Ochre']) and ID3 frames.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        return str(value[0]) if value else ""
+    return str(value)
+
+
 def get_metadata_from_file(file_path: str) -> dict[str, Any]:
-    """Try to extract metadata (artist, title, album) from audio file tags."""
+    """Try to extract metadata (artist, title, album) from audio file tags.
+
+    Handles both ID3 (MP3) and Vorbis comments (FLAC, OGG). Vorbis tags are
+    list-valued, which earlier naive `str()` conversion rendered as "['Ochre']".
+    """
     try:
         import mutagen
         audio = mutagen.File(file_path)
-        if audio is None:
+        if audio is None or not getattr(audio, "tags", None):
             return {}
 
+        tags = audio.tags
         metadata: dict[str, Any] = {}
 
-        # Try common tag formats
-        # ID3 (MP3)
-        if hasattr(audio, "tags") and audio.tags:
-            tags = audio.tags
-            for key in ("TIT2", "title"):
+        # Check each field against both ID3 frame IDs and Vorbis comment keys.
+        # First match wins; _unwrap_tag handles list-valued Vorbis values.
+        field_keys = {
+            "title": ("TIT2", "title", "TITLE"),
+            "artist": ("TPE1", "artist", "ARTIST"),
+            "album": ("TALB", "album", "ALBUM"),
+        }
+        for field, keys in field_keys.items():
+            for key in keys:
                 if key in tags:
-                    metadata["title"] = str(tags[key])
-                    break
-            for key in ("TPE1", "artist"):
-                if key in tags:
-                    metadata["artist"] = str(tags[key])
-                    break
-            for key in ("TALB", "album"):
-                if key in tags:
-                    metadata["album"] = str(tags[key])
-                    break
-
-        # Vorbis comments (FLAC, OGG)
-        if not metadata and hasattr(audio, "tags") and audio.tags:
-            tags = audio.tags
-            for key in ("title", "TITLE"):
-                if key in tags:
-                    val = tags[key]
-                    metadata["title"] = val[0] if isinstance(val, list) else str(val)
-                    break
-            for key in ("artist", "ARTIST"):
-                if key in tags:
-                    val = tags[key]
-                    metadata["artist"] = val[0] if isinstance(val, list) else str(val)
-                    break
-            for key in ("album", "ALBUM"):
-                if key in tags:
-                    val = tags[key]
-                    metadata["album"] = val[0] if isinstance(val, list) else str(val)
-                    break
+                    value = _unwrap_tag(tags[key])
+                    if value:
+                        metadata[field] = value
+                        break
 
         return metadata
 

@@ -300,6 +300,610 @@ class PerceptionMCPTests(unittest.TestCase):
             self.mod._post = original
         self.assertEqual(out, '{"ok":true}')
 
+    def _make_analysis_json(self, **overrides):
+        """Build a synthetic analyze_output(mode="av") response."""
+        base = {
+            "ok": True,
+            "schema_version": 1,
+            "mode": "av",
+            "metrics": {
+                "audio": {"rms": 0.2, "peak": 0.5,
+                          "spectral_centroid_hz": 440.0,
+                          "spectral_brightness": 0.1,
+                          "spectral_flatness": 0.1},
+                "visual": {"mean_brightness": 0.1, "contrast": 0.15,
+                           "motion_magnitude": 0.1},
+                "av_reactivity": {
+                    "energy_brightness_correlation": 0.1,
+                    "energy_motion_correlation": 0.1,
+                    "energy_contrast_correlation": 0.1,
+                    "window_seconds": 3.0,
+                    "visual_samples": 19,
+                    "detected_onsets": 0,
+                    "onset_response_rate": 0.0,
+                    "reactivity_latency_ms": 0.0,
+                },
+            },
+            "notes": [],
+        }
+        for section, fields in overrides.items():
+            if section == "audio" or section == "visual" or section == "av_reactivity":
+                base["metrics"][section].update(fields)
+            else:
+                base[section] = fields
+        return json.dumps(base)
+
+    def test_diagnose_near_black_output(self):
+        """mean_brightness near zero should fire the critical near-black finding."""
+        raw = self._make_analysis_json(visual={"mean_brightness": 0.003})
+        out = json.loads(asyncio.run(
+            self.mod.diagnose_composition_issue(analysis_json=raw, intent="")))
+        self.assertTrue(out["ok"])
+        symptoms = [f["symptom"] for f in out["findings"]]
+        self.assertTrue(any("near-black" in s for s in symptoms),
+                        f"expected near-black finding; got {symptoms}")
+        critical = [f for f in out["findings"] if f["severity"] == "critical"]
+        self.assertGreaterEqual(len(critical), 1,
+                                "expected at least one critical finding")
+
+    def test_diagnose_low_onset_response_on_drum_intent(self):
+        """onset_response_rate < 0.3 with drum-driven intent fires the critical peak-without-envelope finding."""
+        raw = self._make_analysis_json(av_reactivity={
+            "detected_onsets": 11,
+            "onset_response_rate": 0.2,
+        })
+        out = json.loads(asyncio.run(
+            self.mod.diagnose_composition_issue(analysis_json=raw, intent="drum-driven")))
+        self.assertTrue(out["ok"])
+        symptoms = [f["symptom"] for f in out["findings"]]
+        self.assertTrue(any("onset_response_rate" in s for s in symptoms),
+                        f"expected low-onset finding; got {symptoms}")
+        critical_fixes = [f["fix"] for f in out["findings"] if f["severity"] == "critical"]
+        self.assertTrue(any("SmoothFr" in fix for fix in critical_fixes),
+                        "expected a critical fix to mention SmoothFr")
+
+    def test_diagnose_healthy_graph(self):
+        """A graph with healthy metrics returns a single info finding."""
+        raw = self._make_analysis_json(
+            visual={"mean_brightness": 0.2, "contrast": 0.25, "motion_magnitude": 0.15},
+            av_reactivity={"detected_onsets": 10, "onset_response_rate": 0.9,
+                           "reactivity_latency_ms": 150.0},
+        )
+        out = json.loads(asyncio.run(
+            self.mod.diagnose_composition_issue(analysis_json=raw, intent="drum-driven")))
+        self.assertTrue(out["ok"])
+        severities = [f["severity"] for f in out["findings"]]
+        self.assertNotIn("critical", severities)
+        self.assertNotIn("warning", severities)
+
+    def test_diagnose_phase_lag_is_info_not_warning(self):
+        """Negative correlation with high onset_response_rate is expected (feedback lag) → info."""
+        raw = self._make_analysis_json(
+            visual={"mean_brightness": 0.05, "motion_magnitude": 0.02},
+            av_reactivity={
+                "energy_brightness_correlation": -0.4,
+                "energy_motion_correlation": -0.2,
+                "energy_contrast_correlation": -0.3,
+                "detected_onsets": 10,
+                "onset_response_rate": 0.85,
+            },
+        )
+        out = json.loads(asyncio.run(
+            self.mod.diagnose_composition_issue(analysis_json=raw, intent="drum-driven")))
+        self.assertTrue(out["ok"])
+        info_causes = [f["likely_cause"] for f in out["findings"] if f["severity"] == "info"]
+        self.assertTrue(
+            any("phase" in c.lower() or "lag" in c.lower() or "event-driven" in c.lower()
+                for c in info_causes),
+            f"expected an info-level phase/lag/event-driven explanation; got {info_causes}")
+
+    def test_diagnose_invalid_intent_errors(self):
+        raw = self._make_analysis_json()
+        out = json.loads(asyncio.run(
+            self.mod.diagnose_composition_issue(analysis_json=raw, intent="bogus-intent")))
+        self.assertFalse(out["ok"])
+        self.assertIn("unknown intent", out["error"])
+
+    def test_diagnose_invalid_json_errors(self):
+        out = json.loads(asyncio.run(
+            self.mod.diagnose_composition_issue(analysis_json="not-json")))
+        self.assertFalse(out["ok"])
+        self.assertIn("parse", out["error"])
+
+    def test_diagnose_calls_analyze_output_when_no_json_provided(self):
+        """Without a pre-supplied analysis_json, the tool should call analyze_output itself."""
+        captured = {}
+
+        async def fake_post(method, body=None):
+            captured["method"] = method
+            captured["body"] = body
+            return self._make_analysis_json(
+                visual={"mean_brightness": 0.2, "motion_magnitude": 0.15},
+                av_reactivity={"detected_onsets": 0, "onset_response_rate": 0.0},
+            )
+
+        original = self.mod._post
+        self.mod._post = fake_post
+        try:
+            out = json.loads(asyncio.run(
+                self.mod.diagnose_composition_issue(window_seconds=5.0)))
+        finally:
+            self.mod._post = original
+
+        self.assertTrue(out["ok"])
+        self.assertEqual(captured["method"], "analyze_output")
+        self.assertEqual(captured["body"]["mode"], "av")
+        self.assertEqual(captured["body"]["window_seconds"], 5.0)
+
+    def test_get_composition_patterns_all(self):
+        """With no intent, returns all curated patterns."""
+        out = json.loads(asyncio.run(self.mod.get_composition_patterns()))
+        self.assertTrue(out["ok"])
+        ids = [p["id"] for p in out["patterns"]]
+        self.assertIn("drum-driven-pulse", ids)
+        self.assertIn("continuous-reactivity", ids)
+        self.assertIn("parametric-sync", ids)
+        self.assertIn("spectral-color", ids)
+        self.assertEqual(len(out["patterns"]), 4)
+
+    def test_get_composition_patterns_drum_driven(self):
+        """Intent 'drum-driven' narrows to the drum-driven-pulse pattern."""
+        out = json.loads(asyncio.run(
+            self.mod.get_composition_patterns(intent="drum-driven")))
+        self.assertTrue(out["ok"])
+        ids = [p["id"] for p in out["patterns"]]
+        self.assertEqual(ids, ["drum-driven-pulse"])
+
+    def test_get_composition_patterns_percussive_matches_drum_driven(self):
+        """Intent 'percussive' is a synonym for 'drum-driven'."""
+        out = json.loads(asyncio.run(
+            self.mod.get_composition_patterns(intent="percussive")))
+        self.assertTrue(out["ok"])
+        ids = [p["id"] for p in out["patterns"]]
+        self.assertEqual(ids, ["drum-driven-pulse"])
+
+    def test_get_composition_patterns_continuous(self):
+        """Intent 'continuous' matches continuous-reactivity, also 'pad' and 'ambient'."""
+        for synonym in ("continuous", "pad", "ambient"):
+            out = json.loads(asyncio.run(
+                self.mod.get_composition_patterns(intent=synonym)))
+            self.assertTrue(out["ok"])
+            ids = [p["id"] for p in out["patterns"]]
+            self.assertEqual(ids, ["continuous-reactivity"],
+                             f"synonym '{synonym}' should match continuous-reactivity")
+
+    def test_get_composition_patterns_schema_fields_present(self):
+        """Each pattern includes the required structural fields."""
+        out = json.loads(asyncio.run(self.mod.get_composition_patterns()))
+        required = {"id", "name", "intents", "one_line", "when_to_use",
+                    "signal_flow", "key_operators", "example_connections",
+                    "watch_out_for", "expected_metrics", "exemplars"}
+        for pattern in out["patterns"]:
+            missing = required - set(pattern.keys())
+            self.assertFalse(missing,
+                             f"pattern {pattern['id']} missing fields: {missing}")
+            self.assertIsInstance(pattern["key_operators"], list)
+            self.assertIsInstance(pattern["example_connections"], list)
+            self.assertIsInstance(pattern["watch_out_for"], list)
+            self.assertIsInstance(pattern["exemplars"], list)
+
+    def test_get_composition_patterns_invalid_intent_errors(self):
+        out = json.loads(asyncio.run(
+            self.mod.get_composition_patterns(intent="xyz-bogus")))
+        self.assertFalse(out["ok"])
+        self.assertIn("unknown intent", out["error"])
+
+    def _write_graph_fixture(self, nodes: dict, connections: list) -> str:
+        """Write a minimal graph JSON to a temp file and return its path."""
+        import tempfile
+        fd, path = tempfile.mkstemp(suffix=".json", prefix="test_graph_")
+        os.close(fd)
+        payload = {"schema_version": 1, "nodes": nodes, "connections": connections,
+                   "meta": {"id": "fixture", "title": "Fixture"}}
+        with open(path, "w") as f:
+            json.dump(payload, f)
+        return path
+
+    def test_explain_graph_composition_detects_drum_driven_pulse(self):
+        """Full drum → smooth → shape (both axes) chain scores confidence=high."""
+        path = self._write_graph_fixture(
+            nodes={
+                "kick": {"type": "DrumKick"},
+                "sm_k": {"type": "SmoothFr", "params": {"rise_time": 0.005, "fall_time": 0.4}},
+                "shape": {"type": "Shape2D"},
+            },
+            connections=[
+                {"from": "kick/peak",    "to": "sm_k/input"},
+                {"from": "sm_k/value",   "to": "shape/scale_x"},
+                {"from": "sm_k/value",   "to": "shape/scale_y"},
+            ],
+        )
+        try:
+            out = json.loads(asyncio.run(self.mod.explain_graph_composition(path)))
+        finally:
+            os.unlink(path)
+        self.assertTrue(out["ok"])
+        pids = [p["pattern_id"] for p in out["patterns_detected"]]
+        self.assertIn("drum-driven-pulse", pids)
+        ddp = next(p for p in out["patterns_detected"] if p["pattern_id"] == "drum-driven-pulse")
+        self.assertEqual(ddp["confidence"], "high",
+                         "drum→smooth→shape on BOTH axes should score high")
+
+    def test_explain_graph_composition_detects_missing_envelope(self):
+        """drum/peak wired directly to shape scale (no Smooth) is low confidence + warning."""
+        path = self._write_graph_fixture(
+            nodes={
+                "kick": {"type": "DrumKick"},
+                "shape": {"type": "Shape2D"},
+            },
+            connections=[
+                {"from": "kick/peak", "to": "shape/scale_x"},
+            ],
+        )
+        try:
+            out = json.loads(asyncio.run(self.mod.explain_graph_composition(path)))
+        finally:
+            os.unlink(path)
+        ddp = next(p for p in out["patterns_detected"]
+                   if p["pattern_id"] == "drum-driven-pulse")
+        self.assertEqual(ddp["confidence"], "low")
+        self.assertTrue(any("warning" in ch for ch in ddp["chains"]),
+                        "bare drum→shape chain should carry a warning")
+
+    def test_explain_graph_composition_detects_continuous_reactivity(self):
+        """gain/rms → displace/amount scores continuous-reactivity."""
+        path = self._write_graph_fixture(
+            nodes={
+                "osc": {"type": "Oscillator"},
+                "gain": {"type": "Gain"},
+                "displace": {"type": "Displace"},
+            },
+            connections=[
+                {"from": "osc/output",  "to": "gain/input"},
+                {"from": "gain/rms",    "to": "displace/amount"},
+            ],
+        )
+        try:
+            out = json.loads(asyncio.run(self.mod.explain_graph_composition(path)))
+        finally:
+            os.unlink(path)
+        pids = [p["pattern_id"] for p in out["patterns_detected"]]
+        self.assertIn("continuous-reactivity", pids)
+        cr = next(p for p in out["patterns_detected"] if p["pattern_id"] == "continuous-reactivity")
+        self.assertEqual(cr["confidence"], "high")
+
+    def test_explain_graph_composition_detects_parametric_sync(self):
+        """Single LFO forks to osc (audio) AND shape (visual) — parametric sync."""
+        path = self._write_graph_fixture(
+            nodes={
+                "lfo": {"type": "LfoFr"},
+                "osc": {"type": "Oscillator"},
+                "shape": {"type": "Shape2D"},
+            },
+            connections=[
+                {"from": "lfo/value", "to": "osc/frequency"},
+                {"from": "lfo/value", "to": "shape/scale_x"},
+            ],
+        )
+        try:
+            out = json.loads(asyncio.run(self.mod.explain_graph_composition(path)))
+        finally:
+            os.unlink(path)
+        pids = [p["pattern_id"] for p in out["patterns_detected"]]
+        self.assertIn("parametric-sync", pids)
+
+    def test_explain_graph_composition_empty_graph_reports_no_patterns(self):
+        """An empty graph produces zero patterns and a sensible summary."""
+        path = self._write_graph_fixture(nodes={}, connections=[])
+        try:
+            out = json.loads(asyncio.run(self.mod.explain_graph_composition(path)))
+        finally:
+            os.unlink(path)
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["patterns_detected"], [])
+        self.assertEqual(out["summary"]["node_count"], 0)
+
+    def test_explain_graph_composition_missing_file_errors(self):
+        out = json.loads(asyncio.run(
+            self.mod.explain_graph_composition("/nonexistent/path.json")))
+        self.assertFalse(out["ok"])
+        self.assertIn("not found", out["error"])
+
+    def test_explain_graph_composition_invalid_json_errors(self):
+        import tempfile
+        fd, path = tempfile.mkstemp(suffix=".json")
+        os.close(fd)
+        with open(path, "w") as f:
+            f.write("not-json-at-all")
+        try:
+            out = json.loads(asyncio.run(self.mod.explain_graph_composition(path)))
+        finally:
+            os.unlink(path)
+        self.assertFalse(out["ok"])
+        self.assertIn("parse", out["error"].lower())
+
+    def test_fetch_reference_youtube_id_parsing(self):
+        """YouTube URL patterns should all resolve to the same video ID."""
+        urls = [
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "https://youtu.be/dQw4w9WgXcQ",
+            "https://www.youtube.com/embed/dQw4w9WgXcQ",
+            "https://www.youtube.com/shorts/dQw4w9WgXcQ",
+            "https://youtube.com/watch?feature=foo&v=dQw4w9WgXcQ",
+        ]
+        for url in urls:
+            vid = self.mod._youtube_video_id(url)
+            self.assertEqual(vid, "dQw4w9WgXcQ", f"failed for url {url}")
+
+    def test_fetch_reference_rejects_non_http_url(self):
+        out = json.loads(asyncio.run(
+            self.mod.fetch_reference("file:///tmp/foo.jpg")))
+        self.assertFalse(out["ok"])
+        self.assertIn("http(s)", out["error"])
+
+    def test_fetch_reference_returns_cached_result(self):
+        """If a cache file exists for the URL, the tool returns it without re-fetching."""
+        import tempfile as _tmp
+        url = "https://example.com/some-ref-cached"
+        key = self.mod._reference_cache_key(url)
+        tmp_cache = pathlib.Path(_tmp.mkdtemp()) / "refs"
+        tmp_cache.mkdir(parents=True, exist_ok=True)
+        meta_path = tmp_cache / f"{key}.meta.json"
+        meta_path.write_text(json.dumps({
+            "ok": True, "source_url": url, "source_kind": "webpage",
+            "title": "Previously Fetched", "description": "",
+            "thumbnail_local_path": "", "text_summary": "",
+        }))
+
+        original_cache_dir = self.mod._REFERENCE_CACHE_DIR
+        self.mod._REFERENCE_CACHE_DIR = tmp_cache
+        try:
+            out = json.loads(asyncio.run(self.mod.fetch_reference(url)))
+        finally:
+            self.mod._REFERENCE_CACHE_DIR = original_cache_dir
+
+        self.assertTrue(out["ok"])
+        self.assertTrue(out["cached"])
+        self.assertEqual(out["title"], "Previously Fetched")
+
+    def test_fetch_reference_youtube_downloads_thumbnail(self):
+        """YouTube URL triggers thumbnail download and metadata scrape."""
+        import tempfile as _tmp
+        url = "https://www.youtube.com/watch?v=ABCDEFGHIJK"
+        tmp_cache = pathlib.Path(_tmp.mkdtemp()) / "refs"
+
+        downloads = []
+
+        async def fake_download(u, path, timeout=20.0):
+            downloads.append(u)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"fake-png-bytes")
+            return True
+
+        async def fake_fetch_text(u, timeout=15.0):
+            return (
+                "<html><head>"
+                "<title>Rickroll</title>"
+                '<meta name="description" content="Never gonna give you up">'
+                "</head></html>"
+            )
+
+        original_cache_dir = self.mod._REFERENCE_CACHE_DIR
+        original_dl = self.mod._download_to_path
+        original_ft = self.mod._fetch_url_text
+        self.mod._REFERENCE_CACHE_DIR = tmp_cache
+        self.mod._download_to_path = fake_download
+        self.mod._fetch_url_text = fake_fetch_text
+        try:
+            out = json.loads(asyncio.run(self.mod.fetch_reference(url)))
+        finally:
+            self.mod._REFERENCE_CACHE_DIR = original_cache_dir
+            self.mod._download_to_path = original_dl
+            self.mod._fetch_url_text = original_ft
+
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["source_kind"], "youtube")
+        self.assertTrue(out["thumbnail_local_path"].endswith(".jpg"))
+        self.assertEqual(out["title"], "Rickroll")
+        self.assertEqual(out["description"], "Never gonna give you up")
+        # First attempt should be maxresdefault
+        self.assertTrue(any("maxresdefault" in u for u in downloads))
+        # Multi-frame support: should also download /1.jpg /2.jpg /3.jpg /0.jpg
+        for idx in ("/0.jpg", "/1.jpg", "/2.jpg", "/3.jpg"):
+            self.assertTrue(any(idx in u for u in downloads),
+                            f"expected to attempt download of {idx}; downloads={downloads}")
+        # frame_paths should include the cover + the 4 additional frames (all 5)
+        self.assertEqual(len(out["frame_paths"]), 5,
+                         f"expected 5 frame paths, got {out['frame_paths']}")
+
+    def test_fetch_reference_youtube_partial_frame_download(self):
+        """If only some frame thumbnails succeed, frame_paths reflects what landed."""
+        import tempfile as _tmp
+        url = "https://youtu.be/PARTIAL1234"
+        tmp_cache = pathlib.Path(_tmp.mkdtemp()) / "refs"
+
+        async def fake_download(u, path, timeout=20.0):
+            # maxresdefault succeeds, /1.jpg succeeds, /2.jpg /3.jpg /0.jpg fail
+            if "maxresdefault" in u or "/1.jpg" in u:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"fake")
+                return True
+            return False
+
+        async def fake_fetch_text(u, timeout=15.0):
+            return "<html><title>x</title></html>"
+
+        original_cache_dir = self.mod._REFERENCE_CACHE_DIR
+        original_dl = self.mod._download_to_path
+        original_ft = self.mod._fetch_url_text
+        self.mod._REFERENCE_CACHE_DIR = tmp_cache
+        self.mod._download_to_path = fake_download
+        self.mod._fetch_url_text = fake_fetch_text
+        try:
+            out = json.loads(asyncio.run(self.mod.fetch_reference(url)))
+        finally:
+            self.mod._REFERENCE_CACHE_DIR = original_cache_dir
+            self.mod._download_to_path = original_dl
+            self.mod._fetch_url_text = original_ft
+
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["source_kind"], "youtube")
+        # Cover + /1.jpg = 2 successful frames
+        self.assertEqual(len(out["frame_paths"]), 2)
+
+    def test_fetch_reference_direct_image(self):
+        """A direct image URL is downloaded to cache."""
+        import tempfile as _tmp
+        url = "https://example.com/art.png"
+        tmp_cache = pathlib.Path(_tmp.mkdtemp()) / "refs"
+
+        async def fake_download(u, path, timeout=20.0):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"fake-png")
+            return True
+
+        original_cache_dir = self.mod._REFERENCE_CACHE_DIR
+        original_dl = self.mod._download_to_path
+        self.mod._REFERENCE_CACHE_DIR = tmp_cache
+        self.mod._download_to_path = fake_download
+        try:
+            out = json.loads(asyncio.run(self.mod.fetch_reference(url)))
+        finally:
+            self.mod._REFERENCE_CACHE_DIR = original_cache_dir
+            self.mod._download_to_path = original_dl
+
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["source_kind"], "image")
+        self.assertTrue(out["thumbnail_local_path"].endswith(".png"))
+
+    def test_fetch_reference_generic_webpage_scrapes_og(self):
+        """Generic webpage scrapes title + og:image."""
+        import tempfile as _tmp
+        url = "https://example.com/project-page"
+        tmp_cache = pathlib.Path(_tmp.mkdtemp()) / "refs"
+
+        async def fake_fetch_text(u, timeout=15.0):
+            return (
+                "<html><head>"
+                "<title>Project Foo</title>"
+                '<meta property="og:image" content="https://example.com/foo-hero.jpg">'
+                '<meta property="og:description" content="A thing we made">'
+                "</head></html>"
+            )
+
+        async def fake_download(u, path, timeout=20.0):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"fake-og-image")
+            return True
+
+        original_cache_dir = self.mod._REFERENCE_CACHE_DIR
+        original_dl = self.mod._download_to_path
+        original_ft = self.mod._fetch_url_text
+        self.mod._REFERENCE_CACHE_DIR = tmp_cache
+        self.mod._download_to_path = fake_download
+        self.mod._fetch_url_text = fake_fetch_text
+        try:
+            out = json.loads(asyncio.run(self.mod.fetch_reference(url)))
+        finally:
+            self.mod._REFERENCE_CACHE_DIR = original_cache_dir
+            self.mod._download_to_path = original_dl
+            self.mod._fetch_url_text = original_ft
+
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["source_kind"], "webpage")
+        self.assertEqual(out["title"], "Project Foo")
+        self.assertEqual(out["description"], "A thing we made")
+        self.assertTrue(out["thumbnail_local_path"].endswith(".jpg"))
+
+    def test_list_reference_graphs_returns_intro_set(self):
+        """Real intro/ graphs are findable without filters."""
+        out = json.loads(asyncio.run(self.mod.list_reference_graphs()))
+        self.assertTrue(out["ok"])
+        self.assertGreater(out["total"], 5, "expected several intro graphs")
+        ids = [g["meta"]["id"] for g in out["graphs"]]
+        self.assertIn("showcase_demo", ids)
+
+    def test_list_reference_graphs_pattern_filter(self):
+        """Filtering by 'drum-driven-pulse' pattern narrows to showcase_demo."""
+        out = json.loads(asyncio.run(
+            self.mod.list_reference_graphs(pattern_filter="drum-driven-pulse")))
+        self.assertTrue(out["ok"])
+        self.assertGreaterEqual(out["total"], 1)
+        for g in out["graphs"]:
+            pat_ids = [p["pattern_id"] for p in g["patterns_detected"]]
+            self.assertIn("drum-driven-pulse", pat_ids)
+
+    def test_list_reference_graphs_subdir_filter(self):
+        """Subdir filter narrows to a single graph directory."""
+        out = json.loads(asyncio.run(
+            self.mod.list_reference_graphs(subdir_filter="intro")))
+        self.assertTrue(out["ok"])
+        for g in out["graphs"]:
+            self.assertEqual(g["subdir"], "intro")
+
+    def test_list_reference_graphs_skips_package_dependent_by_default(self):
+        """Graphs with meta.requires_packages are omitted unless include_packages=True."""
+        out_no_pkg = json.loads(asyncio.run(self.mod.list_reference_graphs()))
+        for g in out_no_pkg["graphs"]:
+            self.assertEqual(g["meta"]["requires_packages"], [],
+                             f"graph {g['meta']['id']} has requires_packages={g['meta']['requires_packages']} but was not filtered out")
+
+    def test_compare_output_to_reference_happy_path(self):
+        """Writes capture alongside reference path, returns both."""
+        import tempfile as _tmp, base64
+        # Build a minimal PNG (1x1 pixel, valid base64)
+        fake_png_b64 = base64.b64encode(b"\x89PNG\r\n\x1a\nfake").decode()
+
+        # Set up a reference file
+        ref_dir = _tmp.mkdtemp()
+        ref_path = pathlib.Path(ref_dir) / "ref.png"
+        ref_path.write_bytes(b"ref-bytes")
+
+        async def fake_post(method, body=None):
+            self.assertEqual(method, "capture_frame")
+            return json.dumps({"ok": True, "width": 100, "height": 100,
+                               "png_base64": fake_png_b64})
+
+        original = self.mod._post
+        self.mod._post = fake_post
+        try:
+            out = json.loads(asyncio.run(
+                self.mod.compare_output_to_reference(str(ref_path), save_dir=ref_dir)))
+        finally:
+            self.mod._post = original
+
+        self.assertTrue(out["ok"])
+        # Path is .resolve()'d internally, which on macOS expands /var → /private/var
+        self.assertEqual(pathlib.Path(out["reference_path"]).resolve(),
+                         ref_path.resolve())
+        self.assertTrue(out["capture_path"].endswith(".png"))
+        self.assertTrue(pathlib.Path(out["capture_path"]).exists())
+
+    def test_compare_output_to_reference_missing_reference_errors(self):
+        out = json.loads(asyncio.run(
+            self.mod.compare_output_to_reference("/nonexistent/ref.png")))
+        self.assertFalse(out["ok"])
+        self.assertIn("not found", out["error"])
+
+    def test_compare_output_to_reference_capture_failure_errors(self):
+        import tempfile as _tmp
+        ref_path = pathlib.Path(_tmp.mkdtemp()) / "ref.png"
+        ref_path.write_bytes(b"ref")
+
+        async def fake_post(method, body=None):
+            return json.dumps({"ok": False, "error": "no video output"})
+
+        original = self.mod._post
+        self.mod._post = fake_post
+        try:
+            out = json.loads(asyncio.run(
+                self.mod.compare_output_to_reference(str(ref_path))))
+        finally:
+            self.mod._post = original
+
+        self.assertFalse(out["ok"])
+        self.assertIn("no video output", out["error"])
+
     def test_compare_outputs_bridge(self):
         async def fake_post(method, body=None):
             self.assertEqual(method, "compare_outputs")

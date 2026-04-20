@@ -15,7 +15,7 @@ from analysis.cache import (
     write_cache,
 )
 from analysis.pipeline import load_and_analyze, run_melodic, extract_melodic_scalars
-from analysis.reports import generate_report
+from analysis.reports import generate_report, generate_llm_report
 from analysis.utils import _sanitize_for_json
 
 from visual.cache import (
@@ -87,11 +87,34 @@ Plus **visual style tags** via SigLIP embeddings (35 descriptors across 4 catego
 """)
 
 
+def _render_report(
+    analysis: dict,
+    track_metadata: dict,
+    detail_level: str,
+) -> str:
+    """Dispatch to the correct report builder based on detail_level.
+
+    - "compact" (default): LLM-optimized format — YAML front-matter, numeric-
+      anchored labels, compacted section map, Notable section, Vivid
+      translation hints. Drops chord-sequence + MFCC tables.
+    - "familiar": Familiar's legacy for_llm=True format (prose bullets only,
+      no raw-data tables). Preserved for backwards-compat / comparison.
+    - "full": Familiar's for_llm=False format with every <details>
+      collapsible (chord sequence, interval histograms, MFCCs, etc.).
+    """
+    if detail_level == "full":
+        return generate_report(analysis, track_metadata, for_llm=False)
+    if detail_level == "familiar":
+        return generate_report(analysis, track_metadata, for_llm=True)
+    return generate_llm_report(analysis, track_metadata)
+
+
 @mcp.tool()
 async def analyze_track(
     file_path: str,
     include_melodic: bool = False,
     include_mood_tags: bool = True,
+    detail_level: str = "compact",
 ) -> str:
     """Run comprehensive music analysis on an audio file.
 
@@ -106,6 +129,15 @@ async def analyze_track(
             Enable when you need pitch ranges, interval patterns, or melodic contour.
         include_mood_tags: Run CLAP-based mood/genre/instrumentation tagging.
             Enabled by default — adds ~5s on first call (model cached after).
+        detail_level: Report format.
+            - "compact" (default): LLM-optimized. YAML front-matter of feature
+              scalars at top, qualitative labels anchored with numbers,
+              compacted section map, Notable deviations, Vivid translation
+              hints. No chord-sequence table, no MFCCs.
+            - "familiar": Legacy Familiar compact format (prose bullets only).
+            - "full": Familiar format with every raw-data collapsible (chord
+              sequence, interval histograms, key/mode timeline table, MFCCs).
+            The underlying analysis is the same either way.
     """
     path = Path(file_path).resolve()
     if not path.exists():
@@ -118,10 +150,17 @@ async def analyze_track(
         need_melodic = include_melodic and not has_melodic(str(path))
 
         if not need_melodic:
+            # Always re-render from cached analysis so the format matches the
+            # caller's requested detail_level (cheap operation).
+            track_meta = {
+                **cached.get("metadata", {}),
+                "duration_seconds": cached.get("duration_seconds", 0),
+            }
+            report = _render_report(cached.get("analysis", {}), track_meta, detail_level)
             return json.dumps({
                 "ok": True,
                 "cached": True,
-                "report": cached.get("report", ""),
+                "report": report,
                 "analysis": cached.get("analysis", {}),
                 "feature_scalars": cached.get("feature_scalars", {}),
                 "mood_tags": cached.get("mood_tags", []),
@@ -152,15 +191,17 @@ async def analyze_track(
             analysis_with_melodic["melodic"] = melodic_result
 
             metadata = cached.get("metadata", {})
-            report = generate_report(
-                analysis_with_melodic, {
-                    **metadata,
-                    "duration_seconds": cached.get("duration_seconds", 0),
-                },
-                for_llm=True,
+            track_meta = {
+                **metadata,
+                "duration_seconds": cached.get("duration_seconds", 0),
+            }
+            # Cache the default LLM-format report; emit the caller's variant.
+            cached_report = _render_report(analysis_with_melodic, track_meta, "compact")
+            report = cached_report if detail_level == "compact" else _render_report(
+                analysis_with_melodic, track_meta, detail_level
             )
 
-            update_cache_melodic(str(path), melodic_result, report=report)
+            update_cache_melodic(str(path), melodic_result, report=cached_report)
 
             # Merge melodic scalars
             feature_scalars = dict(cached.get("feature_scalars", {}))
@@ -223,11 +264,12 @@ async def analyze_track(
     if not metadata.get("artist"):
         metadata["artist"] = "Unknown Artist"
 
-    # Generate report
-    report = generate_report(
-        analysis,
-        {**metadata, "duration_seconds": duration},
-        for_llm=True,
+    # Generate reports. Cache the default LLM-format report; the analysis dict
+    # is enough to re-render any other variant on demand.
+    track_meta = {**metadata, "duration_seconds": duration}
+    cached_report = _render_report(analysis, track_meta, "compact")
+    report = cached_report if detail_level == "compact" else _render_report(
+        analysis, track_meta, detail_level
     )
 
     # Write cache
@@ -238,7 +280,7 @@ async def analyze_track(
             feature_scalars=feature_scalars,
             duration_seconds=duration,
             mood_tags=mood_tags,
-            report=report,
+            report=cached_report,
             metadata=metadata,
         )
     except Exception as e:
@@ -283,14 +325,20 @@ async def get_analysis(file_path: str) -> str:
 
 
 @mcp.tool()
-async def get_analysis_report(file_path: str) -> str:
-    """Return just the LLM-optimized markdown report for a previously analyzed track.
+async def get_analysis_report(file_path: str, detail_level: str = "compact") -> str:
+    """Return just the markdown report for a previously analyzed track.
 
     Lighter than get_analysis — returns only the human-readable report without
     the full structured JSON. Good for refreshing context without burning tokens.
 
     Args:
         file_path: Absolute path to the audio file
+        detail_level: Same values as analyze_track —
+            "compact" (default) = LLM-optimized format with YAML front-matter,
+                Notable + Vivid translation-hints sections, no raw-data tables.
+            "familiar" = legacy Familiar compact format.
+            "full" = Familiar format with every collapsible (chord sequence,
+                interval histograms, key/mode timeline, MFCCs).
     """
     path = Path(file_path).resolve()
     cached = read_cache(str(path))
@@ -301,13 +349,11 @@ async def get_analysis_report(file_path: str) -> str:
             "error": f"No cached analysis found for {file_path}. Run analyze_track first.",
         })
 
-    report = cached.get("report", "")
-    if not report:
-        # Regenerate report from cached data
-        analysis = cached.get("analysis", {})
-        metadata = cached.get("metadata", {})
-        metadata["duration_seconds"] = cached.get("duration_seconds", 0)
-        report = generate_report(analysis, metadata, for_llm=True)
+    track_meta = {
+        **cached.get("metadata", {}),
+        "duration_seconds": cached.get("duration_seconds", 0),
+    }
+    report = _render_report(cached.get("analysis", {}), track_meta, detail_level)
 
     return json.dumps({
         "ok": True,
