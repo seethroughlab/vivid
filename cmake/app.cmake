@@ -122,6 +122,7 @@ add_executable(vivid
     src/runtime/core/file_drop_registry.cpp
     src/runtime/platform/av_exporter.mm
     src/runtime/operators/operator_creator.cpp
+    src/runtime/operators/project_package.cpp
     src/runtime/audio/system_midi.cpp
     src/runtime/platform/platform.cpp
     src/runtime/platform/process_runner.cpp

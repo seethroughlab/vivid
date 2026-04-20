@@ -1,5 +1,6 @@
 /*{
   "name": "HSV",
+  "description": "Shifts hue, saturation, and value of the input image. hue_shift rotates *existing* hues — it has no effect on grayscale sources (which have no hue to rotate). To colorize a grayscale source, use LutApply with a color LUT, a Composite blend with a colored layer, or generate the source in color to begin with.",
   "params": [
     {"name": "hue_shift",  "default": 0.0, "min": 0.0, "max": 360.0},
     {"name": "saturation", "default": 0.0, "min": -1.0, "max": 1.0},

@@ -46,7 +46,7 @@ Connections must match types: `gpu_texture` → `gpu_texture`, `data` → `data`
 2. `ensure_runtime` — only when you need to inspect, mutate, capture, or analyze a live graph/session
 3. **Compose first** — build the graph from existing operators before considering custom ones. Most goals are achievable by wiring existing operators together.
 4. `add_node` → `connect` → `set_param` — assemble and configure the graph
-5. `scaffold_operator` — scaffold a starter template when no existing operator achieves the goal. Creates a minimal working operator; use the opdev MCP server for advanced features (custom ports, params, inspectors, thumbnails, and `prepare_instance_assets()` warmup guidance).
+5. `scaffold_operator` — scaffold a starter template when no existing operator achieves the goal. Creates a minimal operator in the **project's local-operators package** (auto-created beside the graph the first time). Pass `destination="core"` only when adding a broadly-useful primitive intended to ship with Vivid. Use the opdev MCP server for advanced features (custom ports, params, inspectors, thumbnails, and `prepare_instance_assets()` warmup guidance).
 6. `inspect_graph` — verify the graph state, check live output values
 
 ## Analyzing an Existing Graph
@@ -126,6 +126,11 @@ a gain stage) without exposing child operators as graph nodes. Control env only.
 
 ## Custom Operators
 If you need to create a custom operator, use `scaffold_operator` to generate the template.
+By default this writes to the **project's local-operators package** (a `<graph_dir>/operators/`
+package, auto-scaffolded the first time) — keeping experimental work out of the core seed
+catalog. Save the graph first so the project package can be placed beside it. Use
+`destination="core"` only when contributing a primitive back to Vivid itself.
+
 For deeper operator development guidance (API docs, DSP utilities, GPU shader patterns),
 the dedicated operator development MCP server provides comprehensive resources, including
 when to use `prepare_instance_assets()` for expensive one-time CPU-side setup.
@@ -2622,30 +2627,45 @@ async def get_runtime_health() -> str:
 
 
 @mcp.tool()
-async def scaffold_operator(name: str, env: str, variant: str = "") -> str:
-    """Scaffold a starter operator template. Only use after confirming via list_types that no
-    existing operator (seed or installed package) achieves the goal, alone or in combination.
+async def scaffold_operator(name: str, env: str, variant: str = "",
+                            destination: str = "project") -> str:
+    """Scaffold a starter operator template into the project's local-operators package.
 
-    Creates a minimal working operator with env-appropriate defaults. For advanced features
-    (custom ports, typed parameters, inspectors), use the opdev MCP server tools.
+    Default behavior creates a per-project operator beside the saved graph
+    (auto-creating `<graph_dir>/operators/` as a linked workspace package the
+    first time). Only pass `destination="core"` when adding a broadly-useful
+    primitive that should ship with Vivid itself.
 
-    Design the operator for reuse: generic name, broadly useful params, clear single responsibility.
+    Use this after confirming via list_types that no existing operator (seed
+    or installed package) achieves the goal alone or in combination.
 
-    Writes source, patches CMakeLists, triggers build.
+    For advanced authoring (custom ports, typed parameters, inspectors), use
+    the opdev MCP server tools after the initial scaffold.
+
+    Writes source, patches the destination CMakeLists, triggers build.
 
     Args:
         name: Operator name in lowercase_with_underscores (e.g. "tone_gen")
         env: One of "control", "audio", "gpu"
-        variant: Template variant. Use "child_op" for a ChildOp-based control operator with internal LFO + Smooth.
+        variant: Template variant. Use "child_op" for a ChildOp-based control
+            operator with internal LFO + Smooth.
+        destination: Where to place the operator. "project" (default) writes
+            to the workspace's local-operators package beside the graph,
+            auto-scaffolding the package if needed. "core" writes into the
+            Vivid seed catalog (only for primitives that should ship with
+            Vivid). "package:<name>" targets a specific installed package.
+            An absolute path targets that exact root.
     """
     if await _runtime_is_reachable():
-        body: dict = {"name": name, "env": env}
+        body: dict = {"name": name, "kind": env, "destination": destination}
         if variant:
             body["variant"] = variant
         return await _post("scaffold_operator", body)
     args = ["scaffold-operator", name, "--env", env]
     if variant:
         args.extend(["--variant", variant])
+    if destination and destination != "project":
+        args.extend(["--destination", destination])
     args.append("--json")
     return await _run_vivid_cli_json(args)
 

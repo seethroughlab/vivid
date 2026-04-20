@@ -911,9 +911,25 @@ async def recommend_starting_point(goal: str) -> str:
 
     goal_lower = goal.lower()
 
+    # Infer the target env from goal keywords. If the goal clearly belongs to
+    # one domain, the example-name match below is restricted to that domain so
+    # ambiguous names like "noise" in audio don't get suggested for GPU goals.
+    gpu_kw = ("gpu", "shader", "wgsl", "texture", "pixel", "fragment",
+              "render", "filter", "screen", "frame", "image", "visual")
+    audio_kw = ("audio", "sound", "synth", "oscillator", "drum", "sample",
+                "reverb", "delay", "compressor", "fft", "dsp")
+    control_kw = ("lfo", "envelope", "sequencer", "clock", "trigger", "midi",
+                  "control signal")
+    inferred_env = None
+    if any(kw in goal_lower for kw in gpu_kw):       inferred_env = "gpu"
+    elif any(kw in goal_lower for kw in audio_kw):   inferred_env = "audio"
+    elif any(kw in goal_lower for kw in control_kw): inferred_env = "control"
+
     # Check if the goal mentions a known operator name
     all_operators = []
     for d in sorted(OPERATOR_ENVS):
+        if inferred_env and d != inferred_env:
+            continue
         domain_dir = OPERATORS_DIR / d
         if not domain_dir.is_dir():
             continue
@@ -922,6 +938,10 @@ async def recommend_starting_point(goal: str) -> str:
                 all_operators.append({"env": d, "name": op_dir.name})
 
     for op in all_operators:
+        # Avoid trivial-substring matches: require the operator name to appear
+        # as a word boundary OR to be at least 4 chars to reduce false hits.
+        if len(op["name"]) < 4:
+            continue
         if op["name"] in goal_lower:
             return json.dumps({
                 "ok": True,
@@ -1007,29 +1027,42 @@ async def recommend_starting_point(goal: str) -> str:
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
-async def scaffold_operator(name: str, env: str, variant: str = "") -> str:
-    """Scaffold a starter operator template. Creates a minimal working operator with
-    env-appropriate defaults.
+async def scaffold_operator(name: str, env: str, variant: str = "",
+                            destination: str = "project") -> str:
+    """Scaffold a starter operator template into the project's local-operators package.
 
-    This is typically step 3 in the workflow — after researching docs and studying examples.
-    After scaffolding, edit the generated source to add custom ports, params, and behavior.
-    This is a starter-template tool, not the full advanced-authoring API.
+    Default behavior creates a per-project operator beside the saved graph
+    (auto-creating `<graph_dir>/operators/` as a linked workspace package the
+    first time). Pass `destination="core"` only when adding a broadly-useful
+    primitive that should ship with Vivid.
 
-    Writes source, patches CMakeLists, triggers build.
+    This is typically step 3 in the workflow — after researching docs and
+    studying examples. After scaffolding, edit the generated source to add
+    custom ports, params, and behavior. This is a starter-template tool, not
+    the full advanced-authoring API.
+
+    Writes source, patches the destination CMakeLists, triggers build.
 
     Args:
         name: Operator name in lowercase_with_underscores (e.g. "tone_gen")
         env: One of "control", "audio", "gpu"
         variant: Template variant. Use "child_op" for a ChildOp-based control operator.
+        destination: Where to place the operator. "project" (default) writes
+            to the workspace's local-operators package beside the graph,
+            auto-scaffolding the package if needed. "core" writes into the
+            Vivid seed catalog. "package:<name>" targets an installed
+            package. An absolute path targets that exact root.
     """
     if await _runtime_is_reachable():
-        body: dict = {"name": name, "env": env}
+        body: dict = {"name": name, "kind": env, "destination": destination}
         if variant:
             body["variant"] = variant
         return await _post("scaffold_operator", body)
     args = ["scaffold-operator", name, "--env", env]
     if variant:
         args.extend(["--variant", variant])
+    if destination and destination != "project":
+        args.extend(["--destination", destination])
     args.append("--json")
     return await _run_vivid_cli_json(args)
 

@@ -28,6 +28,7 @@
 #include "runtime/core/source_index.h"
 #include "runtime/audio/audio_engine.h"
 #include "runtime/operators/operator_destination_policy.h"
+#include "runtime/operators/project_package.h"
 #include "operator_api/types.h"
 #include "operator_api/type_id.h"
 #include "operator_api/port_type_registry.h"
