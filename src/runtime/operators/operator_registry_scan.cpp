@@ -6,6 +6,7 @@
 #include "operator_api/data_driven_filter.h"
 
 #include <nlohmann/json.hpp>
+#include <algorithm>
 #include <dlfcn.h>
 #include <cstdio>
 #include <cstdlib>
@@ -326,6 +327,11 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
 } // namespace
 
 bool OperatorRegistry::scan(const char* directory) {
+    if (directory && *directory) {
+        std::string d(directory);
+        if (std::find(scanned_dirs_.begin(), scanned_dirs_.end(), d) == scanned_dirs_.end())
+            scanned_dirs_.push_back(std::move(d));
+    }
     return operator_registry_internal::scan_plugin_dir(directory, [&](const std::string& path, const char* name, size_t stem_len) {
         auto loader = std::make_unique<OperatorLoader>();
         if (!loader->load(path.c_str())) {
@@ -354,6 +360,11 @@ bool OperatorRegistry::scan(const char* directory) {
 }
 
 bool OperatorRegistry::scan_deferred(const char* directory) {
+    if (directory && *directory) {
+        std::string d(directory);
+        if (std::find(scanned_dirs_.begin(), scanned_dirs_.end(), d) == scanned_dirs_.end())
+            scanned_dirs_.push_back(std::move(d));
+    }
     const bool trace_probe = std::getenv("VIVID_REGISTRY_TRACE") != nullptr;
     const uint32_t runtime_abi = runtime_abi_override();
     return operator_registry_internal::scan_plugin_dir(directory, [&](const std::string& path, const char* name, size_t /*stem_len*/) {

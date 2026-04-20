@@ -719,6 +719,14 @@ std::string dispatch(const std::string& method, const std::string& body,
                 result = command_result_to_json(
                     api.inspect_state_presets(root["sm_node"].get<std::string>()));
         }
+    } else if (method == "rescan_operators") {
+        result = [&]() -> std::string {
+            int newly = registry.rescan();
+            nlohmann::json j;
+            j["ok"] = true;
+            j["newly_registered"] = newly;
+            return j.dump();
+        }();
     } else if (method == "scaffold_operator") {
         result = [&]() -> std::string {
             if (src_dir.empty())

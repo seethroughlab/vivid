@@ -2627,6 +2627,22 @@ async def get_runtime_health() -> str:
 
 
 @mcp.tool()
+async def rescan_operators() -> str:
+    """Re-scan the runtime's known operator directories and load any dylibs
+    that aren't already in the registry.
+
+    Use this after a manual `cmake --build` (or similar external build) that
+    produced a new operator dylib outside the normal scaffold_operator flow.
+    The proper scaffold_operator path already auto-registers on build
+    completion, so this is an escape hatch for unusual workflows.
+
+    Returns JSON `{ok, newly_registered}` — `newly_registered` is the count
+    of operator types added this rescan.
+    """
+    return await _post("rescan_operators", {})
+
+
+@mcp.tool()
 async def scaffold_operator(name: str, env: str, variant: str = "",
                             destination: str = "project") -> str:
     """Scaffold a starter operator template into the project's local-operators package.

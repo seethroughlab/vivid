@@ -106,6 +106,31 @@ const std::string* OperatorRegistry::user_operator_source(const std::string& nam
     return &it->second;
 }
 
+int OperatorRegistry::rescan() {
+    int newly = 0;
+    for (const auto& dir : scanned_dirs_) {
+        operator_registry_internal::scan_plugin_dir(
+            dir.c_str(),
+            [&](const std::string& path, const char* name, size_t stem_len) {
+                // Identify already-known plugins by cmake target name (the
+                // dylib stem). target_to_type_ is populated for both
+                // immediate-load and deferred-probe paths, so this catches
+                // every plugin the runtime already knows about.
+                std::string target(name, stem_len);
+                if (target_to_type_.count(target)) return;
+                if (register_loaded_operator(path)) {
+                    newly++;
+                }
+            });
+    }
+    if (newly > 0) {
+        std::fprintf(stderr,
+                     "[vivid] Registry: rescan registered %d new operator(s)\n",
+                     newly);
+    }
+    return newly;
+}
+
 bool OperatorRegistry::register_loaded_operator(const std::string& dylib_path) {
     auto loader = std::make_unique<OperatorLoader>();
     if (!loader->load(dylib_path.c_str())) {

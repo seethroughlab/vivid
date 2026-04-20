@@ -149,6 +149,13 @@ public:
     // Hot-reload support
     bool reload_operator(const std::string& type_name, const std::string& new_dylib_path);
 
+    // Re-walk every directory we've previously scanned and load any dylibs
+    // that aren't already in target_to_type_. For workflows where an operator
+    // was built outside the runtime's package compiler (manual cmake build,
+    // external regeneration) and the normal hot-reload path didn't pick it
+    // up. Returns the number of newly-registered operator type names.
+    int rescan();
+
     // Factory presets (per-operator-type, read-only)
     bool scan_factory_presets(const std::string& directory);
     const std::vector<OperatorPreset>* factory_presets(const std::string& type_name) const;
@@ -216,6 +223,7 @@ private:
     std::unordered_map<std::string, LoaderFailureDiagnostic> loader_failure_by_path_; // plugin path -> load failure
     std::unordered_map<std::string, OperatorProvenance> expected_operators_;  // type_name → manifest provenance
     std::unordered_set<std::string> in_flight_loads_;  // type_name -> lazy load currently materializing
+    std::vector<std::string> scanned_dirs_;             // for rescan(): every dir passed to scan()/scan_deferred()
     ProgressCallback progress_cb_;
     mutable std::recursive_mutex mutex_;
 };
