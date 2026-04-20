@@ -90,6 +90,10 @@
             "to": "shape1/scale_x"
         },
         {
+            "from": "lfo1/value",
+            "to": "shape1/scale_y"
+        },
+        {
             "from": "shape1_render/texture",
             "to": "vout/input"
         },

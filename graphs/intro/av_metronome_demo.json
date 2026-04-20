@@ -124,6 +124,10 @@
             "to": "shape1/scale_x"
         },
         {
+            "from": "lfo_vis/value",
+            "to": "shape1/scale_y"
+        },
+        {
             "from": "lfo_aud/value",
             "to": "osc1/frequency",
             "bridge": "hold"
