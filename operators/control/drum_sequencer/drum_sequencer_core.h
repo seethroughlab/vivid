@@ -36,6 +36,7 @@ struct DrumSequencerCore : vivid::OperatorBase {
     vivid::Param<int>   steps {"steps",  16, 1, 16};
     vivid::Param<float> swing {"swing",  0.0f, 0.0f, 0.5f};
     vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
+    vivid::Param<int>   bar_sync    {"bar_sync",    0, {"off","1 bar","2 bar","4 bar","8 bar"}};
 
     // MIDI note number per drum track (indices 2..7)
     vivid::Param<int> kick_note  {"kick_note",  36, 0, 127};
@@ -360,7 +361,9 @@ struct DrumSequencerCore : vivid::OperatorBase {
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override;
     void collect_ports(std::vector<VividPortDescriptor>& out) override;
-    void compute(float phase, float reset_in, const float* params,
+    void compute(float phase, float reset_in,
+                 double beats_elapsed, int beats_per_bar,
+                 const float* params,
                  float* output_values, VividLaneOutput* out_spreads,
                  void** custom_outputs, uint32_t custom_output_count);
     void draw_inspector(VividInspectorContext* ctx) override;
@@ -377,5 +380,7 @@ protected:
     float phase_offset_ = 0.0f;
     bool prev_reset_ = false;
     int prev_clock_source_ = -1;
+    int64_t prev_phrase_idx_ = 0;
+    bool phrase_initialized_ = false;
     VividMidiBuffer midi_buf_ = {};
 };

@@ -7,6 +7,8 @@ DrumSequencerCore::DrumSequencerCore() {
     vivid::description(steps, "Number of active steps in the pattern (1-16)");
     vivid::description(swing, "Swing amount, shifts even steps later (0 = straight, 0.5 = heavy triplet)");
     vivid::description(clock_source, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
+    vivid::description(bar_sync,
+        "Restart pattern at the top of every Nth bar (only when clock_source = metronome).");
 
     vivid::description(kick_note, "MIDI note number for the kick drum");
     vivid::description(snare_note, "MIDI note number for the snare drum");
@@ -271,6 +273,10 @@ void DrumSequencerCore::collect_params(std::vector<vivid::ParamBase*>& out) {
 
     for (size_t i = hidden_start; i < out.size(); ++i)
         out[i]->display_hint = VIVID_DISPLAY_HIDDEN;
+
+    // Phrase-sync param appended after the hidden block so existing
+    // param indices in the layout helper stay stable.
+    out.push_back(&bar_sync);
 }
 
 void DrumSequencerCore::collect_ports(std::vector<VividPortDescriptor>& out) {
@@ -281,7 +287,9 @@ void DrumSequencerCore::collect_ports(std::vector<VividPortDescriptor>& out) {
 }
 
 
-void DrumSequencerCore::compute(float phase, float reset_in, const float* params,
+void DrumSequencerCore::compute(float phase, float reset_in,
+             double beats_elapsed, int beats_per_bar,
+             const float* params,
              float* output_values, VividLaneOutput* /*out_spreads*/,
              void** custom_outputs, uint32_t custom_output_count) {
     namespace layout = vivid_sequencers::drum_layout;
@@ -294,6 +302,22 @@ void DrumSequencerCore::compute(float phase, float reset_in, const float* params
     }
 
     bool reset = reset_in > 0.5f;
+
+    // Phrase reset: when synced to the graph metronome, fold an internal
+    // pulse into `reset` at the start of every N-bar phrase so the pattern
+    // re-aligns with the top of the phrase.
+    int sync_idx = std::clamp(bar_sync.int_value(), 0, 4);
+    if (sync_idx > 0 && cs == vivid::kClockSourceMetronome) {
+        static constexpr int kSyncBars[] = {0, 1, 2, 4, 8};
+        const int bpb = std::max(1, beats_per_bar);
+        const double phrase_beats = static_cast<double>(bpb) * kSyncBars[sync_idx];
+        const int64_t phrase_idx =
+            static_cast<int64_t>(std::floor(beats_elapsed / phrase_beats));
+        if (phrase_initialized_ && phrase_idx != prev_phrase_idx_)
+            reset = true;
+        prev_phrase_idx_ = phrase_idx;
+        phrase_initialized_ = true;
+    }
 
     // Rising-edge reset: capture current phase as offset
     if (reset && !prev_reset_)
