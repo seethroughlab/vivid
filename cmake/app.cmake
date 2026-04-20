@@ -195,8 +195,8 @@ endif()
 
 # macOS native menu bar
 if(APPLE)
-    target_sources(vivid PRIVATE src/runtime/platform/macos_menu.mm src/runtime/gpu/metal_interop.mm src/runtime/gpu/syphon_output.mm src/runtime/platform/sparkle_bridge.mm)
-    set_source_files_properties(src/runtime/platform/macos_menu.mm src/runtime/gpu/metal_interop.mm src/runtime/gpu/syphon_output.mm src/runtime/platform/sparkle_bridge.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+    target_sources(vivid PRIVATE src/runtime/platform/macos_menu.mm src/runtime/platform/macos_open_file.mm src/runtime/gpu/metal_interop.mm src/runtime/gpu/syphon_output.mm src/runtime/platform/sparkle_bridge.mm)
+    set_source_files_properties(src/runtime/platform/macos_menu.mm src/runtime/platform/macos_open_file.mm src/runtime/gpu/metal_interop.mm src/runtime/gpu/syphon_output.mm src/runtime/platform/sparkle_bridge.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
 endif()
 
 # ObjC ARC for AVExporter

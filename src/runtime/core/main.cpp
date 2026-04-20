@@ -87,6 +87,7 @@
 #ifdef __APPLE__
 #include "runtime/platform/macos_frame_timer.h"
 #include "runtime/platform/macos_menu.h"
+#include "runtime/platform/macos_open_file.h"
 #include "runtime/platform/sparkle_bridge.h"
 #endif
 #include "runtime/control/control_server_internal.h"
@@ -1111,6 +1112,17 @@ int main(int argc, char* argv[]) {
         std::fprintf(stderr, "[vivid] Failed to init GLFW\n");
         return 1;
     }
+
+#ifdef __APPLE__
+    // Install our kAEOpenDocuments handler after glfwInit(): glfwInit brings
+    // up NSApp, which registers a default handler that falls through to
+    // NSDocumentController. Our setEventHandler call here replaces it so
+    // launch-with-file / Dock drops / Finder "Open With" are routed to
+    // drain_pending_open_files() instead of the "cannot open" dialog. We
+    // register before the first glfwPollEvents so a queued launch-with-file
+    // AppleEvent finds our handler when the event queue first drains.
+    vivid::platform::install_open_file_handler();
+#endif
     glfwSetMonitorCallback(monitor_callback);
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -1664,6 +1676,30 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
         }
     }
     bool graph_loaded = false;
+
+    // If macOS handed us file paths via kAEOpenDocuments before the loop
+    // started (launch-with-file from Finder / Dock / `open -a`), drain them
+    // now. The first .json path becomes the initial graph (overriding the
+    // default template, but yielding to an explicit CLI argument). Any
+    // remaining paths are pushed back so the per-frame drain handles them
+    // as DropGraph requests once the runtime is up.
+    std::vector<std::string> launch_open_paths;
+#ifdef __APPLE__
+    launch_open_paths = vivid::platform::drain_pending_open_files();
+    if (graph_file.empty()) {
+        for (size_t i = 0; i < launch_open_paths.size(); ++i) {
+            std::string ext = std::filesystem::path(launch_open_paths[i]).extension().string();
+            for (auto& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (ext == ".json") {
+                graph_file = launch_open_paths[i];
+                std::fprintf(stderr, "[vivid] Launch-with-file: using %s as initial graph\n",
+                             graph_file.c_str());
+                launch_open_paths.erase(launch_open_paths.begin() + i);
+                break;
+            }
+        }
+    }
+#endif
 
     mi::AsyncGraphLoadRequest initial_graph_request;
     bool have_initial_graph_request = false;
@@ -2504,6 +2540,35 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
             }
             synthetic_drop_injected = true;
         }
+
+#ifdef __APPLE__
+        // Drain any kAEOpenDocuments file paths that arrived via Apple Events
+        // (Finder "Open With", Dock-icon drop, `open -a Vivid foo.json` while
+        // Vivid is already running). Re-attach any leftovers from launch.
+        {
+            auto open_paths = vivid::platform::drain_pending_open_files();
+            if (!launch_open_paths.empty()) {
+                open_paths.insert(open_paths.begin(),
+                                  std::make_move_iterator(launch_open_paths.begin()),
+                                  std::make_move_iterator(launch_open_paths.end()));
+                launch_open_paths.clear();
+            }
+            for (auto& p : open_paths) {
+                std::string ext = std::filesystem::path(p).extension().string();
+                for (auto& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                if (ext != ".json") {
+                    std::fprintf(stderr, "[vivid] OpenFile: ignoring non-graph %s\n", p.c_str());
+                    continue;
+                }
+                mi::AsyncGraphLoadRequest request;
+                request.kind = mi::AsyncGraphLoadRequest::Kind::DropGraph;
+                request.display_name = std::filesystem::path(p).filename().string();
+                request.requested_path = std::move(p);
+                request.update_recent_files = true;
+                request_graph_load(std::move(request), "OpenFile");
+            }
+        }
+#endif
 
         // Handle drag-and-drop graph loading / file-to-operator creation
         if (!window_user_data.pending_drop_path.empty()) {
