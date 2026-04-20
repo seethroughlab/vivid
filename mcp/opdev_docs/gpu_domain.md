@@ -59,6 +59,11 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 }
 ```
 
+**Reference implementation:** See `operators/gpu/color_bands/` for a real
+`WgslFilterBase` operator that exercises the source-operator pattern
+(overrides `collect_ports` to drop the inherited input texture) with 21
+params and an unrolled 6-color palette.
+
 ## Auto-Generated WGSL Preamble (WgslFilterBase)
 
 The preamble provides these bindings and types automatically:
