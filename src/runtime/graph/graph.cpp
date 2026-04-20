@@ -1,4 +1,5 @@
 #include "runtime/graph/graph.h"
+#include "runtime/graph/operator_aliases.h"
 #include <nlohmann/json.hpp>
 #include <dragonbox/dragonbox_to_chars.h>
 #include <cstdio>
@@ -83,10 +84,11 @@ bool Graph::load_from_json_doc(const nlohmann::json& root,
 
 // Parse common NodeDef fields from a JSON object. Does NOT set node.id (caller's job).
 static bool parse_node_fields(const nlohmann::json& val, NodeDef& node) {
-    // type
+    // type (raw — alias resolution happens after params are parsed)
+    std::string raw_type;
     auto type_it = val.find("type");
     if (type_it != val.end() && type_it->is_string())
-        node.type = type_it->get<std::string>();
+        raw_type = type_it->get<std::string>();
 
     // pkg
     auto pkg_it = val.find("pkg");
@@ -106,6 +108,14 @@ static bool parse_node_fields(const nlohmann::json& val, NodeDef& node) {
             else if (pval.is_string())
                 node.string_params[pkey] = pval.get<std::string>();
         }
+    }
+
+    // Apply operator-id alias migration (no-op for current/unknown types).
+    // Only applies to core operators — package-provided types are left alone.
+    if (!raw_type.empty() && node.pkg_name.empty()) {
+        node.type = resolve_operator_alias(raw_type, node.params, node.string_params);
+    } else {
+        node.type = raw_type;
     }
 
     // layout

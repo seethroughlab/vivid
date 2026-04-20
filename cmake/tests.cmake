@@ -44,6 +44,7 @@ add_library(vivid_runtime_testlib STATIC
     src/runtime/graph/audio_executor.cpp
     src/runtime/graph/frame_executor.cpp
     src/runtime/graph/graph.cpp
+    src/runtime/graph/operator_aliases.cpp
     src/runtime/graph/graph_snapshot_builder.cpp
     src/runtime/graph/graph_compiler.cpp
     src/runtime/graph/graph_compiler_init.cpp

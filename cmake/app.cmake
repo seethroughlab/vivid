@@ -64,6 +64,7 @@ add_executable(vivid
     src/runtime/graph/port_type_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
     src/runtime/graph/graph.cpp
+    src/runtime/graph/operator_aliases.cpp
     src/runtime/graph/subgraph_module.cpp
     src/runtime/core/runtime_core.cpp
     src/runtime/core/runtime_health.cpp
