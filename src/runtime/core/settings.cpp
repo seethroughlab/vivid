@@ -182,7 +182,7 @@ void open_in_editor(const std::string& file_path, const Settings& settings) {
             std::fprintf(stderr, "[vivid] spawn_detached: %s\n", err.c_str());
     } else {
         std::string err;
-        if (!spawn_detached({"/usr/bin/open", "-t", file_path}, &err) && !err.empty())
+        if (!spawn_detached({"/usr/bin/open", file_path}, &err) && !err.empty())
             std::fprintf(stderr, "[vivid] spawn_detached: %s\n", err.c_str());
     }
 }
