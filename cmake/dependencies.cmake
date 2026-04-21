@@ -154,47 +154,30 @@ target_link_libraries(rtmidi PUBLIC
     "-framework CoreFoundation"
 )
 
-# --- oscpack (vendored OSC over UDP, arm64 arch-guard patch applied) ---
-# Upstream's arch guards check only __x86_64__/_M_X64, so on arm64 darwin
-# osc::int32 resolves to `signed long` (8 bytes) and the OSC wire-format
-# sanity asserts fire on first use. Rather than maintain a fork, we keep
-# the submodule pinned to a public upstream commit (CI can't fetch
-# private patches) and patch the affected headers into a mirror under
-# the build tree at configure time.
-set(VIVID_OSCPACK_SRC_ROOT ${CMAKE_BINARY_DIR}/_vendored/oscpack)
-file(COPY
-    ${CMAKE_CURRENT_SOURCE_DIR}/deps/oscpack/ip
-    ${CMAKE_CURRENT_SOURCE_DIR}/deps/oscpack/osc
-    DESTINATION ${VIVID_OSCPACK_SRC_ROOT}
-)
-set(_VIVID_OSCPACK_GUARD_ORIG "defined(__x86_64__) || defined(_M_X64)")
-set(_VIVID_OSCPACK_GUARD_NEW "defined(__x86_64__) || defined(_M_X64) || defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64)")
-foreach(_oscpack_hdr OscTypes.h OscOutboundPacketStream.h OscReceivedElements.h)
-    set(_oscpack_hdr_path "${VIVID_OSCPACK_SRC_ROOT}/osc/${_oscpack_hdr}")
-    file(READ "${_oscpack_hdr_path}" _oscpack_hdr_content)
-    if(NOT _oscpack_hdr_content MATCHES "__aarch64__")
-        string(REPLACE "${_VIVID_OSCPACK_GUARD_ORIG}" "${_VIVID_OSCPACK_GUARD_NEW}"
-            _oscpack_hdr_content "${_oscpack_hdr_content}")
-        file(WRITE "${_oscpack_hdr_path}" "${_oscpack_hdr_content}")
-    endif()
-endforeach()
-
+# --- oscpack (vendored OSC over UDP) ---
+# Tree is a snapshot of rossbencina/oscpack v1.1.0 (release 1.1, the last
+# upstream release, from 2013) plus a local arm64 int32-typedef patch on
+# osc/OscTypes.h, osc/OscOutboundPacketStream.h, osc/OscReceivedElements.h.
+# Upstream has been dormant since 2013; rather than carry a submodule
+# pointing at a local fork (unfetchable by CI) or mirror+rewrite headers
+# at configure time, we vendor the tree the same way deps/rtmidi,
+# deps/nanosvg, and deps/stb are vendored — as regular tracked files.
 if(WIN32)
-    set(VIVID_OSCPACK_IP_PATH ${VIVID_OSCPACK_SRC_ROOT}/ip/win32)
+    set(VIVID_OSCPACK_IP_PATH deps/oscpack/ip/win32)
 else()
-    set(VIVID_OSCPACK_IP_PATH ${VIVID_OSCPACK_SRC_ROOT}/ip/posix)
+    set(VIVID_OSCPACK_IP_PATH deps/oscpack/ip/posix)
 endif()
 
 add_library(oscpack STATIC
-    ${VIVID_OSCPACK_SRC_ROOT}/ip/IpEndpointName.cpp
+    deps/oscpack/ip/IpEndpointName.cpp
     ${VIVID_OSCPACK_IP_PATH}/NetworkingUtils.cpp
     ${VIVID_OSCPACK_IP_PATH}/UdpSocket.cpp
-    ${VIVID_OSCPACK_SRC_ROOT}/osc/OscTypes.cpp
-    ${VIVID_OSCPACK_SRC_ROOT}/osc/OscReceivedElements.cpp
-    ${VIVID_OSCPACK_SRC_ROOT}/osc/OscPrintReceivedElements.cpp
-    ${VIVID_OSCPACK_SRC_ROOT}/osc/OscOutboundPacketStream.cpp
+    deps/oscpack/osc/OscTypes.cpp
+    deps/oscpack/osc/OscReceivedElements.cpp
+    deps/oscpack/osc/OscPrintReceivedElements.cpp
+    deps/oscpack/osc/OscOutboundPacketStream.cpp
 )
-target_include_directories(oscpack PUBLIC ${VIVID_OSCPACK_SRC_ROOT})
+target_include_directories(oscpack PUBLIC deps/oscpack)
 if(WIN32)
     target_link_libraries(oscpack PUBLIC ws2_32 winmm)
 endif()
