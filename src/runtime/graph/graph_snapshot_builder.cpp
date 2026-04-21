@@ -93,6 +93,14 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         sn.gpu_tex_width = cn.gpu ? cn.gpu->tex_width : 0;
         sn.gpu_tex_height = cn.gpu ? cn.gpu->tex_height : 0;
         sn.gpu_tex_inherited = cn.gpu ? cn.gpu->tex_inherited : false;
+        // GPU sinks (e.g. video_out) own no output texture, so frame_executor
+        // blits their first input into the thumbnail. Mirror that fallback so
+        // the UI's aspect-fit sees the real content dimensions.
+        if (cn.gpu && sn.gpu_tex_width == 0 && cn.gpu->is_sink &&
+            !cn.gpu->resolved_tex_widths.empty()) {
+            sn.gpu_tex_width  = cn.gpu->resolved_tex_widths[0];
+            sn.gpu_tex_height = cn.gpu->resolved_tex_heights[0];
+        }
         sn.errored       = cn.errored || (cn.gpu && cn.gpu->shader_error);
         sn.error_message = cn.errored                        ? cn.error_message
                          : (cn.gpu && cn.gpu->shader_error) ? cn.gpu->shader_error_msg
