@@ -1,6 +1,9 @@
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_2d.h"
+#include "operator_api/thumbnail.h"
+#include "operator_api/draw_plot_helpers.h"
+#include <cmath>
 #include <vector>
 
 // =============================================================================
@@ -115,10 +118,92 @@ struct Shape2D : vivid::OperatorBase, vivid::GpuProcessable {
         ctx->custom_outputs[0] = &output_;
     }
 
+    void draw_thumbnail(const VividThumbnailContext* ctx) override {
+        if (!ctx || !ctx->draw.opaque || !ctx->draw.draw_line) return;
+        if (ctx->param_count < 12) return;
+
+        auto& d = const_cast<VividDrawAPI&>(ctx->draw);
+        void* const o = d.opaque;
+
+        const float w = static_cast<float>(ctx->thumbnail_logical_width
+                                           ? ctx->thumbnail_logical_width
+                                           : ctx->thumbnail_width);
+        const float h = static_cast<float>(ctx->thumbnail_logical_height
+                                           ? ctx->thumbnail_logical_height
+                                           : ctx->thumbnail_height);
+        if (w <= 0.0f || h <= 0.0f) return;
+
+        vivid::draw_plot::draw_thumb_background(d, o, w, h);
+
+        const int   p_sides = static_cast<int>(ctx->param_values[0]);
+        const float p_star  = ctx->param_values[1];
+        const float p_pos_x = ctx->param_values[3];
+        const float p_pos_y = ctx->param_values[4];
+        const float p_rot   = ctx->param_values[5];
+        const float p_sx    = ctx->param_values[6];
+        const float p_sy    = ctx->param_values[7];
+        const VividColor col{ ctx->param_values[8],
+                              ctx->param_values[9],
+                              ctx->param_values[10],
+                              ctx->param_values[11] };
+
+        int  verts     = 0;
+        bool star_mode = false;
+        if (p_sides < 3) {
+            verts = 48;
+        } else if (p_star > 0.0f) {
+            verts     = 2 * p_sides;
+            star_mode = true;
+        } else {
+            verts = p_sides;
+        }
+
+        const float cr     = std::cos(p_rot);
+        const float sr     = std::sin(p_rot);
+        const float two_pi = 6.2831853071795864769f;
+        const float qpi    = 1.5707963267948966192f;
+
+        // Map NDC [-1,1]² into a centered square sized by the short edge so
+        // the preview stays aspect-correct in non-square thumbnails.
+        const float cx    = w * 0.5f;
+        const float cy    = h * 0.5f;
+        const float scale = std::min(w, h) * 0.5f;
+
+        float first_px = 0.0f, first_py = 0.0f;
+        float prev_px  = 0.0f, prev_py  = 0.0f;
+        for (int i = 0; i < verts; ++i) {
+            const float t = two_pi * static_cast<float>(i) /
+                            static_cast<float>(verts) - qpi;
+            const float radius = star_mode
+                ? ((i & 1) ? (1.0f - p_star) : 1.0f)
+                : 1.0f;
+            const float vx = std::cos(t) * radius * p_sx;
+            const float vy = std::sin(t) * radius * p_sy;
+            const float rx = vx * cr - vy * sr;
+            const float ry = vx * sr + vy * cr;
+            const float nx = rx + p_pos_x;
+            const float ny = ry + p_pos_y;
+            const float px = cx + nx * scale;
+            const float py = cy - ny * scale;
+            if (i == 0) {
+                first_px = px;
+                first_py = py;
+            } else {
+                d.draw_line(o, prev_px, prev_py, px, py, 1.5f, col);
+            }
+            prev_px = px;
+            prev_py = py;
+        }
+        if (verts > 0) {
+            d.draw_line(o, prev_px, prev_py, first_px, first_py, 1.5f, col);
+        }
+    }
+
 private:
     vivid::gpu::VividDrawable2D output_{};
 };
 
 VIVID_REGISTER(Shape2D)
+VIVID_THUMBNAIL(Shape2D)
 
 VIVID_DESCRIBE_REF_TYPE(vivid::gpu::VividDrawable2D)
