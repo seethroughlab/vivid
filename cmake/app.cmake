@@ -504,6 +504,18 @@ if(APPLE)
         COMMENT "Ad-hoc signing Vivid.app bundle"
     )
 
+    # Re-seal the Vivid.app bundle with an ad-hoc signature. Call from the
+    # POST_BUILD of any target that modifies bundle contents after vivid's
+    # own POST_BUILD codesign step — e.g. test targets that stage fixture
+    # dylibs into Contents/PlugIns for smoke tests that launch the bundle.
+    # Without a re-seal, macOS reports the bundle as damaged / unsigned.
+    function(vivid_codesign_bundle target)
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND codesign -s - --force $<TARGET_BUNDLE_DIR:vivid>
+            COMMENT "Re-sealing Vivid.app signature (from ${target})"
+        )
+    endfunction()
+
     # Convenience symlink so ./build/vivid still works (canonical() resolves it)
     add_custom_command(TARGET vivid POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_BINARY_DIR}/vivid

@@ -48,15 +48,28 @@ define_property(GLOBAL PROPERTY VIVID_OPERATOR_TARGETS
 set_property(GLOBAL PROPERTY VIVID_OPERATOR_TARGETS "")
 
 # --- Operator plugin helper ---
+#
+# Pass TEST_FIXTURE for operators that only exist to back tests: they are
+# kept out of VIVID_OPERATOR_TARGETS (so vivid's bundle-populate POST_BUILD
+# does not touch them), skip the per-target auto-copy-into-bundle
+# POST_BUILD (which would otherwise race with vivid's codesign and break
+# the bundle signature), and are omitted from the operator manifest used
+# by standalone exports. Tests that need a fixture dylib in the bundle
+# (currently only test_ui_screenshot_smoke) stage them explicitly and
+# call vivid_codesign_bundle() to re-seal afterwards.
 function(add_vivid_operator name source)
-    cmake_parse_arguments(ARG "" "FACTORY_PRESETS" "EXTRA_LIBS" ${ARGN})
+    cmake_parse_arguments(ARG "TEST_FIXTURE" "FACTORY_PRESETS" "EXTRA_LIBS" ${ARGN})
     add_library(${name} MODULE ${source})
     set_target_properties(${name} PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
     target_link_libraries(${name} PRIVATE vivid_operator_api ${ARG_EXTRA_LIBS})
-    set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS ${name})
+    if(NOT ARG_TEST_FIXTURE)
+        set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS ${name})
+    endif()
 
-    # Keep app bundle in sync when building individual operator targets
-    if(APPLE)
+    # Keep app bundle in sync when building individual operator targets.
+    # Skipped for test fixtures: they race with vivid's POST_BUILD codesign
+    # step and would invalidate the bundle seal.
+    if(APPLE AND NOT ARG_TEST_FIXTURE)
         add_custom_command(TARGET ${name} POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E make_directory
                 $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns
@@ -74,21 +87,24 @@ function(add_vivid_operator name source)
             ${CMAKE_BINARY_DIR}/factory_presets/${name}.json COPYONLY)
     endif()
 
-    # Accumulate manifest entry
-    # Filter out non-library targets from EXTRA_LIBS (keep only webgpu, rtmidi, etc.)
-    set(_extra_libs "")
-    foreach(_lib ${ARG_EXTRA_LIBS})
-        # Skip interface/header-only targets that aren't real link deps
-        if(NOT "${_lib}" STREQUAL "vivid_embeddable_op_support")
-            list(APPEND _extra_libs "${_lib}")
+    # Accumulate manifest entry (test fixtures are not real operators and
+    # are not emitted for standalone export builds).
+    if(NOT ARG_TEST_FIXTURE)
+        # Filter out non-library targets from EXTRA_LIBS (keep only webgpu, rtmidi, etc.)
+        set(_extra_libs "")
+        foreach(_lib ${ARG_EXTRA_LIBS})
+            # Skip interface/header-only targets that aren't real link deps
+            if(NOT "${_lib}" STREQUAL "vivid_embeddable_op_support")
+                list(APPEND _extra_libs "${_lib}")
+            endif()
+        endforeach()
+        string(REPLACE ";" "\", \"" _extra_json "${_extra_libs}")
+        if(_extra_libs)
+            set(_extra_json "\"${_extra_json}\"")
         endif()
-    endforeach()
-    string(REPLACE ";" "\", \"" _extra_json "${_extra_libs}")
-    if(_extra_libs)
-        set(_extra_json "\"${_extra_json}\"")
+        set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
+            "  \"${name}\": { \"sources\": [\"${source}\"], \"extra_libs\": [${_extra_json}] }")
     endif()
-    set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
-        "  \"${name}\": { \"sources\": [\"${source}\"], \"extra_libs\": [${_extra_json}] }")
 endfunction()
 
 function(vivid_enable_audio_kernels name)

@@ -74,6 +74,10 @@ if(APPLE)
             $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns/
         COMMENT "Staging GUI smoke file-drop fixtures into Vivid.app bundle"
     )
+    # Re-seal the bundle: the fixtures above were copied in after vivid's
+    # POST_BUILD codesign step, so without this the bundle would be flagged
+    # as "damaged" on launch (see vivid_codesign_bundle in cmake/app.cmake).
+    vivid_codesign_bundle(test_ui_screenshot_smoke)
 endif()
 add_test(NAME test_ui_screenshot_smoke
     COMMAND test_ui_screenshot_smoke ${CMAKE_BINARY_DIR}
