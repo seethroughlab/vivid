@@ -143,6 +143,73 @@ int main() {
         check(is_valid_topo_order(result, adj), "fan-out: valid topological order");
     }
 
+    // =================================================================
+    // Test 10: Back-edge detection — 3-node cycle 0→1→2→0
+    //          Exactly one edge is a back-edge.
+    // =================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 10: Back-edge on 3-node cycle ===\n");
+        std::vector<std::pair<uint32_t, uint32_t>> edges = {{0, 1}, {1, 2}, {2, 0}};
+        auto mask = vivid::detect_back_edges(3, edges);
+        check(mask.size() == 3, "back-edge mask sized to edge count");
+        int back_count = 0;
+        for (bool b : mask) if (b) ++back_count;
+        check(back_count == 1, "exactly one back-edge on a 3-node cycle");
+        check(mask[2], "the (2,0) edge closing the cycle is the back-edge");
+    }
+
+    // =================================================================
+    // Test 11: Back-edge detection — DAG (no cycles)
+    // =================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 11: Back-edge on DAG ===\n");
+        std::vector<std::pair<uint32_t, uint32_t>> edges = {{0, 1}, {0, 2}, {1, 3}, {2, 3}};
+        auto mask = vivid::detect_back_edges(4, edges);
+        int back_count = 0;
+        for (bool b : mask) if (b) ++back_count;
+        check(back_count == 0, "no back-edges on a DAG");
+    }
+
+    // =================================================================
+    // Test 12: Back-edge detection — self-loop
+    // =================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 12: Back-edge on self-loop ===\n");
+        std::vector<std::pair<uint32_t, uint32_t>> edges = {{0, 0}, {0, 1}};
+        auto mask = vivid::detect_back_edges(2, edges);
+        check(mask[0], "self-loop (0,0) is a back-edge");
+        check(!mask[1], "forward edge (0,1) is not a back-edge");
+    }
+
+    // =================================================================
+    // Test 13: Back-edge detection — two independent cycles
+    // =================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 13: Back-edge on two cycles ===\n");
+        // 0↔1 and 2↔3
+        std::vector<std::pair<uint32_t, uint32_t>> edges = {
+            {0, 1}, {1, 0}, {2, 3}, {3, 2}};
+        auto mask = vivid::detect_back_edges(4, edges);
+        int back_count = 0;
+        for (bool b : mask) if (b) ++back_count;
+        check(back_count == 2, "exactly two back-edges across two cycles");
+    }
+
+    // =================================================================
+    // Test 14: Back-edge detection — forward-/cross-edges are NOT back-edges
+    //          0→1, 0→2, 1→2 (forward), 2→3, 0→3
+    // =================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 14: Forward/cross not marked ===\n");
+        std::vector<std::pair<uint32_t, uint32_t>> edges = {
+            {0, 1}, {0, 2}, {1, 2}, {2, 3}, {0, 3}};
+        auto mask = vivid::detect_back_edges(4, edges);
+        int back_count = 0;
+        for (bool b : mask) if (b) ++back_count;
+        check(back_count == 0,
+              "forward and cross edges are not reported as back-edges");
+    }
+
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",
         failures == 0 ? "ALL PASSED" : "SOME FAILED", failures);
     return failures == 0 ? 0 : 1;
