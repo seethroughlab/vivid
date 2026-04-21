@@ -661,19 +661,25 @@ std::vector<std::string> Renderer2D::wrap_text(const char* text, float max_width
             lines.emplace_back(p, len);
             break;
         }
-        // Look back for a preferred break char
-        static const char* delims = ",:{}[]";
-        int best = -1;
-        int lookback = (len > 20) ? 20 : len;
-        for (int j = len - 1; j >= len - lookback && j >= 0; --j) {
-            for (const char* d = delims; *d; ++d) {
-                if (p[j] == *d) { best = j; goto found; }
+        // Prefer breaking at whitespace (consumed, not rendered); fall back to
+        // JSON-style delimiters (kept at end of the line). Scan from the break
+        // point backwards — the rightmost candidate wins so lines stay full.
+        int cut = -1;   // number of bytes to keep on this line
+        int skip = 0;   // bytes to skip before starting the next line
+        for (int j = len - 1; j >= 0; --j) {
+            if (p[j] == ' ' || p[j] == '\t') { cut = j; skip = 1; break; }
+        }
+        if (cut < 0) {
+            static const char* delims = ",:{}[]";
+            for (int j = len - 1; j >= 0 && cut < 0; --j) {
+                for (const char* d = delims; *d; ++d) {
+                    if (p[j] == *d) { cut = j + 1; break; }
+                }
             }
         }
-        found:
-        if (best >= 0) {
-            lines.emplace_back(p, best + 1); // break after delimiter
-            p += best + 1;
+        if (cut > 0) {
+            lines.emplace_back(p, cut);
+            p += cut + skip;
         } else {
             lines.emplace_back(p, len);
             p += len;

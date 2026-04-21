@@ -2166,22 +2166,15 @@ void DialogManager::draw_crash_recovery(Renderer2D& tr, const MouseState& mouse,
                  style.scrim[0], style.scrim[1], style.scrim[2], style.scrim[3] * popup_opacity);
 
     // Dialog panel (wider than save-confirm to fit the crash summary).
-    const float dw = 520.0f;
-    const float dh = 150.0f;
-    const float dx = (wf - dw) * 0.5f;
-    const float dy = (hf - dh) * 0.5f;
+    const float dw      = 560.0f;
+    const float pad_x   = 16.0f;
+    const float text_w  = dw - 2 * pad_x;
+    const float title_y = 14.0f;
+    const float body_y  = 40.0f;
+    const float btn_h   = 24.0f;
+    const float btn_pad = 10.0f;
 
-    draw_shadow(tr, dx, dy, dw, dh, style.corner_radius);
-    tr.draw_rounded_rect(dx, dy, dw, dh, style.corner_radius,
-                         style.popup_bg[0], style.popup_bg[1], style.popup_bg[2], style.popup_bg[3]);
-    tr.draw_rect(dx, dy, dw, 2, style.accent[0], style.accent[1], style.accent[2]);
-
-    // Title
-    tr.draw_text(dx + 16, dy + 14,
-                 T("crash_recovery_title", "Vivid crashed during the previous session"),
-                 style.bright_text[0], style.bright_text[1], style.bright_text[2]);
-
-    // Body: "Fatal signal X in operator 'Y' (node 'Z')"
+    // Body: "SIGNAME in operator 'Y' (node 'Z')"
     char body[256];
     const std::string& sig = crash_recovery.signal_name.empty() ? std::string("signal")
                                                                 : crash_recovery.signal_name;
@@ -2196,18 +2189,47 @@ void DialogManager::draw_crash_recovery(Renderer2D& tr, const MouseState& mouse,
     } else {
         std::snprintf(body, sizeof(body), "%s (no operator context captured)", sig.c_str());
     }
-    tr.draw_text(dx + 16, dy + 40, body,
-                 style.dim_text[0], style.dim_text[1], style.dim_text[2]);
+    const char* prompt = T("crash_recovery_prompt",
+                           "Open the graph with the suspect operator disabled, or continue normally?");
 
-    tr.draw_text(dx + 16, dy + 60,
-                 T("crash_recovery_prompt",
-                   "Open the graph with the suspect operator disabled, or continue normally?"),
-                 style.dim_text[0], style.dim_text[1], style.dim_text[2]);
+    // Pre-measure wrapped text so the panel grows to fit long operator/node names.
+    auto body_lines   = tr.wrap_text(body, text_w);
+    auto prompt_lines = tr.wrap_text(prompt, text_w);
+    const float lh    = tr.line_height();
+    const float body_h   = body_lines.size()   * lh;
+    const float prompt_h = prompt_lines.size() * lh;
+    const float text_block_end = body_y + body_h + 4.0f + prompt_h;
+    const float dh = text_block_end + 16.0f + btn_h + btn_pad;
+
+    const float dx = (wf - dw) * 0.5f;
+    const float dy = (hf - dh) * 0.5f;
+
+    draw_shadow(tr, dx, dy, dw, dh, style.corner_radius);
+    tr.draw_rounded_rect(dx, dy, dw, dh, style.corner_radius,
+                         style.popup_bg[0], style.popup_bg[1], style.popup_bg[2], style.popup_bg[3]);
+    tr.draw_rect(dx, dy, dw, 2, style.accent[0], style.accent[1], style.accent[2]);
+
+    // Title
+    tr.draw_text(dx + pad_x, dy + title_y,
+                 T("crash_recovery_title", "Vivid crashed during the previous session"),
+                 style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+
+    float ty = dy + body_y;
+    for (const auto& line : body_lines) {
+        tr.draw_text(dx + pad_x, ty, line.c_str(),
+                     style.dim_text[0], style.dim_text[1], style.dim_text[2]);
+        ty += lh;
+    }
+    ty += 4.0f;
+    for (const auto& line : prompt_lines) {
+        tr.draw_text(dx + pad_x, ty, line.c_str(),
+                     style.dim_text[0], style.dim_text[1], style.dim_text[2]);
+        ty += lh;
+    }
 
     // Three buttons: Reveal | Open Normally | Open Safe Mode
     const float btn_w = 150.0f;
-    const float btn_h = 24.0f;
-    const float btn_y = dy + dh - btn_h - 10.0f;
+    const float btn_y = dy + dh - btn_h - btn_pad;
     const float gap = 10.0f;
     const float total_btn_w = btn_w * 3 + gap * 2;
     const float btn_start_x = dx + (dw - total_btn_w) * 0.5f;
