@@ -27,7 +27,7 @@ struct OscIn : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<int> listen_port{"listen_port", 9000, 1, 65535};
-    vivid::Param<vivid::FilePath> address{"address", "/vivid/value"};
+    vivid::Param<vivid::TextValue> address{"address", "/vivid/value"};
     vivid::Param<bool> strict_address{"strict_address", true};
 
     OscIn() {

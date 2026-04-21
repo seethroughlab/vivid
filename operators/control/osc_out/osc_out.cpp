@@ -23,9 +23,9 @@ struct OscOut : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "OscOut";
     static constexpr bool kTimeDependent = true;
 
-    vivid::Param<vivid::FilePath> host{"host", "127.0.0.1"};
+    vivid::Param<vivid::TextValue> host{"host", "127.0.0.1"};
     vivid::Param<int> target_port{"target_port", 9000, 1, 65535};
-    vivid::Param<vivid::FilePath> address{"address", "/vivid/value"};
+    vivid::Param<vivid::TextValue> address{"address", "/vivid/value"};
     vivid::Param<int> value_type{"value_type", 0, {"float", "int", "bool"}};
     vivid::Param<int> send_mode{"send_mode", 0, {"on_trigger", "every_frame", "on_change"}};
 
