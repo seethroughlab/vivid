@@ -6,6 +6,7 @@
         "run",
         "--with", "mcp",
         "--with", "httpx",
+        "--with", "pillow",
         "/Users/jeff/Developer/vivid/mcp/vivid_mcp.py"
       ]
     },
