@@ -886,6 +886,325 @@ async def compare_output_to_reference(reference_path: str,
 
 
 # ---------------------------------------------------------------------------
+# AV-coupling visual evaluation tools.
+#
+# A still single frame can't tell you whether visuals respond to audio. These
+# three tools expose the time/audio dimension to a single image Read so an
+# LLM can verify "the kick actually flashes the bloom" rather than trust an
+# `onset_response_rate=0.62` metric in isolation.
+# ---------------------------------------------------------------------------
+
+
+async def _capture_frame_pil():
+    """Capture one frame from the runtime and decode it to a PIL Image.
+
+    Returns (PIL.Image | None, error_string | None).
+    """
+    raw = await _post("capture_frame", {})
+    try:
+        doc = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return None, f"capture_frame returned non-JSON: {exc}"
+    if not doc.get("ok", False):
+        return None, doc.get("error", "capture_frame failed")
+    png_b64 = doc.get("png_base64", "")
+    if not png_b64:
+        return None, "capture_frame returned no png_base64"
+    try:
+        from PIL import Image
+        import io
+        return Image.open(io.BytesIO(_base64.b64decode(png_b64))).convert("RGB"), None
+    except Exception as exc:
+        return None, f"failed to decode capture PNG: {exc}"
+
+
+def _resolve_save_dir(save_dir: str) -> pathlib.Path:
+    if save_dir:
+        root = pathlib.Path(save_dir).expanduser()
+    else:
+        root = pathlib.Path(_tempfile.gettempdir()) / "vivid_captures"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+@mcp.tool()
+async def capture_frame_strip(count: int = 8,
+                              interval_ms: int = 125,
+                              save_dir: str = "") -> str:
+    """Capture N frames spaced by `interval_ms` and stitch them into a single
+    horizontal strip image with frame-index + timestamp labels.
+
+    Use this to evaluate AV coupling visually: in one Read of the returned
+    image, you can see whether visuals scroll, pulse, flash, or sit completely
+    static across the captured window. A single still capture can't reveal
+    motion; this can.
+
+    Args:
+        count: Number of frames in the strip (default 8). Range 2-24.
+        interval_ms: Wall-clock spacing between frames (default 125 = 8 fps).
+            Smaller values catch faster motion; larger values cover more
+            transport time. 125 ms × 8 frames = 1 second of total coverage.
+        save_dir: Where to write the strip PNG. Defaults to a temp dir.
+
+    Returns JSON `{ok, strip_path, frame_count, total_seconds}`. Read the
+    strip path as an image to inspect.
+    """
+    count = max(2, min(24, int(count)))
+    interval_s = max(0.0, float(interval_ms) / 1000.0)
+
+    frames = []
+    timestamps = []
+    t0 = _time_module.time()
+    for i in range(count):
+        if i > 0:
+            await asyncio.sleep(interval_s)
+        img, err = await _capture_frame_pil()
+        if img is None:
+            return _json_response({"ok": False, "error": f"frame {i}: {err}"})
+        frames.append(img)
+        timestamps.append(_time_module.time() - t0)
+
+    from PIL import Image, ImageDraw
+
+    # Scale each frame down to a strip-friendly height (so 8 wide frames fit).
+    target_h = 180
+    scaled = []
+    for img in frames:
+        ratio = target_h / img.height
+        w = int(img.width * ratio)
+        scaled.append(img.resize((w, target_h), Image.LANCZOS))
+
+    gap = 4
+    total_w = sum(im.width for im in scaled) + gap * (len(scaled) - 1)
+    label_h = 18
+    strip = Image.new("RGB", (total_w, target_h + label_h), (0, 0, 0))
+    draw = ImageDraw.Draw(strip)
+    x = 0
+    for i, im in enumerate(scaled):
+        strip.paste(im, (x, label_h))
+        label = f"#{i}  +{timestamps[i]*1000:.0f}ms"
+        draw.text((x + 4, 2), label, fill=(255, 255, 255))
+        x += im.width + gap
+
+    save_root = _resolve_save_dir(save_dir)
+    ts = _time_module.strftime("%Y%m%d_%H%M%S")
+    out_path = save_root / f"frame_strip_{ts}.png"
+    strip.save(out_path)
+
+    return _json_response({
+        "ok": True,
+        "strip_path": str(out_path),
+        "frame_count": len(frames),
+        "total_seconds": timestamps[-1],
+        "hint": "Read the strip as an image. If frames look identical, the visuals are static.",
+    })
+
+
+@mcp.tool()
+async def capture_frame_diff(interval_ms: int = 200,
+                             save_dir: str = "") -> str:
+    """Capture two frames `interval_ms` apart and produce a colored difference
+    image showing exactly which pixels changed.
+
+    Pixels that brightened render as red; pixels that dimmed render as blue;
+    unchanged areas are dark. Saturation scales with the magnitude of the
+    change. Reveals where in the frame motion is actually happening — a
+    completely-static graph produces a near-black diff.
+
+    Args:
+        interval_ms: Wall-clock gap between the two captures (default 200).
+        save_dir: Where to write the diff PNG. Defaults to a temp dir.
+
+    Returns JSON `{ok, diff_path, before_path, after_path, mean_abs_delta}`.
+    `mean_abs_delta` is the average per-pixel brightness change in [0,1] — a
+    quick numeric sanity check (close to 0 = nothing moved).
+    """
+    img_a, err_a = await _capture_frame_pil()
+    if img_a is None:
+        return _json_response({"ok": False, "error": f"first frame: {err_a}"})
+    await asyncio.sleep(max(0.0, float(interval_ms) / 1000.0))
+    img_b, err_b = await _capture_frame_pil()
+    if img_b is None:
+        return _json_response({"ok": False, "error": f"second frame: {err_b}"})
+
+    if img_a.size != img_b.size:
+        img_b = img_b.resize(img_a.size)
+
+    from PIL import Image, ImageChops
+
+    # Per-channel signed delta on luminance (mean of RGB). PIL clamps to
+    # [0,255], so split into "brighter" and "dimmer" channels separately
+    # and boost magnitude so small AV-coupling pulses are visible.
+    lum_a = img_a.convert("L")
+    lum_b = img_b.convert("L")
+    brighter = ImageChops.subtract(lum_b, lum_a, scale=0.25)  # b - a, clamped
+    dimmer   = ImageChops.subtract(lum_a, lum_b, scale=0.25)  # a - b, clamped
+    # Mean absolute delta (for the numeric sanity check) before boosting.
+    delta_abs = ImageChops.add(
+        ImageChops.subtract(lum_a, lum_b),
+        ImageChops.subtract(lum_b, lum_a),
+    )
+    n_pixels = lum_a.size[0] * lum_a.size[1]
+    mean_abs_delta = (sum(delta_abs.getdata()) / n_pixels) / 255.0
+    # Boost the brighter/dimmer channels for visibility (×4 ≈ 6dB).
+    boost = lambda im: im.point(lambda x: min(255, x * 4))
+    brighter = boost(brighter)
+    dimmer   = boost(dimmer)
+    zero     = Image.new("L", lum_a.size, 0)
+    diff_img = Image.merge("RGB", (brighter, zero, dimmer))
+
+    save_root = _resolve_save_dir(save_dir)
+    ts = _time_module.strftime("%Y%m%d_%H%M%S")
+    before_path = save_root / f"diff_before_{ts}.png"
+    after_path = save_root / f"diff_after_{ts}.png"
+    diff_path = save_root / f"diff_{ts}.png"
+    img_a.save(before_path)
+    img_b.save(after_path)
+    diff_img.save(diff_path)
+
+    return _json_response({
+        "ok": True,
+        "diff_path": str(diff_path),
+        "before_path": str(before_path),
+        "after_path": str(after_path),
+        "mean_abs_delta": float(mean_abs_delta),
+        "hint": "Read diff_path. Near-black = nothing moved. Bright red/blue = real motion.",
+    })
+
+
+@mcp.tool()
+async def capture_onset_montage(window_seconds: float = 4.0,
+                                fps: int = 12,
+                                onset_threshold: float = 0.15,
+                                save_dir: str = "") -> str:
+    """Record audio peak + visual frames over a window, detect audio onsets,
+    and produce a contact sheet pairing the frame AT each onset with the
+    frame ~100ms after — so you can verify "did the kick visibly flash?"
+
+    Detection is client-side and approximate: at each captured frame, the
+    runtime's `master/peak` (or whatever output port the implementation
+    samples) is read; an onset fires when the peak rises sharply. For
+    drum-driven graphs this catches kick/snare hits reliably.
+
+    Args:
+        window_seconds: Total recording window (default 4 s).
+        fps: Capture rate in frames per second (default 12).
+        onset_threshold: Minimum peak rise (in [0,1]) to count as an onset.
+            Lower = more sensitive. Default 0.15.
+        save_dir: Where to write the montage PNG. Defaults to a temp dir.
+
+    Returns JSON `{ok, montage_path, onset_count, frame_count}`. Read the
+    montage path; each row pairs an at-onset frame (left) with a +100ms
+    follow-up frame (right). If the visual is identical between the two
+    columns, audio is not driving any visible change for that hit.
+    """
+    fps = max(4, min(30, int(fps)))
+    interval_s = 1.0 / fps
+    total_frames = max(8, int(window_seconds * fps))
+
+    frames = []
+    timestamps = []
+    peaks = []
+    t0 = _time_module.time()
+    for i in range(total_frames):
+        target = t0 + i * interval_s
+        slack = target - _time_module.time()
+        if slack > 0:
+            await asyncio.sleep(slack)
+        img, err = await _capture_frame_pil()
+        if img is None:
+            return _json_response({"ok": False, "error": f"frame {i}: {err}"})
+        frames.append(img)
+        timestamps.append(_time_module.time() - t0)
+        # Sample audio peak from a tiny analysis window.
+        audio_raw = await _post("analyze_output", {
+            "mode": "audio",
+            "window_seconds": 0.05,
+            "include_payload": False,
+        })
+        try:
+            audio_doc = json.loads(audio_raw)
+            peak = float(audio_doc.get("metrics", {}).get("audio", {}).get("peak", 0.0))
+        except (json.JSONDecodeError, ValueError, TypeError):
+            peak = 0.0
+        peaks.append(peak)
+
+    # Onset detection: rising edge with refractory period.
+    refractory_frames = max(1, int(0.15 * fps))
+    onset_indices = []
+    last_onset = -refractory_frames
+    for i in range(1, len(peaks)):
+        if i - last_onset < refractory_frames:
+            continue
+        rise = peaks[i] - peaks[i - 1]
+        if rise > onset_threshold and peaks[i] > onset_threshold:
+            onset_indices.append(i)
+            last_onset = i
+
+    if not onset_indices:
+        return _json_response({
+            "ok": True,
+            "montage_path": "",
+            "onset_count": 0,
+            "frame_count": len(frames),
+            "peak_max": max(peaks) if peaks else 0.0,
+            "hint": (f"No onsets detected (max peak {max(peaks):.3f}, "
+                     f"threshold {onset_threshold}). Either the audio is silent, "
+                     "the threshold is too high, or peaks are too smooth. Try a "
+                     "lower onset_threshold or check that the graph produces audio."),
+        })
+
+    follow_offset = max(1, int(0.10 * fps))  # ~100 ms after onset
+
+    from PIL import Image, ImageDraw
+    cell_h = 160
+    pairs = []
+    for idx in onset_indices:
+        follow_idx = min(idx + follow_offset, len(frames) - 1)
+        a = frames[idx]
+        b = frames[follow_idx]
+        ratio = cell_h / a.height
+        cell_w = int(a.width * ratio)
+        a_s = a.resize((cell_w, cell_h), Image.LANCZOS)
+        b_s = b.resize((cell_w, cell_h), Image.LANCZOS)
+        pairs.append((a_s, b_s, timestamps[idx], peaks[idx],
+                      timestamps[follow_idx]))
+
+    cell_w = pairs[0][0].width
+    pair_w = cell_w * 2 + 4
+    label_h = 22
+    row_h = cell_h + label_h
+    montage = Image.new("RGB", (pair_w, row_h * len(pairs)), (10, 10, 14))
+    draw = ImageDraw.Draw(montage)
+    for row, (a_s, b_s, t_on, peak, t_follow) in enumerate(pairs):
+        y = row * row_h
+        montage.paste(a_s, (0, y + label_h))
+        montage.paste(b_s, (cell_w + 4, y + label_h))
+        draw.text((4, y + 2),
+                  f"onset @ {t_on*1000:.0f}ms (peak {peak:.2f})",
+                  fill=(255, 200, 200))
+        draw.text((cell_w + 8, y + 2),
+                  f"+ {(t_follow - t_on)*1000:.0f}ms",
+                  fill=(200, 220, 255))
+
+    save_root = _resolve_save_dir(save_dir)
+    ts = _time_module.strftime("%Y%m%d_%H%M%S")
+    out_path = save_root / f"onset_montage_{ts}.png"
+    montage.save(out_path)
+
+    return _json_response({
+        "ok": True,
+        "montage_path": str(out_path),
+        "onset_count": len(onset_indices),
+        "frame_count": len(frames),
+        "peak_max": max(peaks),
+        "hint": ("Read the montage. Each row is a detected hit: left = frame "
+                 "AT the onset, right = frame ~100ms later. Identical pairs "
+                 "mean audio is not driving any visible change for that hit."),
+    })
+
+
+# ---------------------------------------------------------------------------
 # diagnose_composition_issue — rule-based interpretation of analyze_output
 # metrics. Encodes the decision tree from docs/COMPOSITION-GUIDE.md §
 # "Diagnosing a dead graph." Metric-only for v1; a future revision can add
