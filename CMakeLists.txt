@@ -25,13 +25,11 @@ endif()
 if(VIVID_SANITIZE)
     add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer -fno-optimize-sibling-calls)
     add_link_options(-fsanitize=address,undefined)
-    set(VIVID_USE_WGPU_NATIVE_UPSTREAM OFF CACHE BOOL "" FORCE)
 endif()
 
 if(VIVID_SANITIZE_THREAD)
     add_compile_options(-fsanitize=thread -fno-omit-frame-pointer)
     add_link_options(-fsanitize=thread)
-    set(VIVID_USE_WGPU_NATIVE_UPSTREAM OFF CACHE BOOL "" FORCE)
 endif()
 
 # --- Optional macOS Accelerate framework ---

@@ -632,7 +632,7 @@ bool capture_surface_png(vivid::GpuContext& gpu,
         bool work_done = false;
         WGPUQueueWorkDoneCallbackInfo work_cb{};
         work_cb.mode = WGPUCallbackMode_AllowSpontaneous;
-        work_cb.callback = [](WGPUQueueWorkDoneStatus, void* ud1, void*) {
+        work_cb.callback = [](WGPUQueueWorkDoneStatus, WGPUStringView, void* ud1, void*) {
             *static_cast<bool*>(ud1) = true;
         };
         work_cb.userdata1 = &work_done;

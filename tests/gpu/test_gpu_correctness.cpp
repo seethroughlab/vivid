@@ -140,7 +140,7 @@ static std::vector<uint8_t> readback_texture(WGPUDevice device, WGPUQueue queue,
     WorkDone wd;
     WGPUQueueWorkDoneCallbackInfo wcb{};
     wcb.mode = WGPUCallbackMode_AllowSpontaneous;
-    wcb.callback = [](WGPUQueueWorkDoneStatus, void* ud1, void*) {
+    wcb.callback = [](WGPUQueueWorkDoneStatus, WGPUStringView, void* ud1, void*) {
         static_cast<WorkDone*>(ud1)->done = true;
     };
     wcb.userdata1 = &wd;
@@ -197,7 +197,7 @@ static void tick_and_submit(vivid::RuntimeCore& runtime, HeadlessGpu& gpu,
     WorkDone wd;
     WGPUQueueWorkDoneCallbackInfo wcb{};
     wcb.mode = WGPUCallbackMode_AllowSpontaneous;
-    wcb.callback = [](WGPUQueueWorkDoneStatus, void* ud1, void*) {
+    wcb.callback = [](WGPUQueueWorkDoneStatus, WGPUStringView, void* ud1, void*) {
         static_cast<WorkDone*>(ud1)->done = true;
     };
     wcb.userdata1 = &wd;

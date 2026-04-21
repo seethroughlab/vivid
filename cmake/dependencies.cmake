@@ -2,8 +2,11 @@
 # --- libcurl (system, for HTTP fetches) ---
 find_package(CURL REQUIRED)
 
-# --- Dawn/WebGPU via eliemichel's distribution (pre-built binaries) ---
+# --- wgpu-native via eliemichel's WebGPU-distribution (precompiled release) ---
+# Metal interop symbols (wgpuDeviceGetNativeMetalDevice etc.) are shipped in
+# upstream releases since v27.0.4.1, so no from-source build is needed.
 include(FetchContent)
+set(WGPU_VERSION "v29.0.0.0" CACHE STRING "wgpu-native release" FORCE)
 FetchContent_Declare(
     webgpu
     GIT_REPOSITORY https://github.com/eliemichel/WebGPU-distribution
@@ -11,37 +14,6 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE
 )
 FetchContent_MakeAvailable(webgpu)
-
-option(VIVID_USE_WGPU_NATIVE_UPSTREAM "Build upstream wgpu-native from source for Metal interop symbols" ON)
-if(APPLE AND VIVID_USE_WGPU_NATIVE_UPSTREAM)
-    FetchContent_Declare(
-        wgpu_native_upstream
-        GIT_REPOSITORY https://github.com/gfx-rs/wgpu-native
-        GIT_TAG        1487faea32e3b7fc891fd671323582b487038aea
-        GIT_SUBMODULES_RECURSE TRUE
-    )
-    FetchContent_GetProperties(wgpu_native_upstream)
-    if(NOT wgpu_native_upstream_POPULATED)
-        FetchContent_Populate(wgpu_native_upstream)
-    endif()
-
-    find_program(VIVID_CARGO_EXECUTABLE cargo REQUIRED)
-    set(VIVID_WGPU_NATIVE_UPSTREAM_LIB
-        "${wgpu_native_upstream_SOURCE_DIR}/target/release/libwgpu_native.dylib")
-
-    add_custom_target(wgpu_native_upstream_build ALL
-        COMMAND ${VIVID_CARGO_EXECUTABLE} build --release
-        WORKING_DIRECTORY ${wgpu_native_upstream_SOURCE_DIR}
-        COMMENT "Building upstream wgpu-native from source (Metal interop symbols)"
-        VERBATIM
-    )
-
-    if(TARGET webgpu)
-        add_dependencies(webgpu wgpu_native_upstream_build)
-        set_target_properties(webgpu PROPERTIES IMPORTED_LOCATION "${VIVID_WGPU_NATIVE_UPSTREAM_LIB}")
-    endif()
-    set(WEBGPU_RUNTIME_LIB "${VIVID_WGPU_NATIVE_UPSTREAM_LIB}" CACHE INTERNAL "Path to the WebGPU library binary" FORCE)
-endif()
 
 FetchContent_Declare(
     ixwebsocket

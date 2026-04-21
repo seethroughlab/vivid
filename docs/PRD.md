@@ -457,7 +457,7 @@ GLFW does not provide file open/save dialogs or pen/tablet pressure. File dialog
 
 Key dependencies (managed via git submodules, vendored source, or CMake FetchContent):
 
-- **wgpu-native** (pinned fork): GPU abstraction (WebGPU over Metal). Uses eliemichel's WebGPU-distribution adapter with a Seethrough Lab fork for Metal interop.
+- **wgpu-native** (pinned release): GPU abstraction (WebGPU over Metal). Uses eliemichel's WebGPU-distribution for headers and built from upstream `gfx-rs/wgpu-native` source for Metal interop symbols.
 - **GLFW** (3.4) + **glfw3webgpu**: window creation, input events, WebGPU surface bridge.
 - **miniaudio** (0.11.x): audio device I/O. Single-header C library.
 - **stb_truetype** + **stb_image**: font rasterization and image loading. Single-header C libraries.

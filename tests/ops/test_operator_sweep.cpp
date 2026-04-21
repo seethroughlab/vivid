@@ -479,7 +479,7 @@ static bool smoke_gpu(vivid::OperatorLoader& loader, void* inst,
     WorkDone wd;
     WGPUQueueWorkDoneCallbackInfo wcb{};
     wcb.mode = WGPUCallbackMode_AllowSpontaneous;
-    wcb.callback = [](WGPUQueueWorkDoneStatus, void* ud1, void*) {
+    wcb.callback = [](WGPUQueueWorkDoneStatus, WGPUStringView, void* ud1, void*) {
         static_cast<WorkDone*>(ud1)->done = true;
     };
     wcb.userdata1 = &wd;

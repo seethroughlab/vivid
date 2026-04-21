@@ -475,7 +475,7 @@ GLFW does not provide file open/save dialogs or pen/tablet pressure. File dialog
 
 | Dependency | Purpose | Size | Integration |
 |---|---|---|---|
-| **wgpu-native** (pinned fork) | GPU abstraction (WebGPU over Metal) | ~17MB binary | FetchContent (Rust/Cargo build) |
+| **wgpu-native** (pinned release) | GPU abstraction (WebGPU over Metal) | ~17MB binary | FetchContent (Rust/Cargo build) |
 | **GLFW** (3.4) | Window creation, input events, Metal surface | ~200KB source | git submodule |
 | **glfw3webgpu** | GLFW↔WebGPU surface bridge | ~5KB source | git submodule |
 | **miniaudio** (0.11.x) | Audio device I/O (not DSP) | single header | vendored |
@@ -495,7 +495,7 @@ GLFW does not provide file open/save dialogs or pen/tablet pressure. File dialog
 | **TinyXML-2** (10.0.0) | Lightweight XML parsing (appcast feed) | ~100KB source | FetchContent |
 | **Sparkle** (macOS) | App auto-update framework | framework | system framework |
 
-**Note on Dawn:** The original plan called for Google's Dawn WebGPU implementation. The actual integration uses wgpu-native (a Rust-based WebGPU backend) via eliemichel's WebGPU-distribution adapter layer, with a pinned upstream commit (`gfx-rs/wgpu-native`) providing Metal interop symbols for Syphon texture sharing.
+**Note on Dawn:** The original plan called for Google's Dawn WebGPU implementation. The actual integration uses wgpu-native (a Rust-based WebGPU backend) via eliemichel's WebGPU-distribution adapter layer, with a pinned upstream release tag (`gfx-rs/wgpu-native`) providing Metal interop symbols for Syphon texture sharing.
 
 **Compiler requirement:** Xcode Command Line Tools on macOS (`xcode-select --install`). Provides clang, libc++, and Metal framework headers.
 
