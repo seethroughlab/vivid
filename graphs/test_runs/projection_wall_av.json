@@ -8,21 +8,37 @@
         "bloom": {
             "type": "Bloom",
             "params": {
-                "threshold": 0.15,
+                "threshold": 0.5,
                 "passes": 4.0,
-                "intensity": 1.6
+                "intensity": 0.35
             },
             "layout": {
                 "x": 1752.9498,
                 "y": 1112.4839
             }
         },
+        "hat": {
+            "type": "DrumHiHat"
+        },
+        "kick": {
+            "type": "DrumKick"
+        },
+        "kit": {
+            "type": "DrumKit"
+        },
+        "master": {
+            "type": "Gain",
+            "params": {
+                "gain": 0.5
+            }
+        },
         "mirror": {
             "type": "Mirror",
             "params": {
-                "angle": 0.0,
                 "segments": 2.0,
-                "mode": 0.0
+                "center_y": 0.35,
+                "mode": 0.0,
+                "angle": 0.0
             },
             "layout": {
                 "x": 1355.7339,
@@ -38,10 +54,68 @@
                 "vertical": 1.0,
                 "thickness": 0.1,
                 "spacing": 28.0,
-                "intensity": 0.4
+                "intensity": 0.08
             },
             "layout": {
                 "x": 1552.9498,
+                "y": 1112.4839
+            }
+        },
+        "seq": {
+            "type": "DrumSequencer",
+            "params": {
+                "snare_4": 1.0,
+                "kick_4": 1.0,
+                "snare_12": 1.0,
+                "kick_0": 1.0,
+                "hat_6": 1.0,
+                "hat_2": 1.0,
+                "kick_8": 1.0,
+                "hat_14": 1.0,
+                "hat_10": 1.0,
+                "kick_12": 1.0,
+                "clock_source": 1.0,
+                "bar_sync": 3.0
+            },
+            "layout": {
+                "x": 19.61393,
+                "y": 1220.2528
+            }
+        },
+        "smooth_hat": {
+            "type": "SmoothFr",
+            "params": {
+                "rise_time": 0.005,
+                "fall_time": 0.08
+            }
+        },
+        "smooth_kick": {
+            "type": "SmoothFr",
+            "params": {
+                "rise_time": 0.005,
+                "fall_time": 0.12
+            }
+        },
+        "smooth_snare": {
+            "type": "SmoothFr",
+            "params": {
+                "rise_time": 0.005,
+                "fall_time": 0.2
+            }
+        },
+        "snare": {
+            "type": "DrumSnare"
+        },
+        "src": {
+            "type": "ColorBands",
+            "params": {
+                "softness": 0.6,
+                "scroll_speed": 0.015,
+                "c0_r": 0.18802013,
+                "band_count": 6.0
+            },
+            "layout": {
+                "x": 1152.9498,
                 "y": 1112.4839
             }
         },
@@ -50,79 +124,6 @@
             "layout": {
                 "x": 1952.9498,
                 "y": 1121.4839
-            }
-        },
-        "src": {
-            "type": "ColorBands",
-            "params": {
-                "softness": 0.6,
-                "scroll_speed": 0.04,
-                "band_count": 6.0,
-                "c0_r": 0.18802013
-            },
-            "layout": {
-                "x": 1152.9498,
-                "y": 1112.4839
-            }
-        },
-        "seq": {
-            "type": "DrumSequencer",
-            "params": {
-                "hat_14": 1.0,
-                "hat_10": 1.0,
-                "hat_6": 1.0,
-                "hat_2": 1.0,
-                "snare_4": 1.0,
-                "kick_8": 1.0,
-                "kick_4": 1.0,
-                "snare_12": 1.0,
-                "kick_0": 1.0,
-                "bar_sync": 3.0,
-                "kick_12": 1.0,
-                "clock_source": 1.0
-            },
-            "layout": {
-                "x": 19.61393,
-                "y": 1220.2528
-            }
-        },
-        "kit": {
-            "type": "DrumKit"
-        },
-        "kick": {
-            "type": "DrumKick"
-        },
-        "snare": {
-            "type": "DrumSnare"
-        },
-        "hat": {
-            "type": "DrumHiHat"
-        },
-        "master": {
-            "type": "Gain",
-            "params": {
-                "gain": 0.5
-            }
-        },
-        "smooth_kick": {
-            "type": "SmoothFr",
-            "params": {
-                "fall_time": 0.4,
-                "rise_time": 0.005
-            }
-        },
-        "smooth_snare": {
-            "type": "SmoothFr",
-            "params": {
-                "fall_time": 0.4,
-                "rise_time": 0.005
-            }
-        },
-        "smooth_hat": {
-            "type": "SmoothFr",
-            "params": {
-                "fall_time": 0.25,
-                "rise_time": 0.005
             }
         }
     },
@@ -195,29 +196,34 @@
             "to": "bloom/intensity",
             "from_min": 0.0,
             "from_max": 1.0,
-            "to_min": 1.4,
-            "to_max": 3.5
+            "to_min": 0.35,
+            "to_max": 1.8,
+            "clamp": true,
+            "curve": 4
         },
         {
             "from": "smooth_snare/value",
             "to": "mirror/center_y",
             "from_min": 0.0,
             "from_max": 1.0,
-            "to_min": 0.5,
-            "to_max": 0.6
+            "to_min": 0.35,
+            "to_max": 0.75,
+            "clamp": true
         },
         {
             "from": "smooth_hat/value",
             "to": "scan/intensity",
             "from_min": 0.0,
             "from_max": 1.0,
-            "to_min": 0.3,
-            "to_max": 0.7
+            "to_min": 0.08,
+            "to_max": 0.75,
+            "clamp": true,
+            "curve": 4
         }
     ],
     "viewport": {
-        "pan_x": 521.20337,
-        "pan_y": 415.97653,
+        "pan_x": 451.74243,
+        "pan_y": 783.6406,
         "zoom": 0.5006478
     }
 }
