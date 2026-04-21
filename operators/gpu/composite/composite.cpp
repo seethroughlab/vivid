@@ -66,6 +66,10 @@ static std::string generate_composite_wgsl(int n) {
     // Blend function
     s << "fn do_blend(base: vec4f, overlay: vec4f, op: f32, mode: i32) -> vec4f {\n"
          "    if (op <= 0.0) { return base; }\n"
+         "    if (base.a <= 0.0) {\n"
+         "        let a = overlay.a * op;\n"
+         "        return vec4f(overlay.rgb * a, a);\n"
+         "    }\n"
          "    switch mode {\n"
          "        case 1: {\n"
          "            return vec4f(base.rgb + overlay.rgb * op, max(overlay.a * op, base.a));\n"
