@@ -1777,8 +1777,14 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
             auto alt = exe_dir.parent_path() / "fonts" / "JetBrainsMono-Regular.ttf";
             if (std::filesystem::exists(alt)) font_path = alt.string();
         }
+        // The thumb draw renderer targets a texture that's DPI-scaled *and*
+        // supersampled (see kThumbSupersample), so its internal physical-pixel
+        // math (scissor, glyph atlas) must account for both factors — otherwise
+        // draws clip to the upper-left (DPI-sized) corner of the larger
+        // render target.
+        const float thumb_render_scale = dpi_scale * static_cast<float>(kThumbSupersample);
         if (thumb_draw_renderer.init(gpu.device(), WGPUTextureFormat_RGBA16Float,
-                                      font_path.c_str(), 16.0f, dpi_scale)) {
+                                      font_path.c_str(), 16.0f, thumb_render_scale)) {
             thumb_draw_renderer_ok = true;
         }
     }
