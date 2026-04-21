@@ -577,6 +577,8 @@ void RuntimeCommandSink::clone_cpp_operator(const std::string& type_name,
     // Register and queue build
     registry_->register_user_operator(new_type, new_cpp);
     op_cache_->invalidate_all();
+    if (package_manager_)
+        package_manager_->notify_watchers_changed();
     if (hot_reloader_)
         hot_reloader_->queue_rebuild("pkg:" + pkg_name + ":" + new_stem);
 

@@ -250,6 +250,7 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
     std::fprintf(stderr, "[vivid] PackageManager: installed %s (%zu operators)\n",
                  result.info.name.c_str(),
                  result.info.operators.size() + result.info.gpu_operators.size());
+    notify_watchers_changed();
     return result;
 }
 
@@ -321,6 +322,7 @@ InstallResult PackageManager::link(const std::string& path) {
     std::fprintf(stderr, "[vivid] PackageManager: linked %s -> %s (%zu operators)\n",
                  result.info.name.c_str(), canonical.string().c_str(),
                  result.info.operators.size() + result.info.gpu_operators.size());
+    notify_watchers_changed();
     return result;
 }
 
@@ -368,6 +370,7 @@ bool PackageManager::unlink(const std::string& name) {
     }
 
     std::fprintf(stderr, "[vivid] PackageManager: unlinked %s\n", name.c_str());
+    notify_watchers_changed();
     return true;
 }
 
@@ -430,6 +433,7 @@ InstallResult PackageManager::rebuild(const std::string& name) {
     std::fprintf(stderr, "[vivid] PackageManager: rebuilt %s (%zu operators)\n",
                  result.info.name.c_str(),
                  result.info.operators.size() + result.info.gpu_operators.size());
+    notify_watchers_changed();
     return result;
 }
 
@@ -491,6 +495,7 @@ bool PackageManager::uninstall(const std::string& name) {
     }
 
     std::fprintf(stderr, "[vivid] PackageManager: uninstalled %s\n", name.c_str());
+    notify_watchers_changed();
     return true;
 }
 

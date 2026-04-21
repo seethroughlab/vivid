@@ -114,6 +114,7 @@ struct PackageUpdateAssessment {
 class PackageManager {
 public:
     using PackageResolver = std::function<std::string(const std::string& package_name)>;
+    using WatchersChangedCallback = std::function<void()>;
 
     PackageManager(PackageCompiler& compiler, OperatorRegistry& registry);
 
@@ -152,6 +153,19 @@ public:
     // Set a callback that resolves package names to URLs (for dependency resolution)
     void set_resolver(PackageResolver resolver);
     void set_build_console(BuildConsole* console);
+
+    // Called after install/link/unlink/uninstall/rebuild succeed. The host uses
+    // this to refresh file-watcher entries for the package without polling. Fires
+    // from whichever thread invoked the lifecycle method; the callback must be
+    // thread-safe and non-blocking (notify a worker; don't do filesystem work here).
+    void set_watchers_changed_callback(WatchersChangedCallback cb) { watchers_changed_ = std::move(cb); }
+
+    // Fire the watchers-changed callback directly. For flows that add files to
+    // a package without going through install/link/rebuild (e.g. scaffold_operator
+    // writing a new .cpp into a linked package).
+    void notify_watchers_changed() const {
+        if (watchers_changed_) watchers_changed_();
+    }
 
     // Check if a package is installed (by name)
     bool is_installed(const std::string& name) const;
@@ -200,6 +214,7 @@ private:
     OperatorRegistry& registry_;
     BuildConsole* build_console_ = nullptr;
     PackageResolver resolver_;
+    WatchersChangedCallback watchers_changed_;
     SubgraphModuleRegistry* subgraph_modules_ = nullptr;
     AssetLibrary* asset_library_ = nullptr;
     DiscoveryReport discovery_report_;

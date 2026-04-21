@@ -74,6 +74,7 @@
 #include <algorithm>
 #include <chrono>
 #include <atomic>
+#include <condition_variable>
 #include <random>
 #include <functional>
 #include <memory>
@@ -2072,7 +2073,6 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
     vivid::FileWatcher file_watcher;
     vivid::HotReloader hot_reloader;
     bool hot_reload_enabled = false;
-    auto next_package_watch_rescan_at = std::chrono::steady_clock::time_point{};
     auto refresh_package_watches = [&]() {
         int watched_pkg_files = 0;
         for (const auto& pkg : pkg_manager.list()) {
@@ -2083,6 +2083,18 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
                          watched_pkg_files);
         }
     };
+
+    // Event-driven rescan worker. Lifecycle operations on PackageManager (and
+    // the scaffold/clone paths that write new .cpp files into a package) fire
+    // the watchers-changed callback, which notifies this worker to walk the
+    // package source trees and add any new files to the file-watcher. The
+    // traversal and per-file FileWatcher::add_watch calls stay off the frame
+    // thread — putting them on the frame loop caused ~250 ms stalls.
+    std::thread package_watch_worker;
+    std::mutex package_watch_mutex;
+    std::condition_variable package_watch_cv;
+    bool package_watch_wake = false;
+    std::atomic<bool> package_watch_stop{false};
     {
         if (src_dir.empty()) {
             auto probe = exe_dir;
@@ -2116,8 +2128,34 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
                 file_watcher.add_shader_operator_watches(mi::derive_project_shader_dir(graph));
 
                 // Also watch package source files (both operators/ and src/ layouts).
+                // Initial scan runs on the main thread; subsequent rescans run on a
+                // worker so the frame loop never stalls on filesystem traversal.
                 refresh_package_watches();
-                next_package_watch_rescan_at = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+
+                pkg_manager.set_watchers_changed_callback([&]() {
+                    {
+                        std::lock_guard<std::mutex> lk(package_watch_mutex);
+                        package_watch_wake = true;
+                    }
+                    package_watch_cv.notify_one();
+                });
+
+                package_watch_worker = std::thread([&]() {
+                    // Event-driven: rescan only when a lifecycle event fires the
+                    // watchers-changed callback (install/uninstall/link/unlink/
+                    // rebuild/scaffold/clone). Edits to already-watched files are
+                    // delivered by efsw without a rescan.
+                    while (true) {
+                        std::unique_lock<std::mutex> lk(package_watch_mutex);
+                        package_watch_cv.wait(lk, [&]() {
+                            return package_watch_wake || package_watch_stop.load();
+                        });
+                        if (package_watch_stop.load()) return;
+                        package_watch_wake = false;
+                        lk.unlock();
+                        refresh_package_watches();
+                    }
+                });
 
                 // Set up package compile callback for hot-reloader
                 std::string pkg_src_dir = src_dir;
@@ -2899,12 +2937,10 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
             gpu_state.output_format   = kOffscreenFormat;
 
             // --- Hot-reload polling ---
+            // Package-watch rescan runs on a worker thread (see package_watch_worker
+            // above); only the event drain stays on the frame thread because it
+            // mutates the live operator registry and compiled graph.
             if (hot_reload_enabled && !graph_transaction_active) {
-                auto now_scan = std::chrono::steady_clock::now();
-                if (now_scan >= next_package_watch_rescan_at) {
-                    refresh_package_watches();
-                    next_package_watch_rescan_at = now_scan + std::chrono::seconds(1);
-                }
                 poll_hot_reload(file_watcher, hot_reloader, runtime, registry, runtime_api,
                                 audio_engine, has_gpu_ops, has_audio, &op_info_cache,
                                 runtime.operators_src_dir());
@@ -3284,6 +3320,12 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
     system_midi.close();
     control_server.stop();
     if (hot_reload_enabled) {
+        if (package_watch_worker.joinable()) {
+            package_watch_stop.store(true);
+            package_watch_cv.notify_all();
+            package_watch_worker.join();
+        }
+        pkg_manager.set_watchers_changed_callback(nullptr);
         file_watcher.stop();
         hot_reloader.stop();
     }

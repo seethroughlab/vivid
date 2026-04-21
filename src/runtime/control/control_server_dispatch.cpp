@@ -882,6 +882,12 @@ std::string dispatch(const std::string& method, const std::string& body,
             auto cr = OperatorCreator::create(req, resolved.root, resolved.package_layout);
             if (!cr.success) return json_err(cr.error);
 
+            // A new .cpp was written into a package directory; poke the host
+            // so the file-watcher picks it up without waiting for the safety-net
+            // periodic rescan.
+            if (resolved.package_layout && package_manager)
+                package_manager->notify_watchers_changed();
+
             if (hot_reloader) {
                 if (resolved.package_layout && !resolved.package_name.empty())
                     hot_reloader->queue_rebuild("pkg:" + resolved.package_name + ":" + cr.target_name);
