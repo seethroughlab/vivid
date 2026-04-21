@@ -17,7 +17,6 @@
             "gpu",
             "control"
         ],
-        "requires_packages": [],
         "featured_rank": 6,
         "estimated_minutes": 1,
         "content_kind": "example",
@@ -30,12 +29,12 @@
         "clock1": {
             "type": "ClockFr",
             "params": {
-                "beats_per_bar": 4.0,
-                "bpm": 60.0
+                "bpm": 60.0,
+                "beats_per_bar": 4.0
             },
             "layout": {
-                "x": -113.95703125,
-                "y": 373.1640625
+                "x": -113.95703,
+                "y": 373.16406
             }
         },
         "lfo1": {
@@ -52,31 +51,31 @@
         "shape1": {
             "type": "Shape2D",
             "params": {
-                "sides": 64.0,
-                "scale_x": 0.25,
-                "scale_y": 0.25,
                 "softness": 0.0,
-                "r": 0.3,
                 "g": 0.6,
+                "scale_y": 0.25,
+                "sides": 18.0,
+                "scale_x": 0.25,
+                "r": 0.3,
                 "b": 1.0
             },
             "layout": {
-                "x": 399.86328125,
-                "y": 358.64453125
+                "x": 369.57224,
+                "y": 382.8523
+            }
+        },
+        "shape1_render": {
+            "type": "Render2D",
+            "layout": {
+                "x": 579.8633,
+                "y": 358.64453
             }
         },
         "vout": {
             "type": "video_out",
             "layout": {
                 "x": 737.1875,
-                "y": 329.91015625
-            }
-        },
-        "shape1_render": {
-            "type": "Render2D",
-            "layout": {
-                "x": 579.86328125,
-                "y": 358.64453125
+                "y": 329.91016
             }
         }
     },
@@ -103,25 +102,25 @@
         }
     ],
     "viewport": {
-        "pan_x": 245.37890625,
-        "pan_y": 274.1015625,
-        "zoom": 1.0
+        "pan_x": 409.58072,
+        "pan_y": 49.487667,
+        "zoom": 0.5880328
     },
     "sticky_notes": [
         {
             "id": "note_1",
-            "text": "**Clock \u2192 LFO \u2192 Shape** pipeline The Clock's beat_phase drives the LFO, which pulses the circle's radius",
+            "text": "**Clock → LFO → Shape** pipeline The Clock's beat_phase drives the LFO, which pulses the circle's radius",
             "x": -41.75,
-            "y": 250.38671875,
+            "y": 250.38672,
             "width": 280.0,
             "height": 80.0,
             "color": 0
         },
         {
             "id": "note_2",
-            "text": "LFO offset=0.25, amplitude=0.15 sweeps radius 0.10 \u2192 0.40 so the circle breathes with the beat",
-            "x": -40.30078125,
-            "y": 174.08984375,
+            "text": "LFO offset=0.25, amplitude=0.15 sweeps radius 0.10 → 0.40 so the circle breathes with the beat",
+            "x": -40.30078,
+            "y": 174.08984,
             "width": 250.0,
             "height": 60.0,
             "color": 2

@@ -24,14 +24,14 @@
         "category": "starter",
         "family": "Cross-domain starters",
         "role": "starter",
-        "playability": "self_playing",
-        "requires_packages": []
+        "playability": "self_playing"
     },
     "nodes": {
         "clock1": {
             "type": "ClockFr",
             "params": {
-                "bpm": 120.0
+                "bpm": 84.23682,
+                "beats_per_bar": 4.0
             },
             "layout": {
                 "x": -200.0,
@@ -51,9 +51,9 @@
         "lfo1": {
             "type": "LfoFr",
             "params": {
-                "polarity": 1.0,
+                "amplitude": 3.0,
                 "offset": 5.0,
-                "amplitude": 3.0
+                "polarity": 1.0
             },
             "layout": {
                 "x": 50.0,
@@ -63,25 +63,25 @@
         "metaball1": {
             "type": "Metaball",
             "params": {
-                "count": 1.0,
-                "color_mode": 0.0,
-                "threshold": 1.2,
-                "softness": 0.02,
-                "glow": 0.6,
-                "r": 1.0,
+                "b": 0.2,
+                "count": 3.0,
                 "g": 0.6,
-                "b": 0.2
+                "threshold": 1.2,
+                "color_mode": 0.0,
+                "glow": 0.0,
+                "r": 1.0,
+                "softness": 0.03291907
             },
             "layout": {
-                "x": 350.0,
+                "x": 348.85156,
                 "y": 150.0
             }
         },
         "osc1": {
             "type": "Oscillator",
             "params": {
-                "frequency": 330.0,
-                "amplitude": 0.5
+                "amplitude": 0.5,
+                "frequency": 330.0
             },
             "layout": {
                 "x": 350.0,
@@ -111,7 +111,7 @@
         {
             "from": "lfo1/value",
             "to": "metaball1/pos_x",
-            "from_min": 2.0,
+            "from_min": 5.0,
             "from_max": 8.0,
             "to_min": 0.15,
             "to_max": 0.85
@@ -139,9 +139,9 @@
         }
     ],
     "viewport": {
-        "pan_x": 319.45398,
-        "pan_y": 81.38189,
-        "zoom": 0.7985277
+        "pan_x": 325.49503,
+        "pan_y": 129.50851,
+        "zoom": 0.77890176
     },
     "sticky_notes": [
         {

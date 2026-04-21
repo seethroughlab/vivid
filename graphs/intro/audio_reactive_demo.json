@@ -56,8 +56,8 @@
                 "amplitude": 0.4
             },
             "layout": {
-                "x": -211.91553,
-                "y": -72.60478
+                "x": -210.1452,
+                "y": -89.736275
             }
         },
         "noise1": {
@@ -71,8 +71,8 @@
                 "channels": 1.0
             },
             "layout": {
-                "x": 162.29688,
-                "y": 442.9375
+                "x": -43.255966,
+                "y": 451.71387
             },
             "resolution": [
                 1920,
@@ -101,34 +101,34 @@
             "type": "Shape2D",
             "params": {
                 "softness": 0.0,
-                "sides": 6.0,
-                "b": 0.9,
-                "scale_x": 0.35,
+                "g": 0.8,
                 "scale_y": 0.35,
+                "sides": 6.0,
+                "scale_x": 0.35,
                 "r": 0.2,
-                "g": 0.8
+                "b": 0.9
             },
             "layout": {
-                "x": 160.67969,
-                "y": 245.19531
+                "x": -52.004585,
+                "y": 245.92749
             },
             "resolution": [
                 1920,
                 1080
             ]
         },
+        "shape1_render": {
+            "type": "Render2D",
+            "layout": {
+                "x": 122.23309,
+                "y": 249.40796
+            }
+        },
         "vout": {
             "type": "video_out",
             "layout": {
                 "x": 1386.524,
                 "y": 249.7229
-            }
-        },
-        "shape1_render": {
-            "type": "Render2D",
-            "layout": {
-                "x": 340.67969,
-                "y": 245.19531
             }
         }
     },
@@ -169,36 +169,36 @@
         }
     ],
     "viewport": {
-        "pan_x": -1506.4465,
-        "pan_y": -193.21294,
-        "zoom": 2.5
+        "pan_x": 283.57706,
+        "pan_y": 166.46164,
+        "zoom": 0.77890176
     },
     "sticky_notes": [
         {
             "id": "ar_note_1",
             "text": "**Audio distorts a shape** The hexagon is the **source**, noise is the **map**, and the audio envelope drives the **amount** of distortion.",
-            "x": 872.7887,
-            "y": 154.98683,
-            "width": 320.0,
-            "height": 90.0,
+            "x": 1035.3925,
+            "y": 138.19139,
+            "width": 228.76575,
+            "height": 102.91884,
             "color": 0
         },
         {
             "id": "ar_note_2",
             "text": "**Noise as a map, not a background.** Bright pixels in the noise push source pixels further. When audio is silent, amount=0 and the hexagon is crisp.",
-            "x": 86.546875,
-            "y": 634.65625,
+            "x": -122.94783,
+            "y": 655.1078,
             "width": 300.0,
             "height": 100.0,
             "color": 3
         },
         {
             "id": "ar_note_3",
-            "text": "**Audio \u2192 visual bridge.** The Gain's **rms** output is a smoothed audio envelope. The wire remap scales 0.0\u20130.5 RMS into 0.0\u20130.6 displacement amount.",
-            "x": 324.3678,
-            "y": 182.85748,
-            "width": 261.91772,
-            "height": 104.10666,
+            "text": "**Audio → visual bridge.** The Gain's **rms** output is a smoothed audio envelope. The wire remap scales 0.0–0.5 RMS into 0.0–0.6 displacement amount.",
+            "x": 661.5213,
+            "y": 174.64781,
+            "width": 199.40485,
+            "height": 126.9453,
             "color": 1
         }
     ]

@@ -16,7 +16,6 @@
             "audio",
             "control"
         ],
-        "requires_packages": [],
         "featured_rank": 10,
         "estimated_minutes": 1,
         "content_kind": "example",
@@ -26,16 +25,6 @@
         "playability": "self_playing"
     },
     "nodes": {
-        "gain1": {
-            "type": "Gain",
-            "params": {
-                "gain": 0.8
-            },
-            "layout": {
-                "x": 0.0,
-                "y": 0.0
-            }
-        },
         "lfo1": {
             "type": "Lfo",
             "params": {
@@ -44,27 +33,27 @@
                 "amplitude": 1.0697606
             },
             "layout": {
-                "x": -33.294827,
-                "y": 563.07367
+                "x": -73.32524,
+                "y": 468.2527
             }
         },
         "osc1": {
             "type": "Oscillator",
             "params": {
                 "waveform": 3.0,
-                "frequency": 440.0,
+                "frequency": 350.0,
                 "amplitude": 0.5
             },
             "layout": {
-                "x": -6.570427,
-                "y": 345.1659
+                "x": -79.88487,
+                "y": 120.39101
             }
         },
         "out1": {
             "type": "audio_out",
             "layout": {
-                "x": 240.0,
-                "y": 0.0
+                "x": 462.32812,
+                "y": 329.09744
             }
         },
         "pan1": {
@@ -90,24 +79,20 @@
         },
         {
             "from": "pan1/output",
-            "to": "gain1/input"
-        },
-        {
-            "from": "gain1/output",
             "to": "out1/input"
         }
     ],
     "viewport": {
-        "pan_x": 332.68292,
-        "pan_y": -83.00586,
-        "zoom": 0.9221912
+        "pan_x": 353.9029,
+        "pan_y": -48.160507,
+        "zoom": 1.2564996
     },
     "sticky_notes": [
         {
             "id": "note_1",
             "text": "**Stereo panning demo** Oscillator → StereoPanWidth → Gain → audio_out\nThe LFO slowly sweeps the pan from left to right.",
-            "x": 56.192184,
-            "y": 99.48505,
+            "x": 220.99335,
+            "y": 134.52913,
             "width": 280.0,
             "height": 80.0,
             "color": 0
@@ -115,8 +100,8 @@
         {
             "id": "note_2",
             "text": "Try changing the LFO **frequency** to pan faster, or adjust **width** on the panner.",
-            "x": -52.32144,
-            "y": 255.3749,
+            "x": -127.94358,
+            "y": 396.70493,
             "width": 260.0,
             "height": 60.0,
             "color": 4

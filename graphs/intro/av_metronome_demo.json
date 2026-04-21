@@ -48,41 +48,23 @@
                 "amplitude": 110.0
             },
             "layout": {
-                "x": 30.0,
-                "y": 265.38693
+                "x": -204.91608,
+                "y": 118.60312
             }
         },
         "lfo_vis": {
             "type": "LfoFr",
             "params": {
-                "waveform": 1.0,
-                "rate_mode": 2.0,
-                "sync_division": 3.0,
-                "polarity": 1.0,
                 "offset": 0.35,
+                "rate_mode": 2.0,
+                "polarity": 1.0,
+                "waveform": 1.0,
+                "sync_division": 3.0,
                 "amplitude": -0.25
             },
             "layout": {
-                "x": 39.707153,
-                "y": 493.3661
-            }
-        },
-        "shape1": {
-            "type": "Shape2D",
-            "params": {
-                "sides": 4.0,
-                "star_factor": 0.3,
-                "scale_x": 0.35,
-                "scale_y": 0.35,
-                "rotation": 0.785,
-                "softness": 0.0,
-                "r": 1.0,
-                "g": 1.0,
-                "b": 0.5
-            },
-            "layout": {
-                "x": 263.92108,
-                "y": 486.8512
+                "x": -208.45172,
+                "y": 326.36145
             }
         },
         "osc1": {
@@ -103,11 +85,22 @@
                 "y": 281.68698
             }
         },
-        "vout": {
-            "type": "video_out",
+        "shape1": {
+            "type": "Shape2D",
+            "params": {
+                "star_factor": 0.3,
+                "softness": 0.0,
+                "sides": 4.0,
+                "scale_x": 0.35,
+                "rotation": 0.785,
+                "r": 1.0,
+                "scale_y": 0.35,
+                "g": 1.0,
+                "b": 0.5
+            },
             "layout": {
-                "x": 482.1952,
-                "y": 482.4677
+                "x": 263.92108,
+                "y": 486.8512
             }
         },
         "shape1_render": {
@@ -115,6 +108,13 @@
             "layout": {
                 "x": 443.92108,
                 "y": 486.8512
+            }
+        },
+        "vout": {
+            "type": "video_out",
+            "layout": {
+                "x": 482.1952,
+                "y": 482.4677
             }
         }
     },
@@ -154,9 +154,9 @@
         "beats_per_bar": 4
     },
     "viewport": {
-        "pan_x": 295.29932,
-        "pan_y": 247.4338,
-        "zoom": 0.7528421
+        "pan_x": 376.82706,
+        "pan_y": 263.70773,
+        "zoom": 0.77890176
     },
     "sticky_notes": [
         {
@@ -170,7 +170,7 @@
         },
         {
             "id": "avm_note_2",
-            "text": "**Visual path**: eighth-note saw LFO pops the star big then shrinks it \u2014 snap back every 8th note.",
+            "text": "**Visual path**: eighth-note saw LFO pops the star big then shrinks it — snap back every 8th note.",
             "x": 220.0,
             "y": -90.0,
             "width": 260.0,
@@ -179,9 +179,9 @@
         },
         {
             "id": "avm_note_3",
-            "text": "**Audio path**: sixteenth-note square LFO alternates the pitch between 220 and 440 Hz \u2014 two pitch changes per visual pop.",
-            "x": 220.0,
-            "y": 120.0,
+            "text": "**Audio path**: sixteenth-note square LFO alternates the pitch between 220 and 440 Hz — two pitch changes per visual pop.",
+            "x": -63.015686,
+            "y": 7.832859,
             "width": 260.0,
             "height": 80.0,
             "color": 1
