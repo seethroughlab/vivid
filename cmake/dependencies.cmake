@@ -7,6 +7,22 @@ find_package(CURL REQUIRED)
 # upstream releases since v27.0.4.1, so no from-source build is needed.
 include(FetchContent)
 set(WGPU_VERSION "v29.0.0.0" CACHE STRING "wgpu-native release" FORCE)
+# WebGPU-distribution picks the prebuilt binary using CMAKE_SYSTEM_PROCESSOR,
+# which reflects the host cmake's arch — not the target's. On Apple Silicon
+# runners where cmake runs under Rosetta that resolves to x86_64 and a
+# mismatched dylib gets baked into the arm64 bundle. Honor
+# CMAKE_OSX_ARCHITECTURES instead.
+if(APPLE AND CMAKE_OSX_ARCHITECTURES)
+    if("${CMAKE_OSX_ARCHITECTURES}" STREQUAL "arm64")
+        set(ARCH "aarch64")
+    elseif("${CMAKE_OSX_ARCHITECTURES}" STREQUAL "x86_64")
+        set(ARCH "x86_64")
+    else()
+        message(FATAL_ERROR
+            "CMAKE_OSX_ARCHITECTURES='${CMAKE_OSX_ARCHITECTURES}' is not a single-arch value "
+            "recognized by the wgpu-native precompiled release selector (arm64 or x86_64).")
+    endif()
+endif()
 FetchContent_Declare(
     webgpu
     GIT_REPOSITORY https://github.com/eliemichel/WebGPU-distribution
