@@ -115,23 +115,26 @@ typedef struct VividParamDescriptor {
 } VividParamDescriptor;
 
 typedef struct VividPortDescriptor {
-    const char*        name;
-    VividPortType      type;
-    VividPortDirection direction;
-    VividPortTransport transport;
-    uint32_t           payload_size; // 0 for built-in types
-    const char*        type_name;    // C++ type name, NULL for built-ins
-    uint8_t            channels;     // 0=auto, 1=mono, 2=stereo, etc.
-    float              default_value;// default for VIVID_PORT_SCALAR inputs
-    const char*        stable_type_id; // stable namespaced id for custom types, NULL for built-ins
-    const char*        semantic_tag;   // e.g. "beat_phase", "gate", "trigger", "midi", NULL if unset
-    const char*        semantic_shape; // e.g. "scalar", "lane_array", "audio_buffer", NULL if unset
-    const char*        semantic_intent;// free-form hint, e.g. "per_note_gate", NULL if unset
-    const char*        description;    // human-readable tooltip shown in inspector/docs, NULL if unset
+    // C++17 default member initializers let operators use the short
+    // {name, type, direction} aggregate form without -Wmissing-field-initializers.
+    // Layout/ABI unchanged; every DMI value matches previous zero-init behavior.
+    const char*        name             = nullptr;
+    VividPortType      type             = 0;
+    VividPortDirection direction        = 0;
+    VividPortTransport transport        = 0;
+    uint32_t           payload_size     = 0;       // 0 for built-in types
+    const char*        type_name        = nullptr; // C++ type name, NULL for built-ins
+    uint8_t            channels         = 0;       // 0=auto, 1=mono, 2=stereo, etc.
+    float              default_value    = 0.0f;    // default for VIVID_PORT_SCALAR inputs
+    const char*        stable_type_id   = nullptr; // stable namespaced id for custom types, NULL for built-ins
+    const char*        semantic_tag     = nullptr; // e.g. "beat_phase", "gate", "trigger", "midi", NULL if unset
+    const char*        semantic_shape   = nullptr; // e.g. "scalar", "lane_array", "audio_buffer", NULL if unset
+    const char*        semantic_intent  = nullptr; // free-form hint, e.g. "per_note_gate", NULL if unset
+    const char*        description      = nullptr; // human-readable tooltip shown in inspector/docs, NULL if unset
 
     // repeat-group metadata (for variadic port patterns)
-    const char*        repeat_group;     // NULL = standalone; non-NULL = group name (e.g. "layer")
-    uint16_t           repeat_group_idx; // 0-based index within the repeat group
+    const char*        repeat_group     = nullptr; // NULL = standalone; non-NULL = group name (e.g. "layer")
+    uint16_t           repeat_group_idx = 0;       // 0-based index within the repeat group
 } VividPortDescriptor;
 
 
