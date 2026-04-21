@@ -56,6 +56,28 @@ static void draw_dashed_wire(Renderer2D& tr,
                         kDashOn, kDashOff, 0.0f, r, g, b, a);
 }
 
+// Back-edge arc: bezier with control points pushed below the line between
+// endpoints so the curve bulges downward, visually distinguishing cycle edges
+// from the forward signal flow. `arc_px` is the vertical bulge in screen px.
+static void draw_back_edge_arc(Renderer2D& tr,
+                               float ssx, float ssy, float sex, float sey,
+                               float arc_px, float thickness,
+                               float r, float g, float b, float a) {
+    // Control points: horizontal offset = half the absolute X span, vertical
+    // offset = arc bulge. Bulge applied to both endpoints so the curve dips.
+    float cp_off_x = std::fabs(sex - ssx) * 0.5f + arc_px;
+    float c1x = ssx + cp_off_x, c1y = ssy + arc_px;
+    float c2x = sex - cp_off_x, c2y = sey + arc_px;
+    float px = ssx, py = ssy;
+    for (int seg = 1; seg <= kBezierSegments; ++seg) {
+        float t = static_cast<float>(seg) / kBezierSegments;
+        float nx, ny;
+        eval_bezier(t, ssx, ssy, c1x, c1y, c2x, c2y, sex, sey, nx, ny);
+        tr.draw_line(px, py, nx, ny, thickness, r, g, b, a);
+        px = nx; py = ny;
+    }
+}
+
 
 void NodeGraphUI::draw_connections(Renderer2D& tr) {
     const auto& conns = snap_.connections;
@@ -115,13 +137,26 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
         }
 
         bool is_param_wire = c.from_is_param || c.to_is_param;
+        bool is_back_edge = (ci >= 0 && static_cast<size_t>(ci) < back_edge_mask_.size() &&
+                             back_edge_mask_[ci]);
         float wire_th;
         if (is_param_wire)
             wire_th = std::max(1.0f, style_.wire_param_thickness * zoom_);
         else
             wire_th = std::max(1.0f, (hov ? style_.wire_hover_thickness : style_.wire_thickness) * zoom_);
 
-        if (is_param_wire || c.invalid) {
+        if (is_back_edge && !c.invalid) {
+            // Route cycle edges as an arc bulging below the graph with a
+            // distinct color so they read as feedback rather than main flow.
+            float bcr = kBackEdgeColor[0] * brightness;
+            float bcg = kBackEdgeColor[1] * brightness;
+            float bcb = kBackEdgeColor[2] * brightness;
+            float ba = (hov || sel) ? 1.0f : kBackEdgeColor[3];
+            draw_back_edge_arc(tr, ssx, ssy, sex, sey,
+                               kBackEdgeArcHeight * zoom_, wire_th,
+                               std::min(1.0f, bcr), std::min(1.0f, bcg),
+                               std::min(1.0f, bcb), ba);
+        } else if (is_param_wire || c.invalid) {
             float a_param = (hov || sel) ? 0.6f : 0.35f;
             if (c.invalid) a_param = a;
             draw_dashed_wire(tr, ssx, ssy, sex, sey, bezier_wires_, wire_th, cr, cg, cb, a_param);

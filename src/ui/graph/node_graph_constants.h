@@ -134,6 +134,14 @@ static constexpr float kDensityTickAlpha = 0.35f;
 // Bezier wire rendering
 static constexpr int kBezierSegments = 30;
 
+// Back-edge rendering (cycle edges routed distinctly from forward flow)
+static constexpr std::array<float, 4> kBackEdgeColor = { 0.85f, 0.45f, 0.60f, 0.85f };  // dusty rose
+static constexpr float kBackEdgeArcHeight = 60.0f;  // graph-space arc bulge for back-edge wires
+
+// Layout pipeline tuning (consumed by layout_nodes in node_graph.cpp)
+static constexpr int   kLayoutRelaxIterations = 12;   // Y-coordinate relaxation passes
+static constexpr float kSpineWeight           = 4.0f;  // extra pull weight applied to spine neighbors
+
 // Operator environment classification (for chooser tabs and display)
 enum class OpEnvironment : uint8_t { GPU, Audio, Control };
 

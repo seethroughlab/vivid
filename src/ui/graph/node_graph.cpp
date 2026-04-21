@@ -17,6 +17,7 @@ using vivid::format_float;
 using vivid::format_int;
 using vivid::format_uint;
 using vivid::kahn_sort;
+using vivid::detect_back_edges;
 
 // -----------------------------------------------------------------------
 // Constructor
@@ -491,151 +492,349 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
 }
 
 // -----------------------------------------------------------------------
-// Sugiyama-inspired auto-layout
+// Flow-emphasizing auto-layout (Sugiyama pipeline with coordinate assignment).
+//
+// Stages:
+//   1. Detect back-edges via DFS; exclude them from layering.
+//   2. Longest-path layer assignment on the DAG (topo sort).
+//   3. Insert virtual "dummy" nodes along forward edges that span >1 layer
+//      so long edges reserve vertical space and participate in ordering.
+//   4. Barycenter crossing reduction across real + dummy slots.
+//   5. Compute heights, identify the spine (longest path ending at a primary
+//      sink, priority video_out > audio_out > terminal), pin spine Y to the
+//      centerline, relax non-spine Y toward port-aligned targets, resolve
+//      within-layer overlaps each iteration.
+//   6. Write rects + recompute port positions. Param-only wires are not used
+//      for layering — modulation is auxiliary to the signal spine.
 // -----------------------------------------------------------------------
 void NodeGraphUI::layout_nodes(bool force) {
     node_rects_.clear();
     const auto& nodes = snap_.nodes;
     const auto& conns = snap_.connections;
+    back_edge_mask_.assign(conns.size(), false);
     if (nodes.empty()) return;
+
+    uint32_t nn = static_cast<uint32_t>(nodes.size());
 
     // Build node_id -> index map
     std::unordered_map<std::string, uint32_t> id_to_idx;
-    for (uint32_t i = 0; i < nodes.size(); ++i)
+    id_to_idx.reserve(nn);
+    for (uint32_t i = 0; i < nn; ++i)
         id_to_idx[nodes[i].node_id] = i;
 
-    // Build adjacency (predecessors list for longest-path layer assignment)
-    std::vector<std::vector<uint32_t>> preds(nodes.size());
-    std::vector<std::vector<uint32_t>> succs(nodes.size());
-    for (const auto& c : conns) {
+    // --- Stage 1: back-edge detection ---
+    // Build an edge list (resolvable, non-param) paired with its connection index.
+    // Param-only wires are modulation, not signal flow; exclude from layering.
+    std::vector<std::pair<uint32_t, uint32_t>> edges;
+    std::vector<int> edge_to_conn;
+    edges.reserve(conns.size());
+    edge_to_conn.reserve(conns.size());
+    for (size_t ci = 0; ci < conns.size(); ++ci) {
+        const auto& c = conns[ci];
+        if (c.from_is_param || c.to_is_param) continue;
         auto fi = id_to_idx.find(c.from_node);
         auto ti = id_to_idx.find(c.to_node);
-        if (fi != id_to_idx.end() && ti != id_to_idx.end()) {
-            preds[ti->second].push_back(fi->second);
-            succs[fi->second].push_back(ti->second);
-        }
+        if (fi == id_to_idx.end() || ti == id_to_idx.end()) continue;
+        edges.push_back({fi->second, ti->second});
+        edge_to_conn.push_back(static_cast<int>(ci));
     }
 
-    // Topological order
-    uint32_t nn = static_cast<uint32_t>(nodes.size());
+    std::vector<bool> edge_is_back = detect_back_edges(nn, edges);
+    for (size_t ei = 0; ei < edges.size(); ++ei) {
+        if (edge_is_back[ei]) back_edge_mask_[edge_to_conn[ei]] = true;
+    }
+
+    // Forward-edge adjacency (DAG)
+    std::vector<std::vector<uint32_t>> preds(nn);
+    std::vector<std::vector<uint32_t>> succs(nn);
+    for (size_t ei = 0; ei < edges.size(); ++ei) {
+        if (edge_is_back[ei]) continue;
+        preds[edges[ei].second].push_back(edges[ei].first);
+        succs[edges[ei].first].push_back(edges[ei].second);
+    }
+
+    // --- Stage 2: longest-path layer assignment ---
     std::vector<uint32_t> in_degree(nn);
     for (uint32_t i = 0; i < nn; ++i)
         in_degree[i] = static_cast<uint32_t>(preds[i].size());
-
-    auto topo_order = kahn_sort(nn, succs, in_degree, /*soft_on_cycle=*/true);
-
-    // Layer assignment: longest path from sources
-    std::vector<int> layer(nodes.size(), 0);
-    for (uint32_t idx : topo_order) {
-        for (uint32_t p : preds[idx]) {
-            layer[idx] = std::max(layer[idx], layer[p] + 1);
-        }
+    auto topo_order = kahn_sort(nn, succs, in_degree, /*soft_on_cycle=*/false);
+    if (topo_order.empty()) {
+        // Should not occur — back-edge removal guarantees a DAG. Safe fallback.
+        topo_order = kahn_sort(nn, succs, in_degree, /*soft_on_cycle=*/true);
     }
 
-    // Group nodes by layer
-    int max_layer = *std::max_element(layer.begin(), layer.end());
-    std::vector<std::vector<uint32_t>> layers(max_layer + 1);
-    for (uint32_t i = 0; i < nodes.size(); ++i)
-        layers[layer[i]].push_back(i);
+    std::vector<int> layer(nn, 0);
+    for (uint32_t idx : topo_order) {
+        for (uint32_t p : preds[idx])
+            layer[idx] = std::max(layer[idx], layer[p] + 1);
+    }
+    int max_layer = 0;
+    for (uint32_t i = 0; i < nn; ++i) max_layer = std::max(max_layer, layer[i]);
 
-    // Barycenter crossing reduction: 4 passes (forward + backward)
+    // --- Stage 3: dummy insertion for long forward edges ---
+    // Extended slot space: [0..nn) = real nodes, [nn..xn) = dummies.
+    std::vector<int> x_layer(layer.begin(), layer.end());
+    std::vector<std::vector<uint32_t>> x_preds(nn);
+    std::vector<std::vector<uint32_t>> x_succs(nn);
+    for (size_t ei = 0; ei < edges.size(); ++ei) {
+        if (edge_is_back[ei]) continue;
+        uint32_t u = edges[ei].first, v = edges[ei].second;
+        int lu = layer[u], lv = layer[v];
+        int diff = lv - lu;
+        if (diff <= 1) {
+            x_preds[v].push_back(u);
+            x_succs[u].push_back(v);
+        } else {
+            uint32_t prev = u;
+            for (int l = lu + 1; l < lv; ++l) {
+                uint32_t d = static_cast<uint32_t>(x_layer.size());
+                x_layer.push_back(l);
+                x_preds.emplace_back();
+                x_succs.emplace_back();
+                x_preds[d].push_back(prev);
+                x_succs[prev].push_back(d);
+                prev = d;
+            }
+            x_preds[v].push_back(prev);
+            x_succs[prev].push_back(v);
+        }
+    }
+    uint32_t xn = static_cast<uint32_t>(x_layer.size());
+
+    std::vector<std::vector<uint32_t>> layers(max_layer + 1);
+    for (uint32_t i = 0; i < xn; ++i) layers[x_layer[i]].push_back(i);
+
+    // --- Stage 4: barycenter crossing reduction (forward + backward sweeps) ---
     for (int pass = 0; pass < 4; ++pass) {
         if (pass % 2 == 0) {
             for (int l = 1; l <= max_layer; ++l) {
+                const auto& prev = layers[l - 1];
+                std::unordered_map<uint32_t, int> pos_in_prev;
+                pos_in_prev.reserve(prev.size() * 2);
+                for (int j = 0; j < static_cast<int>(prev.size()); ++j)
+                    pos_in_prev[prev[j]] = j;
                 std::vector<std::pair<float, uint32_t>> bary;
-                for (uint32_t n : layers[l]) {
+                bary.reserve(layers[l].size());
+                for (uint32_t s : layers[l]) {
                     float sum = 0; int count = 0;
-                    for (uint32_t p : preds[n]) {
-                        auto& prev = layers[l - 1];
-                        for (int j = 0; j < static_cast<int>(prev.size()); ++j) {
-                            if (prev[j] == p) { sum += j; count++; break; }
-                        }
+                    for (uint32_t p : x_preds[s]) {
+                        auto it = pos_in_prev.find(p);
+                        if (it != pos_in_prev.end()) { sum += it->second; ++count; }
                     }
-                    float bc = (count > 0) ? sum / count : 0.0f;
-                    bary.push_back({bc, n});
+                    bary.push_back({count > 0 ? sum / count : 0.0f, s});
                 }
                 std::stable_sort(bary.begin(), bary.end(),
                     [](const auto& a, const auto& b) { return a.first < b.first; });
-                for (size_t j = 0; j < bary.size(); ++j)
-                    layers[l][j] = bary[j].second;
+                for (size_t j = 0; j < bary.size(); ++j) layers[l][j] = bary[j].second;
             }
         } else {
             for (int l = max_layer - 1; l >= 0; --l) {
+                const auto& next = layers[l + 1];
+                std::unordered_map<uint32_t, int> pos_in_next;
+                pos_in_next.reserve(next.size() * 2);
+                for (int j = 0; j < static_cast<int>(next.size()); ++j)
+                    pos_in_next[next[j]] = j;
                 std::vector<std::pair<float, uint32_t>> bary;
-                for (uint32_t n : layers[l]) {
+                bary.reserve(layers[l].size());
+                for (uint32_t s : layers[l]) {
                     float sum = 0; int count = 0;
-                    for (uint32_t s : succs[n]) {
-                        auto& next = layers[l + 1];
-                        for (int j = 0; j < static_cast<int>(next.size()); ++j) {
-                            if (next[j] == s) { sum += j; count++; break; }
-                        }
+                    for (uint32_t c : x_succs[s]) {
+                        auto it = pos_in_next.find(c);
+                        if (it != pos_in_next.end()) { sum += it->second; ++count; }
                     }
-                    float bc = (count > 0) ? sum / count : 0.0f;
-                    bary.push_back({bc, n});
+                    bary.push_back({count > 0 ? sum / count : 0.0f, s});
                 }
                 std::stable_sort(bary.begin(), bary.end(),
                     [](const auto& a, const auto& b) { return a.first < b.first; });
-                for (size_t j = 0; j < bary.size(); ++j)
-                    layers[l][j] = bary[j].second;
+                for (size_t j = 0; j < bary.size(); ++j) layers[l][j] = bary[j].second;
             }
         }
     }
 
-    // Compute node rects
-    node_rects_.resize(nodes.size());
-    for (int l = 0; l <= max_layer; ++l) {
-        float col_x = kLeftMargin + l * kColSpacing;
-        float total_h = 0;
+    // --- Stage 5a: compute node heights + port dys (via recompute_ports on
+    //               stub rects, since port dys don't depend on rect.y/x) ---
+    std::vector<float> heights(xn, 0.0f);
+    // For real nodes: pre-populate node_rects_ with heights so we can ask
+    // recompute_ports for port dys that drive the relaxation targets.
+    node_rects_.resize(nn);
+    for (uint32_t i = 0; i < nn; ++i) {
+        const auto& ns = nodes[i];
+        bool has_ct = custom_thumb_nodes_.count(ns.node_id) > 0;
+        uint8_t ach = snap_.audio_channel_count(ns.node_id);
+        float body_h = node_body_height(ns.is_gpu, ns.active_cadence, has_ct, ach);
+        uint32_t n_inputs = count_visible_input_ports(ns, show_param_wires_);
+        uint32_t n_outputs = count_visible_output_ports(ns, show_param_wires_);
+        uint32_t port_rows = std::max(n_inputs, n_outputs);
+        float h = kAccentBarH + body_h + kNodePadY + kLineH * 2 + port_rows * kLineH + kNodePadY;
+        heights[i] = h;
 
-        // First pass: compute heights
-        std::vector<float> heights(layers[l].size());
-        for (size_t r = 0; r < layers[l].size(); ++r) {
-            uint32_t ni = layers[l][r];
-            const auto& ns = nodes[ni];
+        auto& rect = node_rects_[i];
+        rect.node_id = ns.node_id;
+        rect.type_name = ns.type_name;
+        rect.active_cadence = ns.active_cadence;
+        rect.is_gpu = ns.is_gpu;
+        rect.lane_behavior = ns.lane_behavior;
+        rect.w = kNodeW;
+        rect.h = h;
+        rect.target_h = h;
+        recompute_ports(rect, ns);  // fills inputs/outputs with dy values
+    }
+    // Dummies have zero height and implicit pass-through port dy = 0.
 
-            bool has_ct = custom_thumb_nodes_.count(ns.node_id) > 0;
-            uint8_t ach = snap_.audio_channel_count(ns.node_id);
-            float body_h = node_body_height(ns.is_gpu, ns.active_cadence, has_ct, ach);
+    // Helpers: find the first primary (non-param) input/output port dy for a real node.
+    auto first_nonparam_dy = [](const std::vector<NodeRect::PortPos>& ports) -> float {
+        for (const auto& p : ports) if (!p.is_param) return p.dy;
+        if (!ports.empty()) return ports.front().dy;
+        return 0.0f;
+    };
+    std::vector<float> in_dy(xn, 0.0f), out_dy(xn, 0.0f);
+    for (uint32_t i = 0; i < nn; ++i) {
+        in_dy[i] = first_nonparam_dy(node_rects_[i].inputs);
+        out_dy[i] = first_nonparam_dy(node_rects_[i].outputs);
+    }
+    // Dummies: in_dy/out_dy default to 0 (pass-through).
 
-            uint32_t n_inputs = count_visible_input_ports(ns, show_param_wires_);
-            uint32_t n_outputs = count_visible_output_ports(ns, show_param_wires_);
-            uint32_t port_rows = std::max(n_inputs, n_outputs);
-            float h = kAccentBarH + body_h + kNodePadY + kLineH * 2 + port_rows * kLineH + kNodePadY;
-            heights[r] = h;
-            total_h += h;
-        }
-        total_h += (layers[l].size() > 1 ? (layers[l].size() - 1) : 0) * kRowSpacing;
+    // --- Stage 5b: identify the spine ---
+    // Primary sink priority: video_out > audio_out > terminal node > any node.
+    // Score = priority * large + layer (longer path wins ties within priority).
+    auto sink_priority = [&](uint32_t i) -> int {
+        if (i >= nn) return -1;
+        const auto& ns = nodes[i];
+        if (ns.type_name == "video_out") return 4;
+        if (ns.type_name == "audio_out") return 3;
+        if (succs[i].empty()) return 2;
+        return 1;
+    };
+    int best_sink = -1;
+    int best_score = -1;
+    for (uint32_t i = 0; i < nn; ++i) {
+        int prio = sink_priority(i);
+        if (prio <= 0) continue;
+        int score = prio * 100000 + layer[i];
+        if (score > best_score) { best_score = score; best_sink = static_cast<int>(i); }
+    }
 
-        // Center vertically in graph area
-        float start_y = kTopMargin + (static_cast<float>(win_h_) - 2 * kTopMargin - total_h) * 0.5f;
-        if (start_y < kTopMargin) start_y = kTopMargin;
-
-        float cur_y = start_y;
-        for (size_t r = 0; r < layers[l].size(); ++r) {
-            uint32_t ni = layers[l][r];
-            const auto& ns = nodes[ni];
-            auto& rect = node_rects_[ni];
-            rect.node_id = ns.node_id;
-            rect.type_name = ns.type_name;
-            rect.active_cadence = ns.active_cadence;
-            rect.is_gpu = ns.is_gpu;
-            rect.lane_behavior = ns.lane_behavior;
-            rect.x = col_x;
-            rect.y = cur_y;
-            rect.w = kNodeW;
-            rect.h = heights[r];
-            rect.target_h = heights[r];
-
-            // Override with saved layout position if present (unless forced)
-            if (ns.has_layout && !force) {
-                rect.x = ns.layout_x;
-                rect.y = ns.layout_y;
+    std::vector<uint8_t> on_spine(xn, 0);
+    if (best_sink >= 0) {
+        int cur = best_sink;
+        on_spine[cur] = 1;
+        while (layer[cur] > 0) {
+            int best_pred = -1;
+            int best_pred_layer = -1;
+            for (uint32_t p : preds[cur]) {
+                if (static_cast<int>(layer[p]) > best_pred_layer) {
+                    best_pred_layer = layer[p];
+                    best_pred = static_cast<int>(p);
+                }
             }
-
-            recompute_ports(rect, ns);
-
-            cur_y += heights[r] + kRowSpacing;
+            if (best_pred < 0) break;
+            on_spine[best_pred] = 1;
+            cur = best_pred;
         }
+    }
+
+    // --- Stage 5c: seed Y coordinates ---
+    // Initial: per-layer stack centered on the spine (or on the graph centerline
+    // if this layer has no spine node). Relaxation refines from there.
+    float centerline_y = kTopMargin + (static_cast<float>(win_h_) - 2 * kTopMargin) * 0.5f;
+    std::vector<float> y(xn, 0.0f);
+    for (int l = 0; l <= max_layer; ++l) {
+        const auto& lay = layers[l];
+        // Stack top-down
+        std::vector<float> slot_y(lay.size());
+        float cur = 0.0f;
+        for (size_t r = 0; r < lay.size(); ++r) {
+            slot_y[r] = cur;
+            cur += heights[lay[r]] + kRowSpacing;
+        }
+        // Anchor: spine-center if present, else graph center
+        int spine_r = -1;
+        for (size_t r = 0; r < lay.size(); ++r) {
+            if (on_spine[lay[r]]) { spine_r = static_cast<int>(r); break; }
+        }
+        float anchor_center;
+        float anchor_y;
+        if (spine_r >= 0) {
+            anchor_center = slot_y[spine_r] + heights[lay[spine_r]] * 0.5f;
+            anchor_y = centerline_y;
+        } else {
+            float total = (lay.empty() ? 0.0f : (slot_y.back() + heights[lay.back()]));
+            anchor_center = total * 0.5f;
+            anchor_y = centerline_y;
+        }
+        float delta = anchor_y - anchor_center;
+        for (size_t r = 0; r < lay.size(); ++r) y[lay[r]] = slot_y[r] + delta;
+    }
+
+    // --- Stage 5d: relaxation + within-layer overlap resolution ---
+    // For each non-spine slot, preferred Y is weighted average of
+    //   (y[pred] + out_dy[pred] - in_dy[self])  across forward predecessors
+    //   (y[succ] + in_dy[succ] - out_dy[self])  across forward successors
+    // Spine neighbors get a weight boost so the spine pulls its branches into line.
+    for (int iter = 0; iter < kLayoutRelaxIterations; ++iter) {
+        std::vector<float> new_y = y;
+        for (uint32_t s = 0; s < xn; ++s) {
+            if (on_spine[s]) continue;
+            float num = 0.0f, den = 0.0f;
+            for (uint32_t p : x_preds[s]) {
+                float target_top = y[p] + out_dy[p] - in_dy[s];
+                float w = on_spine[p] ? kSpineWeight : 1.0f;
+                num += w * target_top;
+                den += w;
+            }
+            for (uint32_t c : x_succs[s]) {
+                float target_top = y[c] + in_dy[c] - out_dy[s];
+                float w = on_spine[c] ? kSpineWeight : 1.0f;
+                num += w * target_top;
+                den += w;
+            }
+            if (den <= 0.0f) continue;
+            float target = num / den;
+            new_y[s] = y[s] * 0.5f + target * 0.5f;  // damped blend
+        }
+        y.swap(new_y);
+
+        // Resolve overlaps within each layer, spreading outward from the spine.
+        for (int l = 0; l <= max_layer; ++l) {
+            if (layers[l].size() <= 1) continue;
+            auto& lay = layers[l];
+            std::sort(lay.begin(), lay.end(),
+                      [&](uint32_t a, uint32_t b) { return y[a] < y[b]; });
+            int spine_r = -1;
+            for (size_t r = 0; r < lay.size(); ++r) {
+                if (on_spine[lay[r]]) { spine_r = static_cast<int>(r); break; }
+            }
+            if (spine_r < 0) {
+                for (size_t r = 1; r < lay.size(); ++r) {
+                    float min_top = y[lay[r - 1]] + heights[lay[r - 1]] + kRowSpacing;
+                    if (y[lay[r]] < min_top) y[lay[r]] = min_top;
+                }
+                continue;
+            }
+            // Pin spine to centerline
+            y[lay[spine_r]] = centerline_y - heights[lay[spine_r]] * 0.5f;
+            for (int r = spine_r + 1; r < static_cast<int>(lay.size()); ++r) {
+                float min_top = y[lay[r - 1]] + heights[lay[r - 1]] + kRowSpacing;
+                if (y[lay[r]] < min_top) y[lay[r]] = min_top;
+            }
+            for (int r = spine_r - 1; r >= 0; --r) {
+                float max_top = y[lay[r + 1]] - heights[lay[r]] - kRowSpacing;
+                if (y[lay[r]] > max_top) y[lay[r]] = max_top;
+            }
+        }
+    }
+
+    // --- Stage 6: write final rects ---
+    for (uint32_t i = 0; i < nn; ++i) {
+        const auto& ns = nodes[i];
+        auto& rect = node_rects_[i];
+        rect.x = kLeftMargin + layer[i] * kColSpacing;
+        rect.y = y[i];
+        if (ns.has_layout && !force) {
+            rect.x = ns.layout_x;
+            rect.y = ns.layout_y;
+        }
+        // rect.h / ports were already populated during stage 5a.
     }
 
     last_node_count_ = nodes.size();

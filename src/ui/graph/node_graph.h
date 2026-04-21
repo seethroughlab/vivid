@@ -348,6 +348,7 @@ private:
     void place_new_nodes();
     void prune_node_rects();
     void recompute_ports(NodeRect& rect, const NodeSnapshot& ns);
+
     // refresh_package_browser_snapshot_if_ready moved to DialogManager
 
     // Count visible input/output ports for a node (signal ports + connected params/outputs)
@@ -605,6 +606,11 @@ private:
     std::unordered_set<std::string> selected_node_ids_;
     int selected_wire_idx_ = -1;  // index into snap_.connections, or -1
     std::vector<NodeRect> node_rects_;
+    // Sized to snap_.connections.size(); true at indices of back-edges
+    // (cycle edges detected during the last layout_nodes() pass). Rebuilt
+    // on every layout_nodes() call; draw_connections() consults it to
+    // route cycle edges with a distinct arc + color.
+    std::vector<bool> back_edge_mask_;
     struct ClipboardNode {
         NodeSnapshot node;
         float rel_x = 0.0f;
