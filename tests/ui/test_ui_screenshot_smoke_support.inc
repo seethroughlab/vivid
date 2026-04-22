@@ -149,6 +149,15 @@ struct ScreenshotCase {
     bool require_nontrivial_output = false;
     OutputExpectation output_expectation;
     std::vector<CheckpointExpectation> checkpoint_expectations;
+    // Editor-window screenshot support (follow-up: second-window automated
+    // test coverage). When `editor_target_node` is set, the harness passes
+    // --editor-screenshot to the spawned vivid, expects a PNG named
+    // `editor_output_name`, and (if `editor_baseline_key` is non-empty) diffs
+    // it against `ui_screenshot_baselines.txt` under that key. Main-window
+    // capture is unaffected.
+    std::string editor_target_node;
+    std::string editor_output_name;
+    std::string editor_baseline_key;
 };
 
 struct ScreenshotBaseline {

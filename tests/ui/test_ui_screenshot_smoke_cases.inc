@@ -335,5 +335,46 @@
             {},
             true,
         },
+        // DrumSequencer editor window — opens the VIVID_EDITOR secondary
+        // window, waits for a couple of render frames, and captures the
+        // editor's surface to PNG. Validates the end-to-end injection +
+        // capture path added for the second-window test coverage follow-up.
+        ScreenshotCase{
+            .name = "drum sequencer editor",
+            .graph = repo_root / "tests" / "fixtures" / "ui_editor_drum_sequencer.json",
+            .node_id = "drum_1",
+            .output_name = "editor_drum_sequencer_main.png",
+            .screenshot_delay = 30,
+            .ui_script_json = R"({"actions":[
+                {"type":"wait","frames":30},
+                {"type":"open_editor","target":"drum_1"},
+                {"type":"wait","frames":30}
+            ]})",
+            .forbid_missing_operators = true,
+            .required_nodes = {"drum_1"},
+            .editor_target_node = "drum_1",
+            .editor_output_name = "editor_drum_sequencer.png",
+            .editor_baseline_key = "editor_drum_sequencer",
+        },
+        // MSEG editor window — mirrors the DrumSequencer case against the
+        // envelope editor. Waits longer for the main UI to settle because
+        // MSEG's thumbnail render is slower than the DrumSequencer's.
+        ScreenshotCase{
+            .name = "mseg editor",
+            .graph = repo_root / "tests" / "fixtures" / "ui_editor_mseg.json",
+            .node_id = "mseg_1",
+            .output_name = "editor_mseg_main.png",
+            .screenshot_delay = 60,
+            .ui_script_json = R"({"actions":[
+                {"type":"wait","frames":60},
+                {"type":"open_editor","target":"mseg_1"},
+                {"type":"wait","frames":30}
+            ]})",
+            .forbid_missing_operators = true,
+            .required_nodes = {"mseg_1"},
+            .editor_target_node = "mseg_1",
+            .editor_output_name = "editor_mseg.png",
+            .editor_baseline_key = "editor_mseg",
+        },
     };
 

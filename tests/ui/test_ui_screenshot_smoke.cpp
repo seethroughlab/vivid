@@ -136,6 +136,14 @@ int main(int argc, char* argv[]) {
                        replace_all(c.ui_script_json, "{{SCREENSHOT_PATH}}", screenshot_path.string()));
         }
 
+        const std::filesystem::path editor_screenshot_path =
+            c.editor_output_name.empty()
+                ? std::filesystem::path{}
+                : lane_root / "artifacts" / c.editor_output_name;
+        if (!editor_screenshot_path.empty()) {
+            std::filesystem::remove(editor_screenshot_path);
+        }
+
         std::string cmd = shell_quote(vivid_bin.string()) + " " +
                           shell_quote(graph_path.string()) +
                           (c.node_id.empty()
@@ -154,6 +162,12 @@ int main(int argc, char* argv[]) {
                                ? " --screenshot " + shell_quote(screenshot_path.string()) +
                                      " --screenshot-delay " + std::to_string(c.screenshot_delay)
                                : " --test-ui-script " + shell_quote(script_path.string())) +
+                          (c.editor_target_node.empty() ||
+                           editor_screenshot_path.empty()
+                               ? ""
+                               : " --editor-screenshot " + shell_quote(
+                                     c.editor_target_node + "=" +
+                                     editor_screenshot_path.string())) +
                           " < /dev/null" +
                           " > " + shell_quote(log_path.string()) + " 2>&1";
         cmd = "env HOME=" + shell_quote(runtime_home.string()) +
@@ -169,9 +183,15 @@ int main(int argc, char* argv[]) {
                      "screenshot command exited cleanly for " + c.name +
                          " (rc=" + std::to_string(rc) + ")");
 
-        report_check(report, FailureKind::Harness, std::filesystem::exists(screenshot_path),
-                     "screenshot written for " + c.name);
-        if (std::filesystem::exists(screenshot_path)) {
+        // Editor-only cases skip the main-window screenshot expectation:
+        // their scripts don't fire a `screenshot` action, and the editor
+        // capture is validated separately below.
+        const bool expect_main_screenshot = c.editor_target_node.empty();
+        if (expect_main_screenshot) {
+            report_check(report, FailureKind::Harness, std::filesystem::exists(screenshot_path),
+                         "screenshot written for " + c.name);
+        }
+        if (expect_main_screenshot && std::filesystem::exists(screenshot_path)) {
             report_check(report, FailureKind::Harness,
                          std::filesystem::file_size(screenshot_path) > 0,
                          "screenshot non-empty for " + c.name);
@@ -220,6 +240,54 @@ int main(int argc, char* argv[]) {
                 std::fprintf(stderr,
                              "[test_ui_screenshot_smoke] baseline checks skipped for '%s' in lane '%s'\n",
                              c.name.c_str(), lane_name.c_str());
+            }
+        }
+
+        // --- Editor-window screenshot validation (follow-up: second-window
+        // automated test coverage). Same threshold logic as the main-window
+        // path, keyed off editor_baseline_key.
+        if (!editor_screenshot_path.empty()) {
+            report_check(report, FailureKind::Harness,
+                         std::filesystem::exists(editor_screenshot_path),
+                         "editor screenshot written for " + c.name);
+            if (std::filesystem::exists(editor_screenshot_path)) {
+                report_check(report, FailureKind::Harness,
+                             std::filesystem::file_size(editor_screenshot_path) > 0,
+                             "editor screenshot non-empty for " + c.name);
+                if (check_visual_baselines && !c.editor_baseline_key.empty()) {
+                    auto it = baselines.find(c.editor_baseline_key);
+                    report_check(report, FailureKind::Baseline, it != baselines.end(),
+                                 "editor baseline entry exists for " +
+                                     c.editor_baseline_key);
+                    if (it != baselines.end()) {
+                        const auto actual = fingerprint_png(editor_screenshot_path);
+                        report_check(report, FailureKind::Baseline,
+                                     actual.width == it->second.width &&
+                                         actual.height == it->second.height,
+                                     "editor baseline dimensions match for " + c.name);
+                        report_check(report, FailureKind::Baseline,
+                                     actual.blocks.size() == it->second.blocks.size(),
+                                     "editor baseline fingerprint size matches for " + c.name);
+                        if (actual.blocks.size() == it->second.blocks.size()) {
+                            double total_diff = 0.0;
+                            int max_diff = 0;
+                            for (size_t i = 0; i < actual.blocks.size(); ++i) {
+                                int diff = std::abs(actual.blocks[i] - it->second.blocks[i]);
+                                total_diff += diff;
+                                max_diff = std::max(max_diff, diff);
+                            }
+                            double mean_diff = total_diff / static_cast<double>(actual.blocks.size());
+                            report_check(report, FailureKind::Baseline, mean_diff <= 8.5,
+                                         "editor baseline mean diff stays within threshold for " + c.name);
+                            report_check(report, FailureKind::Baseline, max_diff <= 28,
+                                         "editor baseline max diff stays within threshold for " + c.name);
+                        }
+                    } else {
+                        std::fprintf(stderr, "BASELINE %s\n",
+                                     baseline_line(c.editor_baseline_key,
+                                                    fingerprint_png(editor_screenshot_path)).c_str());
+                    }
+                }
             }
         }
 
