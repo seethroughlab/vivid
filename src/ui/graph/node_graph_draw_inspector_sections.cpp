@@ -197,6 +197,22 @@ void NodeGraphUI::draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node
     tr.draw_rect(px, py, kInspContentW, 1, style_.separator[0], style_.separator[1], style_.separator[2]);
     py += 8;
 
+    // Open Editor button — only for operators whose op_info->has_editor is true.
+    // Renders between the header separator and the preset row so it sits at the
+    // top of the inspector's action area. Clicked in handle_inspector_click.
+    // Label is not i18n-wrapped in this phase; add T(...) keys across all
+    // locales if/when the button moves to a translated UI.
+    if (node.op_info && node.op_info->has_editor) {
+        const float btn_h = 20.0f;
+        const bool open_now = commands_.is_editor_open(node.node_id);
+        const char* label = open_now ? "Editor open \xe2\x96\xb8" : "Open Editor";
+        const float btn_w =
+            draw_inspector_text_button(tr, style_, px, py, label, 1.0f, 10.0f, btn_h);
+        inspector_.open_editor_rects.push_back(
+            { px, py, btn_w, btn_h, node.node_id, "" });
+        py += btn_h + 6;
+    }
+
     // Preset row (if node has user or factory presets)
     if (!node.preset_names.empty() || !node.factory_preset_names.empty()) {
         float save_w = 46.0f;

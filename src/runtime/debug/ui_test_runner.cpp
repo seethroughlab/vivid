@@ -213,9 +213,27 @@ bool load_ui_test_script(const std::string& script_path,
             }
             action.type = UITestActionType::Checkpoint;
             action.checkpoint_label = label_it->get<std::string>();
+        } else if (type == "open_editor") {
+            auto target_it = item.find("target");
+            if (target_it == item.end() || !target_it->is_string() ||
+                target_it->get<std::string>().empty()) {
+                error = "open_editor requires non-empty string target";
+                return false;
+            }
+            action.type = UITestActionType::OpenEditor;
+            action.target_window = target_it->get<std::string>();
         } else {
             error = "unknown script action type: " + type;
             return false;
+        }
+
+        // Optional 'target' field on any mouse/key/char/screenshot action
+        // routes input to the editor window opened for the named node id.
+        // Empty / missing → main graph UI (the legacy path).
+        if (action.target_window.empty()) {
+            auto target_it = item.find("target");
+            if (target_it != item.end() && target_it->is_string())
+                action.target_window = target_it->get<std::string>();
         }
 
         script.actions.push_back(std::move(action));

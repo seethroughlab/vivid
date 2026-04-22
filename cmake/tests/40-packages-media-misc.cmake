@@ -619,12 +619,13 @@ target_include_directories(test_builtin_operators PRIVATE src tests)
 target_link_libraries(test_builtin_operators PRIVATE vivid_runtime_testlib vivid_operator_api webgpu nlohmann_json::nlohmann_json)
 add_test(NAME test_builtin_operators COMMAND test_builtin_operators WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-# OperatorInfoCache unit tests (uses builtin operators as fixtures, no dylib)
+# OperatorInfoCache unit tests (builtin operators + editor_test_op fixture for has_editor)
 add_executable(test_operator_info_cache
     tests/ops/test_operator_info_cache.cpp
 )
 target_include_directories(test_operator_info_cache PRIVATE src tests)
 target_link_libraries(test_operator_info_cache PRIVATE vivid_runtime_testlib vivid_operator_api webgpu nlohmann_json::nlohmann_json)
+add_dependencies(test_operator_info_cache editor_test_op)
 add_test(NAME test_operator_info_cache COMMAND test_operator_info_cache WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Path Animate unit tests (pure math, no runtime dependencies)

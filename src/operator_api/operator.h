@@ -726,3 +726,21 @@ extern "C" void vivid_draw_inspector(void* instance,                           \
                                      VividInspectorContext* ctx) {              \
     static_cast<_VividInstance*>(instance)->op.draw_inspector(ctx);             \
 }
+
+// ---------------------------------------------------------------------------
+// VIVID_EDITOR(ClassName) — exports vivid_editor_metadata + vivid_draw_editor
+// for operators that open a dedicated editor window. Optional; may appear
+// alongside VIVID_REGISTER, VIVID_INSPECTOR, and VIVID_THUMBNAIL.
+// Required operator contract:
+//     static VividEditorMetadata editor_metadata();
+//     void draw_editor(VividEditorContext* ctx);
+// ---------------------------------------------------------------------------
+
+#define VIVID_EDITOR(ClassName)                                                \
+extern "C" VividEditorMetadata vivid_editor_metadata() {                       \
+    return ClassName::editor_metadata();                                       \
+}                                                                              \
+extern "C" void vivid_draw_editor(void* instance,                              \
+                                  VividEditorContext* ctx) {                   \
+    static_cast<_VividInstance*>(instance)->op.draw_editor(ctx);               \
+}

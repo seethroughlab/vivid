@@ -205,10 +205,9 @@ bool OutputWindow::present(WGPUTextureView source_tex,
 
     gpu_submit(device_, queue_, encoder, "Output Window Commands");
 
+    wgpuSurfacePresent(surface_);
     wgpuTextureViewRelease(dest);
     wgpuTextureRelease(st.texture);
-
-    wgpuSurfacePresent(surface_);
     return true;
 }
 

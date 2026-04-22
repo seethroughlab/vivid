@@ -143,6 +143,7 @@ set_target_properties(test_op_abi_v4 PROPERTIES
 add_vivid_test_fixture(test_op_incompatible_port tests/operators/test_op_incompatible_port.cpp)
 add_vivid_test_fixture(test_op_null_desc tests/operators/test_op_null_desc.cpp)
 add_vivid_test_fixture(control_thumb_op tests/operators/control_thumb_op.cpp EXTRA_LIBS webgpu)
+add_vivid_test_fixture(editor_test_op tests/operators/editor_test_op.cpp)
 add_vivid_test_fixture(test_op_bad_custom_type tests/operators/test_op_bad_custom_type.cpp)
 add_vivid_test_fixture(audio_reload_v1 tests/operators/audio_reload_v1.cpp)
 add_vivid_test_fixture(audio_reload_v2 tests/operators/audio_reload_v2.cpp)

@@ -78,6 +78,9 @@ int main() {
     std::filesystem::copy_file(build_dir + "/prepare_assets_legacy_op.dylib",
         staging + "/prepare_assets_legacy_op.dylib",
         std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/editor_test_op.dylib",
+        staging + "/editor_test_op.dylib",
+        std::filesystem::copy_options::overwrite_existing);
 
     std::fprintf(stderr, "\n=== Test: OperatorLoader + OperatorRegistry ===\n\n");
 
@@ -234,6 +237,81 @@ int main() {
         check(loader.load(path.c_str()), "prepare_assets_legacy_op loads");
         check(!loader.has_prepare_instance_assets(),
               "legacy plugin has no prepare_instance_assets symbol");
+    }
+
+    // Test 9d: VIVID_EDITOR exports are discovered and metadata round-trips
+    {
+        vivid::OperatorLoader loader;
+        std::string path = staging + "/editor_test_op.dylib";
+        check(loader.load(path.c_str()), "editor_test_op loads");
+        check(loader.has_editor(), "editor_test_op reports has_editor");
+        VividEditorMetadata meta = loader.editor_metadata();
+        check(meta.default_width == 900,  "editor metadata: default_width = 900");
+        check(meta.default_height == 520, "editor metadata: default_height = 520");
+        check(meta.min_width == 640,      "editor metadata: min_width = 640");
+        check(meta.min_height == 360,     "editor metadata: min_height = 360");
+        check(meta.title_suffix != nullptr &&
+              std::strcmp(meta.title_suffix, "Editor Fixture") == 0,
+              "editor metadata: title_suffix = Editor Fixture");
+
+        // draw_editor with nullptr instance must be a safe no-op (guarded)
+        VividEditorContext ctx{};
+        loader.draw_editor(nullptr, &ctx);
+        check(true, "draw_editor(nullptr, ctx) is a safe no-op");
+
+        // draw_editor with a real instance is callable and sees the
+        // string-param surface in descriptor order.
+        void* instance = loader.create_instance();
+        check(instance != nullptr, "editor_test_op instance created");
+        const char* string_params[] = {"fixture.mov", "hello editor"};
+        ctx.string_param_values = string_params;
+        ctx.string_param_count = 2;
+        loader.draw_editor(instance, &ctx);
+        float params[] = {0.0f, 0.0f, 0.0f};
+        float outputs[] = {0.0f};
+        VividFrameContext fctx{};
+        fctx.param_values = params;
+        fctx.output_values = outputs;
+        fctx.file_param_values = string_params;
+        fctx.file_param_count = 2;
+        loader.process_frame(instance, &fctx);
+        check(outputs[0] == 1.0f,
+              "draw_editor(instance, ctx) sees non-null ordered string params");
+        loader.destroy_instance(instance);
+    }
+
+    // Test 9e: operator without VIVID_EDITOR reports has_editor == false
+    {
+        vivid::OperatorLoader loader;
+        std::string path = staging + "/test_op_v1.dylib";
+        check(loader.load(path.c_str()), "test_op_v1 loads");
+        check(!loader.has_editor(), "test_op_v1 has no editor");
+        VividEditorMetadata meta = loader.editor_metadata();
+        check(meta.default_width == 0 && meta.default_height == 0,
+              "editor metadata defaults to zero when no editor symbols");
+        loader.draw_editor(nullptr, nullptr);
+        check(true, "draw_editor on non-editor op is a safe no-op");
+    }
+
+    // Test 9f: editor fn-ptrs survive move construction and move assignment
+    {
+        vivid::OperatorLoader loader;
+        std::string path = staging + "/editor_test_op.dylib";
+        check(loader.load(path.c_str()), "move-editor: source load");
+        check(loader.has_editor(), "move-editor: source has_editor before move");
+
+        vivid::OperatorLoader moved(std::move(loader));
+        check(moved.has_editor(), "move-editor: target has_editor after move-construct");
+        check(!loader.has_editor(), "move-editor: source no longer has_editor");
+
+        vivid::OperatorLoader assigned;
+        assigned = std::move(moved);
+        check(assigned.has_editor(), "move-editor: target has_editor after move-assign");
+        check(!moved.has_editor(), "move-editor: moved-from no longer has_editor");
+        VividEditorMetadata meta = assigned.editor_metadata();
+        check(meta.title_suffix != nullptr &&
+              std::strcmp(meta.title_suffix, "Editor Fixture") == 0,
+              "move-editor: metadata retrievable on target");
     }
 
     // Test 10: move semantics

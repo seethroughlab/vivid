@@ -95,6 +95,7 @@
 #include "runtime/control/graph_file_io.h"
 #include "runtime/core/workspace_manager.h"
 #include "runtime/core/window_manager.h"
+#include "runtime/core/editor_window_manager.h"
 #include "runtime/graph/graph_snapshot_builder.h"
 #include "runtime/core/main_helpers.h"
 #include "runtime/core/main_internal.h"
@@ -185,6 +186,13 @@ int main(int argc, char* argv[]) {
     app.add_option("--test-dump-ui-state", test_dump_ui_state_path,
                    "Write a machine-readable final UI/runtime state snapshot (testing seam)")
         ->type_name("FILE");
+    // Editor-window screenshot: capture the secondary VIVID_EDITOR window
+    // for <node_id> and write to <path> once the --test-ui-script (if any)
+    // completes. Format: --editor-screenshot node_id=path/to/output.png
+    std::string editor_screenshot_spec;
+    app.add_option("--editor-screenshot", editor_screenshot_spec,
+                   "Capture the editor window for a node id to PNG (format: NODE=PATH)")
+        ->type_name("NODE=PATH");
     app.add_flag("--headless", headless, "Run without displaying a window");
     app.add_flag("--safe-mode", safe_mode,
                  "Crash recovery: disable operators from the previous crash, "
@@ -1529,7 +1537,9 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
 
             text_renderer.flush(frame.encoder, frame.view,
                                 static_cast<uint32_t>(win_w),
-                                static_cast<uint32_t>(win_h));
+                                static_cast<uint32_t>(win_h),
+                                static_cast<uint32_t>(fb_width),
+                                static_cast<uint32_t>(fb_height));
         }
 
         gpu.end_frame(frame);
@@ -1807,6 +1817,60 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
     graph_ui.set_bezier_wires(settings.bezier_wires);
     graph_ui.set_show_param_wires(settings.show_param_wires);
     graph_ui.set_pan_gesture(settings.pan_gesture);
+
+    // --- Editor window manager (dedicated windows for VIVID_EDITOR operators) ---
+    std::string editor_font_path = (resources_dir / "JetBrainsMono-Regular.ttf").string();
+    if (!std::filesystem::exists(editor_font_path)) {
+        auto alt = exe_dir.parent_path() / "fonts" / "JetBrainsMono-Regular.ttf";
+        if (std::filesystem::exists(alt)) editor_font_path = alt.string();
+    }
+    auto editor_theme_provider = [&graph_ui]() -> VividInspectorTheme {
+        const auto& s = graph_ui.style();
+        auto to_vc = [](const std::array<float,3>& a, float alpha = 1.0f) -> VividColor {
+            return {a[0], a[1], a[2], alpha};
+        };
+        VividInspectorTheme t{};
+        t.bg = to_vc(s.inspector_bg);
+        t.accent = to_vc(s.accent);
+        t.dim_text = to_vc(s.dim_text);
+        t.bright_text = to_vc(s.bright_text);
+        t.separator = to_vc(s.separator);
+        t.dark_bg = to_vc(s.dark_bg);
+        t.slider_fill = to_vc(s.slider_fill);
+        t.slider_track = to_vc(s.slider_track);
+        t.corner_radius = s.corner_radius;
+        return t;
+    };
+    vivid::EditorWindowManager editor_windows(
+        gpu, runtime, command_sink,
+        editor_theme_provider, editor_font_path, 16.0f, &settings);
+    command_sink.set_editor_window_manager(&editor_windows);
+    // Headless smoke runs: render editor windows offscreen so tests that
+    // open editors don't require a display.
+    if (headless) editor_windows.set_hidden_when_opening(true);
+
+    // Parse --editor-screenshot NODE=PATH once so the frame loop can
+    // trigger capture after --test-ui-script completes.
+    std::string editor_screenshot_node;
+    std::string editor_screenshot_path;
+    if (!editor_screenshot_spec.empty()) {
+        const auto eq = editor_screenshot_spec.find('=');
+        if (eq == std::string::npos || eq == 0 || eq == editor_screenshot_spec.size() - 1) {
+            std::fprintf(stderr,
+                "[vivid] --editor-screenshot expected NODE=PATH, got %s\n",
+                editor_screenshot_spec.c_str());
+        } else {
+            editor_screenshot_node = editor_screenshot_spec.substr(0, eq);
+            editor_screenshot_path = editor_screenshot_spec.substr(eq + 1);
+        }
+    }
+    bool editor_screenshot_captured = editor_screenshot_node.empty();
+    // Once the ui-test script completes (or immediately if none was given),
+    // stamp the "done" frame so capture fires after a short settle — gives
+    // the editor a handful of frames to draw its initial state.
+    uint64_t editor_screenshot_done_frame = 0;
+    constexpr uint64_t kEditorScreenshotSettleFrames = 30;
+
     bool screenshot_select_applied = screenshot_select_node.empty();
     bool screenshot_select_warned = false;
     {
@@ -2061,6 +2125,7 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
     window_user_data.runtime_api = &runtime_api;
     window_user_data.graph = &graph;
     window_user_data.settings = &settings;
+    window_user_data.editor_windows = &editor_windows;
     glfwSetWindowUserPointer(window, &window_user_data);
     glfwSetCharCallback(window, char_callback);
     glfwSetKeyCallback(window, key_callback);
@@ -2754,6 +2819,8 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
         static uint64_t last_reload_serial = 0;
         if (runtime_api.reload_serial() != last_reload_serial) {
             last_reload_serial = runtime_api.reload_serial();
+            // Phase 2 policy: editor windows do not survive compiled-graph swaps.
+            editor_windows.close_all();
             if (!runtime_api.consume_preserve_undo_history_reload()) {
                 command_sink.reset_undo_history();
             }
@@ -2928,7 +2995,6 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
 
         // --- Tick graph (always runs, even without a surface) ---
         if (graph_loaded) {
-
             // Base GPU state (per-node textures are set by runtime)
             VividGpuContext gpu_state{};
             gpu_state.device          = gpu.device();
@@ -3174,7 +3240,8 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
 
                     if (!test_ui_script.actions.empty()) {
                         run_ui_test_script_frame(test_ui_script, graph_ui, window_user_data,
-                                                 screenshot_path, screenshot_delay, frame_count);
+                                                 screenshot_path, screenshot_delay, frame_count,
+                                                 &editor_windows);
                     }
                     graph_ui.update(snapshot);
                     // Safe-mode auto-select: once the graph load completes
@@ -3216,7 +3283,11 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
                 if (graph_ui.visible()) {
                     graph_ui.draw(text_renderer, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
                     // Pass 1: text/rects
-                    text_renderer.flush(frame.encoder, frame.view, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
+                    text_renderer.flush(frame.encoder, frame.view,
+                                        static_cast<uint32_t>(win_w),
+                                        static_cast<uint32_t>(win_h),
+                                        static_cast<uint32_t>(fb_width),
+                                        static_cast<uint32_t>(fb_height));
                     // Pass 2: thumbnails (GPU auto-captured + CPU custom, composited over text)
                     if (thumb_renderer_ok) {
                         graph_ui.draw_thumbnails(thumb_renderer, thumb_cache,
@@ -3226,7 +3297,11 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
                     }
                     // Pass 3: overlays (context menu, dropdown) on top of thumbnails
                     graph_ui.draw_overlays(text_renderer);
-                    text_renderer.flush(frame.encoder, frame.view, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
+                    text_renderer.flush(frame.encoder, frame.view,
+                                        static_cast<uint32_t>(win_w),
+                                        static_cast<uint32_t>(win_h),
+                                        static_cast<uint32_t>(fb_width),
+                                        static_cast<uint32_t>(fb_height));
                 }
             }
 
@@ -3285,6 +3360,54 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
 
         // wgpu-native: poll the device to process async operations
         wgpuDevicePoll(gpu.device(), false, nullptr);
+
+        // Tick dedicated editor windows (VIVID_EDITOR operators) once per frame
+        // after the primary window has submitted its frame.
+        editor_windows.tick(now);
+
+        // --- Editor-screenshot capture ---
+        // Latches the script-done frame on the first tick after the
+        // script finishes processing its last action (wait_frames_remaining
+        // on the trailing Wait is NOT decremented once next_action hits
+        // end-of-script, so we can't gate on that). Fires capture
+        // kEditorScreenshotSettleFrames after done so the editor has a
+        // chance to render its initial state before readback.
+        if (!editor_screenshot_node.empty() &&
+            editor_screenshot_done_frame == 0 &&
+            (test_ui_script.actions.empty() ||
+             test_ui_script.next_action >= test_ui_script.actions.size())) {
+            editor_screenshot_done_frame = frame_count;
+        }
+        if (!editor_screenshot_captured &&
+            editor_screenshot_done_frame > 0 &&
+            frame_count >= editor_screenshot_done_frame +
+                            kEditorScreenshotSettleFrames &&
+            editor_windows.is_open(editor_screenshot_node)) {
+            auto png = editor_windows.capture_surface_png(editor_screenshot_node);
+            if (png) {
+                std::filesystem::create_directories(
+                    std::filesystem::path(editor_screenshot_path).parent_path());
+                std::ofstream os(editor_screenshot_path, std::ios::binary);
+                if (os) {
+                    os.write(reinterpret_cast<const char*>(png->data()),
+                             static_cast<std::streamsize>(png->size()));
+                    std::fprintf(stderr,
+                        "[vivid] Editor screenshot saved: %s (%zu bytes)\n",
+                        editor_screenshot_path.c_str(), png->size());
+                } else {
+                    std::fprintf(stderr,
+                        "[vivid] Editor screenshot FAILED to write: %s\n",
+                        editor_screenshot_path.c_str());
+                }
+            } else {
+                std::fprintf(stderr,
+                    "[vivid] Editor screenshot capture returned no bytes for %s\n",
+                    editor_screenshot_node.c_str());
+            }
+            editor_screenshot_captured = true;
+            glfwSetWindowShouldClose(window, 1);
+        }
+
         return true;
     };
 
@@ -3344,6 +3467,10 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
     thumb_mip_gen.shutdown();
     thumb_blit.shutdown();
     blit.shutdown();
+    // Dedicated editor windows own secondary GLFW windows and persist their
+    // final geometry during close. Tear them down before destroying the main
+    // window or terminating GLFW so shutdown never touches GLFW afterward.
+    editor_windows.close_all();
     output_window.close();
     gpu.shutdown();
 

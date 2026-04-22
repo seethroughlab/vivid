@@ -45,6 +45,8 @@ public:
                                      float range_min, float range_max) = 0;
     virtual void open_shader(const std::string& type_name) {}
     virtual void open_module_source(const std::string& type_name) {}
+    virtual void open_editor(const std::string& node_id) {}
+    virtual bool is_editor_open(const std::string& node_id) const { return false; }
     virtual void clone_and_edit(const std::string& type_name) {
         clone_and_edit(type_name, "auto");
     }

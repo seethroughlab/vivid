@@ -99,6 +99,8 @@ OperatorLoader::OperatorLoader(OperatorLoader&& other) noexcept
     , prepare_assets_fn_(other.prepare_assets_fn_)
     , draw_insp_fn_(other.draw_insp_fn_)
     , insp_mode_fn_(other.insp_mode_fn_)
+    , editor_meta_fn_(other.editor_meta_fn_)
+    , draw_editor_fn_(other.draw_editor_fn_)
     , dd_config_(std::move(other.dd_config_))
     , dd_name_(std::move(other.dd_name_))
     , dd_param_names_(std::move(other.dd_param_names_))
@@ -123,6 +125,8 @@ OperatorLoader::OperatorLoader(OperatorLoader&& other) noexcept
     other.prepare_assets_fn_ = nullptr;
     other.draw_insp_fn_     = nullptr;
     other.insp_mode_fn_     = nullptr;
+    other.editor_meta_fn_   = nullptr;
+    other.draw_editor_fn_   = nullptr;
     other.dd_desc_ = {};
     // Fixup descriptor pointers to our own storage
     if (dd_config_) {
@@ -146,6 +150,8 @@ OperatorLoader& OperatorLoader::operator=(OperatorLoader&& other) noexcept {
         prepare_assets_fn_ = other.prepare_assets_fn_;
         draw_insp_fn_     = other.draw_insp_fn_;
         insp_mode_fn_     = other.insp_mode_fn_;
+        editor_meta_fn_   = other.editor_meta_fn_;
+        draw_editor_fn_   = other.draw_editor_fn_;
         dd_config_        = std::move(other.dd_config_);
         dd_name_          = std::move(other.dd_name_);
         dd_param_names_   = std::move(other.dd_param_names_);
@@ -169,6 +175,8 @@ OperatorLoader& OperatorLoader::operator=(OperatorLoader&& other) noexcept {
         other.prepare_assets_fn_ = nullptr;
         other.draw_insp_fn_     = nullptr;
         other.insp_mode_fn_     = nullptr;
+        other.editor_meta_fn_   = nullptr;
+        other.draw_editor_fn_   = nullptr;
         other.dd_desc_ = {};
         // Fixup descriptor pointers to our own storage
         if (dd_config_) {
@@ -321,6 +329,8 @@ bool OperatorLoader::load(const char* path) {
         dlsym(new_handle, "vivid_prepare_instance_assets"));
     draw_insp_fn_   = reinterpret_cast<VividDrawInspectorFn>(dlsym(new_handle, "vivid_draw_inspector"));
     insp_mode_fn_   = reinterpret_cast<VividInspectorModeFn>(dlsym(new_handle, "vivid_inspector_mode"));
+    editor_meta_fn_ = reinterpret_cast<VividEditorMetadataFn>(dlsym(new_handle, "vivid_editor_metadata"));
+    draw_editor_fn_ = reinterpret_cast<VividDrawEditorFn>(dlsym(new_handle, "vivid_draw_editor"));
 
     clear_last_error();
     return true;
@@ -468,6 +478,8 @@ void OperatorLoader::unload() {
         prepare_assets_fn_ = nullptr;
         draw_insp_fn_     = nullptr;
         insp_mode_fn_     = nullptr;
+        editor_meta_fn_   = nullptr;
+        draw_editor_fn_   = nullptr;
     }
     if (dd_config_) {
         dd_config_.reset();
@@ -561,6 +573,16 @@ uint32_t OperatorLoader::inspector_mode() const {
 void OperatorLoader::draw_inspector(void* instance, VividInspectorContext* ctx) const {
     if (draw_insp_fn_ && instance) {
         draw_insp_fn_(instance, ctx);
+    }
+}
+
+VividEditorMetadata OperatorLoader::editor_metadata() const {
+    return editor_meta_fn_ ? editor_meta_fn_() : VividEditorMetadata{};
+}
+
+void OperatorLoader::draw_editor(void* instance, VividEditorContext* ctx) const {
+    if (draw_editor_fn_ && instance) {
+        draw_editor_fn_(instance, ctx);
     }
 }
 

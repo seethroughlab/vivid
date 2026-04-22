@@ -1,9 +1,20 @@
 #pragma once
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace vivid {
+
+// Persisted editor-window geometry keyed by operator type slug.
+// width == 0 / height == 0 → use VividEditorMetadata defaults at open time.
+// x == -1 / y == -1       → let the OS pick the placement.
+struct EditorWindowGeometry {
+    int x = -1;
+    int y = -1;
+    int width = 0;
+    int height = 0;
+};
 
 inline constexpr uint32_t kDefaultAudioBufferSize = 256;
 
@@ -39,6 +50,10 @@ struct Settings {
     std::string pan_gesture = "left";          // "middle", "left", or "right"
 
     std::vector<std::string> recent_files;     // most-recent first, capped at 10
+
+    // Per-operator-type editor window geometry (Phase 3 host integration).
+    // Keyed by CompiledNode::type_name / NodeSnapshot::type_name.
+    std::unordered_map<std::string, EditorWindowGeometry> editor_window_geometry_by_type;
 
     // Project lockfile load mode.
     // studio (default): verify runs, status reported, nothing disabled.

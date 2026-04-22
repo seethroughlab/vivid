@@ -4,7 +4,170 @@ add_executable(test_operator_loader
 )
 target_include_directories(test_operator_loader PRIVATE src tests)
 target_link_libraries(test_operator_loader PRIVATE vivid_runtime_testlib vivid_operator_api webgpu nlohmann_json::nlohmann_json)
-add_dependencies(test_operator_loader test_op_v1 test_op_v2 test_op_abi_v4 test_op_incompatible_port test_op_null_desc test_op_bad_custom_type control_pass_op audio_test_op export_custom_port_op control_thumb_op file_drop_test_op prepare_assets_test_op prepare_assets_legacy_op shape_field)
+
+# EditorWindowBookkeeping unit tests (pure-logic, no GPU/GLFW)
+add_executable(test_editor_window_manager
+    tests/ops/test_editor_window_manager.cpp
+)
+target_include_directories(test_editor_window_manager PRIVATE src tests)
+target_link_libraries(test_editor_window_manager PRIVATE vivid_runtime_testlib)
+add_test(NAME test_editor_window_manager COMMAND test_editor_window_manager WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# EditorWindowHostAPI unit tests (Phase D of the editor-UI platform plan).
+# Links the host_api translation unit directly + GLFW — the clipboard /
+# focus thunks touch GLFW even when the test passes a null window.
+add_executable(test_editor_window_host_api
+    tests/ops/test_editor_window_host_api.cpp
+    src/runtime/core/editor_window_host_api.cpp
+)
+target_include_directories(test_editor_window_host_api PRIVATE src tests)
+target_link_libraries(test_editor_window_host_api PRIVATE vivid_runtime_testlib glfw)
+add_test(NAME test_editor_window_host_api
+         COMMAND test_editor_window_host_api
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# ui_text_field widget (src/operator_api/editor_ui.h) — single-line
+# ASCII text entry. Tests drive a fake VividEditorContext through typing,
+# selection, deletion, clipboard, commit/cancel, focus management, and
+# buffer overflow.
+add_executable(test_editor_ui_text_field
+    tests/operators/test_editor_ui_text_field.cpp
+)
+target_include_directories(test_editor_ui_text_field PRIVATE src tests)
+target_link_libraries(test_editor_ui_text_field PRIVATE vivid_runtime_testlib)
+add_test(NAME test_editor_ui_text_field
+         COMMAND test_editor_ui_text_field
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# GLFW key-constant mirror (operator_api/editor_keys.h) — header-only
+# constants and small helpers. Test pins the values so drift from GLFW
+# breaks visibly rather than silently.
+add_executable(test_editor_keys
+    tests/operators/test_editor_keys.cpp
+)
+target_include_directories(test_editor_keys PRIVATE src tests)
+target_link_libraries(test_editor_keys PRIVATE vivid_runtime_testlib)
+add_test(NAME test_editor_keys
+         COMMAND test_editor_keys
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Shared editor_ui::Selection geometry + cursor-movement helpers.
+# Header-only module promoted from drum + sequencer editor_shared after
+# the second adopter landed. Covered here to lock the invariants in
+# isolation; operator-specific tests exercise higher-level workflows.
+add_executable(test_editor_ui_selection
+    tests/operators/test_editor_ui_selection.cpp
+)
+target_include_directories(test_editor_ui_selection PRIVATE
+    src tests operators)
+target_link_libraries(test_editor_ui_selection PRIVATE vivid_runtime_testlib)
+add_test(NAME test_editor_ui_selection
+         COMMAND test_editor_ui_selection
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# DrumSequencer editor helpers — pure-logic (param-name encoding, cell hit
+# math, cursor clamp, clear-step command sequence). Compiles the shared
+# translation unit directly; no operator dylib, no GLFW/GPU.
+add_executable(test_drum_sequencer_editor_helpers
+    tests/operators/test_drum_sequencer_editor_helpers.cpp
+    operators/control/drum_sequencer/drum_sequencer_editor_shared.cpp
+)
+target_include_directories(test_drum_sequencer_editor_helpers PRIVATE
+    src tests
+    operators/control/drum_sequencer
+    operators/shared/sequencer
+    operators)
+target_link_libraries(test_drum_sequencer_editor_helpers PRIVATE vivid_runtime_testlib)
+add_test(NAME test_drum_sequencer_editor_helpers
+         COMMAND test_drum_sequencer_editor_helpers
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# DrumSequencer draw_editor contract — fake VividEditorContext with captured
+# command writes, covering keyboard capture, cursor movement, and lane-specific
+# mouse behavior without opening a real editor window.
+add_executable(test_drum_sequencer_editor
+    tests/operators/test_drum_sequencer_editor.cpp
+    operators/control/drum_sequencer/drum_sequencer_core.cpp
+    operators/control/drum_sequencer/drum_sequencer_editor.cpp
+    operators/control/drum_sequencer/drum_sequencer_editor_shared.cpp
+)
+target_include_directories(test_drum_sequencer_editor PRIVATE
+    src tests
+    operators/control/drum_sequencer
+    operators/shared/sequencer
+    operators)
+target_link_libraries(test_drum_sequencer_editor PRIVATE vivid_runtime_testlib)
+add_test(NAME test_drum_sequencer_editor
+         COMMAND test_drum_sequencer_editor
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Sequencer editor helpers — pure-logic (param-name encoding, selection
+# math, cursor clamp, clipboard round-trip). Compiles the shared unit
+# directly; no operator dylib, no GLFW/GPU.
+add_executable(test_sequencer_editor_helpers
+    tests/operators/test_sequencer_editor_helpers.cpp
+    operators/control/sequencer/sequencer_editor_shared.cpp
+)
+target_include_directories(test_sequencer_editor_helpers PRIVATE
+    src tests
+    operators/control/sequencer
+    operators)
+target_link_libraries(test_sequencer_editor_helpers PRIVATE vivid_runtime_testlib)
+add_test(NAME test_sequencer_editor_helpers
+         COMMAND test_sequencer_editor_helpers
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Sequencer draw_editor contract — fake VividEditorContext with captured
+# command writes; covers metadata, keyboard routing, Tab row-switch, digit
+# entry, Cmd+C/V clipboard, mouse click → set_param, and steps-shrink
+# cursor clamping.
+add_executable(test_sequencer_editor
+    tests/operators/test_sequencer_editor.cpp
+    operators/control/sequencer/sequencer_editor.cpp
+    operators/control/sequencer/sequencer_editor_shared.cpp
+)
+target_include_directories(test_sequencer_editor PRIVATE
+    src tests
+    operators/control/sequencer
+    operators)
+target_link_libraries(test_sequencer_editor PRIVATE vivid_runtime_testlib)
+add_test(NAME test_sequencer_editor
+         COMMAND test_sequencer_editor
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# DrumSequencer compute() probability gating + roll sub-step emission +
+# pattern A/B routing. Exercises the audio-rate core directly, no MIDI
+# device or graph runtime.
+add_executable(test_drum_sequencer_probability_roll
+    tests/operators/test_drum_sequencer_probability_roll.cpp
+    operators/control/drum_sequencer/drum_sequencer_core.cpp
+    operators/control/drum_sequencer/drum_sequencer_editor.cpp
+    operators/control/drum_sequencer/drum_sequencer_editor_shared.cpp
+)
+target_include_directories(test_drum_sequencer_probability_roll PRIVATE
+    src tests
+    operators/control/drum_sequencer
+    operators/shared/sequencer
+    operators)
+target_link_libraries(test_drum_sequencer_probability_roll PRIVATE vivid_runtime_testlib)
+add_test(NAME test_drum_sequencer_probability_roll
+         COMMAND test_drum_sequencer_probability_roll
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# MSEG editor helpers — pure-logic (param-name encoding, point picks, curve
+# handle hit math, point add/remove command sequences).
+add_executable(test_mseg_editor_helpers
+    tests/operators/test_mseg_editor_helpers.cpp
+    operators/control/mseg/mseg_editor_shared.cpp
+)
+target_include_directories(test_mseg_editor_helpers PRIVATE
+    src tests
+    operators/control/mseg)
+target_link_libraries(test_mseg_editor_helpers PRIVATE vivid_runtime_testlib)
+add_test(NAME test_mseg_editor_helpers
+         COMMAND test_mseg_editor_helpers
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+add_dependencies(test_operator_loader test_op_v1 test_op_v2 test_op_abi_v4 test_op_incompatible_port test_op_null_desc test_op_bad_custom_type control_pass_op audio_test_op export_custom_port_op control_thumb_op file_drop_test_op prepare_assets_test_op prepare_assets_legacy_op editor_test_op shape_field)
 add_test(NAME test_operator_loader COMMAND test_operator_loader WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_operator_loader PROPERTIES LABELS "LOADER")
 

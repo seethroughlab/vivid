@@ -407,6 +407,16 @@ typedef struct VividDrawAPI {
     float (*line_height)(void*);
     void  (*push_clip_rect)(void*, float x, float y, float w, float h);
     void  (*pop_clip_rect)(void*);
+    /* Additive extensions (sequencer redesign follow-up). Operators built
+       against older headers ignore these fields; host populates them. */
+    void  (*draw_tri)(void*, float x0, float y0, float x1, float y1,
+                      float x2, float y2, VividColor);
+    void  (*draw_arc)(void*, float cx, float cy, float radius,
+                      float start_angle, float end_angle,
+                      float thickness, int segments, VividColor);
+    /* Returns the total consumed height (pixels). */
+    float (*draw_text_wrapped)(void*, float x, float y, const char* text,
+                                float max_width, VividColor, float scale);
 } VividDrawAPI;
 typedef VividDrawAPI VividInspectorDrawAPI;
 
@@ -463,6 +473,127 @@ typedef struct VividInspectorContext {
 
 typedef void     (*VividDrawInspectorFn)(void* instance, VividInspectorContext* ctx);
 typedef uint32_t (*VividInspectorModeFn)(void);
+
+// ---------------------------------------------------------------------------
+// Editor API — optional dedicated-editor-window surface for content-heavy
+// operators (e.g. sequencers, envelopes, trackers). Additive to the inspector
+// pattern: an operator may expose a custom inspector, a dedicated editor, or
+// both. Discovered by optional dlsym of vivid_editor_metadata + vivid_draw_editor.
+// ---------------------------------------------------------------------------
+
+typedef struct VividEditorMetadata {
+    uint32_t default_width;
+    uint32_t default_height;
+    uint32_t min_width;
+    uint32_t min_height;
+    const char* title_suffix;  // appended to node label in the window title
+} VividEditorMetadata;
+
+typedef uint32_t VividEditorEventType;
+#define VIVID_EDITOR_EVENT_MOUSE_MOVE    0u
+#define VIVID_EDITOR_EVENT_MOUSE_BUTTON  1u
+#define VIVID_EDITOR_EVENT_MOUSE_SCROLL  2u
+#define VIVID_EDITOR_EVENT_KEY           3u
+#define VIVID_EDITOR_EVENT_CHAR          4u
+
+typedef struct VividEditorEvent {
+    VividEditorEventType type;
+    float x, y;          /* editor-window-local pixel coordinates */
+    int button;          /* 0=left, 1=right, 2=middle (MOUSE_BUTTON) */
+    int action;          /* 0=release, 1=press, 2=repeat */
+    float scroll_dx, scroll_dy;
+    int key;             /* GLFW key code (KEY) */
+    int scancode;
+    uint32_t codepoint;  /* Unicode (CHAR) */
+    int modifiers;       /* shift/ctrl/alt/super bitmask */
+} VividEditorEvent;
+
+// Editor-window-local pixel space. Not normalized UV, not inspector-relative.
+typedef struct VividEditorMouse {
+    float x, y;
+    float prev_x, prev_y;
+    int left_down, left_clicked, left_released, right_clicked;
+    int shift_down;
+} VividEditorMouse;
+
+/* Host-service surface — additive extension to VividEditorContext. Each
+ * callback is optional; operators must guard on non-null fn pointers.
+ * (Phase D of the editor-UI platform plan — clipboard, cursor shape,
+ * pointer capture, focus, status/tooltip.)
+ */
+typedef uint32_t VividCursorKind;
+#define VIVID_CURSOR_DEFAULT     0u
+#define VIVID_CURSOR_ARROW       1u
+#define VIVID_CURSOR_IBEAM       2u
+#define VIVID_CURSOR_CROSSHAIR   3u
+#define VIVID_CURSOR_HAND        4u
+#define VIVID_CURSOR_RESIZE_H    5u
+#define VIVID_CURSOR_RESIZE_V    6u
+#define VIVID_CURSOR_RESIZE_NESW 7u
+#define VIVID_CURSOR_RESIZE_NWSE 8u
+
+typedef struct VividEditorHostAPI {
+    void* opaque;
+
+    /* Clipboard — UTF-8. `get_clipboard_text` returns a read-only pointer
+     * valid until the next host callback on the same window; operators
+     * should copy if they need longer-lived storage. */
+    const char* (*get_clipboard_text)(void* opaque);
+    void        (*set_clipboard_text)(void* opaque, const char* text);
+
+    /* Cursor shape for the current frame. Reset to DEFAULT every frame. */
+    void (*set_cursor)(void* opaque, VividCursorKind kind);
+
+    /* Pointer capture — while captured, the editor window keeps receiving
+     * mouse events even when the cursor leaves its bounds. */
+    void (*capture_pointer)  (void* opaque);
+    void (*release_pointer)  (void* opaque);
+    int  (*has_pointer_capture)(void* opaque);
+
+    /* Focus — operator asks for keyboard focus; host reports current state. */
+    void (*request_focus)(void* opaque);
+    int  (*has_focus)    (void* opaque);
+
+    /* Transient chrome. Pass nullptr to clear. */
+    void (*set_status_text)(void* opaque, const char* text);
+    void (*show_tooltip)   (void* opaque, const char* text);
+} VividEditorHostAPI;
+
+typedef struct VividEditorContext {
+    // Surface
+    float surface_width;
+    float surface_height;
+    float dpi_scale;
+
+    // Drawing and commands (reused from inspector ABI)
+    VividDrawAPI             draw;
+    VividInspectorCommandAPI commands;
+    VividInspectorTheme      theme;
+
+    // Operator state (read-only)
+    const float*       param_values;        uint32_t param_count;
+    const float*       output_values;       uint32_t output_count;
+    const char* const* string_param_values; uint32_t string_param_count;
+
+    // Input (editor-local pixel coords)
+    VividEditorMouse         mouse;
+    const VividEditorEvent*  events;        uint32_t event_count;
+
+    // Clock
+    double time;
+
+    // Host-writable responses
+    int wants_keyboard;  // operator sets 1 to keep keyboard focus
+    int request_close;   // operator sets 1 to ask the host to close the editor
+
+    /* Host services (Phase D additive extension — clipboard, cursor,
+     * pointer capture, focus, status/tooltip). All callbacks may be
+     * null; operators guard before calling. */
+    VividEditorHostAPI host;
+} VividEditorContext;
+
+typedef VividEditorMetadata (*VividEditorMetadataFn)(void);
+typedef void                (*VividDrawEditorFn)(void* instance, VividEditorContext* ctx);
 
 // Optional main-thread update hook for operators that need non-audio-thread work
 // (e.g. AVFoundation decoding, file I/O, ring buffer pre-fill)

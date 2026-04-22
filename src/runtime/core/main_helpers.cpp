@@ -560,7 +560,9 @@ void draw_custom_thumbnails(const vivid::RuntimeCore& runtime,
 
         // Flush any 2D draw API calls onto the thumbnail texture
         if (thumb_draw_renderer)
-            thumb_draw_renderer->flush(encoder, thumb_view, thumb_logical_w, thumb_logical_h);
+            thumb_draw_renderer->flush(encoder, thumb_view,
+                                       thumb_logical_w, thumb_logical_h,
+                                       thumb_w, thumb_h);
 
         if (tctx.operator_errored) {
             std::fprintf(stderr, "[vivid] thumbnail render error for '%s': %s\n",

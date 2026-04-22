@@ -6,6 +6,38 @@ target_include_directories(test_inspector_layout PRIVATE src tests)
 target_link_libraries(test_inspector_layout PRIVATE vivid_runtime_testlib)
 add_test(NAME test_inspector_layout COMMAND test_inspector_layout WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# VividDrawAPI additive-extension dispatch (draw_tri / draw_arc / draw_text_wrapped)
+add_executable(test_renderer_2d_draw_api
+    tests/ui/test_renderer_2d_draw_api.cpp
+)
+target_include_directories(test_renderer_2d_draw_api PRIVATE src tests)
+target_link_libraries(test_renderer_2d_draw_api PRIVATE vivid_runtime_testlib)
+add_test(NAME test_renderer_2d_draw_api
+         COMMAND test_renderer_2d_draw_api
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# editor_ui.h widget + layout toolkit (first wave: button / toggle / radio /
+# slider_h / slider_v + LayoutCursor helpers). Pure-logic; no GPU or window.
+add_executable(test_editor_ui_widgets
+    tests/ui/test_editor_ui_widgets.cpp
+)
+target_include_directories(test_editor_ui_widgets PRIVATE src tests)
+target_link_libraries(test_editor_ui_widgets PRIVATE vivid_runtime_testlib)
+add_test(NAME test_editor_ui_widgets
+         COMMAND test_editor_ui_widgets
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# editor_ui.h second wave — ui_step_grid (click / shift-extend / drag-paint),
+# ui_drag_handle (radius picker + dx/dy), ui_scroll_region (wheel + clip).
+add_executable(test_editor_ui_grid
+    tests/ui/test_editor_ui_grid.cpp
+)
+target_include_directories(test_editor_ui_grid PRIVATE src tests)
+target_link_libraries(test_editor_ui_grid PRIVATE vivid_runtime_testlib)
+add_test(NAME test_editor_ui_grid
+         COMMAND test_editor_ui_grid
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # DialogManager lockfile-findings modal state (Phase 6b, no GPU)
 add_executable(test_dialog_manager_lockfile
     tests/ui/test_dialog_manager_lockfile.cpp
@@ -163,6 +195,13 @@ add_executable(test_text_edit tests/ui/test_text_edit.cpp)
 target_include_directories(test_text_edit PRIVATE src tests)
 target_link_libraries(test_text_edit PRIVATE vivid_runtime_testlib)
 add_test(NAME test_text_edit COMMAND test_text_edit WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Renderer2D scissor clamping must respect actual framebuffer bounds in
+# secondary surfaces instead of inferring physical size from logical*dpi.
+add_executable(test_renderer_2d_scissor tests/ui/test_renderer_2d_scissor.cpp)
+target_include_directories(test_renderer_2d_scissor PRIVATE src tests)
+target_link_libraries(test_renderer_2d_scissor PRIVATE vivid_runtime_testlib)
+add_test(NAME test_renderer_2d_scissor COMMAND test_renderer_2d_scissor WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # audio_dsp operator API compatibility test
 add_executable(test_audio_dsp_api tests/audio/test_audio_dsp_api.cpp)

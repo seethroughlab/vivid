@@ -47,6 +47,8 @@ add_executable(vivid
     src/runtime/control/graph_file_io.cpp
     src/runtime/core/workspace_manager.cpp
     src/runtime/core/window_manager.cpp
+    src/runtime/core/editor_window_manager.cpp
+    src/runtime/core/editor_window_host_api.cpp
     src/runtime/graph/graph_snapshot_builder.cpp
     src/runtime/core/main_helpers.cpp
     src/runtime/control/runtime_command_sink.cpp

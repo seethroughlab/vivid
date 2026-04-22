@@ -454,6 +454,18 @@ bool NodeGraphUI::handle_inspector_click() {
         }
     }
 
+    // Check Open Editor button (rendered in draw_inspector_header when
+    // op_info->has_editor is true). Clicking opens or refocuses the editor
+    // window for this node via the command sink → EditorWindowManager.
+    {
+        int oi = hit_test_rect(inspector_.open_editor_rects, mouse_.x, mouse_.y);
+        if (oi >= 0) {
+            const auto& r = inspector_.open_editor_rects[oi];
+            commands_.open_editor(r.node_id);
+            return true;
+        }
+    }
+
     // Check preset dropdown click
     {
         int pi = hit_test_rect(inspector_.preset_dropdown_rects, mouse_.x, mouse_.y);

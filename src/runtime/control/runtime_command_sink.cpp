@@ -3,6 +3,7 @@
 #include "runtime/operators/operator_registry.h"
 #include "runtime/operators/operator_creator.h"
 #include "runtime/core/hot_reload.h"
+#include "runtime/core/editor_window_manager.h"
 #include "runtime/gpu/wgsl_header_parser.h"
 #include "runtime/graph/graph.h"
 #include "runtime/operators/operator_info_cache.h"
@@ -55,6 +56,14 @@ void RuntimeCommandSink::open_module_source(const std::string& type_name) {
     if (mod && !mod->source_path.empty() && std::filesystem::exists(mod->source_path)) {
         vivid::open_in_editor(mod->source_path, settings_ ? *settings_ : vivid::Settings{});
     }
+}
+
+void RuntimeCommandSink::open_editor(const std::string& node_id) {
+    if (editor_window_manager_) editor_window_manager_->open(node_id);
+}
+
+bool RuntimeCommandSink::is_editor_open(const std::string& node_id) const {
+    return editor_window_manager_ && editor_window_manager_->is_open(node_id);
 }
 
 std::string RuntimeCommandSink::project_shader_dir() const {

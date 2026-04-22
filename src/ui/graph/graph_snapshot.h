@@ -133,6 +133,7 @@ struct OperatorInfo {
     bool is_module = false;
     bool has_custom_inspector = false;
     uint32_t inspector_mode = 0;
+    bool has_editor = false;
     std::vector<ParamInfo> params;
     std::vector<PortInfo> ports;
 };

@@ -2,12 +2,44 @@
 
 #include "operator_api/types.h"
 #include <webgpu/webgpu.h>
+#include <algorithm>
 #include <cstdint>
 #include <unordered_map>
 #include <vector>
 #include <string>
 
 namespace vivid::ui {
+
+namespace detail {
+
+struct PhysicalScissorRect {
+    uint32_t x = 0;
+    uint32_t y = 0;
+    uint32_t width = 0;
+    uint32_t height = 0;
+};
+
+// Internal test seam: clip rects are stored in physical pixels, while vertex
+// space remains logical. Clamp against the actual framebuffer bounds rather
+// than inferring them from logical size * dpi.
+inline bool clamp_physical_scissor_rect(float sx, float sy, float sw, float sh,
+                                        uint32_t framebuffer_width,
+                                        uint32_t framebuffer_height,
+                                        PhysicalScissorRect* out) {
+    if (!out || framebuffer_width == 0 || framebuffer_height == 0) return false;
+    float x0 = std::max(0.0f, sx);
+    float y0 = std::max(0.0f, sy);
+    float x1 = std::min(static_cast<float>(framebuffer_width), sx + std::max(0.0f, sw));
+    float y1 = std::min(static_cast<float>(framebuffer_height), sy + std::max(0.0f, sh));
+    if (x1 <= x0 || y1 <= y0) return false;
+    out->x = static_cast<uint32_t>(x0);
+    out->y = static_cast<uint32_t>(y0);
+    out->width = static_cast<uint32_t>(x1 - x0);
+    out->height = static_cast<uint32_t>(y1 - y0);
+    return out->width > 0 && out->height > 0;
+}
+
+} // namespace detail
 
 struct TextVertex {
     float x, y;     // position (pixels)
@@ -57,14 +89,19 @@ public:
     void push_clip_rect(float x, float y, float w, float h);
     void pop_clip_rect();
 
-    // Flush all accumulated quads in a render pass on top of the given surface view.
-    // Uses loadOp=Load to composite over existing content.
+    // Flush all accumulated quads in a render pass on top of the given surface
+    // view. Logical dimensions drive vertex-space uniforms; framebuffer
+    // dimensions drive physical scissor clamping.
     void flush(WGPUCommandEncoder encoder, WGPUTextureView surface_view,
-               uint32_t surface_width, uint32_t surface_height);
+               uint32_t logical_width, uint32_t logical_height,
+               uint32_t framebuffer_width, uint32_t framebuffer_height);
 
     // Reset the ring-buffer write offset. Call once per frame before multiple
     // flush() calls on the same command encoder (e.g. thumbnail rendering loop).
     void reset_ring();
+
+    bool has_pending_draws() const { return !vertices_.empty(); }
+    size_t pending_vertex_count() const { return vertices_.size(); }
 
 private:
     void push_quad(float x0, float y0, float x1, float y1,

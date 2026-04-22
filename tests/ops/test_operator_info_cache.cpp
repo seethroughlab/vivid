@@ -1,5 +1,6 @@
 #include "runtime/operators/operator_info_cache.h"
 #include "runtime/operators/builtin_operators.h"
+#include "runtime/operators/operator_loader.h"
 #include "runtime/operators/operator_registry.h"
 #include "operator_api/types.h"
 #include <cstdio>
@@ -200,6 +201,31 @@ int main() {
         auto resolved = resolve_param_visibility(empty_values, vis_info->params);
         check(resolved.op == VIVID_PARAM_VIS_ALWAYS && resolved.param_index < 0,
               "empty descriptor values fail open");
+    }
+
+    // OperatorInfo::has_editor is populated from the loader's editor symbols.
+    // Uses the editor_test_op fixture built via add_vivid_test_fixture. The
+    // fixture's descriptor name is "EditorTestOp" per kName.
+    {
+        vivid::OperatorLoader editor_loader;
+        if (editor_loader.load("./editor_test_op.dylib")) {
+            auto info = cache.get("EditorTestOp", registry, &editor_loader);
+            check(info != nullptr, "EditorTestOp info returned via fallback loader");
+            if (info) {
+                check(info->has_editor, "OperatorInfo::has_editor true for editor_test_op");
+            }
+        } else {
+            check(false, "editor_test_op.dylib failed to load from cwd");
+        }
+    }
+
+    // Non-editor operator (any builtin without VIVID_EDITOR) has has_editor == false.
+    {
+        auto info = cache.get("audio_out", registry);
+        check(info != nullptr, "audio_out info returned");
+        if (info) {
+            check(!info->has_editor, "OperatorInfo::has_editor false for non-editor op");
+        }
     }
 
     std::fprintf(stderr, "%s (%d failures)\n", failures == 0 ? "PASSED" : "FAILED", failures);

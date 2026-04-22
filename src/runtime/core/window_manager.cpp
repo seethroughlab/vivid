@@ -1,4 +1,5 @@
 #include "runtime/core/window_manager.h"
+#include "runtime/core/editor_window_manager.h"
 #include "ui/graph/node_graph.h"
 #include <cstdio>
 #include <filesystem>
@@ -105,7 +106,8 @@ void run_ui_test_script_frame(vivid::UITestScript& script,
                                      WindowUserData& window_user_data,
                                      std::string& screenshot_path,
                                      int& screenshot_delay,
-                                     uint64_t frame_count) {
+                                     uint64_t frame_count,
+                                     vivid::EditorWindowManager* editor_windows) {
     if (script.actions.empty() || script.next_action >= script.actions.size())
         return;
     if (script.wait_frames_remaining > 0) {
@@ -115,50 +117,86 @@ void run_ui_test_script_frame(vivid::UITestScript& script,
 
     while (script.next_action < script.actions.size()) {
         const auto& action = script.actions[script.next_action++];
+        // Secondary-window routing: when target_window is set and an
+        // editor manager is available, route mouse/key/char into that
+        // editor's pending_events queue instead of the main graph UI.
+        const bool to_editor = editor_windows && !action.target_window.empty();
         switch (action.type) {
             case vivid::UITestActionType::Wait:
                 script.wait_frames_remaining = std::max(0, action.frames);
                 return;
             case vivid::UITestActionType::MouseMove:
-                window_user_data.raw_mouse_x = action.x;
-                window_user_data.raw_mouse_y = action.y;
-                graph_ui.on_mouse_move(action.x, action.y);
+                if (to_editor) {
+                    editor_windows->inject_mouse_move(action.target_window,
+                                                      action.x, action.y);
+                } else {
+                    window_user_data.raw_mouse_x = action.x;
+                    window_user_data.raw_mouse_y = action.y;
+                    graph_ui.on_mouse_move(action.x, action.y);
+                }
                 std::fprintf(stderr,
-                             "[vivid] UI script mouse_move to (%.1f, %.1f) on frame %llu\n",
+                             "[vivid] UI script mouse_move to (%.1f, %.1f) target=%s on frame %llu\n",
                              static_cast<double>(action.x),
                              static_cast<double>(action.y),
+                             action.target_window.empty() ? "main"
+                                                           : action.target_window.c_str(),
                              static_cast<unsigned long long>(frame_count));
                 break;
             case vivid::UITestActionType::MouseButton:
-                window_user_data.current_mods = action.mods;
-                if (action.button >= 0 && action.button <= 2) {
-                    if (action.mouse_action == GLFW_PRESS)
-                        window_user_data.buttons_held |= (1 << action.button);
-                    else if (action.mouse_action == GLFW_RELEASE)
-                        window_user_data.buttons_held &= ~(1 << action.button);
+                if (to_editor) {
+                    editor_windows->inject_mouse_button(action.target_window,
+                                                         action.button,
+                                                         action.mouse_action,
+                                                         action.mods);
+                } else {
+                    window_user_data.current_mods = action.mods;
+                    if (action.button >= 0 && action.button <= 2) {
+                        if (action.mouse_action == GLFW_PRESS)
+                            window_user_data.buttons_held |= (1 << action.button);
+                        else if (action.mouse_action == GLFW_RELEASE)
+                            window_user_data.buttons_held &= ~(1 << action.button);
+                    }
+                    graph_ui.on_mouse_button(action.button, action.mouse_action, action.mods);
                 }
-                graph_ui.on_mouse_button(action.button, action.mouse_action, action.mods);
                 std::fprintf(stderr,
-                             "[vivid] UI script mouse_button %d/%d on frame %llu\n",
+                             "[vivid] UI script mouse_button %d/%d target=%s on frame %llu\n",
                              action.button, action.mouse_action,
+                             action.target_window.empty() ? "main"
+                                                           : action.target_window.c_str(),
                              static_cast<unsigned long long>(frame_count));
                 break;
             case vivid::UITestActionType::Key:
-                window_user_data.current_mods = action.mods;
-                graph_ui.on_key(action.key, action.key_action, action.mods);
+                if (to_editor) {
+                    editor_windows->inject_key(action.target_window,
+                                                action.key, 0,
+                                                action.key_action, action.mods);
+                } else {
+                    window_user_data.current_mods = action.mods;
+                    graph_ui.on_key(action.key, action.key_action, action.mods);
+                }
                 std::fprintf(stderr,
-                             "[vivid] UI script key %d/%d mods=%d on frame %llu\n",
+                             "[vivid] UI script key %d/%d mods=%d target=%s on frame %llu\n",
                              action.key, action.key_action, action.mods,
+                             action.target_window.empty() ? "main"
+                                                           : action.target_window.c_str(),
                              static_cast<unsigned long long>(frame_count));
                 break;
             case vivid::UITestActionType::CharInput:
-                graph_ui.on_char(action.codepoint);
+                if (to_editor) {
+                    editor_windows->inject_char(action.target_window, action.codepoint);
+                } else {
+                    graph_ui.on_char(action.codepoint);
+                }
                 std::fprintf(stderr,
-                             "[vivid] UI script char %u on frame %llu\n",
+                             "[vivid] UI script char %u target=%s on frame %llu\n",
                              action.codepoint,
+                             action.target_window.empty() ? "main"
+                                                           : action.target_window.c_str(),
                              static_cast<unsigned long long>(frame_count));
                 break;
             case vivid::UITestActionType::Screenshot: {
+                // Main-window screenshot scheduled (editor screenshots go
+                // through the --editor-screenshot CLI, fired at end of run).
                 std::filesystem::path shot_path(action.screenshot_path);
                 if (!shot_path.is_absolute())
                     shot_path = script.source_dir / shot_path;
@@ -175,6 +213,18 @@ void run_ui_test_script_frame(vivid::UITestScript& script,
                              "[vivid] UI script checkpoint queued: %s on frame %llu\n",
                              action.checkpoint_label.c_str(),
                              static_cast<unsigned long long>(frame_count));
+                break;
+            case vivid::UITestActionType::OpenEditor:
+                if (editor_windows && !action.target_window.empty()) {
+                    editor_windows->open(action.target_window);
+                    std::fprintf(stderr,
+                                 "[vivid] UI script open_editor target=%s on frame %llu\n",
+                                 action.target_window.c_str(),
+                                 static_cast<unsigned long long>(frame_count));
+                } else {
+                    std::fprintf(stderr,
+                                 "[vivid] UI script open_editor missing target / editor manager\n");
+                }
                 break;
         }
     }
@@ -206,6 +256,17 @@ void key_callback(GLFWwindow* w, int key, int scancode, int action, int mods) {
     // Tilde toggles graph UI visibility (intercept before any dispatch)
     if (key == GLFW_KEY_GRAVE_ACCENT && action == GLFW_PRESS && mods == 0) {
         if (ud->graph_ui) ud->graph_ui->toggle_visible();
+        return;
+    }
+
+    // Cmd+E on macOS / Ctrl+E elsewhere opens the selected node's editor if
+    // its operator exports VIVID_EDITOR. Manager open() silently no-ops for
+    // non-editor operators, which gives the desired "otherwise do nothing"
+    // semantics without adding extra UI-side branching here.
+    if (is_open_editor_shortcut(key, action, mods) &&
+        ud->graph_ui && ud->editor_windows &&
+        ud->graph_ui->has_single_selection()) {
+        ud->editor_windows->open(ud->graph_ui->single_selected_id());
         return;
     }
 

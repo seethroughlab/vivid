@@ -49,6 +49,10 @@ public:
     uint32_t inspector_mode() const;
     void draw_inspector(void* instance, VividInspectorContext* ctx) const;
 
+    bool has_editor() const { return editor_meta_fn_ != nullptr && draw_editor_fn_ != nullptr; }
+    VividEditorMetadata editor_metadata() const;
+    void draw_editor(void* instance, VividEditorContext* ctx) const;
+
     bool has_main_thread_update() const { return main_update_fn_ != nullptr; }
     void main_thread_update(void* instance, double time,
                             const char** file_param_values, uint32_t file_param_count) const;
@@ -79,6 +83,8 @@ private:
     VividPrepareInstanceAssetsFn prepare_assets_fn_ = nullptr;
     VividDrawInspectorFn   draw_insp_fn_      = nullptr;
     VividInspectorModeFn   insp_mode_fn_      = nullptr;
+    VividEditorMetadataFn  editor_meta_fn_    = nullptr;
+    VividDrawEditorFn      draw_editor_fn_    = nullptr;
     void fixup_dd_pointers();  // re-point all C string pointers after move
 
     // Shader-backed operator support

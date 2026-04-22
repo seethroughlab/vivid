@@ -21,6 +21,7 @@ enum class UITestActionType {
     CharInput,
     Screenshot,
     Checkpoint,
+    OpenEditor,       // open an operator's VIVID_EDITOR window by node id
 };
 
 struct UITestAction {
@@ -37,6 +38,11 @@ struct UITestAction {
     std::string screenshot_path;
     int screenshot_delay = 0;
     std::string checkpoint_label;
+    // Editor-window routing (follow-up: second-window automated coverage).
+    // When non-empty, mouse/key/char/screenshot actions target the editor
+    // window for this node id instead of the main graph UI. OpenEditor
+    // uses it to select the node to open.
+    std::string target_window;
 };
 
 struct UITestScript {

@@ -8,7 +8,7 @@
 #include <vector>
 
 namespace vivid::ui { class NodeGraphUI; }
-namespace vivid { class RuntimeAPI; class Graph; struct Settings; }
+namespace vivid { class RuntimeAPI; class Graph; struct Settings; class EditorWindowManager; }
 
 // WindowUserData lives at global scope (matches original definition)
 struct WindowUserData {
@@ -16,6 +16,7 @@ struct WindowUserData {
     vivid::RuntimeAPI* runtime_api = nullptr;
     vivid::Graph* graph = nullptr;
     vivid::Settings* settings = nullptr;
+    vivid::EditorWindowManager* editor_windows = nullptr;  // inspector + shortcut editor open path
 
     // Input forwarding to operators (when UI hidden)
     std::vector<VividInputEvent> pending_events;
@@ -29,6 +30,32 @@ struct WindowUserData {
 
 namespace vivid {
 
+enum class EditorShortcutPlatform {
+    MacOS,
+    Other,
+};
+
+inline bool is_open_editor_shortcut_for_platform(EditorShortcutPlatform platform,
+                                                 int key,
+                                                 int action,
+                                                 int mods) {
+    if (key != GLFW_KEY_E || action != GLFW_PRESS) return false;
+    if ((mods & GLFW_MOD_SHIFT) != 0) return false;
+    if (platform == EditorShortcutPlatform::MacOS)
+        return (mods & GLFW_MOD_SUPER) != 0;
+    return (mods & GLFW_MOD_CONTROL) != 0;
+}
+
+inline bool is_open_editor_shortcut(int key, int action, int mods) {
+#ifdef __APPLE__
+    return is_open_editor_shortcut_for_platform(
+        EditorShortcutPlatform::MacOS, key, action, mods);
+#else
+    return is_open_editor_shortcut_for_platform(
+        EditorShortcutPlatform::Other, key, action, mods);
+#endif
+}
+
 // Monitor topology serial — incremented on monitor connect/disconnect
 extern std::atomic<uint64_t> g_monitor_topology_serial;
 
@@ -41,12 +68,15 @@ GLFWmonitor* monitor_for_window(GLFWwindow* window);
 GLFWmonitor* monitor_for_target(int target, GLFWwindow* window);
 void clamp_window_rect_to_monitor(GLFWmonitor* monitor, int* x, int* y, int* w, int* h);
 
+class EditorWindowManager;
+
 void run_ui_test_script_frame(UITestScript& script,
                               vivid::ui::NodeGraphUI& graph_ui,
                               WindowUserData& window_user_data,
                               std::string& screenshot_path,
                               int& screenshot_delay,
-                              uint64_t frame_count);
+                              uint64_t frame_count,
+                              EditorWindowManager* editor_windows);
 
 // GLFW callbacks
 void char_callback(GLFWwindow* w, unsigned int codepoint);

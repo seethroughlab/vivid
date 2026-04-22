@@ -330,6 +330,26 @@ target_include_directories(test_settings PRIVATE src tests)
 target_link_libraries(test_settings PRIVATE vivid_runtime_testlib nlohmann_json::nlohmann_json)
 add_test(NAME test_settings COMMAND test_settings WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Editor window geometry persistence (Phase 3 host integration)
+add_executable(test_settings_editor_geometry
+    tests/core/test_settings_editor_geometry.cpp
+)
+target_include_directories(test_settings_editor_geometry PRIVATE src tests)
+target_link_libraries(test_settings_editor_geometry PRIVATE vivid_runtime_testlib nlohmann_json::nlohmann_json)
+add_test(NAME test_settings_editor_geometry
+         COMMAND test_settings_editor_geometry
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Platform-specific editor-open shortcut contract
+add_executable(test_window_manager_shortcuts
+    tests/core/test_window_manager_shortcuts.cpp
+)
+target_include_directories(test_window_manager_shortcuts PRIVATE src tests)
+target_link_libraries(test_window_manager_shortcuts PRIVATE vivid_runtime_testlib glfw)
+add_test(NAME test_window_manager_shortcuts
+         COMMAND test_window_manager_shortcuts
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Operator destination policy precedence unit test
 add_executable(test_operator_destination_policy
     tests/ops/test_operator_destination_policy.cpp

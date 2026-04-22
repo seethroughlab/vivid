@@ -701,7 +701,8 @@ float Renderer2D::draw_text_wrapped(float x, float y, const char* text, float ma
 }
 
 void Renderer2D::flush(WGPUCommandEncoder encoder, WGPUTextureView surface_view,
-                          uint32_t surface_width, uint32_t surface_height) {
+                          uint32_t logical_width, uint32_t logical_height,
+                          uint32_t framebuffer_width, uint32_t framebuffer_height) {
     if (vertices_.empty()) {
         batches_.clear();
         clip_stack_.clear();
@@ -727,7 +728,7 @@ void Renderer2D::flush(WGPUCommandEncoder encoder, WGPUTextureView surface_view,
     wgpuQueueWriteBuffer(queue, vb, ring_byte_offset_, vertices_.data(), data_size);
 
     // Update persistent uniform buffer with current screen size
-    float uniforms[2] = { (float)surface_width, (float)surface_height };
+    float uniforms[2] = { (float)logical_width, (float)logical_height };
     wgpuQueueWriteBuffer(queue, uniform_buf_, 0, uniforms, 8);
 
     // Render pass with loadOp=Load to composite on top of existing content
@@ -748,31 +749,21 @@ void Renderer2D::flush(WGPUCommandEncoder encoder, WGPUTextureView surface_view,
     wgpuRenderPassEncoderSetBindGroup(pass, 0, bind_group_, 0, nullptr);
     wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vb, ring_byte_offset_, data_size);
 
-    // SetScissorRect requires physical pixels; surface_width/height are logical.
-    uint32_t phys_w = static_cast<uint32_t>(surface_width * dpi_scale_);
-    uint32_t phys_h = static_cast<uint32_t>(surface_height * dpi_scale_);
-
     // Draw batches with per-batch scissor rects
     for (const auto& batch : batches_) {
         if (batch.count == 0) continue;
         if (batch.has_scissor) {
-            // batch.sx/sy/sw/sh are already in physical pixels (scaled in push_clip_rect).
-            // Clamp both origin and extent; if the rect is fully off-surface, skip the batch
-            // instead of issuing an invalid zero-area/out-of-bounds scissor.
-            float x0 = std::max(0.0f, batch.sx);
-            float y0 = std::max(0.0f, batch.sy);
-            float x1 = std::min(static_cast<float>(phys_w), batch.sx + std::max(0.0f, batch.sw));
-            float y1 = std::min(static_cast<float>(phys_h), batch.sy + std::max(0.0f, batch.sh));
-            if (x1 <= x0 || y1 <= y0) {
+            detail::PhysicalScissorRect rect{};
+            if (!detail::clamp_physical_scissor_rect(batch.sx, batch.sy, batch.sw, batch.sh,
+                                                     framebuffer_width, framebuffer_height,
+                                                     &rect)) {
                 continue;
             }
-            uint32_t sx = static_cast<uint32_t>(x0);
-            uint32_t sy = static_cast<uint32_t>(y0);
-            uint32_t sw = static_cast<uint32_t>(x1 - x0);
-            uint32_t sh = static_cast<uint32_t>(y1 - y0);
-            wgpuRenderPassEncoderSetScissorRect(pass, sx, sy, sw, sh);
+            wgpuRenderPassEncoderSetScissorRect(pass, rect.x, rect.y,
+                                                rect.width, rect.height);
         } else {
-            wgpuRenderPassEncoderSetScissorRect(pass, 0, 0, phys_w, phys_h);
+            wgpuRenderPassEncoderSetScissorRect(pass, 0, 0,
+                                                framebuffer_width, framebuffer_height);
         }
         wgpuRenderPassEncoderDraw(pass, batch.count, 1, batch.start, 0);
     }
@@ -845,6 +836,23 @@ static void api_push_clip_rect(void* o, float x, float y, float w, float h) {
 static void api_pop_clip_rect(void* o) {
     static_cast<Renderer2D*>(o)->pop_clip_rect();
 }
+static void api_draw_tri(void* o, float x0, float y0, float x1, float y1,
+                         float x2, float y2, VividColor c) {
+    static_cast<Renderer2D*>(o)->draw_tri(x0, y0, x1, y1, x2, y2,
+                                          c.r, c.g, c.b, c.a);
+}
+static void api_draw_arc(void* o, float cx, float cy, float radius,
+                         float start_angle, float end_angle,
+                         float thickness, int segments, VividColor c) {
+    static_cast<Renderer2D*>(o)->draw_arc(cx, cy, radius, start_angle, end_angle,
+                                           thickness, segments,
+                                           c.r, c.g, c.b, c.a);
+}
+static float api_draw_text_wrapped(void* o, float x, float y, const char* text,
+                                    float max_width, VividColor c, float scale) {
+    return static_cast<Renderer2D*>(o)->draw_text_wrapped(
+        x, y, text, max_width, c.r, c.g, c.b, c.a, scale);
+}
 
 void populate_draw_api(VividDrawAPI& api, Renderer2D& renderer) {
     api.opaque          = &renderer;
@@ -856,6 +864,9 @@ void populate_draw_api(VividDrawAPI& api, Renderer2D& renderer) {
     api.line_height     = api_line_height;
     api.push_clip_rect  = api_push_clip_rect;
     api.pop_clip_rect   = api_pop_clip_rect;
+    api.draw_tri        = api_draw_tri;
+    api.draw_arc        = api_draw_arc;
+    api.draw_text_wrapped = api_draw_text_wrapped;
 }
 
 } // namespace vivid::ui

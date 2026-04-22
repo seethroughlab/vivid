@@ -79,6 +79,22 @@ Settings load_settings() {
     json_read(j, "recent_files", s.recent_files);
     json_read(j, "lockfile_load_mode", s.lockfile_load_mode);
 
+    if (j.contains("editor_window_geometry") && j["editor_window_geometry"].is_object()) {
+        for (auto it = j["editor_window_geometry"].begin();
+             it != j["editor_window_geometry"].end(); ++it) {
+            const auto& v = it.value();
+            if (!v.is_object()) continue;
+            EditorWindowGeometry g;
+            if (v.contains("x") && v["x"].is_number_integer()) g.x = v["x"].get<int>();
+            if (v.contains("y") && v["y"].is_number_integer()) g.y = v["y"].get<int>();
+            if (v.contains("width")  && v["width"].is_number_integer())
+                g.width  = v["width"].get<int>();
+            if (v.contains("height") && v["height"].is_number_integer())
+                g.height = v["height"].get<int>();
+            s.editor_window_geometry_by_type[it.key()] = g;
+        }
+    }
+
     if (s.pan_gesture != "middle" && s.pan_gesture != "left" && s.pan_gesture != "right")
         s.pan_gesture = "left";
 
@@ -131,6 +147,17 @@ void save_settings(const Settings& s) {
     j["pan_gesture"] = s.pan_gesture;
     if (!s.recent_files.empty()) j["recent_files"] = s.recent_files;
     j["lockfile_load_mode"] = s.lockfile_load_mode;
+
+    if (!s.editor_window_geometry_by_type.empty()) {
+        nlohmann::json egm = nlohmann::json::object();
+        for (const auto& [type, g] : s.editor_window_geometry_by_type) {
+            egm[type] = {
+                {"x", g.x}, {"y", g.y},
+                {"width", g.width}, {"height", g.height},
+            };
+        }
+        j["editor_window_geometry"] = std::move(egm);
+    }
 
     std::string path = settings_path();
     std::ofstream ofs(path);

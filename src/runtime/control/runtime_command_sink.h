@@ -17,6 +17,7 @@ class CaptureCoordinator;
 struct Settings;
 class PackageManager;
 class BuildConsole;
+class EditorWindowManager;
 } // namespace vivid
 class OperatorInfoCache;
 
@@ -185,6 +186,8 @@ public:
 
     void open_shader(const std::string& type_name) override;
     void open_module_source(const std::string& type_name) override;
+    void open_editor(const std::string& node_id) override;
+    bool is_editor_open(const std::string& node_id) const override;
 
     void clone_and_edit(const std::string& type_name,
                         const std::string& custom_name = {},
@@ -292,6 +295,7 @@ public:
     void set_build_dir(const std::string& dir) { build_dir_ = dir; }
     void set_settings(vivid::Settings* s) { settings_ = s; }
     void set_hot_reloader(vivid::HotReloader* hr) { hot_reloader_ = hr; }
+    void set_editor_window_manager(vivid::EditorWindowManager* m) { editor_window_manager_ = m; }
     void set_package_manager(vivid::PackageManager* pm) { package_manager_ = pm; }
     void set_subgraph_modules(const vivid::SubgraphModuleRegistry* m) { subgraph_modules_ = m; }
     void set_build_console(vivid::BuildConsole* bc) { build_console_ = bc; }
@@ -343,6 +347,7 @@ private:
     OperatorInfoCache* op_cache_ = nullptr;
     vivid::Settings* settings_ = nullptr;
     vivid::HotReloader* hot_reloader_ = nullptr;
+    vivid::EditorWindowManager* editor_window_manager_ = nullptr;
     vivid::PackageManager* package_manager_ = nullptr;
     const vivid::SubgraphModuleRegistry* subgraph_modules_ = nullptr;
     vivid::BuildConsole* build_console_ = nullptr;
