@@ -504,6 +504,9 @@ add_vivid_operator(ring_mod         operators/audio/ring_mod/ring_mod.cpp
                    FACTORY_PRESETS  operators/audio/ring_mod/factory_presets.json)
 add_vivid_operator(parametric_eq    operators/audio/parametric_eq/parametric_eq.cpp
                    FACTORY_PRESETS  operators/audio/parametric_eq/factory_presets.json)
+target_sources(parametric_eq PRIVATE
+    operators/audio/parametric_eq/parametric_eq_editor.cpp
+    operators/audio/parametric_eq/parametric_eq_editor_shared.cpp)
 add_vivid_operator(audio_analysis   operators/audio/audio_analysis/audio_analysis.cpp)
 add_vivid_operator(mic_input        operators/audio/mic_input/mic_input.cpp EXTRA_LIBS miniaudio)
 

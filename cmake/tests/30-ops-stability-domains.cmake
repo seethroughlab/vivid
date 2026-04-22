@@ -127,6 +127,38 @@ add_test(NAME test_arpeggiator_editor
          COMMAND test_arpeggiator_editor
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# ParametricEQ editor helpers — axis mappings, biquad magnitude math,
+# composite response, band-node geometry, hit-test.
+add_executable(test_parametric_eq_editor_helpers
+    tests/operators/test_parametric_eq_editor_helpers.cpp
+    operators/audio/parametric_eq/parametric_eq_editor_shared.cpp
+)
+target_include_directories(test_parametric_eq_editor_helpers PRIVATE
+    src tests
+    operators/audio/parametric_eq
+    operators)
+target_link_libraries(test_parametric_eq_editor_helpers PRIVATE vivid_runtime_testlib)
+add_test(NAME test_parametric_eq_editor_helpers
+         COMMAND test_parametric_eq_editor_helpers
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# ParametricEQ draw_editor contract — keyboard (1..4 select, T cycle,
+# arrow nudges), click-drag on a band node, scroll-for-Q.
+add_executable(test_parametric_eq_editor
+    tests/operators/test_parametric_eq_editor.cpp
+    operators/audio/parametric_eq/parametric_eq.cpp
+    operators/audio/parametric_eq/parametric_eq_editor.cpp
+    operators/audio/parametric_eq/parametric_eq_editor_shared.cpp
+)
+target_include_directories(test_parametric_eq_editor PRIVATE
+    src tests
+    operators/audio/parametric_eq
+    operators)
+target_link_libraries(test_parametric_eq_editor PRIVATE vivid_runtime_testlib)
+add_test(NAME test_parametric_eq_editor
+         COMMAND test_parametric_eq_editor
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Tracker editor helpers — pure-logic (piano-row → semitone mapping,
 # hex accumulator math, row-range clipboard, cursor clamp + auto-scroll).
 add_executable(test_tracker_editor_helpers
