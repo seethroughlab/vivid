@@ -202,6 +202,9 @@ target_sources(drum_sequencer_au PRIVATE
     operators/control/drum_sequencer/drum_sequencer_editor.cpp
     operators/control/drum_sequencer/drum_sequencer_editor_shared.cpp)
 add_vivid_operator(pattern_seq_au     operators/control/pattern_seq/pattern_seq.cpp)
+target_sources(pattern_seq_au PRIVATE
+    operators/control/pattern_seq/pattern_seq_editor.cpp
+    operators/control/pattern_seq/pattern_seq_editor_shared.cpp)
 add_vivid_operator(note_pattern_au    operators/control/note_pattern/note_pattern.cpp    EXTRA_LIBS webgpu)
 add_vivid_operator(note_duration      operators/control/note_duration/note_duration.cpp)
 add_vivid_operator(arpeggiator_au     operators/control/arpeggiator/arpeggiator.cpp     EXTRA_LIBS webgpu)

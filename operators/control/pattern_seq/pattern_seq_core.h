@@ -1,9 +1,13 @@
 #pragma once
 #include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
+#include "operator_api/editor_ui.h"
+#include "operator_api/editor_keys.h"
 #include "operator_api/midi_types.h"
 #include "operator_api/type_id.h"
 #include "midi_helpers.h"
+#include "pattern_seq_editor_shared.h"
+#include "shared/editor_ui/selection.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -66,25 +70,44 @@ struct PatternSeqCore : vivid::OperatorBase {
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
-        // Step sequencer grid: steps + values as STEP_SEQ run
-        vivid::display_hint(steps, VIVID_DISPLAY_STEP_SEQ);
+        // Inspector retirement (mirrors Sequencer phase-4): the old
+        // step-seq widget is gone; the dedicated editor owns per-step
+        // authoring. `steps` stays visible as a plain int scrubber,
+        // the 16 val_N params are hidden so the inspector isn't a
+        // wall of bipolar faders.
         out.push_back(&steps);       // 0: step count
         vivid::Param<float>* vals[] = {
             &val_0, &val_1, &val_2, &val_3, &val_4, &val_5, &val_6, &val_7,
             &val_8, &val_9, &val_10, &val_11, &val_12, &val_13, &val_14, &val_15
         };
         for (auto* v : vals) {
-            vivid::display_hint(*v, VIVID_DISPLAY_STEP_SEQ);
+            vivid::display_hint(*v, VIVID_DISPLAY_HIDDEN);
             out.push_back(v);        // 1..16: values
         }
 
-        // Normal params below the grid
+        // Top-level controls remain in the inspector for quick scrubs.
         out.push_back(&rate);         // 17
         out.push_back(&gate_length);  // 18
         out.push_back(&probability);  // 19
         out.push_back(&clock_source); // 20
         out.push_back(&midi_channel); // 21
     }
+
+    // --- Editor window ---
+    static VividEditorMetadata editor_metadata();
+    void draw_editor(VividEditorContext* ctx);
+
+    // Editor state (persisted across frames, public for tests).
+    int  editor_cursor_step_ = 0;
+    vivid::ui::GridState grid_state_{};
+    vivid::editor_ui::Selection editor_selection_{};
+    // Clipboard: 1 lane × up to kMaxSteps floats.
+    struct EditorClipboard {
+        bool  has_content = false;
+        int   cols = 0;
+        float values[::vivid::pattern_seq_editor::kMaxSteps] = {};
+    };
+    EditorClipboard editor_clipboard_{};
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"beat_phase", VIVID_PORT_SCALAR,  VIVID_PORT_INPUT});

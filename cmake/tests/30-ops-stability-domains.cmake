@@ -26,6 +26,39 @@ add_test(NAME test_editor_window_host_api
          COMMAND test_editor_window_host_api
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# PatternSeq editor helpers — param-index encoding, bipolar value
+# conversion, quick-fill generators (ramp up/down, zero, random).
+add_executable(test_pattern_seq_editor_helpers
+    tests/operators/test_pattern_seq_editor_helpers.cpp
+    operators/control/pattern_seq/pattern_seq_editor_shared.cpp
+)
+target_include_directories(test_pattern_seq_editor_helpers PRIVATE
+    src tests
+    operators/control/pattern_seq
+    operators/shared/sequencer
+    operators)
+target_link_libraries(test_pattern_seq_editor_helpers PRIVATE vivid_runtime_testlib)
+add_test(NAME test_pattern_seq_editor_helpers
+         COMMAND test_pattern_seq_editor_helpers
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# PatternSeq draw_editor contract — keyboard nav/nudge/digits,
+# selection extend, clipboard round-trip, quick-fill button clicks.
+add_executable(test_pattern_seq_editor
+    tests/operators/test_pattern_seq_editor.cpp
+    operators/control/pattern_seq/pattern_seq_editor.cpp
+    operators/control/pattern_seq/pattern_seq_editor_shared.cpp
+)
+target_include_directories(test_pattern_seq_editor PRIVATE
+    src tests
+    operators/control/pattern_seq
+    operators/shared/sequencer
+    operators)
+target_link_libraries(test_pattern_seq_editor PRIVATE vivid_runtime_testlib)
+add_test(NAME test_pattern_seq_editor
+         COMMAND test_pattern_seq_editor
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Euclidean editor helpers — Bjorklund pattern generator + density
 # preset list. Small; the algorithm was extracted out of the core +
 # thumbnail to deduplicate and give the editor a shared surface.
