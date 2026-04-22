@@ -66,9 +66,31 @@ jobs:
           APP="build/vivid.app"
           FW_DIR="$APP/Contents/Frameworks"
           mkdir -p "$FW_DIR"
-          WGPU_SRC="$(otool -L "$APP/Contents/MacOS/vivid" | awk '/libwgpu_native.dylib/{print $1; exit}')"
-          [[ -n "$WGPU_SRC" ]] || { echo "Failed to locate libwgpu_native.dylib dependency in vivid binary" >&2; exit 1; }
-          cp -f "$WGPU_SRC" "$FW_DIR/libwgpu_native.dylib"
+          # The upstream WebGPU-distribution dylib ships with install_name
+          # @rpath/libwgpu_native.dylib, and cmake/app.cmake already copies
+          # it into Contents/MacOS/ and Contents/Frameworks/ via POST_BUILD.
+          # Resolve the staged copy and normalize any stragglers.
+          WGPU_DEP="$(otool -L "$APP/Contents/MacOS/vivid" | awk '/libwgpu_native.dylib/{print $1; exit}')"
+          [[ -n "$WGPU_DEP" ]] || { echo "Failed to locate libwgpu_native.dylib dependency in vivid binary" >&2; exit 1; }
+          if [[ "$WGPU_DEP" == @rpath/* ]] || [[ "$WGPU_DEP" == @loader_path/* ]] || [[ "$WGPU_DEP" == @executable_path/* ]]; then
+            if [[ -f "$FW_DIR/libwgpu_native.dylib" ]]; then
+              WGPU_SRC="$FW_DIR/libwgpu_native.dylib"
+            elif [[ -f "$APP/Contents/MacOS/libwgpu_native.dylib" ]]; then
+              WGPU_SRC="$APP/Contents/MacOS/libwgpu_native.dylib"
+            else
+              echo "libwgpu_native.dylib not staged under $APP — build did not bundle WebGPU runtime" >&2
+              exit 1
+            fi
+          else
+            WGPU_SRC="$WGPU_DEP"
+          fi
+          # Safe copy: skip if src == dest (cp -f errors when paths resolve
+          # to the same file, which happens when the build already staged
+          # the dylib into Contents/Frameworks).
+          if ! [[ "$WGPU_SRC" -ef "$FW_DIR/libwgpu_native.dylib" ]]; then
+            cp -f "$WGPU_SRC" "$FW_DIR/libwgpu_native.dylib"
+          fi
+          chmod u+w "$FW_DIR/libwgpu_native.dylib"
           install_name_tool -id "@rpath/libwgpu_native.dylib" "$FW_DIR/libwgpu_native.dylib"
           for bin in "$APP/Contents/MacOS/vivid" "$APP/Contents/PlugIns/"*.dylib; do
             [[ -e "$bin" ]] || continue
@@ -79,6 +101,36 @@ jobs:
             if [[ "$bin" == *"/Contents/PlugIns/"* ]] && ! otool -l "$bin" | grep -q "@loader_path/../Frameworks"; then
               install_name_tool -add_rpath "@loader_path/../Frameworks" "$bin"
             fi
+          done
+          # Strip any absolute-path LC_RPATHs left over from the build tree.
+          # These don't exist on end-user machines and would confuse dyld
+          # fallback resolution when debugging codesign / stapler failures.
+          strip_absolute_rpaths() {
+            local bin="$1"
+            local rpaths
+            # otool -l prints LC_RPATH blocks as:
+            #   cmd LC_RPATH
+            #   cmdsize N
+            #   path <value> (offset 12)
+            # Extract the <value> only when it starts with '/'.
+            rpaths="$(otool -l "$bin" \
+              | awk '/^ *cmd LC_RPATH/{in_rpath=1; next}
+                     in_rpath && /^ *path /{
+                       sub(/^ *path /, "");
+                       sub(/ \(offset [0-9]+\)$/, "");
+                       print; in_rpath=0
+                     }
+                     /^Load command/{in_rpath=0}' \
+              | grep -E '^/' || true)"
+            while IFS= read -r rp; do
+              [[ -z "$rp" ]] && continue
+              install_name_tool -delete_rpath "$rp" "$bin" 2>/dev/null || true
+            done <<< "$rpaths"
+          }
+          strip_absolute_rpaths "$APP/Contents/MacOS/vivid"
+          for p in "$APP/Contents/PlugIns"/*.dylib; do
+            [[ -e "$p" ]] || continue
+            strip_absolute_rpaths "$p"
           done
 
       - name: Embed Sparkle framework
