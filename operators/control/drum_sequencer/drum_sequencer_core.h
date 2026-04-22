@@ -2,13 +2,16 @@
 #include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
 #include "operator_api/draw_ui_helpers.h"
+#include "operator_api/editor_ui.h"
 #include "operator_api/midi_types.h"
 #include "operator_api/type_id.h"
 #include "drum_sequencer_layout.h"
+#include "drum_sequencer_editor_shared.h"
 #include "midi_helpers.h"
 #include <cmath>
 #include <algorithm>
 #include <cstring>
+#include <random>
 #include "operator_api/thumbnail.h"
 
 /**
@@ -357,6 +360,73 @@ struct DrumSequencerCore : vivid::OperatorBase {
 
     vivid::Param<int> midi_channel {"midi_channel", 1, 1, 16};
 
+    // --- Follow-up: pattern-B triggers, per-step probability, per-step roll ---
+    // These sit AFTER bar_sync in collect_params so older saved graphs keep
+    // every pre-existing param at its original descriptor-order index.
+    vivid::Param<int> active_pattern {"active_pattern", 0, 0, 1};
+
+// Helper macros — 16 brace-initialized params per drum row.
+#define VIVID_DS_ROW_F(prefix, def) \
+    {prefix "0",  def, 0.0f, 1.0f}, {prefix "1",  def, 0.0f, 1.0f}, \
+    {prefix "2",  def, 0.0f, 1.0f}, {prefix "3",  def, 0.0f, 1.0f}, \
+    {prefix "4",  def, 0.0f, 1.0f}, {prefix "5",  def, 0.0f, 1.0f}, \
+    {prefix "6",  def, 0.0f, 1.0f}, {prefix "7",  def, 0.0f, 1.0f}, \
+    {prefix "8",  def, 0.0f, 1.0f}, {prefix "9",  def, 0.0f, 1.0f}, \
+    {prefix "10", def, 0.0f, 1.0f}, {prefix "11", def, 0.0f, 1.0f}, \
+    {prefix "12", def, 0.0f, 1.0f}, {prefix "13", def, 0.0f, 1.0f}, \
+    {prefix "14", def, 0.0f, 1.0f}, {prefix "15", def, 0.0f, 1.0f}
+
+#define VIVID_DS_ROW_I(prefix, def) \
+    {prefix "0",  def, 1, 4}, {prefix "1",  def, 1, 4}, \
+    {prefix "2",  def, 1, 4}, {prefix "3",  def, 1, 4}, \
+    {prefix "4",  def, 1, 4}, {prefix "5",  def, 1, 4}, \
+    {prefix "6",  def, 1, 4}, {prefix "7",  def, 1, 4}, \
+    {prefix "8",  def, 1, 4}, {prefix "9",  def, 1, 4}, \
+    {prefix "10", def, 1, 4}, {prefix "11", def, 1, 4}, \
+    {prefix "12", def, 1, 4}, {prefix "13", def, 1, 4}, \
+    {prefix "14", def, 1, 4}, {prefix "15", def, 1, 4}
+
+    // Pattern-B triggers (96). Default 0 — pattern B is empty until filled.
+    std::array<vivid::Param<float>,
+               vivid_sequencers::drum_layout::kDrumCount *
+               vivid_sequencers::drum_layout::kStepCount> trig_b_ = {{
+        VIVID_DS_ROW_F("kick_b_",  0.0f),
+        VIVID_DS_ROW_F("snare_b_", 0.0f),
+        VIVID_DS_ROW_F("hat_b_",   0.0f),
+        VIVID_DS_ROW_F("oh_b_",    0.0f),
+        VIVID_DS_ROW_F("clap_b_",  0.0f),
+        VIVID_DS_ROW_F("tom_b_",   0.0f),
+    }};
+
+    // Per-step probability (96). Default 1.0 — "always fires" preserves
+    // existing graph behaviour until the user actively reduces a value.
+    std::array<vivid::Param<float>,
+               vivid_sequencers::drum_layout::kDrumCount *
+               vivid_sequencers::drum_layout::kStepCount> prob_ = {{
+        VIVID_DS_ROW_F("kick_prob_",  1.0f),
+        VIVID_DS_ROW_F("snare_prob_", 1.0f),
+        VIVID_DS_ROW_F("hat_prob_",   1.0f),
+        VIVID_DS_ROW_F("oh_prob_",    1.0f),
+        VIVID_DS_ROW_F("clap_prob_",  1.0f),
+        VIVID_DS_ROW_F("tom_prob_",   1.0f),
+    }};
+
+    // Per-step roll count (96). Default 1 — one hit, no ratchet. Range
+    // 1..4 covers triplet + quad ratchets while staying legible in the UI.
+    std::array<vivid::Param<int>,
+               vivid_sequencers::drum_layout::kDrumCount *
+               vivid_sequencers::drum_layout::kStepCount> roll_ = {{
+        VIVID_DS_ROW_I("kick_roll_",  1),
+        VIVID_DS_ROW_I("snare_roll_", 1),
+        VIVID_DS_ROW_I("hat_roll_",   1),
+        VIVID_DS_ROW_I("oh_roll_",    1),
+        VIVID_DS_ROW_I("clap_roll_",  1),
+        VIVID_DS_ROW_I("tom_roll_",   1),
+    }};
+
+#undef VIVID_DS_ROW_F
+#undef VIVID_DS_ROW_I
+
     DrumSequencerCore();
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override;
@@ -366,14 +436,39 @@ struct DrumSequencerCore : vivid::OperatorBase {
                  const float* params,
                  float* output_values, VividLaneOutput* out_spreads,
                  void** custom_outputs, uint32_t custom_output_count);
-    void draw_inspector(VividInspectorContext* ctx) override;
     void draw_thumbnail(const VividThumbnailContext* ctx) override;
 
-    // Inspector state
-    int insp_tab_ = 0;
-    bool insp_dragging_ = false;
-    int insp_drag_drum_ = -1;
-    int insp_drag_step_ = -1;
+    // Editor (Phase 4) — dedicated VIVID_EDITOR window.
+    static VividEditorMetadata editor_metadata();
+    void draw_editor(VividEditorContext* ctx);
+
+    // Editor cursor persists across frames.
+    int  editor_cursor_drum_ = 0;
+    int  editor_cursor_step_ = 0;
+
+    // Per-instance step clipboard for Cmd+C / Cmd+V in the editor.
+    // Survives editor close/reopen; distinct per DrumSequencer node.
+    vivid_sequencers::drum_editor::StepClipboard step_clipboard_;
+
+    // Grid widget state (Phase B of the editor-UI platform plan). Owns
+    // the selection anchor + in-progress drag state (paint or extend).
+    // Rebuilt into `editor_selection_` every frame from anchor + cursor.
+    vivid::ui::GridState                              grid_state_{};
+    vivid_sequencers::drum_editor::Selection          editor_selection_{};
+    vivid_sequencers::drum_editor::SelectionClipboard selection_clipboard_{};
+
+    // Two-key "P <digit>" probability shortcut. When `P` is pressed we enter
+    // prefix mode; the next digit 0-9 commits probability = digit / 10 across
+    // the current selection and exits. Any non-digit also exits.
+    bool editor_prob_prefix_mode_ = false;
+
+    // Side-panel slider drag state (Phase A of the editor-UI platform plan).
+    // Each vivid::ui::SliderState owns one slider's cross-frame drag context;
+    // the side-panel render + mouse path uses ui_slider_h calls which read
+    // and write these structs in place.
+    vivid::ui::SliderState sp_vel_drag_{};
+    vivid::ui::SliderState sp_modb_drag_{};
+    vivid::ui::SliderState sp_prob_drag_{};
 
 protected:
     int prev_step_ = -1;
@@ -383,4 +478,20 @@ protected:
     int64_t prev_phrase_idx_ = 0;
     bool phrase_initialized_ = false;
     VividMidiBuffer midi_buf_ = {};
+    std::array<VividMidiBuffer,
+               vivid_sequencers::drum_layout::kDrumCount> per_drum_bufs_ = {};
+
+    // Probability PRNG + per-drum roll/ratchet scheduling. The PRNG is
+    // sampled exactly once per step edge (never mid-step) so audio-rate
+    // ticks stay deterministic given a fixed seed. `fire_this_step_`
+    // records the gating decision so sub-step emissions (for rolls) all
+    // share the same outcome, and `prev_sub_step_` tracks how many
+    // ratchet hits have already been emitted within the current step.
+    std::mt19937 rng_ {
+        static_cast<std::mt19937::result_type>(
+            reinterpret_cast<std::uintptr_t>(this))
+    };
+    std::array<bool, vivid_sequencers::drum_layout::kDrumCount> fire_this_step_{};
+    std::array<int,  vivid_sequencers::drum_layout::kDrumCount> roll_count_this_step_{};
+    std::array<int,  vivid_sequencers::drum_layout::kDrumCount> prev_sub_step_{};
 };

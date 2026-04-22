@@ -35,10 +35,10 @@ operators/control/lfo/
 **Audio-only control operator** — most sequencer/timing operators only need audio-rate and have a single `_au.cpp` entry point with no Fr variant:
 ```
 operators/control/drum_sequencer/
-    drum_sequencer_au.cpp           audio-rate entry point (registers "DrumSequencer")
-    drum_sequencer.cpp              main implementation
-    drum_sequencer_core.h/cpp       extracted shared state
-    drum_sequencer_inspector.cpp    custom inspector UI
+    drum_sequencer.cpp                      audio-rate entry point (registers "DrumSequencer")
+    drum_sequencer_core.h/cpp               shared core + compute() + thumbnail
+    drum_sequencer_editor.cpp               custom VIVID_EDITOR window
+    drum_sequencer_editor_shared.{h,cpp}    pure-logic helpers shared with tests
 ```
 
 **GPU operators with shaders** — WGSL shader code is embedded as C++ string literals inside the `.cpp` file, not in separate `.wgsl` files. The `filters/` directory at the repo root contains standalone self-describing WGSL presets — those are a separate mechanism from the compiled GPU operators here.

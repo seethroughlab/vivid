@@ -186,14 +186,21 @@ add_vivid_operator(macro             operators/control/macro/macro.cpp)
 add_vivid_operator(mseg_au           operators/control/mseg/mseg.cpp
                    FACTORY_PRESETS operators/control/mseg/factory_presets.json
                    EXTRA_LIBS webgpu)
+target_sources(mseg_au PRIVATE
+    operators/control/mseg/mseg_editor.cpp
+    operators/control/mseg/mseg_editor_shared.cpp)
 
 # --- Sequencer operators ---
 add_vivid_operator(sequencer_au       operators/control/sequencer/sequencer.cpp
                    FACTORY_PRESETS operators/control/sequencer/factory_presets.json)
+target_sources(sequencer_au PRIVATE
+    operators/control/sequencer/sequencer_editor.cpp
+    operators/control/sequencer/sequencer_editor_shared.cpp)
 add_vivid_operator(drum_sequencer_au  operators/control/drum_sequencer/drum_sequencer.cpp  EXTRA_LIBS webgpu)
 target_sources(drum_sequencer_au PRIVATE
     operators/control/drum_sequencer/drum_sequencer_core.cpp
-    operators/control/drum_sequencer/drum_sequencer_inspector.cpp)
+    operators/control/drum_sequencer/drum_sequencer_editor.cpp
+    operators/control/drum_sequencer/drum_sequencer_editor_shared.cpp)
 add_vivid_operator(pattern_seq_au     operators/control/pattern_seq/pattern_seq.cpp)
 add_vivid_operator(note_pattern_au    operators/control/note_pattern/note_pattern.cpp    EXTRA_LIBS webgpu)
 add_vivid_operator(note_duration      operators/control/note_duration/note_duration.cpp)

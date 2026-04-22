@@ -72,6 +72,16 @@ DrumSequencerCore::DrumSequencerCore() {
     };
     for (auto* p : mod_b)
         p->description = "Per-step modulation value for external routing (0-1)";
+
+    vivid::description(active_pattern,
+        "Active pattern bank (0 = A, 1 = B). Triggers switch with the bank; "
+        "velocity / mod B / probability / roll are shared across patterns.");
+    for (auto& p : trig_b_)
+        p.description = "Pattern-B trigger on/off for this step (>0.5 = active)";
+    for (auto& p : prob_)
+        p.description = "Per-step probability (0 = never fires, 1 = always fires)";
+    for (auto& p : roll_)
+        p.description = "Per-step roll / ratchet count (1 = single hit, 2-4 = sub-step repeats)";
 }
 
 void DrumSequencerCore::collect_params(std::vector<vivid::ParamBase*>& out) {
@@ -277,13 +287,38 @@ void DrumSequencerCore::collect_params(std::vector<vivid::ParamBase*>& out) {
     // Phrase-sync param appended after the hidden block so existing
     // param indices in the layout helper stay stable.
     out.push_back(&bar_sync);
+
+    // Follow-up params: pattern A/B + per-step probability + per-step roll.
+    // Appended AFTER bar_sync so every pre-existing index survives. Indices
+    // here match drum_sequencer_layout.h (kActivePatternIndex = 299,
+    // kTrigBParamBases = 300.., kProbParamBases = 396.., kRollParamBases = 492..).
+    out.push_back(&active_pattern);
+
+    const size_t follow_hidden_start = out.size();
+    for (auto& p : trig_b_) out.push_back(&p);
+    for (auto& p : prob_)   out.push_back(&p);
+    for (auto& p : roll_)   out.push_back(&p);
+    for (size_t i = follow_hidden_start; i < out.size(); ++i)
+        out[i]->display_hint = VIVID_DISPLAY_HIDDEN;
 }
 
 void DrumSequencerCore::collect_ports(std::vector<VividPortDescriptor>& out) {
     out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
     out.push_back({"reset",      VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
     out.push_back({"step",       VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
-    out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
+    // `midi_out` carries all six drums merged — feed this into samplers
+    // (SP404, etc.) that select voices by MIDI note. The per-drum ports
+    // carry only their own drum, suitable for wiring straight into a
+    // matching Drum* voice without a DrumKit hub in between. Order here
+    // must match drum_layout::kTriggerPrefixes so `custom_outputs[d+1]`
+    // lines up with index `d` in compute().
+    out.push_back(VIVID_CUSTOM_REF_PORT("midi_out",  VIVID_PORT_OUTPUT, VividMidiBuffer));
+    out.push_back(VIVID_CUSTOM_REF_PORT("kick_out",  VIVID_PORT_OUTPUT, VividMidiBuffer));
+    out.push_back(VIVID_CUSTOM_REF_PORT("snare_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
+    out.push_back(VIVID_CUSTOM_REF_PORT("hat_out",   VIVID_PORT_OUTPUT, VividMidiBuffer));
+    out.push_back(VIVID_CUSTOM_REF_PORT("oh_out",    VIVID_PORT_OUTPUT, VividMidiBuffer));
+    out.push_back(VIVID_CUSTOM_REF_PORT("clap_out",  VIVID_PORT_OUTPUT, VividMidiBuffer));
+    out.push_back(VIVID_CUSTOM_REF_PORT("tom_out",   VIVID_PORT_OUTPUT, VividMidiBuffer));
 }
 
 
@@ -349,22 +384,78 @@ void DrumSequencerCore::compute(float phase, float reset_in,
     // Step output (index 0, only signal output)
     output_values[0] = static_cast<float>(step);
 
-    // Populate MIDI output — Mod A per step maps to velocity
-    uint8_t ch = static_cast<uint8_t>(midi_channel.int_value() - 1);
+    // Swing-aware fraction within the current step, 0..1. Used to place
+    // ratchet / roll sub-hits evenly inside the audible duration of the
+    // step regardless of the swing setting.
+    float step_fraction;
+    if (pair_phase >= boundary) {
+        const float denom = std::max(1e-4f, 2.0f - boundary);
+        step_fraction = (pair_phase - boundary) / denom;
+    } else {
+        const float denom = std::max(1e-4f, boundary);
+        step_fraction = pair_phase / denom;
+    }
+    step_fraction = std::clamp(step_fraction, 0.0f, 0.999999f);
+
+    // Populate MIDI output. Per-step Mod A maps to velocity; active_pattern
+    // picks pattern A (triggers) or pattern B (trig_b_) — dynamics stay
+    // shared. Probability is sampled once at the step edge; roll emits N
+    // hits spread over the step's sub-fraction.
+    const int active_ptn = (active_pattern.int_value() == 0) ? 0 : 1;
+    const uint8_t ch = static_cast<uint8_t>(midi_channel.int_value() - 1);
     midi_buf_.count = 0;
+    for (auto& buf : per_drum_bufs_) buf.count = 0;
     for (std::size_t d = 0; d < layout::kDrumCount; ++d) {
-        bool active = (step_changed &&
-            params[layout::trigger_param_index(d, step)] > 0.5f);
-        if (active) {
-            float mod_a = params[layout::mod_a_param_index(d, step)];
-            uint8_t vel = static_cast<uint8_t>(std::clamp(
-                static_cast<int>(mod_a * 127.0f + 0.5f), 1, 127));
-            vivid_sequencers::midi_note_on(midi_buf_,
-                static_cast<uint8_t>(params[layout::note_param_index(d)]), vel, ch);
+        if (step_changed) {
+            const int trig_idx = (active_ptn == 0)
+                ? layout::trigger_param_index(d, step)
+                : layout::trig_b_param_index(d, step);
+            const bool triggered = params[trig_idx] > 0.5f;
+            if (triggered) {
+                const float prob = std::clamp(
+                    params[layout::prob_param_index(d, step)], 0.0f, 1.0f);
+                std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+                const float sample = dist(rng_);
+                if (sample <= prob) {
+                    fire_this_step_[d] = true;
+                    const int rc = static_cast<int>(
+                        params[layout::roll_param_index(d, step)] + 0.5f);
+                    roll_count_this_step_[d] = std::clamp(rc, 1, 4);
+                } else {
+                    fire_this_step_[d] = false;
+                    roll_count_this_step_[d] = 0;
+                }
+            } else {
+                fire_this_step_[d] = false;
+                roll_count_this_step_[d] = 0;
+            }
+            prev_sub_step_[d] = -1;
+        }
+
+        if (fire_this_step_[d] && roll_count_this_step_[d] > 0) {
+            const int rc = roll_count_this_step_[d];
+            const int sub = std::min(
+                static_cast<int>(step_fraction * static_cast<float>(rc)),
+                rc - 1);
+            if (sub != prev_sub_step_[d]) {
+                const float mod_a = params[layout::mod_a_param_index(d, step)];
+                const uint8_t vel = static_cast<uint8_t>(std::clamp(
+                    static_cast<int>(mod_a * 127.0f + 0.5f), 1, 127));
+                const uint8_t note = static_cast<uint8_t>(
+                    params[layout::note_param_index(d)]);
+                vivid_sequencers::midi_note_on(midi_buf_, note, vel, ch);
+                vivid_sequencers::midi_note_on(per_drum_bufs_[d], note, vel, ch);
+                prev_sub_step_[d] = sub;
+            }
         }
     }
-    if (custom_outputs && custom_output_count > 0) {
-        custom_outputs[0] = &midi_buf_;
+    if (custom_outputs) {
+        if (custom_output_count > 0) custom_outputs[0] = &midi_buf_;
+        const uint32_t per_drum_count = std::min<uint32_t>(
+            static_cast<uint32_t>(layout::kDrumCount),
+            custom_output_count > 0 ? custom_output_count - 1 : 0);
+        for (uint32_t d = 0; d < per_drum_count; ++d)
+            custom_outputs[1 + d] = &per_drum_bufs_[d];
     }
 }
 
