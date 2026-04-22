@@ -2,7 +2,9 @@
 
 #include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
+#include "operator_api/editor_ui.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 /**
@@ -239,6 +241,10 @@ struct MSEG : vivid::OperatorBase {
     void draw_inspector(VividInspectorContext* ctx) override;
     void draw_thumbnail(const VividThumbnailContext* ctx) override;
 
+    // Editor (follow-up: MSEG migration) — dedicated VIVID_EDITOR window.
+    static VividEditorMetadata editor_metadata();
+    void draw_editor(VividEditorContext* ctx);
+
 protected:
     enum Stage { IDLE, PLAYING, LOOPING, RELEASING };
     Stage stage_               = IDLE;
@@ -251,6 +257,19 @@ protected:
 private:
     // Inspector interaction state
     int dragged_point_ = -1;
+
+    // Editor interaction state.  Point + curve drag state are owned by
+    // the editor-UI toolkit (`vivid::ui::DragHandleState`); MSEG's
+    // nearest-neighbour picker decides which handle claims a click, then
+    // the caller-owned DragHandleState tracks drag origin + release.
+    int    editor_selected_point_ = 0;
+    std::array<vivid::ui::DragHandleState, kMaxPoints> point_drag_{};
+    std::array<vivid::ui::DragHandleState, kMaxCurves> curve_drag_{};
+    // Double-click detection state (operator-specific — there is no
+    // generic widget for this yet).
+    double editor_last_click_t_   = -1.0;
+    float  editor_last_click_x_   = 0.0f;
+    float  editor_last_click_y_   = 0.0f;
 
     MsegThumbState* thumb_state_ = nullptr;
     void rebuild_thumb_pipeline(const VividThumbnailContext* ctx);

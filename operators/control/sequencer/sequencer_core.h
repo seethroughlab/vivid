@@ -1,8 +1,10 @@
 #pragma once
 #include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
+#include "operator_api/editor_ui.h"
 #include "operator_api/midi_types.h"
 #include "operator_api/type_id.h"
+#include "sequencer_editor_shared.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -107,6 +109,20 @@ struct SequencerCore : vivid::OperatorBase {
     vivid::Param<int>   polarity       {"polarity",       0, {"bipolar", "unipolar"}};
     vivid::Param<int>   midi_channel   {"midi_channel",   1, 1, 16};
 
+    // --- Editor window (phase-4 platform; follow-up to DrumSequencer) ---
+    static VividEditorMetadata editor_metadata();
+    void draw_editor(VividEditorContext* ctx);
+
+    // Editor cursor + selection + clipboard. Cursor identifies a single
+    // (row, step) cell; selection is the rectangle (anchor, cursor) across
+    // the 2-row grid (row 0 = value, row 1 = gate). Clipboard persists
+    // across editor close/reopen because it lives on the core instance.
+    int editor_cursor_row_  = 0;
+    int editor_cursor_step_ = 0;
+    vivid::ui::GridState grid_state_{};
+    vivid::sequencer_editor::Selection          editor_selection_{};
+    vivid::sequencer_editor::SelectionClipboard selection_clipboard_{};
+
     SequencerCore() {
         vivid::description(source, "Internal uses the built-in step grid; external reads values from input ports");
 
@@ -155,18 +171,19 @@ struct SequencerCore : vivid::OperatorBase {
         // Source toggle
         out.push_back(&source);
 
-        // Step sequencer grid: steps + values + gates (visible only in internal mode)
-        vivid::display_hint(steps, VIVID_DISPLAY_STEP_SEQ);
+        // Inspector retirement (mirrors DrumSequencer phase 4): the compact
+        // step-seq widget is gone; the dedicated editor owns per-step
+        // authoring. `steps` stays visible as a plain int scrubber, the 64
+        // step_value/step_gate params are hidden so the inspector isn't a
+        // wall of knobs. `source` remains the only conditional surface.
         vivid::visible_when_eq(steps, source, 0);
         out.push_back(&steps);
         for (int i = 0; i < kMaxSteps; ++i) {
-            vivid::display_hint(step_value[i], VIVID_DISPLAY_STEP_SEQ);
-            vivid::visible_when_eq(step_value[i], source, 0);
+            vivid::display_hint(step_value[i], VIVID_DISPLAY_HIDDEN);
             out.push_back(&step_value[i]);
         }
         for (int i = 0; i < kMaxSteps; ++i) {
-            vivid::display_hint(step_gate[i], VIVID_DISPLAY_STEP_SEQ);
-            vivid::visible_when_eq(step_gate[i], source, 0);
+            vivid::display_hint(step_gate[i], VIVID_DISPLAY_HIDDEN);
             out.push_back(&step_gate[i]);
         }
 

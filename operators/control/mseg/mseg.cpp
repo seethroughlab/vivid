@@ -1,4 +1,5 @@
 #include "mseg.h"
+#include "mseg_editor_shared.h"
 #include "operator_api/thumbnail.h"
 
 struct MsegThumbState {
@@ -401,13 +402,12 @@ void MSEG::draw_inspector(VividInspectorContext* ctx) {
             new_time = std::max(prev_t, std::min(next_t, new_time));
         }
 
-        // Issue set_param commands
-        char name_buf[32];
-        std::snprintf(name_buf, sizeof(name_buf), "pt_time_%d", dragged_point_);
-        ctx->commands.set_param(ctx->commands.opaque, name_buf, new_time);
-
-        std::snprintf(name_buf, sizeof(name_buf), "pt_value_%d", dragged_point_);
-        ctx->commands.set_param(ctx->commands.opaque, name_buf, new_value);
+        // Issue set_param commands (shared name encoding)
+        namespace me = ::vivid_mseg_editor;
+        const std::string nt = me::param_name_for(me::PointField::Time,  dragged_point_);
+        const std::string nv = me::param_name_for(me::PointField::Value, dragged_point_);
+        ctx->commands.set_param(ctx->commands.opaque, nt.c_str(), new_time);
+        ctx->commands.set_param(ctx->commands.opaque, nv.c_str(), new_value);
     }
 
     if (!ctx->mouse.left_down) {
@@ -444,3 +444,4 @@ struct MsegAudio : MSEG, vivid::AudioProcessable {
 VIVID_REGISTER(MsegAudio)
 VIVID_THUMBNAIL(MsegAudio)
 VIVID_INSPECTOR(MsegAudio)
+VIVID_EDITOR(MsegAudio)

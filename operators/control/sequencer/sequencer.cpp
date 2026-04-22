@@ -23,3 +23,4 @@ struct Sequencer : SequencerCore, vivid::AudioProcessable {
 };
 
 VIVID_REGISTER(Sequencer)
+VIVID_EDITOR(Sequencer)
