@@ -2,157 +2,193 @@
 
 ## Goal
 
-Add the runtime machinery that can open, draw, and close a native editor window on demand, calling the Phase 1 `vivid_draw_editor` entry point each frame. No host UI yet — opening is driven by a temporary debug hook (e.g. a keyboard shortcut or a CLI test command) so we can validate the window plumbing in isolation before wiring the inspector button in Phase 3.
+Add the runtime machinery to open, draw, focus, and close dedicated editor windows for nodes whose operators export `VIVID_EDITOR`. This phase proves the rendering and lifecycle model without yet making editor windows part of the public host UI.
 
-## Context
+The design in this phase intentionally minimizes risk: editor windows manage their own input locally and do not require a generic refactor of the main window callback path.
 
-The codebase already has a working template for a secondary GLFW/WGPU window: `src/runtime/debug/output_window.{h,cpp}`. It creates its own `GLFWwindow`, its own `WGPUSurface`, uses the main `FullscreenBlit` pipeline, and shares device/queue with the primary window.
+## Current Repo Facts
 
-Editor windows follow the same shape but instead of blitting a texture they run a `Renderer2D` pass and call into the operator's `draw_editor`.
+- `src/runtime/debug/output_window.cpp` already shows the correct pattern for a second GLFW window with its own `WGPUSurface`.
+- Main-window input today is still centered around `WindowUserData` in `src/runtime/core/window_manager.{h,cpp}`.
+- The main loop already tracks runtime rebuild boundaries through `RuntimeAPI::reload_serial()` in `src/runtime/core/main.cpp`.
+- The inspector already adapts `UICommandSink` into a command API suitable for operator UI calls.
 
-Single-window assumptions that need relaxing (from exploration):
+These facts support a local editor-window manager rather than a global input abstraction.
 
-- `WindowUserData` (`src/runtime/core/window_manager.h`) is effectively per-app; GLFW callbacks route input to a single `graph_ui`. This must become per-window via `glfwSetWindowUserPointer`.
-- `Renderer2D` is not intrinsically window-bound, but it is initialized once against the main surface format. Editor windows need their own instance with a matching surface format (typically the same — BGRA8Unorm).
-- The main frame pipeline in `main.cpp` (~lines 3165–3231) is written against one surface. Editor windows piggy-back after the primary frame completes.
+## Locked Decisions For This Phase
 
-## Scope
+1. Add `src/runtime/core/editor_window_manager.{h,cpp}`.
+2. Keep the main-window `WindowUserData` path intact.
+3. Define editor-specific GLFW callbacks inside `editor_window_manager.cpp`.
+4. Resolve the live node from `runtime.compiled_graph()->find_node(node_id)` whenever the editor is opened, focused, or drawn.
+5. Treat `reload_serial()` changes as a hard close-all boundary.
 
-- Introduce `EditorWindowManager` owning a vector of `EditorWindow` instances.
-- `EditorWindow` owns: `GLFWwindow*`, `WGPUSurface`, `Renderer2D`, per-window input state, a queue of `VividInputEvent`, and a reference to the `OperatorLoader` + instance pointer it draws for.
-- Per-frame: main window renders → for each editor window, acquire surface, begin pass, populate `VividEditorContext`, call `draw_editor`, flush `Renderer2D`, present.
-- Lifecycle: open, close (via OS close button, via `request_close`, via owner delete), destroy all on graph unload, destroy all on dylib reload.
-- No host UI wiring. A hidden debug entry point (e.g. environment variable or unused menu item) opens an editor for a named node so we can exercise the code before Phase 3.
+## Responsibilities
 
-## Design
+The new manager owns:
 
-### New files
+- editor-window creation and destruction
+- duplicate-open prevention
+- per-window input accumulation
+- per-frame editor rendering
+- focus/refocus behavior
+- teardown on node removal or runtime reload
 
-- `src/runtime/core/editor_window_manager.h`
-- `src/runtime/core/editor_window_manager.cpp`
+It does **not** own:
 
-### `EditorWindow` (internal)
+- inspector button UI
+- public keyboard shortcut registration
+- double-click behavior
+- editor geometry persistence policy beyond exposing enough hooks for Phase 3
+
+## Editor Window Data Model
+
+Use an internal structure similar to:
 
 ```cpp
 struct EditorWindow {
-    std::string      node_id;                     // key
-    GLFWwindow*      glfw = nullptr;
-    WGPUSurface      surface = nullptr;
+    std::string node_id;
+    GLFWwindow* glfw = nullptr;
+    WGPUSurface surface = nullptr;
     WGPUTextureFormat format = WGPUTextureFormat_BGRA8Unorm;
-    std::unique_ptr<Renderer2D> r2d;
+    std::unique_ptr<Renderer2D> renderer;
 
-    // Input accumulated by GLFW callbacks, drained on each draw
-    std::vector<VividInputEvent> pending_events;
-    VividInspectorMouse          mouse{};         // maintained incrementally
-
-    // Links to the operator instance
-    OperatorLoader*  loader = nullptr;            // not owned
-    void*            instance = nullptr;          // not owned
-
-    // Metadata captured at open
+    std::vector<VividEditorEvent> pending_events;
+    VividEditorMouse mouse{};
     VividEditorMetadata meta{};
+    bool wants_keyboard = false;
 };
 ```
 
-### `EditorWindowManager` API
+Do not cache raw `OperatorLoader*` or `instance` pointers across reload boundaries. Resolve those from the current compiled graph whenever the window is used. That keeps stale-instance handling simple: reload closes all windows, and even before that, any missing node or missing editor capability cleanly tears a window down.
 
-```cpp
-class EditorWindowManager {
-public:
-    EditorWindowManager(GpuContext& gpu, /* main window refs */);
-    ~EditorWindowManager();
+## Manager API Shape
 
-    // Returns true if the editor was opened (or already open and focused).
-    bool open(const std::string& node_id,
-              OperatorLoader& loader,
-              void* instance);
+The concrete class interface can evolve, but the docs should require these behaviors:
 
-    void close(const std::string& node_id);
-    void close_all();                // called on graph unload / shutdown
-    void close_for_node(const std::string& node_id);  // called on node delete
-    void close_for_loader(OperatorLoader* loader);    // called on hot reload
+- `open(node_id)` opens or refocuses the existing editor window for that node.
+- `is_open(node_id)` reports whether a node already has an editor window.
+- `focus(node_id)` brings an already-open editor window to the foreground.
+- `close(node_id)` closes a specific window.
+- `close_all()` closes all editor windows.
+- `tick(time)` renders every live editor window once per main-loop frame.
 
-    // Called once per frame after the primary window finishes its frame.
-    void tick(double time, const RuntimeState& runtime);
+The constructor should take enough dependencies to avoid hidden globals:
 
-private:
-    std::vector<std::unique_ptr<EditorWindow>> windows_;
-    // ...
-};
-```
+- `GpuContext&`
+- `RuntimeCore&` or equivalent compiled-graph access
+- `UICommandSink&`
+- a callback or helper that produces `VividInspectorTheme`
 
-### Per-frame tick
+## Rendering Flow
 
-For each `EditorWindow`:
+For each open editor window on every frame:
 
-1. If `glfwWindowShouldClose` → enqueue for destruction, skip.
-2. Acquire the next surface texture view (same pattern as `OutputWindow::draw`).
-3. Begin a command encoder and render pass against that view.
-4. Build a `VividEditorContext`:
-   - `surface_width/height` from the current GLFW framebuffer size.
-   - `dpi_scale` from GLFW content scale.
-   - `draw` populated via `populate_draw_api(api, *r2d)` (already exists in `src/ui/rendering/renderer_2d.cpp`).
-   - `commands` populated with `set_param` / `set_string_param` forwarders into the running `RuntimeAPI` (or whichever layer the inspector currently calls — verify at implementation time).
-   - `theme` filled from the same theme source used by the inspector.
-   - `param_values`, `output_values`, `string_param_values` copied from the `CompiledGraph` snapshot for the node.
-   - `events` pointed at the pending-events vector.
-   - `mouse` reflecting the last known state.
-   - `time`, `wants_keyboard`, `request_close`.
-5. Call `loader->draw_editor(instance, &ctx)`.
-6. `r2d->flush()`, submit commands, `wgpuSurfacePresent`.
-7. If `ctx.request_close == 1` or `glfwWindowShouldClose` now true, enqueue for destruction.
+1. If the GLFW window has requested close, mark it for destruction.
+2. Resolve `node_id` against `runtime.compiled_graph()->find_node(node_id)`.
+3. If the node is missing, has no loader, has no instance, or no longer reports `has_editor()`, mark it for destruction.
+4. Refresh framebuffer size and reconfigure the surface if needed.
+5. Acquire the surface texture.
+6. Build a `VividEditorContext` using:
+   - framebuffer width and height
+   - content scale from GLFW
+   - `populate_draw_api(...)`
+   - a command adapter backed by `UICommandSink`
+   - theme values consistent with inspector styling
+   - current param, output, and string-param views from the live compiled node
+   - local editor mouse snapshot
+   - pending editor events
+   - `time`
+7. Call `loader->draw_editor(instance, &ctx)`.
+8. Flush the `Renderer2D` pass and present.
+9. If `ctx.request_close` is set, mark the window for destruction.
+10. After iteration, destroy all marked windows and clear their per-window buffers.
 
-After the iteration, destroy enqueued windows.
+## Input Routing
 
-### Per-window input routing (refactor)
+Keep input handling local to the editor manager.
 
-Currently `WindowUserData` is stored globally-ish and all GLFW callbacks forward to the single `graph_ui`. Minimal refactor:
+Implementation requirements:
 
-- Introduce a small `WindowInputSink` interface with `on_mouse_move`, `on_mouse_button`, `on_scroll`, `on_key`, `on_char`, etc.
-- Primary window's `WindowUserData` points to a sink backed by `graph_ui`.
-- Each `EditorWindow` sets `glfwSetWindowUserPointer` to its own `EditorWindow*`. GLFW callbacks look up the sink via the user pointer and dispatch accordingly.
-- Editor's sink appends a `VividInputEvent` to `pending_events` and updates `mouse`. Events are drained at the end of each draw.
+- Define editor-specific GLFW callbacks in `editor_window_manager.cpp`.
+- Store `EditorWindow*` in `glfwSetWindowUserPointer`.
+- Translate GLFW callbacks into `VividEditorEvent` entries with editor-local pixel coordinates.
+- Maintain `VividEditorMouse` incrementally in the same callbacks.
+- Clear one-frame click or release flags after each draw.
 
-### Main-loop integration
+Do not introduce a new generic `WindowInputSink` layer in this phase. That is a broader architecture change than the feature needs.
 
-In `src/runtime/core/main.cpp`:
+## Main-Loop Integration
 
-- Construct `EditorWindowManager` after `GpuContext` is created (~line 1243 area).
-- Call `editor_windows.tick(time, runtime)` once per frame, after the primary window's `gpu.end_frame()` completes.
-- Call `editor_windows.close_all()` on graph unload; `close_for_loader(...)` when a dylib reload event fires; `close_for_node(...)` from the graph delete path.
+Integrate the manager into `src/runtime/core/main.cpp`.
 
-### Temporary open hook
+Required integration points:
 
-Add a debug entry point that opens an editor for a node without requiring Phase 3's UI work. Simplest: a keyboard shortcut (e.g. Cmd+Shift+E while a node is selected) that calls `EditorWindowManager::open(...)` if the selected node's loader `has_editor()`. Keep it behind an `#ifdef VIVID_EDITOR_DEBUG` or a build flag to keep it out of release; it will be replaced by the real host UI in Phase 3.
+1. Construct the manager after GPU setup and after the UI command sink exists.
+2. Tick the manager once per frame after the primary window render path.
+3. Close all editor windows when the graph unloads.
+4. Close all editor windows whenever `runtime_api.reload_serial()` changes.
 
-## Files
+The reload rule is explicit: this feature does not attempt to rebind editor windows across compiled-graph swaps in v1.
+
+## Temporary Open Hook
+
+Add a development-only entry point in this phase so rendering can be exercised before host UI wiring lands.
+
+Recommended behavior:
+
+- `Cmd+Shift+E` / `Ctrl+Shift+E`
+- only active in development builds or behind a clearly temporary gate
+- opens the selected node’s editor if that node exists and `has_editor()` is true
+
+This hook is temporary and should be removed once Phase 3 lands the official public affordances.
+
+## Files To Change
 
 | Change | Path |
 |---|---|
-| New manager + window | `src/runtime/core/editor_window_manager.{h,cpp}` (new) |
-| Per-window input sink refactor | `src/runtime/core/window_manager.{h,cpp}` |
-| Main-loop construction + tick + unload-close hooks | `src/runtime/core/main.cpp` |
-| CMake: add new files | `src/runtime/core/CMakeLists.txt` (or root app CMake as appropriate) |
-| Reference only (do not modify beyond reading) | `src/runtime/debug/output_window.{h,cpp}` |
+| New editor window manager | `src/runtime/core/editor_window_manager.{h,cpp}` |
+| Main-loop construction, tick, and reload-close integration | `src/runtime/core/main.cpp` |
+| Temporary debug shortcut in main callback path if needed | `src/runtime/core/window_manager.{h,cpp}` or the nearest real shortcut handler |
+| Reference implementation pattern | `src/runtime/debug/output_window.{h,cpp}` |
+
+Do not describe changes to nonexistent build files. New app sources should be wired through the actual main app build definition, not a fictional `src/runtime/core/CMakeLists.txt`.
+
+## Tests
+
+### Automated Coverage
+
+Add unit coverage for manager behavior that does not require driving a second real window in CI:
+
+1. Duplicate-open prevention for the same `node_id`.
+2. `is_open(node_id)` bookkeeping.
+3. Close behavior when the node disappears from compiled graph state.
+4. Close-all behavior when a reload boundary is observed.
+5. Guard behavior when a node no longer has a loader, instance, or editor capability.
+
+Where direct GLFW/WGPU coverage is impractical, isolate bookkeeping into testable helpers and leave actual native-window rendering to manual QA.
+
+### Manual QA
+
+1. Use the temporary shortcut to open an editor window for a fixture operator.
+2. Verify the window opens as a separate native OS window.
+3. Verify resize and move behavior works without GPU validation errors.
+4. Verify editor-originated `set_param` updates reach the live node and are reflected in the inspector.
+5. Delete the node, reload the graph, and rebuild the package; confirm the editor closes cleanly in all three cases.
 
 ## Acceptance Criteria
 
-1. With the debug open-hook, pressing the shortcut on a node whose operator declares `VIVID_EDITOR` opens a new OS window. The window is resizable, can be moved to a second monitor, and has an OS close button.
-2. The editor receives a sensible `VividEditorContext` each frame: its `surface_width/height` matches the GLFW framebuffer, events land in the queue, param values reflect the graph.
-3. Clicking / dragging / typing in the editor reaches the operator via `ctx.events` and `ctx.mouse`; calling `ctx.commands.set_param` from inside the operator updates the graph and the inspector live.
-4. Closing the OS window → `EditorWindow` is destroyed, no GPU validation errors, no leaked `WGPUSurface`.
-5. Deleting the owning node → editor window closes.
-6. Unloading a graph → all editor windows close.
-7. Rebuilding the operator's package → editor window closes; reopening after reload works.
-8. Primary window rendering and input are unaffected by whether editor windows are open.
-9. `ctest` passes (in background).
+1. A dev-only open path can open an editor window for a node with `has_editor() == true`.
+2. The editor window renders through `Renderer2D` and `VividEditorContext`.
+3. Editor input is delivered as local pixel-space events.
+4. Mutations from the editor flow through `UICommandSink`.
+5. Missing nodes or reload boundaries close windows instead of leaving stale pointers alive.
+6. Main-window input and rendering remain unchanged.
 
-## Dependencies
+## Non-Goals
 
-- **Phase 1** must be merged. Loader must expose `has_editor()` / `draw_editor()` / `editor_metadata()`.
-
-## Out of Scope for This Phase
-
-- Inspector "Open Editor" button (Phase 3).
-- Settings persistence of window size/position (Phase 3).
-- Any operator actually implementing `draw_editor` — use a stub operator or a throwaway implementation to smoke-test rendering (Phase 4 is the real first adopter).
+- Public inspector button.
+- Official keyboard shortcut.
+- Geometry persistence.
+- Changing node double-click behavior.
+- Making editor windows survive compiled-graph reloads.
