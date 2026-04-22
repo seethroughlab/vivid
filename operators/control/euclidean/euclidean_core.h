@@ -2,6 +2,9 @@
 
 #include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
+#include "operator_api/editor_ui.h"
+#include "operator_api/editor_keys.h"
+#include "euclidean_editor_shared.h"
 #include <algorithm>
 #include <cmath>
 
@@ -81,7 +84,7 @@ struct EuclideanCore : vivid::OperatorBase {
         int sync_idx = std::clamp(static_cast<int>(params[6]), 0, 4);
 
         if (h != prev_hits_ || n != prev_steps_ || rot != prev_rotation_) {
-            compute_pattern(h, n, rot);
+            ::vivid::euclidean_editor::compute_pattern(h, n, rot, pattern_);
             prev_hits_ = h;
             prev_steps_ = n;
             prev_rotation_ = rot;
@@ -139,6 +142,16 @@ struct EuclideanCore : vivid::OperatorBase {
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override;
 
+    // Editor window. Drives `hits` / `steps` / `rotation` via the host
+    // command API; reuses the shared Bjorklund helper so the editor
+    // preview and `compute()` can never drift.
+    static VividEditorMetadata editor_metadata();
+    void draw_editor(VividEditorContext* ctx);
+
+    // Editor state: just a density-preset cursor for the D-key quick-cycle.
+    int  editor_preset_cursor_ = 0;
+    bool editor_drag_rotation_ = false;  // horizontal-drag-to-scrub-rotation
+
     // Expose pattern for thumbnail access
     const int* current_pattern() const { return pattern_; }
 
@@ -157,68 +170,4 @@ private:
     int64_t prev_phrase_idx_ = 0;
     bool phrase_initialized_ = false;
 
-    void compute_pattern(int h, int n, int rot) {
-        for (int i = 0; i < 32; ++i) pattern_[i] = 0;
-        if (n <= 0) return;
-        h = std::clamp(h, 0, n);
-        if (h == 0) return;
-        if (h == n) {
-            for (int i = 0; i < n; ++i) pattern_[i] = 1;
-            if (rot > 0) rotate_pattern(n, rot);
-            return;
-        }
-
-        int seqs[32][32];
-        int slen[32];
-        for (int i = 0; i < h; ++i)     { seqs[i][0] = 1; slen[i] = 1; }
-        for (int i = h; i < n; ++i)      { seqs[i][0] = 0; slen[i] = 1; }
-
-        int left = h;
-        int right = n - h;
-
-        while (right > 1) {
-            int pairs = std::min(left, right);
-            for (int i = 0; i < pairs; ++i) {
-                int src = left + i;
-                for (int j = 0; j < slen[src]; ++j)
-                    seqs[i][slen[i] + j] = seqs[src][j];
-                slen[i] += slen[src];
-            }
-
-            if (left > right) {
-                right = left - pairs;
-                left = pairs;
-            } else {
-                int extra_start = left + pairs;
-                int extra_count = right - pairs;
-                for (int i = 0; i < extra_count; ++i) {
-                    int src = extra_start + i;
-                    int dst = pairs + i;
-                    for (int j = 0; j < slen[src]; ++j)
-                        seqs[dst][j] = seqs[src][j];
-                    slen[dst] = slen[src];
-                }
-                right = right - pairs;
-                left = pairs;
-            }
-        }
-
-        int pos = 0;
-        int total = left + right;
-        for (int i = 0; i < total && pos < 32; ++i)
-            for (int j = 0; j < slen[i] && pos < 32; ++j)
-                pattern_[pos++] = seqs[i][j];
-
-        if (rot > 0) rotate_pattern(n, rot);
-    }
-
-    void rotate_pattern(int n, int rot) {
-        rot = rot % n;
-        if (rot == 0) return;
-        int tmp[32];
-        for (int i = 0; i < n; ++i)
-            tmp[i] = pattern_[(i + rot) % n];
-        for (int i = 0; i < n; ++i)
-            pattern_[i] = tmp[i];
-    }
 };

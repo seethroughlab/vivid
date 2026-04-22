@@ -216,6 +216,9 @@ target_sources(tracker_au PRIVATE
     operators/control/tracker/tracker_editor.cpp
     operators/control/tracker/tracker_editor_shared.cpp)
 add_vivid_operator(euclidean_au       operators/control/euclidean/euclidean.cpp       EXTRA_LIBS webgpu vivid_embeddable_op_support)
+target_sources(euclidean_au PRIVATE
+    operators/control/euclidean/euclidean_editor.cpp
+    operators/control/euclidean/euclidean_editor_shared.cpp)
 add_vivid_operator(pat_transform      operators/control/pat_transform/pat_transform.cpp)
 add_vivid_operator(phase_to_midi_au   operators/control/phase_to_midi/phase_to_midi.cpp)
 add_vivid_operator(drum_kit_au        operators/control/drum_kit/drum_kit.cpp)
