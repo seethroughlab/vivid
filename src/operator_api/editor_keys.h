@@ -44,6 +44,14 @@ inline constexpr int kPeriod      = 46;
 inline constexpr int kSlash       = 47;
 
 inline constexpr int k0 = 48;  // '0' .. '9' are 48 .. 57
+inline constexpr int k1 = 49;
+inline constexpr int k2 = 50;
+inline constexpr int k3 = 51;
+inline constexpr int k4 = 52;
+inline constexpr int k5 = 53;
+inline constexpr int k6 = 54;
+inline constexpr int k7 = 55;
+inline constexpr int k8 = 56;
 inline constexpr int k9 = 57;
 
 inline constexpr int kSemicolon   = 59;

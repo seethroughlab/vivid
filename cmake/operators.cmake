@@ -210,7 +210,8 @@ add_vivid_operator(state_machine      operators/control/state_machine/state_mach
 add_vivid_operator(tracker_au         operators/control/tracker/tracker.cpp         EXTRA_LIBS webgpu)
 target_sources(tracker_au PRIVATE
     operators/control/tracker/tracker_core.cpp
-    operators/control/tracker/tracker_inspector.cpp)
+    operators/control/tracker/tracker_editor.cpp
+    operators/control/tracker/tracker_editor_shared.cpp)
 add_vivid_operator(euclidean_au       operators/control/euclidean/euclidean.cpp       EXTRA_LIBS webgpu vivid_embeddable_op_support)
 add_vivid_operator(pat_transform      operators/control/pat_transform/pat_transform.cpp)
 add_vivid_operator(phase_to_midi_au   operators/control/phase_to_midi/phase_to_midi.cpp)

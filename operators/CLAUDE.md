@@ -51,6 +51,46 @@ operators/gpu/webcam_in/
     capture_source.h         platform abstraction
 ```
 
+## Choosing a UI Surface
+
+Every operator exposes itself through one of three UI surfaces. The tiers are mutually exclusive — pick exactly one.
+
+### Tier 1 — Default params (no macro)
+
+Parameters render as auto-generated sliders, toggles, and enums in the inspector sidebar. Covers the majority of operators. Nothing extra to write.
+
+### Tier 2 — Custom inspector (`VIVID_INSPECTOR`)
+
+Override the inspector section with your own paint, Unity-editor-style. The host gives you a width and scroll position; you lay out whatever mix of param controls, custom widgets, and read-only status reads best for this operator. Embedded in the sidebar, always visible when the node is selected, sharing the main window's input stream.
+
+Use when:
+- You need a small custom visualization or control that reads alongside normal params — a waveform scrubber, grain cloud, ADSR curve, chord grid, voice/CPU meter.
+- The UI is additive to the param list, not a replacement authoring mode.
+- Keyboard interaction, if any, is incidental — you do not need to capture focus away from the node graph.
+
+Current examples: `granular_synth`, `sampler`, `arpeggiator`, `note_pattern`, `chord_progression`.
+
+### Tier 3 — Editor window (`VIVID_EDITOR`)
+
+Dedicated native OS window, one per node instance, opt-in via the inspector's **Open Editor** button or **Cmd+E** / **Ctrl+E**. Your operator owns the whole surface, receives its own pixel-space input, and has access to clipboard, cursor control, pointer capture, and focus via `VividEditorHostAPI`. Geometry persists per operator type.
+
+Use when:
+- The operator *is* the thing being authored — grids, multi-selection, drag handles, keyboard entry, clipboard.
+- The UI needs dedicated keyboard focus, pointer capture, or more vertical space than the sidebar comfortably gives.
+- The authoring task has its own mental mode separate from parameter tweaking.
+
+Current examples: `drum_sequencer`, `mseg`, `sequencer`.
+
+When an operator adopts Tier 3, its inspector reverts to Tier 1 shape (default params + thumbnail + an Open Editor button). Do not ship both `VIVID_INSPECTOR` and `VIVID_EDITOR` on the same operator — the dedicated editor becomes the sole interactive authoring surface, and maintaining two divergent UIs is a constant source of drift. Recent DrumSequencer adoption (`drum_sequencer_inspector.cpp` deletion) is the reference migration.
+
+### Deciding between Tier 2 and Tier 3
+
+The test is not "how big is the UI." It is:
+
+> Does this UI want dedicated keyboard focus, clipboard, pointer capture, or more vertical space than the sidebar comfortably gives?
+
+If yes → Tier 3. If no → Tier 2 is enough, even for moderately rich custom paint.
+
 ## Shared Modules
 
 `operators/shared/` contains reusable header libraries that multiple operators depend on:

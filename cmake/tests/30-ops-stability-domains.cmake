@@ -26,6 +26,41 @@ add_test(NAME test_editor_window_host_api
          COMMAND test_editor_window_host_api
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Tracker editor helpers — pure-logic (piano-row → semitone mapping,
+# hex accumulator math, row-range clipboard, cursor clamp + auto-scroll).
+add_executable(test_tracker_editor_helpers
+    tests/operators/test_tracker_editor_helpers.cpp
+    operators/control/tracker/tracker_editor_shared.cpp
+)
+target_include_directories(test_tracker_editor_helpers PRIVATE
+    src tests
+    operators/control/tracker
+    operators/shared/sequencer
+    operators)
+target_link_libraries(test_tracker_editor_helpers PRIVATE vivid_runtime_testlib)
+add_test(NAME test_tracker_editor_helpers
+         COMMAND test_tracker_editor_helpers
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Tracker draw_editor contract — synthesized VividEditorContext drives
+# keyboard / clipboard flows; tests deserialize the captured
+# pattern_data writes to assert on the resulting TrackerSong state.
+add_executable(test_tracker_editor
+    tests/operators/test_tracker_editor.cpp
+    operators/control/tracker/tracker_core.cpp
+    operators/control/tracker/tracker_editor.cpp
+    operators/control/tracker/tracker_editor_shared.cpp
+)
+target_include_directories(test_tracker_editor PRIVATE
+    src tests
+    operators/control/tracker
+    operators/shared/sequencer
+    operators)
+target_link_libraries(test_tracker_editor PRIVATE vivid_runtime_testlib)
+add_test(NAME test_tracker_editor
+         COMMAND test_tracker_editor
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # ui_text_field widget (src/operator_api/editor_ui.h) — single-line
 # ASCII text entry. Tests drive a fake VividEditorContext through typing,
 # selection, deletion, clipboard, commit/cancel, focus management, and

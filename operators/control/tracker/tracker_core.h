@@ -1,11 +1,13 @@
 #pragma once
 #include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
+#include "operator_api/editor_ui.h"
 #include "operator_api/midi_types.h"
 #include "operator_api/thumbnail.h"
 #include "operator_api/type_id.h"
 #include "midi_helpers.h"
 #include "tracker_data.h"
+#include "tracker_editor_shared.h"
 #include <string>
 
 /**
@@ -40,7 +42,33 @@ struct TrackerCore : vivid::OperatorBase {
                  VividLaneOutput* out_spreads, float* output_values,
                  void** custom_outputs, uint32_t custom_output_count);
     void draw_thumbnail(const VividThumbnailContext* ctx) override;
-    void draw_inspector(VividInspectorContext* ctx) override;
+
+    // Editor window — dedicated VIVID_EDITOR. Inspector is retired
+    // (mirrors DrumSequencer phase 4); pattern authoring happens only
+    // in the editor window.
+    static VividEditorMetadata editor_metadata();
+    void draw_editor(VividEditorContext* ctx);
+
+    // Editor UI state (persisted across frames; survives editor close /
+    // reopen because it lives on the core instance). Public so tests
+    // can inspect and arrange — same pattern DrumSequencer / Sequencer
+    // use for their per-editor state.
+    int  editor_cursor_row_     = 0;
+    int  editor_cursor_channel_ = 0;
+    ::vivid::tracker_editor::Field
+         editor_cursor_field_   = ::vivid::tracker_editor::Field::Note;
+    int  editor_cursor_effect_char_ = 0;  // 0..2 within the effect slot
+    int  editor_scroll_row_     = 0;
+    int  editor_selection_row_lo_ = -1;   // -1 = no active selection
+    int  editor_selection_row_hi_ = -1;
+    int  editor_selection_anchor_ = -1;   // for shift-arrow extend
+    int  editor_octave_         = 4;      // for piano-row note entry
+    bool editor_follow_playhead_ = true;
+    // Working accumulators for hex-field typing (velocity / effect).
+    int  editor_vel_chars_ = 0;           // 0..2
+    int  editor_fx_chars_  = 0;           // 0..3
+
+    ::vivid::tracker_editor::RowClipboard editor_row_clipboard_{};
 
 protected:
     static constexpr float kMultipliers[] = {
@@ -62,15 +90,6 @@ protected:
     int ticks_per_row_ = 6;
 
     VividMidiBuffer midi_buf_ = {};
-
-    // Inspector UI state (persisted across frames)
-    int insp_tab_ = 0;             // 0=Pattern, 1=Song, 2=Settings
-    int insp_cursor_row_ = 0;
-    int insp_cursor_col_ = 0;      // 0=note, 1=vel, 2=fx
-    int insp_scroll_row_ = 0;
-    bool insp_editing_ = false;
-    std::string insp_edit_buffer_;
-    int insp_edit_max_chars_ = 3;
 
     void sync_pattern_data();
     int get_pattern_index() const;

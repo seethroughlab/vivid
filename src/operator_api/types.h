@@ -476,9 +476,13 @@ typedef uint32_t (*VividInspectorModeFn)(void);
 
 // ---------------------------------------------------------------------------
 // Editor API — optional dedicated-editor-window surface for content-heavy
-// operators (e.g. sequencers, envelopes, trackers). Additive to the inspector
-// pattern: an operator may expose a custom inspector, a dedicated editor, or
-// both. Discovered by optional dlsym of vivid_editor_metadata + vivid_draw_editor.
+// operators (e.g. sequencers, envelopes, trackers). An operator exposes
+// either a custom inspector (VIVID_INSPECTOR) or a dedicated editor
+// (VIVID_EDITOR), never both: the inspector is a freeform section inside
+// the node sidebar; the editor is a dedicated native window with its own
+// input focus, clipboard, pointer capture, and persistent geometry. See
+// operators/CLAUDE.md "Choosing a UI surface" for the decision rule.
+// Discovered by optional dlsym of vivid_editor_metadata + vivid_draw_editor.
 // ---------------------------------------------------------------------------
 
 typedef struct VividEditorMetadata {
