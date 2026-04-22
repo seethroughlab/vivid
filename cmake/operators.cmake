@@ -205,6 +205,9 @@ add_vivid_operator(pattern_seq_au     operators/control/pattern_seq/pattern_seq.
 add_vivid_operator(note_pattern_au    operators/control/note_pattern/note_pattern.cpp    EXTRA_LIBS webgpu)
 add_vivid_operator(note_duration      operators/control/note_duration/note_duration.cpp)
 add_vivid_operator(arpeggiator_au     operators/control/arpeggiator/arpeggiator.cpp     EXTRA_LIBS webgpu)
+target_sources(arpeggiator_au PRIVATE
+    operators/control/arpeggiator/arpeggiator_editor.cpp
+    operators/control/arpeggiator/arpeggiator_editor_shared.cpp)
 add_vivid_operator(chord_progression_au operators/control/chord_progression/chord_progression.cpp EXTRA_LIBS webgpu)
 add_vivid_operator(state_machine      operators/control/state_machine/state_machine.cpp)
 add_vivid_operator(tracker_au         operators/control/tracker/tracker.cpp         EXTRA_LIBS webgpu)

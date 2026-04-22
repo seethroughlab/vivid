@@ -26,6 +26,41 @@ add_test(NAME test_editor_window_host_api
          COMMAND test_editor_window_host_api
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Arpeggiator editor helpers — param-index encoding, Note Override
+# label resolver, clamp on mod_steps shrink. Pure-logic.
+add_executable(test_arpeggiator_editor_helpers
+    tests/operators/test_arpeggiator_editor_helpers.cpp
+    operators/control/arpeggiator/arpeggiator_editor_shared.cpp
+)
+target_include_directories(test_arpeggiator_editor_helpers PRIVATE
+    src tests
+    operators/control/arpeggiator
+    operators/shared/sequencer
+    operators)
+target_link_libraries(test_arpeggiator_editor_helpers PRIVATE vivid_runtime_testlib)
+add_test(NAME test_arpeggiator_editor_helpers
+         COMMAND test_arpeggiator_editor_helpers
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Arpeggiator draw_editor contract + engine expansion. Synthesised
+# VividEditorContext covers keyboard/mouse flows, and compute() is
+# driven directly with crafted pools to verify backward compat,
+# Note Override dispatch, mute, and the gate multiplier.
+add_executable(test_arpeggiator_editor
+    tests/operators/test_arpeggiator_editor.cpp
+    operators/control/arpeggiator/arpeggiator_editor.cpp
+    operators/control/arpeggiator/arpeggiator_editor_shared.cpp
+)
+target_include_directories(test_arpeggiator_editor PRIVATE
+    src tests
+    operators/control/arpeggiator
+    operators/shared/sequencer
+    operators)
+target_link_libraries(test_arpeggiator_editor PRIVATE vivid_runtime_testlib)
+add_test(NAME test_arpeggiator_editor
+         COMMAND test_arpeggiator_editor
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Tracker editor helpers — pure-logic (piano-row → semitone mapping,
 # hex accumulator math, row-range clipboard, cursor clamp + auto-scroll).
 add_executable(test_tracker_editor_helpers

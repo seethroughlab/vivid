@@ -20,4 +20,4 @@ struct Arpeggiator : ArpeggiatorCore, vivid::AudioProcessable {
 
 VIVID_REGISTER(Arpeggiator)
 VIVID_THUMBNAIL(Arpeggiator)
-VIVID_INSPECTOR(Arpeggiator)
+VIVID_EDITOR(Arpeggiator)

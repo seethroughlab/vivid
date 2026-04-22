@@ -2,11 +2,15 @@
 #include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
 #include "operator_api/draw_ui_helpers.h"
+#include "operator_api/editor_ui.h"
+#include "operator_api/editor_keys.h"
 #include "operator_api/midi_types.h"
 #include "operator_api/type_id.h"
 #include "midi_helpers.h"
 #include "arpeggiator_patterns.h"
+#include "shared/editor_ui/selection.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -36,10 +40,10 @@ struct ArpeggiatorCore : vivid::OperatorBase {
     vivid::Param<float> gate_length {"gate_length", 0.8f, 0.01f, 1.0f};
     vivid::Param<float> swing       {"swing",       0.0f, 0.0f, 1.0f};
     vivid::Param<bool>  latch       {"latch",       false};
-    vivid::Param<int>   mod_steps   {"mod_steps",   8, 1, 8};
+    vivid::Param<int>   mod_steps   {"mod_steps",   8, 1, 16};
     vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
 
-    // --- Per-step velocity modifiers ---
+    // --- Per-step velocity modifiers (legacy 0..7 + new 8..15) ---
     vivid::Param<float> vel_0 {"vel_0", 1.0f, 0.0f, 1.0f};
     vivid::Param<float> vel_1 {"vel_1", 1.0f, 0.0f, 1.0f};
     vivid::Param<float> vel_2 {"vel_2", 1.0f, 0.0f, 1.0f};
@@ -49,7 +53,7 @@ struct ArpeggiatorCore : vivid::OperatorBase {
     vivid::Param<float> vel_6 {"vel_6", 1.0f, 0.0f, 1.0f};
     vivid::Param<float> vel_7 {"vel_7", 1.0f, 0.0f, 1.0f};
 
-    // --- Per-step transpose modifiers ---
+    // --- Per-step transpose modifiers (legacy 0..7 + new 8..15) ---
     vivid::Param<int> tr_0 {"tr_0", 0, -24, 24};
     vivid::Param<int> tr_1 {"tr_1", 0, -24, 24};
     vivid::Param<int> tr_2 {"tr_2", 0, -24, 24};
@@ -59,6 +63,71 @@ struct ArpeggiatorCore : vivid::OperatorBase {
     vivid::Param<int> tr_6 {"tr_6", 0, -24, 24};
     vivid::Param<int> tr_7 {"tr_7", 0, -24, 24};
     vivid::Param<int> midi_channel {"midi_channel", 1, 1, 16};
+
+    // --- New params: follow-up to keep existing param indices stable ---
+    //
+    // `vel_8..15`, `tr_8..15`, `note_override_0..15`, and `gt_0..15` all
+    // sit PAST `midi_channel` in descriptor order. Graphs saved before
+    // this expansion load with every new param at its default, which
+    // preserves today's behaviour exactly.
+
+    // vel_8..vel_15 (8 entries, float, default 1.0)
+    vivid::Param<float> vel_8  {"vel_8",  1.0f, 0.0f, 1.0f};
+    vivid::Param<float> vel_9  {"vel_9",  1.0f, 0.0f, 1.0f};
+    vivid::Param<float> vel_10 {"vel_10", 1.0f, 0.0f, 1.0f};
+    vivid::Param<float> vel_11 {"vel_11", 1.0f, 0.0f, 1.0f};
+    vivid::Param<float> vel_12 {"vel_12", 1.0f, 0.0f, 1.0f};
+    vivid::Param<float> vel_13 {"vel_13", 1.0f, 0.0f, 1.0f};
+    vivid::Param<float> vel_14 {"vel_14", 1.0f, 0.0f, 1.0f};
+    vivid::Param<float> vel_15 {"vel_15", 1.0f, 0.0f, 1.0f};
+
+    // tr_8..tr_15 (8 entries, int, default 0)
+    vivid::Param<int> tr_8  {"tr_8",  0, -24, 24};
+    vivid::Param<int> tr_9  {"tr_9",  0, -24, 24};
+    vivid::Param<int> tr_10 {"tr_10", 0, -24, 24};
+    vivid::Param<int> tr_11 {"tr_11", 0, -24, 24};
+    vivid::Param<int> tr_12 {"tr_12", 0, -24, 24};
+    vivid::Param<int> tr_13 {"tr_13", 0, -24, 24};
+    vivid::Param<int> tr_14 {"tr_14", 0, -24, 24};
+    vivid::Param<int> tr_15 {"tr_15", 0, -24, 24};
+
+// 16-entry per-step arrays use a macro to stay compact. Each row
+// declares a `Param<T>` with the canonical name "prefix_N" so saved
+// graphs serialize/deserialize on the same keys.
+#define VIVID_ARP_ROW_I(prefix, def, lo, hi) \
+    {prefix "0",  def, lo, hi}, {prefix "1",  def, lo, hi}, \
+    {prefix "2",  def, lo, hi}, {prefix "3",  def, lo, hi}, \
+    {prefix "4",  def, lo, hi}, {prefix "5",  def, lo, hi}, \
+    {prefix "6",  def, lo, hi}, {prefix "7",  def, lo, hi}, \
+    {prefix "8",  def, lo, hi}, {prefix "9",  def, lo, hi}, \
+    {prefix "10", def, lo, hi}, {prefix "11", def, lo, hi}, \
+    {prefix "12", def, lo, hi}, {prefix "13", def, lo, hi}, \
+    {prefix "14", def, lo, hi}, {prefix "15", def, lo, hi}
+
+#define VIVID_ARP_ROW_F(prefix, def) \
+    {prefix "0",  def, 0.0f, 1.0f}, {prefix "1",  def, 0.0f, 1.0f}, \
+    {prefix "2",  def, 0.0f, 1.0f}, {prefix "3",  def, 0.0f, 1.0f}, \
+    {prefix "4",  def, 0.0f, 1.0f}, {prefix "5",  def, 0.0f, 1.0f}, \
+    {prefix "6",  def, 0.0f, 1.0f}, {prefix "7",  def, 0.0f, 1.0f}, \
+    {prefix "8",  def, 0.0f, 1.0f}, {prefix "9",  def, 0.0f, 1.0f}, \
+    {prefix "10", def, 0.0f, 1.0f}, {prefix "11", def, 0.0f, 1.0f}, \
+    {prefix "12", def, 0.0f, 1.0f}, {prefix "13", def, 0.0f, 1.0f}, \
+    {prefix "14", def, 0.0f, 1.0f}, {prefix "15", def, 0.0f, 1.0f}
+
+    // note_override_N — 0 = follow global `mode` (sentinel), 1..8 =
+    // force pool index N-1, 9 = mute. Default 0 preserves every
+    // existing graph's behaviour.
+    std::array<vivid::Param<int>, 16> note_override_ = {{
+        VIVID_ARP_ROW_I("note_override_", 0, 0, 9),
+    }};
+
+    // gt_N — per-step gate-length multiplier. Default 1.0 (no effect).
+    std::array<vivid::Param<float>, 16> gt_ = {{
+        VIVID_ARP_ROW_F("gt_", 1.0f),
+    }};
+
+#undef VIVID_ARP_ROW_I
+#undef VIVID_ARP_ROW_F
 
     ArpeggiatorCore() {
         vivid::description(mode, "Arpeggiation pattern: Up, Down, UpDown, Random, Converge, etc");
@@ -101,10 +170,16 @@ struct ArpeggiatorCore : vivid::OperatorBase {
     //  16..23  = tr_0..tr_7
     //  24      = midi_channel
 
-    vivid::Param<float>* vel_params_[8] = {&vel_0,&vel_1,&vel_2,&vel_3,&vel_4,&vel_5,&vel_6,&vel_7};
-    vivid::Param<int>*   tr_params_[8]  = {&tr_0,&tr_1,&tr_2,&tr_3,&tr_4,&tr_5,&tr_6,&tr_7};
+    vivid::Param<float>* vel_params_[16] = {
+        &vel_0,&vel_1,&vel_2,&vel_3,&vel_4,&vel_5,&vel_6,&vel_7,
+        &vel_8,&vel_9,&vel_10,&vel_11,&vel_12,&vel_13,&vel_14,&vel_15};
+    vivid::Param<int>*   tr_params_[16]  = {
+        &tr_0,&tr_1,&tr_2,&tr_3,&tr_4,&tr_5,&tr_6,&tr_7,
+        &tr_8,&tr_9,&tr_10,&tr_11,&tr_12,&tr_13,&tr_14,&tr_15};
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        // Legacy descriptor indices 0..24 stay stable so saved graphs
+        // load without migration. New params append past index 24.
         out.push_back(&mode);         // 0
         out.push_back(&octaves);      // 1
         out.push_back(&rate);         // 2
@@ -124,6 +199,24 @@ struct ArpeggiatorCore : vivid::OperatorBase {
         }
 
         out.push_back(&midi_channel); // 24
+
+        // --- Follow-up params (Cthulhu-inspired v1 expansion) ---
+        for (int i = 8; i < 16; ++i) {
+            display_hint(*vel_params_[i], VIVID_DISPLAY_HIDDEN);
+            out.push_back(vel_params_[i]);   // 25..32
+        }
+        for (int i = 8; i < 16; ++i) {
+            display_hint(*tr_params_[i], VIVID_DISPLAY_HIDDEN);
+            out.push_back(tr_params_[i]);    // 33..40
+        }
+        for (int i = 0; i < 16; ++i) {
+            display_hint(note_override_[i], VIVID_DISPLAY_HIDDEN);
+            out.push_back(&note_override_[i]); // 41..56
+        }
+        for (int i = 0; i < 16; ++i) {
+            display_hint(gt_[i], VIVID_DISPLAY_HIDDEN);
+            out.push_back(&gt_[i]);          // 57..72
+        }
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -157,7 +250,7 @@ struct ArpeggiatorCore : vivid::OperatorBase {
         if (m < 0) m = 0; if (m > 9) m = 9;
         if (oct < 1) oct = 1; if (oct > 4) oct = 4;
         if (r < 0) r = 0; if (r > 8) r = 8;
-        if (msteps < 1) msteps = 1; if (msteps > 8) msteps = 8;
+        if (msteps < 1) msteps = 1; if (msteps > 16) msteps = 16;
 
         // Read input spread notes
         int input_count = 0;
@@ -297,25 +390,51 @@ struct ArpeggiatorCore : vivid::OperatorBase {
         }
         step_phase = std::max(0.0f, std::min(1.0f, step_phase));
 
-        // Determine which note in the pool to play based on mode
+        // Per-step modifier index + param reads
+        int mod_idx = raw_step % msteps;
+
+        // vel_N and tr_N sit in two blocks because we kept the legacy
+        // indices 8..23 stable: 0..7 live at their old positions, 8..15
+        // at the follow-up indices 25..32 / 33..40.
+        const int vel_base = (mod_idx < 8) ? 8 : 25;
+        const int tr_base  = (mod_idx < 8) ? 16 : 33;
+        const int vel_off  = (mod_idx < 8) ? mod_idx : mod_idx - 8;
+        const int tr_off   = (mod_idx < 8) ? mod_idx : mod_idx - 8;
+        float vel_mod = params[vel_base + vel_off];
+        int   tr_mod  = static_cast<int>(params[tr_base + tr_off]);
+
+        // Follow-up lanes: note_override (41..56) and gt (57..72).
+        const int note_override = static_cast<int>(params[41 + mod_idx]);
+        const float gt_mod = params[57 + mod_idx];
+
+        // Note Override resolves which pool note to play:
+        //   0      → follow the global `mode` (sentinel, default).
+        //   1..8   → force pool index N-1.
+        //   9      → mute step entirely.
+        bool mute = (note_override == 9);
         int note_idx = 0;
-        if (raw_step != last_selected_step_ || pool_count != last_selected_pool_) {
-            note_idx = get_note_index(m, raw_step, pool_count);
-            last_selected_step_ = raw_step;
-            last_selected_pool_ = pool_count;
-            last_selected_idx_ = note_idx;
-        } else {
-            note_idx = last_selected_idx_;
+        if (!mute) {
+            if (note_override >= 1 && note_override <= 8) {
+                note_idx = std::clamp(note_override - 1, 0, pool_count - 1);
+                // Cache invalidate so mode-driven selection re-resolves
+                // cleanly next time this step comes back to default.
+                last_selected_step_ = -1;
+                last_selected_pool_ = -1;
+            } else if (raw_step != last_selected_step_ || pool_count != last_selected_pool_) {
+                note_idx = get_note_index(m, raw_step, pool_count);
+                last_selected_step_ = raw_step;
+                last_selected_pool_ = pool_count;
+                last_selected_idx_ = note_idx;
+            } else {
+                note_idx = last_selected_idx_;
+            }
         }
 
-        // Per-step modifier
-        int mod_idx = raw_step % msteps;
-        float vel_mod = params[8 + mod_idx];
-        int tr_mod = static_cast<int>(params[16 + mod_idx]);
-
-        float out_note = pool_notes[note_idx] + static_cast<float>(tr_mod);
-        float out_vel = pool_vels[note_idx] * vel_mod;
-        float out_gate = (step_phase < gl) ? 1.0f : 0.0f;
+        const float effective_gate = gl * std::clamp(gt_mod, 0.0f, 1.0f);
+        float out_note = mute ? 0.0f
+                              : pool_notes[note_idx] + static_cast<float>(tr_mod);
+        float out_vel  = mute ? 0.0f : pool_vels[note_idx] * vel_mod;
+        float out_gate = (!mute && step_phase < effective_gate) ? 1.0f : 0.0f;
 
         write_output(output_values, out_spreads, custom_outputs, custom_output_count,
                      out_note, out_vel, out_gate, raw_step);
@@ -391,148 +510,27 @@ struct ArpeggiatorCore : vivid::OperatorBase {
         }
     }
 
-    void draw_inspector(VividInspectorContext* ctx) override {
-        auto& d = ctx->draw;
-        void* o = d.opaque;
-        const auto& th = ctx->theme;
+    // Editor window — dedicated VIVID_EDITOR. The legacy custom
+    // inspector (interactive vel/tr bars) was retired in favour of the
+    // full per-step grid editor; same pattern as DrumSequencer /
+    // Sequencer / Tracker adoption.
+    static VividEditorMetadata editor_metadata();
+    void draw_editor(VividEditorContext* ctx);
 
-        float px = ctx->content_x;
-        float py = ctx->content_y;
-        float w = ctx->content_width;
-
-        constexpr float vel_h = 70.0f;
-        constexpr float tr_h = 70.0f;
-        constexpr float label_h = 16.0f;
-        constexpr float section_gap = 6.0f;
-        constexpr float pad = 4.0f;
-        constexpr float bar_gap = 1.0f;
-
-        int msteps = std::clamp(
-            (ctx->param_count > 6) ? static_cast<int>(ctx->param_values[6]) : 8, 1, 8);
-
-        int current_mod = -1;
-        if (ctx->output_count > 3) {
-            int raw_step = static_cast<int>(ctx->output_values[3]);
-            if (raw_step >= 0) current_mod = raw_step % msteps;
-        }
-
-        float bar_w = (w - 2.0f * pad) / static_cast<float>(msteps);
-
-        // --- Velocity section ---
-        float vy = py + section_gap;
-        vivid::draw_ui::draw_section_header(d, o, px + pad, vy, w - 2.0f * pad,
-                                            "Velocity",
-                                            {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.9f});
-        vy += label_h;
-        vivid::draw_ui::draw_panel(d, o, px, vy, w, vel_h, {th.dark_bg.r, th.dark_bg.g, th.dark_bg.b, 0.9f});
-
-        float vel_plot_x = px + pad;
-        float vel_plot_y = vy + pad;
-        float vel_plot_h = vel_h - 2.0f * pad;
-
-        for (int i = 0; i < msteps; ++i) {
-            float vel = (ctx->param_count > static_cast<uint32_t>(7 + i))
-                ? std::clamp(ctx->param_values[8 + i], 0.0f, 1.0f) : 1.0f;
-
-            float bx = vel_plot_x + static_cast<float>(i) * bar_w + bar_gap;
-            float bw = bar_w - 2.0f * bar_gap;
-            if (bw < 1.0f) bw = 1.0f;
-
-            float bar_h = vel * vel_plot_h;
-            float by = vel_plot_y + vel_plot_h - bar_h;
-
-            float alpha = (i == current_mod) ? 0.8f : 0.45f;
-            d.draw_rect(o, bx, by, bw, bar_h,
-                        {th.accent.r, th.accent.g, th.accent.b, alpha});
-        }
-
-        // --- Transpose section ---
-        float ty = vy + vel_h + section_gap;
-        vivid::draw_ui::draw_section_header(d, o, px + pad, ty, w - 2.0f * pad,
-                                            "Transpose",
-                                            {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.9f});
-        ty += label_h;
-        vivid::draw_ui::draw_panel(d, o, px, ty, w, tr_h, {th.dark_bg.r, th.dark_bg.g, th.dark_bg.b, 0.9f});
-
-        float tr_plot_x = px + pad;
-        float tr_plot_y = ty + pad;
-        float tr_plot_h = tr_h - 2.0f * pad;
-        float tr_center_y = tr_plot_y + tr_plot_h * 0.5f;
-
-        d.draw_line(o, tr_plot_x, tr_center_y, tr_plot_x + (w - 2.0f * pad), tr_center_y, 1.0f,
-                    {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.15f});
-
-        for (int i = 0; i < msteps; ++i) {
-            float tr = (ctx->param_count > static_cast<uint32_t>(15 + i))
-                ? ctx->param_values[16 + i] : 0.0f;
-            float norm = std::clamp(tr / 24.0f, -1.0f, 1.0f);
-
-            float bx = tr_plot_x + static_cast<float>(i) * bar_w + bar_gap;
-            float bw = bar_w - 2.0f * bar_gap;
-            if (bw < 1.0f) bw = 1.0f;
-
-            float bar_h_val = std::abs(norm) * (tr_plot_h * 0.5f);
-            float by = (norm >= 0.0f) ? (tr_center_y - bar_h_val) : tr_center_y;
-
-            float r = th.accent.r, g = th.accent.g, b = th.accent.b;
-            if (norm > 0.0f) {
-                r = std::min(1.0f, r + 0.3f * norm);
-                g = std::max(0.0f, g - 0.1f * norm);
-                b = std::max(0.0f, b - 0.3f * norm);
-            } else if (norm < 0.0f) {
-                float an = -norm;
-                r = std::max(0.0f, r - 0.2f * an);
-                g = std::min(1.0f, g + 0.15f * an);
-                b = std::min(1.0f, b + 0.2f * an);
-            }
-
-            float alpha = (i == current_mod) ? 0.8f : 0.45f;
-            d.draw_rect(o, bx, by, bw, bar_h_val, {r, g, b, alpha});
-        }
-
-        // --- Drag interaction (velocity) ---
-        if (ctx->mouse.left_clicked) {
-            dragged_vel_ = -1;
-            dragged_tr_ = -1;
-            float mx = ctx->mouse.x;
-            float my = ctx->mouse.y;
-            if (mx >= vel_plot_x && mx <= vel_plot_x + (w - 2.0f * pad)) {
-                int hit = static_cast<int>((mx - vel_plot_x) / bar_w);
-                if (hit >= 0 && hit < msteps) {
-                    if (my >= vel_plot_y && my <= vel_plot_y + vel_plot_h) {
-                        dragged_vel_ = hit;
-                    } else if (my >= tr_plot_y && my <= tr_plot_y + tr_plot_h) {
-                        dragged_tr_ = hit;
-                    }
-                }
-            }
-        }
-
-        if (ctx->mouse.left_down && dragged_vel_ >= 0 && dragged_vel_ < msteps) {
-            float new_val = 1.0f - (ctx->mouse.y - vel_plot_y) / vel_plot_h;
-            new_val = std::clamp(new_val, 0.0f, 1.0f);
-            char name[16];
-            std::snprintf(name, sizeof(name), "vel_%d", dragged_vel_);
-            ctx->commands.set_param(ctx->commands.opaque, name, new_val);
-        }
-
-        if (ctx->mouse.left_down && dragged_tr_ >= 0 && dragged_tr_ < msteps) {
-            float norm = 1.0f - (ctx->mouse.y - tr_plot_y) / tr_plot_h;
-            float semitones = (norm - 0.5f) * 48.0f;
-            semitones = std::clamp(semitones, -24.0f, 24.0f);
-            semitones = std::round(semitones);
-            char name[16];
-            std::snprintf(name, sizeof(name), "tr_%d", dragged_tr_);
-            ctx->commands.set_param(ctx->commands.opaque, name, semitones);
-        }
-
-        if (!ctx->mouse.left_down) {
-            dragged_vel_ = -1;
-            dragged_tr_ = -1;
-        }
-
-        ctx->consumed_height = section_gap + label_h + vel_h + section_gap + label_h + tr_h + section_gap;
-    }
+    // Editor UI state (persisted across frames; public so tests can
+    // arrange and observe, mirroring the other Tier-3 adopters).
+    int  editor_cursor_step_  = 0;       // 0..15
+    int  editor_cursor_row_   = 0;       // 0=note_override, 1=vel, 2=tr, 3=gate
+    vivid::ui::GridState grid_state_{};
+    vivid::editor_ui::Selection editor_selection_{};
+    // Rectangular clipboard: 4 lanes × 16 steps of floats.
+    struct EditorClipboard {
+        bool  has_content = false;
+        int   rows = 0;
+        int   cols = 0;
+        float values[4 * 16] = {};
+    };
+    EditorClipboard editor_clipboard_{};
 
 
 protected:
@@ -556,10 +554,6 @@ protected:
     float latch_notes_[16] = {};
     float latch_vels_[16] = {};
     int latch_count_ = 0;
-
-    // Inspector drag state
-    int dragged_vel_ = -1;
-    int dragged_tr_ = -1;
 
     // MIDI state
     bool prev_midi_gate_ = false;

@@ -2,61 +2,72 @@
 
 ## Context
 
-`Arpeggiator` (`operators/control/arpeggiator/`) has a mode selector, rate/gate/swing/latch controls, and — importantly — a **2-row × 8-column matrix** of per-step modifiers: `vel_0..7` (0..1 velocity scales) and `tr_0..7` (-24..+24 semitone transposes). The transpose row is hidden from the inspector by default (`mod_steps` gates the rendering); authoring per-step accent patterns requires hunting through hidden knobs.
+`Arpeggiator` (`operators/control/arpeggiator/`) has a mode selector, rate/gate/swing/latch controls, and a 2-row × 8-column matrix of per-step modifiers (`vel_0..7`, `tr_0..7`). The transpose row is hidden in the inspector; authoring per-step patterns requires hunting through knobs.
 
-A small editor surfaces the hidden matrix, shows the current mode's arp pattern visually, and lets the user drag velocity bars and click transposes directly.
+This editor is also a **feature expansion** — Xfer Records' Cthulhu is the inspiration. v1 adds one conceptually new authoring dimension (per-step Note Override) plus a per-step Gate lane, and widens the matrix from 8 to 16 steps. Future-feature candidates (Cthulhu's Harmony, Chord Mode, polymetric per-lane length, Note Output Prevention, scale-degree-aware Pitch, shape-based Note values, etc.) are catalogued in [arpeggiator-future.md](arpeggiator-future.md).
 
 ## High-level approach
 
-A single compact canvas: the 2×8 modifier matrix on the left, an arp-pattern diagram on the right that visualizes how the selected mode + octaves + rate unfold over time. The mode diagram is live — the current step pulses.
+Full-canvas grid: 4 lanes × 16 steps. The Note Override lane is the Cthulhu-inspired addition that lets each step individually pick a pool note, mute, or fall through to the global `mode`. Mode stays; it becomes the "default step value" for steps left at the sentinel.
 
-This is deliberately smaller than Sequencer / DrumSequencer. The editor's job is to unhide the matrix and give the mode a visual identity.
+This is DrumSequencer/Sequencer scale — bigger than the earlier "surface the hidden matrix" framing.
 
 ## Editor layout
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│ top bar: mode · rate · octaves · gate · swing · latch      │
-├────────────────────────────────────────────────────────────┤
-│                                                            │
-│  vel   │ ▇ ▄ ▆ ▂ ▇ ▅ ▃ ▇ │    mode diagram              │
-│         ───────────────                                    │
-│  tr    │ 0 +7 0 -5 0 0 +12 0 │    (live step pulse)      │
-│                                                            │
-├────────────────────────────────────────────────────────────┤
-│ side panel (right ~220px): cursor cell readout + reset     │
-└────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│ top bar: mode · rate · octaves · gate · swing · latch · mod_steps    │
+├──────────────────────────────────────────────────────────────────────┤
+│  note │ —  —  2  —  M  —  —  —  —  —  —  —  —  —  —  — │ side:     │
+│  vel  │ ▇  ▄  ▆  ▂  ▇  ▅  ▃  ▇  ▇  ▇  ▇  ▇  ▇  ▇  ▇  ▇ │  cursor   │
+│  tr   │ 0 +7  0 -5  0  0 +12 0  0  0  0  0  0  0  0  0 │  readout  │
+│  gate │ ━━ ━━ ━━ ━━ ━━ ━━ ━━ ━━ ━━ ━━ ━━ ━━ ━━ ━━ ━━ ━━│  + mode   │
+│                                                         │  diagram  │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-Default window ~760×360; min ~600×280.
+Default window ~1000×420; min ~720×320.
 
 ## Interactions
 
+Mirror the DrumSequencer / Sequencer / Tracker vocabulary already carried by the editor-UI toolkit.
+
 ### Mouse
-- Click + drag a velocity cell vertically → set `vel_N` (0..1).
-- Click a transpose cell → focus; then use arrow up/down or `[`/`]` to nudge semitone.
-- Scroll on a transpose cell → nudge semitone.
-- Shift+click extends selection across multiple cells (reuses shared helpers).
+- Click a cell → cursor there. Shift+click extends selection rect across rows/cols.
+- Drag inside a cell vertically → adjust continuous-value lanes (vel, tr, gate) based on mouse-y-in-cell.
+- Click on a Note Override cell → cycles `—` (follow) → `1..8` → `M` (mute) → `—`.
 
 ### Keyboard
-- Arrows: move cursor within the 2×8 grid.
-- Enter / digits: type a new value (0..9 → `vel_N` = digit/9; signed digits typed in transpose row → `tr_N`).
-- `Delete`: reset cell to default (vel=1.0, tr=0).
-- Cmd+C / Cmd+V: copy/paste rectangular selection.
+- Arrows / Tab move cursor; Shift+arrow extends selection.
+- Digits `0..9` set values per lane: vel → `digit/9`; transpose → nudge within ±24; gate → `digit/9`; note_override → `0..8` direct (9 = mute).
+- Enter toggles at cursor (note_override cycles; others set max).
+- Space clears selection to defaults.
+- Delete resets cells to defaults.
+- Cmd+C / Cmd+V copy/paste rectangular selection.
 
 ### Live feedback
-- Mode diagram on the right: renders the current arp pattern as a horizontal ribbon of note-step glyphs. Current step tinted. Reading `note` / `vel` outputs (scalar outputs of the operator) + mode info.
+- Side panel mode-diagram ribbon: renders which pool note the current mode picks per step, using the same `vivid_sequencers::arp_pattern_index` helper that `compute()` uses. Can't drift from playback.
+- Current step highlighted across all 4 lanes via the operator's `step` output.
 
-## Data model recap
+## Data model (v1)
 
 From `operators/control/arpeggiator/arpeggiator_core.h`:
-- `mode` (Up/Down/UpDown/DownUp/Random/Order/Converge/Diverge/RandomNoRepeat/OrderDown)
-- `octaves` (1..4), `rate` (1/1..1/16T), `gate_length`, `swing`, `latch`
-- `mod_steps` (1..8) — active length of the modifier pattern
-- `vel_0..vel_7` — per-step velocity scale
-- `tr_0..tr_7` — per-step semitone transpose
+
+**Unchanged top-level (kept as-is):**
+- `mode` (10 scan patterns), `octaves` (1..4), `rate` (9 divisions), `gate_length`, `swing`, `latch`
 - `clock_source`, `midi_channel`
-- Ports: `notes`/`velocities` (lane array input + output), `note`/`vel` (scalar output)
+- Ports: `notes`/`velocities`/`gates` lane-array I/O, `note`/`vel`/`gate`/`step` scalar output, `midi_out` custom-ref
+
+**Widened:**
+- `mod_steps` — range `1..8` → `1..16` (default stays 8).
+- `vel_0..vel_7` → `vel_0..vel_15`.
+- `tr_0..tr_7` → `tr_0..tr_15`.
+
+**New:**
+- `note_override_0..15` — int `0..9`: `0` = follow `mode` (sentinel; preserves existing graphs), `1..8` = force pool index, `9` = mute step.
+- `gt_0..15` — float `0..1`, default 1.0. Multiplies global `gate_length` at compute.
+
+Param-index strategy: all existing indices (0..24) stay stable. New params append past existing ones. Graphs saved before this change load with all new params at their defaults (= no behavior change).
 
 ## Implementation
 
@@ -68,38 +79,43 @@ From `operators/control/arpeggiator/arpeggiator_core.h`:
 - `cmake/operators.cmake` — add new sources to the arpeggiator target.
 
 ### State on the core
-- `editor_cursor_col_` (0..7), `editor_cursor_row_` (0=vel, 1=tr)
-- `editor_selection_anchor_col_`, `editor_selection_anchor_row_`
-- `editor_selection_` rect
-- `selection_clipboard_` (2×N matrix of floats)
+- `editor_cursor_step_` (0..15), `editor_cursor_row_` (0=note_override, 1=vel, 2=tr, 3=gate)
+- `grid_state_` (`vivid::ui::GridState` — supplies anchor + drag semantics)
+- `editor_selection_` (`editor_ui::Selection`)
+- `selection_clipboard_` — 4-lane × 16-step float matrix plus a `has_content` flag
 
 ### Shared-helpers reuse
-- Rectangle selection (from DrumSequencer shared).
-- Rectangular copy/paste.
-- Digit-prefix value entry.
+- `editor_ui::Selection` + `cursor_move` + `clamp_editor_state` — from `operators/shared/editor_ui/selection.h`.
+- `vivid::ui::ui_step_grid` for click + drag + shift-extend (editor_ui.h).
+- `vivid::editor_keys::*` — no local GLFW constants.
+- `vivid_sequencers::arp_pattern_index` — the same mode-pattern resolver used by `compute()`, so the side-panel diagram can't drift.
 
 ### Tests
-- `tests/operators/test_arpeggiator_editor_helpers.cpp` — cell hit-test, clipboard round-trip, mode pattern generation for each of the 10 modes matches the operator's `compute()` reference output.
+- `tests/operators/test_arpeggiator_editor_helpers.cpp` — param-index math, note-override decode (`0` → follow, `1..8` → pool index, `9` → mute), clamp on mod_steps shrink, selection clipboard round-trip.
+- `tests/operators/test_arpeggiator_editor.cpp` — synthesized context e2e: backward-compat (default params behave as today's arp), note override forces specific pool index, mute silences a step, gate multiplier shortens effective gate, keyboard/mouse flows.
 
 ## Inspector retirement
 
-Mirror DrumSequencer's phase-4 move: dedicated editor is the only interactive authoring surface; inspector becomes passive preview + "Open Editor" button.
+Mirror DrumSequencer/Sequencer/Tracker phase-4: retire the `VIVID_INSPECTOR` path. Dedicated editor is the only interactive authoring surface.
 
-- No `arpeggiator_inspector.cpp` exists today; the retirement is about preventing a mini matrix from being painted into the inspector as a parallel editing surface.
-- Mark all 16 per-step modifier params (`vel_0..7`, `tr_0..7`) as `VIVID_DISPLAY_HIDDEN` in `collect_params`. The transpose row is already hidden in places; make this uniform. The 2×8 matrix is editor-only.
-- Keep `mode`, `octaves`, `rate`, `gate_length`, `swing`, `latch`, `mod_steps`, `clock_source`, `midi_channel` visible — these are useful quick scrubs from the inspector.
-- If there's no thumbnail today, add a small mode-diagram thumbnail that renders the arp pattern as a horizontal ribbon of step glyphs (reusing whatever mode helper the editor uses, so the preview can't drift).
+- `arpeggiator.cpp`: swap `VIVID_INSPECTOR(Arpeggiator)` → `VIVID_EDITOR(Arpeggiator)`.
+- `arpeggiator_core.h`: delete the `draw_inspector()` override (~140 lines of custom painting) and the `dragged_vel_`/`dragged_tr_` inspector-drag state fields.
+- `collect_params`: mark every per-step param (`vel_N`, `tr_N`, `note_override_N`, `gt_N`) as `VIVID_DISPLAY_HIDDEN`. Keep `mode`, `octaves`, `rate`, `gate_length`, `swing`, `latch`, `mod_steps`, `clock_source`, `midi_channel` visible for quick scrubs from the inspector.
+- `draw_thumbnail()` stays — it's the passive preview.
 
-## Deferred / out of scope
+## Deferred / out of scope (v1)
 
-- Per-step gate independently from `gate_length`.
-- Pattern length beyond 8 steps.
-- External-chord ghost display (the editor shows modifier values, not the live chord being fed in).
-- Custom modes / user-programmable pattern. Modes stay fixed.
-- Multi-pattern banks.
+The detailed future-features plan is in [arpeggiator-future.md](arpeggiator-future.md). Summary of what's explicitly deferred:
 
-## Open questions
+- Per-step **octave**, **probability**, **late** (microtiming).
+- **Harmony** lane (second note per step) — polyphonic output.
+- **Chord Mode** (whole-chord output per step) — polyphonic output.
+- **Per-lane pattern length** + per-lane **Clock Div** — polymetric authoring.
+- **Multiple pattern slots** (A/B to 12-slot like Cthulhu).
+- **Note Output Prevention** — post-filter key-block.
+- **Shape-based Note Override values** (up/down/fingered-top/etc. as per-step values).
+- **Rand Sel** (Cthulhu's bidirectional per-step deviation on Note Override).
+- **Pitch-with-scale-degrees** (requires chord-root analysis).
+- **Position reset** marker, **Retrigger policy**, **Free-rate mode**.
 
-- The mode diagram requires replaying the arp pattern generator without a live runtime. Factor that generator out of `compute()` into `arpeggiator_editor_shared` (or into `operators/shared/sequencer/` if general enough) so the diagram doesn't drift from playback behavior.
-- `mod_steps` shrink: selection and cursor must clamp. Shared helper.
-- Should the diagram show note pitches, or just abstract step positions? Abstract positions — the operator works on whatever chord is fed in, so absolute pitch isn't known.
+v1 explicitly doesn't ship any of the above. The future doc ranks them by cost and value so whoever picks them up has a ready ordering.
