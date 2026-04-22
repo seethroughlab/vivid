@@ -200,14 +200,6 @@
                 "y": 340.0
             }
         },
-        "kit1": {
-            "type": "DrumKit",
-            "params": {},
-            "layout": {
-                "x": 960.0,
-                "y": 340.0
-            }
-        },
         "audio_out": {
             "type": "audio_out",
             "params": {},
@@ -243,19 +235,15 @@
             "bridge": "last_sample"
         },
         {
-            "from": "drums1/midi_out",
-            "to": "kit1/midi_in"
-        },
-        {
-            "from": "kit1/slot_0",
+            "from": "drums1/kick_out",
             "to": "kick1/midi_in"
         },
         {
-            "from": "kit1/slot_1",
+            "from": "drums1/snare_out",
             "to": "snare1/midi_in"
         },
         {
-            "from": "kit1/slot_2",
+            "from": "drums1/hat_out",
             "to": "hat1/midi_in"
         },
         {

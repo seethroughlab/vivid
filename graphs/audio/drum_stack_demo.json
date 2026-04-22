@@ -136,6 +136,7 @@
         "cym1": {
             "type": "DrumCymbal",
             "params": {
+                "note": 46,
                 "decay": 1.4,
                 "tone": 0.52,
                 "shimmer": 0.28,
@@ -144,14 +145,6 @@
             },
             "layout": {
                 "x": 480.0,
-                "y": 170.0
-            }
-        },
-        "kit1": {
-            "type": "DrumKit",
-            "params": {},
-            "layout": {
-                "x": 720.0,
                 "y": 170.0
             }
         },
@@ -170,31 +163,27 @@
             "to": "seq1/beat_phase"
         },
         {
-            "from": "seq1/midi_out",
-            "to": "kit1/midi_in"
-        },
-        {
-            "from": "kit1/slot_0",
+            "from": "seq1/kick_out",
             "to": "kick1/midi_in"
         },
         {
-            "from": "kit1/slot_1",
+            "from": "seq1/snare_out",
             "to": "snare1/midi_in"
         },
         {
-            "from": "kit1/slot_2",
+            "from": "seq1/hat_out",
             "to": "hat1/midi_in"
         },
         {
-            "from": "kit1/slot_4",
+            "from": "seq1/clap_out",
             "to": "clap1/midi_in"
         },
         {
-            "from": "kit1/slot_5",
+            "from": "seq1/tom_out",
             "to": "tom1/midi_in"
         },
         {
-            "from": "kit1/slot_3",
+            "from": "seq1/oh_out",
             "to": "cym1/midi_in"
         },
         {

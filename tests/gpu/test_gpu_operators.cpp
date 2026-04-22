@@ -368,7 +368,7 @@ static std::vector<uint8_t> render_custom_thumbnail(vivid::OperatorLoader& loade
 
     loader.draw_thumbnail(instance, &ctx);
     if (have_draw_api) {
-        draw_renderer.flush(encoder, rt.view, width, height);
+        draw_renderer.flush(encoder, rt.view, width, height, width, height);
     }
 
     WGPUCommandBufferDescriptor cmd_desc{};

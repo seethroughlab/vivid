@@ -40,8 +40,6 @@ int main(int argc, char* argv[]) {
                                std::filesystem::copy_options::overwrite_existing);
     std::filesystem::copy_file(build_dir + "/drum_sequencer_au.dylib", staging + "/drum_sequencer_au.dylib",
                                std::filesystem::copy_options::overwrite_existing);
-    std::filesystem::copy_file(build_dir + "/drum_kit_au.dylib", staging + "/drum_kit_au.dylib",
-                               std::filesystem::copy_options::overwrite_existing);
     std::filesystem::copy_file(build_dir + "/drum_kick.dylib", staging + "/drum_kick.dylib",
                                std::filesystem::copy_options::overwrite_existing);
 
@@ -229,7 +227,9 @@ int main(int argc, char* argv[]) {
     audio.shutdown();
     runtime.shutdown();
 
-    // --- Regression: DrumSequencer custom MIDI must route to DrumKit on the audio path ---
+    // --- Regression: DrumSequencer per-drum MIDI output routes to a matching
+    //                 Drum* voice without a DrumKit hub. This is the pattern
+    //                 seed graphs use post-per-drum-outputs refactor. ---
     const char* drum_graph_json = R"({
         "metronome": { "enabled": true, "bpm": 120.0, "beats_per_bar": 4 },
         "nodes": {
@@ -247,14 +247,12 @@ int main(int argc, char* argv[]) {
                     "kick_ma_12": 1.0
                 }
             },
-            "kit": { "type": "DrumKit", "params": {} },
             "kick": { "type": "DrumKick", "params": { "volume": 0.8 } },
             "master": { "type": "Gain", "params": { "gain": 1.0 } },
             "aout": { "type": "audio_out", "params": {} }
         },
         "connections": [
-            { "from": "seq/midi_out", "to": "kit/midi_in" },
-            { "from": "kit/slot_0", "to": "kick/midi_in" },
+            { "from": "seq/kick_out", "to": "kick/midi_in" },
             { "from": "kick/output", "to": "master/input" },
             { "from": "master/output", "to": "aout/input" }
         ]
@@ -301,7 +299,7 @@ int main(int argc, char* argv[]) {
             std::fprintf(stderr, "    drum master peak=%.6f  kick peak=%.6f\n",
                          max_master_peak, max_kick_peak);
             check(max_kick_peak > 0.001f,
-                  "DrumKick receives sequencer MIDI through DrumKit and produces audio");
+                  "DrumKick receives sequencer MIDI from seq/kick_out and produces audio");
             check(max_master_peak > 0.001f,
                   "Drum graph produces non-zero master audio");
         }

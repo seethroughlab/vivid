@@ -83,13 +83,6 @@
                 "y": 0.0
             }
         },
-        "kit1": {
-            "type": "DrumKit",
-            "layout": {
-                "x": 240.0,
-                "y": 170.0
-            }
-        },
         "seq1": {
             "type": "DrumSequencer",
             "params": {
@@ -151,23 +144,19 @@
             "to": "seq1/beat_phase"
         },
         {
-            "from": "seq1/midi_out",
-            "to": "kit1/midi_in"
-        },
-        {
-            "from": "kit1/slot_0",
+            "from": "seq1/kick_out",
             "to": "kick1/midi_in"
         },
         {
-            "from": "kit1/slot_1",
+            "from": "seq1/snare_out",
             "to": "snare1/midi_in"
         },
         {
-            "from": "kit1/slot_2",
+            "from": "seq1/hat_out",
             "to": "hat1/midi_in"
         },
         {
-            "from": "kit1/slot_4",
+            "from": "seq1/clap_out",
             "to": "clap1/midi_in"
         },
         {

@@ -134,13 +134,6 @@
                 "y": -633.80725
             }
         },
-        "kit": {
-            "type": "DrumKit",
-            "layout": {
-                "x": 100.0,
-                "y": 400.0
-            }
-        },
         "master": {
             "type": "Gain",
             "params": {
@@ -250,19 +243,15 @@
     },
     "connections": [
         {
-            "from": "seq/midi_out",
-            "to": "kit/midi_in"
-        },
-        {
-            "from": "kit/slot_0",
+            "from": "seq/kick_out",
             "to": "kick/midi_in"
         },
         {
-            "from": "kit/slot_1",
+            "from": "seq/snare_out",
             "to": "snare/midi_in"
         },
         {
-            "from": "kit/slot_2",
+            "from": "seq/hat_out",
             "to": "hat/midi_in"
         },
         {
