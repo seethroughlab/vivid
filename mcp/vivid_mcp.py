@@ -2378,6 +2378,31 @@ async def capture_editor(node_id: str, save_path: str = "") -> str:
 
 
 @mcp.tool()
+async def inspect_editor(node_id: str) -> str:
+    """Return a structured JSON tree of widgets currently drawn by the editor.
+
+    Each entry carries bounds (x/y/w/h in editor-window-local pixels) plus
+    widget-specific state: slider value/range, step_grid rows/cols/anchor,
+    text_field contents, toggle state, etc. Use this to target
+    editor_inject_event clicks without OCR'ing the captured PNG.
+
+    Response: {ok, node_id, widgets: [...]}. Widget shapes:
+      button:     {kind, x, y, w, h, label, flags}
+      toggle:     {kind, x, y, w, h, label, flags: [..."value_true"]}
+      radio:      {kind, x, y, w, h, cols, int_value, label}
+      slider_h:   {kind, x, y, w, h, label, value, value_lo, value_hi}
+      slider_v:   {kind, x, y, w, h, value, value_lo, value_hi}
+      step_grid:  {kind, x, y, w, h, rows, cols, anchor_row, anchor_col, active_cols}
+      drag_handle:{kind, x, y, w, h}
+      text_field: {kind, x, y, w, h, text, placeholder, int_value (cursor), flags}
+
+    Args:
+        node_id: Target editor's node id.
+    """
+    return await _post("inspect_editor", {"node_id": node_id})
+
+
+@mcp.tool()
 async def capture_image(mode: str = "interface",
                         node_id: str = "",
                         save_path: str = "",

@@ -282,6 +282,35 @@ std::string dispatch(const std::string& method, const std::string& body,
             if (ok) result = R"({"ok":true})";
             else    result = json_err("no editor open for " + node_id);
         }
+    } else if (method == "inspect_editor") {
+        if (!editor_window_manager) {
+            result = json_err("editor window manager unavailable");
+        } else if (!root_valid) {
+            result = json_err("invalid JSON body");
+        } else if (!root.contains("node_id") || !root["node_id"].is_string()) {
+            result = json_err("missing 'node_id'");
+        } else {
+            const std::string node_id = root["node_id"].get<std::string>();
+            auto maybe_tree = editor_window_manager->capture_introspection(node_id);
+            if (!maybe_tree) {
+                result = json_err("no editor open (or no widgets drawn) for " + node_id);
+            } else {
+                // The captured buffer is already a JSON array string. Parse
+                // it back so we can embed it as `widgets` in a structured
+                // response (ok/node_id/widgets) rather than hand back raw
+                // text. Cheap for the sizes we're dealing with.
+                nlohmann::json out;
+                out["ok"] = true;
+                out["node_id"] = node_id;
+                try {
+                    out["widgets"] = nlohmann::json::parse(*maybe_tree);
+                } catch (const std::exception& e) {
+                    out["widgets"] = nlohmann::json::array();
+                    out["parse_error"] = e.what();
+                }
+                result = out.dump();
+            }
+        }
     } else if (method == "capture_editor") {
         if (!editor_window_manager) {
             result = json_err("editor window manager unavailable");

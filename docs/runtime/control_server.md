@@ -192,6 +192,7 @@ server isn't wired to an `EditorWindowManager` (e.g. headless utility binaries).
 | `is_editor_open` | `node_id` | Returns `{ok:true, open:bool}` |
 | `editor_inject_event` | `node_id`, `type`, `x`, `y`, `button`, `action`, `scroll_dx`, `scroll_dy`, `key`, `scancode`, `codepoint`, `modifiers` | Inject a synthetic input event (`type`: 0=MOUSE_MOVE, 1=MOUSE_BUTTON, 2=MOUSE_SCROLL, 3=KEY, 4=CHAR) |
 | `capture_editor` | `node_id`, `save_path` (optional) | Capture the editor surface; returns `{ok, width, height, png_base64}`, optionally writing PNG to `save_path` |
+| `inspect_editor` | `node_id` | Structured widget tree of the editor's last tick; returns `{ok, node_id, widgets: [...]}` where each widget carries bounds (x/y/w/h) + widget-specific state (slider value/range, step_grid rows/cols/anchor, toggle flags, etc.) |
 
 ### Assets
 | Method | Key params | Description |

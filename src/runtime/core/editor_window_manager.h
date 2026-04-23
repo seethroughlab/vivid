@@ -80,6 +80,15 @@ public:
     std::optional<std::vector<uint8_t>>
     capture_surface_png(const std::string& node_id);
 
+    // Returns a JSON array describing every widget drawn by the editor's
+    // last tick, in call order. Each entry carries bounds (x/y/w/h in
+    // editor-window-local pixels) + widget-specific state (slider
+    // value/range, step_grid rows/cols/anchor, etc.). Returns
+    // std::nullopt if no editor is open for node_id or the tick
+    // produced no output.
+    std::optional<std::string>
+    capture_introspection(const std::string& node_id);
+
     // When set to true, future open() calls create editor windows with
     // GLFW_VISIBLE=GLFW_FALSE so they render offscreen on headless CI.
     // Existing open windows are unaffected.

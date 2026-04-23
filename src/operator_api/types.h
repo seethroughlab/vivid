@@ -594,7 +594,47 @@ typedef struct VividEditorContext {
      * pointer capture, focus, status/tooltip). All callbacks may be
      * null; operators guard before calling. */
     VividEditorHostAPI host;
+
+    /* Introspection sink — additive extension. When non-null, each
+     * widget in editor_ui.h emits one VividIntrospectWidget record
+     * describing its bounds + live state. The runtime installs a
+     * JSON-serializing sink around draw_editor() when an LLM / test
+     * harness requests an editor tree. Operators never touch this
+     * directly. */
+    void (*introspect_fn)(void* sink, const struct VividIntrospectWidget* w);
+    void* introspect_sink;
 } VividEditorContext;
+
+/* Flags used in VividIntrospectWidget.flags. Bitmask — any combination. */
+#define VIVID_INTROSPECT_ACTIVE    0x01u  /* e.g. button's active=true */
+#define VIVID_INTROSPECT_HOVERED   0x02u
+#define VIVID_INTROSPECT_PRESSED   0x04u
+#define VIVID_INTROSPECT_CHANGED   0x08u  /* slider/grid/text emitted change this frame */
+#define VIVID_INTROSPECT_DRAGGING  0x10u
+#define VIVID_INTROSPECT_FOCUSED   0x20u  /* text_field focused */
+#define VIVID_INTROSPECT_VALUE     0x40u  /* toggle current=true */
+
+/* One record per widget call per editor tick, emitted via
+ * ctx.introspect_fn when the host installs a sink. `kind` is the
+ * widget type slug ("button", "slider_h", "step_grid", ...). Fields
+ * that don't apply to a particular widget are left zero/nullptr. */
+typedef struct VividIntrospectWidget {
+    const char* kind;
+    float x, y, w, h;             /* bounds in editor-window-local pixels */
+    const char* label;            /* nullable — button/slider/toggle label */
+    float value;                  /* sliders, scalar knobs */
+    float value_lo;
+    float value_hi;
+    int   int_value;              /* radio current, text_field cursor, etc. */
+    int   rows, cols;             /* step_grid dimensions */
+    int   anchor_row, anchor_col; /* step_grid selection */
+    int   active_cols;            /* step_grid visible step range */
+    const char* text;             /* text_field current contents */
+    const char* placeholder;      /* text_field placeholder */
+    unsigned flags;               /* VIVID_INTROSPECT_* bitmask */
+} VividIntrospectWidget;
+
+typedef void (*VividIntrospectFn)(void* sink, const VividIntrospectWidget* w);
 
 typedef VividEditorMetadata (*VividEditorMetadataFn)(void);
 typedef void                (*VividDrawEditorFn)(void* instance, VividEditorContext* ctx);

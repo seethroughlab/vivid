@@ -515,6 +515,9 @@
             verify_unavailable("capture_editor",
                 R"({"node_id":"a"})",
                 "capture_editor without manager -> ok=false");
+            verify_unavailable("inspect_editor",
+                R"({"node_id":"a"})",
+                "inspect_editor without manager -> ok=false");
 
             // Bad input should still route cleanly: missing node_id also
             // surfaces the manager-unavailable error (null-guard runs first).

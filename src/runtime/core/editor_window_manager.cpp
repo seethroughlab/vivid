@@ -13,6 +13,7 @@
 
 #include <GLFW/glfw3.h>
 #include <glfw3webgpu.h>
+#include <nlohmann/json.hpp>
 #include <stb_image_write.h>
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>
@@ -119,6 +120,13 @@ struct EditorWindow {
     // copy-texture-to-buffer alongside the render pass and write the
     // resulting PNG to *capture_dest. Cleared after the capture completes.
     std::vector<uint8_t>* capture_dest = nullptr;
+
+    // LLM-transparency: when non-null, the next tick() will install a
+    // VividIntrospectFn sink on the editor context so every widget in
+    // editor_ui.h emits a JSON record describing its bounds + state.
+    // Buffer is populated in-place and the pointer is cleared after the
+    // capture completes (single-shot, mirrors capture_dest).
+    std::string* introspection_dest = nullptr;
 
     WGPUSurfaceGetCurrentTextureStatus last_acquire_status =
         static_cast<WGPUSurfaceGetCurrentTextureStatus>(-1);
@@ -717,8 +725,66 @@ void EditorWindowManager::tick(double time) {
         ew.host_ctx.request_focus   = false;
         ctx.host = make_host_api(&ew.host_ctx);
 
+        // Introspection sink — installed only when an inspect_editor
+        // request is in flight. The sink appends one JSON object per
+        // widget call into the caller-supplied string buffer.
+        std::string introspect_buffer;
+        if (ew.introspection_dest) {
+            introspect_buffer.reserve(4096);
+            introspect_buffer.push_back('[');
+            ctx.introspect_sink = &introspect_buffer;
+            ctx.introspect_fn = [](void* sink,
+                                   const VividIntrospectWidget* w) {
+                if (!sink || !w) return;
+                auto* buf = static_cast<std::string*>(sink);
+                // Leading comma if this isn't the first record. The buffer
+                // starts as "[" and grows; check the last byte.
+                if (!buf->empty() && buf->back() != '[') buf->push_back(',');
+                nlohmann::json j;
+                j["kind"] = w->kind ? w->kind : "";
+                j["x"] = w->x; j["y"] = w->y;
+                j["w"] = w->w; j["h"] = w->h;
+                if (w->label)       j["label"]       = w->label;
+                if (w->text)        j["text"]        = w->text;
+                if (w->placeholder) j["placeholder"] = w->placeholder;
+                // Emit value fields selectively so the JSON stays small.
+                if (w->value_lo != 0.0f || w->value_hi != 0.0f) {
+                    j["value"] = w->value;
+                    j["value_lo"] = w->value_lo;
+                    j["value_hi"] = w->value_hi;
+                }
+                if (w->int_value != 0) j["int_value"] = w->int_value;
+                if (w->rows > 0 || w->cols > 0) {
+                    j["rows"] = w->rows;
+                    j["cols"] = w->cols;
+                    j["anchor_row"] = w->anchor_row;
+                    j["anchor_col"] = w->anchor_col;
+                    if (w->active_cols >= 0) j["active_cols"] = w->active_cols;
+                }
+                if (w->flags != 0) {
+                    nlohmann::json flags = nlohmann::json::array();
+                    if (w->flags & VIVID_INTROSPECT_ACTIVE)   flags.push_back("active");
+                    if (w->flags & VIVID_INTROSPECT_HOVERED)  flags.push_back("hovered");
+                    if (w->flags & VIVID_INTROSPECT_PRESSED)  flags.push_back("pressed");
+                    if (w->flags & VIVID_INTROSPECT_CHANGED)  flags.push_back("changed");
+                    if (w->flags & VIVID_INTROSPECT_DRAGGING) flags.push_back("dragging");
+                    if (w->flags & VIVID_INTROSPECT_FOCUSED)  flags.push_back("focused");
+                    if (w->flags & VIVID_INTROSPECT_VALUE)    flags.push_back("value_true");
+                    j["flags"] = std::move(flags);
+                }
+                *buf += j.dump();
+            };
+        }
+
         // Drive the operator-owned draw.
         node->loader->draw_editor(node->instance, &ctx);
+
+        // Flush introspection buffer into the caller's string.
+        if (ew.introspection_dest) {
+            introspect_buffer.push_back(']');
+            *ew.introspection_dest = std::move(introspect_buffer);
+            ew.introspection_dest = nullptr;
+        }
 
         // Apply the operator's requested cursor shape for this frame.
         GLFWcursor* want = impl_->cursor_for(ew.host_ctx.requested_cursor);
@@ -1039,6 +1105,17 @@ EditorWindowManager::capture_surface_png(const std::string& node_id) {
     // `capture_dest` is cleared inside tick() regardless of success.
     if (bytes.empty()) return std::nullopt;
     return bytes;
+}
+
+std::optional<std::string>
+EditorWindowManager::capture_introspection(const std::string& node_id) {
+    EditorWindow* ew = impl_->find(node_id);
+    if (!ew || !ew->glfw || !ew->surface || !ew->renderer) return std::nullopt;
+    std::string buffer;
+    ew->introspection_dest = &buffer;
+    tick(impl_->last_tick_time);
+    if (buffer.empty()) return std::nullopt;
+    return buffer;
 }
 
 void EditorWindowManager::set_hidden_when_opening(bool hidden) {

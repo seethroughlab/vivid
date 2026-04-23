@@ -209,6 +209,18 @@ inline float labeled_slider_frac(Rect r, float mx) {
 
 } // namespace detail
 
+// --- Introspection -------------------------------------------------------
+//
+// When the host installs an introspection sink on `ctx`, each widget emits
+// one VividIntrospectWidget record describing its bounds + live state so
+// LLM / test tooling can read the editor's structure without OCR'ing pixels.
+// When the sink is null (the common case), every widget's emit is a
+// cheap null check.
+inline void introspect_emit(const VividEditorContext& ctx,
+                            const VividIntrospectWidget& w) {
+    if (ctx.introspect_fn) ctx.introspect_fn(ctx.introspect_sink, &w);
+}
+
 // A labeled push button. Reports hover/press/click; the caller decides what
 // happens. `active` controls the render-as-pressed visual state only —
 // callers typically pass the logical state of the feature the button
@@ -232,6 +244,16 @@ inline ButtonResult ui_button(VividEditorContext& ctx, Rect r,
     vivid::draw_ui::draw_button(ctx.draw, ctx.draw.opaque,
         r.x, r.y, r.w, r.h, label ? label : "", active,
         off, on, text_col);
+
+    VividIntrospectWidget iw{};
+    iw.kind  = "button";
+    iw.x = r.x; iw.y = r.y; iw.w = r.w; iw.h = r.h;
+    iw.label = label;
+    if (active)      iw.flags |= VIVID_INTROSPECT_ACTIVE;
+    if (out.hovered) iw.flags |= VIVID_INTROSPECT_HOVERED;
+    if (out.pressed) iw.flags |= VIVID_INTROSPECT_PRESSED;
+    if (out.clicked) iw.flags |= VIVID_INTROSPECT_CHANGED;
+    introspect_emit(ctx, iw);
     return out;
 }
 
@@ -243,11 +265,22 @@ inline ToggleResult ui_toggle(VividEditorContext& ctx, Rect r,
                               VividColor fill_on  = {}) {
     ToggleResult out;
     out.value = current;
+    // ui_button already emits a "button" record — for a toggle we also
+    // emit a semantically-richer "toggle" record that exposes the
+    // current value as a flag so LLM tooling can distinguish a
+    // momentary button from a bistable control.
     const ButtonResult btn = ui_button(ctx, r, label, current, fill_off, fill_on);
     if (btn.clicked) {
         out.clicked = true;
         out.value = !current;
     }
+    VividIntrospectWidget iw{};
+    iw.kind  = "toggle";
+    iw.x = r.x; iw.y = r.y; iw.w = r.w; iw.h = r.h;
+    iw.label = label;
+    if (out.value)   iw.flags |= VIVID_INTROSPECT_VALUE;
+    if (out.clicked) iw.flags |= VIVID_INTROSPECT_CHANGED;
+    introspect_emit(ctx, iw);
     return out;
 }
 
@@ -271,6 +304,17 @@ inline RadioResult ui_radio(VividEditorContext& ctx, Rect r,
             out.value = i;
         }
     }
+    // Radio-level record (alongside per-cell "button" records) so LLM
+    // tooling can address the group by index rather than cell bounds.
+    VividIntrospectWidget iw{};
+    iw.kind = "radio";
+    iw.x = r.x; iw.y = r.y; iw.w = r.w; iw.h = r.h;
+    iw.int_value = out.value;
+    iw.cols      = count;
+    if (current >= 0 && current < count && labels && labels[current])
+        iw.label = labels[current];
+    if (out.clicked) iw.flags |= VIVID_INTROSPECT_CHANGED;
+    introspect_emit(ctx, iw);
     return out;
 }
 
@@ -324,6 +368,17 @@ inline SliderResult ui_slider_h(VividEditorContext& ctx, Rect r,
         r.x, r.y, r.w, r.h, label ? label : "",
         out.value, lo, hi,
         label_col, value_col, fill, track);
+
+    VividIntrospectWidget iw{};
+    iw.kind     = "slider_h";
+    iw.x = r.x; iw.y = r.y; iw.w = r.w; iw.h = r.h;
+    iw.label    = label;
+    iw.value    = out.value;
+    iw.value_lo = lo;
+    iw.value_hi = hi;
+    if (out.changed)  iw.flags |= VIVID_INTROSPECT_CHANGED;
+    if (out.dragging) iw.flags |= VIVID_INTROSPECT_DRAGGING;
+    introspect_emit(ctx, iw);
     return out;
 }
 
@@ -370,6 +425,16 @@ inline SliderResult ui_slider_v(VividEditorContext& ctx, Rect r,
         r.x, r.y, r.w, r.h,
         fill_frac, fill, track,
         vivid::draw_ui::MeterOrientation::Vertical, 2.0f);
+
+    VividIntrospectWidget iw{};
+    iw.kind     = "slider_v";
+    iw.x = r.x; iw.y = r.y; iw.w = r.w; iw.h = r.h;
+    iw.value    = out.value;
+    iw.value_lo = lo;
+    iw.value_hi = hi;
+    if (out.changed)  iw.flags |= VIVID_INTROSPECT_CHANGED;
+    if (out.dragging) iw.flags |= VIVID_INTROSPECT_DRAGGING;
+    introspect_emit(ctx, iw);
     return out;
 }
 
@@ -537,6 +602,18 @@ inline GridResult ui_step_grid(VividEditorContext& ctx, Rect bounds,
         state->drag_col = -1;
     }
 
+    VividIntrospectWidget iw{};
+    iw.kind = "step_grid";
+    iw.x = bounds.x; iw.y = bounds.y; iw.w = bounds.w; iw.h = bounds.h;
+    iw.rows = rows;
+    iw.cols = cols;
+    iw.active_cols = active_cols;
+    iw.anchor_row = state ? state->anchor_row : 0;
+    iw.anchor_col = state ? state->anchor_col : 0;
+    if (out.cell_clicked)   iw.flags |= VIVID_INTROSPECT_CHANGED;
+    if (out.drag_painting || out.shift_extending)
+                            iw.flags |= VIVID_INTROSPECT_DRAGGING;
+    introspect_emit(ctx, iw);
     return out;
 }
 
@@ -588,6 +665,15 @@ inline DragHandleResult ui_drag_handle(VividEditorContext& ctx,
         out.dragging = false;
         out.released = true;
     }
+    VividIntrospectWidget iw{};
+    iw.kind = "drag_handle";
+    iw.x = cx - radius; iw.y = cy - radius;
+    iw.w = radius * 2.0f; iw.h = radius * 2.0f;
+    if (out.hovered)  iw.flags |= VIVID_INTROSPECT_HOVERED;
+    if (out.pressed)  iw.flags |= VIVID_INTROSPECT_PRESSED;
+    if (out.dragging) iw.flags |= VIVID_INTROSPECT_DRAGGING;
+    if (out.released) iw.flags |= VIVID_INTROSPECT_CHANGED;
+    introspect_emit(ctx, iw);
     return out;
 }
 
@@ -1031,6 +1117,15 @@ inline TextFieldResult ui_text_field(VividEditorContext& ctx, Rect r,
         }
     }
 
+    VividIntrospectWidget iw{};
+    iw.kind = "text_field";
+    iw.x = r.x; iw.y = r.y; iw.w = r.w; iw.h = r.h;
+    iw.text = buffer;
+    iw.placeholder = placeholder;
+    iw.int_value = state ? state->cursor : 0;
+    if (state && state->focused) iw.flags |= VIVID_INTROSPECT_FOCUSED;
+    if (out.committed || out.changed) iw.flags |= VIVID_INTROSPECT_CHANGED;
+    introspect_emit(ctx, iw);
     return out;
 }
 
