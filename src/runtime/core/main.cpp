@@ -1845,6 +1845,12 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
         gpu, runtime, command_sink,
         editor_theme_provider, editor_font_path, 16.0f, &settings);
     command_sink.set_editor_window_manager(&editor_windows);
+    // Also expose to the HTTP control server so LLM workflows can
+    // open / close / inspect / drive editors via the open_editor,
+    // close_editor, is_editor_open, editor_inject_event, and
+    // capture_editor endpoints. Safe to call after control_server.start()
+    // — the dispatch handlers null-check the pointer on each request.
+    control_server.set_editor_window_manager(&editor_windows);
     // Headless smoke runs: render editor windows offscreen so tests that
     // open editors don't require a display.
     if (headless) editor_windows.set_hidden_when_opening(true);

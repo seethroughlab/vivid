@@ -180,6 +180,19 @@ the bar immediately and clear any queued quantized switch.
 | `update_sticky_note` | `id`, `text`, `x`, `y`, `width`, `height`, `color` | Update note (all fields optional except `id`) |
 | `remove_sticky_note` | `id` | Delete note |
 
+### Editor Windows
+LLM-transparency surface for native operator editors. Forwards to
+`EditorWindowManager`'s test-support methods (headed test harness territory).
+Returns `ok=false` with `"editor window manager unavailable"` when the control
+server isn't wired to an `EditorWindowManager` (e.g. headless utility binaries).
+| Method | Key params | Description |
+|--------|-----------|-------------|
+| `open_editor` | `node_id` | Open the editor window for a node (or refocus if already open) |
+| `close_editor` | `node_id` | Close the editor window (no-op if not open) |
+| `is_editor_open` | `node_id` | Returns `{ok:true, open:bool}` |
+| `editor_inject_event` | `node_id`, `type`, `x`, `y`, `button`, `action`, `scroll_dx`, `scroll_dy`, `key`, `scancode`, `codepoint`, `modifiers` | Inject a synthetic input event (`type`: 0=MOUSE_MOVE, 1=MOUSE_BUTTON, 2=MOUSE_SCROLL, 3=KEY, 4=CHAR) |
+| `capture_editor` | `node_id`, `save_path` (optional) | Capture the editor surface; returns `{ok, width, height, png_base64}`, optionally writing PNG to `save_path` |
+
 ### Assets
 | Method | Key params | Description |
 |--------|-----------|-------------|

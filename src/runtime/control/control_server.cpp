@@ -196,6 +196,7 @@ void ControlServer::set_asset_library(AssetLibrary* lib) { asset_library_ = lib;
 void ControlServer::set_build_console(BuildConsole* console) { assert(!impl_); build_console_ = console; }
 void ControlServer::set_gpu_context(GpuContext* ctx) { gpu_context_ = ctx; }
 void ControlServer::set_crash_recovery_manager(CrashRecoveryManager* crm) { crash_recovery_manager_ = crm; }
+void ControlServer::set_editor_window_manager(EditorWindowManager* m) { editor_window_manager_ = m; }
 void ControlServer::set_bundled_source_dir(const std::string& bundled_source_dir) {
     bundled_source_dir_ = bundled_source_dir;
     if (source_index_)
@@ -701,7 +702,8 @@ void ControlServer::process_requests(RuntimeAPI& api, Graph& graph,
                                         gpu_context_,
                                         package_catalog_,
                                         this,
-                                        crash_recovery_manager_);
+                                        crash_recovery_manager_,
+                                        editor_window_manager_);
 
         if (track_for_undo && response_is_ok(response)) {
             if (req.method == "load_graph") {

@@ -25,6 +25,7 @@ class BuildConsole;
 class GpuContext;
 class SourceIndex;
 class CrashRecoveryManager;
+class EditorWindowManager;
 struct Settings;
 
 class ControlServer {
@@ -55,6 +56,12 @@ public:
     // Borrows; main.cpp owns the GpuContext and outlives ControlServer.
     void set_gpu_context(GpuContext* ctx);
     void set_crash_recovery_manager(CrashRecoveryManager* crm);
+    // Editor-window test-support / LLM-transparency surface. When set,
+    // the control server exposes close_editor / is_editor_open /
+    // editor_inject_event / capture_editor endpoints that forward to
+    // EditorWindowManager. Null (the default) means those endpoints
+    // return an unavailable error.
+    void set_editor_window_manager(EditorWindowManager* m);
     void set_bundled_source_dir(const std::string& bundled_source_dir);
 
     // Returns the wall-clock ms timestamp of the last /mcp_ping from a given
@@ -93,6 +100,7 @@ private:
     BuildConsole* build_console_ = nullptr;
     GpuContext* gpu_context_ = nullptr;
     CrashRecoveryManager* crash_recovery_manager_ = nullptr;
+    EditorWindowManager* editor_window_manager_ = nullptr;
 };
 
 } // namespace vivid

@@ -57,6 +57,7 @@
 namespace vivid {
 
 class SubgraphModuleRegistry;
+class EditorWindowManager;
 
 // ---------------------------------------------------------------------------
 // Timeout constants (seconds)
@@ -548,6 +549,42 @@ inline bool is_safe_capture_image_path(const std::string& path) {
     return ext == ".png";
 }
 
+// Base64 encoder. Mirrors the one in capture_coordinator.cpp so dispatch
+// handlers can return png_base64 responses without depending on the
+// capture coordinator subsystem.
+inline std::string base64_encode_bytes(const uint8_t* data, size_t len) {
+    static const char kTable[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    out.reserve(((len + 2) / 3) * 4);
+    for (size_t i = 0; i < len; i += 3) {
+        uint32_t n = static_cast<uint32_t>(data[i]) << 16;
+        if (i + 1 < len) n |= static_cast<uint32_t>(data[i + 1]) << 8;
+        if (i + 2 < len) n |= static_cast<uint32_t>(data[i + 2]);
+        out.push_back(kTable[(n >> 18) & 0x3F]);
+        out.push_back(kTable[(n >> 12) & 0x3F]);
+        out.push_back((i + 1 < len) ? kTable[(n >> 6) & 0x3F] : '=');
+        out.push_back((i + 2 < len) ? kTable[n & 0x3F] : '=');
+    }
+    return out;
+}
+
+// Parse PNG dimensions from the IHDR chunk. Returns false if data is
+// too small or doesn't look like a PNG. Width/height sit at offsets
+// 16 and 20 (big-endian uint32) after the 8-byte signature + 4-byte
+// IHDR length + 4-byte "IHDR" type.
+inline bool parse_png_dimensions(const uint8_t* data, size_t size,
+                                 int& out_width, int& out_height) {
+    if (size < 24) return false;
+    auto read_be32 = [](const uint8_t* p) {
+        return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) |
+               (uint32_t(p[2]) << 8)  |  uint32_t(p[3]);
+    };
+    out_width  = static_cast<int>(read_be32(data + 16));
+    out_height = static_cast<int>(read_be32(data + 20));
+    return true;
+}
+
 inline bool response_is_ok(const std::string& response_json) {
     try {
         auto doc = nlohmann::json::parse(response_json);
@@ -664,7 +701,8 @@ std::string dispatch(const std::string& method, const std::string& body,
                             GpuContext* gpu_context = nullptr,
                             PackageCatalog* package_catalog = nullptr,
                             const ControlServer* control_server = nullptr,
-                            CrashRecoveryManager* crash_recovery_manager = nullptr);
+                            CrashRecoveryManager* crash_recovery_manager = nullptr,
+                            EditorWindowManager* editor_window_manager = nullptr);
 
 // Asset library handlers (defined in control_server_assets.cpp)
 std::string handle_list_assets(AssetLibrary& lib, const nlohmann::json& root);

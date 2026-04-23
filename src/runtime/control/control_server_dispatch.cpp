@@ -1,4 +1,5 @@
 #include "runtime/control/control_server_internal.h"
+#include "runtime/core/editor_window_manager.h"
 
 namespace vivid {
 
@@ -26,7 +27,8 @@ std::string dispatch(const std::string& method, const std::string& body,
                             GpuContext* gpu_context,
                             PackageCatalog* package_catalog,
                             const ControlServer* control_server,
-                            CrashRecoveryManager* crash_recovery_manager) {
+                            CrashRecoveryManager* crash_recovery_manager,
+                            EditorWindowManager* editor_window_manager) {
     // Read-only queries (no body needed)
     // inspect_graph accepts an optional "detail" field in the body -- handled below after body parsing.
     if (method == "introspect_nodes") return handle_introspect_nodes(graph, core, core.subgraph_modules());
@@ -207,6 +209,114 @@ std::string dispatch(const std::string& method, const std::string& body,
                 } else {
                     result = json_err(r.message);
                 }
+            }
+        }
+
+    // --- Editor-window LLM-transparency endpoints ---
+    //
+    // The five methods below forward to EditorWindowManager's existing
+    // test-support surface so LLM workflows can open, close, drive, and
+    // visually inspect native operator editors. All of them no-op with
+    // a useful error if the control server wasn't wired to an
+    // EditorWindowManager (e.g. headless harnesses, the bridge-managed
+    // runtime spawned for automated tests).
+    } else if (method == "open_editor") {
+        if (!editor_window_manager) {
+            result = json_err("editor window manager unavailable");
+        } else if (!root_valid) {
+            result = json_err("invalid JSON body");
+        } else if (!root.contains("node_id") || !root["node_id"].is_string()) {
+            result = json_err("missing 'node_id'");
+        } else {
+            const std::string node_id = root["node_id"].get<std::string>();
+            bool opened = editor_window_manager->open(node_id);
+            if (opened) result = json_ok_msg("editor opened for " + node_id);
+            else        result = json_err("no editor available for " + node_id);
+        }
+    } else if (method == "close_editor") {
+        if (!editor_window_manager) {
+            result = json_err("editor window manager unavailable");
+        } else if (!root_valid) {
+            result = json_err("invalid JSON body");
+        } else if (!root.contains("node_id") || !root["node_id"].is_string()) {
+            result = json_err("missing 'node_id'");
+        } else {
+            editor_window_manager->close(root["node_id"].get<std::string>());
+            result = R"({"ok":true})";
+        }
+    } else if (method == "is_editor_open") {
+        if (!editor_window_manager) {
+            result = json_err("editor window manager unavailable");
+        } else if (!root_valid) {
+            result = json_err("invalid JSON body");
+        } else if (!root.contains("node_id") || !root["node_id"].is_string()) {
+            result = json_err("missing 'node_id'");
+        } else {
+            bool open = editor_window_manager->is_open(root["node_id"].get<std::string>());
+            result = nlohmann::json{{"ok", true}, {"open", open}}.dump();
+        }
+    } else if (method == "editor_inject_event") {
+        if (!editor_window_manager) {
+            result = json_err("editor window manager unavailable");
+        } else if (!root_valid) {
+            result = json_err("invalid JSON body");
+        } else if (!root.contains("node_id") || !root["node_id"].is_string()) {
+            result = json_err("missing 'node_id'");
+        } else if (!root.contains("type") || !root["type"].is_number_integer()) {
+            result = json_err("missing 'type' (integer 0..4)");
+        } else {
+            VividEditorEvent ev{};
+            ev.type      = static_cast<VividEditorEventType>(root["type"].get<int>());
+            ev.x         = root.value("x",         0.0f);
+            ev.y         = root.value("y",         0.0f);
+            ev.button    = root.value("button",    0);
+            ev.action    = root.value("action",    0);
+            ev.scroll_dx = root.value("scroll_dx", 0.0f);
+            ev.scroll_dy = root.value("scroll_dy", 0.0f);
+            ev.key       = root.value("key",       0);
+            ev.scancode  = root.value("scancode",  0);
+            ev.codepoint = root.value("codepoint", 0u);
+            ev.modifiers = root.value("modifiers", 0);
+            const std::string node_id = root["node_id"].get<std::string>();
+            bool ok = editor_window_manager->inject_event(node_id, ev);
+            if (ok) result = R"({"ok":true})";
+            else    result = json_err("no editor open for " + node_id);
+        }
+    } else if (method == "capture_editor") {
+        if (!editor_window_manager) {
+            result = json_err("editor window manager unavailable");
+        } else if (!root_valid) {
+            result = json_err("invalid JSON body");
+        } else if (!root.contains("node_id") || !root["node_id"].is_string()) {
+            result = json_err("missing 'node_id'");
+        } else {
+            const std::string node_id = root["node_id"].get<std::string>();
+            auto maybe_png = editor_window_manager->capture_surface_png(node_id);
+            if (!maybe_png) {
+                result = json_err("no editor open (or capture failed) for " + node_id);
+            } else {
+                const auto& png = *maybe_png;
+                int w = 0, h = 0;
+                parse_png_dimensions(png.data(), png.size(), w, h);
+                nlohmann::json out;
+                out["ok"]        = true;
+                out["width"]     = w;
+                out["height"]    = h;
+                out["png_base64"] = base64_encode_bytes(png.data(), png.size());
+                // Optional save_path: write PNG bytes to disk on the runtime
+                // machine. Matches capture_interface's convention.
+                if (root.contains("save_path") && root["save_path"].is_string()) {
+                    const std::string save_path = root["save_path"].get<std::string>();
+                    if (!save_path.empty() && is_safe_capture_image_path(save_path)) {
+                        std::ofstream ofs(save_path, std::ios::binary);
+                        if (ofs.is_open()) {
+                            ofs.write(reinterpret_cast<const char*>(png.data()),
+                                      static_cast<std::streamsize>(png.size()));
+                            if (ofs.good()) out["save_path"] = save_path;
+                        }
+                    }
+                }
+                result = out.dump();
             }
         }
     } else if (method == "save_graph") {

@@ -2267,6 +2267,116 @@ async def capture_interface(node_id: str = "",
     return await _post("capture_interface", body)
 
 
+# ---- Editor-window LLM-transparency tools ----------------------------------
+#
+# These five tools expose the editor-window test-support surface that
+# EditorWindowManager already implemented for headed test harnesses. They let
+# LLM workflows open / close / drive / inspect native operator editor windows
+# programmatically, so the C++-painted surface doesn't become an opaque wall
+# in an automated pipeline. All five endpoints return a useful error if the
+# control server isn't wired to an EditorWindowManager instance.
+
+
+@mcp.tool()
+async def open_editor(node_id: str) -> str:
+    """Open the editor window for the given node (or refocus if already open).
+
+    Works for any operator that declares a VIVID_EDITOR; a no-editor operator
+    returns ok=false with a "no editor available" message.
+
+    Args:
+        node_id: Target node id (must exist in the live graph).
+    """
+    return await _post("open_editor", {"node_id": node_id})
+
+
+@mcp.tool()
+async def close_editor(node_id: str) -> str:
+    """Close the editor window for the given node. No-op if not open."""
+    return await _post("close_editor", {"node_id": node_id})
+
+
+@mcp.tool()
+async def is_editor_open(node_id: str) -> str:
+    """Return {ok:true, open:bool} for whether the editor window is live."""
+    return await _post("is_editor_open", {"node_id": node_id})
+
+
+@mcp.tool()
+async def editor_inject_event(
+    node_id: str,
+    type: int,
+    x: float = 0.0,
+    y: float = 0.0,
+    button: int = 0,
+    action: int = 0,
+    scroll_dx: float = 0.0,
+    scroll_dy: float = 0.0,
+    key: int = 0,
+    scancode: int = 0,
+    codepoint: int = 0,
+    modifiers: int = 0,
+) -> str:
+    """Inject a synthetic input event into an editor window.
+
+    Event type codes (match VividEditorEventType in src/operator_api/types.h):
+      0 = MOUSE_MOVE    — uses (x, y) in editor-window-local pixels.
+      1 = MOUSE_BUTTON  — uses (x, y, button, action, modifiers);
+                          button: 0=left, 1=right, 2=middle;
+                          action: 0=release, 1=press, 2=repeat.
+      2 = MOUSE_SCROLL  — uses (x, y, scroll_dx, scroll_dy).
+      3 = KEY           — uses (key, scancode, action, modifiers); key is a
+                          GLFW key code (see include/GLFW/glfw3.h).
+      4 = CHAR          — uses (codepoint) — Unicode code point for text input.
+
+    Useful for driving editor flows from an LLM: e.g. click a step grid cell
+    with (type=1, x, y, button=0, action=1) followed by (action=0).
+
+    Args:
+        node_id: Target editor's node id.
+        type: Event type (see above).
+        x, y: Editor-window-local pixel coordinates.
+        button, action, modifiers: Mouse / key state as above.
+        scroll_dx, scroll_dy: Scroll deltas.
+        key, scancode: GLFW key event fields.
+        codepoint: Unicode code point for CHAR events.
+    """
+    body = {
+        "node_id":   node_id,
+        "type":      int(type),
+        "x":         float(x),
+        "y":         float(y),
+        "button":    int(button),
+        "action":    int(action),
+        "scroll_dx": float(scroll_dx),
+        "scroll_dy": float(scroll_dy),
+        "key":       int(key),
+        "scancode":  int(scancode),
+        "codepoint": int(codepoint),
+        "modifiers": int(modifiers),
+    }
+    return await _post("editor_inject_event", body)
+
+
+@mcp.tool()
+async def capture_editor(node_id: str, save_path: str = "") -> str:
+    """Capture the editor window's current rendered surface as PNG.
+
+    Returns {ok, width, height, png_base64}. If save_path is provided (absolute
+    path ending in .png), also writes the decoded PNG to that path on the
+    runtime machine so an LLM caller can Read it directly. Response shape
+    matches capture_interface.
+
+    Args:
+        node_id: Target editor's node id.
+        save_path: Optional absolute PNG path to also write on the runtime machine.
+    """
+    body: dict = {"node_id": node_id}
+    if save_path:
+        body["save_path"] = save_path
+    return await _post("capture_editor", body)
+
+
 @mcp.tool()
 async def capture_image(mode: str = "interface",
                         node_id: str = "",

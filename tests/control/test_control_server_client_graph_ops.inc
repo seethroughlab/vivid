@@ -475,6 +475,53 @@
             }
         }
 
+        // Phase 12c: editor-window LLM-transparency endpoints. The control
+        // server in this test is NOT wired to an EditorWindowManager (this
+        // test intentionally runs without the editor subsystem), so every
+        // editor endpoint should cleanly return ok=false with the
+        // "editor window manager unavailable" error. Validates:
+        //   - the dispatch plumbing exists (404 would mean we forgot to
+        //     register the method)
+        //   - the null-guard short-circuits before any EditorWindowManager
+        //     pointer is dereferenced
+        //   - the error envelope shape matches the rest of the surface
+        std::fprintf(stderr, "\n--- editor endpoints (no manager wired) ---\n");
+        {
+            const auto verify_unavailable = [&](const std::string& method,
+                                                const std::string& body,
+                                                const char* msg) {
+                auto r = post(client, base_url, method, body);
+                check(!r.ok, msg);
+                if (!r.j.is_null() && r.j.contains("error") &&
+                    r.j["error"].is_string()) {
+                    check(r.j["error"].get<std::string>().find(
+                              "editor window manager") != std::string::npos,
+                          (msg + std::string(": error cites manager")).c_str());
+                }
+            };
+
+            verify_unavailable("open_editor",
+                R"({"node_id":"a"})",
+                "open_editor without manager -> ok=false");
+            verify_unavailable("close_editor",
+                R"({"node_id":"a"})",
+                "close_editor without manager -> ok=false");
+            verify_unavailable("is_editor_open",
+                R"({"node_id":"a"})",
+                "is_editor_open without manager -> ok=false");
+            verify_unavailable("editor_inject_event",
+                R"({"node_id":"a","type":0,"x":10,"y":10})",
+                "editor_inject_event without manager -> ok=false");
+            verify_unavailable("capture_editor",
+                R"({"node_id":"a"})",
+                "capture_editor without manager -> ok=false");
+
+            // Bad input should still route cleanly: missing node_id also
+            // surfaces the manager-unavailable error (null-guard runs first).
+            auto r_nobody = post(client, base_url, "open_editor", "{}");
+            check(!r_nobody.ok, "open_editor with no node_id -> ok=false");
+        }
+
         // Phase 13: error cases
         std::fprintf(stderr, "\n--- error cases ---\n");
         {
