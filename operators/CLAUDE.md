@@ -22,24 +22,28 @@ operators/gpu/noise/
     factory_presets.json    (optional)
 ```
 
-**Dual-cadence operator** — shared core logic with frame-rate and audio-rate wrappers. Only operators that genuinely serve both cadences (LFO, Clock, Envelope, StepCounter, Smooth) have both variants. The audio-rate wrapper uses the unsuffixed name; the frame-rate wrapper uses an `Fr` suffix:
-```
-operators/control/lfo/
-    lfo.h                   shared core logic
-    lfo.cpp                 shared implementation
-    lfo_fr.cpp              frame-rate wrapper (registers "LfoFr")
-    lfo_au.cpp              audio-rate wrapper (registers "Lfo")
-    factory_presets.json
-```
-
-**Audio-only control operator** — most sequencer/timing operators only need audio-rate and have a single `_au.cpp` entry point with no Fr variant:
+**Standard operator** — single source file matching the dir name. Most operators land here:
 ```
 operators/control/drum_sequencer/
-    drum_sequencer.cpp                      audio-rate entry point (registers "DrumSequencer")
+    drum_sequencer.cpp                      registers "DrumSequencer"
     drum_sequencer_core.h/cpp               shared core + compute() + thumbnail
     drum_sequencer_editor.cpp               custom VIVID_EDITOR window
     drum_sequencer_editor_shared.{h,cpp}    pure-logic helpers shared with tests
 ```
+The cmake target name matches the operator dir name (e.g. `drum_sequencer`); the registered `kName` is whatever the `VIVID_REGISTER` block names (e.g. `"DrumSequencer"`). All control operators run at audio rate; frame-rate consumers (GPU shaders, etc.) read the operator's outputs through the cross-cadence bridge transparently.
+
+**ChildOp-embeddable operator** — a few control operators (currently `lfo`, `envelope`, `smooth`) are embedded into other operators via `ChildOp<T>`. They register two surfaces:
+```
+operators/control/envelope/
+    envelope.h                  embeddable Envelope class + math (consumed via #include)
+    envelope.cpp                registered audio Envelope (kName "Envelope") + VIVID_REGISTER
+    envelope_embeddable.cpp     out-of-line virtuals + thumbnail; linked into both
+                                envelope.dylib and vivid_embeddable_op_support.a
+    factory_presets.json
+```
+Consumers like `modulated_gain.cpp` `#include "envelope.h"` and host an `Envelope` instance via `ChildOp<Envelope>`. They link `vivid_embeddable_op_support` to pick up the out-of-line definitions. The dylib also links that same static lib so its own thumbnail comes from the shared file. The `_embeddable.cpp` filename signals "this is what ChildOp consumers see"; nothing else uses that suffix.
+
+(Historical note: `_au` and `_fr` cadence suffixes were retired during the operator naming consolidation — every operator is now single-cadence.)
 
 **GPU operators with shaders** — WGSL shader code is embedded as C++ string literals inside the `.cpp` file, not in separate `.wgsl` files. The `filters/` directory at the repo root contains standalone self-describing WGSL presets — those are a separate mechanism from the compiled GPU operators here.
 
@@ -116,7 +120,7 @@ add_vivid_operator(noise operators/gpu/noise/noise.cpp
                    EXTRA_LIBS webgpu)
 ```
 
-Each operator compiles to a separate `.dylib` for hot-reload during development. Dual-cadence operators produce two separate libraries (e.g., `lfo_fr.dylib` + `lfo_au.dylib`).
+Each operator compiles to a separate `.dylib` for hot-reload during development. The cmake target name matches the operator dir name and the dylib filename (e.g. `operators/control/lfo/` → `lfo` target → `lfo.dylib`).
 
 ## See Also
 

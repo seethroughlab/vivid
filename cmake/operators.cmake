@@ -21,10 +21,10 @@ endfunction()
 
 add_vivid_embeddable_op_support(Smooth   operators/control/smooth/smooth_embeddable.cpp)
 add_vivid_embeddable_op_support(Envelope operators/control/envelope/envelope_embeddable.cpp)
-target_sources(vivid_embeddable_op_support PRIVATE operators/control/clock/clock.cpp)
-## NOTE: euclidean.cpp was historically in the embeddable support library but no ChildOp<Euclidean>
-## consumers exist. The operator now lives in euclidean.cpp as a single compilation unit.
-add_vivid_embeddable_op_support(LFO      operators/control/lfo/lfo.cpp)
+add_vivid_embeddable_op_support(LFO      operators/control/lfo/lfo_embeddable.cpp)
+## NOTE: clock.cpp and euclidean.cpp were historically in the embeddable support
+## library but have no ChildOp consumers. They now live as single-compilation-unit
+## operators in their own dylibs only.
 
 # --- Operator plugin suffix (platform-aware) ---
 if(APPLE)
@@ -119,32 +119,20 @@ function(vivid_enable_audio_kernels name)
 endfunction()
 
 # --- Control operator plugins ---
-add_vivid_operator(lfo_fr         operators/control/lfo/lfo_fr.cpp
+add_vivid_operator(lfo            operators/control/lfo/lfo.cpp
                    FACTORY_PRESETS operators/control/lfo/factory_presets.json
-                   EXTRA_LIBS webgpu)
-target_sources(lfo_fr PRIVATE operators/control/lfo/lfo.cpp)
-add_vivid_operator(lfo_au         operators/control/lfo/lfo_au.cpp
-                   EXTRA_LIBS webgpu)
-target_sources(lfo_au PRIVATE operators/control/lfo/lfo.cpp)
-add_vivid_operator(clock_fr       operators/control/clock/clock_fr.cpp       EXTRA_LIBS webgpu vivid_embeddable_op_support)
-add_vivid_operator(clock_au       operators/control/clock/clock_au.cpp       EXTRA_LIBS webgpu vivid_embeddable_op_support)
+                   EXTRA_LIBS webgpu vivid_embeddable_op_support)
+add_vivid_operator(clock          operators/control/clock/clock.cpp          EXTRA_LIBS webgpu vivid_embeddable_op_support)
 add_vivid_operator(math           operators/control/math/math.cpp           EXTRA_LIBS webgpu)
 add_vivid_operator(colormap       operators/control/colormap/colormap.cpp   EXTRA_LIBS webgpu)
-add_vivid_operator(envelope_fr    operators/control/envelope/envelope_fr.cpp
+add_vivid_operator(envelope       operators/control/envelope/envelope.cpp
                    FACTORY_PRESETS operators/control/envelope/factory_presets.json
                    EXTRA_LIBS webgpu vivid_embeddable_op_support)
-target_sources(envelope_fr PRIVATE operators/control/envelope/envelope.cpp)
-add_vivid_operator(envelope_au    operators/control/envelope/envelope_au.cpp
-                   EXTRA_LIBS webgpu vivid_embeddable_op_support)
-target_sources(envelope_au PRIVATE operators/control/envelope/envelope.cpp)
 add_vivid_operator(midi_input     operators/control/midi_input/midi_input.cpp     EXTRA_LIBS rtmidi)
 add_vivid_operator(fft_analysis   operators/control/fft_analysis/fft_analysis.cpp)
 add_vivid_operator(logic             operators/control/logic/logic.cpp             EXTRA_LIBS webgpu)
-add_vivid_operator(gate_au           operators/control/gate/gate.cpp           EXTRA_LIBS webgpu)
-add_vivid_operator(smooth_fr          operators/control/smooth/smooth_fr.cpp          EXTRA_LIBS webgpu
-                   FACTORY_PRESETS operators/control/smooth/factory_presets.json)
-target_sources(smooth_fr PRIVATE operators/control/smooth/smooth.cpp)
-add_vivid_operator(smooth_au          operators/control/smooth/smooth_au.cpp          EXTRA_LIBS webgpu
+add_vivid_operator(gate              operators/control/gate/gate.cpp           EXTRA_LIBS webgpu)
+add_vivid_operator(smooth            operators/control/smooth/smooth.cpp       EXTRA_LIBS webgpu
                    FACTORY_PRESETS operators/control/smooth/factory_presets.json)
 add_vivid_operator(stack             operators/control/stack/stack.cpp)
 add_vivid_operator(repeat            operators/control/repeat/repeat.cpp)
@@ -175,61 +163,60 @@ add_vivid_operator(keyboard          operators/control/keyboard/keyboard.cpp    
 add_vivid_operator(folder_list       operators/control/folder_list/folder_list.cpp    EXTRA_LIBS webgpu)
 add_vivid_operator(string_select     operators/control/string_select/string_select.cpp EXTRA_LIBS webgpu)
 add_vivid_operator(basename          operators/control/basename/basename.cpp          EXTRA_LIBS webgpu)
-add_vivid_operator(step_counter_fr   operators/control/step_counter/step_counter_fr.cpp EXTRA_LIBS webgpu)
-add_vivid_operator(step_counter_au   operators/control/step_counter/step_counter_au.cpp)
+add_vivid_operator(step_counter      operators/control/step_counter/step_counter.cpp)
 add_vivid_operator(phrase_pulse      operators/control/phrase_pulse/phrase_pulse.cpp)
 add_vivid_operator(color_bands       operators/gpu/color_bands/color_bands.cpp           EXTRA_LIBS webgpu)
 add_vivid_operator(path_animate      operators/control/path_animate/path_animate.cpp)
-add_vivid_operator(sample_hold_au    operators/control/sample_hold/sample_hold.cpp    EXTRA_LIBS webgpu)
-add_vivid_operator(quantizer_au      operators/control/quantizer/quantizer.cpp)
+add_vivid_operator(sample_hold       operators/control/sample_hold/sample_hold.cpp    EXTRA_LIBS webgpu)
+add_vivid_operator(quantizer         operators/control/quantizer/quantizer.cpp)
 add_vivid_operator(macro             operators/control/macro/macro.cpp)
-add_vivid_operator(mseg_au           operators/control/mseg/mseg.cpp
+add_vivid_operator(mseg              operators/control/mseg/mseg.cpp
                    FACTORY_PRESETS operators/control/mseg/factory_presets.json
                    EXTRA_LIBS webgpu)
-target_sources(mseg_au PRIVATE
+target_sources(mseg PRIVATE
     operators/control/mseg/mseg_editor.cpp
     operators/control/mseg/mseg_editor_shared.cpp)
 
 # --- Sequencer operators ---
-add_vivid_operator(sequencer_au       operators/control/sequencer/sequencer.cpp
+add_vivid_operator(sequencer         operators/control/sequencer/sequencer.cpp
                    FACTORY_PRESETS operators/control/sequencer/factory_presets.json)
-target_sources(sequencer_au PRIVATE
+target_sources(sequencer PRIVATE
     operators/control/sequencer/sequencer_editor.cpp
     operators/control/sequencer/sequencer_editor_shared.cpp)
-add_vivid_operator(drum_sequencer_au  operators/control/drum_sequencer/drum_sequencer.cpp  EXTRA_LIBS webgpu)
-target_sources(drum_sequencer_au PRIVATE
+add_vivid_operator(drum_sequencer    operators/control/drum_sequencer/drum_sequencer.cpp  EXTRA_LIBS webgpu)
+target_sources(drum_sequencer PRIVATE
     operators/control/drum_sequencer/drum_sequencer_core.cpp
     operators/control/drum_sequencer/drum_sequencer_editor.cpp
     operators/control/drum_sequencer/drum_sequencer_editor_shared.cpp)
-add_vivid_operator(pattern_seq_au     operators/control/pattern_seq/pattern_seq.cpp)
-target_sources(pattern_seq_au PRIVATE
+add_vivid_operator(pattern_seq       operators/control/pattern_seq/pattern_seq.cpp)
+target_sources(pattern_seq PRIVATE
     operators/control/pattern_seq/pattern_seq_editor.cpp
     operators/control/pattern_seq/pattern_seq_editor_shared.cpp)
-add_vivid_operator(note_pattern_au    operators/control/note_pattern/note_pattern.cpp    EXTRA_LIBS webgpu)
-add_vivid_operator(note_duration      operators/control/note_duration/note_duration.cpp)
-add_vivid_operator(arpeggiator_au     operators/control/arpeggiator/arpeggiator.cpp     EXTRA_LIBS webgpu)
-target_sources(arpeggiator_au PRIVATE
+add_vivid_operator(note_pattern      operators/control/note_pattern/note_pattern.cpp    EXTRA_LIBS webgpu)
+add_vivid_operator(note_duration     operators/control/note_duration/note_duration.cpp)
+add_vivid_operator(arpeggiator       operators/control/arpeggiator/arpeggiator.cpp     EXTRA_LIBS webgpu)
+target_sources(arpeggiator PRIVATE
     operators/control/arpeggiator/arpeggiator_editor.cpp
     operators/control/arpeggiator/arpeggiator_editor_shared.cpp)
-add_vivid_operator(chord_progression_au operators/control/chord_progression/chord_progression.cpp EXTRA_LIBS webgpu)
-add_vivid_operator(state_machine      operators/control/state_machine/state_machine.cpp)
-add_vivid_operator(tracker_au         operators/control/tracker/tracker.cpp         EXTRA_LIBS webgpu)
-target_sources(tracker_au PRIVATE
+add_vivid_operator(chord_progression operators/control/chord_progression/chord_progression.cpp EXTRA_LIBS webgpu)
+add_vivid_operator(state_machine     operators/control/state_machine/state_machine.cpp)
+add_vivid_operator(tracker           operators/control/tracker/tracker.cpp         EXTRA_LIBS webgpu)
+target_sources(tracker PRIVATE
     operators/control/tracker/tracker_core.cpp
     operators/control/tracker/tracker_editor.cpp
     operators/control/tracker/tracker_editor_shared.cpp)
-add_vivid_operator(euclidean_au       operators/control/euclidean/euclidean.cpp       EXTRA_LIBS webgpu vivid_embeddable_op_support)
-target_sources(euclidean_au PRIVATE
+add_vivid_operator(euclidean         operators/control/euclidean/euclidean.cpp       EXTRA_LIBS webgpu vivid_embeddable_op_support)
+target_sources(euclidean PRIVATE
     operators/control/euclidean/euclidean_editor.cpp
     operators/control/euclidean/euclidean_editor_shared.cpp)
-add_vivid_operator(pat_transform      operators/control/pat_transform/pat_transform.cpp)
-add_vivid_operator(phase_to_midi_au   operators/control/phase_to_midi/phase_to_midi.cpp)
-add_vivid_operator(drum_kit_au        operators/control/drum_kit/drum_kit.cpp)
-foreach(_seq_op sequencer_au drum_sequencer_au
-        pattern_seq_au note_pattern_au note_duration
-        arpeggiator_au chord_progression_au
-        state_machine tracker_au euclidean_au pat_transform
-        phase_to_midi_au drum_kit_au)
+add_vivid_operator(pat_transform     operators/control/pat_transform/pat_transform.cpp)
+add_vivid_operator(phase_to_midi     operators/control/phase_to_midi/phase_to_midi.cpp)
+add_vivid_operator(drum_kit          operators/control/drum_kit/drum_kit.cpp)
+foreach(_seq_op sequencer drum_sequencer
+        pattern_seq note_pattern note_duration
+        arpeggiator chord_progression
+        state_machine tracker euclidean pat_transform
+        phase_to_midi drum_kit)
     target_include_directories(${_seq_op} PRIVATE ${CMAKE_SOURCE_DIR}/operators/shared/sequencer)
 endforeach()
 

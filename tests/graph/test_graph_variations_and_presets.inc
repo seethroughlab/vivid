@@ -29,7 +29,7 @@
         // Load graph with midi_mappings in JSON
         std::string path = write_temp("midi_map", R"({
             "nodes": {
-                "lfo1": { "type": "LfoFr", "params": { "frequency": 2.0 } },
+                "lfo1": { "type": "Lfo", "params": { "frequency": 2.0 } },
                 "gain1": { "type": "Gain" }
             },
             "connections": [],

@@ -22,7 +22,7 @@
     },
     "nodes": {
         "lfo_rot": {
-            "type": "LfoFr",
+            "type": "Lfo",
             "params": {
                 "frequency": 0.3,
                 "amplitude": 3.14,

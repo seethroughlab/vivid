@@ -97,7 +97,7 @@ static_assert(sizeof(MetronomeVizUniforms) == 48,
  * GPU-domain access to graph-wide timing without any control wires.
  *
  * @tip Use this as a transport monitor in visual patches or demo graphs.
- * @see ClockFr, LfoFr
+ * @see Clock, Lfo
  */
 struct MetronomeViz : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "MetronomeViz";

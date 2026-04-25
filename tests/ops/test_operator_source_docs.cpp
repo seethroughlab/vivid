@@ -154,16 +154,6 @@ VIVID_REGISTER(NoDocOp)
                   "ClockAu exposes output docs from ClockCore");
         }
 
-        auto clock_fr = resolver.resolve_core("ClockFr");
-        check(clock_fr.is_object() && clock_fr.value("has_docs", false),
-              "ClockFr resolves docs from source");
-        if (clock_fr.is_object()) {
-            check(clock_fr.contains("source_path") && clock_fr["source_path"].is_string() &&
-                      clock_fr["source_path"].get<std::string>() ==
-                          "operators/control/clock/clock_core.h",
-                  "ClockFr resolves shared ClockCore docs");
-        }
-
         auto env_au = resolver.resolve_core("Envelope");
         check(env_au.is_object() && env_au.value("has_docs", false),
               "EnvelopeAu resolves docs from source");
@@ -182,15 +172,6 @@ VIVID_REGISTER(NoDocOp)
                   "EnvelopeAu includes beat_phase pitfall guidance");
         }
 
-        auto env_fr = resolver.resolve_core("EnvelopeFr");
-        check(env_fr.is_object() && env_fr.value("has_docs", false),
-              "EnvelopeFr resolves docs from source");
-        if (env_fr.is_object()) {
-            check(env_fr.contains("source_path") && env_fr["source_path"].is_string() &&
-                      env_fr["source_path"].get<std::string>() ==
-                          "operators/control/envelope/envelope.h",
-                  "EnvelopeFr resolves shared Envelope docs");
-        }
     }
 
     fs::remove_all(fixture_root);

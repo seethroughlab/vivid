@@ -76,13 +76,13 @@ static void set_param_by_name(std::vector<float>& params, const VividOperatorDes
 }
 
 static void test_gate_short_pulse(const std::string& build_dir) {
-    std::fprintf(stderr, "\n--- gate_au preserves short gate pulses ---\n");
+    std::fprintf(stderr, "\n--- gate preserves short gate pulses ---\n");
     vivid::OperatorLoader loader;
-    check(loader.load((build_dir + "/gate_au.dylib").c_str()), "load gate_au");
+    check(loader.load((build_dir + "/gate.dylib").c_str()), "load gate");
     if (!loader.is_loaded()) return;
 
     void* inst = loader.create_instance();
-    check(inst != nullptr, "create gate_au instance");
+    check(inst != nullptr, "create gate instance");
     if (!inst) return;
 
     auto params = default_params(loader.descriptor());
@@ -93,8 +93,8 @@ static void test_gate_short_pulse(const std::string& build_dir) {
 
     loader.process_audio(inst, &tb.ctx);
 
-    check_float(tb.outputs[0][0], 1.0f, 1e-5f, "gate_au passes the signal during the early pulse");
-    check_float(tb.outputs[0][1], 0.0f, 1e-5f, "gate_au closes again after the pulse");
+    check_float(tb.outputs[0][0], 1.0f, 1e-5f, "gate passes the signal during the early pulse");
+    check_float(tb.outputs[0][1], 0.0f, 1e-5f, "gate closes again after the pulse");
     check_float(tb.outputs[1][0], 1.0f, 1e-5f, "open output is high during the pulse");
     check_float(tb.outputs[1][1], 0.0f, 1e-5f, "open output returns low after the pulse");
 
@@ -102,13 +102,13 @@ static void test_gate_short_pulse(const std::string& build_dir) {
 }
 
 static void test_sample_hold_short_trigger(const std::string& build_dir) {
-    std::fprintf(stderr, "\n--- sample_hold_au captures a short trigger ---\n");
+    std::fprintf(stderr, "\n--- sample_hold captures a short trigger ---\n");
     vivid::OperatorLoader loader;
-    check(loader.load((build_dir + "/sample_hold_au.dylib").c_str()), "load sample_hold_au");
+    check(loader.load((build_dir + "/sample_hold.dylib").c_str()), "load sample_hold");
     if (!loader.is_loaded()) return;
 
     void* inst = loader.create_instance();
-    check(inst != nullptr, "create sample_hold_au instance");
+    check(inst != nullptr, "create sample_hold instance");
     if (!inst) return;
 
     auto params = default_params(loader.descriptor());
@@ -127,13 +127,13 @@ static void test_sample_hold_short_trigger(const std::string& build_dir) {
 }
 
 static void test_step_counter_short_trigger(const std::string& build_dir) {
-    std::fprintf(stderr, "\n--- step_counter_au advances on a short trigger ---\n");
+    std::fprintf(stderr, "\n--- step_counter advances on a short trigger ---\n");
     vivid::OperatorLoader loader;
-    check(loader.load((build_dir + "/step_counter_au.dylib").c_str()), "load step_counter_au");
+    check(loader.load((build_dir + "/step_counter.dylib").c_str()), "load step_counter");
     if (!loader.is_loaded()) return;
 
     void* inst = loader.create_instance();
-    check(inst != nullptr, "create step_counter_au instance");
+    check(inst != nullptr, "create step_counter instance");
     if (!inst) return;
 
     auto params = default_params(loader.descriptor());
@@ -152,13 +152,13 @@ static void test_step_counter_short_trigger(const std::string& build_dir) {
 }
 
 static void test_phase_to_midi_midblock_wrap(const std::string& build_dir) {
-    std::fprintf(stderr, "\n--- phase_to_midi_au preserves mid-block timing ---\n");
+    std::fprintf(stderr, "\n--- phase_to_midi preserves mid-block timing ---\n");
     vivid::OperatorLoader loader;
-    check(loader.load((build_dir + "/phase_to_midi_au.dylib").c_str()), "load phase_to_midi_au");
+    check(loader.load((build_dir + "/phase_to_midi.dylib").c_str()), "load phase_to_midi");
     if (!loader.is_loaded()) return;
 
     void* inst = loader.create_instance();
-    check(inst != nullptr, "create phase_to_midi_au instance");
+    check(inst != nullptr, "create phase_to_midi instance");
     if (!inst) return;
 
     auto params = default_params(loader.descriptor());
@@ -169,7 +169,7 @@ static void test_phase_to_midi_midblock_wrap(const std::string& build_dir) {
     loader.process_audio(inst, &tb.ctx);
 
     auto* midi = static_cast<VividMidiBuffer*>(tb.custom_outputs[0]);
-    check(midi != nullptr, "phase_to_midi_au publishes a MIDI buffer");
+    check(midi != nullptr, "phase_to_midi publishes a MIDI buffer");
     if (midi) {
         check(midi->count == 1, "exactly one wrap event is emitted");
         if (midi->count == 1) {
@@ -182,13 +182,13 @@ static void test_phase_to_midi_midblock_wrap(const std::string& build_dir) {
 }
 
 static void test_step_seq_block_start_snapshot(const std::string& build_dir) {
-    std::fprintf(stderr, "\n--- sequencer_au uses block-start beat phase ---\n");
+    std::fprintf(stderr, "\n--- sequencer uses block-start beat phase ---\n");
     vivid::OperatorLoader loader;
-    check(loader.load((build_dir + "/sequencer_au.dylib").c_str()), "load sequencer_au");
+    check(loader.load((build_dir + "/sequencer.dylib").c_str()), "load sequencer");
     if (!loader.is_loaded()) return;
 
     void* inst = loader.create_instance();
-    check(inst != nullptr, "create sequencer_au instance");
+    check(inst != nullptr, "create sequencer instance");
     if (!inst) return;
 
     const auto* desc = loader.descriptor();
@@ -211,20 +211,20 @@ static void test_step_seq_block_start_snapshot(const std::string& build_dir) {
 
     loader.process_audio(inst, &tb.ctx);
 
-    check_float(tb.outputs[0][0], 0.2f, 1e-5f, "sequencer_au chooses sample 0 instead of the final sample");
-    check_float(tb.outputs[0][7], 0.2f, 1e-5f, "sequencer_au output stays block-constant");
+    check_float(tb.outputs[0][0], 0.2f, 1e-5f, "sequencer chooses sample 0 instead of the final sample");
+    check_float(tb.outputs[0][7], 0.2f, 1e-5f, "sequencer output stays block-constant");
 
     loader.destroy_instance(inst);
 }
 
 static void test_step_seq_metronome_snapshot(const std::string& build_dir) {
-    std::fprintf(stderr, "\n--- sequencer_au locks to graph metronome without a beat-phase wire ---\n");
+    std::fprintf(stderr, "\n--- sequencer locks to graph metronome without a beat-phase wire ---\n");
     vivid::OperatorLoader loader;
-    check(loader.load((build_dir + "/sequencer_au.dylib").c_str()), "load sequencer_au");
+    check(loader.load((build_dir + "/sequencer.dylib").c_str()), "load sequencer");
     if (!loader.is_loaded()) return;
 
     void* inst = loader.create_instance();
-    check(inst != nullptr, "create sequencer_au instance");
+    check(inst != nullptr, "create sequencer instance");
     if (!inst) return;
 
     const auto* desc = loader.descriptor();
@@ -253,13 +253,13 @@ static void test_step_seq_metronome_snapshot(const std::string& build_dir) {
 }
 
 static void test_euclidean_block_start_snapshot(const std::string& build_dir) {
-    std::fprintf(stderr, "\n--- euclidean_au avoids block-end lookahead ---\n");
+    std::fprintf(stderr, "\n--- euclidean avoids block-end lookahead ---\n");
     vivid::OperatorLoader loader;
-    check(loader.load((build_dir + "/euclidean_au.dylib").c_str()), "load euclidean_au");
+    check(loader.load((build_dir + "/euclidean.dylib").c_str()), "load euclidean");
     if (!loader.is_loaded()) return;
 
     void* inst = loader.create_instance();
-    check(inst != nullptr, "create euclidean_au instance");
+    check(inst != nullptr, "create euclidean instance");
     if (!inst) return;
 
     auto params = default_params(loader.descriptor());

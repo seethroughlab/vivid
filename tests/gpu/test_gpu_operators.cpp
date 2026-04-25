@@ -634,11 +634,11 @@ int main() {
     {
         std::fprintf(stderr, "\n=== Test 7b: Draw-only waveform thumbnail ===\n");
         vivid::OperatorLoader loader;
-        check(loader.load("lfo_fr.dylib"), "load lfo_fr");
-        check(loader.has_draw_thumbnail(), "lfo_fr exposes draw_thumbnail");
+        check(loader.load("lfo.dylib"), "load lfo");
+        check(loader.has_draw_thumbnail(), "lfo exposes draw_thumbnail");
 
         void* instance = loader.create_instance();
-        check(instance != nullptr, "create lfo_fr instance");
+        check(instance != nullptr, "create lfo instance");
 
         float params[] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
         float outputs[] = {0.25f};
@@ -659,11 +659,11 @@ int main() {
     {
         std::fprintf(stderr, "\n=== Test 7c: Draw-only envelope thumbnail ===\n");
         vivid::OperatorLoader loader;
-        check(loader.load("envelope_fr.dylib"), "load envelope_fr");
-        check(loader.has_draw_thumbnail(), "envelope_fr exposes draw_thumbnail");
+        check(loader.load("envelope.dylib"), "load envelope");
+        check(loader.has_draw_thumbnail(), "envelope exposes draw_thumbnail");
 
         void* instance = loader.create_instance();
-        check(instance != nullptr, "create envelope_fr instance");
+        check(instance != nullptr, "create envelope instance");
 
         float params[] = {0.05f, 0.2f, 0.7f, 0.3f, 1.0f, 0.0f, 1.0f};
         float outputs[] = {0.6f};

@@ -289,16 +289,6 @@ add_test(NAME test_colormap_op COMMAND test_colormap_op ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_colormap_op PROPERTIES TIMEOUT 10)
 
-# EnvelopeFr frame-rate scalar port (Phase 4 of operator-gaps plan)
-add_executable(test_envelope_fr_port
-    tests/ops/test_envelope_fr_port.cpp
-)
-target_include_directories(test_envelope_fr_port PRIVATE src tests)
-target_link_libraries(test_envelope_fr_port PRIVATE vivid_runtime_testlib vivid_operator_api webgpu)
-add_dependencies(test_envelope_fr_port envelope_fr envelope_au)
-add_test(NAME test_envelope_fr_port COMMAND test_envelope_fr_port ${CMAKE_BINARY_DIR}
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-set_tests_properties(test_envelope_fr_port PROPERTIES TIMEOUT 10)
 
 # Instanced Shapes lane-array inputs (Phase 5 of operator-gaps plan)
 add_executable(test_instanced_shapes_lanes

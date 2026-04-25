@@ -147,8 +147,8 @@ int main(int argc, char* argv[]) {
     std::filesystem::copy_file(build_dir + "/test_op_bad_custom_type.dylib",
         staging + "/test_op_bad_custom_type.dylib",
         std::filesystem::copy_options::overwrite_existing);
-    std::filesystem::copy_file(build_dir + "/envelope_fr.dylib",
-        staging + "/envelope_fr.dylib",
+    std::filesystem::copy_file(build_dir + "/envelope.dylib",
+        staging + "/envelope.dylib",
         std::filesystem::copy_options::overwrite_existing);
     std::filesystem::copy_file(build_dir + "/string_source_op.dylib",
         staging + "/string_source_op.dylib",

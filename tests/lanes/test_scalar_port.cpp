@@ -45,7 +45,7 @@ static void test_audio_scalar_routing(const std::string& build_dir) {
         return true;
     };
 
-    if (!stage("lfo_au.dylib") || !stage("audio_scalar_probe_op.dylib")) {
+    if (!stage("lfo.dylib") || !stage("audio_scalar_probe_op.dylib")) {
         std::filesystem::remove_all(staging);
         return;
     }

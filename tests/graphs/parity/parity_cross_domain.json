@@ -22,7 +22,7 @@
     },
     "nodes": {
         "clock1": {
-            "type": "ClockFr",
+            "type": "Clock",
             "params": {
                 "bpm": 120.0,
                 "beats_per_bar": 4
@@ -33,7 +33,7 @@
             ]
         },
         "lfo1": {
-            "type": "LfoFr",
+            "type": "Lfo",
             "params": {
                 "frequency": 1.0,
                 "amplitude": 1.0,
@@ -46,7 +46,7 @@
             ]
         },
         "env1": {
-            "type": "EnvelopeFr",
+            "type": "Envelope",
             "params": {
                 "attack": 0.01,
                 "decay": 0.15,

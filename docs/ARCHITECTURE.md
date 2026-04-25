@@ -22,13 +22,13 @@ C++ was chosen over Zig and Rust for one overriding reason: library integration.
 
 Vivid operators fall into three families based on the kind of data they work with and where they appear in the UI. These are distinct from the runtime's two **cadences** (frame-rate ~60 Hz, audio-rate ~48 kHz), which determine *when* an operator executes. See the [runtime architecture](vivid-runtime-architecture.md) for the cadence model.
 
-- **Control** — floats, ints, bools, events, strings, lane arrays. Runs at frame cadence on the main thread. Control operators are frame-only (`_fr`); audio-rate modulation requires a dedicated audio operator (`_au`) with an explicit `AudioFrameBridge` edge between cadences.
+- **Control** — floats, ints, bools, events, strings, lane arrays. Most control operators run at audio cadence; frame-rate consumers (GPU shaders, UI) read their outputs through `AudioFrameBridge` transparently. A handful of pure-frame control operators still exist where audio-rate execution buys nothing (e.g. mouse, keyboard).
 - **Audio** — sample buffers at audio cadence (48 kHz, configurable 128/256/512/1024-sample buffers). Runs on a real-time audio thread managed by miniaudio. Operators produce a buffer every callback, even if silence. Sample rate remains fixed at `48000`; buffer size is a persisted app preference that triggers a runtime rebuild when changed.
 - **GPU** — textures, shaders, meshes, compute buffers. Runs at frame cadence on the main thread. Operators execute as Dawn/WebGPU render/compute passes.
 
 ## 5.4 Execution Model: Dual-Cadence Pull
 
-Both cadences are pull-based — frame-rate is driven by the display refresh, audio-rate by the audio device callback. Frame and audio executors process their respective nodes in topological order each tick/buffer. Operators are single-cadence: frame-only (`_fr`) or audio-only (`_au`). Cross-cadence data flows through `AudioFrameBridge` using lock-free double-buffered snapshots, so neither cadence ever waits on the other. Cross-cadence edges require an explicit `"bridge": true` field in the graph JSON.
+Both cadences are pull-based — frame-rate is driven by the display refresh, audio-rate by the audio device callback. Frame and audio executors process their respective nodes in topological order each tick/buffer. Operators are single-cadence — they implement either `process_frame` or `process_audio`, not both. Cross-cadence data flows through `AudioFrameBridge` using lock-free double-buffered snapshots, so neither cadence ever waits on the other. Cross-cadence edges require an explicit `"bridge": true` field in the graph JSON.
 
 ### Graph Compilation (7-Pass Pipeline)
 
@@ -145,7 +145,7 @@ struct MyEffect : vivid::OperatorBase, vivid::FrameProcessable {
 VIVID_REGISTER(MyEffect)
 ```
 
-Three domain-specific mix-in interfaces exist: `vivid::FrameProcessable` (implements `process_frame(const VividFrameContext*)`), `vivid::AudioProcessable` (implements `process_audio(const VividAudioContext*)`), and `vivid::GpuProcessable` (implements `process_gpu(const VividGpuContext*)`). All operators inherit `vivid::OperatorBase` and exactly one of these interfaces — operators are single-cadence (`_fr` for frame-only, `_au` for audio-only). The `VIVID_REGISTER` macro generates `extern "C"` entry points (`vivid_abi_version`, `vivid_descriptor`, `vivid_create`, `vivid_destroy`, and domain-specific dispatch functions). It emits a `vivid_abi_version()` function returning `VIVID_OPERATOR_ABI_VERSION`, with the source-of-truth value defined in `src/operator_api/types.h`. The runtime checks that value on `dlopen` to reject stale dylibs left over from a previous build — it is not a cross-version compatibility contract. Operators always compile against the current headers.
+Three domain-specific mix-in interfaces exist: `vivid::FrameProcessable` (implements `process_frame(const VividFrameContext*)`), `vivid::AudioProcessable` (implements `process_audio(const VividAudioContext*)`), and `vivid::GpuProcessable` (implements `process_gpu(const VividGpuContext*)`). All operators inherit `vivid::OperatorBase` and exactly one of these interfaces — operators are single-cadence. The `VIVID_REGISTER` macro generates `extern "C"` entry points (`vivid_abi_version`, `vivid_descriptor`, `vivid_create`, `vivid_destroy`, and domain-specific dispatch functions). It emits a `vivid_abi_version()` function returning `VIVID_OPERATOR_ABI_VERSION`, with the source-of-truth value defined in `src/operator_api/types.h`. The runtime checks that value on `dlopen` to reject stale dylibs left over from a previous build — it is not a cross-version compatibility contract. Operators always compile against the current headers.
 
 For statically linked export builds (§5.16), the `extern "C"` boundary is unnecessary — everything links together as one C++ binary. The macro handles both cases.
 

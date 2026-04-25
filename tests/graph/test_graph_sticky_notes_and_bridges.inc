@@ -245,7 +245,7 @@
         vivid::Graph g;
         check(g.load_from_string(R"({
             "nodes": {
-                "lfo": { "type": "LfoFr" },
+                "lfo": { "type": "Lfo" },
                 "osc": { "type": "Oscillator" }
             },
             "connections": [

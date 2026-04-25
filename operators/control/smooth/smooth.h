@@ -1,6 +1,7 @@
 #pragma once
-// Internal frame-rate Smooth implementation used by ChildOp<Smooth>
-// consumers. The public operator surface uses smooth_fr / smooth_au variants.
+// Embeddable Smooth class consumed by ChildOp<Smooth>. The publicly
+// registered audio Smooth operator lives in smooth.cpp as a separate
+// struct (SmoothAudio) sharing the same kName "Smooth".
 
 #include "operator_api/operator.h"
 #include <algorithm>

@@ -32,7 +32,7 @@ The production-gate self-test (`test_production_gate_report`) runs the report to
 - Accepts `EXTRA_LIBS` for additional dependencies (e.g., `webgpu`)
 - Accepts `COMPOSABLE_SUPPORT` for operators embeddable via `ChildOp<T>`
 
-Dual-cadence operators register two targets (e.g., `lfo_fr` and `lfo_au`) with shared source files added via `target_sources()`.
+Each operator dir produces exactly one cmake target whose name matches the dir name (e.g. `drum_sequencer/` → target `drum_sequencer`). Operators that are embedded into other operators via `ChildOp<T>` (currently `lfo`, `envelope`, `smooth`) split out a `<op>_embeddable.cpp` that's linked into both the operator's dylib and the `vivid_embeddable_op_support` static library so ChildOp consumers can resolve the operator's out-of-line virtuals.
 
 ### Test Partitioning
 

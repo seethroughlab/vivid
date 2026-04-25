@@ -181,7 +181,7 @@
         std::fprintf(stderr, "\n=== Test 31: save_to_string round-trip ===\n");
 
         vivid::Graph g1;
-        check(g1.add_node("a", "ClockFr", {{"bpm", 120.0f}}), "add node a");
+        check(g1.add_node("a", "Clock", {{"bpm", 120.0f}}), "add node a");
         check(g1.add_node("b", "Math", {{"scale", 2.0f}}), "add node b");
         check(g1.add_connection("a", "beat_phase", "b", "input"), "add connection");
         check(g1.add_midi_mapping("b", "scale", 12, 1, 0.0f, 2.0f), "add midi mapping");

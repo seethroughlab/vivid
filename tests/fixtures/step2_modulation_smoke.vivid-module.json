@@ -58,7 +58,7 @@
     },
     "nodes": {
         "carrier": {
-            "type": "LfoFr",
+            "type": "Lfo",
             "params": {
                 "frequency": 1.0,
                 "amplitude": 0.0,
@@ -74,7 +74,7 @@
             }
         },
         "internal_src": {
-            "type": "LfoFr",
+            "type": "Lfo",
             "params": {
                 "frequency": 1.0,
                 "amplitude": 0.0,

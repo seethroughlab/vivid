@@ -26,7 +26,7 @@ For any real AV composition task, the compositional target comes from outside �
 5. **Translate to operators.** Map the extracted descriptors onto Vivid's operator vocabulary using your judgment:
    - A "high-contrast monochrome dense grid" suggests `Shape2D` with `Repeat` + aggressive `Bloom` + minimal palette
    - A "warm organic pulsing" suggests `Metaball` + `Smooth` envelope follower + amber/red color params
-   - A "rhythmic percussive" suggests drum operators + `SmoothFr` envelope followers to shapes
+   - A "rhythmic percussive" suggests drum operators + `Smooth` envelope followers to shapes
    - The Mechanical Primitives section below tells you *how* to wire each chunk of that translation; your compositional judgment decides *which* chunks to use.
 6. **Build incrementally.** Add nodes and wire them in small increments. After each meaningful change, `capture_image(mode="output")` or `compare_output_to_reference(reference_path)` to see the state.
 7. **Iterate toward the reference.** Use `compare_output_to_reference` to pair the current capture with the reference image. Judge visually; adjust params. If metrics suggest mechanical issues (near-black output, dead motion), use `diagnose_composition_issue` to get a concrete fix list.
@@ -98,7 +98,7 @@ Four recurring signal-flow shapes that solve specific *mechanical* problems clea
 
 **Signal flow:** `drum/peak → Smooth → shape/scale_x + scale_y`
 
-Each drum's instantaneous peak feeds an envelope follower (`SmoothFr`, alias `EnvelopeFollower`) with snappy attack and long decay, which drives a shape's scale on both axes. One shape per drum gives an immediately legible AV pairing.
+Each drum's instantaneous peak feeds an envelope follower (`Smooth`, alias `EnvelopeFollower`) with snappy attack and long decay, which drives a shape's scale on both axes. One shape per drum gives an immediately legible AV pairing.
 
 - **Smooth params to start with:** `rise_time=0.005, fall_time=0.4` (the "Envelope follower (snappy)" factory preset)
 - **Shape remap:** `from_max` matches the drum's typical peak (0.4–0.8); `to_min` ≥ 0.05; `to_max` ≤ 0.35
@@ -140,7 +140,7 @@ Fastest path to improvement is recognizing these in a working graph.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Shape flashes sub-frame, mean brightness < 0.01 | Driving shape scale from raw `peak` port without envelope | Insert a `SmoothFr` (rise ≈ 0.005, fall ≈ 0.4) between peak and scale |
+| Shape flashes sub-frame, mean brightness < 0.01 | Driving shape scale from raw `peak` port without envelope | Insert a `Smooth` (rise ≈ 0.005, fall ≈ 0.4) between peak and scale |
 | Shape distorts into an ellipse instead of pulsing | Single-axis scale driving (`scale_x` wired, `scale_y` static) | Add the matching `scale_y` connection |
 | Shape vanishes between beats | `to_min` too low (e.g., 0.01) | Bump `to_min` to 0.03–0.05 |
 | Every drum fires but motion_correlation ≈ 0 | 160 ms sample rate undersamples brief peaks | Check `onset_response_rate` instead — correlation breaks down for short events |
@@ -196,7 +196,7 @@ visual.motion_magnitude < 0.01 and you expected motion
 └── Smooth falltime too long?                         → reduce to 0.2 s
 
 onset_response_rate < 0.3 on a drum-driven graph
-├── peak → scale without Smooth?     → add SmoothFr(rise=5ms, fall=400ms)
+├── peak → scale without Smooth?     → add Smooth(rise=5ms, fall=400ms)
 ├── to_min at 0.01?                   → bump to 0.05
 └── feedback decay swallowing hits?  → reduce fb/decay to 0.85-0.9
 

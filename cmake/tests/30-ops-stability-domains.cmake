@@ -431,7 +431,7 @@ add_executable(test_mixed_runtime_stability
 )
 target_include_directories(test_mixed_runtime_stability PRIVATE src tests)
 target_link_libraries(test_mixed_runtime_stability PRIVATE vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
-add_dependencies(test_mixed_runtime_stability gpu_fill_op lfo_fr oscillator)
+add_dependencies(test_mixed_runtime_stability gpu_fill_op lfo oscillator)
 add_test(NAME test_mixed_runtime_stability COMMAND test_mixed_runtime_stability ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_mixed_runtime_stability PROPERTIES LABELS "STABILITY" TIMEOUT 30)
@@ -638,7 +638,7 @@ add_executable(test_gpu_operators
 )
 target_include_directories(test_gpu_operators PRIVATE src deps/stb tests)
 target_link_libraries(test_gpu_operators PRIVATE vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
-add_dependencies(test_gpu_operators gpu_fill_op gpu_metronome_probe_op shape_2d control_thumb_op lfo_fr envelope_fr gain)
+add_dependencies(test_gpu_operators gpu_fill_op gpu_metronome_probe_op shape_2d control_thumb_op lfo envelope gain)
 add_test(NAME test_gpu_operators COMMAND test_gpu_operators WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # GPU output correctness tests (brightness, contrast, motion property assertions)
@@ -720,7 +720,7 @@ add_executable(test_frame_lane_lifting
 target_include_directories(test_frame_lane_lifting PRIVATE src tests)
 target_link_libraries(test_frame_lane_lifting PRIVATE
     vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
-add_dependencies(test_frame_lane_lifting lane_source_op lane_sink_op lane_frame_op identity_lane_source_op repeat envelope_fr lfo_fr)
+add_dependencies(test_frame_lane_lifting lane_source_op lane_sink_op lane_frame_op identity_lane_source_op repeat envelope lfo)
 add_test(NAME test_frame_lane_lifting COMMAND test_frame_lane_lifting WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_lane_breadth
@@ -769,7 +769,7 @@ add_executable(test_scalar_port
 target_include_directories(test_scalar_port PRIVATE src tests)
 target_link_libraries(test_scalar_port PRIVATE
     vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
-add_dependencies(test_scalar_port lfo_au audio_scalar_probe_op)
+add_dependencies(test_scalar_port lfo audio_scalar_probe_op)
 add_test(NAME test_scalar_port COMMAND test_scalar_port WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_audio_control_timing
@@ -778,7 +778,7 @@ add_executable(test_audio_control_timing
 target_include_directories(test_audio_control_timing PRIVATE src tests)
 target_link_libraries(test_audio_control_timing PRIVATE vivid_runtime_testlib vivid_operator_api webgpu)
 add_dependencies(test_audio_control_timing
-    gate_au sample_hold_au step_counter_au phase_to_midi_au sequencer_au euclidean_au)
+    gate sample_hold step_counter phase_to_midi sequencer euclidean)
 add_test(NAME test_audio_control_timing COMMAND test_audio_control_timing WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 

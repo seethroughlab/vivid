@@ -68,7 +68,7 @@ Connections wire an output port of one node to an input port of another:
 Cross-cadence connections carry an explicit `bridge` field:
 
 ```json
-{ "from": "lfo_fr/value", "to": "filter_au/cutoff", "bridge": "hold" }
+{ "from": "math/value", "to": "filter/cutoff", "bridge": "hold" }
 ```
 
 Supported bridge values are compiled into `BridgeKind` and include `hold`, `snapshot`, `last_sample`, `rms`, `peak`, and `waveform`.

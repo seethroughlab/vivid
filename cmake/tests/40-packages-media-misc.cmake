@@ -7,8 +7,8 @@ target_link_libraries(test_demo_graphs PRIVATE
     vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
 add_dependencies(test_demo_graphs
     # control
-    lfo_fr lfo_au clock_fr clock_au math envelope_fr envelope_au midi_input fft_analysis
-    logic gate_au smooth_fr smooth_au
+    lfo clock math envelope midi_input fft_analysis
+    logic gate smooth
     stack alternate
     modulated_gain
     # gpu (compiled plugins — WGSL filter presets are loaded from filters/)
@@ -34,7 +34,7 @@ target_link_libraries(test_media_headless PRIVATE
     vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
 add_dependencies(test_media_headless
     movie_file
-    lfo_fr noise composite bloom feedback
+    lfo noise composite bloom feedback
 )
 add_test(NAME test_media_headless
     COMMAND test_media_headless ${CMAKE_BINARY_DIR}/graphs
@@ -51,24 +51,11 @@ target_include_directories(test_audio_sequencer_graph PRIVATE src tests)
 target_link_libraries(test_audio_sequencer_graph PRIVATE
     vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
 add_dependencies(test_audio_sequencer_graph
-    clock_au oscillator gain drum_sequencer_au drum_kit_au drum_kick)
+    clock oscillator gain drum_sequencer drum_kit drum_kick)
 add_test(NAME test_audio_sequencer_graph
     COMMAND test_audio_sequencer_graph ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_audio_sequencer_graph PROPERTIES LABELS "STABILITY")
-
-# Fixed-cadence assignment integration test
-add_executable(test_fixed_cadence_assignment
-    tests/lanes/test_fixed_cadence_assignment.cpp
-)
-target_include_directories(test_fixed_cadence_assignment PRIVATE src tests)
-target_link_libraries(test_fixed_cadence_assignment PRIVATE
-    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
-add_dependencies(test_fixed_cadence_assignment clock_fr clock_au oscillator lfo_fr lfo_au)
-add_test(NAME test_fixed_cadence_assignment
-    COMMAND test_fixed_cadence_assignment ${CMAKE_BINARY_DIR}
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-set_tests_properties(test_fixed_cadence_assignment PROPERTIES LABELS "STABILITY")
 
 # PackageCompiler unit test (compiles a mock package operator)
 add_executable(test_package_compiler
@@ -534,8 +521,8 @@ target_include_directories(test_graph_compiler PRIVATE src tests)
 target_link_libraries(test_graph_compiler PRIVATE
     vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_dependencies(test_graph_compiler
-    lfo_fr gain lane_source_op lane_metadata_audio_op lane_slew_op prepare_assets_test_op
-    drum_sequencer_au drum_kit_au)
+    lfo gain lane_source_op lane_metadata_audio_op lane_slew_op prepare_assets_test_op
+    drum_sequencer drum_kit)
 add_test(NAME test_graph_compiler
     COMMAND test_graph_compiler ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

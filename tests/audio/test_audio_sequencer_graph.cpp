@@ -32,13 +32,13 @@ int main(int argc, char* argv[]) {
     const std::string staging = build_dir + "/.test_audio_sequencer_staging";
     std::filesystem::remove_all(staging);
     std::filesystem::create_directories(staging);
-    std::filesystem::copy_file(build_dir + "/clock_au.dylib", staging + "/clock_au.dylib",
+    std::filesystem::copy_file(build_dir + "/clock.dylib", staging + "/clock.dylib",
                                std::filesystem::copy_options::overwrite_existing);
     std::filesystem::copy_file(build_dir + "/oscillator.dylib", staging + "/oscillator.dylib",
                                std::filesystem::copy_options::overwrite_existing);
     std::filesystem::copy_file(build_dir + "/gain.dylib", staging + "/gain.dylib",
                                std::filesystem::copy_options::overwrite_existing);
-    std::filesystem::copy_file(build_dir + "/drum_sequencer_au.dylib", staging + "/drum_sequencer_au.dylib",
+    std::filesystem::copy_file(build_dir + "/drum_sequencer.dylib", staging + "/drum_sequencer.dylib",
                                std::filesystem::copy_options::overwrite_existing);
     std::filesystem::copy_file(build_dir + "/drum_kick.dylib", staging + "/drum_kick.dylib",
                                std::filesystem::copy_options::overwrite_existing);
@@ -52,13 +52,13 @@ int main(int argc, char* argv[]) {
     check(registry.find("Oscillator") != nullptr, "Oscillator operator loaded");
     check(registry.find("Gain") != nullptr, "Gain operator loaded");
 
-    // Verify clock_au is audio-only
+    // Verify clock is audio-only
     {
         auto* clock_loader = registry.find("Clock");
         if (clock_loader) {
             const auto* desc = clock_loader->descriptor();
-            check(desc->has_process_audio == 1, "clock_au has process_audio");
-            check(desc->has_process_frame == 0, "clock_au has no process_frame");
+            check(desc->has_process_audio == 1, "clock has process_audio");
+            check(desc->has_process_frame == 0, "clock has no process_frame");
         }
     }
 

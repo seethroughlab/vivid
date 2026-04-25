@@ -1,17 +1,9 @@
 #include "operator_api/operator.h"
-
+#include "control/audio_scalar_utils.h"
 #include <algorithm>
 #include <cmath>
-/**
- * @brief Trigger-driven counter with modulus wrapping.
- *
- * Increments on each rising edge of the trigger input. Wraps to zero
- * when reaching the modulus. Outputs the current index and a wrapped
- * flag on overflow. Reset returns to initial value.
- *
- * @see Euclidean, StepSeq, Math
- */
-struct StepCounter : vivid::OperatorBase {
+
+struct StepCounter : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName = "StepCounter";
     static constexpr bool kTimeDependent = true;
 
@@ -35,49 +27,35 @@ struct StepCounter : vivid::OperatorBase {
         out.push_back({"wrapped", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
-    // Shared advance logic: returns wrapped flag
-    bool advance(float trigger, int modulus, bool reset) {
+    void process_audio(const VividAudioContext* ctx) override {
         if (!initialized_) {
             step_ = initial.int_value();
             initialized_ = true;
         }
 
-        bool wrapped = false;
-        if (reset) {
-            step_ = initial.int_value();
-            if (step_ >= modulus || step_ < 0) {
-                step_ = ((step_ % modulus) + modulus) % modulus;
-                wrapped = true;
-            }
-        } else if (trigger > 0.5f && prev_trigger_ <= 0.5f) {
-            step_++;
-            if (step_ >= modulus) {
-                step_ = 0;
-                wrapped = true;
-            }
-        }
-
-        prev_trigger_ = trigger;
-        return wrapped;
-    }
-
-    void process_frame_impl(const VividFrameContext* ctx) {
-        int modulus = std::max(1, static_cast<int>(std::floor(ctx->input_values[1])));
-        bool wrapped = advance(ctx->input_values[0], modulus, ctx->input_values[2] > 0.5f);
-        ctx->output_values[0] = static_cast<float>(step_);
-        ctx->output_values[1] = wrapped ? 1.0f : 0.0f;
-    }
-
-    void process_audio_impl(const VividAudioContext* ctx) {
-        float trigger = 0.0f;
-        int modulus = std::max(1, static_cast<int>(std::floor(0.0f)));
-        bool reset = 0.0f > 0.5f;
-        bool wrapped = advance(trigger, modulus, reset);
-        float idx = static_cast<float>(step_);
-        float wrap_val = wrapped ? 1.0f : 0.0f;
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
-            ctx->output_buffers[0][i] = idx;
-            ctx->output_buffers[1][i] = wrap_val;
+            float trigger = vivid::audio_scalar_sample(ctx, 0, i);
+            int modulus = std::max(1, static_cast<int>(std::floor(vivid::audio_scalar_sample(ctx, 1, i))));
+            bool reset = vivid::audio_scalar_sample(ctx, 2, i) > 0.5f;
+            bool wrapped = false;
+
+            if (reset) {
+                step_ = initial.int_value();
+                if (step_ >= modulus || step_ < 0) {
+                    step_ = ((step_ % modulus) + modulus) % modulus;
+                    wrapped = true;
+                }
+            } else if (trigger > 0.5f && prev_trigger_ <= 0.5f) {
+                step_++;
+                if (step_ >= modulus) {
+                    step_ = 0;
+                    wrapped = true;
+                }
+            }
+
+            prev_trigger_ = trigger;
+            ctx->output_buffers[0][i] = static_cast<float>(step_);
+            ctx->output_buffers[1][i] = wrapped ? 1.0f : 0.0f;
         }
     }
 
@@ -87,4 +65,4 @@ private:
     int step_ = 0;
 };
 
-// Shared implementation only; public registration lives in _fr/_au wrappers.
+VIVID_REGISTER(StepCounter)
