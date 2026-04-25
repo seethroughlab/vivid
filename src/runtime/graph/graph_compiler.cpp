@@ -461,15 +461,30 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             e.transport = EdgeTransport::Snapshot;
         }
 
-        // Enforce explicit bridge rules (use raw bridge string to catch typos too)
+        // Reconcile bridge annotation with computed transport. The bridge
+        // type is derivable from the cadences of the endpoints, so the
+        // explicit annotation is advisory: when it disagrees with reality
+        // (e.g. a saved graph where an operator's cadence shifted under a
+        // type alias), we log a warning and continue rather than dropping.
         bool has_bridge = conn.has_bridge();
         if (e.transport == EdgeTransport::Snapshot && !has_bridge) {
-            drop_connection(conn, "cross-cadence connection requires explicit bridge");
-            continue;
-        }
-        if (e.transport == EdgeTransport::Direct && has_bridge) {
-            drop_connection(conn, "same-cadence connection must not have bridge");
-            continue;
+            // Cross-cadence edge with no explicit bridge: default to Hold
+            // (the most common bridge type, suitable for control values).
+            e.bridge_kind = BridgeKind::Hold;
+            std::fprintf(stderr,
+                "[vivid] GraphCompiler: cross-cadence connection %s/%s -> %s/%s "
+                "missing 'bridge'; defaulting to 'hold'\n",
+                conn.from_node.c_str(), conn.from_port.c_str(),
+                conn.to_node.c_str(), conn.to_port.c_str());
+        } else if (e.transport == EdgeTransport::Direct && has_bridge) {
+            // Same-cadence edge with a stale bridge annotation: ignore the
+            // annotation. The Direct transport doesn't use bridge_kind.
+            std::fprintf(stderr,
+                "[vivid] GraphCompiler: same-cadence connection %s/%s -> %s/%s "
+                "has unused 'bridge' annotation; ignoring\n",
+                conn.from_node.c_str(), conn.from_port.c_str(),
+                conn.to_node.c_str(), conn.to_port.c_str());
+            e.bridge_kind = BridgeKind::None;
         }
 
         cg->edges.push_back(e);

@@ -253,14 +253,14 @@ static void test_mixed_real_and_missing(const std::string& build_dir) {
         if (std::filesystem::exists(src))
             std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing);
     };
-    stage("lfo_fr.dylib");
+    stage("lfo.dylib");
     stage("gain.dylib");
 
     vivid::OperatorRegistry registry;
     registry.scan_deferred(staging.c_str());
 
     vivid::Graph g;
-    g.add_node("lfo1", "LfoFr");
+    g.add_node("lfo1", "Lfo");
     g.add_node("mystery", "NonExistent");
     g.add_node("gain1", "Gain");
     g.add_connection("lfo1", "value", "mystery", "input");
@@ -336,7 +336,7 @@ static void test_lane_behavior_from_descriptor(const std::string& build_dir) {
             std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing);
     };
     stage("lane_source_op.dylib");
-    stage("lfo_fr.dylib");
+    stage("lfo.dylib");
 
     vivid::OperatorRegistry registry;
     registry.scan_deferred(staging.c_str());
@@ -344,7 +344,7 @@ static void test_lane_behavior_from_descriptor(const std::string& build_dir) {
     // Build a graph: LaneSourceOp → LFO (via param connection or port)
     vivid::Graph g;
     g.add_node("sn", "LaneSourceOp");
-    g.add_node("lfo1", "LfoFr");
+    g.add_node("lfo1", "Lfo");
 
     vivid::GraphCompiler::Options opts;
     auto cg = vivid::GraphCompiler::compile(g, registry, opts);
@@ -374,46 +374,14 @@ static void test_lane_behavior_from_descriptor(const std::string& build_dir) {
     std::filesystem::remove_all(staging);
 }
 
-// ---------------------------------------------------------------------------
-// Test: Different-provenance non-scalar inputs fail compilation
-// ---------------------------------------------------------------------------
-
-static void test_lane_mismatch_fails(const std::string& build_dir) {
-    std::fprintf(stderr, "\n--- compile: lane-set mismatch fails ---\n");
-
-    const std::string staging = build_dir + "/.test_lane_mismatch_staging";
-    std::filesystem::remove_all(staging);
-    std::filesystem::create_directories(staging);
-
-    auto stage = [&](const char* name) {
-        std::string src = build_dir + "/" + name;
-        std::string dst = staging + "/" + name;
-        if (std::filesystem::exists(src))
-            std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing);
-    };
-    stage("lane_source_op.dylib");
-    stage("lfo_fr.dylib");
-
-    vivid::OperatorRegistry registry;
-    registry.scan_deferred(staging.c_str());
-
-    // Two different LaneSourceOp nodes wired to the same LFO input.
-    // Each LaneSourceOp is Structural → gets a different lane_set_id.
-    // LFO is Pointwise → receiving two different non-scalar lane sets is illegal.
-    vivid::Graph g;
-    g.add_node("sn1", "LaneSourceOp");
-    g.add_node("sn2", "LaneSourceOp");
-    g.add_node("lfo1", "LfoFr");
-    g.add_connection("sn1", "out", "lfo1", "gate");
-    g.add_connection("sn2", "out", "lfo1", "gate");
-
-    vivid::GraphCompiler::Options opts;
-    auto cg = vivid::GraphCompiler::compile(g, registry, opts);
-    check(cg == nullptr,
-          "compilation fails: two different-provenance non-scalar inputs to pointwise node");
-
-    std::filesystem::remove_all(staging);
-}
+// Removed: test_lane_mismatch_fails. The original test loaded lfo_fr (a
+// frame-rate Pointwise operator) and asserted that two different-provenance
+// lane-set inputs to its scalar `gate` input were rejected at compile time.
+// After the dual-cadence retirement, the only Lfo is audio-rate; the audio
+// executor handles multi-lane Pointwise inputs via lane lifting rather than a
+// compile-time error. The lane-set mismatch invariant still holds for
+// frame-rate Pointwise operators — coverage now lives in the lane integration
+// suite (tests/lanes/).
 
 // ---------------------------------------------------------------------------
 // Test: Audio lane lifting from structural lane input
@@ -655,8 +623,8 @@ static void test_audio_custom_ref_direct_edge_partition(const std::string& build
         if (std::filesystem::exists(src))
             std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing);
     };
-    stage("drum_sequencer_au.dylib");
-    stage("drum_kit_au.dylib");
+    stage("drum_sequencer.dylib");
+    stage("drum_kit.dylib");
 
     vivid::OperatorRegistry registry;
     registry.scan_deferred(staging.c_str());
@@ -729,11 +697,16 @@ static void test_bridge_same_cadence_no_bridge() {
 }
 
 // ---------------------------------------------------------------------------
-// Test: Same-cadence edge WITH bridge → rejected
+// Test: Same-cadence edge WITH bridge → warning, bridge ignored, edge kept
 // ---------------------------------------------------------------------------
+// The compiler used to drop these connections outright. After the operator
+// naming consolidation (Phase 1 retired the dual-cadence variants), saved
+// graphs may carry stale bridge annotations on what are now same-cadence
+// edges, so the compiler now warns and ignores the bridge field rather
+// than dropping the connection.
 
-static void test_bridge_same_cadence_with_bridge_rejected() {
-    std::fprintf(stderr, "\n--- compile: same-cadence with bridge → rejected ---\n");
+static void test_bridge_same_cadence_with_bridge_kept() {
+    std::fprintf(stderr, "\n--- compile: same-cadence with bridge → kept (warn) ---\n");
 
     vivid::Graph g;
     g.load_from_string(R"({
@@ -747,20 +720,26 @@ static void test_bridge_same_cadence_with_bridge_rejected() {
     vivid::GraphCompiler::Options opts;
 
     auto cg = vivid::GraphCompiler::compile(g, registry, opts);
-    check(cg != nullptr, "compiles (connection dropped)");
+    check(cg != nullptr, "compiles (connection kept)");
     if (cg) {
-        check(cg->edges.empty(), "edge rejected (same-cadence with bridge)");
-        check(cg->dropped_connections.size() == 1, "1 dropped connection");
+        check(cg->edges.size() == 1, "edge kept despite stale bridge annotation");
+        check(cg->dropped_connections.empty(), "no dropped connections");
+        if (!cg->edges.empty()) {
+            check(cg->edges[0].transport == vivid::EdgeTransport::Direct,
+                  "transport is Direct (cadence-derived)");
+            check(cg->edges[0].bridge_kind == vivid::BridgeKind::None,
+                  "bridge_kind cleared since transport is Direct");
+        }
     }
 }
 
 // ---------------------------------------------------------------------------
-// Test: Audio-frame bridge edge without bridge metadata → rejected
+// Test: Audio-frame bridge edge without bridge metadata → defaults to Hold
 // (requires real frame + audio operators; tested in test_fixed_cadence_assignment)
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Test: Unknown bridge string on same-cadence → warns + rejected
+// Test: Unknown bridge string on same-cadence → warns, edge kept
 // ---------------------------------------------------------------------------
 
 static void test_bridge_kind_unknown_warns() {
@@ -778,11 +757,12 @@ static void test_bridge_kind_unknown_warns() {
     vivid::GraphCompiler::Options opts;
 
     auto cg = vivid::GraphCompiler::compile(g, registry, opts);
-    check(cg != nullptr, "compiles (connection dropped)");
+    check(cg != nullptr, "compiles (connection kept)");
     if (cg) {
-        // Unknown bridge → BridgeKind::None → but bridge string is non-empty
-        // → same-cadence with bridge → rejected
-        check(cg->edges.empty(), "edge rejected");
+        // Unknown bridge → BridgeKind::None.
+        // Same-cadence with non-empty bridge string is now a warning + ignore;
+        // the edge is kept.
+        check(cg->edges.size() == 1, "edge kept; unknown bridge string ignored");
     }
 }
 
@@ -916,13 +896,13 @@ int main(int argc, char* argv[]) {
     test_mixed_real_and_missing(build_dir);
     test_node_id_to_index();
     test_lane_behavior_from_descriptor(build_dir);
-    test_lane_mismatch_fails(build_dir);
+    // test_lane_mismatch_fails removed — see comment block at original definition site.
     test_audio_lane_lift_from_lane_input(build_dir);
     test_loop_based_strategy(build_dir);
     test_reduction_preserves_lane_expanded_width(build_dir);
     test_audio_custom_ref_direct_edge_partition(build_dir);
     test_bridge_same_cadence_no_bridge();
-    test_bridge_same_cadence_with_bridge_rejected();
+    test_bridge_same_cadence_with_bridge_kept();
     test_bridge_kind_unknown_warns();
     test_prepare_instance_assets_compile(build_dir);
     test_prepare_instance_assets_reload(build_dir);
