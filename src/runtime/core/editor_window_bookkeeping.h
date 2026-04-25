@@ -49,6 +49,32 @@ inline EditorWindowSurfaceMetrics make_editor_window_surface_metrics(
     return metrics;
 }
 
+// Manager-level keyboard shortcuts for editor windows.
+//   None  — pass through to the operator's pending_events queue.
+//   Close — Cmd+W: tear the window down (always wins, even mid-text-edit).
+//   Undo  — Cmd+Z: drive RuntimeCommandSink::undo() on the global stack.
+//   Redo  — Cmd+Shift+Z: drive RuntimeCommandSink::redo().
+// Pure classifier — no GLFW dependency in this header. Callers translate
+// GLFW codes/mods at the call site (key_cb in editor_window_manager.cpp,
+// inject_key for tests). Letter keys use ASCII codes (GLFW guarantees
+// GLFW_KEY_W == 'W', GLFW_KEY_Z == 'Z').
+enum class EditorShortcut : uint8_t { None, Close, Undo, Redo };
+
+inline EditorShortcut classify_editor_shortcut(int key,
+                                               bool is_press,
+                                               bool cmd_or_ctrl,
+                                               bool shift,
+                                               bool wants_keyboard) {
+    if (!is_press || !cmd_or_ctrl) return EditorShortcut::None;
+    if (key == 'W') return EditorShortcut::Close;
+    // Cmd+Z defers to the operator while it's consuming raw keys so a
+    // future text widget can implement local text-undo. Cmd+W ignores
+    // wants_keyboard and always closes — that's the existing contract.
+    if (wants_keyboard) return EditorShortcut::None;
+    if (key == 'Z') return shift ? EditorShortcut::Redo : EditorShortcut::Undo;
+    return EditorShortcut::None;
+}
+
 struct EditorStringParamView {
     const char* const* values = nullptr;
     uint32_t count = 0;

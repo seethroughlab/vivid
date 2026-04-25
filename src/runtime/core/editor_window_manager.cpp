@@ -111,6 +111,19 @@ struct EditorWindow {
     // without our sentinel, we clear it and keep the window alive.
     bool explicit_close_requested = false;
 
+    // Cmd+Z / Cmd+Shift+Z deferred dispatch. Counters are bumped from the
+    // GLFW key callback (key_cb) and drained at the top of the next tick().
+    // Deferring keeps apply_snapshot_json() out of glfwPollEvents — other
+    // editor windows' callbacks may still be in flight when ours fires.
+    uint8_t pending_undo_count = 0;
+    uint8_t pending_redo_count = 0;
+
+    // Mirrors VividEditorContext::wants_keyboard from the previous frame.
+    // When the operator is consuming raw keys (text field), the manager
+    // skips Cmd+Z so the operator can implement local text-undo. Cmd+W
+    // still steals the event regardless — that's the existing contract.
+    bool last_wants_keyboard = false;
+
     // Host services (Phase D). Per-frame fields (cursor / status / tooltip)
     // reset at the top of tick() before draw_editor; persistent fields
     // (pointer_captured) stay until the operator clears them.
@@ -288,6 +301,35 @@ inline EditorWindow* ew_from(GLFWwindow* w) {
     return static_cast<EditorWindow*>(glfwGetWindowUserPointer(w));
 }
 
+// Translate a GLFW key event into an EditorShortcut and apply its side
+// effect on the EditorWindow. Returns true if the event was claimed
+// (don't enqueue to operator). The pure classifier lives in
+// editor_window_bookkeeping.h so unit tests can validate the wants_keyboard
+// gating and the Cmd+W-always-wins rule without spinning up GLFW.
+bool try_handle_shortcut(EditorWindow& ew, int key, int action, int mods) {
+    const EditorShortcut s = classify_editor_shortcut(
+        key,
+        /*is_press*/   action == GLFW_PRESS,
+        /*cmd_or_ctrl*/ (mods & (GLFW_MOD_SUPER | GLFW_MOD_CONTROL)) != 0,
+        /*shift*/      (mods & GLFW_MOD_SHIFT) != 0,
+        /*wants_keyboard*/ ew.last_wants_keyboard);
+    switch (s) {
+        case EditorShortcut::Close:
+            ew.explicit_close_requested = true;
+            if (ew.glfw) glfwSetWindowShouldClose(ew.glfw, GLFW_TRUE);
+            return true;
+        case EditorShortcut::Undo:
+            if (ew.pending_undo_count < 255) ++ew.pending_undo_count;
+            return true;
+        case EditorShortcut::Redo:
+            if (ew.pending_redo_count < 255) ++ew.pending_redo_count;
+            return true;
+        case EditorShortcut::None:
+            return false;
+    }
+    return false;
+}
+
 void cursor_pos_cb(GLFWwindow* w, double x, double y) {
     auto* ew = ew_from(w);
     if (!ew) return;
@@ -349,18 +391,11 @@ void key_cb(GLFWwindow* w, int key, int scancode, int action, int mods) {
     if (!ew) return;
     ew->mouse.shift_down = (mods & GLFW_MOD_SHIFT) ? 1 : 0;
 
-    // Cmd+W (macOS) / Ctrl+W (elsewhere): close the editor window. Handled
-    // at the manager level so every operator gets the shortcut without
-    // reimplementing it, and so the event never reaches the operator's
-    // key handler (avoids spurious Cmd-modifier interpretation). Sets the
-    // explicit-close sentinel first so tick() recognises this close is
-    // user-requested (not a spurious Cocoa signal from the app lifecycle).
-    if (action == GLFW_PRESS && key == GLFW_KEY_W &&
-        (mods & (GLFW_MOD_SUPER | GLFW_MOD_CONTROL)) != 0) {
-        ew->explicit_close_requested = true;
-        glfwSetWindowShouldClose(w, GLFW_TRUE);
-        return;
-    }
+    // Manager-level shortcuts (Cmd+W close, Cmd+Z undo, Cmd+Shift+Z redo).
+    // Handled here so every operator gets them without reimplementing,
+    // and so the event never reaches the operator's key handler (avoids
+    // spurious Cmd-modifier interpretation).
+    if (try_handle_shortcut(*ew, key, action, mods)) return;
 
     VividEditorEvent e{};
     e.type = VIVID_EDITOR_EVENT_KEY;
@@ -595,6 +630,20 @@ void EditorWindowManager::tick(double time) {
             continue;
         }
 
+        // Drain deferred undo/redo before draw_editor so the operator sees
+        // post-snapshot param values this frame. apply_snapshot_json()
+        // rebuilds the compiled graph; we resolve `node` again below from
+        // the live graph so a node-removing undo is handled by the missing
+        // -node mark_for_destroy path further down.
+        while (ew.pending_undo_count > 0) {
+            impl_->commands.undo();
+            --ew.pending_undo_count;
+        }
+        while (ew.pending_redo_count > 0) {
+            impl_->commands.redo();
+            --ew.pending_redo_count;
+        }
+
         if (glfwWindowShouldClose(ew.glfw)) {
             if (ew.explicit_close_requested) {
                 impl_->bookkeeping.mark_for_destroy(ew.node_id);
@@ -778,6 +827,12 @@ void EditorWindowManager::tick(double time) {
 
         // Drive the operator-owned draw.
         node->loader->draw_editor(node->instance, &ctx);
+
+        // Snapshot wants_keyboard for the next frame's key_cb. Operators
+        // raise this when they're consuming raw keys (text fields, etc.);
+        // the next frame's Cmd+Z intercept skips so the operator can run
+        // its own local text-undo. Cmd+W is unaffected.
+        ew.last_wants_keyboard = (ctx.wants_keyboard != 0);
 
         // Flush introspection buffer into the caller's string.
         if (ew.introspection_dest) {
@@ -1071,6 +1126,10 @@ bool EditorWindowManager::inject_key(const std::string& node_id,
     EditorWindow* ew = impl_->find(node_id);
     if (!ew) return false;
     ew->mouse.shift_down = (mods & GLFW_MOD_SHIFT) ? 1 : 0;
+    // Mirror key_cb: manager-level shortcuts are claimed before the event
+    // is enqueued for the operator, so test paths exercise the same Cmd+W /
+    // Cmd+Z / Cmd+Shift+Z behavior real users get.
+    if (try_handle_shortcut(*ew, key, action, mods)) return true;
     VividEditorEvent e{};
     e.type = VIVID_EDITOR_EVENT_KEY;
     e.key = key;

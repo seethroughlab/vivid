@@ -17,6 +17,8 @@ int main() {
     using vivid::EditorWindowBookkeeping;
     using vivid::EditorStringParamView;
     using vivid::EditorWindowSurfaceMetrics;
+    using vivid::EditorShortcut;
+    using vivid::classify_editor_shortcut;
     using vivid::make_editor_string_param_view;
     using vivid::make_editor_window_surface_metrics;
 
@@ -61,6 +63,46 @@ int main() {
         EditorStringParamView view = make_editor_string_param_view(values);
         check(view.count == 0, "empty string-param view count = 0");
         check(view.values == nullptr, "empty string-param view is null");
+    }
+
+    // --- editor shortcut classifier: Cmd+Z / Cmd+Shift+Z / Cmd+W routing ---
+    {
+        // Cmd+Z (press) → Undo when wants_keyboard is false.
+        check(classify_editor_shortcut('Z', /*is_press*/true,
+                                       /*cmd_or_ctrl*/true, /*shift*/false,
+                                       /*wants_keyboard*/false)
+                  == EditorShortcut::Undo,
+              "Cmd+Z press → Undo");
+        // Cmd+Shift+Z → Redo.
+        check(classify_editor_shortcut('Z', true, true, true, false)
+                  == EditorShortcut::Redo,
+              "Cmd+Shift+Z press → Redo");
+        // Cmd+W → Close (even mid-text-edit).
+        check(classify_editor_shortcut('W', true, true, false, false)
+                  == EditorShortcut::Close,
+              "Cmd+W press → Close");
+        check(classify_editor_shortcut('W', true, true, false, true)
+                  == EditorShortcut::Close,
+              "Cmd+W press → Close even when wants_keyboard=true");
+        // wants_keyboard suppresses Cmd+Z but not Cmd+W.
+        check(classify_editor_shortcut('Z', true, true, false, true)
+                  == EditorShortcut::None,
+              "Cmd+Z press with wants_keyboard=true → None (operator handles)");
+        check(classify_editor_shortcut('Z', true, true, true, true)
+                  == EditorShortcut::None,
+              "Cmd+Shift+Z press with wants_keyboard=true → None");
+        // Release events never trigger.
+        check(classify_editor_shortcut('Z', /*is_press*/false, true, false, false)
+                  == EditorShortcut::None,
+              "Cmd+Z release → None (only press dispatches)");
+        // Without Cmd/Ctrl, plain Z is a regular key.
+        check(classify_editor_shortcut('Z', true, /*cmd_or_ctrl*/false, false, false)
+                  == EditorShortcut::None,
+              "plain Z press → None (no modifier)");
+        // Other letters pass through.
+        check(classify_editor_shortcut('A', true, true, false, false)
+                  == EditorShortcut::None,
+              "Cmd+A press → None (not a manager shortcut)");
     }
 
     // --- record_open / is_open / size ---
