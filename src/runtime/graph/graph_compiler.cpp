@@ -139,6 +139,12 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                 cn.gpu->tex_width  = ndef.tex_width;
                 cn.gpu->tex_height = ndef.tex_height;
             }
+
+            // Bypass: carry NodeDef flag onto the compiled node and decide
+            // eligibility from the operator's declared port types. The flag
+            // is honored by the executors only when the node is eligible.
+            cn.bypassed   = ndef.bypassed;
+            cn.bypassable = is_bypass_eligible(cn.input_port_types, cn.output_port_types);
         } else {
             // Missing operator placeholder
             cn.missing_operator = true;

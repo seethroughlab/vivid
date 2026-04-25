@@ -45,6 +45,7 @@ static constexpr std::array<float, 3> kControlAccent = { 0.753f, 0.784f, 0.816f 
 static constexpr std::array<float, 3> kErrorAccent   = { 0.90f, 0.25f, 0.25f };       // red
 static constexpr std::array<float, 3> kDisabledAccent= { 0.95f, 0.70f, 0.20f };       // warm amber — safe-mode DISABLED badge
 static constexpr std::array<float, 3> kSoloAccent    = { 1.0f, 0.85f, 0.2f };         // gold/amber
+static constexpr std::array<float, 3> kBypassAccent  = { 0.55f, 0.65f, 0.80f };        // cool slate blue — BYPASS badge
 
 // Inspector widget sizes
 static constexpr float kSliderH = 10.0f;

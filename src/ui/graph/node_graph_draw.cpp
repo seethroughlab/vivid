@@ -44,6 +44,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         bool node_disabled    = sn && sn->disabled_by_safe_mode;
         bool node_quarantined = sn && sn->quarantined;
         bool node_suppressed  = node_disabled || node_quarantined;
+        bool node_bypassed    = sn && sn->bypassed && sn->bypassable;
         bool node_bad         = node_errored || node_missing || (sn && !sn->error_message.empty());
         // Suppressed (safe-mode disabled OR quarantined) nodes use amber accent;
         // other bad nodes use red.
@@ -101,6 +102,13 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
             tr.draw_rect(sx, sy + sh - bw, sw, bw, kSoloAccent[0], kSoloAccent[1], kSoloAccent[2]); // bottom
             tr.draw_rect(sx, sy, bw, sh, kSoloAccent[0], kSoloAccent[1], kSoloAccent[2]);           // left
             tr.draw_rect(sx + sw - bw, sy, bw, sh, kSoloAccent[0], kSoloAccent[1], kSoloAccent[2]); // right
+        }
+
+        // Bypassed nodes: dim the body and show a small BYPASS badge in the
+        // top-right of the header. Bypass is a per-tick passthrough — the node
+        // stays in the graph and its inputs/outputs continue to draw normally.
+        if (node_bypassed) {
+            tr.draw_rounded_rect(sx, sy, sw, sh, sr, 0.0f, 0.0f, 0.0f, 0.45f);
         }
 
         // Accent bar at top
@@ -326,6 +334,17 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
                 tr.draw_text(bx, text_y, lb_badge,
                              0.6f, 0.8f, 1.0f, 0.7f, zoom_);  // subtle blue tint
             }
+        }
+
+        // Bypass badge — rendered after the dim overlay so it stays legible.
+        if (node_bypassed) {
+            const char* badge = T("node_bypass_badge", "BYPASS");
+            float bscale = zoom_ * 0.85f;
+            float bbw = tr.text_width(badge, bscale);
+            float bbx = sx + (sw - bbw) * 0.5f;
+            float bby = sy + s_accent_h + g_to_s(4);
+            tr.draw_text(bbx, bby, badge,
+                         kBypassAccent[0], kBypassAccent[1], kBypassAccent[2], 0.95f, bscale);
         }
 
         // Node ID below type

@@ -56,6 +56,13 @@ public:
     // Set GPU texture resolution for a node (0 = inherit/default)
     CommandResult set_resolution(const std::string& node_id, uint32_t width, uint32_t height);
 
+    // Toggle bypass on a node. Bypass causes the executor to skip the
+    // operator's process_*() call and pass the first input port through to
+    // the first output port (same type) each tick. Only honored when the
+    // operator is bypass-eligible (first input/output port types match);
+    // turning bypass on for an ineligible operator returns an error.
+    CommandResult set_node_bypassed(const std::string& node_id, bool bypassed);
+
     CommandResult get_param(const std::string& node_id, const std::string& param);
 
     // Per-parameter lock flags

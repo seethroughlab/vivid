@@ -89,6 +89,15 @@ public:
     // Per-parameter lock flags
     virtual void set_param_lock(const std::string& node_id, const std::string& param, uint8_t flags) {}
 
+    // Per-node bypass toggle. Default no-op for headless/test sinks.
+    virtual void set_node_bypassed(const std::string& node_id, bool bypassed) {}
+    virtual bool try_set_node_bypassed(const std::string& node_id, bool bypassed,
+                                       std::string* error = nullptr) {
+        set_node_bypassed(node_id, bypassed);
+        if (error) error->clear();
+        return true;
+    }
+
     // Per-operator preset operations (defaults are no-ops for headless/test sinks)
     virtual void recall_preset(const std::string& node_id, const std::string& name) {}
     virtual void save_preset(const std::string& node_id, const std::string& name) {}

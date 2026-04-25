@@ -258,6 +258,70 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
         }
         if (!should_process) continue;
 
+        // ── Bypass branch ───────────────────────────────────────────────
+        // When the operator is flagged bypassed and the compiler determined
+        // it eligible (first input/output port types match), skip process_*()
+        // and pass the first input through to the first output. Other outputs
+        // are reset to neutral defaults so downstream sees a deterministic
+        // state. Audio-cadence nodes are handled by AudioExecutor; the frame
+        // executor only deals with frame and GPU cadences here.
+        if (cn.bypassed && cn.bypassable) {
+            std::fill(cn.output_values.begin(), cn.output_values.end(), 0.0f);
+            for (auto& ref : cn.output_lane_refs) ref = {};
+            for (auto& sp : cn.output_lanes) sp.clear();
+            for (auto& sp : cn.output_string_lanes) sp.clear();
+            std::fill(cn.output_string_values.begin(), cn.output_string_values.end(), std::string());
+
+            if (cn.is_gpu()) {
+                // Walk the texture edge feeding input port 0 and adopt that
+                // texture as our effective output. If the upstream is also
+                // bypassed, prefer its override so chains pass through.
+                cn.gpu->output_texture_override      = nullptr;
+                cn.gpu->output_texture_view_override = nullptr;
+                for (uint32_t ei : cg.frame_direct_edges) {
+                    const auto& e = cg.edges[ei];
+                    if (e.to_node != ni) continue;
+                    if (e.targets_param) continue;
+                    if (e.data_type != VIVID_PORT_TEXTURE) continue;
+                    if (e.to_port != 0) continue;
+                    const auto& up = cg.nodes[e.from_node];
+                    if (!up.gpu) break;
+                    const bool up_bypassed = up.bypassed && up.bypassable &&
+                                             up.gpu->output_texture_view_override != nullptr;
+                    cn.gpu->output_texture_view_override = up_bypassed
+                        ? up.gpu->output_texture_view_override : up.gpu->texture_view;
+                    cn.gpu->output_texture_override = up_bypassed
+                        ? up.gpu->output_texture_override : up.gpu->texture;
+                    break;
+                }
+            } else if (!cn.input_port_types.empty() && !cn.output_port_types.empty() &&
+                       cn.input_port_types[0] == cn.output_port_types[0]) {
+                switch (cn.input_port_types[0]) {
+                case VIVID_PORT_SCALAR:
+                    if (!cn.input_values.empty() && !cn.output_values.empty())
+                        cn.output_values[0] = cn.input_values[0];
+                    break;
+                case VIVID_PORT_LANE_ARRAY:
+                    if (!cn.input_lane_refs.empty() && !cn.output_lane_refs.empty())
+                        cn.output_lane_refs[0] = cn.input_lane_refs[0];
+                    break;
+                case VIVID_PORT_STRING:
+                    if (!cn.input_string_values.empty() && !cn.output_string_values.empty())
+                        cn.output_string_values[0] = cn.input_string_values[0];
+                    break;
+                case VIVID_PORT_STRING_LANES:
+                    if (!cn.input_string_lanes.empty() && !cn.output_string_lanes.empty())
+                        cn.output_string_lanes[0] = cn.input_string_lanes[0];
+                    break;
+                default:
+                    // Texture / custom on a non-GPU node — leave outputs neutral.
+                    break;
+                }
+            }
+            cn.processed_this_tick = true;
+            continue;
+        }
+
         // ── Build lane view/output staging ──────────────────────────────
         for (uint32_t p = 0; p < cn.input_port_count; ++p) {
             const auto& ref = cn.input_lane_refs[p];
@@ -391,8 +455,18 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
                             }
                         }
                         if (!routed_aux) {
-                            cn.gpu->resolved_tex_inputs[ti] = upstream.gpu->texture_view;
-                            cn.gpu->resolved_tex_raw[ti]    = upstream.gpu->texture;
+                            // If the upstream is bypassed, redirect to its
+                            // override (the texture flowing through it).
+                            if (upstream.bypassed && upstream.bypassable &&
+                                upstream.gpu->output_texture_view_override) {
+                                cn.gpu->resolved_tex_inputs[ti] =
+                                    upstream.gpu->output_texture_view_override;
+                                cn.gpu->resolved_tex_raw[ti] =
+                                    upstream.gpu->output_texture_override;
+                            } else {
+                                cn.gpu->resolved_tex_inputs[ti] = upstream.gpu->texture_view;
+                                cn.gpu->resolved_tex_raw[ti]    = upstream.gpu->texture;
+                            }
                         }
                         cn.gpu->resolved_tex_widths[ti]  = upstream.gpu->tex_width;
                         cn.gpu->resolved_tex_heights[ti] = upstream.gpu->tex_height;
@@ -889,6 +963,10 @@ WGPUTexture FrameExecutor::gpu_sink_source_texture(const CompiledGraph& cg, int 
                         static_cast<uint32_t>(up.gpu->aux_texture_output_port_indices[ai]))
                     return up.gpu->aux_gpu_textures[ai];
             }
+            // Honor bypass: if the upstream is bypassed, present the texture
+            // flowing through it instead of its (no-longer-rendered) own texture.
+            if (up.bypassed && up.bypassable && up.gpu->output_texture_override)
+                return up.gpu->output_texture_override;
             return up.gpu->texture;  // primary
         }
     }

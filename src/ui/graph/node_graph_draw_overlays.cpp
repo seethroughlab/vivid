@@ -180,6 +180,11 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
         bool show_make_many = !context_node_id_.empty() && !context_bg_menu_ && !is_sticky_ctx
                               && is_drawable_emitter_type(context_node_type_);
         if (show_make_many) item_count += 1;
+        // Bypass item — only when the operator is bypass-eligible.
+        const NodeSnapshot* ctx_ns = (!context_node_id_.empty() && !is_sticky_ctx)
+            ? snap_.find_node(context_node_id_) : nullptr;
+        bool show_bypass = ctx_ns && ctx_ns->bypassable;
+        if (show_bypass) item_count += 1;
 
         float menu_h = kCtxMenuPadTop + item_count * kCtxMenuItemH + 2.0f;
         float mx = context_menu_x_, my = context_menu_y_;
@@ -189,7 +194,7 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
 
         // Item labels
         std::string delete_label;
-        const char* labels[6];
+        const char* labels[8];
         int label_idx = 0;
         if (is_sticky_ctx) {
             item_count = 2;
@@ -217,6 +222,11 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
             // Solo/Unsolo
             bool is_soloed = (!snap_.solo_node_id.empty() && snap_.solo_node_id == context_node_id_);
             labels[label_idx++] = is_soloed ? T("unsolo", "Unsolo") : T("solo", "Solo");
+            if (show_bypass) {
+                labels[label_idx++] = (ctx_ns && ctx_ns->bypassed)
+                    ? T("unbypass", "Unbypass")
+                    : T("bypass", "Bypass");
+            }
             labels[label_idx++] = T("reset_all_params", "Reset All Params");
             if (show_make_many)
                 labels[label_idx++] = T("make_many", "Make many\xe2\x80\xa6");

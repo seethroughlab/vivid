@@ -191,6 +191,10 @@ struct NodeSnapshot {
     bool soloed = false;        // this node is the solo target
     bool solo_dimmed = false;   // solo is active and this node is NOT in the active set
 
+    // Bypass (persisted on NodeDef, eligibility derived from operator port descriptors)
+    bool bypassed = false;
+    bool bypassable = false;
+
     // Layout position from graph
     float layout_x = 0.0f;
     float layout_y = 0.0f;

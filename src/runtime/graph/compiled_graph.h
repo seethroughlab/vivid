@@ -323,6 +323,15 @@ struct GpuNodeState {
     bool shader_error = false;
     std::string shader_error_msg;
 
+    // ── Bypass override (GPU) ─────────────────────────────────────────────
+    // When the owning node is bypassed+bypassable, the frame executor sets
+    // these to the texture/view that should be exposed to downstream readers
+    // in lieu of `texture` / `texture_view`. Null means no override active.
+    // Downstream texture-input resolution checks these before falling back to
+    // the regular `texture_view`.
+    WGPUTexture      output_texture_override      = nullptr;
+    WGPUTextureView  output_texture_view_override = nullptr;
+
     // Runtime-injected GPU analysis output port indices.
     // Populated during compilation; values written by the FrameExecutor.
     uint32_t analysis_frame_hash_idx  = UINT32_MAX;
@@ -448,6 +457,15 @@ struct CompiledNode {
     bool errored = false;
     std::string error_message;
 
+    // ── Bypass ────────────────────────────────────────────────────────────
+    // When `bypassed` is true and `bypassable` is true, executors skip
+    // process_*() and pass the first input port through to the first output
+    // port (same type) each tick. `bypassable` is computed at compile time
+    // from the operator's port descriptors: true iff the first input port
+    // type equals the first output port type.
+    bool bypassed = false;
+    bool bypassable = false;
+
     // Optional per-instance loader override.
     std::unique_ptr<OperatorLoader> owned_loader;
 
@@ -471,6 +489,14 @@ struct CompiledNode {
 // Built once by GraphCompiler from a Graph + OperatorRegistry.
 // Shared (read) by FrameExecutor and AudioExecutor.
 // ---------------------------------------------------------------------------
+
+// Returns true iff a node with these declared port types is bypass-eligible
+// (first declared input port type equals first declared output port type).
+// Source nodes (no inputs) and asymmetric nodes are not bypassable.
+inline bool is_bypass_eligible(const std::vector<VividPortType>& in_types,
+                               const std::vector<VividPortType>& out_types) {
+    return !in_types.empty() && !out_types.empty() && in_types[0] == out_types[0];
+}
 
 struct CompiledGraph {
     // Maximum lane elements per buffer. Runtime allocation guard — no single

@@ -509,6 +509,50 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 continue;
             }
 
+            // ── Bypass branch ─────────────────────────────────────────────
+            // RT-safe passthrough: when the operator is bypassed and eligible
+            // (first input/output port types match), skip process_audio() and
+            // memcpy the first input port's buffer into the first output port.
+            // Other output buffers are zeroed for deterministic state. Only
+            // memcpy/memset, no allocation, no locking.
+            if (cn.bypassed && cn.bypassable && !cn.input_port_types.empty() &&
+                !cn.output_port_types.empty() &&
+                cn.input_port_types[0] == VIVID_PORT_AUDIO_BUFFER &&
+                cn.output_port_types[0] == VIVID_PORT_AUDIO_BUFFER &&
+                !a.buffers_in.empty() && !a.buffers_out.empty()) {
+                const uint8_t in_ch = a.input_channel_counts.empty()
+                    ? 1 : a.input_channel_counts[0];
+                const uint8_t out_ch = a.output_channel_counts.empty()
+                    ? 1 : a.output_channel_counts[0];
+                const uint8_t copy_ch = std::min(in_ch, out_ch);
+                for (uint8_t c = 0; c < copy_ch; ++c) {
+                    std::memcpy(a.buffers_out[0].data() + c * buffer_size_,
+                                a.buffers_in[0].data()  + c * buffer_size_,
+                                chunk * sizeof(float));
+                }
+                for (uint8_t c = copy_ch; c < out_ch; ++c) {
+                    std::memset(a.buffers_out[0].data() + c * buffer_size_, 0,
+                                chunk * sizeof(float));
+                }
+                for (size_t p = 1; p < a.buffers_out.size(); ++p) {
+                    std::memset(a.buffers_out[p].data(), 0,
+                                a.buffers_out[p].size() * sizeof(float));
+                }
+                write_audio_port_telemetry(cn, a, false, chunk, buffer_size_);
+                finalize_node_debug();
+                continue;
+            }
+            // For audio nodes whose first input/output port types match but are
+            // not AUDIO_BUFFER (rare — e.g. pure scalar audio-cadence ops), there
+            // is no audio buffer to pass through; treat as silent skip.
+            if (cn.bypassed && cn.bypassable) {
+                for (auto& buf : a.buffers_out)
+                    std::memset(buf.data(), 0, buf.size() * sizeof(float));
+                clear_audio_output_telemetry(cn, a, chunk);
+                finalize_node_debug();
+                continue;
+            }
+
             // Set up lane views and output builders for context.
             // Priority: refs (audio-direct routing) > bridge views (already
             // populated from snapshot above) > empty.

@@ -150,6 +150,9 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
             sn.solo_dimmed = (i < solo_set.size() && !solo_set[i]);
         }
 
+        sn.bypassed   = cn.bypassed;
+        sn.bypassable = cn.bypassable;
+
         // Layout from graph
         const auto* ndef = graph.find_node(cn.node_id);
         if (ndef && ndef->has_layout()) {

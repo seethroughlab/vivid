@@ -155,6 +155,11 @@ static bool parse_node_fields(const nlohmann::json& val, NodeDef& node) {
         }
     }
 
+    // bypass (optional, defaults false)
+    auto bypass_it = val.find("bypassed");
+    if (bypass_it != val.end() && bypass_it->is_boolean())
+        node.bypassed = bypass_it->get<bool>();
+
     // Subgraph module membership (present in flattened graphs)
     auto sg_owner_it = val.find("subgraph_owner");
     if (sg_owner_it != val.end() && sg_owner_it->is_string())
@@ -1050,6 +1055,10 @@ static void serialize_node_fields(nlohmann::ordered_json& node_obj, const NodeDe
         for (const auto& [pname, flags] : node.param_lock_flags)
             locks_obj[pname] = static_cast<int64_t>(flags);
         node_obj["locks"] = std::move(locks_obj);
+    }
+
+    if (node.bypassed) {
+        node_obj["bypassed"] = true;
     }
 
     // Subgraph module membership (only written for flattened graphs)

@@ -178,6 +178,7 @@ void NodeGraphUI::draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node
     // Docs link: small "?" button to the right of the operator name. The
     // hit-rect carries the operator type slug so the click handler can build
     // the URL without re-looking up the node snapshot.
+    float row_right = px + kInspContentW;
     if (!node.type_name.empty()) {
         float name_w = tr.text_width(op.name.c_str(), 1.0f);
         float docs_h = 16.0f;
@@ -187,6 +188,27 @@ void NodeGraphUI::draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node
                                                   "?", 0.85f, 5.0f, docs_h);
         inspector_.docs_link_rects.push_back(
             { docs_x, docs_y, docs_w, docs_h, node.node_id, node.type_name });
+    }
+
+    // Bypass toggle — only for operators whose first input/output port types
+    // match. Rendered as a small text button on the right side of the header.
+    if (node.bypassable) {
+        const char* label = node.bypassed
+            ? T("inspector_bypassed", "Bypassed")
+            : T("inspector_bypass", "Bypass");
+        float btn_h = 16.0f;
+        float btn_y = py - 1.0f;
+        float text_w = tr.text_width(label, 0.85f);
+        float btn_w = text_w + 12.0f;
+        float btn_x = row_right - btn_w;
+        // Use accent color to distinguish "currently bypassed" state.
+        if (node.bypassed) {
+            tr.draw_rect(btn_x, btn_y, btn_w, btn_h,
+                         kBypassAccent[0], kBypassAccent[1], kBypassAccent[2], 0.35f);
+        }
+        draw_inspector_text_button(tr, style_, btn_x, btn_y, label, 0.85f, 6.0f, btn_h);
+        inspector_.bypass_button_rects.push_back(
+            { btn_x, btn_y, btn_w, btn_h, node.node_id, "" });
     }
 
     py += kLineH;

@@ -466,6 +466,19 @@ bool NodeGraphUI::handle_inspector_click() {
         }
     }
 
+    // Bypass toggle in the inspector header — only present when the operator
+    // is bypass-eligible. Click flips the persistent bypassed flag.
+    {
+        int bi = hit_test_rect(inspector_.bypass_button_rects, mouse_.x, mouse_.y);
+        if (bi >= 0) {
+            const auto& r = inspector_.bypass_button_rects[bi];
+            const NodeSnapshot* ns = snap_.find_node(r.node_id);
+            bool currently = ns && ns->bypassed;
+            commands_.set_node_bypassed(r.node_id, !currently);
+            return true;
+        }
+    }
+
     // Check preset dropdown click
     {
         int pi = hit_test_rect(inspector_.preset_dropdown_rects, mouse_.x, mouse_.y);

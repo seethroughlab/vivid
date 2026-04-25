@@ -75,6 +75,12 @@ struct NodeDef {
     // Per-parameter lock flags (sparse — only non-zero entries stored)
     std::unordered_map<std::string, uint8_t> param_lock_flags;
 
+    // Bypass: when true, executors skip process_*() and pass the first input
+    // port through to the first output port (same type) each tick. Only honored
+    // by the runtime when the operator is bypass-eligible (first input/output
+    // port types match — see CompiledNode::bypassable).
+    bool bypassed = false;
+
     // Package provenance (empty for core operators)
     std::string pkg_name;
     std::string pkg_version;

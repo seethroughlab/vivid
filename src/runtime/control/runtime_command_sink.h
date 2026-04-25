@@ -92,6 +92,21 @@ public:
         auto r = api_.set_resolution(node_id, w, h);
         if (r.ok) capture_undo_snapshot();
     }
+    void set_node_bypassed(const std::string& node_id, bool bypassed) override {
+        auto r = api_.set_node_bypassed(node_id, bypassed);
+        if (r.ok) capture_undo_snapshot("bypass:" + node_id);
+    }
+    bool try_set_node_bypassed(const std::string& node_id, bool bypassed,
+                               std::string* error = nullptr) override {
+        auto r = api_.set_node_bypassed(node_id, bypassed);
+        if (r.ok) {
+            capture_undo_snapshot("bypass:" + node_id);
+            if (error) error->clear();
+            return true;
+        }
+        if (error) *error = r.message;
+        return false;
+    }
     void add_midi_mapping(const std::string& node_id, const std::string& param,
                           int cc, int channel, float range_min, float range_max) override {
         auto r = api_.add_midi_mapping(node_id, param, cc, channel, range_min, range_max);

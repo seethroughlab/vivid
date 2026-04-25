@@ -450,6 +450,17 @@ std::string dispatch(const std::string& method, const std::string& body,
                                         root["x"].get<float>(),
                                         root["y"].get<float>()));
         }
+    } else if (method == "set_node_bypassed") {
+        if (!root_valid) { result = json_err("invalid JSON body"); }
+        else {
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("bypassed") || !root["bypassed"].is_boolean())
+                result = json_err("missing 'node_id' or 'bypassed' (bool)");
+            else
+                result = command_result_to_json(
+                    api.set_node_bypassed(root["node_id"].get<std::string>(),
+                                          root["bypassed"].get<bool>()));
+        }
     } else if (method == "inspect") {
         if (!root_valid) { result = json_err("invalid JSON body"); }
         else {

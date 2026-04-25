@@ -450,6 +450,47 @@ CommandResult RuntimeAPI::set_resolution(const std::string& node_id, uint32_t wi
     return {true, oss.str()};
 }
 
+CommandResult RuntimeAPI::set_node_bypassed(const std::string& node_id, bool bypassed) {
+    NodeDef* ndef = graph_.find_node(node_id);
+    if (!ndef) return {false, "unknown node '" + node_id + "'"};
+
+    if (bypassed) {
+        // Verify bypass-eligibility from the operator's port descriptors.
+        // First input port type must equal first output port type. Sources
+        // and asymmetric nodes are not bypassable.
+        const VividOperatorDescriptor* desc = registry_.probe_descriptor(ndef->type);
+        if (!desc) return {false, "unknown operator type '" + ndef->type + "'"};
+
+        const VividPortDescriptor* first_in  = nullptr;
+        const VividPortDescriptor* first_out = nullptr;
+        for (uint32_t i = 0; i < desc->port_count; ++i) {
+            const auto& p = desc->ports[i];
+            if (p.direction == VIVID_PORT_INPUT  && !first_in)  first_in  = &p;
+            if (p.direction == VIVID_PORT_OUTPUT && !first_out) first_out = &p;
+            if (first_in && first_out) break;
+        }
+        if (!first_in || !first_out)
+            return {false, node_id + " is not bypass-eligible (must have at least one input and one output)"};
+        if (first_in->type != first_out->type)
+            return {false, node_id + " is not bypass-eligible (first input and output port types must match)"};
+    }
+
+    if (ndef->bypassed == bypassed) {
+        return {true, node_id + (bypassed ? " already bypassed" : " already enabled")};
+    }
+    ndef->bypassed = bypassed;
+
+    // Live update on the compiled graph — no topology change, so no recompile.
+    if (auto* cg = core_.compiled_graph()) {
+        if (auto* cn = cg->find_node(node_id)) {
+            cn->bypassed = bypassed;
+            cn->dirty = true;  // ensure the next tick re-evaluates this node
+        }
+    }
+    mark_graph_dirty();
+    return {true, node_id + (bypassed ? " bypassed" : " enabled")};
+}
+
 CommandResult RuntimeAPI::add_node(const std::string& type, const std::string& id) {
     const bool is_non_registry_type =
         (core_.subgraph_modules() && core_.subgraph_modules()->find(type));

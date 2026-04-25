@@ -179,6 +179,8 @@ public:
     std::vector<InspectorRect> docs_link_rects;
     // Open Editor button — rendered only for operators whose op_info->has_editor.
     std::vector<InspectorRect> open_editor_rects;
+    // Bypass toggle in the inspector header (rendered for bypass-eligible nodes).
+    std::vector<InspectorRect> bypass_button_rects;
     std::vector<StatePresetRect> state_preset_rects;
     std::vector<StateHeaderRect> state_header_rects;
     std::vector<ModAssignRect> mod_assign_rects;

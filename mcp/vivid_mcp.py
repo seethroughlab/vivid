@@ -2830,6 +2830,23 @@ async def set_node_layout(node_id: str, x: float, y: float) -> str:
 
 
 @mcp.tool()
+async def set_node_bypassed(node_id: str, bypassed: bool) -> str:
+    """Toggle bypass on a node. When bypassed, the operator's process_*() is
+    skipped and its first input passes through to its first output each tick
+    (same port type). Useful for A/B comparisons without deleting/reconnecting.
+
+    Bypass is only valid for operators whose first input port type matches
+    their first output port type. Sources (no inputs) and asymmetric operators
+    are not bypass-eligible and the runtime returns an error.
+
+    Args:
+        node_id: Target node
+        bypassed: True to bypass, False to re-enable
+    """
+    return await _post("set_node_bypassed", {"node_id": node_id, "bypassed": bypassed})
+
+
+@mcp.tool()
 async def inspect_node(node_id: str) -> str:
     """Inspect a single node: params with live values, input/output port values.
 

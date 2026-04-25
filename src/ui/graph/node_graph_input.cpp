@@ -807,6 +807,20 @@ bool NodeGraphUI::handle_graph_global_key(int key, int action, int mods, bool mo
         return true;
     }
     if (key == GLFW_KEY_B && action == GLFW_PRESS) {
+        // With node(s) selected, B toggles bypass on the selection. Falls back
+        // to the bezier-wires toggle when nothing is selected so the existing
+        // shortcut still works for empty-selection use.
+        if (!selected_node_ids_.empty()) {
+            bool any_toggled = false;
+            for (const auto& id : selected_node_ids_) {
+                const NodeSnapshot* sn = snap_.find_node(id);
+                if (!sn || !sn->bypassable) continue;
+                commands_.set_node_bypassed(id, !sn->bypassed);
+                any_toggled = true;
+            }
+            if (any_toggled) return true;
+            // No selected node was bypassable — fall through.
+        }
         bezier_wires_ = !bezier_wires_;
         return true;
     }
