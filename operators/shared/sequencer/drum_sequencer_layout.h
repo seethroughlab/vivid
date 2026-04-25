@@ -54,6 +54,34 @@ inline constexpr std::array<int, kDrumCount> kProbParamBases   =
 inline constexpr std::array<int, kDrumCount> kRollParamBases   =
     {492, 508, 524, 540, 556, 572};
 
+// Patterns C and D (added on top of the original A/B bank). Triggers only —
+// velocity / mod B / probability / roll remain shared across all four
+// patterns. New bases live AFTER the roll block so every pre-existing index
+// stays valid for older saves. Defaults are 0.0f.
+inline constexpr std::size_t   kPatternCount = 4;
+inline constexpr std::array<const char*, kDrumCount> kTrigCPrefixes = {
+    "kick_c_", "snare_c_", "hat_c_", "oh_c_", "clap_c_", "tom_c_"
+};
+inline constexpr std::array<const char*, kDrumCount> kTrigDPrefixes = {
+    "kick_d_", "snare_d_", "hat_d_", "oh_d_", "clap_d_", "tom_d_"
+};
+inline constexpr std::array<int, kDrumCount> kTrigCParamBases  =
+    {588, 604, 620, 636, 652, 668};
+inline constexpr std::array<int, kDrumCount> kTrigDParamBases  =
+    {684, 700, 716, 732, 748, 764};
+
+// Song mode: when on, the playing pattern auto-advances 0→1→2→3→0 every
+// time the pattern wraps. Manual mode (default) keeps `active_pattern`
+// the playing pattern. Output port `current_pattern` is at index 1 (right
+// after `step` at index 0). Appended after trig_d_ to preserve every
+// existing index for older saves.
+inline constexpr int kSongModeIndex          = 780;
+// bars_per_pattern: how many pattern wraps each song-mode section holds
+// for before advancing. 1 = advance every bar (default), 4 = standard
+// "4-bar section" song. Range 1..8.
+inline constexpr int kBarsPerPatternIndex    = 781;
+inline constexpr std::size_t kCurrentPatternOutputIndex = 1;
+
 // "step" scalar is the sole non-custom output; runtime writes
 // current_step → output_values[0].  The older per-drum mod-output /
 // gates-/notes-/velocities-spread layout was removed when DrumSequencer
@@ -79,6 +107,27 @@ inline constexpr int note_param_index(std::size_t drum) {
 
 inline constexpr int trig_b_param_index(std::size_t drum, int step) {
     return kTrigBParamBases[drum] + step;
+}
+
+inline constexpr int trig_c_param_index(std::size_t drum, int step) {
+    return kTrigCParamBases[drum] + step;
+}
+
+inline constexpr int trig_d_param_index(std::size_t drum, int step) {
+    return kTrigDParamBases[drum] + step;
+}
+
+// Unified trigger lookup keyed by pattern index 0..3. Used by compute() and
+// the editor so neither has to know which pattern lives in which storage.
+inline constexpr int trigger_param_index_for_pattern(int pattern,
+                                                     std::size_t drum,
+                                                     int step) {
+    switch (pattern) {
+        case 0:  return trigger_param_index(drum, step);
+        case 1:  return trig_b_param_index(drum, step);
+        case 2:  return trig_c_param_index(drum, step);
+        default: return trig_d_param_index(drum, step);
+    }
 }
 
 inline constexpr int prob_param_index(std::size_t drum, int step) {

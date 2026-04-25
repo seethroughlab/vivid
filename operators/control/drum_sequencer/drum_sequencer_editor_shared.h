@@ -34,13 +34,29 @@ enum class LaneKind : std::uint8_t {
     PatternB    = 3,   // pattern B triggers (kick_b_0 ..)
     Probability = 4,   // per-step probability (kick_prob_0 ..)
     Roll        = 5,   // per-step ratchet count (kick_roll_0 ..)
+    PatternC    = 6,   // pattern C triggers (kick_c_0 ..)
+    PatternD    = 7,   // pattern D triggers (kick_d_0 ..)
 };
+
+// Translate a pattern index 0..3 to the matching trigger lane. Pattern
+// LaneKind values aren't contiguous (PatternB=3, PatternC=6, PatternD=7),
+// so callers go through this helper.
+inline constexpr LaneKind lane_for_pattern(int pattern) {
+    switch (pattern) {
+        case 0:  return LaneKind::Pattern;
+        case 1:  return LaneKind::PatternB;
+        case 2:  return LaneKind::PatternC;
+        default: return LaneKind::PatternD;
+    }
+}
 
 // Build the canonical param name for a (lane, drum, step) cell.
 //   Pattern     → "kick_0" ... "tom_15"
 //   ModA        → "kick_ma_0" ...
 //   ModB        → "kick_mb_0" ...
 //   PatternB    → "kick_b_0" ...
+//   PatternC    → "kick_c_0" ...
+//   PatternD    → "kick_d_0" ...
 //   Probability → "kick_prob_0" ...
 //   Roll        → "kick_roll_0" ...
 std::string param_name_for(LaneKind lane, std::size_t drum, int step);
@@ -123,8 +139,8 @@ struct SelectionClipboard {
     int         cols = 0;   // col_hi - col_lo + 1 at copy time (step span)
 
     struct Cell {
-        float trigger_a   = 0.0f;
-        float trigger_b   = 0.0f;
+        // triggers[i] = pattern i (0=A, 1=B, 2=C, 3=D). Default 0 (off).
+        float triggers[drum_layout::kPatternCount]{};
         float velocity    = 0.5f;   // ModA
         float mod_b       = 0.5f;   // ModB
         float probability = 1.0f;

@@ -389,12 +389,20 @@ int main() {
         }
     }
 
-    // --- Extended LaneKind: names + indices for prob / roll / pattern-B ---
+    // --- Extended LaneKind: names + indices for prob / roll / pattern-B/C/D ---
     {
         check(de::param_name_for(de::LaneKind::PatternB, 0, 0) == "kick_b_0",
               "PatternB (0,0) → kick_b_0");
         check(de::param_name_for(de::LaneKind::PatternB, 5, 15) == "tom_b_15",
               "PatternB (5,15) → tom_b_15");
+        check(de::param_name_for(de::LaneKind::PatternC, 0, 0) == "kick_c_0",
+              "PatternC (0,0) → kick_c_0");
+        check(de::param_name_for(de::LaneKind::PatternC, 5, 15) == "tom_c_15",
+              "PatternC (5,15) → tom_c_15");
+        check(de::param_name_for(de::LaneKind::PatternD, 0, 0) == "kick_d_0",
+              "PatternD (0,0) → kick_d_0");
+        check(de::param_name_for(de::LaneKind::PatternD, 5, 15) == "tom_d_15",
+              "PatternD (5,15) → tom_d_15");
         check(de::param_name_for(de::LaneKind::Probability, 2, 8) == "hat_prob_8",
               "Probability (2,8) → hat_prob_8");
         check(de::param_name_for(de::LaneKind::Roll, 4, 3) == "clap_roll_3",
@@ -405,6 +413,10 @@ int main() {
             for (int s = 0; s < static_cast<int>(layout::kStepCount); ++s) {
                 if (de::param_index_for(de::LaneKind::PatternB, d, s)
                     != layout::trig_b_param_index(d, s)) indices_match = false;
+                if (de::param_index_for(de::LaneKind::PatternC, d, s)
+                    != layout::trig_c_param_index(d, s)) indices_match = false;
+                if (de::param_index_for(de::LaneKind::PatternD, d, s)
+                    != layout::trig_d_param_index(d, s)) indices_match = false;
                 if (de::param_index_for(de::LaneKind::Probability, d, s)
                     != layout::prob_param_index(d, s))  indices_match = false;
                 if (de::param_index_for(de::LaneKind::Roll, d, s)
@@ -413,6 +425,17 @@ int main() {
         }
         check(indices_match,
               "param_index_for matches layout helpers for new lane kinds");
+
+        // lane_for_pattern bridges the gap between integer pattern index and
+        // the (non-contiguous) LaneKind enum.
+        check(de::lane_for_pattern(0) == de::LaneKind::Pattern,
+              "lane_for_pattern(0) → Pattern");
+        check(de::lane_for_pattern(1) == de::LaneKind::PatternB,
+              "lane_for_pattern(1) → PatternB");
+        check(de::lane_for_pattern(2) == de::LaneKind::PatternC,
+              "lane_for_pattern(2) → PatternC");
+        check(de::lane_for_pattern(3) == de::LaneKind::PatternD,
+              "lane_for_pattern(3) → PatternD");
     }
 
     // --- Selection: point + extend + contains + cell_count ---
@@ -458,14 +481,17 @@ int main() {
 
     // --- copy_selection happy path: rectangular read ---
     {
-        // 588 = full param_count. Use a smaller buffer that still covers the
-        // new blocks (roll max = layout::kRollParamBases[5] + 15 = 587).
-        constexpr std::size_t kSize = 600;
+        // Full param_count covers through trig_d_ (max index = kTrigDParamBases[5] + 15 = 779).
+        constexpr std::size_t kSize = 800;
         std::vector<float> params(kSize, 0.0f);
         // Seed a 2x2 patch at (drum=1..2, step=4..5) with distinctive values.
+        // Includes a pattern-C and pattern-D trigger so the round-trip
+        // exercises all four trigger banks.
         params[layout::trigger_param_index(1, 4)] = 1.0f;
         params[layout::trigger_param_index(2, 5)] = 1.0f;
         params[layout::trig_b_param_index(2, 4)]  = 1.0f;
+        params[layout::trig_c_param_index(1, 4)]  = 1.0f;
+        params[layout::trig_d_param_index(2, 5)]  = 1.0f;
         params[layout::mod_a_param_index(1, 5)]   = 0.8f;
         params[layout::mod_b_param_index(2, 5)]   = 0.2f;
         params[layout::prob_param_index(1, 4)]    = 0.25f;
@@ -480,18 +506,20 @@ int main() {
 
         // Row 0 (drum=1) ⋅ col 0 (step=4) — originates from (1,4).
         const auto& c00 = clip.cells[0 * 2 + 0];
-        check(c00.trigger_a == 1.0f, "cell(0,0) trigger_a copied");
+        check(c00.triggers[0] == 1.0f, "cell(0,0) pattern A trigger copied");
+        check(c00.triggers[2] == 1.0f, "cell(0,0) pattern C trigger copied");
         check(c00.probability == 0.25f, "cell(0,0) probability copied");
         // Row 0 ⋅ col 1 (step=5) — originates from (1,5).
         const auto& c01 = clip.cells[0 * 2 + 1];
         check(c01.velocity == 0.8f, "cell(0,1) velocity copied");
         // Row 1 (drum=2) ⋅ col 0 (step=4).
         const auto& c10 = clip.cells[1 * 2 + 0];
-        check(c10.trigger_b == 1.0f, "cell(1,0) trigger_b copied");
+        check(c10.triggers[1] == 1.0f, "cell(1,0) pattern B trigger copied");
         check(c10.roll == 4.0f, "cell(1,0) roll copied");
         // Row 1 ⋅ col 1 (step=5).
         const auto& c11 = clip.cells[1 * 2 + 1];
-        check(c11.trigger_a == 1.0f, "cell(1,1) trigger_a copied");
+        check(c11.triggers[0] == 1.0f, "cell(1,1) pattern A trigger copied");
+        check(c11.triggers[3] == 1.0f, "cell(1,1) pattern D trigger copied");
         check(c11.mod_b == 0.2f, "cell(1,1) mod_b copied");
     }
 
@@ -511,19 +539,21 @@ int main() {
               "cols clamped to step count - 14");
     }
 
-    // --- paste_selection emits 6 writes per in-bounds cell, clipped at edges ---
+    // --- paste_selection emits 8 writes per in-bounds cell, clipped at edges ---
     {
         de::SelectionClipboard clip;
         clip.has_content = true;
         clip.rows = 2;
         clip.cols = 3;
-        // Cell (0,0): trigger_a=1, (0,1): trigger_b=1, (1,2): roll=2
-        clip.cells[0].trigger_a = 1.0f;
-        clip.cells[1].trigger_b = 1.0f;
-        clip.cells[2].velocity  = 0.9f;
-        clip.cells[3].mod_b     = 0.1f;
-        clip.cells[4].probability = 0.5f;
-        clip.cells[5].roll      = 2.0f;
+        // Spread distinctive values across cells and patterns.
+        clip.cells[0].triggers[0]   = 1.0f;  // pattern A
+        clip.cells[1].triggers[1]   = 1.0f;  // pattern B
+        clip.cells[2].velocity      = 0.9f;
+        clip.cells[3].mod_b         = 0.1f;
+        clip.cells[4].probability   = 0.5f;
+        clip.cells[5].roll          = 2.0f;
+        clip.cells[5].triggers[2]   = 1.0f;  // pattern C
+        clip.cells[3].triggers[3]   = 1.0f;  // pattern D
 
         CaptureCtx cap;
         VividInspectorCommandAPI api{};
@@ -533,8 +563,9 @@ int main() {
 
         check(de::paste_selection(api, clip, /*origin_drum=*/2, /*origin_step=*/10),
               "paste_selection: returns true on valid origin");
-        check(cap.calls.size() == 6u * 6u,
-              "paste_selection: 6 params × 6 cells = 36 writes");
+        // 8 params per cell (4 triggers + Vel + ModB + Prob + Roll) × 6 cells.
+        check(cap.calls.size() == 8u * 6u,
+              "paste_selection: 8 params × 6 cells = 48 writes");
 
         // Drum mapping: 0=kick 1=snare 2=hat 3=oh 4=clap 5=tom.
         // Origin = (drum=2, step=10). Rows grow along drums, cols along steps:
@@ -544,16 +575,22 @@ int main() {
         bool found_hat_b_11  = false;
         bool found_hat_ma_12 = false;
         bool found_oh_roll_12 = false;
+        bool found_oh_c_12   = false;  // pattern C trigger from cell (1,2)
+        bool found_oh_d_10   = false;  // pattern D trigger from cell (1,0)
         for (const auto& c : cap.calls) {
             if (c.name == "hat_10"      && c.value == 1.0f) found_hat_10 = true;
             if (c.name == "hat_b_11"    && c.value == 1.0f) found_hat_b_11 = true;
             if (c.name == "hat_ma_12"   && c.value == 0.9f) found_hat_ma_12 = true;
             if (c.name == "oh_roll_12"  && c.value == 2.0f) found_oh_roll_12 = true;
+            if (c.name == "oh_c_12"     && c.value == 1.0f) found_oh_c_12 = true;
+            if (c.name == "oh_d_10"     && c.value == 1.0f) found_oh_d_10 = true;
         }
         check(found_hat_10,      "paste origin writes hat_10 = 1.0");
         check(found_hat_b_11,    "paste (0,1) writes hat_b_11 = 1.0");
         check(found_hat_ma_12,   "paste (0,2) writes hat_ma_12 = 0.9");
         check(found_oh_roll_12,  "paste (1,2) writes oh_roll_12 = 2.0");
+        check(found_oh_c_12,     "paste (1,2) writes oh_c_12 = 1.0");
+        check(found_oh_d_10,     "paste (1,0) writes oh_d_10 = 1.0");
     }
 
     // --- paste_selection clips to grid edges ---
@@ -564,7 +601,7 @@ int main() {
         clip.cols = 4;
         // Mark every cell so we can count writes per in-bounds cell.
         for (std::size_t i = 0; i < 12; ++i)
-            clip.cells[i].trigger_a = 1.0f;
+            clip.cells[i].triggers[0] = 1.0f;
 
         CaptureCtx cap;
         VividInspectorCommandAPI api{};
@@ -576,8 +613,8 @@ int main() {
         //   drums 4..5 (2 rows), steps 14..15 (2 cols). Remaining 8 cells clip.
         check(de::paste_selection(api, clip, 4, 14),
               "paste_selection: returns true with partial overlap");
-        check(cap.calls.size() == 2u * 2u * 6u,
-              "edge clip: only in-bounds cells emit 6 writes each");
+        check(cap.calls.size() == 2u * 2u * 8u,
+              "edge clip: only in-bounds cells emit 8 writes each");
     }
 
     // --- paste_selection: empty or invalid origin is a safe no-op ---

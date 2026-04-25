@@ -18,6 +18,7 @@
 #include "operator_api/editor_keys.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <string>
 
@@ -85,9 +86,21 @@ void DrumSequencerCore::draw_editor(VividEditorContext* ctx) {
     }
     const int current_step = (ctx->output_count > layout::kStepOutputIndex)
         ? static_cast<int>(ctx->output_values[layout::kStepOutputIndex]) : -1;
-    const int active_ptn = (get_param(layout::kActivePatternIndex, 0.0f) > 0.5f) ? 1 : 0;
-    const de::LaneKind trigger_lane =
-        (active_ptn == 0) ? de::LaneKind::Pattern : de::LaneKind::PatternB;
+    const int active_ptn = std::clamp(
+        static_cast<int>(get_param(layout::kActivePatternIndex, 0.0f)),
+        0, static_cast<int>(layout::kPatternCount) - 1);
+    const de::LaneKind trigger_lane = de::lane_for_pattern(active_ptn);
+
+    // Song mode and the live playing pattern are read live from the
+    // operator's params and outputs. In manual mode the playing pattern
+    // equals active_ptn; in song mode it follows the song_pos_ state
+    // emitted to current_pattern.
+    const bool song_on = get_param(layout::kSongModeIndex, 0.0f) > 0.5f;
+    const int playing_ptn = (ctx->output_count > layout::kCurrentPatternOutputIndex)
+        ? std::clamp(static_cast<int>(
+              ctx->output_values[layout::kCurrentPatternOutputIndex]),
+              0, static_cast<int>(layout::kPatternCount) - 1)
+        : active_ptn;
 
     // ------------------------------------------------------------
     // Sanitise persistent state (num_steps could have shrunk since
@@ -259,6 +272,14 @@ void DrumSequencerCore::draw_editor(VividEditorContext* ctx) {
             set_named("active_pattern", 0.0f);
         } else if (e.key == ek::kB && !cmd_or_ctrl) {
             set_named("active_pattern", 1.0f);
+        } else if (e.key == ek::kC && !cmd_or_ctrl) {
+            set_named("active_pattern", 2.0f);
+        } else if (e.key == ek::kD && !cmd_or_ctrl) {
+            set_named("active_pattern", 3.0f);
+        } else if (e.key == ek::kS && !cmd_or_ctrl) {
+            // Toggle song mode. Reads live so the next press flips back.
+            const bool now_on = get_param(layout::kSongModeIndex, 0.0f) > 0.5f;
+            set_named("song_mode", now_on ? 0.0f : 1.0f);
         } else if (e.key == ek::kC && cmd_or_ctrl) {
             de::copy_selection(ctx->param_values, ctx->param_count,
                                editor_selection_, &selection_clipboard_);
@@ -287,35 +308,62 @@ void DrumSequencerCore::draw_editor(VividEditorContext* ctx) {
         d.draw_text(o, grid_x + 80.0f, top_y + 4.0f, "Pattern",
                     {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.9f}, 1.0f);
     }
+    float pattern_block_end = grid_x + 140.0f;
     {
-        // Pattern A/B: two ui_toggle widgets. Each clicked event writes
-        // active_pattern; caller handles the param emit, widget owns draw
-        // + hit-test.
-        const vivid::ui::Rect pa_r{
-            grid_x + 140.0f, top_y + 3.0f, 28.0f, top_h - 6.0f};
-        const vivid::ui::Rect pb_r{
-            pa_r.x + 32.0f,  top_y + 3.0f, 28.0f, top_h - 6.0f};
+        // Pattern A/B/C/D: four ui_toggle widgets. Each clicked event writes
+        // active_pattern; caller handles the param emit, widget owns draw +
+        // hit-test. Layout: 26 px buttons with 2 px gaps, total 110 px.
         const VividColor fill_off{0.18f, 0.18f, 0.21f, 1.0f};
         const VividColor fill_on {th.accent.r, th.accent.g, th.accent.b, 1.0f};
-        auto pa = vivid::ui::ui_toggle(*ctx, pa_r, "A", active_ptn == 0,
-                                       fill_off, fill_on);
-        if (pa.clicked) set_named("active_pattern", 0.0f);
-        auto pb = vivid::ui::ui_toggle(*ctx, pb_r, "B", active_ptn == 1,
-                                       fill_off, fill_on);
-        if (pb.clicked) set_named("active_pattern", 1.0f);
+        const float btn_w = 26.0f;
+        const float btn_gap = 2.0f;
+        constexpr const char* kPatternBtnLabels[] = {"A", "B", "C", "D"};
+        for (int p = 0; p < static_cast<int>(layout::kPatternCount); ++p) {
+            const float bx = grid_x + 140.0f + p * (btn_w + btn_gap);
+            const vivid::ui::Rect r{bx, top_y + 3.0f, btn_w, top_h - 6.0f};
+            auto btn = vivid::ui::ui_toggle(*ctx, r, kPatternBtnLabels[p],
+                                            active_ptn == p, fill_off, fill_on);
+            if (btn.clicked)
+                set_named("active_pattern", static_cast<float>(p));
+            // Live-playing LED: a small dot in the top-right corner of the
+            // playing pattern's button. Only shown in song mode where
+            // playback can diverge from the edit cursor (active_ptn).
+            if (song_on && p == playing_ptn && d.draw_rounded_rect) {
+                const float dot_w = 6.0f;
+                const float dx = r.x + r.w - dot_w - 1.0f;
+                const float dy = r.y + 1.0f;
+                d.draw_rounded_rect(o, dx, dy, dot_w, dot_w, 3.0f,
+                    {0.95f, 0.85f, 0.25f, 0.95f});
+            }
+            pattern_block_end = bx + btn_w;
+        }
+
+        // Song toggle: 36 px wide, 8 px gap after the pattern row.
+        const float song_x = pattern_block_end + 8.0f;
+        const float song_w = 36.0f;
+        const vivid::ui::Rect song_r{song_x, top_y + 3.0f, song_w, top_h - 6.0f};
+        const VividColor song_fill_on{0.95f, 0.65f, 0.25f, 1.0f};
+        auto song_btn = vivid::ui::ui_toggle(*ctx, song_r, "Song",
+                                             song_on, fill_off, song_fill_on);
+        if (song_btn.clicked)
+            set_named("song_mode", song_on ? 0.0f : 1.0f);
+        pattern_block_end = song_x + song_w;
     }
 
-    // Keyboard hints, right-aligned in top bar.
+    // Keyboard hints, right-aligned in top bar. Suppressed when the pattern
+    // button row is wide enough to collide with the hint string.
     if (d.draw_text) {
         const char* hints =
-            "Enter=trigger  Space=clear  1-4=roll  P<digit>=prob  Shift+Arrow=extend  Cmd+C/V";
+            "Enter=trigger  Space=clear  1-4=roll  P<digit>=prob  S=song  Shift+Arrow=extend  Cmd+C/V";
         const float hints_scale = 0.75f;
         const float hints_w = d.text_width
             ? d.text_width(o, hints, hints_scale) : 420.0f;
-        d.draw_text(o,
-            grid_x + grid_w - hints_w, top_y + 6.0f, hints,
-            {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.75f},
-            hints_scale);
+        const float hints_x = grid_x + grid_w - hints_w;
+        if (hints_x > pattern_block_end + 16.0f) {
+            d.draw_text(o, hints_x, top_y + 6.0f, hints,
+                {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.75f},
+                hints_scale);
+        }
     }
 
     // --- Grid drum-row labels ---
@@ -380,19 +428,23 @@ void DrumSequencerCore::draw_editor(VividEditorContext* ctx) {
                 vivid::draw_ui::draw_panel(d, o, ix, iy, iw, ih, fill,
                     {0, 0, 0, 0}, 2.0f);
             } else if (!trig_active && !beyond) {
-                // Dim shadow of the other pattern (quick visual hint that
-                // something lives on the inactive bank).
-                const de::LaneKind other =
-                    (trigger_lane == de::LaneKind::Pattern)
-                        ? de::LaneKind::PatternB : de::LaneKind::Pattern;
-                const bool other_on = get_param(
-                    de::param_index_for(other, drum, s), 0.0f) > 0.5f;
-                if (other_on) {
-                    if (d.draw_rect) {
-                        d.draw_rect(o, ix, iy, 2.0f, ih,
-                            {ed::kDrumColors[drum][0], ed::kDrumColors[drum][1],
-                             ed::kDrumColors[drum][2], 0.45f});
+                // Dim shadow when ANY other pattern fires this cell — quick
+                // visual hint that something lives on an inactive bank. With
+                // four patterns we union the indication into a single tick
+                // so the cell stays readable.
+                bool any_other_on = false;
+                for (int p = 0; p < static_cast<int>(layout::kPatternCount); ++p) {
+                    if (p == active_ptn) continue;
+                    if (get_param(de::param_index_for(de::lane_for_pattern(p),
+                                                      drum, s), 0.0f) > 0.5f) {
+                        any_other_on = true;
+                        break;
                     }
+                }
+                if (any_other_on && d.draw_rect) {
+                    d.draw_rect(o, ix, iy, 2.0f, ih,
+                        {ed::kDrumColors[drum][0], ed::kDrumColors[drum][1],
+                         ed::kDrumColors[drum][2], 0.45f});
                 }
             }
 
@@ -491,10 +543,12 @@ void DrumSequencerCore::draw_editor(VividEditorContext* ctx) {
     // ones when the user interacts.
     const std::size_t cur_drum = static_cast<std::size_t>(editor_cursor_drum_);
     const int         cur_step = editor_cursor_step_;
-    const bool cur_trig_a = get_param(
-        de::param_index_for(de::LaneKind::Pattern, cur_drum, cur_step), 0.0f) > 0.5f;
-    const bool cur_trig_b = get_param(
-        de::param_index_for(de::LaneKind::PatternB, cur_drum, cur_step), 0.0f) > 0.5f;
+    std::array<bool, layout::kPatternCount> cur_trig{};
+    for (int p = 0; p < static_cast<int>(layout::kPatternCount); ++p) {
+        cur_trig[p] = get_param(
+            de::param_index_for(de::lane_for_pattern(p), cur_drum, cur_step),
+            0.0f) > 0.5f;
+    }
     const float cur_vel = get_param(
         de::param_index_for(de::LaneKind::ModA, cur_drum, cur_step), 0.5f);
     const float cur_modb = get_param(
@@ -512,26 +566,35 @@ void DrumSequencerCore::draw_editor(VividEditorContext* ctx) {
         vivid::ui::Rect{side_x, side_y, side_w, side_h}, kSpPad, ed::kSideRowGap);
     vivid::ui::ui_row(sp_cur, 20.0f);  // header spacer
 
-    // Row: Trig A / Trig B toggles, split 50/50 with a 6 px gutter.
+    // Row: Trig A / B / C / D toggles. One row, four equally-sized buttons,
+    // 4 px gutter between each. Each button toggles its pattern's trigger
+    // value across the entire selection.
     {
         auto row = vivid::ui::ui_row(sp_cur, 26.0f);
-        auto [ra, rb] = vivid::ui::ui_split_h(row, 0.5f, 6.0f);
-        const VividColor fill_off {0.20f, 0.20f, 0.23f, 1.0f};
-        const VividColor fill_on_a{0.70f, 0.45f, 0.25f, 1.0f};
-        const VividColor fill_on_b{0.35f, 0.45f, 0.75f, 1.0f};
-        auto ta = vivid::ui::ui_toggle(*ctx, ra, "Trig A", cur_trig_a,
-                                       fill_off, fill_on_a);
-        if (ta.clicked) {
-            for_each_selected([&](std::size_t dd, int ss) {
-                set_lane(de::LaneKind::Pattern, dd, ss, ta.value ? 1.0f : 0.0f);
-            });
-        }
-        auto tb = vivid::ui::ui_toggle(*ctx, rb, "Trig B", cur_trig_b,
-                                       fill_off, fill_on_b);
-        if (tb.clicked) {
-            for_each_selected([&](std::size_t dd, int ss) {
-                set_lane(de::LaneKind::PatternB, dd, ss, tb.value ? 1.0f : 0.0f);
-            });
+        const VividColor fill_off{0.20f, 0.20f, 0.23f, 1.0f};
+        constexpr VividColor kFillOn[layout::kPatternCount] = {
+            {0.70f, 0.45f, 0.25f, 1.0f},  // A
+            {0.35f, 0.45f, 0.75f, 1.0f},  // B
+            {0.55f, 0.30f, 0.65f, 1.0f},  // C
+            {0.30f, 0.65f, 0.45f, 1.0f},  // D
+        };
+        constexpr const char* kBtnLabels[layout::kPatternCount] = {
+            "Trig A", "Trig B", "Trig C", "Trig D"};
+        const float gutter = 4.0f;
+        const float total_gutter = gutter * (layout::kPatternCount - 1);
+        const float btn_w = (row.w - total_gutter) /
+                            static_cast<float>(layout::kPatternCount);
+        for (int p = 0; p < static_cast<int>(layout::kPatternCount); ++p) {
+            const float bx = row.x + p * (btn_w + gutter);
+            const vivid::ui::Rect r{bx, row.y, btn_w, row.h};
+            auto t = vivid::ui::ui_toggle(*ctx, r, kBtnLabels[p],
+                                          cur_trig[p], fill_off, kFillOn[p]);
+            if (t.clicked) {
+                const de::LaneKind lane = de::lane_for_pattern(p);
+                for_each_selected([&](std::size_t dd, int ss) {
+                    set_lane(lane, dd, ss, t.value ? 1.0f : 0.0f);
+                });
+            }
         }
     }
 

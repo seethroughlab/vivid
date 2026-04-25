@@ -20,8 +20,10 @@ struct TestDrum : DrumSequencerCore {
     void reseed(std::uint32_t s) { rng_.seed(s); }
 };
 
-// Param buffer sized to cover every index the operator reads.
-constexpr std::size_t kParamCount = 600;
+// Param buffer sized to cover every index the operator reads. The last
+// trigger param is tom_d_15 at index 779 (kTrigDParamBases[5] + 15) so
+// 800 leaves headroom.
+constexpr std::size_t kParamCount = 800;
 
 std::vector<float> make_default_params() {
     std::vector<float> p(kParamCount, 0.0f);
@@ -158,7 +160,7 @@ int main() {
         }
     }
 
-    // --- active_pattern=1 routes to trig_b; dynamics stay shared ---
+    // --- active_pattern routes to trig_a/b/c/d; dynamics stay shared ---
     //
     // active_pattern is a Param<int> read through `.int_value()` in
     // compute(), not through the params array, so this test pokes the
@@ -181,6 +183,67 @@ int main() {
         int fires_b = fire_count_over_passes(drum_b, params, 0, 0, 5);
         check(fires_b == 5,
               "active_pattern=1 with trigger B=1 → fires every pass (5/5)");
+    }
+
+    // --- active_pattern=2 routes to trig_c; =3 routes to trig_d ---
+    {
+        TestDrum drum_c;
+        drum_c.reseed(55);
+        auto params = make_default_params();
+        params[layout::trigger_param_index(0, 0)] = 0.0f;
+        params[layout::trig_b_param_index(0, 0)]  = 0.0f;
+        params[layout::trig_c_param_index(0, 0)]  = 1.0f;
+
+        drum_c.active_pattern.value = 2.0f;
+        int fires_c = fire_count_over_passes(drum_c, params, 0, 0, 5);
+        check(fires_c == 5,
+              "active_pattern=2 with trigger C=1 → fires every pass (5/5)");
+
+        // Same params, but pattern=0/1/3 should not fire (no trigger on those banks).
+        for (int p : {0, 1, 3}) {
+            TestDrum d;
+            d.reseed(55);
+            d.active_pattern.value = static_cast<float>(p);
+            int fires = fire_count_over_passes(d, params, 0, 0, 5);
+            check(fires == 0,
+                  (std::string("active_pattern=") + std::to_string(p) +
+                   " with only trigger C=1 → no fires").c_str());
+        }
+    }
+    {
+        TestDrum drum_d;
+        drum_d.reseed(55);
+        auto params = make_default_params();
+        params[layout::trigger_param_index(0, 0)] = 0.0f;
+        params[layout::trig_d_param_index(0, 0)]  = 1.0f;
+
+        drum_d.active_pattern.value = 3.0f;
+        int fires_d = fire_count_over_passes(drum_d, params, 0, 0, 5);
+        check(fires_d == 5,
+              "active_pattern=3 with trigger D=1 → fires every pass (5/5)");
+    }
+
+    // --- velocity / probability stay shared across all four patterns ---
+    //
+    // Same probability and velocity values must apply regardless of which
+    // pattern bank's trigger fires.
+    {
+        auto params = make_default_params();
+        params[layout::prob_param_index(0, 0)]    = 0.0f;   // probability 0 → never fires
+        params[layout::trigger_param_index(0, 0)] = 1.0f;
+        params[layout::trig_b_param_index(0, 0)]  = 1.0f;
+        params[layout::trig_c_param_index(0, 0)]  = 1.0f;
+        params[layout::trig_d_param_index(0, 0)]  = 1.0f;
+
+        for (int p = 0; p < 4; ++p) {
+            TestDrum d;
+            d.reseed(55);
+            d.active_pattern.value = static_cast<float>(p);
+            int fires = fire_count_over_passes(d, params, 0, 0, 5);
+            check(fires == 0,
+                  (std::string("probability=0 suppresses pattern ") +
+                   static_cast<char>('A' + p)).c_str());
+        }
     }
 
     // --- velocity from mod_a drives MIDI velocity byte ---

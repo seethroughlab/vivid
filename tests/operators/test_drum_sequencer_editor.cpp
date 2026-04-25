@@ -94,9 +94,10 @@ struct EditorHarness {
     CaptureCtx capture;
     VividEditorContext ctx{};
 
-    // 588 params: 4 visible + 6 notes + 96×3 pattern/mod_a/mod_b + bar_sync
-    // + active_pattern + 96×3 trig_b/prob/roll. See drum_sequencer_layout.h.
-    EditorHarness() : params(588, 0.0f), outputs(8, 0.0f) {
+    // 780 params: 4 visible + 6 notes + 96×3 pattern/mod_a/mod_b + bar_sync
+    // + active_pattern + 96×3 trig_b/prob/roll + 96×2 trig_c/trig_d.
+    // See drum_sequencer_layout.h.
+    EditorHarness() : params(780, 0.0f), outputs(8, 0.0f) {
         params[0] = 16.0f;  // num_steps
 
         // probability default = 1.0 (every cell always fires)
@@ -152,6 +153,7 @@ constexpr int kGlfwKeyDigit7    = 55;
 constexpr int kGlfwKeyA         = 65;
 constexpr int kGlfwKeyB         = 66;
 constexpr int kGlfwKeyC         = 67;
+constexpr int kGlfwKeyD         = 68;
 constexpr int kGlfwKeyP         = 80;
 constexpr int kGlfwKeyV         = 86;
 constexpr int kGlfwKeyEnter     = 257;
@@ -296,7 +298,7 @@ int main() {
         }
     }
 
-    // --- pattern A/B keys switch the active_pattern param ---
+    // --- pattern A/B/C/D keys switch the active_pattern param ---
     {
         EditorHarness h;
         h.events = { make_key_event(kGlfwKeyB) };
@@ -314,6 +316,27 @@ int main() {
         check(h.capture.calls.size() == 1, "A key emits one set_param");
         check(capture_has(h.capture, "active_pattern", 0.0f),
               "A key selects pattern A (0)");
+
+        h.clear_input(); h.clear_capture();
+        h.events = { make_key_event(kGlfwKeyC) };
+        h.draw();
+        check(h.capture.calls.size() == 1, "C key emits one set_param");
+        check(capture_has(h.capture, "active_pattern", 2.0f),
+              "C key selects pattern C (2)");
+
+        h.clear_input(); h.clear_capture();
+        h.events = { make_key_event(kGlfwKeyD) };
+        h.draw();
+        check(h.capture.calls.size() == 1, "D key emits one set_param");
+        check(capture_has(h.capture, "active_pattern", 3.0f),
+              "D key selects pattern D (3)");
+
+        // Cmd+C should still copy (not switch to pattern C).
+        h.clear_input(); h.clear_capture();
+        h.events = { make_key_event(kGlfwKeyC, kGlfwModSuper) };
+        h.draw();
+        check(!capture_has(h.capture, "active_pattern", 2.0f),
+              "Cmd+C does NOT switch to pattern C");
     }
 
     // --- Shift+Arrow extends the selection; Enter then toggles all cells ---
@@ -391,29 +414,37 @@ int main() {
               "Enter after shift+click emits 6 toggles (2×3 rect)");
     }
 
-    // --- Click on pattern A/B top-bar buttons sets active_pattern ---
+    // --- Click on pattern A/B/C/D top-bar buttons sets active_pattern ---
     {
-        EditorHarness h;
-        // Pattern A button: grid_x + 140, top_y + 3, 28×20. Click centre.
-        set_mouse_click(h.ctx.mouse, kInset + 140.0f + 14.0f, kInset + 3.0f + 10.0f);
-        h.draw();
-        check(capture_has(h.capture, "active_pattern", 0.0f),
-              "Pattern A button writes active_pattern = 0");
-        h.clear_capture(); h.clear_input();
-        set_mouse_click(h.ctx.mouse, kInset + 140.0f + 32.0f + 14.0f,
-                        kInset + 3.0f + 10.0f);
-        h.draw();
-        check(capture_has(h.capture, "active_pattern", 1.0f),
-              "Pattern B button writes active_pattern = 1");
+        // Geometry: 26 px buttons, 2 px gap, starting at grid_x + 140.
+        constexpr float kBtnW    = 26.0f;
+        constexpr float kBtnGap  = 2.0f;
+        constexpr float kStride  = kBtnW + kBtnGap;
+        constexpr float kBtnYMid = kInset + 3.0f + 10.0f;
+
+        for (int p = 0; p < 4; ++p) {
+            EditorHarness h;
+            const float x_centre = kInset + 140.0f + p * kStride + kBtnW * 0.5f;
+            set_mouse_click(h.ctx.mouse, x_centre, kBtnYMid);
+            h.draw();
+            const float expected = static_cast<float>(p);
+            check(capture_has(h.capture, "active_pattern", expected),
+                  (std::string("Pattern ") +
+                   static_cast<char>('A' + p) +
+                   " button writes active_pattern").c_str());
+        }
     }
 
     // --- Cmd+C / Cmd+V on a multi-cell selection round-trips all six params ---
     {
         EditorHarness h;
-        // Populate step 0-1 × drums 0-1 with a distinctive pattern.
+        // Populate step 0-1 × drums 0-1 with a distinctive pattern that
+        // exercises all four trigger banks (A, B, C, D).
         h.params[layout::trigger_param_index(0, 0)] = 1.0f;
         h.params[layout::mod_a_param_index(0, 0)]   = 0.75f;
         h.params[layout::trig_b_param_index(1, 1)]  = 1.0f;
+        h.params[layout::trig_c_param_index(0, 1)]  = 1.0f;
+        h.params[layout::trig_d_param_index(1, 0)]  = 1.0f;
         h.params[layout::prob_param_index(1, 0)]    = 0.4f;
         h.params[layout::roll_param_index(0, 1)]    = 3.0f;
 
@@ -438,11 +469,12 @@ int main() {
         h.draw();
         h.clear_input(); h.clear_capture();
 
-        // Paste emits 4 cells × 6 params = 24 writes, origin = (1, 3).
+        // Paste emits 4 cells × 8 params = 32 writes, origin = (1, 3).
+        // 8 params/cell = 4 triggers (A/B/C/D) + ModA + ModB + Prob + Roll.
         h.events = { make_key_event(kGlfwKeyV, kGlfwModSuper) };
         h.draw();
-        check(h.capture.calls.size() == 24,
-              "Cmd+V over a 2×2 copy emits 24 set_param calls (4 cells × 6 params)");
+        check(h.capture.calls.size() == 32,
+              "Cmd+V over a 2×2 copy emits 32 set_param calls (4 cells × 8 params)");
 
         // Origin cell (clip 0,0) came from source (drum=0, step=0):
         //   trigger_a=1.0, velocity=0.75, others default.
@@ -453,10 +485,14 @@ int main() {
         // Relative (1,1) came from source (drum=1, step=1): trigger_b=1.
         check(capture_has(h.capture, "hat_b_4", 1.0f),
               "paste preserves trigger B at relative (1,1)");
-        // Relative (0,1) came from (drum=0, step=1): roll=3.
+        // Relative (0,1) came from source (drum=0, step=1): trig_c=1, roll=3.
+        check(capture_has(h.capture, "snare_c_4", 1.0f),
+              "paste preserves trigger C at relative (0,1)");
         check(capture_has(h.capture, "snare_roll_4", 3.0f),
               "paste preserves roll at relative (0,1)");
-        // Relative (1,0) came from (drum=1, step=0): prob=0.4.
+        // Relative (1,0) came from source (drum=1, step=0): trig_d=1, prob=0.4.
+        check(capture_has(h.capture, "hat_d_3", 1.0f),
+              "paste preserves trigger D at relative (1,0)");
         check(capture_has(h.capture, "hat_prob_3", 0.4f),
               "paste preserves probability at relative (1,0)");
     }

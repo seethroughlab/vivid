@@ -74,14 +74,26 @@ DrumSequencerCore::DrumSequencerCore() {
         p->description = "Per-step modulation value for external routing (0-1)";
 
     vivid::description(active_pattern,
-        "Active pattern bank (0 = A, 1 = B). Triggers switch with the bank; "
-        "velocity / mod B / probability / roll are shared across patterns.");
+        "Active pattern bank (0=A, 1=B, 2=C, 3=D). Triggers switch with the "
+        "bank; velocity / mod B / probability / roll are shared across patterns.");
     for (auto& p : trig_b_)
         p.description = "Pattern-B trigger on/off for this step (>0.5 = active)";
+    for (auto& p : trig_c_)
+        p.description = "Pattern-C trigger on/off for this step (>0.5 = active)";
+    for (auto& p : trig_d_)
+        p.description = "Pattern-D trigger on/off for this step (>0.5 = active)";
     for (auto& p : prob_)
         p.description = "Per-step probability (0 = never fires, 1 = always fires)";
     for (auto& p : roll_)
         p.description = "Per-step roll / ratchet count (1 = single hit, 2-4 = sub-step repeats)";
+
+    vivid::description(song_mode,
+        "Song mode: when 'song', the playing pattern auto-advances "
+        "A→B→C→D every time the pattern wraps. active_pattern then "
+        "selects which pattern the editor grid shows.");
+    vivid::description(bars_per_pattern,
+        "How many pattern wraps each song-mode section holds for "
+        "before advancing (1 = bar-by-bar, 4 = 4-bar sections).");
 }
 
 void DrumSequencerCore::collect_params(std::vector<vivid::ParamBase*>& out) {
@@ -288,24 +300,37 @@ void DrumSequencerCore::collect_params(std::vector<vivid::ParamBase*>& out) {
     // param indices in the layout helper stay stable.
     out.push_back(&bar_sync);
 
-    // Follow-up params: pattern A/B + per-step probability + per-step roll.
+    // Follow-up params: pattern A/B + per-step probability + per-step roll,
+    // plus patterns C and D appended after the roll block.
     // Appended AFTER bar_sync so every pre-existing index survives. Indices
     // here match drum_sequencer_layout.h (kActivePatternIndex = 299,
-    // kTrigBParamBases = 300.., kProbParamBases = 396.., kRollParamBases = 492..).
+    // kTrigBParamBases = 300.., kProbParamBases = 396.., kRollParamBases = 492..,
+    // kTrigCParamBases = 588.., kTrigDParamBases = 684..).
     out.push_back(&active_pattern);
 
     const size_t follow_hidden_start = out.size();
     for (auto& p : trig_b_) out.push_back(&p);
     for (auto& p : prob_)   out.push_back(&p);
     for (auto& p : roll_)   out.push_back(&p);
+    for (auto& p : trig_c_) out.push_back(&p);
+    for (auto& p : trig_d_) out.push_back(&p);
     for (size_t i = follow_hidden_start; i < out.size(); ++i)
         out[i]->display_hint = VIVID_DISPLAY_HIDDEN;
+
+    // song_mode is visible in the inspector — it's a low-density toggle that
+    // belongs alongside steps/swing/clock_source. Index = kSongModeIndex.
+    out.push_back(&song_mode);
+    // bars_per_pattern at kBarsPerPatternIndex. Visible.
+    out.push_back(&bars_per_pattern);
 }
 
 void DrumSequencerCore::collect_ports(std::vector<VividPortDescriptor>& out) {
-    out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
-    out.push_back({"reset",      VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
-    out.push_back({"step",       VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+    out.push_back({"beat_phase",      VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+    out.push_back({"reset",           VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+    out.push_back({"step",            VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+    // current_pattern: which pattern (0..3) is currently playing. Useful for
+    // syncing visuals to the song's section transitions.
+    out.push_back({"current_pattern", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     // `midi_out` carries all six drums merged — feed this into samplers
     // (SP404, etc.) that select voices by MIDI note. The per-drum ports
     // carry only their own drum, suitable for wiring straight into a
@@ -329,18 +354,23 @@ void DrumSequencerCore::compute(float phase, float reset_in,
              void** custom_outputs, uint32_t custom_output_count) {
     namespace layout = vivid_sequencers::drum_layout;
 
-    // Reset phase when clock source changes so the pattern restarts immediately
+    // Reset phase when clock source changes so the pattern restarts immediately.
+    // Also rewinds the song-mode position to A — a clock-source switch is
+    // a clean "start over" boundary.
     int cs = clock_source.int_value();
     if (cs != prev_clock_source_) {
         phase_offset_ = phase;
         prev_clock_source_ = cs;
+        song_pos_ = 0;
+        wraps_in_section_ = 0;
     }
 
     bool reset = reset_in > 0.5f;
 
     // Phrase reset: when synced to the graph metronome, fold an internal
     // pulse into `reset` at the start of every N-bar phrase so the pattern
-    // re-aligns with the top of the phrase.
+    // re-aligns with the top of the phrase. Phrase-sync resets fold into
+    // `reset` below, so they also rewind song_pos_.
     int sync_idx = std::clamp(bar_sync.int_value(), 0, 4);
     if (sync_idx > 0 && cs == vivid::kClockSourceMetronome) {
         static constexpr int kSyncBars[] = {0, 1, 2, 4, 8};
@@ -354,10 +384,23 @@ void DrumSequencerCore::compute(float phase, float reset_in,
         phrase_initialized_ = true;
     }
 
-    // Rising-edge reset: capture current phase as offset
-    if (reset && !prev_reset_)
+    // Rising-edge reset: capture current phase as offset and rewind song.
+    if (reset && !prev_reset_) {
         phase_offset_ = phase;
+        song_pos_ = 0;
+        wraps_in_section_ = 0;
+    }
     prev_reset_ = reset;
+
+    // Manual → song edge: rewind to A so pressing "Song" gives a predictable
+    // start. Edge-detect via prev_song_mode_ so toggling off/on always
+    // resets, but staying in "song" doesn't clobber song_pos_ each frame.
+    const int sm = song_mode.int_value();
+    if (sm == 1 && prev_song_mode_ == 0) {
+        song_pos_ = 0;
+        wraps_in_section_ = 0;
+    }
+    prev_song_mode_ = sm;
 
     float adj_phase = std::fmod(phase - phase_offset_ + 1.0f, 1.0f);
     int n = std::max(steps.int_value(), 1);
@@ -379,9 +422,27 @@ void DrumSequencerCore::compute(float phase, float reset_in,
     step = std::clamp(step, 0, n - 1);
 
     bool step_changed = (step != prev_step_);
+    const int old_prev_step = prev_step_;
     prev_step_ = step;
 
-    // Step output (index 0, only signal output)
+    // Song-mode advance on a clean pattern wrap (last active step → 0).
+    // The `old_prev_step == n - 1` guard rejects the first-frame case
+    // (prev_step_ starts at -1) and the case where `steps` shrinks
+    // mid-pattern: only a genuine wrap from the bottom edge advances.
+    // bars_per_pattern controls how many wraps each section holds for.
+    if (sm == 1 && step_changed) {
+        const bool wrapped = (old_prev_step == n - 1) && (step == 0);
+        if (wrapped) {
+            const int bpp = std::max(1, bars_per_pattern.int_value());
+            ++wraps_in_section_;
+            if (wraps_in_section_ >= bpp) {
+                wraps_in_section_ = 0;
+                song_pos_ = (song_pos_ + 1) & 0x3;
+            }
+        }
+    }
+
+    // Step output (index 0)
     output_values[0] = static_cast<float>(step);
 
     // Swing-aware fraction within the current step, 0..1. Used to place
@@ -397,19 +458,26 @@ void DrumSequencerCore::compute(float phase, float reset_in,
     }
     step_fraction = std::clamp(step_fraction, 0.0f, 0.999999f);
 
-    // Populate MIDI output. Per-step Mod A maps to velocity; active_pattern
-    // picks pattern A (triggers) or pattern B (trig_b_) — dynamics stay
-    // shared. Probability is sampled once at the step edge; roll emits N
-    // hits spread over the step's sub-fraction.
-    const int active_ptn = (active_pattern.int_value() == 0) ? 0 : 1;
+    // Populate MIDI output. Per-step Mod A maps to velocity. In manual mode
+    // active_pattern selects the playing pattern; in song mode song_pos_
+    // drives playback and active_pattern becomes the editor's edit cursor.
+    // Velocity / mod B / probability / roll stay shared across patterns.
+    // Probability is sampled once at the step edge; roll emits N hits spread
+    // over the step's sub-fraction.
+    const int edit_ptn    = std::clamp(active_pattern.int_value(), 0, 3);
+    const int playing_ptn = (sm == 1) ? std::clamp(song_pos_, 0, 3) : edit_ptn;
+
+    // current_pattern output (index 1) — emit which pattern is playing.
+    output_values[layout::kCurrentPatternOutputIndex] =
+        static_cast<float>(playing_ptn);
+
     const uint8_t ch = static_cast<uint8_t>(midi_channel.int_value() - 1);
     midi_buf_.count = 0;
     for (auto& buf : per_drum_bufs_) buf.count = 0;
     for (std::size_t d = 0; d < layout::kDrumCount; ++d) {
         if (step_changed) {
-            const int trig_idx = (active_ptn == 0)
-                ? layout::trigger_param_index(d, step)
-                : layout::trig_b_param_index(d, step);
+            const int trig_idx =
+                layout::trigger_param_index_for_pattern(playing_ptn, d, step);
             const bool triggered = params[trig_idx] > 0.5f;
             if (triggered) {
                 const float prob = std::clamp(

@@ -322,6 +322,25 @@ add_test(NAME test_drum_sequencer_probability_roll
          COMMAND test_drum_sequencer_probability_roll
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# DrumSequencer song mode (auto-advance A→B→C→D). Drives compute() through
+# pattern wraps, validates current_pattern output, reset/clock-source/song
+# toggle reset paths, edit-cursor independence, and steps-shrink edge case.
+add_executable(test_drum_sequencer_song_mode
+    tests/operators/test_drum_sequencer_song_mode.cpp
+    operators/control/drum_sequencer/drum_sequencer_core.cpp
+    operators/control/drum_sequencer/drum_sequencer_editor.cpp
+    operators/control/drum_sequencer/drum_sequencer_editor_shared.cpp
+)
+target_include_directories(test_drum_sequencer_song_mode PRIVATE
+    src tests
+    operators/control/drum_sequencer
+    operators/shared/sequencer
+    operators)
+target_link_libraries(test_drum_sequencer_song_mode PRIVATE vivid_runtime_testlib)
+add_test(NAME test_drum_sequencer_song_mode
+         COMMAND test_drum_sequencer_song_mode
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # MSEG editor helpers — pure-logic (param-name encoding, point picks, curve
 # handle hit math, point add/remove command sequences).
 add_executable(test_mseg_editor_helpers

@@ -15,6 +15,8 @@ std::string param_name_for(LaneKind lane, std::size_t drum, int step) {
         case LaneKind::PatternB:    prefix = layout::kTrigBPrefixes[drum];   break;
         case LaneKind::Probability: prefix = layout::kProbPrefixes[drum];    break;
         case LaneKind::Roll:        prefix = layout::kRollPrefixes[drum];    break;
+        case LaneKind::PatternC:    prefix = layout::kTrigCPrefixes[drum];   break;
+        case LaneKind::PatternD:    prefix = layout::kTrigDPrefixes[drum];   break;
     }
     std::string name(prefix);
     name += std::to_string(step);
@@ -29,6 +31,8 @@ int param_index_for(LaneKind lane, std::size_t drum, int step) {
         case LaneKind::PatternB:    return layout::trig_b_param_index(drum, step);
         case LaneKind::Probability: return layout::prob_param_index(drum, step);
         case LaneKind::Roll:        return layout::roll_param_index(drum, step);
+        case LaneKind::PatternC:    return layout::trig_c_param_index(drum, step);
+        case LaneKind::PatternD:    return layout::trig_d_param_index(drum, step);
     }
     return 0;
 }
@@ -159,10 +163,11 @@ void copy_selection(const float* param_values, std::uint32_t param_count,
         for (int col = 0; col < cols; ++col) {
             const int step = sel.col_lo + col;
             auto& c = out->cells[row * static_cast<std::size_t>(cols) + col];
-            c.trigger_a   = read_param(param_values, param_count,
-                                       layout::trigger_param_index(drum, step), 0.0f);
-            c.trigger_b   = read_param(param_values, param_count,
-                                       layout::trig_b_param_index(drum, step), 0.0f);
+            for (int p = 0; p < static_cast<int>(layout::kPatternCount); ++p) {
+                c.triggers[p] = read_param(
+                    param_values, param_count,
+                    layout::trigger_param_index_for_pattern(p, drum, step), 0.0f);
+            }
             c.velocity    = read_param(param_values, param_count,
                                        layout::mod_a_param_index(drum, step), 0.5f);
             c.mod_b       = read_param(param_values, param_count,
@@ -193,15 +198,15 @@ bool paste_selection(const VividInspectorCommandAPI& commands,
             if (step >= static_cast<int>(layout::kStepCount)) break;
             const auto& c = clip.cells[row * static_cast<std::size_t>(clip.cols) + col];
 
-            const std::string trig_a = param_name_for(LaneKind::Pattern,     drum, step);
-            const std::string trig_b = param_name_for(LaneKind::PatternB,    drum, step);
+            for (int p = 0; p < static_cast<int>(layout::kPatternCount); ++p) {
+                const std::string name = param_name_for(lane_for_pattern(p), drum, step);
+                commands.set_param(commands.opaque, name.c_str(), c.triggers[p]);
+            }
             const std::string vel    = param_name_for(LaneKind::ModA,        drum, step);
             const std::string modb   = param_name_for(LaneKind::ModB,        drum, step);
             const std::string prob   = param_name_for(LaneKind::Probability, drum, step);
             const std::string roll   = param_name_for(LaneKind::Roll,        drum, step);
 
-            commands.set_param(commands.opaque, trig_a.c_str(), c.trigger_a);
-            commands.set_param(commands.opaque, trig_b.c_str(), c.trigger_b);
             commands.set_param(commands.opaque, vel.c_str(),    c.velocity);
             commands.set_param(commands.opaque, modb.c_str(),   c.mod_b);
             commands.set_param(commands.opaque, prob.c_str(),   c.probability);

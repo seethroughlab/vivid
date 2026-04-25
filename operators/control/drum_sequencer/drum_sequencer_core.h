@@ -363,7 +363,11 @@ struct DrumSequencerCore : vivid::OperatorBase {
     // --- Follow-up: pattern-B triggers, per-step probability, per-step roll ---
     // These sit AFTER bar_sync in collect_params so older saved graphs keep
     // every pre-existing param at its original descriptor-order index.
-    vivid::Param<int> active_pattern {"active_pattern", 0, 0, 1};
+    //
+    // active_pattern was originally 0..1 (A/B). It now exposes A/B/C/D.
+    // Old saves with int value 0 or 1 still load — the labels constructor
+    // sets min/max to 0..(labels.size()-1) so 0 and 1 fall safely inside.
+    vivid::Param<int> active_pattern {"active_pattern", 0, {"A","B","C","D"}};
 
 // Helper macros — 16 brace-initialized params per drum row.
 #define VIVID_DS_ROW_F(prefix, def) \
@@ -397,6 +401,41 @@ struct DrumSequencerCore : vivid::OperatorBase {
         VIVID_DS_ROW_F("clap_b_",  0.0f),
         VIVID_DS_ROW_F("tom_b_",   0.0f),
     }};
+
+    // Pattern-C triggers (96). Default 0 — pattern C is empty until filled.
+    std::array<vivid::Param<float>,
+               vivid_sequencers::drum_layout::kDrumCount *
+               vivid_sequencers::drum_layout::kStepCount> trig_c_ = {{
+        VIVID_DS_ROW_F("kick_c_",  0.0f),
+        VIVID_DS_ROW_F("snare_c_", 0.0f),
+        VIVID_DS_ROW_F("hat_c_",   0.0f),
+        VIVID_DS_ROW_F("oh_c_",    0.0f),
+        VIVID_DS_ROW_F("clap_c_",  0.0f),
+        VIVID_DS_ROW_F("tom_c_",   0.0f),
+    }};
+
+    // Pattern-D triggers (96). Default 0 — pattern D is empty until filled.
+    std::array<vivid::Param<float>,
+               vivid_sequencers::drum_layout::kDrumCount *
+               vivid_sequencers::drum_layout::kStepCount> trig_d_ = {{
+        VIVID_DS_ROW_F("kick_d_",  0.0f),
+        VIVID_DS_ROW_F("snare_d_", 0.0f),
+        VIVID_DS_ROW_F("hat_d_",   0.0f),
+        VIVID_DS_ROW_F("oh_d_",    0.0f),
+        VIVID_DS_ROW_F("clap_d_",  0.0f),
+        VIVID_DS_ROW_F("tom_d_",   0.0f),
+    }};
+
+    // Song mode: when "song", the playing pattern auto-advances every time
+    // the pattern wraps (step n_active-1 → 0). active_pattern then becomes
+    // the edit cursor (which pattern the editor grid shows) and playback
+    // ignores it. Default "manual" — behaviour identical to before.
+    vivid::Param<int> song_mode {"song_mode", 0, {"manual","song"}};
+
+    // How many pattern wraps each song-mode section holds for before
+    // advancing. 1 = bar-by-bar (default), 4 = "4-bar section" — a 4×4
+    // arrangement plays for 16 bars total before the song cycles.
+    vivid::Param<int> bars_per_pattern {"bars_per_pattern", 1, 1, 8};
 
     // Per-step probability (96). Default 1.0 — "always fires" preserves
     // existing graph behaviour until the user actively reduces a value.
@@ -477,6 +516,15 @@ protected:
     int prev_clock_source_ = -1;
     int64_t prev_phrase_idx_ = 0;
     bool phrase_initialized_ = false;
+
+    // Song mode: which pattern (0..3) is currently playing. Reset to 0 on
+    // every reset path (clock-source change, reset port edge, phrase sync,
+    // and manual→song toggle). Advances when the pattern wraps in compute().
+    int song_pos_       = 0;
+    int prev_song_mode_ = 0;
+    // Wraps elapsed inside the current song-mode section. Resets when the
+    // section advances or when any reset path fires.
+    int wraps_in_section_ = 0;
     VividMidiBuffer midi_buf_ = {};
     std::array<VividMidiBuffer,
                vivid_sequencers::drum_layout::kDrumCount> per_drum_bufs_ = {};
