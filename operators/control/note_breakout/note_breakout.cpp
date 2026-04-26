@@ -17,18 +17,26 @@
  *
  * This operator carries no oscillator state, no envelope state, and no
  * audio render path — by design it's the cheapest way to fan note-stream
- * control data into multiple consumers. When the consumer IS a synth,
- * read its `voice_*` outputs directly instead of going through NoteBreakout.
+ * control data into multiple consumers. It reflects the source note
+ * stream's current held-note state, not any downstream synth's private
+ * stealing/release policy. When the consumer IS a synth, read its `voice_*`
+ * outputs directly instead of going through NoteBreakout.
  *
  * Per-note expression events (PITCH_BEND, PRESSURE, TIMBRE) on the input
  * stream mutate the matching voice slot — voice_freqs reflects pitch bend.
  *
  * @input notes_in Native note stream (VividNoteBuffer).
+ * @output notes_out Pass-through of notes_in for fanning a single note stream
+ *         to multiple downstream synths (e.g., inside subgraph modules where
+ *         the bind expression is single-target). The output buffer is a copy
+ *         of the input buffer for the current block.
  * @output voice_ids Per-voice note_id, sorted ascending.
- * @output voice_gates 1.0 if held, 0.0 if released-tail.
+ * @output voice_gates 1.0 while the source note is held. Release tails are
+ *         preserved by downstream consumers such as EnvelopeAu using lane_ids.
  * @output voice_velocities Per-voice velocity, 0..1.
  * @output voice_freqs Per-voice frequency in Hz (includes pitch_bend_semis).
  * @recipe note_source/notes_out -> NoteBreakout/notes_in
+ * @recipe NoteBreakout/notes_out -> Synth/notes_in   (fanout to multiple synths)
  * @recipe NoteBreakout/voice_gates -> EnvelopeAu/gate
  * @recipe NoteBreakout/voice_ids -> EnvelopeAu/lane_ids
  * @recipe NoteBreakout/voice_freqs -> Filter/frequencies
@@ -42,6 +50,7 @@ struct NoteBreakout : vivid::OperatorBase, vivid::AudioProcessable {
 
     vivid::VoiceAllocator<kMaxVoices> alloc_;
     uint64_t frame_counter_ = 0;
+    VividNoteBuffer passthrough_buf_{};
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         (void)out;
@@ -49,6 +58,11 @@ struct NoteBreakout : vivid::OperatorBase, vivid::AudioProcessable {
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back(VIVID_CUSTOM_REF_PORT("notes_in", VIVID_PORT_INPUT, VividNoteBuffer));
+
+        // Pass-through note stream — same buffer the input received, exposed
+        // so a single source can fan to multiple downstream synths through one
+        // module port (the subgraph-module bind expression is single-target).
+        out.push_back(VIVID_CUSTOM_REF_PORT("notes_out", VIVID_PORT_OUTPUT, VividNoteBuffer));
 
         // Lane-array breakouts. Order must match
         // vivid_sequencers::VoiceBreakoutLane (ids/gates/velocities/freqs).
@@ -70,14 +84,21 @@ struct NoteBreakout : vivid::OperatorBase, vivid::AudioProcessable {
         if (ctx->custom_inputs && ctx->custom_input_count > 0 && ctx->custom_inputs[0])
             notes = static_cast<const VividNoteBuffer*>(ctx->custom_inputs[0]);
 
+        // Mirror notes_in into the pass-through output buffer so notes_out
+        // re-emits the input stream verbatim (used by modules to fan a
+        // single note source to multiple internal synths).
+        if (notes) passthrough_buf_ = *notes;
+        else       passthrough_buf_.count = 0;
+        if (ctx->custom_outputs && ctx->custom_output_count > 0)
+            ctx->custom_outputs[0] = &passthrough_buf_;
+
         alloc_.process_note_buffer(
             notes, frame_counter_,
             [](int, int, float, uint32_t, uint64_t) {},
             [this](int slot, int, uint64_t) {
-                // Synth-style envelopes would gate-off here. NoteBreakout has
-                // no envelope, so the slot stays "active" until the consumer
-                // is done. Free the slot immediately on note-off — there's
-                // no release tail on this surface.
+                // NoteBreakout reflects current held-note state only; it does
+                // not synthesize release tails. Downstream consumers such as
+                // EnvelopeAu preserve release by remembering lane_ids.
                 alloc_.slots[slot].active = false;
             },
             [](int, VividNoteEventType, float) {});

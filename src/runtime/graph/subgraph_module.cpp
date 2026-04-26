@@ -54,6 +54,13 @@ static VividPortType parse_port_type(const std::string& s) {
     if (s == "string")        return VIVID_PORT_STRING;
     if (s == "string_lanes") return VIVID_PORT_STRING_LANES;
     if (s == "texture")       return VIVID_PORT_TEXTURE;
+    // custom_ref / custom_value are opaque-pointer / opaque-value port shapes
+    // (e.g. VividNoteBuffer). The actual transport + stable type id is
+    // resolved through the bound internal node's port descriptor at compile
+    // time, so the SubgraphModule placeholder type isn't load-bearing — we
+    // surface as scalar here so the UI just renders a generic port pin.
+    if (s == "custom_ref")    return VIVID_PORT_SCALAR;
+    if (s == "custom_value")  return VIVID_PORT_SCALAR;
     std::fprintf(stderr, "[vivid] SubgraphModule: unknown port type '%s', defaulting to signal\n", s.c_str());
     return VIVID_PORT_SCALAR;
 }
