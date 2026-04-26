@@ -1,0 +1,82 @@
+{
+  "presets": [
+    {
+      "name": "Subtle Glue",
+      "params": {
+        "drive": 0.15,
+        "wow": 0.05,
+        "flutter": 0.05,
+        "tone": 0.85,
+        "rate_reduction": 0.0,
+        "hiss": 0.0,
+        "bias": 0.0,
+        "mix": 1.0
+      }
+    },
+    {
+      "name": "Pristine Reel",
+      "params": {
+        "drive": 0.3,
+        "wow": 0.1,
+        "flutter": 0.1,
+        "tone": 0.8,
+        "rate_reduction": 0.0,
+        "hiss": 0.03,
+        "bias": 0.0,
+        "mix": 1.0
+      }
+    },
+    {
+      "name": "Warm Cassette",
+      "params": {
+        "drive": 0.55,
+        "wow": 0.3,
+        "flutter": 0.25,
+        "tone": 0.55,
+        "rate_reduction": 0.1,
+        "hiss": 0.08,
+        "bias": 0.15,
+        "mix": 1.0
+      }
+    },
+    {
+      "name": "Walkman",
+      "params": {
+        "drive": 0.5,
+        "wow": 0.4,
+        "flutter": 0.4,
+        "tone": 0.45,
+        "rate_reduction": 0.2,
+        "hiss": 0.12,
+        "bias": 0.1,
+        "mix": 1.0
+      }
+    },
+    {
+      "name": "VHS Tracking",
+      "params": {
+        "drive": 0.7,
+        "wow": 0.6,
+        "flutter": 0.5,
+        "tone": 0.4,
+        "rate_reduction": 0.55,
+        "hiss": 0.18,
+        "bias": 0.25,
+        "mix": 1.0
+      }
+    },
+    {
+      "name": "Lo-Fi Reel",
+      "params": {
+        "drive": 0.85,
+        "wow": 0.45,
+        "flutter": 0.35,
+        "tone": 0.3,
+        "rate_reduction": 0.35,
+        "hiss": 0.1,
+        "bias": 0.4,
+        "mix": 1.0
+      }
+    }
+  ]
+}
