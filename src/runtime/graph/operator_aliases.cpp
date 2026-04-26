@@ -59,6 +59,13 @@ const std::unordered_map<std::string, AliasEntry>& alias_table() {
         {"EnvelopeFr",    {"Envelope",    {}, {}, {}}},
         {"SmoothFr",      {"Smooth",      {}, {}, {}}},
         {"StepCounterFr", {"StepCounter", {}, {}, {}}},
+
+        // PolyVoiceAllocator → VoiceAllocator. The "Poly" qualifier is
+        // redundant — voice allocation is inherently polyphonic — and the
+        // shorter name reads better when the user is just dragging a
+        // note source straight into a synth's midi_in (the canonical path).
+        // The actual operator rename lives in the vivid-wavetable package.
+        {"PolyVoiceAllocator", {"VoiceAllocator", {}, {}, {}}},
     };
     return table;
 }
