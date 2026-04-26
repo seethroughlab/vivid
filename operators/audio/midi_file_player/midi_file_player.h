@@ -206,7 +206,9 @@ private:
                     vivid_sequencers::note_off(notes_out_,
                                                active_notes_[i].note_id,
                                                frame_offset);
-                    active_notes_[i] = active_notes_[--active_count_];
+                    for (int j = i; j < active_count_ - 1; ++j)
+                        active_notes_[j] = active_notes_[j + 1];
+                    --active_count_;
                     return;
                 }
             }

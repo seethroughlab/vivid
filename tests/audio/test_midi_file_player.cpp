@@ -60,6 +60,36 @@ static std::filesystem::path write_test_midi(const std::filesystem::path& path,
     return path;
 }
 
+static std::filesystem::path write_overlap_test_midi(const std::filesystem::path& path) {
+    std::vector<uint8_t> track;
+    push_varlen(track, 0);
+    track.insert(track.end(), {0xFF, 0x51, 0x03, 0x01, 0x86, 0xA0}); // 100000 us/qn
+    push_varlen(track, 0);
+    track.insert(track.end(), {0x90, 60, 100});   // on #1 at tick 0
+    push_varlen(track, 2);
+    track.insert(track.end(), {0x90, 60, 80});    // on #2 at tick 2
+    push_varlen(track, 2);
+    track.insert(track.end(), {0x80, 60, 0});     // off #1 at tick 4
+    push_varlen(track, 2);
+    track.insert(track.end(), {0x80, 60, 0});     // off #2 at tick 6
+    push_varlen(track, 2);
+    track.insert(track.end(), {0xFF, 0x2F, 0x00});
+
+    std::vector<uint8_t> midi;
+    midi.insert(midi.end(), {'M', 'T', 'h', 'd'});
+    push_be32(midi, 6);
+    push_be16(midi, 0);
+    push_be16(midi, 1);
+    push_be16(midi, 100);
+    midi.insert(midi.end(), {'M', 'T', 'r', 'k'});
+    push_be32(midi, static_cast<uint32_t>(track.size()));
+    midi.insert(midi.end(), track.begin(), track.end());
+
+    std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
+    ofs.write(reinterpret_cast<const char*>(midi.data()), static_cast<std::streamsize>(midi.size()));
+    return path;
+}
+
 static VividAudioContext make_ctx(uint32_t buffer_size,
                                   uint32_t sample_rate,
                                   void** custom_outputs) {
@@ -78,6 +108,7 @@ int main() {
     fs::create_directories(sandbox);
     const auto midi_path = write_test_midi(sandbox / "player.mid", 8, 10);
     const auto held_midi_path = write_test_midi(sandbox / "held.mid", 32, 40);
+    const auto overlap_midi_path = write_overlap_test_midi(sandbox / "overlap.mid");
 
     {
         MidiFilePlayer op;
@@ -173,6 +204,46 @@ int main() {
             }
         }
         check(saw_note_off, "stopping playback flushes active notes (NOTE_OFFs emitted)");
+    }
+
+    {
+        MidiFilePlayer op;
+        op.file.str_value = overlap_midi_path.string();
+        op.main_thread_update(0.0);
+
+        void* custom_outputs[1] = {nullptr};
+        auto ctx = make_ctx(16, 1000, custom_outputs);
+        op.process_audio(&ctx);
+
+        check(custom_outputs[0] != nullptr, "overlap fixture publishes notes_out");
+        auto* notes = static_cast<VividNoteBuffer*>(custom_outputs[0]);
+        check(notes->count >= 4, "overlap fixture emits two NOTE_ONs and two NOTE_OFFs");
+
+        uint64_t first_on_id = 0;
+        uint64_t second_on_id = 0;
+        uint64_t first_off_id = 0;
+        uint64_t second_off_id = 0;
+        int note_on_seen = 0;
+        int note_off_seen = 0;
+        for (uint32_t i = 0; i < notes->count; ++i) {
+            const auto& e = notes->events[i];
+            if (e.type == VIVID_NOTE_ON) {
+                if (note_on_seen == 0) first_on_id = e.note_id;
+                if (note_on_seen == 1) second_on_id = e.note_id;
+                ++note_on_seen;
+            } else if (e.type == VIVID_NOTE_OFF) {
+                if (note_off_seen == 0) first_off_id = e.note_id;
+                if (note_off_seen == 1) second_off_id = e.note_id;
+                ++note_off_seen;
+            }
+        }
+
+        check(note_on_seen == 2, "exactly two NOTE_ON events seen");
+        check(note_off_seen == 2, "exactly two NOTE_OFF events seen");
+        check(first_on_id != 0 && second_on_id != 0 && first_on_id != second_on_id,
+              "overlapping NOTE_ONs allocate distinct ids");
+        check(first_off_id == first_on_id, "first NOTE_OFF releases the oldest matching note");
+        check(second_off_id == second_on_id, "second NOTE_OFF releases the newer matching note");
     }
 
     fs::remove_all(sandbox);

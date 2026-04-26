@@ -424,7 +424,69 @@ static void test_notes_out_native_events() {
 }
 
 // ---------------------------------------------------------------------------
-// 9. MPE per-note pitch_bend emits a native PITCH_BEND event keyed on the
+// 9. poly_shared same-pitch overlap preserves distinct ids and FIFO release
+// ---------------------------------------------------------------------------
+static void test_poly_shared_same_pitch_overlap() {
+    std::fprintf(stderr, "\n--- poly_shared same-pitch overlap uses distinct ids + FIFO off ---\n");
+    MidiInput op;
+    TestFrameContext tc;
+    tc.param_values[4] = 0.0f;  // poly_shared
+
+    op.inject_events({note_on(1, 60, 100), note_on(1, 60, 80)});
+    run_frame(op, tc);
+
+    check(tc.lane_ports[7].length() == 2, "two held entries for same pitch");
+    check_float(tc.lane_ports[7].data()[0], 60.0f, "first held note is 60");
+    check_float(tc.lane_ports[7].data()[1], 60.0f, "second held note is 60");
+    check_float(tc.lane_ports[8].data()[0], 100.0f / 127.0f, "first velocity preserved");
+    check_float(tc.lane_ports[8].data()[1], 80.0f / 127.0f, "second velocity preserved");
+    check(tc.lane_ports[13].length() == 2, "two lane_ids for same pitch");
+    check(tc.lane_ports[13].data()[0] != tc.lane_ports[13].data()[1],
+          "same-pitch overlap gets distinct lane_ids");
+
+    auto* buf = static_cast<VividNoteBuffer*>(tc.custom_outputs[0]);
+    check(buf != nullptr, "notes_out buffer present");
+    check(buf->count == 2, "two NOTE_ON events emitted");
+    uint64_t first_id = 0;
+    uint64_t second_id = 0;
+    if (buf && buf->count >= 2) {
+        check(buf->events[0].type == VIVID_NOTE_ON, "first event is NOTE_ON");
+        check(buf->events[1].type == VIVID_NOTE_ON, "second event is NOTE_ON");
+        first_id = buf->events[0].note_id;
+        second_id = buf->events[1].note_id;
+        check(first_id != 0 && second_id != 0 && first_id != second_id,
+              "distinct native note_ids emitted");
+    }
+
+    tc.reset_outputs();
+    op.inject_events({note_off(1, 60)});
+    run_frame(op, tc);
+    check(tc.lane_ports[7].length() == 1, "one held note remains after first note-off");
+    check_float(tc.lane_ports[8].data()[0], 80.0f / 127.0f,
+                "oldest note released first, newer note remains");
+    check_float(tc.lane_ports[13].data()[0], static_cast<float>(second_id),
+                "remaining lane_id is the newer note");
+    buf = static_cast<VividNoteBuffer*>(tc.custom_outputs[0]);
+    check(buf != nullptr && buf->count == 1, "one NOTE_OFF emitted after first release");
+    if (buf && buf->count >= 1) {
+        check(buf->events[0].type == VIVID_NOTE_OFF, "first release emits NOTE_OFF");
+        check(buf->events[0].note_id == first_id, "first release targets oldest held note");
+    }
+
+    tc.reset_outputs();
+    op.inject_events({note_off(1, 60)});
+    run_frame(op, tc);
+    check(tc.lane_ports[7].length() == 0, "no held notes remain after second note-off");
+    buf = static_cast<VividNoteBuffer*>(tc.custom_outputs[0]);
+    check(buf != nullptr && buf->count == 1, "one NOTE_OFF emitted after second release");
+    if (buf && buf->count >= 1) {
+        check(buf->events[0].type == VIVID_NOTE_OFF, "second release emits NOTE_OFF");
+        check(buf->events[0].note_id == second_id, "second release targets newer held note");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 10. MPE per-note pitch_bend emits a native PITCH_BEND event keyed on the
 //    member channel's active note_id
 // ---------------------------------------------------------------------------
 static void test_mpe_native_expression_emit() {
@@ -441,6 +503,7 @@ static void test_mpe_native_expression_emit() {
     check(buf != nullptr, "notes_out buffer present");
     bool saw_on = false, saw_bend = false;
     uint64_t on_id = 0;
+    float bend_value = 0.0f;
     for (uint32_t i = 0; i < buf->count; ++i) {
         const auto& e = buf->events[i];
         if (e.type == VIVID_NOTE_ON && e.note_number == 60) {
@@ -450,10 +513,31 @@ static void test_mpe_native_expression_emit() {
             check(on_id != 0, "PITCH_BEND must come after the NOTE_ON in the same buffer");
             check(e.note_id == on_id, "PITCH_BEND keyed on the held note's note_id");
             saw_bend = true;
+            bend_value = e.value;
         }
     }
     check(saw_on, "NOTE_ON emitted for ch2 note 60");
     check(saw_bend, "PITCH_BEND event emitted for the held MPE note");
+    check_float(bend_value, 24.0f, 1e-4f, "native PITCH_BEND is scaled to semitones (0.5 -> +24)");
+    check_float(tc.output_values[4], 0.5f, 1e-4f, "scalar pitch_bend stays normalized");
+
+    tc.reset_outputs();
+    op.inject_events({pitch_bend(2, 8192 - 2048)});
+    run_frame(op, tc);
+    buf = static_cast<VividNoteBuffer*>(tc.custom_outputs[0]);
+    check(buf != nullptr, "notes_out buffer present for follow-up bend");
+    bool saw_negative_bend = false;
+    for (uint32_t i = 0; i < buf->count; ++i) {
+        const auto& e = buf->events[i];
+        if (e.type == VIVID_NOTE_PITCH_BEND) {
+            check(e.note_id == on_id, "follow-up PITCH_BEND keeps the same note_id");
+            check_float(e.value, -12.0f, 1e-4f,
+                        "native PITCH_BEND uses fixed +/-48 semitone scaling (-0.25 -> -12)");
+            saw_negative_bend = true;
+        }
+    }
+    check(saw_negative_bend, "negative PITCH_BEND event emitted for the held MPE note");
+    check_float(tc.output_values[4], -0.25f, 1e-4f, "scalar pitch_bend still reports normalized bend");
 }
 
 // ---------------------------------------------------------------------------
@@ -470,6 +554,7 @@ int main() {
     test_lane_id_stability();
     test_scalar_aftertouch_expression();
     test_notes_out_native_events();
+    test_poly_shared_same_pitch_overlap();
     test_mpe_native_expression_emit();
 
     std::fprintf(stderr, "\n=== Results: %d failure(s) ===\n", failures);

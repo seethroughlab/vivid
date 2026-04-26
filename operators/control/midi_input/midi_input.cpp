@@ -221,17 +221,20 @@ struct MidiInput : vivid::OperatorBase, vivid::FrameProcessable {
                     }
                 }
             } else if (msg_type == 0xE0 && msg.size() >= 3) {
-                // Pitch Bend — MPE wire range is ±48 semitones (default ±2;
-                // we send the normalized -1..1 here and let synths scale).
+                // Pitch Bend — scalar/lane outputs remain normalized -1..1,
+                // but native per-note events carry semitones. At the MPE
+                // boundary we map the member-channel bend to a fixed ±48
+                // semitone range.
                 int bend_raw = (static_cast<int>(msg[2]) << 7) | static_cast<int>(msg[1]);
                 float bend = static_cast<float>(bend_raw - 8192) / 8192.0f;
                 pitch_bend_ = bend;
                 if (is_mpe_mode(cur_mode) && is_member_channel(cur_mode, msg_chan)) {
                     if (auto* h = find_held_by_channel(msg_chan)) {
                         h->pitch_bend = bend;
-                        // Emit as semitones (MPE default ±2 semitones).
+                        // Emit semitone-valued per-note pitch bend on the
+                        // native note transport.
                         vivid_sequencers::note_pitch_bend(
-                            notes_out_buf_, h->note_id, bend * 2.0f);
+                            notes_out_buf_, h->note_id, bend * 48.0f);
                     }
                 } else if (cur_mode == kModePolyShared) {
                     for (int i = 0; i < held_count_; ++i)
@@ -413,14 +416,6 @@ private:
             // MPE: match by (channel, note)
             for (int i = 0; i < held_count_; ++i) {
                 if (held_buffer_[i].channel == ch && held_buffer_[i].note == note) {
-                    held_buffer_[i].velocity = velocity;
-                    return;
-                }
-            }
-        } else {
-            // poly_shared: match by note only (original behavior)
-            for (int i = 0; i < held_count_; ++i) {
-                if (held_buffer_[i].note == note) {
                     held_buffer_[i].velocity = velocity;
                     return;
                 }
