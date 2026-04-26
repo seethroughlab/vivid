@@ -160,6 +160,10 @@ struct NodeSnapshot {
     std::unordered_map<std::string, uint32_t> input_port_indices;
     std::unordered_map<std::string, uint32_t> output_port_indices;
     std::unordered_map<std::string, uint32_t> analysis_output_port_indices; // rms/peak/waveform
+    // Outputs tagged VIVID_PORT_DISPLAY_ADVANCED — per-voice synth breakouts,
+    // NoteBreakout shared-control lanes, etc. Hidden on the node body unless
+    // a connection lands on them (mirrors analysis-port behavior).
+    std::unordered_map<std::string, uint32_t> advanced_output_port_indices;
     std::unordered_map<std::string, uint32_t> param_indices;
 
     std::vector<float> param_values;

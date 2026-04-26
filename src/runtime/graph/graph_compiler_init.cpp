@@ -93,6 +93,21 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
         }
     }
 
+    // Collect output ports tagged VIVID_PORT_DISPLAY_ADVANCED. The inspector
+    // hides these on the node body unless connected — used by synth voice_*
+    // breakouts and similar power-user surfaces. Populated for every node
+    // kind because this is purely a UI affordance.
+    cn.advanced_output_port_indices.clear();
+    for (uint32_t i = 0; i < desc->port_count; ++i) {
+        const auto& p = desc->ports[i];
+        if (p.direction == VIVID_PORT_OUTPUT &&
+            p.display_hint == VIVID_PORT_DISPLAY_ADVANCED) {
+            auto it = cn.output_port_indices.find(p.name);
+            if (it != cn.output_port_indices.end())
+                cn.advanced_output_port_indices[p.name] = it->second;
+        }
+    }
+
     if (node_is_gpu && cn.gpu) {
         auto inject = [&](const char* name) -> uint32_t {
             uint32_t idx = cn.output_port_count++;

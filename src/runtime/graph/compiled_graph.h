@@ -376,6 +376,9 @@ struct CompiledNode {
     std::vector<VividPortType> output_port_types;
     std::unordered_map<std::string, uint32_t> input_port_indices;
     std::unordered_map<std::string, uint32_t> output_port_indices;
+    // Output ports tagged VIVID_PORT_DISPLAY_ADVANCED — inspector hides
+    // them on the node body unless connected. Maps name → output_port index.
+    std::unordered_map<std::string, uint32_t> advanced_output_port_indices;
     std::unordered_map<std::string, uint32_t> param_indices;
 
     // ── Scalar state (params, inputs, outputs) ──────────────────────────────

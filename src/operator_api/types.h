@@ -8,7 +8,7 @@ extern "C" {
 
 /* Bump when operator-facing C ABI changes in incompatible ways.
    Catches stale dylibs during hot-reload — not a cross-version compatibility promise. */
-#define VIVID_OPERATOR_ABI_VERSION 1u
+#define VIVID_OPERATOR_ABI_VERSION 2u  /* v2: VividPortDescriptor.display_hint */
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -48,6 +48,13 @@ typedef uint32_t VividParamVisibilityOp;
 #define VIVID_PARAM_VIS_ALWAYS 0u  // always show the param
 #define VIVID_PARAM_VIS_EQ     1u  // show when controller equals any value
 #define VIVID_PARAM_VIS_NE     2u  // show when controller does not equal any value
+
+// Per-port display hint. Mirrors VividDisplayHint for ports — used by the
+// inspector to collapse advanced breakout outputs (per-voice fanouts, etc.)
+// behind a connection threshold so the default node surface stays small.
+typedef uint32_t VividPortDisplayHint;
+#define VIVID_PORT_DISPLAY_DEFAULT  0u  // primary surface, always drawn on the node
+#define VIVID_PORT_DISPLAY_ADVANCED 1u  // collapse on the node body unless connected (mirrors analysis-port behavior)
 
 // Channel kinds — reflect the logical data type on a port.
 typedef uint32_t VividPortType;
@@ -131,6 +138,10 @@ typedef struct VividPortDescriptor {
     const char*        semantic_shape   = nullptr; // e.g. "scalar", "lane_array", "audio_buffer", NULL if unset
     const char*        semantic_intent  = nullptr; // free-form hint, e.g. "per_note_gate", NULL if unset
     const char*        description      = nullptr; // human-readable tooltip shown in inspector/docs, NULL if unset
+
+    // Inspector layout. ADVANCED hides the port on the node body until a
+    // connection lands on it — mirrors how analysis ports surface today.
+    VividPortDisplayHint display_hint   = 0;
 
     // repeat-group metadata (for variadic port patterns)
     const char*        repeat_group     = nullptr; // NULL = standalone; non-NULL = group name (e.g. "layer")

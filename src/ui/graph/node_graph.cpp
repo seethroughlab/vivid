@@ -354,7 +354,12 @@ uint32_t NodeGraphUI::count_visible_input_ports(const NodeSnapshot& ns, bool sho
 }
 
 uint32_t NodeGraphUI::count_visible_output_ports(const NodeSnapshot& ns, bool show_params) const {
-    size_t regular_count = ns.output_port_indices.size() - ns.analysis_output_port_indices.size();
+    // Regular = total outputs minus analysis (rms/peak/waveform) and minus
+    // advanced breakouts (per-voice synth fanouts, etc.). Both categories are
+    // hidden on the node body unless connected.
+    size_t regular_count = ns.output_port_indices.size()
+                         - ns.analysis_output_port_indices.size()
+                         - ns.advanced_output_port_indices.size();
     bool few_outputs = regular_count <= 3;
     bool expanded    = outputs_expanded_.count(ns.node_id) > 0;
     bool show_all    = few_outputs || expanded;
@@ -362,6 +367,7 @@ uint32_t NodeGraphUI::count_visible_output_ports(const NodeSnapshot& ns, bool sh
     uint32_t count = 0;
     for (const auto& [name, idx] : ns.output_port_indices) {
         if (ns.analysis_output_port_indices.count(name)) continue;
+        if (ns.advanced_output_port_indices.count(name)) continue;
         if (show_all || port_has_connection(snap_.connections, ns.node_id, name, true))
             count++;
     }
@@ -381,6 +387,11 @@ uint32_t NodeGraphUI::count_visible_output_ports(const NodeSnapshot& ns, bool sh
         if (port_has_connection(snap_.connections, ns.node_id, name, true))
             count++;
     }
+    // Advanced breakout ports (voice_*/voices_out, etc.) — visible only if connected
+    for (const auto& [name, idx] : ns.advanced_output_port_indices) {
+        if (port_has_connection(snap_.connections, ns.node_id, name, true))
+            count++;
+    }
     return count;
 }
 
@@ -397,7 +408,10 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
 
     auto sorted_inputs = sorted_ports(ns.input_port_indices);
     auto sorted_outputs_vec = sorted_ports(ns.output_port_indices);
-    size_t regular_output_count = ns.output_port_indices.size() - ns.analysis_output_port_indices.size();
+    // Mirror count_visible_output_ports: subtract analysis + advanced breakouts.
+    size_t regular_output_count = ns.output_port_indices.size()
+                                - ns.analysis_output_port_indices.size()
+                                - ns.advanced_output_port_indices.size();
     bool few_outputs = regular_output_count <= 3;
     bool expanded    = outputs_expanded_.count(ns.node_id) > 0;
     bool show_all    = few_outputs || expanded;
@@ -438,10 +452,12 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
         }
     }
 
-    // Output ports — show all when few or expanded, otherwise only connected
+    // Output ports — show all when few or expanded, otherwise only connected.
+    // Skip analysis and advanced breakouts here; they're laid out below.
     size_t oi = 0;
     for (const auto& [idx, name] : sorted_outputs_vec) {
         if (ns.analysis_output_port_indices.count(name)) continue;
+        if (ns.advanced_output_port_indices.count(name)) continue;
         bool connected = port_has_connection(snap_.connections, ns.node_id, name, true);
         if (!show_all && !connected)
             continue;
@@ -483,6 +499,20 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
         analysis_ports.push_back({idx, name});
     std::sort(analysis_ports.begin(), analysis_ports.end());
     for (const auto& [idx, name] : analysis_ports) {
+        if (!port_has_connection(snap_.connections, ns.node_id, name, true))
+            continue;
+        float dy = port_start_dy + oi * kLineH + kLineH * 0.5f;
+        rect.outputs.push_back({name, dy, false});
+        ++oi;
+    }
+
+    // Advanced breakout ports (voice_*/voices_out, etc.) — visible only if
+    // connected. Same shape as analysis ports — UI-side foldout candidate.
+    std::vector<std::pair<uint32_t, std::string>> advanced_ports;
+    for (const auto& [name, idx] : ns.advanced_output_port_indices)
+        advanced_ports.push_back({idx, name});
+    std::sort(advanced_ports.begin(), advanced_ports.end());
+    for (const auto& [idx, name] : advanced_ports) {
         if (!port_has_connection(snap_.connections, ns.node_id, name, true))
             continue;
         float dy = port_start_dy + oi * kLineH + kLineH * 0.5f;

@@ -321,6 +321,15 @@ inline VividPortDescriptor& repeat_group(VividPortDescriptor& p, const char* gro
     return p;
 }
 
+// Mark a port as an advanced breakout — the inspector hides it on the node
+// body unless a connection lands on it. Used for the standardized
+// voice_*/voices_out per-voice surfaces on synths and for NoteBreakout's
+// shared-control lanes. See docs/plans/midi-native-protocol/phase-2.
+inline VividPortDescriptor& advanced_breakout(VividPortDescriptor& p) {
+    p.display_hint = VIVID_PORT_DISPLAY_ADVANCED;
+    return p;
+}
+
 // ---------------------------------------------------------------------------
 // OperatorBase — abstract base class for operators (no process method)
 // ---------------------------------------------------------------------------

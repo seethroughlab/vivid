@@ -72,6 +72,7 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         sn.output_port_indices = cn.output_port_indices;
         sn.analysis_output_port_indices = cn.audio ? cn.audio->analysis_output_port_indices
                                                    : std::unordered_map<std::string, uint32_t>{};
+        sn.advanced_output_port_indices = cn.advanced_output_port_indices;
         sn.param_indices = cn.param_indices;
         sn.param_values = cn.param_values;
         sn.param_lock_flags = cn.param_lock_flags;
