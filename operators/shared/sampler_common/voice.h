@@ -32,6 +32,7 @@ inline void voice_note_on(Voice& v, int note, float velocity,
                           const SampleRegion* region, double playback_rate,
                           uint64_t frame, bool one_shot) {
     v.active = true;
+    v.gate = true;
     v.note = note;
     v.velocity = velocity;
     v.region = region;
@@ -44,6 +45,7 @@ inline void voice_note_on(Voice& v, int note, float velocity,
 
 inline void voice_note_off(Voice& v) {
     if (v.one_shot) return;
+    v.gate = false;
     vivid::adsr::gate_off(v.envelope);
 }
 
@@ -58,7 +60,7 @@ inline void voice_render_frame(Voice& v, float& out_L, float& out_R,
 
     const auto& data = *v.region->data;
     size_t num_frames = data.samples_L.size();
-    if (num_frames == 0) { v.active = false; return; }
+    if (num_frames == 0) { v.active = false; v.gate = false; return; }
 
     // Bounds check
     if (v.playback_pos >= static_cast<double>(num_frames)) {
@@ -69,6 +71,7 @@ inline void voice_render_frame(Voice& v, float& out_L, float& out_R,
                 std::fmod(v.playback_pos - v.region->loop_start, loop_len);
         } else {
             v.active = false;
+            v.gate = false;
             return;
         }
     }
@@ -126,6 +129,7 @@ inline void voice_render_frame(Voice& v, float& out_L, float& out_R,
     // Deactivate if envelope reached IDLE
     if (v.envelope.stage == vivid::adsr::IDLE) {
         v.active = false;
+        v.gate = false;
     }
 
     // Accumulate (not assign) — allows summing multiple voices

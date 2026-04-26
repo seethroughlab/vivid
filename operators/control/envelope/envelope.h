@@ -61,6 +61,12 @@ struct Envelope : vivid::OperatorBase {
     };
 
     LaneState scalar_state_;
+    struct TrackedLane {
+        bool occupied = false;
+        uint32_t lane_id = 0;
+        LaneState fallback_state;
+    };
+    TrackedLane tracked_lanes_[kMaxVoices];
 
     Envelope() {
         vivid::semantic_tag(attack, "time_seconds");
@@ -219,9 +225,7 @@ struct Envelope : vivid::OperatorBase {
         case DECAY:
             if (dec > 0.0f) {
                 float t = s.env_progress / dec;
-                float shaped = shape_decay(std::min(t, 1.0f), c);
-                s.env_value = 1.0f - (1.0f - sus) * shaped;
-                if (s.env_value <= sus) {
+                if (t >= 1.0f) {
                     s.env_value = sus;
                     if (!s.gate_ever_on) {
                         s.release_start = sus;
@@ -230,6 +234,9 @@ struct Envelope : vivid::OperatorBase {
                     } else {
                         s.stage = SUSTAIN;
                     }
+                } else {
+                    float shaped = shape_decay(t, c);
+                    s.env_value = 1.0f - (1.0f - sus) * shaped;
                 }
             } else {
                 s.env_value = sus;
@@ -250,11 +257,13 @@ struct Envelope : vivid::OperatorBase {
         case RELEASE:
             if (rel > 0.0f) {
                 float t = s.env_progress / rel;
-                float shaped = shape_decay(std::min(t, 1.0f), c);
-                s.env_value = s.release_start * (1.0f - shaped);
-                if (s.env_value <= 0.0f) {
+                if (t >= 1.0f) {
                     s.env_value = 0.0f;
                     s.stage = IDLE;
+                    s.env_progress = 0.0f;
+                } else {
+                    float shaped = shape_decay(t, c);
+                    s.env_value = s.release_start * (1.0f - shaped);
                 }
             } else {
                 s.env_value = 0.0f;
@@ -266,6 +275,33 @@ struct Envelope : vivid::OperatorBase {
             s.env_value = 0.0f;
             break;
         }
+    }
+
+    int find_tracked_lane(uint32_t lane_id) const {
+        for (uint32_t i = 0; i < kMaxVoices; ++i) {
+            if (tracked_lanes_[i].occupied && tracked_lanes_[i].lane_id == lane_id)
+                return static_cast<int>(i);
+        }
+        return -1;
+    }
+
+    int ensure_tracked_lane(uint32_t lane_id) {
+        int existing = find_tracked_lane(lane_id);
+        if (existing >= 0) return existing;
+        for (uint32_t i = 0; i < kMaxVoices; ++i) {
+            if (!tracked_lanes_[i].occupied) {
+                tracked_lanes_[i] = TrackedLane{};
+                tracked_lanes_[i].occupied = true;
+                tracked_lanes_[i].lane_id = lane_id;
+                return static_cast<int>(i);
+            }
+        }
+        return -1;
+    }
+
+    void clear_tracked_lane(int idx) {
+        if (idx < 0 || idx >= static_cast<int>(kMaxVoices)) return;
+        tracked_lanes_[idx] = TrackedLane{};
     }
 
     // ── Frame-rate processing (used by ChildOp<Envelope> and EnvelopeFr) ──

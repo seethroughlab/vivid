@@ -284,6 +284,50 @@ int main(int argc, char** argv) {
         loader.destroy_instance(inst);
     }
 
+    // Mid-block release regression: if a voice reaches IDLE during this
+    // render block, voices_out and voice_* lanes must still describe the
+    // same per-block breakout set until emission finishes.
+    {
+        std::fprintf(stderr, "\n--- FmSynth: released voice stays aligned for the rest of the block ---\n");
+        const std::string dylib_path = build_dir + "/fm_synth.dylib";
+        vivid::OperatorLoader loader;
+        if (!loader.load(dylib_path.c_str())) return 1;
+        const auto* desc = loader.descriptor();
+        auto params = make_params(desc, {
+            {"attack", 0.001f}, {"decay", 0.01f}, {"sustain", 0.9f}, {"release", 0.001f},
+            {"amplitude", 0.5f}, {"mod_index", 1.0f},
+        });
+
+        FmHarness h;
+        h.ctx.param_values = params.data();
+        void* inst = loader.create_instance();
+
+        h.push_note_on(60, 100.0f / 127.0f, /*id=*/42);
+        loader.process_audio(inst, &h.ctx);
+
+        h.clear_notes();
+        h.zero_output();
+        h.push_note_off(/*id=*/42);
+        loader.process_audio(inst, &h.ctx);
+
+        check(h.channel_rms(0) > 1e-4f, "voices_out release channel still carries audio this block");
+        check(h.voice_ids_buf.data.size() == 1u, "released voice still present in breakout lanes for this block");
+        if (h.voice_ids_buf.data.size() == 1u) {
+            check_float(h.voice_ids_buf.data[0], 42.0f, 1e-3f, "voice_ids[0] keeps released voice id");
+        }
+        check(h.voice_gates_buf.data.size() == 1u, "voice_gates stays aligned with released voice");
+        if (h.voice_gates_buf.data.size() == 1u) {
+            check_float(h.voice_gates_buf.data[0], 0.0f, 1e-3f, "released voice gate falls to 0");
+        }
+
+        h.clear_notes();
+        h.zero_output();
+        loader.process_audio(inst, &h.ctx);
+        check(h.voice_ids_buf.data.empty(), "released voice removed on later block after emission completes");
+
+        loader.destroy_instance(inst);
+    }
+
     std::fprintf(stderr, "\n%s (%d failures)\n",
                  failures == 0 ? "PASSED" : "FAILED", failures);
     return failures == 0 ? 0 : 1;

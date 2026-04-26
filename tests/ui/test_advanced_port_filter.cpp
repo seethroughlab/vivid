@@ -17,6 +17,7 @@
 #include "runtime/graph/graph_compiler.h"
 #include "runtime/operators/operator_registry.h"
 #include "runtime/operators/operator_loader.h"
+#include "ui/graph/node_graph_util.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -98,11 +99,37 @@ static void test_compiler_collects_advanced_port_index(const std::string& build_
     std::filesystem::remove_all(staging);
 }
 
+static void test_inspector_sections_hide_unconnected_advanced() {
+    std::fprintf(stderr, "\n--- inspector sections hide unconnected advanced outputs ---\n");
+
+    vivid::ui::NodeSnapshot node;
+    node.node_id = "op";
+    node.output_port_indices["primary"] = 0;
+    node.output_port_indices["advanced"] = 1;
+    node.advanced_output_port_indices["advanced"] = 1;
+
+    std::vector<vivid::ui::ConnectionSnapshot> conns;
+    auto sections = vivid::ui::build_inspector_output_sections(node, conns);
+    check(sections.primary_outputs.size() == 1, "primary output stays in primary section");
+    if (sections.primary_outputs.size() == 1)
+        check(sections.primary_outputs[0].second == "primary", "primary output name preserved");
+    check(sections.advanced_outputs.empty(), "unconnected advanced output hidden from inspector list");
+    check(sections.hidden_advanced_count == 1, "hidden advanced count reported");
+
+    conns.push_back({"op", "advanced", "sink", "in"});
+    sections = vivid::ui::build_inspector_output_sections(node, conns);
+    check(sections.hidden_advanced_count == 0, "connected advanced output no longer hidden");
+    check(sections.advanced_outputs.size() == 1, "connected advanced output shown in advanced section");
+    if (sections.advanced_outputs.size() == 1)
+        check(sections.advanced_outputs[0].second == "advanced", "advanced output name preserved");
+}
+
 int main(int argc, char** argv) {
     const std::string build_dir = (argc > 1) ? argv[1] : ".";
 
     test_descriptor_round_trips_display_hint(build_dir);
     test_compiler_collects_advanced_port_index(build_dir);
+    test_inspector_sections_hide_unconnected_advanced();
 
     std::fprintf(stderr, "\n%s (%d failures)\n",
                  failures == 0 ? "PASSED" : "FAILED", failures);

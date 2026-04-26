@@ -793,9 +793,9 @@ void NodeGraphUI::draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& nod
     tr.draw_text(px, py, T("outputs", "Outputs"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     py += kLineH;
 
-    auto sorted_outs = sorted_ports(node.output_port_indices);
+    auto sections = build_inspector_output_sections(node, snap_.connections);
 
-    for (const auto& [idx, name] : sorted_outs) {
+    auto draw_output_line = [&](uint32_t idx, const std::string& name) {
         std::string line;
         if (idx < node.output_string_lanes.size() && !node.output_string_lanes[idx].empty()) {
             const auto& sp = node.output_string_lanes[idx];
@@ -812,6 +812,25 @@ void NodeGraphUI::draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& nod
         line = truncate_text(tr, line, panel_w, 0.85f);
         tr.draw_text(px, py, line.c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, 0.85f);
         py += kLineH;
+    };
+
+    for (const auto& [idx, name] : sections.primary_outputs) {
+        draw_output_line(idx, name);
+    }
+
+    if (!sections.advanced_outputs.empty() || sections.hidden_advanced_count > 0) {
+        draw_section_separator(tr, px, py, kInspContentW, T("advanced_outputs", "Advanced Outputs"));
+        if (sections.hidden_advanced_count > 0) {
+            std::string hidden_line = std::to_string(sections.hidden_advanced_count) +
+                " hidden until connected";
+            hidden_line = truncate_text(tr, hidden_line, panel_w, 0.8f);
+            tr.draw_text(px, py, hidden_line.c_str(),
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.85f, 0.8f);
+            py += kLineH;
+        }
+        for (const auto& [idx, name] : sections.advanced_outputs) {
+            draw_output_line(idx, name);
+        }
     }
 }
 

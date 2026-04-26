@@ -48,34 +48,30 @@ enum VoiceBreakoutLane : int {
     kVoiceBreakoutLaneCount  = 4,
 };
 
-// Emit the four voice_* lanes from a raw slot array. Templated on the slot
-// type so synths whose per-voice struct INHERITS vivid::VoiceSlot but adds
-// extra members (e.g. vivid_sampler::Voice with envelope + region + cursor)
-// can pass their array directly — pointer arithmetic uses the right stride.
-// Used by Sampler / SP404 / Slicer.
-//
-// Sorts active slots by note_id ascending. `lanes[]` must point to at least
-// 4 valid VividLaneOutput entries indexed by VoiceBreakoutLane. Pass nullptr
-// for any lane your caller doesn't need; gracefully skips. `sorted_out`, if
-// non-null, receives the active-voice slot indices in note_id-sorted order
-// (suitable for indexing parallel per-voice arrays the synth needs to align
-// with the voices_out audio channels). Returns active-voice count.
 template <typename SlotT>
-inline uint32_t emit_voice_breakouts(const SlotT* slots, int capacity,
-                                     VividLaneOutput lanes[kVoiceBreakoutLaneCount],
-                                     int* sorted_out = nullptr) {
+inline int collect_sorted_voice_indices(const SlotT* slots, int capacity,
+                                        int* sorted_out, int max_sorted = 64) {
     static_assert(std::is_base_of<vivid::VoiceSlot, SlotT>::value,
                   "SlotT must derive from vivid::VoiceSlot");
-    constexpr int kMaxSlots = 64;  // bounded by current synth voice caps
-    int sorted[kMaxSlots];
+    if (!sorted_out || max_sorted <= 0) return 0;
+
     int count = 0;
-    for (int i = 0; i < capacity && i < kMaxSlots; ++i) {
-        if (slots[i].active) sorted[count++] = i;
+    for (int i = 0; i < capacity && count < max_sorted; ++i) {
+        if (slots[i].active) sorted_out[count++] = i;
     }
-    std::sort(sorted, sorted + count,
+    std::sort(sorted_out, sorted_out + count,
               [slots](int a, int b) {
                   return slots[a].note_id < slots[b].note_id;
               });
+    return count;
+}
+
+template <typename SlotT>
+inline void emit_voice_breakouts_from_sorted(
+    const SlotT* slots, const int* sorted, int count,
+    VividLaneOutput lanes[kVoiceBreakoutLaneCount]) {
+    static_assert(std::is_base_of<vivid::VoiceSlot, SlotT>::value,
+                  "SlotT must derive from vivid::VoiceSlot");
 
     auto emit = [&](int lane_idx, auto value_for_slot) {
         VividLaneOutput& out = lanes[lane_idx];
@@ -98,6 +94,30 @@ inline uint32_t emit_voice_breakouts(const SlotT* slots, int capacity,
          [](const vivid::VoiceSlot& s) { return s.velocity; });
     emit(kVoiceBreakoutFreqs,
          [](const vivid::VoiceSlot& s) { return voice_freq_hz(s); });
+}
+
+// Emit the four voice_* lanes from a raw slot array. Templated on the slot
+// type so synths whose per-voice struct INHERITS vivid::VoiceSlot but adds
+// extra members (e.g. vivid_sampler::Voice with envelope + region + cursor)
+// can pass their array directly — pointer arithmetic uses the right stride.
+// Used by Sampler / SP404 / Slicer.
+//
+// Sorts active slots by note_id ascending. `lanes[]` must point to at least
+// 4 valid VividLaneOutput entries indexed by VoiceBreakoutLane. Pass nullptr
+// for any lane your caller doesn't need; gracefully skips. `sorted_out`, if
+// non-null, receives the active-voice slot indices in note_id-sorted order
+// (suitable for indexing parallel per-voice arrays the synth needs to align
+// with the voices_out audio channels). Returns active-voice count.
+template <typename SlotT>
+inline uint32_t emit_voice_breakouts(const SlotT* slots, int capacity,
+                                     VividLaneOutput lanes[kVoiceBreakoutLaneCount],
+                                     int* sorted_out = nullptr) {
+    static_assert(std::is_base_of<vivid::VoiceSlot, SlotT>::value,
+                  "SlotT must derive from vivid::VoiceSlot");
+    constexpr int kMaxSlots = 64;  // bounded by current synth voice caps
+    int sorted[kMaxSlots];
+    int count = collect_sorted_voice_indices(slots, capacity, sorted, kMaxSlots);
+    emit_voice_breakouts_from_sorted(slots, sorted, count, lanes);
 
     if (sorted_out) {
         for (int i = 0; i < count; ++i) sorted_out[i] = sorted[i];
@@ -115,49 +135,9 @@ inline uint32_t emit_voice_breakouts(const SlotT* slots, int capacity,
 template <int N>
 inline uint32_t emit_voice_breakouts(const vivid::VoiceAllocator<N>& alloc,
                                      VividLaneOutput lanes[kVoiceBreakoutLaneCount]) {
-    // Collect active slot indices, then sort by note_id.
     int sorted[N];
-    int count = 0;
-    for (int i = 0; i < N; ++i) {
-        if (alloc.slots[i].active) sorted[count++] = i;
-    }
-    std::sort(sorted, sorted + count,
-              [&alloc](int a, int b) {
-                  return alloc.slots[a].note_id < alloc.slots[b].note_id;
-              });
-
-    auto emit = [&](int lane_idx, auto value_for_slot) {
-        VividLaneOutput& out = lanes[lane_idx];
-        if (!out.resize || !out.handle) return;
-        float* buf = out.resize(out.handle, static_cast<uint32_t>(count));
-        if (buf) {
-            for (int i = 0; i < count; ++i) {
-                buf[i] = value_for_slot(alloc.slots[sorted[i]]);
-            }
-        }
-        if (out.commit) out.commit(out.handle, static_cast<uint32_t>(count));
-    };
-
-    emit(kVoiceBreakoutIds,
-         [](const vivid::VoiceSlot& s) {
-             // note_id is uint64; lane is float. Precision degrades past 2^24
-             // emissions per process; that's many hours of continuous play
-             // before any aliasing risk. Acceptable for Phase 2.
-             return static_cast<float>(s.note_id);
-         });
-    emit(kVoiceBreakoutGates,
-         [](const vivid::VoiceSlot& s) {
-             return s.gate ? 1.0f : 0.0f;
-         });
-    emit(kVoiceBreakoutVelocities,
-         [](const vivid::VoiceSlot& s) {
-             return s.velocity;
-         });
-    emit(kVoiceBreakoutFreqs,
-         [](const vivid::VoiceSlot& s) {
-             return voice_freq_hz(s);
-         });
-
+    int count = collect_sorted_voice_indices(alloc.slots, N, sorted, N);
+    emit_voice_breakouts_from_sorted(alloc.slots, sorted, count, lanes);
     return static_cast<uint32_t>(count);
 }
 

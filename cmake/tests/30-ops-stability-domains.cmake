@@ -98,6 +98,18 @@ add_dependencies(test_note_breakout note_breakout)
 add_test(NAME test_note_breakout COMMAND test_note_breakout ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Envelope poly release persistence — NoteBreakout drops released notes from
+# current lanes, but EnvelopeAu should keep rendering release tails for the
+# remembered lane_id until the envelope reaches idle.
+add_executable(test_envelope_poly_release
+    tests/audio/test_envelope_poly_release.cpp
+)
+target_include_directories(test_envelope_poly_release PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(test_envelope_poly_release PRIVATE vivid_runtime_testlib vivid_operator_api)
+add_dependencies(test_envelope_poly_release note_breakout envelope)
+add_test(NAME test_envelope_poly_release COMMAND test_envelope_poly_release ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Synth breakout surface — verifies every MIDI-driven core synth declares
 # voices_out + voice_ids/gates/velocities/freqs as advanced ports, and
 # FmSynth's chord/stealing behavior puts active voices in note_id-sorted

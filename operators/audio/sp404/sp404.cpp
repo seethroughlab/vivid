@@ -308,7 +308,8 @@ struct SP404 : vivid::OperatorBase, vivid::AudioProcessable {
                 ctx->output_lanes[0], ctx->output_lanes[1],
                 ctx->output_lanes[2], ctx->output_lanes[3],
             };
-            vivid_sequencers::emit_voice_breakouts(voices_, kMaxPads, lanes);
+            vivid_sequencers::emit_voice_breakouts_from_sorted(
+                voices_, sorted, active_count, lanes);
         }
     }
 };

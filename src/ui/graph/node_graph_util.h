@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ui/graph/graph_snapshot.h"
 #include "ui/rendering/renderer_2d.h"
 #include "ui/style/ui_style.h"
 #include "ui/text_edit.h"
@@ -212,6 +213,44 @@ inline const std::vector<PortTypeEntry>& port_types_for_env(int env_sel) {
 
 inline const char* param_type_labels[] = { "float", "int", "bool", "file", "text" };
 inline constexpr int kParamTypeCount = 5;
+
+struct InspectorOutputSections {
+    std::vector<std::pair<uint32_t, std::string>> primary_outputs;
+    std::vector<std::pair<uint32_t, std::string>> advanced_outputs;
+    uint32_t hidden_advanced_count = 0;
+};
+
+inline bool output_port_has_connection(const std::vector<ConnectionSnapshot>& conns,
+                                       const std::string& node_id,
+                                       const std::string& port_name) {
+    for (const auto& c : conns) {
+        if (c.from_node == node_id && c.from_port == port_name)
+            return true;
+    }
+    return false;
+}
+
+inline InspectorOutputSections build_inspector_output_sections(
+    const NodeSnapshot& node,
+    const std::vector<ConnectionSnapshot>& conns) {
+    InspectorOutputSections sections;
+    std::vector<std::pair<uint32_t, std::string>> sorted_outs;
+    for (const auto& [name, idx] : node.output_port_indices)
+        sorted_outs.push_back({idx, name});
+    std::sort(sorted_outs.begin(), sorted_outs.end());
+
+    for (const auto& [idx, name] : sorted_outs) {
+        if (node.advanced_output_port_indices.count(name)) {
+            if (output_port_has_connection(conns, node.node_id, name))
+                sections.advanced_outputs.push_back({idx, name});
+            else
+                sections.hidden_advanced_count++;
+        } else {
+            sections.primary_outputs.push_back({idx, name});
+        }
+    }
+    return sections;
+}
 
 // --- Preset menu tree (for hierarchical submenus) ---
 
