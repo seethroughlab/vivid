@@ -4,7 +4,7 @@
 //   - serialize_song writes JSON
 //   - deserialize_song dispatches by first non-whitespace char
 //   - both paths produce equivalent TrackerSong state
-//   - schema v > 1 is rejected
+//   - schema v > 2 is rejected
 //   - sparse patterns round-trip without spurious cells
 //   - note-off (255) round-trips
 //   - empty / malformed input degrades gracefully
@@ -102,7 +102,7 @@ int count_non_empty_cells(const TrackerSong& s) {
 
 int main() {
     // -----------------------------------------------------------------
-    // Test 1: serialize_song writes JSON (starts with '{', has "v":1).
+    // Test 1: serialize_song writes JSON (starts with '{', has "v":2).
     // -----------------------------------------------------------------
     {
         std::fprintf(stderr, "\n--- serialize_song writes JSON ---\n");
@@ -110,9 +110,9 @@ int main() {
         std::string out = serialize_song(song);
         check(!out.empty(), "serialized output non-empty");
         check(out[0] == '{', "first char is '{' (JSON)");
-        check(out.find("\"v\":1") != std::string::npos ||
-              out.find("\"v\": 1") != std::string::npos,
-              "contains schema version v=1");
+        check(out.find("\"v\":2") != std::string::npos ||
+              out.find("\"v\": 2") != std::string::npos,
+              "contains schema version v=2");
         check(out.find("\"arrangement\"") != std::string::npos,
               "contains arrangement key");
         check(out.find("\"patterns\"") != std::string::npos,
@@ -159,15 +159,15 @@ int main() {
     }
 
     // -----------------------------------------------------------------
-    // Test 4: schema v > 1 is rejected (loads as empty pattern).
+    // Test 4: schema v > kSongSchemaVersion is rejected (loads as empty).
     // -----------------------------------------------------------------
     {
-        std::fprintf(stderr, "\n--- schema v>1 rejected ---\n");
+        std::fprintf(stderr, "\n--- schema v>%d rejected ---\n", kSongSchemaVersion);
         const std::string future_text =
             "{\"v\":99,\"arrangement\":[0],\"patterns\":[{\"rows\":16,\"cells\":[]}]}";
         TrackerSong song;
         bool ok = deserialize_song(future_text, song);
-        check(!ok, "deserialize_song returns false on v>1");
+        check(!ok, "deserialize_song returns false on future schema version");
     }
 
     // -----------------------------------------------------------------

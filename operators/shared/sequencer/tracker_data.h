@@ -34,15 +34,38 @@ static constexpr int     MAX_ROWS     = 64;
 static constexpr int     MAX_PATTERNS = 64;
 static constexpr int     MAX_ARRANGEMENT = 128;
 
+// Per-cell expression lanes (Phase 4). Each cell carries an optional anchor
+// for pitch_bend / pressure / timbre. kExprEmpty means "no anchor at this
+// row, follow interpolation between neighbouring anchors".
+//
+//   pitch_bend  raw int16, ±32767 maps to ±48 semitones (matches MPE; see
+//                midi_input.cpp's pitch-bend convention).
+//   pressure    raw int16, 0..32767 maps to 0..1; values <0 are clamped to 0
+//                in the converter (the lane is semantically unsigned but the
+//                int16 storage lets us reuse INT16_MIN as the empty sentinel).
+//   timbre      same shape as pressure.
+static constexpr int16_t kExprEmpty = INT16_MIN;  // -32768
+
 struct TrackerCell {
-    uint8_t note;         // 0=empty, 1-127=MIDI note, 255=note-off
-    uint8_t velocity;     // 0-127 (0 = use previous)
-    uint8_t effect_type;  // see FX_ constants
-    uint8_t effect_param; // XY nibbles
+    uint8_t note         = 0;     // 0=empty, 1-127=MIDI note, 255=note-off
+    uint8_t velocity     = 0;     // 0-127 (0 = use previous)
+    uint8_t effect_type  = 0;     // see FX_ constants
+    uint8_t effect_param = 0;     // XY nibbles
+    int16_t pitch_bend   = kExprEmpty;
+    int16_t pressure     = kExprEmpty;
+    int16_t timbre       = kExprEmpty;
 };
 
+// Per-pattern bitmask of which expression lanes are visible in the editor.
+// Hidden lanes still keep their data (toggling is non-destructive); they're
+// skipped by cursor navigation and never drive event emission.
+static constexpr uint8_t kLanePb = 0x1;
+static constexpr uint8_t kLanePr = 0x2;
+static constexpr uint8_t kLaneTb = 0x4;
+
 struct TrackerPattern {
-    uint8_t num_rows;
+    uint8_t num_rows = 16;
+    uint8_t expression_lane_mask = 0;
     TrackerCell cells[MAX_CHANNELS][MAX_ROWS];
 };
 
@@ -57,11 +80,15 @@ struct TrackerSong {
         arrangement_length = 1;
         arrangement[0] = 0;
         std::memset(arrangement + 1, 0, MAX_ARRANGEMENT - 1);
-        patterns[0].num_rows = 16;
-        std::memset(patterns[0].cells, 0, sizeof(patterns[0].cells));
-        for (int i = 1; i < MAX_PATTERNS; ++i) {
+        // Cells are default-initialized via TrackerCell's member initializers
+        // (kExprEmpty for pb/pr/tb). Cannot memset to 0 because the empty
+        // sentinel is INT16_MIN, not zero.
+        for (int i = 0; i < MAX_PATTERNS; ++i) {
             patterns[i].num_rows = 16;
-            std::memset(patterns[i].cells, 0, sizeof(patterns[i].cells));
+            patterns[i].expression_lane_mask = 0;
+            for (int ch = 0; ch < MAX_CHANNELS; ++ch)
+                for (int r = 0; r < MAX_ROWS; ++r)
+                    patterns[i].cells[ch][r] = TrackerCell{};
         }
     }
 };
@@ -87,6 +114,13 @@ struct ChannelState {
     bool    gate_active = false;
     uint8_t current_velocity = 100;
     uint8_t last_note = 0;
+    // Phase 4 expression: most recent raw value emitted to the consumer for
+    // this channel's active note. Re-set to 0 on every note_on (matches the
+    // synth slot's reset behavior); re-emit only when the interpolated value
+    // differs (avoids spamming PITCH_BEND/PRESSURE/TIMBRE every tick).
+    int16_t last_emitted_pb = 0;
+    int16_t last_emitted_pr = 0;
+    int16_t last_emitted_tb = 0;
 };
 
 // Text serialization format:
@@ -294,29 +328,36 @@ inline bool deserialize_song_legacy(const std::string& text, TrackerSong& song) 
 }
 
 // ---------------------------------------------------------------------------
-// JSON song format (schema v=1)
+// JSON song format (schema v=2)
 // ---------------------------------------------------------------------------
 //
 // Top-level shape:
 //   {
-//     "v": 1,
+//     "v": 2,
 //     "arrangement": [0, 0, 1, 0],
 //     "patterns": [
-//       { "rows": 16,
+//       { "rows": 16, "expr_mask": 1,
 //         "cells": [
 //           {"row": 0, "channel": 0, "note": 66, "velocity": 100},
 //           {"row": 8, "channel": 1, "note": 60, "velocity": 80,
 //            "fx_type": 1, "fx_param": 32},
-//           {"row": 12, "channel": 0, "note": 255}   // 255 = note-off
+//           {"row": 12, "channel": 0, "note": 255},   // 255 = note-off
+//           // Phase 4: per-cell expression anchors. Absent fields = unset.
+//           {"row": 4, "channel": 0, "pb": 8192},     // pitch_bend +12 semis
+//           {"row": 8, "channel": 0, "pb": -2048, "pr": 24576}
 //         ] },
 //       { "rows": 16, "cells": [] }
 //     ]
 //   }
 //
 // Empty cells are absent. velocity=0 means "use previous"; absent → 0. fx_*
-// absent → 0. Reader rejects v > 1 and falls back to an empty TrackerSong.
+// absent → 0. expr_mask absent → 0 (all expression lanes hidden).
+// pb/pr/tb absent → kExprEmpty (no anchor at this row).
+//
+// v1 patterns load identically (no expr_mask, no pb/pr/tb fields → all
+// defaults). Reader rejects v > 2 and falls back to an empty TrackerSong.
 
-constexpr int kSongSchemaVersion = 1;
+constexpr int kSongSchemaVersion = 2;
 
 inline std::string serialize_song_json(const TrackerSong& song) {
     nlohmann::json root;
@@ -333,6 +374,8 @@ inline std::string serialize_song_json(const TrackerSong& song) {
         const auto& pat = song.patterns[p];
         nlohmann::json jp;
         jp["rows"] = static_cast<int>(pat.num_rows);
+        if (pat.expression_lane_mask != 0)
+            jp["expr_mask"] = static_cast<int>(pat.expression_lane_mask);
         auto& cells = jp["cells"];
         cells = nlohmann::json::array();
         for (int r = 0; r < pat.num_rows; ++r) {
@@ -341,7 +384,10 @@ inline std::string serialize_song_json(const TrackerSong& song) {
                 if (cell.note == NOTE_EMPTY &&
                     cell.velocity == 0 &&
                     cell.effect_type == 0 &&
-                    cell.effect_param == 0) continue;
+                    cell.effect_param == 0 &&
+                    cell.pitch_bend == kExprEmpty &&
+                    cell.pressure   == kExprEmpty &&
+                    cell.timbre     == kExprEmpty) continue;
                 nlohmann::json jc;
                 jc["row"]     = r;
                 jc["channel"] = ch;
@@ -352,6 +398,12 @@ inline std::string serialize_song_json(const TrackerSong& song) {
                     jc["fx_type"] = static_cast<int>(cell.effect_type);
                 if (cell.effect_param != 0)
                     jc["fx_param"] = static_cast<int>(cell.effect_param);
+                if (cell.pitch_bend != kExprEmpty)
+                    jc["pb"] = static_cast<int>(cell.pitch_bend);
+                if (cell.pressure != kExprEmpty)
+                    jc["pr"] = static_cast<int>(cell.pressure);
+                if (cell.timbre != kExprEmpty)
+                    jc["tb"] = static_cast<int>(cell.timbre);
                 cells.push_back(std::move(jc));
             }
         }
@@ -401,6 +453,8 @@ inline bool deserialize_song_json(const std::string& text, TrackerSong& song) {
             int rows = jp.value("rows", 16);
             rows = std::clamp(rows, 1, MAX_ROWS);
             song.patterns[pi].num_rows = static_cast<uint8_t>(rows);
+            song.patterns[pi].expression_lane_mask = static_cast<uint8_t>(
+                std::clamp(jp.value("expr_mask", 0), 0, 7));
             song.num_patterns = std::max(song.num_patterns,
                                          static_cast<uint8_t>(pi + 1));
 
@@ -423,6 +477,17 @@ inline bool deserialize_song_json(const std::string& text, TrackerSong& song) {
                     std::clamp(jc.value("fx_type", 0), 0, 255));
                 cell.effect_param = static_cast<uint8_t>(
                     std::clamp(jc.value("fx_param", 0), 0, 255));
+                // Phase 4 expression anchors. v1 patterns omit these; the
+                // cell's default-initialized kExprEmpty stays in place.
+                cell.pitch_bend   = static_cast<int16_t>(
+                    std::clamp(jc.value("pb", static_cast<int>(kExprEmpty)),
+                               -32768, 32767));
+                cell.pressure     = static_cast<int16_t>(
+                    std::clamp(jc.value("pr", static_cast<int>(kExprEmpty)),
+                               -32768, 32767));
+                cell.timbre       = static_cast<int16_t>(
+                    std::clamp(jc.value("tb", static_cast<int>(kExprEmpty)),
+                               -32768, 32767));
             }
         }
     }

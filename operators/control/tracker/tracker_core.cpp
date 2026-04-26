@@ -240,6 +240,12 @@ void TrackerCore::process_tick(int spd, int base_ch, int ch_mode, int mute) {
         process_tick_effects(pat, base_ch, ch_mode, mute);
     }
 
+    // Phase 4: per-tick expression event emission. Runs after the row /
+    // effect dispatch so that fresh note_on events have already been
+    // pushed onto notes_buf_; expression events for the new note land in
+    // the correct order downstream.
+    emit_expression_for_tick(pat, mute);
+
     current_tick_++;
     if (current_tick_ >= ticks_per_row_) {
         current_tick_ = 0;
@@ -374,6 +380,12 @@ void TrackerCore::process_new_row(const tracker::TrackerPattern& pat, int base_c
                     1.0f / 127.0f, 1.0f);
                 cs.prev_note_id = vivid_sequencers::next_note_id();
                 vivid_sequencers::note_on(notes_buf_, cell.note, vel, cs.prev_note_id);
+                // Synth slot resets pitch_bend_semis/pressure/timbre to 0 on
+                // note_on; mirror that in our last-emitted tracking so the
+                // first interpolated value (if any anchor exists) re-emits.
+                cs.last_emitted_pb = 0;
+                cs.last_emitted_pr = 0;
+                cs.last_emitted_tb = 0;
             }
         }
     }
@@ -405,6 +417,9 @@ void TrackerCore::process_tick_effects(const tracker::TrackerPattern& pat, int b
                             1.0f / 127.0f, 1.0f);
                         cs.prev_note_id = vivid_sequencers::next_note_id();
                         vivid_sequencers::note_on(notes_buf_, cell.note, vel, cs.prev_note_id);
+                        cs.last_emitted_pb = 0;
+                        cs.last_emitted_pr = 0;
+                        cs.last_emitted_tb = 0;
                     }
                 }
             }
@@ -463,7 +478,50 @@ void TrackerCore::process_tick_effects(const tracker::TrackerPattern& pat, int b
                     cs.prev_note_id = vivid_sequencers::next_note_id();
                     vivid_sequencers::note_on(notes_buf_,
                         static_cast<uint8_t>(cs.prev_midi_note), vel, cs.prev_note_id);
+                    cs.last_emitted_pb = 0;
+                    cs.last_emitted_pr = 0;
+                    cs.last_emitted_tb = 0;
                 }
+            }
+        }
+    }
+}
+
+void TrackerCore::emit_expression_for_tick(const tracker::TrackerPattern& pat, int mute) {
+    namespace tx = vivid::tracker_expression;
+    const uint8_t mask = pat.expression_lane_mask;
+    if (mask == 0) return;  // no lanes visible \xe2\x86\x92 no events
+
+    for (int ch = 0; ch < tracker::MAX_CHANNELS; ++ch) {
+        auto& cs = channels_[ch];
+        if (cs.prev_note_id == 0) continue;
+        if ((mute >> ch) & 1) continue;
+
+        if (mask & tracker::kLanePb) {
+            int16_t v = tx::interpolate(pat, ch, tx::Lane::PitchBend,
+                                        current_row_, current_tick_, ticks_per_row_);
+            if (v != tracker::kExprEmpty && v != cs.last_emitted_pb) {
+                vivid_sequencers::note_pitch_bend(notes_buf_, cs.prev_note_id,
+                                                  tx::pitch_bend_to_semis(v));
+                cs.last_emitted_pb = v;
+            }
+        }
+        if (mask & tracker::kLanePr) {
+            int16_t v = tx::interpolate(pat, ch, tx::Lane::Pressure,
+                                        current_row_, current_tick_, ticks_per_row_);
+            if (v != tracker::kExprEmpty && v != cs.last_emitted_pr) {
+                vivid_sequencers::note_pressure(notes_buf_, cs.prev_note_id,
+                                                tx::pressure_to_unit(v));
+                cs.last_emitted_pr = v;
+            }
+        }
+        if (mask & tracker::kLaneTb) {
+            int16_t v = tx::interpolate(pat, ch, tx::Lane::Timbre,
+                                        current_row_, current_tick_, ticks_per_row_);
+            if (v != tracker::kExprEmpty && v != cs.last_emitted_tb) {
+                vivid_sequencers::note_timbre(notes_buf_, cs.prev_note_id,
+                                              tx::timbre_to_unit(v));
+                cs.last_emitted_tb = v;
             }
         }
     }

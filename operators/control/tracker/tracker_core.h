@@ -9,6 +9,7 @@
 #include "note_id_counter.h"
 #include "tracker_data.h"
 #include "tracker_editor_shared.h"
+#include "tracker_expression.h"
 #include <string>
 
 /**
@@ -99,4 +100,10 @@ protected:
     uint8_t midi_channel_for(int ch, int base_ch, int ch_mode) const;
     void process_new_row(const tracker::TrackerPattern& pat, int base_ch, int ch_mode, int mute);
     void process_tick_effects(const tracker::TrackerPattern& pat, int base_ch, int ch_mode, int mute);
+    // Phase 4: walk every channel with an active note, interpolate each
+    // visible expression lane at the current (row, tick), and emit
+    // PITCH_BEND/PRESSURE/TIMBRE events when the value differs from the
+    // most recently emitted value. Called once per tick after the row /
+    // effect dispatch.
+    void emit_expression_for_tick(const tracker::TrackerPattern& pat, int mute);
 };

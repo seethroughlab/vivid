@@ -223,6 +223,27 @@ add_test(NAME test_tracker_data_format
          COMMAND test_tracker_data_format
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Tracker expression authoring (Phase 4 PR1) — per-cell pitch_bend /
+# pressure / timbre round-trip through JSON v2 schema, v1 backward-compat,
+# value conversion, interpolation logic, end-to-end emission via
+# TrackerCore::process_tick.
+add_executable(test_tracker_expression
+    tests/operators/test_tracker_expression.cpp
+    operators/control/tracker/tracker_core.cpp
+    operators/control/tracker/tracker_editor.cpp
+    operators/control/tracker/tracker_editor_shared.cpp
+)
+target_include_directories(test_tracker_expression PRIVATE
+    src tests
+    operators
+    operators/control/tracker
+    operators/shared/sequencer)
+target_link_libraries(test_tracker_expression PRIVATE
+    vivid_runtime_testlib nlohmann_json::nlohmann_json)
+add_test(NAME test_tracker_expression
+         COMMAND test_tracker_expression
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Tracker editor helpers — pure-logic (piano-row → semitone mapping,
 # hex accumulator math, row-range clipboard, cursor clamp + auto-scroll).
 add_executable(test_tracker_editor_helpers
