@@ -401,6 +401,18 @@ target_include_directories(test_overlay_layouts PRIVATE src tests)
 target_link_libraries(test_overlay_layouts PRIVATE vivid_runtime_testlib)
 add_test(NAME test_overlay_layouts COMMAND test_overlay_layouts WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Advanced-port affordance: descriptor + compiler + snapshot round-trip the
+# VIVID_PORT_DISPLAY_ADVANCED hint so the inspector can hide breakout ports.
+add_executable(test_advanced_port_filter
+    tests/ui/test_advanced_port_filter.cpp
+)
+target_include_directories(test_advanced_port_filter PRIVATE src tests)
+target_link_libraries(test_advanced_port_filter PRIVATE vivid_runtime_testlib)
+add_dependencies(test_advanced_port_filter test_op_advanced_port)
+add_test(NAME test_advanced_port_filter
+         COMMAND test_advanced_port_filter ${CMAKE_BINARY_DIR}
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 add_executable(test_graph_snapshot_contract
     tests/graph/test_graph_snapshot_contract.cpp
 )
