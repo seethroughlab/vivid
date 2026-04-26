@@ -69,6 +69,14 @@ struct TrackerCore : vivid::OperatorBase {
     // Working accumulators for hex-field typing (velocity / effect).
     int  editor_vel_chars_ = 0;           // 0..2
     int  editor_fx_chars_  = 0;           // 0..3
+    // Phase 4 expression-lane authoring accumulators. pb has 3 chars
+    // (sign + 2 hex); pr/tb have 2 hex each. pb_sign starts at 0 (unset);
+    // typing `+`/`-` sets it; typing a hex digit before a sign defaults
+    // to `+`.
+    int  editor_pb_chars_ = 0;            // 0..3
+    int  editor_pb_sign_  = 0;            // -1, 0, +1
+    int  editor_pr_chars_ = 0;            // 0..2
+    int  editor_tb_chars_ = 0;            // 0..2
 
     ::vivid::tracker_editor::RowClipboard editor_row_clipboard_{};
 

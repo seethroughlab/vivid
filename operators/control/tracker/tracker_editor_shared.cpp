@@ -89,7 +89,7 @@ int paste_rows(::tracker::TrackerPattern& pat, int origin_row,
     return writable;
 }
 
-void clamp_cursor(int num_rows,
+void clamp_cursor(int num_rows, std::uint8_t lane_mask,
                   int* cursor_row, int* cursor_channel,
                   Field* cursor_field, int* effect_char) {
     if (num_rows < 1) num_rows = 1;
@@ -99,10 +99,119 @@ void clamp_cursor(int num_rows,
         *cursor_channel = std::clamp(*cursor_channel, 0, ::tracker::MAX_CHANNELS - 1);
     if (cursor_field) {
         const int f = static_cast<int>(*cursor_field);
-        *cursor_field = static_cast<Field>(std::clamp(f, 0, 2));
+        Field clamped = static_cast<Field>(std::clamp(f, 0, 5));
+        // If the cursor is parked on a hidden expression lane, snap back
+        // to Note (the always-visible default). Avoids stranding the
+        // cursor when a lane gets toggled off mid-frame.
+        if (!is_field_visible(clamped, lane_mask)) clamped = Field::Note;
+        *cursor_field = clamped;
     }
     if (effect_char)
         *effect_char = std::clamp(*effect_char, 0, 2);
+}
+
+namespace {
+// Field iteration order: Note(0) → Velocity(1) → Effect(2) →
+// PitchBend(3) → Pressure(4) → Timbre(5). next/prev visible-field
+// helpers walk this order, skipping fields whose mask bit is off.
+constexpr int kFieldCount = 6;
+}
+
+Field next_visible_field(Field current, std::uint8_t mask) {
+    int i = static_cast<int>(current);
+    for (int n = i + 1; n < kFieldCount; ++n) {
+        if (is_field_visible(static_cast<Field>(n), mask))
+            return static_cast<Field>(n);
+    }
+    return current;
+}
+
+Field prev_visible_field(Field current, std::uint8_t mask) {
+    int i = static_cast<int>(current);
+    for (int n = i - 1; n >= 0; --n) {
+        if (is_field_visible(static_cast<Field>(n), mask))
+            return static_cast<Field>(n);
+    }
+    return current;
+}
+
+bool has_visible_field_after(Field current, std::uint8_t mask) {
+    return next_visible_field(current, mask) != current;
+}
+
+bool has_visible_field_before(Field current, std::uint8_t mask) {
+    return prev_visible_field(current, mask) != current;
+}
+
+Field first_visible_field(std::uint8_t /*mask*/) {
+    // Note is always visible.
+    return Field::Note;
+}
+
+Field last_visible_field(std::uint8_t mask) {
+    for (int n = kFieldCount - 1; n >= 0; --n) {
+        if (is_field_visible(static_cast<Field>(n), mask))
+            return static_cast<Field>(n);
+    }
+    return Field::Note;
+}
+
+// --- Phase 4 expression-value converters -----------------------------------
+
+std::uint8_t pitch_bend_raw_to_hex(std::int16_t raw) {
+    if (raw == ::tracker::kExprEmpty) return 0;
+    int abs_raw = raw < 0 ? -raw : raw;
+    // raw 32767 → hex 0x7F (127). Round to nearest.
+    int hex = (abs_raw * 127 + 16383) / 32767;
+    if (hex < 0)   hex = 0;
+    if (hex > 127) hex = 127;
+    return static_cast<std::uint8_t>(hex);
+}
+
+std::uint8_t unit_raw_to_hex(std::int16_t raw) {
+    if (raw == ::tracker::kExprEmpty) return 0;
+    if (raw < 0) raw = 0;
+    int hex = (static_cast<int>(raw) * 255 + 16383) / 32767;
+    if (hex < 0)   hex = 0;
+    if (hex > 255) hex = 255;
+    return static_cast<std::uint8_t>(hex);
+}
+
+std::int16_t pitch_bend_hex_to_raw(std::uint8_t hex_magnitude, int sign) {
+    if (sign == 0) return 0;
+    int mag = hex_magnitude > 127 ? 127 : hex_magnitude;
+    int raw = (mag * 32767 + 63) / 127;
+    if (sign < 0) raw = -raw;
+    if (raw < -32767) raw = -32767;
+    if (raw >  32767) raw =  32767;
+    return static_cast<std::int16_t>(raw);
+}
+
+std::int16_t unit_hex_to_raw(std::uint8_t hex_value) {
+    int raw = (static_cast<int>(hex_value) * 32767 + 127) / 255;
+    if (raw <     0) raw =     0;
+    if (raw > 32767) raw = 32767;
+    return static_cast<std::int16_t>(raw);
+}
+
+void format_pitch_bend(std::int16_t raw, char out[4]) {
+    if (raw == ::tracker::kExprEmpty) { out[0]='-'; out[1]='-'; out[2]='-'; out[3]=0; return; }
+    char sign = (raw < 0) ? '-' : '+';
+    std::uint8_t hex = pitch_bend_raw_to_hex(raw);
+    static constexpr char kHex[] = "0123456789ABCDEF";
+    out[0] = sign;
+    out[1] = kHex[(hex >> 4) & 0xF];
+    out[2] = kHex[hex & 0xF];
+    out[3] = 0;
+}
+
+void format_unit(std::int16_t raw, char out[3]) {
+    if (raw == ::tracker::kExprEmpty) { out[0]='-'; out[1]='-'; out[2]=0; return; }
+    std::uint8_t hex = unit_raw_to_hex(raw);
+    static constexpr char kHex[] = "0123456789ABCDEF";
+    out[0] = kHex[(hex >> 4) & 0xF];
+    out[1] = kHex[hex & 0xF];
+    out[2] = 0;
 }
 
 void advance_cursor_row(int num_rows, bool wrap,

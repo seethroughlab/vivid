@@ -28,14 +28,21 @@ constexpr float kRowNumW    = 42.0f;
 constexpr float kNoteW      = 30.0f;
 constexpr float kVelW       = 22.0f;
 constexpr float kFxW        = 30.0f;
+// Phase 4 expression-lane columns. pb is 3 chars (sign + 2 hex);
+// pr/tb are 2 chars each.
+constexpr float kPbW        = 26.0f;
+constexpr float kPrW        = 20.0f;
+constexpr float kTbW        = 20.0f;
+constexpr float kFieldGap   = 2.0f;
 constexpr float kChGap      = 6.0f;
 constexpr float kSidePanelW = 240.0f;
 
-constexpr float channel_w() {
-    return kNoteW + 2.0f + kVelW + 2.0f + kFxW;
-}
-constexpr float channels_total_w() {
-    return (channel_w() + kChGap) * ::tracker::MAX_CHANNELS - kChGap;
+inline float channel_w(std::uint8_t lane_mask) {
+    float w = kNoteW + kFieldGap + kVelW + kFieldGap + kFxW;
+    if (lane_mask & ::tracker::kLanePb) w += kFieldGap + kPbW;
+    if (lane_mask & ::tracker::kLanePr) w += kFieldGap + kPrW;
+    if (lane_mask & ::tracker::kLaneTb) w += kFieldGap + kTbW;
+    return w;
 }
 
 // Per-channel header colours — reused for column tinting so eyes can
@@ -49,25 +56,47 @@ constexpr float kChColors[8][3] = {
 
 struct FieldLayout {
     ::vivid::ui::Rect note, vel, fx;
+    // Phase 4 expression lanes. Width is zero when the lane's mask bit is
+    // off — those rects are still computed but render/hit-test paths skip
+    // them to keep the channel column compact.
+    ::vivid::ui::Rect pb, pr, tb;
 };
 
-inline FieldLayout channel_layout(float grid_x, int ch, float row_y) {
+inline FieldLayout channel_layout(float grid_x, int ch, float row_y,
+                                  std::uint8_t lane_mask) {
+    const float ch_total_w = channel_w(lane_mask);
     const float chx = grid_x + kRowNumW + 4.0f
-                    + static_cast<float>(ch) * (channel_w() + kChGap);
-    FieldLayout L;
-    L.note = {chx,                         row_y, kNoteW, kRowH};
-    L.vel  = {chx + kNoteW + 2.0f,         row_y, kVelW,  kRowH};
-    L.fx   = {chx + kNoteW + kVelW + 4.0f, row_y, kFxW,   kRowH};
+                    + static_cast<float>(ch) * (ch_total_w + kChGap);
+    FieldLayout L{};
+    float x = chx;
+    L.note = {x, row_y, kNoteW, kRowH};
+    x += kNoteW + kFieldGap;
+    L.vel  = {x, row_y, kVelW,  kRowH};
+    x += kVelW + kFieldGap;
+    L.fx   = {x, row_y, kFxW,   kRowH};
+    x += kFxW + kFieldGap;
+    if (lane_mask & ::tracker::kLanePb) {
+        L.pb = {x, row_y, kPbW, kRowH};
+        x += kPbW + kFieldGap;
+    }
+    if (lane_mask & ::tracker::kLanePr) {
+        L.pr = {x, row_y, kPrW, kRowH};
+        x += kPrW + kFieldGap;
+    }
+    if (lane_mask & ::tracker::kLaneTb) {
+        L.tb = {x, row_y, kTbW, kRowH};
+    }
     return L;
 }
 
 // Reverse of channel_layout: given a click position, resolve (channel,
-// field). Returns false when the click isn't on a cell column.
-inline bool hit_test_channel(float grid_x, float mx,
+// field). Returns false when the click isn't on a cell column. Mask-aware
+// so hidden lanes never resolve to a hit.
+inline bool hit_test_channel(float grid_x, float mx, std::uint8_t lane_mask,
                              int* ch_out, ::vivid::tracker_editor::Field* f_out) {
     namespace te = ::vivid::tracker_editor;
     for (int ch = 0; ch < ::tracker::MAX_CHANNELS; ++ch) {
-        FieldLayout L = channel_layout(grid_x, ch, 0.0f);
+        FieldLayout L = channel_layout(grid_x, ch, 0.0f, lane_mask);
         if (mx >= L.note.x && mx < L.note.x + L.note.w) {
             *ch_out = ch; *f_out = te::Field::Note; return true;
         }
@@ -76,6 +105,18 @@ inline bool hit_test_channel(float grid_x, float mx,
         }
         if (mx >= L.fx.x && mx < L.fx.x + L.fx.w) {
             *ch_out = ch; *f_out = te::Field::Effect; return true;
+        }
+        if ((lane_mask & ::tracker::kLanePb) &&
+            mx >= L.pb.x && mx < L.pb.x + L.pb.w) {
+            *ch_out = ch; *f_out = te::Field::PitchBend; return true;
+        }
+        if ((lane_mask & ::tracker::kLanePr) &&
+            mx >= L.pr.x && mx < L.pr.x + L.pr.w) {
+            *ch_out = ch; *f_out = te::Field::Pressure; return true;
+        }
+        if ((lane_mask & ::tracker::kLaneTb) &&
+            mx >= L.tb.x && mx < L.tb.x + L.tb.w) {
+            *ch_out = ch; *f_out = te::Field::Timbre; return true;
         }
     }
     return false;
@@ -116,8 +157,9 @@ void TrackerCore::draw_editor(VividEditorContext* ctx) {
     auto& pat = work_song.patterns[pat_idx];
     const int num_rows = std::max<int>(1, pat.num_rows);
 
-    // ---- Clamp editor state into the current pattern bounds. ----
-    te::clamp_cursor(num_rows,
+    // ---- Clamp editor state into the current pattern bounds. Pass the
+    //      lane mask so the cursor doesn't strand on a toggled-off lane. ----
+    te::clamp_cursor(num_rows, pat.expression_lane_mask,
                      &editor_cursor_row_, &editor_cursor_channel_,
                      &editor_cursor_field_, &editor_cursor_effect_char_);
 
@@ -158,6 +200,10 @@ void TrackerCore::draw_editor(VividEditorContext* ctx) {
     auto reset_hex_accum = [&]() {
         editor_vel_chars_ = 0;
         editor_fx_chars_  = 0;
+        editor_pb_chars_  = 0;
+        editor_pb_sign_   = 0;
+        editor_pr_chars_  = 0;
+        editor_tb_chars_  = 0;
     };
     auto sanitize_selection = [&]() {
         if (editor_selection_row_lo_ < 0 || editor_selection_row_hi_ < 0) return;
@@ -207,7 +253,8 @@ void TrackerCore::draw_editor(VividEditorContext* ctx) {
         const int row = std::clamp(editor_scroll_row_ + row_in_view, 0, num_rows - 1);
         int ch;
         te::Field f;
-        if (::trk_ed::hit_test_channel(grid_x, mouse.x, &ch, &f)) {
+        if (::trk_ed::hit_test_channel(grid_x, mouse.x,
+                                       pat.expression_lane_mask, &ch, &f)) {
             if (mouse.shift_down) {
                 if (editor_selection_anchor_ < 0)
                     editor_selection_anchor_ = editor_cursor_row_;
@@ -252,29 +299,29 @@ void TrackerCore::draw_editor(VividEditorContext* ctx) {
                 editor_cursor_row_ = std::clamp(editor_cursor_row_ + dy, 0, num_rows - 1);
             }
             if (dx > 0) {
-                // Left→right across fields, then to next channel.
-                if (editor_cursor_field_ == te::Field::Note) {
-                    editor_cursor_field_ = te::Field::Velocity;
-                } else if (editor_cursor_field_ == te::Field::Velocity) {
-                    editor_cursor_field_ = te::Field::Effect;
-                    editor_cursor_effect_char_ = 0;
-                } else {
-                    if (editor_cursor_channel_ < ::tracker::MAX_CHANNELS - 1) {
-                        ++editor_cursor_channel_;
-                        editor_cursor_field_ = te::Field::Note;
-                    }
+                // Left→right through visible fields, then to next channel.
+                if (te::has_visible_field_after(editor_cursor_field_,
+                                                pat.expression_lane_mask)) {
+                    editor_cursor_field_ = te::next_visible_field(
+                        editor_cursor_field_, pat.expression_lane_mask);
+                    if (editor_cursor_field_ == te::Field::Effect)
+                        editor_cursor_effect_char_ = 0;
+                } else if (editor_cursor_channel_ < ::tracker::MAX_CHANNELS - 1) {
+                    ++editor_cursor_channel_;
+                    editor_cursor_field_ = te::first_visible_field(
+                        pat.expression_lane_mask);
                 }
             } else if (dx < 0) {
-                if (editor_cursor_field_ == te::Field::Effect) {
-                    editor_cursor_field_ = te::Field::Velocity;
-                } else if (editor_cursor_field_ == te::Field::Velocity) {
-                    editor_cursor_field_ = te::Field::Note;
-                } else {
-                    if (editor_cursor_channel_ > 0) {
-                        --editor_cursor_channel_;
-                        editor_cursor_field_ = te::Field::Effect;
+                if (te::has_visible_field_before(editor_cursor_field_,
+                                                 pat.expression_lane_mask)) {
+                    editor_cursor_field_ = te::prev_visible_field(
+                        editor_cursor_field_, pat.expression_lane_mask);
+                } else if (editor_cursor_channel_ > 0) {
+                    --editor_cursor_channel_;
+                    editor_cursor_field_ = te::last_visible_field(
+                        pat.expression_lane_mask);
+                    if (editor_cursor_field_ == te::Field::Effect)
                         editor_cursor_effect_char_ = 0;
-                    }
                 }
             }
             reset_hex_accum();
@@ -344,6 +391,27 @@ void TrackerCore::draw_editor(VividEditorContext* ctx) {
             continue;
         }
 
+        // Phase 4: Cmd+Shift+P/R/T toggle the per-pattern expression lane
+        // visibility bits. Toggling off doesn't clear data — values persist
+        // hidden until re-enabled.
+        if (cmd_or_ctrl && shift) {
+            std::uint8_t bit = 0;
+            if      (e.key == ek::kP) bit = ::tracker::kLanePb;
+            else if (e.key == ek::kR) bit = ::tracker::kLanePr;
+            else if (e.key == ek::kT) bit = ::tracker::kLaneTb;
+            if (bit != 0) {
+                pat.expression_lane_mask ^= bit;
+                // If the cursor was parked on the lane we just hid, snap
+                // it back to a visible field on the same row.
+                if (!te::is_field_visible(editor_cursor_field_,
+                                          pat.expression_lane_mask))
+                    editor_cursor_field_ = te::Field::Note;
+                reset_hex_accum();
+                commit_song();
+                continue;
+            }
+        }
+
         // Toggle follow-playhead. Only fires in the Note field — in
         // Velocity / Effect the same keycap is a hex digit.
         if (e.key == ek::kF && !cmd_or_ctrl &&
@@ -366,10 +434,20 @@ void TrackerCore::draw_editor(VividEditorContext* ctx) {
             } else if (editor_cursor_field_ == te::Field::Velocity) {
                 cell.velocity = 0;
                 editor_vel_chars_ = 0;
-            } else {
+            } else if (editor_cursor_field_ == te::Field::Effect) {
                 cell.effect_type = 0;
                 cell.effect_param = 0;
                 editor_fx_chars_ = 0;
+            } else if (editor_cursor_field_ == te::Field::PitchBend) {
+                cell.pitch_bend = ::tracker::kExprEmpty;
+                editor_pb_chars_ = 0;
+                editor_pb_sign_ = 0;
+            } else if (editor_cursor_field_ == te::Field::Pressure) {
+                cell.pressure = ::tracker::kExprEmpty;
+                editor_pr_chars_ = 0;
+            } else if (editor_cursor_field_ == te::Field::Timbre) {
+                cell.timbre = ::tracker::kExprEmpty;
+                editor_tb_chars_ = 0;
             }
             commit_song();
             continue;
@@ -471,6 +549,78 @@ void TrackerCore::draw_editor(VividEditorContext* ctx) {
             commit_song();
             continue;
         }
+
+        // --- Phase 4 expression-lane entry ---
+        // pb: 3 chars (sign + 2 hex). sign defaults to + when a hex digit
+        //     is typed without an explicit sign; explicit `-`/`+` overrides.
+        // pr/tb: 2 hex chars.
+        if (!cmd_or_ctrl &&
+            editor_cursor_field_ == te::Field::PitchBend) {
+            // Sign character handling.
+            if (e.key == ek::kMinus || e.key == ek::kEqual /*'+'*/) {
+                editor_pb_sign_ = (e.key == ek::kMinus) ? -1 : +1;
+                if (editor_pb_chars_ == 0) editor_pb_chars_ = 1;
+                continue;
+            }
+            int nibble = -1;
+            if (ek::is_digit_key(e.key)) nibble = ek::digit_value(e.key);
+            else if (e.key >= ek::kA && e.key <= ek::kF)
+                nibble = 10 + (e.key - ek::kA);
+            if (nibble < 0) continue;
+
+            // Default to + sign if user types a digit before sign.
+            if (editor_pb_sign_ == 0) editor_pb_sign_ = +1;
+            // Three-step accumulator: char 0 = sign (already handled or
+            // implicit), char 1 = hex hi, char 2 = hex lo.
+            if (editor_pb_chars_ <= 1) {
+                std::uint8_t mag = static_cast<std::uint8_t>(nibble & 0x0F) << 4;
+                cell.pitch_bend = te::pitch_bend_hex_to_raw(mag, editor_pb_sign_);
+                editor_pb_chars_ = 2;
+            } else {
+                std::uint8_t curmag = te::pitch_bend_raw_to_hex(cell.pitch_bend);
+                std::uint8_t mag = static_cast<std::uint8_t>(
+                    ((curmag & 0xF0) | (nibble & 0x0F)) & 0x7F);
+                cell.pitch_bend = te::pitch_bend_hex_to_raw(mag, editor_pb_sign_);
+                editor_pb_chars_ = 0;
+                editor_pb_sign_  = 0;
+                te::advance_cursor_row(num_rows, /*wrap*/false,
+                                       &editor_cursor_row_, &editor_scroll_row_,
+                                       visible_rows);
+            }
+            commit_song();
+            continue;
+        }
+
+        if (!cmd_or_ctrl &&
+            (editor_cursor_field_ == te::Field::Pressure ||
+             editor_cursor_field_ == te::Field::Timbre)) {
+            int nibble = -1;
+            if (ek::is_digit_key(e.key)) nibble = ek::digit_value(e.key);
+            else if (e.key >= ek::kA && e.key <= ek::kF)
+                nibble = 10 + (e.key - ek::kA);
+            if (nibble < 0) continue;
+
+            int* chars = (editor_cursor_field_ == te::Field::Pressure)
+                ? &editor_pr_chars_ : &editor_tb_chars_;
+            std::int16_t* slot = (editor_cursor_field_ == te::Field::Pressure)
+                ? &cell.pressure : &cell.timbre;
+            if (*chars == 0) {
+                std::uint8_t mag = static_cast<std::uint8_t>(nibble & 0x0F) << 4;
+                *slot = te::unit_hex_to_raw(mag);
+                *chars = 1;
+            } else {
+                std::uint8_t curmag = te::unit_raw_to_hex(*slot);
+                std::uint8_t mag = static_cast<std::uint8_t>(
+                    (curmag & 0xF0) | (nibble & 0x0F));
+                *slot = te::unit_hex_to_raw(mag);
+                *chars = 0;
+                te::advance_cursor_row(num_rows, /*wrap*/false,
+                                       &editor_cursor_row_, &editor_scroll_row_,
+                                       visible_rows);
+            }
+            commit_song();
+            continue;
+        }
     }
 
     // ---- Drawing ----
@@ -498,18 +648,25 @@ void TrackerCore::draw_editor(VividEditorContext* ctx) {
             {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.7f}, hints_scale);
     }
 
-    // Channel headers.
+    // Channel headers (size grows with visible expression lanes).
+    const std::uint8_t lane_mask = pat.expression_lane_mask;
+    const float ch_total_w = ed::channel_w(lane_mask);
     for (int ch = 0; ch < ::tracker::MAX_CHANNELS; ++ch) {
         const float chx = grid_x + ed::kRowNumW + 4.0f
-                        + static_cast<float>(ch) * (ed::channel_w() + ed::kChGap);
+                        + static_cast<float>(ch) * (ch_total_w + ed::kChGap);
         const VividColor bg{ed::kChColors[ch][0] * 0.3f,
                             ed::kChColors[ch][1] * 0.3f,
                             ed::kChColors[ch][2] * 0.3f, 0.9f};
         vivid::draw_ui::draw_panel(d, o, chx, grid_y,
-            ed::channel_w(), ed::kHeaderH, bg);
+            ch_total_w, ed::kHeaderH, bg);
         if (d.draw_text) {
-            char label[12];
-            std::snprintf(label, sizeof(label), "Ch %d", ch + 1);
+            char label[24];
+            // Append a compact suffix listing the visible lanes for this
+            // channel so users can see which expression columns are live.
+            std::snprintf(label, sizeof(label), "Ch %d%s%s%s", ch + 1,
+                (lane_mask & ::tracker::kLanePb) ? " pb" : "",
+                (lane_mask & ::tracker::kLanePr) ? " pr" : "",
+                (lane_mask & ::tracker::kLaneTb) ? " tb" : "");
             d.draw_text(o, chx + 4.0f, grid_y + 3.0f, label,
                 {ed::kChColors[ch][0], ed::kChColors[ch][1],
                  ed::kChColors[ch][2], 0.95f}, 1.0f);
@@ -551,6 +708,13 @@ void TrackerCore::draw_editor(VividEditorContext* ctx) {
 
     // Row numbers + cells.
     char note_buf[4], vel_buf[3], fx_buf[4], row_buf[8];
+    char pb_buf[4], pr_buf[3], tb_buf[3];
+    // Lane-column tints (signed pitch_bend → green/blue, pressure → amber,
+    // timbre → magenta). Dim when the cell is empty.
+    const VividColor pb_color_set{0.45f, 0.78f, 0.55f, 0.95f};
+    const VividColor pr_color_set{0.95f, 0.72f, 0.25f, 0.95f};
+    const VividColor tb_color_set{0.85f, 0.45f, 0.85f, 0.95f};
+    const VividColor expr_dim{th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.45f};
     for (int r = first_row; r <= last_row; ++r) {
         const float row_y = rows_y + (r - first_row) * ed::kRowH;
 
@@ -563,11 +727,14 @@ void TrackerCore::draw_editor(VividEditorContext* ctx) {
         for (int ch = 0; ch < ::tracker::MAX_CHANNELS; ++ch) {
             const auto& cell = pat.cells[ch][r];
             const ::trk_ed::FieldLayout L =
-                ::trk_ed::channel_layout(grid_x, ch, row_y);
+                ::trk_ed::channel_layout(grid_x, ch, row_y, lane_mask);
 
             tracker::format_cell_note(cell.note, note_buf);
             tracker::format_cell_vel (cell.velocity, vel_buf);
             tracker::format_cell_fx  (cell.effect_type, cell.effect_param, fx_buf);
+            te::format_pitch_bend(cell.pitch_bend, pb_buf);
+            te::format_unit(cell.pressure, pr_buf);
+            te::format_unit(cell.timbre,   tb_buf);
 
             const VividColor note_col =
                 (cell.note == tracker::NOTE_EMPTY)
@@ -592,6 +759,21 @@ void TrackerCore::draw_editor(VividEditorContext* ctx) {
                             vel_col, 1.0f);
                 d.draw_text(o, L.fx.x + 2.0f,   L.fx.y + 2.0f,   fx_buf,
                             fx_col, 1.0f);
+                if (lane_mask & ::tracker::kLanePb) {
+                    d.draw_text(o, L.pb.x + 2.0f, L.pb.y + 2.0f, pb_buf,
+                        cell.pitch_bend == ::tracker::kExprEmpty ? expr_dim : pb_color_set,
+                        1.0f);
+                }
+                if (lane_mask & ::tracker::kLanePr) {
+                    d.draw_text(o, L.pr.x + 2.0f, L.pr.y + 2.0f, pr_buf,
+                        cell.pressure == ::tracker::kExprEmpty ? expr_dim : pr_color_set,
+                        1.0f);
+                }
+                if (lane_mask & ::tracker::kLaneTb) {
+                    d.draw_text(o, L.tb.x + 2.0f, L.tb.y + 2.0f, tb_buf,
+                        cell.timbre == ::tracker::kExprEmpty ? expr_dim : tb_color_set,
+                        1.0f);
+                }
             }
         }
     }
@@ -600,10 +782,16 @@ void TrackerCore::draw_editor(VividEditorContext* ctx) {
     if (editor_cursor_row_ >= first_row && editor_cursor_row_ <= last_row) {
         const float row_y = rows_y + (editor_cursor_row_ - first_row) * ed::kRowH;
         const ::trk_ed::FieldLayout L =
-            ::trk_ed::channel_layout(grid_x, editor_cursor_channel_, row_y);
+            ::trk_ed::channel_layout(grid_x, editor_cursor_channel_, row_y, lane_mask);
         ::vivid::ui::Rect cursor_r = L.note;
-        if (editor_cursor_field_ == te::Field::Velocity) cursor_r = L.vel;
-        else if (editor_cursor_field_ == te::Field::Effect) cursor_r = L.fx;
+        switch (editor_cursor_field_) {
+            case te::Field::Note:      cursor_r = L.note; break;
+            case te::Field::Velocity:  cursor_r = L.vel;  break;
+            case te::Field::Effect:    cursor_r = L.fx;   break;
+            case te::Field::PitchBend: cursor_r = L.pb;   break;
+            case te::Field::Pressure:  cursor_r = L.pr;   break;
+            case te::Field::Timbre:    cursor_r = L.tb;   break;
+        }
         vivid::draw_ui::draw_panel(d, o,
             cursor_r.x, cursor_r.y, cursor_r.w, cursor_r.h,
             {0, 0, 0, 0},
@@ -627,7 +815,10 @@ void TrackerCore::draw_editor(VividEditorContext* ctx) {
         const char* field_name =
             editor_cursor_field_ == te::Field::Note ? "note"
           : editor_cursor_field_ == te::Field::Velocity ? "velocity"
-          : "effect";
+          : editor_cursor_field_ == te::Field::Effect ? "effect"
+          : editor_cursor_field_ == te::Field::PitchBend ? "pitch_bend"
+          : editor_cursor_field_ == te::Field::Pressure ? "pressure"
+          : "timbre";
         std::snprintf(line, sizeof(line), "field: %s", field_name);
         d.draw_text(o, side_x + kSpPad, side_y + kSpPad + 22.0f, line,
             {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.9f}, 1.0f);

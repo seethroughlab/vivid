@@ -413,6 +413,130 @@ int main() {
               "F toggles follow-playhead");
     }
 
+    // --- Phase 4: Cmd+Shift+P/R/T toggle expression lane visibility ---
+    {
+        EditorHarness h;
+        // Initial: mask = 0
+        h.events = {key_ev(ek::kP, ek::kModSuper | ek::kModShift)};
+        h.draw();
+        auto song = h.last_song();
+        check((song.patterns[0].expression_lane_mask & ::tracker::kLanePb) != 0,
+              "Cmd+Shift+P sets pb visible");
+
+        h.clear();
+        h.events = {key_ev(ek::kR, ek::kModSuper | ek::kModShift)};
+        h.draw();
+        song = h.last_song();
+        check((song.patterns[0].expression_lane_mask & ::tracker::kLanePr) != 0,
+              "Cmd+Shift+R sets pr visible");
+        check((song.patterns[0].expression_lane_mask & ::tracker::kLanePb) != 0,
+              "previous pb bit preserved");
+
+        h.clear();
+        h.events = {key_ev(ek::kT, ek::kModSuper | ek::kModShift)};
+        h.draw();
+        song = h.last_song();
+        check(song.patterns[0].expression_lane_mask ==
+              (::tracker::kLanePb | ::tracker::kLanePr | ::tracker::kLaneTb),
+              "Cmd+Shift+T flips remaining tb bit; mask = 7");
+
+        // Toggle pb back off — data persists, only mask changes.
+        h.clear();
+        h.events = {key_ev(ek::kP, ek::kModSuper | ek::kModShift)};
+        h.draw();
+        song = h.last_song();
+        check((song.patterns[0].expression_lane_mask & ::tracker::kLanePb) == 0,
+              "Cmd+Shift+P toggled pb back off");
+        check((song.patterns[0].expression_lane_mask & ::tracker::kLanePr) != 0,
+              "pr stays on after pb toggle");
+    }
+
+    // --- Phase 4: hex/sign entry into the PitchBend cell ---
+    {
+        EditorHarness h;
+        // Enable pb lane.
+        h.events = {key_ev(ek::kP, ek::kModSuper | ek::kModShift)};
+        h.draw();
+        h.clear();
+        // Move cursor onto pb (Note → Vel → Effect → PitchBend = 3 rights).
+        h.events = {
+            key_ev(ek::kRight), key_ev(ek::kRight), key_ev(ek::kRight),
+        };
+        h.draw();
+        check(h.core.editor_cursor_field_ == te::Field::PitchBend,
+              "right arrow lands on PitchBend when pb visible");
+
+        // Type `+`, `4`, `0` → pitch_bend = +0x40 raw ≈ +24 semis.
+        h.clear();
+        h.events = {
+            key_ev(ek::kEqual),  // '+' (sign)
+            key_ev(ek::k4),
+            key_ev(ek::k0),
+        };
+        h.draw();
+        auto song = h.last_song();
+        const auto& cell = song.patterns[0].cells[0][0];
+        check(cell.pitch_bend != ::tracker::kExprEmpty,
+              "pb cell got an anchor");
+        check(cell.pitch_bend > 16000 && cell.pitch_bend < 17500,
+              "+0x40 ≈ raw half-max (~16384)");
+        // Cursor advanced to next row after completing 3-char entry.
+        check(h.core.editor_cursor_row_ == 1, "advance_cursor_row after pb entry");
+    }
+
+    // --- Phase 4: hex entry into Pressure (2 chars, no sign) ---
+    {
+        EditorHarness h;
+        h.events = {key_ev(ek::kR, ek::kModSuper | ek::kModShift)};  // pr on
+        h.draw();
+        h.clear();
+        // Move cursor: Note → Vel → Effect → Pressure (3 rights when only pr is on).
+        h.events = {
+            key_ev(ek::kRight), key_ev(ek::kRight), key_ev(ek::kRight),
+        };
+        h.draw();
+        check(h.core.editor_cursor_field_ == te::Field::Pressure,
+              "right arrow lands on Pressure when only pr visible");
+
+        h.clear();
+        // Type "7" then "F" → 0x7F. For pressure (2 hex maps to 0..255 →
+        // 0..32767 raw), 0x7F = 127 lands at ~16319 raw (half-max).
+        h.events = { key_ev(ek::k7), key_ev(ek::kF) };
+        h.draw();
+        auto song = h.last_song();
+        const auto& cell = song.patterns[0].cells[0][0];
+        check(cell.pressure != ::tracker::kExprEmpty, "pr anchor set");
+        check(cell.pressure > 16000 && cell.pressure < 17000,
+              "0x7F ≈ raw half-max (~16319)");
+
+        // Type "F", "F" → 0xFF → raw max ~32767.
+        h.clear();
+        h.events = { key_ev(ek::kF), key_ev(ek::kF) };
+        h.draw();
+        song = h.last_song();
+        check(song.patterns[0].cells[0][1].pressure > 32500,
+              "0xFF ≈ raw max (~32767) on the row that auto-advanced");
+    }
+
+    // --- Phase 4: Backspace clears the expression cell to kExprEmpty ---
+    {
+        EditorHarness h;
+        // Pre-populate via serialized song (avoids accessing protected song_).
+        ::tracker::TrackerSong seed;
+        seed.patterns[0].expression_lane_mask = ::tracker::kLanePb;
+        seed.patterns[0].cells[0][0].pitch_bend = 8192;
+        h.core.pattern_data.str_value = ::tracker::serialize_song(seed);
+        // Cursor onto pb.
+        h.events = {
+            key_ev(ek::kRight), key_ev(ek::kRight), key_ev(ek::kRight),
+            key_ev(ek::kBackspace),
+        };
+        h.draw();
+        auto song = h.last_song();
+        check(song.patterns[0].cells[0][0].pitch_bend == ::tracker::kExprEmpty,
+              "Backspace clears pb anchor to kExprEmpty");
+    }
+
     std::fprintf(stderr, "\n%s (%d failures)\n",
                  failures == 0 ? "PASSED" : "FAILED", failures);
     return failures > 0 ? 1 : 0;
