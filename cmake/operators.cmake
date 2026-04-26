@@ -490,6 +490,7 @@ add_vivid_operator(ping_pong_delay  operators/audio/ping_pong_delay/ping_pong_de
                    FACTORY_PRESETS operators/audio/ping_pong_delay/factory_presets.json)
 add_vivid_operator(fm_synth         operators/audio/fm_synth/fm_synth.cpp
                    FACTORY_PRESETS  operators/audio/fm_synth/factory_presets.json)
+target_include_directories(fm_synth PRIVATE ${CMAKE_SOURCE_DIR}/operators/shared/sequencer)
 add_vivid_operator(ring_mod         operators/audio/ring_mod/ring_mod.cpp
                    FACTORY_PRESETS  operators/audio/ring_mod/factory_presets.json)
 add_vivid_operator(parametric_eq    operators/audio/parametric_eq/parametric_eq.cpp
@@ -544,7 +545,8 @@ vivid_enable_audio_kernels(convolution_reverb)
 foreach(_samp_op sp404 sampler slicer)
     target_include_directories(${_samp_op} PRIVATE
         ${CMAKE_SOURCE_DIR}/operators/shared/sampler_common
-        ${CMAKE_SOURCE_DIR}/deps/miniaudio)
+        ${CMAKE_SOURCE_DIR}/deps/miniaudio
+        ${CMAKE_SOURCE_DIR}/operators/shared/sequencer)
 endforeach()
 
 add_library(midi_file_player MODULE

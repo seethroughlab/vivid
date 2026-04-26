@@ -48,10 +48,11 @@ static void reset_lane_states() { g_lane_states.clear(); }
 
 struct SynthHarness {
     float output[kFrames] = {};
+    float voices_out[8 * kFrames] = {};  // FmSynth kMaxVoices = 8
     float scalar_in_freq = 0.0f;
     float scalar_in_mod  = 0.0f;
     float scalar_in_gate = 0.0f;
-    float* output_bufs[1] = {output};
+    float* output_bufs[2] = {output, voices_out};
     float* input_bufs[3]  = {&scalar_in_freq, &scalar_in_mod, &scalar_in_gate};
 
     VividAudioContext ctx{};

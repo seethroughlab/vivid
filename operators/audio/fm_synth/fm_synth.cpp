@@ -3,8 +3,11 @@
 #include "operator_api/note_types.h"
 #include "operator_api/type_id.h"
 #include "operator_api/voice_allocator.h"
+#include "voice_breakouts.h"
 
+#include <algorithm>
 #include <cmath>
+#include <cstring>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -124,6 +127,23 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
         // Canonical native note input — drive directly from Tracker/NotePattern/etc.
         out.push_back(VIVID_CUSTOM_REF_PORT("notes_in", VIVID_PORT_INPUT, VividNoteBuffer));
+        // Per-voice advanced breakouts. voices_out is a multichannel audio
+        // buffer (one channel per voice slot, kMaxVoices total) populated
+        // in active-note order sorted by note_id. The four control lanes
+        // share the same ordering. All five are advanced — collapsed in
+        // the inspector unless connected.
+        out.push_back({"voices_out",       VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT,
+                       VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr,
+                       static_cast<uint8_t>(kMaxVoices), 0.0f});
+        vivid::advanced_breakout(out.back());
+        out.push_back({"voice_ids",        VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        vivid::advanced_breakout(out.back());
+        out.push_back({"voice_gates",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        vivid::advanced_breakout(out.back());
+        out.push_back({"voice_velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        vivid::advanced_breakout(out.back());
+        out.push_back({"voice_freqs",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        vivid::advanced_breakout(out.back());
         vivid::append_analysis_ports(out);
     }
 
@@ -171,6 +191,33 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
                     // render loop reads them below.
                 });
 
+            // Build the slot → voices_out channel mapping by sorting active
+            // slots by note_id. Voices that aren't active map to -1 and are
+            // skipped in the render loop. This is the cross-cutting #4
+            // contract: breakout alignment by active-note order sorted by
+            // note_id, identical to what emit_voice_breakouts will publish.
+            int slot_to_pos[kMaxVoices];
+            int sorted[kMaxVoices];
+            int active_count = 0;
+            for (int v = 0; v < kMaxVoices; ++v) {
+                slot_to_pos[v] = -1;
+                if (allocator_.slots[v].active) sorted[active_count++] = v;
+            }
+            std::sort(sorted, sorted + active_count,
+                      [this](int a, int b) {
+                          return allocator_.slots[a].note_id <
+                                 allocator_.slots[b].note_id;
+                      });
+            for (int i = 0; i < active_count; ++i) slot_to_pos[sorted[i]] = i;
+
+            // Zero voices_out (port 1) so unused channels are silent.
+            float* voices_out_buf = (ctx->output_buffers && ctx->output_buffers[1])
+                                    ? ctx->output_buffers[1] : nullptr;
+            if (voices_out_buf) {
+                std::memset(voices_out_buf, 0,
+                            static_cast<size_t>(kMaxVoices) * frames * sizeof(float));
+            }
+
             for (uint32_t i = 0; i < frames; ++i) {
                 float sample = 0.0f;
                 for (int v = 0; v < kMaxVoices; ++v) {
@@ -187,8 +234,19 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
                     const float mod_freq = voice_freq * mod_ratio.value;
 
                     const float mod_signal = mi * std::sin(2.0 * M_PI * vs.mod_phase);
-                    sample += std::sin(2.0 * M_PI * vs.carrier_phase + mod_signal)
-                              * vs.envelope.env_value * slot.velocity;
+                    const float voice_sample =
+                        std::sin(2.0 * M_PI * vs.carrier_phase + mod_signal)
+                        * vs.envelope.env_value * slot.velocity;
+                    sample += voice_sample;
+
+                    // Mirror the voice into the voices_out breakout channel
+                    // at this slot's note_id-sorted rank. Apply the master
+                    // amplitude here too so breakout audio matches the mono
+                    // mix's per-voice level.
+                    if (voices_out_buf && slot_to_pos[v] >= 0) {
+                        const int pos = slot_to_pos[v];
+                        voices_out_buf[pos * frames + i] = voice_sample * amp;
+                    }
 
                     vs.carrier_phase += static_cast<double>(voice_freq) * inv_sr;
                     if (vs.carrier_phase >= 1.0) vs.carrier_phase -= 1.0;
@@ -199,6 +257,17 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
                 }
                 out[i] = sample * amp;
                 ++frame_counter_;
+            }
+
+            // Emit voice_*/voices_out aligned to active-note-by-note_id order.
+            // Lane outputs in collect_ports order: [0]=voice_ids, [1]=gates,
+            // [2]=velocities, [3]=freqs, [4]=waveform (analysis).
+            if (ctx->output_lanes) {
+                VividLaneOutput lanes[vivid_sequencers::kVoiceBreakoutLaneCount] = {
+                    ctx->output_lanes[0], ctx->output_lanes[1],
+                    ctx->output_lanes[2], ctx->output_lanes[3],
+                };
+                vivid_sequencers::emit_voice_breakouts(allocator_, lanes);
             }
             return;
         }

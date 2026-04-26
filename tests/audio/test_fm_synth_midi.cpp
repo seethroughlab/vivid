@@ -52,13 +52,15 @@ static void reset_lane_states() { g_lane_states.clear(); }
 
 struct Harness {
     float output[kFrames] = {};
+    // FmSynth has kMaxVoices = 8 voices; voices_out is multichannel mono-per-voice.
+    float voices_out[8 * kFrames] = {};
     float scalar_in_freq = 0.0f;
     float scalar_in_mod  = 0.0f;
     float scalar_in_gate = 0.0f;
-    float* output_bufs[1] = {output};
     // FmSynth port order:
     //   inputs (audio buffers): [0]=freq_cv, [1]=mod_index_cv, [2]=gate_cv
-    //   outputs:                [0]=output  (mono)
+    //   outputs (audio buffers): [0]=output (mono), [1]=voices_out (8 ch breakout)
+    float* output_bufs[2] = {output, voices_out};
     float* input_bufs[3]  = {&scalar_in_freq, &scalar_in_mod, &scalar_in_gate};
 
     VividAudioContext ctx{};

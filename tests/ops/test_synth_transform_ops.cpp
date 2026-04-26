@@ -37,8 +37,12 @@ struct TestContext {
     float input2[kFrames]  = {};
     float cv_buf_2[kFrames]= {};   // extra CV buffer (e.g. gate_cv for FmSynth)
     float output[kFrames]  = {};
+    // Synth voices_out breakout buffer: kMaxVoices=8 channels for FmSynth
+    // (the only synth tested here that uses output_bufs[1]). Other tests
+    // ignore this buffer.
+    float voices_out[8 * kFrames] = {};
     float* input_bufs[3]   = {input, input2, cv_buf_2};
-    float* output_bufs[1]  = {output};
+    float* output_bufs[2]  = {output, voices_out};
 
     VividAudioContext ctx{};
 
@@ -176,8 +180,10 @@ static void test_fm_synth(const std::string& staging) {
     check(std::strcmp(desc->name, "FmSynth") == 0, "descriptor name");
     check(static_cast<int>(desc->param_count) == 8, "param_count = 8");
     // 7 fixed ports (output, freq_cv, mod_index_cv, gate_cv, gates, notes,
-    // velocities) + midi_in custom-ref + analysis ports (rms, peak, waveform).
-    check(static_cast<int>(desc->port_count) == 11, "port_count = 11");
+    // velocities) + notes_in custom-ref + 5 advanced breakouts (voices_out,
+    // voice_ids, voice_gates, voice_velocities, voice_freqs) + 3 analysis
+    // ports (rms, peak, waveform).
+    check(static_cast<int>(desc->port_count) == 16, "port_count = 16");
 
     // No gate -> silence
     {

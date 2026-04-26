@@ -4,9 +4,11 @@
 #include "operator_api/type_id.h"
 #include "sample_bank.h"
 #include "voice.h"
+#include "voice_breakouts.h"
 #include <atomic>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 using namespace vivid_sampler;
 
@@ -83,6 +85,19 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
         out.push_back(VIVID_CUSTOM_REF_PORT("notes_in", VIVID_PORT_INPUT, VividNoteBuffer));
         out.push_back({"output",     VIVID_PORT_AUDIO_BUFFER,  VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2});
+        // Per-voice advanced breakouts (kMaxVoices channels mono each).
+        out.push_back({"voices_out",       VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT,
+                       VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr,
+                       static_cast<uint8_t>(kMaxVoices), 0.0f});
+        vivid::advanced_breakout(out.back());
+        out.push_back({"voice_ids",        VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        vivid::advanced_breakout(out.back());
+        out.push_back({"voice_gates",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        vivid::advanced_breakout(out.back());
+        out.push_back({"voice_velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        vivid::advanced_breakout(out.back());
+        out.push_back({"voice_freqs",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        vivid::advanced_breakout(out.back());
         vivid::append_analysis_ports(out);
     }
 
@@ -261,8 +276,30 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
 
         gate_tracker_.update(gates_in.data, gates_in.length);
 
+        // Build active-voice ordering for the breakout surface.
+        int slot_to_pos[kMaxVoices];
+        int sorted[kMaxVoices];
+        int active_count = 0;
+        for (int v = 0; v < kMaxVoices; ++v) {
+            slot_to_pos[v] = -1;
+            if (voices_[v].active) sorted[active_count++] = v;
+        }
+        std::sort(sorted, sorted + active_count,
+                  [this](int a, int b) {
+                      return voices_[a].note_id < voices_[b].note_id;
+                  });
+        for (int i = 0; i < active_count; ++i) slot_to_pos[sorted[i]] = i;
+
+        const uint32_t frames = ctx->buffer_size;
+        float* voices_out_buf = (ctx->output_buffers && ctx->output_buffers[1])
+                                ? ctx->output_buffers[1] : nullptr;
+        if (voices_out_buf) {
+            std::memset(voices_out_buf, 0,
+                        static_cast<size_t>(kMaxVoices) * frames * sizeof(float));
+        }
+
         // Render audio
-        for (uint32_t s = 0; s < ctx->buffer_size; ++s) {
+        for (uint32_t s = 0; s < frames; ++s) {
             float out_L = 0.0f;
             float out_R = 0.0f;
 
@@ -336,15 +373,30 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
 
                 out_L += samp_L;
                 out_R += samp_R;
+
+                // Mirror to voices_out as a mono mix (L+R / 2 * p_volume).
+                if (voices_out_buf && slot_to_pos[v] >= 0) {
+                    const int pos = slot_to_pos[v];
+                    voices_out_buf[pos * frames + s] = (samp_L + samp_R) * 0.5f * p_volume;
+                }
             }
 
             out_L *= p_volume;
             out_R *= p_volume;
 
             ctx->output_buffers[0][s]                      = out_L;
-            ctx->output_buffers[0][ctx->buffer_size + s]   = out_R;
+            ctx->output_buffers[0][frames + s]             = out_R;
 
             frame_counter_++;
+        }
+
+        // Emit voice_*/voices_out aligned to active-note-by-note_id order.
+        if (ctx->output_lanes) {
+            VividLaneOutput lanes[vivid_sequencers::kVoiceBreakoutLaneCount] = {
+                ctx->output_lanes[0], ctx->output_lanes[1],
+                ctx->output_lanes[2], ctx->output_lanes[3],
+            };
+            vivid_sequencers::emit_voice_breakouts(voices_, kMaxVoices, lanes);
         }
     }
 

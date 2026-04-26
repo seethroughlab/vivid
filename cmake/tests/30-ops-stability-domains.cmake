@@ -98,6 +98,19 @@ add_dependencies(test_note_breakout note_breakout)
 add_test(NAME test_note_breakout COMMAND test_note_breakout ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Synth breakout surface — verifies every MIDI-driven core synth declares
+# voices_out + voice_ids/gates/velocities/freqs as advanced ports, and
+# FmSynth's chord/stealing behavior puts active voices in note_id-sorted
+# order across all five outputs.
+add_executable(test_synth_breakouts
+    tests/audio/test_synth_breakouts.cpp
+)
+target_include_directories(test_synth_breakouts PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(test_synth_breakouts PRIVATE vivid_runtime_testlib vivid_operator_api)
+add_dependencies(test_synth_breakouts fm_synth sampler sp404 slicer)
+add_test(NAME test_synth_breakouts COMMAND test_synth_breakouts ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Euclidean draw_editor contract — keyboard nudges rotation/hits/steps,
 # D cycles density presets, scroll-wheel adjusts hits (alt for steps),
 # horizontal drag scrubs rotation, side-panel preset-row click applies.
