@@ -21,10 +21,10 @@
  * @tip Use Comb mode with short delay times for Karplus-Strong-like string sounds.
  * @tip In poly synth graphs, pair cutoff_mod with an Envelope driven by voices/gates.
  * @recipe Envelope/value -> Filter/cutoff_mod
- * @recipe PolyVoiceAllocator/frequencies -> Filter/frequencies
+ * @recipe NoteBreakout/voice_freqs -> Filter/frequencies
  * @pitfall cutoff_cv is global scalar modulation; cutoff_mod is the per-lane path for poly voices.
  * @family voice_shaper
- * @best_used_with Envelope, PolyVoiceAllocator, Gain
+ * @best_used_with Envelope, NoteBreakout, Gain
  * @common_companions ChordProgression, WavetableOsc, VoiceMixer
  * @param mode Filter algorithm. Each mode has a distinct character.
  * @param keytrack Scales cutoff with note frequency. 1 = full tracking.

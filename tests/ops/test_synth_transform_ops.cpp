@@ -179,11 +179,11 @@ static void test_fm_synth(const std::string& staging) {
 
     check(std::strcmp(desc->name, "FmSynth") == 0, "descriptor name");
     check(static_cast<int>(desc->param_count) == 8, "param_count = 8");
-    // 7 fixed ports (output, freq_cv, mod_index_cv, gate_cv, gates, notes,
-    // velocities) + notes_in custom-ref + 5 advanced breakouts (voices_out,
-    // voice_ids, voice_gates, voice_velocities, voice_freqs) + 3 analysis
-    // ports (rms, peak, waveform).
-    check(static_cast<int>(desc->port_count) == 16, "port_count = 16");
+    // Phase 3 PR3 trimmed gates/notes/velocities lane ports. Now: 4 fixed
+    // ports (output, freq_cv, mod_index_cv, gate_cv) + notes_in custom-ref +
+    // 5 advanced breakouts (voices_out, voice_ids, voice_gates,
+    // voice_velocities, voice_freqs) + 3 analysis (rms, peak, waveform) = 13.
+    check(static_cast<int>(desc->port_count) == 13, "port_count = 13");
 
     // No gate -> silence
     {

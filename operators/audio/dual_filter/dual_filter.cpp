@@ -31,10 +31,10 @@ inline float flush_audio_denormal(float x) {
  * @tip Use split mode to independently shape low and high frequency bands.
  * @tip In poly synth graphs, pair a_cutoff_mod / b_cutoff_mod with Envelope outputs.
  * @recipe Envelope/value -> DualFilter/a_cutoff_mod
- * @recipe PolyVoiceAllocator/frequencies -> DualFilter/frequencies
+ * @recipe NoteBreakout/voice_freqs -> DualFilter/frequencies
  * @pitfall a_cutoff_cv / b_cutoff_cv are global scalar modulations; a_cutoff_mod / b_cutoff_mod are the per-lane paths for poly voices.
  * @family voice_shaper
- * @best_used_with Envelope, PolyVoiceAllocator, Gain
+ * @best_used_with Envelope, NoteBreakout, Gain
  * @common_companions ChordProgression, WavetableOsc, VoiceMixer, Filter
  * @param routing Signal routing between the two filter stages.
  * @param a_keytrack Scales stage A cutoff with note frequency. 1 = full tracking.
