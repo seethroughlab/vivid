@@ -175,7 +175,9 @@ static void test_fm_synth(const std::string& staging) {
 
     check(std::strcmp(desc->name, "FmSynth") == 0, "descriptor name");
     check(static_cast<int>(desc->param_count) == 8, "param_count = 8");
-    check(static_cast<int>(desc->port_count) == 10, "port_count = 10");
+    // 7 fixed ports (output, freq_cv, mod_index_cv, gate_cv, gates, notes,
+    // velocities) + midi_in custom-ref + analysis ports (rms, peak, waveform).
+    check(static_cast<int>(desc->port_count) == 11, "port_count = 11");
 
     // No gate -> silence
     {

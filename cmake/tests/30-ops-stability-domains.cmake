@@ -69,11 +69,23 @@ add_executable(test_euclidean_editor_helpers
 target_include_directories(test_euclidean_editor_helpers PRIVATE
     src tests
     operators/control/euclidean
+    operators/shared/sequencer
     operators)
 target_link_libraries(test_euclidean_editor_helpers PRIVATE vivid_runtime_testlib)
 add_test(NAME test_euclidean_editor_helpers
          COMMAND test_euclidean_editor_helpers
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Euclidean midi_out smoke — note-on rising edge, note-off falling edge,
+# correct note number/velocity from params, hits=0 silent.
+add_executable(test_euclidean_midi
+    tests/operators/test_euclidean_midi.cpp
+)
+target_include_directories(test_euclidean_midi PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(test_euclidean_midi PRIVATE vivid_runtime_testlib vivid_operator_api)
+add_dependencies(test_euclidean_midi euclidean)
+add_test(NAME test_euclidean_midi COMMAND test_euclidean_midi ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Euclidean draw_editor contract — keyboard nudges rotation/hits/steps,
 # D cycles density presets, scroll-wheel adjusts hits (alt for steps),
@@ -86,6 +98,7 @@ add_executable(test_euclidean_editor
 target_include_directories(test_euclidean_editor PRIVATE
     src tests
     operators/control/euclidean
+    operators/shared/sequencer
     operators)
 target_link_libraries(test_euclidean_editor PRIVATE vivid_runtime_testlib)
 add_test(NAME test_euclidean_editor
@@ -157,6 +170,21 @@ target_include_directories(test_parametric_eq_editor PRIVATE
 target_link_libraries(test_parametric_eq_editor PRIVATE vivid_runtime_testlib)
 add_test(NAME test_parametric_eq_editor
          COMMAND test_parametric_eq_editor
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Tracker pattern_data serialize/deserialize — JSON schema v=1 round-trip,
+# legacy MOD-text fallback, format dispatch, sparse-cell preservation,
+# note-off (255), schema v>1 rejection.
+add_executable(test_tracker_data_format
+    tests/operators/test_tracker_data_format.cpp
+)
+target_include_directories(test_tracker_data_format PRIVATE
+    src tests
+    operators/shared/sequencer)
+target_link_libraries(test_tracker_data_format PRIVATE
+    vivid_runtime_testlib nlohmann_json::nlohmann_json)
+add_test(NAME test_tracker_data_format
+         COMMAND test_tracker_data_format
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Tracker editor helpers — pure-logic (piano-row → semitone mapping,
@@ -279,6 +307,7 @@ add_executable(test_sequencer_editor_helpers
 target_include_directories(test_sequencer_editor_helpers PRIVATE
     src tests
     operators/control/sequencer
+    operators/shared/sequencer
     operators)
 target_link_libraries(test_sequencer_editor_helpers PRIVATE vivid_runtime_testlib)
 add_test(NAME test_sequencer_editor_helpers
@@ -297,6 +326,7 @@ add_executable(test_sequencer_editor
 target_include_directories(test_sequencer_editor PRIVATE
     src tests
     operators/control/sequencer
+    operators/shared/sequencer
     operators)
 target_link_libraries(test_sequencer_editor PRIVATE vivid_runtime_testlib)
 add_test(NAME test_sequencer_editor
@@ -393,7 +423,7 @@ add_executable(test_midi_file_player
     tests/audio/test_midi_file_player.cpp
     src/common/midi_file.cpp
 )
-target_include_directories(test_midi_file_player PRIVATE src tests operators)
+target_include_directories(test_midi_file_player PRIVATE src tests operators operators/shared/sequencer)
 target_link_libraries(test_midi_file_player PRIVATE vivid_runtime_testlib vivid_operator_api midifile)
 add_test(NAME test_midi_file_player COMMAND test_midi_file_player WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -543,6 +573,40 @@ target_link_libraries(test_reverb_dsp PRIVATE vivid_runtime_testlib vivid_operat
 add_dependencies(test_reverb_dsp reverb)
 add_test(NAME test_reverb_dsp COMMAND test_reverb_dsp WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Tape operator smoke: bypass at mix=0, no NaN/Inf at extremes,
+# hiss generator runs on silent input, DC blocker, signal preservation.
+add_executable(test_tape
+    tests/audio/test_tape.cpp
+)
+target_include_directories(test_tape PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(test_tape PRIVATE vivid_runtime_testlib vivid_operator_api)
+add_dependencies(test_tape tape)
+add_test(NAME test_tape COMMAND test_tape ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# FmSynth MIDI-input smoke: midi_in produces audio, polyphony, release decay,
+# legacy lane-array path still works, silent at rest.
+add_executable(test_fm_synth_midi
+    tests/audio/test_fm_synth_midi.cpp
+)
+target_include_directories(test_fm_synth_midi PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(test_fm_synth_midi PRIVATE vivid_runtime_testlib vivid_operator_api)
+add_dependencies(test_fm_synth_midi fm_synth)
+add_test(NAME test_fm_synth_midi COMMAND test_fm_synth_midi ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Dual-synth voice-sync: one note buffer fans into TWO independent FmSynth
+# instances and asserts they stay coherent through retriggers — proves the
+# note_id-keyed allocator behaves identically across instances.
+add_executable(test_dual_synth_voice_sync
+    tests/audio/test_dual_synth_voice_sync.cpp
+)
+target_include_directories(test_dual_synth_voice_sync PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(test_dual_synth_voice_sync PRIVATE vivid_runtime_testlib vivid_operator_api)
+add_dependencies(test_dual_synth_voice_sync fm_synth)
+add_test(NAME test_dual_synth_voice_sync COMMAND test_dual_synth_voice_sync ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 add_executable(bench_reverb
     tests/benchmarks/bench_reverb.cpp
     operators/shared/reverb_dsp/reverb_dsp.cpp
@@ -622,7 +686,7 @@ add_test(NAME test_dual_filter COMMAND test_dual_filter WORKING_DIRECTORY ${CMAK
 add_executable(test_midi_input_expression
     tests/audio/test_midi_input_expression.cpp
 )
-target_include_directories(test_midi_input_expression PRIVATE src tests deps/rtmidi)
+target_include_directories(test_midi_input_expression PRIVATE src tests deps/rtmidi operators/shared/sequencer)
 target_link_libraries(test_midi_input_expression PRIVATE vivid_operator_api rtmidi nlohmann_json::nlohmann_json)
 if(APPLE)
     target_link_libraries(test_midi_input_expression PRIVATE "-framework CoreMIDI" "-framework CoreAudio" "-framework CoreFoundation")

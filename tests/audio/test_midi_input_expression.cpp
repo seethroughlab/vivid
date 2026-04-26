@@ -5,7 +5,7 @@
 // Compiles midi_input.cpp directly to access inject_events() test seam.
 
 #include "operator_api/operator.h"
-#include "operator_api/midi_types.h"
+#include "operator_api/note_types.h"
 #include "operator_api/type_id.h"
 #include "runtime/graph/lane_buffer.h"
 #include "runtime/graph/lane_output_adapter.h"
@@ -384,25 +384,76 @@ static void test_scalar_aftertouch_expression() {
 }
 
 // ---------------------------------------------------------------------------
-// 8. midi_out passthrough for 2-byte messages
+// 8. notes_out emits native NOTE_ON / NOTE_OFF events (id round-trip)
 // ---------------------------------------------------------------------------
-static void test_midi_out_2byte_passthrough() {
-    std::fprintf(stderr, "\n--- midi_out 2-byte passthrough ---\n");
+static void test_notes_out_native_events() {
+    std::fprintf(stderr, "\n--- notes_out native NOTE_ON/NOTE_OFF round-trip ---\n");
     MidiInput op;
     TestFrameContext tc;
-    tc.param_values[4] = 0.0f;
+    tc.param_values[4] = 0.0f;  // poly_shared
 
-    op.inject_events({channel_pressure(1, 100)});
+    op.inject_events({note_on(1, 60, 100)});
     run_frame(op, tc);
 
-    auto* buf = static_cast<VividMidiBuffer*>(tc.custom_outputs[0]);
-    check(buf != nullptr, "midi_out buffer present");
-    check(buf->count == 1, "midi_out has 1 message");
+    auto* buf = static_cast<VividNoteBuffer*>(tc.custom_outputs[0]);
+    check(buf != nullptr, "notes_out buffer present");
+    check(buf->count == 1, "exactly one event after NOTE_ON");
+    uint64_t held_id = 0;
     if (buf->count >= 1) {
-        check(buf->messages[0].status == 0xD0, "status = 0xD0 (channel pressure)");
-        check(buf->messages[0].data1 == 100, "data1 = 100");
-        check(buf->messages[0].data2 == 0, "data2 = 0 (2-byte message)");
+        check(buf->events[0].type == VIVID_NOTE_ON, "first event is NOTE_ON");
+        check(buf->events[0].note_number == 60, "note 60");
+        check_float(buf->events[0].value, 100.0f / 127.0f, 1e-4f,
+                    "velocity 100/127 normalized");
+        check(buf->events[0].note_id != 0, "note_id is non-zero");
+        held_id = buf->events[0].note_id;
     }
+
+    // Second frame: send the matching note-off; should emit NOTE_OFF carrying
+    // the same id we got back from the on event.
+    tc.reset_outputs();
+    op.inject_events({note_off(1, 60)});
+    run_frame(op, tc);
+    buf = static_cast<VividNoteBuffer*>(tc.custom_outputs[0]);
+    check(buf != nullptr, "notes_out buffer present on note-off frame");
+    check(buf->count == 1, "exactly one event after NOTE_OFF");
+    if (buf->count >= 1) {
+        check(buf->events[0].type == VIVID_NOTE_OFF, "event is NOTE_OFF");
+        check(buf->events[0].note_id == held_id,
+              "NOTE_OFF carries the same note_id as the matching NOTE_ON");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 9. MPE per-note pitch_bend emits a native PITCH_BEND event keyed on the
+//    member channel's active note_id
+// ---------------------------------------------------------------------------
+static void test_mpe_native_expression_emit() {
+    std::fprintf(stderr, "\n--- MPE per-note PITCH_BEND emits native expression event ---\n");
+    MidiInput op;
+    TestFrameContext tc;
+    tc.param_values[4] = 1.0f;  // mpe_lower
+
+    // Hold a note on channel 2 (MPE member), then bend it.
+    op.inject_events({note_on(2, 60, 100), pitch_bend(2, 8192 + 4096)});
+    run_frame(op, tc);
+
+    auto* buf = static_cast<VividNoteBuffer*>(tc.custom_outputs[0]);
+    check(buf != nullptr, "notes_out buffer present");
+    bool saw_on = false, saw_bend = false;
+    uint64_t on_id = 0;
+    for (uint32_t i = 0; i < buf->count; ++i) {
+        const auto& e = buf->events[i];
+        if (e.type == VIVID_NOTE_ON && e.note_number == 60) {
+            saw_on = true;
+            on_id = e.note_id;
+        } else if (e.type == VIVID_NOTE_PITCH_BEND) {
+            check(on_id != 0, "PITCH_BEND must come after the NOTE_ON in the same buffer");
+            check(e.note_id == on_id, "PITCH_BEND keyed on the held note's note_id");
+            saw_bend = true;
+        }
+    }
+    check(saw_on, "NOTE_ON emitted for ch2 note 60");
+    check(saw_bend, "PITCH_BEND event emitted for the held MPE note");
 }
 
 // ---------------------------------------------------------------------------
@@ -418,7 +469,8 @@ int main() {
     test_duplicate_pitch_mpe();
     test_lane_id_stability();
     test_scalar_aftertouch_expression();
-    test_midi_out_2byte_passthrough();
+    test_notes_out_native_events();
+    test_mpe_native_expression_emit();
 
     std::fprintf(stderr, "\n=== Results: %d failure(s) ===\n", failures);
     return failures > 0 ? 1 : 0;

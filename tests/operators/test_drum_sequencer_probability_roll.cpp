@@ -48,7 +48,7 @@ std::vector<float> make_default_params() {
 // MIDI note-ons appeared for drum `d` (matches by note number = 36 + d).
 int compute_frame_and_count(TestDrum& drum, const std::vector<float>& params,
                             float phase, std::size_t d) {
-    VividMidiBuffer buf{};
+    VividNoteBuffer buf{};
     void* custom_outs[1] = {&buf};
     float output[1] = {};
     VividLaneOutput lane_dummy{};
@@ -58,14 +58,13 @@ int compute_frame_and_count(TestDrum& drum, const std::vector<float>& params,
     drum.compute(phase, 0.0f, 0.0, 4,
                  mutable_params, output, &lane_dummy,
                  custom_outs, 1);
-    auto* out_buf = static_cast<VividMidiBuffer*>(custom_outs[0]);
+    auto* out_buf = static_cast<VividNoteBuffer*>(custom_outs[0]);
     const uint8_t note = static_cast<uint8_t>(36 + d);
     int count = 0;
     for (uint32_t i = 0; i < out_buf->count; ++i) {
-        if ((out_buf->messages[i].status & 0xF0) == 0x90 &&
-            out_buf->messages[i].data1 == note) {
+        const auto& ev = out_buf->events[i];
+        if (ev.type == VIVID_NOTE_ON && ev.note_number == note)
             ++count;
-        }
     }
     return count;
 }
@@ -254,18 +253,18 @@ int main() {
         params[layout::trigger_param_index(0, 0)] = 1.0f;
         params[layout::mod_a_param_index(0, 0)]   = 1.0f;  // max
 
-        VividMidiBuffer buf{};
+        VividNoteBuffer buf{};
         void* custom[1] = {&buf};
         float out[1] = {};
         VividLaneOutput lane_dummy{};
         drum.compute(0.02f, 0.0f, 0.0, 4,
                      params.data(), out, &lane_dummy, custom, 1);
 
-        auto* emitted = static_cast<VividMidiBuffer*>(custom[0]);
+        auto* emitted = static_cast<VividNoteBuffer*>(custom[0]);
         check(emitted->count >= 1u, "mod_a=1.0 → at least one note-on");
         if (emitted->count >= 1u) {
-            check(emitted->messages[0].data2 == 127,
-                  "mod_a=1.0 clamps to MIDI velocity 127");
+            check_float(emitted->events[0].value, 1.0f, 1e-4f,
+                        "mod_a=1.0 → velocity 1.0 (normalized)");
         }
     }
 
@@ -282,7 +281,7 @@ int main() {
         params[layout::trigger_param_index(0, 0)] = 1.0f;  // kick @ step 0
         params[layout::trigger_param_index(1, 4)] = 1.0f;  // snare @ step 4
 
-        VividMidiBuffer bufs[7]{};
+        VividNoteBuffer bufs[7]{};
         void* custom[7] = {&bufs[0], &bufs[1], &bufs[2], &bufs[3],
                            &bufs[4], &bufs[5], &bufs[6]};
         float out[1] = {};
@@ -293,12 +292,12 @@ int main() {
         // to the intended steps without drift.
         drum.compute(0.0f, 0.0f, 0.0, 4,
                      params.data(), out, &lane_dummy, custom, 7);
-        const auto* merged = static_cast<VividMidiBuffer*>(custom[0]);
-        const auto* kick_out = static_cast<VividMidiBuffer*>(custom[1]);
-        const auto* snare_out = static_cast<VividMidiBuffer*>(custom[2]);
-        check(merged->count == 1u && merged->messages[0].data1 == 36,
-              "merged midi_out carries kick note on step 0");
-        check(kick_out->count == 1u && kick_out->messages[0].data1 == 36,
+        const auto* merged = static_cast<VividNoteBuffer*>(custom[0]);
+        const auto* kick_out = static_cast<VividNoteBuffer*>(custom[1]);
+        const auto* snare_out = static_cast<VividNoteBuffer*>(custom[2]);
+        check(merged->count == 1u && merged->events[0].note_number == 36,
+              "merged notes_out carries kick note on step 0");
+        check(kick_out->count == 1u && kick_out->events[0].note_number == 36,
               "kick_out carries kick note on step 0");
         check(snare_out->count == 0u,
               "snare_out is empty on step 0 (kick-only)");
@@ -306,14 +305,14 @@ int main() {
         // Step 4 tick — snare fires; kick_out must now be empty (cleared).
         drum.compute(4.1f / 16.0f, 0.0f, 0.0, 4,
                      params.data(), out, &lane_dummy, custom, 7);
-        merged = static_cast<VividMidiBuffer*>(custom[0]);
-        kick_out = static_cast<VividMidiBuffer*>(custom[1]);
-        snare_out = static_cast<VividMidiBuffer*>(custom[2]);
-        check(merged->count == 1u && merged->messages[0].data1 == 37,
-              "merged midi_out carries snare note on step 4");
+        merged = static_cast<VividNoteBuffer*>(custom[0]);
+        kick_out = static_cast<VividNoteBuffer*>(custom[1]);
+        snare_out = static_cast<VividNoteBuffer*>(custom[2]);
+        check(merged->count == 1u && merged->events[0].note_number == 37,
+              "merged notes_out carries snare note on step 4");
         check(kick_out->count == 0u,
               "kick_out cleared on step 4 (snare-only)");
-        check(snare_out->count == 1u && snare_out->messages[0].data1 == 37,
+        check(snare_out->count == 1u && snare_out->events[0].note_number == 37,
               "snare_out carries snare note on step 4");
     }
 

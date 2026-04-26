@@ -52,7 +52,7 @@ struct StepResult {
 };
 StepResult drive(TestDrum& d, std::vector<float>& params, float phase,
                  float reset_in = 0.0f) {
-    VividMidiBuffer bufs[7]{};
+    VividNoteBuffer bufs[7]{};
     void* custom[7] = {&bufs[0], &bufs[1], &bufs[2], &bufs[3],
                        &bufs[4], &bufs[5], &bufs[6]};
     float output[2] = {};
@@ -61,10 +61,10 @@ StepResult drive(TestDrum& d, std::vector<float>& params, float phase,
               output, &lane_dummy, custom, 7);
     StepResult r{};
     r.current_pattern = static_cast<int>(output[1]);
-    auto* merged = static_cast<VividMidiBuffer*>(custom[0]);
+    auto* merged = static_cast<VividNoteBuffer*>(custom[0]);
     r.midi_count = merged->count;
     r.first_note = (merged->count > 0u)
-        ? static_cast<int>(merged->messages[0].data1) : -1;
+        ? static_cast<int>(merged->events[0].note_number) : -1;
     return r;
 }
 

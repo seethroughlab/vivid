@@ -1,5 +1,5 @@
 #include "runtime/operators/operator_loader.h"
-#include "operator_api/midi_types.h"
+#include "operator_api/note_types.h"
 
 #include <cmath>
 #include <cstdio>
@@ -168,13 +168,17 @@ static void test_phase_to_midi_midblock_wrap(const std::string& build_dir) {
 
     loader.process_audio(inst, &tb.ctx);
 
-    auto* midi = static_cast<VividMidiBuffer*>(tb.custom_outputs[0]);
-    check(midi != nullptr, "phase_to_midi publishes a MIDI buffer");
-    if (midi) {
-        check(midi->count == 1, "exactly one wrap event is emitted");
-        if (midi->count == 1) {
-            check(midi->messages[0].frame_offset_samples == 3,
-                  "MIDI event keeps the in-buffer wrap offset");
+    auto* notes = static_cast<VividNoteBuffer*>(tb.custom_outputs[0]);
+    check(notes != nullptr, "phase_to_midi publishes a note buffer");
+    if (notes) {
+        check(notes->count == 1, "exactly one wrap event is emitted");
+        if (notes->count == 1) {
+            check(notes->events[0].type == VIVID_NOTE_ON,
+                  "wrap event is a NOTE_ON");
+            check(notes->events[0].frame_offset_samples == 3,
+                  "note event keeps the in-buffer wrap offset");
+            check(notes->events[0].note_id != 0,
+                  "wrap event carries a non-zero note_id");
         }
     }
 

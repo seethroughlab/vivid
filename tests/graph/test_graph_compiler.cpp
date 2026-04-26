@@ -632,7 +632,7 @@ static void test_audio_custom_ref_direct_edge_partition(const std::string& build
     vivid::Graph g;
     g.add_node("seq", "DrumSequencer");
     g.add_node("kit", "DrumKit");
-    g.add_connection("seq", "midi_out", "kit", "midi_in");
+    g.add_connection("seq", "notes_out", "kit", "notes_in");
 
     vivid::GraphCompiler::Options opts;
     auto cg = vivid::GraphCompiler::compile(g, registry, opts);

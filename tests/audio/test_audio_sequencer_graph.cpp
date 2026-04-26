@@ -252,7 +252,7 @@ int main(int argc, char* argv[]) {
             "aout": { "type": "audio_out", "params": {} }
         },
         "connections": [
-            { "from": "seq/kick_out", "to": "kick/midi_in" },
+            { "from": "seq/kick_out", "to": "kick/notes_in" },
             { "from": "kick/output", "to": "master/input" },
             { "from": "master/output", "to": "aout/input" }
         ]
@@ -299,7 +299,7 @@ int main(int argc, char* argv[]) {
             std::fprintf(stderr, "    drum master peak=%.6f  kick peak=%.6f\n",
                          max_master_peak, max_kick_peak);
             check(max_kick_peak > 0.001f,
-                  "DrumKick receives sequencer MIDI from seq/kick_out and produces audio");
+                  "DrumKick receives sequencer notes from seq/kick_out and produces audio");
             check(max_master_peak > 0.001f,
                   "Drum graph produces non-zero master audio");
         }

@@ -90,16 +90,22 @@ int main() {
         auto ctx = make_ctx(16, 1000, custom_outputs);
         op.process_audio(&ctx);
 
-        check(custom_outputs[0] != nullptr, "midi_out custom output is published");
-        auto* midi = static_cast<VividMidiBuffer*>(custom_outputs[0]);
-        check(midi->count >= 2, "first buffer emits note-on and note-off");
-        if (midi->count >= 2) {
-            check(midi->messages[0].status == 0x90, "first emitted message is note-on");
-            check(midi->messages[0].data1 == 72, "transpose shifts emitted note");
-            check(midi->messages[0].data2 == 50, "velocity scale adjusts note-on velocity");
-            check(midi->messages[0].frame_offset_samples == 0, "note-on lands at frame 0");
-            check(midi->messages[1].status == 0x80, "second emitted message is note-off");
-            check(midi->messages[1].frame_offset_samples == 8, "note-off lands at parsed frame offset");
+        check(custom_outputs[0] != nullptr, "notes_out custom output is published");
+        auto* notes = static_cast<VividNoteBuffer*>(custom_outputs[0]);
+        check(notes->count >= 2, "first buffer emits NOTE_ON and NOTE_OFF");
+        if (notes->count >= 2) {
+            const auto& on  = notes->events[0];
+            const auto& off = notes->events[1];
+            check(on.type == VIVID_NOTE_ON, "first emitted event is NOTE_ON");
+            check(on.note_number == 72, "transpose shifts emitted note (60 + 12 = 72)");
+            check_float(on.value, 50.0f / 127.0f, 1e-4f,
+                        "velocity scale (100*0.5 = 50/127) reflected on NOTE_ON");
+            check(on.frame_offset_samples == 0, "NOTE_ON lands at frame 0");
+            check(on.note_id != 0, "NOTE_ON carries a non-zero note_id");
+            check(off.type == VIVID_NOTE_OFF, "second emitted event is NOTE_OFF");
+            check(off.note_id == on.note_id,
+                  "NOTE_OFF carries the same note_id as the matching NOTE_ON");
+            check(off.frame_offset_samples == 8, "NOTE_OFF lands at parsed frame offset");
         }
     }
 
@@ -112,9 +118,11 @@ int main() {
         auto ctx = make_ctx(16, 1000, custom_outputs);
         op.process_audio(&ctx);
 
-        check(custom_outputs[0] != nullptr, "warmup path publishes midi output without main_thread_update");
-        auto* midi = static_cast<VividMidiBuffer*>(custom_outputs[0]);
-        check(midi->count >= 2, "prepare_instance_assets preloads midi sequence before audio starts");
+        check(custom_outputs[0] != nullptr,
+              "warmup path publishes notes output without main_thread_update");
+        auto* notes = static_cast<VividNoteBuffer*>(custom_outputs[0]);
+        check(notes->count >= 2,
+              "prepare_instance_assets preloads sequence before audio starts");
     }
 
     {
@@ -127,15 +135,22 @@ int main() {
         auto ctx = make_ctx(16, 1000, custom_outputs);
         op.process_audio(&ctx);
 
-        auto* midi = static_cast<VividMidiBuffer*>(custom_outputs[0]);
+        auto* notes = static_cast<VividNoteBuffer*>(custom_outputs[0]);
         bool saw_second_loop_note_on = false;
-        for (uint32_t i = 0; i < midi->count; ++i) {
-            if (midi->messages[i].status == 0x90 && midi->messages[i].frame_offset_samples >= 9) {
-                saw_second_loop_note_on = true;
-                break;
+        uint64_t first_id = 0;
+        for (uint32_t i = 0; i < notes->count; ++i) {
+            const auto& e = notes->events[i];
+            if (e.type == VIVID_NOTE_ON) {
+                if (first_id == 0) {
+                    first_id = e.note_id;
+                } else if (e.frame_offset_samples >= 9 && e.note_id != first_id) {
+                    saw_second_loop_note_on = true;
+                    break;
+                }
             }
         }
-        check(saw_second_loop_note_on, "looping restarts playback within the same buffer when needed");
+        check(saw_second_loop_note_on,
+              "looping restarts playback within the same buffer with a fresh note_id");
     }
 
     {
@@ -149,15 +164,15 @@ int main() {
         op.playing.value = 0.0f;
         op.process_audio(&ctx);
 
-        auto* midi = static_cast<VividMidiBuffer*>(custom_outputs[0]);
+        auto* notes = static_cast<VividNoteBuffer*>(custom_outputs[0]);
         bool saw_note_off = false;
-        for (uint32_t i = 0; i < midi->count; ++i) {
-            if ((midi->messages[i].status & 0xF0u) == 0x80u) {
+        for (uint32_t i = 0; i < notes->count; ++i) {
+            if (notes->events[i].type == VIVID_NOTE_OFF) {
                 saw_note_off = true;
                 break;
             }
         }
-        check(saw_note_off, "stopping playback flushes active notes");
+        check(saw_note_off, "stopping playback flushes active notes (NOTE_OFFs emitted)");
     }
 
     fs::remove_all(sandbox);
