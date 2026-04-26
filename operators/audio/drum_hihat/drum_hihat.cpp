@@ -1,6 +1,6 @@
 #include "operator_api/operator.h"
 #include "shared/drum_dsp/drum_dsp.h"
-#include "operator_api/midi_types.h"
+#include "operator_api/note_types.h"
 #include "operator_api/type_id.h"
 
 /**
@@ -69,7 +69,7 @@ struct DrumHiHat : vivid::OperatorBase, vivid::AudioProcessable {
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"trigger", VIVID_PORT_SCALAR, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "trigger"});
         out.push_back({"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT});
-        out.push_back(VIVID_CUSTOM_REF_PORT("midi_in", VIVID_PORT_INPUT, VividMidiBuffer));
+        out.push_back(VIVID_CUSTOM_REF_PORT("notes_in", VIVID_PORT_INPUT, VividNoteBuffer));
         vivid::append_analysis_ports(out);
     }
 
@@ -87,17 +87,18 @@ struct DrumHiHat : vivid::OperatorBase, vivid::AudioProcessable {
 
         float cutoff = 4000.0f + tn * 8000.0f;
 
-        // Check for MIDI trigger
+        // Check for note trigger. Drum synths fire on NOTE_ON of the target
+        // note number; per-note id and expression are ignored (single-shot).
         bool midi_triggered = false;
         float midi_vel_scale = 1.0f;
         if (ctx->custom_inputs && ctx->custom_input_count > 0 && ctx->custom_inputs[0]) {
-            auto* midi = static_cast<const VividMidiBuffer*>(ctx->custom_inputs[0]);
+            auto* notes = static_cast<const VividNoteBuffer*>(ctx->custom_inputs[0]);
             uint8_t target_note = static_cast<uint8_t>(note.int_value());
-            for (uint32_t m = 0; m < midi->count; ++m) {
-                const auto& msg = midi->messages[m];
-                if ((msg.status & 0xF0) == 0x90 && msg.data2 > 0 && msg.data1 == target_note) {
+            for (uint32_t m = 0; m < notes->count; ++m) {
+                const auto& ev = notes->events[m];
+                if (ev.type == VIVID_NOTE_ON && ev.note_number == target_note) {
                     midi_triggered = true;
-                    midi_vel_scale = msg.data2 / 127.0f;
+                    midi_vel_scale = ev.value;
                     break;
                 }
             }
