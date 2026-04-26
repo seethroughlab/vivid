@@ -7,13 +7,15 @@
 /**
  * @brief Lightweight per-voice breakout for native note streams.
  *
- * Consumes a note stream (notes_in) and exposes the four standardized
- * advanced control lanes — voice_ids, voice_gates, voice_velocities,
- * voice_freqs — sorted by note_id ascending. Use NoteBreakout when one
- * note stream needs to drive multiple downstream operators that share
- * polyphonic control state (per-voice envelopes, polyphonic key-tracking,
- * explicit per-voice mixing) without instantiating a synth solely for the
- * breakout lanes.
+ * Consumes a note stream (notes_in) and exposes the standardized advanced
+ * control lanes sorted by note_id ascending: the Phase 2 four (voice_ids,
+ * voice_gates, voice_velocities, voice_freqs) plus the Phase 4 expression
+ * lanes (voice_pitch_bend, voice_pressure, voice_timbre). Use NoteBreakout
+ * when one note stream needs to drive multiple downstream operators that
+ * share polyphonic control state (per-voice envelopes, polyphonic
+ * key-tracking, explicit per-voice mixing, expression-driven filter /
+ * amplitude / wavetable position modulation) without instantiating a synth
+ * solely for the breakout lanes.
  *
  * This operator carries no oscillator state, no envelope state, and no
  * audio render path — by design it's the cheapest way to fan note-stream
@@ -23,7 +25,10 @@
  * outputs directly instead of going through NoteBreakout.
  *
  * Per-note expression events (PITCH_BEND, PRESSURE, TIMBRE) on the input
- * stream mutate the matching voice slot — voice_freqs reflects pitch bend.
+ * stream mutate the matching voice slot. voice_freqs folds pitch_bend into
+ * Hz; voice_pitch_bend exposes the raw semitone offset; voice_pressure /
+ * voice_timbre carry slot.pressure / slot.timbre as 0..1 for downstream
+ * filter / amplitude / wavetable bindings.
  *
  * @input notes_in Native note stream (VividNoteBuffer).
  * @output notes_out Pass-through of notes_in for fanning a single note stream
@@ -35,13 +40,18 @@
  *         preserved by downstream consumers such as EnvelopeAu using lane_ids.
  * @output voice_velocities Per-voice velocity, 0..1.
  * @output voice_freqs Per-voice frequency in Hz (includes pitch_bend_semis).
+ * @output voice_pitch_bend Per-voice pitch bend in semitones (raw, ±48 typical).
+ * @output voice_pressure Per-voice pressure, 0..1.
+ * @output voice_timbre Per-voice timbre, 0..1.
  * @recipe note_source/notes_out -> NoteBreakout/notes_in
  * @recipe NoteBreakout/notes_out -> Synth/notes_in   (fanout to multiple synths)
  * @recipe NoteBreakout/voice_gates -> EnvelopeAu/gate
  * @recipe NoteBreakout/voice_ids -> EnvelopeAu/lane_ids
  * @recipe NoteBreakout/voice_freqs -> Filter/frequencies
+ * @recipe NoteBreakout/voice_pressure -> Filter/cutoff_mod   (expression bindings)
+ * @recipe NoteBreakout/voice_timbre -> WavetableLayer/position_mod_audio
  * @family note_source
- * @best_used_with EnvelopeAu, Filter, DualFilter, VoiceMixer
+ * @best_used_with EnvelopeAu, Filter, DualFilter, VoiceMixer, WavetableLayer
  */
 struct NoteBreakout : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "NoteBreakout";
@@ -65,14 +75,27 @@ struct NoteBreakout : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back(VIVID_CUSTOM_REF_PORT("notes_out", VIVID_PORT_OUTPUT, VividNoteBuffer));
 
         // Lane-array breakouts. Order must match
-        // vivid_sequencers::VoiceBreakoutLane (ids/gates/velocities/freqs).
-        out.push_back({"voice_ids",        VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        // vivid_sequencers::VoiceBreakoutLane:
+        //   voice_ids / voice_gates / voice_velocities / voice_freqs (Phase 2)
+        //   voice_pitch_bend / voice_pressure / voice_timbre (Phase 4 expression)
+        out.push_back({"voice_ids",         VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
         vivid::advanced_breakout(out.back());
-        out.push_back({"voice_gates",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({"voice_gates",       VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
         vivid::advanced_breakout(out.back());
-        out.push_back({"voice_velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({"voice_velocities",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
         vivid::advanced_breakout(out.back());
-        out.push_back({"voice_freqs",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({"voice_freqs",       VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        vivid::advanced_breakout(out.back());
+        // Phase 4: per-note expression breakouts. voice_pitch_bend exposes
+        // the raw pitch_bend_semis (voice_freqs already folds bend into Hz);
+        // voice_pressure / voice_timbre carry slot.pressure / slot.timbre as
+        // 0..1 for downstream filter cutoff / amplitude / wavetable position
+        // bindings. Tracker (Phase 4) and MidiInput emit the source events.
+        out.push_back({"voice_pitch_bend",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        vivid::advanced_breakout(out.back());
+        out.push_back({"voice_pressure",    VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        vivid::advanced_breakout(out.back());
+        out.push_back({"voice_timbre",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
         vivid::advanced_breakout(out.back());
     }
 
@@ -103,13 +126,16 @@ struct NoteBreakout : vivid::OperatorBase, vivid::AudioProcessable {
             },
             [](int, VividNoteEventType, float) {});
 
-        // Emit the four breakout lanes.
+        // Emit all 7 breakout lanes (Phase 2 + Phase 4).
         if (ctx->output_lanes) {
             VividLaneOutput lanes[vivid_sequencers::kVoiceBreakoutLaneCount] = {
                 ctx->output_lanes[0],  // voice_ids
                 ctx->output_lanes[1],  // voice_gates
                 ctx->output_lanes[2],  // voice_velocities
                 ctx->output_lanes[3],  // voice_freqs
+                ctx->output_lanes[4],  // voice_pitch_bend
+                ctx->output_lanes[5],  // voice_pressure
+                ctx->output_lanes[6],  // voice_timbre
             };
             vivid_sequencers::emit_voice_breakouts(alloc_, lanes);
         }

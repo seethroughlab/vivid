@@ -49,7 +49,11 @@ struct Harness {
     LaneOutBuf voice_gates_buf;
     LaneOutBuf voice_velocities_buf;
     LaneOutBuf voice_freqs_buf;
-    VividLaneOutput lane_outputs[4] = {};
+    // Phase 4 expression breakouts (NoteBreakout exposes 7 lane outputs).
+    LaneOutBuf voice_pitch_bend_buf;
+    LaneOutBuf voice_pressure_buf;
+    LaneOutBuf voice_timbre_buf;
+    VividLaneOutput lane_outputs[7] = {};
 
     VividNoteBuffer notes{};
     void* custom_inputs[1] = {&notes};
@@ -63,10 +67,13 @@ struct Harness {
         ctx.lane_state_service = nullptr;
         ctx.lane_id            = 1;
 
-        lane_outputs[0] = {&voice_ids_buf,        LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[1] = {&voice_gates_buf,      LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[2] = {&voice_velocities_buf, LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[3] = {&voice_freqs_buf,      LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
+        lane_outputs[0] = {&voice_ids_buf,         LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
+        lane_outputs[1] = {&voice_gates_buf,       LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
+        lane_outputs[2] = {&voice_velocities_buf,  LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
+        lane_outputs[3] = {&voice_freqs_buf,       LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
+        lane_outputs[4] = {&voice_pitch_bend_buf,  LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
+        lane_outputs[5] = {&voice_pressure_buf,    LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
+        lane_outputs[6] = {&voice_timbre_buf,      LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
         ctx.output_lanes = lane_outputs;
 
         ctx.custom_inputs      = custom_inputs;
@@ -89,6 +96,16 @@ struct Harness {
         if (notes.count >= VIVID_NOTE_BUFFER_CAPACITY) return;
         auto& e = notes.events[notes.count++];
         e.type = VIVID_NOTE_PITCH_BEND; e.note_id = id; e.value = semis;
+    }
+    void push_pressure(uint64_t id, float v_0_1) {
+        if (notes.count >= VIVID_NOTE_BUFFER_CAPACITY) return;
+        auto& e = notes.events[notes.count++];
+        e.type = VIVID_NOTE_PRESSURE; e.note_id = id; e.value = v_0_1;
+    }
+    void push_timbre(uint64_t id, float v_0_1) {
+        if (notes.count >= VIVID_NOTE_BUFFER_CAPACITY) return;
+        auto& e = notes.events[notes.count++];
+        e.type = VIVID_NOTE_TIMBRE; e.note_id = id; e.value = v_0_1;
     }
 };
 
@@ -134,10 +151,16 @@ int main(int argc, char** argv) {
     check(has_port(desc, "voice_gates"), "declares voice_gates");
     check(has_port(desc, "voice_velocities"), "declares voice_velocities");
     check(has_port(desc, "voice_freqs"), "declares voice_freqs");
+    // Phase 4 expression breakouts.
+    check(has_port(desc, "voice_pitch_bend"), "declares voice_pitch_bend");
+    check(has_port(desc, "voice_pressure"),   "declares voice_pressure");
+    check(has_port(desc, "voice_timbre"),     "declares voice_timbre");
 
-    // All four breakout lanes must be tagged advanced so the inspector
+    // All seven breakout lanes must be tagged advanced so the inspector
     // collapses them by default.
-    for (const char* name : {"voice_ids", "voice_gates", "voice_velocities", "voice_freqs"}) {
+    for (const char* name : {"voice_ids", "voice_gates", "voice_velocities",
+                              "voice_freqs", "voice_pitch_bend",
+                              "voice_pressure", "voice_timbre"}) {
         const auto* p = find_port(desc, name);
         if (p) {
             check(p->display_hint == VIVID_PORT_DISPLAY_ADVANCED,
@@ -234,6 +257,58 @@ int main(int argc, char** argv) {
         if (h.voice_freqs_buf.data.size() == 1) {
             check_float(h.voice_freqs_buf.data[0], midi_to_hz(72.0f), 1e-1f,
                         "voice_freqs reflects +12 semitone bend = C5 ~523.25 Hz");
+        }
+        loader.destroy_instance(inst);
+    }
+
+    // ---------------------------------------------------------------------
+    // Phase 4: voice_pitch_bend / voice_pressure / voice_timbre lanes carry
+    // expression values per active voice. Source events route to the slot
+    // by note_id; emit reads slot.pitch_bend_semis / .pressure / .timbre.
+    // ---------------------------------------------------------------------
+    {
+        std::fprintf(stderr, "\n--- expression lanes carry per-voice values ---\n");
+        Harness h;
+        void* inst = loader.create_instance();
+        // Two notes with distinct ids; default expression = 0 on both.
+        h.push_note_on(60, 1.0f, /*id=*/500);
+        h.push_note_on(64, 1.0f, /*id=*/600);
+        loader.process_audio(inst, &h.ctx);
+        check(h.voice_pitch_bend_buf.data.size() == 2,
+              "voice_pitch_bend has length 2");
+        check(h.voice_pressure_buf.data.size() == 2,
+              "voice_pressure has length 2");
+        check(h.voice_timbre_buf.data.size() == 2,
+              "voice_timbre has length 2");
+        if (h.voice_pitch_bend_buf.data.size() == 2) {
+            check_float(h.voice_pitch_bend_buf.data[0], 0.0f, 1e-3f, "pb default = 0");
+            check_float(h.voice_pressure_buf.data[0],   0.0f, 1e-3f, "pr default = 0");
+            check_float(h.voice_timbre_buf.data[0],     0.0f, 1e-3f, "tb default = 0");
+        }
+
+        // Block 2 — bend the first voice +4 semis, set pressure on second,
+        // set timbre on first. Each event routes by note_id.
+        h.clear_notes();
+        h.push_pitch_bend(/*id=*/500, /*semis=*/4.0f);
+        h.push_pressure(/*id=*/600,   /*v=*/0.75f);
+        h.push_timbre(/*id=*/500,     /*v=*/0.5f);
+        loader.process_audio(inst, &h.ctx);
+        check(h.voice_pitch_bend_buf.data.size() == 2, "still two voices");
+        if (h.voice_pitch_bend_buf.data.size() == 2 &&
+            h.voice_pressure_buf.data.size() == 2 &&
+            h.voice_timbre_buf.data.size() == 2) {
+            check_float(h.voice_pitch_bend_buf.data[0], 4.0f, 1e-3f,
+                        "voice 0 (id=500) pb = +4 semis");
+            check_float(h.voice_pitch_bend_buf.data[1], 0.0f, 1e-3f,
+                        "voice 1 (id=600) pb = 0 (untouched)");
+            check_float(h.voice_pressure_buf.data[0],  0.0f,  1e-3f,
+                        "voice 0 pr = 0 (untouched)");
+            check_float(h.voice_pressure_buf.data[1],  0.75f, 1e-3f,
+                        "voice 1 pr = 0.75");
+            check_float(h.voice_timbre_buf.data[0],    0.5f,  1e-3f,
+                        "voice 0 tb = 0.5");
+            check_float(h.voice_timbre_buf.data[1],    0.0f,  1e-3f,
+                        "voice 1 tb = 0 (untouched)");
         }
         loader.destroy_instance(inst);
     }

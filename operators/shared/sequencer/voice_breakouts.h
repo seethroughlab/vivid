@@ -1,7 +1,8 @@
 #pragma once
 
-// Voice-breakout helper — emits the four standardized per-voice control
-// lanes (voice_ids, voice_gates, voice_velocities, voice_freqs) from a
+// Voice-breakout helper — emits the standardized per-voice control lanes
+// (voice_ids, voice_gates, voice_velocities, voice_freqs, plus the Phase 4
+// expression lanes voice_pitch_bend, voice_pressure, voice_timbre) from a
 // vivid::VoiceAllocator<N>'s active slots, sorted by note_id ascending.
 //
 // Used by every voice synth (FmSynth, Sampler, SP404, Slicer, AnalogOsc,
@@ -18,9 +19,21 @@
 //   [0] voice_ids
 //   [1] voice_gates
 //   [2] voice_velocities
-//   [3] voice_freqs
+//   [3] voice_freqs           (frequency in Hz, includes pitch_bend folded in)
+//   [4] voice_pitch_bend      (raw pitch_bend_semis from the slot)
+//   [5] voice_pressure        (slot.pressure 0..1)
+//   [6] voice_timbre          (slot.timbre   0..1)
 //
-// See docs/plans/midi-native-protocol/phase-2-synth-breakouts-and-poly-composability.md.
+// Synths declare only the first 4 lane-array OUTPUT ports and pass a
+// `lanes[kVoiceBreakoutLaneCount]` array with slots [4..6] default-init —
+// the helper skips entries whose handle/resize is null, so the expression
+// lanes are silently omitted. NoteBreakout exposes all 7 ports (voice
+// synths fold pitch_bend into voice_freqs already, and pressure/timbre
+// have no fixed mapping per synth — surfacing them on NoteBreakout lets
+// downstream operators bind them however they want).
+//
+// See docs/plans/midi-native-protocol/phase-2-synth-breakouts-and-poly-composability.md
+// and phase-4-tracker-expression.md.
 
 #include <algorithm>
 #include <cmath>
@@ -45,7 +58,13 @@ enum VoiceBreakoutLane : int {
     kVoiceBreakoutGates      = 1,
     kVoiceBreakoutVelocities = 2,
     kVoiceBreakoutFreqs      = 3,
-    kVoiceBreakoutLaneCount  = 4,
+    // Phase 4 expression lanes. NoteBreakout exposes these; voice synths
+    // declare only the first 4 ports and leave [4..6] zero-initialized
+    // (the emit helper's null-handle guard skips them).
+    kVoiceBreakoutPitchBend  = 4,
+    kVoiceBreakoutPressure   = 5,
+    kVoiceBreakoutTimbre     = 6,
+    kVoiceBreakoutLaneCount  = 7,
 };
 
 template <typename SlotT>
@@ -94,6 +113,15 @@ inline void emit_voice_breakouts_from_sorted(
          [](const vivid::VoiceSlot& s) { return s.velocity; });
     emit(kVoiceBreakoutFreqs,
          [](const vivid::VoiceSlot& s) { return voice_freq_hz(s); });
+    // Phase 4 expression lanes — emitted only when the caller supplies a
+    // valid lane handle at the corresponding index (NoteBreakout does;
+    // voice synths leave them null and the helper skips).
+    emit(kVoiceBreakoutPitchBend,
+         [](const vivid::VoiceSlot& s) { return s.pitch_bend_semis; });
+    emit(kVoiceBreakoutPressure,
+         [](const vivid::VoiceSlot& s) { return s.pressure; });
+    emit(kVoiceBreakoutTimbre,
+         [](const vivid::VoiceSlot& s) { return s.timbre; });
 }
 
 // Emit the four voice_* lanes from a raw slot array. Templated on the slot
@@ -103,7 +131,7 @@ inline void emit_voice_breakouts_from_sorted(
 // Used by Sampler / SP404 / Slicer.
 //
 // Sorts active slots by note_id ascending. `lanes[]` must point to at least
-// 4 valid VividLaneOutput entries indexed by VoiceBreakoutLane. Pass nullptr
+// kVoiceBreakoutLaneCount entries indexed by VoiceBreakoutLane. Pass nullptr
 // for any lane your caller doesn't need; gracefully skips. `sorted_out`, if
 // non-null, receives the active-voice slot indices in note_id-sorted order
 // (suitable for indexing parallel per-voice arrays the synth needs to align
@@ -125,8 +153,8 @@ inline uint32_t emit_voice_breakouts(const SlotT* slots, int capacity,
     return static_cast<uint32_t>(count);
 }
 
-// Emit the four voice_* lanes from `alloc`'s active slots, sorted by
-// note_id ascending. `lanes[]` must point to at least 4 valid VividLaneOutput
+// Emit the voice_* lanes from `alloc`'s active slots, sorted by note_id
+// ascending. `lanes[]` must point to at least kVoiceBreakoutLaneCount
 // entries indexed by VoiceBreakoutLane. Returns the number of active voices
 // emitted (the length of every lane after this call).
 //
