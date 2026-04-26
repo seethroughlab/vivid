@@ -2,8 +2,10 @@
 
 #include "common/midi_file.h"
 #include "operator_api/operator.h"
-#include "operator_api/midi_types.h"
+#include "operator_api/note_types.h"
 #include "operator_api/type_id.h"
+#include "note_helpers.h"
+#include "note_id_counter.h"
 
 #include <algorithm>
 #include <atomic>
@@ -55,7 +57,7 @@ struct MidiFilePlayer : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
+        out.push_back(VIVID_CUSTOM_REF_PORT("notes_out", VIVID_PORT_OUTPUT, VividNoteBuffer));
         vivid::append_analysis_ports(out);
     }
 
@@ -68,9 +70,9 @@ struct MidiFilePlayer : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        midi_out_.count = 0;
+        notes_out_.count = 0;
         if (ctx->custom_outputs && ctx->custom_output_count > 0)
-            ctx->custom_outputs[0] = &midi_out_;
+            ctx->custom_outputs[0] = &notes_out_;
 
         SequenceData* seq = sequence_.load(std::memory_order_acquire);
         const uint64_t generation = sequence_generation_.load(std::memory_order_acquire);
@@ -144,8 +146,14 @@ private:
     uint64_t audio_generation_ = 0;
     std::string last_path_;
 
-    VividMidiBuffer midi_out_ = {};
-    bool active_notes_[16][128] = {};
+    VividNoteBuffer notes_out_ = {};
+    // Per active note: (channel, note_number, note_id). Stored as a flat
+    // list because SMF can have overlapping note-ons on the same
+    // (channel, note) pair; each one needs its own id to release independently.
+    static constexpr int kMaxActive = 64;
+    struct ActiveNote { uint8_t channel; uint8_t note; uint64_t note_id; };
+    ActiveNote active_notes_[kMaxActive] = {};
+    int active_count_ = 0;
     double transport_seconds_ = 0.0;
     size_t next_event_index_ = 0;
 
@@ -174,28 +182,44 @@ private:
         sequence_generation_.fetch_add(1, std::memory_order_acq_rel);
     }
 
+    // Translate a raw SMF event into the native note transport. Allocates
+    // a fresh note_id per NOTE_ON; matches NOTE_OFF to the FIFO-first
+    // matching active id so overlapping notes release in order. Non-note
+    // SMF events (CC, channel pressure, channel pitch_bend) are dropped —
+    // Phase 1 carries only per-note data on the wire.
     void emit_message(uint8_t status, uint8_t data1, uint8_t data2, uint32_t frame_offset) {
-        if (midi_out_.count >= VIVID_MIDI_BUFFER_CAPACITY) return;
-        auto& msg = midi_out_.messages[midi_out_.count++];
-        msg.status = status;
-        msg.data1 = data1;
-        msg.data2 = data2;
-        msg.reserved = 0;
-        msg.frame_offset_samples = frame_offset;
-
         uint8_t kind = status & 0xF0u;
         uint8_t ch = status & 0x0Fu;
-        if (kind == 0x90u && data2 > 0) active_notes_[ch][data1] = true;
-        if (kind == 0x80u || (kind == 0x90u && data2 == 0)) active_notes_[ch][data1] = false;
+        bool is_note_on  = (kind == 0x90u) && (data2 > 0);
+        bool is_note_off = (kind == 0x80u) || ((kind == 0x90u) && (data2 == 0));
+
+        if (is_note_on) {
+            if (active_count_ >= kMaxActive) return;
+            uint64_t id = vivid_sequencers::next_note_id();
+            active_notes_[active_count_++] = {ch, data1, id};
+            vivid_sequencers::note_on(notes_out_, data1,
+                                      static_cast<float>(data2) / 127.0f,
+                                      id, frame_offset);
+        } else if (is_note_off) {
+            for (int i = 0; i < active_count_; ++i) {
+                if (active_notes_[i].channel == ch && active_notes_[i].note == data1) {
+                    vivid_sequencers::note_off(notes_out_,
+                                               active_notes_[i].note_id,
+                                               frame_offset);
+                    active_notes_[i] = active_notes_[--active_count_];
+                    return;
+                }
+            }
+        }
     }
 
     void stop_all_notes(uint32_t frame_offset) {
-        for (uint8_t ch = 0; ch < 16; ++ch) {
-            for (uint8_t note = 0; note < 128; ++note) {
-                if (!active_notes_[ch][note]) continue;
-                emit_message(static_cast<uint8_t>(0x80u | ch), note, 0, frame_offset);
-            }
+        for (int i = 0; i < active_count_; ++i) {
+            vivid_sequencers::note_off(notes_out_,
+                                       active_notes_[i].note_id,
+                                       frame_offset);
         }
+        active_count_ = 0;
     }
 
     static uint8_t clamp_note(int note) {

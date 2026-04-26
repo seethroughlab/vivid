@@ -3,11 +3,12 @@
 #include "operator_api/operator.h"
 #include "operator_api/draw_ui_helpers.h"
 #include "operator_api/editor_ui.h"
-#include "operator_api/midi_types.h"
+#include "operator_api/note_types.h"
 #include "operator_api/type_id.h"
 #include "drum_sequencer_layout.h"
 #include "drum_sequencer_editor_shared.h"
-#include "midi_helpers.h"
+#include "note_helpers.h"
+#include "note_id_counter.h"
 #include <cmath>
 #include <algorithm>
 #include <cstring>
@@ -525,8 +526,8 @@ protected:
     // Wraps elapsed inside the current song-mode section. Resets when the
     // section advances or when any reset path fires.
     int wraps_in_section_ = 0;
-    VividMidiBuffer midi_buf_ = {};
-    std::array<VividMidiBuffer,
+    VividNoteBuffer notes_buf_ = {};
+    std::array<VividNoteBuffer,
                vivid_sequencers::drum_layout::kDrumCount> per_drum_bufs_ = {};
 
     // Probability PRNG + per-drum roll/ratchet scheduling. The PRNG is

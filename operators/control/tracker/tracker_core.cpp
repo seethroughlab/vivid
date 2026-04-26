@@ -12,7 +12,12 @@ TrackerCore::TrackerCore() {
     vivid::description(edit_pattern, "Index of the pattern currently shown in the editor");
     vivid::description(edit_channel, "Index of the track/channel currently focused in the editor");
     vivid::description(mute_mask, "Bitmask of muted tracks (bit 0 = track 1)");
-    vivid::description(pattern_data, "Serialized tracker pattern data");
+    vivid::description(pattern_data,
+        "Serialized song state. JSON schema v=1: "
+        "{v, arrangement:[int...], patterns:[{rows, cells:[{row, channel, "
+        "note, velocity?, fx_type?, fx_param?}]}]}. "
+        "Empty cells are absent; note=255 is note-off; velocity/fx_* are 8-bit "
+        "(0-255). Legacy MOD-tracker text format also accepted on read.");
 }
 
 void TrackerCore::collect_params(std::vector<vivid::ParamBase*>& out) {
@@ -40,7 +45,7 @@ void TrackerCore::collect_ports(std::vector<VividPortDescriptor>& out) {
     out.push_back({"row", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     out.push_back({"pattern", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     out.push_back({"order", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
-    out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
+    out.push_back(VIVID_CUSTOM_REF_PORT("notes_out", VIVID_PORT_OUTPUT, VividNoteBuffer));
 }
 
 void TrackerCore::compute(const float* input_values, const float* params,
@@ -79,7 +84,7 @@ void TrackerCore::compute(const float* input_values, const float* params,
     float scaled = total_beats * kMultipliers[r];
     int global_tick = static_cast<int>(std::floor(scaled * spd));
 
-    midi_buf_.count = 0;
+    notes_buf_.count = 0;
 
     if (global_tick != prev_global_tick_) {
         int ticks_to_process = global_tick - prev_global_tick_;
@@ -122,7 +127,7 @@ void TrackerCore::compute(const float* input_values, const float* params,
     output_values[2] = static_cast<float>(current_order_);
 
     if (custom_outputs && custom_output_count > 0) {
-        custom_outputs[0] = &midi_buf_;
+        custom_outputs[0] = &notes_buf_;
     }
 }
 
@@ -260,10 +265,10 @@ uint8_t TrackerCore::midi_channel_for(int ch, int base_ch, int ch_mode) const {
 }
 
 void TrackerCore::process_new_row(const tracker::TrackerPattern& pat, int base_ch, int ch_mode, int mute) {
+    (void)base_ch; (void)ch_mode;  // channel routing retired with native transport
     for (int ch = 0; ch < tracker::MAX_CHANNELS; ++ch) {
         auto& cs = channels_[ch];
         bool muted = (mute >> ch) & 1;
-        uint8_t midi_ch = midi_channel_for(ch, base_ch, ch_mode);
 
         if (current_row_ >= pat.num_rows) continue;
         const auto& cell = pat.cells[ch][current_row_];
@@ -345,15 +350,15 @@ void TrackerCore::process_new_row(const tracker::TrackerPattern& pat, int base_c
         if (cs.note_delay_ticks > 0) continue;
 
         if (cell.note == tracker::NOTE_OFF) {
-            if (cs.gate_active && !muted && cs.prev_midi_note >= 0) {
-                vivid_sequencers::midi_note_off(midi_buf_,
-                    static_cast<uint8_t>(cs.prev_midi_note), midi_ch);
+            if (cs.gate_active && !muted && cs.prev_note_id != 0) {
+                vivid_sequencers::note_off(notes_buf_, cs.prev_note_id);
             }
+            cs.prev_note_id = 0;
             cs.gate_active = false;
         } else if (cell.note > 0 && cell.note <= 127 && fx != tracker::FX_TONE_PORTA) {
-            if (cs.gate_active && !muted && cs.prev_midi_note >= 0) {
-                vivid_sequencers::midi_note_off(midi_buf_,
-                    static_cast<uint8_t>(cs.prev_midi_note), midi_ch);
+            if (cs.gate_active && !muted && cs.prev_note_id != 0) {
+                vivid_sequencers::note_off(notes_buf_, cs.prev_note_id);
+                cs.prev_note_id = 0;
             }
             cs.current_pitch = static_cast<float>(cell.note);
             cs.last_note = cell.note;
@@ -364,27 +369,29 @@ void TrackerCore::process_new_row(const tracker::TrackerPattern& pat, int base_c
             cs.vibrato_phase = 0;
 
             if (!muted) {
-                uint8_t vel = static_cast<uint8_t>(
-                    std::clamp(static_cast<int>(cs.current_velocity * cs.volume), 1, 127));
-                vivid_sequencers::midi_note_on(midi_buf_, cell.note, vel, midi_ch);
+                float vel = std::clamp(
+                    static_cast<float>(cs.current_velocity) * cs.volume / 127.0f,
+                    1.0f / 127.0f, 1.0f);
+                cs.prev_note_id = vivid_sequencers::next_note_id();
+                vivid_sequencers::note_on(notes_buf_, cell.note, vel, cs.prev_note_id);
             }
         }
     }
 }
 
 void TrackerCore::process_tick_effects(const tracker::TrackerPattern& pat, int base_ch, int ch_mode, int mute) {
+    (void)base_ch; (void)ch_mode;
     for (int ch = 0; ch < tracker::MAX_CHANNELS; ++ch) {
         auto& cs = channels_[ch];
         bool muted = (mute >> ch) & 1;
-        uint8_t midi_ch = midi_channel_for(ch, base_ch, ch_mode);
 
         if (cs.note_delay_ticks > 0 && current_tick_ == cs.note_delay_ticks) {
             if (current_row_ < pat.num_rows) {
                 const auto& cell = pat.cells[ch][current_row_];
                 if (cell.note > 0 && cell.note <= 127) {
-                    if (cs.gate_active && !muted && cs.prev_midi_note >= 0) {
-                        vivid_sequencers::midi_note_off(midi_buf_,
-                            static_cast<uint8_t>(cs.prev_midi_note), midi_ch);
+                    if (cs.gate_active && !muted && cs.prev_note_id != 0) {
+                        vivid_sequencers::note_off(notes_buf_, cs.prev_note_id);
+                        cs.prev_note_id = 0;
                     }
                     cs.current_pitch = static_cast<float>(cell.note);
                     cs.last_note = cell.note;
@@ -393,19 +400,21 @@ void TrackerCore::process_tick_effects(const tracker::TrackerPattern& pat, int b
                     cs.gate_active = true;
                     cs.prev_midi_note = cell.note;
                     if (!muted) {
-                        uint8_t vel = static_cast<uint8_t>(
-                            std::clamp(static_cast<int>(cs.current_velocity * cs.volume), 1, 127));
-                        vivid_sequencers::midi_note_on(midi_buf_, cell.note, vel, midi_ch);
+                        float vel = std::clamp(
+                            static_cast<float>(cs.current_velocity) * cs.volume / 127.0f,
+                            1.0f / 127.0f, 1.0f);
+                        cs.prev_note_id = vivid_sequencers::next_note_id();
+                        vivid_sequencers::note_on(notes_buf_, cell.note, vel, cs.prev_note_id);
                     }
                 }
             }
         }
 
         if (cs.note_cut_ticks >= 0 && current_tick_ == cs.note_cut_ticks) {
-            if (cs.gate_active && !muted && cs.prev_midi_note >= 0) {
-                vivid_sequencers::midi_note_off(midi_buf_,
-                    static_cast<uint8_t>(cs.prev_midi_note), midi_ch);
+            if (cs.gate_active && !muted && cs.prev_note_id != 0) {
+                vivid_sequencers::note_off(notes_buf_, cs.prev_note_id);
             }
+            cs.prev_note_id = 0;
             cs.gate_active = false;
         }
 
@@ -445,12 +454,15 @@ void TrackerCore::process_tick_effects(const tracker::TrackerPattern& pat, int b
             if (cs.retrigger_counter >= cs.retrigger_period) {
                 cs.retrigger_counter = 0;
                 if (!muted && cs.prev_midi_note >= 0) {
-                    vivid_sequencers::midi_note_off(midi_buf_,
-                        static_cast<uint8_t>(cs.prev_midi_note), midi_ch);
-                    uint8_t vel = static_cast<uint8_t>(
-                        std::clamp(static_cast<int>(cs.current_velocity * cs.volume), 1, 127));
-                    vivid_sequencers::midi_note_on(midi_buf_,
-                        static_cast<uint8_t>(cs.prev_midi_note), vel, midi_ch);
+                    if (cs.prev_note_id != 0) {
+                        vivid_sequencers::note_off(notes_buf_, cs.prev_note_id);
+                    }
+                    float vel = std::clamp(
+                        static_cast<float>(cs.current_velocity) * cs.volume / 127.0f,
+                        1.0f / 127.0f, 1.0f);
+                    cs.prev_note_id = vivid_sequencers::next_note_id();
+                    vivid_sequencers::note_on(notes_buf_,
+                        static_cast<uint8_t>(cs.prev_midi_note), vel, cs.prev_note_id);
                 }
             }
         }

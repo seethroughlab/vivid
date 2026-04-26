@@ -2,10 +2,11 @@
 #include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
 #include "operator_api/editor_ui.h"
-#include "operator_api/midi_types.h"
+#include "operator_api/note_types.h"
 #include "operator_api/thumbnail.h"
 #include "operator_api/type_id.h"
-#include "midi_helpers.h"
+#include "note_helpers.h"
+#include "note_id_counter.h"
 #include "tracker_data.h"
 #include "tracker_editor_shared.h"
 #include <string>
@@ -89,7 +90,7 @@ protected:
     int current_tick_ = 0;
     int ticks_per_row_ = 6;
 
-    VividMidiBuffer midi_buf_ = {};
+    VividNoteBuffer notes_buf_ = {};
 
     void sync_pattern_data();
     int get_pattern_index() const;

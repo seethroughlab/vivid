@@ -331,19 +331,19 @@ void DrumSequencerCore::collect_ports(std::vector<VividPortDescriptor>& out) {
     // current_pattern: which pattern (0..3) is currently playing. Useful for
     // syncing visuals to the song's section transitions.
     out.push_back({"current_pattern", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
-    // `midi_out` carries all six drums merged — feed this into samplers
+    // `notes_out` carries all six drums merged — feed this into samplers
     // (SP404, etc.) that select voices by MIDI note. The per-drum ports
     // carry only their own drum, suitable for wiring straight into a
     // matching Drum* voice without a DrumKit hub in between. Order here
     // must match drum_layout::kTriggerPrefixes so `custom_outputs[d+1]`
     // lines up with index `d` in compute().
-    out.push_back(VIVID_CUSTOM_REF_PORT("midi_out",  VIVID_PORT_OUTPUT, VividMidiBuffer));
-    out.push_back(VIVID_CUSTOM_REF_PORT("kick_out",  VIVID_PORT_OUTPUT, VividMidiBuffer));
-    out.push_back(VIVID_CUSTOM_REF_PORT("snare_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
-    out.push_back(VIVID_CUSTOM_REF_PORT("hat_out",   VIVID_PORT_OUTPUT, VividMidiBuffer));
-    out.push_back(VIVID_CUSTOM_REF_PORT("oh_out",    VIVID_PORT_OUTPUT, VividMidiBuffer));
-    out.push_back(VIVID_CUSTOM_REF_PORT("clap_out",  VIVID_PORT_OUTPUT, VividMidiBuffer));
-    out.push_back(VIVID_CUSTOM_REF_PORT("tom_out",   VIVID_PORT_OUTPUT, VividMidiBuffer));
+    out.push_back(VIVID_CUSTOM_REF_PORT("notes_out", VIVID_PORT_OUTPUT, VividNoteBuffer));
+    out.push_back(VIVID_CUSTOM_REF_PORT("kick_out",  VIVID_PORT_OUTPUT, VividNoteBuffer));
+    out.push_back(VIVID_CUSTOM_REF_PORT("snare_out", VIVID_PORT_OUTPUT, VividNoteBuffer));
+    out.push_back(VIVID_CUSTOM_REF_PORT("hat_out",   VIVID_PORT_OUTPUT, VividNoteBuffer));
+    out.push_back(VIVID_CUSTOM_REF_PORT("oh_out",    VIVID_PORT_OUTPUT, VividNoteBuffer));
+    out.push_back(VIVID_CUSTOM_REF_PORT("clap_out",  VIVID_PORT_OUTPUT, VividNoteBuffer));
+    out.push_back(VIVID_CUSTOM_REF_PORT("tom_out",   VIVID_PORT_OUTPUT, VividNoteBuffer));
 }
 
 
@@ -471,8 +471,7 @@ void DrumSequencerCore::compute(float phase, float reset_in,
     output_values[layout::kCurrentPatternOutputIndex] =
         static_cast<float>(playing_ptn);
 
-    const uint8_t ch = static_cast<uint8_t>(midi_channel.int_value() - 1);
-    midi_buf_.count = 0;
+    notes_buf_.count = 0;
     for (auto& buf : per_drum_bufs_) buf.count = 0;
     for (std::size_t d = 0; d < layout::kDrumCount; ++d) {
         if (step_changed) {
@@ -507,18 +506,21 @@ void DrumSequencerCore::compute(float phase, float reset_in,
                 rc - 1);
             if (sub != prev_sub_step_[d]) {
                 const float mod_a = params[layout::mod_a_param_index(d, step)];
-                const uint8_t vel = static_cast<uint8_t>(std::clamp(
-                    static_cast<int>(mod_a * 127.0f + 0.5f), 1, 127));
+                const float vel = std::clamp(mod_a, 1.0f / 127.0f, 1.0f);
                 const uint8_t note = static_cast<uint8_t>(
                     params[layout::note_param_index(d)]);
-                vivid_sequencers::midi_note_on(midi_buf_, note, vel, ch);
-                vivid_sequencers::midi_note_on(per_drum_bufs_[d], note, vel, ch);
+                // One-shot drum hit: each fire gets a fresh note_id. Since
+                // drum synths don't expect a matching note-off, we don't
+                // track the id past this emit.
+                const uint64_t id = vivid_sequencers::next_note_id();
+                vivid_sequencers::note_on(notes_buf_, note, vel, id);
+                vivid_sequencers::note_on(per_drum_bufs_[d], note, vel, id);
                 prev_sub_step_[d] = sub;
             }
         }
     }
     if (custom_outputs) {
-        if (custom_output_count > 0) custom_outputs[0] = &midi_buf_;
+        if (custom_output_count > 0) custom_outputs[0] = &notes_buf_;
         const uint32_t per_drum_count = std::min<uint32_t>(
             static_cast<uint32_t>(layout::kDrumCount),
             custom_output_count > 0 ? custom_output_count - 1 : 0);

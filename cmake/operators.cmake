@@ -200,7 +200,7 @@ target_sources(arpeggiator PRIVATE
     operators/control/arpeggiator/arpeggiator_editor_shared.cpp)
 add_vivid_operator(chord_progression operators/control/chord_progression/chord_progression.cpp EXTRA_LIBS webgpu)
 add_vivid_operator(state_machine     operators/control/state_machine/state_machine.cpp)
-add_vivid_operator(tracker           operators/control/tracker/tracker.cpp         EXTRA_LIBS webgpu)
+add_vivid_operator(tracker           operators/control/tracker/tracker.cpp         EXTRA_LIBS webgpu nlohmann_json::nlohmann_json)
 target_sources(tracker PRIVATE
     operators/control/tracker/tracker_core.cpp
     operators/control/tracker/tracker_editor.cpp
@@ -216,7 +216,7 @@ foreach(_seq_op sequencer drum_sequencer
         pattern_seq note_pattern note_duration
         arpeggiator chord_progression
         state_machine tracker euclidean pat_transform
-        phase_to_midi drum_kit)
+        phase_to_midi drum_kit midi_input)
     target_include_directories(${_seq_op} PRIVATE ${CMAKE_SOURCE_DIR}/operators/shared/sequencer)
 endforeach()
 
@@ -465,6 +465,8 @@ add_vivid_operator(bitcrush       operators/audio/bitcrush/bitcrush.cpp
                    FACTORY_PRESETS operators/audio/bitcrush/factory_presets.json)
 add_vivid_operator(distortion     operators/audio/distortion/distortion.cpp
                    FACTORY_PRESETS operators/audio/distortion/factory_presets.json)
+add_vivid_operator(tape           operators/audio/tape/tape.cpp
+                   FACTORY_PRESETS operators/audio/tape/factory_presets.json)
 add_vivid_operator(filter         operators/audio/filter/filter.cpp         EXTRA_LIBS webgpu)
 target_sources(filter PRIVATE operators/shared/filter_dsp/filter_dsp.cpp)
 add_vivid_operator(dual_filter    operators/audio/dual_filter/dual_filter.cpp)
@@ -549,6 +551,7 @@ add_library(midi_file_player MODULE
     src/common/midi_file.cpp
 )
 target_link_libraries(midi_file_player PRIVATE vivid_operator_api midifile)
+target_include_directories(midi_file_player PRIVATE ${CMAKE_SOURCE_DIR}/operators/shared/sequencer)
 set_target_properties(midi_file_player PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 if(APPLE)
     add_custom_command(TARGET midi_file_player POST_BUILD

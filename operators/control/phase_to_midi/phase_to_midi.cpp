@@ -1,9 +1,11 @@
 #include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
 #include "operator_api/audio_dsp.h"
-#include "operator_api/midi_types.h"
+#include "operator_api/note_types.h"
 #include "operator_api/type_id.h"
 #include "control/audio_scalar_utils.h"
+#include "note_helpers.h"
+#include "note_id_counter.h"
 
 struct PhaseToMidi : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "PhaseToMidi";
@@ -14,7 +16,7 @@ struct PhaseToMidi : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
 
     float prev_phase_ = 0.0f;
-    VividMidiBuffer midi_buf_ = {};
+    VividNoteBuffer notes_buf_ = {};
 
     PhaseToMidi() {
         vivid::semantic_tag(note, "midi_note");
@@ -35,11 +37,11 @@ struct PhaseToMidi : vivid::OperatorBase, vivid::AudioProcessable {
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
-        out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
+        out.push_back(VIVID_CUSTOM_REF_PORT("notes_out", VIVID_PORT_OUTPUT, VividNoteBuffer));
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        midi_buf_.count = 0;
+        notes_buf_.count = 0;
         const vivid::MetronomeTransport metronome = vivid::metronome_transport(ctx);
 
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
@@ -50,20 +52,16 @@ struct PhaseToMidi : vivid::OperatorBase, vivid::AudioProcessable {
             float delta = phase - prev_phase_;
             prev_phase_ = phase;
 
-            if (delta < -0.5f && midi_buf_.count < VIVID_MIDI_BUFFER_CAPACITY) {
+            if (delta < -0.5f) {
                 uint8_t n = static_cast<uint8_t>(std::clamp(note.int_value(), 0, 127));
-                uint8_t v = static_cast<uint8_t>(std::clamp(static_cast<int>(velocity.value), 0, 127));
-                auto& msg = midi_buf_.messages[midi_buf_.count++];
-                msg.status = 0x90;
-                msg.data1  = n;
-                msg.data2  = v;
-                msg.reserved = 0;
-                msg.frame_offset_samples = i;
+                float v = std::clamp(velocity.value / 127.0f, 0.0f, 1.0f);
+                vivid_sequencers::note_on(notes_buf_, n, v,
+                                          vivid_sequencers::next_note_id(), i);
             }
         }
 
         if (ctx->custom_outputs && ctx->custom_output_count > 0) {
-            ctx->custom_outputs[0] = &midi_buf_;
+            ctx->custom_outputs[0] = &notes_buf_;
         }
     }
 };

@@ -1,9 +1,10 @@
 #pragma once
 #include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
-#include "operator_api/midi_types.h"
+#include "operator_api/note_types.h"
 #include "operator_api/type_id.h"
-#include "midi_helpers.h"
+#include "note_helpers.h"
+#include "note_id_counter.h"
 #include <algorithm>
 #include <cmath>
 #include "operator_api/thumbnail.h"
@@ -86,9 +87,9 @@ struct NotePatternCore : vivid::OperatorBase {
     int beat_count_ = 0;
     float prev_phase_ = 0.0f;
     bool prev_gate_ = false;
-    int prev_notes_[5] = {-1, -1, -1, -1, -1};
+    uint64_t prev_note_ids_[5] = {0, 0, 0, 0, 0};
     int prev_note_count_ = 0;
-    VividMidiBuffer midi_buf_ = {};
+    VividNoteBuffer notes_buf_ = {};
 
     // Chord interval tables: [type][interval_count], terminated by -1
     // 0=major, 1=minor, 2=dim, 3=aug, 4=dom7, 5=min7, 6=maj7
@@ -129,7 +130,7 @@ struct NotePatternCore : vivid::OperatorBase {
         out.push_back({"notes",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
         out.push_back({"velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
         out.push_back({"gates",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
-        out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
+        out.push_back(VIVID_CUSTOM_REF_PORT("notes_out", VIVID_PORT_OUTPUT, VividNoteBuffer));
     }
 
     void compute(float beat_phase, const float* params, VividLaneOutput* out_spreads,
@@ -190,40 +191,40 @@ struct NotePatternCore : vivid::OperatorBase {
             }
         }
 
-        // MIDI output: polyphonic note-on/off on gate edges
-        uint8_t ch = static_cast<uint8_t>(midi_channel.int_value() - 1);
-        uint8_t midi_vel = static_cast<uint8_t>(std::clamp(static_cast<int>(vel * 127.0f), 0, 127));
-        midi_buf_.count = 0;
+        // Native note output: polyphonic on/off on gate edges. Each chord
+        // tone gets its own note_id so downstream synths allocate distinct
+        // voices and same-pitch retriggers work cleanly.
+        notes_buf_.count = 0;
         bool gate_high = (gate_val > 0.5f);
         if (gate_high && !prev_gate_) {
             // Gate rising: note-off previous chord, note-on new chord
             for (int i = 0; i < prev_note_count_; ++i) {
-                if (prev_notes_[i] >= 0) {
-                    vivid_sequencers::midi_note_off(midi_buf_,
-                        static_cast<uint8_t>(prev_notes_[i]), ch);
+                if (prev_note_ids_[i] != 0) {
+                    vivid_sequencers::note_off(notes_buf_, prev_note_ids_[i]);
+                    prev_note_ids_[i] = 0;
                 }
             }
             prev_note_count_ = chord_size;
             for (int i = 0; i < chord_size && i < 5; ++i) {
                 int note = std::clamp(root + oct * 12 + intervals[i], 0, 127);
-                vivid_sequencers::midi_note_on(midi_buf_,
-                    static_cast<uint8_t>(note), midi_vel, ch);
-                prev_notes_[i] = note;
+                uint64_t id = vivid_sequencers::next_note_id();
+                vivid_sequencers::note_on(notes_buf_,
+                    static_cast<uint8_t>(note), vel, id);
+                prev_note_ids_[i] = id;
             }
         } else if (!gate_high && prev_gate_) {
             // Gate falling: note-off all
             for (int i = 0; i < prev_note_count_; ++i) {
-                if (prev_notes_[i] >= 0) {
-                    vivid_sequencers::midi_note_off(midi_buf_,
-                        static_cast<uint8_t>(prev_notes_[i]), ch);
-                    prev_notes_[i] = -1;
+                if (prev_note_ids_[i] != 0) {
+                    vivid_sequencers::note_off(notes_buf_, prev_note_ids_[i]);
+                    prev_note_ids_[i] = 0;
                 }
             }
             prev_note_count_ = 0;
         }
         prev_gate_ = gate_high;
         if (custom_outputs && custom_output_count > 0) {
-            custom_outputs[0] = &midi_buf_;
+            custom_outputs[0] = &notes_buf_;
         }
 
         // Scalar fallback: first note

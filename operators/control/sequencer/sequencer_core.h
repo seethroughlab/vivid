@@ -2,40 +2,14 @@
 #include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
 #include "operator_api/editor_ui.h"
-#include "operator_api/midi_types.h"
+#include "operator_api/note_types.h"
 #include "operator_api/type_id.h"
+#include "note_helpers.h"
+#include "note_id_counter.h"
 #include "sequencer_editor_shared.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-
-namespace {
-
-inline bool midi_note_on(VividMidiBuffer& buf, uint8_t note, uint8_t velocity,
-                         uint8_t channel = 0, uint32_t frame_offset = 0) {
-    if (buf.count >= VIVID_MIDI_BUFFER_CAPACITY) return false;
-    VividMidiMessage& msg = buf.messages[buf.count++];
-    msg.status = static_cast<uint8_t>(0x90 | (channel & 0x0F));
-    msg.data1 = note;
-    msg.data2 = velocity;
-    msg.reserved = 0;
-    msg.frame_offset_samples = frame_offset;
-    return true;
-}
-
-inline bool midi_note_off(VividMidiBuffer& buf, uint8_t note,
-                          uint8_t channel = 0, uint32_t frame_offset = 0) {
-    if (buf.count >= VIVID_MIDI_BUFFER_CAPACITY) return false;
-    VividMidiMessage& msg = buf.messages[buf.count++];
-    msg.status = static_cast<uint8_t>(0x80 | (channel & 0x0F));
-    msg.data1 = note;
-    msg.data2 = 0;
-    msg.reserved = 0;
-    msg.frame_offset_samples = frame_offset;
-    return true;
-}
-
-} // anonymous namespace
 
 /**
  * @brief Step sequencer with inline editing, ratchets, probability, and MIDI.
@@ -212,7 +186,7 @@ struct SequencerCore : vivid::OperatorBase {
         out.push_back({"step",       VIVID_PORT_SCALAR,     VIVID_PORT_OUTPUT});  // 1
         out.push_back({"trigger",    VIVID_PORT_SCALAR,     VIVID_PORT_OUTPUT});  // 2
         // Custom outputs
-        out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
+        out.push_back(VIVID_CUSTOM_REF_PORT("notes_out", VIVID_PORT_OUTPUT, VividNoteBuffer));
     }
 
     void compute(const float* input_values, double delta_time,
@@ -342,18 +316,20 @@ struct SequencerCore : vivid::OperatorBase {
         output_values[1] = static_cast<float>(step);
         output_values[2] = trigger ? 1.0f : 0.0f;
 
-        // MIDI output
-        uint8_t ch = static_cast<uint8_t>(midi_channel.int_value() - 1);
-        midi_buf_.count = 0;
+        // Native note output. Each trigger releases the prior note (if any)
+        // and allocates a fresh id for the new one — same-pitch retriggers
+        // get distinct slots downstream.
+        notes_buf_.count = 0;
         if (trigger) {
             uint8_t note = static_cast<uint8_t>(std::clamp(static_cast<int>(out_val), 0, 127));
-            if (prev_midi_note_ >= 0)
-                midi_note_off(midi_buf_, static_cast<uint8_t>(prev_midi_note_), ch);
-            midi_note_on(midi_buf_, note, 100, ch);
-            prev_midi_note_ = note;
+            if (current_note_id_ != 0)
+                vivid_sequencers::note_off(notes_buf_, current_note_id_);
+            uint64_t id = vivid_sequencers::next_note_id();
+            vivid_sequencers::note_on(notes_buf_, note, 100.0f / 127.0f, id);
+            current_note_id_ = id;
         }
         if (custom_outputs && custom_output_count > 0)
-            custom_outputs[0] = &midi_buf_;
+            custom_outputs[0] = &notes_buf_;
     }
 
 protected:
@@ -374,6 +350,6 @@ protected:
     int    prev_ratchet_index_ = -1;
     float  current_value_    = 0.5f;
     uint32_t rng_state_      = 0xA5C31E59u;
-    int    prev_midi_note_   = -1;
-    VividMidiBuffer midi_buf_ = {};
+    uint64_t current_note_id_ = 0;
+    VividNoteBuffer notes_buf_ = {};
 };

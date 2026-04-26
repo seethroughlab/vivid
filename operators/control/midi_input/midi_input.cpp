@@ -1,6 +1,8 @@
 #include "operator_api/operator.h"
-#include "operator_api/midi_types.h"
+#include "operator_api/note_types.h"
 #include "operator_api/type_id.h"
+#include "note_helpers.h"
+#include "note_id_counter.h"
 #include "RtMidi.h"
 #include <mutex>
 #include <vector>
@@ -64,7 +66,7 @@ struct MidiInput : vivid::OperatorBase, vivid::FrameProcessable {
         out.push_back({"notes",       VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // [7]
         out.push_back({"velocities",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // [8]
         out.push_back({"gates",       VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // [9]
-        out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));  // [10]
+        out.push_back(VIVID_CUSTOM_REF_PORT("notes_out", VIVID_PORT_OUTPUT, VividNoteBuffer));  // [10]
         // New scalar outputs
         out.push_back({"aftertouch",  VIVID_PORT_SCALAR,     VIVID_PORT_OUTPUT});  // [11]
         out.push_back({"expression",  VIVID_PORT_SCALAR,     VIVID_PORT_OUTPUT});  // [12]
@@ -144,6 +146,10 @@ struct MidiInput : vivid::OperatorBase, vivid::FrameProcessable {
         int cur_mode = mode.int_value();
         bool had_note_on = false;
 
+        // Reset the outbound note buffer for this frame; held_note_on/off
+        // and per-note expression dispatchers below append to it.
+        notes_out_buf_.count = 0;
+
         for (const auto& msg : events) {
             if (msg.size() < 1) continue;
 
@@ -187,14 +193,19 @@ struct MidiInput : vivid::OperatorBase, vivid::FrameProcessable {
                     fprintf(stderr, "[MidiInput] CC Learn: captured CC %d\n", cc);
                 }
 
-                // CC74 (slide) and CC11 (expression) — per-note in MPE, global in poly_shared
+                // CC74 (slide → MPE timbre) and CC11 (expression).
+                // In MPE, both are per-channel and emit native per-note events
+                // for slide. CC11 has no native event type and stays as a
+                // lane-array output only.
                 if (cc == 74) {
                     float v = static_cast<float>(val) / 127.0f;
                     slide_scalar_ = v;
                     if (is_mpe_mode(cur_mode) && is_member_channel(cur_mode, msg_chan)) {
-                        if (auto* h = find_held_by_channel(msg_chan)) h->slide = v;
+                        if (auto* h = find_held_by_channel(msg_chan)) {
+                            h->slide = v;
+                            vivid_sequencers::note_timbre(notes_out_buf_, h->note_id, v);
+                        }
                     } else if (cur_mode == kModePolyShared) {
-                        // Broadcast to all held notes
                         for (int i = 0; i < held_count_; ++i)
                             held_buffer_[i].slide = v;
                     }
@@ -210,12 +221,18 @@ struct MidiInput : vivid::OperatorBase, vivid::FrameProcessable {
                     }
                 }
             } else if (msg_type == 0xE0 && msg.size() >= 3) {
-                // Pitch Bend
+                // Pitch Bend — MPE wire range is ±48 semitones (default ±2;
+                // we send the normalized -1..1 here and let synths scale).
                 int bend_raw = (static_cast<int>(msg[2]) << 7) | static_cast<int>(msg[1]);
                 float bend = static_cast<float>(bend_raw - 8192) / 8192.0f;
                 pitch_bend_ = bend;
                 if (is_mpe_mode(cur_mode) && is_member_channel(cur_mode, msg_chan)) {
-                    if (auto* h = find_held_by_channel(msg_chan)) h->pitch_bend = bend;
+                    if (auto* h = find_held_by_channel(msg_chan)) {
+                        h->pitch_bend = bend;
+                        // Emit as semitones (MPE default ±2 semitones).
+                        vivid_sequencers::note_pitch_bend(
+                            notes_out_buf_, h->note_id, bend * 2.0f);
+                    }
                 } else if (cur_mode == kModePolyShared) {
                     for (int i = 0; i < held_count_; ++i)
                         held_buffer_[i].pitch_bend = bend;
@@ -225,52 +242,44 @@ struct MidiInput : vivid::OperatorBase, vivid::FrameProcessable {
                 float pressure = static_cast<float>(msg[1]) / 127.0f;
                 aftertouch_ = pressure;
                 if (is_mpe_mode(cur_mode) && is_member_channel(cur_mode, msg_chan)) {
-                    if (auto* h = find_held_by_channel(msg_chan)) h->pressure = pressure;
+                    if (auto* h = find_held_by_channel(msg_chan)) {
+                        h->pressure = pressure;
+                        vivid_sequencers::note_pressure(
+                            notes_out_buf_, h->note_id, pressure);
+                    }
                 } else if (cur_mode == kModePolyShared) {
                     for (int i = 0; i < held_count_; ++i)
                         held_buffer_[i].pressure = pressure;
                 }
             } else if (msg_type == 0xA0 && msg.size() >= 3) {
-                // Polyphonic Key Pressure
+                // Polyphonic Key Pressure — true per-note, emit native event
+                // regardless of mode.
                 unsigned char note = msg[1];
                 float pressure = static_cast<float>(msg[2]) / 127.0f;
                 if (is_mpe_mode(cur_mode)) {
-                    // MPE: match by (channel, note)
                     for (int i = 0; i < held_count_; ++i) {
                         if (held_buffer_[i].channel == msg_chan && held_buffer_[i].note == note) {
                             held_buffer_[i].pressure = pressure;
+                            vivid_sequencers::note_pressure(
+                                notes_out_buf_, held_buffer_[i].note_id, pressure);
                             break;
                         }
                     }
                 } else {
-                    // poly_shared: match by note only (may hit multiple if somehow duplicated)
                     for (int i = 0; i < held_count_; ++i) {
-                        if (held_buffer_[i].note == note)
+                        if (held_buffer_[i].note == note) {
                             held_buffer_[i].pressure = pressure;
+                            vivid_sequencers::note_pressure(
+                                notes_out_buf_, held_buffer_[i].note_id, pressure);
+                        }
                     }
                 }
             }
         }
 
-        // Write MIDI buffer passthrough (all channel-filtered events)
-        midi_out_buf_.count = 0;
-        for (const auto& msg : events) {
-            if (msg.size() < 1) continue;
-            unsigned char status = msg[0];
-            uint8_t msg_chan = (status & 0x0F) + 1;
-            if (chan_filter != 0 && msg_chan != chan_filter) continue;
-            if (midi_out_buf_.count < VIVID_MIDI_BUFFER_CAPACITY && msg.size() >= 2) {
-                auto& m = midi_out_buf_.messages[midi_out_buf_.count];
-                m.status = msg[0];
-                m.data1  = msg[1];
-                m.data2  = (msg.size() >= 3) ? msg[2] : 0;
-                m.reserved = 0;
-                m.frame_offset_samples = 0;
-                midi_out_buf_.count++;
-            }
-        }
+        // Publish the native note buffer assembled by the dispatchers above.
         if (ctx->custom_outputs && ctx->custom_output_count > 0) {
-            ctx->custom_outputs[0] = &midi_out_buf_;
+            ctx->custom_outputs[0] = &notes_out_buf_;
         }
 
         // Write scalar outputs
@@ -322,7 +331,7 @@ struct MidiInput : vivid::OperatorBase, vivid::FrameProcessable {
                     notes_buf[i]    = static_cast<float>(h.note);
                     vel_buf[i]      = h.velocity;
                     gates_buf[i]    = 1.0f;
-                    lane_ids_buf[i] = static_cast<float>(h.lane_id);
+                    lane_ids_buf[i] = static_cast<float>(h.note_id);
                     bends_buf[i]    = h.pitch_bend;
                     press_buf[i]    = h.pressure;
                     slides_buf[i]   = h.slide;
@@ -349,7 +358,7 @@ private:
         uint8_t  note       = 0;
         float    velocity   = 0.0f;
         uint8_t  channel    = 0;      // 1-based MIDI channel
-        uint32_t lane_id    = 0;      // stable identity token
+        uint64_t note_id    = 0;      // stable per-note identity
         float    pitch_bend = 0.0f;   // per-note bend (-1..1)
         float    pressure   = 0.0f;   // per-note pressure (0..1)
         float    slide      = 0.0f;   // per-note slide/CC74 (0..1)
@@ -368,11 +377,10 @@ private:
     float aftertouch_ = 0.0f;
     float expression_scalar_ = 0.0f;
     float slide_scalar_ = 0.0f;
-    uint32_t next_lane_id_ = 0;
 
     HeldNote held_buffer_[kMaxHeld] = {};
     int held_count_ = 0;
-    VividMidiBuffer midi_out_buf_ = {};
+    VividNoteBuffer notes_out_buf_ = {};
 
     // --- MPE helpers ---
 
@@ -418,18 +426,19 @@ private:
                 }
             }
         }
-        // Add new held note
+        // Add new held note + emit native NOTE_ON
         if (held_count_ < kMaxHeld) {
             auto& h = held_buffer_[held_count_];
             h.note       = note;
             h.velocity   = velocity;
             h.channel    = ch;
-            h.lane_id    = ++next_lane_id_;
+            h.note_id    = vivid_sequencers::next_note_id();
             h.pitch_bend = 0.0f;
             h.pressure   = 0.0f;
             h.slide      = (cur_mode == kModePolyShared) ? slide_scalar_ : 0.0f;
             h.expression = (cur_mode == kModePolyShared) ? expression_scalar_ : 0.0f;
             held_count_++;
+            vivid_sequencers::note_on(notes_out_buf_, note, velocity, h.note_id);
         }
     }
 
@@ -442,6 +451,7 @@ private:
                 match = (held_buffer_[i].note == note);
             }
             if (match) {
+                vivid_sequencers::note_off(notes_out_buf_, held_buffer_[i].note_id);
                 // Shift remaining down
                 for (int j = i; j < held_count_ - 1; ++j) {
                     held_buffer_[j] = held_buffer_[j + 1];

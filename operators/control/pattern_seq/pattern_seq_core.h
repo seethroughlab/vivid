@@ -3,9 +3,10 @@
 #include "operator_api/operator.h"
 #include "operator_api/editor_ui.h"
 #include "operator_api/editor_keys.h"
-#include "operator_api/midi_types.h"
+#include "operator_api/note_types.h"
 #include "operator_api/type_id.h"
-#include "midi_helpers.h"
+#include "note_helpers.h"
+#include "note_id_counter.h"
 #include "pattern_seq_editor_shared.h"
 #include "shared/editor_ui/selection.h"
 #include <algorithm>
@@ -116,7 +117,7 @@ struct PatternSeqCore : vivid::OperatorBase {
         out.push_back({"gate",       VIVID_PORT_SCALAR,  VIVID_PORT_OUTPUT});
         out.push_back({"step",       VIVID_PORT_SCALAR,  VIVID_PORT_OUTPUT});
         out.push_back({"pattern",    VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
-        out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
+        out.push_back(VIVID_CUSTOM_REF_PORT("notes_out", VIVID_PORT_OUTPUT, VividNoteBuffer));
     }
 
     void compute(float beat_phase, const float* params, float* output_values,
@@ -161,27 +162,25 @@ struct PatternSeqCore : vivid::OperatorBase {
         output_values[2] = gate;
         output_values[3] = static_cast<float>(current_step);
 
-        uint8_t ch = static_cast<uint8_t>(midi_channel.int_value() - 1);
-        midi_buf_.count = 0;
+        notes_buf_.count = 0;
         bool gate_high = (gate > 0.5f);
         if (gate_high && !prev_gate_) {
-            if (prev_midi_note_ >= 0) {
-                vivid_sequencers::midi_note_off(midi_buf_,
-                    static_cast<uint8_t>(prev_midi_note_), ch);
+            if (current_note_id_ != 0) {
+                vivid_sequencers::note_off(notes_buf_, current_note_id_);
             }
             uint8_t note = static_cast<uint8_t>(std::clamp(static_cast<int>(out_value), 0, 127));
-            vivid_sequencers::midi_note_on(midi_buf_, note, 100, ch);
-            prev_midi_note_ = note;
+            uint64_t id = vivid_sequencers::next_note_id();
+            vivid_sequencers::note_on(notes_buf_, note, 100.0f / 127.0f, id);
+            current_note_id_ = id;
         } else if (!gate_high && prev_gate_) {
-            if (prev_midi_note_ >= 0) {
-                vivid_sequencers::midi_note_off(midi_buf_,
-                    static_cast<uint8_t>(prev_midi_note_), ch);
-                prev_midi_note_ = -1;
+            if (current_note_id_ != 0) {
+                vivid_sequencers::note_off(notes_buf_, current_note_id_);
+                current_note_id_ = 0;
             }
         }
         prev_gate_ = gate_high;
         if (custom_outputs && custom_output_count > 0) {
-            custom_outputs[0] = &midi_buf_;
+            custom_outputs[0] = &notes_buf_;
         }
 
         if (out_spreads) {
@@ -205,8 +204,8 @@ protected:
     int beat_count_ = 0;
     int prev_step_ = -1;
     bool prev_gate_ = false;
-    int prev_midi_note_ = -1;
-    VividMidiBuffer midi_buf_ = {};
+    uint64_t current_note_id_ = 0;
+    VividNoteBuffer notes_buf_ = {};
 
     static uint32_t xorshift32(uint32_t state) {
         state ^= state << 13;

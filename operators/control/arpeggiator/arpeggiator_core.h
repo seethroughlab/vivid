@@ -4,9 +4,10 @@
 #include "operator_api/draw_ui_helpers.h"
 #include "operator_api/editor_ui.h"
 #include "operator_api/editor_keys.h"
-#include "operator_api/midi_types.h"
+#include "operator_api/note_types.h"
 #include "operator_api/type_id.h"
-#include "midi_helpers.h"
+#include "note_helpers.h"
+#include "note_id_counter.h"
 #include "arpeggiator_patterns.h"
 #include "shared/editor_ui/selection.h"
 #include <algorithm>
@@ -233,7 +234,7 @@ struct ArpeggiatorCore : vivid::OperatorBase {
         out.push_back({"vel",        VIVID_PORT_SCALAR,  VIVID_PORT_OUTPUT});  // [1]
         out.push_back({"gate",       VIVID_PORT_SCALAR,  VIVID_PORT_OUTPUT});  // [2]
         out.push_back({"step",       VIVID_PORT_SCALAR,  VIVID_PORT_OUTPUT});  // [3]
-        out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
+        out.push_back(VIVID_CUSTOM_REF_PORT("notes_out", VIVID_PORT_OUTPUT, VividNoteBuffer));
     }
 
     void compute(float beat_phase, const float* params, const VividLaneView* in_spreads,
@@ -557,8 +558,8 @@ protected:
 
     // MIDI state
     bool prev_midi_gate_ = false;
-    int prev_midi_note_ = -1;
-    VividMidiBuffer midi_buf_ = {};
+    uint64_t current_note_id_ = 0;
+    VividNoteBuffer notes_buf_ = {};
 
     // RNG state for Random mode
     uint32_t rng_state_ = 12345;
@@ -617,29 +618,26 @@ protected:
             output_values[3] = static_cast<float>(step);
         }
 
-        // MIDI output
-        uint8_t ch = static_cast<uint8_t>(midi_channel.int_value() - 1);
-        midi_buf_.count = 0;
+        // Native note output. Each arp step gets a fresh id — same-pitch
+        // retriggers always allocate distinct downstream voices.
+        notes_buf_.count = 0;
         bool gate_high = (gate > 0.5f);
         if (gate_high && !prev_midi_gate_) {
-            if (prev_midi_note_ >= 0) {
-                vivid_sequencers::midi_note_off(midi_buf_,
-                    static_cast<uint8_t>(prev_midi_note_), ch);
+            if (current_note_id_ != 0) {
+                vivid_sequencers::note_off(notes_buf_, current_note_id_);
             }
             uint8_t midi_note = static_cast<uint8_t>(std::clamp(static_cast<int>(note), 0, 127));
-            uint8_t midi_vel = static_cast<uint8_t>(std::clamp(static_cast<int>(vel * 127.0f), 0, 127));
-            vivid_sequencers::midi_note_on(midi_buf_, midi_note, midi_vel, ch);
-            prev_midi_note_ = midi_note;
+            current_note_id_ = vivid_sequencers::next_note_id();
+            vivid_sequencers::note_on(notes_buf_, midi_note, vel, current_note_id_);
         } else if (!gate_high && prev_midi_gate_) {
-            if (prev_midi_note_ >= 0) {
-                vivid_sequencers::midi_note_off(midi_buf_,
-                    static_cast<uint8_t>(prev_midi_note_), ch);
-                prev_midi_note_ = -1;
+            if (current_note_id_ != 0) {
+                vivid_sequencers::note_off(notes_buf_, current_note_id_);
+                current_note_id_ = 0;
             }
         }
         prev_midi_gate_ = gate_high;
         if (custom_outputs && custom_output_count > 0) {
-            custom_outputs[0] = &midi_buf_;
+            custom_outputs[0] = &notes_buf_;
         }
     }
 };
