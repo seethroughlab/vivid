@@ -1,7 +1,7 @@
 #include "runtime/operators/builtin_operators.h"
 #include "runtime/operators/operator_registry.h"
 #include "operator_api/types.h"
-#include "operator_api/midi_types.h"
+#include "operator_api/note_types.h"
 #include "operator_api/port_type_registry.h"
 #include "operator_api/type_id.h"
 
@@ -82,8 +82,8 @@ static void  video_out_process(void*, VividFrameContext*) { /* no-op */ }
 // ============================================================================
 
 static void register_core_custom_types() {
-    const VividPortTypeInfo midi_info = vivid_custom_type_info<VividMidiBuffer>();
-    vivid_register_port_type(&midi_info);
+    const VividPortTypeInfo notes_info = vivid_custom_type_info<VividNoteBuffer>();
+    vivid_register_port_type(&notes_info);
 }
 
 void register_builtin_operators(vivid::OperatorRegistry& registry) {

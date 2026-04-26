@@ -7,7 +7,16 @@ extern "C" {
 #endif
 
 // ---------------------------------------------------------------------------
-// MIDI port types for use with VIVID_CUSTOM_PORT
+// MIDI 1.0 message types — INTERNAL parser intermediates only.
+//
+// These structs live here for use inside boundary operators (MidiInput,
+// MidiFilePlayer) that parse external MIDI 1.0 wire data. They are NOT a
+// registered custom-ref port type, so connecting one to a port will fail
+// graph compilation. Inside the graph, every note stream uses
+// VividNoteBuffer (operator_api/note_types.h) — the native note transport
+// keyed by note_id.
+//
+// See docs/plans/midi-native-protocol/phase-1-wire-format.md.
 // ---------------------------------------------------------------------------
 
 // A single timestamped MIDI message within a frame window.
@@ -20,7 +29,7 @@ typedef struct VividMidiMessage {
 } VividMidiMessage;
 
 // A fixed-capacity ring of MIDI messages for one audio buffer tick.
-// Operators write messages into this buffer; consumers read and clear it.
+// Used as a parser intermediate inside boundary operators only.
 #define VIVID_MIDI_BUFFER_CAPACITY 64
 typedef struct VividMidiBuffer {
     VividMidiMessage messages[VIVID_MIDI_BUFFER_CAPACITY];
@@ -29,10 +38,4 @@ typedef struct VividMidiBuffer {
 
 #ifdef __cplusplus
 }
-
-#include "operator_api/type_id.h"
-VIVID_DECLARE_CUSTOM_REF_TYPE(VividMidiBuffer,
-                              "seethroughlab.vivid.midi_buffer_v1",
-                              "VividMidiBuffer",
-                              false);
 #endif
