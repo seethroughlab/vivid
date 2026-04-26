@@ -1,5 +1,5 @@
 #include "operator_api/operator.h"
-#include "operator_api/midi_types.h"
+#include "operator_api/note_types.h"
 #include "operator_api/type_id.h"
 #include <cstdint>
 #include <cstring>
@@ -8,6 +8,7 @@ struct DrumKit : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName = "DrumKit";
     static constexpr bool kTimeDependent = false;
     static constexpr int kSlotCount = 8;
+    static constexpr int kMaxActive = 64;
 
     vivid::Param<int> note_0{"note_0", 36, 0, 127};
     vivid::Param<int> note_1{"note_1", 38, 0, 127};
@@ -18,7 +19,13 @@ struct DrumKit : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<int> note_6{"note_6", 37, 0, 127};
     vivid::Param<int> note_7{"note_7", 40, 0, 127};
 
-    VividMidiBuffer slot_bufs_[kSlotCount];
+    VividNoteBuffer slot_bufs_[kSlotCount];
+
+    // Active id → slot routing table. Persists across buffers so expression
+    // events that arrive after the originating NOTE_ON reach the same slot.
+    struct ActiveId { uint64_t note_id; int slot; };
+    ActiveId active_[kMaxActive] = {};
+    int active_count_ = 0;
 
     DrumKit() {
         vivid::description(note_0, "MIDI note number for slot 0 (default: kick)");
@@ -43,54 +50,91 @@ struct DrumKit : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back(VIVID_CUSTOM_REF_PORT("midi_in", VIVID_PORT_INPUT, VividMidiBuffer));
-        out.push_back(VIVID_CUSTOM_REF_PORT("slot_0", VIVID_PORT_OUTPUT, VividMidiBuffer));
-        out.push_back(VIVID_CUSTOM_REF_PORT("slot_1", VIVID_PORT_OUTPUT, VividMidiBuffer));
-        out.push_back(VIVID_CUSTOM_REF_PORT("slot_2", VIVID_PORT_OUTPUT, VividMidiBuffer));
-        out.push_back(VIVID_CUSTOM_REF_PORT("slot_3", VIVID_PORT_OUTPUT, VividMidiBuffer));
-        out.push_back(VIVID_CUSTOM_REF_PORT("slot_4", VIVID_PORT_OUTPUT, VividMidiBuffer));
-        out.push_back(VIVID_CUSTOM_REF_PORT("slot_5", VIVID_PORT_OUTPUT, VividMidiBuffer));
-        out.push_back(VIVID_CUSTOM_REF_PORT("slot_6", VIVID_PORT_OUTPUT, VividMidiBuffer));
-        out.push_back(VIVID_CUSTOM_REF_PORT("slot_7", VIVID_PORT_OUTPUT, VividMidiBuffer));
+        out.push_back(VIVID_CUSTOM_REF_PORT("notes_in", VIVID_PORT_INPUT, VividNoteBuffer));
+        out.push_back(VIVID_CUSTOM_REF_PORT("slot_0", VIVID_PORT_OUTPUT, VividNoteBuffer));
+        out.push_back(VIVID_CUSTOM_REF_PORT("slot_1", VIVID_PORT_OUTPUT, VividNoteBuffer));
+        out.push_back(VIVID_CUSTOM_REF_PORT("slot_2", VIVID_PORT_OUTPUT, VividNoteBuffer));
+        out.push_back(VIVID_CUSTOM_REF_PORT("slot_3", VIVID_PORT_OUTPUT, VividNoteBuffer));
+        out.push_back(VIVID_CUSTOM_REF_PORT("slot_4", VIVID_PORT_OUTPUT, VividNoteBuffer));
+        out.push_back(VIVID_CUSTOM_REF_PORT("slot_5", VIVID_PORT_OUTPUT, VividNoteBuffer));
+        out.push_back(VIVID_CUSTOM_REF_PORT("slot_6", VIVID_PORT_OUTPUT, VividNoteBuffer));
+        out.push_back(VIVID_CUSTOM_REF_PORT("slot_7", VIVID_PORT_OUTPUT, VividNoteBuffer));
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        const VividMidiBuffer* midi_in = nullptr;
+        const VividNoteBuffer* notes_in = nullptr;
         if (ctx->custom_inputs && ctx->custom_input_count > 0 && ctx->custom_inputs[0])
-            midi_in = static_cast<const VividMidiBuffer*>(ctx->custom_inputs[0]);
-        route(midi_in, ctx->param_values, ctx->custom_outputs, ctx->custom_output_count);
+            notes_in = static_cast<const VividNoteBuffer*>(ctx->custom_inputs[0]);
+        route(notes_in, ctx->param_values, ctx->custom_outputs, ctx->custom_output_count);
     }
 
 private:
-    void route(const VividMidiBuffer* midi_in, const float* params,
+    void emit_to_slot(int slot, const VividNoteEvent& ev) {
+        auto& buf = slot_bufs_[slot];
+        if (buf.count < VIVID_NOTE_BUFFER_CAPACITY)
+            buf.events[buf.count++] = ev;
+    }
+
+    int slot_for_id(uint64_t note_id) const {
+        for (int i = 0; i < active_count_; ++i)
+            if (active_[i].note_id == note_id) return active_[i].slot;
+        return -1;
+    }
+
+    void track_id(uint64_t note_id, int slot) {
+        // Replace existing entry if present.
+        for (int i = 0; i < active_count_; ++i) {
+            if (active_[i].note_id == note_id) {
+                active_[i].slot = slot;
+                return;
+            }
+        }
+        if (active_count_ < kMaxActive)
+            active_[active_count_++] = {note_id, slot};
+    }
+
+    void untrack_id(uint64_t note_id) {
+        for (int i = 0; i < active_count_; ++i) {
+            if (active_[i].note_id == note_id) {
+                active_[i] = active_[--active_count_];
+                return;
+            }
+        }
+    }
+
+    void route(const VividNoteBuffer* notes_in, const float* params,
                void** custom_outputs, uint32_t custom_output_count) {
         for (int s = 0; s < kSlotCount; ++s)
             slot_bufs_[s].count = 0;
 
-        if (midi_in) {
+        if (notes_in) {
             int note_map[kSlotCount];
             for (int s = 0; s < kSlotCount; ++s)
                 note_map[s] = static_cast<int>(params[s]);
 
-            for (uint32_t m = 0; m < midi_in->count; ++m) {
-                const auto& msg = midi_in->messages[m];
-                uint8_t status_type = msg.status & 0xF0;
+            for (uint32_t m = 0; m < notes_in->count; ++m) {
+                const auto& ev = notes_in->events[m];
+                if (ev.note_id == 0) continue;  // global stream — drums ignore
 
-                if (status_type == 0x90 || status_type == 0x80) {
+                if (ev.type == VIVID_NOTE_ON) {
                     for (int s = 0; s < kSlotCount; ++s) {
-                        if (msg.data1 == static_cast<uint8_t>(note_map[s])) {
-                            auto& buf = slot_bufs_[s];
-                            if (buf.count < VIVID_MIDI_BUFFER_CAPACITY)
-                                buf.messages[buf.count++] = msg;
+                        if (ev.note_number == static_cast<uint8_t>(note_map[s])) {
+                            emit_to_slot(s, ev);
+                            track_id(ev.note_id, s);
                             break;
                         }
                     }
-                } else {
-                    for (int s = 0; s < kSlotCount; ++s) {
-                        auto& buf = slot_bufs_[s];
-                        if (buf.count < VIVID_MIDI_BUFFER_CAPACITY)
-                            buf.messages[buf.count++] = msg;
+                } else if (ev.type == VIVID_NOTE_OFF) {
+                    int s = slot_for_id(ev.note_id);
+                    if (s >= 0) {
+                        emit_to_slot(s, ev);
+                        untrack_id(ev.note_id);
                     }
+                } else {
+                    // Expression event — route to the slot that owns the id.
+                    int s = slot_for_id(ev.note_id);
+                    if (s >= 0)
+                        emit_to_slot(s, ev);
                 }
             }
         }
