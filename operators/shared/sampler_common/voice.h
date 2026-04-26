@@ -2,25 +2,26 @@
 
 #include "sample_bank.h"
 #include "operator_api/adsr.h"
+#include "operator_api/voice_allocator.h"
 #include <algorithm>
 #include <cmath>
 
 namespace vivid_sampler {
 
 // ---------------------------------------------------------------------------
-// Voice — a single sample playback instance
+// Voice — a single sample playback instance.
+//
+// Inherits the slot-bookkeeping fields (active/note/velocity/start_frame) from
+// vivid::VoiceSlot so this struct stays compatible with the shared allocator
+// while carrying sampler-specific extras (envelope, region, playback cursor).
 // ---------------------------------------------------------------------------
 
-struct Voice {
-    bool active = false;
-    int note = -1;
-    float velocity = 1.0f;
+struct Voice : public vivid::VoiceSlot {
     double playback_pos = 0.0;
     double playback_rate = 1.0;
     vivid::adsr::State envelope;
     const SampleRegion* region = nullptr;
     bool one_shot = false;
-    uint64_t start_frame = 0;
 };
 
 // ---------------------------------------------------------------------------

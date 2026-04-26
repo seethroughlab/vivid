@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <string>
 #include <algorithm>
+#include <nlohmann/json.hpp>
 
 namespace tracker {
 
@@ -66,7 +67,8 @@ struct TrackerSong {
 };
 
 struct ChannelState {
-    int8_t  prev_midi_note = -1;
+    int8_t   prev_midi_note = -1;
+    uint64_t prev_note_id   = 0;   // id of currently held note, 0 if none
     float   current_pitch = 0;
     float   target_pitch = 0;
     float   porta_speed = 0;
@@ -167,7 +169,13 @@ inline void parse_cell_fx(const char* s, uint8_t& type, uint8_t& param) {
     param = (ph >= 0 && pl >= 0) ? static_cast<uint8_t>((ph << 4) | pl) : 0;
 }
 
-inline std::string serialize_song(const TrackerSong& song) {
+// ---------------------------------------------------------------------------
+// Legacy MOD-tracker text format. Retained for forwards compat: vivid wrote
+// patterns in this format prior to 2026-04. New saves use the JSON format
+// below; deserialize_song() dispatches based on the first non-whitespace char.
+// ---------------------------------------------------------------------------
+
+inline std::string serialize_song_legacy(const TrackerSong& song) {
     char buf[64];
     std::string out;
 
@@ -204,9 +212,8 @@ inline std::string serialize_song(const TrackerSong& song) {
     return out;
 }
 
-inline bool deserialize_song(const std::string& text, TrackerSong& song) {
+inline bool deserialize_song_legacy(const std::string& text, TrackerSong& song) {
     if (text.empty()) return false;
-    // Detect old Base64 format (doesn't start with "arrangement:")
     if (text.size() < 12 || text.substr(0, 12) != "arrangement:") return false;
 
     song = TrackerSong();
@@ -284,6 +291,170 @@ inline bool deserialize_song(const std::string& text, TrackerSong& song) {
     }
 
     return true;
+}
+
+// ---------------------------------------------------------------------------
+// JSON song format (schema v=1)
+// ---------------------------------------------------------------------------
+//
+// Top-level shape:
+//   {
+//     "v": 1,
+//     "arrangement": [0, 0, 1, 0],
+//     "patterns": [
+//       { "rows": 16,
+//         "cells": [
+//           {"row": 0, "channel": 0, "note": 66, "velocity": 100},
+//           {"row": 8, "channel": 1, "note": 60, "velocity": 80,
+//            "fx_type": 1, "fx_param": 32},
+//           {"row": 12, "channel": 0, "note": 255}   // 255 = note-off
+//         ] },
+//       { "rows": 16, "cells": [] }
+//     ]
+//   }
+//
+// Empty cells are absent. velocity=0 means "use previous"; absent → 0. fx_*
+// absent → 0. Reader rejects v > 1 and falls back to an empty TrackerSong.
+
+constexpr int kSongSchemaVersion = 1;
+
+inline std::string serialize_song_json(const TrackerSong& song) {
+    nlohmann::json root;
+    root["v"] = kSongSchemaVersion;
+
+    auto& arr = root["arrangement"];
+    arr = nlohmann::json::array();
+    for (int i = 0; i < song.arrangement_length; ++i)
+        arr.push_back(static_cast<int>(song.arrangement[i]));
+
+    auto& pats = root["patterns"];
+    pats = nlohmann::json::array();
+    for (int p = 0; p < song.num_patterns; ++p) {
+        const auto& pat = song.patterns[p];
+        nlohmann::json jp;
+        jp["rows"] = static_cast<int>(pat.num_rows);
+        auto& cells = jp["cells"];
+        cells = nlohmann::json::array();
+        for (int r = 0; r < pat.num_rows; ++r) {
+            for (int ch = 0; ch < MAX_CHANNELS; ++ch) {
+                const auto& cell = pat.cells[ch][r];
+                if (cell.note == NOTE_EMPTY &&
+                    cell.velocity == 0 &&
+                    cell.effect_type == 0 &&
+                    cell.effect_param == 0) continue;
+                nlohmann::json jc;
+                jc["row"]     = r;
+                jc["channel"] = ch;
+                jc["note"]    = static_cast<int>(cell.note);
+                if (cell.velocity != 0)
+                    jc["velocity"] = static_cast<int>(cell.velocity);
+                if (cell.effect_type != 0)
+                    jc["fx_type"] = static_cast<int>(cell.effect_type);
+                if (cell.effect_param != 0)
+                    jc["fx_param"] = static_cast<int>(cell.effect_param);
+                cells.push_back(std::move(jc));
+            }
+        }
+        pats.push_back(std::move(jp));
+    }
+
+    return root.dump();
+}
+
+inline bool deserialize_song_json(const std::string& text, TrackerSong& song) {
+    nlohmann::json j;
+    try {
+        j = nlohmann::json::parse(text);
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "[tracker] failed to parse JSON pattern_data: %s\n", e.what());
+        return false;
+    }
+    if (!j.is_object()) return false;
+
+    const int version = j.value("v", 1);
+    if (version > kSongSchemaVersion) {
+        std::fprintf(stderr,
+            "[tracker] pattern_data schema v=%d is newer than supported (max v=%d); "
+            "loading as empty\n", version, kSongSchemaVersion);
+        return false;
+    }
+
+    song = TrackerSong();
+
+    if (j.contains("arrangement") && j["arrangement"].is_array()) {
+        const auto& arr = j["arrangement"];
+        song.arrangement_length = 0;
+        for (const auto& v : arr) {
+            if (song.arrangement_length >= MAX_ARRANGEMENT) break;
+            int idx = v.is_number_integer() ? v.get<int>() : 0;
+            song.arrangement[song.arrangement_length++] =
+                static_cast<uint8_t>(std::clamp(idx, 0, MAX_PATTERNS - 1));
+        }
+    }
+
+    song.num_patterns = 0;
+    if (j.contains("patterns") && j["patterns"].is_array()) {
+        const auto& pats = j["patterns"];
+        for (size_t pi = 0; pi < pats.size() && pi < static_cast<size_t>(MAX_PATTERNS); ++pi) {
+            const auto& jp = pats[pi];
+            if (!jp.is_object()) continue;
+            int rows = jp.value("rows", 16);
+            rows = std::clamp(rows, 1, MAX_ROWS);
+            song.patterns[pi].num_rows = static_cast<uint8_t>(rows);
+            song.num_patterns = std::max(song.num_patterns,
+                                         static_cast<uint8_t>(pi + 1));
+
+            if (!jp.contains("cells") || !jp["cells"].is_array()) continue;
+            for (const auto& jc : jp["cells"]) {
+                if (!jc.is_object()) continue;
+                int row = jc.value("row", -1);
+                int ch  = jc.value("channel", -1);
+                if (row < 0 || row >= rows) continue;
+                if (ch  < 0 || ch  >= MAX_CHANNELS) continue;
+                auto& cell = song.patterns[pi].cells[ch][row];
+                cell.note         = static_cast<uint8_t>(
+                    std::clamp(jc.value("note", 0), 0, 255));
+                // Velocity is an 8-bit hex byte (matches the legacy text
+                // format and the tracker editor's 2-char hex entry); not
+                // strict MIDI 0-127.
+                cell.velocity     = static_cast<uint8_t>(
+                    std::clamp(jc.value("velocity", 0), 0, 255));
+                cell.effect_type  = static_cast<uint8_t>(
+                    std::clamp(jc.value("fx_type", 0), 0, 255));
+                cell.effect_param = static_cast<uint8_t>(
+                    std::clamp(jc.value("fx_param", 0), 0, 255));
+            }
+        }
+    }
+
+    if (song.num_patterns == 0) {
+        song.num_patterns = 1;
+        song.arrangement_length = 1;
+        song.arrangement[0] = 0;
+    }
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Public API: format-dispatching serialize/deserialize.
+//
+//   serialize_song()   — always writes JSON (schema v=1).
+//   deserialize_song() — accepts both new JSON and legacy text. Sniffs the
+//                        first non-whitespace char: '{' → JSON, otherwise →
+//                        legacy MOD-style text.
+// ---------------------------------------------------------------------------
+
+inline std::string serialize_song(const TrackerSong& song) {
+    return serialize_song_json(song);
+}
+
+inline bool deserialize_song(const std::string& text, TrackerSong& song) {
+    size_t i = 0;
+    while (i < text.size() && (text[i] == ' ' || text[i] == '\t' ||
+                               text[i] == '\n' || text[i] == '\r')) ++i;
+    if (i >= text.size()) return false;
+    if (text[i] == '{') return deserialize_song_json(text, song);
+    return deserialize_song_legacy(text, song);
 }
 
 // Note name helpers
