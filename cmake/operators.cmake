@@ -212,11 +212,12 @@ target_sources(euclidean PRIVATE
 add_vivid_operator(pat_transform     operators/control/pat_transform/pat_transform.cpp)
 add_vivid_operator(phase_to_midi     operators/control/phase_to_midi/phase_to_midi.cpp)
 add_vivid_operator(drum_kit          operators/control/drum_kit/drum_kit.cpp)
+add_vivid_operator(note_breakout     operators/control/note_breakout/note_breakout.cpp)
 foreach(_seq_op sequencer drum_sequencer
         pattern_seq note_pattern note_duration
         arpeggiator chord_progression
         state_machine tracker euclidean pat_transform
-        phase_to_midi drum_kit midi_input)
+        phase_to_midi drum_kit midi_input note_breakout)
     target_include_directories(${_seq_op} PRIVATE ${CMAKE_SOURCE_DIR}/operators/shared/sequencer)
 endforeach()
 

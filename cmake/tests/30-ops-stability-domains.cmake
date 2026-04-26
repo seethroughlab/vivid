@@ -87,6 +87,17 @@ add_dependencies(test_euclidean_midi euclidean)
 add_test(NAME test_euclidean_midi COMMAND test_euclidean_midi ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# NoteBreakout smoke — empty stream, two-note sorted lanes, same-pitch
+# overlap, per-note pitch_bend mutates voice_freqs.
+add_executable(test_note_breakout
+    tests/operators/test_note_breakout.cpp
+)
+target_include_directories(test_note_breakout PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(test_note_breakout PRIVATE vivid_runtime_testlib vivid_operator_api)
+add_dependencies(test_note_breakout note_breakout)
+add_test(NAME test_note_breakout COMMAND test_note_breakout ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Euclidean draw_editor contract — keyboard nudges rotation/hits/steps,
 # D cycles density presets, scroll-wheel adjusts hits (alt for steps),
 # horizontal drag scrubs rotation, side-panel preset-row click applies.
