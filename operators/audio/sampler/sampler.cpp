@@ -1,7 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/adsr.h"
 #include "operator_api/adsr_inspector.h"
-#include "operator_api/midi_types.h"
+#include "operator_api/note_types.h"
 #include "operator_api/type_id.h"
 #include "sample_bank.h"
 #include "voice.h"
@@ -83,7 +83,7 @@ struct Sampler : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"gates",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
         out.push_back({"notes",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
         out.push_back({"velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
-        out.push_back(VIVID_CUSTOM_REF_PORT("midi_in", VIVID_PORT_INPUT, VividMidiBuffer));
+        out.push_back(VIVID_CUSTOM_REF_PORT("notes_in", VIVID_PORT_INPUT, VividNoteBuffer));
         out.push_back({"output",     VIVID_PORT_AUDIO_BUFFER,  VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2});
         vivid::append_analysis_ports(out);
     }
@@ -134,16 +134,17 @@ struct Sampler : vivid::OperatorBase, vivid::AudioProcessable {
         // Configurable polyphony
         int max_voices = std::max(1, std::min(p_voices, kMaxVoices));
 
-        // Process MIDI input
+        // Process native note input. Voice slot lookup is by note_id (not by
+        // note number) so same-pitch overlapping notes get distinct slots.
         if (ctx->custom_inputs && ctx->custom_input_count > 0 && ctx->custom_inputs[0]) {
-            auto* midi = static_cast<const VividMidiBuffer*>(ctx->custom_inputs[0]);
-            for (uint32_t m = 0; m < midi->count; ++m) {
-                const auto& msg = midi->messages[m];
-                uint8_t status = msg.status & 0xF0;
+            auto* notes = static_cast<const VividNoteBuffer*>(ctx->custom_inputs[0]);
+            for (uint32_t m = 0; m < notes->count; ++m) {
+                const auto& ev = notes->events[m];
+                if (ev.note_id == 0) continue;  // global stream
 
-                if (status == 0x90 && msg.data2 > 0) {
-                    int note = msg.data1;
-                    float vel = msg.data2 / 127.0f;
+                if (ev.type == VIVID_NOTE_ON) {
+                    int note = ev.note_number;
+                    float vel = ev.value;
 
                     const SampleRegion* region = find_region(active_group, note, vel);
                     if (!region || !region->data) {
@@ -151,9 +152,11 @@ struct Sampler : vivid::OperatorBase, vivid::AudioProcessable {
                         if (!region || !region->data) continue;
                     }
 
+                    // Find a slot already holding this note_id (only happens
+                    // on emitter bugs); otherwise allocate free or steal.
                     int vi = -1;
                     for (int j = 0; j < max_voices; ++j) {
-                        if (voices_[j].active && voices_[j].note == note) {
+                        if (voices_[j].active && voices_[j].note_id == ev.note_id) {
                             vi = j; break;
                         }
                     }
@@ -168,11 +171,35 @@ struct Sampler : vivid::OperatorBase, vivid::AudioProcessable {
 
                     voice_note_on(voices_[vi], note, vel, region, rate,
                                   frame_counter_, false);
-                } else if (status == 0x80 || (status == 0x90 && msg.data2 == 0)) {
-                    int note = msg.data1;
+                    voices_[vi].note_id = ev.note_id;
+                    voices_[vi].pitch_bend_semis = 0.0f;
+                    voices_[vi].pressure         = 0.0f;
+                    voices_[vi].timbre           = 0.0f;
+                } else if (ev.type == VIVID_NOTE_OFF) {
                     for (int j = 0; j < max_voices; ++j) {
-                        if (voices_[j].active && voices_[j].note == note) {
+                        if (voices_[j].active && voices_[j].note_id == ev.note_id) {
                             voice_note_off(voices_[j]);
+                            break;
+                        }
+                    }
+                } else if (ev.type == VIVID_NOTE_PITCH_BEND) {
+                    for (int j = 0; j < max_voices; ++j) {
+                        if (voices_[j].active && voices_[j].note_id == ev.note_id) {
+                            voices_[j].pitch_bend_semis = ev.value;
+                            break;
+                        }
+                    }
+                } else if (ev.type == VIVID_NOTE_PRESSURE) {
+                    for (int j = 0; j < max_voices; ++j) {
+                        if (voices_[j].active && voices_[j].note_id == ev.note_id) {
+                            voices_[j].pressure = ev.value;
+                            break;
+                        }
+                    }
+                } else if (ev.type == VIVID_NOTE_TIMBRE) {
+                    for (int j = 0; j < max_voices; ++j) {
+                        if (voices_[j].active && voices_[j].note_id == ev.note_id) {
+                            voices_[j].timbre = ev.value;
                             break;
                         }
                     }

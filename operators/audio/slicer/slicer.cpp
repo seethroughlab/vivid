@@ -1,11 +1,12 @@
 #include "operator_api/operator.h"
 #include "operator_api/adsr.h"
-#include "operator_api/midi_types.h"
+#include "operator_api/note_types.h"
 #include "operator_api/type_id.h"
 #include "sample_bank.h"
 #include "voice.h"
 #include <atomic>
 #include <algorithm>
+#include <cmath>
 
 using namespace vivid_sampler;
 
@@ -80,7 +81,7 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"gates",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
         out.push_back({"notes",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
         out.push_back({"velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
-        out.push_back(VIVID_CUSTOM_REF_PORT("midi_in", VIVID_PORT_INPUT, VividMidiBuffer));
+        out.push_back(VIVID_CUSTOM_REF_PORT("notes_in", VIVID_PORT_INPUT, VividNoteBuffer));
         out.push_back({"output",     VIVID_PORT_AUDIO_BUFFER,  VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2});
         vivid::append_analysis_ports(out);
     }
@@ -137,16 +138,16 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
         LaneInput notes_in = read_lane_input(ctx->input_lanes, 1);
         LaneInput vels_in  = read_lane_input(ctx->input_lanes, 2);
 
-        // Process MIDI input
+        // Process native note input. Voice slot lookup is by note_id.
         if (ctx->custom_inputs && ctx->custom_input_count > 0 && ctx->custom_inputs[0]) {
-            auto* midi = static_cast<const VividMidiBuffer*>(ctx->custom_inputs[0]);
-            for (uint32_t m = 0; m < midi->count; ++m) {
-                const auto& msg = midi->messages[m];
-                uint8_t status = msg.status & 0xF0;
+            auto* notes = static_cast<const VividNoteBuffer*>(ctx->custom_inputs[0]);
+            for (uint32_t m = 0; m < notes->count; ++m) {
+                const auto& ev = notes->events[m];
+                if (ev.note_id == 0) continue;
 
-                if (status == 0x90 && msg.data2 > 0) {
-                    int note = msg.data1;
-                    float vel = msg.data2 / 127.0f;
+                if (ev.type == VIVID_NOTE_ON) {
+                    int note = ev.note_number;
+                    float vel = ev.value;
 
                     int slice_index = std::clamp(note - kBaseNote, 0, p_slices - 1);
                     uint32_t s_start = static_cast<uint32_t>(slice_index) * slice_len;
@@ -155,7 +156,7 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
 
                     int vi = -1;
                     for (int j = 0; j < kMaxVoices; ++j) {
-                        if (voices_[j].active && voices_[j].note == note) {
+                        if (voices_[j].active && voices_[j].note_id == ev.note_id) {
                             vi = j; break;
                         }
                     }
@@ -164,25 +165,36 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
 
                     voices_[vi].active = true;
                     voices_[vi].note = note;
+                    voices_[vi].note_id = ev.note_id;
                     voices_[vi].velocity = vel;
                     voices_[vi].region = nullptr;
                     voices_[vi].playback_rate = playback_rate;
                     voices_[vi].playback_pos = static_cast<double>(s_start);
                     voices_[vi].one_shot = (p_mode == 0);
                     voices_[vi].start_frame = frame_counter_;
+                    voices_[vi].pitch_bend_semis = 0.0f;
+                    voices_[vi].pressure         = 0.0f;
+                    voices_[vi].timbre           = 0.0f;
                     vivid::adsr::gate_on(voices_[vi].envelope);
 
                     voice_slice_start_[vi] = s_start;
                     voice_slice_end_[vi] = s_end;
-                } else if (status == 0x80 || (status == 0x90 && msg.data2 == 0)) {
-                    int note = msg.data1;
+                } else if (ev.type == VIVID_NOTE_OFF) {
                     for (int j = 0; j < kMaxVoices; ++j) {
-                        if (voices_[j].active && voices_[j].note == note) {
+                        if (voices_[j].active && voices_[j].note_id == ev.note_id) {
                             voice_note_off(voices_[j]);
                             break;
                         }
                     }
+                } else if (ev.type == VIVID_NOTE_PITCH_BEND) {
+                    for (int j = 0; j < kMaxVoices; ++j) {
+                        if (voices_[j].active && voices_[j].note_id == ev.note_id) {
+                            voices_[j].pitch_bend_semis = ev.value;
+                            break;
+                        }
+                    }
                 }
+                // Slicer doesn't currently route pressure or timbre — ignore.
             }
         }
 
@@ -312,8 +324,10 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
                 samp_L *= voices_[v].envelope.env_value;
                 samp_R *= voices_[v].envelope.env_value;
 
-                // Advance playback position
-                voices_[v].playback_pos += voices_[v].playback_rate;
+                // Advance playback position (pitch bend scales the rate)
+                double bend_mult = std::pow(2.0,
+                    static_cast<double>(voices_[v].pitch_bend_semis) / 12.0);
+                voices_[v].playback_pos += voices_[v].playback_rate * bend_mult;
 
                 // Deactivate if envelope reached IDLE
                 if (voices_[v].envelope.stage == vivid::adsr::IDLE) {

@@ -1,5 +1,8 @@
 #include "operator_api/operator.h"
 #include "operator_api/adsr.h"
+#include "operator_api/note_types.h"
+#include "operator_api/type_id.h"
+#include "operator_api/voice_allocator.h"
 
 #include <cmath>
 
@@ -8,12 +11,15 @@
 #endif
 
 /**
- * @brief Two-operator FM synthesizer with ADSR envelope.
+ * @brief Two-operator polyphonic FM synthesizer with ADSR envelope.
  *
  * Classic FM synthesis with a carrier and modulator oscillator. The
  * modulator frequency is set as a ratio of the carrier, and the modulation
- * index controls harmonic richness. Supports polyphonic lane inputs
- * for sequencer integration.
+ * index controls harmonic richness. Drive it directly with `midi_in` from
+ * any note source (Tracker, NotePattern, Sequencer, ChordProgression, …) for
+ * polyphonic playback up to 8 voices. Lane-array inputs (gates/notes/
+ * velocities) remain available as a power-user override for explicit
+ * per-voice control.
  *
  * @tip Integer mod_ratio values produce harmonic timbres; non-integer values create bell-like inharmonic sounds.
  * @param mod_ratio Modulator frequency as a multiple of the carrier.
@@ -23,6 +29,7 @@
 struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "FmSynth";
     static constexpr bool kTimeDependent = true;
+    static constexpr int  kMaxVoices     = 8;
 
     vivid::Param<float> carrier_freq{"carrier_freq", 440.0f, 20.0f, 20000.0f};
     vivid::Param<float> mod_ratio   {"mod_ratio",    2.0f,   0.0f,  16.0f};
@@ -33,10 +40,22 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<float> release     {"release",      0.3f,   0.001f, 5.0f};
     vivid::Param<float> amplitude   {"amplitude",    0.5f,   0.0f,   1.0f};
 
-    double carrier_phase_ = 0.0;
-    double mod_phase_     = 0.0;
-    vivid::adsr::State env_state_;
-    float prev_gate_      = 0.0f;
+    // Per-voice oscillator + envelope state. Indexed by VoiceAllocator slot.
+    struct VoiceState {
+        double carrier_phase = 0.0;
+        double mod_phase     = 0.0;
+        vivid::adsr::State envelope;
+    };
+    VoiceState voices_[kMaxVoices];
+    vivid::VoiceAllocator<kMaxVoices> allocator_;
+    uint64_t frame_counter_ = 0;
+
+    // Legacy lane-array / scalar gate path (monophonic, kept for power users
+    // who wire spread inputs directly).
+    double mono_carrier_phase_ = 0.0;
+    double mono_mod_phase_     = 0.0;
+    vivid::adsr::State mono_env_;
+    float prev_gate_ = 0.0f;
 
     FmSynth() {
         vivid::semantic_tag(carrier_freq, "frequency_hz");
@@ -103,6 +122,8 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"gates",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
         out.push_back({"notes",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
         out.push_back({"velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
+        // Canonical native note input — drive directly from Tracker/NotePattern/etc.
+        out.push_back(VIVID_CUSTOM_REF_PORT("notes_in", VIVID_PORT_INPUT, VividNoteBuffer));
         vivid::append_analysis_ports(out);
     }
 
@@ -110,70 +131,128 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
         float* out = ctx->output_buffers[0];
         uint32_t frames = ctx->buffer_size;
 
-        float freq_cv      = ctx->input_buffers[0] ? ctx->input_buffers[0][0] : 0.0f;
-        float mod_index_cv = ctx->input_buffers[1] ? ctx->input_buffers[1][0] : 0.0f;
-        float gate_cv      = ctx->input_buffers[2] ? ctx->input_buffers[2][0] : 0.0f;
+        const float mod_index_cv = ctx->input_buffers[1] ? ctx->input_buffers[1][0] : 0.0f;
+        float mi = mod_index.value + mod_index_cv;
+        if (mi < 0.0f) mi = 0.0f;
+        if (mi > 20.0f) mi = 20.0f;
 
-        // Lane-array inputs override signal inputs when connected.
-        // Lane port indices follow the 3 signal inputs (freq_cv, mod_index_cv, gate_cv).
-        float vel_scale = 1.0f;
-        if (ctx->input_lanes) {
-            const auto& gates_lane = ctx->input_lanes[3];
-            const auto& notes_lane = ctx->input_lanes[4];
-            const auto& velocities_lane  = ctx->input_lanes[5];
-            if (gates_lane.length > 0 && gates_lane.data) {
-                float lane_gate = 0.0f;
-                float lane_note = 60.0f;
-                for (uint32_t s = 0; s < gates_lane.length; ++s) {
-                    if (gates_lane.data[s] > 0.5f) {
-                        lane_gate = gates_lane.data[s];
-                        if (notes_lane.data && s < notes_lane.length)
-                            lane_note = notes_lane.data[s];
-                        if (velocities_lane.data && s < velocities_lane.length)
-                            vel_scale = velocities_lane.data[s];
-                        break;
-                    }
+        const float amp = amplitude.value;
+        const double inv_sr = 1.0 / static_cast<double>(ctx->sample_rate);
+        const float dt = static_cast<float>(inv_sr);
+
+        // --- Source selection ---------------------------------------------
+        // Priority (highest first):
+        //   1. lane-array `gates` connected → monophonic lane-driven path
+        //      (legacy / power-user override)
+        //   2. midi_in connected → polyphonic MIDI path
+        //   3. scalar gate_cv path (legacy)
+        const bool lane_driven = ctx->input_lanes &&
+                                 ctx->input_lanes[3].length > 0 &&
+                                 ctx->input_lanes[3].data != nullptr;
+        const bool midi_driven = !lane_driven &&
+                                 ctx->custom_inputs &&
+                                 ctx->custom_input_count > 0 &&
+                                 ctx->custom_inputs[0] != nullptr;
+
+        if (midi_driven) {
+            const auto* notes = static_cast<const VividNoteBuffer*>(ctx->custom_inputs[0]);
+            allocator_.process_note_buffer(notes, frame_counter_,
+                [this](int slot, int /*note*/, float /*vel*/, uint32_t /*offset*/, uint64_t /*note_id*/) {
+                    voices_[slot].carrier_phase = 0.0;
+                    voices_[slot].mod_phase     = 0.0;
+                    vivid::adsr::gate_on(voices_[slot].envelope);
+                },
+                [this](int slot, int /*note*/, uint64_t /*note_id*/) {
+                    vivid::adsr::gate_off(voices_[slot].envelope);
+                },
+                [](int /*slot*/, VividNoteEventType /*kind*/, float /*value*/) {
+                    // Per-note expression updates are stored on the slot by
+                    // the allocator (pitch_bend_semis, pressure, timbre). The
+                    // render loop reads them below.
+                });
+
+            for (uint32_t i = 0; i < frames; ++i) {
+                float sample = 0.0f;
+                for (int v = 0; v < kMaxVoices; ++v) {
+                    auto& slot = allocator_.slots[v];
+                    if (!slot.active) continue;
+                    auto& vs = voices_[v];
+
+                    vivid::adsr::advance(vs.envelope, dt, attack.value, decay.value,
+                                         sustain.value, release.value);
+
+                    const float voice_freq = 440.0f *
+                        std::pow(2.0f, (static_cast<float>(slot.note) - 69.0f
+                                        + slot.pitch_bend_semis) / 12.0f);
+                    const float mod_freq = voice_freq * mod_ratio.value;
+
+                    const float mod_signal = mi * std::sin(2.0 * M_PI * vs.mod_phase);
+                    sample += std::sin(2.0 * M_PI * vs.carrier_phase + mod_signal)
+                              * vs.envelope.env_value * slot.velocity;
+
+                    vs.carrier_phase += static_cast<double>(voice_freq) * inv_sr;
+                    if (vs.carrier_phase >= 1.0) vs.carrier_phase -= 1.0;
+                    vs.mod_phase += static_cast<double>(mod_freq) * inv_sr;
+                    if (vs.mod_phase >= 1.0) vs.mod_phase -= 1.0;
+
+                    if (vs.envelope.stage == vivid::adsr::IDLE) slot.active = false;
                 }
-                gate_cv = lane_gate;
-                // Convert MIDI note to freq_cv offset from carrier_freq
-                float target_freq = 440.0f * std::pow(2.0f, (lane_note - 69.0f) / 12.0f);
-                freq_cv = 12.0f * std::log2f(target_freq / carrier_freq.value);
+                out[i] = sample * amp;
+                ++frame_counter_;
             }
+            return;
+        }
+
+        // --- Legacy monophonic path (lane-array or scalar gate) -----------
+        float freq_cv = ctx->input_buffers[0] ? ctx->input_buffers[0][0] : 0.0f;
+        float gate_cv = ctx->input_buffers[2] ? ctx->input_buffers[2][0] : 0.0f;
+        float vel_scale = 1.0f;
+
+        if (lane_driven) {
+            const auto& gates_lane      = ctx->input_lanes[3];
+            const auto& notes_lane      = ctx->input_lanes[4];
+            const auto& velocities_lane = ctx->input_lanes[5];
+            float lane_gate = 0.0f;
+            float lane_note = 60.0f;
+            for (uint32_t s = 0; s < gates_lane.length; ++s) {
+                if (gates_lane.data[s] > 0.5f) {
+                    lane_gate = gates_lane.data[s];
+                    if (notes_lane.data && s < notes_lane.length)
+                        lane_note = notes_lane.data[s];
+                    if (velocities_lane.data && s < velocities_lane.length)
+                        vel_scale = velocities_lane.data[s];
+                    break;
+                }
+            }
+            gate_cv = lane_gate;
+            const float target_freq = 440.0f * std::pow(2.0f, (lane_note - 69.0f) / 12.0f);
+            freq_cv = 12.0f * std::log2f(target_freq / carrier_freq.value);
         }
 
         float freq = carrier_freq.value * std::pow(2.0f, freq_cv / 12.0f);
         if (freq < 20.0f)    freq = 20.0f;
         if (freq > 20000.0f) freq = 20000.0f;
+        const float mod_freq = freq * mod_ratio.value;
 
-        float mi = mod_index.value + mod_index_cv;
-        if (mi < 0.0f) mi = 0.0f;
-        if (mi > 20.0f) mi = 20.0f;
-
-        float mod_freq = freq * mod_ratio.value;
-        float amp = amplitude.value;
-        double inv_sr = 1.0 / static_cast<double>(ctx->sample_rate);
-        float dt = static_cast<float>(inv_sr);
-
-        // Gate edge detection
-        bool gate_on = gate_cv > 0.5f;
-        bool prev_on = prev_gate_ > 0.5f;
-        if (gate_on && !prev_on) vivid::adsr::gate_on(env_state_);
-        if (!gate_on && prev_on) vivid::adsr::gate_off(env_state_);
+        const bool gate_on  = gate_cv > 0.5f;
+        const bool prev_on  = prev_gate_ > 0.5f;
+        if (gate_on && !prev_on) vivid::adsr::gate_on(mono_env_);
+        if (!gate_on && prev_on) vivid::adsr::gate_off(mono_env_);
         prev_gate_ = gate_cv;
 
-        for (uint32_t i = 0; i < frames; i++) {
-            vivid::adsr::advance(env_state_, dt, attack.value, decay.value,
-                                  sustain.value, release.value);
+        for (uint32_t i = 0; i < frames; ++i) {
+            vivid::adsr::advance(mono_env_, dt, attack.value, decay.value,
+                                 sustain.value, release.value);
 
-            float mod_signal = mi * std::sin(2.0 * M_PI * mod_phase_);
-            float sample = std::sin(2.0 * M_PI * carrier_phase_ + mod_signal);
-            out[i] = sample * env_state_.env_value * amp * vel_scale;
+            const float mod_signal = mi * std::sin(2.0 * M_PI * mono_mod_phase_);
+            const float sample = std::sin(2.0 * M_PI * mono_carrier_phase_ + mod_signal);
+            out[i] = sample * mono_env_.env_value * amp * vel_scale;
 
-            carrier_phase_ += static_cast<double>(freq) * inv_sr;
-            if (carrier_phase_ >= 1.0) carrier_phase_ -= 1.0;
-
-            mod_phase_ += static_cast<double>(mod_freq) * inv_sr;
-            if (mod_phase_ >= 1.0) mod_phase_ -= 1.0;
+            mono_carrier_phase_ += static_cast<double>(freq) * inv_sr;
+            if (mono_carrier_phase_ >= 1.0) mono_carrier_phase_ -= 1.0;
+            mono_mod_phase_ += static_cast<double>(mod_freq) * inv_sr;
+            if (mono_mod_phase_ >= 1.0) mono_mod_phase_ -= 1.0;
+            ++frame_counter_;
         }
     }
 };
