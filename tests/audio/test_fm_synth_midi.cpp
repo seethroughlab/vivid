@@ -182,7 +182,7 @@ int main(int argc, char** argv) {
     if (!desc) return 1;
     check(std::strcmp(desc->name, "FmSynth") == 0, "operator name is FmSynth");
     check(has_port(desc, "notes_in"), "FmSynth declares notes_in port");
-    check(has_port(desc, "gates"), "FmSynth keeps lane gates port (override)");
+    check(!has_port(desc, "gates"), "FmSynth lane gates port removed (PR3)");
 
     // ---------------------------------------------------------------------
     // Test 1: notes_in NOTE_ON produces audio.
@@ -278,40 +278,12 @@ int main(int argc, char** argv) {
     }
 
     // ---------------------------------------------------------------------
-    // Test 4: legacy lane-array path still works when notes_in is absent.
+    // Phase 3 PR3: legacy lane-array path removed. The legacy mono scalar
+    // gate_cv path stays as a power-user CV trigger.
     // ---------------------------------------------------------------------
-    {
-        std::fprintf(stderr, "\n--- FmSynth: legacy lane-array path (notes_in absent) ---\n");
-        reset_lane_states();
-        Harness h;
-        h.disable_note_input();
-        // Port order: freq_cv(0), mod_index_cv(1), gate_cv(2),
-        //             gates(3), notes(4), velocities(5)
-        float gate_data[1]  = {1.0f};
-        float note_data[1]  = {60.0f};
-        float vel_data[1]   = {1.0f};
-        VividLaneView lanes[6] = {};
-        lanes[3].data = gate_data; lanes[3].length = 1;
-        lanes[4].data = note_data; lanes[4].length = 1;
-        lanes[5].data = vel_data;  lanes[5].length = 1;
-        h.ctx.input_lanes = lanes;
-
-        auto params = make_params(desc, {
-            {"attack", 0.001f}, {"decay", 0.05f}, {"sustain", 0.9f}, {"release", 0.1f},
-            {"amplitude", 0.5f}, {"mod_index", 1.0f},
-        });
-        h.ctx.param_values = params.data();
-
-        void* inst = loader.create_instance();
-        loader.process_audio(inst, &h.ctx);
-        check(h.any_finite_nonzero(), "lane-array path produces audio");
-        check(h.all_finite(), "lane-array output finite");
-        std::fprintf(stderr, "  lane RMS: %.4f\n", h.rms());
-        loader.destroy_instance(inst);
-    }
 
     // ---------------------------------------------------------------------
-    // Test 5: silent when no input.
+    // Test 4: silent when no input.
     // ---------------------------------------------------------------------
     {
         std::fprintf(stderr, "\n--- FmSynth: silent with no input ---\n");

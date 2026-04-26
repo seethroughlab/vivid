@@ -45,7 +45,6 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
     Voice voices_[kMaxVoices];
     uint32_t voice_slice_start_[kMaxVoices] = {};
     uint32_t voice_slice_end_[kMaxVoices] = {};
-    GateTracker gate_tracker_;
     std::atomic<SlicerData*> data_{nullptr};
     SlicerData* deferred_delete_ = nullptr;
     std::string last_path_;
@@ -80,9 +79,6 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"gates",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
-        out.push_back({"notes",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
-        out.push_back({"velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
         out.push_back(VIVID_CUSTOM_REF_PORT("notes_in", VIVID_PORT_INPUT, VividNoteBuffer));
         out.push_back({"output",     VIVID_PORT_AUDIO_BUFFER,  VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2});
         // Per-voice advanced breakouts (kMaxVoices channels mono each).
@@ -148,11 +144,6 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
         double playback_rate = static_cast<double>(sample.sample_rate) /
                                static_cast<double>(ctx->sample_rate);
 
-        // Read lane inputs
-        LaneInput gates_in = read_lane_input(ctx->input_lanes, 0);
-        LaneInput notes_in = read_lane_input(ctx->input_lanes, 1);
-        LaneInput vels_in  = read_lane_input(ctx->input_lanes, 2);
-
         // Process native note input. Voice slot lookup is by note_id.
         if (ctx->custom_inputs && ctx->custom_input_count > 0 && ctx->custom_inputs[0]) {
             auto* notes = static_cast<const VividNoteBuffer*>(ctx->custom_inputs[0]);
@@ -212,69 +203,6 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
                 // Slicer doesn't currently route pressure or timbre — ignore.
             }
         }
-
-        // Process gate edges
-        uint32_t num_slots = std::min(gates_in.length, static_cast<uint32_t>(kMaxVoices));
-        for (uint32_t slot = 0; slot < num_slots; ++slot) {
-            float gate = gates_in.data[slot];
-            int edge = gate_tracker_.detect(static_cast<int>(slot), gate);
-
-            if (edge == 1) {
-                // Rising edge — note on
-                int note = 60;
-                if (slot < notes_in.length && notes_in.data)
-                    note = static_cast<int>(notes_in.data[slot]);
-                float vel = 1.0f;
-                if (slot < vels_in.length && vels_in.data)
-                    vel = vels_in.data[slot];
-
-                // Note-to-slice mapping
-                int slice_index = std::clamp(note - kBaseNote, 0, p_slices - 1);
-                uint32_t slice_start = static_cast<uint32_t>(slice_index) * slice_len;
-                uint32_t slice_end = slice_start + slice_len;
-                if (slice_end > total_frames) slice_end = total_frames;
-
-                // Find voice: reuse one already playing this note, or allocate
-                int vi = -1;
-                for (int j = 0; j < kMaxVoices; ++j) {
-                    if (voices_[j].active && voices_[j].note == note) {
-                        vi = j;
-                        break;
-                    }
-                }
-                if (vi < 0) vi = find_free_voice(voices_, kMaxVoices);
-                if (vi < 0) vi = steal_oldest_voice(voices_, kMaxVoices);
-
-                // Set up voice — use voice_note_on with a nullptr region,
-                // then manually set playback state
-                voices_[vi].active = true;
-                voices_[vi].note = note;
-                voices_[vi].velocity = vel;
-                voices_[vi].region = nullptr;
-                voices_[vi].playback_rate = playback_rate;
-                voices_[vi].playback_pos = static_cast<double>(slice_start);
-                voices_[vi].one_shot = (p_mode == 0);
-                voices_[vi].start_frame = frame_counter_;
-                vivid::adsr::gate_on(voices_[vi].envelope);
-
-                voice_slice_start_[vi] = slice_start;
-                voice_slice_end_[vi] = slice_end;
-            } else if (edge == -1) {
-                // Falling edge — note off
-                int note = 60;
-                if (slot < notes_in.length && notes_in.data)
-                    note = static_cast<int>(notes_in.data[slot]);
-
-                for (int j = 0; j < kMaxVoices; ++j) {
-                    if (voices_[j].active && voices_[j].note == note) {
-                        voice_note_off(voices_[j]);
-                        break;
-                    }
-                }
-            }
-        }
-
-        gate_tracker_.update(gates_in.data, gates_in.length);
 
         // Build active-voice ordering for the breakout surface.
         int slot_to_pos[kMaxVoices];

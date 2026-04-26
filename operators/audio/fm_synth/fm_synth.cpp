@@ -121,10 +121,6 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"freq_cv",      VIVID_PORT_SCALAR, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         out.push_back({"mod_index_cv", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         out.push_back({"gate_cv",      VIVID_PORT_SCALAR, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
-        // Spread inputs for sequencer/arpeggiator-driven usage
-        out.push_back({"gates",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
-        out.push_back({"notes",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
-        out.push_back({"velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
         // Canonical native note input — drive directly from Tracker/NotePattern/etc.
         out.push_back(VIVID_CUSTOM_REF_PORT("notes_in", VIVID_PORT_INPUT, VividNoteBuffer));
         // Per-voice advanced breakouts. voices_out is a multichannel audio
@@ -162,15 +158,9 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
 
         // --- Source selection ---------------------------------------------
         // Priority (highest first):
-        //   1. lane-array `gates` connected → monophonic lane-driven path
-        //      (legacy / power-user override)
-        //   2. midi_in connected → polyphonic MIDI path
-        //   3. scalar gate_cv path (legacy)
-        const bool lane_driven = ctx->input_lanes &&
-                                 ctx->input_lanes[3].length > 0 &&
-                                 ctx->input_lanes[3].data != nullptr;
-        const bool midi_driven = !lane_driven &&
-                                 ctx->custom_inputs &&
+        //   1. notes_in connected → polyphonic MIDI path
+        //   2. scalar gate_cv path (legacy mono)
+        const bool midi_driven = ctx->custom_inputs &&
                                  ctx->custom_input_count > 0 &&
                                  ctx->custom_inputs[0] != nullptr;
 
@@ -273,31 +263,10 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
             return;
         }
 
-        // --- Legacy monophonic path (lane-array or scalar gate) -----------
+        // --- Legacy monophonic scalar-CV path -----------------------------
         float freq_cv = ctx->input_buffers[0] ? ctx->input_buffers[0][0] : 0.0f;
         float gate_cv = ctx->input_buffers[2] ? ctx->input_buffers[2][0] : 0.0f;
         float vel_scale = 1.0f;
-
-        if (lane_driven) {
-            const auto& gates_lane      = ctx->input_lanes[3];
-            const auto& notes_lane      = ctx->input_lanes[4];
-            const auto& velocities_lane = ctx->input_lanes[5];
-            float lane_gate = 0.0f;
-            float lane_note = 60.0f;
-            for (uint32_t s = 0; s < gates_lane.length; ++s) {
-                if (gates_lane.data[s] > 0.5f) {
-                    lane_gate = gates_lane.data[s];
-                    if (notes_lane.data && s < notes_lane.length)
-                        lane_note = notes_lane.data[s];
-                    if (velocities_lane.data && s < velocities_lane.length)
-                        vel_scale = velocities_lane.data[s];
-                    break;
-                }
-            }
-            gate_cv = lane_gate;
-            const float target_freq = 440.0f * std::pow(2.0f, (lane_note - 69.0f) / 12.0f);
-            freq_cv = 12.0f * std::log2f(target_freq / carrier_freq.value);
-        }
 
         float freq = carrier_freq.value * std::pow(2.0f, freq_cv / 12.0f);
         if (freq < 20.0f)    freq = 20.0f;

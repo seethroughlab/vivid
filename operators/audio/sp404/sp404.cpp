@@ -34,7 +34,6 @@ struct SP404 : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<float> volume  {"volume",  1.0f,   0.0f,   2.0f};
 
     Voice voices_[kMaxPads];
-    GateTracker gate_tracker_;
     std::atomic<SampleBank*> bank_{nullptr};
     SampleBank* deferred_delete_ = nullptr;
     std::string last_path_;
@@ -66,9 +65,6 @@ struct SP404 : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"gates",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
-        out.push_back({"notes",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
-        out.push_back({"velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
         out.push_back(VIVID_CUSTOM_REF_PORT("notes_in", VIVID_PORT_INPUT, VividNoteBuffer));
         out.push_back({"output",     VIVID_PORT_AUDIO_BUFFER,  VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2});
         // Per-voice advanced breakouts (kMaxPads channels mono each).
@@ -118,9 +114,6 @@ struct SP404 : vivid::OperatorBase, vivid::AudioProcessable {
         }
 
         // Read lane inputs
-        LaneInput gates_in = read_lane_input(ctx->input_lanes, 0);
-        LaneInput notes_in = read_lane_input(ctx->input_lanes, 1);
-        LaneInput vels_in  = read_lane_input(ctx->input_lanes, 2);
 
         // Read params
         int   p_mode    = mode.int_value();
@@ -187,61 +180,6 @@ struct SP404 : vivid::OperatorBase, vivid::AudioProcessable {
                 // SP404 doesn't currently route pressure or timbre — ignore.
             }
         }
-
-        // Process gate edges
-        uint32_t num_slots = std::min(gates_in.length, static_cast<uint32_t>(kMaxPads));
-        for (uint32_t slot = 0; slot < num_slots; ++slot) {
-            float gate = gates_in.data[slot];
-            int edge = gate_tracker_.detect(static_cast<int>(slot), gate);
-
-            if (edge == 1) {
-                // Rising edge — note on
-                int note = 60;
-                if (slot < notes_in.length && notes_in.data)
-                    note = static_cast<int>(notes_in.data[slot]);
-                float vel = 1.0f;
-                if (slot < vels_in.length && vels_in.data)
-                    vel = vels_in.data[slot];
-
-                const SampleRegion* region = find_region(group, note, vel);
-                if (!region || !region->data) {
-                    region = find_nearest_region(group, note);
-                    if (!region || !region->data) continue;
-                }
-
-                // Find voice: reuse one already playing this note, or allocate
-                int vi = -1;
-                for (int j = 0; j < kMaxPads; ++j) {
-                    if (voices_[j].active && voices_[j].note == note) {
-                        vi = j;
-                        break;
-                    }
-                }
-                if (vi < 0) vi = find_free_voice(voices_, kMaxPads);
-                if (vi < 0) vi = steal_oldest_voice(voices_, kMaxPads);
-
-                double rate = static_cast<double>(region->data->sample_rate) /
-                              static_cast<double>(ctx->sample_rate);
-                bool one_shot = (p_mode == 0);
-
-                voice_note_on(voices_[vi], note, vel, region, rate,
-                              frame_counter_, one_shot);
-            } else if (edge == -1) {
-                // Falling edge — note off
-                int note = 60;
-                if (slot < notes_in.length && notes_in.data)
-                    note = static_cast<int>(notes_in.data[slot]);
-
-                for (int j = 0; j < kMaxPads; ++j) {
-                    if (voices_[j].active && voices_[j].note == note) {
-                        voice_note_off(voices_[j]);
-                        break;
-                    }
-                }
-            }
-        }
-
-        gate_tracker_.update(gates_in.data, gates_in.length);
 
         // Build active-voice ordering for the breakout surface.
         int slot_to_pos[kMaxPads];
