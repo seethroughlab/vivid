@@ -164,27 +164,27 @@
         },
         {
             "from": "seq1/kick_out",
-            "to": "kick1/midi_in"
+            "to": "kick1/notes_in"
         },
         {
             "from": "seq1/snare_out",
-            "to": "snare1/midi_in"
+            "to": "snare1/notes_in"
         },
         {
             "from": "seq1/hat_out",
-            "to": "hat1/midi_in"
+            "to": "hat1/notes_in"
         },
         {
             "from": "seq1/clap_out",
-            "to": "clap1/midi_in"
+            "to": "clap1/notes_in"
         },
         {
             "from": "seq1/tom_out",
-            "to": "tom1/midi_in"
+            "to": "tom1/notes_in"
         },
         {
             "from": "seq1/oh_out",
-            "to": "cym1/midi_in"
+            "to": "cym1/notes_in"
         },
         {
             "from": "kick1/output",

@@ -236,15 +236,15 @@
         },
         {
             "from": "drums1/kick_out",
-            "to": "kick1/midi_in"
+            "to": "kick1/notes_in"
         },
         {
             "from": "drums1/snare_out",
-            "to": "snare1/midi_in"
+            "to": "snare1/notes_in"
         },
         {
             "from": "drums1/hat_out",
-            "to": "hat1/midi_in"
+            "to": "hat1/notes_in"
         },
         {
             "from": "notes1/notes",

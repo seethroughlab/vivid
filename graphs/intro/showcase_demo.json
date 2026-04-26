@@ -244,15 +244,15 @@
     "connections": [
         {
             "from": "seq/kick_out",
-            "to": "kick/midi_in"
+            "to": "kick/notes_in"
         },
         {
             "from": "seq/snare_out",
-            "to": "snare/midi_in"
+            "to": "snare/notes_in"
         },
         {
             "from": "seq/hat_out",
-            "to": "hat/midi_in"
+            "to": "hat/notes_in"
         },
         {
             "from": "kick/output",
