@@ -41,6 +41,9 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<float> sustain {"sustain", 1.0f,   0.0f,   1.0f};
     vivid::Param<float> release {"release", 0.05f,  0.001f, 10.0f};
     vivid::Param<float> volume  {"volume",  1.0f,   0.0f,   2.0f};
+    // Per-note expression depth (Phase 5).
+    vivid::Param<float> pressure_to_amp {"pressure_to_amp", 0.5f,  0.0f, 1.0f};
+    vivid::Param<float> timbre_to_pitch {"timbre_to_pitch", 12.0f, -24.0f, 24.0f};
 
     Voice voices_[kMaxVoices];
     uint32_t voice_slice_start_[kMaxVoices] = {};
@@ -76,6 +79,8 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back(&sustain);
         out.push_back(&release);
         out.push_back(&volume);
+        out.push_back(&pressure_to_amp);
+        out.push_back(&timbre_to_pitch);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -126,6 +131,8 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
         float p_sustain = sustain.value;
         float p_release = release.value;
         float p_volume  = volume.value;
+        const float p_amp_depth   = pressure_to_amp.value;
+        const float t_pitch_semis = timbre_to_pitch.value;
         float dt        = 1.0f / static_cast<float>(ctx->sample_rate);
 
         // Slice boundary calculation
@@ -278,8 +285,9 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
                     samp_R = samp_L;
                 }
 
-                // Apply velocity gain
-                float gain = voices_[v].velocity;
+                // Apply velocity gain. Per-note pressure scales gain (Phase 5).
+                const float pressure_scale = 1.0f + p_amp_depth * voices_[v].pressure;
+                float gain = voices_[v].velocity * pressure_scale;
                 samp_L *= gain;
                 samp_R *= gain;
 
@@ -289,10 +297,12 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
                 samp_L *= voices_[v].envelope.env_value;
                 samp_R *= voices_[v].envelope.env_value;
 
-                // Advance playback position (pitch bend scales the rate)
-                double bend_mult = std::pow(2.0,
-                    static_cast<double>(voices_[v].pitch_bend_semis) / 12.0);
-                voices_[v].playback_pos += voices_[v].playback_rate * bend_mult;
+                // Advance playback position (pitch bend + per-note timbre
+                // both scale the rate; timbre gives ±t_pitch_semis at full).
+                const double rate_mult = std::pow(2.0,
+                    (static_cast<double>(voices_[v].pitch_bend_semis) +
+                     static_cast<double>(t_pitch_semis * voices_[v].timbre)) / 12.0);
+                voices_[v].playback_pos += voices_[v].playback_rate * rate_mult;
 
                 // Deactivate if envelope reached IDLE
                 if (voices_[v].envelope.stage == vivid::adsr::IDLE) {

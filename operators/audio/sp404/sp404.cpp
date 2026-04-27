@@ -32,6 +32,9 @@ struct SP404 : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<float> sustain {"sustain", 1.0f,   0.0f,   1.0f};
     vivid::Param<float> release {"release", 0.05f,  0.001f, 10.0f};
     vivid::Param<float> volume  {"volume",  1.0f,   0.0f,   2.0f};
+    // Per-note expression depth (Phase 5).
+    vivid::Param<float> pressure_to_amp {"pressure_to_amp", 0.5f,  0.0f, 1.0f};
+    vivid::Param<float> timbre_to_pitch {"timbre_to_pitch", 12.0f, -24.0f, 24.0f};
 
     Voice voices_[kMaxPads];
     std::atomic<SampleBank*> bank_{nullptr};
@@ -62,6 +65,8 @@ struct SP404 : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back(&sustain);
         out.push_back(&release);
         out.push_back(&volume);
+        out.push_back(&pressure_to_amp);
+        out.push_back(&timbre_to_pitch);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -203,6 +208,11 @@ struct SP404 : vivid::OperatorBase, vivid::AudioProcessable {
                         static_cast<size_t>(kMaxPads) * frames * sizeof(float));
         }
 
+        // Per-note expression (Phase 5): pressure scales gain;
+        // timbre detunes playback rate by ±timbre_to_pitch semitones.
+        const float p_amp_depth   = pressure_to_amp.value;
+        const float t_pitch_semis = timbre_to_pitch.value;
+
         // Render audio
         for (uint32_t s = 0; s < frames; ++s) {
             float out_L = 0.0f;
@@ -210,10 +220,15 @@ struct SP404 : vivid::OperatorBase, vivid::AudioProcessable {
 
             for (int v = 0; v < kMaxPads; ++v) {
                 if (!voices_[v].active) continue;
+                const auto& slot = voices_[v];
+                const float gain_scale = 1.0f + p_amp_depth * slot.pressure;
+                const float rate_scale = std::pow(
+                    2.0f, (t_pitch_semis * slot.timbre) / 12.0f);
                 float voice_L = 0.0f;
                 float voice_R = 0.0f;
                 voice_render_frame(voices_[v], voice_L, voice_R, dt,
-                                   p_attack, p_decay, p_sustain, p_release);
+                                   p_attack, p_decay, p_sustain, p_release,
+                                   rate_scale, gain_scale);
                 out_L += voice_L;
                 out_R += voice_R;
 

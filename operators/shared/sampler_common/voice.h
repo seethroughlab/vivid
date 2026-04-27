@@ -53,9 +53,15 @@ inline void voice_note_off(Voice& v) {
 // Per-sample rendering
 // ---------------------------------------------------------------------------
 
+// Optional per-call expression scales (Phase 5):
+//   rate_scale  — multiplier on playback_rate (>1.0 = pitch up, <1.0 = pitch down)
+//   gain_scale  — multiplier on per-voice output level (>1.0 = louder)
+// Both default to 1.0 so existing callers stay unaffected.
 inline void voice_render_frame(Voice& v, float& out_L, float& out_R,
                                float dt, float attack, float decay,
-                               float sustain, float release) {
+                               float sustain, float release,
+                               float rate_scale = 1.0f,
+                               float gain_scale = 1.0f) {
     if (!v.active || !v.region || !v.region->data) return;
 
     const auto& data = *v.region->data;
@@ -109,15 +115,16 @@ inline void voice_render_frame(Voice& v, float& out_L, float& out_R,
     sample_L *= pan_L;
     sample_R *= pan_R;
 
-    // Advance ADSR and apply envelope
+    // Advance ADSR and apply envelope (with per-call gain scale)
     vivid::adsr::advance(v.envelope, dt, attack, decay, sustain, release);
-    sample_L *= v.envelope.env_value;
-    sample_R *= v.envelope.env_value;
+    const float env_scaled = v.envelope.env_value * gain_scale;
+    sample_L *= env_scaled;
+    sample_R *= env_scaled;
 
-    // Advance playback position
-    v.playback_pos += v.playback_rate;
+    // Advance playback position (with per-call rate scale)
+    v.playback_pos += v.playback_rate * static_cast<double>(rate_scale);
 
-    // Handle loop wrapping
+    // Handle loop wrapping (rate scale may push past loop_end in one frame)
     if (v.region->loop_enabled && v.region->loop_end > v.region->loop_start) {
         if (v.playback_pos >= static_cast<double>(v.region->loop_end)) {
             double loop_len = static_cast<double>(v.region->loop_end - v.region->loop_start);

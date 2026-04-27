@@ -42,6 +42,12 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<float> sustain     {"sustain",      0.7f,   0.0f,   1.0f};
     vivid::Param<float> release     {"release",      0.3f,   0.001f, 5.0f};
     vivid::Param<float> amplitude   {"amplitude",    0.5f,   0.0f,   1.0f};
+    // Per-note expression depth (Phase 5). Pressure scales per-voice
+    // amplitude by (1 + depth * slot.pressure); timbre scales mod_index
+    // by (1 + depth * slot.timbre). Defaults respond audibly to a fresh
+    // pattern; dial to 0 to flow expression through breakouts only.
+    vivid::Param<float> pressure_to_amp      {"pressure_to_amp",      0.5f,  0.0f, 1.0f};
+    vivid::Param<float> timbre_to_mod_index  {"timbre_to_mod_index",  0.5f, -1.0f, 1.0f};
 
     // Per-voice oscillator + envelope state. Indexed by VoiceTable slot.
     struct VoiceState {
@@ -113,6 +119,8 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back(&sustain);
         out.push_back(&release);
         out.push_back(&amplitude);
+        out.push_back(&pressure_to_amp);
+        out.push_back(&timbre_to_mod_index);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -207,6 +215,8 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
                             static_cast<size_t>(kMaxVoices) * frames * sizeof(float));
             }
 
+            const float p_amp_depth = pressure_to_amp.value;
+            const float t_mi_depth  = timbre_to_mod_index.value;
             for (uint32_t i = 0; i < frames; ++i) {
                 float sample = 0.0f;
                 for (int v = 0; v < kMaxVoices; ++v) {
@@ -222,10 +232,15 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
                                         + slot.pitch_bend_semis) / 12.0f);
                     const float mod_freq = voice_freq * mod_ratio.value;
 
-                    const float mod_signal = mi * std::sin(2.0 * M_PI * vs.mod_phase);
+                    // Per-note expression: pressure scales amplitude,
+                    // timbre scales modulation index (harmonic richness).
+                    const float pressure_scale = 1.0f + p_amp_depth * slot.pressure;
+                    const float voice_mi       = mi * (1.0f + t_mi_depth * slot.timbre);
+
+                    const float mod_signal = voice_mi * std::sin(2.0 * M_PI * vs.mod_phase);
                     const float voice_sample =
                         std::sin(2.0 * M_PI * vs.carrier_phase + mod_signal)
-                        * vs.envelope.env_value * slot.velocity;
+                        * vs.envelope.env_value * slot.velocity * pressure_scale;
                     sample += voice_sample;
 
                     // Mirror the voice into the voices_out breakout channel
