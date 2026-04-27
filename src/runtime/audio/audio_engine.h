@@ -31,6 +31,16 @@ public:
     bool start(bool use_null_device = false);
     void shutdown();
 
+    // Per-frame main-thread housekeeping. Currently: detects audio_out
+    // `device` param changes and re-inits the playback device.
+    void tick();
+
+    // Returns a non-zero target sample rate when the most recently opened
+    // device's actual rate differs from the session rate, signalling that
+    // main.cpp should rebuild the audio graph at that rate. Consume-on-read:
+    // each call clears the slot. Returns 0 when nothing is pending.
+    uint32_t consume_pending_session_sample_rate();
+
     // Read active analysis snapshot (call from main thread)
     const AnalysisSnapshot& analysis_read() const;
     // Map node_id to audio engine index (-1 if not found)
@@ -83,6 +93,16 @@ private:
 
     // Fallback analysis snapshot (returned when no AudioFrameBridge available)
     AnalysisSnapshot empty_analysis_;
+
+    // Frame counter that throttles the periodic AudioDeviceList::refresh()
+    // call inside tick(). At 60 fps and a threshold of 60 frames, this
+    // re-enumerates devices once per second.
+    uint32_t tick_frame_counter_ = 0;
+
+    // Pending session-rate change. Set when a device opens at a rate that
+    // differs from the runtime's compiled-graph rate. main.cpp drains this
+    // each frame; non-zero triggers a graph recompile at the new rate.
+    uint32_t pending_session_sample_rate_ = 0;
 };
 
 } // namespace vivid

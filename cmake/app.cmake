@@ -82,6 +82,7 @@ add_executable(vivid
     src/runtime/graph/frame_executor.cpp
     src/runtime/audio/audio_engine.cpp
     src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/audio/audio_device_list.cpp
     src/runtime/graph/frame_executor.cpp
     src/runtime/graph/audio_executor.cpp
     src/runtime/core/file_watcher.cpp

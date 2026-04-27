@@ -44,6 +44,34 @@ public:
     void pause();
     void resume();
 
+    // Re-init the playback device after the audio_out node's `device` param
+    // has changed. Only touches the ma_device — leaves bridge wiring, lane
+    // state, lift groups, and audio-time tracking intact.
+    bool restart_device();
+
+    // Index currently passed to ma_device_init (matches AudioDeviceList).
+    // 0 == "Default". Records the most recent attempt regardless of outcome
+    // so the AudioEngine watcher won't busy-retry a failing index.
+    int applied_device_index() const;
+
+    // Drain the most recent miniaudio device-notification event posted by
+    // the device-thread callback. Returns -1 if nothing pending; otherwise
+    // returns the `ma_device_notification_type` integer and clears the slot.
+    int consume_device_notification();
+
+    // Returns a pointer to the byte buffer that holds the ma_device_id we
+    // last passed to ma_device_init, or nullptr if the active device is
+    // "Default" (system default — no explicit id). The buffer lives inside
+    // AudioExecutor; it's valid until the next start()/restart_device()/
+    // shutdown(). Length is `applied_id_bytes_len()`.
+    const void* applied_device_id_bytes() const;
+    size_t applied_device_id_bytes_len() const;
+
+    // Sample rate the device is actually running at after ma_device_init,
+    // as reported by miniaudio's `internalSampleRate`. Returns 0 if there is
+    // no device or the backend doesn't report (null backend in tests).
+    uint32_t actual_device_rate() const;
+
     // Recording tap
     void start_recording_tap();
     void stop_recording_tap();
@@ -75,6 +103,19 @@ private:
     static void ma_data_callback(ma_device* device, void* output,
                                   const void* input, unsigned int frame_count);
 
+    // Reads the audio_out node's `device` int param from the compiled graph.
+    // Falls back to 0 ("Default") if the param or sink node is missing.
+    int audio_out_device_index() const;
+
+public:
+    // Posted from miniaudio's internal thread by the notification trampoline.
+    // Public only because the trampoline (a free function in the .cpp) needs
+    // it; not part of the intended user-facing API.
+    void post_device_notification(int type) {
+        device_notification_pending_.store(type, std::memory_order_release);
+    }
+private:
+
     AudioFrameBridge* bridge_ = nullptr;   // not owned
     CompiledGraph* graph_ = nullptr;       // not owned
     const LiveMetronomeStateStore* metronome_store_ = nullptr;  // not owned
@@ -97,6 +138,19 @@ private:
     // miniaudio device
     ma_device* device_ = nullptr;
     bool running_ = false;
+    int applied_device_index_ = 0;
+
+    // Byte copy of the ma_device_id last passed to ma_device_init (empty
+    // for "Default"). Used by AudioEngine to detect, after an
+    // AudioDeviceList refresh, whether the device we're using has been
+    // unplugged. Stored as raw bytes so this header doesn't need
+    // <miniaudio.h>.
+    std::vector<uint8_t> applied_device_id_bytes_;
+
+    // Posted from the miniaudio internal thread by ma_notification_callback;
+    // drained on the main thread via consume_device_notification(). Holds
+    // the most recent ma_device_notification_type, or -1 if nothing pending.
+    std::atomic<int> device_notification_pending_{-1};
 
     // Audio time tracking
     uint64_t audio_frame_ = 0;

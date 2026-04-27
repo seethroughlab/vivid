@@ -97,6 +97,7 @@ public:
     const SafeModeConfig& safe_mode() const { return safe_mode_; }
     void set_audio_buffer_size(uint32_t buffer_size) { audio_buffer_size_ = buffer_size; }
     uint32_t audio_buffer_size() const { return audio_buffer_size_; }
+    void set_audio_sample_rate(uint32_t sample_rate) { audio_sample_rate_ = sample_rate; }
     uint32_t audio_sample_rate() const { return audio_sample_rate_; }
     bool needs_gpu_realloc() const { return needs_gpu_realloc_; }
     void clear_gpu_realloc() { needs_gpu_realloc_ = false; }

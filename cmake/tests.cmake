@@ -2,6 +2,7 @@
 add_library(vivid_runtime_testlib STATIC
     src/runtime/audio/audio_engine.cpp
     src/runtime/audio/audio_frame_bridge.cpp
+    src/runtime/audio/audio_device_list.cpp
     src/runtime/audio/system_midi.cpp
     src/runtime/assets/asset_library.cpp
     src/runtime/assets/asset_library_internal.cpp

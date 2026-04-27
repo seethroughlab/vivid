@@ -64,6 +64,7 @@ Settings load_settings() {
     json_read(j, "show_param_wires", s.show_param_wires);
     json_read(j, "show_analysis", s.show_analysis);
     json_read(j, "audio_buffer_size", s.audio_buffer_size);
+    json_read(j, "audio_force_48000", s.audio_force_48000);
     json_read(j, "editor", s.editor);
     json_read(j, "editor_command", s.editor_command);
     json_read(j, "style_id", s.style_id);
@@ -128,6 +129,7 @@ void save_settings(const Settings& s) {
     j["show_param_wires"] = s.show_param_wires;
     j["show_analysis"] = s.show_analysis;
     j["audio_buffer_size"] = sanitize_audio_buffer_size(s.audio_buffer_size);
+    j["audio_force_48000"] = s.audio_force_48000;
     if (!s.editor.empty()) j["editor"] = s.editor;
     if (!s.editor_command.empty()) j["editor_command"] = s.editor_command;
     if (!s.style_id.empty()) j["style_id"] = s.style_id;

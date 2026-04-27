@@ -1,6 +1,7 @@
 #include <miniaudio.h>
 
 #include "runtime/graph/audio_executor.h"
+#include "runtime/audio/audio_device_list.h"
 #include "runtime/audio/audio_frame_bridge.h"
 #include "runtime/core/crash_guard.h"
 #include "runtime/core/shared_handle_registry.h"
@@ -212,6 +213,53 @@ bool AudioExecutor::build(AudioFrameBridge& bridge, CompiledGraph& cg,
     return true;
 }
 
+int AudioExecutor::audio_out_device_index() const {
+    if (!graph_ || sink_node_idx_ < 0) return 0;
+    const auto& cn = graph_->nodes[static_cast<size_t>(sink_node_idx_)];
+    auto it = cn.param_indices.find("device");
+    if (it == cn.param_indices.end()) return 0;
+    if (it->second >= cn.param_values.size()) return 0;
+    int v = static_cast<int>(cn.param_values[it->second]);
+    return v < 0 ? 0 : v;
+}
+
+// Common configure step: writes config.playback.pDeviceID for the
+// AudioDeviceList entry at `idx` and copies the id bytes into
+// applied_device_id_bytes_ so the AudioEngine watcher can identify the
+// active device across snapshot refreshes. Returns the resolved id pointer.
+// Forward declaration; defined later in this TU.
+static void audio_executor_notification_trampoline(const ma_device_notification* n);
+
+static const void* configure_real_device(ma_device_config& config,
+                                         int idx,
+                                         std::vector<uint8_t>& id_bytes_out) {
+    const void* dev_id_v =
+        AudioDeviceList::instance().device_id_for_index(static_cast<uint32_t>(idx));
+    // miniaudio takes a non-const ma_device_id*; the storage is owned by
+    // AudioDeviceList and lives for the lifetime of its current snapshot.
+    config.playback.pDeviceID =
+        const_cast<ma_device_id*>(static_cast<const ma_device_id*>(dev_id_v));
+    id_bytes_out.clear();
+    if (dev_id_v) {
+        const auto* bytes = static_cast<const uint8_t*>(dev_id_v);
+        id_bytes_out.assign(bytes, bytes + AudioDeviceList::device_id_bytes());
+    }
+    return dev_id_v;
+}
+
+static void log_achieved_rate(ma_device* dev, uint32_t graph_rate) {
+    if (!dev) return;
+    uint32_t internal = dev->playback.internalSampleRate;
+    if (internal == 0) return;
+    if (internal == graph_rate) {
+        std::fprintf(stderr, "[vivid] AudioExecutor: opened device at %u Hz\n", internal);
+    } else {
+        std::fprintf(stderr,
+            "[vivid] AudioExecutor: opened device at %u Hz; graph runs at %u Hz "
+            "(miniaudio is resampling)\n", internal, graph_rate);
+    }
+}
+
 bool AudioExecutor::start(bool use_null_device) {
     if (!bridge_ || !graph_) return false;
 
@@ -223,14 +271,22 @@ bool AudioExecutor::start(bool use_null_device) {
     config.sampleRate = sample_rate_;
     config.periodSizeInFrames = buffer_size_;
     config.dataCallback = ma_data_callback;
+    config.notificationCallback = &audio_executor_notification_trampoline;
     config.pUserData = this;
 
     ma_result init_result;
     if (use_null_device) {
         ma_backend backends[] = { ma_backend_null };
         init_result = ma_device_init_ex(backends, 1, nullptr, &config, device_);
+        applied_device_index_ = 0;
+        applied_device_id_bytes_.clear();
     } else {
+        int idx = audio_out_device_index();
+        configure_real_device(config, idx, applied_device_id_bytes_);
         init_result = ma_device_init(nullptr, &config, device_);
+        // Record the attempt regardless of outcome so the watcher in
+        // AudioEngine::tick() doesn't busy-retry on the same failing index.
+        applied_device_index_ = idx;
     }
     if (init_result != MA_SUCCESS) {
         delete device_;
@@ -243,8 +299,89 @@ bool AudioExecutor::start(bool use_null_device) {
         device_ = nullptr;
         return false;
     }
+    if (!use_null_device) log_achieved_rate(device_, sample_rate_);
     running_ = true;
     return true;
+}
+
+bool AudioExecutor::restart_device() {
+    if (!bridge_ || !graph_) return false;
+
+    // Tear down only the ma_device — keep lane_state, lift groups, bridge
+    // wiring, and audio_frame_/start_time intact so the rebuild is cheap.
+    if (device_) {
+        ma_device_uninit(device_);
+        delete device_;
+        device_ = nullptr;
+    }
+    running_ = false;
+
+    device_ = new ma_device;
+    ma_device_config config = ma_device_config_init(ma_device_type_playback);
+    config.playback.format = ma_format_f32;
+    config.playback.channels = 2;
+    config.sampleRate = sample_rate_;
+    config.periodSizeInFrames = buffer_size_;
+    config.dataCallback = ma_data_callback;
+    config.notificationCallback = &audio_executor_notification_trampoline;
+    config.pUserData = this;
+
+    int idx = audio_out_device_index();
+    configure_real_device(config, idx, applied_device_id_bytes_);
+
+    // Record the attempt up-front so a failed init doesn't make the watcher
+    // busy-retry the same broken device every frame.
+    applied_device_index_ = idx;
+
+    if (ma_device_init(nullptr, &config, device_) != MA_SUCCESS) {
+        delete device_;
+        device_ = nullptr;
+        return false;
+    }
+    if (ma_device_start(device_) != MA_SUCCESS) {
+        ma_device_uninit(device_);
+        delete device_;
+        device_ = nullptr;
+        return false;
+    }
+    log_achieved_rate(device_, sample_rate_);
+    running_ = true;
+    return true;
+}
+
+int AudioExecutor::applied_device_index() const {
+    return applied_device_index_;
+}
+
+const void* AudioExecutor::applied_device_id_bytes() const {
+    return applied_device_id_bytes_.empty() ? nullptr : applied_device_id_bytes_.data();
+}
+
+size_t AudioExecutor::applied_device_id_bytes_len() const {
+    return applied_device_id_bytes_.size();
+}
+
+uint32_t AudioExecutor::actual_device_rate() const {
+    if (!device_) return 0;
+    return device_->playback.internalSampleRate;
+}
+
+int AudioExecutor::consume_device_notification() {
+    return device_notification_pending_.exchange(-1, std::memory_order_acq_rel);
+}
+
+// Free trampoline: matches `ma_device_notification_proc` so it can be
+// assigned to ma_device_config::notificationCallback. Defined here so we
+// don't need to leak the miniaudio types out of audio_executor.h.
+//
+// Last-write-wins is fine: we only act on rerouted/stopped events, which
+// are coarse "the device changed somehow" signals; the main thread
+// refreshes AudioDeviceList and re-evaluates from there.
+static void audio_executor_notification_trampoline(const ma_device_notification* n) {
+    if (!n || !n->pDevice) return;
+    auto* self = static_cast<AudioExecutor*>(n->pDevice->pUserData);
+    if (!self) return;
+    self->post_device_notification(static_cast<int>(n->type));
 }
 
 void AudioExecutor::shutdown() {

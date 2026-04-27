@@ -30,6 +30,10 @@ struct Settings {
     bool show_param_wires = false;
     bool show_analysis = true;   // GPU frame analysis + audio RMS/peak
     uint32_t audio_buffer_size = kDefaultAudioBufferSize;
+    // When true, the audio engine forces 48000 Hz regardless of the active
+    // playback device's preferred rate (miniaudio resamples). When false,
+    // session sample rate is set from the system default device's native rate.
+    bool audio_force_48000 = false;
 
     std::string editor;          // app name for `open -a`, empty = system default
     std::string editor_command;  // custom command template with {file} placeholder

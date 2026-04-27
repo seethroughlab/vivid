@@ -9,6 +9,7 @@
 #include "runtime/core/runtime_core.h"
 #include "runtime/graph/subgraph_module.h"
 #include "runtime/audio/audio_engine.h"
+#include "runtime/audio/audio_device_list.h"
 #include "runtime/audio/audio_frame_bridge.h"
 #include "runtime/graph/compiled_graph.h"
 #include "runtime/core/file_watcher.h"
@@ -1628,6 +1629,21 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
     vivid::Graph graph;
     vivid::RuntimeCore runtime;
     runtime.set_audio_buffer_size(settings.audio_buffer_size);
+    {
+        // Negotiate the session sample rate from the system default playback
+        // device, unless the user has explicitly forced 48000.
+        // AudioDeviceList::refresh() ran during operator bootstrap.
+        uint32_t native_rate =
+            vivid::AudioDeviceList::instance().preferred_rate_for_index(0);
+        uint32_t target_rate = (settings.audio_force_48000 || native_rate == 0)
+            ? 48000u : native_rate;
+        runtime.set_audio_sample_rate(target_rate);
+        if (target_rate != 48000u) {
+            std::fprintf(stderr,
+                "[vivid] Negotiated session sample rate %u Hz from system default device\n",
+                target_rate);
+        }
+    }
     runtime.set_subgraph_modules(&subgraph_modules);
     runtime.frame_executor().set_analysis_enabled(settings.show_analysis);
     // Phase 6a: wire PackageManager so load_graph can run verify_lockfile.
@@ -3123,6 +3139,25 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
                                    kThumbW, kThumbH,
                                    kOffscreenFormat,
                                    thumb_mip_gen_ok ? &thumb_mip_gen : nullptr);
+
+            // --- React to audio_out `device` param changes (live device switch) ---
+            audio_engine.tick();
+
+            // --- Phase 2: rebuild the audio graph if a device opened at a
+            //     rate that doesn't match the session rate, so we run
+            //     natively instead of letting miniaudio resample.
+            if (uint32_t pending = audio_engine.consume_pending_session_sample_rate();
+                pending != 0 && !settings.audio_force_48000) {
+                uint32_t old_rate = runtime.audio_sample_rate();
+                std::fprintf(stderr,
+                    "[vivid] Session sample-rate change: %u -> %u Hz, recompiling audio graph\n",
+                    old_rate, pending);
+                runtime.set_audio_sample_rate(pending);
+                if (!mi::rebuild_live_runtime_from_graph(app_ctx)) {
+                    std::fprintf(stderr,
+                        "[vivid] Session sample-rate rebuild failed; audio is offline until you pick another device\n");
+                }
+            }
 
             // --- Snapshot runtime state for crash recovery (rate-limited internally) ---
             crash_recovery.tick(frame_count, graph, runtime_api, audio_engine, &control_server);

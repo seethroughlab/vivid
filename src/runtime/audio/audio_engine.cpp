@@ -2,10 +2,12 @@
 #include <miniaudio.h>
 
 #include "runtime/audio/audio_engine.h"
+#include "runtime/audio/audio_device_list.h"
 #include "runtime/graph/audio_executor.h"
 #include "runtime/core/runtime_core.h"
 #include "runtime/core/settings.h"
 #include "runtime/graph/graph_compiler.h"
+#include "runtime/operators/builtin_operators.h"
 #include <cstdio>
 
 namespace vivid {
@@ -52,8 +54,127 @@ bool AudioEngine::start(bool use_null_device) {
     if (ok) {
         std::fprintf(stderr, "[vivid] AudioEngine: started (%u Hz, %u frames/buffer, %zu audio nodes)\n",
                      sample_rate(), buffer_size(), compiled_graph_->audio_order.size());
+        // If the device opened at a rate that differs from the graph's
+        // compiled rate, signal main.cpp to recompile. Skip when the
+        // backend doesn't report a rate (null backend used in tests).
+        if (!use_null_device && runtime_core_) {
+            uint32_t actual = audio_executor_->actual_device_rate();
+            if (actual != 0 && actual != runtime_core_->audio_sample_rate()) {
+                pending_session_sample_rate_ = actual;
+            }
+        }
     }
     return ok;
+}
+
+// Resolve the audio_out node's `device` param: returns the param index
+// within CompiledNode::param_values, or -1 if not found. Also outputs the
+// CompiledNode pointer so callers can read or write the value in place.
+static int find_audio_out_device_param(CompiledGraph* cg, CompiledNode** cn_out) {
+    if (!cg) return -1;
+    for (uint32_t idx : cg->audio_order) {
+        auto& cn = cg->nodes[idx];
+        if (cn.type_name != "audio_out") continue;
+        auto it = cn.param_indices.find("device");
+        if (it == cn.param_indices.end() || it->second >= cn.param_values.size()) return -1;
+        if (cn_out) *cn_out = &cn;
+        return static_cast<int>(it->second);
+    }
+    return -1;
+}
+
+void AudioEngine::tick() {
+    if (!audio_executor_ || !compiled_graph_) return;
+
+    // -- Drain miniaudio's device-notification slot.
+    int notif = audio_executor_->consume_device_notification();
+    bool need_check_disappearance = false;
+    if (notif >= 0) {
+        const auto type = static_cast<ma_device_notification_type>(notif);
+        if (type == ma_device_notification_type_rerouted ||
+            type == ma_device_notification_type_stopped) {
+            std::fprintf(stderr, "[vivid] AudioEngine: device notification (%s)\n",
+                         type == ma_device_notification_type_rerouted ? "rerouted" : "stopped");
+            need_check_disappearance = true;
+        }
+        // interruption_began/ended/unlocked are noisy on macOS and don't
+        // need a list refresh; ignore beyond the consume.
+    }
+
+    // -- Throttled poll-refresh of the device list (~1 Hz at 60 fps).
+    constexpr uint32_t kRefreshEveryFrames = 60;
+    bool list_changed = false;
+    if (++tick_frame_counter_ >= kRefreshEveryFrames) {
+        tick_frame_counter_ = 0;
+        list_changed = AudioDeviceList::instance().refresh();
+        if (list_changed) {
+            std::fprintf(stderr, "[vivid] AudioEngine: device list changed (%u entries)\n",
+                         AudioDeviceList::instance().count());
+            sync_audio_out_device_choices();
+            need_check_disappearance = true;
+        }
+    }
+    if (need_check_disappearance && !list_changed) {
+        // A notification fired but we haven't refreshed yet — do it now so
+        // disappearance detection sees the post-event list.
+        if (AudioDeviceList::instance().refresh()) {
+            sync_audio_out_device_choices();
+        }
+    }
+
+    // -- Disappearance check: if the device we're using is gone, fall back
+    //    to Default. This is also what "rerouted" wants in practice — the
+    //    user's chosen device went away or the system default flipped.
+    if (need_check_disappearance) {
+        const void* id_bytes = audio_executor_->applied_device_id_bytes();
+        size_t id_len = audio_executor_->applied_device_id_bytes_len();
+        bool active_is_default = (id_bytes == nullptr);
+        if (!active_is_default) {
+            int new_idx = AudioDeviceList::instance()
+                            .find_index_by_id_bytes(id_bytes, id_len);
+            if (new_idx < 0) {
+                // Device unplugged. Reset the audio_out param to 0 so the
+                // switch path below picks Default on this same tick.
+                CompiledNode* cn = nullptr;
+                int pidx = find_audio_out_device_param(compiled_graph_, &cn);
+                if (pidx >= 0 && cn) {
+                    cn->param_values[pidx] = 0.0f;
+                    std::fprintf(stderr,
+                        "[vivid] AudioEngine: active device disappeared, falling back to Default\n");
+                }
+            }
+        }
+    }
+
+    // -- Switch device when the user's selection differs from what's open.
+    int desired = -1;
+    {
+        CompiledNode* cn = nullptr;
+        int pidx = find_audio_out_device_param(compiled_graph_, &cn);
+        if (pidx >= 0 && cn) desired = static_cast<int>(cn->param_values[pidx]);
+    }
+    if (desired < 0) return;
+    if (desired == audio_executor_->applied_device_index()) return;
+
+    if (!audio_executor_->restart_device()) {
+        std::fprintf(stderr, "[vivid] AudioEngine: failed to switch to device index %d\n", desired);
+    } else {
+        std::fprintf(stderr, "[vivid] AudioEngine: switched playback device (index %d)\n", desired);
+        // Detect rate mismatch against the session rate; main.cpp will
+        // drain this and trigger a graph recompile at the new rate.
+        if (runtime_core_) {
+            uint32_t actual = audio_executor_->actual_device_rate();
+            if (actual != 0 && actual != runtime_core_->audio_sample_rate()) {
+                pending_session_sample_rate_ = actual;
+            }
+        }
+    }
+}
+
+uint32_t AudioEngine::consume_pending_session_sample_rate() {
+    uint32_t v = pending_session_sample_rate_;
+    pending_session_sample_rate_ = 0;
+    return v;
 }
 
 void AudioEngine::shutdown() {

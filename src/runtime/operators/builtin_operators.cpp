@@ -1,5 +1,6 @@
 #include "runtime/operators/builtin_operators.h"
 #include "runtime/operators/operator_registry.h"
+#include "runtime/audio/audio_device_list.h"
 #include "operator_api/types.h"
 #include "operator_api/note_types.h"
 #include "operator_api/port_type_registry.h"
@@ -13,11 +14,12 @@ static const VividPortDescriptor audio_out_ports[] = {
     { "input", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT },
 };
 
-static const char* audio_out_device_labels[] = { "Default" };
-
+// Choice labels are populated at registration time from AudioDeviceList.
+// The pointers point into AudioDeviceList's storage, which lives for the
+// process lifetime.
 static VividParamDescriptor audio_out_params[] = {
     { "device", VIVID_PARAM_INT, 0, 0, 0,
-      audio_out_device_labels, 1 },
+      nullptr, 0 },
 };
 
 static const VividOperatorDescriptor audio_out_desc = {
@@ -86,8 +88,26 @@ static void register_core_custom_types() {
     vivid_register_port_type(&notes_info);
 }
 
+namespace vivid {
+void sync_audio_out_device_choices() {
+    auto& dev_list = AudioDeviceList::instance();
+    audio_out_params[0].choice_labels = dev_list.label_ptrs();
+    audio_out_params[0].choice_count  = dev_list.count();
+    audio_out_params[0].max_value     = dev_list.count() > 0
+        ? static_cast<float>(dev_list.count() - 1) : 0.0f;
+    // Pin the current snapshot so the pointers we just stashed in the
+    // descriptor stay valid until the next sync.
+    dev_list.pin_active_for_descriptor();
+}
+}
+
 void register_builtin_operators(vivid::OperatorRegistry& registry) {
     register_core_custom_types();
+
+    // Populate the audio_out device dropdown from the system's playback
+    // devices. AudioDeviceList holds the canonical snapshot.
+    vivid::AudioDeviceList::instance().refresh();
+    vivid::sync_audio_out_device_choices();
 
     registry.register_builtin("audio_out",
         audio_out_descriptor, audio_out_create, audio_out_destroy, audio_out_process);
