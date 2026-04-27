@@ -12,24 +12,25 @@
 #include <algorithm>
 /**
  * @brief MIDI device listener that translates hardware MIDI into a native
- *        note stream plus auxiliary note/control lanes.
+ *        note stream plus a few scalar convenience outputs.
  *
  * Connects to a MIDI input device and emits `notes_out` as the canonical
- * internal note stream for synth `notes_in` ports. It also provides note,
- * velocity, and gate as scalar convenience signals plus auxiliary lane arrays
- * (up to 16 held notes) for compatibility and analysis. Additional outputs
- * include pitch bend, mod wheel, a learnable CC value, and per-note expression
- * lanes (pitch_bends, pressures, slides, expressions, channels).
+ * internal note stream for synth `notes_in` ports. Pitch bend, channel
+ * pressure, CC74 (slide), and polyphonic key pressure are emitted as native
+ * per-note PITCH_BEND / PRESSURE / TIMBRE events on the same buffer. Scalar
+ * convenience signals (latest note, velocity, gate, trigger, pitch bend, mod
+ * wheel, learnable CC, aftertouch, expression) are surfaced for visual
+ * mapping and quick mono patches.
  *
- * Three modes control how expressive data is distributed across lanes:
- * - poly_shared: shared bend/pressure/expression broadcast to all active lanes
+ * Three modes control how expressive data is distributed across notes:
+ * - poly_shared: shared bend/pressure/expression broadcast to all held notes
  * - mpe_lower: MPE lower zone (manager ch1, members ch2-15)
  * - mpe_upper: MPE upper zone (manager ch16, members ch15-2)
  *
- * @tip Patch `notes_out` into synth `notes_in` for the default path, and add NoteBreakout only when you need shared per-voice control lanes.
+ * @tip Patch `notes_out` into synth `notes_in` for the default path, and add NoteBreakout when you need shared per-voice control lanes downstream.
  * @param channel MIDI channel filter. 0 = omni (all channels).
  * @param mode Expression routing mode: poly_shared, mpe_lower, or mpe_upper.
- * @see DrumKit, Arpeggiator, Keyboard
+ * @see DrumKit, Arpeggiator, Keyboard, NoteBreakout
  */
 struct MidiInput : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "MidiInput";
@@ -65,20 +66,9 @@ struct MidiInput : vivid::OperatorBase, vivid::FrameProcessable {
         out.push_back({"pitch_bend",  VIVID_PORT_SCALAR,     VIVID_PORT_OUTPUT});  // [4]
         out.push_back({"mod_wheel",   VIVID_PORT_SCALAR,     VIVID_PORT_OUTPUT});  // [5]
         out.push_back({"cc_value",    VIVID_PORT_SCALAR,     VIVID_PORT_OUTPUT});  // [6]
-        out.push_back({"notes",       VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // [7]
-        out.push_back({"velocities",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // [8]
-        out.push_back({"gates",       VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // [9]
-        out.push_back(VIVID_CUSTOM_REF_PORT("notes_out", VIVID_PORT_OUTPUT, VividNoteBuffer));  // [10]
-        // New scalar outputs
-        out.push_back({"aftertouch",  VIVID_PORT_SCALAR,     VIVID_PORT_OUTPUT});  // [11]
-        out.push_back({"expression",  VIVID_PORT_SCALAR,     VIVID_PORT_OUTPUT});  // [12]
-        // New lane-array outputs
-        out.push_back({"lane_ids",    VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // [13]
-        out.push_back({"pitch_bends", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // [14]
-        out.push_back({"pressures",   VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // [15]
-        out.push_back({"slides",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // [16]
-        out.push_back({"expressions", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // [17]
-        out.push_back({"channels",    VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // [18]
+        out.push_back(VIVID_CUSTOM_REF_PORT("notes_out", VIVID_PORT_OUTPUT, VividNoteBuffer));  // [7]
+        out.push_back({"aftertouch",  VIVID_PORT_SCALAR,     VIVID_PORT_OUTPUT});  // [8]
+        out.push_back({"expression",  VIVID_PORT_SCALAR,     VIVID_PORT_OUTPUT});  // [9]
     }
 
     MidiInput() {
@@ -292,68 +282,15 @@ struct MidiInput : vivid::OperatorBase, vivid::FrameProcessable {
         if (cc_idx < 0) cc_idx = 0;
         if (cc_idx > 127) cc_idx = 127;
 
-        ctx->output_values[0]  = static_cast<float>(last_note_);        // note
-        ctx->output_values[1]  = last_velocity_;                         // velocity
-        ctx->output_values[2]  = (held_count_ > 0) ? 1.0f : 0.0f;      // gate
-        ctx->output_values[3]  = had_note_on ? 1.0f : 0.0f;             // trigger
-        ctx->output_values[4]  = pitch_bend_;                            // pitch_bend
-        ctx->output_values[5]  = cc_values_[1];                          // mod_wheel (CC1)
-        ctx->output_values[6]  = cc_values_[cc_idx];                     // cc_value
-        ctx->output_values[11] = aftertouch_;                            // aftertouch
-        ctx->output_values[12] = expression_scalar_;                     // expression
-
-        // Write lane outputs: all currently held notes
-        if (ctx->output_lanes) {
-            uint32_t len = static_cast<uint32_t>(held_count_);
-
-            // Original lane arrays [7-9]
-            auto& notes_lane    = ctx->output_lanes[7];
-            auto& velocity_lane = ctx->output_lanes[8];
-            auto& gates_lane    = ctx->output_lanes[9];
-
-            // New lane arrays [13-18]
-            auto& lane_ids_lane    = ctx->output_lanes[13];
-            auto& pitch_bends_lane = ctx->output_lanes[14];
-            auto& pressures_lane   = ctx->output_lanes[15];
-            auto& slides_lane      = ctx->output_lanes[16];
-            auto& expressions_lane = ctx->output_lanes[17];
-            auto& channels_lane    = ctx->output_lanes[18];
-
-            float* notes_buf       = notes_lane.resize(notes_lane.handle, len);
-            float* vel_buf         = velocity_lane.resize(velocity_lane.handle, len);
-            float* gates_buf       = gates_lane.resize(gates_lane.handle, len);
-            float* lane_ids_buf    = lane_ids_lane.resize(lane_ids_lane.handle, len);
-            float* bends_buf       = pitch_bends_lane.resize(pitch_bends_lane.handle, len);
-            float* press_buf       = pressures_lane.resize(pressures_lane.handle, len);
-            float* slides_buf      = slides_lane.resize(slides_lane.handle, len);
-            float* expr_buf        = expressions_lane.resize(expressions_lane.handle, len);
-            float* chan_buf         = channels_lane.resize(channels_lane.handle, len);
-
-            if (notes_buf && vel_buf && gates_buf && lane_ids_buf &&
-                bends_buf && press_buf && slides_buf && expr_buf && chan_buf) {
-                for (uint32_t i = 0; i < len; ++i) {
-                    const auto& h = held_buffer_[i];
-                    notes_buf[i]    = static_cast<float>(h.note);
-                    vel_buf[i]      = h.velocity;
-                    gates_buf[i]    = 1.0f;
-                    lane_ids_buf[i] = static_cast<float>(h.note_id);
-                    bends_buf[i]    = h.pitch_bend;
-                    press_buf[i]    = h.pressure;
-                    slides_buf[i]   = h.slide;
-                    expr_buf[i]     = h.expression;
-                    chan_buf[i]     = static_cast<float>(h.channel);
-                }
-                notes_lane.commit(notes_lane.handle, len);
-                velocity_lane.commit(velocity_lane.handle, len);
-                gates_lane.commit(gates_lane.handle, len);
-                lane_ids_lane.commit(lane_ids_lane.handle, len);
-                pitch_bends_lane.commit(pitch_bends_lane.handle, len);
-                pressures_lane.commit(pressures_lane.handle, len);
-                slides_lane.commit(slides_lane.handle, len);
-                expressions_lane.commit(expressions_lane.handle, len);
-                channels_lane.commit(channels_lane.handle, len);
-            }
-        }
+        ctx->output_values[0] = static_cast<float>(last_note_);        // note
+        ctx->output_values[1] = last_velocity_;                         // velocity
+        ctx->output_values[2] = (held_count_ > 0) ? 1.0f : 0.0f;      // gate
+        ctx->output_values[3] = had_note_on ? 1.0f : 0.0f;             // trigger
+        ctx->output_values[4] = pitch_bend_;                            // pitch_bend
+        ctx->output_values[5] = cc_values_[1];                          // mod_wheel (CC1)
+        ctx->output_values[6] = cc_values_[cc_idx];                     // cc_value
+        ctx->output_values[8] = aftertouch_;                            // aftertouch
+        ctx->output_values[9] = expression_scalar_;                     // expression
     }
 
 private:

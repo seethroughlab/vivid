@@ -127,13 +127,13 @@ struct NotePatternCore : vivid::OperatorBase {
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
-        out.push_back({"notes",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
-        out.push_back({"velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
-        out.push_back({"gates",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({"note", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"vel", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"gate", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
         out.push_back(VIVID_CUSTOM_REF_PORT("notes_out", VIVID_PORT_OUTPUT, VividNoteBuffer));
     }
 
-    void compute(float beat_phase, const float* params, VividLaneOutput* out_spreads,
+    void compute(float beat_phase, const float* params,
                  float* output_values, void** custom_outputs, uint32_t custom_output_count) {
         int num_steps = steps.int_value();
         int oct = octave.int_value();
@@ -168,28 +168,6 @@ struct NotePatternCore : vivid::OperatorBase {
 
         // Gate: 1.0 if beat_phase < gate_length, else 0.0
         float gate_val = (beat_phase < gl) ? 1.0f : 0.0f;
-
-        // Write output spreads
-        if (out_spreads) {
-            auto& notes_sp = out_spreads[0];
-            auto& vel_sp   = out_spreads[1];
-            auto& gates_sp = out_spreads[2];
-
-            uint32_t len = static_cast<uint32_t>(chord_size);
-            float* notes_buf = notes_sp.resize(notes_sp.handle, len);
-            float* vel_buf   = vel_sp.resize(vel_sp.handle, len);
-            float* gates_buf = gates_sp.resize(gates_sp.handle, len);
-            if (notes_buf && vel_buf && gates_buf) {
-                for (uint32_t i = 0; i < len; ++i) {
-                    notes_buf[i] = static_cast<float>(root + oct * 12 + intervals[i]);
-                    vel_buf[i]   = vel;
-                    gates_buf[i] = gate_val;
-                }
-                notes_sp.commit(notes_sp.handle, len);
-                vel_sp.commit(vel_sp.handle, len);
-                gates_sp.commit(gates_sp.handle, len);
-            }
-        }
 
         // Native note output: polyphonic on/off on gate edges. Each chord
         // tone gets its own note_id so downstream synths allocate distinct

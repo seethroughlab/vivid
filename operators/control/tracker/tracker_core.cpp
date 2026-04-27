@@ -39,9 +39,6 @@ void TrackerCore::collect_params(std::vector<vivid::ParamBase*>& out) {
 void TrackerCore::collect_ports(std::vector<VividPortDescriptor>& out) {
     out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
     out.push_back({"reset", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
-    out.push_back({"notes", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
-    out.push_back({"velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
-    out.push_back({"gates", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
     out.push_back({"row", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     out.push_back({"pattern", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     out.push_back({"order", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
@@ -49,7 +46,7 @@ void TrackerCore::collect_ports(std::vector<VividPortDescriptor>& out) {
 }
 
 void TrackerCore::compute(const float* input_values, const float* params,
-                          VividLaneOutput* out_spreads, float* output_values,
+                          float* output_values,
                           void** custom_outputs, uint32_t custom_output_count) {
     float beat_phase = input_values[0];
     bool reset_signal = input_values[1] > 0.5f;
@@ -96,28 +93,6 @@ void TrackerCore::compute(const float* input_values, const float* params,
         }
     }
     prev_global_tick_ = global_tick;
-
-    if (out_spreads) {
-        auto& notes_sp = out_spreads[0];
-        auto& vels_sp  = out_spreads[1];
-        auto& gates_sp = out_spreads[2];
-
-        uint32_t len = tracker::MAX_CHANNELS;
-        float* notes_buf = notes_sp.resize(notes_sp.handle, len);
-        float* vels_buf  = vels_sp.resize(vels_sp.handle, len);
-        float* gates_buf = gates_sp.resize(gates_sp.handle, len);
-        if (notes_buf && vels_buf && gates_buf) {
-            for (int ch = 0; ch < tracker::MAX_CHANNELS; ++ch) {
-                bool muted = (mute >> ch) & 1;
-                notes_buf[ch] = channels_[ch].current_pitch;
-                vels_buf[ch] = muted ? 0.0f : static_cast<float>(channels_[ch].current_velocity) / 127.0f;
-                gates_buf[ch] = (channels_[ch].gate_active && !muted) ? 1.0f : 0.0f;
-            }
-            notes_sp.commit(notes_sp.handle, len);
-            vels_sp.commit(vels_sp.handle, len);
-            gates_sp.commit(gates_sp.handle, len);
-        }
-    }
 
     int pat_idx = 0;
     if (current_order_ < song_.arrangement_length)
@@ -452,14 +427,11 @@ void TrackerCore::process_tick_effects(const tracker::TrackerPattern& pat, int b
             }
         }
 
-        // Phase 4 PR4: emit the per-tick pitch slide as a PITCH_BEND event
-        // on the held note. The legacy `notes` lane output still broadcasts
-        // current_pitch (consumers that read it keep working), but
-        // PITCH_BEND is the canonical pitch path going forward — synths'
-        // internal allocators apply it to the matching slot's
-        // pitch_bend_semis on the wire. NOTE_ON resets last_emitted_pb to 0
-        // (matches the slot's reset), so the first bend after a fresh note
-        // emits correctly.
+        // Emit the per-tick pitch slide as a PITCH_BEND event on the held
+        // note. Synths' internal voice tables apply it to the matching
+        // slot's pitch_bend_semis on the wire; NOTE_ON resets
+        // last_emitted_pb to 0 (matches the slot's reset), so the first
+        // bend after a fresh note emits correctly.
         if (cs.gate_active && cs.prev_note_id != 0 && !muted &&
             cs.prev_midi_note >= 0 &&
             (cs.porta_speed != 0 || is_tone_porta)) {

@@ -11,11 +11,13 @@ struct Tracker : TrackerCore, vivid::AudioProcessable {
             vivid::audio_scalar_block_start(ctx, 1),  // reset
         };
         float local_out[3] = {};
-        compute(local_in, ctx->param_values, ctx->output_lanes,
+        compute(local_in, ctx->param_values,
                 local_out, ctx->custom_outputs, ctx->custom_output_count);
+        // SCALAR outputs row/pattern/order are now ports [0..2] (the legacy
+        // notes/velocities/gates LANE_ARRAY outputs were removed in Phase 5).
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
             for (int j = 0; j < 3; ++j)
-                ctx->output_buffers[3 + j][i] = local_out[j];
+                ctx->output_buffers[j][i] = local_out[j];
         }
     }
 };
