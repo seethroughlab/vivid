@@ -127,7 +127,29 @@
         "hat_d_6": 0.45,
         "hat_d_8": 0.45,
         "hat_d_9": 0.3,
-        "hat_d_10": 0.3
+        "hat_d_10": 0.3,
+        "oh_14": 0.4,
+        "oh_b_6": 0.5,
+        "oh_b_14": 0.55,
+        "oh_c_6": 0.75,
+        "oh_c_10": 0.55,
+        "oh_c_14": 0.8,
+        "clap_12": 0.4,
+        "clap_b_4": 0.55,
+        "clap_b_12": 0.55,
+        "clap_c_4": 0.75,
+        "clap_c_7": 0.4,
+        "clap_c_12": 0.75,
+        "clap_d_15": 0.9,
+        "tom_b_3": 0.45,
+        "tom_b_11": 0.4,
+        "tom_c_3": 0.55,
+        "tom_c_7": 0.45,
+        "tom_c_11": 0.55,
+        "tom_d_8": 0.6,
+        "tom_d_10": 0.7,
+        "tom_d_12": 0.8,
+        "tom_d_14": 0.85
       },
       "layout": {
         "x": 200.0,
@@ -141,7 +163,7 @@
         "decay": 0.32,
         "pitch": 52.0,
         "pitch_env": 220.0,
-        "volume": 0.22
+        "volume": 0.2
       },
       "layout": {
         "x": 520.0,
@@ -157,7 +179,7 @@
         "tone_decay": 0.08,
         "tone": 0.45,
         "pitch": 195.0,
-        "volume": 0.13
+        "volume": 0.12
       },
       "layout": {
         "x": 520.0,
@@ -211,7 +233,7 @@
         "name": "vivid-wavetable"
       },
       "params": {
-        "amplitude": 0.06,
+        "amplitude": 0.05,
         "attack": 0.4,
         "decay": 0.6,
         "sustain": 0.75,
@@ -254,7 +276,7 @@
         "name": "vivid-wavetable"
       },
       "params": {
-        "level": 0.16,
+        "level": 0.14,
         "velocity_to_level": 0.4,
         "octave": 0,
         "waveform": 3,
@@ -311,6 +333,47 @@
       "layout": {
         "x": 880.0,
         "y": 30.0
+      }
+    },
+    "oh": {
+      "type": "DrumHiHat",
+      "params": {
+        "decay": 0.18,
+        "ring": 0.65,
+        "tone": 0.85,
+        "volume": 0.1
+      },
+      "layout": {
+        "x": 520.0,
+        "y": -340.0
+      }
+    },
+    "clap": {
+      "type": "DrumClap",
+      "params": {
+        "decay": 0.42,
+        "sloppy": 0.35,
+        "tail": 0.4,
+        "tone": 0.55,
+        "volume": 0.12
+      },
+      "layout": {
+        "x": 520.0,
+        "y": -420.0
+      }
+    },
+    "tom": {
+      "type": "DrumTom",
+      "params": {
+        "decay": 0.28,
+        "pitch": 110.0,
+        "pitch_env": 70.0,
+        "tone": 0.45,
+        "volume": 0.14
+      },
+      "layout": {
+        "x": 520.0,
+        "y": -500.0
       }
     }
   },
@@ -377,6 +440,30 @@
     },
     {
       "from": "lead/output",
+      "to": "out/input"
+    },
+    {
+      "from": "drumseq/oh_out",
+      "to": "oh/notes_in"
+    },
+    {
+      "from": "drumseq/clap_out",
+      "to": "clap/notes_in"
+    },
+    {
+      "from": "drumseq/tom_out",
+      "to": "tom/notes_in"
+    },
+    {
+      "from": "oh/output",
+      "to": "out/input"
+    },
+    {
+      "from": "clap/output",
+      "to": "out/input"
+    },
+    {
+      "from": "tom/output",
       "to": "out/input"
     }
   ],
