@@ -433,13 +433,14 @@ void TrackerCore::process_tick_effects(const tracker::TrackerPattern& pat, int b
             cs.gate_active = false;
         }
 
-        if (cs.porta_speed != 0 &&
-            pat.cells[ch][current_row_].effect_type != tracker::FX_TONE_PORTA) {
+        const bool is_tone_porta =
+            pat.cells[ch][current_row_].effect_type == tracker::FX_TONE_PORTA;
+        if (cs.porta_speed != 0 && !is_tone_porta) {
             cs.current_pitch += cs.porta_speed * 0.25f;
             cs.current_pitch = std::clamp(cs.current_pitch, 0.0f, 127.0f);
         }
 
-        if (pat.cells[ch][current_row_].effect_type == tracker::FX_TONE_PORTA && cs.porta_speed > 0) {
+        if (is_tone_porta && cs.porta_speed > 0) {
             if (cs.current_pitch < cs.target_pitch) {
                 cs.current_pitch += cs.porta_speed * 0.25f;
                 if (cs.current_pitch > cs.target_pitch)
@@ -448,6 +449,28 @@ void TrackerCore::process_tick_effects(const tracker::TrackerPattern& pat, int b
                 cs.current_pitch -= cs.porta_speed * 0.25f;
                 if (cs.current_pitch < cs.target_pitch)
                     cs.current_pitch = cs.target_pitch;
+            }
+        }
+
+        // Phase 4 PR4: emit the per-tick pitch slide as a PITCH_BEND event
+        // on the held note. The legacy `notes` lane output still broadcasts
+        // current_pitch (consumers that read it keep working), but
+        // PITCH_BEND is the canonical pitch path going forward — synths'
+        // internal allocators apply it to the matching slot's
+        // pitch_bend_semis on the wire. NOTE_ON resets last_emitted_pb to 0
+        // (matches the slot's reset), so the first bend after a fresh note
+        // emits correctly.
+        if (cs.gate_active && cs.prev_note_id != 0 && !muted &&
+            cs.prev_midi_note >= 0 &&
+            (cs.porta_speed != 0 || is_tone_porta)) {
+            const float offset_semis =
+                cs.current_pitch - static_cast<float>(cs.prev_midi_note);
+            const int16_t raw =
+                vivid::tracker_expression::pitch_bend_semis_to_raw(offset_semis);
+            if (raw != cs.last_emitted_pb) {
+                vivid_sequencers::note_pitch_bend(notes_buf_, cs.prev_note_id,
+                                                  offset_semis);
+                cs.last_emitted_pb = raw;
             }
         }
 

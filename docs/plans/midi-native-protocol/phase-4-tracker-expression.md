@@ -1,8 +1,27 @@
 # Phase 4 — Tracker expression authoring UX
 
-**Status**: deferred. The native note transport and composable synth breakout model come first; richer Tracker authoring should land only after those contracts are settled.
+**Status**: complete. Tracker now authors per-note pitch_bend / pressure / timbre as anchor cells with linear interpolation between anchors; playback emits native PITCH_BEND/PRESSURE/TIMBRE events; `WavetableLayer` consumes pressure (→ amplitude) and timbre (→ wavetable position); and `FX_TONE_PORTA` was migrated off the legacy `current_pitch` lane broadcast onto canonical PITCH_BEND emission.
 
-**See also**: [README.md](README.md) for the migration overview and [phase-1-wire-format.md](phase-1-wire-format.md) for the transport contract this UI will eventually target.
+**See also**: [README.md](README.md) for the migration overview and [phase-1-wire-format.md](phase-1-wire-format.md) for the transport contract this UI targets.
+
+## Resolved
+
+The four open product choices listed below were resolved during implementation:
+
+1. **Single FX column vs. richer automation lanes** → **Rich route.** Each pattern carries an `expression_lane_mask` bitmask with bits `kLanePb`/`kLanePr`/`kLaneTb`. The mask is toggled per pattern via `Cmd+Shift+P/R/T` (the cursor skips hidden lanes and snaps back to `Note` if the lane it sits on is hidden). When visible, the lane renders as a 4-character column in the channel ribbon next to `Note`/`Velocity`/`Effect`.
+2. **Per-cell scalar values vs. anchored/interpolated curves** → **Anchored cells with linear interpolation in tick space.** A cell whose lane field equals `kExprEmpty` (`INT16_MIN`) is "no anchor"; between anchors, `tracker_expression::interpolate()` produces the per-tick value. Before the first anchor in a pattern the lane is unset (no events emitted). After the last anchor the lane holds.
+3. **How expression is shown in the grid without overwhelming note entry** → Lanes default hidden per-pattern; existing patterns load identically (zero-byte difference). The columns only appear when the user opts in via the toggle keybinds, so clean note entry remains the default UX.
+4. **Clipboard semantics** → Whole-cell copy/paste in `tracker_editor_shared` already memcpys `TrackerCell` structs, so the new fields ride along automatically. Pasting into a pattern with a different `expression_lane_mask` paints all fields anyway — the data is preserved even when the lanes are hidden.
+
+### Audible-impact wiring (the gate this phase had to pass)
+
+- `WavetableLayer` reads `slot.pressure` to scale the per-voice envelope (`1 + pressure_to_amp_depth * pressure`) and `slot.timbre` to offset the wavetable position (`timbre * timbre_to_position_depth`). Both new params (`pressure_to_amp`, `timbre_to_position`) default to `0.5`/`0.5` so a fresh patch immediately responds to expression.
+- `NoteBreakout` exposes three new advanced LANE_ARRAY OUTPUT ports — `voice_pitch_bend`, `voice_pressure`, `voice_timbre` — alongside the existing four. `vivid_sequencers::emit_voice_breakouts_from_sorted` was extended to populate the additional lanes from `slot.pitch_bend_semis`/`slot.pressure`/`slot.timbre`.
+- `FX_TONE_PORTA` (and the porta-up/porta-down family) emit incremental PITCH_BEND events per tick on top of the existing pitch-slide arithmetic, so MidiInput-authored and Tracker-authored bends interoperate at the same MPE-style ±48-semi raw int16 scale.
+
+### Demo
+
+[`graphs/audio/tracker_expression_demo.json`](../../../graphs/audio/tracker_expression_demo.json) — Clock(96 BPM) → Tracker(rate=1/16, speed=6) → WavetableLayer → audio_out. The 8-row pattern walks C4→E4→G4→C5 with ±~6-semi pitch wobble, a pressure swell that peaks on row 4, and a timbre sweep that climbs through row 7. End-to-end coverage: `tests/integration/test_tracker_expression_demo.cpp` renders ~1.6s, asserts non-silent output, and asserts the mid-pattern segment has a measurably different RMS and brightness profile than the pre-pressure segment.
 
 ## Goal
 

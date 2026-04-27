@@ -45,6 +45,18 @@ inline float pitch_bend_to_semis(int16_t raw) {
     if (!is_set(raw)) return 0.0f;
     return static_cast<float>(raw) * (48.0f / 32767.0f);
 }
+
+// Inverse of pitch_bend_to_semis. Used by the FX_TONE_PORTA / FX_PORTA_UP /
+// FX_PORTA_DOWN migration in tracker_core: per-tick pitch slides convert to
+// PITCH_BEND events emitted in the same int16 raw scale the editor's anchor
+// cells use, so the channel's last_emitted_pb dedup gate works for both
+// authored and auto-emitted bends.
+inline int16_t pitch_bend_semis_to_raw(float semis) {
+    float raw = semis * (32767.0f / 48.0f);
+    if (raw >  32767.0f) raw =  32767.0f;
+    if (raw < -32767.0f) raw = -32767.0f;
+    return static_cast<int16_t>(raw + (raw >= 0.0f ? 0.5f : -0.5f));
+}
 inline float pressure_to_unit(int16_t raw) {
     if (!is_set(raw)) return 0.0f;
     float v = static_cast<float>(raw) * (1.0f / 32767.0f);

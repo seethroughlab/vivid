@@ -4,10 +4,10 @@
 
 | Phase | Title | Status | Notes |
 |---|---|---|---|
-| 1 | Native note protocol + emitter/synth migration | planned | Introduces native note IDs and note-driven synth internals. |
-| 2 | Synth breakouts + composable poly control replacement | planned | Keeps the simple synth path while preserving per-voice graph composition. |
-| 3 | Graph migration + `VoiceAllocator` removal | planned | Deletes allocator-era wiring only after the replacement surface is proven. |
-| 4 | Tracker expression authoring UX | deferred | Valuable follow-up, but not on the critical path for the transport/composability migration. |
+| 1 | Native note protocol + emitter/synth migration | complete | Native note IDs and note-driven synth internals shipped. |
+| 2 | Synth breakouts + composable poly control replacement | complete | Standardized advanced breakout lanes + `NoteBreakout` helper shipped. |
+| 3 | Graph migration + `VoiceAllocator` removal | complete | Allocator removed; advanced graphs route through synth breakouts or `NoteBreakout`. |
+| 4 | Tracker expression authoring UX | complete | Per-cell `pb`/`pr`/`tb` lanes; FX_TONE_PORTA emits PITCH_BEND; WavetableLayer consumes pressure (→ amplitude) and timbre (→ wavetable position). |
 
 ## Context
 
@@ -42,10 +42,10 @@ Standardize advanced synth breakout outputs (`voices_out`, `voice_ids`, `voice_g
 
 Migrate checked-in presets and demo graphs to the new simple/advanced patterns, then remove `VoiceAllocator` and the old synth lane-note inputs once the replacement surface has been verified across envelopes, filters, mixers, and explicit per-voice processing.
 
-### Phase 4 — Tracker expression authoring UX (deferred)
+### Phase 4 — Tracker expression authoring UX
 **[phase-4-tracker-expression.md](phase-4-tracker-expression.md)**
 
-Build the dedicated Tracker authoring surface for pitch bend, pressure, and timbre editing. This remains deferred until the native note transport and composable synth breakout model are settled.
+Tracker patterns now carry per-cell `pb`/`pr`/`tb` anchor lanes (toggleable per pattern via `Cmd+Shift+P/R/T`); the playback path linearly interpolates between anchors and emits native PITCH_BEND/PRESSURE/TIMBRE events. `FX_TONE_PORTA` was migrated from the legacy `current_pitch` lane broadcast to PITCH_BEND emission so all per-note pitch movement now flows through one canonical path. WavetableLayer is the first synth that audibly consumes the new lanes (pressure → amplitude, timbre → wavetable position), and `NoteBreakout` exposes `voice_pitch_bend` / `voice_pressure` / `voice_timbre` lane outputs for downstream graph routing.
 
 ## Cross-cutting decisions
 
@@ -61,6 +61,7 @@ These apply to every phase. Don't reopen them inside individual phase plans with
 8. **`NoteBreakout` is the shared-control helper.** Use it when one native note stream needs to drive multiple downstream operators that consume non-audio per-voice state. It should be cheaper than instantiating a synth solely to obtain breakout lanes.
 9. **`VoiceAllocator` is removed only after replacement surfaces exist.** At minimum that means `voice_ids`, `voice_gates`, `voice_velocities`, and `voice_freqs` are live and proven in migrated graphs.
 10. **External MIDI/MPE lives at the boundary.** `MidiInput`, `MidiFilePlayer`, `MidiOutput`, and any future MPE-specific operators adapt between external MIDI semantics and the internal native-note contract.
+11. **Phase 4 product choices (resolved during implementation).** Tracker authoring uses the rich route — dedicated per-channel anchor lanes (`pb` / `pr` / `tb`) toggleable per pattern with linear interpolation between anchors. The audible-impact gate is satisfied by wiring `WavetableLayer` to read `slot.pressure` (amplitude scale) and `slot.timbre` (wavetable position offset) plus exposing `voice_pitch_bend` / `voice_pressure` / `voice_timbre` breakout lanes on `NoteBreakout`. `FX_TONE_PORTA` emits incremental PITCH_BEND events on top of the existing per-tick interpolation arithmetic, so the legacy lane broadcast is no longer the canonical pitch path. Demo: [`graphs/audio/tracker_expression_demo.json`](../../../graphs/audio/tracker_expression_demo.json).
 
 ## Glossary
 

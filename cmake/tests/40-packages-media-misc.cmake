@@ -57,6 +57,21 @@ add_test(NAME test_audio_sequencer_graph
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_audio_sequencer_graph PROPERTIES LABELS "STABILITY")
 
+# Phase 4 end-to-end Tracker expression demo: Tracker authors PITCH_BEND/
+# PRESSURE/TIMBRE events that drive a vivid-wavetable WavetableLayer voice.
+# Skips gracefully (exit 0) if vivid-wavetable is not installed.
+add_executable(test_tracker_expression_demo
+    tests/integration/test_tracker_expression_demo.cpp
+)
+target_include_directories(test_tracker_expression_demo PRIVATE src tests)
+target_link_libraries(test_tracker_expression_demo PRIVATE
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
+add_dependencies(test_tracker_expression_demo clock tracker)
+add_test(NAME test_tracker_expression_demo
+    COMMAND test_tracker_expression_demo ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_tracker_expression_demo PROPERTIES LABELS "STABILITY" TIMEOUT 60)
+
 # PackageCompiler unit test (compiles a mock package operator)
 add_executable(test_package_compiler
     tests/packages/test_package_compiler.cpp

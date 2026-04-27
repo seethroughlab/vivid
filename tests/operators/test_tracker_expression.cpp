@@ -291,6 +291,67 @@ int main() {
     }
 
     // -----------------------------------------------------------------
+    // Test: FX_TONE_PORTA glides from one held note toward a target,
+    // emitting incremental PITCH_BEND events per tick (Phase 4 PR4 — the
+    // canonical pitch path; the legacy lane broadcast still rides along
+    // until the lane outputs are retired in a later phase).
+    //
+    // Pattern: row 0 ch 0 = NOTE_ON(60). Row 4 ch 0 = note=72 + FX 0x0310
+    // (FX_TONE_PORTA, speed 0x10=16). Walking ticks 0..29 (rows 0..4 at
+    // speed=6) should NOT trigger a fresh NOTE_ON at row 4 (the new note
+    // becomes a glide target); PITCH_BEND values monotonically rise then
+    // clamp at the +12 semis target. With param=0x10 the increment is
+    // 16*0.25 = 4 semis/tick — target reached on tick 3 of row 4, then
+    // dedupe holds the value for the rest of the row.
+    // -----------------------------------------------------------------
+    {
+        std::fprintf(stderr, "\n--- FX_TONE_PORTA emits PITCH_BEND events ---\n");
+        TestTracker t;
+        t.song_.num_patterns = 1;
+        t.song_.arrangement_length = 1;
+        t.song_.arrangement[0] = 0;
+        auto& pat = t.song_.patterns[0];
+        pat.num_rows = 16;
+        pat.cells[0][0] = TrackerCell{};
+        pat.cells[0][0].note = 60;
+        pat.cells[0][0].velocity = 100;
+        pat.cells[0][4] = TrackerCell{};
+        pat.cells[0][4].note = 72;
+        pat.cells[0][4].effect_type  = FX_TONE_PORTA;
+        pat.cells[0][4].effect_param = 0x10;  // glide speed (4 semis/tick)
+
+        const int speed = 6;
+        int note_on_count = 0;
+        int pb_count = 0;
+        float last_pb_semis = -1000.0f;
+        bool monotonic_during_glide = true;
+        // Walk rows 0..4 (5 rows × speed=6 = 30 ticks).
+        for (int i = 0; i < 30; ++i) {
+            t.notes_buf_.count = 0;
+            t.process_tick(speed, /*base_ch=*/0, /*ch_mode=*/0, /*mute=*/0);
+            for (uint32_t e = 0; e < t.notes_buf_.count; ++e) {
+                const auto& ev = t.notes_buf_.events[e];
+                if (ev.type == VIVID_NOTE_ON) ++note_on_count;
+                if (ev.type == VIVID_NOTE_PITCH_BEND) {
+                    ++pb_count;
+                    if (last_pb_semis > -100.0f && ev.value < last_pb_semis - 0.01f)
+                        monotonic_during_glide = false;
+                    last_pb_semis = ev.value;
+                }
+            }
+        }
+        check(note_on_count == 1,
+              "FX_TONE_PORTA: only the row-0 NOTE_ON fires; row-4 note becomes a glide target");
+        check(pb_count > 0, "PITCH_BEND events emitted during glide");
+        check(monotonic_during_glide,
+              "PITCH_BEND values are monotonically increasing toward target");
+        check(std::fabs(last_pb_semis - 12.0f) < 0.5f,
+              "final emitted bend clamps at +12 semis target");
+        std::fprintf(stderr, "  emitted %d PITCH_BEND events; final = %.2f semis\n",
+                     pb_count, last_pb_semis);
+    }
+
+    // -----------------------------------------------------------------
     // Test 9: schema rejection of unknown future versions.
     // -----------------------------------------------------------------
     {
