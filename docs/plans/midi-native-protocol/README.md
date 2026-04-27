@@ -73,8 +73,8 @@ These apply to every phase. Don't reopen them inside individual phase plans with
 
 ## Related references
 
-- Current wire format: `src/operator_api/midi_types.h`
-- Current slot helper: `src/operator_api/voice_allocator.h`
-- Current MIDI helpers: `operators/shared/sequencer/midi_helpers.h`
+- Native note transport: `src/operator_api/note_types.h` (`VividNoteBuffer`, `VividNoteEvent`)
+- Internal voice table: `src/operator_api/voice_table.h`
+- Emission + breakout helpers: `operators/shared/sequencer/note_helpers.h`, `operators/shared/sequencer/voice_breakouts.h`
 - Current alias table: `src/runtime/graph/operator_aliases.cpp`
 - Operator-editors plan (parallel multi-phase plan, similar shape): `docs/plans/operator-editors/README.md`

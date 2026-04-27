@@ -19,7 +19,6 @@ This directory contains the public headers that define the contract between the 
 | `type_id.h` | `vivid_type_id<T>()` and `vivid_port_type<T>()` — compile-time type hashing for custom ports |
 | `port_type_registry.h` | Custom port type registration API |
 | `create_request.h` | `CreateRequest` struct used by operator scaffolding |
-| `midi_types.h` | MIDI message types for operators that handle MIDI I/O |
 | `input_state.h` | `VividInputState` — keyboard/mouse state forwarded to operators when the graph UI is hidden |
 | `thumbnail.h` | `VIVID_THUMBNAIL` macro for custom operator thumbnail rendering |
 | `texture_readback.h` | GPU→CPU texture readback helpers |
@@ -29,6 +28,7 @@ This directory contains the public headers that define the contract between the 
 | `adsr.h` | ADSR envelope implementation (embeddable) |
 | `adsr_inspector.h` | ADSR inspector drawing helpers |
 | `wgsl_preprocessor.h` | WGSL shader `#include` preprocessing |
+| `note_types.h` | `VividNoteBuffer` / `VividNoteEvent` — the native per-note event protocol used by every note stream inside the graph |
 
 ## How It's Organized
 
@@ -38,7 +38,7 @@ The headers form three layers:
 
 **Domain bases** (`wgsl_filter.h`, `gpu_operator.h`, `audio_dsp.h`): Specialized base classes and utilities for GPU and audio operators. `WgslFilterBase` handles the common pattern of a WGSL fragment shader with uniform params. `audio_dsp.h` provides oscillators, noise generators, and trigger detection.
 
-**Composition and extension** (`child_op.h`, `type_id.h`, `port_type_registry.h`, `midi_types.h`): Advanced features for operators that embed owned child operators, define custom port types, or handle MIDI. `ChildOp<T>` is for owned control-domain behavior; package-defined param widgets are presentation over primitive params, not custom storage.
+**Composition and extension** (`child_op.h`, `type_id.h`, `port_type_registry.h`, `note_types.h`): Advanced features for operators that embed owned child operators, define custom port types, or carry the native note protocol. `ChildOp<T>` is for owned control-domain behavior; package-defined param widgets are presentation over primitive params, not custom storage.
 
 ## Relationships
 

@@ -147,7 +147,7 @@ struct Envelope : vivid::OperatorBase {
         vivid::semantic_tag(gate_port, "gate");
         vivid::semantic_shape(gate_port, "lane_array");
         vivid::semantic_intent(gate_port, "per_note_gate");
-        vivid::description(gate_port, "Gate input for ADSR triggering. Accepts scalar or lane-array from voices/gates.");
+        vivid::description(gate_port, "Gate input for ADSR triggering. Accepts a scalar gate or per-voice lanes such as NoteBreakout/voice_gates.");
         out.push_back(gate_port);  // 0
 
         VividPortDescriptor lane_ids_port{"lane_ids", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT};

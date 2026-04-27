@@ -92,24 +92,46 @@ VIVID_DESCRIBE_REF_TYPE(vivid::MediaStreamV1)
 
 Type safety: `VIVID_DECLARE_CUSTOM_*_TYPE(...)` gives the type a stable namespaced id, and `vivid_port_type<T>()` derives the custom port token from that id. The runtime rejects connections between incompatible custom types.
 
-## MIDI Types
+## Native Note Protocol
+
+Inside the graph every note stream uses `VividNoteBuffer` — a buffer of
+timestamped per-note events keyed by stable `note_id`. External MIDI 1.0 and
+MPE live at the I/O boundary (`MidiInput`, `MidiFilePlayer`); inside the
+graph everything speaks this native protocol.
 
 ```cpp
-#include "operator_api/midi_types.h"
+#include "operator_api/note_types.h"
 
-struct VividMidiMessage {
-    uint8_t  status;                // e.g. 0x90 = note-on ch1
-    uint8_t  data1;                 // note number
-    uint8_t  data2;                 // velocity
-    uint8_t  reserved;
-    uint32_t frame_offset_samples;  // sample offset within buffer
+enum VividNoteEventType {
+    VIVID_NOTE_ON         = 0,  // value = velocity 0..1
+    VIVID_NOTE_OFF        = 1,  // value unused
+    VIVID_NOTE_PITCH_BEND = 2,  // value = signed semitones
+    VIVID_NOTE_PRESSURE   = 3,  // value = 0..1
+    VIVID_NOTE_TIMBRE     = 4,  // value = 0..1
 };
 
-struct VividMidiBuffer {
-    VividMidiMessage messages[64];  // VIVID_MIDI_BUFFER_CAPACITY
-    uint32_t count;
+struct VividNoteEvent {
+    uint8_t  type;                  // VividNoteEventType
+    uint8_t  note_number;           // 0..127, meaningful for ON/OFF
+    uint16_t reserved;
+    uint32_t frame_offset_samples;  // sample offset within buffer
+    uint64_t note_id;               // stable across all events for this note
+    float    value;                 // see comments above per event type
+};
+
+struct VividNoteBuffer {
+    VividNoteEvent events[64];      // VIVID_NOTE_BUFFER_CAPACITY
+    uint32_t       count;
 };
 ```
+
+Use `VIVID_CUSTOM_REF_PORT("notes_out", VIVID_PORT_OUTPUT, VividNoteBuffer)`
+to declare a note port. Emission helpers in
+`operators/shared/sequencer/note_helpers.h`:
+`vivid_sequencers::note_on/off/pitch_bend/pressure/timbre` plus
+`next_note_id()` for fresh note_id allocation. Re-triggering the same MIDI
+pitch produces a fresh `note_id`, so legato retriggers and same-pitch
+overlap allocate distinct synth voices.
 
 ## Input Events (Mouse/Keyboard)
 

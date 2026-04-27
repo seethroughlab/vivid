@@ -3,10 +3,10 @@
   "id": "midi_input",
   "domain": "control",
   "source_file": "operators/control/midi_input/midi_input.cpp",
-  "brief": "MIDI device listener with per-note expression and MPE support.",
-  "description": "Connects to a MIDI input device and outputs note/velocity/gate as both\nscalar signals (latest note) and polyphonic lane arrays (up to 16 held notes).\nAlso provides pitch bend, mod wheel, a learnable CC value, and per-note\nexpression lanes (bend, pressure, slide, expression) with three routing modes:\npoly_shared broadcasts shared expression to all notes, mpe_lower and mpe_upper\nroute per-channel expression to individual note lanes for MPE controllers.",
+  "brief": "Hardware MIDI input translated into native notes_out plus auxiliary control lanes.",
+  "description": "Connects to a MIDI input device and emits notes_out as the canonical\ninternal note stream for synth notes_in ports. It also provides note/velocity/gate\nas scalar convenience signals and auxiliary lane arrays (up to 16 held notes),\nplus pitch bend, mod wheel, a learnable CC value, and per-note expression lanes.\npoly_shared broadcasts shared expression to all notes, while mpe_lower and\nmpe_upper route per-channel expression to individual note lanes for MPE controllers.",
   "tips": [
-    "Enable learn mode and move a controller to auto-assign the CC number.",
+    "Use notes_out -> notes_in for the default synth path; add NoteBreakout only when you need shared per-voice control lanes.",
     "Use mpe_lower or mpe_upper mode with an MPE controller for per-note expression."
   ],
   "related": [
@@ -37,7 +37,7 @@
     { "name": "notes", "type": "lane_array", "doc": "Held note numbers as lane array." },
     { "name": "velocities", "type": "lane_array", "doc": "Per-note velocities (0-1)." },
     { "name": "gates", "type": "lane_array", "doc": "Per-note gates (always 1 for held notes)." },
-    { "name": "midi_out", "type": "custom", "doc": "Raw MIDI buffer passthrough." },
+    { "name": "notes_out", "type": "custom", "doc": "Native note stream for downstream synth notes_in ports." },
     { "name": "aftertouch", "type": "scalar", "doc": "Channel aftertouch (0-1)." },
     { "name": "expression", "type": "scalar", "doc": "CC11 expression (0-1)." },
     { "name": "lane_ids", "type": "lane_array", "doc": "Stable identity token per active note." },

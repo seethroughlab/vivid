@@ -59,7 +59,7 @@ static void chord_display_name(char* buf, int buf_size,
  * @output note First note of the current chord as a scalar convenience output.
  * @output vel First velocity of the current chord as a scalar convenience output.
  * @output gate First gate of the current chord as a scalar convenience output.
- * @output midi_out Optional MIDI note output mirroring the generated chord notes.
+ * @output notes_out Native note-stream output mirroring the generated chord notes.
  * @recipe Clock/beat_phase -> ChordProgression/beat_phase
  * @recipe ChordProgression/notes_out -> Synth/notes_in (e.g. WavetableOsc, FmSynth, AnalogOsc)
  * @recipe ChordProgression/notes_out -> NoteBreakout/notes_in (when shared per-voice control state is needed)

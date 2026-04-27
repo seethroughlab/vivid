@@ -633,7 +633,7 @@
       "name": "MidiInput",
       "id": "midi_input",
       "domain": "control",
-      "brief": "MIDI device listener outputting notes, velocity, gates, and CCs.",
+      "brief": "Hardware MIDI input translated into native notes_out plus auxiliary control lanes.",
       "has_docs": true,
       "related": [
         "DrumKit",
@@ -754,18 +754,6 @@
         "StepSeq",
         "Sequencer",
         "Euclidean"
-      ]
-    },
-    {
-      "name": "PhaseToMidi",
-      "id": "phase_to_midi",
-      "domain": "control",
-      "brief": "Converts beat phase wraps into MIDI note-on events.",
-      "has_docs": true,
-      "related": [
-        "Clock",
-        "MidiInput",
-        "DrumKit"
       ]
     },
     {

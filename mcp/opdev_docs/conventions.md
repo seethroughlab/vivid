@@ -22,7 +22,7 @@ operators/
 
 ## Naming Conventions
 
-- **Operator name** (`kName`): PascalCase (e.g. `"ToneGen"`, `"VoiceAllocator"`)
+- **Operator name** (`kName`): PascalCase (e.g. `"ToneGen"`, `"NoteBreakout"`)
 - **Directory and file names**: lowercase_with_underscores (e.g. `tone_gen/tone_gen.cpp`)
 - **Param names**: lowercase_with_underscores (e.g. `"frequency"`, `"decay_time"`)
 - **Port names**: lowercase_with_underscores (e.g. `"input"`, `"gate_out"`, `"texture"`)

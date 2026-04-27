@@ -2,7 +2,7 @@
 
 #include "sample_bank.h"
 #include "operator_api/adsr.h"
-#include "operator_api/voice_allocator.h"
+#include "operator_api/voice_table.h"
 #include <algorithm>
 #include <cmath>
 

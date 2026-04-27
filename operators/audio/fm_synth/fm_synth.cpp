@@ -2,7 +2,7 @@
 #include "operator_api/adsr.h"
 #include "operator_api/note_types.h"
 #include "operator_api/type_id.h"
-#include "operator_api/voice_allocator.h"
+#include "operator_api/voice_table.h"
 #include "voice_breakouts.h"
 
 #include <algorithm>
@@ -18,11 +18,11 @@
  *
  * Classic FM synthesis with a carrier and modulator oscillator. The
  * modulator frequency is set as a ratio of the carrier, and the modulation
- * index controls harmonic richness. Drive it directly with `midi_in` from
+ * index controls harmonic richness. Drive it directly with `notes_in` from
  * any note source (Tracker, NotePattern, Sequencer, ChordProgression, …) for
- * polyphonic playback up to 8 voices. Lane-array inputs (gates/notes/
- * velocities) remain available as a power-user override for explicit
- * per-voice control.
+ * polyphonic playback up to 8 voices. For advanced per-voice graph control,
+ * pair the same note stream with `NoteBreakout` and route `voice_gates`,
+ * `voice_ids`, and `voice_freqs` into envelopes and filters downstream.
  *
  * @tip Integer mod_ratio values produce harmonic timbres; non-integer values create bell-like inharmonic sounds.
  * @param mod_ratio Modulator frequency as a multiple of the carrier.
@@ -43,18 +43,17 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<float> release     {"release",      0.3f,   0.001f, 5.0f};
     vivid::Param<float> amplitude   {"amplitude",    0.5f,   0.0f,   1.0f};
 
-    // Per-voice oscillator + envelope state. Indexed by VoiceAllocator slot.
+    // Per-voice oscillator + envelope state. Indexed by VoiceTable slot.
     struct VoiceState {
         double carrier_phase = 0.0;
         double mod_phase     = 0.0;
         vivid::adsr::State envelope;
     };
     VoiceState voices_[kMaxVoices];
-    vivid::VoiceAllocator<kMaxVoices> allocator_;
+    vivid::VoiceTable<kMaxVoices> allocator_;
     uint64_t frame_counter_ = 0;
 
-    // Legacy lane-array / scalar gate path (monophonic, kept for power users
-    // who wire spread inputs directly).
+    // Legacy mono scalar gate path retained as an internal fallback.
     double mono_carrier_phase_ = 0.0;
     double mono_mod_phase_     = 0.0;
     vivid::adsr::State mono_env_;

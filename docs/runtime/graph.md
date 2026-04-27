@@ -230,10 +230,10 @@ This distinction matters for lane-aware audio chains. `InstancePerLane` and `Loo
 ## Lane State Lifecycle
 
 `LaneStateService` stores per-node state keyed by `(node_idx, lane_id)`, but lane retirement is
-handled at the lane identity level. When an operator such as `PolyVoiceAllocator` retires a
+handled at the lane identity level. When a note-stream helper or synth breakout path retires a
 `lane_id`, the runtime clears that identity's state across every downstream node that used it, not
 just the caller's own entry. This matters for long-running polyphonic graphs: oscillators, filters,
-and envelopes all keep their own per-lane state, so reclaiming only the allocator node would leak
+and envelopes all keep their own per-lane state, so reclaiming only the originating node would leak
 voice state as notes churn.
 
 On the frame path, retired lane IDs are swept at the start of each `FrameExecutor::tick()`. On the

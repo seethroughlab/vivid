@@ -98,12 +98,12 @@ Each custom type has an associated `VividPortTransport` that describes how the p
 The `VIVID_CUSTOM_PORT` macro declares a custom port in a single line:
 
 ```cpp
-VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer)
+VIVID_CUSTOM_REF_PORT("notes_out", VIVID_PORT_OUTPUT, VividNoteBuffer)
 ```
 
 Operator dylibs register their custom types by exporting `vivid_describe_custom_types()`, which returns a static array of `VividPortTypeInfo` records. The `VIVID_DESCRIBE_REF_TYPE(T)` convenience macro handles this for single-type `CUSTOM_REF` operators. The runtime calls this export after `dlopen` and registers each type in the global port type registry. Re-registering the same type with identical fields is idempotent; mismatched fields trigger a fatal error.
 
-When the user draws a connection in the graph editor, the runtime compares custom type IDs on both ends. Mismatched IDs (e.g. connecting a `VividMidiBuffer` output to a `MeshBufferV1` input) are rejected — the connection is never created. This prevents silent `void*` misinterpretation.
+When the user draws a connection in the graph editor, the runtime compares custom type IDs on both ends. Mismatched IDs (e.g. connecting a `VividNoteBuffer` output to a `MeshBufferV1` input) are rejected — the connection is never created. This prevents silent `void*` misinterpretation.
 
 ### Semantic Tags (Advisory)
 Port types can carry optional semantic tags: normalized (0–1), bipolar (-1 to 1), frequency_hz, decibels, midi_note, etc. **Tags are advisory hints, not enforced by the runtime.** When connecting ports with mismatched ranges, the graph editor suggests inserting a visible Remap node with the mapping pre-configured. No silent auto-mapping.
@@ -549,7 +549,7 @@ vivid/
 │   │   ├── wgsl_filter.h       # WgslFilterBase for shader-backed GPU operators
 │   │   ├── data_driven_filter.h # WgslOperator with dynamic param/port collection
 │   │   ├── audio_dsp.h         # WhiteNoise, PinkNoise, waveform(), detect_trigger()
-│   │   └── midi_types.h        # VividMidiBuffer type (reserved)
+│   │   └── note_types.h        # VividNoteBuffer / VividNoteEvent — native note transport
 │   ├── cli/                    # CLI tooling
 │   └── export/                 # Standalone export build
 │       └── standalone_main.cpp

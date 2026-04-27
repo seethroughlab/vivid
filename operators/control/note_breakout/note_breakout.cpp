@@ -1,7 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/note_types.h"
 #include "operator_api/type_id.h"
-#include "operator_api/voice_allocator.h"
+#include "operator_api/voice_table.h"
 #include "voice_breakouts.h"
 
 /**
@@ -58,7 +58,7 @@ struct NoteBreakout : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr bool kTimeDependent = false;
     static constexpr int kMaxVoices = 16;
 
-    vivid::VoiceAllocator<kMaxVoices> alloc_;
+    vivid::VoiceTable<kMaxVoices> alloc_;
     uint64_t frame_counter_ = 0;
     VividNoteBuffer passthrough_buf_{};
 

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-04-02",
+  "generated_at": "2026-04-26",
   "packages": [
     {
       "name": "vivid-3d",
@@ -15,13 +15,15 @@
         "3d",
         "rendering"
       ],
-      "operators": [],
+      "operators": [
+        "control/orbit_camera"
+      ],
       "gpu_operators": [
         "gpu/grid",
         "gpu/sphere",
         "gpu/box",
         "gpu/point_cloud",
-        "gpu/instanced_render",
+        "gpu/mesh_draw",
         "gpu/render_3d",
         "gpu/shape3d",
         "gpu/transform3d",
@@ -30,6 +32,9 @@
         "gpu/mesh_import",
         "gpu/deformer",
         "gpu/instancer3d",
+        "gpu/instance_grid",
+        "gpu/instance_noise",
+        "gpu/instances_from_lanes",
         "gpu/particles3d",
         "gpu/sdf3d",
         "gpu/material3d",
@@ -206,11 +211,13 @@
         "wavetable"
       ],
       "operators": [
-        "poly_voice_allocator",
         "wavetable_osc",
+        "wavetable_layer",
         "voice_mixer",
+        "voice_drive",
         "sub_osc",
-        "analog_osc"
+        "analog_osc",
+        "noise_layer"
       ],
       "gpu_operators": "",
       "build": "cmake",
@@ -219,8 +226,16 @@
         "preview_image": "docs/images/preview.png",
         "guides": [
           {
-            "title": "Building a Synth with vivid-wavetable",
-            "path": "docs/synth-building-tutorial.md"
+            "title": "Validate WavetableLayer Production Path",
+            "path": "docs/wavetable-operator-validation-guide.md"
+          },
+          {
+            "title": "Wavetable Asset Workflow",
+            "path": "docs/wavetable-asset-workflow.md"
+          },
+          {
+            "title": "Showcase and Instrument Library",
+            "path": "docs/showcase-library.md"
           }
         ]
       },

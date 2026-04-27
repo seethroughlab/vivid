@@ -11,20 +11,22 @@
 #include <cstdio>
 #include <algorithm>
 /**
- * @brief MIDI device listener outputting notes, velocity, gates, CCs, and
- *        per-note expression data with MPE support.
+ * @brief MIDI device listener that translates hardware MIDI into a native
+ *        note stream plus auxiliary note/control lanes.
  *
- * Connects to a MIDI input device and outputs note/velocity/gate as both
- * scalar signals (latest note) and polyphonic lane arrays (up to 16 held notes).
- * Also provides pitch bend, mod wheel, a learnable CC value, and per-note
- * expression lanes (pitch_bends, pressures, slides, expressions, channels).
+ * Connects to a MIDI input device and emits `notes_out` as the canonical
+ * internal note stream for synth `notes_in` ports. It also provides note,
+ * velocity, and gate as scalar convenience signals plus auxiliary lane arrays
+ * (up to 16 held notes) for compatibility and analysis. Additional outputs
+ * include pitch bend, mod wheel, a learnable CC value, and per-note expression
+ * lanes (pitch_bends, pressures, slides, expressions, channels).
  *
  * Three modes control how expressive data is distributed across lanes:
  * - poly_shared: shared bend/pressure/expression broadcast to all active lanes
  * - mpe_lower: MPE lower zone (manager ch1, members ch2-15)
  * - mpe_upper: MPE upper zone (manager ch16, members ch15-2)
  *
- * @tip Enable learn mode and move a controller to auto-assign the CC number.
+ * @tip Patch `notes_out` into synth `notes_in` for the default path, and add NoteBreakout only when you need shared per-voice control lanes.
  * @param channel MIDI channel filter. 0 = omni (all channels).
  * @param mode Expression routing mode: poly_shared, mpe_lower, or mpe_upper.
  * @see DrumKit, Arpeggiator, Keyboard

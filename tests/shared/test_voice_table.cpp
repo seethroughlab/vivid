@@ -1,4 +1,4 @@
-// Unit tests for vivid::VoiceAllocator (operator_api/voice_allocator.h).
+// Unit tests for vivid::VoiceTable (operator_api/voice_table.h).
 //
 // Native note transport (post-2026-04 migration). The allocator now keys
 // slots by `note_id` instead of MIDI note number, so:
@@ -13,14 +13,14 @@
 // process_note_buffer with on_on/on_off/on_expression callbacks, and
 // per-note expression routing.
 
-#include "operator_api/voice_allocator.h"
+#include "operator_api/voice_table.h"
 
 #include <cstdio>
 #include <cstring>
 
 #include "test_helpers.h"
 
-using vivid::VoiceAllocator;
+using vivid::VoiceTable;
 using vivid::VoiceSlot;
 
 namespace {
@@ -49,8 +49,8 @@ VividNoteBuffer make_buffer(std::initializer_list<Ev> events) {
 }
 
 void test_note_on_off_basic() {
-    std::fprintf(stderr, "\n--- VoiceAllocator: note_on/note_off basics ---\n");
-    VoiceAllocator<8> alloc;
+    std::fprintf(stderr, "\n--- VoiceTable: note_on/note_off basics ---\n");
+    VoiceTable<8> alloc;
     check(alloc.active_count() == 0, "fresh allocator has no active voices");
 
     int idx = alloc.note_on(60, 1.0f, /*note_id=*/100, /*frame=*/0);
@@ -76,8 +76,8 @@ void test_note_on_off_basic() {
 }
 
 void test_same_pitch_overlap_distinct_slots() {
-    std::fprintf(stderr, "\n--- VoiceAllocator: same-pitch overlap allocates distinct slots ---\n");
-    VoiceAllocator<4> alloc;
+    std::fprintf(stderr, "\n--- VoiceTable: same-pitch overlap allocates distinct slots ---\n");
+    VoiceTable<4> alloc;
     int a = alloc.note_on(60, 0.8f, /*note_id=*/200, /*frame=*/10);
     int b = alloc.note_on(60, 1.0f, /*note_id=*/201, /*frame=*/50);
     check(a != b, "two same-pitch note-ons with distinct ids → distinct slots");
@@ -91,8 +91,8 @@ void test_same_pitch_overlap_distinct_slots() {
 }
 
 void test_oldest_stealing() {
-    std::fprintf(stderr, "\n--- VoiceAllocator: oldest-stealing when full ---\n");
-    VoiceAllocator<4> alloc;
+    std::fprintf(stderr, "\n--- VoiceTable: oldest-stealing when full ---\n");
+    VoiceTable<4> alloc;
     alloc.note_on(60, 1.0f, /*id=*/300, /*frame=*/100);
     alloc.note_on(62, 1.0f, /*id=*/301, /*frame=*/200);
     alloc.note_on(64, 1.0f, /*id=*/302, /*frame=*/300);
@@ -107,8 +107,8 @@ void test_oldest_stealing() {
 }
 
 void test_all_notes_off() {
-    std::fprintf(stderr, "\n--- VoiceAllocator: all_notes_off clears every slot ---\n");
-    VoiceAllocator<4> alloc;
+    std::fprintf(stderr, "\n--- VoiceTable: all_notes_off clears every slot ---\n");
+    VoiceTable<4> alloc;
     alloc.note_on(60, 1.0f, /*id=*/400, 0);
     alloc.note_on(64, 1.0f, /*id=*/401, 1);
     alloc.note_on(67, 1.0f, /*id=*/402, 2);
@@ -120,8 +120,8 @@ void test_all_notes_off() {
 }
 
 void test_apply_expression() {
-    std::fprintf(stderr, "\n--- VoiceAllocator: per-note expression mutates correct slot ---\n");
-    VoiceAllocator<4> alloc;
+    std::fprintf(stderr, "\n--- VoiceTable: per-note expression mutates correct slot ---\n");
+    VoiceTable<4> alloc;
     alloc.note_on(60, 1.0f, /*id=*/500, 0);
     alloc.note_on(64, 1.0f, /*id=*/501, 0);
 
@@ -143,8 +143,8 @@ void test_apply_expression() {
 }
 
 void test_process_note_buffer() {
-    std::fprintf(stderr, "\n--- VoiceAllocator: process_note_buffer drives slots ---\n");
-    VoiceAllocator<4> alloc;
+    std::fprintf(stderr, "\n--- VoiceTable: process_note_buffer drives slots ---\n");
+    VoiceTable<4> alloc;
     auto buf = make_buffer({
         {VIVID_NOTE_ON,         60, 0.8f, /*id=*/600, /*offset=*/0},
         {VIVID_NOTE_ON,         64, 0.6f, /*id=*/601, /*offset=*/16},
@@ -189,8 +189,8 @@ void test_process_note_buffer() {
 }
 
 void test_null_buffer_safe() {
-    std::fprintf(stderr, "\n--- VoiceAllocator: null note buffer is a no-op ---\n");
-    VoiceAllocator<4> alloc;
+    std::fprintf(stderr, "\n--- VoiceTable: null note buffer is a no-op ---\n");
+    VoiceTable<4> alloc;
     int n_on = 0, n_off = 0, n_expr = 0;
     alloc.process_note_buffer(nullptr, 0,
         [&](int, int, float, uint32_t, uint64_t) { ++n_on; },
@@ -202,8 +202,8 @@ void test_null_buffer_safe() {
 }
 
 void test_global_id_ignored() {
-    std::fprintf(stderr, "\n--- VoiceAllocator: events with note_id=0 are ignored ---\n");
-    VoiceAllocator<4> alloc;
+    std::fprintf(stderr, "\n--- VoiceTable: events with note_id=0 are ignored ---\n");
+    VoiceTable<4> alloc;
     auto buf = make_buffer({
         {VIVID_NOTE_ON, 60, 1.0f, /*id=*/0, 0},  // global stream — synth ignores
     });

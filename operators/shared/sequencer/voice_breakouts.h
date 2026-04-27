@@ -3,7 +3,7 @@
 // Voice-breakout helper — emits the standardized per-voice control lanes
 // (voice_ids, voice_gates, voice_velocities, voice_freqs, plus the Phase 4
 // expression lanes voice_pitch_bend, voice_pressure, voice_timbre) from a
-// vivid::VoiceAllocator<N>'s active slots, sorted by note_id ascending.
+// vivid::VoiceTable<N>'s active slots, sorted by note_id ascending.
 //
 // Used by every voice synth (FmSynth, Sampler, SP404, Slicer, AnalogOsc,
 // WavetableOsc, WavetableLayer, ...) and by NoteBreakout. Centralizes the
@@ -41,7 +41,7 @@
 #include <type_traits>
 
 #include "operator_api/types.h"
-#include "operator_api/voice_allocator.h"
+#include "operator_api/voice_table.h"
 
 namespace vivid_sequencers {
 
@@ -161,7 +161,7 @@ inline uint32_t emit_voice_breakouts(const SlotT* slots, int capacity,
 // Pass nullptr for any lane your caller doesn't need; this function
 // gracefully skips the resize/commit on null entries.
 template <int N>
-inline uint32_t emit_voice_breakouts(const vivid::VoiceAllocator<N>& alloc,
+inline uint32_t emit_voice_breakouts(const vivid::VoiceTable<N>& alloc,
                                      VividLaneOutput lanes[kVoiceBreakoutLaneCount]) {
     int sorted[N];
     int count = collect_sorted_voice_indices(alloc.slots, N, sorted, N);

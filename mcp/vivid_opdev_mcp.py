@@ -42,7 +42,7 @@ _TOOLCHAIN_PATH_DIRS = (
 ALLOWED_HEADERS = {
     "operator.h", "types.h", "gpu_operator.h",
     "gpu_common.h", "gpu_types.h", "wgsl_filter.h", "wgsl_preprocessor.h",
-    "audio_dsp.h", "adsr.h", "child_op.h", "midi_types.h",
+    "audio_dsp.h", "adsr.h", "child_op.h", "note_types.h",
     "input_state.h", "type_id.h",
     "create_request.h", "data_driven_filter.h",
     "thumbnail.h", "draw_ui_helpers.h", "draw_plot_helpers.h",
@@ -224,17 +224,19 @@ CAPABILITY_GUIDANCE = {
         ),
     },
     "midi": {
-        "explanation": "MIDI input via VividMidiBuffer. Operators receive a buffer of timestamped MIDI messages each audio frame.",
+        "explanation": "Native note transport. Note streams between operators inside the graph use VividNoteBuffer (a buffer of timestamped per-note events keyed by uint64 note_id, carrying NOTE_ON/OFF plus PITCH_BEND/PRESSURE/TIMBRE expression). External MIDI 1.0 / MPE wire data is parsed at the I/O boundary (MidiInput, MidiFilePlayer) and translated into this internal protocol.",
         "doc_topic": "advanced",
         "example_operators": [
             {"env": "control", "name": "midi_input"},
             {"env": "audio", "name": "midi_file_player"},
             {"env": "control", "name": "phase_to_midi"},
+            {"env": "control", "name": "tracker"},
         ],
         "code_snippet": (
-            '#include "operator_api/midi_types.h"\n\n'
-            '// Use VIVID_CUSTOM_VALUE_PORT or VIVID_CUSTOM_REF_PORT for midi buffer port.\n'
-            '// See midi_input operator for full example.'
+            '#include "operator_api/note_types.h"\n\n'
+            '// VIVID_CUSTOM_REF_PORT("notes_out", VIVID_PORT_OUTPUT, VividNoteBuffer)\n'
+            '// vivid_sequencers::note_on/off/pitch_bend/pressure/timbre helpers in note_helpers.h.\n'
+            '// See midi_input or tracker for emission, fm_synth for consumption.'
         ),
     },
     "input_events": {

@@ -9,13 +9,13 @@ add_test(NAME test_simd_fft COMMAND test_simd_fft WORKING_DIRECTORY ${CMAKE_BINA
 set_tests_properties(test_simd_fft PROPERTIES TIMEOUT 15)
 
 # Voice allocator unit tests — header-only, no runtime needed.
-add_executable(test_voice_allocator
-    tests/shared/test_voice_allocator.cpp
+add_executable(test_voice_table
+    tests/shared/test_voice_table.cpp
 )
-target_include_directories(test_voice_allocator PRIVATE src tests)
-target_link_libraries(test_voice_allocator PRIVATE vivid_operator_api)
-add_test(NAME test_voice_allocator COMMAND test_voice_allocator WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-set_tests_properties(test_voice_allocator PROPERTIES TIMEOUT 5)
+target_include_directories(test_voice_table PRIVATE src tests)
+target_link_libraries(test_voice_table PRIVATE vivid_operator_api)
+add_test(NAME test_voice_table COMMAND test_voice_table WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_voice_table PROPERTIES TIMEOUT 5)
 
 # Native note transport helpers — header-only, no runtime needed.
 add_executable(test_note_helpers

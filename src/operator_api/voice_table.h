@@ -45,7 +45,7 @@ struct VoiceSlot {
 // kMaxVoices is a compile-time bound; runtime polyphony can be capped lower by
 // the caller (typical pattern: a `voices` param clamps the loop count).
 template <int kMaxVoices>
-class VoiceAllocator {
+class VoiceTable {
 public:
     static constexpr int kCapacity = kMaxVoices;
 
