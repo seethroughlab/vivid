@@ -142,9 +142,20 @@ bool captured_name(const CaptureCtx& c, const char* name) {
 
 // ---- Engine backward-compat harness: driving compute() directly ----
 
+// After Phase 5 PR3 the Arpeggiator consumes a native VividNoteBuffer on
+// notes_in. The harness manages held-set state across step_at() calls so
+// existing tests can keep passing a "current notes" pool each tick — we
+// diff vs. the previously-held set and emit ON/OFF events as needed.
 struct ArpHarness {
     ArpeggiatorCore core;
     std::vector<float> params;
+
+    // Per-pitch tracking so we can emit NOTE_OFF for departed notes.
+    struct HeldEntry {
+        float    note;
+        uint64_t note_id;
+    };
+    std::vector<HeldEntry> currently_held;
 
     ArpHarness() : params(73, 0.0f) {
         params[ae::kModeIndex]       = 0.0f;   // Up
@@ -158,29 +169,45 @@ struct ArpHarness {
         }
     }
 
-    // Build input lane spreads from an explicit note list.
     struct Result {
         float note, vel, gate;
         int step;
     };
+
+    // Build a VividNoteBuffer carrying ON/OFF deltas to bring the held
+    // set in line with `notes`, then run one compute() tick.
     Result step_at(float beat_phase, const std::vector<float>& notes) {
-        // Lane-view stubs: a 4-length VividLaneView array for the arp's
-        // input ports [beat_phase, notes, velocities, gates]. Only
-        // notes/velocities/gates are used via indexes [1..3].
-        VividLaneView lane_views[4] = {};
-        std::vector<float> vel_data(notes.size(), 1.0f);
-        std::vector<float> gate_data(notes.size(), 1.0f);
-        lane_views[1].data = const_cast<float*>(notes.data());
-        lane_views[1].length = static_cast<uint32_t>(notes.size());
-        lane_views[2].data = vel_data.data();
-        lane_views[2].length = static_cast<uint32_t>(vel_data.size());
-        lane_views[3].data = gate_data.data();
-        lane_views[3].length = static_cast<uint32_t>(gate_data.size());
+        VividNoteBuffer buf{};
+
+        // NOTE_OFF for any previously-held note that's not in the new set.
+        for (auto it = currently_held.begin(); it != currently_held.end(); ) {
+            bool still_present = false;
+            for (float n : notes) if (n == it->note) { still_present = true; break; }
+            if (!still_present) {
+                vivid_sequencers::note_off(buf, it->note_id);
+                it = currently_held.erase(it);
+            } else {
+                ++it;
+            }
+        }
+
+        // NOTE_ON for any new note that isn't already held.
+        for (float n : notes) {
+            bool already_held = false;
+            for (auto& e : currently_held) if (e.note == n) { already_held = true; break; }
+            if (!already_held) {
+                uint64_t id = vivid_sequencers::next_note_id();
+                vivid_sequencers::note_on(buf,
+                    static_cast<uint8_t>(std::clamp(static_cast<int>(n), 0, 127)),
+                    /*velocity=*/1.0f, id);
+                currently_held.push_back({n, id});
+            }
+        }
 
         float output_values[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-        // The custom MIDI output is not checked here.
-        core.compute(beat_phase, params.data(), lane_views,
-                     output_values, /*out_spreads=*/nullptr,
+        // custom_outputs not inspected here.
+        core.compute(beat_phase, params.data(), &buf,
+                     output_values,
                      /*custom_outputs=*/nullptr, 0);
         return {output_values[0], output_values[1],
                 output_values[2],
@@ -313,6 +340,127 @@ int main() {
         // the param layout is reachable by reading back.)
         check(h.params[ae::kTrBase_8_15 + 7] == 12.0f,
               "tr_15 lives at descriptor index 40 and survives the widening");
+    }
+
+    // --- PR3: Held-set semantics on notes_in (NOTE_OFF removes from rotation) ---
+    {
+        ArpeggiatorCore core;
+        std::vector<float> params(73, 0.0f);
+        params[ae::kModeIndex]       = 0.0f;   // Up
+        params[ae::kOctavesIndex]    = 1.0f;
+        params[ae::kRateIndex]       = 2.0f;   // 1/4
+        params[ae::kGateLengthIndex] = 0.8f;
+        params[ae::kModStepsIndex]   = 8.0f;
+        for (int i = 0; i < 16; ++i) {
+            params[ae::param_index_for(ae::Lane::Velocity, i)] = 1.0f;
+            params[ae::param_index_for(ae::Lane::Gate,     i)] = 1.0f;
+        }
+        // Send three NOTE_ON events: 60, 64, 67. Then NOTE_OFF the 64.
+        VividNoteBuffer buf{};
+        uint64_t id_60 = vivid_sequencers::next_note_id();
+        uint64_t id_64 = vivid_sequencers::next_note_id();
+        uint64_t id_67 = vivid_sequencers::next_note_id();
+        vivid_sequencers::note_on(buf, 60, 1.0f, id_60);
+        vivid_sequencers::note_on(buf, 64, 1.0f, id_64);
+        vivid_sequencers::note_on(buf, 67, 1.0f, id_67);
+        vivid_sequencers::note_off(buf, id_64);
+        float out_values[4] = {};
+        core.compute(0.0f, params.data(), &buf, out_values, nullptr, 0);
+        // Pool should contain only 60 and 67. Step 0 lands on the lowest
+        // pitch under "Up" mode, which is 60.
+        check(out_values[0] == 60.0f,
+              "PR3: NOTE_OFF on the middle held note removed it from the pool");
+    }
+
+    // --- PR3: re-triggering same MIDI pitch with distinct note_ids → distinct held entries ---
+    {
+        ArpeggiatorCore core;
+        std::vector<float> params(73, 0.0f);
+        params[ae::kModeIndex]       = 0.0f;
+        params[ae::kOctavesIndex]    = 1.0f;
+        params[ae::kRateIndex]       = 2.0f;
+        params[ae::kGateLengthIndex] = 0.8f;
+        params[ae::kModStepsIndex]   = 8.0f;
+        for (int i = 0; i < 16; ++i) {
+            params[ae::param_index_for(ae::Lane::Velocity, i)] = 1.0f;
+            params[ae::param_index_for(ae::Lane::Gate,     i)] = 1.0f;
+        }
+        // Two NOTE_ONs for the same pitch with distinct note_ids.
+        // Force pool index 1 via note_override → if there are 2 entries,
+        // the engine resolves index 1 and emits the same pitch (60); if
+        // there's only 1 entry, the clamp pulls index back to 0 anyway.
+        // Better assertion: NOTE_OFF only the FIRST note_id and verify
+        // the second note still produces output.
+        VividNoteBuffer buf_a{};
+        uint64_t id_a = vivid_sequencers::next_note_id();
+        uint64_t id_b = vivid_sequencers::next_note_id();
+        vivid_sequencers::note_on(buf_a, 60, 1.0f, id_a);
+        vivid_sequencers::note_on(buf_a, 60, 0.5f, id_b);
+        float out_a[4] = {};
+        core.compute(0.0f, params.data(), &buf_a, out_a, nullptr, 0);
+        check(out_a[0] == 60.0f && out_a[2] == 1.0f,
+              "PR3: same-pitch overlap still produces the held pitch on step 0");
+
+        // Frame 2: NOTE_OFF only id_a. id_b should still drive output.
+        VividNoteBuffer buf_b{};
+        vivid_sequencers::note_off(buf_b, id_a);
+        float out_b[4] = {};
+        core.compute(0.0f, params.data(), &buf_b, out_b, nullptr, 0);
+        check(out_b[0] == 60.0f && out_b[2] == 1.0f,
+              "PR3: NOTE_OFF on one of two same-pitch entries leaves the other held (note_id semantics)");
+    }
+
+    // --- PR3: held-note pressure → arp emits PRESSURE on each step's note_id (snapshot-and-bake) ---
+    {
+        ArpeggiatorCore core;
+        std::vector<float> params(73, 0.0f);
+        params[ae::kModeIndex]       = 0.0f;
+        params[ae::kOctavesIndex]    = 1.0f;
+        params[ae::kRateIndex]       = 2.0f;
+        params[ae::kGateLengthIndex] = 0.8f;
+        params[ae::kModStepsIndex]   = 8.0f;
+        for (int i = 0; i < 16; ++i) {
+            params[ae::param_index_for(ae::Lane::Velocity, i)] = 1.0f;
+            params[ae::param_index_for(ae::Lane::Gate,     i)] = 1.0f;
+        }
+
+        // NOTE_ON + PRESSURE on the held note before the first step fires.
+        VividNoteBuffer buf{};
+        uint64_t held_id = vivid_sequencers::next_note_id();
+        vivid_sequencers::note_on(buf, 60, 1.0f, held_id);
+        vivid_sequencers::note_pressure(buf, held_id, 0.75f);
+
+        VividNoteBuffer arp_out{};
+        void* custom_outputs[1] = {&arp_out};
+        float out_values[4] = {};
+        core.compute(0.0f, params.data(), &buf, out_values, custom_outputs, 1);
+
+        // arp_out should contain a NOTE_ON followed by a PRESSURE event
+        // keyed on the new step's note_id (NOT the held source's note_id).
+        auto* result_buf = static_cast<VividNoteBuffer*>(custom_outputs[0]);
+        check(result_buf != nullptr, "PR3: arp wrote to custom_outputs[0]");
+        bool saw_on = false;
+        bool saw_pressure_baked = false;
+        uint64_t step_id = 0;
+        for (uint32_t i = 0; result_buf && i < result_buf->count; ++i) {
+            const auto& e = result_buf->events[i];
+            if (e.type == VIVID_NOTE_ON) {
+                saw_on = true;
+                step_id = e.note_id;
+            } else if (e.type == VIVID_NOTE_PRESSURE) {
+                check(step_id != 0, "PR3: PRESSURE follows NOTE_ON in the same emit");
+                check(e.note_id == step_id,
+                      "PR3: baked PRESSURE keyed on the new step's note_id, not the held source's id");
+                check_float(e.value, 0.75f, 1e-4f,
+                            "PR3: baked PRESSURE value matches the held source's last pressure");
+                check(e.note_id != held_id,
+                      "PR3: arp's emitted note_id is fresh, not reused from the held source");
+                saw_pressure_baked = true;
+            }
+        }
+        check(saw_on, "PR3: arp emitted NOTE_ON for step 0");
+        check(saw_pressure_baked,
+              "PR3: arp baked the held source's PRESSURE onto the emitted note");
     }
 
     // --- Editor: arrow keys move cursor within 4×16 grid ---

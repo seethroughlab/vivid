@@ -8,12 +8,17 @@ struct Arpeggiator : ArpeggiatorCore, vivid::AudioProcessable {
         float local_out[4] = {};
         float beat_phase = vivid::resolve_clock_phase(
             clock_source.int_value(), vivid::audio_scalar_block_start(ctx, 0), vivid::metronome_transport(ctx));
-        compute(beat_phase, ctx->param_values, ctx->input_lanes,
-                local_out, ctx->output_lanes,
+        const VividNoteBuffer* notes_in = nullptr;
+        if (ctx->custom_inputs && ctx->custom_input_count > 0)
+            notes_in = static_cast<const VividNoteBuffer*>(ctx->custom_inputs[0]);
+        compute(beat_phase, ctx->param_values, notes_in,
+                local_out,
                 ctx->custom_outputs, ctx->custom_output_count);
+        // SCALAR outputs (note/vel/gate/step) are now ports [0..3] — the
+        // legacy LANE_ARRAY note/vel/gate outputs were removed in PR3.
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
             for (int j = 0; j < 4; ++j)
-                ctx->output_buffers[3 + j][i] = local_out[j];
+                ctx->output_buffers[j][i] = local_out[j];
         }
     }
 };

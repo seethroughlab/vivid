@@ -49,17 +49,15 @@ static void chord_display_name(char* buf, int buf_size,
  * @brief Diatonic chord sequencer with per-step voicing and extensions.
  *
  * Sequences up to 8 chords in a chosen key and mode, each with configurable
- * scale degree, inversion, and extension (triad, 7th, add9). Outputs notes
- * as a polyphonic spread and optional MIDI.
+ * scale degree, inversion, and extension (triad, 7th, add9). Emits a native
+ * note stream on `notes_out` plus scalar convenience signals for the first
+ * chord tone.
  *
  * @input beat_phase Global 0-1 beat phase from a Clock.
- * @output notes Per-step note numbers as a lane array for downstream poly operators.
- * @output velocities Per-note velocities matching the notes lane array.
- * @output gates Per-note gates matching the notes lane array.
  * @output note First note of the current chord as a scalar convenience output.
  * @output vel First velocity of the current chord as a scalar convenience output.
  * @output gate First gate of the current chord as a scalar convenience output.
- * @output notes_out Native note-stream output mirroring the generated chord notes.
+ * @output notes_out Native note-stream output carrying the chord's note events.
  * @recipe Clock/beat_phase -> ChordProgression/beat_phase
  * @recipe ChordProgression/notes_out -> Synth/notes_in (e.g. WavetableOsc, FmSynth, AnalogOsc)
  * @recipe ChordProgression/notes_out -> NoteBreakout/notes_in (when shared per-voice control state is needed)
@@ -234,27 +232,6 @@ struct ChordProgressionCore : vivid::OperatorBase {
         vivid::description(beat_phase_port, "Global beat phase used to advance the chord progression.");
         out.push_back(beat_phase_port);
 
-        VividPortDescriptor notes_port{"notes", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT};
-        vivid::semantic_tag(notes_port, "midi_note");
-        vivid::semantic_shape(notes_port, "lane_array");
-        vivid::semantic_intent(notes_port, "per_note_pitch");
-        vivid::description(notes_port, "Chord note numbers as a lane array for downstream polyphonic operators.");
-        out.push_back(notes_port);
-
-        VividPortDescriptor velocities_port{"velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT};
-        vivid::semantic_tag(velocities_port, "velocity");
-        vivid::semantic_shape(velocities_port, "lane_array");
-        vivid::semantic_intent(velocities_port, "per_note_velocity");
-        vivid::description(velocities_port, "Velocity lane array aligned with the generated notes.");
-        out.push_back(velocities_port);
-
-        VividPortDescriptor gates_port{"gates", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT};
-        vivid::semantic_tag(gates_port, "gate");
-        vivid::semantic_shape(gates_port, "lane_array");
-        vivid::semantic_intent(gates_port, "per_note_gate");
-        vivid::description(gates_port, "Gate lane array aligned with the generated notes.");
-        out.push_back(gates_port);
-
         VividPortDescriptor note_port{"note", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT};
         vivid::semantic_tag(note_port, "midi_note");
         vivid::semantic_shape(note_port, "scalar");
@@ -354,7 +331,7 @@ struct ChordProgressionCore : vivid::OperatorBase {
         }
     }
 
-    void compute(float beat_phase, const float* params, VividLaneOutput* out_spreads,
+    void compute(float beat_phase, const float* params,
                  float* output_values, void** custom_outputs, uint32_t custom_output_count) {
         int num_steps = steps.int_value();
         int kr = key_root.int_value();
@@ -393,28 +370,6 @@ struct ChordProgressionCore : vivid::OperatorBase {
         int base_note = kr + oct * 12 + kScaleIntervals[m][degree];
 
         float gate_val = (beat_phase < gl) ? 1.0f : 0.0f;
-
-        // Write output spreads
-        if (out_spreads) {
-            auto& notes_sp = out_spreads[0];
-            auto& vel_sp   = out_spreads[1];
-            auto& gates_sp = out_spreads[2];
-
-            uint32_t len = static_cast<uint32_t>(chord_size);
-            float* notes_buf = notes_sp.resize(notes_sp.handle, len);
-            float* vel_buf   = vel_sp.resize(vel_sp.handle, len);
-            float* gates_buf = gates_sp.resize(gates_sp.handle, len);
-            if (notes_buf && vel_buf && gates_buf) {
-                for (uint32_t i = 0; i < len; ++i) {
-                    notes_buf[i] = static_cast<float>(base_note + intervals[i]);
-                    vel_buf[i]   = vel;
-                    gates_buf[i] = gate_val;
-                }
-                notes_sp.commit(notes_sp.handle, len);
-                vel_sp.commit(vel_sp.handle, len);
-                gates_sp.commit(gates_sp.handle, len);
-            }
-        }
 
         // Native note output: polyphonic on/off on gate edges. Each chord
         // tone gets its own note_id so downstream synths allocate distinct

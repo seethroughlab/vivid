@@ -217,16 +217,8 @@
   },
   "connections": [
     {
-      "from": "cp1/notes",
-      "to": "arp1/notes"
-    },
-    {
-      "from": "cp1/velocities",
-      "to": "arp1/velocities"
-    },
-    {
-      "from": "cp1/gates",
-      "to": "arp1/gates"
+      "from": "cp1/notes_out",
+      "to": "arp1/notes_in"
     },
     {
       "from": "synth1/output",
@@ -287,9 +279,9 @@
       "to": "hero1/b"
     },
     {
-      "from": "cp1/notes",
+      "from": "cp1/note",
       "to": "note_mod/a",
-      "bridge": "waveform"
+      "bridge": "last_sample"
     },
     {
       "from": "six_const/value",

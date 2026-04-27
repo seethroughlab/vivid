@@ -20,15 +20,26 @@
 /**
  * @brief Arpeggiation engine with 10 modes, swing, and per-step modulation.
  *
- * Collects notes from input spreads into a pool and plays them back in
- * configurable patterns (up, down, up-down, random, converge, diverge, etc.).
- * Supports per-step velocity and transpose modulation, swing timing, and
- * optional note latching.
+ * Consumes a native note stream on `notes_in` (NOTE_ON / NOTE_OFF events)
+ * to maintain a held-note set, then walks that set in configurable patterns
+ * (up, down, up-down, random, converge, diverge, etc.) and emits a fresh
+ * NOTE_ON / NOTE_OFF pair per arp step on `notes_out`. Each step gets a new
+ * `note_id` so downstream synths allocate distinct voices for same-pitch
+ * retriggers.
  *
- * @tip Enable latch to keep playing after releasing keys.
+ * Per-note expression on the input (PRESSURE, TIMBRE) is sampled at step
+ * fire and emitted as initial expression on the new step's note_id —
+ * snapshot-and-bake. Live expression updates from the input do NOT
+ * propagate; the arp is a step sequencer, not an expression bus. Route the
+ * source through `NoteBreakout` if you need live expression on each voice.
+ * Pitch_bend is not forwarded (the arp's emitted pitch is the held source's
+ * MIDI pitch + per-step transpose).
+ *
+ * @tip Enable latch to keep playing after releasing keys. The latched set
+ *      is cleared and replaced on the next NOTE_ON wave.
  * @param mode Arpeggiation pattern: Up, Down, UpDown, Random, Converge, etc.
  * @param octaves Range of octave transposition applied to the pattern.
- * @see Sequencer, ChordProgression, MidiInput
+ * @see Sequencer, ChordProgression, MidiInput, NoteBreakout
  */
 struct ArpeggiatorCore : vivid::OperatorBase {
     static constexpr bool kTimeDependent = true;
@@ -223,22 +234,18 @@ struct ArpeggiatorCore : vivid::OperatorBase {
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         // Inputs
         out.push_back({"beat_phase", VIVID_PORT_SCALAR,  VIVID_PORT_INPUT});   // [0]
-        out.push_back({"notes",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // [1]
-        out.push_back({"velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // [2]
-        out.push_back({"gates",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // [3]
+        out.push_back(VIVID_CUSTOM_REF_PORT("notes_in", VIVID_PORT_INPUT, VividNoteBuffer));  // [1]
         // Outputs
-        out.push_back({"notes",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // [0]
-        out.push_back({"velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // [1]
-        out.push_back({"gates",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});  // [2]
-        out.push_back({"note",       VIVID_PORT_SCALAR,  VIVID_PORT_OUTPUT});  // [0]
-        out.push_back({"vel",        VIVID_PORT_SCALAR,  VIVID_PORT_OUTPUT});  // [1]
-        out.push_back({"gate",       VIVID_PORT_SCALAR,  VIVID_PORT_OUTPUT});  // [2]
-        out.push_back({"step",       VIVID_PORT_SCALAR,  VIVID_PORT_OUTPUT});  // [3]
+        out.push_back({"note", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});  // [0]
+        out.push_back({"vel",  VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});  // [1]
+        out.push_back({"gate", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});  // [2]
+        out.push_back({"step", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});  // [3]
         out.push_back(VIVID_CUSTOM_REF_PORT("notes_out", VIVID_PORT_OUTPUT, VividNoteBuffer));
     }
 
-    void compute(float beat_phase, const float* params, const VividLaneView* in_spreads,
-                 float* output_values, VividLaneOutput* out_spreads,
+    void compute(float beat_phase, const float* params,
+                 const VividNoteBuffer* notes_in,
+                 float* output_values,
                  void** custom_outputs, uint32_t custom_output_count) {
         int m = mode.int_value();
         int oct = octaves.int_value();
@@ -253,57 +260,78 @@ struct ArpeggiatorCore : vivid::OperatorBase {
         if (r < 0) r = 0; if (r > 8) r = 8;
         if (msteps < 1) msteps = 1; if (msteps > 16) msteps = 16;
 
-        // Read input spread notes
-        int input_count = 0;
-        float input_notes[16];
-        float input_vels[16];
-        bool any_gate_high = false;
-
-        if (in_spreads) {
-            auto& notes_sp = in_spreads[1];  // input port 1
-            auto& vel_sp   = in_spreads[2];  // input port 2
-            auto& gates_sp = in_spreads[3];  // input port 3
-
-            for (uint32_t i = 0; i < notes_sp.length && input_count < 16; ++i) {
-                if (i < gates_sp.length && gates_sp.data[i] > 0.5f) {
-                    any_gate_high = true;
+        // Walk the input note buffer to maintain the held-note set.
+        if (notes_in) {
+            for (uint32_t i = 0; i < notes_in->count; ++i) {
+                const auto& ev = notes_in->events[i];
+                if (ev.note_id == 0) continue;
+                switch (ev.type) {
+                    case VIVID_NOTE_ON: {
+                        held_note_on(ev.note_id, ev.note_number, ev.value);
+                        break;
+                    }
+                    case VIVID_NOTE_OFF: {
+                        held_note_off(ev.note_id);
+                        break;
+                    }
+                    case VIVID_NOTE_PRESSURE: {
+                        if (auto* h = find_held_by_id(ev.note_id))
+                            h->pressure = ev.value;
+                        break;
+                    }
+                    case VIVID_NOTE_TIMBRE: {
+                        if (auto* h = find_held_by_id(ev.note_id))
+                            h->timbre = ev.value;
+                        break;
+                    }
+                    default: break;  // PITCH_BEND ignored
                 }
-                input_notes[input_count] = notes_sp.data[i];
-                input_vels[input_count] = (i < vel_sp.length) ? vel_sp.data[i] : 0.8f;
-                input_count++;
             }
         }
 
-        // Latch logic
+        // Latch buffer = snapshot of held set; retained when held drops to 0.
+        bool any_held = (held_count_ > 0);
         if (latch_on) {
-            if (any_gate_high && !prev_any_gate_) {
-                // New notes arrived after all gates were low — clear latch buffer
+            if (any_held && !prev_any_held_) {
+                // Fresh NOTE_ON wave after a release — clear latch.
                 latch_count_ = 0;
             }
-            if (any_gate_high) {
-                // Copy current input to latch buffer
-                latch_count_ = input_count;
-                for (int i = 0; i < input_count; ++i) {
-                    latch_notes_[i] = input_notes[i];
-                    latch_vels_[i] = input_vels[i];
-                }
-            }
-            // Use latched notes
-            if (latch_count_ > 0) {
-                input_count = latch_count_;
-                for (int i = 0; i < input_count; ++i) {
-                    input_notes[i] = latch_notes_[i];
-                    input_vels[i] = latch_vels_[i];
-                }
-                any_gate_high = true;  // latched notes are always "on"
+            if (any_held) {
+                latch_count_ = held_count_;
+                for (int i = 0; i < held_count_; ++i) latch_buffer_[i] = held_buffer_[i];
             }
         }
-        prev_any_gate_ = any_gate_high;
+        prev_any_held_ = any_held;
 
-        // Build the arp note pool: input notes expanded across octaves
+        // Source set for pool building: latch buffer when latch is on and we
+        // have one, otherwise the live held buffer.
+        const HeldNote* src = held_buffer_;
+        int input_count = held_count_;
+        if (latch_on && latch_count_ > 0) {
+            src = latch_buffer_;
+            input_count = latch_count_;
+        }
+        if (input_count > 16) input_count = 16;
+
+        float input_notes[16];
+        float input_vels[16];
+        float input_pressures[16];
+        float input_timbres[16];
+        for (int i = 0; i < input_count; ++i) {
+            input_notes[i]     = static_cast<float>(src[i].note);
+            input_vels[i]      = src[i].velocity;
+            input_pressures[i] = src[i].pressure;
+            input_timbres[i]   = src[i].timbre;
+        }
+
+        // Build the arp note pool: input notes expanded across octaves.
+        // Track each pool entry's source-note pressure/timbre so the
+        // step-fire path can bake them onto the emitted note_id.
         int pool_count = 0;
         float pool_notes[64];  // 16 notes * 4 octaves max
         float pool_vels[64];
+        float pool_pressures[64];
+        float pool_timbres[64];
 
         // Sort input notes for ordered modes
         // For "Order" mode we preserve input order; for others we sort by pitch
@@ -327,8 +355,10 @@ struct ArpeggiatorCore : vivid::OperatorBase {
         for (int o = 0; o < oct; ++o) {
             for (int i = 0; i < input_count && pool_count < 64; ++i) {
                 int idx = sorted_indices[i];
-                pool_notes[pool_count] = input_notes[idx] + static_cast<float>(o * 12);
-                pool_vels[pool_count] = input_vels[idx];
+                pool_notes[pool_count]     = input_notes[idx] + static_cast<float>(o * 12);
+                pool_vels[pool_count]      = input_vels[idx];
+                pool_pressures[pool_count] = input_pressures[idx];
+                pool_timbres[pool_count]   = input_timbres[idx];
                 pool_count++;
             }
         }
@@ -357,8 +387,9 @@ struct ArpeggiatorCore : vivid::OperatorBase {
 
         // No notes — output silence
         if (!has_notes) {
-            write_output(output_values, out_spreads, custom_outputs, custom_output_count,
-                         0.0f, 0.0f, 0.0f, 0);
+            write_output(output_values, custom_outputs, custom_output_count,
+                         0.0f, 0.0f, 0.0f, 0,
+                         /*pressure=*/0.0f, /*timbre=*/0.0f);
             return;
         }
 
@@ -436,9 +467,12 @@ struct ArpeggiatorCore : vivid::OperatorBase {
                               : pool_notes[note_idx] + static_cast<float>(tr_mod);
         float out_vel  = mute ? 0.0f : pool_vels[note_idx] * vel_mod;
         float out_gate = (!mute && step_phase < effective_gate) ? 1.0f : 0.0f;
+        const float src_pressure = mute ? 0.0f : pool_pressures[note_idx];
+        const float src_timbre   = mute ? 0.0f : pool_timbres[note_idx];
 
-        write_output(output_values, out_spreads, custom_outputs, custom_output_count,
-                     out_note, out_vel, out_gate, raw_step);
+        write_output(output_values, custom_outputs, custom_output_count,
+                     out_note, out_vel, out_gate, raw_step,
+                     src_pressure, src_timbre);
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override {
@@ -550,11 +584,59 @@ protected:
     int last_selected_idx_ = 0;
     int last_random_idx_ = -1;
 
-    // Latch state
-    bool prev_any_gate_ = false;
-    float latch_notes_[16] = {};
-    float latch_vels_[16] = {};
+    // Held-note set (driven by NOTE_ON / NOTE_OFF events on notes_in).
+    // Keyed by uint64 note_id so same-pitch overlap from MPE / chord
+    // sources allocates distinct entries cleanly.
+    static constexpr int kMaxHeld = 16;
+    struct HeldNote {
+        uint64_t note_id  = 0;
+        uint8_t  note     = 0;
+        float    velocity = 0.0f;
+        float    pressure = 0.0f;
+        float    timbre   = 0.0f;
+    };
+    HeldNote held_buffer_[kMaxHeld] = {};
+    int held_count_ = 0;
+
+    // Latch snapshot — retained when held_count_ drops to 0 so the
+    // pattern keeps walking the previous note set.
+    HeldNote latch_buffer_[kMaxHeld] = {};
     int latch_count_ = 0;
+    bool prev_any_held_ = false;
+
+    HeldNote* find_held_by_id(uint64_t note_id) {
+        if (note_id == 0) return nullptr;
+        for (int i = 0; i < held_count_; ++i)
+            if (held_buffer_[i].note_id == note_id) return &held_buffer_[i];
+        return nullptr;
+    }
+
+    void held_note_on(uint64_t note_id, uint8_t note, float velocity) {
+        // Same id repeated by an upstream bug → in-place update.
+        if (auto* h = find_held_by_id(note_id)) {
+            h->note     = note;
+            h->velocity = velocity;
+            return;
+        }
+        if (held_count_ >= kMaxHeld) return;  // capacity cap; drop excess
+        auto& h = held_buffer_[held_count_++];
+        h.note_id  = note_id;
+        h.note     = note;
+        h.velocity = velocity;
+        h.pressure = 0.0f;
+        h.timbre   = 0.0f;
+    }
+
+    void held_note_off(uint64_t note_id) {
+        for (int i = 0; i < held_count_; ++i) {
+            if (held_buffer_[i].note_id == note_id) {
+                for (int j = i; j < held_count_ - 1; ++j)
+                    held_buffer_[j] = held_buffer_[j + 1];
+                --held_count_;
+                return;
+            }
+        }
+    }
 
     // MIDI state
     bool prev_midi_gate_ = false;
@@ -593,24 +675,10 @@ protected:
         }
     }
 
-    void write_output(float* output_values, VividLaneOutput* out_spreads,
+    void write_output(float* output_values,
                       void** custom_outputs, uint32_t custom_output_count,
-                      float note, float vel, float gate, int step) {
-        if (out_spreads) {
-            auto& notes_sp = out_spreads[0];
-            auto& vel_sp   = out_spreads[1];
-            auto& gates_sp = out_spreads[2];
-
-            float* notes_buf = notes_sp.resize(notes_sp.handle, 1);
-            float* vel_buf   = vel_sp.resize(vel_sp.handle, 1);
-            float* gates_buf = gates_sp.resize(gates_sp.handle, 1);
-            if (notes_buf && vel_buf && gates_buf) {
-                notes_buf[0] = note; notes_sp.commit(notes_sp.handle, 1);
-                vel_buf[0] = vel;    vel_sp.commit(vel_sp.handle, 1);
-                gates_buf[0] = gate; gates_sp.commit(gates_sp.handle, 1);
-            }
-        }
-
+                      float note, float vel, float gate, int step,
+                      float pressure, float timbre) {
         if (output_values) {
             output_values[0] = note;
             output_values[1] = vel;
@@ -629,6 +697,13 @@ protected:
             uint8_t midi_note = static_cast<uint8_t>(std::clamp(static_cast<int>(note), 0, 127));
             current_note_id_ = vivid_sequencers::next_note_id();
             vivid_sequencers::note_on(notes_buf_, midi_note, vel, current_note_id_);
+            // Snapshot-and-bake: forward the source held note's last-known
+            // pressure/timbre as initial expression on the new note_id so
+            // downstream voices respond from the first sample.
+            if (pressure > 0.0f)
+                vivid_sequencers::note_pressure(notes_buf_, current_note_id_, pressure);
+            if (timbre > 0.0f)
+                vivid_sequencers::note_timbre(notes_buf_, current_note_id_, timbre);
         } else if (!gate_high && prev_midi_gate_) {
             if (current_note_id_ != 0) {
                 vivid_sequencers::note_off(notes_buf_, current_note_id_);
