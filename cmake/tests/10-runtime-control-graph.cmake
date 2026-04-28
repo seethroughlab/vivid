@@ -264,6 +264,22 @@ set_tests_properties(test_runtime_health_samplers PROPERTIES
     LABELS "HEADLESS_SMOKE"
     TIMEOUT 5)
 
+# v3 operator metadata — assert display_name/keywords/summary appear in the
+# JSON emitted by build_operator_docs_response (used by handle_operator_docs
+# and handle_list_types).
+add_executable(test_operator_docs_metadata
+    tests/control/test_operator_docs_metadata.cpp
+)
+target_include_directories(test_operator_docs_metadata PRIVATE src tests)
+target_link_libraries(test_operator_docs_metadata PRIVATE
+    vivid_runtime_testlib vivid_operator_api webgpu)
+add_test(NAME test_operator_docs_metadata
+    COMMAND test_operator_docs_metadata
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_operator_docs_metadata PROPERTIES
+    LABELS "HEADLESS_SMOKE"
+    TIMEOUT 5)
+
 # Graph data-model unit test (no operators, no runtime, no GPU)
 add_executable(test_graph
     tests/graph/test_graph.cpp

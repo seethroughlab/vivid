@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/operator_label.h"
 #include "runtime/operators/operator_registry.h"
 #include "runtime/operators/operator_loader.h"
 #include "ui/graph/graph_snapshot.h"
@@ -103,6 +104,21 @@ public:
 
         auto info = std::make_shared<vivid::ui::OperatorInfo>();
         info->name = desc->name ? desc->name : "";
+        // v3 metadata: display_name (auto-derive when descriptor is null/empty),
+        // keywords, summary.
+        if (desc->display_name && *desc->display_name) {
+            info->display_name = desc->display_name;
+        } else {
+            info->display_name = vivid::default_display_name(info->name);
+        }
+        if (desc->keywords && desc->keyword_count > 0) {
+            info->keywords.reserve(desc->keyword_count);
+            for (uint32_t ki = 0; ki < desc->keyword_count; ++ki) {
+                if (desc->keywords[ki])
+                    info->keywords.emplace_back(desc->keywords[ki]);
+            }
+        }
+        info->summary = desc->summary ? desc->summary : "";
         info->is_gpu = (desc->has_process_gpu != 0);
         info->params.resize(desc->param_count);
         for (uint32_t i = 0; i < desc->param_count; ++i) {
@@ -175,6 +191,7 @@ public:
             info->has_editor = loader->has_editor();
         }
 
+        vivid::ui::build_search_haystack(*info);
         cache_[type_name] = info;
         return info;
     }

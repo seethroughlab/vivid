@@ -428,6 +428,57 @@ constexpr bool get_time_dependent() {
     else
         return false;
 }
+
+// v3 metadata: display_name, keywords, summary. All optional — operators that
+// don't declare these get auto-derived display name and empty keywords/summary.
+template <typename T, typename = void>
+struct has_display_name : std::false_type {};
+template <typename T>
+struct has_display_name<T, std::void_t<decltype(T::kDisplayName)>> : std::true_type {};
+
+template <typename T>
+constexpr const char* get_display_name() {
+    if constexpr (has_display_name<T>::value)
+        return T::kDisplayName;
+    else
+        return nullptr;
+}
+
+template <typename T, typename = void>
+struct has_keywords : std::false_type {};
+template <typename T>
+struct has_keywords<T, std::void_t<decltype(T::kKeywords)>> : std::true_type {};
+
+// kKeywords must be std::array<const char*, N> so .data()/.size() are available
+// and the pointer storage is stable for the lifetime of the dylib.
+template <typename T>
+constexpr const char* const* get_keywords_data() {
+    if constexpr (has_keywords<T>::value)
+        return T::kKeywords.data();
+    else
+        return nullptr;
+}
+
+template <typename T>
+constexpr uint32_t get_keywords_count() {
+    if constexpr (has_keywords<T>::value)
+        return static_cast<uint32_t>(T::kKeywords.size());
+    else
+        return 0;
+}
+
+template <typename T, typename = void>
+struct has_summary : std::false_type {};
+template <typename T>
+struct has_summary<T, std::void_t<decltype(T::kSummary)>> : std::true_type {};
+
+template <typename T>
+constexpr const char* get_summary() {
+    if constexpr (has_summary<T>::value)
+        return T::kSummary;
+    else
+        return nullptr;
+}
 }} // namespace vivid::detail
 
 // ---------------------------------------------------------------------------
@@ -592,6 +643,11 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
         desc.ports          = s_ports.data();                                 \
         desc.time_dependent =                                              \
             vivid::detail::get_time_dependent<ClassName>() ? 1 : 0;              \
+        /* v3 metadata: display_name, keywords, summary. */                   \
+        desc.display_name  = vivid::detail::get_display_name<ClassName>();    \
+        desc.keywords      = vivid::detail::get_keywords_data<ClassName>();   \
+        desc.keyword_count = vivid::detail::get_keywords_count<ClassName>();  \
+        desc.summary       = vivid::detail::get_summary<ClassName>();         \
     }                                                                         \
     return &desc;                                                             \
 }                                                                             \

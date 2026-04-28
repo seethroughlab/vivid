@@ -333,6 +333,15 @@ static constexpr const char* kControlTemplate = R"(#include "operator_api/operat
 
 %CUSTOM_TYPE_SUPPORT%struct %STRUCT% : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "%STRUCT%";
+    // Optional v3 metadata. kDisplayName is the human-facing label the chooser
+    // and inspector show; the runtime auto-derives "%STRUCT%" by splitting
+    // CamelCase/snake_case if you leave kDisplayName unset, so most operators
+    // need it only to override acronyms (FmSynth -> "FM Synth"). kKeywords
+    // surfaces synonyms a user might type that don't appear in the name;
+    // kSummary is a one-line description for the chooser preview + MCP catalog.
+    // static constexpr const char* kDisplayName = "%STRUCT%";
+    // static constexpr std::array<const char*, 2> kKeywords = {"keyword_one", "keyword_two"};
+    // static constexpr const char* kSummary = "One-line description.";
 
 %PARAM_DECLS%
 %PARAMS_MACRO%
@@ -351,6 +360,15 @@ static constexpr const char* kAudioTemplate = R"(#include "operator_api/operator
 
 %CUSTOM_TYPE_SUPPORT%struct %STRUCT% : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName = "%STRUCT%";
+    // Optional v3 metadata. kDisplayName is the human-facing label the chooser
+    // and inspector show; the runtime auto-derives "%STRUCT%" by splitting
+    // CamelCase/snake_case if you leave kDisplayName unset, so most operators
+    // need it only to override acronyms (FmSynth -> "FM Synth"). kKeywords
+    // surfaces synonyms a user might type that don't appear in the name;
+    // kSummary is a one-line description for the chooser preview + MCP catalog.
+    // static constexpr const char* kDisplayName = "%STRUCT%";
+    // static constexpr std::array<const char*, 2> kKeywords = {"keyword_one", "keyword_two"};
+    // static constexpr const char* kSummary = "One-line description.";
     static constexpr bool kTimeDependent = true;
 
 %PARAM_DECLS%
@@ -371,6 +389,15 @@ static constexpr const char* kGpuTemplate = R"(#include "operator_api/wgsl_filte
 
 %CUSTOM_TYPE_SUPPORT%struct %STRUCT% : vivid::WgslFilterBase {
     static constexpr const char* kName = "%STRUCT%";
+    // Optional v3 metadata. kDisplayName is the human-facing label the chooser
+    // and inspector show; the runtime auto-derives "%STRUCT%" by splitting
+    // CamelCase/snake_case if you leave kDisplayName unset, so most operators
+    // need it only to override acronyms (FmSynth -> "FM Synth"). kKeywords
+    // surfaces synonyms a user might type that don't appear in the name;
+    // kSummary is a one-line description for the chooser preview + MCP catalog.
+    // static constexpr const char* kDisplayName = "%STRUCT%";
+    // static constexpr std::array<const char*, 2> kKeywords = {"keyword_one", "keyword_two"};
+    // static constexpr const char* kSummary = "One-line description.";
     static constexpr bool kTimeDependent = true;
 
 %PARAM_DECLS%
@@ -403,6 +430,15 @@ static constexpr const char* kChildOpTemplate = R"(#include "operator_api/child_
 
 struct %STRUCT% : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "%STRUCT%";
+    // Optional v3 metadata. kDisplayName is the human-facing label the chooser
+    // and inspector show; the runtime auto-derives "%STRUCT%" by splitting
+    // CamelCase/snake_case if you leave kDisplayName unset, so most operators
+    // need it only to override acronyms (FmSynth -> "FM Synth"). kKeywords
+    // surfaces synonyms a user might type that don't appear in the name;
+    // kSummary is a one-line description for the chooser preview + MCP catalog.
+    // static constexpr const char* kDisplayName = "%STRUCT%";
+    // static constexpr std::array<const char*, 2> kKeywords = {"keyword_one", "keyword_two"};
+    // static constexpr const char* kSummary = "One-line description.";
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<float> amount   {"amount",    1.0f, 0.0f, 10.0f};
@@ -455,6 +491,15 @@ static constexpr const char* kEmptyControlTemplate = R"(#include "operator_api/o
 
 struct %STRUCT% : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "%STRUCT%";
+    // Optional v3 metadata. kDisplayName is the human-facing label the chooser
+    // and inspector show; the runtime auto-derives "%STRUCT%" by splitting
+    // CamelCase/snake_case if you leave kDisplayName unset, so most operators
+    // need it only to override acronyms (FmSynth -> "FM Synth"). kKeywords
+    // surfaces synonyms a user might type that don't appear in the name;
+    // kSummary is a one-line description for the chooser preview + MCP catalog.
+    // static constexpr const char* kDisplayName = "%STRUCT%";
+    // static constexpr std::array<const char*, 2> kKeywords = {"keyword_one", "keyword_two"};
+    // static constexpr const char* kSummary = "One-line description.";
 
     void collect_params(std::vector<vivid::ParamBase*>& /*out*/) override {
         // No params in the empty variant — add Param members above and
@@ -481,6 +526,15 @@ static constexpr const char* kEmptyAudioTemplate = R"(#include "operator_api/ope
 
 struct %STRUCT% : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName = "%STRUCT%";
+    // Optional v3 metadata. kDisplayName is the human-facing label the chooser
+    // and inspector show; the runtime auto-derives "%STRUCT%" by splitting
+    // CamelCase/snake_case if you leave kDisplayName unset, so most operators
+    // need it only to override acronyms (FmSynth -> "FM Synth"). kKeywords
+    // surfaces synonyms a user might type that don't appear in the name;
+    // kSummary is a one-line description for the chooser preview + MCP catalog.
+    // static constexpr const char* kDisplayName = "%STRUCT%";
+    // static constexpr std::array<const char*, 2> kKeywords = {"keyword_one", "keyword_two"};
+    // static constexpr const char* kSummary = "One-line description.";
     static constexpr bool kTimeDependent = true;
 
     void collect_params(std::vector<vivid::ParamBase*>& /*out*/) override {
@@ -511,6 +565,15 @@ static constexpr const char* kEmptyGpuTemplate = R"(#include "operator_api/wgsl_
 
 struct %STRUCT% : vivid::WgslFilterBase {
     static constexpr const char* kName = "%STRUCT%";
+    // Optional v3 metadata. kDisplayName is the human-facing label the chooser
+    // and inspector show; the runtime auto-derives "%STRUCT%" by splitting
+    // CamelCase/snake_case if you leave kDisplayName unset, so most operators
+    // need it only to override acronyms (FmSynth -> "FM Synth"). kKeywords
+    // surfaces synonyms a user might type that don't appear in the name;
+    // kSummary is a one-line description for the chooser preview + MCP catalog.
+    // static constexpr const char* kDisplayName = "%STRUCT%";
+    // static constexpr std::array<const char*, 2> kKeywords = {"keyword_one", "keyword_two"};
+    // static constexpr const char* kSummary = "One-line description.";
     static constexpr bool kTimeDependent = true;
 
     %STRUCT%() : WgslFilterBase("%NAME%.wgsl") {}

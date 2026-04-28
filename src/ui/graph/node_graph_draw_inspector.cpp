@@ -300,11 +300,15 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
             // Header: both node names with env colors
             const float* clr_a = node_accent_color(node_a->is_gpu, node_a->active_cadence);
             const float* clr_b = node_accent_color(node_b->is_gpu, node_b->active_cadence);
-            tr.draw_text(px, py, node_a->op_info->name.c_str(), clr_a[0], clr_a[1], clr_a[2]);
-            float name_w = tr.text_width(node_a->op_info->name.c_str());
+            const std::string& label_a = node_a->op_info->display_name.empty()
+                ? node_a->op_info->name : node_a->op_info->display_name;
+            const std::string& label_b = node_b->op_info->display_name.empty()
+                ? node_b->op_info->name : node_b->op_info->display_name;
+            tr.draw_text(px, py, label_a.c_str(), clr_a[0], clr_a[1], clr_a[2]);
+            float name_w = tr.text_width(label_a.c_str());
             tr.draw_text(px + name_w + 4, py, " + ", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
             float plus_w = tr.text_width(" + ");
-            tr.draw_text(px + name_w + 4 + plus_w, py, node_b->op_info->name.c_str(), clr_b[0], clr_b[1], clr_b[2]);
+            tr.draw_text(px + name_w + 4 + plus_w, py, label_b.c_str(), clr_b[0], clr_b[1], clr_b[2]);
             py += kLineH;
 
             tr.draw_text(px, py, T("delete_to_remove", "Delete / Backspace to remove"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);

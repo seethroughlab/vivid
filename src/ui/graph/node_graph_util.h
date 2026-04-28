@@ -10,8 +10,114 @@
 #include <cstdio>
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace vivid::ui {
+
+// --- Chooser search scoring (v2) ---
+//
+// Multi-tier ranker over OperatorInfo::SearchHaystack. Tiers, high -> low:
+//   1000  exact   query equals display_name
+//   700   prefix  display_name starts with query
+//   600   prefix  id (raw lowercase) starts with query
+//   400-  tokens  every whitespace-token of query appears in display_name+id;
+//                 score decreases by average token position
+//   250   tokens  every token appears in display_name/id/keywords
+//   200   initial query characters hit word starts in display_name
+//   50-99 summary every token appears in summary
+//   -1    no match
+// Empty query returns 0 (preserves "show everything" behavior).
+//
+// `query` must already be normalized via vivid::normalize_for_search().
+inline int score_match_v2(const OperatorInfo::SearchHaystack& h,
+                          const std::string& query) {
+    if (query.empty()) return 0;
+
+    if (h.display_name_norm == query) return 1000;
+    if (!h.display_name_norm.empty() &&
+        h.display_name_norm.rfind(query, 0) == 0) return 700;
+    if (!h.id_norm.empty() &&
+        h.id_norm.rfind(query, 0) == 0) return 600;
+
+    std::vector<std::string> tokens;
+    {
+        size_t i = 0;
+        while (i < query.size()) {
+            while (i < query.size() && query[i] == ' ') ++i;
+            size_t start = i;
+            while (i < query.size() && query[i] != ' ') ++i;
+            if (i > start) tokens.emplace_back(query, start, i - start);
+        }
+    }
+    if (tokens.empty()) return 0;
+
+    // Tier 4: every token appears in display_name + id; score by avg position.
+    {
+        std::string combined;
+        combined.reserve(h.display_name_norm.size() + 1 + h.id_norm.size());
+        combined.append(h.display_name_norm);
+        if (!combined.empty() && !h.id_norm.empty()) combined.push_back(' ');
+        combined.append(h.id_norm);
+        bool all_found = !combined.empty();
+        int total_pos = 0;
+        for (const auto& t : tokens) {
+            if (!all_found) break;
+            auto p = combined.find(t);
+            if (p == std::string::npos) { all_found = false; break; }
+            total_pos += static_cast<int>(std::min(p, size_t(99)));
+        }
+        if (all_found)
+            return 400 - total_pos / static_cast<int>(tokens.size());
+    }
+
+    // Tier 5: every token appears in display_name / id / keywords.
+    {
+        bool all_found = true;
+        for (const auto& t : tokens) {
+            bool found = h.display_name_norm.find(t) != std::string::npos ||
+                         h.id_norm.find(t) != std::string::npos;
+            if (!found) {
+                for (const auto& kw : h.keyword_norms) {
+                    if (kw.find(t) != std::string::npos) { found = true; break; }
+                }
+            }
+            if (!found) { all_found = false; break; }
+        }
+        if (all_found) return 250;
+    }
+
+    // Tier 6: initials — query chars hit word starts in display_name. Spaces in
+    // the query are skipped so "cp" and "c p" both match "chord progression".
+    if (!h.display_name_norm.empty()) {
+        size_t fi = 0;
+        bool at_boundary = true;
+        for (size_t ni = 0; ni < h.display_name_norm.size() && fi < query.size(); ++ni) {
+            char c = h.display_name_norm[ni];
+            if (c == ' ') { at_boundary = true; continue; }
+            while (fi < query.size() && query[fi] == ' ') ++fi;
+            if (fi >= query.size()) break;
+            if (at_boundary && c == query[fi]) ++fi;
+            at_boundary = false;
+        }
+        while (fi < query.size() && query[fi] == ' ') ++fi;
+        if (fi == query.size()) return 200;
+    }
+
+    // Tier 7: every token appears in summary.
+    if (!h.summary_norm.empty()) {
+        bool all_found = true;
+        size_t earliest = 999;
+        for (const auto& t : tokens) {
+            auto p = h.summary_norm.find(t);
+            if (p == std::string::npos) { all_found = false; break; }
+            earliest = std::min(earliest, p);
+        }
+        if (all_found)
+            return 50 + std::max(0, 49 - static_cast<int>(std::min(earliest, size_t(49))));
+    }
+
+    return -1;
+}
 
 // --- HSV <-> RGB conversion ---
 

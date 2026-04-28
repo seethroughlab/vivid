@@ -1427,6 +1427,19 @@ std::string handle_list_types(OperatorRegistry& registry,
         t["kind"] = kind;
         t["lane_behavior"] = lane_behavior_str(desc->lane_behavior);
         t["lane_behavior_help"] = lane_behavior_help_str(desc->lane_behavior);
+        // v3 metadata. display_name is always present (auto-derived when
+        // descriptor doesn't supply one); keywords and summary are emitted
+        // only when set.
+        t["display_name"] = (desc->display_name && *desc->display_name)
+            ? std::string(desc->display_name)
+            : vivid::default_display_name(desc->name ? desc->name : "");
+        if (desc->keywords && desc->keyword_count > 0) {
+            nlohmann::json kw = nlohmann::json::array();
+            for (uint32_t i = 0; i < desc->keyword_count; ++i)
+                if (desc->keywords[i]) kw.push_back(desc->keywords[i]);
+            if (!kw.empty()) t["keywords"] = std::move(kw);
+        }
+        if (desc->summary && *desc->summary) t["summary"] = desc->summary;
         nlohmann::json doc_summary = resolve_operator_source_doc(source_docs, registry, package_manager, name);
         if (doc_summary.is_object()) {
             if (doc_summary.contains("brief") && doc_summary["brief"].is_string())
@@ -1453,6 +1466,7 @@ std::string handle_list_types(OperatorRegistry& registry,
             t["name"] = mod->name;
             t["kind"] = "module";
             t["is_module"] = true;
+            t["display_name"] = vivid::default_display_name(mod->name);
             if (!mod->description.empty()) t["brief"] = mod->description;
             if (!mod->category.empty()) t["category"] = mod->category;
             t["has_docs"] = false;

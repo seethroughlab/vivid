@@ -324,6 +324,19 @@ inline nlohmann::json build_operator_docs_response(const VividOperatorDescriptor
     op["lane_behavior_help"] = lane_behavior_help_str(desc.lane_behavior);
     if (!package_name.empty())
         op["package"] = package_name;
+    // v3 metadata: human-facing label, search keywords, one-line summary.
+    // display_name is always present (auto-derived from name when descriptor
+    // doesn't supply one); keywords/summary only when set.
+    op["display_name"] = (desc.display_name && *desc.display_name)
+        ? std::string(desc.display_name)
+        : vivid::default_display_name(desc.name ? desc.name : "");
+    if (desc.keywords && desc.keyword_count > 0) {
+        nlohmann::json kw = nlohmann::json::array();
+        for (uint32_t i = 0; i < desc.keyword_count; ++i)
+            if (desc.keywords[i]) kw.push_back(desc.keywords[i]);
+        if (!kw.empty()) op["keywords"] = std::move(kw);
+    }
+    if (desc.summary && *desc.summary) op["summary"] = desc.summary;
 
     bool has_docs = false;
     std::unordered_map<std::string, nlohmann::json> param_docs;

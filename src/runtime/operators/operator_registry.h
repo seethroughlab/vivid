@@ -51,6 +51,12 @@ struct DeferredEntry {
     std::vector<std::string> file_drop_descriptions;
     std::vector<std::vector<std::string>> file_drop_extensions;
     std::vector<std::vector<const char*>> file_drop_extension_ptrs;
+
+    // v3 metadata (stable storage for VividOperatorDescriptor pointers).
+    std::string display_name;       // empty when descriptor's display_name is null
+    std::string summary;            // empty when descriptor's summary is null
+    std::vector<std::string> keywords;        // owned keyword strings
+    std::vector<const char*> keyword_ptrs;    // C pointer array into keywords
 };
 
 struct AbiMismatchDiagnostic {

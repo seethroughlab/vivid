@@ -228,6 +228,61 @@ int main() {
         }
     }
 
+    // v3 metadata: descriptor with no display_name -> auto-derived; with
+    // explicit display_name/keywords/summary -> copied verbatim. Also asserts
+    // SearchHaystack is populated.
+    {
+        std::fprintf(stderr, "\n=== v3 metadata: auto-derive ===\n");
+        cache.invalidate_all();
+        auto info = cache.get("audio_out", registry);
+        check(info != nullptr, "audio_out info returned");
+        if (info) {
+            check(info->display_name == "Audio Out",
+                  "audio_out auto-derives display_name 'Audio Out'");
+            check(info->keywords.empty(), "no keywords when descriptor has none");
+            check(info->summary.empty(), "no summary when descriptor has none");
+            check(info->search.display_name_norm == "audio out",
+                  "search.display_name_norm normalized");
+            check(info->search.id_norm.find("audio out") != std::string::npos,
+                  "search.id_norm contains space-split form");
+            check(info->search.id_norm.find("audio_out") == std::string::npos,
+                  "search.id_norm strips underscores via normalize_for_search");
+        }
+    }
+    {
+        std::fprintf(stderr, "\n=== v3 metadata: explicit fields ===\n");
+        static const char* s_kw[] = {"harmony", "diatonic"};
+        static VividOperatorDescriptor s_meta_desc{};
+        static bool s_inited = false;
+        if (!s_inited) {
+            s_inited = true;
+            s_meta_desc.name = "MetaTest";
+            s_meta_desc.display_name = "Custom Display";
+            s_meta_desc.keywords = s_kw;
+            s_meta_desc.keyword_count = 2;
+            s_meta_desc.summary = "A test operator with explicit metadata.";
+        }
+        registry.register_builtin(
+            "MetaTest", []() -> const VividOperatorDescriptor* { return &s_meta_desc; },
+            visibility_create, visibility_destroy, visibility_process);
+        auto info = cache.get("MetaTest", registry);
+        check(info != nullptr, "MetaTest info returned");
+        if (info) {
+            check(info->display_name == "Custom Display",
+                  "explicit display_name preserved");
+            check(info->keywords.size() == 2 && info->keywords[0] == "harmony" &&
+                      info->keywords[1] == "diatonic",
+                  "keywords copied in order");
+            check(info->summary == "A test operator with explicit metadata.",
+                  "summary copied");
+            check(info->search.keyword_norms.size() == 2 &&
+                      info->search.keyword_norms[0] == "harmony",
+                  "search.keyword_norms populated");
+            check(info->search.summary_norm == "a test operator with explicit metadata",
+                  "search.summary_norm normalized (trailing period stripped)");
+        }
+    }
+
     std::fprintf(stderr, "%s (%d failures)\n", failures == 0 ? "PASSED" : "FAILED", failures);
     return failures > 0 ? 1 : 0;
 }

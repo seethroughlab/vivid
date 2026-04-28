@@ -27,6 +27,33 @@ operators/
 - **Param names**: lowercase_with_underscores (e.g. `"frequency"`, `"decay_time"`)
 - **Port names**: lowercase_with_underscores (e.g. `"input"`, `"gate_out"`, `"texture"`)
 
+## Display Name, Keywords, Summary (v3 metadata)
+
+The `kName` is the *stable id* — used in saved graphs, hot-reload, MCP node ids, docs URLs. Three additional optional static members shape how the chooser and inspector show the operator:
+
+- **`kDisplayName`** (`const char*`): human-facing label. Free-form, may include spaces. The runtime auto-derives a default by splitting `kName` on `_`/`-` and CamelCase boundaries (e.g. `ChordProgression` → "Chord Progression"). **Override when auto-derive is wrong**:
+  - Acronym + suffix where the meaning is wrong: `FmSynth` auto-derives "Fm Synth"; set `kDisplayName = "FM Synth"`.
+  - Numeric-letter boundary: `Render2D` auto-derives "Render2 D"; set `kDisplayName = "Render 2D"`.
+  - All-caps acronyms with embedded lowercase: `MIDIIn` correctly derives "MIDI In"; no override needed.
+- **`kKeywords`** (`std::array<const char*, N>`): search hints surfaced in the chooser (e.g. `{"harmony", "chords", "diatonic"}` for `ChordProgression`). Use words a user would type that don't already appear in the name — domain vocabulary, synonyms, conceptual aliases.
+- **`kSummary`** (`const char*`): one-line description used in the chooser preview and MCP catalog. No trailing period required.
+
+Example:
+```cpp
+struct ChordProgression : vivid::OperatorBase, vivid::FrameProcessable {
+    static constexpr const char* kName        = "ChordProgression";
+    static constexpr const char* kDisplayName = "Chord Progression";
+    static constexpr const char* kSummary     =
+        "Diatonic chord changes from a key + Roman-numeral pattern";
+    static constexpr std::array<const char*, 4> kKeywords = {
+        "harmony", "chords", "diatonic", "roman numerals"
+    };
+    // ...
+};
+```
+
+All three are optional. An operator without any of them still gets a sensible auto-derived display name and uses `kName` for everything else.
+
 ## CMakeLists.txt Pattern
 
 Each operator directory needs to be registered in its parent environment's `CMakeLists.txt`. The build system compiles each operator as a shared library (`.dylib`/`.so`/`.dll`).

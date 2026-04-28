@@ -329,11 +329,14 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
             const float* dcol = kControlAccent.data();
             auto cat_it = snap_.operator_catalog.find(name);
             OpEnvironment env = OpEnvironment::Control;
-            if (cat_it != snap_.operator_catalog.end()) {
+            const char* label = name.c_str();
+            if (cat_it != snap_.operator_catalog.end() && cat_it->second) {
                 env = infer_environment(*cat_it->second);
                 dcol = (env == OpEnvironment::GPU) ? kGpuAccent.data()
                      : (env == OpEnvironment::Audio) ? kAudioAccent.data()
                      : kControlAccent.data();
+                if (!cat_it->second->display_name.empty())
+                    label = cat_it->second->display_name.c_str();
             }
             float dot_x = px + 10;
             float dot_y = item_y + (kChooserItemH - 6) * 0.5f;
@@ -345,8 +348,8 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
                             : "[C]";
             tr.draw_text(px + 20, item_y + 3, tag, dcol[0], dcol[1], dcol[2]);
 
-            // Type name
-            tr.draw_text(px + 42, item_y + 3, name.c_str(), 0.85f, 0.87f, 0.90f);
+            // Display name (falls back to stable id if catalog entry missing)
+            tr.draw_text(px + 42, item_y + 3, label, 0.85f, 0.87f, 0.90f);
         }
     }
     tr.pop_clip_rect();
@@ -1281,9 +1284,9 @@ void NodeGraphUI::draw_chooser_map(Renderer2D& tr, float px, float py,
                     kGpuAccent.data());
 
     // ---- Dots ------------------------------------------------------------
-    std::string lower_filter = chooser_filter_;
-    for (auto& c : lower_filter)
-        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    // Use the same haystack-based matcher as the list view so "Chord Progression"
+    // dim/highlight is consistent with the chooser-list filter.
+    std::string query_norm = vivid::normalize_for_search(chooser_filter_);
 
     tr.push_clip_rect(scatter_x, scatter_y, scatter_w, scatter_h);
 
@@ -1299,11 +1302,17 @@ void NodeGraphUI::draw_chooser_map(Renderer2D& tr, float px, float py,
         float dy = scatter_y + (entry->y * chooser_map_zoom_ + chooser_map_pan_y_) * scatter_h;
 
         bool dim = false;
-        if (!lower_filter.empty()) {
-            std::string lname = type_name;
-            for (auto& c : lname)
-                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            dim = lname.find(lower_filter) == std::string::npos;
+        if (!query_norm.empty()) {
+            auto cat_it = snap_.operator_catalog.find(type_name);
+            if (cat_it != snap_.operator_catalog.end() && cat_it->second) {
+                dim = score_match_v2(cat_it->second->search, query_norm) < 0;
+            } else {
+                ui::OperatorInfo fallback;
+                fallback.name = type_name;
+                fallback.display_name = vivid::default_display_name(type_name);
+                ui::build_search_haystack(fallback);
+                dim = score_match_v2(fallback.search, query_norm) < 0;
+            }
         }
 
         const float* col = kControlAccent.data();
@@ -1373,8 +1382,16 @@ void NodeGraphUI::draw_chooser_map(Renderer2D& tr, float px, float py,
     }
 
     // Name (large-ish — just use normal text; this font is small enough)
-    tr.draw_text(inner_x, cursor_y, hovered_name.c_str(),
-                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    {
+        const char* preview_label = hovered_name.c_str();
+        auto cat_it = snap_.operator_catalog.find(hovered_name);
+        if (cat_it != snap_.operator_catalog.end() && cat_it->second &&
+            !cat_it->second->display_name.empty()) {
+            preview_label = cat_it->second->display_name.c_str();
+        }
+        tr.draw_text(inner_x, cursor_y, preview_label,
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    }
     cursor_y += 16;
 
     // Domain tag (colored chip)
@@ -1404,16 +1421,29 @@ void NodeGraphUI::draw_chooser_map(Renderer2D& tr, float px, float py,
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     cursor_y += 16;
 
-    // Brief, wrapped
-    if (!entry->brief.empty()) {
-        cursor_y += 4;
-        for (const auto& line : wrap_text(tr, entry->brief, text_w)) {
-            if (cursor_y + 12 > preview_y + preview_h) break;
-            tr.draw_text(inner_x, cursor_y, line.c_str(),
-                         style_.bright_text[0] * 0.9f,
-                         style_.bright_text[1] * 0.9f,
-                         style_.bright_text[2] * 0.9f);
-            cursor_y += 14;
+    // Description: prefer the operator's authored kSummary (v3 metadata, kept
+    // in lock-step with the code), falling back to the source-comment brief
+    // captured in the layout file. The author-supplied string wins because it
+    // can outpace the layout file, which only refreshes on a layout rebuild.
+    {
+        std::string preview_text;
+        auto cat_it = snap_.operator_catalog.find(hovered_name);
+        if (cat_it != snap_.operator_catalog.end() && cat_it->second &&
+            !cat_it->second->summary.empty()) {
+            preview_text = cat_it->second->summary;
+        } else {
+            preview_text = entry->brief;
+        }
+        if (!preview_text.empty()) {
+            cursor_y += 4;
+            for (const auto& line : wrap_text(tr, preview_text, text_w)) {
+                if (cursor_y + 12 > preview_y + preview_h) break;
+                tr.draw_text(inner_x, cursor_y, line.c_str(),
+                             style_.bright_text[0] * 0.9f,
+                             style_.bright_text[1] * 0.9f,
+                             style_.bright_text[2] * 0.9f);
+                cursor_y += 14;
+            }
         }
     }
 

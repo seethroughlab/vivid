@@ -173,14 +173,16 @@ void NodeGraphUI::draw_midi_map_banner(Renderer2D& tr) {
 void NodeGraphUI::draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node,
                                         float px, float& py) {
     const auto& op = *node.op_info;
-    tr.draw_text(px, py, op.name.c_str(), 1.0f, 1.0f, 1.0f);
+    const std::string& header_label = op.display_name.empty() ? op.name : op.display_name;
+    tr.draw_text(px, py, header_label.c_str(), 1.0f, 1.0f, 1.0f);
 
     // Docs link: small "?" button to the right of the operator name. The
     // hit-rect carries the operator type slug so the click handler can build
-    // the URL without re-looking up the node snapshot.
+    // the URL without re-looking up the node snapshot. The slug stays as the
+    // stable id (node.type_name) — docs URLs are keyed by id, not display_name.
     float row_right = px + kInspContentW;
     if (!node.type_name.empty()) {
-        float name_w = tr.text_width(op.name.c_str(), 1.0f);
+        float name_w = tr.text_width(header_label.c_str(), 1.0f);
         float docs_h = 16.0f;
         float docs_x = px + name_w + 8.0f;
         float docs_y = py - 1.0f;

@@ -512,6 +512,11 @@ std::vector<std::string> SubgraphModuleRegistry::type_names() const {
 std::shared_ptr<const ui::OperatorInfo> make_operator_info(const SubgraphModuleDef& def) {
     auto info = std::make_shared<ui::OperatorInfo>();
     info->name = def.name;
+    // SubgraphModuleDef doesn't yet expose explicit display_name/keywords/summary.
+    // Auto-derive a display name; modules that want to override get a manifest
+    // field in a follow-up. Empty keywords/summary are fine — the chooser falls
+    // back to the name/display_name tiers.
+    info->display_name = vivid::default_display_name(def.name);
     info->is_gpu = false;
     info->is_module = true;
 
@@ -571,6 +576,7 @@ std::shared_ptr<const ui::OperatorInfo> make_operator_info(const SubgraphModuleD
         info->params.push_back(std::move(pi));
     }
 
+    ui::build_search_haystack(*info);
     return info;
 }
 

@@ -1277,7 +1277,7 @@ async def inspect_node(node_id: str) -> str:
 
 @mcp.tool()
 async def list_types() -> str:
-    """List all available operator types with params and ports."""
+    """List all available operator types with params, ports, display_name, and any author-provided keywords/summary."""
     return await _run_vivid_cli_json(["list-types", "--json"])
 
 

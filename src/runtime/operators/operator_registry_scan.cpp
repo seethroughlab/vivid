@@ -285,6 +285,35 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
     entry.desc.lane_behavior = src->lane_behavior;
     entry.desc.strategy_independent = src->strategy_independent;
 
+    // v3 metadata: copy display_name / keywords / summary into deferred storage
+    // so probe_descriptor() returns them before the dylib is fully loaded.
+    //
+    // IMPORTANT: only the value strings are populated here; the descriptor
+    // pointers (entry.desc.display_name / entry.desc.summary) are set in the
+    // caller after this DeferredEntry is moved into the deferred_ map. SSO
+    // strings would dangle if we cached a c_str() into entry.desc.* pre-move.
+    // Vector-stored data (keywords / keyword_ptrs) is move-stable so we can
+    // wire those pointers here.
+    if (src->display_name && *src->display_name) {
+        entry.display_name = src->display_name;
+    }
+    if (src->summary && *src->summary) {
+        entry.summary = src->summary;
+    }
+    if (src->keywords && src->keyword_count > 0) {
+        entry.keywords.reserve(src->keyword_count);
+        entry.keyword_ptrs.reserve(src->keyword_count);
+        for (uint32_t i = 0; i < src->keyword_count; ++i)
+            entry.keywords.emplace_back(src->keywords[i] ? src->keywords[i] : "");
+        for (const auto& kw : entry.keywords)
+            entry.keyword_ptrs.push_back(kw.c_str());
+        entry.desc.keywords = entry.keyword_ptrs.data();
+        entry.desc.keyword_count = static_cast<uint32_t>(entry.keyword_ptrs.size());
+    } else {
+        entry.desc.keywords = nullptr;
+        entry.desc.keyword_count = 0;
+    }
+
     entry.file_drop_handlers.resize(file_drop_count);
     entry.file_drop_labels.resize(file_drop_count);
     entry.file_drop_file_params.resize(file_drop_count);
@@ -459,6 +488,11 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
             it = deferred_.emplace(type_name, std::move(*de_opt)).first;
         }
         it->second.desc.name = it->first.c_str();
+        // v3 metadata pointers — set post-move so SSO strings can't dangle.
+        it->second.desc.display_name = it->second.display_name.empty()
+            ? nullptr : it->second.display_name.c_str();
+        it->second.desc.summary = it->second.summary.empty()
+            ? nullptr : it->second.summary.c_str();
 
         register_target_mapping(path, type_name);
 

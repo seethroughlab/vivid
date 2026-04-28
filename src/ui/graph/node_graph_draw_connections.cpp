@@ -402,15 +402,19 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
     const float* clr_b = node_accent_color(node_b.is_gpu, node_b.active_cadence);
 
     // Left header: node A name, left-aligned
-    tr.draw_text(px, py, node_a.op_info->name.c_str(), clr_a[0], clr_a[1], clr_a[2]);
+    const std::string& label_a = node_a.op_info->display_name.empty()
+        ? node_a.op_info->name : node_a.op_info->display_name;
+    tr.draw_text(px, py, label_a.c_str(), clr_a[0], clr_a[1], clr_a[2]);
     // Accent underline
-    float name_a_w = tr.text_width(node_a.op_info->name.c_str());
+    float name_a_w = tr.text_width(label_a.c_str());
     tr.draw_rect(px, py + kLineH - 2, name_a_w, 1, clr_a[0], clr_a[1], clr_a[2], 0.6f);
 
     // Right header: node B name, right-aligned
-    float name_b_w = tr.text_width(node_b.op_info->name.c_str());
+    const std::string& label_b = node_b.op_info->display_name.empty()
+        ? node_b.op_info->name : node_b.op_info->display_name;
+    float name_b_w = tr.text_width(label_b.c_str());
     float right_col_x = px + panel_w - kPatchColW;
-    tr.draw_text(px + panel_w - name_b_w, py, node_b.op_info->name.c_str(), clr_b[0], clr_b[1], clr_b[2]);
+    tr.draw_text(px + panel_w - name_b_w, py, label_b.c_str(), clr_b[0], clr_b[1], clr_b[2]);
     tr.draw_rect(px + panel_w - name_b_w, py + kLineH - 2, name_b_w, 1, clr_b[0], clr_b[1], clr_b[2], 0.6f);
 
     py += kPatchHeaderH + 4;

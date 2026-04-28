@@ -1,8 +1,16 @@
 #include "chord_progression_core.h"
 #include "control/audio_scalar_utils.h"
 
+#include <array>
+
 struct ChordProgression : ChordProgressionCore, vivid::AudioProcessable {
-    static constexpr const char* kName = "ChordProgression";
+    static constexpr const char* kName        = "ChordProgression";
+    static constexpr const char* kDisplayName = "Chord Progression";
+    static constexpr const char* kSummary =
+        "Diatonic chord changes from a key + Roman-numeral pattern";
+    static constexpr std::array<const char*, 4> kKeywords = {
+        "harmony", "chords", "diatonic", "roman numerals"
+    };
 
     void process_audio(const VividAudioContext* ctx) override {
         float local_out[3] = {};

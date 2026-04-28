@@ -40,6 +40,16 @@ The headers form three layers:
 
 **Composition and extension** (`child_op.h`, `type_id.h`, `port_type_registry.h`, `note_types.h`): Advanced features for operators that embed owned child operators, define custom port types, or carry the native note protocol. `ChildOp<T>` is for owned control-domain behavior; package-defined param widgets are presentation over primitive params, not custom storage.
 
+## v3 ABI: display name, keywords, summary
+
+`VIVID_OPERATOR_ABI_VERSION = 3` adds three optional descriptor fields. The `kName` static is the *stable id* — used in saved graphs, hot-reload, MCP node ids, docs URLs — and never changes. Three additional optional static members shape what users see and search:
+
+- `kDisplayName` (`const char*`): human-facing label used in the chooser, inspector header, MCP catalog. Auto-derived from `kName` via underscore + CamelCase splitting when unset (`ChordProgression` → "Chord Progression"). Override for acronyms (`FmSynth` → "FM Synth", `Render2D` → "Render 2D").
+- `kKeywords` (`std::array<const char*, N>`): search hints surfaced by the chooser (`{"harmony", "chords", "diatonic"}`). Use vocabulary a user would type that doesn't already appear in the name.
+- `kSummary` (`const char*`): one-line description for the chooser preview and MCP catalog.
+
+`VIVID_REGISTER` detects all three via SFINAE — operators that don't declare them compile and run identically to before, just with auto-derived display names. ABI mismatch (v2 vs v3 dylib) is rejected at hot-reload by the loader.
+
 ## Relationships
 
 - **Consumers:** Every operator in `operators/`, every installed package, every project-local operator

@@ -2,6 +2,7 @@
 #include "ui/graph/node_graph_constants.h"
 #include "ui/graph/node_graph_util.h"
 #include "ui/style/ui_style.h"
+#include "common/operator_label.h"
 #include "common/topo_sort.h"
 #include "common/string_util.h"
 #include <algorithm>
@@ -1266,40 +1267,8 @@ static OpEnvironment infer_environment(const OperatorInfo& op) {
     return OpEnvironment::Control;
 }
 
-// -----------------------------------------------------------------------
-// Chooser search scoring
-// -----------------------------------------------------------------------
-// Returns a score >= 0 for how well lower_name matches lower_filter.
-// Returns -1 if no match.
-static int score_match(const std::string& lower_name, const std::string& lower_filter) {
-    if (lower_filter.empty()) return 0;
-
-    // Exact match
-    if (lower_name == lower_filter) return 1000;
-
-    // Prefix match
-    if (lower_name.rfind(lower_filter, 0) == 0) return 500;
-
-    // Word-boundary initials: filter chars match at starts of underscore-delimited words
-    {
-        size_t fi = 0;
-        bool at_boundary = true;
-        for (size_t ni = 0; ni < lower_name.size() && fi < lower_filter.size(); ++ni) {
-            if (lower_name[ni] == '_') { at_boundary = true; continue; }
-            if (at_boundary && lower_name[ni] == lower_filter[fi])
-                ++fi;
-            at_boundary = false;
-        }
-        if (fi == lower_filter.size()) return 200;
-    }
-
-    // Substring match — earlier position = higher score
-    auto pos = lower_name.find(lower_filter);
-    if (pos != std::string::npos)
-        return 100 - static_cast<int>(std::min(pos, size_t(99)));
-
-    return -1;
-}
+// score_match_v2 lives in node_graph_util.h so the chooser-list (this file)
+// and the chooser-map (node_graph_draw_elements.cpp) share one ranker.
 
 // -----------------------------------------------------------------------
 // Port type compatibility helpers (for insert-on-wire)
@@ -1389,19 +1358,22 @@ void NodeGraphUI::rebuild_chooser_items() {
     const auto& all = snap_.operator_types;
     chooser_items_.clear();
 
-    std::string lower_filter = chooser_filter_;
-    for (auto& c : lower_filter) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    std::string query_norm = vivid::normalize_for_search(chooser_filter_);
 
     struct ScoredItem { std::string name; int score; };
     std::vector<ScoredItem> scored;
 
     for (const auto& name : all) {
+        auto cat_it = snap_.operator_catalog.find(name);
+        const ui::OperatorInfo* op_info =
+            (cat_it != snap_.operator_catalog.end() && cat_it->second)
+                ? cat_it->second.get() : nullptr;
+
         // Tab filter (Map tab: no domain filter — the scatter view shows all
         // operators that have a precomputed position and dims non-matches in
         // place rather than removing them).
         if (chooser_tab_ != ChooserTab::All && chooser_tab_ != ChooserTab::Map) {
-            auto cat_it = snap_.operator_catalog.find(name);
-            if (cat_it == snap_.operator_catalog.end() || !cat_it->second) continue;
+            if (!op_info) continue;
             if (chooser_tab_ == ChooserTab::Instancing) {
                 // Curated set of the drawable-pipeline + 3D instancing family.
                 // Grouped so a new user can find every piece of the instancing
@@ -1419,31 +1391,39 @@ void NodeGraphUI::rebuild_chooser_items() {
                 };
                 if (!kInstancing.count(name)) continue;
             } else {
-                OpEnvironment env = infer_environment(*cat_it->second);
+                OpEnvironment env = infer_environment(*op_info);
                 if (chooser_tab_ == ChooserTab::GPU && env != OpEnvironment::GPU) continue;
                 if (chooser_tab_ == ChooserTab::Audio && env != OpEnvironment::Audio) continue;
                 if (chooser_tab_ == ChooserTab::Control && env != OpEnvironment::Control) continue;
             }
         }
 
-        // Scored text match
-        std::string lower_name = name;
-        for (auto& c : lower_name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        int s = score_match(lower_name, lower_filter);
+        // Scored text match against the precomputed search haystack. Operators
+        // missing a catalog entry fall back to a synthesized haystack so
+        // lookup-by-stable-id still works (otherwise they'd disappear when the
+        // user types anything).
+        int s;
+        if (op_info) {
+            s = score_match_v2(op_info->search, query_norm);
+        } else {
+            ui::OperatorInfo fallback;
+            fallback.name = name;
+            fallback.display_name = vivid::default_display_name(name);
+            ui::build_search_haystack(fallback);
+            s = score_match_v2(fallback.search, query_norm);
+        }
         if (s < 0) continue;
 
         // Wire compatibility filters
         if (chooser_insert_wire_) {
-            auto cat_it = snap_.operator_catalog.find(name);
-            if (cat_it == snap_.operator_catalog.end() || !cat_it->second) continue;
-            if (!can_insert_on_wire(*cat_it->second, insert_wire_source_type_, insert_wire_dest_type_))
+            if (!op_info) continue;
+            if (!can_insert_on_wire(*op_info, insert_wire_source_type_, insert_wire_dest_type_))
                 continue;
         }
         if (chooser_wire_connect_) {
-            auto cat_it = snap_.operator_catalog.find(name);
-            if (cat_it == snap_.operator_catalog.end() || !cat_it->second) continue;
+            if (!op_info) continue;
             VividPortDirection need = wire_connect_from_output_ ? VIVID_PORT_INPUT : VIVID_PORT_OUTPUT;
-            if (!has_compatible_port(*cat_it->second, wire_connect_type_, need))
+            if (!has_compatible_port(*op_info, wire_connect_type_, need))
                 continue;
         }
         scored.push_back({name, s});
@@ -1463,9 +1443,8 @@ void NodeGraphUI::rebuild_chooser_items() {
     if (commands_.can_create_operator() && !chooser_insert_wire_ && !chooser_wire_connect_
         && chooser_tab_ == ChooserTab::All) {
         std::string sentinel = "+ New Operator...";
-        std::string lower_sentinel = sentinel;
-        for (auto& c : lower_sentinel) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        if (lower_filter.empty() || lower_sentinel.find(lower_filter) != std::string::npos) {
+        std::string sentinel_norm = vivid::normalize_for_search(sentinel);
+        if (query_norm.empty() || sentinel_norm.find(query_norm) != std::string::npos) {
             chooser_items_.insert(chooser_items_.begin(), sentinel);
         }
     }

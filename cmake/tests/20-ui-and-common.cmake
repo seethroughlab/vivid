@@ -184,6 +184,18 @@ target_include_directories(test_string_util PRIVATE src tests)
 target_link_libraries(test_string_util PRIVATE vivid_runtime_testlib)
 add_test(NAME test_string_util COMMAND test_string_util WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Operator label / search-normalize unit test (header-only)
+add_executable(test_operator_label tests/common/test_operator_label.cpp)
+target_include_directories(test_operator_label PRIVATE src tests)
+target_link_libraries(test_operator_label PRIVATE vivid_runtime_testlib)
+add_test(NAME test_operator_label COMMAND test_operator_label WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Chooser scorer (score_match_v2) unit test — header-only, no GUI deps
+add_executable(test_node_graph_chooser_search tests/ui/test_node_graph_chooser_search.cpp)
+target_include_directories(test_node_graph_chooser_search PRIVATE src tests)
+target_link_libraries(test_node_graph_chooser_search PRIVATE vivid_runtime_testlib)
+add_test(NAME test_node_graph_chooser_search COMMAND test_node_graph_chooser_search WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Perf trend (linear regression) unit test (header-only, no dependencies)
 add_executable(test_perf_trend tests/common/test_perf_trend.cpp)
 target_include_directories(test_perf_trend PRIVATE src tests)

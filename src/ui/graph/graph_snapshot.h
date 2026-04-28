@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/operator_label.h"
 #include "operator_api/types.h"
 #include "runtime/core/runtime_health.h"
 #include "runtime/graph/cadence_types.h"
@@ -126,7 +127,10 @@ struct PortInfo {
 
 // Owned copy of operator metadata
 struct OperatorInfo {
-    std::string name;
+    std::string name;             // stable id (matches descriptor->name)
+    std::string display_name;     // human-facing label; auto-derived from name when descriptor's is null
+    std::vector<std::string> keywords;  // search hints (may be empty)
+    std::string summary;          // one-line description (may be empty)
     bool is_gpu = false;
     bool has_shader = false;
     bool is_user = false;
@@ -136,7 +140,40 @@ struct OperatorInfo {
     bool has_editor = false;
     std::vector<ParamInfo> params;
     std::vector<PortInfo> ports;
+
+    // Pre-normalized strings the chooser scorer searches against. Built once
+    // by OperatorInfoCache (or make_operator_info for modules); the scorer
+    // never recomputes them.
+    struct SearchHaystack {
+        std::string display_name_norm;        // e.g. "chord progression"
+        std::string id_norm;                  // raw id + space-split id, joined
+        std::vector<std::string> keyword_norms;
+        std::string summary_norm;
+    } search;
 };
+
+// Populate OperatorInfo::search from name / display_name / keywords / summary.
+// Call after those fields are set. The id_norm includes both the raw lowercase
+// id ("chordprogression") and the CamelCase-split form ("chord progression"),
+// joined by a space, so substring matches on either form score positive.
+inline void build_search_haystack(OperatorInfo& info) {
+    info.search.display_name_norm = vivid::normalize_for_search(info.display_name);
+    std::string id_split = vivid::normalize_for_search(
+        vivid::default_display_name(info.name));
+    std::string id_raw = vivid::normalize_for_search(info.name);
+    if (id_raw == id_split) {
+        info.search.id_norm = id_raw;
+    } else {
+        info.search.id_norm = id_raw;
+        info.search.id_norm.push_back(' ');
+        info.search.id_norm.append(id_split);
+    }
+    info.search.keyword_norms.clear();
+    info.search.keyword_norms.reserve(info.keywords.size());
+    for (const auto& k : info.keywords)
+        info.search.keyword_norms.push_back(vivid::normalize_for_search(k));
+    info.search.summary_norm = vivid::normalize_for_search(info.summary);
+}
 
 // Per-node snapshot data
 struct NodeSnapshot {

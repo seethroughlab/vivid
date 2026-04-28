@@ -8,7 +8,7 @@ extern "C" {
 
 /* Bump when operator-facing C ABI changes in incompatible ways.
    Catches stale dylibs during hot-reload — not a cross-version compatibility promise. */
-#define VIVID_OPERATOR_ABI_VERSION 2u  /* v2: VividPortDescriptor.display_hint */
+#define VIVID_OPERATOR_ABI_VERSION 3u  /* v3: VividOperatorDescriptor.{display_name,keywords,summary} */
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -164,6 +164,21 @@ typedef struct VividOperatorDescriptor {
     // Lane behavior (v3+)
     VividLaneBehavior         lane_behavior;         // POINTWISE, STRUCTURAL, REDUCTION, or KERNEL
     int                       strategy_independent;  // 1 if operator uses vivid_lane_state() for all per-lane state
+
+    // Human-facing label (v3+). NULL => runtime auto-derives from name by splitting
+    // on '_'/'-' and CamelCase boundaries. Distinct from name, which is the stable
+    // id used in saved graphs and on the dlsym boundary. Authors override for
+    // acronyms (LFO, FFT, FmSynth, Render2D) where auto-derive is wrong.
+    const char*               display_name;
+
+    // Search hints (v3+). Owned by the dylib (string-literal pool); runtime copies
+    // by value on import. NULL+0 when unset.
+    const char* const*        keywords;
+    uint32_t                  keyword_count;
+
+    // One-line description (v3+). NULL when unset; consumers fall back to the
+    // operator's source-doc brief.
+    const char*               summary;
 } VividOperatorDescriptor;
 
 // Derive operator kind from capability flags (replaces stored field, v18+).

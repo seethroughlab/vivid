@@ -2,8 +2,15 @@
 // With no input connected, input is zeroed, so output = level (constant DC).
 #include "operator_api/operator.h"
 
+#include <array>
+
 struct AudioTestOp : vivid::OperatorBase, vivid::AudioProcessable {
-    static constexpr const char* kName   = "AudioTestOp";
+    static constexpr const char* kName        = "AudioTestOp";
+    // v3 metadata declared so test_operator_loader's deferred-probe test can
+    // assert these fields survive scan_deferred() / probe_descriptor().
+    static constexpr const char* kDisplayName = "Audio Test Op";
+    static constexpr const char* kSummary     = "DC offset for audio testing.";
+    static constexpr std::array<const char*, 2> kKeywords = {"test", "audio"};
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> level{"level", 0.5f, 0.0f, 10.0f};

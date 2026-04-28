@@ -576,6 +576,17 @@ int main() {
                           std::strcmp(desc->ports[0].description, "Stereo audio input") == 0,
                       "probe preserves input port description");
             }
+            // v3 metadata flows through the deferred path
+            check(desc->display_name != nullptr &&
+                      std::strcmp(desc->display_name, "Audio Test Op") == 0,
+                  "probe preserves display_name");
+            check(desc->keyword_count == 2 && desc->keywords != nullptr &&
+                      desc->keywords[0] != nullptr &&
+                      std::strcmp(desc->keywords[0], "test") == 0,
+                  "probe preserves keywords");
+            check(desc->summary != nullptr &&
+                      std::strcmp(desc->summary, "DC offset for audio testing.") == 0,
+                  "probe preserves summary");
         }
     }
 
