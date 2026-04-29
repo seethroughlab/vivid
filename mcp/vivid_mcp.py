@@ -2675,7 +2675,8 @@ async def analyze_audio_detail(duration_ms: float = 1000.0,
                                pitch_track: bool = True,
                                band_energies: bool = True,
                                onset_times: bool = True,
-                               scalar_summary: bool = True) -> str:
+                               scalar_summary: bool = True,
+                               node_id: str = "") -> str:
     """Time-series audio analysis over a captured window.
 
     Returns JSON with whichever of these arrays are requested:
@@ -2685,12 +2686,18 @@ async def analyze_audio_detail(duration_ms: float = 1000.0,
       - `scalar`: window-averaged values
 
     Args:
-        duration_ms: Length of captured window (50 - 10000).
+        duration_ms: Length of captured window (50 - 10000). Ignored
+            when `node_id` is set (per-node ring is fixed at 1024
+            samples ≈ 21 ms @ 48 kHz).
         hop_ms: Hop interval for time-series points (5 - 500).
         pitch_track / band_energies / onset_times / scalar_summary: per-array
-            opt-out flags.
+            opt-out flags. Note: per-node captures may be too short for
+            pitch_track (needs ≥ 2048 samples) — the field is omitted
+            in that case rather than returned partial.
+        node_id: If set, snapshot the named audio node's 1024-sample
+            waveform ring instead of the final mix.
     """
-    fetched, err = await _fetch_wav_bytes("", duration_ms)
+    fetched, err = await _fetch_wav_bytes(node_id, duration_ms)
     if err:
         return _json_response({"ok": False, "error": err})
     samples, sr = fetched
@@ -2701,7 +2708,504 @@ async def analyze_audio_detail(duration_ms: float = 1000.0,
         want_onset_times=bool(onset_times),
         want_scalar_summary=bool(scalar_summary))
     detail["ok"] = True
+    detail["node_id"] = node_id
+    detail["source"] = "node_waveform_ring" if node_id else "final_mix"
     return _json_response(detail)
+
+
+@mcp.tool()
+async def aggregate_audio_scalars(duration_ms_per_capture: float = 1000.0,
+                                    n_captures: int = 5,
+                                    inter_capture_ms: float = 200.0,
+                                    node_id: str = "") -> str:
+    """Run analyze_scalars across N captures and report per-metric statistics.
+
+    Stochastic / LFO-driven graphs produce different metrics every
+    capture. This tool drives N captures with a configurable inter-
+    capture pause (so LFOs cycle and the recording tap drains), runs
+    `analyze_scalars` on each, and reports `{mean, std, min, max, n}`
+    per metric — turning flaky single-capture A/B comparisons into
+    statistically meaningful ones.
+
+    Total wall time ≈ `n_captures × (duration_ms_per_capture + inter_capture_ms)`.
+    Soft-capped at `n_captures ≤ 20` and `duration_ms_per_capture ≤ 5000`
+    to keep runs bounded.
+
+    Args:
+        duration_ms_per_capture: Capture length per run (50 - 5000).
+        n_captures: Number of captures (1 - 20).
+        inter_capture_ms: Pause between captures (≥ 0). 200 ms default
+            lets short LFOs cycle and the recording tap drain.
+        node_id: Audio node id, or empty for the final mix.
+    """
+    n = max(1, min(20, int(n_captures)))
+    dur = max(50.0, min(5000.0, float(duration_ms_per_capture)))
+    delay_s = max(0.0, float(inter_capture_ms) / 1000.0)
+    aa = _audio_analysis()
+    captures: list = []
+    errors: list = []
+    for i in range(n):
+        if i > 0 and delay_s > 0:
+            await asyncio.sleep(delay_s)
+        fetched, err = await _fetch_wav_bytes(node_id, dur)
+        if err:
+            errors.append({"capture_index": i, "error": err})
+            continue
+        samples, sr = fetched
+        try:
+            captures.append(aa.analyze_scalars(samples, sr))
+        except Exception as exc:  # noqa: BLE001
+            errors.append({"capture_index": i, "error": f"analyze: {exc}"})
+            continue
+    agg = aa.aggregate_scalar_runs(captures)
+    return _json_response({
+        "ok": True,
+        "n_captures_requested": n,
+        "n_captures_succeeded": agg["n_runs"],
+        "duration_ms_per_capture": dur,
+        "inter_capture_ms": float(inter_capture_ms),
+        "node_id": node_id,
+        "source": "node_waveform_ring" if node_id else "final_mix",
+        "captures": captures,
+        "stats": agg["stats"],
+        "errors": errors,
+    })
+
+
+@mcp.tool()
+async def dump_audio_samples(duration_ms: float = 200.0,
+                              node_id: str = "",
+                              channel: int = -1) -> str:
+    """Capture a short window of audio and return raw float32 samples.
+
+    Returns base64-encoded little-endian float32, one string per channel
+    in `samples_b64`. Decode in the client:
+        np.frombuffer(base64.b64decode(samples_b64[0]), dtype="<f4")
+
+    Use this when scalar metrics or rendered plots aren't enough — e.g.
+    to compute autocorrelation yourself, locate sample-exact glitches,
+    or feed the buffer into another DSP tool. For longer windows use
+    `record_audio_to_wav` (writes to disk).
+
+    Args:
+        duration_ms: Capture window length (10 - 500). Soft-capped at
+            500 ms because the JSON payload grows linearly with samples.
+            Ignored when `node_id` is set (per-node ring is fixed at
+            1024 samples ≈ 21 ms @ 48 kHz).
+        node_id: If set, snapshot the named audio node's 1024-sample
+            waveform ring instead of the final mix.
+        channel: -1 returns all channels; 0/1/... isolates one channel
+            before encoding (smaller payload).
+    """
+    fetched, err = await _fetch_wav_bytes(node_id, duration_ms)
+    if err:
+        return _json_response({"ok": False, "error": err})
+    samples, sr = fetched
+    if channel >= 0 and samples.ndim > 1 and channel < samples.shape[1]:
+        samples = samples[:, channel]
+    out = _audio_analysis().dump_audio_samples(samples, sr)
+    out["ok"] = True
+    out["node_id"] = node_id
+    out["source"] = "node_waveform_ring" if node_id else "final_mix"
+    return _json_response(out)
+
+
+@mcp.tool()
+async def analyze_audio_spectrum(duration_ms: float = 1000.0,
+                                  node_id: str = "",
+                                  fft_size: int = 4096,
+                                  mode: str = "single",
+                                  db_scale: bool = True,
+                                  fmin_hz: float = 0.0,
+                                  fmax_hz: float = 0.0) -> str:
+    """Numeric FFT magnitudes over a captured window.
+
+    Returns `bins` as a list of `{hz, magnitude}` for inspection of
+    *which* frequencies hold energy — complements `capture_spectrogram`
+    (PNG) when you need quantitative bin values. Hann-windowed.
+
+    For per-node captures (`node_id` set) the input is the 1024-sample
+    waveform ring, so `fft_size > 1024` auto-clamps; `fft_size_used` and
+    a `note` field appear in the response when clamping occurs.
+
+    Args:
+        duration_ms: Capture window length (50 - 10000). Ignored for
+            per-node captures.
+        node_id: Audio node id, or empty for the final mix.
+        fft_size: Power of two (2 - 16384). Auto-clamped to fit input.
+        mode: "single" picks one Hann-windowed slice from the center;
+            "average" returns the mean magnitude across an STFT with
+            75 % overlap.
+        db_scale: True returns dB (ref=peak); False returns linear
+            magnitude.
+        fmin_hz, fmax_hz: Visible frequency band. fmax_hz=0 ⇒ Nyquist.
+    """
+    fetched, err = await _fetch_wav_bytes(node_id, duration_ms)
+    if err:
+        return _json_response({"ok": False, "error": err})
+    samples, sr = fetched
+    fmax = float(fmax_hz) if fmax_hz > 0 else None
+    out = _audio_analysis().analyze_spectrum(
+        samples, sr,
+        fft_size=int(fft_size),
+        mode=str(mode),
+        db_scale=bool(db_scale),
+        fmin_hz=float(fmin_hz),
+        fmax_hz=fmax)
+    out["ok"] = True
+    out["node_id"] = node_id
+    out["source"] = "node_waveform_ring" if node_id else "final_mix"
+    return _json_response(out)
+
+
+@mcp.tool()
+async def detect_discontinuities(duration_ms: float = 1000.0,
+                                   node_id: str = "",
+                                   threshold_multiplier: float = 8.0,
+                                   min_magnitude: float = 0.05) -> str:
+    """Find sample-indexed click/discontinuity events in a captured window.
+
+    Flags samples where |x[n]-x[n-1]| > max(threshold_multiplier * MAD,
+    min_magnitude). Returns each event with its sample index, time in
+    ms, and magnitude — useful for distinguishing periodic clicks
+    (sub-block boundary, phase wrap) from random ones.
+
+    Operates on the mono mix. The aggregate count returned by
+    `analyze_audio_detail` is `len(events) / duration_seconds`.
+
+    Args:
+        duration_ms: Capture window length (50 - 10000). Per-node mode
+            is fixed at the 1024-sample ring (~21 ms @ 48 kHz) — useful
+            for tight inspection of a single synth output, not long
+            scans.
+        node_id: Audio node id, or empty for the final mix.
+        threshold_multiplier: MAD multiplier for the threshold (default
+            8.0 matches the value used internally by `analyze_scalars`).
+        min_magnitude: Absolute floor below which diffs are ignored
+            even if they exceed the MAD threshold (default 0.05).
+    """
+    fetched, err = await _fetch_wav_bytes(node_id, duration_ms)
+    if err:
+        return _json_response({"ok": False, "error": err})
+    samples, sr = fetched
+    out = _audio_analysis().detect_discontinuities(
+        samples, sr,
+        threshold_multiplier=float(threshold_multiplier),
+        min_magnitude=float(min_magnitude))
+    out["ok"] = True
+    out["node_id"] = node_id
+    out["source"] = "node_waveform_ring" if node_id else "final_mix"
+    return _json_response(out)
+
+
+@mcp.tool()
+async def analyze_discontinuity_pattern(duration_ms: float = 1000.0,
+                                          node_id: str = "",
+                                          threshold_multiplier: float = 8.0,
+                                          min_magnitude: float = 0.05,
+                                          fft_size: int = 1024) -> str:
+    """Capture audio, find discontinuity events, then classify their pattern.
+
+    Combines `detect_discontinuities` with FFT-of-event-times to answer:
+    are these clicks periodic or random? Periodic clicks indicate
+    structural bugs (sub-block boundary @ every 64 samples, phase wrap @
+    every period of the fundamental). Random clicks usually mean
+    numerical issues (denormals, mis-ordered ops).
+
+    Returns the full discontinuity result plus a `pattern` block:
+        {periodic, peak_to_mean_ratio, period_samples, period_hz,
+         interval_jitter_samples, top_intervals[]}
+    Or `{periodic: null, reason: ...}` when there are too few events.
+
+    Args:
+        duration_ms: Capture window length. Longer windows give a
+            cleaner pattern read.
+        node_id: Audio node id, or empty for the final mix.
+        threshold_multiplier, min_magnitude: Same as `detect_discontinuities`.
+        fft_size: FFT size for the impulse-train spectrum (auto-grown to
+            cover the event span). Default 1024.
+    """
+    fetched, err = await _fetch_wav_bytes(node_id, duration_ms)
+    if err:
+        return _json_response({"ok": False, "error": err})
+    samples, sr = fetched
+    aa = _audio_analysis()
+    discont = aa.detect_discontinuities(
+        samples, sr,
+        threshold_multiplier=float(threshold_multiplier),
+        min_magnitude=float(min_magnitude))
+    indices = [e["sample_idx"] for e in discont["events"]]
+    pattern = aa.analyze_discontinuity_pattern(indices, sr,
+                                                  fft_size=int(fft_size))
+    out = dict(discont)
+    out["pattern"] = pattern
+    out["ok"] = True
+    out["node_id"] = node_id
+    out["source"] = "node_waveform_ring" if node_id else "final_mix"
+    return _json_response(out)
+
+
+@mcp.tool()
+async def detect_dropouts(duration_ms: float = 1000.0,
+                           node_id: str = "",
+                           threshold: float = 0.001,
+                           min_run_ms: float = 10.0) -> str:
+    """Find runs of near-silence within a captured window.
+
+    Flags stretches where |x| < threshold lasting at least min_run_ms.
+    Catches voice dropouts in the middle of an otherwise non-silent
+    capture — invisible to RMS / peak because they're averaged out.
+
+    Args:
+        duration_ms: Capture window length (50 - 10000).
+        node_id: Audio node id, or empty for the final mix.
+        threshold: Sample magnitude below which we call the sample
+            "silent" (default 0.001 = -60 dB).
+        min_run_ms: Minimum run length in ms (default 10.0). Shorter
+            runs are ignored to avoid false positives during natural
+            decays / quiet passages.
+    """
+    fetched, err = await _fetch_wav_bytes(node_id, duration_ms)
+    if err:
+        return _json_response({"ok": False, "error": err})
+    samples, sr = fetched
+    out = _audio_analysis().detect_dropouts(
+        samples, sr,
+        threshold=float(threshold),
+        min_run_ms=float(min_run_ms))
+    out["ok"] = True
+    out["node_id"] = node_id
+    out["source"] = "node_waveform_ring" if node_id else "final_mix"
+    return _json_response(out)
+
+
+@mcp.tool()
+async def measure_clipping(duration_ms: float = 1000.0,
+                            node_id: str = "",
+                            threshold: float = 0.99) -> str:
+    """Count clipped samples and the longest clip run.
+
+    Aggregate companion to `peak`: `peak` shows the maximum sample value;
+    this tool tells you *how many* samples reached or exceeded the
+    threshold and how long the longest contiguous clip ran for. Two
+    graphs both peaking at 1.0 sound very different if one clips for 30
+    samples and the other clips for 30 000.
+
+    Args:
+        duration_ms: Capture window length (50 - 10000).
+        node_id: Audio node id, or empty for the final mix.
+        threshold: |x| ≥ threshold counts as a clipped sample
+            (default 0.99 — slightly below 1.0 to catch near-clips).
+    """
+    fetched, err = await _fetch_wav_bytes(node_id, duration_ms)
+    if err:
+        return _json_response({"ok": False, "error": err})
+    samples, sr = fetched
+    out = _audio_analysis().measure_clipping(samples, sr,
+                                                threshold=float(threshold))
+    out["ok"] = True
+    out["node_id"] = node_id
+    out["source"] = "node_waveform_ring" if node_id else "final_mix"
+    return _json_response(out)
+
+
+@mcp.tool()
+async def dump_envelope_data(duration_ms: float = 1000.0,
+                              node_id: str = "",
+                              hop_ms: float = 5.0) -> str:
+    """Per-channel RMS envelope as numeric arrays.
+
+    The data behind the `capture_envelope_plot` PNG, exposed as JSON
+    so attack/decay timings can be quantified without reading the image.
+    Each channel's envelope is `[{t_ms, rms}, ...]`.
+
+    Args:
+        duration_ms: Capture window length (50 - 10000).
+        node_id: Audio node id, or empty for the final mix.
+        hop_ms: Hop interval in ms (default 5.0). Frame length is
+            2 × hop, matching the PNG renderer.
+    """
+    fetched, err = await _fetch_wav_bytes(node_id, duration_ms)
+    if err:
+        return _json_response({"ok": False, "error": err})
+    samples, sr = fetched
+    out = _audio_analysis().dump_envelope_data(samples, sr,
+                                                  hop_ms=float(hop_ms))
+    out["ok"] = True
+    out["node_id"] = node_id
+    out["source"] = "node_waveform_ring" if node_id else "final_mix"
+    return _json_response(out)
+
+
+@mcp.tool()
+async def analyze_harmonic_profile(duration_ms: float = 1000.0,
+                                     node_id: str = "",
+                                     fundamental_hz: float = 0.0,
+                                     n_partials: int = 10,
+                                     fft_size: int = 8192) -> str:
+    """Decompose a tonal signal into its strongest partials.
+
+    For each integer multiple n of the fundamental, returns the observed
+    frequency and magnitude of the nearest spectral peak. Computes total
+    harmonic distortion (THD, the power ratio of partials 2..N to the
+    fundamental) and inharmonicity (mean fractional deviation of
+    partials from the perfect harmonic series).
+
+    Useful for diagnosing distortion (high THD) and for synth-preset
+    shaping (which partials are present, in what proportion).
+
+    Args:
+        duration_ms: Capture window length (need ≥ ~50 ms of tonal
+            signal for pyin pitch detection).
+        node_id: Audio node id, or empty for the final mix.
+        fundamental_hz: Skip pitch detection by passing the fundamental
+            directly (0 = auto-detect via librosa.pyin).
+        n_partials: Maximum number of harmonics to report.
+        fft_size: FFT size (auto-clamped to the largest power of two
+            that fits the input).
+    """
+    fetched, err = await _fetch_wav_bytes(node_id, duration_ms)
+    if err:
+        return _json_response({"ok": False, "error": err})
+    samples, sr = fetched
+    f0 = float(fundamental_hz) if fundamental_hz > 0 else None
+    out = _audio_analysis().analyze_harmonic_profile(
+        samples, sr,
+        fundamental_hz=f0,
+        n_partials=int(n_partials),
+        fft_size=int(fft_size))
+    out["ok"] = True
+    out["node_id"] = node_id
+    out["source"] = "node_waveform_ring" if node_id else "final_mix"
+    return _json_response(out)
+
+
+@mcp.tool()
+async def analyze_aliasing(duration_ms: float = 1000.0,
+                            node_id: str = "",
+                            fundamental_hz: float = 0.0,
+                            n_partials: int = 20,
+                            fft_size: int = 8192,
+                            top_n_peaks: int = 8) -> str:
+    """Detect aliasing / non-harmonic energy in a tonal signal.
+
+    For signals that *should* be tonal (oscillator output, sustained
+    notes), this flags energy at frequencies that aren't integer
+    multiples of the fundamental — and especially fold-back energy from
+    would-be ultrasonic harmonics reflected below Nyquist (the classic
+    naïve-oscillator aliasing fingerprint).
+
+    Returns `{tonality_ok: false, reason: ...}` for non-tonal signals
+    (chords, noise, percussion). When tonal:
+      - `aliasing_score` (0..1) — fraction of total energy in
+        non-harmonic bins.
+      - `top_non_harmonic_peaks[]` — strongest off-comb peaks with
+        `is_likely_alias`, `above_comb`, `is_foldback` flags.
+
+    Args:
+        duration_ms: Capture window length (need ≥ ~50 ms of stable
+            tone for reliable pitch detection).
+        node_id: Audio node id, or empty for the final mix.
+        fundamental_hz: Skip pitch detection by passing the fundamental
+            directly (0 = auto-detect via librosa.pyin).
+        n_partials: How many harmonics define the expected comb extent.
+        fft_size: FFT size (auto-clamped to fit input).
+        top_n_peaks: Number of strongest non-harmonic peaks to report.
+    """
+    fetched, err = await _fetch_wav_bytes(node_id, duration_ms)
+    if err:
+        return _json_response({"ok": False, "error": err})
+    samples, sr = fetched
+    f0 = float(fundamental_hz) if fundamental_hz > 0 else None
+    out = _audio_analysis().analyze_aliasing(
+        samples, sr,
+        fundamental_hz=f0,
+        n_partials=int(n_partials),
+        fft_size=int(fft_size),
+        top_n_peaks=int(top_n_peaks))
+    out["ok"] = True
+    out["node_id"] = node_id
+    out["source"] = "node_waveform_ring" if node_id else "final_mix"
+    return _json_response(out)
+
+
+@mcp.tool()
+async def measure_loudness(duration_ms: float = 3000.0,
+                            node_id: str = "",
+                            short_term: bool = True) -> str:
+    """ITU-R BS.1770 / EBU R128 perceptual loudness.
+
+    Returns:
+      - integrated_lufs: single LUFS value over the captured window.
+        Streaming targets typically aim for around -14 LUFS; -23 LUFS is
+        the EBU broadcast reference.
+      - short_term_lufs: list of {t_ms, lufs} from a 3 s sliding window
+        every 100 ms. Empty when the buffer is shorter than 3 s.
+      - peak_db: max sample magnitude in dBFS.
+      - true_peak_db: 4× oversampled peak (catches inter-sample peaks
+        per BS.1770).
+
+    Args:
+        duration_ms: Capture window length. Should be ≥ 3000 for
+            short_term to populate; integrated works at any length.
+        node_id: Audio node id, or empty for the final mix.
+        short_term: Compute the sliding-window track. Disable for a
+            faster integrated-only read.
+    """
+    fetched, err = await _fetch_wav_bytes(node_id, duration_ms)
+    if err:
+        return _json_response({"ok": False, "error": err})
+    samples, sr = fetched
+    out = _audio_analysis().measure_loudness(samples, sr,
+                                                short_term=bool(short_term))
+    out["ok"] = True
+    out["node_id"] = node_id
+    out["source"] = "node_waveform_ring" if node_id else "final_mix"
+    return _json_response(out)
+
+
+@mcp.tool()
+async def analyze_stereo_image(duration_ms: float = 1000.0,
+                                node_id: str = "",
+                                save_dir: str = "",
+                                lissajous_size: int = 320) -> str:
+    """Mid/side decomposition + balance + correlation + Lissajous PNG.
+
+    Reports left/right RMS, balance (dB), mid/side RMS and ratio,
+    inter-channel correlation, and renders a goniometer plot rotated 45°
+    so mid (L+R) is vertical and side (L−R) is horizontal:
+      - vertical line  → mono signal
+      - horizontal line → phase-inverted (will collapse on mono fold-down)
+      - tilted ellipse → typical stereo program
+      - circular cloud → uncorrelated (e.g. dual-mono noise)
+
+    Args:
+        duration_ms: Capture window length (50 - 10000).
+        node_id: Audio node id, or empty for the final mix.
+        save_dir: Optional directory for the Lissajous PNG.
+        lissajous_size: Square pixel size of the Lissajous plot.
+    """
+    fetched, err = await _fetch_wav_bytes(node_id, duration_ms)
+    if err:
+        return _json_response({"ok": False, "error": err})
+    samples, sr = fetched
+    aa = _audio_analysis()
+    result = aa.analyze_stereo_image(samples, sr,
+                                        lissajous_size=int(lissajous_size))
+    png_bytes = result.pop("lissajous_png_bytes", None)
+    if png_bytes is not None:
+        png_path = _write_png_to_disk(png_bytes, save_dir, "vivid_lissajous")
+        result["lissajous_png_path"] = png_path
+        result["hint"] = ("Read lissajous_png_path. Vertical line = mono, "
+                          "horizontal = phase-inverted, tilted ellipse = "
+                          "typical stereo, circular cloud = uncorrelated.")
+    else:
+        result["lissajous_png_path"] = ""
+    result["ok"] = True
+    result["sample_rate"] = int(sr)
+    result["node_id"] = node_id
+    result["source"] = "node_waveform_ring" if node_id else "final_mix"
+    return _json_response(result)
 
 
 @mcp.tool()
@@ -2853,10 +3357,11 @@ async def capture_note_response(midi_node_id: str,
         samples, sr = _audio_analysis().load_wav_bytes(doc.get("wav_base64", ""))
     except Exception as exc:  # noqa: BLE001
         return _json_response({"ok": False, "error": f"WAV decode: {exc}"})
-    metrics = _audio_analysis().analyze_scalars(samples, sr)
-    png = _audio_analysis().render_waveform_png(samples, sr,
-                                                  width=int(width),
-                                                  height=int(height))
+    aa = _audio_analysis()
+    metrics = aa.analyze_scalars(samples, sr)
+    adsr = aa.extract_adsr(samples, sr, sustain_ms=float(sustain_ms))
+    png = aa.render_waveform_png(samples, sr,
+                                    width=int(width), height=int(height))
     path = _write_png_to_disk(png, save_dir, "vivid_note_response")
     return _json_response({
         "ok": True, "capture_path": path,
@@ -2869,7 +3374,10 @@ async def capture_note_response(midi_node_id: str,
         "frames": int(samples.shape[0] if samples.ndim > 0 else 0),
         "channels": int(samples.shape[1]) if samples.ndim > 1 else 1,
         "metrics": metrics,
-        "hint": "Read capture_path — full attack→sustain→release waveform.",
+        "adsr": adsr,
+        "hint": ("Read capture_path — full attack→sustain→release waveform. "
+                 "`adsr` block has the four canonical synth parameters "
+                 "extracted automatically."),
     })
 
 
