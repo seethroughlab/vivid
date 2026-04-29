@@ -329,10 +329,13 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
         }
 
         // Emit voice_*/voices_out aligned to active-note-by-note_id order.
+        // ctx->output_lanes[] is indexed by overall OUTPUT port position.
+        // Output port order: output(0), voices_out(1), voice_ids(2),
+        // voice_gates(3), voice_velocities(4), voice_freqs(5).
         if (ctx->output_lanes) {
             VividLaneOutput lanes[vivid_sequencers::kVoiceBreakoutLaneCount] = {
-                ctx->output_lanes[0], ctx->output_lanes[1],
                 ctx->output_lanes[2], ctx->output_lanes[3],
+                ctx->output_lanes[4], ctx->output_lanes[5],
             };
             vivid_sequencers::emit_voice_breakouts_from_sorted(
                 voices_, sorted, active_count, lanes);

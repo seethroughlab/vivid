@@ -32,6 +32,29 @@
 // have no fixed mapping per synth — surfacing them on NoteBreakout lets
 // downstream operators bind them however they want).
 //
+// ---------------------------------------------------------------------------
+// IMPORTANT: indexing into ctx->output_lanes[]
+// ---------------------------------------------------------------------------
+// `ctx->output_lanes[]` is sized and indexed by OVERALL output port position
+// (graph_compiler.cpp resizes by `output_port_count`, which counts every
+// output port — audio buffers, custom_ref, lane arrays — in declaration
+// order). The runtime calls `make_lane_output()` for every output port,
+// so non-lane slots have a valid LaneBuffer handle even though the audio /
+// custom_ref data flows through a separate path. There is no "skip on null"
+// for these slots — writing into an audio port's lane handle silently
+// corrupts data into a buffer no one reads, and shifts every subsequent
+// emit call into the wrong lane port.
+//
+// To pass the right slice to this helper, count how many non-lane OUTPUT
+// ports your operator declares before its first voice_* lane port and use
+// that as the starting index. For example:
+//   - Operator with `output` (audio) → start at output_lanes[1]
+//   - Operator with `output` + `voices_out` (audio) → start at output_lanes[2]
+//   - NoteBreakout with `notes_out` (custom_ref) → start at output_lanes[1]
+//
+// Add a brief comment at each call site recording the offset and reason,
+// since `output_lanes[0..3]` looks plausible until you trace the indexing.
+//
 // See docs/plans/midi-native-protocol/phase-2-synth-breakouts-and-poly-composability.md
 // and phase-4-tracker-expression.md.
 
