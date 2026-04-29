@@ -203,6 +203,13 @@ public:
     CommandResult set_solo(const std::string& node_id);  // empty string = clear solo
     std::string solo_node_id() const;
 
+    // Inject a single MIDI message into the named node. The operator must
+    // export the optional `vivid_op_inject_midi` symbol (currently MidiInput
+    // does this). Returns false on lookup failure or no-such-symbol.
+    bool inject_midi_to_node(const std::string& node_id,
+                             const uint8_t* bytes,
+                             uint32_t count);
+
     void set_resources_dir(const std::string& dir) { resources_dir_ = dir; }
     void set_subgraph_modules(const SubgraphModuleRegistry* modules) { subgraph_modules_ = modules; }
 

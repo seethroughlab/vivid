@@ -398,6 +398,13 @@ typedef void   (*VividProcessFrameFn)(void* instance, VividFrameContext* ctx);
 typedef void   (*VividProcessAudioFn)(void* instance, VividAudioContext* ctx);
 typedef void   (*VividProcessGpuFn)(void* instance, struct VividGpuContext* ctx);
 
+// Optional debug-inject hook. An operator that wants to receive synthetic
+// MIDI bytes from the runtime (typically for capture_note_response and
+// related test/debug tools) exports an extern "C" function with this
+// signature named `vivid_op_inject_midi`. The runtime probes for the
+// symbol via dlsym; operators that do not export it simply opt out.
+typedef void   (*VividInjectMidiFn)(void* instance, const uint8_t* bytes, uint32_t count);
+
 struct VividThumbnailContext;
 typedef void (*VividDrawThumbnailFn)(void* instance,
                                      const struct VividThumbnailContext* ctx);

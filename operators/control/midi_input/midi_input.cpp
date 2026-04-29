@@ -433,3 +433,16 @@ private:
 };
 
 VIVID_REGISTER(MidiInput)
+
+// Optional debug-inject hook (probed by OperatorLoader via dlsym). Lets the
+// runtime push synthetic MIDI bytes into this operator without needing a
+// real MIDI device — used by capture_note_response and other
+// programmatic-test tooling. Bytes are a single MIDI message (e.g. 3-byte
+// note-on).
+extern "C" void vivid_op_inject_midi(void* instance, const uint8_t* bytes,
+                                       uint32_t count) {
+    if (!instance || !bytes || count == 0) return;
+    auto* inst = static_cast<_VividInstance*>(instance);
+    std::vector<unsigned char> msg(bytes, bytes + count);
+    inst->op.inject_events({std::move(msg)});
+}

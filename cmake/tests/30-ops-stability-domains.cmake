@@ -98,6 +98,30 @@ add_dependencies(test_note_breakout note_breakout)
 add_test(NAME test_note_breakout COMMAND test_note_breakout ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Arpeggiator MIDI-inject smoke — verifies vivid_op_inject_midi is exported,
+# OperatorLoader probes it, and inject + tick paths don't crash with or
+# without a parallel notes_in stream.
+add_executable(test_arpeggiator_inject
+    tests/operators/test_arpeggiator_inject.cpp
+)
+target_include_directories(test_arpeggiator_inject PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(test_arpeggiator_inject PRIVATE vivid_runtime_testlib vivid_operator_api)
+add_dependencies(test_arpeggiator_inject arpeggiator)
+add_test(NAME test_arpeggiator_inject COMMAND test_arpeggiator_inject ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# MidiFilePlayer MIDI-inject smoke — verifies the inject path emits NOTE_ON
+# into notes_out (custom_outputs[0]) even when no .mid file is loaded, and
+# that matched NOTE_OFFs reference the same note_id.
+add_executable(test_midi_file_player_inject
+    tests/operators/test_midi_file_player_inject.cpp
+)
+target_include_directories(test_midi_file_player_inject PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(test_midi_file_player_inject PRIVATE vivid_runtime_testlib vivid_operator_api)
+add_dependencies(test_midi_file_player_inject midi_file_player)
+add_test(NAME test_midi_file_player_inject COMMAND test_midi_file_player_inject ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Envelope poly release persistence — NoteBreakout drops released notes from
 # current lanes, but EnvelopeAu should keep rendering release tails for the
 # remembered lane_id until the envelope reaches idle.

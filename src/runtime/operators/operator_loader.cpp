@@ -101,6 +101,7 @@ OperatorLoader::OperatorLoader(OperatorLoader&& other) noexcept
     , insp_mode_fn_(other.insp_mode_fn_)
     , editor_meta_fn_(other.editor_meta_fn_)
     , draw_editor_fn_(other.draw_editor_fn_)
+    , inject_midi_fn_(other.inject_midi_fn_)
     , dd_config_(std::move(other.dd_config_))
     , dd_name_(std::move(other.dd_name_))
     , dd_param_names_(std::move(other.dd_param_names_))
@@ -127,6 +128,7 @@ OperatorLoader::OperatorLoader(OperatorLoader&& other) noexcept
     other.insp_mode_fn_     = nullptr;
     other.editor_meta_fn_   = nullptr;
     other.draw_editor_fn_   = nullptr;
+    other.inject_midi_fn_   = nullptr;
     other.dd_desc_ = {};
     // Fixup descriptor pointers to our own storage
     if (dd_config_) {
@@ -152,6 +154,7 @@ OperatorLoader& OperatorLoader::operator=(OperatorLoader&& other) noexcept {
         insp_mode_fn_     = other.insp_mode_fn_;
         editor_meta_fn_   = other.editor_meta_fn_;
         draw_editor_fn_   = other.draw_editor_fn_;
+        inject_midi_fn_   = other.inject_midi_fn_;
         dd_config_        = std::move(other.dd_config_);
         dd_name_          = std::move(other.dd_name_);
         dd_param_names_   = std::move(other.dd_param_names_);
@@ -177,6 +180,7 @@ OperatorLoader& OperatorLoader::operator=(OperatorLoader&& other) noexcept {
         other.insp_mode_fn_     = nullptr;
         other.editor_meta_fn_   = nullptr;
         other.draw_editor_fn_   = nullptr;
+        other.inject_midi_fn_   = nullptr;
         other.dd_desc_ = {};
         // Fixup descriptor pointers to our own storage
         if (dd_config_) {
@@ -331,6 +335,7 @@ bool OperatorLoader::load(const char* path) {
     insp_mode_fn_   = reinterpret_cast<VividInspectorModeFn>(dlsym(new_handle, "vivid_inspector_mode"));
     editor_meta_fn_ = reinterpret_cast<VividEditorMetadataFn>(dlsym(new_handle, "vivid_editor_metadata"));
     draw_editor_fn_ = reinterpret_cast<VividDrawEditorFn>(dlsym(new_handle, "vivid_draw_editor"));
+    inject_midi_fn_ = reinterpret_cast<VividInjectMidiFn>(dlsym(new_handle, "vivid_op_inject_midi"));
 
     clear_last_error();
     return true;
@@ -480,6 +485,7 @@ void OperatorLoader::unload() {
         insp_mode_fn_     = nullptr;
         editor_meta_fn_   = nullptr;
         draw_editor_fn_   = nullptr;
+        inject_midi_fn_   = nullptr;
     }
     if (dd_config_) {
         dd_config_.reset();
@@ -583,6 +589,13 @@ VividEditorMetadata OperatorLoader::editor_metadata() const {
 void OperatorLoader::draw_editor(void* instance, VividEditorContext* ctx) const {
     if (draw_editor_fn_ && instance) {
         draw_editor_fn_(instance, ctx);
+    }
+}
+
+void OperatorLoader::inject_midi(void* instance, const uint8_t* bytes,
+                                  uint32_t count) const {
+    if (inject_midi_fn_ && instance && bytes && count > 0) {
+        inject_midi_fn_(instance, bytes, count);
     }
 }
 

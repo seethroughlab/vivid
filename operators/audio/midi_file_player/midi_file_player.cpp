@@ -16,3 +16,15 @@ static const VividFileDropHandlerDescriptor kMidiFilePlayerFileDrops[] = {{
 
 VIVID_REGISTER(MidiFilePlayer)
 VIVID_FILE_DROP(kMidiFilePlayerFileDrops)
+
+// Optional debug-inject hook (probed by OperatorLoader via dlsym at load
+// time). Lets the runtime push synthetic MIDI bytes into this operator
+// alongside the file's own playback — same mechanism as MidiInput and
+// Arpeggiator. Used by capture_note_response et al.
+extern "C" void vivid_op_inject_midi(void* instance, const uint8_t* bytes,
+                                       uint32_t count) {
+    if (!instance || !bytes || count == 0) return;
+    auto* inst = static_cast<_VividInstance*>(instance);
+    std::vector<unsigned char> msg(bytes, bytes + count);
+    inst->op.inject_events({std::move(msg)});
+}

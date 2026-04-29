@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstdio>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -83,6 +84,15 @@ struct MidiFilePlayer : vivid::OperatorBase, vivid::AudioProcessable {
             stop_all_notes(0);
         }
 
+        // Drain any synthetic MIDI bytes pushed by the runtime debug hook
+        // (vivid_op_inject_midi). emit_message() handles note_id allocation
+        // and active-note tracking the same way it does for file events, so
+        // injected notes appear in notes_out_ alongside file playback. Must
+        // happen AFTER the generation-reset block above (which would
+        // otherwise immediately stop_all_notes on injected NOTE_ONs from
+        // the previous tick still tracked in active_notes_).
+        drain_inject(/*frame_offset=*/0);
+
         if (!seq || seq->sequence.events.empty() || seq->sequence.duration_seconds <= 0.0) {
             return;
         }
@@ -135,7 +145,35 @@ struct MidiFilePlayer : vivid::OperatorBase, vivid::AudioProcessable {
         }
     }
 
+    // Test/debug seam — pushed via the optional vivid_op_inject_midi symbol
+    // (probed by the runtime via dlsym; see operator_loader.cpp).
+    void inject_events(const std::vector<std::vector<unsigned char>>& messages) {
+        std::lock_guard<std::mutex> lock(inject_mutex_);
+        for (const auto& m : messages) inject_buffer_.push_back(m);
+    }
+
 private:
+    void drain_inject(uint32_t frame_offset) {
+        std::vector<std::vector<unsigned char>> drained;
+        {
+            std::lock_guard<std::mutex> lock(inject_mutex_);
+            drained.swap(inject_buffer_);
+        }
+        for (const auto& msg : drained) {
+            if (msg.size() < 1) continue;
+            uint8_t status = msg[0];
+            uint8_t kind = status & 0xF0u;
+            // Only honour note-on / note-off (with or without vel=0). Other
+            // SMF event types are dropped by emit_message itself.
+            if ((kind == 0x80u || kind == 0x90u) && msg.size() >= 3) {
+                emit_message(status, msg[1], msg[2], frame_offset);
+            }
+        }
+    }
+
+    std::mutex inject_mutex_;
+    std::vector<std::vector<unsigned char>> inject_buffer_;
+
     struct SequenceData {
         vivid::midi_file::Sequence sequence;
     };

@@ -855,4 +855,18 @@ std::string RuntimeAPI::solo_node_id() const {
     return nodes[idx].node_id;
 }
 
+bool RuntimeAPI::inject_midi_to_node(const std::string& node_id,
+                                       const uint8_t* bytes, uint32_t count) {
+    if (!bytes || count == 0) return false;
+    auto* cg = core_.compiled_graph();
+    if (!cg) return false;
+    auto it = cg->node_id_to_index.find(node_id);
+    if (it == cg->node_id_to_index.end()) return false;
+    const auto& cn = cg->nodes[it->second];
+    if (!cn.loader || !cn.instance) return false;
+    if (!cn.loader->has_inject_midi()) return false;
+    cn.loader->inject_midi(cn.instance, bytes, count);
+    return true;
+}
+
 } // namespace vivid

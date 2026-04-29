@@ -57,6 +57,14 @@ public:
     void main_thread_update(void* instance, double time,
                             const char** file_param_values, uint32_t file_param_count) const;
 
+    // Optional MIDI inject hook (vivid_op_inject_midi). Operators opt in by
+    // exporting an extern "C" function with that name; this lets debug
+    // tools (capture_note_response) push synthetic MIDI without owning a
+    // real device. Default loaders (those that don't export the symbol)
+    // return false from has_inject_midi().
+    bool has_inject_midi() const { return inject_midi_fn_ != nullptr; }
+    void inject_midi(void* instance, const uint8_t* bytes, uint32_t count) const;
+
     bool has_prepare_instance_assets() const { return prepare_assets_fn_ != nullptr; }
     void prepare_instance_assets(void* instance, const float* param_values,
                                  const char** file_param_values,
@@ -85,6 +93,7 @@ private:
     VividInspectorModeFn   insp_mode_fn_      = nullptr;
     VividEditorMetadataFn  editor_meta_fn_    = nullptr;
     VividDrawEditorFn      draw_editor_fn_    = nullptr;
+    VividInjectMidiFn      inject_midi_fn_    = nullptr;
     void fixup_dd_pointers();  // re-point all C string pointers after move
 
     // Shader-backed operator support
