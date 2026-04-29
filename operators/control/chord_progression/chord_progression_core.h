@@ -433,10 +433,10 @@ struct ChordProgressionCore : vivid::OperatorBase {
         int m = (ctx->param_count > 2)
             ? std::clamp(static_cast<int>(ctx->param_values[2]), 0, 5) : 0;
 
-        // Detect current playing step from scalar "note" output (output index 3)
+        // Detect current playing step from scalar "note" output (output index 0)
         int current_step = -1;
-        if (ctx->output_count > 3) {
-            float out_note = ctx->output_values[3];
+        if (ctx->output_count > 0) {
+            float out_note = ctx->output_values[0];
             int oct = (ctx->param_count > 3) ? static_cast<int>(ctx->param_values[3]) : 4;
             for (int s = 0; s < num_steps; ++s) {
                 if (ctx->param_count <= static_cast<uint32_t>(7 + s)) break;
@@ -583,8 +583,8 @@ struct ChordProgressionCore : vivid::OperatorBase {
 
         // Detect current chord root
         int current_chord_root = -1;
-        if (ctx->output_count > 3) {
-            float out_note = ctx->output_values[3];
+        if (ctx->output_count > 0) {
+            float out_note = ctx->output_values[0];
             int oct = (ctx->param_count > 3) ? static_cast<int>(ctx->param_values[3]) : 4;
             for (int s = 0; s < num_steps; ++s) {
                 if (ctx->param_count <= static_cast<uint32_t>(7 + s)) break;
