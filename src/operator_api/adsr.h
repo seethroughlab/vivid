@@ -54,9 +54,14 @@ inline void advance(State& s, float dt, float attack, float decay,
 }
 
 inline void gate_on(State& s) {
+    // Retrigger from current env_value instead of jumping to 0. During ATTACK,
+    // compute() returns env_progress, so seeding env_progress with env_value
+    // makes the new attack ramp begin at the current envelope level and reach
+    // 1.0 with the same slope as a fresh attack. A voice mid-release at 0.4
+    // continues from 0.4 → 1.0 without the discontinuity that previously
+    // produced a click on every retrigger.
     s.stage = ATTACK;
-    s.env_value = 0.0f;
-    s.env_progress = 0.0f;
+    s.env_progress = s.env_value;
     s.release_start = 0.0f;
 }
 
