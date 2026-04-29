@@ -72,6 +72,23 @@ add_test(NAME test_tracker_expression_demo
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_tracker_expression_demo PROPERTIES LABELS "STABILITY" TIMEOUT 60)
 
+# Audio-capture stack end-to-end smoke: builds a MidiInput → WavetableLayer
+# → audio_out graph in-test, drives a manual tick loop, and exercises the
+# new CaptureCoordinator endpoints (capture_waveform_plot,
+# capture_note_response, analyze_audio_detail). Skips with exit 0 if
+# vivid-wavetable is not installed.
+add_executable(test_audio_capture_smoke
+    tests/integration/test_audio_capture_smoke.cpp
+)
+target_include_directories(test_audio_capture_smoke PRIVATE src tests)
+target_link_libraries(test_audio_capture_smoke PRIVATE
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
+add_dependencies(test_audio_capture_smoke arpeggiator midi_input midi_file_player)
+add_test(NAME test_audio_capture_smoke
+    COMMAND test_audio_capture_smoke ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_audio_capture_smoke PROPERTIES LABELS "STABILITY" TIMEOUT 60)
+
 # PackageCompiler unit test (compiles a mock package operator)
 add_executable(test_package_compiler
     tests/packages/test_package_compiler.cpp

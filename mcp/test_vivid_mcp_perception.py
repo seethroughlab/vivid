@@ -1226,5 +1226,264 @@ class PerceptionMCPTests(unittest.TestCase):
         self.assertGreaterEqual(attempts["count"], 2)
 
 
+class AudioToolingBridgeTests(unittest.TestCase):
+    """Bridge-shape tests for the audio-debug tools after the librosa pivot.
+
+    Each tool calls one of three minimal C++ data endpoints (capture_audio,
+    capture_node_audio, capture_lane_series, capture_note_window) and runs
+    librosa-based analysis/rendering Python-side. These tests verify the
+    HTTP wire format (which method, which body fields) and that the wrapper
+    decodes responses correctly. Pure analysis correctness lives in
+    test_audio_analysis.py."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = _load_module()
+        # Build a tiny synthetic WAV (440 Hz sine, 100 ms) once — used as
+        # the canned `wav_base64` payload for capture_audio responses.
+        import base64 as _b64
+        import io as _io
+        import math as _math
+        import struct as _struct
+        sr = 48000
+        n = sr // 10  # 100 ms
+        # Inline minimal WAV writer (32-bit float, mono) so the test doesn't
+        # depend on soundfile being importable from the harness path.
+        data = bytearray()
+        for i in range(n):
+            v = 0.5 * _math.sin(2 * _math.pi * 440.0 * i / sr)
+            data.extend(_struct.pack("<f", v))
+        data_size = len(data)
+        wav = bytearray()
+        wav.extend(b"RIFF")
+        wav.extend(_struct.pack("<I", 36 + data_size))
+        wav.extend(b"WAVE")
+        wav.extend(b"fmt ")
+        wav.extend(_struct.pack("<I", 16))      # fmt chunk size
+        wav.extend(_struct.pack("<H", 3))       # IEEE float
+        wav.extend(_struct.pack("<H", 1))       # channels
+        wav.extend(_struct.pack("<I", sr))
+        wav.extend(_struct.pack("<I", sr * 4))  # byte rate
+        wav.extend(_struct.pack("<H", 4))       # block align
+        wav.extend(_struct.pack("<H", 32))      # bits per sample
+        wav.extend(b"data")
+        wav.extend(_struct.pack("<I", data_size))
+        wav.extend(data)
+        cls.SYNTH_WAV_B64 = _b64.b64encode(bytes(wav)).decode("ascii")
+        cls.SYNTH_WAV_OK = json.dumps({
+            "ok": True, "sample_rate": sr, "channels": 1,
+            "samples": n, "wav_base64": cls.SYNTH_WAV_B64,
+        })
+
+    def _run_with_fake_post(self, capture_dict, canned, coro_factory):
+        """Swap _post for a fake that records the (method, body) and
+        returns `canned`. Returns whatever the wrapper returns."""
+
+        async def fake_post(method, body=None, timeout=10.0):
+            capture_dict["method"] = method
+            capture_dict["body"] = body or {}
+            return canned
+
+        original = self.mod._post
+        self.mod._post = fake_post
+        try:
+            return asyncio.run(coro_factory())
+        finally:
+            self.mod._post = original
+
+    # --- Plot tools (final-mix path) ---------------------------------------
+
+    def test_capture_waveform_plot_calls_capture_audio(self):
+        cap: dict = {}
+        out_raw = self._run_with_fake_post(
+            cap, self.SYNTH_WAV_OK,
+            lambda: self.mod.capture_waveform_plot(duration_ms=200.0))
+        self.assertEqual(cap["method"], "capture_audio")
+        self.assertAlmostEqual(cap["body"]["duration"], 0.2, places=3)
+        out = json.loads(out_raw)
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["kind"], "waveform")
+        self.assertIn("capture_path", out)
+
+    def test_capture_spectrogram_calls_capture_audio(self):
+        cap: dict = {}
+        out_raw = self._run_with_fake_post(
+            cap, self.SYNTH_WAV_OK,
+            lambda: self.mod.capture_spectrogram(fmin_hz=100.0, fmax_hz=8000.0))
+        self.assertEqual(cap["method"], "capture_audio")
+        out = json.loads(out_raw)
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["kind"], "spectrogram")
+
+    def test_capture_envelope_plot_calls_capture_audio(self):
+        cap: dict = {}
+        out_raw = self._run_with_fake_post(
+            cap, self.SYNTH_WAV_OK,
+            lambda: self.mod.capture_envelope_plot(duration_ms=300.0))
+        self.assertEqual(cap["method"], "capture_audio")
+        out = json.loads(out_raw)
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["kind"], "envelope")
+
+    # --- Per-node path -----------------------------------------------------
+
+    def test_capture_waveform_plot_with_node_id_calls_capture_node_audio(self):
+        cap: dict = {}
+        canned = json.dumps({
+            "ok": True, "node_id": "synth_1", "sample_rate": 48000,
+            "channels": 1, "frames": 1024,
+            "wav_base64": self.SYNTH_WAV_B64,
+        })
+        out_raw = self._run_with_fake_post(
+            cap, canned,
+            lambda: self.mod.capture_waveform_plot(duration_ms=200.0,
+                                                    node_id="synth_1"))
+        self.assertEqual(cap["method"], "capture_node_audio")
+        self.assertEqual(cap["body"]["node_id"], "synth_1")
+        out = json.loads(out_raw)
+        self.assertTrue(out["ok"])
+
+    # --- Lane strip --------------------------------------------------------
+
+    def test_capture_voice_lane_strip_calls_capture_lane_series(self):
+        cap: dict = {}
+        canned = json.dumps({
+            "ok": True, "node_id": "wt_1", "port_name": "lane_freq",
+            "lane_count": 2, "samples_per_lane": 4,
+            "duration_ms": 200,
+            "samples": [[100.0, 100.0, 100.0, 100.0],
+                        [200.0, 200.0, 200.0, 200.0]],
+        })
+        out_raw = self._run_with_fake_post(
+            cap, canned,
+            lambda: self.mod.capture_voice_lane_strip(
+                "wt_1", "lane_freq", duration_ms=200.0))
+        self.assertEqual(cap["method"], "capture_lane_series")
+        self.assertEqual(cap["body"]["node_id"], "wt_1")
+        self.assertEqual(cap["body"]["port_name"], "lane_freq")
+        out = json.loads(out_raw)
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["lane_count"], 2)
+
+    def test_capture_voice_lane_strip_passes_id_port_name(self):
+        cap: dict = {}
+        canned = json.dumps({
+            "ok": True, "node_id": "wt_1", "port_name": "lane_freq",
+            "id_port_name": "lane_id",
+            "lane_count": 2, "samples_per_lane": 2, "duration_ms": 100,
+            "samples": [[100.0, 100.0], [200.0, 200.0]],
+            "ids":     [[10, 10],         [20, 20]],
+        })
+        out_raw = self._run_with_fake_post(
+            cap, canned,
+            lambda: self.mod.capture_voice_lane_strip(
+                "wt_1", "lane_freq", id_port_name="lane_id"))
+        self.assertEqual(cap["body"]["id_port_name"], "lane_id")
+        out = json.loads(out_raw)
+        self.assertTrue(out["ok"])
+
+    # --- Detail / WAV / compare -------------------------------------------
+
+    def test_analyze_audio_detail_calls_capture_audio(self):
+        cap: dict = {}
+        out_raw = self._run_with_fake_post(
+            cap, self.SYNTH_WAV_OK,
+            lambda: self.mod.analyze_audio_detail(duration_ms=200.0))
+        self.assertEqual(cap["method"], "capture_audio")
+        out = json.loads(out_raw)
+        self.assertTrue(out["ok"])
+        # librosa pipeline ran; the keys we asked for are present.
+        self.assertIn("pitch_track", out)
+        self.assertIn("band_energies", out)
+
+    def test_record_audio_to_wav_writes_file(self):
+        import tempfile, os
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "ref.wav")
+            cap: dict = {}
+            out_raw = self._run_with_fake_post(
+                cap, self.SYNTH_WAV_OK,
+                lambda: self.mod.record_audio_to_wav(path, duration_ms=100.0))
+            self.assertEqual(cap["method"], "capture_audio")
+            out = json.loads(out_raw)
+            self.assertTrue(out["ok"])
+            self.assertTrue(os.path.exists(path))
+            # File starts with RIFF header.
+            with open(path, "rb") as f:
+                self.assertEqual(f.read(4), b"RIFF")
+
+    # --- MIDI inject probes -----------------------------------------------
+
+    def test_capture_note_response_calls_capture_note_window(self):
+        cap: dict = {}
+        canned = json.dumps({
+            "ok": True, "midi_node_id": "midi_1",
+            "events_scheduled": 2, "events_fired": 2,
+            "capture_ms": 400.0, "sample_rate": 48000,
+            "channels": 1, "frames": 4800,
+            "wav_base64": self.SYNTH_WAV_B64,
+        })
+        out_raw = self._run_with_fake_post(
+            cap, canned,
+            lambda: self.mod.capture_note_response("midi_1", note=60,
+                                                    sustain_ms=200.0,
+                                                    capture_ms=400.0))
+        self.assertEqual(cap["method"], "capture_note_window")
+        self.assertEqual(cap["body"]["midi_node_id"], "midi_1")
+        self.assertEqual(len(cap["body"]["events"]), 2)
+        # First event is note_on, second is note_off.
+        self.assertEqual(cap["body"]["events"][0]["type"], "on")
+        self.assertEqual(cap["body"]["events"][0]["note"], 60)
+        self.assertEqual(cap["body"]["events"][1]["type"], "off")
+        out = json.loads(out_raw)
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["kind"], "note_response")
+
+    def test_capture_polyphony_response_emits_chord_schedule(self):
+        cap: dict = {}
+        canned = json.dumps({
+            "ok": True, "midi_node_id": "midi_1",
+            "events_scheduled": 6, "events_fired": 6,
+            "capture_ms": 1500.0, "sample_rate": 48000,
+            "channels": 1, "frames": 4800,
+            "wav_base64": self.SYNTH_WAV_B64,
+        })
+        out_raw = self._run_with_fake_post(
+            cap, canned,
+            lambda: self.mod.capture_polyphony_response(
+                "midi_1", [60, 64, 67]))
+        self.assertEqual(cap["method"], "capture_note_window")
+        # 3 NOTE_ONs + 3 NOTE_OFFs (default sustain_ms=600 > 0).
+        self.assertEqual(len(cap["body"]["events"]), 6)
+        on_notes = sorted(e["note"] for e in cap["body"]["events"]
+                           if e["type"] == "on")
+        self.assertEqual(on_notes, [60, 64, 67])
+        out = json.loads(out_raw)
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["polyphony"]["voice_count"], 3)
+
+    def test_capture_retrigger_response_emits_retrigger_schedule(self):
+        cap: dict = {}
+        canned = json.dumps({
+            "ok": True, "midi_node_id": "midi_1",
+            "events_scheduled": 8, "events_fired": 8,
+            "capture_ms": 1500.0, "sample_rate": 48000,
+            "channels": 1, "frames": 4800,
+            "wav_base64": self.SYNTH_WAV_B64,
+        })
+        out_raw = self._run_with_fake_post(
+            cap, canned,
+            lambda: self.mod.capture_retrigger_response(
+                "midi_1", note=60, count=4, interval_ms=200.0))
+        self.assertEqual(cap["method"], "capture_note_window")
+        # 4 NOTE_ONs + 3 inter-trigger NOTE_OFFs + 1 final NOTE_OFF = 8.
+        self.assertEqual(len(cap["body"]["events"]), 8)
+        out = json.loads(out_raw)
+        self.assertTrue(out["ok"])
+        self.assertEqual(len(out["retrigger"]["per_retrigger"]), 4)
+
+
+
+
 if __name__ == "__main__":
     unittest.main()

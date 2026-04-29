@@ -45,6 +45,13 @@ public:
     const AnalysisSnapshot& analysis_read() const;
     // Map node_id to audio engine index (-1 if not found)
     int audio_node_index(const std::string& node_id) const;
+    // Map (node_id, output port_name) to (port_idx, lane-array? boolean).
+    // Returns -1 in `port_idx_out` if not found. Used by debug captures that
+    // need to read lane_outputs via the bridge snapshot.
+    void audio_node_output_port(const std::string& node_id,
+                                const std::string& port_name,
+                                int* port_idx_out,
+                                bool* is_lane_array_out) const;
 
     // Hot-reload support
     void pause();

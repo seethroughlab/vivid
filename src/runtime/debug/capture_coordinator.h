@@ -4,6 +4,7 @@
 #include <webgpu/webgpu.h>
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <future>
 #include <memory>
 #include <mutex>
@@ -70,6 +71,75 @@ struct InterfaceCaptureRequest {
     std::promise<std::string> promise;
 };
 
+
+// ---------------------------------------------------------------------------
+// P1 (pivot): minimal data-only endpoints that the Python librosa-based MCP
+// tools sit on top of. These return raw bytes / arrays; analysis and
+// rendering live on the Python side.
+// ---------------------------------------------------------------------------
+
+// Per-frame lane sampling for a node's lane-array output port. Optional
+// `id_port_name` collects a parallel id stream so callers can color rows by
+// stable voice identity. JSON-only response, no PNG.
+struct LaneSeriesRequest {
+    std::string node_id;
+    std::string port_name;
+    std::string id_port_name;       // optional
+    float duration_ms = 500.0f;
+    std::promise<std::string> promise;
+};
+
+struct PendingLaneSeries {
+    LaneSeriesRequest req;
+    std::chrono::steady_clock::time_point start_time;
+    bool started = false;
+    int audio_node_idx = -1;
+    int port_idx = -1;
+    int id_port_idx = -1;          // -1 = no id_port_name
+    std::vector<std::vector<float>> per_lane_samples;
+    std::vector<std::vector<uint32_t>> per_lane_ids;
+    uint32_t observed_lane_count = 0;
+};
+
+// Unified MIDI inject + audio capture window. Atomically: drain tap →
+// fire scheduled events → wait → pop samples → return WAV bytes (and an
+// optional lane-data side-channel). Replaces the prior
+// {capture_note_response, capture_polyphony_response,
+// capture_retrigger_response} as a single data endpoint; Python wrappers
+// build the events[] schedule.
+struct NoteWindowEvent {
+    float t_ms = 0.0f;
+    uint8_t bytes[3] = {0, 0, 0};
+    uint8_t length = 0;
+};
+
+struct NoteWindowRequest {
+    std::string midi_node_id;
+    std::vector<NoteWindowEvent> events;
+    float capture_ms = 1000.0f;
+    // Optional per-node tap. When set, the response WAV comes from the
+    // named node's 1024-sample waveform ring instead of the final mix.
+    std::string audio_node_id;
+    // Optional lane-data collection (mirrors LaneSeriesRequest).
+    std::string lane_node_id;
+    std::string lane_port_name;
+    std::string lane_id_port_name;
+    std::promise<std::string> promise;
+};
+
+struct PendingNoteWindow {
+    NoteWindowRequest req;
+    std::chrono::steady_clock::time_point start_time;
+    bool started = false;
+    size_t next_event = 0;
+    int lane_audio_node_idx = -1;
+    int lane_port_idx = -1;
+    int lane_id_port_idx = -1;
+    std::vector<std::vector<float>> per_lane_samples;
+    std::vector<std::vector<uint32_t>> per_lane_ids;
+    uint32_t observed_lane_count = 0;
+};
+
 class CaptureCoordinator {
 public:
     CaptureCoordinator();
@@ -131,6 +201,28 @@ public:
     // Returns true if there are pending analyses (for main loop check)
     bool has_pending_analyses() const;
 
+
+    // -----------------------------------------------------------------
+    // P1 (pivot) — minimal data-only endpoints. See header section above.
+    // -----------------------------------------------------------------
+
+    // Synchronous: read the named audio node's 1024-sample waveform ring
+    // and return as a 32-bit float WAV (base64). Safe to call from the HTTP
+    // dispatch thread — only touches atomics. ~21 ms of audio @ 48 kHz.
+    std::string handle_capture_node_audio(const std::string& node_id, int channel);
+
+    // Per-frame lane sampling state machine.
+    std::future<std::string> request_lane_series(const std::string& node_id,
+                                                  const std::string& port_name,
+                                                  const std::string& id_port_name,
+                                                  float duration_ms);
+    void tick_lane_series();
+
+    // Unified inject + capture state machine. Returns raw WAV (and optional
+    // lane data); Python wrappers do all analysis and rendering.
+    std::future<std::string> request_note_window(NoteWindowRequest req);
+    void tick_note_window();
+
 private:
     std::string capture_frame(WGPUDevice device, WGPUQueue queue,
                               WGPUTexture tex,
@@ -153,6 +245,13 @@ private:
 
     std::vector<InterfaceCaptureRequest> pending_interface_capture_requests_;
     std::optional<InterfaceCaptureRequest> active_interface_capture_;
+
+
+    // P1 (pivot) — minimal data-only state machines.
+    std::vector<LaneSeriesRequest> pending_lane_series_requests_;
+    std::vector<PendingLaneSeries> pending_lane_series_;
+    std::vector<NoteWindowRequest> pending_note_window_requests_;
+    std::vector<PendingNoteWindow> pending_note_windows_;
 };
 
 } // namespace vivid

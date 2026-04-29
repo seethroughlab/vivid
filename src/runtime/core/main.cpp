@@ -3190,6 +3190,10 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
                         gpu.device(), gpu.queue(), cap_tex, cap_w, cap_h);
                 capture_coordinator.tick_analysis(
                     gpu.device(), gpu.queue(), cap_tex, cap_w, cap_h);
+                // P1 (pivot) — minimal data-only state machines for the
+                // Python librosa-based MCP audio tools.
+                capture_coordinator.tick_lane_series();
+                capture_coordinator.tick_note_window();
             }
 
             if (frame_count % 60 == 0) {

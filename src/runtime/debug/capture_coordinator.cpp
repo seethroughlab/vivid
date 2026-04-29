@@ -148,6 +148,9 @@ static std::string capture_json_err(const std::string& msg) {
     return R"({"ok":false,"error":")" + json_escape(msg) + "\"}";
 }
 
+// Forward-decl for use by tick_plots() above its (existing) definition site.
+static std::string float_str(float v);
+
 // ---------------------------------------------------------------------------
 // GPU readback helper: texture → RGBA8 pixels
 // Creates its own encoder, submits, and waits synchronously.
@@ -323,6 +326,468 @@ std::future<std::string> CaptureCoordinator::request_compare(AnalysisMode mode, 
         pending_compare_requests_.push_back(std::move(req));
     }
     return future;
+}
+
+// ===========================================================================
+// P1 (pivot) — minimal data-only endpoints. Python librosa-based MCP tools
+// sit on top of these. No analysis, no rendering — raw bytes / arrays only.
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// capture_node_audio — synchronous read of a named node's 1024-sample
+// waveform ring, encoded as 32-bit float WAV (base64). ~21 ms @ 48 kHz.
+// ---------------------------------------------------------------------------
+
+std::string CaptureCoordinator::handle_capture_node_audio(const std::string& node_id,
+                                                           int channel) {
+    if (!audio_) return capture_json_err("no audio engine");
+    int idx = audio_->audio_node_index(node_id);
+    if (idx < 0) {
+        return capture_json_err("node not found or not audio-cadence: " + node_id);
+    }
+    const auto& snap = audio_->analysis_read();
+    if (static_cast<size_t>(idx) >= snap.waveform.size() ||
+        static_cast<size_t>(idx) >= snap.channel_counts.size()) {
+        return capture_json_err("no waveform snapshot for node: " + node_id);
+    }
+    uint16_t channels = snap.channel_counts[idx];
+    if (channels == 0) channels = 1;
+    if (channels > AnalysisSnapshot::kMaxWaveformChannels)
+        channels = AnalysisSnapshot::kMaxWaveformChannels;
+    const uint32_t kRing = AnalysisSnapshot::kWaveformSamples;
+
+    // Optionally restrict to a single channel.
+    uint16_t out_channels = channels;
+    std::vector<float> samples;
+    if (channel >= 0 && channel < channels) {
+        out_channels = 1;
+        samples.resize(kRing);
+        for (uint32_t i = 0; i < kRing; ++i) {
+            samples[i] = snap.waveform[idx][channel][i];
+        }
+    } else {
+        samples.resize(static_cast<size_t>(kRing) * channels);
+        for (uint32_t i = 0; i < kRing; ++i) {
+            for (uint16_t c = 0; c < channels; ++c) {
+                samples[static_cast<size_t>(i) * channels + c] =
+                    snap.waveform[idx][c][i];
+            }
+        }
+    }
+
+    const uint32_t rate = AudioEngine::kSampleRate;
+    auto wav = encode_wav_float32(samples.data(), samples.size(), rate, out_channels);
+    std::string b64 = base64_encode(wav.data(), wav.size());
+    std::string json = R"({"ok":true,"node_id":")" + json_escape(node_id) + "\"";
+    json += R"(,"sample_rate":)" + std::to_string(rate);
+    json += R"(,"channels":)" + std::to_string(out_channels);
+    json += R"(,"frames":)" + std::to_string(kRing);
+    json += R"(,"wav_base64":")" + b64 + "\"}";
+    return json;
+}
+
+// ---------------------------------------------------------------------------
+// capture_lane_series — sample a node's lane-array output port every frame
+// for `duration_ms` and return the raw per-lane time series as JSON.
+// Optional id_port_name collects a parallel id stream so Python can color
+// stripes by stable voice identity.
+// ---------------------------------------------------------------------------
+
+std::future<std::string> CaptureCoordinator::request_lane_series(
+    const std::string& node_id, const std::string& port_name,
+    const std::string& id_port_name, float duration_ms) {
+    LaneSeriesRequest req;
+    req.node_id = node_id;
+    req.port_name = port_name;
+    req.id_port_name = id_port_name;
+    req.duration_ms = std::clamp(duration_ms, 50.0f, 10000.0f);
+    auto fut = req.promise.get_future();
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        pending_lane_series_requests_.push_back(std::move(req));
+    }
+    return fut;
+}
+
+void CaptureCoordinator::tick_lane_series() {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (auto& req : pending_lane_series_requests_) {
+            PendingLaneSeries pl;
+            pl.req = std::move(req);
+            pending_lane_series_.push_back(std::move(pl));
+        }
+        pending_lane_series_requests_.clear();
+    }
+
+    auto now = std::chrono::steady_clock::now();
+    auto it = pending_lane_series_.begin();
+    while (it != pending_lane_series_.end()) {
+        auto& pl = *it;
+        try {
+            if (!pl.started) {
+                pl.start_time = now;
+                pl.started = true;
+                if (!audio_) {
+                    pl.req.promise.set_value(capture_json_err("no audio engine"));
+                    it = pending_lane_series_.erase(it);
+                    continue;
+                }
+                int port_idx = -1;
+                bool is_lane = false;
+                audio_->audio_node_output_port(pl.req.node_id, pl.req.port_name,
+                                                &port_idx, &is_lane);
+                if (port_idx < 0) {
+                    pl.req.promise.set_value(capture_json_err(
+                        "node/port not found or not audio-cadence: " +
+                        pl.req.node_id + "/" + pl.req.port_name));
+                    it = pending_lane_series_.erase(it);
+                    continue;
+                }
+                pl.audio_node_idx = audio_->audio_node_index(pl.req.node_id);
+                pl.port_idx = port_idx;
+                if (!pl.req.id_port_name.empty()) {
+                    int idp = -1; bool dummy = false;
+                    audio_->audio_node_output_port(pl.req.node_id, pl.req.id_port_name,
+                                                    &idp, &dummy);
+                    pl.id_port_idx = idp;  // -1 if missing — silently ignored
+                }
+            }
+
+            // Sample this frame.
+            const auto& snap = audio_->analysis_read();
+            if (static_cast<size_t>(pl.audio_node_idx) < snap.lane_outputs.size() &&
+                static_cast<size_t>(pl.port_idx) < snap.lane_outputs[pl.audio_node_idx].size()) {
+                const auto& slot = snap.lane_outputs[pl.audio_node_idx][pl.port_idx];
+                uint32_t n = slot.length;
+                if (n > pl.observed_lane_count) {
+                    pl.per_lane_samples.resize(n);
+                    if (pl.id_port_idx >= 0) pl.per_lane_ids.resize(n);
+                    pl.observed_lane_count = n;
+                }
+                size_t prev_len = pl.per_lane_samples.empty()
+                    ? 0 : pl.per_lane_samples[0].size();
+                const float* id_data = nullptr;
+                uint32_t id_len = 0;
+                if (pl.id_port_idx >= 0 &&
+                    static_cast<size_t>(pl.id_port_idx) <
+                        snap.lane_outputs[pl.audio_node_idx].size()) {
+                    const auto& id_slot = snap.lane_outputs[pl.audio_node_idx][pl.id_port_idx];
+                    id_data = id_slot.data;
+                    id_len = id_slot.length;
+                }
+                for (uint32_t i = 0; i < pl.observed_lane_count; ++i) {
+                    float v = (i < n && slot.data) ? slot.data[i] : 0.0f;
+                    pl.per_lane_samples[i].push_back(v);
+                    if (pl.per_lane_samples[i].size() < prev_len + 1) {
+                        pl.per_lane_samples[i].resize(prev_len, 0.0f);
+                        pl.per_lane_samples[i].push_back(v);
+                    }
+                    if (pl.id_port_idx >= 0) {
+                        uint32_t id = (i < id_len && id_data)
+                            ? static_cast<uint32_t>(id_data[i]) : 0;
+                        pl.per_lane_ids[i].push_back(id);
+                        if (pl.per_lane_ids[i].size() < prev_len + 1) {
+                            pl.per_lane_ids[i].resize(prev_len, 0);
+                            pl.per_lane_ids[i].push_back(id);
+                        }
+                    }
+                }
+            }
+
+            float elapsed_ms = std::chrono::duration<float, std::milli>(
+                now - pl.start_time).count();
+            if (elapsed_ms < pl.req.duration_ms) {
+                ++it;
+                continue;
+            }
+
+            // Done — serialize raw arrays.
+            uint32_t lanes = static_cast<uint32_t>(pl.per_lane_samples.size());
+            std::string json = R"({"ok":true,"node_id":")" + json_escape(pl.req.node_id) + "\"";
+            json += R"(,"port_name":")" + json_escape(pl.req.port_name) + "\"";
+            if (!pl.req.id_port_name.empty())
+                json += R"(,"id_port_name":")" + json_escape(pl.req.id_port_name) + "\"";
+            json += R"(,"lane_count":)" + std::to_string(lanes);
+            json += R"(,"samples_per_lane":)" + std::to_string(
+                lanes > 0 ? pl.per_lane_samples[0].size() : 0);
+            json += R"(,"duration_ms":)" + float_str(pl.req.duration_ms);
+            json += R"(,"samples":[)";
+            for (uint32_t i = 0; i < lanes; ++i) {
+                if (i > 0) json += ",";
+                json += "[";
+                for (size_t k = 0; k < pl.per_lane_samples[i].size(); ++k) {
+                    if (k > 0) json += ",";
+                    json += float_str(pl.per_lane_samples[i][k]);
+                }
+                json += "]";
+            }
+            json += "]";
+            if (!pl.req.id_port_name.empty()) {
+                json += R"(,"ids":[)";
+                for (uint32_t i = 0; i < lanes; ++i) {
+                    if (i > 0) json += ",";
+                    json += "[";
+                    for (size_t k = 0; k < pl.per_lane_ids[i].size(); ++k) {
+                        if (k > 0) json += ",";
+                        json += std::to_string(pl.per_lane_ids[i][k]);
+                    }
+                    json += "]";
+                }
+                json += "]";
+            }
+            json += "}";
+            pl.req.promise.set_value(json);
+            it = pending_lane_series_.erase(it);
+        } catch (const std::exception& e) {
+            pl.req.promise.set_value(capture_json_err(e.what()));
+            it = pending_lane_series_.erase(it);
+        } catch (...) {
+            pl.req.promise.set_value(capture_json_err("unknown error during lane series capture"));
+            it = pending_lane_series_.erase(it);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// capture_note_window — atomic inject + audio-window capture. Replaces
+// {capture_note_response, capture_polyphony_response, capture_retrigger_response}
+// at the C++ HTTP layer; Python wrappers build the events[] schedule and
+// run librosa on the returned WAV.
+// ---------------------------------------------------------------------------
+
+std::future<std::string> CaptureCoordinator::request_note_window(NoteWindowRequest req) {
+    req.capture_ms = std::clamp(req.capture_ms, 50.0f, 30000.0f);
+    auto fut = req.promise.get_future();
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        pending_note_window_requests_.push_back(std::move(req));
+    }
+    return fut;
+}
+
+void CaptureCoordinator::tick_note_window() {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (auto& req : pending_note_window_requests_) {
+            PendingNoteWindow pn;
+            pn.req = std::move(req);
+            pending_note_windows_.push_back(std::move(pn));
+        }
+        pending_note_window_requests_.clear();
+    }
+
+    auto now = std::chrono::steady_clock::now();
+    auto it = pending_note_windows_.begin();
+    while (it != pending_note_windows_.end()) {
+        auto& pn = *it;
+        try {
+            if (!pn.started) {
+                if (!runtime_api_) {
+                    pn.req.promise.set_value(capture_json_err("no runtime api"));
+                    it = pending_note_windows_.erase(it);
+                    continue;
+                }
+                if (audio_) {
+                    audio_->start_recording_tap();
+                    uint64_t avail = audio_->available_recorded_samples();
+                    if (avail > 0) {
+                        std::vector<float> drain(avail);
+                        audio_->pop_recorded_samples(drain.data(), avail);
+                    }
+                }
+                // Optional lane data setup.
+                if (audio_ && !pn.req.lane_node_id.empty() && !pn.req.lane_port_name.empty()) {
+                    int port_idx = -1; bool dummy = false;
+                    audio_->audio_node_output_port(pn.req.lane_node_id,
+                                                    pn.req.lane_port_name,
+                                                    &port_idx, &dummy);
+                    if (port_idx >= 0) {
+                        pn.lane_audio_node_idx = audio_->audio_node_index(pn.req.lane_node_id);
+                        pn.lane_port_idx = port_idx;
+                        if (!pn.req.lane_id_port_name.empty()) {
+                            int idp = -1; bool d2 = false;
+                            audio_->audio_node_output_port(pn.req.lane_node_id,
+                                                            pn.req.lane_id_port_name,
+                                                            &idp, &d2);
+                            pn.lane_id_port_idx = idp;
+                        }
+                    }
+                }
+                pn.start_time = now;
+                pn.started = true;
+            }
+
+            float elapsed_ms = std::chrono::duration<float, std::milli>(
+                now - pn.start_time).count();
+
+            // Fire any due events.
+            while (pn.next_event < pn.req.events.size() &&
+                   pn.req.events[pn.next_event].t_ms <= elapsed_ms) {
+                const auto& ev = pn.req.events[pn.next_event];
+                if (ev.length > 0 && runtime_api_) {
+                    bool ok = runtime_api_->inject_midi_to_node(
+                        pn.req.midi_node_id, ev.bytes, ev.length);
+                    if (!ok && pn.next_event == 0) {
+                        pn.req.promise.set_value(capture_json_err(
+                            "midi_node_id missing or operator does not export "
+                            "vivid_op_inject_midi: " + pn.req.midi_node_id));
+                        it = pending_note_windows_.erase(it);
+                        goto continue_outer_nw;
+                    }
+                }
+                ++pn.next_event;
+            }
+
+            // Lane sampling each tick (if requested).
+            if (pn.lane_audio_node_idx >= 0 && audio_) {
+                const auto& snap = audio_->analysis_read();
+                if (static_cast<size_t>(pn.lane_audio_node_idx) < snap.lane_outputs.size() &&
+                    static_cast<size_t>(pn.lane_port_idx) <
+                        snap.lane_outputs[pn.lane_audio_node_idx].size()) {
+                    const auto& slot = snap.lane_outputs[pn.lane_audio_node_idx][pn.lane_port_idx];
+                    uint32_t n = slot.length;
+                    if (n > pn.observed_lane_count) {
+                        pn.per_lane_samples.resize(n);
+                        if (pn.lane_id_port_idx >= 0) pn.per_lane_ids.resize(n);
+                        pn.observed_lane_count = n;
+                    }
+                    size_t prev_len = pn.per_lane_samples.empty()
+                        ? 0 : pn.per_lane_samples[0].size();
+                    const float* id_data = nullptr;
+                    uint32_t id_len = 0;
+                    if (pn.lane_id_port_idx >= 0 &&
+                        static_cast<size_t>(pn.lane_id_port_idx) <
+                            snap.lane_outputs[pn.lane_audio_node_idx].size()) {
+                        const auto& id_slot = snap.lane_outputs[pn.lane_audio_node_idx][pn.lane_id_port_idx];
+                        id_data = id_slot.data;
+                        id_len = id_slot.length;
+                    }
+                    for (uint32_t i = 0; i < pn.observed_lane_count; ++i) {
+                        float v = (i < n && slot.data) ? slot.data[i] : 0.0f;
+                        pn.per_lane_samples[i].push_back(v);
+                        if (pn.per_lane_samples[i].size() < prev_len + 1) {
+                            pn.per_lane_samples[i].resize(prev_len, 0.0f);
+                            pn.per_lane_samples[i].push_back(v);
+                        }
+                        if (pn.lane_id_port_idx >= 0) {
+                            uint32_t id = (i < id_len && id_data)
+                                ? static_cast<uint32_t>(id_data[i]) : 0;
+                            pn.per_lane_ids[i].push_back(id);
+                            if (pn.per_lane_ids[i].size() < prev_len + 1) {
+                                pn.per_lane_ids[i].resize(prev_len, 0);
+                                pn.per_lane_ids[i].push_back(id);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (elapsed_ms < pn.req.capture_ms) {
+                ++it;
+                continue;
+            }
+
+            // Pop audio samples — final-mix tap or per-node ring snapshot.
+            std::vector<float> samples;
+            uint64_t popped = 0;
+            uint16_t channels = 2;
+            const uint32_t rate = AudioEngine::kSampleRate;
+            if (!pn.req.audio_node_id.empty() && audio_) {
+                int idx = audio_->audio_node_index(pn.req.audio_node_id);
+                if (idx >= 0) {
+                    const auto& snap = audio_->analysis_read();
+                    if (static_cast<size_t>(idx) < snap.waveform.size() &&
+                        static_cast<size_t>(idx) < snap.channel_counts.size()) {
+                        uint16_t ch = snap.channel_counts[idx];
+                        if (ch == 0) ch = 1;
+                        if (ch > AnalysisSnapshot::kMaxWaveformChannels)
+                            ch = AnalysisSnapshot::kMaxWaveformChannels;
+                        const uint32_t kRing = AnalysisSnapshot::kWaveformSamples;
+                        channels = ch;
+                        samples.resize(static_cast<size_t>(kRing) * ch);
+                        for (uint32_t i = 0; i < kRing; ++i)
+                            for (uint16_t c = 0; c < ch; ++c)
+                                samples[static_cast<size_t>(i) * ch + c] = snap.waveform[idx][c][i];
+                        popped = static_cast<uint64_t>(kRing) * ch;
+                    }
+                }
+            } else if (audio_) {
+                uint64_t avail = audio_->available_recorded_samples();
+                if (avail > 0) {
+                    samples.resize(avail);
+                    popped = audio_->pop_recorded_samples(samples.data(), avail);
+                    samples.resize(popped);
+                }
+            }
+            uint64_t frame_count = popped / channels;
+
+            auto wav = encode_wav_float32(samples.data(), popped, rate, channels);
+            std::string b64 = base64_encode(wav.data(), wav.size());
+
+            std::string json = R"({"ok":true,"midi_node_id":")" + json_escape(pn.req.midi_node_id) + "\"";
+            json += R"(,"events_scheduled":)" + std::to_string(pn.req.events.size());
+            json += R"(,"events_fired":)" + std::to_string(pn.next_event);
+            json += R"(,"capture_ms":)" + float_str(pn.req.capture_ms);
+            json += R"(,"sample_rate":)" + std::to_string(rate);
+            json += R"(,"channels":)" + std::to_string(channels);
+            json += R"(,"frames":)" + std::to_string(frame_count);
+            json += R"(,"audio_source":")"
+                + std::string(pn.req.audio_node_id.empty() ? "final_mix_tap" : "node_waveform_ring")
+                + "\"";
+            if (!pn.req.audio_node_id.empty())
+                json += R"(,"audio_node_id":")" + json_escape(pn.req.audio_node_id) + "\"";
+            json += R"(,"wav_base64":")" + b64 + "\"";
+
+            // Optional lane data side-channel.
+            if (pn.lane_audio_node_idx >= 0) {
+                uint32_t lanes = static_cast<uint32_t>(pn.per_lane_samples.size());
+                json += R"(,"lane_data":{"node_id":")" + json_escape(pn.req.lane_node_id) + "\"";
+                json += R"(,"port_name":")" + json_escape(pn.req.lane_port_name) + "\"";
+                if (!pn.req.lane_id_port_name.empty())
+                    json += R"(,"id_port_name":")" + json_escape(pn.req.lane_id_port_name) + "\"";
+                json += R"(,"lane_count":)" + std::to_string(lanes);
+                json += R"(,"samples_per_lane":)" + std::to_string(
+                    lanes > 0 ? pn.per_lane_samples[0].size() : 0);
+                json += R"(,"samples":[)";
+                for (uint32_t i = 0; i < lanes; ++i) {
+                    if (i > 0) json += ",";
+                    json += "[";
+                    for (size_t k = 0; k < pn.per_lane_samples[i].size(); ++k) {
+                        if (k > 0) json += ",";
+                        json += float_str(pn.per_lane_samples[i][k]);
+                    }
+                    json += "]";
+                }
+                json += "]";
+                if (!pn.req.lane_id_port_name.empty()) {
+                    json += R"(,"ids":[)";
+                    for (uint32_t i = 0; i < lanes; ++i) {
+                        if (i > 0) json += ",";
+                        json += "[";
+                        for (size_t k = 0; k < pn.per_lane_ids[i].size(); ++k) {
+                            if (k > 0) json += ",";
+                            json += std::to_string(pn.per_lane_ids[i][k]);
+                        }
+                        json += "]";
+                    }
+                    json += "]";
+                }
+                json += "}";
+            }
+
+            json += "}";
+            pn.req.promise.set_value(json);
+            it = pending_note_windows_.erase(it);
+        } catch (const std::exception& e) {
+            pn.req.promise.set_value(capture_json_err(e.what()));
+            it = pending_note_windows_.erase(it);
+        } catch (...) {
+            pn.req.promise.set_value(capture_json_err("unknown error during note window"));
+            it = pending_note_windows_.erase(it);
+        }
+        continue_outer_nw:;
+    }
 }
 
 std::string CaptureCoordinator::handle_start_recording_tap() {

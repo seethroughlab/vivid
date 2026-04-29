@@ -1,3 +1,8 @@
 mcp
 httpx
 pillow>=10.0.0
+# audio_analysis.py — librosa for DSP, soundfile for WAV I/O,
+# matplotlib (Agg backend, no GUI) for plot rendering.
+librosa>=0.10
+soundfile>=0.12
+matplotlib>=3.7

@@ -2422,6 +2422,632 @@ async def capture_image(mode: str = "interface",
     raise ValueError("mode must be 'interface' or 'output'")
 
 
+# ---------------------------------------------------------------------------
+# Audio debug tools (librosa-backed).
+#
+# These wrappers fetch raw audio (WAV bytes) from the C++ runtime via three
+# minimal data endpoints — capture_audio, capture_node_audio,
+# capture_lane_series, capture_note_window — then run all DSP, feature
+# extraction, and plot rendering Python-side via mcp/audio_analysis.py
+# (librosa + matplotlib + soundfile). The C++ runtime no longer carries any
+# of the analysis or rendering code.
+# ---------------------------------------------------------------------------
+
+# Lazy import so that callers who never touch audio tools don't pay the
+# librosa/numba cold-start cost. Once loaded, librosa stays warm.
+_audio_analysis_mod = None
+
+def _audio_analysis():
+    global _audio_analysis_mod
+    if _audio_analysis_mod is None:
+        from mcp import audio_analysis as _aa  # local import
+        _audio_analysis_mod = _aa
+    return _audio_analysis_mod
+
+
+async def _fetch_wav_bytes(node_id: str, duration_ms: float):
+    """Returns (samples_ndarray, sample_rate) or (None, error_string).
+
+    When `node_id` is provided, snapshots that audio node's 1024-sample
+    waveform ring (~21ms @ 48kHz; duration_ms is ignored for per-node).
+    Otherwise, captures `duration_ms` of the final mix via the recording
+    tap. Both paths return WAV bytes that we decode via soundfile.
+    """
+    if node_id:
+        raw = await _post("capture_node_audio", {"node_id": node_id})
+    else:
+        raw = await _post("capture_audio",
+                          {"duration": float(duration_ms) / 1000.0},
+                          timeout=max(10.0, duration_ms / 1000.0 + 6.0))
+    try:
+        doc = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return None, f"non-JSON response: {exc}"
+    if not doc.get("ok", False):
+        return None, doc.get("error", "capture failed")
+    b64 = doc.get("wav_base64", "")
+    if not b64:
+        return None, "no wav_base64 in response"
+    try:
+        samples, sr = _audio_analysis().load_wav_bytes(b64)
+        return (samples, sr), None
+    except Exception as exc:  # noqa: BLE001
+        return None, f"failed to decode WAV: {exc}"
+
+
+def _write_png_to_disk(png_bytes: bytes, save_dir: str, prefix: str) -> str:
+    save_root = _resolve_save_dir(save_dir)
+    ts = _time_module.strftime("%Y%m%d_%H%M%S_%f")
+    out_path = save_root / f"{prefix}_{ts}.png"
+    out_path.write_bytes(png_bytes)
+    return str(out_path)
+
+
+@mcp.tool()
+async def capture_waveform_plot(duration_ms: float = 1000.0,
+                                width: int = 720,
+                                height: int = 200,
+                                channel: int = -1,
+                                save_dir: str = "",
+                                node_id: str = "") -> str:
+    """Render the live audio output as a time-domain waveform PNG.
+
+    With `node_id`, snapshots that audio node's 1024-sample ring (~21 ms);
+    otherwise captures `duration_ms` of the final mix. PNG is written to
+    `save_dir` (or a temp folder); the returned `capture_path` is what
+    you Read to see the image.
+
+    Args:
+        duration_ms: Length of the captured window (50 - 10000). Ignored
+            for per-node captures (ring is fixed 1024 samples).
+        width, height: Plot pixel dimensions.
+        channel: -1 stacks all channels; otherwise the 0-indexed channel
+            to isolate. Per-node captures honour this; final-mix captures
+            currently always include all channels (mono mix happens in
+            librosa as needed).
+        save_dir: Optional output directory.
+        node_id: If set, capture from this audio node's waveform ring.
+    """
+    fetched, err = await _fetch_wav_bytes(node_id, duration_ms)
+    if err:
+        return _json_response({"ok": False, "error": err})
+    samples, sr = fetched
+    if channel >= 0 and samples.ndim > 1 and channel < samples.shape[1]:
+        samples = samples[:, channel]
+    png = _audio_analysis().render_waveform_png(samples, sr,
+                                                  width=int(width),
+                                                  height=int(height))
+    path = _write_png_to_disk(png, save_dir, "vivid_waveform")
+    return _json_response({
+        "ok": True, "capture_path": path,
+        "kind": "waveform", "sample_rate": int(sr),
+        "frames": int(samples.shape[0] if samples.ndim > 0 else 0),
+        "channels": int(samples.shape[1]) if samples.ndim > 1 else 1,
+        "node_id": node_id,
+        "hint": "Read capture_path as an image to see the audio.",
+    })
+
+
+@mcp.tool()
+async def capture_spectrogram(duration_ms: float = 1000.0,
+                              width: int = 720,
+                              height: int = 240,
+                              fmin_hz: float = 0.0,
+                              fmax_hz: float = 0.0,
+                              save_dir: str = "",
+                              node_id: str = "") -> str:
+    """Render the live audio output as a magnitude spectrogram PNG.
+
+    STFT with Hann window and 75% overlap, dB-scaled magnitude on a
+    viridis colormap. Time on x, linear frequency on y from `fmin_hz`
+    (default 0) to `fmax_hz` (default Nyquist).
+
+    Args:
+        duration_ms: Length of the captured window (50 - 10000). Ignored
+            for per-node captures.
+        width, height: Plot pixel dimensions.
+        fmin_hz, fmax_hz: Visible frequency band. fmax_hz=0 picks Nyquist.
+        save_dir: Optional output directory.
+        node_id: If set, capture from this audio node's waveform ring.
+    """
+    fetched, err = await _fetch_wav_bytes(node_id, duration_ms)
+    if err:
+        return _json_response({"ok": False, "error": err})
+    samples, sr = fetched
+    fmax = float(fmax_hz) if fmax_hz > 0 else None
+    png = _audio_analysis().render_spectrogram_png(samples, sr,
+                                                     fmin=float(fmin_hz),
+                                                     fmax=fmax,
+                                                     width=int(width),
+                                                     height=int(height))
+    path = _write_png_to_disk(png, save_dir, "vivid_spectrogram")
+    return _json_response({
+        "ok": True, "capture_path": path,
+        "kind": "spectrogram", "sample_rate": int(sr),
+        "fmin_hz": float(fmin_hz),
+        "fmax_hz": float(fmax_hz) if fmax_hz > 0 else float(sr) / 2.0,
+        "node_id": node_id,
+        "hint": "Read capture_path as an image to see the spectrum.",
+    })
+
+
+@mcp.tool()
+async def capture_envelope_plot(duration_ms: float = 1000.0,
+                                width: int = 720,
+                                height: int = 160,
+                                channel: int = -1,
+                                save_dir: str = "",
+                                node_id: str = "") -> str:
+    """Render the live audio output as a per-channel RMS envelope PNG.
+
+    Each x column is the windowed RMS of its time slice; channels are
+    overlaid with different colors. Useful for ADSR shape verification.
+
+    Args:
+        duration_ms: Length of the captured window (50 - 10000).
+        width, height: Plot pixel dimensions.
+        channel: -1 for all channels overlaid; 0-indexed for one channel.
+        save_dir: Optional output directory.
+        node_id: If set, capture from this audio node's waveform ring.
+    """
+    fetched, err = await _fetch_wav_bytes(node_id, duration_ms)
+    if err:
+        return _json_response({"ok": False, "error": err})
+    samples, sr = fetched
+    if channel >= 0 and samples.ndim > 1 and channel < samples.shape[1]:
+        samples = samples[:, channel]
+    png = _audio_analysis().render_envelope_png(samples, sr,
+                                                  width=int(width),
+                                                  height=int(height))
+    path = _write_png_to_disk(png, save_dir, "vivid_envelope")
+    return _json_response({
+        "ok": True, "capture_path": path,
+        "kind": "envelope", "sample_rate": int(sr),
+        "node_id": node_id,
+        "hint": "Read capture_path as an image to see the envelope.",
+    })
+
+
+@mcp.tool()
+async def capture_voice_lane_strip(node_id: str,
+                                    port_name: str,
+                                    duration_ms: float = 500.0,
+                                    width: int = 720,
+                                    per_lane_height: int = 32,
+                                    save_dir: str = "",
+                                    id_port_name: str = "") -> str:
+    """Render a node's lane-array output as a stacked per-lane PNG over time.
+
+    Samples the named output port every frame for `duration_ms`, builds
+    one horizontal strip per lane (lane 0 on top), writes the PNG to disk.
+    Generic — no synth-specific assumptions.
+
+    When `id_port_name` is provided (e.g. `lane_id` for a poly synth),
+    each row is colored by a hashed function of its identity. Otherwise,
+    rows alternate between two colors.
+
+    Args:
+        node_id: Audio-cadence node id.
+        port_name: Output port name (must be a lane-array port).
+        duration_ms: Sample window length in ms.
+        width: PNG width.
+        per_lane_height: Height per lane row in pixels.
+        save_dir: Optional output directory.
+        id_port_name: Optional second port carrying per-lane identity.
+            If set, rows are colored by stable id (golden-angle HSV hash).
+    """
+    body = {
+        "node_id": node_id,
+        "port_name": port_name,
+        "duration_ms": float(duration_ms),
+    }
+    if id_port_name:
+        body["id_port_name"] = id_port_name
+    raw = await _post("capture_lane_series", body,
+                      timeout=max(10.0, duration_ms / 1000.0 + 6.0))
+    try:
+        doc = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return _json_response({"ok": False, "error": f"non-JSON: {exc}"})
+    if not doc.get("ok", False):
+        return _json_response({"ok": False, "error": doc.get("error")})
+
+    lanes = doc.get("samples", [])
+    ids = doc.get("ids") if id_port_name else None
+    png = _audio_analysis().render_lane_strip_png(
+        lanes, ids=ids, width=int(width), lane_height=int(per_lane_height))
+    path = _write_png_to_disk(png, save_dir, "vivid_lane_strip")
+    return _json_response({
+        "ok": True, "capture_path": path,
+        "node_id": doc.get("node_id"),
+        "port_name": doc.get("port_name"),
+        "lane_count": doc.get("lane_count"),
+        "samples_per_lane": doc.get("samples_per_lane"),
+        "duration_ms": doc.get("duration_ms"),
+        "hint": ("Read capture_path. Each row = one lane. Compare row N's "
+                 "values with what lane N is supposed to carry."),
+    })
+
+
+@mcp.tool()
+async def analyze_audio_detail(duration_ms: float = 1000.0,
+                               hop_ms: float = 50.0,
+                               pitch_track: bool = True,
+                               band_energies: bool = True,
+                               onset_times: bool = True,
+                               scalar_summary: bool = True) -> str:
+    """Time-series audio analysis over a captured window.
+
+    Returns JSON with whichever of these arrays are requested:
+      - `pitch_track`: list of {t, hz, conf} via librosa.pyin
+      - `band_energies`: list of {t, bass, mid, treble} via STFT bandsums
+      - `onset_times`: list of seconds via librosa.onset.onset_detect
+      - `scalar`: window-averaged values
+
+    Args:
+        duration_ms: Length of captured window (50 - 10000).
+        hop_ms: Hop interval for time-series points (5 - 500).
+        pitch_track / band_energies / onset_times / scalar_summary: per-array
+            opt-out flags.
+    """
+    fetched, err = await _fetch_wav_bytes("", duration_ms)
+    if err:
+        return _json_response({"ok": False, "error": err})
+    samples, sr = fetched
+    detail = _audio_analysis().analyze_detail(
+        samples, sr, hop_ms=float(hop_ms),
+        want_pitch_track=bool(pitch_track),
+        want_band_energies=bool(band_energies),
+        want_onset_times=bool(onset_times),
+        want_scalar_summary=bool(scalar_summary))
+    detail["ok"] = True
+    return _json_response(detail)
+
+
+@mcp.tool()
+async def record_audio_to_wav(path: str,
+                               duration_ms: float = 1000.0) -> str:
+    """Capture `duration_ms` of final-mix audio and write it as a 32-bit
+    float WAV to `path`. Use this to snapshot a "golden" reference take
+    that `compare_audio_to_reference` can diff future captures against.
+
+    Args:
+        path: Absolute filesystem path to write to (.wav).
+        duration_ms: Capture window length (50 - 30000).
+    """
+    fetched, err = await _fetch_wav_bytes("", duration_ms)
+    if err:
+        return _json_response({"ok": False, "error": err})
+    samples, sr = fetched
+    try:
+        wav_bytes = _audio_analysis().write_wav_bytes(samples, sr)
+        with open(path, "wb") as f:
+            f.write(wav_bytes)
+    except Exception as exc:  # noqa: BLE001
+        return _json_response({"ok": False, "error": f"write failed: {exc}"})
+    return _json_response({
+        "ok": True, "path": path,
+        "sample_rate": int(sr),
+        "frames": int(samples.shape[0] if samples.ndim > 0 else 0),
+        "channels": int(samples.shape[1]) if samples.ndim > 1 else 1,
+        "duration_ms": float(duration_ms),
+        "bytes_written": len(wav_bytes),
+    })
+
+
+@mcp.tool()
+async def compare_audio_to_reference(reference_path: str,
+                                      duration_ms: float = 1000.0,
+                                      plot_width: int = 720,
+                                      plot_height: int = 240,
+                                      save_dir: str = "") -> str:
+    """Capture current audio, diff against a reference WAV.
+
+    Returns scalar deltas (rms, fundamental_hz, harmonic_purity, ...) and
+    a side-by-side spectrogram PNG (left = reference, right = current).
+
+    Args:
+        reference_path: Absolute path to a WAV (typically from
+            `record_audio_to_wav`). soundfile decodes most formats.
+        duration_ms: Capture window length for the current audio.
+        plot_width / plot_height: Dimensions of the diff PNG.
+        save_dir: Optional output directory for the diff PNG.
+    """
+    fetched, err = await _fetch_wav_bytes("", duration_ms)
+    if err:
+        return _json_response({"ok": False, "error": err})
+    cur_samples, cur_sr = fetched
+    try:
+        import soundfile as _sf
+        ref_samples, ref_sr = _sf.read(reference_path, dtype="float32",
+                                        always_2d=False)
+    except Exception as exc:  # noqa: BLE001
+        return _json_response({
+            "ok": False,
+            "error": f"failed to read reference {reference_path}: {exc}",
+        })
+
+    cmp = _audio_analysis().compare_to_reference(
+        ref_samples, ref_sr, cur_samples, cur_sr)
+    png = _audio_analysis().render_spectrogram_diff_png(
+        ref_samples, ref_sr, cur_samples, cur_sr,
+        width=int(plot_width), height=int(plot_height))
+    diff_path = _write_png_to_disk(png, save_dir, "vivid_diff")
+    return _json_response({
+        "ok": True,
+        "reference_path": reference_path,
+        "diff_png_path": diff_path,
+        "deltas": cmp["deltas"],
+        "reference_metrics": cmp["reference_metrics"],
+        "current_metrics": cmp["current_metrics"],
+        "hint": ("Read diff_png_path: left = reference spectrogram, "
+                 "right = current."),
+    })
+
+
+def _build_note_window_events(notes_or_pairs):
+    """Build a [{t_ms, type, note, vel, channel}, ...] events list.
+
+    `notes_or_pairs` is the schedule the wrapper computed, expressed as a
+    flat list of dicts. Passed straight to capture_note_window.
+    """
+    return list(notes_or_pairs)
+
+
+async def _post_note_window(midi_node_id: str, events: list,
+                            capture_ms: float) -> tuple[dict | None, str | None]:
+    body = {
+        "midi_node_id": midi_node_id,
+        "events": events,
+        "capture_ms": float(capture_ms),
+    }
+    raw = await _post("capture_note_window", body,
+                      timeout=max(10.0, capture_ms / 1000.0 + 8.0))
+    try:
+        doc = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return None, f"non-JSON: {exc}"
+    if not doc.get("ok", False):
+        return None, doc.get("error", "capture_note_window failed")
+    return doc, None
+
+
+@mcp.tool()
+async def capture_note_response(midi_node_id: str,
+                                 note: int = 60,
+                                 velocity: int = 100,
+                                 sustain_ms: float = 600.0,
+                                 capture_ms: float = 1200.0,
+                                 midi_channel: int = 1,
+                                 width: int = 720,
+                                 height: int = 200,
+                                 save_dir: str = "") -> str:
+    """Inject a MIDI note into a MidiInput-like node, capture the response.
+
+    Sends a NOTE_ON, holds for `sustain_ms`, sends NOTE_OFF, captures
+    `capture_ms` of audio total. Returns a waveform PNG plus scalar
+    metrics (rms, fundamental_hz, dc_offset, ...).
+
+    The named node must export the optional `vivid_op_inject_midi` symbol
+    (currently MidiInput, Arpeggiator, MidiFilePlayer).
+
+    Args:
+        midi_node_id: Node id of a MidiInput-style operator.
+        note: MIDI note number (0-127).
+        velocity: Note-on velocity (1-127).
+        sustain_ms: How long to hold the note before NOTE_OFF (0 = never).
+        capture_ms: Total capture window length, including release tail.
+        midi_channel: MIDI channel 1..16.
+        width, height: Waveform PNG pixel dimensions.
+        save_dir: Optional output directory for the PNG.
+    """
+    events = [{"t_ms": 0.0, "type": "on", "note": int(note),
+               "velocity": int(velocity), "channel": int(midi_channel)}]
+    if sustain_ms > 0:
+        events.append({"t_ms": float(sustain_ms), "type": "off",
+                       "note": int(note), "channel": int(midi_channel)})
+    doc, err = await _post_note_window(midi_node_id, events, capture_ms)
+    if err:
+        return _json_response({"ok": False, "error": err})
+    try:
+        samples, sr = _audio_analysis().load_wav_bytes(doc.get("wav_base64", ""))
+    except Exception as exc:  # noqa: BLE001
+        return _json_response({"ok": False, "error": f"WAV decode: {exc}"})
+    metrics = _audio_analysis().analyze_scalars(samples, sr)
+    png = _audio_analysis().render_waveform_png(samples, sr,
+                                                  width=int(width),
+                                                  height=int(height))
+    path = _write_png_to_disk(png, save_dir, "vivid_note_response")
+    return _json_response({
+        "ok": True, "capture_path": path,
+        "kind": "note_response",
+        "midi_node_id": midi_node_id,
+        "note": int(note), "velocity": int(velocity),
+        "sustain_ms": float(sustain_ms), "capture_ms": float(capture_ms),
+        "channel": int(midi_channel),
+        "sample_rate": int(sr),
+        "frames": int(samples.shape[0] if samples.ndim > 0 else 0),
+        "channels": int(samples.shape[1]) if samples.ndim > 1 else 1,
+        "metrics": metrics,
+        "hint": "Read capture_path — full attack→sustain→release waveform.",
+    })
+
+
+@mcp.tool()
+async def capture_polyphony_response(midi_node_id: str,
+                                      notes: list[int],
+                                      velocity: int = 100,
+                                      stagger_ms: float = 5.0,
+                                      sustain_ms: float = 600.0,
+                                      capture_ms: float = 1500.0,
+                                      midi_channel: int = 1,
+                                      width: int = 720,
+                                      height: int = 200,
+                                      save_dir: str = "") -> str:
+    """Strike a chord, capture the polyphonic response.
+
+    Schedules note-ons separated by `stagger_ms`, holds for `sustain_ms`,
+    then sends note-offs. Reports rms / peak / fundamental plus a
+    `polyphony` block with the expected sqrt(N) gain-staging factor.
+
+    Args:
+        midi_node_id: Node id of an inject-supporting operator.
+        notes: List of MIDI note numbers (e.g. [60, 64, 67] for C major).
+        velocity: Note-on velocity (1-127).
+        stagger_ms: Spacing between successive note-ons.
+        sustain_ms: Hold time before sending note-offs.
+        capture_ms: Total capture window length.
+        midi_channel, width, height: As elsewhere.
+        save_dir: Optional output directory for the PNG.
+    """
+    n = len(notes)
+    chan = int(midi_channel)
+    events: list = []
+    for i, nn in enumerate(notes):
+        events.append({"t_ms": float(i * stagger_ms), "type": "on",
+                       "note": int(nn), "velocity": int(velocity),
+                       "channel": chan})
+    if sustain_ms > 0:
+        for i, nn in enumerate(notes):
+            events.append({"t_ms": float((n - 1) * stagger_ms + sustain_ms +
+                                          i * stagger_ms),
+                           "type": "off", "note": int(nn), "channel": chan})
+
+    doc, err = await _post_note_window(midi_node_id, events, capture_ms)
+    if err:
+        return _json_response({"ok": False, "error": err})
+    try:
+        samples, sr = _audio_analysis().load_wav_bytes(doc.get("wav_base64", ""))
+    except Exception as exc:  # noqa: BLE001
+        return _json_response({"ok": False, "error": f"WAV decode: {exc}"})
+    metrics = _audio_analysis().analyze_scalars(samples, sr)
+    png = _audio_analysis().render_waveform_png(samples, sr,
+                                                  width=int(width),
+                                                  height=int(height))
+    path = _write_png_to_disk(png, save_dir, "vivid_polyphony")
+    import math as _math
+    return _json_response({
+        "ok": True, "capture_path": path,
+        "kind": "polyphony_response",
+        "midi_node_id": midi_node_id,
+        "events_scheduled": doc.get("events_scheduled"),
+        "events_fired": doc.get("events_fired"),
+        "capture_ms": float(capture_ms),
+        "sample_rate": int(sr),
+        "frames": int(samples.shape[0] if samples.ndim > 0 else 0),
+        "channels": int(samples.shape[1]) if samples.ndim > 1 else 1,
+        "metrics": metrics,
+        "polyphony": {
+            "voice_count": n,
+            "sqrt_n_factor": _math.sqrt(max(1, n)),
+            "hint": ("Under sqrt(N) summing, rms should scale ~sqrt(voice_count)x "
+                     "vs single-note rms."),
+        },
+        "hint": ("Read capture_path. Compare metrics.rms with a single-note "
+                 "baseline (should scale ~polyphony.sqrt_n_factor× under proper "
+                 "gain staging)."),
+    })
+
+
+@mcp.tool()
+async def capture_retrigger_response(midi_node_id: str,
+                                      note: int = 60,
+                                      velocity: int = 100,
+                                      count: int = 4,
+                                      interval_ms: float = 250.0,
+                                      capture_ms: float = 1500.0,
+                                      midi_channel: int = 1,
+                                      width: int = 720,
+                                      height: int = 200,
+                                      save_dir: str = "") -> str:
+    """Hammer the same note `count` times at `interval_ms` spacing.
+
+    Catches the "wubb" / phase-discontinuity bug class. Returns waveform
+    PNG plus a `retrigger.per_retrigger` array — one entry per trigger
+    with `discontinuity_hits` measured in a ±5 ms window around the
+    expected retrigger time.
+
+    Args:
+        midi_node_id: Node id of an inject-supporting operator.
+        note: MIDI note number to hammer.
+        velocity: Note-on velocity.
+        count: Number of retriggers (1-64).
+        interval_ms: Time between successive note-ons.
+        capture_ms: Total capture window length.
+        midi_channel, width, height: As elsewhere.
+        save_dir: Optional output directory for the PNG.
+    """
+    n = max(1, min(64, int(count)))
+    chan = int(midi_channel)
+    events: list = []
+    for i in range(n):
+        if i > 0:
+            t_off = max(0.0, i * interval_ms - 5.0)
+            events.append({"t_ms": t_off, "type": "off",
+                           "note": int(note), "channel": chan})
+        events.append({"t_ms": float(i * interval_ms), "type": "on",
+                       "note": int(note), "velocity": int(velocity),
+                       "channel": chan})
+    events.append({"t_ms": float((n - 1) * interval_ms + interval_ms * 0.5),
+                   "type": "off", "note": int(note), "channel": chan})
+
+    doc, err = await _post_note_window(midi_node_id, events, capture_ms)
+    if err:
+        return _json_response({"ok": False, "error": err})
+    try:
+        samples, sr = _audio_analysis().load_wav_bytes(doc.get("wav_base64", ""))
+    except Exception as exc:  # noqa: BLE001
+        return _json_response({"ok": False, "error": f"WAV decode: {exc}"})
+
+    # Per-retrigger discontinuity scoring — robust threshold on
+    # |sample[k]-sample[k-1]| in ±5 ms windows around each retrigger time.
+    import numpy as _np
+    aa = _audio_analysis()
+    mono = aa.to_mono(samples) if samples.ndim > 1 else samples
+    diffs = _np.abs(_np.diff(mono))
+    if diffs.size > 0:
+        med = _np.median(diffs)
+        thresh = max(8.0 * med, 0.05)
+    else:
+        thresh = 0.05
+    win = max(64, sr // 200)  # ±5ms
+    per_retrigger = []
+    for t in range(n):
+        center = int(t * interval_ms * 0.001 * sr)
+        lo = max(0, center - win)
+        hi = min(diffs.size, center + win) if diffs.size > 0 else 0
+        hits = int(_np.sum(diffs[lo:hi] > thresh)) if hi > lo else 0
+        per_retrigger.append({
+            "index": t,
+            "t_ms": int(t * interval_ms),
+            "discontinuity_hits": hits,
+        })
+
+    metrics = aa.analyze_scalars(samples, sr)
+    png = aa.render_waveform_png(samples, sr,
+                                  width=int(width), height=int(height))
+    path = _write_png_to_disk(png, save_dir, "vivid_retrigger")
+    return _json_response({
+        "ok": True, "capture_path": path,
+        "kind": "retrigger_response",
+        "midi_node_id": midi_node_id,
+        "events_scheduled": doc.get("events_scheduled"),
+        "events_fired": doc.get("events_fired"),
+        "capture_ms": float(capture_ms),
+        "sample_rate": int(sr),
+        "frames": int(samples.shape[0] if samples.ndim > 0 else 0),
+        "channels": int(samples.shape[1]) if samples.ndim > 1 else 1,
+        "metrics": metrics,
+        "retrigger": {
+            "per_retrigger": per_retrigger,
+            "hint": ("Non-zero discontinuity_hits at trigger boundaries "
+                     "indicates clicks/wubb."),
+        },
+        "hint": "Read capture_path. Examine retrigger.per_retrigger.",
+    })
+
+
+
 @mcp.tool()
 async def sample_node_outputs(node_id: str,
                               duration_seconds: float = 8.0,

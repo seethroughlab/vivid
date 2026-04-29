@@ -78,6 +78,19 @@ All requests are POSTs. The URL path is the method name (e.g. `POST /add_node`).
 | `capture_av` | `window_seconds` | Capture synchronized audio + video |
 | `start_recording` | `path`, `fps` | Begin continuous recording to file |
 | `stop_recording` | — | End recording session |
+| `capture_node_audio` | `node_id`, `channel` | Synchronous read of a named audio node's 1024-sample waveform ring (~21 ms @ 48 kHz). Returns base64 WAV. Source data for the per-node Python plot tools. |
+| `capture_lane_series` | `node_id`, `port_name`, `id_port_name`, `duration_ms` | Sample a node's lane-array output every frame for `duration_ms`; return raw per-lane time-series JSON. Optional `id_port_name` collects a parallel id stream so Python can color rows by stable voice identity. |
+| `capture_note_window` | `midi_node_id`, `events[]`, `capture_ms`, `audio_node_id?`, `lane_node_id?`, `lane_port_name?`, `lane_id_port_name?` | Atomic inject + audio capture. Drains tap, fires the scheduled MIDI events at their `t_ms`, captures `capture_ms` of audio, returns base64 WAV (and optional lane snapshot). The Python `capture_note_response` / `capture_polyphony_response` / `capture_retrigger_response` tools build the events[] schedule. |
+
+**Audio analysis pipeline.** As of the librosa pivot, the control server only exposes raw audio extraction — `capture_audio` (final mix), `capture_node_audio` (per-node ring), `capture_lane_series` (lane data), `capture_note_window` (inject + capture). All DSP, feature extraction, plot rendering, and reference comparison happens in the Python MCP layer via librosa + matplotlib + soundfile. See `mcp/audio_analysis.py`. Adding new analysis features should not require any C++ changes.
+
+**MIDI inject:** the three `capture_*_response` tools rely on the operator named by `midi_node_id` exporting an optional `vivid_op_inject_midi(void* instance, const uint8_t* bytes, uint32_t count)` symbol from its dylib. The runtime probes for it via `dlsym` at load time — no ABI change required. Operators that currently export the symbol:
+
+- `MidiInput` — drains injected bytes alongside its real RtMidi stream.
+- `Arpeggiator` — drains and merges injected events with its `notes_in` wire so the arp pattern fires off injected chords.
+- `MidiFilePlayer` — drains and emits via the same `notes_out` buffer the file-playback path uses, so injected notes appear interleaved with file events. Works even when no `.mid` is loaded.
+
+Operators that *generate* notes from internal state (Sequencer, NotePattern, ChordProgression, DrumSequencer) deliberately do not implement inject — their job is to emit, not relay. Wire a `MidiInput` (or one of the inject-supporting operators above) into the synth's `notes_in` to drive it from MCP debug tools.
 
 ### Graph Topology
 | Method | Key params | Description |

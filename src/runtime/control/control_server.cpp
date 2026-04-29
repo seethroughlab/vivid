@@ -444,6 +444,129 @@ bool ControlServer::start(int port) {
                     response_body);
             }
 
+            // -----------------------------------------------------------------
+            // P1 (pivot) — minimal data-only endpoints. No analysis, no PNG;
+            // Python librosa-based MCP tools render and analyze on top.
+            // -----------------------------------------------------------------
+
+            // capture_node_audio — synchronous. Returns base64 WAV of the
+            // named audio node's 1024-sample waveform ring.
+            if (capture_coordinator_ && method == "capture_node_audio") {
+                std::string node_id;
+                int channel = -1;
+                try {
+                    auto doc = nlohmann::json::parse(request->body);
+                    if (doc.contains("node_id") && doc["node_id"].is_string())
+                        node_id = doc["node_id"].get<std::string>();
+                    if (doc.contains("channel") && doc["channel"].is_number())
+                        channel = doc["channel"].get<int>();
+                } catch (...) {}
+                if (node_id.empty()) {
+                    return std::make_shared<ix::HttpResponse>(
+                        200, "OK", ix::HttpErrorCode::Ok,
+                        ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
+                        R"({"ok":false,"error":"missing node_id"})");
+                }
+                std::string body_str = capture_coordinator_->handle_capture_node_audio(
+                    node_id, channel);
+                return std::make_shared<ix::HttpResponse>(
+                    200, "OK", ix::HttpErrorCode::Ok,
+                    ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
+                    body_str);
+            }
+
+            // capture_lane_series — sample a node's lane-array output every
+            // frame for duration_ms; return raw JSON arrays (no rendering).
+            if (capture_coordinator_ && method == "capture_lane_series") {
+                std::string node_id, port_name, id_port_name;
+                float duration_ms = 500.0f;
+                try {
+                    auto doc = nlohmann::json::parse(request->body);
+                    if (doc.contains("node_id") && doc["node_id"].is_string())
+                        node_id = doc["node_id"].get<std::string>();
+                    if (doc.contains("port_name") && doc["port_name"].is_string())
+                        port_name = doc["port_name"].get<std::string>();
+                    if (doc.contains("id_port_name") && doc["id_port_name"].is_string())
+                        id_port_name = doc["id_port_name"].get<std::string>();
+                    if (doc.contains("duration_ms") && doc["duration_ms"].is_number())
+                        duration_ms = doc["duration_ms"].get<float>();
+                } catch (...) {}
+                if (node_id.empty() || port_name.empty()) {
+                    return std::make_shared<ix::HttpResponse>(
+                        200, "OK", ix::HttpErrorCode::Ok,
+                        ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
+                        R"({"ok":false,"error":"missing node_id or port_name"})");
+                }
+                auto future = capture_coordinator_->request_lane_series(
+                    node_id, port_name, id_port_name, duration_ms);
+                int timeout_sec = std::max(5, static_cast<int>(duration_ms / 1000.0f) + 5);
+                auto status = future.wait_for(std::chrono::seconds(timeout_sec));
+                std::string response_body = (status == std::future_status::ready)
+                    ? future.get()
+                    : R"({"ok":false,"error":"timeout"})";
+                return std::make_shared<ix::HttpResponse>(
+                    200, "OK", ix::HttpErrorCode::Ok,
+                    ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
+                    response_body);
+            }
+
+            // capture_note_window — atomic inject + audio capture.
+            // Replaces capture_note_response/polyphony_response/retrigger_response
+            // at the C++ HTTP layer; Python wrappers build the events[].
+            if (capture_coordinator_ && method == "capture_note_window") {
+                NoteWindowRequest req;
+                try {
+                    auto doc = nlohmann::json::parse(request->body);
+                    if (doc.contains("midi_node_id") && doc["midi_node_id"].is_string())
+                        req.midi_node_id = doc["midi_node_id"].get<std::string>();
+                    if (doc.contains("capture_ms") && doc["capture_ms"].is_number())
+                        req.capture_ms = doc["capture_ms"].get<float>();
+                    if (doc.contains("audio_node_id") && doc["audio_node_id"].is_string())
+                        req.audio_node_id = doc["audio_node_id"].get<std::string>();
+                    if (doc.contains("lane_node_id") && doc["lane_node_id"].is_string())
+                        req.lane_node_id = doc["lane_node_id"].get<std::string>();
+                    if (doc.contains("lane_port_name") && doc["lane_port_name"].is_string())
+                        req.lane_port_name = doc["lane_port_name"].get<std::string>();
+                    if (doc.contains("lane_id_port_name") && doc["lane_id_port_name"].is_string())
+                        req.lane_id_port_name = doc["lane_id_port_name"].get<std::string>();
+                    if (doc.contains("events") && doc["events"].is_array()) {
+                        for (const auto& ev : doc["events"]) {
+                            if (!ev.is_object()) continue;
+                            NoteWindowEvent we;
+                            we.t_ms = ev.value("t_ms", 0.0f);
+                            int channel = std::clamp(ev.value("channel", 1), 1, 16);
+                            int note    = std::clamp(ev.value("note", 0), 0, 127);
+                            int vel     = std::clamp(ev.value("velocity", 100), 0, 127);
+                            std::string type = ev.value("type", std::string("on"));
+                            uint8_t status = (type == "off")
+                                ? (0x80u | static_cast<uint8_t>(channel - 1))
+                                : (0x90u | static_cast<uint8_t>(channel - 1));
+                            we.bytes[0] = status;
+                            we.bytes[1] = static_cast<uint8_t>(note);
+                            we.bytes[2] = (type == "off") ? 0 : static_cast<uint8_t>(vel);
+                            we.length = 3;
+                            req.events.push_back(we);
+                        }
+                    }
+                } catch (...) {}
+                if (req.midi_node_id.empty() || req.events.empty()) {
+                    return std::make_shared<ix::HttpResponse>(
+                        200, "OK", ix::HttpErrorCode::Ok,
+                        ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
+                        R"({"ok":false,"error":"missing midi_node_id or events"})");
+                }
+                auto future = capture_coordinator_->request_note_window(std::move(req));
+                int timeout_sec = std::max(5, static_cast<int>(req.capture_ms / 1000.0f) + 8);
+                auto status = future.wait_for(std::chrono::seconds(timeout_sec));
+                std::string response_body = (status == std::future_status::ready)
+                    ? future.get()
+                    : R"({"ok":false,"error":"timeout"})";
+                return std::make_shared<ix::HttpResponse>(
+                    200, "OK", ix::HttpErrorCode::Ok,
+                    ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
+                    response_body);
+            }
+
             // Package catalog — thread-safe, no main-thread dispatch needed
             if (method == "package_catalog" && package_catalog_) {
                 return std::make_shared<ix::HttpResponse>(

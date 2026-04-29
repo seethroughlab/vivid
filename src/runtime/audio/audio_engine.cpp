@@ -203,6 +203,31 @@ int AudioEngine::audio_node_index(const std::string& node_id) const {
     return -1;
 }
 
+void AudioEngine::audio_node_output_port(const std::string& node_id,
+                                          const std::string& port_name,
+                                          int* port_idx_out,
+                                          bool* is_lane_array_out) const {
+    if (port_idx_out) *port_idx_out = -1;
+    if (is_lane_array_out) *is_lane_array_out = false;
+    if (!compiled_graph_) return;
+    int idx = audio_node_index(node_id);
+    if (idx < 0) return;
+    const auto& cn = compiled_graph_->nodes[compiled_graph_->audio_order[idx]];
+    auto it = cn.output_port_indices.find(port_name);
+    if (it == cn.output_port_indices.end()) return;
+    if (port_idx_out) *port_idx_out = static_cast<int>(it->second);
+    if (is_lane_array_out && cn.loader && cn.loader->descriptor()) {
+        const auto* desc = cn.loader->descriptor();
+        for (uint32_t i = 0; i < desc->port_count; ++i) {
+            if (desc->ports[i].direction == VIVID_PORT_OUTPUT &&
+                desc->ports[i].name && port_name == desc->ports[i].name) {
+                *is_lane_array_out = (desc->ports[i].type == VIVID_PORT_LANE_ARRAY);
+                break;
+            }
+        }
+    }
+}
+
 void AudioEngine::pause() {
     if (audio_executor_) audio_executor_->pause();
 }
