@@ -1,480 +1,495 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "proswell_idm_chiptune_demo",
-    "title": "Proswell-style IDM/Chiptune Sketch",
-    "description": "A short IDM-meets-chiptune sketch in A minor. The DrumSequencer runs in **song mode** with four distinct sections (A=intro / B=verse / C=chorus / D=break-fill), each held for 4 bars before auto-advancing \u2014 a 16-bar arrangement. Chord pad cycles Am \u2014 F \u2014 C \u2014 G under a square sub bass; a Tracker channel carries the lead melody with pitch wobble (pb) and a pressure climax. Demonstrates the Phase 4 Tracker expression authoring + Phase 5 universal pressure/timbre wiring.",
-    "tags": [
-      "idm",
-      "chiptune",
-      "drums",
-      "tracker",
-      "expression",
-      "demo",
-      "proswell"
+    "schema_version": 1,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "proswell_idm_chiptune_demo",
+        "title": "Proswell-style IDM/Chiptune Sketch",
+        "description": "A short IDM-meets-chiptune sketch in A minor. The DrumSequencer runs in **song mode** with four distinct sections (A=intro / B=verse / C=chorus / D=break-fill), each held for 4 bars before auto-advancing — a 16-bar arrangement. Chord pad cycles Am — F — C — G under a square sub bass; a Tracker channel carries the lead melody with pitch wobble (pb) and a pressure climax. Demonstrates the Phase 4 Tracker expression authoring + Phase 5 universal pressure/timbre wiring.",
+        "tags": [
+            "idm",
+            "chiptune",
+            "drums",
+            "tracker",
+            "expression",
+            "demo",
+            "proswell"
+        ],
+        "difficulty": "intermediate",
+        "domains": [
+            "audio",
+            "control"
+        ],
+        "requires_packages": [
+            "vivid-wavetable"
+        ],
+        "featured_rank": 80,
+        "estimated_minutes": 2,
+        "content_kind": "example",
+        "category": "audio",
+        "family": "Audio patches",
+        "role": "creative",
+        "playability": "self_playing"
+    },
+    "nodes": {
+        "bassline": {
+            "type": "NotePattern",
+            "params": {
+                "gate_length": 0.45,
+                "type_2": 0.0,
+                "type_1": 0.0,
+                "root_3": 7.0,
+                "type_3": 0.0,
+                "root_2": 0.0,
+                "root_0": 9.0,
+                "type_0": 0.0,
+                "velocity": 0.85,
+                "steps": 4.0,
+                "beats_per_step": 4.0,
+                "root_1": 5.0,
+                "octave": 2.0
+            },
+            "layout": {
+                "x": 111.8633,
+                "y": 748.1292
+            }
+        },
+        "chords": {
+            "type": "ChordProgression",
+            "params": {
+                "voicing_3": 0.0,
+                "voicing_2": 0.0,
+                "voicing_0": 0.0,
+                "velocity": 0.42,
+                "steps": 4.0,
+                "octave": 4.0,
+                "voicing_1": 0.0,
+                "degree_2": 2.0,
+                "gate_length": 0.92,
+                "key_root": 9.0,
+                "ext_2": 0.0,
+                "ext_0": 0.0,
+                "degree_0": 0.0,
+                "degree_3": 6.0,
+                "mode": 5.0,
+                "ext_3": 0.0,
+                "degree_1": 5.0,
+                "ext_1": 0.0,
+                "beats_per_step": 4.0
+            },
+            "layout": {
+                "x": 111.97122,
+                "y": 549.78296
+            }
+        },
+        "clap": {
+            "type": "DrumClap",
+            "params": {
+                "volume": 0.71117103,
+                "tone": 0.55,
+                "tail": 0.4,
+                "sloppy": 0.35,
+                "decay": 0.42
+            },
+            "layout": {
+                "x": 420.5318,
+                "y": 304.87708
+            }
+        },
+        "clock": {
+            "type": "Clock",
+            "params": {
+                "bpm": 92.0
+            },
+            "layout": {
+                "x": -316.8078,
+                "y": 710.55273
+            }
+        },
+        "drumseq": {
+            "type": "DrumSequencer",
+            "params": {
+                "tom_d_8": 0.6,
+                "tom_d_10": 0.7,
+                "tom_c_11": 0.55,
+                "tom_b_11": 0.4,
+                "snare_b_4": 1.0,
+                "hat_d_0": 0.45,
+                "steps": 16.0,
+                "snare_d_8": 0.65,
+                "swing": 0.04,
+                "snare_d_14": 0.85,
+                "snare_c_7": 0.45,
+                "hat_c_8": 0.6,
+                "snare_c_4": 1.0,
+                "snare_c_14": 0.55,
+                "snare_c_12": 1.0,
+                "hat_b_3": 0.35,
+                "snare_c_11": 0.5,
+                "snare_b_12": 1.0,
+                "oh_c_6": 0.75,
+                "oh_b_6": 0.5,
+                "snare_d_7": 0.55,
+                "kick_d_0": 1.0,
+                "kick_c_6": 0.55,
+                "snare_b_11": 0.4,
+                "oh_c_10": 0.55,
+                "hat_b_10": 0.55,
+                "kick_c_4": 0.92,
+                "kick_c_0": 1.0,
+                "kick_b_8": 1.0,
+                "kick_b_12": 0.85,
+                "hat_c_7": 0.45,
+                "snare_b_14": 0.45,
+                "kick_b_0": 1.0,
+                "hat_d_6": 0.45,
+                "tom_c_7": 0.45,
+                "hat_c_3": 0.4,
+                "hat_d_10": 0.3,
+                "hat_b_11": 0.35,
+                "snare_d_15": 1.0,
+                "clap_c_12": 0.75,
+                "hat_c_9": 0.4,
+                "oh_c_14": 0.8,
+                "tom_c_3": 0.55,
+                "snare_d_10": 0.7,
+                "kick_0": 1.0,
+                "hat_c_5": 0.4,
+                "kick_8": 0.85,
+                "hat_c_4": 0.6,
+                "kick_c_8": 1.0,
+                "kick_c_12": 0.92,
+                "hat_c_0": 0.6,
+                "hat_c_15": 0.55,
+                "hat_c_14": 0.85,
+                "hat_c_10": 0.6,
+                "hat_6": 0.45,
+                "hat_b_7": 0.4,
+                "hat_b_9": 0.35,
+                "oh_14": 0.4,
+                "snare_12": 0.9,
+                "oh_b_14": 0.55,
+                "hat_c_13": 0.4,
+                "hat_b_2": 0.55,
+                "active_pattern": 0.0,
+                "hat_b_13": 0.35,
+                "clap_b_12": 0.55,
+                "hat_b_14": 0.65,
+                "hat_d_2": 0.45,
+                "hat_b_6": 0.5,
+                "hat_b_0": 0.55,
+                "hat_b_15": 0.6,
+                "snare_d_4": 0.95,
+                "hat_2": 0.35,
+                "hat_c_1": 0.4,
+                "hat_b_1": 0.35,
+                "bars_per_pattern": 4.0,
+                "clap_c_4": 0.75,
+                "tom_b_3": 0.45,
+                "clap_d_15": 0.9,
+                "kick_d_8": 0.85,
+                "snare_d_13": 0.5,
+                "hat_c_6": 0.85,
+                "tom_d_14": 0.85,
+                "hat_c_11": 0.4,
+                "clap_12": 0.4,
+                "hat_b_8": 0.55,
+                "song_mode": 1.0,
+                "tom_d_12": 0.8,
+                "hat_14": 0.5,
+                "hat_b_5": 0.35,
+                "hat_d_9": 0.3,
+                "clap_c_7": 0.4,
+                "hat_b_4": 0.55,
+                "hat_d_4": 0.45,
+                "hat_10": 0.35,
+                "hat_d_8": 0.45,
+                "hat_c_12": 0.6,
+                "hat_c_2": 0.6,
+                "kick_b_6": 0.55,
+                "hat_b_12": 0.55,
+                "clap_b_4": 0.55,
+                "snare_d_12": 0.85
+            },
+            "layout": {
+                "x": 108.37053,
+                "y": 255.2839
+            }
+        },
+        "hat": {
+            "type": "DrumHiHat",
+            "params": {
+                "note": 42.0,
+                "volume": 0.7,
+                "pitch": 0.9,
+                "tone": 0.4,
+                "ring": 0.7,
+                "decay": 0.5
+            },
+            "layout": {
+                "x": 420.5318,
+                "y": -21.122925
+            }
+        },
+        "kick": {
+            "type": "DrumKick",
+            "params": {
+                "volume": 0.2,
+                "pitch_env": 220.0,
+                "pitch": 52.0,
+                "decay": 0.32,
+                "click": 0.18
+            },
+            "layout": {
+                "x": 420.5318,
+                "y": -347.12292
+            }
+        },
+        "lead": {
+            "type": "AnalogOsc",
+            "pkg": {
+                "name": "vivid-wavetable",
+                "version": "0.2.0"
+            },
+            "params": {
+                "sustain": 0.68,
+                "pressure_to_amp": 0.6,
+                "waveform": 4.0,
+                "pulse_width": 0.32,
+                "detune": 6.0,
+                "release": 0.4,
+                "decay": 0.18,
+                "amplitude": 0.07,
+                "portamento": 18.0,
+                "timbre_to_pwm": 0.5,
+                "attack": 0.005
+            },
+            "layout": {
+                "x": 696.9834,
+                "y": 1043.4417
+            }
+        },
+        "oh": {
+            "type": "DrumHiHat",
+            "params": {
+                "volume": 0.1,
+                "tone": 0.85,
+                "ring": 0.65,
+                "decay": 0.18
+            },
+            "layout": {
+                "x": 420.5318,
+                "y": 141.87708
+            }
+        },
+        "out": {
+            "type": "audio_out",
+            "layout": {
+                "x": 1163.0032,
+                "y": 3.0105743
+            }
+        },
+        "pad": {
+            "type": "WavetableLayer",
+            "pkg": {
+                "name": "vivid-wavetable",
+                "version": "0.2.0"
+            },
+            "params": {
+                "unison_spread": 30.0,
+                "unison_stereo": 0.85,
+                "wavetable_member": 0.0,
+                "release": 1.6,
+                "attack": 0.4,
+                "wavetable_family": 5.0,
+                "unison_spread_mode": 1.0,
+                "wavetable_source": 1.0,
+                "unison_voices": 6.0,
+                "timbre_to_position": 0.5,
+                "sustain": 0.75,
+                "position": 0.6,
+                "pressure_to_amp": 0.5,
+                "decay": 0.6,
+                "amplitude": 0.2
+            },
+            "layout": {
+                "x": 676.2505,
+                "y": 561.35266
+            }
+        },
+        "snare": {
+            "type": "DrumSnare",
+            "params": {
+                "volume": 0.71010953,
+                "pitch": 195.0,
+                "tone": 0.45,
+                "tone_decay": 0.08,
+                "snappy": 0.55,
+                "noise_decay": 0.18,
+                "noise": 0.65
+            },
+            "layout": {
+                "x": 420.5318,
+                "y": -184.12292
+            }
+        },
+        "sub": {
+            "type": "SubOsc",
+            "pkg": {
+                "name": "vivid-wavetable",
+                "version": "0.2.0"
+            },
+            "params": {
+                "waveform": 3.0,
+                "timbre_to_level": 0.3,
+                "sustain": 0.85,
+                "octave": 0.0,
+                "level": 0.14,
+                "pressure_to_amp": 0.5,
+                "release": 0.15,
+                "decay": 0.05,
+                "velocity_to_level": 0.4,
+                "attack": 0.005
+            },
+            "layout": {
+                "x": 684.7626,
+                "y": 806.9604
+            }
+        },
+        "tom": {
+            "type": "DrumTom",
+            "params": {
+                "volume": 0.7050463,
+                "tone": 0.45,
+                "pitch_env": 70.0,
+                "pitch": 110.0,
+                "decay": 0.28
+            },
+            "layout": {
+                "x": 420.5318,
+                "y": 507.87708
+            }
+        },
+        "tracker": {
+            "type": "Tracker",
+            "params": {
+                "speed": 6.0,
+                "rate": 4.0,
+                "pattern_data": "{\"v\":2,\"arrangement\":[0],\"patterns\":[{\"rows\":32,\"expr_mask\":3,\"cells\":[{\"row\":0,\"channel\":0,\"note\":76,\"velocity\":95,\"pr\":0},{\"row\":3,\"channel\":0,\"pr\":9000},{\"row\":4,\"channel\":0,\"note\":79,\"velocity\":100},{\"row\":6,\"channel\":0,\"note\":81,\"velocity\":92},{\"row\":7,\"channel\":0,\"note\":79,\"velocity\":88},{\"row\":8,\"channel\":0,\"note\":77,\"velocity\":100,\"pb\":0},{\"row\":9,\"channel\":0,\"pb\":200},{\"row\":10,\"channel\":0,\"pb\":-200},{\"row\":11,\"channel\":0,\"pb\":0},{\"row\":12,\"channel\":0,\"note\":81,\"velocity\":95},{\"row\":14,\"channel\":0,\"note\":84,\"velocity\":90},{\"row\":15,\"channel\":0,\"note\":81,\"velocity\":88},{\"row\":16,\"channel\":0,\"note\":84,\"velocity\":100},{\"row\":20,\"channel\":0,\"note\":76,\"velocity\":95},{\"row\":22,\"channel\":0,\"note\":79,\"velocity\":92},{\"row\":23,\"channel\":0,\"note\":76,\"velocity\":88,\"pr\":0},{\"row\":24,\"channel\":0,\"note\":74,\"velocity\":100},{\"row\":28,\"channel\":0,\"note\":71,\"velocity\":95,\"pr\":18000},{\"row\":30,\"channel\":0,\"note\":69,\"velocity\":100},{\"row\":31,\"channel\":0,\"pr\":0}]}]}"
+            },
+            "layout": {
+                "x": 112.541794,
+                "y": 948.6421
+            }
+        }
+    },
+    "connections": [
+        {
+            "from": "clock/bar_phase",
+            "to": "drumseq/beat_phase"
+        },
+        {
+            "from": "clock/beat_phase",
+            "to": "chords/beat_phase"
+        },
+        {
+            "from": "clock/beat_phase",
+            "to": "bassline/beat_phase"
+        },
+        {
+            "from": "clock/beat_phase",
+            "to": "tracker/beat_phase"
+        },
+        {
+            "from": "drumseq/kick_out",
+            "to": "kick/notes_in"
+        },
+        {
+            "from": "drumseq/snare_out",
+            "to": "snare/notes_in"
+        },
+        {
+            "from": "drumseq/hat_out",
+            "to": "hat/notes_in"
+        },
+        {
+            "from": "chords/notes_out",
+            "to": "pad/notes_in"
+        },
+        {
+            "from": "bassline/notes_out",
+            "to": "sub/notes_in"
+        },
+        {
+            "from": "tracker/notes_out",
+            "to": "lead/notes_in"
+        },
+        {
+            "from": "kick/output",
+            "to": "out/input"
+        },
+        {
+            "from": "snare/output",
+            "to": "out/input"
+        },
+        {
+            "from": "hat/output",
+            "to": "out/input"
+        },
+        {
+            "from": "pad/output",
+            "to": "out/input"
+        },
+        {
+            "from": "sub/output",
+            "to": "out/input"
+        },
+        {
+            "from": "lead/output",
+            "to": "out/input"
+        },
+        {
+            "from": "drumseq/oh_out",
+            "to": "oh/notes_in"
+        },
+        {
+            "from": "drumseq/clap_out",
+            "to": "clap/notes_in"
+        },
+        {
+            "from": "drumseq/tom_out",
+            "to": "tom/notes_in"
+        },
+        {
+            "from": "oh/output",
+            "to": "out/input"
+        },
+        {
+            "from": "clap/output",
+            "to": "out/input"
+        },
+        {
+            "from": "tom/output",
+            "to": "out/input"
+        }
     ],
-    "difficulty": "intermediate",
-    "domains": [
-      "audio",
-      "control"
-    ],
-    "requires_packages": [
-      "vivid-wavetable"
-    ],
-    "featured_rank": 80,
-    "estimated_minutes": 2,
-    "content_kind": "example",
-    "category": "audio",
-    "family": "Audio patches",
-    "role": "creative",
-    "playability": "self_playing"
-  },
-  "metronome": {
-    "enabled": true,
-    "bpm": 92.0,
-    "beats_per_bar": 4
-  },
-  "nodes": {
-    "clock": {
-      "type": "Clock",
-      "params": {
-        "bpm": 92.0
-      },
-      "layout": {
-        "x": -100.0,
-        "y": 0.0
-      }
+    "metronome": {
+        "bpm": 92.0,
+        "beats_per_bar": 4
     },
-    "drumseq": {
-      "type": "DrumSequencer",
-      "params": {
-        "steps": 16,
-        "swing": 0.04,
-        "song_mode": 1,
-        "bars_per_pattern": 4,
-        "active_pattern": 0,
-        "kick_0": 1.0,
-        "kick_8": 0.85,
-        "snare_12": 0.9,
-        "hat_2": 0.35,
-        "hat_6": 0.45,
-        "hat_10": 0.35,
-        "hat_14": 0.5,
-        "kick_b_0": 1.0,
-        "kick_b_6": 0.55,
-        "kick_b_8": 1.0,
-        "kick_b_12": 0.85,
-        "snare_b_4": 1.0,
-        "snare_b_11": 0.4,
-        "snare_b_12": 1.0,
-        "snare_b_14": 0.45,
-        "hat_b_0": 0.55,
-        "hat_b_1": 0.35,
-        "hat_b_2": 0.55,
-        "hat_b_3": 0.35,
-        "hat_b_4": 0.55,
-        "hat_b_5": 0.35,
-        "hat_b_6": 0.5,
-        "hat_b_7": 0.4,
-        "hat_b_8": 0.55,
-        "hat_b_9": 0.35,
-        "hat_b_10": 0.55,
-        "hat_b_11": 0.35,
-        "hat_b_12": 0.55,
-        "hat_b_13": 0.35,
-        "hat_b_14": 0.65,
-        "hat_b_15": 0.6,
-        "kick_c_0": 1.0,
-        "kick_c_4": 0.92,
-        "kick_c_6": 0.55,
-        "kick_c_8": 1.0,
-        "kick_c_12": 0.92,
-        "snare_c_4": 1.0,
-        "snare_c_7": 0.45,
-        "snare_c_11": 0.5,
-        "snare_c_12": 1.0,
-        "snare_c_14": 0.55,
-        "hat_c_0": 0.6,
-        "hat_c_1": 0.4,
-        "hat_c_2": 0.6,
-        "hat_c_3": 0.4,
-        "hat_c_4": 0.6,
-        "hat_c_5": 0.4,
-        "hat_c_6": 0.85,
-        "hat_c_7": 0.45,
-        "hat_c_8": 0.6,
-        "hat_c_9": 0.4,
-        "hat_c_10": 0.6,
-        "hat_c_11": 0.4,
-        "hat_c_12": 0.6,
-        "hat_c_13": 0.4,
-        "hat_c_14": 0.85,
-        "hat_c_15": 0.55,
-        "kick_d_0": 1.0,
-        "kick_d_8": 0.85,
-        "snare_d_4": 0.95,
-        "snare_d_7": 0.55,
-        "snare_d_8": 0.65,
-        "snare_d_10": 0.7,
-        "snare_d_12": 0.85,
-        "snare_d_13": 0.5,
-        "snare_d_14": 0.85,
-        "snare_d_15": 1.0,
-        "hat_d_0": 0.45,
-        "hat_d_2": 0.45,
-        "hat_d_4": 0.45,
-        "hat_d_6": 0.45,
-        "hat_d_8": 0.45,
-        "hat_d_9": 0.3,
-        "hat_d_10": 0.3,
-        "oh_14": 0.4,
-        "oh_b_6": 0.5,
-        "oh_b_14": 0.55,
-        "oh_c_6": 0.75,
-        "oh_c_10": 0.55,
-        "oh_c_14": 0.8,
-        "clap_12": 0.4,
-        "clap_b_4": 0.55,
-        "clap_b_12": 0.55,
-        "clap_c_4": 0.75,
-        "clap_c_7": 0.4,
-        "clap_c_12": 0.75,
-        "clap_d_15": 0.9,
-        "tom_b_3": 0.45,
-        "tom_b_11": 0.4,
-        "tom_c_3": 0.55,
-        "tom_c_7": 0.45,
-        "tom_c_11": 0.55,
-        "tom_d_8": 0.6,
-        "tom_d_10": 0.7,
-        "tom_d_12": 0.8,
-        "tom_d_14": 0.85
-      },
-      "layout": {
-        "x": 200.0,
-        "y": -180.0
-      }
+    "viewport": {
+        "pan_x": 155.03543,
+        "pan_y": 197.04193,
+        "zoom": 0.50662965
     },
-    "kick": {
-      "type": "DrumKick",
-      "params": {
-        "click": 0.18,
-        "decay": 0.32,
-        "pitch": 52.0,
-        "pitch_env": 220.0,
-        "volume": 0.2
-      },
-      "layout": {
-        "x": 520.0,
-        "y": -260.0
-      }
-    },
-    "snare": {
-      "type": "DrumSnare",
-      "params": {
-        "noise": 0.65,
-        "noise_decay": 0.18,
-        "snappy": 0.55,
-        "tone_decay": 0.08,
-        "tone": 0.45,
-        "pitch": 195.0,
-        "volume": 0.12
-      },
-      "layout": {
-        "x": 520.0,
-        "y": -180.0
-      }
-    },
-    "hat": {
-      "type": "DrumHiHat",
-      "params": {
-        "decay": 0.04,
-        "ring": 0.28,
-        "tone": 0.78,
-        "volume": 0.07
-      },
-      "layout": {
-        "x": 520.0,
-        "y": -100.0
-      }
-    },
-    "chords": {
-      "type": "ChordProgression",
-      "params": {
-        "steps": 4,
-        "key_root": 9,
-        "mode": 5,
-        "octave": 4,
-        "beats_per_step": 4,
-        "gate_length": 0.92,
-        "velocity": 0.42,
-        "degree_0": 0,
-        "voicing_0": 0,
-        "ext_0": 0,
-        "degree_1": 5,
-        "voicing_1": 0,
-        "ext_1": 0,
-        "degree_2": 2,
-        "voicing_2": 0,
-        "ext_2": 0,
-        "degree_3": 6,
-        "voicing_3": 0,
-        "ext_3": 0
-      },
-      "layout": {
-        "x": 200.0,
-        "y": 30.0
-      }
-    },
-    "pad": {
-      "type": "WavetableLayer",
-      "pkg": {
-        "name": "vivid-wavetable"
-      },
-      "params": {
-        "amplitude": 0.05,
-        "attack": 0.4,
-        "decay": 0.6,
-        "sustain": 0.75,
-        "release": 1.6,
-        "unison_voices": 1,
-        "position": 0.25,
-        "pressure_to_amp": 0.5,
-        "timbre_to_position": 0.5
-      },
-      "layout": {
-        "x": 520.0,
-        "y": 30.0
-      }
-    },
-    "bassline": {
-      "type": "NotePattern",
-      "params": {
-        "steps": 4,
-        "octave": 2,
-        "beats_per_step": 4,
-        "gate_length": 0.45,
-        "velocity": 0.85,
-        "root_0": 9,
-        "type_0": 0,
-        "root_1": 5,
-        "type_1": 0,
-        "root_2": 0,
-        "type_2": 0,
-        "root_3": 7,
-        "type_3": 0
-      },
-      "layout": {
-        "x": 200.0,
-        "y": 160.0
-      }
-    },
-    "sub": {
-      "type": "SubOsc",
-      "pkg": {
-        "name": "vivid-wavetable"
-      },
-      "params": {
-        "level": 0.14,
-        "velocity_to_level": 0.4,
-        "octave": 0,
-        "waveform": 3,
-        "attack": 0.005,
-        "decay": 0.05,
-        "sustain": 0.85,
-        "release": 0.15,
-        "pressure_to_amp": 0.5,
-        "timbre_to_level": 0.3
-      },
-      "layout": {
-        "x": 520.0,
-        "y": 160.0
-      }
-    },
-    "tracker": {
-      "type": "Tracker",
-      "params": {
-        "rate": 4,
-        "speed": 6,
-        "pattern_data": "{\"v\":2,\"arrangement\":[0],\"patterns\":[{\"rows\":32,\"expr_mask\":3,\"cells\":[{\"row\":0,\"channel\":0,\"note\":76,\"velocity\":95,\"pr\":0},{\"row\":3,\"channel\":0,\"pr\":9000},{\"row\":4,\"channel\":0,\"note\":79,\"velocity\":100},{\"row\":6,\"channel\":0,\"note\":81,\"velocity\":92},{\"row\":7,\"channel\":0,\"note\":79,\"velocity\":88},{\"row\":8,\"channel\":0,\"note\":77,\"velocity\":100,\"pb\":0},{\"row\":9,\"channel\":0,\"pb\":200},{\"row\":10,\"channel\":0,\"pb\":-200},{\"row\":11,\"channel\":0,\"pb\":0},{\"row\":12,\"channel\":0,\"note\":81,\"velocity\":95},{\"row\":14,\"channel\":0,\"note\":84,\"velocity\":90},{\"row\":15,\"channel\":0,\"note\":81,\"velocity\":88},{\"row\":16,\"channel\":0,\"note\":84,\"velocity\":100},{\"row\":20,\"channel\":0,\"note\":76,\"velocity\":95},{\"row\":22,\"channel\":0,\"note\":79,\"velocity\":92},{\"row\":23,\"channel\":0,\"note\":76,\"velocity\":88,\"pr\":0},{\"row\":24,\"channel\":0,\"note\":74,\"velocity\":100},{\"row\":28,\"channel\":0,\"note\":71,\"velocity\":95,\"pr\":18000},{\"row\":30,\"channel\":0,\"note\":69,\"velocity\":100},{\"row\":31,\"channel\":0,\"pr\":0}]}]}"
-      },
-      "layout": {
-        "x": 200.0,
-        "y": 290.0
-      }
-    },
-    "lead": {
-      "type": "AnalogOsc",
-      "pkg": {
-        "name": "vivid-wavetable"
-      },
-      "params": {
-        "waveform": 4,
-        "pulse_width": 0.32,
-        "amplitude": 0.07,
-        "detune": 6.0,
-        "portamento": 18.0,
-        "attack": 0.005,
-        "decay": 0.18,
-        "sustain": 0.68,
-        "release": 0.4,
-        "pressure_to_amp": 0.6,
-        "timbre_to_pwm": 0.5
-      },
-      "layout": {
-        "x": 520.0,
-        "y": 290.0
-      }
-    },
-    "out": {
-      "type": "audio_out",
-      "params": {},
-      "layout": {
-        "x": 880.0,
-        "y": 30.0
-      }
-    },
-    "oh": {
-      "type": "DrumHiHat",
-      "params": {
-        "decay": 0.18,
-        "ring": 0.65,
-        "tone": 0.85,
-        "volume": 0.1
-      },
-      "layout": {
-        "x": 520.0,
-        "y": -340.0
-      }
-    },
-    "clap": {
-      "type": "DrumClap",
-      "params": {
-        "decay": 0.42,
-        "sloppy": 0.35,
-        "tail": 0.4,
-        "tone": 0.55,
-        "volume": 0.12
-      },
-      "layout": {
-        "x": 520.0,
-        "y": -420.0
-      }
-    },
-    "tom": {
-      "type": "DrumTom",
-      "params": {
-        "decay": 0.28,
-        "pitch": 110.0,
-        "pitch_env": 70.0,
-        "tone": 0.45,
-        "volume": 0.14
-      },
-      "layout": {
-        "x": 520.0,
-        "y": -500.0
-      }
-    }
-  },
-  "connections": [
-    {
-      "from": "clock/bar_phase",
-      "to": "drumseq/beat_phase"
-    },
-    {
-      "from": "clock/beat_phase",
-      "to": "chords/beat_phase"
-    },
-    {
-      "from": "clock/beat_phase",
-      "to": "bassline/beat_phase"
-    },
-    {
-      "from": "clock/beat_phase",
-      "to": "tracker/beat_phase"
-    },
-    {
-      "from": "drumseq/kick_out",
-      "to": "kick/notes_in"
-    },
-    {
-      "from": "drumseq/snare_out",
-      "to": "snare/notes_in"
-    },
-    {
-      "from": "drumseq/hat_out",
-      "to": "hat/notes_in"
-    },
-    {
-      "from": "chords/notes_out",
-      "to": "pad/notes_in"
-    },
-    {
-      "from": "bassline/notes_out",
-      "to": "sub/notes_in"
-    },
-    {
-      "from": "tracker/notes_out",
-      "to": "lead/notes_in"
-    },
-    {
-      "from": "kick/output",
-      "to": "out/input"
-    },
-    {
-      "from": "snare/output",
-      "to": "out/input"
-    },
-    {
-      "from": "hat/output",
-      "to": "out/input"
-    },
-    {
-      "from": "pad/output",
-      "to": "out/input"
-    },
-    {
-      "from": "sub/output",
-      "to": "out/input"
-    },
-    {
-      "from": "lead/output",
-      "to": "out/input"
-    },
-    {
-      "from": "drumseq/oh_out",
-      "to": "oh/notes_in"
-    },
-    {
-      "from": "drumseq/clap_out",
-      "to": "clap/notes_in"
-    },
-    {
-      "from": "drumseq/tom_out",
-      "to": "tom/notes_in"
-    },
-    {
-      "from": "oh/output",
-      "to": "out/input"
-    },
-    {
-      "from": "clap/output",
-      "to": "out/input"
-    },
-    {
-      "from": "tom/output",
-      "to": "out/input"
-    }
-  ],
-  "sticky_notes": [
-    {
-      "id": "intro_note",
-      "text": "**Proswell-style IDM/chiptune** \u2014 A minor, 92 BPM.\n\n**Drums** (song mode, 4\u00d74-bar sections):\n  A = intro \u00b7 B = verse \u00b7 C = chorus \u00b7 D = break-fill\n**Chord pad**: ChordProgression Am-F-C-G into WavetableLayer.\n**Bass**: NotePattern walks roots into SubOsc square -1 oct.\n**Lead**: Tracker pattern with pb wobble + pressure swell into AnalogOsc Pulse.\n\nOpen the DrumSequencer editor \u2014 the section picker shows A/B/C/D.",
-      "x": -100.0,
-      "y": 460.0,
-      "width": 360.0,
-      "height": 220.0
-    }
-  ]
+    "sticky_notes": [
+        {
+            "id": "intro_note",
+            "text": "**Proswell-style IDM/chiptune** — A minor, 92 BPM.\n\n**Drums** (song mode, 4×4-bar sections):\n  A = intro · B = verse · C = chorus · D = break-fill\n**Chord pad**: ChordProgression Am-F-C-G into WavetableLayer.\n**Bass**: NotePattern walks roots into SubOsc square -1 oct.\n**Lead**: Tracker pattern with pb wobble + pressure swell into AnalogOsc Pulse.\n\nOpen the DrumSequencer editor — the section picker shows A/B/C/D.",
+            "x": -418.42853,
+            "y": 363.9538,
+            "width": 360.0,
+            "height": 220.0,
+            "color": 0
+        }
+    ]
 }
