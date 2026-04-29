@@ -98,6 +98,18 @@ add_dependencies(test_note_breakout note_breakout)
 add_test(NAME test_note_breakout COMMAND test_note_breakout ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Mixer stereo + per-input pan — port surface (16 stereo inputs, 1 stereo
+# output, 32 params), equal-power pan law, mono-input fan, stereo-image
+# preservation, disconnect/gain=0 short-circuits.
+add_executable(test_mixer
+    tests/operators/test_mixer.cpp
+)
+target_include_directories(test_mixer PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(test_mixer PRIVATE vivid_runtime_testlib vivid_operator_api)
+add_dependencies(test_mixer mixer)
+add_test(NAME test_mixer COMMAND test_mixer ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Arpeggiator MIDI-inject smoke — verifies vivid_op_inject_midi is exported,
 # OperatorLoader probes it, and inject + tick paths don't crash with or
 # without a parallel notes_in stream.

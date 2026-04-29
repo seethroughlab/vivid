@@ -1,27 +1,34 @@
 #include "operator_api/operator.h"
 #include "operator_api/thumbnail.h"
+#include <cmath>
 #include <cstring>
 
 static constexpr int kMaxInputs = 16;
 
 /**
- * @brief Summing mixer with per-channel gain for up to 16 audio inputs.
+ * @brief Stereo summing mixer with per-input gain + pan for up to 16 audio inputs.
  *
- * Sums connected audio inputs with independent gain controls.
+ * Sums connected audio inputs into a stereo bus. Each input has its own
+ * gain (0..2, default 1) and pan (-1..+1, default 0 = center) using an
+ * equal-power pan law. Mono inputs fan to both legs; stereo inputs have
+ * their existing image preserved (pan rotates the L/R balance).
  * Disconnected inputs contribute silence. Uses repeat-group ports
  * for grow-on-connect UI behavior.
  *
- * @see Gain, Composite
+ * @see Gain, Composite, StereoPanWidth
  */
 struct Mixer : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Mixer";
     static constexpr bool kTimeDependent = false;
 
-    // Per-input gain params (generated in constructor)
+    // Per-input params (generated in constructor)
     struct InputParams {
         char gain_name[16];
-        char desc[80];
+        char pan_name[16];
+        char gain_desc[80];
+        char pan_desc[80];
         vivid::Param<float> gain{nullptr, 1.0f, 0.0f, 2.0f};
+        vivid::Param<float> pan {nullptr, 0.0f, -1.0f, 1.0f};
     };
 
     InputParams ip_[kMaxInputs];
@@ -39,24 +46,37 @@ struct Mixer : vivid::OperatorBase, vivid::AudioProcessable {
         for (int i = 0; i < kMaxInputs; ++i) {
             auto& I = ip_[i];
             std::snprintf(I.gain_name, sizeof(I.gain_name), "gain_%d", i);
+            std::snprintf(I.pan_name,  sizeof(I.pan_name),  "pan_%d",  i);
             std::snprintf(port_names_[i], sizeof(port_names_[i]), "input_%d", i);
-            std::snprintf(I.desc, sizeof(I.desc),
+            std::snprintf(I.gain_desc, sizeof(I.gain_desc),
                           "Level multiplier for input %d (0 = silent, 1 = unity, 2 = double)", i);
+            std::snprintf(I.pan_desc, sizeof(I.pan_desc),
+                          "Pan for input %d (-1 = hard left, 0 = center, +1 = hard right)", i);
 
             I.gain.name = I.gain_name;
+            I.pan.name  = I.pan_name;
 
             vivid::display_hint(I.gain, VIVID_DISPLAY_KNOB);
-            vivid::layout_row(I.gain, 2, i % 2);
+            vivid::layout_row(I.gain, 2, 0);
             vivid::semantic_tag(I.gain, "amplitude_linear");
             vivid::semantic_shape(I.gain, "scalar");
-            vivid::description(I.gain, I.desc);
+            vivid::description(I.gain, I.gain_desc);
             vivid::repeat_group(I.gain, "input", static_cast<uint16_t>(i));
+
+            vivid::display_hint(I.pan, VIVID_DISPLAY_KNOB);
+            vivid::layout_row(I.pan, 2, 1);
+            vivid::semantic_tag(I.pan, "pan");
+            vivid::semantic_shape(I.pan, "scalar");
+            vivid::description(I.pan, I.pan_desc);
+            vivid::repeat_group(I.pan, "input", static_cast<uint16_t>(i));
         }
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
-        for (int i = 0; i < kMaxInputs; ++i)
+        for (int i = 0; i < kMaxInputs; ++i) {
             out.push_back(&ip_[i].gain);
+            out.push_back(&ip_[i].pan);
+        }
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -66,7 +86,7 @@ struct Mixer : vivid::OperatorBase, vivid::AudioProcessable {
             pd.type = VIVID_PORT_AUDIO_BUFFER;
             pd.direction = VIVID_PORT_INPUT;
             pd.transport = VIVID_PORT_TRANSPORT_AUDIO_BUFFER;
-            pd.channels = 1;
+            pd.channels = 2;
             pd.repeat_group = "input";
             pd.repeat_group_idx = static_cast<uint16_t>(i);
             out.push_back(pd);
@@ -76,26 +96,47 @@ struct Mixer : vivid::OperatorBase, vivid::AudioProcessable {
         out_port.type = VIVID_PORT_AUDIO_BUFFER;
         out_port.direction = VIVID_PORT_OUTPUT;
         out_port.transport = VIVID_PORT_TRANSPORT_AUDIO_BUFFER;
-        out_port.channels = 1;
+        out_port.channels = 2;
         out.push_back(out_port);
         vivid::append_analysis_ports(out);
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        float* out = ctx->output_buffers[0];
         const uint32_t n = ctx->buffer_size;
+        float* out_l = ctx->output_buffers[0];
+        float* out_r = ctx->output_buffers[0] + n;  // planar stereo
 
-        // Clear output
-        std::memset(out, 0, n * sizeof(float));
+        std::memset(out_l, 0, 2 * n * sizeof(float));
 
-        // Accumulate each input × gain
+        static constexpr float kPiOver4 = 3.14159265358979f * 0.25f;
+
         for (int i = 0; i < kMaxInputs; ++i) {
             const float* in = ctx->input_buffers[i];
             if (!in) continue;
-            float g = ip_[i].gain.value;
+            const float g = ip_[i].gain.value;
             if (g == 0.0f) continue;
-            for (uint32_t s = 0; s < n; ++s)
-                out[s] += in[s] * g;
+
+            const uint32_t in_ch = ctx->input_channel_counts
+                                       ? ctx->input_channel_counts[i]
+                                       : 2u;
+
+            // Equal-power pan law: pan ∈ [-1, +1] → angle ∈ [0, π/2].
+            // Mirrors operators/audio/stereo_pan_width/stereo_pan_width.cpp:86-90.
+            const float angle = (ip_[i].pan.value + 1.0f) * kPiOver4;
+            const float gl = g * std::cos(angle);
+            const float gr = g * std::sin(angle);
+
+            if (in_ch >= 2) {
+                const float* in_l = in;
+                const float* in_r = in + n;
+                for (uint32_t s = 0; s < n; ++s) out_l[s] += in_l[s] * gl;
+                for (uint32_t s = 0; s < n; ++s) out_r[s] += in_r[s] * gr;
+            } else {
+                for (uint32_t s = 0; s < n; ++s) {
+                    out_l[s] += in[s] * gl;
+                    out_r[s] += in[s] * gr;
+                }
+            }
         }
     }
 
