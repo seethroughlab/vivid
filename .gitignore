@@ -87,3 +87,4 @@ GPUCache
 .codex
 docs/ARCHITECTURE.pdf
 build-*
+.codex-tmp
