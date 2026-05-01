@@ -2440,9 +2440,35 @@ _audio_analysis_mod = None
 def _audio_analysis():
     global _audio_analysis_mod
     if _audio_analysis_mod is None:
-        from mcp import audio_analysis as _aa  # local import
+        # Sibling file `audio_analysis.py` next to this module. We can't
+        # `from mcp import audio_analysis` because `mcp` already resolves to
+        # the installed FastMCP PyPI package, not this directory.
+        import importlib.util
+        _path = pathlib.Path(__file__).resolve().parent / "audio_analysis.py"
+        _spec = importlib.util.spec_from_file_location("vivid_audio_analysis", _path)
+        _aa = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_aa)
         _audio_analysis_mod = _aa
     return _audio_analysis_mod
+
+
+_recording_tap_started = False
+
+
+async def _ensure_recording_tap(duration_ms: float) -> None:
+    """Start the runtime's recording tap on first use and let it fill.
+
+    The tap is a global ring fed by the audio thread. `capture_audio` only
+    pops what's already available — if the tap was never started we get
+    "no audio samples available". Start once per Python-server lifetime
+    and wait long enough for `duration_ms` worth of samples to land.
+    """
+    global _recording_tap_started
+    if _recording_tap_started:
+        return
+    await _post("start_recording_tap", {})
+    _recording_tap_started = True
+    await asyncio.sleep(max(0.05, duration_ms / 1000.0) + 0.1)
 
 
 async def _fetch_wav_bytes(node_id: str, duration_ms: float):
@@ -2453,16 +2479,31 @@ async def _fetch_wav_bytes(node_id: str, duration_ms: float):
     Otherwise, captures `duration_ms` of the final mix via the recording
     tap. Both paths return WAV bytes that we decode via soundfile.
     """
-    if node_id:
-        raw = await _post("capture_node_audio", {"node_id": node_id})
-    else:
-        raw = await _post("capture_audio",
-                          {"duration": float(duration_ms) / 1000.0},
-                          timeout=max(10.0, duration_ms / 1000.0 + 6.0))
+    async def _do_capture():
+        if node_id:
+            return await _post("capture_node_audio", {"node_id": node_id})
+        return await _post("capture_audio",
+                           {"duration": float(duration_ms) / 1000.0},
+                           timeout=max(10.0, duration_ms / 1000.0 + 6.0))
+
+    if not node_id:
+        await _ensure_recording_tap(duration_ms)
+    raw = await _do_capture()
     try:
         doc = json.loads(raw)
     except json.JSONDecodeError as exc:
         return None, f"non-JSON response: {exc}"
+    # If the tap was active in a previous run but reset, retry once after
+    # explicitly (re-)starting it.
+    if not doc.get("ok", False) and not node_id and "recording tap" in doc.get("error", ""):
+        global _recording_tap_started
+        _recording_tap_started = False
+        await _ensure_recording_tap(duration_ms)
+        raw = await _do_capture()
+        try:
+            doc = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            return None, f"non-JSON response: {exc}"
     if not doc.get("ok", False):
         return None, doc.get("error", "capture failed")
     b64 = doc.get("wav_base64", "")
