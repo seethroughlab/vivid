@@ -98,6 +98,18 @@ add_dependencies(test_note_breakout note_breakout)
 add_test(NAME test_note_breakout COMMAND test_note_breakout ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# NoteModulator smoke + behavior — verbatim passthrough when amounts=0,
+# per-note phase decorrelation across simultaneous notes, compose-add and
+# replace mode semantics.
+add_executable(test_note_modulator
+    tests/operators/test_note_modulator.cpp
+)
+target_include_directories(test_note_modulator PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(test_note_modulator PRIVATE vivid_runtime_testlib vivid_operator_api)
+add_dependencies(test_note_modulator note_modulator)
+add_test(NAME test_note_modulator COMMAND test_note_modulator ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Mixer stereo + per-input pan — port surface (16 stereo inputs, 1 stereo
 # output, 32 params), equal-power pan law, mono-input fan, stereo-image
 # preservation, disconnect/gain=0 short-circuits.
