@@ -200,6 +200,19 @@ if(VIVID_ENABLE_HIGHWAY)
 endif()
 
 include(cmake/tests/10-runtime-control-graph.cmake)
+# SourceSyntaxParser unit tests — tree-sitter parsing foundation (Phase 1)
+add_executable(test_source_syntax_parser
+    tests/core/test_source_syntax_parser.cpp
+    src/runtime/core/source_syntax_parser.cpp
+)
+target_include_directories(test_source_syntax_parser PRIVATE src tests)
+target_link_libraries(test_source_syntax_parser PRIVATE
+    vivid_operator_api tree_sitter_runtime tree_sitter_cpp_lib
+    nlohmann_json::nlohmann_json
+)
+add_test(NAME test_source_syntax_parser COMMAND test_source_syntax_parser)
+set_tests_properties(test_source_syntax_parser PROPERTIES TIMEOUT 15)
+
 include(cmake/tests/20-ui-and-common.cmake)
 include(cmake/tests/30-ops-stability-domains.cmake)
 include(cmake/tests/40-packages-media-misc.cmake)

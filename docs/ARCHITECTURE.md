@@ -493,6 +493,8 @@ GLFW does not provide file open/save dialogs or pen/tablet pressure. File dialog
 | **Midifile** | Standard MIDI file parsing | ~150KB source | pinned FetchContent, custom static library target |
 | **efsw** (1.5.1) | Cross-platform file watching for hot reload | ~200KB source | FetchContent |
 | **TinyXML-2** (10.0.0) | Lightweight XML parsing (appcast feed) | ~100KB source | FetchContent |
+| **tree-sitter** (0.23.0) | C++ parsing foundation for SourceSyntaxParser (AST-based operator docs + codegen) | ~200KB source | FetchContent (C runtime only) |
+| **tree-sitter-cpp** (0.23.4) | C/C++/ObjC/ObjC++ grammar for tree-sitter | ~50KB source | FetchContent (parser.c only) |
 | **Sparkle** (macOS) | App auto-update framework | framework | system framework |
 
 **Note on Dawn:** The original plan called for Google's Dawn WebGPU implementation. The actual integration uses wgpu-native (a Rust-based WebGPU backend) via eliemichel's WebGPU-distribution adapter layer, with a pinned upstream release tag (`gfx-rs/wgpu-native`) providing Metal interop symbols for Syphon texture sharing.
