@@ -166,7 +166,7 @@ add_vivid_operator(gate              operators/control/gate/gate.cpp           E
 add_vivid_operator(smooth            operators/control/smooth/smooth.cpp       EXTRA_LIBS webgpu
                    FACTORY_PRESETS operators/control/smooth/factory_presets.json)
 add_vivid_operator(stack             operators/control/stack/stack.cpp)
-add_vivid_operator(repeat            operators/control/repeat/repeat.cpp)
+add_vivid_operator(repeat            operators/control/repeat/repeat.cpp             CODEGEN)
 add_vivid_operator(spread_noise      operators/control/spread_noise/spread_noise.cpp      EXTRA_LIBS webgpu)
 
 # --- 2D drawable-pipeline operators (Phase E) ---
@@ -183,23 +183,23 @@ add_vivid_operator(instance_noise_2d operators/gpu/instance_noise_2d/instance_no
 add_vivid_operator(instances_from_lanes_2d operators/gpu/instances_from_lanes_2d/instances_from_lanes_2d.cpp EXTRA_LIBS webgpu)
 add_vivid_operator(text_2d             operators/gpu/text_2d/text_2d.cpp                 EXTRA_LIBS webgpu stb_truetype)
 add_vivid_operator(tile              operators/control/tile/tile.cpp)
-add_vivid_operator(select            operators/control/select/select.cpp)
+add_vivid_operator(select            operators/control/select/select.cpp              CODEGEN)
 add_vivid_operator(alternate         operators/control/alternate/alternate.cpp)
 add_vivid_operator(modulated_gain   operators/control/modulated_gain/modulated_gain.cpp
                                     EXTRA_LIBS vivid_embeddable_op_support)
-add_vivid_operator(osc_in            operators/control/osc_in/osc_in.cpp      EXTRA_LIBS oscpack)
+add_vivid_operator(osc_in            operators/control/osc_in/osc_in.cpp      CODEGEN EXTRA_LIBS oscpack)
 add_vivid_operator(osc_out           operators/control/osc_out/osc_out.cpp     EXTRA_LIBS oscpack)
 add_vivid_operator(mouse             operators/control/mouse/mouse.cpp)
 add_vivid_operator(keyboard          operators/control/keyboard/keyboard.cpp          EXTRA_LIBS webgpu)
 add_vivid_operator(folder_list       operators/control/folder_list/folder_list.cpp    EXTRA_LIBS webgpu)
 add_vivid_operator(string_select     operators/control/string_select/string_select.cpp EXTRA_LIBS webgpu)
 add_vivid_operator(basename          operators/control/basename/basename.cpp          EXTRA_LIBS webgpu)
-add_vivid_operator(step_counter      operators/control/step_counter/step_counter.cpp)
-add_vivid_operator(phrase_pulse      operators/control/phrase_pulse/phrase_pulse.cpp)
+add_vivid_operator(step_counter      operators/control/step_counter/step_counter.cpp  CODEGEN)
+add_vivid_operator(phrase_pulse      operators/control/phrase_pulse/phrase_pulse.cpp  CODEGEN)
 add_vivid_operator(color_bands       operators/gpu/color_bands/color_bands.cpp           EXTRA_LIBS webgpu)
-add_vivid_operator(path_animate      operators/control/path_animate/path_animate.cpp)
+add_vivid_operator(path_animate      operators/control/path_animate/path_animate.cpp  CODEGEN)
 add_vivid_operator(sample_hold       operators/control/sample_hold/sample_hold.cpp    EXTRA_LIBS webgpu)
-add_vivid_operator(quantizer         operators/control/quantizer/quantizer.cpp)
+add_vivid_operator(quantizer         operators/control/quantizer/quantizer.cpp        CODEGEN)
 add_vivid_operator(macro             operators/control/macro/macro.cpp)
 add_vivid_operator(mseg              operators/control/mseg/mseg.cpp
                    FACTORY_PRESETS operators/control/mseg/factory_presets.json
@@ -224,13 +224,13 @@ target_sources(pattern_seq PRIVATE
     operators/control/pattern_seq/pattern_seq_editor.cpp
     operators/control/pattern_seq/pattern_seq_editor_shared.cpp)
 add_vivid_operator(note_pattern      operators/control/note_pattern/note_pattern.cpp    EXTRA_LIBS webgpu)
-add_vivid_operator(note_duration     operators/control/note_duration/note_duration.cpp)
+add_vivid_operator(note_duration     operators/control/note_duration/note_duration.cpp CODEGEN)
 add_vivid_operator(arpeggiator       operators/control/arpeggiator/arpeggiator.cpp     EXTRA_LIBS webgpu)
 target_sources(arpeggiator PRIVATE
     operators/control/arpeggiator/arpeggiator_editor.cpp
     operators/control/arpeggiator/arpeggiator_editor_shared.cpp)
 add_vivid_operator(chord_progression operators/control/chord_progression/chord_progression.cpp EXTRA_LIBS webgpu)
-add_vivid_operator(state_machine     operators/control/state_machine/state_machine.cpp)
+add_vivid_operator(state_machine     operators/control/state_machine/state_machine.cpp CODEGEN)
 add_vivid_operator(tracker           operators/control/tracker/tracker.cpp         EXTRA_LIBS webgpu nlohmann_json::nlohmann_json)
 target_sources(tracker PRIVATE
     operators/control/tracker/tracker_core.cpp

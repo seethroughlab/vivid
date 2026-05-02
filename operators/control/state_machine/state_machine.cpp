@@ -295,4 +295,10 @@ struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
-VIVID_REGISTER(StateMachine)
+VIVID_DEFINE_OP(StateMachine) {
+    name = "StateMachine";
+    keywords = {"state", "machine", "sequence", "transition", "crossfade", "automation"};
+    summary = "Eight-state sequencer with beat-quantized transitions and crossfade.";
+}
+
+VIVID_REGISTER_V2(StateMachine)

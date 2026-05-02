@@ -239,4 +239,11 @@ private:
     }
 };
 
-VIVID_REGISTER(OscIn)
+VIVID_DEFINE_OP(OscIn) {
+    name = "OscIn";
+    display_name = "OSC In";
+    keywords = {"osc", "open sound control", "network", "udp", "receive", "input"};
+    summary = "Listens for OSC messages over UDP and outputs the first argument as a scalar.";
+}
+
+VIVID_REGISTER_V2(OscIn)

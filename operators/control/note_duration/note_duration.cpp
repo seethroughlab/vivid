@@ -57,4 +57,10 @@ struct NoteDuration : vivid::OperatorBase, vivid::FrameProcessable {
 
 };
 
-VIVID_REGISTER(NoteDuration)
+VIVID_DEFINE_OP(NoteDuration) {
+    name = "NoteDuration";
+    keywords = {"duration", "note", "subdivision", "timing", "musical", "rhythm"};
+    summary = "Converts beat duration to a musical note value (whole, half, quarter, eighth, etc.).";
+}
+
+VIVID_REGISTER_V2(NoteDuration)

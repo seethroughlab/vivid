@@ -52,4 +52,10 @@ private:
     }
 };
 
-VIVID_REGISTER(Select)
+VIVID_DEFINE_OP(Select) {
+    name = "Select";
+    keywords = {"select", "lane", "index", "extract", "polyphony", "pick"};
+    summary = "Extracts a single element from a multi-lane array by index.";
+}
+
+VIVID_REGISTER_V2(Select)
