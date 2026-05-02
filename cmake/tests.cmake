@@ -83,7 +83,7 @@ add_library(vivid_runtime_testlib STATIC
 )
 target_include_directories(vivid_runtime_testlib PUBLIC src tests)
 target_link_libraries(vivid_runtime_testlib PUBLIC
-    vivid_operator_api nlohmann_json::nlohmann_json dragonbox::dragonbox_to_chars webgpu
+    vivid_operator_api vivid_source_syntax nlohmann_json::nlohmann_json dragonbox::dragonbox_to_chars webgpu
     miniaudio rtmidi snappy stb_truetype ixwebsocket efsw tinyxml2 CURL::libcurl)
 if(VIVID_ENABLE_HIGHWAY)
     target_link_libraries(vivid_runtime_testlib PUBLIC hwy)
@@ -203,11 +203,10 @@ include(cmake/tests/10-runtime-control-graph.cmake)
 # SourceSyntaxParser unit tests — tree-sitter parsing foundation (Phase 1)
 add_executable(test_source_syntax_parser
     tests/core/test_source_syntax_parser.cpp
-    src/runtime/core/source_syntax_parser.cpp
 )
 target_include_directories(test_source_syntax_parser PRIVATE src tests)
 target_link_libraries(test_source_syntax_parser PRIVATE
-    vivid_operator_api tree_sitter_runtime tree_sitter_cpp_lib
+    vivid_operator_api vivid_source_syntax
     nlohmann_json::nlohmann_json
 )
 add_test(NAME test_source_syntax_parser COMMAND test_source_syntax_parser)

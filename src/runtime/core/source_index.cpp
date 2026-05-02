@@ -1,4 +1,5 @@
 #include "runtime/core/source_index.h"
+#include "runtime/core/source_syntax_parser.h"
 
 #include <algorithm>
 #include <cctype>
@@ -476,16 +477,64 @@ nlohmann::json SourceIndex::find_symbol(const std::string& name,
 
     nlohmann::json matches = nlohmann::json::array();
     const std::size_t capped_limit = clamp_limit(limit, 20, kMaxSearchLimit);
+    std::unordered_set<std::string> seen_keys;
 
     auto append_matches = [&](bool definitions_only) {
         for (const auto& file : files_) {
             if (!root_filter.empty() && !root_filter.count(file.root_name))
                 continue;
+
+            const bool is_cpp_file =
+                SourceSyntaxParser::is_cpp_extension(SourceSyntaxParser::get_extension(file.abs_path));
+            if (is_cpp_file) {
+                const auto record = SourceSyntaxParser::parse(file.abs_path);
+                if (record.valid) {
+                    for (const auto& symbol : record.symbol_definitions) {
+                        if (symbol.name != trimmed)
+                            continue;
+                        if (definitions_only || symbol.kind == "function" ||
+                            symbol.kind == "struct_declaration" ||
+                            symbol.kind == "class_declaration" ||
+                            symbol.kind == "enum_declaration" ||
+                            symbol.kind == "namespace" ||
+                            symbol.kind == "alias") {
+                            const std::string key = file.rel_path + ":" +
+                                std::to_string(symbol.range.start_line) + ":" + symbol.kind;
+                            if (!seen_keys.insert(key).second)
+                                continue;
+                            std::string snippet;
+                            const int line_index = symbol.range.start_line - 1;
+                            if (line_index >= 0 &&
+                                static_cast<std::size_t>(line_index) < file.lines.size()) {
+                                snippet = trim_copy(file.lines[static_cast<std::size_t>(line_index)]);
+                            }
+                            matches.push_back({
+                                {"path", file.rel_path},
+                                {"root", file.root_name},
+                                {"origin", file.origin},
+                                {"line", symbol.range.start_line},
+                                {"kind", symbol.kind},
+                                {"is_definition", true},
+                                {"snippet", std::move(snippet)},
+                            });
+                            if (matches.size() >= capped_limit)
+                                return true;
+                        }
+                    }
+                    if (definitions_only)
+                        continue;
+                }
+            }
+
             for (std::size_t i = 0; i < file.lines.size(); ++i) {
                 auto occ = classify_occurrence(file.lines[i], trimmed);
                 if (!occ.has_value())
                     continue;
                 if (definitions_only && !occ->is_definition)
+                    continue;
+                const std::string key = file.rel_path + ":" +
+                    std::to_string(i + 1) + ":" + occ->kind;
+                if (!seen_keys.insert(key).second)
                     continue;
                 matches.push_back({
                     {"path", file.rel_path},

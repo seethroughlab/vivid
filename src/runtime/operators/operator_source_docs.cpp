@@ -9,12 +9,14 @@
 #include <sstream>
 #include <unordered_set>
 
+#include "runtime/core/source_syntax_parser.h"
+
 namespace vivid {
 namespace fs = std::filesystem;
 
 namespace {
 
-struct TypeDefinition {
+struct DocTypeDefinition {
     fs::path path;
     std::vector<std::string> lines;
     size_t line_index = 0;
@@ -49,13 +51,16 @@ static std::string relative_to_root(const std::string& root, const fs::path& pat
     return rel.generic_string();
 }
 
-static std::vector<std::string> read_lines(const fs::path& path) {
-    std::ifstream f(path);
-    if (!f.is_open()) return {};
+static std::vector<std::string> split_lines(const std::string& text) {
     std::vector<std::string> lines;
+    std::istringstream input(text);
     std::string line;
-    while (std::getline(f, line))
-        lines.push_back(line);
+    while (std::getline(input, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        lines.push_back(std::move(line));
+    }
     return lines;
 }
 
@@ -65,31 +70,6 @@ static std::string trim_copy(std::string s) {
     while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back())))
         s.pop_back();
     return s;
-}
-
-static std::string camel_to_snake_id(std::string name) {
-    if (name.size() > 2) {
-        const std::string suffix = name.substr(name.size() - 2);
-        if (suffix == "Au" || suffix == "Fr")
-            name.resize(name.size() - 2);
-    }
-    std::string out;
-    out.reserve(name.size() + 8);
-    for (size_t i = 0; i < name.size(); ++i) {
-        const unsigned char ch = static_cast<unsigned char>(name[i]);
-        if (std::isupper(ch)) {
-            if (!out.empty() &&
-                (std::islower(static_cast<unsigned char>(out.back())) ||
-                 (i + 1 < name.size() &&
-                  std::islower(static_cast<unsigned char>(name[i + 1]))))) {
-                out.push_back('_');
-            }
-            out.push_back(static_cast<char>(std::tolower(ch)));
-        } else {
-            out.push_back(static_cast<char>(ch));
-        }
-    }
-    return out;
 }
 
 static std::string join_lines(const std::vector<std::string>& lines,
@@ -142,7 +122,7 @@ static std::optional<std::string> extract_doc_block(const std::vector<std::strin
         s = std::regex_replace(s, star_re, "");
         if (trim_copy(s) == "*")
             s.clear();
-        cleaned.push_back(s);
+        cleaned.push_back(std::move(s));
     }
 
     while (!cleaned.empty() && trim_copy(cleaned.front()).empty())
@@ -154,65 +134,28 @@ static std::optional<std::string> extract_doc_block(const std::vector<std::strin
     return join_lines(cleaned, 0, cleaned.size());
 }
 
-static std::vector<std::string> extract_base_names(std::string decl) {
-    auto colon = decl.find(':');
-    if (colon == std::string::npos) return {};
-    decl = decl.substr(colon + 1);
-    auto brace = decl.find('{');
-    if (brace != std::string::npos)
-        decl = decl.substr(0, brace);
-    auto semi = decl.find(';');
-    if (semi != std::string::npos)
-        decl = decl.substr(0, semi);
-
-    std::regex ident_re(R"(\b([A-Za-z_]\w*)\b)");
-    std::vector<std::string> bases;
-    for (auto it = std::sregex_iterator(decl.begin(), decl.end(), ident_re);
-         it != std::sregex_iterator(); ++it) {
-        std::string id = (*it)[1].str();
-        if (id == "public" || id == "protected" || id == "private" ||
-            id == "virtual" || id == "final" || id == "override")
-            continue;
-        bases.push_back(std::move(id));
-    }
-    bases.erase(std::unique(bases.begin(), bases.end()), bases.end());
-    return bases;
-}
-
-static std::optional<TypeDefinition> find_type_definition_in_file(
+static std::optional<DocTypeDefinition> find_type_definition_in_file(
         const fs::path& path, const std::string& type_name) {
-    const auto lines = read_lines(path);
-    if (lines.empty()) return std::nullopt;
-    const std::regex pattern("^\\s*(struct|class)\\s+" + type_name + R"(\b)");
-    for (size_t i = 0; i < lines.size(); ++i) {
-        if (!std::regex_search(lines[i], pattern)) continue;
-        std::string decl = lines[i];
-        size_t cursor = i + 1;
-        while (decl.find('{') == std::string::npos &&
-               decl.find(';') == std::string::npos &&
-               cursor < lines.size() &&
-               cursor <= i + 8) {
-            decl += "\n" + lines[cursor++];
+    const auto record = SourceSyntaxParser::parse(path.string());
+    if (!record.valid) {
+        return std::nullopt;
+    }
+
+    for (const auto& type_def : record.type_definitions) {
+        if (type_def.name != type_name) {
+            continue;
         }
-        TypeDefinition def;
+        DocTypeDefinition def;
         def.path = path;
-        def.lines = lines;
-        def.line_index = i;
-        def.bases = extract_base_names(decl);
+        def.lines = split_lines(record.raw_source);
+        def.line_index = type_def.range.start_line > 0
+            ? static_cast<size_t>(type_def.range.start_line - 1)
+            : 0;
+        def.bases = type_def.base_class_names;
         return def;
     }
-    return std::nullopt;
-}
 
-static std::vector<std::string> parse_include_targets(const std::vector<std::string>& lines) {
-    std::vector<std::string> includes;
-    const std::regex include_re(R"INCLUDE(^\s*#include\s+"([^"]+)")INCLUDE");
-    for (const auto& line : lines) {
-        std::smatch match;
-        if (std::regex_search(line, match, include_re))
-            includes.push_back(match[1].str());
-    }
-    return includes;
+    return std::nullopt;
 }
 
 static std::optional<fs::path> resolve_include_path(
@@ -242,7 +185,7 @@ static std::optional<fs::path> resolve_include_path(
     return fs::path(it->second.front());
 }
 
-static std::optional<TypeDefinition> find_type_definition_recursive(
+static std::optional<DocTypeDefinition> find_type_definition_recursive(
         const std::string& root,
         const fs::path& start_path,
         const std::string& type_name,
@@ -257,13 +200,19 @@ static std::optional<TypeDefinition> find_type_definition_recursive(
     auto def = find_type_definition_in_file(normalized_start, type_name);
     if (def) return def;
 
-    const auto lines = read_lines(normalized_start);
-    for (const auto& include_target : parse_include_targets(lines)) {
-        auto include_path = resolve_include_path(normalized_start, include_target, root, files_by_name);
-        if (!include_path.has_value()) continue;
-        auto nested = find_type_definition_recursive(root, *include_path, type_name,
-                                                     files_by_name, visited_files, fallback_files);
-        if (nested) return nested;
+    const auto record = SourceSyntaxParser::parse(normalized_start.string());
+    if (record.valid) {
+        for (const auto& include_target : record.include_targets) {
+            if (include_target.is_system || include_target.quoted_path.empty()) {
+                continue;
+            }
+            auto include_path = resolve_include_path(
+                normalized_start, include_target.quoted_path, root, files_by_name);
+            if (!include_path.has_value()) continue;
+            auto nested = find_type_definition_recursive(root, *include_path, type_name,
+                                                         files_by_name, visited_files, fallback_files);
+            if (nested) return nested;
+        }
     }
 
     for (const auto& path_s : fallback_files) {
@@ -296,7 +245,6 @@ static nlohmann::json parse_doc_block(const std::string& raw) {
     std::unordered_map<std::string, size_t> output_idx;
     std::vector<std::string> body_lines;
     std::string current_tag;
-    std::string current_name;
     int current_index = -1;
 
     auto flush_body = [&]() {
@@ -341,7 +289,6 @@ static nlohmann::json parse_doc_block(const std::string& raw) {
                 flush_body();
                 result["brief"] = rest;
                 current_tag = "body";
-                current_name.clear();
                 current_index = -1;
             } else if (tag == "tip") {
                 flush_body();
@@ -396,7 +343,6 @@ static nlohmann::json parse_doc_block(const std::string& raw) {
                 std::getline(ss, doc);
                 doc = trim_copy(doc);
                 current_tag = tag;
-                current_name = name;
                 if (!name.empty()) {
                     if (tag == "param")
                         append_named_doc("params", param_idx, name, doc);
@@ -440,7 +386,7 @@ static nlohmann::json parse_doc_block(const std::string& raw) {
 }
 
 static nlohmann::json resolve_from_type(const std::string& root,
-                                        const TypeDefinition& def,
+                                        const DocTypeDefinition& def,
                                         const std::unordered_map<std::string, std::vector<std::string>>& files_by_name,
                                         const std::vector<std::string>& fallback_files,
                                         std::unordered_set<std::string>& visited_types);
@@ -462,7 +408,7 @@ static nlohmann::json resolve_from_name(const std::string& root,
 }
 
 static nlohmann::json resolve_from_type(const std::string& root,
-                                        const TypeDefinition& def,
+                                        const DocTypeDefinition& def,
                                         const std::unordered_map<std::string, std::vector<std::string>>& files_by_name,
                                         const std::vector<std::string>& fallback_files,
                                         std::unordered_set<std::string>& visited_types) {
@@ -503,8 +449,10 @@ void OperatorSourceDocs::set_core_source_root(std::string root) {
 }
 
 void OperatorSourceDocs::invalidate_core() {
-    if (!core_source_root_.empty())
+    if (!core_source_root_.empty()) {
         root_indexes_.erase(core_source_root_);
+        SourceSyntaxParser::invalidate_root(core_source_root_);
+    }
     std::vector<std::string> erase_keys;
     for (const auto& [key, _] : cache_) {
         if (key.rfind("core\n", 0) == 0)
@@ -516,8 +464,11 @@ void OperatorSourceDocs::invalidate_core() {
 
 void OperatorSourceDocs::invalidate_package(const std::string& package_name,
                                             const std::string& package_root) {
-    if (!package_root.empty())
-        root_indexes_.erase(normalize_root(package_root));
+    if (!package_root.empty()) {
+        const std::string normalized = normalize_root(package_root);
+        root_indexes_.erase(normalized);
+        SourceSyntaxParser::invalidate_root(normalized);
+    }
     std::vector<std::string> erase_keys;
     const std::string prefix = "pkg\n" + package_name + "\n";
     for (const auto& [key, _] : cache_) {
@@ -575,15 +526,14 @@ nlohmann::json OperatorSourceDocs::resolve(const std::string& cache_key,
             if (ext != ".cpp" && ext != ".cc" && ext != ".cxx" && ext != ".mm")
                 continue;
 
-            std::ifstream f(path);
-            if (!f.is_open()) continue;
-            std::ostringstream ss;
-            ss << f.rdbuf();
-            const std::string text = ss.str();
-            const std::regex reg_re(R"(VIVID_REGISTER\(\s*(\w+))");
-            for (auto reg_it = std::sregex_iterator(text.begin(), text.end(), reg_re);
-                 reg_it != std::sregex_iterator(); ++reg_it) {
-                index.registrations[(*reg_it)[1].str()] = normalized;
+            const auto record = SourceSyntaxParser::parse(path.string());
+            if (!record.valid)
+                continue;
+            for (const auto& call : record.register_calls) {
+                if (call.macro_name == "VIVID_REGISTER" ||
+                    call.macro_name == "VIVID_REGISTER_V2") {
+                    index.registrations[call.type_name] = normalized;
+                }
             }
         }
         index.indexed = true;
