@@ -63,6 +63,7 @@ add_library(vivid_runtime_testlib STATIC
     src/runtime/operators/operator_registry_metadata.cpp
     src/runtime/operators/operator_registry_diagnostics.cpp
     src/runtime/operators/operator_descriptor_hash.cpp
+    src/runtime/operators/operator_descriptor_validation.cpp
     src/runtime/operators/operator_source_docs.cpp
     src/runtime/packages/package_catalog.cpp
     src/runtime/packages/package_compiler.cpp
@@ -211,6 +212,18 @@ target_link_libraries(test_source_syntax_parser PRIVATE
 )
 add_test(NAME test_source_syntax_parser COMMAND test_source_syntax_parser)
 set_tests_properties(test_source_syntax_parser PROPERTIES TIMEOUT 15)
+
+add_executable(test_operator_codegen
+    tests/core/test_operator_codegen.cpp
+    tools/operator_codegen/descriptor_builder.cpp
+    tools/operator_codegen/uniform_codegen.cpp
+)
+target_include_directories(test_operator_codegen PRIVATE src tests ${CMAKE_SOURCE_DIR})
+target_link_libraries(test_operator_codegen PRIVATE vivid_source_syntax vivid_wgsl_uniform_layout)
+target_compile_definitions(test_operator_codegen PRIVATE
+    "VIVID_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+add_test(NAME test_operator_codegen COMMAND test_operator_codegen)
+set_tests_properties(test_operator_codegen PROPERTIES TIMEOUT 15)
 
 include(cmake/tests/20-ui-and-common.cmake)
 include(cmake/tests/30-ops-stability-domains.cmake)

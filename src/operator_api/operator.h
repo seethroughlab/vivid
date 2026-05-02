@@ -479,6 +479,16 @@ constexpr const char* get_summary() {
     else
         return nullptr;
 }
+
+struct metadata_string_sink {
+    metadata_string_sink& operator=(const char*) { return *this; }
+};
+
+struct metadata_keywords_sink {
+    metadata_keywords_sink& operator=(std::initializer_list<const char*>) {
+        return *this;
+    }
+};
 }} // namespace vivid::detail
 
 // ---------------------------------------------------------------------------
@@ -508,7 +518,7 @@ constexpr const char* get_summary() {
 // vivid_process_audio, vivid_process_gpu).
 // ---------------------------------------------------------------------------
 
-#define VIVID_REGISTER(ClassName)                                             \
+#define VIVID_INTERNAL_EXPORTS_WITH_DESCRIPTOR(ClassName, DescriptorExpr, ModeLiteral) \
                                                                               \
 struct _VividInstance {                                                        \
     ClassName op;                                                              \
@@ -543,6 +553,95 @@ static void _vivid_sync_params(_VividInstance* inst, float* param_values,      \
         }                                                                     \
     }                                                                         \
 }                                                                             \
+                                                                              \
+extern "C" uint32_t vivid_abi_version() {                                     \
+    return VIVID_OPERATOR_ABI_VERSION;                                        \
+}                                                                             \
+                                                                              \
+extern "C" const char* vivid_registration_mode() {                            \
+    return ModeLiteral;                                                       \
+}                                                                             \
+                                                                              \
+extern "C" const VividOperatorDescriptor* vivid_descriptor() {                \
+    return (DescriptorExpr);                                                  \
+}                                                                             \
+                                                                              \
+extern "C" void* vivid_create() {                                             \
+    auto* inst = new _VividInstance();                                        \
+    inst->op.collect_params(inst->param_ptrs);                                \
+    return inst;                                                              \
+}                                                                             \
+                                                                              \
+extern "C" void vivid_destroy(void* instance) {                               \
+    delete static_cast<_VividInstance*>(instance);                            \
+}                                                                             \
+                                                                              \
+template<typename _Op>                                                        \
+static void _vivid_dispatch_control(void* instance,                           \
+                                    VividFrameContext* ctx) {                 \
+    if constexpr (std::is_base_of_v<vivid::FrameProcessable, _Op>) {          \
+        auto* inst = static_cast<_VividInstance*>(instance);                  \
+        _vivid_sync_params(inst, ctx->param_values,                           \
+                           ctx->file_param_values, ctx->file_param_count);    \
+        static_cast<_Op&>(inst->op).process_frame(ctx);                       \
+    }                                                                         \
+}                                                                             \
+template<typename _Op>                                                        \
+static void _vivid_dispatch_audio(void* instance,                             \
+                                  VividAudioContext* ctx) {                   \
+    if constexpr (std::is_base_of_v<vivid::AudioProcessable, _Op>) {          \
+        auto* inst = static_cast<_VividInstance*>(instance);                  \
+        _vivid_sync_params(inst, ctx->param_values,                           \
+                           ctx->file_param_values, ctx->file_param_count);    \
+        static_cast<_Op&>(inst->op).process_audio(ctx);                       \
+    }                                                                         \
+}                                                                             \
+template<typename _Op, typename _Ctx>                                         \
+static void _vivid_dispatch_gpu(void* instance, _Ctx* ctx) {                  \
+    if constexpr (std::is_base_of_v<vivid::GpuProcessable, _Op>) {            \
+        auto* inst = static_cast<_VividInstance*>(instance);                  \
+        _vivid_sync_params(inst, ctx->param_values,                           \
+                           ctx->file_param_values, ctx->file_param_count);    \
+        static_cast<_Op&>(inst->op).process_gpu(ctx);                         \
+    }                                                                         \
+}                                                                             \
+                                                                              \
+extern "C" void vivid_process_frame(void* instance,                           \
+                                    VividFrameContext* ctx) {                 \
+    _vivid_dispatch_control<ClassName>(instance, ctx);                        \
+}                                                                             \
+                                                                              \
+extern "C" void vivid_process_audio(void* instance,                           \
+                                    VividAudioContext* ctx) {                 \
+    _vivid_dispatch_audio<ClassName>(instance, ctx);                          \
+}                                                                             \
+                                                                              \
+extern "C" void vivid_process_gpu(void* instance,                             \
+                                  VividGpuContext* ctx) {                     \
+    _vivid_dispatch_gpu<ClassName>(instance, ctx);                            \
+}                                                                             \
+                                                                              \
+extern "C" void vivid_main_thread_update(void* instance, double time,         \
+                                         const char** file_param_values,      \
+                                         uint32_t file_param_count) {         \
+    auto* inst = static_cast<_VividInstance*>(instance);                      \
+    _vivid_sync_params(inst, nullptr,                                         \
+                       file_param_values, file_param_count);                  \
+    inst->op.main_thread_update(time);                                        \
+}                                                                             \
+                                                                              \
+extern "C" void vivid_prepare_instance_assets(                                \
+    void* instance,                                                           \
+    const float* param_values,                                                \
+    const char** file_param_values,                                           \
+    uint32_t file_param_count) {                                              \
+    auto* inst = static_cast<_VividInstance*>(instance);                      \
+    _vivid_sync_params(inst, const_cast<float*>(param_values),                \
+                       file_param_values, file_param_count);                  \
+    inst->op.prepare_instance_assets();                                       \
+}
+
+#define VIVID_REGISTER(ClassName)                                             \
                                                                               \
 static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
     static VividOperatorDescriptor desc{};                                    \
@@ -651,90 +750,26 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
     }                                                                         \
     return &desc;                                                             \
 }                                                                             \
-                                                                              \
-extern "C" uint32_t vivid_abi_version() {                                     \
-    return VIVID_OPERATOR_ABI_VERSION;                                        \
-}                                                                             \
-                                                                              \
-extern "C" const VividOperatorDescriptor* vivid_descriptor() {                \
-    return _vivid_get_descriptor();                                           \
-}                                                                             \
-                                                                              \
-extern "C" void* vivid_create() {                                             \
-    auto* inst = new _VividInstance();                                         \
-    inst->op.collect_params(inst->param_ptrs);                                \
-    return inst;                                                              \
-}                                                                             \
-                                                                              \
-extern "C" void vivid_destroy(void* instance) {                               \
-    delete static_cast<_VividInstance*>(instance);                             \
-}                                                                             \
-                                                                              \
-template<typename _Op>                                                        \
-static void _vivid_dispatch_control(void* instance,                            \
-                                     VividFrameContext* ctx) {                \
-    /* Dispatch to process_frame. */                                           \
-    if constexpr (std::is_base_of_v<vivid::FrameProcessable, _Op>) {          \
-        auto* inst = static_cast<_VividInstance*>(instance);                   \
-        _vivid_sync_params(inst, ctx->param_values,                           \
-                           ctx->file_param_values, ctx->file_param_count);    \
-        static_cast<_Op&>(inst->op).process_frame(ctx);                       \
-    }                                                                         \
-}                                                                             \
-template<typename _Op>                                                        \
-static void _vivid_dispatch_audio(void* instance,                              \
-                                   VividAudioContext* ctx) {                    \
-    if constexpr (std::is_base_of_v<vivid::AudioProcessable, _Op>) {          \
-        auto* inst = static_cast<_VividInstance*>(instance);                   \
-        _vivid_sync_params(inst, ctx->param_values,                           \
-                           ctx->file_param_values, ctx->file_param_count);    \
-        static_cast<_Op&>(inst->op).process_audio(ctx);                       \
-    }                                                                         \
-}                                                                             \
-template<typename _Op, typename _Ctx>                                         \
-static void _vivid_dispatch_gpu(void* instance, _Ctx* ctx) {                   \
-    if constexpr (std::is_base_of_v<vivid::GpuProcessable, _Op>) {            \
-        auto* inst = static_cast<_VividInstance*>(instance);                   \
-        _vivid_sync_params(inst, ctx->param_values,                           \
-                           ctx->file_param_values, ctx->file_param_count);    \
-        static_cast<_Op&>(inst->op).process_gpu(ctx);                         \
-    }                                                                         \
-}                                                                             \
-                                                                              \
-extern "C" void vivid_process_frame(void* instance,                            \
-                                    VividFrameContext* ctx) {                \
-    _vivid_dispatch_control<ClassName>(instance, ctx);                         \
-}                                                                             \
-                                                                              \
-extern "C" void vivid_process_audio(void* instance,                            \
-                                    VividAudioContext* ctx) {                   \
-    _vivid_dispatch_audio<ClassName>(instance, ctx);                           \
-}                                                                             \
-                                                                              \
-extern "C" void vivid_process_gpu(void* instance,                              \
-                                  VividGpuContext* ctx) {                       \
-    _vivid_dispatch_gpu<ClassName>(instance, ctx);                             \
-}                                                                             \
-                                                                              \
-extern "C" void vivid_main_thread_update(void* instance, double time,         \
-                                         const char** file_param_values,       \
-                                         uint32_t file_param_count) {          \
-    auto* inst = static_cast<_VividInstance*>(instance);                       \
-    _vivid_sync_params(inst, nullptr,                                         \
-                       file_param_values, file_param_count);                   \
-    inst->op.main_thread_update(time);                                        \
-}                                                                             \
-                                                                              \
-extern "C" void vivid_prepare_instance_assets(                                \
-    void* instance,                                                           \
-    const float* param_values,                                                \
-    const char** file_param_values,                                           \
-    uint32_t file_param_count) {                                              \
-    auto* inst = static_cast<_VividInstance*>(instance);                      \
-    _vivid_sync_params(inst, const_cast<float*>(param_values),                \
-                       file_param_values, file_param_count);                  \
-    inst->op.prepare_instance_assets();                                       \
-}
+VIVID_INTERNAL_EXPORTS_WITH_DESCRIPTOR(ClassName, _vivid_get_descriptor(), "legacy")
+
+// Metadata block consumed by operator_codegen. The body intentionally compiles
+// as a no-op function while preserving the ergonomic syntax:
+//
+//   VIVID_DEFINE_OP(MyOp) {
+//       name = "MyOp";
+//       keywords = {"foo", "bar"};
+//   }
+#define VIVID_DEFINE_OP(ClassName)                                            \
+    static void vivid_operator_metadata_##ClassName(                          \
+        [[maybe_unused]] vivid::detail::metadata_string_sink name,            \
+        [[maybe_unused]] vivid::detail::metadata_string_sink display_name,    \
+        [[maybe_unused]] vivid::detail::metadata_keywords_sink keywords,      \
+        [[maybe_unused]] vivid::detail::metadata_string_sink summary)
+
+// Marker-only macro for source parsing. Generated registration code provides
+// the real exported entry points.
+#define VIVID_REGISTER_V2(ClassName)                                          \
+    static_assert(true, "VIVID_REGISTER_V2");
 
 // ---------------------------------------------------------------------------
 // VIVID_THUMBNAIL(ClassName) — exports vivid_draw_thumbnail entry point

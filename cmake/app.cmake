@@ -64,6 +64,7 @@ add_executable(vivid
     src/runtime/operators/operator_registry_metadata.cpp
     src/runtime/operators/operator_registry_diagnostics.cpp
     src/runtime/operators/operator_descriptor_hash.cpp
+    src/runtime/operators/operator_descriptor_validation.cpp
     src/runtime/graph/port_type_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
     src/runtime/graph/graph.cpp

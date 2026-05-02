@@ -181,6 +181,22 @@ typedef struct VividOperatorDescriptor {
     const char*               summary;
 } VividOperatorDescriptor;
 
+typedef struct VividGeneratedUniformMember {
+    const char* name;
+    const char* wgsl_type;
+    uint32_t    offset;
+    uint32_t    size;
+    uint32_t    alignment;
+} VividGeneratedUniformMember;
+
+typedef struct VividGeneratedUniformLayout {
+    const char* struct_name;
+    uint32_t    byte_size;
+    uint32_t    alignment;
+    uint32_t    member_count;
+    const VividGeneratedUniformMember* members;
+} VividGeneratedUniformLayout;
+
 // Derive operator kind from capability flags (replaces stored field, v18+).
 static inline VividOperatorKind vivid_operator_kind(const VividOperatorDescriptor* d) {
     if (d->has_process_gpu)                              return VIVID_OP_GPU;
@@ -392,6 +408,8 @@ struct VividGpuContext;
 
 typedef const VividOperatorDescriptor* (*VividDescriptorFn)(void);
 typedef uint32_t (*VividAbiVersionFn)(void);
+typedef const char* (*VividRegistrationModeFn)(void);
+typedef const VividGeneratedUniformLayout* (*VividGeneratedUniformLayoutFn)(void);
 typedef void*  (*VividCreateFn)(void);
 typedef void   (*VividDestroyFn)(void* instance);
 typedef void   (*VividProcessFrameFn)(void* instance, VividFrameContext* ctx);

@@ -69,6 +69,10 @@ public:
     void prepare_instance_assets(void* instance, const float* param_values,
                                  const char** file_param_values,
                                  uint32_t file_param_count) const;
+    const std::string& registration_mode() const { return registration_mode_; }
+    const VividGeneratedUniformLayout* generated_uniform_layout() const {
+        return generated_uniform_layout_;
+    }
 
     bool is_loaded() const { return handle_ != nullptr || desc_fn_ != nullptr || dd_config_ != nullptr; }
     bool is_shader_operator() const { return dd_config_ != nullptr; }
@@ -108,6 +112,8 @@ private:
     std::vector<std::string> dd_port_names_;
     std::vector<VividPortDescriptor> dd_ports_;
     VividOperatorDescriptor dd_desc_{};
+    std::string registration_mode_ = "unknown";
+    const VividGeneratedUniformLayout* generated_uniform_layout_ = nullptr;
     LastError last_error_{};
 };
 

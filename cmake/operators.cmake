@@ -58,10 +58,41 @@ set_property(GLOBAL PROPERTY VIVID_OPERATOR_TARGETS "")
 # (currently only test_ui_screenshot_smoke) stage them explicitly and
 # call vivid_codesign_bundle() to re-seal afterwards.
 function(add_vivid_operator name source)
-    cmake_parse_arguments(ARG "TEST_FIXTURE" "FACTORY_PRESETS" "EXTRA_LIBS" ${ARGN})
-    add_library(${name} MODULE ${source})
+    cmake_parse_arguments(ARG "TEST_FIXTURE;CODEGEN" "FACTORY_PRESETS" "EXTRA_LIBS" ${ARGN})
+    set(_operator_sources ${source})
+    if(ARG_CODEGEN)
+        get_filename_component(_source_abs "${source}" ABSOLUTE BASE_DIR "${CMAKE_SOURCE_DIR}")
+        get_filename_component(_source_dir "${_source_abs}" DIRECTORY)
+        get_filename_component(_source_stem "${_source_abs}" NAME_WE)
+        set(_generated_cpp "${CMAKE_CURRENT_BINARY_DIR}/${name}_generated_registration.cpp")
+        set(_generated_uniforms "${CMAKE_CURRENT_BINARY_DIR}/${name}_generated_uniforms.h")
+        set(_codegen_depends ${_source_abs} operator_codegen)
+        set(_codegen_command
+            operator_codegen
+            --input ${_source_abs}
+            --output ${_generated_cpp}
+            --uniform-output ${_generated_uniforms}
+        )
+        set(_wgsl_source "${_source_dir}/${_source_stem}.wgsl")
+        if(EXISTS "${_wgsl_source}")
+            list(APPEND _codegen_command --wgsl ${_wgsl_source})
+            list(APPEND _codegen_depends ${_wgsl_source})
+        endif()
+        add_custom_command(
+            OUTPUT ${_generated_cpp} ${_generated_uniforms}
+            COMMAND ${_codegen_command}
+            DEPENDS ${_codegen_depends}
+            COMMENT "Generating operator registration for ${name}"
+            VERBATIM
+        )
+        set(_operator_sources ${_generated_cpp})
+    endif()
+    add_library(${name} MODULE ${_operator_sources})
     set_target_properties(${name} PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
     target_link_libraries(${name} PRIVATE vivid_operator_api ${ARG_EXTRA_LIBS})
+    if(ARG_CODEGEN)
+        target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+    endif()
     if(NOT ARG_TEST_FIXTURE)
         set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS ${name})
     endif()
@@ -223,7 +254,7 @@ foreach(_seq_op sequencer drum_sequencer
 endforeach()
 
 # --- GPU operator plugins (complex operators with custom pipelines) ---
-add_vivid_operator(noise          operators/gpu/noise/noise.cpp          EXTRA_LIBS webgpu
+add_vivid_operator(noise          operators/gpu/noise/noise.cpp          CODEGEN EXTRA_LIBS webgpu
                    FACTORY_PRESETS operators/gpu/noise/factory_presets.json)
 add_vivid_operator(composite      operators/gpu/composite/composite.cpp  EXTRA_LIBS webgpu)
 add_vivid_operator(texture_analysis operators/gpu/texture_analysis/texture_analysis.cpp EXTRA_LIBS webgpu)

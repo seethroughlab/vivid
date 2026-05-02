@@ -37,6 +37,11 @@ Representative `LastError::code` values:
 - `invalid_descriptor_name`
 - `hot_reload_incompatible_descriptor`
 - `custom_type_registration_failed`
+- `invalid_descriptor`
+
+`OperatorLoader::load()` now also validates descriptor shape after `vivid_descriptor()`
+returns. The runtime rejects malformed V2/codegen descriptors loudly at load time
+instead of deferring the failure into graph compilation or UI code.
 
 Authoring note for `ChildOp<T>` embeddables:
 
@@ -44,9 +49,10 @@ Authoring note for `ChildOp<T>` embeddables:
 - If an operator is intended to be embeddable and still has out-of-line destructor / virtual / thumbnail definitions, those definitions must be supplied through the embeddable-support path (`*_embeddable.cpp` linked via `vivid_embeddable_op_support`).
 - Otherwise loader failures may surface as ordinary `dlopen_failed` diagnostics on the consuming plugin, even though the root cause is missing embedded-use linkage rather than a bad descriptor.
 
-The `VIVID_REGISTER(ClassName)` macro at the end of every operator .cpp generates:
+The legacy `VIVID_REGISTER(ClassName)` macro at the end of every operator .cpp generates:
 ```cpp
 extern "C" uint32_t vivid_abi_version() { return VIVID_OPERATOR_ABI_VERSION; }
+extern "C" const char* vivid_registration_mode() { return "legacy"; }
 extern "C" VividDescriptorFn vivid_describe;
 extern "C" VividCreateFn     vivid_create;
 extern "C" VividDestroyFn    vivid_destroy;
@@ -56,6 +62,23 @@ extern "C" VividProcessFrameFn    vivid_process_frame;  // frame-rate
 //             vivid_draw_inspector, vivid_inspector_mode,
 //             vivid_file_drop_descriptor
 ```
+
+The V2/codegen path uses `VIVID_DEFINE_OP(ClassName) { ... }` plus
+`VIVID_REGISTER_V2(ClassName)` in the source file and emits a generated
+registration translation unit at build time. That generated file exports the
+same ABI entry points but reports `vivid_registration_mode() == "v2"`.
+
+For GPU operators whose source includes a WGSL `Uniforms` struct, codegen also
+emits:
+
+- a generated uniform mirror header consumed by the operator source
+- `vivid_generated_uniform_layout()`, an optional export returning the
+  generated uniform byte size / alignment / member layout
+
+`OperatorLoader::load()` and deferred registry probes use that metadata during
+descriptor validation. Today the runtime checks that generated uniform layouts
+are non-empty when present, internally consistent, and a multiple of 16 bytes
+overall.
 
 ### Per-Environment Dispatch
 
@@ -162,6 +185,13 @@ const VividOperatorDescriptor* probe_descriptor(const std::string& type_name) co
 
 `probe_descriptor()` is the preferred read-only metadata path. It exposes deferred-probe
 descriptors without forcing a dylib load, which keeps catalog/introspection surfaces cheap.
+
+`probe_registration_mode()` returns the registration path for a type (`legacy`,
+`v2`, `wgsl`, `builtin`, or `unknown`) without forcing a full operator load.
+The CLI command `vivid validate-operators` uses this to report migration status
+alongside descriptor validation results. For V2 GPU operators with generated
+uniform metadata, `validate-operators` also includes the reflected uniform
+layout summary in its JSON output.
 
 ### OperatorPreparationService
 

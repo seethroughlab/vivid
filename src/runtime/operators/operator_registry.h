@@ -19,6 +19,7 @@ class Graph;
 // Probed operator metadata — enough for UI catalog without a full dlopen
 struct DeferredEntry {
     std::string dylib_path;
+    std::string registration_mode = "unknown";
     VividOperatorDescriptor desc{};                // owned copy (pointers into vectors below)
     std::vector<VividParamDescriptor> params;       // owned param descriptors
     std::vector<VividPortDescriptor> ports;         // owned port descriptors
@@ -51,6 +52,11 @@ struct DeferredEntry {
     std::vector<std::string> file_drop_descriptions;
     std::vector<std::vector<std::string>> file_drop_extensions;
     std::vector<std::vector<const char*>> file_drop_extension_ptrs;
+    VividGeneratedUniformLayout uniform_layout{};
+    std::string uniform_struct_name;
+    std::vector<VividGeneratedUniformMember> uniform_members;
+    std::vector<std::string> uniform_member_names;
+    std::vector<std::string> uniform_member_types;
 
     // v3 metadata (stable storage for VividOperatorDescriptor pointers).
     std::string display_name;       // empty when descriptor's display_name is null
@@ -72,6 +78,7 @@ struct OperatorMapEntry {
     std::string dylib_path;
     std::string package_name;   // empty for built-in
     std::string status;         // "loaded", "deferred", "abi_mismatch"
+    std::string registration_mode; // "legacy", "v2", "wgsl", "builtin", or "unknown"
     uint32_t abi_version = 0;   // 0 if unknown
 };
 
@@ -125,6 +132,9 @@ public:
     OperatorLoader* find(const std::string& type_name);
     OperatorLoader* find_loaded(const std::string& type_name);
     const VividOperatorDescriptor* probe_descriptor(const std::string& type_name) const;
+    std::string probe_registration_mode(const std::string& type_name) const;
+    const VividGeneratedUniformLayout* probe_generated_uniform_layout(
+        const std::string& type_name) const;
 
     // Shader-backed operator management
     void register_shader_operator(std::shared_ptr<WgslOperatorConfig> config,
