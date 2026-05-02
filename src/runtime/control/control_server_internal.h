@@ -685,6 +685,7 @@ std::string handle_find_references(SourceIndex& source_index, const nlohmann::js
 std::string handle_get_build_activity(BuildConsole* build_console, const nlohmann::json& root);
 std::string handle_explain_build_failure(BuildConsole* build_console, const nlohmann::json& root);
 std::string handle_get_registry_diagnostics(OperatorRegistry& registry);
+std::string handle_validate_operators(OperatorRegistry& registry);
 
 // Crash-recovery handlers (defined in control_server_crash.cpp, Phase 5)
 std::string handle_get_last_crash(CrashRecoveryManager* crm);
