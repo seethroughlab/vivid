@@ -47,8 +47,6 @@ struct AudioAnalysis : vivid::OperatorBase, vivid::AudioProcessable {
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"input",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
         out.push_back({"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
-        out.push_back({"rms",               VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
-        out.push_back({"peak",              VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         out.push_back({"spectral_centroid", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         out.push_back({"spectral_flux",     VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         out.push_back({"zero_crossing_rate", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
@@ -192,27 +190,23 @@ struct AudioAnalysis : vivid::OperatorBase, vivid::AudioProcessable {
         //
         // Output port order (matches collect_ports insertion):
         //   [0] output              audio passthrough (written above)
-        //   [1] rms                 → rms_
-        //   [2] peak                → peak_
-        //   [3] spectral_centroid   → centroid_
-        //   [4] spectral_flux       → flux_
-        //   [5] zero_crossing_rate  → zcr_
-        //   [6] rms  (dup from append_analysis_ports)   → rms_
-        //   [7] peak (dup from append_analysis_ports)   → peak_
-        //   [8] waveform            lane_array — not in output_buffers
+        //   [1] spectral_centroid   → centroid_
+        //   [2] spectral_flux       → flux_
+        //   [3] zero_crossing_rate  → zcr_
+        //   [4] rms  (append_analysis_ports)  → rms_
+        //   [5] peak (append_analysis_ports)  → peak_
+        //   [6] waveform            lane_array — not in output_buffers
         const uint32_t last = N - 1;
         auto emit = [&](int port_idx, float value) {
             if (ctx->output_buffers && ctx->output_buffers[port_idx]) {
                 ctx->output_buffers[port_idx][last] = value;
             }
         };
-        emit(1, rms_);
-        emit(2, peak_);
-        emit(3, centroid_);
-        emit(4, flux_);
-        emit(5, zcr_);
-        emit(6, rms_);
-        emit(7, peak_);
+        emit(1, centroid_);
+        emit(2, flux_);
+        emit(3, zcr_);
+        emit(4, rms_);
+        emit(5, peak_);
     }
 
 private:
