@@ -50,6 +50,38 @@ int main() {
     check(uniform_result.generated_export_cpp.find("vivid_generated_uniform_layout") != std::string::npos,
           "generated uniform metadata export is emitted");
 
+    {
+        std::string error;
+        auto layout = vivid::parse_wgsl_uniform_layout(R"(
+            struct Uniforms {
+                gain: f32,
+                weights: array<f32, 4>,
+                taps: array<vec2f, 2>,
+                basis: array<mat3x2f, 2>,
+            };
+        )", error, "Uniforms");
+        check(layout.has_value(), "WGSL parser supports uniform arrays");
+        if (!layout) {
+            std::cerr << error << "\n";
+        } else {
+            check(layout->alignment == 16, "uniform array layout raises struct alignment to 16 bytes");
+            check(layout->size == 176, "uniform array layout computes the expected total struct size");
+            check(layout->members.size() == 4, "uniform array fixture exposes four members");
+            if (layout->members.size() == 4) {
+                check(layout->members[0].offset == 0, "scalar member keeps offset 0");
+                check(layout->members[1].offset == 16, "array<f32,4> starts at the next 16-byte boundary");
+                check(layout->members[1].alignment == 16, "array<f32,4> reports 16-byte alignment");
+                check(layout->members[1].size == 64, "array<f32,4> reports 64-byte size");
+                check(layout->members[2].offset == 80, "array<vec2f,2> follows the prior array stride");
+                check(layout->members[2].alignment == 16, "array<vec2f,2> reports 16-byte alignment");
+                check(layout->members[2].size == 32, "array<vec2f,2> reports 32-byte size");
+                check(layout->members[3].offset == 112, "array<mat3x2f,2> offset respects uniform alignment");
+                check(layout->members[3].alignment == 16, "array<mat3x2f,2> reports 16-byte alignment");
+                check(layout->members[3].size == 48, "array<mat3x2f,2> uses corrected per-element stride");
+            }
+        }
+    }
+
     if (failures != 0) {
         std::cerr << failures << " operator_codegen test failure(s)\n";
         return 1;

@@ -206,11 +206,12 @@ std::optional<TypeLayout> resolve_wgsl_type_layout(const std::string& canonical_
         if (!parse_positive_integer(count_text, count)) return std::nullopt;
         auto elem = resolve_wgsl_type_layout(elem_type);
         if (!elem) return std::nullopt;
-        const uint32_t stride = align_up(elem->size, elem->alignment);
+        const uint32_t array_alignment = std::max<uint32_t>(16u, elem->alignment);
+        const uint32_t stride = align_up(elem->size, array_alignment);
         return TypeLayout{
             "std::byte[" + std::to_string(stride * count) + "]",
             stride * count,
-            elem->alignment
+            array_alignment
         };
     }
 
