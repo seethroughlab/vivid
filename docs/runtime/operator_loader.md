@@ -80,7 +80,9 @@ For GPU operators whose source includes a WGSL `Uniforms` struct, codegen also e
 `OperatorLoader::load()` and deferred registry probes use that metadata during
 descriptor validation. Today the runtime checks that generated uniform layouts
 are non-empty when present, internally consistent, and a multiple of 16 bytes
-overall.
+overall. Uniform arrays follow WGSL uniform-buffer layout rules, so `array<T,N>`
+is reflected with a minimum 16-byte alignment/stride even when `T` would
+otherwise align to fewer bytes.
 
 ### Per-Environment Dispatch
 
@@ -191,9 +193,11 @@ descriptors without forcing a dylib load, which keeps catalog/introspection surf
 `probe_registration_mode()` returns the registration path for a type (`legacy`,
 `v2`, `wgsl`, `builtin`, or `unknown`) without forcing a full operator load.
 The CLI command `vivid validate-operators` uses this to report migration status
-alongside descriptor validation results. For V2 GPU operators with generated
-uniform metadata, `validate-operators` also includes the reflected uniform
-layout summary in its JSON output.
+alongside descriptor validation results. It is a JSON introspection command
+that exits successfully when the report is produced, even if some operators are
+invalid. For V2 GPU operators with generated uniform metadata,
+`validate-operators` also includes the reflected uniform layout summary in its
+JSON output.
 
 ### OperatorPreparationService
 
