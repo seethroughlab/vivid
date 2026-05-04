@@ -87,4 +87,7 @@ struct SpectralFreeze : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
+VIVID_DEFINE_OP(SpectralFreeze) {
+}
+
 VIVID_REGISTER(SpectralFreeze)

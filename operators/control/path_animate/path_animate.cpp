@@ -221,4 +221,4 @@ VIVID_DEFINE_OP(PathAnimate) {
     summary = "Animates x/y/angle along a cubic Bezier path with easing modes.";
 }
 
-VIVID_REGISTER_V2(PathAnimate)
+VIVID_REGISTER(PathAnimate)

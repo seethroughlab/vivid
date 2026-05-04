@@ -287,6 +287,8 @@ private:
     }
 };
 
+VIVID_DEFINE_OP(SyphonIn) {}
+
 VIVID_REGISTER(SyphonIn)
 
 #endif

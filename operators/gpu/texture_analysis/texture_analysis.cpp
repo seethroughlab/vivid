@@ -319,4 +319,7 @@ private:
     }
 };
 
+VIVID_DEFINE_OP(TextureAnalysis) {
+}
+
 VIVID_REGISTER(TextureAnalysis)

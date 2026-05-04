@@ -260,4 +260,7 @@ private:
     }
 };
 
+VIVID_DEFINE_OP(MetronomeViz) {
+}
+
 VIVID_REGISTER(MetronomeViz)

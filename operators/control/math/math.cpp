@@ -135,5 +135,8 @@ struct Math : vivid::OperatorBase, vivid::FrameProcessable {
 
 };
 
+VIVID_DEFINE_OP(Math) {
+}
+
 VIVID_REGISTER(Math)
 VIVID_THUMBNAIL(Math)

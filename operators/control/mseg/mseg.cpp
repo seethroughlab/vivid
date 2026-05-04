@@ -441,6 +441,9 @@ struct MsegAudio : MSEG, vivid::AudioProcessable {
     }
 };
 
+VIVID_DEFINE_OP(MsegAudio) {
+}
+
 VIVID_REGISTER(MsegAudio)
 VIVID_THUMBNAIL(MsegAudio)
 VIVID_INSPECTOR(MsegAudio)

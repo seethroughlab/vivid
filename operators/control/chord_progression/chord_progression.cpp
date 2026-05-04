@@ -27,6 +27,13 @@ struct ChordProgression : ChordProgressionCore, vivid::AudioProcessable {
     }
 };
 
+VIVID_DEFINE_OP(ChordProgression) {
+    name = "ChordProgression";
+    display_name = "Chord Progression";
+    summary = "Diatonic chord changes from a key + Roman-numeral pattern";
+    keywords = {"harmony", "chords", "diatonic", "roman numerals"};
+}
+
 VIVID_REGISTER(ChordProgression)
 VIVID_THUMBNAIL(ChordProgression)
 VIVID_INSPECTOR(ChordProgression)

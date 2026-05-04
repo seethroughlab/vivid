@@ -103,5 +103,8 @@ void ParametricEQ::process_audio(const VividAudioContext* ctx) {
     }
 }
 
+VIVID_DEFINE_OP(ParametricEQ) {
+}
+
 VIVID_REGISTER(ParametricEQ)
 VIVID_EDITOR(ParametricEQ)

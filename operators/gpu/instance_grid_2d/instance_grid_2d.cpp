@@ -103,6 +103,9 @@ private:
     vivid::gpu::InstanceArray2D bundle_{};
 };
 
+VIVID_DEFINE_OP(InstanceGrid2D) {
+}
+
 VIVID_REGISTER(InstanceGrid2D)
 
 VIVID_DESCRIBE_REF_TYPE(vivid::gpu::InstanceArray2D)

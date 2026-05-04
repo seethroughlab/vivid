@@ -187,4 +187,7 @@ struct DrumKick : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
+VIVID_DEFINE_OP(DrumKick) {
+}
+
 VIVID_REGISTER(DrumKick)

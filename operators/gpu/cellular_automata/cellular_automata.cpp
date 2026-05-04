@@ -632,4 +632,7 @@ private:
     }
 };
 
+VIVID_DEFINE_OP(CellularAutomata) {
+}
+
 VIVID_REGISTER(CellularAutomata)

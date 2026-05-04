@@ -174,4 +174,4 @@ VIVID_DEFINE_OP(Repeat) {
     summary = "Broadcasts a scalar to N output lanes with optional spread distribution.";
 }
 
-VIVID_REGISTER_V2(Repeat)
+VIVID_REGISTER(Repeat)

@@ -432,6 +432,9 @@ private:
     }
 };
 
+VIVID_DEFINE_OP(MidiInput) {
+}
+
 VIVID_REGISTER(MidiInput)
 
 // Optional debug-inject hook (probed by OperatorLoader via dlsym). Lets the
@@ -442,7 +445,8 @@ VIVID_REGISTER(MidiInput)
 extern "C" void vivid_op_inject_midi(void* instance, const uint8_t* bytes,
                                        uint32_t count) {
     if (!instance || !bytes || count == 0) return;
-    auto* inst = static_cast<_VividInstance*>(instance);
+    // op is the first member of _VividInstance at offset 0.
+    auto* op = reinterpret_cast<MidiInput*>(instance);
     std::vector<unsigned char> msg(bytes, bytes + count);
-    inst->op.inject_events({std::move(msg)});
+    op->inject_events({std::move(msg)});
 }

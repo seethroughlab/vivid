@@ -66,4 +66,7 @@ struct PhaseToMidi : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
+VIVID_DEFINE_OP(PhaseToMidi) {
+}
+
 VIVID_REGISTER(PhaseToMidi)

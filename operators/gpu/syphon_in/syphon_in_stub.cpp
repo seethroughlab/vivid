@@ -36,4 +36,7 @@ struct SyphonIn : vivid::OperatorBase, vivid::GpuProcessable {
     void process_gpu(const VividGpuContext*) override {}
 };
 
+VIVID_DEFINE_OP(SyphonIn) {
+}
+
 VIVID_REGISTER(SyphonIn)

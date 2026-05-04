@@ -72,33 +72,10 @@ struct ClockCore : vivid::OperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        VividPortDescriptor beat_phase_port{"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT};
-        vivid::semantic_tag(beat_phase_port, "beat_phase");
-        vivid::semantic_shape(beat_phase_port, "scalar");
-        vivid::semantic_intent(beat_phase_port, "global_transport_phase");
-        vivid::description(beat_phase_port, "Global 0-1 sawtooth phase over one beat.");
-        out.push_back(beat_phase_port);
-
-        VividPortDescriptor beat_ms_port{"beat_ms", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT};
-        vivid::semantic_tag(beat_ms_port, "time_milliseconds");
-        vivid::semantic_shape(beat_ms_port, "scalar");
-        vivid::semantic_intent(beat_ms_port, "tempo_ms_per_beat");
-        vivid::description(beat_ms_port, "Milliseconds per beat at the current tempo.");
-        out.push_back(beat_ms_port);
-
-        VividPortDescriptor bar_phase_port{"bar_phase", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT};
-        vivid::semantic_tag(bar_phase_port, "bar_phase");
-        vivid::semantic_shape(bar_phase_port, "scalar");
-        vivid::semantic_intent(bar_phase_port, "global_transport_bar_phase");
-        vivid::description(bar_phase_port, "Global 0-1 sawtooth phase over one bar.");
-        out.push_back(bar_phase_port);
-
-        VividPortDescriptor beat_trigger_port{"beat_trigger", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT};
-        vivid::semantic_tag(beat_trigger_port, "trigger");
-        vivid::semantic_shape(beat_trigger_port, "scalar");
-        vivid::semantic_intent(beat_trigger_port, "global_transport_trigger");
-        vivid::description(beat_trigger_port, "Impulse on each beat boundary.");
-        out.push_back(beat_trigger_port);
+        out.push_back({"beat_phase",    VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "beat_phase",         "scalar", "global_transport_phase",     "Global 0-1 sawtooth phase over one beat."});
+        out.push_back({"beat_ms",       VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "time_milliseconds",  "scalar", "tempo_ms_per_beat",          "Milliseconds per beat at the current tempo."});
+        out.push_back({"bar_phase",     VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "bar_phase",          "scalar", "global_transport_bar_phase", "Global 0-1 sawtooth phase over one bar."});
+        out.push_back({"beat_trigger",  VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "trigger",            "scalar", "global_transport_trigger",   "Impulse on each beat boundary."});
     }
 
     static float sync_cycle_beats(int division) {

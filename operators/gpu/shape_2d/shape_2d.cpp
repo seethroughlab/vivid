@@ -203,6 +203,9 @@ private:
     vivid::gpu::VividDrawable2D output_{};
 };
 
+VIVID_DEFINE_OP(Shape2D) {
+}
+
 VIVID_REGISTER(Shape2D)
 VIVID_THUMBNAIL(Shape2D)
 

@@ -1401,4 +1401,7 @@ private:
     float prev_volume_ = 1.0f;
 };
 
+VIVID_DEFINE_OP(MovieFile) {
+}
+
 VIVID_REGISTER(MovieFile)

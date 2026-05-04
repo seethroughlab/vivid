@@ -77,5 +77,8 @@ struct Clock : ClockCore, vivid::AudioProcessable {
     }
 };
 
+VIVID_DEFINE_OP(Clock) {
+}
+
 VIVID_REGISTER(Clock)
 VIVID_THUMBNAIL(Clock)

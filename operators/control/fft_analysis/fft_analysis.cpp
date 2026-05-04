@@ -133,4 +133,7 @@ private:
     std::vector<float> buf_imag_;
 };
 
+VIVID_DEFINE_OP(FFTAnalysis) {
+}
+
 VIVID_REGISTER(FFTAnalysis)

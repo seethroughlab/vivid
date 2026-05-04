@@ -118,4 +118,7 @@ private:
     vivid::gpu::InstanceArray2D bundle_{};
 };
 
+VIVID_DEFINE_OP(InstancesFromLanes2D) {
+}
+
 VIVID_REGISTER(InstancesFromLanes2D)

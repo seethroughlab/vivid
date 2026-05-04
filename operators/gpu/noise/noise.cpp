@@ -517,4 +517,4 @@ VIVID_DEFINE_OP(Noise) {
     summary = "3D noise generator with FBm octaves and animation.";
 }
 
-VIVID_REGISTER_V2(Noise)
+VIVID_REGISTER(Noise)

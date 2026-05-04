@@ -94,4 +94,7 @@ struct StereoPanWidth : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
+VIVID_DEFINE_OP(StereoPanWidth) {
+}
+
 VIVID_REGISTER(StereoPanWidth)

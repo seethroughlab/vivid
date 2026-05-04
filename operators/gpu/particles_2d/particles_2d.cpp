@@ -666,6 +666,9 @@ private:
     }
 };
 
+VIVID_DEFINE_OP(Particles2D) {
+}
+
 VIVID_REGISTER(Particles2D)
 
 VIVID_DESCRIBE_REF_TYPE(vivid::gpu::VividDrawable2D)

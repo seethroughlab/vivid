@@ -159,4 +159,7 @@ struct DrumSnare : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
+VIVID_DEFINE_OP(DrumSnare) {
+}
+
 VIVID_REGISTER(DrumSnare)

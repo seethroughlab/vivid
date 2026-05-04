@@ -89,7 +89,7 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
         // Per-voice advanced breakouts (kMaxVoices channels mono each).
         out.push_back({"voices_out",       VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT,
                        VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr,
-                       static_cast<uint8_t>(kMaxVoices), 0.0f});
+                       16, 0.0f}); // kMaxVoices channels
         vivid::advanced_breakout(out.back());
         out.push_back({"voice_ids",        VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
         vivid::advanced_breakout(out.back());
@@ -372,6 +372,9 @@ static const VividFileDropHandlerDescriptor kSlicerFileDrops[] = {{
     100,
     "Create a Slicer node from a dropped WAV file.",
 }};
+
+VIVID_DEFINE_OP(Slicer) {
+}
 
 VIVID_REGISTER(Slicer)
 VIVID_FILE_DROP(kSlicerFileDrops)

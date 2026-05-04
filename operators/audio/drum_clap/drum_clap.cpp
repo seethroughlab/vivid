@@ -192,4 +192,7 @@ struct DrumClap : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
+VIVID_DEFINE_OP(DrumClap) {
+}
+
 VIVID_REGISTER(DrumClap)

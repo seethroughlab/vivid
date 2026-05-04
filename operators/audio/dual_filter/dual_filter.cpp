@@ -194,78 +194,15 @@ struct DualFilter : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        // Audio I/O
-        VividPortDescriptor input_port{"input", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,
-                                       VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f};
-        vivid::semantic_tag(input_port, "audio_signal");
-        vivid::semantic_shape(input_port, "audio_buffer");
-        vivid::semantic_intent(input_port, "audio_input");
-        vivid::description(input_port, "Audio input to be filtered.");
-        out.push_back(input_port);
-
-        VividPortDescriptor output_port{"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT,
-                                        VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f};
-        vivid::semantic_tag(output_port, "audio_signal");
-        vivid::semantic_shape(output_port, "audio_buffer");
-        vivid::semantic_intent(output_port, "audio_output");
-        vivid::description(output_port, "Filtered audio output.");
-        out.push_back(output_port);
-
-        // Scalar CV inputs (input_buffers[1..4])
-        VividPortDescriptor a_cutoff_cv_port{"a_cutoff_cv", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,
-                                              VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f};
-        vivid::semantic_tag(a_cutoff_cv_port, "pitch_like_mod");
-        vivid::semantic_shape(a_cutoff_cv_port, "scalar");
-        vivid::semantic_intent(a_cutoff_cv_port, "global_cutoff_mod");
-        vivid::description(a_cutoff_cv_port, "Global cutoff modulation for stage A shared by all voices.");
-        out.push_back(a_cutoff_cv_port);
-
-        VividPortDescriptor b_cutoff_cv_port{"b_cutoff_cv", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,
-                                              VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f};
-        vivid::semantic_tag(b_cutoff_cv_port, "pitch_like_mod");
-        vivid::semantic_shape(b_cutoff_cv_port, "scalar");
-        vivid::semantic_intent(b_cutoff_cv_port, "global_cutoff_mod");
-        vivid::description(b_cutoff_cv_port, "Global cutoff modulation for stage B shared by all voices.");
-        out.push_back(b_cutoff_cv_port);
-
-        VividPortDescriptor a_reso_cv_port{"a_resonance_cv", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,
-                                            VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f};
-        vivid::semantic_tag(a_reso_cv_port, "resonance");
-        vivid::semantic_shape(a_reso_cv_port, "scalar");
-        vivid::semantic_intent(a_reso_cv_port, "global_resonance_mod");
-        vivid::description(a_reso_cv_port, "Global resonance modulation for stage A shared by all voices.");
-        out.push_back(a_reso_cv_port);
-
-        VividPortDescriptor b_reso_cv_port{"b_resonance_cv", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,
-                                            VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f};
-        vivid::semantic_tag(b_reso_cv_port, "resonance");
-        vivid::semantic_shape(b_reso_cv_port, "scalar");
-        vivid::semantic_intent(b_reso_cv_port, "global_resonance_mod");
-        vivid::description(b_reso_cv_port, "Global resonance modulation for stage B shared by all voices.");
-        out.push_back(b_reso_cv_port);
-
-        // Lane-array inputs (input_lanes[0..2])
-        VividPortDescriptor a_cutoff_mod_port{"a_cutoff_mod", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT};
-        vivid::semantic_tag(a_cutoff_mod_port, "cutoff_mod");
-        vivid::semantic_shape(a_cutoff_mod_port, "lane_array");
-        vivid::semantic_intent(a_cutoff_mod_port, "per_note_cutoff_mod");
-        vivid::description(a_cutoff_mod_port, "Per-lane cutoff modulation for stage A (polyphonic envelopes).");
-        out.push_back(a_cutoff_mod_port);
-
-        VividPortDescriptor b_cutoff_mod_port{"b_cutoff_mod", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT};
-        vivid::semantic_tag(b_cutoff_mod_port, "cutoff_mod");
-        vivid::semantic_shape(b_cutoff_mod_port, "lane_array");
-        vivid::semantic_intent(b_cutoff_mod_port, "per_note_cutoff_mod");
-        vivid::description(b_cutoff_mod_port, "Per-lane cutoff modulation for stage B (polyphonic envelopes).");
-        out.push_back(b_cutoff_mod_port);
-
-        VividPortDescriptor frequencies_port{"frequencies", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT};
-        vivid::semantic_tag(frequencies_port, "frequency_hz");
-        vivid::semantic_shape(frequencies_port, "lane_array");
-        vivid::semantic_intent(frequencies_port, "per_note_frequency");
-        vivid::description(frequencies_port, "Per-lane note frequencies used for keytracking in polyphonic chains.");
-        out.push_back(frequencies_port);
-
+        out.push_back({"input",          VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f, nullptr, "audio_signal",    "audio_buffer", "audio_input",           "Audio input to be filtered."});
+        out.push_back({"output",         VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f, nullptr, "audio_signal",    "audio_buffer", "audio_output",          "Filtered audio output."});
+        out.push_back({"a_cutoff_cv",    VIVID_PORT_SCALAR,       VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL,       0, nullptr, 0, 0.0f, nullptr, "pitch_like_mod",  "scalar",        "global_cutoff_mod",    "Global cutoff modulation for stage A shared by all voices."});
+        out.push_back({"b_cutoff_cv",    VIVID_PORT_SCALAR,       VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL,       0, nullptr, 0, 0.0f, nullptr, "pitch_like_mod",  "scalar",        "global_cutoff_mod",    "Global cutoff modulation for stage B shared by all voices."});
+        out.push_back({"a_resonance_cv", VIVID_PORT_SCALAR,       VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL,       0, nullptr, 0, 0.0f, nullptr, "resonance",       "scalar",        "global_resonance_mod", "Global resonance modulation for stage A shared by all voices."});
+        out.push_back({"b_resonance_cv", VIVID_PORT_SCALAR,       VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL,       0, nullptr, 0, 0.0f, nullptr, "resonance",       "scalar",        "global_resonance_mod", "Global resonance modulation for stage B shared by all voices."});
+        out.push_back({"a_cutoff_mod",   VIVID_PORT_LANE_ARRAY,   VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_LANE_ARRAY,   0, nullptr, 0, 0.0f, nullptr, "cutoff_mod",      "lane_array",    "per_note_cutoff_mod",  "Per-lane cutoff modulation for stage A (polyphonic envelopes)."});
+        out.push_back({"b_cutoff_mod",   VIVID_PORT_LANE_ARRAY,   VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_LANE_ARRAY,   0, nullptr, 0, 0.0f, nullptr, "cutoff_mod",      "lane_array",    "per_note_cutoff_mod",  "Per-lane cutoff modulation for stage B (polyphonic envelopes)."});
+        out.push_back({"frequencies",    VIVID_PORT_LANE_ARRAY,   VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_LANE_ARRAY,   0, nullptr, 0, 0.0f, nullptr, "frequency_hz",    "lane_array",    "per_note_frequency",   "Per-lane note frequencies used for keytracking in polyphonic chains."});
         vivid::append_analysis_ports(out);
     }
 
@@ -441,5 +378,8 @@ struct DualFilter : vivid::OperatorBase, vivid::AudioProcessable {
         }
     }
 };
+
+VIVID_DEFINE_OP(DualFilter) {
+}
 
 VIVID_REGISTER(DualFilter)

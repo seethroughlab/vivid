@@ -309,4 +309,7 @@ private:
     }
 };
 
+VIVID_DEFINE_OP(MicInput) {
+}
+
 VIVID_REGISTER(MicInput)

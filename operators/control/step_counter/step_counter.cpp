@@ -71,4 +71,4 @@ VIVID_DEFINE_OP(StepCounter) {
     summary = "Trigger-driven counter with modulo wrap and reset.";
 }
 
-VIVID_REGISTER_V2(StepCounter)
+VIVID_REGISTER(StepCounter)

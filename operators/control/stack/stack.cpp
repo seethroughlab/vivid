@@ -19,12 +19,8 @@ struct Stack : vivid::OperatorBase, vivid::FrameProcessable {
 
     vivid::Param<int> mode {"mode", 0, {"Concat","Interleave"}};
 
-    char port_names_[kMaxInputs][16];
-
     Stack() {
         vivid::description(mode, "Concat appends lane arrays end-to-end; Interleave alternates elements");
-        for (int i = 0; i < kMaxInputs; ++i)
-            std::snprintf(port_names_[i], sizeof(port_names_[i]), "input_%d", i);
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
@@ -32,20 +28,23 @@ struct Stack : vivid::OperatorBase, vivid::FrameProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        for (int i = 0; i < kMaxInputs; ++i) {
-            VividPortDescriptor pd{};
-            pd.name = port_names_[i];
-            pd.type = VIVID_PORT_LANE_ARRAY;
-            pd.direction = VIVID_PORT_INPUT;
-            pd.repeat_group = "input";
-            pd.repeat_group_idx = static_cast<uint16_t>(i);
-            out.push_back(pd);
-        }
-        VividPortDescriptor out_port{};
-        out_port.name = "output";
-        out_port.type = VIVID_PORT_LANE_ARRAY;
-        out_port.direction = VIVID_PORT_OUTPUT;
-        out.push_back(out_port);
+        out.push_back({"input_0",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input",  0});
+        out.push_back({"input_1",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input",  1});
+        out.push_back({"input_2",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input",  2});
+        out.push_back({"input_3",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input",  3});
+        out.push_back({"input_4",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input",  4});
+        out.push_back({"input_5",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input",  5});
+        out.push_back({"input_6",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input",  6});
+        out.push_back({"input_7",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input",  7});
+        out.push_back({"input_8",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input",  8});
+        out.push_back({"input_9",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input",  9});
+        out.push_back({"input_10", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input", 10});
+        out.push_back({"input_11", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input", 11});
+        out.push_back({"input_12", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input", 12});
+        out.push_back({"input_13", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input", 13});
+        out.push_back({"input_14", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input", 14});
+        out.push_back({"input_15", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input", 15});
+        out.push_back({"output", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
     }
 
     void process_frame(const VividFrameContext* ctx) override {
@@ -117,5 +116,8 @@ private:
         }
     }
 };
+
+VIVID_DEFINE_OP(Stack) {
+}
 
 VIVID_REGISTER(Stack)

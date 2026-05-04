@@ -89,5 +89,8 @@ struct GateAudio : Gate, vivid::AudioProcessable {
     }
 };
 
+VIVID_DEFINE_OP(GateAudio) {
+}
+
 VIVID_REGISTER(GateAudio)
 VIVID_THUMBNAIL(GateAudio)

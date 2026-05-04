@@ -32,7 +32,6 @@ struct Mixer : vivid::OperatorBase, vivid::AudioProcessable {
     };
 
     InputParams ip_[kMaxInputs];
-    char port_names_[kMaxInputs][16];
 
     WGPURenderPipeline thumb_pipeline_ = nullptr;
     WGPUBindGroup thumb_bind_group_ = nullptr;
@@ -47,7 +46,6 @@ struct Mixer : vivid::OperatorBase, vivid::AudioProcessable {
             auto& I = ip_[i];
             std::snprintf(I.gain_name, sizeof(I.gain_name), "gain_%d", i);
             std::snprintf(I.pan_name,  sizeof(I.pan_name),  "pan_%d",  i);
-            std::snprintf(port_names_[i], sizeof(port_names_[i]), "input_%d", i);
             std::snprintf(I.gain_desc, sizeof(I.gain_desc),
                           "Level multiplier for input %d (0 = silent, 1 = unity, 2 = double)", i);
             std::snprintf(I.pan_desc, sizeof(I.pan_desc),
@@ -80,24 +78,26 @@ struct Mixer : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        for (int i = 0; i < kMaxInputs; ++i) {
-            VividPortDescriptor pd{};
-            pd.name = port_names_[i];
-            pd.type = VIVID_PORT_AUDIO_BUFFER;
-            pd.direction = VIVID_PORT_INPUT;
-            pd.transport = VIVID_PORT_TRANSPORT_AUDIO_BUFFER;
-            pd.channels = 2;
-            pd.repeat_group = "input";
-            pd.repeat_group_idx = static_cast<uint16_t>(i);
-            out.push_back(pd);
-        }
-        VividPortDescriptor out_port{};
-        out_port.name = "output";
-        out_port.type = VIVID_PORT_AUDIO_BUFFER;
-        out_port.direction = VIVID_PORT_OUTPUT;
-        out_port.transport = VIVID_PORT_TRANSPORT_AUDIO_BUFFER;
-        out_port.channels = 2;
-        out.push_back(out_port);
+        // Fields: name, type, dir, transport, payload_size, type_name, channels,
+        //         default_value, stable_type_id, semantic_tag, semantic_shape,
+        //         semantic_intent, description, display_hint, repeat_group, repeat_group_idx
+        out.push_back({"input_0",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input",  0});
+        out.push_back({"input_1",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input",  1});
+        out.push_back({"input_2",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input",  2});
+        out.push_back({"input_3",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input",  3});
+        out.push_back({"input_4",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input",  4});
+        out.push_back({"input_5",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input",  5});
+        out.push_back({"input_6",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input",  6});
+        out.push_back({"input_7",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input",  7});
+        out.push_back({"input_8",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input",  8});
+        out.push_back({"input_9",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input",  9});
+        out.push_back({"input_10", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input", 10});
+        out.push_back({"input_11", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input", 11});
+        out.push_back({"input_12", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input", 12});
+        out.push_back({"input_13", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input", 13});
+        out.push_back({"input_14", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input", 14});
+        out.push_back({"input_15", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input", 15});
+        out.push_back({"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2});
         vivid::append_analysis_ports(out);
     }
 
@@ -250,6 +250,9 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
         thumb_pipeline_format_ = ctx->thumbnail_format;
     }
 };
+
+VIVID_DEFINE_OP(Mixer) {
+}
 
 VIVID_REGISTER(Mixer)
 VIVID_THUMBNAIL(Mixer)

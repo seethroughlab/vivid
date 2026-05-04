@@ -63,4 +63,4 @@ VIVID_DEFINE_OP(NoteDuration) {
     summary = "Converts beat duration to a musical note value (whole, half, quarter, eighth, etc.).";
 }
 
-VIVID_REGISTER_V2(NoteDuration)
+VIVID_REGISTER(NoteDuration)

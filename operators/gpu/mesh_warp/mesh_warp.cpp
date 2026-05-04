@@ -521,4 +521,7 @@ private:
     }
 };
 
+VIVID_DEFINE_OP(MeshWarp) {
+}
+
 VIVID_REGISTER(MeshWarp)

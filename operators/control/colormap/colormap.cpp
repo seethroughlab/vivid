@@ -243,5 +243,8 @@ private:
     }
 };
 
+VIVID_DEFINE_OP(Colormap) {
+}
+
 VIVID_REGISTER(Colormap)
 VIVID_THUMBNAIL(Colormap)

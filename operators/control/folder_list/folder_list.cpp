@@ -170,5 +170,8 @@ struct FolderList : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
+VIVID_DEFINE_OP(FolderList) {
+}
+
 VIVID_REGISTER(FolderList)
 VIVID_THUMBNAIL(FolderList)

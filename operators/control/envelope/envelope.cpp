@@ -100,5 +100,8 @@ struct EnvelopeAudio : Envelope, vivid::AudioProcessable {
     }
 };
 
+VIVID_DEFINE_OP(EnvelopeAudio) {
+}
+
 VIVID_REGISTER(EnvelopeAudio)
 VIVID_THUMBNAIL(EnvelopeAudio)

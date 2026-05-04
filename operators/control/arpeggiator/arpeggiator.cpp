@@ -109,6 +109,9 @@ private:
     std::unordered_map<uint16_t, uint64_t> inject_held_id_;
 };
 
+VIVID_DEFINE_OP(Arpeggiator) {
+}
+
 VIVID_REGISTER(Arpeggiator)
 VIVID_THUMBNAIL(Arpeggiator)
 VIVID_EDITOR(Arpeggiator)
@@ -119,7 +122,8 @@ VIVID_EDITOR(Arpeggiator)
 extern "C" void vivid_op_inject_midi(void* instance, const uint8_t* bytes,
                                        uint32_t count) {
     if (!instance || !bytes || count == 0) return;
-    auto* inst = static_cast<_VividInstance*>(instance);
+    // op is the first member of _VividInstance at offset 0.
+    auto* op = reinterpret_cast<Arpeggiator*>(instance);
     std::vector<unsigned char> msg(bytes, bytes + count);
-    inst->op.inject_events({std::move(msg)});
+    op->inject_events({std::move(msg)});
 }

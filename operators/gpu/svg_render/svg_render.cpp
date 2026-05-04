@@ -430,4 +430,7 @@ private:
     }
 };
 
+VIVID_DEFINE_OP(SvgRender) {
+}
+
 VIVID_REGISTER(SvgRender)

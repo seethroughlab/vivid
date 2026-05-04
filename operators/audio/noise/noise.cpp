@@ -186,5 +186,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     }
 };
 
+VIVID_DEFINE_OP(Noise) {
+}
+
 VIVID_REGISTER(Noise)
 VIVID_THUMBNAIL(Noise)

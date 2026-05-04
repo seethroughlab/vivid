@@ -58,4 +58,4 @@ VIVID_DEFINE_OP(Select) {
     summary = "Extracts a single element from a multi-lane array by index.";
 }
 
-VIVID_REGISTER_V2(Select)
+VIVID_REGISTER(Select)
