@@ -143,7 +143,14 @@ UniformCodeGenResult UniformCodeGen::generate_from_wgsl(
 
     auto layout = parse_wgsl_uniform_layout(*contents, error_message, "Uniforms");
     if (!layout) {
-        result.error_message = std::move(error_message);
+        // "not found" is fine — WgslFilterBase operators have no static Uniforms struct.
+        // Only propagate the error if parsing started but failed (syntax/type error).
+        const bool is_not_found = (error_message.find("Could not find WGSL struct") != std::string::npos);
+        if (!is_not_found) {
+            result.error_message = std::move(error_message);
+        } else {
+            result.success = true;
+        }
         return result;
     }
     return build_result_from_layout(*layout, cpp_struct_name);
@@ -162,6 +169,14 @@ UniformCodeGenResult UniformCodeGen::generate_from_operator_source(
     auto contents = read_file(cpp_source_path, error_message);
     if (!contents) {
         result.error_message = std::move(error_message);
+        return result;
+    }
+
+    // Skip if the source already defines a struct with the generated name (would cause redefinition).
+    if (contents->find("struct " + cpp_struct_name) != std::string::npos) {
+        result.success = true;
+        result.has_uniforms = false;
+        result.cpp_struct_name = cpp_struct_name;
         return result;
     }
 

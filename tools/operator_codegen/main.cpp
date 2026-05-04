@@ -10,11 +10,12 @@
 void print_usage(const char* program_name) {
     std::cout << "Usage: " << program_name << " [options]\n"
               << "Options:\n"
-              << "  --input <path>    Path to the operator source file (.cpp)\n"
-              << "  --output <path>   Path to the generated registration file\n"
+              << "  --input <path>         Path to the operator source file (.cpp)\n"
+              << "  --output <path>        Path to the generated registration file\n"
               << "  --uniform-output <path>  Path to the generated uniform header\n"
-              << "  --wgsl <path>     Path to the shader file (.wgsl)\n"
-              << "  --help            Show this help message\n";
+              << "  --wgsl <path>          Path to the shader file (.wgsl)\n"
+              << "  --extra-source <path>  Extra source file to search for collect_params/collect_ports\n"
+              << "  --help                 Show this help message\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -22,6 +23,7 @@ int main(int argc, char* argv[]) {
     std::string output_path;
     std::string uniform_output_path;
     std::string wgsl_path;
+    std::vector<std::string> extra_sources;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -36,6 +38,8 @@ int main(int argc, char* argv[]) {
             uniform_output_path = argv[++i];
         } else if (arg == "--wgsl" && i + 1 < argc) {
             wgsl_path = argv[++i];
+        } else if (arg == "--extra-source" && i + 1 < argc) {
+            extra_sources.push_back(argv[++i]);
         }
     }
 
@@ -55,6 +59,9 @@ int main(int argc, char* argv[]) {
 
     // 1. Descriptor Building (Path 2A)
     vivid::codegen::DescriptorBuilder descriptor_builder;
+    for (const auto& extra : extra_sources) {
+        descriptor_builder.add_extra_source(extra);
+    }
     auto desc_result = descriptor_builder.build_from_file(input_path);
 
     if (!desc_result.success) {
@@ -93,7 +100,13 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     output << desc_result.generated_cpp;
-    if (uni_result.has_uniforms) {
+    if (uni_result.has_uniforms && desc_result.has_process_gpu) {
+        // Include the generated uniforms header (written alongside the registration file).
+        if (!uniform_output_path.empty()) {
+            const std::string uniforms_filename =
+                std::filesystem::path(uniform_output_path).filename().string();
+            output << "#include \"" << uniforms_filename << "\"\n";
+        }
         output << uni_result.generated_export_cpp;
     }
     output.close();
@@ -105,7 +118,7 @@ int main(int argc, char* argv[]) {
                       << uniform_output_path << "\n";
             return 1;
         }
-        if (uni_result.has_uniforms) {
+        if (uni_result.has_uniforms && desc_result.has_process_gpu) {
             uniform_output << uni_result.generated_header;
         } else {
             uniform_output << "#pragma once\n// No generated uniforms for this operator.\n";

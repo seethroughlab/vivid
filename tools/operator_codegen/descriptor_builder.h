@@ -21,6 +21,7 @@ struct ParamSpec {
     std::string max_value_expr = "0";
     std::string default_string_expr = "nullptr";
     std::vector<std::string> choice_label_exprs;
+    std::string dynamic_choices_expr;  // non-empty when choices come from a function call
     std::string group_expr = "nullptr";
     std::string display_hint_expr = "VIVID_DISPLAY_DEFAULT";
     std::string layout_columns_expr = "0";
@@ -62,9 +63,15 @@ struct DescriptorResult {
     bool has_collect_params = false;
     bool has_collect_ports = false;
 
+    bool has_draw_thumbnail  = false;
+    bool has_draw_inspector  = false;
+    bool inspector_full_mode = false;
+    bool has_draw_editor     = false;
+
     std::vector<std::string> includes;
     std::vector<ParamSpec> params;
     std::vector<std::string> port_exprs;
+    std::vector<bool> port_advanced_flags; // true → set VIVID_PORT_DISPLAY_ADVANCED
     OperatorMetadataSpec metadata;
     std::string generated_cpp;
 };
@@ -73,20 +80,31 @@ class DescriptorBuilder {
 public:
     DescriptorBuilder() = default;
 
+    // Optional: call before build_from_file() to supply extra source files whose
+    // raw text will be searched when collect_params/collect_ports are not found in
+    // the primary source or included headers (e.g. drum_sequencer_core.cpp).
+    void add_extra_source(const std::filesystem::path& path);
+
     DescriptorResult build_from_file(const std::filesystem::path& cpp_source_path);
 
 private:
+    std::vector<std::string> extra_source_texts_; // raw text of supplemental source files
+
     struct ClassContext {
+        std::optional<SourceSyntaxRecord> owned_header_record; // keeps header record alive when class is from a header
         const TypeDefinition* type_definition = nullptr;
         std::optional<SourceRange> type_range;
         std::unordered_map<std::string, MethodDefinition> methods;
         std::unordered_map<std::string, MemberConstant> constants;
         std::string class_text;
         std::string type_body_text;
+        std::string base_class_text; // body text of non-vivid base classes from included headers
+        const std::string* raw_source = nullptr; // points into main record or owned_header_record
     };
 
     void process_record(const SourceSyntaxRecord& record, DescriptorResult& result);
     bool populate_class_context(const SourceSyntaxRecord& record,
+                                const std::filesystem::path& source_path,
                                 const std::string& class_name,
                                 ClassContext& context,
                                 std::string& error_message);
