@@ -165,13 +165,15 @@ std::optional<TypeLayout> resolve_wgsl_type_layout(const std::string& canonical_
     if (auto layout = try_vec("vec", "<u32>", "uint32_t")) return layout;
 
     if (canonical_type.rfind("mat", 0) == 0) {
-        if (canonical_type.size() < 6) return std::nullopt;
+        // WGSL matrix format: matCxRf or matCxR<f32> (e.g. mat3x2f, mat4x4f)
+        if (canonical_type.size() < 7) return std::nullopt;
         const char cols_ch = canonical_type[3];
-        const char rows_ch = canonical_type[4];
+        if (canonical_type[4] != 'x') return std::nullopt;
+        const char rows_ch = canonical_type[5];
         if (cols_ch < '2' || cols_ch > '4' || rows_ch < '2' || rows_ch > '4') {
             return std::nullopt;
         }
-        const std::string tail = canonical_type.substr(5);
+        const std::string tail = canonical_type.substr(6);
         if (tail != "f" && tail != "<f32>") return std::nullopt;
         const uint32_t cols = static_cast<uint32_t>(cols_ch - '0');
         const uint32_t rows = static_cast<uint32_t>(rows_ch - '0');

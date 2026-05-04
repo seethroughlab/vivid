@@ -363,12 +363,6 @@ bool OperatorLoader::load(const char* path) {
     draw_editor_fn_ = reinterpret_cast<VividDrawEditorFn>(dlsym(new_handle, "vivid_draw_editor"));
     inject_midi_fn_ = reinterpret_cast<VividInjectMidiFn>(dlsym(new_handle, "vivid_op_inject_midi"));
     registration_mode_ = candidate_mode;
-    if (registration_mode_ == "legacy") {
-        std::fprintf(stderr,
-                     "[vivid] warning: operator '%s' uses legacy VIVID_REGISTER; consider migrating to VIVID_REGISTER_V2.\n",
-                     new_desc->name ? new_desc->name : path);
-    }
-
     clear_last_error();
     return true;
 }
