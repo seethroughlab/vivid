@@ -2122,10 +2122,11 @@ std::string handle_validate_operators(OperatorRegistry& registry) {
     summary["by_mode"] = std::move(mode_counts);
 
     nlohmann::json result = nlohmann::json::object();
+    result["ok"]             = true;
     result["schema_version"] = 1;
     result["summary"]        = std::move(summary);
     result["operators"]      = std::move(ops_arr);
-    return json_ok(std::move(result));
+    return result.dump();
 }
 
 } // namespace vivid

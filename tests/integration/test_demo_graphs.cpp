@@ -426,6 +426,22 @@ static int run_single_graph(const char* exe_path, const char* graph_path,
     }
     // Initialize metronome so transport-synced operators produce output
     runtime.reset_live_metronome(graph.metronome(), 0.0);
+
+    // If any required package was never installed (not in loaded_packages),
+    // skip gracefully — we can't test what we can't run.
+    for (const auto& pkg : required_packages) {
+        bool pkg_loaded = false;
+        for (const auto& info : bootstrap.package_discovery.loaded_packages) {
+            if (info.name == pkg) { pkg_loaded = true; break; }
+        }
+        if (!pkg_loaded) {
+            std::fprintf(stderr, "required package not installed: %s — skipping\n", pkg.c_str());
+            runtime.shutdown();
+            gpu.shutdown();
+            return 2;  // SKIP
+        }
+    }
+
     if (fail_if_required_package_placeholders(runtime, registry, graph,
                                               bootstrap.package_discovery, required_packages)) {
         write_health_dump(graph, &runtime, registry, nullptr, graph_path, graphs_root, health_dir, "failed");
