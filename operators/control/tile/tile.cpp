@@ -65,4 +65,7 @@ private:
     }
 };
 
+VIVID_DEFINE_OP(Tile) {
+}
+
 VIVID_REGISTER(Tile)

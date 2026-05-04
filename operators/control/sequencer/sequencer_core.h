@@ -31,7 +31,7 @@ struct SequencerCore : vivid::OperatorBase {
     vivid::Param<int> source {"source", 0, {"internal", "external"}};
 
     // --- Step count ---
-    vivid::Param<int> steps {"steps", 8, 1, kMaxSteps};
+    vivid::Param<int> steps {"steps", 8, 1, 32};
 
     // --- Inline step values (internal mode) ---
     vivid::Param<float> step_value[kMaxSteps] = {

@@ -41,29 +41,9 @@ struct Gain : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        VividPortDescriptor input_port{"input", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,
-                                       VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f};
-        vivid::semantic_tag(input_port, "audio_signal");
-        vivid::semantic_shape(input_port, "audio_buffer");
-        vivid::semantic_intent(input_port, "audio_input");
-        vivid::description(input_port, "Audio input signal to scale.");
-        out.push_back(input_port);
-
-        VividPortDescriptor output_port{"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT,
-                                        VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f};
-        vivid::semantic_tag(output_port, "audio_signal");
-        vivid::semantic_shape(output_port, "audio_buffer");
-        vivid::semantic_intent(output_port, "audio_output");
-        vivid::description(output_port, "Scaled audio output.");
-        out.push_back(output_port);
-
-        VividPortDescriptor amp_cv_port{"amplitude_cv", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,
-                                        VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 1.0f};
-        vivid::semantic_tag(amp_cv_port, "amplitude_linear");
-        vivid::semantic_shape(amp_cv_port, "scalar");
-        vivid::semantic_intent(amp_cv_port, "global_gain_mod");
-        vivid::description(amp_cv_port, "Scalar gain modulation input, often driven by an envelope or macro.");
-        out.push_back(amp_cv_port);
+        out.push_back({"input",        VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f, nullptr, "audio_signal",    "audio_buffer", "audio_input",     "Audio input signal to scale."});
+        out.push_back({"output",       VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f, nullptr, "audio_signal",    "audio_buffer", "audio_output",    "Scaled audio output."});
+        out.push_back({"amplitude_cv", VIVID_PORT_SCALAR,       VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL,       0, nullptr, 0, 1.0f, nullptr, "amplitude_linear","scalar",        "global_gain_mod", "Scalar gain modulation input, often driven by an envelope or macro."});
         vivid::append_analysis_ports(out);
     }
 
@@ -117,6 +97,9 @@ struct Gain : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::audio_kernels::scale(in, out, ctx->buffer_size, g);
     }
 };
+
+VIVID_DEFINE_OP(Gain) {
+}
 
 VIVID_REGISTER(Gain)
 VIVID_THUMBNAIL(Gain)

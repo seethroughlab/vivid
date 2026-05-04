@@ -230,6 +230,8 @@ private:
     }
 };
 
+VIVID_DEFINE_OP(SyphonOut) {}
+
 VIVID_REGISTER(SyphonOut)
 
 #endif

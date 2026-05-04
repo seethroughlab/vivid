@@ -182,6 +182,31 @@ void test_vivid_verify_lock_pretty_writes_stderr() {
           "verify-lock --pretty: stderr carries the header line");
 }
 
+void test_vivid_validate_operators_help_and_json() {
+    auto help = run_vivid({"--help"});
+    check(help.exit_code == 0, "validate-operators help: exit 0");
+    check(help.stdout_text.find("validate-operators") != std::string::npos,
+          "validate-operators help: subcommand is listed");
+
+    auto r = run_vivid({"validate-operators"});
+    check(r.exit_code == 0, "validate-operators: exit 0 even when report contains findings");
+    auto root = nlohmann::json::parse(r.stdout_text);
+    check(root["ok"].get<bool>() == true, "validate-operators: ok=true");
+    check(root.contains("summary") && root["summary"].is_object(),
+          "validate-operators: summary object exists");
+    check(root.contains("operators") && root["operators"].is_array(),
+          "validate-operators: operators array exists");
+    if (!root["operators"].empty()) {
+        const auto& first = root["operators"].front();
+        check(first.contains("registration_mode") && first["registration_mode"].is_string(),
+              "validate-operators: operators include registration_mode");
+        check(first.contains("valid") && first["valid"].is_boolean(),
+              "validate-operators: operators include valid");
+        check(first.contains("issues") && first["issues"].is_array(),
+              "validate-operators: operators include issues");
+    }
+}
+
 // --- Phase 7: vivid export --strict CLI tests -----------------------------
 //
 // Fail-path tests only — they exit before any pipeline work, so they're
@@ -305,14 +330,15 @@ int main(int argc, char** argv) {
     test_vivid_verify_lock_no_sibling();
     test_vivid_verify_lock_missing_lockfile_path();
     test_vivid_verify_lock_pretty_writes_stderr();
+    test_vivid_validate_operators_help_and_json();
     test_vivid_export_strict_no_sibling_lockfile();
     test_vivid_export_strict_mismatch();
     test_vivid_export_strict_explicit_lockfile();
 
     if (failures == 0) {
-        std::fprintf(stderr, "All vivid-lock CLI tests passed.\n");
+        std::fprintf(stderr, "All vivid CLI tests passed.\n");
         return 0;
     }
-    std::fprintf(stderr, "%d vivid-lock CLI failure(s).\n", failures);
+    std::fprintf(stderr, "%d vivid CLI failure(s).\n", failures);
     return 1;
 }

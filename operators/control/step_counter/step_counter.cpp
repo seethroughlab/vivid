@@ -65,4 +65,10 @@ private:
     int step_ = 0;
 };
 
+VIVID_DEFINE_OP(StepCounter) {
+    name = "StepCounter";
+    keywords = {"counter", "trigger", "modulo", "step", "index", "advance"};
+    summary = "Trigger-driven counter with modulo wrap and reset.";
+}
+
 VIVID_REGISTER(StepCounter)

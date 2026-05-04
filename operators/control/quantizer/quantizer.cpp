@@ -144,4 +144,10 @@ private:
     }
 };
 
+VIVID_DEFINE_OP(Quantizer) {
+    name = "Quantizer";
+    keywords = {"quantize", "pitch", "scale", "snap", "chromatic", "musical", "steps"};
+    summary = "Snaps a signal to musical scale pitches, range steps, or uniform levels.";
+}
+
 VIVID_REGISTER(Quantizer)

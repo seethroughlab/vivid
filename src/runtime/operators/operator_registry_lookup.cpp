@@ -97,6 +97,35 @@ const VividOperatorDescriptor* OperatorRegistry::probe_descriptor(const std::str
     return &dit->second.desc;
 }
 
+std::string OperatorRegistry::probe_registration_mode(const std::string& type_name) const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    const std::string resolved = operator_registry_internal::resolve_alias_once(aliases_, type_name);
+    auto lit = loaders_.find(resolved);
+    if (lit != loaders_.end() && lit->second) {
+        return lit->second->registration_mode();
+    }
+    auto dit = deferred_.find(resolved);
+    if (dit != deferred_.end()) {
+        return dit->second.registration_mode;
+    }
+    return "unknown";
+}
+
+const VividGeneratedUniformLayout* OperatorRegistry::probe_generated_uniform_layout(
+    const std::string& type_name) const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    const std::string resolved = operator_registry_internal::resolve_alias_once(aliases_, type_name);
+    auto lit = loaders_.find(resolved);
+    if (lit != loaders_.end() && lit->second) {
+        return lit->second->generated_uniform_layout();
+    }
+    auto dit = deferred_.find(resolved);
+    if (dit != deferred_.end() && dit->second.uniform_layout.byte_size > 0) {
+        return &dit->second.uniform_layout;
+    }
+    return nullptr;
+}
+
 OperatorLoader* OperatorRegistry::find(const std::string& type_name) {
     auto claim = claim_deferred_load_locked(mutex_, loaders_, deferred_, in_flight_loads_, aliases_,
                                             type_name);

@@ -225,40 +225,11 @@ struct ChordProgressionCore : vivid::OperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        VividPortDescriptor beat_phase_port{"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT};
-        vivid::semantic_tag(beat_phase_port, "beat_phase");
-        vivid::semantic_shape(beat_phase_port, "scalar");
-        vivid::semantic_intent(beat_phase_port, "global_transport_phase");
-        vivid::description(beat_phase_port, "Global beat phase used to advance the chord progression.");
-        out.push_back(beat_phase_port);
-
-        VividPortDescriptor note_port{"note", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT};
-        vivid::semantic_tag(note_port, "midi_note");
-        vivid::semantic_shape(note_port, "scalar");
-        vivid::semantic_intent(note_port, "monophonic_preview_pitch");
-        vivid::description(note_port, "First note of the current chord as a scalar convenience output.");
-        out.push_back(note_port);
-
-        VividPortDescriptor vel_port{"vel", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT};
-        vivid::semantic_tag(vel_port, "velocity");
-        vivid::semantic_shape(vel_port, "scalar");
-        vivid::semantic_intent(vel_port, "monophonic_preview_velocity");
-        vivid::description(vel_port, "First velocity of the current chord as a scalar convenience output.");
-        out.push_back(vel_port);
-
-        VividPortDescriptor gate_port{"gate", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT};
-        vivid::semantic_tag(gate_port, "gate");
-        vivid::semantic_shape(gate_port, "scalar");
-        vivid::semantic_intent(gate_port, "monophonic_preview_gate");
-        vivid::description(gate_port, "First gate of the current chord as a scalar convenience output.");
-        out.push_back(gate_port);
-
-        VividPortDescriptor notes_out_port = VIVID_CUSTOM_REF_PORT("notes_out", VIVID_PORT_OUTPUT, VividNoteBuffer);
-        vivid::semantic_tag(notes_out_port, "notes");
-        vivid::semantic_shape(notes_out_port, "custom_ref");
-        vivid::semantic_intent(notes_out_port, "note_stream");
-        vivid::description(notes_out_port, "Native note output mirroring the generated chord notes.");
-        out.push_back(notes_out_port);
+        out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "beat_phase",  "scalar", "global_transport_phase",      "Global beat phase used to advance the chord progression."});
+        out.push_back({"note",       VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "midi_note",   "scalar", "monophonic_preview_pitch",    "First note of the current chord as a scalar convenience output."});
+        out.push_back({"vel",        VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "velocity",    "scalar", "monophonic_preview_velocity", "First velocity of the current chord as a scalar convenience output."});
+        out.push_back({"gate",       VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "gate",        "scalar", "monophonic_preview_gate",     "First gate of the current chord as a scalar convenience output."});
+        out.push_back(VIVID_CUSTOM_REF_PORT("notes_out", VIVID_PORT_OUTPUT, VividNoteBuffer));
     }
 
     // Build chord intervals relative to the chord root using diatonic third-stacking.

@@ -83,4 +83,7 @@ struct RingMod : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
+VIVID_DEFINE_OP(RingMod) {
+}
+
 VIVID_REGISTER(RingMod)

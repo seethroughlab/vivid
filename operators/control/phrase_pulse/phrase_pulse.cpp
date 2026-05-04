@@ -56,4 +56,10 @@ private:
     bool initialized_ = false;
 };
 
+VIVID_DEFINE_OP(PhrasePulse) {
+    name = "PhrasePulse";
+    keywords = {"phrase", "pulse", "bar", "sync", "metronome", "reset", "clock"};
+    summary = "Emits a one-frame gate at the start of every N-bar phrase.";
+}
+
 VIVID_REGISTER(PhrasePulse)

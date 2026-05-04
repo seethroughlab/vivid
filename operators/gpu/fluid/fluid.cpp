@@ -668,4 +668,7 @@ private:
 
 };
 
+VIVID_DEFINE_OP(Fluid) {
+}
+
 VIVID_REGISTER(Fluid)

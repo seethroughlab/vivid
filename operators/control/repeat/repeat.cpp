@@ -168,4 +168,10 @@ private:
     }
 };
 
+VIVID_DEFINE_OP(Repeat) {
+    name = "Repeat";
+    keywords = {"repeat", "lanes", "spread", "broadcast", "polyphony", "copy", "distribute"};
+    summary = "Broadcasts a scalar to N output lanes with optional spread distribution.";
+}
+
 VIVID_REGISTER(Repeat)

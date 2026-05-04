@@ -84,4 +84,7 @@ private:
     SmoothState state_;
 };
 
+VIVID_DEFINE_OP(SmoothAudio) {
+}
+
 VIVID_REGISTER(SmoothAudio)

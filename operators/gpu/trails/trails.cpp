@@ -637,4 +637,7 @@ private:
     }
 };
 
+VIVID_DEFINE_OP(Trails) {
+}
+
 VIVID_REGISTER(Trails)

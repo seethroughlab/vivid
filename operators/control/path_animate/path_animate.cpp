@@ -215,4 +215,10 @@ private:
     }
 };
 
+VIVID_DEFINE_OP(PathAnimate) {
+    name = "PathAnimate";
+    keywords = {"path", "bezier", "animate", "easing", "motion", "keyframe", "spline"};
+    summary = "Animates x/y/angle along a cubic Bezier path with easing modes.";
+}
+
 VIVID_REGISTER(PathAnimate)

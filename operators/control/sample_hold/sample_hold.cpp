@@ -97,5 +97,8 @@ struct SampleHoldAudio : SampleHold, vivid::AudioProcessable {
     }
 };
 
+VIVID_DEFINE_OP(SampleHoldAudio) {
+}
+
 VIVID_REGISTER(SampleHoldAudio)
 VIVID_THUMBNAIL(SampleHoldAudio)

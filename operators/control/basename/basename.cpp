@@ -96,5 +96,8 @@ struct Basename : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
+VIVID_DEFINE_OP(Basename) {
+}
+
 VIVID_REGISTER(Basename)
 VIVID_THUMBNAIL(Basename)

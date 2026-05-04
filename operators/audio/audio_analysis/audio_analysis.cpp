@@ -229,4 +229,7 @@ private:
     std::vector<float> prev_magnitudes_;
 };
 
+VIVID_DEFINE_OP(AudioAnalysis) {
+}
+
 VIVID_REGISTER(AudioAnalysis)

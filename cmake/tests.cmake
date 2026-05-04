@@ -63,6 +63,7 @@ add_library(vivid_runtime_testlib STATIC
     src/runtime/operators/operator_registry_metadata.cpp
     src/runtime/operators/operator_registry_diagnostics.cpp
     src/runtime/operators/operator_descriptor_hash.cpp
+    src/runtime/operators/operator_descriptor_validation.cpp
     src/runtime/operators/operator_source_docs.cpp
     src/runtime/packages/package_catalog.cpp
     src/runtime/packages/package_compiler.cpp
@@ -83,7 +84,7 @@ add_library(vivid_runtime_testlib STATIC
 )
 target_include_directories(vivid_runtime_testlib PUBLIC src tests)
 target_link_libraries(vivid_runtime_testlib PUBLIC
-    vivid_operator_api nlohmann_json::nlohmann_json dragonbox::dragonbox_to_chars webgpu
+    vivid_operator_api vivid_source_syntax nlohmann_json::nlohmann_json dragonbox::dragonbox_to_chars webgpu
     miniaudio rtmidi snappy stb_truetype ixwebsocket efsw tinyxml2 CURL::libcurl)
 if(VIVID_ENABLE_HIGHWAY)
     target_link_libraries(vivid_runtime_testlib PUBLIC hwy)
@@ -200,6 +201,30 @@ if(VIVID_ENABLE_HIGHWAY)
 endif()
 
 include(cmake/tests/10-runtime-control-graph.cmake)
+# SourceSyntaxParser unit tests — tree-sitter parsing foundation (Phase 1)
+add_executable(test_source_syntax_parser
+    tests/core/test_source_syntax_parser.cpp
+)
+target_include_directories(test_source_syntax_parser PRIVATE src tests)
+target_link_libraries(test_source_syntax_parser PRIVATE
+    vivid_operator_api vivid_source_syntax
+    nlohmann_json::nlohmann_json
+)
+add_test(NAME test_source_syntax_parser COMMAND test_source_syntax_parser)
+set_tests_properties(test_source_syntax_parser PROPERTIES TIMEOUT 15)
+
+add_executable(test_operator_codegen
+    tests/core/test_operator_codegen.cpp
+    tools/operator_codegen/descriptor_builder.cpp
+    tools/operator_codegen/uniform_codegen.cpp
+)
+target_include_directories(test_operator_codegen PRIVATE src tests ${CMAKE_SOURCE_DIR})
+target_link_libraries(test_operator_codegen PRIVATE vivid_source_syntax vivid_wgsl_uniform_layout)
+target_compile_definitions(test_operator_codegen PRIVATE
+    "VIVID_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+add_test(NAME test_operator_codegen COMMAND test_operator_codegen)
+set_tests_properties(test_operator_codegen PROPERTIES TIMEOUT 15)
+
 include(cmake/tests/20-ui-and-common.cmake)
 include(cmake/tests/30-ops-stability-domains.cmake)
 include(cmake/tests/40-packages-media-misc.cmake)

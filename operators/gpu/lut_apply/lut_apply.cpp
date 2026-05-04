@@ -574,4 +574,7 @@ private:
     }
 };
 
+VIVID_DEFINE_OP(LutApply) {
+}
+
 VIVID_REGISTER(LutApply)

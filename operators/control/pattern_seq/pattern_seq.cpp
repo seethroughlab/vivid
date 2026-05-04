@@ -17,5 +17,8 @@ struct PatternSeq : PatternSeqCore, vivid::AudioProcessable {
     }
 };
 
+VIVID_DEFINE_OP(PatternSeq) {
+}
+
 VIVID_REGISTER(PatternSeq)
 VIVID_EDITOR(PatternSeq)

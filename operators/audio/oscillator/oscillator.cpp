@@ -116,5 +116,8 @@ struct Oscillator : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
+VIVID_DEFINE_OP(Oscillator) {
+}
+
 VIVID_REGISTER(Oscillator)
 VIVID_THUMBNAIL(Oscillator)

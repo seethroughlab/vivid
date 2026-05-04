@@ -128,4 +128,7 @@ struct Limiter : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
+VIVID_DEFINE_OP(Limiter) {
+}
+
 VIVID_REGISTER(Limiter)

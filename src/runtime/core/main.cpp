@@ -327,6 +327,9 @@ int main(int argc, char* argv[]) {
     auto* operator_map_cmd = app.add_subcommand("operator-map",
         "List the runtime operator map as JSON");
 
+    auto* validate_operators_cmd = app.add_subcommand("validate-operators",
+        "Validate loaded operators and emit a JSON report");
+
     auto* discovery_report_cmd = app.add_subcommand("discovery-report",
         "Show the package discovery report as JSON");
 
@@ -390,7 +393,7 @@ int main(int argc, char* argv[]) {
             install_cmd, uninstall_cmd, list_pkg_cmd, link_cmd, unlink_cmd, rebuild_cmd,
             scaffold_op_cmd, check_updates_cmd, check_core_updates_cmd,
             list_types_cmd, operator_docs_cmd, package_operator_docs_cmd,
-            operator_map_cmd, discovery_report_cmd, read_package_docs_cmd,
+            operator_map_cmd, validate_operators_cmd, discovery_report_cmd, read_package_docs_cmd,
             list_package_examples_cmd, read_package_example_cmd, package_catalog_cmd,
             test_package_cmd, doctor_cmd
         }) {
@@ -688,6 +691,7 @@ int main(int argc, char* argv[]) {
         scaffold_pkg_cmd->parsed() || scaffold_op_cmd->parsed() ||
         list_types_cmd->parsed() || operator_docs_cmd->parsed() ||
         package_operator_docs_cmd->parsed() || operator_map_cmd->parsed() ||
+        validate_operators_cmd->parsed() ||
         discovery_report_cmd->parsed() || read_package_docs_cmd->parsed() ||
         list_package_examples_cmd->parsed() || read_package_example_cmd->parsed() ||
         package_catalog_cmd->parsed() || test_package_cmd->parsed()) {
@@ -735,6 +739,7 @@ int main(int argc, char* argv[]) {
         const bool needs_package_scan =
             list_types_cmd->parsed() || operator_docs_cmd->parsed() ||
             package_operator_docs_cmd->parsed() || operator_map_cmd->parsed() ||
+            validate_operators_cmd->parsed() ||
             discovery_report_cmd->parsed() || test_package_cmd->parsed();
         vivid::RegistryBootstrapOptions bootstrap_opts;
         bootstrap_opts.scan_packages = needs_package_scan;
@@ -756,6 +761,8 @@ int main(int argc, char* argv[]) {
                 registry, &pm, source_docs, nlohmann::json{{"name", package_operator_docs_name}}));
         } else if (operator_map_cmd->parsed()) {
             return emit_json(handle_operator_map(registry));
+        } else if (validate_operators_cmd->parsed()) {
+            return emit_json(handle_validate_operators(registry));
         } else if (discovery_report_cmd->parsed()) {
             return emit_json(handle_get_discovery_report(&pm));
         } else if (read_package_docs_cmd->parsed()) {

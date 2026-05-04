@@ -64,6 +64,7 @@ add_executable(vivid
     src/runtime/operators/operator_registry_metadata.cpp
     src/runtime/operators/operator_registry_diagnostics.cpp
     src/runtime/operators/operator_descriptor_hash.cpp
+    src/runtime/operators/operator_descriptor_validation.cpp
     src/runtime/graph/port_type_registry.cpp
     src/runtime/gpu/wgsl_header_parser.cpp
     src/runtime/graph/graph.cpp
@@ -157,7 +158,7 @@ if(APPLE)
 endif()
 
 target_include_directories(vivid PRIVATE src)
-target_link_libraries(vivid PRIVATE vivid_ui webgpu glfw glfw3webgpu vivid_operator_api nlohmann_json::nlohmann_json dragonbox::dragonbox_to_chars miniaudio stb_truetype ixwebsocket rtmidi CLI11::CLI11 efsw tinyxml2 CURL::libcurl)
+target_link_libraries(vivid PRIVATE vivid_ui webgpu glfw glfw3webgpu vivid_operator_api vivid_source_syntax nlohmann_json::nlohmann_json dragonbox::dragonbox_to_chars miniaudio stb_truetype ixwebsocket rtmidi CLI11::CLI11 efsw tinyxml2 CURL::libcurl)
 if(VIVID_ENABLE_HIGHWAY)
     target_link_libraries(vivid PRIVATE hwy)
     target_compile_definitions(vivid PRIVATE

@@ -1,4 +1,5 @@
 #include "runtime/operators/operator_registry.h"
+#include "runtime/operators/operator_descriptor_validation.h"
 #include "runtime/operators/operator_registry_internal.h"
 #include "runtime/platform/platform.h"
 #include "runtime/gpu/wgsl_header_parser.h"
@@ -63,9 +64,12 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
         const VividOperatorDescriptor* src,
         const VividFileDropHandlerDescriptor* file_drop_src,
         uint32_t file_drop_count,
-        const std::string& dylib_path) {
+        const std::string& dylib_path,
+        std::string registration_mode,
+        const VividGeneratedUniformLayout* uniform_layout_src) {
     DeferredEntry entry;
     entry.dylib_path = dylib_path;
+    entry.registration_mode = std::move(registration_mode);
 
     if (src->param_count > 256) {
         std::fprintf(stderr, "[vivid] descriptor for '%s' claims %u params — clamping to 256\n",
@@ -352,6 +356,43 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
         }
     }
 
+    if (uniform_layout_src) {
+        entry.uniform_struct_name = uniform_layout_src->struct_name
+            ? uniform_layout_src->struct_name
+            : "";
+        entry.uniform_layout.struct_name = entry.uniform_struct_name.empty()
+            ? nullptr
+            : entry.uniform_struct_name.c_str();
+        entry.uniform_layout.byte_size = uniform_layout_src->byte_size;
+        entry.uniform_layout.alignment = uniform_layout_src->alignment;
+        entry.uniform_layout.member_count = uniform_layout_src->member_count;
+
+        if (uniform_layout_src->members && uniform_layout_src->member_count > 0) {
+            entry.uniform_members.resize(uniform_layout_src->member_count);
+            entry.uniform_member_names.resize(uniform_layout_src->member_count);
+            entry.uniform_member_types.resize(uniform_layout_src->member_count);
+            for (uint32_t i = 0; i < uniform_layout_src->member_count; ++i) {
+                const auto& src_member = uniform_layout_src->members[i];
+                auto& dst_member = entry.uniform_members[i];
+                entry.uniform_member_names[i] = src_member.name ? src_member.name : "";
+                entry.uniform_member_types[i] = src_member.wgsl_type ? src_member.wgsl_type : "";
+                dst_member.name = entry.uniform_member_names[i].empty()
+                    ? nullptr
+                    : entry.uniform_member_names[i].c_str();
+                dst_member.wgsl_type = entry.uniform_member_types[i].empty()
+                    ? nullptr
+                    : entry.uniform_member_types[i].c_str();
+                dst_member.offset = src_member.offset;
+                dst_member.size = src_member.size;
+                dst_member.alignment = src_member.alignment;
+            }
+            entry.uniform_layout.members = entry.uniform_members.data();
+        } else {
+            entry.uniform_layout.members = nullptr;
+            entry.uniform_layout.member_count = 0;
+        }
+    }
+
     return entry;
 }
 
@@ -466,7 +507,23 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
         uint32_t file_drop_count = 0;
         const VividFileDropHandlerDescriptor* file_drop_desc =
             file_drop_fn ? file_drop_fn(&file_drop_count) : nullptr;
-        auto de_opt = deep_copy_descriptor(desc, file_drop_desc, file_drop_count, path);
+        auto mode_fn = reinterpret_cast<VividRegistrationModeFn>(
+            dlsym(handle, "vivid_registration_mode"));
+        auto uniform_layout_fn = reinterpret_cast<VividGeneratedUniformLayoutFn>(
+            dlsym(handle, "vivid_generated_uniform_layout"));
+        const char* mode_cstr = mode_fn ? mode_fn() : nullptr;
+        std::string registration_mode = (mode_cstr && *mode_cstr) ? mode_cstr : "legacy";
+        const VividGeneratedUniformLayout* uniform_layout =
+            uniform_layout_fn ? uniform_layout_fn() : nullptr;
+        auto issues = validate_descriptor(desc, registration_mode.c_str(), uniform_layout);
+        if (!issues.empty()) {
+            std::fprintf(stderr, "[vivid] probe: invalid descriptor in %s: %s\n",
+                         name, issues.front().message.c_str());
+            deferred_probe_handles_.push_back({path, handle});
+            return;
+        }
+        auto de_opt = deep_copy_descriptor(desc, file_drop_desc, file_drop_count, path,
+                                           registration_mode, uniform_layout);
         deferred_probe_handles_.push_back({path, handle});
         if (!de_opt) return;
 
@@ -493,6 +550,10 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
             ? nullptr : it->second.display_name.c_str();
         it->second.desc.summary = it->second.summary.empty()
             ? nullptr : it->second.summary.c_str();
+        it->second.uniform_layout.struct_name = it->second.uniform_struct_name.empty()
+            ? nullptr : it->second.uniform_struct_name.c_str();
+        it->second.uniform_layout.members = it->second.uniform_members.empty()
+            ? nullptr : it->second.uniform_members.data();
 
         register_target_mapping(path, type_name);
 

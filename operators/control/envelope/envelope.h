@@ -143,34 +143,10 @@ struct Envelope : vivid::OperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        VividPortDescriptor gate_port{"gate", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT};
-        vivid::semantic_tag(gate_port, "gate");
-        vivid::semantic_shape(gate_port, "lane_array");
-        vivid::semantic_intent(gate_port, "per_note_gate");
-        vivid::description(gate_port, "Gate input for ADSR triggering. Accepts a scalar gate or per-voice lanes such as NoteBreakout/voice_gates.");
-        out.push_back(gate_port);  // 0
-
-        VividPortDescriptor lane_ids_port{"lane_ids", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT};
-        vivid::semantic_tag(lane_ids_port, "lane_id");
-        vivid::semantic_shape(lane_ids_port, "lane_array");
-        vivid::description(lane_ids_port, "Per-voice lane IDs for stable envelope state across reallocation.");
-        out.push_back(lane_ids_port);  // 1
-
-        VividPortDescriptor beat_phase_port{"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT};
-        vivid::semantic_tag(beat_phase_port, "beat_phase");
-        vivid::semantic_shape(beat_phase_port, "scalar");
-        vivid::semantic_intent(beat_phase_port, "global_retrigger_phase");
-        vivid::description(beat_phase_port, "Global tempo phase. A wrap retriggers the envelope for all lanes.");
-        out.push_back(beat_phase_port);  // 2
-
-        VividPortDescriptor value_port{"value", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT,
-                                       VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr,
-                                       static_cast<uint8_t>(kMaxVoices)};
-        vivid::semantic_tag(value_port, "amplitude_linear");
-        vivid::semantic_shape(value_port, "audio_buffer");
-        vivid::semantic_intent(value_port, "envelope_output");
-        vivid::description(value_port, "Per-voice envelope output. Multi-channel when driven by polyphonic gates.");
-        out.push_back(value_port);  // 3
+        out.push_back({"gate",       VIVID_PORT_LANE_ARRAY,   VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_LANE_ARRAY,   0, nullptr, 0,                             0.0f, nullptr, "gate",             "lane_array",   "per_note_gate",          "Gate input for ADSR triggering. Accepts a scalar gate or per-voice lanes such as NoteBreakout/voice_gates."});
+        out.push_back({"lane_ids",   VIVID_PORT_LANE_ARRAY,   VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_LANE_ARRAY,   0, nullptr, 0,                             0.0f, nullptr, "lane_id",          "lane_array",   nullptr,                  "Per-voice lane IDs for stable envelope state across reallocation."});
+        out.push_back({"beat_phase", VIVID_PORT_SCALAR,       VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL,       0, nullptr, 0,                             0.0f, nullptr, "beat_phase",       "scalar",       "global_retrigger_phase", "Global tempo phase. A wrap retriggers the envelope for all lanes."});
+        out.push_back({"value",      VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 16, 0.0f, nullptr, "amplitude_linear", "audio_buffer", "envelope_output",        "Per-voice envelope output. Multi-channel when driven by polyphonic gates."});
     }
 
     // ── Shared ADSR step ────────────────────────────────────────────────

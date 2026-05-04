@@ -75,7 +75,7 @@ struct SP404 : vivid::OperatorBase, vivid::AudioProcessable {
         // Per-voice advanced breakouts (kMaxPads channels mono each).
         out.push_back({"voices_out",       VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT,
                        VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr,
-                       static_cast<uint8_t>(kMaxPads), 0.0f});
+                       16, 0.0f}); // kMaxPads channels
         vivid::advanced_breakout(out.back());
         out.push_back({"voice_ids",        VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
         vivid::advanced_breakout(out.back());
@@ -269,5 +269,8 @@ struct SP404 : vivid::OperatorBase, vivid::AudioProcessable {
         }
     }
 };
+
+VIVID_DEFINE_OP(SP404) {
+}
 
 VIVID_REGISTER(SP404)

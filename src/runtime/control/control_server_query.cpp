@@ -1,4 +1,5 @@
 #include "runtime/control/control_server_internal.h"
+#include "runtime/operators/operator_descriptor_validation.h"
 #include "runtime/graph/subgraph_module.h"
 
 namespace vivid {
@@ -2070,5 +2071,61 @@ std::string handle_get_registry_diagnostics(OperatorRegistry& registry) {
 // ---------------------------------------------------------------------------
 // Dispatch — route method name to handler
 // ---------------------------------------------------------------------------
+
+std::string handle_validate_operators(OperatorRegistry& registry) {
+    auto entries = registry.operator_map();
+    std::sort(entries.begin(), entries.end(),
+              [](const OperatorMapEntry& a, const OperatorMapEntry& b) {
+                  return a.type_name < b.type_name;
+              });
+
+    std::unordered_map<std::string, int> by_mode;
+    int invalid_count = 0;
+
+    nlohmann::json ops_arr = nlohmann::json::array();
+    for (const auto& e : entries) {
+        const auto* desc   = registry.probe_descriptor(e.type_name);
+        const auto* layout = registry.probe_generated_uniform_layout(e.type_name);
+        auto issues = validate_descriptor(desc, e.registration_mode.c_str(), layout);
+
+        by_mode[e.registration_mode]++;
+        if (!issues.empty()) invalid_count++;
+
+        nlohmann::json op = nlohmann::json::object();
+        op["type"]              = e.type_name;
+        op["status"]            = e.status;
+        op["registration_mode"] = e.registration_mode;
+        op["valid"]             = issues.empty();
+
+        nlohmann::json issues_arr = nlohmann::json::array();
+        for (const auto& iss : issues)
+            issues_arr.push_back({{"code", iss.code}, {"message", iss.message}});
+        op["issues"] = std::move(issues_arr);
+
+        if (layout && layout->struct_name) {
+            op["uniform_layout"] = {
+                {"struct",       layout->struct_name},
+                {"byte_size",    layout->byte_size},
+                {"alignment",    layout->alignment},
+                {"member_count", layout->member_count}
+            };
+        }
+        ops_arr.push_back(std::move(op));
+    }
+
+    nlohmann::json summary = nlohmann::json::object();
+    summary["total"]   = static_cast<int>(entries.size());
+    summary["invalid"] = invalid_count;
+    nlohmann::json mode_counts = nlohmann::json::object();
+    for (const auto& [mode, count] : by_mode)
+        mode_counts[mode] = count;
+    summary["by_mode"] = std::move(mode_counts);
+
+    nlohmann::json result = nlohmann::json::object();
+    result["schema_version"] = 1;
+    result["summary"]        = std::move(summary);
+    result["operators"]      = std::move(ops_arr);
+    return json_ok(std::move(result));
+}
 
 } // namespace vivid

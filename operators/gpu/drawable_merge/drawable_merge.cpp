@@ -64,6 +64,9 @@ private:
     uint32_t                     child_count_ = 0;
 };
 
+VIVID_DEFINE_OP(DrawableMerge) {
+}
+
 VIVID_REGISTER(DrawableMerge)
 
 VIVID_DESCRIBE_REF_TYPE(vivid::gpu::VividDrawable2D)

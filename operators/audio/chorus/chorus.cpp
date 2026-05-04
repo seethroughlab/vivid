@@ -302,4 +302,7 @@ struct Chorus : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
+VIVID_DEFINE_OP(Chorus) {
+}
+
 VIVID_REGISTER(Chorus)

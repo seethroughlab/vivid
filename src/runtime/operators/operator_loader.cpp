@@ -1,4 +1,5 @@
 #include "runtime/operators/operator_loader.h"
+#include "runtime/operators/operator_descriptor_validation.h"
 #include "operator_api/data_driven_filter.h"
 #include "operator_api/port_type_registry.h"
 #include <dlfcn.h>
@@ -112,6 +113,8 @@ OperatorLoader::OperatorLoader(OperatorLoader&& other) noexcept
     , dd_port_names_(std::move(other.dd_port_names_))
     , dd_ports_(std::move(other.dd_ports_))
     , dd_desc_(other.dd_desc_)
+    , registration_mode_(std::move(other.registration_mode_))
+    , generated_uniform_layout_(other.generated_uniform_layout_)
 {
     other.handle_           = nullptr;
     other.desc_fn_          = nullptr;
@@ -130,6 +133,8 @@ OperatorLoader::OperatorLoader(OperatorLoader&& other) noexcept
     other.draw_editor_fn_   = nullptr;
     other.inject_midi_fn_   = nullptr;
     other.dd_desc_ = {};
+    other.registration_mode_ = "unknown";
+    other.generated_uniform_layout_ = nullptr;
     // Fixup descriptor pointers to our own storage
     if (dd_config_) {
         fixup_dd_pointers();
@@ -165,6 +170,8 @@ OperatorLoader& OperatorLoader::operator=(OperatorLoader&& other) noexcept {
         dd_port_names_    = std::move(other.dd_port_names_);
         dd_ports_         = std::move(other.dd_ports_);
         dd_desc_          = other.dd_desc_;
+        registration_mode_ = std::move(other.registration_mode_);
+        generated_uniform_layout_ = other.generated_uniform_layout_;
         other.handle_           = nullptr;
         other.desc_fn_          = nullptr;
         other.create_fn_        = nullptr;
@@ -182,6 +189,8 @@ OperatorLoader& OperatorLoader::operator=(OperatorLoader&& other) noexcept {
         other.draw_editor_fn_   = nullptr;
         other.inject_midi_fn_   = nullptr;
         other.dd_desc_ = {};
+        other.registration_mode_ = "unknown";
+        other.generated_uniform_layout_ = nullptr;
         // Fixup descriptor pointers to our own storage
         if (dd_config_) {
             fixup_dd_pointers();
@@ -224,6 +233,9 @@ bool OperatorLoader::load(const char* path) {
     }
 
     auto new_desc_fn    = reinterpret_cast<VividDescriptorFn>(dlsym(new_handle, "vivid_descriptor"));
+    auto new_mode_fn    = reinterpret_cast<VividRegistrationModeFn>(dlsym(new_handle, "vivid_registration_mode"));
+    auto new_uniform_layout_fn =
+        reinterpret_cast<VividGeneratedUniformLayoutFn>(dlsym(new_handle, "vivid_generated_uniform_layout"));
     auto new_create_fn  = reinterpret_cast<VividCreateFn>(dlsym(new_handle, "vivid_create"));
     auto new_destroy_fn = reinterpret_cast<VividDestroyFn>(dlsym(new_handle, "vivid_destroy"));
 
@@ -260,6 +272,19 @@ bool OperatorLoader::load(const char* path) {
         set_last_error("invalid_descriptor_name",
                        std::string("vivid_descriptor returned missing/empty name for ") + path);
         std::fprintf(stderr, "[vivid] vivid_descriptor returned missing/empty name for %s\n", path);
+        dlclose(new_handle);
+        return false;
+    }
+    const std::string candidate_mode = (new_mode_fn && new_mode_fn() && *new_mode_fn())
+        ? new_mode_fn()
+        : "legacy";
+    const VividGeneratedUniformLayout* uniform_layout =
+        new_uniform_layout_fn ? new_uniform_layout_fn() : nullptr;
+    auto issues = validate_descriptor(new_desc, candidate_mode.c_str(), uniform_layout);
+    if (!issues.empty()) {
+        std::string message = issues.front().message;
+        set_last_error("invalid_descriptor", message);
+        std::fprintf(stderr, "[vivid] Invalid descriptor for %s: %s\n", path, message.c_str());
         dlclose(new_handle);
         return false;
     }
@@ -322,6 +347,7 @@ bool OperatorLoader::load(const char* path) {
     process_frame_fn_       = new_process_fn;
     process_audio_fn_ = new_process_audio_fn;
     process_gpu_fn_   = new_process_gpu_fn;
+    generated_uniform_layout_ = uniform_layout;
 
     // Optional entry points
     draw_thumb_fn_ =
@@ -336,7 +362,7 @@ bool OperatorLoader::load(const char* path) {
     editor_meta_fn_ = reinterpret_cast<VividEditorMetadataFn>(dlsym(new_handle, "vivid_editor_metadata"));
     draw_editor_fn_ = reinterpret_cast<VividDrawEditorFn>(dlsym(new_handle, "vivid_draw_editor"));
     inject_midi_fn_ = reinterpret_cast<VividInjectMidiFn>(dlsym(new_handle, "vivid_op_inject_midi"));
-
+    registration_mode_ = candidate_mode;
     clear_last_error();
     return true;
 }
@@ -348,11 +374,15 @@ void OperatorLoader::init_builtin(VividDescriptorFn desc, VividCreateFn create,
     create_fn_  = create;
     destroy_fn_ = destroy;
     process_frame_fn_ = process;
+    registration_mode_ = "builtin";
+    generated_uniform_layout_ = nullptr;
 }
 
 void OperatorLoader::init_wgsl_operator(std::shared_ptr<WgslOperatorConfig> config) {
     unload();
     dd_config_ = std::move(config);
+    registration_mode_ = "wgsl";
+    generated_uniform_layout_ = nullptr;
 
     // Build owned descriptor with stable string storage
     dd_name_ = dd_config_->name;
@@ -499,6 +529,8 @@ void OperatorLoader::unload() {
         dd_ports_.clear();
         dd_desc_ = {};
     }
+    registration_mode_ = "unknown";
+    generated_uniform_layout_ = nullptr;
 }
 
 const VividOperatorDescriptor* OperatorLoader::descriptor() const {

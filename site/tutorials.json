@@ -1,0 +1,92 @@
+{
+  "tutorials": [
+    {
+      "slug": "first-video-generator",
+      "title": "Your First Video Generator",
+      "track": "composer",
+      "difficulty": "beginner",
+      "brief": "Build an animated visual from scratch using Metaball and LfoFr.",
+      "content": "src/tutorials/first-video-generator.md"
+    },
+    {
+      "slug": "first-video-effect",
+      "title": "Your First Video Effect",
+      "track": "composer",
+      "difficulty": "beginner",
+      "brief": "Process a texture through Bloom and Feedback to create glow and trail effects.",
+      "content": "src/tutorials/first-video-effect.md"
+    },
+    {
+      "slug": "first-audio-generator",
+      "title": "Your First Audio Generator",
+      "track": "composer",
+      "difficulty": "beginner",
+      "brief": "Connect an Oscillator through Gain to audio_out and hear your first tone.",
+      "content": "src/tutorials/first-audio-generator.md"
+    },
+    {
+      "slug": "first-audio-effect",
+      "title": "Your First Audio Effect",
+      "track": "composer",
+      "difficulty": "beginner",
+      "brief": "Add Reverb and Delay to a signal chain and tune wet/dry balance.",
+      "content": "src/tutorials/first-audio-effect.md"
+    },
+    {
+      "slug": "control-and-modulation",
+      "title": "Control and Modulation",
+      "track": "composer",
+      "difficulty": "beginner",
+      "brief": "Use ClockFr, LfoFr, and Smooth to drive parameters across audio and GPU operators.",
+      "content": "src/tutorials/control-and-modulation.md"
+    },
+    {
+      "slug": "audio-reactive-visuals",
+      "title": "Audio-Reactive Visuals",
+      "track": "composer",
+      "difficulty": "intermediate",
+      "brief": "Route audio analysis through Smooth to drive GPU shape parameters — Vivid's core AV pattern.",
+      "content": "src/tutorials/audio-reactive-visuals.md"
+    },
+    {
+      "slug": "midi-input",
+      "title": "Using MIDI Input",
+      "track": "composer",
+      "difficulty": "intermediate",
+      "brief": "Connect a MIDI controller or keyboard to drive a synthesizer via MidiInput and FmSynth.",
+      "content": "src/tutorials/midi-input.md"
+    },
+    {
+      "slug": "multi-voice-lanes",
+      "title": "Multi-Voice Patterns with Lanes",
+      "track": "composer",
+      "difficulty": "intermediate",
+      "brief": "Use DrumSequencer and Euclidean to run multiple voices through a single operator chain.",
+      "content": "src/tutorials/multi-voice-lanes.md"
+    },
+    {
+      "slug": "complete-av-patch",
+      "title": "Building a Complete AV Patch",
+      "track": "composer",
+      "difficulty": "advanced",
+      "brief": "Combine a drum machine, effects chain, and reactive GPU visuals into one cohesive graph.",
+      "content": "src/tutorials/complete-av-patch.md"
+    },
+    {
+      "slug": "custom-gpu-operator",
+      "title": "Writing a Custom GPU Operator",
+      "track": "developer",
+      "difficulty": "developer",
+      "brief": "Scaffold and implement a GPU operator with a WGSL fragment shader and hot-reload.",
+      "content": "src/tutorials/custom-gpu-operator.md"
+    },
+    {
+      "slug": "custom-audio-operator",
+      "title": "Writing a Custom Audio Operator",
+      "track": "developer",
+      "difficulty": "developer",
+      "brief": "Build an audio-rate DSP operator in C++ with typed ports, param declarations, and hot-reload.",
+      "content": "src/tutorials/custom-audio-operator.md"
+    }
+  ]
+}

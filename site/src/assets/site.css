@@ -373,6 +373,36 @@ a:hover {
   background: rgba(192, 200, 208, 0.12);
 }
 
+.badge.beginner {
+  color: #4edc8f;
+  border-color: #2a6c47;
+  background: rgba(78, 220, 143, 0.12);
+}
+
+.badge.intermediate {
+  color: #ffd166;
+  border-color: #866a2d;
+  background: rgba(255, 209, 102, 0.12);
+}
+
+.badge.advanced {
+  color: var(--audio);
+  background: var(--audio-bg);
+  border-color: var(--audio-border);
+}
+
+.badge.developer {
+  color: #78b9ff;
+  border-color: #2f5f90;
+  background: rgba(120, 185, 255, 0.12);
+}
+
+.badge.composer {
+  color: var(--gpu);
+  background: var(--gpu-bg);
+  border-color: var(--gpu-border);
+}
+
 .badge.listed,
 .badge.package {
   color: #d7dee7;

@@ -240,66 +240,13 @@ struct ShapeField : vivid::OperatorBase, vivid::GpuProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        // Phase 5 — lane-array inputs. Each is optional; unconnected lanes
-        // fall back to the static/LFO-driven values.
-        VividPortDescriptor pos_x_port{"pos_x", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT};
-        vivid::semantic_tag(pos_x_port, "position_xy");
-        vivid::semantic_shape(pos_x_port, "lane_array");
-        vivid::semantic_intent(pos_x_port, "x_component");
-        vivid::description(pos_x_port,
-            "Per-instance x position in [0, 1]. When connected, overrides layout.");
-        out.push_back(pos_x_port);   // 0 = kLanePosX
-
-        VividPortDescriptor pos_y_port{"pos_y", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT};
-        vivid::semantic_tag(pos_y_port, "position_xy");
-        vivid::semantic_shape(pos_y_port, "lane_array");
-        vivid::semantic_intent(pos_y_port, "y_component");
-        vivid::description(pos_y_port,
-            "Per-instance y position in [0, 1]. When connected, overrides layout.");
-        out.push_back(pos_y_port);   // 1 = kLanePosY
-
-        VividPortDescriptor size_port{"size", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT};
-        vivid::semantic_tag(size_port, "amplitude_linear");
-        vivid::semantic_shape(size_port, "lane_array");
-        vivid::semantic_intent(size_port, "scale_multiplier");
-        vivid::description(size_port,
-            "Per-instance size multiplier on base_size. 1.0 = default.");
-        out.push_back(size_port);    // 2 = kLaneSize
-
-        VividPortDescriptor hue_port{"hue", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT};
-        vivid::semantic_tag(hue_port, "color_hue");
-        vivid::semantic_shape(hue_port, "lane_array");
-        vivid::semantic_intent(hue_port, "hue_cycles");
-        vivid::description(hue_port,
-            "Per-instance hue in [0, 1]. HSV(hue, 1, 1) replaces color_r/g/b when connected.");
-        out.push_back(hue_port);     // 3 = kLaneHue
-
-        VividPortDescriptor bright_port{"brightness", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT};
-        vivid::semantic_tag(bright_port, "amplitude_linear");
-        vivid::semantic_shape(bright_port, "lane_array");
-        vivid::semantic_intent(bright_port, "per_note_amplitude");
-        vivid::description(bright_port,
-            "Per-instance intensity in [0, 1]. Multiplies RGB and alpha.");
-        out.push_back(bright_port);  // 4 = kLaneBrightness
-
-        // Phase 6 lane inputs ----------------------------------------------
-        VividPortDescriptor rot_port{"rotation", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT};
-        vivid::semantic_tag(rot_port, "rotation_radians");
-        vivid::semantic_shape(rot_port, "lane_array");
-        vivid::semantic_intent(rot_port, "angle_turns");
-        vivid::description(rot_port,
-            "Per-instance rotation in turns [0, 1]. Overrides the rotation LFO when connected.");
-        out.push_back(rot_port);     // 5 = kLaneRotation
-
-        VividPortDescriptor shape_port{"shape_idx", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT};
-        vivid::semantic_tag(shape_port, "enum_index");
-        vivid::semantic_shape(shape_port, "lane_array");
-        vivid::semantic_intent(shape_port, "shape_selector");
-        vivid::description(shape_port,
-            "Per-instance shape index: 0=Circle, 1=Triangle, 2=Square, 3=Pentagon, 4=Hexagon, 5=Star. "
-            "Overrides the global shape param when connected; clamped to [0, 5].");
-        out.push_back(shape_port);   // 6 = kLaneShapeIdx
-
+        out.push_back({"pos_x",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, "position_xy", "lane_array", "x_component", "Per-instance x position in [0, 1]. When connected, overrides layout."});
+        out.push_back({"pos_y",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, "position_xy", "lane_array", "y_component", "Per-instance y position in [0, 1]. When connected, overrides layout."});
+        out.push_back({"size",       VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, "amplitude_linear", "lane_array", "scale_multiplier", "Per-instance size multiplier on base_size. 1.0 = default."});
+        out.push_back({"hue",        VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, "color_hue", "lane_array", "hue_cycles", "Per-instance hue in [0, 1]. HSV(hue, 1, 1) replaces color_r/g/b when connected."});
+        out.push_back({"brightness", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, "amplitude_linear", "lane_array", "per_note_amplitude", "Per-instance intensity in [0, 1]. Multiplies RGB and alpha."});
+        out.push_back({"rotation",   VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, "rotation_radians", "lane_array", "angle_turns", "Per-instance rotation in turns [0, 1]. Overrides the rotation LFO when connected."});
+        out.push_back({"shape_idx",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, "enum_index", "lane_array", "shape_selector", "Per-instance shape index: 0=Circle, 1=Triangle, 2=Square, 3=Pentagon, 4=Hexagon, 5=Star. Overrides the global shape param when connected; clamped to [0, 5]."});
         out.push_back(vivid::gpu::drawable_port("drawable", VIVID_PORT_OUTPUT));
     }
 
@@ -643,6 +590,9 @@ private:
         }
     }
 };
+
+VIVID_DEFINE_OP(ShapeField) {
+}
 
 VIVID_REGISTER(ShapeField)
 

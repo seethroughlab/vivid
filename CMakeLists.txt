@@ -40,6 +40,19 @@ endif()
 # --- Modular build configuration ---
 include(cmake/git_version.cmake)    # defines VIVID_CORE_COMMIT, VIVID_CORE_REPO_URL
 include(cmake/dependencies.cmake)
+
+add_library(vivid_source_syntax STATIC
+    src/runtime/core/source_syntax_parser.cpp
+)
+target_include_directories(vivid_source_syntax PUBLIC src)
+target_link_libraries(vivid_source_syntax PUBLIC tree_sitter_runtime tree_sitter_cpp_lib)
+
+add_library(vivid_wgsl_uniform_layout STATIC
+    src/runtime/gpu/wgsl_uniform_layout.cpp
+)
+target_include_directories(vivid_wgsl_uniform_layout PUBLIC src)
+
+include(cmake/tools.cmake)
 include(cmake/operators.cmake)
 include(cmake/app.cmake)
 include(cmake/tests.cmake)

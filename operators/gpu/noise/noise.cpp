@@ -1,6 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_common.h"
+#include <cstdint>
 #include <cstdio>
 #include <string>
 
@@ -300,10 +301,13 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 )";
 
 // =============================================================================
-// Uniform struct matching the WGSL Uniforms (from legacy NoiseUniforms)
+// Uniform struct matching the WGSL Uniforms
 // =============================================================================
 
-struct NoiseUniforms {
+#if __has_include("noise_generated_uniforms.h")
+#include "noise_generated_uniforms.h"
+#else
+struct alignas(8) NoiseUniforms {
     float resolution[2];
     float time;
     float scale;
@@ -313,13 +317,15 @@ struct NoiseUniforms {
     float persistence;
     float offsetX;
     float offsetY;
-    int   octaves;
-    int   noiseType;
-    int   colorNoise;
+    int32_t octaves;
+    int32_t noiseType;
+    int32_t colorNoise;
     float scaleFromX;
     float scaleFromY;
-    int   _pad;       // WGSL struct alignment: vec2f → align(8), so pad to 64 bytes
+    int32_t _pad;
 };
+static_assert(sizeof(NoiseUniforms) == 64, "Noise uniforms must stay WGSL-aligned");
+#endif
 /**
  * @brief Perlin or Simplex noise generator with FBm octaves and animation.
  *
@@ -503,5 +509,12 @@ private:
         return true;
     }
 };
+
+VIVID_DEFINE_OP(Noise) {
+    name = "NoiseTexture";
+    display_name = "Noise Texture";
+    keywords = {"noise", "fbm", "perlin", "simplex", "worley", "value"};
+    summary = "3D noise generator with FBm octaves and animation.";
+}
 
 VIVID_REGISTER(Noise)

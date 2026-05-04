@@ -180,8 +180,6 @@ struct Composite : vivid::OperatorBase, vivid::GpuProcessable {
     LayerParams lp_[kMaxInputs];
 
     // Port names (stable storage for VividPortDescriptor pointers)
-    char port_names_[kMaxInputs][16];
-
     Composite() {
         vivid::semantic_tag(blend_mode, "x_blend_mode");
         vivid::semantic_shape(blend_mode, "enum");
@@ -198,7 +196,6 @@ struct Composite : vivid::OperatorBase, vivid::GpuProcessable {
             std::snprintf(L.scale_name, sizeof(L.scale_name), "scale_%d", i);
             std::snprintf(L.rotation_name, sizeof(L.rotation_name), "rotation_%d", i);
             std::snprintf(L.group_name, sizeof(L.group_name), "Layer %d", i);
-            std::snprintf(port_names_[i], sizeof(port_names_[i]), "layer_%d", i);
 
             // Assign names to params
             L.connected.name = L.connected_name;
@@ -265,20 +262,23 @@ struct Composite : vivid::OperatorBase, vivid::GpuProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        for (int i = 0; i < kMaxInputs; ++i) {
-            VividPortDescriptor pd{};
-            pd.name = port_names_[i];
-            pd.type = VIVID_PORT_TEXTURE;
-            pd.direction = VIVID_PORT_INPUT;
-            pd.repeat_group = "layer";
-            pd.repeat_group_idx = static_cast<uint16_t>(i);
-            out.push_back(pd);
-        }
-        VividPortDescriptor out_port{};
-        out_port.name = "texture";
-        out_port.type = VIVID_PORT_TEXTURE;
-        out_port.direction = VIVID_PORT_OUTPUT;
-        out.push_back(out_port);
+        out.push_back({"layer_0",  VIVID_PORT_TEXTURE, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_TEXTURE, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "layer",  0});
+        out.push_back({"layer_1",  VIVID_PORT_TEXTURE, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_TEXTURE, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "layer",  1});
+        out.push_back({"layer_2",  VIVID_PORT_TEXTURE, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_TEXTURE, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "layer",  2});
+        out.push_back({"layer_3",  VIVID_PORT_TEXTURE, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_TEXTURE, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "layer",  3});
+        out.push_back({"layer_4",  VIVID_PORT_TEXTURE, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_TEXTURE, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "layer",  4});
+        out.push_back({"layer_5",  VIVID_PORT_TEXTURE, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_TEXTURE, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "layer",  5});
+        out.push_back({"layer_6",  VIVID_PORT_TEXTURE, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_TEXTURE, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "layer",  6});
+        out.push_back({"layer_7",  VIVID_PORT_TEXTURE, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_TEXTURE, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "layer",  7});
+        out.push_back({"layer_8",  VIVID_PORT_TEXTURE, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_TEXTURE, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "layer",  8});
+        out.push_back({"layer_9",  VIVID_PORT_TEXTURE, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_TEXTURE, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "layer",  9});
+        out.push_back({"layer_10", VIVID_PORT_TEXTURE, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_TEXTURE, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "layer", 10});
+        out.push_back({"layer_11", VIVID_PORT_TEXTURE, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_TEXTURE, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "layer", 11});
+        out.push_back({"layer_12", VIVID_PORT_TEXTURE, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_TEXTURE, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "layer", 12});
+        out.push_back({"layer_13", VIVID_PORT_TEXTURE, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_TEXTURE, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "layer", 13});
+        out.push_back({"layer_14", VIVID_PORT_TEXTURE, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_TEXTURE, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "layer", 14});
+        out.push_back({"layer_15", VIVID_PORT_TEXTURE, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_TEXTURE, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "layer", 15});
+        out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
     void process_gpu(const VividGpuContext* ctx) override {
@@ -531,5 +531,8 @@ private:
         return pipeline_ != nullptr;
     }
 };
+
+VIVID_DEFINE_OP(Composite) {
+}
 
 VIVID_REGISTER(Composite)

@@ -183,4 +183,7 @@ struct Phaser : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
+VIVID_DEFINE_OP(Phaser) {
+}
+
 VIVID_REGISTER(Phaser)

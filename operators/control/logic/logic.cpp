@@ -128,5 +128,8 @@ struct Logic : vivid::OperatorBase, vivid::FrameProcessable {
 
 };
 
+VIVID_DEFINE_OP(Logic) {
+}
+
 VIVID_REGISTER(Logic)
 VIVID_THUMBNAIL(Logic)

@@ -102,4 +102,7 @@ struct Distortion : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
+VIVID_DEFINE_OP(Distortion) {
+}
+
 VIVID_REGISTER(Distortion)

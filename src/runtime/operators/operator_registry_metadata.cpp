@@ -307,6 +307,7 @@ std::vector<OperatorMapEntry> OperatorRegistry::operator_map() const {
         e.type_name = type_name;
         e.dylib_path = de.dylib_path;
         e.status = "deferred";
+        e.registration_mode = de.registration_mode;
         auto pkg_it = type_to_package_.find(type_name);
         if (pkg_it != type_to_package_.end())
             e.package_name = pkg_it->second;
@@ -322,6 +323,7 @@ std::vector<OperatorMapEntry> OperatorRegistry::operator_map() const {
         OperatorMapEntry e;
         e.type_name = type_name;
         e.status = "loaded";
+        e.registration_mode = loader ? loader->registration_mode() : "unknown";
         auto pkg_it = type_to_package_.find(type_name);
         if (pkg_it != type_to_package_.end())
             e.package_name = pkg_it->second;
@@ -334,6 +336,7 @@ std::vector<OperatorMapEntry> OperatorRegistry::operator_map() const {
         e.dylib_path = diag.plugin_path;
         e.package_name = diag.package_name;
         e.status = "abi_mismatch";
+        e.registration_mode = "unknown";
         e.abi_version = diag.plugin_abi;
         out.push_back(std::move(e));
     }

@@ -168,5 +168,8 @@ struct Keyboard : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
+VIVID_DEFINE_OP(Keyboard) {
+}
+
 VIVID_REGISTER(Keyboard)
 VIVID_THUMBNAIL(Keyboard)

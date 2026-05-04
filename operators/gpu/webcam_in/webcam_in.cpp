@@ -415,4 +415,7 @@ private:
     }
 };
 
+VIVID_DEFINE_OP(WebcamIn) {
+}
+
 VIVID_REGISTER(WebcamIn)

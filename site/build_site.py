@@ -28,6 +28,8 @@ REPOS_JSON = SCRIPT_DIR / "repos.json"
 APPCAST_XML = SCRIPT_DIR / "appcast.xml"
 DEFAULT_OUTPUT = SCRIPT_DIR / "dist"
 GITHUB_SOURCE_BASE = "https://github.com/seethroughlab/vivid/blob/master/"
+TUTORIALS_JSON = SCRIPT_DIR / "tutorials.json"
+TUTORIALS_CONTENT_DIR = SCRIPT_DIR / "src" / "tutorials"
 
 DOMAIN_ORDER = ["gpu", "audio", "control"]
 STATUS_ORDER = {"stable": 0, "beta": 1, "experimental": 2, "deprecated": 3, "broken": 4}
@@ -38,6 +40,29 @@ OPERATOR_NAME_RE = re.compile(r'static\s+constexpr\s+const\s+char\*\s+kName\s*=\
 PARAM_RE = re.compile(r"vivid::Param<([^>]+)>\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{(.*?)\};", re.S)
 PORT_RE = re.compile(r'\{\s*"([^"]+)"\s*,\s*(VIVID_[A-Z0-9_]+)\s*,\s*(VIVID_PORT_(?:INPUT|OUTPUT))')
 
+
+
+DIFFICULTY_LABEL = {
+    "beginner": "Beginner",
+    "intermediate": "Intermediate",
+    "advanced": "Advanced",
+    "developer": "Developer",
+}
+
+TRACK_LABEL = {
+    "composer": "Composer",
+    "developer": "Developer",
+}
+
+
+@dataclass
+class TutorialDoc:
+    slug: str
+    title: str
+    track: str
+    difficulty: str
+    brief: str
+    body_html: str
 
 
 @dataclass
@@ -393,6 +418,82 @@ def render_home(base_tpl: Template, home_tpl: Template, readme_html: str) -> str
         meta_description="A real-time creative coding environment for visual and audio performance.",
         asset_prefix="./",
         content=home_tpl.substitute(readme_html=readme_html),
+        extra_head="",
+        extra_body_end="",
+    )
+
+
+def load_tutorials() -> list[TutorialDoc]:
+    data = json.loads(TUTORIALS_JSON.read_text())
+    tutorials: list[TutorialDoc] = []
+    for entry in data.get("tutorials", []):
+        slug = entry["slug"]
+        content_path = TUTORIALS_CONTENT_DIR / f"{slug}.md"
+        if not content_path.exists():
+            raise SystemExit(f"Tutorial content file missing: {content_path}")
+        body_html = markdown_to_html(content_path.read_text())
+        tutorials.append(TutorialDoc(
+            slug=slug,
+            title=entry["title"],
+            track=entry["track"],
+            difficulty=entry["difficulty"],
+            brief=entry["brief"],
+            body_html=body_html,
+        ))
+    return tutorials
+
+
+def render_tutorial_index(tutorials: list[TutorialDoc], base_tpl: Template, index_tpl: Template) -> str:
+    sections: list[str] = []
+    for track in ("composer", "developer"):
+        items = [t for t in tutorials if t.track == track]
+        if not items:
+            continue
+        cards = []
+        for t in items:
+            cards.append(
+                '<article class="op-card">'
+                '<div class="op-card-header">'
+                f'<h3><a href="./{esc(t.slug)}/">{esc(t.title)}</a></h3>'
+                f'<span class="badge {esc(t.difficulty)}">{esc(DIFFICULTY_LABEL.get(t.difficulty, t.difficulty))}</span>'
+                '</div>'
+                f'<p>{esc(t.brief)}</p>'
+                '</article>'
+            )
+        track_label = TRACK_LABEL.get(track, track.title())
+        sections.append(
+            '<section class="section-group">'
+            f'<p class="section-kicker">{esc(track_label)} &middot; {len(items)}</p>'
+            f'<div class="grid">{"".join(cards)}</div>'
+            '</section>'
+        )
+    content = index_tpl.substitute(home_href="../", tutorial_sections="".join(sections))
+    return base_tpl.substitute(
+        title="Vivid Tutorials",
+        meta_description="Step-by-step tutorials for building audio-visual graphs in Vivid.",
+        asset_prefix="../",
+        content=content,
+        extra_head="",
+        extra_body_end="",
+    )
+
+
+def render_tutorial_detail(tutorial: TutorialDoc, base_tpl: Template, detail_tpl: Template) -> str:
+    content = detail_tpl.substitute(
+        tutorials_href="../../tutorials/",
+        title=esc(tutorial.title),
+        difficulty_class=esc(tutorial.difficulty),
+        difficulty_label=esc(DIFFICULTY_LABEL.get(tutorial.difficulty, tutorial.difficulty)),
+        track_class=esc(tutorial.track),
+        track_label=esc(TRACK_LABEL.get(tutorial.track, tutorial.track.title())),
+        brief=esc(tutorial.brief),
+        body_html=tutorial.body_html,
+    )
+    return base_tpl.substitute(
+        title=f"{tutorial.title} · Vivid Tutorials",
+        meta_description=esc(tutorial.brief),
+        asset_prefix="../../",
+        content=content,
         extra_head="",
         extra_body_end="",
     )
@@ -823,6 +924,8 @@ def build_site(output_dir: Path, local_packages: bool) -> None:
     package_detail_tpl = load_template("package_detail.html")
     package_guide_tpl = load_template("package_guide.html")
     package_operator_tpl = load_template("package_operator_detail.html")
+    tutorial_index_tpl = load_template("tutorial_index.html")
+    tutorial_detail_tpl = load_template("tutorial_detail.html")
 
     operator_index = json.loads(OPERATOR_INDEX_JSON.read_text())
     operators = sorted(operator_index.get("operators", []), key=lambda op: op.get("name", "").lower())
@@ -856,6 +959,11 @@ def build_site(output_dir: Path, local_packages: bool) -> None:
             write_text(output_dir / "packages" / docs.slug / "guides" / guide.slug / "index.html", render_package_guide(docs, guide, base_tpl, package_guide_tpl))
         for op in docs.operator_pages:
             write_text(output_dir / "packages" / docs.slug / "operators" / op.slug / "index.html", render_package_operator(docs, op, base_tpl, package_operator_tpl))
+
+    tutorials = load_tutorials()
+    write_text(output_dir / "tutorials" / "index.html", render_tutorial_index(tutorials, base_tpl, tutorial_index_tpl))
+    for tutorial in tutorials:
+        write_text(output_dir / "tutorials" / tutorial.slug / "index.html", render_tutorial_detail(tutorial, base_tpl, tutorial_detail_tpl))
 
     readme_text = README_PATH.read_text() if README_PATH.exists() else ""
     # Strip the h1 title and bold tagline — the home template provides its own header.

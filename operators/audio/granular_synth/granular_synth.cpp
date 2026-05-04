@@ -289,5 +289,8 @@ struct GranularSynth : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
+VIVID_DEFINE_OP(GranularSynth) {
+}
+
 VIVID_REGISTER(GranularSynth)
 VIVID_INSPECTOR(GranularSynth)

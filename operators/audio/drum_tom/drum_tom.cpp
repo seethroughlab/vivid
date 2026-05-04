@@ -155,4 +155,7 @@ struct DrumTom : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
+VIVID_DEFINE_OP(DrumTom) {
+}
+
 VIVID_REGISTER(DrumTom)

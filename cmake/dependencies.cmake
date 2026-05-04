@@ -294,3 +294,37 @@ add_library(midifile STATIC
     ${midifile_SOURCE_DIR}/src/Binasc.cpp
 )
 target_include_directories(midifile PUBLIC ${midifile_SOURCE_DIR}/include)
+
+# --- tree-sitter C runtime (C++ parsing foundation for SourceSyntaxParser) ---
+# Minimal C API only — no parser generator, no CLI, no Node/npm.
+FetchContent_Declare(
+    tree_sitter
+    GIT_REPOSITORY https://github.com/tree-sitter/tree-sitter.git
+    GIT_TAG        v0.23.0
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(tree_sitter)
+add_library(tree_sitter_runtime STATIC
+    ${tree_sitter_SOURCE_DIR}/lib/src/lib.c
+)
+target_include_directories(tree_sitter_runtime PUBLIC
+    ${tree_sitter_SOURCE_DIR}/lib/include
+)
+
+# --- tree-sitter-cpp grammar (C/C++/ObjC/ObjC++ parser) ---
+# Provides a pre-generated parser.c for C-family languages.
+FetchContent_Declare(
+    tree_sitter_cpp
+    GIT_REPOSITORY https://github.com/tree-sitter/tree-sitter-cpp.git
+    GIT_TAG        v0.23.4
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(tree_sitter_cpp)
+add_library(tree_sitter_cpp_lib STATIC
+    ${tree_sitter_cpp_SOURCE_DIR}/src/parser.c
+    ${tree_sitter_cpp_SOURCE_DIR}/src/scanner.c
+)
+target_include_directories(tree_sitter_cpp_lib PUBLIC
+    ${tree_sitter_cpp_SOURCE_DIR}/src
+)
+target_link_libraries(tree_sitter_cpp_lib PUBLIC tree_sitter_runtime)

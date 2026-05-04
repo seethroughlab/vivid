@@ -4289,6 +4289,21 @@ async def rescan_operators() -> str:
 
 
 @mcp.tool()
+async def validate_operators() -> str:
+    """Report registration mode and descriptor validity for every known operator.
+
+    Returns a summary (total, by_mode counts, invalid count) and a per-operator
+    list with: type name, status (loaded/deferred/abi_mismatch), registration_mode
+    (legacy/v2/wgsl/builtin/unknown), valid flag, any validation issues, and
+    uniform_layout metadata for V2 GPU operators with generated uniforms.
+
+    Use this to audit Phase 3 migration progress: identify which operators are
+    still on the legacy VIVID_REGISTER path and spot any descriptor issues.
+    """
+    return await _post("validate_operators", {})
+
+
+@mcp.tool()
 async def scaffold_operator(name: str, env: str, variant: str = "",
                             destination: str = "project") -> str:
     """Scaffold a starter operator template into the project's local-operators package.

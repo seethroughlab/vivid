@@ -40,6 +40,7 @@ std::string dispatch(const std::string& method, const std::string& body,
     if (method == "get_graph_load_diagnostics") return handle_get_graph_load_diagnostics(graph);
     if (method == "list_source_roots") return handle_list_source_roots(source_index);
     if (method == "operator_map") return handle_operator_map(registry);
+    if (method == "validate_operators") return handle_validate_operators(registry);
     if (method == "get_discovery_report") return handle_get_discovery_report(package_manager);
 
     // Parse body JSON (may be empty for some commands)
