@@ -49,31 +49,33 @@ Authoring note for `ChildOp<T>` embeddables:
 - If an operator is intended to be embeddable and still has out-of-line destructor / virtual / thumbnail definitions, those definitions must be supplied through the embeddable-support path (`*_embeddable.cpp` linked via `vivid_embeddable_op_support`).
 - Otherwise loader failures may surface as ordinary `dlopen_failed` diagnostics on the consuming plugin, even though the root cause is missing embedded-use linkage rather than a bad descriptor.
 
-The legacy `VIVID_REGISTER(ClassName)` macro at the end of every operator .cpp generates:
+Every operator uses `VIVID_DEFINE_OP(ClassName) { ... }` + `VIVID_REGISTER(ClassName)` in its
+source. At build time `tools/operator_codegen` generates a companion
+`*_generated_registration.cpp` that exports the full operator ABI:
+
 ```cpp
 extern "C" uint32_t vivid_abi_version() { return VIVID_OPERATOR_ABI_VERSION; }
-extern "C" const char* vivid_registration_mode() { return "legacy"; }
-extern "C" VividDescriptorFn vivid_describe;
-extern "C" VividCreateFn     vivid_create;
-extern "C" VividDestroyFn    vivid_destroy;
-extern "C" VividProcessFrameFn    vivid_process_frame;  // frame-rate
-// + optional: vivid_process_audio, vivid_process_gpu, vivid_draw_thumbnail,
-//             vivid_main_thread_update, vivid_prepare_instance_assets,
-//             vivid_draw_inspector, vivid_inspector_mode,
-//             vivid_file_drop_descriptor
+extern "C" const char* vivid_registration_mode() { return "v2"; }
+extern "C" const VividOperatorDescriptor* vivid_descriptor();  // static, codegen-built
+extern "C" void* vivid_create();
+extern "C" void  vivid_destroy(void*);
+// cadence-appropriate subset of:
+extern "C" void  vivid_process_frame(void*, VividFrameContext*);
+extern "C" void  vivid_process_audio(void*, VividAudioContext*);
+extern "C" void  vivid_process_gpu(void*, VividGpuContext*);
+// + optional: vivid_draw_thumbnail, vivid_draw_inspector, vivid_inspector_mode,
+//             vivid_draw_editor, vivid_main_thread_update,
+//             vivid_prepare_instance_assets, vivid_file_drop_descriptor
 ```
 
-The V2/codegen path uses `VIVID_DEFINE_OP(ClassName) { ... }` plus
-`VIVID_REGISTER_V2(ClassName)` in the source file and emits a generated
-registration translation unit at build time. That generated file exports the
-same ABI entry points but reports `vivid_registration_mode() == "v2"`.
+`vivid_registration_mode() = "v2"` is what `probe_registration_mode()` and
+`vivid validate-operators` use to confirm an operator is codegen-backed.
 
-For GPU operators whose source includes a WGSL `Uniforms` struct, codegen also
-emits:
+For GPU operators whose source includes a WGSL `Uniforms` struct, codegen also emits:
 
 - a generated uniform mirror header consumed by the operator source
-- `vivid_generated_uniform_layout()`, an optional export returning the
-  generated uniform byte size / alignment / member layout
+- `vivid_generated_uniform_layout()` — returns the generated uniform byte size / alignment /
+  member layout for runtime validation
 
 `OperatorLoader::load()` and deferred registry probes use that metadata during
 descriptor validation. Today the runtime checks that generated uniform layouts

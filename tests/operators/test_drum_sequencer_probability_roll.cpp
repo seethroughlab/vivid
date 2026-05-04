@@ -255,7 +255,7 @@ int main() {
 
         VividNoteBuffer buf{};
         void* custom[1] = {&buf};
-        float out[1] = {};
+        float out[2] = {};
         VividLaneOutput lane_dummy{};
         drum.compute(0.02f, 0.0f, 0.0, 4,
                      params.data(), out, &lane_dummy, custom, 1);
@@ -284,7 +284,7 @@ int main() {
         VividNoteBuffer bufs[7]{};
         void* custom[7] = {&bufs[0], &bufs[1], &bufs[2], &bufs[3],
                            &bufs[4], &bufs[5], &bufs[6]};
-        float out[1] = {};
+        float out[2] = {};
         VividLaneOutput lane_dummy{};
 
         // Step 0 tick — kick fires. Start at phase 0 so the first-frame

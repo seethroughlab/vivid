@@ -8,7 +8,7 @@ This directory contains the public headers that define the contract between the 
 
 | File | Role |
 |------|------|
-| `operator.h` | Core contract: `OperatorBase`, `Param<T>`, compound param widget metadata, domain processable mixins, `VIVID_REGISTER`, `VIVID_DEFINE_OP`, and `VIVID_REGISTER_V2` |
+| `operator.h` | Core contract: `OperatorBase`, `Param<T>`, compound param widget metadata, domain processable mixins, `VIVID_DEFINE_OP`, and `VIVID_REGISTER` |
 | `types.h` | Fundamental types: `VividFrameContext`, `VividAudioContext`, `VividGpuContext`, `VividOperatorDescriptor`, port type enums, `vivid_lane_state()` macro, ABI version |
 | `wgsl_filter.h` | `WgslFilterBase` — GPU operator base class for WGSL shader-backed operators |
 | `gpu_operator.h` | `GpuOperatorBase` — GPU operator base class for programmatic WebGPU operations |
@@ -34,7 +34,7 @@ This directory contains the public headers that define the contract between the 
 
 The headers form three layers:
 
-**Core contract** (`operator.h`, `types.h`): Every operator includes `operator.h`. It provides `OperatorBase` (params and ports), the three domain mixins (`FrameProcessable`, `AudioProcessable`, `GpuProcessable`), and both registration paths: legacy `VIVID_REGISTER` and the codegen-oriented `VIVID_DEFINE_OP` + `VIVID_REGISTER_V2`. `types.h` defines the context structs passed to `process_frame/audio/gpu`, port types, and `VIVID_OPERATOR_ABI_VERSION`.
+**Core contract** (`operator.h`, `types.h`): Every operator includes `operator.h`. It provides `OperatorBase` (params and ports), the three domain mixins (`FrameProcessable`, `AudioProcessable`, `GpuProcessable`), and the registration authoring surface: `VIVID_DEFINE_OP` (metadata block parsed by `operator_codegen`) and `VIVID_REGISTER` (source marker that triggers codegen). `types.h` defines the context structs passed to `process_frame/audio/gpu`, port types, and `VIVID_OPERATOR_ABI_VERSION`.
 
 **Domain bases** (`wgsl_filter.h`, `gpu_operator.h`, `audio_dsp.h`): Specialized base classes and utilities for GPU and audio operators. `WgslFilterBase` handles the common pattern of a WGSL fragment shader with uniform params. `audio_dsp.h` provides oscillators, noise generators, and trigger detection.
 
@@ -48,26 +48,24 @@ The headers form three layers:
 - `kKeywords` (`std::array<const char*, N>`): search hints surfaced by the chooser (`{"harmony", "chords", "diatonic"}`). Use vocabulary a user would type that doesn't already appear in the name.
 - `kSummary` (`const char*`): one-line description for the chooser preview and MCP catalog.
 
-`VIVID_REGISTER` detects all three via SFINAE — operators that don't declare them compile and run identically to before, just with auto-derived display names. ABI mismatch (v2 vs v3 dylib) is rejected at hot-reload by the loader.
+The codegen-generated registration file detects all three via SFINAE — operators that don't declare them compile and run identically, just with auto-derived display names. ABI mismatch (v2 vs v3 dylib) is rejected at hot-reload by the loader.
 
 ## Relationships
 
 - **Consumers:** Every operator in `operators/`, every installed package, every project-local operator
 - **Runtime coupling:** The runtime (`src/runtime/`) includes these headers to instantiate and process operators, but operators never include runtime headers
-- **ABI boundary:** `VIVID_REGISTER` generates the `extern "C"` interface; `VIVID_OPERATOR_ABI_VERSION` in `types.h` is the staleness detector
+- **ABI boundary:** The codegen-generated registration file exports the `extern "C"` interface; `VIVID_OPERATOR_ABI_VERSION` in `types.h` is the staleness detector
 
-## Dual Registration Paths
+## Registration
 
-`VIVID_REGISTER(ClassName)` remains fully supported for existing operators. It still builds the descriptor at runtime from `collect_params()` / `collect_ports()` and now exports `vivid_registration_mode() = "legacy"` so the runtime can warn and report migration status.
+All operators use `VIVID_DEFINE_OP(ClassName) { ... }` + `VIVID_REGISTER(ClassName)`:
 
-`VIVID_DEFINE_OP(ClassName) { ... }` + `VIVID_REGISTER_V2(ClassName)` is the new authoring surface for codegen-backed operators:
+- `VIVID_DEFINE_OP` is a source-level metadata block (name, display_name, keywords, summary) parsed by `tools/operator_codegen` at build time.
+- `VIVID_REGISTER` is a source marker — a no-op in compilation, a signal to codegen to generate a companion `*_generated_registration.cpp` alongside the operator's dylib.
+- The generated file exports the static descriptor, all required `extern "C"` entry points, and reports `vivid_registration_mode() = "v2"`.
+- For GPU operators with an inline WGSL `Uniforms` struct, codegen also emits a generated uniform header and `vivid_generated_uniform_layout()` for runtime layout validation.
 
-- `VIVID_DEFINE_OP` is a source-level metadata block parsed by `tools/operator_codegen`
-- `VIVID_REGISTER_V2` is a marker macro in the operator source
-- the build generates a companion registration translation unit that exports the actual descriptor/process entry points and reports `vivid_registration_mode() = "v2"`
-- for GPU operators with an inline or sibling WGSL `Uniforms` struct, codegen also emits a generated uniform header plus `vivid_generated_uniform_layout()` metadata so runtime validation can check the generated layout
-
-Use V2 for new migrations where you want descriptor generation, loader validation, and `vivid validate-operators` reporting to treat the operator as codegen-backed.
+`collect_params()` and `collect_ports()` on `OperatorBase` remain part of the instance lifecycle: `vivid_create()` calls `collect_params()` to build the ordered param-pointer table used by `_vivid_sync_params` at every process call. The static descriptor (names, defaults, ranges) is codegen-built; the param-pointer table is dynamic and instance-local.
 
 ## See Also
 
