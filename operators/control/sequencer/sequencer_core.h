@@ -8,6 +8,7 @@
 #include "note_id_counter.h"
 #include "sequencer_editor_shared.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 
@@ -34,7 +35,7 @@ struct SequencerCore : vivid::OperatorBase {
     vivid::Param<int> steps {"steps", 8, 1, 32};
 
     // --- Inline step values (internal mode) ---
-    vivid::Param<float> step_value[kMaxSteps] = {
+    std::array<vivid::Param<float>, kMaxSteps> step_value = {{
         {"step_value_0",  0.5f, 0.0f, 1.0f}, {"step_value_1",  0.5f, 0.0f, 1.0f},
         {"step_value_2",  0.5f, 0.0f, 1.0f}, {"step_value_3",  0.5f, 0.0f, 1.0f},
         {"step_value_4",  0.5f, 0.0f, 1.0f}, {"step_value_5",  0.5f, 0.0f, 1.0f},
@@ -51,10 +52,10 @@ struct SequencerCore : vivid::OperatorBase {
         {"step_value_26", 0.5f, 0.0f, 1.0f}, {"step_value_27", 0.5f, 0.0f, 1.0f},
         {"step_value_28", 0.5f, 0.0f, 1.0f}, {"step_value_29", 0.5f, 0.0f, 1.0f},
         {"step_value_30", 0.5f, 0.0f, 1.0f}, {"step_value_31", 0.5f, 0.0f, 1.0f},
-    };
+    }};
 
     // --- Inline step gates (internal mode) ---
-    vivid::Param<float> step_gate[kMaxSteps] = {
+    std::array<vivid::Param<float>, kMaxSteps> step_gate = {{
         {"step_gate_0",  1.0f, 0.0f, 1.0f}, {"step_gate_1",  1.0f, 0.0f, 1.0f},
         {"step_gate_2",  1.0f, 0.0f, 1.0f}, {"step_gate_3",  1.0f, 0.0f, 1.0f},
         {"step_gate_4",  1.0f, 0.0f, 1.0f}, {"step_gate_5",  1.0f, 0.0f, 1.0f},
@@ -71,7 +72,7 @@ struct SequencerCore : vivid::OperatorBase {
         {"step_gate_26", 1.0f, 0.0f, 1.0f}, {"step_gate_27", 1.0f, 0.0f, 1.0f},
         {"step_gate_28", 1.0f, 0.0f, 1.0f}, {"step_gate_29", 1.0f, 0.0f, 1.0f},
         {"step_gate_30", 1.0f, 0.0f, 1.0f}, {"step_gate_31", 1.0f, 0.0f, 1.0f},
-    };
+    }};
 
     // --- Clock and output shaping ---
     vivid::Param<int>   rate_mode      {"rate_mode",      vivid::kRateModeExternal, vivid::rate_mode_labels()};
@@ -152,13 +153,13 @@ struct SequencerCore : vivid::OperatorBase {
         // wall of knobs. `source` remains the only conditional surface.
         vivid::visible_when_eq(steps, source, 0);
         out.push_back(&steps);
-        for (int i = 0; i < kMaxSteps; ++i) {
-            vivid::display_hint(step_value[i], VIVID_DISPLAY_HIDDEN);
-            out.push_back(&step_value[i]);
+        for (auto& p : step_value) {
+            vivid::display_hint(p, VIVID_DISPLAY_HIDDEN);
+            out.push_back(&p);
         }
-        for (int i = 0; i < kMaxSteps; ++i) {
-            vivid::display_hint(step_gate[i], VIVID_DISPLAY_HIDDEN);
-            out.push_back(&step_gate[i]);
+        for (auto& p : step_gate) {
+            vivid::display_hint(p, VIVID_DISPLAY_HIDDEN);
+            out.push_back(&p);
         }
 
         // Normal params

@@ -21,17 +21,32 @@ struct Mixer : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Mixer";
     static constexpr bool kTimeDependent = false;
 
-    // Per-input params (generated in constructor)
-    struct InputParams {
-        char gain_name[16];
-        char pan_name[16];
-        char gain_desc[80];
-        char pan_desc[80];
-        vivid::Param<float> gain{nullptr, 1.0f, 0.0f, 2.0f};
-        vivid::Param<float> pan {nullptr, 0.0f, -1.0f, 1.0f};
-    };
+    // Static-name params in separate arrays so the codegen can generate
+    // the descriptor from the initializer list (nullptr names are opaque
+    // to static analysis and produce an empty param table).
+    std::array<vivid::Param<float>, 16> gain_ = {{
+        {"gain_0",  1.0f, 0.0f, 2.0f}, {"gain_1",  1.0f, 0.0f, 2.0f},
+        {"gain_2",  1.0f, 0.0f, 2.0f}, {"gain_3",  1.0f, 0.0f, 2.0f},
+        {"gain_4",  1.0f, 0.0f, 2.0f}, {"gain_5",  1.0f, 0.0f, 2.0f},
+        {"gain_6",  1.0f, 0.0f, 2.0f}, {"gain_7",  1.0f, 0.0f, 2.0f},
+        {"gain_8",  1.0f, 0.0f, 2.0f}, {"gain_9",  1.0f, 0.0f, 2.0f},
+        {"gain_10", 1.0f, 0.0f, 2.0f}, {"gain_11", 1.0f, 0.0f, 2.0f},
+        {"gain_12", 1.0f, 0.0f, 2.0f}, {"gain_13", 1.0f, 0.0f, 2.0f},
+        {"gain_14", 1.0f, 0.0f, 2.0f}, {"gain_15", 1.0f, 0.0f, 2.0f},
+    }};
+    std::array<vivid::Param<float>, 16> pan_ = {{
+        {"pan_0",  0.0f, -1.0f, 1.0f}, {"pan_1",  0.0f, -1.0f, 1.0f},
+        {"pan_2",  0.0f, -1.0f, 1.0f}, {"pan_3",  0.0f, -1.0f, 1.0f},
+        {"pan_4",  0.0f, -1.0f, 1.0f}, {"pan_5",  0.0f, -1.0f, 1.0f},
+        {"pan_6",  0.0f, -1.0f, 1.0f}, {"pan_7",  0.0f, -1.0f, 1.0f},
+        {"pan_8",  0.0f, -1.0f, 1.0f}, {"pan_9",  0.0f, -1.0f, 1.0f},
+        {"pan_10", 0.0f, -1.0f, 1.0f}, {"pan_11", 0.0f, -1.0f, 1.0f},
+        {"pan_12", 0.0f, -1.0f, 1.0f}, {"pan_13", 0.0f, -1.0f, 1.0f},
+        {"pan_14", 0.0f, -1.0f, 1.0f}, {"pan_15", 0.0f, -1.0f, 1.0f},
+    }};
 
-    InputParams ip_[kMaxInputs];
+    char gain_desc_[kMaxInputs][80];
+    char pan_desc_[kMaxInputs][80];
 
     WGPURenderPipeline thumb_pipeline_ = nullptr;
     WGPUBindGroup thumb_bind_group_ = nullptr;
@@ -43,38 +58,34 @@ struct Mixer : vivid::OperatorBase, vivid::AudioProcessable {
 
     Mixer() {
         for (int i = 0; i < kMaxInputs; ++i) {
-            auto& I = ip_[i];
-            std::snprintf(I.gain_name, sizeof(I.gain_name), "gain_%d", i);
-            std::snprintf(I.pan_name,  sizeof(I.pan_name),  "pan_%d",  i);
-            std::snprintf(I.gain_desc, sizeof(I.gain_desc),
+            std::snprintf(gain_desc_[i], sizeof(gain_desc_[i]),
                           "Level multiplier for input %d (0 = silent, 1 = unity, 2 = double)", i);
-            std::snprintf(I.pan_desc, sizeof(I.pan_desc),
+            std::snprintf(pan_desc_[i], sizeof(pan_desc_[i]),
                           "Pan for input %d (-1 = hard left, 0 = center, +1 = hard right)", i);
 
-            I.gain.name = I.gain_name;
-            I.pan.name  = I.pan_name;
+            vivid::display_hint(gain_[i], VIVID_DISPLAY_KNOB);
+            vivid::layout_row(gain_[i], 2, 0);
+            vivid::semantic_tag(gain_[i], "amplitude_linear");
+            vivid::semantic_shape(gain_[i], "scalar");
+            vivid::description(gain_[i], gain_desc_[i]);
+            vivid::repeat_group(gain_[i], "input", static_cast<uint16_t>(i));
 
-            vivid::display_hint(I.gain, VIVID_DISPLAY_KNOB);
-            vivid::layout_row(I.gain, 2, 0);
-            vivid::semantic_tag(I.gain, "amplitude_linear");
-            vivid::semantic_shape(I.gain, "scalar");
-            vivid::description(I.gain, I.gain_desc);
-            vivid::repeat_group(I.gain, "input", static_cast<uint16_t>(i));
-
-            vivid::display_hint(I.pan, VIVID_DISPLAY_KNOB);
-            vivid::layout_row(I.pan, 2, 1);
-            vivid::semantic_tag(I.pan, "pan");
-            vivid::semantic_shape(I.pan, "scalar");
-            vivid::description(I.pan, I.pan_desc);
-            vivid::repeat_group(I.pan, "input", static_cast<uint16_t>(i));
+            vivid::display_hint(pan_[i], VIVID_DISPLAY_KNOB);
+            vivid::layout_row(pan_[i], 2, 1);
+            vivid::semantic_tag(pan_[i], "pan");
+            vivid::semantic_shape(pan_[i], "scalar");
+            vivid::description(pan_[i], pan_desc_[i]);
+            vivid::repeat_group(pan_[i], "input", static_cast<uint16_t>(i));
         }
     }
 
+    // Range-for loops let the codegen expand the array initializer into
+    // a static descriptor. Order: all gain params then all pan params,
+    // matching the descriptor index → collect_params index alignment
+    // required by _vivid_sync_params.
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
-        for (int i = 0; i < kMaxInputs; ++i) {
-            out.push_back(&ip_[i].gain);
-            out.push_back(&ip_[i].pan);
-        }
+        for (auto& p : gain_) out.push_back(&p);
+        for (auto& p : pan_) out.push_back(&p);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -113,7 +124,7 @@ struct Mixer : vivid::OperatorBase, vivid::AudioProcessable {
         for (int i = 0; i < kMaxInputs; ++i) {
             const float* in = ctx->input_buffers[i];
             if (!in) continue;
-            const float g = ip_[i].gain.value;
+            const float g = gain_[i].value;
             if (g == 0.0f) continue;
 
             const uint32_t in_ch = ctx->input_channel_counts
@@ -122,7 +133,7 @@ struct Mixer : vivid::OperatorBase, vivid::AudioProcessable {
 
             // Equal-power pan law: pan ∈ [-1, +1] → angle ∈ [0, π/2].
             // Mirrors operators/audio/stereo_pan_width/stereo_pan_width.cpp:86-90.
-            const float angle = (ip_[i].pan.value + 1.0f) * kPiOver4;
+            const float angle = (pan_[i].value + 1.0f) * kPiOver4;
             const float gl = g * std::cos(angle);
             const float gr = g * std::sin(angle);
 
