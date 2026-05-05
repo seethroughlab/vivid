@@ -277,5 +277,11 @@
     "map_unavailable": "семантическая карта недоступна",
     "mcp_ready": "MCP готов",
     "mcp_partial": "MCP частично",
-    "mcp_offline": "MCP офлайн"
+    "mcp_offline": "MCP офлайн",
+    "bypass": "Bypass",
+    "unbypass": "Unbypass",
+    "inspector_bypass": "Bypass",
+    "inspector_bypassed": "Bypassed",
+    "node_bypass_badge": "BYPASS",
+    "advanced_outputs": "Advanced Outputs"
 }

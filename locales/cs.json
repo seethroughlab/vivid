@@ -277,5 +277,11 @@
     "map_unavailable": "sémantická mapa není k dispozici",
     "mcp_ready": "MCP připraveno",
     "mcp_partial": "MCP částečně",
-    "mcp_offline": "MCP offline"
+    "mcp_offline": "MCP offline",
+    "bypass": "Bypass",
+    "unbypass": "Unbypass",
+    "inspector_bypass": "Bypass",
+    "inspector_bypassed": "Bypassed",
+    "node_bypass_badge": "BYPASS",
+    "advanced_outputs": "Advanced Outputs"
 }

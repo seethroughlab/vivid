@@ -277,5 +277,11 @@
     "map_unavailable": "semantisk kort ikke tilgængeligt",
     "mcp_ready": "MCP klar",
     "mcp_partial": "MCP delvis",
-    "mcp_offline": "MCP offline"
+    "mcp_offline": "MCP offline",
+    "bypass": "Bypass",
+    "unbypass": "Unbypass",
+    "inspector_bypass": "Bypass",
+    "inspector_bypassed": "Bypassed",
+    "node_bypass_badge": "BYPASS",
+    "advanced_outputs": "Advanced Outputs"
 }

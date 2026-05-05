@@ -277,5 +277,11 @@
     "map_unavailable": "mapa semantyczna niedostępna",
     "mcp_ready": "MCP gotowy",
     "mcp_partial": "MCP częściowy",
-    "mcp_offline": "MCP offline"
+    "mcp_offline": "MCP offline",
+    "bypass": "Bypass",
+    "unbypass": "Unbypass",
+    "inspector_bypass": "Bypass",
+    "inspector_bypassed": "Bypassed",
+    "node_bypass_badge": "BYPASS",
+    "advanced_outputs": "Advanced Outputs"
 }

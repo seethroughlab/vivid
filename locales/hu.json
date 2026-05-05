@@ -277,5 +277,11 @@
     "map_unavailable": "szemantikus térkép nem érhető el",
     "mcp_ready": "MCP kész",
     "mcp_partial": "MCP részleges",
-    "mcp_offline": "MCP offline"
+    "mcp_offline": "MCP offline",
+    "bypass": "Bypass",
+    "unbypass": "Unbypass",
+    "inspector_bypass": "Bypass",
+    "inspector_bypassed": "Bypassed",
+    "node_bypass_badge": "BYPASS",
+    "advanced_outputs": "Advanced Outputs"
 }

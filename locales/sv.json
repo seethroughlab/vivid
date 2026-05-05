@@ -277,5 +277,11 @@
     "map_unavailable": "semantisk karta ej tillgänglig",
     "mcp_ready": "MCP redo",
     "mcp_partial": "MCP partiell",
-    "mcp_offline": "MCP offline"
+    "mcp_offline": "MCP offline",
+    "bypass": "Bypass",
+    "unbypass": "Unbypass",
+    "inspector_bypass": "Bypass",
+    "inspector_bypassed": "Bypassed",
+    "node_bypass_badge": "BYPASS",
+    "advanced_outputs": "Advanced Outputs"
 }

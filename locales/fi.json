@@ -277,5 +277,11 @@
     "map_unavailable": "semanttinen kartta ei saatavilla",
     "mcp_ready": "MCP valmis",
     "mcp_partial": "MCP osittainen",
-    "mcp_offline": "MCP offline"
+    "mcp_offline": "MCP offline",
+    "bypass": "Bypass",
+    "unbypass": "Unbypass",
+    "inspector_bypass": "Bypass",
+    "inspector_bypassed": "Bypassed",
+    "node_bypass_badge": "BYPASS",
+    "advanced_outputs": "Advanced Outputs"
 }

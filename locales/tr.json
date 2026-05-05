@@ -277,5 +277,11 @@
     "map_unavailable": "anlamsal harita kullanılamıyor",
     "mcp_ready": "MCP hazır",
     "mcp_partial": "MCP kısmi",
-    "mcp_offline": "MCP çevrimdışı"
+    "mcp_offline": "MCP çevrimdışı",
+    "bypass": "Bypass",
+    "unbypass": "Unbypass",
+    "inspector_bypass": "Bypass",
+    "inspector_bypassed": "Bypassed",
+    "node_bypass_badge": "BYPASS",
+    "advanced_outputs": "Advanced Outputs"
 }

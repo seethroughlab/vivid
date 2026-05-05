@@ -277,5 +277,11 @@
     "map_unavailable": "semantička karta nije dostupna",
     "mcp_ready": "MCP spreman",
     "mcp_partial": "MCP djelomičan",
-    "mcp_offline": "MCP izvanmrežno"
+    "mcp_offline": "MCP izvanmrežno",
+    "bypass": "Bypass",
+    "unbypass": "Unbypass",
+    "inspector_bypass": "Bypass",
+    "inspector_bypassed": "Bypassed",
+    "node_bypass_badge": "BYPASS",
+    "advanced_outputs": "Advanced Outputs"
 }

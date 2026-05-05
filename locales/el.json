@@ -277,5 +277,11 @@
     "map_unavailable": "σημασιολογικός χάρτης μη διαθέσιμος",
     "mcp_ready": "MCP έτοιμο",
     "mcp_partial": "MCP μερικό",
-    "mcp_offline": "MCP εκτός σύνδεσης"
+    "mcp_offline": "MCP εκτός σύνδεσης",
+    "bypass": "Bypass",
+    "unbypass": "Unbypass",
+    "inspector_bypass": "Bypass",
+    "inspector_bypassed": "Bypassed",
+    "node_bypass_badge": "BYPASS",
+    "advanced_outputs": "Advanced Outputs"
 }

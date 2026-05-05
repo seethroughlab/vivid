@@ -277,5 +277,11 @@
     "map_unavailable": "carte sémantique indisponible",
     "mcp_ready": "MCP prêt",
     "mcp_partial": "MCP partiel",
-    "mcp_offline": "MCP hors ligne"
+    "mcp_offline": "MCP hors ligne",
+    "bypass": "Bypass",
+    "unbypass": "Unbypass",
+    "inspector_bypass": "Bypass",
+    "inspector_bypassed": "Bypassed",
+    "node_bypass_badge": "BYPASS",
+    "advanced_outputs": "Advanced Outputs"
 }
