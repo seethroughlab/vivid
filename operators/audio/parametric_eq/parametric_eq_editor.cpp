@@ -347,13 +347,11 @@ void ParametricEQ::draw_editor(VividEditorContext* ctx) {
         const float bl = kBandColors[b][2];
         const float alpha = active ? (selected ? 1.0f : 0.8f) : 0.25f;
 
-        if (d.draw_rounded_rect) {
+        if (d.draw_circle) {
+            d.draw_circle(o, p.x, p.y, radius, 0.0f, {r, g, bl, alpha});
+        } else if (d.draw_rounded_rect) {
             d.draw_rounded_rect(o, p.x - radius, p.y - radius,
-                radius * 2.0f, radius * 2.0f, radius,
-                {r, g, bl, alpha});
-        } else if (d.draw_rect) {
-            d.draw_rect(o, p.x - radius, p.y - radius,
-                        radius * 2.0f, radius * 2.0f, {r, g, bl, alpha});
+                radius * 2.0f, radius * 2.0f, radius, {r, g, bl, alpha});
         }
         if (selected && d.draw_rounded_rect) {
             d.draw_rounded_rect(o, p.x - radius - 3.0f, p.y - radius - 3.0f,

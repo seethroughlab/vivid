@@ -76,6 +76,17 @@ struct SliderResult {
     float value    = 0.0f;  // value to emit if `changed` — caller may ignore
 };
 
+struct TabStripResult {
+    int  clicked_idx = -1;  // index of clicked tab; -1 if none clicked this frame
+    bool clicked     = false;
+    int  hovered_idx = -1;
+};
+
+struct SelectableRowResult {
+    bool clicked = false;
+    bool hovered = false;
+};
+
 // ---------------------------------------------------------------------------
 // Layout cursor
 // ---------------------------------------------------------------------------
@@ -313,6 +324,114 @@ inline RadioResult ui_radio(VividEditorContext& ctx, Rect r,
     iw.cols      = count;
     if (current >= 0 && current < count && labels && labels[current])
         iw.label = labels[current];
+    if (out.clicked) iw.flags |= VIVID_INTROSPECT_CHANGED;
+    introspect_emit(ctx, iw);
+    return out;
+}
+
+// Tab strip. Lays out `count` equal-width tabs across `r` using the
+// underline-highlight style from draw_tab_strip. Returns the index of the
+// clicked tab this frame (-1 if none).
+inline TabStripResult ui_tab_strip(VividEditorContext& ctx, Rect r,
+                                   const char* const* labels, int count,
+                                   int active_idx) {
+    TabStripResult out;
+    if (count <= 0 || r.w <= 0.0f) return out;
+    const float tab_w = r.w / static_cast<float>(count);
+    const auto& mouse = ctx.mouse;
+
+    if (mouse.y >= r.y && mouse.y < r.y + r.h &&
+            mouse.x >= r.x && mouse.x < r.x + r.w) {
+        out.hovered_idx = static_cast<int>((mouse.x - r.x) / tab_w);
+        out.hovered_idx = std::clamp(out.hovered_idx, 0, count - 1);
+    }
+    if (mouse.left_clicked && out.hovered_idx >= 0) {
+        out.clicked_idx = out.hovered_idx;
+        out.clicked = true;
+    }
+
+    vivid::draw_ui::draw_tab_strip(ctx.draw, ctx.draw.opaque,
+        r.x, r.y, tab_w, r.h, labels, count, active_idx,
+        ctx.theme.dim_text, ctx.theme.bright_text,
+        ctx.theme.dark_bg, ctx.theme.accent);
+
+    VividIntrospectWidget iw{};
+    iw.kind      = "tab_strip";
+    iw.x = r.x; iw.y = r.y; iw.w = r.w; iw.h = r.h;
+    iw.int_value = active_idx;
+    iw.cols      = count;
+    if (out.clicked) iw.flags |= VIVID_INTROSPECT_CHANGED;
+    introspect_emit(ctx, iw);
+    return out;
+}
+
+// Selectable list row. Draws a subtle highlight when selected or hovered;
+// useful for list-box style item pickers.
+inline SelectableRowResult ui_selectable_row(VividEditorContext& ctx, Rect r,
+                                             const char* label, bool selected) {
+    SelectableRowResult out;
+    const auto& mouse = ctx.mouse;
+    out.hovered = r.contains(mouse.x, mouse.y);
+    out.clicked = out.hovered && mouse.left_clicked != 0;
+
+    auto& d = ctx.draw;
+    void* o = d.opaque;
+    if (selected && d.draw_rect) {
+        d.draw_rect(o, r.x, r.y, r.w, r.h,
+            {ctx.theme.accent.r, ctx.theme.accent.g, ctx.theme.accent.b, 0.25f});
+    } else if (out.hovered && d.draw_rect) {
+        d.draw_rect(o, r.x, r.y, r.w, r.h,
+            {ctx.theme.accent.r, ctx.theme.accent.g, ctx.theme.accent.b, 0.12f});
+    }
+    if (d.draw_text && label && *label) {
+        const float ty = d.line_height
+            ? r.y + (r.h - d.line_height(o)) * 0.5f : r.y + 2.0f;
+        d.draw_text(o, r.x + 6.0f, ty, label,
+            selected ? ctx.theme.bright_text : ctx.theme.dim_text, 1.0f);
+    }
+
+    VividIntrospectWidget iw{};
+    iw.kind  = "selectable_row";
+    iw.x = r.x; iw.y = r.y; iw.w = r.w; iw.h = r.h;
+    iw.label = label;
+    if (selected)    iw.flags |= VIVID_INTROSPECT_VALUE;
+    if (out.hovered) iw.flags |= VIVID_INTROSPECT_HOVERED;
+    if (out.clicked) iw.flags |= VIVID_INTROSPECT_CHANGED;
+    introspect_emit(ctx, iw);
+    return out;
+}
+
+// Icon button. Identical interaction model to ui_button (draw_button is
+// already centered); distinguished by "icon_button" introspect kind so
+// LLM tooling can identify compact symbol/action buttons separately from
+// labelled text buttons.
+inline ButtonResult ui_icon_button(VividEditorContext& ctx, Rect r,
+                                   const char* label, bool active = false,
+                                   VividColor fill_off = {},
+                                   VividColor fill_on  = {}) {
+    const auto& mouse = ctx.mouse;
+    ButtonResult out;
+    out.hovered = r.contains(mouse.x, mouse.y);
+    out.pressed = out.hovered && mouse.left_down != 0;
+    out.clicked = out.hovered && mouse.left_clicked != 0;
+
+    const VividColor off = (fill_off.a > 0.0f)
+        ? fill_off : detail::default_button_fill_off();
+    const VividColor on  = (fill_on.a > 0.0f)
+        ? fill_on : detail::accent_color(ctx.theme, 1.0f);
+    const VividColor text_col = detail::bright_text_color(ctx.theme, 1.0f);
+
+    vivid::draw_ui::draw_button(ctx.draw, ctx.draw.opaque,
+        r.x, r.y, r.w, r.h, label ? label : "", active,
+        off, on, text_col);
+
+    VividIntrospectWidget iw{};
+    iw.kind  = "icon_button";
+    iw.x = r.x; iw.y = r.y; iw.w = r.w; iw.h = r.h;
+    iw.label = label;
+    if (active)      iw.flags |= VIVID_INTROSPECT_ACTIVE;
+    if (out.hovered) iw.flags |= VIVID_INTROSPECT_HOVERED;
+    if (out.pressed) iw.flags |= VIVID_INTROSPECT_PRESSED;
     if (out.clicked) iw.flags |= VIVID_INTROSPECT_CHANGED;
     introspect_emit(ctx, iw);
     return out;

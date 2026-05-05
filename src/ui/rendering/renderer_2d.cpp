@@ -465,6 +465,33 @@ void Renderer2D::draw_arc(float cx, float cy, float radius,
     }
 }
 
+void Renderer2D::draw_circle(float cx, float cy, float radius, float thickness,
+                              float r, float g, float b, float a) {
+    constexpr float kTwoPi = 6.28318530717958647692f;
+    draw_arc(cx, cy, radius, 0.0f, kTwoPi, thickness, 32, r, g, b, a);
+}
+
+void Renderer2D::draw_dashed_line(float x1, float y1, float x2, float y2,
+                                   float thickness, float dash_len, float gap_len,
+                                   float r, float g, float b, float a) {
+    const float dx = x2 - x1, dy = y2 - y1;
+    const float len = std::sqrt(dx * dx + dy * dy);
+    if (len < 1e-4f) return;
+    const float nx = dx / len, ny = dy / len;
+    const float stride = dash_len + gap_len;
+    for (float t = 0.0f; t < len; t += stride) {
+        const float t2 = std::min(t + dash_len, len);
+        draw_line(x1 + nx * t, y1 + ny * t, x1 + nx * t2, y1 + ny * t2,
+                  thickness, r, g, b, a);
+    }
+}
+
+void Renderer2D::draw_polyline(const float* xs, const float* ys, uint32_t count,
+                                float thickness, float r, float g, float b, float a) {
+    for (uint32_t i = 1; i < count; ++i)
+        draw_line(xs[i-1], ys[i-1], xs[i], ys[i], thickness, r, g, b, a);
+}
+
 void Renderer2D::draw_rounded_rect(float x, float y, float w, float h, float radius,
                                       float r, float g, float b, float a) {
     if (radius <= 0.0f) { draw_rect(x, y, w, h, r, g, b, a); return; }
@@ -853,6 +880,23 @@ static float api_draw_text_wrapped(void* o, float x, float y, const char* text,
     return static_cast<Renderer2D*>(o)->draw_text_wrapped(
         x, y, text, max_width, c.r, c.g, c.b, c.a, scale);
 }
+static void api_draw_circle(void* o, float cx, float cy, float radius,
+                             float thickness, VividColor c) {
+    static_cast<Renderer2D*>(o)->draw_circle(cx, cy, radius, thickness,
+                                              c.r, c.g, c.b, c.a);
+}
+static void api_draw_dashed_line(void* o, float x1, float y1, float x2, float y2,
+                                  float thickness, float dash_len, float gap_len,
+                                  VividColor c) {
+    static_cast<Renderer2D*>(o)->draw_dashed_line(x1, y1, x2, y2, thickness,
+                                                    dash_len, gap_len,
+                                                    c.r, c.g, c.b, c.a);
+}
+static void api_draw_polyline(void* o, const float* xs, const float* ys,
+                               uint32_t count, float thickness, VividColor c) {
+    static_cast<Renderer2D*>(o)->draw_polyline(xs, ys, count, thickness,
+                                                c.r, c.g, c.b, c.a);
+}
 
 void populate_draw_api(VividDrawAPI& api, Renderer2D& renderer) {
     api.opaque          = &renderer;
@@ -867,6 +911,9 @@ void populate_draw_api(VividDrawAPI& api, Renderer2D& renderer) {
     api.draw_tri        = api_draw_tri;
     api.draw_arc        = api_draw_arc;
     api.draw_text_wrapped = api_draw_text_wrapped;
+    api.draw_circle      = api_draw_circle;
+    api.draw_dashed_line = api_draw_dashed_line;
+    api.draw_polyline    = api_draw_polyline;
 }
 
 } // namespace vivid::ui

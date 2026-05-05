@@ -310,35 +310,29 @@ void DrumSequencerCore::draw_editor(VividEditorContext* ctx) {
     }
     float pattern_block_end = grid_x + 140.0f;
     {
-        // Pattern A/B/C/D: four ui_toggle widgets. Each clicked event writes
-        // active_pattern; caller handles the param emit, widget owns draw +
-        // hit-test. Layout: 26 px buttons with 2 px gaps, total 110 px.
-        const VividColor fill_off{0.18f, 0.18f, 0.21f, 1.0f};
-        const VividColor fill_on {th.accent.r, th.accent.g, th.accent.b, 1.0f};
-        const float btn_w = 26.0f;
-        const float btn_gap = 2.0f;
         constexpr const char* kPatternBtnLabels[] = {"A", "B", "C", "D"};
-        for (int p = 0; p < static_cast<int>(layout::kPatternCount); ++p) {
-            const float bx = grid_x + 140.0f + p * (btn_w + btn_gap);
-            const vivid::ui::Rect r{bx, top_y + 3.0f, btn_w, top_h - 6.0f};
-            auto btn = vivid::ui::ui_toggle(*ctx, r, kPatternBtnLabels[p],
-                                            active_ptn == p, fill_off, fill_on);
-            if (btn.clicked)
-                set_named("active_pattern", static_cast<float>(p));
-            // Live-playing LED: a small dot in the top-right corner of the
-            // playing pattern's button. Only shown in song mode where
-            // playback can diverge from the edit cursor (active_ptn).
-            if (song_on && p == playing_ptn && d.draw_rounded_rect) {
-                const float dot_w = 6.0f;
-                const float dx = r.x + r.w - dot_w - 1.0f;
-                const float dy = r.y + 1.0f;
-                d.draw_rounded_rect(o, dx, dy, dot_w, dot_w, 3.0f,
-                    {0.95f, 0.85f, 0.25f, 0.95f});
-            }
-            pattern_block_end = bx + btn_w;
+        constexpr int kPatternCount = static_cast<int>(layout::kPatternCount);
+        constexpr float kTabW = 28.0f;
+        const vivid::ui::Rect strip_r{
+            grid_x + 140.0f, top_y + 3.0f,
+            kTabW * kPatternCount, top_h - 6.0f};
+        auto tab = vivid::ui::ui_tab_strip(*ctx, strip_r,
+            kPatternBtnLabels, kPatternCount, active_ptn);
+        if (tab.clicked)
+            set_named("active_pattern", static_cast<float>(tab.clicked_idx));
+        // Live-playing LED overlaid on the playing pattern's tab.
+        if (song_on && playing_ptn >= 0 && playing_ptn < kPatternCount
+                && d.draw_rounded_rect) {
+            const float dot_w = 6.0f;
+            const float dx = strip_r.x + playing_ptn * kTabW + kTabW - dot_w - 1.0f;
+            const float dy = strip_r.y + 1.0f;
+            d.draw_rounded_rect(o, dx, dy, dot_w, dot_w, 3.0f,
+                {0.95f, 0.85f, 0.25f, 0.95f});
         }
+        pattern_block_end = strip_r.x + strip_r.w;
 
-        // Song toggle: 36 px wide, 8 px gap after the pattern row.
+        // Song toggle: 36 px wide, 8 px gap after the pattern strip.
+        const VividColor fill_off{0.18f, 0.18f, 0.21f, 1.0f};
         const float song_x = pattern_block_end + 8.0f;
         const float song_w = 36.0f;
         const vivid::ui::Rect song_r{song_x, top_y + 3.0f, song_w, top_h - 6.0f};

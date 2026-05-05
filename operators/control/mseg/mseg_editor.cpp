@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdio>
 #include <string>
+#include <vector>
 
 namespace mseg_ed {
 
@@ -152,12 +153,18 @@ void MSEG::draw_editor(VividEditorContext* ctx) {
     if (do_loop && ls < np && le < np) {
         const float lsx = time_to_x(pts.times[ls]);
         const float lex = time_to_x(pts.times[le]);
-        for (float dy = plot_y; dy < plot_y + plot_h; dy += 8.0f) {
-            const float dash_end = std::min(dy + 4.0f, plot_y + plot_h);
-            d.draw_line(o, lsx, dy, lsx, dash_end, 1.0f,
-                        {th.accent.r, th.accent.g, th.accent.b, 0.4f});
-            d.draw_line(o, lex, dy, lex, dash_end, 1.0f,
-                        {th.accent.r, th.accent.g, th.accent.b, 0.4f});
+        const VividColor marker_col{th.accent.r, th.accent.g, th.accent.b, 0.4f};
+        if (d.draw_dashed_line) {
+            d.draw_dashed_line(o, lsx, plot_y, lsx, plot_y + plot_h, 1.0f, 4.0f, 4.0f,
+                               marker_col);
+            d.draw_dashed_line(o, lex, plot_y, lex, plot_y + plot_h, 1.0f, 4.0f, 4.0f,
+                               marker_col);
+        } else {
+            for (float dy = plot_y; dy < plot_y + plot_h; dy += 8.0f) {
+                const float dash_end = std::min(dy + 4.0f, plot_y + plot_h);
+                d.draw_line(o, lsx, dy, lsx, dash_end, 1.0f, marker_col);
+                d.draw_line(o, lex, dy, lex, dash_end, 1.0f, marker_col);
+            }
         }
     }
 
@@ -180,34 +187,36 @@ void MSEG::draw_editor(VividEditorContext* ctx) {
     }
 
     // --- Curve polyline ---
-    for (int i = 0; i < np - 1; ++i) {
-        const float t0 = pts.times[i];
-        const float t1 = pts.times[i + 1];
-        const float v0 = pts.values[i];
-        const float v1 = pts.values[i + 1];
-        const float crv = pts.curves[i];
-
-        float prev_x = time_to_x(t0);
-        float prev_y = value_to_y(v0);
-
-        for (int s = 1; s <= ed::kSubSegments; ++s) {
-            const float frac = static_cast<float>(s) / static_cast<float>(ed::kSubSegments);
-            const float t_pos = t0 + (t1 - t0) * frac;
-            // curve_interp shape (in-header via MSEG) — reuse via evaluate_at
-            // on a single-segment sub-position; cheaper to mirror the math:
-            float shaped;
-            if (std::abs(crv) < 0.001f) shaped = frac;
-            else {
-                const float k = crv * 4.0f;
-                shaped = (std::exp(k * frac) - 1.0f) / (std::exp(k) - 1.0f);
+    if (np > 1) {
+        std::vector<float> px, py;
+        px.reserve(1 + (np - 1) * ed::kSubSegments);
+        py.reserve(1 + (np - 1) * ed::kSubSegments);
+        for (int i = 0; i < np - 1; ++i) {
+            const float t0 = pts.times[i];
+            const float t1 = pts.times[i + 1];
+            const float v0 = pts.values[i];
+            const float v1 = pts.values[i + 1];
+            const float crv = pts.curves[i];
+            if (i == 0) { px.push_back(time_to_x(t0)); py.push_back(value_to_y(v0)); }
+            for (int s = 1; s <= ed::kSubSegments; ++s) {
+                const float frac = static_cast<float>(s) / static_cast<float>(ed::kSubSegments);
+                float shaped;
+                if (std::abs(crv) < 0.001f) shaped = frac;
+                else {
+                    const float k = crv * 4.0f;
+                    shaped = (std::exp(k * frac) - 1.0f) / (std::exp(k) - 1.0f);
+                }
+                px.push_back(time_to_x(t0 + (t1 - t0) * frac));
+                py.push_back(value_to_y(v0 + (v1 - v0) * shaped));
             }
-            const float val = v0 + (v1 - v0) * shaped;
-            const float cx = time_to_x(t_pos);
-            const float cy = value_to_y(val);
-            d.draw_line(o, prev_x, prev_y, cx, cy, 1.5f,
-                        {th.accent.r, th.accent.g, th.accent.b, 0.9f});
-            prev_x = cx;
-            prev_y = cy;
+        }
+        const VividColor curve_col{th.accent.r, th.accent.g, th.accent.b, 0.9f};
+        const auto n = static_cast<uint32_t>(px.size());
+        if (d.draw_polyline) {
+            d.draw_polyline(o, px.data(), py.data(), n, 1.5f, curve_col);
+        } else {
+            for (uint32_t j = 1; j < n; ++j)
+                d.draw_line(o, px[j-1], py[j-1], px[j], py[j], 1.5f, curve_col);
         }
     }
 

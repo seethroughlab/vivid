@@ -266,20 +266,6 @@ void PatternSeqCore::draw_editor(VividEditorContext* ctx) {
         {"Zero",    2},
         {"Random",  3},
     };
-    for (int i = 0; i < 4; ++i) {
-        const float by = btn_y0 + static_cast<float>(i) * (ed::kBtnH + ed::kBtnGap);
-        if (mouse.left_clicked &&
-            mouse.x >= side_x + kSpPad &&
-            mouse.x <  side_x + side_w - kSpPad &&
-            mouse.y >= by && mouse.y < by + ed::kBtnH) {
-            switch (buttons[i].action) {
-                case 0: apply_fill(ps::fill_ramp_up);   break;
-                case 1: apply_fill(ps::fill_ramp_down); break;
-                case 2: apply_fill(ps::fill_zero);      break;
-                case 3: apply_fill_random();            break;
-            }
-        }
-    }
 
     // ---- Drawing ----
     vivid::draw_ui::draw_panel(d, o, grid_x, grid_y, grid_w, grid_h,
@@ -411,22 +397,19 @@ void PatternSeqCore::draw_editor(VividEditorContext* ctx) {
             {th.bright_text.r, th.bright_text.g,
              th.bright_text.b, 0.9f}, 1.0f);
     }
-    // Draw the actual button rects.
+    // Quick-fill buttons — draw + click in one pass via ui_icon_button.
     for (int i = 0; i < 4; ++i) {
         const float by = btn_y0 + static_cast<float>(i) * (ed::kBtnH + ed::kBtnGap);
-        const float bx = side_x + kSpPad;
-        const float bw = side_w - 2.0f * kSpPad;
-        const bool hover = (mouse.x >= bx && mouse.x < bx + bw &&
-                            mouse.y >= by && mouse.y < by + ed::kBtnH);
-        const VividColor bg = hover
-            ? VividColor{th.accent.r, th.accent.g, th.accent.b, 0.35f}
-            : VividColor{th.dark_bg.r, th.dark_bg.g, th.dark_bg.b, 0.9f};
-        vivid::draw_ui::draw_panel(d, o, bx, by, bw, ed::kBtnH, bg,
-            {th.separator.r, th.separator.g, th.separator.b, 0.6f}, 3.0f, 1.0f);
-        if (d.draw_text) {
-            d.draw_text(o, bx + 10.0f, by + 4.0f, buttons[i].label,
-                {th.bright_text.r, th.bright_text.g,
-                 th.bright_text.b, 0.9f}, 0.9f);
+        const vivid::ui::Rect br{side_x + kSpPad, by,
+                                  side_w - 2.0f * kSpPad, ed::kBtnH};
+        auto btn = vivid::ui::ui_icon_button(*ctx, br, buttons[i].label);
+        if (btn.clicked) {
+            switch (buttons[i].action) {
+                case 0: apply_fill(ps::fill_ramp_up);   break;
+                case 1: apply_fill(ps::fill_ramp_down); break;
+                case 2: apply_fill(ps::fill_zero);      break;
+                case 3: apply_fill_random();             break;
+            }
         }
     }
 }

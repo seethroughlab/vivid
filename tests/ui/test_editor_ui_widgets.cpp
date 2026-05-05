@@ -329,6 +329,106 @@ int main() {
         check(res.value == 0.3f, "slider echoes input when stateless");
     }
 
+    // --- ui_tab_strip ----------------------------------------------------
+    {
+        Harness h;
+        constexpr const char* kLabels[] = {"A", "B", "C"};
+        ui::Rect r{0, 0, 90, 20};  // 3 tabs × 30px each
+
+        // Idle cursor outside strip → no hover, no click
+        h.idle(200.0f, 10.0f);
+        auto res = ui::ui_tab_strip(h.ctx, r, kLabels, 3, 0);
+        check(res.hovered_idx == -1 && !res.clicked,
+              "tab_strip idle outside → no hover");
+
+        // Cursor over tab 1 (x=35, tab_w=30 → idx=1)
+        h.idle(35.0f, 10.0f);
+        res = ui::ui_tab_strip(h.ctx, r, kLabels, 3, 0);
+        check(res.hovered_idx == 1, "tab_strip hover → correct idx");
+
+        // Click on tab 2 (x=65 → idx=2)
+        h.click(65.0f, 10.0f);
+        res = ui::ui_tab_strip(h.ctx, r, kLabels, 3, 0);
+        check(res.clicked && res.clicked_idx == 2,
+              "tab_strip click → clicked=true, correct idx");
+
+        // Click on already-active tab (0)
+        h.click(5.0f, 10.0f);
+        res = ui::ui_tab_strip(h.ctx, r, kLabels, 3, 0);
+        check(res.clicked && res.clicked_idx == 0,
+              "tab_strip click on active tab still fires");
+
+        // Zero-count strip is safe
+        h.click(5.0f, 10.0f);
+        res = ui::ui_tab_strip(h.ctx, r, kLabels, 0, 0);
+        check(!res.clicked && res.clicked_idx == -1,
+              "tab_strip count=0 → no click");
+    }
+
+    // --- ui_selectable_row -----------------------------------------------
+    {
+        Harness h;
+        ui::Rect r{10, 10, 100, 18};
+
+        // Idle → nothing
+        h.idle(0.0f, 0.0f);
+        auto res = ui::ui_selectable_row(h.ctx, r, "item", false);
+        check(!res.hovered && !res.clicked, "selectable_row idle → nothing");
+
+        // Hover
+        h.idle(50.0f, 18.0f);
+        res = ui::ui_selectable_row(h.ctx, r, "item", false);
+        check(res.hovered && !res.clicked, "selectable_row hover → hovered");
+
+        // Click
+        h.click(50.0f, 18.0f);
+        res = ui::ui_selectable_row(h.ctx, r, "item", false);
+        check(res.clicked, "selectable_row click → clicked");
+
+        // Selected draw: expect a draw_rect call
+        h.idle(0.0f, 0.0f);
+        h.rec.calls.clear();
+        ui::ui_selectable_row(h.ctx, r, "item", /*selected=*/true);
+        bool has_rect = false;
+        for (auto& c : h.rec.calls) if (c.name == "rect") has_rect = true;
+        check(has_rect, "selectable_row selected=true → draws fill rect");
+
+        // Non-selected, non-hovered → no rect
+        h.idle(0.0f, 0.0f);
+        h.rec.calls.clear();
+        ui::ui_selectable_row(h.ctx, r, "item", /*selected=*/false);
+        bool has_rect2 = false;
+        for (auto& c : h.rec.calls) if (c.name == "rect") has_rect2 = true;
+        check(!has_rect2, "selectable_row idle+unselected → no fill rect");
+    }
+
+    // --- ui_icon_button --------------------------------------------------
+    {
+        Harness h;
+        ui::Rect r{10, 10, 40, 20};
+
+        // Idle outside → nothing
+        h.idle(0.0f, 0.0f);
+        auto res = ui::ui_icon_button(h.ctx, r, "▶");
+        check(!res.hovered && !res.pressed && !res.clicked,
+              "icon_button idle outside → no hover");
+
+        // Hover
+        h.idle(20.0f, 18.0f);
+        res = ui::ui_icon_button(h.ctx, r, "▶");
+        check(res.hovered && !res.clicked, "icon_button hover");
+
+        // Click
+        h.click(20.0f, 18.0f);
+        res = ui::ui_icon_button(h.ctx, r, "▶");
+        check(res.clicked, "icon_button click → clicked");
+
+        // Active state
+        h.idle(0.0f, 0.0f);
+        res = ui::ui_icon_button(h.ctx, r, "▶", /*active=*/true);
+        check(!res.clicked, "icon_button active=true idle → not clicked");
+    }
+
     std::fprintf(stderr, "%s (%d failures)\n",
                  failures == 0 ? "PASSED" : "FAILED", failures);
     return failures > 0 ? 1 : 0;

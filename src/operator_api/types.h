@@ -468,6 +468,15 @@ typedef struct VividDrawAPI {
     /* Returns the total consumed height (pixels). */
     float (*draw_text_wrapped)(void*, float x, float y, const char* text,
                                 float max_width, VividColor, float scale);
+    /* Additive extensions — circle, dashed line, polyline.
+       Operators built against older headers guard with if (d.draw_circle). */
+    void  (*draw_circle)(void*, float cx, float cy, float radius,
+                         float thickness, VividColor);
+    void  (*draw_dashed_line)(void*, float x1, float y1, float x2, float y2,
+                              float thickness, float dash_length, float gap_length,
+                              VividColor);
+    void  (*draw_polyline)(void*, const float* xs, const float* ys,
+                           uint32_t point_count, float thickness, VividColor);
 } VividDrawAPI;
 typedef VividDrawAPI VividInspectorDrawAPI;
 

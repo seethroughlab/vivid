@@ -77,6 +77,13 @@ public:
                   float start_angle, float end_angle,
                   float thickness, int segments,
                   float r, float g, float b, float a = 1.0f);
+    void draw_circle(float cx, float cy, float radius, float thickness,
+                     float r, float g, float b, float a = 1.0f);
+    void draw_dashed_line(float x1, float y1, float x2, float y2,
+                          float thickness, float dash_len, float gap_len,
+                          float r, float g, float b, float a = 1.0f);
+    void draw_polyline(const float* xs, const float* ys, uint32_t count,
+                       float thickness, float r, float g, float b, float a = 1.0f);
     float text_width(const char* text, float scale = 1.0f) const;
     float line_height() const { return line_height_; }
 
