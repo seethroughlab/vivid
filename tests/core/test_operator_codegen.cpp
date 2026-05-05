@@ -76,7 +76,7 @@ int main() {
                 check(layout->members[2].size == 32, "array<vec2f,2> reports 32-byte size");
                 check(layout->members[3].offset == 112, "array<mat3x2f,2> offset respects uniform alignment");
                 check(layout->members[3].alignment == 16, "array<mat3x2f,2> reports 16-byte alignment");
-                check(layout->members[3].size == 48, "array<mat3x2f,2> uses corrected per-element stride");
+                check(layout->members[3].size == 64, "array<mat3x2f,2> uses corrected per-element stride");
             }
         }
     }
