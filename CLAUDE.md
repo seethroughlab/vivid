@@ -65,7 +65,7 @@ The public contract between the runtime and all operators. See [CLAUDE.md](src/o
 
 **Graph compilation.** The `GraphCompiler` transforms a `Graph` (pure data model) into a `CompiledGraph` (live execution state) in 7 passes. Topology changes trigger a full recompile — the `CompiledGraph` is never mutated during execution. See `src/runtime/graph/CLAUDE.md`.
 
-**Operator contract.** Operators are self-contained `.dylib` compilation units loaded via `dlopen`. They inherit `OperatorBase` plus one domain mixin (`FrameProcessable`, `AudioProcessable`, or `GpuProcessable`). `VIVID_REGISTER` generates the `extern "C"` boundary. See `docs/ARCHITECTURE.md` §5.7.
+**Operator contract.** Operators are self-contained `.dylib` compilation units loaded via `dlopen`. They inherit `OperatorBase` plus one domain mixin (`FrameProcessable`, `AudioProcessable`, or `GpuProcessable`). `operator_codegen` generates the `extern "C"` boundary at build time — no registration macro is needed. See `docs/ARCHITECTURE.md` §5.7.
 
 **Cross-cadence bridges.** `AudioFrameBridge` uses lock-free double-buffered snapshots (`ParamSnapshot`, `AnalysisSnapshot`, `LaneSnapshot`) so neither cadence blocks the other. See `docs/ARCHITECTURE.md` §5.5.
 
