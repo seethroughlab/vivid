@@ -397,6 +397,11 @@ std::pair<std::string, std::string> RuntimeCommandSink::ensure_project_package()
         std::fprintf(stderr, "[vivid] Clone: no package manager available\n");
         return {};
     }
+    // Try an existing workspace project package first — doesn't need a saved graph path.
+    const auto packages = package_manager_->list();
+    if (const auto* pkg = vivid::select_workspace_project_package(packages))
+        return {pkg->path, pkg->name};
+    // No workspace package found — need the graph path to create one.
     if (!graph_) {
         std::fprintf(stderr, "[vivid] Clone: no graph available\n");
         return {};

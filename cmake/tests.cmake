@@ -65,6 +65,7 @@ add_library(vivid_runtime_testlib STATIC
     src/runtime/operators/operator_descriptor_hash.cpp
     src/runtime/operators/operator_descriptor_validation.cpp
     src/runtime/operators/operator_source_docs.cpp
+    src/runtime/operators/project_package.cpp
     src/runtime/packages/package_catalog.cpp
     src/runtime/packages/package_compiler.cpp
     src/runtime/packages/package_manager.cpp

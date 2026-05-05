@@ -914,23 +914,19 @@ std::string dispatch(const std::string& method, const std::string& body,
             std::vector<PackageInfo> packages =
                 package_manager ? package_manager->list() : std::vector<PackageInfo>{};
 
-            // If the request wants project-local placement and no workspace
-            // project package exists yet, auto-create one beside the saved
-            // graph. Mirrors the clone-to-edit flow in RuntimeCommandSink so
-            // both pathways honor the same per-project default.
-            //
+            // For an explicit "project" destination with no workspace package
+            // yet, auto-create one beside the saved graph then route into it.
             // Freshly-linked packages get source_scope = "user" (not
             // "workspace"), so select_workspace_project_package would reject
-            // them and resolve_operator_destination would silently fall back
-            // to core. To avoid that round-trip, when we just auto-created
-            // the package we substitute its symlinked path as the explicit
-            // destination — the policy resolver then matches it via
-            // find_package_by_path and writes into the package layout.
+            // them; substituting the absolute path lets find_package_by_path
+            // match it in resolve_operator_destination.
+            //
+            // "auto" is intentionally excluded: when no project package exists
+            // resolve_operator_destination falls back to core with a warning,
+            // which is the desired behaviour for the auto destination.
             const bool auto_core_mode = settings &&
                 settings->operator_clone_destination_mode == "core_explicit";
-            const bool wants_project = (destination == "project") ||
-                                       (destination == "auto" && !auto_core_mode);
-            if (wants_project && package_manager &&
+            if (destination == "project" && !auto_core_mode && package_manager &&
                 !select_workspace_project_package(packages)) {
                 auto created = vivid::ensure_project_package(*package_manager, graph);
                 if (!created.first.empty()) {
