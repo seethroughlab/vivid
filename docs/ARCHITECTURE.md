@@ -142,12 +142,9 @@ struct MyEffect : vivid::OperatorBase, vivid::FrameProcessable {
         ctx->output_values[0] = in * intensity.value;
     }
 };
-VIVID_REGISTER(MyEffect)
 ```
 
-Three domain-specific mix-in interfaces exist: `vivid::FrameProcessable` (implements `process_frame(const VividFrameContext*)`), `vivid::AudioProcessable` (implements `process_audio(const VividAudioContext*)`), and `vivid::GpuProcessable` (implements `process_gpu(const VividGpuContext*)`). All operators inherit `vivid::OperatorBase` and exactly one of these interfaces — operators are single-cadence. The `VIVID_REGISTER` macro generates `extern "C"` entry points (`vivid_abi_version`, `vivid_descriptor`, `vivid_create`, `vivid_destroy`, and domain-specific dispatch functions). It emits a `vivid_abi_version()` function returning `VIVID_OPERATOR_ABI_VERSION`, with the source-of-truth value defined in `src/operator_api/types.h`. The runtime checks that value on `dlopen` to reject stale dylibs left over from a previous build — it is not a cross-version compatibility contract. Operators always compile against the current headers.
-
-For statically linked export builds (§5.16), the `extern "C"` boundary is unnecessary — everything links together as one C++ binary. The macro handles both cases.
+Three domain-specific mix-in interfaces exist: `vivid::FrameProcessable` (implements `process_frame(const VividFrameContext*)`), `vivid::AudioProcessable` (implements `process_audio(const VividAudioContext*)`), and `vivid::GpuProcessable` (implements `process_gpu(const VividGpuContext*)`). All operators inherit `vivid::OperatorBase` and exactly one of these interfaces — operators are single-cadence. `operator_codegen` (run at build time) generates a companion `*_generated_registration.cpp` that exports the full `extern "C"` boundary: `vivid_abi_version`, `vivid_descriptor`, `vivid_create`, `vivid_destroy`, and domain-specific dispatch functions. `vivid_abi_version()` returns `VIVID_OPERATOR_ABI_VERSION` (defined in `src/operator_api/types.h`); the runtime checks it on `dlopen` to reject stale dylibs — it is not a cross-version compatibility contract. Operators always compile against the current headers. No registration call is needed in operator source files.
 
 **Crash isolation:** The runtime wraps every `process_frame` / `process_audio` / `process_gpu` call in a `CrashGuard` RAII guard that tracks the current operator name in a thread-local variable. If an operator triggers a fatal signal (`SIGSEGV`, `SIGBUS`, `SIGABRT`, `SIGFPE`), the signal handler prints the operator name to stderr before re-raising for a core dump. This turns "Vivid crashed" into "Vivid crashed in MyBrokenOp" — essential for diagnosing third-party operator failures. See `src/runtime/core/crash_guard.h`.
 
@@ -162,7 +159,7 @@ Operators can embed control-domain operators as persistent member variables usin
 - `support-backed embeddable`: the operator keeps plugin-facing code in `.cpp`, and registers a `name_embeddable.cpp` support unit through `vivid_embeddable_op_support` for any out-of-line destructor, virtual method implementation, thumbnail hook, or other non-inline definition needed by `ChildOp<T>` consumers
 
 **Embeddable support files** are minimal embedded-use glue only. They must not contain:
-- `VIVID_REGISTER(...)`
+- codegen-generated `*_generated_registration.cpp` (do not place plugin-export macros in embeddable support files)
 - plugin export macros such as `VIVID_THUMBNAIL(...)`
 - full plugin-only thumbnail, inspector, or runtime wrapper behavior
 
@@ -543,7 +540,7 @@ vivid/
 │   │   ├── overlay_layouts.cpp/.h     # Inspector, transport, overlays
 │   │   └── file_dialog.mm/.h   # Native macOS file open/save dialogs
 │   ├── operator_api/           # Public headers for operator contract
-│   │   ├── operator.h          # Base classes, Param<T>, VIVID_REGISTER macro
+│   │   ├── operator.h          # Base classes, Param<T>, VIVID_DEFINE_OP
 │   │   ├── types.h             # C ABI: enums, descriptors, contexts
 │   │   ├── gpu_operator.h      # GpuProcessable, VividGpuContext, VividGpuState
 │   │   ├── gpu_types.h         # VividGpuBuffer, VividMesh, VividComputeBuffer
@@ -593,7 +590,7 @@ When two operators share the same name, earlier in the path wins. This lets user
 
 **Decision: Export compiles the graph and its operators into a single standalone binary.** During development, operators are separate .dylib files loaded via dlopen so they can hot-reload independently. For export, those same C++ source files are compiled and statically linked into one binary.
 
-CMake handles this with a separate build target that compiles operators as static libraries instead of shared libraries and links everything together. The `extern "C"` functions from `VIVID_REGISTER` are resolved at link time instead of via `dlopen`.
+CMake handles this with a separate build target that compiles operators as static libraries instead of shared libraries and links everything together. The codegen-generated `extern "C"` functions are resolved at link time instead of via `dlopen`.
 
 **Tree-shaking:** exported builds compile only the operators the graph actually references. The build reads the graph JSON, resolves operator types to source directories via the search path, and generates a CMake target containing only those operators. A graph using three operators produces a binary containing three operators, not the entire built-in set.
 

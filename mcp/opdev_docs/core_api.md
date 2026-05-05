@@ -8,7 +8,6 @@ Every operator must:
 3. Inherit from `vivid::OperatorBase` and implement one or more capability interfaces: `vivid::FrameProcessable`, `vivid::AudioProcessable`, or `vivid::GpuProcessable`
 4. Override `collect_params()` and `collect_ports()` to declare params and ports
 5. Override the capability-specific process method
-6. End the `.cpp` file with `VIVID_REGISTER(ClassName)`
 
 Optionally declare lane behavior (defaults to `VIVID_LANE_POINTWISE` if omitted):
 ```cpp
@@ -45,8 +44,6 @@ struct MyOp : vivid::OperatorBase, vivid::FrameProcessable {
         ctx->output_values[0] = ctx->input_values[0] * amount.value;
     }
 };
-
-VIVID_REGISTER(MyOp)
 ```
 
 ## Param\<T\> Types
@@ -172,7 +169,7 @@ Conditional visibility is inspector-only. Hidden params still exist in the graph
 
 ## Capability Interfaces
 
-All operators inherit from `vivid::OperatorBase` and implement one or more capability interfaces. `VIVID_REGISTER` auto-detects capabilities via `std::is_base_of`.
+All operators inherit from `vivid::OperatorBase` and implement one or more capability interfaces. `operator_codegen` detects capabilities from the base class list at build time.
 
 | Capability Interface | Process Method | Execution Environment |
 |---------------------|---------------|----------------------|

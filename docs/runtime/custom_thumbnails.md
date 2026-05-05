@@ -29,10 +29,9 @@ Implement the optional method on your operator:
 void draw_thumbnail(const VividThumbnailContext* ctx) override;
 ```
 
-Export it alongside `VIVID_REGISTER(...)`:
+Export it by adding `VIVID_THUMBNAIL` after your struct definition:
 
 ```cpp
-VIVID_REGISTER(MyOperator)
 VIVID_THUMBNAIL(MyOperator)
 ```
 
@@ -130,7 +129,6 @@ struct MyOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(MyOp)
 VIVID_THUMBNAIL(MyOp)
 ```
 

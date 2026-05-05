@@ -206,7 +206,7 @@ Operators can provide custom visual thumbnails (node graph previews) and custom 
 
 ### Thumbnail API
 
-Override `draw_thumbnail()` and add `VIVID_THUMBNAIL(ClassName)` alongside `VIVID_REGISTER`:
+Override `draw_thumbnail()` and add `VIVID_THUMBNAIL(ClassName)` after your struct definition:
 
 ```cpp
 #include "operator_api/thumbnail.h"
@@ -222,7 +222,6 @@ void draw_thumbnail(const VividThumbnailContext* ctx) override {
     d.draw_text(o, 4, 4, "Hello", {1, 1, 1, 1}, 1.0f);
 }
 
-VIVID_REGISTER(MyOp)
 VIVID_THUMBNAIL(MyOp)
 ```
 
@@ -276,7 +275,6 @@ void draw_inspector(VividInspectorContext* ctx) override {
     ctx->consumed_height = 20.0f;  // report how much vertical space you used
 }
 
-VIVID_REGISTER(MyOp)
 VIVID_INSPECTOR(MyOp)          // STANDARD: core draws params first, then your draw_inspector
 // or: VIVID_INSPECTOR_FULL_MODE(MyOp)  // FULL: you handle the entire inspector
 ```

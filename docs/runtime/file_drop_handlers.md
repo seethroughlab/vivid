@@ -44,7 +44,6 @@ static const VividFileDropHandlerDescriptor kFileDrops[] = {{
     "Create a TextureLoader node from a dropped image."
 }};
 
-VIVID_REGISTER(TextureLoader)
 VIVID_FILE_DROP(kFileDrops)
 ```
 

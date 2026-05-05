@@ -49,8 +49,7 @@ Authoring note for `ChildOp<T>` embeddables:
 - If an operator is intended to be embeddable and still has out-of-line destructor / virtual / thumbnail definitions, those definitions must be supplied through the embeddable-support path (`*_embeddable.cpp` linked via `vivid_embeddable_op_support`).
 - Otherwise loader failures may surface as ordinary `dlopen_failed` diagnostics on the consuming plugin, even though the root cause is missing embedded-use linkage rather than a bad descriptor.
 
-Every operator uses `VIVID_DEFINE_OP(ClassName) { ... }` + `VIVID_REGISTER(ClassName)` in its
-source. At build time `tools/operator_codegen` generates a companion
+At build time `tools/operator_codegen` parses the operator source and generates a companion
 `*_generated_registration.cpp` that exports the full operator ABI:
 
 ```cpp

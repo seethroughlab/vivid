@@ -355,10 +355,9 @@ struct MyEffect : vivid::OperatorBase, vivid::FrameProcessable {
         ctx->output_values[0] = ctx->input_values[0] * intensity.value;
     }
 };
-VIVID_REGISTER(MyEffect)
 ```
 
-This contract is the most important API surface in the system. Three domain-specific mix-in interfaces exist: `vivid::FrameProcessable` (`process_frame()`), `vivid::AudioProcessable` (`process_audio()`), and `vivid::GpuProcessable` (`process_gpu()`). All operators inherit `vivid::OperatorBase` and one or more of these interfaces. The `VIVID_REGISTER` macro generates `extern "C"` entry points and infers domain from the mix-ins. Because the LLM generates most operators on demand rather than wiring together pre-built ones, every friction point in writing an operator — unclear types, boilerplate, implicit conventions — is a direct tax on the core workflow. The simpler this contract, the better everything downstream works: auto-generated UI knobs, confident LLM generation, fast compilation of small self-contained units, and reliable hot-reload.
+This contract is the most important API surface in the system. Three domain-specific mix-in interfaces exist: `vivid::FrameProcessable` (`process_frame()`), `vivid::AudioProcessable` (`process_audio()`), and `vivid::GpuProcessable` (`process_gpu()`). All operators inherit `vivid::OperatorBase` and one or more of these interfaces. `operator_codegen` generates the `extern "C"` entry points at build time — no registration macro is needed in the source file. Because the LLM generates most operators on demand rather than wiring together pre-built ones, every friction point in writing an operator — unclear types, boilerplate, implicit conventions — is a direct tax on the core workflow. The simpler this contract, the better everything downstream works: auto-generated UI knobs, confident LLM generation, fast compilation of small self-contained units, and reliable hot-reload.
 
 ### 5.8 Hot-Reload Behavior
 
@@ -508,7 +507,7 @@ vivid/
 │  │  ├─ theme.cpp/.h            # Visual style (§6.6)
 │  │  └─ text.cpp/.h             # Text rendering (stb_truetype)
 │  └─ operator_api/             # Shared headers for operator contract
-│     ├─ operator.h              # Base classes, Param<T>, VIVID_REGISTER
+│     ├─ operator.h              # Base classes, Param<T>, VIVID_DEFINE_OP
 │     ├─ types.h                 # Shared type definitions and lane-facing port types
 │     └─ types.h                 # Shared type definitions
 ├─ operators/                    # Built-in operators (each a directory)
@@ -547,7 +546,7 @@ When two operators share the same name, earlier in the path wins. This lets user
 
 **Decision:** Export compiles the graph and its operators into a single standalone binary. During development, operators are separate .dylib files loaded via dlopen so they can hot-reload independently. For export, those same C++ source files are compiled as static .o files and linked into one binary.
 
-CMake handles this with a separate build target that compiles operators as static libraries instead of shared libraries and links everything together. The `extern "C"` functions from `VIVID_REGISTER` are resolved at link time instead of via dlopen. The graph JSON is embedded as a compile-time resource.
+CMake handles this with a separate build target that compiles operators as static libraries instead of shared libraries and links everything together. The codegen-generated `extern "C"` functions are resolved at link time instead of via dlopen. The graph JSON is embedded as a compile-time resource.
 
 **Tree-shaking:** exported builds compile only the operators the graph actually references. The build system reads the graph JSON, resolves operator types to source directories via the search path, and compiles only those. A graph using three operators produces a binary containing three operators, not the entire seed set.
 

@@ -93,6 +93,4 @@ struct Multiply : vivid::OperatorBase, vivid::FrameProcessable {
         ctx->output_values[0] = ctx->input_values[0] * factor.value;
     }
 };
-
-VIVID_REGISTER(Multiply)
 ```

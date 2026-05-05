@@ -115,8 +115,6 @@ struct Gain : vivid::OperatorBase, vivid::AudioProcessable {
             out[i] = in[i] * g;
     }
 };
-
-VIVID_REGISTER(Gain)
 ```
 
 ## Thread Safety

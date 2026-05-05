@@ -46,8 +46,6 @@ struct MyFilter : vivid::WgslFilterBase {
     // collect_ports() inherited: 1 input texture + 1 output texture
     // Override collect_ports() to add more texture inputs
 };
-
-VIVID_REGISTER(MyFilter)
 ```
 
 The `.wgsl` file only needs the fragment shader:

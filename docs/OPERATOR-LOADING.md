@@ -7,7 +7,7 @@ Vivid operators are single-file C++ modules compiled against the `operator_api` 
 - **Development:** Operators compile to `.dylib` files and load via `dlopen`. The hot-reload system watches for source changes, recompiles, and reloads — giving instant feedback during creative work.
 - **Export:** The same operator source is compiled and statically linked into a standalone binary. No dylibs ship in production.
 
-The `VIVID_REGISTER` macro generates the `extern "C"` entry points that the runtime uses at the dylib boundary: `vivid_abi_version`, `vivid_descriptor`, `vivid_create`, `vivid_destroy`, and domain-specific dispatch functions.
+`operator_codegen` runs at build time and generates a companion `*_generated_registration.cpp` that exports the `extern "C"` entry points the runtime uses at the dylib boundary: `vivid_abi_version`, `vivid_descriptor`, `vivid_create`, `vivid_destroy`, and domain-specific dispatch functions. No registration call is needed in operator source files.
 
 ## ABI Version: A Staleness Check
 
