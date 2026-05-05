@@ -72,10 +72,18 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
 
         // Configure
         ProcessRunOptions configure_opts;
+        // Locate the cmake modules dir (contains VividPackageSupport.cmake).
+        // Prefer the source tree alongside the Vivid source; fall back to the
+        // build dir in case the caller is working from an installed layout.
+        std::string cmake_modules_dir = src_dir + "/cmake";
+        if (!std::filesystem::exists(cmake_modules_dir))
+            cmake_modules_dir = vivid_build + "/cmake";
+
         configure_opts.argv = {cmake_exe, "-B", build_dir, "-S", compile_pkg_dir,
                                "-DVIVID_SRC_DIR=" + src_dir,
                                "-DVIVID_BUILD_DIR=" + vivid_build,
-                               "-DVIVID_PLUGIN_SUFFIX=" + std::string(kPluginSuffix)};
+                               "-DVIVID_PLUGIN_SUFFIX=" + std::string(kPluginSuffix),
+                               "-DVIVID_CMAKE_MODULES_DIR=" + cmake_modules_dir};
 
         // Pin the cmake-built package to the runtime's compile-time arch.
         // Same rationale as the clang -arch flag in PackageCompiler: cmake

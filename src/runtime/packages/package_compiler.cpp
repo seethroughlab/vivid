@@ -333,9 +333,35 @@ CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
 
     append_managed_highway_args(argv);
 
+    // Run operator_codegen to generate the registration file (vivid_abi_version,
+    // vivid_descriptor, vivid_create, etc.). Without this, the compiled dylib has
+    // no registration exports and the registry cannot load it.
+    std::string codegen_tool = vivid_build_dir_ + "/tools/operator_codegen/operator_codegen";
+    std::string generated_reg_path;
+    if (std::filesystem::exists(codegen_tool)) {
+        generated_reg_path = build_dir + "/" + name + "_generated_registration.cpp";
+        ProcessRunOptions gen_opts;
+        gen_opts.argv = {codegen_tool, "--input", source_path, "--output", generated_reg_path};
+        ProcessRunResult gen_result = run_process(gen_opts);
+        if (!gen_result.launched || gen_result.exit_code != 0) {
+            result.success = false;
+            result.error_output = "operator_codegen failed for " + name + ":\n" + gen_result.output;
+            if (build_console_) {
+                build_console_->append_system_line(task_id, result.error_output);
+                build_console_->finish_task(task_id, BuildTaskState::Failed, "codegen failed");
+            }
+            return result;
+        }
+    }
+
     argv.push_back("-o");
     argv.push_back(temp_output);
-    argv.push_back(source_path);
+    // The generated registration file #includes the source, so compile only it
+    // when available to avoid duplicate symbol errors from compiling both.
+    if (!generated_reg_path.empty())
+        argv.push_back(generated_reg_path);
+    else
+        argv.push_back(source_path);
 
     std::fprintf(stderr, "[vivid] PackageCompiler: %s %s\n", compiler_exe.c_str(), name.c_str());
 

@@ -377,27 +377,16 @@ struct TestCmakeOp : vivid::OperatorBase, vivid::FrameProcessable {
 )cpp";
     }
 
-    // Write CMakeLists.txt that builds a MODULE library
+    // Write CMakeLists.txt using vivid_package_operator() for codegen support
     {
         std::ofstream ofs(cmake_pkg_dir + "/CMakeLists.txt");
         ofs << R"cmake(
 cmake_minimum_required(VERSION 3.16)
 project(test-cmake-package)
 
-add_library(test_cmake_op MODULE src/test_cmake_op.cpp)
-target_include_directories(test_cmake_op PRIVATE ${VIVID_SRC_DIR}/src)
-target_include_directories(test_cmake_op PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_compile_features(test_cmake_op PRIVATE cxx_std_17)
-if(DEFINED VIVID_HIGHWAY_INCLUDE_DIR)
-    target_include_directories(test_cmake_op PRIVATE ${VIVID_HIGHWAY_INCLUDE_DIR})
-    target_compile_definitions(test_cmake_op PRIVATE VIVID_HAS_HIGHWAY=1)
-endif()
-if(DEFINED VIVID_HIGHWAY_LIBRARY)
-    target_link_libraries(test_cmake_op PRIVATE "${VIVID_HIGHWAY_LIBRARY}")
-endif()
+include(${VIVID_CMAKE_MODULES_DIR}/VividPackageSupport.cmake)
+vivid_package_operator(test_cmake_op src/test_cmake_op.cpp GPU)
 set_target_properties(test_cmake_op PROPERTIES
-    PREFIX ""
-    SUFFIX "${VIVID_PLUGIN_SUFFIX}"
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 )cmake";
