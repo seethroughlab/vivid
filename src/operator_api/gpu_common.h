@@ -4,6 +4,7 @@
 // Operators concatenate these with their own fragment shaders.
 
 #include "operator_api/gpu_operator.h"
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -58,6 +59,32 @@ inline WGPUShaderModule create_shader(WGPUDevice device, const char* frag_src,
     desc.nextInChain = &wgsl_src.chain;
     desc.label = vivid_sv(label);
     return wgpuDeviceCreateShaderModule(device, &desc);
+}
+
+// Like create_shader(), but wraps compilation in an error scope.
+// wgpu-native returns a non-null "error" handle on WGSL failure, not nullptr;
+// the scope catches this before the invalid handle can reach pipeline creation.
+// Populates error_out with the validation message on failure; leaves it unchanged on success.
+inline WGPUShaderModule create_shader_checked(WGPUDevice device, const char* frag_src,
+                                               const char* label,
+                                               std::string& error_out) {
+    wgpuDevicePushErrorScope(device, WGPUErrorFilter_Validation);
+    WGPUShaderModule sm = create_shader(device, frag_src, label);
+    {
+        WGPUPopErrorScopeCallbackInfo cb{};
+        cb.mode = WGPUCallbackMode_AllowSpontaneous;
+        cb.callback = [](WGPUPopErrorScopeStatus, WGPUErrorType type,
+                          WGPUStringView msg, void* ud1, void*) {
+            if (type != WGPUErrorType_NoError) {
+                auto* err = static_cast<std::string*>(ud1);
+                *err = msg.data ? std::string(msg.data, msg.length) : "unknown WGSL error";
+                std::fprintf(stderr, "[vivid] WGSL error: %s\n", err->c_str());
+            }
+        };
+        cb.userdata1 = &error_out;
+        wgpuDevicePopErrorScope(device, cb);
+    }
+    return sm;
 }
 
 // ---------------------------------------------------------------------------
