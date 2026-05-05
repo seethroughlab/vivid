@@ -798,12 +798,30 @@ void NodeGraphUI::draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& nod
     auto sections = build_inspector_output_sections(node, snap_.connections);
 
     auto draw_output_line = [&](uint32_t idx, const std::string& name) {
+        constexpr size_t kMaxLaneValues = 8;
         std::string line;
         if (idx < node.output_string_lanes.size() && !node.output_string_lanes[idx].empty()) {
             const auto& sp = node.output_string_lanes[idx];
-            line = name + " = [\"" + sp[0] + "\" ..] (" + std::to_string(sp.size()) + ")";
+            std::string vals = "[";
+            size_t show = std::min(sp.size(), kMaxLaneValues);
+            for (size_t i = 0; i < show; ++i) {
+                if (i) vals += ", ";
+                vals += "\"" + sp[i] + "\"";
+            }
+            if (sp.size() > kMaxLaneValues) vals += " \xe2\x80\xa6";
+            vals += "]";
+            line = name + " \xc3\x97" + std::to_string(sp.size()) + "  " + vals;
         } else if (idx < node.output_lanes.size() && !node.output_lanes[idx].empty()) {
-            line = name + " = [" + std::to_string(node.output_lanes[idx].size()) + " bins]";
+            const auto& lv = node.output_lanes[idx];
+            std::string vals = "[";
+            size_t show = std::min(lv.size(), kMaxLaneValues);
+            for (size_t i = 0; i < show; ++i) {
+                if (i) vals += ", ";
+                vals += format_float(lv[i]);
+            }
+            if (lv.size() > kMaxLaneValues) vals += " \xe2\x80\xa6";
+            vals += "]";
+            line = name + " \xc3\x97" + std::to_string(lv.size()) + "  " + vals;
         } else if (idx < node.output_string_values.size() && !node.output_string_values[idx].empty()) {
             line = name + " = \"" + node.output_string_values[idx] + "\"";
         } else if (idx < node.output_values.size()) {
