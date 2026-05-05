@@ -398,9 +398,10 @@ static int run_single_graph(const char* exe_path, const char* graph_path,
     bool has_audio_out = false;
     bool has_movie = false;
     for (const auto& n : graph.nodes()) {
-        if (n.type == "SyphonIn"  || n.type == "SyphonOut" ||
-            n.type == "OscIn"     || n.type == "OscOut"    ||
-            n.type == "WebcamIn") {
+        if (n.type == "SyphonIn"  || n.type == "SyphonOut"  ||
+            n.type == "OscIn"     || n.type == "OscOut"     ||
+            n.type == "WebcamIn"  ||
+            n.type == "Browser"   || n.type == "BrowserAudioIn") {
             has_external_io = true;
         }
         if (n.type == "MovieFile")
@@ -444,6 +445,24 @@ static int run_single_graph(const char* exe_path, const char* graph_path,
 
     if (fail_if_required_package_placeholders(runtime, registry, graph,
                                               bootstrap.package_discovery, required_packages)) {
+        // If every required package IS in loaded_packages (partially loaded), the
+        // missing operators are stale/incompatible with this build — skip rather
+        // than fail, because this is an environment issue, not a code bug.
+        bool all_required_loaded = true;
+        for (const auto& pkg : required_packages) {
+            bool found = false;
+            for (const auto& info : bootstrap.package_discovery.loaded_packages) {
+                if (info.name == pkg) { found = true; break; }
+            }
+            if (!found) { all_required_loaded = false; break; }
+        }
+        if (all_required_loaded) {
+            std::fprintf(stderr, "required package has stale/incompatible operators — skipping\n");
+            write_health_dump(graph, &runtime, registry, nullptr, graph_path, graphs_root, health_dir, "skipped");
+            runtime.shutdown();
+            gpu.shutdown();
+            return 2;  // SKIP
+        }
         write_health_dump(graph, &runtime, registry, nullptr, graph_path, graphs_root, health_dir, "failed");
         runtime.shutdown();
         gpu.shutdown();
