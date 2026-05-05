@@ -29,7 +29,7 @@ int main() {
         std::cerr << result.error_message << "\n";
     }
     check(result.operator_class_name == "Noise", "operator class is Noise");
-    check(result.has_vivid_register_v2, "noise uses VIVID_REGISTER_V2");
+    check(result.has_vivid_register, "noise uses VIVID_REGISTER");
     check(result.has_vivid_define_op, "noise uses VIVID_DEFINE_OP");
     check(result.generated_cpp.find("VIVID_INTERNAL_EXPORTS_WITH_DESCRIPTOR(Noise") != std::string::npos,
           "generated file emits V2 exports");

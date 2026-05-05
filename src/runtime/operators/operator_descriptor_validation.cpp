@@ -1,6 +1,5 @@
 #include "runtime/operators/operator_descriptor_validation.h"
 
-#include <cstring>
 #include <unordered_set>
 
 namespace vivid {
@@ -13,10 +12,6 @@ std::string safe_str(const char* text) {
 
 bool empty_cstr(const char* text) {
     return text == nullptr || *text == '\0';
-}
-
-bool is_v2_mode(const char* registration_mode) {
-    return registration_mode != nullptr && std::strcmp(registration_mode, "v2") == 0;
 }
 
 } // namespace
@@ -93,13 +88,11 @@ std::vector<DescriptorValidationIssue> validate_descriptor(
             const std::string name = safe_str(port.name);
             auto& set = port.direction == VIVID_PORT_OUTPUT ? output_ports : input_ports;
             if (!set.insert(name).second) {
-                if (is_v2_mode(registration_mode)) {
-                    issues.push_back({
-                        "duplicate_port_name",
-                        "duplicate " + std::string(port.direction == VIVID_PORT_OUTPUT ? "output" : "input") +
-                            " port name '" + name + "'"
-                    });
-                }
+                issues.push_back({
+                    "duplicate_port_name",
+                    "duplicate " + std::string(port.direction == VIVID_PORT_OUTPUT ? "output" : "input") +
+                        " port name '" + name + "'"
+                });
             }
             if ((port.transport == VIVID_PORT_TRANSPORT_CUSTOM_REF ||
                  port.transport == VIVID_PORT_TRANSPORT_CUSTOM_VALUE) &&

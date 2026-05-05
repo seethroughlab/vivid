@@ -103,7 +103,6 @@ function(add_vivid_operator name source)
     target_link_libraries(${name} PRIVATE vivid_operator_api ${ARG_EXTRA_LIBS})
     if(ARG_CODEGEN)
         target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-        target_compile_definitions(${name} PRIVATE VIVID_CODEGEN_BUILD)
     endif()
     if(NOT ARG_TEST_FIXTURE)
         set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS ${name})
@@ -324,7 +323,6 @@ add_library(texture_loader MODULE
 target_link_libraries(texture_loader PRIVATE vivid_operator_api webgpu)
 set_target_properties(texture_loader PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_include_directories(texture_loader PRIVATE ${CMAKE_SOURCE_DIR}/deps/stb ${CMAKE_CURRENT_BINARY_DIR})
-target_compile_definitions(texture_loader PRIVATE VIVID_CODEGEN_BUILD)
 if(APPLE)
     add_custom_command(TARGET texture_loader POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory
@@ -406,7 +404,6 @@ target_include_directories(movie_file PRIVATE
     ${CMAKE_SOURCE_DIR}/deps/hap
     ${CMAKE_CURRENT_BINARY_DIR}
 )
-target_compile_definitions(movie_file PRIVATE VIVID_CODEGEN_BUILD)
 if(APPLE)
     add_custom_command(TARGET movie_file POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory
@@ -446,7 +443,6 @@ else()
 endif()
 set_target_properties(webcam_in PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_include_directories(webcam_in PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-target_compile_definitions(webcam_in PRIVATE VIVID_CODEGEN_BUILD)
 if(APPLE)
     set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
         "  \"webcam_in\": { \"sources\": [\"operators/gpu/webcam_in/webcam_in.cpp\", \"operators/gpu/webcam_in/avf_capture.mm\"], \"extra_libs\": [\"webgpu\"], \"frameworks\": [\"AVFoundation\", \"CoreMedia\", \"CoreVideo\", \"Foundation\"], \"objc_arc\": [\"operators/gpu/webcam_in/avf_capture.mm\"] }")
@@ -465,14 +461,12 @@ if(APPLE)
         "-framework Foundation" "-framework AppKit" "-framework Metal"
     )
     target_include_directories(syphon_in PRIVATE deps/syphon deps ${CMAKE_CURRENT_BINARY_DIR})
-    target_compile_definitions(syphon_in PRIVATE VIVID_CODEGEN_BUILD)
     target_compile_options(syphon_in PRIVATE "-fobjc-arc")
 else()
     vivid_codegen_for(syphon_in operators/gpu/syphon_in/syphon_in_stub.cpp)
     add_library(syphon_in MODULE ${VIVID_CODEGEN_OUTPUT_syphon_in})
     target_link_libraries(syphon_in PRIVATE vivid_operator_api webgpu)
     target_include_directories(syphon_in PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-    target_compile_definitions(syphon_in PRIVATE VIVID_CODEGEN_BUILD)
 endif()
 set_target_properties(syphon_in PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 if(APPLE)
@@ -503,14 +497,12 @@ if(APPLE)
     add_library(syphon_out MODULE ${VIVID_CODEGEN_OUTPUT_syphon_out})
     target_link_libraries(syphon_out PRIVATE vivid_operator_api webgpu syphon_runtime)
     target_include_directories(syphon_out PRIVATE deps/syphon deps ${CMAKE_CURRENT_BINARY_DIR})
-    target_compile_definitions(syphon_out PRIVATE VIVID_CODEGEN_BUILD)
     target_compile_options(syphon_out PRIVATE "-fobjc-arc")
 else()
     vivid_codegen_for(syphon_out operators/gpu/syphon_out/syphon_out_stub.cpp)
     add_library(syphon_out MODULE ${VIVID_CODEGEN_OUTPUT_syphon_out})
     target_link_libraries(syphon_out PRIVATE vivid_operator_api webgpu)
     target_include_directories(syphon_out PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-    target_compile_definitions(syphon_out PRIVATE VIVID_CODEGEN_BUILD)
 endif()
 set_target_properties(syphon_out PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 if(APPLE)
@@ -641,7 +633,6 @@ target_include_directories(midi_file_player PRIVATE
     ${CMAKE_SOURCE_DIR}/operators/shared/sequencer
     ${CMAKE_CURRENT_BINARY_DIR}
 )
-target_compile_definitions(midi_file_player PRIVATE VIVID_CODEGEN_BUILD)
 set_target_properties(midi_file_player PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 if(APPLE)
     add_custom_command(TARGET midi_file_player POST_BUILD

@@ -512,7 +512,7 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
         auto uniform_layout_fn = reinterpret_cast<VividGeneratedUniformLayoutFn>(
             dlsym(handle, "vivid_generated_uniform_layout"));
         const char* mode_cstr = mode_fn ? mode_fn() : nullptr;
-        std::string registration_mode = (mode_cstr && *mode_cstr) ? mode_cstr : "legacy";
+        std::string registration_mode = (mode_cstr && *mode_cstr) ? mode_cstr : "unknown";
         const VividGeneratedUniformLayout* uniform_layout =
             uniform_layout_fn ? uniform_layout_fn() : nullptr;
         auto issues = validate_descriptor(desc, registration_mode.c_str(), uniform_layout);

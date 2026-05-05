@@ -655,127 +655,9 @@ extern "C" void vivid_prepare_instance_assets(                                \
         [[maybe_unused]] vivid::detail::metadata_keywords_sink keywords,      \
         [[maybe_unused]] vivid::detail::metadata_string_sink summary)
 
-// When codegen runs it defines VIVID_CODEGEN_BUILD — VIVID_REGISTER is a
-// marker-only no-op because the generated file provides the real exports.
-// Without codegen (test fixtures, PackageCompiler runtime builds) the old
-// descriptor-building body runs and exports "legacy" mode entry points.
-#ifdef VIVID_CODEGEN_BUILD
-
-#define VIVID_REGISTER(ClassName)                                             \
-    static_assert(true, "VIVID_REGISTER");
-
-#else // VIVID_CODEGEN_BUILD
-
-#define VIVID_REGISTER(ClassName)                                             \
-                                                                              \
-static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
-    static VividOperatorDescriptor desc{};                                    \
-    static std::vector<VividParamDescriptor> s_params;                        \
-    static std::vector<VividPortDescriptor>  s_ports;                         \
-    static std::vector<std::vector<std::string>> s_label_storage;             \
-    static std::vector<std::vector<const char*>> s_label_ptrs;                \
-    static std::vector<std::string> s_file_defaults;                          \
-    static std::vector<std::vector<int32_t>> s_visibility_values;             \
-    static bool inited = false;                                               \
-    if (!inited) {                                                            \
-        inited = true;                                                        \
-        static ClassName tmp;                                                  \
-        std::vector<vivid::ParamBase*> pbases;                                \
-        tmp.collect_params(pbases);                                           \
-        s_params.resize(pbases.size());                                       \
-        s_label_storage.resize(pbases.size());                                \
-        s_label_ptrs.resize(pbases.size());                                   \
-        s_file_defaults.resize(pbases.size());                                 \
-        s_visibility_values.resize(pbases.size());                            \
-        for (size_t i = 0; i < pbases.size(); ++i) {                          \
-            s_params[i].name          = pbases[i]->name;                      \
-            s_params[i].type          = pbases[i]->type;                      \
-            s_params[i].default_value = pbases[i]->default_value;             \
-            s_params[i].min_value     = pbases[i]->min_value;                 \
-            s_params[i].max_value     = pbases[i]->max_value;                 \
-            s_params[i].group               = pbases[i]->group;                \
-            s_params[i].display_hint        = pbases[i]->display_hint;         \
-            s_params[i].layout_columns      = pbases[i]->layout_columns;       \
-            s_params[i].layout_column_index = pbases[i]->layout_column_index;  \
-            s_params[i].widget_id           = pbases[i]->widget_id;            \
-            s_params[i].widget_span         = pbases[i]->widget_span;          \
-            s_params[i].semantic_tag        = pbases[i]->semantic_tag;         \
-            s_params[i].semantic_shape      = pbases[i]->semantic_shape;       \
-            s_params[i].semantic_unit       = pbases[i]->semantic_unit;        \
-            s_params[i].semantic_intent     = pbases[i]->semantic_intent;      \
-            s_params[i].description         = pbases[i]->description;          \
-            s_params[i].asset_kind          = pbases[i]->asset_kind;           \
-            s_params[i].repeat_group        = pbases[i]->repeat_group;          \
-            s_params[i].repeat_group_idx    = pbases[i]->repeat_group_idx;     \
-            s_params[i].visible_when_param  = pbases[i]->visible_when_param;   \
-            s_params[i].visible_when_op     = pbases[i]->visible_when_op;      \
-            s_visibility_values[i]          = pbases[i]->visible_when_values;  \
-            s_params[i].visible_when_values = s_visibility_values[i].empty()   \
-                ? nullptr : s_visibility_values[i].data();                    \
-            s_params[i].visible_when_value_count =                            \
-                static_cast<uint32_t>(s_visibility_values[i].size());         \
-            if (pbases[i]->choice_count > 0) {                                \
-                s_label_storage[i].clear();                                   \
-                s_label_ptrs[i].clear();                                      \
-                s_label_storage[i].reserve(pbases[i]->choice_count);          \
-                s_label_ptrs[i].reserve(pbases[i]->choice_count);             \
-                for (uint32_t li = 0; li < pbases[i]->choice_count; ++li) {   \
-                    const char* src = pbases[i]->choice_labels[li];           \
-                    s_label_storage[i].emplace_back(src ? src : "");          \
-                }                                                              \
-                for (const auto& lbl : s_label_storage[i])                    \
-                    s_label_ptrs[i].push_back(lbl.c_str());                   \
-                s_params[i].choice_labels = s_label_ptrs[i].data();           \
-                s_params[i].choice_count  = pbases[i]->choice_count;          \
-            } else {                                                          \
-                s_params[i].choice_labels = nullptr;                          \
-                s_params[i].choice_count  = 0;                                \
-            }                                                                 \
-            if (pbases[i]->type == VIVID_PARAM_FILE ||                         \
-                pbases[i]->type == VIVID_PARAM_TEXT) {                         \
-                const std::string* strp = nullptr;                             \
-                if (pbases[i]->type == VIVID_PARAM_FILE) {                     \
-                    auto* fp = static_cast<vivid::Param<vivid::FilePath>*>(    \
-                        pbases[i]);                                            \
-                    strp = &fp->str_value;                                     \
-                } else {                                                       \
-                    auto* tp = static_cast<vivid::Param<vivid::TextValue>*>(   \
-                        pbases[i]);                                            \
-                    strp = &tp->str_value;                                     \
-                }                                                              \
-                s_file_defaults[i] = *strp;                                    \
-                s_params[i].default_string = s_file_defaults[i].c_str();      \
-            } else {                                                          \
-                s_params[i].default_string = nullptr;                         \
-            }                                                                 \
-        }                                                                     \
-        tmp.collect_ports(s_ports);                                           \
-        desc.name           = ClassName::kName;                               \
-        desc.has_process_audio =                                              \
-            std::is_base_of_v<vivid::AudioProcessable, ClassName> ? 1 : 0;    \
-        desc.has_process_gpu =                                                \
-            std::is_base_of_v<vivid::GpuProcessable, ClassName> ? 1 : 0;      \
-        desc.has_process_frame =                                              \
-            std::is_base_of_v<vivid::FrameProcessable, ClassName> ? 1 : 0;    \
-        desc.lane_behavior = vivid::detail::get_lane_behavior<ClassName>();   \
-        desc.strategy_independent =                                           \
-            vivid::detail::get_strategy_independent<ClassName>() ? 1 : 0;     \
-        desc.param_count    = static_cast<uint32_t>(s_params.size());         \
-        desc.params         = s_params.data();                                \
-        desc.port_count     = static_cast<uint32_t>(s_ports.size());          \
-        desc.ports          = s_ports.data();                                 \
-        desc.time_dependent =                                                 \
-            vivid::detail::get_time_dependent<ClassName>() ? 1 : 0;           \
-        desc.display_name  = vivid::detail::get_display_name<ClassName>();    \
-        desc.keywords      = vivid::detail::get_keywords_data<ClassName>();   \
-        desc.keyword_count = vivid::detail::get_keywords_count<ClassName>();  \
-        desc.summary       = vivid::detail::get_summary<ClassName>();         \
-    }                                                                         \
-    return &desc;                                                             \
-}                                                                             \
-VIVID_INTERNAL_EXPORTS_WITH_DESCRIPTOR(ClassName, _vivid_get_descriptor(), "legacy")
-
-#endif // VIVID_CODEGEN_BUILD
+// Source marker consumed by operator_codegen — always a no-op in compilation.
+// The generated *_generated_registration.cpp provides all extern "C" entry points.
+#define VIVID_REGISTER(ClassName) static_assert(true, "VIVID_REGISTER");
 
 // ---------------------------------------------------------------------------
 // VIVID_FILE_DROP(handlers_array) — exports vivid_file_drop_descriptor.
@@ -795,65 +677,11 @@ extern "C" const VividFileDropHandlerDescriptor* vivid_file_drop_descriptor(   \
 // ---------------------------------------------------------------------------
 // VIVID_THUMBNAIL / VIVID_INSPECTOR / VIVID_INSPECTOR_FULL_MODE / VIVID_EDITOR
 //
-// When VIVID_CODEGEN_BUILD is defined the generated registration file emits
-// these exports itself (after _VividInstance is defined). Expand to nothing
-// here so the operator source can be #include-d without forward-reference errors.
+// Always expand to nothing in operator source — the generated registration file
+// emits these exports itself (after _VividInstance is defined).
 // ---------------------------------------------------------------------------
-#ifdef VIVID_CODEGEN_BUILD
 
 #define VIVID_THUMBNAIL(ClassName)
 #define VIVID_INSPECTOR(ClassName)
 #define VIVID_INSPECTOR_FULL_MODE(ClassName)
 #define VIVID_EDITOR(ClassName)
-
-#else // VIVID_CODEGEN_BUILD
-
-// VIVID_THUMBNAIL(ClassName) — exports vivid_draw_thumbnail entry point.
-// Place alongside VIVID_REGISTER for operators that override draw_thumbnail.
-#define VIVID_THUMBNAIL(ClassName)                                             \
-extern "C" void vivid_draw_thumbnail(                                          \
-    void* instance, const VividThumbnailContext* ctx) {                        \
-    auto* inst = static_cast<_VividInstance*>(instance);                       \
-    _vivid_sync_params(inst,                                                   \
-                       const_cast<float*>(ctx ? ctx->param_values : nullptr),  \
-                       const_cast<const char**>(ctx ? ctx->file_param_values   \
-                                                     : nullptr),               \
-                       ctx ? ctx->file_param_count : 0);                       \
-    inst->op.draw_thumbnail(ctx);                                              \
-}
-
-// VIVID_INSPECTOR / VIVID_INSPECTOR_FULL_MODE — exports vivid_draw_inspector + vivid_inspector_mode.
-// VIVID_INSPECTOR       = STANDARD mode (core draws params first, operator draws below)
-// VIVID_INSPECTOR_FULL_MODE = FULL mode (operator handles entire inspector)
-#define VIVID_INSPECTOR(ClassName)                                             \
-extern "C" uint32_t vivid_inspector_mode() {                                   \
-    return VIVID_INSPECTOR_STANDARD;                                           \
-}                                                                              \
-extern "C" void vivid_draw_inspector(void* instance,                           \
-                                     VividInspectorContext* ctx) {              \
-    static_cast<_VividInstance*>(instance)->op.draw_inspector(ctx);             \
-}
-
-#define VIVID_INSPECTOR_FULL_MODE(ClassName)                                   \
-extern "C" uint32_t vivid_inspector_mode() {                                   \
-    return VIVID_INSPECTOR_FULL;                                               \
-}                                                                              \
-extern "C" void vivid_draw_inspector(void* instance,                           \
-                                     VividInspectorContext* ctx) {              \
-    static_cast<_VividInstance*>(instance)->op.draw_inspector(ctx);             \
-}
-
-// VIVID_EDITOR(ClassName) — exports vivid_editor_metadata + vivid_draw_editor.
-// Required operator contract:
-//     static VividEditorMetadata editor_metadata();
-//     void draw_editor(VividEditorContext* ctx);
-#define VIVID_EDITOR(ClassName)                                                \
-extern "C" VividEditorMetadata vivid_editor_metadata() {                       \
-    return ClassName::editor_metadata();                                       \
-}                                                                              \
-extern "C" void vivid_draw_editor(void* instance,                              \
-                                  VividEditorContext* ctx) {                   \
-    static_cast<_VividInstance*>(instance)->op.draw_editor(ctx);               \
-}
-
-#endif // VIVID_CODEGEN_BUILD

@@ -530,8 +530,7 @@ nlohmann::json OperatorSourceDocs::resolve(const std::string& cache_key,
             if (!record.valid)
                 continue;
             for (const auto& call : record.register_calls) {
-                if (call.macro_name == "VIVID_REGISTER" ||
-                    call.macro_name == "VIVID_REGISTER_V2") {
+                if (call.macro_name == "VIVID_REGISTER") {
                     index.registrations[call.type_name] = normalized;
                 }
             }
