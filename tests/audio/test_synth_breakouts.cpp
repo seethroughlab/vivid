@@ -53,13 +53,11 @@ struct FmHarness {
     float* input_bufs[3]  = {&scalar_in_freq, &scalar_in_mod, &scalar_in_gate};
 
     LaneOutBuf voice_ids_buf, voice_gates_buf, voice_velocities_buf, voice_freqs_buf;
-    // Lane outputs are indexed by lane-output-port position. FmSynth's
-    // outputs (in collect_ports order): output, voices_out, voice_ids,
-    // voice_gates, voice_velocities, voice_freqs, [analysis: rms, peak,
-    // waveform]. The lane-output array indexes only LANE_ARRAY ports —
-    // voice_ids=0, voice_gates=1, voice_velocities=2, voice_freqs=3,
-    // waveform=4.
-    VividLaneOutput lane_outputs[5] = {};
+    // output_lanes is indexed by overall output port ordinal. FmSynth's
+    // output ports: output(0), voices_out(1), voice_ids(2), voice_gates(3),
+    // voice_velocities(4), voice_freqs(5), then analysis ports.
+    // Slots 0-1 (audio buffer ports) are left zero/unused.
+    VividLaneOutput lane_outputs[6] = {};
 
     VividNoteBuffer notes{};
     void* note_inputs[1] = {&notes};
@@ -77,10 +75,11 @@ struct FmHarness {
         ctx.custom_inputs      = note_inputs;
         ctx.custom_input_count = 1;
 
-        lane_outputs[0] = {&voice_ids_buf,        LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[1] = {&voice_gates_buf,      LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[2] = {&voice_velocities_buf, LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[3] = {&voice_freqs_buf,      LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
+        // lane_outputs[0] = output audio port, lane_outputs[1] = voices_out — both unused/zero.
+        lane_outputs[2] = {&voice_ids_buf,        LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
+        lane_outputs[3] = {&voice_gates_buf,      LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
+        lane_outputs[4] = {&voice_velocities_buf, LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
+        lane_outputs[5] = {&voice_freqs_buf,      LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
         ctx.output_lanes = lane_outputs;
     }
 

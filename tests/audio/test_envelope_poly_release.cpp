@@ -32,7 +32,12 @@ struct NoteBreakoutHarness {
     LaneOutBuf voice_gates_buf;
     LaneOutBuf voice_velocities_buf;
     LaneOutBuf voice_freqs_buf;
-    VividLaneOutput lane_outputs[4] = {};
+    // output_lanes is indexed by overall output port ordinal.
+    // NoteBreakout: notes_out(0,custom_ref), voice_ids(1..7 lane arrays).
+    // Slot 0 is the notes_out custom ref port — left as zero/unused.
+    // Slots 5-7 (voice_pitch_bend/pressure/timbre) are left as zero since
+    // this test only exercises the first four lane outputs.
+    VividLaneOutput lane_outputs[8] = {};
 
     VividNoteBuffer notes{};
     void* custom_inputs[1] = {&notes};
@@ -44,10 +49,10 @@ struct NoteBreakoutHarness {
         ctx.custom_inputs = custom_inputs;
         ctx.custom_input_count = 1;
 
-        lane_outputs[0] = {&voice_ids_buf, LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[1] = {&voice_gates_buf, LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[2] = {&voice_velocities_buf, LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[3] = {&voice_freqs_buf, LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
+        lane_outputs[1] = {&voice_ids_buf, LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
+        lane_outputs[2] = {&voice_gates_buf, LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
+        lane_outputs[3] = {&voice_velocities_buf, LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
+        lane_outputs[4] = {&voice_freqs_buf, LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
         ctx.output_lanes = lane_outputs;
     }
 

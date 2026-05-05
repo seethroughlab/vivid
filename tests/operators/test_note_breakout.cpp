@@ -53,7 +53,10 @@ struct Harness {
     LaneOutBuf voice_pitch_bend_buf;
     LaneOutBuf voice_pressure_buf;
     LaneOutBuf voice_timbre_buf;
-    VividLaneOutput lane_outputs[7] = {};
+    // output_lanes is indexed by overall output port ordinal. NoteBreakout has
+    // 8 output ports: notes_out (custom ref, ordinal 0) + 7 lane arrays (1-7).
+    // Slot 0 is unused (notes_out is a custom ref port, not a lane array).
+    VividLaneOutput lane_outputs[8] = {};
 
     VividNoteBuffer notes{};
     void* custom_inputs[1] = {&notes};
@@ -67,13 +70,14 @@ struct Harness {
         ctx.lane_state_service = nullptr;
         ctx.lane_id            = 1;
 
-        lane_outputs[0] = {&voice_ids_buf,         LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[1] = {&voice_gates_buf,       LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[2] = {&voice_velocities_buf,  LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[3] = {&voice_freqs_buf,       LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[4] = {&voice_pitch_bend_buf,  LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[5] = {&voice_pressure_buf,    LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[6] = {&voice_timbre_buf,      LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
+        // lane_outputs[0] is the slot for notes_out (custom ref) — left as zero.
+        lane_outputs[1] = {&voice_ids_buf,         LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
+        lane_outputs[2] = {&voice_gates_buf,       LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
+        lane_outputs[3] = {&voice_velocities_buf,  LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
+        lane_outputs[4] = {&voice_freqs_buf,       LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
+        lane_outputs[5] = {&voice_pitch_bend_buf,  LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
+        lane_outputs[6] = {&voice_pressure_buf,    LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
+        lane_outputs[7] = {&voice_timbre_buf,      LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
         ctx.output_lanes = lane_outputs;
 
         ctx.custom_inputs      = custom_inputs;
