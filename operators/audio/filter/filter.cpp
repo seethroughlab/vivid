@@ -339,5 +339,4 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 VIVID_DEFINE_OP(Filter) {
 }
 
-VIVID_REGISTER(Filter)
 VIVID_THUMBNAIL(Filter)

@@ -101,5 +101,4 @@ struct Gain : vivid::OperatorBase, vivid::AudioProcessable {
 VIVID_DEFINE_OP(Gain) {
 }
 
-VIVID_REGISTER(Gain)
 VIVID_THUMBNAIL(Gain)

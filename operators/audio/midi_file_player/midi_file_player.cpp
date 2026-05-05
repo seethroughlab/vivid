@@ -17,7 +17,6 @@ static const VividFileDropHandlerDescriptor kMidiFilePlayerFileDrops[] = {{
 VIVID_DEFINE_OP(MidiFilePlayer) {
 }
 
-VIVID_REGISTER(MidiFilePlayer)
 VIVID_FILE_DROP(kMidiFilePlayerFileDrops)
 
 // Optional debug-inject hook (probed by OperatorLoader via dlsym at load

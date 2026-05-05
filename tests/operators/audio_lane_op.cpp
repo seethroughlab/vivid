@@ -45,4 +45,3 @@ struct AudioLaneOp : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
-VIVID_REGISTER(AudioLaneOp)

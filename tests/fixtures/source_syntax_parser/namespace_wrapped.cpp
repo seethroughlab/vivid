@@ -19,7 +19,5 @@ struct NamespaceOp : vivid::OperatorBase, vivid::FrameProcessable {
     void process_frame(const VividFrameContext*) override {}
 };
 
-VIVID_REGISTER(NamespaceOp)
-
 } // namespace operators
 } // namespace vivid

@@ -535,4 +535,3 @@ private:
 VIVID_DEFINE_OP(Composite) {
 }
 
-VIVID_REGISTER(Composite)

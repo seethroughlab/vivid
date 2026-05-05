@@ -21,4 +21,3 @@ struct ScalarSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(ScalarSourceOp)

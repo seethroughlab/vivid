@@ -314,4 +314,3 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
 VIVID_DEFINE_OP(FmSynth) {
 }
 
-VIVID_REGISTER(FmSynth)

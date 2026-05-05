@@ -66,4 +66,3 @@ struct LaneSlewOp : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
-VIVID_REGISTER(LaneSlewOp)

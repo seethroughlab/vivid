@@ -74,4 +74,3 @@ struct LaneStateTrackerOp : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
-VIVID_REGISTER(LaneStateTrackerOp)

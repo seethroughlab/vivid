@@ -66,4 +66,3 @@ struct Reverb : vivid::OperatorBase, vivid::AudioProcessable {
 VIVID_DEFINE_OP(Reverb) {
 }
 
-VIVID_REGISTER(Reverb)

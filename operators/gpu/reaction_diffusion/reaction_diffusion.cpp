@@ -531,4 +531,3 @@ private:
 VIVID_DEFINE_OP(ReactionDiffusion) {
 }
 
-VIVID_REGISTER(ReactionDiffusion)

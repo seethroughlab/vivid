@@ -4,8 +4,8 @@
 // --- Audio-rate operator entry + registration ---
 //
 // draw_thumbnail / draw_editor bodies live in euclidean_editor.cpp so
-// the test target (which compiles that file) gets the operator's vtable
-// without needing to pull in VIVID_REGISTER and its `extern "C"` bag.
+// the test target can include that file and get the vtable without
+// pulling in the generated registration file.
 
 #include "control/audio_scalar_utils.h"
 
@@ -30,6 +30,5 @@ struct Euclidean : EuclideanCore, vivid::AudioProcessable {
 VIVID_DEFINE_OP(Euclidean) {
 }
 
-VIVID_REGISTER(Euclidean)
 VIVID_THUMBNAIL(Euclidean)
 VIVID_EDITOR(Euclidean)

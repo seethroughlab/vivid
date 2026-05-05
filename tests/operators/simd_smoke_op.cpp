@@ -71,6 +71,5 @@ struct SimdSmokeOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(SimdSmokeOp)
 
 #endif  // HWY_ONCE

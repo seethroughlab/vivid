@@ -87,4 +87,3 @@ private:
 VIVID_DEFINE_OP(SmoothAudio) {
 }
 
-VIVID_REGISTER(SmoothAudio)

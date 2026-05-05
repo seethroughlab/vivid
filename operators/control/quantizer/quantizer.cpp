@@ -150,4 +150,3 @@ VIVID_DEFINE_OP(Quantizer) {
     summary = "Snaps a signal to musical scale pitches, range steps, or uniform levels.";
 }
 
-VIVID_REGISTER(Quantizer)

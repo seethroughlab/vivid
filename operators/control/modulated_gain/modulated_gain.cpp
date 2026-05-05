@@ -85,4 +85,3 @@ private:
 VIVID_DEFINE_OP(ModulatedGain) {
 }
 
-VIVID_REGISTER(ModulatedGain)

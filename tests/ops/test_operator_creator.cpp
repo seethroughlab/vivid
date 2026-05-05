@@ -96,7 +96,6 @@ int main() {
         std::string src = read_file(cpp_path);
         check(src.find("struct MyOp") != std::string::npos, "struct name is MyOp (PascalCase)");
         check(src.find("vivid::OperatorBase, vivid::FrameProcessable") != std::string::npos, "inherits OperatorBase + FrameProcessable");
-        check(src.find("VIVID_REGISTER(MyOp)") != std::string::npos, "VIVID_REGISTER present");
         check(src.find("semantic_tag(amount, \"probability_01\")") != std::string::npos,
               "control template includes semantic_tag example");
         check(src.find("semantic_shape(amount, \"scalar\")") != std::string::npos,

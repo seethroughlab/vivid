@@ -440,31 +440,7 @@ private:
     std::string         shader_error_msg_;
 
     bool lazy_init(const VividGpuContext* gpu) {
-        // Use an error scope around shader creation: wgpu-native returns a non-null
-        // "error object" handle when WGSL compilation fails, not nullptr.  If we proceed
-        // to create a pipeline with that invalid handle and then call run_pass(), wgpu-native
-        // panics on wgpuQueueSubmit.  The error scope lets us detect the failure before
-        // touching the pipeline path.
-        wgpuDevicePushErrorScope(gpu->device, WGPUErrorFilter_Validation);
-        shader_ = vivid::gpu::create_shader(gpu->device, kNoiseFragment, "Noise Shader");
-        {
-            WGPUPopErrorScopeCallbackInfo cb{};
-            cb.mode = WGPUCallbackMode_AllowSpontaneous;
-            cb.callback = [](WGPUPopErrorScopeStatus, WGPUErrorType type,
-                              WGPUStringView msg, void* ud, void*) {
-                if (type != WGPUErrorType_NoError) {
-                    auto* self = static_cast<Noise*>(ud);
-                    self->shader_error_msg_ = msg.data
-                        ? std::string(msg.data, msg.length) : "unknown WGSL error";
-                    std::fprintf(stderr, "[noise] WGSL error — keeping black output. %s\n",
-                                 self->shader_error_msg_.c_str());
-                }
-            };
-            cb.userdata1 = this;
-            wgpuDevicePopErrorScope(gpu->device, cb);
-        }
-        // wgpu-native fires error-scope callbacks synchronously during popErrorScope,
-        // so no explicit device poll is needed here.
+        shader_ = vivid::gpu::create_shader_checked(gpu->device, kNoiseFragment, "Noise Shader", shader_error_msg_);
         if (!shader_error_msg_.empty() || !shader_) return false;
 
         uniform_buf_ = vivid::gpu::create_uniform_buffer(gpu->device, sizeof(NoiseUniforms), "Noise Uniforms");
@@ -517,4 +493,3 @@ VIVID_DEFINE_OP(Noise) {
     summary = "3D noise generator with FBm octaves and animation.";
 }
 
-VIVID_REGISTER(Noise)

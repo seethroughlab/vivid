@@ -34,6 +34,5 @@ VIVID_DEFINE_OP(ChordProgression) {
     keywords = {"harmony", "chords", "diatonic", "roman numerals"};
 }
 
-VIVID_REGISTER(ChordProgression)
 VIVID_THUMBNAIL(ChordProgression)
 VIVID_INSPECTOR(ChordProgression)

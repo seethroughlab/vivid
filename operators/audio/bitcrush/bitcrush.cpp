@@ -98,4 +98,3 @@ struct Bitcrush : vivid::OperatorBase, vivid::AudioProcessable {
 VIVID_DEFINE_OP(Bitcrush) {
 }
 
-VIVID_REGISTER(Bitcrush)

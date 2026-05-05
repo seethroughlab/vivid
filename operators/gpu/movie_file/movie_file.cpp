@@ -1404,4 +1404,3 @@ private:
 VIVID_DEFINE_OP(MovieFile) {
 }
 
-VIVID_REGISTER(MovieFile)

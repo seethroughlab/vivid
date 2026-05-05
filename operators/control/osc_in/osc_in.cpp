@@ -246,4 +246,3 @@ VIVID_DEFINE_OP(OscIn) {
     summary = "Listens for OSC messages over UDP and outputs the first argument as a scalar.";
 }
 
-VIVID_REGISTER(OscIn)

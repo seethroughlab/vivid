@@ -37,4 +37,3 @@ struct LaneMetadataAudioOp : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
-VIVID_REGISTER(LaneMetadataAudioOp)

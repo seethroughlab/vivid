@@ -33,6 +33,3 @@ struct NonDocBlockOp : vivid::OperatorBase, vivid::FrameProcessable {
     void process_frame(const VividFrameContext*) override {}
 };
 
-VIVID_REGISTER(BlockDocOp)
-VIVID_REGISTER(SingleLineCommentOp)
-VIVID_REGISTER(NonDocBlockOp)

@@ -193,5 +193,4 @@ private:
     }
 };
 
-VIVID_REGISTER(GpuFillOp)
 VIVID_THUMBNAIL(GpuFillOp)

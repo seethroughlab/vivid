@@ -39,4 +39,3 @@ struct AudioScalarProbeOp : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
-VIVID_REGISTER(AudioScalarProbeOp)

@@ -27,4 +27,3 @@ struct PrepareAssetsTestOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(PrepareAssetsTestOp)

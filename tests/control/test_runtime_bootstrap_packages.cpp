@@ -90,7 +90,6 @@ struct BootstrapLaneSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(BootstrapLaneSourceOp)
 )cpp";
     }
 
@@ -127,7 +126,6 @@ struct BootstrapLaneSinkOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(BootstrapLaneSinkOp)
 )cpp";
     }
 

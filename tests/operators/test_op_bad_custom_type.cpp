@@ -33,5 +33,4 @@ struct BadCustomTypeOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(BadCustomTypeOp)
 VIVID_DESCRIBE_REF_TYPE(BadMediaStreamToken)

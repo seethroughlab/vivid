@@ -39,4 +39,3 @@ struct SyphonIn : vivid::OperatorBase, vivid::GpuProcessable {
 VIVID_DEFINE_OP(SyphonIn) {
 }
 
-VIVID_REGISTER(SyphonIn)

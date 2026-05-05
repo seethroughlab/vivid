@@ -273,4 +273,3 @@ struct SP404 : vivid::OperatorBase, vivid::AudioProcessable {
 VIVID_DEFINE_OP(SP404) {
 }
 
-VIVID_REGISTER(SP404)

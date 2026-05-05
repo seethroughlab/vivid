@@ -560,6 +560,5 @@ private:
 VIVID_DEFINE_OP(Flocking2D) {
 }
 
-VIVID_REGISTER(Flocking2D)
 
 VIVID_DESCRIBE_REF_TYPE(vivid::gpu::VividDrawable2D)

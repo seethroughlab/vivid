@@ -124,4 +124,3 @@ private:
 VIVID_DEFINE_OP(Alternate) {
 }
 
-VIVID_REGISTER(Alternate)

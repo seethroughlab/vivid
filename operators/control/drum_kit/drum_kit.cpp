@@ -149,4 +149,3 @@ private:
 VIVID_DEFINE_OP(DrumKit) {
 }
 
-VIVID_REGISTER(DrumKit)

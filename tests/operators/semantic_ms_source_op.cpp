@@ -25,4 +25,3 @@ struct MsSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(MsSourceOp)

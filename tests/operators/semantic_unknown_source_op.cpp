@@ -24,4 +24,3 @@ struct UnknownTagSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(UnknownTagSourceOp)

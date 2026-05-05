@@ -42,8 +42,7 @@ static void write_live_pkg_source(const std::string& root,
            "    void process_frame(const VividFrameContext* ctx) override {\n"
         << "        ctx->output_values[0] = " << std::to_string(output_value) << "f;\n"
            "    }\n"
-           "};\n\n"
-           "VIVID_REGISTER(" << type_name << ")\n";
+           "};\n\n";
 }
 
 static void write_live_pkg_manifest(const std::string& root, const std::string& package_name) {

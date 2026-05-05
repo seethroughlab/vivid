@@ -19,4 +19,3 @@ struct UntaggedDestOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(UntaggedDestOp)

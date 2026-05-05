@@ -199,25 +199,8 @@ private:
     std::string shader_error_msg_;
 
     bool lazy_init(const VividGpuContext* ctx) {
-        wgpuDevicePushErrorScope(ctx->device, WGPUErrorFilter_Validation);
         std::string frag = std::string(vivid::gpu::WGSL_CONSTANTS) + kMetronomeVizFragment;
-        shader_ = vivid::gpu::create_shader(ctx->device, frag.c_str(), "MetronomeViz Shader");
-        {
-            WGPUPopErrorScopeCallbackInfo cb{};
-            cb.mode = WGPUCallbackMode_AllowSpontaneous;
-            cb.callback = [](WGPUPopErrorScopeStatus, WGPUErrorType type,
-                             WGPUStringView msg, void* ud, void*) {
-                if (type != WGPUErrorType_NoError) {
-                    auto* self = static_cast<MetronomeViz*>(ud);
-                    self->shader_error_msg_ = msg.data
-                        ? std::string(msg.data, msg.length) : "unknown WGSL error";
-                    std::fprintf(stderr, "[metronome_viz] WGSL error — keeping black output. %s\n",
-                                 self->shader_error_msg_.c_str());
-                }
-            };
-            cb.userdata1 = this;
-            wgpuDevicePopErrorScope(ctx->device, cb);
-        }
+        shader_ = vivid::gpu::create_shader_checked(ctx->device, frag.c_str(), "MetronomeViz Shader", shader_error_msg_);
         if (!shader_error_msg_.empty() || !shader_) return false;
 
         uniform_buf_ = vivid::gpu::create_uniform_buffer(
@@ -263,4 +246,3 @@ private:
 VIVID_DEFINE_OP(MetronomeViz) {
 }
 
-VIVID_REGISTER(MetronomeViz)

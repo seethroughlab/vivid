@@ -523,4 +523,3 @@ private:
 VIVID_DEFINE_OP(Text2D) {
 }
 
-VIVID_REGISTER(Text2D)

@@ -22,6 +22,5 @@ struct NotePattern : NotePatternCore, vivid::AudioProcessable {
 VIVID_DEFINE_OP(NotePattern) {
 }
 
-VIVID_REGISTER(NotePattern)
 VIVID_THUMBNAIL(NotePattern)
 VIVID_INSPECTOR(NotePattern)

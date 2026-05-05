@@ -28,4 +28,3 @@ struct TestOpAdvancedPort : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(TestOpAdvancedPort)

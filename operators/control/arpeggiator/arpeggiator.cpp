@@ -112,7 +112,6 @@ private:
 VIVID_DEFINE_OP(Arpeggiator) {
 }
 
-VIVID_REGISTER(Arpeggiator)
 VIVID_THUMBNAIL(Arpeggiator)
 VIVID_EDITOR(Arpeggiator)
 

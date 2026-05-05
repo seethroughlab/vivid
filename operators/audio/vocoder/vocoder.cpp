@@ -77,4 +77,3 @@ struct Vocoder : vivid::OperatorBase, vivid::AudioProcessable {
 VIVID_DEFINE_OP(Vocoder) {
 }
 
-VIVID_REGISTER(Vocoder)

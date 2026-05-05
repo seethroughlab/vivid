@@ -531,4 +531,3 @@ struct NoteModulator : vivid::OperatorBase, vivid::AudioProcessable {
 VIVID_DEFINE_OP(NoteModulator) {
 }
 
-VIVID_REGISTER(NoteModulator)

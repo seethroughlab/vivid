@@ -16,7 +16,7 @@
 
 // Thumbnail body lives here (co-located with draw_editor so tests that
 // compile this file resolve EuclideanCore's vtable without pulling in
-// the entry cpp's VIVID_REGISTER). Reads pattern from the shared
+// the generated registration file). Reads pattern from the shared
 // Bjorklund helper — same code path as compute() and the editor.
 void EuclideanCore::draw_thumbnail(const VividThumbnailContext* ctx) {
     if (!ctx || !ctx->draw.opaque) return;

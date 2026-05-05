@@ -56,7 +56,6 @@ struct DescriptorResult {
     std::string operator_class_name;
     std::string stable_name_expr;
     bool has_vivid_define_op = false;
-    bool has_vivid_register = false;
     bool has_process_audio = false;
     bool has_process_gpu = false;
     bool has_process_frame = false;

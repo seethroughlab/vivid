@@ -230,4 +230,3 @@ struct PingPongDelay : vivid::OperatorBase, vivid::AudioProcessable {
 VIVID_DEFINE_OP(PingPongDelay) {
 }
 
-VIVID_REGISTER(PingPongDelay)

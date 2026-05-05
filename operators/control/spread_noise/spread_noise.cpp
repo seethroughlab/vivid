@@ -177,5 +177,4 @@ private:
 VIVID_DEFINE_OP(SpreadNoise) {
 }
 
-VIVID_REGISTER(SpreadNoise)
 VIVID_THUMBNAIL(SpreadNoise)

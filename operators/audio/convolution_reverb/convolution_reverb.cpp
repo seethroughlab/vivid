@@ -86,4 +86,3 @@ struct ConvolutionReverb : vivid::OperatorBase, vivid::AudioProcessable {
 VIVID_DEFINE_OP(ConvolutionReverb) {
 }
 
-VIVID_REGISTER(ConvolutionReverb)

@@ -11,4 +11,3 @@ struct TemplatedOp : vivid::OperatorBase, vivid::GpuProcessable {
     void process_gpu(const VividGpuContext*) override {}
 };
 
-VIVID_REGISTER(TemplatedOp)

@@ -336,6 +336,5 @@ static const VividFileDropHandlerDescriptor kSamplerFileDrops[] = {{
 VIVID_DEFINE_OP(Sampler) {
 }
 
-VIVID_REGISTER(Sampler)
 VIVID_FILE_DROP(kSamplerFileDrops)
 VIVID_INSPECTOR(Sampler)

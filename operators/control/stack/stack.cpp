@@ -120,4 +120,3 @@ private:
 VIVID_DEFINE_OP(Stack) {
 }
 
-VIVID_REGISTER(Stack)

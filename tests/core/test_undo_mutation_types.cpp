@@ -301,8 +301,7 @@ int main(int argc, char* argv[]) {
                    "    out.push_back({\"out\", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});\n"
                    "  }\n"
                    "  void process_frame(VividFrameContext* ctx) override { ctx->output_values[0] = ctx->input_values[0] * scale.value; }\n"
-                   "};\n"
-                   "VIVID_REGISTER(TestOp)\n";
+                   "};\n";
         }
 
         vivid::PackageCompiler pkg_compiler(build_dir, build_dir);

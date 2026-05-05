@@ -36,4 +36,3 @@ struct AudioTestOp : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
-VIVID_REGISTER(AudioTestOp)

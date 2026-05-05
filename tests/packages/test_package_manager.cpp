@@ -72,7 +72,6 @@ struct TestMgrOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(TestMgrOp)
 )cpp";
     }
 
@@ -210,7 +209,6 @@ struct BadCompile : OperatorBase, FrameProcessable {
         (void)x;
     }
 };
-VIVID_REGISTER(BadCompile, "BadCompile", "Bad compile fixture", "control")
 )cpp";
     }
     auto fail_result = pm.install(fail_pkg_dir);
@@ -375,7 +373,6 @@ struct TestCmakeOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(TestCmakeOp)
 #endif
 )cpp";
     }

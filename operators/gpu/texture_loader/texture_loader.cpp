@@ -337,5 +337,4 @@ static const VividFileDropHandlerDescriptor kTextureLoaderFileDrops[] = {{
 VIVID_DEFINE_OP(TextureLoader) {
 }
 
-VIVID_REGISTER(TextureLoader)
 VIVID_FILE_DROP(kTextureLoaderFileDrops)

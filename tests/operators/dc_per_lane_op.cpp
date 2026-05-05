@@ -33,4 +33,3 @@ struct DcPerLaneOp : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
-VIVID_REGISTER(DcPerLaneOp)

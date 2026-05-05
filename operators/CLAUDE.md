@@ -30,13 +30,13 @@ operators/control/drum_sequencer/
     drum_sequencer_editor.cpp               custom VIVID_EDITOR window
     drum_sequencer_editor_shared.{h,cpp}    pure-logic helpers shared with tests
 ```
-The cmake target name matches the operator dir name (e.g. `drum_sequencer`); the registered `kName` is whatever the `VIVID_REGISTER` block names (e.g. `"DrumSequencer"`). All control operators run at audio rate; frame-rate consumers (GPU shaders, etc.) read the operator's outputs through the cross-cadence bridge transparently.
+The cmake target name matches the operator dir name (e.g. `drum_sequencer`); the registered `kName` is the value of the operator struct's `kName` static (e.g. `"DrumSequencer"`). All control operators run at audio rate; frame-rate consumers (GPU shaders, etc.) read the operator's outputs through the cross-cadence bridge transparently.
 
 **ChildOp-embeddable operator** — a few control operators (currently `lfo`, `envelope`, `smooth`) are embedded into other operators via `ChildOp<T>`. They register two surfaces:
 ```
 operators/control/envelope/
     envelope.h                  embeddable Envelope class + math (consumed via #include)
-    envelope.cpp                registered audio Envelope (kName "Envelope") + VIVID_REGISTER
+    envelope.cpp                registered audio Envelope (kName "Envelope")
     envelope_embeddable.cpp     out-of-line virtuals + thumbnail; linked into both
                                 envelope.dylib and vivid_embeddable_op_support.a
     factory_presets.json

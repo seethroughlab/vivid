@@ -36,4 +36,3 @@ struct StringSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(StringSourceOp)

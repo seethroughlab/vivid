@@ -62,4 +62,3 @@ VIVID_DEFINE_OP(PhrasePulse) {
     summary = "Emits a one-frame gate at the start of every N-bar phrase.";
 }
 
-VIVID_REGISTER(PhrasePulse)

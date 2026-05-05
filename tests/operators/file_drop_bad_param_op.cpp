@@ -29,5 +29,4 @@ static const VividFileDropHandlerDescriptor kFileDropBadParamHandlers[] = {{
     "Invalid file-drop metadata fixture.",
 }};
 
-VIVID_REGISTER(FileDropBadParamOp)
 VIVID_FILE_DROP(kFileDropBadParamHandlers)

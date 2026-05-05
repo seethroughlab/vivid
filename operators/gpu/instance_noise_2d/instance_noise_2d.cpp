@@ -167,4 +167,3 @@ private:
 VIVID_DEFINE_OP(InstanceNoise2D) {
 }
 
-VIVID_REGISTER(InstanceNoise2D)

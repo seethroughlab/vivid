@@ -206,7 +206,6 @@ private:
 VIVID_DEFINE_OP(Shape2D) {
 }
 
-VIVID_REGISTER(Shape2D)
 VIVID_THUMBNAIL(Shape2D)
 
 VIVID_DESCRIBE_REF_TYPE(vivid::gpu::VividDrawable2D)

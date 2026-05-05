@@ -31,5 +31,4 @@ struct ExportCustomPortOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(ExportCustomPortOp)
 VIVID_DESCRIBE_REF_TYPE(test::TestCustomRef)

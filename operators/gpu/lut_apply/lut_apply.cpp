@@ -507,25 +507,7 @@ private:
     }
 
     bool lazy_init(const VividGpuContext* gpu) {
-        // Compile shader with error scope
-        wgpuDevicePushErrorScope(gpu->device, WGPUErrorFilter_Validation);
-        shader_ = vivid::gpu::create_shader(gpu->device, kLutApplyFragment, "LutApply Shader");
-        {
-            WGPUPopErrorScopeCallbackInfo cb{};
-            cb.mode = WGPUCallbackMode_AllowSpontaneous;
-            cb.callback = [](WGPUPopErrorScopeStatus, WGPUErrorType type,
-                              WGPUStringView msg, void* ud1, void*) {
-                if (type != WGPUErrorType_NoError) {
-                    auto* self = static_cast<LutApply*>(ud1);
-                    self->shader_error_msg_ = msg.data
-                        ? std::string(msg.data, msg.length) : "unknown WGSL error";
-                    std::fprintf(stderr, "[lut_apply] WGSL error: %s\n",
-                                 self->shader_error_msg_.c_str());
-                }
-            };
-            cb.userdata1 = this;
-            wgpuDevicePopErrorScope(gpu->device, cb);
-        }
+        shader_ = vivid::gpu::create_shader_checked(gpu->device, kLutApplyFragment, "LutApply Shader", shader_error_msg_);
         if (!shader_error_msg_.empty() || !shader_) return false;
 
         uniform_buf_ = vivid::gpu::create_uniform_buffer(gpu->device, sizeof(LutUniforms), "LutApply Uniforms");
@@ -577,4 +559,3 @@ private:
 VIVID_DEFINE_OP(LutApply) {
 }
 
-VIVID_REGISTER(LutApply)

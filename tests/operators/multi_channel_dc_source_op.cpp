@@ -27,4 +27,3 @@ struct MultiChannelDcSourceOp : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
-VIVID_REGISTER(MultiChannelDcSourceOp)

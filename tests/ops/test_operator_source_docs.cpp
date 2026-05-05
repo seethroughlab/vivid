@@ -73,7 +73,6 @@ struct MockOp : vivid::OperatorBase, vivid::FrameProcessable {
     void process_frame(const VividFrameContext*) override {}
 };
 
-VIVID_REGISTER(MockOp)
 )";
     }
     {
@@ -85,7 +84,6 @@ struct NoDocOp : vivid::OperatorBase, vivid::FrameProcessable {
     void collect_ports(std::vector<VividPortDescriptor>&) override {}
     void process_frame(const VividFrameContext*) override {}
 };
-VIVID_REGISTER(NoDocOp)
 )";
     }
 

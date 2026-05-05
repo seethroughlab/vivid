@@ -26,5 +26,3 @@ struct MultilineBaseOp
     }
     void process_gpu(const VividGpuContext*) override {}
 };
-
-VIVID_REGISTER(MultilineBaseOp)

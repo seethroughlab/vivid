@@ -67,6 +67,5 @@ private:
 VIVID_DEFINE_OP(DrawableMerge) {
 }
 
-VIVID_REGISTER(DrawableMerge)
 
 VIVID_DESCRIBE_REF_TYPE(vivid::gpu::VividDrawable2D)

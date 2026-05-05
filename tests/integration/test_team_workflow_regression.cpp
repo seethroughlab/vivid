@@ -189,8 +189,7 @@ int main(int argc, char* argv[]) {
                            "  }\n"
                            "  void process_frame(const VividFrameContext* ctx) override "
                            "{ ctx->output_values[0] = ctx->param_values[0] * 2.0f; }\n"
-                           "};\n"
-                           "VIVID_REGISTER(TestOp)\n";
+                           "};\n";
                 }
                 {
                     std::ofstream ofs(core_root / "CMakeLists.txt");

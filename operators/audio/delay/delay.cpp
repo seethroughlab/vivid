@@ -134,4 +134,3 @@ struct Delay : vivid::OperatorBase, vivid::AudioProcessable {
 VIVID_DEFINE_OP(Delay) {
 }
 
-VIVID_REGISTER(Delay)

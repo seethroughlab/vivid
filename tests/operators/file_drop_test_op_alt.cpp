@@ -29,5 +29,4 @@ static const VividFileDropHandlerDescriptor kFileDropTestOpAltHandlers[] = {{
     "Alternate test fixture for file-drop metadata.",
 }};
 
-VIVID_REGISTER(FileDropTestOpAlt)
 VIVID_FILE_DROP(kFileDropTestOpAltHandlers)

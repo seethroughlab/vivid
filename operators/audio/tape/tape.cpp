@@ -344,4 +344,3 @@ struct Tape : vivid::OperatorBase, vivid::AudioProcessable {
 VIVID_DEFINE_OP(Tape) {
 }
 
-VIVID_REGISTER(Tape)

@@ -158,4 +158,3 @@ struct DrumCymbal : vivid::OperatorBase, vivid::AudioProcessable {
 VIVID_DEFINE_OP(DrumCymbal) {
 }
 
-VIVID_REGISTER(DrumCymbal)

@@ -929,14 +929,30 @@ void DescriptorBuilder::process_record(const SourceSyntaxRecord& record, Descrip
         result.includes.push_back(include.quoted_path);
     }
 
-    for (const auto& call : record.register_calls) {
-        if (call.macro_name == "VIVID_REGISTER") {
-            result.operator_class_name = call.type_name;
-            result.has_vivid_register = true;
-            break;
+    auto is_operator_base = [](const std::string& name) {
+        return name == "OperatorBase" || name == "WgslFilterBase" ||
+               name == "AudioProcessable" || name == "GpuProcessable" ||
+               name == "FrameProcessable";
+    };
+    for (const auto& type_def : record.type_definitions) {
+        for (const auto& base : type_def.base_class_names) {
+            if (is_operator_base(base)) {
+                if (!result.operator_class_name.empty()) {
+                    result.error_message = "Multiple operator subclasses found in " +
+                        result.source_path.filename().string() +
+                        " — each file must define exactly one operator.";
+                    return;
+                }
+                result.operator_class_name = type_def.name;
+                break;
+            }
         }
     }
+
     if (result.operator_class_name.empty()) {
+        // Secondary fallback: operator struct is in an included header (e.g. macro.h).
+        // VIVID_DEFINE_OP in the .cpp identifies the class name; populate_class_context
+        // will locate the type in the headers.
         for (const auto& call : record.register_calls) {
             if (call.macro_name == "VIVID_DEFINE_OP") {
                 result.operator_class_name = call.type_name;
@@ -946,12 +962,10 @@ void DescriptorBuilder::process_record(const SourceSyntaxRecord& record, Descrip
     }
 
     if (result.operator_class_name.empty()) {
-        result.error_message = "Could not determine operator class from registration macros.";
-        return;
-    }
-    if (!result.has_vivid_register) {
-        result.error_message = "CODEGEN operators must declare VIVID_REGISTER(" +
-            result.operator_class_name + ").";
+        result.error_message = "No operator class found in " +
+            result.source_path.filename().string() +
+            " (expected a struct inheriting from OperatorBase, WgslFilterBase, "
+            "AudioProcessable, GpuProcessable, or FrameProcessable).";
         return;
     }
 

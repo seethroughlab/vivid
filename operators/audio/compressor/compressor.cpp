@@ -151,4 +151,3 @@ struct Compressor : vivid::OperatorBase, vivid::AudioProcessable {
 VIVID_DEFINE_OP(Compressor) {
 }
 
-VIVID_REGISTER(Compressor)

@@ -100,6 +100,5 @@ private:
 VIVID_DEFINE_OP(Transform2D) {
 }
 
-VIVID_REGISTER(Transform2D)
 
 VIVID_DESCRIBE_REF_TYPE(vivid::gpu::VividDrawable2D)

@@ -363,7 +363,6 @@ struct TestOp : vivid::OperatorBase, vivid::FrameProcessable {
     void process_frame(const VividFrameContext*) override {}
 };
 
-VIVID_REGISTER(TestOp)
 )";
     }
 
@@ -438,8 +437,7 @@ VIVID_REGISTER(TestOp)
                "    void process_frame(const VividFrameContext* ctx) override {\n"
             << "        ctx->output_values[0] = " << std::to_string(output_value) << "f;\n"
                "    }\n"
-               "};\n\n"
-               "VIVID_REGISTER(PkgLiveOp)\n";
+               "};\n\n";
     };
     write_live_pkg_source(3.0f);
 

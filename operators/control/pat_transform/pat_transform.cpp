@@ -132,4 +132,3 @@ struct PatTransform : vivid::OperatorBase, vivid::FrameProcessable {
 VIVID_DEFINE_OP(PatTransform) {
 }
 
-VIVID_REGISTER(PatTransform)

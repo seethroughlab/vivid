@@ -226,4 +226,3 @@ private:
 VIVID_DEFINE_OP(AudioAnalysis) {
 }
 
-VIVID_REGISTER(AudioAnalysis)

@@ -54,4 +54,3 @@ struct StringSinkOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(StringSinkOp)

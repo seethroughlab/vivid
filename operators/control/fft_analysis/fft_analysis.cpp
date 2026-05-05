@@ -136,4 +136,3 @@ private:
 VIVID_DEFINE_OP(FFTAnalysis) {
 }
 
-VIVID_REGISTER(FFTAnalysis)

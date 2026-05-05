@@ -35,4 +35,3 @@ struct AudioReduceOp : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
-VIVID_REGISTER(AudioReduceOp)

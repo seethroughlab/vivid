@@ -22,6 +22,3 @@ struct SecondOp : vivid::OperatorBase, vivid::GpuProcessable {
     void collect_ports(std::vector<VividPortDescriptor>&) override {}
     void process_gpu(const VividGpuContext*) override {}
 };
-
-VIVID_REGISTER(FirstOp)
-VIVID_REGISTER(SecondOp)

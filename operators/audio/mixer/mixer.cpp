@@ -254,5 +254,4 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 VIVID_DEFINE_OP(Mixer) {
 }
 
-VIVID_REGISTER(Mixer)
 VIVID_THUMBNAIL(Mixer)

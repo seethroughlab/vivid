@@ -25,6 +25,5 @@ struct Tracker : TrackerCore, vivid::AudioProcessable {
 VIVID_DEFINE_OP(Tracker) {
 }
 
-VIVID_REGISTER(Tracker)
 VIVID_THUMBNAIL(Tracker)
 VIVID_EDITOR(Tracker)

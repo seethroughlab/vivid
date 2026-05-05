@@ -31,4 +31,3 @@ struct LaneSinkOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(LaneSinkOp)

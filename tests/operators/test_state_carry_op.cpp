@@ -23,4 +23,3 @@ struct TestStateCarryOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(TestStateCarryOp)

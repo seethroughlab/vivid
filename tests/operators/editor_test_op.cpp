@@ -48,5 +48,4 @@ struct EditorTestOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(EditorTestOp)
 VIVID_EDITOR(EditorTestOp)

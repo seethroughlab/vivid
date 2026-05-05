@@ -435,7 +435,6 @@ private:
 VIVID_DEFINE_OP(MidiInput) {
 }
 
-VIVID_REGISTER(MidiInput)
 
 // Optional debug-inject hook (probed by OperatorLoader via dlsym). Lets the
 // runtime push synthetic MIDI bytes into this operator without needing a

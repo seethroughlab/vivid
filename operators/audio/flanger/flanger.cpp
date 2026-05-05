@@ -203,4 +203,3 @@ struct Flanger : vivid::OperatorBase, vivid::AudioProcessable {
 VIVID_DEFINE_OP(Flanger) {
 }
 
-VIVID_REGISTER(Flanger)

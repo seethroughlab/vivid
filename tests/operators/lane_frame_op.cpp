@@ -40,4 +40,3 @@ struct LaneFrameOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(LaneFrameOp)

@@ -28,4 +28,3 @@ struct GpuMetronomeProbeOp : vivid::OperatorBase, vivid::GpuProcessable {
     }
 };
 
-VIVID_REGISTER(GpuMetronomeProbeOp)

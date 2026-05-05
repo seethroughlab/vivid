@@ -382,4 +382,3 @@ struct DualFilter : vivid::OperatorBase, vivid::AudioProcessable {
 VIVID_DEFINE_OP(DualFilter) {
 }
 
-VIVID_REGISTER(DualFilter)

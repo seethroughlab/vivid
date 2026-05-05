@@ -99,6 +99,5 @@ private:
 VIVID_DEFINE_OP(Instancer2D) {
 }
 
-VIVID_REGISTER(Instancer2D)
 
 VIVID_DESCRIBE_REF_TYPES2(vivid::gpu::VividDrawable2D, vivid::gpu::InstanceArray2D)

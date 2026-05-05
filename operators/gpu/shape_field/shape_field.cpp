@@ -594,6 +594,5 @@ private:
 VIVID_DEFINE_OP(ShapeField) {
 }
 
-VIVID_REGISTER(ShapeField)
 
 VIVID_DESCRIBE_REF_TYPE(vivid::gpu::VividDrawable2D)

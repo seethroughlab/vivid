@@ -151,4 +151,3 @@ struct DrumHiHat : vivid::OperatorBase, vivid::AudioProcessable {
 VIVID_DEFINE_OP(DrumHiHat) {
 }
 
-VIVID_REGISTER(DrumHiHat)

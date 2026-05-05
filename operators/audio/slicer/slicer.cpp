@@ -376,5 +376,4 @@ static const VividFileDropHandlerDescriptor kSlicerFileDrops[] = {{
 VIVID_DEFINE_OP(Slicer) {
 }
 
-VIVID_REGISTER(Slicer)
 VIVID_FILE_DROP(kSlicerFileDrops)

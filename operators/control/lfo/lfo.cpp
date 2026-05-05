@@ -48,5 +48,4 @@ struct Lfo : LFO, vivid::AudioProcessable {
 VIVID_DEFINE_OP(Lfo) {
 }
 
-VIVID_REGISTER(Lfo)
 VIVID_THUMBNAIL(Lfo)

@@ -168,4 +168,3 @@ private:
 VIVID_DEFINE_OP(OscOut) {
 }
 
-VIVID_REGISTER(OscOut)

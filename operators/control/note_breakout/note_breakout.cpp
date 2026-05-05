@@ -150,4 +150,3 @@ struct NoteBreakout : vivid::OperatorBase, vivid::AudioProcessable {
 VIVID_DEFINE_OP(NoteBreakout) {
 }
 
-VIVID_REGISTER(NoteBreakout)

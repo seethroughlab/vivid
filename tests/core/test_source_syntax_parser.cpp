@@ -98,12 +98,6 @@ int main() {
                 check(has_gpu_processable, "base class 'GpuProcessable' found");
             }
 
-            auto* rc = find_register(record, "MultilineBaseOp");
-            check(rc != nullptr, "finds VIVID_REGISTER call for MultilineBaseOp");
-            if (rc) {
-                check(rc->macro_name == "VIVID_REGISTER", "macro name is VIVID_REGISTER");
-                check(rc->line > 0, "register line > 0");
-            }
         }
     } else {
         std::fprintf(stderr, "  SKIP: fixtures not found\n");
@@ -149,8 +143,6 @@ int main() {
                       "extracts base classes from namespace-wrapped struct");
             }
 
-            auto* rc = find_register(record, "NamespaceOp");
-            check(rc != nullptr, "finds VIVID_REGISTER inside namespace");
         }
     } else {
         std::fprintf(stderr, "  SKIP: fixtures not found\n");
@@ -203,13 +195,6 @@ int main() {
                 check(second->base_class_names.size() >= 2,
                       "SecondOp has 2 base classes");
             }
-
-            check(record.register_calls.size() >= 2,
-                  "finds at least 2 register calls");
-            auto* rc1 = find_register(record, "FirstOp");
-            auto* rc2 = find_register(record, "SecondOp");
-            check(rc1 != nullptr, "finds VIVID_REGISTER for FirstOp");
-            check(rc2 != nullptr, "finds VIVID_REGISTER for SecondOp");
 
             // SecondOp should have doc comments
             check(!record.doc_comment_ranges.empty(),
@@ -308,8 +293,7 @@ int main() {
                    "    void collect_params(std::vector<vivid::ParamBase*>&) override {}\n"
                    "    void collect_ports(std::vector<VividPortDescriptor>&) override {}\n"
                    "    void process_frame(const VividFrameContext*) override {}\n"
-                   "};\n"
-                   "VIVID_REGISTER(CacheTestOp)\n";
+                   "};\n";
         }
 
         auto record1 = vivid::SourceSyntaxParser::parse(test_file.string());

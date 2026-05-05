@@ -125,5 +125,4 @@ struct ControlThumbOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(ControlThumbOp)
 VIVID_THUMBNAIL(ControlThumbOp)

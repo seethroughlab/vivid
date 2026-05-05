@@ -529,9 +529,14 @@ nlohmann::json OperatorSourceDocs::resolve(const std::string& cache_key,
             const auto record = SourceSyntaxParser::parse(path.string());
             if (!record.valid)
                 continue;
-            for (const auto& call : record.register_calls) {
-                if (call.macro_name == "VIVID_REGISTER") {
-                    index.registrations[call.type_name] = normalized;
+            for (const auto& type_def : record.type_definitions) {
+                for (const auto& base : type_def.base_class_names) {
+                    if (base == "OperatorBase" || base == "WgslFilterBase" ||
+                        base == "AudioProcessable" || base == "GpuProcessable" ||
+                        base == "FrameProcessable") {
+                        index.registrations[type_def.name] = normalized;
+                        break;
+                    }
                 }
             }
         }

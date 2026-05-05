@@ -140,5 +140,4 @@ struct StringSelect : vivid::OperatorBase, vivid::FrameProcessable {
 VIVID_DEFINE_OP(StringSelect) {
 }
 
-VIVID_REGISTER(StringSelect)
 VIVID_THUMBNAIL(StringSelect)

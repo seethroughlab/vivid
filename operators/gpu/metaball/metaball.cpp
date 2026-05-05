@@ -386,4 +386,3 @@ private:
 VIVID_DEFINE_OP(Metaball) {
 }
 
-VIVID_REGISTER(Metaball)

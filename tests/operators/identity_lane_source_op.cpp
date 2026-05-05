@@ -77,4 +77,3 @@ struct IdentityLaneSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(IdentityLaneSourceOp)

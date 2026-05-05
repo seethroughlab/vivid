@@ -639,4 +639,3 @@ private:
 VIVID_DEFINE_OP(Bloom) {
 }
 
-VIVID_REGISTER(Bloom)

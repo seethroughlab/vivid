@@ -90,4 +90,3 @@ struct ColorBands : vivid::WgslFilterBase {
 VIVID_DEFINE_OP(ColorBands) {
 }
 
-VIVID_REGISTER(ColorBands)

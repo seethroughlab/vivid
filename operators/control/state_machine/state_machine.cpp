@@ -301,4 +301,3 @@ VIVID_DEFINE_OP(StateMachine) {
     summary = "Eight-state sequencer with beat-quantized transitions and crossfade.";
 }
 
-VIVID_REGISTER(StateMachine)

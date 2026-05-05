@@ -61,7 +61,6 @@ struct TestPkgOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(TestPkgOp)
 )cpp";
     }
 
@@ -173,7 +172,6 @@ struct TestVendorOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(TestVendorOp)
 )cpp";
         }
 
@@ -268,7 +266,6 @@ struct TestSimdPkgOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(TestSimdPkgOp)
 #endif
 )cpp";
         }
@@ -312,7 +309,6 @@ struct TestAposOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(TestAposOp)
 )cpp";
         }
 
@@ -346,7 +342,6 @@ struct TestSafeSwapOp : vivid::OperatorBase, vivid::FrameProcessable {
     void collect_ports(std::vector<VividPortDescriptor>&) override {}
     void process_frame(const VividFrameContext*) override {}
 };
-VIVID_REGISTER(TestSafeSwapOp)
 )cpp";
         }
 

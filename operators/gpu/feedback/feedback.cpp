@@ -417,4 +417,3 @@ private:
 VIVID_DEFINE_OP(Feedback) {
 }
 
-VIVID_REGISTER(Feedback)

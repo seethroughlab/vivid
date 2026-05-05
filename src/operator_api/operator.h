@@ -655,9 +655,6 @@ extern "C" void vivid_prepare_instance_assets(                                \
         [[maybe_unused]] vivid::detail::metadata_keywords_sink keywords,      \
         [[maybe_unused]] vivid::detail::metadata_string_sink summary)
 
-// Source marker consumed by operator_codegen — always a no-op in compilation.
-// The generated *_generated_registration.cpp provides all extern "C" entry points.
-#define VIVID_REGISTER(ClassName) static_assert(true, "VIVID_REGISTER");
 
 // ---------------------------------------------------------------------------
 // VIVID_FILE_DROP(handlers_array) — exports vivid_file_drop_descriptor.

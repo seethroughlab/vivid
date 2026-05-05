@@ -24,4 +24,3 @@ struct TestOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(TestOp)

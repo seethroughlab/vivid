@@ -20,8 +20,7 @@
 #include "test_helpers.h"
 
 // Pull in the operator source directly so we can access the MidiInput struct
-// and its inject_events() test seam.  VIVID_REGISTER will produce extern "C"
-// symbols but they are harmless in a test executable.
+// and its inject_events() test seam.
 #include "../../operators/control/midi_input/midi_input.cpp"
 
 // ---------------------------------------------------------------------------
@@ -61,7 +60,7 @@ struct TestFrameContext {
 };
 
 // Helper: sync param_values into the operator's Param<> members and run
-// process_frame. Direct invocation (not through VIVID_REGISTER dispatch)
+// process_frame. Direct invocation (not through normal operator dispatch)
 // skips the runtime's param-sync step, so we do it manually.
 static void run_frame(MidiInput& op, TestFrameContext& tc) {
     op.skip_midi_init();

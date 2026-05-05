@@ -24,4 +24,3 @@ struct AudioThrowingOp : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
-VIVID_REGISTER(AudioThrowingOp)

@@ -688,4 +688,3 @@ private:
 VIVID_DEFINE_OP(Scopes) {
 }
 
-VIVID_REGISTER(Scopes)

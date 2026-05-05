@@ -25,4 +25,3 @@ struct SecDestOp : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(SecDestOp)

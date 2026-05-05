@@ -44,4 +44,3 @@ struct Mouse : vivid::OperatorBase, vivid::FrameProcessable {
 VIVID_DEFINE_OP(Mouse) {
 }
 
-VIVID_REGISTER(Mouse)

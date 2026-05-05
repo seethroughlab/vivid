@@ -474,8 +474,7 @@ std::string first_macro_argument(const std::string& args_text) {
 }
 
 void extract_register_calls(SourceSyntaxRecord& record) {
-    static const std::array<std::string, 2> kMacros = {
-        "VIVID_REGISTER",
+    static const std::array<std::string, 1> kMacros = {
         "VIVID_DEFINE_OP",
     };
 

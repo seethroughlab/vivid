@@ -350,8 +350,6 @@ static constexpr const char* kControlTemplate = R"(#include "operator_api/operat
 %PROCESS_BODY%    }
 %OPTIONAL_FEATURES%
 };
-
-VIVID_REGISTER(%STRUCT%)
 )";
 
 static constexpr const char* kAudioTemplate = R"(#include "operator_api/operator.h"
@@ -379,8 +377,6 @@ static constexpr const char* kAudioTemplate = R"(#include "operator_api/operator
 %PROCESS_BODY%    }
 %OPTIONAL_FEATURES%
 };
-
-VIVID_REGISTER(%STRUCT%)
 )";
 
 static constexpr const char* kGpuTemplate = R"(#include "operator_api/wgsl_filter.h"
@@ -409,7 +405,6 @@ static constexpr const char* kGpuTemplate = R"(#include "operator_api/wgsl_filte
 %OPTIONAL_FEATURES%
 };
 
-VIVID_REGISTER(%STRUCT%)
 )";
 
 static constexpr const char* kChildOpTemplate = R"(#include "operator_api/child_op.h"
@@ -482,7 +477,6 @@ struct %STRUCT% : vivid::OperatorBase, vivid::FrameProcessable {
     }
 };
 
-VIVID_REGISTER(%STRUCT%)
 )";
 
 static constexpr const char* kEmptyControlTemplate = R"(#include "operator_api/operator.h"
@@ -517,7 +511,6 @@ struct %STRUCT% : vivid::OperatorBase, vivid::FrameProcessable {
 %OPTIONAL_FEATURES%
 };
 
-VIVID_REGISTER(%STRUCT%)
 )";
 
 static constexpr const char* kEmptyAudioTemplate = R"(#include "operator_api/operator.h"
@@ -556,7 +549,6 @@ struct %STRUCT% : vivid::OperatorBase, vivid::AudioProcessable {
 %OPTIONAL_FEATURES%
 };
 
-VIVID_REGISTER(%STRUCT%)
 )";
 
 static constexpr const char* kEmptyGpuTemplate = R"(#include "operator_api/wgsl_filter.h"
@@ -589,7 +581,6 @@ struct %STRUCT% : vivid::WgslFilterBase {
 %OPTIONAL_FEATURES%
 };
 
-VIVID_REGISTER(%STRUCT%)
 )";
 
 static constexpr const char* kGpuShaderTemplate = R"(// Starter shader. See GPU examples in operators/gpu/ for advanced patterns.

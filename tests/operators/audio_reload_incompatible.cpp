@@ -22,4 +22,3 @@ struct AudioReloadOp : vivid::OperatorBase, vivid::AudioProcessable {
     }
 };
 
-VIVID_REGISTER(AudioReloadOp)

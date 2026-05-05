@@ -121,4 +121,3 @@ private:
 VIVID_DEFINE_OP(InstancesFromLanes2D) {
 }
 
-VIVID_REGISTER(InstancesFromLanes2D)

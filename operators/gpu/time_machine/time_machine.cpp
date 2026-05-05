@@ -561,4 +561,3 @@ private:
 VIVID_DEFINE_OP(TimeMachine) {
 }
 
-VIVID_REGISTER(TimeMachine)

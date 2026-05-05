@@ -54,8 +54,7 @@ static void write_control_operator(const std::filesystem::path& package_dir,
         << "    void process_frame(const VividFrameContext* ctx) override {\n"
         << "        (void)ctx;\n"
         << "    }\n"
-        << "};\n\n"
-        << "VIVID_REGISTER(" << type_name << ")\n";
+        << "};\n\n";
 }
 
 static void dump_file_if_exists(const std::filesystem::path& p) {
