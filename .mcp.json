@@ -7,6 +7,11 @@
         "--with", "mcp",
         "--with", "httpx",
         "--with", "pillow",
+        "--with", "numpy",
+        "--with", "librosa",
+        "--with", "soundfile",
+        "--with", "matplotlib",
+        "--with", "pyloudnorm",
         "/Users/jeff/Developer/vivid/mcp/vivid_mcp.py"
       ]
     },
