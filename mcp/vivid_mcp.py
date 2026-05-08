@@ -11,11 +11,15 @@ import httpx
 from mcp.server.fastmcp import FastMCP
 
 VIVID_URL = os.environ.get("VIVID_URL", "http://127.0.0.1:9876")
+MUSIC_EVAL_URL = os.environ.get("VIVID_MUSIC_EVAL_URL", "http://127.0.0.1:9877")
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 DEFAULT_VIVID_BIN = REPO_ROOT / "build" / "vivid"
 DEFAULT_RUNTIME_LOG = pathlib.Path(tempfile.gettempdir()) / "vivid_mcp_runtime.log"
 _RUNTIME_STARTUP_TIMEOUT_SEC = 20.0
 _RUNTIME_STARTUP_POLL_SEC = 0.25
+_MUSIC_EVAL_STARTUP_TIMEOUT_SEC = 15.0
+_MUSIC_EVAL_STARTUP_POLL_SEC = 0.25
+_LIVE_MUSIC_EVAL_MAX_WINDOW_SEC = 60.0
 _TOOLCHAIN_PATH_DIRS = (
     "/opt/homebrew/bin",
     "/opt/homebrew/sbin",
@@ -27,6 +31,8 @@ _TOOLCHAIN_PATH_DIRS = (
 )
 _managed_runtime_process: subprocess.Popen | None = None
 _managed_runtime_log_path: str = ""
+_managed_music_eval_process: subprocess.Popen | None = None
+_managed_music_eval_log_path: str = ""
 
 mcp = FastMCP("vivid", instructions="""Vivid is a real-time audio-visual graph engine. You build node graphs that generate and process visuals, audio, and control signals, all running live.
 
@@ -148,6 +154,31 @@ async def _post(method: str, body: dict | None = None, timeout: float = 10.0) ->
         return resp.text
 
 
+async def _post_music_eval(endpoint: str, body: dict, timeout: float = 60.0) -> str:
+    """POST to the music_eval sidecar service and return JSON text."""
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{MUSIC_EVAL_URL}/v1/{endpoint}",
+                json=body,
+                timeout=timeout,
+            )
+            return resp.text
+    except httpx.ConnectError:
+        return json.dumps({"ok": False, "error": {
+            "code": "service_unavailable",
+            "message": (
+                f"music_eval service not reachable at {MUSIC_EVAL_URL}. "
+                "Start it with: cd services/music_eval && uv run uvicorn main:app"
+            ),
+        }})
+    except httpx.TimeoutException:
+        return json.dumps({"ok": False, "error": {
+            "code": "service_unavailable",
+            "message": f"music_eval service timed out (>{timeout:.0f}s) at {MUSIC_EVAL_URL}",
+        }})
+
+
 def _json_response(payload: dict) -> str:
     return json.dumps(payload, separators=(",", ":"), sort_keys=True)
 
@@ -211,6 +242,66 @@ async def _runtime_is_reachable() -> bool:
         return bool(payload.get("ok", False))
     except Exception:  # connection refused, timeout, invalid JSON — all mean unreachable
         return False
+
+
+async def _music_eval_is_reachable() -> bool:
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(f"{MUSIC_EVAL_URL}/v1/status", timeout=1.0)
+            return resp.status_code == 200
+    except Exception:
+        return False
+
+
+def _launch_music_eval_service() -> tuple[subprocess.Popen, str]:
+    import urllib.parse as _urlparse
+    parsed = _urlparse.urlparse(MUSIC_EVAL_URL)
+    host = parsed.hostname or "127.0.0.1"
+    port = str(parsed.port or 9877)
+    service_dir = REPO_ROOT / "services" / "music_eval"
+    if not service_dir.exists():
+        raise FileNotFoundError(f"music_eval service directory not found: {service_dir}")
+    log_path = str(pathlib.Path(tempfile.gettempdir()) / "vivid_music_eval.log")
+    env = _runtime_subprocess_env()
+    proc = subprocess.Popen(
+        ["uv", "run", "uvicorn", "main:app", "--host", host, "--port", port],
+        cwd=str(service_dir),
+        stdout=open(log_path, "w"),  # noqa: SIM115
+        stderr=subprocess.STDOUT,
+        env=env,
+    )
+    return proc, log_path
+
+
+async def _ensure_music_eval_service() -> str | None:
+    """Ensure the music_eval sidecar is running, launching it if needed.
+
+    Returns None on success or an error string if the service cannot be started.
+    """
+    global _managed_music_eval_process, _managed_music_eval_log_path
+    if _managed_music_eval_process is not None and _managed_music_eval_process.poll() is not None:
+        _managed_music_eval_process = None
+        _managed_music_eval_log_path = ""
+    if await _music_eval_is_reachable():
+        return None
+    try:
+        proc, log_path = _launch_music_eval_service()
+    except Exception as exc:
+        return f"failed to launch music_eval service: {exc}"
+    _managed_music_eval_process = proc
+    _managed_music_eval_log_path = log_path
+    deadline = time.monotonic() + _MUSIC_EVAL_STARTUP_TIMEOUT_SEC
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            return (f"music_eval service exited during startup "
+                    f"(exit code {proc.returncode}); check {log_path}")
+        if await _music_eval_is_reachable():
+            return None
+        await asyncio.sleep(_MUSIC_EVAL_STARTUP_POLL_SEC)
+    proc.terminate()
+    _managed_music_eval_process = None
+    return (f"music_eval service did not become ready within "
+            f"{_MUSIC_EVAL_STARTUP_TIMEOUT_SEC:.0f}s; check {log_path}")
 
 
 async def _load_graph_path(graph_path: str) -> tuple[bool, str]:
@@ -798,6 +889,143 @@ async def fetch_reference(url: str, refresh: bool = False) -> str:
 
 
 # ---------------------------------------------------------------------------
+# fetch_reference_audio — download the audio track from a YouTube URL (or
+# direct audio file URL) so the LLM can call analyze_track() on real music.
+# fetch_reference() handles visual frames; this closes the audio gap.
+# ---------------------------------------------------------------------------
+
+import shutil as _shutil
+
+_AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".aac", ".opus"}
+
+
+def _find_ytdlp() -> str | None:
+    found = _shutil.which("yt-dlp")
+    if found:
+        return found
+    fallback = "/opt/homebrew/bin/yt-dlp"
+    if pathlib.Path(fallback).is_file():
+        return fallback
+    return None
+
+
+@mcp.tool()
+async def fetch_reference_audio(url: str, refresh: bool = False) -> str:
+    """Download the audio track from a YouTube URL (or direct audio file URL)
+    and return a path to a WAV file for music analysis.
+
+    This is the second step of the reference-translation workflow when the
+    reference is a music video or audio track. Call fetch_reference() first
+    to get visual frames, then this tool to get the audio, then:
+      - analyze_image(frame_path) for visual style
+      - analyze_track(audio_path) for harmonic, rhythmic, spectral, mood profile
+
+    Requires yt-dlp to be installed (brew install yt-dlp).
+
+    Args:
+        url: YouTube URL (watch, youtu.be, shorts, embed) or direct audio file
+            URL (.mp3, .wav, .m4a, .flac, .ogg).
+        refresh: Re-download even if cached locally. Default False.
+
+    Returns JSON:
+        {ok, source_url, audio_path, title, duration_seconds, cached}
+    """
+    if not url or not url.startswith(("http://", "https://")):
+        return _json_response({"ok": False, "error": "url must be an http(s) URL"})
+
+    _REFERENCE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    key = _reference_cache_key(url)
+    wav_path = _REFERENCE_CACHE_DIR / f"{key}_audio.wav"
+    meta_path = _REFERENCE_CACHE_DIR / f"{key}_audio.meta.json"
+
+    # Cache hit
+    if not refresh and wav_path.exists() and meta_path.exists():
+        try:
+            cached = json.loads(meta_path.read_text())
+            cached["cached"] = True
+            cached["audio_path"] = str(wav_path)
+            return _json_response(cached)
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    ytdlp = _find_ytdlp()
+    if ytdlp is None:
+        return _json_response({
+            "ok": False,
+            "error": {
+                "code": "ytdlp_not_found",
+                "message": "yt-dlp not found. Install with: brew install yt-dlp",
+            },
+        })
+
+    # Output template: yt-dlp appends the container extension, then converts.
+    # Use a temp stem so the final .wav lands at wav_path cleanly.
+    out_stem = str(_REFERENCE_CACHE_DIR / f"{key}_audio")
+
+    proc = await asyncio.create_subprocess_exec(
+        ytdlp,
+        "-x", "--audio-format", "wav", "--audio-quality", "0",
+        "--no-playlist",
+        "--print-json",
+        "-o", out_stem + ".%(ext)s",
+        url,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+
+    if proc.returncode != 0:
+        err_text = stderr.decode("utf-8", errors="replace").strip()
+        return _json_response({
+            "ok": False,
+            "error": {
+                "code": "download_failed",
+                "message": err_text or f"yt-dlp exited with code {proc.returncode}",
+            },
+        })
+
+    # yt-dlp --print-json emits one JSON line per item. Parse the first.
+    title = ""
+    duration: float = 0.0
+    for line in stdout.decode("utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            info = json.loads(line)
+            title = info.get("title", "")
+            duration = float(info.get("duration") or 0)
+            break
+        except (json.JSONDecodeError, ValueError):
+            continue
+
+    # yt-dlp writes e.g. <stem>.wav after conversion
+    if not wav_path.exists():
+        return _json_response({
+            "ok": False,
+            "error": {
+                "code": "download_failed",
+                "message": f"yt-dlp finished but {wav_path.name} not found in cache",
+            },
+        })
+
+    result = {
+        "ok": True,
+        "source_url": url,
+        "audio_path": str(wav_path),
+        "title": title,
+        "duration_seconds": duration,
+        "cached": False,
+    }
+    try:
+        meta_path.write_text(json.dumps(result, indent=2))
+    except OSError:
+        pass
+
+    return _json_response(result)
+
+
+# ---------------------------------------------------------------------------
 # compare_output_to_reference — pair the current runtime output with a
 # reference image so the LLM can compare visually. No automated scoring.
 # ---------------------------------------------------------------------------
@@ -1070,6 +1298,149 @@ async def capture_frame_diff(interval_ms: int = 200,
         "mean_abs_delta": float(mean_abs_delta),
         "hint": "Read diff_path. Near-black = nothing moved. Bright red/blue = real motion.",
     })
+
+
+@mcp.tool()
+async def evaluate_live_frame(include_payload: bool = False) -> str:
+    """Capture one live output frame and return SigLIP-based style tags plus the
+    frame PNG so the calling LLM can make its own visual judgment.
+
+    Style tags come from a fixed 35-descriptor vocabulary spanning four
+    categories: visual_style, mood, movement, color_mood. Each tag carries a
+    confidence score from SigLIP image-text cosine similarity.
+
+    The frame PNG is always included in the response — it is the primary
+    material for the LLM's own evaluation.
+
+    When SigLIP / torch is not installed, style_tags will be empty and
+    siglip_available will be false; the frame PNG is still returned.
+
+    Args:
+        include_payload: When true, adds siglip_available to the response.
+
+    Returns JSON:
+        {ok, frame_width, frame_height, style_tags, frame_png_b64}
+        style_tags: [{tag, category, confidence}, ...]
+    """
+    img, err = await _capture_frame_pil()
+    if img is None:
+        return _json_response({"ok": False, "error": str(err)})
+
+    import io as _io
+    import base64 as _b64mod
+
+    vst = _visual_style_tags()
+    style_tags = vst.compute_style_tags(img)
+    siglip_available = len(style_tags) > 0
+
+    buf = _io.BytesIO()
+    img.save(buf, format="PNG")
+    png_b64 = _b64mod.b64encode(buf.getvalue()).decode()
+
+    result: dict = {
+        "ok": True,
+        "frame_width": img.width,
+        "frame_height": img.height,
+        "style_tags": style_tags,
+        "frame_png_b64": png_b64,
+    }
+    if include_payload:
+        result["payload"] = {"siglip_available": siglip_available}
+    return _json_response(result)
+
+
+@mcp.tool()
+async def compare_frame_to_intent(intent: str,
+                                   reference_path: str = "",
+                                   include_payload: bool = False) -> str:
+    """Capture the live output frame, score it against a text intent using
+    SigLIP cosine similarity, and return the frame PNG so the calling LLM can
+    make its own visual judgment.
+
+    The match_score is raw SigLIP cosine similarity — typically 0.05–0.35 for
+    meaningful matches. This is NOT the same 0–1 scale used by music_eval.
+    Use it as a relative indicator, not an absolute percentage.
+
+    The frame PNG is always included. A multimodal LLM should use it together
+    with the score to form an overall evaluation.
+
+    When SigLIP / torch is not installed, match_score will be null and
+    style_tags will be empty; the frame PNG is still returned.
+
+    Args:
+        intent: Free-text description of the intended visual character,
+            e.g. "dark, geometric, low energy" or "warm cinematic glow".
+        reference_path: Optional absolute path to a reference image. When
+            provided, also computes a reference_match_score for the reference
+            against the same intent.
+        include_payload: When true, adds reference_match_score, reference_path,
+            and siglip_available to the response.
+
+    Returns JSON:
+        {ok, intent, match_score, style_tags, frame_png_b64}
+        match_score: float (raw SigLIP cosine sim ~0.05-0.35) or null
+    """
+    if not intent:
+        return _json_response({"ok": False, "error": "intent must be non-empty"})
+
+    if reference_path:
+        import os as _os
+        if not _os.path.isfile(reference_path):
+            return _json_response({"ok": False, "error": f"reference_path not found: {reference_path}"})
+
+    img, err = await _capture_frame_pil()
+    if img is None:
+        return _json_response({"ok": False, "error": str(err)})
+
+    import io as _io
+    import base64 as _b64mod
+
+    vst = _visual_style_tags()
+
+    frame_emb = vst._extract_image_embedding(img)
+    intent_emb = vst._extract_text_embedding(intent)
+    siglip_available = frame_emb is not None and intent_emb is not None
+
+    match_score: float | None = None
+    if siglip_available:
+        import numpy as _np
+        f = frame_emb / (_np.linalg.norm(frame_emb) + 1e-9)
+        t = intent_emb / (_np.linalg.norm(intent_emb) + 1e-9)
+        match_score = float(_np.dot(f, t))
+
+    style_tags = vst.compute_style_tags(img)
+
+    buf = _io.BytesIO()
+    img.save(buf, format="PNG")
+    png_b64 = _b64mod.b64encode(buf.getvalue()).decode()
+
+    result: dict = {
+        "ok": True,
+        "intent": intent,
+        "match_score": match_score,
+        "style_tags": style_tags,
+        "frame_png_b64": png_b64,
+    }
+
+    if include_payload:
+        payload: dict = {
+            "siglip_available": siglip_available,
+            "reference_path": reference_path,
+        }
+        if reference_path and siglip_available:
+            from PIL import Image as _PIL_Image
+            ref_img = _PIL_Image.open(reference_path).convert("RGB")
+            ref_emb = vst._extract_image_embedding(ref_img)
+            if ref_emb is not None:
+                r = ref_emb / (_np.linalg.norm(ref_emb) + 1e-9)
+                payload["reference_match_score"] = float(_np.dot(r, t))
+            else:
+                payload["reference_match_score"] = None
+        else:
+            payload["reference_match_score"] = None
+        result["payload"] = payload
+
+    return _json_response(result)
 
 
 @mcp.tool()
@@ -2452,6 +2823,23 @@ def _audio_analysis():
     return _audio_analysis_mod
 
 
+_visual_style_tags_mod = None
+
+def _visual_style_tags():
+    global _visual_style_tags_mod
+    if _visual_style_tags_mod is None:
+        # Same pattern as _audio_analysis() — can't use package-relative import
+        # because `mcp` resolves to the installed FastMCP package.
+        # visual/style_tags.py has no relative imports so bare exec works cleanly.
+        import importlib.util
+        _path = pathlib.Path(__file__).resolve().parent / "visual" / "style_tags.py"
+        _spec = importlib.util.spec_from_file_location("vivid_visual_style_tags", _path)
+        _vst = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_vst)
+        _visual_style_tags_mod = _vst
+    return _visual_style_tags_mod
+
+
 _recording_tap_started = False
 
 
@@ -2514,6 +2902,62 @@ async def _fetch_wav_bytes(node_id: str, duration_ms: float):
         return (samples, sr), None
     except Exception as exc:  # noqa: BLE001
         return None, f"failed to decode WAV: {exc}"
+
+
+def _validate_live_music_eval_request(node_id: str, window_seconds: float) -> dict | None:
+    """Return an error envelope when a live music-eval request is unsupported."""
+    if window_seconds <= 0:
+        return {"ok": False, "error": {
+            "code": "invalid_window",
+            "message": "window_seconds must be > 0",
+        }}
+    if window_seconds > _LIVE_MUSIC_EVAL_MAX_WINDOW_SEC:
+        return {"ok": False, "error": {
+            "code": "invalid_window",
+            "message": (
+                f"live music evaluation supports up to {_LIVE_MUSIC_EVAL_MAX_WINDOW_SEC:.0f}s. "
+                "Use evaluate_audio_file(...) for longer material."
+            ),
+        }}
+    if node_id:
+        return {"ok": False, "error": {
+            "code": "unsupported_feature",
+            "message": (
+                "node_id-scoped live music evaluation is not supported yet. "
+                "Use final-mix capture or evaluate a rendered file instead."
+            ),
+        }}
+    return None
+
+
+async def _fetch_audio_for_music_eval(node_id: str, window_seconds: float) -> tuple[dict, str | None]:
+    """Capture audio and return a body dict ready to merge into a music_eval request.
+
+    Live music eval uses the final mix recording tap and supports windows up to 60s.
+    """
+    import base64 as _base64
+    import io as _io
+    import soundfile as _sf
+
+    if window_seconds > _LIVE_MUSIC_EVAL_MAX_WINDOW_SEC:
+        return {}, (
+            f"live music evaluation supports up to {_LIVE_MUSIC_EVAL_MAX_WINDOW_SEC:.0f}s; "
+            "use evaluate_audio_file(...) for longer material"
+        )
+
+    fetched, err = await _fetch_wav_bytes(node_id, window_seconds * 1000.0)
+    if err:
+        return {}, err
+    samples, sr = fetched
+    channels = int(samples.shape[1]) if samples.ndim > 1 else 1
+
+    try:
+        buf = _io.BytesIO()
+        _sf.write(buf, samples, int(sr), format="WAV", subtype="FLOAT")
+        b64 = _base64.b64encode(buf.getvalue()).decode("ascii")
+    except Exception as exc:  # noqa: BLE001
+        return {}, f"failed to encode audio: {exc}"
+    return {"audio_b64": b64, "sample_rate": int(sr), "channels": channels}, None
 
 
 def _write_png_to_disk(png_bytes: bytes, save_dir: str, prefix: str) -> str:
@@ -4726,6 +5170,275 @@ def _start_heartbeat() -> None:
 
     t = threading.Thread(target=_loop, daemon=True)
     t.start()
+
+
+# ---------------------------------------------------------------------------
+# Music evaluation tools — semantic LALM-backed audio analysis
+# Requires the music_eval sidecar service (services/music_eval/) running on
+# VIVID_MUSIC_EVAL_URL (default http://127.0.0.1:9877).
+# ---------------------------------------------------------------------------
+
+def _meval_evaluate_response(raw: str, extra_payload: dict, include_payload: bool) -> str:
+    """Build compact or full response for evaluate_audio_musically / evaluate_audio_file."""
+    try:
+        doc = json.loads(raw)
+    except (ValueError, TypeError):
+        return _json_response({"ok": False, "error": {"code": "invalid_json", "message": "service returned non-JSON"}})
+    if not doc.get("ok", False):
+        return _json_response(doc)
+    out: dict = {
+        "ok": True,
+        "key": doc.get("key"),
+        "tempo_bpm": doc.get("tempo_bpm"),
+        "summary": doc.get("summary", ""),
+        "mode": doc.get("mode", ""),
+    }
+    if include_payload:
+        out["payload"] = {
+            "model_response": doc.get("model_response", ""),
+            "cot_trace": doc.get("cot_trace", ""),
+            "timing_ms": doc.get("timing_ms", 0),
+            "backend": doc.get("backend", ""),
+            **extra_payload,
+        }
+    return _json_response(out)
+
+
+def _meval_compare_response(raw: str, extra_payload: dict, include_payload: bool) -> str:
+    """Build compact or full response for compare_audio_to_intent."""
+    try:
+        doc = json.loads(raw)
+    except (ValueError, TypeError):
+        return _json_response({"ok": False, "error": {"code": "invalid_json", "message": "service returned non-JSON"}})
+    if not doc.get("ok", False):
+        return _json_response(doc)
+    out: dict = {
+        "ok": True,
+        "match_score": doc.get("match_score", 0.0),
+        "key_deviations": doc.get("key_deviations", []),
+        "summary": doc.get("summary", ""),
+    }
+    if include_payload:
+        out["payload"] = {
+            "harmony_match": doc.get("harmony_match"),
+            "rhythm_match": doc.get("rhythm_match"),
+            "timbre_match": doc.get("timbre_match"),
+            "structure_match": doc.get("structure_match"),
+            "model_response": doc.get("model_response", ""),
+            "timing_ms": doc.get("timing_ms", 0),
+            "backend": doc.get("backend", ""),
+            **extra_payload,
+        }
+    return _json_response(out)
+
+
+@mcp.tool()
+async def music_eval_status() -> str:
+    """Check reachability and state of the music_eval inference service.
+
+    Returns backend name, model, device, ready flag, and queue depth.
+    Mirrors runtime_status() — check this before calling other music eval tools.
+    """
+    managed = (_managed_music_eval_process is not None
+               and _managed_music_eval_process.poll() is None)
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(f"{MUSIC_EVAL_URL}/v1/status", timeout=3.0)
+            doc = resp.json()
+            return _json_response({
+                "ok": True, "reachable": True,
+                "bridge_managed": managed,
+                "pid": _managed_music_eval_process.pid if managed else None,
+                **doc,
+            })
+    except httpx.ConnectError:
+        return _json_response({"ok": False, "reachable": False, "error": {
+            "code": "service_unavailable",
+            "message": (
+                f"music_eval service not reachable at {MUSIC_EVAL_URL}. "
+                "It will start automatically on the next evaluate/compare call."
+            ),
+        }})
+    except Exception as exc:  # noqa: BLE001
+        return _json_response({"ok": False, "reachable": False, "error": {
+            "code": "service_unavailable", "message": str(exc),
+        }})
+
+
+@mcp.tool()
+async def configure_music_eval_backend(backend: str,
+                                        model_path: str = "",
+                                        api_key: str = "") -> str:
+    """Switch the music_eval inference backend.
+
+    Args:
+        backend: One of: stub or gemini.
+        model_path: Model ID override for gemini (e.g. "gemini-2.5-pro"). Empty = default (gemini-2.5-flash).
+        api_key: Google API key for the gemini backend. Falls back to GOOGLE_API_KEY env var.
+    """
+    body: dict = {"backend": backend}
+    if model_path:
+        body["model_path"] = model_path
+    if api_key:
+        body["api_key"] = api_key
+    raw = await _post_music_eval("configure", body, timeout=10.0)
+    return raw
+
+
+@mcp.tool()
+async def evaluate_audio_musically(window_seconds: float = 30.0,
+                                    node_id: str = "",
+                                    mode: str = "caption",
+                                    include_payload: bool = False) -> str:
+    """Capture live audio and return a music-aware semantic analysis via LALM.
+
+    Requires the music_eval service running (check music_eval_status first).
+    Inference is seconds-scale — treat this as a reflective tool, not a meter.
+
+    Args:
+        window_seconds: Capture duration (1–60). Defaults to 30.
+        node_id: Reserved for future isolated capture support. Must be empty for now.
+        mode: Analysis depth — caption (key/tempo/summary, fastest), theory
+            (harmony/voice-leading/form), reasoning (chain-of-thought, slowest).
+        include_payload: Include raw model response, CoT trace, timing, and backend.
+    """
+    if mode not in ("caption", "theory", "reasoning"):
+        return _json_response({"ok": False, "error": {
+            "code": "invalid_mode",
+            "message": "mode must be caption, theory, or reasoning",
+        }})
+    if err_env := _validate_live_music_eval_request(node_id, window_seconds):
+        return _json_response(err_env)
+
+    if svc_err := await _ensure_music_eval_service():
+        return _json_response({"ok": False, "error": {"code": "service_unavailable", "message": svc_err}})
+
+    audio_body, err = await _fetch_audio_for_music_eval(node_id, window_seconds)
+    if err:
+        return _json_response({"ok": False, "error": err})
+
+    body = {**audio_body, "mode": mode}
+    timeout = max(30.0, window_seconds + 60.0)
+    raw = await _post_music_eval("evaluate", body, timeout=timeout)
+    return _meval_evaluate_response(raw, {"window_seconds": window_seconds, "node_id": node_id}, include_payload)
+
+
+@mcp.tool()
+async def evaluate_audio_file(path: str,
+                               start_seconds: float = 0.0,
+                               duration_seconds: float = 30.0,
+                               mode: str = "caption",
+                               include_payload: bool = False) -> str:
+    """Evaluate an audio file on disk with music-aware semantic analysis via LALM.
+
+    Useful for rendered exports, reference tracks, or stems exported from audio_out.
+    Requires the music_eval service running (check music_eval_status first).
+
+    Args:
+        path: Absolute path to an audio file (.wav, .aiff, .mp3, .flac).
+        start_seconds: Start offset within the file.
+        duration_seconds: How much to analyze (1–1200).
+        mode: caption, theory, or reasoning. See evaluate_audio_musically.
+        include_payload: Include raw model response, CoT trace, timing, and backend.
+    """
+    if mode not in ("caption", "theory", "reasoning"):
+        return _json_response({"ok": False, "error": {
+            "code": "invalid_mode",
+            "message": "mode must be caption, theory, or reasoning",
+        }})
+    if start_seconds < 0:
+        return _json_response({"ok": False, "error": {
+            "code": "invalid_window",
+            "message": "start_seconds must be >= 0",
+        }})
+    if duration_seconds <= 0:
+        return _json_response({"ok": False, "error": {
+            "code": "invalid_window",
+            "message": "duration_seconds must be > 0",
+        }})
+    if not pathlib.Path(path).exists():
+        return _json_response({"ok": False, "error": {
+            "code": "reference_not_found",
+            "message": f"file not found: {path}",
+        }})
+
+    if svc_err := await _ensure_music_eval_service():
+        return _json_response({"ok": False, "error": {"code": "service_unavailable", "message": svc_err}})
+
+    body = {
+        "audio_path": path,
+        "start_seconds": float(start_seconds),
+        "duration_seconds": float(duration_seconds),
+        "mode": mode,
+    }
+    timeout = max(30.0, duration_seconds + 60.0)
+    raw = await _post_music_eval("evaluate", body, timeout=timeout)
+    return _meval_evaluate_response(
+        raw,
+        {"path": path, "start_seconds": start_seconds, "duration_seconds": duration_seconds},
+        include_payload,
+    )
+
+
+@mcp.tool()
+async def compare_audio_to_intent(reference_path: str = "",
+                                   intent: str = "",
+                                   window_seconds: float = 30.0,
+                                   node_id: str = "",
+                                   include_payload: bool = False) -> str:
+    """Compare current audio against a reference clip, a free-text intent, or both.
+
+    The primary creative-iteration tool: 'does what I'm rendering match what
+    I was going for?' Returns a semantic diff with match score and key deviations.
+    Requires the music_eval service running (check music_eval_status first).
+
+    Args:
+        reference_path: Path to a reference audio file (.wav, .aiff, .mp3, .flac).
+            Optional — provide intent, reference_path, or both.
+        intent: Free-text description of the intended sound, e.g. 'dark, sparse,
+            tension building'. Optional — provide intent, reference_path, or both.
+        window_seconds: Capture duration for the current audio (1–60).
+        node_id: Reserved for future isolated capture support. Must be empty for now.
+        include_payload: Include per-axis scores (harmony, rhythm, timbre, structure),
+            raw model response, and timing.
+    """
+    if not reference_path and not intent:
+        return _json_response({"ok": False, "error": {
+            "code": "no_audio_source",
+            "message": "Provide at least one of reference_path or intent.",
+        }})
+    if reference_path and not pathlib.Path(reference_path).exists():
+        return _json_response({"ok": False, "error": {
+            "code": "reference_not_found",
+            "message": f"reference file not found: {reference_path}",
+        }})
+    if err_env := _validate_live_music_eval_request(node_id, window_seconds):
+        return _json_response(err_env)
+
+    if svc_err := await _ensure_music_eval_service():
+        return _json_response({"ok": False, "error": {"code": "service_unavailable", "message": svc_err}})
+
+    audio_body, err = await _fetch_audio_for_music_eval(node_id, window_seconds)
+    if err:
+        return _json_response({"ok": False, "error": err})
+
+    body: dict = {"intent": intent, **audio_body}
+    if reference_path:
+        body["audio_b_path"] = reference_path
+    # Rename captured clip keys to the _a_ variants expected by /v1/compare
+    if "audio_b64" in body:
+        body["audio_a_b64"] = body.pop("audio_b64")
+    if "audio_path" in body:
+        body["audio_a_path"] = body.pop("audio_path")
+
+    timeout = max(30.0, window_seconds + 60.0)
+    raw = await _post_music_eval("compare", body, timeout=timeout)
+    return _meval_compare_response(
+        raw,
+        {"window_seconds": window_seconds, "node_id": node_id,
+         "had_reference": bool(reference_path), "had_intent": bool(intent)},
+        include_payload,
+    )
 
 
 if __name__ == "__main__":

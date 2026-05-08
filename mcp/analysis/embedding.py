@@ -98,11 +98,12 @@ def extract_embedding(file_path: str, target_sr: int = 48000) -> list[float] | N
         )
         inputs = {k: v.to(device) for k, v in inputs.items()}
 
-        # Get embedding
+        # Get embedding — newer transformers may return BaseModelOutputWithPooling
         with torch.no_grad():
             audio_embed = model.get_audio_features(**inputs)
+        if not isinstance(audio_embed, torch.Tensor):
+            audio_embed = audio_embed.pooler_output
 
-        # Convert to list
         embedding = audio_embed.cpu().numpy().flatten().tolist()
         return embedding
 
@@ -136,6 +137,8 @@ def extract_text_embedding(text: str) -> list[float] | None:
 
         with torch.no_grad():
             text_embed = model.get_text_features(**inputs)
+        if not isinstance(text_embed, torch.Tensor):
+            text_embed = text_embed.pooler_output
 
         embedding = text_embed.cpu().numpy().flatten().tolist()
         return embedding

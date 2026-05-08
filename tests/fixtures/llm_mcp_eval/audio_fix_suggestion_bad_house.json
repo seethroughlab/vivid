@@ -1,0 +1,182 @@
+{
+    "schema_version": 1,
+    "vivid_version": "0.1.0",
+    "meta": {
+        "id": "audio_fix_suggestion_bad_house",
+        "title": "Bad House Groove Eval Fixture",
+        "description": "A deliberately weak four-on-the-floor groove for music-eval suggestion testing.",
+        "tags": [
+            "eval",
+            "audio",
+            "house",
+            "drums"
+        ],
+        "difficulty": "beginner",
+        "domains": [
+            "audio"
+        ],
+        "content_kind": "test_fixture",
+        "category": "eval",
+        "family": "LLM MCP eval",
+        "role": "fixture",
+        "playability": "self_playing",
+        "requires_packages": []
+    },
+    "nodes": {
+        "aout": {
+            "type": "audio_out",
+            "layout": {
+                "x": 1289.0234,
+                "y": 262.67773
+            }
+        },
+        "clap1": {
+            "type": "DrumClap",
+            "params": {
+                "decay": 0.3,
+                "sloppy": 0.35,
+                "tail": 0.28,
+                "tone": 0.55,
+                "volume": 0.12
+            },
+            "layout": {
+                "x": 630.0,
+                "y": 551.0
+            }
+        },
+        "clock1": {
+            "type": "Clock",
+            "params": {
+                "bpm": 108.0
+            },
+            "layout": {
+                "x": 0.0,
+                "y": 0.0
+            }
+        },
+        "hat1": {
+            "type": "DrumHiHat",
+            "params": {
+                "decay": 0.04,
+                "ring": 0.22,
+                "tone": 0.62,
+                "volume": 0.05
+            },
+            "layout": {
+                "x": 960.0,
+                "y": 0.0
+            }
+        },
+        "kick1": {
+            "type": "DrumKick",
+            "params": {
+                "click": 0.2,
+                "decay": 0.35,
+                "pitch": 55.0,
+                "pitch_env": 200.0,
+                "volume": 0.5
+            },
+            "layout": {
+                "x": 480.0,
+                "y": 0.0
+            }
+        },
+        "seq1": {
+            "type": "DrumSequencer",
+            "params": {
+                "clap_12": 1.0,
+                "hat_0": 1.0,
+                "hat_4": 1.0,
+                "hat_8": 1.0,
+                "hat_12": 1.0,
+                "snare_4": 1.0,
+                "steps": 16.0,
+                "kick_12": 1.0,
+                "kick_0": 1.0,
+                "kick_4": 1.0,
+                "snare_12": 1.0,
+                "kick_8": 1.0,
+                "swing": 0.0
+            },
+            "layout": {
+                "x": 240.0,
+                "y": 0.0
+            }
+        },
+        "snare1": {
+            "type": "DrumSnare",
+            "params": {
+                "noise": 0.7,
+                "noise_decay": 0.18,
+                "snappy": 0.5,
+                "tone_decay": 0.08,
+                "tone": 0.35,
+                "pitch": 200.0,
+                "volume": 0.16
+            },
+            "layout": {
+                "x": 720.0,
+                "y": 0.0
+            }
+        },
+        "ConvolutionReverb1": {
+            "type": "ConvolutionReverb",
+            "params": {
+                "ir_gain_db": -13.0,
+                "tail_seconds": 1.4,
+                "mix": 0.14
+            },
+            "layout": {
+                "x": 913.75977,
+                "y": 533.166
+            }
+        }
+    },
+    "connections": [
+        {
+            "from": "clock1/bar_phase",
+            "to": "seq1/beat_phase"
+        },
+        {
+            "from": "seq1/kick_out",
+            "to": "kick1/notes_in"
+        },
+        {
+            "from": "seq1/snare_out",
+            "to": "snare1/notes_in"
+        },
+        {
+            "from": "seq1/hat_out",
+            "to": "hat1/notes_in"
+        },
+        {
+            "from": "seq1/clap_out",
+            "to": "clap1/notes_in"
+        },
+        {
+            "from": "kick1/output",
+            "to": "aout/input"
+        },
+        {
+            "from": "snare1/output",
+            "to": "aout/input"
+        },
+        {
+            "from": "hat1/output",
+            "to": "aout/input"
+        },
+        {
+            "from": "clap1/output",
+            "to": "ConvolutionReverb1/input"
+        },
+        {
+            "from": "ConvolutionReverb1/output",
+            "to": "aout/input"
+        }
+    ],
+    "viewport": {
+        "pan_x": -738.02454,
+        "pan_y": -416.29642,
+        "zoom": 1.4072794
+    }
+}

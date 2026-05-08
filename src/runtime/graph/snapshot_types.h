@@ -67,7 +67,7 @@ struct AnalysisSnapshot {
 // Lock-free SPSC ring buffer for recording the final stereo mix.
 // Audio thread writes, main thread reads. Pre-allocated, zero overhead when inactive.
 struct RecordingTap {
-    static constexpr uint32_t kRingSize = 960000; // 10 sec @ 48kHz stereo interleaved
+    static constexpr uint32_t kRingSize = 5760000; // 60 sec @ 48kHz stereo interleaved
     float ring[kRingSize];
     std::atomic<uint64_t> write_pos{0}; // monotonic, audio thread writes
     std::atomic<uint64_t> read_pos{0};  // monotonic, main thread writes

@@ -674,13 +674,94 @@ async def _run_step2_modulation_flow(session: VividMCPSession, summary: dict) ->
     })
 
 
+async def _run_visual_eval_flow(session: VividMCPSession, summary: dict) -> None:
+    """Smoke-test evaluate_live_frame and compare_frame_to_intent.
+
+    Loads bloom_demo.json (a simple GPU graph, no external packages needed) and
+    checks that both tools return well-formed responses with the correct envelope
+    fields. SigLIP availability is not required — the test passes when torch is
+    absent as long as the graceful-degradation path is followed correctly.
+    """
+    graph_path = str(REPO_ROOT / "graphs" / "gpu" / "bloom_demo.json")
+    _require_ok(
+        await session.call_tool("ensure_runtime", {"graph_path": graph_path}),
+        "ensure_runtime(visual_eval)",
+    )
+
+    # evaluate_live_frame ---------------------------------------------------
+    elf = _require_ok(
+        await session.call_tool("evaluate_live_frame", {"include_payload": True}),
+        "evaluate_live_frame",
+    )
+    _expect(isinstance(elf.get("frame_png_b64"), str) and len(elf["frame_png_b64"]) > 0,
+            "evaluate_live_frame: frame_png_b64 missing or empty")
+    _expect(isinstance(elf.get("style_tags"), list),
+            "evaluate_live_frame: style_tags must be a list")
+    _expect(isinstance(elf.get("frame_width"), int) and elf["frame_width"] > 0,
+            "evaluate_live_frame: frame_width missing")
+    _expect(isinstance(elf.get("frame_height"), int) and elf["frame_height"] > 0,
+            "evaluate_live_frame: frame_height missing")
+    siglip_available = elf.get("payload", {}).get("siglip_available", False)
+    if siglip_available:
+        _expect(len(elf["style_tags"]) > 0,
+                "evaluate_live_frame: siglip_available=true but style_tags is empty")
+    print(
+        f"evaluate_live_frame: {elf['frame_width']}x{elf['frame_height']} "
+        f"tags={len(elf['style_tags'])} siglip={siglip_available} "
+        f"png_b64_len={len(elf['frame_png_b64'])}"
+    )
+
+    # compare_frame_to_intent -----------------------------------------------
+    cfi = _require_ok(
+        await session.call_tool(
+            "compare_frame_to_intent",
+            {"intent": "dark geometric abstract shapes", "include_payload": True},
+        ),
+        "compare_frame_to_intent",
+    )
+    _expect(isinstance(cfi.get("frame_png_b64"), str) and len(cfi["frame_png_b64"]) > 0,
+            "compare_frame_to_intent: frame_png_b64 missing or empty")
+    _expect(isinstance(cfi.get("style_tags"), list),
+            "compare_frame_to_intent: style_tags must be a list")
+    _expect(cfi.get("intent") == "dark geometric abstract shapes",
+            "compare_frame_to_intent: intent not echoed")
+    match_score = cfi.get("match_score")
+    if siglip_available:
+        _expect(isinstance(match_score, float),
+                "compare_frame_to_intent: siglip_available=true but match_score is not float")
+        _expect(-1.0 <= match_score <= 1.0,
+                f"compare_frame_to_intent: match_score {match_score} out of cosine range")
+    else:
+        _expect(match_score is None,
+                "compare_frame_to_intent: siglip unavailable but match_score is not null")
+    print(
+        f"compare_frame_to_intent: match_score={match_score} "
+        f"tags={len(cfi['style_tags'])} siglip={siglip_available}"
+    )
+
+    summary["visual_eval"] = {
+        "evaluate_live_frame": {
+            "frame_width": elf["frame_width"],
+            "frame_height": elf["frame_height"],
+            "style_tags": elf["style_tags"],
+            "siglip_available": siglip_available,
+            "png_b64_len": len(elf["frame_png_b64"]),
+        },
+        "compare_frame_to_intent": {
+            "intent": cfi["intent"],
+            "match_score": match_score,
+            "style_tags": cfi["style_tags"],
+        },
+    }
+
+
 async def _run(args: argparse.Namespace) -> int:
     artifact_dir = pathlib.Path(args.artifact_dir).expanduser()
     artifact_dir.mkdir(parents=True, exist_ok=True)
 
     capture_cases = _build_capture_cases(args, artifact_dir)
     sample_cases = _build_sample_cases(args)
-    if not capture_cases and not sample_cases and args.preset not in {"dream_keys", "step2_modulation"}:
+    if not capture_cases and not sample_cases and args.preset not in {"dream_keys", "step2_modulation", "visual_eval"}:
         raise RuntimeError("no work specified; use --preset, --capture, or --sample-node")
 
     summary: dict = {
@@ -702,6 +783,8 @@ async def _run(args: argparse.Namespace) -> int:
                 await _run_dream_keys_flow(session, artifact_dir, summary)
             if args.preset == "step2_modulation":
                 await _run_step2_modulation_flow(session, summary)
+            if args.preset == "visual_eval":
+                await _run_visual_eval_flow(session, summary)
         finally:
             status_after = _require_ok(await session.call_tool("runtime_status"), "runtime_status(after)")
             summary["runtime_after"] = status_after
@@ -733,7 +816,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--preset",
-        choices=["phase4", "dream_keys", "step2_modulation"],
+        choices=["phase4", "dream_keys", "step2_modulation", "visual_eval"],
         help="Run a built-in bridge investigation preset",
     )
     parser.add_argument(

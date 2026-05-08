@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import pathlib
 from typing import Any
 
 from .graders import (
@@ -53,6 +54,11 @@ MAIN_READONLY_TOOLS: set[str] = {
     "main__inspect_graph",
     "main__run_diagnostics",
 }
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+BAD_HOUSE_FIXTURE = (
+    REPO_ROOT / "tests" / "fixtures" / "llm_mcp_eval" / "audio_fix_suggestion_bad_house.json"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -345,10 +351,190 @@ THRESHOLD_GATE_OPERATOR = EvalCase(
 
 
 # ---------------------------------------------------------------------------
+# Case 5: Live music-eval fix suggestions for a sub-par graph
+# ---------------------------------------------------------------------------
+
+AUDIO_FIX_SUGGESTION_TOOLS: set[str] = {
+    "main__ensure_runtime",
+    "main__get_graph_errors",
+    "main__inspect_graph",
+    "main__compare_audio_to_intent",
+    "main__evaluate_audio_musically",
+}
+
+
+AUDIO_FIX_SUGGESTION = EvalCase(
+    name="audio_fix_suggestion",
+    user_prompt=(
+        "Load and evaluate the live graph fixture at "
+        f"`{BAD_HOUSE_FIXTURE}`.\n\n"
+        "The target is: a tight four-on-the-floor house groove with strong kick pulse, "
+        "audible snare/clap backbeat, and crisp offbeat hats.\n\n"
+        "Use the live runtime/music-eval MCP tools to listen to the graph first. Then "
+        "recommend specific Vivid graph edits to move it toward that target. Keep this "
+        "suggestion-only: do not mutate the graph. Your answer must mention which node, "
+        "pattern, or parameter to change and why, with concise evidence from the tool output."
+    ),
+    tool_allowlist=AUDIO_FIX_SUGGESTION_TOOLS,
+    grader_type="pattern",
+    pattern_config=PatternGraderConfig(
+        required_facts=[
+            ("tempo_fix", r"(?s)(?:clock1|tempo|bpm).*(?:12[0-9]|13[0-9]|increase|raise)"),
+            ("hat_fix", r"(?s)(?:hat|hi-?hat).*(?:offbeat|off-beat|pattern|step|volume|level)"),
+            ("backbeat_fix", r"(?s)(?:snare|clap|backbeat).*(?:volume|level|accent|stronger|present)"),
+        ],
+        rejected_claims=[],
+        min_tool_calls=2,
+        required_tool_names=[
+            "main__ensure_runtime",
+            "main__compare_audio_to_intent",
+        ],
+    ),
+    fake_sequence=[
+        AssistantMessage(
+            text=None,
+            tool_calls=[ToolCall(
+                id="fake-1",
+                name="main__ensure_runtime",
+                arguments={"graph_path": str(BAD_HOUSE_FIXTURE)},
+            )],
+            stop_reason="tool_use",
+        ),
+        AssistantMessage(
+            text=None,
+            tool_calls=[ToolCall(
+                id="fake-2",
+                name="main__get_graph_errors",
+                arguments={},
+            )],
+            stop_reason="tool_use",
+        ),
+        AssistantMessage(
+            text=None,
+            tool_calls=[ToolCall(
+                id="fake-3",
+                name="main__compare_audio_to_intent",
+                arguments={
+                    "intent": "a tight four-on-the-floor house groove with strong kick pulse, audible snare/clap backbeat, and crisp offbeat hats",
+                    "window_seconds": 20.0,
+                    "include_payload": False,
+                },
+            )],
+            stop_reason="tool_use",
+        ),
+        AssistantMessage(
+            text=(
+                "The graph is producing valid audio, but it misses the target house feel. "
+                "The biggest fixes are:\n\n"
+                "1. Raise `clock1` BPM from 108 into a house range around 124-126 so the groove "
+                "stops dragging.\n"
+                "2. Restore the offbeat hi-hat feel in `seq1` by adding hat triggers back on the "
+                "off-beats and increasing `hat1` volume so the hats read as crisp timekeeping instead "
+                "of a faint on-beat tick.\n"
+                "3. Push the backbeat forward by increasing `snare1` and `clap1` presence so beats "
+                "4 and 12 land clearly as the snare/clap accent.\n\n"
+                "Evidence: the music-eval comparison says the rhythm feels slower and sparser than the "
+                "target, with missing hat drive and a weak backbeat."
+            ),
+            tool_calls=[],
+            stop_reason="end_turn",
+        ),
+    ],
+)
+
+
+# ---------------------------------------------------------------------------
+# Case 6: Visual frame evaluation
+# ---------------------------------------------------------------------------
+
+VISUAL_EVAL_TOOLS: set[str] = {
+    "main__ensure_runtime",
+    "main__evaluate_live_frame",
+    "main__compare_frame_to_intent",
+}
+
+BLOOM_FIXTURE = REPO_ROOT / "graphs" / "gpu" / "bloom_demo.json"
+
+VISUAL_FIX_SUGGESTION = EvalCase(
+    name="visual_fix_suggestion",
+    user_prompt=(
+        "Load the bloom demo graph at "
+        f"`{BLOOM_FIXTURE}`.\n\n"
+        "The target visual character is: warm, glowing, high-energy light with "
+        "clear movement and a bright color mood.\n\n"
+        "Use the visual frame evaluation tools to capture the live output and assess "
+        "how closely it matches that intent. Report the match_score, the top style tags "
+        "you observe, and whether the visual character matches the target description. "
+        "Be specific — quote the tags and score from the tool output."
+    ),
+    tool_allowlist=VISUAL_EVAL_TOOLS,
+    grader_type="pattern",
+    pattern_config=PatternGraderConfig(
+        required_facts=[
+            ("used_score", r"match_score|score.{0,30}[0-9]\.[0-9]"),
+            ("cited_tags", r"(?:style.?tag|tag).*(?:warm|glow|bright|movement|energy|dark|abstract|cinematic)"),
+            ("visual_judgment", r"(?:match(?:es)?|align|close|far|differ|contrast|similar)"),
+        ],
+        rejected_claims=[],
+        min_tool_calls=2,
+        required_tool_names=[
+            "main__ensure_runtime",
+            "main__compare_frame_to_intent",
+        ],
+    ),
+    fake_sequence=[
+        AssistantMessage(
+            text=None,
+            tool_calls=[ToolCall(
+                id="fake-1",
+                name="main__ensure_runtime",
+                arguments={"graph_path": str(BLOOM_FIXTURE)},
+            )],
+            stop_reason="tool_use",
+        ),
+        AssistantMessage(
+            text=None,
+            tool_calls=[ToolCall(
+                id="fake-2",
+                name="main__compare_frame_to_intent",
+                arguments={
+                    "intent": "warm, glowing, high-energy light with clear movement and a bright color mood",
+                    "include_payload": True,
+                },
+            )],
+            stop_reason="tool_use",
+        ),
+        AssistantMessage(
+            text=(
+                "The live frame scores 0.18 against the intent "
+                "\"warm, glowing, high-energy light with clear movement and a bright color mood.\"\n\n"
+                "Top style tags from the frame: `glowing` (0.22, color_mood), `movement` (0.19, movement), "
+                "`warm` (0.17, color_mood), `bright` (0.15, visual_style).\n\n"
+                "The visual character broadly matches the target: the warm and glowing tags align well with "
+                "the intent, and movement is present. The score of 0.18 is in the mid range for SigLIP "
+                "cosine similarity (meaningful matches typically fall 0.10–0.30), indicating a reasonable "
+                "but not tight alignment. The main gap is energy — the output reads as moderately bright "
+                "rather than high-energy."
+            ),
+            tool_calls=[],
+            stop_reason="end_turn",
+        ),
+    ],
+)
+
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
 ALL_CASES: dict[str, EvalCase] = {
     c.name: c
-    for c in [MCP_SPLIT, ARCHITECTURE_TRICK, OPERATOR_API_LOOKUP, THRESHOLD_GATE_OPERATOR]
+    for c in [
+        MCP_SPLIT,
+        ARCHITECTURE_TRICK,
+        OPERATOR_API_LOOKUP,
+        THRESHOLD_GATE_OPERATOR,
+        AUDIO_FIX_SUGGESTION,
+        VISUAL_FIX_SUGGESTION,
+    ]
 }

@@ -36,6 +36,7 @@ class PatternGraderConfig:
     rejected_claims: list[tuple[str, str]]   # (name, regex_pattern)
     min_tool_calls: int = 1
     required_tool_prefixes: list[str] = field(default_factory=list)  # e.g. ["opdev__"]
+    required_tool_names: list[str] = field(default_factory=list)
 
 
 def grade_pattern(config: PatternGraderConfig, trace: ConversationTrace) -> GradeResult:
@@ -76,6 +77,16 @@ def grade_pattern(config: PatternGraderConfig, trace: ConversationTrace) -> Grad
             name=f"used_prefix:{prefix}",
             passed=used,
             detail=f"Tool prefix {prefix!r} {'used' if used else 'NOT used'}",
+        ))
+
+    # Check required exact tool names
+    used_names = {r.name for r in trace.tool_call_records}
+    for tool_name in config.required_tool_names:
+        used = tool_name in used_names
+        checks.append(Check(
+            name=f"used_tool:{tool_name}",
+            passed=used,
+            detail=f"Tool {tool_name!r} {'used' if used else 'NOT used'}",
         ))
 
     passed_count = sum(1 for c in checks if c.passed)
