@@ -4320,6 +4320,116 @@ async def get_param(node_id: str, param: str) -> str:
 
 
 @mcp.tool()
+async def list_clap_params(node_id: str) -> str:
+    """List all parameters exposed by the CLAP plugin currently loaded in a
+    CLAPInstrument or CLAPEffect node.
+
+    Returns a JSON array of parameter descriptors:
+      [{"name": "Cutoff", "id": 42, "min": 20.0, "max": 20000.0}, ...]
+
+    Returns an empty array if no plugin is loaded yet.
+
+    To control a discovered parameter, map it to a macro slot:
+      set_string_param(node_id, "macro_0_id", "Cutoff")
+      set_param(node_id, "macro_0", 0.5)   # 0-1 normalized
+
+    Args:
+        node_id: ID of the CLAPInstrument or CLAPEffect node
+    """
+    return await _post("list_clap_params", {"node_id": node_id})
+
+
+@mcp.tool()
+async def list_clap_plugins() -> list[dict]:
+    """List all installed CLAP plugins found in standard search paths.
+
+    Scans /Library/Audio/Plug-Ins/CLAP and ~/Library/Audio/Plug-Ins/CLAP.
+    Returns a list of dicts with 'name' and 'path' keys.
+    Use set_clap_plugin to load one into a CLAPInstrument or CLAPEffect node.
+    """
+    search_paths = [
+        pathlib.Path("/Library/Audio/Plug-Ins/CLAP"),
+        pathlib.Path(os.path.expanduser("~/Library/Audio/Plug-Ins/CLAP")),
+    ]
+    results = []
+    seen: set[str] = set()
+    for base in search_paths:
+        if not base.exists():
+            continue
+        for clap_path in sorted(base.rglob("*.clap")):
+            key = str(clap_path)
+            if key in seen:
+                continue
+            seen.add(key)
+            results.append({"name": clap_path.stem, "path": key})
+    return results
+
+
+@mcp.tool()
+async def set_clap_plugin(node_id: str, path: str, plugin_id: str = "") -> str:
+    """Load a CLAP plugin into a CLAPInstrument or CLAPEffect node.
+
+    Args:
+        node_id: ID of the target CLAPInstrument or CLAPEffect node
+        path: Full filesystem path to the .clap bundle (from list_clap_plugins)
+        plugin_id: CLAP plugin ID within the bundle; leave blank to use the first plugin
+    """
+    await _post("set_string_param", {"node_id": node_id, "param": "plugin_path", "value": path})
+    if plugin_id:
+        await _post("set_string_param", {"node_id": node_id, "param": "plugin_id", "value": plugin_id})
+    return json.dumps({"ok": True, "node_id": node_id, "path": path, "plugin_id": plugin_id})
+
+
+@mcp.tool()
+async def set_clap_param(node_id: str, param_name: str, value: float) -> str:
+    """Set a CLAP plugin parameter by name, in the plugin's native value range.
+
+    Finds or allocates a macro slot for the parameter, then sets it.
+    All 8 macro slots can be tracked simultaneously across up to 8 parameters.
+
+    Args:
+        node_id: ID of the CLAPInstrument or CLAPEffect node
+        param_name: Exact parameter name (from list_clap_params)
+        value: Value in the plugin's native range (min..max from list_clap_params)
+    """
+    import asyncio
+
+    raw = await _post("list_clap_params", {"node_id": node_id})
+    data = json.loads(raw)
+    params_list = data.get("params", [])
+    match = next((p for p in params_list if p["name"] == param_name), None)
+    if not match:
+        return json.dumps({"ok": False, "error": f"param '{param_name}' not found"})
+
+    mn = float(match.get("min", 0.0))
+    mx = float(match.get("max", 1.0))
+    rng = mx - mn if mx != mn else 1.0
+    normalized = max(0.0, min(1.0, (value - mn) / rng))
+
+    # Find the macro slot already assigned to this param, or the first empty slot.
+    slot_values = await asyncio.gather(*[
+        _post("get_param", {"node_id": node_id, "param": f"macro_{i}_id"})
+        for i in range(8)
+    ])
+    slot = None
+    first_empty = None
+    for i, r in enumerate(slot_values):
+        cur = json.loads(r).get("value", "")
+        if cur == param_name:
+            slot = i
+            break
+        if cur == "" and first_empty is None:
+            first_empty = i
+    if slot is None:
+        slot = first_empty if first_empty is not None else 0
+
+    await _post("set_string_param", {"node_id": node_id, "param": f"macro_{slot}_id", "value": param_name})
+    await _post("set_param", {"node_id": node_id, "param": f"macro_{slot}", "value": str(normalized)})
+    return json.dumps({"ok": True, "param": param_name, "value": value,
+                       "normalized": normalized, "macro_slot": slot})
+
+
+@mcp.tool()
 async def save_graph(path: str | None = None) -> str:
     """Save the graph to disk.
 

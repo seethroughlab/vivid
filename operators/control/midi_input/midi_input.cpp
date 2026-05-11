@@ -385,7 +385,8 @@ private:
                 match = (held_buffer_[i].note == note);
             }
             if (match) {
-                vivid_sequencers::note_off(notes_out_buf_, held_buffer_[i].note_id);
+                vivid_sequencers::note_off(notes_out_buf_, held_buffer_[i].note_id,
+                                           0, held_buffer_[i].note);
                 // Shift remaining down
                 for (int j = i; j < held_count_ - 1; ++j) {
                     held_buffer_[j] = held_buffer_[j + 1];

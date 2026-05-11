@@ -30,7 +30,7 @@ struct CustomPortSnapshot {
     uint32_t type_id = 0;
     VividPortTransport transport = VIVID_PORT_TRANSPORT_CUSTOM_REF;
     uint32_t byte_size = 0;
-    static constexpr uint32_t kMaxBytes = 256;
+    static constexpr uint32_t kMaxBytes = 2048;
     uint8_t bytes[kMaxBytes] = {};
 
     void clear() {

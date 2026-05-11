@@ -243,7 +243,8 @@ private:
                 if (active_notes_[i].channel == ch && active_notes_[i].note == data1) {
                     vivid_sequencers::note_off(notes_out_,
                                                active_notes_[i].note_id,
-                                               frame_offset);
+                                               frame_offset,
+                                               active_notes_[i].note);
                     for (int j = i; j < active_count_ - 1; ++j)
                         active_notes_[j] = active_notes_[j + 1];
                     --active_count_;
@@ -257,7 +258,8 @@ private:
         for (int i = 0; i < active_count_; ++i) {
             vivid_sequencers::note_off(notes_out_,
                                        active_notes_[i].note_id,
-                                       frame_offset);
+                                       frame_offset,
+                                       active_notes_[i].note);
         }
         active_count_ = 0;
     }

@@ -53,8 +53,8 @@ typedef struct VividNoteEvent {
 // Operators write events into this buffer; consumers read and clear it.
 #define VIVID_NOTE_BUFFER_CAPACITY 64
 typedef struct VividNoteBuffer {
-    VividNoteEvent events[VIVID_NOTE_BUFFER_CAPACITY];
     uint32_t       count;          // number of valid events (0..VIVID_NOTE_BUFFER_CAPACITY)
+    VividNoteEvent events[VIVID_NOTE_BUFFER_CAPACITY];
 } VividNoteBuffer;
 
 #ifdef __cplusplus
