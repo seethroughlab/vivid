@@ -605,10 +605,16 @@ target_sources(granular_synth PRIVATE operators/shared/granular_dsp/granular_dsp
 add_vivid_operator(clap_instrument  operators/audio/clap_instrument/clap_instrument.cpp CODEGEN
                    EXTRA_LIBS clap_headers)
 if(APPLE)
-    target_sources(clap_instrument PRIVATE operators/audio/clap_instrument/clap_plugin_window.mm)
+    target_sources(clap_instrument PRIVATE operators/shared/clap_host/clap_plugin_window.mm)
     target_link_libraries(clap_instrument PRIVATE "-framework AppKit")
-    set_source_files_properties(operators/audio/clap_instrument/clap_plugin_window.mm
+    set_source_files_properties(operators/shared/clap_host/clap_plugin_window.mm
                                 PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+endif()
+add_vivid_operator(clap_effect      operators/audio/clap_effect/clap_effect.cpp CODEGEN
+                   EXTRA_LIBS clap_headers)
+if(APPLE)
+    target_sources(clap_effect PRIVATE operators/shared/clap_host/clap_plugin_window.mm)
+    target_link_libraries(clap_effect PRIVATE "-framework AppKit")
 endif()
 add_vivid_operator(vocoder          operators/audio/vocoder/vocoder.cpp CODEGEN)
 target_sources(vocoder PRIVATE operators/shared/vocoder_dsp/vocoder_dsp.cpp)

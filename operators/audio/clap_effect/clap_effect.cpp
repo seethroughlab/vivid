@@ -1,36 +1,31 @@
 #include "operator_api/operator.h"
-#include "operator_api/note_types.h"
 #include "operator_api/type_id.h"
 #include "shared/clap_host/clap_host_common.h"
 #ifdef __APPLE__
 #include "shared/clap_host/clap_plugin_window.h"
 #endif
 
+#include <clap/ext/latency.h>
+#include <clap/ext/tail.h>
+
 #include <atomic>
 #include <cmath>
+#include <cstring>
 
 // ---------------------------------------------------------------------------
-// CLAPInstrument — hosts a CLAP instrument plugin as a Vivid audio operator.
+// CLAPEffect — hosts a CLAP audio effect plugin as a Vivid audio operator.
 //
 // Parameters visible in the inspector:
 //   plugin_path  — path to the .clap bundle
 //   plugin_id    — CLAP plugin id within the bundle (blank = first plugin)
 //   macro_0..7   — float 0-1, each mapped to a CLAP param by name via macro_0_id..7_id
 //
-// Plugin GUI is opened via Cmd+E / Open Editor button.
-//
-// Threading model (per CLAP spec):
-//   main thread : load, init, activate, deactivate, destroy
-//   audio thread: start_processing, process, stop_processing
-//
-// The operator uses three atomic plugin slots:
-//   pending_ — loaded+activated by main thread, awaiting audio thread swap
-//   active_  — currently being processed by the audio thread
-//   dying_   — stopped by audio thread, awaiting main-thread deactivate+destroy
+// Threading model identical to CLAPInstrument (three atomic plugin slots).
+// Passthrough: when no plugin is loaded, audio input passes through unmodified.
 // ---------------------------------------------------------------------------
 
-struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
-    static constexpr const char* kName        = "CLAPInstrument";
+struct CLAPEffect : vivid::OperatorBase, vivid::AudioProcessable {
+    static constexpr const char* kName         = "CLAPEffect";
     static constexpr bool        kTimeDependent = true;
 
     // --- Params ---
@@ -55,7 +50,6 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<vivid::TextValue> macro_7_id {"macro_7_id"};
 
     // Opaque plugin state, base64-encoded, persisted in graph JSON.
-    // Not shown in the inspector; updated automatically by save_state().
     vivid::Param<vivid::TextValue> plugin_state {"plugin_state"};
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
@@ -73,15 +67,16 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back(VIVID_CUSTOM_REF_PORT("notes_in", VIVID_PORT_INPUT, VividNoteBuffer));
+        out.push_back({"input",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,
+                       VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2});
         out.push_back({"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT,
                        VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2});
     }
 
     // --- Plugin slot atomics ---
-    std::atomic<PluginHandle*> active_  {nullptr};  // audio thread owns
-    std::atomic<PluginHandle*> pending_ {nullptr};  // set by main, swapped by audio
-    std::atomic<PluginHandle*> dying_   {nullptr};  // set by audio, cleaned by main
+    std::atomic<PluginHandle*> active_  {nullptr};
+    std::atomic<PluginHandle*> pending_ {nullptr};
+    std::atomic<PluginHandle*> dying_   {nullptr};
 
     // --- Plugin GUI window (main thread only) ---
 #ifdef __APPLE__
@@ -93,29 +88,30 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
     std::string last_plugin_id_;
     uint64_t    steady_sample_ = 0;
     uint32_t    sample_rate_   = 48000;
-    bool        state_dirty_   = false;  // set by host mark_dirty; triggers save on main thread
+    bool        state_dirty_   = false;
+    bool        latency_dirty_ = false;
+    uint32_t    latency_samples_ = 0;  // informational; main thread
 
     // --- Per-macro resolved CLAP param ID & range cache ---
     struct MacroEntry {
         clap_id id        = CLAP_INVALID_ID;
         double  min_val   = 0.0;
         double  max_val   = 1.0;
-        float   last_sent = -1.f;  // detect changes to avoid spamming events
+        float   last_sent = -1.f;
     };
     MacroEntry macro_map_[8];
 
-    // Macro param accessors (indexed 0-7)
     vivid::Param<float>*            macro_float_[8];
     vivid::Param<vivid::TextValue>* macro_id_[8];
 
     // --- Per-frame event list (audio thread only) ---
     EventList in_events_;
 
-    // --- CLAP host descriptor (per-instance, stable address) ---
+    // --- CLAP host descriptor ---
     clap_host_t host_desc_;
 
     // -----------------------------------------------------------------------
-    CLAPInstrument() {
+    CLAPEffect() {
         macro_float_[0] = &macro_0; macro_id_[0] = &macro_0_id;
         macro_float_[1] = &macro_1; macro_id_[1] = &macro_1_id;
         macro_float_[2] = &macro_2; macro_id_[2] = &macro_2_id;
@@ -126,12 +122,12 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
         macro_float_[7] = &macro_7; macro_id_[7] = &macro_7_id;
 
         std::memset(&host_desc_, 0, sizeof(host_desc_));
-        host_desc_.clap_version  = CLAP_VERSION;
-        host_desc_.host_data     = this;
-        host_desc_.name          = "Vivid";
-        host_desc_.vendor        = "See Through Lab";
-        host_desc_.url           = "";
-        host_desc_.version       = "1.0.0";
+        host_desc_.clap_version   = CLAP_VERSION;
+        host_desc_.host_data      = this;
+        host_desc_.name           = "Vivid";
+        host_desc_.vendor         = "See Through Lab";
+        host_desc_.url            = "";
+        host_desc_.version        = "1.0.0";
         host_desc_.get_extension  = &host_get_extension;
         host_desc_.request_restart  = &host_request_restart;
         host_desc_.request_process  = &host_request_process;
@@ -158,44 +154,46 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::display_hint(plugin_state, VIVID_DISPLAY_HIDDEN);
     }
 
-    ~CLAPInstrument() {
-        // Close GUI before destroying plugins (CLAP spec: destroy GUI before deactivating)
+    ~CLAPEffect() {
 #ifdef __APPLE__
         if (gui_win_) { clap_plugin_window_close(gui_win_); gui_win_ = nullptr; }
 #endif
-        // Best-effort cleanup. Audio thread should be stopped before operator destroy.
-        auto* act = active_.exchange(nullptr, std::memory_order_acq_rel);
-        destroy_plugin(act, /*was_processing=*/act && act->started);
+        auto* act  = active_.exchange(nullptr,  std::memory_order_acq_rel);
+        destroy_plugin(act,  act && act->started);
         auto* pend = pending_.exchange(nullptr, std::memory_order_acq_rel);
         destroy_plugin(pend, false);
-        auto* dead = dying_.exchange(nullptr, std::memory_order_acq_rel);
+        auto* dead = dying_.exchange(nullptr,   std::memory_order_acq_rel);
         destroy_plugin(dead, false);
     }
 
     // -----------------------------------------------------------------------
-    // Main-thread: load a new plugin from disk
+    // Main-thread lifecycle
     // -----------------------------------------------------------------------
 
-    void prepare_instance_assets() override {
-        reload_if_changed();
-    }
+    void prepare_instance_assets() override { reload_if_changed(); }
 
     void main_thread_update(double /*time*/) override {
-        // Clean up any plugin stopped by the audio thread
         auto* dead = dying_.exchange(nullptr, std::memory_order_acq_rel);
-        destroy_plugin(dead, /*was_processing=*/false);
+        destroy_plugin(dead, false);
 
-        // Reload if path changed
         reload_if_changed();
-
-        // Refresh macro ID → CLAP param mappings when a new plugin is active
         update_macro_map();
 
-        // Persist plugin state when dirty (plugin called mark_dirty, or first
-        // save after the plugin becomes active so new graphs capture initial state)
         if (state_dirty_) save_state();
 
-        // Check if the CLAP GUI window was closed by the user
+        if (latency_dirty_) {
+            auto* act = active_.load(std::memory_order_acquire);
+            if (act && act->plugin && act->path == last_path_) {
+                auto* lat = reinterpret_cast<const clap_plugin_latency_t*>(
+                    act->plugin->get_extension(act->plugin, CLAP_EXT_LATENCY));
+                if (lat) {
+                    latency_samples_ = lat->get(act->plugin);
+                    fprintf(stderr, "[CLAPEffect] Latency changed: %u samples\n", latency_samples_);
+                }
+                latency_dirty_ = false;
+            }
+        }
+
 #ifdef __APPLE__
         if (gui_win_ && !clap_plugin_window_is_open(gui_win_)) {
             clap_plugin_window_close(gui_win_);
@@ -210,18 +208,16 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
         last_path_      = plugin_path.str_value;
         last_plugin_id_ = plugin_id.str_value;
 
-        // Close GUI when plugin changes
 #ifdef __APPLE__
         if (gui_win_) { clap_plugin_window_close(gui_win_); gui_win_ = nullptr; }
 #endif
 
-        // Clear macro map — will be resolved after new plugin loads
         for (auto& m : macro_map_) { m.id = CLAP_INVALID_ID; m.last_sent = -1.f; }
 
         if (last_path_.empty()) {
             auto* old_pend = pending_.exchange(nullptr, std::memory_order_acq_rel);
             destroy_plugin(old_pend, false);
-            auto* sentinel = new PluginHandle();  // empty, no library loaded
+            auto* sentinel = new PluginHandle();
             pending_.store(sentinel, std::memory_order_release);
             return;
         }
@@ -232,31 +228,28 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
         auto* old_pend = pending_.exchange(h, std::memory_order_acq_rel);
         destroy_plugin(old_pend, false);
 
-        // Trigger an initial state save once the plugin becomes active, so new
-        // graphs capture the plugin's default state on the first graph save.
         state_dirty_ = true;
     }
 
-    // Load, init, and activate a CLAP plugin. Returns null on failure.
     PluginHandle* load_plugin(const char* path, const char* id_hint) {
         std::string binary = clap_resolve_binary(path);
 
         void* lib = dlopen(binary.c_str(), RTLD_NOW | RTLD_LOCAL);
-        if (!lib) { fprintf(stderr, "[CLAPInstrument] dlopen failed: %s\n", dlerror()); return nullptr; }
+        if (!lib) { fprintf(stderr, "[CLAPEffect] dlopen failed: %s\n", dlerror()); return nullptr; }
 
         auto* entry = reinterpret_cast<const clap_plugin_entry_t*>(dlsym(lib, "clap_entry"));
-        if (!entry) { fprintf(stderr, "[CLAPInstrument] no clap_entry symbol\n"); dlclose(lib); return nullptr; }
+        if (!entry) { fprintf(stderr, "[CLAPEffect] no clap_entry symbol\n"); dlclose(lib); return nullptr; }
         if (!clap_version_is_compatible(entry->clap_version)) {
-            fprintf(stderr, "[CLAPInstrument] incompatible CLAP version %u.%u.%u\n",
+            fprintf(stderr, "[CLAPEffect] incompatible CLAP version %u.%u.%u\n",
                     entry->clap_version.major, entry->clap_version.minor, entry->clap_version.revision);
             dlclose(lib); return nullptr;
         }
 
-        if (!entry->init(binary.c_str())) { fprintf(stderr, "[CLAPInstrument] entry->init failed\n"); dlclose(lib); return nullptr; }
+        if (!entry->init(binary.c_str())) { fprintf(stderr, "[CLAPEffect] entry->init failed\n"); dlclose(lib); return nullptr; }
 
         auto* factory = reinterpret_cast<const clap_plugin_factory_t*>(
             entry->get_factory(CLAP_PLUGIN_FACTORY_ID));
-        if (!factory) { fprintf(stderr, "[CLAPInstrument] no plugin factory\n"); entry->deinit(); dlclose(lib); return nullptr; }
+        if (!factory) { fprintf(stderr, "[CLAPEffect] no plugin factory\n"); entry->deinit(); dlclose(lib); return nullptr; }
 
         uint32_t count = factory->get_plugin_count(factory);
         const clap_plugin_descriptor_t* desc = nullptr;
@@ -268,18 +261,18 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
                 break;
             }
         }
-        if (!desc) { fprintf(stderr, "[CLAPInstrument] no matching plugin descriptor\n"); entry->deinit(); dlclose(lib); return nullptr; }
+        if (!desc) { fprintf(stderr, "[CLAPEffect] no matching plugin descriptor\n"); entry->deinit(); dlclose(lib); return nullptr; }
 
         const clap_plugin_t* plugin = factory->create_plugin(factory, &host_desc_, desc->id);
-        if (!plugin) { fprintf(stderr, "[CLAPInstrument] create_plugin failed\n"); entry->deinit(); dlclose(lib); return nullptr; }
+        if (!plugin) { fprintf(stderr, "[CLAPEffect] create_plugin failed\n"); entry->deinit(); dlclose(lib); return nullptr; }
 
         if (!plugin->init(plugin)) {
-            fprintf(stderr, "[CLAPInstrument] plugin->init failed\n");
+            fprintf(stderr, "[CLAPEffect] plugin->init failed\n");
             plugin->destroy(plugin); entry->deinit(); dlclose(lib); return nullptr;
         }
 
         if (!plugin->activate(plugin, sample_rate_, 32, 4096)) {
-            fprintf(stderr, "[CLAPInstrument] plugin->activate failed (sample_rate=%u)\n", sample_rate_);
+            fprintf(stderr, "[CLAPEffect] plugin->activate failed (sample_rate=%u)\n", sample_rate_);
             plugin->destroy(plugin); entry->deinit(); dlclose(lib); return nullptr;
         }
 
@@ -288,6 +281,17 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
         h->entry   = entry;
         h->plugin  = plugin;
         h->path    = path;
+
+        // Query latency and tail after activate (main thread, post-activate per spec)
+        auto* lat = reinterpret_cast<const clap_plugin_latency_t*>(
+            plugin->get_extension(plugin, CLAP_EXT_LATENCY));
+        h->latency_samples = lat ? lat->get(plugin) : 0;
+        if (h->latency_samples > 0)
+            fprintf(stderr, "[CLAPEffect] Plugin latency: %u samples\n", h->latency_samples);
+
+        auto* tail = reinterpret_cast<const clap_plugin_tail_t*>(
+            plugin->get_extension(plugin, CLAP_EXT_TAIL));
+        h->tail_samples = tail ? tail->get(plugin) : 0;
 
         cache_params(h);
         load_state(h);
@@ -359,7 +363,7 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
                 if (!pend->plugin) {
                     active_.store(nullptr, std::memory_order_release);
                     delete pend;
-                    zero_outputs(ctx);
+                    passthrough(ctx);
                     return;
                 }
                 pend->plugin->start_processing(pend->plugin);
@@ -368,96 +372,43 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
         }
 
         PluginHandle* act = active_.load(std::memory_order_acquire);
-        if (!act || !act->started) { zero_outputs(ctx); return; }
+        if (!act || !act->started) { passthrough(ctx); return; }
 
-        in_events_.clear();
-        build_note_events(ctx);
-        build_macro_events(ctx);
-        auto clap_in = in_events_.as_clap_input();
+        // Vivid stereo planar: L at [0], R at [0 + buffer_size]
+        float* in_l = ctx->input_buffers[0];
+        float* in_r = ctx->input_buffers[0] + ctx->buffer_size;
+        float* in_ch[2]  = { in_l, in_r };
+        clap_audio_buffer_t clap_in{};
+        clap_in.data32        = in_ch;
+        clap_in.channel_count = 2;
 
         float* out_l = ctx->output_buffers[0];
         float* out_r = ctx->output_buffers[0] + ctx->buffer_size;
-        float* channels[2] = { out_l, out_r };
+        float* out_ch[2] = { out_l, out_r };
         clap_audio_buffer_t clap_out{};
-        clap_out.data32        = channels;
+        clap_out.data32        = out_ch;
         clap_out.channel_count = 2;
+
+        in_events_.clear();
+        build_macro_events();
+        auto clap_ev = in_events_.as_clap_input();
 
         clap_process_t proc{};
         proc.steady_time         = static_cast<int64_t>(steady_sample_);
         proc.frames_count        = ctx->buffer_size;
         proc.transport           = nullptr;
-        proc.audio_inputs        = nullptr;
-        proc.audio_inputs_count  = 0;
+        proc.audio_inputs        = &clap_in;
+        proc.audio_inputs_count  = 1;
         proc.audio_outputs       = &clap_out;
         proc.audio_outputs_count = 1;
-        proc.in_events           = &clap_in;
+        proc.in_events           = &clap_ev;
         proc.out_events          = &kNullOutput;
 
         act->plugin->process(act->plugin, &proc);
         steady_sample_ += ctx->buffer_size;
     }
 
-    void build_note_events(const VividAudioContext* ctx) {
-        if (!ctx->custom_inputs || ctx->custom_input_count == 0 || !ctx->custom_inputs[0])
-            return;
-        auto* notes = static_cast<const VividNoteBuffer*>(ctx->custom_inputs[0]);
-
-        for (uint32_t i = 0; i < notes->count; ++i) {
-            const auto& ev = notes->events[i];
-            uint32_t t = static_cast<uint32_t>(
-                std::min(static_cast<uint64_t>(ev.frame_offset_samples),
-                         static_cast<uint64_t>(ctx->buffer_size - 1)));
-
-            if (ev.type == VIVID_NOTE_ON) {
-                clap_event_note_t e{};
-                e.header = { sizeof(e), t, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_ON, 0 };
-                e.note_id    = static_cast<int32_t>(ev.note_id & 0x7FFFFFFF);
-                e.port_index = 0;
-                e.channel    = 0;
-                e.key        = ev.note_number;
-                e.velocity   = ev.value;
-                in_events_.push(e);
-            } else if (ev.type == VIVID_NOTE_OFF) {
-                clap_event_note_t e{};
-                e.header = { sizeof(e), t, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_OFF, 0 };
-                e.note_id    = static_cast<int32_t>(ev.note_id & 0x7FFFFFFF);
-                e.port_index = 0;
-                e.channel    = 0;
-                e.key        = (ev.note_number != 255) ? static_cast<int16_t>(ev.note_number) : -1;
-                e.velocity   = ev.value;
-                in_events_.push(e);
-            } else if (ev.type == VIVID_NOTE_PITCH_BEND) {
-                clap_event_note_expression_t e{};
-                e.header = { sizeof(e), t, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_EXPRESSION, 0 };
-                e.expression_id = CLAP_NOTE_EXPRESSION_TUNING;
-                e.note_id       = static_cast<int32_t>(ev.note_id & 0x7FFFFFFF);
-                e.port_index    = 0;  e.channel = 0;
-                e.key           = ev.note_number;
-                e.value         = ev.value;
-                in_events_.push(e);
-            } else if (ev.type == VIVID_NOTE_PRESSURE) {
-                clap_event_note_expression_t e{};
-                e.header = { sizeof(e), t, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_EXPRESSION, 0 };
-                e.expression_id = CLAP_NOTE_EXPRESSION_PRESSURE;
-                e.note_id       = static_cast<int32_t>(ev.note_id & 0x7FFFFFFF);
-                e.port_index    = 0;  e.channel = 0;
-                e.key           = ev.note_number;
-                e.value         = ev.value;
-                in_events_.push(e);
-            } else if (ev.type == VIVID_NOTE_TIMBRE) {
-                clap_event_note_expression_t e{};
-                e.header = { sizeof(e), t, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_EXPRESSION, 0 };
-                e.expression_id = CLAP_NOTE_EXPRESSION_BRIGHTNESS;
-                e.note_id       = static_cast<int32_t>(ev.note_id & 0x7FFFFFFF);
-                e.port_index    = 0;  e.channel = 0;
-                e.key           = ev.note_number;
-                e.value         = ev.value;
-                in_events_.push(e);
-            }
-        }
-    }
-
-    void build_macro_events(const VividAudioContext* /*ctx*/) {
+    void build_macro_events() {
         const float vals[8] = {
             macro_0.value, macro_1.value, macro_2.value, macro_3.value,
             macro_4.value, macro_5.value, macro_6.value, macro_7.value,
@@ -471,21 +422,25 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
                 static_cast<double>(vals[i]) * (macro_map_[i].max_val - macro_map_[i].min_val);
 
             clap_event_param_value_t e{};
-            e.header     = { sizeof(e), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0 };
-            e.param_id   = macro_map_[i].id;
-            e.cookie     = nullptr;
-            e.note_id    = -1;  e.port_index = -1;  e.channel = -1;  e.key = -1;
-            e.value      = scaled;
+            e.header   = { sizeof(e), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0 };
+            e.param_id = macro_map_[i].id;
+            e.cookie   = nullptr;
+            e.note_id  = -1; e.port_index = -1; e.channel = -1; e.key = -1;
+            e.value    = scaled;
             in_events_.push(e);
         }
     }
 
-    static void zero_outputs(const VividAudioContext* ctx) {
-        std::memset(ctx->output_buffers[0], 0, sizeof(float) * ctx->buffer_size * 2);
+    static void passthrough(const VividAudioContext* ctx) {
+        if (ctx->input_buffers && ctx->input_buffers[0])
+            std::memcpy(ctx->output_buffers[0], ctx->input_buffers[0],
+                        sizeof(float) * ctx->buffer_size * 2);
+        else
+            std::memset(ctx->output_buffers[0], 0, sizeof(float) * ctx->buffer_size * 2);
     }
 
     // -----------------------------------------------------------------------
-    // State save / load  (main thread only)
+    // State save / load (main thread only)
     // -----------------------------------------------------------------------
 
     void save_state() {
@@ -518,14 +473,34 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
     static const clap_host_state_t* host_state_ext() {
         static const clap_host_state_t kExt = {
             [](const clap_host_t* host) {
-                static_cast<CLAPInstrument*>(host->host_data)->state_dirty_ = true;
+                static_cast<CLAPEffect*>(host->host_data)->state_dirty_ = true;
             }
         };
         return &kExt;
     }
 
+    static const clap_host_latency_t* host_latency_ext() {
+        static const clap_host_latency_t kExt = {
+            [](const clap_host_t* host) {
+                // Called on main thread (during activation) — re-query next tick
+                static_cast<CLAPEffect*>(host->host_data)->latency_dirty_ = true;
+            }
+        };
+        return &kExt;
+    }
+
+    static const clap_host_tail_t* host_tail_ext() {
+        // Tail changed is informational; we re-query in process_audio if desired
+        static const clap_host_tail_t kExt = {
+            [](const clap_host_t*) {}
+        };
+        return &kExt;
+    }
+
     static const void* host_get_extension(const clap_host_t*, const char* id) {
-        if (std::strcmp(id, CLAP_EXT_STATE) == 0) return host_state_ext();
+        if (std::strcmp(id, CLAP_EXT_STATE)   == 0) return host_state_ext();
+        if (std::strcmp(id, CLAP_EXT_LATENCY) == 0) return host_latency_ext();
+        if (std::strcmp(id, CLAP_EXT_TAIL)    == 0) return host_tail_ext();
         return nullptr;
     }
     static void host_request_restart(const clap_host_t*)  {}
@@ -533,15 +508,14 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
     static void host_request_callback(const clap_host_t*) {}
 };
 
-VIVID_DEFINE_OP(CLAPInstrument) {
-    display_name = "CLAP Instrument";
-    keywords     = {"plugin", "vst", "synth", "instrument", "external"};
-    summary      = "Hosts a CLAP instrument plugin; receives MIDI notes, outputs audio.";
+VIVID_DEFINE_OP(CLAPEffect) {
+    display_name = "CLAP Effect";
+    keywords     = {"plugin", "effect", "reverb", "delay", "eq", "external", "insert"};
+    summary      = "Hosts a CLAP audio effect plugin; processes stereo audio in-place.";
 }
 
 // ---------------------------------------------------------------------------
 // VIVID_EDITOR — opens the CLAP plugin's native GUI in its own Cocoa NSWindow.
-// The Vivid editor window closes immediately; the CLAP GUI lives independently.
 // ---------------------------------------------------------------------------
 
 extern "C" VividEditorMetadata vivid_editor_metadata() {
@@ -556,7 +530,7 @@ extern "C" VividEditorMetadata vivid_editor_metadata() {
 
 extern "C" void vivid_draw_editor(void* instance, VividEditorContext* ctx) {
 #ifdef __APPLE__
-    auto* self = static_cast<CLAPInstrument*>(instance);
+    auto* self = static_cast<CLAPEffect*>(instance);
 
     if (self->gui_win_) { ctx->request_close = 1; return; }
 
