@@ -2,6 +2,8 @@
 #include "operator_api/note_types.h"
 #include "operator_api/type_id.h"
 #include "shared/clap_host/clap_host_common.h"
+#include "shared/clap_host/clap_scanner.h"
+#include "shared/clap_host/clap_browser.h"
 #ifdef __APPLE__
 #include "shared/clap_host/clap_plugin_window.h"
 #endif
@@ -83,10 +85,11 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
     std::atomic<PluginHandle*> pending_ {nullptr};  // set by main, swapped by audio
     std::atomic<PluginHandle*> dying_   {nullptr};  // set by audio, cleaned by main
 
-    // --- Plugin GUI window (main thread only) ---
+    // --- Plugin GUI window and browser state (main thread only) ---
 #ifdef __APPLE__
     ClapPluginWindow* gui_win_ = nullptr;
 #endif
+    ClapBrowserState browser_state_;
 
     // --- State ---
     std::string last_path_;
@@ -178,6 +181,7 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
 
     void prepare_instance_assets() override {
         reload_if_changed();
+        clap_scan_plugins();
     }
 
     void main_thread_update(double /*time*/) override {
@@ -546,10 +550,10 @@ VIVID_DEFINE_OP(CLAPInstrument) {
 
 extern "C" VividEditorMetadata vivid_editor_metadata() {
     VividEditorMetadata m{};
-    m.default_width  = 1;
-    m.default_height = 1;
-    m.min_width      = 1;
-    m.min_height     = 1;
+    m.default_width  = 640;
+    m.default_height = 520;
+    m.min_width      = 400;
+    m.min_height     = 300;
     m.title_suffix   = nullptr;
     return m;
 }
@@ -558,30 +562,42 @@ extern "C" void vivid_draw_editor(void* instance, VividEditorContext* ctx) {
 #ifdef __APPLE__
     auto* self = static_cast<CLAPInstrument*>(instance);
 
-    if (self->gui_win_) { ctx->request_close = 1; return; }
-
-    auto* act = self->active_.load(std::memory_order_acquire);
-    if (!act || !act->plugin) { ctx->request_close = 1; return; }
-
-    auto* gui_ext = reinterpret_cast<const clap_plugin_gui_t*>(
-        act->plugin->get_extension(act->plugin, CLAP_EXT_GUI));
-    if (!gui_ext) { ctx->request_close = 1; return; }
-
-    const char* title_str = "CLAP Plugin";
-    const std::string& path = self->last_path_;
-    std::string stem;
-    if (!path.empty()) {
-        size_t slash = path.rfind('/');
-        stem = (slash == std::string::npos) ? path : path.substr(slash + 1);
-        const std::string ext = ".clap";
-        if (stem.size() > ext.size() &&
-            stem.compare(stem.size() - ext.size(), ext.size(), ext) == 0)
-            stem.resize(stem.size() - ext.size());
-        if (!stem.empty()) title_str = stem.c_str();
+    // Sync CLAP GUI window state
+    if (self->gui_win_ && !clap_plugin_window_is_open(self->gui_win_)) {
+        clap_plugin_window_close(self->gui_win_);
+        self->gui_win_ = nullptr;
     }
 
-    self->gui_win_ = clap_plugin_window_open(act->plugin, gui_ext, title_str);
-    ctx->request_close = 1;
+    // Query whether current plugin supports a GUI
+    bool has_gui = false;
+    auto* act = self->active_.load(std::memory_order_acquire);
+    if (act && act->plugin) {
+        auto* gui_ext = reinterpret_cast<const clap_plugin_gui_t*>(
+            act->plugin->get_extension(act->plugin, CLAP_EXT_GUI));
+        has_gui = gui_ext &&
+            gui_ext->is_api_supported(act->plugin, CLAP_WINDOW_API_COCOA, false);
+    }
+
+    auto result = draw_clap_browser(ctx, self->browser_state_,
+                                    self->last_path_, has_gui);
+
+    if (result.plugin_selected) {
+        ctx->commands.set_string_param(ctx->commands.opaque, "plugin_path",
+                                       result.selected_path.c_str());
+        ctx->commands.set_string_param(ctx->commands.opaque, "plugin_id",
+                                       result.selected_id.c_str());
+    }
+
+    if (result.open_gui_clicked && act && act->plugin && !self->gui_win_) {
+        auto* gui_ext = reinterpret_cast<const clap_plugin_gui_t*>(
+            act->plugin->get_extension(act->plugin, CLAP_EXT_GUI));
+        if (gui_ext) {
+            std::string stem = clap_path_stem(self->last_path_);
+            self->gui_win_ = clap_plugin_window_open(
+                act->plugin, gui_ext,
+                stem.empty() ? "CLAP Plugin" : stem.c_str());
+        }
+    }
 #else
     (void)instance;
     ctx->request_close = 1;
