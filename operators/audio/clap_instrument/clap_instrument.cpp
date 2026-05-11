@@ -60,6 +60,10 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
     // Not shown in the inspector; updated automatically by save_state().
     vivid::Param<vivid::TextValue> plugin_state {"plugin_state"};
 
+    // JSON array of CLAP parameters from the loaded plugin (auto-populated).
+    // Consumed by list_clap_params MCP tool; not shown in the inspector.
+    vivid::Param<vivid::TextValue> clap_params_ {"_clap_params"};
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&plugin_path);
         out.push_back(&plugin_id);
@@ -72,6 +76,7 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back(&macro_6); out.push_back(&macro_6_id);
         out.push_back(&macro_7); out.push_back(&macro_7_id);
         out.push_back(&plugin_state);
+        out.push_back(&clap_params_);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -84,6 +89,7 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
     std::atomic<PluginHandle*> active_  {nullptr};  // audio thread owns
     std::atomic<PluginHandle*> pending_ {nullptr};  // set by main, swapped by audio
     std::atomic<PluginHandle*> dying_   {nullptr};  // set by audio, cleaned by main
+    std::atomic<PluginHandle*> dying2_  {nullptr};  // overflow: if dying_ was already full
 
     // --- Plugin GUI window and browser state (main thread only) ---
 #ifdef __APPLE__
@@ -92,11 +98,12 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
     ClapBrowserState browser_state_;
 
     // --- State ---
-    std::string last_path_;
-    std::string last_plugin_id_;
-    uint64_t    steady_sample_ = 0;
-    uint32_t    sample_rate_   = 48000;
-    bool        state_dirty_   = false;  // set by host mark_dirty; triggers save on main thread
+    std::string        last_path_;
+    std::string        last_plugin_id_;
+    uint64_t           steady_sample_         = 0;
+    uint32_t           sample_rate_           = 48000;
+    bool               state_dirty_           = false;
+    std::atomic<bool>  callback_requested_    {false};
 
     // --- Per-macro resolved CLAP param ID & range cache ---
     struct MacroEntry {
@@ -158,7 +165,8 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::description(macro_6_id, "CLAP parameter name for macro 6");
         vivid::description(macro_7, "Macro 7 value (0-1)");
         vivid::description(macro_7_id, "CLAP parameter name for macro 7");
-        vivid::display_hint(plugin_state, VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(plugin_state,   VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(clap_params_,   VIVID_DISPLAY_HIDDEN);
     }
 
     ~CLAPInstrument() {
@@ -169,10 +177,12 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
         // Best-effort cleanup. Audio thread should be stopped before operator destroy.
         auto* act = active_.exchange(nullptr, std::memory_order_acq_rel);
         destroy_plugin(act, /*was_processing=*/act && act->started);
-        auto* pend = pending_.exchange(nullptr, std::memory_order_acq_rel);
+        auto* pend  = pending_.exchange(nullptr,  std::memory_order_acq_rel);
         destroy_plugin(pend, false);
-        auto* dead = dying_.exchange(nullptr, std::memory_order_acq_rel);
+        auto* dead  = dying_.exchange(nullptr,   std::memory_order_acq_rel);
         destroy_plugin(dead, false);
+        auto* dead2 = dying2_.exchange(nullptr,  std::memory_order_acq_rel);
+        destroy_plugin(dead2, false);
     }
 
     // -----------------------------------------------------------------------
@@ -185,15 +195,26 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void main_thread_update(double /*time*/) override {
-        // Clean up any plugin stopped by the audio thread
-        auto* dead = dying_.exchange(nullptr, std::memory_order_acq_rel);
-        destroy_plugin(dead, /*was_processing=*/false);
+        // Clean up any plugins stopped by the audio thread
+        auto* dead  = dying_.exchange(nullptr,  std::memory_order_acq_rel);
+        auto* dead2 = dying2_.exchange(nullptr, std::memory_order_acq_rel);
+        destroy_plugin(dead,  /*was_processing=*/false);
+        destroy_plugin(dead2, /*was_processing=*/false);
+
+        // Dispatch any pending plugin main-thread callback
+        if (callback_requested_.exchange(false, std::memory_order_acq_rel)) {
+            auto* act = active_.load(std::memory_order_acquire);
+            if (act && act->plugin) act->plugin->on_main_thread(act->plugin);
+        }
 
         // Reload if path changed
         reload_if_changed();
 
         // Refresh macro ID → CLAP param mappings when a new plugin is active
         update_macro_map();
+
+        // Refresh _clap_params JSON when active plugin changes
+        refresh_clap_params_json();
 
         // Persist plugin state when dirty (plugin called mark_dirty, or first
         // save after the plugin becomes active so new graphs capture initial state)
@@ -331,6 +352,17 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
         }
     }
 
+    void refresh_clap_params_json() {
+        auto* act = active_.load(std::memory_order_acquire);
+        const clap_plugin_params_t* params_ext = nullptr;
+        if (act && act->plugin)
+            params_ext = reinterpret_cast<const clap_plugin_params_t*>(
+                act->plugin->get_extension(act->plugin, CLAP_EXT_PARAMS));
+        std::string new_json = clap_params_to_json(act, params_ext);
+        if (new_json != clap_params_.str_value)
+            clap_params_.str_value = std::move(new_json);
+    }
+
     void destroy_plugin(PluginHandle* h, bool was_processing) {
         if (!h) return;
         if (h->plugin) {
@@ -358,7 +390,11 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
                         old->plugin->stop_processing(old->plugin);
                         old->started = false;
                     }
-                    dying_.store(old, std::memory_order_release);
+                    // Exchange so we can detect if main_thread_update() was too slow to
+                    // drain dying_ before another swap arrived. The evicted plugin moves
+                    // to dying2_ for the main thread to pick up next frame.
+                    auto* prev = dying_.exchange(old, std::memory_order_acq_rel);
+                    if (prev) dying2_.store(prev, std::memory_order_release);
                 }
                 if (!pend->plugin) {
                     active_.store(nullptr, std::memory_order_release);
@@ -386,10 +422,12 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
         clap_out.data32        = channels;
         clap_out.channel_count = 2;
 
+        clap_event_transport_t transport = clap_build_transport(ctx);
+
         clap_process_t proc{};
         proc.steady_time         = static_cast<int64_t>(steady_sample_);
         proc.frames_count        = ctx->buffer_size;
-        proc.transport           = nullptr;
+        proc.transport           = &transport;
         proc.audio_inputs        = nullptr;
         proc.audio_inputs_count  = 0;
         proc.audio_outputs       = &clap_out;
@@ -534,7 +572,9 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
     }
     static void host_request_restart(const clap_host_t*)  {}
     static void host_request_process(const clap_host_t*)  {}
-    static void host_request_callback(const clap_host_t*) {}
+    static void host_request_callback(const clap_host_t* h) {
+        static_cast<CLAPInstrument*>(h->host_data)->callback_requested_.store(true, std::memory_order_release);
+    }
 };
 
 VIVID_DEFINE_OP(CLAPInstrument) {

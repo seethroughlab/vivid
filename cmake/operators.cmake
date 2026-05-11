@@ -615,6 +615,8 @@ add_vivid_operator(clap_effect      operators/audio/clap_effect/clap_effect.cpp 
 if(APPLE)
     target_sources(clap_effect PRIVATE operators/shared/clap_host/clap_plugin_window.mm)
     target_link_libraries(clap_effect PRIVATE "-framework AppKit")
+    set_source_files_properties(operators/shared/clap_host/clap_plugin_window.mm
+                                PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 endif()
 add_vivid_operator(vocoder          operators/audio/vocoder/vocoder.cpp CODEGEN)
 target_sources(vocoder PRIVATE operators/shared/vocoder_dsp/vocoder_dsp.cpp)

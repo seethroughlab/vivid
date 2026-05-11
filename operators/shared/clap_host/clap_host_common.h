@@ -2,6 +2,8 @@
 // Shared CLAP host infrastructure used by CLAPInstrument and CLAPEffect.
 // Everything that doesn't reference operator instance state lives here.
 
+#include "operator_api/types.h"
+
 #include <clap/clap.h>
 #include <clap/ext/state.h>
 #include <dlfcn.h>
@@ -16,7 +18,7 @@ namespace {
 // Event list — generic CLAP event queue (128 slots, 64 bytes each)
 // ---------------------------------------------------------------------------
 
-static constexpr int kMaxEvents   = 128;
+static constexpr int kMaxEvents   = 256;
 static constexpr int kEventSlotSz = 64; // fits all CLAP event types
 
 struct alignas(8) EventSlot { char data[kEventSlotSz]; };
@@ -183,6 +185,81 @@ struct PluginHandle {
         }
     }
 };
+
+// ---------------------------------------------------------------------------
+// CLAP param list serializer — builds JSON array from a PluginHandle's cached
+// param info. Returns "[]" when no plugin is loaded or plugin has no params.
+// ---------------------------------------------------------------------------
+
+static std::string clap_params_to_json(const PluginHandle* h,
+                                        const clap_plugin_params_t* params_ext = nullptr) {
+    if (!h || h->params.empty()) return "[]";
+    std::string json = "[";
+    bool first = true;
+    for (const auto& p : h->params) {
+        if (!first) json += ",";
+        first = false;
+        json += "{\"name\":\"";
+        for (const char* c = p.name; *c; ++c) {
+            if (*c == '"')       json += "\\\"";
+            else if (*c == '\\') json += "\\\\";
+            else                 json += *c;
+        }
+        json += "\",\"id\":";
+        json += std::to_string(p.id);
+        json += ",\"min\":";
+        json += std::to_string(p.min_val);
+        json += ",\"max\":";
+        json += std::to_string(p.max_val);
+        if (params_ext && h->plugin) {
+            double val = 0.0;
+            if (params_ext->get_value(h->plugin, p.id, &val)) {
+                json += ",\"value\":";
+                json += std::to_string(val);
+            }
+        }
+        json += "}";
+    }
+    json += "]";
+    return json;
+}
+
+// ---------------------------------------------------------------------------
+// Build a CLAP transport event from the Vivid audio context.
+// Call once per process_audio() and point proc.transport at the result.
+// Vivid's metronome always runs, so IS_PLAYING is always set.
+// ---------------------------------------------------------------------------
+
+static clap_event_transport_t clap_build_transport(const VividAudioContext* ctx) {
+    clap_event_transport_t t{};
+    t.header = { sizeof(t), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_TRANSPORT, 0 };
+
+    const double   bpm   = static_cast<double>(ctx->metronome_bpm > 0.f ? ctx->metronome_bpm : 120.f);
+    const double   beats = ctx->metronome_beats_elapsed;
+    const uint32_t bpb   = ctx->metronome_beats_per_bar > 0 ? ctx->metronome_beats_per_bar : 4;
+
+    t.tempo     = bpm;
+    t.tempo_inc = 0.0;
+
+    t.song_pos_beats   = static_cast<clap_beattime>(beats * CLAP_BEATTIME_FACTOR);
+    t.song_pos_seconds = static_cast<clap_sectime>(ctx->time * CLAP_SECTIME_FACTOR);
+
+    const int32_t bar_number = static_cast<int32_t>(beats / static_cast<double>(bpb));
+    t.bar_number = bar_number;
+    t.bar_start  = static_cast<clap_beattime>(
+        static_cast<int64_t>(bar_number) * static_cast<int64_t>(bpb) * CLAP_BEATTIME_FACTOR);
+
+    t.tsig_num   = static_cast<uint16_t>(bpb);
+    t.tsig_denom = 4;
+
+    t.flags = CLAP_TRANSPORT_HAS_TEMPO
+            | CLAP_TRANSPORT_HAS_BEATS_TIMELINE
+            | CLAP_TRANSPORT_HAS_SECONDS_TIMELINE
+            | CLAP_TRANSPORT_HAS_TIME_SIGNATURE
+            | CLAP_TRANSPORT_IS_PLAYING;
+
+    return t;
+}
 
 // ---------------------------------------------------------------------------
 // Bundle resolver — macOS .clap dirs → Contents/MacOS/<stem>

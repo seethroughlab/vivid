@@ -213,6 +213,37 @@ std::string dispatch(const std::string& method, const std::string& body,
             }
         }
 
+    } else if (method == "list_clap_params") {
+        if (!root_valid) { result = json_err("invalid JSON body"); }
+        else if (!root.contains("node_id") || !root["node_id"].is_string()) {
+            result = json_err("missing 'node_id'");
+        } else {
+            auto* cg = core.compiled_graph();
+            if (!cg) {
+                result = json_err("no compiled graph");
+            } else {
+                const std::string nid = root["node_id"].get<std::string>();
+                const auto* cn = cg->find_node(nid);
+                if (!cn) {
+                    result = json_err("unknown node '" + nid + "'");
+                } else {
+                    auto fi = cn->file_param_indices.find("_clap_params");
+                    if (fi == cn->file_param_indices.end() ||
+                        fi->second >= cn->file_param_storage.size()) {
+                        result = json_err("node '" + nid + "' is not a CLAP operator");
+                    } else {
+                        const std::string& raw = cn->file_param_storage[fi->second];
+                        try {
+                            auto arr = nlohmann::json::parse(raw.empty() ? "[]" : raw);
+                            result = nlohmann::json{{"ok", true}, {"params", arr}}.dump();
+                        } catch (...) {
+                            result = nlohmann::json{{"ok", true}, {"params", nlohmann::json::array()}}.dump();
+                        }
+                    }
+                }
+            }
+        }
+
     // --- Editor-window LLM-transparency endpoints ---
     //
     // The five methods below forward to EditorWindowManager's existing
