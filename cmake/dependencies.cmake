@@ -311,6 +311,18 @@ target_include_directories(tree_sitter_runtime PUBLIC
     ${tree_sitter_SOURCE_DIR}/lib/include
 )
 
+# --- CLAP (CLever Audio Plugin) headers ---
+# Pure C header-only spec for the CLAP plugin standard.
+FetchContent_Declare(
+    clap
+    GIT_REPOSITORY https://github.com/free-audio/clap.git
+    GIT_TAG        1.2.2
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(clap)
+add_library(clap_headers INTERFACE)
+target_include_directories(clap_headers INTERFACE ${clap_SOURCE_DIR}/include)
+
 # --- tree-sitter-cpp grammar (C/C++/ObjC/ObjC++ parser) ---
 # Provides a pre-generated parser.c for C-family languages.
 FetchContent_Declare(

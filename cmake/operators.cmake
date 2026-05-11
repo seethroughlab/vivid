@@ -602,6 +602,14 @@ add_vivid_operator(slicer           operators/audio/slicer/slicer.cpp CODEGEN
                    EXTRA_LIBS sampler_miniaudio nlohmann_json::nlohmann_json)
 add_vivid_operator(granular_synth   operators/audio/granular_synth/granular_synth.cpp CODEGEN)
 target_sources(granular_synth PRIVATE operators/shared/granular_dsp/granular_dsp.cpp)
+add_vivid_operator(clap_instrument  operators/audio/clap_instrument/clap_instrument.cpp CODEGEN
+                   EXTRA_LIBS clap_headers)
+if(APPLE)
+    target_sources(clap_instrument PRIVATE operators/audio/clap_instrument/clap_plugin_window.mm)
+    target_link_libraries(clap_instrument PRIVATE "-framework AppKit")
+    set_source_files_properties(operators/audio/clap_instrument/clap_plugin_window.mm
+                                PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+endif()
 add_vivid_operator(vocoder          operators/audio/vocoder/vocoder.cpp CODEGEN)
 target_sources(vocoder PRIVATE operators/shared/vocoder_dsp/vocoder_dsp.cpp)
 add_vivid_operator(spectral_freeze  operators/audio/spectral_freeze/spectral_freeze.cpp CODEGEN)

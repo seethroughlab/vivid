@@ -8,7 +8,7 @@
 // Every emitter calls these to append events to its outbound buffer:
 //
 //   note_on(buf, note_number, velocity_0_1, note_id, frame_offset)
-//   note_off(buf, note_id, frame_offset)
+//   note_off(buf, note_id, frame_offset, note_number=255)
 //   note_pitch_bend(buf, note_id, semis, frame_offset)
 //   note_pressure(buf, note_id, value_0_1, frame_offset)
 //   note_timbre(buf, note_id, value_0_1, frame_offset)
@@ -54,12 +54,16 @@ inline bool note_on(VividNoteBuffer& buf, uint8_t note_number,
     return true;
 }
 
+// note_number: 0..127 if known, 255 if the caller doesn't have it.
+// Consumers (e.g. CLAPInstrument) use note_number to build NOTE_OFF events
+// with the correct MIDI key; a value of 255 means "unknown, use wildcards."
 inline bool note_off(VividNoteBuffer& buf, uint64_t note_id,
-                     uint32_t frame_offset = 0) {
+                     uint32_t frame_offset = 0, uint8_t note_number = 255) {
     if (note_id == 0) return false;
     VividNoteEvent* ev = detail::push(buf);
     if (!ev) return false;
     ev->type                 = VIVID_NOTE_OFF;
+    ev->note_number          = note_number;
     ev->frame_offset_samples = frame_offset;
     ev->note_id              = note_id;
     return true;
