@@ -624,6 +624,19 @@ if(APPLE)
     set_source_files_properties(operators/shared/clap_host/clap_plugin_window.mm
                                 PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 endif()
+if(APPLE)
+    add_vivid_operator(au_instrument operators/audio/au_instrument/au_instrument.cpp CODEGEN)
+    target_link_libraries(au_instrument PRIVATE
+        "-framework AudioToolbox"
+        "-framework CoreAudio"
+        "-framework CoreFoundation")
+endif()
+add_vivid_operator(vst3_instrument operators/audio/vst3_instrument/vst3_instrument.cpp CODEGEN
+                   EXTRA_LIBS vst3_iids)
+
+add_vivid_operator(midi_out       operators/audio/midi_out/midi_out.cpp       CODEGEN EXTRA_LIBS rtmidi)
+add_vivid_operator(midi_clock_out operators/audio/midi_clock_out/midi_clock_out.cpp CODEGEN EXTRA_LIBS rtmidi)
+
 add_vivid_operator(vocoder          operators/audio/vocoder/vocoder.cpp CODEGEN)
 target_sources(vocoder PRIVATE operators/shared/vocoder_dsp/vocoder_dsp.cpp)
 add_vivid_operator(spectral_freeze  operators/audio/spectral_freeze/spectral_freeze.cpp CODEGEN)

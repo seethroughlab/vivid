@@ -798,6 +798,28 @@ if(APPLE)
 endif()
 add_test(NAME test_midi_input_expression COMMAND test_midi_input_expression WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# MidiOut byte-encoding correctness (note events → MIDI 1.0 bytes, capture seam)
+add_executable(test_midi_out
+    tests/audio/test_midi_out.cpp
+)
+target_include_directories(test_midi_out PRIVATE src tests deps/rtmidi operators operators/shared/sequencer)
+target_link_libraries(test_midi_out PRIVATE vivid_operator_api rtmidi)
+if(APPLE)
+    target_link_libraries(test_midi_out PRIVATE "-framework CoreMIDI" "-framework CoreAudio" "-framework CoreFoundation")
+endif()
+add_test(NAME test_midi_out COMMAND test_midi_out WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# MidiClockOut accumulator math and transport edge detection (capture seam)
+add_executable(test_midi_clock_out
+    tests/audio/test_midi_clock_out.cpp
+)
+target_include_directories(test_midi_clock_out PRIVATE src tests deps/rtmidi operators)
+target_link_libraries(test_midi_clock_out PRIVATE vivid_operator_api rtmidi)
+if(APPLE)
+    target_link_libraries(test_midi_clock_out PRIVATE "-framework CoreMIDI" "-framework CoreAudio" "-framework CoreFoundation")
+endif()
+add_test(NAME test_midi_clock_out COMMAND test_midi_clock_out WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # GPU operator plugin for testing (solid color fill)
 
 # GPU operator integration tests (headless WebGPU, no window)

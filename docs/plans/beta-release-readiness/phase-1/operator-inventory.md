@@ -29,6 +29,8 @@ C++ Registered: 109 | WGSL Filters: 29 | Total: 138
 | Limiter | operators/audio/limiter/limiter.cpp | -- | 1 | limiter_demo |
 | MicInput | operators/audio/mic_input/mic_input.cpp | microphone | 0 | -- |
 | MidiFilePlayer | operators/audio/midi_file_player/midi_file_player.cpp | midi_files | 0 | -- |
+| MidiOut | operators/audio/midi_out/midi_out.cpp | midi_hardware | 0 | -- |
+| MidiClockOut | operators/audio/midi_clock_out/midi_clock_out.cpp | midi_hardware | 0 | -- |
 | Mixer | operators/audio/mixer/mixer.cpp | -- | 8 | compressor_demo, full_synth_patch, granular_synth_demo, chromatic_ghosts, envelope_shapes (+3 more) |
 | MovieFileAudio | operators/audio/movie_file_audio/movie_file_audio.cpp | movie_media | 15 | crt_effect_demo, edge_demo, mirror_demo, scanlines_demo, wgsl_filters_demo (+10 more) |
 | Noise | operators/audio/noise/noise.cpp | -- | 12 | compressor_demo, filter_sweep, full_synth_patch, granular_synth_demo, vocoder_demo (+7 more) |
@@ -211,7 +213,7 @@ C++ Registered: 109 | WGSL Filters: 29 | Total: 138
 | ir_files | ConvolutionReverb |
 | microphone | MicInput |
 | midi_files | MidiFilePlayer |
-| midi_hardware | MidiInput |
+| midi_hardware | MidiInput, MidiOut, MidiClockOut |
 | movie_media | MovieFileAudio, MovieFileIn |
 | osc_network | OscIn, OscOut |
 | sample_files | Sampler |

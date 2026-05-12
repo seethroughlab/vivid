@@ -206,6 +206,23 @@ all three correlations near zero but onset_response_rate is high
 
 ---
 
+## MIDI External Routing
+
+`MidiOut` and `MidiClockOut` let Vivid act as a MIDI source for external hardware and apps.
+
+```
+[MidiClip] ──notes──▶ [MidiOut] ─────────────── MIDI notes ──▶ hardware synth / DAW
+[MidiClockOut] ───────────────────────────────── MIDI Clock ──▶ hardware synth / DAW
+```
+
+**Setup (macOS):** Open Audio MIDI Setup → Window → Show MIDI Studio → IAC Driver → enable "Device is online", add a bus. Both operators accept the bus name as a substring of the `device` param (e.g. `"IAC Bus 1"`).
+
+**Virtual port mode:** Set `device = "virtual"` on `MidiOut` to create a named CoreMIDI source (configured by `virtual_port_name`). The port appears in other apps without needing IAC.
+
+**Clock sync:** `MidiClockOut` broadcasts 24 PPQ at Vivid's BPM. Toggling `enabled` off→on sends MIDI Start (or Continue + Song Position Pointer) so external sequencers land on the right beat. Both operators can share the same IAC port; CoreMIDI merges concurrent senders.
+
+---
+
 ## Further reading
 
 - `docs/plans/compelling-demos/00-case-study-findings.md` — original Phase 0 rating of the intro set
