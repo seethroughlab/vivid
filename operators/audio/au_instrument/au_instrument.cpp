@@ -1,6 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/note_types.h"
 #include "operator_api/type_id.h"
+#include "shared/plugin_ui/plugin_picker.h"
 
 #ifdef __APPLE__
 #include "shared/au_host/au_host_common.h"
@@ -83,6 +84,9 @@ struct AUInstrument : vivid::OperatorBase, vivid::AudioProcessable {
     // --- Transport state (written on audio thread before each render) ---
     AUTransportState transport_state_;
 
+    // --- Inspector state (main thread only) ---
+    vivid::plugin_ui::PluginPickerState picker_state_;
+
     // --- State ---
     std::string last_name_;
     uint32_t    sample_rate_ = 48000;
@@ -113,6 +117,7 @@ struct AUInstrument : vivid::OperatorBase, vivid::AudioProcessable {
         macro_float_[7] = &macro_7; macro_id_[7] = &macro_7_id;
 
         vivid::description(plugin_name, "AU instrument name (from list_au_plugins)");
+        vivid::display_hint(plugin_name, VIVID_DISPLAY_HIDDEN);
         vivid::description(macro_0, "Macro 0 value (0-1), mapped to the AU param named in macro_0_id");
         vivid::description(macro_0_id, "AU parameter name for macro 0");
         vivid::description(macro_1, "Macro 1 value (0-1)");
@@ -354,6 +359,35 @@ struct AUInstrument : vivid::OperatorBase, vivid::AudioProcessable {
     static void zero_outputs(const VividAudioContext* ctx) {
         std::memset(ctx->output_buffers[0], 0, sizeof(float) * ctx->buffer_size * 2);
     }
+
+    // -----------------------------------------------------------------------
+    // Inspector (VIVID_INSPECTOR) — plugin picker dropdown.
+    // AU v2 GUI is not supported; no "Open Plugin UI" button.
+    // -----------------------------------------------------------------------
+
+    void draw_inspector(VividInspectorContext* ctx) override {
+        using namespace vivid::plugin_ui;
+
+        const auto& plugins = au_get_plugins();
+
+        std::vector<std::string> names;
+        names.reserve(plugins.size());
+        for (const auto& p : plugins) names.push_back(p.name);
+
+        int cur = -1;
+        for (int i = 0; i < (int)plugins.size(); ++i) {
+            if (plugins[i].name == last_name_) { cur = i; break; }
+        }
+
+        float y = ctx->content_y + 4.f;
+
+        int sel = draw_plugin_picker(ctx, y, names, cur, picker_state_);
+        if (sel >= 0)
+            ctx->commands.set_string_param(ctx->commands.opaque,
+                                           "plugin_name", plugins[sel].name.c_str());
+
+        ctx->consumed_height = y + 4.f - ctx->content_y;
+    }
 };
 
 VIVID_DEFINE_OP(AUInstrument) {
@@ -361,5 +395,7 @@ VIVID_DEFINE_OP(AUInstrument) {
     keywords     = {"plugin", "au", "audio unit", "synth", "instrument", "external"};
     summary      = "Hosts an AU (Audio Units) instrument plugin; receives MIDI notes, outputs audio.";
 }
+
+VIVID_INSPECTOR(AUInstrument)
 
 #endif // __APPLE__

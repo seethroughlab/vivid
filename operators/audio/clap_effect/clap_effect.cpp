@@ -2,7 +2,7 @@
 #include "operator_api/type_id.h"
 #include "shared/clap_host/clap_host_common.h"
 #include "shared/clap_host/clap_scanner.h"
-#include "shared/clap_host/clap_browser.h"
+#include "shared/plugin_ui/plugin_picker.h"
 #ifdef __APPLE__
 #include "shared/clap_host/clap_plugin_window.h"
 #endif
@@ -90,7 +90,7 @@ struct CLAPEffect : vivid::OperatorBase, vivid::AudioProcessable {
 #ifdef __APPLE__
     ClapPluginWindow* gui_win_ = nullptr;
 #endif
-    ClapBrowserState browser_state_;
+    vivid::plugin_ui::PluginPickerState picker_state_;
 
     // --- State ---
     std::string       last_path_;
@@ -145,6 +145,8 @@ struct CLAPEffect : vivid::OperatorBase, vivid::AudioProcessable {
 
         vivid::description(plugin_path, "Path to .clap plugin bundle");
         vivid::description(plugin_id,   "Plugin ID within bundle (blank = first plugin)");
+        vivid::display_hint(plugin_path, VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(plugin_id,   VIVID_DISPLAY_HIDDEN);
         vivid::description(macro_0, "Macro 0 value (0-1), mapped to the CLAP param named in macro_0_id");
         vivid::description(macro_0_id, "CLAP parameter name for macro 0");
         vivid::description(macro_1, "Macro 1 value (0-1)");
@@ -550,6 +552,73 @@ struct CLAPEffect : vivid::OperatorBase, vivid::AudioProcessable {
     static void host_request_callback(const clap_host_t* h) {
         static_cast<CLAPEffect*>(h->host_data)->callback_requested_.store(true, std::memory_order_release);
     }
+
+    // -----------------------------------------------------------------------
+    // Inspector (VIVID_INSPECTOR) — plugin picker + native GUI button.
+    // -----------------------------------------------------------------------
+
+    void draw_inspector(VividInspectorContext* ctx) override {
+        using namespace vivid::plugin_ui;
+
+        const auto& plugins = clap_get_plugins();
+
+        std::vector<std::string> names;
+        names.reserve(plugins.size());
+        for (const auto& p : plugins) {
+            std::string disp = p.name;
+            if (!p.vendor.empty()) { disp += " ["; disp += p.vendor; disp += "]"; }
+            names.push_back(std::move(disp));
+        }
+
+        int cur = -1;
+        for (int i = 0; i < (int)plugins.size(); ++i) {
+            if (plugins[i].path == last_path_ && plugins[i].plugin_id == last_plugin_id_)
+                { cur = i; break; }
+        }
+
+        float y = ctx->content_y + 4.f;
+
+        int sel = draw_plugin_picker(ctx, y, names, cur, picker_state_);
+        if (sel >= 0) {
+            ctx->commands.set_string_param(ctx->commands.opaque,
+                                           "plugin_path", plugins[sel].path.c_str());
+            ctx->commands.set_string_param(ctx->commands.opaque,
+                                           "plugin_id", plugins[sel].plugin_id.c_str());
+        }
+
+        y += 4.f;
+
+#ifdef __APPLE__
+        if (gui_win_ && !clap_plugin_window_is_open(gui_win_)) {
+            clap_plugin_window_close(gui_win_);
+            gui_win_ = nullptr;
+        }
+        auto* act = active_.load(std::memory_order_acquire);
+        bool has_gui = false;
+        if (act && act->plugin) {
+            auto* gui_ext = reinterpret_cast<const clap_plugin_gui_t*>(
+                act->plugin->get_extension(act->plugin, CLAP_EXT_GUI));
+            has_gui = gui_ext &&
+                gui_ext->is_api_supported(act->plugin, CLAP_WINDOW_API_COCOA, false);
+        }
+        bool opened = draw_open_gui_button(ctx, y, has_gui, gui_win_ != nullptr);
+        if (opened && act && act->plugin) {
+            auto* gui_ext = reinterpret_cast<const clap_plugin_gui_t*>(
+                act->plugin->get_extension(act->plugin, CLAP_EXT_GUI));
+            if (gui_ext) {
+                std::string title = "CLAP Plugin";
+                for (const auto& p : clap_get_plugins()) {
+                    if (p.path == last_path_ && p.plugin_id == last_plugin_id_) {
+                        title = p.name; break;
+                    }
+                }
+                gui_win_ = clap_plugin_window_open(act->plugin, gui_ext, title.c_str());
+            }
+        }
+#endif
+
+        ctx->consumed_height = y - ctx->content_y;
+    }
 };
 
 VIVID_DEFINE_OP(CLAPEffect) {
@@ -558,62 +627,4 @@ VIVID_DEFINE_OP(CLAPEffect) {
     summary      = "Hosts a CLAP audio effect plugin; processes stereo audio in-place.";
 }
 
-// ---------------------------------------------------------------------------
-// VIVID_EDITOR — opens the CLAP plugin's native GUI in its own Cocoa NSWindow.
-// ---------------------------------------------------------------------------
-
-extern "C" VividEditorMetadata vivid_editor_metadata() {
-    VividEditorMetadata m{};
-    m.default_width  = 640;
-    m.default_height = 520;
-    m.min_width      = 400;
-    m.min_height     = 300;
-    m.title_suffix   = nullptr;
-    return m;
-}
-
-extern "C" void vivid_draw_editor(void* instance, VividEditorContext* ctx) {
-#ifdef __APPLE__
-    auto* self = static_cast<CLAPEffect*>(instance);
-
-    // Sync CLAP GUI window state
-    if (self->gui_win_ && !clap_plugin_window_is_open(self->gui_win_)) {
-        clap_plugin_window_close(self->gui_win_);
-        self->gui_win_ = nullptr;
-    }
-
-    // Query whether current plugin supports a GUI
-    bool has_gui = false;
-    auto* act = self->active_.load(std::memory_order_acquire);
-    if (act && act->plugin) {
-        auto* gui_ext = reinterpret_cast<const clap_plugin_gui_t*>(
-            act->plugin->get_extension(act->plugin, CLAP_EXT_GUI));
-        has_gui = gui_ext &&
-            gui_ext->is_api_supported(act->plugin, CLAP_WINDOW_API_COCOA, false);
-    }
-
-    auto result = draw_clap_browser(ctx, self->browser_state_,
-                                    self->last_path_, has_gui);
-
-    if (result.plugin_selected) {
-        ctx->commands.set_string_param(ctx->commands.opaque, "plugin_path",
-                                       result.selected_path.c_str());
-        ctx->commands.set_string_param(ctx->commands.opaque, "plugin_id",
-                                       result.selected_id.c_str());
-    }
-
-    if (result.open_gui_clicked && act && act->plugin && !self->gui_win_) {
-        auto* gui_ext = reinterpret_cast<const clap_plugin_gui_t*>(
-            act->plugin->get_extension(act->plugin, CLAP_EXT_GUI));
-        if (gui_ext) {
-            std::string stem = clap_path_stem(self->last_path_);
-            self->gui_win_ = clap_plugin_window_open(
-                act->plugin, gui_ext,
-                stem.empty() ? "CLAP Plugin" : stem.c_str());
-        }
-    }
-#else
-    (void)instance;
-    ctx->request_close = 1;
-#endif
-}
+VIVID_INSPECTOR(CLAPEffect)

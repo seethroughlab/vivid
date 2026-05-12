@@ -68,5 +68,9 @@ static AudioComponent au_find_by_name(const std::string& name) {
     return nullptr;
 }
 
+static const std::vector<AUPluginInfo>& au_get_plugins() {
+    return kAUPluginCache;
+}
+
 } // namespace
 #endif // __APPLE__

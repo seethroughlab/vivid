@@ -160,4 +160,8 @@ static const Vst3PluginInfo* vst3_find_by_key(const std::string& key) {
     return nullptr;
 }
 
+static const std::vector<Vst3PluginInfo>& vst3_get_plugins() {
+    return kVst3PluginCache;
+}
+
 } // namespace
