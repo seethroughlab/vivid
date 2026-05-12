@@ -1,7 +1,11 @@
 #include "operator_api/operator.h"
 #include "operator_api/note_types.h"
+#include "operator_api/draw_ui_helpers.h"
 #include "shared/vst3_host/vst3_host_common.h"
 #include "shared/vst3_host/vst3_scanner.h"
+#ifdef __APPLE__
+#include "shared/vst3_host/vst3_plugin_window.h"
+#endif
 
 #include <atomic>
 #include <cmath>
@@ -91,6 +95,11 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<float>*            macro_float_[8];
     vivid::Param<vivid::TextValue>* macro_id_[8];
 
+    // --- Plugin GUI window (main thread only) ---
+#ifdef __APPLE__
+    Vst3PluginWindow* gui_win_ = nullptr;
+#endif
+
     // --- State ---
     std::string   last_name_;
     uint64_t      steady_sample_  = 0;
@@ -131,6 +140,9 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     ~Vst3Instrument() {
+#ifdef __APPLE__
+        if (gui_win_) { vst3_plugin_window_close(gui_win_); gui_win_ = nullptr; }
+#endif
         auto* act  = active_.exchange(nullptr,  std::memory_order_acq_rel);
         auto* pend = pending_.exchange(nullptr, std::memory_order_acq_rel);
         auto* dead = dying_.exchange(nullptr,   std::memory_order_acq_rel);
@@ -162,11 +174,22 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
         refresh_vst3_params_json();
 
         if (state_dirty_) save_state();
+
+#ifdef __APPLE__
+        if (gui_win_ && !vst3_plugin_window_is_open(gui_win_)) {
+            vst3_plugin_window_close(gui_win_);
+            gui_win_ = nullptr;
+        }
+#endif
     }
 
     void reload_if_changed() {
         if (plugin_name.str_value == last_name_) return;
         last_name_ = plugin_name.str_value;
+
+#ifdef __APPLE__
+        if (gui_win_) { vst3_plugin_window_close(gui_win_); gui_win_ = nullptr; }
+#endif
 
         for (auto& m : macro_map_) { m.id = kInvalidParamID; m.last_sent = -1.f; }
 
@@ -378,6 +401,73 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
     static void zero_outputs(const VividAudioContext* ctx) {
         std::memset(ctx->output_buffers[0], 0, sizeof(float) * ctx->buffer_size * 2);
     }
+
+    // -----------------------------------------------------------------------
+    // Editor (VIVID_EDITOR) — opens the VST3 plugin GUI in a native NSWindow.
+    // -----------------------------------------------------------------------
+
+    static VividEditorMetadata editor_metadata() {
+        VividEditorMetadata m{};
+        m.default_width  = 400;
+        m.default_height = 140;
+        m.min_width      = 300;
+        m.min_height     = 100;
+        m.title_suffix   = nullptr;
+        return m;
+    }
+
+    void draw_editor(VividEditorContext* ctx) {
+#ifdef __APPLE__
+        // Sync GUI window state
+        if (gui_win_ && !vst3_plugin_window_is_open(gui_win_)) {
+            vst3_plugin_window_close(gui_win_);
+            gui_win_ = nullptr;
+        }
+
+        auto* act      = active_.load(std::memory_order_acquire);
+        bool has_plugin = act && act->controller;
+
+        VividDrawAPI& d  = ctx->draw;
+        void*         o  = d.opaque;
+        const auto&   th = ctx->theme;
+        const auto&   m  = ctx->mouse;
+
+        float pad = 16.f;
+        float x   = pad;
+        float y   = pad;
+        float w   = ctx->surface_width - pad * 2.f;
+
+        // Plugin name
+        const char* pname = last_name_.empty() ? "(no plugin loaded)" : last_name_.c_str();
+        if (d.draw_text) d.draw_text(o, x, y, pname, th.bright_text, 1.f);
+        y += vivid::draw_ui::line_height_or(d, o, 14.f) + 10.f;
+
+        // "Open Plugin UI" button
+        float bh = 32.f;
+        if (has_plugin) {
+            bool gui_open  = gui_win_ != nullptr;
+            VividColor fill        = gui_open ? VividColor{0.16f, 0.53f, 0.16f, 1.f}
+                                              : VividColor{0.13f, 0.40f, 0.67f, 1.f};
+            VividColor active_fill = gui_open ? VividColor{0.20f, 0.67f, 0.20f, 1.f}
+                                              : VividColor{0.20f, 0.53f, 0.80f, 1.f};
+            const char* label = gui_open ? "Plugin UI Open" : "Open Plugin UI";
+            bool hovered = m.x >= x && m.x <= x + w && m.y >= y && m.y <= y + bh;
+            vivid::draw_ui::draw_button(d, o, x, y, w, bh, label, hovered,
+                                        fill, active_fill, th.bright_text);
+
+            if (m.left_clicked && hovered && !gui_open) {
+                std::string title = last_name_.empty() ? "VST3 Plugin" : last_name_;
+                gui_win_ = vst3_plugin_window_open(act->controller, title.c_str());
+            }
+        } else {
+            VividColor dim = {0.2f, 0.2f, 0.2f, 1.f};
+            vivid::draw_ui::draw_button(d, o, x, y, w, bh, "No plugin loaded",
+                                        false, dim, dim, th.dim_text);
+        }
+#else
+        ctx->request_close = 1;
+#endif
+    }
 };
 
 VIVID_DEFINE_OP(Vst3Instrument) {
@@ -385,3 +475,5 @@ VIVID_DEFINE_OP(Vst3Instrument) {
     keywords     = {"vst3", "plugin", "synth", "instrument", "external"};
     summary      = "Hosts a VST3 instrument plugin; receives MIDI notes, outputs stereo audio.";
 }
+
+VIVID_EDITOR(Vst3Instrument)
