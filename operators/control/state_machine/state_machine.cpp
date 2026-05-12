@@ -36,6 +36,7 @@ struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<float> dur_6       {"dur_6", 4.0f, 0.0f, 256.0f};
     vivid::Param<float> dur_7       {"dur_7", 4.0f, 0.0f, 256.0f};
     vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
+    vivid::Param<int>   force_state {"force_state",  -1, -1, 7};
 
     StateMachine() {
         vivid::description(states, "Number of active states, 1 to 8");
@@ -55,6 +56,7 @@ struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::description(dur_6, "Duration of state 7 in bars");
         vivid::description(dur_7, "Duration of state 8 in bars");
         vivid::description(clock_source, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
+        force_state.display_hint = VIVID_DISPLAY_HIDDEN;
     }
 
     // State variables
@@ -67,6 +69,7 @@ struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
     float  prev_signal_     = 0.0f;
     bool   pending_advance_ = false;
     bool   finished_        = false;
+    int    prev_force_state_= -1;
 
     // Crossfade state
     bool   xfade_active_    = false;
@@ -90,6 +93,7 @@ struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back(&dur_6);          // 14
         out.push_back(&dur_7);          // 15
         out.push_back(&clock_source);   // 16
+        out.push_back(&force_state);    // 17
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -153,6 +157,24 @@ struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
             finished_ = false;
             prev_phase_ = beat_phase;
             did_reset = true;
+        }
+
+        // 3b. force_state: jump to arbitrary state (set by queue_state_transition API)
+        bool transition_fired = false;
+        {
+            int forced = force_state.int_value();
+            if (forced != prev_force_state_) {
+                prev_force_state_ = forced;
+                if (forced >= 0 && forced < num_states) {
+                    current_state_   = forced;
+                    bar_count_       = 0;
+                    beat_count_      = 0;
+                    pending_advance_ = false;
+                    finished_        = false;
+                    did_reset        = true;   // suppress beat-counting side-effects this tick
+                    transition_fired = true;
+                }
+            }
         }
 
         // 4. Beat counting via phase-wrap
@@ -219,7 +241,6 @@ struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
         }
 
         // 7. State transition
-        bool transition_fired = false;
         if (should_advance) {
             int next = current_state_ + 1;
             if (next >= num_states) {

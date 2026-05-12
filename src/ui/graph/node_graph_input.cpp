@@ -55,7 +55,7 @@ void NodeGraphUI::on_mouse_button(int button, int action, int mods) {
         } else if (action == GLFW_RELEASE) {
             mouse_.left_down = false;
             mouse_.left_released = true;
-            float bottom_offset = session_grid_open_ ? kSessionStripH : 0.0f;
+            float bottom_offset = session_grid_open_ ? session_strip_height() : 0.0f;
             build_console_panel_.handle_left_release(mouse_.x, mouse_.y, win_w_, win_h_, bottom_offset);
         }
     } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
@@ -138,7 +138,7 @@ void NodeGraphUI::on_scroll(float x_offset, float y_offset, int mods) {
         }
     }
 
-    float bottom_offset = session_grid_open_ ? kSessionStripH : 0.0f;
+    float bottom_offset = session_grid_open_ ? session_strip_height() : 0.0f;
     if (build_console_panel_.handle_scroll(mouse_.x, mouse_.y, x_offset, y_offset,
                                            win_w_, win_h_, bottom_offset)) {
         return;

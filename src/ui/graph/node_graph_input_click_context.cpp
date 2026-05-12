@@ -230,7 +230,7 @@ void NodeGraphUI::handle_right_click() {
     if (!mouse_.right_clicked) return;
 
     {
-        float bottom_offset = session_grid_open_ ? kSessionStripH : 0.0f;
+        float bottom_offset = session_grid_open_ ? session_strip_height() : 0.0f;
         if (build_console_panel_.contains(mouse_.x, mouse_.y, win_w_, win_h_, bottom_offset))
             return;
     }

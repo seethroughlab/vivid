@@ -602,6 +602,27 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
     snap.metronome_bar_phase = metronome.bar_phase;
     snap.metronome_beat_ms = metronome.beat_ms;
 
+    // Clip launcher: StateMachines with state-preset mappings
+    snap.clip_machines.clear();
+    if (cg && runtime_api) {
+        for (const auto& mapping : graph.state_preset_mappings()) {
+            const auto& sm_id = mapping.state_machine_node;
+            const auto* cn = cg->find_node(sm_id);
+            if (!cn) continue;
+            vivid::ui::StateMachineClipInfo info;
+            info.node_id      = sm_id;
+            info.display_name = sm_id;
+            // "states" param is at index 0 in StateMachine's collect_params
+            info.state_count  = (cn->param_values.size() > 0)
+                                ? std::max(1, static_cast<int>(cn->param_values[0])) : 4;
+            // "state" output is port index 0
+            info.active_state = (cn->output_values.size() > 0)
+                                ? static_cast<int>(cn->output_values[0]) : 0;
+            info.queued_state = runtime_api->queued_state_for(sm_id);
+            snap.clip_machines.push_back(std::move(info));
+        }
+    }
+
     // Sticky notes
     const auto& sticky = graph.sticky_notes();
     snap.sticky_notes.resize(sticky.size());

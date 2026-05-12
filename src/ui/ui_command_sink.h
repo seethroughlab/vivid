@@ -83,6 +83,8 @@ public:
     virtual void duplicate_variation(const std::string& name, const std::string& new_name) {}
     virtual void move_variation(const std::string& name, int to_index) {}
     virtual void queue_variation(const std::string& name, const std::string& quantize) {}
+    virtual void queue_state_transition(const std::string& sm_node_id, int state_idx,
+                                        const std::string& quantize) {}
     virtual void set_quantize_clock(const std::string& node_id) {}
     virtual void set_graph_metronome(float bpm, int beats_per_bar) {}
 

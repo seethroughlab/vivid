@@ -347,6 +347,15 @@ struct VariationInfo {
     std::string name;
 };
 
+// Per-track clip launcher: one entry per StateMachine that has state-preset mappings
+struct StateMachineClipInfo {
+    std::string node_id;
+    std::string display_name;   // node id (used as column header)
+    int         state_count  = 4;
+    int         active_state = 0;
+    int         queued_state = -1;  // -1 = none pending
+};
+
 // Sticky note snapshot for UI
 struct StickyNoteSnapshot {
     std::string id, text;
@@ -395,6 +404,7 @@ struct GraphSnapshot {
     bool variation_dirty = false;
     bool graph_dirty = false;
     int queued_variation = -1;
+    std::vector<StateMachineClipInfo> clip_machines;
     std::string quantize_clock_node;
     float metronome_bpm = 120.0f;
     int metronome_beats_per_bar = 4;

@@ -80,7 +80,8 @@ void NodeGraphUI::handle_left_click() {
     }
 
     {
-        float bottom_offset = session_grid_open_ ? kSessionStripH : 0.0f;
+        const float clip_h = snap_.clip_machines.empty() ? 0.0f : kClipSectionH;
+        float bottom_offset = session_grid_open_ ? kSessionStripH + clip_h : 0.0f;
         if (!build_console_panel_.contains(mouse_.x, mouse_.y, win_w_, win_h_, bottom_offset))
             build_console_panel_.blur();
     }
@@ -180,7 +181,8 @@ void NodeGraphUI::handle_left_click() {
     }
 
     {
-        float bottom_offset = session_grid_open_ ? kSessionStripH : 0.0f;
+        const float clip_h = snap_.clip_machines.empty() ? 0.0f : kClipSectionH;
+        float bottom_offset = session_grid_open_ ? kSessionStripH + clip_h : 0.0f;
         if (build_console_panel_.handle_left_press(mouse_.x, mouse_.y, win_w_, win_h_, bottom_offset)) {
             mouse_.left_clicked = false;
             return;
@@ -297,6 +299,17 @@ void NodeGraphUI::handle_left_click() {
                 } else if (br.action == 7) {
                     toggle_session_grid();
                 }
+                mouse_.left_clicked = false;
+                return;
+            }
+        }
+        // Check clip grid cells
+        for (const auto& cr : clip_cell_rects_) {
+            if (mouse_.x >= cr.x && mouse_.x < cr.x + cr.w &&
+                mouse_.y >= cr.y && mouse_.y < cr.y + cr.h) {
+                static const char* q_modes[] = {"instant", "beat", "bar", "4bar"};
+                const char* q = q_modes[std::clamp(session_quantize_mode_, 0, 3)];
+                commands_.queue_state_transition(cr.sm_node_id, cr.state_idx, q);
                 mouse_.left_clicked = false;
                 return;
             }

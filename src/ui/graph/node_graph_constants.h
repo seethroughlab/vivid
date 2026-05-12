@@ -353,6 +353,12 @@ static constexpr float kSessionPadX = 8.0f;
 static constexpr float kSessionCardRadius = 4.0f;
 static constexpr float kSessionDirtyDotR = 3.0f;
 static constexpr float kSessionCtxMenuW = 120.0f;
+
+// Clip grid section (appended below variation cards when clip_machines is non-empty)
+static constexpr float kClipSectionH  = 60.0f;  // strip height added to session strip
+static constexpr float kClipCellW     = 110.0f;
+static constexpr float kClipCellH     = 22.0f;
+static constexpr float kClipCellPad   = 3.0f;
 static constexpr float kSessionCtxMenuItemH = 22.0f;
 static constexpr float kSessionDragThreshold = 3.0f;
 

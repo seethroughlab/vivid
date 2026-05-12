@@ -164,6 +164,11 @@ public:
         auto r = api_.queue_variation(name, quantize);
         if (r.ok) capture_undo_snapshot();
     }
+    void queue_state_transition(const std::string& sm_node_id, int state_idx,
+                                const std::string& quantize) override {
+        api_.queue_state_transition(sm_node_id, state_idx, quantize);
+        // No undo snapshot: state transitions are live performance actions
+    }
     void set_quantize_clock(const std::string& node_id) override {
         auto r = api_.set_quantize_clock(node_id);
         if (r.ok) capture_undo_snapshot();

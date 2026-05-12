@@ -736,6 +736,21 @@ std::string dispatch(const std::string& method, const std::string& body,
                 result = command_result_to_json(api.queue_variation(root["name"].get<std::string>(), q));
             }
         }
+    } else if (method == "queue_state_transition") {
+        if (!root_valid) { result = json_err("invalid JSON body"); }
+        else {
+            if (!root.contains("sm_node") || !root["sm_node"].is_string())
+                result = json_err("missing 'sm_node'");
+            else if (!root.contains("state") || !root["state"].is_number_integer())
+                result = json_err("missing 'state'");
+            else {
+                std::string q = (root.contains("quantize") && root["quantize"].is_string())
+                    ? root["quantize"].get<std::string>() : "bar";
+                result = command_result_to_json(api.queue_state_transition(
+                    root["sm_node"].get<std::string>(),
+                    root["state"].get<int>(), q));
+            }
+        }
     } else if (method == "set_quantize_clock") {
         if (!root_valid) { result = json_err("invalid JSON body"); }
         else {

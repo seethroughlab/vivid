@@ -3006,6 +3006,7 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
 
         // --- Tick quantized variation switching ---
         runtime_api.tick_quantized_switch();
+        runtime_api.tick_quantized_state_transitions();
 
         // --- Try to acquire surface texture for presentation ---
         vivid::FrameState frame;

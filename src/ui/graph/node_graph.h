@@ -585,6 +585,7 @@ private:
     // Bottom edge of interactive graph area (shrinks when session grid is open)
     float graph_bottom() const;
     float session_strip_top() const;
+    float session_strip_height() const;  // kSessionStripH + clip section when present
     float inspector_x() const { return static_cast<float>(win_w_) - kInspectorW; }
     float chooser_panel_w() const {
         bool map = chooser_mode_ == ChooserMode::Operators
@@ -862,6 +863,8 @@ private:
     std::vector<SessionButtonRect> session_button_rects_;
     struct SessionCtxMenuRect { float x, y, w, h; int action; }; // action: 0=Rename, 1=Duplicate, 2=Delete, 3=Branch From
     std::vector<SessionCtxMenuRect> session_ctx_menu_rects_;
+    struct ClipCellRect { float x, y, w, h; std::string sm_node_id; int state_idx; };
+    std::vector<ClipCellRect> clip_cell_rects_;
 
     // Active UI style
     UIStyle style_;

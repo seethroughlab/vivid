@@ -354,6 +354,68 @@ void RuntimeAPI::tick_quantized_switch() {
     }
 }
 
+CommandResult RuntimeAPI::queue_state_transition(const std::string& sm_node_id,
+                                                   int state_idx,
+                                                   const std::string& quantize) {
+    if (!core_.compiled_graph()) return {false, kNoCompiledGraph};
+    if (state_idx < 0 || state_idx > 7) return {false, "state index out of range (0–7)"};
+
+    if (quantize == "instant") {
+        return set_param(sm_node_id, "force_state", static_cast<float>(state_idx));
+    }
+
+    const auto metronome = current_metronome_sample();
+    const int bpb = std::max(1, metronome.beats_per_bar);
+    const int64_t current_beat = static_cast<int64_t>(std::floor(metronome.beats_elapsed));
+
+    PendingStateTransition::Quantize q = PendingStateTransition::Beat;
+    int64_t target_beat = current_beat + 1;
+    if (quantize == "bar") {
+        q           = PendingStateTransition::Bar;
+        target_beat = ((current_beat / bpb) + 1) * bpb;
+    } else if (quantize == "4bar" || quantize == "four_bar") {
+        q                 = PendingStateTransition::FourBar;
+        const int four_bar = bpb * 4;
+        target_beat       = ((current_beat / four_bar) + 1) * four_bar;
+    }
+
+    // Replace any existing pending transition for this SM node
+    for (auto& p : pending_state_transitions_) {
+        if (p.sm_node_id == sm_node_id) { p.armed = false; }
+    }
+    pending_state_transitions_.push_back({sm_node_id, state_idx, q, target_beat, true});
+
+    return {true, "queued state " + std::to_string(state_idx) + " for '" + sm_node_id
+                  + "' (" + quantize + ")"};
+}
+
+int RuntimeAPI::queued_state_for(const std::string& sm_node_id) const {
+    for (const auto& p : pending_state_transitions_) {
+        if (p.armed && p.sm_node_id == sm_node_id) return p.target_state;
+    }
+    return -1;
+}
+
+void RuntimeAPI::tick_quantized_state_transitions() {
+    if (pending_state_transitions_.empty()) return;
+    if (!core_.compiled_graph()) return;
+
+    const auto metronome = current_metronome_sample();
+    const int64_t current_beat = static_cast<int64_t>(std::floor(metronome.beats_elapsed));
+
+    for (auto& p : pending_state_transitions_) {
+        if (!p.armed) continue;
+        if (current_beat >= p.target_beat_index) {
+            set_param(p.sm_node_id, "force_state", static_cast<float>(p.target_state));
+            p.armed = false;
+        }
+    }
+    pending_state_transitions_.erase(
+        std::remove_if(pending_state_transitions_.begin(), pending_state_transitions_.end(),
+                       [](const PendingStateTransition& p) { return !p.armed; }),
+        pending_state_transitions_.end());
+}
+
 const std::string& RuntimeAPI::active_preset(const std::string& node_id) const {
     static const std::string empty;
     auto it = active_presets_.find(node_id);

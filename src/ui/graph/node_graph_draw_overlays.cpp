@@ -39,7 +39,7 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
     // Drawn in the post-thumbnail pass so GPU previews remain visible beneath
     // the console's translucent surface.
     build_console_panel_.draw(tr, style_, win_w_, win_h_,
-                              session_grid_open_ ? kSessionStripH : 0.0f,
+                              session_grid_open_ ? session_strip_height() : 0.0f,
                               mouse_.x, mouse_.y);
 
     if (diagnostics_panel_open_) {

@@ -866,6 +866,7 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
     variation_cell_rects_.clear();
     session_button_rects_.clear();
     session_ctx_menu_rects_.clear();
+    clip_cell_rects_.clear();
 
     if (!session_grid_open_) {
         session_collapsed_rect_ = {};
@@ -913,11 +914,13 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
 
     session_collapsed_rect_ = {};
 
-    float strip_y = static_cast<float>(win_h_) - kSessionStripH;
+    const float clip_section_h = snap_.clip_machines.empty() ? 0.0f : kClipSectionH;
+    const float total_strip_h  = kSessionStripH + clip_section_h;
+    float strip_y = static_cast<float>(win_h_) - total_strip_h;
     float strip_w = static_cast<float>(win_w_);
 
     // Background
-    tr.draw_rect(0, strip_y, strip_w, kSessionStripH,
+    tr.draw_rect(0, strip_y, strip_w, total_strip_h,
                  style_.dark_bg[0], style_.dark_bg[1], style_.dark_bg[2], 0.95f);
     // Top border
     tr.draw_rect(0, strip_y, strip_w, 1,
@@ -1135,6 +1138,68 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
         tr.draw_text(ghost_x + 8, ghost_y + 14,
                      snap_.variations[session_drag_idx_].name.c_str(),
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    }
+
+    // --- Clip launcher grid ---
+    if (!snap_.clip_machines.empty()) {
+        const float clips_y   = strip_y + kSessionStripH;
+        const float sep_y     = clips_y - 1.0f;
+        // Separator
+        tr.draw_rect(0, sep_y, strip_w, 1,
+                     style_.accent[0], style_.accent[1], style_.accent[2], 0.25f);
+        // "CLIPS" label
+        tr.draw_text(kSessionPadX, clips_y + 4,
+                     T("clips_label", "CLIPS"),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+
+        float cx = kSessionPadX + 50.0f;
+        for (const auto& sm : snap_.clip_machines) {
+            // Column header (SM node id)
+            tr.draw_text(cx, clips_y + 4, sm.display_name.c_str(),
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+            // State cells
+            for (int si = 0; si < sm.state_count; ++si) {
+                const float cell_y = clips_y + 18.0f + si * (kClipCellH + kClipCellPad);
+                const bool  active = (si == sm.active_state);
+                const bool  queued = (si == sm.queued_state);
+                const bool  hovered = (mouse_.x >= cx && mouse_.x < cx + kClipCellW &&
+                                       mouse_.y >= cell_y && mouse_.y < cell_y + kClipCellH);
+
+                float br = active ? style_.accent[0] * 0.30f
+                         : queued ? style_.accent[0] * 0.18f
+                         : hovered ? 0.25f : 0.15f;
+                float bg = active ? style_.accent[1] * 0.30f
+                         : queued ? style_.accent[1] * 0.18f
+                         : hovered ? 0.25f : 0.15f;
+                float bb = active ? style_.accent[2] * 0.30f
+                         : queued ? style_.accent[2] * 0.18f
+                         : hovered ? 0.27f : 0.17f;
+                tr.draw_rect(cx, cell_y, kClipCellW, kClipCellH, br, bg, bb, 0.9f);
+
+                if (active) {
+                    draw_rect_border(tr, cx, cell_y, kClipCellW, kClipCellH,
+                                     style_.accent[0], style_.accent[1], style_.accent[2], 0.9f);
+                } else if (queued) {
+                    // Pulsing border: use time-based alpha
+                    const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(
+                        std::fmod(snap_.metronome_beat_phase * 6.28318f, 6.28318f)));
+                    draw_rect_border(tr, cx, cell_y, kClipCellW, kClipCellH,
+                                     style_.accent[0], style_.accent[1], style_.accent[2],
+                                     0.4f + 0.5f * pulse);
+                }
+
+                char lbl[20];
+                std::snprintf(lbl, sizeof(lbl), "State %d", si + 1);
+                tr.draw_text(cx + 5, cell_y + 4, lbl,
+                             active ? style_.bright_text[0] : style_.dim_text[0],
+                             active ? style_.bright_text[1] : style_.dim_text[1],
+                             active ? style_.bright_text[2] : style_.dim_text[2]);
+
+                clip_cell_rects_.push_back({cx, cell_y, kClipCellW, kClipCellH,
+                                            sm.node_id, si});
+            }
+            cx += kClipCellW + 8.0f;
+        }
     }
 
     // --- Context menu ---

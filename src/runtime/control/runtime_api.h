@@ -130,6 +130,12 @@ public:
     // Per-frame: check pending quantized variation switch
     void tick_quantized_switch();
 
+    // --- Per-Track StateMachine State Transitions ---
+    CommandResult queue_state_transition(const std::string& sm_node_id, int state_idx,
+                                         const std::string& quantize);
+    int queued_state_for(const std::string& sm_node_id) const;
+    void tick_quantized_state_transitions();
+
     // --- Per-Operator Presets ---
     CommandResult save_preset(const std::string& node_id, const std::string& name);
     CommandResult recall_preset(const std::string& node_id, const std::string& name);
@@ -260,6 +266,17 @@ private:
         bool armed = false;
     };
     PendingVariation pending_variation_;
+
+    // Per-track quantized state transitions (one per StateMachine node)
+    struct PendingStateTransition {
+        std::string sm_node_id;
+        int target_state       = -1;
+        enum Quantize { Instant, Beat, Bar, FourBar } quantize = Instant;
+        int64_t target_beat_index = -1;
+        bool armed             = false;
+    };
+    std::vector<PendingStateTransition> pending_state_transitions_;
+
     bool variation_dirty_ = false;
     bool graph_dirty_ = false;
     std::string last_saved_graph_json_;

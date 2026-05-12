@@ -44,7 +44,7 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     }
 
     {
-        float bottom_offset = session_grid_open_ ? kSessionStripH : 0.0f;
+        float bottom_offset = session_grid_open_ ? session_strip_height() : 0.0f;
         build_console_panel_.update_drag(mouse_.x, mouse_.y, mouse_.left_down,
                                          win_w_, win_h_, bottom_offset);
     }

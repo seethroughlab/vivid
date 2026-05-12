@@ -254,12 +254,16 @@ float NodeGraphUI::graph_right() const {
 float NodeGraphUI::graph_bottom() const {
     float h = static_cast<float>(win_h_);
     h -= build_console_panel_.panel_height();
-    if (session_grid_open_) h -= kSessionStripH;
+    if (session_grid_open_) h -= session_strip_height();
     return h;
 }
 
+float NodeGraphUI::session_strip_height() const {
+    return kSessionStripH + (snap_.clip_machines.empty() ? 0.0f : kClipSectionH);
+}
+
 float NodeGraphUI::session_strip_top() const {
-    return static_cast<float>(win_h_) - kSessionStripH;
+    return static_cast<float>(win_h_) - session_strip_height();
 }
 
 // -----------------------------------------------------------------------

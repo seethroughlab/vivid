@@ -4970,6 +4970,19 @@ async def queue_variation(name: str, quantize: str = "instant") -> str:
 
 
 @mcp.tool()
+async def queue_state_transition(sm_node: str, state: int, quantize: str = "bar") -> str:
+    """Jump a StateMachine to a specific state, quantized to a beat boundary.
+
+    Args:
+        sm_node: Node ID of the StateMachine operator
+        state: Target state index (0-based)
+        quantize: Timing — "instant", "beat", "bar", or "4bar"
+    """
+    return await _post("queue_state_transition",
+                       {"sm_node": sm_node, "state": state, "quantize": quantize})
+
+
+@mcp.tool()
 async def set_quantize_clock(node_id: str) -> str:
     """Designate a Clock node for beat-synced variation switching.
 
