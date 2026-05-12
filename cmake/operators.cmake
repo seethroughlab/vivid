@@ -261,6 +261,12 @@ target_sources(pattern_seq PRIVATE
     operators/control/pattern_seq/pattern_seq_editor.cpp
     operators/control/pattern_seq/pattern_seq_editor_shared.cpp)
 add_vivid_operator(note_pattern      operators/control/note_pattern/note_pattern.cpp CODEGEN    EXTRA_LIBS webgpu)
+add_vivid_operator(midi_clip         operators/control/midi_clip/midi_clip.cpp CODEGEN
+                   EXTRA_LIBS nlohmann_json::nlohmann_json midifile)
+target_sources(midi_clip PRIVATE
+    operators/control/midi_clip/midi_clip_editor_shared.cpp
+    operators/control/midi_clip/midi_clip_editor.cpp
+    src/common/midi_file.cpp)
 add_vivid_operator(note_duration     operators/control/note_duration/note_duration.cpp CODEGEN)
 add_vivid_operator(arpeggiator       operators/control/arpeggiator/arpeggiator.cpp CODEGEN     EXTRA_LIBS webgpu)
 target_sources(arpeggiator PRIVATE
@@ -285,7 +291,7 @@ add_vivid_operator(drum_kit          operators/control/drum_kit/drum_kit.cpp COD
 add_vivid_operator(note_breakout     operators/control/note_breakout/note_breakout.cpp CODEGEN)
 add_vivid_operator(note_modulator    operators/control/note_modulator/note_modulator.cpp CODEGEN)
 foreach(_seq_op sequencer drum_sequencer
-        pattern_seq note_pattern note_duration
+        pattern_seq note_pattern midi_clip note_duration
         arpeggiator chord_progression
         state_machine tracker euclidean pat_transform
         phase_to_midi drum_kit midi_input note_breakout note_modulator)
