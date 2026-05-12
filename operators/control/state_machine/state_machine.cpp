@@ -318,7 +318,9 @@ struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
 
 VIVID_DEFINE_OP(StateMachine) {
     name = "StateMachine";
-    keywords = {"state", "machine", "sequence", "transition", "crossfade", "automation"};
-    summary = "Eight-state sequencer with beat-quantized transitions and crossfade.";
+    keywords = {"state", "machine", "sequence", "transition", "crossfade", "automation",
+                "clip", "launcher", "per-track", "session"};
+    summary = "Eight-state sequencer with beat-quantized transitions and crossfade. "
+              "Used with state-preset mappings for per-track clip launching in the Session view.";
 }
 

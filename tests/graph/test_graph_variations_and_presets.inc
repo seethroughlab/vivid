@@ -705,6 +705,42 @@
     }
 
     // =====================================================================
+    // Test 25b: Graph::ensure_state_mapping
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 25b: Graph::ensure_state_mapping ===\n");
+        vivid::Graph g;
+        g.add_node("sm1", "StateMachine");
+
+        check(g.state_preset_mappings().empty(), "25b: no mappings initially");
+
+        g.ensure_state_mapping("sm1");
+        check(g.state_preset_mappings().size() == 1, "25b: mapping created");
+        check(g.state_preset_mappings()[0].state_machine_node == "sm1", "25b: correct node id");
+        check(g.state_preset_mappings()[0].state_presets.empty(), "25b: no presets yet");
+
+        g.ensure_state_mapping("sm1");
+        check(g.state_preset_mappings().size() == 1, "25b: idempotent");
+
+        // set_state_preset works on an already-registered SM
+        g.add_node("osc", "Osc");
+        g.set_state_preset("sm1", 0, "osc", "Bright");
+        check(g.state_preset_mappings().size() == 1, "25b: still one mapping after preset bind");
+        check(!g.state_preset_mappings()[0].state_presets.empty(), "25b: preset now bound");
+
+        // Round-trip: empty mapping entry (no presets) survives save/load
+        vivid::Graph g2;
+        g2.add_node("sm2", "StateMachine");
+        g2.ensure_state_mapping("sm2");
+        std::string rt_path = (g_tmp->path / "ensure_state_mapping_rt.json").string();
+        check(g2.save(rt_path.c_str()), "25b: save with empty mapping");
+        vivid::Graph g3;
+        check(g3.load(rt_path.c_str()), "25b: load with empty mapping");
+        check(g3.find_state_mapping("sm2") != nullptr, "25b: empty mapping survives round-trip");
+        std::remove(rt_path.c_str());
+    }
+
+    // =====================================================================
     // Test 26: Viewport round-trip
     // =====================================================================
     {

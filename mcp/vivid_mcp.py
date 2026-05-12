@@ -1890,6 +1890,62 @@ async def diagnose_composition_issue(analysis_json: str = "",
 
 
 # ---------------------------------------------------------------------------
+# get_session_view_guide — static reference for Session view features.
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+async def get_session_view_guide() -> str:
+    """Return a guide to Vivid's Session view: variations and the per-track clip launcher.
+
+    Describes both whole-graph variation switching and per-track clip launching,
+    with the relevant tools for each workflow. Call this when you need to understand
+    how to use the Session view or set up a clip launcher track.
+    """
+    return json.dumps({
+        "session_view_features": {
+            "variations": {
+                "description": "Whole-graph preset snapshots. One variation captures "
+                               "all node parameter values at once.",
+                "tools": {
+                    "save_variation": "Snapshot current graph state as a named variation",
+                    "recall_variation": "Restore a saved variation immediately",
+                    "queue_variation": "Switch to a variation at a beat boundary (instant/beat/bar/4bar)",
+                    "list_variations": "Show all saved variations",
+                },
+            },
+            "clip_launcher": {
+                "description": "Per-track state switching. Each track is a StateMachine "
+                               "that independently controls which preset is active on a "
+                               "target node (e.g., a synth or effect). Multiple tracks "
+                               "can be launched simultaneously at bar boundaries.",
+                "how_it_works": [
+                    "A StateMachine registered with ensure_state_mapping appears as a "
+                    "column in the Session view clip grid",
+                    "Each state (row) can be bound to a preset on any node via set_state_preset",
+                    "Clicking a cell (or calling queue_state_transition) launches that state "
+                    "at the next quantize boundary, recalling its bound preset",
+                    "MidiClip phase -> SM beat_phase wires timing sync (add_clip_track does this)",
+                ],
+                "quick_setup": [
+                    "add_clip_track() — creates StateMachine + MidiClip, registers in grid",
+                    "save_preset(node_id, 'preset_name') — save a preset on a target node",
+                    "set_state_preset(sm_node, state_idx, target_node, preset_name) — bind it",
+                    "queue_state_transition(sm_node, state, 'bar') — launch from code",
+                ],
+                "tools": {
+                    "add_clip_track": "One-shot setup: creates SM + MidiClip pair and registers in grid",
+                    "ensure_state_mapping": "Register an existing SM in the clip grid (no presets required)",
+                    "queue_state_transition": "Launch a clip: jump SM to state at beat boundary",
+                    "set_state_preset": "Bind a preset to a state (what gets recalled on launch)",
+                    "inspect_state_presets": "Show current preset bindings for a StateMachine",
+                    "clear_state_presets": "Remove all preset bindings from a StateMachine",
+                },
+            },
+        }
+    }, indent=2)
+
+
+# ---------------------------------------------------------------------------
 # get_composition_patterns — curated signal-flow templates. Pure-static data;
 # no runtime calls. Paired with diagnose_composition_issue, this closes the
 # authoring loop: diagnose tells you what's wrong, patterns tell you what works.

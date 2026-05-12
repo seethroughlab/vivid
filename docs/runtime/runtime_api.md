@@ -236,6 +236,22 @@ void tick_state_presets();   // call each frame to detect state machine transiti
 When a transition fires, it calls `recall_preset()` for each target node in the mapping.
 Active crossfades (`active_crossfades_`) interpolate param values over multiple frames.
 
+```cpp
+CommandResult ensure_state_mapping(sm_node);
+CommandResult queue_state_transition(sm_node, state_idx, quantize);
+int           queued_state_for(sm_node);  // -1 if none pending
+void          tick_quantized_state_transitions();  // call each frame alongside tick_quantized_switch
+```
+
+`ensure_state_mapping()` registers `sm_node` in `state_preset_mappings_` with an empty entry
+so the snapshot builder includes it in `GraphSnapshot::clip_machines` (Session view clip grid).
+Idempotent — safe to call if a mapping already exists.
+
+`queue_state_transition()` queues a jump to `state_idx` on the named StateMachine. If
+`quantize == "instant"` it calls `set_param(sm_node, "force_state", state_idx)` immediately;
+otherwise it enqueues a `PendingStateTransition` to fire at the next beat/bar/4-bar boundary.
+The StateMachine detects the `force_state` param change and jumps, triggering preset recalls.
+
 ## Solo Mode
 
 ```cpp

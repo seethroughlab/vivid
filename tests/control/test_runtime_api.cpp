@@ -1107,6 +1107,55 @@ int main(int argc, char* argv[]) {
         api.remove_variation("QuantTarget");
     }
 
+    // --- Test ensure_state_mapping ---
+    std::fprintf(stderr, "\n--- ensure_state_mapping ---\n");
+    {
+        // inspect_state_presets returns "no state-preset mappings" when none registered
+        auto before = api.inspect_state_presets("new_sm");
+        check(before.ok, "inspect before: ok");
+        check(before.message.find("no state-preset") != std::string::npos,
+              "inspect before: no mapping message");
+
+        auto r = api.ensure_state_mapping("new_sm");
+        check(r.ok, "ensure_state_mapping ok");
+
+        // After ensure, inspect returns something other than "no state-preset mappings"
+        auto after = api.inspect_state_presets("new_sm");
+        check(after.ok, "inspect after: ok");
+        check(after.message.find("no state-preset") == std::string::npos,
+              "inspect after: mapping exists");
+
+        // Idempotent: calling again doesn't create a duplicate
+        auto r2 = api.ensure_state_mapping("new_sm");
+        check(r2.ok, "ensure_state_mapping idempotent ok");
+        auto after2 = api.inspect_state_presets("new_sm");
+        check(after2.message == after.message, "idempotent: state unchanged");
+    }
+
+    // --- Test queue_state_transition ---
+    std::fprintf(stderr, "\n--- queue_state_transition ---\n");
+    {
+        // Out-of-range state index
+        auto r_bad = api.queue_state_transition("a", 9, "instant");
+        check(!r_bad.ok, "state 9 out of range");
+        auto r_neg = api.queue_state_transition("a", -1, "instant");
+        check(!r_neg.ok, "state -1 out of range");
+
+        // Bar-quantized: enqueues without requiring a compiled node
+        auto r_bar = api.queue_state_transition("a", 1, "bar");
+        check(r_bar.ok, "queue_state_transition bar ok");
+        check(api.queued_state_for("a") == 1, "pending state = 1");
+
+        // Replacing a pending transition
+        auto r_bar2 = api.queue_state_transition("a", 3, "bar");
+        check(r_bar2.ok, "replace pending transition ok");
+        check(api.queued_state_for("a") == 3, "pending state replaced to 3");
+
+        // queued_state_for returns -1 for a node with no pending transition
+        check(api.queued_state_for("b") == -1, "no pending for unqueued node");
+        check(api.queued_state_for("nonexistent") == -1, "no pending for unknown node");
+    }
+
     // --- Test set_quantize_clock ---
     std::fprintf(stderr, "\n--- set_quantize_clock ---\n");
     {

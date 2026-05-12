@@ -171,6 +171,8 @@ the bar immediately and clear any queued quantized switch.
 | `remove_state_preset` | `sm_node`, `state_idx`, `target_node` | Remove mapping |
 | `clear_state_presets` | `sm_node` | Clear all mappings for state machine |
 | `inspect_state_presets` | `sm_node` | Get all mappings |
+| `ensure_state_mapping` | `sm_node` | Register SM in clip grid without binding presets (idempotent) |
+| `queue_state_transition` | `sm_node`, `state` (0–7), `quantize` (`instant`/`beat`/`bar`/`4bar`) | Jump SM to state at beat boundary |
 
 ### MIDI
 | Method | Key params | Description |

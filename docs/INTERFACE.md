@@ -125,6 +125,34 @@ The session surface uses these commands (available via UI, control server, and C
 - `queue_variation(name, quantize)` — queue a variation switch (instant/beat/bar/4bar)
 - `set_graph_metronome(bpm, beats_per_bar)` — update graph-wide shared pulse state
 
+### 6.5.1 Clip Launcher Grid
+
+When one or more StateMachine nodes are registered in the clip grid (via `ensure_state_mapping`
+or the **"Add Track" / "+"** button in the Session strip), the strip expands to show a per-track
+grid below the variation cards.
+
+**Layout:** Each registered StateMachine is a column labeled by node ID. Each column shows state
+cells (State 1 … State N). The active state is highlighted; a queued (pending) state pulses at
+the beat until it fires.
+
+**Clicking a cell** calls `queue_state_transition` using the current quantize mode (same selector
+as variation switching). Multiple tracks transition independently.
+
+**"Add Track" / "+" button** (always visible when the Session strip is open): creates a
+StateMachine + MidiClip pair, connects MidiClip `phase` → SM `beat_phase` for timing sync, and
+calls `ensure_state_mapping`. Both nodes appear at the current view center.
+
+**State-preset bindings:** Use `set_state_preset(sm_node, state_idx, target_node, preset_name)`
+to bind presets to states. When the SM enters a state, the preset is recalled on the target node.
+An SM in the clip grid with no presets bound is valid — it acts as a state sequencer without
+recalling presets.
+
+The per-track clip launcher API:
+
+- `ensure_state_mapping(sm_node)` — register an SM in the clip grid (idempotent, no presets required)
+- `queue_state_transition(sm_node, state, quantize)` — launch a clip at a beat boundary
+- `add_clip_track(sm_node, midi_clip_node, num_states, x, y)` — one-shot setup (MCP tool)
+
 The graph metronome is optional shared transport infrastructure, not a master timeline. Clocks can
 free-run independently or opt into syncing to that shared pulse.
 
