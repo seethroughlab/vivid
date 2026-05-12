@@ -1,5 +1,9 @@
 #include "runtime/control/control_server_internal.h"
 #include "runtime/core/editor_window_manager.h"
+#include "runtime/audio/vst3_scanner.h"
+#ifdef __APPLE__
+#include "runtime/audio/au_scanner.h"
+#endif
 
 namespace vivid {
 
@@ -231,6 +235,88 @@ std::string dispatch(const std::string& method, const std::string& body,
                     if (fi == cn->file_param_indices.end() ||
                         fi->second >= cn->file_param_storage.size()) {
                         result = json_err("node '" + nid + "' is not a CLAP operator");
+                    } else {
+                        const std::string& raw = cn->file_param_storage[fi->second];
+                        try {
+                            auto arr = nlohmann::json::parse(raw.empty() ? "[]" : raw);
+                            result = nlohmann::json{{"ok", true}, {"params", arr}}.dump();
+                        } catch (...) {
+                            result = nlohmann::json{{"ok", true}, {"params", nlohmann::json::array()}}.dump();
+                        }
+                    }
+                }
+            }
+        }
+
+    } else if (method == "list_au_plugins") {
+#ifdef __APPLE__
+        runtime_au_scan_plugins();
+        const auto& plugins = runtime_au_get_plugins();
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto& p : plugins)
+            arr.push_back(nlohmann::json{{"name", p.name}});
+        result = nlohmann::json{{"ok", true}, {"plugins", arr}}.dump();
+#else
+        result = nlohmann::json{{"ok", true}, {"plugins", nlohmann::json::array()}}.dump();
+#endif
+
+    } else if (method == "list_au_params") {
+        if (!root_valid) { result = json_err("invalid JSON body"); }
+        else if (!root.contains("node_id") || !root["node_id"].is_string()) {
+            result = json_err("missing 'node_id'");
+        } else {
+            auto* cg = core.compiled_graph();
+            if (!cg) {
+                result = json_err("no compiled graph");
+            } else {
+                const std::string nid = root["node_id"].get<std::string>();
+                const auto* cn = cg->find_node(nid);
+                if (!cn) {
+                    result = json_err("unknown node '" + nid + "'");
+                } else {
+                    auto fi = cn->file_param_indices.find("_au_params");
+                    if (fi == cn->file_param_indices.end() ||
+                        fi->second >= cn->file_param_storage.size()) {
+                        result = json_err("node '" + nid + "' is not an AU operator");
+                    } else {
+                        const std::string& raw = cn->file_param_storage[fi->second];
+                        try {
+                            auto arr = nlohmann::json::parse(raw.empty() ? "[]" : raw);
+                            result = nlohmann::json{{"ok", true}, {"params", arr}}.dump();
+                        } catch (...) {
+                            result = nlohmann::json{{"ok", true}, {"params", nlohmann::json::array()}}.dump();
+                        }
+                    }
+                }
+            }
+        }
+
+    } else if (method == "list_vst3_plugins") {
+        runtime_vst3_scan_plugins();
+        const auto& plugins = runtime_vst3_get_plugins();
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto& p : plugins)
+            arr.push_back(nlohmann::json{{"name", p.key}});
+        result = nlohmann::json{{"ok", true}, {"plugins", arr}}.dump();
+
+    } else if (method == "list_vst3_params") {
+        if (!root_valid) { result = json_err("invalid JSON body"); }
+        else if (!root.contains("node_id") || !root["node_id"].is_string()) {
+            result = json_err("missing 'node_id'");
+        } else {
+            auto* cg = core.compiled_graph();
+            if (!cg) {
+                result = json_err("no compiled graph");
+            } else {
+                const std::string nid = root["node_id"].get<std::string>();
+                const auto* cn = cg->find_node(nid);
+                if (!cn) {
+                    result = json_err("unknown node '" + nid + "'");
+                } else {
+                    auto fi = cn->file_param_indices.find("_vst3_params");
+                    if (fi == cn->file_param_indices.end() ||
+                        fi->second >= cn->file_param_storage.size()) {
+                        result = json_err("node '" + nid + "' is not a VST3 operator");
                     } else {
                         const std::string& raw = cn->file_param_storage[fi->second];
                         try {

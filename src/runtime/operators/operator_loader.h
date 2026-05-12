@@ -55,7 +55,7 @@ public:
 
     bool has_main_thread_update() const { return main_update_fn_ != nullptr; }
     void main_thread_update(void* instance, double time,
-                            const char** file_param_values, uint32_t file_param_count) const;
+                            std::string** file_param_strings, uint32_t file_param_count) const;
 
     // Optional MIDI inject hook (vivid_op_inject_midi). Operators opt in by
     // exporting an extern "C" function with that name; this lets debug

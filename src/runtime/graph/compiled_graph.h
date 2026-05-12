@@ -428,7 +428,8 @@ struct CompiledNode {
 
     // ── File (string) params ────────────────────────────────────────────────
     std::vector<std::string> file_param_storage;
-    std::vector<const char*> file_param_ptrs;
+    std::vector<const char*> file_param_ptrs;   // read-only C-string view for process_audio
+    std::vector<std::string*> file_param_write_ptrs; // mutable pointers for main_thread_update write-back
     std::unordered_map<std::string, uint32_t> file_param_indices;
     std::vector<uint8_t> file_param_is_path;
 

@@ -128,6 +128,8 @@ add_executable(vivid
     src/runtime/operators/operator_creator.cpp
     src/runtime/operators/project_package.cpp
     src/runtime/audio/system_midi.cpp
+    src/runtime/audio/au_scanner.cpp
+    src/runtime/audio/vst3_scanner.cpp
     src/runtime/platform/platform.cpp
     src/runtime/platform/process_runner.cpp
     src/runtime/core/settings.cpp
@@ -158,7 +160,7 @@ if(APPLE)
 endif()
 
 target_include_directories(vivid PRIVATE src)
-target_link_libraries(vivid PRIVATE vivid_ui webgpu glfw glfw3webgpu vivid_operator_api vivid_source_syntax nlohmann_json::nlohmann_json dragonbox::dragonbox_to_chars miniaudio stb_truetype ixwebsocket rtmidi CLI11::CLI11 efsw tinyxml2 CURL::libcurl)
+target_link_libraries(vivid PRIVATE vivid_ui webgpu glfw glfw3webgpu vivid_operator_api vivid_source_syntax nlohmann_json::nlohmann_json dragonbox::dragonbox_to_chars miniaudio stb_truetype ixwebsocket rtmidi CLI11::CLI11 efsw tinyxml2 CURL::libcurl vst3_iids)
 if(VIVID_ENABLE_HIGHWAY)
     target_link_libraries(vivid PRIVATE hwy)
     target_compile_definitions(vivid PRIVATE
@@ -446,6 +448,9 @@ if(APPLE)
         "-framework AVFoundation"
         "-framework CoreMedia"
         "-framework VideoToolbox"
+        "-framework AudioToolbox"
+        "-framework CoreAudio"
+        "-framework CoreFoundation"
     )
 endif()
 

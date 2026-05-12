@@ -588,10 +588,10 @@ const VividFileDropHandlerDescriptor* OperatorLoader::file_drop_handlers(uint32_
 }
 
 void OperatorLoader::main_thread_update(void* instance, double time,
-                                         const char** file_param_values,
+                                         std::string** file_param_strings,
                                          uint32_t file_param_count) const {
     if (main_update_fn_ && instance) {
-        main_update_fn_(instance, time, file_param_values, file_param_count);
+        main_update_fn_(instance, time, file_param_strings, file_param_count);
     }
 }
 

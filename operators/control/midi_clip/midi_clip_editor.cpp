@@ -1070,40 +1070,18 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
                         ctx->host.capture_pointer(ctx->host.opaque);
                 }
             } else {
-                // Click on empty area
+                // Drag on empty: always start box-select
+                // (plain click with no movement will add a note on release)
                 if (!shift)
-                    note_selected_.assign(editor_notes_.size(), false);
+                    note_selected_.assign(editor_notes_.size(), 0);
                 int pitch = p_fn(my);
                 if (pitch >= 0 && pitch <= 127) {
-                    if (!shift) {
-                        // Without shift: add a note (existing behavior)
-                        double start = midi_clip::quantize_to_grid(
-                            beat_from_x(mx, editor_scroll_x_, static_cast<float>(inv_bw)), grid_idx);
-                        start = std::clamp(start, 0.0, pat_len - cell_beats);
-                        midi_clip::ParsedNote n{};
-                        n.pitch          = static_cast<uint8_t>(pitch);
-                        n.start_beat     = start;
-                        n.duration_beats = cell_beats;
-                        n.velocity       = 0.8f;
-                        editor_notes_.push_back(n);
-                        note_selected_.push_back(false);
-                        drag_note_idx_   = static_cast<int>(editor_notes_.size()) - 1;
-                        drag_start_mx_   = ctx->mouse.x;
-                        drag_start_my_   = ctx->mouse.y;
-                        drag_orig_start_ = start;
-                        drag_orig_dur_   = cell_beats;
-                        drag_orig_pitch_ = static_cast<uint8_t>(pitch);
-                        drag_mode_       = DragMode::AddingNote;
-                        commit_editor_notes(ctx);
-                    } else {
-                        // Shift+drag on empty: box-select (additive)
-                        box_sel_start_beat_  = beat_from_x(mx, editor_scroll_x_,
-                                                           static_cast<float>(inv_bw));
-                        box_sel_start_pitch_ = pitch;
-                        drag_mode_           = DragMode::BoxSelect;
-                        drag_start_mx_       = ctx->mouse.x;
-                        drag_start_my_       = ctx->mouse.y;
-                    }
+                    box_sel_start_beat_  = beat_from_x(mx, editor_scroll_x_,
+                                                       static_cast<float>(inv_bw));
+                    box_sel_start_pitch_ = pitch;
+                    drag_mode_           = DragMode::BoxSelect;
+                    drag_start_mx_       = ctx->mouse.x;
+                    drag_start_my_       = ctx->mouse.y;
                     if (ctx->host.capture_pointer)
                         ctx->host.capture_pointer(ctx->host.opaque);
                 }
@@ -1238,6 +1216,31 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
 
         // --- Release ---
         if (!ctx->mouse.left_down && drag_mode_ != DragMode::None) {
+            // BoxSelect with minimal movement → treat as a click: add a note
+            if (drag_mode_ == DragMode::BoxSelect) {
+                const float ddx = ctx->mouse.x - drag_start_mx_;
+                const float ddy = ctx->mouse.y - drag_start_my_;
+                if (ddx * ddx + ddy * ddy < 25.0f) {  // < 5 px radius
+                    note_selected_.assign(editor_notes_.size(), 0);
+                    const float cmx = drag_start_mx_ - grid_x;
+                    const float cmy = drag_start_my_ - grid_y;
+                    int pitch = p_fn(cmy);
+                    if (pitch >= 0 && pitch <= 127) {
+                        double start = midi_clip::quantize_to_grid(
+                            beat_from_x(cmx, editor_scroll_x_, static_cast<float>(inv_bw)),
+                            grid_idx);
+                        start = std::clamp(start, 0.0, pat_len - cell_beats);
+                        midi_clip::ParsedNote n{};
+                        n.pitch          = static_cast<uint8_t>(pitch);
+                        n.start_beat     = start;
+                        n.duration_beats = cell_beats;
+                        n.velocity       = 0.8f;
+                        editor_notes_.push_back(n);
+                        note_selected_.push_back(0);
+                        commit_editor_notes(ctx);
+                    }
+                }
+            }
             if (ctx->host.release_pointer)
                 ctx->host.release_pointer(ctx->host.opaque);
             drag_mode_     = DragMode::None;

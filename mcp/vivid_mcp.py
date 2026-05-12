@@ -4486,6 +4486,193 @@ async def set_clap_param(node_id: str, param_name: str, value: float) -> str:
 
 
 @mcp.tool()
+async def list_au_plugins() -> list[dict]:
+    """List all installed AU instrument plugins via Core Audio's component registry.
+
+    Returns a list of dicts with a 'name' key (the full AudioComponentCopyName string,
+    e.g. "Toontrack: EZdrummer 3"). Pass this name to set_au_plugin to load the plugin.
+
+    Requires a running Vivid instance.
+    """
+    raw = await _post("list_au_plugins", {})
+    data = json.loads(raw)
+    return data.get("plugins", [])
+
+
+@mcp.tool()
+async def set_au_plugin(node_id: str, plugin_name: str) -> str:
+    """Load an AU instrument plugin into an AUInstrument node.
+
+    Args:
+        node_id: ID of the target AUInstrument node
+        plugin_name: Full plugin name from list_au_plugins (e.g. "Toontrack: EZdrummer 3")
+    """
+    await _post("set_string_param", {"node_id": node_id, "param": "plugin_name", "value": plugin_name})
+    return json.dumps({"ok": True, "node_id": node_id, "plugin_name": plugin_name})
+
+
+@mcp.tool()
+async def list_au_params(node_id: str) -> str:
+    """List all parameters exposed by the AU plugin currently loaded in an AUInstrument node.
+
+    Returns a JSON array of parameter descriptors:
+      [{"name": "Cutoff", "id": 42, "min": 20.0, "max": 20000.0, "default": 1000.0}, ...]
+
+    Returns an empty array if no plugin is loaded yet.
+
+    To control a discovered parameter, map it to a macro slot:
+      set_string_param(node_id, "macro_0_id", "Cutoff")
+      set_param(node_id, "macro_0", 0.5)   # 0-1 normalized
+
+    Args:
+        node_id: ID of the AUInstrument node
+    """
+    return await _post("list_au_params", {"node_id": node_id})
+
+
+@mcp.tool()
+async def set_au_param(node_id: str, param_name: str, value: float) -> str:
+    """Set an AU plugin parameter by name, in the plugin's native value range.
+
+    Finds or allocates a macro slot for the parameter, then sets it.
+    All 8 macro slots can be tracked simultaneously across up to 8 parameters.
+
+    Args:
+        node_id: ID of the AUInstrument node
+        param_name: Exact parameter name (from list_au_params)
+        value: Value in the plugin's native range (min..max from list_au_params)
+    """
+    import asyncio as _asyncio
+
+    raw = await _post("list_au_params", {"node_id": node_id})
+    data = json.loads(raw)
+    params_list = data.get("params", [])
+    match = next((p for p in params_list if p["name"] == param_name), None)
+    if not match:
+        return json.dumps({"ok": False, "error": f"param '{param_name}' not found"})
+
+    mn = float(match.get("min", 0.0))
+    mx = float(match.get("max", 1.0))
+    rng = mx - mn if mx != mn else 1.0
+    normalized = max(0.0, min(1.0, (value - mn) / rng))
+
+    slot_values = await _asyncio.gather(*[
+        _post("get_param", {"node_id": node_id, "param": f"macro_{i}_id"})
+        for i in range(8)
+    ])
+    slot = None
+    first_empty = None
+    for i, r in enumerate(slot_values):
+        cur = json.loads(r).get("value", "")
+        if cur == param_name:
+            slot = i
+            break
+        if cur == "" and first_empty is None:
+            first_empty = i
+    if slot is None:
+        slot = first_empty if first_empty is not None else 0
+
+    await _post("set_string_param", {"node_id": node_id, "param": f"macro_{slot}_id", "value": param_name})
+    await _post("set_param", {"node_id": node_id, "param": f"macro_{slot}", "value": str(normalized)})
+    return json.dumps({"ok": True, "param": param_name, "value": value,
+                       "normalized": normalized, "macro_slot": slot})
+
+
+@mcp.tool()
+async def list_vst3_plugins() -> list[dict]:
+    """List all installed VST3 instrument plugins by scanning standard VST3 directories.
+
+    Returns a list of dicts with a 'name' key (e.g. "Serum2 [Xfer Records]").
+    Pass this name to set_vst3_plugin to load the plugin into a Vst3Instrument node.
+
+    Requires a running Vivid instance.
+    """
+    raw = await _post("list_vst3_plugins", {})
+    data = json.loads(raw)
+    return data.get("plugins", [])
+
+
+@mcp.tool()
+async def set_vst3_plugin(node_id: str, plugin_name: str) -> str:
+    """Load a VST3 instrument plugin into a Vst3Instrument node.
+
+    Args:
+        node_id: ID of the target Vst3Instrument node
+        plugin_name: Full plugin key from list_vst3_plugins (e.g. "Serum2 [Xfer Records]")
+    """
+    await _post("set_string_param", {"node_id": node_id, "param": "plugin_name", "value": plugin_name})
+    return json.dumps({"ok": True, "node_id": node_id, "plugin_name": plugin_name})
+
+
+@mcp.tool()
+async def list_vst3_params(node_id: str) -> str:
+    """List all parameters exposed by the VST3 plugin currently loaded in a Vst3Instrument node.
+
+    Returns a JSON array of parameter descriptors:
+      [{"name": "Cutoff", "id": 101, "min": 20.0, "max": 20000.0, "default": 0.5}, ...]
+
+    The 'min' and 'max' values are the plain-value range (e.g. Hz for a filter cutoff).
+    The 'default' is the normalized value in [0, 1].
+
+    To control a parameter, map it to a macro slot:
+      set_string_param(node_id, "macro_0_id", "Cutoff")
+      set_param(node_id, "macro_0", 0.5)   # 0-1 normalized
+
+    Args:
+        node_id: ID of the Vst3Instrument node
+    """
+    return await _post("list_vst3_params", {"node_id": node_id})
+
+
+@mcp.tool()
+async def set_vst3_param(node_id: str, param_name: str, value: float) -> str:
+    """Set a VST3 plugin parameter by name, using the plugin's plain value range.
+
+    Finds or allocates a macro slot for the parameter, normalizes the plain value,
+    and sets it. All 8 macro slots can track up to 8 parameters simultaneously.
+
+    Args:
+        node_id: ID of the Vst3Instrument node
+        param_name: Exact parameter name (from list_vst3_params)
+        value: Value in the plugin's plain range (min..max from list_vst3_params)
+    """
+    import asyncio as _asyncio
+
+    raw = await _post("list_vst3_params", {"node_id": node_id})
+    data = json.loads(raw)
+    params_list = data.get("params", [])
+    match = next((p for p in params_list if p["name"] == param_name), None)
+    if not match:
+        return json.dumps({"ok": False, "error": f"param '{param_name}' not found"})
+
+    mn = float(match.get("min", 0.0))
+    mx = float(match.get("max", 1.0))
+    rng = mx - mn if mx != mn else 1.0
+    normalized = max(0.0, min(1.0, (value - mn) / rng))
+
+    slot_values = await _asyncio.gather(*[
+        _post("get_param", {"node_id": node_id, "param": f"macro_{i}_id"})
+        for i in range(8)
+    ])
+    slot = None
+    first_empty = None
+    for i, r in enumerate(slot_values):
+        cur = json.loads(r).get("value", "")
+        if cur == param_name:
+            slot = i
+            break
+        if cur == "" and first_empty is None:
+            first_empty = i
+    if slot is None:
+        slot = first_empty if first_empty is not None else 0
+
+    await _post("set_string_param", {"node_id": node_id, "param": f"macro_{slot}_id", "value": param_name})
+    await _post("set_param", {"node_id": node_id, "param": f"macro_{slot}", "value": str(normalized)})
+    return json.dumps({"ok": True, "param": param_name, "value": value,
+                       "normalized": normalized, "macro_slot": slot})
+
+
+@mcp.tool()
 async def save_graph(path: str | None = None) -> str:
     """Save the graph to disk.
 

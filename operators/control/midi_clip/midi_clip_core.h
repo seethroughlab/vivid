@@ -2,6 +2,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/note_types.h"
 #include "operator_api/metronome_sync.h"
+#include "operator_api/editor_ui.h"
 #include "note_helpers.h"
 #include "note_id_counter.h"
 #include "midi_clip_editor_shared.h"
@@ -18,9 +19,8 @@ struct MidiClipCore : vivid::OperatorBase {
     static constexpr bool kTimeDependent = true;
 
     // --- Params -------------------------------------------------------
-    // length_bars: enum index 0=1bar 1=2bars 2=4bars 3=8bars 4=16bars 5=32bars 6=64bars
-    vivid::Param<int>              length_bars   {"length_bars",   1,
-        {"1 bar","2 bars","4 bars","8 bars","16 bars","32 bars","64 bars"}};
+    // length_bars: actual bar count (arbitrary float, e.g. 197.0 for a 197-bar piece)
+    vivid::Param<float>            length_bars   {"length_bars", 2.0f, 0.25f, 1024.0f};
     // quantize_grid: enum index 0=1/32 1=1/16 2=1/8 3=1/4
     vivid::Param<int>              quantize_grid {"quantize_grid", 1, {"1/32","1/16","1/8","1/4"}};
     vivid::Param<vivid::TextValue> pattern_data  {"pattern_data",  "[]"};
@@ -64,7 +64,7 @@ struct MidiClipCore : vivid::OperatorBase {
     float  editor_scroll_x_      = 0.0f;  // horizontal scroll offset in beats
     float  editor_zoom_beats_    = 0.0f;  // 0 = full pattern view; >0 = beats visible
     float  row_h_                = 14.0f; // row height in px; Option+scroll to adjust (6–40)
-    int    last_lb_idx_          = -1;    // detect length_bars changes to reset zoom
+    float  last_lb_val_          = -1.0f; // detect length_bars changes to reset zoom
     bool   hscroll_dragging_           = false;
     float  hscroll_drag_start_scroll_  = 0.0f;
 
@@ -75,7 +75,8 @@ struct MidiClipCore : vivid::OperatorBase {
 
     enum class DragMode { None, AddingNote, MovingNote, ResizingNote,
                           VelocityDrag, PitchBendDrag, PressureDrag,
-                          LoopBraceSweep, LoopBraceLeft, LoopBraceRight, LoopBraceBody };
+                          LoopBraceSweep, LoopBraceLeft, LoopBraceRight, LoopBraceBody,
+                          BoxSelect };
     DragMode drag_mode_       = DragMode::None;
     int      drag_note_idx_   = -1;
     float    drag_start_mx_   = 0.0f;  // mouse X (screen) when drag began
@@ -91,6 +92,8 @@ struct MidiClipCore : vivid::OperatorBase {
 
     // working copy of notes in the editor (refreshed from string_param_values)
     std::vector<midi_clip::ParsedNote> editor_notes_;
+    // Parallel selection flags — kept same size as editor_notes_ (0=unselected, 1=selected)
+    std::vector<uint8_t> note_selected_;
     // Last value we submitted via set_string_param. Used to distinguish
     // our own writes from external changes (undo, graph reload).
     std::string editor_submitted_str_;
@@ -99,6 +102,14 @@ struct MidiClipCore : vivid::OperatorBase {
     float scroll_y_     = 0.0f;
     bool  scrollbar_dragging_ = false;
     float scrollbar_drag_start_scroll_ = 0.0f;
+
+    // Box-select state (main thread only)
+    double  box_sel_start_beat_  = 0.0;
+    int     box_sel_start_pitch_ = 0;
+
+    // Length text-field state (main thread only)
+    vivid::ui::TextFieldState  length_field_state_;
+    char                       length_field_buf_[32] = "2";
 
     // --- MIDI import state (main thread only) -------------------------
     std::string         last_import_path_;     // last path we imported from
@@ -269,9 +280,8 @@ inline void MidiClipCore::process_audio(const VividAudioContext* ctx) {
         local_notes = audio_notes_;
     }
 
-    const int    lb_idx  = length_bars.int_value();
     const int    bpb     = static_cast<int>(ctx->metronome_beats_per_bar);
-    const double pat_len = midi_clip::pattern_length_beats(lb_idx, bpb);
+    const double pat_len = static_cast<double>(length_bars.value) * static_cast<double>(bpb);
 
     // Resolve loop region: both 0 (or le <= ls) → full pattern
     const double raw_ls = static_cast<double>(loop_start_beat.value);

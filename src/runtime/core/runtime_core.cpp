@@ -349,8 +349,11 @@ void RuntimeCore::update_audio_sources(double time) {
         if (!cn.loader || !cn.loader->has_main_thread_update()) continue;
         cn.loader->main_thread_update(
             cn.instance, time,
-            cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data(),
-            static_cast<uint32_t>(cn.file_param_ptrs.size()));
+            cn.file_param_write_ptrs.empty() ? nullptr : cn.file_param_write_ptrs.data(),
+            static_cast<uint32_t>(cn.file_param_write_ptrs.size()));
+        // Refresh read-only C-string pointers after write-back
+        for (size_t wi = 0; wi < cn.file_param_storage.size(); ++wi)
+            cn.file_param_ptrs[wi] = cn.file_param_storage[wi].c_str();
     }
 }
 

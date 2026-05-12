@@ -699,11 +699,7 @@ typedef void (*VividIntrospectFn)(void* sink, const VividIntrospectWidget* w);
 typedef VividEditorMetadata (*VividEditorMetadataFn)(void);
 typedef void                (*VividDrawEditorFn)(void* instance, VividEditorContext* ctx);
 
-// Optional main-thread update hook for operators that need non-audio-thread work
-// (e.g. AVFoundation decoding, file I/O, ring buffer pre-fill)
-typedef void (*VividMainThreadUpdateFn)(void* instance, double time,
-                                        const char** file_param_values,
-                                        uint32_t file_param_count);
+// Optional main-thread update hook — see VividMainThreadUpdateFn below (C++ only)
 
 // Optional per-instance warmup hook for CPU-side one-time preparation that
 // should happen after graph params/file params have been synced into the
@@ -728,5 +724,16 @@ static inline int vivid_port_type_compatible(VividPortType a, VividPortType b) {
 }
 
 #ifdef __cplusplus
-}
+} // extern "C"
+
+#include <string>
+
+// Optional main-thread update hook for operators that need non-audio-thread work
+// (e.g. AVFoundation decoding, file I/O, ring buffer pre-fill).
+// file_param_strings: mutable pointers into file_param_storage (one per text/file param).
+// The generated vivid_main_thread_update wrapper writes back TextValue str_values after
+// the operator runs so control-server queries (list_clap_params etc.) see live values.
+typedef void (*VividMainThreadUpdateFn)(void* instance, double time,
+                                        std::string** file_param_strings,
+                                        uint32_t file_param_count);
 #endif

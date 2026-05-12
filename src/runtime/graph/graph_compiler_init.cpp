@@ -153,6 +153,7 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
 
     cn.file_param_storage.clear();
     cn.file_param_ptrs.clear();
+    cn.file_param_write_ptrs.clear();
     cn.file_param_indices.clear();
     cn.file_param_is_path.clear();
     for (uint32_t i = 0; i < desc->param_count; ++i) {
@@ -186,8 +187,11 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
         }
     }
     cn.file_param_ptrs.resize(cn.file_param_storage.size());
-    for (size_t i = 0; i < cn.file_param_storage.size(); ++i)
-        cn.file_param_ptrs[i] = cn.file_param_storage[i].c_str();
+    cn.file_param_write_ptrs.resize(cn.file_param_storage.size());
+    for (size_t i = 0; i < cn.file_param_storage.size(); ++i) {
+        cn.file_param_ptrs[i]       = cn.file_param_storage[i].c_str();
+        cn.file_param_write_ptrs[i] = &cn.file_param_storage[i];
+    }
 
     cn.custom_input_port_indices.clear();
     cn.custom_output_port_indices.clear();

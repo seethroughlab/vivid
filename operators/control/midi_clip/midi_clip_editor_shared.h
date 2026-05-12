@@ -32,18 +32,6 @@ inline double quantize_to_grid(double beat, int grid_division) {
     return std::floor(beat / cell) * cell;
 }
 
-// length_bars param enum: 0=1 1=2 2=4 3=8 4=16 5=32 6=64
-inline int bars_from_param(int param_index) {
-    static const int kBars[] = {1, 2, 4, 8, 16, 32, 64};
-    if (param_index < 0 || param_index > 6) return 4;
-    return kBars[param_index];
-}
-
-inline double pattern_length_beats(int length_bars_param, int beats_per_bar) {
-    return static_cast<double>(bars_from_param(length_bars_param)) *
-           static_cast<double>(beats_per_bar);
-}
-
 // JSON round-trip.
 // Format: [{"p":60,"s":0.0,"d":0.5,"v":0.8,"b":0.0,"pr":0.0}, ...]
 // "b" (pitch_bend) and "pr" (pressure) are omitted when zero.
